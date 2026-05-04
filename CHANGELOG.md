@@ -7,6 +7,11 @@
 - Fixed bug where panel axes were unintentionally anchored to zero when using 
   `FACET ... SETTING free => 'x'/'y'` (#410).
 
+### Added
+
+- Added panel decorations (grid lines, axes, background) for polar coordinates (#156).
+- Added `radar` setting to polar coordinates for making radar plots (#418).
+
 ## 0.3.1 - 2026-04-30
 
 ### Fixed

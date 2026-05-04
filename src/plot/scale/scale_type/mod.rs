@@ -796,6 +796,42 @@ pub trait ScaleTypeTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
         )
     }
 
+    /// Numeric break positions from a resolved scale.
+    ///
+    /// Default: reads the `breaks` property and converts to f64.
+    /// Discrete overrides to synthesize `[1, 2, …, n]` from input range length.
+    fn numeric_breaks(&self, scale: &super::Scale) -> Vec<f64> {
+        match scale.properties.get("breaks") {
+            Some(ParameterValue::Array(breaks)) => {
+                breaks.iter().filter_map(|b| b.to_f64()).collect()
+            }
+            _ => Vec::new(),
+        }
+    }
+
+    /// Labelled breaks: `(numeric_position, display_label)` pairs.
+    ///
+    /// Default: pairs each `numeric_breaks()` value with its string form.
+    /// Discrete/ordinal override to pair position indices with input-range
+    /// category names.  `label_mapping` overrides are applied by the caller.
+    fn break_labels(&self, scale: &super::Scale) -> Vec<(f64, String)> {
+        self.numeric_breaks(scale)
+            .into_iter()
+            .map(|v| (v, format!("{v}")))
+            .collect()
+    }
+
+    /// Numeric domain `(min, max)` from a resolved scale.
+    ///
+    /// Default: reads the input range endpoints as f64.
+    /// Discrete overrides to synthesize `(0.5, n + 0.5)`.
+    fn numeric_domain(&self, scale: &super::Scale) -> Option<(f64, f64)> {
+        let range = scale.input_range.as_ref()?;
+        let min = range.first()?.to_f64()?;
+        let max = range.last()?.to_f64()?;
+        Some((min, max))
+    }
+
     /// Resolve scale properties from data context.
     ///
     /// Called ONCE per scale, either:
@@ -1066,6 +1102,38 @@ pub trait ScaleTypeTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
     }
 }
 
+/// Numeric breaks for categorical scales: `[1, 2, …, n]` from input range length.
+pub(super) fn categorical_numeric_breaks(scale: &super::Scale) -> Vec<f64> {
+    let n = scale.input_range.as_ref().map_or(0, |r| r.len());
+    (1..=n).map(|i| i as f64).collect()
+}
+
+/// Numeric domain for categorical scales: `(0.5, n + 0.5)`.
+pub(super) fn categorical_numeric_domain(scale: &super::Scale) -> Option<(f64, f64)> {
+    let n = scale.input_range.as_ref()?.len();
+    if n > 0 {
+        Some((0.5, n as f64 + 0.5))
+    } else {
+        None
+    }
+}
+
+/// Labelled breaks for categorical scales: pairs position indices with category names.
+pub(super) fn categorical_break_labels(scale: &super::Scale) -> Vec<(f64, String)> {
+    let Some(range) = scale.input_range.as_ref() else {
+        return Vec::new();
+    };
+    let mut out = Vec::with_capacity(range.len());
+    for (i, elem) in range.iter().enumerate() {
+        let label = match elem {
+            ArrayElement::String(s) => s.clone(),
+            other => format!("{}", other.to_json()),
+        };
+        out.push(((i + 1) as f64, label));
+    }
+    out
+}
+
 /// Wrapper struct for scale type trait objects
 ///
 /// This provides a convenient interface for working with scale types while hiding
@@ -1246,6 +1314,21 @@ impl ScaleType {
     /// Returns whether this scale type supports the `breaks` property.
     pub fn supports_breaks(&self) -> bool {
         self.0.supports_breaks()
+    }
+
+    /// Numeric break positions from a resolved scale.
+    pub fn numeric_breaks(&self, scale: &super::Scale) -> Vec<f64> {
+        self.0.numeric_breaks(scale)
+    }
+
+    /// Numeric domain `(min, max)` from a resolved scale.
+    pub fn numeric_domain(&self, scale: &super::Scale) -> Option<(f64, f64)> {
+        self.0.numeric_domain(scale)
+    }
+
+    /// Labelled breaks: `(numeric_position, display_label)` pairs.
+    pub fn break_labels(&self, scale: &super::Scale) -> Vec<(f64, String)> {
+        self.0.break_labels(scale)
     }
 
     /// Resolve scale properties from data context.

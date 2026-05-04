@@ -7,5 +7,5 @@ mod resolve;
 mod types;
 
 pub use coord::{Coord, CoordKind, CoordTrait};
-pub use resolve::resolve_coord;
+pub use resolve::{resolve_coord, resolve_projection_properties};
 pub use types::Projection;

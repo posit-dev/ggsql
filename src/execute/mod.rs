@@ -27,6 +27,7 @@ use crate::parser;
 use crate::plot::aesthetic::{is_position_aesthetic, AestheticContext};
 use crate::plot::facet::{resolve_properties as resolve_facet_properties, FacetDataContext};
 use crate::plot::layer::is_transposed;
+use crate::plot::projection::resolve_projection_properties;
 use crate::plot::{AestheticValue, Layer, Scale, ScaleTypeKind, Schema};
 use crate::{DataFrame, DataSource, GgsqlError, Plot, Result};
 use std::collections::{HashMap, HashSet};
@@ -1418,6 +1419,13 @@ pub fn prepare_data_with_reader(query: &str, reader: &dyn Reader) -> Result<Prep
     // Resolve scale types from data for scales without explicit types
     for spec in &mut specs {
         scale::resolve_scales(spec, &mut data_map)?;
+    }
+
+    // Resolve projection properties that depend on scale types (e.g., radar)
+    for spec in &mut specs {
+        if let Some(ref mut project) = spec.project {
+            resolve_projection_properties(project, &spec.scales)?;
+        }
     }
 
     // Resolve facet properties (after data is available)

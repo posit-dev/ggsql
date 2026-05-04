@@ -57,6 +57,18 @@ impl ScaleTypeTrait for Discrete {
         true
     }
 
+    fn numeric_breaks(&self, scale: &super::super::Scale) -> Vec<f64> {
+        super::categorical_numeric_breaks(scale)
+    }
+
+    fn numeric_domain(&self, scale: &super::super::Scale) -> Option<(f64, f64)> {
+        super::categorical_numeric_domain(scale)
+    }
+
+    fn break_labels(&self, scale: &super::super::Scale) -> Vec<(f64, String)> {
+        super::categorical_break_labels(scale)
+    }
+
     fn default_properties(&self) -> &'static [ParamDefinition] {
         // Discrete scales always censor OOB values (no OOB setting needed)
         const PARAMS: &[ParamDefinition] = &[ParamDefinition {
