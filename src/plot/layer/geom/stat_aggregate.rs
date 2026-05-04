@@ -283,13 +283,8 @@ pub fn parse_aggregate_param(
             if func.is_empty() {
                 return Err(format!("'{}': aggregate function is empty", entry));
             }
-            let agg = parse_agg_name(func).ok_or_else(|| {
-                format!(
-                    "'{}': {}",
-                    entry,
-                    diagnose_invalid_function_name(func)
-                )
-            })?;
+            let agg = parse_agg_name(func)
+                .ok_or_else(|| format!("'{}': {}", entry, diagnose_invalid_function_name(func)))?;
             // Append to existing list for this aesthetic, or create one.
             if let Some((_, fns)) = spec.targets.iter_mut().find(|(a, _)| a == aes) {
                 fns.push(agg);
@@ -297,8 +292,7 @@ pub fn parse_aggregate_param(
                 spec.targets.push((aes.to_string(), vec![agg]));
             }
         } else {
-            let agg = parse_agg_name(entry)
-                .ok_or_else(|| diagnose_invalid_function_name(entry))?;
+            let agg = parse_agg_name(entry).ok_or_else(|| diagnose_invalid_function_name(entry))?;
             if spec.default_lower.is_none() {
                 spec.default_lower = Some(agg);
             } else if spec.default_upper.is_none() {
@@ -613,8 +607,7 @@ pub fn apply(
         None | Some(ParameterValue::Null) => return Ok(StatResult::Identity),
         Some(v) => v,
     };
-    let spec = parse_aggregate_param(raw)
-        .map_err(GgsqlError::ValidationError)?;
+    let spec = parse_aggregate_param(raw).map_err(GgsqlError::ValidationError)?;
     let spec = match spec {
         Some(s) => s,
         None => return Ok(StatResult::Identity),
@@ -654,7 +647,8 @@ pub fn apply(
     let mut kept_cols: Vec<String> = Vec::new();
     let mut dropped: Vec<String> = Vec::new();
 
-    let mut entries: Vec<(&String, &crate::AestheticValue)> = aesthetics.aesthetics.iter().collect();
+    let mut entries: Vec<(&String, &crate::AestheticValue)> =
+        aesthetics.aesthetics.iter().collect();
     entries.sort_by(|a, b| a.0.cmp(b.0));
 
     for (aes, value) in entries {
@@ -682,7 +676,9 @@ pub fn apply(
             }
         } else {
             let default = if is_upper_half(aes) {
-                spec.default_upper.clone().or_else(|| spec.default_lower.clone())
+                spec.default_upper
+                    .clone()
+                    .or_else(|| spec.default_lower.clone())
             } else {
                 spec.default_lower.clone()
             };
@@ -934,7 +930,12 @@ mod tests {
     }
 
     fn arr(items: &[&str]) -> ParameterValue {
-        ParameterValue::Array(items.iter().map(|s| ArrayElement::String(s.to_string())).collect())
+        ParameterValue::Array(
+            items
+                .iter()
+                .map(|s| ArrayElement::String(s.to_string()))
+                .collect(),
+        )
     }
 
     // ---------- parser tests ----------
@@ -957,7 +958,9 @@ mod tests {
 
     #[test]
     fn parses_two_defaults_in_order() {
-        let s = parse_aggregate_param(&arr(&["min", "max"])).unwrap().unwrap();
+        let s = parse_aggregate_param(&arr(&["min", "max"]))
+            .unwrap()
+            .unwrap();
         assert_eq!(s.default_lower.as_ref().map(|a| a.offset), Some("min"));
         assert_eq!(s.default_upper.as_ref().map(|a| a.offset), Some("max"));
     }
@@ -982,12 +985,17 @@ mod tests {
             .unwrap();
         assert_eq!(s.default_lower.as_ref().map(|a| a.offset), Some("mean"));
         assert_eq!(target_funcs(&s, "y").map(|fs| fs[0].offset), Some("max"));
-        assert_eq!(target_funcs(&s, "color").map(|fs| fs[0].offset), Some("median"));
+        assert_eq!(
+            target_funcs(&s, "color").map(|fs| fs[0].offset),
+            Some("median")
+        );
     }
 
     #[test]
     fn duplicate_target_explodes_into_a_list() {
-        let s = parse_aggregate_param(&arr(&["y:min", "y:max"])).unwrap().unwrap();
+        let s = parse_aggregate_param(&arr(&["y:min", "y:max"]))
+            .unwrap()
+            .unwrap();
         let fns = target_funcs(&s, "y").unwrap();
         assert_eq!(fns.len(), 2);
         assert_eq!(fns[0].offset, "min");
@@ -1044,7 +1052,9 @@ mod tests {
             .unwrap();
         assert_eq!(s.explosion_labels(), None);
 
-        let s = parse_aggregate_param(&arr(&["mean", "color:median"])).unwrap().unwrap();
+        let s = parse_aggregate_param(&arr(&["mean", "color:median"]))
+            .unwrap()
+            .unwrap();
         assert_eq!(s.explosion_labels(), None);
     }
 
@@ -1090,11 +1100,23 @@ mod tests {
             .unwrap();
         assert_eq!(s.default_lower.as_ref().unwrap().offset, "mean");
         assert_eq!(
-            s.default_lower.as_ref().unwrap().band.as_ref().unwrap().expansion,
+            s.default_lower
+                .as_ref()
+                .unwrap()
+                .band
+                .as_ref()
+                .unwrap()
+                .expansion,
             "sdev"
         );
         assert_eq!(
-            s.default_lower.as_ref().unwrap().band.as_ref().unwrap().sign,
+            s.default_lower
+                .as_ref()
+                .unwrap()
+                .band
+                .as_ref()
+                .unwrap()
+                .sign,
             '-'
         );
         assert_eq!(s.default_upper.as_ref().unwrap().offset, "mean");
@@ -1108,8 +1130,16 @@ mod tests {
         let schema: Schema = vec![];
         let p: HashMap<String, ParameterValue> = HashMap::new();
         let ctx = cartesian_ctx();
-        let result = apply("SELECT * FROM t", &schema, &aes, &[], &p, &InlineQuantileDialect, &ctx)
-            .unwrap();
+        let result = apply(
+            "SELECT * FROM t",
+            &schema,
+            &aes,
+            &[],
+            &p,
+            &InlineQuantileDialect,
+            &ctx,
+        )
+        .unwrap();
         assert_eq!(result, StatResult::Identity);
     }
 
@@ -1117,7 +1147,14 @@ mod tests {
     fn returns_identity_when_param_null() {
         let aes = Mappings::new();
         let schema: Schema = vec![];
-        let result = run(ParameterValue::Null, &aes, &schema, &[], &InlineQuantileDialect).unwrap();
+        let result = run(
+            ParameterValue::Null,
+            &aes,
+            &schema,
+            &[],
+            &InlineQuantileDialect,
+        )
+        .unwrap();
         assert_eq!(result, StatResult::Identity);
     }
 
@@ -1126,10 +1163,7 @@ mod tests {
         let mut aes = Mappings::new();
         aes.insert("pos1", col("__ggsql_aes_pos1__"));
         aes.insert("pos2", col("__ggsql_aes_pos2__"));
-        let schema = schema_for(&[
-            ("__ggsql_aes_pos1__", false),
-            ("__ggsql_aes_pos2__", false),
-        ]);
+        let schema = schema_for(&[("__ggsql_aes_pos1__", false), ("__ggsql_aes_pos2__", false)]);
         let result = run(
             ParameterValue::String("mean".to_string()),
             &aes,
@@ -1173,15 +1207,29 @@ mod tests {
             ("__ggsql_aes_pos1end__", false),
             ("__ggsql_aes_pos2end__", false),
         ]);
-        let result = run(arr(&["min", "max"]), &aes, &schema, &[], &InlineQuantileDialect)
-            .unwrap();
+        let result = run(
+            arr(&["min", "max"]),
+            &aes,
+            &schema,
+            &[],
+            &InlineQuantileDialect,
+        )
+        .unwrap();
         match result {
             StatResult::Transformed { query, .. } => {
                 // pos1, pos2 use MIN; pos1end, pos2end use MAX.
                 assert!(query.contains("MIN(\"__ggsql_aes_pos1__\")"), "{}", query);
                 assert!(query.contains("MIN(\"__ggsql_aes_pos2__\")"), "{}", query);
-                assert!(query.contains("MAX(\"__ggsql_aes_pos1end__\")"), "{}", query);
-                assert!(query.contains("MAX(\"__ggsql_aes_pos2end__\")"), "{}", query);
+                assert!(
+                    query.contains("MAX(\"__ggsql_aes_pos1end__\")"),
+                    "{}",
+                    query
+                );
+                assert!(
+                    query.contains("MAX(\"__ggsql_aes_pos2end__\")"),
+                    "{}",
+                    query
+                );
                 assert!(!query.contains("MIN(\"__ggsql_aes_pos1end__\")"));
                 assert!(!query.contains("MAX(\"__ggsql_aes_pos1__\")"));
             }
@@ -1213,10 +1261,7 @@ mod tests {
                 assert!(query.contains("STDDEV_POP(\"__ggsql_aes_pos2max__\")"));
                 assert!(query.contains("AVG(\"__ggsql_aes_pos2min__\")"));
                 // upper default (mean+sdev) goes to pos2max → '+' between AVG and STDDEV
-                let pos2max_section = query
-                    .split("__ggsql_aes_pos2max__\")")
-                    .next()
-                    .unwrap_or("");
+                let pos2max_section = query.split("__ggsql_aes_pos2max__\")").next().unwrap_or("");
                 assert!(pos2max_section.contains('+') || query.contains("+ STDDEV_POP"));
             }
             _ => panic!("expected Transformed"),
@@ -1228,10 +1273,7 @@ mod tests {
         let mut aes = Mappings::new();
         aes.insert("pos1", col("__ggsql_aes_pos1__"));
         aes.insert("pos2", col("__ggsql_aes_pos2__"));
-        let schema = schema_for(&[
-            ("__ggsql_aes_pos1__", false),
-            ("__ggsql_aes_pos2__", false),
-        ]);
+        let schema = schema_for(&[("__ggsql_aes_pos1__", false), ("__ggsql_aes_pos2__", false)]);
         let result = run(
             arr(&["mean", "y:max"]),
             &aes,
@@ -1270,7 +1312,11 @@ mod tests {
         )
         .unwrap();
         match result {
-            StatResult::Transformed { query, stat_columns, .. } => {
+            StatResult::Transformed {
+                query,
+                stat_columns,
+                ..
+            } => {
                 assert!(query.contains("QUANTILE_CONT(\"__ggsql_aes_size__\", 0.5)"));
                 assert!(stat_columns.contains(&"size".to_string()));
             }
@@ -1300,7 +1346,11 @@ mod tests {
         )
         .unwrap();
         match result {
-            StatResult::Transformed { query, stat_columns, .. } => {
+            StatResult::Transformed {
+                query,
+                stat_columns,
+                ..
+            } => {
                 assert!(query.contains("MAX(\"__ggsql_aes_fill__\")"), "{}", query);
                 assert!(query.contains("AVG(\"__ggsql_aes_pos1__\")"));
                 assert!(stat_columns.contains(&"fill".to_string()));
@@ -1316,12 +1366,15 @@ mod tests {
         let mut aes = Mappings::new();
         aes.insert("pos1", col("__ggsql_aes_pos1__"));
         aes.insert("pos2", col("__ggsql_aes_pos2__"));
-        let schema = schema_for(&[
-            ("__ggsql_aes_pos1__", false),
-            ("__ggsql_aes_pos2__", false),
-        ]);
-        let result = run(arr(&["y:min", "y:max"]), &aes, &schema, &[], &InlineQuantileDialect)
-            .unwrap();
+        let schema = schema_for(&[("__ggsql_aes_pos1__", false), ("__ggsql_aes_pos2__", false)]);
+        let result = run(
+            arr(&["y:min", "y:max"]),
+            &aes,
+            &schema,
+            &[],
+            &InlineQuantileDialect,
+        )
+        .unwrap();
         match result {
             StatResult::Transformed {
                 query,
@@ -1375,11 +1428,21 @@ mod tests {
                 assert!(query.contains("MIN(\"__ggsql_aes_pos2__\")"), "{}", query);
                 assert!(query.contains("MAX(\"__ggsql_aes_pos2__\")"));
                 // color (alias → fill) is recycled → QUANTILE_CONT(.5) appears in BOTH branches
-                let median_count = query.matches("QUANTILE_CONT(\"__ggsql_aes_fill__\", 0.5)").count();
-                assert_eq!(median_count, 2, "color median should appear once per branch: {}", query);
+                let median_count = query
+                    .matches("QUANTILE_CONT(\"__ggsql_aes_fill__\", 0.5)")
+                    .count();
+                assert_eq!(
+                    median_count, 2,
+                    "color median should appear once per branch: {}",
+                    query
+                );
                 // size has no target → uses default 'mean' → AVG appears in both branches
                 let avg_size = query.matches("AVG(\"__ggsql_aes_size__\")").count();
-                assert_eq!(avg_size, 2, "size mean should appear once per branch: {}", query);
+                assert_eq!(
+                    avg_size, 2,
+                    "size mean should appear once per branch: {}",
+                    query
+                );
                 // pos1 (no target) → mean → AVG appears in both branches
                 let avg_pos1 = query.matches("AVG(\"__ggsql_aes_pos1__\")").count();
                 assert_eq!(avg_pos1, 2);
@@ -1416,7 +1479,11 @@ mod tests {
         )
         .unwrap();
         match result {
-            StatResult::Transformed { query, stat_columns, .. } => {
+            StatResult::Transformed {
+                query,
+                stat_columns,
+                ..
+            } => {
                 assert!(query.contains("UNION ALL"));
                 // pos2max always uses mean+sdev (upper default) — a `+` between AVG and STDDEV
                 let upper_branch_marker = "AVG(\"__ggsql_aes_pos2max__\") + STDDEV_POP";
@@ -1456,7 +1523,11 @@ mod tests {
                 stat_columns,
                 ..
             } => {
-                assert!(query.contains("GROUP BY \"__ggsql_aes_color__\""), "{}", query);
+                assert!(
+                    query.contains("GROUP BY \"__ggsql_aes_color__\""),
+                    "{}",
+                    query
+                );
                 assert!(!stat_columns.contains(&"color".to_string()));
                 assert!(query.contains("AVG(\"__ggsql_aes_pos1__\")"));
                 assert!(query.contains("AVG(\"__ggsql_aes_pos2__\")"));
@@ -1474,10 +1545,7 @@ mod tests {
             "fill",
             AestheticValue::Literal(ParameterValue::String("steelblue".to_string())),
         );
-        let schema = schema_for(&[
-            ("__ggsql_aes_pos1__", false),
-            ("__ggsql_aes_pos2__", false),
-        ]);
+        let schema = schema_for(&[("__ggsql_aes_pos1__", false), ("__ggsql_aes_pos2__", false)]);
         let result = run(
             ParameterValue::String("mean".to_string()),
             &aes,
@@ -1501,10 +1569,7 @@ mod tests {
         let mut aes = Mappings::new();
         aes.insert("pos1", col("__ggsql_aes_pos1__"));
         aes.insert("pos2", col("__ggsql_aes_pos2__"));
-        let schema = schema_for(&[
-            ("__ggsql_aes_pos1__", false),
-            ("__ggsql_aes_pos2__", false),
-        ]);
+        let schema = schema_for(&[("__ggsql_aes_pos1__", false), ("__ggsql_aes_pos2__", false)]);
         // Only `y` targeted, no default → x is dropped.
         let result = run(
             ParameterValue::String("y:mean".to_string()),
@@ -1579,10 +1644,7 @@ mod tests {
         let mut aes = Mappings::new();
         aes.insert("pos1", col("__ggsql_aes_pos1__"));
         aes.insert("pos2", col("__ggsql_aes_pos2__"));
-        let schema = schema_for(&[
-            ("__ggsql_aes_pos1__", false),
-            ("__ggsql_aes_pos2__", false),
-        ]);
+        let schema = schema_for(&[("__ggsql_aes_pos1__", false), ("__ggsql_aes_pos2__", false)]);
         let err = run(
             ParameterValue::String("size:mean".to_string()),
             &aes,
