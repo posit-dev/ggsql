@@ -306,6 +306,9 @@ pub mod odbc;
 #[cfg(feature = "odbc")]
 pub mod snowflake;
 
+#[cfg(feature = "odbc")]
+pub mod exasol;
+
 pub mod connection;
 pub mod data;
 mod spec;

@@ -1,7 +1,8 @@
 //! Generic ODBC data source implementation
 //!
-//! Provides a reader for any ODBC-compatible database (Snowflake, PostgreSQL,
-//! SQL Server, etc.) using the `odbc-api` crate.
+//! Provides a reader for any ODBC-compatible database (Snowflake, Exasol,
+//! PostgreSQL, SQL Server, etc.) using the `odbc-api` crate. Backend-specific
+//! SQL dialects are dispatched at connection time via `detect_dialect()`.
 
 use crate::reader::Reader;
 use crate::{naming, DataFrame, GgsqlError, Result};
@@ -48,6 +49,8 @@ fn detect_dialect(conn_str: &str) -> Box<dyn super::SqlDialect> {
         {
             Box::new(super::AnsiDialect)
         }
+    } else if lower.contains("driver=exasol") || lower.contains("driver={exasol") {
+        Box::new(super::exasol::ExasolDialect)
     } else {
         Box::new(super::AnsiDialect)
     }
@@ -69,6 +72,16 @@ impl OdbcReader {
     /// Create a new ODBC reader from a `odbc://` connection URI.
     ///
     /// The URI format is `odbc://` followed by the raw ODBC connection string.
+    ///
+    /// # Examples
+    ///
+    /// ```text
+    /// // Snowflake
+    /// odbc://Driver=Snowflake;Server=acct.snowflakecomputing.com;...
+    ///
+    /// // Exasol
+    /// odbc://Driver=Exasol;EXAHOST=host:8563;EXAUID=user;EXAPWD=pass
+    /// ```
     pub fn from_connection_string(uri: &str) -> Result<Self> {
         let conn_str = uri
             .strip_prefix("odbc://")
@@ -763,6 +776,21 @@ mod tests {
         // Generic uses information_schema (ANSI default)
         let dialect = detect_dialect("Driver=SomeOther;Server=localhost");
         assert!(dialect.sql_list_catalogs().contains("information_schema"));
+
+        // Exasol uses SYS.EXA_SCHEMAS (no information_schema)
+        let dialect = detect_dialect("Driver=Exasol;EXAHOST=foo:8563");
+        assert_eq!(dialect.string_type_name(), Some("VARCHAR(2000000)"));
+        assert!(dialect.sql_list_catalogs().contains("SYS.EXA_SCHEMAS"));
+    }
+
+    #[test]
+    fn test_detect_dialect_exasol_curly_form() {
+        let dialect = detect_dialect("Driver={Exasol};EXAHOST=foo:8563");
+        assert_eq!(dialect.string_type_name(), Some("VARCHAR(2000000)"));
+
+        // Mixed-case driver name still resolves to Exasol dialect
+        let dialect = detect_dialect("DRIVER={EXASOL};EXAHOST=foo:8563");
+        assert_eq!(dialect.string_type_name(), Some("VARCHAR(2000000)"));
     }
 
     #[test]
