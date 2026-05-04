@@ -205,7 +205,7 @@ fn normalize_arrow_types(batch: RecordBatch) -> Result<RecordBatch> {
 impl Reader for DuckDBReader {
     fn execute_sql(&self, sql: &str) -> Result<DataFrame> {
         // Register builtin datasets if referenced
-        #[cfg(feature = "builtin-data")]
+        #[cfg(all(feature = "builtin-data", feature = "parquet"))]
         super::data::register_builtin_datasets_duckdb(sql, &self.conn)?;
 
         // Rewrite ggsql:name → __ggsql_data_name__ in SQL
