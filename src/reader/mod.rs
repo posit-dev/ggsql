@@ -156,6 +156,21 @@ pub trait SqlDialect {
         result
     }
 
+    /// SQL expression to convert a geometry column to WKB.
+    ///
+    /// Default uses `ST_AsBinary` (OGC standard). Override for backends
+    /// with different function names (e.g. DuckDB uses `ST_AsWKB`).
+    fn sql_geometry_to_wkb(&self, column: &str) -> String {
+        format!("ST_AsBinary({column})")
+    }
+
+    /// SQL statements to run before spatial operations.
+    ///
+    /// Override for backends that need an extension loaded (e.g. DuckDB spatial).
+    fn sql_spatial_setup(&self) -> Vec<String> {
+        vec![]
+    }
+
     /// Generate a series of integers 0..n-1 as a CTE fragment.
     ///
     /// Returns CTE fragment(s) producing table `__ggsql_seq__` with column `n`.

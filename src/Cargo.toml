@@ -32,6 +32,9 @@ toml_edit = { workspace = true, optional = true }
 parquet = { workspace = true, optional = true }
 bytes = { workspace = true }
 
+# Spatial
+geozero = { workspace = true, optional = true, features = ["with-wkb", "with-geojson"] }
+
 # Serialization
 serde.workspace = true
 serde_json.workspace = true
@@ -53,11 +56,12 @@ tempfile = "3.8"
 ureq = "3"
 
 [features]
-default = ["duckdb", "sqlite", "vegalite", "parquet", "builtin-data", "odbc"]
+default = ["duckdb", "sqlite", "vegalite", "parquet", "builtin-data", "odbc", "spatial"]
 duckdb = ["dep:duckdb"]
 parquet = ["dep:parquet"]
 sqlite = ["dep:rusqlite"]
 odbc = ["dep:odbc-api", "dep:toml_edit"]
+spatial = ["dep:geozero"]
 vegalite = []
 builtin-data = []
 all-readers = ["duckdb", "sqlite", "odbc"]

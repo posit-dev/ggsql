@@ -34,6 +34,14 @@ impl super::SqlDialect for DuckDbDialect {
         format!("LEAST({})", exprs.join(", "))
     }
 
+    fn sql_geometry_to_wkb(&self, column: &str) -> String {
+        format!("ST_AsWKB({column})")
+    }
+
+    fn sql_spatial_setup(&self) -> Vec<String> {
+        vec!["LOAD spatial".into()]
+    }
+
     fn sql_generate_series(&self, n: usize) -> String {
         format!(
             "\"__ggsql_seq__\"(n) AS (SELECT generate_series FROM GENERATE_SERIES(0, {}))",

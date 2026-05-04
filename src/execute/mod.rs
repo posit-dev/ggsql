@@ -315,6 +315,19 @@ fn merge_global_mappings_into_layers(specs: &mut [Plot], layer_schemas: &[Schema
             // Clear wildcard flag since it's been resolved
             layer.mappings.wildcard = false;
 
+            // Auto-detect geometry column when the geom declares one
+            if layer.geom.aesthetics().contains("geometry")
+                && !layer.mappings.aesthetics.contains_key("geometry")
+            {
+                if let Some(col) = detect_geometry_column(schema) {
+                    layer
+                        .mappings
+                        .aesthetics
+                        .entry("geometry".to_string())
+                        .or_insert(AestheticValue::standard_column(&col));
+                }
+            }
+
             // Remove null sentinel mappings (explicit "don't inherit" markers)
             layer
                 .mappings
@@ -322,6 +335,52 @@ fn merge_global_mappings_into_layers(specs: &mut [Plot], layer_schemas: &[Schema
                 .retain(|_, value| !is_null_sentinel(value));
         }
     }
+}
+
+/// Detect a geometry column by name and type.
+///
+/// Returns the column name if exactly one candidate is found. Returns `None`
+/// if zero or more than one column matches (ambiguous).
+fn detect_geometry_column(schema: &Schema) -> Option<String> {
+    use arrow::datatypes::DataType;
+
+    fn looks_like_geometry(name: &str) -> bool {
+        matches!(
+            name.to_lowercase().as_str(),
+            "geom" | "geometry" | "wkb_geometry" | "the_geom" | "shape"
+        )
+    }
+
+    fn is_geometry_type(dtype: &DataType) -> bool {
+        matches!(
+            dtype,
+            DataType::Binary | DataType::LargeBinary | DataType::BinaryView
+        )
+    }
+
+    // Prefer columns that match both name and type
+    let candidates: Vec<_> = schema
+        .iter()
+        .filter(|c| looks_like_geometry(&c.name) && is_geometry_type(&c.dtype))
+        .collect();
+
+    if candidates.len() == 1 {
+        return Some(candidates[0].name.clone());
+    }
+
+    // Fall back to name-only match (e.g. extension types we don't recognise)
+    if candidates.is_empty() {
+        let by_name: Vec<_> = schema
+            .iter()
+            .filter(|c| looks_like_geometry(&c.name))
+            .collect();
+
+        if by_name.len() == 1 {
+            return Some(by_name[0].name.clone());
+        }
+    }
+
+    None
 }
 
 /// Resolve aesthetic aliases in a plot specification.
@@ -3021,6 +3080,92 @@ mod tests {
             !err_msg.contains("pos1min"),
             "Error should not mention internal name 'pos1min', got: {}",
             err_msg
+        );
+    }
+
+    #[cfg(all(feature = "duckdb", feature = "spatial"))]
+    #[test]
+    fn test_spatial_native_geometry() {
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        let query = r#"
+            INSTALL spatial;
+            LOAD spatial;
+            SELECT
+                ST_GeomFromText('POLYGON ((0 0, 1 0, 1 1, 0 1, 0 0))') AS geom,
+                'A' AS name,
+                100 AS value
+            UNION ALL
+            SELECT
+                ST_GeomFromText('POLYGON ((1 0, 2 0, 2 1, 1 1, 1 0))') AS geom,
+                'B' AS name,
+                200 AS value
+            VISUALISE
+            DRAW spatial MAPPING value AS fill
+        "#;
+
+        let result = prepare_data_with_reader(query, &reader);
+        assert!(
+            result.is_ok(),
+            "Spatial with native GEOMETRY failed: {:?}",
+            result.err()
+        );
+
+        let prepared = result.unwrap();
+        let layer_key = prepared.specs[0].layers[0].data_key.as_ref().unwrap();
+        let df = prepared.data.get(layer_key).unwrap();
+        assert_eq!(df.height(), 2);
+    }
+
+    #[cfg(all(feature = "duckdb", feature = "spatial"))]
+    #[test]
+    fn test_spatial_auto_detect_geometry_column() {
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        let query = r#"
+            INSTALL spatial;
+            LOAD spatial;
+            SELECT
+                ST_GeomFromText('POLYGON ((0 0, 1 0, 1 1, 0 1, 0 0))') AS geom,
+                'A' AS name
+            UNION ALL
+            SELECT
+                ST_GeomFromText('POLYGON ((1 0, 2 0, 2 1, 1 1, 1 0))') AS geom,
+                'B' AS name
+            VISUALISE
+            DRAW spatial MAPPING name AS fill
+        "#;
+
+        let result = prepare_data_with_reader(query, &reader);
+        assert!(
+            result.is_ok(),
+            "Spatial auto-detect geometry failed: {:?}",
+            result.err()
+        );
+
+        let prepared = result.unwrap();
+        let layer_key = prepared.specs[0].layers[0].data_key.as_ref().unwrap();
+        let df = prepared.data.get(layer_key).unwrap();
+        assert_eq!(df.height(), 2);
+        assert!(df.column("__ggsql_aes_geometry__").is_ok());
+    }
+
+    #[cfg(all(feature = "duckdb", feature = "spatial", feature = "builtin-data"))]
+    #[test]
+    fn test_spatial_world_minimal() {
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        reader.execute_sql("INSTALL spatial").unwrap();
+
+        let query = r#"
+            VISUALISE FROM ggsql:world
+            DRAW spatial
+        "#;
+
+        let result = prepare_data_with_reader(query, &reader);
+        assert!(
+            result.is_ok(),
+            "ggsql:world DRAW spatial failed: {:?}",
+            result.err()
         );
     }
 
