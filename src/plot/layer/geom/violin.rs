@@ -123,6 +123,7 @@ impl GeomTrait for Violin {
         parameters: &HashMap<String, ParameterValue>,
         _execute_query: &dyn Fn(&str) -> crate::Result<crate::DataFrame>,
         dialect: &dyn crate::reader::SqlDialect,
+        _aesthetic_ctx: &crate::plot::aesthetic::AestheticContext,
     ) -> Result<StatResult> {
         stat_violin(query, aesthetics, group_by, parameters, dialect)
     }

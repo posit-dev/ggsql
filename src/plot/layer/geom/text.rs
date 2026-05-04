@@ -67,10 +67,6 @@ impl GeomTrait for Text {
         true
     }
 
-    fn aggregate_slots(&self) -> &'static [u8] {
-        &[1, 2]
-    }
-
     fn post_process(
         &self,
         df: DataFrame,

@@ -27,7 +27,7 @@ The following aesthetics are recognised by the line layer.
 * `aggregate`: Aggregation functions to apply per group. Either a single string or an array of strings. See an overview of aggregation function in [the `DRAW` documentation](../../clause/draw.qmd#aggregate) and more information in the *Data transformation* section below.
 
 ## Data transformation
-This layer supports aggregation through the `aggregate` setting. Within each group, defined by `PARTITION BY`, all discrete mappings, and the primary axis, aggregates will be calculated and used as the values to plot. Multiple aggregates will give rise to multiple separate groups in the end. These can be distinguished through the added `aggregate` column you can remap to, e.g. `REMAPPING aggregate AS color`
+This layer supports aggregation through the `aggregate` setting. Within each group, defined by `PARTITION BY`, all discrete mappings, and the primary axis, every numeric mapping is replaced in place by its aggregated value to produce a summary trace. Use a default like `'mean'` to summarise the secondary axis, or target other aesthetics with `'<aes>:<func>'` (e.g. `'color:median'`). To draw min/max envelope lines, use a separate `DRAW line` layer per function, or use a [`range` layer](range.qmd) for a single range mark. See [the `DRAW` documentation](../../clause/draw.qmd#aggregate) for the full setting shape.
 
 Further, the line layer sorts the data along its primary axis before returning it.
 
@@ -96,11 +96,13 @@ DRAW line
 SCALE linewidth TO (0, 30)
 ```
 
-Use aggregation to draw min and max lines from a set of observations
+Use aggregation to draw min and max lines from a set of observations. Each layer produces one summary trace; stack two layers for both bounds.
 
 ```{ggsql}
 VISUALISE Day AS x, Temp AS y FROM ggsql:airquality
 DRAW line
-  SETTING aggregate => ('min', 'max')
+  SETTING aggregate => 'min'
+DRAW line
+  SETTING aggregate => 'max'
 DRAW point
 ```

@@ -73,6 +73,7 @@ pub use text::Text;
 pub use tile::Tile;
 pub use violin::Violin;
 
+use crate::plot::aesthetic::AestheticContext;
 use crate::plot::types::{ParameterValue, Schema};
 use crate::reader::SqlDialect;
 
@@ -195,38 +196,13 @@ pub trait GeomTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
 
     /// Whether this geom accepts the `aggregate` SETTING parameter.
     ///
-    /// Geoms that opt in (the Identity-stat geoms) gain a generic Aggregate stat
-    /// that groups by discrete mappings + PARTITION BY and emits one row per
-    /// (group × aggregation function). Statistical geoms (histogram, density,
-    /// smooth, boxplot, violin) leave this `false` to keep their bespoke stats.
+    /// Geoms that opt in gain a generic Aggregate stat that groups by discrete
+    /// mappings + PARTITION BY and emits one row per group, replacing every
+    /// numeric mapping (positional and material) with its aggregated value.
+    /// Statistical geoms (histogram, density, smooth, boxplot, violin) leave
+    /// this `false` to keep their bespoke stats.
     fn supports_aggregate(&self) -> bool {
         false
-    }
-
-    /// Which numeric position-aesthetic slots the Aggregate stat should reduce.
-    ///
-    /// Slot 1 is `pos1`/`pos1min`/`pos1max`/`pos1end` (the independent / domain axis).
-    /// Slot 2 is `pos2`/`pos2min`/`pos2max`/`pos2end` (the dependent / range axis).
-    ///
-    /// Default: `&[2]` — only the dependent axis is reduced; pos1-family stays as a
-    /// grouping column, so e.g. line geoms produce a summary trace along x. Geoms
-    /// whose natural Aggregate is centroid-like (point, polygon, segment, arrow,
-    /// text, path, tile, rule) override to `&[1, 2]`.
-    fn aggregate_slots(&self) -> &'static [u8] {
-        &[2]
-    }
-
-    /// Range pair for range-style Aggregate output.
-    ///
-    /// When `Some((lower, upper))`, this geom is a "range geom" that takes exactly
-    /// two `aggregate` functions and assigns them to the two named aesthetics
-    /// (e.g. `("pos2min", "pos2max")` for ribbon/range). The user maps `pos2`
-    /// as the input column; the stat consumes pos2 and produces the range pair.
-    /// One row per group; no `aggregate` tag column.
-    ///
-    /// `None` (default) means standard per-function-rows aggregation.
-    fn aggregate_range_pair(&self) -> Option<(&'static str, &'static str)> {
-        None
     }
 
     /// Apply statistical transformation to the layer query.
@@ -244,6 +220,7 @@ pub trait GeomTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
         parameters: &HashMap<String, ParameterValue>,
         _execute_query: &dyn Fn(&str) -> Result<DataFrame>,
         dialect: &dyn SqlDialect,
+        aesthetic_ctx: &AestheticContext,
     ) -> Result<StatResult> {
         if self.supports_aggregate() && has_aggregate_param(parameters) {
             return stat_aggregate::apply(
@@ -253,8 +230,7 @@ pub trait GeomTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
                 group_by,
                 parameters,
                 dialect,
-                self.aggregate_slots(),
-                self.aggregate_range_pair(),
+                aesthetic_ctx,
             );
         }
         Ok(StatResult::Identity)
@@ -483,6 +459,7 @@ impl Geom {
         parameters: &HashMap<String, ParameterValue>,
         execute_query: &dyn Fn(&str) -> Result<DataFrame>,
         dialect: &dyn SqlDialect,
+        aesthetic_ctx: &AestheticContext,
     ) -> Result<StatResult> {
         self.0.apply_stat_transform(
             query,
@@ -492,6 +469,7 @@ impl Geom {
             parameters,
             execute_query,
             dialect,
+            aesthetic_ctx,
         )
     }
 
@@ -521,16 +499,6 @@ impl Geom {
     /// Whether this geom accepts the `aggregate` SETTING parameter.
     pub fn supports_aggregate(&self) -> bool {
         self.0.supports_aggregate()
-    }
-
-    /// Which position-aesthetic slots the Aggregate stat should reduce.
-    pub fn aggregate_slots(&self) -> &'static [u8] {
-        self.0.aggregate_slots()
-    }
-
-    /// Range pair for range-style Aggregate output, if any.
-    pub fn aggregate_range_pair(&self) -> Option<(&'static str, &'static str)> {
-        self.0.aggregate_range_pair()
     }
 
     /// Validate aesthetic mappings

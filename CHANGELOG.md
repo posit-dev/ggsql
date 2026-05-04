@@ -2,6 +2,14 @@
 
 ### Added
 
+- New `aggregate` SETTING on Identity-stat layers (point, line, area, bar, ribbon,
+range, segment, arrow, rule, text). Collapses each group to a single row by
+replacing every numeric mapping in place with its aggregated value. Accepts a
+single string or array of strings; entries are either unprefixed defaults
+(`'mean'`) or per-aesthetic targets (`'y:max'`, `'color:median'`). Up to two
+defaults may be supplied — the first applies to lower-half aesthetics plus all
+non-range layers, the second to upper-half (`max`/`end` suffix). Numeric
+mappings without a target or applicable default are dropped with a warning.
 - Add cell delimiters and code lens actions to the Positron extension (#366)
 - ODBC is now turned on for the CLI as well (#344)
 - `FROM` can now come before `VISUALIZE`, mirroring the DuckDB style. This means
@@ -37,6 +45,7 @@ portion (#364).
 - Removed polars from dependency list along with all its transient dependencies. Rewrote DataFrame struct on top of arrow (#350)
 - Moved ggsql-python to its own repo (posit-dev/ggsql-python) and cleaned up any additional references to it
 - Moved ggsql-r to its own repo (posit-dev/ggsql-r)
+- The `orientation` setting on `ribbon` and `range` layers. With explicit `xmin`/`xmax` or `ymin`/`ymax` mappings, orientation is unambiguous and is auto-detected from the mappings; the override is no longer needed.
 
 ## [2.7.0] - 2026-04-20
 

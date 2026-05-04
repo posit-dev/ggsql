@@ -3,7 +3,6 @@
 use super::stat_aggregate;
 use super::types::{wrap_with_order_by, POSITION_VALUES};
 use super::{has_aggregate_param, DefaultAesthetics, GeomTrait, GeomType, StatResult};
-use crate::plot::layer::orientation::ORIENTATION_VALUES;
 use crate::plot::types::DefaultAestheticValue;
 use crate::plot::{DefaultParamValue, ParamConstraint, ParamDefinition};
 use crate::Mappings;
@@ -23,10 +22,6 @@ impl GeomTrait for Ribbon {
                 ("pos1", DefaultAestheticValue::Required),
                 ("pos2min", DefaultAestheticValue::Required),
                 ("pos2max", DefaultAestheticValue::Required),
-                // pos2 is the input column for the Aggregate stat in range mode
-                // (`SETTING aggregate => (lower_func, upper_func)` consumes pos2
-                // and produces pos2min/pos2max). Optional otherwise.
-                ("pos2", DefaultAestheticValue::Null),
                 ("fill", DefaultAestheticValue::String("black")),
                 ("stroke", DefaultAestheticValue::String("black")),
                 ("opacity", DefaultAestheticValue::Number(0.8)),
@@ -37,29 +32,16 @@ impl GeomTrait for Ribbon {
     }
 
     fn default_params(&self) -> &'static [ParamDefinition] {
-        const PARAMS: &[ParamDefinition] = &[
-            ParamDefinition {
-                name: "position",
-                default: DefaultParamValue::String("identity"),
-                constraint: ParamConstraint::string_option(POSITION_VALUES),
-            },
-            // Default Null → resolve_orientation auto-detects from mappings/scales.
-            // User can override with `SETTING orientation => 'transposed'`.
-            ParamDefinition {
-                name: "orientation",
-                default: DefaultParamValue::Null,
-                constraint: ParamConstraint::string_option(ORIENTATION_VALUES),
-            },
-        ];
+        const PARAMS: &[ParamDefinition] = &[ParamDefinition {
+            name: "position",
+            default: DefaultParamValue::String("identity"),
+            constraint: ParamConstraint::string_option(POSITION_VALUES),
+        }];
         PARAMS
     }
 
     fn supports_aggregate(&self) -> bool {
         true
-    }
-
-    fn aggregate_range_pair(&self) -> Option<(&'static str, &'static str)> {
-        Some(("pos2min", "pos2max"))
     }
 
     fn needs_stat_transform(&self, _aesthetics: &Mappings) -> bool {
@@ -75,6 +57,7 @@ impl GeomTrait for Ribbon {
         parameters: &std::collections::HashMap<String, crate::plot::ParameterValue>,
         _execute_query: &dyn Fn(&str) -> crate::Result<crate::DataFrame>,
         dialect: &dyn crate::reader::SqlDialect,
+        aesthetic_ctx: &crate::plot::aesthetic::AestheticContext,
     ) -> crate::Result<StatResult> {
         let result = if has_aggregate_param(parameters) {
             stat_aggregate::apply(
@@ -84,8 +67,7 @@ impl GeomTrait for Ribbon {
                 group_by,
                 parameters,
                 dialect,
-                self.aggregate_slots(),
-                self.aggregate_range_pair(),
+                aesthetic_ctx,
             )?
         } else {
             StatResult::Identity

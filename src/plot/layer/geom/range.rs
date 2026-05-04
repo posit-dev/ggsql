@@ -4,7 +4,6 @@ use super::types::POSITION_VALUES;
 use super::{
     DefaultAesthetics, DefaultParamValue, GeomTrait, GeomType, ParamConstraint, ParamDefinition,
 };
-use crate::plot::layer::orientation::ORIENTATION_VALUES;
 use crate::plot::types::DefaultAestheticValue;
 
 /// Range geom - intervals along the secondary axis
@@ -22,10 +21,6 @@ impl GeomTrait for Range {
                 ("pos1", DefaultAestheticValue::Required),
                 ("pos2min", DefaultAestheticValue::Required),
                 ("pos2max", DefaultAestheticValue::Required),
-                // pos2 is the input column for the Aggregate stat in range mode
-                // (`SETTING aggregate => (lower_func, upper_func)` consumes pos2
-                // and produces pos2min/pos2max). Optional otherwise.
-                ("pos2", DefaultAestheticValue::Null),
                 ("stroke", DefaultAestheticValue::String("black")),
                 ("opacity", DefaultAestheticValue::Number(1.0)),
                 ("linewidth", DefaultAestheticValue::Number(1.0)),
@@ -46,23 +41,12 @@ impl GeomTrait for Range {
                 default: DefaultParamValue::Number(10.0),
                 constraint: ParamConstraint::number_min(0.0),
             },
-            // Default Null → resolve_orientation auto-detects from mappings/scales.
-            // User can override with `SETTING orientation => 'transposed'`.
-            ParamDefinition {
-                name: "orientation",
-                default: DefaultParamValue::Null,
-                constraint: ParamConstraint::string_option(ORIENTATION_VALUES),
-            },
         ];
         PARAMS
     }
 
     fn supports_aggregate(&self) -> bool {
         true
-    }
-
-    fn aggregate_range_pair(&self) -> Option<(&'static str, &'static str)> {
-        Some(("pos2min", "pos2max"))
     }
 }
 

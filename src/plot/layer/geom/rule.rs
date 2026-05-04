@@ -29,12 +29,6 @@ impl GeomTrait for Rule {
         true
     }
 
-    fn aggregate_slots(&self) -> &'static [u8] {
-        // Rule maps exactly one of pos1/pos2 (XOR). Allow either to be the reduced
-        // axis — whichever is mapped wins, and the other slot has nothing to filter.
-        &[1, 2]
-    }
-
     fn validate_aesthetics(&self, mappings: &crate::Mappings) -> std::result::Result<(), String> {
         // Rule requires exactly one of pos1 or pos2 (XOR logic)
         let has_pos1 = mappings.contains_key("pos1");

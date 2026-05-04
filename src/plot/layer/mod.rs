@@ -199,26 +199,14 @@ impl Layer {
             format!("`{}`", name)
         };
 
-        // Check if all required aesthetics exist.
-        // When `aggregate` is set on a range geom, the (lower, upper) range pair
-        // is filled by the stat (e.g. pos2min/pos2max for ribbon, pos2/pos2end
-        // for segment) and shouldn't be required from the user.
-        let range_pair_skip: Option<(&'static str, &'static str)> =
-            if crate::plot::layer::geom::has_aggregate_param(&self.parameters) {
-                self.geom.aggregate_range_pair()
-            } else {
-                None
-            };
-
+        // Check if all required aesthetics exist. The Aggregate stat replaces
+        // mapped values in place — it never synthesises new aesthetics — so
+        // every required aesthetic must be mapped by the user regardless of
+        // the `aggregate` setting.
         let mut missing = Vec::new();
         let mut position_reqs: Vec<(&str, u8, &str)> = Vec::new();
 
         for aesthetic in self.geom.aesthetics().required() {
-            if let Some((lo, hi)) = range_pair_skip {
-                if aesthetic == lo || aesthetic == hi {
-                    continue;
-                }
-            }
             if let Some((slot, suffix)) = parse_position(aesthetic) {
                 position_reqs.push((aesthetic, slot, suffix))
             } else if !self.mappings.contains_key(aesthetic) {

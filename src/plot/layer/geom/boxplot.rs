@@ -95,6 +95,7 @@ impl GeomTrait for Boxplot {
         parameters: &HashMap<String, ParameterValue>,
         _execute_query: &dyn Fn(&str) -> Result<DataFrame>,
         dialect: &dyn SqlDialect,
+        _aesthetic_ctx: &crate::plot::aesthetic::AestheticContext,
     ) -> Result<StatResult> {
         stat_boxplot(query, aesthetics, group_by, parameters, dialect)
     }

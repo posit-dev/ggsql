@@ -97,6 +97,7 @@ impl GeomTrait for Bar {
         parameters: &HashMap<String, ParameterValue>,
         _execute_query: &dyn Fn(&str) -> Result<DataFrame>,
         dialect: &dyn SqlDialect,
+        aesthetic_ctx: &crate::plot::aesthetic::AestheticContext,
     ) -> Result<StatResult> {
         if has_aggregate_param(parameters) {
             return stat_aggregate::apply(
@@ -106,8 +107,7 @@ impl GeomTrait for Bar {
                 group_by,
                 parameters,
                 dialect,
-                self.aggregate_slots(),
-                self.aggregate_range_pair(),
+                aesthetic_ctx,
             );
         }
         stat_bar_count(query, schema, aesthetics, group_by)

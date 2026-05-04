@@ -30,7 +30,7 @@ The bar layer has no required aesthetics
 ## Data transformation
 If the secondary axis has not been mapped the layer will calculate counts for you and display these as the secondary axis.
 
-If the secondary axis has been mapped you can apply aggregation through the `aggregate` setting. Within each group, defined by `PARTITION BY`, all discrete mappings, and the primary axis, aggregates will be calculated and used as the values to plot. Multiple aggregates will give rise to multiple separate groups in the end. These can be distinguished through the added `aggregate` column you can remap to, e.g. `REMAPPING aggregate AS color`
+If the secondary axis has been mapped you can apply aggregation through the `aggregate` setting. Within each group, defined by `PARTITION BY`, all discrete mappings, and the primary axis, every numeric mapping is replaced in place by its aggregated value. Use a default like `'mean'` or target individual aesthetics with `'<aes>:<func>'`. See [the `DRAW` documentation](../../clause/draw.qmd#aggregate) for the full setting shape.
 
 ### Properties
 
@@ -120,12 +120,14 @@ DRAW bar
 PROJECT TO polar
 ```
 
-Use a different type of aggregation for the bars through the `aggregate` setting:
+Use a different type of aggregation for the bars through the `aggregate` setting. The `range` layer needs both `ymin` and `ymax` mapped; with two defaults, the first is applied to the lower bound and the second to the upper bound.
 
 ```{ggsql}
-VISUALISE species AS x, body_mass AS y FROM ggsql:penguins
+VISUALISE species AS x FROM ggsql:penguins
 DRAW bar
+  MAPPING body_mass AS y
   SETTING aggregate => 'mean', fill => 'steelblue'
 DRAW range
-  setting aggregate => ('mean-1.96sdev', 'mean+1.96sdev')
+  MAPPING body_mass AS ymin, body_mass AS ymax
+  SETTING aggregate => ('mean-1.96sdev', 'mean+1.96sdev')
 ```

@@ -58,6 +58,7 @@ impl GeomTrait for Line {
         parameters: &std::collections::HashMap<String, crate::plot::ParameterValue>,
         _execute_query: &dyn Fn(&str) -> crate::Result<crate::DataFrame>,
         dialect: &dyn crate::reader::SqlDialect,
+        aesthetic_ctx: &crate::plot::aesthetic::AestheticContext,
     ) -> crate::Result<StatResult> {
         let result = if has_aggregate_param(parameters) {
             stat_aggregate::apply(
@@ -67,8 +68,7 @@ impl GeomTrait for Line {
                 group_by,
                 parameters,
                 dialect,
-                self.aggregate_slots(),
-                self.aggregate_range_pair(),
+                aesthetic_ctx,
             )?
         } else {
             StatResult::Identity

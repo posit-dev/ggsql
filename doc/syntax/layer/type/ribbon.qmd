@@ -23,9 +23,10 @@ The following aesthetics are recognised by the ribbon layer.
 
 ## Settings
 * `position`: Position adjustment. One of `'identity'` (default), `'stack'`, `'dodge'`, or `'jitter'`
+* `aggregate`: Aggregation functions to apply per group. Either a single string or an array of strings. See [the `DRAW` documentation](../../clause/draw.qmd#aggregate) and the *Data transformation* section below.
 
 ## Data transformation
-The ribbon layer sorts the data along its primary axis
+This layer supports aggregation through the `aggregate` setting. Within each group, defined by `PARTITION BY` and all discrete mappings, every numeric mapping is replaced in place by its aggregated value, producing one ribbon per group. Ribon is a range layer: with two defaults the first applies to the start point (`xmin`/`ymin`) and the second applies to the end point (`xmax`/`ymax`). Use a single default like `'mean'` to apply the same function to all values, or target individual aesthetics with `'<aes>:<func>'`. See [the `DRAW` documentation](../../clause/draw.qmd#aggregate) for the full setting shape.
 
 ## Orientation
 Ribbon layers are sorted and connected along their primary axis. The orientation is deduced directly from the mapping, because the interval is mapped to the secondary axis. To create a vertical ribbon layer you map the independent variable to `y` instead of `x` and the interval to `xmin` and `xmax` (assuming a default Cartesian coordinate system).

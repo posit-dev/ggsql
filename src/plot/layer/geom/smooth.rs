@@ -100,6 +100,7 @@ impl GeomTrait for Smooth {
         parameters: &std::collections::HashMap<String, crate::plot::ParameterValue>,
         _execute_query: &dyn Fn(&str) -> crate::Result<crate::DataFrame>,
         dialect: &dyn SqlDialect,
+        _aesthetic_ctx: &crate::plot::aesthetic::AestheticContext,
     ) -> crate::Result<super::StatResult> {
         // Get method from parameters (validated by ParamConstraint::string_option)
         let ParameterValue::String(method) = parameters.get("method").unwrap() else {

@@ -1194,6 +1194,7 @@ pub fn prepare_data_with_reader(query: &str, reader: &dyn Reader) -> Result<Prep
             &scales,
             dialect,
             &execute_query,
+            &aesthetic_ctx,
         )?;
         layer_queries.push(layer_query);
     }

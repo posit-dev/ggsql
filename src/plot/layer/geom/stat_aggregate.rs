@@ -1,21 +1,36 @@
-//! Aggregate stat - groups data and applies one or more aggregation functions per group.
+//! Aggregate stat — collapse each group to a single row by applying an
+//! aggregate function per numeric mapping.
 //!
-//! When a layer's `aggregate` SETTING is set to a function name (or array of names),
-//! this stat groups by discrete mappings + PARTITION BY columns and produces one row
-//! per (group × function), aggregating numeric position aesthetics.
+//! When a layer's `aggregate` SETTING is set, this stat groups by discrete
+//! mappings + PARTITION BY columns and emits one row per group. Each numeric
+//! column-mapping (positional *and* material) is replaced in place by the
+//! aggregated value of its bound column. Discrete mappings stay as group keys;
+//! literal mappings pass through unchanged.
 //!
-//! Output columns:
-//! - One column per numeric position aesthetic (named `pos1`, `pos2`, etc.) holding the
-//!   aggregated value. NULL for `count` rows.
-//! - `aggregate` - the function name for the row.
-//! - `count` (only when `count` is requested) - the row tally for that group.
+//! # Setting shape
+//!
+//! `aggregate` accepts a single string or array of strings. Each string is
+//! either:
+//!
+//! - **default** — `'<func>'` (no prefix). Up to two defaults may be supplied.
+//!   With one default it applies to every untargeted numeric mapping. With two
+//!   defaults the first applies to *lower-half* aesthetics (no suffix or `min`
+//!   suffix) plus all non-range geoms, and the second applies to *upper-half*
+//!   aesthetics (`max` or `end` suffix). More than two defaults is an error.
+//! - **target** — `'<aes>:<func>'`. Applies `func` to the named aesthetic only.
+//!   `<aes>` is a user-facing name (`x`, `y`, `xmin`, `xmax`, `xend`, `yend`,
+//!   `color`, `size`, …); the stat resolves it to the internal name through
+//!   `AestheticContext`.
+//!
+//! Numeric mappings without a target *or* applicable default are dropped with
+//! a warning to stderr.
 
 use std::collections::HashMap;
 
 use super::types::StatResult;
 use crate::naming;
-use crate::plot::aesthetic::{is_position_aesthetic, parse_position};
-use crate::plot::types::{ParameterValue, Schema};
+use crate::plot::aesthetic::AestheticContext;
+use crate::plot::types::{ArrayElement, ParameterValue, Schema};
 use crate::reader::SqlDialect;
 use crate::{GgsqlError, Mappings, Result};
 
@@ -63,8 +78,6 @@ pub struct Band {
     pub expansion: &'static str,
 }
 
-/// Resolve a name to its canonical `&'static str` from the given vocabulary,
-/// or `None` if the input doesn't match any entry.
 fn resolve_static(name: &str, vocab: &'static [&'static str]) -> Option<&'static str> {
     vocab.iter().copied().find(|v| *v == name)
 }
@@ -79,9 +92,6 @@ pub fn parse_agg_name(name: &str) -> Option<AggSpec> {
     resolve_static(name, AGG_NAMES).map(|offset| AggSpec { offset, band: None })
 }
 
-/// Try to parse `name` as a band: `<offset><sign><mod>?<expansion>`. Returns
-/// `None` if it doesn't match the band shape OR if either half is outside its
-/// allowed vocabulary.
 fn parse_band(name: &str) -> Option<AggSpec> {
     // Walk offsets longest-first so `median` matches before `mean`.
     let mut offsets: Vec<&'static str> = OFFSET_STATS.to_vec();
@@ -90,18 +100,18 @@ fn parse_band(name: &str) -> Option<AggSpec> {
     for offset in offsets {
         let rest = match name.strip_prefix(offset) {
             Some(r) => r,
-            None => continue, // doesn't start with this offset
+            None => continue,
         };
         let (sign, after_sign) = match rest.chars().next() {
             Some('+') => ('+', &rest[1..]),
             Some('-') => ('-', &rest[1..]),
-            _ => continue, // wrong sign char — try next offset
+            _ => continue,
         };
 
         let (mod_value, expansion_str) = parse_mod_and_remainder(after_sign);
         let expansion = match resolve_static(expansion_str, EXPANSION_STATS) {
             Some(e) => e,
-            None => continue, // expansion doesn't match — try next offset
+            None => continue,
         };
 
         return Some(AggSpec {
@@ -116,9 +126,6 @@ fn parse_band(name: &str) -> Option<AggSpec> {
     None
 }
 
-/// Parse a leading `<digits>(.<digits>)?` modifier from `s`. Returns
-/// `(parsed_value, rest_of_string)`. If no leading digits, returns
-/// `(1.0, s)` — modifier defaults to 1.
 fn parse_mod_and_remainder(s: &str) -> (f64, &str) {
     let mut idx = 0;
     let bytes = s.as_bytes();
@@ -131,7 +138,6 @@ fn parse_mod_and_remainder(s: &str) -> (f64, &str) {
             after_dot += 1;
         }
         if after_dot > idx + 1 {
-            // need at least one digit after '.'
             idx = after_dot;
         }
     }
@@ -143,41 +149,119 @@ fn parse_mod_and_remainder(s: &str) -> (f64, &str) {
     (value, &s[idx..])
 }
 
-/// Validate the `aggregate` SETTING value: null, a single function name, or
-/// an array of function names. Each name must be parseable by `parse_agg_name`.
-pub fn validate_aggregate_param(value: &ParameterValue) -> std::result::Result<(), String> {
-    use crate::plot::types::ArrayElement;
-    match value {
-        ParameterValue::Null => Ok(()),
-        ParameterValue::String(s) => validate_function_name(s),
+// =============================================================================
+// AggregateSpec — parsed representation of the `aggregate` SETTING.
+// =============================================================================
+
+/// Parsed `aggregate` SETTING: zero, one, or two unprefixed defaults plus an
+/// optional set of per-aesthetic targets keyed by user-facing aesthetic name.
+#[derive(Debug, Clone, PartialEq)]
+pub struct AggregateSpec {
+    pub default_lower: Option<AggSpec>,
+    pub default_upper: Option<AggSpec>,
+    /// Targets keyed by user-facing aesthetic name (e.g. `"y"`, `"xmax"`,
+    /// `"color"`). Resolved to internal names at apply-time.
+    pub targets: HashMap<String, AggSpec>,
+}
+
+impl AggregateSpec {
+    fn new() -> Self {
+        Self {
+            default_lower: None,
+            default_upper: None,
+            targets: HashMap::new(),
+        }
+    }
+}
+
+/// Parse the `aggregate` SETTING value into an `AggregateSpec`. Returns `Ok(None)`
+/// when the parameter is unset or null. Returns `Err(...)` for malformed input.
+pub fn parse_aggregate_param(
+    value: &ParameterValue,
+) -> std::result::Result<Option<AggregateSpec>, String> {
+    let entries: Vec<&str> = match value {
+        ParameterValue::Null => return Ok(None),
+        ParameterValue::String(s) => vec![s.as_str()],
         ParameterValue::Array(arr) => {
+            let mut out = Vec::with_capacity(arr.len());
             for el in arr {
                 match el {
-                    ArrayElement::String(s) => validate_function_name(s)?,
+                    ArrayElement::String(s) => out.push(s.as_str()),
                     ArrayElement::Null => continue,
                     _ => {
                         return Err("'aggregate' array entries must be strings or null".to_string());
                     }
                 }
             }
-            Ok(())
+            if out.is_empty() {
+                return Ok(None);
+            }
+            out
         }
-        _ => Err("'aggregate' must be a string, array of strings, or null".to_string()),
+        _ => return Err("'aggregate' must be a string, array of strings, or null".to_string()),
+    };
+
+    let mut spec = AggregateSpec::new();
+    for entry in entries {
+        if let Some((aes, func)) = split_target(entry) {
+            if aes.is_empty() {
+                return Err(format!("'{}': aesthetic prefix is empty", entry));
+            }
+            if func.is_empty() {
+                return Err(format!("'{}': aggregate function is empty", entry));
+            }
+            let agg = parse_agg_name(func).ok_or_else(|| {
+                format!(
+                    "'{}': {}",
+                    entry,
+                    diagnose_invalid_function_name(func)
+                )
+            })?;
+            if spec.targets.contains_key(aes) {
+                return Err(format!(
+                    "aesthetic '{}' is targeted by more than one aggregate",
+                    aes
+                ));
+            }
+            spec.targets.insert(aes.to_string(), agg);
+        } else {
+            let agg = parse_agg_name(entry)
+                .ok_or_else(|| diagnose_invalid_function_name(entry))?;
+            if spec.default_lower.is_none() {
+                spec.default_lower = Some(agg);
+            } else if spec.default_upper.is_none() {
+                spec.default_upper = Some(agg);
+            } else {
+                return Err(format!(
+                    "'aggregate' accepts at most two unprefixed defaults; got a third: '{}'",
+                    entry
+                ));
+            }
+        }
     }
+
+    if spec.default_lower.is_none() && spec.default_upper.is_none() && spec.targets.is_empty() {
+        return Ok(None);
+    }
+    Ok(Some(spec))
 }
 
-fn validate_function_name(name: &str) -> std::result::Result<(), String> {
-    match parse_agg_name(name) {
-        Some(_) => Ok(()),
-        None => Err(diagnose_invalid_function_name(name)),
-    }
+/// Split an entry into `(aesthetic, function)` if it contains a `:`. Returns
+/// `None` for an unprefixed entry like `'mean'`.
+fn split_target(entry: &str) -> Option<(&str, &str)> {
+    entry.split_once(':')
+}
+
+/// Validate the `aggregate` SETTING value at parse-time. Used by
+/// `Layer::validate_settings`. Aesthetic-name resolution is deferred to
+/// `apply()` because `AestheticContext` isn't available here.
+pub fn validate_aggregate_param(value: &ParameterValue) -> std::result::Result<(), String> {
+    parse_aggregate_param(value).map(|_| ())
 }
 
 /// Build a per-role error message for a name that didn't parse. Re-walks the
 /// input with looser rules to identify which side (offset / expansion) failed.
 fn diagnose_invalid_function_name(name: &str) -> String {
-    // Look for a sign character. If there is one, examine the offset and
-    // expansion halves separately.
     if let Some(sign_idx) = name.find(['+', '-']) {
         let offset_str = &name[..sign_idx];
         let after_sign = &name[sign_idx + 1..];
@@ -188,7 +272,6 @@ fn diagnose_invalid_function_name(name: &str) -> String {
         let expansion_known_band = EXPANSION_STATS.contains(&expansion_str);
 
         if !offset_known_band {
-            // The offset half is the problem.
             if offset_known_simple {
                 return format!(
                     "'{}': '{}' is not a valid offset stat. Allowed offsets: {}",
@@ -212,8 +295,6 @@ fn diagnose_invalid_function_name(name: &str) -> String {
                 crate::or_list_quoted(EXPANSION_STATS, '\''),
             );
         }
-        // Both halves are individually valid but band parsing failed for some
-        // other reason (e.g. malformed modifier).
         return format!("'{}' is not a valid aggregate function name", name);
     }
     format!(
@@ -223,147 +304,9 @@ fn diagnose_invalid_function_name(name: &str) -> String {
     )
 }
 
-/// Apply the Aggregate stat to a layer query.
-///
-/// Returns `StatResult::Identity` when the `aggregate` parameter is unset or null.
-/// Otherwise, builds a grouped-aggregation query and returns `StatResult::Transformed`.
-///
-/// Strategy:
-/// - **Single-pass** (preferred): one `GROUP BY` produces a wide row per group, then
-///   `CROSS JOIN VALUES(...)` of function names explodes to one row per (group × function).
-///   Used when all requested functions are inline-able.
-/// - **UNION ALL fallback**: when a quantile is requested but the dialect doesn't
-///   provide `sql_quantile_inline`, fall back to per-function subqueries using
-///   `dialect.sql_percentile`.
-#[allow(clippy::too_many_arguments)]
-pub fn apply(
-    query: &str,
-    schema: &Schema,
-    aesthetics: &Mappings,
-    group_by: &[String],
-    parameters: &HashMap<String, ParameterValue>,
-    dialect: &dyn SqlDialect,
-    agg_slots: &[u8],
-    range_pair: Option<(&'static str, &'static str)>,
-) -> Result<StatResult> {
-    let funcs = match extract_aggregate_param(parameters) {
-        None => return Ok(StatResult::Identity),
-        Some(funcs) => funcs,
-    };
-
-    if let Some((lo, hi)) = range_pair {
-        return apply_range_mode(query, schema, aesthetics, group_by, &funcs, dialect, lo, hi);
-    }
-
-    // Walk the layer's position aesthetics and route each by (slot, type):
-    //   in-axis slot && numeric  → aggregated (numeric_pos)
-    //   in-axis slot && discrete → kept as group column (kept_pos_cols)
-    //   out-of-axis (any type)   → kept as group column (kept_pos_cols)
-    let mut numeric_pos: Vec<(String, String)> = Vec::new(); // (aesthetic, prefixed col)
-    let mut kept_pos_cols: Vec<String> = Vec::new();
-    for (aesthetic, value) in &aesthetics.aesthetics {
-        if !is_position_aesthetic(aesthetic) {
-            continue;
-        }
-        let col = match value.column_name() {
-            Some(c) => c.to_string(),
-            None => continue,
-        };
-        let slot = parse_position(aesthetic).map(|(s, _)| s).unwrap_or(0);
-        let in_axis = agg_slots.contains(&slot);
-        let info = schema.iter().find(|c| c.name == col);
-        let is_discrete = info.map(|c| c.is_discrete).unwrap_or(false);
-
-        if !in_axis || is_discrete {
-            kept_pos_cols.push(col);
-        } else {
-            numeric_pos.push((aesthetic.clone(), col));
-        }
-    }
-    numeric_pos.sort_by(|a, b| a.0.cmp(&b.0));
-    kept_pos_cols.sort();
-
-    if numeric_pos.is_empty() && !funcs.iter().any(|f| f == "count") {
-        return Err(GgsqlError::ValidationError(
-            "aggregate requires at least one numeric position aesthetic, or the 'count' function"
-                .to_string(),
-        ));
-    }
-
-    // Group columns: PARTITION BY + discrete mappings (already in group_by) + any
-    // position-aesthetic columns we kept (out-of-axis or in-axis-but-discrete).
-    // Deduplicated, preserving order.
-    let mut group_cols: Vec<String> = Vec::new();
-    for g in group_by {
-        if !group_cols.contains(g) {
-            group_cols.push(g.clone());
-        }
-    }
-    for c in &kept_pos_cols {
-        if !group_cols.contains(c) {
-            group_cols.push(c.clone());
-        }
-    }
-
-    let needs_count_col = funcs.iter().any(|f| f == "count");
-
-    // Decide strategy: single-pass when every percentile component can be inlined.
-    let probe = numeric_pos
-        .first()
-        .map(|(_, c)| c.as_str())
-        .unwrap_or("__ggsql_probe__");
-    let needs_fallback = funcs.iter().any(|f| {
-        parse_agg_name(f)
-            .map(|spec| needs_quantile_fallback(&spec, probe, dialect))
-            .unwrap_or(false)
-    });
-
-    let transformed_query = if needs_fallback {
-        build_union_all_query(query, &funcs, &numeric_pos, &group_cols, dialect)
-    } else {
-        build_single_pass_query(query, &funcs, &numeric_pos, &group_cols, dialect)
-    };
-
-    let mut stat_columns: Vec<String> = numeric_pos.iter().map(|(a, _)| a.clone()).collect();
-    stat_columns.push("aggregate".to_string());
-    if needs_count_col {
-        stat_columns.push("count".to_string());
-    }
-
-    let consumed_aesthetics: Vec<String> = numeric_pos.into_iter().map(|(a, _)| a).collect();
-
-    Ok(StatResult::Transformed {
-        query: transformed_query,
-        stat_columns,
-        dummy_columns: vec![],
-        consumed_aesthetics,
-    })
-}
-
-/// Extract the `aggregate` parameter as a list of function names, or `None` when
-/// the parameter is unset/null.
-fn extract_aggregate_param(parameters: &HashMap<String, ParameterValue>) -> Option<Vec<String>> {
-    use crate::plot::types::ArrayElement;
-    match parameters.get("aggregate") {
-        None | Some(ParameterValue::Null) => None,
-        Some(ParameterValue::String(s)) => Some(vec![s.clone()]),
-        Some(ParameterValue::Array(arr)) => {
-            let names: Vec<String> = arr
-                .iter()
-                .filter_map(|el| match el {
-                    ArrayElement::String(s) => Some(s.clone()),
-                    _ => None,
-                })
-                .collect();
-            if names.is_empty() {
-                None
-            } else {
-                Some(names)
-            }
-        }
-        _ => None,
-    }
-}
+// =============================================================================
+// SQL fragment helpers (per-column aggregate expressions).
+// =============================================================================
 
 /// Map a percentile function name (`p05`..`p95`, `median`) to its fraction.
 fn percentile_fraction(func: &str) -> Option<f64> {
@@ -380,14 +323,13 @@ fn percentile_fraction(func: &str) -> Option<f64> {
 }
 
 /// Build the inline SQL fragment for a *simple* stat (no band) applied to a
-/// quoted column.
-///
-/// Returns `None` for `count` (which doesn't take a column) and for percentile-
-/// based stats (`p05..p95`, `median`, `iqr`) when the dialect lacks an inline
-/// quantile aggregate (caller should switch to UNION ALL strategy).
+/// quoted column. Returns `None` for percentile-based stats when the dialect
+/// lacks an inline quantile aggregate (caller switches to the correlated
+/// `sql_percentile` fallback).
 fn simple_stat_sql_inline(name: &str, qcol: &str, dialect: &dyn SqlDialect) -> Option<String> {
     if name == "count" {
-        return None;
+        // `count` in this position is COUNT(col): non-null tally for that column.
+        return Some(format!("COUNT({})", qcol));
     }
     if let Some(frac) = percentile_fraction(name) {
         let unquoted = unquote(qcol);
@@ -416,8 +358,6 @@ fn simple_stat_sql_inline(name: &str, qcol: &str, dialect: &dyn SqlDialect) -> O
     })
 }
 
-/// Inline SQL for a parsed `AggSpec`. Combines the offset and (optional)
-/// expansion halves with the appropriate sign and modifier.
 fn agg_sql_inline(spec: &AggSpec, qcol: &str, dialect: &dyn SqlDialect) -> Option<String> {
     let offset_sql = simple_stat_sql_inline(spec.offset, qcol, dialect)?;
     match &spec.band {
@@ -434,8 +374,6 @@ fn agg_sql_inline(spec: &AggSpec, qcol: &str, dialect: &dyn SqlDialect) -> Optio
     }
 }
 
-/// Build the SQL fragment `(offset ± mod * exp)`, omitting the `mod *` prefix
-/// when `mod_value == 1.0`.
 fn format_band(offset: &str, sign: char, mod_value: f64, exp: &str) -> String {
     if mod_value == 1.0 {
         format!("({} {} {})", offset, sign, exp)
@@ -444,9 +382,9 @@ fn format_band(offset: &str, sign: char, mod_value: f64, exp: &str) -> String {
     }
 }
 
-/// Fallback SQL for a simple stat. Used by the UNION-ALL path for percentile
-/// components (which need correlated `sql_percentile`) and falls through to
-/// the inline form for everything else.
+/// Fallback SQL for a simple stat — used when a percentile component lacks
+/// inline support. Emits a correlated `sql_percentile` subquery; falls
+/// through to the inline form for everything else.
 fn simple_stat_sql_fallback(
     name: &str,
     raw_col: &str,
@@ -454,9 +392,6 @@ fn simple_stat_sql_fallback(
     src_alias: &str,
     group_cols: &[String],
 ) -> String {
-    if name == "count" {
-        return "NULL".to_string();
-    }
     if let Some(frac) = percentile_fraction(name) {
         return dialect.sql_percentile(raw_col, frac, src_alias, group_cols);
     }
@@ -469,7 +404,6 @@ fn simple_stat_sql_fallback(
     simple_stat_sql_inline(name, &qcol, dialect).unwrap_or_else(|| "NULL".to_string())
 }
 
-/// Fallback SQL for a parsed `AggSpec` (UNION-ALL path).
 fn agg_sql_fallback(
     spec: &AggSpec,
     raw_col: &str,
@@ -488,8 +422,6 @@ fn agg_sql_fallback(
     }
 }
 
-/// Whether this spec has any percentile component that the dialect can't
-/// inline (in which case the caller must use the UNION-ALL fallback).
 fn needs_quantile_fallback(spec: &AggSpec, probe_col: &str, dialect: &dyn SqlDialect) -> bool {
     if simple_needs_fallback(spec.offset, probe_col, dialect) {
         return true;
@@ -512,418 +444,254 @@ fn simple_needs_fallback(name: &str, probe_col: &str, dialect: &dyn SqlDialect) 
     false
 }
 
-/// Strip surrounding double quotes from an identifier, undoing `naming::quote_ident`.
 fn unquote(qcol: &str) -> String {
     let trimmed = qcol.trim_start_matches('"').trim_end_matches('"');
     trimmed.replace("\"\"", "\"")
 }
 
-/// SQL for a function name literal, properly escaped.
-fn func_literal(func: &str) -> String {
-    format!("'{}'", func.replace('\'', "''"))
+// =============================================================================
+// apply — entry point.
+// =============================================================================
+
+/// Resolve a user-facing target aesthetic name to one or more internal names
+/// that are actually mapped on the layer. Handles three cases:
+/// 1. The name maps directly through `AestheticContext` (e.g. `y` → `pos2`).
+/// 2. The name is an alias from `AESTHETIC_ALIASES` (e.g. `color` → `stroke`,
+///    `fill`); each target whose internal counterpart is mapped is included.
+/// 3. The name is a material aesthetic with the same internal name (e.g. `size`).
+///
+/// Returns the empty vector if no resolution finds a mapped aesthetic.
+fn resolve_target_aesthetic(
+    user_aes: &str,
+    aesthetics: &Mappings,
+    aesthetic_ctx: &AestheticContext,
+) -> Vec<String> {
+    use crate::plot::layer::geom::types::AESTHETIC_ALIASES;
+    let mut out = Vec::new();
+    if let Some(internal) = aesthetic_ctx.map_user_to_internal(user_aes) {
+        if aesthetics.aesthetics.contains_key(internal) {
+            out.push(internal.to_string());
+            return out;
+        }
+    }
+    for (alias, targets) in AESTHETIC_ALIASES {
+        if *alias == user_aes {
+            for t in *targets {
+                let internal = aesthetic_ctx
+                    .map_user_to_internal(t)
+                    .map(|s| s.to_string())
+                    .unwrap_or_else(|| (*t).to_string());
+                if aesthetics.aesthetics.contains_key(&internal) && !out.contains(&internal) {
+                    out.push(internal);
+                }
+            }
+            return out;
+        }
+    }
+    if aesthetics.aesthetics.contains_key(user_aes) {
+        out.push(user_aes.to_string());
+    }
+    out
 }
 
-// =============================================================================
-// Range-mode strategy: exactly two functions filling a (lower, upper) aesthetic
-// pair on the same row. Used by ribbon/range.
-// =============================================================================
+/// Classify an internal aesthetic name as upper-half or lower-half for the
+/// purpose of default-aggregate routing.
+///
+/// `min` suffix → lower; `max`/`end` → upper; no suffix → lower. Material
+/// aesthetics (no position prefix) are always lower.
+fn is_upper_half(internal_aes: &str) -> bool {
+    internal_aes.ends_with("max") || internal_aes.ends_with("end")
+}
 
+/// Apply the Aggregate stat to a layer query.
+///
+/// Returns `StatResult::Identity` when the `aggregate` parameter is unset, null,
+/// or empty. Otherwise, builds a single-pass `GROUP BY` query producing one row
+/// per group with one aggregated column per kept numeric mapping.
 #[allow(clippy::too_many_arguments)]
-fn apply_range_mode(
+pub fn apply(
     query: &str,
     schema: &Schema,
     aesthetics: &Mappings,
     group_by: &[String],
-    funcs: &[String],
+    parameters: &HashMap<String, ParameterValue>,
     dialect: &dyn SqlDialect,
-    lo: &'static str,
-    hi: &'static str,
+    aesthetic_ctx: &AestheticContext,
 ) -> Result<StatResult> {
-    if funcs.len() != 2 {
-        return Err(GgsqlError::ValidationError(format!(
-            "aggregate on a range geom must be an array of exactly two functions (lower, upper), got {}",
-            funcs.len()
-        )));
-    }
-
-    // Range mode requires `pos2` mapped to a numeric input column. The user
-    // writes `MAPPING value AS y` and the stat consumes it to produce both
-    // bounds.
-    let input_col = match aesthetics.get("pos2").and_then(|v| v.column_name()) {
-        Some(c) => c.to_string(),
-        None => {
-            return Err(GgsqlError::ValidationError(
-                "aggregate on a range geom requires a `y` (pos2) mapping as the input column"
-                    .to_string(),
-            ));
-        }
+    let raw = match parameters.get("aggregate") {
+        None | Some(ParameterValue::Null) => return Ok(StatResult::Identity),
+        Some(v) => v,
     };
-    let info = schema.iter().find(|c| c.name == input_col);
-    if info.map(|c| c.is_discrete).unwrap_or(false) {
-        return Err(GgsqlError::ValidationError(
-            "aggregate on a range geom requires a numeric `y` (pos2) input, not a discrete column"
-                .to_string(),
-        ));
-    }
-    let qcol = naming::quote_ident(&input_col);
+    let spec = parse_aggregate_param(raw)
+        .map_err(GgsqlError::ValidationError)?;
+    let spec = match spec {
+        Some(s) => s,
+        None => return Ok(StatResult::Identity),
+    };
 
-    // Group columns: PARTITION BY + discrete mappings (already in group_by) +
-    // any discrete position aesthetics on the layer (e.g. pos1 if it's a string).
+    // Resolve target keys (user-facing) → internal aesthetic names. An alias
+    // like `color` expands to whichever of its targets (stroke/fill) is mapped
+    // on the layer; the function applies to all of them.
+    let mut targets_internal: HashMap<String, AggSpec> = HashMap::new();
+    for (user_aes, agg) in &spec.targets {
+        let resolved = resolve_target_aesthetic(user_aes, aesthetics, aesthetic_ctx);
+        if resolved.is_empty() {
+            return Err(GgsqlError::ValidationError(format!(
+                "aggregate target '{}' is not mapped on this layer",
+                user_aes
+            )));
+        }
+        for internal in resolved {
+            if targets_internal.contains_key(&internal) {
+                return Err(GgsqlError::ValidationError(format!(
+                    "aggregate target '{}' resolves to aesthetic '{}' which is already targeted",
+                    user_aes, internal
+                )));
+            }
+            targets_internal.insert(internal, agg.clone());
+        }
+    }
+
+    // Walk mappings. Three buckets:
+    //   - aggregated: (internal_aes, raw_col, AggSpec) — each emits one column
+    //   - kept_cols: discrete column-mappings — keep as group key
+    //   - dropped: numeric mapping with no applicable function (warn & skip)
+    let mut aggregated: Vec<(String, String, AggSpec)> = Vec::new();
+    let mut kept_cols: Vec<String> = Vec::new();
+    let mut dropped: Vec<String> = Vec::new();
+
+    let mut entries: Vec<(&String, &crate::AestheticValue)> = aesthetics.aesthetics.iter().collect();
+    entries.sort_by(|a, b| a.0.cmp(b.0));
+
+    for (aes, value) in entries {
+        let col = match value.column_name() {
+            Some(c) => c.to_string(),
+            None => continue, // literals & annotation columns pass through
+        };
+        let info = schema.iter().find(|c| c.name == col);
+        let is_discrete = info.map(|c| c.is_discrete).unwrap_or(false);
+        if is_discrete {
+            if !kept_cols.contains(&col) {
+                kept_cols.push(col);
+            }
+            continue;
+        }
+
+        // Numeric mapping. Look up the aggregation function.
+        let agg = if let Some(targeted) = targets_internal.get(aes) {
+            Some(targeted.clone())
+        } else if is_upper_half(aes) {
+            spec.default_upper
+                .clone()
+                .or_else(|| spec.default_lower.clone())
+                .filter(|_| spec.default_upper.is_some() || spec.default_lower.is_some())
+        } else {
+            spec.default_lower.clone()
+        };
+
+        match agg {
+            Some(a) => aggregated.push((aes.clone(), col, a)),
+            None => dropped.push(aes.clone()),
+        }
+    }
+
+    // The *only* time we have nothing to aggregate but should still transform
+    // is when defaults exist but every numeric mapping was dropped — we still
+    // emit a GROUP BY to honour the grouping. If there are no aggregations and
+    // no kept columns and no group_by, return Identity.
+    if aggregated.is_empty() && kept_cols.is_empty() && group_by.is_empty() {
+        for d in &dropped {
+            eprintln!(
+                "Warning: aggregate dropped numeric mapping for aesthetic '{}' (no applicable default and no targeted function)",
+                aesthetic_ctx.map_internal_to_user(d)
+            );
+        }
+        return Ok(StatResult::Identity);
+    }
+
+    for d in &dropped {
+        eprintln!(
+            "Warning: aggregate dropped numeric mapping for aesthetic '{}' (no applicable default and no targeted function)",
+            aesthetic_ctx.map_internal_to_user(d)
+        );
+    }
+
+    // Group columns: PARTITION BY + discrete column-mappings, deduped.
     let mut group_cols: Vec<String> = Vec::new();
     for g in group_by {
         if !group_cols.contains(g) {
             group_cols.push(g.clone());
         }
     }
-    for (aesthetic, value) in &aesthetics.aesthetics {
-        if !is_position_aesthetic(aesthetic) || aesthetic == "pos2" {
-            continue;
-        }
-        let col = match value.column_name() {
-            Some(c) => c.to_string(),
-            None => continue,
-        };
-        if !group_cols.contains(&col) {
-            group_cols.push(col);
+    for c in &kept_cols {
+        if !group_cols.contains(c) {
+            group_cols.push(c.clone());
         }
     }
 
-    let src_alias = "\"__ggsql_stat_src__\"";
-    let group_by_clause = if group_cols.is_empty() {
-        String::new()
-    } else {
-        let qcols: Vec<String> = group_cols.iter().map(|c| naming::quote_ident(c)).collect();
-        format!(" GROUP BY {}", qcols.join(", "))
-    };
+    let transformed_query =
+        build_group_by_query(query, &aggregated, &group_cols, dialect);
 
-    // Parse and emit each bound. Use the inline form when the dialect supports
-    // every percentile component; otherwise fall back to `sql_percentile`
-    // correlated to the outer alias used in the FROM (`__ggsql_qt__`).
-    let lo_expr = build_range_function_sql(&funcs[0], &qcol, &input_col, dialect, &group_cols)?;
-    let hi_expr = build_range_function_sql(&funcs[1], &qcol, &input_col, dialect, &group_cols)?;
+    let stat_columns: Vec<String> = aggregated.iter().map(|(a, _, _)| a.clone()).collect();
+    let consumed_aesthetics: Vec<String> = stat_columns.clone();
 
-    let stat_lo = naming::stat_column(lo);
-    let stat_hi = naming::stat_column(hi);
-
-    let group_select: Vec<String> = group_cols.iter().map(|c| naming::quote_ident(c)).collect();
-    let mut select_parts = group_select.clone();
-    select_parts.push(format!("{} AS {}", lo_expr, naming::quote_ident(&stat_lo)));
-    select_parts.push(format!("{} AS {}", hi_expr, naming::quote_ident(&stat_hi)));
-
-    let transformed_query = format!(
-        "WITH {src} AS ({query}) SELECT {sel} FROM {src} AS \"__ggsql_qt__\"{gb}",
-        src = src_alias,
-        query = query,
-        sel = select_parts.join(", "),
-        gb = group_by_clause,
-    );
-
-    // consumed_aesthetics: pos2 carries the original-name capture for axis
-    // labels; lo/hi flag the auto-rename in execute/layer.rs (their stat-column
-    // names match the position aesthetics they fill).
     Ok(StatResult::Transformed {
         query: transformed_query,
-        stat_columns: vec![lo.to_string(), hi.to_string()],
+        stat_columns,
         dummy_columns: vec![],
-        consumed_aesthetics: vec!["pos2".to_string(), lo.to_string(), hi.to_string()],
+        consumed_aesthetics,
     })
 }
 
-/// Build the SQL fragment for one function in range mode. Parses the function
-/// name into an `AggSpec` (which validates the offset/expansion vocabulary)
-/// and emits inline SQL when the dialect supports every percentile component,
-/// otherwise the correlated fallback.
-fn build_range_function_sql(
-    func: &str,
-    qcol: &str,
-    raw_col: &str,
-    dialect: &dyn SqlDialect,
-    group_cols: &[String],
-) -> Result<String> {
-    if func == "count" {
-        return Err(GgsqlError::ValidationError(
-            "aggregate on a range geom does not support 'count' (it has no range semantics)"
-                .to_string(),
-        ));
-    }
-    let spec = parse_agg_name(func).ok_or_else(|| {
-        GgsqlError::ValidationError(format!(
-            "aggregate on a range geom: {}",
-            diagnose_invalid_function_name(func)
-        ))
-    })?;
-    if needs_quantile_fallback(&spec, raw_col, dialect) {
-        Ok(agg_sql_fallback(
-            &spec,
-            raw_col,
-            dialect,
-            "\"__ggsql_stat_src__\"",
-            group_cols,
-        ))
-    } else {
-        agg_sql_inline(&spec, qcol, dialect).ok_or_else(|| {
-            GgsqlError::ValidationError(format!(
-                "aggregate on a range geom does not support function '{}' on this dialect",
-                func
-            ))
-        })
-    }
-}
-
-// =============================================================================
-// Single-pass strategy: GROUP BY produces a wide CTE, then CROSS JOIN explodes
-// rows per requested function.
-// =============================================================================
-
-fn build_single_pass_query(
+/// Build the `WITH src AS (<query>) SELECT <group cols>, <agg exprs> FROM src
+/// AS "__ggsql_qt__" GROUP BY <group cols>` query.
+///
+/// Falls back to `dialect.sql_percentile()` per-column when an aggregate's
+/// percentile component lacks inline support.
+fn build_group_by_query(
     query: &str,
-    funcs: &[String],
-    numeric_pos: &[(String, String)],
+    aggregated: &[(String, String, AggSpec)],
     group_cols: &[String],
     dialect: &dyn SqlDialect,
 ) -> String {
     let src_alias = "\"__ggsql_stat_src__\"";
-    let agg_alias = "\"__ggsql_stat_agg__\"";
-    let funcs_alias = "\"__ggsql_stat_funcs__\"";
-
-    let group_by_clause = if group_cols.is_empty() {
-        String::new()
-    } else {
-        let qcols: Vec<String> = group_cols.iter().map(|c| naming::quote_ident(c)).collect();
-        format!(" GROUP BY {}", qcols.join(", "))
-    };
-
-    // Build the wide aggregation SELECT: one column per (function × position).
-    let mut wide_select_exprs: Vec<String> =
-        group_cols.iter().map(|c| naming::quote_ident(c)).collect();
-
-    // Track the synthetic column names for each (aesthetic, function) pair.
-    let mut wide_col_for: HashMap<(String, String), String> = HashMap::new();
-
-    for (aes, col) in numeric_pos {
-        let qcol = naming::quote_ident(col);
-        for func in funcs {
-            if func == "count" {
-                continue;
-            }
-            let key = (aes.clone(), func.clone());
-            if wide_col_for.contains_key(&key) {
-                continue;
-            }
-            let wide_name = synthetic_col_name(aes, func);
-            let spec = parse_agg_name(func)
-                .expect("aggregate function names are validated upstream of single-pass");
-            let expr = agg_sql_inline(&spec, &qcol, dialect)
-                .expect("agg_sql_inline must be Some when single-pass is selected");
-            wide_select_exprs.push(format!("{} AS {}", expr, naming::quote_ident(&wide_name)));
-            wide_col_for.insert(key, wide_name);
-        }
-    }
-
-    let needs_count_col = funcs.iter().any(|f| f == "count");
-    let count_wide = if needs_count_col {
-        let c = "__ggsql_stat_cnt__";
-        wide_select_exprs.push(format!("COUNT(*) AS {}", naming::quote_ident(c)));
-        Some(c.to_string())
-    } else {
-        None
-    };
-
-    let wide_select = wide_select_exprs.join(", ");
-
-    // Build the CROSS JOIN VALUES table of function names.
-    let funcs_values: Vec<String> = funcs
-        .iter()
-        .map(|f| format!("({})", func_literal(f)))
-        .collect();
-    let funcs_cte = format!(
-        "{}(name) AS (VALUES {})",
-        funcs_alias,
-        funcs_values.join(", ")
-    );
-
-    // Build the outer SELECT: group cols + per-aesthetic CASE + count CASE + name AS aggregate.
-    let mut outer_exprs: Vec<String> = group_cols
-        .iter()
-        .map(|c| format!("{}.{}", agg_alias, naming::quote_ident(c)))
-        .collect();
-
-    for (aes, _) in numeric_pos {
-        let stat_col = naming::stat_column(aes);
-        let mut whens: Vec<String> = Vec::new();
-        for func in funcs {
-            if let Some(wide_name) = wide_col_for.get(&(aes.clone(), func.clone())) {
-                whens.push(format!(
-                    "WHEN {} THEN {}.{}",
-                    func_literal(func),
-                    agg_alias,
-                    naming::quote_ident(wide_name)
-                ));
-            }
-        }
-        let case_expr = if whens.is_empty() {
-            "NULL".to_string()
-        } else {
-            format!(
-                "CASE {}.name {} ELSE NULL END",
-                funcs_alias,
-                whens.join(" ")
-            )
-        };
-        outer_exprs.push(format!(
-            "{} AS {}",
-            case_expr,
-            naming::quote_ident(&stat_col)
-        ));
-    }
-
-    if let Some(count_wide) = count_wide {
-        let stat_col = naming::stat_column("count");
-        let case_expr = format!(
-            "CASE {f}.name WHEN {lit} THEN {a}.{c} ELSE NULL END",
-            f = funcs_alias,
-            a = agg_alias,
-            lit = func_literal("count"),
-            c = naming::quote_ident(&count_wide)
-        );
-        outer_exprs.push(format!(
-            "{} AS {}",
-            case_expr,
-            naming::quote_ident(&stat_col)
-        ));
-    }
-
-    let stat_aggregate_col = naming::stat_column("aggregate");
-    outer_exprs.push(format!(
-        "{}.name AS {}",
-        funcs_alias,
-        naming::quote_ident(&stat_aggregate_col)
-    ));
-
-    format!(
-        "WITH {src} AS ({query}), \
-         {agg_alias_def} AS (SELECT {wide_select} FROM {src}{group_by}), \
-         {funcs_cte} \
-         SELECT {outer} FROM {agg} CROSS JOIN {funcs}",
-        src = src_alias,
-        query = query,
-        agg_alias_def = agg_alias,
-        wide_select = wide_select,
-        group_by = group_by_clause,
-        funcs_cte = funcs_cte,
-        outer = outer_exprs.join(", "),
-        agg = agg_alias,
-        funcs = funcs_alias,
-    )
-}
-
-/// Synthetic name for a (aesthetic, function) intermediate column in the wide CTE.
-/// Includes a sanitized form of the function name to avoid collisions on `+`/`-`.
-fn synthetic_col_name(aes: &str, func: &str) -> String {
-    let safe: String = func
-        .chars()
-        .map(|c| match c {
-            '+' => 'p',
-            '-' => 'm',
-            _ if c.is_ascii_alphanumeric() => c,
-            _ => '_',
-        })
-        .collect();
-    format!("__ggsql_stat_{}_{}", aes, safe)
-}
-
-// =============================================================================
-// UNION ALL fallback strategy: one SELECT per requested function.
-// =============================================================================
-
-fn build_union_all_query(
-    query: &str,
-    funcs: &[String],
-    numeric_pos: &[(String, String)],
-    group_cols: &[String],
-    dialect: &dyn SqlDialect,
-) -> String {
-    let src_alias = "\"__ggsql_stat_src__\"";
-
-    let group_by_clause = if group_cols.is_empty() {
-        String::new()
-    } else {
-        let qcols: Vec<String> = group_cols.iter().map(|c| naming::quote_ident(c)).collect();
-        format!(" GROUP BY {}", qcols.join(", "))
-    };
+    let outer_alias = "\"__ggsql_qt__\"";
 
     let group_select: Vec<String> = group_cols.iter().map(|c| naming::quote_ident(c)).collect();
+    let group_by_clause = if group_cols.is_empty() {
+        String::new()
+    } else {
+        format!(" GROUP BY {}", group_select.join(", "))
+    };
 
-    let needs_count_col = funcs.iter().any(|f| f == "count");
-    let stat_aggregate_col = naming::stat_column("aggregate");
-    let stat_count_col = naming::stat_column("count");
+    let mut select_parts: Vec<String> = group_select.clone();
 
-    let branches: Vec<String> = funcs
-        .iter()
-        .map(|func| {
-            let mut select_parts: Vec<String> = group_select.clone();
-
-            // Parse the function name once per branch. Falls through to a
-            // string-NULL value column if parsing fails (shouldn't happen
-            // because validation runs upstream, but stay defensive).
-            let parsed_spec = parse_agg_name(func);
-            for (aes, col) in numeric_pos {
-                let stat_col = naming::stat_column(aes);
-                let value_expr = if func == "count" {
-                    "NULL".to_string()
-                } else if let Some(spec) = &parsed_spec {
-                    agg_sql_fallback(spec, col, dialect, src_alias, group_cols)
-                } else {
-                    "NULL".to_string()
-                };
-                select_parts.push(format!(
-                    "{} AS {}",
-                    value_expr,
-                    naming::quote_ident(&stat_col)
-                ));
-            }
-
-            if needs_count_col {
-                let value_expr = if func == "count" {
-                    "COUNT(*)".to_string()
-                } else {
-                    "NULL".to_string()
-                };
-                select_parts.push(format!(
-                    "{} AS {}",
-                    value_expr,
-                    naming::quote_ident(&stat_count_col)
-                ));
-            }
-
-            select_parts.push(format!(
-                "{} AS {}",
-                func_literal(func),
-                naming::quote_ident(&stat_aggregate_col)
-            ));
-
-            // Quantile fallbacks (sql_percentile) need the outer alias `__ggsql_qt__`
-            // so their correlated WHERE clause can find group columns.
-            format!(
-                "SELECT {} FROM {} AS \"__ggsql_qt__\"{}",
-                select_parts.join(", "),
-                src_alias,
-                group_by_clause
-            )
-        })
-        .collect();
+    for (aes, raw_col, agg) in aggregated {
+        let stat_col = naming::stat_column(aes);
+        let qcol = naming::quote_ident(raw_col);
+        let expr = if needs_quantile_fallback(agg, raw_col, dialect) {
+            agg_sql_fallback(agg, raw_col, dialect, src_alias, group_cols)
+        } else {
+            agg_sql_inline(agg, &qcol, dialect)
+                .expect("agg_sql_inline must succeed when needs_quantile_fallback is false")
+        };
+        select_parts.push(format!("{} AS {}", expr, naming::quote_ident(&stat_col)));
+    }
 
     format!(
-        "WITH {src} AS ({query}) {branches}",
+        "WITH {src} AS ({query}) SELECT {sel} FROM {src} AS {outer}{gb}",
         src = src_alias,
         query = query,
-        branches = branches.join(" UNION ALL ")
+        sel = select_parts.join(", "),
+        outer = outer_alias,
+        gb = group_by_clause,
     )
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::plot::aesthetic::AestheticContext;
     use crate::plot::types::{AestheticValue, ColumnInfo};
     use arrow::datatypes::DataType;
 
@@ -939,7 +707,8 @@ mod tests {
         }
     }
 
-    /// A test dialect with no inline quantile support, exercising the UNION ALL fallback.
+    /// A test dialect with no inline quantile support, exercising the
+    /// per-column `sql_percentile` fallback.
     struct NoInlineQuantileDialect;
     impl SqlDialect for NoInlineQuantileDialect {}
 
@@ -951,34 +720,129 @@ mod tests {
         }
     }
 
-    fn numeric_schema(cols: &[&str]) -> Schema {
+    fn schema_for(cols: &[(&str, bool)]) -> Schema {
         cols.iter()
-            .map(|c| ColumnInfo {
-                name: c.to_string(),
-                dtype: DataType::Float64,
-                is_discrete: false,
+            .map(|(name, is_discrete)| ColumnInfo {
+                name: name.to_string(),
+                dtype: if *is_discrete {
+                    DataType::Utf8
+                } else {
+                    DataType::Float64
+                },
+                is_discrete: *is_discrete,
                 min: None,
                 max: None,
             })
             .collect()
     }
 
+    fn cartesian_ctx() -> AestheticContext {
+        AestheticContext::from_static(&["x", "y"], &[])
+    }
+
+    fn run(
+        params: ParameterValue,
+        aes: &Mappings,
+        schema: &Schema,
+        group_by: &[String],
+        dialect: &dyn SqlDialect,
+    ) -> Result<StatResult> {
+        let mut p = HashMap::new();
+        p.insert("aggregate".to_string(), params);
+        let ctx = cartesian_ctx();
+        apply("SELECT * FROM t", schema, aes, group_by, &p, dialect, &ctx)
+    }
+
+    fn arr(items: &[&str]) -> ParameterValue {
+        ParameterValue::Array(items.iter().map(|s| ArrayElement::String(s.to_string())).collect())
+    }
+
+    // ---------- parser tests ----------
+
+    #[test]
+    fn parses_unset_and_null() {
+        assert_eq!(parse_aggregate_param(&ParameterValue::Null).unwrap(), None);
+        assert_eq!(parse_aggregate_param(&arr(&[])).unwrap(), None);
+    }
+
+    #[test]
+    fn parses_single_default() {
+        let s = parse_aggregate_param(&ParameterValue::String("mean".to_string()))
+            .unwrap()
+            .unwrap();
+        assert_eq!(s.default_lower.as_ref().map(|a| a.offset), Some("mean"));
+        assert!(s.default_upper.is_none());
+        assert!(s.targets.is_empty());
+    }
+
+    #[test]
+    fn parses_two_defaults_in_order() {
+        let s = parse_aggregate_param(&arr(&["min", "max"])).unwrap().unwrap();
+        assert_eq!(s.default_lower.as_ref().map(|a| a.offset), Some("min"));
+        assert_eq!(s.default_upper.as_ref().map(|a| a.offset), Some("max"));
+    }
+
+    #[test]
+    fn three_unprefixed_defaults_is_error() {
+        let err = parse_aggregate_param(&arr(&["mean", "min", "max"])).unwrap_err();
+        assert!(err.contains("at most two"), "got: {}", err);
+    }
+
+    #[test]
+    fn parses_targeted_entries() {
+        let s = parse_aggregate_param(&arr(&["mean", "y:max", "color:median"]))
+            .unwrap()
+            .unwrap();
+        assert_eq!(s.default_lower.as_ref().map(|a| a.offset), Some("mean"));
+        assert_eq!(s.targets.get("y").map(|a| a.offset), Some("max"));
+        assert_eq!(s.targets.get("color").map(|a| a.offset), Some("median"));
+    }
+
+    #[test]
+    fn duplicate_target_is_error() {
+        let err = parse_aggregate_param(&arr(&["y:mean", "y:median"])).unwrap_err();
+        assert!(err.contains("more than one aggregate"), "got: {}", err);
+    }
+
+    #[test]
+    fn empty_prefix_is_error() {
+        let err = parse_aggregate_param(&ParameterValue::String(":mean".to_string())).unwrap_err();
+        assert!(err.contains("aesthetic prefix"), "got: {}", err);
+    }
+
+    #[test]
+    fn unknown_function_is_error() {
+        let err = parse_aggregate_param(&ParameterValue::String("nope".to_string())).unwrap_err();
+        assert!(err.contains("unknown aggregate"), "got: {}", err);
+    }
+
+    #[test]
+    fn band_functions_parse() {
+        let s = parse_aggregate_param(&arr(&["mean-sdev", "mean+sdev"]))
+            .unwrap()
+            .unwrap();
+        assert_eq!(s.default_lower.as_ref().unwrap().offset, "mean");
+        assert_eq!(
+            s.default_lower.as_ref().unwrap().band.as_ref().unwrap().expansion,
+            "sdev"
+        );
+        assert_eq!(
+            s.default_lower.as_ref().unwrap().band.as_ref().unwrap().sign,
+            '-'
+        );
+        assert_eq!(s.default_upper.as_ref().unwrap().offset, "mean");
+    }
+
+    // ---------- apply tests ----------
+
     #[test]
     fn returns_identity_when_param_unset() {
         let aes = Mappings::new();
         let schema: Schema = vec![];
-        let params = HashMap::new();
-        let result = apply(
-            "SELECT * FROM t",
-            &schema,
-            &aes,
-            &[],
-            &params,
-            &InlineQuantileDialect,
-            &[2],
-            None,
-        )
-        .unwrap();
+        let p: HashMap<String, ParameterValue> = HashMap::new();
+        let ctx = cartesian_ctx();
+        let result = apply("SELECT * FROM t", &schema, &aes, &[], &p, &InlineQuantileDialect, &ctx)
+            .unwrap();
         assert_eq!(result, StatResult::Identity);
     }
 
@@ -986,45 +850,27 @@ mod tests {
     fn returns_identity_when_param_null() {
         let aes = Mappings::new();
         let schema: Schema = vec![];
-        let mut params = HashMap::new();
-        params.insert("aggregate".to_string(), ParameterValue::Null);
-        let result = apply(
-            "SELECT * FROM t",
-            &schema,
-            &aes,
-            &[],
-            &params,
-            &InlineQuantileDialect,
-            &[2],
-            None,
-        )
-        .unwrap();
+        let result = run(ParameterValue::Null, &aes, &schema, &[], &InlineQuantileDialect).unwrap();
         assert_eq!(result, StatResult::Identity);
     }
 
     #[test]
-    fn single_pass_for_mean_emits_avg() {
+    fn single_default_applies_to_every_numeric_mapping() {
         let mut aes = Mappings::new();
+        aes.insert("pos1", col("__ggsql_aes_pos1__"));
         aes.insert("pos2", col("__ggsql_aes_pos2__"));
-        let schema = numeric_schema(&["__ggsql_aes_pos2__"]);
-        let mut params = HashMap::new();
-        params.insert(
-            "aggregate".to_string(),
+        let schema = schema_for(&[
+            ("__ggsql_aes_pos1__", false),
+            ("__ggsql_aes_pos2__", false),
+        ]);
+        let result = run(
             ParameterValue::String("mean".to_string()),
-        );
-
-        let result = apply(
-            "SELECT * FROM t",
-            &schema,
             &aes,
+            &schema,
             &[],
-            &params,
             &InlineQuantileDialect,
-            &[2],
-            None,
         )
         .unwrap();
-
         match result {
             StatResult::Transformed {
                 query,
@@ -1032,98 +878,262 @@ mod tests {
                 consumed_aesthetics,
                 ..
             } => {
-                assert!(
-                    query.contains("AVG(\"__ggsql_aes_pos2__\")"),
-                    "query: {}",
-                    query
-                );
-                assert!(query.contains("CROSS JOIN"));
+                assert!(query.contains("AVG(\"__ggsql_aes_pos1__\")"), "{}", query);
+                assert!(query.contains("AVG(\"__ggsql_aes_pos2__\")"), "{}", query);
+                // No GROUP BY when no discrete mappings or PARTITION BY — SQL
+                // collapses to a single row per query, which is correct.
+                assert!(!query.contains("CROSS JOIN"));
+                assert!(!query.contains("UNION ALL"));
+                assert_eq!(stat_columns.len(), 2);
+                assert!(stat_columns.contains(&"pos1".to_string()));
                 assert!(stat_columns.contains(&"pos2".to_string()));
-                assert!(stat_columns.contains(&"aggregate".to_string()));
-                assert!(!stat_columns.contains(&"count".to_string()));
-                assert_eq!(consumed_aesthetics, vec!["pos2".to_string()]);
+                assert_eq!(consumed_aesthetics.len(), 2);
             }
             _ => panic!("expected Transformed"),
         }
     }
 
     #[test]
-    fn count_emits_count_star_and_keeps_count_column() {
+    fn two_defaults_split_lower_and_upper_for_segment() {
         let mut aes = Mappings::new();
+        aes.insert("pos1", col("__ggsql_aes_pos1__"));
         aes.insert("pos2", col("__ggsql_aes_pos2__"));
-        let schema = numeric_schema(&["__ggsql_aes_pos2__"]);
-        let mut params = HashMap::new();
-        params.insert(
-            "aggregate".to_string(),
-            ParameterValue::String("count".to_string()),
-        );
+        aes.insert("pos1end", col("__ggsql_aes_pos1end__"));
+        aes.insert("pos2end", col("__ggsql_aes_pos2end__"));
+        let schema = schema_for(&[
+            ("__ggsql_aes_pos1__", false),
+            ("__ggsql_aes_pos2__", false),
+            ("__ggsql_aes_pos1end__", false),
+            ("__ggsql_aes_pos2end__", false),
+        ]);
+        let result = run(arr(&["min", "max"]), &aes, &schema, &[], &InlineQuantileDialect)
+            .unwrap();
+        match result {
+            StatResult::Transformed { query, .. } => {
+                // pos1, pos2 use MIN; pos1end, pos2end use MAX.
+                assert!(query.contains("MIN(\"__ggsql_aes_pos1__\")"), "{}", query);
+                assert!(query.contains("MIN(\"__ggsql_aes_pos2__\")"), "{}", query);
+                assert!(query.contains("MAX(\"__ggsql_aes_pos1end__\")"), "{}", query);
+                assert!(query.contains("MAX(\"__ggsql_aes_pos2end__\")"), "{}", query);
+                assert!(!query.contains("MIN(\"__ggsql_aes_pos1end__\")"));
+                assert!(!query.contains("MAX(\"__ggsql_aes_pos1__\")"));
+            }
+            _ => panic!("expected Transformed"),
+        }
+    }
 
-        let result = apply(
-            "SELECT * FROM t",
-            &schema,
+    #[test]
+    fn two_defaults_split_for_ribbon() {
+        let mut aes = Mappings::new();
+        aes.insert("pos1", col("__ggsql_aes_pos1__"));
+        aes.insert("pos2min", col("__ggsql_aes_pos2min__"));
+        aes.insert("pos2max", col("__ggsql_aes_pos2max__"));
+        let schema = schema_for(&[
+            ("__ggsql_aes_pos1__", false),
+            ("__ggsql_aes_pos2min__", false),
+            ("__ggsql_aes_pos2max__", false),
+        ]);
+        let result = run(
+            arr(&["mean-sdev", "mean+sdev"]),
             &aes,
+            &schema,
             &[],
-            &params,
             &InlineQuantileDialect,
-            &[2],
-            None,
         )
         .unwrap();
+        match result {
+            StatResult::Transformed { query, .. } => {
+                assert!(query.contains("STDDEV_POP(\"__ggsql_aes_pos2max__\")"));
+                assert!(query.contains("AVG(\"__ggsql_aes_pos2min__\")"));
+                // upper default (mean+sdev) goes to pos2max → '+' between AVG and STDDEV
+                let pos2max_section = query
+                    .split("__ggsql_aes_pos2max__\")")
+                    .next()
+                    .unwrap_or("");
+                assert!(pos2max_section.contains('+') || query.contains("+ STDDEV_POP"));
+            }
+            _ => panic!("expected Transformed"),
+        }
+    }
 
+    #[test]
+    fn targeted_prefix_overrides_default() {
+        let mut aes = Mappings::new();
+        aes.insert("pos1", col("__ggsql_aes_pos1__"));
+        aes.insert("pos2", col("__ggsql_aes_pos2__"));
+        let schema = schema_for(&[
+            ("__ggsql_aes_pos1__", false),
+            ("__ggsql_aes_pos2__", false),
+        ]);
+        let result = run(
+            arr(&["mean", "y:max"]),
+            &aes,
+            &schema,
+            &[],
+            &InlineQuantileDialect,
+        )
+        .unwrap();
+        match result {
+            StatResult::Transformed { query, .. } => {
+                assert!(query.contains("AVG(\"__ggsql_aes_pos1__\")"), "{}", query);
+                assert!(query.contains("MAX(\"__ggsql_aes_pos2__\")"), "{}", query);
+                assert!(!query.contains("AVG(\"__ggsql_aes_pos2__\")"));
+            }
+            _ => panic!("expected Transformed"),
+        }
+    }
+
+    #[test]
+    fn material_aesthetic_targeted_by_user_facing_name() {
+        let mut aes = Mappings::new();
+        aes.insert("pos1", col("__ggsql_aes_pos1__"));
+        aes.insert("pos2", col("__ggsql_aes_pos2__"));
+        aes.insert("size", col("__ggsql_aes_size__"));
+        let schema = schema_for(&[
+            ("__ggsql_aes_pos1__", false),
+            ("__ggsql_aes_pos2__", false),
+            ("__ggsql_aes_size__", false),
+        ]);
+        let result = run(
+            arr(&["mean", "size:median"]),
+            &aes,
+            &schema,
+            &[],
+            &InlineQuantileDialect,
+        )
+        .unwrap();
+        match result {
+            StatResult::Transformed { query, stat_columns, .. } => {
+                assert!(query.contains("QUANTILE_CONT(\"__ggsql_aes_size__\", 0.5)"));
+                assert!(stat_columns.contains(&"size".to_string()));
+            }
+            _ => panic!("expected Transformed"),
+        }
+    }
+
+    #[test]
+    fn color_alias_targets_stroke_and_fill() {
+        // `color` is an alias that resolves to whichever of `stroke`/`fill`
+        // is actually mapped on the layer.
+        let mut aes = Mappings::new();
+        aes.insert("pos1", col("__ggsql_aes_pos1__"));
+        aes.insert("pos2", col("__ggsql_aes_pos2__"));
+        aes.insert("fill", col("__ggsql_aes_fill__"));
+        let schema = schema_for(&[
+            ("__ggsql_aes_pos1__", false),
+            ("__ggsql_aes_pos2__", false),
+            ("__ggsql_aes_fill__", false),
+        ]);
+        let result = run(
+            arr(&["mean", "color:max"]),
+            &aes,
+            &schema,
+            &[],
+            &InlineQuantileDialect,
+        )
+        .unwrap();
+        match result {
+            StatResult::Transformed { query, stat_columns, .. } => {
+                assert!(query.contains("MAX(\"__ggsql_aes_fill__\")"), "{}", query);
+                assert!(query.contains("AVG(\"__ggsql_aes_pos1__\")"));
+                assert!(stat_columns.contains(&"fill".to_string()));
+            }
+            _ => panic!("expected Transformed"),
+        }
+    }
+
+    #[test]
+    fn discrete_mapping_becomes_group_key() {
+        let mut aes = Mappings::new();
+        aes.insert("pos1", col("__ggsql_aes_pos1__"));
+        aes.insert("pos2", col("__ggsql_aes_pos2__"));
+        aes.insert("color", col("__ggsql_aes_color__"));
+        let schema = schema_for(&[
+            ("__ggsql_aes_pos1__", false),
+            ("__ggsql_aes_pos2__", false),
+            ("__ggsql_aes_color__", true), // discrete!
+        ]);
+        let result = run(
+            ParameterValue::String("mean".to_string()),
+            &aes,
+            &schema,
+            &[],
+            &InlineQuantileDialect,
+        )
+        .unwrap();
         match result {
             StatResult::Transformed {
                 query,
                 stat_columns,
                 ..
             } => {
-                assert!(query.contains("COUNT(*)"));
-                assert!(stat_columns.contains(&"count".to_string()));
-                assert!(stat_columns.contains(&"aggregate".to_string()));
+                assert!(query.contains("GROUP BY \"__ggsql_aes_color__\""), "{}", query);
+                assert!(!stat_columns.contains(&"color".to_string()));
+                assert!(query.contains("AVG(\"__ggsql_aes_pos1__\")"));
+                assert!(query.contains("AVG(\"__ggsql_aes_pos2__\")"));
             }
             _ => panic!("expected Transformed"),
         }
     }
 
     #[test]
-    fn mixed_count_and_mean_produces_two_rows_per_group() {
+    fn literal_mapping_passes_through() {
         let mut aes = Mappings::new();
+        aes.insert("pos1", col("__ggsql_aes_pos1__"));
         aes.insert("pos2", col("__ggsql_aes_pos2__"));
-        let schema = numeric_schema(&["__ggsql_aes_pos2__"]);
-        let mut params = HashMap::new();
-        use crate::plot::types::ArrayElement;
-        params.insert(
-            "aggregate".to_string(),
-            ParameterValue::Array(vec![
-                ArrayElement::String("count".to_string()),
-                ArrayElement::String("mean".to_string()),
-            ]),
+        aes.insert(
+            "fill",
+            AestheticValue::Literal(ParameterValue::String("steelblue".to_string())),
         );
-
-        let result = apply(
-            "SELECT * FROM t",
-            &schema,
+        let schema = schema_for(&[
+            ("__ggsql_aes_pos1__", false),
+            ("__ggsql_aes_pos2__", false),
+        ]);
+        let result = run(
+            ParameterValue::String("mean".to_string()),
             &aes,
+            &schema,
             &[],
-            &params,
             &InlineQuantileDialect,
-            &[2],
-            None,
         )
         .unwrap();
         match result {
             StatResult::Transformed { query, .. } => {
+                assert!(!query.contains("AVG(\"__ggsql_aes_fill__\")"));
+                assert!(query.contains("AVG(\"__ggsql_aes_pos1__\")"));
                 assert!(query.contains("AVG(\"__ggsql_aes_pos2__\")"));
-                assert!(query.contains("COUNT(*)"));
-                assert!(query.contains("'count'"));
-                assert!(query.contains("'mean'"));
-                // The count CASE must reference the agg CTE for the value column,
-                // not the funcs CTE (regression: previously emitted funcs.cnt which
-                // doesn't exist).
-                assert!(
-                    query.contains("\"__ggsql_stat_agg__\".\"__ggsql_stat_cnt__\""),
-                    "count CASE should reference the agg CTE, query was: {}",
-                    query
-                );
+            }
+            _ => panic!("expected Transformed"),
+        }
+    }
+
+    #[test]
+    fn untargeted_numeric_mapping_dropped_when_no_default() {
+        let mut aes = Mappings::new();
+        aes.insert("pos1", col("__ggsql_aes_pos1__"));
+        aes.insert("pos2", col("__ggsql_aes_pos2__"));
+        let schema = schema_for(&[
+            ("__ggsql_aes_pos1__", false),
+            ("__ggsql_aes_pos2__", false),
+        ]);
+        // Only `y` targeted, no default → x is dropped.
+        let result = run(
+            ParameterValue::String("y:mean".to_string()),
+            &aes,
+            &schema,
+            &[],
+            &InlineQuantileDialect,
+        )
+        .unwrap();
+        match result {
+            StatResult::Transformed {
+                query,
+                stat_columns,
+                ..
+            } => {
+                assert!(query.contains("AVG(\"__ggsql_aes_pos2__\")"));
+                assert!(!query.contains("\"__ggsql_aes_pos1__\""));
+                assert_eq!(stat_columns, vec!["pos2".to_string()]);
             }
             _ => panic!("expected Transformed"),
         }
@@ -1133,28 +1143,42 @@ mod tests {
     fn quantile_uses_dialect_inline_when_available() {
         let mut aes = Mappings::new();
         aes.insert("pos2", col("__ggsql_aes_pos2__"));
-        let schema = numeric_schema(&["__ggsql_aes_pos2__"]);
-        let mut params = HashMap::new();
-        params.insert(
-            "aggregate".to_string(),
+        let schema = schema_for(&[("__ggsql_aes_pos2__", false)]);
+        let result = run(
             ParameterValue::String("p25".to_string()),
-        );
-
-        let result = apply(
-            "SELECT * FROM t",
-            &schema,
             &aes,
+            &schema,
             &[],
-            &params,
             &InlineQuantileDialect,
-            &[2],
-            None,
         )
         .unwrap();
         match result {
             StatResult::Transformed { query, .. } => {
                 assert!(query.contains("QUANTILE_CONT"));
                 assert!(query.contains("0.25"));
+            }
+            _ => panic!("expected Transformed"),
+        }
+    }
+
+    #[test]
+    fn quantile_falls_back_to_correlated_subquery_without_inline() {
+        let mut aes = Mappings::new();
+        aes.insert("pos2", col("__ggsql_aes_pos2__"));
+        let schema = schema_for(&[("__ggsql_aes_pos2__", false)]);
+        let result = run(
+            ParameterValue::String("p25".to_string()),
+            &aes,
+            &schema,
+            &[],
+            &NoInlineQuantileDialect,
+        )
+        .unwrap();
+        match result {
+            StatResult::Transformed { query, .. } => {
+                // The fallback dialect's sql_percentile uses NTILE.
+                assert!(query.contains("NTILE(4)"));
+                // No explosion any more — single SELECT, no UNION ALL.
                 assert!(!query.contains("UNION ALL"));
             }
             _ => panic!("expected Transformed"),
@@ -1162,1109 +1186,23 @@ mod tests {
     }
 
     #[test]
-    fn quantile_falls_back_to_union_all_without_dialect_support() {
-        let mut aes = Mappings::new();
-        aes.insert("pos2", col("__ggsql_aes_pos2__"));
-        let schema = numeric_schema(&["__ggsql_aes_pos2__"]);
-        let mut params = HashMap::new();
-        params.insert(
-            "aggregate".to_string(),
-            ParameterValue::String("p25".to_string()),
-        );
-
-        let result = apply(
-            "SELECT * FROM t",
-            &schema,
-            &aes,
-            &[],
-            &params,
-            &NoInlineQuantileDialect,
-            &[2],
-            None,
-        )
-        .unwrap();
-        match result {
-            StatResult::Transformed { query, .. } => {
-                // Fallback dialect uses NTILE-based correlated subquery via UNION ALL.
-                assert!(query.contains("NTILE(4)"));
-                assert!(query.contains("UNION ALL") || !query.contains("CROSS JOIN"));
-            }
-            _ => panic!("expected Transformed"),
-        }
-    }
-
-    #[test]
-    fn mean_sdev_emits_avg_and_stddev() {
-        let mut aes = Mappings::new();
-        aes.insert("pos2", col("__ggsql_aes_pos2__"));
-        let schema = numeric_schema(&["__ggsql_aes_pos2__"]);
-        let mut params = HashMap::new();
-        use crate::plot::types::ArrayElement;
-        params.insert(
-            "aggregate".to_string(),
-            ParameterValue::Array(vec![
-                ArrayElement::String("mean-sdev".to_string()),
-                ArrayElement::String("mean+sdev".to_string()),
-            ]),
-        );
-
-        let result = apply(
-            "SELECT * FROM t",
-            &schema,
-            &aes,
-            &[],
-            &params,
-            &InlineQuantileDialect,
-            &[2],
-            None,
-        )
-        .unwrap();
-        match result {
-            StatResult::Transformed { query, .. } => {
-                assert!(query.contains("STDDEV_POP"));
-                assert!(query.contains("AVG"));
-            }
-            _ => panic!("expected Transformed"),
-        }
-    }
-
-    #[test]
-    fn mean_se_includes_sqrt_count() {
-        let mut aes = Mappings::new();
-        aes.insert("pos2", col("__ggsql_aes_pos2__"));
-        let schema = numeric_schema(&["__ggsql_aes_pos2__"]);
-        let mut params = HashMap::new();
-        params.insert(
-            "aggregate".to_string(),
-            ParameterValue::String("mean+se".to_string()),
-        );
-
-        let result = apply(
-            "SELECT * FROM t",
-            &schema,
-            &aes,
-            &[],
-            &params,
-            &InlineQuantileDialect,
-            &[2],
-            None,
-        )
-        .unwrap();
-        match result {
-            StatResult::Transformed { query, .. } => {
-                assert!(query.contains("SQRT(COUNT"));
-            }
-            _ => panic!("expected Transformed"),
-        }
-    }
-
-    #[test]
-    fn prod_emits_exp_sum_ln() {
-        let mut aes = Mappings::new();
-        aes.insert("pos2", col("__ggsql_aes_pos2__"));
-        let schema = numeric_schema(&["__ggsql_aes_pos2__"]);
-        let mut params = HashMap::new();
-        params.insert(
-            "aggregate".to_string(),
-            ParameterValue::String("prod".to_string()),
-        );
-
-        let result = apply(
-            "SELECT * FROM t",
-            &schema,
-            &aes,
-            &[],
-            &params,
-            &InlineQuantileDialect,
-            &[2],
-            None,
-        )
-        .unwrap();
-        match result {
-            StatResult::Transformed { query, .. } => {
-                assert!(query.contains("EXP(SUM(LN"));
-            }
-            _ => panic!("expected Transformed"),
-        }
-    }
-
-    #[test]
-    fn iqr_emits_p75_minus_p25() {
-        let mut aes = Mappings::new();
-        aes.insert("pos2", col("__ggsql_aes_pos2__"));
-        let schema = numeric_schema(&["__ggsql_aes_pos2__"]);
-        let mut params = HashMap::new();
-        params.insert(
-            "aggregate".to_string(),
-            ParameterValue::String("iqr".to_string()),
-        );
-
-        let result = apply(
-            "SELECT * FROM t",
-            &schema,
-            &aes,
-            &[],
-            &params,
-            &InlineQuantileDialect,
-            &[2],
-            None,
-        )
-        .unwrap();
-        match result {
-            StatResult::Transformed { query, .. } => {
-                assert!(query.contains("0.75"));
-                assert!(query.contains("0.25"));
-            }
-            _ => panic!("expected Transformed"),
-        }
-    }
-
-    #[test]
-    fn discrete_position_aesthetic_becomes_group_column() {
+    fn unknown_targeted_aesthetic_is_error() {
         let mut aes = Mappings::new();
         aes.insert("pos1", col("__ggsql_aes_pos1__"));
         aes.insert("pos2", col("__ggsql_aes_pos2__"));
-        let schema = vec![
-            ColumnInfo {
-                name: "__ggsql_aes_pos1__".to_string(),
-                dtype: DataType::Utf8,
-                is_discrete: true,
-                min: None,
-                max: None,
-            },
-            ColumnInfo {
-                name: "__ggsql_aes_pos2__".to_string(),
-                dtype: DataType::Float64,
-                is_discrete: false,
-                min: None,
-                max: None,
-            },
-        ];
-        let mut params = HashMap::new();
-        params.insert(
-            "aggregate".to_string(),
-            ParameterValue::String("mean".to_string()),
-        );
-
-        let result = apply(
-            "SELECT * FROM t",
-            &schema,
-            &aes,
-            &[],
-            &params,
-            &InlineQuantileDialect,
-            &[2],
-            None,
-        )
-        .unwrap();
-        match result {
-            StatResult::Transformed {
-                query,
-                stat_columns,
-                consumed_aesthetics,
-                ..
-            } => {
-                // pos1 (discrete) is in GROUP BY, not aggregated.
-                assert!(query.contains("GROUP BY \"__ggsql_aes_pos1__\""));
-                // pos2 is aggregated.
-                assert!(query.contains("AVG(\"__ggsql_aes_pos2__\")"));
-                // Only pos2 is consumed.
-                assert_eq!(consumed_aesthetics, vec!["pos2".to_string()]);
-                // Only pos2 (numeric) appears in stat_columns; pos1 stays as-is.
-                assert!(stat_columns.contains(&"pos2".to_string()));
-                assert!(!stat_columns.contains(&"pos1".to_string()));
-            }
-            _ => panic!("expected Transformed"),
-        }
-    }
-
-    #[test]
-    fn explicit_group_by_columns_appear_in_query() {
-        let mut aes = Mappings::new();
-        aes.insert("pos2", col("__ggsql_aes_pos2__"));
-        let schema = numeric_schema(&["__ggsql_aes_pos2__"]);
-        let mut params = HashMap::new();
-        params.insert(
-            "aggregate".to_string(),
-            ParameterValue::String("mean".to_string()),
-        );
-
-        let result = apply(
-            "SELECT * FROM t",
-            &schema,
-            &aes,
-            &["region".to_string()],
-            &params,
-            &InlineQuantileDialect,
-            &[2],
-            None,
-        )
-        .unwrap();
-        match result {
-            StatResult::Transformed { query, .. } => {
-                assert!(query.contains("GROUP BY \"region\""));
-            }
-            _ => panic!("expected Transformed"),
-        }
-    }
-
-    #[test]
-    fn line_style_groups_by_pos1_and_aggregates_pos2() {
-        // slots=[2]: pos1 stays as group (even though numeric), pos2 gets aggregated.
-        let mut aes = Mappings::new();
-        aes.insert("pos1", col("__ggsql_aes_pos1__"));
-        aes.insert("pos2", col("__ggsql_aes_pos2__"));
-        let schema = numeric_schema(&["__ggsql_aes_pos1__", "__ggsql_aes_pos2__"]);
-        let mut params = HashMap::new();
-        params.insert(
-            "aggregate".to_string(),
-            ParameterValue::String("max".to_string()),
-        );
-
-        let result = apply(
-            "SELECT * FROM t",
-            &schema,
-            &aes,
-            &[],
-            &params,
-            &InlineQuantileDialect,
-            &[2],
-            None,
-        )
-        .unwrap();
-        match result {
-            StatResult::Transformed {
-                query,
-                consumed_aesthetics,
-                stat_columns,
-                ..
-            } => {
-                assert!(
-                    query.contains("MAX(\"__ggsql_aes_pos2__\")"),
-                    "query: {}",
-                    query
-                );
-                assert!(!query.contains("MAX(\"__ggsql_aes_pos1__\")"));
-                assert!(query.contains("GROUP BY \"__ggsql_aes_pos1__\""));
-                assert_eq!(consumed_aesthetics, vec!["pos2".to_string()]);
-                assert!(stat_columns.contains(&"pos2".to_string()));
-                assert!(!stat_columns.contains(&"pos1".to_string()));
-            }
-            _ => panic!("expected Transformed"),
-        }
-    }
-
-    #[test]
-    fn point_style_aggregates_both_slots() {
-        // slots=[1,2]: both pos1 and pos2 (numeric) get aggregated → centroid.
-        let mut aes = Mappings::new();
-        aes.insert("pos1", col("__ggsql_aes_pos1__"));
-        aes.insert("pos2", col("__ggsql_aes_pos2__"));
-        let schema = numeric_schema(&["__ggsql_aes_pos1__", "__ggsql_aes_pos2__"]);
-        let mut params = HashMap::new();
-        params.insert(
-            "aggregate".to_string(),
-            ParameterValue::String("mean".to_string()),
-        );
-
-        let result = apply(
-            "SELECT * FROM t",
-            &schema,
-            &aes,
-            &[],
-            &params,
-            &InlineQuantileDialect,
-            &[1, 2],
-            None,
-        )
-        .unwrap();
-        match result {
-            StatResult::Transformed {
-                query,
-                consumed_aesthetics,
-                stat_columns,
-                ..
-            } => {
-                assert!(
-                    query.contains("AVG(\"__ggsql_aes_pos1__\")"),
-                    "query: {}",
-                    query
-                );
-                assert!(
-                    query.contains("AVG(\"__ggsql_aes_pos2__\")"),
-                    "query: {}",
-                    query
-                );
-                assert!(!query.contains("GROUP BY \"__ggsql_aes_pos1__\""));
-                let mut consumed = consumed_aesthetics.clone();
-                consumed.sort();
-                assert_eq!(consumed, vec!["pos1".to_string(), "pos2".to_string()]);
-                assert!(stat_columns.contains(&"pos1".to_string()));
-                assert!(stat_columns.contains(&"pos2".to_string()));
-            }
-            _ => panic!("expected Transformed"),
-        }
-    }
-
-    #[test]
-    fn range_geom_aggregates_pos2_minmax() {
-        // slots=[2]: pos1 fixed (group), pos2min and pos2max both aggregated.
-        let mut aes = Mappings::new();
-        aes.insert("pos1", col("__ggsql_aes_pos1__"));
-        aes.insert("pos2min", col("__ggsql_aes_pos2min__"));
-        aes.insert("pos2max", col("__ggsql_aes_pos2max__"));
-        let schema = numeric_schema(&[
-            "__ggsql_aes_pos1__",
-            "__ggsql_aes_pos2min__",
-            "__ggsql_aes_pos2max__",
+        let schema = schema_for(&[
+            ("__ggsql_aes_pos1__", false),
+            ("__ggsql_aes_pos2__", false),
         ]);
-        let mut params = HashMap::new();
-        params.insert(
-            "aggregate".to_string(),
-            ParameterValue::String("mean".to_string()),
-        );
-
-        let result = apply(
-            "SELECT * FROM t",
-            &schema,
+        let err = run(
+            ParameterValue::String("size:mean".to_string()),
             &aes,
+            &schema,
             &[],
-            &params,
             &InlineQuantileDialect,
-            &[2],
-            None,
         )
-        .unwrap();
-        match result {
-            StatResult::Transformed {
-                query,
-                consumed_aesthetics,
-                ..
-            } => {
-                assert!(
-                    query.contains("AVG(\"__ggsql_aes_pos2min__\")"),
-                    "query: {}",
-                    query
-                );
-                assert!(
-                    query.contains("AVG(\"__ggsql_aes_pos2max__\")"),
-                    "query: {}",
-                    query
-                );
-                assert!(query.contains("GROUP BY \"__ggsql_aes_pos1__\""));
-                let mut consumed = consumed_aesthetics.clone();
-                consumed.sort();
-                assert_eq!(consumed, vec!["pos2max".to_string(), "pos2min".to_string()]);
-            }
-            _ => panic!("expected Transformed"),
-        }
-    }
-
-    #[test]
-    fn out_of_axis_numeric_pos_stays_as_group() {
-        // slots=[2], numeric pos1 → still goes to GROUP BY (not aggregated).
-        // Same expectation as line_style_groups_by_pos1_and_aggregates_pos2 but
-        // explicit about the "numeric out-of-axis" path.
-        let mut aes = Mappings::new();
-        aes.insert("pos1", col("__ggsql_aes_pos1__"));
-        aes.insert("pos2", col("__ggsql_aes_pos2__"));
-        let schema = numeric_schema(&["__ggsql_aes_pos1__", "__ggsql_aes_pos2__"]);
-        let mut params = HashMap::new();
-        params.insert(
-            "aggregate".to_string(),
-            ParameterValue::String("mean".to_string()),
-        );
-
-        let result = apply(
-            "SELECT * FROM t",
-            &schema,
-            &aes,
-            &[],
-            &params,
-            &InlineQuantileDialect,
-            &[2],
-            None,
-        )
-        .unwrap();
-        match result {
-            StatResult::Transformed { query, .. } => {
-                assert!(query.contains("GROUP BY \"__ggsql_aes_pos1__\""));
-            }
-            _ => panic!("expected Transformed"),
-        }
-    }
-
-    #[test]
-    fn discrete_in_axis_pos_stays_as_group_on_centroid_geom() {
-        // slots=[1,2], pos1 discrete + pos2 numeric → only pos2 aggregated,
-        // pos1 stays as GROUP BY. Confirms numeric check is preserved on
-        // slot=[1,2] geoms (e.g. point with category AS x, value AS y).
-        let mut aes = Mappings::new();
-        aes.insert("pos1", col("__ggsql_aes_pos1__"));
-        aes.insert("pos2", col("__ggsql_aes_pos2__"));
-        let schema = vec![
-            ColumnInfo {
-                name: "__ggsql_aes_pos1__".to_string(),
-                dtype: DataType::Utf8,
-                is_discrete: true,
-                min: None,
-                max: None,
-            },
-            ColumnInfo {
-                name: "__ggsql_aes_pos2__".to_string(),
-                dtype: DataType::Float64,
-                is_discrete: false,
-                min: None,
-                max: None,
-            },
-        ];
-        let mut params = HashMap::new();
-        params.insert(
-            "aggregate".to_string(),
-            ParameterValue::String("mean".to_string()),
-        );
-
-        let result = apply(
-            "SELECT * FROM t",
-            &schema,
-            &aes,
-            &[],
-            &params,
-            &InlineQuantileDialect,
-            &[1, 2],
-            None,
-        )
-        .unwrap();
-        match result {
-            StatResult::Transformed {
-                query,
-                consumed_aesthetics,
-                stat_columns,
-                ..
-            } => {
-                assert!(query.contains("AVG(\"__ggsql_aes_pos2__\")"));
-                assert!(!query.contains("AVG(\"__ggsql_aes_pos1__\")"));
-                assert!(query.contains("GROUP BY \"__ggsql_aes_pos1__\""));
-                assert_eq!(consumed_aesthetics, vec!["pos2".to_string()]);
-                assert!(stat_columns.contains(&"pos2".to_string()));
-                assert!(!stat_columns.contains(&"pos1".to_string()));
-            }
-            _ => panic!("expected Transformed"),
-        }
-    }
-
-    #[test]
-    fn count_works_with_no_numeric_pos() {
-        // slots=[2], only discrete pos1 mapped, aggregate=count → no
-        // "needs numeric" error; query has COUNT(*) and groups by pos1.
-        let mut aes = Mappings::new();
-        aes.insert("pos1", col("__ggsql_aes_pos1__"));
-        let schema = vec![ColumnInfo {
-            name: "__ggsql_aes_pos1__".to_string(),
-            dtype: DataType::Utf8,
-            is_discrete: true,
-            min: None,
-            max: None,
-        }];
-        let mut params = HashMap::new();
-        params.insert(
-            "aggregate".to_string(),
-            ParameterValue::String("count".to_string()),
-        );
-
-        let result = apply(
-            "SELECT * FROM t",
-            &schema,
-            &aes,
-            &[],
-            &params,
-            &InlineQuantileDialect,
-            &[2],
-            None,
-        )
-        .unwrap();
-        match result {
-            StatResult::Transformed {
-                query,
-                stat_columns,
-                ..
-            } => {
-                assert!(query.contains("COUNT(*)"));
-                assert!(query.contains("GROUP BY \"__ggsql_aes_pos1__\""));
-                assert!(stat_columns.contains(&"count".to_string()));
-            }
-            _ => panic!("expected Transformed"),
-        }
-    }
-
-    // ========================================================================
-    // Range-mode tests (ribbon / range)
-    // ========================================================================
-
-    fn range_pair() -> Option<(&'static str, &'static str)> {
-        Some(("pos2min", "pos2max"))
-    }
-
-    fn range_input_aes_with_group() -> (Mappings, Schema) {
-        let mut aes = Mappings::new();
-        aes.insert("pos1", col("__ggsql_aes_pos1__"));
-        aes.insert("pos2", col("__ggsql_aes_pos2__"));
-        let schema = vec![
-            ColumnInfo {
-                name: "__ggsql_aes_pos1__".to_string(),
-                dtype: DataType::Utf8,
-                is_discrete: true,
-                min: None,
-                max: None,
-            },
-            ColumnInfo {
-                name: "__ggsql_aes_pos2__".to_string(),
-                dtype: DataType::Float64,
-                is_discrete: false,
-                min: None,
-                max: None,
-            },
-        ];
-        (aes, schema)
-    }
-
-    #[test]
-    fn range_mode_two_functions_emits_one_row_per_group() {
-        let (aes, schema) = range_input_aes_with_group();
-        let mut params = HashMap::new();
-        use crate::plot::types::ArrayElement;
-        params.insert(
-            "aggregate".to_string(),
-            ParameterValue::Array(vec![
-                ArrayElement::String("mean-sdev".to_string()),
-                ArrayElement::String("mean+sdev".to_string()),
-            ]),
-        );
-
-        let result = apply(
-            "SELECT * FROM t",
-            &schema,
-            &aes,
-            &[],
-            &params,
-            &InlineQuantileDialect,
-            &[2],
-            range_pair(),
-        )
-        .unwrap();
-        match result {
-            StatResult::Transformed {
-                query,
-                stat_columns,
-                consumed_aesthetics,
-                ..
-            } => {
-                assert!(
-                    query.contains(
-                        "AVG(\"__ggsql_aes_pos2__\") - STDDEV_POP(\"__ggsql_aes_pos2__\")"
-                    ),
-                    "lower bound expr missing: {}",
-                    query
-                );
-                assert!(
-                    query.contains(
-                        "AVG(\"__ggsql_aes_pos2__\") + STDDEV_POP(\"__ggsql_aes_pos2__\")"
-                    ),
-                    "upper bound expr missing: {}",
-                    query
-                );
-                assert!(query.contains("GROUP BY \"__ggsql_aes_pos1__\""));
-                assert!(!query.contains("UNION ALL"));
-                assert!(!query.contains("CROSS JOIN"));
-                // No `aggregate` tag column in range mode.
-                assert!(!query.contains("__ggsql_stat_aggregate__"));
-                assert_eq!(
-                    stat_columns,
-                    vec!["pos2min".to_string(), "pos2max".to_string()]
-                );
-                assert!(consumed_aesthetics.contains(&"pos2".to_string()));
-                assert!(consumed_aesthetics.contains(&"pos2min".to_string()));
-                assert!(consumed_aesthetics.contains(&"pos2max".to_string()));
-            }
-            _ => panic!("expected Transformed"),
-        }
-    }
-
-    #[test]
-    fn range_mode_rejects_single_function() {
-        let (aes, schema) = range_input_aes_with_group();
-        let mut params = HashMap::new();
-        params.insert(
-            "aggregate".to_string(),
-            ParameterValue::String("mean".to_string()),
-        );
-
-        let result = apply(
-            "SELECT * FROM t",
-            &schema,
-            &aes,
-            &[],
-            &params,
-            &InlineQuantileDialect,
-            &[2],
-            range_pair(),
-        );
-        let err = result.unwrap_err().to_string();
-        assert!(
-            err.contains("exactly two"),
-            "expected 'exactly two' in error, got: {}",
-            err
-        );
-    }
-
-    #[test]
-    fn range_mode_rejects_three_functions() {
-        let (aes, schema) = range_input_aes_with_group();
-        let mut params = HashMap::new();
-        use crate::plot::types::ArrayElement;
-        params.insert(
-            "aggregate".to_string(),
-            ParameterValue::Array(vec![
-                ArrayElement::String("min".to_string()),
-                ArrayElement::String("mean".to_string()),
-                ArrayElement::String("max".to_string()),
-            ]),
-        );
-
-        let err = apply(
-            "SELECT * FROM t",
-            &schema,
-            &aes,
-            &[],
-            &params,
-            &InlineQuantileDialect,
-            &[2],
-            range_pair(),
-        )
-        .unwrap_err()
-        .to_string();
-        assert!(err.contains("exactly two"));
-    }
-
-    #[test]
-    fn range_mode_quantile_uses_inline_when_available() {
-        let (aes, schema) = range_input_aes_with_group();
-        let mut params = HashMap::new();
-        use crate::plot::types::ArrayElement;
-        params.insert(
-            "aggregate".to_string(),
-            ParameterValue::Array(vec![
-                ArrayElement::String("p25".to_string()),
-                ArrayElement::String("p75".to_string()),
-            ]),
-        );
-
-        let result = apply(
-            "SELECT * FROM t",
-            &schema,
-            &aes,
-            &[],
-            &params,
-            &InlineQuantileDialect,
-            &[2],
-            range_pair(),
-        )
-        .unwrap();
-        match result {
-            StatResult::Transformed { query, .. } => {
-                assert!(query.contains("QUANTILE_CONT"));
-                assert!(query.contains("0.25"));
-                assert!(query.contains("0.75"));
-                assert!(!query.contains("NTILE(4)"));
-            }
-            _ => panic!("expected Transformed"),
-        }
-    }
-
-    #[test]
-    fn range_mode_quantile_falls_back_without_dialect_support() {
-        let (aes, schema) = range_input_aes_with_group();
-        let mut params = HashMap::new();
-        use crate::plot::types::ArrayElement;
-        params.insert(
-            "aggregate".to_string(),
-            ParameterValue::Array(vec![
-                ArrayElement::String("p25".to_string()),
-                ArrayElement::String("p75".to_string()),
-            ]),
-        );
-
-        let result = apply(
-            "SELECT * FROM t",
-            &schema,
-            &aes,
-            &[],
-            &params,
-            &NoInlineQuantileDialect,
-            &[2],
-            range_pair(),
-        )
-        .unwrap();
-        match result {
-            StatResult::Transformed { query, .. } => {
-                assert!(query.contains("NTILE(4)"));
-            }
-            _ => panic!("expected Transformed"),
-        }
-    }
-
-    #[test]
-    fn range_mode_requires_pos2_input() {
-        // Range geom but pos2 not mapped → error.
-        let mut aes = Mappings::new();
-        aes.insert("pos1", col("__ggsql_aes_pos1__"));
-        let schema = vec![ColumnInfo {
-            name: "__ggsql_aes_pos1__".to_string(),
-            dtype: DataType::Utf8,
-            is_discrete: true,
-            min: None,
-            max: None,
-        }];
-        let mut params = HashMap::new();
-        use crate::plot::types::ArrayElement;
-        params.insert(
-            "aggregate".to_string(),
-            ParameterValue::Array(vec![
-                ArrayElement::String("mean-sdev".to_string()),
-                ArrayElement::String("mean+sdev".to_string()),
-            ]),
-        );
-
-        let err = apply(
-            "SELECT * FROM t",
-            &schema,
-            &aes,
-            &[],
-            &params,
-            &InlineQuantileDialect,
-            &[2],
-            range_pair(),
-        )
-        .unwrap_err()
-        .to_string();
-        assert!(
-            err.contains("pos2") || err.contains("`y`"),
-            "expected pos2/y mention in error, got: {}",
-            err
-        );
-    }
-
-    // ========================================================================
-    // Parser tests (parse_agg_name)
-    // ========================================================================
-
-    #[test]
-    fn parse_simple_names() {
-        assert_eq!(
-            parse_agg_name("mean"),
-            Some(AggSpec {
-                offset: "mean",
-                band: None
-            })
-        );
-        assert_eq!(
-            parse_agg_name("count"),
-            Some(AggSpec {
-                offset: "count",
-                band: None
-            })
-        );
-        assert_eq!(
-            parse_agg_name("p25"),
-            Some(AggSpec {
-                offset: "p25",
-                band: None
-            })
-        );
-    }
-
-    #[test]
-    fn parse_band_default_modifier() {
-        let spec = parse_agg_name("mean+sdev").unwrap();
-        assert_eq!(spec.offset, "mean");
-        let band = spec.band.unwrap();
-        assert_eq!(band.sign, '+');
-        assert_eq!(band.mod_value, 1.0);
-        assert_eq!(band.expansion, "sdev");
-    }
-
-    #[test]
-    fn parse_band_integer_modifier() {
-        let spec = parse_agg_name("mean-2sdev").unwrap();
-        let band = spec.band.unwrap();
-        assert_eq!(band.sign, '-');
-        assert_eq!(band.mod_value, 2.0);
-        assert_eq!(band.expansion, "sdev");
-    }
-
-    #[test]
-    fn parse_band_decimal_modifier() {
-        let spec = parse_agg_name("mean+1.96sdev").unwrap();
-        let band = spec.band.unwrap();
-        assert_eq!(band.mod_value, 1.96);
-    }
-
-    #[test]
-    fn parse_band_longest_offset_wins() {
-        // 'median+sdev' must match offset 'median', not 'me' (which isn't an
-        // offset anyway, but more pertinently the parser must not stop at a
-        // shorter prefix).
-        let spec = parse_agg_name("median+sdev").unwrap();
-        assert_eq!(spec.offset, "median");
-    }
-
-    #[test]
-    fn parse_band_percentile_offset() {
-        let spec = parse_agg_name("p25+0.5range").unwrap();
-        assert_eq!(spec.offset, "p25");
-        let band = spec.band.unwrap();
-        assert_eq!(band.mod_value, 0.5);
-        assert_eq!(band.expansion, "range");
-    }
-
-    #[test]
-    fn parse_band_rejects_invalid_offset() {
-        assert!(parse_agg_name("count+sdev").is_none());
-        assert!(parse_agg_name("iqr+sdev").is_none());
-    }
-
-    #[test]
-    fn parse_band_rejects_invalid_expansion() {
-        assert!(parse_agg_name("mean+count").is_none());
-        assert!(parse_agg_name("mean+median").is_none());
-    }
-
-    #[test]
-    fn parse_rejects_unknown() {
-        assert!(parse_agg_name("foo").is_none());
-        assert!(parse_agg_name("").is_none());
-    }
-
-    // ========================================================================
-    // Validation tests (validate_aggregate_param)
-    // ========================================================================
-
-    #[test]
-    fn validate_accepts_simple_names_and_bands() {
-        use crate::plot::types::ArrayElement;
-        validate_aggregate_param(&ParameterValue::String("mean".to_string())).unwrap();
-        validate_aggregate_param(&ParameterValue::String("mean+sdev".to_string())).unwrap();
-        validate_aggregate_param(&ParameterValue::String("median-0.5iqr".to_string())).unwrap();
-        validate_aggregate_param(&ParameterValue::Array(vec![
-            ArrayElement::String("mean".to_string()),
-            ArrayElement::String("mean+1.96sdev".to_string()),
-        ]))
-        .unwrap();
-    }
-
-    #[test]
-    fn validate_diagnostic_for_invalid_offset() {
-        let err = validate_aggregate_param(&ParameterValue::String("count+sdev".to_string()))
-            .unwrap_err();
-        assert!(err.contains("count"), "err: {}", err);
-        assert!(err.contains("offset"), "err: {}", err);
-    }
-
-    #[test]
-    fn validate_diagnostic_for_invalid_expansion() {
-        let err = validate_aggregate_param(&ParameterValue::String("mean+count".to_string()))
-            .unwrap_err();
-        assert!(err.contains("count"), "err: {}", err);
-        assert!(err.contains("expansion"), "err: {}", err);
-    }
-
-    #[test]
-    fn validate_diagnostic_for_unknown() {
-        let err = validate_aggregate_param(&ParameterValue::String("foo".to_string())).unwrap_err();
-        assert!(err.contains("unknown"), "err: {}", err);
-        assert!(err.contains("foo"), "err: {}", err);
-    }
-
-    // ========================================================================
-    // SQL emission for parametric bands
-    // ========================================================================
-
-    #[test]
-    fn band_decimal_modifier_emits_in_sql() {
-        let mut aes = Mappings::new();
-        aes.insert("pos2", col("__ggsql_aes_pos2__"));
-        let schema = numeric_schema(&["__ggsql_aes_pos2__"]);
-        let mut params = HashMap::new();
-        params.insert(
-            "aggregate".to_string(),
-            ParameterValue::String("mean+1.96sdev".to_string()),
-        );
-
-        let result = apply(
-            "SELECT * FROM t",
-            &schema,
-            &aes,
-            &[],
-            &params,
-            &InlineQuantileDialect,
-            &[2],
-            None,
-        )
-        .unwrap();
-        match result {
-            StatResult::Transformed { query, .. } => {
-                assert!(
-                    query.contains(
-                        "AVG(\"__ggsql_aes_pos2__\") + 1.96 * STDDEV_POP(\"__ggsql_aes_pos2__\")"
-                    ),
-                    "query: {}",
-                    query
-                );
-            }
-            _ => panic!("expected Transformed"),
-        }
-    }
-
-    #[test]
-    fn band_with_percentile_offset_inline() {
-        // median-0.5iqr on a dialect with inline quantile support.
-        let mut aes = Mappings::new();
-        aes.insert("pos2", col("__ggsql_aes_pos2__"));
-        let schema = numeric_schema(&["__ggsql_aes_pos2__"]);
-        let mut params = HashMap::new();
-        params.insert(
-            "aggregate".to_string(),
-            ParameterValue::String("median-0.5iqr".to_string()),
-        );
-
-        let result = apply(
-            "SELECT * FROM t",
-            &schema,
-            &aes,
-            &[],
-            &params,
-            &InlineQuantileDialect,
-            &[2],
-            None,
-        )
-        .unwrap();
-        match result {
-            StatResult::Transformed { query, .. } => {
-                // median uses QUANTILE_CONT(col, 0.5); iqr uses QUANTILE_CONT(.., 0.75) and 0.25.
-                assert!(
-                    query.contains("QUANTILE_CONT") && query.contains("0.5"),
-                    "query: {}",
-                    query
-                );
-                assert!(query.contains("0.75") && query.contains("0.25"));
-            }
-            _ => panic!("expected Transformed"),
-        }
-    }
-
-    #[test]
-    fn band_with_percentile_offset_falls_back() {
-        // median+2sdev on a dialect WITHOUT inline quantile support → UNION-ALL
-        // path with sql_percentile for median, inline STDDEV_POP for sdev.
-        let mut aes = Mappings::new();
-        aes.insert("pos2", col("__ggsql_aes_pos2__"));
-        let schema = numeric_schema(&["__ggsql_aes_pos2__"]);
-        let mut params = HashMap::new();
-        params.insert(
-            "aggregate".to_string(),
-            ParameterValue::String("median+2sdev".to_string()),
-        );
-
-        let result = apply(
-            "SELECT * FROM t",
-            &schema,
-            &aes,
-            &[],
-            &params,
-            &NoInlineQuantileDialect,
-            &[2],
-            None,
-        )
-        .unwrap();
-        match result {
-            StatResult::Transformed { query, .. } => {
-                assert!(query.contains("NTILE(4)"));
-                assert!(query.contains("STDDEV_POP"));
-                assert!(query.contains("2 * "));
-            }
-            _ => panic!("expected Transformed"),
-        }
-    }
-
-    #[test]
-    fn band_with_default_modifier_omits_one_prefix() {
-        let mut aes = Mappings::new();
-        aes.insert("pos2", col("__ggsql_aes_pos2__"));
-        let schema = numeric_schema(&["__ggsql_aes_pos2__"]);
-        let mut params = HashMap::new();
-        params.insert(
-            "aggregate".to_string(),
-            ParameterValue::String("mean+sdev".to_string()),
-        );
-
-        let result = apply(
-            "SELECT * FROM t",
-            &schema,
-            &aes,
-            &[],
-            &params,
-            &InlineQuantileDialect,
-            &[2],
-            None,
-        )
-        .unwrap();
-        match result {
-            StatResult::Transformed { query, .. } => {
-                // mod=1 case: (offset + exp), no `1 *` prefix.
-                assert!(
-                    query.contains(
-                        "AVG(\"__ggsql_aes_pos2__\") + STDDEV_POP(\"__ggsql_aes_pos2__\")"
-                    ),
-                    "expected `(AVG + STDDEV_POP)` form, got: {}",
-                    query
-                );
-                assert!(!query.contains("1 * STDDEV_POP"));
-            }
-            _ => panic!("expected Transformed"),
-        }
-    }
-
-    #[test]
-    fn range_mode_supports_decimal_band() {
-        // Ribbon range mode + 95% CI band.
-        let (aes, schema) = range_input_aes_with_group();
-        let mut params = HashMap::new();
-        use crate::plot::types::ArrayElement;
-        params.insert(
-            "aggregate".to_string(),
-            ParameterValue::Array(vec![
-                ArrayElement::String("mean-1.96sdev".to_string()),
-                ArrayElement::String("mean+1.96sdev".to_string()),
-            ]),
-        );
-
-        let result = apply(
-            "SELECT * FROM t",
-            &schema,
-            &aes,
-            &[],
-            &params,
-            &InlineQuantileDialect,
-            &[2],
-            range_pair(),
-        )
-        .unwrap();
-        match result {
-            StatResult::Transformed { query, .. } => {
-                assert!(query.contains("- 1.96 * STDDEV_POP"));
-                assert!(query.contains("+ 1.96 * STDDEV_POP"));
-            }
-            _ => panic!("expected Transformed"),
-        }
+        .unwrap_err();
+        let msg = format!("{}", err);
+        assert!(msg.contains("not mapped"), "got: {}", msg);
     }
 }

@@ -77,11 +77,18 @@ The `SETTING` clause can be used for two different things:
 A special setting is `position` which controls how overlapping objects are repositioned to avoid overlapping etc. Position adjustments have special mapping requirements so all position adjustments will not be relevant for all layer types. Different layers have different defaults as detailed in their documentation. You can read about each different position adjustment at [their own documentation sites](../index.qmd#position-adjustments).
 
 #### Aggregate
-Some layers support aggregation of its data through the `aggregate` setting. These layers will state this. `aggregate` allows a single string or an array of strings that specify the aggregation to calculate. The aggregates can be either a simple function or a parameterized band function.
+Some layers support aggregation of their data through the `aggregate` setting. These layers will state this. `aggregate` collapses each group to a single row, replacing every numeric mapping in place with its aggregated value. Groups are defined by `PARTITION BY` together with all discrete mappings.
 
-The simple functions can be one of:
+The setting takes a single string or an array of strings. Each string is one of:
 
-* `'count'`: Row count
+* **Default** — `'<func>'` (no prefix). With one default the function applies to every untargeted numeric mapping. With two defaults the first is used for the lower side of range layers (e.g. `x`/`xmin`) plus all non-range layers, and the second is used for the upper side of range layers (e.g. `xend`/`xmax`). More than two defaults is an error.
+* **Target** — `'<aes>:<func>'`. Applies `func` to the named aesthetic only (`<aes>` is a user-facing name like `x`, `y`, `xmin`, `xmax`, `xend`, `yend`, `color`, `size`, …). A target overrides any default for that aesthetic.
+
+A numeric mapping that has neither a target nor an applicable default is dropped from the layer with a warning.
+
+The simple functions are:
+
+* `'count'`: Non-null tally of the bound column.
 * `'sum'` and `'prod'`: The sum or product
 * `'min'`, `'max'`, and `'range'`: Extremes and max - min
 * `'mean'`, and `'median'`: Central tendency
@@ -94,6 +101,8 @@ For band functions you combine an offset with an expansion, potentially multipli
 Allowed offsets are: `'mean'`, `'median'`, `'geomean'`, `'harmean'`, `'rms'`, `'sum'`, `'prod'`, `'min'`, `'max'`, and `'p05'`–`'p95'`
 
 Allowed expansions are: `'sdev'`, `'se'`, `'var'`, `'iqr'`, and `'range'`
+
+Aggregation applies in place: there is no extra `aggregate` column to remap, and you do not need a `REMAPPING` clause to consume aggregate output. The aggregated value replaces the bound column for the same aesthetic.
 
 ### `FILTER`
 ```ggsql

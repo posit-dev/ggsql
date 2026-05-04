@@ -205,18 +205,6 @@ pub fn apply_remappings_post_query(df: DataFrame, layer: &Layer) -> Result<DataF
     Ok(df)
 }
 
-/// Count the number of aggregate functions requested in the `aggregate` SETTING.
-/// Used to gate auto-promotion of the `aggregate` stat column to `partition_by`:
-/// a single function produces a constant column, and partitioning by it adds a
-/// useless detail channel.
-fn aggregate_param_function_count(parameters: &HashMap<String, ParameterValue>) -> usize {
-    match parameters.get("aggregate") {
-        Some(ParameterValue::String(_)) => 1,
-        Some(ParameterValue::Array(arr)) => arr.len(),
-        _ => 0,
-    }
-}
-
 /// Convert a literal value to an Arrow ArrayRef with constant values.
 ///
 /// For string literals, attempts to parse as temporal types (date/datetime/time)
@@ -453,6 +441,7 @@ pub fn apply_layer_transforms<F>(
     scales: &[Scale],
     dialect: &dyn SqlDialect,
     execute_query: &F,
+    aesthetic_ctx: &AestheticContext,
 ) -> Result<String>
 where
     F: Fn(&str) -> Result<DataFrame>,
@@ -528,6 +517,7 @@ where
         &layer.parameters,
         execute_query,
         dialect,
+        aesthetic_ctx,
     )?;
 
     // Flip user remappings BEFORE merging defaults for Transposed orientation.
@@ -601,15 +591,15 @@ where
                 layer.mappings.aesthetics.remove(aes);
             }
 
-            // Auto-remap stat columns whose names are position aesthetics that were
-            // consumed by the stat (e.g. Aggregate's `pos1`/`pos2` outputs). The geom
-            // can't list these in `default_remappings` because the set of position
-            // aesthetics in play is dynamic per layer.
+            // Auto-remap stat columns whose names match aesthetics that were
+            // consumed by the stat (e.g. Aggregate's per-aesthetic outputs). The
+            // geom can't list these in `default_remappings` because the set of
+            // mapped aesthetics is dynamic per layer.
             for stat in &stat_columns {
                 if final_remappings.contains_key(stat) {
                     continue;
                 }
-                if aesthetic::is_position_aesthetic(stat) && consumed_aesthetics.contains(stat) {
+                if consumed_aesthetics.contains(stat) {
                     final_remappings.insert(stat.clone(), stat.clone());
                 }
             }
@@ -648,30 +638,6 @@ where
                         is_dummy,
                     };
                     layer.mappings.insert(aesthetic.clone(), value);
-                }
-            }
-
-            // The `aggregate` stat column (produced by stat_aggregate when the
-            // user requests multiple functions) tags each row with its function
-            // name. For mark types that connect rows within a group (line, area,
-            // path, polygon), we need to add this column to `layer.partition_by`
-            // so that e.g. `aggregate => ('min', 'max')` renders as two separate
-            // lines rather than one zigzag through both. Resolves to the
-            // post-rename data-column name: if the user remapped `aggregate AS
-            // <aes>`, the prefixed aesthetic column; otherwise the stat column.
-            //
-            // Only fires when more than one function is requested — a single
-            // function produces a constant aggregate column, partitioning by
-            // which would just add a no-op detail channel.
-            if stat_columns.iter().any(|s| s == "aggregate")
-                && aggregate_param_function_count(&layer.parameters) > 1
-            {
-                let partition_col = match final_remappings.get("aggregate") {
-                    Some(aes) => naming::aesthetic_column(aes),
-                    None => naming::stat_column("aggregate"),
-                };
-                if !layer.partition_by.contains(&partition_col) {
-                    layer.partition_by.push(partition_col);
                 }
             }
 
