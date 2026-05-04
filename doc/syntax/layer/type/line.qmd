@@ -96,13 +96,12 @@ DRAW line
 SCALE linewidth TO (0, 30)
 ```
 
-Use aggregation to draw min and max lines from a set of observations. Each layer produces one summary trace; stack two layers for both bounds.
+Use aggregation to draw min and max lines from a set of observations on a single layer. Targeting `y` twice produces one summary line per function within the same layer, with a synthetic `aggregate` column tagging each row that you can remap to colour the lines distinctly:
 
 ```{ggsql}
 VISUALISE Day AS x, Temp AS y FROM ggsql:airquality
 DRAW line
-  SETTING aggregate => 'min'
-DRAW line
-  SETTING aggregate => 'max'
+  REMAPPING aggregate AS stroke
+  SETTING aggregate => ('y:min', 'y:max')
 DRAW point
 ```

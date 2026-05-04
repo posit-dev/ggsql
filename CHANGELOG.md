@@ -3,13 +3,21 @@
 ### Added
 
 - New `aggregate` SETTING on Identity-stat layers (point, line, area, bar, ribbon,
-range, segment, arrow, rule, text). Collapses each group to a single row by
-replacing every numeric mapping in place with its aggregated value. Accepts a
-single string or array of strings; entries are either unprefixed defaults
-(`'mean'`) or per-aesthetic targets (`'y:max'`, `'color:median'`). Up to two
-defaults may be supplied — the first applies to lower-half aesthetics plus all
-non-range layers, the second to upper-half (`max`/`end` suffix). Numeric
-mappings without a target or applicable default are dropped with a warning.
+range, segment, arrow, rule, text). By default it collapses each group to a
+single row by replacing every numeric mapping in place with its aggregated
+value. Accepts a single string or array of strings; entries are either
+unprefixed defaults (`'mean'`) or per-aesthetic targets (`'y:max'`,
+`'color:median'`). Up to two defaults may be supplied — the first applies to
+lower-half aesthetics plus all non-range layers, the second to upper-half
+(`max`/`end` suffix). Numeric mappings without a target or applicable default
+are dropped with a warning. Targeting the same aesthetic more than once
+(e.g. `aggregate => ('y:min', 'y:max')`) produces one row per function with
+a synthetic `aggregate` column tagging each row, available for `REMAPPING` to
+another aesthetic; targets with a single function and the unprefixed defaults
+are reused unchanged across the exploded rows. The `aggregate` column's value
+is built from the dedup-and-joined function names of all exploded targets at
+each row, separated by `/` (so `('y:min', 'y:max', 'color:sum', 'color:prod')`
+yields `'min/sum'` and `'max/prod'`). Mixed lengths above 1 are an error.
 - Add cell delimiters and code lens actions to the Positron extension (#366)
 - ODBC is now turned on for the CLI as well (#344)
 - `FROM` can now come before `VISUALIZE`, mirroring the DuckDB style. This means

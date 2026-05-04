@@ -604,6 +604,24 @@ where
                 }
             }
 
+            // The synthetic `aggregate` stat column produced by an exploded
+            // Aggregate stat tags each row with its function name. For mark
+            // types that connect rows within a group (line, area, path,
+            // polygon) we add this column to `layer.partition_by` so e.g.
+            // `aggregate => ('y:min', 'y:max')` renders as two separate lines
+            // rather than one zigzag through both. Resolves to the post-rename
+            // data-column name: if the user remapped `aggregate AS <aes>`, the
+            // prefixed aesthetic column; otherwise the stat column.
+            if stat_columns.iter().any(|s| s == "aggregate") {
+                let partition_col = match final_remappings.get("aggregate") {
+                    Some(aes) => naming::aesthetic_column(aes),
+                    None => naming::stat_column("aggregate"),
+                };
+                if !layer.partition_by.contains(&partition_col) {
+                    layer.partition_by.push(partition_col);
+                }
+            }
+
             // Apply stat_columns to layer aesthetics using the remappings
             for stat in &stat_columns {
                 if let Some(aesthetic) = final_remappings.get(stat) {

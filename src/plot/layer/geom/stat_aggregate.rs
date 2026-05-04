@@ -153,15 +153,20 @@ fn parse_mod_and_remainder(s: &str) -> (f64, &str) {
 // AggregateSpec — parsed representation of the `aggregate` SETTING.
 // =============================================================================
 
-/// Parsed `aggregate` SETTING: zero, one, or two unprefixed defaults plus an
-/// optional set of per-aesthetic targets keyed by user-facing aesthetic name.
+/// Parsed `aggregate` SETTING.
+///
+/// Up to two unprefixed defaults plus per-aesthetic targets. A target may be
+/// named more than once; the multiple functions cause that aesthetic to
+/// *explode* into multiple rows per group
 #[derive(Debug, Clone, PartialEq)]
 pub struct AggregateSpec {
     pub default_lower: Option<AggSpec>,
     pub default_upper: Option<AggSpec>,
-    /// Targets keyed by user-facing aesthetic name (e.g. `"y"`, `"xmax"`,
-    /// `"color"`). Resolved to internal names at apply-time.
-    pub targets: HashMap<String, AggSpec>,
+    /// Targets in declaration order. Each entry is `(user-facing aesthetic,
+    /// non-empty list of functions)`. Multiple SETTING entries with the same
+    /// aesthetic are merged into one list during parsing — the cumulative
+    /// length determines that aesthetic's explosion factor.
+    pub targets: Vec<(String, Vec<AggSpec>)>,
 }
 
 impl AggregateSpec {
@@ -169,13 +174,81 @@ impl AggregateSpec {
         Self {
             default_lower: None,
             default_upper: None,
-            targets: HashMap::new(),
+            targets: Vec::new(),
+        }
+    }
+
+    /// Maximum target list length, or `1` if every target has a single function.
+    /// This is the number of exploded rows the stat will emit per group.
+    pub fn explosion_factor(&self) -> usize {
+        self.targets
+            .iter()
+            .map(|(_, fns)| fns.len())
+            .max()
+            .unwrap_or(1)
+            .max(1)
+    }
+
+    /// Per-row labels for the synthetic `aggregate` column. `None` for the
+    /// single-row case (no explosion), since the column only makes sense as a
+    /// row-differentiator and there's nothing to differentiate.
+    ///
+    /// For each row in `0..explosion_factor`, walks every *exploded* target
+    /// (length == n; length-1 recycled targets are skipped because they take
+    /// the same value on every row), collects each target's function name at
+    /// that row, deduplicates them while preserving declaration order, and
+    /// joins with `/`.
+    ///
+    /// Examples (with `n = 2`):
+    /// - `('y:min', 'y:max')` → `['min', 'max']`
+    /// - `('y:min', 'y:max', 'color:sum', 'color:prod')` → `['min/sum', 'max/prod']`
+    /// - `('y:mean', 'y:max', 'color:mean', 'color:prod')` → `['mean', 'max/prod']`
+    /// - `('y:min', 'y:max', 'color:median')` → `['min', 'max']` (color is recycled)
+    pub fn explosion_labels(&self) -> Option<Vec<String>> {
+        let n = self.explosion_factor();
+        if n <= 1 {
+            return None;
+        }
+        let exploded: Vec<&Vec<AggSpec>> = self
+            .targets
+            .iter()
+            .filter(|(_, fns)| fns.len() == n)
+            .map(|(_, fns)| fns)
+            .collect();
+        let labels = (0..n)
+            .map(|row| {
+                let mut parts: Vec<String> = Vec::new();
+                for fns in &exploded {
+                    let label = agg_label(&fns[row]);
+                    if !parts.contains(&label) {
+                        parts.push(label);
+                    }
+                }
+                parts.join("/")
+            })
+            .collect();
+        Some(labels)
+    }
+}
+
+/// Human-readable label for an `AggSpec`. Re-emits simple names verbatim and
+/// reconstructs band names like `mean+sdev`.
+fn agg_label(spec: &AggSpec) -> String {
+    match &spec.band {
+        None => spec.offset.to_string(),
+        Some(b) => {
+            if b.mod_value == 1.0 {
+                format!("{}{}{}", spec.offset, b.sign, b.expansion)
+            } else {
+                format!("{}{}{}{}", spec.offset, b.sign, b.mod_value, b.expansion)
+            }
         }
     }
 }
 
-/// Parse the `aggregate` SETTING value into an `AggregateSpec`. Returns `Ok(None)`
-/// when the parameter is unset or null. Returns `Err(...)` for malformed input.
+/// Parse the `aggregate` SETTING value into an `AggregateSpec`. Returns
+/// `Ok(None)` when the parameter is unset, null, or empty. Returns `Err(...)`
+/// for malformed input.
 pub fn parse_aggregate_param(
     value: &ParameterValue,
 ) -> std::result::Result<Option<AggregateSpec>, String> {
@@ -217,13 +290,12 @@ pub fn parse_aggregate_param(
                     diagnose_invalid_function_name(func)
                 )
             })?;
-            if spec.targets.contains_key(aes) {
-                return Err(format!(
-                    "aesthetic '{}' is targeted by more than one aggregate",
-                    aes
-                ));
+            // Append to existing list for this aesthetic, or create one.
+            if let Some((_, fns)) = spec.targets.iter_mut().find(|(a, _)| a == aes) {
+                fns.push(agg);
+            } else {
+                spec.targets.push((aes.to_string(), vec![agg]));
             }
-            spec.targets.insert(aes.to_string(), agg);
         } else {
             let agg = parse_agg_name(entry)
                 .ok_or_else(|| diagnose_invalid_function_name(entry))?;
@@ -243,6 +315,23 @@ pub fn parse_aggregate_param(
     if spec.default_lower.is_none() && spec.default_upper.is_none() && spec.targets.is_empty() {
         return Ok(None);
     }
+
+    // Validate recycling: every target list must be length 1 or N (the max).
+    let n = spec.explosion_factor();
+    if n > 1 {
+        for (aes, fns) in &spec.targets {
+            if fns.len() != 1 && fns.len() != n {
+                return Err(format!(
+                    "aggregate target '{}' has {} functions; targets in an exploded layer must \
+                     have either 1 or {} functions (the longest target's count)",
+                    aes,
+                    fns.len(),
+                    n
+                ));
+            }
+        }
+    }
+
     Ok(Some(spec))
 }
 
@@ -506,8 +595,10 @@ fn is_upper_half(internal_aes: &str) -> bool {
 /// Apply the Aggregate stat to a layer query.
 ///
 /// Returns `StatResult::Identity` when the `aggregate` parameter is unset, null,
-/// or empty. Otherwise, builds a single-pass `GROUP BY` query producing one row
-/// per group with one aggregated column per kept numeric mapping.
+/// or empty. Otherwise, builds a `GROUP BY` query producing one row per group
+/// (the *reduce* path) — or, when at least one target lists multiple functions,
+/// `N` rows per group with a synthetic `aggregate` column tagging each row
+/// (the *explode* path).
 #[allow(clippy::too_many_arguments)]
 pub fn apply(
     query: &str,
@@ -528,12 +619,15 @@ pub fn apply(
         Some(s) => s,
         None => return Ok(StatResult::Identity),
     };
+    let n = spec.explosion_factor();
+    let labels = spec.explosion_labels();
 
-    // Resolve target keys (user-facing) → internal aesthetic names. An alias
-    // like `color` expands to whichever of its targets (stroke/fill) is mapped
-    // on the layer; the function applies to all of them.
-    let mut targets_internal: HashMap<String, AggSpec> = HashMap::new();
-    for (user_aes, agg) in &spec.targets {
+    // Resolve target keys (user-facing) → internal aesthetic names, keeping
+    // each target's function list. An alias like `color` expands to whichever
+    // of its targets (stroke/fill) is mapped on the layer; the same list
+    // applies to all of them.
+    let mut targets_internal: HashMap<String, Vec<AggSpec>> = HashMap::new();
+    for (user_aes, fns) in &spec.targets {
         let resolved = resolve_target_aesthetic(user_aes, aesthetics, aesthetic_ctx);
         if resolved.is_empty() {
             return Err(GgsqlError::ValidationError(format!(
@@ -548,15 +642,15 @@ pub fn apply(
                     user_aes, internal
                 )));
             }
-            targets_internal.insert(internal, agg.clone());
+            targets_internal.insert(internal, fns.clone());
         }
     }
 
     // Walk mappings. Three buckets:
-    //   - aggregated: (internal_aes, raw_col, AggSpec) — each emits one column
+    //   - aggregated: (internal_aes, raw_col, fns of length n) — each emits one column per row
     //   - kept_cols: discrete column-mappings — keep as group key
     //   - dropped: numeric mapping with no applicable function (warn & skip)
-    let mut aggregated: Vec<(String, String, AggSpec)> = Vec::new();
+    let mut aggregated: Vec<(String, String, Vec<AggSpec>)> = Vec::new();
     let mut kept_cols: Vec<String> = Vec::new();
     let mut dropped: Vec<String> = Vec::new();
 
@@ -577,20 +671,26 @@ pub fn apply(
             continue;
         }
 
-        // Numeric mapping. Look up the aggregation function.
-        let agg = if let Some(targeted) = targets_internal.get(aes) {
-            Some(targeted.clone())
-        } else if is_upper_half(aes) {
-            spec.default_upper
-                .clone()
-                .or_else(|| spec.default_lower.clone())
-                .filter(|_| spec.default_upper.is_some() || spec.default_lower.is_some())
+        // Numeric mapping. Look up the function list (recycling to length n).
+        let fns: Option<Vec<AggSpec>> = if let Some(list) = targets_internal.get(aes) {
+            if list.len() == n {
+                Some(list.clone())
+            } else {
+                // Validated to be 1 or n during parsing; guard with a sanity check.
+                debug_assert_eq!(list.len(), 1);
+                Some(vec![list[0].clone(); n])
+            }
         } else {
-            spec.default_lower.clone()
+            let default = if is_upper_half(aes) {
+                spec.default_upper.clone().or_else(|| spec.default_lower.clone())
+            } else {
+                spec.default_lower.clone()
+            };
+            default.map(|d| vec![d; n])
         };
 
-        match agg {
-            Some(a) => aggregated.push((aes.clone(), col, a)),
+        match fns {
+            Some(list) => aggregated.push((aes.clone(), col, list)),
             None => dropped.push(aes.clone()),
         }
     }
@@ -629,11 +729,19 @@ pub fn apply(
         }
     }
 
-    let transformed_query =
-        build_group_by_query(query, &aggregated, &group_cols, dialect);
+    let transformed_query = match &labels {
+        Some(ls) => build_aggregate_query(query, &aggregated, &group_cols, ls, dialect),
+        None => build_group_by_query(query, &aggregated, &group_cols, dialect),
+    };
 
-    let stat_columns: Vec<String> = aggregated.iter().map(|(a, _, _)| a.clone()).collect();
+    let mut stat_columns: Vec<String> = aggregated.iter().map(|(a, _, _)| a.clone()).collect();
     let consumed_aesthetics: Vec<String> = stat_columns.clone();
+    // The synthetic `aggregate` column is only emitted for the multi-row
+    // (explosion) case, where it differentiates rows that share the same
+    // group key.
+    if labels.is_some() {
+        stat_columns.push("aggregate".to_string());
+    }
 
     Ok(StatResult::Transformed {
         query: transformed_query,
@@ -643,14 +751,15 @@ pub fn apply(
     })
 }
 
-/// Build the `WITH src AS (<query>) SELECT <group cols>, <agg exprs> FROM src
-/// AS "__ggsql_qt__" GROUP BY <group cols>` query.
+/// Build the single-row `WITH src AS (<query>) SELECT <group cols>, <agg exprs>
+/// FROM src AS "__ggsql_qt__" GROUP BY <group cols>` query. Each aggregated
+/// aesthetic's function list is length 1 here.
 ///
 /// Falls back to `dialect.sql_percentile()` per-column when an aggregate's
 /// percentile component lacks inline support.
 fn build_group_by_query(
     query: &str,
-    aggregated: &[(String, String, AggSpec)],
+    aggregated: &[(String, String, Vec<AggSpec>)],
     group_cols: &[String],
     dialect: &dyn SqlDialect,
 ) -> String {
@@ -666,7 +775,8 @@ fn build_group_by_query(
 
     let mut select_parts: Vec<String> = group_select.clone();
 
-    for (aes, raw_col, agg) in aggregated {
+    for (aes, raw_col, fns) in aggregated {
+        let agg = &fns[0];
         let stat_col = naming::stat_column(aes);
         let qcol = naming::quote_ident(raw_col);
         let expr = if needs_quantile_fallback(agg, raw_col, dialect) {
@@ -686,6 +796,76 @@ fn build_group_by_query(
         outer = outer_alias,
         gb = group_by_clause,
     )
+}
+
+/// Build the exploded `WITH src AS (<query>) <branch_0> UNION ALL <branch_1>
+/// ...` query. One branch per row in `0..labels.len()`, each branch its own
+/// `GROUP BY` with the row's aggregation functions and a literal label tagged
+/// to `__ggsql_stat_aggregate__`.
+fn build_aggregate_query(
+    query: &str,
+    aggregated: &[(String, String, Vec<AggSpec>)],
+    group_cols: &[String],
+    labels: &[String],
+    dialect: &dyn SqlDialect,
+) -> String {
+    let src_alias = "\"__ggsql_stat_src__\"";
+    let outer_alias = "\"__ggsql_qt__\"";
+
+    let group_select: Vec<String> = group_cols.iter().map(|c| naming::quote_ident(c)).collect();
+    let group_by_clause = if group_cols.is_empty() {
+        String::new()
+    } else {
+        format!(" GROUP BY {}", group_select.join(", "))
+    };
+
+    let stat_aggregate_col = naming::stat_column("aggregate");
+
+    let branches: Vec<String> = labels
+        .iter()
+        .enumerate()
+        .map(|(row_idx, label)| {
+            let mut select_parts: Vec<String> = group_select.clone();
+
+            for (aes, raw_col, fns) in aggregated {
+                let agg = &fns[row_idx];
+                let stat_col = naming::stat_column(aes);
+                let qcol = naming::quote_ident(raw_col);
+                let expr = if needs_quantile_fallback(agg, raw_col, dialect) {
+                    agg_sql_fallback(agg, raw_col, dialect, src_alias, group_cols)
+                } else {
+                    agg_sql_inline(agg, &qcol, dialect)
+                        .expect("agg_sql_inline must succeed when needs_quantile_fallback is false")
+                };
+                select_parts.push(format!("{} AS {}", expr, naming::quote_ident(&stat_col)));
+            }
+
+            select_parts.push(format!(
+                "{} AS {}",
+                func_literal(label),
+                naming::quote_ident(&stat_aggregate_col)
+            ));
+
+            format!(
+                "SELECT {} FROM {} AS {}{}",
+                select_parts.join(", "),
+                src_alias,
+                outer_alias,
+                group_by_clause,
+            )
+        })
+        .collect();
+
+    format!(
+        "WITH {src} AS ({query}) {body}",
+        src = src_alias,
+        query = query,
+        body = branches.join(" UNION ALL "),
+    )
+}
+
+fn func_literal(s: &str) -> String {
+    format!("'{}'", s.replace('\'', "''"))
 }
 
 #[cfg(test)]
@@ -788,20 +968,107 @@ mod tests {
         assert!(err.contains("at most two"), "got: {}", err);
     }
 
+    fn target_funcs<'a>(spec: &'a AggregateSpec, aes: &str) -> Option<&'a [AggSpec]> {
+        spec.targets
+            .iter()
+            .find(|(a, _)| a == aes)
+            .map(|(_, fns)| fns.as_slice())
+    }
+
     #[test]
     fn parses_targeted_entries() {
         let s = parse_aggregate_param(&arr(&["mean", "y:max", "color:median"]))
             .unwrap()
             .unwrap();
         assert_eq!(s.default_lower.as_ref().map(|a| a.offset), Some("mean"));
-        assert_eq!(s.targets.get("y").map(|a| a.offset), Some("max"));
-        assert_eq!(s.targets.get("color").map(|a| a.offset), Some("median"));
+        assert_eq!(target_funcs(&s, "y").map(|fs| fs[0].offset), Some("max"));
+        assert_eq!(target_funcs(&s, "color").map(|fs| fs[0].offset), Some("median"));
     }
 
     #[test]
-    fn duplicate_target_is_error() {
-        let err = parse_aggregate_param(&arr(&["y:mean", "y:median"])).unwrap_err();
-        assert!(err.contains("more than one aggregate"), "got: {}", err);
+    fn duplicate_target_explodes_into_a_list() {
+        let s = parse_aggregate_param(&arr(&["y:min", "y:max"])).unwrap().unwrap();
+        let fns = target_funcs(&s, "y").unwrap();
+        assert_eq!(fns.len(), 2);
+        assert_eq!(fns[0].offset, "min");
+        assert_eq!(fns[1].offset, "max");
+        assert_eq!(s.explosion_factor(), 2);
+        assert_eq!(
+            s.explosion_labels(),
+            Some(vec!["min".to_string(), "max".to_string()])
+        );
+    }
+
+    #[test]
+    fn multi_aesthetic_explosion_joins_unique_function_names() {
+        // Two exploded targets contribute distinct function names per row → 'min/sum', 'max/prod'.
+        let s = parse_aggregate_param(&arr(&["y:min", "y:max", "color:sum", "color:prod"]))
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            s.explosion_labels(),
+            Some(vec!["min/sum".to_string(), "max/prod".to_string()])
+        );
+    }
+
+    #[test]
+    fn multi_aesthetic_explosion_dedups_repeats() {
+        // y and color both use 'mean' at row 0 → label is just 'mean' (deduped).
+        let s = parse_aggregate_param(&arr(&["y:mean", "y:max", "color:mean", "color:prod"]))
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            s.explosion_labels(),
+            Some(vec!["mean".to_string(), "max/prod".to_string()])
+        );
+    }
+
+    #[test]
+    fn recycled_target_excluded_from_label() {
+        // color has length 1 → recycled, not exploded; label only reflects y's functions.
+        let s = parse_aggregate_param(&arr(&["y:min", "y:max", "color:median"]))
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            s.explosion_labels(),
+            Some(vec!["min".to_string(), "max".to_string()])
+        );
+    }
+
+    #[test]
+    fn single_row_returns_no_labels() {
+        // The aggregate column only makes sense as a row-differentiator, and a
+        // single-row aggregation has nothing to differentiate, so no labels.
+        let s = parse_aggregate_param(&ParameterValue::String("mean".to_string()))
+            .unwrap()
+            .unwrap();
+        assert_eq!(s.explosion_labels(), None);
+
+        let s = parse_aggregate_param(&arr(&["mean", "color:median"])).unwrap().unwrap();
+        assert_eq!(s.explosion_labels(), None);
+    }
+
+    #[test]
+    fn recycling_violation_is_error() {
+        // y has 2, color has 3 → mismatched, neither is 1 nor matches the longest.
+        let err = parse_aggregate_param(&arr(&[
+            "y:min",
+            "y:max",
+            "color:p10",
+            "color:p50",
+            "color:p90",
+        ]))
+        .unwrap_err();
+        assert!(err.contains("longest target"), "got: {}", err);
+    }
+
+    #[test]
+    fn length_one_target_recycles_in_explosion() {
+        let s = parse_aggregate_param(&arr(&["y:min", "y:max", "color:median"]))
+            .unwrap()
+            .unwrap();
+        assert_eq!(s.explosion_factor(), 2);
+        assert_eq!(target_funcs(&s, "color").map(|f| f.len()), Some(1));
     }
 
     #[test]
@@ -1037,6 +1304,128 @@ mod tests {
                 assert!(query.contains("MAX(\"__ggsql_aes_fill__\")"), "{}", query);
                 assert!(query.contains("AVG(\"__ggsql_aes_pos1__\")"));
                 assert!(stat_columns.contains(&"fill".to_string()));
+            }
+            _ => panic!("expected Transformed"),
+        }
+    }
+
+    #[test]
+    fn explosion_emits_union_all_with_aggregate_label_column() {
+        // ('y:min', 'y:max') on a line-style layer → 2 rows per group, each
+        // tagged with the function name in __ggsql_stat_aggregate__.
+        let mut aes = Mappings::new();
+        aes.insert("pos1", col("__ggsql_aes_pos1__"));
+        aes.insert("pos2", col("__ggsql_aes_pos2__"));
+        let schema = schema_for(&[
+            ("__ggsql_aes_pos1__", false),
+            ("__ggsql_aes_pos2__", false),
+        ]);
+        let result = run(arr(&["y:min", "y:max"]), &aes, &schema, &[], &InlineQuantileDialect)
+            .unwrap();
+        match result {
+            StatResult::Transformed {
+                query,
+                stat_columns,
+                consumed_aesthetics,
+                ..
+            } => {
+                assert!(query.contains("UNION ALL"), "{}", query);
+                assert!(query.contains("MIN(\"__ggsql_aes_pos2__\")"), "{}", query);
+                assert!(query.contains("MAX(\"__ggsql_aes_pos2__\")"), "{}", query);
+                assert!(query.contains("'min' AS \"__ggsql_stat_aggregate\""));
+                assert!(query.contains("'max' AS \"__ggsql_stat_aggregate\""));
+                // Aesthetics consumed: pos2. The synthetic `aggregate` is in
+                // stat_columns but NOT consumed (it's a new column).
+                assert!(consumed_aesthetics.contains(&"pos2".to_string()));
+                assert!(!consumed_aesthetics.contains(&"aggregate".to_string()));
+                assert!(stat_columns.contains(&"aggregate".to_string()));
+            }
+            _ => panic!("expected Transformed"),
+        }
+    }
+
+    #[test]
+    fn explosion_recycles_length_one_targets_and_defaults() {
+        // ('mean', 'y:min', 'y:max', 'color:median'):
+        //   - default 'mean' applies to non-targeted aesthetics, recycled
+        //   - y is exploded into [min, max] → N=2
+        //   - color is targeted with one function → recycled to [median, median]
+        let mut aes = Mappings::new();
+        aes.insert("pos1", col("__ggsql_aes_pos1__"));
+        aes.insert("pos2", col("__ggsql_aes_pos2__"));
+        aes.insert("fill", col("__ggsql_aes_fill__"));
+        aes.insert("size", col("__ggsql_aes_size__"));
+        let schema = schema_for(&[
+            ("__ggsql_aes_pos1__", false),
+            ("__ggsql_aes_pos2__", false),
+            ("__ggsql_aes_fill__", false),
+            ("__ggsql_aes_size__", false),
+        ]);
+        let result = run(
+            arr(&["mean", "y:min", "y:max", "color:median"]),
+            &aes,
+            &schema,
+            &[],
+            &InlineQuantileDialect,
+        )
+        .unwrap();
+        match result {
+            StatResult::Transformed { query, .. } => {
+                // y is exploded → MIN and MAX appear in different branches
+                assert!(query.contains("MIN(\"__ggsql_aes_pos2__\")"), "{}", query);
+                assert!(query.contains("MAX(\"__ggsql_aes_pos2__\")"));
+                // color (alias → fill) is recycled → QUANTILE_CONT(.5) appears in BOTH branches
+                let median_count = query.matches("QUANTILE_CONT(\"__ggsql_aes_fill__\", 0.5)").count();
+                assert_eq!(median_count, 2, "color median should appear once per branch: {}", query);
+                // size has no target → uses default 'mean' → AVG appears in both branches
+                let avg_size = query.matches("AVG(\"__ggsql_aes_size__\")").count();
+                assert_eq!(avg_size, 2, "size mean should appear once per branch: {}", query);
+                // pos1 (no target) → mean → AVG appears in both branches
+                let avg_pos1 = query.matches("AVG(\"__ggsql_aes_pos1__\")").count();
+                assert_eq!(avg_pos1, 2);
+            }
+            _ => panic!("expected Transformed"),
+        }
+    }
+
+    #[test]
+    fn explosion_with_range_geom_two_defaults() {
+        // For ribbon: pos1 + pos2min (lower) + pos2max (upper).
+        // ('mean-sdev', 'mean+sdev', 'color:p25', 'color:p75'):
+        //   - two defaults split lower/upper for range aesthetics
+        //   - color is exploded → N=2
+        // Result: two rows, with color taking p25 in row 0 and p75 in row 1;
+        // pos1/pos2min always use mean-sdev, pos2max always uses mean+sdev.
+        let mut aes = Mappings::new();
+        aes.insert("pos1", col("__ggsql_aes_pos1__"));
+        aes.insert("pos2min", col("__ggsql_aes_pos2min__"));
+        aes.insert("pos2max", col("__ggsql_aes_pos2max__"));
+        aes.insert("fill", col("__ggsql_aes_fill__"));
+        let schema = schema_for(&[
+            ("__ggsql_aes_pos1__", false),
+            ("__ggsql_aes_pos2min__", false),
+            ("__ggsql_aes_pos2max__", false),
+            ("__ggsql_aes_fill__", false),
+        ]);
+        let result = run(
+            arr(&["mean-sdev", "mean+sdev", "color:p25", "color:p75"]),
+            &aes,
+            &schema,
+            &[],
+            &InlineQuantileDialect,
+        )
+        .unwrap();
+        match result {
+            StatResult::Transformed { query, stat_columns, .. } => {
+                assert!(query.contains("UNION ALL"));
+                // pos2max always uses mean+sdev (upper default) — a `+` between AVG and STDDEV
+                let upper_branch_marker = "AVG(\"__ggsql_aes_pos2max__\") + STDDEV_POP";
+                assert!(query.contains(upper_branch_marker), "{}", query);
+                // color uses p25 in one branch, p75 in another
+                assert!(query.contains("QUANTILE_CONT(\"__ggsql_aes_fill__\", 0.25)"));
+                assert!(query.contains("QUANTILE_CONT(\"__ggsql_aes_fill__\", 0.75)"));
+                // Synthetic aggregate column is present
+                assert!(stat_columns.contains(&"aggregate".to_string()));
             }
             _ => panic!("expected Transformed"),
         }
