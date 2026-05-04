@@ -33,12 +33,12 @@ mod arrow;
 mod bar;
 mod boxplot;
 mod density;
-mod errorbar;
 mod histogram;
 mod line;
 mod path;
 mod point;
 mod polygon;
+mod range;
 mod ribbon;
 mod rule;
 mod segment;
@@ -59,12 +59,12 @@ pub use arrow::Arrow;
 pub use bar::Bar;
 pub use boxplot::Boxplot;
 pub use density::Density;
-pub use errorbar::ErrorBar;
 pub use histogram::Histogram;
 pub use line::Line;
 pub use path::Path;
 pub use point::Point;
 pub use polygon::Polygon;
+pub use range::Range;
 pub use ribbon::Ribbon;
 pub use rule::Rule;
 pub use segment::Segment;
@@ -98,7 +98,7 @@ pub enum GeomType {
     Segment,
     Arrow,
     Rule,
-    ErrorBar,
+    Range,
     Spatial,
 }
 
@@ -122,7 +122,7 @@ impl std::fmt::Display for GeomType {
             GeomType::Segment => "segment",
             GeomType::Arrow => "arrow",
             GeomType::Rule => "rule",
-            GeomType::ErrorBar => "errorbar",
+            GeomType::Range => "range",
             GeomType::Spatial => "spatial",
         };
         write!(f, "{}", s)
@@ -349,9 +349,9 @@ impl Geom {
         Self(Arc::new(Rule))
     }
 
-    /// Create an ErrorBar geom
-    pub fn errorbar() -> Self {
-        Self(Arc::new(ErrorBar))
+    /// Create a Range geom
+    pub fn range() -> Self {
+        Self(Arc::new(Range))
     }
 
     /// Create a Spatial geom
@@ -379,7 +379,7 @@ impl Geom {
             GeomType::Segment => Self::segment(),
             GeomType::Arrow => Self::arrow(),
             GeomType::Rule => Self::rule(),
-            GeomType::ErrorBar => Self::errorbar(),
+            GeomType::Range => Self::range(),
             GeomType::Spatial => Self::spatial(),
         }
     }
@@ -542,7 +542,7 @@ mod tests {
     #[test]
     fn test_geom_type_display() {
         assert_eq!(format!("{}", GeomType::Point), "point");
-        assert_eq!(format!("{}", GeomType::ErrorBar), "errorbar");
+        assert_eq!(format!("{}", GeomType::Range), "range");
     }
 
     #[test]
@@ -592,7 +592,7 @@ mod tests {
             GeomType::Segment,
             GeomType::Arrow,
             GeomType::Rule,
-            GeomType::ErrorBar,
+            GeomType::Range,
             GeomType::Spatial,
         ];
 
@@ -616,7 +616,7 @@ mod tests {
             | GeomType::Segment
             | GeomType::Arrow
             | GeomType::Rule
-            | GeomType::ErrorBar
+            | GeomType::Range
             | GeomType::Spatial => {}
         };
 

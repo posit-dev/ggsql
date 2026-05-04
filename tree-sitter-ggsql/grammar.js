@@ -135,7 +135,7 @@ module.exports = grammar({
 
     // INSERT statement
     insert_statement: $ => prec.right(seq(
-      caseInsensitive('INSERT'),
+      token(prec(1, caseInsensitive('INSERT'))),
       repeat1(choice(
         $.sql_keyword,
         $.identifier,
@@ -149,7 +149,7 @@ module.exports = grammar({
 
     // UPDATE statement
     update_statement: $ => prec.right(seq(
-      caseInsensitive('UPDATE'),
+      token(prec(1, caseInsensitive('UPDATE'))),
       repeat1(choice(
         $.sql_keyword,
         $.identifier,
@@ -163,7 +163,7 @@ module.exports = grammar({
 
     // DELETE statement
     delete_statement: $ => prec.right(seq(
-      caseInsensitive('DELETE'),
+      token(prec(1, caseInsensitive('DELETE'))),
       repeat1(choice(
         $.sql_keyword,
         $.identifier,
@@ -177,7 +177,7 @@ module.exports = grammar({
 
     other_sql_statement: $ => prec(-1, repeat1(choice(
       $.non_from_sql_keyword,
-      token(/[^\s;(),'"]+/),
+      /[^\s;(),'"]+/,
       $.string,
       $.number,
       $.subquery,
@@ -243,6 +243,7 @@ module.exports = grammar({
     function_call: $ => prec(2, seq(
       $.identifier,
       '(',
+      optional($.set_quantifier),
       optional($.function_args),
       ')'
     )),
@@ -317,11 +318,17 @@ module.exports = grammar({
     window_function: $ => prec(4, seq(
       field('function', $.identifier),
       '(',
+      optional($.set_quantifier),
       optional($.function_args),
       ')',
       caseInsensitive('OVER'),
       $.window_specification
     )),
+
+    set_quantifier: $ => choice(
+      caseInsensitive('DISTINCT'),
+      caseInsensitive('ALL')
+    ),
 
     function_args: $ => seq(
       $.function_arg,
@@ -527,7 +534,7 @@ module.exports = grammar({
     geom_type: $ => choice(
       'point', 'line', 'path', 'bar', 'area', 'tile', 'polygon', 'ribbon',
       'histogram', 'density', 'smooth', 'boxplot', 'violin',
-      'text', 'label', 'segment', 'arrow', 'rule', 'errorbar',
+      'text', 'label', 'segment', 'arrow', 'rule', 'range',
       'spatial'
     ),
 

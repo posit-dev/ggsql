@@ -153,10 +153,7 @@ pub(crate) fn stat_density(
     dialect: &dyn SqlDialect,
 ) -> Result<StatResult> {
     let value = get_column_name(aesthetics, value_aesthetic).ok_or_else(|| {
-        GgsqlError::ValidationError(format!(
-            "Density requires '{}' aesthetic mapping",
-            value_aesthetic
-        ))
+        GgsqlError::ValidationError("Density requires a position aesthetic mapping".to_string())
     })?;
     let smooth = smooth_aesthetic.and_then(|smth| get_column_name(aesthetics, smth));
     let weight = get_column_name(aesthetics, "weight");
@@ -1183,6 +1180,33 @@ mod tests {
         println!(
             "Ops:     0 SQRT/PI()/POW() calls, {} multiplications/divisions per run (optimized)",
             512_000
+        );
+    }
+
+    // =========================================================================
+    // Internal aesthetic names must not appear in stat error messages
+    // =========================================================================
+
+    #[test]
+    fn stat_density_missing_value_aesthetic_emits_coord_agnostic_message() {
+        let mappings = crate::Mappings::new();
+        let parameters = std::collections::HashMap::new();
+        let dialect = AnsiDialect;
+
+        let err = stat_density(
+            "SELECT 1",
+            &mappings,
+            "pos1",
+            None,
+            &[],
+            &parameters,
+            &dialect,
+        )
+        .unwrap_err()
+        .to_string();
+        assert_eq!(
+            err,
+            "Validation error: Density requires a position aesthetic mapping"
         );
     }
 }

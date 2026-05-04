@@ -36,18 +36,14 @@ regex.workspace = true
 ureq = "3"
 
 [features]
-default = ["duckdb", "sqlite", "vegalite", "ipc", "parquet", "builtin-data", "odbc"]
-ipc = ["ggsql/ipc"]
+default = ["duckdb", "sqlite", "vegalite", "parquet", "builtin-data", "odbc"]
 duckdb = ["ggsql/duckdb"]
 parquet = ["ggsql/parquet"]
-postgres = ["ggsql/postgres"]
 sqlite = ["ggsql/sqlite"]
 odbc = ["ggsql/odbc"]
 vegalite = ["ggsql/vegalite"]
-ggplot2 = ["ggsql/ggplot2"]
 builtin-data = ["ggsql/builtin-data"]
-all-readers = ["duckdb", "postgres", "sqlite", "odbc"]
-all-writers = ["vegalite", "ggplot2"]
+all-readers = ["duckdb", "sqlite", "odbc"]
 
 # cargo-packager configuration for cross-platform installers
 [package.metadata.packager]

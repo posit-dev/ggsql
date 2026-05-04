@@ -112,7 +112,7 @@ PreparedData::Composite {
 ```
 - Datasets registered as: `datasets[data_key + component_name] = values` for each component
 - `__ggsql_source__` in unified data: `data_key + component_name`
-- **Use case**: Geoms that decompose into multiple sub-layers (boxplot, violin, errorbar)
+- **Use case**: Geoms that decompose into multiple sub-layers (boxplot, violin, range)
 - **Special case**: Empty component name (`""`) creates `data_key + "" = data_key` (useful for passing metadata without changing dataset key)
 
 ### Important Rules for Finalize

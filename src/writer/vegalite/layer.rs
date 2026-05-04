@@ -7,6 +7,7 @@
 //! Each geom type can override specific phases of the rendering pipeline while using
 //! sensible defaults for standard behavior.
 
+use crate::plot::aesthetic::AestheticContext;
 use crate::plot::layer::geom::GeomType;
 use crate::plot::layer::is_transposed;
 use crate::plot::{ArrayElement, ParameterValue};
@@ -44,7 +45,7 @@ pub fn geom_to_mark(geom: &Geom) -> Value {
         GeomType::Segment => "rule",
         GeomType::Smooth => "line",
         GeomType::Rule => "rule",
-        GeomType::ErrorBar => "rule",
+        GeomType::Range => "rule",
         GeomType::Spatial => "geoshape",
         _ => "point", // Default fallback
     };
@@ -55,7 +56,12 @@ pub fn geom_to_mark(geom: &Geom) -> Value {
 }
 
 /// Validate column references for a single layer against its specific DataFrame
-pub fn validate_layer_columns(layer: &Layer, data: &DataFrame, layer_idx: usize) -> Result<()> {
+pub fn validate_layer_columns(
+    layer: &Layer,
+    data: &DataFrame,
+    layer_idx: usize,
+    ctx: &AestheticContext,
+) -> Result<()> {
     let available_columns: Vec<String> = data
         .get_column_names()
         .iter()
@@ -70,11 +76,16 @@ pub fn validate_layer_columns(layer: &Layer, data: &DataFrame, layer_idx: usize)
                 } else {
                     " (global data)".to_string()
                 };
-                let display_col = naming::extract_aesthetic_name(col).unwrap_or(col.as_str());
+                // Translate both the column name (which may be wrapped, e.g.
+                // `__ggsql_aes_pos1__`) and the aesthetic key (which is in
+                // internal form, e.g. `pos1`) to the user-facing form.
+                let stripped = naming::extract_aesthetic_name(col).unwrap_or(col.as_str());
+                let display_col = ctx.map_internal_to_user(stripped);
+                let display_aes = ctx.map_internal_to_user(aesthetic);
                 return Err(GgsqlError::ValidationError(format!(
                     "Column '{}' referenced in aesthetic '{}' (layer {}{}) does not exist.\nAvailable columns: {}",
                     display_col,
-                    aesthetic,
+                    display_aes,
                     layer_idx + 1,
                     source_desc,
                     crate::and_list(&available_columns)
@@ -115,7 +126,7 @@ pub enum PreparedData {
         values: Vec<Value>,
         metadata: Box<dyn Any + Send + Sync>,
     },
-    /// Multiple component datasets (boxplot, violin, errorbar)
+    /// Multiple component datasets (boxplot, violin, range)
     Composite {
         components: HashMap<String, Vec<Value>>,
         metadata: Box<dyn Any + Send + Sync>,
@@ -213,6 +224,47 @@ pub trait GeomRenderer: Send + Sync {
 pub struct DefaultRenderer;
 
 impl GeomRenderer for DefaultRenderer {}
+
+// =============================================================================
+// Point Renderer
+// =============================================================================
+
+/// Renderer for the `point` geom.
+///
+/// Works around a Vega-Lite quirk: when `mark.filled` is omitted/`true` and the
+/// top-level `opacity` channel is unset, the renderer applies its own implicit
+/// opacity multiplier on top of `fillOpacity`/`strokeOpacity` — so even with
+/// `fillOpacity: 1.0`, the points appear semitransparent.
+///
+/// The fix:
+/// - Force `mark.filled = false`. Custom SVG shape paths (which ggsql always
+///   emits) are still rendered as filled regardless of this setting, so this
+///   only suppresses the implicit opacity behavior.
+/// - Force `encoding.opacity = {value: 1.0}`. With the global opacity pinned
+///   to 1.0, `fillOpacity` and `strokeOpacity` (set from the user's `opacity =>`
+///   setting upstream) become the actual opacity controls.
+pub struct PointRenderer;
+
+impl GeomRenderer for PointRenderer {
+    fn modify_spec(
+        &self,
+        layer_spec: &mut Value,
+        _layer: &Layer,
+        _context: &RenderContext,
+    ) -> Result<()> {
+        if let Some(mark) = layer_spec.get_mut("mark") {
+            if let Some(obj) = mark.as_object_mut() {
+                obj.insert("filled".to_string(), json!(false));
+            }
+        }
+        if let Some(encoding) = layer_spec.get_mut("encoding") {
+            if let Some(obj) = encoding.as_object_mut() {
+                obj.insert("opacity".to_string(), json!({"value": 1.0}));
+            }
+        }
+        Ok(())
+    }
+}
 
 // =============================================================================
 // Bar Renderer
@@ -619,31 +671,6 @@ impl GeomRenderer for PathRenderer {
         }
 
         Ok(vec![layer_spec])
-    }
-}
-
-// =============================================================================
-// Segment Renderer
-// =============================================================================
-
-pub struct SegmentRenderer;
-
-impl GeomRenderer for SegmentRenderer {
-    fn modify_encoding(
-        &self,
-        encoding: &mut Map<String, Value>,
-        _layer: &Layer,
-        context: &RenderContext,
-    ) -> Result<()> {
-        let (pos1, pos1_end, _, pos2, pos2_end, _) = &context.channels;
-        // If endpoint is missing, use start point (creates vertical/horizontal line)
-        if let Some(v) = encoding.get(pos1.as_str()).cloned() {
-            encoding.entry(pos1_end.clone()).or_insert(v);
-        }
-        if let Some(v) = encoding.get(pos2.as_str()).cloned() {
-            encoding.entry(pos2_end.clone()).or_insert(v);
-        }
-        Ok(())
     }
 }
 
@@ -1703,12 +1730,12 @@ impl GeomRenderer for ViolinRenderer {
 }
 
 // =============================================================================
-// Errorbar Renderer
+// Range Renderer
 // =============================================================================
 
-struct ErrorBarRenderer;
+struct RangeRenderer;
 
-impl GeomRenderer for ErrorBarRenderer {
+impl GeomRenderer for RangeRenderer {
     fn finalize(
         &self,
         layer_spec: Value,
@@ -2232,6 +2259,7 @@ impl GeomRenderer for SpatialRenderer {
 /// Get the appropriate renderer for a geom type
 pub fn get_renderer(geom: &Geom) -> Box<dyn GeomRenderer> {
     match geom.geom_type() {
+        GeomType::Point => Box::new(PointRenderer),
         GeomType::Path => Box::new(PathRenderer),
         GeomType::Line => Box::new(PathRenderer),
         GeomType::Bar => Box::new(BarRenderer),
@@ -2240,11 +2268,10 @@ pub fn get_renderer(geom: &Geom) -> Box<dyn GeomRenderer> {
         GeomType::Boxplot => Box::new(BoxplotRenderer),
         GeomType::Violin => Box::new(ViolinRenderer),
         GeomType::Text => Box::new(TextRenderer),
-        GeomType::Segment => Box::new(SegmentRenderer),
-        GeomType::ErrorBar => Box::new(ErrorBarRenderer),
+        GeomType::Range => Box::new(RangeRenderer),
         GeomType::Rule => Box::new(RuleRenderer),
         GeomType::Spatial => Box::new(SpatialRenderer),
-        // All other geoms (Point, Area, Ribbon, Density, etc.) use the default renderer
+        // All other geoms (Point, Area, Ribbon, Density, Segment, etc.) use the default renderer
         _ => Box::new(DefaultRenderer),
     }
 }
@@ -3747,13 +3774,21 @@ mod tests {
             label_mapping: None,
             label_template: "{}".to_string(),
         }];
-        let context = RenderContext::new(&scales, CoordKind::Cartesian);
+        let context = RenderContext::new(
+            &scales,
+            CoordKind::Cartesian,
+            AestheticContext::from_static(&["x", "y"], &[]),
+        );
         let result = context.get_extent("x");
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), (0.0, 10.0));
 
         // Test error case: scale not found
-        let context = RenderContext::new(&scales, CoordKind::Cartesian);
+        let context = RenderContext::new(
+            &scales,
+            CoordKind::Cartesian,
+            AestheticContext::from_static(&["x", "y"], &[]),
+        );
         let result = context.get_extent("y");
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("no scale found"));
@@ -3772,7 +3807,11 @@ mod tests {
             label_mapping: None,
             label_template: "{}".to_string(),
         }];
-        let context = RenderContext::new(&scales, CoordKind::Cartesian);
+        let context = RenderContext::new(
+            &scales,
+            CoordKind::Cartesian,
+            AestheticContext::from_static(&["x", "y"], &[]),
+        );
         let result = context.get_extent("x");
         assert!(result.is_err());
         assert!(result
@@ -3797,7 +3836,11 @@ mod tests {
             label_mapping: None,
             label_template: "{}".to_string(),
         }];
-        let context = RenderContext::new(&scales, CoordKind::Cartesian);
+        let context = RenderContext::new(
+            &scales,
+            CoordKind::Cartesian,
+            AestheticContext::from_static(&["x", "y"], &[]),
+        );
         let result = context.get_extent("x");
         assert!(result.is_err());
         assert!(result

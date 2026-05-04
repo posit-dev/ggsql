@@ -25,7 +25,7 @@
   "segment"
   "arrow"
   "rule"
-  "errorbar"
+  "range"
   "spatial"
 ] @type.builtin
 

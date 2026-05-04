@@ -1,0 +1,49 @@
+---
+title: Wrap up
+---
+
+Now that we have gotten a first taste of the ggsql syntax, let's return to the grammar of graphics overview from before and see how it all relates together.
+
+![](../assets/gog.svg){fig-alt="A schematic showing the components of the grammar of graphics as stacked squares, with their name to the side. The components are: Data, Mappings, Statistics, Scales, Geometries, Facets, Coordinates, and Theme"}
+
+You may see that there is not a 1-to-1 mapping between the grammar components and the clauses we have introduced. This is because some of the core concepts belong to the same (or multiple) parts of the syntax. Good syntax design is not to just blindly take a theoretical foundation and translate it into code, but figure out how it relates best to ergonomic coding units. This was the reason for the success of [ggplot2](https://ggplot2.tidyverse.org/) and we proudly follow in that footstep.
+
+## From grammar to syntax
+To help you in your further learning, we provide an overview of where the different grammar components fit into the ggsql syntax. Use this as a reference when you explore the full documentation.
+
+::: {.gog-table}
+::: {.list-table}
+- - Grammar
+  - Syntax
+
+- - Data
+  - Data can be specified in several places:
+    * `SELECT … FROM …` (the SQL portion before `VISUALISE`) gets injected as the global data)
+    * `VISUALIZE ... FROM ...` (the global data source can be specified as part of the [`VISUALIZE` clause](../syntax/clause/visualise.qmd))
+    * `MAPPING ... FROM ...` (the layer data source can be specified as part of the mapping in the [`DRAW` clause](../syntax/clause/draw.qmd))
+
+- - Mappings
+  - Mappings also exist in multiple places in the syntax
+    * `... AS ...` following [`VISUALIZE`](../syntax/clause/visualise.qmd) sets global mapping that layers inherit.
+    * `... AS ...` following `MAPPING` in the [`DRAW`](../syntax/clause/draw.qmd) clause sets layer specific mapping, potentially overriding the inherited global mapping.
+    * `... AS ...` following `REMAPPING` in the [`DRAW`](../syntax/clause/draw.qmd) clause defines how data created by the statistics gets mapped in the layer.
+
+- - Statistics
+  - Statistics are implicitly part of the layer created with [`DRAW`](../syntax/clause/draw.qmd). Each layer has their own statistics transformation hard-wired.
+
+- - Scales
+  - ggsql provides default scales as needed, but these can be overridden with the [`SCALE`](../syntax/clause/scale.qmd) clause.
+
+- - Geometries
+  - Geometries are inherent to the layers created with [`DRAW`](../syntax/clause/draw.qmd) and [`PLACE`](../syntax/clause/place.qmd). Each layer has a specific geometry and some layers may share the same geometry (e.g. [histogram](../syntax/layer/type/histogram.qmd) and [bar](../syntax/layer/type/bar.qmd)).
+
+- - Facets
+  - Facets are created with the [`FACET`](../syntax/clause/facet.qmd) clause. The default facet creates a single view showing all the data.
+
+- - Coordinates
+  - Coordinate systems are defined using [`PROJECT`](../syntax/clause/project.qmd) but can also be derived from the mapping. If you map to `x` and `y`, ggsql knows you are using a Cartesian coordinate system and if you map to `angle` and `radius` it knows you want a polar coordinate system.
+
+- - Theme
+  - Currently not supported.
+:::
+:::

@@ -2866,6 +2866,132 @@ VISUALISE DRAW point MAPPING x AS x, y AS y
                 (aesthetic_name)))))))))
 
 ================================================================================
+CREATE statement before VISUALISE FROM
+================================================================================
+
+CREATE TEMP TABLE data AS SELECT 1;
+VISUALISE FROM data DRAW point
+
+--------------------------------------------------------------------------------
+
+(query
+  (sql_portion
+    (sql_statement
+      (create_statement
+        (select_statement
+          (select_body
+            (number))))))
+  (visualise_statement
+    (visualise_keyword)
+    (from_clause
+      (table_ref
+        (qualified_name
+          (identifier
+            (bare_identifier)))))
+    (viz_clause
+      (draw_clause
+        (geom_type)))))
+
+================================================================================
+INSERT statement before VISUALISE FROM
+================================================================================
+
+INSERT INTO data VALUES (1, 2);
+VISUALISE FROM data DRAW point
+
+--------------------------------------------------------------------------------
+
+(query
+  (sql_portion
+    (sql_statement
+      (insert_statement)))
+  (visualise_statement
+    (visualise_keyword)
+    (from_clause
+      (table_ref
+        (qualified_name
+          (identifier
+            (bare_identifier)))))
+    (viz_clause
+      (draw_clause
+        (geom_type)))))
+
+================================================================================
+UPDATE statement before VISUALISE FROM
+================================================================================
+
+UPDATE data SET x = 1;
+VISUALISE FROM data DRAW point
+
+--------------------------------------------------------------------------------
+
+(query
+  (sql_portion
+    (sql_statement
+      (update_statement)))
+  (visualise_statement
+    (visualise_keyword)
+    (from_clause
+      (table_ref
+        (qualified_name
+          (identifier
+            (bare_identifier)))))
+    (viz_clause
+      (draw_clause
+        (geom_type)))))
+
+================================================================================
+DELETE statement before VISUALISE FROM
+================================================================================
+
+DELETE FROM data WHERE x = 1;
+VISUALISE FROM data DRAW point
+
+--------------------------------------------------------------------------------
+
+(query
+  (sql_portion
+    (sql_statement
+      (delete_statement)))
+  (visualise_statement
+    (visualise_keyword)
+    (from_clause
+      (table_ref
+        (qualified_name
+          (identifier
+            (bare_identifier)))))
+    (viz_clause
+      (draw_clause
+        (geom_type)))))
+
+================================================================================
+CREATE and INSERT before VISUALISE FROM
+================================================================================
+
+CREATE TABLE data (x INT);
+INSERT INTO data VALUES (1);
+VISUALISE FROM data DRAW point
+
+--------------------------------------------------------------------------------
+
+(query
+  (sql_portion
+    (sql_statement
+      (create_statement))
+    (sql_statement
+      (insert_statement)))
+  (visualise_statement
+    (visualise_keyword)
+    (from_clause
+      (table_ref
+        (qualified_name
+          (identifier
+            (bare_identifier)))))
+    (viz_clause
+      (draw_clause
+        (geom_type)))))
+
+================================================================================
 Arbitrary SQL setup statements
 ================================================================================
 
@@ -2951,3 +3077,150 @@ FROM data VISUALISE DRAW point MAPPING x AS x, y AS y
                     (identifier
                       (bare_identifier))))
                 (aesthetic_name)))))))))
+
+================================================================================
+DISTINCT inside aggregate function
+================================================================================
+
+SELECT COUNT(DISTINCT region) AS n FROM sales VISUALISE n AS x DRAW bar
+
+--------------------------------------------------------------------------------
+
+(query
+  (sql_portion
+    (sql_statement
+      (select_statement
+        (select_body
+          (function_call
+            (identifier
+              (bare_identifier))
+            (set_quantifier)
+            (function_args
+              (function_arg
+                (position_arg
+                  (qualified_name
+                    (identifier
+                      (bare_identifier)))))))
+          (identifier
+            (bare_identifier))
+          (identifier
+            (bare_identifier))
+          (from_clause
+            (table_ref
+              table: (qualified_name
+                (identifier
+                  (bare_identifier)))))))))
+  (visualise_statement
+    (visualise_keyword)
+    (global_mapping
+      (mapping_list
+        (mapping_element
+          (explicit_mapping
+            value: (mapping_value
+              (column_reference
+                (identifier
+                  (bare_identifier))))
+            name: (aesthetic_name)))))
+    (viz_clause
+      (draw_clause
+        (geom_type)))))
+
+================================================================================
+ALL quantifier inside aggregate function
+================================================================================
+
+SELECT SUM(ALL price) AS total FROM sales VISUALISE total AS x DRAW bar
+
+--------------------------------------------------------------------------------
+
+(query
+  (sql_portion
+    (sql_statement
+      (select_statement
+        (select_body
+          (function_call
+            (identifier
+              (bare_identifier))
+            (set_quantifier)
+            (function_args
+              (function_arg
+                (position_arg
+                  (qualified_name
+                    (identifier
+                      (bare_identifier)))))))
+          (identifier
+            (bare_identifier))
+          (identifier
+            (bare_identifier))
+          (from_clause
+            (table_ref
+              table: (qualified_name
+                (identifier
+                  (bare_identifier)))))))))
+  (visualise_statement
+    (visualise_keyword)
+    (global_mapping
+      (mapping_list
+        (mapping_element
+          (explicit_mapping
+            value: (mapping_value
+              (column_reference
+                (identifier
+                  (bare_identifier))))
+            name: (aesthetic_name)))))
+    (viz_clause
+      (draw_clause
+        (geom_type)))))
+
+================================================================================
+DISTINCT inside window function
+================================================================================
+
+SELECT x, COUNT(DISTINCT y) OVER (PARTITION BY x) AS n FROM data VISUALISE n AS x DRAW bar
+
+--------------------------------------------------------------------------------
+
+(query
+  (sql_portion
+    (sql_statement
+      (select_statement
+        (select_body
+          (identifier
+            (bare_identifier))
+          (window_function
+            function: (identifier
+              (bare_identifier))
+            (set_quantifier)
+            (function_args
+              (function_arg
+                (position_arg
+                  (qualified_name
+                    (identifier
+                      (bare_identifier))))))
+            (window_specification
+              (window_partition_clause
+                (identifier
+                  (bare_identifier)))))
+          (identifier
+            (bare_identifier))
+          (identifier
+            (bare_identifier))
+          (from_clause
+            (table_ref
+              table: (qualified_name
+                (identifier
+                  (bare_identifier)))))))))
+  (visualise_statement
+    (visualise_keyword)
+    (global_mapping
+      (mapping_list
+        (mapping_element
+          (explicit_mapping
+            value: (mapping_value
+              (column_reference
+                (identifier
+                  (bare_identifier))))
+            name: (aesthetic_name)))))
+    (viz_clause
+      (draw_clause
+        (geom_type)))))
