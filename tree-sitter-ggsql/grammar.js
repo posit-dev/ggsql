@@ -135,7 +135,7 @@ module.exports = grammar({
 
     // INSERT statement
     insert_statement: $ => prec.right(seq(
-      caseInsensitive('INSERT'),
+      token(prec(1, caseInsensitive('INSERT'))),
       repeat1(choice(
         $.sql_keyword,
         $.identifier,
@@ -149,7 +149,7 @@ module.exports = grammar({
 
     // UPDATE statement
     update_statement: $ => prec.right(seq(
-      caseInsensitive('UPDATE'),
+      token(prec(1, caseInsensitive('UPDATE'))),
       repeat1(choice(
         $.sql_keyword,
         $.identifier,
@@ -163,7 +163,7 @@ module.exports = grammar({
 
     // DELETE statement
     delete_statement: $ => prec.right(seq(
-      caseInsensitive('DELETE'),
+      token(prec(1, caseInsensitive('DELETE'))),
       repeat1(choice(
         $.sql_keyword,
         $.identifier,
@@ -177,7 +177,7 @@ module.exports = grammar({
 
     other_sql_statement: $ => prec(-1, repeat1(choice(
       $.non_from_sql_keyword,
-      token(/[^\s;(),'"]+/),
+      /[^\s;(),'"]+/,
       $.string,
       $.number,
       $.subquery,

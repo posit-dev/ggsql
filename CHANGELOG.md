@@ -1,5 +1,13 @@
 ## [Unreleased]
 
+### Fixed
+
+- Side effects like `CREATE TEMP TABLE` before the `VISUALISE` statement are now
+  separated from directly feeding into the visualisation data (#415)
+- Fixed bug where panel axes were unintentionally anchored to zero when using 
+  `FACET ... SETTING free => 'x'/'y'` (#410).
+- Fixed bug where faceted data were matched to the incorrect panels (#409)
+
 ### Added
 
 - New `AdbcReader<D: Driver>` for connecting to data sources via [ADBC](https://arrow.apache.org/adbc/) (Arrow Database Connectivity), behind a new off-by-default `adbc` feature flag. Generic over any concrete `adbc_core::sync::Driver`, so concrete drivers (Flight SQL, Snowflake, etc.) compose at the call site. Tested against `adbc_datafusion` for in-process unit coverage.
