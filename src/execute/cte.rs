@@ -235,7 +235,7 @@ pub fn transform_global_sql(
         );
     }
 
-    if !does_consume_cte(source_tree) {
+    if !has_executable_sql(source_tree) {
         return (vec![], None);
     }
 
@@ -276,7 +276,7 @@ pub fn transform_global_sql(
     if !side_effects.is_empty() || viz_from_query.is_some() {
         (side_effects, viz_from_query)
     } else {
-        // does_consume_cte was true but we found no specific statements or
+        // has_executable_sql was true but we found no specific statements or
         // VISUALISE FROM — fall back to extract_sql as the query.
         let query = source_tree
             .extract_sql()
@@ -291,7 +291,7 @@ pub fn transform_global_sql(
 /// This handles cases like `WITH a AS (...), b AS (...) VISUALISE` where the WITH
 /// clause has no trailing SELECT - these CTEs are still extracted for layer use
 /// but shouldn't be executed as global data.
-pub fn does_consume_cte(source_tree: &SourceTree) -> bool {
+pub fn has_executable_sql(source_tree: &SourceTree) -> bool {
     let root = source_tree.root();
 
     // Check for direct executable statements (SELECT, CREATE, INSERT, UPDATE,
