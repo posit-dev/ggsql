@@ -421,71 +421,15 @@ fn apply_faceting(
 
     match &facet.layout {
         FacetLayout::Wrap { variables: _ } => {
-            // Use internal aesthetic column name (facet1)
-            let aes_col = naming::aesthetic_column("facet1");
-
-            // Look up scale for internal "facet1" aesthetic
-            let scale = scales.iter().find(|s| s.aesthetic == "facet1");
-
-            // Build facet field definition with proper binned support
-            let mut facet_def = build_facet_field_def(facet_df, &aes_col, scale);
-
-            // Apply facet ordering — resolve the value→index mapping, then rewrite
-            // data column values to integers for correct panel order
-            let index_map = resolve_facet_ordering(scale);
-            apply_facet_ordering(vl_spec, &aes_col, &index_map);
-
-            // Use scale label_mapping for custom labels
-            let label_mapping = scale.and_then(|s| s.label_mapping.as_ref());
-
-            // Apply label renaming via header.labelExpr
-            apply_facet_label_renaming(&mut facet_def, label_mapping, scale, &index_map);
-
-            // For binned facets with reverse, set sort: "descending"
-            apply_binned_facet_reverse(&mut facet_def, scale);
-
+            let facet_def = apply_facet_aesthetic(vl_spec, facet_df, scales, "facet1");
             vl_spec["facet"] = facet_def;
-
-            // Move layer + width/height into inner spec (FacetSpec disallows
-            // top-level width/height in VL v6)
-            let mut spec_inner = json!({});
-            if let Some(layer) = vl_spec.get("layer") {
-                spec_inner["layer"] = layer.clone();
-            }
-            if let Some(w) = vl_spec.get("width").cloned() {
-                spec_inner["width"] = w;
-            }
-            if let Some(h) = vl_spec.get("height").cloned() {
-                spec_inner["height"] = h;
-            }
-
-            vl_spec["spec"] = spec_inner;
-            let obj = vl_spec.as_object_mut().unwrap();
-            obj.remove("layer");
-            obj.remove("width");
-            obj.remove("height");
-
-            apply_facet_scale_resolution(vl_spec, &facet.properties, coord_kind);
-            apply_facet_properties(vl_spec, &facet.properties, true);
         }
         FacetLayout::Grid { row: _, column: _ } => {
             let mut facet_spec = serde_json::Map::new();
+
             let row_aes_col = naming::aesthetic_column("facet1");
             if facet_df.column(&row_aes_col).is_ok() {
-                let row_scale = scales.iter().find(|s| s.aesthetic == "facet1");
-                let mut row_def = build_facet_field_def(facet_df, &row_aes_col, row_scale);
-
-                let row_index_map = resolve_facet_ordering(row_scale);
-                apply_facet_ordering(vl_spec, &row_aes_col, &row_index_map);
-                let row_label_mapping = row_scale.and_then(|s| s.label_mapping.as_ref());
-                apply_facet_label_renaming(
-                    &mut row_def,
-                    row_label_mapping,
-                    row_scale,
-                    &row_index_map,
-                );
-                apply_binned_facet_reverse(&mut row_def, row_scale);
-
+                let row_def = apply_facet_aesthetic(vl_spec, facet_df, scales, "facet1");
                 facet_spec.insert("row".to_string(), row_def);
             }
 
@@ -493,47 +437,62 @@ fn apply_faceting(
             // Vega-Lite requires "column" key in the facet object
             let col_aes_col = naming::aesthetic_column("facet2");
             if facet_df.column(&col_aes_col).is_ok() {
-                let col_scale = scales.iter().find(|s| s.aesthetic == "facet2");
-                let mut col_def = build_facet_field_def(facet_df, &col_aes_col, col_scale);
-
-                let col_index_map = resolve_facet_ordering(col_scale);
-                apply_facet_ordering(vl_spec, &col_aes_col, &col_index_map);
-                let col_label_mapping = col_scale.and_then(|s| s.label_mapping.as_ref());
-                apply_facet_label_renaming(
-                    &mut col_def,
-                    col_label_mapping,
-                    col_scale,
-                    &col_index_map,
-                );
-                apply_binned_facet_reverse(&mut col_def, col_scale);
-
+                let col_def = apply_facet_aesthetic(vl_spec, facet_df, scales, "facet2");
                 facet_spec.insert("column".to_string(), col_def);
             }
 
             vl_spec["facet"] = Value::Object(facet_spec);
-
-            // Move layer + width/height into inner spec (same as wrap above)
-            let mut spec_inner = json!({});
-            if let Some(layer) = vl_spec.get("layer") {
-                spec_inner["layer"] = layer.clone();
-            }
-            if let Some(w) = vl_spec.get("width").cloned() {
-                spec_inner["width"] = w;
-            }
-            if let Some(h) = vl_spec.get("height").cloned() {
-                spec_inner["height"] = h;
-            }
-
-            vl_spec["spec"] = spec_inner;
-            let obj = vl_spec.as_object_mut().unwrap();
-            obj.remove("layer");
-            obj.remove("width");
-            obj.remove("height");
-
-            apply_facet_scale_resolution(vl_spec, &facet.properties, coord_kind);
-            apply_facet_properties(vl_spec, &facet.properties, false);
         }
     }
+
+    // Move layer + width/height into inner spec (FacetSpec disallows
+    // top-level layer/width/height in Vega-Lite v6)
+    let mut spec_inner = json!({});
+    if let Some(layer) = vl_spec.get("layer") {
+        spec_inner["layer"] = layer.clone();
+    }
+    if let Some(w) = vl_spec.get("width").cloned() {
+        spec_inner["width"] = w;
+    }
+    if let Some(h) = vl_spec.get("height").cloned() {
+        spec_inner["height"] = h;
+    }
+
+    vl_spec["spec"] = spec_inner;
+    let obj = vl_spec.as_object_mut().unwrap();
+    obj.remove("layer");
+    obj.remove("width");
+    obj.remove("height");
+
+    apply_facet_scale_resolution(vl_spec, &facet.properties, coord_kind);
+    apply_facet_properties(vl_spec, &facet.properties, facet.is_wrap());
+}
+
+/// Build a fully resolved facet field definition for a single facet aesthetic.
+///
+/// Combines all per-field steps: build the base definition, resolve and apply
+/// panel ordering (rewriting data values to integers), apply label renaming
+/// via header.labelExpr, and handle binned reverse sort.
+fn apply_facet_aesthetic(
+    vl_spec: &mut Value,
+    facet_df: &DataFrame,
+    scales: &[Scale],
+    aesthetic: &str,
+) -> Value {
+    let aes_col = naming::aesthetic_column(aesthetic);
+    let scale = scales.iter().find(|s| s.aesthetic == aesthetic);
+
+    let mut facet_def = build_facet_field_def(facet_df, &aes_col, scale);
+
+    let index_map = resolve_facet_ordering(scale);
+    apply_facet_ordering(vl_spec, &aes_col, &index_map);
+
+    let label_mapping = scale.and_then(|s| s.label_mapping.as_ref());
+    apply_facet_label_renaming(&mut facet_def, label_mapping, scale, &index_map);
+
+    apply_binned_facet_reverse(&mut facet_def, scale);
+
+    facet_def
 }
 
 /// Build a facet field definition with proper type.
