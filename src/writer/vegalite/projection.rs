@@ -11,6 +11,8 @@ use serde_json::{json, Value};
 
 use super::DEFAULT_POLAR_SIZE;
 
+const ANGLE_TOLERANCE: f64 = 1.49011611938476e-08; // f64::EPSILON.sqrt()
+
 // =============================================================================
 // ProjectionRenderer trait
 // =============================================================================
@@ -278,7 +280,7 @@ impl PolarContext {
         let radial = AxisInfo::new("pos1", scales, facet);
         let angle = AxisInfo::new("pos2", scales, facet);
 
-        let is_full_circle = (end - start - 2.0 * std::f64::consts::PI).abs() < f64::EPSILON;
+        let is_full_circle = (end - start - 2.0 * std::f64::consts::PI).abs() < ANGLE_TOLERANCE;
 
         let angle_breaks_radians = match angle.domain {
             Some((d_min, d_max)) if !angle.breaks.is_empty() => {
@@ -1451,8 +1453,8 @@ fn convert_mark_to_polar(mark: &Value, _spec: &Plot) -> Result<Value> {
 /// the optional start/end angle range from the PROJECT clause.
 fn apply_polar_angle_range(encoding: &mut Value, panel: &PolarContext) -> Result<()> {
     // Skip if default range (0 to 2π)
-    let is_default = panel.start.abs() <= f64::EPSILON
-        && (panel.end - 2.0 * std::f64::consts::PI).abs() <= f64::EPSILON;
+    let is_default = panel.start.abs() <= ANGLE_TOLERANCE
+        && (panel.end - 2.0 * std::f64::consts::PI).abs() <= ANGLE_TOLERANCE;
     if is_default {
         return Ok(());
     }
