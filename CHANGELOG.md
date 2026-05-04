@@ -4,6 +4,14 @@
 
 - New `HybridReader` that composes any primary `Reader` with an in-process `DuckDBReader` for staging. `register()` writes to staging; `execute_sql` routes queries that reference registered names to staging and everything else to the primary. Available behind the existing `duckdb` feature.
 
+### Fixed
+
+- Side effects like `CREATE TEMP TABLE` before the `VISUALISE` statement are now
+  separated from directly feeding into the visualisation data (#415)
+- Fixed bug where panel axes were unintentionally anchored to zero when using 
+  `FACET ... SETTING free => 'x'/'y'` (#410).
+- Fixed bug where faceted data were matched to the incorrect panels (#409)
+
 ## 0.3.1 - 2026-04-30
 
 ### Fixed
