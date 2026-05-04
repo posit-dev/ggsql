@@ -3186,6 +3186,20 @@
     ]
   },
   {
+    "objectID": "CHANGELOG.html",
+    "href": "CHANGELOG.html",
+    "title": "ggsql",
+    "section": "",
+    "text": "Fixed bug where panel axes were unintentionally anchored to zero when using FACET ... SETTING free =&gt; 'x'/'y' (#410)."
+  },
+  {
+    "objectID": "CHANGELOG.html#unreleased",
+    "href": "CHANGELOG.html#unreleased",
+    "title": "ggsql",
+    "section": "",
+    "text": "Fixed bug where panel axes were unintentionally anchored to zero when using FACET ... SETTING free =&gt; 'x'/'y' (#410)."
+  },
+  {
     "objectID": "CHANGELOG.html#section",
     "href": "CHANGELOG.html#section",
     "title": "ggsql",

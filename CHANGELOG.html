@@ -242,15 +242,18 @@ gradient teal.
     <h2 id="toc-title">On this page</h2>
    
   <ul>
-  <li><a href="#unreleased" id="toc-unreleased" class="nav-link active" data-scroll-target="#unreleased">[Unreleased]</a></li>
-  <li><a href="#section" id="toc-section" class="nav-link" data-scroll-target="#section">0.3.1 - 2026-04-30</a>
+  <li><a href="#unreleased" id="toc-unreleased" class="nav-link active" data-scroll-target="#unreleased">[Unreleased]</a>
   <ul class="collapse">
   <li><a href="#fixed" id="toc-fixed" class="nav-link" data-scroll-target="#fixed">Fixed</a></li>
+  </ul></li>
+  <li><a href="#section" id="toc-section" class="nav-link" data-scroll-target="#section">0.3.1 - 2026-04-30</a>
+  <ul class="collapse">
+  <li><a href="#fixed-1" id="toc-fixed-1" class="nav-link" data-scroll-target="#fixed-1">Fixed</a></li>
   </ul></li>
   <li><a href="#section-1" id="toc-section-1" class="nav-link" data-scroll-target="#section-1">0.3.0 - 2026-04-29</a>
   <ul class="collapse">
   <li><a href="#added" id="toc-added" class="nav-link" data-scroll-target="#added">Added</a></li>
-  <li><a href="#fixed-1" id="toc-fixed-1" class="nav-link" data-scroll-target="#fixed-1">Fixed</a></li>
+  <li><a href="#fixed-2" id="toc-fixed-2" class="nav-link" data-scroll-target="#fixed-2">Fixed</a></li>
   <li><a href="#changed" id="toc-changed" class="nav-link" data-scroll-target="#changed">Changed</a></li>
   <li><a href="#removed" id="toc-removed" class="nav-link" data-scroll-target="#removed">Removed</a></li>
   </ul></li>
@@ -266,11 +269,17 @@ gradient teal.
 
 <section id="unreleased" class="level2">
 <h2 class="anchored" data-anchor-id="unreleased">[Unreleased]</h2>
+<section id="fixed" class="level3">
+<h3 class="anchored" data-anchor-id="fixed">Fixed</h3>
+<ul>
+<li>Fixed bug where panel axes were unintentionally anchored to zero when using <code>FACET ... SETTING free =&gt; 'x'/'y'</code> (#410).</li>
+</ul>
+</section>
 </section>
 <section id="section" class="level2">
 <h2 class="anchored" data-anchor-id="section">0.3.1 - 2026-04-30</h2>
-<section id="fixed" class="level3">
-<h3 class="anchored" data-anchor-id="fixed">Fixed</h3>
+<section id="fixed-1" class="level3">
+<h3 class="anchored" data-anchor-id="fixed-1">Fixed</h3>
 <ul>
 <li>Fixed stacking in faceted plots (#403)</li>
 </ul>
@@ -288,8 +297,8 @@ gradient teal.
 <li>The ggsql wasm package is now published on GitHub Releases and NPM (#367)</li>
 </ul>
 </section>
-<section id="fixed-1" class="level3">
-<h3 class="anchored" data-anchor-id="fixed-1">Fixed</h3>
+<section id="fixed-2" class="level3">
+<h3 class="anchored" data-anchor-id="fixed-2">Fixed</h3>
 <ul>
 <li>Rendering of inline plots in Positron had a bad interaction with how we handled auto-resizing in the plot pane. We now have a per-output-location path in the Jupyter kernel (#360)</li>
 <li>Passing the shape aesthetic via <code>SETTING</code> now correctly translates named shapes (#368)</li>
