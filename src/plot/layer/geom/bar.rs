@@ -108,6 +108,7 @@ impl GeomTrait for Bar {
                 parameters,
                 dialect,
                 aesthetic_ctx,
+                self.aggregate_domain_aesthetics(),
             );
         }
         stat_bar_count(query, schema, aesthetics, group_by)

@@ -602,6 +602,7 @@ pub fn apply(
     parameters: &HashMap<String, ParameterValue>,
     dialect: &dyn SqlDialect,
     aesthetic_ctx: &AestheticContext,
+    domain_aesthetics: &[&'static str],
 ) -> Result<StatResult> {
     let raw = match parameters.get("aggregate") {
         None | Some(ParameterValue::Null) => return Ok(StatResult::Identity),
@@ -656,6 +657,15 @@ pub fn apply(
             Some(c) => c.to_string(),
             None => continue, // literals & annotation columns pass through
         };
+        // Geom-declared domain aesthetics (e.g. `pos1` for line/area/ribbon)
+        // always become group keys — they identify each row, never get
+        // aggregated, never get dropped.
+        if domain_aesthetics.contains(&aes.as_str()) {
+            if !kept_cols.contains(&col) {
+                kept_cols.push(col);
+            }
+            continue;
+        }
         let info = schema.iter().find(|c| c.name == col);
         let is_discrete = info.map(|c| c.is_discrete).unwrap_or(false);
         if is_discrete {
@@ -923,10 +933,30 @@ mod tests {
         group_by: &[String],
         dialect: &dyn SqlDialect,
     ) -> Result<StatResult> {
+        run_with_domain(params, aes, schema, group_by, dialect, &[])
+    }
+
+    fn run_with_domain(
+        params: ParameterValue,
+        aes: &Mappings,
+        schema: &Schema,
+        group_by: &[String],
+        dialect: &dyn SqlDialect,
+        domain: &[&'static str],
+    ) -> Result<StatResult> {
         let mut p = HashMap::new();
         p.insert("aggregate".to_string(), params);
         let ctx = cartesian_ctx();
-        apply("SELECT * FROM t", schema, aes, group_by, &p, dialect, &ctx)
+        apply(
+            "SELECT * FROM t",
+            schema,
+            aes,
+            group_by,
+            &p,
+            dialect,
+            &ctx,
+            domain,
+        )
     }
 
     fn arr(items: &[&str]) -> ParameterValue {
@@ -1138,6 +1168,7 @@ mod tests {
             &p,
             &InlineQuantileDialect,
             &ctx,
+            &[],
         )
         .unwrap();
         assert_eq!(result, StatResult::Identity);
@@ -1446,6 +1477,57 @@ mod tests {
                 // pos1 (no target) → mean → AVG appears in both branches
                 let avg_pos1 = query.matches("AVG(\"__ggsql_aes_pos1__\")").count();
                 assert_eq!(avg_pos1, 2);
+            }
+            _ => panic!("expected Transformed"),
+        }
+    }
+
+    #[test]
+    fn domain_aesthetic_kept_as_group_key_even_when_continuous() {
+        // Regression test for the line/area/ribbon case: the user writes
+        //   DRAW line ... SETTING aggregate => ('y:min', 'y:max')
+        // and expects pos1 (the continuous time-axis column) to be a group
+        // key, not a dropped numeric mapping. The geom declares pos1 as a
+        // domain aesthetic; the stat keeps it as a group column.
+        let mut aes = Mappings::new();
+        aes.insert("pos1", col("__ggsql_aes_pos1__"));
+        aes.insert("pos2", col("__ggsql_aes_pos2__"));
+        let schema = schema_for(&[
+            ("__ggsql_aes_pos1__", false), // continuous, would be dropped without the domain hint
+            ("__ggsql_aes_pos2__", false),
+        ]);
+        let result = run_with_domain(
+            arr(&["y:min", "y:max"]),
+            &aes,
+            &schema,
+            &[],
+            &InlineQuantileDialect,
+            &["pos1"],
+        )
+        .unwrap();
+        match result {
+            StatResult::Transformed {
+                query,
+                stat_columns,
+                consumed_aesthetics,
+                ..
+            } => {
+                // pos1 is in the GROUP BY, not aggregated.
+                assert!(
+                    query.contains("GROUP BY \"__ggsql_aes_pos1__\""),
+                    "{}",
+                    query
+                );
+                assert!(!query.contains("MIN(\"__ggsql_aes_pos1__\")"));
+                assert!(!query.contains("MAX(\"__ggsql_aes_pos1__\")"));
+                // pos2 is exploded into MIN and MAX branches.
+                assert!(query.contains("MIN(\"__ggsql_aes_pos2__\")"));
+                assert!(query.contains("MAX(\"__ggsql_aes_pos2__\")"));
+                // pos1 is NOT consumed (kept), pos2 IS consumed.
+                assert!(!consumed_aesthetics.contains(&"pos1".to_string()));
+                assert!(consumed_aesthetics.contains(&"pos2".to_string()));
+                // synthetic aggregate column emitted in the explosion case.
+                assert!(stat_columns.contains(&"aggregate".to_string()));
             }
             _ => panic!("expected Transformed"),
         }

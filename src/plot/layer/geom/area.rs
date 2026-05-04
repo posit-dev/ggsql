@@ -59,6 +59,10 @@ impl GeomTrait for Area {
         true
     }
 
+    fn aggregate_domain_aesthetics(&self) -> &'static [&'static str] {
+        &["pos1"]
+    }
+
     fn needs_stat_transform(&self, _aesthetics: &Mappings) -> bool {
         true
     }
@@ -83,6 +87,7 @@ impl GeomTrait for Area {
                 parameters,
                 dialect,
                 aesthetic_ctx,
+                self.aggregate_domain_aesthetics(),
             )?
         } else {
             StatResult::Identity

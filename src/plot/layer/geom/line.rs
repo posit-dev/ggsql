@@ -45,6 +45,10 @@ impl GeomTrait for Line {
         true
     }
 
+    fn aggregate_domain_aesthetics(&self) -> &'static [&'static str] {
+        &["pos1"]
+    }
+
     fn needs_stat_transform(&self, _aesthetics: &Mappings) -> bool {
         true
     }
@@ -69,6 +73,7 @@ impl GeomTrait for Line {
                 parameters,
                 dialect,
                 aesthetic_ctx,
+                self.aggregate_domain_aesthetics(),
             )?
         } else {
             StatResult::Identity

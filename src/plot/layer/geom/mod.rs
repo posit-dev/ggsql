@@ -205,6 +205,17 @@ pub trait GeomTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
         false
     }
 
+    /// Aesthetics that the Aggregate stat must keep as group keys rather than
+    /// aggregating, even if their bound column is continuous. This is for
+    /// geoms like line/area/ribbon where one axis is the *domain* — the
+    /// natural group identity of each row — and the user expects "summarise
+    /// the other axis per domain value" without writing an explicit target.
+    ///
+    /// Default empty; line/area/ribbon override to `&["pos1"]`.
+    fn aggregate_domain_aesthetics(&self) -> &'static [&'static str] {
+        &[]
+    }
+
     /// Apply statistical transformation to the layer query.
     ///
     /// The default implementation dispatches to the Aggregate stat when
@@ -231,6 +242,7 @@ pub trait GeomTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
                 parameters,
                 dialect,
                 aesthetic_ctx,
+                self.aggregate_domain_aesthetics(),
             );
         }
         Ok(StatResult::Identity)
