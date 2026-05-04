@@ -1,5 +1,10 @@
 ## [Unreleased]
 
+### Fixed
+
+- Fixed bug where panel axes were unintentionally anchored to zero when using 
+  `FACET ... SETTING free => 'x'/'y'` (#410).
+
 ## 0.3.1 - 2026-04-30
 
 ### Fixed
