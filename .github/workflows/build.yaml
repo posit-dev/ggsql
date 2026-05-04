@@ -35,6 +35,11 @@ jobs:
       - name: Install ODBC
         run: sudo apt-get install -y unixodbc-dev
 
+      - name: Install protobuf compiler
+        # adbc_datafusion (dev-dep) → datafusion → substrait → prost-build,
+        # which invokes `protoc` at build time. Required for the ADBC test path.
+        run: sudo apt-get install -y protobuf-compiler
+
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
@@ -63,6 +68,17 @@ jobs:
 
       - name: Run Rust tests
         run: cargo test --lib --bins
+
+      - name: Install dbc CLI and SQLite ADBC driver
+        run: |
+          curl -LsSf https://dbc.columnar.tech/install.sh | sh
+          "$HOME/.local/bin/dbc" install sqlite
+
+      - name: Run ADBC unit tests
+        run: cargo test --features "adbc sqlite" --lib
+
+      - name: Run ADBC SQLite equivalence tests
+        run: cargo test --features "adbc sqlite" --lib -- --ignored equivalence
 
       - name: Build WASM library
         working-directory: ggsql-wasm/library

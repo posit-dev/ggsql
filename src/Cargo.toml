@@ -32,6 +32,15 @@ toml_edit = { workspace = true, optional = true }
 parquet = { workspace = true, optional = true }
 bytes = { workspace = true }
 
+# ADBC reader
+# arrow-* 58 matches adbc_datafusion 0.23's pinned arrow version.
+# Mismatch (e.g. arrow 56) creates type-system divergence at the
+# RecordBatch boundary — see Cargo.lock for the resolved tree.
+adbc_core = { version = "0.23", optional = true }
+arrow-array = { version = "58", optional = true }
+arrow-schema = { version = "58", optional = true }
+arrow-ipc = { version = "58", optional = true }
+
 # Serialization
 serde.workspace = true
 serde_json.workspace = true
@@ -51,6 +60,8 @@ uuid.workspace = true
 jsonschema = { version = "0.44", default-features = false, features = ["resolve-file"] }
 tempfile = "3.8"
 ureq = "3"
+adbc_datafusion = "0.23"
+adbc_driver_manager = "0.23"
 
 [features]
 default = ["duckdb", "sqlite", "vegalite", "parquet", "builtin-data", "odbc"]
@@ -58,6 +69,7 @@ duckdb = ["dep:duckdb"]
 parquet = ["dep:parquet"]
 sqlite = ["dep:rusqlite"]
 odbc = ["dep:odbc-api", "dep:toml_edit"]
+adbc = ["dep:adbc_core", "dep:arrow-array", "dep:arrow-schema", "dep:arrow-ipc", "arrow/ipc"]
 vegalite = []
 builtin-data = []
 all-readers = ["duckdb", "sqlite", "odbc"]
