@@ -1043,7 +1043,9 @@ pub fn prepare_data_with_reader(query: &str, reader: &dyn Reader) -> Result<Prep
         ));
     }
 
-    // Execute setup statements (INSTALL, LOAD, SET, etc.) before the main query
+    // Execute setup statements (INSTALL, LOAD, SET, etc.) before the main query.
+    // Structured DML (CREATE, INSERT, UPDATE, DELETE) is handled separately as
+    // side-effects in cte::transform_global_sql.
     for stmt in source_tree.find_texts(&root, "(sql_statement (other_sql_statement) @stmt)") {
         execute_query(&stmt)?;
     }

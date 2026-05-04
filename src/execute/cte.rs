@@ -243,9 +243,10 @@ pub fn transform_global_sql(
     // VISUALISE FROM. Split them: side-effect statements run directly,
     // VISUALISE FROM becomes the queryable part.
     //
-    // Only actual statements (CREATE, INSERT, …) are side effects — a bare
-    // WITH clause without a trailing statement is not executable on its own
-    // (its CTEs are already materialized separately).
+    // Only structured DML is handled here — other_sql_statement nodes
+    // (INSTALL, LOAD, SET, …) are pre-executed in prepare_data_with_reader.
+    // A bare WITH clause without a trailing statement is not executable on
+    // its own (its CTEs are already materialized separately).
     let root = source_tree.root();
 
     let side_effect_stmts = r#"
