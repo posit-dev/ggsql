@@ -306,6 +306,9 @@ pub mod odbc;
 #[cfg(feature = "odbc")]
 pub mod snowflake;
 
+#[cfg(feature = "duckdb")]
+pub mod hybrid;
+
 pub mod connection;
 pub mod data;
 mod spec;
@@ -318,6 +321,9 @@ pub use sqlite::SqliteReader;
 
 #[cfg(feature = "odbc")]
 pub use odbc::OdbcReader;
+
+#[cfg(feature = "duckdb")]
+pub use hybrid::HybridReader;
 
 // ============================================================================
 // Shared utilities
