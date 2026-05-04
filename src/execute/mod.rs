@@ -1947,6 +1947,27 @@ mod tests {
         assert_eq!(result.data.get(key).unwrap().height(), 3);
     }
 
+    #[cfg(feature = "duckdb")]
+    #[test]
+    fn test_select_after_create_and_insert() {
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        let query = r#"
+            CREATE TEMP TABLE data(x INTEGER, y INTEGER);
+            INSERT INTO data VALUES (1, 10), (2, 20), (3, 30);
+            SELECT * FROM data
+            VISUALISE x, y
+            DRAW point
+        "#;
+
+        let result = prepare_data_with_reader(query, &reader).unwrap();
+        let key = result.specs[0].layers[0]
+            .data_key
+            .as_ref()
+            .expect("Layer should have data_key");
+        assert_eq!(result.data.get(key).unwrap().height(), 3);
+    }
+
     /// Test that literal mappings survive stat transforms (e.g., histogram grouping).
     ///
     /// This tests the fix for issue #129 where literal aesthetic columns like

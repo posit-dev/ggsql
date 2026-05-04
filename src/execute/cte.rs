@@ -219,34 +219,12 @@ pub fn transform_global_sql(
     source_tree: &SourceTree,
     materialized_ctes: &HashSet<String>,
 ) -> (Vec<String>, Option<String>) {
-    // Try to extract trailing SELECT (WITH...SELECT or direct SELECT)
-    let select_sql = split_with_query(source_tree)
-        .map(|(_, select)| select)
-        .or_else(|| {
-            // Fallback: direct SELECT statement (no WITH clause)
-            let root = source_tree.root();
-            source_tree.find_text(&root, "(sql_statement (select_statement) @select)")
-        });
-
-    if let Some(select_sql) = select_sql {
-        return (
-            vec![],
-            Some(transform_cte_references(&select_sql, materialized_ctes)),
-        );
-    }
-
-    if !has_executable_sql(source_tree) {
-        return (vec![], None);
-    }
-
-    // We have non-SELECT executable SQL (CREATE, INSERT, …) and/or
-    // VISUALISE FROM. Split them: side-effect statements run directly,
-    // VISUALISE FROM becomes the queryable part.
+    // Collect side-effect statements (CREATE, INSERT, UPDATE, DELETE) that
+    // need to run before the main query. These appear alongside a trailing
+    // SELECT or VISUALISE FROM.
     //
     // Only structured DML is handled here — other_sql_statement nodes
     // (INSTALL, LOAD, SET, …) are pre-executed in prepare_data_with_reader.
-    // A bare WITH clause without a trailing statement is not executable on
-    // its own (its CTEs are already materialized separately).
     let root = source_tree.root();
 
     let side_effect_stmts = r#"
@@ -263,6 +241,29 @@ pub fn transform_global_sql(
         .filter(|s| !s.is_empty())
         .collect();
 
+    // Try to extract trailing SELECT (WITH...SELECT or direct SELECT)
+    let select_sql = split_with_query(source_tree)
+        .map(|(_, select)| select)
+        .or_else(|| {
+            // Fallback: direct SELECT statement (no WITH clause)
+            source_tree.find_text(&root, "(sql_statement (select_statement) @select)")
+        });
+
+    if let Some(select_sql) = select_sql {
+        return (
+            side_effects,
+            Some(transform_cte_references(&select_sql, materialized_ctes)),
+        );
+    }
+
+    if !has_executable_sql(source_tree) {
+        return (vec![], None);
+    }
+
+    // We have non-SELECT executable SQL and/or VISUALISE FROM.
+    // Side-effects run directly, VISUALISE FROM becomes the queryable part.
+    // A bare WITH clause without a trailing statement is not executable on
+    // its own (its CTEs are already materialized separately).
     let viz_from_query = source_tree
         .find_text(
             &root,
