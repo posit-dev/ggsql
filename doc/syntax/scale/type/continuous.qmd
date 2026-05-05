@@ -38,7 +38,7 @@ The output range can either be given as an array of values or a named palette. F
 All aesthetics have a default output range so it is never required to provide one unless you want to change from the default. The defaults are as follows:
 
 * `x`/`y`: Ignored (values used directly)
-* `stroke`/`fill`: The `navia` palette
+* `stroke`/`fill`: The `sequential` palette
 * `size`/`linewidth`: `(1, 6)` (points)
 * `opacity`: `(0.1, 1.0)` (0 being fully transparent and 1 being fully opaque)
 
