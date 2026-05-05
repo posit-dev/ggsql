@@ -199,7 +199,10 @@ impl Layer {
             format!("`{}`", name)
         };
 
-        // Check if all required aesthetics exist.
+        // Check if all required aesthetics exist. The Aggregate stat replaces
+        // mapped values in place — it never synthesises new aesthetics — so
+        // every required aesthetic must be mapped by the user regardless of
+        // the `aggregate` setting.
         let mut missing = Vec::new();
         let mut position_reqs: Vec<(&str, u8, &str)> = Vec::new();
 
@@ -418,6 +421,10 @@ impl Layer {
                 .find(|p| p.name == param_name)
             {
                 validate_parameter(param_name, value, &param.constraint)?;
+            }
+            // Or the shared `aggregate` param for Identity-stat geoms
+            else if param_name == "aggregate" && self.geom.supports_aggregate() {
+                crate::plot::layer::geom::stat_aggregate::validate_aggregate_param(value)?;
             }
             // Otherwise it's a valid aesthetic setting (no constraint validation needed)
         }

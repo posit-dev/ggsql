@@ -43,6 +43,7 @@ mod ribbon;
 mod rule;
 mod segment;
 mod smooth;
+pub(crate) mod stat_aggregate;
 mod text;
 mod tile;
 mod violin;
@@ -72,6 +73,7 @@ pub use text::Text;
 pub use tile::Tile;
 pub use violin::Violin;
 
+use crate::plot::aesthetic::AestheticContext;
 use crate::plot::types::{ParameterValue, Schema};
 use crate::reader::SqlDialect;
 
@@ -192,20 +194,57 @@ pub trait GeomTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
         false
     }
 
+    /// Whether this geom accepts the `aggregate` SETTING parameter.
+    ///
+    /// Geoms that opt in gain a generic Aggregate stat that groups by discrete
+    /// mappings + PARTITION BY and emits one row per group, replacing every
+    /// numeric mapping (positional and material) with its aggregated value.
+    /// Statistical geoms (histogram, density, smooth, boxplot, violin) leave
+    /// this `false` to keep their bespoke stats.
+    fn supports_aggregate(&self) -> bool {
+        false
+    }
+
+    /// Aesthetics that the Aggregate stat must keep as group keys rather than
+    /// aggregating, even if their bound column is continuous. This is for
+    /// geoms like line/area/ribbon where one axis is the *domain* — the
+    /// natural group identity of each row — and the user expects "summarise
+    /// the other axis per domain value" without writing an explicit target.
+    ///
+    /// Default empty; line/area/ribbon override to `&["pos1"]`.
+    fn aggregate_domain_aesthetics(&self) -> &'static [&'static str] {
+        &[]
+    }
+
     /// Apply statistical transformation to the layer query.
     ///
-    /// The default implementation returns identity (no transformation).
+    /// The default implementation dispatches to the Aggregate stat when
+    /// `supports_aggregate()` is true and the `aggregate` parameter is set;
+    /// otherwise returns identity (no transformation).
     #[allow(clippy::too_many_arguments)]
     fn apply_stat_transform(
         &self,
-        _query: &str,
-        _schema: &Schema,
-        _aesthetics: &Mappings,
-        _group_by: &[String],
-        _parameters: &HashMap<String, ParameterValue>,
+        query: &str,
+        schema: &Schema,
+        aesthetics: &Mappings,
+        group_by: &[String],
+        parameters: &HashMap<String, ParameterValue>,
         _execute_query: &dyn Fn(&str) -> Result<DataFrame>,
-        _dialect: &dyn SqlDialect,
+        dialect: &dyn SqlDialect,
+        aesthetic_ctx: &AestheticContext,
     ) -> Result<StatResult> {
+        if self.supports_aggregate() && has_aggregate_param(parameters) {
+            return stat_aggregate::apply(
+                query,
+                schema,
+                aesthetics,
+                group_by,
+                parameters,
+                dialect,
+                aesthetic_ctx,
+                self.aggregate_domain_aesthetics(),
+            );
+        }
         Ok(StatResult::Identity)
     }
 
@@ -248,7 +287,19 @@ pub trait GeomTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
         for param in self.default_params() {
             valid.push(param.name);
         }
+        if self.supports_aggregate() {
+            valid.push("aggregate");
+        }
         valid
+    }
+}
+
+/// True when `parameters["aggregate"]` is set to a non-null string or array.
+pub(crate) fn has_aggregate_param(parameters: &HashMap<String, ParameterValue>) -> bool {
+    match parameters.get("aggregate") {
+        None | Some(ParameterValue::Null) => false,
+        Some(ParameterValue::String(_)) | Some(ParameterValue::Array(_)) => true,
+        _ => false,
     }
 }
 
@@ -420,6 +471,7 @@ impl Geom {
         parameters: &HashMap<String, ParameterValue>,
         execute_query: &dyn Fn(&str) -> Result<DataFrame>,
         dialect: &dyn SqlDialect,
+        aesthetic_ctx: &AestheticContext,
     ) -> Result<StatResult> {
         self.0.apply_stat_transform(
             query,
@@ -429,6 +481,7 @@ impl Geom {
             parameters,
             execute_query,
             dialect,
+            aesthetic_ctx,
         )
     }
 
@@ -453,6 +506,11 @@ impl Geom {
     /// Get valid settings
     pub fn valid_settings(&self) -> Vec<&'static str> {
         self.0.valid_settings()
+    }
+
+    /// Whether this geom accepts the `aggregate` SETTING parameter.
+    pub fn supports_aggregate(&self) -> bool {
+        self.0.supports_aggregate()
     }
 
     /// Validate aesthetic mappings

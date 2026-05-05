@@ -123,24 +123,38 @@ fn validate(
             }
         }
 
-        // Validate remapping source columns are valid stat columns for this geom
+        // Validate remapping source columns are valid stat columns for this geom.
+        // Geoms that opt into the Aggregate stat (`supports_aggregate`) also accept
+        // `aggregate`, `count`, and any position aesthetic name as a stat source.
         let valid_stat_columns = layer.geom.valid_stat_columns();
+        let supports_aggregate = layer.geom.supports_aggregate();
         for stat_value in layer.remappings.aesthetics.values() {
             if let Some(stat_col) = stat_value.column_name() {
-                if !valid_stat_columns.contains(&stat_col) {
-                    if valid_stat_columns.is_empty() {
+                let is_aggregate_stat_col = supports_aggregate
+                    && (stat_col == "aggregate"
+                        || stat_col == "count"
+                        || crate::plot::aesthetic::is_position_aesthetic(stat_col));
+                if !valid_stat_columns.contains(&stat_col) && !is_aggregate_stat_col {
+                    if valid_stat_columns.is_empty() && !supports_aggregate {
                         return Err(GgsqlError::ValidationError(format!(
                             "Layer {}: REMAPPING not supported for geom '{}' (no stat transform)",
                             idx + 1,
                             layer.geom
                         )));
                     } else {
+                        let mut valid: Vec<String> =
+                            valid_stat_columns.iter().map(|s| s.to_string()).collect();
+                        if supports_aggregate {
+                            valid.push("aggregate".to_string());
+                            valid.push("count".to_string());
+                        }
+                        let valid_refs: Vec<&str> = valid.iter().map(|s| s.as_str()).collect();
                         return Err(GgsqlError::ValidationError(format!(
                             "Layer {}: REMAPPING references unknown stat column '{}'. Valid stat columns for geom '{}' are: {}",
                             idx + 1,
                             stat_col,
                             layer.geom,
-                            crate::and_list(valid_stat_columns)
+                            crate::and_list(&valid_refs)
                         )));
                     }
                 }
@@ -794,9 +808,14 @@ fn add_discrete_columns_to_partition_by(
         // Build set of excluded aesthetics that should not trigger auto-grouping:
         // - Stat-consumed aesthetics (transformed, not grouped)
         // - 'label' aesthetic (text content to display, not grouping categories)
+        //   — except when `aggregate` is set on the layer, in which case label
+        //   becomes a legitimate grouping key (e.g. "mean per species, place
+        //   species name at the centroid").
         let consumed_aesthetics = layer.geom.stat_consumed_aesthetics();
         let mut excluded_aesthetics: HashSet<&str> = consumed_aesthetics.iter().copied().collect();
-        excluded_aesthetics.insert("label");
+        if !crate::plot::layer::geom::has_aggregate_param(&layer.parameters) {
+            excluded_aesthetics.insert("label");
+        }
 
         for (aesthetic, value) in &layer.mappings.aesthetics {
             // Skip position aesthetics - these should not trigger auto-grouping.
@@ -1281,6 +1300,7 @@ pub fn prepare_data_with_reader(query: &str, reader: &dyn Reader) -> Result<Prep
             &scales,
             dialect,
             &execute_query,
+            &aesthetic_ctx,
         )?;
         layer_queries.push(layer_query);
     }

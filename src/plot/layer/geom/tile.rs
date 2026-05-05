@@ -104,6 +104,7 @@ impl GeomTrait for Tile {
         parameters: &HashMap<String, ParameterValue>,
         _execute_query: &dyn Fn(&str) -> Result<DataFrame>,
         _dialect: &dyn crate::reader::SqlDialect,
+        _aesthetic_ctx: &crate::plot::aesthetic::AestheticContext,
     ) -> Result<StatResult> {
         stat_tile(query, schema, aesthetics, group_by, parameters)
     }

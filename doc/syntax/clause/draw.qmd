@@ -76,6 +76,45 @@ The `SETTING` clause can be used for two different things:
 #### Position
 A special setting is `position` which controls how overlapping objects are repositioned to avoid overlapping etc. Position adjustments have special mapping requirements so all position adjustments will not be relevant for all layer types. Different layers have different defaults as detailed in their documentation. You can read about each different position adjustment at [their own documentation sites](../index.qmd#position-adjustments).
 
+#### Aggregate
+Some layers support aggregation of their data through the `aggregate` setting. These layers will state this. `aggregate` collapses each group to a single row, replacing every numeric mapping in place with its aggregated value. Groups are defined by `PARTITION BY` together with all discrete mappings.
+
+The setting takes a single string or an array of strings. Each string is one of:
+
+* **Default** — `'<func>'` (no prefix). With one default the function applies to every untargeted numeric mapping. With two defaults the first is used for the lower side of range layers (e.g. `x`/`xmin`) plus all non-range layers, and the second is used for the upper side of range layers (e.g. `xend`/`xmax`). More than two defaults is an error.
+* **Target** — `'<aes>:<func>'`. Applies `func` to the named aesthetic only (`<aes>` is a user-facing name like `x`, `y`, `xmin`, `xmax`, `xend`, `yend`, `color`, `size`, …). A target overrides any default for that aesthetic.
+
+A numeric mapping that has neither a target nor an applicable default is dropped from the layer with a warning.
+
+You can also target the same aesthetic more than once to produce **multiple rows per group** — one for each function. For example `aggregate => ('y:min', 'y:max')` emits a min row and a max row per group, so a single `DRAW line` produces two summary lines that connect within each group rather than across them.
+
+The stat exposes a synthetic `aggregate` column tagging each row, which you can pick up with a `REMAPPING` to drive another aesthetic — e.g. `REMAPPING aggregate AS stroke` to colour the two lines differently. The column's value is built from the per-row function names of the *exploded* targets, deduplicated, and joined with `/`:
+
+* `aggregate => ('y:min', 'y:max')` → rows tagged `'min'`, `'max'`.
+* `aggregate => ('y:min', 'y:max', 'color:sum', 'color:prod')` → rows tagged `'min/sum'`, `'max/prod'`.
+* `aggregate => ('y:mean', 'y:max', 'color:mean', 'color:prod')` → rows tagged `'mean'`, `'max/prod'` (the duplicate `'mean'` collapses).
+* `aggregate => ('y:min', 'y:max', 'color:median')` → rows tagged `'min'`, `'max'` (the single-function `color` target is recycled across rows and is not part of the label).
+
+When several aesthetics are targeted with the same number of functions, they explode in lockstep (row 1 uses each aesthetic's first function, row 2 the second, and so on); aesthetics with a single function — and the unprefixed defaults — are reused unchanged across every row. Mixing different lengths above 1 is an error.
+
+The simple functions are:
+
+* `'count'`: Non-null tally of the bound column.
+* `'sum'` and `'prod'`: The sum or product
+* `'min'`, `'max'`, and `'range'`: Extremes and max - min
+* `'mean'`, and `'median'`: Central tendency
+* `'geomean'`, `'harmean'`, and `'rms'`: Geometric, harmonic, and root-mean-square
+* `'sdev'`, `'var'`, `'iqr'`, and `'se'`: Standard deviation, variance, interquartile range, and standard error
+* `'p05'`, `'p10'`, `'p25'`, `'p50'`, `'p75'`, `'p90'`, and `'p95'`: Percentiles
+
+For band functions you combine an offset with an expansion, potentially multiplied. An example could be `'mean-1.96sdev'` which does exactly what you'd expect it to be. The general form is `<offset>±<multiplier><expansion>` with `<multiplier>` being optional (defaults to `1`).
+
+Allowed offsets are: `'mean'`, `'median'`, `'geomean'`, `'harmean'`, `'rms'`, `'sum'`, `'prod'`, `'min'`, `'max'`, and `'p05'`–`'p95'`
+
+Allowed expansions are: `'sdev'`, `'se'`, `'var'`, `'iqr'`, and `'range'`
+
+In the single-row (reduction) case aggregation applies in place — no `REMAPPING` is needed and no synthetic column is added. Only the multi-row (explosion) case described above introduces the synthetic `aggregate` column.
+
 ### `FILTER`
 ```ggsql
 FILTER <condition>

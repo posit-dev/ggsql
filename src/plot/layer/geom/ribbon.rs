@@ -1,10 +1,11 @@
 //! Ribbon geom implementation
 
-use super::types::POSITION_VALUES;
-use super::{DefaultAesthetics, GeomTrait, GeomType, StatResult};
+use super::stat_aggregate;
+use super::types::{wrap_with_order_by, POSITION_VALUES};
+use super::{has_aggregate_param, DefaultAesthetics, GeomTrait, GeomType, StatResult};
 use crate::plot::types::DefaultAestheticValue;
 use crate::plot::{DefaultParamValue, ParamConstraint, ParamDefinition};
-use crate::{naming, Mappings};
+use crate::Mappings;
 
 /// Ribbon geom - confidence bands and ranges
 #[derive(Debug, Clone, Copy)]
@@ -39,6 +40,14 @@ impl GeomTrait for Ribbon {
         PARAMS
     }
 
+    fn supports_aggregate(&self) -> bool {
+        true
+    }
+
+    fn aggregate_domain_aesthetics(&self) -> &'static [&'static str] {
+        &["pos1"]
+    }
+
     fn needs_stat_transform(&self, _aesthetics: &Mappings) -> bool {
         true
     }
@@ -46,21 +55,31 @@ impl GeomTrait for Ribbon {
     fn apply_stat_transform(
         &self,
         query: &str,
-        _schema: &crate::plot::Schema,
-        _aesthetics: &Mappings,
-        _group_by: &[String],
-        _parameters: &std::collections::HashMap<String, crate::plot::ParameterValue>,
+        schema: &crate::plot::Schema,
+        aesthetics: &Mappings,
+        group_by: &[String],
+        parameters: &std::collections::HashMap<String, crate::plot::ParameterValue>,
         _execute_query: &dyn Fn(&str) -> crate::Result<crate::DataFrame>,
-        _dialect: &dyn crate::reader::SqlDialect,
+        dialect: &dyn crate::reader::SqlDialect,
+        aesthetic_ctx: &crate::plot::aesthetic::AestheticContext,
     ) -> crate::Result<StatResult> {
-        // Ribbon geom needs ordering by pos1 (domain axis) for proper rendering
-        let order_col = naming::aesthetic_column("pos1");
-        Ok(StatResult::Transformed {
-            query: format!("{} ORDER BY {}", query, naming::quote_ident(&order_col)),
-            stat_columns: vec![],
-            dummy_columns: vec![],
-            consumed_aesthetics: vec![],
-        })
+        let result = if has_aggregate_param(parameters) {
+            stat_aggregate::apply(
+                query,
+                schema,
+                aesthetics,
+                group_by,
+                parameters,
+                dialect,
+                aesthetic_ctx,
+                self.aggregate_domain_aesthetics(),
+            )?
+        } else {
+            StatResult::Identity
+        };
+        // Ribbon needs ordering by pos1 (domain axis) for proper rendering, in both
+        // the Identity and Aggregate paths.
+        Ok(wrap_with_order_by(query, result, "pos1"))
     }
 }
 
