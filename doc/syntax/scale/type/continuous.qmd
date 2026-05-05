@@ -9,7 +9,7 @@ The continuous scale type maps various continuous data types into a continuous o
 ## Input range
 The input range for continuous scales are defined by their minimum and maximum values. These can be given explicitly or deduced from the mapped data. If `FROM` is omitted then the range of the mapped data is used. If provided as an array of length 2 then the first element will set the minimum and the second element will set the maximum. If either of these elements are `null` then that part of the range will be deduced from the data. As an example `SCALE x FROM (0, null)` will set the minimum part of the range to 0 and the maximum part to the maximal value of the mapped data.
 
-Position aesthetics (`x` and `y`) will have their range expanded based on the `expand` setting. 
+Position aesthetics (`x` and `y`) will have their range expanded based on the `expand` setting.
 If values in the mapped data falls outside of the input domain the values will be changed based on the `oob` setting.
 
 The input range is converted to the type defined by the transformation. This means that a time range can both be given as a `%H:%M:%S` string or as a numeric giving the number of nanoseconds since midnight.
@@ -42,7 +42,7 @@ All aesthetics have a default output range so it is never required to provide on
 * `size`/`linewidth`: `(1, 6)` (points)
 * `opacity`: `(0.1, 1.0)` (0 being fully transparent and 1 being fully opaque)
 
-The remaining aesthetics doesn't have a meaningful continuous output domain and doesn't work with continuous scales. Consider using a [binned scale](binned.qmd) for these if necessary.
+The remaining aesthetics don't have a meaningful continuous output domain and don't work with continuous scales. Consider using a [binned scale](binned.qmd) for these if necessary.
 
 ### Examples
 
@@ -63,7 +63,7 @@ SCALE color TO ('black', 'red', 'white')
 ```
 
 ## Transformation
-The transformation of the scale both defines how the input data is parsed as well as any mathematical transformation applied before it is mapped to the output range. The default transformation is deduced from a combination of the mapped data and the aesthetic the scale is applied to. 
+The transformation of the scale both defines how the input data is parsed as well as any mathematical transformation applied before it is mapped to the output range. The default transformation is deduced from a combination of the mapped data and the aesthetic the scale is applied to.
 
 * `linear`: The default transformation unless stated otherwise. Creates a linear mapping between the input and output range.
 * `log`/`log2`/`ln`: Creates a mapping between the logarithm of the input to the output range.
@@ -82,15 +82,15 @@ If not provided explicitly by the user the breaks for the scales will be calcula
 
 * `linear`:
   - `pretty => true`: Will use Wilkinsons Extended algorithm to attempt to find nice breaks in the given interval close to the number of breaks requested
-  - `pretty => false`: Will produce the requested number of evenly spaced breaks within the scale range 
-* `log`/`log2`/`ln`: 
+  - `pretty => false`: Will produce the requested number of evenly spaced breaks within the scale range
+* `log`/`log2`/`ln`:
   - `pretty => true`: Will use the 1-2-5 pattern and thin down to approximately the requested number of breaks
   - `pretty => false`: Breaks will be exclusively at the power of the base (e.g. 1, 10, 100, 1000 for log10)
 * `exp10`/`exp2`/`exp`: Same logic as the log breaks but in the inverse direction
 * `sqrt`/`square`: Like `linear` but the range is first converted to sqrt space and the breaks are then converted back
 * `asinh`/`pseudo_log`/`pseudo_log2`/`pseudo_ln`: Like `log` but includes zero and negates the breaks for the negative part
 * `integer`: Like `linear` except disallowing breaks at fractional parts
-* `date`/`datetime`/`time`: 
+* `date`/`datetime`/`time`:
   - `breaks => <interval>`: If breaks are given as an interval (e.g. `week`, `30 seconds` or `5 years`) then the breaks will get that spacing aligned at the interval boundary (Jan 1 for years, etc). This ignores the `pretty` setting
   - `pretty => true`: An appropriate interval is chosen that approximates the requested number of breaks and then used as above
   - `pretty => false`: Linear spacing in integer space as close to the requested number of breaks
@@ -154,7 +154,7 @@ The following settings are recognised by continuous scales:
 ```{ggsql}
 VISUALISE bill_len AS x, bill_dep AS y FROM ggsql:penguins
 DRAW point
-SCALE x 
+SCALE x
   SETTING expand => (0.0, 10)
 ```
 
@@ -172,7 +172,7 @@ SCALE y FROM (15, 20)
 ```{ggsql}
 VISUALISE bill_len AS x, bill_dep AS y FROM ggsql:penguins
 DRAW point
-SCALE x 
+SCALE x
   SETTING breaks => (37, 42, 55)
 ```
 
@@ -181,7 +181,7 @@ SCALE x
 ```{ggsql}
 VISUALISE bill_len AS x, bill_dep AS y FROM ggsql:penguins
 DRAW point
-SCALE x 
+SCALE x
   SETTING reverse => true
 ```
 
@@ -203,7 +203,7 @@ You can combine formatting with direct renaming in which case the direct renamin
 ```{ggsql}
 VISUALISE bill_len AS x, bill_dep AS y FROM ggsql:penguins
 DRAW point
-SCALE x 
+SCALE x
   RENAMING 50 => 'Fifty'
 ```
 
@@ -212,7 +212,7 @@ SCALE x
 ```{ggsql}
 VISUALISE bill_len AS x, bill_dep AS y FROM ggsql:penguins
 DRAW point
-SCALE x 
+SCALE x
   RENAMING * => '{} mm'
 ```
 
