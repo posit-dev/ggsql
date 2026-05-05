@@ -2,9 +2,8 @@
 //!
 //! Adapts the Reader's catalog/schema/table hierarchy to the Positron
 //! connections protocol. Hierarchy levels that the driver doesn't
-//! support (returning zero results) are skipped so that e.g. SQLite
-//! (which has no real catalogs or schemas) shows tables directly at
-//! the root.
+//! support (returning zero results) are skipped so that tables are
+//! shown directly at the root.
 
 use ggsql::reader::Reader;
 use serde::Serialize;
@@ -25,69 +24,42 @@ pub struct FieldSchema {
 }
 
 /// How many leading hierarchy levels to skip because the driver
-/// returns no results for them (e.g. SQLite ODBC has no catalogs
-/// or schemas, so both are skipped and tables show at the root).
-fn depth_offset(reader: &dyn Reader) -> (usize, String, String) {
+/// returns no results for them.
+fn depth_offset(reader: &dyn Reader) -> usize {
     let catalogs = reader.list_catalogs().unwrap_or_default();
     if catalogs.is_empty() {
         let schemas = reader.list_schemas("").unwrap_or_default();
-        if schemas.is_empty() {
-            (2, String::new(), String::new())
-        } else {
-            (1, String::new(), String::new())
-        }
+        if schemas.is_empty() { 2 } else { 1 }
     } else {
-        (0, String::new(), String::new())
+        0
     }
+}
+
+fn full_path<'a>(offset: usize, path: &'a [String]) -> Vec<&'a str> {
+    std::iter::repeat("")
+        .take(offset)
+        .chain(path.iter().map(|s| s.as_str()))
+        .collect()
 }
 
 /// List objects at the given path depth, skipping empty hierarchy levels.
 pub fn list_objects(reader: &dyn Reader, path: &[String]) -> Result<Vec<ObjectSchema>, String> {
-    let (offset, default_catalog, default_schema) = depth_offset(reader);
-    let effective = path.len() + offset;
-
-    match effective {
+    let full = full_path(depth_offset(reader), path);
+    match full.len() {
         0 => list_catalogs(reader),
-        1 => {
-            let catalog = if offset >= 1 {
-                &default_catalog
-            } else {
-                &path[0]
-            };
-            list_schemas(reader, catalog)
-        }
-        2 => {
-            let (catalog, schema) = match offset {
-                2 => (&default_catalog, &default_schema),
-                1 => (&default_catalog, &path[0]),
-                _ => (&path[0], &path[1]),
-            };
-            list_tables(reader, catalog, schema)
-        }
+        1 => list_schemas(reader, full[0]),
+        2 => list_tables(reader, full[0], full[1]),
         _ => Ok(vec![]),
     }
 }
 
 /// List fields (columns) for the object at the given path.
 pub fn list_fields(reader: &dyn Reader, path: &[String]) -> Result<Vec<FieldSchema>, String> {
-    let (offset, default_catalog, default_schema) = depth_offset(reader);
-    let effective = path.len() + offset;
-
-    if effective != 3 {
+    let full = full_path(depth_offset(reader), path);
+    if full.len() != 3 {
         return Ok(vec![]);
     }
-
-    let (catalog, schema, table) = match offset {
-        2 => (
-            default_catalog.as_str(),
-            default_schema.as_str(),
-            path[0].as_str(),
-        ),
-        1 => (default_catalog.as_str(), path[0].as_str(), path[1].as_str()),
-        _ => (path[0].as_str(), path[1].as_str(), path[2].as_str()),
-    };
-
-    list_columns(reader, catalog, schema, table)
+    list_columns(reader, full[0], full[1], full[2])
 }
 
 /// Whether the path points to an object that contains data (table or view).

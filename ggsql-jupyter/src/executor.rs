@@ -6,7 +6,10 @@
 
 use anyhow::Result;
 use ggsql::{
-    reader::{connection::parse_connection_string, DuckDBReader, Reader},
+    reader::{
+        connection::{extract_odbc_value, parse_connection_string},
+        DuckDBReader, Reader,
+    },
     validate::validate,
     writer::{VegaLiteWriter, Writer},
     DataFrame,
@@ -84,20 +87,6 @@ pub fn display_name_for_uri(uri: &str) -> String {
         return "ODBC".to_string();
     }
     uri.to_string()
-}
-
-fn extract_odbc_value(conn_str: &str, key: &str) -> Option<String> {
-    let lower = conn_str.to_lowercase();
-    let prefix = format!("{}=", key);
-    let start = lower.find(&prefix)?;
-    let rest = &conn_str[start + prefix.len()..];
-    let value = rest.split(';').next().unwrap_or("");
-    let value = value.trim().trim_matches(|c| c == '{' || c == '}');
-    if value.is_empty() {
-        None
-    } else {
-        Some(value.to_string())
-    }
 }
 
 /// Detect the database type name from a connection URI (e.g. "DuckDB", "Snowflake").

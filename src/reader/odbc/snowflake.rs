@@ -1,11 +1,13 @@
 //! Snowflake Workbench credential detection and connection resolution.
 
 pub(super) fn is_snowflake(conn_str: &str) -> bool {
-    conn_str.to_lowercase().contains("driver=snowflake")
+    crate::reader::connection::extract_odbc_value(conn_str, "driver")
+        .map(|d| d.to_lowercase().contains("snowflake"))
+        .unwrap_or(false)
 }
 
 pub(super) fn has_token(conn_str: &str) -> bool {
-    conn_str.to_lowercase().contains("token=")
+    crate::reader::connection::extract_odbc_value(conn_str, "token").is_some()
 }
 
 fn home_dir() -> Option<std::path::PathBuf> {

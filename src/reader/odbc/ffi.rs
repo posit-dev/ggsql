@@ -1,7 +1,6 @@
 //! Raw ODBC FFI types, constants, and runtime-loaded function pointers.
 //!
-//! Loads `libodbc` via `libloading` at runtime instead of linking at compile
-//! time. Only the subset of ODBC functions used by our reader is included.
+//! Loads `libodbc` via `libloading` at runtime.
 
 use std::sync::OnceLock;
 
@@ -14,8 +13,8 @@ pub type SqlSmallInt = i16;
 pub type SqlUSmallInt = u16;
 pub type SqlInteger = i32;
 pub type SqlUInteger = u32;
-pub type SqlLen = isize; // pointer-sized: critical for indicator buffers
-pub type SqlULen = usize; // pointer-sized: critical for column size
+pub type SqlLen = isize;
+pub type SqlULen = usize;
 pub type SqlReturn = i16;
 pub type SqlHandle = *mut std::ffi::c_void;
 pub type SqlHEnv = SqlHandle;

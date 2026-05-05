@@ -2,8 +2,7 @@
 //!
 //! Provides a reader for any ODBC-compatible database using runtime-loaded
 //! ODBC bindings via `libloading`. The ODBC driver manager (`libodbc`) is
-//! loaded on first use — the binary runs fine without it until an ODBC
-//! connection is requested.
+//! loaded on first use.
 
 #[allow(dead_code)]
 pub(crate) mod ffi;
@@ -25,9 +24,6 @@ use wrapper::{Connection, Statement};
 fn detect_dialect(dbms_name: Option<&str>, conn_str: &str) -> Box<dyn super::SqlDialect> {
     if let Some(name) = dbms_name {
         let lower = name.to_lowercase();
-        if lower.contains("snowflake") {
-            return Box::new(super::AnsiDialect);
-        }
         #[cfg(feature = "sqlite")]
         if lower.contains("sqlite") {
             return Box::new(super::sqlite::SqliteDialect);
@@ -39,29 +35,14 @@ fn detect_dialect(dbms_name: Option<&str>, conn_str: &str) -> Box<dyn super::Sql
     }
 
     // Fall back to connection string matching
-    let lower = conn_str.to_lowercase();
-    if lower.contains("driver=snowflake") {
-        Box::new(super::AnsiDialect)
-    } else if lower.contains("driver=sqlite") || lower.contains("driver={sqlite") {
+    let driver =
+        super::connection::extract_odbc_value(conn_str, "driver").map(|s| s.to_lowercase());
+    match driver.as_deref() {
         #[cfg(feature = "sqlite")]
-        {
-            Box::new(super::sqlite::SqliteDialect)
-        }
-        #[cfg(not(feature = "sqlite"))]
-        {
-            Box::new(super::AnsiDialect)
-        }
-    } else if lower.contains("driver=duckdb") || lower.contains("driver={duckdb") {
+        Some(d) if d.contains("sqlite") => Box::new(super::sqlite::SqliteDialect),
         #[cfg(feature = "duckdb")]
-        {
-            Box::new(super::duckdb::DuckDbDialect)
-        }
-        #[cfg(not(feature = "duckdb"))]
-        {
-            Box::new(super::AnsiDialect)
-        }
-    } else {
-        Box::new(super::AnsiDialect)
+        Some(d) if d.contains("duckdb") => Box::new(super::duckdb::DuckDbDialect),
+        _ => Box::new(super::AnsiDialect),
     }
 }
 
