@@ -58,23 +58,24 @@ impl DataExplorerState {
     /// Runs `SELECT COUNT(*)` and a column metadata query to cache schema
     /// information. Does **not** load the full table into memory.
     pub fn open(reader: &dyn Reader, path: &[String]) -> Result<Self, String> {
-        if path.len() < 3 {
+        let full = crate::connection::resolve_path(reader, path);
+        if full.len() < 3 {
             return Err(format!(
                 "Expected [catalog, schema, table] path, got {} elements",
-                path.len()
+                full.len()
             ));
         }
 
-        let catalog = &path[0];
-        let schema = &path[1];
-        let table = &path[2];
+        let catalog = full[0];
+        let schema = full[1];
+        let table = full[2];
 
-        let table_path = format!(
-            "{}.{}.{}",
-            ggsql::naming::quote_ident(catalog),
-            ggsql::naming::quote_ident(schema),
-            ggsql::naming::quote_ident(table),
-        );
+        let table_path = [catalog, schema, table]
+            .iter()
+            .filter(|s| !s.is_empty())
+            .map(|s| ggsql::naming::quote_ident(s))
+            .collect::<Vec<_>>()
+            .join(".");
 
         // Get row count
         let count_sql = format!("SELECT COUNT(*) AS \"n\" FROM {}", table_path);
@@ -111,7 +112,7 @@ impl DataExplorerState {
 
         Ok(Self {
             table_path,
-            title: table.clone(),
+            title: table.to_string(),
             columns,
             num_rows,
         })

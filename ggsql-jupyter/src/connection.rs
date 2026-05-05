@@ -42,6 +42,12 @@ fn full_path<'a>(offset: usize, path: &'a [String]) -> Vec<&'a str> {
         .collect()
 }
 
+/// Resolve a UI path to a full `[catalog, schema, ...]` path, padding
+/// skipped hierarchy levels with empty strings.
+pub fn resolve_path<'a>(reader: &dyn Reader, path: &'a [String]) -> Vec<&'a str> {
+    full_path(depth_offset(reader), path)
+}
+
 /// List objects at the given path depth, skipping empty hierarchy levels.
 pub fn list_objects(reader: &dyn Reader, path: &[String]) -> Result<Vec<ObjectSchema>, String> {
     let full = full_path(depth_offset(reader), path);
