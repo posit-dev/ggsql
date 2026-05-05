@@ -1,11 +1,20 @@
 ## [Unreleased]
 
+## 0.3.2 - 2026-05-05
+
 ### Fixed
 
 - Side effects like `CREATE TEMP TABLE` before the `VISUALISE` statement are now
   separated from directly feeding into the visualisation data (#415)
 - Fixed bug where panel axes were unintentionally anchored to zero when using 
   `FACET ... SETTING free => 'x'/'y'` (#410).
+- Fixed bug where faceted data were matched to the incorrect panels (#409)
+
+### Changed
+
+- Restructured how ggsql integrates with ODBC drivers to use the system ODBC,
+rather than bundling unixodbc as part of binary releases. This fixes several
+issues on Linux and macOS caused by relative paths to dynamic libraries.
 
 ## 0.3.1 - 2026-04-30
 

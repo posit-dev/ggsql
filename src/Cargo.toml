@@ -27,8 +27,8 @@ arrow = { workspace = true }
 # Readers
 duckdb = { workspace = true, optional = true }
 rusqlite = { workspace = true, optional = true }
-odbc-api = { workspace = true, optional = true }
 toml_edit = { workspace = true, optional = true }
+libloading = { workspace = true, optional = true }
 parquet = { workspace = true, optional = true }
 bytes = { workspace = true }
 
@@ -60,7 +60,7 @@ default = ["duckdb", "sqlite", "vegalite", "parquet", "builtin-data", "odbc", "s
 duckdb = ["dep:duckdb"]
 parquet = ["dep:parquet"]
 sqlite = ["dep:rusqlite"]
-odbc = ["dep:odbc-api", "dep:toml_edit"]
+odbc = ["dep:toml_edit", "dep:libloading"]
 spatial = ["dep:geozero"]
 vegalite = []
 builtin-data = []
