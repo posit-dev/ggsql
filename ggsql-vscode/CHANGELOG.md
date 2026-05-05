@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+## 0.3.2
+
+- Improved configuration options shown in Positron Connection pane for sqlite
+and Snowflake ODBC connections (#421)
+
 ## 0.3.0
 
 - Add cell delimiters and code lens actions when running in Positron (#366)

@@ -1,5 +1,7 @@
 ## [Unreleased]
 
+## 0.3.2 - 2026-05-05
+
 ### Fixed
 
 - Side effects like `CREATE TEMP TABLE` before the `VISUALISE` statement are now
