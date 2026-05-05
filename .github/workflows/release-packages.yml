@@ -102,12 +102,6 @@ jobs:
       - name: Install tree-sitter-cli
         run: npm install -g tree-sitter-cli
 
-      - name: Install ODBC
-        run: brew install unixodbc
-
-      - name: Install dylibbundler
-        run: brew install dylibbundler
-
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -148,19 +142,10 @@ jobs:
       - name: Build ggsql binary (x86_64)
         run: cargo build --release --bin ggsql --bin ggsql-jupyter
 
-      - name: Bundle dynamic library dependencies
-        run: |
-          dylibbundler -cd -of -b -x target/release/ggsql         -d ./libs/ -p "@executable_path/../lib/ggsql$VERSION/"
-          dylibbundler -cd -of -b -x target/release/ggsql-jupyter -d ./libs/ -p "@executable_path/../lib/ggsql$VERSION/"
-
-      - name: Sign binaries and dylibs (Developer ID Application)
+      - name: Sign binaries (Developer ID Application)
         env:
           SIGN_ID: "Developer ID Application: ${{ secrets.GWS_APPLE_SIGN_IDENTITY }}"
         run: |
-          # Sign bundled dylibs first (inside-out), replacing dylibbundler's ad-hoc sigs
-          find ./libs -type f \( -name "*.dylib" -o -name "*.so" \) -print0 | \
-            xargs -0 -I{} codesign --force --options runtime --timestamp --sign "$SIGN_ID" "{}"
-          # Then sign the executables with hardened runtime + entitlements
           codesign --force --options runtime --timestamp \
             --entitlements entitlements.plist \
             --sign "$SIGN_ID" target/release/ggsql
@@ -177,14 +162,13 @@ jobs:
           APPLE_API_ISSUER: ${{ secrets.GWS_APPLE_API_ISSUER }}
         run: |
           PKG_NAME="ggsql_${VERSION}_x86_64.pkg"
-          mkdir -p pkg-payload/usr/local/bin "pkg-payload/usr/local/lib/ggsql$VERSION"
+          mkdir -p pkg-payload/usr/local/bin
           cp target/release/ggsql          pkg-payload/usr/local/bin/
           cp target/release/ggsql-jupyter  pkg-payload/usr/local/bin/
-          cp -R ./libs/. "pkg-payload/usr/local/lib/ggsql$VERSION/"
           mkdir -p pkg-scripts
           cat > pkg-scripts/postinstall <<EOF
           #!/bin/sh
-          mkdir -p /usr/local/bin /usr/local/lib/ggsql$VERSION
+          mkdir -p /usr/local/bin
           EOF
           chmod 755 pkg-scripts/postinstall
           pkgbuild \
@@ -224,12 +208,6 @@ jobs:
 
       - name: Install tree-sitter-cli
         run: npm install -g tree-sitter-cli
-
-      - name: Install ODBC
-        run: brew install unixodbc
-
-      - name: Install dylibbundler
-        run: brew install dylibbundler
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -271,19 +249,10 @@ jobs:
       - name: Build ggsql binary (aarch64)
         run: cargo build --release --bin ggsql --bin ggsql-jupyter
 
-      - name: Bundle dynamic library dependencies
-        run: |
-          dylibbundler -cd -of -b -x target/release/ggsql         -d ./libs/ -p "@executable_path/../lib/ggsql$VERSION/"
-          dylibbundler -cd -of -b -x target/release/ggsql-jupyter -d ./libs/ -p "@executable_path/../lib/ggsql$VERSION/"
-
-      - name: Sign binaries and dylibs (Developer ID Application)
+      - name: Sign binaries (Developer ID Application)
         env:
           SIGN_ID: "Developer ID Application: ${{ secrets.GWS_APPLE_SIGN_IDENTITY }}"
         run: |
-          # Sign bundled dylibs first (inside-out), replacing dylibbundler's ad-hoc sigs
-          find ./libs -type f \( -name "*.dylib" -o -name "*.so" \) -print0 | \
-            xargs -0 -I{} codesign --force --options runtime --timestamp --sign "$SIGN_ID" "{}"
-          # Then sign the executables with hardened runtime + entitlements
           codesign --force --options runtime --timestamp \
             --entitlements entitlements.plist \
             --sign "$SIGN_ID" target/release/ggsql
@@ -300,14 +269,13 @@ jobs:
           APPLE_API_ISSUER: ${{ secrets.GWS_APPLE_API_ISSUER }}
         run: |
           PKG_NAME="ggsql_${VERSION}_aarch64.pkg"
-          mkdir -p pkg-payload/usr/local/bin "pkg-payload/usr/local/lib/ggsql$VERSION"
+          mkdir -p pkg-payload/usr/local/bin
           cp target/release/ggsql          pkg-payload/usr/local/bin/
           cp target/release/ggsql-jupyter  pkg-payload/usr/local/bin/
-          cp -R ./libs/. "pkg-payload/usr/local/lib/ggsql$VERSION/"
           mkdir -p pkg-scripts
           cat > pkg-scripts/postinstall <<EOF
           #!/bin/sh
-          mkdir -p /usr/local/bin /usr/local/lib/ggsql$VERSION
+          mkdir -p /usr/local/bin
           EOF
           chmod 755 pkg-scripts/postinstall
           pkgbuild \
@@ -361,8 +329,7 @@ jobs:
             libwebkit2gtk-4.1-dev \
             libappindicator3-dev \
             librsvg2-dev \
-            patchelf \
-            unixodbc-dev
+            patchelf
 
       - name: Install cargo-packager
         run: cargo install cargo-packager --locked
@@ -409,17 +376,13 @@ jobs:
             libwebkit2gtk-4.1-dev \
             libappindicator3-dev \
             librsvg2-dev \
-            patchelf \
-            unixodbc-dev
+            patchelf
 
       - name: Install cargo-packager
         run: cargo install cargo-packager --locked
 
       - name: Build ggsql binary (aarch64)
         run: cargo build --release --bin ggsql --bin ggsql-jupyter
-
-      - name: Make empty libs dir for bundling
-        run: mkdir -p libs
 
       - name: Build Debian package (aarch64)
         run: cargo packager --release --formats deb
@@ -450,9 +413,6 @@ jobs:
 
       - name: Install tree-sitter-cli
         run: npm install -g tree-sitter-cli
-
-      - name: Install ODBC
-        run: sudo apt-get install -y unixodbc-dev
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable

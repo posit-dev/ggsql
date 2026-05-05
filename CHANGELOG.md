@@ -8,6 +8,12 @@
   `FACET ... SETTING free => 'x'/'y'` (#410).
 - Fixed bug where faceted data were matched to the incorrect panels (#409)
 
+### Changed
+
+- Restructured how ggsql integrates with ODBC drivers to use the system ODBC,
+rather than bundling unixodbc as part of binary releases. This fixes several
+issues on Linux and macOS caused by relative paths to dynamic libraries.
+
 ## 0.3.1 - 2026-04-30
 
 ### Fixed

@@ -42,8 +42,8 @@ bytes = "1"
 rusqlite = { version = "0.38", features = ["bundled", "chrono"] }
 
 # ODBC
-odbc-api = { version = "13", default-features = false, features = ["odbc_version_3_80"] }
 toml_edit = "0.22"
+libloading = "0.8"
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }

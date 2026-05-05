@@ -1,10 +1,10 @@
 //! Database schema introspection for the Positron Connections pane.
 //!
-//! Delegates introspection SQL to the reader's `SqlDialect`, which provides
-//! backend-specific queries (e.g. `information_schema` for DuckDB/PostgreSQL,
-//! `sqlite_master` / `PRAGMA` for SQLite).
+//! Adapts the Reader's catalog/schema/table hierarchy to the Positron
+//! connections protocol. Hierarchy levels that the driver doesn't
+//! support (returning zero results) are skipped so that tables are
+//! shown directly at the root.
 
-use crate::util::find_column;
 use ggsql::reader::Reader;
 use serde::Serialize;
 use serde_json::Value;
@@ -23,30 +23,52 @@ pub struct FieldSchema {
     pub dtype: String,
 }
 
-/// List objects at the given path depth.
-///
-/// Path semantics (catalog → schema → table):
-/// - `[]` → list catalogs
-/// - `[catalog]` → list schemas in that catalog
-/// - `[catalog, schema]` → list tables and views
+/// How many leading hierarchy levels to skip because the driver
+/// returns no results for them.
+fn depth_offset(reader: &dyn Reader) -> usize {
+    let catalogs = reader.list_catalogs().unwrap_or_default();
+    if catalogs.is_empty() {
+        let schemas = reader.list_schemas("").unwrap_or_default();
+        if schemas.is_empty() {
+            2
+        } else {
+            1
+        }
+    } else {
+        0
+    }
+}
+
+fn full_path(offset: usize, path: &[String]) -> Vec<String> {
+    std::iter::repeat_n(String::new(), offset)
+        .chain(path.iter().cloned())
+        .collect()
+}
+
+/// Resolve a UI path to a full `[catalog, schema, ...]` path, padding
+/// skipped hierarchy levels with empty strings.
+pub fn resolve_path(reader: &dyn Reader, path: &[String]) -> Vec<String> {
+    full_path(depth_offset(reader), path)
+}
+
+/// List objects at the given path depth, skipping empty hierarchy levels.
 pub fn list_objects(reader: &dyn Reader, path: &[String]) -> Result<Vec<ObjectSchema>, String> {
-    match path.len() {
+    let full = full_path(depth_offset(reader), path);
+    match full.len() {
         0 => list_catalogs(reader),
-        1 => list_schemas(reader, &path[0]),
-        2 => list_tables(reader, &path[0], &path[1]),
+        1 => list_schemas(reader, &full[0]),
+        2 => list_tables(reader, &full[0], &full[1]),
         _ => Ok(vec![]),
     }
 }
 
 /// List fields (columns) for the object at the given path.
-///
-/// - `[catalog, schema, table]` → list columns
 pub fn list_fields(reader: &dyn Reader, path: &[String]) -> Result<Vec<FieldSchema>, String> {
-    if path.len() == 3 {
-        list_columns(reader, &path[0], &path[1], &path[2])
-    } else {
-        Ok(vec![])
+    let full = full_path(depth_offset(reader), path);
+    if full.len() != 3 {
+        return Ok(vec![]);
     }
+    list_columns(reader, &full[0], &full[1], &full[2])
 }
 
 /// Whether the path points to an object that contains data (table or view).
@@ -59,47 +81,31 @@ pub fn contains_data(path: &[Value]) -> bool {
 }
 
 fn list_catalogs(reader: &dyn Reader) -> Result<Vec<ObjectSchema>, String> {
-    let sql = reader.dialect().sql_list_catalogs();
-    let df = reader
-        .execute_sql(&sql)
+    let catalogs = reader
+        .list_catalogs()
         .map_err(|e| format!("Failed to list catalogs: {}", e))?;
 
-    let col = find_column(&df, &["catalog_name", "name"])
-        .map_err(|e| format!("Missing catalog_name/name column: {}", e))?;
-
-    let mut catalogs = Vec::new();
-    for i in 0..df.height() {
-        let name = ggsql::array_util::value_to_string(col, i)
-            .trim_matches('"')
-            .to_string();
-        catalogs.push(ObjectSchema {
+    Ok(catalogs
+        .into_iter()
+        .map(|name| ObjectSchema {
             name,
             kind: "catalog".to_string(),
-        });
-    }
-    Ok(catalogs)
+        })
+        .collect())
 }
 
 fn list_schemas(reader: &dyn Reader, catalog: &str) -> Result<Vec<ObjectSchema>, String> {
-    let sql = reader.dialect().sql_list_schemas(catalog);
-    let df = reader
-        .execute_sql(&sql)
+    let schemas = reader
+        .list_schemas(catalog)
         .map_err(|e| format!("Failed to list schemas: {}", e))?;
 
-    let col = find_column(&df, &["schema_name", "name"])
-        .map_err(|e| format!("Missing schema_name/name column: {}", e))?;
-
-    let mut schemas = Vec::new();
-    for i in 0..df.height() {
-        let name = ggsql::array_util::value_to_string(col, i)
-            .trim_matches('"')
-            .to_string();
-        schemas.push(ObjectSchema {
+    Ok(schemas
+        .into_iter()
+        .map(|name| ObjectSchema {
             name,
             kind: "schema".to_string(),
-        });
-    }
-    Ok(schemas)
+        })
+        .collect())
 }
 
 fn list_tables(
@@ -107,40 +113,27 @@ fn list_tables(
     catalog: &str,
     schema: &str,
 ) -> Result<Vec<ObjectSchema>, String> {
-    let sql = reader.dialect().sql_list_tables(catalog, schema);
-    let df = reader
-        .execute_sql(&sql)
+    let tables = reader
+        .list_tables(catalog, schema)
         .map_err(|e| format!("Failed to list tables: {}", e))?;
 
-    let name_col = find_column(&df, &["table_name", "name"])
-        .map_err(|e| format!("Missing table_name/name column: {}", e))?;
-    let type_col = find_column(&df, &["table_type", "kind"])
-        .map_err(|e| format!("Missing table_type/kind column: {}", e))?;
-
-    let mut objects = Vec::new();
-    for i in 0..df.height() {
-        let name = ggsql::array_util::value_to_string(name_col, i)
-            .trim_matches('"')
-            .to_string();
-        let table_type = ggsql::array_util::value_to_string(type_col, i)
-            .trim_matches('"')
-            .to_uppercase();
-        let kind = if table_type.contains("VIEW") {
-            "view"
-        } else if table_type == "TABLE"
-            || table_type == "BASE TABLE"
-            || table_type.contains("TABLE")
-        {
-            "table"
-        } else {
-            continue; // Skip non-table/view objects (stages, procedures, etc.)
-        };
-        objects.push(ObjectSchema {
-            name,
-            kind: kind.to_string(),
-        });
-    }
-    Ok(objects)
+    Ok(tables
+        .into_iter()
+        .filter_map(|t| {
+            let upper = t.table_type.to_uppercase();
+            let kind = if upper.contains("VIEW") {
+                "view"
+            } else if upper == "TABLE" || upper == "BASE TABLE" || upper.contains("TABLE") {
+                "table"
+            } else {
+                return None;
+            };
+            Some(ObjectSchema {
+                name: t.name,
+                kind: kind.to_string(),
+            })
+        })
+        .collect())
 }
 
 fn list_columns(
@@ -149,27 +142,17 @@ fn list_columns(
     schema: &str,
     table: &str,
 ) -> Result<Vec<FieldSchema>, String> {
-    let sql = reader.dialect().sql_list_columns(catalog, schema, table);
-    let df = reader
-        .execute_sql(&sql)
+    let columns = reader
+        .list_columns(catalog, schema, table)
         .map_err(|e| format!("Failed to list columns: {}", e))?;
 
-    let name_col = find_column(&df, &["column_name"])
-        .map_err(|e| format!("Missing column_name column: {}", e))?;
-    let type_col =
-        find_column(&df, &["data_type"]).map_err(|e| format!("Missing data_type column: {}", e))?;
-
-    let mut fields = Vec::new();
-    for i in 0..df.height() {
-        let name = ggsql::array_util::value_to_string(name_col, i)
-            .trim_matches('"')
-            .to_string();
-        let dtype = ggsql::array_util::value_to_string(type_col, i)
-            .trim_matches('"')
-            .to_string();
-        fields.push(FieldSchema { name, dtype });
-    }
-    Ok(fields)
+    Ok(columns
+        .into_iter()
+        .map(|c| FieldSchema {
+            name: c.name,
+            dtype: c.data_type,
+        })
+        .collect())
 }
 
 #[cfg(test)]

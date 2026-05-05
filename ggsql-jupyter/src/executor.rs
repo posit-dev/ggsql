@@ -6,7 +6,10 @@
 
 use anyhow::Result;
 use ggsql::{
-    reader::{connection::parse_connection_string, DuckDBReader, Reader},
+    reader::{
+        connection::{extract_odbc_value, parse_connection_string},
+        DuckDBReader, Reader,
+    },
     validate::validate,
     writer::{VegaLiteWriter, Writer},
     DataFrame,
@@ -69,20 +72,16 @@ pub fn display_name_for_uri(uri: &str) -> String {
         return format!("DuckDB ({})", path);
     }
     if let Some(path) = uri.strip_prefix("sqlite://") {
-        if path.is_empty() {
+        if path == ":memory:" || path.is_empty() {
             return "SQLite (memory)".to_string();
         }
         return format!("SQLite ({})", path);
     }
     if let Some(odbc) = uri.strip_prefix("odbc://") {
-        // Try to extract driver name from ODBC string
-        if let Some(driver_start) = odbc.to_lowercase().find("driver=") {
-            let rest = &odbc[driver_start + 7..];
-            let driver = rest
-                .split(';')
-                .next()
-                .unwrap_or("ODBC")
-                .trim_matches(|c| c == '{' || c == '}');
+        if let Some(dsn) = extract_odbc_value(odbc, "dsn") {
+            return format!("{} (ODBC)", dsn);
+        }
+        if let Some(driver) = extract_odbc_value(odbc, "driver") {
             return format!("{} (ODBC)", driver);
         }
         return "ODBC".to_string();
@@ -99,13 +98,14 @@ pub fn type_name_for_uri(uri: &str) -> String {
         return "SQLite".to_string();
     }
     if let Some(odbc) = uri.strip_prefix("odbc://") {
-        if odbc.to_lowercase().contains("driver=snowflake") {
-            return "Snowflake".to_string();
-        }
-        if odbc.to_lowercase().contains("driver={postgresql}")
-            || odbc.to_lowercase().contains("driver=postgresql")
-        {
-            return "PostgreSQL".to_string();
+        if let Some(driver) = extract_odbc_value(odbc, "driver") {
+            let lower = driver.to_lowercase();
+            if lower.contains("snowflake") {
+                return "Snowflake".to_string();
+            }
+            if lower.contains("postgresql") {
+                return "PostgreSQL".to_string();
+            }
         }
         return "ODBC".to_string();
     }
@@ -127,12 +127,8 @@ pub fn host_for_uri(uri: &str) -> String {
         return path.to_string();
     }
     if let Some(odbc) = uri.strip_prefix("odbc://") {
-        // Try to extract server
-        if let Some(server_start) = odbc.to_lowercase().find("server=") {
-            let rest = &odbc[server_start + 7..];
-            if let Some(host) = rest.split(';').next() {
-                return host.to_string();
-            }
+        if let Some(server) = extract_odbc_value(odbc, "server") {
+            return server;
         }
     }
     uri.to_string()
@@ -302,5 +298,20 @@ mod tests {
     fn test_display_name_for_uri() {
         assert_eq!(display_name_for_uri("duckdb://memory"), "DuckDB (memory)");
         assert_eq!(display_name_for_uri("duckdb://my.db"), "DuckDB (my.db)");
+        assert_eq!(display_name_for_uri("sqlite://:memory:"), "SQLite (memory)");
+        assert_eq!(display_name_for_uri("sqlite://data.db"), "SQLite (data.db)");
+        assert_eq!(
+            display_name_for_uri("odbc://DSN=my-postgres"),
+            "my-postgres (ODBC)"
+        );
+        assert_eq!(
+            display_name_for_uri("odbc://Driver=Snowflake;Server=foo"),
+            "Snowflake (ODBC)"
+        );
+        assert_eq!(
+            display_name_for_uri("odbc://Driver={PostgreSQL};DSN=pg-test"),
+            "pg-test (ODBC)"
+        );
+        assert_eq!(display_name_for_uri("odbc://"), "ODBC");
     }
 }
