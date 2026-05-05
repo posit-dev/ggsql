@@ -210,35 +210,79 @@ pub fn split_with_query(source_tree: &SourceTree) -> Option<(String, String)> {
     Some((cte_prefix, trailing))
 }
 
-/// Transform global SQL for execution with temp tables
+/// Transform global SQL for execution with temp tables.
 ///
-/// If the SQL has a WITH clause followed by SELECT, extracts just the SELECT
-/// portion and transforms CTE references to temp table names.
-/// For SQL without WITH clause, just transforms any CTE references.
+/// Returns statements to execute directly as side effects (CREATE, INSERT, …)
+/// and an optional query whose result should be wrapped as the global temp
+/// table.
 pub fn transform_global_sql(
     source_tree: &SourceTree,
     materialized_ctes: &HashSet<String>,
-) -> Option<String> {
+) -> (Vec<String>, Option<String>) {
+    // Collect side-effect statements (CREATE, INSERT, UPDATE, DELETE) that
+    // need to run before the main query. These appear alongside a trailing
+    // SELECT or VISUALISE FROM.
+    //
+    // Only structured DML is handled here — other_sql_statement nodes
+    // (INSTALL, LOAD, SET, …) are pre-executed in prepare_data_with_reader.
+    let root = source_tree.root();
+
+    let side_effect_stmts = r#"
+        (sql_statement
+          [(create_statement)
+           (insert_statement)
+           (update_statement)
+           (delete_statement)] @stmt)
+    "#;
+    let side_effects: Vec<String> = source_tree
+        .find_texts(&root, side_effect_stmts)
+        .into_iter()
+        .map(|s| transform_cte_references(s.trim(), materialized_ctes))
+        .filter(|s| !s.is_empty())
+        .collect();
+
     // Try to extract trailing SELECT (WITH...SELECT or direct SELECT)
     let select_sql = split_with_query(source_tree)
         .map(|(_, select)| select)
         .or_else(|| {
             // Fallback: direct SELECT statement (no WITH clause)
-            let root = source_tree.root();
             source_tree.find_text(&root, "(sql_statement (select_statement) @select)")
         });
 
     if let Some(select_sql) = select_sql {
-        Some(transform_cte_references(&select_sql, materialized_ctes))
-    } else if does_consume_cte(source_tree) {
-        // Non-SELECT executable SQL (CREATE, INSERT, UPDATE, DELETE)
-        // OR VISUALISE FROM (which injects SELECT * FROM <source>)
-        // Extract SQL (with injection if VISUALISE FROM) and transform CTE references
-        let sql = source_tree.extract_sql()?;
-        Some(transform_cte_references(&sql, materialized_ctes))
+        return (
+            side_effects,
+            Some(transform_cte_references(&select_sql, materialized_ctes)),
+        );
+    }
+
+    if !has_executable_sql(source_tree) {
+        return (vec![], None);
+    }
+
+    // We have non-SELECT executable SQL and/or VISUALISE FROM.
+    // Side-effects run directly, VISUALISE FROM becomes the queryable part.
+    // A bare WITH clause without a trailing statement is not executable on
+    // its own (its CTEs are already materialized separately).
+    let viz_from_query = source_tree
+        .find_text(
+            &root,
+            r#"(visualise_statement (from_clause (table_ref) @table))"#,
+        )
+        .map(|table| {
+            let q = format!("SELECT * FROM {}", table);
+            transform_cte_references(&q, materialized_ctes)
+        });
+
+    if !side_effects.is_empty() || viz_from_query.is_some() {
+        (side_effects, viz_from_query)
     } else {
-        // No executable SQL (just CTEs)
-        None
+        // has_executable_sql was true but we found no specific statements or
+        // VISUALISE FROM — fall back to extract_sql as the query.
+        let query = source_tree
+            .extract_sql()
+            .map(|s| transform_cte_references(&s, materialized_ctes));
+        (vec![], query)
     }
 }
 
@@ -248,7 +292,7 @@ pub fn transform_global_sql(
 /// This handles cases like `WITH a AS (...), b AS (...) VISUALISE` where the WITH
 /// clause has no trailing SELECT - these CTEs are still extracted for layer use
 /// but shouldn't be executed as global data.
-pub fn does_consume_cte(source_tree: &SourceTree) -> bool {
+pub fn has_executable_sql(source_tree: &SourceTree) -> bool {
     let root = source_tree.root();
 
     // Check for direct executable statements (SELECT, CREATE, INSERT, UPDATE,
