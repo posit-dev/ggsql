@@ -37,11 +37,11 @@ The output range can either be given as an array of values or a named palette. F
 All aesthetics have a default output range so it is never required to provide one unless you want to change from the default. The defaults are as follows:
 
 - `x`/`y`: Ignored (values used directly)
-- `stroke`/`fill`: The `navia` palette
+- `stroke`/`fill`: The `sequential` palette
 - `size`/`linewidth`: `(1, 6)` (points)
 - `opacity`: `(0.1, 1.0)` (0 being fully transparent and 1 being fully opaque)
 
-The remaining aesthetics doesn’t have a meaningful continuous output domain and doesn’t work with continuous scales. Consider using a [binned scale](../../../syntax/scale/type/binned.llms.md) for these if necessary.
+The remaining aesthetics don’t have a meaningful continuous output domain and don’t work with continuous scales. Consider using a [binned scale](../../../syntax/scale/type/binned.llms.md) for these if necessary.
 
 ### Examples
 
@@ -157,7 +157,7 @@ The following settings are recognised by continuous scales:
 ``` ggsql
 VISUALISE bill_len AS x, bill_dep AS y FROM ggsql:penguins
 DRAW point
-SCALE x 
+SCALE x
   SETTING expand => (0.0, 10)
 ```
 
@@ -175,7 +175,7 @@ SCALE y FROM (15, 20)
 ``` ggsql
 VISUALISE bill_len AS x, bill_dep AS y FROM ggsql:penguins
 DRAW point
-SCALE x 
+SCALE x
   SETTING breaks => (37, 42, 55)
 ```
 
@@ -184,7 +184,7 @@ SCALE x
 ``` ggsql
 VISUALISE bill_len AS x, bill_dep AS y FROM ggsql:penguins
 DRAW point
-SCALE x 
+SCALE x
   SETTING reverse => true
 ```
 
@@ -209,7 +209,7 @@ You can combine formatting with direct renaming in which case the direct renamin
 ``` ggsql
 VISUALISE bill_len AS x, bill_dep AS y FROM ggsql:penguins
 DRAW point
-SCALE x 
+SCALE x
   RENAMING 50 => 'Fifty'
 ```
 
@@ -218,7 +218,7 @@ SCALE x
 ``` ggsql
 VISUALISE bill_len AS x, bill_dep AS y FROM ggsql:penguins
 DRAW point
-SCALE x 
+SCALE x
   RENAMING * => '{} mm'
 ```
 

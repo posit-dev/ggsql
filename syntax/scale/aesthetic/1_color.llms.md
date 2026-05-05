@@ -57,7 +57,7 @@ Literal color values may be translucent, either by providing a fourth channel th
 
 ## Palettes
 
-There are two different types of palettes for fill and stroke — those intended for continuous data and those intended for discrete data. While they both consists of multiple color values, the continuous palettes are meant for interpolation between successive values whereas the discrete palettes are not.
+There are two different types of palettes for fill and stroke — those intended for continuous data and those intended for discrete data. While they both consist of multiple color values, the continuous palettes are meant for interpolation between successive values whereas the discrete palettes are not.
 
 Palettes are used by giving them as names in the `TO` clause:
 
