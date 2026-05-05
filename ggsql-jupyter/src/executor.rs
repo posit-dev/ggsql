@@ -98,13 +98,14 @@ pub fn type_name_for_uri(uri: &str) -> String {
         return "SQLite".to_string();
     }
     if let Some(odbc) = uri.strip_prefix("odbc://") {
-        if odbc.to_lowercase().contains("driver=snowflake") {
-            return "Snowflake".to_string();
-        }
-        if odbc.to_lowercase().contains("driver={postgresql}")
-            || odbc.to_lowercase().contains("driver=postgresql")
-        {
-            return "PostgreSQL".to_string();
+        if let Some(driver) = extract_odbc_value(odbc, "driver") {
+            let lower = driver.to_lowercase();
+            if lower.contains("snowflake") {
+                return "Snowflake".to_string();
+            }
+            if lower.contains("postgresql") {
+                return "PostgreSQL".to_string();
+            }
         }
         return "ODBC".to_string();
     }
@@ -126,12 +127,8 @@ pub fn host_for_uri(uri: &str) -> String {
         return path.to_string();
     }
     if let Some(odbc) = uri.strip_prefix("odbc://") {
-        // Try to extract server
-        if let Some(server_start) = odbc.to_lowercase().find("server=") {
-            let rest = &odbc[server_start + 7..];
-            if let Some(host) = rest.split(';').next() {
-                return host.to_string();
-            }
+        if let Some(server) = extract_odbc_value(odbc, "server") {
+            return server;
         }
     }
     uri.to_string()

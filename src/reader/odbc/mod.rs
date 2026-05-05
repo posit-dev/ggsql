@@ -244,9 +244,14 @@ impl Reader for OdbcReader {
         Ok(catalogs)
     }
 
-    fn list_schemas(&self, _catalog: &str) -> Result<Vec<String>> {
+    fn list_schemas(&self, catalog: &str) -> Result<Vec<String>> {
         // ODBC spec: CatalogName="", SchemaName="%", TableName=""
-        let stmt = wrapper::sql_tables(&self.connection, Some(""), Some("%"), Some(""), None)?;
+        let cat = if catalog.is_empty() {
+            None
+        } else {
+            Some(catalog)
+        };
+        let stmt = wrapper::sql_tables(&self.connection, cat, Some("%"), Some(""), None)?;
         let df = cursor_to_dataframe(stmt)?;
         let mut schemas = extract_string_column_ci(&df, "TABLE_SCHEM")?;
         schemas.sort();
