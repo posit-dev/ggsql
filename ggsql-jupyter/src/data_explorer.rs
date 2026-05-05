@@ -3,7 +3,6 @@
 //! Implements the `positron.dataExplorer` comm protocol, providing SQL-backed
 //! paginated data access.
 
-use crate::util::find_column;
 use ggsql::reader::Reader;
 use serde_json::{json, Value};
 
@@ -59,23 +58,24 @@ impl DataExplorerState {
     /// Runs `SELECT COUNT(*)` and a column metadata query to cache schema
     /// information. Does **not** load the full table into memory.
     pub fn open(reader: &dyn Reader, path: &[String]) -> Result<Self, String> {
-        if path.len() < 3 {
+        let full = crate::connection::resolve_path(reader, path);
+        if full.len() < 3 {
             return Err(format!(
                 "Expected [catalog, schema, table] path, got {} elements",
-                path.len()
+                full.len()
             ));
         }
 
-        let catalog = &path[0];
-        let schema = &path[1];
-        let table = &path[2];
+        let catalog = &full[0];
+        let schema = &full[1];
+        let table = &full[2];
 
-        let table_path = format!(
-            "{}.{}.{}",
-            ggsql::naming::quote_ident(catalog),
-            ggsql::naming::quote_ident(schema),
-            ggsql::naming::quote_ident(table),
-        );
+        let table_path = [catalog, schema, table]
+            .iter()
+            .filter(|s| !s.is_empty())
+            .map(|s| ggsql::naming::quote_ident(s))
+            .collect::<Vec<_>>()
+            .join(".");
 
         // Get row count
         let count_sql = format!("SELECT COUNT(*) AS \"n\" FROM {}", table_path);
@@ -95,29 +95,16 @@ impl DataExplorerState {
             })
             .unwrap_or(0);
 
-        // Get column metadata from information_schema
-        let columns_sql = reader.dialect().sql_list_columns(catalog, schema, table);
-        let columns_df = reader
-            .execute_sql(&columns_sql)
+        let column_infos = reader
+            .list_columns(catalog, schema, table)
             .map_err(|e| format!("Failed to list columns: {}", e))?;
 
-        let name_col = find_column(&columns_df, &["column_name"])
-            .map_err(|e| format!("Missing column_name: {}", e))?;
-        let type_col = find_column(&columns_df, &["data_type"])
-            .map_err(|e| format!("Missing data_type: {}", e))?;
-
         let mut columns = Vec::new();
-        for i in 0..columns_df.height() {
-            let name = ggsql::array_util::value_to_string(name_col, i)
-                .trim_matches('"')
-                .to_string();
-            let raw_type = ggsql::array_util::value_to_string(type_col, i)
-                .trim_matches('"')
-                .to_string();
-            let type_display = sql_type_to_display(&raw_type).to_string();
-            let type_name = clean_type_name(&raw_type);
+        for col in &column_infos {
+            let type_display = sql_type_to_display(&col.data_type).to_string();
+            let type_name = clean_type_name(&col.data_type);
             columns.push(ColumnInfo {
-                name,
+                name: col.name.clone(),
                 type_name,
                 type_display,
             });
@@ -125,7 +112,7 @@ impl DataExplorerState {
 
         Ok(Self {
             table_path,
-            title: table.clone(),
+            title: table.to_string(),
             columns,
             num_rows,
         })

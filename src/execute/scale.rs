@@ -251,12 +251,10 @@ pub fn apply_binning_to_dataframe(
                     } else {
                         val >= lower && val < upper
                     }
+                } else if i == 0 {
+                    val >= lower && val <= upper
                 } else {
-                    if i == 0 {
-                        val >= lower && val <= upper
-                    } else {
-                        val > lower && val <= upper
-                    }
+                    val > lower && val <= upper
                 };
 
                 if in_bin {
