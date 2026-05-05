@@ -66,9 +66,9 @@ impl DataExplorerState {
             ));
         }
 
-        let catalog = full[0];
-        let schema = full[1];
-        let table = full[2];
+        let catalog = &full[0];
+        let schema = &full[1];
+        let table = &full[2];
 
         let table_path = [catalog, schema, table]
             .iter()

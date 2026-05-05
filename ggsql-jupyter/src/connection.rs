@@ -29,22 +29,25 @@ fn depth_offset(reader: &dyn Reader) -> usize {
     let catalogs = reader.list_catalogs().unwrap_or_default();
     if catalogs.is_empty() {
         let schemas = reader.list_schemas("").unwrap_or_default();
-        if schemas.is_empty() { 2 } else { 1 }
+        if schemas.is_empty() {
+            2
+        } else {
+            1
+        }
     } else {
         0
     }
 }
 
-fn full_path<'a>(offset: usize, path: &'a [String]) -> Vec<&'a str> {
-    std::iter::repeat("")
-        .take(offset)
-        .chain(path.iter().map(|s| s.as_str()))
+fn full_path(offset: usize, path: &[String]) -> Vec<String> {
+    std::iter::repeat_n(String::new(), offset)
+        .chain(path.iter().cloned())
         .collect()
 }
 
 /// Resolve a UI path to a full `[catalog, schema, ...]` path, padding
 /// skipped hierarchy levels with empty strings.
-pub fn resolve_path<'a>(reader: &dyn Reader, path: &'a [String]) -> Vec<&'a str> {
+pub fn resolve_path(reader: &dyn Reader, path: &[String]) -> Vec<String> {
     full_path(depth_offset(reader), path)
 }
 
@@ -53,8 +56,8 @@ pub fn list_objects(reader: &dyn Reader, path: &[String]) -> Result<Vec<ObjectSc
     let full = full_path(depth_offset(reader), path);
     match full.len() {
         0 => list_catalogs(reader),
-        1 => list_schemas(reader, full[0]),
-        2 => list_tables(reader, full[0], full[1]),
+        1 => list_schemas(reader, &full[0]),
+        2 => list_tables(reader, &full[0], &full[1]),
         _ => Ok(vec![]),
     }
 }
@@ -65,7 +68,7 @@ pub fn list_fields(reader: &dyn Reader, path: &[String]) -> Result<Vec<FieldSche
     if full.len() != 3 {
         return Ok(vec![]);
     }
-    list_columns(reader, full[0], full[1], full[2])
+    list_columns(reader, &full[0], &full[1], &full[2])
 }
 
 /// Whether the path points to an object that contains data (table or view).
