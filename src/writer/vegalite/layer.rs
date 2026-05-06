@@ -2220,8 +2220,6 @@ impl GeomRenderer for SpatialRenderer {
                 let mut feature = serde_json::Map::new();
                 feature.insert("type".to_string(), json!("Feature"));
 
-                let mut properties = serde_json::Map::new();
-
                 for col_name in &col_names {
                     let col = df.column(col_name).map_err(|e| {
                         GgsqlError::WriterError(format!(
@@ -2233,14 +2231,18 @@ impl GeomRenderer for SpatialRenderer {
                     if *col_name == geometry_col {
                         let geom = Self::parse_geometry_from_array(col, row_idx)?;
                         feature.insert("geometry".to_string(), geom);
-                    } else {
+                    } else if !matches!(
+                        // These are reserved names for the geojson format, so
+                        // we shouldn't be inserting columns with that name.
+                        // Our naming module should prevent such collisions,
+                        // so this is purely defensive.
+                        col_name.as_str(),
+                        "type" | "geometry" | "properties" | "bbox" | "id"
+                    ) {
                         let value = super::data::series_value_at(col, row_idx)?;
-                        properties.insert(col_name.clone(), value.clone());
                         feature.insert(col_name.clone(), value);
                     }
                 }
-
-                feature.insert("properties".to_string(), Value::Object(properties));
                 features.push(Value::Object(feature));
             }
 

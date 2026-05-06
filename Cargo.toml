@@ -59,7 +59,6 @@ palette = { version = "0.7", default-features = false, features = ["std", "appro
 
 # Spatial
 geozero = { version = "0.14", default-features = false }
-hex = "0.4"
 
 # Utilities
 regex = "1.10"

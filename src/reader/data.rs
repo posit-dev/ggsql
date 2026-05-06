@@ -61,66 +61,6 @@ pub fn builtin_parquet_bytes(name: &str) -> Option<&'static [u8]> {
 }
 
 // =============================================================================
-// DuckDB builtin data registration (requires duckdb + builtin-data)
-// =============================================================================
-
-/// Register any builtin datasets referenced in the SQL with a DuckDB connection.
-///
-/// Finds `ggsql:X` patterns in the SQL, writes the embedded parquet data to
-/// a temp file, and creates a table named `__ggsql_data_X__` in DuckDB.
-#[cfg(all(feature = "duckdb", feature = "builtin-data"))]
-pub fn register_builtin_datasets_duckdb(
-    sql: &str,
-    conn: &duckdb::Connection,
-) -> Result<(), GgsqlError> {
-    use std::{env, fs};
-
-    let dataset_names = extract_builtin_dataset_names(sql)?;
-
-    // Load spatial extension before registering datasets that contain
-    // geometry columns, so DuckDB reads them as GEOMETRY rather than BLOB.
-    if dataset_names.iter().any(|n| n == "world") {
-        let _ = conn.execute("LOAD spatial", duckdb::params![]);
-    }
-
-    for name in dataset_names {
-        let Some(parquet_bytes) = builtin_parquet_bytes(&name) else {
-            continue;
-        };
-
-        let table_name = naming::builtin_data_table(&name);
-
-        // Write parquet to temp file for DuckDB's read_parquet
-        let mut tmp_path = env::temp_dir();
-        tmp_path.push(format!("{}.parquet", name));
-        if !tmp_path.exists() {
-            fs::write(&tmp_path, parquet_bytes).map_err(|e| {
-                GgsqlError::ReaderError(format!(
-                    "Failed to write builtin dataset '{}' to {}: {}",
-                    name,
-                    tmp_path.display(),
-                    e
-                ))
-            })?;
-        }
-
-        let create_sql = format!(
-            "CREATE TABLE IF NOT EXISTS {} AS SELECT * FROM read_parquet('{}')",
-            naming::quote_ident(&table_name),
-            tmp_path.display()
-        );
-
-        conn.execute(&create_sql, duckdb::params![]).map_err(|e| {
-            GgsqlError::ReaderError(format!(
-                "Failed to register builtin dataset '{}': {}",
-                name, e
-            ))
-        })?;
-    }
-    Ok(())
-}
-
-// =============================================================================
 // Arrow-based builtin data loading
 // =============================================================================
 

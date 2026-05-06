@@ -369,18 +369,6 @@ fn detect_geometry_column(schema: &Schema) -> Option<String> {
         return Some(candidates[0].name.clone());
     }
 
-    // Fall back to name-only match (e.g. extension types we don't recognise)
-    if candidates.is_empty() {
-        let by_name: Vec<_> = schema
-            .iter()
-            .filter(|c| looks_like_geometry(&c.name))
-            .collect();
-
-        if by_name.len() == 1 {
-            return Some(by_name[0].name.clone());
-        }
-    }
-
     None
 }
 
