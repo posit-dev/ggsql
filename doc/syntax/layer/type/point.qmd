@@ -73,3 +73,13 @@ VISUALISE species AS x, bill_dep AS y FROM ggsql:penguins
 DRAW point 
   SETTING position => 'jitter', distribution => 'density'
 ```
+
+Use aggregation to show a single point per group
+
+```{ggsql}
+VISUALISE species AS x, island AS y, body_mass AS fill, body_mass AS size 
+  FROM ggsql:penguins
+DRAW point 
+  SETTING aggregate => ('fill:mean', 'size:count') 
+SCALE size TO (5, 20)
+```

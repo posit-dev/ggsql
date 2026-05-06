@@ -109,3 +109,15 @@ DRAW range
   MAPPING low AS ymin, high AS ymax
   SETTING width => null
 ```
+
+Use aggregation to calculate bounds dynamically
+
+```{ggsql}
+VISUALISE body_mass AS x, species AS y FROM ggsql:penguins
+DRAW range
+  MAPPING body_mass AS xmin, body_mass AS xmax
+  SETTING aggregate => ('min', 'max'), width => null
+DRAW point
+  REMAPPING aggregate AS fill
+  SETTING aggregate => ('x:min', 'x:max'), size => 20, opacity => 1
+```

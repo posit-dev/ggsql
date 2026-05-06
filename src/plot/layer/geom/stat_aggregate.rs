@@ -42,18 +42,19 @@ use crate::{GgsqlError, Mappings, Result};
 pub const AGG_NAMES: &[&str] = &[
     // Tallies & sums
     "count", "sum", "prod", // Extremes
-    "min", "max", "range", // Central tendency
+    "min", "max", "range", "mid", // Central tendency
     "mean", "geomean", "harmean", "rms", "median", // Spread (standalone)
     "sdev", "var", "iqr", // Percentiles
-    "p05", "p10", "p25", "p50", "p75", "p90", "p95",
+    "p05", "p10", "p25", "p50", "p75", "p90", "p95", // Positional (row order in the group)
+    "first", "last",
 ];
 
 /// Stats that can appear as the *offset* (left of `±`) in a band name like
 /// `mean+sdev`. Single-value central or representative quantities only —
 /// counts/spreads are excluded.
 pub const OFFSET_STATS: &[&str] = &[
-    "mean", "median", "geomean", "harmean", "rms", "sum", "prod", "min", "max", "p05", "p10",
-    "p25", "p50", "p75", "p90", "p95",
+    "mean", "median", "geomean", "harmean", "rms", "sum", "prod", "min", "max", "mid", "p05",
+    "p10", "p25", "p50", "p75", "p90", "p95",
 ];
 
 /// Stats that can appear as the *expansion* (right of `±[mod]`) in a band name.
@@ -406,14 +407,12 @@ fn percentile_fraction(func: &str) -> Option<f64> {
 }
 
 /// Build the inline SQL fragment for a *simple* stat (no band) applied to a
-/// quoted column. Returns `None` for percentile-based stats when the dialect
-/// lacks an inline quantile aggregate (caller switches to the correlated
-/// `sql_percentile` fallback).
+/// quoted column. Returns `None` when the dialect cannot express this
+/// aggregate inline — for the percentile/iqr family that means the caller
+/// switches to the correlated `sql_percentile` fallback; for other names it
+/// means the dialect doesn't support that function and the stat layer raises
+/// a clear error before SQL is built (see `validate_supported`).
 fn simple_stat_sql_inline(name: &str, qcol: &str, dialect: &dyn SqlDialect) -> Option<String> {
-    if name == "count" {
-        // `count` in this position is COUNT(col): non-null tally for that column.
-        return Some(format!("COUNT({})", qcol));
-    }
     if let Some(frac) = percentile_fraction(name) {
         let unquoted = unquote(qcol);
         return dialect.sql_quantile_inline(&unquoted, frac);
@@ -424,21 +423,40 @@ fn simple_stat_sql_inline(name: &str, qcol: &str, dialect: &dyn SqlDialect) -> O
         let p25 = dialect.sql_quantile_inline(&unquoted, 0.25)?;
         return Some(format!("({} - {})", p75, p25));
     }
-    Some(match name {
-        "sum" => format!("SUM({})", qcol),
-        "prod" => format!("EXP(SUM(LN({})))", qcol),
-        "min" => format!("MIN({})", qcol),
-        "max" => format!("MAX({})", qcol),
-        "range" => format!("(MAX({c}) - MIN({c}))", c = qcol),
-        "mean" => format!("AVG({})", qcol),
-        "geomean" => format!("EXP(AVG(LN({})))", qcol),
-        "harmean" => format!("(COUNT({c}) * 1.0 / SUM(1.0 / {c}))", c = qcol),
-        "rms" => format!("SQRT(AVG({c} * {c}))", c = qcol),
-        "sdev" => format!("STDDEV_POP({})", qcol),
-        "se" => format!("(STDDEV_POP({c}) / SQRT(COUNT({c})))", c = qcol),
-        "var" => format!("VAR_POP({})", qcol),
-        _ => return None,
-    })
+    dialect.sql_aggregate(name, qcol)
+}
+
+/// Whether the dialect can produce SQL for this aggregate (inline or via the
+/// percentile fallback). Used to surface a clear error before SQL is built.
+fn dialect_supports(name: &str, dialect: &dyn SqlDialect) -> bool {
+    if percentile_fraction(name).is_some() || name == "iqr" {
+        // Always supported: percentile path falls back to a correlated subquery
+        // built from `sql_percentile`, which has a portable default.
+        return true;
+    }
+    dialect.sql_aggregate(name, "x").is_some()
+}
+
+/// Walk every aggregate that will be emitted and confirm the dialect supports
+/// it. Returns the list of unsupported function names, deduplicated.
+fn unsupported_functions(
+    aggregated: &[(String, String, Vec<AggSpec>)],
+    dialect: &dyn SqlDialect,
+) -> Vec<String> {
+    let mut missing: Vec<String> = Vec::new();
+    for (_, _, specs) in aggregated {
+        for spec in specs {
+            for name in [Some(spec.offset), spec.band.as_ref().map(|b| b.expansion)]
+                .into_iter()
+                .flatten()
+            {
+                if !dialect_supports(name, dialect) && !missing.iter().any(|m| m == name) {
+                    missing.push(name.to_string());
+                }
+            }
+        }
+    }
+    missing
 }
 
 fn agg_sql_inline(spec: &AggSpec, qcol: &str, dialect: &dyn SqlDialect) -> Option<String> {
@@ -735,6 +753,14 @@ pub fn apply(
         }
     }
 
+    let missing = unsupported_functions(&aggregated, dialect);
+    if !missing.is_empty() {
+        return Err(GgsqlError::ValidationError(format!(
+            "aggregate function(s) {} are not supported by this database backend",
+            crate::or_list_quoted(&missing, '\''),
+        )));
+    }
+
     let transformed_query = match &labels {
         Some(ls) => build_aggregate_query(query, &aggregated, &group_cols, ls, dialect),
         None => build_group_by_query(query, &aggregated, &group_cols, dialect),
@@ -881,7 +907,8 @@ mod tests {
     use crate::plot::types::{AestheticValue, ColumnInfo};
     use arrow::datatypes::DataType;
 
-    /// A test dialect that mimics DuckDB's native QUANTILE_CONT support.
+    /// A test dialect that mimics DuckDB: native QUANTILE_CONT plus the
+    /// row-positional FIRST / LAST aggregates.
     struct InlineQuantileDialect;
     impl SqlDialect for InlineQuantileDialect {
         fn sql_quantile_inline(&self, column: &str, fraction: f64) -> Option<String> {
@@ -890,6 +917,14 @@ mod tests {
                 naming::quote_ident(column),
                 fraction
             ))
+        }
+
+        fn sql_aggregate(&self, name: &str, qcol: &str) -> Option<String> {
+            match name {
+                "first" => Some(format!("FIRST({})", qcol)),
+                "last" => Some(format!("LAST({})", qcol)),
+                _ => crate::reader::default_sql_aggregate(name, qcol),
+            }
         }
     }
 
@@ -1220,6 +1255,132 @@ mod tests {
                 assert!(stat_columns.contains(&"pos1".to_string()));
                 assert!(stat_columns.contains(&"pos2".to_string()));
                 assert_eq!(consumed_aesthetics.len(), 2);
+            }
+            _ => panic!("expected Transformed"),
+        }
+    }
+
+    #[cfg(feature = "sqlite")]
+    #[test]
+    fn sqlite_dialect_emits_portable_stddev_and_rejects_first() {
+        use crate::reader::sqlite::SqliteDialect;
+
+        let mut aes = Mappings::new();
+        aes.insert("pos1", col("__ggsql_aes_pos1__"));
+        aes.insert("pos2", col("__ggsql_aes_pos2__"));
+        let schema = schema_for(&[("__ggsql_aes_pos1__", false), ("__ggsql_aes_pos2__", false)]);
+
+        // sdev must not emit STDDEV_POP (SQLite has no such function).
+        let result = run(
+            ParameterValue::String("sdev".to_string()),
+            &aes,
+            &schema,
+            &[],
+            &SqliteDialect,
+        )
+        .unwrap();
+        match result {
+            StatResult::Transformed { query, .. } => {
+                assert!(
+                    !query.contains("STDDEV_POP"),
+                    "SQLite dialect must not emit STDDEV_POP, got: {query}"
+                );
+                assert!(query.contains("SQRT") && query.contains("AVG"), "{query}");
+            }
+            _ => panic!("expected Transformed"),
+        }
+
+        // first / last route through the validation error rather than emitting
+        // SQL that SQLite cannot run.
+        let err = run(
+            ParameterValue::String("first".to_string()),
+            &aes,
+            &schema,
+            &[],
+            &SqliteDialect,
+        )
+        .unwrap_err();
+        assert!(
+            format!("{err}").contains("not supported"),
+            "expected unsupported-function error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn unsupported_aggregate_errors_with_dialect_that_lacks_function() {
+        // AnsiDialect's default doesn't implement FIRST/LAST.
+        struct AnsiTestDialect;
+        impl SqlDialect for AnsiTestDialect {}
+
+        let mut aes = Mappings::new();
+        aes.insert("pos1", col("__ggsql_aes_pos1__"));
+        aes.insert("pos2", col("__ggsql_aes_pos2__"));
+        let schema = schema_for(&[("__ggsql_aes_pos1__", false), ("__ggsql_aes_pos2__", false)]);
+        let err = run(
+            ParameterValue::String("first".to_string()),
+            &aes,
+            &schema,
+            &[],
+            &AnsiTestDialect,
+        )
+        .unwrap_err();
+        let msg = format!("{}", err);
+        assert!(
+            msg.contains("first") && msg.contains("not supported"),
+            "expected unsupported-function error mentioning 'first', got: {msg}"
+        );
+    }
+
+    #[test]
+    fn mid_emits_min_max_midpoint() {
+        let mut aes = Mappings::new();
+        aes.insert("pos1", col("__ggsql_aes_pos1__"));
+        aes.insert("pos2", col("__ggsql_aes_pos2__"));
+        let schema = schema_for(&[("__ggsql_aes_pos1__", false), ("__ggsql_aes_pos2__", false)]);
+        let result = run(
+            ParameterValue::String("mid".to_string()),
+            &aes,
+            &schema,
+            &[],
+            &InlineQuantileDialect,
+        )
+        .unwrap();
+        match result {
+            StatResult::Transformed { query, .. } => {
+                assert!(
+                    query
+                        .contains("(MIN(\"__ggsql_aes_pos1__\") + MAX(\"__ggsql_aes_pos1__\")) / 2.0"),
+                    "{}",
+                    query
+                );
+            }
+            _ => panic!("expected Transformed"),
+        }
+    }
+
+    #[test]
+    fn first_and_last_emit_positional_aggregates() {
+        let mut aes = Mappings::new();
+        aes.insert("pos1", col("__ggsql_aes_pos1__"));
+        aes.insert("pos2min", col("__ggsql_aes_pos2min__"));
+        aes.insert("pos2max", col("__ggsql_aes_pos2max__"));
+        let schema = schema_for(&[
+            ("__ggsql_aes_pos1__", false),
+            ("__ggsql_aes_pos2min__", false),
+            ("__ggsql_aes_pos2max__", false),
+        ]);
+        let result = run(
+            arr(&["first", "last"]),
+            &aes,
+            &schema,
+            &[],
+            &InlineQuantileDialect,
+        )
+        .unwrap();
+        match result {
+            StatResult::Transformed { query, .. } => {
+                assert!(query.contains("FIRST(\"__ggsql_aes_pos2min__\")"), "{}", query);
+                assert!(query.contains("LAST(\"__ggsql_aes_pos2max__\")"), "{}", query);
             }
             _ => panic!("expected Transformed"),
         }

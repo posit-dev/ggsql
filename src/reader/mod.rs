@@ -226,6 +226,20 @@ pub trait SqlDialect {
         None
     }
 
+    /// SQL fragment for a simple aggregate function applied to an
+    /// already-quoted column expression.
+    ///
+    /// Returns `Some(expr)` when the dialect can express this aggregate inline
+    /// in a `GROUP BY` query. Returns `None` when the aggregate is not
+    /// supported by this backend; the stat layer surfaces a clear error.
+    ///
+    /// Names handled here are the entries of `stat_aggregate::AGG_NAMES` other
+    /// than the percentile/iqr family, which goes through [`sql_quantile_inline`]
+    /// / [`sql_percentile`] instead.
+    fn sql_aggregate(&self, name: &str, qcol: &str) -> Option<String> {
+        default_sql_aggregate(name, qcol)
+    }
+
     /// SQL literal for a date value (days since Unix epoch).
     fn sql_date_literal(&self, days_since_epoch: i32) -> String {
         format!(
@@ -300,6 +314,33 @@ pub(crate) fn wrap_with_column_aliases(body_sql: &str, column_aliases: &[String]
         "WITH __ggsql_aliased__({}) AS ({}) SELECT * FROM __ggsql_aliased__",
         cols, body_sql
     )
+}
+
+/// Default aggregate SQL emission, shared so dialects can opt into the standard
+/// portable forms while overriding selected functions.
+///
+/// Returns `None` for names this default can't express portably (today: the
+/// `first` / `last` row-positional aggregates — backends that have a native
+/// equivalent override [`SqlDialect::sql_aggregate`]).
+pub fn default_sql_aggregate(name: &str, qcol: &str) -> Option<String> {
+    let s = match name {
+        "count" => format!("COUNT({})", qcol),
+        "sum" => format!("SUM({})", qcol),
+        "prod" => format!("EXP(SUM(LN({})))", qcol),
+        "min" => format!("MIN({})", qcol),
+        "max" => format!("MAX({})", qcol),
+        "range" => format!("(MAX({c}) - MIN({c}))", c = qcol),
+        "mid" => format!("((MIN({c}) + MAX({c})) / 2.0)", c = qcol),
+        "mean" => format!("AVG({})", qcol),
+        "geomean" => format!("EXP(AVG(LN({})))", qcol),
+        "harmean" => format!("(COUNT({c}) * 1.0 / SUM(1.0 / {c}))", c = qcol),
+        "rms" => format!("SQRT(AVG({c} * {c}))", c = qcol),
+        "sdev" => format!("STDDEV_POP({})", qcol),
+        "se" => format!("(STDDEV_POP({c}) / SQRT(COUNT({c})))", c = qcol),
+        "var" => format!("VAR_POP({})", qcol),
+        _ => return None,
+    };
+    Some(s)
 }
 
 pub struct AnsiDialect;

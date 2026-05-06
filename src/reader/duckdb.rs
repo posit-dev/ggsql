@@ -49,6 +49,14 @@ impl super::SqlDialect for DuckDbDialect {
         ))
     }
 
+    fn sql_aggregate(&self, name: &str, qcol: &str) -> Option<String> {
+        match name {
+            "first" => Some(format!("FIRST({})", qcol)),
+            "last" => Some(format!("LAST({})", qcol)),
+            _ => super::default_sql_aggregate(name, qcol),
+        }
+    }
+
     fn sql_percentile(&self, column: &str, fraction: f64, from: &str, groups: &[String]) -> String {
         let group_filter = groups
             .iter()

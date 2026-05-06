@@ -60,3 +60,11 @@ DRAW ribbon
 DRAW line
   MAPPING MeanTemp AS y
 ```
+
+Use aggregation to calculate bounds on the fly
+
+```{ggsql}
+VISUALISE Day AS x, Temp AS ymin, Temp AS ymax FROM ggsql:airquality
+DRAW ribbon
+  SETTING aggregate => ('min', 'max')
+```
