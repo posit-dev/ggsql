@@ -117,6 +117,7 @@ pub(super) fn get_projection_renderer(
         Some(CoordKind::Polar) => Box::new(PolarProjection {
             panel: PolarContext::new(project, facet, scales),
         }),
+        Some(CoordKind::Map) => todo!("map projection rendering"),
         Some(CoordKind::Cartesian) | None => Box::new(CartesianProjection { is_faceted }),
     }
 }

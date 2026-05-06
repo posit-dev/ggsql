@@ -33,6 +33,11 @@ impl Projection {
         Self::with_defaults(Coord::polar())
     }
 
+    /// Create a default Map projection (lon, lat).
+    pub fn map() -> Self {
+        Self::with_defaults(Coord::map())
+    }
+
     fn with_defaults(coord: Coord) -> Self {
         let aesthetics = coord
             .position_aesthetic_names()

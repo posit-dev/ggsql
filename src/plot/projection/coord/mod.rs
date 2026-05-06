@@ -29,10 +29,12 @@ use crate::plot::ParameterValue;
 
 // Coord type implementations
 mod cartesian;
+mod map;
 mod polar;
 
 // Re-export coord type structs
 pub use cartesian::Cartesian;
+pub use map::Map;
 pub use polar::Polar;
 
 // =============================================================================
@@ -47,6 +49,8 @@ pub enum CoordKind {
     Cartesian,
     /// Polar coordinates (for pie charts, rose plots)
     Polar,
+    /// Map coordinates (for geographic/cartographic projections)
+    Map,
 }
 
 // =============================================================================
@@ -146,11 +150,17 @@ impl Coord {
         Self(Arc::new(Polar))
     }
 
+    /// Create a Map coord type
+    pub fn map() -> Self {
+        Self(Arc::new(Map))
+    }
+
     /// Create a Coord from a CoordKind
     pub fn from_kind(kind: CoordKind) -> Self {
         match kind {
             CoordKind::Cartesian => Self::cartesian(),
             CoordKind::Polar => Self::polar(),
+            CoordKind::Map => Self::map(),
         }
     }
 

@@ -969,7 +969,11 @@ fn build_project(node: &Node, source: &SourceTree) -> Result<Projection> {
                 user_aesthetics = Some(source.find_texts(&child, query));
             }
             "project_type" => {
-                coord = parse_coord_system(&child, source)?;
+                let (parsed_coord, implied_properties) = parse_coord_system(&child, source)?;
+                coord = parsed_coord;
+                for (name, value) in implied_properties {
+                    properties.entry(name).or_insert(value);
+                }
             }
             "project_properties" => {
                 // Find all project_property nodes
@@ -1089,12 +1093,31 @@ fn validate_project_properties(
     Ok(())
 }
 
-/// Parse coord type from a project_type node
-fn parse_coord_system(node: &Node, source: &SourceTree) -> Result<Coord> {
+/// Parse coord type from a project_type node.
+/// Returns the coord and any pre-populated properties implied by the shorthand.
+fn parse_coord_system(
+    node: &Node,
+    source: &SourceTree,
+) -> Result<(Coord, Vec<(String, ParameterValue)>)> {
     let text = source.get_text(node);
     match text.to_lowercase().as_str() {
-        "cartesian" => Ok(Coord::cartesian()),
-        "polar" => Ok(Coord::polar()),
+        "cartesian" => Ok((Coord::cartesian(), Vec::new())),
+        "polar" => Ok((Coord::polar(), Vec::new())),
+        "map" => Ok((Coord::map(), Vec::new())),
+        "mercator" => Ok((
+            Coord::map(),
+            vec![(
+                "crs".to_string(),
+                ParameterValue::String("+proj=merc".to_string()),
+            )],
+        )),
+        "orthographic" => Ok((
+            Coord::map(),
+            vec![(
+                "crs".to_string(),
+                ParameterValue::String("+proj=ortho".to_string()),
+            )],
+        )),
         _ => Err(GgsqlError::ParseError(format!(
             "Unknown coord type: {}",
             text
@@ -1338,6 +1361,67 @@ mod tests {
         assert!(err
             .to_string()
             .contains("conflicts with material aesthetic"));
+    }
+
+    #[test]
+    fn test_project_map_bare() {
+        let query = r#"
+            VISUALISE
+            DRAW point MAPPING lon AS lon, lat AS lat
+            PROJECT TO map
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
+        let specs = result.unwrap();
+
+        let project = specs[0].project.as_ref().unwrap();
+        assert_eq!(project.coord.coord_kind(), CoordKind::Map);
+        assert_eq!(
+            project.aesthetics,
+            vec!["lon".to_string(), "lat".to_string()]
+        );
+        assert!(!project.properties.contains_key("crs"));
+    }
+
+    #[test]
+    fn test_project_mercator_shorthand() {
+        let query = r#"
+            VISUALISE
+            DRAW point MAPPING lon AS lon, lat AS lat
+            PROJECT TO mercator
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
+        let specs = result.unwrap();
+
+        let project = specs[0].project.as_ref().unwrap();
+        assert_eq!(project.coord.coord_kind(), CoordKind::Map);
+        assert_eq!(
+            project.properties.get("crs"),
+            Some(&ParameterValue::String("+proj=merc".to_string()))
+        );
+    }
+
+    #[test]
+    fn test_project_shorthand_crs_override() {
+        let query = r#"
+            VISUALISE
+            DRAW point MAPPING lon AS lon, lat AS lat
+            PROJECT TO mercator SETTING crs => '+proj=custom'
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
+        let specs = result.unwrap();
+
+        let project = specs[0].project.as_ref().unwrap();
+        assert_eq!(project.coord.coord_kind(), CoordKind::Map);
+        assert_eq!(
+            project.properties.get("crs"),
+            Some(&ParameterValue::String("+proj=custom".to_string()))
+        );
     }
 
     // ========================================
