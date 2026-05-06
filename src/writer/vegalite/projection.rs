@@ -202,8 +202,8 @@ impl AxisInfo {
         // Free facet scales have per-panel domains that don't match the global
         // positions used for decoration; dummy scales are stat-injected placeholders
         // with no meaningful domain to label.
-        let suppress = facet.is_some_and(|f| f.is_free(aesthetic))
-            || scale.is_some_and(|s| s.is_dummy());
+        let suppress =
+            facet.is_some_and(|f| f.is_free(aesthetic)) || scale.is_some_and(|s| s.is_dummy());
         Self {
             domain,
             breaks,
@@ -727,7 +727,7 @@ impl PolarProjection {
             .collect();
         let theta = p.expr_normalize_theta("datum.v");
 
-        let tick_just: f64 = if p.is_full_circle { 0.5 } else { 0.0 };
+        let tick_just: f64 = 0.0;
 
         let outer_cx = p.expr_x(&outer_s, &theta);
         let outer_cy = p.expr_y(&outer_s, &theta);
