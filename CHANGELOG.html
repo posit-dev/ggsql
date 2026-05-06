@@ -242,7 +242,10 @@ gradient teal.
     <h2 id="toc-title">On this page</h2>
    
   <ul>
-  <li><a href="#unreleased" id="toc-unreleased" class="nav-link active" data-scroll-target="#unreleased">[Unreleased]</a></li>
+  <li><a href="#unreleased" id="toc-unreleased" class="nav-link active" data-scroll-target="#unreleased">[Unreleased]</a>
+  <ul class="collapse">
+  <li><a href="#added" id="toc-added" class="nav-link" data-scroll-target="#added">Added</a></li>
+  </ul></li>
   <li><a href="#section" id="toc-section" class="nav-link" data-scroll-target="#section">0.3.2 - 2026-05-05</a>
   <ul class="collapse">
   <li><a href="#fixed" id="toc-fixed" class="nav-link" data-scroll-target="#fixed">Fixed</a></li>
@@ -254,7 +257,7 @@ gradient teal.
   </ul></li>
   <li><a href="#section-2" id="toc-section-2" class="nav-link" data-scroll-target="#section-2">0.3.0 - 2026-04-29</a>
   <ul class="collapse">
-  <li><a href="#added" id="toc-added" class="nav-link" data-scroll-target="#added">Added</a></li>
+  <li><a href="#added-1" id="toc-added-1" class="nav-link" data-scroll-target="#added-1">Added</a></li>
   <li><a href="#fixed-2" id="toc-fixed-2" class="nav-link" data-scroll-target="#fixed-2">Fixed</a></li>
   <li><a href="#changed-1" id="toc-changed-1" class="nav-link" data-scroll-target="#changed-1">Changed</a></li>
   <li><a href="#removed" id="toc-removed" class="nav-link" data-scroll-target="#removed">Removed</a></li>
@@ -271,6 +274,13 @@ gradient teal.
 
 <section id="unreleased" class="level2">
 <h2 class="anchored" data-anchor-id="unreleased">[Unreleased]</h2>
+<section id="added" class="level3">
+<h3 class="anchored" data-anchor-id="added">Added</h3>
+<ul>
+<li>Added panel decorations (grid lines, axes, background) for polar coordinates (#156).</li>
+<li>Added <code>radar</code> setting to polar coordinates for making radar plots (#418).</li>
+</ul>
+</section>
 </section>
 <section id="section" class="level2">
 <h2 class="anchored" data-anchor-id="section">0.3.2 - 2026-05-05</h2>
@@ -300,8 +310,8 @@ gradient teal.
 </section>
 <section id="section-2" class="level2">
 <h2 class="anchored" data-anchor-id="section-2">0.3.0 - 2026-04-29</h2>
-<section id="added" class="level3">
-<h3 class="anchored" data-anchor-id="added">Added</h3>
+<section id="added-1" class="level3">
+<h3 class="anchored" data-anchor-id="added-1">Added</h3>
 <ul>
 <li>Add cell delimiters and code lens actions to the Positron extension (#366)</li>
 <li>ODBC is now turned on for the CLI as well (#344)</li>
