@@ -22,10 +22,7 @@ use std::sync::Arc;
 /// Finds `ggsql:X` patterns in the SQL, writes the embedded parquet data to
 /// a temp file, and creates a table named `__ggsql_data_X__` in DuckDB.
 #[cfg(feature = "builtin-data")]
-fn register_builtin_datasets_duckdb(
-    sql: &str,
-    conn: &Connection,
-) -> Result<()> {
+fn register_builtin_datasets_duckdb(sql: &str, conn: &Connection) -> Result<()> {
     use std::{env, fs};
 
     let dataset_names = super::data::extract_builtin_dataset_names(sql)?;
