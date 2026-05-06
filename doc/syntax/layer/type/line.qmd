@@ -33,7 +33,6 @@ Further, the line layer sorts the data along its primary axis before returning i
 
 If the line has a variable `stroke` or `opacity` aesthetic within groups, the line is broken into segments. 
 Each segment gets the property of the preceding datapoint, so the last datapoint in a group does not transfer these properties.
-This behavior is not compatible with aggregation.
 
 ## Orientation
 Line plots are sorted and connected along their primary axis. Since the primary axis cannot be deduced from the mapping it must be specified using the `orientation` setting. If you wish to create a vertical line plot, you need to set `orientation => 'transposed'` to indicate that the primary layer axis follows the second axis of the coordinate system.  
@@ -96,7 +95,7 @@ DRAW line
 SCALE linewidth TO (0, 30)
 ```
 
-Use aggregation to draw min and max lines from a set of observations on a single layer. Targeting `y` twice produces one summary line per function within the same layer, with a synthetic `aggregate` column tagging each row that you can remap to colour the lines distinctly:
+Use aggregation to draw min and max lines from a set of observations on a single layer. Targeting `y` twice produces one summary row per function within the same group. A synthetic `aggregate` column tags each row with the different function names, that you can remap to colour the lines distinctly:
 
 ```{ggsql}
 VISUALISE Day AS x, Temp AS y FROM ggsql:airquality

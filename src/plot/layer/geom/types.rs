@@ -181,8 +181,7 @@ pub use crate::plot::types::Schema;
 /// domain axis whether or not the layer also goes through the Aggregate stat.
 ///
 /// - `Identity` → becomes `Transformed` with `<input_query> ORDER BY <aes>`,
-///   empty `stat_columns`/`dummy_columns`/`consumed_aesthetics`. Same shape as
-///   the previous inline `ORDER BY` path produced.
+///   empty `stat_columns`/`dummy_columns`/`consumed_aesthetics`.
 /// - `Transformed` → wraps the existing query in
 ///   `SELECT * FROM (<query>) AS "__ggsql_ord__" ORDER BY <aes>` and preserves
 ///   the stat metadata.

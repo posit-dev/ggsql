@@ -148,7 +148,7 @@ PLACE text
     y => (19, 19, 15)
 ```
 
-Use aggregation to place labels at their centroid
+Use aggregation to place labels at their centroid.
 
 ```{ggsql}
 VISUALISE bill_len AS x, bill_dep AS y FROM ggsql:penguins

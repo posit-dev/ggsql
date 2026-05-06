@@ -297,7 +297,6 @@ pub trait GeomTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
 /// True when `parameters["aggregate"]` is set to a non-null string or array.
 pub(crate) fn has_aggregate_param(parameters: &HashMap<String, ParameterValue>) -> bool {
     match parameters.get("aggregate") {
-        None | Some(ParameterValue::Null) => false,
         Some(ParameterValue::String(_)) | Some(ParameterValue::Array(_)) => true,
         _ => false,
     }
