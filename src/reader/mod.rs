@@ -558,6 +558,15 @@ pub trait Reader {
         }
         Ok(results)
     }
+
+    /// Return column names that have a native geometry type in the given query.
+    ///
+    /// Backends that support spatial types override this to introspect their
+    /// native type system (e.g. DuckDB DESCRIBE). The default returns an empty
+    /// vec, which causes the caller to fall back to heuristics.
+    fn geometry_columns(&self, _source_query: &str) -> Vec<String> {
+        Vec::new()
+    }
 }
 
 /// A table or view in the schema.

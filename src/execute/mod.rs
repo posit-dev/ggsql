@@ -316,19 +316,6 @@ fn merge_global_mappings_into_layers(specs: &mut [Plot], layer_schemas: &[Schema
             // Clear wildcard flag since it's been resolved
             layer.mappings.wildcard = false;
 
-            // Auto-detect geometry column when the geom declares one
-            if layer.geom.aesthetics().contains("geometry")
-                && !layer.mappings.aesthetics.contains_key("geometry")
-            {
-                if let Some(col) = detect_geometry_column(schema) {
-                    layer
-                        .mappings
-                        .aesthetics
-                        .entry("geometry".to_string())
-                        .or_insert(AestheticValue::standard_column(&col));
-                }
-            }
-
             // Remove null sentinel mappings (explicit "don't inherit" markers)
             layer
                 .mappings
@@ -336,40 +323,6 @@ fn merge_global_mappings_into_layers(specs: &mut [Plot], layer_schemas: &[Schema
                 .retain(|_, value| !is_null_sentinel(value));
         }
     }
-}
-
-/// Detect a geometry column by name and type.
-///
-/// Returns the column name if exactly one candidate is found. Returns `None`
-/// if zero or more than one column matches (ambiguous).
-fn detect_geometry_column(schema: &Schema) -> Option<String> {
-    use arrow::datatypes::DataType;
-
-    fn looks_like_geometry(name: &str) -> bool {
-        matches!(
-            name.to_lowercase().as_str(),
-            "geom" | "geometry" | "wkb_geometry" | "the_geom" | "shape"
-        )
-    }
-
-    fn is_geometry_type(dtype: &DataType) -> bool {
-        matches!(
-            dtype,
-            DataType::Binary | DataType::LargeBinary | DataType::BinaryView
-        )
-    }
-
-    // Prefer columns that match both name and type
-    let candidates: Vec<_> = schema
-        .iter()
-        .filter(|c| looks_like_geometry(&c.name) && is_geometry_type(&c.dtype))
-        .collect();
-
-    if candidates.len() == 1 {
-        return Some(candidates[0].name.clone());
-    }
-
-    None
 }
 
 /// Resolve aesthetic aliases in a plot specification.
@@ -1176,6 +1129,17 @@ pub fn prepare_data_with_reader(query: &str, reader: &dyn Reader) -> Result<Prep
     // NOTE: Both global and layer aesthetics are already in internal format (pos1, pos2)
     // because transformation happens in builder.rs right after parsing
     merge_global_mappings_into_layers(&mut specs, &layer_schemas);
+
+    // Let geoms auto-detect aesthetics that require backend introspection.
+    // Runs after merge so global mappings (e.g. `geom AS geometry`) are visible.
+    for (i, layer) in specs[0].layers.iter_mut().enumerate() {
+        layer.geom.detect_aesthetics(
+            &mut layer.mappings,
+            &layer_source_queries[i],
+            &layer_schemas[i],
+            reader,
+        );
+    }
 
     // Reconcile user-written column casing with schema casing (DuckDB lowercases
     // unquoted identifiers). Must run after the global→layer merge so each layer
@@ -3143,6 +3107,39 @@ mod tests {
         let layer_key = prepared.specs[0].layers[0].data_key.as_ref().unwrap();
         let df = prepared.data.get(layer_key).unwrap();
         assert_eq!(df.height(), 2);
+        assert!(df.column("__ggsql_aes_geometry__").is_ok());
+    }
+
+    #[cfg(all(feature = "duckdb", feature = "spatial"))]
+    #[test]
+    fn test_spatial_auto_detect_geometry_column_by_native_type() {
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        // Column named "boundary" — not in the name heuristic list
+        let query = r#"
+            INSTALL spatial;
+            LOAD spatial;
+            SELECT
+                ST_GeomFromText('POLYGON ((0 0, 1 0, 1 1, 0 1, 0 0))') AS boundary,
+                'A' AS name
+            UNION ALL
+            SELECT
+                ST_GeomFromText('POLYGON ((1 0, 2 0, 2 1, 1 1, 1 0))') AS boundary,
+                'B' AS name
+            VISUALISE
+            DRAW spatial MAPPING name AS fill
+        "#;
+
+        let result = prepare_data_with_reader(query, &reader);
+        assert!(
+            result.is_ok(),
+            "Spatial auto-detect by Arrow metadata failed: {:?}",
+            result.err()
+        );
+
+        let prepared = result.unwrap();
+        let layer_key = prepared.specs[0].layers[0].data_key.as_ref().unwrap();
+        let df = prepared.data.get(layer_key).unwrap();
         assert!(df.column("__ggsql_aes_geometry__").is_ok());
     }
 
