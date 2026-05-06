@@ -22,7 +22,9 @@ The following aesthetics are recognised by the range layer.
 
 ## Settings
 * `width`: The width of the hinges in points (must be >= 0). Defaults to 10. Can be set to `null` to not display hinges.
-* `aggregate`: Aggregation functions to apply per group. Either a single string or an array of strings. See [the `DRAW` documentation](../../clause/draw.qmd#aggregate) and the *Data transformation* section below.
+* `aggregate` Aggregation functions to apply per group: 
+    * `null` apply no group aggregation (default).
+    * A single string or an array of strings. See an overview of aggregation function in [the `DRAW` documentation](../../clause/draw.qmd#aggregate) and more information in the *Data transformation* section below.
 
 ## Data transformation
 This layer supports aggregation through the `aggregate` setting. Within each group, defined by `PARTITION BY` and all discrete mappings, every numeric mapping is replaced in place by its aggregated value, producing one range per group. Range is a range layer with two defaults: the first applies to the start point (`xmin`/`ymin`) and the second applies to the end point (`xmax`/`ymax`). Use a single default like `'mean'` to apply the same function to all values, or target individual aesthetics with `'<aes>:<func>'`. See [the `DRAW` documentation](../../clause/draw.qmd#aggregate) for the full setting shape.
