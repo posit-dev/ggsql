@@ -30,6 +30,10 @@ This maps `y` to radius and `x` to angle. This is useful when converting from a 
   - `0` = full pie (no hole)
   - `0.3` = donut with 30% hole
   - `0.5` = donut with 50% hole
+* `radar`: Should the plot be displayed as a radar plot? Defaults to `null`.
+  - `null` = Detect whether there is discrete data at the angle scale with more than 2 categories, in which case this becomes `true`, otherwise `false`.
+  - `true` = Display discrete data as a radar plot. This is incompatible with continuous data at the angle scale.
+  - `false` = Display classic, circular polar coordinates.
 
 ## Examples
 
@@ -70,10 +74,12 @@ This creates a gauge chart spanning from the 9 o'clock to 3 o'clock position (a 
 ```{ggsql}
 VISUALISE species AS fill FROM ggsql:penguins
 DRAW bar
+SCALE angle SETTING expand => 0
 PROJECT TO polar 
   SETTING end => 270
 ```
 This creates a pie chart using only 270° (three-quarters of a circle), starting from 0° (12 o'clock) and ending at 270° (9 o'clock).
+We have turned off the scale expansion by using `SCALE angle SETTING expand => 0`.
 
 ### Donut chart with 50% hole
 ```{ggsql}
@@ -97,7 +103,23 @@ This creates a donut chart with a smaller hole (30% of the radius).
 ```{ggsql}
 VISUALISE species AS fill FROM ggsql:penguins
 DRAW bar
+SCALE angle SETTING expand => 0
 PROJECT TO polar 
   SETTING start => -90, end => 90, inner => 0.5
 ```
 This combines the `start`, `end`, and `inner` settings to create a half-circle donut chart (gauge style) spanning from 9 o'clock to 3 o'clock with a 50% hole.
+
+### Radar chart
+```{ggsql}
+WITH data(angle, radius) AS (VALUES
+  ('A', 5),
+  ('B', 2),
+  ('C', 4),
+  ('D', 7),
+  ('E', 6)
+)
+VISUALISE angle, radius FROM data
+DRAW polygon
+```
+The key to drawing a radar chart is having discrete data for the `angle` aesthetic. 
+You can turn off the radar chart by using `PROJECT TO polar SETTING radar => false`.

@@ -146,7 +146,7 @@ pub enum PreparedData {
 ///
 /// Most geoms use the default implementations. Only geoms with special requirements
 /// (bar width, path ordering, boxplot decomposition) need to override specific methods.
-pub trait GeomRenderer: Send + Sync {
+pub trait GeomRenderer {
     // === Phase 1: Data Preparation ===
 
     /// Prepare data for this layer.
@@ -2279,7 +2279,6 @@ pub fn get_renderer(geom: &Geom) -> Box<dyn GeomRenderer> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::plot::projection::CoordKind;
 
     #[test]
     fn test_violin_detail_encoding() {
@@ -3759,6 +3758,9 @@ mod tests {
     #[test]
     fn test_render_context_get_extent() {
         use crate::plot::{ArrayElement, Scale};
+        use crate::writer::vegalite::projection::get_projection_renderer;
+
+        let cartesian = get_projection_renderer(None, None, &[]);
 
         // Test success case: continuous scale with numeric range
         let scales = vec![Scale {
@@ -3776,7 +3778,7 @@ mod tests {
         }];
         let context = RenderContext::new(
             &scales,
-            CoordKind::Cartesian,
+            cartesian.as_ref(),
             AestheticContext::from_static(&["x", "y"], &[]),
         );
         let result = context.get_extent("x");
@@ -3786,7 +3788,7 @@ mod tests {
         // Test error case: scale not found
         let context = RenderContext::new(
             &scales,
-            CoordKind::Cartesian,
+            cartesian.as_ref(),
             AestheticContext::from_static(&["x", "y"], &[]),
         );
         let result = context.get_extent("y");
@@ -3809,7 +3811,7 @@ mod tests {
         }];
         let context = RenderContext::new(
             &scales,
-            CoordKind::Cartesian,
+            cartesian.as_ref(),
             AestheticContext::from_static(&["x", "y"], &[]),
         );
         let result = context.get_extent("x");
@@ -3838,7 +3840,7 @@ mod tests {
         }];
         let context = RenderContext::new(
             &scales,
-            CoordKind::Cartesian,
+            cartesian.as_ref(),
             AestheticContext::from_static(&["x", "y"], &[]),
         );
         let result = context.get_extent("x");

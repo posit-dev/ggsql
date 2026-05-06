@@ -23,6 +23,7 @@ export function createConnectionDrivers(
 ): positron.ConnectionsDriver[] {
     return [
         createDuckDBDriver(positronApi),
+        createSQLiteDriver(positronApi),
         createSnowflakeDefaultDriver(positronApi),
         createSnowflakePasswordDriver(positronApi),
         createSnowflakeSSODriver(positronApi),
@@ -63,6 +64,45 @@ function createDuckDBDriver(
                 return '-- @connect: duckdb://memory';
             }
             return `-- @connect: duckdb://${db}`;
+        },
+        connect: async (code: string) => {
+            await positronApi.runtime.executeCode('ggsql', code, false);
+        },
+    };
+}
+
+// ============================================================================
+// SQLite
+// ============================================================================
+
+/**
+ * SQLite connection driver.
+ *
+ * Inputs: database file path (required).
+ */
+function createSQLiteDriver(
+    positronApi: PositronApi
+): positron.ConnectionsDriver {
+    return {
+        driverId: 'ggsql-sqlite',
+        metadata: {
+            languageId: 'ggsql',
+            name: 'SQLite',
+            inputs: [
+                {
+                    id: 'database',
+                    label: 'Database',
+                    type: 'string',
+                    value: '',
+                },
+            ],
+        },
+        generateCode: (inputs) => {
+            const db = inputs.find((i) => i.id === 'database')?.value?.trim();
+            if (!db) {
+                return '-- @connect: sqlite://:memory:';
+            }
+            return `-- @connect: sqlite://${db}`;
         },
         connect: async (code: string) => {
             await positronApi.runtime.executeCode('ggsql', code, false);
@@ -160,7 +200,8 @@ function readSnowflakeConnections(): {
  * Build an ODBC connection string for Snowflake with the given parts.
  */
 function buildSnowflakeOdbc(parts: Record<string, string | undefined>): string {
-    let connStr = `Driver=Snowflake;Server=${parts.account}.snowflakecomputing.com`;
+    const driver = parts.driver || 'Snowflake';
+    let connStr = `Driver=${driver};Server=${parts.account}.snowflakecomputing.com`;
     if (parts.uid) {
         connStr += `;UID=${parts.uid}`;
     }
@@ -231,6 +272,8 @@ function createSnowflakeDefaultDriver(
         ];
     }
 
+    inputs.unshift({ id: 'driver', label: 'Driver', type: 'string', value: 'Snowflake' });
+
     return {
         driverId: 'ggsql-snowflake-default',
         metadata: {
@@ -242,7 +285,9 @@ function createSnowflakeDefaultDriver(
         generateCode: (inputs) => {
             const name =
                 inputs.find((i) => i.id === 'connection_name')?.value?.trim() || 'default';
-            return `-- @connect: odbc://Driver=Snowflake;ConnectionName=${name}`;
+            const driver =
+                inputs.find((i) => i.id === 'driver')?.value?.trim() || 'Snowflake';
+            return `-- @connect: odbc://Driver=${driver};ConnectionName=${name}`;
         },
         connect: snowflakeConnect(positronApi),
     };
@@ -262,6 +307,7 @@ function createSnowflakePasswordDriver(
             name: 'Snowflake',
             description: 'Username/Password',
             inputs: [
+                { id: 'driver', label: 'Driver', type: 'string', value: 'Snowflake' },
                 { id: 'account', label: 'Account', type: 'string' },
                 { id: 'user', label: 'User', type: 'string' },
                 { id: 'password', label: 'Password', type: 'string' },
@@ -280,6 +326,7 @@ function createSnowflakePasswordDriver(
                 warehouse: get('warehouse'),
                 database: get('database') || undefined,
                 schema: get('schema') || undefined,
+                driver: get('driver') || undefined,
             });
         },
         connect: snowflakeConnect(positronApi),
@@ -300,6 +347,7 @@ function createSnowflakeSSODriver(
             name: 'Snowflake',
             description: 'External Browser (SSO)',
             inputs: [
+                { id: 'driver', label: 'Driver', type: 'string', value: 'Snowflake' },
                 { id: 'account', label: 'Account', type: 'string' },
                 { id: 'user', label: 'User', type: 'string', value: '' },
                 { id: 'warehouse', label: 'Warehouse', type: 'string' },
@@ -317,6 +365,7 @@ function createSnowflakeSSODriver(
                 warehouse: get('warehouse'),
                 database: get('database') || undefined,
                 schema: get('schema') || undefined,
+                driver: get('driver') || undefined,
             });
         },
         connect: snowflakeConnect(positronApi),
@@ -337,6 +386,7 @@ function createSnowflakePATDriver(
             name: 'Snowflake',
             description: 'Programmatic Access Token (PAT)',
             inputs: [
+                { id: 'driver', label: 'Driver', type: 'string', value: 'Snowflake' },
                 { id: 'account', label: 'Account', type: 'string' },
                 { id: 'token', label: 'Token', type: 'string' },
                 { id: 'warehouse', label: 'Warehouse', type: 'string' },
@@ -354,6 +404,7 @@ function createSnowflakePATDriver(
                 warehouse: get('warehouse'),
                 database: get('database') || undefined,
                 schema: get('schema') || undefined,
+                driver: get('driver') || undefined,
             });
         },
         connect: snowflakeConnect(positronApi),
