@@ -186,24 +186,29 @@ struct AxisInfo {
     domain: Option<(f64, f64)>,
     breaks: Vec<f64>,
     labels: Vec<(f64, String)>,
-    is_free: bool,
+    suppress: bool,
 }
 
 impl AxisInfo {
     fn new(aesthetic: &str, scales: &[Scale], facet: Option<&crate::plot::Facet>) -> Self {
-        let (domain, labels) = match scales.iter().find(|s| s.aesthetic == aesthetic) {
+        let scale = scales.iter().find(|s| s.aesthetic == aesthetic);
+        let (domain, labels) = match scale {
             Some(s) => (s.numeric_domain(), s.break_labels()),
             None => (None, Vec::new()),
         };
         // Set domain to None if zero-range
         let domain = domain.filter(|(min, max)| (max - min).abs() > f64::EPSILON);
         let breaks = labels.iter().map(|(v, _)| *v).collect();
-        let is_free = facet.is_some_and(|f| f.is_free(aesthetic));
+        // Free facet scales have per-panel domains that don't match the global
+        // positions used for decoration; dummy scales are stat-injected placeholders
+        // with no meaningful domain to label.
+        let suppress = facet.is_some_and(|f| f.is_free(aesthetic))
+            || scale.is_some_and(|s| s.is_dummy());
         Self {
             domain,
             breaks,
             labels,
-            is_free,
+            suppress,
         }
     }
 }
@@ -403,7 +408,7 @@ impl ProjectionRenderer for PolarProjection {
 impl PolarProjection {
     fn grid_rings(&self, theme: &Value) -> Vec<Value> {
         let p = &self.panel;
-        if p.radial.is_free {
+        if p.radial.suppress {
             return Vec::new();
         }
         let Some((domain_min, domain_max)) = p.radial.domain else {
@@ -464,7 +469,7 @@ impl PolarProjection {
 
     fn grid_spokes(&self, theme: &Value) -> Vec<Value> {
         let p = &self.panel;
-        if p.angle.is_free || p.angle.domain.is_none() {
+        if p.angle.suppress || p.angle.domain.is_none() {
             return Vec::new();
         }
         if p.angle.breaks.is_empty() {
@@ -509,7 +514,7 @@ impl PolarProjection {
 
     fn radial_axis(&self, theme: &Value) -> Vec<Value> {
         let p = &self.panel;
-        if p.radial.is_free {
+        if p.radial.suppress {
             return Vec::new();
         }
         if p.radial.domain.is_none() {
@@ -661,7 +666,7 @@ impl PolarProjection {
 
     fn angular_axis(&self, theme: &Value) -> Vec<Value> {
         let p = &self.panel;
-        if p.angle.is_free {
+        if p.angle.suppress {
             return Vec::new();
         }
         let Some((domain_min, domain_max)) = p.angle.domain else {
@@ -2128,6 +2133,29 @@ mod tests {
         assert!(!proj.grid_rings(&theme).is_empty());
         assert!(!proj.grid_spokes(&theme).is_empty());
         assert!(!proj.radial_axis(&theme).is_empty());
+        assert!(!proj.angular_axis(&theme).is_empty());
+    }
+
+    #[test]
+    fn dummy_scale_suppresses_decoration() {
+        use crate::naming::stat_column;
+        use crate::plot::types::ArrayElement;
+
+        let dummy_sentinel = stat_column("dummy");
+        let mut dummy = Scale::new("pos1");
+        dummy.input_range = Some(vec![ArrayElement::String(dummy_sentinel)]);
+
+        let angle = scale_with_breaks("pos2", (0.0, 360.0), vec![90.0, 180.0, 270.0]);
+        let scales = vec![dummy, angle];
+
+        let proj = PolarProjection {
+            panel: PolarContext::new(None, None, &scales),
+        };
+        let theme = Value::Null;
+
+        assert!(proj.grid_rings(&theme).is_empty());
+        assert!(proj.radial_axis(&theme).is_empty());
+        assert!(!proj.grid_spokes(&theme).is_empty());
         assert!(!proj.angular_axis(&theme).is_empty());
     }
 
