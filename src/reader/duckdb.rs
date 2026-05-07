@@ -13,6 +13,63 @@ use std::cell::RefCell;
 use std::collections::HashSet;
 use std::sync::Arc;
 
+// =============================================================================
+// DuckDB builtin data registration
+// =============================================================================
+
+/// Register any builtin datasets referenced in the SQL with a DuckDB connection.
+///
+/// Finds `ggsql:X` patterns in the SQL, writes the embedded parquet data to
+/// a temp file, and creates a table named `__ggsql_data_X__` in DuckDB.
+#[cfg(feature = "builtin-data")]
+fn register_builtin_datasets_duckdb(sql: &str, conn: &Connection) -> Result<()> {
+    use std::{env, fs};
+
+    let dataset_names = super::data::extract_builtin_dataset_names(sql)?;
+
+    // Load spatial extension before registering datasets that contain
+    // geometry columns, so DuckDB reads them as GEOMETRY rather than BLOB.
+    if dataset_names.iter().any(|n| n == "world") {
+        let _ = conn.execute("LOAD spatial", params![]);
+    }
+
+    for name in dataset_names {
+        let Some(parquet_bytes) = super::data::builtin_parquet_bytes(&name) else {
+            continue;
+        };
+
+        let table_name = naming::builtin_data_table(&name);
+
+        // Write parquet to temp file for DuckDB's read_parquet
+        let mut tmp_path = env::temp_dir();
+        tmp_path.push(format!("{}.parquet", name));
+        if !tmp_path.exists() {
+            fs::write(&tmp_path, parquet_bytes).map_err(|e| {
+                GgsqlError::ReaderError(format!(
+                    "Failed to write builtin dataset '{}' to {}: {}",
+                    name,
+                    tmp_path.display(),
+                    e
+                ))
+            })?;
+        }
+
+        let create_sql = format!(
+            "CREATE TABLE IF NOT EXISTS {} AS SELECT * FROM read_parquet('{}')",
+            naming::quote_ident(&table_name),
+            tmp_path.display()
+        );
+
+        conn.execute(&create_sql, params![]).map_err(|e| {
+            GgsqlError::ReaderError(format!(
+                "Failed to register builtin dataset '{}': {}",
+                name, e
+            ))
+        })?;
+    }
+    Ok(())
+}
+
 /// DuckDB SQL dialect with native function support.
 ///
 /// Overrides SQL generation methods to use DuckDB-native functions
@@ -32,6 +89,14 @@ impl super::SqlDialect for DuckDbDialect {
             return exprs[0].to_string();
         }
         format!("LEAST({})", exprs.join(", "))
+    }
+
+    fn sql_geometry_to_wkb(&self, column: &str) -> String {
+        format!("ST_AsWKB({column})")
+    }
+
+    fn sql_spatial_setup(&self) -> Vec<String> {
+        vec!["LOAD spatial".into()]
     }
 
     fn sql_generate_series(&self, n: usize) -> String {
@@ -206,7 +271,7 @@ impl Reader for DuckDBReader {
     fn execute_sql(&self, sql: &str) -> Result<DataFrame> {
         // Register builtin datasets if referenced
         #[cfg(feature = "builtin-data")]
-        super::data::register_builtin_datasets_duckdb(sql, &self.conn)?;
+        register_builtin_datasets_duckdb(sql, &self.conn)?;
 
         // Rewrite ggsql:name → __ggsql_data_name__ in SQL
         let sql = super::data::rewrite_namespaced_sql(sql)?;

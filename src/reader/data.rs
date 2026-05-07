@@ -46,67 +46,18 @@ static AIRQUALITY: &[u8] = include_bytes!(concat!(
     "/data/airquality.parquet"
 ));
 
+#[cfg(feature = "builtin-data")]
+static WORLD: &[u8] = include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/data/world.parquet"));
+
 /// Get the embedded parquet bytes for a known builtin dataset.
 #[cfg(feature = "builtin-data")]
 pub fn builtin_parquet_bytes(name: &str) -> Option<&'static [u8]> {
     match name {
         "penguins" => Some(PENGUINS),
         "airquality" => Some(AIRQUALITY),
+        "world" => Some(WORLD),
         _ => None,
     }
-}
-
-// =============================================================================
-// DuckDB builtin data registration (requires duckdb + builtin-data)
-// =============================================================================
-
-/// Register any builtin datasets referenced in the SQL with a DuckDB connection.
-///
-/// Finds `ggsql:X` patterns in the SQL, writes the embedded parquet data to
-/// a temp file, and creates a table named `__ggsql_data_X__` in DuckDB.
-#[cfg(all(feature = "duckdb", feature = "builtin-data"))]
-pub fn register_builtin_datasets_duckdb(
-    sql: &str,
-    conn: &duckdb::Connection,
-) -> Result<(), GgsqlError> {
-    use std::{env, fs};
-
-    let dataset_names = extract_builtin_dataset_names(sql)?;
-    for name in dataset_names {
-        let Some(parquet_bytes) = builtin_parquet_bytes(&name) else {
-            continue;
-        };
-
-        let table_name = naming::builtin_data_table(&name);
-
-        // Write parquet to temp file for DuckDB's read_parquet
-        let mut tmp_path = env::temp_dir();
-        tmp_path.push(format!("{}.parquet", name));
-        if !tmp_path.exists() {
-            fs::write(&tmp_path, parquet_bytes).map_err(|e| {
-                GgsqlError::ReaderError(format!(
-                    "Failed to write builtin dataset '{}' to {}: {}",
-                    name,
-                    tmp_path.display(),
-                    e
-                ))
-            })?;
-        }
-
-        let create_sql = format!(
-            "CREATE TABLE IF NOT EXISTS {} AS SELECT * FROM read_parquet('{}')",
-            naming::quote_ident(&table_name),
-            tmp_path.display()
-        );
-
-        conn.execute(&create_sql, duckdb::params![]).map_err(|e| {
-            GgsqlError::ReaderError(format!(
-                "Failed to register builtin dataset '{}': {}",
-                name, e
-            ))
-        })?;
-    }
-    Ok(())
 }
 
 // =============================================================================
@@ -120,6 +71,7 @@ pub fn load_builtin_dataframe(name: &str) -> Result<crate::DataFrame, GgsqlError
     let parquet_bytes = match name {
         "penguins" => PENGUINS,
         "airquality" => AIRQUALITY,
+        "world" => WORLD,
         _ => {
             return Err(GgsqlError::ReaderError(format!(
                 "Unknown builtin dataset: '{}'",
@@ -160,7 +112,7 @@ pub fn load_builtin_dataframe(name: &str) -> Result<crate::DataFrame, GgsqlError
 }
 
 /// Known builtin dataset names in the ggsql namespace
-pub const KNOWN_DATASETS: &[&str] = &["penguins", "airquality"];
+pub const KNOWN_DATASETS: &[&str] = &["penguins", "airquality", "world"];
 
 /// Check if a dataset name is a known builtin
 pub fn is_known_builtin(name: &str) -> bool {
