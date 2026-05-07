@@ -229,20 +229,6 @@ pub trait GeomTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
         Ok(df)
     }
 
-    /// Auto-detect aesthetic mappings that require backend introspection.
-    ///
-    /// Called early in the pipeline (before global mapping merge) to let geoms
-    /// resolve aesthetics that depend on the database schema rather than the
-    /// Arrow schema. The default implementation does nothing.
-    fn detect_aesthetics(
-        &self,
-        _mappings: &mut Mappings,
-        _source_query: &str,
-        _schema: &Schema,
-        _reader: &dyn crate::reader::Reader,
-    ) {
-    }
-
     /// Adjust layer mappings and parameters based on geom-specific logic.
     ///
     /// This method is called during layer execution to allow geoms to customize
@@ -472,18 +458,6 @@ impl Geom {
         parameters: &mut HashMap<String, ParameterValue>,
     ) -> Result<()> {
         self.0.setup_layer(mappings, parameters)
-    }
-
-    /// Auto-detect aesthetics that require backend introspection
-    pub fn detect_aesthetics(
-        &self,
-        mappings: &mut Mappings,
-        source_query: &str,
-        schema: &Schema,
-        reader: &dyn crate::reader::Reader,
-    ) {
-        self.0
-            .detect_aesthetics(mappings, source_query, schema, reader)
     }
 
     /// Get valid settings

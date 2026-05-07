@@ -418,22 +418,6 @@ impl Reader for DuckDBReader {
     fn dialect(&self) -> &dyn super::SqlDialect {
         &DuckDbDialect
     }
-
-    fn geometry_columns(&self, source_query: &str) -> Vec<String> {
-        let sql = format!(
-            "SELECT column_name FROM (DESCRIBE ({source_query})) WHERE column_type = 'GEOMETRY'"
-        );
-        self.execute_sql(&sql)
-            .ok()
-            .and_then(|df| {
-                df.inner()
-                    .column(0)
-                    .as_any()
-                    .downcast_ref::<arrow::array::StringArray>()
-                    .map(|arr| arr.iter().flatten().map(|s| s.to_string()).collect())
-            })
-            .unwrap_or_default()
-    }
 }
 
 #[cfg(test)]

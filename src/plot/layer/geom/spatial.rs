@@ -1,5 +1,5 @@
 use super::{DefaultAesthetics, GeomTrait, GeomType, StatResult};
-use crate::plot::types::{AestheticValue, DefaultAestheticValue, Schema};
+use crate::plot::types::DefaultAestheticValue;
 use crate::{naming, Mappings};
 
 #[derive(Debug, Clone, Copy)]
@@ -20,55 +20,6 @@ impl GeomTrait for Spatial {
                 ("linewidth", DefaultAestheticValue::Number(0.2)),
                 ("linetype", DefaultAestheticValue::String("solid")),
             ],
-        }
-    }
-
-    fn detect_aesthetics(
-        &self,
-        mappings: &mut Mappings,
-        source_query: &str,
-        schema: &Schema,
-        reader: &dyn crate::reader::Reader,
-    ) {
-        if mappings.aesthetics.contains_key("geometry") {
-            return;
-        }
-
-        // Prefer columns the backend reports as native geometry
-        let native_cols = reader.geometry_columns(source_query);
-        match native_cols.len() {
-            1 => {
-                mappings.aesthetics.insert(
-                    "geometry".to_string(),
-                    AestheticValue::standard_column(&native_cols[0]),
-                );
-                return;
-            }
-            // Ambiguous — user must declare explicitly
-            n if n > 1 => return,
-            _ => {}
-        }
-
-        // Fall back to name + binary type heuristics
-        use arrow::datatypes::DataType;
-        let candidates: Vec<_> = schema
-            .iter()
-            .filter(|c| {
-                matches!(
-                    c.name.to_lowercase().as_str(),
-                    "geom" | "geometry" | "wkb_geometry" | "the_geom" | "shape"
-                ) && matches!(
-                    c.dtype,
-                    DataType::Binary | DataType::LargeBinary | DataType::BinaryView
-                )
-            })
-            .collect();
-
-        if candidates.len() == 1 {
-            mappings.aesthetics.insert(
-                "geometry".to_string(),
-                AestheticValue::standard_column(&candidates[0].name),
-            );
         }
     }
 
