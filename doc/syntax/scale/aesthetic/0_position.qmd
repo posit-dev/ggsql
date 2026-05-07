@@ -7,7 +7,7 @@ All layers need at least one of each position aesthetic mapped in order to show 
 However, the layer may compute position aesthetics from the mapping. 
 For example, a bar plot calculates the `y` aesthetic by counting the number of records in each group defined by the mapped `x` aesthetic.
 
-In the above we use `x`and `y` as examples of position aesthetics, but in reality the position aesthetic names are defined by the coordinate system in use. 
+In the above we use `x` and `y` as examples of position aesthetics, but in reality the position aesthetic names are defined by the coordinate system in use. 
 A Cartesian coordinate system recognizes `x` and `y` whereas a polar coordinate system recognizes `radius` and `angle`. 
 You can implicitly choose the coordinate system by mapping to the aesthetics that it uses, i.e. if you map to `radius` and `angle` then a polar coordinate system will be chosen for you.
 

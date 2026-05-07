@@ -8,7 +8,7 @@ ggsql augments the standard SQL syntax with a number of new clauses to describe 
 - [`VISUALISE`](clause/visualise.qmd) initiates the visualisation part of the query
 - [`DRAW`](clause/draw.qmd) adds a new layer to the visualisation
     - [`PLACE`](clause/place.qmd) adds an annotation layer
-- [`SCALE`](clause/scale.qmd) specify how an aesthetic should be scaled
+- [`SCALE`](clause/scale.qmd) specifies how an aesthetic should be scaled
 - [`FACET`](clause/facet.qmd) describes how data should be split into small multiples
 - [`PROJECT`](clause/project.qmd) is used for selecting the coordinate system to use
 - [`LABEL`](clause/label.qmd) is used to manually add titles to the plot or the various axes and legends

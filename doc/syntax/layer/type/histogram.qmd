@@ -7,7 +7,7 @@ title: "Histogram"
 Visualise the distribution of a single continuous variable by dividing the primary axis into bins and counting the number of observations in each bin. If providing a weight then a weighted histogram is calculated instead.
 
 ## Aesthetics
-The following aesthetics are recognised by the bar layer.
+The following aesthetics are recognised by the histogram layer.
 
 ### Required
 * Primary axis (e.g. `x`): The continuous variable to bin

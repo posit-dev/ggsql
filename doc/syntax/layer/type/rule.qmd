@@ -84,7 +84,7 @@ DRAW rule
   MAPPING value AS y, label AS colour FROM thresholds
 ```
 
-Add a diagnoal reference line to a scatterplot by using `slope`
+Add a diagonal reference line to a scatterplot by using `slope`
 
 ```{ggsql}
 VISUALISE FROM ggsql:penguins
