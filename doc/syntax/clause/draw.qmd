@@ -86,7 +86,8 @@ The `aggregate` setting takes a single string or an array of strings. Each strin
 
 A numeric mapping is dropped from the layer with a warning, when it has neither a target nor an applicable default.
 
-The simple functions are:
+##### Aggregate functions
+Aggregation can either be a simple function or a band function. The simple functions are:
 
 * `'count'`: Non-null tally of the bound column.
 * `'sum'` and `'prod'`: The sum or product
@@ -105,7 +106,8 @@ Allowed offsets are: `'mean'`, `'median'`, `'geomean'`, `'harmean'`, `'rms'`, `'
 
 Allowed expansions are: `'sdev'`, `'se'`, `'var'`, `'iqr'`, and `'range'`
 
-You can also target the same aesthetic more than once to produce **multiple rows per group** — one for each function. For example `aggregate => ('y:min', 'y:max')` emits a min row and a max row per group, so a single `DRAW line` produces two summary lines that connect within each group rather than across them. When multiple rows are created, a synthetic `aggregate` column is made that tags each row with the name of the aggregation function. You can use this with a `REMAPPING` to drive another aesthetic — e.g. `REMAPPING aggregate AS stroke` to colour the two lines differently. The column's value is built from the per-row function names of the *exploded* targets, deduplicated, and joined with `/`:
+##### Exploded aggregation
+You can also target the same aesthetic more than once to produce *multiple rows per group* — one for each function. We call that *exploded aggregation*. For example `aggregate => ('y:min', 'y:max')` emits a min row and a max row per group, so a single `DRAW line` produces two summary lines that connect within each group rather than across them. When multiple rows are created, a synthetic `aggregate` column is made that tags each row with the name of the aggregation function. You can use this with a `REMAPPING` to drive another aesthetic — e.g. `REMAPPING aggregate AS stroke` to colour the two lines differently. The column's value is built from the per-row function names of the *exploded* targets, deduplicated, and joined with `/`:
 
 * `aggregate => ('y:min', 'y:max')` → rows tagged `'min'`, `'max'`.
 * `aggregate => ('y:min', 'y:max', 'color:median')` → rows tagged `'min'`, `'max'` (the single-function `color` target is recycled across rows and is not part of the label).

@@ -99,10 +99,10 @@ DRAW tile
 Building a heatmap from raw rows by aggregating per cell.
 
 ```{ggsql}
-VISUALISE FROM ggsql:airquality
+VISUALISE FROM ggsql:penguins
 DRAW tile
-  MAPPING Month AS x, Day AS y, Temp AS fill
-  SETTING aggregate => 'mean'
+  MAPPING species AS x, sex AS y, body_mass AS fill
+  SETTING aggregate => 'mean', opacity => 1
 ```
 
 Using a tile as an annotation. Note we're using the `PLACE` clause here instead of `DRAW` because we're not mapping from data.
