@@ -34,6 +34,7 @@ There are many different layers to choose from when visualising your data. Some 
 - [`boxplot`](../syntax/layer/type/boxplot.llms.md) displays continuous variables as 5-number summaries.
 - [`range`](../syntax/layer/type/range.llms.md) a line segment between two values along an axis, with optional hinges at the endpoints.
 - [`smooth`](../syntax/layer/type/smooth.llms.md) a trendline that follows the data shape.
+- [`spatial`](../syntax/layer/type/spatial.llms.md) simple features from geometry.
 
 ### Position adjustments
 
