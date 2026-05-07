@@ -63,7 +63,7 @@ DRAW line
   MAPPING MeanTemp AS y
 ```
 
-Use aggregation to calculate bounds on the fly
+Use aggregation to calculate bounds on the fly. The two untargeted aggregation functions target the `ymin` and `ymax` aesthetics automatically.
 
 ```{ggsql}
 VISUALISE Day AS x, Temp AS ymin, Temp AS ymax FROM ggsql:airquality
