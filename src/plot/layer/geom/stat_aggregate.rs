@@ -1608,6 +1608,71 @@ mod tests {
     }
 
     #[test]
+    fn last_with_discrete_group_partitions_row_number_over_group() {
+        // Pins build_group_by_query's behaviour for the rn-CTE + non-empty
+        // group_cols combo: every other test that exercises the rn CTE has
+        // empty group_cols (so windows emit `OVER ()`). A bug that
+        // forgot to thread `PARTITION BY <group_cols>` through wouldn't
+        // surface in those tests.
+        let mut aes = Mappings::new();
+        aes.insert("pos1", col("__ggsql_aes_pos1__"));
+        aes.insert("pos2", col("__ggsql_aes_pos2__"));
+        let schema = schema_for(&[
+            ("__ggsql_aes_pos1__", true), // discrete group key
+            ("__ggsql_aes_pos2__", false),
+        ]);
+
+        // Native-FIRST/LAST dialect: no rn CTE, GROUP BY uses the discrete key.
+        let result = run(
+            ParameterValue::String("last".to_string()),
+            &aes,
+            &schema,
+            &[],
+            &InlineQuantileDialect,
+        )
+        .unwrap();
+        match result {
+            StatResult::Transformed { query, .. } => {
+                assert!(
+                    !query.contains("__ggsql_rn__"),
+                    "native LAST must not add ROW_NUMBER prep: {query}"
+                );
+                assert!(query.contains("LAST(\"__ggsql_aes_pos2__\")"), "{query}");
+                assert!(query.contains("GROUP BY \"__ggsql_aes_pos1__\""), "{query}");
+            }
+            _ => panic!("expected Transformed"),
+        }
+
+        // Default dialect: rn CTE must partition by the discrete group key.
+        struct AnsiTestDialect;
+        impl SqlDialect for AnsiTestDialect {}
+        let result = run(
+            ParameterValue::String("last".to_string()),
+            &aes,
+            &schema,
+            &[],
+            &AnsiTestDialect,
+        )
+        .unwrap();
+        match result {
+            StatResult::Transformed { query, .. } => {
+                assert!(
+                    query.contains(
+                        "ROW_NUMBER() OVER (PARTITION BY \"__ggsql_aes_pos1__\" ORDER BY (SELECT 1))"
+                    ),
+                    "{query}"
+                );
+                assert!(
+                    query.contains("COUNT(*) OVER (PARTITION BY \"__ggsql_aes_pos1__\")"),
+                    "{query}"
+                );
+                assert!(query.contains("GROUP BY \"__ggsql_aes_pos1__\""), "{query}");
+            }
+            _ => panic!("expected Transformed"),
+        }
+    }
+
+    #[test]
     fn first_and_last_emit_positional_aggregates() {
         let mut aes = Mappings::new();
         aes.insert("pos1", col("__ggsql_aes_pos1__"));
