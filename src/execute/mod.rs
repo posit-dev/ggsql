@@ -723,6 +723,22 @@ fn add_discrete_columns_to_partition_by(
             excluded_aesthetics.insert("label");
         }
 
+        // When aggregate is active, an explicitly-targeted Binned aesthetic
+        // shouldn't auto-promote to a group key — the user is summarising the
+        // raw values and the binning runs post-stat against the aggregate
+        // output. Untargeted Binned still groups, so binning can drive
+        // meaningful aggregation buckets in the common case.
+        let agg_targeted: HashSet<String> =
+            crate::plot::layer::geom::stat_aggregate::aggregated_aesthetics(
+                &layer.parameters,
+                &layer.mappings,
+                schema,
+                aesthetic_ctx,
+                layer.geom.aggregate_domain_aesthetics(),
+            )
+            .map(|(t, _)| t)
+            .unwrap_or_default();
+
         for (aesthetic, value) in &layer.mappings.aesthetics {
             // Skip position aesthetics - these should not trigger auto-grouping.
             // Stats that need to group by position aesthetics (like bar/histogram)
@@ -754,9 +770,8 @@ fn add_discrete_columns_to_partition_by(
                 let is_discrete = if let Some(scale) = scale_map.get(primary_aes) {
                     if let Some(ref scale_type) = scale.scale_type {
                         match scale_type.scale_type_kind() {
-                            ScaleTypeKind::Discrete
-                            | ScaleTypeKind::Binned
-                            | ScaleTypeKind::Ordinal => true,
+                            ScaleTypeKind::Discrete | ScaleTypeKind::Ordinal => true,
+                            ScaleTypeKind::Binned => !agg_targeted.contains(aesthetic),
                             ScaleTypeKind::Continuous => false,
                             ScaleTypeKind::Identity => discrete_columns.contains(col),
                         }

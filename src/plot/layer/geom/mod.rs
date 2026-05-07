@@ -512,6 +512,12 @@ impl Geom {
         self.0.supports_aggregate()
     }
 
+    /// Aesthetics the Aggregate stat must keep as group keys rather than
+    /// aggregating, even if their bound column is continuous.
+    pub fn aggregate_domain_aesthetics(&self) -> &'static [&'static str] {
+        self.0.aggregate_domain_aesthetics()
+    }
+
     /// Validate aesthetic mappings
     pub fn validate_aesthetics(&self, mappings: &Mappings) -> std::result::Result<(), String> {
         self.0.validate_aesthetics(mappings)

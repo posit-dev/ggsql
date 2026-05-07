@@ -25,7 +25,7 @@
 //! Numeric mappings without a target *or* applicable default are dropped with
 //! a warning to stderr.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use super::types::StatResult;
 use crate::naming;
@@ -603,6 +603,101 @@ fn resolve_target_aesthetic(
 /// aesthetics (no position prefix) are always lower.
 fn is_upper_half(internal_aes: &str) -> bool {
     internal_aes.ends_with("max") || internal_aes.ends_with("end")
+}
+
+/// Compute the set of internal aesthetic names that the layer's `aggregate`
+/// setting *explicitly targets*. Lighter than [`aggregated_aesthetics`] —
+/// doesn't need a schema — so post-stat callers can use it without rebuilding
+/// type information from a materialised DataFrame.
+pub fn targeted_aesthetics(
+    parameters: &HashMap<String, ParameterValue>,
+    aesthetics: &Mappings,
+    aesthetic_ctx: &AestheticContext,
+) -> HashSet<String> {
+    let raw = match parameters.get("aggregate") {
+        Some(v) if !matches!(v, ParameterValue::Null) => v,
+        _ => return HashSet::new(),
+    };
+    let spec = match parse_aggregate_param(raw).ok().flatten() {
+        Some(s) => s,
+        None => return HashSet::new(),
+    };
+    let mut targeted: HashSet<String> = HashSet::new();
+    for (user_aes, _fns) in &spec.targets {
+        for internal in resolve_target_aesthetic(user_aes, aesthetics, aesthetic_ctx) {
+            targeted.insert(internal);
+        }
+    }
+    targeted
+}
+
+/// Compute, for a layer's `aggregate` setting, which internal aesthetic names
+/// will be (a) *explicitly targeted* by `aggregate => '<aes>:<func>'` and
+/// (b) *aggregated* by the stat (either targeted OR a numeric mapping that an
+/// untargeted default applies to).
+///
+/// The execute pipeline uses this to decide whether to defer scale-driven
+/// pre-stat rewrites (`SCALE BINNED <aes>`, `SCALE <aes> FROM […]`, …) until
+/// after the stat. The bucketing here mirrors the per-mapping branching in
+/// [`apply`]; both must stay in sync.
+///
+/// Returns `None` when `aggregate` is unset, null, or fails to parse — i.e.
+/// when the stat will return `Identity` and no aesthetic is touched. Parse
+/// errors are swallowed; the stat itself surfaces a clean diagnostic.
+pub fn aggregated_aesthetics(
+    parameters: &HashMap<String, ParameterValue>,
+    aesthetics: &Mappings,
+    schema: &Schema,
+    aesthetic_ctx: &AestheticContext,
+    domain_aesthetics: &[&'static str],
+) -> Option<(HashSet<String>, HashSet<String>)> {
+    let raw = parameters.get("aggregate")?;
+    if matches!(raw, ParameterValue::Null) {
+        return None;
+    }
+    let spec = parse_aggregate_param(raw).ok()??;
+
+    let mut targeted: HashSet<String> = HashSet::new();
+    for (user_aes, _fns) in &spec.targets {
+        for internal in resolve_target_aesthetic(user_aes, aesthetics, aesthetic_ctx) {
+            targeted.insert(internal);
+        }
+    }
+
+    let mut aggregated: HashSet<String> = targeted.clone();
+    let mut entries: Vec<(&String, &crate::AestheticValue)> =
+        aesthetics.aesthetics.iter().collect();
+    entries.sort_by(|a, b| a.0.cmp(b.0));
+    for (aes, value) in entries {
+        let col = match value.column_name() {
+            Some(c) => c,
+            None => continue,
+        };
+        if domain_aesthetics.contains(&aes.as_str()) {
+            continue;
+        }
+        let is_discrete = schema
+            .iter()
+            .find(|c| c.name == col)
+            .map(|c| c.is_discrete)
+            .unwrap_or(false);
+        if is_discrete {
+            continue;
+        }
+        if targeted.contains(aes) {
+            continue;
+        }
+        let default_applies = if is_upper_half(aes) {
+            spec.default_upper.is_some() || spec.default_lower.is_some()
+        } else {
+            spec.default_lower.is_some()
+        };
+        if default_applies {
+            aggregated.insert(aes.clone());
+        }
+    }
+
+    Some((targeted, aggregated))
 }
 
 /// Apply the Aggregate stat to a layer query.

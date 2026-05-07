@@ -276,9 +276,23 @@ pub fn apply_pre_stat_transform(
     aesthetic_schema: &Schema,
     scales: &[Scale],
     dialect: &dyn SqlDialect,
+    aesthetic_ctx: &AestheticContext,
 ) -> String {
     let mut transform_exprs: Vec<(String, String)> = vec![];
     let mut transformed_columns: HashSet<String> = HashSet::new();
+
+    // When a layer has `aggregate => …`, scale-driven rewrites are deferred to
+    // after the stat for aesthetics where running them up-front would defeat
+    // the aggregate. The post-stat machinery (`apply_post_stat_binning`,
+    // `apply_scale_oob`) picks the deferred ones up against the aggregated
+    // values in the materialised DataFrame.
+    let agg_buckets = crate::plot::layer::geom::stat_aggregate::aggregated_aesthetics(
+        &layer.parameters,
+        &layer.mappings,
+        aesthetic_schema,
+        aesthetic_ctx,
+        layer.geom.aggregate_domain_aesthetics(),
+    );
 
     // Check layer mappings for aesthetics with scales that need pre-stat transformation
     // Handles both column mappings and literal mappings (which are injected as synthetic columns)
@@ -308,6 +322,27 @@ pub fn apply_pre_stat_transform(
         // Find scale for this aesthetic
         if let Some(scale) = scales.iter().find(|s| s.aesthetic == *aesthetic) {
             if let Some(ref scale_type) = scale.scale_type {
+                // Defer this rewrite when the layer aggregates and the scale
+                // semantics call for it (see post-stat machinery for how the
+                // deferred rewrite actually runs). `Binned` only defers when
+                // the aesthetic is *explicitly* targeted (untargeted Binned
+                // still drives meaningful pre-stat grouping); OOB-flavoured
+                // rewrites defer whenever the aesthetic is being aggregated.
+                if let Some((ref targeted, ref aggregated)) = agg_buckets {
+                    use crate::plot::scale::ScaleTypeKind;
+                    let kind = scale_type.scale_type_kind();
+                    let defer = match kind {
+                        ScaleTypeKind::Binned => targeted.contains(aesthetic),
+                        ScaleTypeKind::Continuous
+                        | ScaleTypeKind::Discrete
+                        | ScaleTypeKind::Ordinal => aggregated.contains(aesthetic),
+                        ScaleTypeKind::Identity => false,
+                    };
+                    if defer {
+                        continue;
+                    }
+                }
+
                 // Get pre-stat SQL transformation from scale type (if applicable)
                 // Each scale type's pre_stat_transform_sql() returns None if not applicable
                 if let Some(sql) =
@@ -488,6 +523,7 @@ where
         &aesthetic_schema,
         scales,
         dialect,
+        aesthetic_ctx,
     );
 
     // Build group_by columns from partition_by

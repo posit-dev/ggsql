@@ -112,26 +112,24 @@ DRAW range
   SETTING width => null
 ```
 
+Rather than precomputing the values and plotting them, you can use the aggregate functionality to calculate the relevant statistics dynamically:
+
 ```{ggsql}
 VISUALISE Date AS x, Temp AS ymin, Temp AS ymax, Temp AS color 
   FROM ggsql:airquality
 DRAW range
   REMAPPING aggregate AS linewidth
-  SETTING aggregate => ('x:first', 'ymin:first', 'ymin:min', 'ymax:last', 'ymax:max', 'color:diff'), width => null
+  SETTING 
+    aggregate => (
+      'x:first', 
+      'ymin:first', 'ymin:min', 
+      'ymax:last', 'ymax:max', 
+      'color:diff'
+    ), 
+    width => null
   PARTITION BY Week
 SCALE linewidth TO (5, 1)
-SCALE color FROM (-20, 20) TO managua
-  SETTING reverse => true, oob => 'keep'
+SCALE BINNED color TO ('steelblue', 'firebrick')
+  SETTING breaks => (-20, 0, 20)
 ```
 
-Use aggregation to calculate bounds dynamically
-
-```{ggsql}
-VISUALISE body_mass AS x, species AS y FROM ggsql:penguins
-DRAW range
-  MAPPING body_mass AS xmin, body_mass AS xmax
-  SETTING aggregate => ('min', 'max'), width => null
-DRAW point
-  REMAPPING aggregate AS fill
-  SETTING aggregate => ('x:min', 'x:max'), size => 20, opacity => 1
-```
