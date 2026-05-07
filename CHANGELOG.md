@@ -3,21 +3,51 @@
 ### Added
 
 - New `aggregate` SETTING on Identity-stat layers (point, line, area, bar, ribbon,
-range, segment, arrow, rule, text). By default it collapses each group to a
-single row by replacing every numeric mapping in place with its aggregated
-value. Accepts a single string or array of strings; entries are either
-unprefixed defaults (`'mean'`) or per-aesthetic targets (`'y:max'`,
-`'color:median'`). Up to two defaults may be supplied — the first applies to
-lower-half aesthetics plus all non-range layers, the second to upper-half
-(`max`/`end` suffix). Numeric mappings without a target or applicable default
-are dropped with a warning. Targeting the same aesthetic more than once
-(e.g. `aggregate => ('y:min', 'y:max')`) produces one row per function with
-a synthetic `aggregate` column tagging each row, available for `REMAPPING` to
-another aesthetic; targets with a single function and the unprefixed defaults
-are reused unchanged across the exploded rows. The `aggregate` column's value
-is built from the dedup-and-joined function names of all exploded targets at
-each row, separated by `/` (so `('y:min', 'y:max', 'color:sum', 'color:prod')`
-yields `'min/sum'` and `'max/prod'`). Mixed lengths above 1 are an error.
+  range, segment, arrow, rule, text). By default it collapses each group to a
+  single row by replacing every numeric mapping in place with its aggregated
+  value. Accepts a single string or array of strings; entries are either
+  unprefixed defaults (`'mean'`) or per-aesthetic targets (`'y:max'`,
+  `'color:median'`). Up to two defaults may be supplied — the first applies to
+  lower-half aesthetics plus all non-range layers, the second to upper-half
+  (`max`/`end` suffix). Numeric mappings without a target or applicable default
+  are dropped with a warning. Targeting the same aesthetic more than once
+  (e.g. `aggregate => ('y:min', 'y:max')`) produces one row per function with
+  a synthetic `aggregate` column tagging each row, available for `REMAPPING` to
+  another aesthetic; targets with a single function and the unprefixed defaults
+  are reused unchanged across the exploded rows. The `aggregate` column's value
+  is built from the dedup-and-joined function names of all exploded targets at
+  each row, separated by `/` (so `('y:min', 'y:max', 'color:sum', 'color:prod')`
+  yields `'min/sum'` and `'max/prod'`). Mixed lengths above 1 are an error.
+- Added panel decorations (grid lines, axes, background) for polar coordinates (#156).
+- Added `radar` setting to polar coordinates for making radar plots (#418).
+
+## 0.3.2 - 2026-05-05
+
+### Fixed
+
+- Side effects like `CREATE TEMP TABLE` before the `VISUALISE` statement are now
+  separated from directly feeding into the visualisation data (#415)
+- Fixed bug where panel axes were unintentionally anchored to zero when using 
+  `FACET ... SETTING free => 'x'/'y'` (#410).
+- Fixed bug where faceted data were matched to the incorrect panels (#409)
+
+### Changed
+
+- Restructured how ggsql integrates with ODBC drivers to use the system ODBC,
+rather than bundling unixodbc as part of binary releases. This fixes several
+issues on Linux and macOS caused by relative paths to dynamic libraries.
+
+## 0.3.1 - 2026-04-30
+
+### Fixed
+
+- Fixed stacking in faceted plots (#403)
+
+## 0.3.0 - 2026-04-29
+
+### Added
+
+
 - Add cell delimiters and code lens actions to the Positron extension (#366)
 - ODBC is now turned on for the CLI as well (#344)
 - `FROM` can now come before `VISUALIZE`, mirroring the DuckDB style. This means
@@ -25,6 +55,7 @@ that `FROM table VISUALIZE x, y` and `VISUALIZE x, y FROM table` are equivalent
 queries (#369)
 - CLI now has built-in documentation through the `docs` command as well as a
 skill for llms through the `skill` command (#361)
+- The ggsql wasm package is now published on GitHub Releases and NPM (#367)
 
 ### Fixed
 
@@ -34,13 +65,25 @@ in the Jupyter kernel (#360)
 - Passing the shape aesthetic via `SETTING` now correctly translates named
 shapes (#368)
 - Asterisk shape now has lines 60 degrees apart, giving an even shape
+- `validate()` now reports an actionable error when a SQL expression (e.g.
+`CAST(...)` or a function call) appears inside a `VISUALISE` mapping, instead
+of silently treating the entire query as SQL (#389)
+- Error messages no longer leak internal aesthetic names. Validation, scale,
+and writer errors now report user-facing aesthetic names (`x`, `y`, `panel`,
+`row`, …) instead of internal forms (`pos1`, `pos2`, `facet1`, …), translated
+based on the active coordinate system and facet layout (#388).
+- Fixed opacity calculation in point layers with Vega-Lite (#393)
+- Fixed an issue with case-sensitive column references in mappings (#374)
+- Fixed SQL function set quantifiers in the ggsql grammar (#395)
+- Fixed loading of dynamic libraries in PyPI build of `ggsql-jupyter` (#355, #392)
+- Fixed an issue with OOB null-filtering, leading to missing median lines in boxplots (#394)
 
 ### Changed
 
 - Reverted an earlier decision to materialize CTEs and the global query in Rust
 before registering them back to the backend. We now keep the data purely on the
 backend until the layer query as was always intended (#363)
-- Relieved some grammatical constraints on the SQL-portion before the VISUALISE 
+- Relieved some grammatical constraints on the SQL-portion before the VISUALISE
 portion (#364).
 - Simplified internal approach to DataFrame with DuckDB reader (#365)
 - Moved the CLI to its own module rather than be part of the main crate (#379)

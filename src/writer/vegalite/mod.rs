@@ -26,7 +26,7 @@ mod layer;
 mod projection;
 
 use crate::plot::ArrayElement;
-use crate::plot::{CoordKind, ParameterValue, Scale, ScaleTypeKind};
+use crate::plot::{ParameterValue, Scale, ScaleTypeKind};
 use crate::writer::Writer;
 use crate::{naming, AestheticValue, DataFrame, GgsqlError, Plot, Result};
 use serde_json::{json, Value};
@@ -38,7 +38,7 @@ use encoding::{
     build_detail_encoding, build_encoding_channel, infer_field_type, map_aesthetic_name,
 };
 use layer::{geom_to_mark, get_renderer, validate_layer_columns, GeomRenderer, PreparedData};
-use projection::apply_project_transforms;
+use projection::{get_projection_renderer, ProjectionRenderer};
 
 /// Conversion factor from points to pixels (CSS standard: 96 DPI, 72 points/inch)
 /// 1 point = 96/72 pixels = 1.333
@@ -159,10 +159,7 @@ fn prepare_layer_data(
 /// - Applies geom-specific modifications via renderer
 /// - Finalizes layers (may expand composite geoms into multiple layers)
 ///
-/// The `free_scales` array indicates which position aesthetics have independent scales
-/// per facet panel. When a position is free, explicit domains should not be set.
-///
-/// The `coord_kind` determines how internal position aesthetics are mapped to
+/// The `projection` determines how internal position aesthetics are mapped to
 /// Vega-Lite encoding channel names.
 fn build_layers(
     spec: &Plot,
@@ -170,13 +167,13 @@ fn build_layers(
     layer_data_keys: &[String],
     layer_renderers: &[Box<dyn GeomRenderer>],
     prepared_data: &[PreparedData],
-    free_scales: Option<&[crate::plot::ArrayElement]>,
-    coord_kind: CoordKind,
+    projection: &dyn ProjectionRenderer,
 ) -> Result<Vec<Value>> {
     let mut layers = Vec::new();
 
     // Build context once for all layers
-    let context = encoding::RenderContext::new(&spec.scales, coord_kind);
+    let context =
+        encoding::RenderContext::new(&spec.scales, projection, spec.get_aesthetic_context());
 
     for (layer_idx, layer) in spec.layers.iter().enumerate() {
         let data_key = &layer_data_keys[layer_idx];
@@ -207,8 +204,8 @@ fn build_layers(
         // Set transform array on layer spec
         layer_spec["transform"] = json!(transforms);
 
-        // Build encoding for this layer (pass free scales and coord kind)
-        let mut encoding = build_layer_encoding(layer, df, spec, free_scales, coord_kind)?;
+        // Build encoding for this layer
+        let mut encoding = build_layer_encoding(layer, df, spec, projection)?;
 
         // For point marks, remove fill: null from encoding — Vega-Lite point marks
         // are unfilled by default, so omitting it achieves the same visual result
@@ -246,17 +243,13 @@ fn build_layers(
 /// - Detail encoding for partition_by columns
 /// - Geom-specific encoding modifications via renderer
 ///
-/// The `free_scales` array indicates which position aesthetics have independent scales
-/// per facet panel. When a position is free, explicit domains should not be set.
-///
-/// The `coord_kind` determines how internal position aesthetics (pos1, pos2) are
+/// The `projection` determines how internal position aesthetics (pos1, pos2) are
 /// mapped to Vega-Lite encoding channel names (x/y for cartesian, theta/radius for polar).
 fn build_layer_encoding(
     layer: &crate::plot::Layer,
     df: &DataFrame,
     spec: &Plot,
-    free_scales: Option<&[crate::plot::ArrayElement]>,
-    coord_kind: CoordKind,
+    projection: &dyn ProjectionRenderer,
 ) -> Result<serde_json::Map<String, Value>> {
     let mut encoding = serde_json::Map::new();
 
@@ -287,7 +280,6 @@ fn build_layer_encoding(
         spec,
         titled_families: &mut titled_families,
         primary_aesthetics: &primary_aesthetics,
-        free_scales,
     };
 
     // Build encoding channels for each aesthetic mapping
@@ -304,7 +296,13 @@ fn build_layer_encoding(
             continue;
         }
 
-        let mut channel_name = map_aesthetic_name(aesthetic, &aesthetic_ctx, coord_kind);
+        // Skip geometry aesthetic - it is structural (consumed by SpatialRenderer
+        // to build GeoJSON Features), not a visual encoding channel.
+        if aesthetic == "geometry" {
+            continue;
+        }
+
+        let mut channel_name = map_aesthetic_name(aesthetic, &aesthetic_ctx, projection);
         // Opacity is retargeted to the fill when fill is supported
         if channel_name == "opacity" && layer.mappings.contains_key("fill") {
             channel_name = "fillOpacity".to_string();
@@ -331,7 +329,7 @@ fn build_layer_encoding(
             if let AestheticValue::Column { name: col, .. } = value {
                 let end_col = naming::bin_end_column(col);
                 let end_aesthetic = format!("{}end", aesthetic); // "pos1end" or "pos2end"
-                let end_channel = map_aesthetic_name(&end_aesthetic, &aesthetic_ctx, coord_kind); // maps to "x2" or "y2" (or theta2/radius2 for polar)
+                let end_channel = map_aesthetic_name(&end_aesthetic, &aesthetic_ctx, projection); // maps to "x2" or "y2" (or theta2/radius2 for polar)
                 encoding.insert(end_channel, json!({"field": end_col}));
             }
         }
@@ -343,7 +341,8 @@ fn build_layer_encoding(
     }
 
     // Build context for renderer (also provides resolved position channel names)
-    let context = encoding::RenderContext::new(&spec.scales, coord_kind);
+    let context =
+        encoding::RenderContext::new(&spec.scales, projection, spec.get_aesthetic_context());
     let (_, _, pos1_offset, pos2, _, pos2_offset) = &context.channels;
 
     // Add pos1 offset encoding for dodged positions (pos1offset column)
@@ -413,65 +412,21 @@ fn apply_faceting(
     facet: &crate::plot::Facet,
     facet_df: &DataFrame,
     scales: &[Scale],
-    coord_kind: CoordKind,
+    projection: &dyn ProjectionRenderer,
 ) {
     use crate::plot::FacetLayout;
 
     match &facet.layout {
         FacetLayout::Wrap { variables: _ } => {
-            // Use internal aesthetic column name (facet1)
-            let aes_col = naming::aesthetic_column("facet1");
-
-            // Look up scale for internal "facet1" aesthetic
-            let scale = scales.iter().find(|s| s.aesthetic == "facet1");
-
-            // Build facet field definition with proper binned support
-            let mut facet_def = build_facet_field_def(facet_df, &aes_col, scale);
-
-            // Use scale label_mapping for custom labels
-            let label_mapping = scale.and_then(|s| s.label_mapping.as_ref());
-
-            // Apply label renaming via header.labelExpr
-            apply_facet_label_renaming(&mut facet_def, label_mapping, scale);
-
-            // Apply facet ordering from breaks/reverse
-            apply_facet_ordering(&mut facet_def, scale);
-
+            let facet_def = apply_facet_aesthetic(vl_spec, facet_df, scales, "facet1");
             vl_spec["facet"] = facet_def;
-
-            // Move layer + width/height into inner spec (FacetSpec disallows
-            // top-level width/height in VL v6)
-            let mut spec_inner = json!({});
-            if let Some(layer) = vl_spec.get("layer") {
-                spec_inner["layer"] = layer.clone();
-            }
-            if let Some(w) = vl_spec.get("width").cloned() {
-                spec_inner["width"] = w;
-            }
-            if let Some(h) = vl_spec.get("height").cloned() {
-                spec_inner["height"] = h;
-            }
-
-            vl_spec["spec"] = spec_inner;
-            let obj = vl_spec.as_object_mut().unwrap();
-            obj.remove("layer");
-            obj.remove("width");
-            obj.remove("height");
-
-            apply_facet_scale_resolution(vl_spec, &facet.properties, coord_kind);
-            apply_facet_properties(vl_spec, &facet.properties, true);
         }
         FacetLayout::Grid { row: _, column: _ } => {
             let mut facet_spec = serde_json::Map::new();
+
             let row_aes_col = naming::aesthetic_column("facet1");
             if facet_df.column(&row_aes_col).is_ok() {
-                let row_scale = scales.iter().find(|s| s.aesthetic == "facet1");
-                let mut row_def = build_facet_field_def(facet_df, &row_aes_col, row_scale);
-
-                let row_label_mapping = row_scale.and_then(|s| s.label_mapping.as_ref());
-                apply_facet_label_renaming(&mut row_def, row_label_mapping, row_scale);
-                apply_facet_ordering(&mut row_def, row_scale);
-
+                let row_def = apply_facet_aesthetic(vl_spec, facet_df, scales, "facet1");
                 facet_spec.insert("row".to_string(), row_def);
             }
 
@@ -479,40 +434,62 @@ fn apply_faceting(
             // Vega-Lite requires "column" key in the facet object
             let col_aes_col = naming::aesthetic_column("facet2");
             if facet_df.column(&col_aes_col).is_ok() {
-                let col_scale = scales.iter().find(|s| s.aesthetic == "facet2");
-                let mut col_def = build_facet_field_def(facet_df, &col_aes_col, col_scale);
-
-                let col_label_mapping = col_scale.and_then(|s| s.label_mapping.as_ref());
-                apply_facet_label_renaming(&mut col_def, col_label_mapping, col_scale);
-                apply_facet_ordering(&mut col_def, col_scale);
-
+                let col_def = apply_facet_aesthetic(vl_spec, facet_df, scales, "facet2");
                 facet_spec.insert("column".to_string(), col_def);
             }
 
             vl_spec["facet"] = Value::Object(facet_spec);
-
-            // Move layer + width/height into inner spec (same as wrap above)
-            let mut spec_inner = json!({});
-            if let Some(layer) = vl_spec.get("layer") {
-                spec_inner["layer"] = layer.clone();
-            }
-            if let Some(w) = vl_spec.get("width").cloned() {
-                spec_inner["width"] = w;
-            }
-            if let Some(h) = vl_spec.get("height").cloned() {
-                spec_inner["height"] = h;
-            }
-
-            vl_spec["spec"] = spec_inner;
-            let obj = vl_spec.as_object_mut().unwrap();
-            obj.remove("layer");
-            obj.remove("width");
-            obj.remove("height");
-
-            apply_facet_scale_resolution(vl_spec, &facet.properties, coord_kind);
-            apply_facet_properties(vl_spec, &facet.properties, false);
         }
     }
+
+    // Move layer + width/height into inner spec (FacetSpec disallows
+    // top-level layer/width/height in Vega-Lite v6)
+    let mut spec_inner = json!({});
+    if let Some(layer) = vl_spec.get("layer") {
+        spec_inner["layer"] = layer.clone();
+    }
+    if let Some(w) = vl_spec.get("width").cloned() {
+        spec_inner["width"] = w;
+    }
+    if let Some(h) = vl_spec.get("height").cloned() {
+        spec_inner["height"] = h;
+    }
+
+    vl_spec["spec"] = spec_inner;
+    let obj = vl_spec.as_object_mut().unwrap();
+    obj.remove("layer");
+    obj.remove("width");
+    obj.remove("height");
+
+    apply_facet_scale_resolution(vl_spec, &facet.properties, projection);
+    apply_facet_properties(vl_spec, &facet.properties, facet.is_wrap());
+}
+
+/// Build a fully resolved facet field definition for a single facet aesthetic.
+///
+/// Combines all per-field steps: build the base definition, resolve and apply
+/// panel ordering (rewriting data values to integers), apply label renaming
+/// via header.labelExpr, and handle binned reverse sort.
+fn apply_facet_aesthetic(
+    vl_spec: &mut Value,
+    facet_df: &DataFrame,
+    scales: &[Scale],
+    aesthetic: &str,
+) -> Value {
+    let aes_col = naming::aesthetic_column(aesthetic);
+    let scale = scales.iter().find(|s| s.aesthetic == aesthetic);
+
+    let mut facet_def = build_facet_field_def(facet_df, &aes_col, scale);
+
+    let index_map = resolve_facet_ordering(scale);
+    apply_facet_ordering(vl_spec, &aes_col, &index_map);
+
+    let label_mapping = scale.and_then(|s| s.label_mapping.as_ref());
+    apply_facet_label_renaming(&mut facet_def, label_mapping, scale, &index_map);
+
+    apply_binned_facet_reverse(&mut facet_def, scale);
+
+    facet_def
 }
 
 /// Build a facet field definition with proper type.
@@ -546,13 +523,17 @@ fn build_facet_field_def(df: &DataFrame, col: &str, scale: Option<&Scale>) -> Va
     field_def
 }
 
-/// Apply facet ordering via Vega-Lite's sort property.
+/// Resolve facet ordering into a value → index mapping.
 ///
-/// For discrete facets: uses input_range (FROM clause) or breaks array order
-/// For binned facets: uses "descending" sort if reversed
-fn apply_facet_ordering(facet_def: &mut Value, scale: Option<&Scale>) {
+/// For discrete facets: uses input_range (FROM clause) or breaks array order.
+/// For binned facets: returns empty (bin midpoints already sort correctly).
+///
+/// The returned mapping is consumed by `apply_facet_ordering` (to rewrite the
+/// data column to integers) and `apply_facet_label_renaming` (to build a
+/// `header.labelExpr` that restores the display labels).
+fn resolve_facet_ordering(scale: Option<&Scale>) -> Vec<(Value, usize)> {
     let Some(scale) = scale else {
-        return;
+        return Vec::new();
     };
 
     let is_reversed = matches!(
@@ -567,50 +548,93 @@ fn apply_facet_ordering(facet_def: &mut Value, scale: Option<&Scale>) {
         .unwrap_or(false);
 
     if is_binned {
-        // For binned facets: use "descending" sort if reversed
-        if is_reversed {
-            facet_def["sort"] = json!("descending");
-        }
-        // Default is ascending, no need to specify
+        // Binned facets use numeric midpoints that sort naturally — no index
+        // rewriting needed. Reversed binned facets are handled separately via
+        // apply_binned_facet_reverse on the facet definition.
+        return Vec::new();
+    }
+
+    // For discrete facets: use input_range (FROM clause) if present,
+    // otherwise fall back to breaks property
+    let order_values: Vec<ArrayElement> = if let Some(ref input_range) = scale.input_range {
+        // Use explicit input_range from FROM clause
+        input_range.clone()
+    } else if let Some(ParameterValue::Array(arr)) = scale.properties.get("breaks") {
+        // Fall back to breaks if present
+        arr.clone()
     } else {
-        // For discrete facets: use input_range (FROM clause) if present,
-        // otherwise fall back to breaks property
-        let order_values: Vec<ArrayElement> = if let Some(ref input_range) = scale.input_range {
-            // Use explicit input_range from FROM clause
-            input_range.clone()
-        } else if let Some(ParameterValue::Array(arr)) = scale.properties.get("breaks") {
-            // Fall back to breaks if present
-            arr.clone()
-        } else {
-            return;
-        };
+        return Vec::new();
+    };
 
-        // Convert to JSON values, preserving null
-        let mut sort_values: Vec<Value> = order_values.iter().map(|e| e.to_json()).collect();
+    // Convert to JSON values, preserving null
+    let mut sort_values: Vec<Value> = order_values.iter().map(|e| e.to_json()).collect();
 
-        // Apply reverse if specified
-        if is_reversed {
-            sort_values.reverse();
-        }
+    // Apply reverse if specified
+    if is_reversed {
+        sort_values.reverse();
+    }
 
-        facet_def["sort"] = json!(sort_values);
+    sort_values
+        .iter()
+        .enumerate()
+        .map(|(i, v)| (v.clone(), i))
+        .collect()
+}
+
+/// For binned facets with `reverse => true`, set `sort: "descending"` on the
+/// facet definition. Discrete facets handle reversal through `resolve_facet_ordering`
+/// (which reverses the index map), so this only applies to binned facets.
+fn apply_binned_facet_reverse(facet_def: &mut Value, scale: Option<&Scale>) {
+    let Some(scale) = scale else { return };
+
+    let is_binned = scale
+        .scale_type
+        .as_ref()
+        .map(|st| st.scale_type_kind() == ScaleTypeKind::Binned)
+        .unwrap_or(false);
+
+    if !is_binned {
+        return;
+    }
+
+    if matches!(
+        scale.properties.get("reverse"),
+        Some(ParameterValue::Boolean(true))
+    ) {
+        facet_def["sort"] = json!("descending");
     }
 }
 
-/// Extract free scales from facet properties as a boolean vector
+/// Rewrite facet column values in `vl_spec.data.values` to integer sort indices.
 ///
-/// After facet resolution, the `free` property is normalized to a boolean array:
-/// - `[true, false]` = free pos1, fixed pos2
-/// - `[false, true]` = fixed pos1, free pos2
-/// - `[true, true]` = both free
-/// - `[false, false]` = both fixed (default)
+/// Uses the mapping produced by `resolve_facet_ordering`. Values not present in
+/// the mapping are assigned an index past the end (so they sort last).
 ///
-/// Returns reference to the free scales array from facet properties.
-fn get_free_scales(facet: Option<&crate::plot::Facet>) -> Option<&[crate::plot::ArrayElement]> {
-    let facet = facet?;
-    match facet.properties.get("free") {
-        Some(ParameterValue::Array(arr)) => Some(arr.as_slice()),
-        _ => None,
+/// Using integers instead of a literal `sort` array works around a Vega-Lite bug
+/// where explicit sort arrays on facet definitions cause data-panel misalignment
+/// (https://github.com/vega/vega-lite/issues/8675).
+fn apply_facet_ordering(vl_spec: &mut Value, facet_col: &str, index_map: &[(Value, usize)]) {
+    if index_map.is_empty() {
+        return;
+    }
+
+    if let Some(data) = vl_spec
+        .get_mut("data")
+        .and_then(|d| d.get_mut("values"))
+        .and_then(|v| v.as_array_mut())
+    {
+        let fallback = index_map.len();
+        for row in data.iter_mut() {
+            if let Some(obj) = row.as_object_mut() {
+                let orig = obj.get(facet_col).cloned().unwrap_or(Value::Null);
+                let idx = index_map
+                    .iter()
+                    .find(|(v, _)| *v == orig)
+                    .map(|(_, i)| *i)
+                    .unwrap_or(fallback);
+                obj.insert(facet_col.to_string(), json!(idx));
+            }
+        }
     }
 }
 
@@ -622,24 +646,21 @@ fn get_free_scales(facet: Option<&crate::plot::Facet>) -> Option<&[crate::plot::
 /// - `[false, true]`: shared pos1 scale, independent pos2 scale (y or theta)
 /// - `[true, true]`: independent scales for both axes
 ///
-/// The channel names depend on coord_kind:
+/// The channel names depend on the projection:
 /// - Cartesian: pos1 -> "x", pos2 -> "y"
 /// - Polar: pos1 -> "radius", pos2 -> "theta"
 fn apply_facet_scale_resolution(
     vl_spec: &mut Value,
     properties: &HashMap<String, ParameterValue>,
-    coord_kind: CoordKind,
+    projection: &dyn ProjectionRenderer,
 ) {
     let Some(ParameterValue::Array(arr)) = properties.get("free") else {
         // No free property means fixed/shared scales (Vega-Lite default)
         return;
     };
 
-    // Determine channel names based on coord kind
-    let (pos1_channel, pos2_channel) = match coord_kind {
-        CoordKind::Cartesian => ("x", "y"),
-        CoordKind::Polar => ("radius", "theta"),
-    };
+    // Determine channel names from the projection renderer
+    let (pos1_channel, pos2_channel) = projection.position_channels();
 
     // Extract booleans from the array (position-indexed)
     let free_pos1 = arr
@@ -671,7 +692,10 @@ fn apply_facet_scale_resolution(
 /// Apply label renaming to a facet definition via header.labelExpr
 ///
 /// Uses Vega expression to transform facet labels:
-/// - For discrete facets: 'A' => 'Alpha' becomes datum.value == 'A' ? 'Alpha' : ...
+/// - For discrete facets (non-empty `index_map`): the facet column has been
+///   converted to integer sort indices by `apply_facet_ordering`. The labelExpr
+///   maps those integers back to display labels, applying user renaming
+///   (RENAMING clause) when present.
 /// - For binned facets: uses build_symbol_legend_label_mapping for range-style labels
 /// - NULL values suppress labels (maps to empty string)
 ///
@@ -681,10 +705,19 @@ fn apply_facet_label_renaming(
     facet_def: &mut Value,
     label_mapping: Option<&HashMap<String, Option<String>>>,
     scale: Option<&Scale>,
+    index_map: &[(Value, usize)],
 ) {
+    if !index_map.is_empty() {
+        // Facet column was converted to integers — build labelExpr mapping
+        // index → display label (applying user renaming when present).
+        let label_expr = build_indexed_facet_label_expr(index_map, label_mapping);
+        facet_def["header"] = json!({ "labelExpr": label_expr });
+        return;
+    }
+
+    // No index map: original (non-ordered or binned) path.
     // Only apply if there's a label mapping
     let has_mapping = label_mapping.is_some_and(|m| !m.is_empty());
-
     if !has_mapping {
         return;
     }
@@ -704,9 +737,7 @@ fn apply_facet_label_renaming(
     };
 
     // Add to facet definition
-    facet_def["header"] = json!({
-        "labelExpr": label_expr
-    });
+    facet_def["header"] = json!({ "labelExpr": label_expr });
 }
 
 /// Build labelExpr for binned facet values.
@@ -880,6 +911,47 @@ fn calculate_midpoint_string(
     }
 }
 
+/// Build labelExpr for integer-indexed facet values.
+///
+/// The `index_map` contains (original_value, sort_index) pairs produced by
+/// `apply_facet_ordering`. Each entry becomes a ternary branch mapping the
+/// integer back to a display label. When `label_mapping` provides a rename
+/// for an original value, the renamed label is used.
+fn build_indexed_facet_label_expr(
+    index_map: &[(Value, usize)],
+    label_mapping: Option<&HashMap<String, Option<String>>>,
+) -> String {
+    let mut expr_parts: Vec<String> = Vec::new();
+
+    for (orig_value, idx) in index_map {
+        let condition = format!("datum.value == {}", idx);
+
+        // Determine the display label: check user renaming first, else use original
+        let key = match orig_value {
+            Value::Null => "null".to_string(),
+            Value::String(s) => s.clone(),
+            other => other.to_string(),
+        };
+
+        let label = label_mapping
+            .and_then(|m| m.get(&key))
+            .cloned()
+            .unwrap_or(Some(key));
+
+        let result = match label {
+            Some(l) => format!("'{}'", escape_vega_string(&l)),
+            None => "''".to_string(),
+        };
+        expr_parts.push(format!("{} ? {}", condition, result));
+    }
+
+    let mut expr = "datum.value".to_string();
+    for part in expr_parts.into_iter().rev() {
+        expr = format!("{} : {}", part, expr);
+    }
+    expr
+}
+
 /// Build labelExpr for discrete facet values.
 fn build_discrete_facet_label_expr(
     label_mapping: Option<&HashMap<String, Option<String>>>,
@@ -923,7 +995,7 @@ fn build_discrete_facet_label_expr(
 }
 
 /// Escape a string for use in Vega expressions
-fn escape_vega_string(s: &str) -> String {
+pub(super) fn escape_vega_string(s: &str) -> String {
     s.replace('\\', "\\\\").replace('\'', "\\'")
 }
 
@@ -1047,13 +1119,7 @@ impl Writer for VegaLiteWriter {
         // 1. Validate spec
         self.validate(spec)?;
 
-        // 2. Get free scales array (if any)
-        // When using free scales, Vega-Lite computes independent domains per facet panel.
-        // We must not set explicit domains (from SCALE or COORD) as they would override this.
-        // The free property is a boolean array [pos1_free, pos2_free, ...].
-        let free_scales = get_free_scales(spec.facet.as_ref());
-
-        // 3. Determine layer data keys
+        // 2. Determine layer data keys
         let layer_data_keys: Vec<String> = spec
             .layers
             .iter()
@@ -1067,6 +1133,7 @@ impl Writer for VegaLiteWriter {
             .collect();
 
         // 4. Validate columns for each layer
+        let aesthetic_ctx = spec.get_aesthetic_context();
         for (layer_idx, (layer, key)) in spec.layers.iter().zip(layer_data_keys.iter()).enumerate()
         {
             let df = data.get(key).ok_or_else(|| {
@@ -1076,30 +1143,20 @@ impl Writer for VegaLiteWriter {
                     layer_idx + 1
                 ))
             })?;
-            validate_layer_columns(layer, df, layer_idx)?;
+            validate_layer_columns(layer, df, layer_idx, &aesthetic_ctx)?;
         }
 
         // 5. Build base Vega-Lite spec
         let mut vl_spec = json!({
             "$schema": self.schema
         });
-        // Container sizing doesn't work with faceting in Vega-Lite, so only apply it
-        // for non-faceted charts
-        if spec.facet.is_none() {
-            vl_spec["width"] = json!("container");
-            vl_spec["height"] = json!("container");
-        } else {
-            // Faceted charts need explicit numeric dimensions (moved into inner spec
-            // by apply_faceting). Arc marks especially need this since their radius
-            // range is [0, min(width, height) / 2] — without dimensions, arcs are invisible.
-            let is_polar = spec
-                .project
-                .as_ref()
-                .is_some_and(|p| p.coord.coord_kind() == CoordKind::Polar);
-            if is_polar {
-                vl_spec["width"] = json!(DEFAULT_POLAR_SIZE);
-                vl_spec["height"] = json!(DEFAULT_POLAR_SIZE);
-            }
+        // Get projection renderer (single instance used throughout)
+        let projection =
+            get_projection_renderer(spec.project.as_ref(), spec.facet.as_ref(), &spec.scales);
+
+        if let Some((w, h)) = projection.panel_size() {
+            vl_spec["width"] = w;
+            vl_spec["height"] = h;
         }
 
         if let Some(labels) = &spec.labels {
@@ -1137,39 +1194,35 @@ impl Writer for VegaLiteWriter {
         let unified_data = unify_datasets(&prep.datasets)?;
         vl_spec["data"] = json!({"values": unified_data});
 
-        // 9. Get coord kind (default to Cartesian if no project)
-        let coord_kind = spec
-            .project
-            .as_ref()
-            .map(|p| p.coord.coord_kind())
-            .unwrap_or(CoordKind::Cartesian);
-
-        // 10. Build layers (pass free scales and coord kind for domain handling)
+        // 9. Build layers
         let layers = build_layers(
             spec,
             data,
             &layer_data_keys,
             &prep.renderers,
             &prep.prepared,
-            free_scales,
-            coord_kind,
+            projection.as_ref(),
         )?;
         vl_spec["layer"] = json!(layers);
 
-        // 10. Apply projection transforms
-        let first_df = data.get(&layer_data_keys[0]).unwrap();
-        apply_project_transforms(spec, first_df, &mut vl_spec)?;
-
-        // 11. Apply faceting
+        // 10. Apply faceting
         if let Some(facet) = &spec.facet {
             let facet_df = data.get(&layer_data_keys[0]).unwrap();
-            apply_faceting(&mut vl_spec, facet, facet_df, &spec.scales, coord_kind);
+            apply_faceting(
+                &mut vl_spec,
+                facet,
+                facet_df,
+                &spec.scales,
+                projection.as_ref(),
+            );
         }
 
-        // 12. Add default theme config (ggplot2-like gray theme)
-        vl_spec["config"] = self.default_theme_config();
+        // 11. Apply projection (transforms + panel decoration)
+        let mut theme = self.default_theme_config();
+        projection.apply_projection(spec, &mut theme, &mut vl_spec)?;
+        vl_spec["config"] = theme;
 
-        // 13. Serialize
+        // 12. Serialize
         serde_json::to_string_pretty(&vl_spec).map_err(|e| {
             GgsqlError::WriterError(format!("Failed to serialize Vega-Lite JSON: {}", e))
         })
@@ -1396,96 +1449,50 @@ mod tests {
     fn test_aesthetic_name_mapping() {
         use crate::plot::AestheticContext;
 
-        // Test with cartesian coord kind
-        let ctx = AestheticContext::from_static(&["x", "y"], &[]);
+        use crate::plot::projection::Projection;
 
-        // Internal position names should map to Vega-Lite channel names based on coord kind
-        assert_eq!(map_aesthetic_name("pos1", &ctx, CoordKind::Cartesian), "x");
-        assert_eq!(map_aesthetic_name("pos2", &ctx, CoordKind::Cartesian), "y");
-        assert_eq!(
-            map_aesthetic_name("pos1end", &ctx, CoordKind::Cartesian),
-            "x2"
-        );
-        assert_eq!(
-            map_aesthetic_name("pos2end", &ctx, CoordKind::Cartesian),
-            "y2"
-        );
+        // Test with cartesian projection (None = default cartesian)
+        let ctx = AestheticContext::from_static(&["x", "y"], &[]);
+        let cartesian = get_projection_renderer(None, None, &[]);
+        let cart = cartesian.as_ref();
+
+        // Internal position names should map to Vega-Lite channel names based on projection
+        assert_eq!(map_aesthetic_name("pos1", &ctx, cart), "x");
+        assert_eq!(map_aesthetic_name("pos2", &ctx, cart), "y");
+        assert_eq!(map_aesthetic_name("pos1end", &ctx, cart), "x2");
+        assert_eq!(map_aesthetic_name("pos2end", &ctx, cart), "y2");
 
         // Material aesthetics pass through directly
-        assert_eq!(
-            map_aesthetic_name("color", &ctx, CoordKind::Cartesian),
-            "color"
-        );
-        assert_eq!(
-            map_aesthetic_name("fill", &ctx, CoordKind::Cartesian),
-            "fill"
-        );
-        assert_eq!(
-            map_aesthetic_name("stroke", &ctx, CoordKind::Cartesian),
-            "stroke"
-        );
-        assert_eq!(
-            map_aesthetic_name("opacity", &ctx, CoordKind::Cartesian),
-            "opacity"
-        );
-        assert_eq!(
-            map_aesthetic_name("size", &ctx, CoordKind::Cartesian),
-            "size"
-        );
-        assert_eq!(
-            map_aesthetic_name("shape", &ctx, CoordKind::Cartesian),
-            "shape"
-        );
+        assert_eq!(map_aesthetic_name("color", &ctx, cart), "color");
+        assert_eq!(map_aesthetic_name("fill", &ctx, cart), "fill");
+        assert_eq!(map_aesthetic_name("stroke", &ctx, cart), "stroke");
+        assert_eq!(map_aesthetic_name("opacity", &ctx, cart), "opacity");
+        assert_eq!(map_aesthetic_name("size", &ctx, cart), "size");
+        assert_eq!(map_aesthetic_name("shape", &ctx, cart), "shape");
 
         // Other mapped aesthetics
-        assert_eq!(
-            map_aesthetic_name("linetype", &ctx, CoordKind::Cartesian),
-            "strokeDash"
-        );
-        assert_eq!(
-            map_aesthetic_name("linewidth", &ctx, CoordKind::Cartesian),
-            "strokeWidth"
-        );
-        assert_eq!(
-            map_aesthetic_name("label", &ctx, CoordKind::Cartesian),
-            "text"
-        );
-        assert_eq!(
-            map_aesthetic_name("fontsize", &ctx, CoordKind::Cartesian),
-            "size"
-        );
+        assert_eq!(map_aesthetic_name("linetype", &ctx, cart), "strokeDash");
+        assert_eq!(map_aesthetic_name("linewidth", &ctx, cart), "strokeWidth");
+        assert_eq!(map_aesthetic_name("label", &ctx, cart), "text");
+        assert_eq!(map_aesthetic_name("fontsize", &ctx, cart), "size");
 
-        // Test with polar coord kind - internal position maps to radius/theta
+        // Test with polar projection - internal position maps to radius/theta
         // regardless of the context's user-facing names
+        let polar_proj = Projection::polar();
+        let polar = get_projection_renderer(Some(&polar_proj), None, &[]);
+        let pol = polar.as_ref();
+
         let polar_ctx = AestheticContext::from_static(&["radius", "theta"], &[]);
-        assert_eq!(
-            map_aesthetic_name("pos1", &polar_ctx, CoordKind::Polar),
-            "radius"
-        );
-        assert_eq!(
-            map_aesthetic_name("pos2", &polar_ctx, CoordKind::Polar),
-            "theta"
-        );
-        assert_eq!(
-            map_aesthetic_name("pos1end", &polar_ctx, CoordKind::Polar),
-            "radius2"
-        );
-        assert_eq!(
-            map_aesthetic_name("pos2end", &polar_ctx, CoordKind::Polar),
-            "theta2"
-        );
+        assert_eq!(map_aesthetic_name("pos1", &polar_ctx, pol), "radius");
+        assert_eq!(map_aesthetic_name("pos2", &polar_ctx, pol), "theta");
+        assert_eq!(map_aesthetic_name("pos1end", &polar_ctx, pol), "radius2");
+        assert_eq!(map_aesthetic_name("pos2end", &polar_ctx, pol), "theta2");
 
         // Even with custom position names (e.g., PROJECT y, x TO polar),
         // internal pos1/pos2 should still map to radius/theta for Vega-Lite
         let custom_ctx = AestheticContext::from_static(&["y", "x"], &[]);
-        assert_eq!(
-            map_aesthetic_name("pos1", &custom_ctx, CoordKind::Polar),
-            "radius"
-        );
-        assert_eq!(
-            map_aesthetic_name("pos2", &custom_ctx, CoordKind::Polar),
-            "theta"
-        );
+        assert_eq!(map_aesthetic_name("pos1", &custom_ctx, pol), "radius");
+        assert_eq!(map_aesthetic_name("pos2", &custom_ctx, pol), "theta");
     }
 
     #[test]
@@ -2266,10 +2273,8 @@ mod tests {
 
     #[test]
     fn test_facet_ordering_uses_input_range() {
-        // Test that apply_facet_ordering uses input_range (FROM clause) for discrete scales
+        // Test that resolve_facet_ordering uses input_range (FROM clause) for discrete scales
         use crate::plot::scale::Scale;
-
-        let mut facet_def = json!({"field": "__ggsql_aes_facet1__", "type": "nominal"});
 
         // Create a scale with input_range (simulating SCALE panel FROM ['A', 'B', 'C'])
         let mut scale = Scale::new("facet1");
@@ -2279,23 +2284,20 @@ mod tests {
             ArrayElement::String("C".to_string()),
         ]);
 
-        apply_facet_ordering(&mut facet_def, Some(&scale));
+        let index_map = resolve_facet_ordering(Some(&scale));
 
-        // Verify sort order matches input_range
-        assert_eq!(
-            facet_def["sort"],
-            json!(["A", "B", "C"]),
-            "Facet sort should use input_range order"
-        );
+        // Verify index map matches input_range order
+        assert_eq!(index_map.len(), 3);
+        assert_eq!(index_map[0], (json!("A"), 0));
+        assert_eq!(index_map[1], (json!("B"), 1));
+        assert_eq!(index_map[2], (json!("C"), 2));
     }
 
     #[test]
     fn test_facet_ordering_with_null_in_input_range() {
-        // Test that apply_facet_ordering preserves null values in input_range
+        // Test that resolve_facet_ordering preserves null values in input_range
         // This is the fix for the bug where null panels appear first
         use crate::plot::scale::Scale;
-
-        let mut facet_def = json!({"field": "__ggsql_aes_facet1__", "type": "nominal"});
 
         // Create a scale with input_range including null at the end
         // (simulating SCALE panel FROM ['Adelie', 'Gentoo', null])
@@ -2306,22 +2308,18 @@ mod tests {
             ArrayElement::Null,
         ]);
 
-        apply_facet_ordering(&mut facet_def, Some(&scale));
+        let index_map = resolve_facet_ordering(Some(&scale));
 
-        // Verify sort order preserves null at the end
-        assert_eq!(
-            facet_def["sort"],
-            json!(["Adelie", "Gentoo", null]),
-            "Facet sort should preserve null position from input_range"
-        );
+        // Verify null is at index 2 (last)
+        assert_eq!(index_map[0], (json!("Adelie"), 0));
+        assert_eq!(index_map[1], (json!("Gentoo"), 1));
+        assert_eq!(index_map[2], (Value::Null, 2));
     }
 
     #[test]
     fn test_facet_ordering_with_null_first_in_input_range() {
-        // Test that null at the beginning of input_range produces null first in sort
+        // Test that null at the beginning of input_range gets index 0
         use crate::plot::scale::Scale;
-
-        let mut facet_def = json!({"field": "__ggsql_aes_facet1__", "type": "nominal"});
 
         // Create a scale with null at the beginning
         let mut scale = Scale::new("facet1");
@@ -2331,14 +2329,127 @@ mod tests {
             ArrayElement::String("Gentoo".to_string()),
         ]);
 
-        apply_facet_ordering(&mut facet_def, Some(&scale));
+        let index_map = resolve_facet_ordering(Some(&scale));
 
-        // Verify null is first in sort order
+        // Verify null is at index 0 (first)
+        assert_eq!(index_map[0], (Value::Null, 0));
+        assert_eq!(index_map[1], (json!("Adelie"), 1));
+        assert_eq!(index_map[2], (json!("Gentoo"), 2));
+    }
+
+    #[test]
+    fn test_binned_facet_reverse_sets_descending_sort() {
+        use crate::plot::scale::Scale;
+        use crate::plot::{ParameterValue, ScaleType};
+
+        let mut facet_def = json!({"field": "__ggsql_aes_facet1__", "type": "nominal"});
+
+        let mut scale = Scale::new("facet1");
+        scale.scale_type = Some(ScaleType::binned());
+        scale
+            .properties
+            .insert("reverse".to_string(), ParameterValue::Boolean(true));
+
+        apply_binned_facet_reverse(&mut facet_def, Some(&scale));
+
+        assert_eq!(facet_def["sort"], json!("descending"));
+    }
+
+    #[test]
+    fn test_binned_facet_reverse_noop_when_not_reversed() {
+        use crate::plot::scale::Scale;
+        use crate::plot::ScaleType;
+
+        let mut facet_def = json!({"field": "__ggsql_aes_facet1__", "type": "nominal"});
+
+        let mut scale = Scale::new("facet1");
+        scale.scale_type = Some(ScaleType::binned());
+
+        apply_binned_facet_reverse(&mut facet_def, Some(&scale));
+
+        assert!(facet_def.get("sort").is_none());
+    }
+
+    #[test]
+    fn test_binned_facet_reverse_noop_for_discrete() {
+        use crate::plot::scale::Scale;
+
+        let mut facet_def = json!({"field": "__ggsql_aes_facet1__", "type": "nominal"});
+
+        let mut scale = Scale::new("facet1");
+        scale
+            .properties
+            .insert("reverse".to_string(), ParameterValue::Boolean(true));
+
+        apply_binned_facet_reverse(&mut facet_def, Some(&scale));
+
+        // Discrete scales should not get sort: "descending" — they use index reversal
+        assert!(facet_def.get("sort").is_none());
+    }
+
+    #[test]
+    fn test_indexed_facet_label_expr_basic() {
+        // Test that build_indexed_facet_label_expr maps integer indices to original labels
+        let index_map = vec![(json!("A"), 0), (json!("B"), 1), (json!("C"), 2)];
+
+        let expr = build_indexed_facet_label_expr(&index_map, None);
+
         assert_eq!(
-            facet_def["sort"],
-            json!([null, "Adelie", "Gentoo"]),
-            "Facet sort should preserve null at beginning"
+            expr,
+            "datum.value == 0 ? 'A' : datum.value == 1 ? 'B' : datum.value == 2 ? 'C' : datum.value"
         );
+    }
+
+    #[test]
+    fn test_indexed_facet_label_expr_with_renaming() {
+        // Test that user label_mapping (RENAMING clause) overrides the original values
+        let index_map = vec![(json!("A"), 0), (json!("B"), 1), (json!("C"), 2)];
+
+        let mut label_mapping = HashMap::new();
+        label_mapping.insert("A".to_string(), Some("Alpha".to_string()));
+        label_mapping.insert("C".to_string(), Some("Charlie".to_string()));
+
+        let expr = build_indexed_facet_label_expr(&index_map, Some(&label_mapping));
+
+        // A and C are renamed; B keeps its original label
+        assert!(expr.contains("datum.value == 0 ? 'Alpha'"), "got: {}", expr);
+        assert!(expr.contains("datum.value == 1 ? 'B'"), "got: {}", expr);
+        assert!(
+            expr.contains("datum.value == 2 ? 'Charlie'"),
+            "got: {}",
+            expr
+        );
+    }
+
+    #[test]
+    fn test_indexed_facet_label_expr_with_null() {
+        // Test that null values in the index map produce correct label mapping
+        let index_map = vec![(json!("Adelie"), 0), (json!("Gentoo"), 1), (Value::Null, 2)];
+
+        let mut label_mapping = HashMap::new();
+        label_mapping.insert("null".to_string(), Some("Missing".to_string()));
+
+        let expr = build_indexed_facet_label_expr(&index_map, Some(&label_mapping));
+
+        assert!(
+            expr.contains("datum.value == 2 ? 'Missing'"),
+            "got: {}",
+            expr
+        );
+    }
+
+    #[test]
+    fn test_indexed_facet_label_expr_suppressed_label() {
+        // Test that NULL in label_mapping suppresses the label (maps to empty string)
+        let index_map = vec![(json!("A"), 0), (json!("B"), 1)];
+
+        let mut label_mapping = HashMap::new();
+        label_mapping.insert("A".to_string(), None);
+
+        let expr = build_indexed_facet_label_expr(&index_map, Some(&label_mapping));
+
+        assert!(expr.contains("datum.value == 0 ? ''"), "got: {}", expr);
+        assert!(expr.contains("datum.value == 1 ? 'B'"), "got: {}", expr);
     }
 
     #[test]
@@ -2854,5 +2965,144 @@ mod tests {
 
         // The spec must also pass Vega-Lite schema validation
         assert_valid_vegalite(&json_str);
+    }
+
+    // =========================================================================
+    // Internal aesthetic names must not leak into vegalite writer error messages
+    // =========================================================================
+
+    mod writer_error_translation_tests {
+        use super::*;
+
+        #[test]
+        fn validate_layer_columns_translates_pos1_to_x_under_cartesian() {
+            let writer = VegaLiteWriter::new();
+            let mut spec = Plot::new();
+            let layer = Layer::new(Geom::point())
+                .with_aesthetic(
+                    "x".to_string(),
+                    AestheticValue::standard_column("missing_col".to_string()),
+                )
+                .with_aesthetic(
+                    "y".to_string(),
+                    AestheticValue::standard_column("y".to_string()),
+                );
+            spec.layers.push(layer);
+
+            let df = df! {
+                "y" => vec![1, 2, 3],
+            }
+            .unwrap();
+
+            transform_spec(&mut spec);
+
+            let msg = match writer.write(&spec, &wrap_data(df)) {
+                Err(GgsqlError::ValidationError(s)) => s,
+                Err(other) => panic!("expected ValidationError, got: {}", other),
+                Ok(_) => panic!("expected error, got success"),
+            };
+
+            assert_eq!(
+                msg,
+                "Column 'missing_col' referenced in aesthetic 'x' (layer 1 (global data)) does not exist.\nAvailable columns: y"
+            );
+        }
+
+        #[test]
+        fn validate_layer_columns_translates_pos1_to_angle_under_polar() {
+            use crate::plot::projection::{Coord, Projection};
+
+            let writer = VegaLiteWriter::new();
+            let mut spec = Plot::new();
+            spec.project = Some(Projection {
+                aesthetics: vec!["angle".to_string(), "radius".to_string()],
+                coord: Coord::polar(),
+                properties: HashMap::new(),
+            });
+            let layer = Layer::new(Geom::point())
+                .with_aesthetic(
+                    "angle".to_string(),
+                    AestheticValue::standard_column("missing_col".to_string()),
+                )
+                .with_aesthetic(
+                    "radius".to_string(),
+                    AestheticValue::standard_column("radius".to_string()),
+                );
+            spec.layers.push(layer);
+
+            let df = df! {
+                "radius" => vec![1, 2, 3],
+            }
+            .unwrap();
+
+            transform_spec(&mut spec);
+
+            let msg = match writer.write(&spec, &wrap_data(df)) {
+                Err(GgsqlError::ValidationError(s)) => s,
+                Err(other) => panic!("expected ValidationError, got: {}", other),
+                Ok(_) => panic!("expected error, got success"),
+            };
+
+            assert_eq!(
+                msg,
+                "Column 'missing_col' referenced in aesthetic 'angle' (layer 1 (global data)) does not exist.\nAvailable columns: radius"
+            );
+        }
+
+        #[test]
+        fn validate_layer_columns_translates_internal_aesthetic_column() {
+            // When a mapping value is itself a wrapped internal column name
+            // (e.g. `__ggsql_aes_pos1__`, used when an aesthetic refers to
+            // another aesthetic's stat-produced column) and that column does
+            // not exist, the error must show the user-facing aesthetic name,
+            // not pos1.
+            let writer = VegaLiteWriter::new();
+            let mut spec = Plot::new();
+            let layer = Layer::new(Geom::point())
+                .with_aesthetic(
+                    "x".to_string(),
+                    AestheticValue::standard_column(naming::aesthetic_column("pos1")),
+                )
+                .with_aesthetic(
+                    "y".to_string(),
+                    AestheticValue::standard_column("y".to_string()),
+                );
+            spec.layers.push(layer);
+
+            let df = df! {
+                "y" => vec![1, 2, 3],
+            }
+            .unwrap();
+
+            transform_spec(&mut spec);
+
+            let msg = match writer.write(&spec, &wrap_data(df)) {
+                Err(GgsqlError::ValidationError(s)) => s,
+                Err(other) => panic!("expected ValidationError, got: {}", other),
+                Ok(_) => panic!("expected error, got success"),
+            };
+
+            // Both the column reference and the aesthetic name must be in user form.
+            assert!(
+                !msg.contains("__ggsql_aes_"),
+                "message must not mention raw column name: {}",
+                msg
+            );
+            assert!(
+                !msg.contains("'pos1'"),
+                "message must not mention internal name 'pos1': {}",
+                msg
+            );
+            assert!(
+                msg.contains("Column 'x'"),
+                "stripped column name should be displayed as 'x': {}",
+                msg
+            );
+            assert!(
+                msg.contains("aesthetic 'x'"),
+                "aesthetic key should be displayed as 'x': {}",
+                msg
+            );
+        }
     }
 }

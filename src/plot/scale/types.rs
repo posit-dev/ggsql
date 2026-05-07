@@ -89,6 +89,76 @@ impl Scale {
             label_template: "{}".to_string(),
         }
     }
+
+    /// Whether the scale's domain consists solely of the stat-dummy sentinel.
+    ///
+    /// Dummy scales are injected when a stat requires a position channel that
+    /// the user didn't map (e.g., a bar chart's categorical axis for a
+    /// pie chart). Axes for dummy scales should be suppressed.
+    pub fn is_dummy(&self) -> bool {
+        matches!(
+            self.input_range.as_deref(),
+            Some([ArrayElement::String(s)]) if s == &crate::naming::stat_column("dummy")
+        )
+    }
+
+    /// Numeric break positions (after resolution).
+    ///
+    /// Delegates to the scale type for type-specific logic (e.g. discrete
+    /// scales synthesize `[1, 2, …, n]` from the input range length).
+    pub fn numeric_breaks(&self) -> Vec<f64> {
+        match &self.scale_type {
+            Some(st) => st.numeric_breaks(self),
+            None => match self.properties.get("breaks") {
+                Some(ParameterValue::Array(breaks)) => {
+                    breaks.iter().filter_map(|b| b.to_f64()).collect()
+                }
+                _ => Vec::new(),
+            },
+        }
+    }
+
+    /// Labelled breaks: `(numeric_position, display_label)` pairs.
+    ///
+    /// Delegates to the scale type, then applies `label_mapping` overrides.
+    /// Suppressed labels (`None` in the mapping) become empty strings.
+    pub fn break_labels(&self) -> Vec<(f64, String)> {
+        let raw = match &self.scale_type {
+            Some(st) => st.break_labels(self),
+            None => self
+                .numeric_breaks()
+                .into_iter()
+                .map(|v| (v, format!("{v}")))
+                .collect(),
+        };
+        let mappings = self.label_mapping.as_ref();
+        let mut out = Vec::with_capacity(raw.len());
+        for (pos, label) in raw {
+            match mappings.and_then(|m| m.get(&label)) {
+                Some(Some(renamed)) => out.push((pos, renamed.clone())),
+                Some(None) => out.push((pos, String::new())),
+                None => out.push((pos, label)),
+            }
+        }
+        out
+    }
+
+    /// Numeric domain as `(min, max)` from the resolved input range.
+    ///
+    /// Delegates to the scale type for type-specific logic (e.g. discrete
+    /// scales synthesize `(0.5, n + 0.5)` so integer positions sit at
+    /// category centres).
+    pub fn numeric_domain(&self) -> Option<(f64, f64)> {
+        match &self.scale_type {
+            Some(st) => st.numeric_domain(self),
+            None => {
+                let range = self.input_range.as_ref()?;
+                let min = range.first()?.to_f64()?;
+                let max = range.last()?.to_f64()?;
+                Some((min, max))
+            }
+        }
+    }
 }
 
 /// Output range specification (TO clause)
@@ -99,4 +169,203 @@ pub enum OutputRange {
     Array(Vec<ArrayElement>),
     /// Named palette identifier: TO viridis
     Palette(String),
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn continuous_scale(domain: (f64, f64), breaks: Vec<f64>) -> Scale {
+        let mut s = Scale::new("pos1");
+        s.scale_type = Some(ScaleType::continuous());
+        s.input_range = Some(vec![
+            ArrayElement::Number(domain.0),
+            ArrayElement::Number(domain.1),
+        ]);
+        s.properties.insert(
+            "breaks".to_string(),
+            ParameterValue::Array(breaks.into_iter().map(ArrayElement::Number).collect()),
+        );
+        s
+    }
+
+    fn discrete_scale(values: &[&str]) -> Scale {
+        let mut s = Scale::new("pos2");
+        s.scale_type = Some(ScaleType::discrete());
+        s.input_range = Some(
+            values
+                .iter()
+                .map(|v| ArrayElement::String(v.to_string()))
+                .collect(),
+        );
+        s
+    }
+
+    fn ordinal_scale(values: &[&str]) -> Scale {
+        let mut s = Scale::new("pos1");
+        s.scale_type = Some(ScaleType::ordinal());
+        s.input_range = Some(
+            values
+                .iter()
+                .map(|v| ArrayElement::String(v.to_string()))
+                .collect(),
+        );
+        s
+    }
+
+    // =========================================================================
+    // Continuous
+    // =========================================================================
+
+    #[test]
+    fn test_continuous_numeric_breaks() {
+        let s = continuous_scale((0.0, 100.0), vec![25.0, 50.0, 75.0]);
+        assert_eq!(s.numeric_breaks(), vec![25.0, 50.0, 75.0]);
+    }
+
+    #[test]
+    fn test_continuous_numeric_domain() {
+        let s = continuous_scale((0.0, 100.0), vec![]);
+        assert_eq!(s.numeric_domain(), Some((0.0, 100.0)));
+    }
+
+    #[test]
+    fn test_continuous_no_breaks() {
+        let s = continuous_scale((0.0, 100.0), vec![]);
+        assert_eq!(s.numeric_breaks(), Vec::<f64>::new());
+    }
+
+    // =========================================================================
+    // Discrete
+    // =========================================================================
+
+    #[test]
+    fn test_discrete_numeric_breaks() {
+        let s = discrete_scale(&["A", "B", "C"]);
+        assert_eq!(s.numeric_breaks(), vec![1.0, 2.0, 3.0]);
+    }
+
+    #[test]
+    fn test_discrete_numeric_domain() {
+        let s = discrete_scale(&["A", "B", "C"]);
+        assert_eq!(s.numeric_domain(), Some((0.5, 3.5)));
+    }
+
+    #[test]
+    fn test_discrete_single_category() {
+        let s = discrete_scale(&["only"]);
+        assert_eq!(s.numeric_breaks(), vec![1.0]);
+        assert_eq!(s.numeric_domain(), Some((0.5, 1.5)));
+    }
+
+    #[test]
+    fn test_discrete_empty() {
+        let s = discrete_scale(&[]);
+        assert_eq!(s.numeric_breaks(), Vec::<f64>::new());
+        assert_eq!(s.numeric_domain(), None);
+    }
+
+    // =========================================================================
+    // Ordinal
+    // =========================================================================
+
+    #[test]
+    fn test_ordinal_numeric_breaks() {
+        let s = ordinal_scale(&["low", "mid", "high"]);
+        assert_eq!(s.numeric_breaks(), vec![1.0, 2.0, 3.0]);
+    }
+
+    #[test]
+    fn test_ordinal_numeric_domain() {
+        let s = ordinal_scale(&["low", "mid", "high"]);
+        assert_eq!(s.numeric_domain(), Some((0.5, 3.5)));
+    }
+
+    // =========================================================================
+    // Identity / no scale type
+    // =========================================================================
+
+    #[test]
+    fn test_identity_string_returns_empty() {
+        let mut s = Scale::new("color");
+        s.scale_type = Some(ScaleType::identity());
+        s.input_range = Some(vec![
+            ArrayElement::String("red".to_string()),
+            ArrayElement::String("blue".to_string()),
+        ]);
+        assert_eq!(s.numeric_breaks(), Vec::<f64>::new());
+        assert_eq!(s.numeric_domain(), None);
+    }
+
+    #[test]
+    fn test_no_scale_type_falls_back() {
+        let mut s = Scale::new("pos1");
+        s.input_range = Some(vec![ArrayElement::Number(10.0), ArrayElement::Number(50.0)]);
+        s.properties.insert(
+            "breaks".to_string(),
+            ParameterValue::Array(vec![ArrayElement::Number(20.0), ArrayElement::Number(40.0)]),
+        );
+        assert_eq!(s.numeric_breaks(), vec![20.0, 40.0]);
+        assert_eq!(s.numeric_domain(), Some((10.0, 50.0)));
+    }
+
+    // =========================================================================
+    // break_labels
+    // =========================================================================
+
+    #[test]
+    fn test_continuous_break_labels() {
+        let s = continuous_scale((0.0, 100.0), vec![25.0, 50.0, 75.0]);
+        assert_eq!(
+            s.break_labels(),
+            vec![
+                (25.0, "25".to_string()),
+                (50.0, "50".to_string()),
+                (75.0, "75".to_string())
+            ]
+        );
+    }
+
+    #[test]
+    fn test_discrete_break_labels() {
+        let s = discrete_scale(&["A", "B", "C"]);
+        assert_eq!(
+            s.break_labels(),
+            vec![
+                (1.0, "A".to_string()),
+                (2.0, "B".to_string()),
+                (3.0, "C".to_string())
+            ]
+        );
+    }
+
+    #[test]
+    fn test_ordinal_break_labels() {
+        let s = ordinal_scale(&["low", "mid", "high"]);
+        assert_eq!(
+            s.break_labels(),
+            vec![
+                (1.0, "low".to_string()),
+                (2.0, "mid".to_string()),
+                (3.0, "high".to_string())
+            ]
+        );
+    }
+
+    #[test]
+    fn test_break_labels_with_mapping() {
+        let mut s = discrete_scale(&["A", "B", "C"]);
+        let mut mapping = HashMap::new();
+        mapping.insert("A".to_string(), Some("Alpha".to_string()));
+        mapping.insert("C".to_string(), None);
+        s.label_mapping = Some(mapping);
+        assert_eq!(
+            s.break_labels(),
+            vec![
+                (1.0, "Alpha".to_string()),
+                (2.0, "B".to_string()),
+                (3.0, String::new())
+            ]
+        );
+    }
 }

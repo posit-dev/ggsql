@@ -60,6 +60,7 @@ module.exports = grammar({
       $.from_clause,
       repeat(choice(
         $.window_function,
+        $.case_expression,
         $.cast_expression,
         $.function_call,
         $.non_from_sql_keyword,
@@ -80,6 +81,7 @@ module.exports = grammar({
     select_body: $ => prec.left(repeat1(choice(
       $.from_clause,
       $.window_function,  // Window functions like ROW_NUMBER() OVER (...)
+      $.case_expression,  // CASE WHEN ... THEN ... END
       $.cast_expression,  // CAST(expr AS type), TRY_CAST(expr AS type)
       $.function_call,    // Regular function calls like COUNT(), SUM()
       $.sql_keyword,
@@ -135,7 +137,7 @@ module.exports = grammar({
 
     // INSERT statement
     insert_statement: $ => prec.right(seq(
-      caseInsensitive('INSERT'),
+      token(prec(1, caseInsensitive('INSERT'))),
       repeat1(choice(
         $.sql_keyword,
         $.identifier,
@@ -149,7 +151,7 @@ module.exports = grammar({
 
     // UPDATE statement
     update_statement: $ => prec.right(seq(
-      caseInsensitive('UPDATE'),
+      token(prec(1, caseInsensitive('UPDATE'))),
       repeat1(choice(
         $.sql_keyword,
         $.identifier,
@@ -163,7 +165,7 @@ module.exports = grammar({
 
     // DELETE statement
     delete_statement: $ => prec.right(seq(
-      caseInsensitive('DELETE'),
+      token(prec(1, caseInsensitive('DELETE'))),
       repeat1(choice(
         $.sql_keyword,
         $.identifier,
@@ -177,7 +179,7 @@ module.exports = grammar({
 
     other_sql_statement: $ => prec(-1, repeat1(choice(
       $.non_from_sql_keyword,
-      token(/[^\s;(),'"]+/),
+      /[^\s;(),'"]+/,
       $.string,
       $.number,
       $.subquery,
@@ -210,6 +212,7 @@ module.exports = grammar({
     // Token-by-token fallback for any other subquery content
     subquery_body: $ => repeat1(choice(
       $.window_function,
+      $.case_expression,
       $.cast_expression,
       $.function_call,
       $.sql_keyword,
@@ -220,6 +223,41 @@ module.exports = grammar({
       ',', '*', '.', '=', '<', '>', '!', '::',
       token(/[^\s;(),'\"]+/)
     )),
+
+    // CASE expression: CASE ... END bracketed as a structural unit so that END
+    // is consumed before the outer function_call's closing ')' can grab it.
+    case_expression: $ => prec(3, seq(
+      caseInsensitive('CASE'),
+      repeat($.case_body_token),
+      caseInsensitive('END')
+    )),
+
+    case_body_token: $ => choice(
+      caseInsensitive('WHEN'),
+      caseInsensitive('THEN'),
+      caseInsensitive('ELSE'),
+      $.string,
+      $.number,
+      $.case_expression,
+      $.cast_expression,
+      $.function_call,
+      $.subquery, // also handles IN-lists like ('a', 'b')
+      token('='), token('!='), token('<>'), token('<='), token('>='),
+      token('<'), token('>'),
+      token('+'), token('-'), token('*'), token('/'), token('%'), token('||'), token('::'),
+      caseInsensitive('AND'),
+      caseInsensitive('OR'),
+      caseInsensitive('NOT'),
+      caseInsensitive('IN'),
+      caseInsensitive('IS'),
+      caseInsensitive('NULL'),
+      caseInsensitive('LIKE'),
+      caseInsensitive('ILIKE'),
+      caseInsensitive('BETWEEN'),
+      token(','),
+      token('.'),
+      $.identifier,
+    ),
 
     // CAST/TRY_CAST expression: CAST(expr AS type) or TRY_CAST(expr AS type)
     // Higher precedence than function_call to win over treating CAST as a regular function
@@ -243,6 +281,7 @@ module.exports = grammar({
     function_call: $ => prec(2, seq(
       $.identifier,
       '(',
+      optional($.set_quantifier),
       optional($.function_args),
       ')'
     )),
@@ -317,11 +356,17 @@ module.exports = grammar({
     window_function: $ => prec(4, seq(
       field('function', $.identifier),
       '(',
+      optional($.set_quantifier),
       optional($.function_args),
       ')',
       caseInsensitive('OVER'),
       $.window_specification
     )),
+
+    set_quantifier: $ => choice(
+      caseInsensitive('DISTINCT'),
+      caseInsensitive('ALL')
+    ),
 
     function_args: $ => seq(
       $.function_arg,
@@ -352,6 +397,8 @@ module.exports = grammar({
       $.number,
       $.string,
       '*',
+      // CASE expression
+      $.case_expression,
       // CAST/TRY_CAST expression
       $.cast_expression,
       // Nested function call
@@ -527,7 +574,8 @@ module.exports = grammar({
     geom_type: $ => choice(
       'point', 'line', 'path', 'bar', 'area', 'tile', 'polygon', 'ribbon',
       'histogram', 'density', 'smooth', 'boxplot', 'violin',
-      'text', 'label', 'segment', 'arrow', 'rule', 'range'
+      'text', 'label', 'segment', 'arrow', 'rule', 'range',
+      'spatial'
     ),
 
     // MAPPING clause for aesthetic mappings: MAPPING col AS x, "blue" AS color [FROM source]
@@ -709,7 +757,7 @@ module.exports = grammar({
       // Text aesthetics
       'label', 'typeface', 'fontweight', 'italic', 'fontsize', 'hjust', 'vjust', 'rotation',
       // Specialty aesthetics,
-      'slope',
+      'slope', 'geometry',
       // Facet aesthetics
       'panel', 'row', 'column',
       // Computed variables

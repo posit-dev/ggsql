@@ -42,6 +42,11 @@ impl CoordTrait for Polar {
                 default: DefaultParamValue::Null,
                 constraint: ParamConstraint::number_range(0.0, 1.0),
             },
+            ParamDefinition {
+                name: "radar",
+                default: DefaultParamValue::Null,
+                constraint: ParamConstraint::boolean(),
+            },
         ];
         PARAMS
     }
@@ -75,7 +80,8 @@ mod tests {
         assert!(names.contains(&"start"));
         assert!(names.contains(&"end"));
         assert!(names.contains(&"inner"));
-        assert_eq!(defaults.len(), 4);
+        assert!(names.contains(&"radar"));
+        assert_eq!(defaults.len(), 5);
     }
 
     #[test]

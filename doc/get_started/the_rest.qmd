@@ -84,11 +84,12 @@ DRAW bar
 
 See how we didn't have to specify the polar coordinate system in the last example because we have a mapping to radius, allowing ggsql to deduce the coordinate system automatically.
 
-If we instead map the species to angle we end up with a rose plot
+If we instead map the species to angle we end up with a rose plot. We turn off the automatic conversion to radar plots for discrete angle categories here.
 
 ```{ggsql}
 VISUALISE species AS angle, species AS fill FROM ggsql:penguins
 DRAW bar
+PROJECT TO polar SETTING radar => false
 ```
 
 Moving back to the regular pie chart, we might be interested in comparing how the species distribution varies by sex. We can do this with faceting:
@@ -120,4 +121,4 @@ LABEL
 ```
 
 ## The rest of the rest of the owl
-While we have now taken a quick tour through the main features of ggsql along with the theoretical backbone that underpins it there is still a lot to learn. The next step is to browse the [syntax documentation](../syntax/index.qmd), begin to build some visualizations on your own, and get some experience with ggsql.
+While we have now taken a quick tour through the main features of ggsql along with the theoretical backbone that underpins it there is still a lot to learn. Continue to the last section of the tutorial for a brief wrap up and pointers to where to go next.

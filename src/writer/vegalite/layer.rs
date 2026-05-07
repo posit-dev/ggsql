@@ -7,6 +7,7 @@
 //! Each geom type can override specific phases of the rendering pipeline while using
 //! sensible defaults for standard behavior.
 
+use crate::plot::aesthetic::AestheticContext;
 use crate::plot::layer::geom::GeomType;
 use crate::plot::layer::is_transposed;
 use crate::plot::{ArrayElement, ParameterValue};
@@ -45,6 +46,7 @@ pub fn geom_to_mark(geom: &Geom) -> Value {
         GeomType::Smooth => "line",
         GeomType::Rule => "rule",
         GeomType::Range => "rule",
+        GeomType::Spatial => "geoshape",
         _ => "point", // Default fallback
     };
     json!({
@@ -54,7 +56,12 @@ pub fn geom_to_mark(geom: &Geom) -> Value {
 }
 
 /// Validate column references for a single layer against its specific DataFrame
-pub fn validate_layer_columns(layer: &Layer, data: &DataFrame, layer_idx: usize) -> Result<()> {
+pub fn validate_layer_columns(
+    layer: &Layer,
+    data: &DataFrame,
+    layer_idx: usize,
+    ctx: &AestheticContext,
+) -> Result<()> {
     let available_columns: Vec<String> = data
         .get_column_names()
         .iter()
@@ -69,11 +76,16 @@ pub fn validate_layer_columns(layer: &Layer, data: &DataFrame, layer_idx: usize)
                 } else {
                     " (global data)".to_string()
                 };
-                let display_col = naming::extract_aesthetic_name(col).unwrap_or(col.as_str());
+                // Translate both the column name (which may be wrapped, e.g.
+                // `__ggsql_aes_pos1__`) and the aesthetic key (which is in
+                // internal form, e.g. `pos1`) to the user-facing form.
+                let stripped = naming::extract_aesthetic_name(col).unwrap_or(col.as_str());
+                let display_col = ctx.map_internal_to_user(stripped);
+                let display_aes = ctx.map_internal_to_user(aesthetic);
                 return Err(GgsqlError::ValidationError(format!(
                     "Column '{}' referenced in aesthetic '{}' (layer {}{}) does not exist.\nAvailable columns: {}",
                     display_col,
-                    aesthetic,
+                    display_aes,
                     layer_idx + 1,
                     source_desc,
                     crate::and_list(&available_columns)
@@ -134,7 +146,7 @@ pub enum PreparedData {
 ///
 /// Most geoms use the default implementations. Only geoms with special requirements
 /// (bar width, path ordering, boxplot decomposition) need to override specific methods.
-pub trait GeomRenderer: Send + Sync {
+pub trait GeomRenderer {
     // === Phase 1: Data Preparation ===
 
     /// Prepare data for this layer.
@@ -212,6 +224,47 @@ pub trait GeomRenderer: Send + Sync {
 pub struct DefaultRenderer;
 
 impl GeomRenderer for DefaultRenderer {}
+
+// =============================================================================
+// Point Renderer
+// =============================================================================
+
+/// Renderer for the `point` geom.
+///
+/// Works around a Vega-Lite quirk: when `mark.filled` is omitted/`true` and the
+/// top-level `opacity` channel is unset, the renderer applies its own implicit
+/// opacity multiplier on top of `fillOpacity`/`strokeOpacity` — so even with
+/// `fillOpacity: 1.0`, the points appear semitransparent.
+///
+/// The fix:
+/// - Force `mark.filled = false`. Custom SVG shape paths (which ggsql always
+///   emits) are still rendered as filled regardless of this setting, so this
+///   only suppresses the implicit opacity behavior.
+/// - Force `encoding.opacity = {value: 1.0}`. With the global opacity pinned
+///   to 1.0, `fillOpacity` and `strokeOpacity` (set from the user's `opacity =>`
+///   setting upstream) become the actual opacity controls.
+pub struct PointRenderer;
+
+impl GeomRenderer for PointRenderer {
+    fn modify_spec(
+        &self,
+        layer_spec: &mut Value,
+        _layer: &Layer,
+        _context: &RenderContext,
+    ) -> Result<()> {
+        if let Some(mark) = layer_spec.get_mut("mark") {
+            if let Some(obj) = mark.as_object_mut() {
+                obj.insert("filled".to_string(), json!(false));
+            }
+        }
+        if let Some(encoding) = layer_spec.get_mut("encoding") {
+            if let Some(obj) = encoding.as_object_mut() {
+                obj.insert("opacity".to_string(), json!({"value": 1.0}));
+            }
+        }
+        Ok(())
+    }
+}
 
 // =============================================================================
 // Bar Renderer
@@ -2078,12 +2131,137 @@ impl GeomRenderer for BoxplotRenderer {
 }
 
 // =============================================================================
+// Spatial Renderer
+// =============================================================================
+
+struct SpatialRenderer;
+
+#[cfg(feature = "spatial")]
+impl SpatialRenderer {
+    fn wkb_to_geojson(wkb_bytes: &[u8]) -> Result<Value> {
+        use geozero::geojson::GeoJsonWriter;
+        use geozero::wkb::Wkb;
+        use geozero::GeozeroGeometry;
+        use std::io::Cursor;
+
+        let mut geojson_out = Vec::new();
+        let wkb = Wkb(wkb_bytes);
+        wkb.process_geom(&mut GeoJsonWriter::new(Cursor::new(&mut geojson_out)))
+            .map_err(|e| {
+                GgsqlError::WriterError(format!("Failed to convert WKB to GeoJSON: {}", e))
+            })?;
+
+        serde_json::from_slice(&geojson_out)
+            .map_err(|e| GgsqlError::WriterError(format!("Invalid GeoJSON from WKB: {}", e)))
+    }
+
+    fn parse_geometry_from_array(array: &arrow::array::ArrayRef, idx: usize) -> Result<Value> {
+        use arrow::datatypes::DataType;
+
+        if array.is_null(idx) {
+            return Ok(Value::Null);
+        }
+
+        match array.data_type() {
+            DataType::Binary => {
+                let bin = array
+                    .as_any()
+                    .downcast_ref::<arrow::array::BinaryArray>()
+                    .ok_or_else(|| {
+                        GgsqlError::WriterError("Failed to read geometry as Binary".into())
+                    })?;
+                Self::wkb_to_geojson(bin.value(idx))
+            }
+            DataType::LargeBinary => {
+                let bin = array
+                    .as_any()
+                    .downcast_ref::<arrow::array::LargeBinaryArray>()
+                    .ok_or_else(|| {
+                        GgsqlError::WriterError("Failed to read geometry as LargeBinary".into())
+                    })?;
+                Self::wkb_to_geojson(bin.value(idx))
+            }
+            other => Err(GgsqlError::WriterError(format!(
+                "Geometry column has unsupported type {:?}; expected Binary (WKB)",
+                other
+            ))),
+        }
+    }
+}
+
+impl GeomRenderer for SpatialRenderer {
+    fn prepare_data(
+        &self,
+        df: &DataFrame,
+        _layer: &Layer,
+        _data_key: &str,
+        _binned_columns: &HashMap<String, Vec<f64>>,
+    ) -> Result<PreparedData> {
+        #[cfg(not(feature = "spatial"))]
+        {
+            return Err(GgsqlError::WriterError(
+                "Spatial visualization requires the 'spatial' feature to be enabled".to_string(),
+            ));
+        }
+
+        #[cfg(feature = "spatial")]
+        {
+            let geometry_col = naming::aesthetic_column("geometry");
+
+            let col_names: Vec<String> = df
+                .get_column_names()
+                .iter()
+                .map(|s| s.to_string())
+                .collect();
+
+            let mut features = Vec::with_capacity(df.height());
+
+            for row_idx in 0..df.height() {
+                let mut feature = serde_json::Map::new();
+                feature.insert("type".to_string(), json!("Feature"));
+
+                for col_name in &col_names {
+                    let col = df.column(col_name).map_err(|e| {
+                        GgsqlError::WriterError(format!(
+                            "Failed to get column '{}': {}",
+                            col_name, e
+                        ))
+                    })?;
+
+                    if *col_name == geometry_col {
+                        let geom = Self::parse_geometry_from_array(col, row_idx)?;
+                        feature.insert("geometry".to_string(), geom);
+                    } else if !matches!(
+                        // These are reserved names for the geojson format, so
+                        // we shouldn't be inserting columns with that name.
+                        // Our naming module should prevent such collisions,
+                        // so this is purely defensive.
+                        col_name.as_str(),
+                        "type" | "geometry" | "properties" | "bbox" | "id"
+                    ) {
+                        let value = super::data::series_value_at(col, row_idx)?;
+                        feature.insert(col_name.clone(), value);
+                    }
+                }
+                features.push(Value::Object(feature));
+            }
+
+            Ok(PreparedData::Single {
+                values: features,
+                metadata: Box::new(()),
+            })
+        }
+    }
+}
+
+// =============================================================================
 // Dispatcher
 // =============================================================================
 
 /// Get the appropriate renderer for a geom type
 pub fn get_renderer(geom: &Geom) -> Box<dyn GeomRenderer> {
     match geom.geom_type() {
+        GeomType::Point => Box::new(PointRenderer),
         GeomType::Path => Box::new(PathRenderer),
         GeomType::Line => Box::new(PathRenderer),
         GeomType::Bar => Box::new(BarRenderer),
@@ -2094,6 +2272,7 @@ pub fn get_renderer(geom: &Geom) -> Box<dyn GeomRenderer> {
         GeomType::Text => Box::new(TextRenderer),
         GeomType::Range => Box::new(RangeRenderer),
         GeomType::Rule => Box::new(RuleRenderer),
+        GeomType::Spatial => Box::new(SpatialRenderer),
         // All other geoms (Point, Area, Ribbon, Density, Segment, etc.) use the default renderer
         _ => Box::new(DefaultRenderer),
     }
@@ -2102,7 +2281,6 @@ pub fn get_renderer(geom: &Geom) -> Box<dyn GeomRenderer> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::plot::projection::CoordKind;
 
     #[test]
     fn test_violin_detail_encoding() {
@@ -3582,6 +3760,9 @@ mod tests {
     #[test]
     fn test_render_context_get_extent() {
         use crate::plot::{ArrayElement, Scale};
+        use crate::writer::vegalite::projection::get_projection_renderer;
+
+        let cartesian = get_projection_renderer(None, None, &[]);
 
         // Test success case: continuous scale with numeric range
         let scales = vec![Scale {
@@ -3597,13 +3778,21 @@ mod tests {
             label_mapping: None,
             label_template: "{}".to_string(),
         }];
-        let context = RenderContext::new(&scales, CoordKind::Cartesian);
+        let context = RenderContext::new(
+            &scales,
+            cartesian.as_ref(),
+            AestheticContext::from_static(&["x", "y"], &[]),
+        );
         let result = context.get_extent("x");
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), (0.0, 10.0));
 
         // Test error case: scale not found
-        let context = RenderContext::new(&scales, CoordKind::Cartesian);
+        let context = RenderContext::new(
+            &scales,
+            cartesian.as_ref(),
+            AestheticContext::from_static(&["x", "y"], &[]),
+        );
         let result = context.get_extent("y");
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("no scale found"));
@@ -3622,7 +3811,11 @@ mod tests {
             label_mapping: None,
             label_template: "{}".to_string(),
         }];
-        let context = RenderContext::new(&scales, CoordKind::Cartesian);
+        let context = RenderContext::new(
+            &scales,
+            cartesian.as_ref(),
+            AestheticContext::from_static(&["x", "y"], &[]),
+        );
         let result = context.get_extent("x");
         assert!(result.is_err());
         assert!(result
@@ -3647,7 +3840,11 @@ mod tests {
             label_mapping: None,
             label_template: "{}".to_string(),
         }];
-        let context = RenderContext::new(&scales, CoordKind::Cartesian);
+        let context = RenderContext::new(
+            &scales,
+            cartesian.as_ref(),
+            AestheticContext::from_static(&["x", "y"], &[]),
+        );
         let result = context.get_extent("x");
         assert!(result.is_err());
         assert!(result

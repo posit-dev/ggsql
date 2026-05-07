@@ -226,6 +226,19 @@ Download from [GitHub Releases](https://github.com/posit-dev/ggsql/releases)
   margin-top: 5rem
 }
 
+/* Quarto's anchor scroll uses a section:target::before pseudo-element
+   with negative margin-top to push the section below the fixed navbar.
+   That shifts section.top (and thus .icon-section's top) up by the
+   navbar height, while <h2> stays in flow — so .section-icons, anchored
+   to .icon-section, appears above the heading at anchor view. Override
+   the pseudo and use native scroll-margin-top instead. */
+.icon-section > section:target::before {
+  display: none;
+}
+.icon-section > section {
+  scroll-margin-top: 7rem;
+}
+
 .section-icons {
   position: absolute;
   left: 0;
@@ -269,18 +282,5 @@ ggsql-jupyter --install
 
 ## VS Code / Positron extension
 
-For syntax highlighting and language support in VS Code or Positron, install the ggsql extension. You can either install it directly from the [extension marketplace](https://open-vsx.org/extension/ggsql/ggsql) from within the IDE or download and install it manually:
-
-1. Download [`ggsql.vsix`](https://github.com/posit-dev/ggsql/releases/latest/download/ggsql.vsix)
-2. Install via the command line:
-
-```bash
-# VS Code
-code --install-extension ggsql.vsix
-
-# Positron
-positron --install-extension ggsql.vsix
-```
-
-Or install from within the editor: open the Extensions view, click the `...` menu, select "Install from VSIX...", and choose the downloaded file.
+For syntax highlighting and language support in VS Code or Positron, install the ggsql extension. You can either install it directly from the [extension marketplace](https://open-vsx.org/extension/ggsql/ggsql) from within the IDE or download and install it manually (in the *Extensions* view, click the `...` menu, select "Install from VSIX...", and choose the downloaded file.)
 :::

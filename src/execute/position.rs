@@ -449,6 +449,99 @@ mod tests {
     }
 
     #[test]
+    fn test_stack_groups_by_facet_not_fill_order() {
+        // Regression: when partition_by listed fill before facet, the sort order
+        // put fill first, interleaving facet panels. compute_group_ids then
+        // treated each row as its own group and stacking had no effect.
+        //
+        // Data is pre-sorted by (fill, facet) — the worst case for the old code.
+        // Three facet panels (F1, F2, F3) each with fill groups (X, Y).
+        let df = df! {
+            "__ggsql_aes_pos1__" => vec!["A", "A", "A", "A", "A", "A"],
+            "__ggsql_aes_pos2__" => vec![10.0, 20.0, 30.0, 40.0, 50.0, 60.0],
+            "__ggsql_aes_pos2end__" => vec![0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+            "__ggsql_aes_fill__" => vec!["X", "X", "X", "Y", "Y", "Y"],
+            "__ggsql_aes_facet1__" => vec!["F1", "F2", "F3", "F1", "F2", "F3"],
+        }
+        .unwrap();
+
+        let mut layer = crate::plot::Layer::new(Geom::bar());
+        layer.mappings = {
+            let mut m = Mappings::new();
+            m.insert(
+                "pos1",
+                AestheticValue::standard_column("__ggsql_aes_pos1__"),
+            );
+            m.insert(
+                "pos2",
+                AestheticValue::standard_column("__ggsql_aes_pos2__"),
+            );
+            m.insert(
+                "pos2end",
+                AestheticValue::standard_column("__ggsql_aes_pos2end__"),
+            );
+            m.insert(
+                "fill",
+                AestheticValue::standard_column("__ggsql_aes_fill__"),
+            );
+            m.insert(
+                "facet1",
+                AestheticValue::standard_column("__ggsql_aes_facet1__"),
+            );
+            m
+        };
+        // fill before facet — the order that triggered the bug
+        layer.partition_by = vec![
+            "__ggsql_aes_fill__".to_string(),
+            "__ggsql_aes_facet1__".to_string(),
+        ];
+        layer.position = Position::stack();
+        layer.data_key = Some("__ggsql_layer_0__".to_string());
+
+        let mut spec = Plot::new();
+        spec.scales.push(make_discrete_scale("pos1"));
+        spec.scales.push(make_continuous_scale("pos2"));
+        spec.facet = Some(Facet::new(FacetLayout::Wrap {
+            variables: vec!["facet_var".to_string()],
+        }));
+        let mut data_map = HashMap::new();
+        data_map.insert("__ggsql_layer_0__".to_string(), df);
+        spec.layers.push(layer);
+
+        apply_position_adjustments(&mut spec, &mut data_map).unwrap();
+
+        let result_df = data_map.get("__ggsql_layer_0__").unwrap();
+
+        let facet_col =
+            crate::array_util::as_str(result_df.column("__ggsql_aes_facet1__").unwrap()).unwrap();
+        let fill_col =
+            crate::array_util::as_str(result_df.column("__ggsql_aes_fill__").unwrap()).unwrap();
+        let pos2_arr = as_f64(result_df.column("__ggsql_aes_pos2__").unwrap()).unwrap();
+        let pos2end_arr = as_f64(result_df.column("__ggsql_aes_pos2end__").unwrap()).unwrap();
+
+        // Collect (facet, fill) → (pos2, pos2end)
+        let mut by_key: std::collections::HashMap<(&str, &str), (f64, f64)> =
+            std::collections::HashMap::new();
+        for i in 0..result_df.height() {
+            by_key.insert(
+                (facet_col.value(i), fill_col.value(i)),
+                (pos2_arr.value(i), pos2end_arr.value(i)),
+            );
+        }
+
+        // Within each facet the two fill groups must stack:
+        // F1: X=10 → [0,10], Y=40 → [10,50]
+        // F2: X=20 → [0,20], Y=50 → [20,70]
+        // F3: X=30 → [0,30], Y=60 → [30,90]
+        assert_eq!(by_key[&("F1", "X")], (10.0, 0.0));
+        assert_eq!(by_key[&("F1", "Y")], (50.0, 10.0));
+        assert_eq!(by_key[&("F2", "X")], (20.0, 0.0));
+        assert_eq!(by_key[&("F2", "Y")], (70.0, 20.0));
+        assert_eq!(by_key[&("F3", "X")], (30.0, 0.0));
+        assert_eq!(by_key[&("F3", "Y")], (90.0, 30.0));
+    }
+
+    #[test]
     fn test_dodge_ignores_facet_columns_in_group_count() {
         // Dodge should compute n_groups per facet panel, not globally.
         // With fill=["X","Y"] and facet=["F1","F2"], dodge should see

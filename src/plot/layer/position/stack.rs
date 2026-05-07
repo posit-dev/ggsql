@@ -248,27 +248,9 @@ fn apply_stack(df: DataFrame, layer: &Layer, spec: &Plot, mode: StackMode) -> Re
         }
     }
 
-    // Sort by group column and partition_by columns to ensure consistent stacking order
-    let mut sort_col_names: Vec<&str> = vec![&group_col];
-    for partition_col in &layer.partition_by {
-        sort_col_names.push(partition_col);
-    }
-    let df = compute::sort_dataframe(&df, &sort_col_names)?;
-
-    // Cast stack column to f64 if needed, then fill nulls with 0
-    let stack_col_array = df.column(&stack_col)?.clone();
-    let stack_col_f64 = if stack_col_array.data_type() == &arrow::datatypes::DataType::Float64 {
-        stack_col_array
-    } else {
-        crate::array_util::cast_array(&stack_col_array, &arrow::datatypes::DataType::Float64)?
-    };
-    let filled = compute::fill_null_f64_ref(&stack_col_f64, 0.0)?;
-    let df = df.with_column(&stack_col, filled)?;
-
-    // Build the group columns for .over(): group column + facet columns.
+    // Build the group columns: group column + facet columns.
     // Facet columns must be included so stacking resets per facet panel,
     // matching ggplot2 where position adjustments are computed per-panel.
-    // Collect facet column names as owned Strings
     let facet_col_names: Vec<String> = spec
         .facet
         .as_ref()
@@ -285,6 +267,27 @@ fn apply_stack(df: DataFrame, layer: &Layer, spec: &Plot, mode: StackMode) -> Re
     for name in &facet_col_names {
         over_col_refs.push(name);
     }
+
+    // Sort by the group columns first, then by remaining partition_by columns.
+    // The group columns must come first so that compute_group_ids (which relies
+    // on adjacent rows having the same key) sees all same-group rows together.
+    let mut sort_col_names: Vec<&str> = over_col_refs.clone();
+    for partition_col in &layer.partition_by {
+        if !sort_col_names.contains(&partition_col.as_str()) {
+            sort_col_names.push(partition_col);
+        }
+    }
+    let df = compute::sort_dataframe(&df, &sort_col_names)?;
+
+    // Cast stack column to f64 if needed, then fill nulls with 0
+    let stack_col_array = df.column(&stack_col)?.clone();
+    let stack_col_f64 = if stack_col_array.data_type() == &arrow::datatypes::DataType::Float64 {
+        stack_col_array
+    } else {
+        crate::array_util::cast_array(&stack_col_array, &arrow::datatypes::DataType::Float64)?
+    };
+    let filled = compute::fill_null_f64_ref(&stack_col_f64, 0.0)?;
+    let df = df.with_column(&stack_col, filled)?;
 
     // Compute group IDs
     let group_ids = compute::compute_group_ids(&df, &over_col_refs)?;

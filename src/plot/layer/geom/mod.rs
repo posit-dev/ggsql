@@ -43,6 +43,7 @@ mod ribbon;
 mod rule;
 mod segment;
 mod smooth;
+mod spatial;
 pub(crate) mod stat_aggregate;
 mod text;
 mod tile;
@@ -69,6 +70,7 @@ pub use ribbon::Ribbon;
 pub use rule::Rule;
 pub use segment::Segment;
 pub use smooth::Smooth;
+pub use spatial::Spatial;
 pub use text::Text;
 pub use tile::Tile;
 pub use violin::Violin;
@@ -99,6 +101,7 @@ pub enum GeomType {
     Arrow,
     Rule,
     Range,
+    Spatial,
 }
 
 impl std::fmt::Display for GeomType {
@@ -122,6 +125,7 @@ impl std::fmt::Display for GeomType {
             GeomType::Arrow => "arrow",
             GeomType::Rule => "rule",
             GeomType::Range => "range",
+            GeomType::Spatial => "spatial",
         };
         write!(f, "{}", s)
     }
@@ -405,6 +409,11 @@ impl Geom {
         Self(Arc::new(Range))
     }
 
+    /// Create a Spatial geom
+    pub fn spatial() -> Self {
+        Self(Arc::new(Spatial))
+    }
+
     /// Create a Geom from a GeomType
     pub fn from_type(t: GeomType) -> Self {
         match t {
@@ -426,6 +435,7 @@ impl Geom {
             GeomType::Arrow => Self::arrow(),
             GeomType::Rule => Self::rule(),
             GeomType::Range => Self::range(),
+            GeomType::Spatial => Self::spatial(),
         }
     }
 
@@ -652,6 +662,7 @@ mod tests {
             GeomType::Arrow,
             GeomType::Rule,
             GeomType::Range,
+            GeomType::Spatial,
         ];
 
         // This test is rigged to trigger a compiler error when new variants are added.
@@ -674,7 +685,8 @@ mod tests {
             | GeomType::Segment
             | GeomType::Arrow
             | GeomType::Rule
-            | GeomType::Range => {}
+            | GeomType::Range
+            | GeomType::Spatial => {}
         };
 
         for geom_type in all_geom_types {
