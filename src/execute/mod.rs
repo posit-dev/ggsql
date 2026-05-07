@@ -1335,15 +1335,17 @@ pub fn prepare_data_with_reader(query: &str, reader: &dyn Reader) -> Result<Prep
 
     // Apply projection transforms (post-stat, pre-fetch)
     // TODO: infer coord from geom types (e.g., DRAW spatial implies Map coord)
-    let default_projection = crate::plot::projection::Projection::cartesian();
-    let project = specs[0].project.as_ref().unwrap_or(&default_projection);
-    project.coord.apply_projection_transforms(
+    let mut project = specs[0]
+        .project
+        .take()
+        .unwrap_or_else(crate::plot::projection::Projection::cartesian);
+    project.apply_projection_transforms(
         &specs[0].layers,
         &mut layer_queries,
-        project,
         dialect,
         &execute_query,
     )?;
+    specs[0].project = Some(project);
 
     // Phase 2: Deduplicate and execute unique queries
     let mut query_to_result: HashMap<String, DataFrame> = HashMap::new();

@@ -39,7 +39,11 @@ impl GeomTrait for Spatial {
             projection.coord.coord_kind(),
             projection.properties.get("crs"),
         ) {
-            dialect.sql_st_transform(&col, crs)
+            let source = match projection.properties.get("source") {
+                Some(ParameterValue::String(s)) => s.as_str(),
+                _ => "EPSG:4326",
+            };
+            dialect.sql_st_transform(&col, source, crs)
         } else {
             col.clone()
         };

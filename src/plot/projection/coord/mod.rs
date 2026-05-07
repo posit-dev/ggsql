@@ -137,7 +137,7 @@ pub trait CoordTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
         &self,
         layers: &[Layer],
         layer_queries: &mut [String],
-        projection: &super::Projection,
+        projection: &mut super::Projection,
         dialect: &dyn SqlDialect,
         _execute_query: &dyn Fn(&str) -> crate::Result<DataFrame>,
     ) -> crate::Result<()> {
@@ -219,7 +219,7 @@ impl Coord {
         &self,
         layers: &[Layer],
         layer_queries: &mut [String],
-        projection: &super::Projection,
+        projection: &mut super::Projection,
         dialect: &dyn SqlDialect,
         execute_query: &dyn Fn(&str) -> crate::Result<DataFrame>,
     ) -> crate::Result<()> {

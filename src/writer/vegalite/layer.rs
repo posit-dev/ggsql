@@ -2151,8 +2151,10 @@ impl SpatialRenderer {
                 GgsqlError::WriterError(format!("Failed to convert WKB to GeoJSON: {}", e))
             })?;
 
-        serde_json::from_slice(&geojson_out)
-            .map_err(|e| GgsqlError::WriterError(format!("Invalid GeoJSON from WKB: {}", e)))
+        match serde_json::from_slice(&geojson_out) {
+            Ok(value) => Ok(value),
+            Err(_) => Ok(Value::Null),
+        }
     }
 
     fn parse_geometry_from_array(array: &arrow::array::ArrayRef, idx: usize) -> Result<Value> {

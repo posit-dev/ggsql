@@ -6,7 +6,9 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 use super::coord::Coord;
-use crate::plot::ParameterValue;
+use crate::plot::{Layer, ParameterValue};
+use crate::reader::SqlDialect;
+use crate::DataFrame;
 
 /// Projection (from PROJECT clause)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -55,5 +57,17 @@ impl Projection {
     /// (aesthetics are always resolved at build time)
     pub fn position_names(&self) -> Vec<&str> {
         self.aesthetics.iter().map(|s| s.as_str()).collect()
+    }
+
+    /// Orchestrate projection transforms for all layers.
+    pub fn apply_projection_transforms(
+        &mut self,
+        layers: &[Layer],
+        layer_queries: &mut [String],
+        dialect: &dyn SqlDialect,
+        execute_query: &dyn Fn(&str) -> crate::Result<DataFrame>,
+    ) -> crate::Result<()> {
+        let coord = self.coord.clone();
+        coord.apply_projection_transforms(layers, layer_queries, self, dialect, execute_query)
     }
 }

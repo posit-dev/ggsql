@@ -122,13 +122,14 @@ pub trait SqlDialect {
         format!("ST_AsBinary({column})")
     }
 
-    /// SQL expression to transform a geometry to a target CRS.
+    /// SQL expression to transform a geometry from one CRS to another.
     ///
-    /// Default uses `ST_Transform(column, 'crs')` which works for DuckDB and PostGIS.
-    fn sql_st_transform(&self, column: &str, target_crs: &str) -> String {
+    /// Default uses `ST_Transform(column, source_crs, target_crs)` which works for DuckDB.
+    fn sql_st_transform(&self, column: &str, source_crs: &str, target_crs: &str) -> String {
         format!(
-            "ST_Transform({}, '{}')",
+            "ST_Transform({}, '{}', '{}')",
             column,
+            source_crs.replace('\'', "''"),
             target_crs.replace('\'', "''")
         )
     }
