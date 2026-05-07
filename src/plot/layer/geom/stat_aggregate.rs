@@ -26,6 +26,9 @@
 //! a warning to stderr.
 
 use std::collections::{HashMap, HashSet};
+use std::sync::OnceLock;
+
+use regex::Regex;
 
 use super::types::StatResult;
 use crate::naming;
@@ -74,7 +77,9 @@ pub struct AggSpec {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Band {
-    pub sign: char,
+    /// Signed multiplier on the expansion. `+1.0` corresponds to `<offset>+<exp>`;
+    /// `-1.96` corresponds to `<offset>-1.96<exp>`. The sign and magnitude are
+    /// folded together so there's a single source of truth.
     pub mod_value: f64,
     pub expansion: &'static str,
 }
@@ -83,71 +88,99 @@ fn resolve_static(name: &str, vocab: &'static [&'static str]) -> Option<&'static
     vocab.iter().copied().find(|v| *v == name)
 }
 
-/// Parse an aggregate-function name into an `AggSpec`. Returns `None` on
-/// invalid input (unknown stat, malformed band, or band with vocabulary
-/// violation).
-pub fn parse_agg_name(name: &str) -> Option<AggSpec> {
-    if let Some(spec) = parse_band(name) {
-        return Some(spec);
-    }
-    resolve_static(name, AGG_NAMES).map(|offset| AggSpec { offset, band: None })
+/// Single regex covering one `aggregate` entry: optional `<aes>:` prefix,
+/// required offset name, optional `±[<mult>]<expansion>` band suffix.
+///
+/// Capture groups:
+/// 1. aesthetic prefix (anything up to the first `:`; structural-only — full
+///    aesthetic resolution happens in `apply()`)
+/// 2. offset name
+/// 3. sign — present iff the entry has a band
+/// 4. magnitude — optional, defaults to `1.0`
+/// 5. expansion name
+fn entry_re() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| {
+        Regex::new(r"^(?:([^:]+):)?([a-z]+\d*)(?:([+-])(\d+(?:\.\d+)?)?([a-z]+))?$").unwrap()
+    })
 }
 
-fn parse_band(name: &str) -> Option<AggSpec> {
-    // Walk offsets longest-first so `median` matches before `mean`.
-    let mut offsets: Vec<&'static str> = OFFSET_STATS.to_vec();
-    offsets.sort_by_key(|s| std::cmp::Reverse(s.len()));
-
-    for offset in offsets {
-        let rest = match name.strip_prefix(offset) {
-            Some(r) => r,
-            None => continue,
-        };
-        let (sign, after_sign) = match rest.chars().next() {
-            Some('+') => ('+', &rest[1..]),
-            Some('-') => ('-', &rest[1..]),
-            _ => continue,
-        };
-
-        let (mod_value, expansion_str) = parse_mod_and_remainder(after_sign);
-        let expansion = match resolve_static(expansion_str, EXPANSION_STATS) {
-            Some(e) => e,
-            None => continue,
-        };
-
-        return Some(AggSpec {
-            offset,
-            band: Some(Band {
-                sign,
-                mod_value,
-                expansion,
-            }),
-        });
-    }
-    None
+/// Parsed shape of a single `aggregate` array entry.
+struct ParsedEntry {
+    /// `Some(name)` when the entry has an `<aes>:` prefix; `None` for an
+    /// unprefixed default. Resolution to internal aesthetic names happens in
+    /// `apply()` via `resolve_target_aesthetic`.
+    aesthetic: Option<String>,
+    spec: AggSpec,
 }
 
-fn parse_mod_and_remainder(s: &str) -> (f64, &str) {
-    let mut idx = 0;
-    let bytes = s.as_bytes();
-    while idx < bytes.len() && bytes[idx].is_ascii_digit() {
-        idx += 1;
-    }
-    if idx < bytes.len() && bytes[idx] == b'.' {
-        let mut after_dot = idx + 1;
-        while after_dot < bytes.len() && bytes[after_dot].is_ascii_digit() {
-            after_dot += 1;
-        }
-        if after_dot > idx + 1 {
-            idx = after_dot;
-        }
-    }
-    if idx == 0 {
-        return (1.0, s);
-    }
-    let num_str = &s[..idx];
-    let value: f64 = num_str.parse().unwrap_or(1.0);
-    (value, &s[idx..])
+fn parse_entry(entry: &str) -> std::result::Result<ParsedEntry, String> {
+    let caps = entry_re()
+        .captures(entry)
+        .ok_or_else(|| format!("could not parse aggregate entry '{}'", entry))?;
+
+    let aesthetic = caps.get(1).map(|m| m.as_str().to_string());
+    let offset_str = caps.get(2).unwrap().as_str();
+    let band_present = caps.get(3).is_some();
+
+    let band = if band_present {
+        let expansion_str = caps.get(5).unwrap().as_str();
+        let expansion = resolve_static(expansion_str, EXPANSION_STATS).ok_or_else(|| {
+            format!(
+                "'{}': '{}' is not a valid expansion stat. Allowed expansions: {}",
+                entry,
+                expansion_str,
+                crate::or_list_quoted(EXPANSION_STATS, '\''),
+            )
+        })?;
+        let magnitude: f64 = caps
+            .get(4)
+            .map_or(1.0, |m| m.as_str().parse().unwrap_or(1.0));
+        let mod_value = if caps.get(3).unwrap().as_str() == "-" {
+            -magnitude
+        } else {
+            magnitude
+        };
+        Some(Band {
+            mod_value,
+            expansion,
+        })
+    } else {
+        None
+    };
+
+    let offset = if band.is_some() {
+        resolve_static(offset_str, OFFSET_STATS).ok_or_else(|| {
+            if AGG_NAMES.contains(&offset_str) {
+                format!(
+                    "'{}': '{}' is not a valid offset stat. Allowed offsets: {}",
+                    entry,
+                    offset_str,
+                    crate::or_list_quoted(OFFSET_STATS, '\''),
+                )
+            } else {
+                format!(
+                    "'{}': '{}' is not a known stat. Allowed offsets: {}",
+                    entry,
+                    offset_str,
+                    crate::or_list_quoted(OFFSET_STATS, '\''),
+                )
+            }
+        })?
+    } else {
+        resolve_static(offset_str, AGG_NAMES).ok_or_else(|| {
+            format!(
+                "unknown aggregate function '{}'. Allowed: {} (or use a band like `mean+sdev`)",
+                offset_str,
+                crate::or_list_quoted(AGG_NAMES, '\''),
+            )
+        })?
+    };
+
+    Ok(ParsedEntry {
+        aesthetic,
+        spec: AggSpec { offset, band },
+    })
 }
 
 // =============================================================================
@@ -233,15 +266,17 @@ impl AggregateSpec {
 }
 
 /// Human-readable label for an `AggSpec`. Re-emits simple names verbatim and
-/// reconstructs band names like `mean+sdev`.
+/// reconstructs band names like `mean+sdev` / `mean-1.96sdev`.
 fn agg_label(spec: &AggSpec) -> String {
     match &spec.band {
         None => spec.offset.to_string(),
         Some(b) => {
-            if b.mod_value == 1.0 {
-                format!("{}{}{}", spec.offset, b.sign, b.expansion)
+            let sign = if b.mod_value < 0.0 { '-' } else { '+' };
+            let magnitude = b.mod_value.abs();
+            if magnitude == 1.0 {
+                format!("{}{}{}", spec.offset, sign, b.expansion)
             } else {
-                format!("{}{}{}{}", spec.offset, b.sign, b.mod_value, b.expansion)
+                format!("{}{}{}{}", spec.offset, sign, magnitude, b.expansion)
             }
         }
     }
@@ -277,32 +312,26 @@ pub fn parse_aggregate_param(
 
     let mut spec = AggregateSpec::new();
     for entry in entries {
-        if let Some((aes, func)) = split_target(entry) {
-            if aes.is_empty() {
-                return Err(format!("'{}': aesthetic prefix is empty", entry));
+        let parsed = parse_entry(entry)?;
+        match parsed.aesthetic {
+            Some(aes) => {
+                if let Some((_, fns)) = spec.targets.iter_mut().find(|(a, _)| *a == aes) {
+                    fns.push(parsed.spec);
+                } else {
+                    spec.targets.push((aes, vec![parsed.spec]));
+                }
             }
-            if func.is_empty() {
-                return Err(format!("'{}': aggregate function is empty", entry));
-            }
-            let agg = parse_agg_name(func)
-                .ok_or_else(|| format!("'{}': {}", entry, diagnose_invalid_function_name(func)))?;
-            // Append to existing list for this aesthetic, or create one.
-            if let Some((_, fns)) = spec.targets.iter_mut().find(|(a, _)| a == aes) {
-                fns.push(agg);
-            } else {
-                spec.targets.push((aes.to_string(), vec![agg]));
-            }
-        } else {
-            let agg = parse_agg_name(entry).ok_or_else(|| diagnose_invalid_function_name(entry))?;
-            if spec.default_lower.is_none() {
-                spec.default_lower = Some(agg);
-            } else if spec.default_upper.is_none() {
-                spec.default_upper = Some(agg);
-            } else {
-                return Err(format!(
-                    "'aggregate' accepts at most two unprefixed defaults; got a third: '{}'",
-                    entry
-                ));
+            None => {
+                if spec.default_lower.is_none() {
+                    spec.default_lower = Some(parsed.spec);
+                } else if spec.default_upper.is_none() {
+                    spec.default_upper = Some(parsed.spec);
+                } else {
+                    return Err(format!(
+                        "'aggregate' accepts at most two unprefixed defaults; got a third: '{}'",
+                        entry
+                    ));
+                }
             }
         }
     }
@@ -330,62 +359,11 @@ pub fn parse_aggregate_param(
     Ok(Some(spec))
 }
 
-/// Split an entry into `(aesthetic, function)` if it contains a `:`. Returns
-/// `None` for an unprefixed entry like `'mean'`.
-fn split_target(entry: &str) -> Option<(&str, &str)> {
-    entry.split_once(':')
-}
-
 /// Validate the `aggregate` SETTING value at parse-time. Used by
-/// `Layer::validate_settings`. Aesthetic-name resolution is deferred to
-/// `apply()` because `AestheticContext` isn't available here.
+/// `Layer::validate_aggregate_setting`. Aesthetic-name resolution is deferred
+/// to `apply()` because `AestheticContext` isn't available here.
 pub fn validate_aggregate_param(value: &ParameterValue) -> std::result::Result<(), String> {
     parse_aggregate_param(value).map(|_| ())
-}
-
-/// Build a per-role error message for a name that didn't parse. Re-walks the
-/// input with looser rules to identify which side (offset / expansion) failed.
-fn diagnose_invalid_function_name(name: &str) -> String {
-    if let Some(sign_idx) = name.find(['+', '-']) {
-        let offset_str = &name[..sign_idx];
-        let after_sign = &name[sign_idx + 1..];
-        let (_mod_value, expansion_str) = parse_mod_and_remainder(after_sign);
-
-        let offset_known_simple = AGG_NAMES.contains(&offset_str);
-        let offset_known_band = OFFSET_STATS.contains(&offset_str);
-        let expansion_known_band = EXPANSION_STATS.contains(&expansion_str);
-
-        if !offset_known_band {
-            if offset_known_simple {
-                return format!(
-                    "'{}': '{}' is not a valid offset stat. Allowed offsets: {}",
-                    name,
-                    offset_str,
-                    crate::or_list_quoted(OFFSET_STATS, '\''),
-                );
-            }
-            return format!(
-                "'{}': '{}' is not a known stat. Allowed offsets: {}",
-                name,
-                offset_str,
-                crate::or_list_quoted(OFFSET_STATS, '\''),
-            );
-        }
-        if !expansion_known_band {
-            return format!(
-                "'{}': '{}' is not a valid expansion stat. Allowed expansions: {}",
-                name,
-                expansion_str,
-                crate::or_list_quoted(EXPANSION_STATS, '\''),
-            );
-        }
-        return format!("'{}' is not a valid aggregate function name", name);
-    }
-    format!(
-        "unknown aggregate function '{}'. Allowed: {} (or use a band like `mean+sdev`)",
-        name,
-        crate::or_list_quoted(AGG_NAMES, '\''),
-    )
 }
 
 // =============================================================================
@@ -465,21 +443,22 @@ fn agg_sql_inline(spec: &AggSpec, qcol: &str, dialect: &dyn SqlDialect) -> Optio
         None => Some(offset_sql),
         Some(band) => {
             let exp_sql = simple_stat_sql_inline(band.expansion, qcol, dialect)?;
-            Some(format_band(
-                &offset_sql,
-                band.sign,
-                band.mod_value,
-                &exp_sql,
-            ))
+            Some(format_band(&offset_sql, band.mod_value, &exp_sql))
         }
     }
 }
 
-fn format_band(offset: &str, sign: char, mod_value: f64, exp: &str) -> String {
-    if mod_value == 1.0 {
+/// Format a band expression `(offset ± [magnitude *] expansion)`. The sign and
+/// magnitude come folded together in `mod_value`; this splits them back out
+/// only when emitting SQL so the output is readable (e.g. `(mean - 1.96 * sdev)`
+/// rather than `(mean + -1.96 * sdev)`).
+fn format_band(offset: &str, mod_value: f64, exp: &str) -> String {
+    let sign = if mod_value < 0.0 { '-' } else { '+' };
+    let magnitude = mod_value.abs();
+    if magnitude == 1.0 {
         format!("({} {} {})", offset, sign, exp)
     } else {
-        format!("({} {} {} * {})", offset, sign, mod_value, exp)
+        format!("({} {} {} * {})", offset, sign, magnitude, exp)
     }
 }
 
@@ -518,7 +497,7 @@ fn agg_sql_fallback(
         Some(band) => {
             let exp_sql =
                 simple_stat_sql_fallback(band.expansion, raw_col, dialect, src_alias, group_cols);
-            format_band(&offset_sql, band.sign, band.mod_value, &exp_sql)
+            format_band(&offset_sql, band.mod_value, &exp_sql)
         }
     }
 }
@@ -1301,7 +1280,7 @@ mod tests {
     #[test]
     fn empty_prefix_is_error() {
         let err = parse_aggregate_param(&ParameterValue::String(":mean".to_string())).unwrap_err();
-        assert!(err.contains("aesthetic prefix"), "got: {}", err);
+        assert!(err.contains("could not parse"), "got: {}", err);
     }
 
     #[test]
@@ -1333,10 +1312,20 @@ mod tests {
                 .band
                 .as_ref()
                 .unwrap()
-                .sign,
-            '-'
+                .mod_value,
+            -1.0,
         );
         assert_eq!(s.default_upper.as_ref().unwrap().offset, "mean");
+        assert_eq!(
+            s.default_upper
+                .as_ref()
+                .unwrap()
+                .band
+                .as_ref()
+                .unwrap()
+                .mod_value,
+            1.0,
+        );
     }
 
     // ---------- apply tests ----------
