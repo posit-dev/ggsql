@@ -53,6 +53,7 @@ impl super::SqlDialect for DuckDbDialect {
         match name {
             "first" => Some(format!("FIRST({})", qcol)),
             "last" => Some(format!("LAST({})", qcol)),
+            "diff" => Some(format!("(LAST({c}) - FIRST({c}))", c = qcol)),
             _ => super::default_sql_aggregate(name, qcol),
         }
     }

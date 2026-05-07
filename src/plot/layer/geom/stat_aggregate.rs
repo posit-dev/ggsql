@@ -45,8 +45,9 @@ pub const AGG_NAMES: &[&str] = &[
     "min", "max", "range", "mid", // Central tendency
     "mean", "geomean", "harmean", "rms", "median", // Spread (standalone)
     "sdev", "var", "iqr", // Percentiles
-    "p05", "p10", "p25", "p50", "p75", "p90", "p95", // Positional (row order in the group)
-    "first", "last",
+    "p05", "p10", "p25", "p50", "p75", "p90",
+    "p95", // Positional (row order in the group)
+    "first", "last", "diff",
 ];
 
 /// Stats that can appear as the *offset* (left of `±`) in a band name like
@@ -783,6 +784,68 @@ pub fn apply(
     })
 }
 
+/// CTE preamble plus the alias the caller should `FROM`. When any emitted
+/// aggregate references the `__ggsql_rn__` / `__ggsql_max_rn__` columns
+/// (the dialect-portable form of `first` / `last`), wrap the source CTE in a
+/// row-numbered layer.
+fn source_cte_chain(
+    query: &str,
+    aggregated: &[(String, String, Vec<AggSpec>)],
+    group_cols: &[String],
+    dialect: &dyn SqlDialect,
+) -> (String, &'static str) {
+    let raw_src = "\"__ggsql_stat_src__\"";
+    if !needs_row_position(aggregated, dialect) {
+        return (format!("WITH {raw_src} AS ({query})"), raw_src);
+    }
+    let rn_src = "\"__ggsql_stat_src_rn__\"";
+    let group_select: Vec<String> = group_cols.iter().map(|c| naming::quote_ident(c)).collect();
+    // ORDER BY (SELECT 1) is the canonical "no real ordering" stand-in: it
+    // satisfies the standard's required ORDER BY for window functions while
+    // letting the engine pick the row order — same indeterminacy as DuckDB's
+    // native FIRST() without a user ORDER BY.
+    let partition = if group_select.is_empty() {
+        String::new()
+    } else {
+        format!("PARTITION BY {} ", group_select.join(", "))
+    };
+    let cte = format!(
+        "WITH {raw_src} AS ({query}), {rn_src} AS (\
+           SELECT *, \
+             ROW_NUMBER() OVER ({partition}ORDER BY (SELECT 1)) AS \"__ggsql_rn__\", \
+             COUNT(*) OVER ({partition_no_order}) AS \"__ggsql_max_rn__\" \
+           FROM {raw_src}\
+         )",
+        partition_no_order = partition.trim_end(),
+    );
+    (cte, rn_src)
+}
+
+/// True iff at least one aggregate spec, after the dialect emits its SQL,
+/// references the row-position columns. Backends with native `FIRST`/`LAST`
+/// (DuckDB) emit a string that doesn't mention `__ggsql_rn__`, and so don't
+/// pay for the extra window functions.
+fn needs_row_position(
+    aggregated: &[(String, String, Vec<AggSpec>)],
+    dialect: &dyn SqlDialect,
+) -> bool {
+    for (_, _, specs) in aggregated {
+        for spec in specs {
+            for name in [Some(spec.offset), spec.band.as_ref().map(|b| b.expansion)]
+                .into_iter()
+                .flatten()
+            {
+                if let Some(sql) = dialect.sql_aggregate(name, "x") {
+                    if sql.contains("__ggsql_rn__") {
+                        return true;
+                    }
+                }
+            }
+        }
+    }
+    false
+}
+
 /// Build the single-row `WITH src AS (<query>) SELECT <group cols>, <agg exprs>
 /// FROM src AS "__ggsql_qt__" GROUP BY <group cols>` query. Each aggregated
 /// aesthetic's function list is length 1 here.
@@ -795,8 +858,8 @@ fn build_group_by_query(
     group_cols: &[String],
     dialect: &dyn SqlDialect,
 ) -> String {
-    let src_alias = "\"__ggsql_stat_src__\"";
     let outer_alias = "\"__ggsql_qt__\"";
+    let (with_clause, src_alias) = source_cte_chain(query, aggregated, group_cols, dialect);
 
     let group_select: Vec<String> = group_cols.iter().map(|c| naming::quote_ident(c)).collect();
     let group_by_clause = if group_cols.is_empty() {
@@ -821,10 +884,9 @@ fn build_group_by_query(
     }
 
     format!(
-        "WITH {src} AS ({query}) SELECT {sel} FROM {src} AS {outer}{gb}",
-        src = src_alias,
-        query = query,
+        "{with_clause} SELECT {sel} FROM {src} AS {outer}{gb}",
         sel = select_parts.join(", "),
+        src = src_alias,
         outer = outer_alias,
         gb = group_by_clause,
     )
@@ -841,8 +903,8 @@ fn build_aggregate_query(
     labels: &[String],
     dialect: &dyn SqlDialect,
 ) -> String {
-    let src_alias = "\"__ggsql_stat_src__\"";
     let outer_alias = "\"__ggsql_qt__\"";
+    let (with_clause, src_alias) = source_cte_chain(query, aggregated, group_cols, dialect);
 
     let group_select: Vec<String> = group_cols.iter().map(|c| naming::quote_ident(c)).collect();
     let group_by_clause = if group_cols.is_empty() {
@@ -889,9 +951,7 @@ fn build_aggregate_query(
         .collect();
 
     format!(
-        "WITH {src} AS ({query}) {body}",
-        src = src_alias,
-        query = query,
+        "{with_clause} {body}",
         body = branches.join(" UNION ALL "),
     )
 }
@@ -923,6 +983,7 @@ mod tests {
             match name {
                 "first" => Some(format!("FIRST({})", qcol)),
                 "last" => Some(format!("LAST({})", qcol)),
+                "diff" => Some(format!("(LAST({c}) - FIRST({c}))", c = qcol)),
                 _ => crate::reader::default_sql_aggregate(name, qcol),
             }
         }
@@ -1262,7 +1323,7 @@ mod tests {
 
     #[cfg(feature = "sqlite")]
     #[test]
-    fn sqlite_dialect_emits_portable_stddev_and_rejects_first() {
+    fn sqlite_dialect_emits_portable_stddev_and_first() {
         use crate::reader::sqlite::SqliteDialect;
 
         let mut aes = Mappings::new();
@@ -1290,27 +1351,48 @@ mod tests {
             _ => panic!("expected Transformed"),
         }
 
-        // first / last route through the validation error rather than emitting
-        // SQL that SQLite cannot run.
-        let err = run(
+        // first now uses the portable ROW_NUMBER + MAX(CASE) form. It must run
+        // on SQLite without `FIRST` ever appearing as an aggregate call.
+        let result = run(
             ParameterValue::String("first".to_string()),
             &aes,
             &schema,
             &[],
             &SqliteDialect,
         )
-        .unwrap_err();
-        assert!(
-            format!("{err}").contains("not supported"),
-            "expected unsupported-function error, got: {err}"
-        );
+        .unwrap();
+        match result {
+            StatResult::Transformed { query, .. } => {
+                assert!(
+                    query.contains("ROW_NUMBER()"),
+                    "expected ROW_NUMBER prep, got: {query}"
+                );
+                assert!(
+                    query.contains("\"__ggsql_rn__\" = 1"),
+                    "expected first via rn=1, got: {query}"
+                );
+                assert!(
+                    !query.contains("FIRST(\""),
+                    "must not call FIRST as an aggregate, got: {query}"
+                );
+            }
+            _ => panic!("expected Transformed"),
+        }
     }
 
     #[test]
     fn unsupported_aggregate_errors_with_dialect_that_lacks_function() {
-        // AnsiDialect's default doesn't implement FIRST/LAST.
-        struct AnsiTestDialect;
-        impl SqlDialect for AnsiTestDialect {}
+        // A dialect that explicitly opts out of `first` (returns None) must
+        // produce the validation error rather than emitting broken SQL.
+        struct OptOutDialect;
+        impl SqlDialect for OptOutDialect {
+            fn sql_aggregate(&self, name: &str, qcol: &str) -> Option<String> {
+                if name == "first" {
+                    return None;
+                }
+                crate::reader::default_sql_aggregate(name, qcol)
+            }
+        }
 
         let mut aes = Mappings::new();
         aes.insert("pos1", col("__ggsql_aes_pos1__"));
@@ -1321,7 +1403,7 @@ mod tests {
             &aes,
             &schema,
             &[],
-            &AnsiTestDialect,
+            &OptOutDialect,
         )
         .unwrap_err();
         let msg = format!("{}", err);
@@ -1352,6 +1434,93 @@ mod tests {
                         .contains("(MIN(\"__ggsql_aes_pos1__\") + MAX(\"__ggsql_aes_pos1__\")) / 2.0"),
                     "{}",
                     query
+                );
+            }
+            _ => panic!("expected Transformed"),
+        }
+    }
+
+    #[test]
+    fn diff_uses_row_position_and_subtracts_first_from_last() {
+        let mut aes = Mappings::new();
+        aes.insert("pos1", col("__ggsql_aes_pos1__"));
+        aes.insert("pos2", col("__ggsql_aes_pos2__"));
+        let schema = schema_for(&[("__ggsql_aes_pos1__", false), ("__ggsql_aes_pos2__", false)]);
+
+        // AnsiDialect path: portable rn-based form for last - first.
+        struct AnsiTestDialect;
+        impl SqlDialect for AnsiTestDialect {}
+        let result = run(
+            ParameterValue::String("diff".to_string()),
+            &aes,
+            &schema,
+            &[],
+            &AnsiTestDialect,
+        )
+        .unwrap();
+        match result {
+            StatResult::Transformed { query, .. } => {
+                assert!(query.contains("ROW_NUMBER()"), "{query}");
+                assert!(
+                    query.contains("\"__ggsql_rn__\" = \"__ggsql_max_rn__\""),
+                    "{query}"
+                );
+                assert!(query.contains("\"__ggsql_rn__\" = 1"), "{query}");
+                assert!(query.contains(" - "), "expected subtraction, got: {query}");
+            }
+            _ => panic!("expected Transformed"),
+        }
+
+        // Native-FIRST/LAST path: no rn CTE.
+        let result = run(
+            ParameterValue::String("diff".to_string()),
+            &aes,
+            &schema,
+            &[],
+            &InlineQuantileDialect,
+        )
+        .unwrap();
+        match result {
+            StatResult::Transformed { query, .. } => {
+                assert!(
+                    query.contains("LAST(") && query.contains("FIRST("),
+                    "expected native LAST/FIRST: {query}"
+                );
+                assert!(
+                    !query.contains("__ggsql_rn__"),
+                    "native dialect must not add ROW_NUMBER prep: {query}"
+                );
+            }
+            _ => panic!("expected Transformed"),
+        }
+    }
+
+    #[cfg(feature = "duckdb")]
+    #[test]
+    fn duckdb_first_skips_row_number_cte() {
+        use crate::reader::duckdb::DuckDbDialect;
+
+        let mut aes = Mappings::new();
+        aes.insert("pos1", col("__ggsql_aes_pos1__"));
+        aes.insert("pos2", col("__ggsql_aes_pos2__"));
+        let schema = schema_for(&[("__ggsql_aes_pos1__", false), ("__ggsql_aes_pos2__", false)]);
+        let result = run(
+            ParameterValue::String("first".to_string()),
+            &aes,
+            &schema,
+            &[],
+            &DuckDbDialect,
+        )
+        .unwrap();
+        match result {
+            StatResult::Transformed { query, .. } => {
+                assert!(
+                    query.contains("FIRST(\""),
+                    "expected native FIRST aggregate, got: {query}"
+                );
+                assert!(
+                    !query.contains("__ggsql_rn__"),
+                    "DuckDB has native FIRST, must not add ROW_NUMBER prep: {query}"
                 );
             }
             _ => panic!("expected Transformed"),

@@ -319,9 +319,10 @@ pub(crate) fn wrap_with_column_aliases(body_sql: &str, column_aliases: &[String]
 /// Default aggregate SQL emission, shared so dialects can opt into the standard
 /// portable forms while overriding selected functions.
 ///
-/// Returns `None` for names this default can't express portably (today: the
-/// `first` / `last` row-positional aggregates — backends that have a native
-/// equivalent override [`SqlDialect::sql_aggregate`]).
+/// `first` / `last` are expressed as `MAX(CASE WHEN __ggsql_rn__ = … THEN col END)`,
+/// which depends on the row-number columns the stat layer injects when any
+/// aggregate references them. Backends with a cheaper native equivalent
+/// (e.g. DuckDB's `FIRST`/`LAST`) override [`SqlDialect::sql_aggregate`].
 pub fn default_sql_aggregate(name: &str, qcol: &str) -> Option<String> {
     let s = match name {
         "count" => format!("COUNT({})", qcol),
@@ -338,6 +339,16 @@ pub fn default_sql_aggregate(name: &str, qcol: &str) -> Option<String> {
         "sdev" => format!("STDDEV_POP({})", qcol),
         "se" => format!("(STDDEV_POP({c}) / SQRT(COUNT({c})))", c = qcol),
         "var" => format!("VAR_POP({})", qcol),
+        "first" => format!("MAX(CASE WHEN \"__ggsql_rn__\" = 1 THEN {} END)", qcol),
+        "last" => format!(
+            "MAX(CASE WHEN \"__ggsql_rn__\" = \"__ggsql_max_rn__\" THEN {} END)",
+            qcol
+        ),
+        "diff" => format!(
+            "(MAX(CASE WHEN \"__ggsql_rn__\" = \"__ggsql_max_rn__\" THEN {c} END) \
+             - MAX(CASE WHEN \"__ggsql_rn__\" = 1 THEN {c} END))",
+            c = qcol
+        ),
         _ => return None,
     };
     Some(s)
