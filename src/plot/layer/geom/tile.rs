@@ -182,8 +182,13 @@ impl GeomTrait for Tile {
             schema
         };
 
-        let tile_result =
-            stat_tile(&working_query, schema_for_tile, aesthetics, group_by, parameters)?;
+        let tile_result = stat_tile(
+            &working_query,
+            schema_for_tile,
+            aesthetics,
+            group_by,
+            parameters,
+        )?;
 
         if exploded {
             if let StatResult::Transformed {
@@ -1067,7 +1072,10 @@ mod tests {
         match result {
             StatResult::Transformed { query, .. } => {
                 // Aggregate stage: GROUP BY pos1/pos2, AVG of fill into a stat column.
-                assert!(query.contains("GROUP BY"), "expected GROUP BY, got: {query}");
+                assert!(
+                    query.contains("GROUP BY"),
+                    "expected GROUP BY, got: {query}"
+                );
                 assert!(
                     query.contains("AVG(\"__ggsql_aes_fill__\")"),
                     "expected AVG over fill, got: {query}"
@@ -1141,7 +1149,10 @@ mod tests {
                 stat_columns,
                 ..
             } => {
-                assert!(query.contains("UNION ALL"), "expected UNION ALL, got: {query}");
+                assert!(
+                    query.contains("UNION ALL"),
+                    "expected UNION ALL, got: {query}"
+                );
                 let synth = naming::stat_column("aggregate");
                 assert!(
                     query.contains(&naming::quote_ident(&synth)),

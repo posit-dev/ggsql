@@ -45,8 +45,7 @@ pub const AGG_NAMES: &[&str] = &[
     "min", "max", "range", "mid", // Central tendency
     "mean", "geomean", "harmean", "rms", "median", // Spread (standalone)
     "sdev", "var", "iqr", // Percentiles
-    "p05", "p10", "p25", "p50", "p75", "p90",
-    "p95", // Positional (row order in the group)
+    "p05", "p10", "p25", "p50", "p75", "p90", "p95", // Positional (row order in the group)
     "first", "last", "diff",
 ];
 
@@ -1045,10 +1044,7 @@ fn build_aggregate_query(
         })
         .collect();
 
-    format!(
-        "{with_clause} {body}",
-        body = branches.join(" UNION ALL "),
-    )
+    format!("{with_clause} {body}", body = branches.join(" UNION ALL "),)
 }
 
 fn func_literal(s: &str) -> String {
@@ -1525,8 +1521,9 @@ mod tests {
         match result {
             StatResult::Transformed { query, .. } => {
                 assert!(
-                    query
-                        .contains("(MIN(\"__ggsql_aes_pos1__\") + MAX(\"__ggsql_aes_pos1__\")) / 2.0"),
+                    query.contains(
+                        "(MIN(\"__ggsql_aes_pos1__\") + MAX(\"__ggsql_aes_pos1__\")) / 2.0"
+                    ),
                     "{}",
                     query
                 );
@@ -1643,8 +1640,16 @@ mod tests {
         .unwrap();
         match result {
             StatResult::Transformed { query, .. } => {
-                assert!(query.contains("FIRST(\"__ggsql_aes_pos2min__\")"), "{}", query);
-                assert!(query.contains("LAST(\"__ggsql_aes_pos2max__\")"), "{}", query);
+                assert!(
+                    query.contains("FIRST(\"__ggsql_aes_pos2min__\")"),
+                    "{}",
+                    query
+                );
+                assert!(
+                    query.contains("LAST(\"__ggsql_aes_pos2max__\")"),
+                    "{}",
+                    query
+                );
             }
             _ => panic!("expected Transformed"),
         }
