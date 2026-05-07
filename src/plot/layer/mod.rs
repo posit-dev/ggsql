@@ -422,14 +422,33 @@ impl Layer {
             {
                 validate_parameter(param_name, value, &param.constraint)?;
             }
-            // Or the shared `aggregate` param for Identity-stat geoms
-            else if param_name == "aggregate" && self.geom.supports_aggregate() {
-                crate::plot::layer::geom::stat_aggregate::validate_aggregate_param(value)?;
-            }
-            // Otherwise it's a valid aesthetic setting (no constraint validation needed)
+            // Otherwise it's a valid aesthetic setting (no constraint validation needed).
+            //
+            // The shared `aggregate` parameter is intentionally not parsed here.
+            // The execute pipeline parses it once in `stat_aggregate::apply`
+            // (where the result is actually used), so doing a parse-then-discard
+            // here would be redundant. Standalone validation paths
+            // (`validate.rs::validate`, used by `ggsql validate`) call
+            // [`validate_aggregate_setting`] explicitly to surface malformed
+            // aggregate settings without going through execute.
         }
 
         Ok(())
+    }
+
+    /// Validate the `aggregate` SETTING in isolation. Used by the standalone
+    /// validation path (`ggsql validate`) where the error wouldn't otherwise
+    /// surface — execute paths catch the same error inside
+    /// `stat_aggregate::apply` once the value is actually used.
+    pub fn validate_aggregate_setting(&self) -> std::result::Result<(), String> {
+        if !self.geom.supports_aggregate() {
+            return Ok(());
+        }
+        let value = match self.parameters.get("aggregate") {
+            Some(v) => v,
+            None => return Ok(()),
+        };
+        crate::plot::layer::geom::stat_aggregate::validate_aggregate_param(value)
     }
 
     /// Update layer mappings to use prefixed aesthetic column names.
