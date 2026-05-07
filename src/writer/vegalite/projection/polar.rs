@@ -25,7 +25,7 @@ const POLAR_BAND_FRACTION: f64 = 0.9;
 /// both position channels.  In non-faceted specs the expression strings
 /// reference `width`/`height` signals; in faceted specs they are literal
 /// pixel values (VL signals don't resolve inside faceted inner specs).
-pub(in crate::writer) struct PolarContext {
+struct PolarContext {
     // Panel shape
     start: f64,
     end: f64,
@@ -50,7 +50,7 @@ pub(in crate::writer) struct PolarContext {
 }
 
 impl PolarContext {
-    pub(super) fn new(
+    fn new(
         project: Option<&Projection>,
         facet: Option<&crate::plot::Facet>,
         scales: &[Scale],
@@ -161,7 +161,19 @@ impl PolarContext {
 
 /// Polar projection — radius/theta coordinates for pie charts, rose plots, etc.
 pub(in crate::writer) struct PolarProjection {
-    pub(super) panel: PolarContext,
+    panel: PolarContext,
+}
+
+impl PolarProjection {
+    pub(super) fn new(
+        project: Option<&Projection>,
+        facet: Option<&crate::plot::Facet>,
+        scales: &[Scale],
+    ) -> Self {
+        Self {
+            panel: PolarContext::new(project, facet, scales),
+        }
+    }
 }
 
 impl ProjectionRenderer for PolarProjection {

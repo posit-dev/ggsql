@@ -15,8 +15,6 @@ use serde_json::{json, Value};
 use cartesian::CartesianProjection;
 use polar::PolarProjection;
 
-pub(in crate::writer) use polar::PolarContext;
-
 const ANGLE_TOLERANCE: f64 = 1.49011611938476e-08; // f64::EPSILON.sqrt()
 
 // =============================================================================
@@ -118,13 +116,10 @@ pub(super) fn get_projection_renderer(
     facet: Option<&crate::plot::Facet>,
     scales: &[Scale],
 ) -> Box<dyn ProjectionRenderer> {
-    let is_faceted = facet.is_some_and(|f| !f.get_variables().is_empty());
     match project.map(|p| p.coord.coord_kind()) {
-        Some(CoordKind::Polar) => Box::new(PolarProjection {
-            panel: PolarContext::new(project, facet, scales),
-        }),
+        Some(CoordKind::Polar) => Box::new(PolarProjection::new(project, facet, scales)),
         Some(CoordKind::Map) => todo!("map projection rendering"),
-        Some(CoordKind::Cartesian) | None => Box::new(CartesianProjection { is_faceted }),
+        Some(CoordKind::Cartesian) | None => Box::new(CartesianProjection::new(facet)),
     }
 }
 
@@ -226,7 +221,7 @@ mod tests {
 
     #[test]
     fn test_map_position_to_vegalite_cartesian() {
-        let renderer = CartesianProjection { is_faceted: false };
+        let renderer = CartesianProjection::new(None);
         assert_eq!(
             map_position_to_vegalite("pos1", &renderer),
             Some("x".to_string())
@@ -253,9 +248,7 @@ mod tests {
 
     #[test]
     fn test_map_position_to_vegalite_polar() {
-        let renderer = PolarProjection {
-            panel: PolarContext::new(None, None, &[]),
-        };
+        let renderer = PolarProjection::new(None, None, &[]);
         assert_eq!(
             map_position_to_vegalite("pos1", &renderer),
             Some("radius".to_string())
