@@ -80,8 +80,8 @@ impl GeomTrait for Bar {
         &["pos1", "pos2", "weight"]
     }
 
-    fn supports_aggregate(&self) -> bool {
-        true
+    fn aggregate_domain_aesthetics(&self) -> Option<&'static [&'static str]> {
+        Some(&[])
     }
 
     fn needs_stat_transform(&self, _aesthetics: &Mappings) -> bool {
@@ -108,7 +108,7 @@ impl GeomTrait for Bar {
                 parameters,
                 dialect,
                 aesthetic_ctx,
-                self.aggregate_domain_aesthetics(),
+                self.aggregate_domain_aesthetics().unwrap_or(&[]),
             );
         }
         stat_bar_count(query, schema, aesthetics, group_by)

@@ -40,8 +40,8 @@ impl GeomTrait for Arrow {
         PARAMS
     }
 
-    fn supports_aggregate(&self) -> bool {
-        true
+    fn aggregate_domain_aesthetics(&self) -> Option<&'static [&'static str]> {
+        Some(&[])
     }
 }
 

@@ -194,26 +194,28 @@ pub trait GeomTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
         false
     }
 
-    /// Whether this geom accepts the `aggregate` SETTING parameter.
+    /// Whether the Aggregate stat applies to this geom, and which aesthetics
+    /// stay as group keys when it does.
     ///
-    /// Geoms that opt in gain a generic Aggregate stat that groups by discrete
-    /// mappings + PARTITION BY and emits one row per group, replacing every
-    /// numeric mapping (positional and material) with its aggregated value.
-    /// Statistical geoms (histogram, density, smooth, boxplot, violin) leave
-    /// this `false` to keep their bespoke stats.
-    fn supports_aggregate(&self) -> bool {
-        false
+    /// - `None` — geom doesn't accept the `aggregate` SETTING. Used by the
+    ///   statistical geoms (`histogram`, `density`, `smooth`, `boxplot`,
+    ///   `violin`) that have their own bespoke stats.
+    /// - `Some(&[])` — geom opts in; the stat groups by discrete mappings +
+    ///   `PARTITION BY` only. Most non-statistical geoms.
+    /// - `Some(&[<aes>, …])` — geom opts in *and* pins the listed aesthetics
+    ///   as group keys regardless of their column's continuity. Used by
+    ///   `line`/`area`/`ribbon` (domain axis) and `tile` (every spatial slot).
+    ///
+    /// `supports_aggregate()` is derived from this; geoms only override one
+    /// method to opt in.
+    fn aggregate_domain_aesthetics(&self) -> Option<&'static [&'static str]> {
+        None
     }
 
-    /// Aesthetics that the Aggregate stat must keep as group keys rather than
-    /// aggregating, even if their bound column is continuous. This is for
-    /// geoms like line/area/ribbon where one axis is the *domain* — the
-    /// natural group identity of each row — and the user expects "summarise
-    /// the other axis per domain value" without writing an explicit target.
-    ///
-    /// Default empty; line/area/ribbon override to `&["pos1"]`.
-    fn aggregate_domain_aesthetics(&self) -> &'static [&'static str] {
-        &[]
+    /// Whether this geom accepts the `aggregate` SETTING parameter.
+    /// Derived from `aggregate_domain_aesthetics`; do not override.
+    fn supports_aggregate(&self) -> bool {
+        self.aggregate_domain_aesthetics().is_some()
     }
 
     /// Apply statistical transformation to the layer query.
@@ -233,7 +235,10 @@ pub trait GeomTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
         dialect: &dyn SqlDialect,
         aesthetic_ctx: &AestheticContext,
     ) -> Result<StatResult> {
-        if self.supports_aggregate() && has_aggregate_param(parameters) {
+        if let (Some(domain), true) = (
+            self.aggregate_domain_aesthetics(),
+            has_aggregate_param(parameters),
+        ) {
             return stat_aggregate::apply(
                 query,
                 schema,
@@ -242,7 +247,7 @@ pub trait GeomTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
                 parameters,
                 dialect,
                 aesthetic_ctx,
-                self.aggregate_domain_aesthetics(),
+                domain,
             );
         }
         Ok(StatResult::Identity)
@@ -513,8 +518,9 @@ impl Geom {
     }
 
     /// Aesthetics the Aggregate stat must keep as group keys rather than
-    /// aggregating, even if their bound column is continuous.
-    pub fn aggregate_domain_aesthetics(&self) -> &'static [&'static str] {
+    /// aggregating, even if their bound column is continuous. `None` when
+    /// the geom doesn't accept the `aggregate` setting.
+    pub fn aggregate_domain_aesthetics(&self) -> Option<&'static [&'static str]> {
         self.0.aggregate_domain_aesthetics()
     }
 

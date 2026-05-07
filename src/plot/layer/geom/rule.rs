@@ -25,8 +25,8 @@ impl GeomTrait for Rule {
         }
     }
 
-    fn supports_aggregate(&self) -> bool {
-        true
+    fn aggregate_domain_aesthetics(&self) -> Option<&'static [&'static str]> {
+        Some(&[])
     }
 
     fn validate_aesthetics(&self, mappings: &crate::Mappings) -> std::result::Result<(), String> {

@@ -291,7 +291,7 @@ pub fn apply_pre_stat_transform(
         &layer.mappings,
         aesthetic_schema,
         aesthetic_ctx,
-        layer.geom.aggregate_domain_aesthetics(),
+        layer.geom.aggregate_domain_aesthetics().unwrap_or(&[]),
     );
 
     // Check layer mappings for aesthetics with scales that need pre-stat transformation

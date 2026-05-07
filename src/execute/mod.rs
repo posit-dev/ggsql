@@ -734,7 +734,7 @@ fn add_discrete_columns_to_partition_by(
                 &layer.mappings,
                 schema,
                 aesthetic_ctx,
-                layer.geom.aggregate_domain_aesthetics(),
+                layer.geom.aggregate_domain_aesthetics().unwrap_or(&[]),
             )
             .map(|(t, _)| t)
             .unwrap_or_default();

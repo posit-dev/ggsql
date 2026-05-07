@@ -99,18 +99,14 @@ impl GeomTrait for Tile {
         true
     }
 
-    fn supports_aggregate(&self) -> bool {
-        true
-    }
-
     /// Every spatial slot is pinned as a group key — the rectangle's position
     /// and size *define* the group, they are never the thing being summarised.
     /// Material aesthetics (fill, stroke, opacity, …) pass through to the
     /// aggregate as normal.
-    fn aggregate_domain_aesthetics(&self) -> &'static [&'static str] {
-        &[
+    fn aggregate_domain_aesthetics(&self) -> Option<&'static [&'static str]> {
+        Some(&[
             "pos1", "pos1min", "pos1max", "width", "pos2", "pos2min", "pos2max", "height",
-        ]
+        ])
     }
 
     fn apply_stat_transform(
@@ -140,7 +136,7 @@ impl GeomTrait for Tile {
                 parameters,
                 dialect,
                 aesthetic_ctx,
-                self.aggregate_domain_aesthetics(),
+                self.aggregate_domain_aesthetics().unwrap_or(&[]),
             )?;
             match agg {
                 StatResult::Transformed {

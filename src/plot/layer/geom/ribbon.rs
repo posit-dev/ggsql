@@ -40,12 +40,8 @@ impl GeomTrait for Ribbon {
         PARAMS
     }
 
-    fn supports_aggregate(&self) -> bool {
-        true
-    }
-
-    fn aggregate_domain_aesthetics(&self) -> &'static [&'static str] {
-        &["pos1"]
+    fn aggregate_domain_aesthetics(&self) -> Option<&'static [&'static str]> {
+        Some(&["pos1"])
     }
 
     fn needs_stat_transform(&self, _aesthetics: &Mappings) -> bool {
@@ -72,7 +68,7 @@ impl GeomTrait for Ribbon {
                 parameters,
                 dialect,
                 aesthetic_ctx,
-                self.aggregate_domain_aesthetics(),
+                self.aggregate_domain_aesthetics().unwrap_or(&[]),
             )?
         } else {
             StatResult::Identity
