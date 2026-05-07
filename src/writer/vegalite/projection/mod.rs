@@ -43,6 +43,21 @@ pub(super) trait ProjectionRenderer {
     /// Returns `(pos1_offset, pos2_offset)`, e.g. `("xOffset", "yOffset")`.
     fn offset_channels(&self) -> (&'static str, &'static str);
 
+    /// Map internal position aesthetic to Vega-Lite channel name.
+    ///
+    /// Returns `Some(channel_name)` for internal position aesthetics (pos1, pos2, etc.),
+    /// or `None` for material aesthetics.
+    fn map_position(&self, aesthetic: &str) -> Option<String> {
+        let (primary, secondary) = self.position_channels();
+        match aesthetic {
+            "pos1" | "pos1min" => Some(primary.to_string()),
+            "pos2" | "pos2min" => Some(secondary.to_string()),
+            "pos1end" | "pos1max" => Some(format!("{}2", primary)),
+            "pos2end" | "pos2max" => Some(format!("{}2", secondary)),
+            _ => None,
+        }
+    }
+
     /// Panel dimensions as VL values (`"container"` or explicit pixels).
     ///
     /// Returns `None` for faceted cartesian (VL handles sizing).
@@ -123,28 +138,6 @@ pub(super) fn get_projection_renderer(
     }
 }
 
-// =============================================================================
-// Channel mapping helpers (used by encoding.rs via the trait)
-// =============================================================================
-
-/// Map internal position aesthetic to Vega-Lite channel name using the renderer.
-///
-/// Returns `Some(channel_name)` for internal position aesthetics (pos1, pos2, etc.),
-/// or `None` for material aesthetics.
-pub(super) fn map_position_to_vegalite(
-    aesthetic: &str,
-    renderer: &dyn ProjectionRenderer,
-) -> Option<String> {
-    let (primary, secondary) = renderer.position_channels();
-
-    match aesthetic {
-        "pos1" | "pos1min" => Some(primary.to_string()),
-        "pos2" | "pos2min" => Some(secondary.to_string()),
-        "pos1end" | "pos1max" => Some(format!("{}2", primary)),
-        "pos2end" | "pos2max" => Some(format!("{}2", secondary)),
-        _ => None,
-    }
-}
 
 // =============================================================================
 // AxisInfo — reusable across projection types
@@ -220,25 +213,13 @@ mod tests {
     use crate::plot::Projection;
 
     #[test]
-    fn test_map_position_to_vegalite_cartesian() {
+    fn test_map_position_cartesian() {
         let renderer = CartesianProjection::new(None);
-        assert_eq!(
-            map_position_to_vegalite("pos1", &renderer),
-            Some("x".to_string())
-        );
-        assert_eq!(
-            map_position_to_vegalite("pos2", &renderer),
-            Some("y".to_string())
-        );
-        assert_eq!(
-            map_position_to_vegalite("pos1end", &renderer),
-            Some("x2".to_string())
-        );
-        assert_eq!(
-            map_position_to_vegalite("pos2end", &renderer),
-            Some("y2".to_string())
-        );
-        assert_eq!(map_position_to_vegalite("color", &renderer), None);
+        assert_eq!(renderer.map_position("pos1"), Some("x".to_string()));
+        assert_eq!(renderer.map_position("pos2"), Some("y".to_string()));
+        assert_eq!(renderer.map_position("pos1end"), Some("x2".to_string()));
+        assert_eq!(renderer.map_position("pos2end"), Some("y2".to_string()));
+        assert_eq!(renderer.map_position("color"), None);
         assert_eq!(renderer.offset_channels(), ("xOffset", "yOffset"));
         assert_eq!(
             renderer.panel_size(),
@@ -247,24 +228,12 @@ mod tests {
     }
 
     #[test]
-    fn test_map_position_to_vegalite_polar() {
+    fn test_map_position_polar() {
         let renderer = PolarProjection::new(None, None, &[]);
-        assert_eq!(
-            map_position_to_vegalite("pos1", &renderer),
-            Some("radius".to_string())
-        );
-        assert_eq!(
-            map_position_to_vegalite("pos2", &renderer),
-            Some("theta".to_string())
-        );
-        assert_eq!(
-            map_position_to_vegalite("pos1end", &renderer),
-            Some("radius2".to_string())
-        );
-        assert_eq!(
-            map_position_to_vegalite("pos2end", &renderer),
-            Some("theta2".to_string())
-        );
+        assert_eq!(renderer.map_position("pos1"), Some("radius".to_string()));
+        assert_eq!(renderer.map_position("pos2"), Some("theta".to_string()));
+        assert_eq!(renderer.map_position("pos1end"), Some("radius2".to_string()));
+        assert_eq!(renderer.map_position("pos2end"), Some("theta2".to_string()));
         assert_eq!(renderer.offset_channels(), ("radiusOffset", "thetaOffset"));
         assert_eq!(
             renderer.panel_size(),
