@@ -793,25 +793,24 @@ pub fn apply(
         }
     }
 
-    // The *only* time we have nothing to aggregate but should still transform
-    // is when defaults exist but every numeric mapping was dropped — we still
-    // emit a GROUP BY to honour the grouping. If there are no aggregations and
-    // no kept columns and no group_by, return Identity.
-    if aggregated.is_empty() && kept_cols.is_empty() && group_by.is_empty() {
-        for d in &dropped {
-            eprintln!(
-                "Warning: aggregate dropped numeric mapping for aesthetic '{}' (no applicable default and no targeted function)",
-                aesthetic_ctx.map_internal_to_user(d)
-            );
-        }
-        return Ok(StatResult::Identity);
+    for d in &dropped {
+        let user_aes = aesthetic_ctx.map_internal_to_user(d);
+        eprintln!(
+            "Warning: aggregate dropped numeric mapping for aesthetic '{}' \
+             (no applicable default and no targeted function). \
+             Suggestion: add an unprefixed default like `aggregate => 'mean'` \
+             to apply one function to every numeric mapping, or target this \
+             aesthetic with `'{0}:<func>'`.",
+            user_aes,
+        );
     }
 
-    for d in &dropped {
-        eprintln!(
-            "Warning: aggregate dropped numeric mapping for aesthetic '{}' (no applicable default and no targeted function)",
-            aesthetic_ctx.map_internal_to_user(d)
-        );
+    // No aggregate functions to apply → the stat has nothing to do. Whether
+    // the layer has group keys or not is irrelevant: emitting a `SELECT keys
+    // FROM src GROUP BY keys` query would be a distinct-rows transform the
+    // user didn't ask for.
+    if aggregated.is_empty() {
+        return Ok(StatResult::Identity);
     }
 
     // Group columns: PARTITION BY + discrete column-mappings, deduped.
