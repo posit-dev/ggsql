@@ -60,6 +60,7 @@ module.exports = grammar({
       $.from_clause,
       repeat(choice(
         $.window_function,
+        $.case_expression,
         $.cast_expression,
         $.function_call,
         $.non_from_sql_keyword,
@@ -80,6 +81,7 @@ module.exports = grammar({
     select_body: $ => prec.left(repeat1(choice(
       $.from_clause,
       $.window_function,  // Window functions like ROW_NUMBER() OVER (...)
+      $.case_expression,  // CASE WHEN ... THEN ... END
       $.cast_expression,  // CAST(expr AS type), TRY_CAST(expr AS type)
       $.function_call,    // Regular function calls like COUNT(), SUM()
       $.sql_keyword,
@@ -210,6 +212,7 @@ module.exports = grammar({
     // Token-by-token fallback for any other subquery content
     subquery_body: $ => repeat1(choice(
       $.window_function,
+      $.case_expression,
       $.cast_expression,
       $.function_call,
       $.sql_keyword,
@@ -220,6 +223,41 @@ module.exports = grammar({
       ',', '*', '.', '=', '<', '>', '!', '::',
       token(/[^\s;(),'\"]+/)
     )),
+
+    // CASE expression: CASE ... END bracketed as a structural unit so that END
+    // is consumed before the outer function_call's closing ')' can grab it.
+    case_expression: $ => prec(3, seq(
+      caseInsensitive('CASE'),
+      repeat($.case_body_token),
+      caseInsensitive('END')
+    )),
+
+    case_body_token: $ => choice(
+      caseInsensitive('WHEN'),
+      caseInsensitive('THEN'),
+      caseInsensitive('ELSE'),
+      $.string,
+      $.number,
+      $.case_expression,
+      $.cast_expression,
+      $.function_call,
+      $.subquery, // also handles IN-lists like ('a', 'b')
+      token('='), token('!='), token('<>'), token('<='), token('>='),
+      token('<'), token('>'),
+      token('+'), token('-'), token('*'), token('/'), token('%'), token('||'), token('::'),
+      caseInsensitive('AND'),
+      caseInsensitive('OR'),
+      caseInsensitive('NOT'),
+      caseInsensitive('IN'),
+      caseInsensitive('IS'),
+      caseInsensitive('NULL'),
+      caseInsensitive('LIKE'),
+      caseInsensitive('ILIKE'),
+      caseInsensitive('BETWEEN'),
+      token(','),
+      token('.'),
+      $.identifier,
+    ),
 
     // CAST/TRY_CAST expression: CAST(expr AS type) or TRY_CAST(expr AS type)
     // Higher precedence than function_call to win over treating CAST as a regular function
@@ -359,6 +397,8 @@ module.exports = grammar({
       $.number,
       $.string,
       '*',
+      // CASE expression
+      $.case_expression,
       // CAST/TRY_CAST expression
       $.cast_expression,
       // Nested function call

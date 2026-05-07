@@ -3224,3 +3224,375 @@ SELECT x, COUNT(DISTINCT y) OVER (PARTITION BY x) AS n FROM data VISUALISE n AS 
     (viz_clause
       (draw_clause
         (geom_type)))))
+
+
+================================================================================
+CASE expression inside aggregate function
+================================================================================
+
+SELECT COUNT(CASE WHEN x = 1 THEN 1 END) AS n FROM t VISUALISE n AS y DRAW bar
+
+--------------------------------------------------------------------------------
+
+(query
+  (sql_portion
+    (sql_statement
+      (select_statement
+        (select_body
+          (function_call
+            (identifier
+              (bare_identifier))
+            (function_args
+              (function_arg
+                (position_arg
+                  (case_expression
+                    (case_body_token)
+                    (case_body_token
+                      (identifier
+                        (bare_identifier)))
+                    (case_body_token)
+                    (case_body_token
+                      (number))
+                    (case_body_token)
+                    (case_body_token
+                      (number)))))))
+          (identifier
+            (bare_identifier))
+          (identifier
+            (bare_identifier))
+          (from_clause
+            (table_ref
+              table: (qualified_name
+                (identifier
+                  (bare_identifier)))))))))
+  (visualise_statement
+    (visualise_keyword)
+    (global_mapping
+      (mapping_list
+        (mapping_element
+          (explicit_mapping
+            value: (mapping_value
+              (column_reference
+                (identifier
+                  (bare_identifier))))
+            name: (aesthetic_name)))))
+    (viz_clause
+      (draw_clause
+        (geom_type)))))
+
+================================================================================
+CASE expression with ELSE inside aggregate function
+================================================================================
+
+SELECT SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) AS n FROM t VISUALISE n AS y DRAW bar
+
+--------------------------------------------------------------------------------
+
+(query
+  (sql_portion
+    (sql_statement
+      (select_statement
+        (select_body
+          (function_call
+            (identifier
+              (bare_identifier))
+            (function_args
+              (function_arg
+                (position_arg
+                  (case_expression
+                    (case_body_token)
+                    (case_body_token
+                      (identifier
+                        (bare_identifier)))
+                    (case_body_token)
+                    (case_body_token
+                      (string))
+                    (case_body_token)
+                    (case_body_token
+                      (number))
+                    (case_body_token)
+                    (case_body_token
+                      (number)))))))
+          (identifier
+            (bare_identifier))
+          (identifier
+            (bare_identifier))
+          (from_clause
+            (table_ref
+              table: (qualified_name
+                (identifier
+                  (bare_identifier)))))))))
+  (visualise_statement
+    (visualise_keyword)
+    (global_mapping
+      (mapping_list
+        (mapping_element
+          (explicit_mapping
+            value: (mapping_value
+              (column_reference
+                (identifier
+                  (bare_identifier))))
+            name: (aesthetic_name)))))
+    (viz_clause
+      (draw_clause
+        (geom_type)))))
+
+================================================================================
+CASE expression in select list (not inside function)
+================================================================================
+
+SELECT CASE WHEN x = 1 THEN 'a' ELSE 'b' END AS lbl FROM t VISUALISE lbl AS x DRAW bar
+
+--------------------------------------------------------------------------------
+
+(query
+  (sql_portion
+    (sql_statement
+      (select_statement
+        (select_body
+          (case_expression
+            (case_body_token)
+            (case_body_token
+              (identifier
+                (bare_identifier)))
+            (case_body_token)
+            (case_body_token
+              (number))
+            (case_body_token)
+            (case_body_token
+              (string))
+            (case_body_token)
+            (case_body_token
+              (string)))
+          (identifier
+            (bare_identifier))
+          (identifier
+            (bare_identifier))
+          (from_clause
+            (table_ref
+              table: (qualified_name
+                (identifier
+                  (bare_identifier)))))))))
+  (visualise_statement
+    (visualise_keyword)
+    (global_mapping
+      (mapping_list
+        (mapping_element
+          (explicit_mapping
+            value: (mapping_value
+              (column_reference
+                (identifier
+                  (bare_identifier))))
+            name: (aesthetic_name)))))
+    (viz_clause
+      (draw_clause
+        (geom_type)))))
+
+================================================================================
+Nested CASE expression inside function
+================================================================================
+
+SELECT COUNT(CASE WHEN CASE WHEN y = 1 THEN 'a' END = 'a' THEN 1 END) AS n FROM t VISUALISE n AS y DRAW bar
+
+--------------------------------------------------------------------------------
+
+(query
+  (sql_portion
+    (sql_statement
+      (select_statement
+        (select_body
+          (function_call
+            (identifier
+              (bare_identifier))
+            (function_args
+              (function_arg
+                (position_arg
+                  (case_expression
+                    (case_body_token)
+                    (case_body_token
+                      (case_expression
+                        (case_body_token)
+                        (case_body_token
+                          (identifier
+                            (bare_identifier)))
+                        (case_body_token)
+                        (case_body_token
+                          (number))
+                        (case_body_token)
+                        (case_body_token
+                          (string))))
+                    (case_body_token)
+                    (case_body_token
+                      (string))
+                    (case_body_token)
+                    (case_body_token
+                      (number)))))))
+          (identifier
+            (bare_identifier))
+          (identifier
+            (bare_identifier))
+          (from_clause
+            (table_ref
+              table: (qualified_name
+                (identifier
+                  (bare_identifier)))))))))
+  (visualise_statement
+    (visualise_keyword)
+    (global_mapping
+      (mapping_list
+        (mapping_element
+          (explicit_mapping
+            value: (mapping_value
+              (column_reference
+                (identifier
+                  (bare_identifier))))
+            name: (aesthetic_name)))))
+    (viz_clause
+      (draw_clause
+        (geom_type)))))
+
+================================================================================
+CASE expression with IN list inside aggregate
+================================================================================
+
+SELECT COUNT(CASE WHEN status IN ('Charged Off', 'Default') THEN 1 END) AS n FROM t VISUALISE n AS y DRAW bar
+
+--------------------------------------------------------------------------------
+
+(query
+  (sql_portion
+    (sql_statement
+      (select_statement
+        (select_body
+          (function_call
+            (identifier
+              (bare_identifier))
+            (function_args
+              (function_arg
+                (position_arg
+                  (case_expression
+                    (case_body_token)
+                    (case_body_token
+                      (identifier
+                        (bare_identifier)))
+                    (case_body_token)
+                    (case_body_token
+                      (subquery
+                        (subquery_body
+                          (string)
+                          (string))))
+                    (case_body_token)
+                    (case_body_token
+                      (number)))))))
+          (identifier
+            (bare_identifier))
+          (identifier
+            (bare_identifier))
+          (from_clause
+            (table_ref
+              table: (qualified_name
+                (identifier
+                  (bare_identifier)))))))))
+  (visualise_statement
+    (visualise_keyword)
+    (global_mapping
+      (mapping_list
+        (mapping_element
+          (explicit_mapping
+            value: (mapping_value
+              (column_reference
+                (identifier
+                  (bare_identifier))))
+            name: (aesthetic_name)))))
+    (viz_clause
+      (draw_clause
+        (geom_type)))))
+
+================================================================================
+CASE inside ROUND inside aggregate (real-world pattern)
+================================================================================
+
+SELECT grade, ROUND(COUNT(CASE WHEN status = 'Default' THEN 1 END) * 100.0 / COUNT(*), 2) AS rate FROM t GROUP BY grade VISUALISE grade AS x, rate AS y DRAW bar
+
+--------------------------------------------------------------------------------
+
+(query
+  (sql_portion
+    (sql_statement
+      (select_statement
+        (select_body
+          (identifier
+            (bare_identifier))
+          (function_call
+            (identifier
+              (bare_identifier))
+            (function_args
+              (function_arg
+                (position_arg
+                  (position_arg
+                    (position_arg
+                      (function_call
+                        (identifier
+                          (bare_identifier))
+                        (function_args
+                          (function_arg
+                            (position_arg
+                              (case_expression
+                                (case_body_token)
+                                (case_body_token
+                                  (identifier
+                                    (bare_identifier)))
+                                (case_body_token)
+                                (case_body_token
+                                  (string))
+                                (case_body_token)
+                                (case_body_token
+                                  (number))))))))
+                    (position_arg
+                      (number)))
+                  (position_arg
+                    (function_call
+                      (identifier
+                        (bare_identifier))
+                      (function_args
+                        (function_arg
+                          (position_arg)))))))
+              (function_arg
+                (position_arg
+                  (number)))))
+          (identifier
+            (bare_identifier))
+          (identifier
+            (bare_identifier))
+          (from_clause
+            (table_ref
+              table: (qualified_name
+                (identifier
+                  (bare_identifier)))))
+          (sql_keyword
+            (non_from_sql_keyword))
+          (sql_keyword
+            (non_from_sql_keyword))
+          (identifier
+            (bare_identifier))))))
+  (visualise_statement
+    (visualise_keyword)
+    (global_mapping
+      (mapping_list
+        (mapping_element
+          (explicit_mapping
+            value: (mapping_value
+              (column_reference
+                (identifier
+                  (bare_identifier))))
+            name: (aesthetic_name)))
+        (mapping_element
+          (explicit_mapping
+            value: (mapping_value
+              (column_reference
+                (identifier
+                  (bare_identifier))))
+            name: (aesthetic_name)))))
+    (viz_clause
+      (draw_clause
+        (geom_type)))))
