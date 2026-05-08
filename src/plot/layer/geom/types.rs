@@ -256,11 +256,7 @@ pub fn wrap_with_dummy_axis(query: &str, axis: &str) -> String {
 /// into a `Transformed` over the original input) and appends `axis` to
 /// both `stat_columns` and `dummy_columns` so `execute/layer.rs` flips
 /// `is_dummy: true` on the resulting aesthetic.
-pub fn wrap_stat_with_dummy_axis(
-    input_query: &str,
-    result: StatResult,
-    axis: &str,
-) -> StatResult {
+pub fn wrap_stat_with_dummy_axis(input_query: &str, result: StatResult, axis: &str) -> StatResult {
     match result {
         StatResult::Identity => StatResult::Transformed {
             query: wrap_with_dummy_axis(input_query, axis),
@@ -307,12 +303,13 @@ pub fn axis_family_has_mapping(aesthetics: &Mappings, axis: &str) -> bool {
     let Some((target_slot, _)) = parse_position(axis) else {
         return false;
     };
-    aesthetics.aesthetics.iter().any(|(name, value)| {
-        match parse_position(name) {
+    aesthetics
+        .aesthetics
+        .iter()
+        .any(|(name, value)| match parse_position(name) {
             Some((slot, _)) => slot == target_slot && value.column_name().is_some(),
             None => false,
-        }
-    })
+        })
 }
 
 /// Helper to extract column name from aesthetic value
@@ -499,10 +496,7 @@ mod tests {
                 assert!(query.contains("__ggsql_stat_dummy"));
                 assert!(query.contains("__ggsql_stat_pos1"));
                 assert!(query.contains("SELECT 1 AS x"));
-                assert_eq!(
-                    stat_columns,
-                    vec!["count".to_string(), "pos1".to_string()]
-                );
+                assert_eq!(stat_columns, vec!["count".to_string(), "pos1".to_string()]);
                 assert_eq!(dummy_columns, vec!["pos1".to_string()]);
                 assert_eq!(consumed_aesthetics, vec!["weight".to_string()]);
             }

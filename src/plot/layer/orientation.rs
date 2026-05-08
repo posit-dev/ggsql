@@ -166,11 +166,10 @@ fn detect_from_scales(
     if has_pos1_mapping || has_pos2_mapping {
         let aes = Geom::from_type(*geom).aesthetics();
         let pos1_optional = !aes.is_required("pos1");
-        let pos2_required = aes.is_required("pos2")
-            || aes.is_required("pos2min")
-            || aes.is_required("pos2max");
+        let pos2_required =
+            aes.is_required("pos2") || aes.is_required("pos2min") || aes.is_required("pos2max");
         let dummy_axis_geom = pos1_optional && pos2_required;
-        if has_pos2 && !has_pos1 && !(dummy_axis_geom && !has_pos1_mapping) {
+        if has_pos2 && !has_pos1 && (!dummy_axis_geom || has_pos1_mapping) {
             return TRANSPOSED;
         }
         if has_pos1 && !has_pos2 {

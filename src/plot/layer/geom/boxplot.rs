@@ -156,8 +156,7 @@ fn stat_boxplot(
     }
 
     // Query for boxplot summary statistics
-    let summary =
-        boxplot_sql_compute_summary(&working_query, &groups, &value_col, coef, dialect);
+    let summary = boxplot_sql_compute_summary(&working_query, &groups, &value_col, coef, dialect);
     let stats_query =
         boxplot_sql_append_outliers(&summary, &groups, &value_col, &working_query, outliers);
 
