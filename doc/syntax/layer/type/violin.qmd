@@ -118,3 +118,15 @@ VISUALISE Temp AS x, Month AS y FROM ggsql:airquality
 DRAW violin SETTING width => 4, side => 'top'
 SCALE ORDINAL y
 ```
+
+The same facilities can be used to create violins where each side encode different subsets
+
+```{ggsql}
+VISUALISE body_mass AS y, species AS x, sex AS fill FROM ggsql:penguins
+DRAW violin
+  SETTING side => 'left'
+  FILTER sex = 'male'
+DRAW violin
+  SETTING side => 'right'
+  FILTER sex = 'female'
+```
