@@ -2105,7 +2105,7 @@ impl BoxplotRenderer {
         } else {
             (pos1_offset.as_str(), naming::aesthetic_column("pos1offset"))
         };
-        let combined_offset_col = format!("__ggsql_box_side_offset__");
+        let combined_offset_col = "__ggsql_box_side_offset__".to_string();
 
         // Helper that, when half_side is true, adds a calculate transform
         // to combine the dodge offset (if any) with the side shift, then
