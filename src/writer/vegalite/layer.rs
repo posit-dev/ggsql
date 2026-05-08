@@ -3967,7 +3967,10 @@ mod tests {
             );
             // Box width is halved.
             let bw = b["mark"]["width"]["expr"].as_str().unwrap_or("");
-            assert!(bw.contains("/ 2"), "side={s} expected halved width, got {bw}");
+            assert!(
+                bw.contains("/ 2"),
+                "side={s} expected halved width, got {bw}"
+            );
             // xOffset encoding points at the combined column.
             assert_eq!(
                 b["encoding"]["xOffset"]["field"],
@@ -3981,10 +3984,10 @@ mod tests {
             assert!(
                 low.get("transform")
                     .and_then(|t| t.as_array())
-                    .map(|arr| arr.iter().all(|tr| tr
-                        .get("as")
-                        .and_then(|s| s.as_str())
-                        != Some("__ggsql_box_side_offset__")))
+                    .map(
+                        |arr| arr.iter().all(|tr| tr.get("as").and_then(|s| s.as_str())
+                            != Some("__ggsql_box_side_offset__"))
+                    )
                     .unwrap_or(true),
                 "side={s} lower whisker should not have side-shift transform"
             );
