@@ -23,7 +23,7 @@
 //! - For two-axis geoms (bar, boxplot): if pos1 is continuous and pos2 is discrete → "transposed"
 //! - For single-axis geoms (histogram, density): if pos2 has a scale but pos1 doesn't → "transposed"
 
-use super::geom::GeomType;
+use super::geom::{Geom, GeomType};
 use super::Layer;
 use crate::plot::aesthetic::{is_position_aesthetic, AestheticContext};
 use crate::plot::scale::ScaleTypeKind;
@@ -125,7 +125,7 @@ pub fn geom_has_implicit_orientation(geom: &GeomType) -> bool {
 /// 4. **Default**: Primary
 fn detect_from_scales(
     scales: &[Scale],
-    _geom: &GeomType,
+    geom: &GeomType,
     mappings: &Mappings,
     remappings: &Mappings,
 ) -> &'static str {
@@ -152,12 +152,25 @@ fn detect_from_scales(
     let has_pos1 = pos1_scale.is_some();
     let has_pos2 = pos2_scale.is_some();
 
-    // Rule 1: Single scale present - that axis is primary
+    // Rule 1: Single scale present - that axis is primary.
     // Only apply when there are explicit position mappings; otherwise the user
     // is just customizing a scale (e.g., SCALE y SETTING expand) without intending
     // to change orientation. The geom's default_remappings will define orientation.
+    //
+    // For geoms with optional pos1 *and* a required pos2-side aesthetic
+    // (boxplot/violin/range): mapping only the value axis means "single
+    // distribution / interval", not "horizontal orientation". Leave the layer
+    // aligned and let the stat synthesise the dummy categorical axis. Bar
+    // (whose pos1 *and* pos2 are both optional) keeps its historical
+    // behaviour of transposing when only pos2 is mapped.
     if has_pos1_mapping || has_pos2_mapping {
-        if has_pos2 && !has_pos1 {
+        let aes = Geom::from_type(*geom).aesthetics();
+        let pos1_optional = !aes.is_required("pos1");
+        let pos2_required = aes.is_required("pos2")
+            || aes.is_required("pos2min")
+            || aes.is_required("pos2max");
+        let dummy_axis_geom = pos1_optional && pos2_required;
+        if has_pos2 && !has_pos1 && !(dummy_axis_geom && !has_pos1_mapping) {
             return TRANSPOSED;
         }
         if has_pos1 && !has_pos2 {

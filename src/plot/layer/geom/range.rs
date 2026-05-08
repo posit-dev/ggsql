@@ -18,7 +18,10 @@ impl GeomTrait for Range {
     fn aesthetics(&self) -> DefaultAesthetics {
         DefaultAesthetics {
             defaults: &[
-                ("pos1", DefaultAestheticValue::Required),
+                // pos1 is optional - if no aesthetic in the pos1 family is
+                // mapped, the default `apply_stat_transform` synthesises a
+                // dummy categorical axis and the writer hides it.
+                ("pos1", DefaultAestheticValue::Null),
                 ("pos2min", DefaultAestheticValue::Required),
                 ("pos2max", DefaultAestheticValue::Required),
                 ("stroke", DefaultAestheticValue::String("black")),
@@ -27,6 +30,16 @@ impl GeomTrait for Range {
                 ("linetype", DefaultAestheticValue::String("solid")),
             ],
         }
+    }
+
+    fn default_remappings(&self) -> DefaultAesthetics {
+        DefaultAesthetics {
+            defaults: &[("pos1", DefaultAestheticValue::Column("pos1"))],
+        }
+    }
+
+    fn valid_stat_columns(&self) -> &'static [&'static str] {
+        &["pos1"]
     }
 
     fn default_params(&self) -> &'static [ParamDefinition] {

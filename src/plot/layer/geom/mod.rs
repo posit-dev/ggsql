@@ -20,6 +20,7 @@
 //! assert!(point.aesthetics().is_required("pos1"));
 //! ```
 
+use crate::plot::types::DefaultAestheticValue;
 use crate::{DataFrame, Mappings, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -193,11 +194,6 @@ pub trait GeomTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
         &[]
     }
 
-    /// Check if this geom requires a statistical transformation
-    fn needs_stat_transform(&self, _aesthetics: &Mappings) -> bool {
-        false
-    }
-
     /// Whether the Aggregate stat applies to this geom, and which aesthetics
     /// stay as group keys when it does.
     ///
@@ -224,9 +220,16 @@ pub trait GeomTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
 
     /// Apply statistical transformation to the layer query.
     ///
-    /// The default implementation dispatches to the Aggregate stat when
-    /// `supports_aggregate()` is true and the `aggregate` parameter is set;
-    /// otherwise returns identity (no transformation).
+    /// The default implementation:
+    /// 1. Dispatches to the Aggregate stat when `supports_aggregate()` is
+    ///    true and the `aggregate` parameter is set.
+    /// 2. For each position axis (`pos1`, `pos2`) declared as `Null` in
+    ///    `aesthetics()`, post-wraps the result with a dummy categorical
+    ///    column when *no* aesthetic in the axis's family (e.g. `pos1`,
+    ///    `pos1min`, `pos1max`, …) is mapped. The writer then suppresses
+    ///    the (otherwise one-tick) axis. Geoms whose bespoke stat already
+    ///    synthesises positions (e.g. `bar`, `boxplot`, `violin`,
+    ///    `histogram`) override `apply_stat_transform` and are unaffected.
     #[allow(clippy::too_many_arguments)]
     fn apply_stat_transform(
         &self,
@@ -239,11 +242,11 @@ pub trait GeomTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
         dialect: &dyn SqlDialect,
         aesthetic_ctx: &AestheticContext,
     ) -> Result<StatResult> {
-        if let (Some(domain), true) = (
+        let mut result = if let (Some(domain), true) = (
             self.aggregate_domain_aesthetics(),
             has_aggregate_param(parameters),
         ) {
-            return stat_aggregate::apply(
+            stat_aggregate::apply(
                 query,
                 schema,
                 aesthetics,
@@ -252,9 +255,20 @@ pub trait GeomTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
                 dialect,
                 aesthetic_ctx,
                 domain,
-            );
+            )?
+        } else {
+            StatResult::Identity
+        };
+
+        let aes = self.aesthetics();
+        for axis in ["pos1", "pos2"] {
+            let optional = matches!(aes.get(axis), Some(DefaultAestheticValue::Null));
+            if optional && !types::axis_family_has_mapping(aesthetics, axis) {
+                result = types::wrap_stat_with_dummy_axis(query, result, axis);
+            }
         }
-        Ok(StatResult::Identity)
+
+        Ok(result)
     }
 
     /// Post-process the DataFrame after stat query execution.
@@ -466,11 +480,6 @@ impl Geom {
         self.0.stat_consumed_aesthetics()
     }
 
-    /// Check if stat transform is needed
-    pub fn needs_stat_transform(&self, aesthetics: &Mappings) -> bool {
-        self.0.needs_stat_transform(aesthetics)
-    }
-
     /// Apply stat transform
     #[allow(clippy::too_many_arguments)]
     pub fn apply_stat_transform(
@@ -621,8 +630,9 @@ mod tests {
     fn test_geom_aesthetics() {
         let point = Geom::point();
         let aes = point.aesthetics();
-        assert!(aes.is_required("pos1"));
-        assert!(aes.is_required("pos2"));
+        // Both axes are optional - omitted axes become dummy categorical axes.
+        assert!(!aes.is_required("pos1"));
+        assert!(!aes.is_required("pos2"));
     }
 
     #[test]

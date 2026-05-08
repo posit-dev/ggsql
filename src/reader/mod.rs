@@ -1345,6 +1345,180 @@ mod tests {
     }
 
     #[test]
+    fn test_boxplot_dummy_x() {
+        // Boxplot with only y mapped: should render a single boxplot of the
+        // whole distribution and suppress the categorical x axis.
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        let query = r#"
+            VISUALISE FROM ggsql:penguins
+            DRAW boxplot MAPPING bill_len AS y
+        "#;
+
+        let spec = reader.execute(query).unwrap();
+        let writer = VegaLiteWriter::new();
+        let result = writer.render(&spec).unwrap();
+
+        let json: serde_json::Value = serde_json::from_str(&result).unwrap();
+        // Boxplot is a composite renderer (multiple sub-layers). Check that
+        // the first layer's x encoding suppresses its axis.
+        let layer = data_layer(&json, 0);
+        let encoding = &layer["encoding"];
+        assert!(
+            encoding["x"]["axis"].is_null(),
+            "Boxplot dummy x should have axis: null. Encoding: {}",
+            serde_json::to_string_pretty(encoding).unwrap()
+        );
+    }
+
+    #[test]
+    fn test_violin_dummy_x() {
+        // Violin with only y mapped: single violin spanning the whole dataset.
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        let query = r#"
+            VISUALISE FROM ggsql:penguins
+            DRAW violin MAPPING bill_len AS y
+        "#;
+
+        let spec = reader.execute(query).unwrap();
+        let writer = VegaLiteWriter::new();
+        let result = writer.render(&spec).unwrap();
+
+        let json: serde_json::Value = serde_json::from_str(&result).unwrap();
+        let layer = data_layer(&json, 0);
+        let encoding = &layer["encoding"];
+        assert!(
+            encoding["x"]["axis"].is_null(),
+            "Violin dummy x should have axis: null. Encoding: {}",
+            serde_json::to_string_pretty(encoding).unwrap()
+        );
+    }
+
+    #[test]
+    fn test_point_dummy_x() {
+        // Point with only y mapped: strip plot at a single dummy x position.
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        let query = r#"
+            VISUALISE FROM ggsql:penguins
+            DRAW point MAPPING bill_len AS y
+        "#;
+
+        let spec = reader.execute(query).unwrap();
+        let writer = VegaLiteWriter::new();
+        let result = writer.render(&spec).unwrap();
+
+        let json: serde_json::Value = serde_json::from_str(&result).unwrap();
+        let layer = data_layer(&json, 0);
+        let encoding = &layer["encoding"];
+        assert!(
+            encoding["x"]["axis"].is_null(),
+            "Point dummy x should have axis: null. Encoding: {}",
+            serde_json::to_string_pretty(encoding).unwrap()
+        );
+    }
+
+    #[test]
+    fn test_range_dummy_x() {
+        // Range with only ymin/ymax mapped: a single vertical interval.
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        let query = r#"
+            SELECT 10.0 AS lo, 20.0 AS hi
+            VISUALISE
+            DRAW range MAPPING lo AS ymin, hi AS ymax
+        "#;
+
+        let spec = reader.execute(query).unwrap();
+        let writer = VegaLiteWriter::new();
+        let result = writer.render(&spec).unwrap();
+
+        let json: serde_json::Value = serde_json::from_str(&result).unwrap();
+        let layer = data_layer(&json, 0);
+        let encoding = &layer["encoding"];
+        assert!(
+            encoding["x"]["axis"].is_null(),
+            "Range dummy x should have axis: null. Encoding: {}",
+            serde_json::to_string_pretty(encoding).unwrap()
+        );
+    }
+
+    #[test]
+    fn test_point_dummy_y() {
+        // Symmetric to test_point_dummy_x: only x mapped means dummy y.
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        let query = r#"
+            VISUALISE FROM ggsql:penguins
+            DRAW point MAPPING bill_len AS x
+        "#;
+
+        let spec = reader.execute(query).unwrap();
+        let writer = VegaLiteWriter::new();
+        let result = writer.render(&spec).unwrap();
+
+        let json: serde_json::Value = serde_json::from_str(&result).unwrap();
+        let layer = data_layer(&json, 0);
+        let encoding = &layer["encoding"];
+        assert!(
+            encoding["y"]["axis"].is_null(),
+            "Point dummy y should have axis: null. Encoding: {}",
+            serde_json::to_string_pretty(encoding).unwrap()
+        );
+    }
+
+    #[test]
+    fn test_point_dummy_both_with_aggregate() {
+        // Both axes omitted, but aggregate gives the single point meaning:
+        // a count of all rows at the dummy x/y intersection.
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        let query = r#"
+            VISUALISE FROM ggsql:penguins
+            DRAW point MAPPING bill_len AS size
+            SETTING aggregate => 'size:count'
+        "#;
+
+        let spec = reader.execute(query).unwrap();
+        let writer = VegaLiteWriter::new();
+        let result = writer.render(&spec).unwrap();
+
+        let json: serde_json::Value = serde_json::from_str(&result).unwrap();
+        let layer = data_layer(&json, 0);
+        let encoding = &layer["encoding"];
+        assert!(
+            encoding["x"]["axis"].is_null(),
+            "Both-dummy point should hide x axis. Encoding: {}",
+            serde_json::to_string_pretty(encoding).unwrap()
+        );
+        assert!(
+            encoding["y"]["axis"].is_null(),
+            "Both-dummy point should hide y axis. Encoding: {}",
+            serde_json::to_string_pretty(encoding).unwrap()
+        );
+    }
+
+    #[test]
+    fn test_point_dummy_x_with_aggregate() {
+        // Point with aggregate SETTING and no x mapping: should aggregate the
+        // whole dataset to a single point and suppress the dummy x axis.
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        let query = r#"
+            VISUALISE FROM ggsql:penguins
+            DRAW point MAPPING bill_len AS y
+            SETTING aggregate => 'mean'
+        "#;
+
+        let spec = reader.execute(query).unwrap();
+        let writer = VegaLiteWriter::new();
+        let result = writer.render(&spec).unwrap();
+
+        let json: serde_json::Value = serde_json::from_str(&result).unwrap();
+        let layer = data_layer(&json, 0);
+        let encoding = &layer["encoding"];
+        assert!(
+            encoding["x"]["axis"].is_null(),
+            "Aggregated point with dummy x should have axis: null. Encoding: {}",
+            serde_json::to_string_pretty(encoding).unwrap()
+        );
+    }
+
+    #[test]
     fn test_bar_chart_with_expand_setting() {
         // Test bar chart with SCALE y SETTING expand - should work even when y is stat-derived
         // This tests that:

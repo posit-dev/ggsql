@@ -3048,11 +3048,12 @@ mod tests {
             )
             .unwrap();
 
-        // Query missing required aesthetic 'y' - should show 'y' not 'pos2'
+        // Query missing required aesthetic 'y' - should show 'y' not 'pos2'.
+        // Use line, which still requires both x and y (point's x is optional).
         let query = r#"
             SELECT * FROM test_data
             VISUALISE
-            DRAW point MAPPING a AS x
+            DRAW line MAPPING a AS x
         "#;
 
         let result = prepare_data_with_reader(query, &reader);

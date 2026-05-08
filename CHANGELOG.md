@@ -9,6 +9,12 @@
 - Added panel decorations (grid lines, axes, background) for polar coordinates (#156).
 - Added `radar` setting to polar coordinates for making radar plots (#418).
 
+### Changed
+
+- `boxplot`, `violin`, and `range` now support omitting the categorical
+  aesthetic, matching `bar`. `point` now treats both position aesthetics as
+  optional.
+
 ## 0.3.2 - 2026-05-05
 
 ### Fixed

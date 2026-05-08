@@ -10,11 +10,13 @@ The range layer displays an interval between two values along the secondary axis
 The following aesthetics are recognised by the range layer.
 
 ### Required
-* Primary axis (e.g. `x`): Position along the primary axis.
 * Secondary axis minimum (e.g. `ymin`): Lower position along the secondary axis.
 * Secondary axis maximum (e.g. `ymax`): Upper position along the secondary axis.
 
 ### Optional
+* Primary axis (e.g. `x`): Position along the primary axis. If omitted a
+  single interval is drawn over the whole dataset and the (one-tick)
+  categorical axis is hidden.
 * `stroke`/`colour`: The colour of the lines in the range.
 * `opacity`: The opacity of the colour.
 * `linewidth`: The width of the lines in the range.

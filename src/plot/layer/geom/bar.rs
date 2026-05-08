@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 
 use super::stat_aggregate;
-use super::types::{get_column_name, POSITION_VALUES};
+use super::types::{get_column_name, wrap_stat_with_dummy_pos1, POSITION_VALUES};
 use super::{
     has_aggregate_param, DefaultAesthetics, DefaultParamValue, GeomTrait, GeomType,
     ParamConstraint, ParamDefinition, StatResult,
@@ -85,10 +85,6 @@ impl GeomTrait for Bar {
         Some(&[])
     }
 
-    fn needs_stat_transform(&self, _aesthetics: &Mappings) -> bool {
-        true // Bar stat decides COUNT vs identity based on y mapping
-    }
-
     fn apply_stat_transform(
         &self,
         query: &str,
@@ -101,7 +97,7 @@ impl GeomTrait for Bar {
         aesthetic_ctx: &crate::plot::aesthetic::AestheticContext,
     ) -> Result<StatResult> {
         if has_aggregate_param(parameters) {
-            return stat_aggregate::apply(
+            let aggregated = stat_aggregate::apply(
                 query,
                 schema,
                 aesthetics,
@@ -110,7 +106,16 @@ impl GeomTrait for Bar {
                 dialect,
                 aesthetic_ctx,
                 self.aggregate_domain_aesthetics().unwrap_or(&[]),
-            );
+            )?;
+            // When the user omits the categorical axis, decorate the aggregate
+            // output with the dummy pos1 column so the writer suppresses the
+            // (otherwise meaningless) one-tick axis. Composes with whatever
+            // shape the aggregate stat produced.
+            return if get_column_name(aesthetics, "pos1").is_none() {
+                Ok(wrap_stat_with_dummy_pos1(query, aggregated))
+            } else {
+                Ok(aggregated)
+            };
         }
         stat_bar_count(query, schema, aesthetics, group_by)
     }
