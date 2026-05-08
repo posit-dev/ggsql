@@ -1,0 +1,17 @@
+---
+title: Tooling
+---
+
+Now that we understand some of the most important parts of the syntax let's spend a bit of time on where and how to apply it. All the examples on this website are interactive and run directly in the browser, which is obviously useful for teaching, but it will not suffice for your day-to-day work where you need to interact with your own data. ggsql is a general tool you can use in a multitude of ways and we'll go over them in this section.
+
+- **[Positron / VS Code](positron-vscode.qmd)** --- Full language support in your IDE with syntax highlighting, autocomplete, and an integrated REPL.
+
+- **[Jupyter & Quarto](jupyter-quarto.qmd)** --- Use ggsql as a kernel in Jupyter or Quarto for interactive data exploration and reproducible documents.
+
+- **[CLI](cli.qmd)** --- Execute queries and validate syntax from the command line.
+
+- **[Python](python.qmd)** --- Use ggsql from Python.
+
+- **[R](r.qmd)** --- Use ggsql from R.
+
+- **[WebAssembly](webassembly.qmd)** --- Run ggsql entirely in the browser with no installation.
