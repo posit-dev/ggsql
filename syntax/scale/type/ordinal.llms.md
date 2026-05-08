@@ -15,8 +15,8 @@ The input range for ordinal scales consists of all the unique values that the sc
 #### Use input range to define an ordering
 
 ``` ggsql
-SELECT *, 
-CASE 
+SELECT *,
+CASE
   WHEN Wind <= 3 THEN 'Light Air'
   WHEN Wind <= 7 THEN 'Light Breeze'
   WHEN Wind <= 12 THEN 'Gentle Breeze'
@@ -29,7 +29,7 @@ FROM ggsql:airquality
 VISUALISE Month AS x, Wind AS y, Wind_Category AS color
 DRAW point
   SETTING opacity => 1
-SCALE ORDINAL color 
+SCALE ORDINAL color
   FROM (
     'Light Air',
     'Light Breeze',
@@ -43,16 +43,16 @@ SCALE ORDINAL color
 
 The output range can either be given as an array of values or a named palette. For interpretable aesthetics (`color`, `opacity`, `size`, and `linewidth`) the value for each value will be interpolated from the output range. For linetype there is a special sequential palette which is used by default. It will construct linetype patterns that gradually increase in ink-density for the number of bins needed (up to 15 bins). For shape the values will be selected directly from the output range. If there are fewer values in the palette than there are in the input range an error is emitted.
 
-All aesthetics has a default output range so it is never required to provide one unless you want to change from the default. The defaults are as follows:
+All aesthetics have a default output range so it is never required to provide one unless you want to change from the default. The defaults are as follows:
 
 - `x`/`y`: Ignored (values used directly)
-- `stroke`/`fill`: The `navia` palette
+- `stroke`/`fill`: The `ggsql` palette
 - `size`/`linewidth`: `(1, 6)` (points)
 - `opacity`: `(0.1, 1.0)` (0 being fully transparent and 1 being fully opaque)
 - `linetype`: The `sequential` palette
 - `shape`: The `shapes` palette
 
-While it is possible to use a ordinal scale to map ordered discrete data to linetype and shape you should generally refrain from doing this. Even with the sequential linetype palette it is one of the weakest visual mappings only surpassed by shape which doesn’t show an inherent order in its representation at all.
+While it is possible to use an ordinal scale to map ordered discrete data to linetype and shape you should generally refrain from doing this. Even with the sequential linetype palette it is one of the weakest visual mappings only surpassed by shape which doesn’t show an inherent order in its representation at all.
 
 ### Examples
 
@@ -102,7 +102,7 @@ Breaks are generally named by their value. However, you may wish to rename one, 
 
 ### Direct renaming
 
-When you provide a break value on the left and a break exist at that value then it will take on the label specified on the right. For examples adding RENAMING 6 =\> ‘June’ will ensure that a month given as an integer gets the right name.
+When you provide a break value on the left and a break exists at that value then it will take on the label specified on the right. For example adding RENAMING 6 =\> ‘June’ will ensure that a month given as an integer gets the right name.
 
 ### Label formatting
 
@@ -135,8 +135,8 @@ SCALE ORDINAL color
 #### Use a formatter to make labels shouty
 
 ``` ggsql
-SELECT *, 
-CASE 
+SELECT *,
+CASE
   WHEN Wind <= 3 THEN 'Light Air'
   WHEN Wind <= 7 THEN 'Light Breeze'
   WHEN Wind <= 12 THEN 'Gentle Breeze'
@@ -149,7 +149,7 @@ FROM ggsql:airquality
 VISUALISE Month AS x, Wind AS y, Wind_Category AS color
 DRAW point
   SETTING opacity => 1
-SCALE ORDINAL color 
+SCALE ORDINAL color
   FROM (
     'Light Air',
     'Light Breeze',

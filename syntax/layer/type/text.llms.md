@@ -12,11 +12,11 @@ The following aesthetics are recognised by the text layer.
 
 - Primary axis (e.g. `x`): Position along the primary axis.
 - Secondary axis (e.g. `y`): Position along the secondary axis.
-- `label` The text to dislay.
+- `label` The text to display.
 
 ### Optional
 
-- `stroke` The colour at the contour lines of glyphs. Typically kept blank.
+- `stroke` The colour of the contour lines of glyphs. Typically kept blank.
 - `fill` The colour of the glyphs.
 - `colour` Shorthand for setting `stroke` and `fill` simultaneously.
 - `opacity` The opacity of the fill colour.

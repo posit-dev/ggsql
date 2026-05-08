@@ -41,7 +41,7 @@ The output range can either be given as an array of values or a named palette. F
 All aesthetics have a default output range so it is never required to provide one unless you want to change from the default. The defaults are as follows:
 
 - `x`/`y`: Ignored (values used directly)
-- `stroke`/`fill`: The `navia` palette
+- `stroke`/`fill`: The `ggsql` palette
 - `size`/`linewidth`: `(1, 6)` (points)
 - `opacity`: `(0.1, 1.0)` (0 being fully transparent and 1 being fully opaque)
 - `linetype`: The `sequential` palette
@@ -144,8 +144,8 @@ The following settings are recognised by binned scales:
 VISUALISE body_mass AS x FROM ggsql:penguins
 DRAW bar
 SCALE BINNED x
-  SETTING 
-    oob => 'squish', 
+  SETTING
+    oob => 'squish',
     breaks => (4000, 4250, 4500, 4750, 5000, 5250, 5500)
 ```
 
@@ -155,7 +155,7 @@ Breaks are generally named by their value. However, you may wish to rename one, 
 
 ### Direct renaming
 
-When you provide a break value on the left and a break exist at that value then it will take on the label specified on the right. For examples adding `RENAMING 0 => 'Nil'` will ensure that if there is a break at 0 it will appear as “Nil” on the legend/axis
+When you provide a break value on the left and a break exists at that value then it will take on the label specified on the right. For example adding `RENAMING 0 => 'Nil'` will ensure that if there is a break at 0 it will appear as “Nil” on the legend/axis
 
 ### Label formatting
 
@@ -185,7 +185,7 @@ SCALE BINNED x
 ``` ggsql
 VISUALISE bill_dep AS x FROM ggsql:penguins
 DRAW bar
-SCALE BINNED x 
+SCALE BINNED x
   RENAMING * => '{} mm'
 ```
 

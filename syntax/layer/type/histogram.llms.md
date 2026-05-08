@@ -6,7 +6,7 @@ Visualise the distribution of a single continuous variable by dividing the prima
 
 ## Aesthetics
 
-The following aesthetics are recognised by the bar layer.
+The following aesthetics are recognised by the histogram layer.
 
 ### Required
 

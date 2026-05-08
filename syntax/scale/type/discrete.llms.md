@@ -41,7 +41,7 @@ SCALE y FROM (0, null)
 
 The output range can either be given as an array of values or a named palette. For both of these, the requirement is that they contain at least the number of values as is present in the input range. There are discrete palettes for both [`color`](../../../syntax/scale/aesthetic/1_color.llms.md#discrete-palettes), [`linetype`](../../../syntax/scale/aesthetic/linetype.llms.md#palettes), and [`shape`](../../../syntax/scale/aesthetic/shape.llms.md#palettes).
 
-All aesthetics has a default output range so it is never required to provide one unless you want to change from the default. The defaults are as follows:
+All aesthetics have a default output range so it is never required to provide one unless you want to change from the default. The defaults are as follows:
 
 - `x`/`y`: Ignored (values used directly)
 - `stroke`/`fill`: The `ggsql` palette
@@ -95,7 +95,7 @@ Breaks are generally named by their value. However, you may wish to rename one, 
 
 ### Direct renaming
 
-When you provide a break value on the left and a break exist at that value then it will take on the label specified on the right. For examples adding RENAMING ‘Adelie’ =\> ‘Adélie’ will ensure that the species name will get the correct diacrit in the label.
+When you provide a break value on the left and a break exists at that value then it will take on the label specified on the right. For example adding RENAMING ‘Adelie’ =\> ‘Adélie’ will ensure that the species name will get the correct diacrit in the label.
 
 ### Label formatting
 
@@ -120,7 +120,7 @@ SCALE y FROM (0, null)
 ``` ggsql
 VISUALISE species AS x FROM ggsql:penguins
 DRAW bar
-SCALE x 
+SCALE x
   RENAMING * => 'Species: {}'
 SCALE y FROM (0, null)
 ```

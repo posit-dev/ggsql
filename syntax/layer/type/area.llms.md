@@ -76,7 +76,7 @@ DRAW area
   SETTING position => 'identity', opacity => 0.5
 ```
 
-Whith the default `position => 'stack'` we can normalise the total so that each stack totals to the same value. These only make sense if every series is measured in the same absolute unit. (Wind and temperature have different units and the temperature is not absolute.)
+With the default `position => 'stack'` we can normalise the total so that each stack totals to the same value. These only make sense if every series is measured in the same absolute unit. (Wind and temperature have different units and the temperature is not absolute.)
 
 ``` ggsql
 VISUALISE Date AS x, Value AS y, Series AS colour FROM long_airquality

@@ -45,7 +45,7 @@ Valid hex patterns:
 
 ggsql provides two linetype palettes which are generally enough for every need
 
-The `categorical` palette is the default palette for discrete linetype scales. It consists of the 6 named patterns [shown above](#literal-values) in the same order. Since it is the only palette for discrete linetypes, there is rarely a need to specify it. The `categorical` palette is the default palette for discrete linetype scales. It consists of the 6 named patterns [shown above](#literal-values) in the same order. Since it is the only palette for discrete linetypes there is rarely a need to specify it.
+The `categorical` palette is the default palette for discrete linetype scales. It consists of the 6 named patterns [shown above](#literal-values) in the same order. Since it is the only palette for discrete linetypes, there is rarely a need to specify it.
 
 ### Sequential palette
 

@@ -149,7 +149,7 @@ Often the implicit grouping from the aesthetic mapping is enough, e.g. mapping 
 ORDER BY <column>, ...
 ```
 
-For some layers the order of records in the data is important, e.g. the path layer which connect records in the order they are provided. Since databases often doesn’t guarantee a specific order of the data, the `ORDER BY` clause can be used to enforce such and order. Even for layers where the order doesn’t immediately seem to matter it may have an effect, e.g. an overplottet scatterplot where the records in the end of the data are plottet on top of the one in the start.
+For some layers the order of records in the data is important, e.g. the path layer which connect records in the order they are provided. Since databases often don’t guarantee a specific order of the data, the `ORDER BY` clause can be used to enforce such an order. Even for layers where the order doesn’t immediately seem to matter it may have an effect, e.g. an overplotted scatterplot where the records in the end of the data are plotted on top of the one in the start.
 
 ## Layer orientation
 

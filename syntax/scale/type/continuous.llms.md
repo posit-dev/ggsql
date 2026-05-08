@@ -194,7 +194,7 @@ Breaks are generally named by their value. However, you may wish to rename one, 
 
 ### Direct renaming
 
-When you provide a break value on the left and a break exist at that value then it will take on the label specified on the right. For examples adding `RENAMING 0 => 'Nil'` will ensure that if there is a break at 0 it will appear as “Nil” on the legend/axis
+When you provide a break value on the left and a break exists at that value then it will take on the label specified on the right. For example adding `RENAMING 0 => 'Nil'` will ensure that if there is a break at 0 it will appear as “Nil” on the legend/axis
 
 ### Label formatting
 

@@ -7,7 +7,7 @@ ggsql augments the standard SQL syntax with a number of new clauses to describe 
 - [`VISUALISE`](../syntax/clause/visualise.llms.md) initiates the visualisation part of the query
 - [`DRAW`](../syntax/clause/draw.llms.md) adds a new layer to the visualisation
   - [`PLACE`](../syntax/clause/place.llms.md) adds an annotation layer
-- [`SCALE`](../syntax/clause/scale.llms.md) specify how an aesthetic should be scaled
+- [`SCALE`](../syntax/clause/scale.llms.md) specifies how an aesthetic should be scaled
 - [`FACET`](../syntax/clause/facet.llms.md) describes how data should be split into small multiples
 - [`PROJECT`](../syntax/clause/project.llms.md) is used for selecting the coordinate system to use
 - [`LABEL`](../syntax/clause/label.llms.md) is used to manually add titles to the plot or the various axes and legends
