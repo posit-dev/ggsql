@@ -27,10 +27,13 @@ For axis-aligned intervals where one coordinate is shared between the start and 
 ## Settings
 
 - `position`: Position adjustment. One of `'identity'` (default), `'stack'`, `'dodge'`, or `'jitter'`
+- `aggregate` Aggregation functions to apply per group:
+  - `null` apply no group aggregation (default).
+  - A single string or an array of strings. See an overview of aggregation function in [the `DRAW` documentation](../../../syntax/clause/draw.llms.md#aggregate) and more information in the *Data transformation* section below.
 
 ## Data transformation
 
-The segment layer does not transform its data but passes it through unchanged.
+This layer supports aggregation through the `aggregate` setting. Within each group, defined by `PARTITION BY` and all discrete mappings, every numeric mapping is replaced in place by its aggregated value, producing one segment per group. Segment is a range layer with two defaults: the first applies to the start point (`x`/`y`) and the second applies to the end point (`xend`/`yend`). Use a single default like `'mean'` to apply the same function to all four endpoints, or target individual aesthetics with `'<aes>:<func>'`. See [the `DRAW` documentation](../../../syntax/clause/draw.llms.md#aggregate) for the full setting shape.
 
 ## Orientation
 

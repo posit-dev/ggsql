@@ -25,10 +25,13 @@ The following aesthetics are recognised by the ribbon layer.
 ## Settings
 
 - `position`: Position adjustment. One of `'identity'` (default), `'stack'`, `'dodge'`, or `'jitter'`
+- `aggregate` Aggregation functions to apply per group:
+  - `null` apply no group aggregation (default).
+  - A single string or an array of strings. See an overview of aggregation function in [the `DRAW` documentation](../../../syntax/clause/draw.llms.md#aggregate) and more information in the *Data transformation* section below.
 
 ## Data transformation
 
-The ribbon layer sorts the data along its primary axis
+This layer supports aggregation through the `aggregate` setting. Within each group, defined by `PARTITION BY` and all discrete mappings, every numeric mapping is replaced in place by its aggregated value, producing one ribbon per group. Ribon is a range layer with two defaults: the first applies to the start point (`xmin`/`ymin`) and the second applies to the end point (`xmax`/`ymax`). Use a single default like `'mean'` to apply the same function to all values, or target individual aesthetics with `'<aes>:<func>'`. See [the `DRAW` documentation](../../../syntax/clause/draw.llms.md#aggregate) for the full setting shape.
 
 ## Orientation
 
@@ -62,4 +65,12 @@ DRAW ribbon
   SETTING opacity => 0.5
 DRAW line
   MAPPING MeanTemp AS y
+```
+
+Use aggregation to calculate bounds on the fly. The two untargeted aggregation functions target the `ymin` and `ymax` aesthetics automatically.
+
+``` ggsql
+VISUALISE Day AS x, Temp AS ymin, Temp AS ymax FROM ggsql:airquality
+DRAW ribbon
+  SETTING aggregate => ('min', 'max')
 ```

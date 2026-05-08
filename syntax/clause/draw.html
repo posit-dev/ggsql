@@ -753,6 +753,47 @@ gradient teal.
 <h4 class="anchored" data-anchor-id="position">Position</h4>
 <p>A special setting is <code>position</code> which controls how overlapping objects are repositioned to avoid overlapping etc. Position adjustments have special mapping requirements so all position adjustments will not be relevant for all layer types. Different layers have different defaults as detailed in their documentation. You can read about each different position adjustment at <a href="../../syntax/index.html#position-adjustments">their own documentation sites</a>.</p>
 </section>
+<section id="aggregate" class="level4">
+<h4 class="anchored" data-anchor-id="aggregate">Aggregate</h4>
+<p>Some layers support aggregation of their data through the <code>aggregate</code> setting. Their documentation will state this. <code>aggregate</code> collapses each group to a single row, replacing every numeric mapping in place with its aggregated value. Groups are defined by <code>PARTITION BY</code> together with all discrete mappings.</p>
+<p>The <code>aggregate</code> setting takes a single string or an array of strings. Each string is one of:</p>
+<ul>
+<li><strong>Untargeted</strong> — <code>'&lt;func&gt;'</code> (no prefix). With one untargeted aggregation, the function applies to every numeric mapping that doesn’t have a targeted aggregation. With two untargeted aggregations, the first is used for the lower side of range layers (e.g.&nbsp;<code>x</code>/<code>xmin</code>) plus all non-range layers, and the second is used for the upper side of range layers (e.g.&nbsp;<code>xend</code>/<code>xmax</code>). More than two untargeted aggregations is not allowed.</li>
+<li><strong>Targeted</strong> — <code>'&lt;aes&gt;:&lt;func&gt;'</code>. Applies <code>func</code> to the named aesthetic only (<code>&lt;aes&gt;</code> is a name like <code>x</code>, <code>y</code>, <code>xmin</code>, <code>xmax</code>, <code>xend</code>, <code>yend</code>, <code>color</code>, <code>size</code>, …). A target overrides any untargeted aggregation for that aesthetic.</li>
+</ul>
+<p>A numeric mapping is dropped from the layer with a warning, when it has neither a target nor an applicable default.</p>
+<section id="aggregate-functions" class="level5">
+<h5 class="anchored" data-anchor-id="aggregate-functions">Aggregate functions</h5>
+<p>Aggregation can either be a simple function or a band function. The simple functions are:</p>
+<ul>
+<li><code>'count'</code>: Non-null tally of the bound column.</li>
+<li><code>'sum'</code> and <code>'prod'</code>: The sum or product</li>
+<li><code>'min'</code>, <code>'max'</code>: Extremes</li>
+<li><code>'range'</code> (max - min), <code>'mid'</code> (min + max) / 2</li>
+<li><code>'mean'</code>, and <code>'median'</code>: Central tendency</li>
+<li><code>'geomean'</code>, <code>'harmean'</code>, and <code>'rms'</code>: Geometric, harmonic, and root-mean-square</li>
+<li><code>'sdev'</code>, <code>'var'</code>, <code>'iqr'</code>, and <code>'se'</code>: Standard deviation, variance, interquartile range, and standard error</li>
+<li><code>'p05'</code>, <code>'p10'</code>, <code>'p25'</code>, <code>'p50'</code>, <code>'p75'</code>, <code>'p90'</code>, and <code>'p95'</code>: Percentiles</li>
+<li><code>'first'</code> and <code>'last'</code>: The first or last value in the group, in row order. Note that the row order within a group is engine-defined unless the source query has an <code>ORDER BY</code> — these are most useful when the upstream SQL provides an explicit ordering.</li>
+<li><code>'diff'</code>: <code>last - first</code>. The change between the first and last value in row order — same ordering caveat applies.</li>
+</ul>
+<p>For band functions you combine an offset with an expansion, potentially multiplied. An example could be <code>'mean-1.96sdev'</code> which does exactly what you’d expect it to be. The general form is <code>&lt;offset&gt;±&lt;multiplier&gt;&lt;expansion&gt;</code> with <code>&lt;multiplier&gt;</code> being optional (defaults to <code>1</code>).</p>
+<p>Allowed offsets are: <code>'mean'</code>, <code>'median'</code>, <code>'geomean'</code>, <code>'harmean'</code>, <code>'rms'</code>, <code>'sum'</code>, <code>'prod'</code>, <code>'min'</code>, <code>'max'</code>, <code>'mid'</code>, and <code>'p05'</code>–<code>'p95'</code></p>
+<p>Allowed expansions are: <code>'sdev'</code>, <code>'se'</code>, <code>'var'</code>, <code>'iqr'</code>, and <code>'range'</code></p>
+</section>
+<section id="exploded-aggregation" class="level5">
+<h5 class="anchored" data-anchor-id="exploded-aggregation">Exploded aggregation</h5>
+<p>You can also target the same aesthetic more than once to produce <em>multiple rows per group</em> — one for each function. We call that <em>exploded aggregation</em>. For example <code>aggregate =&gt; ('y:min', 'y:max')</code> emits a min row and a max row per group, so a single <code>DRAW line</code> produces two summary lines that connect within each group rather than across them. When multiple rows are created, a synthetic <code>aggregate</code> column is made that tags each row with the name of the aggregation function. You can use this with a <code>REMAPPING</code> to drive another aesthetic — e.g.&nbsp;<code>REMAPPING aggregate AS stroke</code> to colour the two lines differently. The column’s value is built from the per-row function names of the <em>exploded</em> targets, deduplicated, and joined with <code>/</code>:</p>
+<ul>
+<li><code>aggregate =&gt; ('y:min', 'y:max')</code> → rows tagged <code>'min'</code>, <code>'max'</code>.</li>
+<li><code>aggregate =&gt; ('y:min', 'y:max', 'color:median')</code> → rows tagged <code>'min'</code>, <code>'max'</code> (the single-function <code>color</code> target is recycled across rows and is not part of the label).</li>
+<li><code>aggregate =&gt; ('y:min', 'y:max', 'color:sum', 'color:prod')</code> → rows tagged <code>'min/sum'</code>, <code>'max/prod'</code>.</li>
+<li><code>aggregate =&gt; ('y:mean', 'y:max', 'color:mean', 'color:prod')</code> → rows tagged <code>'mean'</code>, <code>'max/prod'</code> (the duplicate <code>'mean'</code> collapses).</li>
+</ul>
+<p>When several aesthetics are targeted with the same number of functions, they explode in lockstep: row 1 uses each aesthetic’s first function, row 2 the second, and so on. Aesthetics with a single function — and the unprefixed defaults — are reused unchanged across every row. Mixing different numbers of aggregation metrics above 1 across aesthetics is not allowed.</p>
+<p>In the single-row (reduction) case aggregation applies in place — no <code>REMAPPING</code> is needed and no synthetic column is added. Only the multi-row (explosion) case described above introduces the synthetic <code>aggregate</code> column.</p>
+</section>
+</section>
 </section>
 <section id="filter" class="level3">
 <h3 class="anchored" data-anchor-id="filter"><code>FILTER</code></h3>

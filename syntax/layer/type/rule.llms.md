@@ -27,8 +27,13 @@ The following aesthetics are recognised by the rule layer.
 ## Settings
 
 - `position`: Position adjustment. One of `'identity'` (default), `'stack'`, `'dodge'`, or `'jitter'`
+- `aggregate` Aggregation functions to apply per group:
+  - `null` apply no group aggregation (default).
+  - A single string or an array of strings. See an overview of aggregation function in [the `DRAW` documentation](../../../syntax/clause/draw.llms.md#aggregate) and more information in the *Data transformation* section below.
 
 ## Data transformation
+
+This layer supports aggregation through the `aggregate` setting. Aggregation groups are defined by `PARTITION BY` and all discrete mappings. Within each group, every numeric mapping is replaced in place by its aggregated value. Use a default like `'mean'` or target individual aesthetics with `'<aes>:<func>'`. See [the `DRAW` documentation](../../../syntax/clause/draw.llms.md#aggregate) for the full setting shape.
 
 For diagonal lines, the position aesthetic determines the intercept:
 
@@ -112,4 +117,14 @@ VISUALISE FROM ggsql:penguins
       intercept AS y, 
       label AS colour
     FROM lines
+```
+
+Show a max rule for a timeseries
+
+``` ggsql
+VISUALISE Temp AS y FROM ggsql:airquality
+DRAW line
+  MAPPING Date AS x
+DRAW rule
+  SETTING aggregate => 'max'
 ```

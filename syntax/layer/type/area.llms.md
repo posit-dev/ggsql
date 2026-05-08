@@ -27,10 +27,15 @@ The following aesthetics are recognised by the area layer.
 - `orientation`: The orientation of the layer, see the [Orientation section](#orientation). One of the following:
   - `'aligned'` to align the layer’s primary axis with the coordinate system’s first axis.
   - `'transposed'` to align the layer’s primary axis with the coordinate system’s second axis.
+- `aggregate` Aggregation functions to apply per group:
+  - `null` apply no group aggregation (default).
+  - A single string or an array of strings. See an overview of aggregation function in [the `DRAW` documentation](../../../syntax/clause/draw.llms.md#aggregate) and more information in the *Data transformation* section below.
 
 ## Data transformation
 
-The area layer sorts the data along its primary axis
+This layer supports aggregation through the `aggregate` setting. Aggregation groups are defined by `PARTITION BY`, all discrete mappings, but also the primary axis. Within each group, every numeric mapping is replaced in place by its aggregated value. Use a default like `'mean'` or target individual aesthetics with `'<aes>:<func>'`. See [the `DRAW` documentation](../../../syntax/clause/draw.llms.md#aggregate) for the full setting shape.
+
+Further, the area layer sorts the data along its primary axis before returning it.
 
 ## Orientation
 

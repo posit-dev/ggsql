@@ -2,6 +2,7 @@
 
 ### Added
 
+- New `aggregate` SETTING on Identity-stat layers (point, line, area, bar, ribbon, range, segment, arrow, rule, text). By default it collapses each group to a single row by replacing every numeric mapping in place with its aggregated value. See the `DRAW` documentation for details.
 - Added panel decorations (grid lines, axes, background) for polar coordinates (#156).
 - Added `radar` setting to polar coordinates for making radar plots (#418).
 

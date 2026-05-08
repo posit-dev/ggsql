@@ -24,10 +24,13 @@ The following aesthetics are recognised by the range layer.
 ## Settings
 
 - `width`: The width of the hinges in points (must be \>= 0). Defaults to 10. Can be set to `null` to not display hinges.
+- `aggregate` Aggregation functions to apply per group:
+  - `null` apply no group aggregation (default).
+  - A single string or an array of strings. See an overview of aggregation function in [the `DRAW` documentation](../../../syntax/clause/draw.llms.md#aggregate) and more information in the *Data transformation* section below.
 
 ## Data transformation
 
-The range layer does not transform its data but passes it through unchanged.
+This layer supports aggregation through the `aggregate` setting. Within each group, defined by `PARTITION BY` and all discrete mappings, every numeric mapping is replaced in place by its aggregated value, producing one range per group. Range is a range layer with two defaults: the first applies to the start point (`xmin`/`ymin`) and the second applies to the end point (`xmax`/`ymax`). Use a single default like `'mean'` to apply the same function to all values, or target individual aesthetics with `'<aes>:<func>'`. See [the `DRAW` documentation](../../../syntax/clause/draw.llms.md#aggregate) for the full setting shape.
 
 ## Orientation
 
@@ -111,4 +114,25 @@ DRAW range
 DRAW range
   MAPPING low AS ymin, high AS ymax
   SETTING width => null
+```
+
+Rather than precomputing the values and plotting them, you can use the aggregate functionality to calculate the relevant statistics dynamically:
+
+``` ggsql
+VISUALISE Date AS x, Temp AS ymin, Temp AS ymax, Temp AS color 
+  FROM ggsql:airquality
+DRAW range
+  REMAPPING aggregate AS linewidth
+  SETTING 
+    aggregate => (
+      'x:first', 
+      'ymin:first', 'ymin:min', 
+      'ymax:last', 'ymax:max', 
+      'color:diff'
+    ), 
+    width => null
+  PARTITION BY Week
+SCALE linewidth TO (5, 1)
+SCALE BINNED color TO ('steelblue', 'firebrick')
+  SETTING breaks => (-20, 0, 20)
 ```
