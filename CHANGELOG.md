@@ -5,9 +5,17 @@
 - New `aggregate` SETTING on Identity-stat layers (point, line, area, bar, ribbon,
   range, segment, arrow, rule, text). By default it collapses each group to a
   single row by replacing every numeric mapping in place with its aggregated
-  value. See the `DRAW` documentation for details.
+  value. See the `DRAW` documentation for details (#384).
 - Added panel decorations (grid lines, axes, background) for polar coordinates (#156).
 - Added `radar` setting to polar coordinates for making radar plots (#418).
+- New `side` SETTING on the `boxplot` layer and the `jitter` position, mirroring
+  the existing `violin` setting (#337).
+
+### Fixed
+
+- Dodging of horizontal violin plots were broken due to a bad orientation
+  assumption in the VegaLite writer. We now correctly use the orientation to
+  dodge in the correct dimension.
 
 ## 0.3.2 - 2026-05-05
 

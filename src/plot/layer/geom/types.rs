@@ -18,6 +18,11 @@ pub const POSITION_VALUES: &[&str] = &["identity", "stack", "dodge", "jitter"];
 /// Closed interval side values for binned data
 pub const CLOSED_VALUES: &[&str] = &["left", "right"];
 
+/// Standard `side` parameter values for layers and positions that can render
+/// either both halves of a symmetric shape (or jitter range) or just one of
+/// them. Used by violin, boxplot, and jitter.
+pub const SIDE_VALUES: &[&str] = &["both", "left", "top", "right", "bottom"];
+
 /// Aesthetic aliases: user-facing names that resolve to concrete aesthetics.
 ///
 /// An alias is considered supported if any of its target aesthetics are supported
