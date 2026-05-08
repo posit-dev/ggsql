@@ -265,6 +265,18 @@ mod tests {
     }
 
     #[test]
+    fn test_extract_sql_preserves_jinja_ref() {
+        let query = "SELECT order_date, region, revenue FROM {{ ref('fct_orders') }}\nVISUALISE order_date AS x, revenue AS y, region AS color\nDRAW point";
+        let tree = SourceTree::new(query).unwrap();
+
+        let sql = tree.extract_sql().unwrap();
+        assert_eq!(
+            sql,
+            "SELECT order_date, region, revenue FROM {{ ref('fct_orders') }}"
+        );
+    }
+
+    #[test]
     fn test_extract_sql_no_visualise() {
         let query = "SELECT * FROM data WHERE x > 5";
         let tree = SourceTree::new(query).unwrap();

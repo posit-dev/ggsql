@@ -63,6 +63,7 @@ module.exports = grammar({
         $.case_expression,
         $.cast_expression,
         $.function_call,
+        $.jinja_template,
         $.non_from_sql_keyword,
         $.string,
         $.number,
@@ -84,6 +85,7 @@ module.exports = grammar({
       $.case_expression,  // CASE WHEN ... THEN ... END
       $.cast_expression,  // CAST(expr AS type), TRY_CAST(expr AS type)
       $.function_call,    // Regular function calls like COUNT(), SUM()
+      $.jinja_template,
       $.sql_keyword,
       $.string,
       $.number,
@@ -128,6 +130,7 @@ module.exports = grammar({
         $.identifier,
         $.string,
         $.number,
+        $.jinja_template,
         $.subquery,
         ',', '(', ')', '*', '.', '=',
         /[^\s;(),'"]+/
@@ -143,6 +146,7 @@ module.exports = grammar({
         $.identifier,
         $.string,
         $.number,
+        $.jinja_template,
         $.subquery,
         ',', '(', ')', '*', '.', '=',
         /[^\s;(),'"]+/
@@ -157,6 +161,7 @@ module.exports = grammar({
         $.identifier,
         $.string,
         $.number,
+        $.jinja_template,
         $.subquery,
         ',', '(', ')', '*', '.', '=',
         /[^\s;(),'"]+/
@@ -171,6 +176,7 @@ module.exports = grammar({
         $.identifier,
         $.string,
         $.number,
+        $.jinja_template,
         $.subquery,
         ',', '(', ')', '*', '.', '=',
         /[^\s;(),'"]+/
@@ -179,6 +185,7 @@ module.exports = grammar({
 
     other_sql_statement: $ => prec(-1, repeat1(choice(
       $.non_from_sql_keyword,
+      $.jinja_template,
       /[^\s;(),'"]+/,
       $.string,
       $.number,
@@ -218,6 +225,7 @@ module.exports = grammar({
       $.sql_keyword,
       $.string,
       $.number,
+      $.jinja_template,
       $.identifier,
       $.subquery,
       ',', '*', '.', '=', '<', '>', '!', '::',
@@ -242,6 +250,7 @@ module.exports = grammar({
       $.cast_expression,
       $.function_call,
       $.subquery, // also handles IN-lists like ('a', 'b')
+      $.jinja_template,
       token('='), token('!='), token('<>'), token('<='), token('>='),
       token('<'), token('>'),
       token('+'), token('-'), token('*'), token('/'), token('%'), token('||'), token('::'),
@@ -396,6 +405,7 @@ module.exports = grammar({
       $.qualified_name,  // Handles both simple identifiers and table.column
       $.number,
       $.string,
+      $.jinja_template,
       '*',
       // CASE expression
       $.case_expression,
@@ -472,7 +482,7 @@ module.exports = grammar({
 
     table_ref: $ => prec.right(seq(
       choice(
-        field('table', choice($.qualified_name, $.string, $.namespaced_identifier)),
+        field('table', choice($.qualified_name, $.string, $.namespaced_identifier, $.jinja_template)),
         $.subquery,
       ),
       optional(seq(
@@ -927,6 +937,15 @@ module.exports = grammar({
       $.bare_identifier,
       $.quoted_identifier
     ),
+
+    // Jinja templates are opaque SQL-side tokens. dbt/fusion renders these
+    // before ggsql executes SQL, but the parser must preserve them while
+    // splitting SQL from VISUALISE.
+    jinja_template: $ => token(choice(
+      /\{\{[^}]*\}\}/,
+      /\{%[^%]*%\}/,
+      /\{#[^#]*#\}/
+    )),
 
     // Identifier for use in filter expressions - uses lower precedence so that
     // keywords like PARTITION and ORDER can take priority and end the filter
