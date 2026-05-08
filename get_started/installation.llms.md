@@ -35,3 +35,13 @@ ggsql-jupyter --install
 ## VS Code / Positron extension
 
 For syntax highlighting and language support in VS Code or Positron, install the ggsql extension. You can either install it directly from the [extension marketplace](https://open-vsx.org/extension/ggsql/ggsql) from within the IDE or download and install it manually (in the *Extensions* view, click the `...` menu, select “Install from VSIX…”, and choose the downloaded file.)
+
+![](../assets/logos/webassembly.svg) ![](../assets/logos/javascript.svg)
+
+## WebAssembly / JavaScript
+
+To use ggsql in a web application or JavaScript environment, you can install the `ggsql-wasm` package from [npm](https://www.npmjs.com/package/ggsql-wasm):
+
+``` bash
+npm install ggsql-wasm
+```

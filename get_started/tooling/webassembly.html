@@ -7,7 +7,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
 
-<title>Tooling – ggsql</title>
+<title>WebAssembly – ggsql</title>
 <style>
 /* Default styles provided by pandoc.
 ** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
@@ -61,31 +61,31 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </style>
 
 
-<script src="../site_libs/quarto-nav/quarto-nav.js"></script>
-<script src="../site_libs/quarto-nav/headroom.min.js"></script>
-<script src="../site_libs/clipboard/clipboard.min.js"></script>
-<script src="../site_libs/quarto-search/autocomplete.umd.js"></script>
-<script src="../site_libs/quarto-search/fuse.min.js"></script>
-<script src="../site_libs/quarto-search/quarto-search.js"></script>
-<meta name="quarto:offset" content="../">
-<link href="../get_started/the_rest.html" rel="next">
-<link href="../get_started/anatomy.html" rel="prev">
-<link href="../assets/icon.svg" rel="icon" type="image/svg+xml">
-<script src="../site_libs/quarto-html/quarto.js" type="module"></script>
-<script src="../site_libs/quarto-html/tabsets/tabsets.js" type="module"></script>
-<script src="../site_libs/quarto-html/popper.min.js"></script>
-<script src="../site_libs/quarto-html/tippy.umd.min.js"></script>
-<script src="../site_libs/quarto-html/anchor.min.js"></script>
-<link href="../site_libs/quarto-html/tippy.css" rel="stylesheet">
-<link href="../site_libs/quarto-html/quarto-syntax-highlighting-286b0d4f737c5af6226422bdceee2d85.css" rel="stylesheet" class="quarto-color-scheme" id="quarto-text-highlighting-styles">
-<link href="../site_libs/quarto-html/quarto-syntax-highlighting-dark-286b0d4f737c5af6226422bdceee2d85.css" rel="stylesheet" class="quarto-color-scheme quarto-color-alternate" id="quarto-text-highlighting-styles">
-<link href="../site_libs/quarto-html/quarto-syntax-highlighting-286b0d4f737c5af6226422bdceee2d85.css" rel="stylesheet" class="quarto-color-scheme-extra" id="quarto-text-highlighting-styles">
-<script src="../site_libs/bootstrap/bootstrap.min.js"></script>
-<link href="../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
-<link href="../site_libs/bootstrap/bootstrap-44f4de344a60312d5293f682bd5af1a1.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme" id="quarto-bootstrap" data-mode="light">
-<link href="../site_libs/bootstrap/bootstrap-dark-e2f6f9421179af143e1cac5a5d2f3211.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme quarto-color-alternate" id="quarto-bootstrap" data-mode="light">
-<link href="../site_libs/bootstrap/bootstrap-44f4de344a60312d5293f682bd5af1a1.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme-extra" id="quarto-bootstrap" data-mode="light">
-<script src="../site_libs/quarto-contrib/iconify-3.0.0/iconify-icon.min.js"></script>
+<script src="../../site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="../../site_libs/quarto-nav/headroom.min.js"></script>
+<script src="../../site_libs/clipboard/clipboard.min.js"></script>
+<script src="../../site_libs/quarto-search/autocomplete.umd.js"></script>
+<script src="../../site_libs/quarto-search/fuse.min.js"></script>
+<script src="../../site_libs/quarto-search/quarto-search.js"></script>
+<meta name="quarto:offset" content="../../">
+<link href="../../get_started/the_rest.html" rel="next">
+<link href="../../get_started/tooling/r.html" rel="prev">
+<link href="../../assets/icon.svg" rel="icon" type="image/svg+xml">
+<script src="../../site_libs/quarto-html/quarto.js" type="module"></script>
+<script src="../../site_libs/quarto-html/tabsets/tabsets.js" type="module"></script>
+<script src="../../site_libs/quarto-html/popper.min.js"></script>
+<script src="../../site_libs/quarto-html/tippy.umd.min.js"></script>
+<script src="../../site_libs/quarto-html/anchor.min.js"></script>
+<link href="../../site_libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="../../site_libs/quarto-html/quarto-syntax-highlighting-286b0d4f737c5af6226422bdceee2d85.css" rel="stylesheet" class="quarto-color-scheme" id="quarto-text-highlighting-styles">
+<link href="../../site_libs/quarto-html/quarto-syntax-highlighting-dark-286b0d4f737c5af6226422bdceee2d85.css" rel="stylesheet" class="quarto-color-scheme quarto-color-alternate" id="quarto-text-highlighting-styles">
+<link href="../../site_libs/quarto-html/quarto-syntax-highlighting-286b0d4f737c5af6226422bdceee2d85.css" rel="stylesheet" class="quarto-color-scheme-extra" id="quarto-text-highlighting-styles">
+<script src="../../site_libs/bootstrap/bootstrap.min.js"></script>
+<link href="../../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="../../site_libs/bootstrap/bootstrap-44f4de344a60312d5293f682bd5af1a1.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme" id="quarto-bootstrap" data-mode="light">
+<link href="../../site_libs/bootstrap/bootstrap-dark-e2f6f9421179af143e1cac5a5d2f3211.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme quarto-color-alternate" id="quarto-bootstrap" data-mode="light">
+<link href="../../site_libs/bootstrap/bootstrap-44f4de344a60312d5293f682bd5af1a1.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme-extra" id="quarto-bootstrap" data-mode="light">
+<script src="../../site_libs/quarto-contrib/iconify-3.0.0/iconify-icon.min.js"></script>
 <script id="quarto-search-options" type="application/json">{
   "location": "navbar",
   "copy-button": false,
@@ -117,17 +117,17 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </script>
 
 
-<meta property="og:title" content="Tooling – ggsql">
+<meta property="og:title" content="WebAssembly – ggsql">
 <meta property="og:description" content="The home of ggsql. A declarative visualisation language build on top of SQL and the grammar of graphics.">
-<meta property="og:image" content="https://ggsql.org/get_started/assets/logo.png">
+<meta property="og:image" content="https://ggsql.org/get_started/tooling/assets/logo.png">
 <meta property="og:site_name" content="ggsql">
 <meta property="og:image:alt" content="The ggsql logo showing a pencil tracing a lineplot with points. The pencil
 handle is made up of the classic database silo icon and is coloured in a
 gradient teal.
 ">
-<meta name="twitter:title" content="Tooling – ggsql">
+<meta name="twitter:title" content="WebAssembly – ggsql">
 <meta name="twitter:description" content="The home of ggsql. A declarative visualisation language build on top of SQL and the grammar of graphics.">
-<meta name="twitter:image" content="https://ggsql.org/get_started/assets/logo.png">
+<meta name="twitter:image" content="https://ggsql.org/get_started/tooling/assets/logo.png">
 <meta name="twitter:card" content="summary">
 <meta name="twitter:image:alt" content="The ggsql logo showing a pencil tracing a lineplot with points. The pencil
 handle is made up of the classic database silo icon and is coloured in a
@@ -142,11 +142,11 @@ gradient teal.
     <nav class="navbar navbar-expand-lg " data-bs-theme="dark">
       <div class="navbar-container container-fluid">
       <div class="navbar-brand-container mx-auto">
-    <a href="../index.html" class="navbar-brand navbar-brand-logo">
-    <img src="../assets/icon.svg" alt="" class="navbar-logo light-content">
-    <img src="../assets/icon.svg" alt="" class="navbar-logo dark-content">
+    <a href="../../index.html" class="navbar-brand navbar-brand-logo">
+    <img src="../../assets/icon.svg" alt="" class="navbar-logo light-content">
+    <img src="../../assets/icon.svg" alt="" class="navbar-logo dark-content">
     </a>
-    <a class="navbar-brand" href="../index.html">
+    <a class="navbar-brand" href="../../index.html">
     <span class="navbar-title">ggsql</span>
     </a>
   </div>
@@ -157,7 +157,7 @@ gradient teal.
           <div class="collapse navbar-collapse" id="navbarCollapse">
             <ul class="navbar-nav navbar-nav-scroll me-auto">
   <li class="nav-item">
-    <a class="nav-link active" href="../get_started/installation.html" aria-current="page"> 
+    <a class="nav-link active" href="../../get_started/installation.html" aria-current="page"> 
 <span class="menu-text">Get started</span></a>
   </li>  
   <li class="nav-item dropdown ">
@@ -166,46 +166,46 @@ gradient teal.
     </a>
     <ul class="dropdown-menu" aria-labelledby="nav-menu-syntax">    
         <li>
-    <a class="dropdown-item" href="../syntax/index.html">
+    <a class="dropdown-item" href="../../syntax/index.html">
  <span class="dropdown-text">Overview</span></a>
   </li>  
         <li><hr class="dropdown-divider"></li>
         <li>
-    <a class="dropdown-item" href="../syntax/clause/visualise.html">
+    <a class="dropdown-item" href="../../syntax/clause/visualise.html">
  <span class="dropdown-text"><code>VISUALISE</code></span></a>
   </li>  
         <li>
-    <a class="dropdown-item" href="../syntax/clause/draw.html">
+    <a class="dropdown-item" href="../../syntax/clause/draw.html">
  <span class="dropdown-text"><code>DRAW</code></span></a>
   </li>  
         <li>
-    <a class="dropdown-item" href="../syntax/clause/place.html">
+    <a class="dropdown-item" href="../../syntax/clause/place.html">
  <span class="dropdown-text"><code>PLACE</code></span></a>
   </li>  
         <li>
-    <a class="dropdown-item" href="../syntax/clause/scale.html">
+    <a class="dropdown-item" href="../../syntax/clause/scale.html">
  <span class="dropdown-text"><code>SCALE</code></span></a>
   </li>  
         <li>
-    <a class="dropdown-item" href="../syntax/clause/facet.html">
+    <a class="dropdown-item" href="../../syntax/clause/facet.html">
  <span class="dropdown-text"><code>FACET</code></span></a>
   </li>  
         <li>
-    <a class="dropdown-item" href="../syntax/clause/project.html">
+    <a class="dropdown-item" href="../../syntax/clause/project.html">
  <span class="dropdown-text"><code>PROJECT</code></span></a>
   </li>  
         <li>
-    <a class="dropdown-item" href="../syntax/clause/label.html">
+    <a class="dropdown-item" href="../../syntax/clause/label.html">
  <span class="dropdown-text"><code>LABEL</code></span></a>
   </li>  
     </ul>
   </li>
   <li class="nav-item">
-    <a class="nav-link" href="../gallery/index.html"> 
+    <a class="nav-link" href="../../gallery/index.html"> 
 <span class="menu-text">Gallery</span></a>
   </li>  
   <li class="nav-item">
-    <a class="nav-link" href="../faq.html"> 
+    <a class="nav-link" href="../../faq.html"> 
 <span class="menu-text">FAQ</span></a>
   </li>  
   <li class="nav-item dropdown ">
@@ -215,7 +215,7 @@ gradient teal.
     <ul class="dropdown-menu" aria-labelledby="nav-menu-news">    
         <li class="dropdown-header">Releases</li>
         <li>
-    <a class="dropdown-item" href="../blog/posts/2026_04_29_ggsql_0_3_0/index.html">
+    <a class="dropdown-item" href="../../blog/posts/2026_04_29_ggsql_0_3_0/index.html">
  <span class="dropdown-text">Version 0.3.0 (alpha)</span></a>
   </li>  
         <li>
@@ -224,7 +224,7 @@ gradient teal.
   </li>  
         <li><hr class="dropdown-divider"></li>
         <li>
-    <a class="dropdown-item" href="../CHANGELOG.html">
+    <a class="dropdown-item" href="../../CHANGELOG.html">
  <span class="dropdown-text">CHANGELOG</span></a>
   </li>  
     </ul>
@@ -232,7 +232,7 @@ gradient teal.
 </ul>
             <ul class="navbar-nav navbar-nav-scroll ms-auto">
   <li class="nav-item">
-    <a class="nav-link" href="../wasm/index.html"> 
+    <a class="nav-link" href="../../wasm/index.html"> 
 <span class="menu-text">Playground</span></a>
   </li>  
   <li class="nav-item">
@@ -269,7 +269,7 @@ gradient teal.
       <button type="button" class="quarto-btn-toggle btn" data-bs-toggle="collapse" role="button" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
         <i class="bi bi-layout-text-sidebar-reverse"></i>
       </button>
-        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../get_started/tooling.html">Tooling</a></li></ol></nav>
+        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../../get_started/tooling/index.html">Tooling</a></li><li class="breadcrumb-item"><a href="../../get_started/tooling/webassembly.html">WebAssembly</a></li></ol></nav>
         <a class="flex-grow-1" role="navigation" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">      
         </a>
     </div>
@@ -286,43 +286,90 @@ gradient teal.
     <ul class="list-unstyled mt-1">
         <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../get_started/installation.html" class="sidebar-item-text sidebar-link">
+  <a href="../../get_started/installation.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">Installation</span></a>
   </div>
 </li>
         <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../get_started/first_plot.html" class="sidebar-item-text sidebar-link">
+  <a href="../../get_started/first_plot.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">The first plot</span></a>
   </div>
 </li>
         <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../get_started/grammar.html" class="sidebar-item-text sidebar-link">
+  <a href="../../get_started/grammar.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">Grammar of graphics</span></a>
   </div>
 </li>
         <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../get_started/anatomy.html" class="sidebar-item-text sidebar-link">
+  <a href="../../get_started/anatomy.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">Anatomy of ggsql</span></a>
   </div>
 </li>
-        <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
-  <a href="../get_started/tooling.html" class="sidebar-item-text sidebar-link active">
+        <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container"> 
+            <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-1" role="navigation" aria-expanded="true">
  <span class="menu-text">Tooling</span></a>
+          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-1" role="navigation" aria-expanded="true" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a> 
+      </div>
+      <ul id="quarto-sidebar-section-1" class="collapse list-unstyled sidebar-section depth1 show">  
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../../get_started/tooling/index.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Overview</span></a>
   </div>
 </li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../../get_started/tooling/positron-vscode.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Positron / VS Code</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../../get_started/tooling/jupyter-quarto.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Jupyter &amp; Quarto</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../../get_started/tooling/cli.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">CLI</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../../get_started/tooling/python.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Python</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../../get_started/tooling/r.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">R</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../../get_started/tooling/webassembly.html" class="sidebar-item-text sidebar-link active">
+ <span class="menu-text">WebAssembly</span></a>
+  </div>
+</li>
+      </ul>
+  </li>
         <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../get_started/the_rest.html" class="sidebar-item-text sidebar-link">
+  <a href="../../get_started/the_rest.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">The rest of the owl</span></a>
   </div>
 </li>
         <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../get_started/wrap_up.html" class="sidebar-item-text sidebar-link">
+  <a href="../../get_started/wrap_up.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">Wrap up</span></a>
   </div>
 </li>
@@ -335,9 +382,9 @@ gradient teal.
 <!-- main -->
 <main class="content" id="quarto-document-content">
 
-<header id="title-block-header" class="quarto-title-block default">
+<header id="title-block-header" class="quarto-title-block default"><nav class="quarto-page-breadcrumbs quarto-title-breadcrumbs d-none d-lg-block" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../../get_started/tooling/index.html">Tooling</a></li><li class="breadcrumb-item"><a href="../../get_started/tooling/webassembly.html">WebAssembly</a></li></ol></nav>
 <div class="quarto-title">
-<h1 class="title">Tooling</h1>
+<h1 class="title">WebAssembly</h1>
 </div>
 
 
@@ -354,45 +401,40 @@ gradient teal.
 </header>
 
 
-<p>Now that we understand some of the most important parts of the syntax let’s spend a bit of time on where and how to apply it. All the examples on this page are interactive and runs directly in the browser, which is obviously useful for teaching, but it will not suffice for your day-to-day work where you need to interact with your own data. ggsql is a general tool you can use in a multitude of ways and we’ll go over the most important below.</p>
-<section id="vs-code-extension" class="level2">
-<h2 class="anchored" data-anchor-id="vs-code-extension">VS Code extension</h2>
-<p>We provide an extension for VS Code/Positron that brings language support to the IDE. Positron is generally superior for data analysis and the ggsql integration is deeper there, which we will showcase below. Still, using the extension with VS Code should provide you with a good developer experience. You can grab the <a href="https://open-vsx.org/extension/ggsql/ggsql">ggsql extension</a> directly from the marketplace.</p>
-<p>Once installed you will get access to ggsql as a language at the same level as R and Python. You can open and edit <code>.gsql</code> files with syntax highlighting, autocomplete, you can open up a REPL in the console pane and executing queries and you can see the resulting visualization appear in the plot pane. If you have any database connections in the connection pane you can directly attach these to your ggsql runtime and begin to visualize the tables in there.</p>
+<p>ggsql compiles to WebAssembly, which means it can run entirely in the browser with no server-side component. The <a href="../../wasm/index.html">playground</a> on this site is powered by the WebAssembly build, and all the interactive examples in the documentation run the same way.</p>
+<section id="playground" class="level2">
+<h2 class="anchored" data-anchor-id="playground">Playground</h2>
+<p>The easiest way to try ggsql without installing anything is the <a href="../../wasm/index.html">online playground</a>. It provides an editor with syntax highlighting and a live preview of the resulting visualisation. Queries execute locally in your browser and no data leaves your machine.</p>
 </section>
-<section id="jupyter-kernel" class="level2">
-<h2 class="anchored" data-anchor-id="jupyter-kernel">Jupyter kernel</h2>
-<p>Once the Jupyter kernel is installed you can use ggsql as an engine in your Jupyter notebooks and Quarto documents. For a Jupyter notebook you can select the kernel when you start a new notebook. For a Quarto document you use the ggsql language name to tell the renderer to use the ggsql kernel e.g.</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb1"><pre class="sourceCode markdown code-with-copy"><code class="sourceCode markdown"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="in">```{ggsql}</span></span>
-<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="in">VISUALISE ...</span></span>
-<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="in">```</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<p>Each block in the document uses the same session, so tables created in one block will be available in subsequent blocks.</p>
-</section>
-<section id="python-package" class="level2">
-<h2 class="anchored" data-anchor-id="python-package">Python package</h2>
-<p>We have a <a href="https://pypi.org/project/ggsql/">python package</a> which you can install through pip (<code>pip install ggsql</code>). The package provides binding to ggsql and allows you to plot with ggsql directly from within python and register alternative data backends.</p>
-<p>A simple example could be</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb2"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> ggsql</span>
-<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> polars <span class="im">as</span> pl</span>
-<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Create a DataFrame</span></span>
-<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>df <span class="op">=</span> pl.DataFrame({</span>
-<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a>    <span class="st">"x"</span>: [<span class="dv">1</span>, <span class="dv">2</span>, <span class="dv">3</span>, <span class="dv">4</span>, <span class="dv">5</span>],</span>
-<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a>    <span class="st">"y"</span>: [<span class="dv">10</span>, <span class="dv">20</span>, <span class="dv">15</span>, <span class="dv">30</span>, <span class="dv">25</span>],</span>
-<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a>    <span class="st">"category"</span>: [<span class="st">"A"</span>, <span class="st">"B"</span>, <span class="st">"A"</span>, <span class="st">"B"</span>, <span class="st">"A"</span>]</span>
-<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a>})</span>
-<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a><span class="co"># Render to Altair chart</span></span>
-<span id="cb2-12"><a href="#cb2-12" aria-hidden="true" tabindex="-1"></a>chart <span class="op">=</span> ggsql.render_altair(df, <span class="st">"VISUALISE x, y DRAW point"</span>)</span>
+<section id="usage" class="level2">
+<h2 class="anchored" data-anchor-id="usage">Usage</h2>
+<p>The WebAssembly build can be embedded in your own web pages using the <a href="https://www.npmjs.com/package/ggsql-wasm">ggsql-wasm</a> npm package. This allows you to build custom interfaces and applications on top of ggsql running in the browser.</p>
+<p>Add ggsql-wasm to your project with:</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb1"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="ex">npm</span> install ggsql-wasm</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Then you can import the module and use it in your JavaScript code:</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb2"><pre class="sourceCode javascript code-with-copy"><code class="sourceCode javascript"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> init<span class="op">,</span> { GgsqlContext } <span class="im">from</span> <span class="st">"ggsql-wasm"</span><span class="op">;</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a><span class="co">// Initialize the WebAssembly module and create a ggsql context</span></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a><span class="im">export</span> <span class="kw">const</span> WASM_BASE <span class="op">=</span> <span class="kw">new</span> <span class="fu">URL</span>(<span class="st">"."</span><span class="op">,</span> <span class="im">import</span><span class="op">.</span><span class="at">meta</span><span class="op">.</span><span class="at">url</span>)<span class="op">.</span><span class="at">href</span><span class="op">;</span></span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a><span class="cf">await</span> <span class="fu">init</span>(WASM_BASE <span class="op">+</span> <span class="st">"ggsql_wasm_bg.wasm"</span>)<span class="op">;</span></span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a><span class="kw">const</span> context <span class="op">=</span> <span class="kw">new</span> <span class="fu">GgsqlContext</span>()<span class="op">;</span></span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a><span class="co">// Fetch and register a CSV file as a table</span></span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a><span class="kw">const</span> response <span class="op">=</span> <span class="cf">await</span> <span class="fu">fetch</span>(<span class="st">"sample_data.csv"</span>)<span class="op">;</span></span>
+<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a><span class="kw">const</span> buffer <span class="op">=</span> <span class="cf">await</span> response<span class="op">.</span><span class="fu">arrayBuffer</span>()<span class="op">;</span></span>
+<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a><span class="kw">const</span> data <span class="op">=</span> <span class="kw">new</span> <span class="bu">Uint8Array</span>(buffer)<span class="op">;</span></span>
+<span id="cb2-12"><a href="#cb2-12" aria-hidden="true" tabindex="-1"></a>context<span class="op">.</span><span class="fu">register_csv</span>(<span class="st">'sample_data'</span><span class="op">,</span> data)<span class="op">;</span></span>
 <span id="cb2-13"><a href="#cb2-13" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb2-14"><a href="#cb2-14" aria-hidden="true" tabindex="-1"></a><span class="co"># Display or save</span></span>
-<span id="cb2-15"><a href="#cb2-15" aria-hidden="true" tabindex="-1"></a>chart.display()  <span class="co"># In Jupyter</span></span>
-<span id="cb2-16"><a href="#cb2-16" aria-hidden="true" tabindex="-1"></a>chart.save(<span class="st">"chart.html"</span>)  <span class="co"># Save to file</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-</section>
-<section id="command-line-interface" class="level2">
-<h2 class="anchored" data-anchor-id="command-line-interface">Command line interface</h2>
-<p>While maybe not the most ergonomic way to interact directly with ggsql, there is a CLI interface if you need to build tools around ggsql. The CLI tool allows you to execute a file or string and validate a query without executing it. A simple example of executing a query looks like this:</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb3"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="ex">ggsql</span> <span class="at">--exec</span> <span class="st">"VISUALISE species AS fill FROM ggsql:penguins DRAW bar"</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<span id="cb2-14"><a href="#cb2-14" aria-hidden="true" tabindex="-1"></a><span class="co">// Execute a ggsql query against the registered data</span></span>
+<span id="cb2-15"><a href="#cb2-15" aria-hidden="true" tabindex="-1"></a><span class="kw">const</span> query <span class="op">=</span> <span class="vs">`</span></span>
+<span id="cb2-16"><a href="#cb2-16" aria-hidden="true" tabindex="-1"></a><span class="vs">  VISUALISE x, y FROM sample_data</span></span>
+<span id="cb2-17"><a href="#cb2-17" aria-hidden="true" tabindex="-1"></a><span class="vs">  DRAW point</span></span>
+<span id="cb2-18"><a href="#cb2-18" aria-hidden="true" tabindex="-1"></a><span class="vs">`</span><span class="op">;</span></span>
+<span id="cb2-19"><a href="#cb2-19" aria-hidden="true" tabindex="-1"></a><span class="kw">const</span> result <span class="op">=</span> context<span class="op">.</span><span class="fu">execute</span>(query)<span class="op">;</span></span>
+<span id="cb2-20"><a href="#cb2-20" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-21"><a href="#cb2-21" aria-hidden="true" tabindex="-1"></a><span class="co">// Use the result (a Vega-Lite spec) to render a chart,</span></span>
+<span id="cb2-22"><a href="#cb2-22" aria-hidden="true" tabindex="-1"></a><span class="co">// or log it to the JavaScript console</span></span>
+<span id="cb2-23"><a href="#cb2-23" aria-hidden="true" tabindex="-1"></a><span class="bu">console</span><span class="op">.</span><span class="fu">log</span>(result)<span class="op">;</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 
 
 </section>
@@ -800,12 +842,12 @@ gradient teal.
   </script>
 <nav class="page-navigation">
   <div class="nav-page nav-page-previous">
-      <a href="../get_started/anatomy.html" class="pagination-link" aria-label="Anatomy of ggsql">
-        <i class="bi bi-arrow-left-short"></i> <span class="nav-page-text">Anatomy of ggsql</span>
+      <a href="../../get_started/tooling/r.html" class="pagination-link" aria-label="R">
+        <i class="bi bi-arrow-left-short"></i> <span class="nav-page-text">R</span>
       </a>          
   </div>
   <div class="nav-page nav-page-next">
-      <a href="../get_started/the_rest.html" class="pagination-link" aria-label="The rest of the owl">
+      <a href="../../get_started/the_rest.html" class="pagination-link" aria-label="The rest of the owl">
         <span class="nav-page-text">The rest of the owl</span> <i class="bi bi-arrow-right-short"></i>
       </a>
   </div>

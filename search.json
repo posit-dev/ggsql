@@ -33,58 +33,177 @@
     ]
   },
   {
-    "objectID": "get_started/tooling.html",
-    "href": "get_started/tooling.html",
+    "objectID": "get_started/tooling/jupyter-quarto.html",
+    "href": "get_started/tooling/jupyter-quarto.html",
+    "title": "Jupyter & Quarto",
+    "section": "",
+    "text": "Once the ggsql Jupyter kernel has been installed you can use ggsql in Jupyter notebooks and Quarto documents.",
+    "crumbs": [
+      "Get started",
+      "Tooling",
+      "Jupyter & Quarto"
+    ]
+  },
+  {
+    "objectID": "get_started/tooling/jupyter-quarto.html#installation",
+    "href": "get_started/tooling/jupyter-quarto.html#installation",
+    "title": "Jupyter & Quarto",
+    "section": "Installation",
+    "text": "Installation\nFirst, install ggsql on your system using the Jupyter kernel installation instructions. If you do not already have Jupyter installed, you should install it in a new virtual environment using uv or pip first:\nuv venv\nuv pip install jupyter\nuv pip install ggsql-jupyter\nsource .venv/bin/activate\nggsql-jupyter --install\nTo verify installation, run jupyter kernelspec list and check that ggsql is listed as an available kernel.\n$ jupyter kernelspec list\nAvailable kernels:\n  python3    /tmp/.venv/share/jupyter/kernels/python3\n  ggsql      /home/user/.local/share/jupyter/kernels/ggsql\nYou can now use ggsql in your Quarto documents or Jupyter notebooks.",
+    "crumbs": [
+      "Get started",
+      "Tooling",
+      "Jupyter & Quarto"
+    ]
+  },
+  {
+    "objectID": "get_started/tooling/jupyter-quarto.html#quarto-documents",
+    "href": "get_started/tooling/jupyter-quarto.html#quarto-documents",
+    "title": "Jupyter & Quarto",
+    "section": "Quarto documents",
+    "text": "Quarto documents\nFor a Quarto document, use the ggsql language name in a code block to tell the renderer to use the ggsql kernel:\n```{ggsql}\nVISUALISE species AS fill\nFROM ggsql:penguins\nDRAW bar\n```\nEach block in the document shares the same session, so tables created in one block will be available in subsequent blocks.",
+    "crumbs": [
+      "Get started",
+      "Tooling",
+      "Jupyter & Quarto"
+    ]
+  },
+  {
+    "objectID": "get_started/tooling/jupyter-quarto.html#jupyter-notebooks",
+    "href": "get_started/tooling/jupyter-quarto.html#jupyter-notebooks",
+    "title": "Jupyter & Quarto",
+    "section": "Jupyter notebooks",
+    "text": "Jupyter notebooks\nFirst, start a Jupyter notebook server in your terminal:\njupyter notebook\nWhen creating a new notebook, select the ggsql kernel from the kernel selector. Each cell in the notebook can contain a ggsql query, and the resulting visualisation will be displayed inline below the cell.\nAs with Quarto, each cell in the notebook uses the same session, so tables created in one cell will be available in subsequent cells.",
+    "crumbs": [
+      "Get started",
+      "Tooling",
+      "Jupyter & Quarto"
+    ]
+  },
+  {
+    "objectID": "get_started/tooling/jupyter-quarto.html#database-connections",
+    "href": "get_started/tooling/jupyter-quarto.html#database-connections",
+    "title": "Jupyter & Quarto",
+    "section": "Database connections",
+    "text": "Database connections\nBy default, the ggsql kernel starts with an empty in-memory duckdb database connection. A “magic” comment can be used to initiate a different database connection after the session has launched, which can be either a comment in your Quarto code block or invoked directly in a Jupyter notebook cell.\nThe connection syntax is -- @connect: [connection_uri], where [connection_uri] is a ggsql database connection string in the same format as accepted by the ggsql CLI.",
+    "crumbs": [
+      "Get started",
+      "Tooling",
+      "Jupyter & Quarto"
+    ]
+  },
+  {
+    "objectID": "get_started/tooling/index.html",
+    "href": "get_started/tooling/index.html",
     "title": "Tooling",
     "section": "",
-    "text": "Now that we understand some of the most important parts of the syntax let’s spend a bit of time on where and how to apply it. All the examples on this page are interactive and runs directly in the browser, which is obviously useful for teaching, but it will not suffice for your day-to-day work where you need to interact with your own data. ggsql is a general tool you can use in a multitude of ways and we’ll go over the most important below.",
+    "text": "Now that we understand some of the most important parts of the syntax let’s spend a bit of time on where and how to apply it. All the examples on this website are interactive and run directly in the browser, which is obviously useful for teaching, but it will not suffice for your day-to-day work where you need to interact with your own data. ggsql is a general tool you can use in a multitude of ways and we’ll go over them in this section.\n\nPositron / VS Code — Full language support in your IDE with syntax highlighting, autocomplete, and an integrated REPL.\nJupyter & Quarto — Use ggsql as a kernel in Jupyter or Quarto for interactive data exploration and reproducible documents.\nCLI — Execute queries and validate syntax from the command line.\nPython — Use ggsql from Python.\nR — Use ggsql from R.\nWebAssembly — Run ggsql entirely in the browser with no installation.",
     "crumbs": [
       "Get started",
-      "Tooling"
+      "Tooling",
+      "Overview"
     ]
   },
   {
-    "objectID": "get_started/tooling.html#vs-code-extension",
-    "href": "get_started/tooling.html#vs-code-extension",
-    "title": "Tooling",
-    "section": "VS Code extension",
-    "text": "VS Code extension\nWe provide an extension for VS Code/Positron that brings language support to the IDE. Positron is generally superior for data analysis and the ggsql integration is deeper there, which we will showcase below. Still, using the extension with VS Code should provide you with a good developer experience. You can grab the ggsql extension directly from the marketplace.\nOnce installed you will get access to ggsql as a language at the same level as R and Python. You can open and edit .gsql files with syntax highlighting, autocomplete, you can open up a REPL in the console pane and executing queries and you can see the resulting visualization appear in the plot pane. If you have any database connections in the connection pane you can directly attach these to your ggsql runtime and begin to visualize the tables in there.",
+    "objectID": "get_started/tooling/webassembly.html",
+    "href": "get_started/tooling/webassembly.html",
+    "title": "WebAssembly",
+    "section": "",
+    "text": "ggsql compiles to WebAssembly, which means it can run entirely in the browser with no server-side component. The playground on this site is powered by the WebAssembly build, and all the interactive examples in the documentation run the same way.",
     "crumbs": [
       "Get started",
-      "Tooling"
+      "Tooling",
+      "WebAssembly"
     ]
   },
   {
-    "objectID": "get_started/tooling.html#jupyter-kernel",
-    "href": "get_started/tooling.html#jupyter-kernel",
-    "title": "Tooling",
-    "section": "Jupyter kernel",
-    "text": "Jupyter kernel\nOnce the Jupyter kernel is installed you can use ggsql as an engine in your Jupyter notebooks and Quarto documents. For a Jupyter notebook you can select the kernel when you start a new notebook. For a Quarto document you use the ggsql language name to tell the renderer to use the ggsql kernel e.g.\n```{ggsql}\nVISUALISE ...\n```\nEach block in the document uses the same session, so tables created in one block will be available in subsequent blocks.",
+    "objectID": "get_started/tooling/webassembly.html#playground",
+    "href": "get_started/tooling/webassembly.html#playground",
+    "title": "WebAssembly",
+    "section": "Playground",
+    "text": "Playground\nThe easiest way to try ggsql without installing anything is the online playground. It provides an editor with syntax highlighting and a live preview of the resulting visualisation. Queries execute locally in your browser and no data leaves your machine.",
     "crumbs": [
       "Get started",
-      "Tooling"
+      "Tooling",
+      "WebAssembly"
     ]
   },
   {
-    "objectID": "get_started/tooling.html#python-package",
-    "href": "get_started/tooling.html#python-package",
-    "title": "Tooling",
-    "section": "Python package",
-    "text": "Python package\nWe have a python package which you can install through pip (pip install ggsql). The package provides binding to ggsql and allows you to plot with ggsql directly from within python and register alternative data backends.\nA simple example could be\nimport ggsql\nimport polars as pl\n\n# Create a DataFrame\ndf = pl.DataFrame({\n    \"x\": [1, 2, 3, 4, 5],\n    \"y\": [10, 20, 15, 30, 25],\n    \"category\": [\"A\", \"B\", \"A\", \"B\", \"A\"]\n})\n\n# Render to Altair chart\nchart = ggsql.render_altair(df, \"VISUALISE x, y DRAW point\")\n\n# Display or save\nchart.display()  # In Jupyter\nchart.save(\"chart.html\")  # Save to file",
+    "objectID": "get_started/tooling/webassembly.html#usage",
+    "href": "get_started/tooling/webassembly.html#usage",
+    "title": "WebAssembly",
+    "section": "Usage",
+    "text": "Usage\nThe WebAssembly build can be embedded in your own web pages using the ggsql-wasm npm package. This allows you to build custom interfaces and applications on top of ggsql running in the browser.\nAdd ggsql-wasm to your project with:\nnpm install ggsql-wasm\nThen you can import the module and use it in your JavaScript code:\nimport init, { GgsqlContext } from \"ggsql-wasm\";\n\n// Initialize the WebAssembly module and create a ggsql context\nexport const WASM_BASE = new URL(\".\", import.meta.url).href;\nawait init(WASM_BASE + \"ggsql_wasm_bg.wasm\");\nconst context = new GgsqlContext();\n\n// Fetch and register a CSV file as a table\nconst response = await fetch(\"sample_data.csv\");\nconst buffer = await response.arrayBuffer();\nconst data = new Uint8Array(buffer);\ncontext.register_csv('sample_data', data);\n\n// Execute a ggsql query against the registered data\nconst query = `\n  VISUALISE x, y FROM sample_data\n  DRAW point\n`;\nconst result = context.execute(query);\n\n// Use the result (a Vega-Lite spec) to render a chart,\n// or log it to the JavaScript console\nconsole.log(result);",
     "crumbs": [
       "Get started",
-      "Tooling"
+      "Tooling",
+      "WebAssembly"
     ]
   },
   {
-    "objectID": "get_started/tooling.html#command-line-interface",
-    "href": "get_started/tooling.html#command-line-interface",
-    "title": "Tooling",
-    "section": "Command line interface",
-    "text": "Command line interface\nWhile maybe not the most ergonomic way to interact directly with ggsql, there is a CLI interface if you need to build tools around ggsql. The CLI tool allows you to execute a file or string and validate a query without executing it. A simple example of executing a query looks like this:\nggsql --exec \"VISUALISE species AS fill FROM ggsql:penguins DRAW bar\"",
+    "objectID": "get_started/anatomy.html",
+    "href": "get_started/anatomy.html",
+    "title": "The anatomy of ggsql",
+    "section": "",
+    "text": "With a slight bit of knowledge about the grammar of graphics, let’s dive into how the concepts are present in ggsql, starting with some key concepts and moving on to how it is reflected in the syntax.",
     "crumbs": [
       "Get started",
-      "Tooling"
+      "Anatomy of ggsql"
+    ]
+  },
+  {
+    "objectID": "get_started/anatomy.html#layers",
+    "href": "get_started/anatomy.html#layers",
+    "title": "The anatomy of ggsql",
+    "section": "Layers",
+    "text": "Layers\nggsql is composable, allowing you to create arbitrarily complex visualizations. Central to this is the concept of layers. A layer is a single visual encoding of some underlying data, e.g. points for a scatterplot, or bars for a barplot. You can have multiple layers in which case they are stacked on top of each other in the order they are declared (i.e. a layer declared last will be on top and overlap any layer declared before it). A scatterplot with a regression line consist of two layers: A point layer and a smooth layer.\nLayers may show data directly, e.g. a point layer will show each observation as a point, or it may apply a statistical transformation and show the result of that, e.g. a histogram layer will bin and count your data before showing the result as bars.",
+    "crumbs": [
+      "Get started",
+      "Anatomy of ggsql"
+    ]
+  },
+  {
+    "objectID": "get_started/anatomy.html#aesthetics",
+    "href": "get_started/anatomy.html#aesthetics",
+    "title": "The anatomy of ggsql",
+    "section": "Aesthetics",
+    "text": "Aesthetics\nYou will encounter aesthetics throughout the documentation and it is arguably one of the most important concepts to get right. Aesthetics are the things that describe the visual entities that makes up a layer, e.g. the color of a point, the linewidth of a line, and the opacity of a polygon.\nThere are two types of aesthetics: position aesthetics and material aesthetics. The former are related to where an entity is placed and is deeply connected to the coordinate system of the plot. The latter are related to how the entity looks.\nAesthetics can either be mapped or set. You use mapping if you want the aesthetic to be related to values in your data, e.g. have fill color be controlled by a category column from your dataset. You use setting when you wish to fix an aesthetic to a specific value, not related to your data, e.g. you want to set linewidth to 2pt.",
+    "crumbs": [
+      "Get started",
+      "Anatomy of ggsql"
+    ]
+  },
+  {
+    "objectID": "get_started/anatomy.html#scales",
+    "href": "get_started/anatomy.html#scales",
+    "title": "The anatomy of ggsql",
+    "section": "Scales",
+    "text": "Scales\nWhen you map data to an aesthetic it will seldom have values that are meaningful for the aesthetic. Consider mapping region to fill because you wish the fill color shows the geographical region the data pertains to. region might contain values such as Asia, Europe, and South America which are not meaningful color values. How do you translate these values into something the aesthetic understands?\nThe answer is using a scale. When mapping an aesthetic it will automatically be scaled by a default scale to ensure that the aesthetic receives values it understands, but you can take control of the scaling and e.g. use a different color palette.",
+    "crumbs": [
+      "Get started",
+      "Anatomy of ggsql"
+    ]
+  },
+  {
+    "objectID": "get_started/anatomy.html#the-syntax",
+    "href": "get_started/anatomy.html#the-syntax",
+    "title": "The anatomy of ggsql",
+    "section": "The syntax",
+    "text": "The syntax\nBefore we move on, let’s examine how the concepts we have just described are reflected in the ggsql syntax. Often these will be enough for your basic visualization needs.\n\nVISUALISE\nEvery ggsql query starts with a VISUALISE (or VISUALIZE) clause. It denotes that we are exiting regular SQL syntax and entering ggsql.\nWhile VISUALISE can stand on its own as a demarcation line between the regular and the visual query, you can also pass it a list of aesthetic mappings which will define the default mapping for the layers so that you don’t have to repeat it for every layer. Lastly, if you do not have a initial SQL query you can name a data source for your plot.\nBringing all of these things together, a VISUALISE clause could look like this:\n--       |---------- mapping ----------|--- data source ---|\nVISUALISE body_mass AS x, bill_len AS y FROM ggsql:penguins\n\n\nDRAW\nFollowing VISUALISE you’d usually provide one or more DRAW clauses which will define your layer. The DRAW clause is arguably the most complex clause, but the basic usage is straightforward: You provide the type of the layer, any additional mapping if needed, and perhaps modify the settings of the layer. To achieve this we employ the MAPPING and SETTING clauses.\nThe input to the MAPPING clause looks exactly like what we saw above for the VISUALISE clause. You can provide mappings and optionally a data source if you want the layer to use a data source different from the global data. The SETTING clause allows you to both set aesthetics as well as set parameters specific to the layer (e.g. number of bins in a histogram).\nBringing all of this together a DRAW clause could look like this:\n--  |- type --|\nDRAW histogram\n--       |-- mapping --|\n  MAPPING bill_len AS x\n--       |-- setting ---|- parameter -|\n  SETTING stroke =&gt; null, bins =&gt; 20\nbut, if mappings and data source have already been taken care of, it can be as simple as\nDRAW point\n\n\nSCALE\nAs described above, ggsql automatically creates a default for mapped aesthetics and if those suit your needs there is no reason to modify them. However, if change is needed you do it with the SCALE clause.\nThe clause allows you to set the type of scale, the input range, the output range, the transformation, and lets you control breaks and label formatting. So, the clause can end up with a lot of information but the syntax has been designed so it reads very natural. Further, every part is optional and can be left out if the default fits. An example of a rather complex SCALE clause could be:\nSCALE ORDINAL fill FROM ('Low', 'Mid', 'High') TO viridis\n  SETTING breaks =&gt; 6\nBut, if you are only interested in changing e.g. the palette it can be as simple as:\nSCALE fill TO viridis",
+    "crumbs": [
+      "Get started",
+      "Anatomy of ggsql"
+    ]
+  },
+  {
+    "objectID": "get_started/anatomy.html#example",
+    "href": "get_started/anatomy.html#example",
+    "title": "The anatomy of ggsql",
+    "section": "Example",
+    "text": "Example\nUsing the things we have just learned we can combine it all to a complete query consisting of multiple layers and custom scales:\n\nVISUALISE bill_len AS x, bill_dep AS y, species AS stroke FROM ggsql:penguins\nDRAW point \n  MAPPING body_mass AS size\n  SETTING fill =&gt; null\nDRAW smooth \n  SETTING method =&gt; 'ols'\nSCALE stroke TO dark2\nSCALE BINNED size TO (4, 15)\n  SETTING breaks =&gt; 4\n\n\n\n\n\n\n\nIn the above we create a global mapping of bill_len to the x aesthetic and bill_dep to the y aesthetic using the built-in penguins dataset. We use DRAW to create two layers: A point layer for a scatter plot and a smooth layer for regression lines. For the point layer we map the body_mass to size to create a bubble chart and set the fill aesthetic to be empty (null) so only the outline is shown. For the smooth layer we set the layer parameter method to 'ols' to estimate a straight regression line. Lastly, we modify the stroke scale to use the dark2 palette from the ColorBrewer project and apply a binned scale to size that goes from 4pt to 15pt with 4 breaks (resulting in 3 bins).\nWhile the query above may feel like a mouthful, remember that most visualizations are much simpler:\n\nVISUALISE body_mass AS x FROM ggsql:penguins\nDRAW histogram\n\n\n\n\n\n\n\nIn the next section we will introduce the remaining parts of the grammar and the related syntax, but the parts covered here will already take you a very long way.",
+    "crumbs": [
+      "Get started",
+      "Anatomy of ggsql"
     ]
   },
   {
@@ -115,6 +234,17 @@
     "title": "Installation",
     "section": "VS Code / Positron extension",
     "text": "VS Code / Positron extension\nFor syntax highlighting and language support in VS Code or Positron, install the ggsql extension. You can either install it directly from the extension marketplace from within the IDE or download and install it manually (in the Extensions view, click the ... menu, select “Install from VSIX…”, and choose the downloaded file.)",
+    "crumbs": [
+      "Get started",
+      "Installation"
+    ]
+  },
+  {
+    "objectID": "get_started/installation.html#webassembly-javascript",
+    "href": "get_started/installation.html#webassembly-javascript",
+    "title": "Installation",
+    "section": "WebAssembly / JavaScript",
+    "text": "WebAssembly / JavaScript\nTo use ggsql in a web application or JavaScript environment, you can install the ggsql-wasm package from npm:\nnpm install ggsql-wasm",
     "crumbs": [
       "Get started",
       "Installation"
@@ -3383,69 +3513,219 @@
     ]
   },
   {
-    "objectID": "get_started/anatomy.html",
-    "href": "get_started/anatomy.html",
-    "title": "The anatomy of ggsql",
+    "objectID": "get_started/tooling/r.html",
+    "href": "get_started/tooling/r.html",
+    "title": "R",
     "section": "",
-    "text": "With a slight bit of knowledge about the grammar of graphics, let’s dive into how the concepts are present in ggsql, starting with some key concepts and moving on to how it is reflected in the syntax.",
+    "text": "The ggsql R package provides bindings to ggsql, allowing you to run ggsql queries directly from R and render visualisations from data frames. It also contains a knitr engine for supporting ggsql blocks, with facilities for bidirectional data flow between R, Python, and ggsql blocks.",
     "crumbs": [
       "Get started",
-      "Anatomy of ggsql"
+      "Tooling",
+      "R"
     ]
   },
   {
-    "objectID": "get_started/anatomy.html#layers",
-    "href": "get_started/anatomy.html#layers",
-    "title": "The anatomy of ggsql",
-    "section": "Layers",
-    "text": "Layers\nggsql is composable, allowing you to create arbitrarily complex visualizations. Central to this is the concept of layers. A layer is a single visual encoding of some underlying data, e.g. points for a scatterplot, or bars for a barplot. You can have multiple layers in which case they are stacked on top of each other in the order they are declared (i.e. a layer declared last will be on top and overlap any layer declared before it). A scatterplot with a regression line consist of two layers: A point layer and a smooth layer.\nLayers may show data directly, e.g. a point layer will show each observation as a point, or it may apply a statistical transformation and show the result of that, e.g. a histogram layer will bin and count your data before showing the result as bars.",
+    "objectID": "get_started/tooling/r.html#installation",
+    "href": "get_started/tooling/r.html#installation",
+    "title": "R",
+    "section": "Installation",
+    "text": "Installation\nggsql can be installed from CRAN with:\npak::pak(\"ggsql\")\nTo get the development version, change “ggsql” to “posit-dev/ggsql”.",
     "crumbs": [
       "Get started",
-      "Anatomy of ggsql"
+      "Tooling",
+      "R"
     ]
   },
   {
-    "objectID": "get_started/anatomy.html#aesthetics",
-    "href": "get_started/anatomy.html#aesthetics",
-    "title": "The anatomy of ggsql",
-    "section": "Aesthetics",
-    "text": "Aesthetics\nYou will encounter aesthetics throughout the documentation and it is arguably one of the most important concepts to get right. Aesthetics are the things that describe the visual entities that makes up a layer, e.g. the color of a point, the linewidth of a line, and the opacity of a polygon.\nThere are two types of aesthetics: position aesthetics and material aesthetics. The former are related to where an entity is placed and is deeply connected to the coordinate system of the plot. The latter are related to how the entity looks.\nAesthetics can either be mapped or set. You use mapping if you want the aesthetic to be related to values in your data, e.g. have fill color be controlled by a category column from your dataset. You use setting when you wish to fix an aesthetic to a specific value, not related to your data, e.g. you want to set linewidth to 2pt.",
+    "objectID": "get_started/tooling/r.html#basic-usage",
+    "href": "get_started/tooling/r.html#basic-usage",
+    "title": "R",
+    "section": "Basic usage",
+    "text": "Basic usage\nWhen you load ggsql into R in your Rmarkdown/Quarto document the knitr engine is registered. This allows you to use ggsql directly in Rmarkdown and Quarto documents.\nWhile one of the core appeals of the ggsql R package is the knitr engine it provides, you can also use it directly in R to execute visual queries:\nlibrary(ggsql)\n\n# Create an in-memory DuckDB reader\nreader &lt;- duckdb_reader()\n\n# Register a dataset in it\nggsql_register(reader, mtcars, \"amazing_data\")\n\n# Visualize it with a query\nggsql_execute(reader, \"\nVISUALIZE mpg AS x, disp AS y FROM amazing_data\nDRAW point\n\")",
     "crumbs": [
       "Get started",
-      "Anatomy of ggsql"
+      "Tooling",
+      "R"
     ]
   },
   {
-    "objectID": "get_started/anatomy.html#scales",
-    "href": "get_started/anatomy.html#scales",
-    "title": "The anatomy of ggsql",
-    "section": "Scales",
-    "text": "Scales\nWhen you map data to an aesthetic it will seldom have values that are meaningful for the aesthetic. Consider mapping region to fill because you wish the fill color shows the geographical region the data pertains to. region might contain values such as Asia, Europe, and South America which are not meaningful color values. How do you translate these values into something the aesthetic understands?\nThe answer is using a scale. When mapping an aesthetic it will automatically be scaled by a default scale to ensure that the aesthetic receives values it understands, but you can take control of the scaling and e.g. use a different color palette.",
+    "objectID": "get_started/tooling/r.html#further-reading",
+    "href": "get_started/tooling/r.html#further-reading",
+    "title": "R",
+    "section": "Further reading",
+    "text": "Further reading\nFull documentation for the R package is available at r.ggsql.org.",
     "crumbs": [
       "Get started",
-      "Anatomy of ggsql"
+      "Tooling",
+      "R"
     ]
   },
   {
-    "objectID": "get_started/anatomy.html#the-syntax",
-    "href": "get_started/anatomy.html#the-syntax",
-    "title": "The anatomy of ggsql",
-    "section": "The syntax",
-    "text": "The syntax\nBefore we move on, let’s examine how the concepts we have just described are reflected in the ggsql syntax. Often these will be enough for your basic visualization needs.\n\nVISUALISE\nEvery ggsql query starts with a VISUALISE (or VISUALIZE) clause. It denotes that we are exiting regular SQL syntax and entering ggsql.\nWhile VISUALISE can stand on its own as a demarcation line between the regular and the visual query, you can also pass it a list of aesthetic mappings which will define the default mapping for the layers so that you don’t have to repeat it for every layer. Lastly, if you do not have a initial SQL query you can name a data source for your plot.\nBringing all of these things together, a VISUALISE clause could look like this:\n--       |---------- mapping ----------|--- data source ---|\nVISUALISE body_mass AS x, bill_len AS y FROM ggsql:penguins\n\n\nDRAW\nFollowing VISUALISE you’d usually provide one or more DRAW clauses which will define your layer. The DRAW clause is arguably the most complex clause, but the basic usage is straightforward: You provide the type of the layer, any additional mapping if needed, and perhaps modify the settings of the layer. To achieve this we employ the MAPPING and SETTING clauses.\nThe input to the MAPPING clause looks exactly like what we saw above for the VISUALISE clause. You can provide mappings and optionally a data source if you want the layer to use a data source different from the global data. The SETTING clause allows you to both set aesthetics as well as set parameters specific to the layer (e.g. number of bins in a histogram).\nBringing all of this together a DRAW clause could look like this:\n--  |- type --|\nDRAW histogram\n--       |-- mapping --|\n  MAPPING bill_len AS x\n--       |-- setting ---|- parameter -|\n  SETTING stroke =&gt; null, bins =&gt; 20\nbut, if mappings and data source have already been taken care of, it can be as simple as\nDRAW point\n\n\nSCALE\nAs described above, ggsql automatically creates a default for mapped aesthetics and if those suit your needs there is no reason to modify them. However, if change is needed you do it with the SCALE clause.\nThe clause allows you to set the type of scale, the input range, the output range, the transformation, and lets you control breaks and label formatting. So, the clause can end up with a lot of information but the syntax has been designed so it reads very natural. Further, every part is optional and can be left out if the default fits. An example of a rather complex SCALE clause could be:\nSCALE ORDINAL fill FROM ('Low', 'Mid', 'High') TO viridis\n  SETTING breaks =&gt; 6\nBut, if you are only interested in changing e.g. the palette it can be as simple as:\nSCALE fill TO viridis",
+    "objectID": "get_started/tooling/positron-vscode.html",
+    "href": "get_started/tooling/positron-vscode.html",
+    "title": "Positron / VS Code",
+    "section": "",
+    "text": "We provide an extension for VS Code and Positron that brings ggsql language support to the IDE. Positron is generally superior for data analysis and the ggsql integration is deeper there, which we will showcase below. Still, using the extension with VS Code should provide you with a good developer experience. Once installed you will get access to ggsql as a language at the same level as R and Python. You can open and edit .gsql files with syntax highlighting and autocomplete.\nIn Positron you can open up a REPL in the console pane, execute queries, and see the resulting visualization appear in the plot pane. You can add database connections in the connection pane and directly attach these to your ggsql runtime and begin to visualize the tables in there.",
     "crumbs": [
       "Get started",
-      "Anatomy of ggsql"
+      "Tooling",
+      "Positron / VS Code"
     ]
   },
   {
-    "objectID": "get_started/anatomy.html#example",
-    "href": "get_started/anatomy.html#example",
-    "title": "The anatomy of ggsql",
-    "section": "Example",
-    "text": "Example\nUsing the things we have just learned we can combine it all to a complete query consisting of multiple layers and custom scales:\n\nVISUALISE bill_len AS x, bill_dep AS y, species AS stroke FROM ggsql:penguins\nDRAW point \n  MAPPING body_mass AS size\n  SETTING fill =&gt; null\nDRAW smooth \n  SETTING method =&gt; 'ols'\nSCALE stroke TO dark2\nSCALE BINNED size TO (4, 15)\n  SETTING breaks =&gt; 4\n\n\n\n\n\n\n\nIn the above we create a global mapping of bill_len to the x aesthetic and bill_dep to the y aesthetic using the built-in penguins dataset. We use DRAW to create two layers: A point layer for a scatter plot and a smooth layer for regression lines. For the point layer we map the body_mass to size to create a bubble chart and set the fill aesthetic to be empty (null) so only the outline is shown. For the smooth layer we set the layer parameter method to 'ols' to estimate a straight regression line. Lastly, we modify the stroke scale to use the dark2 palette from the ColorBrewer project and apply a binned scale to size that goes from 4pt to 15pt with 4 breaks (resulting in 3 bins).\nWhile the query above may feel like a mouthful, remember that most visualizations are much simpler:\n\nVISUALISE body_mass AS x FROM ggsql:penguins\nDRAW histogram\n\n\n\n\n\n\n\nIn the next section we will introduce the remaining parts of the grammar and the related syntax, but the parts covered here will already take you a very long way.",
+    "objectID": "get_started/tooling/positron-vscode.html#installation",
+    "href": "get_started/tooling/positron-vscode.html#installation",
+    "title": "Positron / VS Code",
+    "section": "Installation",
+    "text": "Installation\nFirst, install ggsql on your system using the installation instructions.\nThen, you can grab the ggsql extension directly from the extension section of the Positron IDE, or download it manually from the OpenVSX extension marketplace (to install, in the Extensions view click the ... menu, select “Install from VSIX…”, and choose the downloaded file.)",
     "crumbs": [
       "Get started",
-      "Anatomy of ggsql"
+      "Tooling",
+      "Positron / VS Code"
+    ]
+  },
+  {
+    "objectID": "get_started/tooling/positron-vscode.html#console-and-plotting",
+    "href": "get_started/tooling/positron-vscode.html#console-and-plotting",
+    "title": "Positron / VS Code",
+    "section": "Console and plotting",
+    "text": "Console and plotting\nOnce the extension has been installed, ggsql will be available to launch as a language runtime in the same way as an R or Python session in Positron’s console session selector.\n\nOnce started, a ggsql session will be made available in the Console pane, providing a REPL for executing standard SQL or ggsql code. When first launched, ggsql will be started with an empty in-memory duckdb database connection.\n\nExecuting ggsql statements containing VISUALISE will render the resulting visualization in the Plots pane.",
+    "crumbs": [
+      "Get started",
+      "Tooling",
+      "Positron / VS Code"
+    ]
+  },
+  {
+    "objectID": "get_started/tooling/positron-vscode.html#editor-and-cells",
+    "href": "get_started/tooling/positron-vscode.html#editor-and-cells",
+    "title": "Positron / VS Code",
+    "section": "Editor and cells",
+    "text": "Editor and cells\nThe ggsql language type can be used to enable syntax highlighting and autocomplete. Files with extension .gsql will automatically be configured to use the ggsql language type.\nIn Positron, a “Source Current File” button is provided in the top left of the Editor pane, which will execute the entire contents of the currently open file in the Positron console. You can also create “cells” in your editor, which are blocks of code that can be independently executed.\nTo create a cell, simply add a line with -- %% between blocks of code in your ggsql source file. You can then execute the contents a particular cell in the console by clicking the “Run Query” button that appears above the separator.",
+    "crumbs": [
+      "Get started",
+      "Tooling",
+      "Positron / VS Code"
+    ]
+  },
+  {
+    "objectID": "get_started/tooling/positron-vscode.html#database-connections",
+    "href": "get_started/tooling/positron-vscode.html#database-connections",
+    "title": "Positron / VS Code",
+    "section": "Database connections",
+    "text": "Database connections\nBy default, ggsql starts in the Positron console with an empty in-memory duckdb database connection. A “magic” comment can be used to initiate a different database connection after the session has launched, which can be either a comment in your source file or invoked directly in the console.\nThe connection syntax is -- @connect: [connection_uri], where [connection_uri] is a ggsql database connection string in the same format as accepted by the ggsql CLI.\n\nThe ggsql extension also integrates with Positron’s connections pane, allowing you to easily connect to databases that you have configured in Positron. Connections made in the console, as above, will be saved to the connections pane automatically, or a connections wizard can be launched to help connect to supported databases by selecting the “New Connection” button in the Positron Connections pane.",
+    "crumbs": [
+      "Get started",
+      "Tooling",
+      "Positron / VS Code"
+    ]
+  },
+  {
+    "objectID": "get_started/tooling/python.html",
+    "href": "get_started/tooling/python.html",
+    "title": "Python",
+    "section": "",
+    "text": "We have a Python package that provides bindings to ggsql, allowing you to plot with ggsql directly from within Python and register alternative data backends. Install it with pip:",
+    "crumbs": [
+      "Get started",
+      "Tooling",
+      "Python"
+    ]
+  },
+  {
+    "objectID": "get_started/tooling/python.html#basic-usage",
+    "href": "get_started/tooling/python.html#basic-usage",
+    "title": "Python",
+    "section": "Basic usage",
+    "text": "Basic usage\nThe ggsql package can render a ggsql query against a DataFrame and return an Altair chart object:\nimport ggsql\nimport polars as pl\n\ndf = pl.DataFrame({\n    \"x\": [1, 2, 3, 4, 5],\n    \"y\": [10, 20, 15, 30, 25],\n    \"category\": [\"A\", \"B\", \"A\", \"B\", \"A\"]\n})\n\nchart = ggsql.render_altair(df, \"VISUALISE x, y DRAW point\")\n\nchart.display()  # In Jupyter\nchart.save(\"chart.html\")  # Save to file\nThe render_altair() function accepts both Polars and pandas DataFrames.",
+    "crumbs": [
+      "Get started",
+      "Tooling",
+      "Python"
+    ]
+  },
+  {
+    "objectID": "get_started/tooling/python.html#further-reading",
+    "href": "get_started/tooling/python.html#further-reading",
+    "title": "Python",
+    "section": "Further reading",
+    "text": "Further reading\nFull API documentation for the Python package is available at python.ggsql.org.",
+    "crumbs": [
+      "Get started",
+      "Tooling",
+      "Python"
+    ]
+  },
+  {
+    "objectID": "get_started/tooling/cli.html",
+    "href": "get_started/tooling/cli.html",
+    "title": "Command line interface",
+    "section": "",
+    "text": "The ggsql command line interface lets you execute queries and validate syntax directly from the terminal. While it may not be the most ergonomic way to interact directly with ggsql, it is useful for scripting, automation, and building tools around ggsql.",
+    "crumbs": [
+      "Get started",
+      "Tooling",
+      "CLI"
+    ]
+  },
+  {
+    "objectID": "get_started/tooling/cli.html#installation",
+    "href": "get_started/tooling/cli.html#installation",
+    "title": "Command line interface",
+    "section": "Installation",
+    "text": "Installation\nInstall the ggsql CLI on your system using the standard installation instructions.",
+    "crumbs": [
+      "Get started",
+      "Tooling",
+      "CLI"
+    ]
+  },
+  {
+    "objectID": "get_started/tooling/cli.html#executing-a-query",
+    "href": "get_started/tooling/cli.html#executing-a-query",
+    "title": "Command line interface",
+    "section": "Executing a query",
+    "text": "Executing a query\nYou can execute a ggsql query from a string with ggsql exec:\nggsql exec \"VISUALISE species AS fill FROM ggsql:penguins DRAW bar\"\nOr run a .gsql file:\nggsql run my_query.gsql\nIn both cases, output is written to stdout as a Vega-Lite JSON spec. You can redirect it to a file:\nggsql run my_query.gsql &gt; chart.vl.json\nSuch files can be rendered as images using tools that work with Vega-Lite specs, such as the Online Vega Editor or vl-convert command line tool. For example,\nvl-convert vl2png -i chart.vl.json -o chart.png\nA standard SQL query can also be provided to ggsql. If the query returns a table, the resulting values will be written to stdout.",
+    "crumbs": [
+      "Get started",
+      "Tooling",
+      "CLI"
+    ]
+  },
+  {
+    "objectID": "get_started/tooling/cli.html#validating-a-query",
+    "href": "get_started/tooling/cli.html#validating-a-query",
+    "title": "Command line interface",
+    "section": "Validating a query",
+    "text": "Validating a query\nIf you only want to check that a query is syntactically valid without executing it, use ggsql validate:\n$ ggsql validate \"VISUALISE x, y FROM table DRAW point\"\n✓ Query syntax is valid",
+    "crumbs": [
+      "Get started",
+      "Tooling",
+      "CLI"
+    ]
+  },
+  {
+    "objectID": "get_started/tooling/cli.html#database-connections",
+    "href": "get_started/tooling/cli.html#database-connections",
+    "title": "Command line interface",
+    "section": "Database connections",
+    "text": "Database connections\nBoth ggsql exec and ggsql run accept a --reader flag that can be used to specify a connection string to be used when executing the query. If not provided, ggsql will use an empty in-memory duckdb connection, equivalent to --reader duckdb://memory.\n$ ggsql exec --reader sqlite://sample/ggsql_test.sqlite \\\n  \"SELECT * FROM test_table LIMIT 3\"\ncol_a,  col_b, col_c\n215.87, 75.11, delta\n418.78, 71.75, delta\n495.75, 12.55, delta\n\n$ ggsql exec --reader odbc://DSN=ggsql-pg-test \\\n  \"SELECT * FROM test_table LIMIT 3\"\ncol_a,  col_b, col_c\n319.34, 91.45, gamma\n299.08, 49.36, epsilon\n12.5,   29.48, gamma",
+    "crumbs": [
+      "Get started",
+      "Tooling",
+      "CLI"
+    ]
+  },
+  {
+    "objectID": "get_started/tooling/cli.html#documentation",
+    "href": "get_started/tooling/cli.html#documentation",
+    "title": "Command line interface",
+    "section": "Documentation",
+    "text": "Documentation\nThe ggsql CLI has built-in documentation for ggsql syntax and usage. Run ggsql docs for an overview of available documentation topics, and ggsql docs [topic] to read about a specific topic.\n$ ggsql docs draw\nDRAW is perhaps the most important clause in ggsql as it defines a layer in your \nvisualisation. A layer is a single instance of a visual representation of a dataset.\n[...]\nA ggsql skill, a usage guide intended for AI assistants and humans, can also be output using the ggsql skill command.\n$ ggsql skill\n                          ggsql Query Writer\nggsql is a SQL extension for declarative data visualization based on\nGrammar of Graphics principles.\n[...]",
+    "crumbs": [
+      "Get started",
+      "Tooling",
+      "CLI"
     ]
   },
   {
