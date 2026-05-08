@@ -2,7 +2,6 @@
 title: Python
 ---
 
-
 We have a [Python package](https://pypi.org/project/ggsql/) that provides bindings to ggsql, allowing you to plot with ggsql directly from within Python and register alternative data backends. Install it with pip:
 
 ```bash
