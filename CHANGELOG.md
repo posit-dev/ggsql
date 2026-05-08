@@ -9,13 +9,13 @@
 - Added panel decorations (grid lines, axes, background) for polar coordinates (#156).
 - Added `radar` setting to polar coordinates for making radar plots (#418).
 - New `side` SETTING on the `boxplot` layer and the `jitter` position, mirroring
-  the existing `violin` setting (#337).
+  the existing `violin` setting (#439).
 
 ### Fixed
 
 - Dodging of horizontal violin plots were broken due to a bad orientation
   assumption in the VegaLite writer. We now correctly use the orientation to
-  dodge in the correct dimension.
+  dodge in the correct dimension (#439).
 
 ## 0.3.2 - 2026-05-05
 
