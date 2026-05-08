@@ -127,7 +127,7 @@ pub trait SqlDialect {
     /// Default uses `ST_Transform(column, source_crs, target_crs)` which works for DuckDB.
     fn sql_st_transform(&self, column: &str, source_crs: &str, target_crs: &str) -> String {
         format!(
-            "ST_Transform({}, '{}', '{}')",
+            "ST_Transform({}, '{}', '{}', always_xy := true)",
             column,
             source_crs.replace('\'', "''"),
             target_crs.replace('\'', "''")

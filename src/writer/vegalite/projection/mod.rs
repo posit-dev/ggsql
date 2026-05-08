@@ -6,6 +6,7 @@
 //! and the spec-level transformations for that projection.
 
 mod cartesian;
+mod map;
 mod polar;
 
 use crate::plot::{CoordKind, ParameterValue, Projection, Scale};
@@ -13,6 +14,7 @@ use crate::{Plot, Result};
 use serde_json::{json, Value};
 
 use cartesian::CartesianProjection;
+use map::MapProjection;
 use polar::PolarProjection;
 
 const ANGLE_TOLERANCE: f64 = 1.49011611938476e-08; // f64::EPSILON.sqrt()
@@ -133,7 +135,7 @@ pub(super) fn get_projection_renderer(
 ) -> Box<dyn ProjectionRenderer> {
     match project.map(|p| p.coord.coord_kind()) {
         Some(CoordKind::Polar) => Box::new(PolarProjection::new(project, facet, scales)),
-        Some(CoordKind::Map) => todo!("map projection rendering"),
+        Some(CoordKind::Map) => Box::new(MapProjection::new(facet)),
         Some(CoordKind::Cartesian) | None => Box::new(CartesianProjection::new(facet)),
     }
 }
