@@ -31,11 +31,14 @@ impl GeomTrait for Segment {
     }
 
     fn default_params(&self) -> &'static [ParamDefinition] {
-        const PARAMS: &[ParamDefinition] = &[ParamDefinition {
-            name: "position",
-            default: DefaultParamValue::String("identity"),
-            constraint: ParamConstraint::string_option(POSITION_VALUES),
-        }];
+        const PARAMS: &[ParamDefinition] = &[
+            ParamDefinition {
+                name: "position",
+                default: DefaultParamValue::String("identity"),
+                constraint: ParamConstraint::string_option(POSITION_VALUES),
+            },
+            super::types::AGGREGATE_PARAM,
+        ];
         PARAMS
     }
 

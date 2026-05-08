@@ -51,6 +51,7 @@ impl GeomTrait for Area {
                 default: DefaultParamValue::String(ALIGNED),
                 constraint: ParamConstraint::string_option(ORIENTATION_VALUES),
             },
+            super::types::AGGREGATE_PARAM,
         ];
         PARAMS
     }

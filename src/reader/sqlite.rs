@@ -566,8 +566,8 @@ impl Reader for SqliteReader {
         table: &str,
     ) -> Result<Vec<super::ColumnInfo>> {
         let df = self.execute_sql(&format!(
-            "SELECT name, type FROM pragma_table_info('{}') ORDER BY cid",
-            table.replace('\'', "''")
+            "SELECT name, type FROM pragma_table_info({}) ORDER BY cid",
+            naming::quote_literal(table)
         ))?;
         let name_col = df.column("name")?;
         let type_col = df.column("type")?;

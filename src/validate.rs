@@ -253,9 +253,10 @@ pub fn validate(query: &str) -> Result<Validated> {
 
             // The aggregate setting is validated in isolation here so the
             // standalone validate path (which doesn't run the stat) still
-            // catches malformed `aggregate` values. The execute path skips
-            // this; `stat_aggregate::apply` parses + reports there.
-            if let Err(e) = layer.validate_aggregate_setting() {
+            // catches malformed `aggregate` values and unmapped/duplicate
+            // targets. The execute path skips this; `stat_aggregate::apply`
+            // parses + reports there.
+            if let Err(e) = layer.validate_aggregate_setting(plot.aesthetic_context.as_ref()) {
                 errors.push(ValidationError {
                     message: format!("{}: {}", context, e),
                     location: None,

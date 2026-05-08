@@ -424,23 +424,36 @@ impl Layer {
             }
             // Otherwise it's a valid aesthetic setting (no constraint validation needed).
             //
-            // The shared `aggregate` parameter is intentionally not parsed here.
-            // The execute pipeline parses it once in `stat_aggregate::apply`
-            // (where the result is actually used), so doing a parse-then-discard
-            // here would be redundant. Standalone validation paths
-            // (`validate.rs::validate`, used by `ggsql validate`) call
-            // [`validate_aggregate_setting`] explicitly to surface malformed
-            // aggregate settings without going through execute.
+            // `aggregate` is registered in each supporting geom's `default_params`
+            // so its structural shape (string / array of strings / null) is
+            // checked through the standard `validate_parameter` path above. The
+            // per-entry vocabulary check (function names exist in `AGG_NAMES`,
+            // band syntax, recycling rules) lives in
+            // `stat_aggregate::parse_aggregate_param` and runs at execute time
+            // (`apply`) and at validate time via
+            // [`validate_aggregate_setting`] (called from `validate.rs::validate`
+            // so `ggsql validate` surfaces vocab errors without executing).
         }
 
         Ok(())
     }
 
-    /// Validate the `aggregate` SETTING in isolation. Used by the standalone
-    /// validation path (`ggsql validate`) where the error wouldn't otherwise
-    /// surface — execute paths catch the same error inside
-    /// `stat_aggregate::apply` once the value is actually used.
-    pub fn validate_aggregate_setting(&self) -> std::result::Result<(), String> {
+    /// Validate the `aggregate` SETTING in isolation: per-entry vocabulary
+    /// (function names exist in `AGG_NAMES`, band syntax, recycling rules)
+    /// **and**, when `aesthetic_ctx` is supplied, target resolution (every
+    /// `<aes>:<func>` target maps to a layer aesthetic; no two targets
+    /// resolve to the same aesthetic). The structural shape (string / array
+    /// of strings / null) is validated through the standard `default_params`
+    /// path in [`validate_settings`]; this function adds the layers the
+    /// static `ParamConstraint` can't express.
+    ///
+    /// Used by the standalone validate path (`ggsql validate`); the execute
+    /// path catches the same errors at execute time inside
+    /// `stat_aggregate::apply` (avoiding a redundant parse).
+    pub fn validate_aggregate_setting(
+        &self,
+        aesthetic_ctx: Option<&AestheticContext>,
+    ) -> std::result::Result<(), String> {
         if !self.geom.supports_aggregate() {
             return Ok(());
         }
@@ -448,7 +461,27 @@ impl Layer {
             Some(v) => v,
             None => return Ok(()),
         };
-        crate::plot::layer::geom::stat_aggregate::validate_aggregate_param(value)
+        // Skip when the value is the wrong shape — `validate_settings` will
+        // already have surfaced that error via the `default_params` path; we
+        // shouldn't add a second, redundant message.
+        if !matches!(
+            value,
+            ParameterValue::String(_) | ParameterValue::Array(_) | ParameterValue::Null
+        ) {
+            return Ok(());
+        }
+        let spec = match crate::plot::layer::geom::stat_aggregate::parse_aggregate_param(value)? {
+            Some(s) => s,
+            None => return Ok(()),
+        };
+        if let Some(ctx) = aesthetic_ctx {
+            crate::plot::layer::geom::stat_aggregate::resolve_aggregate_targets(
+                &spec,
+                &self.mappings,
+                ctx,
+            )?;
+        }
+        Ok(())
     }
 
     /// Update layer mappings to use prefixed aesthetic column names.

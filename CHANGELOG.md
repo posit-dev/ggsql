@@ -5,19 +5,7 @@
 - New `aggregate` SETTING on Identity-stat layers (point, line, area, bar, ribbon,
   range, segment, arrow, rule, text). By default it collapses each group to a
   single row by replacing every numeric mapping in place with its aggregated
-  value. Accepts a single string or array of strings; entries are either
-  unprefixed defaults (`'mean'`) or per-aesthetic targets (`'y:max'`,
-  `'color:median'`). Up to two defaults may be supplied — the first applies to
-  lower-half aesthetics plus all non-range layers, the second to upper-half
-  (`max`/`end` suffix). Numeric mappings without a target or applicable default
-  are dropped with a warning. Targeting the same aesthetic more than once
-  (e.g. `aggregate => ('y:min', 'y:max')`) produces one row per function with
-  a synthetic `aggregate` column tagging each row, available for `REMAPPING` to
-  another aesthetic; targets with a single function and the unprefixed defaults
-  are reused unchanged across the exploded rows. The `aggregate` column's value
-  is built from the dedup-and-joined function names of all exploded targets at
-  each row, separated by `/` (so `('y:min', 'y:max', 'color:sum', 'color:prod')`
-  yields `'min/sum'` and `'max/prod'`). Mixed lengths above 1 are an error.
+  value. See the `DRAW` documentation for details.
 - Added panel decorations (grid lines, axes, background) for polar coordinates (#156).
 - Added `radar` setting to polar coordinates for making radar plots (#418).
 
@@ -27,7 +15,7 @@
 
 - Side effects like `CREATE TEMP TABLE` before the `VISUALISE` statement are now
   separated from directly feeding into the visualisation data (#415)
-- Fixed bug where panel axes were unintentionally anchored to zero when using 
+- Fixed bug where panel axes were unintentionally anchored to zero when using
   `FACET ... SETTING free => 'x'/'y'` (#410).
 - Fixed bug where faceted data were matched to the incorrect panels (#409)
 
@@ -46,7 +34,6 @@ issues on Linux and macOS caused by relative paths to dynamic libraries.
 ## 0.3.0 - 2026-04-29
 
 ### Added
-
 
 - Add cell delimiters and code lens actions to the Positron extension (#366)
 - ODBC is now turned on for the CLI as well (#344)
@@ -96,7 +83,6 @@ portion (#364).
 - Removed polars from dependency list along with all its transient dependencies. Rewrote DataFrame struct on top of arrow (#350)
 - Moved ggsql-python to its own repo (posit-dev/ggsql-python) and cleaned up any additional references to it
 - Moved ggsql-r to its own repo (posit-dev/ggsql-r)
-- The `orientation` setting on `ribbon` and `range` layers. With explicit `xmin`/`xmax` or `ymin`/`ymax` mappings, orientation is unambiguous and is auto-detected from the mappings; the override is no longer needed.
 
 ## [2.7.0] - 2026-04-20
 

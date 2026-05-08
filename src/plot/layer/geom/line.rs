@@ -33,11 +33,14 @@ impl GeomTrait for Line {
     }
 
     fn default_params(&self) -> &'static [ParamDefinition] {
-        const PARAMS: &[ParamDefinition] = &[ParamDefinition {
-            name: "orientation",
-            default: DefaultParamValue::String(ALIGNED),
-            constraint: ParamConstraint::string_option(ORIENTATION_VALUES),
-        }];
+        const PARAMS: &[ParamDefinition] = &[
+            ParamDefinition {
+                name: "orientation",
+                default: DefaultParamValue::String(ALIGNED),
+                constraint: ParamConstraint::string_option(ORIENTATION_VALUES),
+            },
+            super::types::AGGREGATE_PARAM,
+        ];
         PARAMS
     }
 

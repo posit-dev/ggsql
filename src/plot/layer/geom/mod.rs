@@ -296,9 +296,6 @@ pub trait GeomTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
         for param in self.default_params() {
             valid.push(param.name);
         }
-        if self.supports_aggregate() {
-            valid.push("aggregate");
-        }
         valid
     }
 }

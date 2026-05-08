@@ -565,8 +565,8 @@ pub trait Reader {
     fn list_schemas(&self, catalog: &str) -> Result<Vec<String>> {
         let df = self.execute_sql(&format!(
             "SELECT DISTINCT schema_name FROM information_schema.schemata \
-             WHERE catalog_name = '{}' ORDER BY schema_name",
-            catalog.replace('\'', "''")
+             WHERE catalog_name = {} ORDER BY schema_name",
+            naming::quote_literal(catalog)
         ))?;
         let col = df.column("schema_name")?;
         let mut results = Vec::with_capacity(df.height());
@@ -581,9 +581,9 @@ pub trait Reader {
     fn list_tables(&self, catalog: &str, schema: &str) -> Result<Vec<TableInfo>> {
         let df = self.execute_sql(&format!(
             "SELECT DISTINCT table_name, table_type FROM information_schema.tables \
-             WHERE table_catalog = '{}' AND table_schema = '{}' ORDER BY table_name",
-            catalog.replace('\'', "''"),
-            schema.replace('\'', "''")
+             WHERE table_catalog = {} AND table_schema = {} ORDER BY table_name",
+            naming::quote_literal(catalog),
+            naming::quote_literal(schema)
         ))?;
         let name_col = df.column("table_name")?;
         let type_col = df.column("table_type")?;
@@ -602,11 +602,11 @@ pub trait Reader {
     fn list_columns(&self, catalog: &str, schema: &str, table: &str) -> Result<Vec<ColumnInfo>> {
         let df = self.execute_sql(&format!(
             "SELECT column_name, data_type FROM information_schema.columns \
-             WHERE table_catalog = '{}' AND table_schema = '{}' AND table_name = '{}' \
+             WHERE table_catalog = {} AND table_schema = {} AND table_name = {} \
              ORDER BY ordinal_position",
-            catalog.replace('\'', "''"),
-            schema.replace('\'', "''"),
-            table.replace('\'', "''")
+            naming::quote_literal(catalog),
+            naming::quote_literal(schema),
+            naming::quote_literal(table)
         ))?;
         let name_col = df.column("column_name")?;
         let type_col = df.column("data_type")?;

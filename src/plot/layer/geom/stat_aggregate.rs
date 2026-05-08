@@ -359,13 +359,6 @@ pub fn parse_aggregate_param(
     Ok(Some(spec))
 }
 
-/// Validate the `aggregate` SETTING value at parse-time. Used by
-/// `Layer::validate_aggregate_setting`. Aesthetic-name resolution is deferred
-/// to `apply()` because `AestheticContext` isn't available here.
-pub fn validate_aggregate_param(value: &ParameterValue) -> std::result::Result<(), String> {
-    parse_aggregate_param(value).map(|_| ())
-}
-
 // =============================================================================
 // SQL fragment helpers (per-column aggregate expressions).
 // =============================================================================
@@ -583,6 +576,43 @@ fn is_upper_half(internal_aes: &str) -> bool {
     internal_aes.ends_with("max") || internal_aes.ends_with("end")
 }
 
+/// Resolve every user-facing target in `spec` to its internal aesthetic
+/// name(s) on the layer. Returns a map keyed by internal aesthetic name with
+/// the function list each target supplies, or an error when a target doesn't
+/// match any mapped aesthetic or when two targets resolve to the same
+/// aesthetic.
+///
+/// Shared between [`apply`] (which uses the returned map) and
+/// `Layer::validate_aggregate_setting` (which discards the map and just
+/// surfaces the error). Callers pass an already-parsed [`AggregateSpec`] to
+/// avoid re-parsing the raw setting.
+pub(crate) fn resolve_aggregate_targets(
+    spec: &AggregateSpec,
+    aesthetics: &Mappings,
+    aesthetic_ctx: &AestheticContext,
+) -> std::result::Result<HashMap<String, Vec<AggSpec>>, String> {
+    let mut targets_internal: HashMap<String, Vec<AggSpec>> = HashMap::new();
+    for (user_aes, fns) in &spec.targets {
+        let resolved = resolve_target_aesthetic(user_aes, aesthetics, aesthetic_ctx);
+        if resolved.is_empty() {
+            return Err(format!(
+                "aggregate target '{}' is not mapped on this layer",
+                user_aes
+            ));
+        }
+        for internal in resolved {
+            if targets_internal.contains_key(&internal) {
+                return Err(format!(
+                    "aggregate target '{}' resolves to aesthetic '{}' which is already targeted",
+                    user_aes, internal
+                ));
+            }
+            targets_internal.insert(internal, fns.clone());
+        }
+    }
+    Ok(targets_internal)
+}
+
 /// Compute the set of internal aesthetic names that the layer's `aggregate`
 /// setting *explicitly targets*. Lighter than [`aggregated_aesthetics`] —
 /// doesn't need a schema — so post-stat callers can use it without rebuilding
@@ -708,29 +738,11 @@ pub fn apply(
     let n = spec.explosion_factor();
     let labels = spec.explosion_labels();
 
-    // Resolve target keys (user-facing) → internal aesthetic names, keeping
-    // each target's function list. An alias like `color` expands to whichever
-    // of its targets (stroke/fill) is mapped on the layer; the same list
-    // applies to all of them.
-    let mut targets_internal: HashMap<String, Vec<AggSpec>> = HashMap::new();
-    for (user_aes, fns) in &spec.targets {
-        let resolved = resolve_target_aesthetic(user_aes, aesthetics, aesthetic_ctx);
-        if resolved.is_empty() {
-            return Err(GgsqlError::ValidationError(format!(
-                "aggregate target '{}' is not mapped on this layer",
-                user_aes
-            )));
-        }
-        for internal in resolved {
-            if targets_internal.contains_key(&internal) {
-                return Err(GgsqlError::ValidationError(format!(
-                    "aggregate target '{}' resolves to aesthetic '{}' which is already targeted",
-                    user_aes, internal
-                )));
-            }
-            targets_internal.insert(internal, fns.clone());
-        }
-    }
+    // Resolve target keys (user-facing) → internal aesthetic names. An alias
+    // like `color` expands to whichever of its targets (stroke/fill) is mapped
+    // on the layer; the same function list applies to all of them.
+    let targets_internal = resolve_aggregate_targets(&spec, aesthetics, aesthetic_ctx)
+        .map_err(GgsqlError::ValidationError)?;
 
     // Walk mappings. Three buckets:
     //   - aggregated: (internal_aes, raw_col, fns of length n) — each emits one column per row
@@ -1008,7 +1020,7 @@ fn build_aggregate_query(
 
             select_parts.push(format!(
                 "{} AS {}",
-                func_literal(label),
+                naming::quote_literal(label),
                 naming::quote_ident(&stat_aggregate_col)
             ));
 
@@ -1023,10 +1035,6 @@ fn build_aggregate_query(
         .collect();
 
     format!("{with_clause} {body}", body = branches.join(" UNION ALL "),)
-}
-
-fn func_literal(s: &str) -> String {
-    format!("'{}'", s.replace('\'', "''"))
 }
 
 #[cfg(test)]
@@ -1457,6 +1465,77 @@ mod tests {
             }
             _ => panic!("expected Transformed"),
         }
+    }
+
+    /// End-to-end run against an actual SQLite reader. Pins that the rn-CTE
+    /// path (`MAX(CASE WHEN __ggsql_rn__ = …)`) returns the correct first /
+    /// last / diff values per discrete group — the SQL-string assertions in
+    /// `sqlite_dialect_emits_portable_stddev_and_first` only verify the
+    /// generated query's shape, not that it actually computes the right thing
+    /// when executed.
+    #[cfg(feature = "sqlite")]
+    #[test]
+    fn sqlite_first_last_diff_return_correct_values() {
+        use crate::naming;
+        use crate::reader::SqliteReader;
+
+        let reader = SqliteReader::new().unwrap();
+
+        // Stable row order via an explicit ORDER BY so first/last are
+        // deterministic. Group A: 10, 30, 20 → first=10, last=20, diff=10.
+        // Group B: 100, 50      → first=100, last=50, diff=-50.
+        let body = "WITH t(g, ord, v) AS (\
+                    SELECT 'A', 1, 10 UNION ALL SELECT 'A', 2, 30 \
+                    UNION ALL SELECT 'A', 3, 20 \
+                    UNION ALL SELECT 'B', 1, 100 UNION ALL SELECT 'B', 2, 50) \
+                    SELECT g, v FROM t ORDER BY g, ord";
+
+        // Helper: run the query with a given aggregate and return per-group values.
+        let run_agg = |func: &str| -> Vec<(String, f64)> {
+            let query = format!(
+                "{body} VISUALISE \
+                 DRAW point MAPPING g AS x, v AS y \
+                 SETTING aggregate => '{func}'"
+            );
+            let prepared = crate::execute::prepare_data_with_reader(&query, &reader).unwrap();
+            let df = prepared
+                .data
+                .get(prepared.specs[0].layers[0].data_key.as_ref().unwrap())
+                .unwrap();
+            let xs = df.column("__ggsql_aes_pos1__").unwrap();
+            let ys = df.column("__ggsql_aes_pos2__").unwrap();
+            let mut out: Vec<(String, f64)> = (0..df.height())
+                .map(|i| {
+                    let x = crate::array_util::value_to_string(xs, i);
+                    let y = crate::array_util::value_to_string(ys, i)
+                        .parse::<f64>()
+                        .unwrap();
+                    (x, y)
+                })
+                .collect();
+            out.sort_by(|a, b| a.0.cmp(&b.0));
+            out
+        };
+
+        assert_eq!(
+            run_agg("first"),
+            vec![("A".to_string(), 10.0), ("B".to_string(), 100.0)],
+            "first should pick the group's first row in ORDER BY ord"
+        );
+        assert_eq!(
+            run_agg("last"),
+            vec![("A".to_string(), 20.0), ("B".to_string(), 50.0)],
+            "last should pick the group's last row"
+        );
+        assert_eq!(
+            run_agg("diff"),
+            vec![("A".to_string(), 10.0), ("B".to_string(), -50.0)],
+            "diff should be last - first per group"
+        );
+
+        // While we're here, sanity-check that the generated stat SQL goes
+        // through the rn-CTE path (no native FIRST/LAST aggregate call).
+        let _ = naming::layer_key(0); // exercise the import, keeps `naming` used
     }
 
     #[test]

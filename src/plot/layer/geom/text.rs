@@ -59,6 +59,7 @@ impl GeomTrait for Text {
                 default: DefaultParamValue::Null,
                 constraint: ParamConstraint::string(),
             },
+            super::types::AGGREGATE_PARAM,
         ];
         PARAMS
     }

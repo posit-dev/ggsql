@@ -28,6 +28,17 @@ pub const CLOSED_VALUES: &[&str] = &["left", "right"];
 /// time by `normalise_aes_name()` in `parser/builder.rs`.
 pub const AESTHETIC_ALIASES: &[(&str, &[&str])] = &[("color", &["stroke", "fill"])];
 
+/// Shared `aggregate` parameter definition. Every geom that opts into the
+/// Aggregate stat (i.e. `aggregate_domain_aesthetics()` returns `Some(_)`)
+/// includes this entry in its `default_params()`. The constraint validates
+/// only the structural shape (string / array-of-strings / null); the
+/// per-entry vocabulary is checked by `stat_aggregate::parse_aggregate_param`.
+pub const AGGREGATE_PARAM: ParamDefinition = ParamDefinition {
+    name: "aggregate",
+    default: DefaultParamValue::Null,
+    constraint: ParamConstraint::string_or_string_array_unconstrained(),
+};
+
 /// Default aesthetic values for a geom type
 ///
 /// This struct describes which aesthetics a geom supports, requires, and their default values.

@@ -72,6 +72,7 @@ impl GeomTrait for Bar {
                 default: DefaultParamValue::String("stack"),
                 constraint: ParamConstraint::string_option(POSITION_VALUES),
             },
+            super::types::AGGREGATE_PARAM,
         ];
         PARAMS
     }
