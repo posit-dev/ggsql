@@ -2,6 +2,10 @@
 
 ### Added
 
+- New `aggregate` SETTING on Identity-stat layers (point, line, area, bar, ribbon,
+  range, segment, arrow, rule, text). By default it collapses each group to a
+  single row by replacing every numeric mapping in place with its aggregated
+  value. See the `DRAW` documentation for details.
 - Added panel decorations (grid lines, axes, background) for polar coordinates (#156).
 - Added `radar` setting to polar coordinates for making radar plots (#418).
 
@@ -11,7 +15,7 @@
 
 - Side effects like `CREATE TEMP TABLE` before the `VISUALISE` statement are now
   separated from directly feeding into the visualisation data (#415)
-- Fixed bug where panel axes were unintentionally anchored to zero when using 
+- Fixed bug where panel axes were unintentionally anchored to zero when using
   `FACET ... SETTING free => 'x'/'y'` (#410).
 - Fixed bug where faceted data were matched to the incorrect panels (#409)
 

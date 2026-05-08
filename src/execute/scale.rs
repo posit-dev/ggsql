@@ -151,6 +151,25 @@ pub fn apply_post_stat_binning(
 ) -> Result<()> {
     let aesthetic_ctx = spec.get_aesthetic_context();
 
+    // Per-layer set of aesthetics that the aggregate stat *explicitly targets*.
+    // Targeted aesthetics had their pre-stat binning deferred (see
+    // `apply_pre_stat_transform`), so the materialised DataFrame still holds
+    // raw aggregate output for them — we need to bin those columns here.
+    // Untargeted aesthetics were binned pre-stat and the SQL `CASE WHEN` is
+    // already baked into the column, so the existing `__ggsql_aes_*` skip
+    // still applies for those.
+    let targeted_per_layer: Vec<HashSet<String>> = spec
+        .layers
+        .iter()
+        .map(|layer| {
+            crate::plot::layer::geom::stat_aggregate::targeted_aesthetics(
+                &layer.parameters,
+                &layer.mappings,
+                &aesthetic_ctx,
+            )
+        })
+        .collect();
+
     for scale in &spec.scales {
         // Only process Binned scales
         match &scale.scale_type {
@@ -177,32 +196,49 @@ pub fn apply_post_stat_binning(
             _ => true,
         };
 
-        // Find columns for this aesthetic across layers
-        let column_sources = find_columns_for_aesthetic_with_sources(
-            &spec.layers,
-            &scale.aesthetic,
-            data_map,
-            &aesthetic_ctx,
-        );
+        // Walk layers directly so we can decide per-layer whether an
+        // aesthetic-named column was deferred (needs binning here) or
+        // already binned upstream by the pre-stat SQL.
+        let aesthetics_to_check = aesthetic_ctx
+            .internal_position_family(&scale.aesthetic)
+            .map(|f| f.to_vec())
+            .unwrap_or_else(|| vec![scale.aesthetic.clone()]);
 
-        // Apply binning to each column
-        for (data_key, col_name) in column_sources {
-            if let Some(df) = data_map.get(&data_key) {
-                // Skip if column doesn't exist in this data source
+        for (idx, layer) in spec.layers.iter().enumerate() {
+            let data_key = naming::layer_key(idx);
+            if !data_map.contains_key(&data_key) {
+                continue;
+            }
+
+            for aes_name in &aesthetics_to_check {
+                let col_name = match layer.mappings.get(aes_name) {
+                    Some(crate::AestheticValue::Column { name, .. }) => name.clone(),
+                    _ => continue,
+                };
+
+                let df = match data_map.get(&data_key) {
+                    Some(d) => d,
+                    None => continue,
+                };
                 if df.column(&col_name).is_err() {
                     continue;
                 }
 
-                // Skip post-stat binning for aesthetic columns (like __ggsql_aes_x__)
-                // because pre_stat_transform already binned them via SQL.
-                // Post-stat binning only applies to stat columns or remapped aesthetics.
-                if naming::is_aesthetic_column(&col_name) {
+                // Skip post-stat binning for aesthetic columns that were
+                // already binned via pre_stat_transform's CASE WHEN. The
+                // exception is when the layer's aggregate explicitly targets
+                // this aesthetic — in that case binning was deferred and the
+                // column holds the raw aggregate output that needs binning
+                // now.
+                if naming::is_aesthetic_column(&col_name)
+                    && !targeted_per_layer[idx].contains(aes_name)
+                {
                     continue;
                 }
 
                 let binned_df =
                     apply_binning_to_dataframe(df, &col_name, &break_values, closed_left)?;
-                data_map.insert(data_key, binned_df);
+                data_map.insert(data_key.clone(), binned_df);
             }
         }
     }
@@ -489,12 +525,34 @@ pub fn apply_pre_stat_resolve(spec: &mut Plot, layer_schemas: &[Schema]) -> Resu
 
     let aesthetic_ctx = spec.get_aesthetic_context();
 
+    // Aesthetics that any layer's `aggregate` setting explicitly targets. Their
+    // BINNED scales must be resolved post-stat — the relevant column range is
+    // the aggregated output, not the raw input. Leaving them un-resolved here
+    // means `resolved == false` and `resolve_scales` will pick them up after
+    // the data is materialised.
+    let mut targeted_in_any_layer: HashSet<String> = HashSet::new();
+    for layer in &spec.layers {
+        for aes in crate::plot::layer::geom::stat_aggregate::targeted_aesthetics(
+            &layer.parameters,
+            &layer.mappings,
+            &aesthetic_ctx,
+        ) {
+            targeted_in_any_layer.insert(aes);
+        }
+    }
+
     for scale in &mut spec.scales {
         // Only pre-resolve Binned scales
         let scale_type = match &scale.scale_type {
             Some(st) if st.scale_type_kind() == ScaleTypeKind::Binned => st.clone(),
             _ => continue,
         };
+
+        // Defer resolution for aesthetics targeted by aggregate so breaks
+        // come from the post-stat range.
+        if targeted_in_any_layer.contains(&scale.aesthetic) {
+            continue;
+        }
 
         // Find all ColumnInfos for this aesthetic from schemas
         let column_infos = find_schema_columns_for_aesthetic(

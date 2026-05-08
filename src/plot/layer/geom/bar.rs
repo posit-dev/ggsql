@@ -3,10 +3,11 @@
 use std::collections::HashMap;
 use std::collections::HashSet;
 
+use super::stat_aggregate;
 use super::types::{get_column_name, POSITION_VALUES};
 use super::{
-    DefaultAesthetics, DefaultParamValue, GeomTrait, GeomType, ParamConstraint, ParamDefinition,
-    StatResult,
+    has_aggregate_param, DefaultAesthetics, DefaultParamValue, GeomTrait, GeomType,
+    ParamConstraint, ParamDefinition, StatResult,
 };
 use crate::naming;
 use crate::plot::types::{DefaultAestheticValue, ParameterValue};
@@ -71,12 +72,17 @@ impl GeomTrait for Bar {
                 default: DefaultParamValue::String("stack"),
                 constraint: ParamConstraint::string_option(POSITION_VALUES),
             },
+            super::types::AGGREGATE_PARAM,
         ];
         PARAMS
     }
 
     fn stat_consumed_aesthetics(&self) -> &'static [&'static str] {
         &["pos1", "pos2", "weight"]
+    }
+
+    fn aggregate_domain_aesthetics(&self) -> Option<&'static [&'static str]> {
+        Some(&[])
     }
 
     fn needs_stat_transform(&self, _aesthetics: &Mappings) -> bool {
@@ -89,10 +95,23 @@ impl GeomTrait for Bar {
         schema: &Schema,
         aesthetics: &Mappings,
         group_by: &[String],
-        _parameters: &HashMap<String, ParameterValue>,
+        parameters: &HashMap<String, ParameterValue>,
         _execute_query: &dyn Fn(&str) -> Result<DataFrame>,
-        _dialect: &dyn SqlDialect,
+        dialect: &dyn SqlDialect,
+        aesthetic_ctx: &crate::plot::aesthetic::AestheticContext,
     ) -> Result<StatResult> {
+        if has_aggregate_param(parameters) {
+            return stat_aggregate::apply(
+                query,
+                schema,
+                aesthetics,
+                group_by,
+                parameters,
+                dialect,
+                aesthetic_ctx,
+                self.aggregate_domain_aesthetics().unwrap_or(&[]),
+            );
+        }
         stat_bar_count(query, schema, aesthetics, group_by)
     }
 }

@@ -240,6 +240,22 @@ pub fn quote_ident(name: &str) -> String {
     format!("\"{}\"", name.replace('"', "\"\""))
 }
 
+/// Quote a SQL string literal: wraps in single quotes and escapes embedded
+/// single quotes by doubling them, per the SQL standard.
+///
+/// Use this when interpolating user-supplied (or otherwise variable) string
+/// values into SQL literals — e.g. `WHERE name = 'O''Brien'`.
+///
+/// # Example
+/// ```
+/// use ggsql::naming;
+/// assert_eq!(naming::quote_literal("foo"), "'foo'");
+/// assert_eq!(naming::quote_literal("O'Brien"), "'O''Brien'");
+/// ```
+pub fn quote_literal(s: &str) -> String {
+    format!("'{}'", s.replace('\'', "''"))
+}
+
 // ============================================================================
 // Detection Functions
 // ============================================================================

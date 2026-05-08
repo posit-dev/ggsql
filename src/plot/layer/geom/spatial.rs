@@ -36,6 +36,7 @@ impl GeomTrait for Spatial {
         _parameters: &std::collections::HashMap<String, crate::plot::ParameterValue>,
         execute_query: &dyn Fn(&str) -> crate::Result<crate::DataFrame>,
         dialect: &dyn crate::reader::SqlDialect,
+        _aesthetic_ctx: &crate::plot::aesthetic::AestheticContext,
     ) -> crate::Result<StatResult> {
         for stmt in dialect.sql_spatial_setup() {
             execute_query(&stmt)?;
