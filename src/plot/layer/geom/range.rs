@@ -41,8 +41,13 @@ impl GeomTrait for Range {
                 default: DefaultParamValue::Number(10.0),
                 constraint: ParamConstraint::number_min(0.0),
             },
+            super::types::AGGREGATE_PARAM,
         ];
         PARAMS
+    }
+
+    fn aggregate_domain_aesthetics(&self) -> Option<&'static [&'static str]> {
+        Some(&[])
     }
 }
 

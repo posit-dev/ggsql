@@ -292,7 +292,7 @@ impl ScaleTypeTrait for Ordinal {
         let allowed_values: Vec<String> = input_range
             .iter()
             .filter_map(|e| match e {
-                ArrayElement::String(s) => Some(format!("'{}'", s.replace('\'', "''"))),
+                ArrayElement::String(s) => Some(naming::quote_literal(s)),
                 ArrayElement::Boolean(b) => Some(if *b { "true".into() } else { "false".into() }),
                 ArrayElement::Number(n) => Some(n.to_string()),
                 _ => None,

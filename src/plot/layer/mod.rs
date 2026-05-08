@@ -199,7 +199,10 @@ impl Layer {
             format!("`{}`", name)
         };
 
-        // Check if all required aesthetics exist.
+        // Check if all required aesthetics exist. The Aggregate stat replaces
+        // mapped values in place — it never synthesises new aesthetics — so
+        // every required aesthetic must be mapped by the user regardless of
+        // the `aggregate` setting.
         let mut missing = Vec::new();
         let mut position_reqs: Vec<(&str, u8, &str)> = Vec::new();
 
@@ -419,9 +422,65 @@ impl Layer {
             {
                 validate_parameter(param_name, value, &param.constraint)?;
             }
-            // Otherwise it's a valid aesthetic setting (no constraint validation needed)
+            // Otherwise it's a valid aesthetic setting (no constraint validation needed).
+            //
+            // `aggregate` is registered in each supporting geom's `default_params`
+            // so its structural shape (string / array of strings / null) is
+            // checked through the standard `validate_parameter` path above. The
+            // per-entry vocabulary check (function names exist in `AGG_NAMES`,
+            // band syntax, recycling rules) lives in
+            // `stat_aggregate::parse_aggregate_param` and runs at execute time
+            // (`apply`) and at validate time via
+            // [`validate_aggregate_setting`] (called from `validate.rs::validate`
+            // so `ggsql validate` surfaces vocab errors without executing).
         }
 
+        Ok(())
+    }
+
+    /// Validate the `aggregate` SETTING in isolation: per-entry vocabulary
+    /// (function names exist in `AGG_NAMES`, band syntax, recycling rules)
+    /// **and**, when `aesthetic_ctx` is supplied, target resolution (every
+    /// `<aes>:<func>` target maps to a layer aesthetic; no two targets
+    /// resolve to the same aesthetic). The structural shape (string / array
+    /// of strings / null) is validated through the standard `default_params`
+    /// path in [`validate_settings`]; this function adds the layers the
+    /// static `ParamConstraint` can't express.
+    ///
+    /// Used by the standalone validate path (`ggsql validate`); the execute
+    /// path catches the same errors at execute time inside
+    /// `stat_aggregate::apply` (avoiding a redundant parse).
+    pub fn validate_aggregate_setting(
+        &self,
+        aesthetic_ctx: Option<&AestheticContext>,
+    ) -> std::result::Result<(), String> {
+        if !self.geom.supports_aggregate() {
+            return Ok(());
+        }
+        let value = match self.parameters.get("aggregate") {
+            Some(v) => v,
+            None => return Ok(()),
+        };
+        // Skip when the value is the wrong shape — `validate_settings` will
+        // already have surfaced that error via the `default_params` path; we
+        // shouldn't add a second, redundant message.
+        if !matches!(
+            value,
+            ParameterValue::String(_) | ParameterValue::Array(_) | ParameterValue::Null
+        ) {
+            return Ok(());
+        }
+        let spec = match crate::plot::layer::geom::stat_aggregate::parse_aggregate_param(value)? {
+            Some(s) => s,
+            None => return Ok(()),
+        };
+        if let Some(ctx) = aesthetic_ctx {
+            crate::plot::layer::geom::stat_aggregate::resolve_aggregate_targets(
+                &spec,
+                &self.mappings,
+                ctx,
+            )?;
+        }
         Ok(())
     }
 

@@ -37,10 +37,15 @@ Alternatively, use only the center, which will set `height` to 1 by default.
 
 ## Settings
 * `position`: Position adjustment. One of `'identity'` (default), `'stack'`, `'dodge'`, or `'jitter'`
+* `aggregate` Aggregation functions to apply per group: 
+    * `null` apply no group aggregation (default).
+    * A single string or an array of strings. See an overview of aggregation function in [the `DRAW` documentation](../../clause/draw.qmd#aggregate) and more information in the *Data transformation* section below.
 
 ## Data transformation.
 When the primary aesthetics are continuous, primary data is reparameterised to {start, end}, e.g. `xmin` and `xmax`.
 When the secondary aesthetics are continuous, secondary data is reparameterised to {start, end}, e.g. `ymin` and `ymax`.
+
+This layer also supports aggregation through the `aggregate` setting. Aggregation groups are defined by `PARTITION BY` and all discrete mappings. Within each group, every numeric mapping is replaced in place by its aggregated value. Use a default like `'mean'` or target individual aesthetics with `'<aes>:<func>'`. See [the `DRAW` documentation](../../clause/draw.qmd#aggregate) for the full setting shape. The position parameterisation runs after aggregation, so a heatmap from raw rows is just one `aggregate => '<func>'` setting away.
 
 ## Orientation
 The tile layer has no orientation. The axes are treated symmetrically.
@@ -89,6 +94,15 @@ GROUP BY Week
 
 VISUALISE start AS xmin, end AS xmax, min AS ymin, max AS ymax
 DRAW tile
+```
+
+Building a heatmap from raw rows by aggregating per cell.
+
+```{ggsql}
+VISUALISE FROM ggsql:penguins
+DRAW tile
+  MAPPING species AS x, sex AS y, body_mass AS fill
+  SETTING aggregate => 'mean', opacity => 1
 ```
 
 Using a tile as an annotation. Note we're using the `PLACE` clause here instead of `DRAW` because we're not mapping from data.
