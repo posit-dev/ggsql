@@ -28,7 +28,7 @@ In both cases, output is written to `stdout` as a Vega-Lite JSON spec. You can r
 ggsql run my_query.gsql > chart.vl.json
 ```
 
-Such files can be rendered as images using tools that work with Vega-Lite specs, such the [Online Vega Editor](https://vega.github.io/editor/) or [vl-convert](https://github.com/vega/vl-convert) command line tool. For example,
+Such files can be rendered as images using tools that work with Vega-Lite specs, such as the [Online Vega Editor](https://vega.github.io/editor/) or [vl-convert](https://github.com/vega/vl-convert) command line tool. For example,
 
 ```bash
 vl-convert vl2png -i chart.vl.json -o chart.png

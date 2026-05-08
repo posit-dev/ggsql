@@ -2,7 +2,7 @@
 title: R
 ---
 
-The [ggsql R package](https://r.ggsql.org) provides bindings to ggsql, allowing you to run ggsql queries directly from R and render visualisations from data frames. It also contain a knitr engine for supporting ggsql blocks, with facilities for bidirectional data flow between R, Python, and ggsql blocks. 
+The [ggsql R package](https://r.ggsql.org) provides bindings to ggsql, allowing you to run ggsql queries directly from R and render visualisations from data frames. It also contains a knitr engine for supporting ggsql blocks, with facilities for bidirectional data flow between R, Python, and ggsql blocks. 
 
 ## Installation
 
