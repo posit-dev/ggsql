@@ -302,6 +302,18 @@ mod tests {
     }
 
     #[test]
+    fn test_extract_sql_visualise_from_jinja_ref() {
+        let query = "VISUALISE FROM {{ ref('fct_orders') }} DRAW point MAPPING x AS x, y AS y";
+        let tree = SourceTree::new(query).unwrap();
+
+        let sql = tree.extract_sql().unwrap();
+        assert_eq!(sql, "SELECT * FROM {{ ref('fct_orders') }}");
+
+        let viz = tree.extract_visualise().unwrap();
+        assert!(viz.starts_with("VISUALISE FROM {{ ref('fct_orders') }}"));
+    }
+
+    #[test]
     fn test_extract_sql_visualise_from_with_cte() {
         let query =
             "WITH cte AS (SELECT * FROM x) VISUALISE FROM cte DRAW point MAPPING a AS x, b AS y";
@@ -417,6 +429,15 @@ mod tests {
 
         let sql = tree.extract_sql().unwrap();
         assert!(sql.contains("SELECT * FROM 'mtcars.csv'"));
+    }
+
+    #[test]
+    fn test_extract_sql_from_first_jinja_ref() {
+        let query = "FROM {{ ref('fct_orders') }} VISUALISE DRAW point MAPPING x AS x, y AS y";
+        let tree = SourceTree::new(query).unwrap();
+
+        let sql = tree.extract_sql().unwrap();
+        assert_eq!(sql, "SELECT * FROM {{ ref('fct_orders') }}");
     }
 
     #[test]

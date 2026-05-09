@@ -17,6 +17,10 @@ function caseInsensitive(keyword) {
 module.exports = grammar({
   name: 'ggsql',
 
+  inline: $ => [
+    $.source_ref,
+  ],
+
   conflicts: $ => [
     [$.sql_portion],
   ],
@@ -480,9 +484,16 @@ module.exports = grammar({
       repeat(seq('.', $.identifier))
     )),
 
+    source_ref: $ => choice(
+      $.qualified_name,
+      $.string,
+      $.namespaced_identifier,
+      $.jinja_template
+    ),
+
     table_ref: $ => prec.right(seq(
       choice(
-        field('table', choice($.qualified_name, $.string, $.namespaced_identifier, $.jinja_template)),
+        field('table', $.source_ref),
         $.subquery,
       ),
       optional(seq(
@@ -601,14 +612,14 @@ module.exports = grammar({
         // Option 1: Just FROM (inherit global mappings)
         seq(
           caseInsensitive('FROM'),
-          field('layer_source', choice($.qualified_name, $.string, $.namespaced_identifier))
+          field('layer_source', $.source_ref)
         ),
         // Option 2: Mapping list (uses shared structure), optionally followed by FROM
         seq(
           $.mapping_list,
           optional(seq(
             caseInsensitive('FROM'),
-            field('layer_source', choice($.qualified_name, $.string, $.namespaced_identifier))
+            field('layer_source', $.source_ref)
           ))
         )
       )
@@ -942,9 +953,9 @@ module.exports = grammar({
     // before ggsql executes SQL, but the parser must preserve them while
     // splitting SQL from VISUALISE.
     jinja_template: $ => token(choice(
-      /\{\{[^}]*\}\}/,
-      /\{%[^%]*%\}/,
-      /\{#[^#]*#\}/
+      seq('{{', repeat(choice(/[^}]+/, /}[^}]/)), '}}'),
+      seq('{%', repeat(choice(/[^%]+/, /%[^%]/)), '%}'),
+      seq('{#', repeat(choice(/[^#]+/, /#[^#]/)), '#}')
     )),
 
     // Identifier for use in filter expressions - uses lower precedence so that
