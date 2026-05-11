@@ -135,7 +135,7 @@ pub(super) fn get_projection_renderer(
 ) -> Box<dyn ProjectionRenderer> {
     match project.map(|p| p.coord.coord_kind()) {
         Some(CoordKind::Polar) => Box::new(PolarProjection::new(project, facet, scales)),
-        Some(CoordKind::Map) => Box::new(MapProjection::new(facet)),
+        Some(CoordKind::Map) => Box::new(MapProjection::new(project, facet)),
         Some(CoordKind::Cartesian) | None => Box::new(CartesianProjection::new(facet)),
     }
 }

@@ -80,6 +80,34 @@ impl CoordTrait for Map {
             for stmt in dialect.create_or_replace_temp_table_sql(CLIP_BOUNDARY_TABLE, &[], &body) {
                 execute_query(&stmt)?;
             }
+
+            // Project the boundary for use as panel background in the writer
+            let source = match projection.properties.get("source") {
+                Some(ParameterValue::String(s)) => s.as_str(),
+                _ => "EPSG:4326",
+            };
+            if let Some(ParameterValue::String(crs)) = projection.properties.get("crs") {
+                let projected = dialect.sql_st_transform("geom", source, crs);
+                let sql = format!(
+                    "SELECT ST_AsText({projected}) AS wkt FROM {CLIP_BOUNDARY_TABLE}"
+                );
+                if let Ok(df) = execute_query(&sql) {
+                    let batch = df.inner();
+                    if batch.num_rows() > 0 {
+                        if let Some(arr) = batch
+                            .column(0)
+                            .as_any()
+                            .downcast_ref::<arrow::array::StringArray>()
+                        {
+                            let projected_wkt = arr.value(0);
+                            projection.computed.insert(
+                                "panel_boundary".to_string(),
+                                ParameterValue::String(projected_wkt.to_string()),
+                            );
+                        }
+                    }
+                }
+            }
         }
 
         for (idx, layer) in layers.iter().enumerate() {

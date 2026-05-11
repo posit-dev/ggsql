@@ -33,7 +33,7 @@ parquet = { workspace = true, optional = true }
 bytes = { workspace = true }
 
 # Spatial
-geozero = { workspace = true, optional = true, features = ["with-wkb", "with-geojson"] }
+geozero = { workspace = true, optional = true, features = ["with-wkb", "with-wkt", "with-geojson"] }
 
 # Serialization
 serde.workspace = true
