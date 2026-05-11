@@ -1076,6 +1076,42 @@ mod integration_tests {
         );
     }
 
+    #[cfg(feature = "spatial")]
+    #[test]
+    fn test_end_to_end_spatial_world_orthographic_antimeridian() {
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        let queries = &[
+            "+proj=ortho +lat_0=0 +lon_0=150",
+            "+proj=ortho +lat_0=52.36 +lon_0=150.90",
+        ];
+
+        for crs in queries {
+            let query = format!(
+                "VISUALISE FROM ggsql:world \
+                 DRAW spatial PROJECT TO orthographic SETTING crs => '{crs}'"
+            );
+
+            let prepared = execute::prepare_data_with_reader(&query, &reader).unwrap();
+
+            let writer = VegaLiteWriter::new();
+            let json_str = writer.write(&prepared.specs[0], &prepared.data).unwrap();
+            let vl_spec: serde_json::Value = serde_json::from_str(&json_str).unwrap();
+
+            let data = vl_spec["data"]["values"].as_array().unwrap();
+            let layer_key = prepared.specs[0].layers[0].data_key.as_ref().unwrap();
+            let spatial_rows: Vec<_> = data
+                .iter()
+                .filter(|r| r[naming::SOURCE_COLUMN] == layer_key.as_str())
+                .collect();
+            assert!(!spatial_rows.is_empty(), "no rows for {crs}");
+            assert!(
+                spatial_rows.iter().all(|r| !r["geometry"].is_null()),
+                "NULL geometry found for {crs}"
+            );
+        }
+    }
+
     /// Belt-and-braces regression test: a representative basket of error-
     /// triggering queries must never produce a user-visible message that
     /// contains an internal aesthetic name (`__ggsql_aes_*`, `pos1`, `pos2`,

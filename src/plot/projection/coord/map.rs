@@ -124,7 +124,8 @@ fn extract_proj_param(crs: &str, key: &str) -> Option<f64> {
 }
 
 /// Haversine boundary polygon at `radius_deg` from `(lon0, lat0)`, as WKT.
-/// Routes through ±90° latitude when the boundary includes a pole.
+/// Returns a POLYGON when the ring doesn't cross the antimeridian, or a
+/// MULTIPOLYGON split at ±180° when it does.
 fn hemisphere_polygon_wkt(lon0: f64, lat0: f64, radius_deg: f64) -> String {
     let d = radius_deg.to_radians();
     let lat0_r = lat0.to_radians();
@@ -140,49 +141,167 @@ fn hemisphere_polygon_wkt(lon0: f64, lat0: f64, radius_deg: f64) -> String {
         let lat2 = (sin_lat0 * cos_d + cos_lat0 * sin_d * az.cos()).asin();
         let lon2 =
             lon0.to_radians() + (az.sin() * sin_d * cos_lat0).atan2(cos_d - sin_lat0 * lat2.sin());
-        points.push((lon2.to_degrees(), lat2.to_degrees()));
+        let mut lon_deg = lon2.to_degrees();
+        // Normalize to [-180, 180]
+        lon_deg = ((lon_deg + 180.0) % 360.0 + 360.0) % 360.0 - 180.0;
+        points.push((lon_deg, lat2.to_degrees()));
     }
 
     let includes_north_pole = lat0 + radius_deg > 90.0;
     let includes_south_pole = lat0 - radius_deg < -90.0;
 
-    let mut coords: Vec<String> = Vec::with_capacity(n_points + 4);
-
     if includes_north_pole || includes_south_pole {
-        let mut split_idx = 0;
-        let mut max_jump = 0.0_f64;
-        for i in 0..points.len() {
-            let next = (i + 1) % points.len();
-            let jump = (points[next].0 - points[i].0).abs();
-            if jump > max_jump {
-                max_jump = jump;
-                split_idx = next;
-            }
-        }
-
-        let mut ordered: Vec<(f64, f64)> = Vec::with_capacity(points.len());
-        for i in 0..points.len() {
-            ordered.push(points[(split_idx + i) % points.len()]);
-        }
-
-        let pole_lat = if includes_north_pole { 90.0 } else { -90.0 };
-        let first = ordered.first().unwrap();
-        let last = ordered.last().unwrap();
-
-        for (lon, lat) in &ordered {
-            coords.push(format!("{lon:.6} {lat:.6}"));
-        }
-        coords.push(format!("{:.6} {pole_lat:.6}", last.0));
-        coords.push(format!("{:.6} {pole_lat:.6}", first.0));
-        coords.push(format!("{:.6} {:.6}", first.0, first.1));
+        build_pole_polygon(&points, includes_north_pole)
+    } else if find_antimeridian_crossings(&points).len() == 2 {
+        build_antimeridian_multipolygon(&points)
     } else {
-        for (lon, lat) in &points {
-            coords.push(format!("{lon:.6} {lat:.6}"));
+        build_simple_polygon(&points)
+    }
+}
+
+fn build_simple_polygon(points: &[(f64, f64)]) -> String {
+    let mut coords: Vec<String> = points
+        .iter()
+        .map(|(lon, lat)| format!("{lon:.6} {lat:.6}"))
+        .collect();
+    coords.push(coords[0].clone());
+    format!("POLYGON(({}))", coords.join(", "))
+}
+
+/// Routes the ring through ±90° latitude to close around a pole.
+fn build_pole_polygon(points: &[(f64, f64)], north: bool) -> String {
+    let mut split_idx = 0;
+    let mut max_jump = 0.0_f64;
+    for i in 0..points.len() {
+        let next = (i + 1) % points.len();
+        let jump = (points[next].0 - points[i].0).abs();
+        if jump > max_jump {
+            max_jump = jump;
+            split_idx = next;
         }
-        coords.push(coords[0].clone());
     }
 
+    let mut ordered: Vec<(f64, f64)> = Vec::with_capacity(points.len());
+    for i in 0..points.len() {
+        ordered.push(points[(split_idx + i) % points.len()]);
+    }
+
+    let pole_lat = if north { 90.0 } else { -90.0 };
+    let first = ordered.first().unwrap();
+    let last = ordered.last().unwrap();
+
+    let mut coords: Vec<String> = Vec::with_capacity(points.len() + 4);
+    for (lon, lat) in &ordered {
+        coords.push(format!("{lon:.6} {lat:.6}"));
+    }
+    coords.push(format!("{:.6} {pole_lat:.6}", last.0));
+    coords.push(format!("{:.6} {pole_lat:.6}", first.0));
+    coords.push(format!("{:.6} {:.6}", first.0, first.1));
+
     format!("POLYGON(({}))", coords.join(", "))
+}
+
+fn find_antimeridian_crossings(points: &[(f64, f64)]) -> Vec<usize> {
+    let n = points.len();
+    let mut crossings = Vec::new();
+    for i in 0..n {
+        let next = (i + 1) % n;
+        if (points[next].0 - points[i].0).abs() > 180.0 {
+            crossings.push(i);
+        }
+    }
+    crossings
+}
+
+/// Splits the boundary ring into two polygons at the antimeridian (±180°).
+/// Each sub-polygon closes by tracing the antimeridian between its two crossing latitudes.
+fn build_antimeridian_multipolygon(points: &[(f64, f64)]) -> String {
+    let n = points.len();
+    let crossings = find_antimeridian_crossings(points);
+    assert_eq!(crossings.len(), 2);
+
+    let c1 = crossings[0];
+    let c2 = crossings[1];
+
+    let lat_c1 = antimeridian_crossing_lat(points[c1], points[(c1 + 1) % n]);
+    let lat_c2 = antimeridian_crossing_lat(points[c2], points[(c2 + 1) % n]);
+
+    let (east_arc, west_arc, east_start_lat, east_end_lat, west_start_lat, west_end_lat) =
+        split_arcs_at_crossings(points, c1, c2, lat_c1, lat_c2);
+
+    let east_coords = build_side_ring(&east_arc, 180.0, east_start_lat, east_end_lat);
+    let west_coords = build_side_ring(&west_arc, -180.0, west_start_lat, west_end_lat);
+
+    format!(
+        "MULTIPOLYGON((({})),(({})))",
+        east_coords.join(", "),
+        west_coords.join(", ")
+    )
+}
+
+/// Split the ring at two crossing indices into east/west arcs with their boundary latitudes.
+fn split_arcs_at_crossings(
+    points: &[(f64, f64)],
+    c1: usize,
+    c2: usize,
+    lat_c1: f64,
+    lat_c2: f64,
+) -> (Vec<(f64, f64)>, Vec<(f64, f64)>, f64, f64, f64, f64) {
+    let n = points.len();
+
+    let mut arc1: Vec<(f64, f64)> = Vec::new();
+    let mut i = (c1 + 1) % n;
+    loop {
+        arc1.push(points[i]);
+        if i == c2 {
+            break;
+        }
+        i = (i + 1) % n;
+    }
+
+    let mut arc2: Vec<(f64, f64)> = Vec::new();
+    i = (c2 + 1) % n;
+    loop {
+        arc2.push(points[i]);
+        if i == c1 {
+            break;
+        }
+        i = (i + 1) % n;
+    }
+
+    if arc1[0].0 > 0.0 {
+        (arc1, arc2, lat_c1, lat_c2, lat_c2, lat_c1)
+    } else {
+        (arc2, arc1, lat_c2, lat_c1, lat_c1, lat_c2)
+    }
+}
+
+fn build_side_ring(
+    arc: &[(f64, f64)],
+    meridian_lon: f64,
+    start_lat: f64,
+    end_lat: f64,
+) -> Vec<String> {
+    let mut coords: Vec<String> = Vec::with_capacity(arc.len() + 3);
+    coords.push(format!("{meridian_lon:.6} {start_lat:.6}"));
+    for (lon, lat) in arc.iter() {
+        coords.push(format!("{lon:.6} {lat:.6}"));
+    }
+    coords.push(format!("{meridian_lon:.6} {end_lat:.6}"));
+    coords.push(coords[0].clone());
+    coords
+}
+
+fn antimeridian_crossing_lat(a: (f64, f64), b: (f64, f64)) -> f64 {
+    let (lon_a, lat_a) = a;
+    let (lon_b, lat_b) = b;
+    let (lon_a_u, lon_b_u) = if lon_a > lon_b {
+        (lon_a, lon_b + 360.0)
+    } else {
+        (lon_a + 360.0, lon_b)
+    };
+    let t = (180.0 - lon_a_u) / (lon_b_u - lon_a_u);
+    lat_a + t * (lat_b - lat_a)
 }
 
 fn detect_source_srid(
@@ -316,5 +435,48 @@ mod tests {
     fn test_visible_area_wkt_no_crs_returns_none() {
         let props = HashMap::new();
         assert!(visible_area_wkt(&props).is_none());
+    }
+
+    #[test]
+    fn test_visible_area_wkt_antimeridian_crossing() {
+        let mut props = HashMap::new();
+        props.insert(
+            "crs".to_string(),
+            ParameterValue::String("+proj=ortho +lat_0=0 +lon_0=150".to_string()),
+        );
+        let wkt = visible_area_wkt(&props).unwrap();
+        assert!(
+            wkt.starts_with("MULTIPOLYGON"),
+            "lon_0=150 should cross antimeridian: {wkt}"
+        );
+    }
+
+    #[test]
+    fn test_visible_area_wkt_no_antimeridian_for_centered() {
+        let mut props = HashMap::new();
+        props.insert(
+            "crs".to_string(),
+            ParameterValue::String("+proj=ortho +lat_0=0 +lon_0=0".to_string()),
+        );
+        let wkt = visible_area_wkt(&props).unwrap();
+        assert!(
+            wkt.starts_with("POLYGON(("),
+            "lon_0=0 should not cross antimeridian: {wkt}"
+        );
+    }
+
+    #[test]
+    fn test_visible_area_wkt_pole_and_antimeridian() {
+        let mut props = HashMap::new();
+        props.insert(
+            "crs".to_string(),
+            ParameterValue::String("+proj=ortho +lat_0=52.36 +lon_0=150.90".to_string()),
+        );
+        let wkt = visible_area_wkt(&props).unwrap();
+        // Includes north pole (52.36 + 88 > 90), ring has one big jump → pole-routing.
+        assert!(
+            wkt.starts_with("POLYGON(("),
+            "pole case should produce POLYGON: {wkt}"
+        );
     }
 }
