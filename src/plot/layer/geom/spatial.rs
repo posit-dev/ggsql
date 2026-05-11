@@ -1,38 +1,39 @@
 use super::{DefaultAesthetics, GeomTrait, GeomType};
 use crate::naming;
-use crate::plot::projection::coord::map::visible_area_wkt;
+use crate::plot::projection::coord::map::CLIP_BOUNDARY_KEY;
 use crate::plot::projection::coord::CoordKind;
 use crate::plot::projection::Projection;
 use crate::plot::types::DefaultAestheticValue;
 use crate::plot::ParameterValue;
 use crate::reader::SqlDialect;
 
-fn apply_horizon_clip(
+fn apply_clip_boundary(
     query: &str,
     col: &str,
     source: &str,
     crs: &str,
-    horizon_sql: &str,
+    clip_table: &str,
     dialect: &dyn SqlDialect,
 ) -> String {
+    let clip_geom = format!("(SELECT geom FROM {clip_table})");
     let geom_expr = format!(
         "ST_MakeValid(ST_Transform(\
-            ST_Intersection({col}, ({horizon})),\
+            ST_Intersection({col}, {clip_geom}),\
             '{source}', '{crs}', always_xy := true\
         ))",
         col = col,
-        horizon = horizon_sql,
+        clip_geom = clip_geom,
         source = source.replace('\'', "''"),
         crs = crs.replace('\'', "''"),
     );
     let wkb_expr = dialect.sql_geometry_to_wkb(&geom_expr);
     format!(
         "SELECT * REPLACE ({wkb_expr} AS {col}) FROM ({query}) \
-         WHERE ST_Intersects({col}, ({horizon}))",
+         WHERE ST_Intersects({col}, {clip_geom})",
         col = col,
         wkb_expr = wkb_expr,
         query = query,
-        horizon = horizon_sql,
+        clip_geom = clip_geom,
     )
 }
 
@@ -74,9 +75,12 @@ impl GeomTrait for Spatial {
                 _ => "EPSG:4326",
             };
 
-            if let Some(wkt) = visible_area_wkt(&projection.properties) {
-                let horizon_sql = format!("ST_GeomFromText('{wkt}')");
-                return Ok(apply_horizon_clip(query, &col, source, crs, &horizon_sql, dialect));
+            if let Some(ParameterValue::String(clip_table)) =
+                projection.properties.get(CLIP_BOUNDARY_KEY)
+            {
+                return Ok(apply_clip_boundary(
+                    query, &col, source, crs, clip_table, dialect,
+                ));
             }
 
             dialect.sql_st_transform(&col, source, crs)
@@ -145,12 +149,16 @@ mod tests {
     }
 
     #[test]
-    fn test_orthographic_gets_horizon_clip() {
+    fn test_orthographic_gets_clip_boundary() {
         let spatial = Spatial;
         let mut projection = Projection::map();
         projection.properties.insert(
             "crs".to_string(),
             ParameterValue::String("+proj=ortho +lat_0=45 +lon_0=10".to_string()),
+        );
+        projection.properties.insert(
+            CLIP_BOUNDARY_KEY.to_string(),
+            ParameterValue::String("__ggsql_clip_boundary__".to_string()),
         );
         let result = spatial
             .apply_projection("SELECT * FROM t", &projection, &AnsiDialect)
@@ -160,15 +168,20 @@ mod tests {
         assert!(result.contains("ST_MakeValid"));
         assert!(result.contains("ST_Intersection"));
         assert!(result.contains("ST_Intersects"));
+        assert!(result.contains("__ggsql_clip_boundary__"));
     }
 
     #[test]
-    fn test_gnomonic_gets_horizon_clip() {
+    fn test_gnomonic_gets_clip_boundary() {
         let spatial = Spatial;
         let mut projection = Projection::map();
         projection.properties.insert(
             "crs".to_string(),
             ParameterValue::String("+proj=gnom +lat_0=90 +lon_0=0".to_string()),
+        );
+        projection.properties.insert(
+            CLIP_BOUNDARY_KEY.to_string(),
+            ParameterValue::String("__ggsql_clip_boundary__".to_string()),
         );
         let result = spatial
             .apply_projection("SELECT * FROM t", &projection, &AnsiDialect)
@@ -177,5 +190,6 @@ mod tests {
         assert!(result.contains("ST_MakeValid"));
         assert!(result.contains("ST_Intersection"));
         assert!(result.contains("ST_Intersects"));
+        assert!(result.contains("__ggsql_clip_boundary__"));
     }
 }

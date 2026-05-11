@@ -10,6 +10,9 @@ use crate::plot::{Layer, ParameterValue};
 use crate::reader::SqlDialect;
 use crate::DataFrame;
 
+pub const CLIP_BOUNDARY_TABLE: &str = "__ggsql_clip_boundary__";
+pub const CLIP_BOUNDARY_KEY: &str = "__clip_boundary_table";
+
 /// Map coordinate system - for geographic/cartographic projections
 #[derive(Debug, Clone, Copy)]
 pub struct Map;
@@ -67,6 +70,18 @@ impl CoordTrait for Map {
                     .properties
                     .insert("source".to_string(), ParameterValue::String(srid));
             }
+        }
+
+        // Create a temp table for the clip boundary if the projection needs clipping
+        if let Some(wkt) = visible_area_wkt(&projection.properties) {
+            let body = format!("SELECT ST_GeomFromText('{wkt}') AS geom");
+            for stmt in dialect.create_or_replace_temp_table_sql(CLIP_BOUNDARY_TABLE, &[], &body) {
+                execute_query(&stmt)?;
+            }
+            projection.properties.insert(
+                CLIP_BOUNDARY_KEY.to_string(),
+                ParameterValue::String(CLIP_BOUNDARY_TABLE.to_string()),
+            );
         }
 
         for (idx, layer) in layers.iter().enumerate() {
