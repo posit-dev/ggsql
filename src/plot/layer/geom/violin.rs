@@ -1,6 +1,6 @@
 //! Violin geom implementation
 
-use super::types::POSITION_VALUES;
+use super::types::{POSITION_VALUES, SIDE_VALUES};
 use super::{DefaultAesthetics, GeomTrait, GeomType, StatResult};
 use crate::{
     naming,
@@ -23,8 +23,6 @@ const KERNEL_VALUES: &[&str] = &[
     "quartic",
     "cosine",
 ];
-
-const SIDE_VALUES: &[&str] = &["both", "left", "top", "right", "bottom"];
 
 /// Violin geom - violin plots (mirrored density)
 #[derive(Debug, Clone, Copy)]
