@@ -153,6 +153,23 @@ impl DefaultAesthetics {
             .find(|(n, _)| *n == name)
             .map(|(_, value)| value)
     }
+
+    /// Names of aesthetics declared as `Dummy` — i.e. position aesthetics
+    /// the default `apply_stat_transform` should fill in with a synthetic
+    /// categorical column when the user leaves the whole axis family
+    /// unmapped.
+    pub fn dummy_axes(&self) -> Vec<&'static str> {
+        self.defaults
+            .iter()
+            .filter_map(|(name, value)| {
+                if matches!(value, DefaultAestheticValue::Dummy) {
+                    Some(*name)
+                } else {
+                    None
+                }
+            })
+            .collect()
+    }
 }
 
 /// Result of a statistical transformation
@@ -270,11 +287,18 @@ pub fn wrap_stat_with_dummy_axis(input_query: &str, result: StatResult, axis: &s
             mut dummy_columns,
             consumed_aesthetics,
         } => {
-            let wrapped = wrap_with_dummy_axis(&query, axis);
+            // Idempotent: a stat that already produced a dummy for this axis
+            // must not be re-wrapped — the SQL would gain a duplicate column.
+            let already_dummied = dummy_columns.iter().any(|s| s == axis);
+            let wrapped = if already_dummied {
+                query
+            } else {
+                wrap_with_dummy_axis(&query, axis)
+            };
             if !stat_columns.iter().any(|s| s == axis) {
                 stat_columns.push(axis.to_string());
             }
-            if !dummy_columns.iter().any(|s| s == axis) {
+            if !already_dummied {
                 dummy_columns.push(axis.to_string());
             }
             StatResult::Transformed {

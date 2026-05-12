@@ -38,10 +38,11 @@ impl GeomTrait for Violin {
     fn aesthetics(&self) -> DefaultAesthetics {
         DefaultAesthetics {
             defaults: &[
-                // pos1 is optional - if omitted, stat_violin synthesises a
-                // dummy categorical axis so the geom renders a single violin
-                // of the whole pos2 distribution.
-                ("pos1", DefaultAestheticValue::Null),
+                // pos1 is dummy-able. `stat_violin` handles the synthesis
+                // itself by pre-wrapping the source query, so the density
+                // grouping collapses to a single violin of the whole pos2
+                // distribution.
+                ("pos1", DefaultAestheticValue::Dummy),
                 ("pos2", DefaultAestheticValue::Required),
                 ("weight", DefaultAestheticValue::Null),
                 ("fill", DefaultAestheticValue::String("black")),
@@ -99,7 +100,6 @@ impl GeomTrait for Violin {
     fn default_remappings(&self) -> DefaultAesthetics {
         DefaultAesthetics {
             defaults: &[
-                ("pos1", DefaultAestheticValue::Column("pos1")),
                 ("pos2", DefaultAestheticValue::Column("pos2")),
                 ("offset", DefaultAestheticValue::Column("density")),
             ],

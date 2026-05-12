@@ -26,10 +26,10 @@ impl GeomTrait for Boxplot {
     fn aesthetics(&self) -> DefaultAesthetics {
         DefaultAesthetics {
             defaults: &[
-                // pos1 is optional - if omitted, stat_boxplot synthesises a
-                // dummy categorical axis so the geom renders a single boxplot
-                // of the whole pos2 distribution.
-                ("pos1", DefaultAestheticValue::Null),
+                // pos1 is dummy-able. `stat_boxplot` handles the synthesis
+                // itself by pre-wrapping the input so the existing GROUP BY
+                // collapses to a single boxplot of the whole pos2 distribution.
+                ("pos1", DefaultAestheticValue::Dummy),
                 ("pos2", DefaultAestheticValue::Required),
                 ("stroke", DefaultAestheticValue::String("black")),
                 ("fill", DefaultAestheticValue::String("white")),
@@ -78,7 +78,6 @@ impl GeomTrait for Boxplot {
     fn default_remappings(&self) -> DefaultAesthetics {
         DefaultAesthetics {
             defaults: &[
-                ("pos1", DefaultAestheticValue::Column("pos1")),
                 ("pos2", DefaultAestheticValue::Column("value")),
                 ("pos2end", DefaultAestheticValue::Column("value2")),
                 ("type", DefaultAestheticValue::Column("type")),
@@ -592,10 +591,9 @@ mod tests {
         let boxplot = Boxplot;
         let remappings = boxplot.default_remappings();
 
-        assert_eq!(remappings.defaults.len(), 4);
-        assert!(remappings
-            .defaults
-            .contains(&("pos1", DefaultAestheticValue::Column("pos1"))));
+        // pos1 is `Dummy` in aesthetics() so the `Geom` wrapper auto-derives
+        // its remapping. The trait method returns only the explicit entries.
+        assert_eq!(remappings.defaults.len(), 3);
         assert!(remappings
             .defaults
             .contains(&("pos2", DefaultAestheticValue::Column("value"))));

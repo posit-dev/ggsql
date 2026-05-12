@@ -223,13 +223,13 @@ pub trait GeomTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
     /// The default implementation:
     /// 1. Dispatches to the Aggregate stat when `supports_aggregate()` is
     ///    true and the `aggregate` parameter is set.
-    /// 2. For each position axis (`pos1`, `pos2`) declared as `Null` in
-    ///    `aesthetics()`, post-wraps the result with a dummy categorical
-    ///    column when *no* aesthetic in the axis's family (e.g. `pos1`,
-    ///    `pos1min`, `pos1max`, …) is mapped. The writer then suppresses
-    ///    the (otherwise one-tick) axis. Geoms whose bespoke stat already
-    ///    synthesises positions (e.g. `bar`, `boxplot`, `violin`,
-    ///    `histogram`) override `apply_stat_transform` and are unaffected.
+    /// 2. For each position axis declared as `Dummy` in `aesthetics()`,
+    ///    post-wraps the result with a synthetic categorical column when
+    ///    *no* aesthetic in the axis's family (e.g. `pos1`, `pos1min`,
+    ///    `pos1max`, …) is mapped. The writer then suppresses the
+    ///    (otherwise one-tick) axis. Geoms whose bespoke stat already
+    ///    synthesises positions (`bar`, `boxplot`, `violin`, `histogram`,
+    ///    …) override `apply_stat_transform` and are unaffected.
     #[allow(clippy::too_many_arguments)]
     fn apply_stat_transform(
         &self,
@@ -261,9 +261,8 @@ pub trait GeomTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
         };
 
         let aes = self.aesthetics();
-        for axis in ["pos1", "pos2"] {
-            let optional = matches!(aes.get(axis), Some(DefaultAestheticValue::Null));
-            if optional && !types::axis_family_has_mapping(aesthetics, axis) {
+        for axis in aes.dummy_axes() {
+            if !types::axis_family_has_mapping(aesthetics, axis) {
                 result = types::wrap_stat_with_dummy_axis(query, result, axis);
             }
         }
@@ -460,14 +459,46 @@ impl Geom {
         self.0.aesthetics()
     }
 
-    /// Get default remappings
+    /// Get default remappings as explicitly declared by the geom.
+    ///
+    /// Most callers want [`implicit_default_remappings`], which also
+    /// includes auto-derived entries for `Dummy` axes.
     pub fn default_remappings(&self) -> DefaultAesthetics {
         self.0.default_remappings()
     }
 
-    /// Get valid stat columns
+    /// Default remappings merged with auto-derived `(axis, Column(axis))`
+    /// entries for every aesthetic declared as `Dummy` that isn't already
+    /// covered by an explicit remapping. The merged list is what should be
+    /// fed to the executor's rename pass.
+    pub fn implicit_default_remappings(&self) -> Vec<(&'static str, DefaultAestheticValue)> {
+        let explicit = self.0.default_remappings();
+        let mut out: Vec<(&'static str, DefaultAestheticValue)> = explicit.defaults.to_vec();
+        for axis in self.0.aesthetics().dummy_axes() {
+            if !out.iter().any(|(name, _)| *name == axis) {
+                out.push((axis, DefaultAestheticValue::Column(axis)));
+            }
+        }
+        out
+    }
+
+    /// Get valid stat columns as explicitly declared by the geom.
     pub fn valid_stat_columns(&self) -> &'static [&'static str] {
         self.0.valid_stat_columns()
+    }
+
+    /// Valid stat columns merged with the axis names of every `Dummy`
+    /// aesthetic declared by the geom. The executor uses this to validate
+    /// REMAPPING targets.
+    pub fn implicit_valid_stat_columns(&self) -> Vec<&'static str> {
+        let explicit = self.0.valid_stat_columns();
+        let mut out: Vec<&'static str> = explicit.to_vec();
+        for axis in self.0.aesthetics().dummy_axes() {
+            if !out.contains(&axis) {
+                out.push(axis);
+            }
+        }
+        out
     }
 
     /// Get default parameters
