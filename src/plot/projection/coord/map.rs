@@ -87,11 +87,20 @@ impl CoordTrait for Map {
             }
         }
 
+        let source = match projection.properties.get("source") {
+            Some(ParameterValue::String(s)) => s.clone(),
+            _ => "EPSG:4326".to_string(),
+        };
+        let crs = match projection.properties.get("crs") {
+            Some(ParameterValue::String(s)) => s.clone(),
+            _ => return Ok(()),
+        };
+
         // Step 2: For azimuthal projections, compute the hemisphere clip boundary.
         // This produces: clip_boundary (unprojected WKT), panel_boundary (projected
         // WKT for the writer's background layer), and world_bbox (bounding box of the
         // full projected visible area, used to resolve Inf in user-specified bounds).
-        let world_bbox = setup_clip_boundary(projection, dialect, execute_query)?;
+        let world_bbox = setup_clip_boundary(projection, &source, &crs, dialect, execute_query)?;
 
         // Step 3: Apply per-layer projection (ST_Transform, clip to horizon)
         for (idx, layer) in layers.iter().enumerate() {
@@ -134,17 +143,33 @@ impl CoordTrait for Map {
         }
 
         // Step 5: Resolve final frame bbox from user bounds + data bounds + world bounds
-        if let Some(bbox) = resolve_frame_bbox(bounds_param, computed_bbox, world_bbox) {
-            use crate::plot::types::ArrayElement;
-            projection.computed.insert(
-                "frame_bbox".to_string(),
-                ParameterValue::Array(vec![
-                    ArrayElement::Number(bbox[0]),
-                    ArrayElement::Number(bbox[1]),
-                    ArrayElement::Number(bbox[2]),
-                    ArrayElement::Number(bbox[3]),
-                ]),
-            );
+        let Some(bbox) = resolve_frame_bbox(bounds_param, computed_bbox, world_bbox) else {
+            return Ok(());
+        };
+        use crate::plot::types::ArrayElement;
+        projection.computed.insert(
+            "frame_bbox".to_string(),
+            ParameterValue::Array(vec![
+                ArrayElement::Number(bbox[0]),
+                ArrayElement::Number(bbox[1]),
+                ArrayElement::Number(bbox[2]),
+                ArrayElement::Number(bbox[3]),
+            ]),
+        );
+
+        // Step 6: Generate graticule lines
+        let has_clip = projection.computed.contains_key("clip_boundary");
+        let (lon_wkt, lat_wkt) =
+            build_graticule(bbox, &crs, &source, has_clip, dialect, execute_query)?;
+        if let Some(wkt) = lon_wkt {
+            projection
+                .computed
+                .insert("graticule_lon".to_string(), ParameterValue::String(wkt));
+        }
+        if let Some(wkt) = lat_wkt {
+            projection
+                .computed
+                .insert("graticule_lat".to_string(), ParameterValue::String(wkt));
         }
 
         Ok(())
@@ -161,6 +186,8 @@ impl std::fmt::Display for Map {
 /// projects it into the target CRS, and returns the world bbox (projected clip boundary extent).
 fn setup_clip_boundary(
     projection: &mut super::super::Projection,
+    source: &str,
+    crs: &str,
     dialect: &dyn SqlDialect,
     execute_query: &dyn Fn(&str) -> crate::Result<DataFrame>,
 ) -> crate::Result<Option<[f64; 4]>> {
@@ -176,14 +203,6 @@ fn setup_clip_boundary(
     for stmt in dialect.create_or_replace_temp_table_sql(CLIP_BOUNDARY_TABLE, &[], &body) {
         execute_query(&stmt)?;
     }
-
-    let source = match projection.properties.get("source") {
-        Some(ParameterValue::String(s)) => s.as_str(),
-        _ => "EPSG:4326",
-    };
-    let Some(ParameterValue::String(crs)) = projection.properties.get("crs") else {
-        return Ok(None);
-    };
 
     let projected = dialect.sql_st_transform("geom", source, crs);
     let sql = format!("SELECT ST_AsText({projected}) AS wkt FROM {CLIP_BOUNDARY_TABLE}");
@@ -209,6 +228,302 @@ fn setup_clip_boundary(
         .ok()
         .and_then(|df| bbox_from_df(&df));
     Ok(world_bbox)
+}
+
+/// Build graticule lines: determine the visible lon/lat extent, generate densified
+/// meridians and parallels, clip and project them, and return projected WKT.
+fn build_graticule(
+    frame_bbox: [f64; 4],
+    crs: &str,
+    source: &str,
+    has_clip: bool,
+    dialect: &dyn SqlDialect,
+    execute_query: &dyn Fn(&str) -> crate::Result<DataFrame>,
+) -> crate::Result<(Option<String>, Option<String>)> {
+    let Some([lon_min, lat_min, lon_max, lat_max]) =
+        graticule_bbox(frame_bbox, crs, source, has_clip, dialect, execute_query)?
+    else {
+        return Ok((None, None));
+    };
+
+    let lon_breaks = graticule_breaks(lon_min, lon_max);
+    let lat_breaks = graticule_breaks(lat_min, lat_max);
+
+    if lon_breaks.is_empty() && lat_breaks.is_empty() {
+        return Ok((None, None));
+    }
+
+    // Densification interval based on angular extent
+    let max_range = (lon_max - lon_min).max(lat_max - lat_min);
+    let step_deg = if max_range > 90.0 {
+        2.0
+    } else if max_range > 30.0 {
+        1.0
+    } else {
+        0.5
+    };
+
+    // Clamp meridians away from ±180 to avoid antimeridian issues, and
+    // deduplicate (e.g. if both -180 and 180 were present, they become the same)
+    let lon_breaks: Vec<f64> = {
+        let mut clamped: Vec<f64> = lon_breaks
+            .iter()
+            .map(|&v| {
+                if v <= -180.0 {
+                    -179.999999
+                } else if v >= 180.0 {
+                    179.999999
+                } else {
+                    v
+                }
+            })
+            .collect();
+        clamped.dedup_by(|a, b| (*a - *b).abs() < 0.001);
+        clamped
+    };
+
+    let lon_wkt = if !lon_breaks.is_empty() {
+        Some(meridians_multilinestring(
+            &lon_breaks,
+            lat_min,
+            lat_max,
+            step_deg,
+        ))
+    } else {
+        None
+    };
+    let lat_wkt = if !lat_breaks.is_empty() {
+        Some(parallels_multilinestring(
+            &lat_breaks,
+            lon_min,
+            lon_max,
+            step_deg,
+        ))
+    } else {
+        None
+    };
+
+    Ok((
+        project_wkt(lon_wkt, has_clip, source, crs, dialect, execute_query)?,
+        project_wkt(lat_wkt, has_clip, source, crs, dialect, execute_query)?,
+    ))
+}
+
+/// Determine the lon/lat bounding box visible in the current frame by inverse-projecting
+/// the bbox corners. Falls back to the clip boundary for azimuthal projections
+/// where corners collapse to degenerate values.
+fn graticule_bbox(
+    frame_bbox: [f64; 4],
+    crs: &str,
+    source: &str,
+    has_clip: bool,
+    dialect: &dyn SqlDialect,
+    execute_query: &dyn Fn(&str) -> crate::Result<DataFrame>,
+) -> crate::Result<Option<[f64; 4]>> {
+    use arrow::array::Array;
+
+    let [xmin, ymin, xmax, ymax] = frame_bbox;
+    let corners_sql = format!(
+        "SELECT ST_X(pt) AS lon, ST_Y(pt) AS lat FROM (\
+         VALUES ({xmin}, {ymin}), ({xmax}, {ymin}), ({xmin}, {ymax}), ({xmax}, {ymax})\
+         ) AS t(px, py), \
+         LATERAL (SELECT {} AS pt) sub",
+        dialect.sql_st_transform("ST_Point(px, py)", crs, source)
+    );
+    let df = match execute_query(&corners_sql) {
+        Ok(df) => df,
+        Err(_) => return Ok(None),
+    };
+
+    let batch = df.inner();
+    if batch.num_rows() == 0 {
+        return Ok(None);
+    }
+    let lon_arr = batch
+        .column(0)
+        .as_any()
+        .downcast_ref::<arrow::array::Float64Array>();
+    let lat_arr = batch
+        .column(1)
+        .as_any()
+        .downcast_ref::<arrow::array::Float64Array>();
+    let (Some(lons), Some(lats)) = (lon_arr, lat_arr) else {
+        return Ok(None);
+    };
+
+    let mut lon_min = f64::INFINITY;
+    let mut lon_max = f64::NEG_INFINITY;
+    let mut lat_min = f64::INFINITY;
+    let mut lat_max = f64::NEG_INFINITY;
+    for i in 0..batch.num_rows() {
+        if lons.is_null(i) || lats.is_null(i) {
+            continue;
+        }
+        let lon = lons.value(i).clamp(-180.0, 180.0);
+        let lat = lats.value(i).clamp(-90.0, 90.0);
+        lon_min = lon_min.min(lon);
+        lon_max = lon_max.max(lon);
+        lat_min = lat_min.min(lat);
+        lat_max = lat_max.max(lat);
+    }
+    if !lon_min.is_finite() || !lat_min.is_finite() {
+        return Ok(None);
+    }
+
+    // For azimuthal projections the bbox corners often inverse-project to
+    // degenerate values (all at the horizon). Fall back to the clip boundary
+    // extent which represents the actual visible hemisphere.
+    if has_clip && (lon_max - lon_min).abs() < 1.0 {
+        let bbox_sql = format!(
+            "SELECT ST_XMin(ext) AS xmin, ST_YMin(ext) AS ymin, \
+             ST_XMax(ext) AS xmax, ST_YMax(ext) AS ymax \
+             FROM (SELECT ST_Extent(geom) AS ext FROM {CLIP_BOUNDARY_TABLE})"
+        );
+        if let Ok(df) = execute_query(&bbox_sql) {
+            if let Some([x0, y0, x1, y1]) = bbox_from_df(&df) {
+                lon_min = x0;
+                lat_min = y0;
+                lon_max = x1;
+                lat_max = y1;
+            }
+        }
+    }
+
+    // For projections showing the full globe, expand to full range
+    if lon_max - lon_min > 300.0 {
+        lon_min = -180.0;
+        lon_max = 180.0;
+    }
+    if lat_max - lat_min > 150.0 {
+        lat_min = -90.0;
+        lat_max = 90.0;
+    }
+
+    Ok(Some([lon_min, lat_min, lon_max, lat_max]))
+}
+
+/// Clip (if needed) and project a WKT geometry string, returning the projected WKT.
+fn project_wkt(
+    wkt: Option<String>,
+    has_clip: bool,
+    source: &str,
+    crs: &str,
+    dialect: &dyn SqlDialect,
+    execute_query: &dyn Fn(&str) -> crate::Result<DataFrame>,
+) -> crate::Result<Option<String>> {
+    use arrow::array::Array;
+
+    let Some(wkt) = wkt else { return Ok(None) };
+    let geom_expr = format!("ST_GeomFromText('{wkt}')");
+    let clipped = if has_clip {
+        format!("ST_Intersection({geom_expr}, (SELECT geom FROM {CLIP_BOUNDARY_TABLE}))")
+    } else {
+        geom_expr
+    };
+    let projected = dialect.sql_st_transform(&clipped, source, crs);
+    let sql = format!("SELECT ST_AsText({projected}) AS wkt");
+    match execute_query(&sql) {
+        Ok(df) => {
+            let batch = df.inner();
+            if batch.num_rows() > 0 {
+                if let Some(arr) = batch
+                    .column(0)
+                    .as_any()
+                    .downcast_ref::<arrow::array::StringArray>()
+                {
+                    if !arr.is_null(0) {
+                        return Ok(Some(arr.value(0).to_string()));
+                    }
+                }
+            }
+            Ok(None)
+        }
+        Err(_) => Ok(None),
+    }
+}
+
+/// Pick pretty graticule break positions for a lon or lat range.
+/// Uses standard angular intervals (multiples of 1, 2, 5, 10, 15, 30, 45, 90).
+fn graticule_breaks(min: f64, max: f64) -> Vec<f64> {
+    let range = max - min;
+    if range <= 0.0 {
+        return vec![];
+    }
+
+    const STEPS: &[f64] = &[1.0, 2.0, 5.0, 10.0, 15.0, 20.0, 30.0, 45.0, 60.0, 90.0];
+
+    // Pick the smallest step that gives at most ~7 lines
+    let step = STEPS
+        .iter()
+        .copied()
+        .find(|&s| range / s <= 8.0)
+        .unwrap_or(90.0);
+
+    let start = (min / step).ceil() as i64;
+    let end = (max / step).floor() as i64;
+    let mut breaks: Vec<f64> = (start..=end)
+        .map(|i| i as f64 * step)
+        .filter(|&v| v > min && v < max)
+        .collect();
+
+    // Include the boundary value when range covers the full extent,
+    // so the antimeridian/pole gets a line
+    if min <= -180.0 && !breaks.iter().any(|&v| v == -180.0) {
+        breaks.insert(0, -180.0);
+    } else if max >= 180.0 && !breaks.iter().any(|&v| v == 180.0) {
+        breaks.push(180.0);
+    }
+    if min <= -90.0 && !breaks.iter().any(|&v| v == -90.0) {
+        breaks.insert(0, -90.0);
+    } else if max >= 90.0 && !breaks.iter().any(|&v| v == 90.0) {
+        breaks.push(90.0);
+    }
+
+    breaks
+}
+
+/// Generate a MULTILINESTRING WKT with meridians (vertical lines at fixed longitude),
+/// densified with intermediate vertices at `step_deg` intervals.
+fn meridians_multilinestring(
+    lon_breaks: &[f64],
+    lat_min: f64,
+    lat_max: f64,
+    step_deg: f64,
+) -> String {
+    let mut lines: Vec<String> = Vec::with_capacity(lon_breaks.len());
+    for &lon in lon_breaks {
+        let mut coords = Vec::new();
+        let mut lat = lat_min;
+        while lat < lat_max {
+            coords.push(format!("{lon:.6} {lat:.6}"));
+            lat += step_deg;
+        }
+        coords.push(format!("{lon:.6} {lat_max:.6}"));
+        lines.push(format!("({})", coords.join(", ")));
+    }
+    format!("MULTILINESTRING({})", lines.join(", "))
+}
+
+/// Generate a MULTILINESTRING WKT with parallels (horizontal lines at fixed latitude),
+/// densified with intermediate vertices at `step_deg` intervals.
+fn parallels_multilinestring(
+    lat_breaks: &[f64],
+    lon_min: f64,
+    lon_max: f64,
+    step_deg: f64,
+) -> String {
+    let mut lines: Vec<String> = Vec::with_capacity(lat_breaks.len());
+    for &lat in lat_breaks {
+        let mut coords = Vec::new();
+        let mut lon = lon_min;
+        while lon < lon_max {
+            coords.push(format!("{lon:.6} {lat:.6}"));
+            lon += step_deg;
+        }
+        coords.push(format!("{lon_max:.6} {lat:.6}"));
+        lines.push(format!("({})", coords.join(", ")));
+    }
+    format!("MULTILINESTRING({})", lines.join(", "))
 }
 
 /// Returns true if we need to compute a bbox (bounding box representing the extent of geometry)
@@ -803,5 +1118,54 @@ mod tests {
         assert_eq!(merge_bbox(a, None), a);
         assert_eq!(merge_bbox(None, a), a);
         assert_eq!(merge_bbox(None, None), None);
+    }
+
+    #[test]
+    fn test_graticule_breaks_world() {
+        let breaks = graticule_breaks(-180.0, 180.0);
+        assert_eq!(
+            breaks,
+            vec![-180.0, -135.0, -90.0, -45.0, 0.0, 45.0, 90.0, 135.0]
+        );
+    }
+
+    #[test]
+    fn test_graticule_breaks_hemisphere() {
+        let breaks = graticule_breaks(-88.0, 88.0);
+        assert_eq!(breaks, vec![-60.0, -30.0, 0.0, 30.0, 60.0]);
+    }
+
+    #[test]
+    fn test_graticule_breaks_small_range() {
+        let breaks = graticule_breaks(10.0, 20.0);
+        assert!(!breaks.is_empty());
+        for &b in &breaks {
+            assert!(b > 10.0 && b < 20.0);
+        }
+    }
+
+    #[test]
+    fn test_graticule_breaks_empty_for_zero_range() {
+        let breaks = graticule_breaks(50.0, 50.0);
+        assert!(breaks.is_empty());
+    }
+
+    #[test]
+    fn test_meridians_multilinestring() {
+        let wkt = meridians_multilinestring(&[0.0, 30.0], -90.0, 90.0, 45.0);
+        assert!(wkt.starts_with("MULTILINESTRING("), "{wkt}");
+        // Two meridians: each starts with "(" after the outer wrapper
+        assert!(wkt.contains("0.000000 -90.000000"), "{wkt}");
+        assert!(wkt.contains("30.000000 -90.000000"), "{wkt}");
+        assert!(wkt.contains("0.000000 90.000000"), "{wkt}");
+        assert!(wkt.contains("30.000000 90.000000"), "{wkt}");
+    }
+
+    #[test]
+    fn test_parallels_multilinestring() {
+        let wkt = parallels_multilinestring(&[0.0, 45.0], -180.0, 180.0, 90.0);
+        assert!(wkt.starts_with("MULTILINESTRING("));
+        assert!(wkt.contains("0.000000"));
+        assert!(wkt.contains("45.000000"));
     }
 }
