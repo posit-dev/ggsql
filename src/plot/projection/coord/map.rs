@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use super::{CoordKind, CoordTrait};
 use crate::naming;
 use crate::plot::layer::geom::GeomType;
-use crate::plot::types::{DefaultParamValue, ParamConstraint, ParamDefinition};
+use crate::plot::types::{DefaultParamValue, ParamConstraint, ParamDefinition, TypeConstraint};
 use crate::plot::{Layer, ParameterValue};
 use crate::reader::SqlDialect;
 use crate::DataFrame;
@@ -30,6 +30,7 @@ impl CoordTrait for Map {
     }
 
     fn default_properties(&self) -> &'static [ParamDefinition] {
+        use crate::plot::types::{ArrayConstraint, NumberConstraint};
         const PARAMS: &[ParamDefinition] = &[
             ParamDefinition {
                 name: "crs",
@@ -45,6 +46,21 @@ impl CoordTrait for Map {
                 name: "clip",
                 default: DefaultParamValue::Boolean(true),
                 constraint: ParamConstraint::boolean(),
+            },
+            // [xmin, ymin, xmax, ymax] in projected coordinates; null uses data bbox, Inf uses world bbox
+            ParamDefinition {
+                name: "bounds",
+                default: DefaultParamValue::Null,
+                constraint: ParamConstraint {
+                    number: TypeConstraint::Forbidden,
+                    string: TypeConstraint::Forbidden,
+                    boolean: TypeConstraint::Forbidden,
+                    array: TypeConstraint::Constrained(
+                        ArrayConstraint::of_numbers_len(NumberConstraint::unconstrained(), 4)
+                            .with_null_elements(),
+                    ),
+                    allow_null: true,
+                },
             },
         ];
         PARAMS
@@ -62,7 +78,7 @@ impl CoordTrait for Map {
             execute_query(&stmt)?;
         }
 
-        // Detect source CRS from geometry columns if not explicitly set
+        // Step 1: Detect source CRS from geometry columns if not explicitly set
         if !projection.properties.contains_key("source") {
             if let Some(srid) = detect_source_srid(layers, layer_queries, execute_query) {
                 projection
@@ -71,57 +87,26 @@ impl CoordTrait for Map {
             }
         }
 
-        // Compute clip boundary and create temp table for azimuthal projections
-        if let Some(wkt) = visible_area_wkt(&projection.properties) {
-            projection
-                .computed
-                .insert("clip_boundary".to_string(), ParameterValue::String(wkt.clone()));
-            let body = format!("SELECT ST_GeomFromText('{wkt}') AS geom");
-            for stmt in dialect.create_or_replace_temp_table_sql(CLIP_BOUNDARY_TABLE, &[], &body) {
-                execute_query(&stmt)?;
-            }
+        // Step 2: For azimuthal projections, compute the hemisphere clip boundary.
+        // This produces: clip_boundary (unprojected WKT), panel_boundary (projected
+        // WKT for the writer's background layer), and world_bbox (bounding box of the
+        // full projected visible area, used to resolve Inf in user-specified bounds).
+        let world_bbox = setup_clip_boundary(projection, dialect, execute_query)?;
 
-            // Project the boundary for use as panel background in the writer
-            let source = match projection.properties.get("source") {
-                Some(ParameterValue::String(s)) => s.as_str(),
-                _ => "EPSG:4326",
-            };
-            if let Some(ParameterValue::String(crs)) = projection.properties.get("crs") {
-                let projected = dialect.sql_st_transform("geom", source, crs);
-                let sql = format!(
-                    "SELECT ST_AsText({projected}) AS wkt FROM {CLIP_BOUNDARY_TABLE}"
-                );
-                if let Ok(df) = execute_query(&sql) {
-                    let batch = df.inner();
-                    if batch.num_rows() > 0 {
-                        if let Some(arr) = batch
-                            .column(0)
-                            .as_any()
-                            .downcast_ref::<arrow::array::StringArray>()
-                        {
-                            let projected_wkt = arr.value(0);
-                            projection.computed.insert(
-                                "panel_boundary".to_string(),
-                                ParameterValue::String(projected_wkt.to_string()),
-                            );
-                        }
-                    }
-                }
-            }
-        }
-
+        // Step 3: Apply per-layer projection (ST_Transform, clip to horizon)
         for (idx, layer) in layers.iter().enumerate() {
             layer_queries[idx] =
-                layer.geom.apply_projection(&layer_queries[idx], projection, dialect)?;
+                layer
+                    .geom
+                    .apply_projection(&layer_queries[idx], projection, dialect)?;
         }
 
-        // Materialize spatial layers as temp tables, compute bbox, wrap with WKB
+        // Step 4: Materialize projected spatial layers as temp tables, compute the
+        // data bbox for framing, then convert geometry to WKB for Arrow transport.
         let geom_col = naming::aesthetic_column("geometry");
         let geom_col_quoted = naming::quote_ident(&geom_col);
-        let mut xmin = f64::INFINITY;
-        let mut ymin = f64::INFINITY;
-        let mut xmax = f64::NEG_INFINITY;
-        let mut ymax = f64::NEG_INFINITY;
+        let bounds_param = projection.properties.get("bounds");
+        let mut computed_bbox: Option<[f64; 4]> = None;
 
         for (idx, layer) in layers.iter().enumerate() {
             if layer.geom.geom_type() != GeomType::Spatial {
@@ -135,45 +120,29 @@ impl CoordTrait for Map {
             }
 
             let table_quoted = naming::quote_ident(&table_name);
-            let sql = dialect.sql_geometry_extent(&geom_col_quoted, &table_quoted);
-            if let Ok(df) = execute_query(&sql) {
-                let batch = df.inner();
-                if batch.num_rows() > 0 && batch.num_columns() >= 4 {
-                    let get_f64 = |col: usize| -> Option<f64> {
-                        use arrow::array::Array;
-                        batch
-                            .column(col)
-                            .as_any()
-                            .downcast_ref::<arrow::array::Float64Array>()
-                            .filter(|a| !a.is_null(0))
-                            .map(|a| a.value(0))
-                    };
-                    if let (Some(x0), Some(y0), Some(x1), Some(y1)) =
-                        (get_f64(0), get_f64(1), get_f64(2), get_f64(3))
-                    {
-                        xmin = xmin.min(x0);
-                        ymin = ymin.min(y0);
-                        xmax = xmax.max(x1);
-                        ymax = ymax.max(y1);
-                    }
+
+            if needs_computed_bbox(bounds_param) {
+                let sql = dialect.sql_geometry_bbox(&geom_col_quoted, &table_quoted);
+                if let Ok(df) = execute_query(&sql) {
+                    computed_bbox = merge_bbox(computed_bbox, bbox_from_df(&df));
                 }
             }
 
             let wkb_expr = dialect.sql_geometry_to_wkb(&geom_col_quoted);
-            layer_queries[idx] = format!(
-                "SELECT * REPLACE ({wkb_expr} AS {geom_col_quoted}) FROM {table_quoted}"
-            );
+            layer_queries[idx] =
+                format!("SELECT * REPLACE ({wkb_expr} AS {geom_col_quoted}) FROM {table_quoted}");
         }
 
-        if xmin.is_finite() && xmax.is_finite() {
+        // Step 5: Resolve final frame bbox from user bounds + data bounds + world bounds
+        if let Some(bbox) = resolve_frame_bbox(bounds_param, computed_bbox, world_bbox) {
             use crate::plot::types::ArrayElement;
             projection.computed.insert(
                 "frame_bbox".to_string(),
                 ParameterValue::Array(vec![
-                    ArrayElement::Number(xmin),
-                    ArrayElement::Number(ymin),
-                    ArrayElement::Number(xmax),
-                    ArrayElement::Number(ymax),
+                    ArrayElement::Number(bbox[0]),
+                    ArrayElement::Number(bbox[1]),
+                    ArrayElement::Number(bbox[2]),
+                    ArrayElement::Number(bbox[3]),
                 ]),
             );
         }
@@ -186,6 +155,133 @@ impl std::fmt::Display for Map {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.name())
     }
+}
+
+/// Set up the clip boundary for azimuthal projections. Creates the clip boundary temp table,
+/// projects it into the target CRS, and returns the world bbox (projected clip boundary extent).
+fn setup_clip_boundary(
+    projection: &mut super::super::Projection,
+    dialect: &dyn SqlDialect,
+    execute_query: &dyn Fn(&str) -> crate::Result<DataFrame>,
+) -> crate::Result<Option<[f64; 4]>> {
+    let Some(wkt) = visible_area_wkt(&projection.properties) else {
+        return Ok(None);
+    };
+
+    projection.computed.insert(
+        "clip_boundary".to_string(),
+        ParameterValue::String(wkt.clone()),
+    );
+    let body = format!("SELECT ST_GeomFromText('{wkt}') AS geom");
+    for stmt in dialect.create_or_replace_temp_table_sql(CLIP_BOUNDARY_TABLE, &[], &body) {
+        execute_query(&stmt)?;
+    }
+
+    let source = match projection.properties.get("source") {
+        Some(ParameterValue::String(s)) => s.as_str(),
+        _ => "EPSG:4326",
+    };
+    let Some(ParameterValue::String(crs)) = projection.properties.get("crs") else {
+        return Ok(None);
+    };
+
+    let projected = dialect.sql_st_transform("geom", source, crs);
+    let sql = format!("SELECT ST_AsText({projected}) AS wkt FROM {CLIP_BOUNDARY_TABLE}");
+    if let Ok(df) = execute_query(&sql) {
+        let batch = df.inner();
+        if batch.num_rows() > 0 {
+            if let Some(arr) = batch
+                .column(0)
+                .as_any()
+                .downcast_ref::<arrow::array::StringArray>()
+            {
+                let projected_wkt = arr.value(0);
+                projection.computed.insert(
+                    "panel_boundary".to_string(),
+                    ParameterValue::String(projected_wkt.to_string()),
+                );
+            }
+        }
+    }
+
+    let world_bbox_sql = dialect.sql_geometry_bbox(&projected, CLIP_BOUNDARY_TABLE);
+    let world_bbox = execute_query(&world_bbox_sql)
+        .ok()
+        .and_then(|df| bbox_from_df(&df));
+    Ok(world_bbox)
+}
+
+/// Returns true if we need to compute a bbox (bounding box representing the extent of geometry)
+/// from the data — i.e. when bounds is absent or has null elements that need filling in.
+fn needs_computed_bbox(bounds_param: Option<&ParameterValue>) -> bool {
+    match bounds_param {
+        Some(ParameterValue::Array(arr)) => {
+            use crate::plot::types::ArrayElement;
+            arr.iter().any(|e| !matches!(e, ArrayElement::Number(_)))
+        }
+        _ => true,
+    }
+}
+
+/// Extract a [xmin, ymin, xmax, ymax] bbox from a DataFrame returned by `sql_geometry_bbox`.
+fn bbox_from_df(df: &DataFrame) -> Option<[f64; 4]> {
+    use arrow::array::Array;
+    let batch = df.inner();
+    if batch.num_rows() == 0 || batch.num_columns() < 4 {
+        return None;
+    }
+    let get_f64 = |col: usize| -> Option<f64> {
+        batch
+            .column(col)
+            .as_any()
+            .downcast_ref::<arrow::array::Float64Array>()
+            .filter(|a| !a.is_null(0))
+            .map(|a| a.value(0))
+    };
+    match (get_f64(0), get_f64(1), get_f64(2), get_f64(3)) {
+        (Some(x0), Some(y0), Some(x1), Some(y1)) => Some([x0, y0, x1, y1]),
+        _ => None,
+    }
+}
+
+/// Expand an existing bbox to include another, or return the new one.
+fn merge_bbox(existing: Option<[f64; 4]>, new: Option<[f64; 4]>) -> Option<[f64; 4]> {
+    match (existing, new) {
+        (Some([x0, y0, x1, y1]), Some([nx0, ny0, nx1, ny1])) => {
+            Some([x0.min(nx0), y0.min(ny0), x1.max(nx1), y1.max(ny1)])
+        }
+        (Some(b), None) | (None, Some(b)) => Some(b),
+        (None, None) => None,
+    }
+}
+
+/// Resolve the frame bbox: merge explicit bounds with computed values.
+/// - Null elements fall back to the corresponding data-computed bbox.
+/// - Inf/-Inf elements fall back to the clip boundary (world) bbox.
+fn resolve_frame_bbox(
+    bounds_param: Option<&ParameterValue>,
+    computed: Option<[f64; 4]>,
+    world: Option<[f64; 4]>,
+) -> Option<[f64; 4]> {
+    if let Some(ParameterValue::Array(arr)) = bounds_param {
+        use crate::plot::types::ArrayElement;
+        let data_fallback = computed.unwrap_or([f64::NAN; 4]);
+        let world_fallback = world.unwrap_or([f64::NAN; 4]);
+        let resolved: Vec<f64> = arr
+            .iter()
+            .enumerate()
+            .map(|(i, e)| match e {
+                ArrayElement::Number(n) if n.is_finite() => *n,
+                ArrayElement::Number(_) => world_fallback[i],
+                _ => data_fallback[i],
+            })
+            .collect();
+        // [xmin, ymin, xmax, ymax] in projected CRS units
+        if resolved.len() == 4 && resolved.iter().all(|v| v.is_finite()) {
+            return Some([resolved[0], resolved[1], resolved[2], resolved[3]]);
+        }
+    }
+    computed
 }
 
 /// Returns a WKT POLYGON representing the visible hemisphere for the given projection
@@ -223,7 +319,7 @@ fn projection_center(crs: &str) -> (f64, f64) {
 fn extract_proj_param(crs: &str, key: &str) -> Option<f64> {
     crs.find(key).and_then(|start| {
         let after = &crs[start + key.len()..];
-        let end = after.find(|c: char| c == ' ' || c == '+').unwrap_or(after.len());
+        let end = after.find([' ', '+']).unwrap_or(after.len());
         after[..end].parse().ok()
     })
 }
@@ -355,7 +451,7 @@ fn build_antimeridian_multipolygon(points: &[(f64, f64)]) -> String {
     let lat_c1 = antimeridian_crossing_lat(points[c1], points[(c1 + 1) % n]);
     let lat_c2 = antimeridian_crossing_lat(points[c2], points[(c2 + 1) % n]);
 
-    let (east_arc, west_arc, east_start_lat, east_end_lat, west_start_lat, west_end_lat) =
+    let (east_arc, west_arc, [east_start_lat, east_end_lat, west_start_lat, west_end_lat]) =
         split_arcs_at_crossings(points, c1, c2, lat_c1, lat_c2);
 
     let east_coords = build_side_ring(&east_arc, 180.0, east_start_lat, east_end_lat);
@@ -369,13 +465,15 @@ fn build_antimeridian_multipolygon(points: &[(f64, f64)]) -> String {
 }
 
 /// Split the ring at two crossing indices into east/west arcs with their boundary latitudes.
+type ArcSplit = (Vec<(f64, f64)>, Vec<(f64, f64)>, [f64; 4]);
+
 fn split_arcs_at_crossings(
     points: &[(f64, f64)],
     c1: usize,
     c2: usize,
     lat_c1: f64,
     lat_c2: f64,
-) -> (Vec<(f64, f64)>, Vec<(f64, f64)>, f64, f64, f64, f64) {
+) -> ArcSplit {
     let n = points.len();
 
     let mut arc1: Vec<(f64, f64)> = Vec::new();
@@ -399,9 +497,9 @@ fn split_arcs_at_crossings(
     }
 
     if arc1[0].0 > 0.0 {
-        (arc1, arc2, lat_c1, lat_c2, lat_c2, lat_c1)
+        (arc1, arc2, [lat_c1, lat_c2, lat_c2, lat_c1])
     } else {
-        (arc2, arc1, lat_c2, lat_c1, lat_c1, lat_c2)
+        (arc2, arc1, [lat_c2, lat_c1, lat_c1, lat_c2])
     }
 }
 
@@ -490,7 +588,8 @@ mod tests {
         assert!(names.contains(&"crs"));
         assert!(names.contains(&"source"));
         assert!(names.contains(&"clip"));
-        assert_eq!(defaults.len(), 3);
+        assert!(names.contains(&"bounds"));
+        assert_eq!(defaults.len(), 4);
     }
 
     #[test]
@@ -607,5 +706,102 @@ mod tests {
             wkt.starts_with("POLYGON(("),
             "pole case should produce POLYGON: {wkt}"
         );
+    }
+
+    #[test]
+    fn test_resolve_frame_bbox_no_bounds_uses_computed() {
+        let computed = Some([0.0, 0.0, 100.0, 200.0]);
+        assert_eq!(resolve_frame_bbox(None, computed, None), computed);
+    }
+
+    #[test]
+    fn test_resolve_frame_bbox_no_bounds_no_computed() {
+        assert_eq!(resolve_frame_bbox(None, None, None), None);
+    }
+
+    #[test]
+    fn test_resolve_frame_bbox_explicit_bounds_override_computed() {
+        use crate::plot::types::ArrayElement;
+        let bounds = ParameterValue::Array(vec![
+            ArrayElement::Number(10.0),
+            ArrayElement::Number(20.0),
+            ArrayElement::Number(30.0),
+            ArrayElement::Number(40.0),
+        ]);
+        let computed = Some([0.0, 0.0, 100.0, 200.0]);
+        assert_eq!(
+            resolve_frame_bbox(Some(&bounds), computed, None),
+            Some([10.0, 20.0, 30.0, 40.0])
+        );
+    }
+
+    #[test]
+    fn test_resolve_frame_bbox_null_elements_use_computed() {
+        use crate::plot::types::ArrayElement;
+        let bounds = ParameterValue::Array(vec![
+            ArrayElement::Null,
+            ArrayElement::Number(20.0),
+            ArrayElement::Null,
+            ArrayElement::Number(40.0),
+        ]);
+        let computed = Some([5.0, 0.0, 95.0, 0.0]);
+        assert_eq!(
+            resolve_frame_bbox(Some(&bounds), computed, None),
+            Some([5.0, 20.0, 95.0, 40.0])
+        );
+    }
+
+    #[test]
+    fn test_resolve_frame_bbox_inf_elements_use_world() {
+        use crate::plot::types::ArrayElement;
+        let bounds = ParameterValue::Array(vec![
+            ArrayElement::Number(f64::NEG_INFINITY),
+            ArrayElement::Number(20.0),
+            ArrayElement::Number(f64::INFINITY),
+            ArrayElement::Number(40.0),
+        ]);
+        let computed = Some([5.0, 0.0, 95.0, 0.0]);
+        let world = Some([-500.0, -500.0, 500.0, 500.0]);
+        assert_eq!(
+            resolve_frame_bbox(Some(&bounds), computed, world),
+            Some([-500.0, 20.0, 500.0, 40.0])
+        );
+    }
+
+    #[test]
+    fn test_resolve_frame_bbox_null_without_computed_falls_through() {
+        use crate::plot::types::ArrayElement;
+        let bounds = ParameterValue::Array(vec![
+            ArrayElement::Null,
+            ArrayElement::Number(20.0),
+            ArrayElement::Number(30.0),
+            ArrayElement::Number(40.0),
+        ]);
+        // null can't resolve without computed, so result is NaN → falls through to computed
+        assert_eq!(resolve_frame_bbox(Some(&bounds), None, None), None);
+    }
+
+    #[test]
+    fn test_resolve_frame_bbox_inf_without_world_falls_through() {
+        use crate::plot::types::ArrayElement;
+        let bounds = ParameterValue::Array(vec![
+            ArrayElement::Number(f64::INFINITY),
+            ArrayElement::Number(20.0),
+            ArrayElement::Number(30.0),
+            ArrayElement::Number(40.0),
+        ]);
+        let computed = Some([5.0, 0.0, 95.0, 200.0]);
+        // Inf can't resolve without world, falls through to computed
+        assert_eq!(resolve_frame_bbox(Some(&bounds), computed, None), computed);
+    }
+
+    #[test]
+    fn test_merge_bbox() {
+        let a = Some([0.0, 10.0, 50.0, 60.0]);
+        let b = Some([-5.0, 15.0, 45.0, 70.0]);
+        assert_eq!(merge_bbox(a, b), Some([-5.0, 10.0, 50.0, 70.0]));
+        assert_eq!(merge_bbox(a, None), a);
+        assert_eq!(merge_bbox(None, a), a);
+        assert_eq!(merge_bbox(None, None), None);
     }
 }

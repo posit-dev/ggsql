@@ -95,7 +95,7 @@ impl super::SqlDialect for DuckDbDialect {
         format!("ST_AsWKB({column})")
     }
 
-    fn sql_geometry_extent(&self, column: &str, from: &str) -> String {
+    fn sql_geometry_bbox(&self, column: &str, from: &str) -> String {
         format!(
             "SELECT ST_XMin(ext) AS xmin, ST_YMin(ext) AS ymin, \
                     ST_XMax(ext) AS xmax, ST_YMax(ext) AS ymax \
