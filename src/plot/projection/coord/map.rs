@@ -12,6 +12,126 @@ use crate::DataFrame;
 
 pub const CLIP_BOUNDARY_TABLE: &str = "__ggsql_clip_boundary__";
 
+#[derive(Debug, Clone, PartialEq)]
+struct BBox {
+    xmin: f64,
+    ymin: f64,
+    xmax: f64,
+    ymax: f64,
+    crs: String,
+}
+
+impl BBox {
+    fn from_df(df: &DataFrame, crs: &str) -> Option<Self> {
+        use arrow::array::Array;
+        let batch = df.inner();
+        if batch.num_rows() == 0 || batch.num_columns() < 4 {
+            return None;
+        }
+        let get_f64 = |col: usize| -> Option<f64> {
+            batch
+                .column(col)
+                .as_any()
+                .downcast_ref::<arrow::array::Float64Array>()
+                .filter(|a| !a.is_null(0))
+                .map(|a| a.value(0))
+        };
+        match (get_f64(0), get_f64(1), get_f64(2), get_f64(3)) {
+            (Some(xmin), Some(ymin), Some(xmax), Some(ymax)) => Some(Self {
+                xmin,
+                ymin,
+                xmax,
+                ymax,
+                crs: crs.to_string(),
+            }),
+            _ => None,
+        }
+    }
+
+    fn merge(existing: Option<Self>, new: Option<Self>) -> crate::Result<Option<Self>> {
+        match (existing, new) {
+            (Some(a), Some(b)) => {
+                if a.crs != b.crs {
+                    return Err(crate::GgsqlError::InternalError(format!(
+                        "Cannot merge bounding boxes with different CRS: '{}' vs '{}'",
+                        a.crs, b.crs
+                    )));
+                }
+                Ok(Some(Self {
+                    xmin: a.xmin.min(b.xmin),
+                    ymin: a.ymin.min(b.ymin),
+                    xmax: a.xmax.max(b.xmax),
+                    ymax: a.ymax.max(b.ymax),
+                    crs: a.crs,
+                }))
+            }
+            (Some(b), None) | (None, Some(b)) => Ok(Some(b)),
+            (None, None) => Ok(None),
+        }
+    }
+
+    fn from_array(arr: [f64; 4], crs: &str) -> Self {
+        Self {
+            xmin: arr[0],
+            ymin: arr[1],
+            xmax: arr[2],
+            ymax: arr[3],
+            crs: crs.to_string(),
+        }
+    }
+
+    fn to_array(&self) -> [f64; 4] {
+        [self.xmin, self.ymin, self.xmax, self.ymax]
+    }
+
+    fn clamp(mut self, xmin: f64, ymin: f64, xmax: f64, ymax: f64) -> Self {
+        self.xmin = self.xmin.clamp(xmin, xmax);
+        self.ymin = self.ymin.clamp(ymin, ymax);
+        self.xmax = self.xmax.clamp(xmin, xmax);
+        self.ymax = self.ymax.clamp(ymin, ymax);
+        self
+    }
+
+    fn xrange(&self) -> (f64, f64) {
+        (self.xmin, self.xmax)
+    }
+
+    fn yrange(&self) -> (f64, f64) {
+        (self.ymin, self.ymax)
+    }
+
+    fn as_parameter_value(&self) -> ParameterValue {
+        use crate::plot::types::ArrayElement;
+        ParameterValue::Array(vec![
+            ArrayElement::Number(self.xmin),
+            ArrayElement::Number(self.ymin),
+            ArrayElement::Number(self.xmax),
+            ArrayElement::Number(self.ymax),
+        ])
+    }
+
+    fn reproject(
+        &self,
+        target_crs: &str,
+        dialect: &dyn SqlDialect,
+        execute_query: &dyn Fn(&str) -> crate::Result<DataFrame>,
+    ) -> Option<Self> {
+        let envelope = format!(
+            "ST_MakeEnvelope({}, {}, {}, {})",
+            self.xmin, self.ymin, self.xmax, self.ymax
+        );
+        let transformed = dialect.sql_st_transform(&envelope, &self.crs, target_crs);
+        let sql = format!(
+            "SELECT ST_XMin(g) AS xmin, ST_YMin(g) AS ymin, \
+                    ST_XMax(g) AS xmax, ST_YMax(g) AS ymax \
+             FROM (SELECT {transformed} AS g)"
+        );
+        execute_query(&sql)
+            .ok()
+            .and_then(|df| Self::from_df(&df, target_crs))
+    }
+}
+
 /// Map coordinate system - for geographic/cartographic projections
 #[derive(Debug, Clone, Copy)]
 pub struct Map;
@@ -115,7 +235,7 @@ impl CoordTrait for Map {
         let geom_col = naming::aesthetic_column("geometry");
         let geom_col_quoted = naming::quote_ident(&geom_col);
         let bounds_param = projection.properties.get("bounds");
-        let mut computed_bbox: Option<[f64; 4]> = None;
+        let mut computed_bbox: Option<BBox> = None;
 
         for (idx, layer) in layers.iter().enumerate() {
             if layer.geom.geom_type() != GeomType::Spatial {
@@ -133,7 +253,7 @@ impl CoordTrait for Map {
             if needs_computed_bbox(bounds_param) {
                 let sql = dialect.sql_geometry_bbox(&geom_col_quoted, &table_quoted);
                 if let Ok(df) = execute_query(&sql) {
-                    computed_bbox = merge_bbox(computed_bbox, bbox_from_df(&df));
+                    computed_bbox = BBox::merge(computed_bbox, BBox::from_df(&df, &crs))?;
                 }
             }
 
@@ -146,21 +266,13 @@ impl CoordTrait for Map {
         let Some(bbox) = resolve_frame_bbox(bounds_param, computed_bbox, world_bbox) else {
             return Ok(());
         };
-        use crate::plot::types::ArrayElement;
-        projection.computed.insert(
-            "frame_bbox".to_string(),
-            ParameterValue::Array(vec![
-                ArrayElement::Number(bbox[0]),
-                ArrayElement::Number(bbox[1]),
-                ArrayElement::Number(bbox[2]),
-                ArrayElement::Number(bbox[3]),
-            ]),
-        );
+        projection
+            .computed
+            .insert("frame_bbox".to_string(), bbox.as_parameter_value());
 
         // Step 6: Generate graticule lines
         let has_clip = projection.computed.contains_key("clip_boundary");
-        let (lon_wkt, lat_wkt) =
-            build_graticule(bbox, &crs, &source, has_clip, dialect, execute_query)?;
+        let (lon_wkt, lat_wkt) = build_graticule(&bbox, &source, has_clip, dialect, execute_query)?;
         if let Some(wkt) = lon_wkt {
             projection
                 .computed
@@ -190,7 +302,7 @@ fn setup_clip_boundary(
     crs: &str,
     dialect: &dyn SqlDialect,
     execute_query: &dyn Fn(&str) -> crate::Result<DataFrame>,
-) -> crate::Result<Option<[f64; 4]>> {
+) -> crate::Result<Option<BBox>> {
     let Some(wkt) = visible_area_wkt(&projection.properties) else {
         return Ok(None);
     };
@@ -226,35 +338,34 @@ fn setup_clip_boundary(
     let world_bbox_sql = dialect.sql_geometry_bbox(&projected, CLIP_BOUNDARY_TABLE);
     let world_bbox = execute_query(&world_bbox_sql)
         .ok()
-        .and_then(|df| bbox_from_df(&df));
+        .and_then(|df| BBox::from_df(&df, crs));
     Ok(world_bbox)
 }
 
 /// Build graticule lines: determine the visible lon/lat extent, generate densified
 /// meridians and parallels, clip and project them, and return projected WKT.
 fn build_graticule(
-    frame_bbox: [f64; 4],
-    crs: &str,
+    frame_bbox: &BBox,
     source: &str,
     has_clip: bool,
     dialect: &dyn SqlDialect,
     execute_query: &dyn Fn(&str) -> crate::Result<DataFrame>,
 ) -> crate::Result<(Option<String>, Option<String>)> {
-    let Some([lon_min, lat_min, lon_max, lat_max]) =
-        graticule_bbox(frame_bbox, crs, source, has_clip, dialect, execute_query)?
+    let crs = &frame_bbox.crs;
+    let Some(geo_bbox) = graticule_bbox(frame_bbox, source, has_clip, dialect, execute_query)?
     else {
         return Ok((None, None));
     };
 
-    let lon_breaks = graticule_breaks(lon_min, lon_max);
-    let lat_breaks = graticule_breaks(lat_min, lat_max);
+    let lon_breaks = graticule_breaks(geo_bbox.xrange());
+    let lat_breaks = graticule_breaks(geo_bbox.yrange());
 
     if lon_breaks.is_empty() && lat_breaks.is_empty() {
         return Ok((None, None));
     }
 
     // Densification interval based on angular extent
-    let max_range = (lon_max - lon_min).max(lat_max - lat_min);
+    let max_range = (geo_bbox.xmax - geo_bbox.xmin).max(geo_bbox.ymax - geo_bbox.ymin);
     let step_deg = if max_range > 90.0 {
         2.0
     } else if max_range > 30.0 {
@@ -285,8 +396,7 @@ fn build_graticule(
     let lon_wkt = if !lon_breaks.is_empty() {
         Some(meridians_multilinestring(
             &lon_breaks,
-            lat_min,
-            lat_max,
+            geo_bbox.yrange(),
             step_deg,
         ))
     } else {
@@ -295,8 +405,7 @@ fn build_graticule(
     let lat_wkt = if !lat_breaks.is_empty() {
         Some(parallels_multilinestring(
             &lat_breaks,
-            lon_min,
-            lon_max,
+            geo_bbox.xrange(),
             step_deg,
         ))
     } else {
@@ -304,8 +413,8 @@ fn build_graticule(
     };
 
     Ok((
-        project_wkt(lon_wkt, has_clip, source, crs, dialect, execute_query)?,
-        project_wkt(lat_wkt, has_clip, source, crs, dialect, execute_query)?,
+        project_wkt(lon_wkt, has_clip, source, &crs, dialect, execute_query)?,
+        project_wkt(lat_wkt, has_clip, source, &crs, dialect, execute_query)?,
     ))
 }
 
@@ -313,93 +422,44 @@ fn build_graticule(
 /// the bbox corners. Falls back to the clip boundary for azimuthal projections
 /// where corners collapse to degenerate values.
 fn graticule_bbox(
-    frame_bbox: [f64; 4],
-    crs: &str,
+    frame_bbox: &BBox,
     source: &str,
     has_clip: bool,
     dialect: &dyn SqlDialect,
     execute_query: &dyn Fn(&str) -> crate::Result<DataFrame>,
-) -> crate::Result<Option<[f64; 4]>> {
-    use arrow::array::Array;
-
-    let [xmin, ymin, xmax, ymax] = frame_bbox;
-    let corners_sql = format!(
-        "SELECT ST_X(pt) AS lon, ST_Y(pt) AS lat FROM (\
-         VALUES ({xmin}, {ymin}), ({xmax}, {ymin}), ({xmin}, {ymax}), ({xmax}, {ymax})\
-         ) AS t(px, py), \
-         LATERAL (SELECT {} AS pt) sub",
-        dialect.sql_st_transform("ST_Point(px, py)", crs, source)
-    );
-    let df = match execute_query(&corners_sql) {
-        Ok(df) => df,
-        Err(_) => return Ok(None),
+) -> crate::Result<Option<BBox>> {
+    let mut geo_bbox = match frame_bbox.reproject(source, dialect, execute_query) {
+        Some(b) => b.clamp(-180.0, -90.0, 180.0, 90.0),
+        None => return Ok(None),
     };
-
-    let batch = df.inner();
-    if batch.num_rows() == 0 {
-        return Ok(None);
-    }
-    let lon_arr = batch
-        .column(0)
-        .as_any()
-        .downcast_ref::<arrow::array::Float64Array>();
-    let lat_arr = batch
-        .column(1)
-        .as_any()
-        .downcast_ref::<arrow::array::Float64Array>();
-    let (Some(lons), Some(lats)) = (lon_arr, lat_arr) else {
-        return Ok(None);
-    };
-
-    let mut lon_min = f64::INFINITY;
-    let mut lon_max = f64::NEG_INFINITY;
-    let mut lat_min = f64::INFINITY;
-    let mut lat_max = f64::NEG_INFINITY;
-    for i in 0..batch.num_rows() {
-        if lons.is_null(i) || lats.is_null(i) {
-            continue;
-        }
-        let lon = lons.value(i).clamp(-180.0, 180.0);
-        let lat = lats.value(i).clamp(-90.0, 90.0);
-        lon_min = lon_min.min(lon);
-        lon_max = lon_max.max(lon);
-        lat_min = lat_min.min(lat);
-        lat_max = lat_max.max(lat);
-    }
-    if !lon_min.is_finite() || !lat_min.is_finite() {
-        return Ok(None);
-    }
 
     // For azimuthal projections the bbox corners often inverse-project to
     // degenerate values (all at the horizon). Fall back to the clip boundary
     // extent which represents the actual visible hemisphere.
-    if has_clip && (lon_max - lon_min).abs() < 1.0 {
+    if has_clip && (geo_bbox.xmax - geo_bbox.xmin).abs() < 1.0 {
         let bbox_sql = format!(
             "SELECT ST_XMin(ext) AS xmin, ST_YMin(ext) AS ymin, \
              ST_XMax(ext) AS xmax, ST_YMax(ext) AS ymax \
              FROM (SELECT ST_Extent(geom) AS ext FROM {CLIP_BOUNDARY_TABLE})"
         );
         if let Ok(df) = execute_query(&bbox_sql) {
-            if let Some([x0, y0, x1, y1]) = bbox_from_df(&df) {
-                lon_min = x0;
-                lat_min = y0;
-                lon_max = x1;
-                lat_max = y1;
+            if let Some(clip_bbox) = BBox::from_df(&df, source) {
+                geo_bbox = clip_bbox;
             }
         }
     }
 
     // For projections showing the full globe, expand to full range
-    if lon_max - lon_min > 300.0 {
-        lon_min = -180.0;
-        lon_max = 180.0;
+    if geo_bbox.xmax - geo_bbox.xmin > 300.0 {
+        geo_bbox.xmin = -180.0;
+        geo_bbox.xmax = 180.0;
     }
-    if lat_max - lat_min > 150.0 {
-        lat_min = -90.0;
-        lat_max = 90.0;
+    if geo_bbox.ymax - geo_bbox.ymin > 150.0 {
+        geo_bbox.ymin = -90.0;
+        geo_bbox.ymax = 90.0;
     }
 
-    Ok(Some([lon_min, lat_min, lon_max, lat_max]))
+    Ok(Some(geo_bbox))
 }
 
 /// Clip (if needed) and project a WKT geometry string, returning the projected WKT.
@@ -444,7 +504,7 @@ fn project_wkt(
 
 /// Pick pretty graticule break positions for a lon or lat range.
 /// Uses standard angular intervals (multiples of 1, 2, 5, 10, 15, 30, 45, 90).
-fn graticule_breaks(min: f64, max: f64) -> Vec<f64> {
+fn graticule_breaks((min, max): (f64, f64)) -> Vec<f64> {
     let range = max - min;
     if range <= 0.0 {
         return vec![];
@@ -486,8 +546,7 @@ fn graticule_breaks(min: f64, max: f64) -> Vec<f64> {
 /// densified with intermediate vertices at `step_deg` intervals.
 fn meridians_multilinestring(
     lon_breaks: &[f64],
-    lat_min: f64,
-    lat_max: f64,
+    (lat_min, lat_max): (f64, f64),
     step_deg: f64,
 ) -> String {
     let mut lines: Vec<String> = Vec::with_capacity(lon_breaks.len());
@@ -508,8 +567,7 @@ fn meridians_multilinestring(
 /// densified with intermediate vertices at `step_deg` intervals.
 fn parallels_multilinestring(
     lat_breaks: &[f64],
-    lon_min: f64,
-    lon_max: f64,
+    (lon_min, lon_max): (f64, f64),
     step_deg: f64,
 ) -> String {
     let mut lines: Vec<String> = Vec::with_capacity(lat_breaks.len());
@@ -538,50 +596,23 @@ fn needs_computed_bbox(bounds_param: Option<&ParameterValue>) -> bool {
     }
 }
 
-/// Extract a [xmin, ymin, xmax, ymax] bbox from a DataFrame returned by `sql_geometry_bbox`.
-fn bbox_from_df(df: &DataFrame) -> Option<[f64; 4]> {
-    use arrow::array::Array;
-    let batch = df.inner();
-    if batch.num_rows() == 0 || batch.num_columns() < 4 {
-        return None;
-    }
-    let get_f64 = |col: usize| -> Option<f64> {
-        batch
-            .column(col)
-            .as_any()
-            .downcast_ref::<arrow::array::Float64Array>()
-            .filter(|a| !a.is_null(0))
-            .map(|a| a.value(0))
-    };
-    match (get_f64(0), get_f64(1), get_f64(2), get_f64(3)) {
-        (Some(x0), Some(y0), Some(x1), Some(y1)) => Some([x0, y0, x1, y1]),
-        _ => None,
-    }
-}
-
-/// Expand an existing bbox to include another, or return the new one.
-fn merge_bbox(existing: Option<[f64; 4]>, new: Option<[f64; 4]>) -> Option<[f64; 4]> {
-    match (existing, new) {
-        (Some([x0, y0, x1, y1]), Some([nx0, ny0, nx1, ny1])) => {
-            Some([x0.min(nx0), y0.min(ny0), x1.max(nx1), y1.max(ny1)])
-        }
-        (Some(b), None) | (None, Some(b)) => Some(b),
-        (None, None) => None,
-    }
-}
-
 /// Resolve the frame bbox: merge explicit bounds with computed values.
 /// - Null elements fall back to the corresponding data-computed bbox.
 /// - Inf/-Inf elements fall back to the clip boundary (world) bbox.
 fn resolve_frame_bbox(
     bounds_param: Option<&ParameterValue>,
-    computed: Option<[f64; 4]>,
-    world: Option<[f64; 4]>,
-) -> Option<[f64; 4]> {
+    computed: Option<BBox>,
+    world: Option<BBox>,
+) -> Option<BBox> {
     if let Some(ParameterValue::Array(arr)) = bounds_param {
         use crate::plot::types::ArrayElement;
-        let data_fallback = computed.unwrap_or([f64::NAN; 4]);
-        let world_fallback = world.unwrap_or([f64::NAN; 4]);
+        let data_fallback = computed.as_ref().map_or([f64::NAN; 4], |b| b.to_array());
+        let world_fallback = world.as_ref().map_or([f64::NAN; 4], |b| b.to_array());
+        let crs = computed
+            .as_ref()
+            .or(world.as_ref())
+            .map(|b| b.crs.clone())
+            .unwrap_or_default();
         let resolved: Vec<f64> = arr
             .iter()
             .enumerate()
@@ -591,9 +622,11 @@ fn resolve_frame_bbox(
                 _ => data_fallback[i],
             })
             .collect();
-        // [xmin, ymin, xmax, ymax] in projected CRS units
         if resolved.len() == 4 && resolved.iter().all(|v| v.is_finite()) {
-            return Some([resolved[0], resolved[1], resolved[2], resolved[3]]);
+            return Some(BBox::from_array(
+                [resolved[0], resolved[1], resolved[2], resolved[3]],
+                &crs,
+            ));
         }
     }
     computed
@@ -1023,10 +1056,14 @@ mod tests {
         );
     }
 
+    fn bbox(xmin: f64, ymin: f64, xmax: f64, ymax: f64) -> BBox {
+        BBox::from_array([xmin, ymin, xmax, ymax], "EPSG:4326")
+    }
+
     #[test]
     fn test_resolve_frame_bbox_no_bounds_uses_computed() {
-        let computed = Some([0.0, 0.0, 100.0, 200.0]);
-        assert_eq!(resolve_frame_bbox(None, computed, None), computed);
+        let computed = Some(bbox(0.0, 0.0, 100.0, 200.0));
+        assert_eq!(resolve_frame_bbox(None, computed.clone(), None), computed);
     }
 
     #[test]
@@ -1043,10 +1080,10 @@ mod tests {
             ArrayElement::Number(30.0),
             ArrayElement::Number(40.0),
         ]);
-        let computed = Some([0.0, 0.0, 100.0, 200.0]);
+        let computed = Some(bbox(0.0, 0.0, 100.0, 200.0));
         assert_eq!(
             resolve_frame_bbox(Some(&bounds), computed, None),
-            Some([10.0, 20.0, 30.0, 40.0])
+            Some(bbox(10.0, 20.0, 30.0, 40.0))
         );
     }
 
@@ -1059,10 +1096,10 @@ mod tests {
             ArrayElement::Null,
             ArrayElement::Number(40.0),
         ]);
-        let computed = Some([5.0, 0.0, 95.0, 0.0]);
+        let computed = Some(bbox(5.0, 0.0, 95.0, 0.0));
         assert_eq!(
             resolve_frame_bbox(Some(&bounds), computed, None),
-            Some([5.0, 20.0, 95.0, 40.0])
+            Some(bbox(5.0, 20.0, 95.0, 40.0))
         );
     }
 
@@ -1075,11 +1112,11 @@ mod tests {
             ArrayElement::Number(f64::INFINITY),
             ArrayElement::Number(40.0),
         ]);
-        let computed = Some([5.0, 0.0, 95.0, 0.0]);
-        let world = Some([-500.0, -500.0, 500.0, 500.0]);
+        let computed = Some(bbox(5.0, 0.0, 95.0, 0.0));
+        let world = Some(bbox(-500.0, -500.0, 500.0, 500.0));
         assert_eq!(
             resolve_frame_bbox(Some(&bounds), computed, world),
-            Some([-500.0, 20.0, 500.0, 40.0])
+            Some(bbox(-500.0, 20.0, 500.0, 40.0))
         );
     }
 
@@ -1092,7 +1129,6 @@ mod tests {
             ArrayElement::Number(30.0),
             ArrayElement::Number(40.0),
         ]);
-        // null can't resolve without computed, so result is NaN → falls through to computed
         assert_eq!(resolve_frame_bbox(Some(&bounds), None, None), None);
     }
 
@@ -1105,24 +1141,47 @@ mod tests {
             ArrayElement::Number(30.0),
             ArrayElement::Number(40.0),
         ]);
-        let computed = Some([5.0, 0.0, 95.0, 200.0]);
-        // Inf can't resolve without world, falls through to computed
-        assert_eq!(resolve_frame_bbox(Some(&bounds), computed, None), computed);
+        let computed = Some(bbox(5.0, 0.0, 95.0, 200.0));
+        assert_eq!(
+            resolve_frame_bbox(Some(&bounds), computed.clone(), None),
+            computed
+        );
     }
 
     #[test]
     fn test_merge_bbox() {
-        let a = Some([0.0, 10.0, 50.0, 60.0]);
-        let b = Some([-5.0, 15.0, 45.0, 70.0]);
-        assert_eq!(merge_bbox(a, b), Some([-5.0, 10.0, 50.0, 70.0]));
-        assert_eq!(merge_bbox(a, None), a);
-        assert_eq!(merge_bbox(None, a), a);
-        assert_eq!(merge_bbox(None, None), None);
+        let a = Some(bbox(0.0, 10.0, 50.0, 60.0));
+        let b = Some(bbox(-5.0, 15.0, 45.0, 70.0));
+        assert_eq!(
+            BBox::merge(a.clone(), b).unwrap(),
+            Some(bbox(-5.0, 10.0, 50.0, 70.0))
+        );
+        assert_eq!(BBox::merge(a.clone(), None).unwrap(), a);
+        assert_eq!(BBox::merge(None, a.clone()).unwrap(), a);
+        assert_eq!(BBox::merge(None, None).unwrap(), None);
+    }
+
+    #[test]
+    fn test_merge_bbox_crs_mismatch() {
+        let a = Some(BBox::from_array([0.0, 0.0, 1.0, 1.0], "EPSG:4326"));
+        let b = Some(BBox::from_array([0.0, 0.0, 1.0, 1.0], "EPSG:3857"));
+        assert!(BBox::merge(a, b).is_err());
+    }
+
+    #[test]
+    fn test_clamp() {
+        // restricts values that exceed bounds
+        let b = BBox::from_array([-200.0, -100.0, 200.0, 100.0], "EPSG:4326");
+        assert_eq!(b.clamp(-180.0, -90.0, 180.0, 90.0), bbox(-180.0, -90.0, 180.0, 90.0));
+
+        // no-op when already within bounds
+        let b = bbox(10.0, 20.0, 30.0, 40.0);
+        assert_eq!(b.clamp(-180.0, -90.0, 180.0, 90.0), bbox(10.0, 20.0, 30.0, 40.0));
     }
 
     #[test]
     fn test_graticule_breaks_world() {
-        let breaks = graticule_breaks(-180.0, 180.0);
+        let breaks = graticule_breaks((-180.0, 180.0));
         assert_eq!(
             breaks,
             vec![-180.0, -135.0, -90.0, -45.0, 0.0, 45.0, 90.0, 135.0]
@@ -1131,13 +1190,13 @@ mod tests {
 
     #[test]
     fn test_graticule_breaks_hemisphere() {
-        let breaks = graticule_breaks(-88.0, 88.0);
+        let breaks = graticule_breaks((-88.0, 88.0));
         assert_eq!(breaks, vec![-60.0, -30.0, 0.0, 30.0, 60.0]);
     }
 
     #[test]
     fn test_graticule_breaks_small_range() {
-        let breaks = graticule_breaks(10.0, 20.0);
+        let breaks = graticule_breaks((10.0, 20.0));
         assert!(!breaks.is_empty());
         for &b in &breaks {
             assert!(b > 10.0 && b < 20.0);
@@ -1146,13 +1205,13 @@ mod tests {
 
     #[test]
     fn test_graticule_breaks_empty_for_zero_range() {
-        let breaks = graticule_breaks(50.0, 50.0);
+        let breaks = graticule_breaks((50.0, 50.0));
         assert!(breaks.is_empty());
     }
 
     #[test]
     fn test_meridians_multilinestring() {
-        let wkt = meridians_multilinestring(&[0.0, 30.0], -90.0, 90.0, 45.0);
+        let wkt = meridians_multilinestring(&[0.0, 30.0], (-90.0, 90.0), 45.0);
         assert!(wkt.starts_with("MULTILINESTRING("), "{wkt}");
         // Two meridians: each starts with "(" after the outer wrapper
         assert!(wkt.contains("0.000000 -90.000000"), "{wkt}");
@@ -1163,7 +1222,7 @@ mod tests {
 
     #[test]
     fn test_parallels_multilinestring() {
-        let wkt = parallels_multilinestring(&[0.0, 45.0], -180.0, 180.0, 90.0);
+        let wkt = parallels_multilinestring(&[0.0, 45.0], (-180.0, 180.0), 90.0);
         assert!(wkt.starts_with("MULTILINESTRING("));
         assert!(wkt.contains("0.000000"));
         assert!(wkt.contains("45.000000"));
