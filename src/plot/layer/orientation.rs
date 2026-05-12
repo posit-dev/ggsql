@@ -166,7 +166,7 @@ fn detect_from_scales(
             Geom::from_type(*geom).aesthetics().get("pos1"),
             Some(DefaultAestheticValue::Dummy)
         );
-        if has_pos2 && !has_pos1 && !(pos1_is_dummy && !has_pos1_mapping) {
+        if has_pos2 && !has_pos1 && (!pos1_is_dummy || has_pos1_mapping) {
             return TRANSPOSED;
         }
         if has_pos1 && !has_pos2 {

@@ -36,7 +36,7 @@ impl GeomTrait for Bar {
             // translate it to 'size'.
             defaults: &[
                 ("pos1", DefaultAestheticValue::Dummy), // Optional - stat synthesises a dummy if omitted
-                ("pos2", DefaultAestheticValue::Null),  // Optional - stat computes count when omitted
+                ("pos2", DefaultAestheticValue::Null), // Optional - stat computes count when omitted
                 ("pos2end", DefaultAestheticValue::Delayed),
                 ("weight", DefaultAestheticValue::Null),
                 ("fill", DefaultAestheticValue::String("black")),
