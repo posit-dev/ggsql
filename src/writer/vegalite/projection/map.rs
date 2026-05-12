@@ -4,6 +4,7 @@
 //! must use an identity projection so it passes coordinates through without
 //! re-projecting via d3-geo.
 
+use crate::plot::types::ArrayElement;
 use crate::plot::{ParameterValue, Projection, Scale};
 use crate::{Plot, Result};
 use serde_json::{json, Value};
@@ -32,27 +33,20 @@ impl MapProjection {
         let panel_boundary_wkt = get_string("panel_boundary");
         let graticule_lon_wkt = get_string("graticule_lon");
         let graticule_lat_wkt = get_string("graticule_lat");
-        // TODO: simplify — coord side always stores exactly 4 Numbers
-        let frame_bbox = project
-            .and_then(|p| p.computed.get("frame_bbox"))
-            .and_then(|v| match v {
-                ParameterValue::Array(arr) if arr.len() == 4 => {
-                    use crate::plot::types::ArrayElement;
-                    let nums: Vec<f64> = arr
-                        .iter()
-                        .filter_map(|e| match e {
-                            ArrayElement::Number(n) => Some(*n),
-                            _ => None,
-                        })
-                        .collect();
-                    if nums.len() == 4 {
-                        Some([nums[0], nums[1], nums[2], nums[3]])
-                    } else {
-                        None
-                    }
-                }
-                _ => None,
-            });
+        let frame_bbox = if let Some(ParameterValue::Array(arr)) =
+            project.and_then(|p| p.computed.get("frame_bbox"))
+        {
+            let nums: Vec<f64> = arr
+                .iter()
+                .filter_map(|e| match e {
+                    ArrayElement::Number(n) => Some(*n),
+                    _ => None,
+                })
+                .collect();
+            nums.try_into().ok()
+        } else {
+            None
+        };
         Self {
             is_faceted: facet.is_some_and(|f| !f.get_variables().is_empty()),
             panel_boundary_wkt,
@@ -60,6 +54,55 @@ impl MapProjection {
             graticule_lat_wkt,
             frame_bbox,
         }
+    }
+
+    fn panel_boundary(&self, theme: &mut Value) -> Vec<Value> {
+        let Some(ref wkt) = self.panel_boundary_wkt else {
+            return Vec::new();
+        };
+        let Some(geojson) = wkt_to_geojson(wkt) else {
+            return Vec::new();
+        };
+        let (fill, stroke) =
+            if let Some(view) = theme.get_mut("view").and_then(|v| v.as_object_mut()) {
+                let fill = view.remove("fill").unwrap_or(Value::Null);
+                let stroke = view.remove("stroke").unwrap_or(Value::Null);
+                view.insert("stroke".to_string(), Value::Null);
+                (fill, stroke)
+            } else {
+                (Value::Null, Value::Null)
+            };
+        vec![geoshape_layer(
+            geojson,
+            json!({
+                "fill": fill,
+                "stroke": stroke,
+            }),
+        )]
+    }
+
+    fn graticule(&self, theme: &Value) -> Vec<Value> {
+        let grid_color = theme
+            .pointer("/axis/gridColor")
+            .cloned()
+            .unwrap_or(json!("#cccccc"));
+        let grid_width = theme
+            .pointer("/axis/gridWidth")
+            .cloned()
+            .unwrap_or(json!(0.5));
+
+        let mark = json!({
+            "filled": false,
+            "stroke": grid_color,
+            "strokeWidth": grid_width,
+        });
+
+        [&self.graticule_lon_wkt, &self.graticule_lat_wkt]
+            .into_iter()
+            .flatten()
+            .filter_map(|wkt| wkt_to_geojson(wkt))
+            .map(|geojson| geoshape_layer(geojson, mark.clone()))
+            .collect()
     }
 }
 
@@ -101,66 +144,18 @@ impl ProjectionRenderer for MapProjection {
 
     fn background_layers(&self, _scales: &[Scale], theme: &mut Value) -> Vec<Value> {
         let mut layers = Vec::new();
-
-        // Panel boundary (hemisphere fill)
-        if let Some(ref wkt) = self.panel_boundary_wkt {
-            if let Some(geojson) = wkt_to_geojson(wkt) {
-                let (fill, stroke) = if let Some(view) =
-                    theme.get_mut("view").and_then(|v| v.as_object_mut())
-                {
-                    let fill = view.remove("fill").unwrap_or(Value::Null);
-                    let stroke = view.remove("stroke").unwrap_or(Value::Null);
-                    view.insert("stroke".to_string(), Value::Null);
-                    (fill, stroke)
-                } else {
-                    (Value::Null, Value::Null)
-                };
-                layers.push(json!({
-                    "data": {
-                        "values": [{"type": "Feature", "geometry": geojson}]
-                    },
-                    "mark": {
-                        "type": "geoshape",
-                        "fill": fill,
-                        "stroke": stroke,
-                    }
-                }));
-            }
-        }
-
-        // Graticule lines (meridians and parallels)
-        if self.graticule_lon_wkt.is_some() || self.graticule_lat_wkt.is_some() {
-            let grid_color = theme
-                .pointer("/axis/gridColor")
-                .cloned()
-                .unwrap_or(json!("#cccccc"));
-            let grid_width = theme
-                .pointer("/axis/gridWidth")
-                .cloned()
-                .unwrap_or(json!(0.5));
-
-            for wkt in [&self.graticule_lon_wkt, &self.graticule_lat_wkt]
-                .into_iter()
-                .flatten()
-            {
-                if let Some(geojson) = wkt_to_geojson(wkt) {
-                    layers.push(json!({
-                        "data": {
-                            "values": [{"type": "Feature", "geometry": geojson}]
-                        },
-                        "mark": {
-                            "type": "geoshape",
-                            "filled": false,
-                            "stroke": grid_color,
-                            "strokeWidth": grid_width,
-                        }
-                    }));
-                }
-            }
-        }
-
+        layers.extend(self.panel_boundary(theme));
+        layers.extend(self.graticule(theme));
         layers
     }
+}
+
+fn geoshape_layer(geojson: Value, mut mark: Value) -> Value {
+    mark["type"] = json!("geoshape");
+    json!({
+        "data": {"values": [{"type": "Feature", "geometry": geojson}]},
+        "mark": mark
+    })
 }
 
 #[cfg(feature = "spatial")]
@@ -299,7 +294,9 @@ mod tests {
         );
         proj.computed.insert(
             "graticule_lat".to_string(),
-            ParameterValue::String("MULTILINESTRING ((-180 0, 180 0), (-180 45, 180 45))".to_string()),
+            ParameterValue::String(
+                "MULTILINESTRING ((-180 0, 180 0), (-180 45, 180 45))".to_string(),
+            ),
         );
         let renderer = MapProjection::new(Some(&proj), None);
         let mut theme = json!({"axis": {"gridColor": "#dddddd", "gridWidth": 1}});
