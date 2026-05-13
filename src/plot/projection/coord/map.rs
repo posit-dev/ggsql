@@ -155,9 +155,14 @@ impl CoordTrait for Map {
             .computed
             .insert("frame_bbox".to_string(), bbox.as_parameter_value());
 
-        // Step 6: Generate graticule lines
-        let has_clip = projection.computed.contains_key("clip_boundary");
-        let (lon_wkt, lat_wkt) = build_graticule(&bbox, &source, has_clip, dialect, execute_query)?;
+        // Step 6: Generate graticule lines (azimuthal projections need clip-based
+        // extent and ST_Intersection; cylindrical projections don't)
+        let is_azimuthal = matches!(
+            extract_proj_param_str(&crs, "+proj="),
+            Some("ortho") | Some("gnom") | Some("stere")
+        );
+        let (lon_wkt, lat_wkt) =
+            build_graticule(&bbox, &source, is_azimuthal, dialect, execute_query)?;
         if let Some(wkt) = lon_wkt {
             projection
                 .computed
@@ -408,9 +413,9 @@ fn graticule_bbox(
     };
 
     // For azimuthal projections the bbox corners often inverse-project to
-    // degenerate values (all at the horizon). Fall back to the clip boundary
-    // extent which represents the actual visible hemisphere.
-    if has_clip && (geo_bbox.xmax - geo_bbox.xmin).abs() < 1.0 {
+    // degenerate or incomplete values. Use the clip boundary extent which
+    // correctly represents the visible hemisphere.
+    if has_clip {
         let bbox_sql = dialect.sql_geometry_bbox("geom", CLIP_BOUNDARY_TABLE);
         if let Ok(df) = execute_query(&bbox_sql) {
             if let Some(clip_bbox) = BBox::from_df(&df, source) {
@@ -527,8 +532,10 @@ fn query_scalar_string(
     Some(arr.value(0).to_string())
 }
 
-/// Set up the clip boundary for azimuthal projections. Creates the clip boundary temp table,
-/// projects it into the target CRS, and returns the world bbox (projected clip boundary extent).
+/// Set up the clip/visible area boundary. Creates the clip boundary temp table,
+/// projects it into the target CRS, and returns the world bbox (projected extent).
+/// For projections where `visible_area_wkt` returns None (e.g. LAEA), generates the
+/// panel boundary directly in projected space using ST_Buffer.
 fn setup_clip_boundary(
     projection: &mut super::super::Projection,
     source: &str,
@@ -689,8 +696,14 @@ pub fn visible_area_wkt(properties: &HashMap<String, ParameterValue>) -> Option<
 
     let center = projection_center(crs);
     match extract_proj_param_str(crs, "+proj=") {
-        Some("ortho") | Some("gnom") => Some(hemisphere_polygon_wkt(center.0, center.1, 88.0)),
+        Some("ortho") | Some("gnom") | Some("stere") => {
+            Some(hemisphere_polygon_wkt(center.0, center.1, 88.0))
+        }
+        Some("laea") | Some("aeqd") => todo!("full-globe azimuthal visible area"),
         Some("merc") => Some(BBox::from_array([-180.0, -85.0, 180.0, 85.0], "").to_polygon_wkt()),
+        Some("mill") | Some("eqc") => {
+            Some(BBox::from_array([-180.0, -90.0, 180.0, 90.0], "").to_polygon_wkt())
+        }
         _ => None,
     }
 }

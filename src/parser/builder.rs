@@ -1113,24 +1113,23 @@ fn parse_coord_system(
     source: &SourceTree,
 ) -> Result<(Coord, Vec<(String, ParameterValue)>)> {
     let text = source.get_text(node);
+    let map_proj = |proj: &str| -> Result<(Coord, Vec<(String, ParameterValue)>)> {
+        Ok((
+            Coord::map(),
+            vec![("crs".to_string(), ParameterValue::String(format!("+proj={proj}")))],
+        ))
+    };
     match text.to_lowercase().as_str() {
         "cartesian" => Ok((Coord::cartesian(), Vec::new())),
         "polar" => Ok((Coord::polar(), Vec::new())),
         "map" => Ok((Coord::map(), Vec::new())),
-        "mercator" => Ok((
-            Coord::map(),
-            vec![(
-                "crs".to_string(),
-                ParameterValue::String("+proj=merc".to_string()),
-            )],
-        )),
-        "orthographic" => Ok((
-            Coord::map(),
-            vec![(
-                "crs".to_string(),
-                ParameterValue::String("+proj=ortho".to_string()),
-            )],
-        )),
+        "mercator" => map_proj("merc"),
+        "orthographic" => map_proj("ortho"),
+        "miller" => map_proj("mill"),
+        "equirectangular" => map_proj("eqc"),
+        "stereographic" => map_proj("stere"),
+        "lambert" => map_proj("laea"),
+        "azimuthal_equidistant" => map_proj("aeqd"),
         _ => Err(GgsqlError::ParseError(format!(
             "Unknown coord type: {}",
             text
