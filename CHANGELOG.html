@@ -246,11 +246,12 @@ gradient teal.
   <ul class="collapse">
   <li><a href="#added" id="toc-added" class="nav-link" data-scroll-target="#added">Added</a></li>
   <li><a href="#fixed" id="toc-fixed" class="nav-link" data-scroll-target="#fixed">Fixed</a></li>
+  <li><a href="#changed" id="toc-changed" class="nav-link" data-scroll-target="#changed">Changed</a></li>
   </ul></li>
   <li><a href="#section" id="toc-section" class="nav-link" data-scroll-target="#section">0.3.2 - 2026-05-05</a>
   <ul class="collapse">
   <li><a href="#fixed-1" id="toc-fixed-1" class="nav-link" data-scroll-target="#fixed-1">Fixed</a></li>
-  <li><a href="#changed" id="toc-changed" class="nav-link" data-scroll-target="#changed">Changed</a></li>
+  <li><a href="#changed-1" id="toc-changed-1" class="nav-link" data-scroll-target="#changed-1">Changed</a></li>
   </ul></li>
   <li><a href="#section-1" id="toc-section-1" class="nav-link" data-scroll-target="#section-1">0.3.1 - 2026-04-30</a>
   <ul class="collapse">
@@ -260,7 +261,7 @@ gradient teal.
   <ul class="collapse">
   <li><a href="#added-1" id="toc-added-1" class="nav-link" data-scroll-target="#added-1">Added</a></li>
   <li><a href="#fixed-3" id="toc-fixed-3" class="nav-link" data-scroll-target="#fixed-3">Fixed</a></li>
-  <li><a href="#changed-1" id="toc-changed-1" class="nav-link" data-scroll-target="#changed-1">Changed</a></li>
+  <li><a href="#changed-2" id="toc-changed-2" class="nav-link" data-scroll-target="#changed-2">Changed</a></li>
   <li><a href="#removed" id="toc-removed" class="nav-link" data-scroll-target="#removed">Removed</a></li>
   </ul></li>
   <li><a href="#section-3" id="toc-section-3" class="nav-link" data-scroll-target="#section-3">[2.7.0] - 2026-04-20</a></li>
@@ -290,6 +291,12 @@ gradient teal.
 <li>Dodging of horizontal violin plots were broken due to a bad orientation assumption in the VegaLite writer. We now correctly use the orientation to dodge in the correct dimension (#439).</li>
 </ul>
 </section>
+<section id="changed" class="level3">
+<h3 class="anchored" data-anchor-id="changed">Changed</h3>
+<ul>
+<li><code>boxplot</code>, <code>violin</code>, and <code>range</code> now support omitting the categorical aesthetic, matching <code>bar</code>. <code>point</code> now treats both position aesthetics as optional.</li>
+</ul>
+</section>
 </section>
 <section id="section" class="level2">
 <h2 class="anchored" data-anchor-id="section">0.3.2 - 2026-05-05</h2>
@@ -301,8 +308,8 @@ gradient teal.
 <li>Fixed bug where faceted data were matched to the incorrect panels (#409)</li>
 </ul>
 </section>
-<section id="changed" class="level3">
-<h3 class="anchored" data-anchor-id="changed">Changed</h3>
+<section id="changed-1" class="level3">
+<h3 class="anchored" data-anchor-id="changed-1">Changed</h3>
 <ul>
 <li>Restructured how ggsql integrates with ODBC drivers to use the system ODBC, rather than bundling unixodbc as part of binary releases. This fixes several issues on Linux and macOS caused by relative paths to dynamic libraries.</li>
 </ul>
@@ -344,8 +351,8 @@ gradient teal.
 <li>Fixed an issue with OOB null-filtering, leading to missing median lines in boxplots (#394)</li>
 </ul>
 </section>
-<section id="changed-1" class="level3">
-<h3 class="anchored" data-anchor-id="changed-1">Changed</h3>
+<section id="changed-2" class="level3">
+<h3 class="anchored" data-anchor-id="changed-2">Changed</h3>
 <ul>
 <li>Reverted an earlier decision to materialize CTEs and the global query in Rust before registering them back to the backend. We now keep the data purely on the backend until the layer query as was always intended (#363)</li>
 <li>Relieved some grammatical constraints on the SQL-portion before the VISUALISE portion (#364).</li>

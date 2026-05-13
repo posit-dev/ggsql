@@ -11,6 +11,10 @@
 
 - Dodging of horizontal violin plots were broken due to a bad orientation assumption in the VegaLite writer. We now correctly use the orientation to dodge in the correct dimension (#439).
 
+### Changed
+
+- `boxplot`, `violin`, and `range` now support omitting the categorical aesthetic, matching `bar`. `point` now treats both position aesthetics as optional.
+
 ## 0.3.2 - 2026-05-05
 
 ### Fixed

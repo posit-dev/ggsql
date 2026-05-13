@@ -10,11 +10,11 @@ The following aesthetics are recognised by the boxplot layer.
 
 ### Required
 
-- Primary axis (e.g. `x`): The categorical variable to group by
 - Secondary axis (e.g. `y`): The continuous variable to summarize
 
 ### Optional
 
+- Primary axis (e.g. `x`): The categorical variable to group by. If omitted a single boxplot is drawn for the whole distribution and the (one-tick) categorical axis is hidden.
 - `stroke`: The colour of the box contours, whiskers, median line and outliers.
 - `fill`: The colour of the box interior.
 - `colour`: Shorthand for setting `stroke` and `fill` simultaneously. Note that the median line will have bad visibility if `stroke` and `fill` are the same.
@@ -94,6 +94,14 @@ Create a horizontal boxplot by swapping `x` and `y`:
 VISUALISE FROM ggsql:penguins
 DRAW boxplot
   MAPPING species AS y, bill_len AS x
+```
+
+Omit the categorical axis to summarise the whole distribution as a single boxplot:
+
+``` ggsql
+VISUALISE FROM ggsql:penguins
+DRAW boxplot
+  MAPPING bill_len AS y
 ```
 
 Pair a half-violin with a half-boxplot on the same category by setting opposite `side` values:
