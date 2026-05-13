@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 
-use super::types::{wrap_with_dummy_axis, POSITION_VALUES};
+use super::types::{wrap_with_dummy_axis, POSITION_VALUES, SIDE_VALUES};
 use super::{DefaultAesthetics, GeomTrait, GeomType};
 use crate::{
     naming,
@@ -70,6 +70,11 @@ impl GeomTrait for Boxplot {
                 name: "position",
                 default: DefaultParamValue::String("dodge"),
                 constraint: ParamConstraint::string_option(POSITION_VALUES),
+            },
+            ParamDefinition {
+                name: "side",
+                default: DefaultParamValue::String("both"),
+                constraint: ParamConstraint::string_option(SIDE_VALUES),
             },
         ];
         PARAMS
@@ -555,7 +560,7 @@ mod tests {
         let boxplot = Boxplot;
         let params = boxplot.default_params();
 
-        assert_eq!(params.len(), 4);
+        assert_eq!(params.len(), 5);
 
         // Find and verify outliers param
         let outliers_param = params.iter().find(|p| p.name == "outliers").unwrap();
@@ -581,6 +586,13 @@ mod tests {
         assert!(matches!(
             position_param.default,
             DefaultParamValue::String("dodge")
+        ));
+
+        // Find and verify side param (defaults to both)
+        let side_param = params.iter().find(|p| p.name == "side").unwrap();
+        assert!(matches!(
+            side_param.default,
+            DefaultParamValue::String("both")
         ));
     }
 

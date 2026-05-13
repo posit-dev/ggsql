@@ -23,6 +23,12 @@ Apart from the settings of the layer type, setting `position => 'jitter'` will a
   If `distribution` is either `'density'` or `'intensity'` then one of the axes must be continuous
 * `bandwidth`: Smoothing bandwidth for the `'density'` and `'intensity'` distributions (must be > 0). If absent (default), the bandwidth will be computed using Silverman's rule of thumb.
 * `adjust`: Multiplier for the `bandwidth` setting (must be > 0). Defaults to 1.
+* `side`: Constrains the jitter to one side of the original position by folding the sample into half of the width. Dodge centers and per-group widths are computed from the full `width`, so a one-sided jitter sits inside half of the same allocated band that a two-sided jitter would fill — pairing cleanly with a half-violin or half-boxplot on the other side. One of:
+    * `'both'` (default) jitters in both directions equally.
+    * `'left'` or `'bottom'` jitters only toward negative offsets.
+    * `'right'` or `'top'` jitters only toward positive offsets.
+
+  When both axes are jittered, `side` applies independently to each axis (e.g. `'right'` produces non-negative offsets on both axes).
 
 ## Examples
 When plotting points on a discrete axis they are all placed in the middle
@@ -64,4 +70,12 @@ DRAW point
   SETTING position => 'jitter'
 SCALE BINNED fill
   SETTING breaks => 4, pretty => false
+```
+
+Pair a half-violin with one-sided jittered points by setting opposite `side` values:
+
+```{ggsql}
+VISUALISE species AS x, bill_dep AS y FROM ggsql:penguins
+DRAW violin SETTING side => 'left'
+DRAW point SETTING position => 'jitter', side => 'right', width => 0.4
 ```
