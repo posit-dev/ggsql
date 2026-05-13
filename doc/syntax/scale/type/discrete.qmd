@@ -39,9 +39,9 @@ SCALE y FROM (0, null)
 ```
 
 ## Output range
-The output range can either be given as an array of values or a named palette. For both of these, the requirement is that they contain at least the number of values as is present in the input range. There are discrete palettes for both [`color`](../aesthetic/1_color.qmd#discrete-palettes), [`linetype`](../aesthetic/linetype.qmd#palettes), and [`shape`](../aesthetic/shape.qmd#palettes). 
+The output range can either be given as an array of values or a named palette. For both of these, the requirement is that they contain at least the number of values as is present in the input range. There are discrete palettes for both [`color`](../aesthetic/1_color.qmd#discrete-palettes), [`linetype`](../aesthetic/linetype.qmd#palettes), and [`shape`](../aesthetic/shape.qmd#palettes).
 
-All aesthetics has a default output range so it is never required to provide one unless you want to change from the default. The defaults are as follows:
+All aesthetics have a default output range so it is never required to provide one unless you want to change from the default. The defaults are as follows:
 
 * `x`/`y`: Ignored (values used directly)
 * `stroke`/`fill`: The `ggsql` palette
@@ -91,7 +91,7 @@ SCALE color FROM ('Adelie', 'Chinstrap', 'Gentoo')
 Breaks are generally named by their value. However, you may wish to rename one, several, or all of these. The `RENAMING` clause allows you to do that both by directly renaming a specific break or by providing a formatting function.
 
 ### Direct renaming
-When you provide a break value on the left and a break exist at that value then it will take on the label specified on the right. For examples adding RENAMING 'Adelie' => 'Adélie' will ensure that the species name will get the correct diacrit in the label.
+When you provide a break value on the left and a break exists at that value then it will take on the label specified on the right. For example adding RENAMING 'Adelie' => 'Adélie' will ensure that the species name will get the correct diacrit in the label.
 
 ### Label formatting
 Besides direct renaming you can also provide a formatting string if you want the same to happen to all labels, e.g. add a prefix or suffix. The syntax for this is `RENAMING * => '... {} ...'`. The current label will be inserted into the `{}` to produce the new label. Besides simply inserting the break value into the string, we can also provide a formatter. Of special interest to discrete scales are the `:Title`, `:lower`, and `:UPPER` formatters which lets you control the casing of strings. You can read more about these formatters in [the break formatting section of the `SCALE` documentation](../../clause/scale.qmd#break-formatting)
@@ -115,7 +115,7 @@ SCALE y FROM (0, null)
 ```{ggsql}
 VISUALISE species AS x FROM ggsql:penguins
 DRAW bar
-SCALE x 
+SCALE x
   RENAMING * => 'Species: {}'
 SCALE y FROM (0, null)
 ```

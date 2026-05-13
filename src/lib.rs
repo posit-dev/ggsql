@@ -1002,6 +1002,48 @@ mod integration_tests {
         );
     }
 
+    #[cfg(feature = "spatial")]
+    #[test]
+    fn test_end_to_end_spatial_native_geometry() {
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        let query = r#"
+            INSTALL spatial;
+            LOAD spatial;
+            SELECT
+                ST_GeomFromText('POLYGON ((0 0, 1 0, 1 1, 0 1, 0 0))') AS geom,
+                'North' AS region,
+                200 AS population
+            UNION ALL
+            SELECT
+                ST_GeomFromText('POLYGON ((1 0, 2 0, 2 1, 1 1, 1 0))') AS geom,
+                'South' AS region,
+                150 AS population
+            VISUALISE
+            DRAW spatial MAPPING population AS fill
+        "#;
+
+        let prepared = execute::prepare_data_with_reader(query, &reader).unwrap();
+
+        let writer = VegaLiteWriter::new();
+        let json_str = writer.write(&prepared.specs[0], &prepared.data).unwrap();
+        let vl_spec: serde_json::Value = serde_json::from_str(&json_str).unwrap();
+
+        assert_eq!(vl_spec["layer"][0]["mark"]["type"], "geoshape");
+
+        let data = vl_spec["data"]["values"].as_array().unwrap();
+        let layer_key = prepared.specs[0].layers[0].data_key.as_ref().unwrap();
+        let spatial_rows: Vec<_> = data
+            .iter()
+            .filter(|r| r[naming::SOURCE_COLUMN] == layer_key.as_str())
+            .collect();
+        assert_eq!(spatial_rows.len(), 2);
+
+        let feature = &spatial_rows[0];
+        assert_eq!(feature["type"], "Feature");
+        assert_eq!(feature["geometry"]["type"], "Polygon");
+    }
+
     /// Belt-and-braces regression test: a representative basket of error-
     /// triggering queries must never produce a user-visible message that
     /// contains an internal aesthetic name (`__ggsql_aes_*`, `pos1`, `pos2`,

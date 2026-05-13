@@ -18,6 +18,11 @@ pub const POSITION_VALUES: &[&str] = &["identity", "stack", "dodge", "jitter"];
 /// Closed interval side values for binned data
 pub const CLOSED_VALUES: &[&str] = &["left", "right"];
 
+/// Standard `side` parameter values for layers and positions that can render
+/// either both halves of a symmetric shape (or jitter range) or just one of
+/// them. Used by violin, boxplot, and jitter.
+pub const SIDE_VALUES: &[&str] = &["both", "left", "top", "right", "bottom"];
+
 /// Aesthetic aliases: user-facing names that resolve to concrete aesthetics.
 ///
 /// An alias is considered supported if any of its target aesthetics are supported
@@ -27,6 +32,17 @@ pub const CLOSED_VALUES: &[&str] = &["left", "right"];
 /// Note: Spelling variants (`colour`/`col` → `color`) are handled separately at parse
 /// time by `normalise_aes_name()` in `parser/builder.rs`.
 pub const AESTHETIC_ALIASES: &[(&str, &[&str])] = &[("color", &["stroke", "fill"])];
+
+/// Shared `aggregate` parameter definition. Every geom that opts into the
+/// Aggregate stat (i.e. `aggregate_domain_aesthetics()` returns `Some(_)`)
+/// includes this entry in its `default_params()`. The constraint validates
+/// only the structural shape (string / array-of-strings / null); the
+/// per-entry vocabulary is checked by `stat_aggregate::parse_aggregate_param`.
+pub const AGGREGATE_PARAM: ParamDefinition = ParamDefinition {
+    name: "aggregate",
+    default: DefaultParamValue::Null,
+    constraint: ParamConstraint::string_or_string_array_unconstrained(),
+};
 
 /// Default aesthetic values for a geom type
 ///
@@ -175,6 +191,43 @@ pub use crate::plot::types::ColumnInfo;
 /// Schema of a data source - list of columns with type info
 pub use crate::plot::types::Schema;
 
+/// Wrap a stat result with `ORDER BY <aesthetic>`.
+///
+/// Used by line/area/ribbon to ensure the rendered output is sorted along the
+/// domain axis whether or not the layer also goes through the Aggregate stat.
+///
+/// - `Identity` → becomes `Transformed` with `<input_query> ORDER BY <aes>`,
+///   empty `stat_columns`/`dummy_columns`/`consumed_aesthetics`.
+/// - `Transformed` → wraps the existing query in
+///   `SELECT * FROM (<query>) AS "__ggsql_ord__" ORDER BY <aes>` and preserves
+///   the stat metadata.
+pub fn wrap_with_order_by(input_query: &str, result: StatResult, aesthetic: &str) -> StatResult {
+    let order_col = naming::aesthetic_column(aesthetic);
+    let order_quoted = naming::quote_ident(&order_col);
+    match result {
+        StatResult::Identity => StatResult::Transformed {
+            query: format!("{} ORDER BY {}", input_query, order_quoted),
+            stat_columns: vec![],
+            dummy_columns: vec![],
+            consumed_aesthetics: vec![],
+        },
+        StatResult::Transformed {
+            query,
+            stat_columns,
+            dummy_columns,
+            consumed_aesthetics,
+        } => StatResult::Transformed {
+            query: format!(
+                "SELECT * FROM ({}) AS \"__ggsql_ord__\" ORDER BY {}",
+                query, order_quoted
+            ),
+            stat_columns,
+            dummy_columns,
+            consumed_aesthetics,
+        },
+    }
+}
+
 /// Helper to extract column name from aesthetic value
 pub fn get_column_name(aesthetics: &Mappings, aesthetic: &str) -> Option<String> {
     use crate::AestheticValue;
@@ -258,6 +311,56 @@ mod tests {
         assert!(aes.is_required("y"));
         assert!(!aes.is_required("size"));
         assert!(!aes.is_required("yend"));
+    }
+
+    #[test]
+    fn wrap_with_order_by_identity_appends_order() {
+        let result = wrap_with_order_by("SELECT * FROM t", StatResult::Identity, "pos1");
+        match result {
+            StatResult::Transformed {
+                query,
+                stat_columns,
+                dummy_columns,
+                consumed_aesthetics,
+            } => {
+                assert_eq!(query, "SELECT * FROM t ORDER BY \"__ggsql_aes_pos1__\"");
+                assert!(stat_columns.is_empty());
+                assert!(dummy_columns.is_empty());
+                assert!(consumed_aesthetics.is_empty());
+            }
+            _ => panic!("expected Transformed"),
+        }
+    }
+
+    #[test]
+    fn wrap_with_order_by_transformed_wraps_query_and_preserves_metadata() {
+        let inner = StatResult::Transformed {
+            query: "SELECT * FROM grouped".to_string(),
+            stat_columns: vec!["pos2".to_string(), "aggregate".to_string()],
+            dummy_columns: vec!["pos1".to_string()],
+            consumed_aesthetics: vec!["pos2".to_string()],
+        };
+        let result = wrap_with_order_by("SELECT * FROM raw", inner, "pos1");
+        match result {
+            StatResult::Transformed {
+                query,
+                stat_columns,
+                dummy_columns,
+                consumed_aesthetics,
+            } => {
+                assert_eq!(
+                    query,
+                    "SELECT * FROM (SELECT * FROM grouped) AS \"__ggsql_ord__\" ORDER BY \"__ggsql_aes_pos1__\""
+                );
+                assert_eq!(
+                    stat_columns,
+                    vec!["pos2".to_string(), "aggregate".to_string()]
+                );
+                assert_eq!(dummy_columns, vec!["pos1".to_string()]);
+                assert_eq!(consumed_aesthetics, vec!["pos2".to_string()]);
+            }
+            _ => panic!("expected Transformed"),
+        }
     }
 
     #[test]

@@ -73,6 +73,21 @@ pub fn parse_connection_string(uri: &str) -> Result<ConnectionInfo> {
     )))
 }
 
+/// Extract a value from an ODBC connection string by key, stripping braces.
+pub fn extract_odbc_value(conn_str: &str, key: &str) -> Option<String> {
+    let lower = conn_str.to_lowercase();
+    let prefix = format!("{}=", key);
+    let start = lower.find(&prefix)?;
+    let rest = &conn_str[start + prefix.len()..];
+    let value = rest.split(';').next().unwrap_or("");
+    let value = value.trim().trim_matches(|c| c == '{' || c == '}');
+    if value.is_empty() {
+        None
+    } else {
+        Some(value.to_string())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

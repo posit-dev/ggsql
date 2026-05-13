@@ -70,27 +70,21 @@ impl super::SqlDialect for SqliteDialect {
         }
     }
 
-    fn sql_list_catalogs(&self) -> String {
-        "SELECT name AS catalog_name FROM pragma_database_list ORDER BY name".into()
-    }
-
-    fn sql_list_schemas(&self, _catalog: &str) -> String {
-        "SELECT 'main' AS schema_name".into()
-    }
-
-    fn sql_list_tables(&self, catalog: &str, _schema: &str) -> String {
-        format!(
-            "SELECT name AS table_name, type AS table_type FROM {}.sqlite_master \
-             WHERE type IN ('table', 'view') ORDER BY name",
-            naming::quote_ident(catalog)
-        )
-    }
-
-    fn sql_list_columns(&self, _catalog: &str, _schema: &str, table: &str) -> String {
-        format!(
-            "SELECT name AS column_name, type AS data_type FROM pragma_table_info('{}') ORDER BY cid",
-            table.replace('\'', "''")
-        )
+    /// Stock SQLite has no `STDDEV_POP` / `VAR_POP`, so express variance,
+    /// standard deviation, and standard error in portable arithmetic. Every
+    /// other aggregate falls through to the shared default.
+    fn sql_aggregate(&self, name: &str, qcol: &str) -> Option<String> {
+        // Population variance with a `MAX(0, …)` floor against tiny negative
+        // floats from catastrophic cancellation. Both `MAX(a, b)` and `SQRT`
+        // are scalar functions in modern bundled SQLite (math-functions build).
+        let var_pop = || format!("MAX(0.0, AVG({c} * {c}) - AVG({c}) * AVG({c}))", c = qcol);
+        let s = match name {
+            "var" => var_pop(),
+            "sdev" => format!("SQRT({})", var_pop()),
+            "se" => format!("(SQRT({}) / SQRT(COUNT({c})))", var_pop(), c = qcol),
+            _ => return super::default_sql_aggregate(name, qcol),
+        };
+        Some(s)
     }
 
     /// SQLite does not support `CREATE OR REPLACE`, so emit a drop-then-create
@@ -536,6 +530,57 @@ impl Reader for SqliteReader {
 
     fn dialect(&self) -> &dyn super::SqlDialect {
         &SqliteDialect
+    }
+
+    fn list_catalogs(&self) -> Result<Vec<String>> {
+        Ok(vec![])
+    }
+
+    fn list_schemas(&self, _catalog: &str) -> Result<Vec<String>> {
+        Ok(vec![])
+    }
+
+    fn list_tables(&self, _catalog: &str, _schema: &str) -> Result<Vec<super::TableInfo>> {
+        let df = self.execute_sql(
+            "SELECT name, type FROM sqlite_master \
+             WHERE type IN ('table', 'view') ORDER BY name",
+        )?;
+        let name_col = df.column("name")?;
+        let type_col = df.column("type")?;
+        let mut results = Vec::with_capacity(df.height());
+        for i in 0..df.height() {
+            if !name_col.is_null(i) {
+                results.push(super::TableInfo {
+                    name: crate::array_util::value_to_string(name_col, i),
+                    table_type: crate::array_util::value_to_string(type_col, i),
+                });
+            }
+        }
+        Ok(results)
+    }
+
+    fn list_columns(
+        &self,
+        _catalog: &str,
+        _schema: &str,
+        table: &str,
+    ) -> Result<Vec<super::ColumnInfo>> {
+        let df = self.execute_sql(&format!(
+            "SELECT name, type FROM pragma_table_info({}) ORDER BY cid",
+            naming::quote_literal(table)
+        ))?;
+        let name_col = df.column("name")?;
+        let type_col = df.column("type")?;
+        let mut results = Vec::with_capacity(df.height());
+        for i in 0..df.height() {
+            if !name_col.is_null(i) {
+                results.push(super::ColumnInfo {
+                    name: crate::array_util::value_to_string(name_col, i),
+                    data_type: crate::array_util::value_to_string(type_col, i),
+                });
+            }
+        }
+        Ok(results)
     }
 }
 

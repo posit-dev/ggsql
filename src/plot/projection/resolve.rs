@@ -1,13 +1,16 @@
 //! Coordinate system resolution
 //!
-//! Resolves the default coordinate system by inspecting aesthetic mappings.
+//! Resolves the default coordinate system by inspecting aesthetic mappings,
+//! and post-scale resolution of projection properties like `radar`.
 
 use std::collections::HashMap;
 
 use super::coord::{Coord, CoordKind};
 use super::Projection;
 use crate::plot::aesthetic::{MATERIAL_AESTHETICS, POSITION_SUFFIXES};
-use crate::plot::Mappings;
+use crate::plot::scale::ScaleTypeKind;
+use crate::plot::{Mappings, ParameterValue, Scale};
+use crate::GgsqlError;
 
 /// Cartesian primary aesthetic names
 const CARTESIAN_PRIMARIES: &[&str] = &["x", "y"];
@@ -128,10 +131,69 @@ fn strip_position_suffix(name: &str) -> &str {
     name
 }
 
+/// Resolve projection properties that depend on scale types.
+///
+/// Called after `resolve_scales()`. Currently handles:
+/// - **`radar`** (polar only): When null (auto), sets to `true` if the theta
+///   (pos2) scale is discrete/ordinal. When explicitly `true`, validates that
+///   the theta scale is indeed discrete.
+pub fn resolve_projection_properties(
+    project: &mut Projection,
+    scales: &[Scale],
+) -> crate::Result<()> {
+    if project.coord.coord_kind() != CoordKind::Polar {
+        return Ok(());
+    }
+
+    let theta_scale = scales.iter().find(|s| s.aesthetic == "pos2");
+
+    let theta_is_discrete = theta_scale
+        .and_then(|s| s.scale_type.as_ref())
+        .is_some_and(|st| {
+            matches!(
+                st.scale_type_kind(),
+                ScaleTypeKind::Discrete | ScaleTypeKind::Ordinal
+            )
+        });
+
+    let too_few_categories = theta_scale
+        .and_then(|s| s.input_range.as_ref())
+        .is_some_and(|r| r.len() <= 2);
+
+    match project.properties.get("radar") {
+        Some(ParameterValue::Boolean(true)) if !theta_is_discrete => {
+            return Err(GgsqlError::ValidationError(
+                "SETTING radar => true requires a discrete angle scale, \
+                 but the angle aesthetic is continuous"
+                    .to_string(),
+            ));
+        }
+        Some(ParameterValue::Boolean(true)) if too_few_categories => {
+            return Err(GgsqlError::ValidationError(
+                "SETTING radar => true requires more than 2 categories \
+                 on the angle aesthetic"
+                    .to_string(),
+            ));
+        }
+        Some(ParameterValue::Boolean(_)) => {
+            // Explicit true (valid) or false — keep as-is
+        }
+        _ => {
+            // Null / absent — auto-detect: discrete with >2 categories
+            let use_radar = theta_is_discrete && !too_few_categories;
+            project
+                .properties
+                .insert("radar".to_string(), ParameterValue::Boolean(use_radar));
+        }
+    }
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::plot::AestheticValue;
+    use crate::plot::{AestheticValue, ArrayElement, ScaleType};
 
     /// Helper to create Mappings with given aesthetic names
     fn mappings_with(aesthetics: &[&str]) -> Mappings {
@@ -148,11 +210,7 @@ mod tests {
 
     #[test]
     fn test_resolve_keeps_explicit_project() {
-        let project = Projection {
-            coord: Coord::cartesian(),
-            aesthetics: vec!["x".to_string(), "y".to_string()],
-            properties: HashMap::new(),
-        };
+        let project = Projection::cartesian();
         let global = mappings_with(&["angle", "radius"]); // Would infer polar
         let layers: Vec<&Mappings> = vec![];
 
@@ -352,6 +410,161 @@ mod tests {
     // ========================================
     // Test: Helper functions
     // ========================================
+
+    // ========================================
+    // Test: resolve_projection_properties
+    // ========================================
+
+    fn scale_with_type(aesthetic: &str, discrete: bool) -> Scale {
+        let mut s = Scale::new(aesthetic);
+        s.scale_type = Some(if discrete {
+            ScaleType::discrete()
+        } else {
+            ScaleType::continuous()
+        });
+        s
+    }
+
+    fn discrete_scale_with_n(aesthetic: &str, n: usize) -> Scale {
+        let mut s = Scale::new(aesthetic);
+        s.scale_type = Some(ScaleType::discrete());
+        s.input_range = Some(
+            (0..n)
+                .map(|i| ArrayElement::String(format!("cat{i}")))
+                .collect(),
+        );
+        s
+    }
+
+    #[test]
+    fn test_radar_auto_true_for_discrete_theta() {
+        let mut proj = Projection::polar();
+        let scales = vec![discrete_scale_with_n("pos2", 5)];
+        resolve_projection_properties(&mut proj, &scales).unwrap();
+        assert_eq!(
+            proj.properties.get("radar"),
+            Some(&ParameterValue::Boolean(true))
+        );
+    }
+
+    #[test]
+    fn test_radar_auto_false_for_continuous_theta() {
+        let mut proj = Projection::polar();
+        let scales = vec![scale_with_type("pos2", false)];
+        resolve_projection_properties(&mut proj, &scales).unwrap();
+        assert_eq!(
+            proj.properties.get("radar"),
+            Some(&ParameterValue::Boolean(false))
+        );
+    }
+
+    #[test]
+    fn test_radar_auto_true_for_discrete_theta_no_range() {
+        let mut proj = Projection::polar();
+        let scales = vec![scale_with_type("pos2", true)];
+        resolve_projection_properties(&mut proj, &scales).unwrap();
+        assert_eq!(
+            proj.properties.get("radar"),
+            Some(&ParameterValue::Boolean(true))
+        );
+    }
+
+    #[test]
+    fn test_radar_auto_false_for_discrete_theta_2_categories() {
+        let mut proj = Projection::polar();
+        let scales = vec![discrete_scale_with_n("pos2", 2)];
+        resolve_projection_properties(&mut proj, &scales).unwrap();
+        assert_eq!(
+            proj.properties.get("radar"),
+            Some(&ParameterValue::Boolean(false))
+        );
+    }
+
+    #[test]
+    fn test_radar_auto_false_for_discrete_theta_1_category() {
+        let mut proj = Projection::polar();
+        let scales = vec![discrete_scale_with_n("pos2", 1)];
+        resolve_projection_properties(&mut proj, &scales).unwrap();
+        assert_eq!(
+            proj.properties.get("radar"),
+            Some(&ParameterValue::Boolean(false))
+        );
+    }
+
+    #[test]
+    fn test_radar_auto_true_for_discrete_theta_3_categories() {
+        let mut proj = Projection::polar();
+        let scales = vec![discrete_scale_with_n("pos2", 3)];
+        resolve_projection_properties(&mut proj, &scales).unwrap();
+        assert_eq!(
+            proj.properties.get("radar"),
+            Some(&ParameterValue::Boolean(true))
+        );
+    }
+
+    #[test]
+    fn test_radar_explicit_true_with_discrete_ok() {
+        let mut proj = Projection::polar();
+        proj.properties
+            .insert("radar".to_string(), ParameterValue::Boolean(true));
+        let scales = vec![discrete_scale_with_n("pos2", 4)];
+        resolve_projection_properties(&mut proj, &scales).unwrap();
+        assert_eq!(
+            proj.properties.get("radar"),
+            Some(&ParameterValue::Boolean(true))
+        );
+    }
+
+    #[test]
+    fn test_radar_explicit_true_with_2_categories_errors() {
+        let mut proj = Projection::polar();
+        proj.properties
+            .insert("radar".to_string(), ParameterValue::Boolean(true));
+        let scales = vec![discrete_scale_with_n("pos2", 2)];
+        let result = resolve_projection_properties(&mut proj, &scales);
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(
+            err.contains("more than 2"),
+            "error should mention 'more than 2': {err}"
+        );
+    }
+
+    #[test]
+    fn test_radar_explicit_true_with_continuous_errors() {
+        let mut proj = Projection::polar();
+        proj.properties
+            .insert("radar".to_string(), ParameterValue::Boolean(true));
+        let scales = vec![scale_with_type("pos2", false)];
+        let result = resolve_projection_properties(&mut proj, &scales);
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(
+            err.contains("discrete"),
+            "error should mention discrete: {err}"
+        );
+    }
+
+    #[test]
+    fn test_radar_explicit_false_with_discrete_preserved() {
+        let mut proj = Projection::polar();
+        proj.properties
+            .insert("radar".to_string(), ParameterValue::Boolean(false));
+        let scales = vec![scale_with_type("pos2", true)];
+        resolve_projection_properties(&mut proj, &scales).unwrap();
+        assert_eq!(
+            proj.properties.get("radar"),
+            Some(&ParameterValue::Boolean(false))
+        );
+    }
+
+    #[test]
+    fn test_radar_noop_for_cartesian() {
+        let mut proj = Projection::cartesian();
+        let scales = vec![scale_with_type("pos2", true)];
+        resolve_projection_properties(&mut proj, &scales).unwrap();
+        assert!(!proj.properties.contains_key("radar"));
+    }
 
     #[test]
     fn test_strip_position_suffix() {

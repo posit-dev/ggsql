@@ -1,6 +1,6 @@
 //! Rule geom implementation
 
-use super::{DefaultAesthetics, GeomTrait, GeomType};
+use super::{DefaultAesthetics, GeomTrait, GeomType, ParamDefinition};
 use crate::plot::types::DefaultAestheticValue;
 
 /// Rule geom - horizontal and vertical reference lines
@@ -23,6 +23,15 @@ impl GeomTrait for Rule {
                 ("linetype", DefaultAestheticValue::String("solid")),
             ],
         }
+    }
+
+    fn default_params(&self) -> &'static [ParamDefinition] {
+        const PARAMS: &[ParamDefinition] = &[super::types::AGGREGATE_PARAM];
+        PARAMS
+    }
+
+    fn aggregate_domain_aesthetics(&self) -> Option<&'static [&'static str]> {
+        Some(&[])
     }
 
     fn validate_aesthetics(&self, mappings: &crate::Mappings) -> std::result::Result<(), String> {

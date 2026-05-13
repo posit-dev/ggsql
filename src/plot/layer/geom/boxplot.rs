@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 
-use super::types::POSITION_VALUES;
+use super::types::{POSITION_VALUES, SIDE_VALUES};
 use super::{DefaultAesthetics, GeomTrait, GeomType};
 use crate::{
     naming,
@@ -72,6 +72,11 @@ impl GeomTrait for Boxplot {
                 default: DefaultParamValue::String("dodge"),
                 constraint: ParamConstraint::string_option(POSITION_VALUES),
             },
+            ParamDefinition {
+                name: "side",
+                default: DefaultParamValue::String("both"),
+                constraint: ParamConstraint::string_option(SIDE_VALUES),
+            },
         ];
         PARAMS
     }
@@ -95,6 +100,7 @@ impl GeomTrait for Boxplot {
         parameters: &HashMap<String, ParameterValue>,
         _execute_query: &dyn Fn(&str) -> Result<DataFrame>,
         dialect: &dyn SqlDialect,
+        _aesthetic_ctx: &crate::plot::aesthetic::AestheticContext,
     ) -> Result<StatResult> {
         stat_boxplot(query, aesthetics, group_by, parameters, dialect)
     }
@@ -538,7 +544,7 @@ mod tests {
         let boxplot = Boxplot;
         let params = boxplot.default_params();
 
-        assert_eq!(params.len(), 4);
+        assert_eq!(params.len(), 5);
 
         // Find and verify outliers param
         let outliers_param = params.iter().find(|p| p.name == "outliers").unwrap();
@@ -564,6 +570,13 @@ mod tests {
         assert!(matches!(
             position_param.default,
             DefaultParamValue::String("dodge")
+        ));
+
+        // Find and verify side param (defaults to both)
+        let side_param = params.iter().find(|p| p.name == "side").unwrap();
+        assert!(matches!(
+            side_param.default,
+            DefaultParamValue::String("both")
         ));
     }
 

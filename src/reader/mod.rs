@@ -94,48 +94,6 @@ pub trait SqlDialect {
         }
     }
 
-    // =========================================================================
-    // Schema introspection queries (for Connections pane)
-    // =========================================================================
-
-    /// SQL to list catalog names. Returns rows with column `catalog_name`.
-    fn sql_list_catalogs(&self) -> String {
-        "SELECT DISTINCT catalog_name FROM information_schema.schemata ORDER BY catalog_name".into()
-    }
-
-    /// SQL to list schema names within a catalog. Returns rows with column `schema_name`.
-    fn sql_list_schemas(&self, catalog: &str) -> String {
-        format!(
-            "SELECT DISTINCT schema_name FROM information_schema.schemata \
-             WHERE catalog_name = '{}' ORDER BY schema_name",
-            catalog.replace('\'', "''")
-        )
-    }
-
-    /// SQL to list tables/views within a catalog and schema.
-    /// Returns rows with columns `table_name` and `table_type`.
-    fn sql_list_tables(&self, catalog: &str, schema: &str) -> String {
-        format!(
-            "SELECT DISTINCT table_name, table_type FROM information_schema.tables \
-             WHERE table_catalog = '{}' AND table_schema = '{}' ORDER BY table_name",
-            catalog.replace('\'', "''"),
-            schema.replace('\'', "''")
-        )
-    }
-
-    /// SQL to list columns in a table.
-    /// Returns rows with columns `column_name` and `data_type`.
-    fn sql_list_columns(&self, catalog: &str, schema: &str, table: &str) -> String {
-        format!(
-            "SELECT column_name, data_type FROM information_schema.columns \
-             WHERE table_catalog = '{}' AND table_schema = '{}' AND table_name = '{}' \
-             ORDER BY ordinal_position",
-            catalog.replace('\'', "''"),
-            schema.replace('\'', "''"),
-            table.replace('\'', "''")
-        )
-    }
-
     /// Scalar MAX across any number of SQL expressions.
     fn sql_greatest(&self, exprs: &[&str]) -> String {
         let mut result = exprs[0].to_string();
@@ -154,6 +112,21 @@ pub trait SqlDialect {
                 format!("(CASE WHEN ({result}) <= ({expr}) THEN ({result}) ELSE ({expr}) END)");
         }
         result
+    }
+
+    /// SQL expression to convert a geometry column to WKB.
+    ///
+    /// Default uses `ST_AsBinary` (OGC standard). Override for backends
+    /// with different function names (e.g. DuckDB uses `ST_AsWKB`).
+    fn sql_geometry_to_wkb(&self, column: &str) -> String {
+        format!("ST_AsBinary({column})")
+    }
+
+    /// SQL statements to run before spatial operations.
+    ///
+    /// Override for backends that need an extension loaded (e.g. DuckDB spatial).
+    fn sql_spatial_setup(&self) -> Vec<String> {
+        vec![]
     }
 
     /// Generate a series of integers 0..n-1 as a CTE fragment.
@@ -213,6 +186,31 @@ pub trait SqlDialect {
             ))",
             column = quoted_column
         )
+    }
+
+    /// Inline-form quantile aggregate, usable directly in a `SELECT` list.
+    ///
+    /// Returns `Some(sql_fragment)` when the dialect supports a native quantile
+    /// aggregate that can be combined with other aggregates in the same `GROUP BY`
+    /// query (e.g. DuckDB's `QUANTILE_CONT`). Returns `None` when no native
+    /// inline form exists; callers should then fall back to [`sql_percentile`],
+    /// which produces a correlated scalar subquery.
+    fn sql_quantile_inline(&self, _column: &str, _fraction: f64) -> Option<String> {
+        None
+    }
+
+    /// SQL fragment for a simple aggregate function applied to an
+    /// already-quoted column expression.
+    ///
+    /// Returns `Some(expr)` when the dialect can express this aggregate inline
+    /// in a `GROUP BY` query. Returns `None` when the aggregate is not
+    /// supported by this backend; the stat layer surfaces a clear error.
+    ///
+    /// Names handled here are the entries of `stat_aggregate::AGG_NAMES` other
+    /// than the percentile/iqr family, which goes through [`sql_quantile_inline`]
+    /// / [`sql_percentile`] instead.
+    fn sql_aggregate(&self, name: &str, qcol: &str) -> Option<String> {
+        default_sql_aggregate(name, qcol)
     }
 
     /// SQL literal for a date value (days since Unix epoch).
@@ -291,6 +289,44 @@ pub(crate) fn wrap_with_column_aliases(body_sql: &str, column_aliases: &[String]
     )
 }
 
+/// Default aggregate SQL emission, shared so dialects can opt into the standard
+/// portable forms while overriding selected functions.
+///
+/// `first` / `last` are expressed as `MAX(CASE WHEN __ggsql_rn__ = … THEN col END)`,
+/// which depends on the row-number columns the stat layer injects when any
+/// aggregate references them. Backends with a cheaper native equivalent
+/// (e.g. DuckDB's `FIRST`/`LAST`) override [`SqlDialect::sql_aggregate`].
+pub fn default_sql_aggregate(name: &str, qcol: &str) -> Option<String> {
+    let s = match name {
+        "count" => format!("COUNT({})", qcol),
+        "sum" => format!("SUM({})", qcol),
+        "prod" => format!("EXP(SUM(LN({})))", qcol),
+        "min" => format!("MIN({})", qcol),
+        "max" => format!("MAX({})", qcol),
+        "range" => format!("(MAX({c}) - MIN({c}))", c = qcol),
+        "mid" => format!("((MIN({c}) + MAX({c})) / 2.0)", c = qcol),
+        "mean" => format!("AVG({})", qcol),
+        "geomean" => format!("EXP(AVG(LN({})))", qcol),
+        "harmean" => format!("(COUNT({c}) * 1.0 / SUM(1.0 / {c}))", c = qcol),
+        "rms" => format!("SQRT(AVG({c} * {c}))", c = qcol),
+        "sdev" => format!("STDDEV_POP({})", qcol),
+        "se" => format!("(STDDEV_POP({c}) / SQRT(COUNT({c})))", c = qcol),
+        "var" => format!("VAR_POP({})", qcol),
+        "first" => format!("MAX(CASE WHEN \"__ggsql_rn__\" = 1 THEN {} END)", qcol),
+        "last" => format!(
+            "MAX(CASE WHEN \"__ggsql_rn__\" = \"__ggsql_max_rn__\" THEN {} END)",
+            qcol
+        ),
+        "diff" => format!(
+            "(MAX(CASE WHEN \"__ggsql_rn__\" = \"__ggsql_max_rn__\" THEN {c} END) \
+             - MAX(CASE WHEN \"__ggsql_rn__\" = 1 THEN {c} END))",
+            c = qcol
+        ),
+        _ => return None,
+    };
+    Some(s)
+}
+
 pub struct AnsiDialect;
 impl SqlDialect for AnsiDialect {}
 
@@ -302,9 +338,6 @@ pub mod sqlite;
 
 #[cfg(feature = "odbc")]
 pub mod odbc;
-
-#[cfg(feature = "odbc")]
-pub mod snowflake;
 
 #[cfg(feature = "adbc")]
 pub mod adbc;
@@ -516,6 +549,96 @@ pub trait Reader {
     fn dialect(&self) -> &dyn SqlDialect {
         &AnsiDialect
     }
+
+    // =========================================================================
+    // Schema introspection
+    // =========================================================================
+
+    fn list_catalogs(&self) -> Result<Vec<String>> {
+        let df = self.execute_sql(
+            "SELECT DISTINCT catalog_name FROM information_schema.schemata ORDER BY catalog_name",
+        )?;
+        let col = df.column("catalog_name")?;
+        let mut results = Vec::with_capacity(df.height());
+        for i in 0..df.height() {
+            if !col.is_null(i) {
+                results.push(crate::array_util::value_to_string(col, i));
+            }
+        }
+        Ok(results)
+    }
+
+    fn list_schemas(&self, catalog: &str) -> Result<Vec<String>> {
+        let df = self.execute_sql(&format!(
+            "SELECT DISTINCT schema_name FROM information_schema.schemata \
+             WHERE catalog_name = {} ORDER BY schema_name",
+            naming::quote_literal(catalog)
+        ))?;
+        let col = df.column("schema_name")?;
+        let mut results = Vec::with_capacity(df.height());
+        for i in 0..df.height() {
+            if !col.is_null(i) {
+                results.push(crate::array_util::value_to_string(col, i));
+            }
+        }
+        Ok(results)
+    }
+
+    fn list_tables(&self, catalog: &str, schema: &str) -> Result<Vec<TableInfo>> {
+        let df = self.execute_sql(&format!(
+            "SELECT DISTINCT table_name, table_type FROM information_schema.tables \
+             WHERE table_catalog = {} AND table_schema = {} ORDER BY table_name",
+            naming::quote_literal(catalog),
+            naming::quote_literal(schema)
+        ))?;
+        let name_col = df.column("table_name")?;
+        let type_col = df.column("table_type")?;
+        let mut results = Vec::with_capacity(df.height());
+        for i in 0..df.height() {
+            if !name_col.is_null(i) {
+                results.push(TableInfo {
+                    name: crate::array_util::value_to_string(name_col, i),
+                    table_type: crate::array_util::value_to_string(type_col, i),
+                });
+            }
+        }
+        Ok(results)
+    }
+
+    fn list_columns(&self, catalog: &str, schema: &str, table: &str) -> Result<Vec<ColumnInfo>> {
+        let df = self.execute_sql(&format!(
+            "SELECT column_name, data_type FROM information_schema.columns \
+             WHERE table_catalog = {} AND table_schema = {} AND table_name = {} \
+             ORDER BY ordinal_position",
+            naming::quote_literal(catalog),
+            naming::quote_literal(schema),
+            naming::quote_literal(table)
+        ))?;
+        let name_col = df.column("column_name")?;
+        let type_col = df.column("data_type")?;
+        let mut results = Vec::with_capacity(df.height());
+        for i in 0..df.height() {
+            if !name_col.is_null(i) {
+                results.push(ColumnInfo {
+                    name: crate::array_util::value_to_string(name_col, i),
+                    data_type: crate::array_util::value_to_string(type_col, i),
+                });
+            }
+        }
+        Ok(results)
+    }
+}
+
+/// A table or view in the schema.
+pub struct TableInfo {
+    pub name: String,
+    pub table_type: String,
+}
+
+/// A column in a table.
+pub struct ColumnInfo {
+    pub name: String,
+    pub data_type: String,
 }
 
 /// Execute a ggsql query using any reader
@@ -554,6 +677,21 @@ mod tests {
     use super::*;
     use crate::df;
     use crate::writer::{VegaLiteWriter, Writer};
+
+    fn data_layer(json: &serde_json::Value, index: usize) -> &serde_json::Value {
+        json["layer"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|l| {
+                !matches!(
+                    l.get("description").and_then(|d| d.as_str()),
+                    Some("background" | "foreground")
+                )
+            })
+            .nth(index)
+            .expect("data layer not found at index")
+    }
 
     #[test]
     fn test_execute_and_render() {
@@ -644,7 +782,7 @@ mod tests {
 
         // The encoding should have a theta channel with a scale range offset by 90 degrees
         // 90 degrees = π/2 radians
-        let layer = json["layer"].as_array().unwrap().first().unwrap();
+        let layer = data_layer(&json, 0);
         let theta = &layer["encoding"]["theta"];
         assert!(theta.is_object(), "theta encoding should exist");
 
@@ -689,7 +827,7 @@ mod tests {
         let json: serde_json::Value = serde_json::from_str(&result).unwrap();
 
         // The theta encoding should NOT have a scale with range when start is 0 (default)
-        let layer = json["layer"].as_array().unwrap().first().unwrap();
+        let layer = data_layer(&json, 0);
         let theta = &layer["encoding"]["theta"];
         assert!(theta.is_object(), "theta encoding should exist");
 
@@ -717,7 +855,7 @@ mod tests {
         let result = writer.render(&spec).unwrap();
 
         let json: serde_json::Value = serde_json::from_str(&result).unwrap();
-        let layer = json["layer"].as_array().unwrap().first().unwrap();
+        let layer = data_layer(&json, 0);
         let theta = &layer["encoding"]["theta"];
         let range = theta["scale"]["range"].as_array().unwrap();
 
@@ -752,7 +890,7 @@ mod tests {
         let result = writer.render(&spec).unwrap();
 
         let json: serde_json::Value = serde_json::from_str(&result).unwrap();
-        let layer = json["layer"].as_array().unwrap().first().unwrap();
+        let layer = data_layer(&json, 0);
         let theta = &layer["encoding"]["theta"];
         let range = theta["scale"]["range"].as_array().unwrap();
 
@@ -780,7 +918,7 @@ mod tests {
 
         // Helper to check encoding keys
         fn check_encoding_keys(json: &serde_json::Value, test_name: &str) {
-            let layer = json["layer"].as_array().unwrap().first().unwrap();
+            let layer = data_layer(json, 0);
             assert!(
                 layer["encoding"].get("theta").is_some(),
                 "{} should produce theta encoding, got keys: {:?}",
@@ -859,7 +997,7 @@ mod tests {
         let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
 
         fn check_cartesian_keys(json: &serde_json::Value, test_name: &str) {
-            let layer = json["layer"].as_array().unwrap().first().unwrap();
+            let layer = data_layer(json, 0);
             assert!(
                 layer["encoding"].get("x").is_some(),
                 "{} should produce x encoding, got keys: {:?}",
@@ -1114,7 +1252,7 @@ mod tests {
         let result = writer.render(&spec).unwrap();
 
         let json: serde_json::Value = serde_json::from_str(&result).unwrap();
-        let layer = json["layer"].as_array().unwrap().first().unwrap();
+        let layer = data_layer(&json, 0);
 
         // Check radius scale has range with expressions
         let radius = &layer["encoding"]["radius"];
@@ -1133,8 +1271,8 @@ mod tests {
             range[1]["expr"]
                 .as_str()
                 .unwrap()
-                .contains("min(width,height)/2"),
-            "Outer radius expression should be min(width,height)/2, got: {:?}",
+                .contains("min(width, height) / 2"),
+            "Outer radius expression should contain min(width, height) / 2, got: {:?}",
             range[1]
         );
     }
@@ -1160,7 +1298,7 @@ mod tests {
         let result = writer.render(&spec).unwrap();
 
         let json: serde_json::Value = serde_json::from_str(&result).unwrap();
-        let layer = json["layer"].as_array().unwrap().first().unwrap();
+        let layer = data_layer(&json, 0);
 
         // Verify y and y2 encodings exist (stacked bars use y/y2 for range)
         let encoding = &layer["encoding"];
@@ -1193,7 +1331,7 @@ mod tests {
         let result = writer.render(&spec).unwrap();
 
         let json: serde_json::Value = serde_json::from_str(&result).unwrap();
-        let layer = json["layer"].as_array().unwrap().first().unwrap();
+        let layer = data_layer(&json, 0);
 
         // Verify y and y2 encodings exist (stacked bars use y/y2 for range)
         let encoding = &layer["encoding"];
@@ -1231,7 +1369,7 @@ mod tests {
 
         // Should succeed without "discrete scale does not support SETTING 'expand'" error
         let json: serde_json::Value = serde_json::from_str(&result).unwrap();
-        let layer = json["layer"].as_array().unwrap().first().unwrap();
+        let layer = data_layer(&json, 0);
 
         // Verify stacking works (y2 encoding exists for stacked bars)
         let encoding = &layer["encoding"];
@@ -1263,7 +1401,7 @@ mod tests {
         let result = writer.render(&spec).unwrap();
 
         let json: serde_json::Value = serde_json::from_str(&result).unwrap();
-        let layer = json["layer"].as_array().unwrap().first().unwrap();
+        let layer = data_layer(&json, 0);
 
         // Verify xOffset encoding exists (dodged bars use xOffset for displacement)
         let encoding = &layer["encoding"];
@@ -1308,7 +1446,7 @@ mod tests {
         let result = writer.render(&spec).unwrap();
 
         let json: serde_json::Value = serde_json::from_str(&result).unwrap();
-        let layer = json["layer"].as_array().unwrap().first().unwrap();
+        let layer = data_layer(&json, 0);
 
         // Verify no xOffset encoding (identity position)
         let encoding = &layer["encoding"];
@@ -1336,7 +1474,7 @@ mod tests {
         let result = writer.render(&spec).unwrap();
 
         let json: serde_json::Value = serde_json::from_str(&result).unwrap();
-        let layer = json["layer"].as_array().unwrap().first().unwrap();
+        let layer = data_layer(&json, 0);
         let encoding = &layer["encoding"];
 
         // With PROJECT y, x TO cartesian:
@@ -1377,7 +1515,7 @@ mod tests {
         let result = writer.render(&spec).unwrap();
 
         let json: serde_json::Value = serde_json::from_str(&result).unwrap();
-        let layer = json["layer"].as_array().unwrap().first().unwrap();
+        let layer = data_layer(&json, 0);
         let encoding = &layer["encoding"];
 
         // Verify theta encoding has the label

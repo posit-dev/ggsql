@@ -17,6 +17,10 @@ function caseInsensitive(keyword) {
 module.exports = grammar({
   name: 'ggsql',
 
+  inline: $ => [
+    $.source_ref,
+  ],
+
   conflicts: $ => [
     [$.sql_portion],
   ],
@@ -60,8 +64,10 @@ module.exports = grammar({
       $.from_clause,
       repeat(choice(
         $.window_function,
+        $.case_expression,
         $.cast_expression,
         $.function_call,
+        $.jinja_template,
         $.non_from_sql_keyword,
         $.string,
         $.number,
@@ -80,8 +86,10 @@ module.exports = grammar({
     select_body: $ => prec.left(repeat1(choice(
       $.from_clause,
       $.window_function,  // Window functions like ROW_NUMBER() OVER (...)
+      $.case_expression,  // CASE WHEN ... THEN ... END
       $.cast_expression,  // CAST(expr AS type), TRY_CAST(expr AS type)
       $.function_call,    // Regular function calls like COUNT(), SUM()
+      $.jinja_template,
       $.sql_keyword,
       $.string,
       $.number,
@@ -126,6 +134,7 @@ module.exports = grammar({
         $.identifier,
         $.string,
         $.number,
+        $.jinja_template,
         $.subquery,
         ',', '(', ')', '*', '.', '=',
         /[^\s;(),'"]+/
@@ -141,6 +150,7 @@ module.exports = grammar({
         $.identifier,
         $.string,
         $.number,
+        $.jinja_template,
         $.subquery,
         ',', '(', ')', '*', '.', '=',
         /[^\s;(),'"]+/
@@ -155,6 +165,7 @@ module.exports = grammar({
         $.identifier,
         $.string,
         $.number,
+        $.jinja_template,
         $.subquery,
         ',', '(', ')', '*', '.', '=',
         /[^\s;(),'"]+/
@@ -169,6 +180,7 @@ module.exports = grammar({
         $.identifier,
         $.string,
         $.number,
+        $.jinja_template,
         $.subquery,
         ',', '(', ')', '*', '.', '=',
         /[^\s;(),'"]+/
@@ -177,6 +189,7 @@ module.exports = grammar({
 
     other_sql_statement: $ => prec(-1, repeat1(choice(
       $.non_from_sql_keyword,
+      $.jinja_template,
       /[^\s;(),'"]+/,
       $.string,
       $.number,
@@ -210,16 +223,54 @@ module.exports = grammar({
     // Token-by-token fallback for any other subquery content
     subquery_body: $ => repeat1(choice(
       $.window_function,
+      $.case_expression,
       $.cast_expression,
       $.function_call,
       $.sql_keyword,
       $.string,
       $.number,
+      $.jinja_template,
       $.identifier,
       $.subquery,
       ',', '*', '.', '=', '<', '>', '!', '::',
       token(/[^\s;(),'\"]+/)
     )),
+
+    // CASE expression: CASE ... END bracketed as a structural unit so that END
+    // is consumed before the outer function_call's closing ')' can grab it.
+    case_expression: $ => prec(3, seq(
+      caseInsensitive('CASE'),
+      repeat($.case_body_token),
+      caseInsensitive('END')
+    )),
+
+    case_body_token: $ => choice(
+      caseInsensitive('WHEN'),
+      caseInsensitive('THEN'),
+      caseInsensitive('ELSE'),
+      $.string,
+      $.number,
+      $.case_expression,
+      $.cast_expression,
+      $.function_call,
+      $.subquery, // also handles IN-lists like ('a', 'b')
+      $.jinja_template,
+      token('='), token('!='), token('<>'), token('<='), token('>='),
+      token('<'), token('>'),
+      token('+'), token('-'), token('*'), token('/'), token('%'), token('||'), token('::'),
+      caseInsensitive('AND'),
+      caseInsensitive('OR'),
+      caseInsensitive('NOT'),
+      caseInsensitive('IN'),
+      caseInsensitive('IS'),
+      caseInsensitive('NULL'),
+      caseInsensitive('LIKE'),
+      caseInsensitive('ILIKE'),
+      caseInsensitive('BETWEEN'),
+      token(','),
+      token('.'),
+      $.identifier,
+    ),
 
     // CAST/TRY_CAST expression: CAST(expr AS type) or TRY_CAST(expr AS type)
     // Higher precedence than function_call to win over treating CAST as a regular function
@@ -358,7 +409,10 @@ module.exports = grammar({
       $.qualified_name,  // Handles both simple identifiers and table.column
       $.number,
       $.string,
+      $.jinja_template,
       '*',
+      // CASE expression
+      $.case_expression,
       // CAST/TRY_CAST expression
       $.cast_expression,
       // Nested function call
@@ -430,9 +484,16 @@ module.exports = grammar({
       repeat(seq('.', $.identifier))
     )),
 
+    source_ref: $ => choice(
+      $.qualified_name,
+      $.string,
+      $.namespaced_identifier,
+      $.jinja_template
+    ),
+
     table_ref: $ => prec.right(seq(
       choice(
-        field('table', choice($.qualified_name, $.string, $.namespaced_identifier)),
+        field('table', $.source_ref),
         $.subquery,
       ),
       optional(seq(
@@ -534,7 +595,8 @@ module.exports = grammar({
     geom_type: $ => choice(
       'point', 'line', 'path', 'bar', 'area', 'tile', 'polygon', 'ribbon',
       'histogram', 'density', 'smooth', 'boxplot', 'violin',
-      'text', 'label', 'segment', 'arrow', 'rule', 'range'
+      'text', 'label', 'segment', 'arrow', 'rule', 'range',
+      'spatial'
     ),
 
     // MAPPING clause for aesthetic mappings: MAPPING col AS x, "blue" AS color [FROM source]
@@ -550,14 +612,14 @@ module.exports = grammar({
         // Option 1: Just FROM (inherit global mappings)
         seq(
           caseInsensitive('FROM'),
-          field('layer_source', choice($.qualified_name, $.string, $.namespaced_identifier))
+          field('layer_source', $.source_ref)
         ),
         // Option 2: Mapping list (uses shared structure), optionally followed by FROM
         seq(
           $.mapping_list,
           optional(seq(
             caseInsensitive('FROM'),
-            field('layer_source', choice($.qualified_name, $.string, $.namespaced_identifier))
+            field('layer_source', $.source_ref)
           ))
         )
       )
@@ -716,7 +778,7 @@ module.exports = grammar({
       // Text aesthetics
       'label', 'typeface', 'fontweight', 'italic', 'fontsize', 'hjust', 'vjust', 'rotation',
       // Specialty aesthetics,
-      'slope',
+      'slope', 'geometry',
       // Facet aesthetics
       'panel', 'row', 'column',
       // Computed variables
@@ -886,6 +948,15 @@ module.exports = grammar({
       $.bare_identifier,
       $.quoted_identifier
     ),
+
+    // Jinja templates are opaque SQL-side tokens. dbt/fusion renders these
+    // before ggsql executes SQL, but the parser must preserve them while
+    // splitting SQL from VISUALISE.
+    jinja_template: $ => token(choice(
+      seq('{{', repeat(choice(/[^}]+/, /}[^}]/)), '}}'),
+      seq('{%', repeat(choice(/[^%]+/, /%[^%]/)), '%}'),
+      seq('{#', repeat(choice(/[^#]+/, /#[^#]/)), '#}')
+    )),
 
     // Identifier for use in filter expressions - uses lower precedence so that
     // keywords like PARTITION and ORDER can take priority and end the filter

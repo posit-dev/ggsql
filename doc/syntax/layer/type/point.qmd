@@ -23,9 +23,12 @@ The following aesthetics are recognised by the point layer.
 
 ## Settings
 * `position`: Position adjustment. One of `'identity'` (default), `'stack'`, `'dodge'`, or `'jitter'`
+* `aggregate` Aggregation functions to apply per group: 
+    * `null` apply no group aggregation (default).
+    * A single string or an array of strings. See an overview of aggregation function in [the `DRAW` documentation](../../clause/draw.qmd#aggregate) and more information in the *Data transformation* section below.
 
 ## Data transformation
-The point layer does not transform its data but passes it through unchanged
+This layer supports aggregation through the `aggregate` setting. Aggregation groups are defined by `PARTITION BY` and all discrete mappings. Within each group, every numeric mapping is replaced in place by its aggregated value. Use a default like `'mean'` or target individual aesthetics with `'<aes>:<func>'`. See [the `DRAW` documentation](../../clause/draw.qmd#aggregate) for the full setting shape.
 
 ## Orientation
 The point layer has no orientation. The axes are treated symmetrically.
@@ -71,4 +74,14 @@ Use density distribution for a violin-like jitter effect, where jitter width sca
 VISUALISE species AS x, bill_dep AS y FROM ggsql:penguins
 DRAW point 
   SETTING position => 'jitter', distribution => 'density'
+```
+
+Use aggregation to show a single point per group
+
+```{ggsql}
+VISUALISE species AS x, island AS y, body_mass AS fill, body_mass AS size 
+  FROM ggsql:penguins
+DRAW point 
+  SETTING aggregate => ('fill:mean', 'size:count') 
+SCALE size TO (5, 20)
 ```

@@ -187,11 +187,16 @@ pub fn apply_remappings_post_query(df: DataFrame, layer: &Layer) -> Result<DataF
         }
     }
 
-    // Drop any remaining __ggsql_stat_* columns that weren't consumed by remappings.
+    // Drop any remaining __ggsql_stat_* columns that weren't consumed by
+    // remappings — except those promoted to `partition_by` post-stat (e.g. the
+    // Aggregate stat's `__ggsql_stat_aggregate` column when the user didn't
+    // remap it; downstream renderers need it as a grouping key).
     let stat_cols: Vec<String> = df
         .get_column_names()
         .into_iter()
-        .filter(|name| naming::is_stat_column(name))
+        .filter(|name| {
+            naming::is_stat_column(name) && !layer.partition_by.contains(&name.to_string())
+        })
         .collect();
     if !stat_cols.is_empty() {
         df = df.drop_many(&stat_cols)?;
@@ -271,9 +276,23 @@ pub fn apply_pre_stat_transform(
     aesthetic_schema: &Schema,
     scales: &[Scale],
     dialect: &dyn SqlDialect,
+    aesthetic_ctx: &AestheticContext,
 ) -> String {
     let mut transform_exprs: Vec<(String, String)> = vec![];
     let mut transformed_columns: HashSet<String> = HashSet::new();
+
+    // When a layer has `aggregate => …`, scale-driven rewrites are deferred to
+    // after the stat for aesthetics where running them up-front would defeat
+    // the aggregate. The post-stat machinery (`apply_post_stat_binning`,
+    // `apply_scale_oob`) picks the deferred ones up against the aggregated
+    // values in the materialised DataFrame.
+    let agg_buckets = crate::plot::layer::geom::stat_aggregate::aggregated_aesthetics(
+        &layer.parameters,
+        &layer.mappings,
+        aesthetic_schema,
+        aesthetic_ctx,
+        layer.geom.aggregate_domain_aesthetics().unwrap_or(&[]),
+    );
 
     // Check layer mappings for aesthetics with scales that need pre-stat transformation
     // Handles both column mappings and literal mappings (which are injected as synthetic columns)
@@ -303,6 +322,27 @@ pub fn apply_pre_stat_transform(
         // Find scale for this aesthetic
         if let Some(scale) = scales.iter().find(|s| s.aesthetic == *aesthetic) {
             if let Some(ref scale_type) = scale.scale_type {
+                // Defer this rewrite when the layer aggregates and the scale
+                // semantics call for it (see post-stat machinery for how the
+                // deferred rewrite actually runs). `Binned` only defers when
+                // the aesthetic is *explicitly* targeted (untargeted Binned
+                // still drives meaningful pre-stat grouping); OOB-flavoured
+                // rewrites defer whenever the aesthetic is being aggregated.
+                if let Some((ref targeted, ref aggregated)) = agg_buckets {
+                    use crate::plot::scale::ScaleTypeKind;
+                    let kind = scale_type.scale_type_kind();
+                    let defer = match kind {
+                        ScaleTypeKind::Binned => targeted.contains(aesthetic),
+                        ScaleTypeKind::Continuous
+                        | ScaleTypeKind::Discrete
+                        | ScaleTypeKind::Ordinal => aggregated.contains(aesthetic),
+                        ScaleTypeKind::Identity => false,
+                    };
+                    if defer {
+                        continue;
+                    }
+                }
+
                 // Get pre-stat SQL transformation from scale type (if applicable)
                 // Each scale type's pre_stat_transform_sql() returns None if not applicable
                 if let Some(sql) =
@@ -436,6 +476,7 @@ pub fn apply_layer_transforms<F>(
     scales: &[Scale],
     dialect: &dyn SqlDialect,
     execute_query: &F,
+    aesthetic_ctx: &AestheticContext,
 ) -> Result<String>
 where
     F: Fn(&str) -> Result<DataFrame>,
@@ -482,6 +523,7 @@ where
         &aesthetic_schema,
         scales,
         dialect,
+        aesthetic_ctx,
     );
 
     // Build group_by columns from partition_by
@@ -511,6 +553,7 @@ where
         &layer.parameters,
         execute_query,
         dialect,
+        aesthetic_ctx,
     )?;
 
     // Flip user remappings BEFORE merging defaults for Transposed orientation.
@@ -582,6 +625,37 @@ where
             // Remove consumed aesthetics - they were used as stat input, not visual output
             for aes in &consumed_aesthetics {
                 layer.mappings.aesthetics.remove(aes);
+            }
+
+            // Auto-remap stat columns whose names match aesthetics that were
+            // consumed by the stat (e.g. Aggregate's per-aesthetic outputs). The
+            // geom can't list these in `default_remappings` because the set of
+            // mapped aesthetics is dynamic per layer.
+            for stat in &stat_columns {
+                if final_remappings.contains_key(stat) {
+                    continue;
+                }
+                if consumed_aesthetics.contains(stat) {
+                    final_remappings.insert(stat.clone(), stat.clone());
+                }
+            }
+
+            // The synthetic `aggregate` stat column produced by an exploded
+            // Aggregate stat tags each row with its function name. For mark
+            // types that connect rows within a group (line, area, path,
+            // polygon) we add this column to `layer.partition_by` so e.g.
+            // `aggregate => ('y:min', 'y:max')` renders as two separate lines
+            // rather than one zigzag through both. Resolves to the post-rename
+            // data-column name: if the user remapped `aggregate AS <aes>`, the
+            // prefixed aesthetic column; otherwise the stat column.
+            if stat_columns.iter().any(|s| s == "aggregate") {
+                let partition_col = match final_remappings.get("aggregate") {
+                    Some(aes) => naming::aesthetic_column(aes),
+                    None => naming::stat_column("aggregate"),
+                };
+                if !layer.partition_by.contains(&partition_col) {
+                    layer.partition_by.push(partition_col);
+                }
             }
 
             // Apply stat_columns to layer aesthetics using the remappings

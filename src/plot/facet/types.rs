@@ -64,6 +64,23 @@ impl Facet {
     pub fn is_grid(&self) -> bool {
         self.layout.is_grid()
     }
+
+    /// Whether the given position aesthetic has free (independent) scales.
+    ///
+    /// Accepts internal position names and their variants:
+    /// `"pos1"`, `"pos1min"`, `"pos1end"`, `"pos2"`, `"pos2max"`, `"pos3"`, etc.
+    pub fn is_free(&self, aesthetic: &str) -> bool {
+        use crate::plot::ArrayElement;
+        let Some(ParameterValue::Array(arr)) = self.properties.get("free") else {
+            return false;
+        };
+        for (idx, prefix) in ["pos1", "pos2", "pos3"].iter().enumerate() {
+            if aesthetic.starts_with(prefix) {
+                return matches!(arr.get(idx), Some(ArrayElement::Boolean(true)));
+            }
+        }
+        false
+    }
 }
 
 impl FacetLayout {
@@ -219,5 +236,48 @@ impl FacetLayout {
                 GRID_PARAMS
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::plot::ArrayElement;
+
+    fn facet_with_free(free: Vec<bool>) -> Facet {
+        let mut f = Facet::new(FacetLayout::Wrap {
+            variables: vec!["g".to_string()],
+        });
+        f.properties.insert(
+            "free".to_string(),
+            ParameterValue::Array(free.into_iter().map(ArrayElement::Boolean).collect()),
+        );
+        f
+    }
+
+    #[test]
+    fn is_free_checks_position_and_variants() {
+        let f = facet_with_free(vec![true, false]);
+        assert!(f.is_free("pos1"));
+        assert!(f.is_free("pos1min"));
+        assert!(f.is_free("pos1end"));
+        assert!(!f.is_free("pos2"));
+        assert!(!f.is_free("pos2max"));
+    }
+
+    #[test]
+    fn is_free_returns_false_for_material_aesthetics() {
+        let f = facet_with_free(vec![true, true]);
+        assert!(!f.is_free("color"));
+        assert!(!f.is_free("fill"));
+    }
+
+    #[test]
+    fn is_free_returns_false_without_free_property() {
+        let f = Facet::new(FacetLayout::Wrap {
+            variables: vec!["g".to_string()],
+        });
+        assert!(!f.is_free("pos1"));
+        assert!(!f.is_free("pos2"));
     }
 }

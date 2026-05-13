@@ -4,6 +4,7 @@
 //! settings, and values. These are the building blocks used in AST types
 //! to capture what the user specified in their query.
 
+use crate::naming;
 use crate::reader::SqlDialect;
 use arrow::datatypes::DataType;
 use chrono::{DateTime, Datelike, NaiveDate, NaiveDateTime, NaiveTime, Timelike};
@@ -673,7 +674,7 @@ impl ArrayElement {
     /// Used for generating SQL expressions from literal values.
     pub fn to_sql(&self, dialect: &dyn SqlDialect) -> String {
         match self {
-            Self::String(s) => format!("'{}'", s.replace('\'', "''")),
+            Self::String(s) => naming::quote_literal(s),
             Self::Number(n) => n.to_string(),
             Self::Boolean(b) => dialect.sql_boolean_literal(*b),
             Self::Date(d) => dialect.sql_date_literal(*d),
@@ -902,7 +903,7 @@ impl ParameterValue {
     /// Arrays are handled separately in annotation layer VALUES clause generation.
     pub fn to_sql(&self, dialect: &dyn SqlDialect) -> String {
         match self {
-            ParameterValue::String(s) => format!("'{}'", s.replace('\'', "''")),
+            ParameterValue::String(s) => naming::quote_literal(s),
             ParameterValue::Number(n) => n.to_string(),
             ParameterValue::Boolean(b) => dialect.sql_boolean_literal(*b),
             ParameterValue::Array(_) => {
@@ -1351,6 +1352,25 @@ impl ParamConstraint {
             array: TypeConstraint::Constrained(ArrayConstraint::of_strings(
                 StringConstraint::one_of(values),
             )),
+            allow_null: true,
+        }
+    }
+
+    /// Any string or array of any strings (with null elements allowed) — for
+    /// the `aggregate` parameter. Per-entry vocabulary is checked downstream
+    /// by `stat_aggregate::parse_aggregate_param`; this constraint just pins
+    /// the structural shape (string / array-of-strings / null).
+    pub const fn string_or_string_array_unconstrained() -> Self {
+        Self {
+            number: TypeConstraint::Forbidden,
+            string: TypeConstraint::Any,
+            boolean: TypeConstraint::Forbidden,
+            array: TypeConstraint::Constrained(ArrayConstraint {
+                element: ArrayElementConstraint::String(StringConstraint::unconstrained()),
+                min_len: None,
+                max_len: None,
+                allow_null_elements: true,
+            }),
             allow_null: true,
         }
     }

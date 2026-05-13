@@ -84,11 +84,12 @@ DRAW bar
 
 See how we didn't have to specify the polar coordinate system in the last example because we have a mapping to radius, allowing ggsql to deduce the coordinate system automatically.
 
-If we instead map the species to angle we end up with a rose plot
+If we instead map the species to angle we end up with a rose plot. We turn off the automatic conversion to radar plots for discrete angle categories here.
 
 ```{ggsql}
 VISUALISE species AS angle, species AS fill FROM ggsql:penguins
 DRAW bar
+PROJECT TO polar SETTING radar => false
 ```
 
 Moving back to the regular pie chart, we might be interested in comparing how the species distribution varies by sex. We can do this with faceting:

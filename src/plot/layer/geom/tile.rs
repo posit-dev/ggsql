@@ -2,12 +2,16 @@
 
 use std::collections::HashMap;
 
+use super::stat_aggregate;
 use super::types::POSITION_VALUES;
 use super::types::{get_column_name, get_quoted_column_name};
-use super::{DefaultAesthetics, GeomTrait, GeomType, ParamConstraint, StatResult};
+use super::{
+    has_aggregate_param, DefaultAesthetics, GeomTrait, GeomType, ParamConstraint, StatResult,
+};
 use crate::naming;
-use crate::plot::types::{DefaultAestheticValue, ParameterValue};
+use crate::plot::types::{ColumnInfo, DefaultAestheticValue, ParameterValue};
 use crate::plot::{DefaultParamValue, ParamDefinition};
+use crate::reader::SqlDialect;
 use crate::{DataFrame, GgsqlError, Mappings, Result};
 
 use super::types::Schema;
@@ -70,11 +74,14 @@ impl GeomTrait for Tile {
     }
 
     fn default_params(&self) -> &'static [ParamDefinition] {
-        const PARAMS: &[ParamDefinition] = &[ParamDefinition {
-            name: "position",
-            default: DefaultParamValue::String("identity"),
-            constraint: ParamConstraint::string_option(POSITION_VALUES),
-        }];
+        const PARAMS: &[ParamDefinition] = &[
+            ParamDefinition {
+                name: "position",
+                default: DefaultParamValue::String("identity"),
+                constraint: ParamConstraint::string_option(POSITION_VALUES),
+            },
+            super::types::AGGREGATE_PARAM,
+        ];
         PARAMS
     }
 
@@ -95,6 +102,16 @@ impl GeomTrait for Tile {
         true
     }
 
+    /// Every spatial slot is pinned as a group key — the rectangle's position
+    /// and size *define* the group, they are never the thing being summarised.
+    /// Material aesthetics (fill, stroke, opacity, …) pass through to the
+    /// aggregate as normal.
+    fn aggregate_domain_aesthetics(&self) -> Option<&'static [&'static str]> {
+        Some(&[
+            "pos1", "pos1min", "pos1max", "width", "pos2", "pos2min", "pos2max", "height",
+        ])
+    }
+
     fn apply_stat_transform(
         &self,
         query: &str,
@@ -103,10 +120,122 @@ impl GeomTrait for Tile {
         group_by: &[String],
         parameters: &HashMap<String, ParameterValue>,
         _execute_query: &dyn Fn(&str) -> Result<DataFrame>,
-        _dialect: &dyn crate::reader::SqlDialect,
+        dialect: &dyn SqlDialect,
+        aesthetic_ctx: &crate::plot::aesthetic::AestheticContext,
     ) -> Result<StatResult> {
-        stat_tile(query, schema, aesthetics, group_by, parameters)
+        // When `aggregate` is set, collapse rows first, then run the standard
+        // tile parameter consolidation over the aggregated result. The wrapper
+        // re-aliases stat-prefixed columns back to `__ggsql_aes_*` so stat_tile
+        // sees the same column shape as it does in the unaggregated path. When
+        // aggregate explodes (multi-function), stat_tile is given an extended
+        // schema so it passes the synthetic `__ggsql_stat_aggregate__` tag
+        // through to layer.rs (which uses it to drive `partition_by`).
+        let (working_query, exploded) = if has_aggregate_param(parameters) {
+            let agg = stat_aggregate::apply(
+                query,
+                schema,
+                aesthetics,
+                group_by,
+                parameters,
+                dialect,
+                aesthetic_ctx,
+                self.aggregate_domain_aesthetics().unwrap_or(&[]),
+            )?;
+            match agg {
+                StatResult::Transformed {
+                    query: agg_query,
+                    stat_columns: agg_stats,
+                    consumed_aesthetics,
+                    ..
+                } => {
+                    let exploded = agg_stats.iter().any(|s| s == "aggregate");
+                    (
+                        rename_agg_stats_to_aes(agg_query, &consumed_aesthetics),
+                        exploded,
+                    )
+                }
+                StatResult::Identity => (query.to_string(), false),
+            }
+        } else {
+            (query.to_string(), false)
+        };
+
+        // For exploded aggregate, splice the synthetic stat column into the
+        // schema so stat_tile's pass-through projection emits it. Avoids
+        // dropping the per-row function tag that `partition_by` needs.
+        let extended_schema: Schema;
+        let schema_for_tile = if exploded {
+            extended_schema = schema
+                .iter()
+                .cloned()
+                .chain(std::iter::once(ColumnInfo {
+                    name: naming::stat_column("aggregate"),
+                    dtype: arrow::datatypes::DataType::Utf8,
+                    is_discrete: true,
+                    min: None,
+                    max: None,
+                }))
+                .collect();
+            &extended_schema
+        } else {
+            schema
+        };
+
+        let tile_result = stat_tile(
+            &working_query,
+            schema_for_tile,
+            aesthetics,
+            group_by,
+            parameters,
+        )?;
+
+        if exploded {
+            if let StatResult::Transformed {
+                query,
+                mut stat_columns,
+                dummy_columns,
+                consumed_aesthetics,
+            } = tile_result
+            {
+                if !stat_columns.iter().any(|s| s == "aggregate") {
+                    stat_columns.push("aggregate".to_string());
+                }
+                return Ok(StatResult::Transformed {
+                    query,
+                    stat_columns,
+                    dummy_columns,
+                    consumed_aesthetics,
+                });
+            }
+        }
+        Ok(tile_result)
     }
+}
+
+/// Wrap an aggregated query so each `__ggsql_stat_<aes>__` column is also
+/// exposed as `__ggsql_aes_<aes>__`. Lets downstream stages treat the
+/// aggregated values as if they were original aesthetic columns, which is
+/// exactly the substitution the tile layer wants when only material
+/// aesthetics get aggregated.
+fn rename_agg_stats_to_aes(agg_query: String, consumed: &[String]) -> String {
+    if consumed.is_empty() {
+        return agg_query;
+    }
+    let aliases: Vec<String> = consumed
+        .iter()
+        .map(|aes| {
+            format!(
+                "{} AS {}",
+                naming::quote_ident(&naming::stat_column(aes)),
+                naming::quote_ident(&naming::aesthetic_column(aes)),
+            )
+        })
+        .collect();
+    format!(
+        "SELECT *, {} FROM ({}) AS \"__ggsql_post_agg__\"",
+        aliases.join(", "),
+        agg_query
+    )
 }
 
 impl std::fmt::Display for Tile {
@@ -895,6 +1024,145 @@ mod tests {
             // They should only appear as stat columns
             assert!(query.contains("\"__ggsql_aes_width__\" AS \"__ggsql_stat_width"));
             assert!(query.contains("\"__ggsql_aes_height__\" AS \"__ggsql_stat_height"));
+        }
+    }
+
+    #[test]
+    fn test_aggregate_dispatches_to_aggregate_then_tile() {
+        use crate::plot::aesthetic::AestheticContext;
+        use crate::reader::AnsiDialect;
+
+        let mut aesthetics = Mappings::new();
+        for aes in ["pos1", "pos2", "fill"] {
+            aesthetics.insert(
+                aes.to_string(),
+                AestheticValue::standard_column(naming::aesthetic_column(aes)),
+            );
+        }
+        // Heatmap shape: discrete x and y, continuous fill.
+        let mut schema = create_schema(&["pos1", "pos2"]);
+        schema.push(ColumnInfo {
+            name: "__ggsql_aes_fill__".to_string(),
+            dtype: DataType::Float64,
+            is_discrete: false,
+            min: None,
+            max: None,
+        });
+        let ctx = AestheticContext::from_static(&["x", "y"], &[]);
+        let mut parameters = HashMap::new();
+        parameters.insert(
+            "aggregate".to_string(),
+            ParameterValue::String("mean".to_string()),
+        );
+
+        let result = Tile
+            .apply_stat_transform(
+                "SELECT * FROM data",
+                &schema,
+                &aesthetics,
+                &[],
+                &parameters,
+                &|_| panic!("execute_query should not run during stat building"),
+                &AnsiDialect,
+                &ctx,
+            )
+            .unwrap();
+
+        match result {
+            StatResult::Transformed { query, .. } => {
+                // Aggregate stage: GROUP BY pos1/pos2, AVG of fill into a stat column.
+                assert!(
+                    query.contains("GROUP BY"),
+                    "expected GROUP BY, got: {query}"
+                );
+                assert!(
+                    query.contains("AVG(\"__ggsql_aes_fill__\")"),
+                    "expected AVG over fill, got: {query}"
+                );
+                // Re-alias stage: stat fill column re-exposed as the aesthetic name.
+                let expected_alias = format!(
+                    "{} AS {}",
+                    naming::quote_ident(&naming::stat_column("fill")),
+                    naming::quote_ident(&naming::aesthetic_column("fill")),
+                );
+                assert!(
+                    query.contains(&expected_alias),
+                    "expected re-alias '{expected_alias}', got: {query}"
+                );
+                // Tile stage: discrete-x position computation runs on top.
+                assert!(
+                    query.contains("\"__ggsql_aes_pos1__\" AS \"__ggsql_stat_pos1"),
+                    "expected tile pos1 stat, got: {query}"
+                );
+            }
+            _ => panic!("expected Transformed"),
+        }
+    }
+
+    #[test]
+    fn test_aggregate_explosion_propagates_synthetic_column() {
+        use crate::plot::aesthetic::AestheticContext;
+        use crate::reader::AnsiDialect;
+
+        let mut aesthetics = Mappings::new();
+        for aes in ["pos1", "pos2", "fill"] {
+            aesthetics.insert(
+                aes.to_string(),
+                AestheticValue::standard_column(naming::aesthetic_column(aes)),
+            );
+        }
+        let mut schema = create_schema(&["pos1", "pos2"]);
+        schema.push(ColumnInfo {
+            name: "__ggsql_aes_fill__".to_string(),
+            dtype: DataType::Float64,
+            is_discrete: false,
+            min: None,
+            max: None,
+        });
+        let ctx = AestheticContext::from_static(&["x", "y"], &[]);
+        let mut parameters = HashMap::new();
+        parameters.insert(
+            "aggregate".to_string(),
+            ParameterValue::Array(vec![
+                crate::plot::types::ArrayElement::String("fill:min".to_string()),
+                crate::plot::types::ArrayElement::String("fill:max".to_string()),
+            ]),
+        );
+
+        let result = Tile
+            .apply_stat_transform(
+                "SELECT * FROM data",
+                &schema,
+                &aesthetics,
+                &[],
+                &parameters,
+                &|_| panic!("execute_query should not run during stat building"),
+                &AnsiDialect,
+                &ctx,
+            )
+            .unwrap();
+
+        match result {
+            StatResult::Transformed {
+                query,
+                stat_columns,
+                ..
+            } => {
+                assert!(
+                    query.contains("UNION ALL"),
+                    "expected UNION ALL, got: {query}"
+                );
+                let synth = naming::stat_column("aggregate");
+                assert!(
+                    query.contains(&naming::quote_ident(&synth)),
+                    "synthetic aggregate column dropped from query: {query}"
+                );
+                assert!(
+                    stat_columns.iter().any(|s| s == "aggregate"),
+                    "stat_columns missing 'aggregate' tag: {stat_columns:?}"
+                );
+            }
+            _ => panic!("expected Transformed"),
         }
     }
 

@@ -59,7 +59,7 @@ SCALE shape TO ('star', 'bowtie', 'square-plus')
 ### Default palette (`closed`)
 The default palette contains the 9 closed shapes (first nine in the table above). This is the recommended palette for most use cases, as closed shapes are more visually prominent and easier to distinguish at small sizes.
 
-While the closed shapes are most often used filled, you can also turn if fill and only draw the stroke for a lighter look.
+While the closed shapes are most often used filled, you can also turn off fill and only draw the stroke for a lighter look.
 
 ### Open palette (`open`)
 The `open` palette contains the last 6 shapes in the table. None of these have a fill. You may use this palette when you want transparent shapes that don't obscure data.

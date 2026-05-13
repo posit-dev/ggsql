@@ -43,6 +43,8 @@ mod ribbon;
 mod rule;
 mod segment;
 mod smooth;
+mod spatial;
+pub(crate) mod stat_aggregate;
 mod text;
 mod tile;
 mod violin;
@@ -68,10 +70,12 @@ pub use ribbon::Ribbon;
 pub use rule::Rule;
 pub use segment::Segment;
 pub use smooth::Smooth;
+pub use spatial::Spatial;
 pub use text::Text;
 pub use tile::Tile;
 pub use violin::Violin;
 
+use crate::plot::aesthetic::AestheticContext;
 use crate::plot::types::{ParameterValue, Schema};
 use crate::reader::SqlDialect;
 
@@ -97,6 +101,7 @@ pub enum GeomType {
     Arrow,
     Rule,
     Range,
+    Spatial,
 }
 
 impl std::fmt::Display for GeomType {
@@ -120,6 +125,7 @@ impl std::fmt::Display for GeomType {
             GeomType::Arrow => "arrow",
             GeomType::Rule => "rule",
             GeomType::Range => "range",
+            GeomType::Spatial => "spatial",
         };
         write!(f, "{}", s)
     }
@@ -192,20 +198,62 @@ pub trait GeomTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
         false
     }
 
+    /// Whether the Aggregate stat applies to this geom, and which aesthetics
+    /// stay as group keys when it does.
+    ///
+    /// - `None` — geom doesn't accept the `aggregate` SETTING. Used by the
+    ///   statistical geoms (`histogram`, `density`, `smooth`, `boxplot`,
+    ///   `violin`) that have their own bespoke stats.
+    /// - `Some(&[])` — geom opts in; the stat groups by discrete mappings +
+    ///   `PARTITION BY` only. Most non-statistical geoms.
+    /// - `Some(&[<aes>, …])` — geom opts in *and* pins the listed aesthetics
+    ///   as group keys regardless of their column's continuity. Used by
+    ///   `line`/`area`/`ribbon` (domain axis) and `tile` (every spatial slot).
+    ///
+    /// `supports_aggregate()` is derived from this; geoms only override one
+    /// method to opt in.
+    fn aggregate_domain_aesthetics(&self) -> Option<&'static [&'static str]> {
+        None
+    }
+
+    /// Whether this geom accepts the `aggregate` SETTING parameter.
+    /// Derived from `aggregate_domain_aesthetics`; do not override.
+    fn supports_aggregate(&self) -> bool {
+        self.aggregate_domain_aesthetics().is_some()
+    }
+
     /// Apply statistical transformation to the layer query.
     ///
-    /// The default implementation returns identity (no transformation).
+    /// The default implementation dispatches to the Aggregate stat when
+    /// `supports_aggregate()` is true and the `aggregate` parameter is set;
+    /// otherwise returns identity (no transformation).
     #[allow(clippy::too_many_arguments)]
     fn apply_stat_transform(
         &self,
-        _query: &str,
-        _schema: &Schema,
-        _aesthetics: &Mappings,
-        _group_by: &[String],
-        _parameters: &HashMap<String, ParameterValue>,
+        query: &str,
+        schema: &Schema,
+        aesthetics: &Mappings,
+        group_by: &[String],
+        parameters: &HashMap<String, ParameterValue>,
         _execute_query: &dyn Fn(&str) -> Result<DataFrame>,
-        _dialect: &dyn SqlDialect,
+        dialect: &dyn SqlDialect,
+        aesthetic_ctx: &AestheticContext,
     ) -> Result<StatResult> {
+        if let (Some(domain), true) = (
+            self.aggregate_domain_aesthetics(),
+            has_aggregate_param(parameters),
+        ) {
+            return stat_aggregate::apply(
+                query,
+                schema,
+                aesthetics,
+                group_by,
+                parameters,
+                dialect,
+                aesthetic_ctx,
+                domain,
+            );
+        }
         Ok(StatResult::Identity)
     }
 
@@ -250,6 +298,14 @@ pub trait GeomTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
         }
         valid
     }
+}
+
+/// True when `parameters["aggregate"]` is set to a non-null string or array.
+pub(crate) fn has_aggregate_param(parameters: &HashMap<String, ParameterValue>) -> bool {
+    matches!(
+        parameters.get("aggregate"),
+        Some(ParameterValue::String(_)) | Some(ParameterValue::Array(_))
+    )
 }
 
 /// Wrapper struct for geom trait objects
@@ -350,6 +406,11 @@ impl Geom {
         Self(Arc::new(Range))
     }
 
+    /// Create a Spatial geom
+    pub fn spatial() -> Self {
+        Self(Arc::new(Spatial))
+    }
+
     /// Create a Geom from a GeomType
     pub fn from_type(t: GeomType) -> Self {
         match t {
@@ -371,6 +432,7 @@ impl Geom {
             GeomType::Arrow => Self::arrow(),
             GeomType::Rule => Self::rule(),
             GeomType::Range => Self::range(),
+            GeomType::Spatial => Self::spatial(),
         }
     }
 
@@ -420,6 +482,7 @@ impl Geom {
         parameters: &HashMap<String, ParameterValue>,
         execute_query: &dyn Fn(&str) -> Result<DataFrame>,
         dialect: &dyn SqlDialect,
+        aesthetic_ctx: &AestheticContext,
     ) -> Result<StatResult> {
         self.0.apply_stat_transform(
             query,
@@ -429,6 +492,7 @@ impl Geom {
             parameters,
             execute_query,
             dialect,
+            aesthetic_ctx,
         )
     }
 
@@ -453,6 +517,18 @@ impl Geom {
     /// Get valid settings
     pub fn valid_settings(&self) -> Vec<&'static str> {
         self.0.valid_settings()
+    }
+
+    /// Whether this geom accepts the `aggregate` SETTING parameter.
+    pub fn supports_aggregate(&self) -> bool {
+        self.0.supports_aggregate()
+    }
+
+    /// Aesthetics the Aggregate stat must keep as group keys rather than
+    /// aggregating, even if their bound column is continuous. `None` when
+    /// the geom doesn't accept the `aggregate` setting.
+    pub fn aggregate_domain_aesthetics(&self) -> Option<&'static [&'static str]> {
+        self.0.aggregate_domain_aesthetics()
     }
 
     /// Validate aesthetic mappings
@@ -583,6 +659,7 @@ mod tests {
             GeomType::Arrow,
             GeomType::Rule,
             GeomType::Range,
+            GeomType::Spatial,
         ];
 
         // This test is rigged to trigger a compiler error when new variants are added.
@@ -605,7 +682,8 @@ mod tests {
             | GeomType::Segment
             | GeomType::Arrow
             | GeomType::Rule
-            | GeomType::Range => {}
+            | GeomType::Range
+            | GeomType::Spatial => {}
         };
 
         for geom_type in all_geom_types {
