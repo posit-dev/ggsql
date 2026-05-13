@@ -155,14 +155,15 @@ impl CoordTrait for Map {
             .computed
             .insert("frame_bbox".to_string(), bbox.as_parameter_value());
 
-        // Step 6: Generate graticule lines (azimuthal projections need clip-based
-        // extent and ST_Intersection; cylindrical projections don't)
-        let is_azimuthal = matches!(
-            extract_proj_param_str(&crs, "+proj="),
-            Some("ortho") | Some("gnom") | Some("stere")
+        // Step 6: Generate graticule lines (azimuthal and interrupted projections
+        // need clip-based extent and ST_Intersection; cylindrical projections don't)
+        let proj_name = extract_proj_param_str(&crs, "+proj=");
+        let needs_clip = matches!(
+            proj_name,
+            Some("ortho") | Some("gnom") | Some("stere") | Some("igh")
         );
         let (lon_wkt, lat_wkt) =
-            build_graticule(&bbox, &source, is_azimuthal, dialect, execute_query)?;
+            build_graticule(&bbox, &source, needs_clip, dialect, execute_query)?;
         if let Some(wkt) = lon_wkt {
             projection
                 .computed
@@ -584,7 +585,12 @@ fn project_wkt(
     let Some(wkt) = wkt else { return Ok(None) };
     let geom_expr = format!("ST_GeomFromText('{wkt}')");
     let clipped = if has_clip {
-        format!("ST_Intersection({geom_expr}, (SELECT geom FROM {CLIP_BOUNDARY_TABLE}))")
+        // ST_CollectionExtract(..., 2) keeps only linestring components,
+        // discarding stray points from vertex-on-boundary intersections.
+        format!(
+            "ST_CollectionExtract(ST_Intersection({geom_expr}, \
+             (SELECT geom FROM {CLIP_BOUNDARY_TABLE})), 2)"
+        )
     } else {
         geom_expr
     };
@@ -700,6 +706,7 @@ pub fn visible_area_wkt(properties: &HashMap<String, ParameterValue>) -> Option<
             Some(hemisphere_polygon_wkt(center.0, center.1, 88.0))
         }
         Some("laea") | Some("aeqd") => todo!("full-globe azimuthal visible area"),
+        Some("igh") => Some(igh_outline_wkt()),
         Some("merc") => Some(BBox::from_array([-180.0, -85.0, 180.0, 85.0], "").to_polygon_wkt()),
         Some("mill") | Some("eqc") => {
             Some(BBox::from_array([-180.0, -90.0, 180.0, 90.0], "").to_polygon_wkt())
@@ -716,6 +723,55 @@ fn projection_center(crs: &str) -> (f64, f64) {
         .and_then(|s| s.parse().ok())
         .unwrap_or(0.0);
     (lon, lat)
+}
+
+/// Interrupted Goode Homolosine outline polygon with densified meridian edges.
+/// Interrupts: -40° (north), -100°/-20°/80° (south). The outline traces
+/// vertical slits at these meridians with 1° spacing for smooth projection.
+fn igh_outline_wkt() -> String {
+    let mut coords: Vec<String> = Vec::new();
+
+    // Helper: densified meridian segment from lat_start to lat_end at fixed lon
+    let meridian = |coords: &mut Vec<String>, lon: f64, lat_start: f64, lat_end: f64| {
+        let step = if lat_end > lat_start { 5.0 } else { -5.0 };
+        let n = ((lat_end - lat_start) / step).abs() as usize;
+        for i in 0..n {
+            let lat = lat_start + step * i as f64;
+            coords.push(format!("{lon:.2} {lat:.2}"));
+        }
+    };
+
+    // Counter-clockwise ring matching the R/sf approach:
+    // Start top-right (180,90), down east edge, trace bottom east→west with
+    // southern slits, up west edge, trace top west→east with northern slit.
+
+    // East edge: (180, 90) down to (180, -90)
+    meridian(&mut coords, 180.0, 90.0, -90.0);
+
+    // Bottom edge east→west with southern slits at 80°, -20°, -100°
+    coords.push("80.01 -90".to_string());
+    meridian(&mut coords, 80.01, -90.0, 0.0);
+    meridian(&mut coords, 79.99, 0.0, -90.0);
+    coords.push("-19.99 -90".to_string());
+    meridian(&mut coords, -19.99, -90.0, 0.0);
+    meridian(&mut coords, -20.01, 0.0, -90.0);
+    coords.push("-99.99 -90".to_string());
+    meridian(&mut coords, -99.99, -90.0, 0.0);
+    meridian(&mut coords, -100.01, 0.0, -90.0);
+    coords.push("-180 -90".to_string());
+
+    // West edge: (-180, -90) up to (-180, 90)
+    meridian(&mut coords, -180.0, -90.0, 90.0);
+
+    // Top edge west→east with northern slit at -40°
+    coords.push("-40.01 90".to_string());
+    meridian(&mut coords, -40.01, 90.0, 0.0);
+    meridian(&mut coords, -39.99, 0.0, 90.0);
+
+    // Close ring
+    coords.push("180 90".to_string());
+
+    format!("POLYGON(({}))", coords.join(", "))
 }
 
 fn extract_proj_param_str<'a>(crs: &'a str, key: &str) -> Option<&'a str> {

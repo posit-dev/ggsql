@@ -1130,6 +1130,7 @@ fn parse_coord_system(
         "stereographic" => map_proj("stere"),
         "lambert" => map_proj("laea"),
         "azimuthal_equidistant" => map_proj("aeqd"),
+        "igh" => map_proj("igh"),
         _ => Err(GgsqlError::ParseError(format!(
             "Unknown coord type: {}",
             text
