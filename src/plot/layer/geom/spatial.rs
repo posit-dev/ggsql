@@ -40,14 +40,34 @@ impl GeomTrait for Spatial {
 
         // Geometry columns use database-native types that don't have an Arrow equivalent.
         // Convert to standard WKB so the writer can parse them with geozero.
-        let col = naming::quote_ident(&naming::aesthetic_column("geometry"));
-        let wkb_expr = dialect.sql_geometry_to_wkb(&col);
-        Ok(StatResult::Transformed {
-            query: format!("SELECT * REPLACE ({wkb_expr} AS {col}) FROM ({query})"),
-            stat_columns: vec![],
-            dummy_columns: vec![],
-            consumed_aesthetics: vec![],
-        })
+        let geom_col = naming::aesthetic_column("geometry");
+        let col = naming::quote_ident(&geom_col);
+
+        // Skip conversion if the geometry column is already in binary WKB format.
+        let already_wkb = _schema.iter().any(|c| {
+            c.name == geom_col
+                && matches!(
+                    c.dtype,
+                    arrow::datatypes::DataType::Binary | arrow::datatypes::DataType::LargeBinary
+                )
+        });
+
+        if already_wkb {
+            Ok(StatResult::Transformed {
+                query: query.to_string(),
+                stat_columns: vec![],
+                dummy_columns: vec![],
+                consumed_aesthetics: vec![],
+            })
+        } else {
+            let wkb_expr = dialect.sql_geometry_to_wkb(&col);
+            Ok(StatResult::Transformed {
+                query: format!("SELECT * REPLACE ({wkb_expr} AS {col}) FROM ({query})"),
+                stat_columns: vec![],
+                dummy_columns: vec![],
+                consumed_aesthetics: vec![],
+            })
+        }
     }
 }
 
