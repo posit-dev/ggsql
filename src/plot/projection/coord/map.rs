@@ -274,13 +274,6 @@ impl BBox {
         (self.ymin, self.ymax)
     }
 
-    fn to_polygon_wkt(&self) -> String {
-        let (xmin, ymin, xmax, ymax) = (self.xmin, self.ymin, self.xmax, self.ymax);
-        format!(
-            "POLYGON(({xmin} {ymin}, {xmax} {ymin}, {xmax} {ymax}, {xmin} {ymax}, {xmin} {ymin}))"
-        )
-    }
-
     fn as_parameter_value(&self) -> ParameterValue {
         use crate::plot::types::ArrayElement;
         ParameterValue::Array(vec![
@@ -704,7 +697,7 @@ pub fn visible_area_wkt(properties: &HashMap<String, ParameterValue>) -> Option<
         Some("laea") | Some("aeqd") => todo!("full-globe azimuthal visible area"),
         Some("igh") => Some(igh_outline_wkt()),
         Some("robin") | Some("moll") | Some("sinu") | Some("eck4") | Some("natearth") => {
-            Some(densified_rectangle_wkt(
+            Some(rectangle_wkt(
                 -180.0,
                 -90.0,
                 180.0,
@@ -712,16 +705,16 @@ pub fn visible_area_wkt(properties: &HashMap<String, ParameterValue>) -> Option<
                 [1, 36, 1, 36], // densify left/right meridian edges only
             ))
         }
-        Some("wintri") => Some(densified_rectangle_wkt(
+        Some("wintri") => Some(rectangle_wkt(
             -180.0,
             -90.0,
             180.0,
             90.0,
             [36, 36, 36, 36], // all edges curved
         )),
-        Some("merc") => Some(BBox::from_array([-180.0, -85.0, 180.0, 85.0], "").to_polygon_wkt()),
+        Some("merc") => Some(rectangle_wkt(-180.0, -85.0, 180.0, 85.0, [1, 1, 1, 1])),
         Some("mill") | Some("eqc") | Some("cea") => {
-            Some(BBox::from_array([-180.0, -90.0, 180.0, 90.0], "").to_polygon_wkt())
+            Some(rectangle_wkt(-180.0, -90.0, 180.0, 90.0, [1, 1, 1, 1]))
         }
         _ => None,
     }
@@ -737,10 +730,9 @@ fn projection_center(crs: &str) -> (f64, f64) {
     (lon, lat)
 }
 
-/// Rectangle WKT with selectively densified edges.
-/// `segments` controls how many segments each edge is split into:
-/// `[top, right, bottom, left]`. Use 1 for no densification on an edge.
-fn densified_rectangle_wkt(
+/// Rectangle WKT with optional edge densification.
+/// `segments` is `[top, right, bottom, left]`: number of segments per edge.
+fn rectangle_wkt(
     xmin: f64,
     ymin: f64,
     xmax: f64,
