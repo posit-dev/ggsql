@@ -27,6 +27,12 @@ fn register_builtin_datasets_duckdb(sql: &str, conn: &Connection) -> Result<()> 
 
     let dataset_names = super::data::extract_builtin_dataset_names(sql)?;
 
+    // Load spatial extension before registering datasets that contain
+    // geometry columns, so that spatial features are available.
+    if dataset_names.iter().any(|n| n == "world") {
+        let _ = conn.execute("LOAD spatial", params![]);
+    }
+
     for name in dataset_names {
         let Some(parquet_bytes) = super::data::builtin_parquet_bytes(&name) else {
             continue;
