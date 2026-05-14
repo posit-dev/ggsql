@@ -296,9 +296,9 @@ fn build_layer_encoding(
             continue;
         }
 
-        // Skip geometry aesthetic - it is structural (consumed by SpatialRenderer
-        // to build GeoJSON Features), not a visual encoding channel.
-        if aesthetic == "geometry" {
+        // Skip structural aesthetics that are consumed by renderers during data
+        // preparation but are not visual encoding channels in Vega-Lite.
+        if aesthetic == "geometry" || aesthetic == "type" {
             continue;
         }
 
@@ -3104,5 +3104,29 @@ mod tests {
                 msg
             );
         }
+    }
+
+    #[test]
+    #[cfg(feature = "duckdb")]
+    fn test_boxplot_schema_validation() {
+        use crate::reader::{DuckDBReader, Reader};
+
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        reader
+            .execute_sql(
+                "CREATE TABLE box_data AS
+                SELECT 'A' AS grp, generate_series * 1.0 AS value FROM GENERATE_SERIES(1, 10)
+                UNION ALL
+                SELECT 'B' AS grp, generate_series * 1.0 + 4.0 AS value FROM GENERATE_SERIES(1, 10)",
+            )
+            .unwrap();
+
+        let spec = reader
+            .execute("SELECT * FROM box_data VISUALISE grp AS x, value AS y DRAW boxplot")
+            .unwrap();
+
+        let writer = VegaLiteWriter::new();
+        let json_str = writer.render(&spec).unwrap();
+        assert_valid_vegalite(&json_str);
     }
 }
