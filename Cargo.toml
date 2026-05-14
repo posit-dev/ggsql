@@ -33,11 +33,11 @@ csscolorparser = "0.8.1"
 tree-sitter = "0.26"
 
 # Data container
-arrow = { version = "56", default-features = false }
+arrow = { version = "58", default-features = false }
 
 # Readers
-duckdb = { version = "~1.4", features = ["bundled", "vtab-arrow"] }
-parquet = { version = "56", default-features = false, features = ["arrow", "snap"] }
+duckdb = { version = "~1.10502", features = ["bundled", "vtab-arrow"] }
+parquet = { version = "58", default-features = false, features = ["arrow", "snap"] }
 bytes = "1"
 rusqlite = { version = "0.38", features = ["bundled", "chrono"] }
 

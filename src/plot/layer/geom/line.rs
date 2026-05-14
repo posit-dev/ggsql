@@ -48,10 +48,6 @@ impl GeomTrait for Line {
         Some(&["pos1"])
     }
 
-    fn needs_stat_transform(&self, _aesthetics: &Mappings) -> bool {
-        true
-    }
-
     fn apply_stat_transform(
         &self,
         query: &str,

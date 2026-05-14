@@ -22,6 +22,13 @@
   assumption in the VegaLite writer. We now correctly use the orientation to
   dodge in the correct dimension (#439).
 
+### Changed
+
+- `boxplot`, `violin`, and `range` now support omitting the categorical
+  aesthetic, matching `bar`. `point` now treats both position aesthetics as
+  optional.
+- Upgraded dependencies: duckdb-rs v1.10502, arrow v58 (#447).
+
 ## 0.3.2 - 2026-05-05
 
 ### Fixed

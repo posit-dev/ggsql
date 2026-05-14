@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 
 use super::stat_aggregate;
-use super::types::{get_column_name, POSITION_VALUES};
+use super::types::{get_column_name, wrap_stat_with_dummy_pos1, POSITION_VALUES};
 use super::{
     has_aggregate_param, DefaultAesthetics, DefaultParamValue, GeomTrait, GeomType,
     ParamConstraint, ParamDefinition, StatResult,
@@ -35,8 +35,8 @@ impl GeomTrait for Bar {
             // if we ever want to make 'width' an aesthetic, we'd probably need to
             // translate it to 'size'.
             defaults: &[
-                ("pos1", DefaultAestheticValue::Null), // Optional - stat may provide
-                ("pos2", DefaultAestheticValue::Null), // Optional - stat may compute
+                ("pos1", DefaultAestheticValue::Dummy), // Optional - stat synthesises a dummy if omitted
+                ("pos2", DefaultAestheticValue::Null), // Optional - stat computes count when omitted
                 ("pos2end", DefaultAestheticValue::Delayed),
                 ("weight", DefaultAestheticValue::Null),
                 ("fill", DefaultAestheticValue::String("black")),
@@ -50,14 +50,13 @@ impl GeomTrait for Bar {
         DefaultAesthetics {
             defaults: &[
                 ("pos2", DefaultAestheticValue::Column("count")),
-                ("pos1", DefaultAestheticValue::Column("pos1")),
                 ("pos2end", DefaultAestheticValue::Number(0.0)),
             ],
         }
     }
 
     fn valid_stat_columns(&self) -> &'static [&'static str] {
-        &["count", "pos1", "proportion"]
+        &["count", "proportion"]
     }
 
     fn default_params(&self) -> &'static [ParamDefinition] {
@@ -85,10 +84,6 @@ impl GeomTrait for Bar {
         Some(&[])
     }
 
-    fn needs_stat_transform(&self, _aesthetics: &Mappings) -> bool {
-        true // Bar stat decides COUNT vs identity based on y mapping
-    }
-
     fn apply_stat_transform(
         &self,
         query: &str,
@@ -100,8 +95,8 @@ impl GeomTrait for Bar {
         dialect: &dyn SqlDialect,
         aesthetic_ctx: &crate::plot::aesthetic::AestheticContext,
     ) -> Result<StatResult> {
-        if has_aggregate_param(parameters) {
-            return stat_aggregate::apply(
+        let inner = if has_aggregate_param(parameters) {
+            stat_aggregate::apply(
                 query,
                 schema,
                 aesthetics,
@@ -110,9 +105,20 @@ impl GeomTrait for Bar {
                 dialect,
                 aesthetic_ctx,
                 self.aggregate_domain_aesthetics().unwrap_or(&[]),
-            );
+            )?
+        } else {
+            stat_bar_count(query, schema, aesthetics, group_by)?
+        };
+        // When the user omits the categorical axis, post-wrap with the dummy
+        // pos1 column so the writer suppresses the one-tick axis. Composes
+        // with both the aggregate and identity-path outputs (the `count`
+        // branch of stat_bar_count already injects its own dummy column —
+        // wrap_stat_with_dummy_pos1's idempotency keeps that path correct).
+        if get_column_name(aesthetics, "pos1").is_none() {
+            Ok(wrap_stat_with_dummy_pos1(query, inner))
+        } else {
+            Ok(inner)
         }
-        stat_bar_count(query, schema, aesthetics, group_by)
     }
 }
 

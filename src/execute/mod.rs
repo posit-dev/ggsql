@@ -127,7 +127,7 @@ fn validate(
         // Validate remapping source columns are valid stat columns for this geom.
         // Geoms that opt into the Aggregate stat (`supports_aggregate`) also accept
         // `aggregate`, `count`, and any position aesthetic name as a stat source.
-        let valid_stat_columns = layer.geom.valid_stat_columns();
+        let valid_stat_columns = layer.geom.implicit_valid_stat_columns();
         let supports_aggregate = layer.geom.supports_aggregate();
         for stat_value in layer.remappings.aesthetics.values() {
             if let Some(stat_col) = stat_value.column_name() {
@@ -3048,11 +3048,12 @@ mod tests {
             )
             .unwrap();
 
-        // Query missing required aesthetic 'y' - should show 'y' not 'pos2'
+        // Query missing required aesthetic 'y' - should show 'y' not 'pos2'.
+        // Use line, which still requires both x and y (point's x is optional).
         let query = r#"
             SELECT * FROM test_data
             VISUALISE
-            DRAW point MAPPING a AS x
+            DRAW line MAPPING a AS x
         "#;
 
         let result = prepare_data_with_reader(query, &reader);

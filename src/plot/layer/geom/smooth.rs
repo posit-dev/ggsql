@@ -78,10 +78,6 @@ impl GeomTrait for Smooth {
         PARAMS
     }
 
-    fn needs_stat_transform(&self, _aesthetics: &Mappings) -> bool {
-        true
-    }
-
     fn default_remappings(&self) -> DefaultAesthetics {
         DefaultAesthetics {
             defaults: &[

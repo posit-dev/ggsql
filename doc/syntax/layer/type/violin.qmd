@@ -11,10 +11,12 @@ The violins are mirrored kernel density estimates, similar to the [density](dens
 The following aesthetics are recognised by the violin layer.
 
 ### Required
-* Primary axis (e.g. `x`): The categorical variable for grouping.
 * Secondary axis (e.g. `y`): The continuous variable to compute density for.
 
 ### Optional
+* Primary axis (e.g. `x`): The categorical variable for grouping. If omitted
+  a single violin is drawn for the whole distribution and the (one-tick)
+  categorical axis is hidden.
 * `stroke`: The colour of the contour lines.
 * `fill`: The colour of the inner area.
 * `colour`: Shorthand for setting `stroke` and `fill` simultaneously.

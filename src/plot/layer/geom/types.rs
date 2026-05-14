@@ -158,6 +158,23 @@ impl DefaultAesthetics {
             .find(|(n, _)| *n == name)
             .map(|(_, value)| value)
     }
+
+    /// Names of aesthetics declared as `Dummy` — i.e. position aesthetics
+    /// the default `apply_stat_transform` should fill in with a synthetic
+    /// categorical column when the user leaves the whole axis family
+    /// unmapped.
+    pub fn dummy_axes(&self) -> Vec<&'static str> {
+        self.defaults
+            .iter()
+            .filter_map(|(name, value)| {
+                if matches!(value, DefaultAestheticValue::Dummy) {
+                    Some(*name)
+                } else {
+                    None
+                }
+            })
+            .collect()
+    }
 }
 
 /// Result of a statistical transformation
@@ -226,6 +243,102 @@ pub fn wrap_with_order_by(input_query: &str, result: StatResult, aesthetic: &str
             consumed_aesthetics,
         },
     }
+}
+
+/// Wrap `query` so it produces a literal categorical column carrying the
+/// dummy-axis sentinel value for `axis` (`"pos1"` or `"pos2"`). Used by
+/// geoms that should still render sensibly when the user omits a position
+/// aesthetic.
+///
+/// The wrapped query has shape:
+/// ```sql
+/// SELECT '__ggsql_stat_dummy' AS "__ggsql_stat_<axis>", *
+/// FROM (<query>) AS "__ggsql_dummy_src__"
+/// ```
+///
+/// This composes with any stat: pre-wrap the input (when the geom's stat
+/// groups by the dummied axis, e.g. boxplot/violin) so the existing
+/// `GROUP BY` collapses to a single group, or post-wrap a stat output
+/// (aggregate / identity) so the dummy column is just decoration.
+pub fn wrap_with_dummy_axis(query: &str, axis: &str) -> String {
+    let stat_col = naming::stat_column(axis);
+    let dummy_v = naming::stat_column("dummy");
+    format!(
+        "SELECT '{val}' AS {col}, * FROM ({q}) AS \"__ggsql_dummy_src__\"",
+        val = dummy_v,
+        col = naming::quote_ident(&stat_col),
+        q = query,
+    )
+}
+
+/// Post-wrap a `StatResult` to add a dummy column for `axis` (`"pos1"` or
+/// `"pos2"`).
+///
+/// Wraps the inner query via [`wrap_with_dummy_axis`] (turning `Identity`
+/// into a `Transformed` over the original input) and appends `axis` to
+/// both `stat_columns` and `dummy_columns` so `execute/layer.rs` flips
+/// `is_dummy: true` on the resulting aesthetic.
+pub fn wrap_stat_with_dummy_axis(input_query: &str, result: StatResult, axis: &str) -> StatResult {
+    match result {
+        StatResult::Identity => StatResult::Transformed {
+            query: wrap_with_dummy_axis(input_query, axis),
+            stat_columns: vec![axis.to_string()],
+            dummy_columns: vec![axis.to_string()],
+            consumed_aesthetics: vec![],
+        },
+        StatResult::Transformed {
+            query,
+            mut stat_columns,
+            mut dummy_columns,
+            consumed_aesthetics,
+        } => {
+            // Idempotent: a stat that already produced a dummy for this axis
+            // must not be re-wrapped — the SQL would gain a duplicate column.
+            let already_dummied = dummy_columns.iter().any(|s| s == axis);
+            let wrapped = if already_dummied {
+                query
+            } else {
+                wrap_with_dummy_axis(&query, axis)
+            };
+            if !stat_columns.iter().any(|s| s == axis) {
+                stat_columns.push(axis.to_string());
+            }
+            if !already_dummied {
+                dummy_columns.push(axis.to_string());
+            }
+            StatResult::Transformed {
+                query: wrapped,
+                stat_columns,
+                dummy_columns,
+                consumed_aesthetics,
+            }
+        }
+    }
+}
+
+/// Convenience wrapper for the common case of dummying `pos1`.
+pub fn wrap_stat_with_dummy_pos1(input_query: &str, result: StatResult) -> StatResult {
+    wrap_stat_with_dummy_axis(input_query, result, "pos1")
+}
+
+/// Returns true when at least one aesthetic in the same axis family as
+/// `axis` (e.g. `pos1`, `pos1min`, `pos1max`, `pos1end`, `pos1offset`) is
+/// mapped to a column.
+///
+/// Used by the default `apply_stat_transform` to decide whether to fill in
+/// a dummy categorical column for an unmapped axis.
+pub fn axis_family_has_mapping(aesthetics: &Mappings, axis: &str) -> bool {
+    use crate::plot::aesthetic::parse_position;
+    let Some((target_slot, _)) = parse_position(axis) else {
+        return false;
+    };
+    aesthetics
+        .aesthetics
+        .iter()
+        .any(|(name, value)| match parse_position(name) {
+            Some((slot, _)) => slot == target_slot && value.column_name().is_some(),
+            None => false,
+        })
 }
 
 /// Helper to extract column name from aesthetic value
@@ -358,6 +471,87 @@ mod tests {
                 );
                 assert_eq!(dummy_columns, vec!["pos1".to_string()]);
                 assert_eq!(consumed_aesthetics, vec!["pos2".to_string()]);
+            }
+            _ => panic!("expected Transformed"),
+        }
+    }
+
+    #[test]
+    fn wrap_with_dummy_pos1_produces_expected_sql() {
+        let wrapped = wrap_with_dummy_axis("SELECT * FROM t", "pos1");
+        assert_eq!(
+            wrapped,
+            "SELECT '__ggsql_stat_dummy' AS \"__ggsql_stat_pos1\", * FROM (SELECT * FROM t) AS \"__ggsql_dummy_src__\""
+        );
+    }
+
+    #[test]
+    fn wrap_stat_with_dummy_pos1_promotes_identity() {
+        let result = wrap_stat_with_dummy_pos1("SELECT * FROM raw", StatResult::Identity);
+        match result {
+            StatResult::Transformed {
+                query,
+                stat_columns,
+                dummy_columns,
+                consumed_aesthetics,
+            } => {
+                assert!(query.contains("__ggsql_stat_dummy"));
+                assert!(query.contains("__ggsql_stat_pos1"));
+                assert!(query.contains("SELECT * FROM raw"));
+                assert_eq!(stat_columns, vec!["pos1".to_string()]);
+                assert_eq!(dummy_columns, vec!["pos1".to_string()]);
+                assert!(consumed_aesthetics.is_empty());
+            }
+            _ => panic!("expected Transformed"),
+        }
+    }
+
+    #[test]
+    fn wrap_stat_with_dummy_pos1_extends_transformed_metadata() {
+        let inner = StatResult::Transformed {
+            query: "SELECT 1 AS x".to_string(),
+            stat_columns: vec!["count".to_string()],
+            dummy_columns: vec![],
+            consumed_aesthetics: vec!["weight".to_string()],
+        };
+        let result = wrap_stat_with_dummy_pos1("SELECT * FROM raw", inner);
+        match result {
+            StatResult::Transformed {
+                query,
+                stat_columns,
+                dummy_columns,
+                consumed_aesthetics,
+            } => {
+                assert!(query.contains("__ggsql_stat_dummy"));
+                assert!(query.contains("__ggsql_stat_pos1"));
+                assert!(query.contains("SELECT 1 AS x"));
+                assert_eq!(stat_columns, vec!["count".to_string(), "pos1".to_string()]);
+                assert_eq!(dummy_columns, vec!["pos1".to_string()]);
+                assert_eq!(consumed_aesthetics, vec!["weight".to_string()]);
+            }
+            _ => panic!("expected Transformed"),
+        }
+    }
+
+    #[test]
+    fn wrap_stat_with_dummy_pos1_idempotent_on_pos1() {
+        // Caller already had pos1 in stat_columns/dummy_columns; helper must
+        // not duplicate.
+        let inner = StatResult::Transformed {
+            query: "SELECT 1".to_string(),
+            stat_columns: vec!["pos1".to_string()],
+            dummy_columns: vec!["pos1".to_string()],
+            consumed_aesthetics: vec![],
+        };
+        let result = wrap_stat_with_dummy_pos1("SELECT *", inner);
+        match result {
+            StatResult::Transformed {
+                stat_columns,
+                dummy_columns,
+                ..
+            } => {
+                assert_eq!(stat_columns, vec!["pos1".to_string()]);
+                assert_eq!(dummy_columns, vec!["pos1".to_string()]);
             }
             _ => panic!("expected Transformed"),
         }

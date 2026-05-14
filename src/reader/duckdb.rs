@@ -28,7 +28,7 @@ fn register_builtin_datasets_duckdb(sql: &str, conn: &Connection) -> Result<()> 
     let dataset_names = super::data::extract_builtin_dataset_names(sql)?;
 
     // Load spatial extension before registering datasets that contain
-    // geometry columns, so DuckDB reads them as GEOMETRY rather than BLOB.
+    // geometry columns, so that spatial features are available.
     if dataset_names.iter().any(|n| n == "world") {
         let _ = conn.execute("LOAD spatial", params![]);
     }
@@ -54,9 +54,18 @@ fn register_builtin_datasets_duckdb(sql: &str, conn: &Connection) -> Result<()> 
             })?;
         }
 
+        // Arrow export in duckdb-rs v1.10502.0 aborts on GEOMETRY columns.
+        // Cast to binary WKB when loading the world dataset.
+        // https://github.com/duckdb/duckdb-rs/issues/714
+        let select_expr = if name == "world" {
+            "* REPLACE (ST_AsWKB(geom) AS geom)"
+        } else {
+            "*"
+        };
         let create_sql = format!(
-            "CREATE TABLE IF NOT EXISTS {} AS SELECT * FROM read_parquet('{}')",
+            "CREATE TABLE IF NOT EXISTS {} AS SELECT {} FROM read_parquet('{}')",
             naming::quote_ident(&table_name),
+            select_expr,
             tmp_path.display()
         );
 
@@ -204,6 +213,16 @@ impl DuckDBReader {
                 )))
             }
         };
+
+        // https://github.com/duckdb/duckdb/issues/22133
+        #[cfg(debug_assertions)]
+        conn.execute("SET disabled_optimizers TO 'common_subplan'", params![])
+            .map_err(|e| {
+                GgsqlError::ReaderError(format!(
+                    "Failed to disable common_subplan optimizer: {}",
+                    e
+                ))
+            })?;
 
         // Register Arrow virtual table function for DataFrame registration
         conn.register_table_function::<ArrowVTab>("arrow")
@@ -858,5 +877,42 @@ mod tests {
         let writer = VegaLiteWriter::new();
         let json = writer.render(&spec).unwrap();
         assert!(!json.is_empty(), "Boxplot should render successfully");
+    }
+
+    #[cfg(feature = "spatial")]
+    #[test]
+    fn test_select_wkb_parquet_column() {
+        use std::{env, fs};
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        reader.execute_sql("INSTALL spatial").unwrap();
+        reader.execute_sql("LOAD spatial").unwrap();
+
+        let mut path = env::temp_dir();
+        path.push("ggsql_test_wkb.parquet");
+        reader
+            .execute_sql(&format!(
+                "COPY (SELECT ST_AsWKB(ST_GeomFromText('POINT(1 2)')) AS geom, 'a' AS name) \
+                 TO '{}' (FORMAT PARQUET)",
+                path.display()
+            ))
+            .unwrap();
+
+        let df = reader
+            .execute_sql(&format!("SELECT * FROM read_parquet('{}')", path.display()))
+            .unwrap();
+        assert_eq!(df.height(), 1);
+        assert_eq!(df.width(), 2);
+        fs::remove_file(&path).ok();
+    }
+
+    #[cfg(all(feature = "spatial", feature = "builtin-data"))]
+    #[test]
+    fn test_select_geometry_from_builtin_world() {
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        let df = reader
+            .execute_sql("SELECT geom FROM ggsql:world LIMIT 5")
+            .unwrap();
+        assert_eq!(df.height(), 5);
+        assert_eq!(df.width(), 1);
     }
 }

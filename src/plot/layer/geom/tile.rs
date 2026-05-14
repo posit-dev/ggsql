@@ -97,11 +97,6 @@ impl GeomTrait for Tile {
         ]
     }
 
-    fn needs_stat_transform(&self, _aesthetics: &Mappings) -> bool {
-        // Always apply stat transform to validate and consolidate parameters
-        true
-    }
-
     /// Every spatial slot is pinned as a group key — the rectangle's position
     /// and size *define* the group, they are never the thing being summarised.
     /// Material aesthetics (fill, stroke, opacity, …) pass through to the

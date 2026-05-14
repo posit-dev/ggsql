@@ -73,7 +73,7 @@ Filtering based on spatial operations.
 ```{ggsql}
 VISUALISE FROM ggsql:world
 DRAW spatial 
-  FILTER ST_Intersects(geom, ST_MakeEnvelope(-20.0, -35.0, 55.0, 38.0))
+  FILTER ST_Intersects(ST_GeomFromWKB(geom), ST_MakeEnvelope(-20.0, -35.0, 55.0, 38.0))
 ```
 
 Make a choropleth map by mapping a variable to a fill aesthetic.
