@@ -279,6 +279,7 @@ gradient teal.
 <section id="added" class="level3">
 <h3 class="anchored" data-anchor-id="added">Added</h3>
 <ul>
+<li>New <code>AdbcReader&lt;D: Driver&gt;</code> for connecting to data sources via <a href="https://arrow.apache.org/adbc/">ADBC</a> (Arrow Database Connectivity), behind a new off-by-default <code>adbc</code> feature flag. Generic over any concrete <code>adbc_core::sync::Driver</code>, so concrete drivers (Flight SQL, Snowflake, etc.) compose at the call site. Tested against <code>adbc_datafusion</code> for in-process unit coverage.</li>
 <li>New <code>aggregate</code> SETTING on Identity-stat layers (point, line, area, bar, ribbon, range, segment, arrow, rule, text). By default it collapses each group to a single row by replacing every numeric mapping in place with its aggregated value. See the <code>DRAW</code> documentation for details (#384).</li>
 <li>Added panel decorations (grid lines, axes, background) for polar coordinates (#156).</li>
 <li>Added <code>radar</code> setting to polar coordinates for making radar plots (#418).</li>

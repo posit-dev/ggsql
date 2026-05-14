@@ -2,6 +2,7 @@
 
 ### Added
 
+- New `AdbcReader<D: Driver>` for connecting to data sources via [ADBC](https://arrow.apache.org/adbc/) (Arrow Database Connectivity), behind a new off-by-default `adbc` feature flag. Generic over any concrete `adbc_core::sync::Driver`, so concrete drivers (Flight SQL, Snowflake, etc.) compose at the call site. Tested against `adbc_datafusion` for in-process unit coverage.
 - New `aggregate` SETTING on Identity-stat layers (point, line, area, bar, ribbon, range, segment, arrow, rule, text). By default it collapses each group to a single row by replacing every numeric mapping in place with its aggregated value. See the `DRAW` documentation for details (#384).
 - Added panel decorations (grid lines, axes, background) for polar coordinates (#156).
 - Added `radar` setting to polar coordinates for making radar plots (#418).
