@@ -518,8 +518,7 @@ fn simple_needs_fallback(name: &str, probe_col: &str, dialect: &dyn SqlDialect) 
 }
 
 fn unquote(qcol: &str) -> String {
-    let trimmed = qcol.trim_start_matches('"').trim_end_matches('"');
-    trimmed.replace("\"\"", "\"")
+    naming::unquote_ident(qcol)
 }
 
 // =============================================================================

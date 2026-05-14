@@ -3,6 +3,7 @@
 //! Takes a tree-sitter parse tree and builds a typed Plot,
 //! handling all the node types defined in the grammar.
 
+use crate::naming;
 use crate::plot::layer::geom::Geom;
 use crate::plot::projection::resolve_coord;
 use crate::plot::scale::{color_to_hex, is_color_aesthetic, is_user_facet_aesthetic, Transform};
@@ -383,7 +384,7 @@ fn parse_mapping_element(node: &Node, source: &SourceTree, mappings: &mut Mappin
             mappings.insert(normalise_aes_name(&aesthetic), value);
         }
         "implicit_mapping" | "identifier" => {
-            let name = source.get_text(&child);
+            let name = naming::unquote_ident(&source.get_text(&child));
             mappings.insert(
                 normalise_aes_name(&name),
                 AestheticValue::standard_column(&name),
@@ -415,8 +416,7 @@ fn parse_explicit_mapping(node: &Node, source: &SourceTree) -> Result<(String, A
 
     let value = match value_child.kind() {
         "column_reference" => {
-            // column_reference is just an identifier wrapper, get its text directly
-            AestheticValue::standard_column(source.get_text(&value_child))
+            AestheticValue::standard_column(naming::unquote_ident(&source.get_text(&value_child)))
         }
         "literal_value" => parse_literal_value(&value_child, source)?,
         _ => {
