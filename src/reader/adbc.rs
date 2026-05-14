@@ -101,7 +101,7 @@ impl<D: Driver> AdbcReader<D> {
 }
 
 use adbc_core::sync::Statement;
-use arrow_array::RecordBatch;
+use arrow::record_batch::RecordBatch;
 
 impl<D: Driver + 'static> Reader for AdbcReader<D>
 where
@@ -109,7 +109,7 @@ where
     <D::DatabaseType as Database>::ConnectionType: 'static,
 {
     fn execute_sql(&self, sql: &str) -> Result<DataFrame> {
-        use arrow_array::RecordBatchReader as _;
+        use arrow::array::RecordBatchReader as _;
 
         // Drain the `RecordBatchReader` *inside* the connection-borrow scope
         // so `stmt` and the `RefMut<Connection>` stay alive while batches are
@@ -119,7 +119,6 @@ where
         // `Canceled; DoGet: endpoint 0: []`. Other ADBC drivers (DataFusion,
         // etc.) return self-sufficient readers, but paying for an extra early
         // release on those is worthwhile to keep a single correct code path.
-        // See issue #12.
         let (schema, batches) = {
             let mut conn = self.connection.try_borrow_mut().map_err(|_| {
                 GgsqlError::ReaderError(
@@ -150,7 +149,16 @@ where
             }
             (schema, batches)
         };
-        record_batches_to_dataframe(batches, &schema)
+
+        let merged = if batches.is_empty() {
+            RecordBatch::new_empty(schema)
+        } else if batches.len() == 1 {
+            batches.into_iter().next().unwrap()
+        } else {
+            arrow::compute::concat_batches(&schema, &batches)
+                .map_err(|e| GgsqlError::ReaderError(format!("concat_batches: {}", e)))?
+        };
+        Ok(DataFrame::from_record_batch(merged))
     }
 
     fn register(&self, name: &str, df: DataFrame, replace: bool) -> Result<()> {
@@ -164,14 +172,7 @@ where
                 "AdbcReader::register: empty DataFrame not supported".into(),
             ));
         }
-        let batches = dataframe_to_record_batches(df)?;
-        // If serialization emits zero batches from a non-empty frame, something is
-        // very wrong — bail with the same diagnostic.
-        if batches.is_empty() {
-            return Err(GgsqlError::ReaderError(
-                "AdbcReader::register: IPC serialization produced 0 batches".into(),
-            ));
-        }
+        let batch = df.into_inner();
 
         let mut conn = self.connection.try_borrow_mut().map_err(|_| {
             GgsqlError::ReaderError(
@@ -190,7 +191,7 @@ where
         // `adbc_datafusion` 0.23 has `bind_stream` as `todo!()` and rejects
         // the `IngestMode` option key (`set_option` returns `NotFound`),
         // which is silently tolerated below.
-        let schema = batches[0].schema();
+        let schema = batch.schema();
         if replace {
             let drop_sql = format!("DROP TABLE IF EXISTS {}", crate::naming::quote_ident(name));
             let mut drop_stmt = conn
@@ -224,20 +225,15 @@ where
         // an orphan table the reader can't reach.
         self.registered_tables.borrow_mut().insert(name.to_string());
 
-        for (batch_idx, batch) in batches.into_iter().enumerate() {
-            let mut stmt = conn.new_statement().map_err(|e| {
-                GgsqlError::ReaderError(format!("ADBC new_statement (batch {}): {}", batch_idx, e))
-            })?;
+        {
+            let mut stmt = conn
+                .new_statement()
+                .map_err(|e| GgsqlError::ReaderError(format!("ADBC new_statement: {}", e)))?;
             stmt.set_option(
                 OptionStatement::TargetTable,
                 OptionValue::String(name.to_string()),
             )
-            .map_err(|e| {
-                GgsqlError::ReaderError(format!(
-                    "ADBC set TargetTable (batch {}): {}",
-                    batch_idx, e
-                ))
-            })?;
+            .map_err(|e| GgsqlError::ReaderError(format!("ADBC set TargetTable: {}", e)))?;
             // Tell the driver this is an append into the table we just
             // CREATEd above. Compliant ADBC drivers (e.g. the Apache SQLite
             // driver) default `IngestMode` to `Create` when only `TargetTable`
@@ -252,20 +248,19 @@ where
             ) {
                 if e.status != adbc_core::error::Status::NotFound {
                     return Err(GgsqlError::ReaderError(format!(
-                        "ADBC set IngestMode=Append (batch {}): {}",
-                        batch_idx, e
+                        "ADBC set IngestMode=Append: {}",
+                        e
                     )));
                 }
             }
-            stmt.bind(batch).map_err(|e| {
-                GgsqlError::ReaderError(format!("ADBC bind (batch {}): {}", batch_idx, e))
-            })?;
+            stmt.bind(batch)
+                .map_err(|e| GgsqlError::ReaderError(format!("ADBC bind: {}", e)))?;
             stmt.execute_update().map_err(|e| {
                 GgsqlError::ReaderError(format!(
-                    "ADBC execute_update (batch {}): {} — \
-                     partial table left on server; call unregister() to drop it \
+                    "ADBC execute_update: {} — \
+                     table left on server; call unregister() to drop it \
                      or register() with replace=true to retry",
-                    batch_idx, e
+                    e
                 ))
             })?;
         }
@@ -296,59 +291,6 @@ where
     }
 }
 
-/// Convert a vector of Arrow `RecordBatch` into a Polars `DataFrame`,
-/// preserving the declared schema even when `batches` is empty.
-///
-/// `batches` may use the ADBC `arrow_schema` 58 type system; we re-stamp them
-/// against the ggsql workspace's `arrow` 56 schema by going through Arrow IPC
-/// bytes, the only format both arrow majors agree on. `from_record_batch`
-/// then wraps the (possibly concatenated) result in a `ggsql::DataFrame`.
-///
-/// The `schema` argument is load-bearing on the empty-batches path: without
-/// it we'd return a zero-column DataFrame and silently drop the column
-/// metadata that the driver advertised on `Statement::execute()`. Callers
-/// that branch on column names (executor, writers) would see a shape
-/// mismatch between `SELECT ... WHERE <always-true>` and `<always-false>`.
-fn record_batches_to_dataframe(
-    batches: Vec<RecordBatch>,
-    schema: &std::sync::Arc<arrow_schema::Schema>,
-) -> Result<DataFrame> {
-    let mut buf: Vec<u8> = Vec::new();
-    {
-        let mut writer = arrow_ipc::writer::FileWriter::try_new(&mut buf, schema)
-            .map_err(|e| GgsqlError::ReaderError(format!("arrow IPC writer: {}", e)))?;
-        for batch in &batches {
-            writer
-                .write(batch)
-                .map_err(|e| GgsqlError::ReaderError(format!("arrow IPC write: {}", e)))?;
-        }
-        writer
-            .finish()
-            .map_err(|e| GgsqlError::ReaderError(format!("arrow IPC finish: {}", e)))?;
-    }
-
-    // Read back through the workspace's arrow 56 reader so the resulting
-    // RecordBatches use the same type identities as everywhere else in ggsql.
-    let cursor = std::io::Cursor::new(buf);
-    let reader = arrow::ipc::reader::FileReader::try_new(cursor, None)
-        .map_err(|e| GgsqlError::ReaderError(format!("arrow56 IPC reader: {}", e)))?;
-    let workspace_schema = reader.schema();
-    let collected: std::result::Result<Vec<arrow::record_batch::RecordBatch>, _> = reader.collect();
-    let workspace_batches =
-        collected.map_err(|e| GgsqlError::ReaderError(format!("arrow56 IPC read: {}", e)))?;
-
-    let merged = if workspace_batches.is_empty() {
-        arrow::record_batch::RecordBatch::new_empty(workspace_schema)
-    } else if workspace_batches.len() == 1 {
-        workspace_batches.into_iter().next().unwrap()
-    } else {
-        arrow::compute::concat_batches(&workspace_schema, &workspace_batches)
-            .map_err(|e| GgsqlError::ReaderError(format!("arrow56 concat_batches: {}", e)))?
-    };
-
-    Ok(DataFrame::from_record_batch(merged))
-}
-
 /// Build a `CREATE TABLE <name> (col1 TYPE, col2 TYPE, ...)` statement from
 /// an Arrow schema, using the reader's `SqlDialect` for type names.
 ///
@@ -356,10 +298,10 @@ fn record_batches_to_dataframe(
 /// batches with `IngestMode::Append`; see the `register` impl for context.
 fn create_table_sql(
     name: &str,
-    schema: &arrow_schema::Schema,
+    schema: &arrow::datatypes::Schema,
     dialect: &dyn SqlDialect,
 ) -> Result<String> {
-    use arrow_schema::DataType;
+    use arrow::datatypes::DataType;
 
     let mut cols: Vec<String> = Vec::with_capacity(schema.fields().len());
     for field in schema.fields() {
@@ -402,38 +344,6 @@ fn create_table_sql(
         crate::naming::quote_ident(name),
         cols.join(", ")
     ))
-}
-
-/// Convert a Polars `DataFrame` into Arrow `RecordBatch`es via the Arrow
-/// IPC file format. Mirrors `record_batches_to_dataframe` in reverse.
-fn dataframe_to_record_batches(df: DataFrame) -> Result<Vec<RecordBatch>> {
-    // Round-trip through arrow IPC so the output batches use ADBC's
-    // `arrow_schema`/`arrow_array` 58 types, not the workspace `arrow` 56
-    // types that `ggsql::DataFrame` carries internally. See the version-split
-    // comment in `src/Cargo.toml` for why these need to stay distinct.
-    let workspace_batch = df.into_inner();
-    let workspace_schema = workspace_batch.schema();
-
-    let mut buf: Vec<u8> = Vec::new();
-    {
-        let mut writer = arrow::ipc::writer::FileWriter::try_new(&mut buf, &workspace_schema)
-            .map_err(|e| GgsqlError::ReaderError(format!("arrow56 IPC writer: {}", e)))?;
-        writer
-            .write(&workspace_batch)
-            .map_err(|e| GgsqlError::ReaderError(format!("arrow56 IPC write: {}", e)))?;
-        writer
-            .finish()
-            .map_err(|e| GgsqlError::ReaderError(format!("arrow56 IPC finish: {}", e)))?;
-    }
-
-    let cursor = std::io::Cursor::new(buf);
-    let reader = arrow_ipc::reader::FileReader::try_new(cursor, None)
-        .map_err(|e| GgsqlError::ReaderError(format!("arrow58 IPC reader: {}", e)))?;
-    let mut out: Vec<RecordBatch> = Vec::new();
-    for batch in reader {
-        out.push(batch.map_err(|e| GgsqlError::ReaderError(format!("arrow58 IPC read: {}", e)))?);
-    }
-    Ok(out)
 }
 
 #[cfg(test)]
@@ -657,7 +567,7 @@ mod tests {
     /// only possible if the first borrow was released.
     #[test]
     fn record_batch_reader_outlives_statement_and_allows_second_query() {
-        use arrow_array::RecordBatchReader as _;
+        use arrow::array::RecordBatchReader as _;
 
         let reader = fixture_reader();
 
