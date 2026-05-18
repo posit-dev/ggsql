@@ -18,8 +18,13 @@ impl GeomTrait for Point {
     fn aesthetics(&self) -> DefaultAesthetics {
         DefaultAesthetics {
             defaults: &[
-                ("pos1", DefaultAestheticValue::Required),
-                ("pos2", DefaultAestheticValue::Required),
+                // Both axes are dummy-able. Whichever the user omits is
+                // synthesised as a dummy categorical column by the default
+                // `apply_stat_transform`; the writer then hides that axis.
+                // Mapping neither degrades to all points overlapping at a
+                // single dummy spot — useful only with `aggregate`.
+                ("pos1", DefaultAestheticValue::Dummy),
+                ("pos2", DefaultAestheticValue::Dummy),
                 ("size", DefaultAestheticValue::Number(3.0)),
                 ("stroke", DefaultAestheticValue::String("black")),
                 ("fill", DefaultAestheticValue::String("black")),

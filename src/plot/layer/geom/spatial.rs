@@ -1,4 +1,4 @@
-use super::{DefaultAesthetics, GeomTrait, GeomType};
+use super::{DefaultAesthetics, GeomTrait, GeomType, StatResult};
 use crate::naming;
 use crate::plot::projection::coord::map::CLIP_BOUNDARY_TABLE;
 use crate::plot::projection::coord::CoordKind;
@@ -6,6 +6,7 @@ use crate::plot::projection::Projection;
 use crate::plot::types::DefaultAestheticValue;
 use crate::plot::ParameterValue;
 use crate::reader::SqlDialect;
+use crate::Mappings;
 
 fn apply_clip_boundary(
     query: &str,
@@ -65,6 +66,29 @@ impl GeomTrait for Spatial {
         }
     }
 
+    fn apply_stat_transform(
+        &self,
+        query: &str,
+        _schema: &crate::plot::Schema,
+        _aesthetics: &Mappings,
+        _group_by: &[String],
+        _parameters: &std::collections::HashMap<String, crate::plot::ParameterValue>,
+        execute_query: &dyn Fn(&str) -> crate::Result<crate::DataFrame>,
+        dialect: &dyn crate::reader::SqlDialect,
+        _aesthetic_ctx: &crate::plot::aesthetic::AestheticContext,
+    ) -> crate::Result<StatResult> {
+        for stmt in dialect.sql_spatial_setup() {
+            execute_query(&stmt)?;
+        }
+
+        Ok(StatResult::Transformed {
+            query: query.to_string(),
+            stat_columns: vec![],
+            dummy_columns: vec![],
+            consumed_aesthetics: vec![],
+        })
+    }
+
     fn apply_projection(
         &self,
         query: &str,
@@ -73,6 +97,13 @@ impl GeomTrait for Spatial {
     ) -> crate::Result<String> {
         let col = naming::quote_ident(&naming::aesthetic_column("geometry"));
         let is_map = projection.coord.coord_kind() == CoordKind::Map;
+
+        // WORKAROUND(duckdb-rs#714): normalize column to GEOMETRY since it may
+        // be WKB BLOB from the Arrow export workaround.
+        let ensure_geom = dialect.sql_ensure_geometry(&col);
+        let geom_query = format!(
+            "SELECT * REPLACE ({ensure_geom} AS {col}) FROM ({query})"
+        );
 
         let geom_expr = if let (true, Some(ParameterValue::String(crs))) =
             (is_map, projection.properties.get("crs"))
@@ -91,7 +122,7 @@ impl GeomTrait for Spatial {
                         _ => None,
                     });
                 return Ok(apply_clip_boundary(
-                    query,
+                    &geom_query,
                     &col,
                     source,
                     crs,
@@ -103,18 +134,18 @@ impl GeomTrait for Spatial {
             dialect.sql_st_transform(&col, source, crs)
         } else if is_map {
             // Map coord without CRS — keep native geometry (WKB added later by framing)
-            return Ok(query.to_string());
+            return Ok(geom_query);
         } else {
             // Non-map coord — convert to WKB directly
             let wkb_expr = dialect.sql_geometry_to_wkb(&col);
             return Ok(format!(
-                "SELECT * REPLACE ({wkb_expr} AS {col}) FROM ({query})"
+                "SELECT * REPLACE ({wkb_expr} AS {col}) FROM ({geom_query})"
             ));
         };
 
         // Map coord with CRS — output native projected geometry (WKB added by framing)
         Ok(format!(
-            "SELECT * REPLACE ({geom_expr} AS {col}) FROM ({query})"
+            "SELECT * REPLACE ({geom_expr} AS {col}) FROM ({geom_query})"
         ))
     }
 }
@@ -150,8 +181,9 @@ mod tests {
             .apply_projection("SELECT * FROM t", &projection, &AnsiDialect)
             .unwrap();
 
-        // Map without CRS is passthrough — WKB added later by framing step
-        assert_eq!(result, "SELECT * FROM t");
+        // Map without CRS ensures GEOMETRY type for the framing step
+        assert!(result.contains("ST_GeomFromWKB"));
+        assert!(!result.contains("ST_Transform"));
     }
 
     #[test]

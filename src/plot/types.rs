@@ -303,6 +303,15 @@ pub enum DefaultAestheticValue {
     Required,
     /// Delayed aesthetic (produced by stat transform, valid for REMAPPING only, not MAPPING)
     Delayed,
+    /// Optional position aesthetic that, when the user leaves the whole
+    /// axis family unmapped, is filled with a synthetic dummy categorical
+    /// column by the default `apply_stat_transform`. The writer hides the
+    /// resulting one-tick axis. Use only on `pos1`/`pos2`.
+    ///
+    /// The `Geom` wrapper auto-augments `default_remappings()` and
+    /// `valid_stat_columns()` with the appropriate entries, so a geom that
+    /// declares this variant doesn't need to spell those out.
+    Dummy,
 }
 
 impl DefaultAestheticValue {
@@ -316,7 +325,9 @@ impl DefaultAestheticValue {
             Self::String(s) => ParameterValue::String(s.to_string()),
             Self::Number(n) => ParameterValue::Number(*n),
             Self::Boolean(b) => ParameterValue::Boolean(*b),
-            Self::Column(_) | Self::Null | Self::Required | Self::Delayed => ParameterValue::Null,
+            Self::Column(_) | Self::Null | Self::Required | Self::Delayed | Self::Dummy => {
+                ParameterValue::Null
+            }
         }
     }
 

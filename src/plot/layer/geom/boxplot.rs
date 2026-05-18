@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 
-use super::types::{POSITION_VALUES, SIDE_VALUES};
+use super::types::{wrap_with_dummy_axis, POSITION_VALUES, SIDE_VALUES};
 use super::{DefaultAesthetics, GeomTrait, GeomType};
 use crate::{
     naming,
@@ -26,7 +26,10 @@ impl GeomTrait for Boxplot {
     fn aesthetics(&self) -> DefaultAesthetics {
         DefaultAesthetics {
             defaults: &[
-                ("pos1", DefaultAestheticValue::Required),
+                // pos1 is dummy-able. `stat_boxplot` handles the synthesis
+                // itself by pre-wrapping the input so the existing GROUP BY
+                // collapses to a single boxplot of the whole pos2 distribution.
+                ("pos1", DefaultAestheticValue::Dummy),
                 ("pos2", DefaultAestheticValue::Required),
                 ("stroke", DefaultAestheticValue::String("black")),
                 ("fill", DefaultAestheticValue::String("white")),
@@ -44,10 +47,6 @@ impl GeomTrait for Boxplot {
 
     fn stat_consumed_aesthetics(&self) -> &'static [&'static str] {
         &["pos2"]
-    }
-
-    fn needs_stat_transform(&self, _aesthetics: &Mappings) -> bool {
-        true
     }
 
     fn default_params(&self) -> &'static [super::ParamDefinition] {
@@ -122,9 +121,17 @@ fn stat_boxplot(
     let y = get_column_name(aesthetics, "pos2").ok_or_else(|| {
         GgsqlError::ValidationError("Boxplot requires 'y' aesthetic mapping".to_string())
     })?;
-    let x = get_column_name(aesthetics, "pos1").ok_or_else(|| {
-        GgsqlError::ValidationError("Boxplot requires 'x' aesthetic mapping".to_string())
-    })?;
+
+    // pos1 is optional. When the user omits it, wrap the input query with a
+    // synthetic dummy categorical column and group by that column, so the
+    // existing GROUP BY / summary pipeline collapses to a single boxplot.
+    let (working_query, x, use_dummy) = match get_column_name(aesthetics, "pos1") {
+        Some(col) => (query.to_string(), col, false),
+        None => {
+            let dummy_col = naming::stat_column("pos1");
+            (wrap_with_dummy_axis(query, "pos1"), dummy_col, true)
+        }
+    };
 
     // Get coef parameter (validated by ParamConstraint::number_min)
     let ParameterValue::Number(coef) = parameters.get("coef").unwrap() else {
@@ -153,17 +160,25 @@ fn stat_boxplot(
     }
 
     // Query for boxplot summary statistics
-    let summary = boxplot_sql_compute_summary(query, &groups, &value_col, coef, dialect);
-    let stats_query = boxplot_sql_append_outliers(&summary, &groups, &value_col, query, outliers);
+    let summary = boxplot_sql_compute_summary(&working_query, &groups, &value_col, coef, dialect);
+    let stats_query =
+        boxplot_sql_append_outliers(&summary, &groups, &value_col, &working_query, outliers);
+
+    let mut stat_columns = vec![
+        "type".to_string(),
+        "value".to_string(),
+        "value2".to_string(),
+    ];
+    let mut dummy_columns: Vec<String> = vec![];
+    if use_dummy {
+        stat_columns.push("pos1".to_string());
+        dummy_columns.push("pos1".to_string());
+    }
 
     Ok(StatResult::Transformed {
         query: stats_query,
-        stat_columns: vec![
-            "type".to_string(),
-            "value".to_string(),
-            "value2".to_string(),
-        ],
-        dummy_columns: vec![],
+        stat_columns,
+        dummy_columns,
         consumed_aesthetics: vec!["pos2".to_string()],
     })
 }
@@ -522,9 +537,10 @@ mod tests {
         let boxplot = Boxplot;
         let aes = boxplot.aesthetics();
 
-        assert!(aes.is_required("pos1"));
+        // pos1 is optional (omit → dummy categorical axis); pos2 is required.
+        assert!(!aes.is_required("pos1"));
         assert!(aes.is_required("pos2"));
-        assert_eq!(aes.required().len(), 2);
+        assert_eq!(aes.required(), vec!["pos2"]);
     }
 
     #[test]
@@ -587,6 +603,8 @@ mod tests {
         let boxplot = Boxplot;
         let remappings = boxplot.default_remappings();
 
+        // pos1 is `Dummy` in aesthetics() so the `Geom` wrapper auto-derives
+        // its remapping. The trait method returns only the explicit entries.
         assert_eq!(remappings.defaults.len(), 3);
         assert!(remappings
             .defaults
@@ -600,19 +618,54 @@ mod tests {
     }
 
     #[test]
+    fn test_boxplot_dummy_pos1_when_unmapped() {
+        use crate::plot::AestheticValue;
+        let mut aesthetics = Mappings::new();
+        aesthetics.insert(
+            "pos2".to_string(),
+            AestheticValue::standard_column("value".to_string()),
+        );
+        let mut parameters: HashMap<String, ParameterValue> = HashMap::new();
+        parameters.insert("coef".to_string(), ParameterValue::Number(1.5));
+        parameters.insert("outliers".to_string(), ParameterValue::Boolean(true));
+
+        let result = stat_boxplot(
+            "SELECT * FROM data",
+            &aesthetics,
+            &[],
+            &parameters,
+            &AnsiDialect,
+        )
+        .expect("stat_boxplot should succeed without pos1");
+
+        match result {
+            StatResult::Transformed {
+                query,
+                stat_columns,
+                dummy_columns,
+                consumed_aesthetics,
+            } => {
+                // The wrapped input introduces a synthetic pos1 column that the
+                // GROUP BY then collapses to a single boxplot.
+                assert!(query.contains("__ggsql_stat_dummy"));
+                assert!(query.contains("__ggsql_stat_pos1"));
+                assert!(stat_columns.contains(&"pos1".to_string()));
+                assert!(stat_columns.contains(&"type".to_string()));
+                assert!(stat_columns.contains(&"value".to_string()));
+                assert_eq!(dummy_columns, vec!["pos1".to_string()]);
+                assert_eq!(consumed_aesthetics, vec!["pos2".to_string()]);
+            }
+            _ => panic!("expected Transformed"),
+        }
+    }
+
+    #[test]
     fn test_boxplot_stat_consumed_aesthetics() {
         let boxplot = Boxplot;
         let consumed = boxplot.stat_consumed_aesthetics();
 
         assert_eq!(consumed.len(), 1);
         assert_eq!(consumed[0], "pos2");
-    }
-
-    #[test]
-    fn test_boxplot_needs_stat_transform() {
-        let boxplot = Boxplot;
-        let aesthetics = Mappings::new();
-        assert!(boxplot.needs_stat_transform(&aesthetics));
     }
 
     #[test]

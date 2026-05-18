@@ -315,9 +315,9 @@ mod tests {
 
     #[test]
     fn test_validate_missing_required_aesthetic() {
-        // Point requires x and y, but we only provide x
+        // Line requires both x and y; mapping only x is invalid.
         let validated =
-            validate("SELECT 1 as x, 2 as y VISUALISE DRAW point MAPPING x AS x").unwrap();
+            validate("SELECT 1 as x, 2 as y VISUALISE DRAW line MAPPING x AS x").unwrap();
         assert!(!validated.valid());
         assert!(!validated.errors().is_empty());
         assert!(validated.errors()[0].message.contains("y"));

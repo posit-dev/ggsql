@@ -10,10 +10,15 @@ The point layer is used to create scatterplots. The scatterplot is most useful f
 The following aesthetics are recognised by the point layer.
 
 ### Required
-* Primary axis (e.g. `x`): Position along the primary axis.
-* Secondary axis (e.g. `y`): Position along the secondary axis.
+The point layer has no required aesthetics.
 
 ### Optional
+* Primary axis (e.g. `x`): Position along the primary axis. If omitted, all
+  points are drawn at a single discrete primary-axis position (a strip plot)
+  and the categorical axis is hidden.
+* Secondary axis (e.g. `y`): Position along the secondary axis. Same dummy-axis
+  treatment as the primary. If both axes are omitted, all rows pile up at a
+  single point — only useful in combination with `aggregate`.
 * `size`: The size of each point
 * `colour`: The default colour of each point
 * `stroke`: The colour of the stroke around each point (if any). Overrides `colour`

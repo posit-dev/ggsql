@@ -18,7 +18,10 @@ impl GeomTrait for Range {
     fn aesthetics(&self) -> DefaultAesthetics {
         DefaultAesthetics {
             defaults: &[
-                ("pos1", DefaultAestheticValue::Required),
+                // pos1 is dummy-able - if no aesthetic in the pos1 family
+                // is mapped, the default `apply_stat_transform` synthesises
+                // a dummy categorical axis and the writer hides it.
+                ("pos1", DefaultAestheticValue::Dummy),
                 ("pos2min", DefaultAestheticValue::Required),
                 ("pos2max", DefaultAestheticValue::Required),
                 ("stroke", DefaultAestheticValue::String("black")),

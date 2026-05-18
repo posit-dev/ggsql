@@ -54,10 +54,6 @@ impl GeomTrait for Density {
         }
     }
 
-    fn needs_stat_transform(&self, _aesthetics: &Mappings) -> bool {
-        true
-    }
-
     fn default_params(&self) -> &'static [ParamDefinition] {
         const PARAMS: &[ParamDefinition] = &[
             ParamDefinition {
