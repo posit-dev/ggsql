@@ -1992,9 +1992,8 @@ impl BoxplotRenderer {
         // Build encoding templates for y and y2 fields
         let mut y_encoding = summary_prototype["encoding"][value_var1].clone();
         y_encoding["field"] = json!(value_col);
-        let mut y2_encoding = summary_prototype["encoding"][value_var1].clone();
-        y2_encoding["field"] = json!(value2_col);
-        y2_encoding["title"] = Value::Null; // Suppress y2 title to prevent "y, y2" axis label
+        // y2 is a secondary position channel — Vega-Lite only allows field/datum/value
+        let y2_encoding = json!({"field": value2_col});
 
         // Lower whiskers (rule from y to y2, where y=q1 and y2=lower)
         let mut lower_whiskers = create_layer(
