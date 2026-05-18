@@ -112,18 +112,19 @@ impl CoordTrait for Map {
         }
 
         // Step 2: Compute the visible area boundary for this projection.
-        // Azimuthal projections get a hemisphere polygon; cylindrical get a world
-        // rectangle. This produces: clip_boundary (unprojected WKT), panel_boundary
-        // (projected WKT for the writer's background layer), and world_bbox (bounding
-        // box of the full projected visible area, used to resolve Inf in user bounds).
-        let world_bbox = setup_clip_boundary(projection, &source, &crs, dialect, execute_query)?;
+        // Produces: clip boundary temp table (in source CRS for layer clipping),
+        // panel_boundary (projected WKT for the writer's background layer), and
+        // world_bbox (bounding box of the full projected visible area).
+        let (world_bbox, boundary_4326) =
+            setup_clip_boundary(projection, &source, &crs, dialect, execute_query)?;
+        let clip = boundary_4326.is_some();
 
         // Step 3: Apply per-layer projection (ST_Transform, clip to horizon)
         for (idx, layer) in layers.iter().enumerate() {
             layer_queries[idx] =
                 layer
                     .geom
-                    .apply_projection(&layer_queries[idx], projection, dialect)?;
+                    .apply_projection(&layer_queries[idx], projection, dialect, clip)?;
         }
 
         // Step 4: Materialize projected spatial layers as temp tables, compute the
@@ -166,12 +167,10 @@ impl CoordTrait for Map {
             .computed
             .insert("frame_bbox".to_string(), bbox.as_parameter_value());
 
-        // Step 6: Generate graticule lines (azimuthal and interrupted projections
-        // need clip-based extent and ST_Intersection; cylindrical projections don't)
-        let proj_name = extract_proj_param_str(&crs, "+proj=");
-        let needs_clip = needs_graticule_clip(proj_name);
+        // Step 6: Generate graticule lines. The graticule is built and clipped
+        // in EPSG:4326 (independent of source), then projected to target.
         let (lon_wkt, lat_wkt) =
-            build_graticule(&bbox, &source, needs_clip, dialect, execute_query)?;
+            build_graticule(&bbox, boundary_4326.as_deref(), &crs, dialect, execute_query)?;
         if let Some(wkt) = lon_wkt {
             projection
                 .computed
@@ -325,13 +324,13 @@ impl BBox {
 /// meridians and parallels, clip and project them, and return projected WKT.
 fn build_graticule(
     frame_bbox: &BBox,
-    source: &str,
-    has_clip: bool,
+    clip_boundary_wkt: Option<&str>,
+    crs: &str,
     dialect: &dyn SqlDialect,
     execute_query: &dyn Fn(&str) -> crate::Result<DataFrame>,
 ) -> crate::Result<(Option<String>, Option<String>)> {
-    let crs = &frame_bbox.crs;
-    let Some(geo_bbox) = graticule_bbox(frame_bbox, source, has_clip, dialect, execute_query)?
+    let Some(geo_bbox) =
+        graticule_bbox(frame_bbox, clip_boundary_wkt, dialect, execute_query)?
     else {
         return Ok((None, None));
     };
@@ -355,7 +354,7 @@ fn build_graticule(
 
     // Compute the seam meridian (lon_0 + 180°) for non-cylindrical projections.
     // Graticule lines must not cross this longitude.
-    let seam = if has_clip {
+    let seam = if clip_boundary_wkt.is_some() {
         let center = projection_center(crs);
         let s = wrap_lon(center.0 + 180.0);
         Some(s)
@@ -406,22 +405,21 @@ fn build_graticule(
     };
 
     Ok((
-        project_graticule_wkt(lon_wkt, has_clip, source, crs, dialect, execute_query)?,
-        project_graticule_wkt(lat_wkt, has_clip, source, crs, dialect, execute_query)?,
+        project_graticule_wkt(lon_wkt, clip_boundary_wkt, crs, dialect, execute_query)?,
+        project_graticule_wkt(lat_wkt, clip_boundary_wkt, crs, dialect, execute_query)?,
     ))
 }
 
 /// Determine the lon/lat bounding box visible in the current frame by inverse-projecting
-/// the bbox corners. Falls back to the clip boundary for azimuthal projections
-/// where corners collapse to degenerate values.
+/// the bbox corners to EPSG:4326. Falls back to the clip boundary extent for azimuthal
+/// projections where corners collapse to degenerate values.
 fn graticule_bbox(
     frame_bbox: &BBox,
-    source: &str,
-    has_clip: bool,
+    clip_boundary_wkt: Option<&str>,
     dialect: &dyn SqlDialect,
     execute_query: &dyn Fn(&str) -> crate::Result<DataFrame>,
 ) -> crate::Result<Option<BBox>> {
-    let mut geo_bbox = match frame_bbox.reproject(source, dialect, execute_query) {
+    let mut geo_bbox = match frame_bbox.reproject("EPSG:4326", dialect, execute_query) {
         Some(b) => b.clamp(-180.0, -90.0, 180.0, 90.0),
         None => return Ok(None),
     };
@@ -429,10 +427,14 @@ fn graticule_bbox(
     // For azimuthal projections the bbox corners often inverse-project to
     // degenerate or incomplete values. Use the clip boundary extent which
     // correctly represents the visible hemisphere.
-    if has_clip {
-        let bbox_sql = dialect.sql_geometry_bbox("geom", CLIP_BOUNDARY_TABLE);
-        if let Ok(df) = execute_query(&bbox_sql) {
-            if let Some(clip_bbox) = BBox::from_df(&df, source) {
+    if let Some(wkt) = clip_boundary_wkt {
+        let sql = format!(
+            "SELECT ST_XMin(g) AS xmin, ST_YMin(g) AS ymin, \
+                    ST_XMax(g) AS xmax, ST_YMax(g) AS ymax \
+             FROM (SELECT ST_GeomFromText('{wkt}') AS g)"
+        );
+        if let Ok(df) = execute_query(&sql) {
+            if let Some(clip_bbox) = BBox::from_df(&df, "EPSG:4326") {
                 geo_bbox = clip_bbox;
             }
         }
@@ -581,25 +583,25 @@ fn query_scalar_string(
     Some(arr.value(0).to_string())
 }
 
-/// Set up the clip/visible area boundary. Creates the clip boundary temp table,
-/// projects it into the target CRS, and returns the world bbox (projected extent).
-/// For projections where `visible_area_wkt` returns None (e.g. LAEA), generates the
-/// panel boundary directly in projected space using ST_Buffer.
+/// Set up the clip/visible area boundary.
+///
+/// Returns `(world_bbox, boundary_4326_wkt)`:
+/// - `world_bbox`: bounding box of the boundary projected into the target CRS
+/// - `boundary_4326_wkt`: combined clip+slit boundary in EPSG:4326 (for graticule use)
+///
+/// Side effects:
+/// - Creates `CLIP_BOUNDARY_TABLE` temp table containing the boundary in source CRS
+/// - Stores `panel_boundary` in `projection.computed` (boundary projected to target CRS)
 fn setup_clip_boundary(
     projection: &mut super::super::Projection,
     source: &str,
     crs: &str,
     dialect: &dyn SqlDialect,
     execute_query: &dyn Fn(&str) -> crate::Result<DataFrame>,
-) -> crate::Result<Option<BBox>> {
+) -> crate::Result<(Option<BBox>, Option<String>)> {
     let Some(wkt) = visible_area_wkt(&projection.properties) else {
-        return Ok(None);
+        return Ok((None, None));
     };
-
-    projection.computed.insert(
-        "clip_boundary".to_string(),
-        ParameterValue::String(wkt.clone()),
-    );
 
     // Compute the seam slit: a thin rectangle at lon_0+180° that splits
     // geometries crossing the projection's antimeridian before reprojection.
@@ -607,35 +609,47 @@ fn setup_clip_boundary(
     let center = projection_center(crs);
     let seam = wrap_lon(center.0 + 180.0);
     let half_width = 0.005;
-    if (seam - (-180.0)).abs() > half_width && (seam - 180.0).abs() > half_width {
+    let slit_wkt = if (seam - (-180.0)).abs() > half_width && (seam - 180.0).abs() > half_width {
         let meridian_segments = match extract_proj_param_str(crs, "+proj=") {
             Some("merc") | Some("mill") | Some("eqc") | Some("cea") => 1,
             _ => 36,
         };
-        let slit_wkt = rectangle_wkt(
+        Some(rectangle_wkt(
             seam - half_width, -90.0, seam + half_width, 90.0,
             [1, meridian_segments, 1, meridian_segments],
-        );
-        projection.computed.insert(
-            "seam_slit".to_string(),
-            ParameterValue::String(slit_wkt),
-        );
-    }
+        ))
+    } else {
+        None
+    };
 
-    let body = format!("SELECT ST_GeomFromText('{wkt}') AS geom");
+    // Combine clip boundary and seam slit into a single polygon in EPSG:4326.
+    let boundary_4326 = if let Some(slit) = &slit_wkt {
+        let sql = format!(
+            "SELECT ST_AsText(ST_Difference(ST_GeomFromText('{wkt}'), ST_GeomFromText('{slit}'))) AS wkt"
+        );
+        query_scalar_string(&sql, execute_query).unwrap_or(wkt)
+    } else {
+        wkt
+    };
+
+    // Store the boundary in source CRS for per-layer clipping.
+    let source_geom = dialect.sql_st_transform(
+        &format!("ST_GeomFromText('{boundary_4326}')"),
+        "EPSG:4326",
+        source,
+    );
+    let body = format!("SELECT {source_geom} AS geom");
     for stmt in dialect.create_or_replace_temp_table_sql(CLIP_BOUNDARY_TABLE, &[], &body) {
         execute_query(&stmt)?;
     }
 
-    // Project the clip boundary to get the panel boundary shape.
-    // Apply the seam slit first so each half projects independently.
-    let panel_geom = if let Some(ParameterValue::String(slit)) = projection.computed.get("seam_slit") {
-        let split = format!("ST_Difference(geom, ST_GeomFromText('{slit}'))");
-        dialect.sql_st_transform(&split, source, crs)
-    } else {
-        dialect.sql_st_transform("geom", source, crs)
-    };
-    let sql = format!("SELECT ST_AsText({panel_geom}) AS wkt FROM {CLIP_BOUNDARY_TABLE}");
+    // Project the boundary to target CRS for the panel background shape.
+    let panel_geom = dialect.sql_st_transform(
+        &format!("ST_GeomFromText('{boundary_4326}')"),
+        "EPSG:4326",
+        crs,
+    );
+    let sql = format!("SELECT ST_AsText({panel_geom}) AS wkt");
     if let Some(projected_wkt) = query_scalar_string(&sql, execute_query) {
         projection.computed.insert(
             "panel_boundary".to_string(),
@@ -643,36 +657,36 @@ fn setup_clip_boundary(
         );
     }
 
+    // World bbox: extent of the boundary in target CRS.
     let projected = dialect.sql_st_transform("geom", source, crs);
     let world_bbox_sql = dialect.sql_geometry_bbox(&projected, CLIP_BOUNDARY_TABLE);
     let world_bbox = execute_query(&world_bbox_sql)
         .ok()
         .and_then(|df| BBox::from_df(&df, crs));
-    Ok(world_bbox)
+    Ok((world_bbox, Some(boundary_4326)))
 }
 
-/// Clip (if needed) and project a WKT geometry string, returning the projected WKT.
+/// Clip (if needed) and project a graticule WKT from EPSG:4326 to the target CRS.
 fn project_graticule_wkt(
     wkt: Option<String>,
-    has_clip: bool,
-    source: &str,
+    clip_boundary_wkt: Option<&str>,
     crs: &str,
     dialect: &dyn SqlDialect,
     execute_query: &dyn Fn(&str) -> crate::Result<DataFrame>,
 ) -> crate::Result<Option<String>> {
     let Some(wkt) = wkt else { return Ok(None) };
     let geom_expr = format!("ST_GeomFromText('{wkt}')");
-    let clipped = if has_clip {
+    let clipped = if let Some(boundary) = clip_boundary_wkt {
         // ST_CollectionExtract(..., 2) keeps only linestring components,
         // discarding stray points from vertex-on-boundary intersections.
         format!(
             "ST_CollectionExtract(ST_Intersection({geom_expr}, \
-             (SELECT geom FROM {CLIP_BOUNDARY_TABLE})), 2)"
+             ST_GeomFromText('{boundary}')), 2)"
         )
     } else {
         geom_expr
     };
-    let projected = dialect.sql_st_transform(&clipped, source, crs);
+    let projected = dialect.sql_st_transform(&clipped, "EPSG:4326", crs);
     let sql = format!("SELECT ST_AsText({projected}) AS wkt");
     Ok(query_scalar_string(&sql, execute_query))
 }
@@ -889,16 +903,6 @@ fn igh_outline_wkt() -> String {
     format!("POLYGON(({}))", coords.join(", "))
 }
 
-/// Whether graticule generation should use the clip boundary extent rather than
-/// inverse-projecting the frame bbox corners. Needed for projections with curved
-/// edges or interruptions, where corner inverse-projection doesn't recover the
-/// full visible lon/lat range.
-fn needs_graticule_clip(proj_name: Option<&str>) -> bool {
-    !matches!(
-        proj_name,
-        Some("merc") | Some("mill") | Some("eqc") | Some("cea") | None
-    )
-}
 
 fn extract_proj_param_str<'a>(crs: &'a str, key: &str) -> Option<&'a str> {
     let start = crs.find(key)?;

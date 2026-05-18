@@ -14,21 +14,12 @@ fn apply_clip_boundary(
     source: &str,
     crs: &str,
     clip_table: &str,
-    seam_slit: Option<&str>,
 ) -> String {
     let clip_geom = format!("(SELECT geom FROM {clip_table})");
     let source_esc = source.replace('\'', "''");
     let crs_esc = crs.replace('\'', "''");
 
-    let clipped = if let Some(slit_wkt) = seam_slit {
-        format!(
-            "ST_Difference(ST_Intersection({col}, {clip_geom}), \
-             ST_GeomFromText('{slit_wkt}'))"
-        )
-    } else {
-        format!("ST_Intersection({col}, {clip_geom})")
-    };
-
+    let clipped = format!("ST_Intersection({col}, {clip_geom})");
     let geom_expr = format!(
         "ST_MakeValid(ST_Transform(\
             {clipped},\
@@ -94,6 +85,7 @@ impl GeomTrait for Spatial {
         query: &str,
         projection: &Projection,
         dialect: &dyn SqlDialect,
+        clip: bool,
     ) -> crate::Result<String> {
         let col = naming::quote_ident(&naming::aesthetic_column("geometry"));
         let is_map = projection.coord.coord_kind() == CoordKind::Map;
@@ -113,21 +105,13 @@ impl GeomTrait for Spatial {
                 _ => "EPSG:4326",
             };
 
-            if projection.computed.contains_key("clip_boundary") {
-                let seam_slit = projection
-                    .computed
-                    .get("seam_slit")
-                    .and_then(|v| match v {
-                        ParameterValue::String(s) => Some(s.as_str()),
-                        _ => None,
-                    });
+            if clip {
                 return Ok(apply_clip_boundary(
                     &geom_query,
                     &col,
                     source,
                     crs,
                     CLIP_BOUNDARY_TABLE,
-                    seam_slit,
                 ));
             }
 
@@ -166,7 +150,7 @@ mod tests {
         let spatial = Spatial;
         let projection = Projection::cartesian();
         let result = spatial
-            .apply_projection("SELECT * FROM t", &projection, &AnsiDialect)
+            .apply_projection("SELECT * FROM t", &projection, &AnsiDialect, false)
             .unwrap();
 
         assert!(result.contains("ST_AsBinary"));
@@ -178,7 +162,7 @@ mod tests {
         let spatial = Spatial;
         let projection = Projection::map();
         let result = spatial
-            .apply_projection("SELECT * FROM t", &projection, &AnsiDialect)
+            .apply_projection("SELECT * FROM t", &projection, &AnsiDialect, false)
             .unwrap();
 
         // Map without CRS ensures GEOMETRY type for the framing step
@@ -195,10 +179,10 @@ mod tests {
             ParameterValue::String("+proj=merc".to_string()),
         );
         let result = spatial
-            .apply_projection("SELECT * FROM t", &projection, &AnsiDialect)
+            .apply_projection("SELECT * FROM t", &projection, &AnsiDialect, false)
             .unwrap();
 
-        // Without clip_boundary in computed, just ST_Transform
+        // Without clip=true, just ST_Transform
         assert!(!result.contains("ST_AsBinary"));
         assert!(result.contains("ST_Transform"));
         assert!(result.contains("+proj=merc"));
@@ -206,21 +190,15 @@ mod tests {
     }
 
     #[test]
-    fn test_apply_projection_mercator_with_clip_boundary() {
+    fn test_apply_projection_mercator_with_clip() {
         let spatial = Spatial;
         let mut projection = Projection::map();
         projection.properties.insert(
             "crs".to_string(),
             ParameterValue::String("+proj=merc".to_string()),
         );
-        projection.computed.insert(
-            "clip_boundary".to_string(),
-            ParameterValue::String(
-                "POLYGON((-180 -85, 180 -85, 180 85, -180 85, -180 -85))".to_string(),
-            ),
-        );
         let result = spatial
-            .apply_projection("SELECT * FROM t", &projection, &AnsiDialect)
+            .apply_projection("SELECT * FROM t", &projection, &AnsiDialect, true)
             .unwrap();
 
         assert!(result.contains("ST_Intersection"));
@@ -229,19 +207,15 @@ mod tests {
     }
 
     #[test]
-    fn test_orthographic_gets_clip_boundary() {
+    fn test_orthographic_with_clip() {
         let spatial = Spatial;
         let mut projection = Projection::map();
         projection.properties.insert(
             "crs".to_string(),
             ParameterValue::String("+proj=ortho +lat_0=45 +lon_0=10".to_string()),
         );
-        projection.computed.insert(
-            "clip_boundary".to_string(),
-            ParameterValue::String("POLYGON((...))".to_string()),
-        );
         let result = spatial
-            .apply_projection("SELECT * FROM t", &projection, &AnsiDialect)
+            .apply_projection("SELECT * FROM t", &projection, &AnsiDialect, true)
             .unwrap();
 
         assert!(result.contains("ST_Transform"));
@@ -252,19 +226,15 @@ mod tests {
     }
 
     #[test]
-    fn test_gnomonic_gets_clip_boundary() {
+    fn test_gnomonic_with_clip() {
         let spatial = Spatial;
         let mut projection = Projection::map();
         projection.properties.insert(
             "crs".to_string(),
             ParameterValue::String("+proj=gnom +lat_0=90 +lon_0=0".to_string()),
         );
-        projection.computed.insert(
-            "clip_boundary".to_string(),
-            ParameterValue::String("POLYGON((...))".to_string()),
-        );
         let result = spatial
-            .apply_projection("SELECT * FROM t", &projection, &AnsiDialect)
+            .apply_projection("SELECT * FROM t", &projection, &AnsiDialect, true)
             .unwrap();
 
         assert!(result.contains("ST_MakeValid"));

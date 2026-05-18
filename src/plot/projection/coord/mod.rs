@@ -143,7 +143,9 @@ pub trait CoordTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
     ) -> crate::Result<()> {
         for (idx, layer) in layers.iter().enumerate() {
             layer_queries[idx] =
-                layer.geom.apply_projection(&layer_queries[idx], projection, dialect)?;
+                layer
+                    .geom
+                    .apply_projection(&layer_queries[idx], projection, dialect, false)?;
         }
         Ok(())
     }
