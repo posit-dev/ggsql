@@ -98,10 +98,9 @@ impl CoordTrait for Map {
         let crs = match projection.properties.get("crs") {
             Some(ParameterValue::String(s)) => s.clone(),
             _ => {
-                projection.properties.insert(
-                    "crs".to_string(),
-                    ParameterValue::String(source.clone()),
-                );
+                projection
+                    .properties
+                    .insert("crs".to_string(), ParameterValue::String(source.clone()));
                 source.clone()
             }
         };
@@ -175,8 +174,13 @@ impl CoordTrait for Map {
 
         // Step 6: Generate graticule lines. The graticule is built and clipped
         // in EPSG:4326 (independent of source), then projected to target.
-        let (lon_wkt, lat_wkt) =
-            build_graticule(&bbox, boundary_4326.as_deref(), &crs, dialect, execute_query)?;
+        let (lon_wkt, lat_wkt) = build_graticule(
+            &bbox,
+            boundary_4326.as_deref(),
+            &crs,
+            dialect,
+            execute_query,
+        )?;
         if let Some(wkt) = lon_wkt {
             projection
                 .computed
@@ -335,8 +339,7 @@ fn build_graticule(
     dialect: &dyn SqlDialect,
     execute_query: &dyn Fn(&str) -> crate::Result<DataFrame>,
 ) -> crate::Result<(Option<String>, Option<String>)> {
-    let Some(geo_bbox) =
-        graticule_bbox(frame_bbox, clip_boundary_wkt, dialect, execute_query)?
+    let Some(geo_bbox) = graticule_bbox(frame_bbox, clip_boundary_wkt, dialect, execute_query)?
     else {
         return Ok((None, None));
     };
@@ -609,26 +612,35 @@ fn setup_clip_boundary(
         return Ok((None, None));
     };
 
-    // Compute the seam slit: a thin rectangle at lon_0+180° that splits
-    // geometries crossing the projection's antimeridian before reprojection.
-    // Densify the slit's meridian edges for projections with curved meridians.
+    // Compute the seam slit that splits geometries at projection discontinuities.
+    // For most projections: a single rectangle at lon_0+180° (the antimeridian).
+    // For IGH: a MULTIPOLYGON combining all interruption slits.
     let center = projection_center(crs);
     let seam = wrap_lon(center.0 + 180.0);
     let half_width = 0.005;
-    let slit_wkt = if (seam - (-180.0)).abs() > half_width && (seam - 180.0).abs() > half_width {
-        let meridian_segments = match extract_proj_param_str(crs, "+proj=") {
-            Some("merc") | Some("mill") | Some("eqc") | Some("cea") => 1,
-            _ => 36,
-        };
-        Some(rectangle_wkt(
-            seam - half_width, -90.0, seam + half_width, 90.0,
-            [1, meridian_segments, 1, meridian_segments],
-        ))
-    } else {
-        None
+
+    let slit_wkt: Option<String> = match extract_proj_param_str(crs, "+proj=") {
+        Some("igh") => Some(igh_slit_wkt(center.0, half_width)),
+        _ => {
+            if (seam - (-180.0)).abs() > half_width && (seam - 180.0).abs() > half_width {
+                let meridian_segments = match extract_proj_param_str(crs, "+proj=") {
+                    Some("merc") | Some("mill") | Some("eqc") | Some("cea") => 1,
+                    _ => 36,
+                };
+                Some(rectangle_wkt(
+                    seam - half_width,
+                    -90.0,
+                    seam + half_width,
+                    90.0,
+                    [1, meridian_segments, 1, meridian_segments],
+                ))
+            } else {
+                None
+            }
+        }
     };
 
-    // Combine clip boundary and seam slit into a single polygon in EPSG:4326.
+    // Combine clip boundary and seam slit into a single geometry in EPSG:4326.
     let boundary_4326 = if let Some(slit) = &slit_wkt {
         let sql = format!(
             "SELECT ST_AsText(ST_Difference(ST_GeomFromText('{wkt}'), ST_GeomFromText('{slit}'))) AS wkt"
@@ -815,7 +827,7 @@ pub fn visible_area_wkt(properties: &HashMap<String, ParameterValue>) -> Option<
         Some("ortho") | Some("stere") => Some(hemisphere_polygon_wkt(center.0, center.1, 88.0)),
         Some("gnom") => Some(hemisphere_polygon_wkt(center.0, center.1, 60.0)),
         Some("laea") | Some("aeqd") => todo!("full-globe azimuthal visible area"),
-        Some("igh") => Some(igh_outline_wkt()),
+        Some("igh") => Some(rectangle_wkt(-180.0, -90.0, 180.0, 90.0, [1, 36, 1, 36])),
         Some("robin") | Some("moll") | Some("sinu") | Some("eck4") | Some("natearth") => {
             Some(rectangle_wkt(-180.0, -90.0, 180.0, 90.0, [1, 36, 1, 36]))
         }
@@ -835,7 +847,6 @@ pub fn visible_area_wkt(properties: &HashMap<String, ParameterValue>) -> Option<
 fn wrap_lon(lon: f64) -> f64 {
     ((lon + 180.0) % 360.0 + 360.0) % 360.0 - 180.0
 }
-
 
 fn projection_center(crs: &str) -> (f64, f64) {
     let lon = extract_proj_param_str(crs, "+lon_0=")
@@ -872,55 +883,52 @@ fn rectangle_wkt(xmin: f64, ymin: f64, xmax: f64, ymax: f64, segments: [usize; 4
     format!("POLYGON(({}))", coords.join(", "))
 }
 
-/// Interrupted Goode Homolosine outline polygon with densified meridian edges.
-/// Interrupts: -40° (north), -100°/-20°/80° (south). The outline traces
-/// vertical slits at these meridians with 1° spacing for smooth projection.
-fn igh_outline_wkt() -> String {
-    let mut coords: Vec<String> = Vec::new();
+/// Single MULTIPOLYGON combining all IGH interruption slits.
+/// Each slit is a half-height rectangle (equator to pole) at the interruption,
+/// plus a full-height slit at the antimeridian (lon_0 + 180°) if not at ±180°.
+/// Single MULTIPOLYGON WKT combining all IGH interruption slits.
+fn igh_slit_wkt(lon_0: f64, half_width: f64) -> String {
+    let segs = [1, 36, 1, 36];
+    let polygon_ring = |wkt: String| -> String { wkt.strip_prefix("POLYGON").unwrap().to_string() };
 
-    // Helper: densified meridian segment from lat_start to lat_end at fixed lon
-    let meridian = |coords: &mut Vec<String>, lon: f64, lat_start: f64, lat_end: f64| {
-        let step = if lat_end > lat_start { 5.0 } else { -5.0 };
-        let n = ((lat_end - lat_start) / step).abs() as usize;
-        for i in 0..n {
-            let lat = lat_start + step * i as f64;
-            coords.push(format!("{lon:.2} {lat:.2}"));
-        }
-    };
+    let mut parts = Vec::new();
 
-    // Counter-clockwise ring matching the R/sf approach:
-    // Start top-right (180,90), down east edge, trace bottom east→west with
-    // southern slits, up west edge, trace top west→east with northern slit.
+    // Southern interruptions: from equator to south pole
+    for offset in [80.0, -20.0, -100.0] {
+        let lon = wrap_lon(lon_0 + offset);
+        parts.push(polygon_ring(rectangle_wkt(
+            lon - half_width,
+            -90.0,
+            lon + half_width,
+            0.0,
+            segs,
+        )));
+    }
 
-    // East edge: (180, 90) down to (180, -90)
-    meridian(&mut coords, 180.0, 90.0, -90.0);
+    // Northern interruption: from equator to north pole
+    let north = wrap_lon(lon_0 - 40.0);
+    parts.push(polygon_ring(rectangle_wkt(
+        north - half_width,
+        0.0,
+        north + half_width,
+        90.0,
+        segs,
+    )));
 
-    // Bottom edge east→west with southern slits at 80°, -20°, -100°
-    coords.push("80.01 -90".to_string());
-    meridian(&mut coords, 80.01, -90.0, 0.0);
-    meridian(&mut coords, 79.99, 0.0, -90.0);
-    coords.push("-19.99 -90".to_string());
-    meridian(&mut coords, -19.99, -90.0, 0.0);
-    meridian(&mut coords, -20.01, 0.0, -90.0);
-    coords.push("-99.99 -90".to_string());
-    meridian(&mut coords, -99.99, -90.0, 0.0);
-    meridian(&mut coords, -100.01, 0.0, -90.0);
-    coords.push("-180 -90".to_string());
+    // Antimeridian slit (full height) if not at ±180°
+    let seam = wrap_lon(lon_0 + 180.0);
+    if (seam - (-180.0)).abs() > half_width && (seam - 180.0).abs() > half_width {
+        parts.push(polygon_ring(rectangle_wkt(
+            seam - half_width,
+            -90.0,
+            seam + half_width,
+            90.0,
+            segs,
+        )));
+    }
 
-    // West edge: (-180, -90) up to (-180, 90)
-    meridian(&mut coords, -180.0, -90.0, 90.0);
-
-    // Top edge west→east with northern slit at -40°
-    coords.push("-40.01 90".to_string());
-    meridian(&mut coords, -40.01, 90.0, 0.0);
-    meridian(&mut coords, -39.99, 0.0, 90.0);
-
-    // Close ring
-    coords.push("180 90".to_string());
-
-    format!("POLYGON(({}))", coords.join(", "))
+    format!("MULTIPOLYGON({})", parts.join(", "))
 }
-
 
 fn extract_proj_param_str<'a>(crs: &'a str, key: &str) -> Option<&'a str> {
     let start = crs.find(key)?;
@@ -1487,6 +1495,23 @@ mod tests {
     }
 
     #[test]
+    fn test_igh_slit_wkt_shift_with_lon_0() {
+        let wkt0 = igh_slit_wkt(0.0, 0.005);
+        assert!(wkt0.starts_with("MULTIPOLYGON("), "{wkt0}");
+        // lon_0=0: 4 polygon parts (no antimeridian since seam at ±180°)
+        assert_eq!(wkt0.matches("((").count(), 4, "{wkt0}");
+
+        let wkt90 = igh_slit_wkt(90.0, 0.005);
+        // lon_0=90: 5 parts (adds antimeridian at -90°)
+        assert_eq!(wkt90.matches("((").count(), 5, "{wkt90}");
+        // South slits shifted to 170°, 70°, -10°; north to 50°
+        assert!(wkt90.contains("170.005"), "south slit near 170°: {wkt90}");
+        assert!(wkt90.contains("70.005"), "south slit near 70°: {wkt90}");
+        assert!(wkt90.contains("-10.005"), "south slit near -10°: {wkt90}");
+        assert!(wkt90.contains("50.005"), "north slit near 50°: {wkt90}");
+    }
+
+    #[test]
     fn test_grid_lines_wkt_seam_splits_parallels() {
         // Seam at 90°: parallels spanning -180..180 should be split into two segments
         let wkt = grid_lines_wkt(&[0.0], (-180.0, 180.0), 30.0, false, Some(90.0));
@@ -1495,8 +1520,14 @@ mod tests {
         let line_count = wkt.matches("(").count() - 1; // subtract outer parens
         assert!(line_count >= 2, "expected split into 2+ lines, got: {wkt}");
         // First segment should end before seam, second should start after
-        assert!(wkt.contains("89.99"), "first segment should stop near seam: {wkt}");
-        assert!(wkt.contains("90.01"), "second segment should start past seam: {wkt}");
+        assert!(
+            wkt.contains("89.99"),
+            "first segment should stop near seam: {wkt}"
+        );
+        assert!(
+            wkt.contains("90.01"),
+            "second segment should start past seam: {wkt}"
+        );
     }
 
     #[test]
@@ -1505,7 +1536,13 @@ mod tests {
         let wkt = grid_lines_wkt(&[60.0, 90.0, 120.0], (-90.0, 90.0), 45.0, true, Some(90.0));
         assert!(wkt.starts_with("MULTILINESTRING("));
         assert!(wkt.contains("60.000000"), "60° meridian should be present");
-        assert!(wkt.contains("120.000000"), "120° meridian should be present");
-        assert!(!wkt.contains("90.000000 "), "90° meridian should be skipped: {wkt}");
+        assert!(
+            wkt.contains("120.000000"),
+            "120° meridian should be present"
+        );
+        assert!(
+            !wkt.contains("90.000000 "),
+            "90° meridian should be skipped: {wkt}"
+        );
     }
 }
