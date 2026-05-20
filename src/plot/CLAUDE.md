@@ -70,7 +70,7 @@ Each has a `types.rs` (data structure) and `resolve.rs` (logic that runs during 
 - **`polar`** — radius/angle (for pie/rose plots).
 - **`map`** — geographic projections via PROJ strings. Implements `apply_projection_transforms` to: detect source CRS from geometry SRID, make clip boundaries, delegate per-layer spatial transforms, materialize projected layers as temp tables, and resolve frame bbox from user bounds / data extent / world extent. Properties: `crs` (PROJ string), `source` (source EPSG), `clip` (bool), `bounds` ([xmin, ymin, xmax, ymax] with null/Inf fallback semantics).
 
-`Projection` (in `types.rs`) wraps `Coord` + resolved aesthetics + properties + a `computed` map populated at execution time for the writer (e.g., `panel_boundary`, `frame_bbox`, `graticule_lon`, `graticule_lat`).
+`Projection` (in `types.rs`) wraps `Coord` + resolved aesthetics + properties + a `computed` map populated at execution time for the writer (e.g., `panel_boundary`, `bbox`, `graticule_lon`, `graticule_lat`).
 
 Docs: [`/doc/syntax/clause/facet.qmd`](../../doc/syntax/clause/facet.qmd), [`/doc/syntax/coord/`](../../doc/syntax/coord/).
 

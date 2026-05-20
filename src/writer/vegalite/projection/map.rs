@@ -17,7 +17,7 @@ pub(in crate::writer) struct MapProjection {
     panel_boundary_wkt: Option<String>,
     graticule_lon_wkt: Option<String>,
     graticule_lat_wkt: Option<String>,
-    frame_bbox: Option<[f64; 4]>,
+    bbox: Option<[f64; 4]>,
 }
 
 impl MapProjection {
@@ -33,8 +33,8 @@ impl MapProjection {
         let panel_boundary_wkt = get_string("panel_boundary");
         let graticule_lon_wkt = get_string("graticule_lon");
         let graticule_lat_wkt = get_string("graticule_lat");
-        let frame_bbox = if let Some(ParameterValue::Array(arr)) =
-            project.and_then(|p| p.computed.get("frame_bbox"))
+        let bbox = if let Some(ParameterValue::Array(arr)) =
+            project.and_then(|p| p.computed.get("bbox"))
         {
             let nums: Vec<f64> = arr
                 .iter()
@@ -52,7 +52,7 @@ impl MapProjection {
             panel_boundary_wkt,
             graticule_lon_wkt,
             graticule_lat_wkt,
-            frame_bbox,
+            bbox,
         }
     }
 
@@ -135,7 +135,7 @@ impl ProjectionRenderer for MapProjection {
             "type": "identity",
             "reflectY": true
         });
-        if let Some([xmin, ymin, xmax, ymax]) = self.frame_bbox {
+        if let Some([xmin, ymin, xmax, ymax]) = self.bbox {
             let dx = (xmax - xmin) * 1.1;
             let dy = (ymax - ymin) * 1.1;
             if dx.is_finite() && dy.is_finite() && dx > 0.0 && dy > 0.0 {
@@ -274,12 +274,12 @@ mod tests {
     }
 
     #[test]
-    fn test_frame_bbox_emits_scale_translate_exprs() {
+    fn test_bbox_emits_scale_translate_exprs() {
         use crate::plot::types::ArrayElement;
 
         let mut proj = Projection::map();
         proj.computed.insert(
-            "frame_bbox".to_string(),
+            "bbox".to_string(),
             ParameterValue::Array(vec![
                 ArrayElement::Number(0.0),
                 ArrayElement::Number(0.0),

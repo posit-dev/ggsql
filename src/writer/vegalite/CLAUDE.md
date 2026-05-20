@@ -403,7 +403,7 @@ Additional hooks: `background_layers()` / `foreground_layers()` inject layers be
 `MapProjection` reads computed values from `Projection.computed` (populated at execution time by the `Map` coord):
 
 - `panel_boundary` (WKT) → converted to GeoJSON for a geoshape background layer.
-- `frame_bbox` ([xmin, ymin, xmax, ymax]) → emits VL `projection.scale` and `projection.translate` expressions that frame the data to the viewport.
+- `bbox` ([xmin, ymin, xmax, ymax]) → emits VL `projection.scale` and `projection.translate` expressions that frame the data to the viewport.
 
 The VL projection is always `{"type": "identity", "reflectY": true}` because coordinates arrive pre-projected from the SQL layer.
 
