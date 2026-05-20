@@ -419,8 +419,10 @@ module.exports = grammar({
       $.function_call,
       // Scalar subquery: (SELECT ...) or (WITH ... SELECT ...)
       $.scalar_subquery,
-      // Arithmetic/comparison expression (binary operators)
-      seq($.position_arg, choice('+', '-', '*', '/', '%', '||', '::', '<', '>', '<=', '>=', '=', '!=', '<>'), $.position_arg),
+      // Arithmetic/comparison/boolean expression (binary operators)
+      seq($.position_arg, choice('+', '-', '*', '/', '%', '||', '::', '<', '>', '<=', '>=', '=', '!=', '<>',
+        caseInsensitive('AND'), caseInsensitive('OR')
+      ), $.position_arg),
       // Parenthesized expression
       seq('(', $.position_arg, ')')
     )),
