@@ -29,6 +29,7 @@ duckdb = { workspace = true, optional = true }
 rusqlite = { workspace = true, optional = true }
 toml_edit = { workspace = true, optional = true }
 libloading = { workspace = true, optional = true }
+gcloud-bigquery = { workspace = true, optional = true }
 parquet = { workspace = true, optional = true }
 bytes = { workspace = true }
 
@@ -45,6 +46,9 @@ serde_json.workspace = true
 # Error handling
 thiserror.workspace = true
 
+# Async runtime (used by gcloud-bigquery)
+tokio = { workspace = true, optional = true, features = ["rt-multi-thread"] }
+
 # Utilities
 regex.workspace = true
 chrono.workspace = true
@@ -59,6 +63,7 @@ tempfile = "3.8"
 ureq = "3"
 adbc_datafusion = "0.23"
 adbc_driver_manager = "0.23"
+rustls = { version = "0.23", default-features = false, features = ["ring"] }
 
 [features]
 default = ["adbc", "duckdb", "sqlite", "vegalite", "parquet", "builtin-data", "odbc", "spatial"]
@@ -68,6 +73,7 @@ sqlite = ["dep:rusqlite"]
 adbc = ["dep:adbc_core"]
 odbc = ["dep:toml_edit", "dep:libloading"]
 spatial = ["dep:geozero"]
+bigquery = ["dep:gcloud-bigquery", "dep:tokio"]
 vegalite = []
 builtin-data = []
-all-readers = ["duckdb", "sqlite", "odbc"]
+all-readers = ["duckdb", "sqlite", "odbc", "bigquery"]

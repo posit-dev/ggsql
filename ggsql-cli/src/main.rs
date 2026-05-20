@@ -34,7 +34,7 @@ pub enum Commands {
         /// The ggsql query to execute
         query: String,
 
-        /// Data source connection string (duckdb://, sqlite://, odbc://)
+        /// Data source connection string (duckdb://, sqlite://, odbc://, bigquery://)
         #[arg(long, default_value = "duckdb://memory")]
         reader: String,
 
@@ -56,7 +56,7 @@ pub enum Commands {
         /// Path to .sql file containing ggsql query
         file: PathBuf,
 
-        /// Data source connection string (duckdb://, sqlite://, odbc://)
+        /// Data source connection string (duckdb://, sqlite://, odbc://, bigquery://)
         #[arg(long, default_value = "duckdb://memory")]
         reader: String,
 
@@ -88,7 +88,7 @@ pub enum Commands {
         /// The ggsql query to validate
         query: String,
 
-        /// Data source connection string for column validation (duckdb://, sqlite://, polars://)
+        /// Data source connection string for column validation (duckdb://, sqlite://, odbc://, bigquery://)
         #[arg(long)]
         reader: Option<String>,
     },
@@ -254,6 +254,23 @@ fn cmd_exec(query: String, reader: String, writer: String, output: Option<PathBu
         #[cfg(not(feature = "odbc"))]
         {
             eprintln!("ODBC reader not compiled in. Rebuild with --features odbc");
+            std::process::exit(1);
+        }
+    } else if reader.starts_with("bigquery://") {
+        #[cfg(feature = "bigquery")]
+        {
+            let r = match ggsql::reader::BigQueryReader::from_connection_string(&reader) {
+                Ok(r) => r,
+                Err(e) => {
+                    eprintln!("Failed to create reader: {}", e);
+                    std::process::exit(1);
+                }
+            };
+            exec_with_reader(&query, &r, &writer, output, verbose);
+        }
+        #[cfg(not(feature = "bigquery"))]
+        {
+            eprintln!("BigQuery reader not compiled in. Rebuild with --features bigquery");
             std::process::exit(1);
         }
     } else if reader.starts_with("postgres://") || reader.starts_with("postgresql://") {

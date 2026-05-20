@@ -1135,7 +1135,7 @@ pub fn prepare_data_with_reader(query: &str, reader: &dyn Reader) -> Result<Prep
     // Extract CTE definitions from the source tree (in declaration order)
     let ctes = cte::extract_ctes(&source_tree);
 
-    // Materialize CTEs as registered tables via reader.register()
+    // Materialize CTEs as temp tables via the dialect's create_or_replace_temp_table_sql
     let materialized_ctes = cte::materialize_ctes(&ctes, reader)?;
 
     // Build data map for multi-source support
