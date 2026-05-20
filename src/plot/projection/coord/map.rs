@@ -1,6 +1,6 @@
 //! Map coordinate system implementation
 
-use super::{map_projections, CoordKind, CoordTrait};
+use super::{CoordKind, CoordTrait};
 use crate::naming;
 use crate::plot::layer::geom::GeomType;
 use crate::plot::types::{DefaultParamValue, ParamConstraint, ParamDefinition, TypeConstraint};
@@ -377,17 +377,6 @@ fn build_graticule(
         0.5
     };
 
-    // Compute the seam meridian (lon_0 + 180°) for non-cylindrical projections.
-    // Graticule lines must not cross this longitude.
-    let seam = if clip_boundary_wkt.is_some() {
-        let lon_0 = map_projections::extract_proj_param_str(crs, "+lon_0=")
-            .and_then(|s| s.parse().ok())
-            .unwrap_or(0.0);
-        Some(map_projections::wrap_lon(lon_0 + 180.0))
-    } else {
-        None
-    };
-
     // Clamp meridians away from ±180 to avoid antimeridian issues, and
     // deduplicate (e.g. if both -180 and 180 were present, they become the same)
     let lon_breaks: Vec<f64> = {
@@ -413,7 +402,6 @@ fn build_graticule(
             geo_bbox.yrange(),
             step_deg,
             true,
-            seam,
         ))
     } else {
         None
@@ -424,7 +412,6 @@ fn build_graticule(
             geo_bbox.xrange(),
             step_deg,
             false,
-            seam,
         ))
     } else {
         None
@@ -528,60 +515,27 @@ fn grid_lines_wkt(
     (vary_min, vary_max): (f64, f64),
     step_deg: f64,
     lon_first: bool,
-    seam: Option<f64>,
 ) -> String {
-    let seam_epsilon = 0.01;
-
     let mut lines: Vec<String> = Vec::with_capacity(breaks.len());
     for &fixed in breaks {
-        // For meridians (lon_first): skip if the meridian is at the seam
-        if lon_first {
-            if let Some(s) = seam {
-                if (fixed - s).abs() < seam_epsilon {
-                    continue;
-                }
-            }
-        }
-
-        // For parallels (lon varies): split the line at the seam
-        let segments = if !lon_first {
-            seam_split_ranges(vary_min, vary_max, seam, seam_epsilon)
-        } else {
-            vec![(vary_min, vary_max)]
-        };
-
-        for (seg_min, seg_max) in segments {
-            let mut coords = Vec::new();
-            let mut v = seg_min;
-            while v < seg_max {
-                let (lon, lat) = if lon_first { (fixed, v) } else { (v, fixed) };
-                coords.push(format!("{lon:.6} {lat:.6}"));
-                v += step_deg;
-            }
-            let (lon, lat) = if lon_first {
-                (fixed, seg_max)
-            } else {
-                (seg_max, fixed)
-            };
+        let mut coords = Vec::new();
+        let mut v = vary_min;
+        while v < vary_max {
+            let (lon, lat) = if lon_first { (fixed, v) } else { (v, fixed) };
             coords.push(format!("{lon:.6} {lat:.6}"));
-            if coords.len() >= 2 {
-                lines.push(format!("({})", coords.join(", ")));
-            }
+            v += step_deg;
+        }
+        let (lon, lat) = if lon_first {
+            (fixed, vary_max)
+        } else {
+            (vary_max, fixed)
+        };
+        coords.push(format!("{lon:.6} {lat:.6}"));
+        if coords.len() >= 2 {
+            lines.push(format!("({})", coords.join(", ")));
         }
     }
     format!("MULTILINESTRING({})", lines.join(", "))
-}
-
-/// Split a range into sub-ranges that avoid the seam.
-/// Returns one range if no seam, or two ranges if the seam falls within [min, max].
-fn seam_split_ranges(min: f64, max: f64, seam: Option<f64>, epsilon: f64) -> Vec<(f64, f64)> {
-    let Some(s) = seam else {
-        return vec![(min, max)];
-    };
-    if s <= min + epsilon || s >= max - epsilon {
-        return vec![(min, max)];
-    }
-    vec![(min, s - epsilon), (s + epsilon, max)]
 }
 
 // ---------------------------------------------------------------------------
@@ -1023,7 +977,7 @@ mod tests {
 
     #[test]
     fn test_grid_lines_wkt_meridians() {
-        let wkt = grid_lines_wkt(&[0.0, 30.0], (-90.0, 90.0), 45.0, true, None);
+        let wkt = grid_lines_wkt(&[0.0, 30.0], (-90.0, 90.0), 45.0, true);
         assert!(wkt.starts_with("MULTILINESTRING("), "{wkt}");
         assert!(wkt.contains("0.000000 -90.000000"), "{wkt}");
         assert!(wkt.contains("30.000000 -90.000000"), "{wkt}");
@@ -1033,44 +987,10 @@ mod tests {
 
     #[test]
     fn test_grid_lines_wkt_parallels() {
-        let wkt = grid_lines_wkt(&[0.0, 45.0], (-180.0, 180.0), 90.0, false, None);
+        let wkt = grid_lines_wkt(&[0.0, 45.0], (-180.0, 180.0), 90.0, false);
         assert!(wkt.starts_with("MULTILINESTRING("));
         assert!(wkt.contains("0.000000"));
         assert!(wkt.contains("45.000000"));
     }
 
-    #[test]
-    fn test_grid_lines_wkt_seam_splits_parallels() {
-        // Seam at 90°: parallels spanning -180..180 should be split into two segments
-        let wkt = grid_lines_wkt(&[0.0], (-180.0, 180.0), 30.0, false, Some(90.0));
-        assert!(wkt.starts_with("MULTILINESTRING("));
-        // Should have two linestrings (split at seam)
-        let line_count = wkt.matches("(").count() - 1; // subtract outer parens
-        assert!(line_count >= 2, "expected split into 2+ lines, got: {wkt}");
-        // First segment should end before seam, second should start after
-        assert!(
-            wkt.contains("89.99"),
-            "first segment should stop near seam: {wkt}"
-        );
-        assert!(
-            wkt.contains("90.01"),
-            "second segment should start past seam: {wkt}"
-        );
-    }
-
-    #[test]
-    fn test_grid_lines_wkt_seam_skips_meridian() {
-        // Seam at 90°: a meridian at 90° should be skipped
-        let wkt = grid_lines_wkt(&[60.0, 90.0, 120.0], (-90.0, 90.0), 45.0, true, Some(90.0));
-        assert!(wkt.starts_with("MULTILINESTRING("));
-        assert!(wkt.contains("60.000000"), "60° meridian should be present");
-        assert!(
-            wkt.contains("120.000000"),
-            "120° meridian should be present"
-        );
-        assert!(
-            !wkt.contains("90.000000 "),
-            "90° meridian should be skipped: {wkt}"
-        );
-    }
 }
