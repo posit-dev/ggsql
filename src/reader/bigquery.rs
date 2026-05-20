@@ -694,12 +694,20 @@ mod tests {
 
     use std::sync::OnceLock;
 
-    /// RAII fixture: creates a uniquely-named dataset + table, drops both on drop.
-    /// Stored in a static so all integration tests share the same infra.
+    /// RAII fixture: creates a uniquely-named dataset and a few tables, drops
+    /// the whole dataset on drop. Stored in a static so all integration tests
+    /// share the same infra.
+    ///
+    /// Tables:
+    /// - `readings` — 3 rows of id/label/value/flag, for the listing and DRAW tests.
+    /// - `types`    — DATE/TIMESTAMP/DATETIME/TIME/NUMERIC columns, for conversion.
+    /// - `wide`     — 25_000 rows, for result pagination (PAGE_SIZE is 10_000).
     struct BqTestFixture {
         project_id: String,
         dataset_id: String,
         table_id: String,
+        types_table: String,
+        wide_table: String,
     }
 
     impl BqTestFixture {
@@ -710,6 +718,8 @@ mod tests {
 
             let dataset_id = format!("ggsql_test_{}", uuid::Uuid::new_v4().simple());
             let table_id = "readings".to_string();
+            let types_table = "types".to_string();
+            let wide_table = "wide".to_string();
 
             let bootstrap = BigQueryReader::from_connection_string(base_uri)?;
             let project_id = bootstrap.project_id().to_string();
@@ -725,8 +735,33 @@ mod tests {
                     SELECT 3,       'gamma',           3.5,          TRUE",
                 project_id, dataset_id, table_id
             ))?;
+            // One populated row and one all-NULL row, so the conversion exercises
+            // both the value and the null path for every type.
+            bootstrap.execute_sql(&format!(
+                "CREATE TABLE `{}.{}.{}` AS
+                    SELECT DATE '2026-05-21' AS d, \
+                           TIMESTAMP '2026-05-21 12:00:00 UTC' AS ts, \
+                           DATETIME '2026-05-21 12:00:00' AS dt, \
+                           TIME '12:00:00' AS t, \
+                           NUMERIC '123.45' AS n UNION ALL
+                    SELECT CAST(NULL AS DATE), CAST(NULL AS TIMESTAMP), \
+                           CAST(NULL AS DATETIME), CAST(NULL AS TIME), \
+                           CAST(NULL AS NUMERIC)",
+                project_id, dataset_id, types_table
+            ))?;
+            bootstrap.execute_sql(&format!(
+                "CREATE TABLE `{}.{}.{}` AS \
+                 SELECT n FROM UNNEST(GENERATE_ARRAY(1, 25000)) AS n",
+                project_id, dataset_id, wide_table
+            ))?;
 
-            Ok(Self { project_id, dataset_id, table_id })
+            Ok(Self {
+                project_id,
+                dataset_id,
+                table_id,
+                types_table,
+                wide_table,
+            })
         }
 
         /// Build a reader whose default dataset points at this fixture's dataset.
@@ -883,5 +918,55 @@ mod tests {
             ))
             .unwrap();
         assert!(spec.metadata().rows > 0, "histogram returned no rows");
+    }
+
+    #[test]
+    #[ignore = "touches live BigQuery infra; set GGSQL_BIGQUERY_TEST_URI=bigquery://project and run with --ignored"]
+    fn bq_integration_type_conversion() {
+        use arrow::datatypes::TimeUnit;
+
+        let f = integration_fixture();
+        let reader = f.reader().unwrap();
+        let df = reader
+            .execute_sql(&format!("SELECT d, ts, dt, t, n FROM `{}`", f.types_table))
+            .unwrap();
+        assert_eq!(df.shape(), (2, 5));
+        assert_eq!(df.column_dtype("d").unwrap(), DataType::Date32);
+        assert_eq!(
+            df.column_dtype("ts").unwrap(),
+            DataType::Timestamp(TimeUnit::Microsecond, None)
+        );
+        assert_eq!(
+            df.column_dtype("dt").unwrap(),
+            DataType::Timestamp(TimeUnit::Microsecond, None)
+        );
+        assert_eq!(
+            df.column_dtype("t").unwrap(),
+            DataType::Time64(TimeUnit::Nanosecond)
+        );
+        assert_eq!(df.column_dtype("n").unwrap(), DataType::Float64);
+    }
+
+    #[test]
+    #[ignore = "touches live BigQuery infra; set GGSQL_BIGQUERY_TEST_URI=bigquery://project and run with --ignored"]
+    fn bq_integration_pagination() {
+        // PAGE_SIZE is 10_000, so a 25_000-row scan must stitch three result
+        // pages. A wrong row count means a page was dropped or duplicated.
+        let f = integration_fixture();
+        let reader = f.reader().unwrap();
+        let df = reader
+            .execute_sql(&format!("SELECT n FROM `{}`", f.wide_table))
+            .unwrap();
+        assert_eq!(df.shape(), (25_000, 1));
+    }
+
+    #[test]
+    #[ignore = "touches live BigQuery infra; set GGSQL_BIGQUERY_TEST_URI=bigquery://project and run with --ignored"]
+    fn bq_integration_query_error() {
+        // A failing query must surface as an Err, not a panic.
+        let f = integration_fixture();
+        let reader = f.reader().unwrap();
+        let result = reader.execute_sql("SELECT * FROM `__ggsql_no_such_table__`");
+        assert!(result.is_err(), "expected an error for a missing table");
     }
 }
