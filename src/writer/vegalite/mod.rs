@@ -3031,6 +3031,7 @@ mod tests {
                 aesthetics: vec!["angle".to_string(), "radius".to_string()],
                 coord: Coord::polar(),
                 properties: HashMap::new(),
+                map_projection: None,
                 computed: HashMap::new(),
             });
             let layer = Layer::new(Geom::point())

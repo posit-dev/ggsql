@@ -5,7 +5,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-use super::coord::Coord;
+use super::coord::{Coord, MapSpecification};
 use crate::plot::{Layer, ParameterValue};
 use crate::reader::SqlDialect;
 use crate::DataFrame;
@@ -22,6 +22,9 @@ pub struct Projection {
     pub aesthetics: Vec<String>,
     /// Projection-specific options
     pub properties: HashMap<String, ParameterValue>,
+    /// Typed map projection struct (present when coord is Map and crs is set).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub map_projection: Option<MapSpecification>,
     /// Values computed at execution time (e.g., clip boundary WKT).
     /// Not user-facing; populated by apply_projection_transforms.
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
@@ -54,6 +57,7 @@ impl Projection {
             coord,
             aesthetics,
             properties: HashMap::new(),
+            map_projection: None,
             computed: HashMap::new(),
         }
     }

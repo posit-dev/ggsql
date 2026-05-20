@@ -32,11 +32,13 @@ use crate::DataFrame;
 // Coord type implementations
 mod cartesian;
 pub mod map;
+pub mod map_projections;
 mod polar;
 
 // Re-export coord type structs
 pub use cartesian::Cartesian;
 pub use map::Map;
+pub use map_projections::MapSpecification;
 pub use polar::Polar;
 
 // =============================================================================

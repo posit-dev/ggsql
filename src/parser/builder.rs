@@ -4,6 +4,7 @@
 //! handling all the node types defined in the grammar.
 
 use crate::plot::layer::geom::Geom;
+use crate::plot::projection::coord::map_projections::MapSpecification;
 use crate::plot::projection::resolve_coord;
 use crate::plot::scale::{color_to_hex, is_color_aesthetic, is_user_facet_aesthetic, Transform};
 use crate::plot::*;
@@ -971,6 +972,7 @@ fn parse_facet_vars(node: &Node, source: &SourceTree) -> Result<Vec<String>> {
 /// Aesthetics are optional and default to the coord's standard names.
 fn build_project(node: &Node, source: &SourceTree) -> Result<Projection> {
     let mut coord = Coord::cartesian();
+    let mut coord_type_name: Option<String> = None;
     let mut properties = HashMap::new();
     let mut user_aesthetics: Option<Vec<String>> = None;
 
@@ -983,11 +985,9 @@ fn build_project(node: &Node, source: &SourceTree) -> Result<Projection> {
                 user_aesthetics = Some(source.find_texts(&child, query));
             }
             "project_type" => {
-                let (parsed_coord, implied_properties) = parse_coord_system(&child, source)?;
-                coord = parsed_coord;
-                for (name, value) in implied_properties {
-                    properties.entry(name).or_insert(value);
-                }
+                let text = source.get_text(&child).to_lowercase();
+                coord = parse_coord_system(&text)?;
+                coord_type_name = Some(text);
             }
             "project_properties" => {
                 // Find all project_property nodes
@@ -1033,10 +1033,28 @@ fn build_project(node: &Node, source: &SourceTree) -> Result<Projection> {
     // Validate properties for this coord type
     validate_project_properties(&coord, &properties)?;
 
+    let map_projection = if let Some(ParameterValue::String(crs)) = properties.get("crs") {
+        Some(MapSpecification::from_proj_str(crs))
+    } else {
+        coord_type_name
+            .as_deref()
+            .and_then(MapSpecification::from_coord_name)
+    };
+
+    if let Some(ref spec) = map_projection {
+        let proj_str = spec.to_proj_str();
+        if !proj_str.is_empty() {
+            properties
+                .entry("crs".to_string())
+                .or_insert_with(|| ParameterValue::String(proj_str));
+        }
+    }
+
     Ok(Projection {
         coord,
         aesthetics,
         properties,
+        map_projection,
         computed: HashMap::new(),
     })
 }
@@ -1108,47 +1126,32 @@ fn validate_project_properties(
     Ok(())
 }
 
-/// Parse coord type from a project_type node.
-/// Returns the coord and any pre-populated properties implied by the shorthand.
-fn parse_coord_system(
-    node: &Node,
-    source: &SourceTree,
-) -> Result<(Coord, Vec<(String, ParameterValue)>)> {
-    let text = source.get_text(node);
-    let map_proj = |proj: &str| -> Result<(Coord, Vec<(String, ParameterValue)>)> {
-        Ok((
-            Coord::map(),
-            vec![(
-                "crs".to_string(),
-                ParameterValue::String(format!("+proj={proj}")),
-            )],
-        ))
-    };
-    match text.to_lowercase().as_str() {
-        "cartesian" => Ok((Coord::cartesian(), Vec::new())),
-        "polar" => Ok((Coord::polar(), Vec::new())),
-        "map" => Ok((Coord::map(), Vec::new())),
-        "mercator" => map_proj("merc"),
-        "orthographic" => map_proj("ortho"),
-        "miller" => map_proj("mill"),
-        "equirectangular" => map_proj("eqc"),
-        "stereographic" => map_proj("stere"),
-        "gnomonic" => map_proj("gnom"),
-        "equal_area" => map_proj("cea"),
-        "mollweide" => map_proj("moll"),
-        "sinusoidal" => map_proj("sinu"),
-        "eckert4" => map_proj("eck4"),
-        "natural" => map_proj("natearth"),
-        "winkel_tripel" => map_proj("wintri"),
-        "albers" => map_proj("aea +lat_1=29.5 +lat_2=45.5"),
-        "lambert_conformal" => map_proj("lcc +lat_1=29.5 +lat_2=45.5"),
-        "lambert" => map_proj("laea"),
-        "azimuthal_equidistant" => map_proj("aeqd"),
-        "igh" => map_proj("igh"),
-        "robinson" => map_proj("robin"),
+fn parse_coord_system(name: &str) -> Result<Coord> {
+    match name {
+        "cartesian" => Ok(Coord::cartesian()),
+        "polar" => Ok(Coord::polar()),
+        "map"
+        | "mercator"
+        | "orthographic"
+        | "miller"
+        | "equirectangular"
+        | "stereographic"
+        | "gnomonic"
+        | "equal_area"
+        | "mollweide"
+        | "sinusoidal"
+        | "eckert4"
+        | "natural"
+        | "winkel_tripel"
+        | "albers"
+        | "lambert_conformal"
+        | "lambert"
+        | "azimuthal_equidistant"
+        | "igh"
+        | "robinson" => Ok(Coord::map()),
         _ => Err(GgsqlError::ParseError(format!(
             "Unknown coord type: {}",
-            text
+            name
         ))),
     }
 }
@@ -1428,7 +1431,7 @@ mod tests {
         assert_eq!(project.coord.coord_kind(), CoordKind::Map);
         assert_eq!(
             project.properties.get("crs"),
-            Some(&ParameterValue::String("+proj=merc".to_string()))
+            Some(&ParameterValue::String("+proj=merc +lon_0=0".to_string()))
         );
     }
 
