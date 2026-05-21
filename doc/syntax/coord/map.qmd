@@ -26,14 +26,14 @@ This is a convenience when converting from a Cartesian coordinate system, withou
 * `clip`: Should data be removed if it appears outside the bounds of the coordinate system, or has become invalid due to the projection. 
   Defaults to `true`.
 * `crs` A string giving the target Coordinate Reference System (CRS) holding parameters of a coordinate transformation.
-  This is only used with unnamed proejctions and therefore mutually exclusive with the `origin` and `parallel` settings.
+  This is only used with unnamed projections and therefore mutually exclusive with the `origin` and `parallel` settings.
   By default, matches the Spatial Reference Identifiers (SRIDs) of geometry columns.
-  Typically takes one of following forms:
+  Typically takes one of the following forms:
     * A [proj string](https://proj.org/en/stable/usage/quickstart.html) like `'+proj=longlat +lon_0=90'` for 2D longitude/latitude with 90° longitude offset.
-    * A [EPSG code](https://en.wikipedia.org/wiki/EPSG_Geodetic_Parameter_Dataset) like `'EPSG:3395'` for World Mercator projection.
+    * An [EPSG code](https://en.wikipedia.org/wiki/EPSG_Geodetic_Parameter_Dataset) like `'EPSG:3395'` for World Mercator projection.
 * `source` A string giving the source CRS for the data to use as fallback when not explicit in geometry. 
   Useful when using non-spatial layers that don't carry SRIDs.
-  Defaults to `'EPGS:4326'` or longitude/latitude coordinates.
+  Defaults to `'EPSG:4326'` or longitude/latitude coordinates.
 * `bounds` A numeric array of length 4 giving the bounding box of the area to view.
   The numbers mean ('xmin', 'ymin', 'xmax', 'ymax') in that order, in the units of the `crs` argument.
   Be mindful that your data might be in longitude/latitude degrees, but the `crs` might use meters, or vice versa.
@@ -49,7 +49,7 @@ This is a convenience when converting from a Cartesian coordinate system, withou
       The latter corresponds to the `+lat_0` proj string parameter.
       If unsupported by the projection, the latitude is silently ignored.
 * `parallel` Setting for conic or cylindrical projections.
-  This is only used with named projects and therefore mutually exclusive with `crs`.
+  This is only used with named projections and therefore mutually exclusive with `crs`.
   If unsupported by the projection, this setting is silently ignored.
   One of the following:
   * A scalar number, setting the standard parallel as degrees between −90 and +90.
@@ -73,7 +73,7 @@ The code below is equivalent to the code above.
 PROJECT TO map SETTING crs => '+proj=ortho +lon_0=150 +lat_0=52'
 ```
 
-In this context, 'supported' means that we are reasonably confident that we can draw a servicable map.
+In this context, 'supported' means that we are reasonably confident that we can draw a serviceable map.
 Below follows a table giving an overview of the supported projections. 
 The projections are recognised by name in the 'string' column or from the 'proj string' CRS setting.
 More information about them can be found on the [PRØJ website](https://proj.org/en/stable/operations/projections/index.html).
@@ -158,7 +158,7 @@ PROJECT TO orthographic
   SETTING bounds => (-1868152, 468481, 1638882, 2917218)
 ```
 
-The `bounds` arguments can take infinites to take the visible area's extreme values, or `null` to take take the data's bounds.
+The `bounds` arguments can take infinites to take the visible area's extreme values, or `null` to take the data's bounds.
 
 ```{ggsql}
 VISUALISE continent AS fill FROM ggsql:world
