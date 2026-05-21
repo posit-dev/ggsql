@@ -4044,6 +4044,123 @@ DRAW point
         (geom_type)))))
 
 ================================================================================
+ILIKE predicate in function arguments
+================================================================================
+
+SELECT IFF(x ILIKE 'a%', 1, 0) AS flag FROM t
+VISUALISE flag AS x
+DRAW point
+
+--------------------------------------------------------------------------------
+
+(query
+  (sql_portion
+    (sql_statement
+      (select_statement
+        (select_body
+          (function_call
+            (identifier
+              (bare_identifier))
+            (function_args
+              (function_arg
+                (like_predicate
+                  (position_arg
+                    (qualified_name
+                      (identifier
+                        (bare_identifier))))
+                  (position_arg
+                    (string))))
+              (function_arg
+                (position_arg
+                  (number)))
+              (function_arg
+                (position_arg
+                  (number)))))
+          (identifier
+            (bare_identifier))
+          (identifier
+            (bare_identifier))
+          (from_clause
+            (table_ref
+              table: (qualified_name
+                (identifier
+                  (bare_identifier)))))))))
+  (visualise_statement
+    (visualise_keyword)
+    (global_mapping
+      (mapping_list
+        (mapping_element
+          (explicit_mapping
+            value: (mapping_value
+              (column_reference
+                (identifier
+                  (bare_identifier))))
+            name: (aesthetic_name)))))
+    (viz_clause
+      (draw_clause
+        (geom_type)))))
+
+================================================================================
+NOT IN predicate in function arguments
+================================================================================
+
+SELECT IFF(x NOT IN ('a', 'b'), 1, 0) AS flag FROM t
+VISUALISE flag AS x
+DRAW point
+
+--------------------------------------------------------------------------------
+
+(query
+  (sql_portion
+    (sql_statement
+      (select_statement
+        (select_body
+          (function_call
+            (identifier
+              (bare_identifier))
+            (function_args
+              (function_arg
+                (in_predicate
+                  (position_arg
+                    (qualified_name
+                      (identifier
+                        (bare_identifier))))
+                  (in_value_list
+                    (position_arg
+                      (string))
+                    (position_arg
+                      (string)))))
+              (function_arg
+                (position_arg
+                  (number)))
+              (function_arg
+                (position_arg
+                  (number)))))
+          (identifier
+            (bare_identifier))
+          (identifier
+            (bare_identifier))
+          (from_clause
+            (table_ref
+              table: (qualified_name
+                (identifier
+                  (bare_identifier)))))))))
+  (visualise_statement
+    (visualise_keyword)
+    (global_mapping
+      (mapping_list
+        (mapping_element
+          (explicit_mapping
+            value: (mapping_value
+              (column_reference
+                (identifier
+                  (bare_identifier))))
+            name: (aesthetic_name)))))
+    (viz_clause
+      (draw_clause
+        (geom_type)))))
+
+================================================================================
 Layer source with Jinja ref
 ================================================================================
 

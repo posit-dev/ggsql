@@ -1962,6 +1962,97 @@ mod tests {
         assert!(result.is_ok());
     }
 
+    #[test]
+    fn test_between_in_function_args() {
+        let query = r#"
+            SELECT IFF(x BETWEEN 1 AND 10, 1, 0) AS flag
+            FROM t
+            VISUALISE flag AS x
+            DRAW point
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_not_operator_in_function_args() {
+        let query = r#"
+            SELECT IFF(NOT x = 'a', 1, 0) AS flag
+            FROM t
+            VISUALISE flag AS x
+            DRAW point
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_in_predicate_in_function_args() {
+        let query = r#"
+            SELECT IFF(x IN ('a', 'b'), 1, 0) AS flag
+            FROM t
+            VISUALISE flag AS x
+            DRAW point
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_not_in_predicate_in_function_args() {
+        let query = r#"
+            SELECT IFF(x NOT IN ('a', 'b'), 1, 0) AS flag
+            FROM t
+            VISUALISE flag AS x
+            DRAW point
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_is_null_in_function_args() {
+        let query = r#"
+            SELECT IFF(x IS NULL, 1, 0) AS flag
+            FROM t
+            VISUALISE flag AS x
+            DRAW point
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_like_predicate_in_function_args() {
+        let query = r#"
+            SELECT IFF(x LIKE 'a%', 1, 0) AS flag
+            FROM t
+            VISUALISE flag AS x
+            DRAW point
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_ilike_predicate_in_function_args() {
+        let query = r#"
+            SELECT IFF(x ILIKE 'a%', 1, 0) AS flag
+            FROM t
+            VISUALISE flag AS x
+            DRAW point
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
+    }
+
     // ========================================
     // Negative Test Cases - Should Error
     // ========================================
@@ -2014,71 +2105,6 @@ mod tests {
 
         let result = parse_test_query(query);
         assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_between_in_function_args() {
-        let query = r#"
-            SELECT IFF(x BETWEEN 1 AND 10, 1, 0) AS flag
-            FROM t
-            VISUALISE flag AS x
-            DRAW point
-        "#;
-
-        let result = parse_test_query(query);
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn test_not_operator_in_function_args() {
-        let query = r#"
-            SELECT IFF(NOT x = 'a', 1, 0) AS flag
-            FROM t
-            VISUALISE flag AS x
-            DRAW point
-        "#;
-
-        let result = parse_test_query(query);
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn test_in_predicate_in_function_args() {
-        let query = r#"
-            SELECT IFF(x IN ('a', 'b'), 1, 0) AS flag
-            FROM t
-            VISUALISE flag AS x
-            DRAW point
-        "#;
-
-        let result = parse_test_query(query);
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn test_is_null_in_function_args() {
-        let query = r#"
-            SELECT IFF(x IS NULL, 1, 0) AS flag
-            FROM t
-            VISUALISE flag AS x
-            DRAW point
-        "#;
-
-        let result = parse_test_query(query);
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn test_like_predicate_in_function_args() {
-        let query = r#"
-            SELECT IFF(x LIKE 'a%', 1, 0) AS flag
-            FROM t
-            VISUALISE flag AS x
-            DRAW point
-        "#;
-
-        let result = parse_test_query(query);
-        assert!(result.is_ok());
     }
 
     // ========================================
