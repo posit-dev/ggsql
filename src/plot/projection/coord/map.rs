@@ -84,9 +84,9 @@ impl CoordTrait for Map {
                     allow_null: true,
                 },
             },
-            // center => 30 (lon only) or center => (30, 45) (lon, lat)
+            // origin => 30 (lon only) or origin => (30, 45) (lon, lat)
             ParamDefinition {
-                name: "center",
+                name: "origin",
                 default: DefaultParamValue::Null,
                 constraint: ParamConstraint::number_or_numeric_array(
                     LON_RANGE,
@@ -118,12 +118,12 @@ impl CoordTrait for Map {
             ));
         }
         let has_crs = properties.contains_key("crs");
-        let has_center = properties.contains_key("center");
+        let has_origin = properties.contains_key("origin");
         let has_parallel = properties.contains_key("parallel");
-        if has_crs && (has_center || has_parallel) {
+        if has_crs && (has_origin || has_parallel) {
             return Err(
-                "Cannot combine 'crs' setting with 'center' or 'parallel'. \
-                 Use either the CRS string or a named projection with 'center'/'parallel' settings."
+                "Cannot combine 'crs' setting with 'origin' or 'parallel'. \
+                 Use either the CRS string or a named projection with 'origin'/'parallel' settings."
                     .to_string(),
             );
         }
@@ -144,11 +144,11 @@ impl CoordTrait for Map {
         }
         // ArrayConstraint applies uniform bounds to all elements, so we validate
         // the latitude element (index 1) separately against [-90, 90].
-        if let Some(ParameterValue::Array(arr)) = properties.get("center") {
+        if let Some(ParameterValue::Array(arr)) = properties.get("origin") {
             if let Some(crate::plot::types::ArrayElement::Number(lat)) = arr.get(1) {
                 if *lat < -90.0 || *lat > 90.0 {
                     return Err(format!(
-                        "center latitude must be between -90 and 90, got {}",
+                        "origin latitude must be between -90 and 90, got {}",
                         lat
                     ));
                 }
@@ -915,7 +915,7 @@ mod tests {
         assert!(names.contains(&"source"));
         assert!(names.contains(&"clip"));
         assert!(names.contains(&"bounds"));
-        assert!(names.contains(&"center"));
+        assert!(names.contains(&"origin"));
         assert!(names.contains(&"parallel"));
         assert_eq!(defaults.len(), 6);
     }
@@ -954,14 +954,14 @@ mod tests {
     }
 
     #[test]
-    fn test_crs_rejects_center_and_parallel() {
+    fn test_crs_rejects_origin_and_parallel() {
         let map = Map::new("map");
         let mut props = HashMap::new();
         props.insert(
             "crs".to_string(),
             ParameterValue::String("+proj=ortho".to_string()),
         );
-        props.insert("center".to_string(), ParameterValue::Number(30.0));
+        props.insert("origin".to_string(), ParameterValue::Number(30.0));
 
         let resolved = map.resolve_properties(&props);
         assert!(resolved.is_err());
@@ -970,11 +970,11 @@ mod tests {
     }
 
     #[test]
-    fn test_center_rejects_latitude_out_of_range() {
+    fn test_origin_rejects_latitude_out_of_range() {
         let map = Map::new("albers");
         let mut props = HashMap::new();
         props.insert(
-            "center".to_string(),
+            "origin".to_string(),
             ParameterValue::Array(vec![
                 crate::plot::types::ArrayElement::Number(0.0),
                 crate::plot::types::ArrayElement::Number(95.0),
@@ -984,7 +984,7 @@ mod tests {
         let resolved = map.resolve_properties(&props);
         assert!(resolved.is_err());
         let err = resolved.unwrap_err();
-        assert!(err.contains("center latitude must be between -90 and 90"));
+        assert!(err.contains("origin latitude must be between -90 and 90"));
     }
 
     fn bbox(xmin: f64, ymin: f64, xmax: f64, ymax: f64) -> BBox {

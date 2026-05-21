@@ -26,7 +26,7 @@ This is a convenience when converting from a Cartesian coordinate system, withou
 * `clip`: Should data be removed if it appears outside the bounds of the coordinate system, or has become invalid due to the projection. 
   Defaults to `true`.
 * `crs` A string giving the target Coordinate Reference System (CRS) holding parameters of a coordinate transformation.
-  This is only used with unnamed proejctions and therefore mutually exclusive with the `center` and `parallel` settings.
+  This is only used with unnamed proejctions and therefore mutually exclusive with the `origin` and `parallel` settings.
   By default, matches the Spatial Reference Identifiers (SRIDs) of geometry columns.
   Typically takes one of following forms:
     * A [proj string](https://proj.org/en/stable/usage/quickstart.html) like `'+proj=longlat +lon_0=90'` for 2D longitude/latitude with 90° longitude offset.
@@ -39,12 +39,12 @@ This is a convenience when converting from a Cartesian coordinate system, withou
   Be mindful that your data might be in longitude/latitude degrees, but the `crs` might use meters, or vice versa.
   Bounds can have `Inf`/`-Inf` values to indicate the visible area's extent.
   Using `null` values indicates to fall back to the data's extent, so only partial bounds need to be indicated.
-* `center` Projection center location. 
-  This is only used with named projections and therefore mutually exclusive with `crs`. 
+* `origin` Projection origin location.
+  This is only used with named projections and therefore mutually exclusive with `crs`.
   One of the following:
-    * A scalar number, setting the center longitude or 'central meridian' in degrees between −180 and +180. 
+    * A scalar number, setting the origin longitude or 'central meridian' in degrees between −180 and +180.
       Corresponds to the `+lon_0` proj string parameter.
-    * An array of two numbers, where the first number is the scalar option above. 
+    * An array of two numbers, where the first number is the scalar option above.
       The second number sets the latitude of origin in degrees between −90 and +90.
       The latter corresponds to the `+lat_0` proj string parameter.
       If unsupported by the projection, the latitude is silently ignored.
@@ -60,10 +60,10 @@ This is a convenience when converting from a Cartesian coordinate system, withou
 ## Supported projections
 
 There are two main ways to set the map projection. 
-One is via a named projection, which allows for the `center` and `parallel` settings.
+One is via a named projection, which allows for the `origin` and `parallel` settings.
 
 ```ggsql
-PROJECT TO orthographic SETTING center => (150, 52)
+PROJECT TO orthographic SETTING origin => (150, 52)
 ```
 
 The second option is to use the generic `PROJECT TO map` together with the `crs` setting.
@@ -78,7 +78,7 @@ Below follows a table giving an overview of the supported projections.
 The projections are recognised by name in the 'string' column or from the 'proj string' CRS setting.
 More information about them can be found on the [PRØJ website](https://proj.org/en/stable/operations/projections/index.html).
 
-| name                                  | string                  | center | parallel     | proj string      |
+| name                                  | string                  | origin | parallel     | proj string      |
 |---------------------------------------|-------------------------|--------|--------------|------------------|
 | Mercator                              | `mercator`              | 0      | NA           | `+proj=merc`     |
 | Orthographic                          | `orthographic`          | (0, 0) | NA           | `+proj=ortho`    |
@@ -128,13 +128,13 @@ DRAW spatial
 PROJECT TO map SETTING crs => '+proj=robin'
 ```
 
-### Centering elsewhere
+### Setting the origin
 
 ```{ggsql}
 VISUALISE continent AS fill FROM ggsql:world
 DRAW spatial
-PROJECT TO orthographic 
-  SETTING center => (133.77, -25.27)
+PROJECT TO orthographic
+  SETTING origin => (133.77, -25.27)
 ```
 
 ### Zooming in

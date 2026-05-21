@@ -40,7 +40,7 @@ pub const NAMED_PROJECTIONS: &[&str] = &[
 pub trait MapProjectionTrait: fmt::Debug + Send + Sync {
     fn proj_code(&self) -> &'static str;
     fn display_name(&self) -> &'static str;
-    fn center(&self) -> (f64, f64);
+    fn origin(&self) -> (f64, f64);
     fn to_proj_str(&self) -> String;
 
     fn visible_area_wkt(&self) -> Option<String> {
@@ -66,7 +66,7 @@ pub trait MapProjectionTrait: fmt::Debug + Send + Sync {
     }
 
     fn slit_wkt(&self, epsilon: f64) -> Option<String> {
-        let seam = wrap_lon(self.center().0 + 180.0);
+        let seam = wrap_lon(self.origin().0 + 180.0);
         if (seam - (-180.0)).abs() > epsilon && (seam - 180.0).abs() > epsilon {
             let segs = self.edge_segments()[1];
             Some(rectangle_wkt(
@@ -134,8 +134,8 @@ impl MapSpecification {
                     }),
                 }
             } else {
-                // Extract center: number (lon only) or array (lon, lat)
-                let (lon_0, lat_0) = match properties.get("center") {
+                // Extract origin: number (lon only) or array (lon, lat)
+                let (lon_0, lat_0) = match properties.get("origin") {
                     Some(ParameterValue::Number(lon)) => (*lon, 0.0),
                     Some(ParameterValue::Array(arr)) => {
                         let lon = match arr.first() {
@@ -222,8 +222,8 @@ impl MapSpecification {
         self.0.display_name()
     }
 
-    pub fn center(&self) -> (f64, f64) {
-        self.0.center()
+    pub fn origin(&self) -> (f64, f64) {
+        self.0.origin()
     }
 
     pub fn to_proj_str(&self) -> String {
@@ -293,7 +293,7 @@ impl MapProjectionTrait for Orthographic {
     fn display_name(&self) -> &'static str {
         "Orthographic"
     }
-    fn center(&self) -> (f64, f64) {
+    fn origin(&self) -> (f64, f64) {
         (self.lon_0, self.lat_0)
     }
     fn to_proj_str(&self) -> String {
@@ -317,7 +317,7 @@ impl MapProjectionTrait for Stereographic {
     fn display_name(&self) -> &'static str {
         "Stereographic"
     }
-    fn center(&self) -> (f64, f64) {
+    fn origin(&self) -> (f64, f64) {
         (self.lon_0, self.lat_0)
     }
     fn to_proj_str(&self) -> String {
@@ -341,7 +341,7 @@ impl MapProjectionTrait for Gnomonic {
     fn display_name(&self) -> &'static str {
         "Gnomonic"
     }
-    fn center(&self) -> (f64, f64) {
+    fn origin(&self) -> (f64, f64) {
         (self.lon_0, self.lat_0)
     }
     fn to_proj_str(&self) -> String {
@@ -365,7 +365,7 @@ impl MapProjectionTrait for LambertAzimuthal {
     fn display_name(&self) -> &'static str {
         "Lambert Azimuthal Equal-Area"
     }
-    fn center(&self) -> (f64, f64) {
+    fn origin(&self) -> (f64, f64) {
         (self.lon_0, self.lat_0)
     }
     fn to_proj_str(&self) -> String {
@@ -389,7 +389,7 @@ impl MapProjectionTrait for AzimuthalEquidistant {
     fn display_name(&self) -> &'static str {
         "Azimuthal Equidistant"
     }
-    fn center(&self) -> (f64, f64) {
+    fn origin(&self) -> (f64, f64) {
         (self.lon_0, self.lat_0)
     }
     fn to_proj_str(&self) -> String {
@@ -416,7 +416,7 @@ impl MapProjectionTrait for Mercator {
     fn display_name(&self) -> &'static str {
         "Mercator"
     }
-    fn center(&self) -> (f64, f64) {
+    fn origin(&self) -> (f64, f64) {
         (self.lon_0, 0.0)
     }
     fn to_proj_str(&self) -> String {
@@ -442,7 +442,7 @@ impl MapProjectionTrait for Miller {
     fn display_name(&self) -> &'static str {
         "Miller"
     }
-    fn center(&self) -> (f64, f64) {
+    fn origin(&self) -> (f64, f64) {
         (self.lon_0, 0.0)
     }
     fn to_proj_str(&self) -> String {
@@ -465,7 +465,7 @@ impl MapProjectionTrait for Equirectangular {
     fn display_name(&self) -> &'static str {
         "Equirectangular"
     }
-    fn center(&self) -> (f64, f64) {
+    fn origin(&self) -> (f64, f64) {
         (self.lon_0, 0.0)
     }
     fn to_proj_str(&self) -> String {
@@ -488,7 +488,7 @@ impl MapProjectionTrait for CylindricalEqualArea {
     fn display_name(&self) -> &'static str {
         "Cylindrical Equal-Area"
     }
-    fn center(&self) -> (f64, f64) {
+    fn origin(&self) -> (f64, f64) {
         (self.lon_0, 0.0)
     }
     fn to_proj_str(&self) -> String {
@@ -515,7 +515,7 @@ impl MapProjectionTrait for Robinson {
     fn display_name(&self) -> &'static str {
         "Robinson"
     }
-    fn center(&self) -> (f64, f64) {
+    fn origin(&self) -> (f64, f64) {
         (self.lon_0, 0.0)
     }
     fn to_proj_str(&self) -> String {
@@ -535,7 +535,7 @@ impl MapProjectionTrait for Mollweide {
     fn display_name(&self) -> &'static str {
         "Mollweide"
     }
-    fn center(&self) -> (f64, f64) {
+    fn origin(&self) -> (f64, f64) {
         (self.lon_0, 0.0)
     }
     fn to_proj_str(&self) -> String {
@@ -555,7 +555,7 @@ impl MapProjectionTrait for Sinusoidal {
     fn display_name(&self) -> &'static str {
         "Sinusoidal"
     }
-    fn center(&self) -> (f64, f64) {
+    fn origin(&self) -> (f64, f64) {
         (self.lon_0, 0.0)
     }
     fn to_proj_str(&self) -> String {
@@ -575,7 +575,7 @@ impl MapProjectionTrait for Eckert4 {
     fn display_name(&self) -> &'static str {
         "Eckert IV"
     }
-    fn center(&self) -> (f64, f64) {
+    fn origin(&self) -> (f64, f64) {
         (self.lon_0, 0.0)
     }
     fn to_proj_str(&self) -> String {
@@ -595,7 +595,7 @@ impl MapProjectionTrait for NaturalEarth {
     fn display_name(&self) -> &'static str {
         "Natural Earth"
     }
-    fn center(&self) -> (f64, f64) {
+    fn origin(&self) -> (f64, f64) {
         (self.lon_0, 0.0)
     }
     fn to_proj_str(&self) -> String {
@@ -619,7 +619,7 @@ impl MapProjectionTrait for Igh {
     fn display_name(&self) -> &'static str {
         "Interrupted Goode Homolosine"
     }
-    fn center(&self) -> (f64, f64) {
+    fn origin(&self) -> (f64, f64) {
         (self.lon_0, 0.0)
     }
     fn to_proj_str(&self) -> String {
@@ -649,7 +649,7 @@ impl MapProjectionTrait for AlbersEqualArea {
     fn display_name(&self) -> &'static str {
         "Albers Equal-Area"
     }
-    fn center(&self) -> (f64, f64) {
+    fn origin(&self) -> (f64, f64) {
         (self.lon_0, self.lat_0)
     }
     fn to_proj_str(&self) -> String {
@@ -678,7 +678,7 @@ impl MapProjectionTrait for LambertConformalConic {
     fn display_name(&self) -> &'static str {
         "Lambert Conformal Conic"
     }
-    fn center(&self) -> (f64, f64) {
+    fn origin(&self) -> (f64, f64) {
         (self.lon_0, self.lat_0)
     }
     fn to_proj_str(&self) -> String {
@@ -711,7 +711,7 @@ impl MapProjectionTrait for WinkelTripel {
     fn display_name(&self) -> &'static str {
         "Winkel Tripel"
     }
-    fn center(&self) -> (f64, f64) {
+    fn origin(&self) -> (f64, f64) {
         (self.lon_0, 0.0)
     }
     fn to_proj_str(&self) -> String {
@@ -740,7 +740,7 @@ impl MapProjectionTrait for UnknownProj {
     fn display_name(&self) -> &'static str {
         "Unknown"
     }
-    fn center(&self) -> (f64, f64) {
+    fn origin(&self) -> (f64, f64) {
         (self.lon_0, self.lat_0)
     }
     fn to_proj_str(&self) -> String {
@@ -1040,11 +1040,11 @@ mod tests {
     fn from_proj_str_known_projections() {
         let proj = MapSpecification::from_proj_str("+proj=ortho +lon_0=10 +lat_0=45");
         assert_eq!(proj.proj_code(), "ortho");
-        assert_eq!(proj.center(), (10.0, 45.0));
+        assert_eq!(proj.origin(), (10.0, 45.0));
 
         let proj = MapSpecification::from_proj_str("+proj=merc");
         assert_eq!(proj.proj_code(), "merc");
-        assert_eq!(proj.center(), (0.0, 0.0));
+        assert_eq!(proj.origin(), (0.0, 0.0));
 
         let proj = MapSpecification::from_proj_str("+proj=aea +lon_0=5 +lat_1=30 +lat_2=50");
         assert_eq!(proj.proj_code(), "aea");
@@ -1063,7 +1063,7 @@ mod tests {
         );
         let proj = MapSpecification::new(Some("map"), &props).unwrap();
         assert_eq!(proj.proj_code(), "aea");
-        assert_eq!(proj.center(), (5.0, 10.0));
+        assert_eq!(proj.origin(), (5.0, 10.0));
         assert_eq!(
             proj.to_proj_str(),
             "+proj=aea +lon_0=5 +lat_0=10 +lat_1=30 +lat_2=50"
@@ -1074,7 +1074,7 @@ mod tests {
     fn new_named_albers_with_settings() {
         let mut props = HashMap::new();
         props.insert(
-            "center".to_string(),
+            "origin".to_string(),
             ParameterValue::Array(vec![
                 ArrayElement::Number(-96.0),
                 ArrayElement::Number(37.5),
@@ -1086,7 +1086,7 @@ mod tests {
         );
         let proj = MapSpecification::new(Some("albers"), &props).unwrap();
         assert_eq!(proj.proj_code(), "aea");
-        assert_eq!(proj.center(), (-96.0, 37.5));
+        assert_eq!(proj.origin(), (-96.0, 37.5));
         assert_eq!(
             proj.to_proj_str(),
             "+proj=aea +lon_0=-96 +lat_0=37.5 +lat_1=29.5 +lat_2=45.5"
@@ -1097,7 +1097,7 @@ mod tests {
     fn from_proj_str_unknown_projection() {
         let proj = MapSpecification::from_proj_str("+proj=fooproj +lon_0=5");
         assert_eq!(proj.proj_code(), "unknown");
-        assert_eq!(proj.center(), (5.0, 0.0));
+        assert_eq!(proj.origin(), (5.0, 0.0));
         assert_eq!(proj.visible_area_wkt(), None);
     }
 
@@ -1194,7 +1194,7 @@ mod tests {
     #[test]
     fn seam_position() {
         let proj = MapSpecification::from_proj_str("+proj=robin +lon_0=-90");
-        let (lon_0, _) = proj.center();
+        let (lon_0, _) = proj.origin();
         let seam = wrap_lon(lon_0 + 180.0);
         assert!((seam - 90.0).abs() < 1e-6, "seam should be at 90°");
     }
