@@ -8,7 +8,7 @@ use crate::plot::layer::geom::GeomType;
 use crate::plot::types::{
     validate_parameter, DefaultParamValue, ParamConstraint, ParamDefinition, TypeConstraint,
 };
-use crate::plot::{Layer, ParameterValue};
+use crate::plot::{DataSource, Layer, ParameterValue};
 use crate::reader::SqlDialect;
 use crate::DataFrame;
 
@@ -251,13 +251,14 @@ impl CoordTrait for Map {
         let mut data_bbox: Option<BBox> = None;
 
         for (idx, layer) in layers.iter().enumerate() {
+            let is_annotation = matches!(layer.source, Some(DataSource::Annotation));
             let is_spatial = layer.geom.geom_type() == GeomType::Spatial;
             let has_projected_positions = !is_spatial
                 && source != crs
                 && layer.mappings.contains_key("pos1")
                 && layer.mappings.contains_key("pos2");
 
-            if !is_spatial && !has_projected_positions {
+            if is_annotation || (!is_spatial && !has_projected_positions) {
                 continue;
             }
 
