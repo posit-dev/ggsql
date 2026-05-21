@@ -142,6 +142,18 @@ impl CoordTrait for Map {
                 ));
             }
         }
+        // ArrayConstraint applies uniform bounds to all elements, so we validate
+        // the latitude element (index 1) separately against [-90, 90].
+        if let Some(ParameterValue::Array(arr)) = properties.get("center") {
+            if let Some(crate::plot::types::ArrayElement::Number(lat)) = arr.get(1) {
+                if *lat < -90.0 || *lat > 90.0 {
+                    return Err(format!(
+                        "center latitude must be between -90 and 90, got {}",
+                        lat
+                    ));
+                }
+            }
+        }
         let mut resolved = properties.clone();
         for param in defaults {
             if !resolved.contains_key(param.name) {
@@ -954,6 +966,24 @@ mod tests {
         assert!(resolved.is_err());
         let err = resolved.unwrap_err();
         assert!(err.contains("Cannot combine 'crs'"));
+    }
+
+    #[test]
+    fn test_center_rejects_latitude_out_of_range() {
+        let map = Map::new("albers");
+        let mut props = HashMap::new();
+        props.insert(
+            "center".to_string(),
+            ParameterValue::Array(vec![
+                crate::plot::types::ArrayElement::Number(0.0),
+                crate::plot::types::ArrayElement::Number(95.0),
+            ]),
+        );
+
+        let resolved = map.resolve_properties(&props);
+        assert!(resolved.is_err());
+        let err = resolved.unwrap_err();
+        assert!(err.contains("center latitude must be between -90 and 90"));
     }
 
     fn bbox(xmin: f64, ymin: f64, xmax: f64, ymax: f64) -> BBox {
