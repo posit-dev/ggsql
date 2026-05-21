@@ -390,19 +390,19 @@ module.exports = grammar({
     // Function argument: position or named
     function_arg: $ => choice(
       $.named_arg,
-      $._function_arg_expression
+      $.function_arg_expression
     ),
 
     named_arg: $ => seq(
       field('name', $.identifier),
       choice(':=', '=>'),
-      field('value', $._function_arg_expression)
+      field('value', $.function_arg_expression)
     ),
 
     // Function arguments support a slightly richer predicate grammar than the
     // generic position_arg rule. Keep this scoped here so we don't widen SQL
     // parsing in other contexts by accident.
-    _function_arg_expression: $ => $._function_arg_or_expression,
+    function_arg_expression: $ => $._function_arg_or_expression,
 
     _function_arg_or_expression: $ => prec.left(seq(
       $._function_arg_and_expression,
@@ -430,7 +430,7 @@ module.exports = grammar({
       $.is_predicate,
       $.like_predicate,
       $.position_arg,
-      prec(1, seq('(', $._function_arg_expression, ')'))
+      prec(1, seq('(', $.function_arg_expression, ')'))
     ),
 
     between_predicate: $ => seq(

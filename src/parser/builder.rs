@@ -2054,6 +2054,17 @@ mod tests {
     }
 
     #[test]
+    fn test_extract_named_arg_predicate_value_spans_full_expression() {
+        let query = "SELECT FOO(flag => x = 'a' OR x = 'b') FROM t VISUALISE x AS x DRAW point";
+        let source = make_source(query);
+        let root = source.root();
+        let named_arg = source.find_node(&root, "(named_arg) @arg").unwrap();
+
+        let (_, value_node) = extract_name_value_nodes(&named_arg, "named_arg").unwrap();
+        assert_eq!(source.get_text(&value_node), "x = 'a' OR x = 'b'");
+    }
+
+    #[test]
     fn test_named_arg_predicate_in_function_args() {
         let query = r#"
             SELECT FOO(flag => x = 'a' OR x = 'b')
