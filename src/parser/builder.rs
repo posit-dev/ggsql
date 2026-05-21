@@ -2017,7 +2017,7 @@ mod tests {
     }
 
     #[test]
-    fn test_error_between_in_function_args() {
+    fn test_between_in_function_args() {
         let query = r#"
             SELECT IFF(x BETWEEN 1 AND 10, 1, 0) AS flag
             FROM t
@@ -2026,11 +2026,11 @@ mod tests {
         "#;
 
         let result = parse_test_query(query);
-        assert!(result.is_err());
+        assert!(result.is_ok());
     }
 
     #[test]
-    fn test_error_not_operator_in_function_args() {
+    fn test_not_operator_in_function_args() {
         let query = r#"
             SELECT IFF(NOT x = 'a', 1, 0) AS flag
             FROM t
@@ -2039,7 +2039,46 @@ mod tests {
         "#;
 
         let result = parse_test_query(query);
-        assert!(result.is_err());
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_in_predicate_in_function_args() {
+        let query = r#"
+            SELECT IFF(x IN ('a', 'b'), 1, 0) AS flag
+            FROM t
+            VISUALISE flag AS x
+            DRAW point
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_is_null_in_function_args() {
+        let query = r#"
+            SELECT IFF(x IS NULL, 1, 0) AS flag
+            FROM t
+            VISUALISE flag AS x
+            DRAW point
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_like_predicate_in_function_args() {
+        let query = r#"
+            SELECT IFF(x LIKE 'a%', 1, 0) AS flag
+            FROM t
+            VISUALISE flag AS x
+            DRAW point
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
     }
 
     // ========================================

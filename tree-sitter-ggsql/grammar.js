@@ -23,6 +23,7 @@ module.exports = grammar({
 
   conflicts: $ => [
     [$.sql_portion],
+    [$._function_arg_predicate, $.position_arg],
   ],
 
   rules: {
@@ -389,13 +390,84 @@ module.exports = grammar({
     // Function argument: position or named
     function_arg: $ => choice(
       $.named_arg,
-      $.position_arg
+      $._function_arg_expression
     ),
 
     named_arg: $ => seq(
       field('name', $.identifier),
       choice(':=', '=>'),
-      field('value', $.position_arg)
+      field('value', $._function_arg_expression)
+    ),
+
+    // Function arguments support a slightly richer predicate grammar than the
+    // generic position_arg rule. Keep this scoped here so we don't widen SQL
+    // parsing in other contexts by accident.
+    _function_arg_expression: $ => $._function_arg_or_expression,
+
+    _function_arg_or_expression: $ => prec.left(seq(
+      $._function_arg_and_expression,
+      repeat(seq(caseInsensitive('OR'), $._function_arg_and_expression))
+    )),
+
+    _function_arg_and_expression: $ => prec.left(seq(
+      $._function_arg_not_expression,
+      repeat(seq(caseInsensitive('AND'), $._function_arg_not_expression))
+    )),
+
+    _function_arg_not_expression: $ => choice(
+      $.not_predicate,
+      $._function_arg_predicate
+    ),
+
+    not_predicate: $ => prec.right(seq(
+      caseInsensitive('NOT'),
+      $._function_arg_not_expression
+    )),
+
+    _function_arg_predicate: $ => choice(
+      $.between_predicate,
+      $.in_predicate,
+      $.is_predicate,
+      $.like_predicate,
+      $.position_arg,
+      prec(1, seq('(', $._function_arg_expression, ')'))
+    ),
+
+    between_predicate: $ => seq(
+      $.position_arg,
+      optional(caseInsensitive('NOT')),
+      caseInsensitive('BETWEEN'),
+      $.position_arg,
+      caseInsensitive('AND'),
+      $.position_arg
+    ),
+
+    in_predicate: $ => seq(
+      $.position_arg,
+      optional(caseInsensitive('NOT')),
+      caseInsensitive('IN'),
+      choice($.in_value_list, $.scalar_subquery)
+    ),
+
+    in_value_list: $ => seq(
+      '(',
+      $.position_arg,
+      repeat(seq(',', $.position_arg)),
+      ')'
+    ),
+
+    is_predicate: $ => seq(
+      $.position_arg,
+      caseInsensitive('IS'),
+      optional(caseInsensitive('NOT')),
+      caseInsensitive('NULL')
+    ),
+
+    like_predicate: $ => seq(
+      $.position_arg,
+      optional(caseInsensitive('NOT')),
+      choice(caseInsensitive('LIKE'), caseInsensitive('ILIKE')),
+      $.position_arg
     ),
 
     // Position argument: supports complex expressions including:
@@ -419,9 +491,8 @@ module.exports = grammar({
       $.function_call,
       // Scalar subquery: (SELECT ...) or (WITH ... SELECT ...)
       $.scalar_subquery,
-      // Arithmetic/comparison/boolean expression (binary operators)
+      // Arithmetic/comparison expression (binary operators)
       seq($.position_arg, choice('+', '-', '*', '/', '%', '||', '::', '<', '>', '<=', '>=', '=', '!=', '<>',
-        caseInsensitive('AND'), caseInsensitive('OR')
       ), $.position_arg),
       // Parenthesized expression
       seq('(', $.position_arg, ')')
