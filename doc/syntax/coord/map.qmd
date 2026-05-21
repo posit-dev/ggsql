@@ -80,6 +80,7 @@ More information about them can be found on the [PRØJ website](https://proj.org
 
 | name                                  | string                  | origin | parallel     | proj string      |
 |---------------------------------------|-------------------------|--------|--------------|------------------|
+| Geographic (unprojected)              | `geographic`            | 0      | NA           | `+proj=longlat`  |
 | Mercator                              | `mercator`              | 0      | NA           | `+proj=merc`     |
 | Orthographic                          | `orthographic`          | (0, 0) | NA           | `+proj=ortho`    |
 | Miller Cylindrical                    | `miller`                | 0      | NA           | `+proj=mill`     |

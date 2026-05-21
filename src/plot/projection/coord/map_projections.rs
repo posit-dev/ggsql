@@ -13,6 +13,7 @@ use crate::plot::ParameterValue;
 //    - the `crs` branch (maps +proj= code to the new struct)
 //    - the `else` branch (maps coord type name to the new struct)
 pub const NAMED_PROJECTIONS: &[&str] = &[
+    "geographic",
     "mercator",
     "orthographic",
     "miller",
@@ -99,6 +100,7 @@ impl MapSpecification {
                 let lon_0 = extract_f64_param(crs, "+lon_0=").unwrap_or(0.0);
                 let lat_0 = extract_f64_param(crs, "+lat_0=").unwrap_or(0.0);
                 match code {
+                    "longlat" | "latlong" => Arc::new(Geographic { lon_0 }),
                     "ortho" => Arc::new(Orthographic { lon_0, lat_0 }),
                     "stere" => Arc::new(Stereographic { lon_0, lat_0 }),
                     "gnom" => Arc::new(Gnomonic { lon_0, lat_0 }),
@@ -169,6 +171,7 @@ impl MapSpecification {
                 };
 
                 match name {
+                    "geographic" => Arc::new(Geographic { lon_0 }),
                     "mercator" => Arc::new(Mercator { lon_0 }),
                     "orthographic" => Arc::new(Orthographic { lon_0, lat_0 }),
                     "miller" => Arc::new(Miller { lon_0 }),
@@ -397,6 +400,33 @@ impl MapProjectionTrait for AzimuthalEquidistant {
     }
     fn visible_area_wkt(&self) -> Option<String> {
         todo!("full-globe azimuthal visible area")
+    }
+}
+
+// =============================================================================
+// Geographic (unprojected)
+// =============================================================================
+
+#[derive(Debug, Clone)]
+pub struct Geographic {
+    pub lon_0: f64,
+}
+
+impl MapProjectionTrait for Geographic {
+    fn proj_code(&self) -> &'static str {
+        "longlat"
+    }
+    fn display_name(&self) -> &'static str {
+        "Geographic"
+    }
+    fn origin(&self) -> (f64, f64) {
+        (self.lon_0, 0.0)
+    }
+    fn to_proj_str(&self) -> String {
+        format!("+proj=longlat +lon_0={}", self.lon_0)
+    }
+    fn edge_segments(&self) -> [usize; 4] {
+        [1, 1, 1, 1]
     }
 }
 
