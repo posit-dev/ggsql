@@ -2053,6 +2053,19 @@ mod tests {
         assert!(result.is_ok());
     }
 
+    #[test]
+    fn test_named_arg_predicate_in_function_args() {
+        let query = r#"
+            SELECT FOO(flag => x = 'a' OR x = 'b')
+            FROM t
+            VISUALISE x AS x
+            DRAW point
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
+    }
+
     // ========================================
     // Negative Test Cases - Should Error
     // ========================================

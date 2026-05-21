@@ -4161,6 +4161,63 @@ DRAW point
         (geom_type)))))
 
 ================================================================================
+Named argument with predicate expression
+================================================================================
+
+SELECT FOO(flag => x = 'a' OR x = 'b') FROM t
+VISUALISE x AS x
+DRAW point
+
+--------------------------------------------------------------------------------
+
+(query
+  (sql_portion
+    (sql_statement
+      (select_statement
+        (select_body
+          (function_call
+            (identifier
+              (bare_identifier))
+            (function_args
+              (function_arg
+                (named_arg
+                  name: (identifier
+                    (bare_identifier))
+                  value: (position_arg
+                    (position_arg
+                      (qualified_name
+                        (identifier
+                          (bare_identifier))))
+                    (position_arg
+                      (string)))
+                  value: (position_arg
+                    (position_arg
+                      (qualified_name
+                        (identifier
+                          (bare_identifier))))
+                    (position_arg
+                      (string)))))))
+          (from_clause
+            (table_ref
+              table: (qualified_name
+                (identifier
+                  (bare_identifier)))))))))
+  (visualise_statement
+    (visualise_keyword)
+    (global_mapping
+      (mapping_list
+        (mapping_element
+          (explicit_mapping
+            value: (mapping_value
+              (column_reference
+                (identifier
+                  (bare_identifier))))
+            name: (aesthetic_name)))))
+    (viz_clause
+      (draw_clause
+        (geom_type)))))
+
+================================================================================
 Layer source with Jinja ref
 ================================================================================
 
