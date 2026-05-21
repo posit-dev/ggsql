@@ -1103,7 +1103,7 @@ mod integration_tests {
         for crs in queries {
             let query = format!(
                 "VISUALISE FROM ggsql:world \
-                 DRAW spatial PROJECT TO orthographic SETTING crs => '{crs}'"
+                 DRAW spatial PROJECT TO map SETTING crs => '{crs}'"
             );
 
             let prepared = execute::prepare_data_with_reader(&query, &reader).unwrap();

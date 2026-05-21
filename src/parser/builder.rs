@@ -1033,13 +1033,7 @@ fn build_project(node: &Node, source: &SourceTree) -> Result<Projection> {
     // Validate properties for this coord type
     validate_project_properties(&coord, &properties)?;
 
-    let map_projection = if let Some(ParameterValue::String(crs)) = properties.get("crs") {
-        Some(MapSpecification::from_proj_str(crs))
-    } else {
-        coord_type_name
-            .as_deref()
-            .and_then(MapSpecification::from_coord_name)
-    };
+    let map_projection = MapSpecification::new(coord_type_name.as_deref(), &properties);
 
     if let Some(ref spec) = map_projection {
         let proj_str = spec.to_proj_str();
@@ -1127,28 +1121,12 @@ fn validate_project_properties(
 }
 
 fn parse_coord_system(name: &str) -> Result<Coord> {
+    use crate::plot::projection::coord::map_projections::NAMED_PROJECTIONS;
     match name {
         "cartesian" => Ok(Coord::cartesian()),
         "polar" => Ok(Coord::polar()),
-        "map"
-        | "mercator"
-        | "orthographic"
-        | "miller"
-        | "equirectangular"
-        | "stereographic"
-        | "gnomonic"
-        | "equal_area"
-        | "mollweide"
-        | "sinusoidal"
-        | "eckert4"
-        | "natural"
-        | "winkel_tripel"
-        | "albers"
-        | "lambert_conformal"
-        | "lambert"
-        | "azimuthal_equidistant"
-        | "igh"
-        | "robinson" => Ok(Coord::map()),
+        "map" => Ok(Coord::map(name)),
+        _ if NAMED_PROJECTIONS.contains(&name) => Ok(Coord::map(name)),
         _ => Err(GgsqlError::ParseError(format!(
             "Unknown coord type: {}",
             name
@@ -1436,7 +1414,7 @@ mod tests {
     }
 
     #[test]
-    fn test_project_shorthand_crs_override() {
+    fn test_project_shorthand_crs_override_rejected() {
         let query = r#"
             VISUALISE
             DRAW point MAPPING lon AS lon, lat AS lat
@@ -1444,15 +1422,9 @@ mod tests {
         "#;
 
         let result = parse_test_query(query);
-        assert!(result.is_ok());
-        let specs = result.unwrap();
-
-        let project = specs[0].project.as_ref().unwrap();
-        assert_eq!(project.coord.coord_kind(), CoordKind::Map);
-        assert_eq!(
-            project.properties.get("crs"),
-            Some(&ParameterValue::String("+proj=custom".to_string()))
-        );
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("Cannot combine a named projection"));
     }
 
     // ========================================

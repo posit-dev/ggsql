@@ -176,8 +176,8 @@ impl Coord {
     }
 
     /// Create a Map coord type
-    pub fn map() -> Self {
-        Self(Arc::new(Map))
+    pub fn map(name: &str) -> Self {
+        Self(Arc::new(Map::new(name)))
     }
 
     /// Create a Coord from a CoordKind
@@ -185,7 +185,7 @@ impl Coord {
         match kind {
             CoordKind::Cartesian => Self::cartesian(),
             CoordKind::Polar => Self::polar(),
-            CoordKind::Map => Self::map(),
+            CoordKind::Map => Self::map("map"),
         }
     }
 

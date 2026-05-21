@@ -1,6 +1,37 @@
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::fmt;
 use std::sync::Arc;
+
+use crate::plot::types::ArrayElement;
+use crate::plot::ParameterValue;
+
+// When adding a new named projection:
+// 1. Add a struct implementing MapProjectionTrait (in this file)
+// 2. Add the name to NAMED_PROJECTIONS below
+// 3. Add match arms in MapSpecification::new():
+//    - the `crs` branch (maps +proj= code to the new struct)
+//    - the `else` branch (maps coord type name to the new struct)
+pub const NAMED_PROJECTIONS: &[&str] = &[
+    "mercator",
+    "orthographic",
+    "miller",
+    "equirectangular",
+    "stereographic",
+    "gnomonic",
+    "equal_area",
+    "mollweide",
+    "sinusoidal",
+    "eckert4",
+    "natural",
+    "winkel_tripel",
+    "albers",
+    "lambert_conformal",
+    "lambert",
+    "azimuthal_equidistant",
+    "igh",
+    "robinson",
+];
 
 // =============================================================================
 // Trait
@@ -59,102 +90,115 @@ pub trait MapProjectionTrait: fmt::Debug + Send + Sync {
 pub struct MapSpecification(Arc<dyn MapProjectionTrait>);
 
 impl MapSpecification {
-    pub fn from_coord_name(name: &str) -> Option<Self> {
-        let obj: Arc<dyn MapProjectionTrait> = match name {
-            "map" => Arc::new(UnknownProj {
-                raw: String::new(),
-                lon_0: 0.0,
-                lat_0: 0.0,
-            }),
-            "mercator" => Arc::new(Mercator { lon_0: 0.0 }),
-            "orthographic" => Arc::new(Orthographic {
-                lon_0: 0.0,
-                lat_0: 0.0,
-            }),
-            "miller" => Arc::new(Miller { lon_0: 0.0 }),
-            "equirectangular" => Arc::new(Equirectangular { lon_0: 0.0 }),
-            "stereographic" => Arc::new(Stereographic {
-                lon_0: 0.0,
-                lat_0: 0.0,
-            }),
-            "gnomonic" => Arc::new(Gnomonic {
-                lon_0: 0.0,
-                lat_0: 0.0,
-            }),
-            "equal_area" => Arc::new(CylindricalEqualArea { lon_0: 0.0 }),
-            "mollweide" => Arc::new(Mollweide { lon_0: 0.0 }),
-            "sinusoidal" => Arc::new(Sinusoidal { lon_0: 0.0 }),
-            "eckert4" => Arc::new(Eckert4 { lon_0: 0.0 }),
-            "natural" => Arc::new(NaturalEarth { lon_0: 0.0 }),
-            "winkel_tripel" => Arc::new(WinkelTripel { lon_0: 0.0 }),
-            "albers" => Arc::new(AlbersEqualArea {
-                lon_0: 0.0,
-                lat_0: 0.0,
-                lat_1: 29.5,
-                lat_2: 45.5,
-            }),
-            "lambert_conformal" => Arc::new(LambertConformalConic {
-                lon_0: 0.0,
-                lat_0: 0.0,
-                lat_1: 29.5,
-                lat_2: 45.5,
-            }),
-            "lambert" => Arc::new(LambertAzimuthal {
-                lon_0: 0.0,
-                lat_0: 0.0,
-            }),
-            "azimuthal_equidistant" => Arc::new(AzimuthalEquidistant {
-                lon_0: 0.0,
-                lat_0: 0.0,
-            }),
-            "igh" => Arc::new(Igh { lon_0: 0.0 }),
-            "robinson" => Arc::new(Robinson { lon_0: 0.0 }),
-            _ => return None,
+    pub fn new(name: Option<&str>, properties: &HashMap<String, ParameterValue>) -> Option<Self> {
+        let name = name?;
+
+        let obj: Arc<dyn MapProjectionTrait> = if let Some(ParameterValue::String(crs)) =
+            properties.get("crs")
+        {
+            let code = extract_proj_param_str(crs, "+proj=").unwrap_or("");
+            let lon_0 = extract_f64_param(crs, "+lon_0=").unwrap_or(0.0);
+            let lat_0 = extract_f64_param(crs, "+lat_0=").unwrap_or(0.0);
+            match code {
+                "ortho" => Arc::new(Orthographic { lon_0, lat_0 }),
+                "stere" => Arc::new(Stereographic { lon_0, lat_0 }),
+                "gnom" => Arc::new(Gnomonic { lon_0, lat_0 }),
+                "laea" => Arc::new(LambertAzimuthal { lon_0, lat_0 }),
+                "aeqd" => Arc::new(AzimuthalEquidistant { lon_0, lat_0 }),
+                "merc" => Arc::new(Mercator { lon_0 }),
+                "mill" => Arc::new(Miller { lon_0 }),
+                "eqc" => Arc::new(Equirectangular { lon_0 }),
+                "cea" => Arc::new(CylindricalEqualArea { lon_0 }),
+                "robin" => Arc::new(Robinson { lon_0 }),
+                "moll" => Arc::new(Mollweide { lon_0 }),
+                "sinu" => Arc::new(Sinusoidal { lon_0 }),
+                "eck4" => Arc::new(Eckert4 { lon_0 }),
+                "natearth" => Arc::new(NaturalEarth { lon_0 }),
+                "igh" => Arc::new(Igh { lon_0 }),
+                "wintri" => Arc::new(WinkelTripel { lon_0 }),
+                "aea" => Arc::new(AlbersEqualArea {
+                    lon_0,
+                    lat_0,
+                    lat_1: extract_f64_param(crs, "+lat_1=").unwrap_or(29.5),
+                    lat_2: extract_f64_param(crs, "+lat_2=").unwrap_or(45.5),
+                }),
+                "lcc" => Arc::new(LambertConformalConic {
+                    lon_0,
+                    lat_0,
+                    lat_1: extract_f64_param(crs, "+lat_1=").unwrap_or(29.5),
+                    lat_2: extract_f64_param(crs, "+lat_2=").unwrap_or(45.5),
+                }),
+                _ => Arc::new(UnknownProj {
+                    raw: crs.to_string(),
+                    lon_0,
+                    lat_0,
+                }),
+            }
+        } else {
+            // Extract center: number (lon only) or array (lon, lat)
+            let (lon_0, lat_0) = match properties.get("center") {
+                Some(ParameterValue::Number(lon)) => (*lon, 0.0),
+                Some(ParameterValue::Array(arr)) => {
+                    let lon = match arr.get(0) {
+                        Some(ArrayElement::Number(n)) => *n,
+                        _ => 0.0,
+                    };
+                    let lat = match arr.get(1) {
+                        Some(ArrayElement::Number(n)) => *n,
+                        _ => 0.0,
+                    };
+                    (lon, lat)
+                }
+                _ => (0.0, 0.0),
+            };
+
+            // Extract parallel: number (tangent) or array (secant)
+            let (lat_1, lat_2) = match properties.get("parallel") {
+                Some(ParameterValue::Number(lat)) => (*lat, *lat),
+                Some(ParameterValue::Array(arr)) => {
+                    let l1 = match arr.get(0) {
+                        Some(ArrayElement::Number(n)) => *n,
+                        _ => 29.5,
+                    };
+                    let l2 = match arr.get(1) {
+                        Some(ArrayElement::Number(n)) => *n,
+                        _ => 45.5,
+                    };
+                    (l1, l2)
+                }
+                _ => (29.5, 45.5),
+            };
+
+            match name {
+                "mercator" => Arc::new(Mercator { lon_0 }),
+                "orthographic" => Arc::new(Orthographic { lon_0, lat_0 }),
+                "miller" => Arc::new(Miller { lon_0 }),
+                "equirectangular" => Arc::new(Equirectangular { lon_0 }),
+                "stereographic" => Arc::new(Stereographic { lon_0, lat_0 }),
+                "gnomonic" => Arc::new(Gnomonic { lon_0, lat_0 }),
+                "equal_area" => Arc::new(CylindricalEqualArea { lon_0 }),
+                "mollweide" => Arc::new(Mollweide { lon_0 }),
+                "sinusoidal" => Arc::new(Sinusoidal { lon_0 }),
+                "eckert4" => Arc::new(Eckert4 { lon_0 }),
+                "natural" => Arc::new(NaturalEarth { lon_0 }),
+                "winkel_tripel" => Arc::new(WinkelTripel { lon_0 }),
+                "albers" => Arc::new(AlbersEqualArea { lon_0, lat_0, lat_1, lat_2 }),
+                "lambert_conformal" => Arc::new(LambertConformalConic { lon_0, lat_0, lat_1, lat_2 }),
+                "lambert" => Arc::new(LambertAzimuthal { lon_0, lat_0 }),
+                "azimuthal_equidistant" => Arc::new(AzimuthalEquidistant { lon_0, lat_0 }),
+                "igh" => Arc::new(Igh { lon_0 }),
+                "robinson" => Arc::new(Robinson { lon_0 }),
+                "map" => Arc::new(UnknownProj { raw: String::new(), lon_0, lat_0 }),
+                _ => return None,
+            }
         };
         Some(Self(obj))
     }
 
     pub fn from_proj_str(crs: &str) -> Self {
-        let code = extract_proj_param_str(crs, "+proj=").unwrap_or("");
-        let lon_0 = extract_f64_param(crs, "+lon_0=").unwrap_or(0.0);
-        let lat_0 = extract_f64_param(crs, "+lat_0=").unwrap_or(0.0);
-
-        let obj: Arc<dyn MapProjectionTrait> = match code {
-            "ortho" => Arc::new(Orthographic { lon_0, lat_0 }),
-            "stere" => Arc::new(Stereographic { lon_0, lat_0 }),
-            "gnom" => Arc::new(Gnomonic { lon_0, lat_0 }),
-            "laea" => Arc::new(LambertAzimuthal { lon_0, lat_0 }),
-            "aeqd" => Arc::new(AzimuthalEquidistant { lon_0, lat_0 }),
-            "merc" => Arc::new(Mercator { lon_0 }),
-            "mill" => Arc::new(Miller { lon_0 }),
-            "eqc" => Arc::new(Equirectangular { lon_0 }),
-            "cea" => Arc::new(CylindricalEqualArea { lon_0 }),
-            "robin" => Arc::new(Robinson { lon_0 }),
-            "moll" => Arc::new(Mollweide { lon_0 }),
-            "sinu" => Arc::new(Sinusoidal { lon_0 }),
-            "eck4" => Arc::new(Eckert4 { lon_0 }),
-            "natearth" => Arc::new(NaturalEarth { lon_0 }),
-            "igh" => Arc::new(Igh { lon_0 }),
-            "wintri" => Arc::new(WinkelTripel { lon_0 }),
-            "aea" => Arc::new(AlbersEqualArea {
-                lon_0,
-                lat_0,
-                lat_1: extract_f64_param(crs, "+lat_1=").unwrap_or(29.5),
-                lat_2: extract_f64_param(crs, "+lat_2=").unwrap_or(45.5),
-            }),
-            "lcc" => Arc::new(LambertConformalConic {
-                lon_0,
-                lat_0,
-                lat_1: extract_f64_param(crs, "+lat_1=").unwrap_or(29.5),
-                lat_2: extract_f64_param(crs, "+lat_2=").unwrap_or(45.5),
-            }),
-            _ => Arc::new(UnknownProj {
-                raw: crs.to_string(),
-                lon_0,
-                lat_0,
-            }),
-        };
-        Self(obj)
+        let mut properties = HashMap::new();
+        properties.insert("crs".to_string(), ParameterValue::String(crs.to_string()));
+        Self::new(Some("map"), &properties).unwrap()
     }
 
     pub fn proj_code(&self) -> &'static str {
@@ -994,6 +1038,48 @@ mod tests {
         assert_eq!(
             proj.to_proj_str(),
             "+proj=aea +lon_0=5 +lat_0=0 +lat_1=30 +lat_2=50"
+        );
+    }
+
+    #[test]
+    fn new_from_crs_albers() {
+        let mut props = HashMap::new();
+        props.insert(
+            "crs".to_string(),
+            ParameterValue::String("+proj=aea +lon_0=5 +lat_0=10 +lat_1=30 +lat_2=50".to_string()),
+        );
+        let proj = MapSpecification::new(Some("map"), &props).unwrap();
+        assert_eq!(proj.proj_code(), "aea");
+        assert_eq!(proj.center(), (5.0, 10.0));
+        assert_eq!(
+            proj.to_proj_str(),
+            "+proj=aea +lon_0=5 +lat_0=10 +lat_1=30 +lat_2=50"
+        );
+    }
+
+    #[test]
+    fn new_named_albers_with_settings() {
+        let mut props = HashMap::new();
+        props.insert(
+            "center".to_string(),
+            ParameterValue::Array(vec![
+                ArrayElement::Number(-96.0),
+                ArrayElement::Number(37.5),
+            ]),
+        );
+        props.insert(
+            "parallel".to_string(),
+            ParameterValue::Array(vec![
+                ArrayElement::Number(29.5),
+                ArrayElement::Number(45.5),
+            ]),
+        );
+        let proj = MapSpecification::new(Some("albers"), &props).unwrap();
+        assert_eq!(proj.proj_code(), "aea");
+        assert_eq!(proj.center(), (-96.0, 37.5));
+        assert_eq!(
+            proj.to_proj_str(),
+            "+proj=aea +lon_0=-96 +lat_0=37.5 +lat_1=29.5 +lat_2=45.5"
         );
     }
 

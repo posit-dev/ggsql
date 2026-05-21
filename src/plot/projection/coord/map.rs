@@ -1,9 +1,13 @@
 //! Map coordinate system implementation
 
+use std::collections::HashMap;
+
 use super::{CoordKind, CoordTrait};
 use crate::naming;
 use crate::plot::layer::geom::GeomType;
-use crate::plot::types::{DefaultParamValue, ParamConstraint, ParamDefinition, TypeConstraint};
+use crate::plot::types::{
+    validate_parameter, DefaultParamValue, ParamConstraint, ParamDefinition, TypeConstraint,
+};
 use crate::plot::{Layer, ParameterValue};
 use crate::reader::SqlDialect;
 use crate::DataFrame;
@@ -16,7 +20,21 @@ pub const CLIP_BOUNDARY_TABLE: &str = "__ggsql_clip_boundary__";
 
 /// Map coordinate system - for geographic/cartographic projections
 #[derive(Debug, Clone, Copy)]
-pub struct Map;
+pub struct Map {
+    coord_type_name: &'static str,
+}
+
+impl Map {
+    pub fn new(name: &str) -> Self {
+        use super::map_projections::NAMED_PROJECTIONS;
+        let coord_type_name = NAMED_PROJECTIONS
+            .iter()
+            .find(|&&n| n == name)
+            .copied()
+            .unwrap_or("map");
+        Self { coord_type_name }
+    }
+}
 
 impl CoordTrait for Map {
     fn coord_kind(&self) -> CoordKind {
@@ -24,7 +42,7 @@ impl CoordTrait for Map {
     }
 
     fn name(&self) -> &'static str {
-        "map"
+        self.coord_type_name
     }
 
     fn position_aesthetic_names(&self) -> &'static [&'static str] {
@@ -33,6 +51,8 @@ impl CoordTrait for Map {
 
     fn default_properties(&self) -> &'static [ParamDefinition] {
         use crate::plot::types::{ArrayConstraint, NumberConstraint};
+        const LON_RANGE: NumberConstraint = NumberConstraint::range(-180.0, 180.0);
+        const LAT_RANGE: NumberConstraint = NumberConstraint::range(-90.0, 90.0);
         const PARAMS: &[ParamDefinition] = &[
             ParamDefinition {
                 name: "crs",
@@ -64,8 +84,73 @@ impl CoordTrait for Map {
                     allow_null: true,
                 },
             },
+            // center => 30 (lon only) or center => (30, 45) (lon, lat)
+            ParamDefinition {
+                name: "center",
+                default: DefaultParamValue::Null,
+                constraint: ParamConstraint::number_or_numeric_array(
+                    LON_RANGE,
+                    ArrayConstraint::of_numbers_len(LON_RANGE, 2),
+                ),
+            },
+            // parallel => 30 (tangent) or parallel => (30, 50) (secant)
+            ParamDefinition {
+                name: "parallel",
+                default: DefaultParamValue::Null,
+                constraint: ParamConstraint::number_or_numeric_array(
+                    LAT_RANGE,
+                    ArrayConstraint::of_numbers_len(LAT_RANGE, 2),
+                ),
+            },
         ];
         PARAMS
+    }
+
+    fn resolve_properties(
+        &self,
+        properties: &HashMap<String, ParameterValue>,
+    ) -> Result<HashMap<String, ParameterValue>, String> {
+        if self.coord_type_name != "map" && properties.contains_key("crs") {
+            return Err(format!(
+                "Cannot combine a named projection ('{}') with a 'crs' string. \
+                 Use either PROJECT TO {} or PROJECT TO map SETTING crs => '...'",
+                self.coord_type_name, self.coord_type_name
+            ));
+        }
+        let has_crs = properties.contains_key("crs");
+        let has_center = properties.contains_key("center");
+        let has_parallel = properties.contains_key("parallel");
+        if has_crs && (has_center || has_parallel) {
+            return Err(
+                "Cannot combine 'crs' setting with 'center' or 'parallel'. \
+                 Use either the CRS string or a named projection with 'center'/'parallel' settings."
+                    .to_string(),
+            );
+        }
+        // Delegate to default validation
+        let defaults = self.default_properties();
+        for (key, value) in properties.iter() {
+            if let Some(param) = defaults.iter().find(|p| p.name == key) {
+                validate_parameter(key, value, &param.constraint)?;
+            } else {
+                let allowed: Vec<&str> = defaults.iter().map(|p| p.name).collect();
+                return Err(format!(
+                    "{} projection property should be {}, not '{}'",
+                    self.name(),
+                    crate::or_list_quoted(&allowed, '\''),
+                    key
+                ));
+            }
+        }
+        let mut resolved = properties.clone();
+        for param in defaults {
+            if !resolved.contains_key(param.name) {
+                if let Some(default) = param.to_parameter_value() {
+                    resolved.insert(param.name.to_string(), default);
+                }
+            }
+        }
+        Ok(resolved)
     }
 
     fn apply_projection_transforms(
@@ -157,8 +242,7 @@ impl CoordTrait for Map {
                 continue;
             }
 
-            let table_quoted =
-                materialize_layer(idx, &layer_queries[idx], dialect, execute_query)?;
+            let table_quoted = materialize_layer(idx, &layer_queries[idx], dialect, execute_query)?;
 
             if needs_data_bbox {
                 let layer_bbox =
@@ -350,8 +434,7 @@ fn build_graticule(
     dialect: &dyn SqlDialect,
     execute_query: &dyn Fn(&str) -> crate::Result<DataFrame>,
 ) -> crate::Result<(Option<String>, Option<String>)> {
-    let Some(geo_bbox) = graticule_bbox(bbox, clip_boundary_wkt, dialect, execute_query)?
-    else {
+    let Some(geo_bbox) = graticule_bbox(bbox, clip_boundary_wkt, dialect, execute_query)? else {
         return Ok((None, None));
     };
 
@@ -557,7 +640,6 @@ fn query_scalar_string(
     }
     Some(arr.value(0).to_string())
 }
-
 
 /// Compose the clip boundary (visible area minus seam slits), materialize it as a
 /// temp table in source CRS for per-layer clipping, and return the WKT in EPSG:4326.
@@ -798,7 +880,7 @@ mod tests {
 
     #[test]
     fn test_map_properties() {
-        let map = Map;
+        let map = Map::new("map");
         assert_eq!(map.coord_kind(), CoordKind::Map);
         assert_eq!(map.name(), "map");
         assert_eq!(map.position_aesthetic_names(), &["lon", "lat"]);
@@ -806,19 +888,21 @@ mod tests {
 
     #[test]
     fn test_map_default_properties() {
-        let map = Map;
+        let map = Map::new("map");
         let defaults = map.default_properties();
         let names: Vec<&str> = defaults.iter().map(|p| p.name).collect();
         assert!(names.contains(&"crs"));
         assert!(names.contains(&"source"));
         assert!(names.contains(&"clip"));
         assert!(names.contains(&"bounds"));
-        assert_eq!(defaults.len(), 4);
+        assert!(names.contains(&"center"));
+        assert!(names.contains(&"parallel"));
+        assert_eq!(defaults.len(), 6);
     }
 
     #[test]
     fn test_map_accepts_crs_string() {
-        let map = Map;
+        let map = Map::new("map");
         let mut props = HashMap::new();
         props.insert(
             "crs".to_string(),
@@ -836,7 +920,7 @@ mod tests {
 
     #[test]
     fn test_map_rejects_unknown_property() {
-        let map = Map;
+        let map = Map::new("map");
         let mut props = HashMap::new();
         props.insert(
             "unknown".to_string(),
@@ -847,6 +931,22 @@ mod tests {
         assert!(resolved.is_err());
         let err = resolved.unwrap_err();
         assert!(err.contains("not 'unknown'"));
+    }
+
+    #[test]
+    fn test_crs_rejects_center_and_parallel() {
+        let map = Map::new("map");
+        let mut props = HashMap::new();
+        props.insert(
+            "crs".to_string(),
+            ParameterValue::String("+proj=ortho".to_string()),
+        );
+        props.insert("center".to_string(), ParameterValue::Number(30.0));
+
+        let resolved = map.resolve_properties(&props);
+        assert!(resolved.is_err());
+        let err = resolved.unwrap_err();
+        assert!(err.contains("Cannot combine 'crs'"));
     }
 
     fn bbox(xmin: f64, ymin: f64, xmax: f64, ymax: f64) -> BBox {
@@ -1025,5 +1125,4 @@ mod tests {
         assert!(wkt.contains("0.000000"));
         assert!(wkt.contains("45.000000"));
     }
-
 }
