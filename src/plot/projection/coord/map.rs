@@ -207,7 +207,7 @@ impl CoordTrait for Map {
             return Err(crate::GgsqlError::ValidationError(format!(
                 "Invalid CRS '{}': {}",
                 crs,
-                msg.split(':').last().unwrap_or(&msg).trim()
+                msg.split(':').next_back().unwrap_or(&msg).trim()
             )));
         }
 
@@ -220,7 +220,7 @@ impl CoordTrait for Map {
         let mut boundary_lonlat: Option<String> = None;
 
         let clip_wkt = clip_enabled
-            .then(|| projection.map_projection.as_ref())
+            .then_some(projection.map_projection.as_ref())
             .flatten()
             .and_then(|map_proj| map_proj.visible_area_wkt().map(|_| map_proj));
 

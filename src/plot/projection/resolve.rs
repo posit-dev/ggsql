@@ -45,7 +45,7 @@ pub fn resolve_coord(
     }
 
     // Check if any layer is spatial
-    let mut found_map = layer_geom_types.iter().any(|g| *g == GeomType::Spatial);
+    let mut found_map = layer_geom_types.contains(&GeomType::Spatial);
 
     // Collect all explicit aesthetic keys from global and layer mappings
     let mut found_cartesian = false;
