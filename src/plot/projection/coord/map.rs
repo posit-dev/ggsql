@@ -200,20 +200,27 @@ impl CoordTrait for Map {
         }
 
         // Step 2: Materialize clip boundary, panel boundary, and world bbox.
+        let clip_enabled = match projection.properties.get("clip") {
+            Some(ParameterValue::Boolean(b)) => *b,
+            _ => true,
+        };
         let mut world_bbox: Option<BBox> = None;
         let mut boundary_lonlat: Option<String> = None;
 
-        if let Some(map_proj) = projection.map_projection.as_ref() {
-            if map_proj.visible_area_wkt().is_some() {
-                let b = materialize_clip_boundary(map_proj, &source, dialect, execute_query)?;
-                if let Some(wkt) = boundary_to_target_crs(&b, &crs, dialect, execute_query) {
-                    projection
-                        .computed
-                        .insert("panel_boundary".to_string(), ParameterValue::String(wkt));
-                }
-                world_bbox = compute_world_bbox(&source, &crs, dialect, execute_query);
-                boundary_lonlat = Some(b);
+        let clip_wkt = clip_enabled
+            .then(|| projection.map_projection.as_ref())
+            .flatten()
+            .and_then(|map_proj| map_proj.visible_area_wkt().map(|_| map_proj));
+
+        if let Some(map_proj) = clip_wkt {
+            let b = materialize_clip_boundary(map_proj, &source, dialect, execute_query)?;
+            if let Some(wkt) = boundary_to_target_crs(&b, &crs, dialect, execute_query) {
+                projection
+                    .computed
+                    .insert("panel_boundary".to_string(), ParameterValue::String(wkt));
             }
+            world_bbox = compute_world_bbox(&source, &crs, dialect, execute_query);
+            boundary_lonlat = Some(b);
         }
         let clip = boundary_lonlat.is_some();
 
