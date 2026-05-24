@@ -7,6 +7,7 @@
 - Complete syntax highlighting for ggsql queries.
 - `.ggsql` file extension support.
 - Language runtime integration for [Positron IDE](https://positron.posit.co).
+- Render Plot toolbar command with a Markdown-preview-style chart tab.
 
 ## Example
 
