@@ -3857,11 +3857,11 @@ DRAW point
             (function_args
               (function_arg
                 (function_arg_expression
-                  (in_predicate
-                    (position_arg
-                      (qualified_name
-                        (identifier
-                          (bare_identifier))))
+                  (position_arg
+                    (qualified_name
+                      (identifier
+                        (bare_identifier))))
+                  (in_suffix
                     (in_value_list
                       (position_arg
                         (string))
@@ -3920,11 +3920,11 @@ DRAW point
             (function_args
               (function_arg
                 (function_arg_expression
-                  (between_predicate
-                    (position_arg
-                      (qualified_name
-                        (identifier
-                          (bare_identifier))))
+                  (position_arg
+                    (qualified_name
+                      (identifier
+                        (bare_identifier))))
+                  (between_suffix
                     (position_arg
                       (number))
                     (position_arg
@@ -3982,11 +3982,11 @@ DRAW point
             (function_args
               (function_arg
                 (function_arg_expression
-                  (is_predicate
-                    (position_arg
-                      (qualified_name
-                        (identifier
-                          (bare_identifier)))))))
+                  (position_arg
+                    (qualified_name
+                      (identifier
+                        (bare_identifier))))
+                  (is_suffix)))
               (function_arg
                 (function_arg_expression
                   (position_arg
@@ -4040,11 +4040,11 @@ DRAW point
             (function_args
               (function_arg
                 (function_arg_expression
-                  (like_predicate
-                    (position_arg
-                      (qualified_name
-                        (identifier
-                          (bare_identifier))))
+                  (position_arg
+                    (qualified_name
+                      (identifier
+                        (bare_identifier))))
+                  (like_suffix
                     (position_arg
                       (string)))))
               (function_arg
@@ -4100,11 +4100,11 @@ DRAW point
             (function_args
               (function_arg
                 (function_arg_expression
-                  (like_predicate
-                    (position_arg
-                      (qualified_name
-                        (identifier
-                          (bare_identifier))))
+                  (position_arg
+                    (qualified_name
+                      (identifier
+                        (bare_identifier))))
+                  (like_suffix
                     (position_arg
                       (string)))))
               (function_arg
@@ -4160,11 +4160,11 @@ DRAW point
             (function_args
               (function_arg
                 (function_arg_expression
-                  (in_predicate
-                    (position_arg
-                      (qualified_name
-                        (identifier
-                          (bare_identifier))))
+                  (position_arg
+                    (qualified_name
+                      (identifier
+                        (bare_identifier))))
+                  (in_suffix
                     (in_value_list
                       (position_arg
                         (string))

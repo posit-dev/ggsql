@@ -23,7 +23,6 @@ module.exports = grammar({
 
   conflicts: $ => [
     [$.sql_portion],
-    [$._function_arg_predicate, $.position_arg],
   ],
 
   rules: {
@@ -400,11 +399,8 @@ module.exports = grammar({
     ),
 
     // Function arguments support a slightly richer predicate grammar than the
-    // generic position_arg rule. Keep this scoped here so we don't widen SQL
-    // parsing in other contexts by accident.
-    function_arg_expression: $ => $._function_arg_or_expression,
-
-    _function_arg_or_expression: $ => prec.left(seq(
+    // generic position_arg rule.
+    function_arg_expression: $ => prec.left(seq(
       $._function_arg_and_expression,
       repeat(seq(caseInsensitive('OR'), $._function_arg_and_expression))
     )),
@@ -424,17 +420,19 @@ module.exports = grammar({
       $._function_arg_not_expression
     )),
 
-    _function_arg_predicate: $ => choice(
-      $.between_predicate,
-      $.in_predicate,
-      $.is_predicate,
-      $.like_predicate,
+    _function_arg_predicate: $ => seq(
       $.position_arg,
-      prec(1, seq('(', $.function_arg_expression, ')'))
+      optional($._predicate_suffix)
     ),
 
-    between_predicate: $ => seq(
-      $.position_arg,
+    _predicate_suffix: $ => choice(
+      $.between_suffix,
+      $.in_suffix,
+      $.is_suffix,
+      $.like_suffix,
+    ),
+
+    between_suffix: $ => seq(
       optional(caseInsensitive('NOT')),
       caseInsensitive('BETWEEN'),
       $.position_arg,
@@ -442,8 +440,7 @@ module.exports = grammar({
       $.position_arg
     ),
 
-    in_predicate: $ => seq(
-      $.position_arg,
+    in_suffix: $ => seq(
       optional(caseInsensitive('NOT')),
       caseInsensitive('IN'),
       choice($.in_value_list, $.scalar_subquery)
@@ -456,15 +453,13 @@ module.exports = grammar({
       ')'
     ),
 
-    is_predicate: $ => seq(
-      $.position_arg,
+    is_suffix: $ => seq(
       caseInsensitive('IS'),
       optional(caseInsensitive('NOT')),
       caseInsensitive('NULL')
     ),
 
-    like_predicate: $ => seq(
-      $.position_arg,
+    like_suffix: $ => seq(
       optional(caseInsensitive('NOT')),
       choice(caseInsensitive('LIKE'), caseInsensitive('ILIKE')),
       $.position_arg
