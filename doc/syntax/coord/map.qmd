@@ -82,6 +82,8 @@ More information about them can be found on the [PRØJ website](https://proj.org
 |---------------------------------------|-------------------------|--------|--------------|------------------|
 | Geographic (unprojected)              | `geographic`            | 0      | NA           | `+proj=longlat`  |
 | Mercator                              | `mercator`              | 0      | NA           | `+proj=merc`     |
+| Transverse Mercator                   | `transverse_mercator`   | (0, 0) | NA           | `+proj=tmerc`    |
+| Universal Transverse Mercator (UTM)   | `utm`                   | (0, 0)[^1] | NA           | `+proj=utm`      |
 | Orthographic                          | `orthographic`          | (0, 0) | NA           | `+proj=ortho`    |
 | Miller Cylindrical                    | `miller`                | 0      | NA           | `+proj=mill`     |
 | Equidistant Cylindrical (Plate Carée) | `equirectangular`       | 0      | NA           | `+proj=eqc`      |
@@ -102,6 +104,8 @@ More information about them can be found on the [PRØJ website](https://proj.org
 
 The way to draw an unsupported map is to use the `crs` setting.
 Unsupported maps are likely drawn without projection-appropriate clipping.
+
+[^1]: The origin longitude determines the UTM zone (1–60) and the origin latitude determines the hemisphere. When using `+proj=utm`, the `+zone` and `+south` parameters are used directly.
 
 ## Examples
 

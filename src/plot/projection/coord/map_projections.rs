@@ -16,6 +16,7 @@ pub const NAMED_PROJECTIONS: &[&str] = &[
     "geographic",
     "mercator",
     "transverse_mercator",
+    "utm",
     "orthographic",
     "miller",
     "equirectangular",
@@ -108,6 +109,13 @@ impl MapSpecification {
                     "laea" => Arc::new(LambertAzimuthal { lon_0, lat_0 }),
                     "aeqd" => Arc::new(AzimuthalEquidistant { lon_0, lat_0 }),
                     "tmerc" => Arc::new(TransverseMercator { lon_0, lat_0 }),
+                    "utm" => {
+                        let zone = extract_f64_param(crs, "+zone=")
+                            .map(|z| (z as u8).clamp(1, 60))
+                            .unwrap_or_else(|| Utm::from_origin(lon_0, lat_0).zone);
+                        let south = crs.contains("+south");
+                        Arc::new(Utm { zone, south })
+                    }
                     "merc" => Arc::new(Mercator { lon_0 }),
                     "mill" => Arc::new(Miller { lon_0 }),
                     "eqc" => Arc::new(Equirectangular { lon_0 }),
@@ -176,6 +184,7 @@ impl MapSpecification {
                     "geographic" => Arc::new(Geographic { lon_0 }),
                     "mercator" => Arc::new(Mercator { lon_0 }),
                     "transverse_mercator" => Arc::new(TransverseMercator { lon_0, lat_0 }),
+                    "utm" => Arc::new(Utm::from_origin(lon_0, lat_0)),
                     "orthographic" => Arc::new(Orthographic { lon_0, lat_0 }),
                     "miller" => Arc::new(Miller { lon_0 }),
                     "equirectangular" => Arc::new(Equirectangular { lon_0 }),
@@ -485,6 +494,75 @@ impl MapProjectionTrait for TransverseMercator {
     fn clip_shape_wkt(&self) -> String {
         let west = self.lon_0 - 80.0;
         let east = self.lon_0 + 80.0;
+        let segs = self.edge_segments();
+
+        if west >= -180.0 && east <= 180.0 {
+            rectangle_wkt(west, -90.0, east, 90.0, segs)
+        } else {
+            let (w1, e1, w2, e2) = if east > 180.0 {
+                (west, 180.0, -180.0, east - 360.0)
+            } else {
+                (west + 360.0, 180.0, -180.0, east)
+            };
+            let r1 = rectangle_wkt(w1, -90.0, e1, 90.0, segs);
+            let r2 = rectangle_wkt(w2, -90.0, e2, 90.0, segs);
+            format!(
+                "MULTIPOLYGON({}, {})",
+                r1.strip_prefix("POLYGON").unwrap(),
+                r2.strip_prefix("POLYGON").unwrap()
+            )
+        }
+    }
+    fn slit_wkt(&self, _epsilon: f64) -> Option<String> {
+        None
+    }
+    fn edge_segments(&self) -> [usize; 4] {
+        [1, 36, 1, 36]
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Utm {
+    pub zone: u8,
+    pub south: bool,
+}
+
+impl Utm {
+    pub fn from_origin(lon_0: f64, lat_0: f64) -> Self {
+        let zone = (((lon_0 + 180.0) / 6.0).floor() as u8).clamp(0, 59) + 1;
+        Self {
+            zone,
+            south: lat_0 < 0.0,
+        }
+    }
+
+    fn central_meridian(&self) -> f64 {
+        self.zone as f64 * 6.0 - 183.0
+    }
+}
+
+impl MapProjectionTrait for Utm {
+    fn proj_code(&self) -> &'static str {
+        "utm"
+    }
+    fn display_name(&self) -> &'static str {
+        "UTM"
+    }
+    fn origin(&self) -> (f64, f64) {
+        let lat = if self.south { -45.0 } else { 45.0 };
+        (self.central_meridian(), lat)
+    }
+    fn to_proj_str(&self) -> String {
+        if self.south {
+            format!("+proj=utm +zone={} +south", self.zone)
+        } else {
+            format!("+proj=utm +zone={}", self.zone)
+        }
+    }
+    fn clip_shape_wkt(&self) -> String {
+        let lon_0 = self.central_meridian();
+        let west = lon_0 - 80.0;
+        let east = lon_0 + 80.0;
         let segs = self.edge_segments();
 
         if west >= -180.0 && east <= 180.0 {
@@ -1295,5 +1373,47 @@ mod tests {
         assert!(wkt90.contains("70.005"), "south slit near 70°: {wkt90}");
         assert!(wkt90.contains("-10.005"), "south slit near -10°: {wkt90}");
         assert!(wkt90.contains("50.005"), "north slit near 50°: {wkt90}");
+    }
+
+    #[test]
+    fn utm_from_proj_str() {
+        let proj = MapSpecification::from_proj_str("+proj=utm +zone=30");
+        assert_eq!(proj.proj_code(), "utm");
+        assert_eq!(proj.to_proj_str(), "+proj=utm +zone=30");
+
+        let proj = MapSpecification::from_proj_str("+proj=utm +zone=55 +south");
+        assert_eq!(proj.to_proj_str(), "+proj=utm +zone=55 +south");
+        let (lon, lat) = proj.origin();
+        assert!((lon - 147.0).abs() < 1e-6);
+        assert!(lat < 0.0);
+    }
+
+    #[test]
+    fn utm_from_named_origin() {
+        let mut props = HashMap::new();
+        props.insert(
+            "origin".to_string(),
+            ParameterValue::Array(vec![
+                ArrayElement::Number(5.0),
+                ArrayElement::Number(52.0),
+            ]),
+        );
+        let proj = MapSpecification::new(Some("utm"), &props).unwrap();
+        assert_eq!(proj.proj_code(), "utm");
+        assert_eq!(proj.to_proj_str(), "+proj=utm +zone=31");
+    }
+
+    #[test]
+    fn utm_southern_hemisphere() {
+        let mut props = HashMap::new();
+        props.insert(
+            "origin".to_string(),
+            ParameterValue::Array(vec![
+                ArrayElement::Number(151.0),
+                ArrayElement::Number(-34.0),
+            ]),
+        );
+        let proj = MapSpecification::new(Some("utm"), &props).unwrap();
+        assert_eq!(proj.to_proj_str(), "+proj=utm +zone=56 +south");
     }
 }
