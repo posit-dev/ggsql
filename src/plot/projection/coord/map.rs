@@ -54,15 +54,28 @@ impl CoordTrait for Map {
         const LON_RANGE: NumberConstraint = NumberConstraint::range(-180.0, 180.0);
         const LAT_RANGE: NumberConstraint = NumberConstraint::range(-90.0, 90.0);
         const PARAMS: &[ParamDefinition] = &[
+            // Accepts PROJ strings or EPSG codes (numbers resolved at execution time)
             ParamDefinition {
                 name: "crs",
                 default: DefaultParamValue::Null,
-                constraint: ParamConstraint::string(),
+                constraint: ParamConstraint {
+                    number: TypeConstraint::Constrained(NumberConstraint::count(1.0)),
+                    string: TypeConstraint::Any,
+                    boolean: TypeConstraint::Forbidden,
+                    array: TypeConstraint::Forbidden,
+                    allow_null: true,
+                },
             },
             ParamDefinition {
                 name: "source",
                 default: DefaultParamValue::Null,
-                constraint: ParamConstraint::string(),
+                constraint: ParamConstraint {
+                    number: TypeConstraint::Constrained(NumberConstraint::count(1.0)),
+                    string: TypeConstraint::Any,
+                    boolean: TypeConstraint::Forbidden,
+                    array: TypeConstraint::Forbidden,
+                    allow_null: true,
+                },
             },
             ParamDefinition {
                 name: "clip",
@@ -112,7 +125,7 @@ impl CoordTrait for Map {
     ) -> Result<HashMap<String, ParameterValue>, String> {
         if self.coord_type_name != "map" && properties.contains_key("crs") {
             return Err(format!(
-                "Cannot combine a named projection ('{}') with a 'crs' string. \
+                "Cannot combine a named projection ('{}') with a 'crs' setting. \
                  Use either PROJECT TO {} or PROJECT TO map SETTING crs => '...'",
                 self.coord_type_name, self.coord_type_name
             ));
@@ -186,6 +199,10 @@ impl CoordTrait for Map {
             }
         }
 
+        // Resolve numeric EPSG codes to PROJ strings
+        resolve_epsg_property("source", projection, execute_query)?;
+        resolve_epsg_property("crs", projection, execute_query)?;
+
         let source = match projection.properties.get("source") {
             Some(ParameterValue::String(s)) => s.clone(),
             _ => "EPSG:4326".to_string(),
@@ -199,6 +216,17 @@ impl CoordTrait for Map {
                 source.clone()
             }
         };
+
+        // Rebuild MapSpecification from resolved CRS string when it was set numerically
+        if projection.map_projection.is_none()
+            || projection
+                .map_projection
+                .as_ref()
+                .is_some_and(|m| m.proj_code() == "unknown")
+        {
+            projection.map_projection =
+                super::map_projections::MapSpecification::new(Some("map"), &projection.properties);
+        }
 
         // Validate CRS by attempting a single point transform
         let probe = dialect.sql_st_transform("ST_Point(0, 0)", &source, &crs);
@@ -891,6 +919,113 @@ fn detect_source_srid(
 }
 
 // ---------------------------------------------------------------------------
+// EPSG resolution
+// ---------------------------------------------------------------------------
+
+/// If `key` holds a numeric EPSG code or an `"EPSG:N"` string, resolve it to a PROJ
+/// string and replace the property value in-place. Falls back to `"EPSG:N"` format
+/// when no PROJ string can be found (the database engine may still handle it).
+fn resolve_epsg_property(
+    key: &str,
+    projection: &mut super::super::Projection,
+    execute_query: &dyn Fn(&str) -> crate::Result<DataFrame>,
+) -> crate::Result<()> {
+    let code = match projection.properties.get(key) {
+        Some(ParameterValue::Number(n)) => Some(*n as u32),
+        Some(ParameterValue::String(s)) => s.strip_prefix("EPSG:").and_then(|n| n.parse().ok()),
+        _ => None,
+    };
+    let code = match code {
+        Some(c) => c,
+        None => return Ok(()),
+    };
+    // Try spatial_ref_sys table first (PostGIS / DuckDB spatial), fall back to
+    // cherry-picked built-in codes, then pass raw EPSG:N to the database engine.
+    let resolved = query_spatial_ref_sys(code, execute_query)
+        .or_else(|| builtin_epsg_lookup(code))
+        .unwrap_or_else(|| format!("EPSG:{code}"));
+    projection
+        .properties
+        .insert(key.to_string(), ParameterValue::String(resolved));
+    Ok(())
+}
+
+fn query_spatial_ref_sys(
+    code: u32,
+    execute_query: &dyn Fn(&str) -> crate::Result<DataFrame>,
+) -> Option<String> {
+    let sql = format!(
+        "SELECT proj4text FROM spatial_ref_sys WHERE srid = {} LIMIT 1",
+        code
+    );
+    let df = execute_query(&sql).ok()?;
+    let batch = df.inner();
+    if batch.num_rows() == 0 {
+        return None;
+    }
+    let arr = batch
+        .column(0)
+        .as_any()
+        .downcast_ref::<arrow::array::StringArray>()?;
+    let proj = arr.value(0);
+    if proj.is_empty() {
+        return None;
+    }
+    Some(proj.to_string())
+}
+
+fn builtin_epsg_lookup(code: u32) -> Option<String> {
+    // UTM zones north (326xx) and south (327xx)
+    if (32601..=32660).contains(&code) {
+        let zone = code - 32600;
+        return Some(format!(
+            "+proj=utm +zone={zone} +datum=WGS84 +units=m +no_defs +type=crs"
+        ));
+    }
+    if (32701..=32760).contains(&code) {
+        let zone = code - 32700;
+        return Some(format!(
+            "+proj=utm +zone={zone} +south +datum=WGS84 +units=m +no_defs +type=crs"
+        ));
+    }
+
+    let proj = match code {
+        // World Geodetic System 1984 (GPS)
+        4326 => "+proj=longlat +datum=WGS84 +no_defs +type=crs",
+        // Lambert-93 -- France
+        2154 => "+proj=lcc +lat_0=46.5 +lon_0=3 +lat_1=49 +lat_2=44 +x_0=700000 +y_0=6600000 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs +type=crs",
+        // New Zealand Transverse Mercator
+        2193 => "+proj=tmerc +lat_0=0 +lon_0=173 +k=0.9996 +x_0=1600000 +y_0=10000000 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs +type=crs",
+        // UTM North America
+        26914 => "+proj=utm +zone=14 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs +type=crs",
+        // British National Grid - United Kingdom Ordnance Survey
+        27700 => "+proj=tmerc +lat_0=49 +lon_0=-2 +k=0.9996012717 +x_0=400000 +y_0=-100000 +ellps=airy +nadgrids=uk_os_OSTN15_NTv2_OSGBtoETRS.tif +units=m +no_defs +type=crs",
+        // Equi7 Europe
+        27704 => "+proj=aeqd +lat_0=53 +lon_0=24 +x_0=5837287.82 +y_0=2121415.696 +datum=WGS84 +units=m +no_defs +type=crs",
+        // Antarctic Polar Stereographic
+        3031 => "+proj=stere +lat_0=-90 +lat_ts=-71 +lon_0=0 +x_0=0 +y_0=0 +datum=WGS84 +units=m +no_defs +type=crs",
+        // LCC Europe
+        3034 => "+proj=lcc +lat_0=52 +lon_0=10 +lat_1=35 +lat_2=65 +x_0=4000000 +y_0=2800000 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs +type=crs",
+        // LAEA Europe
+        3035 => "+proj=laea +lat_0=52 +lon_0=10 +x_0=4321000 +y_0=3210000 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs +type=crs",
+        // World Mercator
+        3395 => "+proj=merc +lon_0=0 +k=1 +x_0=0 +y_0=0 +datum=WGS84 +units=m +no_defs +type=crs",
+        // NSIDC Sea Ice Polar Stereographic North
+        3413 => "+proj=stere +lat_0=90 +lat_ts=70 +lon_0=-45 +x_0=0 +y_0=0 +datum=WGS84 +units=m +no_defs +type=crs",
+        // Australian Albers
+        3577 => "+proj=aea +lat_0=0 +lon_0=132 +lat_1=-18 +lat_2=-36 +x_0=0 +y_0=0 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs +type=crs",
+        // Pseudo-Mercator
+        3857 => "+proj=merc +a=6378137 +b=6378137 +lat_ts=0 +lon_0=0 +x_0=0 +y_0=0 +k=1 +units=m +nadgrids=@null +wktext +no_defs +type=crs",
+        // NAD83 / Conus Albers
+        5070 => "+proj=aea +lat_0=23 +lon_0=-96 +lat_1=29.5 +lat_2=45.5 +x_0=0 +y_0=0 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs +type=crs",
+        // Polar Stereographic
+        9354 => "+proj=stere +lat_0=-90 +lat_ts=-65 +lon_0=0 +x_0=0 +y_0=0 +datum=WGS84 +units=m +no_defs +type=crs",
+        _ => return None,
+    };
+    Some(proj.to_string())
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
@@ -1164,5 +1299,32 @@ mod tests {
         assert!(wkt.starts_with("MULTILINESTRING("));
         assert!(wkt.contains("0.000000"));
         assert!(wkt.contains("45.000000"));
+    }
+
+    #[test]
+    fn epsg_utm_north_zones() {
+        let s = builtin_epsg_lookup(32632).unwrap();
+        assert!(s.contains("+proj=utm") && s.contains("+zone=32"));
+        let s = builtin_epsg_lookup(32601).unwrap();
+        assert!(s.contains("+proj=utm") && s.contains("+zone=1"));
+    }
+
+    #[test]
+    fn epsg_utm_south_zones() {
+        let s = builtin_epsg_lookup(32755).unwrap();
+        assert!(s.contains("+proj=utm") && s.contains("+zone=55") && s.contains("+south"));
+    }
+
+    #[test]
+    fn epsg_common_codes() {
+        assert!(builtin_epsg_lookup(4326).unwrap().contains("+proj=longlat"));
+        assert!(builtin_epsg_lookup(3857).unwrap().contains("+proj=merc"));
+        assert!(builtin_epsg_lookup(3035).unwrap().contains("+proj=laea"));
+        assert!(builtin_epsg_lookup(5070).unwrap().contains("+proj=aea"));
+    }
+
+    #[test]
+    fn epsg_unknown_code() {
+        assert_eq!(builtin_epsg_lookup(99999), None);
     }
 }
