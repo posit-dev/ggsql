@@ -25,12 +25,12 @@ This is a convenience when converting from a Cartesian coordinate system, withou
 
 * `clip`: Should data be removed if it appears outside the bounds of the coordinate system, or has become invalid due to the projection. 
   Defaults to `true`.
-* `crs` A string giving the target Coordinate Reference System (CRS) holding parameters of a coordinate transformation.
+* `crs` A string giving the target Coordinate Reference System (CRS) holding parameters of a coordinate transformation, or whole number giving an EPSG code.
   This is only used with unnamed projections and therefore mutually exclusive with the `origin` and `parallel` settings.
   By default, matches the Spatial Reference Identifiers (SRIDs) of geometry columns.
   Typically takes one of the following forms:
     * A [proj string](https://proj.org/en/stable/usage/quickstart.html) like `'+proj=longlat +lon_0=90'` for 2D longitude/latitude with 90° longitude offset.
-    * An [EPSG code](https://en.wikipedia.org/wiki/EPSG_Geodetic_Parameter_Dataset) like `'EPSG:3395'` for World Mercator projection.
+    * An [EPSG code](https://en.wikipedia.org/wiki/EPSG_Geodetic_Parameter_Dataset) like `'EPSG:3395'` (string) or `3395` for World Mercator projection.
 * `source` A string giving the source CRS for the data to use as fallback when not explicit in geometry. 
   Useful when using non-spatial layers that don't carry SRIDs.
   Defaults to `'EPSG:4326'` or longitude/latitude coordinates.
