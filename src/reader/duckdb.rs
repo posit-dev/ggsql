@@ -100,6 +100,30 @@ impl super::SqlDialect for DuckDbDialect {
         format!("LEAST({})", exprs.join(", "))
     }
 
+    fn sql_st_transform(&self, column: &str, source_crs: &str, target_crs: &str) -> String {
+        format!(
+            "ST_Transform({}, '{}', '{}', always_xy := true)",
+            column,
+            source_crs.replace('\'', "''"),
+            target_crs.replace('\'', "''")
+        )
+    }
+
+    /// WORKAROUND(duckdb-rs#714): geometry columns arrive as WKB BLOB via Arrow.
+    fn sql_ensure_geometry(&self, column: &str) -> String {
+        format!("ST_GeomFromWKB(CAST({column} AS BLOB))")
+    }
+
+    fn sql_select_replace(
+        &self,
+        expr: &str,
+        col: &str,
+        from: &str,
+        _all_columns: &[String],
+    ) -> String {
+        format!("SELECT * REPLACE ({expr} AS {col}) FROM ({from})")
+    }
+
     fn sql_geometry_to_wkb(&self, column: &str) -> String {
         format!("ST_AsWKB({column})")
     }
@@ -114,6 +138,20 @@ impl super::SqlDialect for DuckDbDialect {
 
     fn sql_spatial_setup(&self) -> Vec<String> {
         vec!["LOAD spatial".into()]
+    }
+
+    fn create_or_replace_temp_table_sql(
+        &self,
+        name: &str,
+        column_aliases: &[String],
+        body_sql: &str,
+    ) -> Vec<String> {
+        let body = super::wrap_with_column_aliases(body_sql, column_aliases);
+        vec![format!(
+            "CREATE OR REPLACE TEMP TABLE {} AS {}",
+            naming::quote_ident(name),
+            body
+        )]
     }
 
     fn sql_generate_series(&self, n: usize) -> String {

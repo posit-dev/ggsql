@@ -294,6 +294,9 @@ pub trait GeomTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
     /// - Spatial: ST_AsWKB (always), plus ST_Transform when Map coord has a CRS
     /// - Future geoms: rectangles transform corners, lines segmentize, etc.
     ///
+    /// `columns` lists all column names in the query (for portable column
+    /// replacement on backends that don't support `SELECT * REPLACE`).
+    ///
     /// The default is a no-op (returns query unchanged).
     fn apply_projection(
         &self,
@@ -301,6 +304,7 @@ pub trait GeomTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
         _projection: &Projection,
         _dialect: &dyn SqlDialect,
         _clip: bool,
+        _columns: &[String],
     ) -> Result<String> {
         Ok(query.to_string())
     }
@@ -610,8 +614,10 @@ impl Geom {
         projection: &Projection,
         dialect: &dyn SqlDialect,
         clip: bool,
+        columns: &[String],
     ) -> Result<String> {
-        self.0.apply_projection(query, projection, dialect, clip)
+        self.0
+            .apply_projection(query, projection, dialect, clip, columns)
     }
 
     /// Adjust layer mappings and parameters based on geom-specific logic

@@ -61,6 +61,7 @@ impl GeomTrait for Point {
         projection: &Projection,
         dialect: &dyn SqlDialect,
         _clip: bool,
+        _columns: &[String],
     ) -> Result<String> {
         project_position_columns(query, projection, dialect)
     }

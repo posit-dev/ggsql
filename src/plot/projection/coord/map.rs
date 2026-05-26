@@ -199,8 +199,8 @@ impl CoordTrait for Map {
             }
         }
 
-        // Resolve numeric EPSG codes to PROJ strings
-        resolve_epsg_property("source", projection, execute_query)?;
+        // Resolve numeric EPSG codes to PROJ strings (source is kept as EPSG:N
+        // so that sql_st_transform can extract the numeric SRID for ST_SetSRID).
         resolve_epsg_property("crs", projection, execute_query)?;
 
         let source = match projection.properties.get("source") {
@@ -266,10 +266,19 @@ impl CoordTrait for Map {
 
         // Step 3: Apply per-layer projection (ST_Transform, clip to horizon)
         for (idx, layer) in layers.iter().enumerate() {
-            layer_queries[idx] =
-                layer
-                    .geom
-                    .apply_projection(&layer_queries[idx], projection, dialect, clip)?;
+            let columns: Vec<String> = layer
+                .mappings
+                .aesthetics
+                .keys()
+                .map(|k| naming::aesthetic_column(k))
+                .collect();
+            layer_queries[idx] = layer.geom.apply_projection(
+                &layer_queries[idx],
+                projection,
+                dialect,
+                clip,
+                &columns,
+            )?;
         }
 
         // Step 4: Materialize projected layers as temp tables, compute data bbox,
@@ -299,9 +308,20 @@ impl CoordTrait for Map {
             }
 
             layer_queries[idx] = if is_spatial {
+                let columns: Vec<String> = layer
+                    .mappings
+                    .aesthetics
+                    .keys()
+                    .map(|k| naming::aesthetic_column(k))
+                    .collect();
                 let geom_col_quoted = naming::quote_ident(&naming::aesthetic_column("geometry"));
                 let wkb_expr = dialect.sql_geometry_to_wkb(&geom_col_quoted);
-                format!("SELECT * REPLACE ({wkb_expr} AS {geom_col_quoted}) FROM {table_quoted}")
+                dialect.sql_select_replace(
+                    &wkb_expr,
+                    &geom_col_quoted,
+                    &format!("SELECT * FROM {table_quoted}"),
+                    &columns,
+                )
             } else {
                 format!("SELECT * FROM {table_quoted}")
             };

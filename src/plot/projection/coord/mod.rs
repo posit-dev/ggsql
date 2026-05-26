@@ -144,10 +144,19 @@ pub trait CoordTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
         _execute_query: &dyn Fn(&str) -> crate::Result<DataFrame>,
     ) -> crate::Result<()> {
         for (idx, layer) in layers.iter().enumerate() {
-            layer_queries[idx] =
-                layer
-                    .geom
-                    .apply_projection(&layer_queries[idx], projection, dialect, false)?;
+            let columns: Vec<String> = layer
+                .mappings
+                .aesthetics
+                .keys()
+                .map(|k| crate::naming::aesthetic_column(k))
+                .collect();
+            layer_queries[idx] = layer.geom.apply_projection(
+                &layer_queries[idx],
+                projection,
+                dialect,
+                false,
+                &columns,
+            )?;
         }
         Ok(())
     }

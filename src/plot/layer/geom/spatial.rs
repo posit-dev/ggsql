@@ -13,27 +13,20 @@ fn apply_clip_boundary(
     col: &str,
     source: &str,
     crs: &str,
+    dialect: &dyn SqlDialect,
+    columns: &[String],
     clip_table: &str,
 ) -> String {
     let clip_geom = format!("(SELECT geom FROM {clip_table})");
-    let source_esc = source.replace('\'', "''");
-    let crs_esc = crs.replace('\'', "''");
 
     let clipped = format!("ST_Intersection({col}, {clip_geom})");
-    let geom_expr = format!(
-        "ST_MakeValid(ST_Transform(\
-            {clipped},\
-            '{source_esc}', '{crs_esc}', always_xy := true\
-        ))",
+    let transformed = dialect.sql_st_transform(&clipped, source, crs);
+    let geom_expr = format!("ST_MakeValid({transformed})");
+
+    let filtered = format!(
+        "SELECT * FROM ({query}) WHERE ST_Intersects({col}, {clip_geom})"
     );
-    format!(
-        "SELECT * REPLACE ({geom_expr} AS {col}) FROM ({query}) \
-         WHERE ST_Intersects({col}, {clip_geom})",
-        col = col,
-        geom_expr = geom_expr,
-        query = query,
-        clip_geom = clip_geom,
-    )
+    dialect.sql_select_replace(&geom_expr, col, &filtered, columns)
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -86,6 +79,7 @@ impl GeomTrait for Spatial {
         projection: &Projection,
         dialect: &dyn SqlDialect,
         clip: bool,
+        columns: &[String],
     ) -> crate::Result<String> {
         let col = naming::quote_ident(&naming::aesthetic_column("geometry"));
         let is_map = projection.coord.coord_kind() == CoordKind::Map;
@@ -93,7 +87,7 @@ impl GeomTrait for Spatial {
         // WORKAROUND(duckdb-rs#714): normalize column to GEOMETRY since it may
         // be WKB BLOB from the Arrow export workaround.
         let ensure_geom = dialect.sql_ensure_geometry(&col);
-        let geom_query = format!("SELECT * REPLACE ({ensure_geom} AS {col}) FROM ({query})");
+        let geom_query = dialect.sql_select_replace(&ensure_geom, &col, query, columns);
 
         let geom_expr = if let (true, Some(ParameterValue::String(crs))) =
             (is_map, projection.properties.get("crs"))
@@ -109,6 +103,8 @@ impl GeomTrait for Spatial {
                     &col,
                     source,
                     crs,
+                    dialect,
+                    columns,
                     CLIP_BOUNDARY_TABLE,
                 ));
             }
@@ -120,15 +116,11 @@ impl GeomTrait for Spatial {
         } else {
             // Non-map coord — convert to WKB directly
             let wkb_expr = dialect.sql_geometry_to_wkb(&col);
-            return Ok(format!(
-                "SELECT * REPLACE ({wkb_expr} AS {col}) FROM ({geom_query})"
-            ));
+            return Ok(dialect.sql_select_replace(&wkb_expr, &col, &geom_query, columns));
         };
 
         // Map coord with CRS — output native projected geometry (WKB added by framing)
-        Ok(format!(
-            "SELECT * REPLACE ({geom_expr} AS {col}) FROM ({geom_query})"
-        ))
+        Ok(dialect.sql_select_replace(&geom_expr, &col, &geom_query, columns))
     }
 }
 
@@ -148,7 +140,7 @@ mod tests {
         let spatial = Spatial;
         let projection = Projection::cartesian();
         let result = spatial
-            .apply_projection("SELECT * FROM t", &projection, &AnsiDialect, false)
+            .apply_projection("SELECT * FROM t", &projection, &AnsiDialect, false, &[])
             .unwrap();
 
         assert!(result.contains("ST_AsBinary"));
@@ -160,11 +152,11 @@ mod tests {
         let spatial = Spatial;
         let projection = Projection::map();
         let result = spatial
-            .apply_projection("SELECT * FROM t", &projection, &AnsiDialect, false)
+            .apply_projection("SELECT * FROM t", &projection, &AnsiDialect, false, &[])
             .unwrap();
 
-        // Map without CRS ensures GEOMETRY type for the framing step
-        assert!(result.contains("ST_GeomFromWKB"));
+        // Map without CRS passes through (ensure_geometry is identity for AnsiDialect)
+        assert!(result.contains("SELECT * FROM"));
         assert!(!result.contains("ST_Transform"));
     }
 
@@ -177,7 +169,7 @@ mod tests {
             ParameterValue::String("+proj=merc".to_string()),
         );
         let result = spatial
-            .apply_projection("SELECT * FROM t", &projection, &AnsiDialect, false)
+            .apply_projection("SELECT * FROM t", &projection, &AnsiDialect, false, &[])
             .unwrap();
 
         // Without clip=true, just ST_Transform
@@ -196,7 +188,7 @@ mod tests {
             ParameterValue::String("+proj=merc".to_string()),
         );
         let result = spatial
-            .apply_projection("SELECT * FROM t", &projection, &AnsiDialect, true)
+            .apply_projection("SELECT * FROM t", &projection, &AnsiDialect, true, &[])
             .unwrap();
 
         assert!(result.contains("ST_Intersection"));
@@ -213,7 +205,7 @@ mod tests {
             ParameterValue::String("+proj=ortho +lat_0=45 +lon_0=10".to_string()),
         );
         let result = spatial
-            .apply_projection("SELECT * FROM t", &projection, &AnsiDialect, true)
+            .apply_projection("SELECT * FROM t", &projection, &AnsiDialect, true, &[])
             .unwrap();
 
         assert!(result.contains("ST_Transform"));
@@ -232,7 +224,7 @@ mod tests {
             ParameterValue::String("+proj=gnom +lat_0=90 +lon_0=0".to_string()),
         );
         let result = spatial
-            .apply_projection("SELECT * FROM t", &projection, &AnsiDialect, true)
+            .apply_projection("SELECT * FROM t", &projection, &AnsiDialect, true, &[])
             .unwrap();
 
         assert!(result.contains("ST_MakeValid"));
