@@ -15,6 +15,7 @@ use crate::plot::ParameterValue;
 pub const NAMED_PROJECTIONS: &[&str] = &[
     "geographic",
     "mercator",
+    "transverse_mercator",
     "orthographic",
     "miller",
     "equirectangular",
@@ -106,6 +107,7 @@ impl MapSpecification {
                     "gnom" => Arc::new(Gnomonic { lon_0, lat_0 }),
                     "laea" => Arc::new(LambertAzimuthal { lon_0, lat_0 }),
                     "aeqd" => Arc::new(AzimuthalEquidistant { lon_0, lat_0 }),
+                    "tmerc" => Arc::new(TransverseMercator { lon_0, lat_0 }),
                     "merc" => Arc::new(Mercator { lon_0 }),
                     "mill" => Arc::new(Miller { lon_0 }),
                     "eqc" => Arc::new(Equirectangular { lon_0 }),
@@ -173,6 +175,7 @@ impl MapSpecification {
                 match name {
                     "geographic" => Arc::new(Geographic { lon_0 }),
                     "mercator" => Arc::new(Mercator { lon_0 }),
+                    "transverse_mercator" => Arc::new(TransverseMercator { lon_0, lat_0 }),
                     "orthographic" => Arc::new(Orthographic { lon_0, lat_0 }),
                     "miller" => Arc::new(Miller { lon_0 }),
                     "equirectangular" => Arc::new(Equirectangular { lon_0 }),
@@ -457,6 +460,55 @@ impl MapProjectionTrait for Mercator {
     }
     fn edge_segments(&self) -> [usize; 4] {
         [1, 1, 1, 1]
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct TransverseMercator {
+    pub lon_0: f64,
+    pub lat_0: f64,
+}
+
+impl MapProjectionTrait for TransverseMercator {
+    fn proj_code(&self) -> &'static str {
+        "tmerc"
+    }
+    fn display_name(&self) -> &'static str {
+        "Transverse Mercator"
+    }
+    fn origin(&self) -> (f64, f64) {
+        (self.lon_0, self.lat_0)
+    }
+    fn to_proj_str(&self) -> String {
+        format!("+proj=tmerc +lon_0={} +lat_0={}", self.lon_0, self.lat_0)
+    }
+    fn clip_shape_wkt(&self) -> String {
+        let west = self.lon_0 - 80.0;
+        let east = self.lon_0 + 80.0;
+        let segs = self.edge_segments();
+
+        if west >= -180.0 && east <= 180.0 {
+            rectangle_wkt(west, -90.0, east, 90.0, segs)
+        } else {
+            let (w1, e1, w2, e2) = if east > 180.0 {
+                (west, 180.0, -180.0, east - 360.0)
+            } else {
+                (west + 360.0, 180.0, -180.0, east)
+            };
+            let r1 = rectangle_wkt(w1, -90.0, e1, 90.0, segs);
+            let r2 = rectangle_wkt(w2, -90.0, e2, 90.0, segs);
+            format!(
+                "MULTIPOLYGON({}, {})",
+                r1.strip_prefix("POLYGON").unwrap(),
+                r2.strip_prefix("POLYGON").unwrap()
+            )
+        }
+    }
+    fn slit_wkt(&self, _epsilon: f64) -> Option<String> {
+        None
+    }
+    fn edge_segments(&self) -> [usize; 4] {
+        [1, 36, 1, 36]
     }
 }
 
