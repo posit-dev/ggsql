@@ -386,8 +386,14 @@ impl MapProjectionTrait for LambertAzimuthal {
     fn to_proj_str(&self) -> String {
         format!("+proj=laea +lon_0={} +lat_0={}", self.lon_0, self.lat_0)
     }
-    fn visible_area_wkt(&self) -> Option<String> {
-        todo!("full-globe azimuthal visible area")
+    fn clip_shape_wkt(&self) -> String {
+        rectangle_wkt(-180.0, -90.0, 180.0, 90.0, [1, 36, 1, 36])
+    }
+    fn slit_wkt(&self, _epsilon: f64) -> Option<String> {
+        Some(antipodal_cap_wkt(self.lon_0, self.lat_0))
+    }
+    fn edge_segments(&self) -> [usize; 4] {
+        [36, 36, 36, 36]
     }
 }
 
@@ -410,8 +416,14 @@ impl MapProjectionTrait for AzimuthalEquidistant {
     fn to_proj_str(&self) -> String {
         format!("+proj=aeqd +lon_0={} +lat_0={}", self.lon_0, self.lat_0)
     }
-    fn visible_area_wkt(&self) -> Option<String> {
-        todo!("full-globe azimuthal visible area")
+    fn clip_shape_wkt(&self) -> String {
+        rectangle_wkt(-180.0, -90.0, 180.0, 90.0, [1, 36, 1, 36])
+    }
+    fn slit_wkt(&self, _epsilon: f64) -> Option<String> {
+        Some(antipodal_cap_wkt(self.lon_0, self.lat_0))
+    }
+    fn edge_segments(&self) -> [usize; 4] {
+        [36, 36, 36, 36]
     }
 }
 
@@ -919,6 +931,20 @@ pub fn wrap_lon(lon: f64) -> f64 {
     ((lon + 180.0) % 360.0 + 360.0) % 360.0 - 180.0
 }
 
+fn antipodal_cap_wkt(lon_0: f64, lat_0: f64) -> String {
+    let anti_lat = -lat_0;
+    let radius = 1.0;
+
+    if anti_lat + radius >= 90.0 {
+        rectangle_wkt(-180.0, anti_lat - radius, 180.0, 90.0, [1, 1, 180, 1])
+    } else if anti_lat - radius <= -90.0 {
+        rectangle_wkt(-180.0, -90.0, 180.0, anti_lat + radius, [180, 1, 1, 1])
+    } else {
+        let anti_lon = wrap_lon(lon_0 + 180.0);
+        hemisphere_polygon_wkt(anti_lon, anti_lat, radius)
+    }
+}
+
 pub fn extract_proj_param_str<'a>(crs: &'a str, key: &str) -> Option<&'a str> {
     let start = crs.find(key)?;
     let after = &crs[start + key.len()..];
@@ -1393,10 +1419,7 @@ mod tests {
         let mut props = HashMap::new();
         props.insert(
             "origin".to_string(),
-            ParameterValue::Array(vec![
-                ArrayElement::Number(5.0),
-                ArrayElement::Number(52.0),
-            ]),
+            ParameterValue::Array(vec![ArrayElement::Number(5.0), ArrayElement::Number(52.0)]),
         );
         let proj = MapSpecification::new(Some("utm"), &props).unwrap();
         assert_eq!(proj.proj_code(), "utm");
