@@ -179,7 +179,7 @@ impl CoordTrait for Map {
 
         // Step 1: Detect source CRS from geometry columns if not explicitly set
         if !projection.properties.contains_key("source") {
-            if let Some(srid) = detect_source_srid(layers, layer_queries, execute_query)? {
+            if let Some(srid) = detect_source_srid(layers, layer_queries, dialect, execute_query)? {
                 projection
                     .properties
                     .insert("source".to_string(), ParameterValue::String(srid));
@@ -844,9 +844,11 @@ fn resolve_final_bbox(
 fn detect_source_srid(
     layers: &[Layer],
     layer_queries: &[String],
+    dialect: &dyn SqlDialect,
     execute_query: &dyn Fn(&str) -> crate::Result<DataFrame>,
 ) -> crate::Result<Option<String>> {
     let geom_col = naming::quote_ident(&naming::aesthetic_column("geometry"));
+    let ensure_geom = dialect.sql_ensure_geometry(&geom_col);
     let mut detected: Option<String> = None;
 
     for (idx, layer) in layers.iter().enumerate() {
@@ -854,7 +856,7 @@ fn detect_source_srid(
             continue;
         }
         let sql = format!(
-            "SELECT ST_SRID({geom_col}) AS srid FROM ({}) WHERE {geom_col} IS NOT NULL LIMIT 1",
+            "SELECT ST_SRID({ensure_geom}) AS srid FROM ({}) WHERE {geom_col} IS NOT NULL LIMIT 1",
             layer_queries[idx]
         );
         if let Ok(df) = execute_query(&sql) {
