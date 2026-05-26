@@ -1439,9 +1439,7 @@ mod tests {
         assert_eq!(spec.plot.layers.len(), 1);
         assert!(spec.layer_data(0).unwrap().height() > 0);
 
-        reader
-            .execute_sql("DROP TABLE __ggsql_countries")
-            .unwrap();
+        reader.execute_sql("DROP TABLE __ggsql_countries").unwrap();
     }
 
     #[cfg(all(feature = "spatial", feature = "vegalite"))]
@@ -1485,9 +1483,7 @@ mod tests {
         // Only the visible polygon should survive clipping
         assert_eq!(spec.layer_data(0).unwrap().height(), 1);
 
-        reader
-            .execute_sql("DROP TABLE __ggsql_clip_test")
-            .unwrap();
+        reader.execute_sql("DROP TABLE __ggsql_clip_test").unwrap();
     }
 
     // --- SQLite via ODBC -----------------------------------------------------

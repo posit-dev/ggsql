@@ -2252,9 +2252,7 @@ impl SpatialRenderer {
                 .step_by(2)
                 .map(|i| {
                     u8::from_str_radix(&hex[i..i + 2], 16).map_err(|_| {
-                        GgsqlError::WriterError(format!(
-                            "Invalid hex in WKB at position {}", i
-                        ))
+                        GgsqlError::WriterError(format!("Invalid hex in WKB at position {}", i))
                     })
                 })
                 .collect()

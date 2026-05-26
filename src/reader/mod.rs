@@ -167,7 +167,10 @@ pub trait SqlDialect {
                 }
             })
             .collect();
-        format!("SELECT {} FROM ({from}) \"__ggsql_sr__\"", select_list.join(", "))
+        format!(
+            "SELECT {} FROM ({from}) \"__ggsql_sr__\"",
+            select_list.join(", ")
+        )
     }
 
     /// SQL expression to transform a geometry from one CRS to another.
@@ -180,7 +183,10 @@ pub trait SqlDialect {
             Some(srid) => format!("{}", srid),
             None => format!("'{}'", target_crs.replace('\'', "''")),
         };
-        format!("ST_Transform(ST_SetSRID({}, {}), {})", column, source_srid, target)
+        format!(
+            "ST_Transform(ST_SetSRID({}, {}), {})",
+            column, source_srid, target
+        )
     }
 
     /// SQL query that computes the bounding box of a geometry column.

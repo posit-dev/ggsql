@@ -86,7 +86,6 @@ impl super::SqlDialect for SqliteDialect {
         };
         Some(s)
     }
-
 }
 
 /// SQLite database reader

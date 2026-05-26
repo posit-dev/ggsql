@@ -23,9 +23,7 @@ fn apply_clip_boundary(
     let transformed = dialect.sql_st_transform(&clipped, source, crs);
     let geom_expr = format!("ST_MakeValid({transformed})");
 
-    let filtered = format!(
-        "SELECT * FROM ({query}) WHERE ST_Intersects({col}, {clip_geom})"
-    );
+    let filtered = format!("SELECT * FROM ({query}) WHERE ST_Intersects({col}, {clip_geom})");
     dialect.sql_select_replace(&geom_expr, col, &filtered, columns)
 }
 
