@@ -18,6 +18,9 @@
 
 ### Fixed
 
+- Quoted SQL identifiers (e.g. `"variable.dotted"`) in `VISUALISE` column
+  references are now unquoted at parse time, so they correctly match the
+  underlying Arrow schema during validation.
 - Dodging of horizontal violin plots were broken due to a bad orientation
   assumption in the VegaLite writer. We now correctly use the orientation to
   dodge in the correct dimension (#439).

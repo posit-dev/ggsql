@@ -240,6 +240,23 @@ pub fn quote_ident(name: &str) -> String {
     format!("\"{}\"", name.replace('"', "\"\""))
 }
 
+/// Strip surrounding double-quotes from a SQL quoted identifier and unescape
+/// doubled quotes (`""` → `"`). Returns the input unchanged if it isn't quoted.
+///
+/// # Example
+/// ```
+/// use ggsql::naming;
+/// assert_eq!(naming::unquote_ident("\"variable.dotted\""), "variable.dotted");
+/// assert_eq!(naming::unquote_ident("\"has\"\"quote\""), "has\"quote");
+/// assert_eq!(naming::unquote_ident("plain"), "plain");
+/// ```
+pub fn unquote_ident(name: &str) -> String {
+    match name.strip_prefix('"').and_then(|s| s.strip_suffix('"')) {
+        Some(inner) => inner.replace("\"\"", "\""),
+        None => name.to_string(),
+    }
+}
+
 /// Quote a SQL string literal: wraps in single quotes and escapes embedded
 /// single quotes by doubling them, per the SQL standard.
 ///
@@ -496,6 +513,22 @@ mod tests {
             builtin_data_table("airquality"),
             "__ggsql_data_airquality__"
         );
+    }
+
+    #[test]
+    fn test_unquote_ident() {
+        assert_eq!(unquote_ident("\"variable.dotted\""), "variable.dotted");
+        assert_eq!(unquote_ident("\"has\"\"quote\""), "has\"quote");
+        assert_eq!(unquote_ident("plain"), "plain");
+        assert_eq!(unquote_ident("\"simple\""), "simple");
+    }
+
+    #[test]
+    fn test_quote_unquote_roundtrip() {
+        let names = vec!["hello", "has.dot", "has\"quote", "__ggsql_aes_x__"];
+        for name in names {
+            assert_eq!(unquote_ident(&quote_ident(name)), name);
+        }
     }
 
     #[test]
