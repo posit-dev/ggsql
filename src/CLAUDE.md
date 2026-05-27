@@ -49,7 +49,7 @@ Grammar lives in [`/tree-sitter-ggsql/`](../tree-sitter-ggsql/) — when adding 
 | `connection.rs` | Connection-string parsing for all of the above | — |
 | `data.rs`, `spec.rs` | `Spec` type returned by `execute()`, plus DataFrame conversion | — |
 
-`SqlDialect` trait in `mod.rs` lets each driver supply its own type names, information-schema queries, and spatial helper methods (`sql_st_transform`, `sql_geometry_to_wkb`, `sql_geometry_bbox`, `sql_spatial_setup`).
+`SqlDialect` trait in `mod.rs` lets each driver supply its own type names, information-schema queries, and spatial helper methods (`sql_st_transform`, `sql_geometry_to_wkb`, `sql_geometry_bbox`, `sql_ensure_geometry`, `sql_select_replace`, `sql_spatial_setup`).
 
 ### `execute/`
 
