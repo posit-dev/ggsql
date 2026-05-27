@@ -83,7 +83,10 @@ impl super::SqlDialect for SqliteDialect {
         let source_srid = super::extract_epsg_srid(source_crs).unwrap_or(4326);
         match super::extract_epsg_srid(target_crs) {
             Some(target_srid) => {
-                format!("ST_Transform(SetSRID({}, {}), {})", column, source_srid, target_srid)
+                format!(
+                    "ST_Transform(SetSRID({}, {}), {})",
+                    column, source_srid, target_srid
+                )
             }
             None => {
                 let source_proj = source_crs.replace('\'', "''");
@@ -1359,8 +1362,8 @@ mod builtin_data_tests {
 #[cfg(feature = "spatial")]
 #[cfg(test)]
 mod spatialite_tests {
-    use super::*;
     use super::super::SqlDialect;
+    use super::*;
 
     fn spatialite_reader() -> Option<SqliteReader> {
         let reader = SqliteReader::new().ok()?;
@@ -1371,9 +1374,7 @@ mod spatialite_tests {
                 .load_extension("mod_spatialite", None::<&str>)
                 .ok()?;
         }
-        reader
-            .execute_sql("SELECT InitSpatialMetaData(1)")
-            .ok()?;
+        reader.execute_sql("SELECT InitSpatialMetaData(1)").ok()?;
         Some(reader)
     }
 
@@ -1484,9 +1485,7 @@ mod spatialite_tests {
         use super::super::Reader;
         let reader = spatialite_reader().expect("mod_spatialite not available");
         reader
-            .execute_sql(
-                "CREATE TABLE countries (name TEXT, geom BLOB)",
-            )
+            .execute_sql("CREATE TABLE countries (name TEXT, geom BLOB)")
             .unwrap();
         reader
             .execute_sql(
@@ -1518,9 +1517,7 @@ mod spatialite_tests {
         use super::super::Reader;
         let reader = spatialite_reader().expect("mod_spatialite not available");
         reader
-            .execute_sql(
-                "CREATE TABLE clip_test (name TEXT, geom BLOB)",
-            )
+            .execute_sql("CREATE TABLE clip_test (name TEXT, geom BLOB)")
             .unwrap();
         reader
             .execute_sql(
@@ -1553,9 +1550,7 @@ mod spatialite_tests {
         use crate::writer::Writer;
         let reader = spatialite_reader().expect("mod_spatialite not available");
         reader
-            .execute_sql(
-                "CREATE TABLE cities (name TEXT, lon REAL, lat REAL)",
-            )
+            .execute_sql("CREATE TABLE cities (name TEXT, lon REAL, lat REAL)")
             .unwrap();
         reader
             .execute_sql(
