@@ -1486,6 +1486,77 @@ mod tests {
         reader.execute_sql("DROP TABLE __ggsql_clip_test").unwrap();
     }
 
+    #[cfg(all(feature = "spatial", feature = "vegalite"))]
+    #[test]
+    #[ignore]
+    fn pg_spatial_point_layer_projection() {
+        use crate::reader::Reader;
+        use crate::writer::Writer;
+        let reader = try_connect(PG_DSN).unwrap();
+        reader
+            .execute_sql("CREATE EXTENSION IF NOT EXISTS postgis")
+            .unwrap();
+        reader
+            .execute_sql("DROP TABLE IF EXISTS __ggsql_cities")
+            .unwrap();
+        reader
+            .execute_sql(
+                "CREATE TABLE __ggsql_cities (\
+                    name TEXT, lon DOUBLE PRECISION, lat DOUBLE PRECISION\
+                 )",
+            )
+            .unwrap();
+        reader
+            .execute_sql(
+                "INSERT INTO __ggsql_cities VALUES \
+                 ('Amsterdam', 4.90, 52.37),\
+                 ('Paris', 2.35, 48.86),\
+                 ('Berlin', 13.40, 52.52)",
+            )
+            .unwrap();
+
+        let spec = reader
+            .execute(
+                "SELECT name, lon, lat FROM __ggsql_cities \
+                 VISUALISE lon AS lon, lat AS lat, name AS label \
+                 DRAW point \
+                 PROJECT TO lambert SETTING origin => (10, 50)",
+            )
+            .unwrap();
+
+        assert_eq!(spec.plot.layers.len(), 1);
+        let df = spec.layer_data(0).unwrap();
+        assert_eq!(df.height(), 3);
+
+        let writer = crate::writer::vegalite::VegaLiteWriter::new();
+        let json_str = writer.write(&spec.plot, &spec.data).unwrap();
+        let vl_spec: serde_json::Value = serde_json::from_str(&json_str).unwrap();
+
+        // Coordinates should be projected (not raw lon/lat)
+        let data = vl_spec["data"]["values"].as_array().unwrap();
+        let layer_key = spec.plot.layers[0].data_key.as_ref().unwrap();
+        let rows: Vec<_> = data
+            .iter()
+            .filter(|r| r[crate::naming::SOURCE_COLUMN] == layer_key.as_str())
+            .collect();
+        assert_eq!(rows.len(), 3);
+        for row in &rows {
+            let lon = row[crate::naming::aesthetic_column("pos1")]
+                .as_f64()
+                .expect("pos1 should be numeric");
+            let lat = row[crate::naming::aesthetic_column("pos2")]
+                .as_f64()
+                .expect("pos2 should be numeric");
+            // LAEA centered on (10, 50) produces meter-scale values, not degrees
+            assert!(
+                lon.abs() > 100.0 || lat.abs() > 100.0,
+                "Expected projected coordinates (meters), got ({lon}, {lat})"
+            );
+        }
+
+        reader.execute_sql("DROP TABLE __ggsql_cities").unwrap();
+    }
+
     // --- SQLite via ODBC -----------------------------------------------------
 
     const SQLITE_DSN: &str = "ggsql-sqlite-test";

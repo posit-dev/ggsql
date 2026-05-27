@@ -912,12 +912,22 @@ fn detect_source_srid(
             if batch.num_rows() == 0 {
                 continue;
             }
-            if let Some(arr) = batch
-                .column(0)
+            let col = batch.column(0);
+            let srid = col
                 .as_any()
                 .downcast_ref::<arrow::array::Int32Array>()
-            {
-                let srid = arr.value(0);
+                .map(|a| a.value(0) as i64)
+                .or_else(|| {
+                    col.as_any()
+                        .downcast_ref::<arrow::array::Int64Array>()
+                        .map(|a| a.value(0))
+                })
+                .or_else(|| {
+                    col.as_any()
+                        .downcast_ref::<arrow::array::Int16Array>()
+                        .map(|a| a.value(0) as i64)
+                });
+            if let Some(srid) = srid {
                 if srid != 0 {
                     let crs = format!("EPSG:{srid}");
                     if let Some(ref prev) = detected {

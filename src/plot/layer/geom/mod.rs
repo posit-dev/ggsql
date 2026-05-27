@@ -345,6 +345,7 @@ pub(crate) fn project_position_columns(
     query: &str,
     projection: &Projection,
     dialect: &dyn SqlDialect,
+    columns: &[String],
 ) -> Result<String> {
     use crate::plot::projection::coord::CoordKind;
 
@@ -369,9 +370,34 @@ pub(crate) fn project_position_columns(
     let transformed = dialect.sql_st_transform(&point_expr, source, crs);
     let proj_col = naming::quote_ident("__ggsql_proj_pt__");
 
+    let inner = format!("SELECT *, {transformed} AS {proj_col} FROM ({query})");
+    let x_expr = format!("ST_X({proj_col})");
+    let y_expr = format!("ST_Y({proj_col})");
+
+    // Build a column list that replaces pos1 and pos2 with projected values
+    // and drops the temporary projected-point column.
+    if columns.is_empty() {
+        return Ok(format!(
+            "SELECT {x_expr} AS {pos1}, {y_expr} AS {pos2}, * \
+             FROM ({inner}) \"__ggsql_pp__\""
+        ));
+    }
+    let select_list: Vec<String> = columns
+        .iter()
+        .map(|c| {
+            let qc = naming::quote_ident(c);
+            if qc == pos1 {
+                format!("{x_expr} AS {pos1}")
+            } else if qc == pos2 {
+                format!("{y_expr} AS {pos2}")
+            } else {
+                qc
+            }
+        })
+        .collect();
     Ok(format!(
-        "SELECT * REPLACE (ST_X({proj_col}) AS {pos1}, ST_Y({proj_col}) AS {pos2}) \
-         FROM (SELECT *, {transformed} AS {proj_col} FROM ({query}))"
+        "SELECT {} FROM ({inner}) \"__ggsql_pp__\"",
+        select_list.join(", ")
     ))
 }
 
