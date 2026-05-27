@@ -230,13 +230,28 @@ impl CoordTrait for Map {
 
         // Validate CRS by attempting a single point transform
         let probe = dialect.sql_st_transform("ST_Point(0, 0)", &source, &crs);
-        if let Err(e) = execute_query(&format!("SELECT {probe}")) {
-            let msg = e.to_string();
-            return Err(crate::GgsqlError::ValidationError(format!(
-                "Invalid CRS '{}': {}",
-                crs,
-                msg.split(':').next_back().unwrap_or(&msg).trim()
-            )));
+        let probe_sql = format!("SELECT {probe} AS g");
+        match execute_query(&probe_sql) {
+            Err(e) => {
+                let msg = e.to_string();
+                return Err(crate::GgsqlError::ValidationError(format!(
+                    "Invalid CRS '{}': {}",
+                    crs,
+                    msg.split(':').next_back().unwrap_or(&msg).trim()
+                )));
+            }
+            Ok(df) => {
+                if df.height() > 0 && df.column("g").is_ok() {
+                    let val = crate::array_util::value_to_string(df.column("g").unwrap(), 0);
+                    if val == "null" || val.is_empty() {
+                        return Err(crate::GgsqlError::ValidationError(format!(
+                            "Unsupported CRS '{}': this backend cannot transform to \
+                             arbitrary PROJ strings. Use a numeric EPSG code instead.",
+                            crs,
+                        )));
+                    }
+                }
+            }
         }
 
         // Step 2: Materialize clip boundary, panel boundary, and world bbox.
