@@ -17,6 +17,14 @@
 - `boxplot`, `violin`, and `range` now support omitting the categorical aesthetic, matching `bar`. `point` now treats both position aesthetics as optional.
 - Upgraded dependencies: duckdb-rs v1.10502, arrow v58 (#447).
 
+## 0.3.3 - 2026-05-27
+
+### Fixed
+
+- Add CASE expression support to tree-sitter grammar (#432)
+- Fix Vega-Lite spec emitted for boxplot (#449)
+- Support predicates in function arguments (#457)
+
 ## 0.3.2 - 2026-05-05
 
 ### Fixed
