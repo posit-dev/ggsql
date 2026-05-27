@@ -20,6 +20,18 @@ pub enum ConnectionInfo {
     /// Generic ODBC connection (raw connection string after `odbc://` prefix)
     #[allow(dead_code)]
     ODBC(String),
+    /// Google BigQuery native connection.
+    #[allow(dead_code)]
+    BigQuery(BigQueryConnectionInfo),
+}
+
+/// Parsed BigQuery connection information.
+#[derive(Debug, Clone, PartialEq)]
+pub struct BigQueryConnectionInfo {
+    /// Explicit project ID, or `None` to resolve from ADC / environment.
+    pub project_id: Option<String>,
+    pub default_dataset: Option<String>,
+    pub location: Option<String>,
 }
 
 /// Parse a connection string into connection information
@@ -30,7 +42,7 @@ pub enum ConnectionInfo {
 /// - `duckdb://...` - DuckDB path
 /// - `postgres://...` - PostgreSQL connection string
 /// - `sqlite://...` - SQLite file path
-/// ```
+/// - `bigquery://[project[/dataset]][?location=US]` - Google BigQuery (project defaults to ADC)
 pub fn parse_connection_string(uri: &str) -> Result<ConnectionInfo> {
     if uri == "duckdb://memory" {
         return Ok(ConnectionInfo::DuckDBMemory);
@@ -67,8 +79,32 @@ pub fn parse_connection_string(uri: &str) -> Result<ConnectionInfo> {
         return Ok(ConnectionInfo::ODBC(conn_str.to_string()));
     }
 
+    if let Some(rest) = uri.strip_prefix("bigquery://") {
+        let (path, query) = rest.split_once('?').unwrap_or((rest, ""));
+        let mut parts = path.split('/').filter(|s| !s.is_empty());
+        let project_id = parts.next().map(|s| s.to_string());
+        let default_dataset = parts.next().map(|s| s.to_string());
+
+        if parts.next().is_some() {
+            return Err(GgsqlError::ReaderError(
+                "BigQuery URI must be bigquery://[project[/dataset]][?location=...]".to_string(),
+            ));
+        }
+
+        let location = query.split('&').find_map(|part| {
+            let (key, value) = part.split_once('=')?;
+            (key == "location" && !value.is_empty()).then(|| value.to_string())
+        });
+
+        return Ok(ConnectionInfo::BigQuery(BigQueryConnectionInfo {
+            project_id,
+            default_dataset,
+            location,
+        }));
+    }
+
     Err(GgsqlError::ReaderError(format!(
-        "Unsupported connection string format: {}. Supported: duckdb://, postgres://, sqlite://, odbc://",
+        "Unsupported connection string format: {}. Supported: duckdb://, postgres://, sqlite://, odbc://, bigquery://",
         uri
     )))
 }
@@ -179,5 +215,45 @@ mod tests {
             .unwrap_err()
             .to_string()
             .contains("Unsupported connection string"));
+    }
+
+    #[test]
+    fn test_bigquery_bare() {
+        let info = parse_connection_string("bigquery://").unwrap();
+        assert_eq!(
+            info,
+            ConnectionInfo::BigQuery(BigQueryConnectionInfo {
+                project_id: None,
+                default_dataset: None,
+                location: None,
+            })
+        );
+    }
+
+    #[test]
+    fn test_bigquery_project() {
+        let info = parse_connection_string("bigquery://my-project").unwrap();
+        assert_eq!(
+            info,
+            ConnectionInfo::BigQuery(BigQueryConnectionInfo {
+                project_id: Some("my-project".to_string()),
+                default_dataset: None,
+                location: None,
+            })
+        );
+    }
+
+    #[test]
+    fn test_bigquery_project_dataset_location() {
+        let info = parse_connection_string("bigquery://my-project/analytics?location=asia-northeast1")
+            .unwrap();
+        assert_eq!(
+            info,
+            ConnectionInfo::BigQuery(BigQueryConnectionInfo {
+                project_id: Some("my-project".to_string()),
+                default_dataset: Some("analytics".to_string()),
+                location: Some("asia-northeast1".to_string()),
+            })
+        );
     }
 }

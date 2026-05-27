@@ -41,9 +41,10 @@ duckdb = ["ggsql/duckdb"]
 parquet = ["ggsql/parquet"]
 sqlite = ["ggsql/sqlite"]
 odbc = ["ggsql/odbc"]
+bigquery = ["ggsql/bigquery"]
 vegalite = ["ggsql/vegalite"]
 builtin-data = ["ggsql/builtin-data"]
-all-readers = ["duckdb", "sqlite", "odbc"]
+all-readers = ["duckdb", "sqlite", "odbc", "bigquery"]
 
 # cargo-packager configuration for cross-platform installers
 [package.metadata.packager]

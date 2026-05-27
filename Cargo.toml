@@ -40,6 +40,7 @@ duckdb = { version = "~1.10502", features = ["bundled", "vtab-arrow"] }
 parquet = { version = "58", default-features = false, features = ["arrow", "snap"] }
 bytes = "1"
 rusqlite = { version = "0.38", features = ["bundled", "chrono"] }
+gcloud-bigquery = "1.6"
 
 # ODBC
 toml_edit = "0.22"
