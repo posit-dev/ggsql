@@ -2,9 +2,13 @@
 
 use super::types::POSITION_VALUES;
 use super::{
-    DefaultAesthetics, DefaultParamValue, GeomTrait, GeomType, ParamConstraint, ParamDefinition,
+    project_position_columns, DefaultAesthetics, DefaultParamValue, GeomTrait, GeomType,
+    ParamConstraint, ParamDefinition,
 };
+use crate::plot::projection::Projection;
 use crate::plot::types::DefaultAestheticValue;
+use crate::reader::SqlDialect;
+use crate::Result;
 
 /// Point geom - scatter plots and similar
 #[derive(Debug, Clone, Copy)]
@@ -49,6 +53,17 @@ impl GeomTrait for Point {
 
     fn aggregate_domain_aesthetics(&self) -> Option<&'static [&'static str]> {
         Some(&[])
+    }
+
+    fn apply_projection(
+        &self,
+        query: &str,
+        projection: &Projection,
+        dialect: &dyn SqlDialect,
+        _clip: bool,
+        columns: &[String],
+    ) -> Result<String> {
+        project_position_columns(query, projection, dialect, columns)
     }
 }
 

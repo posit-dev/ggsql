@@ -1,179 +1,15 @@
-//! Projection rendering for Vega-Lite writer
+//! Polar projection implementation for Vega-Lite writer
 //!
-//! This module provides a trait-based design for projection rendering.
-//! Each projection type (cartesian, polar, and future map projections)
-//! implements `ProjectionRenderer`, which owns both the VL channel mapping
-//! and the spec-level transformations for that projection.
+//! Handles radius/theta coordinate transformations for pie charts, rose plots,
+//! and other circular visualizations.
 
-use crate::plot::{CoordKind, ParameterValue, Projection, Scale};
+use crate::plot::{ParameterValue, Projection, Scale};
 use crate::{GgsqlError, Plot, Result};
 use serde_json::{json, Value};
 
-use super::DEFAULT_POLAR_SIZE;
-
-const ANGLE_TOLERANCE: f64 = 1.49011611938476e-08; // f64::EPSILON.sqrt()
-
-// =============================================================================
-// ProjectionRenderer trait
-// =============================================================================
-
-/// Trait defining how a projection type maps to Vega-Lite.
-///
-/// Each implementation owns two concerns:
-/// 1. **Channel mapping** — translating internal position aesthetics (pos1, pos2, …)
-///    to Vega-Lite encoding channel names.
-/// 2. **Spec transformation** — modifying the Vega-Lite spec after layers are built
-///    (e.g., converting marks to arcs for polar).
-pub(super) trait ProjectionRenderer {
-    /// Whether the spec uses faceting.
-    fn is_faceted(&self) -> bool;
-
-    /// Primary and secondary VL channel names for this projection.
-    ///
-    /// Returns `(pos1_channel, pos2_channel)`, e.g. `("x", "y")` for cartesian,
-    /// `("radius", "theta")` for polar.
-    fn position_channels(&self) -> (&'static str, &'static str);
-
-    /// Offset channel names for this projection.
-    ///
-    /// Returns `(pos1_offset, pos2_offset)`, e.g. `("xOffset", "yOffset")`.
-    fn offset_channels(&self) -> (&'static str, &'static str);
-
-    /// Panel dimensions as VL values (`"container"` or explicit pixels).
-    ///
-    /// Returns `None` for faceted cartesian (VL handles sizing).
-    fn panel_size(&self) -> Option<(Value, Value)> {
-        if self.is_faceted() {
-            None
-        } else {
-            Some((json!("container"), json!("container")))
-        }
-    }
-
-    /// Apply projection-specific transformations to the VL spec.
-    ///
-    /// Called after layers are built but before faceting.
-    fn transform_layers(&self, _spec: &Plot, _vl_spec: &mut Value) -> Result<()> {
-        Ok(())
-    }
-
-    /// Vega-Lite layers to prepend before the data layers.
-    fn background_layers(&self, _scales: &[Scale], _theme: &mut Value) -> Vec<Value> {
-        Vec::new()
-    }
-
-    /// Vega-Lite layers to append after the data layers.
-    fn foreground_layers(&self, _scales: &[Scale], _theme: &mut Value) -> Vec<Value> {
-        Vec::new()
-    }
-
-    /// Apply all projection-specific work: transforms, clip, and panel decoration.
-    fn apply_projection(&self, spec: &Plot, theme: &mut Value, vl_spec: &mut Value) -> Result<()> {
-        self.transform_layers(spec, vl_spec)?;
-
-        if let Some(ref project) = spec.project {
-            if let Some(ParameterValue::Boolean(clip)) = project.properties.get("clip") {
-                apply_clip_to_layers(vl_spec, *clip);
-            }
-        }
-
-        let mut bg = self.background_layers(&spec.scales, theme);
-        let mut fg = self.foreground_layers(&spec.scales, theme);
-        if !(bg.is_empty() && fg.is_empty()) {
-            for layer in &mut bg {
-                layer["description"] = json!("background");
-            }
-            for layer in &mut fg {
-                layer["description"] = json!("foreground");
-            }
-            if let Some(layers) = get_layers_mut(vl_spec) {
-                let data_layers = std::mem::take(layers);
-                layers.reserve(bg.len() + data_layers.len() + fg.len());
-                layers.extend(bg);
-                layers.extend(data_layers);
-                layers.extend(fg);
-            }
-        }
-
-        Ok(())
-    }
-}
-
-// =============================================================================
-// Factory
-// =============================================================================
-
-/// Get the projection renderer for a projection spec.
-///
-/// Returns the appropriate renderer based on the projection's coord kind,
-/// or a Cartesian renderer if no projection is specified.
-pub(super) fn get_projection_renderer(
-    project: Option<&Projection>,
-    facet: Option<&crate::plot::Facet>,
-    scales: &[Scale],
-) -> Box<dyn ProjectionRenderer> {
-    let is_faceted = facet.is_some_and(|f| !f.get_variables().is_empty());
-    match project.map(|p| p.coord.coord_kind()) {
-        Some(CoordKind::Polar) => Box::new(PolarProjection {
-            panel: PolarContext::new(project, facet, scales),
-        }),
-        Some(CoordKind::Cartesian) | None => Box::new(CartesianProjection { is_faceted }),
-    }
-}
-
-// =============================================================================
-// Channel mapping helpers (used by encoding.rs via the trait)
-// =============================================================================
-
-/// Map internal position aesthetic to Vega-Lite channel name using the renderer.
-///
-/// Returns `Some(channel_name)` for internal position aesthetics (pos1, pos2, etc.),
-/// or `None` for material aesthetics.
-pub(super) fn map_position_to_vegalite(
-    aesthetic: &str,
-    renderer: &dyn ProjectionRenderer,
-) -> Option<String> {
-    let (primary, secondary) = renderer.position_channels();
-
-    // Match internal position aesthetic patterns
-    // Convention: min → primary channel (x/y), max → secondary channel (x2/y2)
-    match aesthetic {
-        // Primary position and min variants
-        "pos1" | "pos1min" => Some(primary.to_string()),
-        "pos2" | "pos2min" => Some(secondary.to_string()),
-        // End and max variants (Vega-Lite uses x2/y2/theta2/radius2)
-        "pos1end" | "pos1max" => Some(format!("{}2", primary)),
-        "pos2end" | "pos2max" => Some(format!("{}2", secondary)),
-        _ => None,
-    }
-}
-
-// =============================================================================
-// CartesianProjection
-// =============================================================================
-
-/// Cartesian projection — standard x/y coordinates.
-struct CartesianProjection {
-    is_faceted: bool,
-}
-
-impl ProjectionRenderer for CartesianProjection {
-    fn is_faceted(&self) -> bool {
-        self.is_faceted
-    }
-
-    fn position_channels(&self) -> (&'static str, &'static str) {
-        ("x", "y")
-    }
-
-    fn offset_channels(&self) -> (&'static str, &'static str) {
-        ("xOffset", "yOffset")
-    }
-}
-
-// =============================================================================
-// PolarProjection
-// =============================================================================
+use super::super::escape_vega_string;
+use super::super::DEFAULT_POLAR_SIZE;
+use super::{get_layers_mut, AxisInfo, ProjectionRenderer, ANGLE_TOLERANCE};
 
 /// Normalized outer radius (proportion of `min(width, height) / 2`).
 const POLAR_OUTER: f64 = 1.0;
@@ -181,37 +17,6 @@ const POLAR_OUTER: f64 = 1.0;
 /// Bandwidth fraction for discrete polar offsets (mirrors VL's default
 /// `1 - paddingInner` for band scales, which is ~0.9).
 const POLAR_BAND_FRACTION: f64 = 0.9;
-
-struct AxisInfo {
-    domain: Option<(f64, f64)>,
-    breaks: Vec<f64>,
-    labels: Vec<(f64, String)>,
-    suppress: bool,
-}
-
-impl AxisInfo {
-    fn new(aesthetic: &str, scales: &[Scale], facet: Option<&crate::plot::Facet>) -> Self {
-        let scale = scales.iter().find(|s| s.aesthetic == aesthetic);
-        let (domain, labels) = match scale {
-            Some(s) => (s.numeric_domain(), s.break_labels()),
-            None => (None, Vec::new()),
-        };
-        // Set domain to None if zero-range
-        let domain = domain.filter(|(min, max)| (max - min).abs() > f64::EPSILON);
-        let breaks = labels.iter().map(|(v, _)| *v).collect();
-        // Free facet scales have per-panel domains that don't match the global
-        // positions used for decoration; dummy scales are stat-injected placeholders
-        // with no meaningful domain to label.
-        let suppress =
-            facet.is_some_and(|f| f.is_free(aesthetic)) || scale.is_some_and(|s| s.is_dummy());
-        Self {
-            domain,
-            breaks,
-            labels,
-            suppress,
-        }
-    }
-}
 
 /// Resolved geometry and scale context for polar specs.
 ///
@@ -355,8 +160,20 @@ impl PolarContext {
 }
 
 /// Polar projection — radius/theta coordinates for pie charts, rose plots, etc.
-struct PolarProjection {
+pub(in crate::writer) struct PolarProjection {
     panel: PolarContext,
+}
+
+impl PolarProjection {
+    pub(super) fn new(
+        project: Option<&Projection>,
+        facet: Option<&crate::plot::Facet>,
+        scales: &[Scale],
+    ) -> Self {
+        Self {
+            panel: PolarContext::new(project, facet, scales),
+        }
+    }
 }
 
 impl ProjectionRenderer for PolarProjection {
@@ -997,43 +814,6 @@ fn polygon_ring(
 }
 
 // =============================================================================
-// Shared helpers
-// =============================================================================
-
-/// Get mutable reference to the layers array, handling both flat and faceted specs.
-///
-/// In a flat spec: `vl_spec["layer"]`
-/// In a faceted spec: `vl_spec["spec"]["layer"]`
-fn get_layers_mut(vl_spec: &mut Value) -> Option<&mut Vec<Value>> {
-    // Try flat structure first, then faceted
-    if vl_spec.get("layer").is_some() {
-        vl_spec.get_mut("layer").and_then(|l| l.as_array_mut())
-    } else {
-        vl_spec
-            .get_mut("spec")
-            .and_then(|s| s.get_mut("layer"))
-            .and_then(|l| l.as_array_mut())
-    }
-}
-
-/// Apply clip setting to all layers
-fn apply_clip_to_layers(vl_spec: &mut Value, clip: bool) {
-    if let Some(layers_arr) = get_layers_mut(vl_spec) {
-        for layer in layers_arr {
-            if let Some(mark) = layer.get_mut("mark") {
-                if mark.is_string() {
-                    // Convert "point" to {"type": "point", "clip": ...}
-                    let mark_type = mark.as_str().unwrap().to_string();
-                    *mark = json!({"type": mark_type, "clip": clip});
-                } else if let Some(obj) = mark.as_object_mut() {
-                    obj.insert("clip".to_string(), json!(clip));
-                }
-            }
-        }
-    }
-}
-
-// =============================================================================
 // Polar projection transformation
 // =============================================================================
 
@@ -1396,7 +1176,7 @@ fn extract_polar_channel(
         if !strings.is_empty() {
             let literal: String = strings
                 .iter()
-                .map(|s| format!("'{}'", super::escape_vega_string(s)))
+                .map(|s| format!("'{}'", escape_vega_string(s)))
                 .collect::<Vec<_>>()
                 .join(",");
             let arr_expr = format!("[{}]", literal);
@@ -1540,7 +1320,7 @@ fn apply_polar_radius_range(encoding: &mut Value, panel: &PolarContext) -> Resul
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::plot::{Facet, FacetLayout};
+    use crate::plot::{Facet, FacetLayout, ParameterValue, Projection};
 
     fn faceted() -> Facet {
         Facet::new(FacetLayout::Wrap {
@@ -1550,7 +1330,6 @@ mod tests {
 
     #[test]
     fn test_polar_inner_radius_non_faceted() {
-        // Non-faceted donut should use dynamic min(width,height) expressions
         let mut encoding = json!({
             "radius": {
                 "field": "dummy",
@@ -1579,7 +1358,6 @@ mod tests {
 
     #[test]
     fn test_polar_inner_radius_faceted() {
-        // Faceted donut should use explicit size calculation
         let mut encoding = json!({
             "radius": {
                 "field": "dummy",
@@ -1605,7 +1383,6 @@ mod tests {
 
     #[test]
     fn test_polar_inner_radius_zero() {
-        // inner = 0 should still apply range (full pie, no donut hole)
         let mut encoding = json!({
             "radius": {
                 "field": "dummy",
@@ -1621,66 +1398,10 @@ mod tests {
         let panel = PolarContext::new(Some(&proj), Some(&f), &[]);
         apply_polar_radius_range(&mut encoding, &panel).unwrap();
 
-        // Range should be [0, 350/2] for full pie
         let range = encoding["radius"]["scale"]["range"].as_array().unwrap();
         assert_eq!(range.len(), 2);
         assert_eq!(range[0]["expr"].as_str().unwrap(), "175 * (0)");
         assert_eq!(range[1]["expr"].as_str().unwrap(), "175 * (1)");
-    }
-
-    #[test]
-    fn test_map_position_to_vegalite_cartesian() {
-        let renderer = CartesianProjection { is_faceted: false };
-        assert_eq!(
-            map_position_to_vegalite("pos1", &renderer),
-            Some("x".to_string())
-        );
-        assert_eq!(
-            map_position_to_vegalite("pos2", &renderer),
-            Some("y".to_string())
-        );
-        assert_eq!(
-            map_position_to_vegalite("pos1end", &renderer),
-            Some("x2".to_string())
-        );
-        assert_eq!(
-            map_position_to_vegalite("pos2end", &renderer),
-            Some("y2".to_string())
-        );
-        assert_eq!(map_position_to_vegalite("color", &renderer), None);
-        assert_eq!(renderer.offset_channels(), ("xOffset", "yOffset"));
-        assert_eq!(
-            renderer.panel_size(),
-            Some((json!("container"), json!("container")))
-        );
-    }
-
-    #[test]
-    fn test_map_position_to_vegalite_polar() {
-        let renderer = PolarProjection {
-            panel: PolarContext::new(None, None, &[]),
-        };
-        assert_eq!(
-            map_position_to_vegalite("pos1", &renderer),
-            Some("radius".to_string())
-        );
-        assert_eq!(
-            map_position_to_vegalite("pos2", &renderer),
-            Some("theta".to_string())
-        );
-        assert_eq!(
-            map_position_to_vegalite("pos1end", &renderer),
-            Some("radius2".to_string())
-        );
-        assert_eq!(
-            map_position_to_vegalite("pos2end", &renderer),
-            Some("theta2".to_string())
-        );
-        assert_eq!(renderer.offset_channels(), ("radiusOffset", "thetaOffset"));
-        assert_eq!(
-            renderer.panel_size(),
-            Some((json!("container"), json!("container")))
-        );
     }
 
     fn continuous_panel() -> PolarContext {
@@ -1723,7 +1444,6 @@ mod tests {
 
         let transforms = layer["transform"].as_array().unwrap();
 
-        // Should contain pixel-coordinate expressions using width/height signals
         let x_calc = transforms
             .iter()
             .find(|t| t["as"] == "__polar_x__")
@@ -1744,11 +1464,9 @@ mod tests {
             "y should use pixel coordinates, got: {y_expr}"
         );
 
-        // Encoding should use scale:null (raw pixel positions)
         assert_eq!(layer["encoding"]["x"]["scale"], json!(null));
         assert_eq!(layer["encoding"]["y"]["scale"], json!(null));
 
-        // Original polar channels should be removed
         assert!(layer["encoding"].get("radius").is_none());
         assert!(layer["encoding"].get("theta").is_none());
     }
@@ -1774,23 +1492,11 @@ mod tests {
     }
 
     #[test]
-    fn test_get_projection_renderer() {
-        let cartesian = get_projection_renderer(None, None, &[]);
-        assert_eq!(cartesian.position_channels(), ("x", "y"));
-
-        let polar_proj = Projection::polar();
-        let polar = get_projection_renderer(Some(&polar_proj), None, &[]);
-        assert_eq!(polar.position_channels(), ("radius", "theta"));
-    }
-
-    #[test]
     fn test_expr_normalize_radius() {
         let mut p = PolarContext::new(None, None, &[]);
 
-        // domain [0, 10], inner 0.2
         p.inner = 0.2;
         p.radial.domain = Some((0.0, 10.0));
-        // scale = (1.0 - 0.2) / (10 - 0) = 0.08
         let expr = p.expr_normalize_radius("datum.v");
         assert!(
             expr.contains("0.08"),
@@ -1801,7 +1507,6 @@ mod tests {
             "should reference value, got: {expr}"
         );
 
-        // domain [5, 15], inner 0 → scale = 1.0 / 10 = 0.1
         p.inner = 0.0;
         p.radial.domain = Some((5.0, 15.0));
         let expr = p.expr_normalize_radius("datum.x");
@@ -1810,7 +1515,6 @@ mod tests {
             "scale factor should be 0.1, got: {expr}"
         );
 
-        // None domain → fallback to midpoint
         p.radial.domain = None;
         let expr = p.expr_normalize_radius("datum.v");
         assert!(
@@ -1823,13 +1527,11 @@ mod tests {
     fn test_expr_normalize_theta() {
         use std::f64::consts::PI;
 
-        // domain [0, 100], partial circle 90°–270° (π/2 to 3π/2)
         let mut panel = PolarContext::new(None, None, &[]);
         panel.start = PI / 2.0;
         panel.end = 3.0 * PI / 2.0;
         panel.angle.domain = Some((0.0, 100.0));
         let expr = panel.expr_normalize_theta("datum.v");
-        // scale = (3π/2 - π/2) / (100 - 0) = π / 100 ≈ 0.031416
         let expected_scale = PI / 100.0;
         assert!(
             expr.contains(&format!("{expected_scale}")),
@@ -1866,20 +1568,17 @@ mod tests {
 
         let layer = &layers[0];
 
-        // Data should contain the break values
         let values = layer["data"]["values"].as_array().unwrap();
         assert_eq!(values.len(), 3);
         assert_eq!(values[0]["v"], json!(25.0));
         assert_eq!(values[1]["v"], json!(50.0));
         assert_eq!(values[2]["v"], json!(75.0));
 
-        // Mark should be a stroke-only arc
         assert_eq!(layer["mark"]["type"], "arc");
         assert_eq!(layer["mark"]["fill"], json!(null));
         assert_eq!(layer["mark"]["stroke"], "#FFF");
         assert_eq!(layer["mark"]["strokeWidth"], 2.0);
 
-        // Radius encoding should use an expression
         let radius_expr = layer["encoding"]["radius"]["value"]["expr"]
             .as_str()
             .unwrap();
@@ -1900,21 +1599,17 @@ mod tests {
 
         let layer = &layers[0];
 
-        // Data should contain the break values
         let values = layer["data"]["values"].as_array().unwrap();
         assert_eq!(values.len(), 2);
 
-        // Mark should be a rule
         assert_eq!(layer["mark"]["type"], "rule");
         assert_eq!(layer["mark"]["stroke"], "#CCC");
 
-        // Should have calculate transforms for x, y, x2, y2
         let transforms = layer["transform"].as_array().unwrap();
         assert_eq!(transforms.len(), 4);
         let field_names: Vec<&str> = transforms.iter().filter_map(|t| t["as"].as_str()).collect();
         assert_eq!(field_names, vec!["x", "y", "x2", "y2"]);
 
-        // Encoding should use scale:null for pixel positions
         assert_eq!(layer["encoding"]["x"]["scale"], json!(null));
         assert_eq!(layer["encoding"]["y"]["scale"], json!(null));
     }
@@ -1943,7 +1638,6 @@ mod tests {
             "should produce axis line, ticks, and labels"
         );
 
-        // Layer 0: axis line (single rule from inner to outer)
         let line = &layers[0];
         assert_eq!(line["mark"]["type"], "rule");
         assert_eq!(line["data"]["values"].as_array().unwrap().len(), 1);
@@ -1951,7 +1645,6 @@ mod tests {
         let fields: Vec<&str> = transforms.iter().filter_map(|t| t["as"].as_str()).collect();
         assert_eq!(fields, vec!["x", "y", "x2", "y2"]);
 
-        // Layer 1: ticks (one per break)
         let ticks = &layers[1];
         assert_eq!(ticks["mark"]["type"], "rule");
         assert_eq!(ticks["data"]["values"].as_array().unwrap().len(), 3);
@@ -1962,7 +1655,6 @@ mod tests {
             .collect();
         assert_eq!(tick_fields, vec!["cx", "cy", "x", "y", "x2", "y2"]);
 
-        // Layer 2: labels (one per break)
         let labels = &layers[2];
         assert_eq!(labels["mark"]["type"], "text");
         assert_eq!(labels["data"]["values"].as_array().unwrap().len(), 3);
@@ -2009,12 +1701,10 @@ mod tests {
             "should produce axis arc, ticks, and labels"
         );
 
-        // Layer 0: axis arc along outer edge
         let arc = &layers[0];
         assert_eq!(arc["mark"]["type"], "arc");
         assert_eq!(arc["mark"]["fill"], json!(null));
 
-        // Layer 1: ticks (one per break)
         let ticks = &layers[1];
         assert_eq!(ticks["mark"]["type"], "rule");
         assert_eq!(ticks["data"]["values"].as_array().unwrap().len(), 3);
@@ -2025,7 +1715,6 @@ mod tests {
             .collect();
         assert_eq!(tick_fields, vec!["theta", "cx", "cy", "x", "y", "x2", "y2"]);
 
-        // Layer 2: nested label layer with shared data/transforms/encoding
         let labels = &layers[2];
         assert_eq!(labels["encoding"]["text"]["field"], "label");
         assert_eq!(labels["data"]["values"].as_array().unwrap().len(), 3);
@@ -2038,7 +1727,6 @@ mod tests {
             assert_eq!(sub["mark"]["type"], "text");
             assert!(sub["mark"]["align"].is_string());
             assert!(sub["mark"]["baseline"].is_string());
-            // Each sub-layer filters by alignment tag
             assert!(sub["transform"]
                 .as_array()
                 .unwrap()
@@ -2064,14 +1752,6 @@ mod tests {
 
     // =========================================================================
     // Free scales suppress polar decorations
-    //
-    // Polar grid lines and axes are drawn as manual VL layers whose positions
-    // are computed from the global scale domain. With free scales each facet
-    // panel has its own domain, so the global positions would be wrong.
-    // Rather than rendering misleading decorations we suppress them entirely.
-    // Proper per-panel decorations would require computing per-group domains
-    // and threading them into the decoration data — a significant lift that
-    // is not yet implemented.
     // =========================================================================
 
     fn facet_with_free(free: Vec<bool>) -> Facet {
@@ -2250,7 +1930,6 @@ mod tests {
 
         convert_polar_to_cartesian(&mut layer, &panel).unwrap();
 
-        // 3 categories → domain (0.5, 3.5), full circle → scale = 2π / 3.0
         let transforms = layer["transform"].as_array().unwrap();
         let theta_calc = transforms
             .iter()
@@ -2454,8 +2133,6 @@ mod tests {
 
         convert_polar_to_cartesian(&mut layer, &panel).unwrap();
 
-        // 3 categories → domain (0.5, 3.5), scale = 2π/3
-        // With band fraction 0.9: effective scale = 2π/3 * 0.9
         let expected = 2.0 * std::f64::consts::PI / 3.0 * POLAR_BAND_FRACTION;
         let transforms = layer["transform"].as_array().unwrap();
         let x_calc = transforms
@@ -2494,7 +2171,6 @@ mod tests {
 
         convert_polar_to_cartesian(&mut layer, &panel).unwrap();
 
-        // Continuous → full scale = 2π/100, no band fraction
         let full_scale = 2.0 * std::f64::consts::PI / 100.0;
         let with_band = full_scale * POLAR_BAND_FRACTION;
         let transforms = layer["transform"].as_array().unwrap();
@@ -2545,7 +2221,6 @@ mod tests {
             "should produce axis line, ticks, and labels"
         );
 
-        // Label data should carry category names, not numeric positions
         let labels = &layers[2];
         let values = labels["data"]["values"].as_array().unwrap();
         assert_eq!(values.len(), 3);
@@ -2553,7 +2228,6 @@ mod tests {
         assert_eq!(values[1]["label"], "mid");
         assert_eq!(values[2]["label"], "high");
 
-        // Numeric positions should be 1, 2, 3
         assert_eq!(values[0]["v"], 1.0);
         assert_eq!(values[1]["v"], 2.0);
         assert_eq!(values[2]["v"], 3.0);
@@ -2576,7 +2250,6 @@ mod tests {
             "should produce axis arc, ticks, and labels"
         );
 
-        // Label data should carry category names
         let labels = &layers[2];
         let values = labels["data"]["values"].as_array().unwrap();
         assert_eq!(values.len(), 3);
@@ -2630,7 +2303,6 @@ mod tests {
         let f = faceted();
         let panel = PolarContext::new(Some(&proj), Some(&f), &[]);
 
-        // Faceted panel should use literal pixel values, not width/height signals
         assert_eq!(panel.cx, "150");
         assert_eq!(panel.cy, "150");
         assert_eq!(panel.radius, "150");
@@ -2652,7 +2324,6 @@ mod tests {
         let layers = proj.grid_rings(&theme);
         assert_eq!(layers.len(), 1);
 
-        // Radius expression should use literal pixels (150), not signals
         let radius_expr = layers[0]["encoding"]["radius"]["value"]["expr"]
             .as_str()
             .unwrap();
@@ -2686,8 +2357,6 @@ mod tests {
         let panel = PolarContext::new(None, None, &scales);
         let thetas = &panel.angle_breaks_radians;
         assert_eq!(thetas.len(), 3);
-        // 3 categories → domain (0.5, 3.5), breaks at 1, 2, 3
-        // theta = 0 + 2π/3 * (break - 0.5)
         let scale = 2.0 * PI / 3.0;
         assert!((thetas[0] - scale * 0.5).abs() < 1e-10);
         assert!((thetas[1] - scale * 1.5).abs() < 1e-10);
@@ -2707,7 +2376,6 @@ mod tests {
         panel.angle_breaks_radians = vec![1.0, 2.0, 3.0];
         let layer = polygon_ring(&panel, POLAR_OUTER, None, Value::Null, json!("red"));
         let values = layer["data"]["values"].as_array().unwrap();
-        // 3 thetas + 1 closing vertex = 4
         assert_eq!(values.len(), 4);
         assert_eq!(values[0]["theta"], values[3]["theta"]);
     }
@@ -2723,9 +2391,7 @@ mod tests {
         panel.angle_breaks_radians = vec![0.5, 1.0, 1.5];
         let layer = polygon_ring(&panel, POLAR_OUTER, None, Value::Null, json!("red"));
         let values = layer["data"]["values"].as_array().unwrap();
-        // start + 3 breaks + end + centre(end) + centre(start) + close = 8
         assert_eq!(values.len(), 8);
-        // First and last vertex should be at the same position (closed path)
         assert_eq!(values[0]["theta"], values[7]["theta"]);
         assert_eq!(values[0]["r"], values[7]["r"]);
     }
@@ -2745,9 +2411,7 @@ mod tests {
         let r_start = values[0]["r"].as_f64().unwrap();
         let r_break = values[1]["r"].as_f64().unwrap();
         let r_end = values[2]["r"].as_f64().unwrap();
-        // Break vertex at full radius
         assert!((r_break - POLAR_OUTER).abs() < 1e-10);
-        // Start/end vertices corrected inward by cos(π/2)
         let expected = POLAR_OUTER * (PI / 2.0).cos();
         assert!((r_start - expected).abs() < 1e-10);
         assert!((r_end - expected).abs() < 1e-10);
@@ -2759,7 +2423,6 @@ mod tests {
         panel.angle_breaks_radians = vec![1.0, 2.0, 3.0];
         let layer = polygon_ring(&panel, POLAR_OUTER, Some(0.3), json!("white"), Value::Null);
         let values = layer["data"]["values"].as_array().unwrap();
-        // Outer: 3 + 1 closing, Inner: 3 + 1 closing = 8
         assert_eq!(values.len(), 8);
         assert_eq!(layer["mark"]["type"], "line");
         assert_eq!(layer["mark"]["fill"], "white");
@@ -2832,7 +2495,6 @@ mod tests {
         let theme = json!({"axis": {"domainColor": "#333"}});
         let layers = proj.angular_axis(&theme);
         assert!(!layers.is_empty());
-        // First layer should be the polygon outline, not an arc
         assert_eq!(layers[0]["mark"]["type"], "line");
     }
 

@@ -377,10 +377,41 @@ grep '__ggsql_source__' /tmp/test.vl.json  # Source values
 
 Paste the spec into [Vega-Lite Editor](https://vega.github.io/editor/#/url/vega-lite/) to visualize.
 
+## Projection Rendering
+
+The `projection/` subdirectory handles coord-specific VL output. Each coord type implements `ProjectionRenderer` (defined in `projection/mod.rs`):
+
+```
+writer/vegalite/projection/
+├── mod.rs         ProjectionRenderer trait + factory (get_projection_renderer)
+├── cartesian.rs   Standard x/y axes with domain/breaks from scales
+├── polar.rs       Arc marks, theta/radius channels, radial axes
+└── map.rs         Identity projection for pre-projected spatial data
+```
+
+### ProjectionRenderer trait
+
+Two concerns per implementation:
+
+1. **Channel mapping** — `position_channels()` returns the VL encoding names for pos1/pos2 (e.g. `("x", "y")` for cartesian, `("radius", "theta")` for polar).
+2. **Spec transformation** — `transform_layers()` modifies the VL spec after layers are built (e.g. polar converts marks to arcs, map adds an identity projection with scale/translate expressions).
+
+Additional hooks: `background_layers()` / `foreground_layers()` inject layers before/after the data layers (e.g. map renders the projected clip boundary as a geoshape panel background), and `apply_projection()` orchestrates all of these plus clip propagation.
+
+### Map projection specifics
+
+`MapProjection` reads computed values from `Projection.computed` (populated at execution time by the `Map` coord):
+
+- `panel_boundary` (WKT) → converted to GeoJSON for a geoshape background layer.
+- `bbox` ([xmin, ymin, xmax, ymax]) → emits VL `projection.scale` and `projection.translate` expressions that frame the data to the viewport.
+
+The VL projection is always `{"type": "identity", "reflectY": true}` because coordinates arrive pre-projected from the SQL layer.
+
 ## References
 
 - **Main implementation**: `src/writer/vegalite/mod.rs`
 - **Layer rendering**: `src/writer/vegalite/layer.rs`
 - **Data unification**: `src/writer/vegalite/data.rs` (`unify_datasets()`)
 - **Renderer trait**: `src/writer/vegalite/layer.rs` (`GeomRenderer` trait)
+- **Projection rendering**: `src/writer/vegalite/projection/mod.rs` (`ProjectionRenderer` trait)
 - **Example renderers**: `LineRenderer`, `BoxplotRenderer`, `ViolinRenderer` in `layer.rs`

@@ -21,7 +21,7 @@
 //! ```
 
 use crate::plot::types::DefaultAestheticValue;
-use crate::{DataFrame, Mappings, Result};
+use crate::{naming, DataFrame, Mappings, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -77,6 +77,7 @@ pub use tile::Tile;
 pub use violin::Violin;
 
 use crate::plot::aesthetic::AestheticContext;
+use crate::plot::projection::Projection;
 use crate::plot::types::{ParameterValue, Schema};
 use crate::reader::SqlDialect;
 
@@ -286,6 +287,28 @@ pub trait GeomTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
         Ok(df)
     }
 
+    /// Apply coord-specific projection transformations to a layer query.
+    ///
+    /// Called after stat transforms, before data fetch. Each geom decides what
+    /// projection means for its parameterization:
+    /// - Spatial: ST_AsWKB (always), plus ST_Transform when Map coord has a CRS
+    /// - Future geoms: rectangles transform corners, lines segmentize, etc.
+    ///
+    /// `columns` lists all column names in the query (for portable column
+    /// replacement on backends that don't support `SELECT * REPLACE`).
+    ///
+    /// The default is a no-op (returns query unchanged).
+    fn apply_projection(
+        &self,
+        query: &str,
+        _projection: &Projection,
+        _dialect: &dyn SqlDialect,
+        _clip: bool,
+        _columns: &[String],
+    ) -> Result<String> {
+        Ok(query.to_string())
+    }
+
     /// Adjust layer mappings and parameters based on geom-specific logic.
     ///
     /// This method is called during layer execution to allow geoms to customize
@@ -311,6 +334,71 @@ pub trait GeomTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
         }
         valid
     }
+}
+
+/// Project pos1/pos2 columns through the map CRS transform.
+///
+/// When the coordinate system is Map with a CRS, wraps the position columns
+/// with ST_X/ST_Y(ST_Transform(ST_Point(pos1, pos2), source, crs)). Returns
+/// the query unchanged for non-map coords or when source == crs.
+pub(crate) fn project_position_columns(
+    query: &str,
+    projection: &Projection,
+    dialect: &dyn SqlDialect,
+    columns: &[String],
+) -> Result<String> {
+    use crate::plot::projection::coord::CoordKind;
+
+    if projection.coord.coord_kind() != CoordKind::Map {
+        return Ok(query.to_string());
+    }
+    let crs = match projection.properties.get("crs") {
+        Some(ParameterValue::String(s)) => s.as_str(),
+        _ => return Ok(query.to_string()),
+    };
+    let source = match projection.properties.get("source") {
+        Some(ParameterValue::String(s)) => s.as_str(),
+        _ => "EPSG:4326",
+    };
+    if source == crs {
+        return Ok(query.to_string());
+    }
+
+    let pos1 = naming::quote_ident(&naming::aesthetic_column("pos1"));
+    let pos2 = naming::quote_ident(&naming::aesthetic_column("pos2"));
+    let point_expr = format!("ST_Point({pos1}, {pos2})");
+    let transformed = dialect.sql_st_transform(&point_expr, source, crs);
+    let proj_col = naming::quote_ident("__ggsql_proj_pt__");
+
+    let inner = format!("SELECT *, {transformed} AS {proj_col} FROM ({query})");
+    let x_expr = format!("ST_X({proj_col})");
+    let y_expr = format!("ST_Y({proj_col})");
+
+    // Build a column list that replaces pos1 and pos2 with projected values
+    // and drops the temporary projected-point column.
+    if columns.is_empty() {
+        return Ok(format!(
+            "SELECT {x_expr} AS {pos1}, {y_expr} AS {pos2}, * \
+             FROM ({inner}) \"__ggsql_pp__\""
+        ));
+    }
+    let select_list: Vec<String> = columns
+        .iter()
+        .map(|c| {
+            let qc = naming::quote_ident(c);
+            if qc == pos1 {
+                format!("{x_expr} AS {pos1}")
+            } else if qc == pos2 {
+                format!("{y_expr} AS {pos2}")
+            } else {
+                qc
+            }
+        })
+        .collect();
+    Ok(format!(
+        "SELECT {} FROM ({inner}) \"__ggsql_pp__\"",
+        select_list.join(", ")
+    ))
 }
 
 /// True when `parameters["aggregate"]` is set to a non-null string or array.
@@ -543,6 +631,19 @@ impl Geom {
         parameters: &HashMap<String, ParameterValue>,
     ) -> Result<DataFrame> {
         self.0.post_process(df, parameters)
+    }
+
+    /// Apply coord-specific projection transformations
+    pub fn apply_projection(
+        &self,
+        query: &str,
+        projection: &Projection,
+        dialect: &dyn SqlDialect,
+        clip: bool,
+        columns: &[String],
+    ) -> Result<String> {
+        self.0
+            .apply_projection(query, projection, dialect, clip, columns)
     }
 
     /// Adjust layer mappings and parameters based on geom-specific logic

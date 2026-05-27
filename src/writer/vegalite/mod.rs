@@ -308,9 +308,19 @@ fn build_layer_encoding(
             channel_name = "fillOpacity".to_string();
         }
 
-        // Secondary position channels (x2, y2, theta2, radius2) only support
-        // field/datum/value in Vega-Lite — not type, scale, axis, or title
-        if matches!(channel_name.as_str(), "x2" | "y2" | "theta2" | "radius2") {
+        // Secondary position channels (x2, y2, theta2, radius2) and geographic
+        // channels (longitude, latitude) only support field/datum/value in
+        // Vega-Lite — not type, scale, axis, or title.
+        if matches!(
+            channel_name.as_str(),
+            "x2" | "y2"
+                | "theta2"
+                | "radius2"
+                | "longitude"
+                | "latitude"
+                | "longitude2"
+                | "latitude2"
+        ) {
             let secondary_encoding = match value {
                 AestheticValue::Column { name: col, .. } => json!({"field": col}),
                 AestheticValue::Literal(lit) => json!({"value": lit.to_json()}),
@@ -383,9 +393,12 @@ fn build_layer_encoding(
     // This prevents Vega-Lite from applying its own stack/dodge logic on top of ours.
     // Only set stack: null on primary position channels (y/radius) — Vega-Lite does
     // not support 'stack' on secondary channels (y2/radius2) and Altair rejects it.
-    if let Some(y_enc) = encoding.get_mut(pos2.as_str()) {
-        if let Some(obj) = y_enc.as_object_mut() {
-            obj.insert("stack".to_string(), Value::Null);
+    // Geographic channels (latitude) don't support stack either.
+    if !matches!(pos2.as_str(), "latitude") {
+        if let Some(y_enc) = encoding.get_mut(pos2.as_str()) {
+            if let Some(obj) = y_enc.as_object_mut() {
+                obj.insert("stack".to_string(), Value::Null);
+            }
         }
     }
 
@@ -3018,6 +3031,8 @@ mod tests {
                 aesthetics: vec!["angle".to_string(), "radius".to_string()],
                 coord: Coord::polar(),
                 properties: HashMap::new(),
+                map_projection: None,
+                computed: HashMap::new(),
             });
             let layer = Layer::new(Geom::point())
                 .with_aesthetic(

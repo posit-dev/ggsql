@@ -2235,12 +2235,27 @@ impl SpatialRenderer {
                 GgsqlError::WriterError(format!("Failed to convert WKB to GeoJSON: {}", e))
             })?;
 
-        serde_json::from_slice(&geojson_out)
-            .map_err(|e| GgsqlError::WriterError(format!("Invalid GeoJSON from WKB: {}", e)))
+        match serde_json::from_slice(&geojson_out) {
+            Ok(value) => Ok(value),
+            Err(_) => Ok(Value::Null),
+        }
     }
 
     fn parse_geometry_from_array(array: &arrow::array::ArrayRef, idx: usize) -> Result<Value> {
         use arrow::datatypes::DataType;
+
+        fn decode_hex_wkb(hex: &str) -> Result<Vec<u8>> {
+            // PostGIS returns WKB as hex-encoded string via ODBC
+            let hex = hex.strip_prefix("\\x").unwrap_or(hex);
+            (0..hex.len())
+                .step_by(2)
+                .map(|i| {
+                    u8::from_str_radix(&hex[i..i + 2], 16).map_err(|_| {
+                        GgsqlError::WriterError(format!("Invalid hex in WKB at position {}", i))
+                    })
+                })
+                .collect()
+        }
 
         if array.is_null(idx) {
             return Ok(Value::Null);
@@ -2264,6 +2279,26 @@ impl SpatialRenderer {
                         GgsqlError::WriterError("Failed to read geometry as LargeBinary".into())
                     })?;
                 Self::wkb_to_geojson(bin.value(idx))
+            }
+            DataType::Utf8 => {
+                let arr = array
+                    .as_any()
+                    .downcast_ref::<arrow::array::StringArray>()
+                    .ok_or_else(|| {
+                        GgsqlError::WriterError("Failed to read geometry as Utf8".into())
+                    })?;
+                let bytes = decode_hex_wkb(arr.value(idx))?;
+                Self::wkb_to_geojson(&bytes)
+            }
+            DataType::LargeUtf8 => {
+                let arr = array
+                    .as_any()
+                    .downcast_ref::<arrow::array::LargeStringArray>()
+                    .ok_or_else(|| {
+                        GgsqlError::WriterError("Failed to read geometry as LargeUtf8".into())
+                    })?;
+                let bytes = decode_hex_wkb(arr.value(idx))?;
+                Self::wkb_to_geojson(&bytes)
             }
             other => Err(GgsqlError::WriterError(format!(
                 "Geometry column has unsupported type {:?}; expected Binary (WKB)",

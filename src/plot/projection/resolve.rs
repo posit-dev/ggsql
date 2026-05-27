@@ -8,6 +8,7 @@ use std::collections::HashMap;
 use super::coord::{Coord, CoordKind};
 use super::Projection;
 use crate::plot::aesthetic::{MATERIAL_AESTHETICS, POSITION_SUFFIXES};
+use crate::plot::layer::GeomType;
 use crate::plot::scale::ScaleTypeKind;
 use crate::plot::{Mappings, ParameterValue, Scale};
 use crate::GgsqlError;
@@ -18,13 +19,17 @@ const CARTESIAN_PRIMARIES: &[&str] = &["x", "y"];
 /// Polar primary aesthetic names
 const POLAR_PRIMARIES: &[&str] = &["angle", "radius"];
 
+/// Map primary aesthetic names
+const MAP_PRIMARIES: &[&str] = &["lon", "lat"];
+
 /// Resolve coordinate system for a Plot
 ///
 /// If `project` is `Some`, returns `Ok(None)` (keep existing, no changes needed).
-/// If `project` is `None`, infers coord from aesthetic mappings:
+/// If `project` is `None`, infers coord from aesthetic mappings and layer types:
 /// - x/y/xmin/xmax/ymin/ymax → Cartesian
 /// - angle/radius/anglemin/... → Polar
-/// - Both → Error
+/// - Any Spatial layer → Map
+/// - Both cartesian+polar → Error
 /// - Neither → Ok(None) (caller should use default Cartesian)
 ///
 /// Called early in the pipeline, before AestheticContext construction.
@@ -32,11 +37,15 @@ pub fn resolve_coord(
     project: Option<&Projection>,
     global_mappings: &Mappings,
     layer_mappings: &[&Mappings],
+    layer_geom_types: &[GeomType],
 ) -> Result<Option<Projection>, String> {
     // If project is explicitly specified, keep it as-is
     if project.is_some() {
         return Ok(None);
     }
+
+    // Check if any layer is spatial
+    let mut found_map = layer_geom_types.contains(&GeomType::Spatial);
 
     // Collect all explicit aesthetic keys from global and layer mappings
     let mut found_cartesian = false;
@@ -44,24 +53,63 @@ pub fn resolve_coord(
 
     // Check global mappings
     for aesthetic in global_mappings.aesthetics.keys() {
-        check_aesthetic(aesthetic, &mut found_cartesian, &mut found_polar);
+        check_aesthetic(
+            aesthetic,
+            &mut found_cartesian,
+            &mut found_polar,
+            &mut found_map,
+        );
     }
 
     // Check layer mappings
     for layer_map in layer_mappings {
         for aesthetic in layer_map.aesthetics.keys() {
-            check_aesthetic(aesthetic, &mut found_cartesian, &mut found_polar);
+            check_aesthetic(
+                aesthetic,
+                &mut found_cartesian,
+                &mut found_polar,
+                &mut found_map,
+            );
         }
     }
 
-    // Determine result
-    if found_cartesian && found_polar {
-        return Err(
-            "Conflicting aesthetics: cannot use both cartesian (x/y) and polar (angle/radius) \
-             aesthetics in the same plot. Use PROJECT TO cartesian or PROJECT TO polar to \
-             specify the coordinate system explicitly."
-                .to_string(),
-        );
+    // Determine result — check for conflicts
+    let conflict_count = [found_cartesian, found_polar, found_map]
+        .iter()
+        .filter(|&&v| v)
+        .count();
+    if conflict_count > 1 {
+        let mut systems = Vec::new();
+        if found_cartesian {
+            systems.push("cartesian (x/y)");
+        }
+        if found_polar {
+            systems.push("polar (angle/radius)");
+        }
+        if found_map {
+            systems.push("map (lon/lat)");
+        }
+        return Err(format!(
+            "Conflicting aesthetics: cannot mix {} aesthetics in the same plot. \
+             Use PROJECT TO specify the coordinate system explicitly.",
+            systems.join(" and "),
+        ));
+    }
+
+    if found_map {
+        let coord = Coord::from_kind(CoordKind::Map);
+        let aesthetics = coord
+            .position_aesthetic_names()
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        return Ok(Some(Projection {
+            coord,
+            aesthetics,
+            properties: HashMap::new(),
+            map_projection: None,
+            computed: HashMap::new(),
+        }));
     }
 
     if found_polar {
@@ -76,6 +124,8 @@ pub fn resolve_coord(
             coord,
             aesthetics,
             properties: HashMap::new(),
+            map_projection: None,
+            computed: HashMap::new(),
         }));
     }
 
@@ -91,6 +141,8 @@ pub fn resolve_coord(
             coord,
             aesthetics,
             properties: HashMap::new(),
+            map_projection: None,
+            computed: HashMap::new(),
         }));
     }
 
@@ -98,9 +150,14 @@ pub fn resolve_coord(
     Ok(None)
 }
 
-/// Check if an aesthetic name indicates cartesian or polar coordinate system.
+/// Check if an aesthetic name indicates a coordinate system.
 /// Updates the found flags accordingly.
-fn check_aesthetic(aesthetic: &str, found_cartesian: &mut bool, found_polar: &mut bool) {
+fn check_aesthetic(
+    aesthetic: &str,
+    found_cartesian: &mut bool,
+    found_polar: &mut bool,
+    found_map: &mut bool,
+) {
     // Skip material aesthetics (color, size, etc.)
     if MATERIAL_AESTHETICS.contains(&aesthetic) {
         return;
@@ -117,6 +174,11 @@ fn check_aesthetic(aesthetic: &str, found_cartesian: &mut bool, found_polar: &mu
     // Check against polar primaries
     if POLAR_PRIMARIES.contains(&primary) {
         *found_polar = true;
+    }
+
+    // Check against map primaries
+    if MAP_PRIMARIES.contains(&primary) {
+        *found_map = true;
     }
 }
 
@@ -137,6 +199,8 @@ fn strip_position_suffix(name: &str) -> &str {
 /// - **`radar`** (polar only): When null (auto), sets to `true` if the theta
 ///   (pos2) scale is discrete/ordinal. When explicitly `true`, validates that
 ///   the theta scale is indeed discrete.
+/// - **clip boundary** (map only): Computes the visible-area WKT polygon for
+///   azimuthal projections and stores it in `computed`.
 pub fn resolve_projection_properties(
     project: &mut Projection,
     scales: &[Scale],
@@ -214,7 +278,7 @@ mod tests {
         let global = mappings_with(&["angle", "radius"]); // Would infer polar
         let layers: Vec<&Mappings> = vec![];
 
-        let result = resolve_coord(Some(&project), &global, &layers);
+        let result = resolve_coord(Some(&project), &global, &layers, &[]);
         assert!(result.is_ok());
         assert!(result.unwrap().is_none()); // None means keep existing
     }
@@ -228,7 +292,7 @@ mod tests {
         let global = mappings_with(&["x", "y"]);
         let layers: Vec<&Mappings> = vec![];
 
-        let result = resolve_coord(None, &global, &layers);
+        let result = resolve_coord(None, &global, &layers, &[]);
         assert!(result.is_ok());
         let inferred = result.unwrap();
         assert!(inferred.is_some());
@@ -242,7 +306,7 @@ mod tests {
         let global = mappings_with(&["xmin", "ymax"]);
         let layers: Vec<&Mappings> = vec![];
 
-        let result = resolve_coord(None, &global, &layers);
+        let result = resolve_coord(None, &global, &layers, &[]);
         assert!(result.is_ok());
         let inferred = result.unwrap();
         assert!(inferred.is_some());
@@ -256,7 +320,7 @@ mod tests {
         let layer = mappings_with(&["x", "y"]);
         let layers: Vec<&Mappings> = vec![&layer];
 
-        let result = resolve_coord(None, &global, &layers);
+        let result = resolve_coord(None, &global, &layers, &[]);
         assert!(result.is_ok());
         let inferred = result.unwrap();
         assert!(inferred.is_some());
@@ -273,7 +337,7 @@ mod tests {
         let global = mappings_with(&["angle", "radius"]);
         let layers: Vec<&Mappings> = vec![];
 
-        let result = resolve_coord(None, &global, &layers);
+        let result = resolve_coord(None, &global, &layers, &[]);
         assert!(result.is_ok());
         let inferred = result.unwrap();
         assert!(inferred.is_some());
@@ -287,7 +351,7 @@ mod tests {
         let global = mappings_with(&["anglemin", "radiusmax"]);
         let layers: Vec<&Mappings> = vec![];
 
-        let result = resolve_coord(None, &global, &layers);
+        let result = resolve_coord(None, &global, &layers, &[]);
         assert!(result.is_ok());
         let inferred = result.unwrap();
         assert!(inferred.is_some());
@@ -301,7 +365,7 @@ mod tests {
         let layer = mappings_with(&["angle", "radius"]);
         let layers: Vec<&Mappings> = vec![&layer];
 
-        let result = resolve_coord(None, &global, &layers);
+        let result = resolve_coord(None, &global, &layers, &[]);
         assert!(result.is_ok());
         let inferred = result.unwrap();
         assert!(inferred.is_some());
@@ -318,7 +382,7 @@ mod tests {
         let global = mappings_with(&["color", "size", "fill", "opacity"]);
         let layers: Vec<&Mappings> = vec![];
 
-        let result = resolve_coord(None, &global, &layers);
+        let result = resolve_coord(None, &global, &layers, &[]);
         assert!(result.is_ok());
         assert!(result.unwrap().is_none()); // Neither cartesian nor polar
     }
@@ -328,7 +392,7 @@ mod tests {
         let global = mappings_with(&["x", "y", "color", "size"]);
         let layers: Vec<&Mappings> = vec![];
 
-        let result = resolve_coord(None, &global, &layers);
+        let result = resolve_coord(None, &global, &layers, &[]);
         assert!(result.is_ok());
         let inferred = result.unwrap();
         assert!(inferred.is_some());
@@ -345,7 +409,7 @@ mod tests {
         let global = mappings_with(&["x", "angle"]);
         let layers: Vec<&Mappings> = vec![];
 
-        let result = resolve_coord(None, &global, &layers);
+        let result = resolve_coord(None, &global, &layers, &[]);
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert!(err.contains("Conflicting"));
@@ -359,10 +423,49 @@ mod tests {
         let layer = mappings_with(&["angle"]);
         let layers: Vec<&Mappings> = vec![&layer];
 
-        let result = resolve_coord(None, &global, &layers);
+        let result = resolve_coord(None, &global, &layers, &[]);
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert!(err.contains("Conflicting"));
+    }
+
+    #[test]
+    fn test_conflict_cartesian_and_map() {
+        let global = mappings_with(&["x", "lon"]);
+        let layers: Vec<&Mappings> = vec![];
+
+        let result = resolve_coord(None, &global, &layers, &[]);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.contains("Conflicting"));
+        assert!(err.contains("cartesian"));
+        assert!(err.contains("map"));
+    }
+
+    #[test]
+    fn test_conflict_polar_and_map() {
+        let global = mappings_with(&["angle", "lat"]);
+        let layers: Vec<&Mappings> = vec![];
+
+        let result = resolve_coord(None, &global, &layers, &[]);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.contains("Conflicting"));
+        assert!(err.contains("polar"));
+        assert!(err.contains("map"));
+    }
+
+    #[test]
+    fn test_conflict_cartesian_and_spatial_layer() {
+        let global = mappings_with(&["x", "y"]);
+        let layers: Vec<&Mappings> = vec![];
+
+        let result = resolve_coord(None, &global, &layers, &[GeomType::Spatial]);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.contains("Conflicting"));
+        assert!(err.contains("cartesian"));
+        assert!(err.contains("map"));
     }
 
     // ========================================
@@ -374,7 +477,7 @@ mod tests {
         let global = Mappings::new();
         let layers: Vec<&Mappings> = vec![];
 
-        let result = resolve_coord(None, &global, &layers);
+        let result = resolve_coord(None, &global, &layers, &[]);
         assert!(result.is_ok());
         assert!(result.unwrap().is_none());
     }
@@ -389,7 +492,7 @@ mod tests {
         global.insert("angle", AestheticValue::standard_column("cat"));
         let layers: Vec<&Mappings> = vec![];
 
-        let result = resolve_coord(None, &global, &layers);
+        let result = resolve_coord(None, &global, &layers, &[]);
         assert!(result.is_ok());
         let inferred = result.unwrap();
         assert!(inferred.is_some());
@@ -402,9 +505,69 @@ mod tests {
         let global = Mappings::with_wildcard();
         let layers: Vec<&Mappings> = vec![];
 
-        let result = resolve_coord(None, &global, &layers);
+        let result = resolve_coord(None, &global, &layers, &[]);
         assert!(result.is_ok());
         assert!(result.unwrap().is_none()); // Wildcard alone doesn't infer coord
+    }
+
+    // ========================================
+    // Test: Spatial layer infers Map
+    // ========================================
+
+    #[test]
+    fn test_infer_map_from_spatial_layer() {
+        let global = Mappings::new();
+        let layers: Vec<&Mappings> = vec![];
+
+        let result = resolve_coord(None, &global, &layers, &[GeomType::Spatial]);
+        assert!(result.is_ok());
+        let inferred = result.unwrap();
+        assert!(inferred.is_some());
+        let proj = inferred.unwrap();
+        assert_eq!(proj.coord.coord_kind(), CoordKind::Map);
+        assert_eq!(proj.aesthetics, vec!["lon", "lat"]);
+    }
+
+    #[test]
+    fn test_infer_map_from_spatial_among_other_layers() {
+        let global = Mappings::new();
+        let layers: Vec<&Mappings> = vec![];
+
+        let result = resolve_coord(
+            None,
+            &global,
+            &layers,
+            &[GeomType::Spatial, GeomType::Point],
+        );
+        assert!(result.is_ok());
+        let inferred = result.unwrap();
+        assert!(inferred.is_some());
+        let proj = inferred.unwrap();
+        assert_eq!(proj.coord.coord_kind(), CoordKind::Map);
+    }
+
+    #[test]
+    fn test_infer_map_from_lon_lat_aesthetics() {
+        let global = mappings_with(&["lon", "lat"]);
+        let layers: Vec<&Mappings> = vec![];
+
+        let result = resolve_coord(None, &global, &layers, &[]);
+        assert!(result.is_ok());
+        let inferred = result.unwrap();
+        assert!(inferred.is_some());
+        let proj = inferred.unwrap();
+        assert_eq!(proj.coord.coord_kind(), CoordKind::Map);
+    }
+
+    #[test]
+    fn test_explicit_project_overrides_spatial() {
+        let project = Projection::cartesian();
+        let global = Mappings::new();
+        let layers: Vec<&Mappings> = vec![];
+
+        let result = resolve_coord(Some(&project), &global, &layers, &[GeomType::Spatial]);
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_none());
     }
 
     // ========================================

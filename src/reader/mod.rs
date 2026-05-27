@@ -122,6 +122,85 @@ pub trait SqlDialect {
         format!("ST_AsBinary({column})")
     }
 
+    /// WORKAROUND(duckdb-rs#714): Ensures a column is native GEOMETRY type.
+    ///
+    /// Geometry columns may arrive as WKB BLOB (because Arrow export crashes on
+    /// native GEOMETRY, forcing pre-conversion). This normalizes both GEOMETRY
+    /// and BLOB to GEOMETRY so spatial functions work uniformly.
+    ///
+    /// Default is identity (column is already geometry). Override for backends
+    /// where geometry arrives as a different type.
+    fn sql_ensure_geometry(&self, column: &str) -> String {
+        column.to_string()
+    }
+
+    /// Produce a SELECT that replaces a single column with a new expression.
+    ///
+    /// When `all_columns` is provided, enumerates them explicitly (substituting
+    /// `expr` for `col`), avoiding duplicate-column issues on PostgreSQL.
+    /// When `all_columns` is empty, falls back to `SELECT expr AS col, *` which
+    /// works for direct-to-DataFrame execution (first occurrence wins) but NOT
+    /// for `CREATE TABLE AS` on PostgreSQL.
+    ///
+    /// Override for backends with native REPLACE syntax (DuckDB).
+    fn sql_select_replace(
+        &self,
+        expr: &str,
+        col: &str,
+        from: &str,
+        all_columns: &[String],
+    ) -> String {
+        if expr == col {
+            return format!("SELECT * FROM ({from})");
+        }
+        if all_columns.is_empty() {
+            return format!("SELECT {expr} AS {col}, * FROM ({from}) \"__ggsql_sr__\"");
+        }
+        let select_list: Vec<String> = all_columns
+            .iter()
+            .map(|c| {
+                let qc = naming::quote_ident(c);
+                if qc == col {
+                    format!("{expr} AS {col}")
+                } else {
+                    qc
+                }
+            })
+            .collect();
+        format!(
+            "SELECT {} FROM ({from}) \"__ggsql_sr__\"",
+            select_list.join(", ")
+        )
+    }
+
+    /// SQL expression to transform a geometry from one CRS to another.
+    ///
+    /// Default uses the PostGIS-compatible pattern: set the source SRID on the
+    /// geometry, then transform to either a numeric SRID or a PROJ string.
+    fn sql_st_transform(&self, column: &str, source_crs: &str, target_crs: &str) -> String {
+        let source_srid = extract_epsg_srid(source_crs).unwrap_or(4326);
+        let target = match extract_epsg_srid(target_crs) {
+            Some(srid) => format!("{}", srid),
+            None => format!("'{}'", target_crs.replace('\'', "''")),
+        };
+        format!(
+            "ST_Transform(ST_SetSRID({}, {}), {})",
+            column, source_srid, target
+        )
+    }
+
+    /// SQL query that computes the bounding box of a geometry column.
+    ///
+    /// Must return a single row with columns `xmin`, `ymin`, `xmax`, `ymax` (DOUBLE).
+    /// `from` is the table or subquery to aggregate over.
+    fn sql_geometry_bbox(&self, column: &str, from: &str) -> String {
+        format!(
+            "SELECT ST_XMin(ext) AS xmin, ST_YMin(ext) AS ymin, \
+                    ST_XMax(ext) AS xmax, ST_YMax(ext) AS ymax \
+             FROM (SELECT ST_Extent({column}) AS ext FROM {from})"
+        )
+    }
+
     /// SQL statements to run before spatial operations.
     ///
     /// Override for backends that need an extension loaded (e.g. DuckDB spatial).
@@ -262,12 +341,12 @@ pub trait SqlDialect {
         column_aliases: &[String],
         body_sql: &str,
     ) -> Vec<String> {
+        let qname = naming::quote_ident(name);
         let body = wrap_with_column_aliases(body_sql, column_aliases);
-        vec![format!(
-            "CREATE OR REPLACE TEMP TABLE {} AS {}",
-            naming::quote_ident(name),
-            body
-        )]
+        vec![
+            format!("DROP TABLE IF EXISTS {}", qname),
+            format!("CREATE TEMP TABLE {} AS {}", qname, body),
+        ]
     }
 }
 
@@ -361,6 +440,11 @@ pub use adbc::AdbcReader;
 // ============================================================================
 // Shared utilities
 // ============================================================================
+
+/// Extract the numeric SRID from an EPSG string (e.g. "EPSG:4326" → 4326).
+fn extract_epsg_srid(crs: &str) -> Option<u32> {
+    crs.strip_prefix("EPSG:").and_then(|s| s.parse().ok())
+}
 
 /// Validate a table name for use in SQL statements.
 ///

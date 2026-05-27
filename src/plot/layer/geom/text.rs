@@ -2,11 +2,13 @@
 
 use super::types::POSITION_VALUES;
 use super::{
-    DefaultAesthetics, DefaultParamValue, GeomTrait, GeomType, ParamConstraint, ParamDefinition,
-    ParameterValue,
+    project_position_columns, DefaultAesthetics, DefaultParamValue, GeomTrait, GeomType,
+    ParamConstraint, ParamDefinition, ParameterValue,
 };
+use crate::plot::projection::Projection;
 use crate::plot::types::DefaultAestheticValue;
 use crate::plot::{ArrayConstraint, NumberConstraint};
+use crate::reader::SqlDialect;
 use crate::{naming, DataFrame, Result};
 use std::collections::HashMap;
 
@@ -66,6 +68,17 @@ impl GeomTrait for Text {
 
     fn aggregate_domain_aesthetics(&self) -> Option<&'static [&'static str]> {
         Some(&[])
+    }
+
+    fn apply_projection(
+        &self,
+        query: &str,
+        projection: &Projection,
+        dialect: &dyn SqlDialect,
+        _clip: bool,
+        columns: &[String],
+    ) -> Result<String> {
+        project_position_columns(query, projection, dialect, columns)
     }
 
     fn post_process(

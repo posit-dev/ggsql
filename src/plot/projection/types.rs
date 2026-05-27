@@ -5,8 +5,10 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-use super::coord::Coord;
-use crate::plot::ParameterValue;
+use super::coord::{Coord, MapSpecification};
+use crate::plot::{Layer, ParameterValue};
+use crate::reader::SqlDialect;
+use crate::DataFrame;
 
 /// Projection (from PROJECT clause)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -20,6 +22,13 @@ pub struct Projection {
     pub aesthetics: Vec<String>,
     /// Projection-specific options
     pub properties: HashMap<String, ParameterValue>,
+    /// Typed map projection struct (present when coord is Map and crs is set).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub map_projection: Option<MapSpecification>,
+    /// Values computed at execution time (e.g., clip boundary WKT).
+    /// Not user-facing; populated by apply_projection_transforms.
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub computed: HashMap<String, ParameterValue>,
 }
 
 impl Projection {
@@ -33,6 +42,11 @@ impl Projection {
         Self::with_defaults(Coord::polar())
     }
 
+    /// Create a default Map projection (lon, lat).
+    pub fn map() -> Self {
+        Self::with_defaults(Coord::map("map"))
+    }
+
     fn with_defaults(coord: Coord) -> Self {
         let aesthetics = coord
             .position_aesthetic_names()
@@ -43,6 +57,8 @@ impl Projection {
             coord,
             aesthetics,
             properties: HashMap::new(),
+            map_projection: None,
+            computed: HashMap::new(),
         }
     }
 
@@ -50,5 +66,17 @@ impl Projection {
     /// (aesthetics are always resolved at build time)
     pub fn position_names(&self) -> Vec<&str> {
         self.aesthetics.iter().map(|s| s.as_str()).collect()
+    }
+
+    /// Orchestrate projection transforms for all layers.
+    pub fn apply_projection_transforms(
+        &mut self,
+        layers: &[Layer],
+        layer_queries: &mut [String],
+        dialect: &dyn SqlDialect,
+        execute_query: &dyn Fn(&str) -> crate::Result<DataFrame>,
+    ) -> crate::Result<()> {
+        let coord = self.coord.clone();
+        coord.apply_projection_transforms(layers, layer_queries, self, dialect, execute_query)
     }
 }

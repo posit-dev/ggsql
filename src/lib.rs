@@ -1029,7 +1029,12 @@ mod integration_tests {
         let json_str = writer.write(&prepared.specs[0], &prepared.data).unwrap();
         let vl_spec: serde_json::Value = serde_json::from_str(&json_str).unwrap();
 
-        assert_eq!(vl_spec["layer"][0]["mark"]["type"], "geoshape");
+        let layers = vl_spec["layer"].as_array().unwrap();
+        let geoshape_layer = layers
+            .iter()
+            .find(|l| l["mark"]["type"] == "geoshape")
+            .expect("should have a geoshape layer");
+        assert_eq!(geoshape_layer["mark"]["type"], "geoshape");
 
         let data = vl_spec["data"]["values"].as_array().unwrap();
         let layer_key = prepared.specs[0].layers[0].data_key.as_ref().unwrap();
@@ -1042,6 +1047,83 @@ mod integration_tests {
         let feature = &spatial_rows[0];
         assert_eq!(feature["type"], "Feature");
         assert_eq!(feature["geometry"]["type"], "Polygon");
+    }
+
+    #[cfg(feature = "spatial")]
+    #[test]
+    fn test_end_to_end_spatial_world_orthographic() {
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        let query = r#"
+            VISUALISE FROM ggsql:world
+            DRAW spatial PROJECT TO orthographic
+        "#;
+
+        let prepared = execute::prepare_data_with_reader(query, &reader).unwrap();
+
+        let writer = VegaLiteWriter::new();
+        let json_str = writer.write(&prepared.specs[0], &prepared.data).unwrap();
+        let vl_spec: serde_json::Value = serde_json::from_str(&json_str).unwrap();
+
+        assert_eq!(vl_spec["layer"][0]["mark"]["type"], "geoshape");
+
+        let data = vl_spec["data"]["values"].as_array().unwrap();
+        let layer_key = prepared.specs[0].layers[0].data_key.as_ref().unwrap();
+        let spatial_rows: Vec<_> = data
+            .iter()
+            .filter(|r| r[naming::SOURCE_COLUMN] == layer_key.as_str())
+            .collect();
+        assert!(!spatial_rows.is_empty());
+        // Horizon clipping filters out back-of-globe features; all remaining have geometry
+        assert!(
+            spatial_rows.iter().all(|r| !r["geometry"].is_null()),
+            "all visible features should have valid geometry"
+        );
+
+        assert!(
+            !vl_spec["projection"]["scale"].is_null(),
+            "projection.scale should be present"
+        );
+        assert!(
+            !vl_spec["projection"]["translate"].is_null(),
+            "projection.translate should be present"
+        );
+    }
+
+    #[cfg(feature = "spatial")]
+    #[test]
+    fn test_end_to_end_spatial_world_orthographic_antimeridian() {
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        let queries = &[
+            "+proj=ortho +lat_0=0 +lon_0=150",
+            "+proj=ortho +lat_0=52.36 +lon_0=150.90",
+        ];
+
+        for crs in queries {
+            let query = format!(
+                "VISUALISE FROM ggsql:world \
+                 DRAW spatial PROJECT TO map SETTING crs => '{crs}'"
+            );
+
+            let prepared = execute::prepare_data_with_reader(&query, &reader).unwrap();
+
+            let writer = VegaLiteWriter::new();
+            let json_str = writer.write(&prepared.specs[0], &prepared.data).unwrap();
+            let vl_spec: serde_json::Value = serde_json::from_str(&json_str).unwrap();
+
+            let data = vl_spec["data"]["values"].as_array().unwrap();
+            let layer_key = prepared.specs[0].layers[0].data_key.as_ref().unwrap();
+            let spatial_rows: Vec<_> = data
+                .iter()
+                .filter(|r| r[naming::SOURCE_COLUMN] == layer_key.as_str())
+                .collect();
+            assert!(!spatial_rows.is_empty(), "no rows for {crs}");
+            assert!(
+                spatial_rows.iter().all(|r| !r["geometry"].is_null()),
+                "NULL geometry found for {crs}"
+            );
+        }
     }
 
     /// Belt-and-braces regression test: a representative basket of error-
@@ -1141,5 +1223,74 @@ mod integration_tests {
                 }
             }
         }
+    }
+
+    #[cfg(feature = "spatial")]
+    #[test]
+    fn test_orthographic_amsterdam_center() {
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        let query = r#"
+            VISUALISE FROM ggsql:world
+            DRAW spatial PROJECT TO map SETTING crs => '+proj=ortho +lon_0=4.90 +lat_0=52.36'
+        "#;
+
+        let prepared = execute::prepare_data_with_reader(query, &reader).unwrap();
+        let writer = VegaLiteWriter::new();
+        let json_str = writer.write(&prepared.specs[0], &prepared.data).unwrap();
+        let vl_spec: serde_json::Value = serde_json::from_str(&json_str).unwrap();
+
+        let data = vl_spec["data"]["values"].as_array().unwrap();
+        let layer_key = prepared.specs[0].layers[0].data_key.as_ref().unwrap();
+        let spatial_rows: Vec<_> = data
+            .iter()
+            .filter(|r| r[naming::SOURCE_COLUMN] == layer_key.as_str())
+            .collect();
+        assert!(!spatial_rows.is_empty());
+        assert!(spatial_rows.iter().any(|r| !r["geometry"].is_null()));
+    }
+
+    #[cfg(feature = "spatial")]
+    #[test]
+    fn test_non_4326_source_to_orthographic() {
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        // Amsterdam in EPSG:3857: (545977.96, 6867712.83)
+        // Project to orthographic centered on Amsterdam — the point should survive.
+        let query = r#"
+            LOAD spatial;
+            SELECT ST_Point(545977.96, 6867712.83) AS geometry
+            VISUALISE
+            DRAW spatial
+            PROJECT TO map SETTING
+                source => 'EPSG:3857',
+                crs => '+proj=ortho +lon_0=4.90 +lat_0=52.36'
+        "#;
+
+        let prepared = execute::prepare_data_with_reader(query, &reader).unwrap();
+        let writer = VegaLiteWriter::new();
+        let json_str = writer.write(&prepared.specs[0], &prepared.data).unwrap();
+        let vl_spec: serde_json::Value = serde_json::from_str(&json_str).unwrap();
+
+        let data = vl_spec["data"]["values"].as_array().unwrap();
+        let layer_key = prepared.specs[0].layers[0].data_key.as_ref().unwrap();
+        let spatial_rows: Vec<_> = data
+            .iter()
+            .filter(|r| r[naming::SOURCE_COLUMN] == layer_key.as_str())
+            .collect();
+        assert_eq!(spatial_rows.len(), 1);
+        let geom = &spatial_rows[0]["geometry"];
+        assert!(
+            !geom.is_null(),
+            "Point in source CRS should project successfully"
+        );
+
+        // The projected point should be near (0, 0) in orthographic coords
+        // since the projection is centered on the same location.
+        let coords = geom["coordinates"].as_array().unwrap();
+        let x = coords[0].as_f64().unwrap();
+        let y = coords[1].as_f64().unwrap();
+        assert!(x.abs() < 2000.0, "Expected x near 0, got {x}");
+        assert!(y.abs() < 2000.0, "Expected y near 0, got {y}");
     }
 }

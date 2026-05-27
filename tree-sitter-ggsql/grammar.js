@@ -721,6 +721,7 @@ module.exports = grammar({
       $.number,
       $.boolean,
       $.null_literal,
+      $.infinity,
       $.array
     ),
 
@@ -1046,6 +1047,8 @@ module.exports = grammar({
 
     boolean: $ => choice('true', 'false'),
 
+    infinity: $ => token(seq(optional(choice('-', '+')), caseInsensitive('Inf'))),
+
     array: $ => choice(
       seq(
         '[',
@@ -1069,7 +1072,8 @@ module.exports = grammar({
       $.string,
       $.number,
       $.boolean,
-      $.null_literal
+      $.null_literal,
+      $.infinity
     ),
 
     null_literal: $ => caseInsensitive('NULL'),

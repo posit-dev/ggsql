@@ -1328,6 +1328,235 @@ mod tests {
         assert!(reader.unregister("__does_not_exist__").is_err());
     }
 
+    // --- PostgreSQL PostGIS spatial tests ------------------------------------
+
+    #[cfg(feature = "spatial")]
+    #[test]
+    #[ignore]
+    fn pg_spatial_create_temp_table() {
+        let reader = try_connect(PG_DSN).unwrap();
+        reader
+            .execute_sql("CREATE EXTENSION IF NOT EXISTS postgis")
+            .unwrap();
+        reader
+            .execute_sql("DROP TABLE IF EXISTS __ggsql_spatial_test")
+            .unwrap();
+        reader
+            .execute_sql(
+                "CREATE TEMP TABLE __ggsql_spatial_test (name TEXT, geom GEOMETRY(Polygon, 4326))",
+            )
+            .unwrap();
+        reader
+            .execute_sql(
+                "INSERT INTO __ggsql_spatial_test VALUES \
+                 ('a', ST_GeomFromText('POLYGON((0 0, 1 0, 1 1, 0 1, 0 0))', 4326))",
+            )
+            .unwrap();
+        let df = reader
+            .execute_sql("SELECT name, ST_AsBinary(geom) AS geom FROM __ggsql_spatial_test")
+            .unwrap();
+        assert_eq!(df.height(), 1);
+    }
+
+    #[cfg(feature = "spatial")]
+    #[test]
+    #[ignore]
+    fn pg_spatial_st_transform_proj_string() {
+        let reader = try_connect(PG_DSN).unwrap();
+        reader
+            .execute_sql("CREATE EXTENSION IF NOT EXISTS postgis")
+            .unwrap();
+        let df = reader
+            .execute_sql(
+                "SELECT ST_AsText(ST_Transform(\
+                    ST_SetSRID(ST_Point(10, 50), 4326), \
+                    '+proj=laea +lon_0=10 +lat_0=52'\
+                 )) AS wkt",
+            )
+            .unwrap();
+        assert_eq!(df.height(), 1);
+        let col = df.column("wkt").unwrap();
+        let wkt = crate::array_util::value_to_string(col, 0);
+        assert!(wkt.contains("POINT"), "Expected POINT, got: {}", wkt);
+    }
+
+    #[cfg(feature = "spatial")]
+    #[test]
+    #[ignore]
+    fn pg_spatial_st_transform_srid() {
+        let reader = try_connect(PG_DSN).unwrap();
+        reader
+            .execute_sql("CREATE EXTENSION IF NOT EXISTS postgis")
+            .unwrap();
+        let df = reader
+            .execute_sql(
+                "SELECT ST_SRID(ST_Transform(ST_SetSRID(ST_Point(10, 50), 4326), 3857)) AS srid",
+            )
+            .unwrap();
+        assert_eq!(df.height(), 1);
+        let col = df.column("srid").unwrap();
+        assert_eq!(crate::array_util::value_to_string(col, 0), "3857");
+    }
+
+    #[cfg(all(feature = "spatial", feature = "vegalite"))]
+    #[test]
+    #[ignore]
+    fn pg_spatial_end_to_end_projection() {
+        use crate::reader::Reader;
+        let reader = try_connect(PG_DSN).unwrap();
+        reader
+            .execute_sql("CREATE EXTENSION IF NOT EXISTS postgis")
+            .unwrap();
+        reader
+            .execute_sql("DROP TABLE IF EXISTS __ggsql_countries")
+            .unwrap();
+        reader
+            .execute_sql(
+                "CREATE TABLE __ggsql_countries (\
+                    name TEXT, geom GEOMETRY(Polygon, 4326)\
+                 )",
+            )
+            .unwrap();
+        reader
+            .execute_sql(
+                "INSERT INTO __ggsql_countries VALUES \
+                 ('France', ST_GeomFromText(\
+                    'POLYGON((2.5 51.1, -4.8 48.4, -1.7 43.3, 3.0 42.4, 7.7 48.9, 2.5 51.1))', 4326)),\
+                 ('Germany', ST_GeomFromText(\
+                    'POLYGON((6.0 54.8, 14.7 54.0, 15.0 51.0, 12.1 47.7, 5.9 47.6, 6.0 54.8))', 4326))",
+            )
+            .unwrap();
+
+        let spec = reader
+            .execute(
+                "SELECT name, geom FROM __ggsql_countries \
+                 VISUALISE name AS fill \
+                 DRAW spatial MAPPING geom AS geometry \
+                 PROJECT TO lambert",
+            )
+            .unwrap();
+
+        assert_eq!(spec.plot.layers.len(), 1);
+        assert!(spec.layer_data(0).unwrap().height() > 0);
+
+        reader.execute_sql("DROP TABLE __ggsql_countries").unwrap();
+    }
+
+    #[cfg(all(feature = "spatial", feature = "vegalite"))]
+    #[test]
+    #[ignore]
+    fn pg_spatial_orthographic_clip() {
+        use crate::reader::Reader;
+        let reader = try_connect(PG_DSN).unwrap();
+        reader
+            .execute_sql("CREATE EXTENSION IF NOT EXISTS postgis")
+            .unwrap();
+        reader
+            .execute_sql("DROP TABLE IF EXISTS __ggsql_clip_test")
+            .unwrap();
+        reader
+            .execute_sql(
+                "CREATE TABLE __ggsql_clip_test (\
+                    name TEXT, geom GEOMETRY(Polygon, 4326)\
+                 )",
+            )
+            .unwrap();
+        reader
+            .execute_sql(
+                "INSERT INTO __ggsql_clip_test VALUES \
+                 ('visible', ST_GeomFromText(\
+                    'POLYGON((5 45, 15 45, 15 55, 5 55, 5 45))', 4326)),\
+                 ('hidden', ST_GeomFromText(\
+                    'POLYGON((170 -40, 180 -40, 180 -30, 170 -30, 170 -40))', 4326))",
+            )
+            .unwrap();
+
+        let spec = reader
+            .execute(
+                "SELECT name, geom FROM __ggsql_clip_test \
+                 VISUALISE name AS fill \
+                 DRAW spatial MAPPING geom AS geometry \
+                 PROJECT TO orthographic SETTING origin => (10, 50)",
+            )
+            .unwrap();
+
+        // Only the visible polygon should survive clipping
+        assert_eq!(spec.layer_data(0).unwrap().height(), 1);
+
+        reader.execute_sql("DROP TABLE __ggsql_clip_test").unwrap();
+    }
+
+    #[cfg(all(feature = "spatial", feature = "vegalite"))]
+    #[test]
+    #[ignore]
+    fn pg_spatial_point_layer_projection() {
+        use crate::reader::Reader;
+        use crate::writer::Writer;
+        let reader = try_connect(PG_DSN).unwrap();
+        reader
+            .execute_sql("CREATE EXTENSION IF NOT EXISTS postgis")
+            .unwrap();
+        reader
+            .execute_sql("DROP TABLE IF EXISTS __ggsql_cities")
+            .unwrap();
+        reader
+            .execute_sql(
+                "CREATE TABLE __ggsql_cities (\
+                    name TEXT, lon DOUBLE PRECISION, lat DOUBLE PRECISION\
+                 )",
+            )
+            .unwrap();
+        reader
+            .execute_sql(
+                "INSERT INTO __ggsql_cities VALUES \
+                 ('Amsterdam', 4.90, 52.37),\
+                 ('Paris', 2.35, 48.86),\
+                 ('Berlin', 13.40, 52.52)",
+            )
+            .unwrap();
+
+        let spec = reader
+            .execute(
+                "SELECT name, lon, lat FROM __ggsql_cities \
+                 VISUALISE lon AS lon, lat AS lat, name AS label \
+                 DRAW point \
+                 PROJECT TO lambert SETTING origin => (10, 50)",
+            )
+            .unwrap();
+
+        assert_eq!(spec.plot.layers.len(), 1);
+        let df = spec.layer_data(0).unwrap();
+        assert_eq!(df.height(), 3);
+
+        let writer = crate::writer::vegalite::VegaLiteWriter::new();
+        let json_str = writer.write(&spec.plot, &spec.data).unwrap();
+        let vl_spec: serde_json::Value = serde_json::from_str(&json_str).unwrap();
+
+        // Coordinates should be projected (not raw lon/lat)
+        let data = vl_spec["data"]["values"].as_array().unwrap();
+        let layer_key = spec.plot.layers[0].data_key.as_ref().unwrap();
+        let rows: Vec<_> = data
+            .iter()
+            .filter(|r| r[crate::naming::SOURCE_COLUMN] == layer_key.as_str())
+            .collect();
+        assert_eq!(rows.len(), 3);
+        for row in &rows {
+            let lon = row[crate::naming::aesthetic_column("pos1")]
+                .as_f64()
+                .expect("pos1 should be numeric");
+            let lat = row[crate::naming::aesthetic_column("pos2")]
+                .as_f64()
+                .expect("pos2 should be numeric");
+            // LAEA centered on (10, 50) produces meter-scale values, not degrees
+            assert!(
+                lon.abs() > 100.0 || lat.abs() > 100.0,
+                "Expected projected coordinates (meters), got ({lon}, {lat})"
+            );
+        }
+
+        reader.execute_sql("DROP TABLE __ggsql_cities").unwrap();
+    }
+
     // --- SQLite via ODBC -----------------------------------------------------
 
     const SQLITE_DSN: &str = "ggsql-sqlite-test";

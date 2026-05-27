@@ -4,6 +4,7 @@
 //! handling all the node types defined in the grammar.
 
 use crate::plot::layer::geom::Geom;
+use crate::plot::projection::coord::map_projections::MapSpecification;
 use crate::plot::projection::resolve_coord;
 use crate::plot::scale::{color_to_hex, is_color_aesthetic, is_user_facet_aesthetic, Transform};
 use crate::plot::*;
@@ -86,6 +87,15 @@ fn parse_boolean_node(node: &Node, source: &SourceTree) -> bool {
     text == "true"
 }
 
+fn parse_infinity_node(node: &Node, source: &SourceTree) -> f64 {
+    let text = source.get_text(node);
+    if text.starts_with('-') {
+        f64::NEG_INFINITY
+    } else {
+        f64::INFINITY
+    }
+}
+
 /// Parse an array node into Vec<ArrayElement>
 fn parse_array_node(node: &Node, source: &SourceTree) -> Result<Vec<ArrayElement>> {
     let mut values = Vec::new();
@@ -105,6 +115,7 @@ fn parse_array_node(node: &Node, source: &SourceTree) -> Result<Vec<ArrayElement
             "number" => ArrayElement::Number(parse_number_node(&elem_child, source)?),
             "boolean" => ArrayElement::Boolean(parse_boolean_node(&elem_child, source)),
             "null_literal" => ArrayElement::Null,
+            "infinity" => ArrayElement::Number(parse_infinity_node(&elem_child, source)),
             _ => {
                 return Err(GgsqlError::ParseError(format!(
                     "Invalid array element type: {}",
@@ -138,6 +149,7 @@ fn parse_value_node(node: &Node, source: &SourceTree, context: &str) -> Result<P
             Ok(ParameterValue::Array(values))
         }
         "null_literal" => Ok(ParameterValue::Null),
+        "infinity" => Ok(ParameterValue::Number(parse_infinity_node(node, source))),
         _ => Err(GgsqlError::ParseError(format!(
             "Unexpected {} value type: {}",
             context,
@@ -272,13 +284,15 @@ fn build_visualise_statement(node: &Node, source: &SourceTree) -> Result<Plot> {
         }
     }
 
-    // Resolve coord (infer from mappings if not explicit)
+    // Resolve coord (infer from mappings and layer types if not explicit)
     // This must happen after parsing but before initialize_aesthetic_context()
     let layer_mappings: Vec<&Mappings> = spec.layers.iter().map(|l| &l.mappings).collect();
+    let layer_geom_types: Vec<GeomType> = spec.layers.iter().map(|l| l.geom.geom_type()).collect();
     if let Some(inferred) = resolve_coord(
         spec.project.as_ref(),
         &spec.global_mappings,
         &layer_mappings,
+        &layer_geom_types,
     )
     .map_err(GgsqlError::ParseError)?
     {
@@ -958,6 +972,7 @@ fn parse_facet_vars(node: &Node, source: &SourceTree) -> Result<Vec<String>> {
 /// Aesthetics are optional and default to the coord's standard names.
 fn build_project(node: &Node, source: &SourceTree) -> Result<Projection> {
     let mut coord = Coord::cartesian();
+    let mut coord_type_name: Option<String> = None;
     let mut properties = HashMap::new();
     let mut user_aesthetics: Option<Vec<String>> = None;
 
@@ -970,7 +985,9 @@ fn build_project(node: &Node, source: &SourceTree) -> Result<Projection> {
                 user_aesthetics = Some(source.find_texts(&child, query));
             }
             "project_type" => {
-                coord = parse_coord_system(&child, source)?;
+                let text = source.get_text(&child).to_lowercase();
+                coord = parse_coord_system(&text)?;
+                coord_type_name = Some(text);
             }
             "project_properties" => {
                 // Find all project_property nodes
@@ -1016,10 +1033,23 @@ fn build_project(node: &Node, source: &SourceTree) -> Result<Projection> {
     // Validate properties for this coord type
     validate_project_properties(&coord, &properties)?;
 
+    let map_projection = MapSpecification::new(coord_type_name.as_deref(), &properties);
+
+    if let Some(ref spec) = map_projection {
+        let proj_str = spec.to_proj_str();
+        if !proj_str.is_empty() {
+            properties
+                .entry("crs".to_string())
+                .or_insert_with(|| ParameterValue::String(proj_str));
+        }
+    }
+
     Ok(Projection {
         coord,
         aesthetics,
         properties,
+        map_projection,
+        computed: HashMap::new(),
     })
 }
 
@@ -1090,15 +1120,16 @@ fn validate_project_properties(
     Ok(())
 }
 
-/// Parse coord type from a project_type node
-fn parse_coord_system(node: &Node, source: &SourceTree) -> Result<Coord> {
-    let text = source.get_text(node);
-    match text.to_lowercase().as_str() {
+fn parse_coord_system(name: &str) -> Result<Coord> {
+    use crate::plot::projection::coord::map_projections::NAMED_PROJECTIONS;
+    match name {
         "cartesian" => Ok(Coord::cartesian()),
         "polar" => Ok(Coord::polar()),
+        "map" => Ok(Coord::map(name)),
+        _ if NAMED_PROJECTIONS.contains(&name) => Ok(Coord::map(name)),
         _ => Err(GgsqlError::ParseError(format!(
             "Unknown coord type: {}",
-            text
+            name
         ))),
     }
 }
@@ -1339,6 +1370,61 @@ mod tests {
         assert!(err
             .to_string()
             .contains("conflicts with material aesthetic"));
+    }
+
+    #[test]
+    fn test_project_map_bare() {
+        let query = r#"
+            VISUALISE
+            DRAW point MAPPING lon AS lon, lat AS lat
+            PROJECT TO map
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
+        let specs = result.unwrap();
+
+        let project = specs[0].project.as_ref().unwrap();
+        assert_eq!(project.coord.coord_kind(), CoordKind::Map);
+        assert_eq!(
+            project.aesthetics,
+            vec!["lon".to_string(), "lat".to_string()]
+        );
+        assert!(!project.properties.contains_key("crs"));
+    }
+
+    #[test]
+    fn test_project_mercator_shorthand() {
+        let query = r#"
+            VISUALISE
+            DRAW point MAPPING lon AS lon, lat AS lat
+            PROJECT TO mercator
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
+        let specs = result.unwrap();
+
+        let project = specs[0].project.as_ref().unwrap();
+        assert_eq!(project.coord.coord_kind(), CoordKind::Map);
+        assert_eq!(
+            project.properties.get("crs"),
+            Some(&ParameterValue::String("+proj=merc +lon_0=0".to_string()))
+        );
+    }
+
+    #[test]
+    fn test_project_shorthand_crs_override_rejected() {
+        let query = r#"
+            VISUALISE
+            DRAW point MAPPING lon AS lon, lat AS lat
+            PROJECT TO mercator SETTING crs => '+proj=custom'
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("Cannot combine a named projection"));
     }
 
     // ========================================

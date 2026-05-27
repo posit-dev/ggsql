@@ -36,7 +36,7 @@ bytes = { workspace = true }
 adbc_core = { version = "0.23", optional = true }
 
 # Spatial
-geozero = { workspace = true, optional = true, features = ["with-wkb", "with-geojson"] }
+geozero = { workspace = true, optional = true, features = ["with-wkb", "with-wkt", "with-geojson"] }
 
 # Serialization
 serde.workspace = true
@@ -67,7 +67,7 @@ parquet = ["dep:parquet"]
 sqlite = ["dep:rusqlite"]
 adbc = ["dep:adbc_core"]
 odbc = ["dep:toml_edit", "dep:libloading"]
-spatial = ["dep:geozero"]
+spatial = ["dep:geozero", "rusqlite?/load_extension"]
 vegalite = []
 builtin-data = []
 all-readers = ["duckdb", "sqlite", "odbc"]

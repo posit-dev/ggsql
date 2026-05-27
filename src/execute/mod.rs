@@ -1368,6 +1368,19 @@ pub fn prepare_data_with_reader(query: &str, reader: &dyn Reader) -> Result<Prep
         layer_queries.push(layer_query);
     }
 
+    // Apply projection transforms (post-stat, pre-fetch)
+    let mut project = specs[0]
+        .project
+        .take()
+        .unwrap_or_else(crate::plot::projection::Projection::cartesian);
+    project.apply_projection_transforms(
+        &specs[0].layers,
+        &mut layer_queries,
+        dialect,
+        &execute_query,
+    )?;
+    specs[0].project = Some(project);
+
     // Phase 2: Deduplicate and execute unique queries
     let mut query_to_result: HashMap<String, DataFrame> = HashMap::new();
     for (idx, q) in layer_queries.iter().enumerate() {

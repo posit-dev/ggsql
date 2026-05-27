@@ -46,11 +46,10 @@ Grammar lives in [`/tree-sitter-ggsql/`](../tree-sitter-ggsql/) — when adding 
 | `duckdb.rs` | DuckDB (in-memory or file) | `duckdb` (default) |
 | `sqlite.rs` | SQLite | `sqlite` (default) |
 | `odbc.rs` | ODBC | `odbc` (default) |
-| `snowflake.rs` | Snowflake (very small placeholder today) | — |
 | `connection.rs` | Connection-string parsing for all of the above | — |
 | `data.rs`, `spec.rs` | `Spec` type returned by `execute()`, plus DataFrame conversion | — |
 
-`SqlDialect` trait in `mod.rs` lets each driver supply its own type names and information-schema queries. PostgreSQL has a feature flag (`postgres`) but no driver file yet.
+`SqlDialect` trait in `mod.rs` lets each driver supply its own type names, information-schema queries, and spatial helper methods (`sql_st_transform`, `sql_geometry_to_wkb`, `sql_geometry_bbox`, `sql_ensure_geometry`, `sql_select_replace`, `sql_spatial_setup`).
 
 ### `execute/`
 
@@ -97,15 +96,12 @@ Defined in `Cargo.toml`:
 | `sqlite` | ✓ | SQLite reader |
 | `odbc` | ✓ | ODBC reader |
 | `parquet` | ✓ | Parquet support in readers/data |
-| `ipc` | ✓ | Arrow IPC support |
+| `spatial` | ✓ | Spatial/geometry support (geozero for WKT↔GeoJSON) |
 | `vegalite` | ✓ | Vega-Lite writer |
 | `builtin-data` | ✓ | Bundled penguins/airquality datasets |
-| `postgres` | — | PostgreSQL reader (declared, not yet implemented) |
-| `ggplot2` | — | ggplot2 writer (declared, not yet implemented) |
-| `all-readers` | — | `duckdb` + `postgres` + `sqlite` + `odbc` |
-| `all-writers` | — | `vegalite` + `ggplot2` + `plotters` |
+| `all-readers` | — | `duckdb` + `sqlite` + `odbc` |
 
-`ggsql-wasm` builds with `default-features = false` plus `vegalite`, `sqlite`, `builtin-data`. `ggsql-jupyter` builds with `duckdb`, `sqlite`, `odbc`, `vegalite`.
+`ggsql-wasm` builds with `default-features = false` plus `vegalite`, `sqlite`, `builtin-data`. `ggsql-jupyter` builds with `duckdb`, `vegalite`.
 
 ## Testing
 

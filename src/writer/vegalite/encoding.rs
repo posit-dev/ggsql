@@ -965,7 +965,7 @@ pub(super) fn map_aesthetic_name(
 ) -> String {
     // For internal position aesthetics, map directly to Vega-Lite channel names
     // based on coord type (ignoring user-facing names)
-    if let Some(vl_channel) = super::projection::map_position_to_vegalite(aesthetic, renderer) {
+    if let Some(vl_channel) = renderer.map_position(aesthetic) {
         return vl_channel;
     }
 
@@ -1014,10 +1014,10 @@ impl<'a> RenderContext<'a> {
         renderer: &dyn super::projection::ProjectionRenderer,
         aesthetic_context: crate::plot::aesthetic::AestheticContext,
     ) -> Self {
-        let pos1 = super::projection::map_position_to_vegalite("pos1", renderer).unwrap();
-        let pos1_end = super::projection::map_position_to_vegalite("pos1end", renderer).unwrap();
-        let pos2 = super::projection::map_position_to_vegalite("pos2", renderer).unwrap();
-        let pos2_end = super::projection::map_position_to_vegalite("pos2end", renderer).unwrap();
+        let pos1 = renderer.map_position("pos1").unwrap();
+        let pos1_end = renderer.map_position("pos1end").unwrap();
+        let pos2 = renderer.map_position("pos2").unwrap();
+        let pos2_end = renderer.map_position("pos2end").unwrap();
 
         let (pos1_offset, pos2_offset) = renderer.offset_channels();
 

@@ -70,6 +70,43 @@ impl super::SqlDialect for SqliteDialect {
         }
     }
 
+    fn sql_spatial_setup(&self) -> Vec<String> {
+        vec![
+            "SELECT load_extension('mod_spatialite')".into(),
+            "SELECT CASE WHEN NOT EXISTS(SELECT 1 FROM sqlite_master WHERE name='spatial_ref_sys') \
+             THEN InitSpatialMetaData(1) END"
+                .into(),
+        ]
+    }
+
+    fn sql_st_transform(&self, column: &str, source_crs: &str, target_crs: &str) -> String {
+        let source_srid = super::extract_epsg_srid(source_crs).unwrap_or(4326);
+        match super::extract_epsg_srid(target_crs) {
+            Some(target_srid) => {
+                format!(
+                    "ST_Transform(SetSRID({}, {}), {})",
+                    column, source_srid, target_srid
+                )
+            }
+            None => {
+                let source_proj = source_crs.replace('\'', "''");
+                let target_proj = target_crs.replace('\'', "''");
+                format!(
+                    "ST_Transform(SetSRID({}, {}), 0, NULL, '{}', '{}')",
+                    column, source_srid, source_proj, target_proj
+                )
+            }
+        }
+    }
+
+    fn sql_geometry_bbox(&self, column: &str, from: &str) -> String {
+        format!(
+            "SELECT MIN(MbrMinX({column})) AS xmin, MIN(MbrMinY({column})) AS ymin, \
+                    MAX(MbrMaxX({column})) AS xmax, MAX(MbrMaxY({column})) AS ymax \
+             FROM {from}"
+        )
+    }
+
     /// Stock SQLite has no `STDDEV_POP` / `VAR_POP`, so express variance,
     /// standard deviation, and standard error in portable arithmetic. Every
     /// other aggregate falls through to the shared default.
@@ -85,22 +122,6 @@ impl super::SqlDialect for SqliteDialect {
             _ => return super::default_sql_aggregate(name, qcol),
         };
         Some(s)
-    }
-
-    /// SQLite does not support `CREATE OR REPLACE`, so emit a drop-then-create
-    /// pair. Column aliases are preserved portably via the default CTE wrapper.
-    fn create_or_replace_temp_table_sql(
-        &self,
-        name: &str,
-        column_aliases: &[String],
-        body_sql: &str,
-    ) -> Vec<String> {
-        let qname = naming::quote_ident(name);
-        let body = super::wrap_with_column_aliases(body_sql, column_aliases);
-        vec![
-            format!("DROP TABLE IF EXISTS {}", qname),
-            format!("CREATE TEMP TABLE {} AS {}", qname, body),
-        ]
     }
 }
 
@@ -119,6 +140,10 @@ impl SqliteReader {
         let conn = Connection::open_in_memory().map_err(|e| {
             GgsqlError::ReaderError(format!("Failed to open in-memory SQLite: {}", e))
         })?;
+        #[cfg(feature = "spatial")]
+        unsafe {
+            let _ = conn.load_extension_enable();
+        }
         Ok(Self {
             conn,
             registered_tables: RefCell::new(HashSet::new()),
@@ -143,6 +168,10 @@ impl SqliteReader {
             }
         };
 
+        #[cfg(feature = "spatial")]
+        unsafe {
+            let _ = conn.load_extension_enable();
+        }
         Ok(Self {
             conn,
             registered_tables: RefCell::new(HashSet::new()),
@@ -1323,5 +1352,250 @@ mod builtin_data_tests {
             DataType::Date32,
             "airquality Date column should be detected as Date32, not String"
         );
+    }
+}
+
+// =============================================================================
+// SpatiaLite extension tests (require mod_spatialite on PATH)
+// =============================================================================
+
+#[cfg(feature = "spatial")]
+#[cfg(test)]
+mod spatialite_tests {
+    use super::super::SqlDialect;
+    use super::*;
+
+    fn spatialite_reader() -> Option<SqliteReader> {
+        let reader = SqliteReader::new().ok()?;
+        unsafe {
+            reader.connection().load_extension_enable().ok()?;
+            reader
+                .connection()
+                .load_extension("mod_spatialite", None::<&str>)
+                .ok()?;
+        }
+        reader.execute_sql("SELECT InitSpatialMetaData(1)").ok()?;
+        Some(reader)
+    }
+
+    #[test]
+    #[ignore]
+    fn spatialite_dialect_st_transform_srid() {
+        let dialect = SqliteDialect;
+        let expr = dialect.sql_st_transform("MakePoint(10, 50, 4326)", "EPSG:4326", "EPSG:3857");
+        let reader = spatialite_reader().expect("mod_spatialite not available");
+        let df = reader
+            .execute_sql(&format!("SELECT ST_SRID({expr}) AS srid"))
+            .unwrap();
+        assert_eq!(df.height(), 1);
+        assert_eq!(
+            crate::array_util::value_to_string(df.column("srid").unwrap(), 0),
+            "3857"
+        );
+    }
+
+    #[test]
+    #[ignore]
+    fn spatialite_dialect_st_transform_proj_string() {
+        let dialect = SqliteDialect;
+        let expr = dialect.sql_st_transform(
+            "MakePoint(10, 50, 4326)",
+            "EPSG:4326",
+            "+proj=laea +lon_0=10 +lat_0=52",
+        );
+        let reader = spatialite_reader().expect("mod_spatialite not available");
+        let df = reader
+            .execute_sql(&format!("SELECT ST_AsText({expr}) AS wkt"))
+            .unwrap();
+        assert_eq!(df.height(), 1);
+        let wkt = crate::array_util::value_to_string(df.column("wkt").unwrap(), 0);
+        assert!(wkt.contains("POINT"), "Expected POINT, got: {wkt}");
+    }
+
+    #[test]
+    #[ignore]
+    fn spatialite_dialect_geometry_bbox() {
+        let dialect = SqliteDialect;
+        let reader = spatialite_reader().expect("mod_spatialite not available");
+        reader
+            .execute_sql("CREATE TABLE bbox_test (geom BLOB)")
+            .unwrap();
+        reader
+            .execute_sql("INSERT INTO bbox_test VALUES (MakePoint(1, 2, 4326))")
+            .unwrap();
+        reader
+            .execute_sql("INSERT INTO bbox_test VALUES (MakePoint(3, 4, 4326))")
+            .unwrap();
+
+        let sql = dialect.sql_geometry_bbox("geom", "bbox_test");
+        let df = reader.execute_sql(&sql).unwrap();
+        assert_eq!(df.height(), 1);
+
+        let xmin: f64 = crate::array_util::value_to_string(df.column("xmin").unwrap(), 0)
+            .parse()
+            .unwrap();
+        let ymin: f64 = crate::array_util::value_to_string(df.column("ymin").unwrap(), 0)
+            .parse()
+            .unwrap();
+        let xmax: f64 = crate::array_util::value_to_string(df.column("xmax").unwrap(), 0)
+            .parse()
+            .unwrap();
+        let ymax: f64 = crate::array_util::value_to_string(df.column("ymax").unwrap(), 0)
+            .parse()
+            .unwrap();
+
+        assert!((xmin - 1.0).abs() < 1e-6, "xmin: {xmin}");
+        assert!((ymin - 2.0).abs() < 1e-6, "ymin: {ymin}");
+        assert!((xmax - 3.0).abs() < 1e-6, "xmax: {xmax}");
+        assert!((ymax - 4.0).abs() < 1e-6, "ymax: {ymax}");
+    }
+
+    #[test]
+    #[ignore]
+    fn spatialite_dialect_spatial_setup() {
+        let dialect = SqliteDialect;
+        let reader = SqliteReader::new().unwrap();
+
+        for stmt in dialect.sql_spatial_setup() {
+            reader.execute_sql(&stmt).unwrap();
+        }
+        let df = reader
+            .execute_sql("SELECT spatialite_version() AS ver")
+            .unwrap();
+        assert!(!crate::array_util::value_to_string(df.column("ver").unwrap(), 0).is_empty());
+
+        let df = reader
+            .execute_sql("SELECT COUNT(*) AS n FROM spatial_ref_sys")
+            .unwrap();
+        let n: i64 = crate::array_util::value_to_string(df.column("n").unwrap(), 0)
+            .parse()
+            .unwrap();
+        assert!(n > 0, "spatial_ref_sys should have entries");
+
+        // Calling setup again should not error (idempotent)
+        for stmt in dialect.sql_spatial_setup() {
+            reader.execute_sql(&stmt).unwrap();
+        }
+    }
+
+    #[cfg(feature = "vegalite")]
+    #[test]
+    #[ignore]
+    fn spatialite_end_to_end_projection() {
+        use super::super::Reader;
+        let reader = spatialite_reader().expect("mod_spatialite not available");
+        reader
+            .execute_sql("CREATE TABLE countries (name TEXT, geom BLOB)")
+            .unwrap();
+        reader
+            .execute_sql(
+                "INSERT INTO countries VALUES \
+                 ('France', GeomFromText(\
+                    'POLYGON((2.5 51.1, -4.8 48.4, -1.7 43.3, 3.0 42.4, 7.7 48.9, 2.5 51.1))', 4326)),\
+                 ('Germany', GeomFromText(\
+                    'POLYGON((6.0 54.8, 14.7 54.0, 15.0 51.0, 12.1 47.7, 5.9 47.6, 6.0 54.8))', 4326))",
+            )
+            .unwrap();
+
+        let spec = reader
+            .execute(
+                "SELECT name, geom FROM countries \
+                 VISUALISE name AS fill \
+                 DRAW spatial MAPPING geom AS geometry \
+                 PROJECT TO lambert",
+            )
+            .unwrap();
+
+        assert_eq!(spec.plot.layers.len(), 1);
+        assert!(spec.layer_data(0).unwrap().height() > 0);
+    }
+
+    #[cfg(feature = "vegalite")]
+    #[test]
+    #[ignore]
+    fn spatialite_orthographic_clip() {
+        use super::super::Reader;
+        let reader = spatialite_reader().expect("mod_spatialite not available");
+        reader
+            .execute_sql("CREATE TABLE clip_test (name TEXT, geom BLOB)")
+            .unwrap();
+        reader
+            .execute_sql(
+                "INSERT INTO clip_test VALUES \
+                 ('visible', GeomFromText(\
+                    'POLYGON((5 45, 15 45, 15 55, 5 55, 5 45))', 4326)),\
+                 ('hidden', GeomFromText(\
+                    'POLYGON((170 -40, 180 -40, 180 -30, 170 -30, 170 -40))', 4326))",
+            )
+            .unwrap();
+
+        let spec = reader
+            .execute(
+                "SELECT name, geom FROM clip_test \
+                 VISUALISE name AS fill \
+                 DRAW spatial MAPPING geom AS geometry \
+                 PROJECT TO orthographic SETTING origin => (10, 50)",
+            )
+            .unwrap();
+
+        // Only the visible polygon should survive clipping
+        assert_eq!(spec.layer_data(0).unwrap().height(), 1);
+    }
+
+    #[cfg(feature = "vegalite")]
+    #[test]
+    #[ignore]
+    fn spatialite_point_layer_projection() {
+        use super::super::Reader;
+        use crate::writer::Writer;
+        let reader = spatialite_reader().expect("mod_spatialite not available");
+        reader
+            .execute_sql("CREATE TABLE cities (name TEXT, lon REAL, lat REAL)")
+            .unwrap();
+        reader
+            .execute_sql(
+                "INSERT INTO cities VALUES \
+                 ('Amsterdam', 4.90, 52.37),\
+                 ('Paris', 2.35, 48.86),\
+                 ('Berlin', 13.40, 52.52)",
+            )
+            .unwrap();
+
+        let spec = reader
+            .execute(
+                "SELECT name, lon, lat FROM cities \
+                 VISUALISE lon AS lon, lat AS lat, name AS label \
+                 DRAW point \
+                 PROJECT TO lambert SETTING origin => (10, 50)",
+            )
+            .unwrap();
+
+        assert_eq!(spec.plot.layers.len(), 1);
+        let df = spec.layer_data(0).unwrap();
+        assert_eq!(df.height(), 3);
+
+        let writer = crate::writer::vegalite::VegaLiteWriter::new();
+        let json_str = writer.write(&spec.plot, &spec.data).unwrap();
+        let vl_spec: serde_json::Value = serde_json::from_str(&json_str).unwrap();
+
+        let data = vl_spec["data"]["values"].as_array().unwrap();
+        let layer_key = spec.plot.layers[0].data_key.as_ref().unwrap();
+        let rows: Vec<_> = data
+            .iter()
+            .filter(|r| r[crate::naming::SOURCE_COLUMN] == layer_key.as_str())
+            .collect();
+        assert_eq!(rows.len(), 3);
+        for row in &rows {
+            let lon = row[crate::naming::aesthetic_column("pos1")]
+                .as_f64()
+                .expect("pos1 should be numeric");
+            let lat = row[crate::naming::aesthetic_column("pos2")]
+                .as_f64()
+                .expect("pos2 should be numeric");
+            assert!(
+                lon.abs() > 100.0 || lat.abs() > 100.0,
+                "Expected projected coordinates (meters), got ({lon}, {lat})"
+            );
+        }
     }
 }

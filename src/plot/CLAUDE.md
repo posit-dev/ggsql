@@ -35,7 +35,7 @@ plot/
 │   ├── orientation.rs Layer transposition (horizontal vs vertical)
 │   └── position/      identity, stack, dodge, jitter
 ├── projection/        PROJECT clause
-│   └── coord/         cartesian, polar
+│   └── coord/         cartesian, polar, map
 └── scale/             SCALE clause
     ├── scale_type/    binned, continuous, discrete, identity, ordinal
     └── transform/     identity, log, sqrt, asinh, exp, square, pseudo_log,
@@ -46,7 +46,7 @@ plot/
 
 `Layer` itself lives in `layer/mod.rs`. The two big substructures:
 
-- **`layer/geom/`** — one `.rs` per geom plus `mod.rs` (registry) and `types.rs`. The current set: `area`, `arrow`, `bar`, `boxplot`, `density`, `histogram`, `line`, `path`, `point`, `polygon`, `range`, `ribbon`, `rule`, `segment`, `smooth`, `text`, `tile`, `violin`. Each implements `GeomTrait` (declares supported aesthetics, parameters, defaults, and any stat behaviour). User-facing semantics live in [`/doc/syntax/layer/type/`](../../doc/syntax/layer/type/).
+- **`layer/geom/`** — one `.rs` per geom plus `mod.rs` (registry) and `types.rs`. The current set: `area`, `arrow`, `bar`, `boxplot`, `density`, `histogram`, `line`, `path`, `point`, `polygon`, `range`, `ribbon`, `rule`, `segment`, `smooth`, `spatial`, `text`, `tile`, `violin`. Each implements `GeomTrait` (declares supported aesthetics, parameters, defaults, stat behaviour, and optional `apply_projection` for coord-specific transforms). User-facing semantics live in [`/doc/syntax/layer/type/`](../../doc/syntax/layer/type/).
 - **`layer/position/`** — `identity`, `stack`, `dodge`, `jitter`. Each implements `PositionTrait`. Semantics: [`/doc/syntax/layer/position/`](../../doc/syntax/layer/position/).
 
 `layer/orientation.rs` decides whether a layer is "transposed" (horizontal bar vs vertical bar etc.) based on the mappings + geom type.
@@ -64,7 +64,15 @@ Scale type / transform docs: [`/doc/syntax/scale/type/`](../../doc/syntax/scale/
 
 ### `facet/` and `projection/`
 
-Smaller subsystems. Each has a `types.rs` (data structure) and `resolve.rs` (logic that runs during execution). `projection/coord/` currently has `cartesian` and `polar`. Docs: [`/doc/syntax/clause/facet.qmd`](../../doc/syntax/clause/facet.qmd), [`/doc/syntax/coord/`](../../doc/syntax/coord/).
+Each has a `types.rs` (data structure) and `resolve.rs` (logic that runs during execution). `projection/coord/` has three implementations:
+
+- **`cartesian`** — standard x/y. No special behaviour.
+- **`polar`** — radius/angle (for pie/rose plots).
+- **`map`** — geographic projections via PROJ strings. Implements `apply_projection_transforms` to: detect source CRS from geometry SRID, make clip boundaries, delegate per-layer spatial transforms, materialize projected layers as temp tables, and resolve frame bbox from user bounds / data extent / world extent. Properties: `crs` (PROJ string), `source` (source EPSG), `clip` (bool), `bounds` ([xmin, ymin, xmax, ymax] with null/Inf fallback semantics).
+
+`Projection` (in `types.rs`) wraps `Coord` + resolved aesthetics + properties + a `computed` map populated at execution time for the writer (e.g., `panel_boundary`, `bbox`, `graticule_lon`, `graticule_lat`).
+
+Docs: [`/doc/syntax/clause/facet.qmd`](../../doc/syntax/clause/facet.qmd), [`/doc/syntax/coord/`](../../doc/syntax/coord/).
 
 ## Adding a new geom / scale type / coord
 
