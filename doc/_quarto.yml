@@ -139,8 +139,22 @@ website:
           href: get_started/grammar.qmd
         - text: Anatomy of ggsql
           href: get_started/anatomy.qmd
-        - text: Tooling
-          href: get_started/tooling.qmd
+        - section: Tooling
+          contents:
+            - text: Overview
+              href: get_started/tooling/index.qmd
+            - text: Positron / VS Code
+              href: get_started/tooling/positron-vscode.qmd
+            - text: Jupyter & Quarto
+              href: get_started/tooling/jupyter-quarto.qmd
+            - text: CLI
+              href: get_started/tooling/cli.qmd
+            - text: Python
+              href: get_started/tooling/python.qmd
+            - text: R
+              href: get_started/tooling/r.qmd
+            - text: WebAssembly
+              href: get_started/tooling/webassembly.qmd
         - text: The rest of the owl
           href: get_started/the_rest.qmd
         - text: Wrap up

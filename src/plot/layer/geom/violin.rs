@@ -1,6 +1,6 @@
 //! Violin geom implementation
 
-use super::types::POSITION_VALUES;
+use super::types::{wrap_with_dummy_axis, POSITION_VALUES, SIDE_VALUES};
 use super::{DefaultAesthetics, GeomTrait, GeomType, StatResult};
 use crate::{
     naming,
@@ -24,8 +24,6 @@ const KERNEL_VALUES: &[&str] = &[
     "cosine",
 ];
 
-const SIDE_VALUES: &[&str] = &["both", "left", "top", "right", "bottom"];
-
 /// Violin geom - violin plots (mirrored density)
 #[derive(Debug, Clone, Copy)]
 pub struct Violin;
@@ -38,7 +36,11 @@ impl GeomTrait for Violin {
     fn aesthetics(&self) -> DefaultAesthetics {
         DefaultAesthetics {
             defaults: &[
-                ("pos1", DefaultAestheticValue::Required),
+                // pos1 is dummy-able. `stat_violin` handles the synthesis
+                // itself by pre-wrapping the source query, so the density
+                // grouping collapses to a single violin of the whole pos2
+                // distribution.
+                ("pos1", DefaultAestheticValue::Dummy),
                 ("pos2", DefaultAestheticValue::Required),
                 ("weight", DefaultAestheticValue::Null),
                 ("fill", DefaultAestheticValue::String("black")),
@@ -49,10 +51,6 @@ impl GeomTrait for Violin {
                 ("offset", DefaultAestheticValue::Delayed), // Computed by stat, used for violin shape
             ],
         }
-    }
-
-    fn needs_stat_transform(&self, _aesthetics: &Mappings) -> bool {
-        true
     }
 
     fn default_params(&self) -> &'static [ParamDefinition] {
@@ -123,6 +121,7 @@ impl GeomTrait for Violin {
         parameters: &HashMap<String, ParameterValue>,
         _execute_query: &dyn Fn(&str) -> crate::Result<crate::DataFrame>,
         dialect: &dyn crate::reader::SqlDialect,
+        _aesthetic_ctx: &crate::plot::aesthetic::AestheticContext,
     ) -> Result<StatResult> {
         stat_violin(query, aesthetics, group_by, parameters, dialect)
     }
@@ -211,28 +210,64 @@ fn stat_violin(
         ));
     }
 
+    // pos1 is optional. When the user omits it, wrap the source with a
+    // synthetic dummy categorical column and group by that column so the
+    // density stat collapses to a single violin spanning the whole dataset.
     let mut group_by = group_by.to_vec();
-    if let Some(x_col) = get_column_name(aesthetics, "pos1") {
-        // We want to ensure x is included as a grouping
-        if !group_by.contains(&x_col) {
-            group_by.push(x_col);
+    let (working_query, use_dummy) = match get_column_name(aesthetics, "pos1") {
+        Some(x_col) => {
+            if !group_by.contains(&x_col) {
+                group_by.push(x_col);
+            }
+            (query.to_string(), false)
         }
-    } else {
-        return Err(GgsqlError::ValidationError(
-            "Violin requires 'x' aesthetic mapping (categorical)".to_string(),
-        ));
-    }
+        None => {
+            let dummy_col = naming::stat_column("pos1");
+            group_by.push(dummy_col);
+            (wrap_with_dummy_axis(query, "pos1"), true)
+        }
+    };
 
     // Violin uses tails parameter from user (default 3.0 set in default_params)
-    super::density::stat_density(
-        query,
+    let inner = super::density::stat_density(
+        &working_query,
         aesthetics,
         "pos2",
         None,
         group_by.as_slice(),
         parameters,
         dialect,
-    )
+    )?;
+
+    if !use_dummy {
+        return Ok(inner);
+    }
+
+    // Density returned its own Transformed result; tag it with the dummy
+    // column metadata so execute/layer.rs marks the resulting pos1 aesthetic
+    // as a dummy and the writer suppresses the axis.
+    match inner {
+        StatResult::Identity => unreachable!("stat_density always returns Transformed"),
+        StatResult::Transformed {
+            query,
+            mut stat_columns,
+            mut dummy_columns,
+            consumed_aesthetics,
+        } => {
+            if !stat_columns.iter().any(|s| s == "pos1") {
+                stat_columns.push("pos1".to_string());
+            }
+            if !dummy_columns.iter().any(|s| s == "pos1") {
+                dummy_columns.push("pos1".to_string());
+            }
+            Ok(StatResult::Transformed {
+                query,
+                stat_columns,
+                dummy_columns,
+                consumed_aesthetics,
+            })
+        }
+    }
 }
 
 #[cfg(test)]
@@ -578,6 +613,55 @@ mod tests {
         assert!((values[0] - 0.0).abs() < 1e-6, "0.0 should stay 0.0");
         assert!((values[1] - 0.15).abs() < 1e-6, "0.5 should become 0.15");
         assert!((values[2] - 0.3).abs() < 1e-6, "1.0 should become 0.3");
+    }
+
+    #[test]
+    fn test_violin_dummy_pos1_when_unmapped() {
+        // pos2 only - pos1 omitted should produce a single violin via dummy x.
+        let query = "SELECT flipper_length FROM penguins";
+        let mut aesthetics = Mappings::new();
+        aesthetics.insert(
+            "pos2".to_string(),
+            AestheticValue::standard_column("flipper_length".to_string()),
+        );
+        let groups: Vec<String> = vec![];
+        let mut parameters = HashMap::new();
+        parameters.insert("bandwidth".to_string(), ParameterValue::Number(5.0));
+        parameters.insert(
+            "kernel".to_string(),
+            ParameterValue::String("gaussian".to_string()),
+        );
+
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        let setup_sql = "CREATE TABLE penguins AS SELECT * FROM (VALUES
+            (181.0), (186.0), (195.0), (217.0), (221.0), (230.0), (192.0)
+        ) AS t(flipper_length)";
+        reader.execute_sql(setup_sql).unwrap();
+        let execute = |sql: &str| reader.execute_sql(sql);
+
+        let result = stat_violin(query, &aesthetics, &groups, &parameters, &AnsiDialect)
+            .expect("stat_violin should succeed without pos1");
+
+        match result {
+            StatResult::Transformed {
+                query: stat_query,
+                stat_columns,
+                dummy_columns,
+                ..
+            } => {
+                assert!(stat_columns.contains(&"pos1".to_string()));
+                assert_eq!(dummy_columns, vec!["pos1".to_string()]);
+                assert!(stat_query.contains("__ggsql_stat_dummy"));
+                assert!(stat_query.contains("__ggsql_stat_pos1"));
+
+                let df = execute(&stat_query).expect("Generated SQL should execute");
+                assert!(df.height() > 0);
+                let pos1_col = df.column("__ggsql_stat_pos1").unwrap();
+                let unique = count_unique_strings(pos1_col);
+                assert_eq!(unique, 1, "dummy pos1 should collapse to one group");
+            }
+            _ => panic!("Expected Transformed result"),
+        }
     }
 
     #[test]

@@ -52,15 +52,15 @@ To explain what we have done here:
 * `lat AS y` sets the `lat` (latitude) column as the `y` aesthetic.
 * `DRAW line` instructs to plot to use the `line` layer.
 
-No celebrated military strategist would plan his troup movements towards Moscow in this fashion though.
+No celebrated military strategist would plan his troop movements towards Moscow in this fashion though.
 The chart only shows movement in the west-east direction, meaning that we are not capturing the retreat properly.
 
 ## Correcting mistakes
 
-The first 'mistake' we made is chosing the `line` layer.
+The first 'mistake' we made is choosing the `line` layer.
 Line layers automatically sort along the axis, so we're mixing coordinates from the advance and the retreat.
 To rectify this, we should use the `path` layer instead.
-Path layers connect datapoints in the order they appear in, so we're no long sorting along west-east.
+Path layers connect datapoints in the order they appear in, so we're no longer sorting along west-east.
 
 ```{ggsql}
 VISUALISE long AS x, lat AS y FROM 'minard_troops.csv'

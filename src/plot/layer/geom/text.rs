@@ -59,8 +59,13 @@ impl GeomTrait for Text {
                 default: DefaultParamValue::Null,
                 constraint: ParamConstraint::string(),
             },
+            super::types::AGGREGATE_PARAM,
         ];
         PARAMS
+    }
+
+    fn aggregate_domain_aesthetics(&self) -> Option<&'static [&'static str]> {
+        Some(&[])
     }
 
     fn post_process(

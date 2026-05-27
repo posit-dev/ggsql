@@ -70,6 +70,23 @@ impl super::SqlDialect for SqliteDialect {
         }
     }
 
+    /// Stock SQLite has no `STDDEV_POP` / `VAR_POP`, so express variance,
+    /// standard deviation, and standard error in portable arithmetic. Every
+    /// other aggregate falls through to the shared default.
+    fn sql_aggregate(&self, name: &str, qcol: &str) -> Option<String> {
+        // Population variance with a `MAX(0, …)` floor against tiny negative
+        // floats from catastrophic cancellation. Both `MAX(a, b)` and `SQRT`
+        // are scalar functions in modern bundled SQLite (math-functions build).
+        let var_pop = || format!("MAX(0.0, AVG({c} * {c}) - AVG({c}) * AVG({c}))", c = qcol);
+        let s = match name {
+            "var" => var_pop(),
+            "sdev" => format!("SQRT({})", var_pop()),
+            "se" => format!("(SQRT({}) / SQRT(COUNT({c})))", var_pop(), c = qcol),
+            _ => return super::default_sql_aggregate(name, qcol),
+        };
+        Some(s)
+    }
+
     /// SQLite does not support `CREATE OR REPLACE`, so emit a drop-then-create
     /// pair. Column aliases are preserved portably via the default CTE wrapper.
     fn create_or_replace_temp_table_sql(
@@ -549,8 +566,8 @@ impl Reader for SqliteReader {
         table: &str,
     ) -> Result<Vec<super::ColumnInfo>> {
         let df = self.execute_sql(&format!(
-            "SELECT name, type FROM pragma_table_info('{}') ORDER BY cid",
-            table.replace('\'', "''")
+            "SELECT name, type FROM pragma_table_info({}) ORDER BY cid",
+            naming::quote_literal(table)
         ))?;
         let name_col = df.column("name")?;
         let type_col = df.column("type")?;

@@ -6,7 +6,7 @@
 use crate::array_util::as_str;
 use crate::plot::aesthetic::{is_position_aesthetic, AestheticContext};
 use crate::plot::scale::{linetype_to_stroke_dash, shape_to_svg_path, ScaleTypeKind};
-use crate::plot::{CoordKind, ParameterValue};
+use crate::plot::ParameterValue;
 use crate::{AestheticValue, DataFrame, GgsqlError, Plot, Result};
 use arrow::array::Array;
 use arrow::datatypes::DataType;
@@ -16,36 +16,8 @@ use std::collections::{HashMap, HashSet};
 use super::{POINTS_TO_AREA, POINTS_TO_PIXELS};
 
 /// Check if a position aesthetic has free scales enabled.
-///
-/// Maps aesthetic names to position indices:
-/// - pos1, pos1min, pos1max, pos1end -> index 0
-/// - pos2, pos2min, pos2max, pos2end -> index 1
-/// - etc.
-///
-/// Returns false for material aesthetics or if no free_scales array is provided.
-fn is_position_free_for_aesthetic(
-    aesthetic: &str,
-    free_scales: Option<&[crate::plot::ArrayElement]>,
-) -> bool {
-    let Some(free_arr) = free_scales else {
-        return false;
-    };
-
-    // Extract position index from aesthetic name (pos1 -> 0, pos2 -> 1, etc.)
-    let pos_index = if aesthetic.starts_with("pos1") {
-        Some(0)
-    } else if aesthetic.starts_with("pos2") {
-        Some(1)
-    } else if aesthetic.starts_with("pos3") {
-        Some(2)
-    } else {
-        None
-    };
-
-    pos_index
-        .and_then(|idx| free_arr.get(idx))
-        .map(|e| matches!(e, crate::plot::ArrayElement::Boolean(true)))
-        .unwrap_or(false)
+fn is_free(aesthetic: &str, facet: Option<&crate::plot::Facet>) -> bool {
+    facet.is_some_and(|f| f.is_free(aesthetic))
 }
 
 /// Build a Vega-Lite labelExpr from label mappings
@@ -89,7 +61,7 @@ pub(super) fn build_label_expr(
     let mut parts: Vec<String> = mappings
         .iter()
         .map(|(from, to)| {
-            let from_escaped = from.replace('\'', "\\'");
+            let from_escaped = super::escape_vega_string(from);
 
             // For threshold scales, the first terminal uses null instead of string comparison
             let condition = if null_key == Some(from.as_str()) {
@@ -100,7 +72,7 @@ pub(super) fn build_label_expr(
 
             match to {
                 Some(label) => {
-                    let to_escaped = label.replace('\'', "\\'");
+                    let to_escaped = super::escape_vega_string(label);
                     format!("{} ? '{}'", condition, to_escaped)
                 }
                 None => {
@@ -465,8 +437,6 @@ struct ScaleContext<'a> {
     is_binned_legend: bool,
     #[allow(dead_code)]
     spec: &'a Plot, // Reserved for future use (e.g., multi-scale legend decisions)
-    /// Free scales array from facet (position-indexed booleans)
-    free_scales: Option<&'a [crate::plot::ArrayElement]>,
 }
 
 /// Build scale properties from SCALE clause
@@ -485,7 +455,7 @@ fn build_scale_properties(
     // When using free scales, Vega-Lite computes independent domains per facet panel.
     // Setting an explicit domain would override this behavior.
     // Note: aesthetics are in internal format (pos1, pos2) at this stage
-    let skip_domain = is_position_free_for_aesthetic(ctx.aesthetic, ctx.free_scales);
+    let skip_domain = is_free(ctx.aesthetic, ctx.spec.facet.as_ref());
 
     // Apply domain from input_range (FROM clause)
     // Skip for threshold scales - they use internal breaks as domain instead
@@ -804,8 +774,6 @@ pub(super) struct EncodingContext<'a> {
     pub spec: &'a Plot,
     pub titled_families: &'a mut HashSet<String>,
     pub primary_aesthetics: &'a HashSet<String>,
-    /// Free scales array from facet (position-indexed booleans)
-    pub free_scales: Option<&'a [crate::plot::ArrayElement]>,
 }
 
 /// Build encoding channel from aesthetic mapping
@@ -898,7 +866,6 @@ fn build_column_encoding(
             aesthetic,
             spec: ctx.spec,
             is_binned_legend,
-            free_scales: ctx.free_scales,
         };
         let (scale_obj, needs_gradient) = build_scale_properties(scale, &scale_ctx);
 
@@ -994,11 +961,11 @@ fn build_literal_encoding(aesthetic: &str, lit: &ParameterValue) -> Result<Value
 pub(super) fn map_aesthetic_name(
     aesthetic: &str,
     _ctx: &crate::plot::AestheticContext,
-    coord_kind: CoordKind,
+    renderer: &dyn super::projection::ProjectionRenderer,
 ) -> String {
     // For internal position aesthetics, map directly to Vega-Lite channel names
     // based on coord type (ignoring user-facing names)
-    if let Some(vl_channel) = map_position_to_vegalite(aesthetic, coord_kind) {
+    if let Some(vl_channel) = super::projection::map_position_to_vegalite(aesthetic, renderer) {
         return vl_channel;
     }
 
@@ -1014,29 +981,6 @@ pub(super) fn map_aesthetic_name(
         // (fill and stroke map to Vega-Lite's separate fill/stroke channels)
         // typeface/fontweight/italic/rotation are parsed explicitly
         _ => aesthetic.to_string(),
-    }
-}
-
-/// Map internal position aesthetic to Vega-Lite channel name based on coord type.
-///
-/// Returns `Some(channel_name)` for internal position aesthetics (pos1, pos2, etc.),
-/// or `None` for material aesthetics.
-pub(super) fn map_position_to_vegalite(aesthetic: &str, coord_kind: CoordKind) -> Option<String> {
-    let (primary, secondary) = match coord_kind {
-        CoordKind::Cartesian => ("x", "y"),
-        CoordKind::Polar => ("radius", "theta"),
-    };
-
-    // Match internal position aesthetic patterns
-    // Convention: min → primary channel (x/y), max → secondary channel (x2/y2)
-    match aesthetic {
-        // Primary position and min variants
-        "pos1" | "pos1min" => Some(primary.to_string()),
-        "pos2" | "pos2min" => Some(secondary.to_string()),
-        // End and max variants (Vega-Lite uses x2/y2/theta2/radius2)
-        "pos1end" | "pos1max" => Some(format!("{}2", primary)),
-        "pos2end" | "pos2max" => Some(format!("{}2", secondary)),
-        _ => None,
     }
 }
 
@@ -1067,31 +1011,36 @@ impl<'a> RenderContext<'a> {
     /// Create a new render context
     pub fn new(
         scales: &'a [crate::Scale],
-        coord_kind: CoordKind,
+        renderer: &dyn super::projection::ProjectionRenderer,
         aesthetic_context: crate::plot::aesthetic::AestheticContext,
     ) -> Self {
-        let pos1 = map_position_to_vegalite("pos1", coord_kind).unwrap();
-        let pos1_end = map_position_to_vegalite("pos1end", coord_kind).unwrap();
-        let pos2 = map_position_to_vegalite("pos2", coord_kind).unwrap();
-        let pos2_end = map_position_to_vegalite("pos2end", coord_kind).unwrap();
+        let pos1 = super::projection::map_position_to_vegalite("pos1", renderer).unwrap();
+        let pos1_end = super::projection::map_position_to_vegalite("pos1end", renderer).unwrap();
+        let pos2 = super::projection::map_position_to_vegalite("pos2", renderer).unwrap();
+        let pos2_end = super::projection::map_position_to_vegalite("pos2end", renderer).unwrap();
 
-        let (pos1_offset, pos2_offset) = match coord_kind {
-            CoordKind::Cartesian => ("xOffset".to_string(), "yOffset".to_string()),
-            CoordKind::Polar => ("radiusOffset".to_string(), "thetaOffset".to_string()),
-        };
+        let (pos1_offset, pos2_offset) = renderer.offset_channels();
 
         Self {
             scales,
-            channels: (pos1, pos1_end, pos1_offset, pos2, pos2_end, pos2_offset),
+            channels: (
+                pos1,
+                pos1_end,
+                pos1_offset.to_string(),
+                pos2,
+                pos2_end,
+                pos2_offset.to_string(),
+            ),
             aesthetic_context,
         }
     }
 
     #[cfg(test)]
     pub fn default_for_test() -> Self {
+        let renderer = super::projection::get_projection_renderer(None, None, &[]);
         Self::new(
             &[],
-            CoordKind::Cartesian,
+            renderer.as_ref(),
             crate::plot::aesthetic::AestheticContext::from_static(&["x", "y"], &[]),
         )
     }
@@ -1258,8 +1207,8 @@ mod tests {
     mod get_extent_translation_tests {
         use super::*;
         use crate::plot::aesthetic::AestheticContext;
-        use crate::plot::projection::CoordKind;
         use crate::plot::{ArrayElement, Scale};
+        use crate::writer::vegalite::projection::get_projection_renderer;
 
         fn discrete_scale(aesthetic: &str) -> Scale {
             Scale {
@@ -1282,7 +1231,7 @@ mod tests {
             let scales: Vec<Scale> = vec![];
             let ctx = RenderContext::new(
                 &scales,
-                CoordKind::Cartesian,
+                get_projection_renderer(None, None, &[]).as_ref(),
                 AestheticContext::from_static(&["x", "y"], &[]),
             );
             let err = ctx.get_extent("pos1").unwrap_err().to_string();
@@ -1297,7 +1246,7 @@ mod tests {
             let scales: Vec<Scale> = vec![];
             let ctx = RenderContext::new(
                 &scales,
-                CoordKind::Polar,
+                get_projection_renderer(None, None, &[]).as_ref(),
                 AestheticContext::from_static(&["angle", "radius"], &[]),
             );
             let err = ctx.get_extent("pos1").unwrap_err().to_string();
@@ -1314,7 +1263,7 @@ mod tests {
             let scales = vec![discrete_scale("pos2")];
             let ctx = RenderContext::new(
                 &scales,
-                CoordKind::Cartesian,
+                get_projection_renderer(None, None, &[]).as_ref(),
                 AestheticContext::from_static(&["x", "y"], &[]),
             );
             let err = ctx.get_extent("pos2").unwrap_err().to_string();

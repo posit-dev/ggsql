@@ -114,6 +114,21 @@ pub trait SqlDialect {
         result
     }
 
+    /// SQL expression to convert a geometry column to WKB.
+    ///
+    /// Default uses `ST_AsBinary` (OGC standard). Override for backends
+    /// with different function names (e.g. DuckDB uses `ST_AsWKB`).
+    fn sql_geometry_to_wkb(&self, column: &str) -> String {
+        format!("ST_AsBinary({column})")
+    }
+
+    /// SQL statements to run before spatial operations.
+    ///
+    /// Override for backends that need an extension loaded (e.g. DuckDB spatial).
+    fn sql_spatial_setup(&self) -> Vec<String> {
+        vec![]
+    }
+
     /// Generate a series of integers 0..n-1 as a CTE fragment.
     ///
     /// Returns CTE fragment(s) producing table `__ggsql_seq__` with column `n`.
@@ -171,6 +186,31 @@ pub trait SqlDialect {
             ))",
             column = quoted_column
         )
+    }
+
+    /// Inline-form quantile aggregate, usable directly in a `SELECT` list.
+    ///
+    /// Returns `Some(sql_fragment)` when the dialect supports a native quantile
+    /// aggregate that can be combined with other aggregates in the same `GROUP BY`
+    /// query (e.g. DuckDB's `QUANTILE_CONT`). Returns `None` when no native
+    /// inline form exists; callers should then fall back to [`sql_percentile`],
+    /// which produces a correlated scalar subquery.
+    fn sql_quantile_inline(&self, _column: &str, _fraction: f64) -> Option<String> {
+        None
+    }
+
+    /// SQL fragment for a simple aggregate function applied to an
+    /// already-quoted column expression.
+    ///
+    /// Returns `Some(expr)` when the dialect can express this aggregate inline
+    /// in a `GROUP BY` query. Returns `None` when the aggregate is not
+    /// supported by this backend; the stat layer surfaces a clear error.
+    ///
+    /// Names handled here are the entries of `stat_aggregate::AGG_NAMES` other
+    /// than the percentile/iqr family, which goes through [`sql_quantile_inline`]
+    /// / [`sql_percentile`] instead.
+    fn sql_aggregate(&self, name: &str, qcol: &str) -> Option<String> {
+        default_sql_aggregate(name, qcol)
     }
 
     /// SQL literal for a date value (days since Unix epoch).
@@ -249,6 +289,44 @@ pub(crate) fn wrap_with_column_aliases(body_sql: &str, column_aliases: &[String]
     )
 }
 
+/// Default aggregate SQL emission, shared so dialects can opt into the standard
+/// portable forms while overriding selected functions.
+///
+/// `first` / `last` are expressed as `MAX(CASE WHEN __ggsql_rn__ = … THEN col END)`,
+/// which depends on the row-number columns the stat layer injects when any
+/// aggregate references them. Backends with a cheaper native equivalent
+/// (e.g. DuckDB's `FIRST`/`LAST`) override [`SqlDialect::sql_aggregate`].
+pub fn default_sql_aggregate(name: &str, qcol: &str) -> Option<String> {
+    let s = match name {
+        "count" => format!("COUNT({})", qcol),
+        "sum" => format!("SUM({})", qcol),
+        "prod" => format!("EXP(SUM(LN({})))", qcol),
+        "min" => format!("MIN({})", qcol),
+        "max" => format!("MAX({})", qcol),
+        "range" => format!("(MAX({c}) - MIN({c}))", c = qcol),
+        "mid" => format!("((MIN({c}) + MAX({c})) / 2.0)", c = qcol),
+        "mean" => format!("AVG({})", qcol),
+        "geomean" => format!("EXP(AVG(LN({})))", qcol),
+        "harmean" => format!("(COUNT({c}) * 1.0 / SUM(1.0 / {c}))", c = qcol),
+        "rms" => format!("SQRT(AVG({c} * {c}))", c = qcol),
+        "sdev" => format!("STDDEV_POP({})", qcol),
+        "se" => format!("(STDDEV_POP({c}) / SQRT(COUNT({c})))", c = qcol),
+        "var" => format!("VAR_POP({})", qcol),
+        "first" => format!("MAX(CASE WHEN \"__ggsql_rn__\" = 1 THEN {} END)", qcol),
+        "last" => format!(
+            "MAX(CASE WHEN \"__ggsql_rn__\" = \"__ggsql_max_rn__\" THEN {} END)",
+            qcol
+        ),
+        "diff" => format!(
+            "(MAX(CASE WHEN \"__ggsql_rn__\" = \"__ggsql_max_rn__\" THEN {c} END) \
+             - MAX(CASE WHEN \"__ggsql_rn__\" = 1 THEN {c} END))",
+            c = qcol
+        ),
+        _ => return None,
+    };
+    Some(s)
+}
+
 pub struct AnsiDialect;
 impl SqlDialect for AnsiDialect {}
 
@@ -260,6 +338,9 @@ pub mod sqlite;
 
 #[cfg(feature = "odbc")]
 pub mod odbc;
+
+#[cfg(feature = "adbc")]
+pub mod adbc;
 
 pub mod connection;
 pub mod data;
@@ -273,6 +354,9 @@ pub use sqlite::SqliteReader;
 
 #[cfg(feature = "odbc")]
 pub use odbc::OdbcReader;
+
+#[cfg(feature = "adbc")]
+pub use adbc::AdbcReader;
 
 // ============================================================================
 // Shared utilities
@@ -487,8 +571,8 @@ pub trait Reader {
     fn list_schemas(&self, catalog: &str) -> Result<Vec<String>> {
         let df = self.execute_sql(&format!(
             "SELECT DISTINCT schema_name FROM information_schema.schemata \
-             WHERE catalog_name = '{}' ORDER BY schema_name",
-            catalog.replace('\'', "''")
+             WHERE catalog_name = {} ORDER BY schema_name",
+            naming::quote_literal(catalog)
         ))?;
         let col = df.column("schema_name")?;
         let mut results = Vec::with_capacity(df.height());
@@ -503,9 +587,9 @@ pub trait Reader {
     fn list_tables(&self, catalog: &str, schema: &str) -> Result<Vec<TableInfo>> {
         let df = self.execute_sql(&format!(
             "SELECT DISTINCT table_name, table_type FROM information_schema.tables \
-             WHERE table_catalog = '{}' AND table_schema = '{}' ORDER BY table_name",
-            catalog.replace('\'', "''"),
-            schema.replace('\'', "''")
+             WHERE table_catalog = {} AND table_schema = {} ORDER BY table_name",
+            naming::quote_literal(catalog),
+            naming::quote_literal(schema)
         ))?;
         let name_col = df.column("table_name")?;
         let type_col = df.column("table_type")?;
@@ -524,11 +608,11 @@ pub trait Reader {
     fn list_columns(&self, catalog: &str, schema: &str, table: &str) -> Result<Vec<ColumnInfo>> {
         let df = self.execute_sql(&format!(
             "SELECT column_name, data_type FROM information_schema.columns \
-             WHERE table_catalog = '{}' AND table_schema = '{}' AND table_name = '{}' \
+             WHERE table_catalog = {} AND table_schema = {} AND table_name = {} \
              ORDER BY ordinal_position",
-            catalog.replace('\'', "''"),
-            schema.replace('\'', "''"),
-            table.replace('\'', "''")
+            naming::quote_literal(catalog),
+            naming::quote_literal(schema),
+            naming::quote_literal(table)
         ))?;
         let name_col = df.column("column_name")?;
         let type_col = df.column("data_type")?;
@@ -593,6 +677,21 @@ mod tests {
     use super::*;
     use crate::df;
     use crate::writer::{VegaLiteWriter, Writer};
+
+    fn data_layer(json: &serde_json::Value, index: usize) -> &serde_json::Value {
+        json["layer"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|l| {
+                !matches!(
+                    l.get("description").and_then(|d| d.as_str()),
+                    Some("background" | "foreground")
+                )
+            })
+            .nth(index)
+            .expect("data layer not found at index")
+    }
 
     #[test]
     fn test_execute_and_render() {
@@ -683,7 +782,7 @@ mod tests {
 
         // The encoding should have a theta channel with a scale range offset by 90 degrees
         // 90 degrees = π/2 radians
-        let layer = json["layer"].as_array().unwrap().first().unwrap();
+        let layer = data_layer(&json, 0);
         let theta = &layer["encoding"]["theta"];
         assert!(theta.is_object(), "theta encoding should exist");
 
@@ -728,7 +827,7 @@ mod tests {
         let json: serde_json::Value = serde_json::from_str(&result).unwrap();
 
         // The theta encoding should NOT have a scale with range when start is 0 (default)
-        let layer = json["layer"].as_array().unwrap().first().unwrap();
+        let layer = data_layer(&json, 0);
         let theta = &layer["encoding"]["theta"];
         assert!(theta.is_object(), "theta encoding should exist");
 
@@ -756,7 +855,7 @@ mod tests {
         let result = writer.render(&spec).unwrap();
 
         let json: serde_json::Value = serde_json::from_str(&result).unwrap();
-        let layer = json["layer"].as_array().unwrap().first().unwrap();
+        let layer = data_layer(&json, 0);
         let theta = &layer["encoding"]["theta"];
         let range = theta["scale"]["range"].as_array().unwrap();
 
@@ -791,7 +890,7 @@ mod tests {
         let result = writer.render(&spec).unwrap();
 
         let json: serde_json::Value = serde_json::from_str(&result).unwrap();
-        let layer = json["layer"].as_array().unwrap().first().unwrap();
+        let layer = data_layer(&json, 0);
         let theta = &layer["encoding"]["theta"];
         let range = theta["scale"]["range"].as_array().unwrap();
 
@@ -819,7 +918,7 @@ mod tests {
 
         // Helper to check encoding keys
         fn check_encoding_keys(json: &serde_json::Value, test_name: &str) {
-            let layer = json["layer"].as_array().unwrap().first().unwrap();
+            let layer = data_layer(json, 0);
             assert!(
                 layer["encoding"].get("theta").is_some(),
                 "{} should produce theta encoding, got keys: {:?}",
@@ -898,7 +997,7 @@ mod tests {
         let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
 
         fn check_cartesian_keys(json: &serde_json::Value, test_name: &str) {
-            let layer = json["layer"].as_array().unwrap().first().unwrap();
+            let layer = data_layer(json, 0);
             assert!(
                 layer["encoding"].get("x").is_some(),
                 "{} should produce x encoding, got keys: {:?}",
@@ -1153,7 +1252,7 @@ mod tests {
         let result = writer.render(&spec).unwrap();
 
         let json: serde_json::Value = serde_json::from_str(&result).unwrap();
-        let layer = json["layer"].as_array().unwrap().first().unwrap();
+        let layer = data_layer(&json, 0);
 
         // Check radius scale has range with expressions
         let radius = &layer["encoding"]["radius"];
@@ -1172,8 +1271,8 @@ mod tests {
             range[1]["expr"]
                 .as_str()
                 .unwrap()
-                .contains("min(width,height)/2"),
-            "Outer radius expression should be min(width,height)/2, got: {:?}",
+                .contains("min(width, height) / 2"),
+            "Outer radius expression should contain min(width, height) / 2, got: {:?}",
             range[1]
         );
     }
@@ -1199,7 +1298,7 @@ mod tests {
         let result = writer.render(&spec).unwrap();
 
         let json: serde_json::Value = serde_json::from_str(&result).unwrap();
-        let layer = json["layer"].as_array().unwrap().first().unwrap();
+        let layer = data_layer(&json, 0);
 
         // Verify y and y2 encodings exist (stacked bars use y/y2 for range)
         let encoding = &layer["encoding"];
@@ -1232,7 +1331,7 @@ mod tests {
         let result = writer.render(&spec).unwrap();
 
         let json: serde_json::Value = serde_json::from_str(&result).unwrap();
-        let layer = json["layer"].as_array().unwrap().first().unwrap();
+        let layer = data_layer(&json, 0);
 
         // Verify y and y2 encodings exist (stacked bars use y/y2 for range)
         let encoding = &layer["encoding"];
@@ -1248,6 +1347,180 @@ mod tests {
             encoding["y"]["stack"].is_null(),
             "y encoding should have stack: null to disable VL stacking. Got: {}",
             serde_json::to_string_pretty(&encoding["y"]).unwrap()
+        );
+    }
+
+    #[test]
+    fn test_boxplot_dummy_x() {
+        // Boxplot with only y mapped: should render a single boxplot of the
+        // whole distribution and suppress the categorical x axis.
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        let query = r#"
+            VISUALISE FROM ggsql:penguins
+            DRAW boxplot MAPPING bill_len AS y
+        "#;
+
+        let spec = reader.execute(query).unwrap();
+        let writer = VegaLiteWriter::new();
+        let result = writer.render(&spec).unwrap();
+
+        let json: serde_json::Value = serde_json::from_str(&result).unwrap();
+        // Boxplot is a composite renderer (multiple sub-layers). Check that
+        // the first layer's x encoding suppresses its axis.
+        let layer = data_layer(&json, 0);
+        let encoding = &layer["encoding"];
+        assert!(
+            encoding["x"]["axis"].is_null(),
+            "Boxplot dummy x should have axis: null. Encoding: {}",
+            serde_json::to_string_pretty(encoding).unwrap()
+        );
+    }
+
+    #[test]
+    fn test_violin_dummy_x() {
+        // Violin with only y mapped: single violin spanning the whole dataset.
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        let query = r#"
+            VISUALISE FROM ggsql:penguins
+            DRAW violin MAPPING bill_len AS y
+        "#;
+
+        let spec = reader.execute(query).unwrap();
+        let writer = VegaLiteWriter::new();
+        let result = writer.render(&spec).unwrap();
+
+        let json: serde_json::Value = serde_json::from_str(&result).unwrap();
+        let layer = data_layer(&json, 0);
+        let encoding = &layer["encoding"];
+        assert!(
+            encoding["x"]["axis"].is_null(),
+            "Violin dummy x should have axis: null. Encoding: {}",
+            serde_json::to_string_pretty(encoding).unwrap()
+        );
+    }
+
+    #[test]
+    fn test_point_dummy_x() {
+        // Point with only y mapped: strip plot at a single dummy x position.
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        let query = r#"
+            VISUALISE FROM ggsql:penguins
+            DRAW point MAPPING bill_len AS y
+        "#;
+
+        let spec = reader.execute(query).unwrap();
+        let writer = VegaLiteWriter::new();
+        let result = writer.render(&spec).unwrap();
+
+        let json: serde_json::Value = serde_json::from_str(&result).unwrap();
+        let layer = data_layer(&json, 0);
+        let encoding = &layer["encoding"];
+        assert!(
+            encoding["x"]["axis"].is_null(),
+            "Point dummy x should have axis: null. Encoding: {}",
+            serde_json::to_string_pretty(encoding).unwrap()
+        );
+    }
+
+    #[test]
+    fn test_range_dummy_x() {
+        // Range with only ymin/ymax mapped: a single vertical interval.
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        let query = r#"
+            SELECT 10.0 AS lo, 20.0 AS hi
+            VISUALISE
+            DRAW range MAPPING lo AS ymin, hi AS ymax
+        "#;
+
+        let spec = reader.execute(query).unwrap();
+        let writer = VegaLiteWriter::new();
+        let result = writer.render(&spec).unwrap();
+
+        let json: serde_json::Value = serde_json::from_str(&result).unwrap();
+        let layer = data_layer(&json, 0);
+        let encoding = &layer["encoding"];
+        assert!(
+            encoding["x"]["axis"].is_null(),
+            "Range dummy x should have axis: null. Encoding: {}",
+            serde_json::to_string_pretty(encoding).unwrap()
+        );
+    }
+
+    #[test]
+    fn test_point_dummy_y() {
+        // Symmetric to test_point_dummy_x: only x mapped means dummy y.
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        let query = r#"
+            VISUALISE FROM ggsql:penguins
+            DRAW point MAPPING bill_len AS x
+        "#;
+
+        let spec = reader.execute(query).unwrap();
+        let writer = VegaLiteWriter::new();
+        let result = writer.render(&spec).unwrap();
+
+        let json: serde_json::Value = serde_json::from_str(&result).unwrap();
+        let layer = data_layer(&json, 0);
+        let encoding = &layer["encoding"];
+        assert!(
+            encoding["y"]["axis"].is_null(),
+            "Point dummy y should have axis: null. Encoding: {}",
+            serde_json::to_string_pretty(encoding).unwrap()
+        );
+    }
+
+    #[test]
+    fn test_point_dummy_both_with_aggregate() {
+        // Both axes omitted, but aggregate gives the single point meaning:
+        // a count of all rows at the dummy x/y intersection.
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        let query = r#"
+            VISUALISE FROM ggsql:penguins
+            DRAW point MAPPING bill_len AS size
+            SETTING aggregate => 'size:count'
+        "#;
+
+        let spec = reader.execute(query).unwrap();
+        let writer = VegaLiteWriter::new();
+        let result = writer.render(&spec).unwrap();
+
+        let json: serde_json::Value = serde_json::from_str(&result).unwrap();
+        let layer = data_layer(&json, 0);
+        let encoding = &layer["encoding"];
+        assert!(
+            encoding["x"]["axis"].is_null(),
+            "Both-dummy point should hide x axis. Encoding: {}",
+            serde_json::to_string_pretty(encoding).unwrap()
+        );
+        assert!(
+            encoding["y"]["axis"].is_null(),
+            "Both-dummy point should hide y axis. Encoding: {}",
+            serde_json::to_string_pretty(encoding).unwrap()
+        );
+    }
+
+    #[test]
+    fn test_point_dummy_x_with_aggregate() {
+        // Point with aggregate SETTING and no x mapping: should aggregate the
+        // whole dataset to a single point and suppress the dummy x axis.
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        let query = r#"
+            VISUALISE FROM ggsql:penguins
+            DRAW point MAPPING bill_len AS y
+            SETTING aggregate => 'mean'
+        "#;
+
+        let spec = reader.execute(query).unwrap();
+        let writer = VegaLiteWriter::new();
+        let result = writer.render(&spec).unwrap();
+
+        let json: serde_json::Value = serde_json::from_str(&result).unwrap();
+        let layer = data_layer(&json, 0);
+        let encoding = &layer["encoding"];
+        assert!(
+            encoding["x"]["axis"].is_null(),
+            "Aggregated point with dummy x should have axis: null. Encoding: {}",
+            serde_json::to_string_pretty(encoding).unwrap()
         );
     }
 
@@ -1270,7 +1543,7 @@ mod tests {
 
         // Should succeed without "discrete scale does not support SETTING 'expand'" error
         let json: serde_json::Value = serde_json::from_str(&result).unwrap();
-        let layer = json["layer"].as_array().unwrap().first().unwrap();
+        let layer = data_layer(&json, 0);
 
         // Verify stacking works (y2 encoding exists for stacked bars)
         let encoding = &layer["encoding"];
@@ -1302,7 +1575,7 @@ mod tests {
         let result = writer.render(&spec).unwrap();
 
         let json: serde_json::Value = serde_json::from_str(&result).unwrap();
-        let layer = json["layer"].as_array().unwrap().first().unwrap();
+        let layer = data_layer(&json, 0);
 
         // Verify xOffset encoding exists (dodged bars use xOffset for displacement)
         let encoding = &layer["encoding"];
@@ -1347,7 +1620,7 @@ mod tests {
         let result = writer.render(&spec).unwrap();
 
         let json: serde_json::Value = serde_json::from_str(&result).unwrap();
-        let layer = json["layer"].as_array().unwrap().first().unwrap();
+        let layer = data_layer(&json, 0);
 
         // Verify no xOffset encoding (identity position)
         let encoding = &layer["encoding"];
@@ -1375,7 +1648,7 @@ mod tests {
         let result = writer.render(&spec).unwrap();
 
         let json: serde_json::Value = serde_json::from_str(&result).unwrap();
-        let layer = json["layer"].as_array().unwrap().first().unwrap();
+        let layer = data_layer(&json, 0);
         let encoding = &layer["encoding"];
 
         // With PROJECT y, x TO cartesian:
@@ -1416,7 +1689,7 @@ mod tests {
         let result = writer.render(&spec).unwrap();
 
         let json: serde_json::Value = serde_json::from_str(&result).unwrap();
-        let layer = json["layer"].as_array().unwrap().first().unwrap();
+        let layer = data_layer(&json, 0);
         let encoding = &layer["encoding"];
 
         // Verify theta encoding has the label

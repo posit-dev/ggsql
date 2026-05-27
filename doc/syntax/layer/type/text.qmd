@@ -12,10 +12,10 @@ The following aesthetics are recognised by the text layer.
 ### Required
 * Primary axis (e.g. `x`): Position along the primary axis.
 * Secondary axis (e.g. `y`): Position along the secondary axis.
-* `label` The text to dislay.
+* `label` The text to display.
 
 ### Optional
-* `stroke` The colour at the contour lines of glyphs. Typically kept blank.
+* `stroke` The colour of the contour lines of glyphs. Typically kept blank.
 * `fill` The colour of the glyphs.
 * `colour` Shorthand for setting `stroke` and `fill` simultaneously.
 * `opacity` The opacity of the fill colour.
@@ -35,6 +35,9 @@ The following aesthetics are recognised by the text layer.
     * a 2-element numeric array `[h, v]` where the first number is the horizontal offset and the second number is the vertical offset.
 * `format` Formatting specifier, see explanation below.
 * `position`: Position adjustment. One of `'identity'` (default), `'stack'`, `'dodge'`, or `'jitter'`
+* `aggregate` Aggregation functions to apply per group: 
+    * `null` apply no group aggregation (default).
+    * A single string or an array of strings. See an overview of aggregation function in [the `DRAW` documentation](../../clause/draw.qmd#aggregate) and more information in the *Data transformation* section below.
 
 ### Format
 The `format` setting can take a string that will be used in formatting the `label` aesthetic. 
@@ -66,7 +69,7 @@ Known formatters are:
     * `x`/`X`: Unsigned hexadecimal
 
 ## Data transformation
-The text layer does not transform its data but passed it through unchanged.
+This layer supports aggregation through the `aggregate` setting. Aggregation groups are defined by `PARTITION BY` and all discrete mappings. Within each group, every numeric mapping is replaced in place by its aggregated value. Use a default like `'mean'` or target individual aesthetics with `'<aes>:<func>'`. See [the `DRAW` documentation](../../clause/draw.qmd#aggregate) for the full setting shape.
 
 ## Orientation
 The text layer has no orientation. The axes are treated symmetrically.
@@ -145,4 +148,15 @@ PLACE text
     label => ('Adelie', 'Chinstrap', 'Gentoo'),
     x => (40, 50, 50),
     y => (19, 19, 15)
+```
+
+Use aggregation to place labels at their centroid.
+
+```{ggsql}
+VISUALISE bill_len AS x, bill_dep AS y FROM ggsql:penguins
+DRAW point
+  MAPPING species AS fill
+DRAW text
+  MAPPING species AS label
+  SETTING aggregate => 'mean', stroke => 'white', fontweight => 'bold', fontsize => 20
 ```

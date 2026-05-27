@@ -1,0 +1,54 @@
+---
+title: Positron / VS Code
+---
+
+We provide an extension for [VS Code](https://code.visualstudio.com) and [Positron](https://positron.posit.co/) that brings ggsql language support to the IDE. Positron is generally superior for data analysis and the ggsql integration is deeper there, which we will showcase below. Still, using the extension with VS Code should provide you with a good developer experience. Once installed you will get access to ggsql as a language at the same level as R and Python. You can open and edit `.gsql` files with syntax highlighting and autocomplete. 
+
+In Positron you can open up a REPL in the console pane, execute queries, and see the resulting visualization appear in the plot pane. You can add database connections in the connection pane and directly attach these to your ggsql runtime and begin to visualize the tables in there.
+
+![](./screenshots/positron-ggsql-integration.png)
+
+## Installation
+
+First, install ggsql on your system using the [installation instructions](../installation.html).
+
+Then, you can grab the ggsql extension directly from the extension section of the Positron IDE, or download it manually from the [OpenVSX extension marketplace](https://open-vsx.org/extension/ggsql/ggsql) (to install, in the *Extensions* view click the `...` menu, select "Install from VSIX...", and choose the downloaded file.)
+
+![](./screenshots/positron-extensions-pane.png)
+
+## Console and plotting
+
+Once the extension has been installed, ggsql will be available to launch as a language runtime in the same way as an R or Python session in Positron's console session selector.
+
+![](./screenshots/positron-console-session.png)
+
+Once started, a ggsql session will be made available in the Console pane, providing a REPL for executing standard SQL or ggsql code. When first launched, ggsql will be started with an empty in-memory duckdb database connection.
+
+![](./screenshots/positron-console-pane.png)
+
+Executing ggsql statements containing [`VISUALISE`](../../syntax/clause/visualise.html) will render the resulting visualization in the Plots pane.
+
+![](./screenshots/positron-plots-pane.png)
+
+
+## Editor and cells
+
+The `ggsql` language type can be used to enable syntax highlighting and autocomplete. Files with extension `.gsql` will automatically be configured to use the `ggsql` language type.
+
+In Positron, a "Source Current File" button is provided in the top left of the Editor pane, which will execute the entire contents of the currently open file in the Positron console. You can also create "cells" in your editor, which are blocks of code that can be independently executed.
+
+To create a cell, simply add a line with `-- %%` between blocks of code in your ggsql source file. You can then execute the contents a particular cell in the console by clicking the "Run Query" button that appears above the separator.
+
+![](./screenshots/positron-cells.png)
+
+## Database connections
+
+By default, ggsql starts in the Positron console with an empty in-memory duckdb database connection. A "magic" comment can be used to initiate a different database connection after the session has launched, which can be either a comment in your source file or invoked directly in the console.
+
+The connection syntax is `-- @connect: [connection_uri]`, where `[connection_uri]` is a ggsql database connection string in the same format as accepted by the [ggsql CLI](cli.html).
+
+![](./screenshots/positron-console-connections.png)
+
+The ggsql extension also integrates with Positron's connections pane, allowing you to easily connect to databases that you have configured in Positron. Connections made in the console, as above, will be saved to the connections pane automatically, or a connections wizard can be launched to help connect to supported databases by selecting the "New Connection" button in the Positron Connections pane.
+
+![](./screenshots/positron-connections.png)

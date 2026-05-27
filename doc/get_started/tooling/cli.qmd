@@ -1,0 +1,87 @@
+---
+title: Command line interface
+---
+
+The `ggsql` command line interface lets you execute queries and validate syntax directly from the terminal. While it may not be the most ergonomic way to interact directly with ggsql, it is useful for scripting, automation, and building tools around ggsql.
+
+## Installation
+
+Install the ggsql CLI on your system using the standard [installation instructions](../installation.html).
+
+## Executing a query
+
+You can execute a ggsql query from a string with `ggsql exec`:
+
+```bash
+ggsql exec "VISUALISE species AS fill FROM ggsql:penguins DRAW bar"
+```
+
+Or run a `.gsql` file:
+
+```bash
+ggsql run my_query.gsql
+```
+
+In both cases, output is written to `stdout` as a Vega-Lite JSON spec. You can redirect it to a file:
+
+```bash
+ggsql run my_query.gsql > chart.vl.json
+```
+
+Such files can be rendered as images using tools that work with Vega-Lite specs, such as the [Online Vega Editor](https://vega.github.io/editor/) or [vl-convert](https://github.com/vega/vl-convert) command line tool. For example,
+
+```bash
+vl-convert vl2png -i chart.vl.json -o chart.png
+```
+
+A standard SQL query can also be provided to ggsql. If the query returns a table, the resulting values will be written to `stdout`.
+
+## Validating a query
+
+If you only want to check that a query is syntactically valid without executing it, use `ggsql validate`:
+
+```bash
+$ ggsql validate "VISUALISE x, y FROM table DRAW point"
+✓ Query syntax is valid
+```
+
+## Database connections
+
+Both `ggsql exec` and `ggsql run` accept a `--reader` flag that can be used to specify a connection string to be used when executing the query. If not provided, ggsql will use an empty in-memory duckdb connection, equivalent to `--reader duckdb://memory`.
+
+```bash
+$ ggsql exec --reader sqlite://sample/ggsql_test.sqlite \
+  "SELECT * FROM test_table LIMIT 3"
+col_a,  col_b, col_c
+215.87, 75.11, delta
+418.78, 71.75, delta
+495.75, 12.55, delta
+
+$ ggsql exec --reader odbc://DSN=ggsql-pg-test \
+  "SELECT * FROM test_table LIMIT 3"
+col_a,  col_b, col_c
+319.34, 91.45, gamma
+299.08, 49.36, epsilon
+12.5,   29.48, gamma
+```
+
+## Documentation
+
+The ggsql CLI has built-in documentation for ggsql syntax and usage. Run `ggsql docs` for an overview of available documentation topics, and `ggsql docs [topic]` to read about a specific topic.
+
+```bash
+$ ggsql docs draw
+DRAW is perhaps the most important clause in ggsql as it defines a layer in your 
+visualisation. A layer is a single instance of a visual representation of a dataset.
+[...]
+```
+
+A ggsql skill, a usage guide intended for AI assistants and humans, can also be output using the `ggsql skill` command.
+
+```bash
+$ ggsql skill
+                          ggsql Query Writer
+ggsql is a SQL extension for declarative data visualization based on
+Grammar of Graphics principles.
+[...]
+```

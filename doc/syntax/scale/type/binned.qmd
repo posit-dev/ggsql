@@ -4,14 +4,14 @@ title: Binned
 
 > Scales are declared with the [`SCALE` clause](../../clause/scale.qmd). Read the documentation for this clause for a thorough description of its syntax.
 
-The binned scale type maps continuous data types into a discrete output domain. It can either be used to bin continuous data for layers that needs a discrete scale, e.g. the [bar layer](../../layer/type/bar.qmd), or to discretize a continuous output range to make clearer visual separation between the groups. Lastly, while generally not advised, it can also be used to map continuous data to an aesthetic that is otherwise only meaningful for discrete data (e.g. `shape`). 
+The binned scale type maps continuous data types into a discrete output domain. It can either be used to bin continuous data for layers that needs a discrete scale, e.g. the [bar layer](../../layer/type/bar.qmd), or to discretize a continuous output range to make clearer visual separation between the groups. Lastly, while generally not advised, it can also be used to map continuous data to an aesthetic that is otherwise only meaningful for discrete data (e.g. `shape`).
 
 The binned scale is never chosen automatically so it must be selected explicitly if needed using `SCALE BINNED ...`
 
 ## Input range
 The input range for binned scales are defined by their minimum and maximum values. These can be given explicitly or deduced from the mapped data. If `FROM` is omitted then the range will be given as the minimum and maximum break values, whether provided directly or calculated. If provided as an array of length 2 then the first element will set the minimum and the second element will set the maximum. If either of these elements are `null` then that part of the range will be deduced from the data. As an example `SCALE BINNED x FROM (0, null)` will set the minimum part of the range to 0 and the maximum part to the maximal value of the mapped data. However, if neither input range nor explicit breaks are provided then the input range will be modified so that the calculated bins are even sized and include all data. This means that the range in most cases will expand past the minimum and maximum data values.
 
-Position aesthetics (`x` and `y`) will have their range expanded based on the `expand` setting. 
+Position aesthetics (`x` and `y`) will have their range expanded based on the `expand` setting.
 If values in the mapped data falls outside of the input domain the values will be changed based on the `oob` setting.
 
 The input range is converted to the type defined by the transform. This means that a time range can both be given as a `%H:%M:%S` string or as a numeric giving the number of nanoseconds since midnight.
@@ -42,7 +42,7 @@ The output range can either be given as an array of values or a named palette. F
 All aesthetics have a default output range so it is never required to provide one unless you want to change from the default. The defaults are as follows:
 
 * `x`/`y`: Ignored (values used directly)
-* `stroke`/`fill`: The `navia` palette
+* `stroke`/`fill`: The `ggsql` palette
 * `size`/`linewidth`: `(1, 6)` (points)
 * `opacity`: `(0.1, 1.0)` (0 being fully transparent and 1 being fully opaque)
 * `linetype`: The `sequential` palette
@@ -52,7 +52,7 @@ While it is possible to use a binned scale to map continuous data to linetype an
 
 ### Examples
 
-#### Select a continuous color palette 
+#### Select a continuous color palette
 ```{ggsql}
 VISUALISE bill_len AS x, bill_dep AS y, body_mass AS color FROM ggsql:penguins
 DRAW point
@@ -60,7 +60,7 @@ SCALE BINNED color TO viridis
 ```
 
 ## Transform
-The transform of the scale both defines how the input data is parsed as well as any mathematical transform applied before it is mapped to the output range. The default transform is deduced from a combination of the mapped data and the aesthetic the scale is applied to. 
+The transform of the scale both defines how the input data is parsed as well as any mathematical transform applied before it is mapped to the output range. The default transform is deduced from a combination of the mapped data and the aesthetic the scale is applied to.
 
 * `linear`: The default transform unless stated otherwise. Creates a linear mapping between the input and output range.
 * `log`/`log2`/`ln`: Creates a mapping between the logarithm of the input to the output range.
@@ -81,15 +81,15 @@ Since breaks are not just presentational as it is with continuous scales the cho
 
 * `linear`:
   - `pretty => true`: Will use Wilkinsons Extended algorithm to attempt to find nice breaks in the given interval close to the number of breaks requested
-  - `pretty => false`: Will produce the requested number of evenly spaced breaks within the scale range 
-* `log`/`log2`/`ln`: 
+  - `pretty => false`: Will produce the requested number of evenly spaced breaks within the scale range
+* `log`/`log2`/`ln`:
   - `pretty => true`: Will use the 1-2-5 pattern and thin down to approximately the requested number of breaks
   - `pretty => false`: Breaks will be exclusively at the power of the base (e.g. 1, 10, 100, 1000 for log10)
 * `exp10`/`exp2`/`exp`: Same logic as the log breaks but in the inverse direction
 * `sqrt`/`square`: Like `linear` but the range is first converted to sqrt space and the breaks are then converted back
 * `asinh`/`pseudo_log`/`pseudo_log2`/`pseudo_ln`: Like `log` but includes zero and negates the breaks for the negative part
 * `integer`: Like `linear` except disallowing breaks at fractional parts
-* `date`/`datetime`/`time`: 
+* `date`/`datetime`/`time`:
   - `breaks => <interval>`: If breaks are given as an interval (e.g. `week`, `30 seconds` or `5 years`) then the breaks will get that spacing aligned at the interval boundary (Jan 1 for years, etc). This ignores the `pretty` setting
   - `pretty => true`: An appropriate interval is chosen that approximates the requested number of breaks and then used as above
   - `pretty => false`: Linear spacing in integer space as close to the requested number of breaks
@@ -140,8 +140,8 @@ The following settings are recognised by binned scales:
 VISUALISE body_mass AS x FROM ggsql:penguins
 DRAW bar
 SCALE BINNED x
-  SETTING 
-    oob => 'squish', 
+  SETTING
+    oob => 'squish',
     breaks => (4000, 4250, 4500, 4750, 5000, 5250, 5500)
 ```
 
@@ -149,7 +149,7 @@ SCALE BINNED x
 Breaks are generally named by their value. However, you may wish to rename one, several, or all of these. The `RENAMING` clause allows you to do that both by directly renaming a specific break or by providing a formatting function.
 
 ### Direct renaming
-When you provide a break value on the left and a break exist at that value then it will take on the label specified on the right. For examples adding `RENAMING 0 => 'Nil'` will ensure that if there is a break at 0 it will appear as "Nil" on the legend/axis
+When you provide a break value on the left and a break exists at that value then it will take on the label specified on the right. For example adding `RENAMING 0 => 'Nil'` will ensure that if there is a break at 0 it will appear as "Nil" on the legend/axis
 
 ### Label formatting
 Besides direct renaming you can also provide a formatting string if you want the same to happen to all labels, e.g. add a prefix or suffix. The syntax for this is `RENAMING * => '... {} ...'`. The current label will be inserted into the `{}` to produce the new label. Besides simply inserting the break value into the string, we can also provide a formatter. Of special interest to binned scales are the `:time` and `:num` formatters which lets you control how temporal and numeric values are presented. You can read more about these formatters in [the break formatting section of the `SCALE` documentation](../../clause/scale.qmd#break-formatting)
@@ -177,7 +177,7 @@ SCALE BINNED x
 ```{ggsql}
 VISUALISE bill_dep AS x FROM ggsql:penguins
 DRAW bar
-SCALE BINNED x 
+SCALE BINNED x
   RENAMING * => '{} mm'
 ```
 

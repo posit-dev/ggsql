@@ -27,6 +27,7 @@ use crate::parser;
 use crate::plot::aesthetic::{is_position_aesthetic, AestheticContext};
 use crate::plot::facet::{resolve_properties as resolve_facet_properties, FacetDataContext};
 use crate::plot::layer::is_transposed;
+use crate::plot::projection::resolve_projection_properties;
 use crate::plot::{AestheticValue, Layer, Scale, ScaleTypeKind, Schema};
 use crate::{DataFrame, DataSource, GgsqlError, Plot, Result};
 use std::collections::{HashMap, HashSet};
@@ -123,24 +124,38 @@ fn validate(
             }
         }
 
-        // Validate remapping source columns are valid stat columns for this geom
-        let valid_stat_columns = layer.geom.valid_stat_columns();
+        // Validate remapping source columns are valid stat columns for this geom.
+        // Geoms that opt into the Aggregate stat (`supports_aggregate`) also accept
+        // `aggregate`, `count`, and any position aesthetic name as a stat source.
+        let valid_stat_columns = layer.geom.implicit_valid_stat_columns();
+        let supports_aggregate = layer.geom.supports_aggregate();
         for stat_value in layer.remappings.aesthetics.values() {
             if let Some(stat_col) = stat_value.column_name() {
-                if !valid_stat_columns.contains(&stat_col) {
-                    if valid_stat_columns.is_empty() {
+                let is_aggregate_stat_col = supports_aggregate
+                    && (stat_col == "aggregate"
+                        || stat_col == "count"
+                        || crate::plot::aesthetic::is_position_aesthetic(stat_col));
+                if !valid_stat_columns.contains(&stat_col) && !is_aggregate_stat_col {
+                    if valid_stat_columns.is_empty() && !supports_aggregate {
                         return Err(GgsqlError::ValidationError(format!(
                             "Layer {}: REMAPPING not supported for geom '{}' (no stat transform)",
                             idx + 1,
                             layer.geom
                         )));
                     } else {
+                        let mut valid: Vec<String> =
+                            valid_stat_columns.iter().map(|s| s.to_string()).collect();
+                        if supports_aggregate {
+                            valid.push("aggregate".to_string());
+                            valid.push("count".to_string());
+                        }
+                        let valid_refs: Vec<&str> = valid.iter().map(|s| s.as_str()).collect();
                         return Err(GgsqlError::ValidationError(format!(
                             "Layer {}: REMAPPING references unknown stat column '{}'. Valid stat columns for geom '{}' are: {}",
                             idx + 1,
                             stat_col,
                             layer.geom,
-                            crate::and_list(valid_stat_columns)
+                            crate::and_list(&valid_refs)
                         )));
                     }
                 }
@@ -315,6 +330,19 @@ fn merge_global_mappings_into_layers(specs: &mut [Plot], layer_schemas: &[Schema
             // Clear wildcard flag since it's been resolved
             layer.mappings.wildcard = false;
 
+            // Auto-detect geometry column when the geom declares one
+            if layer.geom.aesthetics().contains("geometry")
+                && !layer.mappings.aesthetics.contains_key("geometry")
+            {
+                if let Some(col) = detect_geometry_column(schema) {
+                    layer
+                        .mappings
+                        .aesthetics
+                        .entry("geometry".to_string())
+                        .or_insert(AestheticValue::standard_column(&col));
+                }
+            }
+
             // Remove null sentinel mappings (explicit "don't inherit" markers)
             layer
                 .mappings
@@ -322,6 +350,40 @@ fn merge_global_mappings_into_layers(specs: &mut [Plot], layer_schemas: &[Schema
                 .retain(|_, value| !is_null_sentinel(value));
         }
     }
+}
+
+/// Detect a geometry column by name and type.
+///
+/// Returns the column name if exactly one candidate is found. Returns `None`
+/// if zero or more than one column matches (ambiguous).
+fn detect_geometry_column(schema: &Schema) -> Option<String> {
+    use arrow::datatypes::DataType;
+
+    fn looks_like_geometry(name: &str) -> bool {
+        matches!(
+            name.to_lowercase().as_str(),
+            "geom" | "geometry" | "wkb_geometry" | "the_geom" | "shape"
+        )
+    }
+
+    fn is_geometry_type(dtype: &DataType) -> bool {
+        matches!(
+            dtype,
+            DataType::Binary | DataType::LargeBinary | DataType::BinaryView
+        )
+    }
+
+    // Prefer columns that match both name and type
+    let candidates: Vec<_> = schema
+        .iter()
+        .filter(|c| looks_like_geometry(&c.name) && is_geometry_type(&c.dtype))
+        .collect();
+
+    if candidates.len() == 1 {
+        return Some(candidates[0].name.clone());
+    }
+
+    None
 }
 
 /// Resolve aesthetic aliases in a plot specification.
@@ -794,9 +856,30 @@ fn add_discrete_columns_to_partition_by(
         // Build set of excluded aesthetics that should not trigger auto-grouping:
         // - Stat-consumed aesthetics (transformed, not grouped)
         // - 'label' aesthetic (text content to display, not grouping categories)
+        //   — except when `aggregate` is set on the layer, in which case label
+        //   becomes a legitimate grouping key (e.g. "mean per species, place
+        //   species name at the centroid").
         let consumed_aesthetics = layer.geom.stat_consumed_aesthetics();
         let mut excluded_aesthetics: HashSet<&str> = consumed_aesthetics.iter().copied().collect();
-        excluded_aesthetics.insert("label");
+        if !crate::plot::layer::geom::has_aggregate_param(&layer.parameters) {
+            excluded_aesthetics.insert("label");
+        }
+
+        // When aggregate is active, an explicitly-targeted Binned aesthetic
+        // shouldn't auto-promote to a group key — the user is summarising the
+        // raw values and the binning runs post-stat against the aggregate
+        // output. Untargeted Binned still groups, so binning can drive
+        // meaningful aggregation buckets in the common case.
+        let agg_targeted: HashSet<String> =
+            crate::plot::layer::geom::stat_aggregate::aggregated_aesthetics(
+                &layer.parameters,
+                &layer.mappings,
+                schema,
+                aesthetic_ctx,
+                layer.geom.aggregate_domain_aesthetics().unwrap_or(&[]),
+            )
+            .map(|(t, _)| t)
+            .unwrap_or_default();
 
         for (aesthetic, value) in &layer.mappings.aesthetics {
             // Skip position aesthetics - these should not trigger auto-grouping.
@@ -829,9 +912,8 @@ fn add_discrete_columns_to_partition_by(
                 let is_discrete = if let Some(scale) = scale_map.get(primary_aes) {
                     if let Some(ref scale_type) = scale.scale_type {
                         match scale_type.scale_type_kind() {
-                            ScaleTypeKind::Discrete
-                            | ScaleTypeKind::Binned
-                            | ScaleTypeKind::Ordinal => true,
+                            ScaleTypeKind::Discrete | ScaleTypeKind::Ordinal => true,
+                            ScaleTypeKind::Binned => !agg_targeted.contains(aesthetic),
                             ScaleTypeKind::Continuous => false,
                             ScaleTypeKind::Identity => discrete_columns.contains(col),
                         }
@@ -1281,6 +1363,7 @@ pub fn prepare_data_with_reader(query: &str, reader: &dyn Reader) -> Result<Prep
             &scales,
             dialect,
             &execute_query,
+            &aesthetic_ctx,
         )?;
         layer_queries.push(layer_query);
     }
@@ -1418,6 +1501,13 @@ pub fn prepare_data_with_reader(query: &str, reader: &dyn Reader) -> Result<Prep
     // Resolve scale types from data for scales without explicit types
     for spec in &mut specs {
         scale::resolve_scales(spec, &mut data_map)?;
+    }
+
+    // Resolve projection properties that depend on scale types (e.g., radar)
+    for spec in &mut specs {
+        if let Some(ref mut project) = spec.project {
+            resolve_projection_properties(project, &spec.scales)?;
+        }
     }
 
     // Resolve facet properties (after data is available)
@@ -2958,11 +3048,12 @@ mod tests {
             )
             .unwrap();
 
-        // Query missing required aesthetic 'y' - should show 'y' not 'pos2'
+        // Query missing required aesthetic 'y' - should show 'y' not 'pos2'.
+        // Use line, which still requires both x and y (point's x is optional).
         let query = r#"
             SELECT * FROM test_data
             VISUALISE
-            DRAW point MAPPING a AS x
+            DRAW line MAPPING a AS x
         "#;
 
         let result = prepare_data_with_reader(query, &reader);
@@ -3021,6 +3112,92 @@ mod tests {
             !err_msg.contains("pos1min"),
             "Error should not mention internal name 'pos1min', got: {}",
             err_msg
+        );
+    }
+
+    #[cfg(all(feature = "duckdb", feature = "spatial"))]
+    #[test]
+    fn test_spatial_native_geometry() {
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        let query = r#"
+            INSTALL spatial;
+            LOAD spatial;
+            SELECT
+                ST_GeomFromText('POLYGON ((0 0, 1 0, 1 1, 0 1, 0 0))') AS geom,
+                'A' AS name,
+                100 AS value
+            UNION ALL
+            SELECT
+                ST_GeomFromText('POLYGON ((1 0, 2 0, 2 1, 1 1, 1 0))') AS geom,
+                'B' AS name,
+                200 AS value
+            VISUALISE
+            DRAW spatial MAPPING value AS fill
+        "#;
+
+        let result = prepare_data_with_reader(query, &reader);
+        assert!(
+            result.is_ok(),
+            "Spatial with native GEOMETRY failed: {:?}",
+            result.err()
+        );
+
+        let prepared = result.unwrap();
+        let layer_key = prepared.specs[0].layers[0].data_key.as_ref().unwrap();
+        let df = prepared.data.get(layer_key).unwrap();
+        assert_eq!(df.height(), 2);
+    }
+
+    #[cfg(all(feature = "duckdb", feature = "spatial"))]
+    #[test]
+    fn test_spatial_auto_detect_geometry_column() {
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        let query = r#"
+            INSTALL spatial;
+            LOAD spatial;
+            SELECT
+                ST_GeomFromText('POLYGON ((0 0, 1 0, 1 1, 0 1, 0 0))') AS geom,
+                'A' AS name
+            UNION ALL
+            SELECT
+                ST_GeomFromText('POLYGON ((1 0, 2 0, 2 1, 1 1, 1 0))') AS geom,
+                'B' AS name
+            VISUALISE
+            DRAW spatial MAPPING name AS fill
+        "#;
+
+        let result = prepare_data_with_reader(query, &reader);
+        assert!(
+            result.is_ok(),
+            "Spatial auto-detect geometry failed: {:?}",
+            result.err()
+        );
+
+        let prepared = result.unwrap();
+        let layer_key = prepared.specs[0].layers[0].data_key.as_ref().unwrap();
+        let df = prepared.data.get(layer_key).unwrap();
+        assert_eq!(df.height(), 2);
+        assert!(df.column("__ggsql_aes_geometry__").is_ok());
+    }
+
+    #[cfg(all(feature = "duckdb", feature = "spatial", feature = "builtin-data"))]
+    #[test]
+    fn test_spatial_world_minimal() {
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        reader.execute_sql("INSTALL spatial").unwrap();
+
+        let query = r#"
+            VISUALISE FROM ggsql:world
+            DRAW spatial
+        "#;
+
+        let result = prepare_data_with_reader(query, &reader);
+        assert!(
+            result.is_ok(),
+            "ggsql:world DRAW spatial failed: {:?}",
+            result.err()
         );
     }
 

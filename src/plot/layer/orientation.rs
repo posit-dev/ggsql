@@ -23,11 +23,11 @@
 //! - For two-axis geoms (bar, boxplot): if pos1 is continuous and pos2 is discrete → "transposed"
 //! - For single-axis geoms (histogram, density): if pos2 has a scale but pos1 doesn't → "transposed"
 
-use super::geom::GeomType;
+use super::geom::{Geom, GeomType};
 use super::Layer;
 use crate::plot::aesthetic::{is_position_aesthetic, AestheticContext};
 use crate::plot::scale::ScaleTypeKind;
-use crate::plot::{AestheticValue, Mappings, Scale};
+use crate::plot::{AestheticValue, DefaultAestheticValue, Mappings, Scale};
 use crate::{naming, DataFrame};
 
 /// Orientation value for aligned/vertical orientation.
@@ -125,7 +125,7 @@ pub fn geom_has_implicit_orientation(geom: &GeomType) -> bool {
 /// 4. **Default**: Primary
 fn detect_from_scales(
     scales: &[Scale],
-    _geom: &GeomType,
+    geom: &GeomType,
     mappings: &Mappings,
     remappings: &Mappings,
 ) -> &'static str {
@@ -152,12 +152,21 @@ fn detect_from_scales(
     let has_pos1 = pos1_scale.is_some();
     let has_pos2 = pos2_scale.is_some();
 
-    // Rule 1: Single scale present - that axis is primary
+    // Rule 1: Single scale present - that axis is primary.
     // Only apply when there are explicit position mappings; otherwise the user
     // is just customizing a scale (e.g., SCALE y SETTING expand) without intending
     // to change orientation. The geom's default_remappings will define orientation.
+    //
+    // If the geom declares `pos1` as `Dummy` and the user hasn't mapped it,
+    // pos1 *is* the (synthetic) primary axis — leave the layer aligned so the
+    // stat fills it in. Auto-transposing in that case would push the dummy
+    // onto the secondary axis, which is never what the user means.
     if has_pos1_mapping || has_pos2_mapping {
-        if has_pos2 && !has_pos1 {
+        let pos1_is_dummy = matches!(
+            Geom::from_type(*geom).aesthetics().get("pos1"),
+            Some(DefaultAestheticValue::Dummy)
+        );
+        if has_pos2 && !has_pos1 && (!pos1_is_dummy || has_pos1_mapping) {
             return TRANSPOSED;
         }
         if has_pos1 && !has_pos2 {

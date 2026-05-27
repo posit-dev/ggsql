@@ -1,0 +1,35 @@
+---
+title: Python
+---
+
+We have a [Python package](https://pypi.org/project/ggsql/) that provides bindings to ggsql, allowing you to plot with ggsql directly from within Python and register alternative data backends. Install it with pip:
+
+```bash
+pip install ggsql
+```
+
+## Basic usage
+
+The `ggsql` package can render a ggsql query against a DataFrame and return an Altair chart object:
+
+```python
+import ggsql
+import polars as pl
+
+df = pl.DataFrame({
+    "x": [1, 2, 3, 4, 5],
+    "y": [10, 20, 15, 30, 25],
+    "category": ["A", "B", "A", "B", "A"]
+})
+
+chart = ggsql.render_altair(df, "VISUALISE x, y DRAW point")
+
+chart.display()  # In Jupyter
+chart.save("chart.html")  # Save to file
+```
+
+The `render_altair()` function accepts both Polars and pandas DataFrames.
+
+## Further reading
+
+Full API documentation for the Python package is available at [python.ggsql.org](http://python.ggsql.org).

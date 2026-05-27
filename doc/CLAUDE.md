@@ -17,7 +17,7 @@ doc/
 │   ├── first_plot.qmd      Tutorial: first visualization
 │   ├── grammar.qmd         Grammar of Graphics conceptual foundation
 │   ├── anatomy.qmd         Anatomy of a ggsql query
-│   ├── tooling.qmd         VS Code / Positron / Jupyter / Python / R / CLI integrations
+│   ├── tooling/            VS Code / Positron / Jupyter / Python / R / CLI / Wasm
 │   └── the_rest.qmd        Advanced features
 ├── syntax/
 │   ├── index.qmd
