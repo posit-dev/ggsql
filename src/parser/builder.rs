@@ -636,6 +636,7 @@ fn parse_geom_type(text: &str) -> Result<Geom> {
         "arrow" => Ok(Geom::arrow()),
         "rule" => Ok(Geom::rule()),
         "range" => Ok(Geom::range()),
+        "spatial" => Ok(Geom::spatial()),
         _ => Err(GgsqlError::ParseError(format!(
             "Unknown geom type: {}",
             text
@@ -1929,6 +1930,147 @@ mod tests {
             SELECT * FROM a WHERE NOT EXISTS (SELECT 1 FROM b WHERE b.id = a.id)
             VISUALISE
             DRAW point MAPPING x AS x, y AS y
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_boolean_operators_in_function_args() {
+        let query = r#"
+            SELECT IFF(x = 'a' OR x = 'b', 1, 0) AS rate
+            FROM t
+            VISUALISE rate AS x
+            DRAW point
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_and_operator_in_function_args() {
+        let query = r#"
+            SELECT IFF(x > 0 AND x < 10, 1, 0) AS flag
+            FROM t
+            VISUALISE flag AS x
+            DRAW point
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_between_in_function_args() {
+        let query = r#"
+            SELECT IFF(x BETWEEN 1 AND 10, 1, 0) AS flag
+            FROM t
+            VISUALISE flag AS x
+            DRAW point
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_not_operator_in_function_args() {
+        let query = r#"
+            SELECT IFF(NOT x = 'a', 1, 0) AS flag
+            FROM t
+            VISUALISE flag AS x
+            DRAW point
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_in_predicate_in_function_args() {
+        let query = r#"
+            SELECT IFF(x IN ('a', 'b'), 1, 0) AS flag
+            FROM t
+            VISUALISE flag AS x
+            DRAW point
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_not_in_predicate_in_function_args() {
+        let query = r#"
+            SELECT IFF(x NOT IN ('a', 'b'), 1, 0) AS flag
+            FROM t
+            VISUALISE flag AS x
+            DRAW point
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_is_null_in_function_args() {
+        let query = r#"
+            SELECT IFF(x IS NULL, 1, 0) AS flag
+            FROM t
+            VISUALISE flag AS x
+            DRAW point
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_like_predicate_in_function_args() {
+        let query = r#"
+            SELECT IFF(x LIKE 'a%', 1, 0) AS flag
+            FROM t
+            VISUALISE flag AS x
+            DRAW point
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_ilike_predicate_in_function_args() {
+        let query = r#"
+            SELECT IFF(x ILIKE 'a%', 1, 0) AS flag
+            FROM t
+            VISUALISE flag AS x
+            DRAW point
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_extract_named_arg_predicate_value_spans_full_expression() {
+        let query = "SELECT FOO(flag => x = 'a' OR x = 'b') FROM t VISUALISE x AS x DRAW point";
+        let source = make_source(query);
+        let root = source.root();
+        let named_arg = source.find_node(&root, "(named_arg) @arg").unwrap();
+
+        let (_, value_node) = extract_name_value_nodes(&named_arg, "named_arg").unwrap();
+        assert_eq!(source.get_text(&value_node), "x = 'a' OR x = 'b'");
+    }
+
+    #[test]
+    fn test_named_arg_predicate_in_function_args() {
+        let query = r#"
+            SELECT FOO(flag => x = 'a' OR x = 'b')
+            FROM t
+            VISUALISE x AS x
+            DRAW point
         "#;
 
         let result = parse_test_query(query);

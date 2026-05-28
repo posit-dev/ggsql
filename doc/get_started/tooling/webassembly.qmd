@@ -1,0 +1,47 @@
+---
+title: WebAssembly
+---
+
+ggsql compiles to WebAssembly, which means it can run entirely in the browser with no server-side component. The [playground](/wasm/index.html) on this site is powered by the WebAssembly build, and all the interactive examples in the documentation run the same way.
+
+## Playground
+
+The easiest way to try ggsql without installing anything is the [online playground](/wasm/index.html). It provides an editor with syntax highlighting and a live preview of the resulting visualisation. Queries execute locally in your browser and no data leaves your machine.
+
+## Usage
+
+The WebAssembly build can be embedded in your own web pages using the [ggsql-wasm](https://www.npmjs.com/package/ggsql-wasm) npm package. This allows you to build custom interfaces and applications on top of ggsql running in the browser.
+
+Add ggsql-wasm to your project with:
+
+```bash
+npm install ggsql-wasm
+```
+
+Then you can import the module and use it in your JavaScript code:
+
+```javascript
+import init, { GgsqlContext } from "ggsql-wasm";
+
+// Initialize the WebAssembly module and create a ggsql context
+export const WASM_BASE = new URL(".", import.meta.url).href;
+await init(WASM_BASE + "ggsql_wasm_bg.wasm");
+const context = new GgsqlContext();
+
+// Fetch and register a CSV file as a table
+const response = await fetch("sample_data.csv");
+const buffer = await response.arrayBuffer();
+const data = new Uint8Array(buffer);
+context.register_csv('sample_data', data);
+
+// Execute a ggsql query against the registered data
+const query = `
+  VISUALISE x, y FROM sample_data
+  DRAW point
+`;
+const result = context.execute(query);
+
+// Use the result (a Vega-Lite spec) to render a chart,
+// or log it to the JavaScript console
+console.log(result);
+```

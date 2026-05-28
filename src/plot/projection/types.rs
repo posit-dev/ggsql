@@ -23,6 +23,29 @@ pub struct Projection {
 }
 
 impl Projection {
+    /// Create a default Cartesian projection (x, y).
+    pub fn cartesian() -> Self {
+        Self::with_defaults(Coord::cartesian())
+    }
+
+    /// Create a default Polar projection (radius, angle).
+    pub fn polar() -> Self {
+        Self::with_defaults(Coord::polar())
+    }
+
+    fn with_defaults(coord: Coord) -> Self {
+        let aesthetics = coord
+            .position_aesthetic_names()
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        Self {
+            coord,
+            aesthetics,
+            properties: HashMap::new(),
+        }
+    }
+
     /// Get the position aesthetic names as string slices.
     /// (aesthetics are always resolved at build time)
     pub fn position_names(&self) -> Vec<&str> {

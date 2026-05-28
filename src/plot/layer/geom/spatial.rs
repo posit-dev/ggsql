@@ -1,0 +1,78 @@
+use super::{DefaultAesthetics, GeomTrait, GeomType, StatResult};
+use crate::plot::types::DefaultAestheticValue;
+use crate::{naming, Mappings};
+
+#[derive(Debug, Clone, Copy)]
+pub struct Spatial;
+
+impl GeomTrait for Spatial {
+    fn geom_type(&self) -> GeomType {
+        GeomType::Spatial
+    }
+
+    fn aesthetics(&self) -> DefaultAesthetics {
+        DefaultAesthetics {
+            defaults: &[
+                ("geometry", DefaultAestheticValue::Required),
+                ("fill", DefaultAestheticValue::String("#747474")),
+                ("stroke", DefaultAestheticValue::String("black")),
+                ("opacity", DefaultAestheticValue::Number(0.8)),
+                ("linewidth", DefaultAestheticValue::Number(0.2)),
+                ("linetype", DefaultAestheticValue::String("solid")),
+            ],
+        }
+    }
+
+    fn apply_stat_transform(
+        &self,
+        query: &str,
+        _schema: &crate::plot::Schema,
+        _aesthetics: &Mappings,
+        _group_by: &[String],
+        _parameters: &std::collections::HashMap<String, crate::plot::ParameterValue>,
+        execute_query: &dyn Fn(&str) -> crate::Result<crate::DataFrame>,
+        dialect: &dyn crate::reader::SqlDialect,
+        _aesthetic_ctx: &crate::plot::aesthetic::AestheticContext,
+    ) -> crate::Result<StatResult> {
+        for stmt in dialect.sql_spatial_setup() {
+            execute_query(&stmt)?;
+        }
+
+        // Geometry columns use database-native types that don't have an Arrow equivalent.
+        // Convert to standard WKB so the writer can parse them with geozero.
+        let geom_col = naming::aesthetic_column("geometry");
+        let col = naming::quote_ident(&geom_col);
+
+        // Skip conversion if the geometry column is already in binary WKB format.
+        let already_wkb = _schema.iter().any(|c| {
+            c.name == geom_col
+                && matches!(
+                    c.dtype,
+                    arrow::datatypes::DataType::Binary | arrow::datatypes::DataType::LargeBinary
+                )
+        });
+
+        if already_wkb {
+            Ok(StatResult::Transformed {
+                query: query.to_string(),
+                stat_columns: vec![],
+                dummy_columns: vec![],
+                consumed_aesthetics: vec![],
+            })
+        } else {
+            let wkb_expr = dialect.sql_geometry_to_wkb(&col);
+            Ok(StatResult::Transformed {
+                query: format!("SELECT * REPLACE ({wkb_expr} AS {col}) FROM ({query})"),
+                stat_columns: vec![],
+                dummy_columns: vec![],
+                consumed_aesthetics: vec![],
+            })
+        }
+    }
+}
+
+impl std::fmt::Display for Spatial {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "spatial")
+    }
+}

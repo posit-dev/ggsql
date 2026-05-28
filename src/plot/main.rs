@@ -366,10 +366,11 @@ mod tests {
 
         assert!(valid_point.validate_mapping(&None, false).is_ok());
 
-        let invalid_point = Layer::new(Geom::point())
+        // Line still requires both pos1 and pos2 - mapping only one fails.
+        let invalid_line = Layer::new(Geom::line())
             .with_aesthetic("pos1".to_string(), AestheticValue::standard_column("x"));
 
-        assert!(invalid_point.validate_mapping(&None, false).is_err());
+        assert!(invalid_line.validate_mapping(&None, false).is_err());
 
         let valid_ribbon = Layer::new(Geom::ribbon())
             .with_aesthetic("pos1".to_string(), AestheticValue::standard_column("x"))
@@ -488,7 +489,9 @@ mod tests {
         assert!(point.is_supported("size"));
         assert!(point.is_supported("shape"));
         assert!(!point.is_supported("linetype"));
-        assert_eq!(point.required(), &["pos1", "pos2"]);
+        // Both axes are optional - omitted axes become dummy categorical
+        // axes (strip plot, or single dot when both omitted + aggregate).
+        assert!(point.required().is_empty());
 
         // Line geom
         let line = Geom::line().aesthetics();
@@ -526,10 +529,10 @@ mod tests {
             &["pos1", "pos2", "pos1end", "pos2end"]
         );
 
-        // Range requires pos1, pos2min, pos2max
+        // Range requires pos2min, pos2max; pos1 is optional (omit → dummy axis).
         assert_eq!(
             Geom::range().aesthetics().required(),
-            &["pos1", "pos2min", "pos2max"]
+            &["pos2min", "pos2max"]
         );
     }
 
@@ -739,14 +742,10 @@ mod tests {
     #[test]
     fn test_label_transform_with_default_project() {
         // LABEL x/y with default cartesian should transform to pos1/pos2
-        use crate::plot::projection::{Coord, Projection};
+        use crate::plot::projection::Projection;
 
         let mut spec = Plot::new();
-        spec.project = Some(Projection {
-            coord: Coord::cartesian(),
-            aesthetics: vec!["x".to_string(), "y".to_string()],
-            properties: HashMap::new(),
-        });
+        spec.project = Some(Projection::cartesian());
         spec.labels = Some(Labels {
             labels: HashMap::from([
                 ("x".to_string(), Some("X Axis".to_string())),
@@ -827,14 +826,10 @@ mod tests {
     #[test]
     fn test_label_transform_preserves_material() {
         // LABEL title/color should be preserved unchanged
-        use crate::plot::projection::{Coord, Projection};
+        use crate::plot::projection::Projection;
 
         let mut spec = Plot::new();
-        spec.project = Some(Projection {
-            coord: Coord::cartesian(),
-            aesthetics: vec!["x".to_string(), "y".to_string()],
-            properties: HashMap::new(),
-        });
+        spec.project = Some(Projection::cartesian());
         spec.labels = Some(Labels {
             labels: HashMap::from([
                 ("title".to_string(), Some("My Chart".to_string())),

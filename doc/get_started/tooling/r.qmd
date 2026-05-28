@@ -1,0 +1,41 @@
+---
+title: R
+---
+
+The [ggsql R package](https://r.ggsql.org) provides bindings to ggsql, allowing you to run ggsql queries directly from R and render visualisations from data frames. It also contains a knitr engine for supporting ggsql blocks, with facilities for bidirectional data flow between R, Python, and ggsql blocks. 
+
+## Installation
+
+ggsql can be installed from CRAN with:
+
+```r
+pak::pak("ggsql")
+```
+
+To get the development version, change "ggsql" to "posit-dev/ggsql".
+
+## Basic usage
+
+When you load ggsql into R in your Rmarkdown/Quarto document the knitr engine is registered. This allows you to use ggsql directly in Rmarkdown and Quarto documents.
+
+While one of the core appeals of the ggsql R package is the knitr engine it provides, you can also use it directly in R to execute visual queries:
+
+```r
+library(ggsql)
+
+# Create an in-memory DuckDB reader
+reader <- duckdb_reader()
+
+# Register a dataset in it
+ggsql_register(reader, mtcars, "amazing_data")
+
+# Visualize it with a query
+ggsql_execute(reader, "
+VISUALIZE mpg AS x, disp AS y FROM amazing_data
+DRAW point
+")
+```
+
+## Further reading
+
+Full documentation for the R package is available at [r.ggsql.org](https://r.ggsql.org).

@@ -96,6 +96,7 @@ criterion/
 
 # Claude Code specific
 .claude/
+memory
 
 # R specific
 *.Rproj.user

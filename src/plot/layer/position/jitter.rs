@@ -19,6 +19,7 @@ use super::{
     Layer, PositionTrait, PositionType,
 };
 use crate::array_util::{as_f64, cast_array, new_f64_array_non_null};
+use crate::plot::layer::geom::types::SIDE_VALUES;
 use crate::plot::types::{DefaultParamValue, ParamConstraint, ParamDefinition, ParameterValue};
 use crate::{naming, DataFrame, GgsqlError, Plot, Result};
 use arrow::array::Array;
@@ -27,6 +28,40 @@ use rand::Rng;
 
 /// Valid distribution types for jitter position
 const DISTRIBUTION_VALUES: &[&str] = &["uniform", "normal", "density", "intensity"];
+
+/// Which side(s) of the original position the jitter offset is allowed to occupy.
+///
+/// `Both` is the default: the sampled offset is used as drawn, ranging across
+/// `[-width/2, width/2]`. `Positive` and `Negative` fold the sample so it lies
+/// in `[0, width/2]` or `[-width/2, 0]` respectively, leaving the other half
+/// of the band empty for a complementary half-shape (half-violin, half-box,
+/// or oppositely-sided jitter) to occupy.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum JitterSide {
+    Both,
+    Positive,
+    Negative,
+}
+
+impl JitterSide {
+    fn from_str(s: &str) -> Self {
+        match s {
+            "right" | "top" => Self::Positive,
+            "left" | "bottom" => Self::Negative,
+            _ => Self::Both,
+        }
+    }
+
+    /// Fold a raw sample (which the underlying distribution drew symmetrically
+    /// around 0) into the half-range corresponding to this side.
+    fn fold(self, raw: f64) -> f64 {
+        match self {
+            Self::Both => raw,
+            Self::Positive => raw.abs(),
+            Self::Negative => -raw.abs(),
+        }
+    }
+}
 
 /// Jitter distribution type
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -298,6 +333,11 @@ impl PositionTrait for Jitter {
                 default: DefaultParamValue::Number(1.0),
                 constraint: ParamConstraint::number_min_exclusive(0.0),
             },
+            ParamDefinition {
+                name: "side",
+                default: DefaultParamValue::String("both"),
+                constraint: ParamConstraint::string_option(SIDE_VALUES),
+            },
         ];
         PARAMS
     }
@@ -474,6 +514,22 @@ fn apply_jitter(df: DataFrame, layer: &Layer, spec: &Plot) -> Result<DataFrame> 
         })
         .unwrap_or(JitterDistribution::Uniform);
 
+    // Get side parameter (default "both"). When set to one side, the sampled
+    // offset is folded into that half of the range so the jitter occupies only
+    // one side of the original position. The full `width` is still used to
+    // compute dodge centers and per-group `adjusted_width`, so a half-jitter
+    // sits inside half of the same allocated band that a `side: 'both'` jitter
+    // would fill — this is what allows it to compose cleanly with a
+    // half-violin or half-boxplot on the other side.
+    let side = layer
+        .parameters
+        .get("side")
+        .and_then(|v| match v {
+            ParameterValue::String(s) => Some(JitterSide::from_str(s.as_str())),
+            _ => None,
+        })
+        .unwrap_or(JitterSide::Both);
+
     // Density/intensity distribution validation: requires exactly one continuous axis
     // (one discrete axis to jitter along, one continuous axis for density)
     let pos1_continuous = !jitter_pos1;
@@ -560,16 +616,17 @@ fn apply_jitter(df: DataFrame, layer: &Layer, spec: &Plot) -> Result<DataFrame> 
         None
     };
 
-    // Helper to generate jitter with optional density scaling
+    // Helper to generate jitter with optional density scaling and side folding
     let make_jitter =
         |rng: &mut rand::rngs::ThreadRng, jitter_width: f64, count: usize| -> Vec<f64> {
             (0..count)
                 .map(|i| {
-                    let jitter = distribution.sample(rng, jitter_width);
+                    let raw = distribution.sample(rng, jitter_width);
+                    let folded = side.fold(raw);
                     if let Some(ref scales) = density_scales {
-                        jitter * scales[i]
+                        folded * scales[i]
                     } else {
-                        jitter
+                        folded
                     }
                 })
                 .collect()
@@ -978,7 +1035,7 @@ mod tests {
     fn test_jitter_default_params() {
         let jitter = Jitter;
         let params = jitter.default_params();
-        assert_eq!(params.len(), 5);
+        assert_eq!(params.len(), 6);
         assert_eq!(params[0].name, "width");
         assert!(matches!(params[0].default, DefaultParamValue::Number(0.9)));
         assert_eq!(params[1].name, "dodge");
@@ -996,6 +1053,11 @@ mod tests {
         assert!(matches!(params[3].default, DefaultParamValue::Null));
         assert_eq!(params[4].name, "adjust");
         assert!(matches!(params[4].default, DefaultParamValue::Number(1.0)));
+        assert_eq!(params[5].name, "side");
+        assert!(matches!(
+            params[5].default,
+            DefaultParamValue::String("both")
+        ));
     }
 
     #[test]
@@ -1570,5 +1632,206 @@ mod tests {
 
         let q75 = super::quantile_cont(&sorted, 0.75);
         assert!((q75 - 4.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_jitter_side_value_mapping() {
+        // The sign assignment is symmetric across both axes: "right" / "top"
+        // → positive, "left" / "bottom" → negative, anything else → both.
+        assert_eq!(JitterSide::from_str("right"), JitterSide::Positive);
+        assert_eq!(JitterSide::from_str("top"), JitterSide::Positive);
+        assert_eq!(JitterSide::from_str("left"), JitterSide::Negative);
+        assert_eq!(JitterSide::from_str("bottom"), JitterSide::Negative);
+        assert_eq!(JitterSide::from_str("both"), JitterSide::Both);
+        assert_eq!(JitterSide::from_str("anything-else"), JitterSide::Both);
+
+        assert_eq!(JitterSide::Positive.fold(0.3), 0.3);
+        assert_eq!(JitterSide::Positive.fold(-0.3), 0.3);
+        assert_eq!(JitterSide::Negative.fold(0.3), -0.3);
+        assert_eq!(JitterSide::Negative.fold(-0.3), -0.3);
+        assert_eq!(JitterSide::Both.fold(0.3), 0.3);
+        assert_eq!(JitterSide::Both.fold(-0.3), -0.3);
+    }
+
+    #[test]
+    fn test_jitter_side_pos1_one_sided_no_dodge() {
+        // dodge=false so the pos1offset is exclusively the jitter sample —
+        // we can directly assert the sign matches `side`.
+        let jitter = Jitter;
+        let mut spec = Plot::new();
+        spec.scales.push(make_discrete_scale("pos1"));
+        spec.scales.push(make_continuous_scale("pos2"));
+
+        for (side, expect_positive) in [
+            ("right", true),
+            ("top", true),
+            ("left", false),
+            ("bottom", false),
+        ] {
+            let mut layer = make_test_layer();
+            layer.partition_by = vec![]; // disable groups so dodge is a no-op
+            layer
+                .parameters
+                .insert("dodge".to_string(), ParameterValue::Boolean(false));
+            layer
+                .parameters
+                .insert("side".to_string(), ParameterValue::String(side.to_string()));
+
+            let (result, _) = jitter
+                .apply_adjustment(make_test_df(), &layer, &spec)
+                .unwrap();
+
+            let offset_col = result.column("__ggsql_aes_pos1offset__").unwrap();
+            let offsets = as_f64(offset_col).unwrap();
+            for i in 0..offsets.len() {
+                let v = offsets.value(i);
+                if expect_positive {
+                    assert!(
+                        v >= 0.0,
+                        "side={} should produce non-negative pos1offset, got {}",
+                        side,
+                        v
+                    );
+                } else {
+                    assert!(
+                        v <= 0.0,
+                        "side={} should produce non-positive pos1offset, got {}",
+                        side,
+                        v
+                    );
+                }
+                assert!(
+                    v.abs() <= 0.45 + 1e-9,
+                    "magnitude should stay within width/2"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_jitter_side_pos2_one_sided_no_dodge() {
+        // Jitter pos2 (vertical axis) with side. Same per-axis mapping.
+        let jitter = Jitter;
+        let mut spec = Plot::new();
+        spec.scales.push(make_continuous_scale("pos1"));
+        spec.scales.push(make_discrete_scale("pos2"));
+
+        for (side, expect_positive) in [
+            ("top", true),
+            ("right", true),
+            ("bottom", false),
+            ("left", false),
+        ] {
+            let mut layer = make_test_layer();
+            layer.partition_by = vec![];
+            layer
+                .parameters
+                .insert("dodge".to_string(), ParameterValue::Boolean(false));
+            layer
+                .parameters
+                .insert("side".to_string(), ParameterValue::String(side.to_string()));
+
+            let (result, _) = jitter
+                .apply_adjustment(make_test_df(), &layer, &spec)
+                .unwrap();
+
+            let offset_col = result.column("__ggsql_aes_pos2offset__").unwrap();
+            let offsets = as_f64(offset_col).unwrap();
+            for i in 0..offsets.len() {
+                let v = offsets.value(i);
+                if expect_positive {
+                    assert!(v >= 0.0, "side={} pos2offset should be ≥0, got {}", side, v);
+                } else {
+                    assert!(v <= 0.0, "side={} pos2offset should be ≤0, got {}", side, v);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_jitter_side_with_dodge_keeps_full_band_width() {
+        // Load-bearing test for the dodge-composition invariant: a half-jitter
+        // must occupy half of the per-group dodge band, with the other half
+        // empty for a complementary half-shape (half-violin or half-box) to
+        // fill. Specifically: the total range remains [-0.45, +0.45] (width
+        // 0.9 / 2 groups) — same as `side: 'both'` — but each row's offset
+        // sits on the same side of its group's centerline.
+        let jitter = Jitter;
+        let df = make_test_df();
+        let mut spec = Plot::new();
+        spec.scales.push(make_discrete_scale("pos1"));
+        spec.scales.push(make_continuous_scale("pos2"));
+
+        let mut layer = make_test_layer(); // partition_by = ["fill"] => 2 dodge groups
+        layer.parameters.insert(
+            "side".to_string(),
+            ParameterValue::String("right".to_string()),
+        );
+
+        let (result, _) = jitter.apply_adjustment(df, &layer, &spec).unwrap();
+        let offsets = as_f64(result.column("__ggsql_aes_pos1offset__").unwrap()).unwrap();
+        let fill = as_str(result.column("__ggsql_aes_fill__").unwrap()).unwrap();
+
+        // Group X dodge center is at -0.225, group Y at +0.225. With side=right
+        // the jitter is folded to non-negative, so each row sits at center +
+        // [0, 0.225].
+        for i in 0..offsets.len() {
+            let v = offsets.value(i);
+            let group = fill.value(i);
+            let center = if group == "X" { -0.225 } else { 0.225 };
+            assert!(
+                (v - center) >= -1e-9,
+                "row {i} group {group}: offset {v} should be ≥ center {center}"
+            );
+            assert!(
+                (v - center) <= 0.225 + 1e-9,
+                "row {i} group {group}: offset {v} should be ≤ center + width/2"
+            );
+        }
+
+        // And the overall range still spans the full 0.9 width across groups.
+        let max_offset = (0..offsets.len())
+            .map(|i| offsets.value(i))
+            .fold(f64::MIN, f64::max);
+        assert!(
+            max_offset <= 0.45 + 1e-9,
+            "max offset {} should not exceed full-width upper bound 0.45",
+            max_offset
+        );
+    }
+
+    #[test]
+    fn test_jitter_side_normal_distribution() {
+        // Folding works for the normal distribution too — it produces a
+        // half-normal sample with the same σ.
+        let jitter = Jitter;
+        let mut spec = Plot::new();
+        spec.scales.push(make_discrete_scale("pos1"));
+        spec.scales.push(make_continuous_scale("pos2"));
+
+        let mut layer = make_test_layer();
+        layer.partition_by = vec![];
+        layer
+            .parameters
+            .insert("dodge".to_string(), ParameterValue::Boolean(false));
+        layer.parameters.insert(
+            "distribution".to_string(),
+            ParameterValue::String("normal".to_string()),
+        );
+        layer.parameters.insert(
+            "side".to_string(),
+            ParameterValue::String("right".to_string()),
+        );
+
+        let (result, _) = jitter
+            .apply_adjustment(make_test_df(), &layer, &spec)
+            .unwrap();
+        let offsets = as_f64(result.column("__ggsql_aes_pos1offset__").unwrap()).unwrap();
+        for i in 0..offsets.len() {
+            assert!(
+                offsets.value(i) >= 0.0,
+                "normal+side=right should yield non-negative offsets"
+            );
+        }
     }
 }

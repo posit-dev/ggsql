@@ -46,12 +46,26 @@ pub fn geom_to_mark(geom: &Geom) -> Value {
         GeomType::Smooth => "line",
         GeomType::Rule => "rule",
         GeomType::Range => "rule",
+        GeomType::Spatial => "geoshape",
         _ => "point", // Default fallback
     };
     json!({
         "type": mark_type,
         "clip": true
     })
+}
+
+/// Map a `side` value to a positive/negative sign in the orientation-aware way
+/// shared by violin, boxplot, and (effectively) jitter rendering. Returns true
+/// if `side` falls on the positive offset half (right/top of a vertical layer,
+/// bottom/left of a horizontal layer). Caller is responsible for handling
+/// `"both"` separately.
+fn side_is_positive(side: &str, is_horizontal: bool) -> bool {
+    if is_horizontal {
+        matches!(side, "bottom" | "left")
+    } else {
+        matches!(side, "top" | "right")
+    }
 }
 
 /// Validate column references for a single layer against its specific DataFrame
@@ -145,7 +159,7 @@ pub enum PreparedData {
 ///
 /// Most geoms use the default implementations. Only geoms with special requirements
 /// (bar width, path ordering, boxplot decomposition) need to override specific methods.
-pub trait GeomRenderer: Send + Sync {
+pub trait GeomRenderer {
     // === Phase 1: Data Preparation ===
 
     /// Prepare data for this layer.
@@ -1550,12 +1564,7 @@ impl GeomRenderer for ViolinRenderer {
         // It'll be implemented as an offset.
         let violin_offset = match layer.parameters.get("side") {
             Some(ParameterValue::String(side)) if side != "both" => {
-                let positive = if is_horizontal {
-                    matches!(side.as_str(), "bottom" | "left")
-                } else {
-                    matches!(side.as_str(), "top" | "right")
-                };
-                if positive {
+                if side_is_positive(side, is_horizontal) {
                     format!("[datum.{offset}]", offset = offset_col)
                 } else {
                     format!("[-datum.{offset}]", offset = offset_col)
@@ -1588,8 +1597,16 @@ impl GeomRenderer for ViolinRenderer {
             .cloned()
             .unwrap_or_default();
 
-        // Check if pos1offset exists (from dodging) - we'll combine it with violin offset
-        let pos1offset_col = naming::aesthetic_column("pos1offset");
+        // Combine the violin offset with the dodge offset (if any). Dodge
+        // stores its per-row offset in the *categorical* axis offset column,
+        // which is pos1offset in vertical orientation and pos2offset in
+        // horizontal orientation (where the categorical axis has been
+        // flipped to pos2 by orientation resolution).
+        let dodge_offset_col = if is_horizontal {
+            naming::aesthetic_column("pos2offset")
+        } else {
+            naming::aesthetic_column("pos1offset")
+        };
 
         let mut transforms = existing_transforms;
         transforms.extend(vec![
@@ -1603,11 +1620,11 @@ impl GeomRenderer for ViolinRenderer {
                 "as": ["__violin_offset"]
             }),
             json!({
-                // Add pos1offset (dodge displacement) if it exists, otherwise use violin offset directly
-                // This positions the violin correctly when dodging
+                // Add the dodge displacement (if any) so the violin is
+                // positioned correctly within its dodged group.
                 "calculate": format!(
-                    "datum.{pos1offset} != null ? datum.__violin_offset + datum.{pos1offset} : datum.__violin_offset",
-                    pos1offset = pos1offset_col
+                    "datum.{dodge} != null ? datum.__violin_offset + datum.{dodge} : datum.__violin_offset",
+                    dodge = dodge_offset_col
                 ),
                 "as": "__final_offset"
             }),
@@ -1923,7 +1940,7 @@ impl BoxplotRenderer {
                 GgsqlError::WriterError("Boxplot requires 'y' aesthetic mapping".to_string())
             })?;
 
-        let (pos1, pos1_end, _, pos2, pos2_end, _) = &context.channels;
+        let (pos1, pos1_end, pos1_offset, pos2, pos2_end, pos2_offset) = &context.channels;
         let value_var1 = if is_horizontal { pos1 } else { pos2 };
         let value_var2 = if is_horizontal { pos1_end } else { pos2_end };
         let axis = if is_horizontal { pos2 } else { pos1 };
@@ -1992,9 +2009,8 @@ impl BoxplotRenderer {
         // Build encoding templates for y and y2 fields
         let mut y_encoding = summary_prototype["encoding"][value_var1].clone();
         y_encoding["field"] = json!(value_col);
-        let mut y2_encoding = summary_prototype["encoding"][value_var1].clone();
-        y2_encoding["field"] = json!(value2_col);
-        y2_encoding["title"] = Value::Null; // Suppress y2 title to prevent "y, y2" axis label
+        // y2 is a secondary position channel — Vega-Lite only allows field/datum/value
+        let y2_encoding = json!({"field": value2_col});
 
         // Lower whiskers (rule from y to y2, where y=q1 and y2=lower)
         let mut lower_whiskers = create_layer(
@@ -2036,46 +2052,115 @@ impl BoxplotRenderer {
         upper_whiskers["encoding"][value_var1] = y_encoding.clone();
         upper_whiskers["encoding"][value_var2] = y2_encoding.clone();
 
+        // Resolve the `side` parameter. When `side != "both"`, the box and
+        // median tick render at half their normal size and anchor to the
+        // categorical centerline so they only occupy one side of each band.
+        // Whiskers and outliers stay on the centerline. The dodge-aware
+        // `width` value is unchanged so a half-box still occupies half of
+        // its dodge group's allocated space — this is what lets a half-box
+        // pair with a half-violin or one-sided jitter on the same band.
+        let side = layer
+            .parameters
+            .get("side")
+            .and_then(|v| match v {
+                ParameterValue::String(s) => Some(s.as_str()),
+                _ => None,
+            })
+            .unwrap_or("both");
+        let half_side = side != "both";
+        let side_positive = half_side && side_is_positive(side, is_horizontal);
+
+        // For `side != "both"`, halve the bar width and shift the bar to
+        // one side of the band. We reuse the same mechanism dodge already
+        // uses to shift bars within a band: an `xOffset` (or `yOffset`)
+        // encoding pointing at a numeric column whose value is interpreted
+        // as a band-fraction shift via a scale with domain `[-0.5, 0.5]`.
+        //
+        // The box/median needs to be shifted by `±w/4` of the bandwidth so
+        // a half-width bar (`bandwidth*w/2`) sits centred on the middle of
+        // its chosen half-band. When dodge is also active there is already
+        // a `pos1offset` (or `pos2offset`) column carrying the dodge shift
+        // — we add the side shift to that and point the box/median at the
+        // combined column. Whiskers and outliers continue to use the
+        // original pos1offset (or none), so they stay centred on the
+        // dodge centerline as required.
+        let box_size = if half_side {
+            json!({"expr": format!("bandwidth('{}') * {} / 2", axis, width)})
+        } else {
+            width_value.clone()
+        };
+        let side_shift: f64 = if side_positive {
+            width / 4.0
+        } else {
+            -width / 4.0
+        };
+        let size_key = if is_horizontal { "height" } else { "width" };
+
+        // Pick the categorical-axis offset channel and column based on
+        // orientation. The categorical axis is pos1 (vertical) or pos2
+        // (horizontal); the offset channel is pos1_offset / pos2_offset.
+        let (offset_channel, base_offset_col) = if is_horizontal {
+            (pos2_offset.as_str(), naming::aesthetic_column("pos2offset"))
+        } else {
+            (pos1_offset.as_str(), naming::aesthetic_column("pos1offset"))
+        };
+        let combined_offset_col = "__ggsql_box_side_offset__".to_string();
+
+        // Helper that, when half_side is true, adds a calculate transform
+        // to combine the dodge offset (if any) with the side shift, then
+        // points the layer's offset encoding at the combined column.
+        let apply_side_shift = |layer_spec: &mut Value| {
+            if !half_side {
+                return;
+            }
+            let calc_expr = format!(
+                "(datum[\"{base}\"] != null ? datum[\"{base}\"] : 0) + {shift}",
+                base = base_offset_col,
+                shift = side_shift,
+            );
+            let existing = layer_spec
+                .get("transform")
+                .and_then(|t| t.as_array())
+                .cloned()
+                .unwrap_or_default();
+            let mut transforms = existing;
+            transforms.push(json!({
+                "calculate": calc_expr,
+                "as": combined_offset_col,
+            }));
+            layer_spec["transform"] = json!(transforms);
+
+            layer_spec["encoding"][offset_channel] = json!({
+                "field": combined_offset_col,
+                "type": "quantitative",
+                "scale": {"domain": [-0.5, 0.5]},
+            });
+        };
+
         // Box (bar from y to y2, where y=q1 and y2=q3)
         let mut box_part = create_layer(
             &summary_prototype,
             "box",
-            if is_horizontal {
-                json!({
-                    "type": "bar",
-                    "height": width_value,
-                    "baseline": "middle"
-                })
-            } else {
-                json!({
-                    "type": "bar",
-                    "width": width_value,
-                    "align": "center"
-                })
-            },
+            json!({
+                "type": "bar",
+                size_key: box_size,
+            }),
         );
         box_part["encoding"][value_var1] = y_encoding.clone();
         box_part["encoding"][value_var2] = y2_encoding.clone();
+        apply_side_shift(&mut box_part);
 
-        // Median line (tick at y, where y=median)
+        // Median line (tick at y, where y=median) — same width and shift as the box
         let mut median_line = create_layer(
             &summary_prototype,
             "median",
-            if is_horizontal {
-                json!({
-                    "type": "tick",
-                    "height": width_value,
-                    "baseline": "middle"
-                })
-            } else {
-                json!({
-                    "type": "tick",
-                    "width": width_value,
-                    "align": "center"
-                })
-            },
+            json!({
+                "type": "tick",
+                size_key: box_size,
+            }),
         );
         median_line["encoding"][value_var1] = y_encoding;
+        apply_side_shift(&mut median_line);
 
         layers.push(lower_whiskers);
         layers.push(upper_whiskers);
@@ -2130,6 +2215,130 @@ impl GeomRenderer for BoxplotRenderer {
 }
 
 // =============================================================================
+// Spatial Renderer
+// =============================================================================
+
+struct SpatialRenderer;
+
+#[cfg(feature = "spatial")]
+impl SpatialRenderer {
+    fn wkb_to_geojson(wkb_bytes: &[u8]) -> Result<Value> {
+        use geozero::geojson::GeoJsonWriter;
+        use geozero::wkb::Wkb;
+        use geozero::GeozeroGeometry;
+        use std::io::Cursor;
+
+        let mut geojson_out = Vec::new();
+        let wkb = Wkb(wkb_bytes);
+        wkb.process_geom(&mut GeoJsonWriter::new(Cursor::new(&mut geojson_out)))
+            .map_err(|e| {
+                GgsqlError::WriterError(format!("Failed to convert WKB to GeoJSON: {}", e))
+            })?;
+
+        serde_json::from_slice(&geojson_out)
+            .map_err(|e| GgsqlError::WriterError(format!("Invalid GeoJSON from WKB: {}", e)))
+    }
+
+    fn parse_geometry_from_array(array: &arrow::array::ArrayRef, idx: usize) -> Result<Value> {
+        use arrow::datatypes::DataType;
+
+        if array.is_null(idx) {
+            return Ok(Value::Null);
+        }
+
+        match array.data_type() {
+            DataType::Binary => {
+                let bin = array
+                    .as_any()
+                    .downcast_ref::<arrow::array::BinaryArray>()
+                    .ok_or_else(|| {
+                        GgsqlError::WriterError("Failed to read geometry as Binary".into())
+                    })?;
+                Self::wkb_to_geojson(bin.value(idx))
+            }
+            DataType::LargeBinary => {
+                let bin = array
+                    .as_any()
+                    .downcast_ref::<arrow::array::LargeBinaryArray>()
+                    .ok_or_else(|| {
+                        GgsqlError::WriterError("Failed to read geometry as LargeBinary".into())
+                    })?;
+                Self::wkb_to_geojson(bin.value(idx))
+            }
+            other => Err(GgsqlError::WriterError(format!(
+                "Geometry column has unsupported type {:?}; expected Binary (WKB)",
+                other
+            ))),
+        }
+    }
+}
+
+impl GeomRenderer for SpatialRenderer {
+    fn prepare_data(
+        &self,
+        df: &DataFrame,
+        _layer: &Layer,
+        _data_key: &str,
+        _binned_columns: &HashMap<String, Vec<f64>>,
+    ) -> Result<PreparedData> {
+        #[cfg(not(feature = "spatial"))]
+        {
+            return Err(GgsqlError::WriterError(
+                "Spatial visualization requires the 'spatial' feature to be enabled".to_string(),
+            ));
+        }
+
+        #[cfg(feature = "spatial")]
+        {
+            let geometry_col = naming::aesthetic_column("geometry");
+
+            let col_names: Vec<String> = df
+                .get_column_names()
+                .iter()
+                .map(|s| s.to_string())
+                .collect();
+
+            let mut features = Vec::with_capacity(df.height());
+
+            for row_idx in 0..df.height() {
+                let mut feature = serde_json::Map::new();
+                feature.insert("type".to_string(), json!("Feature"));
+
+                for col_name in &col_names {
+                    let col = df.column(col_name).map_err(|e| {
+                        GgsqlError::WriterError(format!(
+                            "Failed to get column '{}': {}",
+                            col_name, e
+                        ))
+                    })?;
+
+                    if *col_name == geometry_col {
+                        let geom = Self::parse_geometry_from_array(col, row_idx)?;
+                        feature.insert("geometry".to_string(), geom);
+                    } else if !matches!(
+                        // These are reserved names for the geojson format, so
+                        // we shouldn't be inserting columns with that name.
+                        // Our naming module should prevent such collisions,
+                        // so this is purely defensive.
+                        col_name.as_str(),
+                        "type" | "geometry" | "properties" | "bbox" | "id"
+                    ) {
+                        let value = super::data::series_value_at(col, row_idx)?;
+                        feature.insert(col_name.clone(), value);
+                    }
+                }
+                features.push(Value::Object(feature));
+            }
+
+            Ok(PreparedData::Single {
+                values: features,
+                metadata: Box::new(()),
+            })
+        }
+    }
+}
+
+// =============================================================================
 // Dispatcher
 // =============================================================================
 
@@ -2147,6 +2356,7 @@ pub fn get_renderer(geom: &Geom) -> Box<dyn GeomRenderer> {
         GeomType::Text => Box::new(TextRenderer),
         GeomType::Range => Box::new(RangeRenderer),
         GeomType::Rule => Box::new(RuleRenderer),
+        GeomType::Spatial => Box::new(SpatialRenderer),
         // All other geoms (Point, Area, Ribbon, Density, Segment, etc.) use the default renderer
         _ => Box::new(DefaultRenderer),
     }
@@ -2155,7 +2365,6 @@ pub fn get_renderer(geom: &Geom) -> Box<dyn GeomRenderer> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::plot::projection::CoordKind;
 
     #[test]
     fn test_violin_detail_encoding() {
@@ -3633,8 +3842,214 @@ mod tests {
     }
 
     #[test]
+    fn test_boxplot_side_parameter() {
+        use crate::plot::ParameterValue;
+        use crate::AestheticValue;
+
+        // Render the boxplot layers with the given `side` and orientation,
+        // then return the box, median, lower-whisker, upper-whisker, and
+        // outlier mark specs as a tuple for assertion.
+        fn render_marks(
+            side: Option<&str>,
+            is_horizontal: bool,
+        ) -> (Value, Value, Value, Value, Value) {
+            let mut layer = Layer::new(crate::plot::Geom::boxplot());
+            layer
+                .mappings
+                .insert("pos1", AestheticValue::standard_column("species"));
+            layer
+                .mappings
+                .insert("pos2", AestheticValue::standard_column("bill_len"));
+            if let Some(s) = side {
+                layer
+                    .parameters
+                    .insert("side".to_string(), ParameterValue::String(s.to_string()));
+            }
+            if is_horizontal {
+                layer.parameters.insert(
+                    "orientation".to_string(),
+                    ParameterValue::String("transposed".to_string()),
+                );
+            }
+
+            // Build a minimal prototype with encoding fields the renderer reads.
+            let prototype = if is_horizontal {
+                json!({
+                    "mark": {"type": "point"},
+                    "encoding": {
+                        "x": {"field": naming::aesthetic_column("pos1"), "type": "quantitative"},
+                        "y": {"field": "species", "type": "nominal"},
+                    },
+                })
+            } else {
+                json!({
+                    "mark": {"type": "point"},
+                    "encoding": {
+                        "x": {"field": "species", "type": "nominal"},
+                        "y": {"field": naming::aesthetic_column("pos2"), "type": "quantitative"},
+                    },
+                })
+            };
+
+            let layers = BoxplotRenderer
+                .render_layers(
+                    prototype,
+                    &layer,
+                    "__ggsql_layer_0__",
+                    true, // include outliers
+                    &RenderContext::default_for_test(),
+                )
+                .unwrap();
+
+            // Order set by render_layers: outlier (if has_outliers), lower_whisker,
+            // upper_whisker, box, median.
+            (
+                layers[3].clone(), // box
+                layers[4].clone(), // median
+                layers[1].clone(), // lower_whisker
+                layers[2].clone(), // upper_whisker
+                layers[0].clone(), // outlier
+            )
+        }
+
+        // Helper: extract the band-fraction shift from the offset encoding's
+        // calculate transform. Returns 0.0 if no side shift transform is present.
+        fn extract_side_shift(layer_spec: &Value) -> f64 {
+            let transforms = match layer_spec.get("transform").and_then(|t| t.as_array()) {
+                Some(t) => t,
+                None => return 0.0,
+            };
+            for t in transforms {
+                if let Some(as_field) = t.get("as").and_then(|s| s.as_str()) {
+                    if as_field == "__ggsql_box_side_offset__" {
+                        let calc = t.get("calculate").and_then(|c| c.as_str()).unwrap_or("");
+                        let after = match calc.split(") + ").nth(1) {
+                            Some(s) => s,
+                            None => return 0.0,
+                        };
+                        return after.parse::<f64>().unwrap_or(0.0);
+                    }
+                }
+            }
+            0.0
+        }
+
+        // Default width=0.9 → side shift magnitude = 0.225 (= w/4).
+        let shift_mag = 0.225;
+
+        // Default ("both") in vertical orientation: full width, no side shift.
+        let (box_v, _median_v, low_v, up_v, out_v) = render_marks(None, false);
+        assert_eq!(extract_side_shift(&box_v), 0.0);
+        // Box width should be the full-width expression (not halved).
+        let box_full_width = box_v["mark"]["width"].clone();
+        assert!(
+            box_full_width
+                .get("expr")
+                .and_then(|e| e.as_str())
+                .map(|s| !s.contains("/ 2"))
+                .unwrap_or(false),
+            "default box width should be full bandwidth*w, got {}",
+            box_full_width
+        );
+
+        // Vertical "right" / "top" → positive shift (box on right half of band).
+        for s in ["right", "top"] {
+            let (b, m, low, up, out) = render_marks(Some(s), false);
+            let shift = extract_side_shift(&b);
+            assert!(
+                (shift - shift_mag).abs() < 1e-9,
+                "side={s}: expected shift +{shift_mag}, got {shift}"
+            );
+            assert!(
+                (extract_side_shift(&m) - shift_mag).abs() < 1e-9,
+                "side={s} median shift mismatch"
+            );
+            // Box width is halved.
+            let bw = b["mark"]["width"]["expr"].as_str().unwrap_or("");
+            assert!(
+                bw.contains("/ 2"),
+                "side={s} expected halved width, got {bw}"
+            );
+            // xOffset encoding points at the combined column.
+            assert_eq!(
+                b["encoding"]["xOffset"]["field"],
+                json!("__ggsql_box_side_offset__"),
+                "side={s}"
+            );
+            // Whiskers and outliers unchanged.
+            assert_eq!(low["mark"], low_v["mark"], "lower whisker side={s}");
+            assert_eq!(up["mark"], up_v["mark"], "upper whisker side={s}");
+            assert_eq!(out["mark"], out_v["mark"], "outlier side={s}");
+            assert!(
+                low.get("transform")
+                    .and_then(|t| t.as_array())
+                    .map(
+                        |arr| arr.iter().all(|tr| tr.get("as").and_then(|s| s.as_str())
+                            != Some("__ggsql_box_side_offset__"))
+                    )
+                    .unwrap_or(true),
+                "side={s} lower whisker should not have side-shift transform"
+            );
+        }
+
+        // Vertical "left" / "bottom" → negative shift (box on left half of band).
+        for s in ["left", "bottom"] {
+            let (b, m, _, _, _) = render_marks(Some(s), false);
+            let shift = extract_side_shift(&b);
+            assert!(
+                (shift + shift_mag).abs() < 1e-9,
+                "side={s}: expected shift -{shift_mag}, got {shift}"
+            );
+            assert!(
+                (extract_side_shift(&m) + shift_mag).abs() < 1e-9,
+                "side={s} median shift mismatch"
+            );
+        }
+
+        // Horizontal "both": full height, no shift.
+        let (box_h, _, _, _, _) = render_marks(None, true);
+        assert_eq!(extract_side_shift(&box_h), 0.0);
+
+        // Horizontal "bottom" / "left" → positive (per violin convention,
+        // mapped to positive yOffset which renders below the centerline).
+        for s in ["bottom", "left"] {
+            let (b, m, _, _, _) = render_marks(Some(s), true);
+            assert!(
+                (extract_side_shift(&b) - shift_mag).abs() < 1e-9,
+                "side={s}: expected +{shift_mag}"
+            );
+            assert!(
+                (extract_side_shift(&m) - shift_mag).abs() < 1e-9,
+                "side={s} median"
+            );
+            // Horizontal uses yOffset, not xOffset.
+            assert_eq!(
+                b["encoding"]["yOffset"]["field"],
+                json!("__ggsql_box_side_offset__"),
+                "side={s}"
+            );
+        }
+
+        // Horizontal "top" / "right" → negative.
+        for s in ["top", "right"] {
+            let (b, m, _, _, _) = render_marks(Some(s), true);
+            assert!(
+                (extract_side_shift(&b) + shift_mag).abs() < 1e-9,
+                "side={s}: expected -{shift_mag}"
+            );
+            assert!(
+                (extract_side_shift(&m) + shift_mag).abs() < 1e-9,
+                "side={s} median"
+            );
+        }
+    }
+
+    #[test]
     fn test_render_context_get_extent() {
         use crate::plot::{ArrayElement, Scale};
+        use crate::writer::vegalite::projection::get_projection_renderer;
+
+        let cartesian = get_projection_renderer(None, None, &[]);
 
         // Test success case: continuous scale with numeric range
         let scales = vec![Scale {
@@ -3652,7 +4067,7 @@ mod tests {
         }];
         let context = RenderContext::new(
             &scales,
-            CoordKind::Cartesian,
+            cartesian.as_ref(),
             AestheticContext::from_static(&["x", "y"], &[]),
         );
         let result = context.get_extent("x");
@@ -3662,7 +4077,7 @@ mod tests {
         // Test error case: scale not found
         let context = RenderContext::new(
             &scales,
-            CoordKind::Cartesian,
+            cartesian.as_ref(),
             AestheticContext::from_static(&["x", "y"], &[]),
         );
         let result = context.get_extent("y");
@@ -3685,7 +4100,7 @@ mod tests {
         }];
         let context = RenderContext::new(
             &scales,
-            CoordKind::Cartesian,
+            cartesian.as_ref(),
             AestheticContext::from_static(&["x", "y"], &[]),
         );
         let result = context.get_extent("x");
@@ -3714,7 +4129,7 @@ mod tests {
         }];
         let context = RenderContext::new(
             &scales,
-            CoordKind::Cartesian,
+            cartesian.as_ref(),
             AestheticContext::from_static(&["x", "y"], &[]),
         );
         let result = context.get_extent("x");

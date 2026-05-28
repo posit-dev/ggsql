@@ -129,6 +129,35 @@ SETTING position => 'dodge'      -- side by side (default for boxplot, violin)
 SETTING position => 'jitter'     -- random offset
 ```
 
+**Aggregate** collapses each group to a single row, replacing every numeric mapping in place with its aggregated value. Groups = `PARTITION BY` columns + all discrete mappings. Supported by `point`, `line`, `path`, `bar`, `area`, `ribbon`, `range`, `segment`, `rule`, `text`, `tile`. Not supported by `histogram`, `density`, `smooth`, `boxplot`, `violin` (they have their own stats).
+
+```ggsql
+SETTING aggregate => '<spec>'                -- single
+SETTING aggregate => ('<spec>', '<spec>', …) -- list
+```
+
+Each `<spec>` is either:
+- **Untargeted** — `'<func>'`. Applies to every numeric mapping without an explicit target. With two untargeted defaults, the first applies to lower-side aesthetics (`x`/`xmin`/etc.) plus all non-range layers, the second to upper-side (`xend`/`xmax`). More than two untargeted defaults is an error.
+- **Targeted** — `'<aes>:<func>'`. Applies `func` to the named aesthetic only. Overrides any untargeted default for that aesthetic.
+
+Functions:
+- Standard reductions: `count`, `sum`, `prod`, `min`, `max`, `range` (max−min), `mid` ((min+max)/2), `mean`, `median`, `geomean`, `harmean`, `rms`, `sdev`, `var`, `iqr`, `se`, `p05`–`p95`.
+- Positional (rely on upstream `ORDER BY` for deterministic order): `first`, `last`, `diff` (last − first).
+- Band: `<offset>±[<mult>]<expansion>`, e.g. `'mean+1.96sdev'`, `'median-iqr'`. Offsets: `mean`, `median`, `geomean`, `harmean`, `rms`, `sum`, `prod`, `min`, `max`, `mid`, `p05`–`p95`. Expansions: `sdev`, `se`, `var`, `iqr`, `range`.
+
+**Explosion** — targeting the same aesthetic with multiple functions emits one row per function per group. A synthetic `aggregate` column tags each row with the function name. Use `REMAPPING aggregate AS <aes>` to drive another aesthetic from it. When several aesthetics are exploded with the same length, they explode in lockstep (row 1 = each target's first function, row 2 = second, …); single-function targets are reused on every row. Mixing target lengths > 1 is an error.
+
+```ggsql
+-- min/max envelope as two lines per group, coloured by function
+DRAW line
+  MAPPING Date AS x, Temp AS y
+  REMAPPING aggregate AS color
+  SETTING aggregate => ('y:min', 'y:max')
+  PARTITION BY Year
+```
+
+**Scale interaction** — for an aesthetic that is *targeted* by aggregate, `SCALE BINNED <aes>` runs **after** aggregation (otherwise the diff/mean/etc. would cancel within a bin). Untargeted `SCALE BINNED` still bins pre-aggregate so the bins can drive grouping. Continuous censoring (`SCALE <aes> FROM (lo, hi)`) and discrete OOB filtering defer to post-aggregate whenever the aesthetic is being aggregated (targeted or untargeted default).
+
 ### FILTER
 
 SQL WHERE condition applied to layer data. Content is passed to the database:
@@ -461,6 +490,21 @@ VISUALISE
 DRAW line MAPPING Date AS x, value AS y, 'Temperature' AS color FROM temps
 DRAW point MAPPING Date AS x, value AS y, 'Ozone' AS color FROM ozone
 SCALE x VIA date
+
+-- Per-week summary: open/close range, weekly temperature change (binned post-aggregate)
+VISUALISE Date AS x, Temp AS ymin, Temp AS ymax, Temp AS color
+  FROM ggsql:airquality
+DRAW range
+  SETTING aggregate => ('x:first', 'ymin:first', 'ymax:last', 'color:diff'),
+          width => null
+  PARTITION BY Week
+SCALE BINNED color
+
+-- Mean ± 1.96·sdev band per group, drawn as a ribbon
+VISUALISE Day AS x, Temp AS ymin, Temp AS ymax FROM ggsql:airquality
+DRAW ribbon
+  SETTING aggregate => ('mean-1.96sdev', 'mean+1.96sdev')
+  PARTITION BY Month
 ```
 
 ---

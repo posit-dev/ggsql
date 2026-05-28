@@ -66,5 +66,3 @@ binaries = [
   { path = "ggsql-jupyter", main = false },
 ]
 
-# Resources to bundle (optional)
-resources = [{ src = "../libs/", target = "libs" }]

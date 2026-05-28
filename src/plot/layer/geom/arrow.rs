@@ -32,12 +32,19 @@ impl GeomTrait for Arrow {
     }
 
     fn default_params(&self) -> &'static [ParamDefinition] {
-        const PARAMS: &[ParamDefinition] = &[ParamDefinition {
-            name: "position",
-            default: DefaultParamValue::String("identity"),
-            constraint: ParamConstraint::string_option(POSITION_VALUES),
-        }];
+        const PARAMS: &[ParamDefinition] = &[
+            ParamDefinition {
+                name: "position",
+                default: DefaultParamValue::String("identity"),
+                constraint: ParamConstraint::string_option(POSITION_VALUES),
+            },
+            super::types::AGGREGATE_PARAM,
+        ];
         PARAMS
+    }
+
+    fn aggregate_domain_aesthetics(&self) -> Option<&'static [&'static str]> {
+        Some(&[])
     }
 }
 

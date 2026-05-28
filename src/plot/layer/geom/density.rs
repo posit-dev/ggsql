@@ -54,10 +54,6 @@ impl GeomTrait for Density {
         }
     }
 
-    fn needs_stat_transform(&self, _aesthetics: &Mappings) -> bool {
-        true
-    }
-
     fn default_params(&self) -> &'static [ParamDefinition] {
         const PARAMS: &[ParamDefinition] = &[
             ParamDefinition {
@@ -111,6 +107,7 @@ impl GeomTrait for Density {
         parameters: &std::collections::HashMap<String, crate::plot::ParameterValue>,
         _execute_query: &dyn Fn(&str) -> crate::Result<crate::DataFrame>,
         dialect: &dyn SqlDialect,
+        _aesthetic_ctx: &crate::plot::aesthetic::AestheticContext,
     ) -> crate::Result<super::StatResult> {
         // Density geom: no tails limit (don't set tails parameter, defaults to None)
         stat_density(
