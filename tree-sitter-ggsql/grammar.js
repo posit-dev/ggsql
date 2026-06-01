@@ -389,13 +389,80 @@ module.exports = grammar({
     // Function argument: position or named
     function_arg: $ => choice(
       $.named_arg,
-      $.position_arg
+      $.function_arg_expression
     ),
 
     named_arg: $ => seq(
       field('name', $.identifier),
       choice(':=', '=>'),
-      field('value', $.position_arg)
+      field('value', $.function_arg_expression)
+    ),
+
+    // Function arguments support a slightly richer predicate grammar than the
+    // generic position_arg rule.
+    function_arg_expression: $ => prec.left(seq(
+      $._function_arg_and_expression,
+      repeat(seq(caseInsensitive('OR'), $._function_arg_and_expression))
+    )),
+
+    _function_arg_and_expression: $ => prec.left(seq(
+      $._function_arg_not_expression,
+      repeat(seq(caseInsensitive('AND'), $._function_arg_not_expression))
+    )),
+
+    _function_arg_not_expression: $ => choice(
+      $.not_predicate,
+      $._function_arg_predicate
+    ),
+
+    not_predicate: $ => prec.right(seq(
+      caseInsensitive('NOT'),
+      $._function_arg_not_expression
+    )),
+
+    _function_arg_predicate: $ => seq(
+      $.position_arg,
+      optional($._predicate_suffix)
+    ),
+
+    _predicate_suffix: $ => choice(
+      $.between_suffix,
+      $.in_suffix,
+      $.is_suffix,
+      $.like_suffix,
+    ),
+
+    between_suffix: $ => seq(
+      optional(caseInsensitive('NOT')),
+      caseInsensitive('BETWEEN'),
+      $.position_arg,
+      caseInsensitive('AND'),
+      $.position_arg
+    ),
+
+    in_suffix: $ => seq(
+      optional(caseInsensitive('NOT')),
+      caseInsensitive('IN'),
+      choice($.in_value_list, $.scalar_subquery)
+    ),
+
+    in_value_list: $ => seq(
+      '(',
+      $.position_arg,
+      repeat(seq(',', $.position_arg)),
+      ')'
+    ),
+
+    is_suffix: $ => seq(
+      caseInsensitive('IS'),
+      optional(caseInsensitive('NOT')),
+      caseInsensitive('NULL')
+    ),
+
+    like_suffix: $ => seq(
+      optional(caseInsensitive('NOT')),
+      choice(caseInsensitive('LIKE'), caseInsensitive('ILIKE')),
+      $.position_arg
     ),
 
     // Position argument: supports complex expressions including:
@@ -420,7 +487,11 @@ module.exports = grammar({
       // Scalar subquery: (SELECT ...) or (WITH ... SELECT ...)
       $.scalar_subquery,
       // Arithmetic/comparison expression (binary operators)
-      seq($.position_arg, choice('+', '-', '*', '/', '%', '||', '::', '<', '>', '<=', '>=', '=', '!=', '<>'), $.position_arg),
+      seq(
+        $.position_arg,
+        choice('+', '-', '*', '/', '%', '||', '::', '<', '>', '<=', '>=', '=', '!=', '<>'),
+        $.position_arg
+      ),
       // Parenthesized expression
       seq('(', $.position_arg, ')')
     )),

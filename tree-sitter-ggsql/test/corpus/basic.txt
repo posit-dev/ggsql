@@ -1360,10 +1360,11 @@ DRAW line MAPPING x AS x, total AS y
               (bare_identifier))
             (function_args
               (function_arg
-                (position_arg
-                  (qualified_name
-                    (identifier
-                      (bare_identifier))))))
+                (function_arg_expression
+                  (position_arg
+                    (qualified_name
+                      (identifier
+                        (bare_identifier)))))))
             (window_specification
               (window_order_clause
                 (order_item
@@ -1484,14 +1485,16 @@ DRAW point MAPPING interval AS x
                 (named_arg
                   name: (identifier
                     (bare_identifier))
-                  value: (position_arg
-                    (number))))
+                  value: (function_arg_expression
+                    (position_arg
+                      (number)))))
               (function_arg
                 (named_arg
                   name: (identifier
                     (bare_identifier))
-                  value: (position_arg
-                    (number))))))
+                  value: (function_arg_expression
+                    (position_arg
+                      (number)))))))
           (identifier
             (bare_identifier))
           (identifier
@@ -2548,15 +2551,16 @@ SELECT SUM(TRY_CAST(price AS INTEGER)) as total FROM data VISUALISE DRAW bar MAP
               (bare_identifier))
             (function_args
               (function_arg
-                (position_arg
-                  (cast_expression
-                    (position_arg
-                      (qualified_name
+                (function_arg_expression
+                  (position_arg
+                    (cast_expression
+                      (position_arg
+                        (qualified_name
+                          (identifier
+                            (bare_identifier))))
+                      (type_name
                         (identifier
-                          (bare_identifier))))
-                    (type_name
-                      (identifier
-                        (bare_identifier))))))))
+                          (bare_identifier)))))))))
           (identifier
             (bare_identifier))
           (identifier
@@ -2601,35 +2605,39 @@ DRAW point MAPPING x AS x
               (bare_identifier))
             (function_args
               (function_arg
-                (position_arg
-                  (function_call
-                    (identifier
-                      (bare_identifier))
-                    (function_args
-                      (function_arg
-                        (position_arg
-                          (qualified_name
-                            (identifier
-                              (bare_identifier)))))))))
+                (function_arg_expression
+                  (position_arg
+                    (function_call
+                      (identifier
+                        (bare_identifier))
+                      (function_args
+                        (function_arg
+                          (function_arg_expression
+                            (position_arg
+                              (qualified_name
+                                (identifier
+                                  (bare_identifier)))))))))))
               (function_arg
-                (position_arg
-                  (scalar_subquery
-                    (select_statement
-                      (select_body
-                        (function_call
-                          (identifier
-                            (bare_identifier))
-                          (function_args
-                            (function_arg
-                              (position_arg
-                                (qualified_name
-                                  (identifier
-                                    (bare_identifier)))))))
-                        (from_clause
-                          (table_ref
-                            table: (qualified_name
-                              (identifier
-                                (bare_identifier))))))))))))
+                (function_arg_expression
+                  (position_arg
+                    (scalar_subquery
+                      (select_statement
+                        (select_body
+                          (function_call
+                            (identifier
+                              (bare_identifier))
+                            (function_args
+                              (function_arg
+                                (function_arg_expression
+                                  (position_arg
+                                    (qualified_name
+                                      (identifier
+                                        (bare_identifier))))))))
+                          (from_clause
+                            (table_ref
+                              table: (qualified_name
+                                (identifier
+                                  (bare_identifier)))))))))))))
           (from_clause
             (table_ref
               table: (qualified_name
@@ -3097,10 +3105,11 @@ SELECT COUNT(DISTINCT region) AS n FROM sales VISUALISE n AS x DRAW bar
             (set_quantifier)
             (function_args
               (function_arg
-                (position_arg
-                  (qualified_name
-                    (identifier
-                      (bare_identifier)))))))
+                (function_arg_expression
+                  (position_arg
+                    (qualified_name
+                      (identifier
+                        (bare_identifier))))))))
           (identifier
             (bare_identifier))
           (identifier
@@ -3144,10 +3153,11 @@ SELECT SUM(ALL price) AS total FROM sales VISUALISE total AS x DRAW bar
             (set_quantifier)
             (function_args
               (function_arg
-                (position_arg
-                  (qualified_name
-                    (identifier
-                      (bare_identifier)))))))
+                (function_arg_expression
+                  (position_arg
+                    (qualified_name
+                      (identifier
+                        (bare_identifier))))))))
           (identifier
             (bare_identifier))
           (identifier
@@ -3193,10 +3203,11 @@ SELECT x, COUNT(DISTINCT y) OVER (PARTITION BY x) AS n FROM data VISUALISE n AS 
             (set_quantifier)
             (function_args
               (function_arg
-                (position_arg
-                  (qualified_name
-                    (identifier
-                      (bare_identifier))))))
+                (function_arg_expression
+                  (position_arg
+                    (qualified_name
+                      (identifier
+                        (bare_identifier)))))))
             (window_specification
               (window_partition_clause
                 (identifier
@@ -3225,7 +3236,6 @@ SELECT x, COUNT(DISTINCT y) OVER (PARTITION BY x) AS n FROM data VISUALISE n AS 
       (draw_clause
         (geom_type)))))
 
-
 ================================================================================
 CASE expression inside aggregate function
 ================================================================================
@@ -3244,18 +3254,19 @@ SELECT COUNT(CASE WHEN x = 1 THEN 1 END) AS n FROM t VISUALISE n AS y DRAW bar
               (bare_identifier))
             (function_args
               (function_arg
-                (position_arg
-                  (case_expression
-                    (case_body_token)
-                    (case_body_token
-                      (identifier
-                        (bare_identifier)))
-                    (case_body_token)
-                    (case_body_token
-                      (number))
-                    (case_body_token)
-                    (case_body_token
-                      (number)))))))
+                (function_arg_expression
+                  (position_arg
+                    (case_expression
+                      (case_body_token)
+                      (case_body_token
+                        (identifier
+                          (bare_identifier)))
+                      (case_body_token)
+                      (case_body_token
+                        (number))
+                      (case_body_token)
+                      (case_body_token
+                        (number))))))))
           (identifier
             (bare_identifier))
           (identifier
@@ -3298,21 +3309,22 @@ SELECT SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) AS n FROM t VISUALISE 
               (bare_identifier))
             (function_args
               (function_arg
-                (position_arg
-                  (case_expression
-                    (case_body_token)
-                    (case_body_token
-                      (identifier
-                        (bare_identifier)))
-                    (case_body_token)
-                    (case_body_token
-                      (string))
-                    (case_body_token)
-                    (case_body_token
-                      (number))
-                    (case_body_token)
-                    (case_body_token
-                      (number)))))))
+                (function_arg_expression
+                  (position_arg
+                    (case_expression
+                      (case_body_token)
+                      (case_body_token
+                        (identifier
+                          (bare_identifier)))
+                      (case_body_token)
+                      (case_body_token
+                        (string))
+                      (case_body_token)
+                      (case_body_token
+                        (number))
+                      (case_body_token)
+                      (case_body_token
+                        (number))))))))
           (identifier
             (bare_identifier))
           (identifier
@@ -3406,27 +3418,28 @@ SELECT COUNT(CASE WHEN CASE WHEN y = 1 THEN 'a' END = 'a' THEN 1 END) AS n FROM 
               (bare_identifier))
             (function_args
               (function_arg
-                (position_arg
-                  (case_expression
-                    (case_body_token)
-                    (case_body_token
-                      (case_expression
-                        (case_body_token)
-                        (case_body_token
-                          (identifier
-                            (bare_identifier)))
-                        (case_body_token)
-                        (case_body_token
-                          (number))
-                        (case_body_token)
-                        (case_body_token
-                          (string))))
-                    (case_body_token)
-                    (case_body_token
-                      (string))
-                    (case_body_token)
-                    (case_body_token
-                      (number)))))))
+                (function_arg_expression
+                  (position_arg
+                    (case_expression
+                      (case_body_token)
+                      (case_body_token
+                        (case_expression
+                          (case_body_token)
+                          (case_body_token
+                            (identifier
+                              (bare_identifier)))
+                          (case_body_token)
+                          (case_body_token
+                            (number))
+                          (case_body_token)
+                          (case_body_token
+                            (string))))
+                      (case_body_token)
+                      (case_body_token
+                        (string))
+                      (case_body_token)
+                      (case_body_token
+                        (number))))))))
           (identifier
             (bare_identifier))
           (identifier
@@ -3469,21 +3482,22 @@ SELECT COUNT(CASE WHEN status IN ('Charged Off', 'Default') THEN 1 END) AS n FRO
               (bare_identifier))
             (function_args
               (function_arg
-                (position_arg
-                  (case_expression
-                    (case_body_token)
-                    (case_body_token
-                      (identifier
-                        (bare_identifier)))
-                    (case_body_token)
-                    (case_body_token
-                      (subquery
-                        (subquery_body
-                          (string)
-                          (string))))
-                    (case_body_token)
-                    (case_body_token
-                      (number)))))))
+                (function_arg_expression
+                  (position_arg
+                    (case_expression
+                      (case_body_token)
+                      (case_body_token
+                        (identifier
+                          (bare_identifier)))
+                      (case_body_token)
+                      (case_body_token
+                        (subquery
+                          (subquery_body
+                            (string)
+                            (string))))
+                      (case_body_token)
+                      (case_body_token
+                        (number))))))))
           (identifier
             (bare_identifier))
           (identifier
@@ -3528,38 +3542,42 @@ SELECT grade, ROUND(COUNT(CASE WHEN status = 'Default' THEN 1 END) * 100.0 / COU
               (bare_identifier))
             (function_args
               (function_arg
-                (position_arg
+                (function_arg_expression
                   (position_arg
+                    (position_arg
+                      (position_arg
+                        (function_call
+                          (identifier
+                            (bare_identifier))
+                          (function_args
+                            (function_arg
+                              (function_arg_expression
+                                (position_arg
+                                  (case_expression
+                                    (case_body_token)
+                                    (case_body_token
+                                      (identifier
+                                        (bare_identifier)))
+                                    (case_body_token)
+                                    (case_body_token
+                                      (string))
+                                    (case_body_token)
+                                    (case_body_token
+                                      (number)))))))))
+                      (position_arg
+                        (number)))
                     (position_arg
                       (function_call
                         (identifier
                           (bare_identifier))
                         (function_args
                           (function_arg
-                            (position_arg
-                              (case_expression
-                                (case_body_token)
-                                (case_body_token
-                                  (identifier
-                                    (bare_identifier)))
-                                (case_body_token)
-                                (case_body_token
-                                  (string))
-                                (case_body_token)
-                                (case_body_token
-                                  (number))))))))
-                    (position_arg
-                      (number)))
-                  (position_arg
-                    (function_call
-                      (identifier
-                        (bare_identifier))
-                      (function_args
-                        (function_arg
-                          (position_arg)))))))
+                            (function_arg_expression
+                              (position_arg)))))))))
               (function_arg
-                (position_arg
-                  (number)))))
+                (function_arg_expression
+                  (position_arg
+                    (number))))))
           (identifier
             (bare_identifier))
           (identifier
@@ -3679,6 +3697,558 @@ DRAW point
                 (identifier
                   (bare_identifier))))
             name: (aesthetic_name)))
+        (mapping_element
+          (explicit_mapping
+            value: (mapping_value
+              (column_reference
+                (identifier
+                  (bare_identifier))))
+            name: (aesthetic_name)))))
+    (viz_clause
+      (draw_clause
+        (geom_type)))))
+
+================================================================================
+Boolean operators in function arguments
+================================================================================
+
+SELECT IFF(x = 'a' OR x = 'b', 1, 0) AS rate FROM t
+VISUALISE rate AS x
+DRAW point
+
+--------------------------------------------------------------------------------
+
+(query
+  (sql_portion
+    (sql_statement
+      (select_statement
+        (select_body
+          (function_call
+            (identifier
+              (bare_identifier))
+            (function_args
+              (function_arg
+                (function_arg_expression
+                  (position_arg
+                    (position_arg
+                      (qualified_name
+                        (identifier
+                          (bare_identifier))))
+                    (position_arg
+                      (string)))
+                  (position_arg
+                    (position_arg
+                      (qualified_name
+                        (identifier
+                          (bare_identifier))))
+                    (position_arg
+                      (string)))))
+              (function_arg
+                (function_arg_expression
+                  (position_arg
+                    (number))))
+              (function_arg
+                (function_arg_expression
+                  (position_arg
+                    (number))))))
+          (identifier
+            (bare_identifier))
+          (identifier
+            (bare_identifier))
+          (from_clause
+            (table_ref
+              table: (qualified_name
+                (identifier
+                  (bare_identifier)))))))))
+  (visualise_statement
+    (visualise_keyword)
+    (global_mapping
+      (mapping_list
+        (mapping_element
+          (explicit_mapping
+            value: (mapping_value
+              (column_reference
+                (identifier
+                  (bare_identifier))))
+            name: (aesthetic_name)))))
+    (viz_clause
+      (draw_clause
+        (geom_type)))))
+
+================================================================================
+NOT predicate in function arguments
+================================================================================
+
+SELECT IFF(NOT x = 'a', 1, 0) AS flag FROM t
+VISUALISE flag AS x
+DRAW point
+
+--------------------------------------------------------------------------------
+
+(query
+  (sql_portion
+    (sql_statement
+      (select_statement
+        (select_body
+          (function_call
+            (identifier
+              (bare_identifier))
+            (function_args
+              (function_arg
+                (function_arg_expression
+                  (not_predicate
+                    (position_arg
+                      (position_arg
+                        (qualified_name
+                          (identifier
+                            (bare_identifier))))
+                      (position_arg
+                        (string))))))
+              (function_arg
+                (function_arg_expression
+                  (position_arg
+                    (number))))
+              (function_arg
+                (function_arg_expression
+                  (position_arg
+                    (number))))))
+          (identifier
+            (bare_identifier))
+          (identifier
+            (bare_identifier))
+          (from_clause
+            (table_ref
+              table: (qualified_name
+                (identifier
+                  (bare_identifier)))))))))
+  (visualise_statement
+    (visualise_keyword)
+    (global_mapping
+      (mapping_list
+        (mapping_element
+          (explicit_mapping
+            value: (mapping_value
+              (column_reference
+                (identifier
+                  (bare_identifier))))
+            name: (aesthetic_name)))))
+    (viz_clause
+      (draw_clause
+        (geom_type)))))
+
+================================================================================
+IN predicate in function arguments
+================================================================================
+
+SELECT IFF(x IN ('a', 'b'), 1, 0) AS flag FROM t
+VISUALISE flag AS x
+DRAW point
+
+--------------------------------------------------------------------------------
+
+(query
+  (sql_portion
+    (sql_statement
+      (select_statement
+        (select_body
+          (function_call
+            (identifier
+              (bare_identifier))
+            (function_args
+              (function_arg
+                (function_arg_expression
+                  (position_arg
+                    (qualified_name
+                      (identifier
+                        (bare_identifier))))
+                  (in_suffix
+                    (in_value_list
+                      (position_arg
+                        (string))
+                      (position_arg
+                        (string))))))
+              (function_arg
+                (function_arg_expression
+                  (position_arg
+                    (number))))
+              (function_arg
+                (function_arg_expression
+                  (position_arg
+                    (number))))))
+          (identifier
+            (bare_identifier))
+          (identifier
+            (bare_identifier))
+          (from_clause
+            (table_ref
+              table: (qualified_name
+                (identifier
+                  (bare_identifier)))))))))
+  (visualise_statement
+    (visualise_keyword)
+    (global_mapping
+      (mapping_list
+        (mapping_element
+          (explicit_mapping
+            value: (mapping_value
+              (column_reference
+                (identifier
+                  (bare_identifier))))
+            name: (aesthetic_name)))))
+    (viz_clause
+      (draw_clause
+        (geom_type)))))
+
+================================================================================
+BETWEEN predicate in function arguments
+================================================================================
+
+SELECT IFF(x BETWEEN 1 AND 10, 1, 0) AS flag FROM t
+VISUALISE flag AS x
+DRAW point
+
+--------------------------------------------------------------------------------
+
+(query
+  (sql_portion
+    (sql_statement
+      (select_statement
+        (select_body
+          (function_call
+            (identifier
+              (bare_identifier))
+            (function_args
+              (function_arg
+                (function_arg_expression
+                  (position_arg
+                    (qualified_name
+                      (identifier
+                        (bare_identifier))))
+                  (between_suffix
+                    (position_arg
+                      (number))
+                    (position_arg
+                      (number)))))
+              (function_arg
+                (function_arg_expression
+                  (position_arg
+                    (number))))
+              (function_arg
+                (function_arg_expression
+                  (position_arg
+                    (number))))))
+          (identifier
+            (bare_identifier))
+          (identifier
+            (bare_identifier))
+          (from_clause
+            (table_ref
+              table: (qualified_name
+                (identifier
+                  (bare_identifier)))))))))
+  (visualise_statement
+    (visualise_keyword)
+    (global_mapping
+      (mapping_list
+        (mapping_element
+          (explicit_mapping
+            value: (mapping_value
+              (column_reference
+                (identifier
+                  (bare_identifier))))
+            name: (aesthetic_name)))))
+    (viz_clause
+      (draw_clause
+        (geom_type)))))
+
+================================================================================
+IS NULL predicate in function arguments
+================================================================================
+
+SELECT IFF(x IS NULL, 1, 0) AS flag FROM t
+VISUALISE flag AS x
+DRAW point
+
+--------------------------------------------------------------------------------
+
+(query
+  (sql_portion
+    (sql_statement
+      (select_statement
+        (select_body
+          (function_call
+            (identifier
+              (bare_identifier))
+            (function_args
+              (function_arg
+                (function_arg_expression
+                  (position_arg
+                    (qualified_name
+                      (identifier
+                        (bare_identifier))))
+                  (is_suffix)))
+              (function_arg
+                (function_arg_expression
+                  (position_arg
+                    (number))))
+              (function_arg
+                (function_arg_expression
+                  (position_arg
+                    (number))))))
+          (identifier
+            (bare_identifier))
+          (identifier
+            (bare_identifier))
+          (from_clause
+            (table_ref
+              table: (qualified_name
+                (identifier
+                  (bare_identifier)))))))))
+  (visualise_statement
+    (visualise_keyword)
+    (global_mapping
+      (mapping_list
+        (mapping_element
+          (explicit_mapping
+            value: (mapping_value
+              (column_reference
+                (identifier
+                  (bare_identifier))))
+            name: (aesthetic_name)))))
+    (viz_clause
+      (draw_clause
+        (geom_type)))))
+
+================================================================================
+LIKE predicate in function arguments
+================================================================================
+
+SELECT IFF(x LIKE 'a%', 1, 0) AS flag FROM t
+VISUALISE flag AS x
+DRAW point
+
+--------------------------------------------------------------------------------
+
+(query
+  (sql_portion
+    (sql_statement
+      (select_statement
+        (select_body
+          (function_call
+            (identifier
+              (bare_identifier))
+            (function_args
+              (function_arg
+                (function_arg_expression
+                  (position_arg
+                    (qualified_name
+                      (identifier
+                        (bare_identifier))))
+                  (like_suffix
+                    (position_arg
+                      (string)))))
+              (function_arg
+                (function_arg_expression
+                  (position_arg
+                    (number))))
+              (function_arg
+                (function_arg_expression
+                  (position_arg
+                    (number))))))
+          (identifier
+            (bare_identifier))
+          (identifier
+            (bare_identifier))
+          (from_clause
+            (table_ref
+              table: (qualified_name
+                (identifier
+                  (bare_identifier)))))))))
+  (visualise_statement
+    (visualise_keyword)
+    (global_mapping
+      (mapping_list
+        (mapping_element
+          (explicit_mapping
+            value: (mapping_value
+              (column_reference
+                (identifier
+                  (bare_identifier))))
+            name: (aesthetic_name)))))
+    (viz_clause
+      (draw_clause
+        (geom_type)))))
+
+================================================================================
+ILIKE predicate in function arguments
+================================================================================
+
+SELECT IFF(x ILIKE 'a%', 1, 0) AS flag FROM t
+VISUALISE flag AS x
+DRAW point
+
+--------------------------------------------------------------------------------
+
+(query
+  (sql_portion
+    (sql_statement
+      (select_statement
+        (select_body
+          (function_call
+            (identifier
+              (bare_identifier))
+            (function_args
+              (function_arg
+                (function_arg_expression
+                  (position_arg
+                    (qualified_name
+                      (identifier
+                        (bare_identifier))))
+                  (like_suffix
+                    (position_arg
+                      (string)))))
+              (function_arg
+                (function_arg_expression
+                  (position_arg
+                    (number))))
+              (function_arg
+                (function_arg_expression
+                  (position_arg
+                    (number))))))
+          (identifier
+            (bare_identifier))
+          (identifier
+            (bare_identifier))
+          (from_clause
+            (table_ref
+              table: (qualified_name
+                (identifier
+                  (bare_identifier)))))))))
+  (visualise_statement
+    (visualise_keyword)
+    (global_mapping
+      (mapping_list
+        (mapping_element
+          (explicit_mapping
+            value: (mapping_value
+              (column_reference
+                (identifier
+                  (bare_identifier))))
+            name: (aesthetic_name)))))
+    (viz_clause
+      (draw_clause
+        (geom_type)))))
+
+================================================================================
+NOT IN predicate in function arguments
+================================================================================
+
+SELECT IFF(x NOT IN ('a', 'b'), 1, 0) AS flag FROM t
+VISUALISE flag AS x
+DRAW point
+
+--------------------------------------------------------------------------------
+
+(query
+  (sql_portion
+    (sql_statement
+      (select_statement
+        (select_body
+          (function_call
+            (identifier
+              (bare_identifier))
+            (function_args
+              (function_arg
+                (function_arg_expression
+                  (position_arg
+                    (qualified_name
+                      (identifier
+                        (bare_identifier))))
+                  (in_suffix
+                    (in_value_list
+                      (position_arg
+                        (string))
+                      (position_arg
+                        (string))))))
+              (function_arg
+                (function_arg_expression
+                  (position_arg
+                    (number))))
+              (function_arg
+                (function_arg_expression
+                  (position_arg
+                    (number))))))
+          (identifier
+            (bare_identifier))
+          (identifier
+            (bare_identifier))
+          (from_clause
+            (table_ref
+              table: (qualified_name
+                (identifier
+                  (bare_identifier)))))))))
+  (visualise_statement
+    (visualise_keyword)
+    (global_mapping
+      (mapping_list
+        (mapping_element
+          (explicit_mapping
+            value: (mapping_value
+              (column_reference
+                (identifier
+                  (bare_identifier))))
+            name: (aesthetic_name)))))
+    (viz_clause
+      (draw_clause
+        (geom_type)))))
+
+================================================================================
+Named argument with predicate expression
+================================================================================
+
+SELECT FOO(flag => x = 'a' OR x = 'b') FROM t
+VISUALISE x AS x
+DRAW point
+
+--------------------------------------------------------------------------------
+
+(query
+  (sql_portion
+    (sql_statement
+      (select_statement
+        (select_body
+          (function_call
+            (identifier
+              (bare_identifier))
+            (function_args
+              (function_arg
+                (named_arg
+                  name: (identifier
+                    (bare_identifier))
+                  value: (function_arg_expression
+                    (position_arg
+                      (position_arg
+                        (qualified_name
+                          (identifier
+                            (bare_identifier))))
+                      (position_arg
+                        (string)))
+                    (position_arg
+                      (position_arg
+                        (qualified_name
+                          (identifier
+                            (bare_identifier))))
+                      (position_arg
+                        (string))))))))
+          (from_clause
+            (table_ref
+              table: (qualified_name
+                (identifier
+                  (bare_identifier)))))))))
+  (visualise_statement
+    (visualise_keyword)
+    (global_mapping
+      (mapping_list
         (mapping_element
           (explicit_mapping
             value: (mapping_value

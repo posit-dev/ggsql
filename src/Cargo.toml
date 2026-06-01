@@ -32,6 +32,9 @@ libloading = { workspace = true, optional = true }
 parquet = { workspace = true, optional = true }
 bytes = { workspace = true }
 
+# ADBC reader
+adbc_core = { version = "0.23", optional = true }
+
 # Spatial
 geozero = { workspace = true, optional = true, features = ["with-wkb", "with-geojson"] }
 
@@ -54,12 +57,15 @@ uuid.workspace = true
 jsonschema = { version = "0.44", default-features = false, features = ["resolve-file"] }
 tempfile = "3.8"
 ureq = "3"
+adbc_datafusion = "0.23"
+adbc_driver_manager = "0.23"
 
 [features]
-default = ["duckdb", "sqlite", "vegalite", "parquet", "builtin-data", "odbc", "spatial"]
+default = ["adbc", "duckdb", "sqlite", "vegalite", "parquet", "builtin-data", "odbc", "spatial"]
 duckdb = ["dep:duckdb"]
 parquet = ["dep:parquet"]
 sqlite = ["dep:rusqlite"]
+adbc = ["dep:adbc_core"]
 odbc = ["dep:toml_edit", "dep:libloading"]
 spatial = ["dep:geozero"]
 vegalite = []

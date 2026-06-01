@@ -15,7 +15,7 @@ default-members = [
 resolver = "2"
 
 [workspace.package]
-version = "0.3.2"
+version = "0.3.3"
 edition = "2021"
 authors = ["ggsql Team"]
 license = "MIT"
@@ -25,19 +25,19 @@ description = "A declarative visualization language that extends SQL with powerf
 
 [workspace.dependencies]
 # workspace packages
-tree-sitter-ggsql = { path = "tree-sitter-ggsql", version = "0.3.2" }
-ggsql = { path = "src", version = "0.3.2" }
+tree-sitter-ggsql = { path = "tree-sitter-ggsql", version = "0.3.3" }
+ggsql = { path = "src", version = "0.3.3" }
 
 # Parsing
 csscolorparser = "0.8.1"
 tree-sitter = "0.26"
 
 # Data container
-arrow = { version = "56", default-features = false }
+arrow = { version = "58", default-features = false }
 
 # Readers
-duckdb = { version = "~1.4", features = ["bundled", "vtab-arrow"] }
-parquet = { version = "56", default-features = false, features = ["arrow", "snap"] }
+duckdb = { version = "~1.10502", features = ["bundled", "vtab-arrow"] }
+parquet = { version = "58", default-features = false, features = ["arrow", "snap"] }
 bytes = "1"
 rusqlite = { version = "0.38", features = ["bundled", "chrono"] }
 

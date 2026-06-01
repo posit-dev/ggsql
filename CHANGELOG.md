@@ -1,7 +1,12 @@
 ## [Unreleased]
 
 ### Added
-
+- New `AdbcReader<D: Driver>` for connecting to data sources via
+  [ADBC](https://arrow.apache.org/adbc/) (Arrow Database Connectivity), behind
+  a new off-by-default `adbc` feature flag. Generic over any concrete
+  `adbc_core::sync::Driver`, so concrete drivers (Flight SQL, Snowflake, etc.)
+  compose at the call site. Tested against `adbc_datafusion` for in-process
+  unit coverage.
 - New `aggregate` SETTING on Identity-stat layers (point, line, area, bar, ribbon,
   range, segment, arrow, rule, text). By default it collapses each group to a
   single row by replacing every numeric mapping in place with its aggregated
@@ -13,6 +18,9 @@
 
 ### Fixed
 
+- Quoted SQL identifiers (e.g. `"variable.dotted"`) in `VISUALISE` column
+  references are now unquoted at parse time, so they correctly match the
+  underlying Arrow schema during validation.
 - Dodging of horizontal violin plots were broken due to a bad orientation
   assumption in the VegaLite writer. We now correctly use the orientation to
   dodge in the correct dimension (#439).
@@ -22,6 +30,15 @@
 - `boxplot`, `violin`, and `range` now support omitting the categorical
   aesthetic, matching `bar`. `point` now treats both position aesthetics as
   optional.
+- Upgraded dependencies: duckdb-rs v1.10502, arrow v58 (#447).
+
+## 0.3.3 - 2026-05-27
+
+### Fixed
+
+- Add CASE expression support to tree-sitter grammar (#432)
+- Fix Vega-Lite spec emitted for boxplot (#449)
+- Support predicates in function arguments (#457)
 
 ## 0.3.2 - 2026-05-05
 
