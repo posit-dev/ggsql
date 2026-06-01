@@ -1,33 +1,33 @@
 [
   {
-    "listing": "/gallery/index.html",
+    "listing": "/index.html",
     "items": [
       "/gallery/examples/scatterplot.html",
-      "/gallery/examples/line-chart.html",
-      "/gallery/examples/pie-chart.html",
       "/gallery/examples/minard.html",
-      "/gallery/examples/violin.html",
-      "/gallery/examples/heatmap.html",
+      "/gallery/examples/pie-chart.html",
+      "/gallery/examples/line-chart.html",
       "/gallery/examples/boxplot.html",
+      "/gallery/examples/violin.html",
       "/gallery/examples/density.html",
       "/gallery/examples/bar-chart.html",
+      "/gallery/examples/heatmap.html",
       "/gallery/examples/histogram.html",
       "/gallery/examples/multi-layer.html",
       "/gallery/examples/faceted.html"
     ]
   },
   {
-    "listing": "/index.html",
+    "listing": "/gallery/index.html",
     "items": [
       "/gallery/examples/scatterplot.html",
-      "/gallery/examples/line-chart.html",
-      "/gallery/examples/pie-chart.html",
       "/gallery/examples/minard.html",
-      "/gallery/examples/violin.html",
-      "/gallery/examples/heatmap.html",
+      "/gallery/examples/pie-chart.html",
+      "/gallery/examples/line-chart.html",
       "/gallery/examples/boxplot.html",
+      "/gallery/examples/violin.html",
       "/gallery/examples/density.html",
       "/gallery/examples/bar-chart.html",
+      "/gallery/examples/heatmap.html",
       "/gallery/examples/histogram.html",
       "/gallery/examples/multi-layer.html",
       "/gallery/examples/faceted.html"

@@ -8,11 +8,11 @@ Browse examples of ggsql visualizations. Click any example to see the full code 
 
 Basic scatter plot mapping two numeric variables to position
 
-![](../gallery/examples/thumbnails/line-chart.svg)
+![](../gallery/examples/thumbnails/minard.svg)
 
-##### Line chart
+##### Napoleon’s march to Moscow
 
-Time series visualization with proper date scaling
+Re-creating the famous visualisation from Minard.
 
 ![](../gallery/examples/thumbnails/pie-chart.svg)
 
@@ -20,27 +20,21 @@ Time series visualization with proper date scaling
 
 Visualisation of proportions
 
-![](../gallery/examples/thumbnails/minard.svg)
+![](../gallery/examples/thumbnails/line-chart.svg)
 
-##### Napoleon’s march to Moscow
+##### Line chart
 
-Re-creating the famous visualisation from Minard.
-
-![](../gallery/examples/thumbnails/violin-plot.svg)
-
-##### Violin plots
-
-Showing groups of distributions of single numeric variables
-
-![](../gallery/examples/thumbnails/heatmap.svg)
-
-##### Heatmap
-
-Arranging tiles on a grid
+Time series visualization with proper date scaling
 
 ![](../gallery/examples/thumbnails/boxplot.svg)
 
 ##### Box plots
+
+Showing groups of distributions of single numeric variables
+
+![](../gallery/examples/thumbnails/violin-plot.svg)
+
+##### Violin plots
 
 Showing groups of distributions of single numeric variables
 
@@ -55,6 +49,12 @@ Showing smooth distributions of single numeric variables
 ##### Bar chart
 
 Categorical comparisons using bars
+
+![](../gallery/examples/thumbnails/heatmap.svg)
+
+##### Heatmap
+
+Arranging tiles on a grid
 
 ![](../gallery/examples/thumbnails/histogram.svg)
 
