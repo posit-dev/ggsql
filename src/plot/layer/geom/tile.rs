@@ -182,6 +182,7 @@ impl GeomTrait for Tile {
             aesthetics,
             group_by,
             parameters,
+            aesthetic_ctx,
         )?;
 
         if exploded {
@@ -246,6 +247,7 @@ fn process_direction(
     aesthetics: &Mappings,
     parameters: &HashMap<String, ParameterValue>,
     schema: &Schema,
+    display_name: &str,
 ) -> Result<(Vec<String>, Vec<String>)> {
     // Derive aesthetic names from axis
     let (center_aes, min_aes, max_aes, size_aes) = match axis {
@@ -271,13 +273,15 @@ fn process_direction(
         .unwrap_or(false);
 
     // Generate position expressions
+    let size_name = if axis == "x" { "width" } else { "height" };
     let (expr_1, expr_2) = if is_discrete {
         generate_discrete_position_expressions(
             center.as_deref(),
             min.as_deref(),
             max.as_deref(),
             size.as_deref(),
-            axis,
+            display_name,
+            size_name,
         )?
     } else {
         generate_continuous_position_expressions(
@@ -285,7 +289,8 @@ fn process_direction(
             min.as_deref(),
             max.as_deref(),
             size.as_deref(),
-            axis,
+            display_name,
+            size_name,
         )?
     };
 
@@ -320,12 +325,18 @@ fn stat_tile(
     aesthetics: &Mappings,
     _group_by: &[String],
     parameters: &HashMap<String, ParameterValue>,
+    aesthetic_ctx: &crate::plot::aesthetic::AestheticContext,
 ) -> Result<StatResult> {
+    let display_x = aesthetic_ctx.map_internal_to_user("pos1");
+    let display_y = aesthetic_ctx.map_internal_to_user("pos2");
+
     // Process X direction
-    let (x_select, x_stat_cols) = process_direction("x", aesthetics, parameters, schema)?;
+    let (x_select, x_stat_cols) =
+        process_direction("x", aesthetics, parameters, schema, &display_x)?;
 
     // Process Y direction
-    let (y_select, y_stat_cols) = process_direction("y", aesthetics, parameters, schema)?;
+    let (y_select, y_stat_cols) =
+        process_direction("y", aesthetics, parameters, schema, &display_y)?;
 
     // Define consumed aesthetics (these will be transformed, not passed through)
     let consumed_aesthetic_names = [
@@ -384,17 +395,14 @@ fn generate_discrete_position_expressions(
     min: Option<&str>,
     max: Option<&str>,
     size: Option<&str>,
-    axis: &str,
+    display_name: &str,
+    size_name: &str,
 ) -> Result<(String, String)> {
     // Validate: discrete scales cannot use min/max
     if min.is_some() || max.is_some() {
         return Err(GgsqlError::ValidationError(format!(
             "Cannot use {}min/{}max with discrete {} aesthetic. Use {} + {} instead.",
-            axis,
-            axis,
-            axis,
-            axis,
-            if axis == "x" { "width" } else { "height" }
+            display_name, display_name, display_name, display_name, size_name
         )));
     }
 
@@ -402,7 +410,7 @@ fn generate_discrete_position_expressions(
         Some(c) => Ok((c.to_string(), size.unwrap_or("1.0").to_string())),
         None => Err(GgsqlError::ValidationError(format!(
             "Discrete {} requires {}.",
-            axis, axis
+            display_name, display_name
         ))),
     }
 }
@@ -422,7 +430,8 @@ fn generate_continuous_position_expressions(
     min: Option<&str>,
     max: Option<&str>,
     size: Option<&str>,
-    axis: &str,
+    display_name: &str,
+    size_name: &str,
 ) -> Result<(String, String)> {
     match (center, min, max, size) {
         // Case 1: min + max
@@ -455,11 +464,7 @@ fn generate_continuous_position_expressions(
         // Invalid: wrong number of parameters or invalid combination
         _ => Err(GgsqlError::ValidationError(format!(
             "Tile requires exactly 2 {}-direction parameters from {{{}, {}min, {}max, {}}}.",
-            axis,
-            axis,
-            axis,
-            axis,
-            if axis == "x" { "width" } else { "height" }
+            display_name, display_name, display_name, display_name, size_name
         ))),
     }
 }
@@ -631,12 +636,14 @@ mod tests {
             let group_by = vec![];
             let parameters = HashMap::new();
 
+            let ctx = crate::plot::aesthetic::AestheticContext::from_static(&["x", "y"], &[]);
             let result = stat_tile(
                 "SELECT * FROM data",
                 &schema,
                 &aesthetics,
                 &group_by,
                 &parameters,
+                &ctx,
             );
 
             assert!(
@@ -741,12 +748,14 @@ mod tests {
             let group_by = vec![];
             let parameters = HashMap::new();
 
+            let ctx = crate::plot::aesthetic::AestheticContext::from_static(&["x", "y"], &[]);
             let result = stat_tile(
                 "SELECT * FROM data",
                 &schema,
                 &aesthetics,
                 &group_by,
                 &parameters,
+                &ctx,
             );
 
             assert!(
@@ -806,12 +815,14 @@ mod tests {
         let group_by = vec![];
         let parameters = HashMap::new();
 
+        let ctx = crate::plot::aesthetic::AestheticContext::from_static(&["x", "y"], &[]);
         let result = stat_tile(
             "SELECT * FROM data",
             &schema,
             &aesthetics,
             &group_by,
             &parameters,
+            &ctx,
         );
         assert!(result.is_ok());
 
@@ -837,12 +848,14 @@ mod tests {
         let group_by = vec![];
         let parameters = HashMap::new();
 
+        let ctx = crate::plot::aesthetic::AestheticContext::from_static(&["x", "y"], &[]);
         let result = stat_tile(
             "SELECT * FROM data",
             &schema,
             &aesthetics,
             &group_by,
             &parameters,
+            &ctx,
         );
         assert!(result.is_ok());
 
@@ -868,12 +881,14 @@ mod tests {
         let group_by = vec![];
         let parameters = HashMap::new();
 
+        let ctx = crate::plot::aesthetic::AestheticContext::from_static(&["x", "y"], &[]);
         let result = stat_tile(
             "SELECT * FROM data",
             &schema,
             &aesthetics,
             &group_by,
             &parameters,
+            &ctx,
         );
         assert!(result.is_ok());
 
@@ -901,12 +916,14 @@ mod tests {
         let group_by = vec![];
         let parameters = HashMap::new();
 
+        let ctx = crate::plot::aesthetic::AestheticContext::from_static(&["x", "y"], &[]);
         let result = stat_tile(
             "SELECT * FROM data",
             &schema,
             &aesthetics,
             &group_by,
             &parameters,
+            &ctx,
         );
         assert!(result.is_ok());
         let stat_result = result.unwrap();
@@ -932,12 +949,14 @@ mod tests {
         let group_by = vec![];
         let parameters = HashMap::new();
 
+        let ctx = crate::plot::aesthetic::AestheticContext::from_static(&["x", "y"], &[]);
         let result = stat_tile(
             "SELECT * FROM data",
             &schema,
             &aesthetics,
             &group_by,
             &parameters,
+            &ctx,
         );
         assert!(result.is_err());
         let err_msg = result.unwrap_err().to_string();
@@ -951,12 +970,14 @@ mod tests {
         let group_by = vec![];
         let parameters = HashMap::new();
 
+        let ctx = crate::plot::aesthetic::AestheticContext::from_static(&["x", "y"], &[]);
         let result = stat_tile(
             "SELECT * FROM data",
             &schema,
             &aesthetics,
             &group_by,
             &parameters,
+            &ctx,
         );
         assert!(result.is_err());
         let err_msg = result.unwrap_err().to_string();
@@ -971,12 +992,14 @@ mod tests {
         let group_by = vec![];
         let parameters = HashMap::new();
 
+        let ctx = crate::plot::aesthetic::AestheticContext::from_static(&["x", "y"], &[]);
         let result = stat_tile(
             "SELECT * FROM data",
             &schema,
             &aesthetics,
             &group_by,
             &parameters,
+            &ctx,
         );
         assert!(result.is_ok());
         let stat_result = result.unwrap();
@@ -1003,12 +1026,14 @@ mod tests {
         let group_by = vec![];
         let parameters = HashMap::new();
 
+        let ctx = crate::plot::aesthetic::AestheticContext::from_static(&["x", "y"], &[]);
         let result = stat_tile(
             "SELECT * FROM data",
             &schema,
             &aesthetics,
             &group_by,
             &parameters,
+            &ctx,
         );
         assert!(result.is_ok());
 
@@ -1171,12 +1196,14 @@ mod tests {
         parameters.insert("width".to_string(), ParameterValue::Number(0.7));
         parameters.insert("height".to_string(), ParameterValue::Number(0.9));
 
+        let ctx = crate::plot::aesthetic::AestheticContext::from_static(&["x", "y"], &[]);
         let result = stat_tile(
             "SELECT * FROM data",
             &schema,
             &aesthetics,
             &group_by,
             &parameters,
+            &ctx,
         );
         assert!(result.is_ok());
 
