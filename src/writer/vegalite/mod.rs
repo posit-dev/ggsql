@@ -1133,7 +1133,6 @@ impl Writer for VegaLiteWriter {
             .collect();
 
         // 4. Validate columns for each layer
-        let aesthetic_ctx = spec.get_aesthetic_context();
         for (layer_idx, (layer, key)) in spec.layers.iter().zip(layer_data_keys.iter()).enumerate()
         {
             let df = data.get(key).ok_or_else(|| {
@@ -1143,7 +1142,7 @@ impl Writer for VegaLiteWriter {
                     layer_idx + 1
                 ))
             })?;
-            validate_layer_columns(layer, df, layer_idx, &aesthetic_ctx)?;
+            validate_layer_columns(layer, df, layer_idx)?;
         }
 
         // 5. Build base Vega-Lite spec

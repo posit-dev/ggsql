@@ -7,7 +7,6 @@
 //! Each geom type can override specific phases of the rendering pipeline while using
 //! sensible defaults for standard behavior.
 
-use crate::plot::aesthetic::AestheticContext;
 use crate::plot::layer::geom::GeomType;
 use crate::plot::layer::is_transposed;
 use crate::plot::{ArrayElement, ParameterValue};
@@ -69,12 +68,7 @@ fn side_is_positive(side: &str, is_horizontal: bool) -> bool {
 }
 
 /// Validate column references for a single layer against its specific DataFrame
-pub fn validate_layer_columns(
-    layer: &Layer,
-    data: &DataFrame,
-    layer_idx: usize,
-    ctx: &AestheticContext,
-) -> Result<()> {
+pub fn validate_layer_columns(layer: &Layer, data: &DataFrame, layer_idx: usize) -> Result<()> {
     let available_columns: Vec<String> = data
         .get_column_names()
         .iter()
@@ -89,12 +83,9 @@ pub fn validate_layer_columns(
                 } else {
                     " (global data)".to_string()
                 };
-                // Translate both the column name (which may be wrapped, e.g.
-                // `__ggsql_aes_pos1__`) and the aesthetic key (which is in
-                // internal form, e.g. `pos1`) to the user-facing form.
                 let stripped = naming::extract_aesthetic_name(col).unwrap_or(col.as_str());
-                let display_col = ctx.map_internal_to_user(stripped);
-                let display_aes = ctx.map_internal_to_user(aesthetic);
+                let display_col = layer.mappings.display_name(stripped);
+                let display_aes = layer.mappings.display_name(aesthetic);
                 return Err(GgsqlError::ValidationError(format!(
                     "Column '{}' referenced in aesthetic '{}' (layer {}{}) does not exist.\nAvailable columns: {}",
                     display_col,
@@ -2365,6 +2356,7 @@ pub fn get_renderer(geom: &Geom) -> Box<dyn GeomRenderer> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::plot::aesthetic::AestheticContext;
 
     #[test]
     fn test_violin_detail_encoding() {
