@@ -875,7 +875,6 @@ fn add_discrete_columns_to_partition_by(
                 &layer.parameters,
                 &layer.mappings,
                 schema,
-                aesthetic_ctx,
                 layer.geom.aggregate_domain_aesthetics().unwrap_or(&[]),
             )
             .map(|(t, _)| t)
@@ -1289,13 +1288,7 @@ pub fn prepare_data_with_reader(query: &str, reader: &dyn Reader) -> Result<Prep
     // Detect orientation and flip mappings BEFORE building base queries.
     // This ensures the SQL query uses the correct aesthetic column names.
     let scales = specs[0].scales.clone();
-    let aesthetic_ctx = specs[0].get_aesthetic_context();
-    layer::resolve_orientations(
-        &mut specs[0].layers,
-        &scales,
-        &mut layer_type_info,
-        &aesthetic_ctx,
-    );
+    layer::resolve_orientations(&mut specs[0].layers, &scales, &mut layer_type_info);
 
     // Build layer base queries using build_layer_base_query()
     // These include: SELECT with aesthetic renames, casts from type_requirements, filters
@@ -1363,7 +1356,6 @@ pub fn prepare_data_with_reader(query: &str, reader: &dyn Reader) -> Result<Prep
             &scales,
             dialect,
             &execute_query,
-            &aesthetic_ctx,
         )?;
         layer_queries.push(layer_query);
     }

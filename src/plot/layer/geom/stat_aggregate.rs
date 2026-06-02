@@ -32,7 +32,6 @@ use regex::Regex;
 
 use super::types::StatResult;
 use crate::naming;
-use crate::plot::aesthetic::AestheticContext;
 use crate::plot::types::{ArrayElement, ParameterValue, Schema};
 use crate::reader::SqlDialect;
 use crate::{GgsqlError, Mappings, Result};
@@ -533,14 +532,10 @@ fn unquote(qcol: &str) -> String {
 /// 3. The name is a material aesthetic with the same internal name (e.g. `size`).
 ///
 /// Returns the empty vector if no resolution finds a mapped aesthetic.
-fn resolve_target_aesthetic(
-    user_aes: &str,
-    aesthetics: &Mappings,
-    aesthetic_ctx: &AestheticContext,
-) -> Vec<String> {
+fn resolve_target_aesthetic(user_aes: &str, aesthetics: &Mappings) -> Vec<String> {
     use crate::plot::layer::geom::types::AESTHETIC_ALIASES;
     let mut out = Vec::new();
-    if let Some(internal) = aesthetic_ctx.map_user_to_internal(user_aes) {
+    if let Some(internal) = aesthetics.internal_name(user_aes) {
         if aesthetics.aesthetics.contains_key(internal) {
             out.push(internal.to_string());
             return out;
@@ -549,8 +544,8 @@ fn resolve_target_aesthetic(
     for (alias, targets) in AESTHETIC_ALIASES {
         if *alias == user_aes {
             for t in *targets {
-                let internal = aesthetic_ctx
-                    .map_user_to_internal(t)
+                let internal = aesthetics
+                    .internal_name(t)
                     .map(|s| s.to_string())
                     .unwrap_or_else(|| (*t).to_string());
                 if aesthetics.aesthetics.contains_key(&internal) && !out.contains(&internal) {
@@ -588,11 +583,10 @@ fn is_upper_half(internal_aes: &str) -> bool {
 pub(crate) fn resolve_aggregate_targets(
     spec: &AggregateSpec,
     aesthetics: &Mappings,
-    aesthetic_ctx: &AestheticContext,
 ) -> std::result::Result<HashMap<String, Vec<AggSpec>>, String> {
     let mut targets_internal: HashMap<String, Vec<AggSpec>> = HashMap::new();
     for (user_aes, fns) in &spec.targets {
-        let resolved = resolve_target_aesthetic(user_aes, aesthetics, aesthetic_ctx);
+        let resolved = resolve_target_aesthetic(user_aes, aesthetics);
         if resolved.is_empty() {
             return Err(format!(
                 "aggregate target '{}' is not mapped on this layer",
@@ -619,7 +613,6 @@ pub(crate) fn resolve_aggregate_targets(
 pub fn targeted_aesthetics(
     parameters: &HashMap<String, ParameterValue>,
     aesthetics: &Mappings,
-    aesthetic_ctx: &AestheticContext,
 ) -> HashSet<String> {
     let raw = match parameters.get("aggregate") {
         Some(v) if !matches!(v, ParameterValue::Null) => v,
@@ -631,7 +624,7 @@ pub fn targeted_aesthetics(
     };
     let mut targeted: HashSet<String> = HashSet::new();
     for (user_aes, _fns) in &spec.targets {
-        for internal in resolve_target_aesthetic(user_aes, aesthetics, aesthetic_ctx) {
+        for internal in resolve_target_aesthetic(user_aes, aesthetics) {
             targeted.insert(internal);
         }
     }
@@ -655,7 +648,6 @@ pub fn aggregated_aesthetics(
     parameters: &HashMap<String, ParameterValue>,
     aesthetics: &Mappings,
     schema: &Schema,
-    aesthetic_ctx: &AestheticContext,
     domain_aesthetics: &[&'static str],
 ) -> Option<(HashSet<String>, HashSet<String>)> {
     let raw = parameters.get("aggregate")?;
@@ -666,7 +658,7 @@ pub fn aggregated_aesthetics(
 
     let mut targeted: HashSet<String> = HashSet::new();
     for (user_aes, _fns) in &spec.targets {
-        for internal in resolve_target_aesthetic(user_aes, aesthetics, aesthetic_ctx) {
+        for internal in resolve_target_aesthetic(user_aes, aesthetics) {
             targeted.insert(internal);
         }
     }
@@ -714,7 +706,6 @@ pub fn aggregated_aesthetics(
 /// (the *reduce* path) — or, when at least one target lists multiple functions,
 /// `N` rows per group with a synthetic `aggregate` column tagging each row
 /// (the *explode* path).
-#[allow(clippy::too_many_arguments)]
 pub fn apply(
     query: &str,
     schema: &Schema,
@@ -722,7 +713,6 @@ pub fn apply(
     group_by: &[String],
     parameters: &HashMap<String, ParameterValue>,
     dialect: &dyn SqlDialect,
-    aesthetic_ctx: &AestheticContext,
     domain_aesthetics: &[&'static str],
 ) -> Result<StatResult> {
     let raw = match parameters.get("aggregate") {
@@ -740,8 +730,8 @@ pub fn apply(
     // Resolve target keys (user-facing) → internal aesthetic names. An alias
     // like `color` expands to whichever of its targets (stroke/fill) is mapped
     // on the layer; the same function list applies to all of them.
-    let targets_internal = resolve_aggregate_targets(&spec, aesthetics, aesthetic_ctx)
-        .map_err(GgsqlError::ValidationError)?;
+    let targets_internal =
+        resolve_aggregate_targets(&spec, aesthetics).map_err(GgsqlError::ValidationError)?;
 
     // Walk mappings. Three buckets:
     //   - aggregated: (internal_aes, raw_col, fns of length n) — each emits one column per row
@@ -805,7 +795,7 @@ pub fn apply(
     }
 
     for d in &dropped {
-        let user_aes = aesthetic_ctx.map_internal_to_user(d);
+        let user_aes = aesthetics.display_name(d);
         eprintln!(
             "Warning: aggregate dropped numeric mapping for aesthetic '{}' \
              (no applicable default and no targeted function). \
@@ -1094,10 +1084,6 @@ mod tests {
             .collect()
     }
 
-    fn cartesian_ctx() -> AestheticContext {
-        AestheticContext::from_static(&["x", "y"], &[])
-    }
-
     fn run(
         params: ParameterValue,
         aes: &Mappings,
@@ -1118,7 +1104,6 @@ mod tests {
     ) -> Result<StatResult> {
         let mut p = HashMap::new();
         p.insert("aggregate".to_string(), params);
-        let ctx = cartesian_ctx();
         apply(
             "SELECT * FROM t",
             schema,
@@ -1126,7 +1111,6 @@ mod tests {
             group_by,
             &p,
             dialect,
-            &ctx,
             domain,
         )
     }
@@ -1338,10 +1322,9 @@ mod tests {
 
     #[test]
     fn returns_identity_when_param_unset() {
-        let aes = Mappings::new();
+        let aes = Mappings::new().with_cartesian_context();
         let schema: Schema = vec![];
         let p: HashMap<String, ParameterValue> = HashMap::new();
-        let ctx = cartesian_ctx();
         let result = apply(
             "SELECT * FROM t",
             &schema,
@@ -1349,7 +1332,6 @@ mod tests {
             &[],
             &p,
             &InlineQuantileDialect,
-            &ctx,
             &[],
         )
         .unwrap();
@@ -1358,7 +1340,7 @@ mod tests {
 
     #[test]
     fn returns_identity_when_param_null() {
-        let aes = Mappings::new();
+        let aes = Mappings::new().with_cartesian_context();
         let schema: Schema = vec![];
         let result = run(
             ParameterValue::Null,
@@ -1373,7 +1355,7 @@ mod tests {
 
     #[test]
     fn single_default_applies_to_every_numeric_mapping() {
-        let mut aes = Mappings::new();
+        let mut aes = Mappings::new().with_cartesian_context();
         aes.insert("pos1", col("__ggsql_aes_pos1__"));
         aes.insert("pos2", col("__ggsql_aes_pos2__"));
         let schema = schema_for(&[("__ggsql_aes_pos1__", false), ("__ggsql_aes_pos2__", false)]);
@@ -1412,7 +1394,7 @@ mod tests {
     fn sqlite_dialect_emits_portable_stddev_and_first() {
         use crate::reader::sqlite::SqliteDialect;
 
-        let mut aes = Mappings::new();
+        let mut aes = Mappings::new().with_cartesian_context();
         aes.insert("pos1", col("__ggsql_aes_pos1__"));
         aes.insert("pos2", col("__ggsql_aes_pos2__"));
         let schema = schema_for(&[("__ggsql_aes_pos1__", false), ("__ggsql_aes_pos2__", false)]);
@@ -1551,7 +1533,7 @@ mod tests {
             }
         }
 
-        let mut aes = Mappings::new();
+        let mut aes = Mappings::new().with_cartesian_context();
         aes.insert("pos1", col("__ggsql_aes_pos1__"));
         aes.insert("pos2", col("__ggsql_aes_pos2__"));
         let schema = schema_for(&[("__ggsql_aes_pos1__", false), ("__ggsql_aes_pos2__", false)]);
@@ -1572,7 +1554,7 @@ mod tests {
 
     #[test]
     fn mid_emits_min_max_midpoint() {
-        let mut aes = Mappings::new();
+        let mut aes = Mappings::new().with_cartesian_context();
         aes.insert("pos1", col("__ggsql_aes_pos1__"));
         aes.insert("pos2", col("__ggsql_aes_pos2__"));
         let schema = schema_for(&[("__ggsql_aes_pos1__", false), ("__ggsql_aes_pos2__", false)]);
@@ -1600,7 +1582,7 @@ mod tests {
 
     #[test]
     fn diff_uses_row_position_and_subtracts_first_from_last() {
-        let mut aes = Mappings::new();
+        let mut aes = Mappings::new().with_cartesian_context();
         aes.insert("pos1", col("__ggsql_aes_pos1__"));
         aes.insert("pos2", col("__ggsql_aes_pos2__"));
         let schema = schema_for(&[("__ggsql_aes_pos1__", false), ("__ggsql_aes_pos2__", false)]);
@@ -1658,7 +1640,7 @@ mod tests {
     fn duckdb_first_skips_row_number_cte() {
         use crate::reader::duckdb::DuckDbDialect;
 
-        let mut aes = Mappings::new();
+        let mut aes = Mappings::new().with_cartesian_context();
         aes.insert("pos1", col("__ggsql_aes_pos1__"));
         aes.insert("pos2", col("__ggsql_aes_pos2__"));
         let schema = schema_for(&[("__ggsql_aes_pos1__", false), ("__ggsql_aes_pos2__", false)]);
@@ -1692,7 +1674,7 @@ mod tests {
         // empty group_cols (so windows emit `OVER ()`). A bug that
         // forgot to thread `PARTITION BY <group_cols>` through wouldn't
         // surface in those tests.
-        let mut aes = Mappings::new();
+        let mut aes = Mappings::new().with_cartesian_context();
         aes.insert("pos1", col("__ggsql_aes_pos1__"));
         aes.insert("pos2", col("__ggsql_aes_pos2__"));
         let schema = schema_for(&[
@@ -1752,7 +1734,7 @@ mod tests {
 
     #[test]
     fn first_and_last_emit_positional_aggregates() {
-        let mut aes = Mappings::new();
+        let mut aes = Mappings::new().with_cartesian_context();
         aes.insert("pos1", col("__ggsql_aes_pos1__"));
         aes.insert("pos2min", col("__ggsql_aes_pos2min__"));
         aes.insert("pos2max", col("__ggsql_aes_pos2max__"));
@@ -1788,7 +1770,7 @@ mod tests {
 
     #[test]
     fn two_defaults_split_lower_and_upper_for_segment() {
-        let mut aes = Mappings::new();
+        let mut aes = Mappings::new().with_cartesian_context();
         aes.insert("pos1", col("__ggsql_aes_pos1__"));
         aes.insert("pos2", col("__ggsql_aes_pos2__"));
         aes.insert("pos1end", col("__ggsql_aes_pos1end__"));
@@ -1831,7 +1813,7 @@ mod tests {
 
     #[test]
     fn two_defaults_split_for_ribbon() {
-        let mut aes = Mappings::new();
+        let mut aes = Mappings::new().with_cartesian_context();
         aes.insert("pos1", col("__ggsql_aes_pos1__"));
         aes.insert("pos2min", col("__ggsql_aes_pos2min__"));
         aes.insert("pos2max", col("__ggsql_aes_pos2max__"));
@@ -1862,7 +1844,7 @@ mod tests {
 
     #[test]
     fn targeted_prefix_overrides_default() {
-        let mut aes = Mappings::new();
+        let mut aes = Mappings::new().with_cartesian_context();
         aes.insert("pos1", col("__ggsql_aes_pos1__"));
         aes.insert("pos2", col("__ggsql_aes_pos2__"));
         let schema = schema_for(&[("__ggsql_aes_pos1__", false), ("__ggsql_aes_pos2__", false)]);
@@ -1886,7 +1868,7 @@ mod tests {
 
     #[test]
     fn material_aesthetic_targeted_by_user_facing_name() {
-        let mut aes = Mappings::new();
+        let mut aes = Mappings::new().with_cartesian_context();
         aes.insert("pos1", col("__ggsql_aes_pos1__"));
         aes.insert("pos2", col("__ggsql_aes_pos2__"));
         aes.insert("size", col("__ggsql_aes_size__"));
@@ -1920,7 +1902,7 @@ mod tests {
     fn color_alias_targets_stroke_and_fill() {
         // `color` is an alias that resolves to whichever of `stroke`/`fill`
         // is actually mapped on the layer.
-        let mut aes = Mappings::new();
+        let mut aes = Mappings::new().with_cartesian_context();
         aes.insert("pos1", col("__ggsql_aes_pos1__"));
         aes.insert("pos2", col("__ggsql_aes_pos2__"));
         aes.insert("fill", col("__ggsql_aes_fill__"));
@@ -1955,7 +1937,7 @@ mod tests {
     fn explosion_emits_union_all_with_aggregate_label_column() {
         // ('y:min', 'y:max') on a line-style layer → 2 rows per group, each
         // tagged with the function name in __ggsql_stat_aggregate__.
-        let mut aes = Mappings::new();
+        let mut aes = Mappings::new().with_cartesian_context();
         aes.insert("pos1", col("__ggsql_aes_pos1__"));
         aes.insert("pos2", col("__ggsql_aes_pos2__"));
         let schema = schema_for(&[("__ggsql_aes_pos1__", false), ("__ggsql_aes_pos2__", false)]);
@@ -1995,7 +1977,7 @@ mod tests {
         //   - default 'mean' applies to non-targeted aesthetics, recycled
         //   - y is exploded into [min, max] → N=2
         //   - color is targeted with one function → recycled to [median, median]
-        let mut aes = Mappings::new();
+        let mut aes = Mappings::new().with_cartesian_context();
         aes.insert("pos1", col("__ggsql_aes_pos1__"));
         aes.insert("pos2", col("__ggsql_aes_pos2__"));
         aes.insert("fill", col("__ggsql_aes_fill__"));
@@ -2050,7 +2032,7 @@ mod tests {
         // and expects pos1 (the continuous time-axis column) to be a group
         // key, not a dropped numeric mapping. The geom declares pos1 as a
         // domain aesthetic; the stat keeps it as a group column.
-        let mut aes = Mappings::new();
+        let mut aes = Mappings::new().with_cartesian_context();
         aes.insert("pos1", col("__ggsql_aes_pos1__"));
         aes.insert("pos2", col("__ggsql_aes_pos2__"));
         let schema = schema_for(&[
@@ -2102,7 +2084,7 @@ mod tests {
         //   - color is exploded → N=2
         // Result: two rows, with color taking p25 in row 0 and p75 in row 1;
         // pos1/pos2min always use mean-sdev, pos2max always uses mean+sdev.
-        let mut aes = Mappings::new();
+        let mut aes = Mappings::new().with_cartesian_context();
         aes.insert("pos1", col("__ggsql_aes_pos1__"));
         aes.insert("pos2min", col("__ggsql_aes_pos2min__"));
         aes.insert("pos2max", col("__ggsql_aes_pos2max__"));
@@ -2143,7 +2125,7 @@ mod tests {
 
     #[test]
     fn discrete_mapping_becomes_group_key() {
-        let mut aes = Mappings::new();
+        let mut aes = Mappings::new().with_cartesian_context();
         aes.insert("pos1", col("__ggsql_aes_pos1__"));
         aes.insert("pos2", col("__ggsql_aes_pos2__"));
         aes.insert("color", col("__ggsql_aes_color__"));
@@ -2181,7 +2163,7 @@ mod tests {
 
     #[test]
     fn literal_mapping_passes_through() {
-        let mut aes = Mappings::new();
+        let mut aes = Mappings::new().with_cartesian_context();
         aes.insert("pos1", col("__ggsql_aes_pos1__"));
         aes.insert("pos2", col("__ggsql_aes_pos2__"));
         aes.insert(
@@ -2209,7 +2191,7 @@ mod tests {
 
     #[test]
     fn untargeted_numeric_mapping_dropped_when_no_default() {
-        let mut aes = Mappings::new();
+        let mut aes = Mappings::new().with_cartesian_context();
         aes.insert("pos1", col("__ggsql_aes_pos1__"));
         aes.insert("pos2", col("__ggsql_aes_pos2__"));
         let schema = schema_for(&[("__ggsql_aes_pos1__", false), ("__ggsql_aes_pos2__", false)]);
@@ -2238,7 +2220,7 @@ mod tests {
 
     #[test]
     fn quantile_uses_dialect_inline_when_available() {
-        let mut aes = Mappings::new();
+        let mut aes = Mappings::new().with_cartesian_context();
         aes.insert("pos2", col("__ggsql_aes_pos2__"));
         let schema = schema_for(&[("__ggsql_aes_pos2__", false)]);
         let result = run(
@@ -2260,7 +2242,7 @@ mod tests {
 
     #[test]
     fn quantile_falls_back_to_correlated_subquery_without_inline() {
-        let mut aes = Mappings::new();
+        let mut aes = Mappings::new().with_cartesian_context();
         aes.insert("pos2", col("__ggsql_aes_pos2__"));
         let schema = schema_for(&[("__ggsql_aes_pos2__", false)]);
         let result = run(
@@ -2284,7 +2266,7 @@ mod tests {
 
     #[test]
     fn unknown_targeted_aesthetic_is_error() {
-        let mut aes = Mappings::new();
+        let mut aes = Mappings::new().with_cartesian_context();
         aes.insert("pos1", col("__ggsql_aes_pos1__"));
         aes.insert("pos2", col("__ggsql_aes_pos2__"));
         let schema = schema_for(&[("__ggsql_aes_pos1__", false), ("__ggsql_aes_pos2__", false)]);

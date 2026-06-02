@@ -305,7 +305,7 @@ impl Layer {
         }
 
         // Call geom-specific validation (e.g., XOR constraints for Rule)
-        self.geom.validate_aesthetics(&self.mappings, context)?;
+        self.geom.validate_aesthetics(&self.mappings)?;
 
         Ok(())
     }
@@ -450,10 +450,7 @@ impl Layer {
     /// Used by the standalone validate path (`ggsql validate`); the execute
     /// path catches the same errors at execute time inside
     /// `stat_aggregate::apply` (avoiding a redundant parse).
-    pub fn validate_aggregate_setting(
-        &self,
-        aesthetic_ctx: Option<&AestheticContext>,
-    ) -> std::result::Result<(), String> {
+    pub fn validate_aggregate_setting(&self) -> std::result::Result<(), String> {
         if !self.geom.supports_aggregate() {
             return Ok(());
         }
@@ -474,13 +471,7 @@ impl Layer {
             Some(s) => s,
             None => return Ok(()),
         };
-        if let Some(ctx) = aesthetic_ctx {
-            crate::plot::layer::geom::stat_aggregate::resolve_aggregate_targets(
-                &spec,
-                &self.mappings,
-                ctx,
-            )?;
-        }
+        crate::plot::layer::geom::stat_aggregate::resolve_aggregate_targets(&spec, &self.mappings)?;
         Ok(())
     }
 

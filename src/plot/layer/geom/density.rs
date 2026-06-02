@@ -107,18 +107,9 @@ impl GeomTrait for Density {
         parameters: &std::collections::HashMap<String, crate::plot::ParameterValue>,
         _execute_query: &dyn Fn(&str) -> crate::Result<crate::DataFrame>,
         dialect: &dyn SqlDialect,
-        aesthetic_ctx: &crate::plot::aesthetic::AestheticContext,
     ) -> crate::Result<super::StatResult> {
-        // Density geom: no tails limit (don't set tails parameter, defaults to None)
         stat_density(
-            query,
-            aesthetics,
-            "pos1",
-            None,
-            group_by,
-            parameters,
-            dialect,
-            aesthetic_ctx,
+            query, aesthetics, "pos1", None, group_by, parameters, dialect,
         )
     }
 }
@@ -156,11 +147,12 @@ pub(crate) fn stat_density(
     group_by: &[String],
     parameters: &HashMap<String, ParameterValue>,
     dialect: &dyn SqlDialect,
-    aesthetic_ctx: &crate::plot::aesthetic::AestheticContext,
 ) -> Result<StatResult> {
     let value = get_column_name(aesthetics, value_aesthetic).ok_or_else(|| {
-        let name = aesthetic_ctx.map_internal_to_user(value_aesthetic);
-        GgsqlError::ValidationError(format!("Density requires '{}' aesthetic mapping", name))
+        GgsqlError::ValidationError(format!(
+            "Density requires '{}' aesthetic mapping",
+            aesthetics.display_name(value_aesthetic)
+        ))
     })?;
     let smooth = smooth_aesthetic.and_then(|smth| get_column_name(aesthetics, smth));
     let weight = get_column_name(aesthetics, "weight");
@@ -1196,10 +1188,9 @@ mod tests {
 
     #[test]
     fn stat_density_missing_value_aesthetic_emits_user_facing_name() {
-        let mappings = crate::Mappings::new();
+        let mappings = crate::Mappings::new().with_cartesian_context();
         let parameters = std::collections::HashMap::new();
         let dialect = AnsiDialect;
-        let ctx = crate::plot::aesthetic::AestheticContext::from_static(&["x", "y"], &[]);
 
         let err = stat_density(
             "SELECT 1",
@@ -1209,7 +1200,6 @@ mod tests {
             &[],
             &parameters,
             &dialect,
-            &ctx,
         )
         .unwrap_err()
         .to_string();

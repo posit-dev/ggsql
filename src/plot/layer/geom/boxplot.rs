@@ -99,16 +99,8 @@ impl GeomTrait for Boxplot {
         parameters: &HashMap<String, ParameterValue>,
         _execute_query: &dyn Fn(&str) -> Result<DataFrame>,
         dialect: &dyn SqlDialect,
-        aesthetic_ctx: &crate::plot::aesthetic::AestheticContext,
     ) -> Result<StatResult> {
-        stat_boxplot(
-            query,
-            aesthetics,
-            group_by,
-            parameters,
-            dialect,
-            aesthetic_ctx,
-        )
+        stat_boxplot(query, aesthetics, group_by, parameters, dialect)
     }
 }
 
@@ -124,11 +116,12 @@ fn stat_boxplot(
     group_by: &[String],
     parameters: &HashMap<String, ParameterValue>,
     dialect: &dyn SqlDialect,
-    aesthetic_ctx: &crate::plot::aesthetic::AestheticContext,
 ) -> Result<StatResult> {
     let y = get_column_name(aesthetics, "pos2").ok_or_else(|| {
-        let name = aesthetic_ctx.map_internal_to_user("pos2");
-        GgsqlError::ValidationError(format!("Boxplot requires '{}' aesthetic mapping", name))
+        GgsqlError::ValidationError(format!(
+            "Boxplot requires '{}' aesthetic mapping",
+            aesthetics.display_name("pos2")
+        ))
     })?;
 
     // pos1 is optional. When the user omits it, wrap the input query with a
@@ -638,14 +631,12 @@ mod tests {
         parameters.insert("coef".to_string(), ParameterValue::Number(1.5));
         parameters.insert("outliers".to_string(), ParameterValue::Boolean(true));
 
-        let ctx = crate::plot::aesthetic::AestheticContext::from_static(&["x", "y"], &[]);
         let result = stat_boxplot(
             "SELECT * FROM data",
             &aesthetics,
             &[],
             &parameters,
             &AnsiDialect,
-            &ctx,
         )
         .expect("stat_boxplot should succeed without pos1");
 

@@ -76,7 +76,6 @@ pub use text::Text;
 pub use tile::Tile;
 pub use violin::Violin;
 
-use crate::plot::aesthetic::AestheticContext;
 use crate::plot::types::{ParameterValue, Schema};
 use crate::reader::SqlDialect;
 
@@ -149,11 +148,7 @@ pub trait GeomTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
     /// to allow geoms to implement custom validation logic (e.g., XOR constraints).
     ///
     /// Default: no additional validation
-    fn validate_aesthetics(
-        &self,
-        _mappings: &crate::Mappings,
-        _aesthetic_ctx: &Option<AestheticContext>,
-    ) -> std::result::Result<(), String> {
+    fn validate_aesthetics(&self, _mappings: &crate::Mappings) -> std::result::Result<(), String> {
         Ok(())
     }
 
@@ -244,21 +239,13 @@ pub trait GeomTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
         parameters: &HashMap<String, ParameterValue>,
         _execute_query: &dyn Fn(&str) -> Result<DataFrame>,
         dialect: &dyn SqlDialect,
-        aesthetic_ctx: &AestheticContext,
     ) -> Result<StatResult> {
         let mut result = if let (Some(domain), true) = (
             self.aggregate_domain_aesthetics(),
             has_aggregate_param(parameters),
         ) {
             stat_aggregate::apply(
-                query,
-                schema,
-                aesthetics,
-                group_by,
-                parameters,
-                dialect,
-                aesthetic_ctx,
-                domain,
+                query, schema, aesthetics, group_by, parameters, dialect, domain,
             )?
         } else {
             StatResult::Identity
@@ -526,7 +513,6 @@ impl Geom {
         parameters: &HashMap<String, ParameterValue>,
         execute_query: &dyn Fn(&str) -> Result<DataFrame>,
         dialect: &dyn SqlDialect,
-        aesthetic_ctx: &AestheticContext,
     ) -> Result<StatResult> {
         self.0.apply_stat_transform(
             query,
@@ -536,7 +522,6 @@ impl Geom {
             parameters,
             execute_query,
             dialect,
-            aesthetic_ctx,
         )
     }
 
@@ -576,12 +561,8 @@ impl Geom {
     }
 
     /// Validate aesthetic mappings
-    pub fn validate_aesthetics(
-        &self,
-        mappings: &Mappings,
-        aesthetic_ctx: &Option<AestheticContext>,
-    ) -> std::result::Result<(), String> {
-        self.0.validate_aesthetics(mappings, aesthetic_ctx)
+    pub fn validate_aesthetics(&self, mappings: &Mappings) -> std::result::Result<(), String> {
+        self.0.validate_aesthetics(mappings)
     }
 }
 
