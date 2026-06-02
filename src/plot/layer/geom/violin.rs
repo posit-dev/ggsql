@@ -247,6 +247,7 @@ fn stat_violin(
         group_by.as_slice(),
         parameters,
         dialect,
+        aesthetic_ctx,
     )?;
 
     if !use_dummy {

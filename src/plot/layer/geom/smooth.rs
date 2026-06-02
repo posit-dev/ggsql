@@ -117,6 +117,7 @@ impl GeomTrait for Smooth {
                     group_by,
                     &params,
                     dialect,
+                    aesthetic_ctx,
                 )
             }
             "ols" => stat_ols(query, aesthetics, group_by, aesthetic_ctx),
