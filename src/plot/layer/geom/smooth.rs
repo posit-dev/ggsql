@@ -96,7 +96,7 @@ impl GeomTrait for Smooth {
         parameters: &std::collections::HashMap<String, crate::plot::ParameterValue>,
         _execute_query: &dyn Fn(&str) -> crate::Result<crate::DataFrame>,
         dialect: &dyn SqlDialect,
-        _aesthetic_ctx: &crate::plot::aesthetic::AestheticContext,
+        aesthetic_ctx: &crate::plot::aesthetic::AestheticContext,
     ) -> crate::Result<super::StatResult> {
         // Get method from parameters (validated by ParamConstraint::string_option)
         let ParameterValue::String(method) = parameters.get("method").unwrap() else {
@@ -119,8 +119,8 @@ impl GeomTrait for Smooth {
                     dialect,
                 )
             }
-            "ols" => stat_ols(query, aesthetics, group_by),
-            "tls" => stat_tls(query, aesthetics, group_by),
+            "ols" => stat_ols(query, aesthetics, group_by, aesthetic_ctx),
+            "tls" => stat_tls(query, aesthetics, group_by, aesthetic_ctx),
             _ => unreachable!("method validated by ParamConstraint::string_option"),
         }
     }
@@ -132,16 +132,19 @@ impl std::fmt::Display for Smooth {
     }
 }
 
-fn stat_ols(query: &str, aesthetics: &Mappings, group_by: &[String]) -> Result<StatResult> {
+fn stat_ols(
+    query: &str,
+    aesthetics: &Mappings,
+    group_by: &[String],
+    aesthetic_ctx: &crate::plot::aesthetic::AestheticContext,
+) -> Result<StatResult> {
     let x_col = get_quoted_column_name(aesthetics, "pos1").ok_or_else(|| {
-        GgsqlError::ValidationError(
-            "Smooth requires both position aesthetics to be mapped".to_string(),
-        )
+        let name = aesthetic_ctx.map_internal_to_user("pos1");
+        GgsqlError::ValidationError(format!("Smooth requires '{}' aesthetic mapping", name))
     })?;
     let y_col = get_quoted_column_name(aesthetics, "pos2").ok_or_else(|| {
-        GgsqlError::ValidationError(
-            "Smooth requires both position aesthetics to be mapped".to_string(),
-        )
+        let name = aesthetic_ctx.map_internal_to_user("pos2");
+        GgsqlError::ValidationError(format!("Smooth requires '{}' aesthetic mapping", name))
     })?;
 
     // Build group-related SQL fragments
@@ -198,16 +201,19 @@ fn stat_ols(query: &str, aesthetics: &Mappings, group_by: &[String]) -> Result<S
     })
 }
 
-fn stat_tls(query: &str, aesthetics: &Mappings, group_by: &[String]) -> Result<StatResult> {
+fn stat_tls(
+    query: &str,
+    aesthetics: &Mappings,
+    group_by: &[String],
+    aesthetic_ctx: &crate::plot::aesthetic::AestheticContext,
+) -> Result<StatResult> {
     let x_col = get_quoted_column_name(aesthetics, "pos1").ok_or_else(|| {
-        GgsqlError::ValidationError(
-            "Smooth requires both position aesthetics to be mapped".to_string(),
-        )
+        let name = aesthetic_ctx.map_internal_to_user("pos1");
+        GgsqlError::ValidationError(format!("Smooth requires '{}' aesthetic mapping", name))
     })?;
     let y_col = get_quoted_column_name(aesthetics, "pos2").ok_or_else(|| {
-        GgsqlError::ValidationError(
-            "Smooth requires both position aesthetics to be mapped".to_string(),
-        )
+        let name = aesthetic_ctx.map_internal_to_user("pos2");
+        GgsqlError::ValidationError(format!("Smooth requires '{}' aesthetic mapping", name))
     })?;
 
     // Build group-related SQL fragments
@@ -307,7 +313,8 @@ mod tests {
             },
         );
 
-        let result = stat_ols(query, &mapping, &groups).expect("stat_ols should succeed");
+        let ctx = crate::plot::aesthetic::AestheticContext::from_static(&["x", "y"], &[]);
+        let result = stat_ols(query, &mapping, &groups, &ctx).expect("stat_ols should succeed");
 
         if let StatResult::Transformed {
             query: sql,
@@ -358,7 +365,8 @@ mod tests {
             },
         );
 
-        let result = stat_ols(query, &mapping, &groups).expect("stat_ols should succeed");
+        let ctx = crate::plot::aesthetic::AestheticContext::from_static(&["x", "y"], &[]);
+        let result = stat_ols(query, &mapping, &groups, &ctx).expect("stat_ols should succeed");
 
         if let StatResult::Transformed {
             query: sql,
@@ -406,7 +414,8 @@ mod tests {
             },
         );
 
-        let result = stat_tls(query, &mapping, &groups).expect("stat_tls should succeed");
+        let ctx = crate::plot::aesthetic::AestheticContext::from_static(&["x", "y"], &[]);
+        let result = stat_tls(query, &mapping, &groups, &ctx).expect("stat_tls should succeed");
 
         if let StatResult::Transformed {
             query: sql,
@@ -457,7 +466,8 @@ mod tests {
             },
         );
 
-        let result = stat_tls(query, &mapping, &groups).expect("stat_tls should succeed");
+        let ctx = crate::plot::aesthetic::AestheticContext::from_static(&["x", "y"], &[]);
+        let result = stat_tls(query, &mapping, &groups, &ctx).expect("stat_tls should succeed");
 
         if let StatResult::Transformed {
             query: sql,
@@ -485,22 +495,28 @@ mod tests {
     // =========================================================================
 
     #[test]
-    fn stat_ols_missing_pos_aesthetics_emits_coord_agnostic_message() {
+    fn stat_ols_missing_pos_aesthetics_emits_user_facing_name() {
         let mapping = crate::Mappings::new();
-        let err = stat_ols("SELECT 1", &mapping, &[]).unwrap_err().to_string();
+        let ctx = crate::plot::aesthetic::AestheticContext::from_static(&["x", "y"], &[]);
+        let err = stat_ols("SELECT 1", &mapping, &[], &ctx)
+            .unwrap_err()
+            .to_string();
         assert_eq!(
             err,
-            "Validation error: Smooth requires both position aesthetics to be mapped"
+            "Validation error: Smooth requires 'x' aesthetic mapping"
         );
     }
 
     #[test]
-    fn stat_tls_missing_pos_aesthetics_emits_coord_agnostic_message() {
+    fn stat_tls_missing_pos_aesthetics_emits_user_facing_name() {
         let mapping = crate::Mappings::new();
-        let err = stat_tls("SELECT 1", &mapping, &[]).unwrap_err().to_string();
+        let ctx = crate::plot::aesthetic::AestheticContext::from_static(&["x", "y"], &[]);
+        let err = stat_tls("SELECT 1", &mapping, &[], &ctx)
+            .unwrap_err()
+            .to_string();
         assert_eq!(
             err,
-            "Validation error: Smooth requires both position aesthetics to be mapped"
+            "Validation error: Smooth requires 'x' aesthetic mapping"
         );
     }
 }
