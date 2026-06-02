@@ -149,7 +149,11 @@ pub trait GeomTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
     /// to allow geoms to implement custom validation logic (e.g., XOR constraints).
     ///
     /// Default: no additional validation
-    fn validate_aesthetics(&self, _mappings: &crate::Mappings) -> std::result::Result<(), String> {
+    fn validate_aesthetics(
+        &self,
+        _mappings: &crate::Mappings,
+        _aesthetic_ctx: &Option<AestheticContext>,
+    ) -> std::result::Result<(), String> {
         Ok(())
     }
 
@@ -572,8 +576,12 @@ impl Geom {
     }
 
     /// Validate aesthetic mappings
-    pub fn validate_aesthetics(&self, mappings: &Mappings) -> std::result::Result<(), String> {
-        self.0.validate_aesthetics(mappings)
+    pub fn validate_aesthetics(
+        &self,
+        mappings: &Mappings,
+        aesthetic_ctx: &Option<AestheticContext>,
+    ) -> std::result::Result<(), String> {
+        self.0.validate_aesthetics(mappings, aesthetic_ctx)
     }
 }
 
