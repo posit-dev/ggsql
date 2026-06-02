@@ -25,7 +25,7 @@
 
 use super::geom::{Geom, GeomType};
 use super::Layer;
-use crate::plot::aesthetic::{is_position_aesthetic, AestheticContext};
+use crate::plot::aesthetic::is_position_aesthetic;
 use crate::plot::scale::ScaleTypeKind;
 use crate::plot::{AestheticValue, DefaultAestheticValue, Mappings, Scale};
 use crate::{naming, DataFrame};
@@ -271,10 +271,10 @@ pub fn flip_position_aesthetics(
 ///
 /// This is called after query execution for layers with Transposed orientation,
 /// in coordination with `normalize_mapping_column_names` which updates the mappings.
-pub fn flip_dataframe_position_columns(
-    df: DataFrame,
-    aesthetic_ctx: &AestheticContext,
-) -> DataFrame {
+pub fn flip_dataframe_position_columns(df: DataFrame, mappings: &crate::Mappings) -> DataFrame {
+    let Some(aesthetic_ctx) = mappings.context() else {
+        return df;
+    };
     // Collect renames needed
     let renames: Vec<(String, String)> = df
         .get_column_names()
