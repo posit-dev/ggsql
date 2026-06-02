@@ -26,14 +26,11 @@ pub use geom::{
 // Re-export position types for convenience
 pub use position::{Position, PositionTrait, PositionType};
 
-use crate::{
-    plot::{
-        is_facet_aesthetic, parse_position,
-        types::{
-            validate_parameter, AestheticValue, DataSource, Mappings, ParameterValue, SqlExpression,
-        },
+use crate::plot::{
+    is_facet_aesthetic, parse_position,
+    types::{
+        validate_parameter, AestheticValue, DataSource, Mappings, ParameterValue, SqlExpression,
     },
-    AestheticContext,
 };
 
 /// A single visualization layer (from DRAW clause)
@@ -185,19 +182,8 @@ impl Layer {
     ///
     /// # Returns
     /// `Ok(())` if validation passes, or `Err(message)` with a user-friendly error message.
-    pub fn validate_mapping(
-        &self,
-        context: &Option<AestheticContext>,
-        include_delayed: bool,
-    ) -> std::result::Result<(), String> {
-        // If there is aesthetic context, translate to user-facing form
-        let translate = |aes: &str| -> String {
-            let name = match context {
-                Some(ctx) => ctx.map_internal_to_user(aes),
-                None => aes.to_string(),
-            };
-            format!("`{}`", name)
-        };
+    pub fn validate_mapping(&self, include_delayed: bool) -> std::result::Result<(), String> {
+        let translate = |aes: &str| -> String { format!("`{}`", self.mappings.display_name(aes)) };
 
         // Check if all required aesthetics exist. The Aggregate stat replaces
         // mapped values in place — it never synthesises new aesthetics — so
@@ -278,8 +264,8 @@ impl Layer {
         .collect();
 
         // At this point in execution we don't know orientation yet,
-        // so we'll approve both flipped and upflipped aesthetics.
-        if let Some(ctx) = context {
+        // so we'll approve both flipped and unflipped aesthetics.
+        if let Some(ctx) = self.mappings.context() {
             let flipped: Vec<String> = supported.iter().map(|aes| ctx.flip_position(aes)).collect();
             supported.extend(flipped);
         }
@@ -664,18 +650,14 @@ mod tests {
 
     #[test]
     fn test_validate_mapping_bidirectional_missing() {
-        // Test error message when aesthetic is completely missing (neither identity nor flipped form)
-        use crate::AestheticContext;
-
         let mut layer = Layer::new(Geom::ribbon());
+        layer.mappings = Mappings::new().with_cartesian_context();
         layer.mappings.insert(
             "pos1".to_string(),
             AestheticValue::standard_column("x".to_string()),
         );
-        // Missing both pos2min and pos1min (required by ribbon)
 
-        let ctx = AestheticContext::from_static(&["x", "y"], &[]);
-        let result = layer.validate_mapping(&Some(ctx), false);
+        let result = layer.validate_mapping(false);
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert!(
@@ -687,10 +669,8 @@ mod tests {
 
     #[test]
     fn test_validate_mapping_bidirectional_mixed_orientation() {
-        // Test error message when aesthetics are present but in mixed orientations
-        use crate::AestheticContext;
-
         let mut layer = Layer::new(Geom::ribbon());
+        layer.mappings = Mappings::new().with_cartesian_context();
         layer.mappings.insert(
             "pos1".to_string(),
             AestheticValue::standard_column("x".to_string()),
@@ -700,12 +680,11 @@ mod tests {
             AestheticValue::standard_column("ymin".to_string()),
         );
         layer.mappings.insert(
-            "pos1max".to_string(), // This should be pos2max to match pos2min's orientation
+            "pos1max".to_string(),
             AestheticValue::standard_column("xmax".to_string()),
         );
 
-        let ctx = AestheticContext::from_static(&["x", "y"], &[]);
-        let result = layer.validate_mapping(&Some(ctx), false);
+        let result = layer.validate_mapping(false);
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert!(
@@ -722,10 +701,8 @@ mod tests {
 
     #[test]
     fn test_validate_mapping_bidirectional_identity_ok() {
-        // Test that validation passes when all requirements are in identity form
-        use crate::AestheticContext;
-
         let mut layer = Layer::new(Geom::ribbon());
+        layer.mappings = Mappings::new().with_cartesian_context();
         layer.mappings.insert(
             "pos1".to_string(),
             AestheticValue::standard_column("x".to_string()),
@@ -739,17 +716,14 @@ mod tests {
             AestheticValue::standard_column("ymax".to_string()),
         );
 
-        let ctx = AestheticContext::from_static(&["x", "y"], &[]);
-        let result = layer.validate_mapping(&Some(ctx), false);
+        let result = layer.validate_mapping(false);
         assert!(result.is_ok());
     }
 
     #[test]
     fn test_validate_mapping_bidirectional_flipped_ok() {
-        // Test that validation passes when all requirements are in flipped form
-        use crate::AestheticContext;
-
         let mut layer = Layer::new(Geom::ribbon());
+        layer.mappings = Mappings::new().with_cartesian_context();
         layer.mappings.insert(
             "pos2".to_string(),
             AestheticValue::standard_column("y".to_string()),
@@ -763,8 +737,7 @@ mod tests {
             AestheticValue::standard_column("xmax".to_string()),
         );
 
-        let ctx = AestheticContext::from_static(&["x", "y"], &[]);
-        let result = layer.validate_mapping(&Some(ctx), false);
+        let result = layer.validate_mapping(false);
         assert!(result.is_ok());
     }
 }

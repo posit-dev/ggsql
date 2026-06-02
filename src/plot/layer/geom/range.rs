@@ -62,19 +62,18 @@ impl std::fmt::Display for Range {
 
 #[cfg(test)]
 mod tests {
-    use crate::plot::{AestheticContext, AestheticValue, Geom, Layer};
+    use crate::plot::{AestheticValue, Geom, Layer, Mappings};
 
-    /// Helper function to create a layer with given mappings and validate it
     fn validate_range(mappings: &[(&str, &str)]) -> Result<(), String> {
         let mut layer = Layer::new(Geom::range());
+        layer.mappings = Mappings::new().with_cartesian_context();
         for (aesthetic, column) in mappings {
             layer.mappings.insert(
                 aesthetic.to_string(),
                 AestheticValue::standard_column(column.to_string()),
             );
         }
-        let ctx = AestheticContext::from_static(&["x", "y"], &[]);
-        layer.validate_mapping(&Some(ctx), false)
+        layer.validate_mapping(false)
     }
 
     #[test]
