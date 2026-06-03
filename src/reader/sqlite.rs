@@ -80,20 +80,22 @@ impl super::SqlDialect for SqliteDialect {
     }
 
     fn sql_st_transform(&self, column: &str, source_crs: &str, target_crs: &str) -> String {
-        let source_srid = super::extract_epsg_srid(source_crs).unwrap_or(4326);
-        match super::extract_epsg_srid(target_crs) {
-            Some(target_srid) => {
-                format!(
-                    "ST_Transform(SetSRID({}, {}), {})",
-                    column, source_srid, target_srid
-                )
+        let source_srid = super::extract_epsg_srid(source_crs);
+        let target_srid = super::extract_epsg_srid(target_crs);
+        match (source_srid, target_srid) {
+            (Some(src), Some(tgt)) => {
+                format!("ST_Transform(SetSRID({}, {}), {})", column, src, tgt)
             }
-            None => {
+            _ => {
                 let source_proj = source_crs.replace('\'', "''");
                 let target_proj = target_crs.replace('\'', "''");
+                let input = match source_srid {
+                    Some(srid) => format!("SetSRID({}, {})", column, srid),
+                    None => column.to_string(),
+                };
                 format!(
-                    "ST_Transform(SetSRID({}, {}), 0, NULL, '{}', '{}')",
-                    column, source_srid, source_proj, target_proj
+                    "ST_Transform({}, 0, NULL, '{}', '{}')",
+                    input, source_proj, target_proj
                 )
             }
         }
@@ -1396,12 +1398,30 @@ mod spatialite_tests {
 
     #[test]
     #[ignore]
-    fn spatialite_dialect_st_transform_proj_string() {
+    fn spatialite_dialect_st_transform_proj_target() {
         let dialect = SqliteDialect;
         let expr = dialect.sql_st_transform(
             "MakePoint(10, 50, 4326)",
             "EPSG:4326",
             "+proj=laea +lon_0=10 +lat_0=52",
+        );
+        let reader = spatialite_reader().expect("mod_spatialite not available");
+        let df = reader
+            .execute_sql(&format!("SELECT ST_AsText({expr}) AS wkt"))
+            .unwrap();
+        assert_eq!(df.height(), 1);
+        let wkt = crate::array_util::value_to_string(df.column("wkt").unwrap(), 0);
+        assert!(wkt.contains("POINT"), "Expected POINT, got: {wkt}");
+    }
+
+    #[test]
+    #[ignore]
+    fn spatialite_dialect_st_transform_proj_source() {
+        let dialect = SqliteDialect;
+        let expr = dialect.sql_st_transform(
+            "MakePoint(0, -222638)",
+            "+proj=laea +lon_0=10 +lat_0=52",
+            "EPSG:4326",
         );
         let reader = spatialite_reader().expect("mod_spatialite not available");
         let df = reader
