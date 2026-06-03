@@ -1057,13 +1057,19 @@ pub fn hemisphere_polygon_wkt(lon0: f64, lat0: f64, radius_deg: f64) -> String {
 
     let includes_north_pole = lat0 + radius_deg > 90.0;
     let includes_south_pole = lat0 - radius_deg < -90.0;
+    let crossings = find_antimeridian_crossings(&points);
 
     if includes_north_pole || includes_south_pole {
         build_pole_polygon(&points, includes_north_pole)
-    } else if find_antimeridian_crossings(&points).len() == 2 {
+    } else if crossings.len() == 2 {
         build_antimeridian_multipolygon(&points)
-    } else {
+    } else if crossings.is_empty() {
         build_simple_polygon(&points)
+    } else {
+        // Near-pole edge case: discrete sampling produces spurious antimeridian
+        // crossings when points are at very high latitudes where longitude is
+        // unstable. Route through the nearest pole to produce valid WKT.
+        build_pole_polygon(&points, lat0 > 0.0)
     }
 }
 
@@ -1375,6 +1381,28 @@ mod tests {
             wkt.starts_with("POLYGON(("),
             "rectangle projections always produce POLYGON: {wkt}"
         );
+    }
+
+    #[test]
+    fn hemisphere_polygon_always_valid_wkt() {
+        // Verify all near-pole and antimeridian configurations produce valid WKT
+        // (always starts with POLYGON or MULTIPOLYGON, never a bare ring).
+        let cases = [
+            (170.0, 80.0, 9.0),
+            (-170.0, -80.0, 9.0),
+            (180.0, 45.0, 60.0),
+            (0.0, 89.0, 0.5),
+            (179.0, 0.0, 88.0),
+            (-179.0, 0.0, 88.0),
+            (90.0, 89.5, 0.1),
+        ];
+        for (lon, lat, r) in cases {
+            let wkt = hemisphere_polygon_wkt(lon, lat, r);
+            assert!(
+                wkt.starts_with("POLYGON((") || wkt.starts_with("MULTIPOLYGON("),
+                "hemisphere_polygon_wkt({lon}, {lat}, {r}) produced invalid WKT: {wkt}"
+            );
+        }
     }
 
     #[test]
