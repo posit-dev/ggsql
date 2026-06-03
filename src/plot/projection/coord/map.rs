@@ -201,21 +201,17 @@ impl CoordTrait for Map {
 
         // Resolve numeric EPSG codes to PROJ strings (source is kept as EPSG:N
         // so that sql_st_transform can extract the numeric SRID for ST_SetSRID).
-        resolve_epsg_property("crs", projection, execute_query)?;
-
-        let source = match projection.properties.get("source") {
-            Some(ParameterValue::String(s)) => s.clone(),
-            _ => "EPSG:4326".to_string(),
-        };
-        let crs = match projection.properties.get("crs") {
-            Some(ParameterValue::String(s)) => s.clone(),
-            _ => {
-                projection
-                    .properties
-                    .insert("crs".to_string(), ParameterValue::String(source.clone()));
-                source.clone()
-            }
-        };
+        let source = resolve_epsg_property("source", &projection.properties, execute_query)
+            .unwrap_or_else(|| "EPSG:4326".to_string());
+        let crs = resolve_epsg_property("crs", &projection.properties, execute_query)
+            .unwrap_or_else(|| source.clone());
+        // Reinsert as strings so geom apply_projection() calls below can read them.
+        projection
+            .properties
+            .insert("source".to_string(), ParameterValue::String(source.clone()));
+        projection
+            .properties
+            .insert("crs".to_string(), ParameterValue::String(crs.clone()));
 
         // Rebuild MapSpecification from resolved CRS string when it was set numerically
         if projection.map_projection.is_none()
@@ -968,31 +964,28 @@ fn detect_source_srid(
 // ---------------------------------------------------------------------------
 
 /// If `key` holds a numeric EPSG code or an `"EPSG:N"` string, resolve it to a PROJ
-/// string and replace the property value in-place. Falls back to `"EPSG:N"` format
-/// when no PROJ string can be found (the database engine may still handle it).
+/// string. Falls back to `"EPSG:N"` format when no PROJ string can be found (the
+/// database engine may still handle it). Returns `None` when the property is absent.
 fn resolve_epsg_property(
     key: &str,
-    projection: &mut super::super::Projection,
+    properties: &HashMap<String, ParameterValue>,
     execute_query: &dyn Fn(&str) -> crate::Result<DataFrame>,
-) -> crate::Result<()> {
-    let code = match projection.properties.get(key) {
-        Some(ParameterValue::Number(n)) => Some(*n as u32),
-        Some(ParameterValue::String(s)) => s.strip_prefix("EPSG:").and_then(|n| n.parse().ok()),
-        _ => None,
+) -> Option<String> {
+    let code: u32 = match properties.get(key) {
+        Some(ParameterValue::Number(n)) => *n as u32,
+        Some(ParameterValue::String(s)) => {
+            match s.strip_prefix("EPSG:").and_then(|n| n.parse().ok()) {
+                Some(c) => c,
+                // Raw PROJ strings (`+proj=foo`) don't have EPSG prefixes
+                None => return Some(s.clone()),
+            }
+        }
+        _ => return None,
     };
-    let code = match code {
-        Some(c) => c,
-        None => return Ok(()),
-    };
-    // Try spatial_ref_sys table first (PostGIS / DuckDB spatial), fall back to
-    // cherry-picked built-in codes, then pass raw EPSG:N to the database engine.
     let resolved = query_spatial_ref_sys(code, execute_query)
         .or_else(|| builtin_epsg_lookup(code))
         .unwrap_or_else(|| format!("EPSG:{code}"));
-    projection
-        .properties
-        .insert(key.to_string(), ParameterValue::String(resolved));
-    Ok(())
+    Some(resolved)
 }
 
 fn query_spatial_ref_sys(
