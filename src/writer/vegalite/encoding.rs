@@ -765,8 +765,12 @@ fn apply_label_mapping_to_encoding(
         (label_mapping.clone(), None)
     };
 
-    let label_expr =
-        build_label_expr(&filtered_mapping, time_format, null_key.as_deref(), field_type);
+    let label_expr = build_label_expr(
+        &filtered_mapping,
+        time_format,
+        null_key.as_deref(),
+        field_type,
+    );
 
     if is_position_aesthetic(aesthetic) {
         insert_axis_property(encoding, "labelExpr", json!(label_expr));
