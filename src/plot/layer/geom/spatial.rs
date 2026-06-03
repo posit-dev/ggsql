@@ -1,6 +1,6 @@
 use super::{DefaultAesthetics, GeomTrait, GeomType, StatResult};
 use crate::naming;
-use crate::plot::projection::coord::map::CLIP_BOUNDARY_TABLE;
+use crate::plot::projection::coord::map::clip_boundary_table;
 use crate::plot::projection::coord::CoordKind;
 use crate::plot::projection::Projection;
 use crate::plot::types::DefaultAestheticValue;
@@ -15,8 +15,8 @@ fn apply_clip_boundary(
     crs: &str,
     dialect: &dyn SqlDialect,
     columns: &[String],
-    clip_table: &str,
 ) -> String {
+    let clip_table = clip_boundary_table();
     let clip_geom = format!("(SELECT geom FROM {clip_table})");
 
     let clipped = format!("ST_Intersection({col}, {clip_geom})");
@@ -103,7 +103,6 @@ impl GeomTrait for Spatial {
                     crs,
                     dialect,
                     columns,
-                    CLIP_BOUNDARY_TABLE,
                 ));
             }
 
@@ -191,7 +190,7 @@ mod tests {
 
         assert!(result.contains("ST_Intersection"));
         assert!(result.contains("ST_Intersects"));
-        assert!(result.contains("__ggsql_clip_boundary__"));
+        assert!(result.contains("__ggsql_clip_boundary_"));
     }
 
     #[test]
@@ -210,7 +209,7 @@ mod tests {
         assert!(result.contains("ST_MakeValid"));
         assert!(result.contains("ST_Intersection"));
         assert!(result.contains("ST_Intersects"));
-        assert!(result.contains("__ggsql_clip_boundary__"));
+        assert!(result.contains("__ggsql_clip_boundary_"));
     }
 
     #[test]
@@ -228,6 +227,6 @@ mod tests {
         assert!(result.contains("ST_MakeValid"));
         assert!(result.contains("ST_Intersection"));
         assert!(result.contains("ST_Intersects"));
-        assert!(result.contains("__ggsql_clip_boundary__"));
+        assert!(result.contains("__ggsql_clip_boundary_"));
     }
 }

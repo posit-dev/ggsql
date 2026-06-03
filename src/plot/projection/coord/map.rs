@@ -12,8 +12,6 @@ use crate::plot::{DataSource, Layer, ParameterValue};
 use crate::reader::SqlDialect;
 use crate::DataFrame;
 
-pub const CLIP_BOUNDARY_TABLE: &str = "__ggsql_clip_boundary__";
-
 // ---------------------------------------------------------------------------
 // Map coord
 // ---------------------------------------------------------------------------
@@ -747,7 +745,7 @@ fn materialize_clip_boundary(
         source,
     );
     let body = format!("SELECT {source_geom} AS geom");
-    for stmt in dialect.create_or_replace_temp_table_sql(CLIP_BOUNDARY_TABLE, &[], &body) {
+    for stmt in dialect.create_or_replace_temp_table_sql(&clip_boundary_table(), &[], &body) {
         execute_query(&stmt)?;
     }
 
@@ -819,7 +817,7 @@ fn compute_world_bbox(
     execute_query: &dyn Fn(&str) -> crate::Result<DataFrame>,
 ) -> Option<BBox> {
     let projected = dialect.sql_st_transform("geom", source, crs);
-    let sql = dialect.sql_geometry_bbox(&projected, CLIP_BOUNDARY_TABLE);
+    let sql = dialect.sql_geometry_bbox(&projected, &clip_boundary_table());
     if let Ok(df) = execute_query(&sql) {
         BBox::from_df(&df, crs)
     } else {
@@ -957,6 +955,14 @@ fn detect_source_srid(
         }
     }
     Ok(detected)
+}
+
+// ---------------------------------------------------------------------------
+// Table names
+// ---------------------------------------------------------------------------
+
+pub fn clip_boundary_table() -> String {
+    format!("__ggsql_clip_boundary_{}__", naming::session_id())
 }
 
 // ---------------------------------------------------------------------------
