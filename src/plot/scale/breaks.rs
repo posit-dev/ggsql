@@ -503,6 +503,51 @@ fn thin_breaks(breaks: Vec<f64>, n: usize) -> Vec<f64> {
 }
 
 // =============================================================================
+// Graticule breaks (for map projections)
+// =============================================================================
+
+/// Calculate graticule break positions for a geographic range.
+///
+/// Picks the smallest step from a predefined set that produces at most `n` lines,
+/// then returns values within (min, max) at that interval. Includes boundary
+/// values (-180/180 for longitude, -90/90 for latitude) when the range spans
+/// the full extent.
+pub fn graticule_breaks(min: f64, max: f64, n: usize) -> Vec<f64> {
+    let range = max - min;
+    if range <= 0.0 || n == 0 {
+        return vec![];
+    }
+
+    const STEPS: &[f64] = &[1.0, 2.0, 5.0, 10.0, 15.0, 20.0, 30.0, 45.0, 60.0, 90.0];
+
+    let step = STEPS
+        .iter()
+        .copied()
+        .find(|&s| range / s <= n as f64 + 1.0)
+        .unwrap_or(90.0);
+
+    let start = (min / step).ceil() as i64;
+    let end = (max / step).floor() as i64;
+    let mut breaks: Vec<f64> = (start..=end)
+        .map(|i| i as f64 * step)
+        .filter(|&v| v > min && v < max)
+        .collect();
+
+    if min <= -180.0 && !breaks.contains(&-180.0) {
+        breaks.insert(0, -180.0);
+    } else if max >= 180.0 && !breaks.contains(&180.0) {
+        breaks.push(180.0);
+    }
+    if min <= -90.0 && !breaks.contains(&-90.0) {
+        breaks.insert(0, -90.0);
+    } else if max >= 90.0 && !breaks.contains(&90.0) {
+        breaks.push(90.0);
+    }
+
+    breaks
+}
+
+// =============================================================================
 // Minor Break Calculations
 // =============================================================================
 
@@ -2343,5 +2388,39 @@ mod tests {
             "Should have 4 breaks (including terminal). Got: {:?}",
             breaks
         );
+    }
+
+    // =========================================================================
+    // Graticule Breaks Tests
+    // =========================================================================
+
+    #[test]
+    fn test_graticule_breaks_world() {
+        let breaks = graticule_breaks(-180.0, 180.0, 7);
+        assert_eq!(
+            breaks,
+            vec![-180.0, -135.0, -90.0, -45.0, 0.0, 45.0, 90.0, 135.0]
+        );
+    }
+
+    #[test]
+    fn test_graticule_breaks_hemisphere() {
+        let breaks = graticule_breaks(-88.0, 88.0, 7);
+        assert_eq!(breaks, vec![-60.0, -30.0, 0.0, 30.0, 60.0]);
+    }
+
+    #[test]
+    fn test_graticule_breaks_small_range() {
+        let breaks = graticule_breaks(10.0, 20.0, 7);
+        assert!(!breaks.is_empty());
+        for &b in &breaks {
+            assert!(b > 10.0 && b < 20.0);
+        }
+    }
+
+    #[test]
+    fn test_graticule_breaks_empty_for_zero_range() {
+        let breaks = graticule_breaks(50.0, 50.0, 7);
+        assert!(breaks.is_empty());
     }
 }

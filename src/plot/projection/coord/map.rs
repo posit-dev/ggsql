@@ -5,6 +5,7 @@ use std::collections::HashMap;
 use super::{CoordKind, CoordTrait};
 use crate::naming;
 use crate::plot::layer::geom::GeomType;
+use crate::plot::scale::breaks::graticule_breaks;
 use crate::plot::types::{
     validate_parameter, DefaultParamValue, ParamConstraint, ParamDefinition, TypeConstraint,
 };
@@ -515,8 +516,10 @@ fn build_graticule(
         return Ok((None, None));
     };
 
-    let lon_breaks = graticule_breaks(geo_bbox.xrange());
-    let lat_breaks = graticule_breaks(geo_bbox.yrange());
+    let (lon_min, lon_max) = geo_bbox.xrange();
+    let (lat_min, lat_max) = geo_bbox.yrange();
+    let lon_breaks = graticule_breaks(lon_min, lon_max, 7);
+    let lat_breaks = graticule_breaks(lat_min, lat_max, 7);
 
     if lon_breaks.is_empty() && lat_breaks.is_empty() {
         return Ok((None, None));
@@ -619,46 +622,6 @@ fn graticule_bbox(
     }
 
     Ok(Some(geo_bbox))
-}
-
-/// Pick pretty graticule break positions for a lon or lat range.
-/// Uses standard angular intervals (multiples of 1, 2, 5, 10, 15, 30, 45, 90).
-fn graticule_breaks((min, max): (f64, f64)) -> Vec<f64> {
-    let range = max - min;
-    if range <= 0.0 {
-        return vec![];
-    }
-
-    const STEPS: &[f64] = &[1.0, 2.0, 5.0, 10.0, 15.0, 20.0, 30.0, 45.0, 60.0, 90.0];
-
-    // Pick the smallest step that gives at most ~7 lines
-    let step = STEPS
-        .iter()
-        .copied()
-        .find(|&s| range / s <= 8.0)
-        .unwrap_or(90.0);
-
-    let start = (min / step).ceil() as i64;
-    let end = (max / step).floor() as i64;
-    let mut breaks: Vec<f64> = (start..=end)
-        .map(|i| i as f64 * step)
-        .filter(|&v| v > min && v < max)
-        .collect();
-
-    // Include the boundary value when range covers the full extent,
-    // so the antimeridian/pole gets a line
-    if min <= -180.0 && !breaks.contains(&-180.0) {
-        breaks.insert(0, -180.0);
-    } else if max >= 180.0 && !breaks.contains(&180.0) {
-        breaks.push(180.0);
-    }
-    if min <= -90.0 && !breaks.contains(&-90.0) {
-        breaks.insert(0, -90.0);
-    } else if max >= 90.0 && !breaks.contains(&90.0) {
-        breaks.push(90.0);
-    }
-
-    breaks
 }
 
 /// Generate a MULTILINESTRING WKT with one line per break value, densified along
@@ -1295,36 +1258,6 @@ mod tests {
             b.clamp(-180.0, -90.0, 180.0, 90.0),
             bbox(10.0, 20.0, 30.0, 40.0)
         );
-    }
-
-    #[test]
-    fn test_graticule_breaks_world() {
-        let breaks = graticule_breaks((-180.0, 180.0));
-        assert_eq!(
-            breaks,
-            vec![-180.0, -135.0, -90.0, -45.0, 0.0, 45.0, 90.0, 135.0]
-        );
-    }
-
-    #[test]
-    fn test_graticule_breaks_hemisphere() {
-        let breaks = graticule_breaks((-88.0, 88.0));
-        assert_eq!(breaks, vec![-60.0, -30.0, 0.0, 30.0, 60.0]);
-    }
-
-    #[test]
-    fn test_graticule_breaks_small_range() {
-        let breaks = graticule_breaks((10.0, 20.0));
-        assert!(!breaks.is_empty());
-        for &b in &breaks {
-            assert!(b > 10.0 && b < 20.0);
-        }
-    }
-
-    #[test]
-    fn test_graticule_breaks_empty_for_zero_range() {
-        let breaks = graticule_breaks((50.0, 50.0));
-        assert!(breaks.is_empty());
     }
 
     #[test]
