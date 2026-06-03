@@ -213,26 +213,6 @@ impl Default for SqliteReader {
     }
 }
 
-/// Validate a table name
-fn validate_table_name(name: &str) -> Result<()> {
-    if name.is_empty() {
-        return Err(GgsqlError::ReaderError("Table name cannot be empty".into()));
-    }
-
-    let forbidden = ['\0', '\n', '\r'];
-    for ch in forbidden {
-        if name.contains(ch) {
-            return Err(GgsqlError::ReaderError(format!(
-                "Table name '{}' contains invalid character '{}'",
-                name,
-                ch.escape_default()
-            )));
-        }
-    }
-
-    Ok(())
-}
-
 /// Map an Arrow DataType to a SQLite column type string
 fn arrow_type_to_sqlite(dtype: &DataType) -> &'static str {
     match dtype {
@@ -445,7 +425,7 @@ impl Reader for SqliteReader {
     }
 
     fn register(&self, name: &str, df: DataFrame, replace: bool) -> Result<()> {
-        validate_table_name(name)?;
+        super::validate_table_name(name)?;
 
         if self.table_exists(name) {
             if replace {

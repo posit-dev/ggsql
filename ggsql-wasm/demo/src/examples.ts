@@ -2,6 +2,7 @@ export interface Example {
   name: string;
   query: string;
   section: string;
+  loadExtension?: string;
 }
 
 export const examples: Example[] = [
@@ -210,5 +211,27 @@ SCALE shape TO ['star', 'bowtie', 'square-plus']`,
 VISUALISE
 DRAW point MAPPING bill_len AS x, bill_dep AS y, body_mass AS size
 LABEL title => 'Penguin Measurements', x => 'Bill Length (mm)', y => 'Bill Depth (mm)'`,
+  },
+
+  // === Extensions ===
+  {
+    section: "Extensions",
+    name: "Wasm Extension",
+    query: `-- Loaded from test_ext.wasm via the SQLite extension API
+SELECT test_ext_hello() AS greeting`,
+    loadExtension: "test_ext",
+  },
+  {
+    section: "Extensions",
+    name: "SpatiaLite",
+    query: `SELECT
+  spatialite_version() AS spatialite,
+  geos_version()       AS geos,
+  proj_version()       AS proj,
+  -- PROJ: reproject London (WGS84) to Web Mercator (metres)
+  ST_AsText(ST_Transform(MakePoint(-0.1276, 51.5074, 4326), 3857)) AS london_web_mercator,
+  -- GEOS: area of a 1 km buffer around the projected point
+  Round(ST_Area(ST_Buffer(ST_Transform(MakePoint(-0.1276, 51.5074, 4326), 3857), 1000)), 1) AS buffer_area_m2`,
+    loadExtension: "mod_spatialite",
   },
 ];

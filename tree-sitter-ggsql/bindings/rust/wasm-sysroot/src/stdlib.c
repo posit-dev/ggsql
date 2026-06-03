@@ -69,6 +69,7 @@ void reset_heap(void *new_heap_start) {
   free_list = NULL;
 }
 
+__attribute__((weak))
 void *malloc(size_t size) {
   if (size == 0) return NULL;
 
@@ -98,6 +99,7 @@ void *malloc(size_t size) {
   return result;
 }
 
+__attribute__((weak))
 void free(void *ptr) {
   if (ptr == NULL) return;
 
@@ -114,6 +116,7 @@ void free(void *ptr) {
   }
 }
 
+__attribute__((weak))
 void *calloc(size_t count, size_t size) {
   void *result = malloc(count * size);
   if (!result) return NULL;
@@ -121,6 +124,7 @@ void *calloc(size_t count, size_t size) {
   return result;
 }
 
+__attribute__((weak))
 void *realloc(void *ptr, size_t new_size) {
   if (ptr == NULL) {
     return malloc(new_size);

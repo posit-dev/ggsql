@@ -4,4 +4,17 @@ LIBSQLITE3_FLAGS = "-DSQLITE_ENABLE_MATH_FUNCTIONS"
 [target.wasm32-unknown-unknown]
 rustflags = [
   "-C", "link-args=-z stack-size=16777216",
+  "-C", "link-args=--export-table --growable-table",
+  "-C", "link-args=--export=acos --export=asin --export=atan --export=atan2 --export=cos --export=exp --export=fmod --export=log --export=pow --export=sin --export=tan",
+  "-C", "link-args=--export=rust_sqlite_wasm_malloc --export=rust_sqlite_wasm_free --export=rust_sqlite_wasm_realloc --export=rust_sqlite_wasm_localtime --export=rust_sqlite_wasm_errno_location",
+  "-C", "link-args=--export=rust_sqlite_wasm_atoi --export=rust_sqlite_wasm_strtod --export=rust_sqlite_wasm_strtol --export=rust_sqlite_wasm_bsearch --export=rust_sqlite_wasm_qsort",
+  "-C", "link-args=--export=rust_sqlite_wasm_strcat --export=rust_sqlite_wasm_strchr --export=rust_sqlite_wasm_strcmp --export=rust_sqlite_wasm_strcpy --export=rust_sqlite_wasm_strlen --export=rust_sqlite_wasm_strncmp",
+  "-C", "link-args=--export=sqlite3_open_v2 --export=sqlite3_close --export=sqlite3_exec --export=sqlite3_prepare_v2 --export=sqlite3_step --export=sqlite3_reset --export=sqlite3_finalize",
+  "-C", "link-args=--export=sqlite3_bind_blob --export=sqlite3_bind_double --export=sqlite3_bind_int --export=sqlite3_bind_int64 --export=sqlite3_bind_null --export=sqlite3_bind_text",
+  "-C", "link-args=--export=sqlite3_column_blob --export=sqlite3_column_bytes --export=sqlite3_column_count --export=sqlite3_column_double --export=sqlite3_column_int64 --export=sqlite3_column_text --export=sqlite3_column_type",
+  "-C", "link-args=--export=sqlite3_value_double --export=sqlite3_value_int64 --export=sqlite3_value_type --export=sqlite3_result_double --export=sqlite3_result_int --export=sqlite3_result_null",
+  "-C", "link-args=--export=sqlite3_create_function --export=sqlite3_errmsg --export=sqlite3_config --export=sqlite3_initialize --export=sqlite3_last_insert_rowid --export=sqlite3_test_control",
+  "-C", "link-args=--export=sqlite3_malloc --export=sqlite3_free --export=sqlite3_mprintf --export=sqlite3_snprintf --export=sqlite3_vsnprintf --export=sqlite3_get_table --export=sqlite3_free_table",
+  "-C", "link-args=--export=sqlite3_libversion --export=sqlite3_libversion_number --export=sqlite3_uri_int64",
+  "-C", "link-args=--export=sqlite3_vfs_find --export=sqlite3_vfs_register --export=sqlite3_vfs_unregister",
 ]
