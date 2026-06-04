@@ -1103,7 +1103,7 @@ mod integration_tests {
         for crs in queries {
             let query = format!(
                 "VISUALISE FROM ggsql:world \
-                 DRAW spatial PROJECT TO map SETTING crs => '{crs}'"
+                 DRAW spatial PROJECT TO map SETTING target => '{crs}'"
             );
 
             let prepared = execute::prepare_data_with_reader(&query, &reader).unwrap();
@@ -1232,7 +1232,7 @@ mod integration_tests {
 
         let query = r#"
             VISUALISE FROM ggsql:world
-            DRAW spatial PROJECT TO map SETTING crs => '+proj=ortho +lon_0=4.90 +lat_0=52.36'
+            DRAW spatial PROJECT TO map SETTING target => '+proj=ortho +lon_0=4.90 +lat_0=52.36'
         "#;
 
         let prepared = execute::prepare_data_with_reader(query, &reader).unwrap();
@@ -1264,7 +1264,7 @@ mod integration_tests {
             DRAW spatial
             PROJECT TO map SETTING
                 source => 'EPSG:3857',
-                crs => '+proj=ortho +lon_0=4.90 +lat_0=52.36'
+                target => '+proj=ortho +lon_0=4.90 +lat_0=52.36'
         "#;
 
         let prepared = execute::prepare_data_with_reader(query, &reader).unwrap();

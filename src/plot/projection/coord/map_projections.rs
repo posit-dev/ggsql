@@ -102,7 +102,7 @@ const LAT_RANGE: NumberConstraint = NumberConstraint::range(-90.0, 90.0);
 
 static MAP_PARAMS: &[ParamDefinition] = &[
     ParamDefinition {
-        name: "crs",
+        name: "target",
         default: DefaultParamValue::Null,
         constraint: ParamConstraint {
             number: TypeConstraint::Constrained(NumberConstraint::count(1.0)),
@@ -183,20 +183,20 @@ impl<T: MapProjectionTrait + 'static> super::CoordTrait for T {
         properties: &HashMap<String, ParameterValue>,
     ) -> Result<HashMap<String, ParameterValue>, String> {
         if let Some(name) = coord_type_name {
-            if name != "map" && properties.contains_key("crs") {
+            if name != "map" && properties.contains_key("target") {
                 return Err(format!(
-                    "Cannot combine a named projection ('{}') with a 'crs' setting. \
-                     Use either PROJECT TO {} or PROJECT TO map SETTING crs => '...'",
+                    "Cannot combine a named projection ('{}') with a 'target' setting. \
+                     Use either PROJECT TO {} or PROJECT TO map SETTING target => '...'",
                     name, name
                 ));
             }
         }
-        let has_crs = properties.contains_key("crs");
+        let has_target = properties.contains_key("target");
         let has_origin = properties.contains_key("origin");
         let has_parallel = properties.contains_key("parallel");
-        if has_crs && (has_origin || has_parallel) {
+        if has_target && (has_origin || has_parallel) {
             return Err(
-                "Cannot combine 'crs' setting with 'origin' or 'parallel'. \
+                "Cannot combine 'target' setting with 'origin' or 'parallel'. \
                  Use either the CRS string or a named projection with 'origin'/'parallel' settings."
                     .to_string(),
             );
@@ -269,9 +269,9 @@ macro_rules! build_projection {
     ($name:expr, $properties:expr) => {{
         let properties = $properties;
 
-        // Extract parameters: from PROJ string if crs is set, otherwise from properties
+        // Extract parameters: from PROJ string if target is set, otherwise from properties
         let (key, lon_0, lat_0, lat_1, lat_2, raw_crs) =
-            if let Some(ParameterValue::String(crs)) = properties.get("crs") {
+            if let Some(ParameterValue::String(crs)) = properties.get("target") {
                 let code = extract_proj_param_str(crs, "+proj=").unwrap_or("");
                 let lon_0 = extract_f64_param(crs, "+lon_0=").unwrap_or(0.0);
                 let lat_0 = extract_f64_param(crs, "+lat_0=").unwrap_or(0.0);
@@ -1328,7 +1328,7 @@ mod tests {
 
     fn build_from_proj_str(crs: &str) -> Arc<dyn MapProjectionTrait> {
         let mut properties = HashMap::new();
-        properties.insert("crs".to_string(), ParameterValue::String(crs.to_string()));
+        properties.insert("target".to_string(), ParameterValue::String(crs.to_string()));
         build_map_projection_trait(Some("map"), &properties).unwrap()
     }
 
@@ -1351,10 +1351,10 @@ mod tests {
     }
 
     #[test]
-    fn new_from_crs_albers() {
+    fn new_from_target_albers() {
         let mut props = HashMap::new();
         props.insert(
-            "crs".to_string(),
+            "target".to_string(),
             ParameterValue::String("+proj=aea +lon_0=5 +lat_0=10 +lat_1=30 +lat_2=50".to_string()),
         );
         let proj = build_map_projection_trait(Some("map"), &props).unwrap();

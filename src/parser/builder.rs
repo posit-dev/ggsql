@@ -1374,7 +1374,7 @@ mod tests {
             project.aesthetics,
             vec!["lon".to_string(), "lat".to_string()]
         );
-        assert!(!project.properties.contains_key("crs"));
+        assert!(!project.properties.contains_key("target"));
     }
 
     #[test]
@@ -1397,11 +1397,11 @@ mod tests {
     }
 
     #[test]
-    fn test_project_shorthand_crs_override_rejected() {
+    fn test_project_shorthand_target_override_rejected() {
         let query = r#"
             VISUALISE
             DRAW point MAPPING lon AS lon, lat AS lat
-            PROJECT TO mercator SETTING crs => '+proj=custom'
+            PROJECT TO mercator SETTING target => '+proj=custom'
         "#;
 
         let result = parse_test_query(query);

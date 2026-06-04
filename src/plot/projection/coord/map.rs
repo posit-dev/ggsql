@@ -30,11 +30,11 @@ pub(crate) fn apply_map_transforms(
     let Some(ParameterValue::String(source)) = projection.properties.get("source") else {
         unreachable!("source must be resolved before apply_map_transforms");
     };
-    let Some(ParameterValue::String(crs)) = projection.properties.get("crs") else {
-        unreachable!("crs must be resolved before apply_map_transforms");
+    let Some(ParameterValue::String(target)) = projection.properties.get("target") else {
+        unreachable!("target must be resolved before apply_map_transforms");
     };
     let source = source.clone();
-    let crs = crs.clone();
+    let target = target.clone();
 
     // Step 2: Materialize clip boundary, panel boundary, and world bbox.
     let clip_enabled = match projection.properties.get("clip") {
@@ -46,12 +46,12 @@ pub(crate) fn apply_map_transforms(
 
     if clip_enabled && map_proj.proj_code() != "unknown" {
         let b = materialize_clip_boundary(map_proj, &source, dialect, execute_query)?;
-        if let Some(wkt) = boundary_to_target_crs(&b, &crs, dialect, execute_query) {
+        if let Some(wkt) = boundary_to_target_crs(&b, &target, dialect, execute_query) {
             projection
                 .computed
                 .insert("panel_boundary".to_string(), ParameterValue::String(wkt));
         }
-        world_bbox = compute_world_bbox(&source, &crs, dialect, execute_query);
+        world_bbox = compute_world_bbox(&source, &target, dialect, execute_query);
         boundary_lonlat = Some(b);
     }
     let clip = boundary_lonlat.is_some();
@@ -83,7 +83,7 @@ pub(crate) fn apply_map_transforms(
         let is_annotation = matches!(layer.source, Some(DataSource::Annotation));
         let is_spatial = layer.geom.geom_type() == GeomType::Spatial;
         let has_projected_positions = !is_spatial
-            && source != crs
+            && source != target
             && layer.mappings.contains_key("pos1")
             && layer.mappings.contains_key("pos2");
 
@@ -95,7 +95,7 @@ pub(crate) fn apply_map_transforms(
 
         if needs_data_bbox {
             let layer_bbox =
-                compute_layer_bbox(&table_quoted, is_spatial, &crs, dialect, execute_query);
+                compute_layer_bbox(&table_quoted, is_spatial, &target, dialect, execute_query);
             data_bbox = BBox::merge(data_bbox, layer_bbox)?;
         }
 
@@ -132,7 +132,7 @@ pub(crate) fn apply_map_transforms(
     let (lon_wkt, lat_wkt) = build_graticule(
         &bbox,
         boundary_lonlat.as_deref(),
-        &crs,
+        &target,
         dialect,
         execute_query,
     )?;
@@ -711,7 +711,7 @@ pub fn clip_boundary_table() -> String {
 /// rebuild the coord if it is still `UnknownProj`.
 ///
 /// Called by the executor before `apply_projection_transforms`. This ensures
-/// `source` and `crs` properties are always PROJ/EPSG strings (not raw numbers)
+/// `source` and `target` properties are always PROJ/EPSG strings (not raw numbers)
 /// and that the coord struct matches the resolved CRS.
 pub(crate) fn resolve_map_projection(
     projection: &mut super::super::Projection,
@@ -720,13 +720,13 @@ pub(crate) fn resolve_map_projection(
     dialect: &dyn SqlDialect,
     execute_query: &dyn Fn(&str) -> crate::Result<DataFrame>,
 ) -> crate::Result<()> {
-    // Derive crs from the projection's PROJ string if not explicitly set
+    // Derive target from the projection's PROJ string if not explicitly set
     if let Some(mp) = projection.coord.as_map_projection() {
         let proj_str = mp.to_proj_str();
         if !proj_str.is_empty() {
             projection
                 .properties
-                .entry("crs".to_string())
+                .entry("target".to_string())
                 .or_insert_with(|| ParameterValue::String(proj_str));
         }
     }
@@ -740,14 +740,14 @@ pub(crate) fn resolve_map_projection(
         }
     }
 
-    // Step 2: Resolve source and crs from numeric EPSG to PROJ strings
+    // Step 2: Resolve source and target from numeric EPSG to PROJ strings
     let source = resolve_epsg_property("source", properties, execute_query)
         .unwrap_or_else(|| "EPSG:4326".to_string());
-    let crs =
-        resolve_epsg_property("crs", properties, execute_query).unwrap_or_else(|| source.clone());
+    let target = resolve_epsg_property("target", properties, execute_query)
+        .unwrap_or_else(|| source.clone());
 
     properties.insert("source".to_string(), ParameterValue::String(source.clone()));
-    properties.insert("crs".to_string(), ParameterValue::String(crs.clone()));
+    properties.insert("target".to_string(), ParameterValue::String(target.clone()));
 
     // Step 3: Rebuild coord when it is still UnknownProj (EPSG wasn't resolvable at parse time)
     if projection
@@ -759,14 +759,14 @@ pub(crate) fn resolve_map_projection(
     }
 
     // Step 4: Validate CRS by attempting a single point transform
-    let probe = dialect.sql_st_transform("ST_Point(0, 0)", &source, &crs);
+    let probe = dialect.sql_st_transform("ST_Point(0, 0)", &source, &target);
     let probe_sql = format!("SELECT {probe} AS g");
     match execute_query(&probe_sql) {
         Err(e) => {
             let msg = e.to_string();
             return Err(crate::GgsqlError::ValidationError(format!(
-                "Invalid CRS '{}': {}",
-                crs,
+                "Invalid target CRS '{}': {}",
+                target,
                 msg.split(':').next_back().unwrap_or(&msg).trim()
             )));
         }
@@ -775,9 +775,9 @@ pub(crate) fn resolve_map_projection(
                 let val = crate::array_util::value_to_string(df.column("g").unwrap(), 0);
                 if val == "null" || val.is_empty() {
                     return Err(crate::GgsqlError::ValidationError(format!(
-                        "Unsupported CRS '{}': this backend cannot transform to \
+                        "Unsupported target CRS '{}': this backend cannot transform to \
                          arbitrary PROJ strings. Use a numeric EPSG code instead.",
-                        crs,
+                        target,
                     )));
                 }
             }
@@ -910,7 +910,7 @@ mod tests {
         let coord = Coord::map("map", &HashMap::new());
         let defaults = coord.default_properties();
         let names: Vec<&str> = defaults.iter().map(|p| p.name).collect();
-        assert!(names.contains(&"crs"));
+        assert!(names.contains(&"target"));
         assert!(names.contains(&"source"));
         assert!(names.contains(&"clip"));
         assert!(names.contains(&"bounds"));
@@ -920,10 +920,10 @@ mod tests {
     }
 
     #[test]
-    fn test_map_accepts_crs_string() {
+    fn test_map_accepts_target_string() {
         let mut props = HashMap::new();
         props.insert(
-            "crs".to_string(),
+            "target".to_string(),
             ParameterValue::String("+proj=merc".to_string()),
         );
         let coord = Coord::map("map", &props);
@@ -932,7 +932,7 @@ mod tests {
         assert!(resolved.is_ok());
         let resolved = resolved.unwrap();
         assert_eq!(
-            resolved.get("crs").unwrap(),
+            resolved.get("target").unwrap(),
             &ParameterValue::String("+proj=merc".to_string())
         );
     }
@@ -953,10 +953,10 @@ mod tests {
     }
 
     #[test]
-    fn test_crs_rejects_origin_and_parallel() {
+    fn test_target_rejects_origin_and_parallel() {
         let mut props = HashMap::new();
         props.insert(
-            "crs".to_string(),
+            "target".to_string(),
             ParameterValue::String("+proj=ortho".to_string()),
         );
         props.insert("origin".to_string(), ParameterValue::Number(30.0));
@@ -965,7 +965,7 @@ mod tests {
         let resolved = coord.resolve_properties(Some("map"), &props);
         assert!(resolved.is_err());
         let err = resolved.unwrap_err();
-        assert!(err.contains("Cannot combine 'crs'"));
+        assert!(err.contains("Cannot combine 'target'"));
     }
 
     #[test]

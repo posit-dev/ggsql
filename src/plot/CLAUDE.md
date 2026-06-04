@@ -68,7 +68,7 @@ Each has a `types.rs` (data structure) and `resolve.rs` (logic that runs during 
 
 - **`cartesian`** — standard x/y. No special behaviour.
 - **`polar`** — radius/angle (for pie/rose plots).
-- **`map_projections`** — `MapProjectionTrait` extends `CoordTrait` via blanket impl. Each projection struct (Mercator, Orthographic, Robinson, etc.) implements `MapProjectionTrait` and gets `CoordTrait` for free. The shared `apply_projection_transforms` logic lives in `map.rs`. At execution time, `resolve_map_projection()` (also in `map.rs`) resolves numeric EPSG codes and rebuilds `UnknownProj` into the correct concrete projection. Properties: `crs` (PROJ string), `source` (source EPSG), `clip` (bool), `bounds` ([xmin, ymin, xmax, ymax] with null/Inf fallback semantics).
+- **`map_projections`** — `MapProjectionTrait` extends `CoordTrait` via blanket impl. Each projection struct (Mercator, Orthographic, Robinson, etc.) implements `MapProjectionTrait` and gets `CoordTrait` for free. The shared `apply_projection_transforms` logic lives in `map.rs`. At execution time, `resolve_map_projection()` (also in `map.rs`) resolves numeric EPSG codes and rebuilds `UnknownProj` into the correct concrete projection. Properties: `target` (PROJ string), `source` (source EPSG), `clip` (bool), `bounds` ([xmin, ymin, xmax, ymax] with null/Inf fallback semantics).
 
 `Projection` (in `types.rs`) wraps `Coord` + resolved aesthetics + properties + a `computed` map populated at execution time for the writer (e.g., `panel_boundary`, `bbox`, `graticule_lon`, `graticule_lat`).
 

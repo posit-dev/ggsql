@@ -339,8 +339,8 @@ pub trait GeomTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
 /// Project pos1/pos2 columns through the map CRS transform.
 ///
 /// When the coordinate system is Map with a CRS, wraps the position columns
-/// with ST_X/ST_Y(ST_Transform(ST_Point(pos1, pos2), source, crs)). Returns
-/// the query unchanged for non-map coords or when source == crs.
+/// with ST_X/ST_Y(ST_Transform(ST_Point(pos1, pos2), source, target)). Returns
+/// the query unchanged for non-map coords or when source == target.
 pub(crate) fn project_position_columns(
     query: &str,
     projection: &Projection,
@@ -352,7 +352,7 @@ pub(crate) fn project_position_columns(
     if projection.coord.coord_kind() != CoordKind::Map {
         return Ok(query.to_string());
     }
-    let crs = match projection.properties.get("crs") {
+    let target = match projection.properties.get("target") {
         Some(ParameterValue::String(s)) => s.as_str(),
         _ => return Ok(query.to_string()),
     };
@@ -360,14 +360,14 @@ pub(crate) fn project_position_columns(
         Some(ParameterValue::String(s)) => s.as_str(),
         _ => "EPSG:4326",
     };
-    if source == crs {
+    if source == target {
         return Ok(query.to_string());
     }
 
     let pos1 = naming::quote_ident(&naming::aesthetic_column("pos1"));
     let pos2 = naming::quote_ident(&naming::aesthetic_column("pos2"));
     let point_expr = format!("ST_Point({pos1}, {pos2})");
-    let transformed = dialect.sql_st_transform(&point_expr, source, crs);
+    let transformed = dialect.sql_st_transform(&point_expr, source, target);
     let proj_col = naming::quote_ident("__ggsql_proj_pt__");
 
     let inner = format!("SELECT *, {transformed} AS {proj_col} FROM ({query})");

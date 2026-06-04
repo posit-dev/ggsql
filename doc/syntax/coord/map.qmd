@@ -25,7 +25,7 @@ This is a convenience when converting from a Cartesian coordinate system, withou
 
 * `clip`: Should data be removed if it appears outside the bounds of the coordinate system, or has become invalid due to the projection. 
   Defaults to `true`.
-* `crs` A string giving the target Coordinate Reference System (CRS) holding parameters of a coordinate transformation, or whole number giving an EPSG code.
+* `target` A string giving the target Coordinate Reference System (CRS) holding parameters of a coordinate transformation, or whole number giving an EPSG code.
   This is only used with unnamed projections and therefore mutually exclusive with the `origin` and `parallel` settings.
   By default, matches the Spatial Reference Identifiers (SRIDs) of geometry columns.
   Typically takes one of the following forms:
@@ -35,12 +35,12 @@ This is a convenience when converting from a Cartesian coordinate system, withou
   Useful when using non-spatial layers that don't carry SRIDs.
   Defaults to `'EPSG:4326'` or longitude/latitude coordinates.
 * `bounds` A numeric array of length 4 giving the bounding box of the area to view.
-  The numbers mean ('xmin', 'ymin', 'xmax', 'ymax') in that order, in the units of the `crs` argument.
-  Be mindful that your data might be in longitude/latitude degrees, but the `crs` might use meters, or vice versa.
+  The numbers mean ('xmin', 'ymin', 'xmax', 'ymax') in that order, in the units of the `target` argument.
+  Be mindful that your data might be in longitude/latitude degrees, but the `target` might use meters, or vice versa.
   Bounds can have `Inf`/`-Inf` values to indicate the visible area's extent.
   Using `null` values indicates to fall back to the data's extent, so only partial bounds need to be indicated.
 * `origin` Projection origin location.
-  This is only used with named projections and therefore mutually exclusive with `crs`.
+  This is only used with named projections and therefore mutually exclusive with `target`.
   One of the following:
     * A scalar number, setting the origin longitude or 'central meridian' in degrees between −180 and +180.
       Corresponds to the `+lon_0` proj string parameter.
@@ -49,7 +49,7 @@ This is a convenience when converting from a Cartesian coordinate system, withou
       The latter corresponds to the `+lat_0` proj string parameter.
       If unsupported by the projection, the latitude is silently ignored.
 * `parallel` Setting for conic or cylindrical projections.
-  This is only used with named projections and therefore mutually exclusive with `crs`.
+  This is only used with named projections and therefore mutually exclusive with `target`.
   If unsupported by the projection, this setting is silently ignored.
   One of the following:
   * A scalar number, setting the standard parallel as degrees between −90 and +90.
@@ -66,15 +66,15 @@ One is via a named projection, which allows for the `origin` and `parallel` sett
 PROJECT TO orthographic SETTING origin => (150, 52)
 ```
 
-The second option is to use the generic `PROJECT TO map` together with the `crs` setting.
+The second option is to use the generic `PROJECT TO map` together with the `target` setting.
 The code below is equivalent to the code above.
 
 ```ggsql
-PROJECT TO map SETTING crs => '+proj=ortho +lon_0=150 +lat_0=52'
+PROJECT TO map SETTING target => '+proj=ortho +lon_0=150 +lat_0=52'
 ```
 
 In this context, 'supported' means that we are reasonably confident that we can draw a serviceable map.
-Below follows a table giving an overview of the supported projections. 
+Below follows a table giving an overview of the supported projections.
 The projections are recognised by name in the 'string' column or from the 'proj string' CRS setting.
 More information about them can be found on the [PRØJ website](https://proj.org/en/stable/operations/projections/index.html).
 
@@ -102,7 +102,7 @@ More information about them can be found on the [PRØJ website](https://proj.org
 | Interrupted Goode Homolosine          | `igh`                   | 0      | NA           | `+proj=igh`      |
 | Robinson                              | `robinson`              | 0      | NA           | `+proj=robin`    |
 
-The way to draw an unsupported map is to use the `crs` setting.
+The way to draw an unsupported map is to use the `target` setting.
 Unsupported maps are likely drawn without projection-appropriate clipping.
 
 [^1]: The origin longitude determines the UTM zone (1–60) and the origin latitude determines the hemisphere. When using `+proj=utm`, the `+zone` and `+south` parameters are used directly.
@@ -130,7 +130,7 @@ PROJECT TO robinson
 ```{ggsql}
 VISUALISE continent AS fill FROM ggsql:world
 DRAW spatial
-PROJECT TO map SETTING crs => '+proj=robin'
+PROJECT TO map SETTING target => '+proj=robin'
 ```
 
 ### Setting the origin

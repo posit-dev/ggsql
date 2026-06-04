@@ -88,7 +88,7 @@ impl GeomTrait for Spatial {
         let geom_query = dialect.sql_select_replace(&ensure_geom, &col, query, columns);
 
         let geom_expr = if let (true, Some(ParameterValue::String(crs))) =
-            (is_map, projection.properties.get("crs"))
+            (is_map, projection.properties.get("target"))
         {
             let source = match projection.properties.get("source") {
                 Some(ParameterValue::String(s)) => s.as_str(),
@@ -162,7 +162,7 @@ mod tests {
         let spatial = Spatial;
         let mut projection = Projection::map();
         projection.properties.insert(
-            "crs".to_string(),
+            "target".to_string(),
             ParameterValue::String("+proj=merc".to_string()),
         );
         let result = spatial
@@ -181,7 +181,7 @@ mod tests {
         let spatial = Spatial;
         let mut projection = Projection::map();
         projection.properties.insert(
-            "crs".to_string(),
+            "target".to_string(),
             ParameterValue::String("+proj=merc".to_string()),
         );
         let result = spatial
@@ -198,7 +198,7 @@ mod tests {
         let spatial = Spatial;
         let mut projection = Projection::map();
         projection.properties.insert(
-            "crs".to_string(),
+            "target".to_string(),
             ParameterValue::String("+proj=ortho +lat_0=45 +lon_0=10".to_string()),
         );
         let result = spatial
@@ -217,7 +217,7 @@ mod tests {
         let spatial = Spatial;
         let mut projection = Projection::map();
         projection.properties.insert(
-            "crs".to_string(),
+            "target".to_string(),
             ParameterValue::String("+proj=gnom +lat_0=90 +lon_0=0".to_string()),
         );
         let result = spatial
