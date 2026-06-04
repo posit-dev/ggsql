@@ -1328,7 +1328,10 @@ mod tests {
 
     fn build_from_proj_str(crs: &str) -> Arc<dyn MapProjectionTrait> {
         let mut properties = HashMap::new();
-        properties.insert("target".to_string(), ParameterValue::String(crs.to_string()));
+        properties.insert(
+            "target".to_string(),
+            ParameterValue::String(crs.to_string()),
+        );
         build_map_projection_trait(Some("crs"), &properties).unwrap()
     }
 
