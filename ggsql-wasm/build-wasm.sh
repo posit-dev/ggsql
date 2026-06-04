@@ -32,14 +32,15 @@ echo "Building WASM library..."
 (cd "$SCRIPT_DIR/library" && npm install && npm run build)
 
 SQLITE_WASM_RS="${SQLITE_WASM_RS:-$REPO_ROOT/../sqlite-wasm-rs}"
-if [ -d "$SQLITE_WASM_RS/loadable_extensions" ]; then
-    echo "Building loadable extensions..."
-    make -C "$SQLITE_WASM_RS/loadable_extensions"
-fi
 
 if [ "$SKIP_BINARY" = false ]; then
     echo "Checking wasm build prerequisites..."
     check_wasm32_support
+
+    if [ -d "$SQLITE_WASM_RS/loadable_extensions" ]; then
+        echo "Building loadable extensions..."
+        make -C "$SQLITE_WASM_RS/loadable_extensions"
+    fi
 
     echo "Building WASM binary..."
     rm -rf "$SCRIPT_DIR/pkg"   # start clean so stale wasm-bindgen snippets don't accumulate

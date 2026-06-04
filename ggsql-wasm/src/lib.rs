@@ -1,5 +1,5 @@
 use arrow::array::{
-    ArrayRef, BooleanArray, Date32Array, Float64Array, Int64Array, StringArray,
+    ArrayRef, BinaryArray, BooleanArray, Date32Array, Float64Array, Int64Array, StringArray,
     TimestampMillisecondArray,
 };
 use ggsql::array_util::value_to_string;
@@ -147,6 +147,21 @@ fn columns_js_to_dataframe(columns_js: JsValue) -> Result<DataFrame, JsValue> {
                     .map(|(j, &n)| if n != 0 { arr.get(j).as_string() } else { None })
                     .collect();
                 Arc::new(StringArray::from(values))
+            }
+            "binary" => {
+                // One Uint8Array per row (e.g. WKB geometry from GeoParquet).
+                let arr = js_sys::Array::from(&values_js);
+                let values: Vec<Option<Vec<u8>>> = (0..arr.length())
+                    .zip(nulls.iter())
+                    .map(|(j, &n)| {
+                        if n != 0 {
+                            Some(js_sys::Uint8Array::new(&arr.get(j)).to_vec())
+                        } else {
+                            None
+                        }
+                    })
+                    .collect();
+                Arc::new(BinaryArray::from_iter(values.iter().map(|o| o.as_deref())))
             }
             "date" => {
                 // Date32: days since Unix epoch

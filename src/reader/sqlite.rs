@@ -229,6 +229,7 @@ fn arrow_type_to_sqlite(dtype: &DataType) -> &'static str {
         DataType::Date32 => "TEXT",
         DataType::Timestamp(_, _) => "TEXT",
         DataType::Time64(_) => "TEXT",
+        DataType::Binary | DataType::LargeBinary => "BLOB",
         _ => "TEXT",
     }
 }
@@ -331,6 +332,14 @@ fn array_value_to_sqlite(array: &ArrayRef, row_idx: usize) -> rusqlite::types::V
             chrono::NaiveTime::from_num_seconds_from_midnight_opt(secs, nanos)
                 .and_then(|t| to_sql_value(&t))
                 .unwrap_or(Value::Null)
+        }
+        DataType::Binary => {
+            let arr = array.as_any().downcast_ref::<BinaryArray>().unwrap();
+            Value::Blob(arr.value(row_idx).to_vec())
+        }
+        DataType::LargeBinary => {
+            let arr = array.as_any().downcast_ref::<LargeBinaryArray>().unwrap();
+            Value::Blob(arr.value(row_idx).to_vec())
         }
         _ => {
             // Fallback: use array_util::value_to_string
@@ -1070,6 +1079,32 @@ mod tests {
         let df = reader.execute_sql("SELECT * FROM mixed").unwrap();
         assert_eq!(df.height(), 3);
         // Should fall back to String since we have mixed types
+    }
+
+    #[test]
+    fn test_binary_column_stored_as_blob() {
+        let reader = SqliteReader::new().unwrap();
+
+        // Arrow Binary must reach SQLite as a BLOB (not stringified), so spatial
+        // functions like GeomFromWKB receive raw bytes.
+        let blobs: ArrayRef = Arc::new(BinaryArray::from(vec![
+            Some([0x01u8, 0x02, 0x03].as_slice()),
+            Some([0xDE, 0xAD, 0xBE, 0xEF].as_slice()),
+            None,
+        ]));
+        let df = DataFrame::new(vec![("b", blobs)]).unwrap();
+        reader.register("blob_data", df, false).unwrap();
+
+        let result = reader
+            .execute_sql("SELECT typeof(b) AS t, hex(b) AS h FROM blob_data ORDER BY rowid")
+            .unwrap();
+        assert_eq!(result.height(), 3);
+        let t = result.column("t").unwrap();
+        let h = result.column("h").unwrap();
+        assert_eq!(crate::array_util::value_to_string(t, 0), "blob");
+        assert_eq!(crate::array_util::value_to_string(h, 0), "010203");
+        assert_eq!(crate::array_util::value_to_string(h, 1), "DEADBEEF");
+        assert_eq!(crate::array_util::value_to_string(t, 2), "null");
     }
 
     #[test]
