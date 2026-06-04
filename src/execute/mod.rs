@@ -1373,6 +1373,16 @@ pub fn prepare_data_with_reader(query: &str, reader: &dyn Reader) -> Result<Prep
         .project
         .take()
         .unwrap_or_else(crate::plot::projection::Projection::cartesian);
+    // Resolve EPSG codes and rebuild coord if needed (before transforms use it)
+    if project.coord.coord_kind() == crate::plot::projection::coord::CoordKind::Map {
+        crate::plot::projection::coord::map::resolve_map_projection(
+            &mut project,
+            &specs[0].layers,
+            &layer_queries,
+            dialect,
+            &execute_query,
+        )?;
+    }
     project.apply_projection_transforms(
         &specs[0].layers,
         &mut layer_queries,

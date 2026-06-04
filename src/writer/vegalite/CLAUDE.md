@@ -400,7 +400,7 @@ Additional hooks: `background_layers()` / `foreground_layers()` inject layers be
 
 ### Map projection specifics
 
-`MapProjection` reads computed values from `Projection.computed` (populated at execution time by the `Map` coord):
+`MapProjection` reads computed values from `Projection.computed` (populated at execution time by `apply_map_transforms` in `coord/map.rs`):
 
 - `panel_boundary` (WKT) → converted to GeoJSON for a geoshape background layer.
 - `bbox` ([xmin, ymin, xmax, ymax]) → emits VL `projection.scale` and `projection.translate` expressions that frame the data to the viewport.

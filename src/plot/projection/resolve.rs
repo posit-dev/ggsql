@@ -107,7 +107,6 @@ pub fn resolve_coord(
             coord,
             aesthetics,
             properties: HashMap::new(),
-            map_projection: None,
             computed: HashMap::new(),
         }));
     }
@@ -124,7 +123,6 @@ pub fn resolve_coord(
             coord,
             aesthetics,
             properties: HashMap::new(),
-            map_projection: None,
             computed: HashMap::new(),
         }));
     }
@@ -141,7 +139,6 @@ pub fn resolve_coord(
             coord,
             aesthetics,
             properties: HashMap::new(),
-            map_projection: None,
             computed: HashMap::new(),
         }));
     }

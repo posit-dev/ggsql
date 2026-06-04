@@ -37,8 +37,7 @@ mod polar;
 
 // Re-export coord type structs
 pub use cartesian::Cartesian;
-pub use map::Map;
-pub use map_projections::MapSpecification;
+pub use map_projections::MapProjectionTrait;
 pub use polar::Polar;
 
 // =============================================================================
@@ -65,7 +64,7 @@ pub enum CoordKind {
 ///
 /// Each coord type implements this trait. The trait is intentionally minimal
 /// and backend-agnostic - no Vega-Lite or other writer-specific details.
-pub trait CoordTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
+pub trait CoordTrait: std::fmt::Debug + Send + Sync {
     /// Returns which coord type this is (for pattern matching)
     fn coord_kind(&self) -> CoordKind;
 
@@ -88,9 +87,12 @@ pub trait CoordTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
     }
 
     /// Resolve and validate properties.
+    /// `coord_type_name` is the user-facing name from the `PROJECT TO` clause (e.g. "mercator",
+    /// "map"). Used to distinguish named projections from generic `map` + `crs`.
     /// Default implementation validates against default_properties.
     fn resolve_properties(
         &self,
+        _coord_type_name: Option<&str>,
         properties: &HashMap<String, ParameterValue>,
     ) -> Result<HashMap<String, ParameterValue>, String> {
         let defaults = self.default_properties();
@@ -129,6 +131,11 @@ pub trait CoordTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
         }
 
         Ok(resolved)
+    }
+
+    /// Downcast to `MapProjectionTrait` if this coord is a map projection.
+    fn as_map_projection(&self) -> Option<&dyn map_projections::MapProjectionTrait> {
+        None
     }
 
     /// Orchestrate projection transforms for all layers.
@@ -184,9 +191,12 @@ impl Coord {
         Self(Arc::new(Polar))
     }
 
-    /// Create a Map coord type
-    pub fn map(name: &str) -> Self {
-        Self(Arc::new(Map::new(name)))
+    /// Create a Map coord type from a projection name and properties.
+    pub fn map(name: &str, properties: &HashMap<String, ParameterValue>) -> Self {
+        Self(
+            map_projections::build_map_projection(Some(name), properties)
+                .expect("map coord name must be a known projection or 'map'"),
+        )
     }
 
     /// Create a Coord from a CoordKind
@@ -194,7 +204,7 @@ impl Coord {
         match kind {
             CoordKind::Cartesian => Self::cartesian(),
             CoordKind::Polar => Self::polar(),
-            CoordKind::Map => Self::map("map"),
+            CoordKind::Map => Self::map("map", &HashMap::new()),
         }
     }
 
@@ -222,9 +232,15 @@ impl Coord {
     /// Resolve and validate properties.
     pub fn resolve_properties(
         &self,
+        coord_type_name: Option<&str>,
         properties: &HashMap<String, ParameterValue>,
     ) -> Result<HashMap<String, ParameterValue>, String> {
-        self.0.resolve_properties(properties)
+        self.0.resolve_properties(coord_type_name, properties)
+    }
+
+    /// Downcast to `MapProjectionTrait` if this coord is a map projection.
+    pub fn as_map_projection(&self) -> Option<&dyn map_projections::MapProjectionTrait> {
+        self.0.as_map_projection()
     }
 
     /// Orchestrate projection transforms for all layers.

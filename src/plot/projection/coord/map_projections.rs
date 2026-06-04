@@ -1,17 +1,20 @@
-use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fmt;
 use std::sync::Arc;
 
-use crate::plot::types::ArrayElement;
-use crate::plot::ParameterValue;
+use super::CoordKind;
+use crate::plot::types::{
+    validate_parameter, ArrayElement, DefaultParamValue, ParamConstraint, ParamDefinition,
+    TypeConstraint,
+};
+use crate::plot::{Layer, ParameterValue};
+use crate::reader::SqlDialect;
+use crate::DataFrame;
 
 // When adding a new named projection:
 // 1. Add a struct implementing MapProjectionTrait (in this file)
 // 2. Add the name to NAMED_PROJECTIONS below
-// 3. Add match arms in MapSpecification::new():
-//    - the `crs` branch (maps +proj= code to the new struct)
-//    - the `else` branch (maps coord type name to the new struct)
+// 3. Add a match arm in the build_projection! macro (proj code | named key)
 pub const NAMED_PROJECTIONS: &[&str] = &[
     "geographic",
     "mercator",
@@ -40,6 +43,9 @@ pub const NAMED_PROJECTIONS: &[&str] = &[
 // Trait
 // =============================================================================
 
+/// Extension of `CoordTrait` for geographic map projections.
+///
+/// Implementing this trait gives you `CoordTrait` for free via the blanket impl below.
 pub trait MapProjectionTrait: fmt::Debug + Send + Sync {
     fn proj_code(&self) -> &'static str;
     fn display_name(&self) -> &'static str;
@@ -86,67 +92,193 @@ pub trait MapProjectionTrait: fmt::Debug + Send + Sync {
 }
 
 // =============================================================================
-// Wrapper
+// Blanket CoordTrait impl for all MapProjectionTrait implementors
 // =============================================================================
 
-#[derive(Clone)]
-pub struct MapSpecification(Arc<dyn MapProjectionTrait>);
+use crate::plot::types::{ArrayConstraint, NumberConstraint};
 
-impl MapSpecification {
-    pub fn new(name: Option<&str>, properties: &HashMap<String, ParameterValue>) -> Option<Self> {
-        let name = name?;
+const LON_RANGE: NumberConstraint = NumberConstraint::range(-180.0, 180.0);
+const LAT_RANGE: NumberConstraint = NumberConstraint::range(-90.0, 90.0);
 
-        let obj: Arc<dyn MapProjectionTrait> =
+static MAP_PARAMS: &[ParamDefinition] = &[
+    ParamDefinition {
+        name: "crs",
+        default: DefaultParamValue::Null,
+        constraint: ParamConstraint {
+            number: TypeConstraint::Constrained(NumberConstraint::count(1.0)),
+            string: TypeConstraint::Any,
+            boolean: TypeConstraint::Forbidden,
+            array: TypeConstraint::Forbidden,
+            allow_null: true,
+        },
+    },
+    ParamDefinition {
+        name: "source",
+        default: DefaultParamValue::Null,
+        constraint: ParamConstraint {
+            number: TypeConstraint::Constrained(NumberConstraint::count(1.0)),
+            string: TypeConstraint::Any,
+            boolean: TypeConstraint::Forbidden,
+            array: TypeConstraint::Forbidden,
+            allow_null: true,
+        },
+    },
+    ParamDefinition {
+        name: "clip",
+        default: DefaultParamValue::Boolean(true),
+        constraint: ParamConstraint::boolean(),
+    },
+    ParamDefinition {
+        name: "bounds",
+        default: DefaultParamValue::Null,
+        constraint: ParamConstraint {
+            number: TypeConstraint::Forbidden,
+            string: TypeConstraint::Forbidden,
+            boolean: TypeConstraint::Forbidden,
+            array: TypeConstraint::Constrained(
+                ArrayConstraint::of_numbers_len(NumberConstraint::unconstrained(), 4)
+                    .with_null_elements(),
+            ),
+            allow_null: true,
+        },
+    },
+    ParamDefinition {
+        name: "origin",
+        default: DefaultParamValue::Null,
+        constraint: ParamConstraint::number_or_numeric_array(
+            LON_RANGE,
+            ArrayConstraint::of_numbers_len(LON_RANGE, 2),
+        ),
+    },
+    ParamDefinition {
+        name: "parallel",
+        default: DefaultParamValue::Null,
+        constraint: ParamConstraint::number_or_numeric_array(
+            LAT_RANGE,
+            ArrayConstraint::of_numbers_len(LAT_RANGE, 2),
+        ),
+    },
+];
+
+impl<T: MapProjectionTrait + 'static> super::CoordTrait for T {
+    fn coord_kind(&self) -> CoordKind {
+        CoordKind::Map
+    }
+
+    fn name(&self) -> &'static str {
+        self.display_name()
+    }
+
+    fn position_aesthetic_names(&self) -> &'static [&'static str] {
+        &["lon", "lat"]
+    }
+
+    fn default_properties(&self) -> &'static [ParamDefinition] {
+        MAP_PARAMS
+    }
+
+    fn resolve_properties(
+        &self,
+        coord_type_name: Option<&str>,
+        properties: &HashMap<String, ParameterValue>,
+    ) -> Result<HashMap<String, ParameterValue>, String> {
+        if let Some(name) = coord_type_name {
+            if name != "map" && properties.contains_key("crs") {
+                return Err(format!(
+                    "Cannot combine a named projection ('{}') with a 'crs' setting. \
+                     Use either PROJECT TO {} or PROJECT TO map SETTING crs => '...'",
+                    name, name
+                ));
+            }
+        }
+        let has_crs = properties.contains_key("crs");
+        let has_origin = properties.contains_key("origin");
+        let has_parallel = properties.contains_key("parallel");
+        if has_crs && (has_origin || has_parallel) {
+            return Err(
+                "Cannot combine 'crs' setting with 'origin' or 'parallel'. \
+                 Use either the CRS string or a named projection with 'origin'/'parallel' settings."
+                    .to_string(),
+            );
+        }
+        let defaults = self.default_properties();
+        for (key, value) in properties.iter() {
+            if let Some(param) = defaults.iter().find(|p| p.name == key) {
+                validate_parameter(key, value, &param.constraint)?;
+            } else {
+                let allowed: Vec<&str> = defaults.iter().map(|p| p.name).collect();
+                return Err(format!(
+                    "{} projection property should be {}, not '{}'",
+                    self.name(),
+                    crate::or_list_quoted(&allowed, '\''),
+                    key
+                ));
+            }
+        }
+        if let Some(ParameterValue::Array(arr)) = properties.get("origin") {
+            if let Some(crate::plot::types::ArrayElement::Number(lat)) = arr.get(1) {
+                if *lat < -90.0 || *lat > 90.0 {
+                    return Err(format!(
+                        "origin latitude must be between -90 and 90, got {}",
+                        lat
+                    ));
+                }
+            }
+        }
+        let mut resolved = properties.clone();
+        for param in defaults {
+            if !resolved.contains_key(param.name) {
+                if let Some(default) = param.to_parameter_value() {
+                    resolved.insert(param.name.to_string(), default);
+                }
+            }
+        }
+        Ok(resolved)
+    }
+
+    fn apply_projection_transforms(
+        &self,
+        layers: &[Layer],
+        layer_queries: &mut [String],
+        projection: &mut super::super::Projection,
+        dialect: &dyn SqlDialect,
+        execute_query: &dyn Fn(&str) -> crate::Result<DataFrame>,
+    ) -> crate::Result<()> {
+        super::map::apply_map_transforms(
+            self,
+            layers,
+            layer_queries,
+            projection,
+            dialect,
+            execute_query,
+        )
+    }
+
+    fn as_map_projection(&self) -> Option<&dyn MapProjectionTrait> {
+        Some(self)
+    }
+}
+
+// =============================================================================
+// Factory
+// =============================================================================
+
+/// Macro that produces the match expression for building a projection struct.
+/// The coercion target is determined by the type annotation at the call site.
+macro_rules! build_projection {
+    ($name:expr, $properties:expr) => {{
+        let properties = $properties;
+
+        // Extract parameters: from PROJ string if crs is set, otherwise from properties
+        let (key, lon_0, lat_0, lat_1, lat_2, raw_crs) =
             if let Some(ParameterValue::String(crs)) = properties.get("crs") {
                 let code = extract_proj_param_str(crs, "+proj=").unwrap_or("");
                 let lon_0 = extract_f64_param(crs, "+lon_0=").unwrap_or(0.0);
                 let lat_0 = extract_f64_param(crs, "+lat_0=").unwrap_or(0.0);
-                match code {
-                    "longlat" | "latlong" => Arc::new(Geographic { lon_0 }),
-                    "ortho" => Arc::new(Orthographic { lon_0, lat_0 }),
-                    "stere" => Arc::new(Stereographic { lon_0, lat_0 }),
-                    "gnom" => Arc::new(Gnomonic { lon_0, lat_0 }),
-                    "laea" => Arc::new(LambertAzimuthal { lon_0, lat_0 }),
-                    "aeqd" => Arc::new(AzimuthalEquidistant { lon_0, lat_0 }),
-                    "tmerc" => Arc::new(TransverseMercator { lon_0, lat_0 }),
-                    "utm" => {
-                        let zone = extract_f64_param(crs, "+zone=")
-                            .map(|z| (z as u8).clamp(1, 60))
-                            .unwrap_or_else(|| Utm::from_origin(lon_0, lat_0).zone);
-                        let south = crs.contains("+south");
-                        Arc::new(Utm { zone, south })
-                    }
-                    "merc" => Arc::new(Mercator { lon_0 }),
-                    "mill" => Arc::new(Miller { lon_0 }),
-                    "eqc" => Arc::new(Equirectangular { lon_0 }),
-                    "cea" => Arc::new(CylindricalEqualArea { lon_0 }),
-                    "robin" => Arc::new(Robinson { lon_0 }),
-                    "moll" => Arc::new(Mollweide { lon_0 }),
-                    "sinu" => Arc::new(Sinusoidal { lon_0 }),
-                    "eck4" => Arc::new(Eckert4 { lon_0 }),
-                    "natearth" => Arc::new(NaturalEarth { lon_0 }),
-                    "igh" => Arc::new(Igh { lon_0 }),
-                    "wintri" => Arc::new(WinkelTripel { lon_0 }),
-                    "aea" => Arc::new(AlbersEqualArea {
-                        lon_0,
-                        lat_0,
-                        lat_1: extract_f64_param(crs, "+lat_1=").unwrap_or(29.5),
-                        lat_2: extract_f64_param(crs, "+lat_2=").unwrap_or(45.5),
-                    }),
-                    "lcc" => Arc::new(LambertConformalConic {
-                        lon_0,
-                        lat_0,
-                        lat_1: extract_f64_param(crs, "+lat_1=").unwrap_or(29.5),
-                        lat_2: extract_f64_param(crs, "+lat_2=").unwrap_or(45.5),
-                    }),
-                    _ => Arc::new(UnknownProj {
-                        raw: crs.to_string(),
-                        lon_0,
-                        lat_0,
-                    }),
-                }
+                let lat_1 = extract_f64_param(crs, "+lat_1=").unwrap_or(29.5);
+                let lat_2 = extract_f64_param(crs, "+lat_2=").unwrap_or(45.5);
+                (code, lon_0, lat_0, lat_1, lat_2, Some(crs.clone()))
             } else {
-                // Extract origin: number (lon only) or array (lon, lat)
                 let (lon_0, lat_0) = match properties.get("origin") {
                     Some(ParameterValue::Number(lon)) => (*lon, 0.0),
                     Some(ParameterValue::Array(arr)) => {
@@ -162,8 +294,6 @@ impl MapSpecification {
                     }
                     _ => (0.0, 0.0),
                 };
-
-                // Extract parallel: number (tangent) or array (secant)
                 let (lat_1, lat_2) = match properties.get("parallel") {
                     Some(ParameterValue::Number(lat)) => (*lat, *lat),
                     Some(ParameterValue::Array(arr)) => {
@@ -179,116 +309,75 @@ impl MapSpecification {
                     }
                     _ => (29.5, 45.5),
                 };
-
-                match name {
-                    "geographic" => Arc::new(Geographic { lon_0 }),
-                    "mercator" => Arc::new(Mercator { lon_0 }),
-                    "transverse_mercator" => Arc::new(TransverseMercator { lon_0, lat_0 }),
-                    "utm" => Arc::new(Utm::from_origin(lon_0, lat_0)),
-                    "orthographic" => Arc::new(Orthographic { lon_0, lat_0 }),
-                    "miller" => Arc::new(Miller { lon_0 }),
-                    "equirectangular" => Arc::new(Equirectangular { lon_0 }),
-                    "stereographic" => Arc::new(Stereographic { lon_0, lat_0 }),
-                    "gnomonic" => Arc::new(Gnomonic { lon_0, lat_0 }),
-                    "equal_area" => Arc::new(CylindricalEqualArea { lon_0 }),
-                    "mollweide" => Arc::new(Mollweide { lon_0 }),
-                    "sinusoidal" => Arc::new(Sinusoidal { lon_0 }),
-                    "eckert4" => Arc::new(Eckert4 { lon_0 }),
-                    "natural" => Arc::new(NaturalEarth { lon_0 }),
-                    "winkel_tripel" => Arc::new(WinkelTripel { lon_0 }),
-                    "albers" => Arc::new(AlbersEqualArea {
-                        lon_0,
-                        lat_0,
-                        lat_1,
-                        lat_2,
-                    }),
-                    "lambert_conformal" => Arc::new(LambertConformalConic {
-                        lon_0,
-                        lat_0,
-                        lat_1,
-                        lat_2,
-                    }),
-                    "lambert" => Arc::new(LambertAzimuthal { lon_0, lat_0 }),
-                    "azimuthal_equidistant" => Arc::new(AzimuthalEquidistant { lon_0, lat_0 }),
-                    "igh" => Arc::new(Igh { lon_0 }),
-                    "robinson" => Arc::new(Robinson { lon_0 }),
-                    "map" => Arc::new(UnknownProj {
-                        raw: String::new(),
-                        lon_0,
-                        lat_0,
-                    }),
-                    _ => return None,
-                }
+                ($name, lon_0, lat_0, lat_1, lat_2, None)
             };
-        Some(Self(obj))
-    }
 
-    pub fn from_proj_str(crs: &str) -> Self {
-        let mut properties = HashMap::new();
-        properties.insert("crs".to_string(), ParameterValue::String(crs.to_string()));
-        Self::new(Some("map"), &properties).unwrap()
-    }
-
-    pub fn proj_code(&self) -> &'static str {
-        self.0.proj_code()
-    }
-
-    pub fn display_name(&self) -> &'static str {
-        self.0.display_name()
-    }
-
-    pub fn origin(&self) -> (f64, f64) {
-        self.0.origin()
-    }
-
-    pub fn to_proj_str(&self) -> String {
-        self.0.to_proj_str()
-    }
-
-    pub fn visible_area_wkt(&self) -> Option<String> {
-        self.0.visible_area_wkt()
-    }
-
-    pub fn slit_wkt(&self, epsilon: f64) -> Option<String> {
-        self.0.slit_wkt(epsilon)
-    }
+        match key {
+            "longlat" | "latlong" | "geographic" => Arc::new(Geographic { lon_0 }),
+            "ortho" | "orthographic" => Arc::new(Orthographic { lon_0, lat_0 }),
+            "stere" | "stereographic" => Arc::new(Stereographic { lon_0, lat_0 }),
+            "gnom" | "gnomonic" => Arc::new(Gnomonic { lon_0, lat_0 }),
+            "laea" | "lambert" => Arc::new(LambertAzimuthal { lon_0, lat_0 }),
+            "aeqd" | "azimuthal_equidistant" => Arc::new(AzimuthalEquidistant { lon_0, lat_0 }),
+            "tmerc" | "transverse_mercator" => Arc::new(TransverseMercator { lon_0, lat_0 }),
+            "utm" => {
+                if let Some(ref crs) = raw_crs {
+                    let zone = extract_f64_param(crs, "+zone=")
+                        .map(|z| (z as u8).clamp(1, 60))
+                        .unwrap_or_else(|| Utm::from_origin(lon_0, lat_0).zone);
+                    let south = crs.contains("+south");
+                    Arc::new(Utm { zone, south })
+                } else {
+                    Arc::new(Utm::from_origin(lon_0, lat_0))
+                }
+            }
+            "merc" | "mercator" => Arc::new(Mercator { lon_0 }),
+            "mill" | "miller" => Arc::new(Miller { lon_0 }),
+            "eqc" | "equirectangular" => Arc::new(Equirectangular { lon_0 }),
+            "cea" | "equal_area" => Arc::new(CylindricalEqualArea { lon_0 }),
+            "robin" | "robinson" => Arc::new(Robinson { lon_0 }),
+            "moll" | "mollweide" => Arc::new(Mollweide { lon_0 }),
+            "sinu" | "sinusoidal" => Arc::new(Sinusoidal { lon_0 }),
+            "eck4" | "eckert4" => Arc::new(Eckert4 { lon_0 }),
+            "natearth" | "natural" => Arc::new(NaturalEarth { lon_0 }),
+            "igh" => Arc::new(Igh { lon_0 }),
+            "wintri" | "winkel_tripel" => Arc::new(WinkelTripel { lon_0 }),
+            "aea" | "albers" => Arc::new(AlbersEqualArea {
+                lon_0,
+                lat_0,
+                lat_1,
+                lat_2,
+            }),
+            "lcc" | "lambert_conformal" => Arc::new(LambertConformalConic {
+                lon_0,
+                lat_0,
+                lat_1,
+                lat_2,
+            }),
+            "map" => Arc::new(UnknownProj {
+                raw: raw_crs.unwrap_or_default(),
+                lon_0,
+                lat_0,
+            }),
+            _ if raw_crs.is_some() => Arc::new(UnknownProj {
+                raw: raw_crs.unwrap(),
+                lon_0,
+                lat_0,
+            }),
+            _ => return None,
+        }
+    }};
 }
 
-impl fmt::Debug for MapSpecification {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "MapSpecification({})", self.0.to_proj_str())
-    }
-}
-
-impl fmt::Display for MapSpecification {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.0.display_name())
-    }
-}
-
-impl PartialEq for MapSpecification {
-    fn eq(&self, other: &Self) -> bool {
-        self.0.to_proj_str() == other.0.to_proj_str()
-    }
-}
-
-impl Serialize for MapSpecification {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        self.0.to_proj_str().serialize(serializer)
-    }
-}
-
-impl<'de> Deserialize<'de> for MapSpecification {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        let s = String::deserialize(deserializer)?;
-        Ok(MapSpecification::from_proj_str(&s))
-    }
+/// Build a map projection as a `CoordTrait` object from a name and properties.
+/// Returns `None` if the name is not recognised.
+pub fn build_map_projection(
+    name: Option<&str>,
+    properties: &HashMap<String, ParameterValue>,
+) -> Option<Arc<dyn super::CoordTrait>> {
+    let name = name?;
+    let obj: Arc<dyn super::CoordTrait> = build_projection!(name, properties);
+    Some(obj)
 }
 
 // =============================================================================
@@ -1228,17 +1317,32 @@ fn antimeridian_crossing_lat(a: (f64, f64), b: (f64, f64)) -> f64 {
 mod tests {
     use super::*;
 
+    fn build_map_projection_trait(
+        name: Option<&str>,
+        properties: &HashMap<String, ParameterValue>,
+    ) -> Option<Arc<dyn MapProjectionTrait>> {
+        let name = name?;
+        let obj: Arc<dyn MapProjectionTrait> = build_projection!(name, properties);
+        Some(obj)
+    }
+
+    fn build_from_proj_str(crs: &str) -> Arc<dyn MapProjectionTrait> {
+        let mut properties = HashMap::new();
+        properties.insert("crs".to_string(), ParameterValue::String(crs.to_string()));
+        build_map_projection_trait(Some("map"), &properties).unwrap()
+    }
+
     #[test]
     fn from_proj_str_known_projections() {
-        let proj = MapSpecification::from_proj_str("+proj=ortho +lon_0=10 +lat_0=45");
+        let proj = build_from_proj_str("+proj=ortho +lon_0=10 +lat_0=45");
         assert_eq!(proj.proj_code(), "ortho");
         assert_eq!(proj.origin(), (10.0, 45.0));
 
-        let proj = MapSpecification::from_proj_str("+proj=merc");
+        let proj = build_from_proj_str("+proj=merc");
         assert_eq!(proj.proj_code(), "merc");
         assert_eq!(proj.origin(), (0.0, 0.0));
 
-        let proj = MapSpecification::from_proj_str("+proj=aea +lon_0=5 +lat_1=30 +lat_2=50");
+        let proj = build_from_proj_str("+proj=aea +lon_0=5 +lat_1=30 +lat_2=50");
         assert_eq!(proj.proj_code(), "aea");
         assert_eq!(
             proj.to_proj_str(),
@@ -1253,7 +1357,7 @@ mod tests {
             "crs".to_string(),
             ParameterValue::String("+proj=aea +lon_0=5 +lat_0=10 +lat_1=30 +lat_2=50".to_string()),
         );
-        let proj = MapSpecification::new(Some("map"), &props).unwrap();
+        let proj = build_map_projection_trait(Some("map"), &props).unwrap();
         assert_eq!(proj.proj_code(), "aea");
         assert_eq!(proj.origin(), (5.0, 10.0));
         assert_eq!(
@@ -1276,7 +1380,7 @@ mod tests {
             "parallel".to_string(),
             ParameterValue::Array(vec![ArrayElement::Number(29.5), ArrayElement::Number(45.5)]),
         );
-        let proj = MapSpecification::new(Some("albers"), &props).unwrap();
+        let proj = build_map_projection_trait(Some("albers"), &props).unwrap();
         assert_eq!(proj.proj_code(), "aea");
         assert_eq!(proj.origin(), (-96.0, 37.5));
         assert_eq!(
@@ -1287,23 +1391,24 @@ mod tests {
 
     #[test]
     fn from_proj_str_unknown_projection() {
-        let proj = MapSpecification::from_proj_str("+proj=fooproj +lon_0=5");
+        let proj = build_from_proj_str("+proj=fooproj +lon_0=5");
         assert_eq!(proj.proj_code(), "unknown");
         assert_eq!(proj.origin(), (5.0, 0.0));
         assert_eq!(proj.visible_area_wkt(), None);
     }
 
     #[test]
-    fn round_trip_serialization() {
-        let proj = MapSpecification::from_proj_str("+proj=robin +lon_0=10");
-        let json = serde_json::to_string(&proj).unwrap();
-        let deser: MapSpecification = serde_json::from_str(&json).unwrap();
-        assert_eq!(proj, deser);
+    fn build_from_proj_str_round_trip() {
+        let proj = build_from_proj_str("+proj=robin +lon_0=10");
+        let proj_str = proj.to_proj_str();
+        let proj2 = build_from_proj_str(&proj_str);
+        assert_eq!(proj.proj_code(), proj2.proj_code());
+        assert_eq!(proj.to_proj_str(), proj2.to_proj_str());
     }
 
     #[test]
     fn visible_area_cylindrical() {
-        let proj = MapSpecification::from_proj_str("+proj=merc");
+        let proj = build_from_proj_str("+proj=merc");
         let wkt = proj.visible_area_wkt().unwrap();
         assert!(wkt.starts_with("POLYGON(("));
         assert!(wkt.contains("85.000000"));
@@ -1311,21 +1416,21 @@ mod tests {
 
     #[test]
     fn visible_area_azimuthal() {
-        let proj = MapSpecification::from_proj_str("+proj=ortho +lon_0=0 +lat_0=0");
+        let proj = build_from_proj_str("+proj=ortho +lon_0=0 +lat_0=0");
         let wkt = proj.visible_area_wkt().unwrap();
         assert!(wkt.starts_with("POLYGON((") || wkt.starts_with("MULTIPOLYGON("));
     }
 
     #[test]
     fn slit_igh() {
-        let proj = MapSpecification::from_proj_str("+proj=igh");
+        let proj = build_from_proj_str("+proj=igh");
         let slit = proj.slit_wkt(0.005).unwrap();
         assert!(slit.starts_with("MULTIPOLYGON("));
     }
 
     #[test]
     fn slit_default_antimeridian() {
-        let proj = MapSpecification::from_proj_str("+proj=robin +lon_0=10");
+        let proj = build_from_proj_str("+proj=robin +lon_0=10");
         let slit = proj.slit_wkt(0.005).unwrap();
         assert!(slit.starts_with("POLYGON(("));
         assert!(slit.contains("-170."));
@@ -1333,19 +1438,19 @@ mod tests {
 
     #[test]
     fn slit_at_dateline_returns_none() {
-        let proj = MapSpecification::from_proj_str("+proj=robin +lon_0=0");
+        let proj = build_from_proj_str("+proj=robin +lon_0=0");
         assert!(proj.slit_wkt(0.005).is_none());
     }
 
     #[test]
     fn visible_area_gnomonic() {
-        let proj = MapSpecification::from_proj_str("+proj=gnom +lat_0=90 +lon_0=0");
+        let proj = build_from_proj_str("+proj=gnom +lat_0=90 +lon_0=0");
         assert!(proj.visible_area_wkt().is_some());
     }
 
     #[test]
     fn visible_area_antimeridian_crossing() {
-        let proj = MapSpecification::from_proj_str("+proj=ortho +lat_0=0 +lon_0=150");
+        let proj = build_from_proj_str("+proj=ortho +lat_0=0 +lon_0=150");
         let wkt = proj.visible_area_wkt().unwrap();
         assert!(
             wkt.starts_with("MULTIPOLYGON"),
@@ -1355,7 +1460,7 @@ mod tests {
 
     #[test]
     fn visible_area_no_antimeridian_for_centered() {
-        let proj = MapSpecification::from_proj_str("+proj=ortho +lat_0=0 +lon_0=0");
+        let proj = build_from_proj_str("+proj=ortho +lat_0=0 +lon_0=0");
         let wkt = proj.visible_area_wkt().unwrap();
         assert!(
             wkt.starts_with("POLYGON(("),
@@ -1365,7 +1470,7 @@ mod tests {
 
     #[test]
     fn visible_area_pole_routing() {
-        let proj = MapSpecification::from_proj_str("+proj=ortho +lat_0=52.36 +lon_0=150.90");
+        let proj = build_from_proj_str("+proj=ortho +lat_0=52.36 +lon_0=150.90");
         let wkt = proj.visible_area_wkt().unwrap();
         assert!(
             wkt.starts_with("POLYGON(("),
@@ -1375,7 +1480,7 @@ mod tests {
 
     #[test]
     fn visible_area_rectangle_always_polygon() {
-        let proj = MapSpecification::from_proj_str("+proj=robin +lon_0=-90");
+        let proj = build_from_proj_str("+proj=robin +lon_0=-90");
         let wkt = proj.visible_area_wkt().unwrap();
         assert!(
             wkt.starts_with("POLYGON(("),
@@ -1407,7 +1512,7 @@ mod tests {
 
     #[test]
     fn seam_position() {
-        let proj = MapSpecification::from_proj_str("+proj=robin +lon_0=-90");
+        let proj = build_from_proj_str("+proj=robin +lon_0=-90");
         let (lon_0, _) = proj.origin();
         let seam = wrap_lon(lon_0 + 180.0);
         assert!((seam - 90.0).abs() < 1e-6, "seam should be at 90°");
@@ -1415,12 +1520,12 @@ mod tests {
 
     #[test]
     fn igh_slit_shift_with_lon_0() {
-        let igh0 = MapSpecification::from_proj_str("+proj=igh");
+        let igh0 = build_from_proj_str("+proj=igh");
         let wkt0 = igh0.slit_wkt(0.005).unwrap();
         assert!(wkt0.starts_with("MULTIPOLYGON("), "{wkt0}");
         assert_eq!(wkt0.matches("((").count(), 4, "{wkt0}");
 
-        let igh90 = MapSpecification::from_proj_str("+proj=igh +lon_0=90");
+        let igh90 = build_from_proj_str("+proj=igh +lon_0=90");
         let wkt90 = igh90.slit_wkt(0.005).unwrap();
         assert_eq!(wkt90.matches("((").count(), 5, "{wkt90}");
         assert!(wkt90.contains("170.005"), "south slit near 170°: {wkt90}");
@@ -1431,11 +1536,11 @@ mod tests {
 
     #[test]
     fn utm_from_proj_str() {
-        let proj = MapSpecification::from_proj_str("+proj=utm +zone=30");
+        let proj = build_from_proj_str("+proj=utm +zone=30");
         assert_eq!(proj.proj_code(), "utm");
         assert_eq!(proj.to_proj_str(), "+proj=utm +zone=30");
 
-        let proj = MapSpecification::from_proj_str("+proj=utm +zone=55 +south");
+        let proj = build_from_proj_str("+proj=utm +zone=55 +south");
         assert_eq!(proj.to_proj_str(), "+proj=utm +zone=55 +south");
         let (lon, lat) = proj.origin();
         assert!((lon - 147.0).abs() < 1e-6);
@@ -1449,7 +1554,7 @@ mod tests {
             "origin".to_string(),
             ParameterValue::Array(vec![ArrayElement::Number(5.0), ArrayElement::Number(52.0)]),
         );
-        let proj = MapSpecification::new(Some("utm"), &props).unwrap();
+        let proj = build_map_projection_trait(Some("utm"), &props).unwrap();
         assert_eq!(proj.proj_code(), "utm");
         assert_eq!(proj.to_proj_str(), "+proj=utm +zone=31");
     }
@@ -1464,7 +1569,7 @@ mod tests {
                 ArrayElement::Number(-34.0),
             ]),
         );
-        let proj = MapSpecification::new(Some("utm"), &props).unwrap();
+        let proj = build_map_projection_trait(Some("utm"), &props).unwrap();
         assert_eq!(proj.to_proj_str(), "+proj=utm +zone=56 +south");
     }
 }

@@ -52,12 +52,6 @@ impl CoordTrait for Polar {
     }
 }
 
-impl std::fmt::Display for Polar {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.name())
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -104,7 +98,7 @@ mod tests {
             ParameterValue::String("value".to_string()),
         );
 
-        let resolved = polar.resolve_properties(&props);
+        let resolved = polar.resolve_properties(None, &props);
         assert!(resolved.is_err());
         let err = resolved.unwrap_err();
         assert!(err.contains("not 'unknown'"));
@@ -116,7 +110,7 @@ mod tests {
         let mut props = HashMap::new();
         props.insert("start".to_string(), ParameterValue::Number(90.0));
 
-        let resolved = polar.resolve_properties(&props);
+        let resolved = polar.resolve_properties(None, &props);
         assert!(resolved.is_ok());
         let resolved = resolved.unwrap();
         assert_eq!(
@@ -130,7 +124,7 @@ mod tests {
         let polar = Polar;
         let props = HashMap::new();
 
-        let resolved = polar.resolve_properties(&props);
+        let resolved = polar.resolve_properties(None, &props);
         assert!(resolved.is_ok());
         let resolved = resolved.unwrap();
         assert!(resolved.contains_key("start"));
@@ -143,7 +137,7 @@ mod tests {
         let mut props = HashMap::new();
         props.insert("end".to_string(), ParameterValue::Number(180.0));
 
-        let resolved = polar.resolve_properties(&props);
+        let resolved = polar.resolve_properties(None, &props);
         assert!(resolved.is_ok());
         let resolved = resolved.unwrap();
         assert_eq!(resolved.get("end").unwrap(), &ParameterValue::Number(180.0));
@@ -158,7 +152,7 @@ mod tests {
         props.insert("start".to_string(), ParameterValue::Number(-90.0));
         props.insert("end".to_string(), ParameterValue::Number(90.0));
 
-        let resolved = polar.resolve_properties(&props);
+        let resolved = polar.resolve_properties(None, &props);
         assert!(resolved.is_ok());
         let resolved = resolved.unwrap();
         assert_eq!(
@@ -174,7 +168,7 @@ mod tests {
         let mut props = HashMap::new();
         props.insert("inner".to_string(), ParameterValue::Number(0.5));
 
-        let resolved = polar.resolve_properties(&props);
+        let resolved = polar.resolve_properties(None, &props);
         assert!(resolved.is_ok());
         let resolved = resolved.unwrap();
         assert_eq!(resolved.get("inner").unwrap(), &ParameterValue::Number(0.5));

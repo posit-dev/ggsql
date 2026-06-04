@@ -37,12 +37,6 @@ impl CoordTrait for Cartesian {
     }
 }
 
-impl std::fmt::Display for Cartesian {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.name())
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -70,7 +64,7 @@ mod tests {
         let cartesian = Cartesian;
         let props = HashMap::new();
         // Empty properties should resolve successfully
-        let resolved = cartesian.resolve_properties(&props);
+        let resolved = cartesian.resolve_properties(None, &props);
         assert!(resolved.is_ok());
     }
 
@@ -83,7 +77,7 @@ mod tests {
             ParameterValue::String("value".to_string()),
         );
 
-        let resolved = cartesian.resolve_properties(&props);
+        let resolved = cartesian.resolve_properties(None, &props);
         assert!(resolved.is_err());
         let err = resolved.unwrap_err();
         assert!(err.contains("not 'unknown'"));

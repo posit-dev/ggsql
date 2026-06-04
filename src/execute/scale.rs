@@ -1723,7 +1723,6 @@ mod tests {
             coord,
             aesthetics,
             properties: std::collections::HashMap::new(),
-            map_projection: None,
             computed: std::collections::HashMap::new(),
         });
 

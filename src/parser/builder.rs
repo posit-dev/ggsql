@@ -4,7 +4,6 @@
 //! handling all the node types defined in the grammar.
 
 use crate::plot::layer::geom::Geom;
-use crate::plot::projection::coord::map_projections::MapSpecification;
 use crate::plot::projection::resolve_coord;
 use crate::plot::scale::{color_to_hex, is_color_aesthetic, is_user_facet_aesthetic, Transform};
 use crate::plot::*;
@@ -971,7 +970,6 @@ fn parse_facet_vars(node: &Node, source: &SourceTree) -> Result<Vec<String>> {
 ///
 /// Aesthetics are optional and default to the coord's standard names.
 fn build_project(node: &Node, source: &SourceTree) -> Result<Projection> {
-    let mut coord = Coord::cartesian();
     let mut coord_type_name: Option<String> = None;
     let mut properties = HashMap::new();
     let mut user_aesthetics: Option<Vec<String>> = None;
@@ -985,12 +983,9 @@ fn build_project(node: &Node, source: &SourceTree) -> Result<Projection> {
                 user_aesthetics = Some(source.find_texts(&child, query));
             }
             "project_type" => {
-                let text = source.get_text(&child).to_lowercase();
-                coord = parse_coord_system(&text)?;
-                coord_type_name = Some(text);
+                coord_type_name = Some(source.get_text(&child).to_lowercase());
             }
             "project_properties" => {
-                // Find all project_property nodes
                 let query = "(project_property) @prop";
                 let prop_nodes = source.find_nodes(&child, query);
 
@@ -1004,9 +999,11 @@ fn build_project(node: &Node, source: &SourceTree) -> Result<Projection> {
         }
     }
 
+    // Build coord (map projections use name + properties to pick the right struct)
+    let coord = parse_coord_system(coord_type_name.as_deref(), &properties)?;
+
     // Resolve aesthetics: use provided or fall back to coord defaults
     let aesthetics = if let Some(aes) = user_aesthetics {
-        // Validate aesthetic count matches coord requirements
         let expected = coord.position_aesthetic_names().len();
         if aes.len() != expected {
             return Err(GgsqlError::ParseError(format!(
@@ -1017,12 +1014,10 @@ fn build_project(node: &Node, source: &SourceTree) -> Result<Projection> {
             )));
         }
 
-        // Validate no conflicts with material or facet aesthetics
         validate_position_aesthetic_names(&aes)?;
 
         aes
     } else {
-        // Use coord defaults - resolved immediately at build time
         coord
             .position_aesthetic_names()
             .iter()
@@ -1031,24 +1026,12 @@ fn build_project(node: &Node, source: &SourceTree) -> Result<Projection> {
     };
 
     // Validate properties for this coord type
-    validate_project_properties(&coord, &properties)?;
-
-    let map_projection = MapSpecification::new(coord_type_name.as_deref(), &properties);
-
-    if let Some(ref spec) = map_projection {
-        let proj_str = spec.to_proj_str();
-        if !proj_str.is_empty() {
-            properties
-                .entry("crs".to_string())
-                .or_insert_with(|| ParameterValue::String(proj_str));
-        }
-    }
+    validate_project_properties(&coord, coord_type_name.as_deref(), &properties)?;
 
     Ok(Projection {
         coord,
         aesthetics,
         properties,
-        map_projection,
         computed: HashMap::new(),
     })
 }
@@ -1112,25 +1095,26 @@ fn parse_single_project_property(
 /// Validate that properties are valid for the given coord type
 fn validate_project_properties(
     coord: &Coord,
+    coord_type_name: Option<&str>,
     properties: &HashMap<String, ParameterValue>,
 ) -> Result<()> {
     coord
-        .resolve_properties(properties)
+        .resolve_properties(coord_type_name, properties)
         .map_err(GgsqlError::ParseError)?;
     Ok(())
 }
 
-fn parse_coord_system(name: &str) -> Result<Coord> {
+fn parse_coord_system(
+    name: Option<&str>,
+    properties: &HashMap<String, ParameterValue>,
+) -> Result<Coord> {
     use crate::plot::projection::coord::map_projections::NAMED_PROJECTIONS;
     match name {
-        "cartesian" => Ok(Coord::cartesian()),
-        "polar" => Ok(Coord::polar()),
-        "map" => Ok(Coord::map(name)),
-        _ if NAMED_PROJECTIONS.contains(&name) => Ok(Coord::map(name)),
-        _ => Err(GgsqlError::ParseError(format!(
-            "Unknown coord type: {}",
-            name
-        ))),
+        Some("cartesian") | None => Ok(Coord::cartesian()),
+        Some("polar") => Ok(Coord::polar()),
+        Some("map") => Ok(Coord::map("map", properties)),
+        Some(n) if NAMED_PROJECTIONS.contains(&n) => Ok(Coord::map(n, properties)),
+        Some(n) => Err(GgsqlError::ParseError(format!("Unknown coord type: {}", n))),
     }
 }
 
@@ -1407,10 +1391,9 @@ mod tests {
 
         let project = specs[0].project.as_ref().unwrap();
         assert_eq!(project.coord.coord_kind(), CoordKind::Map);
-        assert_eq!(
-            project.properties.get("crs"),
-            Some(&ParameterValue::String("+proj=merc +lon_0=0".to_string()))
-        );
+        let mp = project.coord.as_map_projection().unwrap();
+        assert_eq!(mp.proj_code(), "merc");
+        assert_eq!(mp.to_proj_str(), "+proj=merc +lon_0=0");
     }
 
     #[test]

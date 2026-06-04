@@ -1,378 +1,153 @@
-//! Map coordinate system implementation
+//! Map coordinate system — helper functions for map projection transforms.
 
 use std::collections::HashMap;
 
-use super::{CoordKind, CoordTrait};
+use super::map_projections::MapProjectionTrait;
 use crate::naming;
 use crate::plot::layer::geom::GeomType;
 use crate::plot::scale::breaks::graticule_breaks;
-use crate::plot::types::{
-    validate_parameter, DefaultParamValue, ParamConstraint, ParamDefinition, TypeConstraint,
-};
 use crate::plot::{DataSource, Layer, ParameterValue};
 use crate::reader::SqlDialect;
 use crate::DataFrame;
 
 // ---------------------------------------------------------------------------
-// Map coord
+// Entry point called from the blanket CoordTrait impl
 // ---------------------------------------------------------------------------
 
-/// Map coordinate system - for geographic/cartographic projections
-#[derive(Debug, Clone, Copy)]
-pub struct Map {
-    coord_type_name: &'static str,
-}
-
-impl Map {
-    pub fn new(name: &str) -> Self {
-        use super::map_projections::NAMED_PROJECTIONS;
-        let coord_type_name = NAMED_PROJECTIONS
-            .iter()
-            .find(|&&n| n == name)
-            .copied()
-            .unwrap_or("map");
-        Self { coord_type_name }
-    }
-}
-
-impl CoordTrait for Map {
-    fn coord_kind(&self) -> CoordKind {
-        CoordKind::Map
+pub(crate) fn apply_map_transforms(
+    map_proj: &dyn MapProjectionTrait,
+    layers: &[Layer],
+    layer_queries: &mut [String],
+    projection: &mut super::super::Projection,
+    dialect: &dyn SqlDialect,
+    execute_query: &dyn Fn(&str) -> crate::Result<DataFrame>,
+) -> crate::Result<()> {
+    for stmt in dialect.sql_spatial_setup() {
+        execute_query(&stmt)?;
     }
 
-    fn name(&self) -> &'static str {
-        self.coord_type_name
+    // Read resolved CRS from properties (set by resolve_map_projection)
+    let Some(ParameterValue::String(source)) = projection.properties.get("source") else {
+        unreachable!("source must be resolved before apply_map_transforms");
+    };
+    let Some(ParameterValue::String(crs)) = projection.properties.get("crs") else {
+        unreachable!("crs must be resolved before apply_map_transforms");
+    };
+    let source = source.clone();
+    let crs = crs.clone();
+
+    // Step 2: Materialize clip boundary, panel boundary, and world bbox.
+    let clip_enabled = match projection.properties.get("clip") {
+        Some(ParameterValue::Boolean(b)) => *b,
+        _ => true,
+    };
+    let mut world_bbox: Option<BBox> = None;
+    let mut boundary_lonlat: Option<String> = None;
+
+    if clip_enabled && map_proj.proj_code() != "unknown" {
+        let b = materialize_clip_boundary(map_proj, &source, dialect, execute_query)?;
+        if let Some(wkt) = boundary_to_target_crs(&b, &crs, dialect, execute_query) {
+            projection
+                .computed
+                .insert("panel_boundary".to_string(), ParameterValue::String(wkt));
+        }
+        world_bbox = compute_world_bbox(&source, &crs, dialect, execute_query);
+        boundary_lonlat = Some(b);
+    }
+    let clip = boundary_lonlat.is_some();
+
+    // Step 3: Apply per-layer projection (ST_Transform, clip to horizon)
+    for (idx, layer) in layers.iter().enumerate() {
+        let columns: Vec<String> = layer
+            .mappings
+            .aesthetics
+            .keys()
+            .map(|k| naming::aesthetic_column(k))
+            .collect();
+        layer_queries[idx] = layer.geom.apply_projection(
+            &layer_queries[idx],
+            projection,
+            dialect,
+            clip,
+            &columns,
+        )?;
     }
 
-    fn position_aesthetic_names(&self) -> &'static [&'static str] {
-        &["lon", "lat"]
-    }
+    // Step 4: Materialize projected layers as temp tables, compute data bbox,
+    // then rewrite layer queries to read from those tables.
+    let user_bbox = projection.properties.get("bounds");
+    let needs_data_bbox = needs_data_bbox(user_bbox);
+    let mut data_bbox: Option<BBox> = None;
 
-    fn default_properties(&self) -> &'static [ParamDefinition] {
-        use crate::plot::types::{ArrayConstraint, NumberConstraint};
-        const LON_RANGE: NumberConstraint = NumberConstraint::range(-180.0, 180.0);
-        const LAT_RANGE: NumberConstraint = NumberConstraint::range(-90.0, 90.0);
-        const PARAMS: &[ParamDefinition] = &[
-            // Accepts PROJ strings or EPSG codes (numbers resolved at execution time)
-            ParamDefinition {
-                name: "crs",
-                default: DefaultParamValue::Null,
-                constraint: ParamConstraint {
-                    number: TypeConstraint::Constrained(NumberConstraint::count(1.0)),
-                    string: TypeConstraint::Any,
-                    boolean: TypeConstraint::Forbidden,
-                    array: TypeConstraint::Forbidden,
-                    allow_null: true,
-                },
-            },
-            ParamDefinition {
-                name: "source",
-                default: DefaultParamValue::Null,
-                constraint: ParamConstraint {
-                    number: TypeConstraint::Constrained(NumberConstraint::count(1.0)),
-                    string: TypeConstraint::Any,
-                    boolean: TypeConstraint::Forbidden,
-                    array: TypeConstraint::Forbidden,
-                    allow_null: true,
-                },
-            },
-            ParamDefinition {
-                name: "clip",
-                default: DefaultParamValue::Boolean(true),
-                constraint: ParamConstraint::boolean(),
-            },
-            // [xmin, ymin, xmax, ymax] in projected coordinates; null uses data bbox, Inf uses world bbox
-            ParamDefinition {
-                name: "bounds",
-                default: DefaultParamValue::Null,
-                constraint: ParamConstraint {
-                    number: TypeConstraint::Forbidden,
-                    string: TypeConstraint::Forbidden,
-                    boolean: TypeConstraint::Forbidden,
-                    array: TypeConstraint::Constrained(
-                        ArrayConstraint::of_numbers_len(NumberConstraint::unconstrained(), 4)
-                            .with_null_elements(),
-                    ),
-                    allow_null: true,
-                },
-            },
-            // origin => 30 (lon only) or origin => (30, 45) (lon, lat)
-            ParamDefinition {
-                name: "origin",
-                default: DefaultParamValue::Null,
-                constraint: ParamConstraint::number_or_numeric_array(
-                    LON_RANGE,
-                    ArrayConstraint::of_numbers_len(LON_RANGE, 2),
-                ),
-            },
-            // parallel => 30 (tangent) or parallel => (30, 50) (secant)
-            ParamDefinition {
-                name: "parallel",
-                default: DefaultParamValue::Null,
-                constraint: ParamConstraint::number_or_numeric_array(
-                    LAT_RANGE,
-                    ArrayConstraint::of_numbers_len(LAT_RANGE, 2),
-                ),
-            },
-        ];
-        PARAMS
-    }
+    for (idx, layer) in layers.iter().enumerate() {
+        let is_annotation = matches!(layer.source, Some(DataSource::Annotation));
+        let is_spatial = layer.geom.geom_type() == GeomType::Spatial;
+        let has_projected_positions = !is_spatial
+            && source != crs
+            && layer.mappings.contains_key("pos1")
+            && layer.mappings.contains_key("pos2");
 
-    fn resolve_properties(
-        &self,
-        properties: &HashMap<String, ParameterValue>,
-    ) -> Result<HashMap<String, ParameterValue>, String> {
-        if self.coord_type_name != "map" && properties.contains_key("crs") {
-            return Err(format!(
-                "Cannot combine a named projection ('{}') with a 'crs' setting. \
-                 Use either PROJECT TO {} or PROJECT TO map SETTING crs => '...'",
-                self.coord_type_name, self.coord_type_name
-            ));
-        }
-        let has_crs = properties.contains_key("crs");
-        let has_origin = properties.contains_key("origin");
-        let has_parallel = properties.contains_key("parallel");
-        if has_crs && (has_origin || has_parallel) {
-            return Err(
-                "Cannot combine 'crs' setting with 'origin' or 'parallel'. \
-                 Use either the CRS string or a named projection with 'origin'/'parallel' settings."
-                    .to_string(),
-            );
-        }
-        // Delegate to default validation
-        let defaults = self.default_properties();
-        for (key, value) in properties.iter() {
-            if let Some(param) = defaults.iter().find(|p| p.name == key) {
-                validate_parameter(key, value, &param.constraint)?;
-            } else {
-                let allowed: Vec<&str> = defaults.iter().map(|p| p.name).collect();
-                return Err(format!(
-                    "{} projection property should be {}, not '{}'",
-                    self.name(),
-                    crate::or_list_quoted(&allowed, '\''),
-                    key
-                ));
-            }
-        }
-        // ArrayConstraint applies uniform bounds to all elements, so we validate
-        // the latitude element (index 1) separately against [-90, 90].
-        if let Some(ParameterValue::Array(arr)) = properties.get("origin") {
-            if let Some(crate::plot::types::ArrayElement::Number(lat)) = arr.get(1) {
-                if *lat < -90.0 || *lat > 90.0 {
-                    return Err(format!(
-                        "origin latitude must be between -90 and 90, got {}",
-                        lat
-                    ));
-                }
-            }
-        }
-        let mut resolved = properties.clone();
-        for param in defaults {
-            if !resolved.contains_key(param.name) {
-                if let Some(default) = param.to_parameter_value() {
-                    resolved.insert(param.name.to_string(), default);
-                }
-            }
-        }
-        Ok(resolved)
-    }
-
-    fn apply_projection_transforms(
-        &self,
-        layers: &[Layer],
-        layer_queries: &mut [String],
-        projection: &mut super::super::Projection,
-        dialect: &dyn SqlDialect,
-        execute_query: &dyn Fn(&str) -> crate::Result<DataFrame>,
-    ) -> crate::Result<()> {
-        for stmt in dialect.sql_spatial_setup() {
-            execute_query(&stmt)?;
+        if is_annotation || (!is_spatial && !has_projected_positions) {
+            continue;
         }
 
-        // Step 1: Detect source CRS from geometry columns if not explicitly set
-        if !projection.properties.contains_key("source") {
-            if let Some(srid) = detect_source_srid(layers, layer_queries, dialect, execute_query)? {
-                projection
-                    .properties
-                    .insert("source".to_string(), ParameterValue::String(srid));
-            }
+        let table_quoted = materialize_layer(idx, &layer_queries[idx], dialect, execute_query)?;
+
+        if needs_data_bbox {
+            let layer_bbox =
+                compute_layer_bbox(&table_quoted, is_spatial, &crs, dialect, execute_query);
+            data_bbox = BBox::merge(data_bbox, layer_bbox)?;
         }
 
-        // Resolve numeric EPSG codes to PROJ strings (source is kept as EPSG:N
-        // so that sql_st_transform can extract the numeric SRID for ST_SetSRID).
-        let source = resolve_epsg_property("source", &projection.properties, execute_query)
-            .unwrap_or_else(|| "EPSG:4326".to_string());
-        let crs = resolve_epsg_property("crs", &projection.properties, execute_query)
-            .unwrap_or_else(|| source.clone());
-        // Reinsert as strings so geom apply_projection() calls below can read them.
-        projection
-            .properties
-            .insert("source".to_string(), ParameterValue::String(source.clone()));
-        projection
-            .properties
-            .insert("crs".to_string(), ParameterValue::String(crs.clone()));
-
-        // Rebuild MapSpecification from resolved CRS string when it was set numerically
-        if projection.map_projection.is_none()
-            || projection
-                .map_projection
-                .as_ref()
-                .is_some_and(|m| m.proj_code() == "unknown")
-        {
-            projection.map_projection =
-                super::map_projections::MapSpecification::new(Some("map"), &projection.properties);
-        }
-
-        // Validate CRS by attempting a single point transform
-        let probe = dialect.sql_st_transform("ST_Point(0, 0)", &source, &crs);
-        let probe_sql = format!("SELECT {probe} AS g");
-        match execute_query(&probe_sql) {
-            Err(e) => {
-                let msg = e.to_string();
-                return Err(crate::GgsqlError::ValidationError(format!(
-                    "Invalid CRS '{}': {}",
-                    crs,
-                    msg.split(':').next_back().unwrap_or(&msg).trim()
-                )));
-            }
-            Ok(df) => {
-                if df.height() > 0 && df.column("g").is_ok() {
-                    let val = crate::array_util::value_to_string(df.column("g").unwrap(), 0);
-                    if val == "null" || val.is_empty() {
-                        return Err(crate::GgsqlError::ValidationError(format!(
-                            "Unsupported CRS '{}': this backend cannot transform to \
-                             arbitrary PROJ strings. Use a numeric EPSG code instead.",
-                            crs,
-                        )));
-                    }
-                }
-            }
-        }
-
-        // Step 2: Materialize clip boundary, panel boundary, and world bbox.
-        let clip_enabled = match projection.properties.get("clip") {
-            Some(ParameterValue::Boolean(b)) => *b,
-            _ => true,
-        };
-        let mut world_bbox: Option<BBox> = None;
-        let mut boundary_lonlat: Option<String> = None;
-
-        let clip_wkt = clip_enabled
-            .then_some(projection.map_projection.as_ref())
-            .flatten()
-            .and_then(|map_proj| map_proj.visible_area_wkt().map(|_| map_proj));
-
-        if let Some(map_proj) = clip_wkt {
-            let b = materialize_clip_boundary(map_proj, &source, dialect, execute_query)?;
-            if let Some(wkt) = boundary_to_target_crs(&b, &crs, dialect, execute_query) {
-                projection
-                    .computed
-                    .insert("panel_boundary".to_string(), ParameterValue::String(wkt));
-            }
-            world_bbox = compute_world_bbox(&source, &crs, dialect, execute_query);
-            boundary_lonlat = Some(b);
-        }
-        let clip = boundary_lonlat.is_some();
-
-        // Step 3: Apply per-layer projection (ST_Transform, clip to horizon)
-        for (idx, layer) in layers.iter().enumerate() {
+        layer_queries[idx] = if is_spatial {
             let columns: Vec<String> = layer
                 .mappings
                 .aesthetics
                 .keys()
                 .map(|k| naming::aesthetic_column(k))
                 .collect();
-            layer_queries[idx] = layer.geom.apply_projection(
-                &layer_queries[idx],
-                projection,
-                dialect,
-                clip,
+            let geom_col_quoted = naming::quote_ident(&naming::aesthetic_column("geometry"));
+            let wkb_expr = dialect.sql_geometry_to_wkb(&geom_col_quoted);
+            dialect.sql_select_replace(
+                &wkb_expr,
+                &geom_col_quoted,
+                &format!("SELECT * FROM {table_quoted}"),
                 &columns,
-            )?;
-        }
-
-        // Step 4: Materialize projected layers as temp tables, compute data bbox,
-        // then rewrite layer queries to read from those tables.
-        let user_bbox = projection.properties.get("bounds");
-        let needs_data_bbox = needs_data_bbox(user_bbox);
-        let mut data_bbox: Option<BBox> = None;
-
-        for (idx, layer) in layers.iter().enumerate() {
-            let is_annotation = matches!(layer.source, Some(DataSource::Annotation));
-            let is_spatial = layer.geom.geom_type() == GeomType::Spatial;
-            let has_projected_positions = !is_spatial
-                && source != crs
-                && layer.mappings.contains_key("pos1")
-                && layer.mappings.contains_key("pos2");
-
-            if is_annotation || (!is_spatial && !has_projected_positions) {
-                continue;
-            }
-
-            let table_quoted = materialize_layer(idx, &layer_queries[idx], dialect, execute_query)?;
-
-            if needs_data_bbox {
-                let layer_bbox =
-                    compute_layer_bbox(&table_quoted, is_spatial, &crs, dialect, execute_query);
-                data_bbox = BBox::merge(data_bbox, layer_bbox)?;
-            }
-
-            layer_queries[idx] = if is_spatial {
-                let columns: Vec<String> = layer
-                    .mappings
-                    .aesthetics
-                    .keys()
-                    .map(|k| naming::aesthetic_column(k))
-                    .collect();
-                let geom_col_quoted = naming::quote_ident(&naming::aesthetic_column("geometry"));
-                let wkb_expr = dialect.sql_geometry_to_wkb(&geom_col_quoted);
-                dialect.sql_select_replace(
-                    &wkb_expr,
-                    &geom_col_quoted,
-                    &format!("SELECT * FROM {table_quoted}"),
-                    &columns,
-                )
-            } else {
-                format!("SELECT * FROM {table_quoted}")
-            };
-        }
-
-        // Step 5: Resolve final frame bbox from user bounds + data bounds + world bounds
-        let Some(bbox) = resolve_final_bbox(user_bbox, data_bbox, world_bbox) else {
-            return Ok(());
+            )
+        } else {
+            format!("SELECT * FROM {table_quoted}")
         };
+    }
+
+    // Step 5: Resolve final frame bbox from user bounds + data bounds + world bounds
+    let Some(bbox) = resolve_final_bbox(user_bbox, data_bbox, world_bbox) else {
+        return Ok(());
+    };
+    projection
+        .computed
+        .insert("bbox".to_string(), bbox.as_parameter_value());
+
+    // Step 6: Generate graticule lines. The graticule is built and clipped
+    // in EPSG:4326 (independent of source), then projected to target.
+    let (lon_wkt, lat_wkt) = build_graticule(
+        &bbox,
+        boundary_lonlat.as_deref(),
+        &crs,
+        dialect,
+        execute_query,
+    )?;
+    if let Some(wkt) = lon_wkt {
         projection
             .computed
-            .insert("bbox".to_string(), bbox.as_parameter_value());
-
-        // Step 6: Generate graticule lines. The graticule is built and clipped
-        // in EPSG:4326 (independent of source), then projected to target.
-        let (lon_wkt, lat_wkt) = build_graticule(
-            &bbox,
-            boundary_lonlat.as_deref(),
-            &crs,
-            dialect,
-            execute_query,
-        )?;
-        if let Some(wkt) = lon_wkt {
-            projection
-                .computed
-                .insert("graticule_lon".to_string(), ParameterValue::String(wkt));
-        }
-        if let Some(wkt) = lat_wkt {
-            projection
-                .computed
-                .insert("graticule_lat".to_string(), ParameterValue::String(wkt));
-        }
-
-        Ok(())
+            .insert("graticule_lon".to_string(), ParameterValue::String(wkt));
     }
-}
-
-impl std::fmt::Display for Map {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.name())
+    if let Some(wkt) = lat_wkt {
+        projection
+            .computed
+            .insert("graticule_lat".to_string(), ParameterValue::String(wkt));
     }
+
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------
@@ -684,7 +459,7 @@ fn query_scalar_string(
 /// Compose the clip boundary (visible area minus seam slits), materialize it as a
 /// temp table in source CRS for per-layer clipping, and return the WKT in EPSG:4326.
 fn materialize_clip_boundary(
-    map_proj: &super::map_projections::MapSpecification,
+    map_proj: &dyn MapProjectionTrait,
     source: &str,
     dialect: &dyn SqlDialect,
     execute_query: &dyn Fn(&str) -> crate::Result<DataFrame>,
@@ -932,6 +707,86 @@ pub fn clip_boundary_table() -> String {
 // EPSG resolution
 // ---------------------------------------------------------------------------
 
+/// Resolve numeric EPSG codes in projection properties to PROJ strings, and
+/// rebuild the coord if it is still `UnknownProj`.
+///
+/// Called by the executor before `apply_projection_transforms`. This ensures
+/// `source` and `crs` properties are always PROJ/EPSG strings (not raw numbers)
+/// and that the coord struct matches the resolved CRS.
+pub(crate) fn resolve_map_projection(
+    projection: &mut super::super::Projection,
+    layers: &[Layer],
+    layer_queries: &[String],
+    dialect: &dyn SqlDialect,
+    execute_query: &dyn Fn(&str) -> crate::Result<DataFrame>,
+) -> crate::Result<()> {
+    // Derive crs from the projection's PROJ string if not explicitly set
+    if let Some(mp) = projection.coord.as_map_projection() {
+        let proj_str = mp.to_proj_str();
+        if !proj_str.is_empty() {
+            projection
+                .properties
+                .entry("crs".to_string())
+                .or_insert_with(|| ParameterValue::String(proj_str));
+        }
+    }
+
+    let properties = &mut projection.properties;
+
+    // Step 1: Detect source CRS from geometry columns if not explicitly set
+    if !properties.contains_key("source") {
+        if let Some(srid) = detect_source_srid(layers, layer_queries, dialect, execute_query)? {
+            properties.insert("source".to_string(), ParameterValue::String(srid));
+        }
+    }
+
+    // Step 2: Resolve source and crs from numeric EPSG to PROJ strings
+    let source = resolve_epsg_property("source", properties, execute_query)
+        .unwrap_or_else(|| "EPSG:4326".to_string());
+    let crs =
+        resolve_epsg_property("crs", properties, execute_query).unwrap_or_else(|| source.clone());
+
+    properties.insert("source".to_string(), ParameterValue::String(source.clone()));
+    properties.insert("crs".to_string(), ParameterValue::String(crs.clone()));
+
+    // Step 3: Rebuild coord when it is still UnknownProj (EPSG wasn't resolvable at parse time)
+    if projection
+        .coord
+        .as_map_projection()
+        .is_some_and(|mp| mp.proj_code() == "unknown")
+    {
+        projection.coord = super::Coord::map("map", &projection.properties);
+    }
+
+    // Step 4: Validate CRS by attempting a single point transform
+    let probe = dialect.sql_st_transform("ST_Point(0, 0)", &source, &crs);
+    let probe_sql = format!("SELECT {probe} AS g");
+    match execute_query(&probe_sql) {
+        Err(e) => {
+            let msg = e.to_string();
+            return Err(crate::GgsqlError::ValidationError(format!(
+                "Invalid CRS '{}': {}",
+                crs,
+                msg.split(':').next_back().unwrap_or(&msg).trim()
+            )));
+        }
+        Ok(df) => {
+            if df.height() > 0 && df.column("g").is_ok() {
+                let val = crate::array_util::value_to_string(df.column("g").unwrap(), 0);
+                if val == "null" || val.is_empty() {
+                    return Err(crate::GgsqlError::ValidationError(format!(
+                        "Unsupported CRS '{}': this backend cannot transform to \
+                         arbitrary PROJ strings. Use a numeric EPSG code instead.",
+                        crs,
+                    )));
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
 /// If `key` holds a numeric EPSG code or an `"EPSG:N"` string, resolve it to a PROJ
 /// string. Falls back to `"EPSG:N"` format when no PROJ string can be found (the
 /// database engine may still handle it). Returns `None` when the property is absent.
@@ -1039,21 +894,21 @@ fn builtin_epsg_lookup(code: u32) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::plot::projection::coord::{Coord, CoordKind};
     use crate::plot::ParameterValue;
     use std::collections::HashMap;
 
     #[test]
     fn test_map_properties() {
-        let map = Map::new("map");
-        assert_eq!(map.coord_kind(), CoordKind::Map);
-        assert_eq!(map.name(), "map");
-        assert_eq!(map.position_aesthetic_names(), &["lon", "lat"]);
+        let coord = Coord::map("map", &HashMap::new());
+        assert_eq!(coord.coord_kind(), CoordKind::Map);
+        assert_eq!(coord.position_aesthetic_names(), &["lon", "lat"]);
     }
 
     #[test]
     fn test_map_default_properties() {
-        let map = Map::new("map");
-        let defaults = map.default_properties();
+        let coord = Coord::map("map", &HashMap::new());
+        let defaults = coord.default_properties();
         let names: Vec<&str> = defaults.iter().map(|p| p.name).collect();
         assert!(names.contains(&"crs"));
         assert!(names.contains(&"source"));
@@ -1066,14 +921,14 @@ mod tests {
 
     #[test]
     fn test_map_accepts_crs_string() {
-        let map = Map::new("map");
         let mut props = HashMap::new();
         props.insert(
             "crs".to_string(),
             ParameterValue::String("+proj=merc".to_string()),
         );
+        let coord = Coord::map("map", &props);
 
-        let resolved = map.resolve_properties(&props);
+        let resolved = coord.resolve_properties(Some("map"), &props);
         assert!(resolved.is_ok());
         let resolved = resolved.unwrap();
         assert_eq!(
@@ -1084,14 +939,14 @@ mod tests {
 
     #[test]
     fn test_map_rejects_unknown_property() {
-        let map = Map::new("map");
+        let coord = Coord::map("map", &HashMap::new());
         let mut props = HashMap::new();
         props.insert(
             "unknown".to_string(),
             ParameterValue::String("value".to_string()),
         );
 
-        let resolved = map.resolve_properties(&props);
+        let resolved = coord.resolve_properties(Some("map"), &props);
         assert!(resolved.is_err());
         let err = resolved.unwrap_err();
         assert!(err.contains("not 'unknown'"));
@@ -1099,15 +954,15 @@ mod tests {
 
     #[test]
     fn test_crs_rejects_origin_and_parallel() {
-        let map = Map::new("map");
         let mut props = HashMap::new();
         props.insert(
             "crs".to_string(),
             ParameterValue::String("+proj=ortho".to_string()),
         );
         props.insert("origin".to_string(), ParameterValue::Number(30.0));
+        let coord = Coord::map("map", &props);
 
-        let resolved = map.resolve_properties(&props);
+        let resolved = coord.resolve_properties(Some("map"), &props);
         assert!(resolved.is_err());
         let err = resolved.unwrap_err();
         assert!(err.contains("Cannot combine 'crs'"));
@@ -1115,7 +970,6 @@ mod tests {
 
     #[test]
     fn test_origin_rejects_latitude_out_of_range() {
-        let map = Map::new("albers");
         let mut props = HashMap::new();
         props.insert(
             "origin".to_string(),
@@ -1124,8 +978,9 @@ mod tests {
                 crate::plot::types::ArrayElement::Number(95.0),
             ]),
         );
+        let coord = Coord::map("albers", &props);
 
-        let resolved = map.resolve_properties(&props);
+        let resolved = coord.resolve_properties(Some("albers"), &props);
         assert!(resolved.is_err());
         let err = resolved.unwrap_err();
         assert!(err.contains("origin latitude must be between -90 and 90"));
