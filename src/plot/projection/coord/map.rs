@@ -755,7 +755,7 @@ pub(crate) fn resolve_map_projection(
         .as_map_projection()
         .is_some_and(|mp| mp.proj_code() == "unknown")
     {
-        projection.coord = super::Coord::map("map", &projection.properties);
+        projection.coord = super::Coord::map("crs", &projection.properties);
     }
 
     // Step 4: Validate CRS by attempting a single point transform
@@ -900,14 +900,14 @@ mod tests {
 
     #[test]
     fn test_map_properties() {
-        let coord = Coord::map("map", &HashMap::new());
+        let coord = Coord::map("crs", &HashMap::new());
         assert_eq!(coord.coord_kind(), CoordKind::Map);
         assert_eq!(coord.position_aesthetic_names(), &["lon", "lat"]);
     }
 
     #[test]
     fn test_map_default_properties() {
-        let coord = Coord::map("map", &HashMap::new());
+        let coord = Coord::map("crs", &HashMap::new());
         let defaults = coord.default_properties();
         let names: Vec<&str> = defaults.iter().map(|p| p.name).collect();
         assert!(names.contains(&"target"));
@@ -926,9 +926,9 @@ mod tests {
             "target".to_string(),
             ParameterValue::String("+proj=merc".to_string()),
         );
-        let coord = Coord::map("map", &props);
+        let coord = Coord::map("crs", &props);
 
-        let resolved = coord.resolve_properties(Some("map"), &props);
+        let resolved = coord.resolve_properties(Some("crs"), &props);
         assert!(resolved.is_ok());
         let resolved = resolved.unwrap();
         assert_eq!(
@@ -939,14 +939,14 @@ mod tests {
 
     #[test]
     fn test_map_rejects_unknown_property() {
-        let coord = Coord::map("map", &HashMap::new());
+        let coord = Coord::map("crs", &HashMap::new());
         let mut props = HashMap::new();
         props.insert(
             "unknown".to_string(),
             ParameterValue::String("value".to_string()),
         );
 
-        let resolved = coord.resolve_properties(Some("map"), &props);
+        let resolved = coord.resolve_properties(Some("crs"), &props);
         assert!(resolved.is_err());
         let err = resolved.unwrap_err();
         assert!(err.contains("not 'unknown'"));
@@ -960,9 +960,9 @@ mod tests {
             ParameterValue::String("+proj=ortho".to_string()),
         );
         props.insert("origin".to_string(), ParameterValue::Number(30.0));
-        let coord = Coord::map("map", &props);
+        let coord = Coord::map("crs", &props);
 
-        let resolved = coord.resolve_properties(Some("map"), &props);
+        let resolved = coord.resolve_properties(Some("crs"), &props);
         assert!(resolved.is_err());
         let err = resolved.unwrap_err();
         assert!(err.contains("Cannot combine 'target'"));

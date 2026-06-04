@@ -88,7 +88,7 @@ pub trait CoordTrait: std::fmt::Debug + Send + Sync {
 
     /// Resolve and validate properties.
     /// `coord_type_name` is the user-facing name from the `PROJECT TO` clause (e.g. "mercator",
-    /// "map"). Used to distinguish named projections from generic `map` + `target`.
+    /// "crs"). Used to distinguish named projections from generic `crs` + `target`.
     /// Default implementation validates against default_properties.
     fn resolve_properties(
         &self,
@@ -204,7 +204,7 @@ impl Coord {
         match kind {
             CoordKind::Cartesian => Self::cartesian(),
             CoordKind::Polar => Self::polar(),
-            CoordKind::Map => Self::map("map", &HashMap::new()),
+            CoordKind::Map => Self::map("crs", &HashMap::new()),
         }
     }
 

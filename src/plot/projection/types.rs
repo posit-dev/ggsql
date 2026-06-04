@@ -41,7 +41,7 @@ impl Projection {
 
     /// Create a default Map projection (lon, lat).
     pub fn map() -> Self {
-        Self::with_defaults(Coord::map("map", &HashMap::new()))
+        Self::with_defaults(Coord::map("crs", &HashMap::new()))
     }
 
     fn with_defaults(coord: Coord) -> Self {

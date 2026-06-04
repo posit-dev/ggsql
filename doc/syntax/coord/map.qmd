@@ -66,11 +66,11 @@ One is via a named projection, which allows for the `origin` and `parallel` sett
 PROJECT TO orthographic SETTING origin => (150, 52)
 ```
 
-The second option is to use the generic `PROJECT TO map` together with the `target` setting.
+The second option is to use the generic `PROJECT TO crs` together with the `target` setting.
 The code below is equivalent to the code above.
 
 ```ggsql
-PROJECT TO map SETTING target => '+proj=ortho +lon_0=150 +lat_0=52'
+PROJECT TO crs SETTING target => '+proj=ortho +lon_0=150 +lat_0=52'
 ```
 
 In this context, 'supported' means that we are reasonably confident that we can draw a serviceable map.
@@ -130,7 +130,7 @@ PROJECT TO robinson
 ```{ggsql}
 VISUALISE continent AS fill FROM ggsql:world
 DRAW spatial
-PROJECT TO map SETTING target => '+proj=robin'
+PROJECT TO crs SETTING target => '+proj=robin'
 ```
 
 ### Setting the origin

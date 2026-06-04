@@ -1103,7 +1103,7 @@ mod integration_tests {
         for crs in queries {
             let query = format!(
                 "VISUALISE FROM ggsql:world \
-                 DRAW spatial PROJECT TO map SETTING target => '{crs}'"
+                 DRAW spatial PROJECT TO crs SETTING target => '{crs}'"
             );
 
             let prepared = execute::prepare_data_with_reader(&query, &reader).unwrap();
@@ -1232,7 +1232,7 @@ mod integration_tests {
 
         let query = r#"
             VISUALISE FROM ggsql:world
-            DRAW spatial PROJECT TO map SETTING target => '+proj=ortho +lon_0=4.90 +lat_0=52.36'
+            DRAW spatial PROJECT TO crs SETTING target => '+proj=ortho +lon_0=4.90 +lat_0=52.36'
         "#;
 
         let prepared = execute::prepare_data_with_reader(query, &reader).unwrap();
@@ -1262,7 +1262,7 @@ mod integration_tests {
             SELECT ST_Point(545977.96, 6867712.83) AS geometry
             VISUALISE
             DRAW spatial
-            PROJECT TO map SETTING
+            PROJECT TO crs SETTING
                 source => 'EPSG:3857',
                 target => '+proj=ortho +lon_0=4.90 +lat_0=52.36'
         "#;

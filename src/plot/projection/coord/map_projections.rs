@@ -183,10 +183,10 @@ impl<T: MapProjectionTrait + 'static> super::CoordTrait for T {
         properties: &HashMap<String, ParameterValue>,
     ) -> Result<HashMap<String, ParameterValue>, String> {
         if let Some(name) = coord_type_name {
-            if name != "map" && properties.contains_key("target") {
+            if name != "crs" && properties.contains_key("target") {
                 return Err(format!(
                     "Cannot combine a named projection ('{}') with a 'target' setting. \
-                     Use either PROJECT TO {} or PROJECT TO map SETTING target => '...'",
+                     Use either PROJECT TO {} or PROJECT TO crs SETTING target => '...'",
                     name, name
                 ));
             }
@@ -354,7 +354,7 @@ macro_rules! build_projection {
                 lat_1,
                 lat_2,
             }),
-            "map" => Arc::new(UnknownProj {
+            "crs" => Arc::new(UnknownProj {
                 raw: raw_crs.unwrap_or_default(),
                 lon_0,
                 lat_0,
@@ -1329,7 +1329,7 @@ mod tests {
     fn build_from_proj_str(crs: &str) -> Arc<dyn MapProjectionTrait> {
         let mut properties = HashMap::new();
         properties.insert("target".to_string(), ParameterValue::String(crs.to_string()));
-        build_map_projection_trait(Some("map"), &properties).unwrap()
+        build_map_projection_trait(Some("crs"), &properties).unwrap()
     }
 
     #[test]
@@ -1357,7 +1357,7 @@ mod tests {
             "target".to_string(),
             ParameterValue::String("+proj=aea +lon_0=5 +lat_0=10 +lat_1=30 +lat_2=50".to_string()),
         );
-        let proj = build_map_projection_trait(Some("map"), &props).unwrap();
+        let proj = build_map_projection_trait(Some("crs"), &props).unwrap();
         assert_eq!(proj.proj_code(), "aea");
         assert_eq!(proj.origin(), (5.0, 10.0));
         assert_eq!(

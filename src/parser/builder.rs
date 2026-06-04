@@ -1112,7 +1112,7 @@ fn parse_coord_system(
     match name {
         Some("cartesian") | None => Ok(Coord::cartesian()),
         Some("polar") => Ok(Coord::polar()),
-        Some("map") => Ok(Coord::map("map", properties)),
+        Some("crs") => Ok(Coord::map("crs", properties)),
         Some(n) if NAMED_PROJECTIONS.contains(&n) => Ok(Coord::map(n, properties)),
         Some(n) => Err(GgsqlError::ParseError(format!("Unknown coord type: {}", n))),
     }
@@ -1357,11 +1357,11 @@ mod tests {
     }
 
     #[test]
-    fn test_project_map_bare() {
+    fn test_project_crs_bare() {
         let query = r#"
             VISUALISE
             DRAW point MAPPING lon AS lon, lat AS lat
-            PROJECT TO map
+            PROJECT TO crs
         "#;
 
         let result = parse_test_query(query);
