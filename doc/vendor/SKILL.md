@@ -434,7 +434,7 @@ Rectangles. Required: pick 2 per axis from center (x/y), min (xmin/ymin), max (x
 Closed shapes from ordered coordinates. Required: x, y. Use PARTITION BY to separate distinct polygons.
 
 ### range
-Range/interval display between two values along the secondary axis. Required: x, ymin, ymax. Settings: `width` (hinge width in points, default 10, null to hide).
+Range/interval display between two values along the secondary axis. Required: x, ymin, ymax. Settings: `hinge` (hinge width in points, default 10, null to hide).
 
 All layers accept common optional aesthetics (colour/stroke, fill, opacity, linewidth, linetype) and `position` setting where applicable.
 
@@ -469,7 +469,7 @@ SCALE x VIA date
 -- Lollipop chart
 SELECT ROUND(bill_dep) AS bill_dep, COUNT(*) AS n FROM ggsql:penguins GROUP BY 1
 VISUALISE bill_dep AS x
-DRAW range MAPPING 0 AS ymin, n AS ymax SETTING width => null
+DRAW range MAPPING 0 AS ymin, n AS ymax SETTING hinge => null
 DRAW point MAPPING n AS y
 
 -- Ridgeline / joy plot
@@ -496,7 +496,7 @@ VISUALISE Date AS x, Temp AS ymin, Temp AS ymax, Temp AS color
   FROM ggsql:airquality
 DRAW range
   SETTING aggregate => ('x:first', 'ymin:first', 'ymax:last', 'color:diff'),
-          width => null
+          hinge => null
   PARTITION BY Week
 SCALE BINNED color
 

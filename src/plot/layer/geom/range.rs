@@ -40,7 +40,7 @@ impl GeomTrait for Range {
                 constraint: ParamConstraint::string_option(POSITION_VALUES),
             },
             ParamDefinition {
-                name: "width",
+                name: "hinge",
                 default: DefaultParamValue::Number(10.0),
                 constraint: ParamConstraint::number_min(0.0),
             },

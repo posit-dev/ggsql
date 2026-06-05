@@ -23,7 +23,7 @@ The following aesthetics are recognised by the range layer.
 * `linetype`: The dash pattern of the lines in the range.
 
 ## Settings
-* `width`: The width of the hinges in points (must be >= 0). Defaults to 10. Can be set to `null` to not display hinges.
+* `hinge`: The width of the hinges in points (must be >= 0). Defaults to 10. Can be set to `null` to not display hinges.
 * `aggregate` Aggregation functions to apply per group: 
     * `null` apply no group aggregation (default).
     * A single string or an array of strings. See an overview of aggregation function in [the `DRAW` documentation](../../clause/draw.qmd#aggregate) and more information in the *Data transformation* section below.
@@ -65,18 +65,18 @@ Dynamite plot using bars instead of points, with extra wide hinges.
 VISUALISE species AS x FROM penguin_summary
 DRAW range
   MAPPING low AS ymax, high AS ymin
-  SETTING width => 40
+  SETTING hinge => 40
 DRAW bar
   MAPPING mean AS y
 ```
 
-The hinges can be omitted by setting `null` as width, leaving just the line segment between the endpoints.
+The hinges can be omitted by setting `null` as hinge, leaving just the line segment between the endpoints.
 
 ```{ggsql}
 VISUALISE species AS x FROM penguin_summary
 DRAW range
   MAPPING low AS ymax, high AS ymin
-  SETTING width => null
+  SETTING hinge => null
 ```
 
 A horizontal range can be rendered by swapping the `x` and `y` directions.
@@ -108,10 +108,10 @@ GROUP BY Week
 VISUALISE date AS x, trend AS colour
 DRAW range
   MAPPING open AS ymin, close AS ymax
-  SETTING linewidth => 5, width => null
+  SETTING linewidth => 5, hinge => null
 DRAW range
   MAPPING low AS ymin, high AS ymax
-  SETTING width => null
+  SETTING hinge => null
 ```
 
 Rather than precomputing the values and plotting them, you can use the aggregate functionality to calculate the relevant statistics dynamically:
@@ -128,7 +128,7 @@ DRAW range
       'ymax:last', 'ymax:max', 
       'color:diff'
     ), 
-    width => null
+    hinge => null
   PARTITION BY Week
 SCALE linewidth TO (5, 1)
 SCALE BINNED color TO ('steelblue', 'firebrick')

@@ -1760,11 +1760,11 @@ impl GeomRenderer for RangeRenderer {
         _prepared: &PreparedData,
         context: &RenderContext,
     ) -> Result<Vec<Value>> {
-        // Get width parameter (in points)
-        let width = if let Some(ParameterValue::Number(num)) = layer.parameters.get("width") {
+        // Get hinge parameter (in points)
+        let width = if let Some(ParameterValue::Number(num)) = layer.parameters.get("hinge") {
             (*num) * POINTS_TO_PIXELS
         } else {
-            // If no width specified, return just the main error bar without hinges
+            // If no hinge specified, return just the main error bar without hinges
             return Ok(vec![layer_spec]);
         };
 
