@@ -377,7 +377,7 @@ Kernel density estimation. Required: x. Stats: `density`, `intensity`. Settings:
 
 ### boxplot
 
-Five-number summary with outliers. Required: x (categorical), y (continuous). Stats: `type`, `value`. Settings: `position` (default `'dodge'`), `outliers` (default true), `coef` (whisker IQR multiple, default 1.5), `width` (default 0.9).
+Five-number summary with outliers. Required: x (categorical), y (continuous). Stats: `type`, `value`. Settings: `position` (default `'dodge'`), `outliers` (default true), `coef` (whisker IQR multiple, default 1.5), `width` (default 0.9), `hinge` (whisker cap width in points, default null/hidden).
 
 ### violin
 
@@ -417,7 +417,7 @@ Closed shapes from ordered coordinates. Required: x, y. Use PARTITION BY to sepa
 
 ### range
 
-Range/interval display between two values along the secondary axis. Required: x, ymin, ymax. Settings: `width` (hinge width in points, default 10, null to hide).
+Range/interval display between two values along the secondary axis. Required: x, ymin, ymax. Settings: `hinge` (hinge width in points, default 10, null to hide).
 
 All layers accept common optional aesthetics (colour/stroke, fill, opacity, linewidth, linetype) and `position` setting where applicable.
 
@@ -452,7 +452,7 @@ SCALE x VIA date
 -- Lollipop chart
 SELECT ROUND(bill_dep) AS bill_dep, COUNT(*) AS n FROM ggsql:penguins GROUP BY 1
 VISUALISE bill_dep AS x
-DRAW range MAPPING 0 AS ymin, n AS ymax SETTING width => null
+DRAW range MAPPING 0 AS ymin, n AS ymax SETTING hinge => null
 DRAW point MAPPING n AS y
 
 -- Ridgeline / joy plot
@@ -479,7 +479,7 @@ VISUALISE Date AS x, Temp AS ymin, Temp AS ymax, Temp AS color
   FROM ggsql:airquality
 DRAW range
   SETTING aggregate => ('x:first', 'ymin:first', 'ymax:last', 'color:diff'),
-          width => null
+          hinge => null
   PARTITION BY Week
 SCALE BINNED color
 

@@ -30,7 +30,8 @@ The following aesthetics are recognised by the boxplot layer.
 - `outliers`: Whether to display outliers as points. Defaults to `true`.
 - `coef`: Length of the whiskers as a multiple of the IQR (must be \>= 0). Defaults to `1.5`.
 - `width`: Relative width of the boxes (0 to 1). Defaults to `0.9`.
-- `side`: Determines the sides of the centerline where the box is displayed. Only the box and median tick shift to the chosen side; whiskers and outliers remain on the centerline. The full `width` is preserved for dodge calculations, so a half-box pairs cleanly with a half-violin or one-sided jitter on the same band. One of:
+- `hinge`: The width of the whisker caps in points (must be \>= 0). Defaults to `null` (no caps). Set to a number to display tick marks at the whisker endpoints.
+- `side`: Determines the sides of the centerline where the box is displayed. The box, median and hinges shift to the chosen side; whiskers and outliers remain on the centerline. The full `width` is preserved for dodge calculations, so a half-box pairs cleanly with a half-violin or one-sided jitter on the same band. One of:
   - `'both'` (default) displays a complete box on both sides of the centerline.
   - `'left'` or `'bottom'` displays only the half-box on the left side or bottom side.
   - `'right'` or `'top'` displays only the half-box on the right side or top side.

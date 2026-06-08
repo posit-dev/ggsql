@@ -7,6 +7,7 @@
 - Added panel decorations (grid lines, axes, background) for polar coordinates (#156).
 - Added `radar` setting to polar coordinates for making radar plots (#418).
 - New `side` SETTING on the `boxplot` layer and the `jitter` position, mirroring the existing `violin` setting (#439).
+- New `hinge` SETTING on the `boxplot` layer, mirroring the existing `range` setting (#438)
 
 ### Fixed
 
@@ -17,6 +18,7 @@
 
 - `boxplot`, `violin`, and `range` now support omitting the categorical aesthetic, matching `bar`. `point` now treats both position aesthetics as optional.
 - Upgraded dependencies: duckdb-rs v1.10502, arrow v58 (#447).
+- Renamed the `width` setting in the `range` layer to `hinge`. This prevents it from clashing with `width` needed by `position => 'dodge'` (#437).
 
 ## 0.3.3 - 2026-05-27
 

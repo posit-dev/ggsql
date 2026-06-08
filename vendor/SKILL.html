@@ -2,7 +2,7 @@
 <html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
 
 <meta charset="utf-8">
-<meta name="generator" content="quarto-1.10.7">
+<meta name="generator" content="quarto-1.10.8">
 
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
@@ -77,9 +77,9 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <script src="../site_libs/quarto-html/tippy.umd.min.js"></script>
 <script src="../site_libs/quarto-html/anchor.min.js"></script>
 <link href="../site_libs/quarto-html/tippy.css" rel="stylesheet">
-<link href="../site_libs/quarto-html/quarto-syntax-highlighting-5e45a28e7361005b879610156731968b.css" rel="stylesheet" class="quarto-color-scheme" id="quarto-text-highlighting-styles">
-<link href="../site_libs/quarto-html/quarto-syntax-highlighting-dark-5e45a28e7361005b879610156731968b.css" rel="stylesheet" class="quarto-color-scheme quarto-color-alternate" id="quarto-text-highlighting-styles">
-<link href="../site_libs/quarto-html/quarto-syntax-highlighting-5e45a28e7361005b879610156731968b.css" rel="stylesheet" class="quarto-color-scheme-extra" id="quarto-text-highlighting-styles">
+<link href="../site_libs/quarto-html/quarto-syntax-highlighting-70436c2ca675c315f512c5d27a0af101.css" rel="stylesheet" class="quarto-color-scheme" id="quarto-text-highlighting-styles">
+<link href="../site_libs/quarto-html/quarto-syntax-highlighting-dark-70436c2ca675c315f512c5d27a0af101.css" rel="stylesheet" class="quarto-color-scheme quarto-color-alternate" id="quarto-text-highlighting-styles">
+<link href="../site_libs/quarto-html/quarto-syntax-highlighting-70436c2ca675c315f512c5d27a0af101.css" rel="stylesheet" class="quarto-color-scheme-extra" id="quarto-text-highlighting-styles">
 <script src="../site_libs/bootstrap/bootstrap.min.js"></script>
 <link href="../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
 <link href="../site_libs/bootstrap/bootstrap-33dd1817d23ce81837d0ca48b4887794.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme" id="quarto-bootstrap" data-mode="light">
@@ -673,7 +673,7 @@ gradient teal.
 </section>
 <section id="boxplot" class="level3">
 <h3 class="anchored" data-anchor-id="boxplot">boxplot</h3>
-<p>Five-number summary with outliers. Required: x (categorical), y (continuous). Stats: <code>type</code>, <code>value</code>. Settings: <code>position</code> (default <code>'dodge'</code>), <code>outliers</code> (default true), <code>coef</code> (whisker IQR multiple, default 1.5), <code>width</code> (default 0.9).</p>
+<p>Five-number summary with outliers. Required: x (categorical), y (continuous). Stats: <code>type</code>, <code>value</code>. Settings: <code>position</code> (default <code>'dodge'</code>), <code>outliers</code> (default true), <code>coef</code> (whisker IQR multiple, default 1.5), <code>width</code> (default 0.9), <code>hinge</code> (whisker cap width in points, default null/hidden).</p>
 </section>
 <section id="violin" class="level3">
 <h3 class="anchored" data-anchor-id="violin">violin</h3>
@@ -713,7 +713,7 @@ gradient teal.
 </section>
 <section id="range" class="level3">
 <h3 class="anchored" data-anchor-id="range">range</h3>
-<p>Range/interval display between two values along the secondary axis. Required: x, ymin, ymax. Settings: <code>width</code> (hinge width in points, default 10, null to hide).</p>
+<p>Range/interval display between two values along the secondary axis. Required: x, ymin, ymax. Settings: <code>hinge</code> (hinge width in points, default 10, null to hide).</p>
 <p>All layers accept common optional aesthetics (colour/stroke, fill, opacity, linewidth, linetype) and <code>position</code> setting where applicable.</p>
 <hr>
 </section>
@@ -747,7 +747,7 @@ gradient teal.
 <span id="cb30-15"><a href="#cb30-15" aria-hidden="true" tabindex="-1"></a><span class="co">-- Lollipop chart</span></span>
 <span id="cb30-16"><a href="#cb30-16" aria-hidden="true" tabindex="-1"></a><span class="kw">SELECT</span> <span class="fu">ROUND</span>(bill_dep) <span class="kw">AS</span> bill_dep, <span class="fu">COUNT</span>(<span class="op">*</span>) <span class="kw">AS</span> n <span class="kw">FROM</span> ggsql:penguins <span class="kw">GROUP</span> <span class="kw">BY</span> <span class="dv">1</span></span>
 <span id="cb30-17"><a href="#cb30-17" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> bill_dep <span class="kw">AS</span> <span class="at">x</span></span>
-<span id="cb30-18"><a href="#cb30-18" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">range</span> <span class="kw">MAPPING</span> <span class="dv">0</span> AS <span class="at">ymin</span>, n AS <span class="at">ymax</span> <span class="kw">SETTING</span> <span class="at">width</span> <span class="op">=&gt;</span> null</span>
+<span id="cb30-18"><a href="#cb30-18" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">range</span> <span class="kw">MAPPING</span> <span class="dv">0</span> AS <span class="at">ymin</span>, n AS <span class="at">ymax</span> <span class="kw">SETTING</span> hinge <span class="op">=&gt;</span> null</span>
 <span id="cb30-19"><a href="#cb30-19" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">point</span> <span class="kw">MAPPING</span> n AS <span class="at">y</span></span>
 <span id="cb30-20"><a href="#cb30-20" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb30-21"><a href="#cb30-21" aria-hidden="true" tabindex="-1"></a><span class="co">-- Ridgeline / joy plot</span></span>
@@ -774,7 +774,7 @@ gradient teal.
 <span id="cb30-42"><a href="#cb30-42" aria-hidden="true" tabindex="-1"></a>  <span class="kw">FROM</span> ggsql:airquality</span>
 <span id="cb30-43"><a href="#cb30-43" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">range</span></span>
 <span id="cb30-44"><a href="#cb30-44" aria-hidden="true" tabindex="-1"></a>  <span class="kw">SETTING</span> aggregate <span class="op">=&gt;</span> (<span class="st">'x:first'</span>, <span class="st">'ymin:first'</span>, <span class="st">'ymax:last'</span>, <span class="st">'color:diff'</span>),</span>
-<span id="cb30-45"><a href="#cb30-45" aria-hidden="true" tabindex="-1"></a>          <span class="at">width</span> <span class="op">=&gt;</span> null</span>
+<span id="cb30-45"><a href="#cb30-45" aria-hidden="true" tabindex="-1"></a>          hinge <span class="op">=&gt;</span> null</span>
 <span id="cb30-46"><a href="#cb30-46" aria-hidden="true" tabindex="-1"></a>  <span class="kw">PARTITION</span> BY Week</span>
 <span id="cb30-47"><a href="#cb30-47" aria-hidden="true" tabindex="-1"></a><span class="kw">SCALE</span> <span class="kw">BINNED</span> <span class="at">color</span></span>
 <span id="cb30-48"><a href="#cb30-48" aria-hidden="true" tabindex="-1"></a></span>
