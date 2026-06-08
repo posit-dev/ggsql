@@ -49,6 +49,13 @@ $ ggsql validate "VISUALISE x, y FROM table DRAW point"
 
 Both `ggsql exec` and `ggsql run` accept a `--reader` flag that can be used to specify a connection string to be used when executing the query. If not provided, ggsql will use an empty in-memory duckdb connection, equivalent to `--reader duckdb://memory`.
 
+To connect to Google BigQuery, use `bigquery://PROJECT_ID` and authenticate first with [Application Default Credentials](https://cloud.google.com/docs/authentication/application-default-credentials):
+
+```bash
+gcloud auth application-default login
+ggsql run my_query.ggsql --reader bigquery://my-gcp-project
+```
+
 ```bash
 $ ggsql exec --reader sqlite://sample/ggsql_test.sqlite \
   "SELECT * FROM test_table LIMIT 3"

@@ -342,6 +342,9 @@ pub mod odbc;
 #[cfg(feature = "adbc")]
 pub mod adbc;
 
+#[cfg(feature = "bigquery")]
+pub mod bigquery;
+
 pub mod connection;
 pub mod data;
 mod spec;
@@ -357,6 +360,9 @@ pub use odbc::OdbcReader;
 
 #[cfg(feature = "adbc")]
 pub use adbc::AdbcReader;
+
+#[cfg(feature = "bigquery")]
+pub use bigquery::BigQueryReader;
 
 // ============================================================================
 // Shared utilities

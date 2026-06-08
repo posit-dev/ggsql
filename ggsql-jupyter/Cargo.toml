@@ -57,11 +57,12 @@ hex = "0.4"
 uuid = { version = "1.0", features = ["v4"] }
 
 [features]
-default = ["all-readers"]
-all-readers = ["sqlite", "odbc", "duckdb"]
+default = ["sqlite", "odbc", "duckdb"]
+all-readers = ["sqlite", "odbc", "duckdb", "bigquery"]
 odbc = ["ggsql/odbc"]
 sqlite = ["ggsql/sqlite"]
 duckdb = ["ggsql/duckdb"]
+bigquery = ["ggsql/bigquery"]
 
 [dev-dependencies]
 tempfile = "3.8"

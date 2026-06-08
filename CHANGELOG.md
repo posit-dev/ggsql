@@ -1,6 +1,13 @@
 ## [Unreleased]
 
 ### Added
+- New `BigQueryReader` for querying Google BigQuery via Application Default
+  Credentials, behind a new off-by-default `bigquery` feature flag. Connection
+  string: `bigquery://[PROJECT_ID[/DATASET]][?location=REGION]` — the project
+  defaults to whatever ADC or `GOOGLE_CLOUD_PROJECT` provides when omitted; the
+  optional dataset sets a default dataset context; location defaults to `US`.
+  VS Code / Positron and the Jupyter kernel both support BigQuery connections
+  via the same scheme.
 - New `AdbcReader<D: Driver>` for connecting to data sources via
   [ADBC](https://arrow.apache.org/adbc/) (Arrow Database Connectivity), behind
   a new off-by-default `adbc` feature flag. Generic over any concrete

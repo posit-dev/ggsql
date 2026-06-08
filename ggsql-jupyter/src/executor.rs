@@ -34,6 +34,7 @@ pub enum ExecutionResult {
 /// - `duckdb://memory` or `duckdb://<path>` (always available)
 /// - `sqlite://<path>` (requires `sqlite` feature)
 /// - `odbc://...` (requires `odbc` feature)
+/// - `bigquery://project[/dataset][?location=US]` (requires `bigquery` feature)
 pub fn create_reader(uri: &str) -> Result<Box<dyn Reader + Send>> {
     use ggsql::reader::connection::ConnectionInfo;
 
@@ -57,6 +58,11 @@ pub fn create_reader(uri: &str) -> Result<Box<dyn Reader + Send>> {
         ConnectionInfo::SQLite(path) => {
             let reader =
                 ggsql::reader::SqliteReader::from_connection_string(&format!("sqlite://{}", path))?;
+            Ok(Box::new(reader))
+        }
+        #[cfg(feature = "bigquery")]
+        ConnectionInfo::BigQuery(_) => {
+            let reader = ggsql::reader::BigQueryReader::from_connection_string(uri)?;
             Ok(Box::new(reader))
         }
         _ => anyhow::bail!("Unsupported reader type for connection string: {}", uri),
@@ -86,6 +92,10 @@ pub fn display_name_for_uri(uri: &str) -> String {
         }
         return "ODBC".to_string();
     }
+    if let Some(rest) = uri.strip_prefix("bigquery://") {
+        let path = rest.split('?').next().unwrap_or(rest);
+        return format!("BigQuery ({})", path);
+    }
     uri.to_string()
 }
 
@@ -109,6 +119,9 @@ pub fn type_name_for_uri(uri: &str) -> String {
         }
         return "ODBC".to_string();
     }
+    if uri.starts_with("bigquery://") {
+        return "BigQuery".to_string();
+    }
     "Unknown".to_string()
 }
 
@@ -130,6 +143,9 @@ pub fn host_for_uri(uri: &str) -> String {
         if let Some(server) = extract_odbc_value(odbc, "server") {
             return server;
         }
+    }
+    if let Some(rest) = uri.strip_prefix("bigquery://") {
+        return rest.split('?').next().unwrap_or(rest).to_string();
     }
     uri.to_string()
 }
@@ -300,6 +316,10 @@ mod tests {
         assert_eq!(display_name_for_uri("duckdb://my.db"), "DuckDB (my.db)");
         assert_eq!(display_name_for_uri("sqlite://:memory:"), "SQLite (memory)");
         assert_eq!(display_name_for_uri("sqlite://data.db"), "SQLite (data.db)");
+        assert_eq!(
+            display_name_for_uri("bigquery://my-project/analytics?location=US"),
+            "BigQuery (my-project/analytics)"
+        );
         assert_eq!(
             display_name_for_uri("odbc://DSN=my-postgres"),
             "my-postgres (ODBC)"

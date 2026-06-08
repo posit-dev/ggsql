@@ -29,6 +29,7 @@ export function createConnectionDrivers(
         createSnowflakeSSODriver(positronApi),
         createSnowflakePATDriver(positronApi),
         createOdbcDriver(positronApi),
+        createBigQueryNativeDriver(positronApi),
     ];
 }
 
@@ -446,3 +447,43 @@ function createOdbcDriver(
         },
     };
 }
+
+// ============================================================================
+// BigQuery
+// ============================================================================
+
+/**
+ * Native BigQuery connection driver.
+ *
+ * Uses Application Default Credentials in the ggsql kernel process.
+ */
+function createBigQueryNativeDriver(
+    positronApi: PositronApi
+): positron.ConnectionsDriver {
+    return {
+        driverId: 'ggsql-bigquery-native',
+        metadata: {
+            languageId: 'ggsql',
+            name: 'BigQuery',
+            description: 'Native',
+            inputs: [
+                { id: 'project', label: 'Project', type: 'string' },
+                { id: 'dataset', label: 'Dataset', type: 'string', value: '' },
+                { id: 'location', label: 'Location', type: 'string', value: 'US' },
+            ],
+        } as ConnectionsDriverMetadata,
+        generateCode: (inputs) => {
+            const get = (id: string) =>
+                inputs.find((i) => i.id === id)?.value?.trim() || '';
+            const project = get('project');
+            const dataset = get('dataset');
+            const location = get('location') || 'US';
+            const path = dataset ? `${project}/${dataset}` : project;
+            return `-- @connect: bigquery://${path}?location=${encodeURIComponent(location)}`;
+        },
+        connect: async (code: string) => {
+            await positronApi.runtime.executeCode('ggsql', code, false);
+        },
+    };
+}
+
