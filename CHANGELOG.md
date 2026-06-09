@@ -26,6 +26,8 @@
 - Dodging of horizontal violin plots were broken due to a bad orientation
   assumption in the VegaLite writer. We now correctly use the orientation to
   dodge in the correct dimension (#439).
+- Fixed misbehaviour of numeric scale's `RENAMING` clause due to pre-formatting 
+  issues (#461)
 
 ### Changed
 

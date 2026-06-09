@@ -26,9 +26,14 @@ fn is_free(aesthetic: &str, facet: Option<&crate::plot::Facet>) -> bool {
 /// - `Some(label)` -> rename to that label
 /// - `None` -> suppress label (empty string)
 ///
-/// For non-temporal scales:
+/// For nominal/ordinal scales:
 /// - Uses `datum.label` for comparisons
 /// - Example: `"datum.label == 'A' ? 'Alpha' : datum.label == 'B' ? 'Beta' : datum.label"`
+///
+/// For quantitative scales:
+/// - Uses `datum.value` for comparisons (numeric, no quotes) to avoid locale formatting
+///   mismatches (e.g., `datum.label` may contain thousand separators like "2,020")
+/// - Example: `"datum.value == 2020 ? '2020.0' : datum.label"`
 ///
 /// For temporal scales:
 /// - Uses `utcFormat(datum.value, 'fmt')` for comparisons (UTC to match our ISO date strings)
@@ -44,17 +49,21 @@ pub(super) fn build_label_expr(
     mappings: &HashMap<String, Option<String>>,
     time_format: Option<&str>,
     null_key: Option<&str>,
+    field_type: &str,
 ) -> String {
     if mappings.is_empty() {
         return "datum.label".to_string();
     }
 
-    // Build the comparison expression based on whether this is temporal
-    // Use utcFormat (not timeFormat) because ggsql writes ISO date strings as UTC.
-    // timeFormat uses the browser's local timezone, causing comparison mismatches
-    // (e.g., "2024-01-01" UTC midnight becomes "2023-12-31" in US timezones).
+    let is_numeric = field_type == "quantitative";
+
+    // Build the comparison expression based on scale type.
+    // - Temporal: use utcFormat(datum.value, fmt) because timeFormat uses local tz.
+    // - Numeric: use datum.value to avoid locale thousand-separator mismatches.
+    // - Otherwise: use datum.label (categorical/string).
     let comparison_expr = match time_format {
         Some(fmt) => format!("utcFormat(datum.value, '{}')", fmt),
+        None if is_numeric => "datum.value".to_string(),
         None => "datum.label".to_string(),
     };
 
@@ -66,6 +75,8 @@ pub(super) fn build_label_expr(
             // For threshold scales, the first terminal uses null instead of string comparison
             let condition = if null_key == Some(from.as_str()) {
                 "datum.label == null".to_string()
+            } else if is_numeric && time_format.is_none() {
+                format!("{} == {}", comparison_expr, from_escaped)
             } else {
                 format!("{} == '{}'", comparison_expr, from_escaped)
             };
@@ -691,6 +702,7 @@ fn apply_label_mapping_to_encoding(
     aesthetic: &str,
     is_binned_legend: bool,
     spec: &Plot,
+    field_type: &str,
 ) {
     use crate::plot::scale::TransformKind;
     use crate::plot::ParameterValue;
@@ -753,7 +765,12 @@ fn apply_label_mapping_to_encoding(
         (label_mapping.clone(), None)
     };
 
-    let label_expr = build_label_expr(&filtered_mapping, time_format, null_key.as_deref());
+    let label_expr = build_label_expr(
+        &filtered_mapping,
+        time_format,
+        null_key.as_deref(),
+        field_type,
+    );
 
     if is_position_aesthetic(aesthetic) {
         insert_axis_property(encoding, "labelExpr", json!(label_expr));
@@ -882,6 +899,7 @@ fn build_column_encoding(
             aesthetic,
             is_binned_legend,
             ctx.spec,
+            &field_type,
         );
 
         (scale_obj, needs_gradient)
@@ -1123,7 +1141,7 @@ mod tests {
         let mut mappings = HashMap::new();
         mappings.insert("2024-01-01".to_string(), Some("Jan 2024".to_string()));
 
-        let expr = build_label_expr(&mappings, Some("%Y-%m-%d"), None);
+        let expr = build_label_expr(&mappings, Some("%Y-%m-%d"), None, "temporal");
 
         assert!(
             expr.contains("utcFormat("),
@@ -1144,7 +1162,7 @@ mod tests {
         let mut mappings = HashMap::new();
         mappings.insert("A".to_string(), Some("Alpha".to_string()));
 
-        let expr = build_label_expr(&mappings, None, None);
+        let expr = build_label_expr(&mappings, None, None, "nominal");
 
         assert!(
             expr.contains("datum.label == 'A'"),
@@ -1159,7 +1177,7 @@ mod tests {
     #[test]
     fn test_build_label_expr_fallback() {
         let mappings = HashMap::new();
-        let expr = build_label_expr(&mappings, Some("%Y-%m-%d"), None);
+        let expr = build_label_expr(&mappings, Some("%Y-%m-%d"), None, "temporal");
         assert_eq!(
             expr, "datum.label",
             "empty mappings should fall back to datum.label"
@@ -1171,11 +1189,28 @@ mod tests {
         let mut mappings = HashMap::new();
         mappings.insert("2024-06-01".to_string(), None); // suppress label
 
-        let expr = build_label_expr(&mappings, Some("%Y-%m-%d"), None);
+        let expr = build_label_expr(&mappings, Some("%Y-%m-%d"), None, "temporal");
 
         assert!(
             expr.contains("? ''"),
             "None mapping should suppress label (empty string), got: {expr}"
+        );
+    }
+
+    #[test]
+    fn test_build_label_expr_quantitative_uses_datum_value() {
+        let mut mappings = HashMap::new();
+        mappings.insert("2020".to_string(), Some("2020.0".to_string()));
+
+        let expr = build_label_expr(&mappings, None, None, "quantitative");
+
+        assert!(
+            expr.contains("datum.value == 2020 ? '2020.0'"),
+            "quantitative should use datum.value with unquoted comparison, got: {expr}"
+        );
+        assert!(
+            !expr.contains("datum.label =="),
+            "quantitative should not use datum.label for comparison, got: {expr}"
         );
     }
 
