@@ -67,3 +67,4 @@ As such, it has great influence over the final look of the plot.
 
 - [`cartesian`](coord/cartesian.qmd) is the classic coordinate system consisting of two perpendicular axes, one being horizontal and one being vertical
 - [`polar`](coord/polar.qmd) interprets the primary position as the angular location relative to the center and the secondary position as the distance (radius) from the center, and this creates a circular coordinate system
+- [`crs`](coord/crs.qmd) is a way to project geographic data to various coordinate reference systems.
