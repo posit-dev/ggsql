@@ -50,14 +50,25 @@ use crate::reader::DuckDBReader;
 /// - Partition_by columns exist in schema
 /// - Remapping target aesthetics are supported by geom
 /// - Remapping source columns are valid stat columns for geom
-fn validate(layers: &[Layer], layer_schemas: &[Schema]) -> Result<()> {
+fn validate(
+    layers: &[Layer],
+    layer_schemas: &[Schema],
+    aesthetic_context: &Option<AestheticContext>,
+) -> Result<()> {
+    let translate = |aes: &str| -> String {
+        match aesthetic_context {
+            Some(ctx) => ctx.map_internal_to_user(aes),
+            None => aes.to_string(),
+        }
+    };
+
     for (idx, (layer, schema)) in layers.iter().zip(layer_schemas.iter()).enumerate() {
         let schema_columns: HashSet<&str> = schema.iter().map(|c| c.name.as_str()).collect();
         let supported = layer.geom.aesthetics().supported();
 
         // Validate required aesthetics for this geom
         layer
-            .validate_mapping(false)
+            .validate_mapping(aesthetic_context, false)
             .map_err(|e| GgsqlError::ValidationError(format!("Layer {}: {}", idx + 1, e)))?;
 
         // Validate SETTING parameters are valid for this geom
@@ -81,7 +92,7 @@ fn validate(layers: &[Layer], layer_schemas: &[Schema]) -> Result<()> {
                     return Err(GgsqlError::ValidationError(format!(
                         "Layer {}: aesthetic '{}' references non-existent column '{}'",
                         idx + 1,
-                        layer.mappings.display_name(aesthetic),
+                        translate(aesthetic),
                         col_name
                     )));
                 }
@@ -107,7 +118,7 @@ fn validate(layers: &[Layer], layer_schemas: &[Schema]) -> Result<()> {
                 return Err(GgsqlError::ValidationError(format!(
                     "Layer {}: REMAPPING targets unsupported aesthetic '{}' for geom '{}'",
                     idx + 1,
-                    layer.mappings.display_name(target_aesthetic),
+                    translate(target_aesthetic),
                     layer.geom
                 )));
             }
@@ -1240,7 +1251,11 @@ pub fn prepare_data_with_reader(query: &str, reader: &dyn Reader) -> Result<Prep
 
     // Validate all layers against their schemas
     // This must happen BEFORE build_layer_query because stat transforms remove consumed aesthetics
-    validate(&specs[0].layers, &layer_schemas)?;
+    validate(
+        &specs[0].layers,
+        &layer_schemas,
+        &specs[0].aesthetic_context,
+    )?;
 
     // Allow geoms to adjust mappings based on their specific logic
     // (e.g., rule geom converts pos1/pos2 to AnnotationColumn when slope is present)
@@ -3372,7 +3387,7 @@ mod tests {
         use super::*;
         use crate::plot::layer::geom::Geom;
         use crate::plot::layer::Layer;
-        use crate::plot::types::{AestheticValue, ColumnInfo, Mappings};
+        use crate::plot::types::{AestheticValue, ColumnInfo};
         use arrow::datatypes::DataType;
 
         fn col(name: &str) -> ColumnInfo {
@@ -3387,7 +3402,6 @@ mod tests {
 
         fn point_layer_with_mapping(aesthetic: &str, column: &str) -> Layer {
             let mut layer = Layer::new(Geom::point());
-            layer.mappings = Mappings::new().with_cartesian_context();
             // Point geom requires both pos1 and pos2; map both, but only the
             // one we're testing points at a missing column.
             layer.mappings.aesthetics.insert(
@@ -3408,7 +3422,6 @@ mod tests {
         #[test]
         fn aesthetic_column_missing_translates_pos1_to_x_under_cartesian() {
             let mut layer = Layer::new(Geom::point());
-            layer.mappings = Mappings::new().with_cartesian_context();
             layer.mappings.aesthetics.insert(
                 "pos1".to_string(),
                 AestheticValue::standard_column("missing"),
@@ -3418,8 +3431,9 @@ mod tests {
                 AestheticValue::standard_column("present_y"),
             );
             let schema: Schema = vec![col("present_y")];
+            let ctx = Some(AestheticContext::from_static(&["x", "y"], &[]));
 
-            let err = validate(&[layer], &[schema]).unwrap_err().to_string();
+            let err = validate(&[layer], &[schema], &ctx).unwrap_err().to_string();
             assert_eq!(
                 err,
                 "Validation error: Layer 1: aesthetic 'x' references non-existent column 'missing'"
@@ -3429,9 +3443,6 @@ mod tests {
         #[test]
         fn aesthetic_column_missing_translates_pos1_to_angle_under_polar() {
             let mut layer = Layer::new(Geom::point());
-            layer
-                .mappings
-                .set_context(AestheticContext::from_static(&["angle", "radius"], &[]));
             layer.mappings.aesthetics.insert(
                 "pos1".to_string(),
                 AestheticValue::standard_column("missing"),
@@ -3441,8 +3452,9 @@ mod tests {
                 AestheticValue::standard_column("present_radius"),
             );
             let schema: Schema = vec![col("present_radius")];
+            let ctx = Some(AestheticContext::from_static(&["angle", "radius"], &[]));
 
-            let err = validate(&[layer], &[schema]).unwrap_err().to_string();
+            let err = validate(&[layer], &[schema], &ctx).unwrap_err().to_string();
             assert_eq!(
                 err,
                 "Validation error: Layer 1: aesthetic 'angle' references non-existent column 'missing'"
@@ -3453,9 +3465,10 @@ mod tests {
         fn aesthetic_column_missing_translates_pos2_to_y_under_cartesian() {
             let layer = point_layer_with_mapping("pos2", "missing");
             let schema: Schema = vec![col("present_x"), col("present_y")];
+            let ctx = Some(AestheticContext::from_static(&["x", "y"], &[]));
 
             // pos2 is overridden to point at "missing" by point_layer_with_mapping
-            let err = validate(&[layer], &[schema]).unwrap_err().to_string();
+            let err = validate(&[layer], &[schema], &ctx).unwrap_err().to_string();
             assert_eq!(
                 err,
                 "Validation error: Layer 1: aesthetic 'y' references non-existent column 'missing'"
@@ -3467,8 +3480,9 @@ mod tests {
             // Material aesthetics (color, size, etc.) should round-trip unchanged.
             let layer = point_layer_with_mapping("color", "missing");
             let schema: Schema = vec![col("present_x"), col("present_y")];
+            let ctx = Some(AestheticContext::from_static(&["x", "y"], &[]));
 
-            let err = validate(&[layer], &[schema]).unwrap_err().to_string();
+            let err = validate(&[layer], &[schema], &ctx).unwrap_err().to_string();
             assert_eq!(
                 err,
                 "Validation error: Layer 1: aesthetic 'color' references non-existent column 'missing'"
@@ -3491,7 +3505,6 @@ mod tests {
             // (only pos1 and the delayed pos2). The test here builds the
             // post-transform state directly.
             let mut layer = Layer::new(Geom::histogram());
-            layer.mappings = Mappings::new().with_cartesian_context();
             layer.mappings.aesthetics.insert(
                 "pos1".to_string(),
                 AestheticValue::standard_column("present_x"),
@@ -3501,8 +3514,9 @@ mod tests {
                 AestheticValue::standard_column("count"),
             );
             let schema: Schema = vec![col("present_x")];
+            let ctx = Some(AestheticContext::from_static(&["x", "y"], &[]));
 
-            let err = validate(&[layer], &[schema]).unwrap_err().to_string();
+            let err = validate(&[layer], &[schema], &ctx).unwrap_err().to_string();
             assert_eq!(
                 err,
                 "Validation error: Layer 1: REMAPPING targets unsupported aesthetic 'xmax' for geom 'histogram'"
@@ -3512,9 +3526,6 @@ mod tests {
         #[test]
         fn remapping_unsupported_target_translates_pos1max_to_anglemax_under_polar() {
             let mut layer = Layer::new(Geom::histogram());
-            layer
-                .mappings
-                .set_context(AestheticContext::from_static(&["angle", "radius"], &[]));
             layer.mappings.aesthetics.insert(
                 "pos1".to_string(),
                 AestheticValue::standard_column("present_x"),
@@ -3524,8 +3535,9 @@ mod tests {
                 AestheticValue::standard_column("count"),
             );
             let schema: Schema = vec![col("present_x")];
+            let ctx = Some(AestheticContext::from_static(&["angle", "radius"], &[]));
 
-            let err = validate(&[layer], &[schema]).unwrap_err().to_string();
+            let err = validate(&[layer], &[schema], &ctx).unwrap_err().to_string();
             assert_eq!(
                 err,
                 "Validation error: Layer 1: REMAPPING targets unsupported aesthetic 'anglemax' for geom 'histogram'"

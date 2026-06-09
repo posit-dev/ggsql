@@ -116,18 +116,19 @@ impl std::fmt::Display for Rule {
 
 #[cfg(test)]
 mod tests {
-    use crate::plot::{AestheticValue, Geom, Layer, Mappings};
+    use crate::plot::{AestheticContext, AestheticValue, Geom, Layer};
 
+    /// Helper function to create a layer with given mappings and validate it
     fn validate_rule(mappings: &[(&str, &str)]) -> Result<(), String> {
         let mut layer = Layer::new(Geom::rule());
-        layer.mappings = Mappings::new().with_cartesian_context();
         for (aesthetic, column) in mappings {
             layer.mappings.insert(
                 aesthetic.to_string(),
                 AestheticValue::standard_column(column.to_string()),
             );
         }
-        layer.validate_mapping(false)
+        let ctx = AestheticContext::from_static(&["x", "y"], &[]);
+        layer.validate_mapping(&Some(ctx), false)
     }
 
     #[test]

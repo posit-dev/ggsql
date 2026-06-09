@@ -364,13 +364,13 @@ mod tests {
             .with_aesthetic("pos1".to_string(), AestheticValue::standard_column("x"))
             .with_aesthetic("pos2".to_string(), AestheticValue::standard_column("y"));
 
-        assert!(valid_point.validate_mapping(false).is_ok());
+        assert!(valid_point.validate_mapping(&None, false).is_ok());
 
         // Line still requires both pos1 and pos2 - mapping only one fails.
         let invalid_line = Layer::new(Geom::line())
             .with_aesthetic("pos1".to_string(), AestheticValue::standard_column("x"));
 
-        assert!(invalid_line.validate_mapping(false).is_err());
+        assert!(invalid_line.validate_mapping(&None, false).is_err());
 
         let valid_ribbon = Layer::new(Geom::ribbon())
             .with_aesthetic("pos1".to_string(), AestheticValue::standard_column("x"))
@@ -383,7 +383,7 @@ mod tests {
                 AestheticValue::standard_column("ymax"),
             );
 
-        assert!(valid_ribbon.validate_mapping(false).is_ok());
+        assert!(valid_ribbon.validate_mapping(&None, false).is_ok());
     }
 
     #[test]

@@ -235,7 +235,7 @@ pub fn validate(query: &str) -> Result<Validated> {
                             .or_insert(value.clone());
                     }
                 }
-                if let Err(e) = merged.validate_mapping(false) {
+                if let Err(e) = merged.validate_mapping(&plot.aesthetic_context, false) {
                     errors.push(ValidationError {
                         message: format!("{}: {}", context, e),
                         location: None,
