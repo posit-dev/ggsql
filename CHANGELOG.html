@@ -296,6 +296,7 @@ gradient teal.
 <ul>
 <li>Quoted SQL identifiers (e.g.&nbsp;<code>"variable.dotted"</code>) in <code>VISUALISE</code> column references are now unquoted at parse time, so they correctly match the underlying Arrow schema during validation.</li>
 <li>Dodging of horizontal violin plots were broken due to a bad orientation assumption in the VegaLite writer. We now correctly use the orientation to dodge in the correct dimension (#439).</li>
+<li>Fixed misbehaviour of numeric scale’s <code>RENAMING</code> clause due to pre-formatting issues (#461)</li>
 </ul>
 </section>
 <section id="changed" class="level3">
