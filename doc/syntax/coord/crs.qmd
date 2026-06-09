@@ -122,7 +122,7 @@ As countries get larger or one has small collections of contiguous countries, a 
 We include a table below for projections of areas around the globe that aren't too unreasonable.
 
 For large continents or world-wide data the distortions of projections become tangible.
-A reasonable choice is our minds is the Robinson projection.
+A reasonable choice in our minds is the Robinson projection.
 
 A second thing to keep in mind are the bounds of the area.
 It can be particularly salient to set the bounds to limit the view to a particular area of the globe.
