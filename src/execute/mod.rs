@@ -24,7 +24,7 @@ pub use schema::TypeInfo;
 
 use crate::naming;
 use crate::parser;
-use crate::plot::aesthetic::is_position_aesthetic;
+use crate::plot::aesthetic::{is_position_aesthetic, AestheticContext};
 use crate::plot::facet::{resolve_properties as resolve_facet_properties, FacetDataContext};
 use crate::plot::layer::is_transposed;
 use crate::plot::projection::resolve_projection_properties;
@@ -828,6 +828,7 @@ fn add_discrete_columns_to_partition_by(
     layers: &mut [Layer],
     layer_schemas: &[Schema],
     scales: &[Scale],
+    aesthetic_ctx: &AestheticContext,
 ) {
     // Build a map of aesthetic -> scale for quick lookup
     let scale_map: HashMap<&str, &Scale> =
@@ -893,10 +894,8 @@ fn add_discrete_columns_to_partition_by(
                 //
                 // Discrete and Binned scales produce categorical groupings.
                 // Continuous scales don't group. Identity defers to column type.
-                let primary_aes = layer
-                    .mappings
-                    .context()
-                    .and_then(|ctx| ctx.primary_internal_position(aesthetic))
+                let primary_aes = aesthetic_ctx
+                    .primary_internal_position(aesthetic)
                     .unwrap_or(aesthetic);
                 let is_discrete = if let Some(scale) = scale_map.get(primary_aes) {
                     if let Some(ref scale_type) = scale.scale_type {
@@ -1306,7 +1305,13 @@ pub fn prepare_data_with_reader(query: &str, reader: &dyn Reader) -> Result<Prep
 
     // Add discrete mapped columns to partition_by for all layers
     let scales = specs[0].scales.clone();
-    add_discrete_columns_to_partition_by(&mut specs[0].layers, &layer_schemas, &scales);
+    let aesthetic_ctx = specs[0].get_aesthetic_context();
+    add_discrete_columns_to_partition_by(
+        &mut specs[0].layers,
+        &layer_schemas,
+        &scales,
+        &aesthetic_ctx,
+    );
 
     // Clone scales for apply_layer_transforms
     let scales = specs[0].scales.clone();
@@ -1433,7 +1438,7 @@ pub fn prepare_data_with_reader(query: &str, reader: &dyn Reader) -> Result<Prep
                         let flipped_df =
                             crate::plot::layer::orientation::flip_dataframe_position_columns(
                                 df,
-                                &layer.mappings,
+                                &aesthetic_ctx,
                             );
                         data_map.insert(key.clone(), flipped_df);
                     }
@@ -3365,7 +3370,6 @@ mod tests {
 
     mod validate_translation_tests {
         use super::*;
-        use crate::plot::aesthetic::AestheticContext;
         use crate::plot::layer::geom::Geom;
         use crate::plot::layer::Layer;
         use crate::plot::types::{AestheticValue, ColumnInfo, Mappings};
