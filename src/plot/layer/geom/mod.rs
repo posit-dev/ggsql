@@ -1051,4 +1051,179 @@ mod tests {
             }
         }
     }
+
+    #[test]
+    fn test_needs_projection_false_for_cartesian() {
+        let projection = Projection::cartesian();
+        assert!(!needs_projection(&projection));
+    }
+
+    #[test]
+    fn test_needs_projection_false_without_target() {
+        let projection = Projection::map();
+        assert!(!needs_projection(&projection));
+    }
+
+    #[test]
+    fn test_needs_projection_false_without_source() {
+        let mut projection = Projection::map();
+        projection.properties.insert(
+            "target".to_string(),
+            ParameterValue::String("+proj=ortho".to_string()),
+        );
+        assert!(!needs_projection(&projection));
+    }
+
+    #[test]
+    fn test_needs_projection_false_when_same_crs() {
+        let mut projection = Projection::map();
+        projection.properties.insert(
+            "source".to_string(),
+            ParameterValue::String("EPSG:4326".to_string()),
+        );
+        projection.properties.insert(
+            "target".to_string(),
+            ParameterValue::String("EPSG:4326".to_string()),
+        );
+        assert!(!needs_projection(&projection));
+    }
+
+    #[test]
+    fn test_needs_projection_true_when_different_crs() {
+        let mut projection = Projection::map();
+        projection.properties.insert(
+            "source".to_string(),
+            ParameterValue::String("EPSG:4326".to_string()),
+        );
+        projection.properties.insert(
+            "target".to_string(),
+            ParameterValue::String("+proj=ortho".to_string()),
+        );
+        assert!(needs_projection(&projection));
+    }
+
+    #[test]
+    fn test_densify_edges_basic_structure() {
+        use crate::reader::AnsiDialect;
+
+        let columns = vec![
+            naming::aesthetic_column("pos1"),
+            naming::aesthetic_column("pos2"),
+        ];
+        let result = densify_edges(
+            "SELECT * FROM t",
+            &AnsiDialect,
+            &columns,
+            &[],
+            Some("pos1"),
+            false,
+            1.0,
+            360,
+        );
+
+        assert!(result.contains("__ggsql_seq__"));
+        assert!(result.contains("LEAD("));
+        assert!(result.contains("__ggsql_seg_len__"));
+        assert!(result.contains("__ggsql_next_pos1__"));
+        assert!(result.contains("__ggsql_next_pos2__"));
+    }
+
+    #[test]
+    fn test_densify_edges_with_partition() {
+        use crate::reader::AnsiDialect;
+
+        let columns = vec![
+            naming::aesthetic_column("pos1"),
+            naming::aesthetic_column("pos2"),
+            naming::aesthetic_column("stroke"),
+        ];
+        let partition_by = vec![naming::aesthetic_column("stroke")];
+        let result = densify_edges(
+            "SELECT * FROM t",
+            &AnsiDialect,
+            &columns,
+            &partition_by,
+            Some("pos1"),
+            false,
+            1.0,
+            360,
+        );
+
+        assert!(result.contains("PARTITION BY"));
+        assert!(result.contains("__ggsql_aes_stroke__"));
+    }
+
+    #[test]
+    fn test_densify_edges_interpolates_continuous_aesthetics() {
+        use crate::reader::AnsiDialect;
+
+        let columns = vec![
+            naming::aesthetic_column("pos1"),
+            naming::aesthetic_column("pos2"),
+            naming::aesthetic_column("stroke"),
+            naming::aesthetic_column("opacity"),
+        ];
+        let partition_by = vec![naming::aesthetic_column("stroke")];
+        let result = densify_edges(
+            "SELECT * FROM t",
+            &AnsiDialect,
+            &columns,
+            &partition_by,
+            Some("pos1"),
+            false,
+            1.0,
+            360,
+        );
+
+        // opacity is continuous (not in partition_by, not a position) — should be interpolated
+        assert!(result.contains("__ggsql_next___ggsql_aes_opacity__"));
+    }
+
+    #[test]
+    fn test_densify_edges_close_ring() {
+        use crate::reader::AnsiDialect;
+
+        let columns = vec![
+            naming::aesthetic_column("pos1"),
+            naming::aesthetic_column("pos2"),
+        ];
+        let result = densify_edges(
+            "SELECT * FROM t",
+            &AnsiDialect,
+            &columns,
+            &[],
+            None,
+            true,
+            1.0,
+            360,
+        );
+
+        // Closed ring uses COALESCE(LEAD(...), FIRST_VALUE(...))
+        assert!(result.contains("FIRST_VALUE("));
+        // Uses synthetic row index
+        assert!(result.contains("__ggsql_edge_idx__"));
+    }
+
+    #[test]
+    fn test_densify_edges_open_keeps_last_vertex() {
+        use crate::reader::AnsiDialect;
+
+        let columns = vec![
+            naming::aesthetic_column("pos1"),
+            naming::aesthetic_column("pos2"),
+        ];
+        let result = densify_edges(
+            "SELECT * FROM t",
+            &AnsiDialect,
+            &columns,
+            &[],
+            Some("pos1"),
+            false,
+            1.0,
+            360,
+        );
+
+        // Open geom: WHERE clause keeps last vertex via IS NULL check
+        assert!(result.contains("IS NULL AND"));
+    }
 }

@@ -103,3 +103,39 @@ impl std::fmt::Display for Line {
         write!(f, "line")
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::naming;
+    use crate::plot::types::ParameterValue;
+    use crate::reader::AnsiDialect;
+
+    #[test]
+    fn test_apply_projection_densifies_and_transforms() {
+        let line = Line;
+        let mut projection = Projection::map();
+        projection.properties.insert(
+            "source".to_string(),
+            ParameterValue::String("EPSG:4326".to_string()),
+        );
+        projection.properties.insert(
+            "target".to_string(),
+            ParameterValue::String("+proj=ortho +lat_0=0 +lon_0=0".to_string()),
+        );
+
+        let columns = vec![
+            naming::aesthetic_column("pos1"),
+            naming::aesthetic_column("pos2"),
+        ];
+        let result = line
+            .apply_projection("SELECT * FROM t", &projection, &AnsiDialect, false, &columns, &[])
+            .unwrap();
+
+        // Densification happened
+        assert!(result.contains("__ggsql_seq__"));
+        assert!(result.contains("LEAD("));
+        // Projection happened
+        assert!(result.contains("ST_Transform"));
+    }
+}
