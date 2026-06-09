@@ -552,14 +552,15 @@ pub(crate) fn densify_edges(
         select_parts.push(naming::quote_ident(c));
     }
 
-    // Position columns — interpolated
+    // Interpolation fraction
+    let frac = format!("CAST(\"__ggsql_seq__\".n AS REAL) / {n_subdivs}");
+
+    // Position columns — interpolated; COALESCE handles the last vertex (NULL next)
     select_parts.push(format!(
-        "{pos1} + (\"__ggsql_next_pos1__\" - {pos1}) * \
-         (CAST(\"__ggsql_seq__\".n AS REAL) / {n_subdivs}) AS {pos1}"
+        "{pos1} + COALESCE((\"__ggsql_next_pos1__\" - {pos1}) * ({frac}), 0.0) AS {pos1}"
     ));
     select_parts.push(format!(
-        "{pos2} + (\"__ggsql_next_pos2__\" - {pos2}) * \
-         (CAST(\"__ggsql_seq__\".n AS REAL) / {n_subdivs}) AS {pos2}"
+        "{pos2} + COALESCE((\"__ggsql_next_pos2__\" - {pos2}) * ({frac}), 0.0) AS {pos2}"
     ));
 
     // Continuous aesthetics — interpolated
@@ -567,8 +568,7 @@ pub(crate) fn densify_edges(
         let qc = naming::quote_ident(c);
         let next = format!("\"__ggsql_next_{}\"", c.replace('"', ""));
         select_parts.push(format!(
-            "{qc} + ({next} - {qc}) * \
-             (CAST(\"__ggsql_seq__\".n AS REAL) / {n_subdivs}) AS {qc}"
+            "{qc} + COALESCE(({next} - {qc}) * ({frac}), 0.0) AS {qc}"
         ));
     }
 
