@@ -407,6 +407,177 @@ pub(crate) fn project_position_columns(
     ))
 }
 
+/// Subdivide edges in a tabular dataset by linear interpolation.
+///
+/// Inserts intermediate vertices along edges longer than `max_segment`.
+/// Continuous aesthetics (columns that are neither positions nor in `partition_by`)
+/// are interpolated too. Discrete (partition) columns are carried through unchanged.
+///
+/// - `domain_order`: aesthetic name for the ordering column (e.g. "pos1" for line).
+///   When `None`, a synthetic row index is used (path/polygon).
+/// - `close_ring`: when true, the last vertex connects back to the first (polygon).
+/// - `segment_length`: target edge length after subdivision (in position units).
+/// - `n_segments`: size of the integer series (must be at least as large as the
+///   maximum number of subdivisions any single edge can produce).
+pub(crate) fn densify_edges(
+    query: &str,
+    dialect: &dyn SqlDialect,
+    columns: &[String],
+    partition_by: &[String],
+    domain_order: Option<&str>,
+    close_ring: bool,
+    segment_length: f64,
+    n_segments: usize,
+) -> String {
+    let pos1 = naming::quote_ident(&naming::aesthetic_column("pos1"));
+    let pos2 = naming::quote_ident(&naming::aesthetic_column("pos2"));
+
+    // Continuous aesthetics to interpolate: columns - partition_by - positions
+    let pos1_col = naming::aesthetic_column("pos1");
+    let pos2_col = naming::aesthetic_column("pos2");
+    let continuous_cols: Vec<&String> = columns
+        .iter()
+        .filter(|c| *c != &pos1_col && *c != &pos2_col && !partition_by.contains(c))
+        .collect();
+
+    // Ordering column
+    let order_col = match domain_order {
+        Some(aes) => naming::quote_ident(&naming::aesthetic_column(aes)),
+        None => "\"__ggsql_edge_idx__\"".to_string(),
+    };
+
+    // PARTITION BY clause for window functions
+    let partition_clause = if partition_by.is_empty() {
+        String::new()
+    } else {
+        let parts: Vec<String> = partition_by.iter().map(|c| naming::quote_ident(c)).collect();
+        format!("PARTITION BY {}", parts.join(", "))
+    };
+
+    let window_def = if partition_clause.is_empty() {
+        format!("ORDER BY {order_col}")
+    } else {
+        format!("{partition_clause} ORDER BY {order_col}")
+    };
+
+    let seq_cte = dialect.sql_generate_series(n_segments);
+
+    // Synthesize row ordering for path/polygon
+    let indexed_query = if domain_order.is_none() {
+        format!(
+            "SELECT *, ROW_NUMBER() OVER ({partition_clause} ORDER BY (SELECT NULL)) \
+             AS \"__ggsql_edge_idx__\" FROM ({query})"
+        )
+    } else {
+        query.to_string()
+    };
+
+    // LEAD expressions for positions — polygon closes the ring via FIRST_VALUE fallback
+    let pos1_lead = if close_ring {
+        format!(
+            "COALESCE(LEAD({pos1}) OVER w, FIRST_VALUE({pos1}) OVER w) AS \"__ggsql_next_pos1__\""
+        )
+    } else {
+        format!("LEAD({pos1}) OVER w AS \"__ggsql_next_pos1__\"")
+    };
+    let pos2_lead = if close_ring {
+        format!(
+            "COALESCE(LEAD({pos2}) OVER w, FIRST_VALUE({pos2}) OVER w) AS \"__ggsql_next_pos2__\""
+        )
+    } else {
+        format!("LEAD({pos2}) OVER w AS \"__ggsql_next_pos2__\"")
+    };
+
+    // LEAD expressions for continuous aesthetics
+    let mut cont_leads = String::new();
+    for c in &continuous_cols {
+        let qc = naming::quote_ident(c);
+        let alias = format!("\"__ggsql_next_{}\"", c.replace('"', ""));
+        if close_ring {
+            cont_leads.push_str(&format!(
+                ", COALESCE(LEAD({qc}) OVER w, FIRST_VALUE({qc}) OVER w) AS {alias}"
+            ));
+        } else {
+            cont_leads.push_str(&format!(", LEAD({qc}) OVER w AS {alias}"));
+        }
+    }
+
+    // Segment length (Euclidean in source CRS units)
+    let seg_len = format!(
+        "SQRT(POWER(\"__ggsql_next_pos1__\" - {pos1}, 2) + \
+         POWER(\"__ggsql_next_pos2__\" - {pos2}, 2))"
+    );
+
+    // Edges CTE: original rows + LEAD columns + segment length
+    let edges_query = format!(
+        "SELECT *, {pos1_lead}, {pos2_lead}{cont_leads}, \
+         {seg_len} AS \"__ggsql_seg_len__\" \
+         FROM ({indexed_query}) \"__ggsql_src__\" \
+         WINDOW w AS ({window_def})"
+    );
+
+    // Interpolation: n / CEIL(seg_len / threshold) gives fraction [0, 1)
+    let threshold_lit = format!("{:.6}", segment_length);
+    let n_subdivs = format!("CEIL(\"__ggsql_seg_len__\" / {threshold_lit})");
+
+    // SELECT list
+    let mut select_parts: Vec<String> = Vec::new();
+
+    // Discrete columns — unchanged
+    for c in partition_by {
+        select_parts.push(naming::quote_ident(c));
+    }
+
+    // Position columns — interpolated
+    select_parts.push(format!(
+        "{pos1} + (\"__ggsql_next_pos1__\" - {pos1}) * \
+         (CAST(\"__ggsql_seq__\".n AS REAL) / {n_subdivs}) AS {pos1}"
+    ));
+    select_parts.push(format!(
+        "{pos2} + (\"__ggsql_next_pos2__\" - {pos2}) * \
+         (CAST(\"__ggsql_seq__\".n AS REAL) / {n_subdivs}) AS {pos2}"
+    ));
+
+    // Continuous aesthetics — interpolated
+    for c in &continuous_cols {
+        let qc = naming::quote_ident(c);
+        let next = format!("\"__ggsql_next_{}\"", c.replace('"', ""));
+        select_parts.push(format!(
+            "{qc} + ({next} - {qc}) * \
+             (CAST(\"__ggsql_seq__\".n AS REAL) / {n_subdivs}) AS {qc}"
+        ));
+    }
+
+    // WHERE: emit n < subdivisions per segment; for open geoms, keep last vertex
+    let where_clause = if close_ring {
+        format!("\"__ggsql_seq__\".n < {n_subdivs}")
+    } else {
+        format!(
+            "(\"__ggsql_next_pos1__\" IS NOT NULL AND \"__ggsql_seq__\".n < {n_subdivs}) \
+             OR (\"__ggsql_next_pos1__\" IS NULL AND \"__ggsql_seq__\".n = 0)"
+        )
+    };
+
+    // ORDER BY
+    let order_parts = if partition_by.is_empty() {
+        format!("{order_col}, \"__ggsql_seq__\".n")
+    } else {
+        let parts: Vec<String> = partition_by.iter().map(|c| naming::quote_ident(c)).collect();
+        format!("{}, {order_col}, \"__ggsql_seq__\".n", parts.join(", "))
+    };
+
+    format!(
+        "WITH {seq_cte}, \
+         \"__ggsql_edges__\" AS ({edges_query}) \
+         SELECT {select} \
+         FROM \"__ggsql_edges__\" \
+         CROSS JOIN \"__ggsql_seq__\" \
+         WHERE {where_clause} \
+         ORDER BY {order_parts}",
+        select = select_parts.join(", "),
+    )
+}
+
 /// True when `parameters["aggregate"]` is set to a non-null string or array.
 pub(crate) fn has_aggregate_param(parameters: &HashMap<String, ParameterValue>) -> bool {
     matches!(

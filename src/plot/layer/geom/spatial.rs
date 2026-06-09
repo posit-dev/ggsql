@@ -138,7 +138,7 @@ mod tests {
         let spatial = Spatial;
         let projection = Projection::cartesian();
         let result = spatial
-            .apply_projection("SELECT * FROM t", &projection, &AnsiDialect, false, &[])
+            .apply_projection("SELECT * FROM t", &projection, &AnsiDialect, false, &[], &[])
             .unwrap();
 
         assert!(result.contains("ST_AsBinary"));
@@ -150,7 +150,7 @@ mod tests {
         let spatial = Spatial;
         let projection = Projection::map();
         let result = spatial
-            .apply_projection("SELECT * FROM t", &projection, &AnsiDialect, false, &[])
+            .apply_projection("SELECT * FROM t", &projection, &AnsiDialect, false, &[], &[])
             .unwrap();
 
         // Map without CRS passes through (ensure_geometry is identity for AnsiDialect)
@@ -167,7 +167,7 @@ mod tests {
             ParameterValue::String("+proj=merc".to_string()),
         );
         let result = spatial
-            .apply_projection("SELECT * FROM t", &projection, &AnsiDialect, false, &[])
+            .apply_projection("SELECT * FROM t", &projection, &AnsiDialect, false, &[], &[])
             .unwrap();
 
         // Without clip=true, just ST_Transform
@@ -186,7 +186,7 @@ mod tests {
             ParameterValue::String("+proj=merc".to_string()),
         );
         let result = spatial
-            .apply_projection("SELECT * FROM t", &projection, &AnsiDialect, true, &[])
+            .apply_projection("SELECT * FROM t", &projection, &AnsiDialect, true, &[], &[])
             .unwrap();
 
         assert!(result.contains("ST_Intersection"));
@@ -203,7 +203,7 @@ mod tests {
             ParameterValue::String("+proj=ortho +lat_0=45 +lon_0=10".to_string()),
         );
         let result = spatial
-            .apply_projection("SELECT * FROM t", &projection, &AnsiDialect, true, &[])
+            .apply_projection("SELECT * FROM t", &projection, &AnsiDialect, true, &[], &[])
             .unwrap();
 
         assert!(result.contains("ST_Transform"));
@@ -222,7 +222,7 @@ mod tests {
             ParameterValue::String("+proj=gnom +lat_0=90 +lon_0=0".to_string()),
         );
         let result = spatial
-            .apply_projection("SELECT * FROM t", &projection, &AnsiDialect, true, &[])
+            .apply_projection("SELECT * FROM t", &projection, &AnsiDialect, true, &[], &[])
             .unwrap();
 
         assert!(result.contains("ST_MakeValid"));
