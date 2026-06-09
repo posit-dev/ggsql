@@ -93,6 +93,7 @@ impl GeomTrait for Bar {
         parameters: &HashMap<String, ParameterValue>,
         _execute_query: &dyn Fn(&str) -> Result<DataFrame>,
         dialect: &dyn SqlDialect,
+        aesthetic_ctx: &crate::plot::aesthetic::AestheticContext,
     ) -> Result<StatResult> {
         let inner = if has_aggregate_param(parameters) {
             stat_aggregate::apply(
@@ -102,6 +103,7 @@ impl GeomTrait for Bar {
                 group_by,
                 parameters,
                 dialect,
+                aesthetic_ctx,
                 self.aggregate_domain_aesthetics().unwrap_or(&[]),
             )?
         } else {

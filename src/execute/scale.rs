@@ -165,6 +165,7 @@ pub fn apply_post_stat_binning(
             crate::plot::layer::geom::stat_aggregate::targeted_aesthetics(
                 &layer.parameters,
                 &layer.mappings,
+                &aesthetic_ctx,
             )
         })
         .collect();
@@ -534,6 +535,7 @@ pub fn apply_pre_stat_resolve(spec: &mut Plot, layer_schemas: &[Schema]) -> Resu
         for aes in crate::plot::layer::geom::stat_aggregate::targeted_aesthetics(
             &layer.parameters,
             &layer.mappings,
+            &aesthetic_ctx,
         ) {
             targeted_in_any_layer.insert(aes);
         }

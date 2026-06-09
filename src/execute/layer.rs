@@ -3,7 +3,7 @@
 //! This module handles building SQL queries for layers, applying pre-stat
 //! transformations, stat transforms, and post-query operations.
 
-use crate::plot::aesthetic;
+use crate::plot::aesthetic::{self, AestheticContext};
 use crate::plot::layer::is_transposed;
 use crate::plot::layer::orientation::{flip_position_aesthetics, resolve_orientation};
 use crate::plot::{
@@ -276,6 +276,7 @@ pub fn apply_pre_stat_transform(
     aesthetic_schema: &Schema,
     scales: &[Scale],
     dialect: &dyn SqlDialect,
+    aesthetic_ctx: &AestheticContext,
 ) -> String {
     let mut transform_exprs: Vec<(String, String)> = vec![];
     let mut transformed_columns: HashSet<String> = HashSet::new();
@@ -289,6 +290,7 @@ pub fn apply_pre_stat_transform(
         &layer.parameters,
         &layer.mappings,
         aesthetic_schema,
+        aesthetic_ctx,
         layer.geom.aggregate_domain_aesthetics().unwrap_or(&[]),
     );
 
@@ -474,6 +476,7 @@ pub fn apply_layer_transforms<F>(
     scales: &[Scale],
     dialect: &dyn SqlDialect,
     execute_query: &F,
+    aesthetic_ctx: &AestheticContext,
 ) -> Result<String>
 where
     F: Fn(&str) -> Result<DataFrame>,
@@ -520,6 +523,7 @@ where
         &aesthetic_schema,
         scales,
         dialect,
+        aesthetic_ctx,
     );
 
     // Build group_by columns from partition_by
@@ -549,6 +553,7 @@ where
         &layer.parameters,
         execute_query,
         dialect,
+        aesthetic_ctx,
     )?;
 
     // Flip user remappings BEFORE merging defaults for Transposed orientation.
@@ -959,6 +964,7 @@ pub fn resolve_orientations(
     layers: &mut [Layer],
     scales: &[Scale],
     layer_type_info: &mut [Vec<super::schema::TypeInfo>],
+    aesthetic_ctx: &AestheticContext,
 ) {
     for (layer_idx, layer) in layers.iter_mut().enumerate() {
         let orientation = resolve_orientation(layer, scales);
@@ -973,11 +979,7 @@ pub fn resolve_orientations(
             if layer_idx < layer_type_info.len() {
                 for (name, _, _) in &mut layer_type_info[layer_idx] {
                     if let Some(aesthetic) = naming::extract_aesthetic_name(name) {
-                        let flipped = layer
-                            .mappings
-                            .context()
-                            .map(|ctx| ctx.flip_position(aesthetic))
-                            .unwrap_or_else(|| aesthetic.to_string());
+                        let flipped = aesthetic_ctx.flip_position(aesthetic);
                         if flipped != aesthetic {
                             *name = naming::aesthetic_column(&flipped);
                         }

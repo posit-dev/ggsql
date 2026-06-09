@@ -93,6 +93,7 @@ impl GeomTrait for Histogram {
         parameters: &HashMap<String, ParameterValue>,
         execute_query: &dyn Fn(&str) -> Result<DataFrame>,
         dialect: &dyn SqlDialect,
+        aesthetic_ctx: &crate::plot::aesthetic::AestheticContext,
     ) -> Result<StatResult> {
         stat_histogram(
             query,
@@ -101,6 +102,7 @@ impl GeomTrait for Histogram {
             parameters,
             execute_query,
             dialect,
+            aesthetic_ctx,
         )
     }
 }
@@ -119,13 +121,12 @@ fn stat_histogram(
     parameters: &HashMap<String, ParameterValue>,
     execute_query: &dyn Fn(&str) -> Result<DataFrame>,
     dialect: &dyn SqlDialect,
+    aesthetic_ctx: &crate::plot::aesthetic::AestheticContext,
 ) -> Result<StatResult> {
     // Get x column name from aesthetics
     let x_col = get_quoted_column_name(aesthetics, "pos1").ok_or_else(|| {
-        GgsqlError::ValidationError(format!(
-            "Histogram requires '{}' aesthetic mapping",
-            aesthetics.display_name("pos1")
-        ))
+        let name = aesthetic_ctx.map_internal_to_user("pos1");
+        GgsqlError::ValidationError(format!("Histogram requires '{}' aesthetic mapping", name))
     })?;
 
     // Get bins from parameters (default: 30, validated by constraint)

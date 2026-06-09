@@ -61,22 +61,12 @@ pub type Schema = Vec<ColumnInfo>;
 ///
 /// Used for both global mappings (VISUALISE clause) and layer mappings (MAPPING clause).
 /// Supports wildcards combined with explicit mappings.
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub struct Mappings {
     /// Whether a wildcard (*) was specified
     pub wildcard: bool,
     /// Explicit aesthetic mappings (aesthetic → value)
     pub aesthetics: HashMap<String, AestheticValue>,
-    /// Aesthetic context for coordinate-aware name resolution.
-    /// Set once during execution setup; None during parsing.
-    #[serde(skip)]
-    context: Option<super::AestheticContext>,
-}
-
-impl PartialEq for Mappings {
-    fn eq(&self, other: &Self) -> bool {
-        self.wildcard == other.wildcard && self.aesthetics == other.aesthetics
-    }
 }
 
 impl Mappings {
@@ -85,7 +75,6 @@ impl Mappings {
         Self {
             wildcard: false,
             aesthetics: HashMap::new(),
-            context: None,
         }
     }
 
@@ -94,45 +83,7 @@ impl Mappings {
         Self {
             wildcard: true,
             aesthetics: HashMap::new(),
-            context: None,
         }
-    }
-
-    /// Set the aesthetic context. Must only be called once.
-    pub fn set_context(&mut self, ctx: super::AestheticContext) {
-        debug_assert!(self.context.is_none(), "aesthetic context already set");
-        self.context = Some(ctx);
-    }
-
-    /// Get the aesthetic context, if set.
-    pub fn context(&self) -> Option<&super::AestheticContext> {
-        self.context.as_ref()
-    }
-
-    /// Translate an internal aesthetic name to its user-facing name for display.
-    ///
-    /// Returns the user-facing name (e.g., "x" for "pos1") when context is available,
-    /// or the internal name unchanged when it isn't.
-    pub fn display_name(&self, internal: &str) -> String {
-        match &self.context {
-            Some(ctx) => ctx.map_internal_to_user(internal),
-            None => internal.to_string(),
-        }
-    }
-
-    /// Translate a user-facing aesthetic name to its internal name.
-    ///
-    /// Returns `None` when the name isn't a position/facet aesthetic
-    /// (i.e., it's a material aesthetic that doesn't get renamed).
-    pub fn internal_name(&self, user: &str) -> Option<&str> {
-        self.context.as_ref()?.map_user_to_internal(user)
-    }
-
-    /// Set a default cartesian context (x/y). Test-only convenience.
-    #[cfg(test)]
-    pub fn with_cartesian_context(mut self) -> Self {
-        self.set_context(super::AestheticContext::from_static(&["x", "y"], &[]));
-        self
     }
 
     /// Check if the mappings are empty (no wildcard and no aesthetics)
@@ -165,10 +116,7 @@ impl Mappings {
     /// Uses the provided AestheticContext to map user-facing position aesthetic names
     /// (e.g., "x", "y", "angle", "radius") to internal names (e.g., "pos1", "pos2").
     /// Material aesthetics (e.g., "color", "size") are left unchanged.
-    ///
-    /// Also stores the context for later use by stat transforms and validation.
     pub fn transform_to_internal(&mut self, ctx: &super::AestheticContext) {
-        self.set_context(ctx.clone());
         let original_aesthetics = std::mem::take(&mut self.aesthetics);
         for (aesthetic, value) in original_aesthetics {
             let internal_name = ctx

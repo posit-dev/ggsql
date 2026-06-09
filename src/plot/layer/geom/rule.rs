@@ -34,16 +34,24 @@ impl GeomTrait for Rule {
         Some(&[])
     }
 
-    fn validate_aesthetics(&self, mappings: &crate::Mappings) -> std::result::Result<(), String> {
+    fn validate_aesthetics(
+        &self,
+        mappings: &crate::Mappings,
+        aesthetic_ctx: &Option<crate::plot::aesthetic::AestheticContext>,
+    ) -> std::result::Result<(), String> {
         // Rule requires exactly one of pos1 or pos2 (XOR logic)
         let has_pos1 = mappings.contains_key("pos1");
         let has_pos2 = mappings.contains_key("pos2");
 
         if has_pos1 && has_pos2 {
+            let translate = |aes: &str| match aesthetic_ctx {
+                Some(ctx) => ctx.map_internal_to_user(aes),
+                None => aes.to_string(),
+            };
             return Err(format!(
                 "Layer 'rule' requires exactly one of `{}` or `{}`, not both.",
-                mappings.display_name("pos1"),
-                mappings.display_name("pos2")
+                translate("pos1"),
+                translate("pos2")
             ));
         }
 
