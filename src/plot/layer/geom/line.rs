@@ -3,12 +3,15 @@
 use super::stat_aggregate;
 use super::types::wrap_with_order_by;
 use super::{
-    has_aggregate_param, DefaultAesthetics, DefaultParamValue, GeomTrait, GeomType,
-    ParamConstraint, ParamDefinition, StatResult,
+    densify_edges, has_aggregate_param, needs_projection, project_position_columns,
+    DefaultAesthetics, DefaultParamValue, GeomTrait, GeomType, ParamConstraint, ParamDefinition,
+    StatResult,
 };
 use crate::plot::layer::orientation::{ALIGNED, ORIENTATION_VALUES};
+use crate::plot::projection::Projection;
 use crate::plot::types::DefaultAestheticValue;
-use crate::Mappings;
+use crate::reader::SqlDialect;
+use crate::{Mappings, Result};
 
 /// Line geom - line charts with connected points
 #[derive(Debug, Clone, Copy)]
@@ -76,6 +79,22 @@ impl GeomTrait for Line {
         // Line needs ordering by pos1 (domain axis) for proper rendering, in both
         // the Identity and Aggregate paths.
         Ok(wrap_with_order_by(query, result, "pos1"))
+    }
+
+    fn apply_projection(
+        &self,
+        query: &str,
+        projection: &Projection,
+        dialect: &dyn SqlDialect,
+        _clip: bool,
+        columns: &[String],
+        partition_by: &[String],
+    ) -> Result<String> {
+        if !needs_projection(projection) {
+            return Ok(query.to_string());
+        }
+        let densified = densify_edges(query, dialect, columns, partition_by, Some("pos1"), false, 1.0, 360);
+        project_position_columns(&densified, projection, dialect, columns)
     }
 }
 

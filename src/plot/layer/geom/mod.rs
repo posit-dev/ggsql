@@ -407,6 +407,26 @@ pub(crate) fn project_position_columns(
     ))
 }
 
+/// Returns true when the projection requires position transformation (Map coord
+/// with distinct source and target CRS). Used to guard densification and
+/// `project_position_columns`.
+pub(crate) fn needs_projection(projection: &Projection) -> bool {
+    use crate::plot::projection::coord::CoordKind;
+
+    if projection.coord.coord_kind() != CoordKind::Map {
+        return false;
+    }
+    let target = match projection.properties.get("target") {
+        Some(ParameterValue::String(s)) => s.as_str(),
+        _ => return false,
+    };
+    let source = match projection.properties.get("source") {
+        Some(ParameterValue::String(s)) => s.as_str(),
+        _ => return false,
+    };
+    source != target
+}
+
 /// Subdivide edges in a tabular dataset by linear interpolation.
 ///
 /// Inserts intermediate vertices along edges longer than `max_segment`.
