@@ -439,6 +439,7 @@ pub(crate) fn needs_projection(projection: &Projection) -> bool {
 /// - `segment_length`: target edge length after subdivision (in position units).
 /// - `n_segments`: size of the integer series (must be at least as large as the
 ///   maximum number of subdivisions any single edge can produce).
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn densify_edges(
     query: &str,
     dialect: &dyn SqlDialect,
@@ -470,7 +471,10 @@ pub(crate) fn densify_edges(
     let partition_clause = if partition_by.is_empty() {
         String::new()
     } else {
-        let parts: Vec<String> = partition_by.iter().map(|c| naming::quote_ident(c)).collect();
+        let parts: Vec<String> = partition_by
+            .iter()
+            .map(|c| naming::quote_ident(c))
+            .collect();
         format!("PARTITION BY {}", parts.join(", "))
     };
 
@@ -582,7 +586,10 @@ pub(crate) fn densify_edges(
     let order_parts = if partition_by.is_empty() {
         format!("{order_col}, \"__ggsql_seq__\".n")
     } else {
-        let parts: Vec<String> = partition_by.iter().map(|c| naming::quote_ident(c)).collect();
+        let parts: Vec<String> = partition_by
+            .iter()
+            .map(|c| naming::quote_ident(c))
+            .collect();
         format!("{}, {order_col}, \"__ggsql_seq__\".n", parts.join(", "))
     };
 

@@ -93,7 +93,16 @@ impl GeomTrait for Line {
         if !needs_projection(projection) {
             return Ok(query.to_string());
         }
-        let densified = densify_edges(query, dialect, columns, partition_by, Some("pos1"), false, 1.0, 360);
+        let densified = densify_edges(
+            query,
+            dialect,
+            columns,
+            partition_by,
+            Some("pos1"),
+            false,
+            1.0,
+            360,
+        );
         project_position_columns(&densified, projection, dialect, columns)
     }
 }
@@ -129,7 +138,14 @@ mod tests {
             naming::aesthetic_column("pos2"),
         ];
         let result = line
-            .apply_projection("SELECT * FROM t", &projection, &AnsiDialect, false, &columns, &[])
+            .apply_projection(
+                "SELECT * FROM t",
+                &projection,
+                &AnsiDialect,
+                false,
+                &columns,
+                &[],
+            )
             .unwrap();
 
         // Densification happened

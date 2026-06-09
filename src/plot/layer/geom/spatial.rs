@@ -138,7 +138,14 @@ mod tests {
         let spatial = Spatial;
         let projection = Projection::cartesian();
         let result = spatial
-            .apply_projection("SELECT * FROM t", &projection, &AnsiDialect, false, &[], &[])
+            .apply_projection(
+                "SELECT * FROM t",
+                &projection,
+                &AnsiDialect,
+                false,
+                &[],
+                &[],
+            )
             .unwrap();
 
         assert!(result.contains("ST_AsBinary"));
@@ -150,7 +157,14 @@ mod tests {
         let spatial = Spatial;
         let projection = Projection::map();
         let result = spatial
-            .apply_projection("SELECT * FROM t", &projection, &AnsiDialect, false, &[], &[])
+            .apply_projection(
+                "SELECT * FROM t",
+                &projection,
+                &AnsiDialect,
+                false,
+                &[],
+                &[],
+            )
             .unwrap();
 
         // Map without CRS passes through (ensure_geometry is identity for AnsiDialect)
@@ -167,7 +181,14 @@ mod tests {
             ParameterValue::String("+proj=merc".to_string()),
         );
         let result = spatial
-            .apply_projection("SELECT * FROM t", &projection, &AnsiDialect, false, &[], &[])
+            .apply_projection(
+                "SELECT * FROM t",
+                &projection,
+                &AnsiDialect,
+                false,
+                &[],
+                &[],
+            )
             .unwrap();
 
         // Without clip=true, just ST_Transform
