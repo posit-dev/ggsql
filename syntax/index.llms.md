@@ -72,3 +72,4 @@ The coordinate system defines how the abstract position aesthetics are projected
 
 - [`cartesian`](../syntax/coord/cartesian.llms.md) is the classic coordinate system consisting of two perpendicular axes, one being horizontal and one being vertical
 - [`polar`](../syntax/coord/polar.llms.md) interprets the primary position as the angular location relative to the center and the secondary position as the distance (radius) from the center, and this creates a circular coordinate system
+- [`crs`](../syntax/coord/crs.llms.md) is a way to project geographic data to various coordinate reference systems.

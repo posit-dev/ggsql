@@ -15,7 +15,7 @@ Users can provide their own aesthetic names if needed. For example, if using `x`
 PROJECT y, x TO polar
 ```
 
-This maps `y` to radius and `x` to angle. This is useful when converting from a cartesian coordinate system without editing all the mappings.
+This maps `y` to radius and `x` to angle. This is useful when converting from a Cartesian coordinate system without editing all the mappings.
 
 ## Settings
 
