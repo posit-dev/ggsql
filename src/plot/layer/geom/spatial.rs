@@ -78,6 +78,7 @@ impl GeomTrait for Spatial {
         dialect: &dyn SqlDialect,
         clip: bool,
         columns: &[String],
+        _partition_by: &[String],
     ) -> crate::Result<String> {
         let col = naming::quote_ident(&naming::aesthetic_column("geometry"));
         let is_map = projection.coord.coord_kind() == CoordKind::Map;

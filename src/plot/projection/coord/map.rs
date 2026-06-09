@@ -70,6 +70,7 @@ pub(crate) fn apply_map_transforms(
             dialect,
             clip,
             &columns,
+            &layer.partition_by,
         )?;
     }
 

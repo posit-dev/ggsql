@@ -163,6 +163,7 @@ pub trait CoordTrait: std::fmt::Debug + Send + Sync {
                 dialect,
                 false,
                 &columns,
+                &layer.partition_by,
             )?;
         }
         Ok(())

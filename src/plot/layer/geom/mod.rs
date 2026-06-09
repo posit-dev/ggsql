@@ -296,10 +296,11 @@ pub trait GeomTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
     /// Called after stat transforms, before data fetch. Each geom decides what
     /// projection means for its parameterization:
     /// - Spatial: ST_AsWKB (always), plus ST_Transform when Map coord has a CRS
-    /// - Future geoms: rectangles transform corners, lines segmentize, etc.
+    /// - Line/path/polygon: densify segments before ST_Transform
     ///
     /// `columns` lists all column names in the query (for portable column
     /// replacement on backends that don't support `SELECT * REPLACE`).
+    /// `partition_by` lists the grouping columns for the layer.
     ///
     /// The default is a no-op (returns query unchanged).
     fn apply_projection(
@@ -309,6 +310,7 @@ pub trait GeomTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
         _dialect: &dyn SqlDialect,
         _clip: bool,
         _columns: &[String],
+        _partition_by: &[String],
     ) -> Result<String> {
         Ok(query.to_string())
     }
@@ -645,9 +647,10 @@ impl Geom {
         dialect: &dyn SqlDialect,
         clip: bool,
         columns: &[String],
+        partition_by: &[String],
     ) -> Result<String> {
         self.0
-            .apply_projection(query, projection, dialect, clip, columns)
+            .apply_projection(query, projection, dialect, clip, columns, partition_by)
     }
 
     /// Adjust layer mappings and parameters based on geom-specific logic
