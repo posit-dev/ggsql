@@ -259,18 +259,11 @@ impl GeomTrait for Tile {
         // After polygonization, the data has pos1/pos2 columns (not pos1min/pos1max/pos2min/pos2max).
         // Update mappings to reflect the new column structure so downstream stages
         // (schema validation, encoding) reference the correct columns.
-        use crate::plot::types::AestheticValue;
         for aes in &bound_aes {
             mappings.aesthetics.remove(*aes);
         }
-        mappings.insert(
-            "pos1",
-            AestheticValue::standard_column(naming::aesthetic_column("pos1")),
-        );
-        mappings.insert(
-            "pos2",
-            AestheticValue::standard_column(naming::aesthetic_column("pos2")),
-        );
+        mappings.insert_column("pos1", "pos1");
+        mappings.insert_column("pos2", "pos2");
 
         Ok(projected)
     }
@@ -629,10 +622,7 @@ mod tests {
     fn create_bound_mappings(aesthetics: &[&str]) -> Mappings {
         let mut mappings = Mappings::new();
         for aes in aesthetics {
-            mappings.insert(
-                aes.to_string(),
-                AestheticValue::standard_column(naming::aesthetic_column(aes)),
-            );
+            mappings.insert_column(aes, aes);
         }
         mappings
     }

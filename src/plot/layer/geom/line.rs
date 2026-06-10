@@ -127,8 +127,6 @@ mod tests {
 
     #[test]
     fn test_apply_projection_densifies_and_transforms() {
-        use crate::plot::types::AestheticValue;
-
         let line = Line;
         let mut projection = Projection::map();
         projection.properties.insert(
@@ -141,14 +139,8 @@ mod tests {
         );
 
         let mut mappings = Mappings::new();
-        mappings.insert(
-            "pos1".to_string(),
-            AestheticValue::standard_column(naming::aesthetic_column("pos1")),
-        );
-        mappings.insert(
-            "pos2".to_string(),
-            AestheticValue::standard_column(naming::aesthetic_column("pos2")),
-        );
+        mappings.insert_column("pos1", "pos1");
+        mappings.insert_column("pos2", "pos2");
         let result = line
             .apply_projection(
                 "SELECT * FROM t",

@@ -96,6 +96,14 @@ impl Mappings {
         self.aesthetics.insert(aesthetic.into(), value);
     }
 
+    /// Insert a standard column mapping using the internal naming convention.
+    pub fn insert_column(&mut self, aesthetic: &str, column: &str) {
+        self.insert(
+            aesthetic,
+            AestheticValue::standard_column(crate::naming::aesthetic_column(column)),
+        );
+    }
+
     /// Get an aesthetic value by name
     pub fn get(&self, aesthetic: &str) -> Option<&AestheticValue> {
         self.aesthetics.get(aesthetic)
