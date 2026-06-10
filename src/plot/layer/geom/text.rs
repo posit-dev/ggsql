@@ -9,7 +9,7 @@ use crate::plot::projection::Projection;
 use crate::plot::types::DefaultAestheticValue;
 use crate::plot::{ArrayConstraint, NumberConstraint};
 use crate::reader::SqlDialect;
-use crate::{naming, DataFrame, Result};
+use crate::{naming, DataFrame, Mappings, Result};
 use std::collections::HashMap;
 
 /// Text geom - text labels at positions
@@ -76,10 +76,15 @@ impl GeomTrait for Text {
         projection: &Projection,
         dialect: &dyn SqlDialect,
         _clip: bool,
-        columns: &[String],
-        _partition_by: &[String],
+        mappings: &mut Mappings,
+        _partition_by: &mut Vec<String>,
     ) -> Result<String> {
-        project_position_columns(query, projection, dialect, columns)
+        let columns: Vec<String> = mappings
+            .aesthetics
+            .keys()
+            .map(|k| naming::aesthetic_column(k))
+            .collect();
+        project_position_columns(query, projection, dialect, &columns)
     }
 
     fn post_process(

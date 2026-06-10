@@ -8,7 +8,7 @@ use super::{
 use crate::plot::projection::Projection;
 use crate::plot::types::DefaultAestheticValue;
 use crate::reader::SqlDialect;
-use crate::Result;
+use crate::{naming, Mappings, Result};
 
 /// Path geom - connected line segments in order
 #[derive(Debug, Clone, Copy)]
@@ -47,14 +47,28 @@ impl GeomTrait for Path {
         projection: &Projection,
         dialect: &dyn SqlDialect,
         _clip: bool,
-        columns: &[String],
-        partition_by: &[String],
+        mappings: &mut Mappings,
+        partition_by: &mut Vec<String>,
     ) -> Result<String> {
         if !needs_projection(projection) {
             return Ok(query.to_string());
         }
-        let densified = densify_edges(query, dialect, columns, partition_by, None, false, 1.0, 360);
-        project_position_columns(&densified, projection, dialect, columns)
+        let columns: Vec<String> = mappings
+            .aesthetics
+            .keys()
+            .map(|k| naming::aesthetic_column(k))
+            .collect();
+        let densified = densify_edges(
+            query,
+            dialect,
+            &columns,
+            partition_by,
+            None,
+            false,
+            1.0,
+            360,
+        );
+        project_position_columns(&densified, projection, dialect, &columns)
     }
 }
 

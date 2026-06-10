@@ -11,7 +11,7 @@ use crate::plot::layer::orientation::{ALIGNED, ORIENTATION_VALUES};
 use crate::plot::projection::Projection;
 use crate::plot::types::DefaultAestheticValue;
 use crate::reader::SqlDialect;
-use crate::{Mappings, Result};
+use crate::{naming, Mappings, Result};
 
 /// Line geom - line charts with connected points
 #[derive(Debug, Clone, Copy)]
@@ -87,23 +87,29 @@ impl GeomTrait for Line {
         projection: &Projection,
         dialect: &dyn SqlDialect,
         _clip: bool,
-        columns: &[String],
-        partition_by: &[String],
+        mappings: &mut Mappings,
+        partition_by: &mut Vec<String>,
     ) -> Result<String> {
         if !needs_projection(projection) {
             return Ok(query.to_string());
         }
+        let columns: Vec<String> = mappings
+            .aesthetics
+            .keys()
+            .map(|k| naming::aesthetic_column(k))
+            .collect();
+        let pos1_col = naming::aesthetic_column("pos1");
         let densified = densify_edges(
             query,
             dialect,
-            columns,
+            &columns,
             partition_by,
-            Some("pos1"),
+            Some(&pos1_col),
             false,
             1.0,
             360,
         );
-        project_position_columns(&densified, projection, dialect, columns)
+        project_position_columns(&densified, projection, dialect, &columns)
     }
 }
 
@@ -122,6 +128,8 @@ mod tests {
 
     #[test]
     fn test_apply_projection_densifies_and_transforms() {
+        use crate::plot::types::AestheticValue;
+
         let line = Line;
         let mut projection = Projection::map();
         projection.properties.insert(
@@ -133,18 +141,23 @@ mod tests {
             ParameterValue::String("+proj=ortho +lat_0=0 +lon_0=0".to_string()),
         );
 
-        let columns = vec![
-            naming::aesthetic_column("pos1"),
-            naming::aesthetic_column("pos2"),
-        ];
+        let mut mappings = Mappings::new();
+        mappings.insert(
+            "pos1".to_string(),
+            AestheticValue::standard_column(naming::aesthetic_column("pos1")),
+        );
+        mappings.insert(
+            "pos2".to_string(),
+            AestheticValue::standard_column(naming::aesthetic_column("pos2")),
+        );
         let result = line
             .apply_projection(
                 "SELECT * FROM t",
                 &projection,
                 &AnsiDialect,
                 false,
-                &columns,
-                &[],
+                &mut mappings,
+                &mut vec![],
             )
             .unwrap();
 

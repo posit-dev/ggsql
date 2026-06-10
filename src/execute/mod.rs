@@ -1384,7 +1384,7 @@ pub fn prepare_data_with_reader(query: &str, reader: &dyn Reader) -> Result<Prep
         )?;
     }
     project.apply_projection_transforms(
-        &specs[0].layers,
+        &mut specs[0].layers,
         &mut layer_queries,
         dialect,
         &execute_query,

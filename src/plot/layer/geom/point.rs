@@ -8,7 +8,7 @@ use super::{
 use crate::plot::projection::Projection;
 use crate::plot::types::DefaultAestheticValue;
 use crate::reader::SqlDialect;
-use crate::Result;
+use crate::{naming, Mappings, Result};
 
 /// Point geom - scatter plots and similar
 #[derive(Debug, Clone, Copy)]
@@ -61,10 +61,15 @@ impl GeomTrait for Point {
         projection: &Projection,
         dialect: &dyn SqlDialect,
         _clip: bool,
-        columns: &[String],
-        _partition_by: &[String],
+        mappings: &mut Mappings,
+        _partition_by: &mut Vec<String>,
     ) -> Result<String> {
-        project_position_columns(query, projection, dialect, columns)
+        let columns: Vec<String> = mappings
+            .aesthetics
+            .keys()
+            .map(|k| naming::aesthetic_column(k))
+            .collect();
+        project_position_columns(query, projection, dialect, &columns)
     }
 }
 

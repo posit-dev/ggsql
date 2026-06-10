@@ -297,10 +297,13 @@ pub trait GeomTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
     /// projection means for its parameterization:
     /// - Spatial: ST_AsWKB (always), plus ST_Transform when Map coord has a CRS
     /// - Line/path/polygon: densify segments before ST_Transform
+    /// - Tile (continuous): expand to polygon corners, densify, project
     ///
     /// `columns` lists all column names in the query (for portable column
     /// replacement on backends that don't support `SELECT * REPLACE`).
-    /// `partition_by` lists the grouping columns for the layer.
+    /// `partition_by` is mutable: geoms that introduce new grouping columns
+    /// (e.g. tile adds `__ggsql_poly_id__`) push them here so they survive
+    /// downstream pruning.
     ///
     /// The default is a no-op (returns query unchanged).
     fn apply_projection(
@@ -309,8 +312,8 @@ pub trait GeomTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
         _projection: &Projection,
         _dialect: &dyn SqlDialect,
         _clip: bool,
-        _columns: &[String],
-        _partition_by: &[String],
+        _mappings: &mut Mappings,
+        _partition_by: &mut Vec<String>,
     ) -> Result<String> {
         Ok(query.to_string())
     }
@@ -433,8 +436,9 @@ pub(crate) fn needs_projection(projection: &Projection) -> bool {
 /// Continuous aesthetics (columns that are neither positions nor in `partition_by`)
 /// are interpolated too. Discrete (partition) columns are carried through unchanged.
 ///
-/// - `domain_order`: aesthetic name for the ordering column (e.g. "pos1" for line).
-///   When `None`, a synthetic row index is used (path/polygon).
+/// - `domain_order`: column name to ORDER BY within each partition (e.g.
+///   `naming::aesthetic_column("pos1")` for line). When `None`, a synthetic
+///   row index is used (path/polygon).
 /// - `close_ring`: when true, the last vertex connects back to the first (polygon).
 /// - `segment_length`: target edge length after subdivision (in position units).
 /// - `n_segments`: size of the integer series (must be at least as large as the
@@ -461,9 +465,9 @@ pub(crate) fn densify_edges(
         .filter(|c| *c != &pos1_col && *c != &pos2_col && !partition_by.contains(c))
         .collect();
 
-    // Ordering column
+    // Ordering column (raw column name, already unquoted)
     let order_col = match domain_order {
-        Some(aes) => naming::quote_ident(&naming::aesthetic_column(aes)),
+        Some(col) => naming::quote_ident(col),
         None => "\"__ggsql_edge_idx__\"".to_string(),
     };
 
@@ -844,11 +848,11 @@ impl Geom {
         projection: &Projection,
         dialect: &dyn SqlDialect,
         clip: bool,
-        columns: &[String],
-        partition_by: &[String],
+        mappings: &mut Mappings,
+        partition_by: &mut Vec<String>,
     ) -> Result<String> {
         self.0
-            .apply_projection(query, projection, dialect, clip, columns, partition_by)
+            .apply_projection(query, projection, dialect, clip, mappings, partition_by)
     }
 
     /// Adjust layer mappings and parameters based on geom-specific logic
@@ -1117,12 +1121,13 @@ mod tests {
             naming::aesthetic_column("pos1"),
             naming::aesthetic_column("pos2"),
         ];
+        let pos1_col = naming::aesthetic_column("pos1");
         let result = densify_edges(
             "SELECT * FROM t",
             &AnsiDialect,
             &columns,
             &[],
-            Some("pos1"),
+            Some(&pos1_col),
             false,
             1.0,
             360,
@@ -1145,12 +1150,13 @@ mod tests {
             naming::aesthetic_column("stroke"),
         ];
         let partition_by = vec![naming::aesthetic_column("stroke")];
+        let pos1_col = naming::aesthetic_column("pos1");
         let result = densify_edges(
             "SELECT * FROM t",
             &AnsiDialect,
             &columns,
             &partition_by,
-            Some("pos1"),
+            Some(&pos1_col),
             false,
             1.0,
             360,
@@ -1171,12 +1177,13 @@ mod tests {
             naming::aesthetic_column("opacity"),
         ];
         let partition_by = vec![naming::aesthetic_column("stroke")];
+        let pos1_col = naming::aesthetic_column("pos1");
         let result = densify_edges(
             "SELECT * FROM t",
             &AnsiDialect,
             &columns,
             &partition_by,
-            Some("pos1"),
+            Some(&pos1_col),
             false,
             1.0,
             360,
@@ -1219,12 +1226,13 @@ mod tests {
             naming::aesthetic_column("pos1"),
             naming::aesthetic_column("pos2"),
         ];
+        let pos1_col = naming::aesthetic_column("pos1");
         let result = densify_edges(
             "SELECT * FROM t",
             &AnsiDialect,
             &columns,
             &[],
-            Some("pos1"),
+            Some(&pos1_col),
             false,
             1.0,
             360,

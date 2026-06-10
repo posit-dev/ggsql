@@ -238,7 +238,7 @@ impl<T: MapProjectionTrait + 'static> super::CoordTrait for T {
 
     fn apply_projection_transforms(
         &self,
-        layers: &[Layer],
+        layers: &mut [Layer],
         layer_queries: &mut [String],
         projection: &mut super::super::Projection,
         dialect: &dyn SqlDialect,

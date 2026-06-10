@@ -77,16 +77,21 @@ impl GeomTrait for Spatial {
         projection: &Projection,
         dialect: &dyn SqlDialect,
         clip: bool,
-        columns: &[String],
-        _partition_by: &[String],
+        mappings: &mut Mappings,
+        _partition_by: &mut Vec<String>,
     ) -> crate::Result<String> {
+        let columns: Vec<String> = mappings
+            .aesthetics
+            .keys()
+            .map(|k| naming::aesthetic_column(k))
+            .collect();
         let col = naming::quote_ident(&naming::aesthetic_column("geometry"));
         let is_map = projection.coord.coord_kind() == CoordKind::Map;
 
         // WORKAROUND(duckdb-rs#714): normalize column to GEOMETRY since it may
         // be WKB BLOB from the Arrow export workaround.
         let ensure_geom = dialect.sql_ensure_geometry(&col);
-        let geom_query = dialect.sql_select_replace(&ensure_geom, &col, query, columns);
+        let geom_query = dialect.sql_select_replace(&ensure_geom, &col, query, &columns);
 
         let geom_expr = if let (true, Some(ParameterValue::String(crs))) =
             (is_map, projection.properties.get("target"))
@@ -103,7 +108,7 @@ impl GeomTrait for Spatial {
                     source,
                     crs,
                     dialect,
-                    columns,
+                    &columns,
                 ));
             }
 
@@ -114,11 +119,11 @@ impl GeomTrait for Spatial {
         } else {
             // Non-map coord — convert to WKB directly
             let wkb_expr = dialect.sql_geometry_to_wkb(&col);
-            return Ok(dialect.sql_select_replace(&wkb_expr, &col, &geom_query, columns));
+            return Ok(dialect.sql_select_replace(&wkb_expr, &col, &geom_query, &columns));
         };
 
         // Map coord with CRS — output native projected geometry (WKB added by framing)
-        Ok(dialect.sql_select_replace(&geom_expr, &col, &geom_query, columns))
+        Ok(dialect.sql_select_replace(&geom_expr, &col, &geom_query, &columns))
     }
 }
 
@@ -143,8 +148,8 @@ mod tests {
                 &projection,
                 &AnsiDialect,
                 false,
-                &[],
-                &[],
+                &mut Mappings::new(),
+                &mut vec![],
             )
             .unwrap();
 
@@ -162,8 +167,8 @@ mod tests {
                 &projection,
                 &AnsiDialect,
                 false,
-                &[],
-                &[],
+                &mut Mappings::new(),
+                &mut vec![],
             )
             .unwrap();
 
@@ -186,8 +191,8 @@ mod tests {
                 &projection,
                 &AnsiDialect,
                 false,
-                &[],
-                &[],
+                &mut Mappings::new(),
+                &mut vec![],
             )
             .unwrap();
 
@@ -207,7 +212,14 @@ mod tests {
             ParameterValue::String("+proj=merc".to_string()),
         );
         let result = spatial
-            .apply_projection("SELECT * FROM t", &projection, &AnsiDialect, true, &[], &[])
+            .apply_projection(
+                "SELECT * FROM t",
+                &projection,
+                &AnsiDialect,
+                true,
+                &mut Mappings::new(),
+                &mut vec![],
+            )
             .unwrap();
 
         assert!(result.contains("ST_Intersection"));
@@ -224,7 +236,14 @@ mod tests {
             ParameterValue::String("+proj=ortho +lat_0=45 +lon_0=10".to_string()),
         );
         let result = spatial
-            .apply_projection("SELECT * FROM t", &projection, &AnsiDialect, true, &[], &[])
+            .apply_projection(
+                "SELECT * FROM t",
+                &projection,
+                &AnsiDialect,
+                true,
+                &mut Mappings::new(),
+                &mut vec![],
+            )
             .unwrap();
 
         assert!(result.contains("ST_Transform"));
@@ -243,7 +262,14 @@ mod tests {
             ParameterValue::String("+proj=gnom +lat_0=90 +lon_0=0".to_string()),
         );
         let result = spatial
-            .apply_projection("SELECT * FROM t", &projection, &AnsiDialect, true, &[], &[])
+            .apply_projection(
+                "SELECT * FROM t",
+                &projection,
+                &AnsiDialect,
+                true,
+                &mut Mappings::new(),
+                &mut vec![],
+            )
             .unwrap();
 
         assert!(result.contains("ST_MakeValid"));

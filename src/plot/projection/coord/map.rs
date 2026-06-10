@@ -16,7 +16,7 @@ use crate::DataFrame;
 
 pub(crate) fn apply_map_transforms(
     map_proj: &dyn MapProjectionTrait,
-    layers: &[Layer],
+    layers: &mut [Layer],
     layer_queries: &mut [String],
     projection: &mut super::super::Projection,
     dialect: &dyn SqlDialect,
@@ -57,20 +57,14 @@ pub(crate) fn apply_map_transforms(
     let clip = boundary_lonlat.is_some();
 
     // Step 3: Apply per-layer projection (ST_Transform, clip to horizon)
-    for (idx, layer) in layers.iter().enumerate() {
-        let columns: Vec<String> = layer
-            .mappings
-            .aesthetics
-            .keys()
-            .map(|k| naming::aesthetic_column(k))
-            .collect();
+    for (idx, layer) in layers.iter_mut().enumerate() {
         layer_queries[idx] = layer.geom.apply_projection(
             &layer_queries[idx],
             projection,
             dialect,
             clip,
-            &columns,
-            &layer.partition_by,
+            &mut layer.mappings,
+            &mut layer.partition_by,
         )?;
     }
 

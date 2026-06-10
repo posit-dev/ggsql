@@ -1429,9 +1429,36 @@ impl GeomRenderer for TileRenderer {
     fn modify_spec(
         &self,
         layer_spec: &mut Value,
-        _layer: &Layer,
+        layer: &Layer,
         context: &RenderContext,
     ) -> Result<()> {
+        let (pos1, pos1_end, _, pos2, pos2_end, _) = &context.channels;
+
+        // Polygonized tile: densified rectangle rendered as closed line
+        if layer
+            .partition_by
+            .contains(&"__ggsql_poly_id__".to_string())
+        {
+            layer_spec["mark"] = json!({
+                "type": "line",
+                "interpolate": "linear-closed"
+            });
+
+            if let Some(encoding) = layer_spec
+                .get_mut("encoding")
+                .and_then(|e| e.as_object_mut())
+            {
+                // Preserve vertex order
+                encoding.insert(
+                    "order".to_string(),
+                    json!({"field": ROW_INDEX_COLUMN, "type": "quantitative"}),
+                );
+            }
+
+            return Ok(());
+        }
+
+        // Discrete tile: rect mark with band-based width/height
         let encoding = layer_spec
             .get_mut("encoding")
             .and_then(|e| e.as_object_mut());
@@ -1440,13 +1467,11 @@ impl GeomRenderer for TileRenderer {
             return Ok(());
         };
 
-        let (pos1, pos1_end, _, pos2, pos2_end, _) = &context.channels;
-
         // Check which directions are discrete
         let pos1_is_discrete = !encoding.contains_key(pos1_end.as_str());
         let pos2_is_discrete = !encoding.contains_key(pos2_end.as_str());
 
-        // Early return if both continuous
+        // Early return if both continuous (standard rect mark is fine)
         if !pos1_is_discrete && !pos2_is_discrete {
             return Ok(());
         }
@@ -1459,7 +1484,6 @@ impl GeomRenderer for TileRenderer {
 
         if pos1_is_discrete {
             if let Some(width_enc) = encoding.remove("width") {
-                // Check if it's a field encoding or literal value
                 if let Some(field) = width_enc.get("field").and_then(|f| f.as_str()) {
                     // Field encoding: use expression with datum reference
                     mark["width"] = json!({
@@ -1474,7 +1498,6 @@ impl GeomRenderer for TileRenderer {
 
         if pos2_is_discrete {
             if let Some(height_enc) = encoding.remove("height") {
-                // Check if it's a field encoding or literal value
                 if let Some(field) = height_enc.get("field").and_then(|f| f.as_str()) {
                     // Field encoding: use expression with datum reference
                     mark["height"] = json!({
@@ -1487,7 +1510,6 @@ impl GeomRenderer for TileRenderer {
             }
         }
 
-        // Only set mark if we added width or height
         if mark.get("width").is_some() || mark.get("height").is_some() {
             layer_spec["mark"] = mark;
         }
