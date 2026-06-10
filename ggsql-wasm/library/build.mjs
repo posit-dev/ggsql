@@ -11,7 +11,7 @@ const buildOptions = {
   outfile: join(__dirname, "dist/lib.js"),
   format: "esm",
   platform: "browser",
-  target: "es2020",
+  target: "es2022",
   sourcemap: true,
 };
 

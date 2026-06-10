@@ -346,9 +346,8 @@ impl GgsqlContext {
         unsafe {
             conn.load_extension_enable()
                 .map_err(|e| JsValue::from_str(&format!("Enable load_extension error: {:?}", e)))?;
-            let result = conn.load_extension(name, entry_point.as_deref());
-            let _ = conn.load_extension_disable();
-            result.map_err(|e| JsValue::from_str(&format!("Load extension error: {:?}", e)))?;
+            conn.load_extension(name, entry_point.as_deref())
+                .map_err(|e| JsValue::from_str(&format!("Load extension error: {:?}", e)))?;
         }
         Ok(())
     }
