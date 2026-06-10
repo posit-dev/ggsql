@@ -22,18 +22,6 @@ export class WasmContextManager {
     await installExtension(name, url);
   }
 
-  loadExtension(name: string): void {
-    this.getContext().load_extension(name, undefined);
-    // SpatiaLite needs its spatial_ref_sys table populated before functions
-    // like ST_Transform can resolve SRIDs. Initialise it once on first load.
-    if (name === "mod_spatialite" && !this.spatialMetadataReady) {
-      this.spatialMetadataReady = true;
-      this.getContext().execute_sql("SELECT InitSpatialMetaData(1)");
-    }
-  }
-
-  private spatialMetadataReady = false;
-
   private getContext(): GgsqlContext {
     if (!this.context) {
       throw new Error("Context not initialized. Call initialize() first.");

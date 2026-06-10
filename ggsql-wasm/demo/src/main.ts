@@ -157,18 +157,6 @@ function initializeExamples() {
     button.className = "example-button";
     button.textContent = example.name;
     button.onclick = () => {
-      if (example.loadExtension) {
-        try {
-          contextManager.loadExtension(example.loadExtension);
-          console.log(`[ext] load_extension("${example.loadExtension}") succeeded`);
-        } catch (e: any) {
-          console.error(`[ext] load_extension("${example.loadExtension}") FAILED:`, e);
-          if (!e.toString().includes("already loaded")) {
-            showProblems([`Extension load error: ${e}`], []);
-            return;
-          }
-        }
-      }
       editorManager.setValue(example.query);
     };
     examplesList.appendChild(button);
@@ -198,17 +186,7 @@ function initializeMobileExamples() {
   select.addEventListener("change", () => {
     const idx = parseInt(select.value, 10);
     if (!isNaN(idx) && examples[idx]) {
-      const example = examples[idx];
-      if (example.loadExtension) {
-        try {
-          contextManager.loadExtension(example.loadExtension);
-          console.log(`[ext] load_extension("${example.loadExtension}") succeeded`);
-        } catch (e: any) {
-          console.error(`[ext] load_extension("${example.loadExtension}") FAILED:`, e);
-          return;
-        }
-      }
-      editorManager.setValue(example.query);
+      editorManager.setValue(examples[idx].query);
     }
   });
 }
@@ -224,7 +202,6 @@ async function main() {
 
     // Install extensions (fetch + compile, but don't load into SQLite yet)
     setStatus("Installing extensions...", "loading");
-    await contextManager.installExtension("test_ext", WASM_BASE + "test_ext.wasm");
     await contextManager.installExtension("mod_spatialite", WASM_BASE + "mod_spatialite.wasm");
 
     setStatus("Initializing editor...", "loading");

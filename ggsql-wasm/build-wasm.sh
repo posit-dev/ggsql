@@ -77,8 +77,7 @@ fi
 echo "Building WASM demo and Quarto integration..."
 (cd "$SCRIPT_DIR/demo" && npm install && npm run build)
 
-for wasm in "$SQLITE_WASM_RS"/loadable_extensions/*/test_ext.wasm \
-             "$SQLITE_WASM_RS"/loadable_extensions/*/mod_spatialite.wasm; do
+for wasm in "$SQLITE_WASM_RS"/loadable_extensions/*/mod_spatialite.wasm; do
     if [ -f "$wasm" ]; then
         name="$(basename "$wasm")"
         echo "Copying $name..."

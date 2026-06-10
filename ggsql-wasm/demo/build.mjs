@@ -25,7 +25,7 @@ copyFileSync(
   join(__dirname, "../../ggsql-vscode/syntaxes/ggsql.tmLanguage.json"),
   join(distDir, "ggsql.tmLanguage.json"),
 );
-for (const ext of ["test_ext", "mod_spatialite"]) {
+for (const ext of ["mod_spatialite"]) {
   try {
     copyFileSync(
       join(__dirname, `../pkg/${ext}.wasm`),
