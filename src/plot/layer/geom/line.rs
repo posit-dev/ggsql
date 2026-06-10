@@ -92,11 +92,7 @@ impl GeomTrait for Line {
         if !needs_projection(projection) {
             return Ok(query.to_string());
         }
-        let columns: Vec<String> = mappings
-            .aesthetics
-            .keys()
-            .map(|k| naming::aesthetic_column(k))
-            .collect();
+        let columns = mappings.column_names();
         let pos1_col = naming::aesthetic_column("pos1");
         let densified = densify_edges(
             query,

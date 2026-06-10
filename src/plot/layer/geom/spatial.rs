@@ -79,11 +79,7 @@ impl GeomTrait for Spatial {
         mappings: &mut Mappings,
         _partition_by: &mut Vec<String>,
     ) -> crate::Result<String> {
-        let columns: Vec<String> = mappings
-            .aesthetics
-            .keys()
-            .map(|k| naming::aesthetic_column(k))
-            .collect();
+        let columns = mappings.column_names();
         let col = naming::quote_ident(&naming::aesthetic_column("geometry"));
         let is_map = projection.coord.coord_kind() == CoordKind::Map;
         let clip = matches!(

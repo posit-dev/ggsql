@@ -8,7 +8,7 @@ use super::{
 use crate::plot::projection::Projection;
 use crate::plot::types::DefaultAestheticValue;
 use crate::reader::SqlDialect;
-use crate::{naming, Mappings, Result};
+use crate::{Mappings, Result};
 
 /// Polygon geom - arbitrary polygons
 #[derive(Debug, Clone, Copy)]
@@ -53,11 +53,7 @@ impl GeomTrait for Polygon {
         if !needs_projection(projection) {
             return Ok(query.to_string());
         }
-        let columns: Vec<String> = mappings
-            .aesthetics
-            .keys()
-            .map(|k| naming::aesthetic_column(k))
-            .collect();
+        let columns = mappings.column_names();
         let densified = densify_edges(query, dialect, &columns, partition_by, None, true, 1.0, 360);
         project_position_columns(&densified, projection, dialect, &columns)
     }

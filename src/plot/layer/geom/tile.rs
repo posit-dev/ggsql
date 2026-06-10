@@ -221,11 +221,7 @@ impl GeomTrait for Tile {
             return Ok(query.to_string());
         }
 
-        let columns: Vec<String> = mappings
-            .aesthetics
-            .keys()
-            .map(|k| naming::aesthetic_column(k))
-            .collect();
+        let columns = mappings.column_names();
 
         // Only densify continuous tiles (those parameterized by pos1min/pos1max/pos2min/pos2max).
         // Discrete tiles use categorical positions and don't appear on maps.

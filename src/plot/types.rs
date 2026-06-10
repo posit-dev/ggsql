@@ -104,6 +104,14 @@ impl Mappings {
         );
     }
 
+    /// Return the internal column names for all mapped aesthetics.
+    pub fn column_names(&self) -> Vec<String> {
+        self.aesthetics
+            .keys()
+            .map(|k| crate::naming::aesthetic_column(k))
+            .collect()
+    }
+
     /// Get an aesthetic value by name
     pub fn get(&self, aesthetic: &str) -> Option<&AestheticValue> {
         self.aesthetics.get(aesthetic)

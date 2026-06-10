@@ -78,11 +78,7 @@ impl GeomTrait for Text {
         mappings: &mut Mappings,
         _partition_by: &mut Vec<String>,
     ) -> Result<String> {
-        let columns: Vec<String> = mappings
-            .aesthetics
-            .keys()
-            .map(|k| naming::aesthetic_column(k))
-            .collect();
+        let columns = mappings.column_names();
         project_position_columns(query, projection, dialect, &columns)
     }
 

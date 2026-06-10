@@ -97,12 +97,7 @@ pub(crate) fn apply_map_transforms(
         }
 
         layer_queries[idx] = if is_spatial {
-            let columns: Vec<String> = layer
-                .mappings
-                .aesthetics
-                .keys()
-                .map(|k| naming::aesthetic_column(k))
-                .collect();
+            let columns = layer.mappings.column_names();
             let geom_col_quoted = naming::quote_ident(&naming::aesthetic_column("geometry"));
             let wkb_expr = dialect.sql_geometry_to_wkb(&geom_col_quoted);
             dialect.sql_select_replace(
