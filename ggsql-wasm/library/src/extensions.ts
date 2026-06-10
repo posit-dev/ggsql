@@ -227,17 +227,11 @@ export async function installExtension(
           }
         };
       } else {
-        // Unresolved import: stub it to return 0. Warn once per symbol so a
-        // genuinely missing dependency is visible without flooding the console.
+        // Unresolved import: stub it to fail fast when called.
         const unresName = imp.name;
-        let warned = false;
-        (imports.env as Record<string, unknown>)[imp.name] = (...args: unknown[]) => {
-          if (!warned) {
-            warned = true;
-            console.warn(`[ext] unresolved import '${unresName}' stubbed to return 0`);
-          }
-          void args;
-          return 0;
+        console.warn(`[ext] unresolved import '${unresName}' will throw if called`);
+        (imports.env as Record<string, unknown>)[imp.name] = () => {
+          throw new Error(`[ext] call to unresolved import '${unresName}'`);
         };
       }
     }

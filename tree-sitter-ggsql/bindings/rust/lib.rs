@@ -35,7 +35,12 @@ mod wasm_alloc {
 
     #[no_mangle]
     unsafe extern "C" fn malloc(size: usize) -> *mut u8 {
-        let layout = Layout::from_size_align_unchecked(size + HEADER, HEADER);
+        let Some(total) = size.checked_add(HEADER) else {
+            return null_mut();
+        };
+        let Ok(layout) = Layout::from_size_align(total, HEADER) else {
+            return null_mut();
+        };
         let ptr = alloc(layout);
         if ptr.is_null() {
             return null_mut();
@@ -62,10 +67,16 @@ mod wasm_alloc {
         if ptr.is_null() {
             return malloc(new_size);
         }
+        let Some(new_total) = new_size.checked_add(HEADER) else {
+            return null_mut();
+        };
+        if Layout::from_size_align(new_total, HEADER).is_err() {
+            return null_mut();
+        }
         let base = ptr.sub(HEADER);
         let size = *base.cast::<usize>();
         let layout = Layout::from_size_align_unchecked(size + HEADER, HEADER);
-        let new = rust_realloc(base, layout, new_size + HEADER);
+        let new = rust_realloc(base, layout, new_total);
         if new.is_null() {
             return null_mut();
         }

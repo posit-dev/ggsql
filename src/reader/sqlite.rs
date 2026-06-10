@@ -709,7 +709,7 @@ fn sqlite_values_to_array(name: &str, values: Vec<rusqlite::types::Value>) -> Re
 
     // A pure BLOB column (e.g. WKB geometry) maps to Arrow Binary so geometry
     // auto-detection and spatial layers receive raw bytes, not a debug string.
-    if has_blob && !has_text {
+    if has_blob && !has_text && !has_int && !has_real {
         let vals: Vec<Option<Vec<u8>>> = values
             .into_iter()
             .map(|v| match v {
