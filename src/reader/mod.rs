@@ -201,6 +201,14 @@ pub trait SqlDialect {
         )
     }
 
+    /// SQL expression building a rectangular polygon from corner coordinates.
+    ///
+    /// Default uses the PostGIS-style `ST_MakeEnvelope`. Override for backends
+    /// with different function names (e.g. SpatiaLite uses `BuildMbr`).
+    fn sql_make_envelope(&self, xmin: f64, ymin: f64, xmax: f64, ymax: f64) -> String {
+        format!("ST_MakeEnvelope({xmin}, {ymin}, {xmax}, {ymax})")
+    }
+
     /// SQL statements to run before spatial operations.
     ///
     /// Override for backends that need an extension loaded (e.g. DuckDB spatial).

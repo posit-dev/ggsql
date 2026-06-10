@@ -101,15 +101,12 @@ impl super::SqlDialect for SqliteDialect {
         }
     }
 
-    /// Geometry columns in registered tables hold raw WKB BLOBs, which
-    /// SpatiaLite functions reject. Convert those to SpatiaLite's internal
-    /// format; native SpatiaLite geometries (e.g. from a SpatiaLite database
-    /// file) pass through unchanged.
+    fn sql_make_envelope(&self, xmin: f64, ymin: f64, xmax: f64, ymax: f64) -> String {
+        format!("BuildMbr({xmin}, {ymin}, {xmax}, {ymax})")
+    }
+
     fn sql_ensure_geometry(&self, column: &str) -> String {
-        format!(
-            "CASE WHEN GeometryType({column}) IS NOT NULL THEN {column} \
-             ELSE GeomFromWKB({column}, 4326) END"
-        )
+        format!("COALESCE(GeomFromWKB({column}, 4326), {column})")
     }
 
     fn sql_geometry_bbox(&self, column: &str, from: &str) -> String {

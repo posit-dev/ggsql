@@ -258,15 +258,11 @@ impl BBox {
         dialect: &dyn SqlDialect,
         execute_query: &dyn Fn(&str) -> crate::Result<DataFrame>,
     ) -> Option<Self> {
-        let envelope = format!(
-            "ST_MakeEnvelope({}, {}, {}, {})",
-            self.xmin, self.ymin, self.xmax, self.ymax
-        );
+        let envelope = dialect.sql_make_envelope(self.xmin, self.ymin, self.xmax, self.ymax);
         let transformed = dialect.sql_st_transform(&envelope, &self.crs, target_crs);
-        let sql = format!(
-            "SELECT ST_XMin(g) AS xmin, ST_YMin(g) AS ymin, \
-                    ST_XMax(g) AS xmax, ST_YMax(g) AS ymax \
-             FROM (SELECT {transformed} AS g)"
+        let sql = dialect.sql_geometry_bbox(
+            "g",
+            &format!("(SELECT {transformed} AS g) AS \"__ggsql_bbox__\""),
         );
         execute_query(&sql)
             .ok()
@@ -374,10 +370,9 @@ fn graticule_bbox(
     // degenerate or incomplete values. Use the clip boundary extent which
     // correctly represents the visible hemisphere.
     if let Some(wkt) = clip_boundary_wkt {
-        let sql = format!(
-            "SELECT ST_XMin(g) AS xmin, ST_YMin(g) AS ymin, \
-                    ST_XMax(g) AS xmax, ST_YMax(g) AS ymax \
-             FROM (SELECT ST_GeomFromText('{wkt}') AS g)"
+        let sql = dialect.sql_geometry_bbox(
+            "g",
+            &format!("(SELECT ST_GeomFromText('{wkt}') AS g) AS \"__ggsql_bbox__\""),
         );
         if let Ok(df) = execute_query(&sql) {
             if let Some(clip_bbox) = BBox::from_df(&df, "EPSG:4326") {
