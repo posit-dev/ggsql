@@ -101,6 +101,17 @@ impl super::SqlDialect for SqliteDialect {
         }
     }
 
+    /// Geometry columns in registered tables hold raw WKB BLOBs, which
+    /// SpatiaLite functions reject. Convert those to SpatiaLite's internal
+    /// format; native SpatiaLite geometries (e.g. from a SpatiaLite database
+    /// file) pass through unchanged.
+    fn sql_ensure_geometry(&self, column: &str) -> String {
+        format!(
+            "CASE WHEN GeometryType({column}) IS NOT NULL THEN {column} \
+             ELSE GeomFromWKB({column}, 4326) END"
+        )
+    }
+
     fn sql_geometry_bbox(&self, column: &str, from: &str) -> String {
         format!(
             "SELECT MIN(MbrMinX({column})) AS xmin, MIN(MbrMinY({column})) AS ymin, \
@@ -699,6 +710,19 @@ fn sqlite_values_to_array(name: &str, values: Vec<rusqlite::types::Value>) -> Re
         }
     }
 
+    // A pure BLOB column (e.g. WKB geometry) maps to Arrow Binary so geometry
+    // auto-detection and spatial layers receive raw bytes, not a debug string.
+    if has_blob && !has_text {
+        let vals: Vec<Option<Vec<u8>>> = values
+            .into_iter()
+            .map(|v| match v {
+                Value::Blob(b) => Some(b),
+                _ => None,
+            })
+            .collect();
+        return Ok(Arc::new(BinaryArray::from_iter(vals.iter().map(|o| o.as_deref()))) as ArrayRef);
+    }
+
     if has_text || has_blob {
         let vals: Vec<Option<String>> = values
             .into_iter()
@@ -1105,6 +1129,17 @@ mod tests {
         assert_eq!(crate::array_util::value_to_string(h, 0), "010203");
         assert_eq!(crate::array_util::value_to_string(h, 1), "DEADBEEF");
         assert_eq!(crate::array_util::value_to_string(t, 2), "null");
+
+        // Reading a BLOB column back yields Arrow Binary.
+        let back = reader
+            .execute_sql("SELECT b FROM blob_data ORDER BY rowid")
+            .unwrap();
+        assert_eq!(back.column_dtype("b").unwrap(), DataType::Binary);
+        let col = back.column("b").unwrap();
+        let arr = col.as_any().downcast_ref::<BinaryArray>().unwrap();
+        assert_eq!(arr.value(0), &[0x01u8, 0x02, 0x03]);
+        assert_eq!(arr.value(1), &[0xDE, 0xAD, 0xBE, 0xEF]);
+        assert!(arr.is_null(2));
     }
 
     #[test]
