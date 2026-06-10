@@ -46,7 +46,6 @@ impl GeomTrait for Path {
         query: &str,
         projection: &Projection,
         dialect: &dyn SqlDialect,
-        _clip: bool,
         mappings: &mut Mappings,
         partition_by: &mut Vec<String>,
     ) -> Result<String> {

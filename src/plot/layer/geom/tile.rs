@@ -214,7 +214,6 @@ impl GeomTrait for Tile {
         query: &str,
         projection: &Projection,
         dialect: &dyn SqlDialect,
-        _clip: bool,
         mappings: &mut Mappings,
         partition_by: &mut Vec<String>,
     ) -> Result<String> {
@@ -1419,7 +1418,6 @@ mod tests {
                 "SELECT * FROM t",
                 &projection,
                 &crate::reader::AnsiDialect,
-                false,
                 &mut mappings,
                 &mut vec![],
             )
@@ -1448,7 +1446,6 @@ mod tests {
                 "SELECT * FROM t",
                 &projection,
                 &crate::reader::AnsiDialect,
-                false,
                 &mut mappings,
                 &mut vec![],
             )
@@ -1503,14 +1500,7 @@ mod tests {
         }
 
         let projected_sql = tile
-            .apply_projection(
-                input,
-                &projection,
-                dialect,
-                false,
-                &mut mappings,
-                &mut vec![],
-            )
+            .apply_projection(input, &projection, dialect, &mut mappings, &mut vec![])
             .unwrap();
 
         let df = reader.execute_sql(&projected_sql).unwrap();
@@ -1573,7 +1563,6 @@ mod tests {
                 "SELECT * FROM t",
                 &projection,
                 &crate::reader::AnsiDialect,
-                false,
                 &mut mappings,
                 &mut vec![],
             )

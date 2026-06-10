@@ -155,7 +155,6 @@ pub trait CoordTrait: std::fmt::Debug + Send + Sync {
                 &layer_queries[idx],
                 projection,
                 dialect,
-                false,
                 &mut layer.mappings,
                 &mut layer.partition_by,
             )?;

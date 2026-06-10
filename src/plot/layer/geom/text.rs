@@ -75,7 +75,6 @@ impl GeomTrait for Text {
         query: &str,
         projection: &Projection,
         dialect: &dyn SqlDialect,
-        _clip: bool,
         mappings: &mut Mappings,
         _partition_by: &mut Vec<String>,
     ) -> Result<String> {

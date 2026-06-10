@@ -54,7 +54,10 @@ pub(crate) fn apply_map_transforms(
         world_bbox = compute_world_bbox(&source, &target, dialect, execute_query);
         boundary_lonlat = Some(b);
     }
-    let clip = boundary_lonlat.is_some();
+    projection.properties.insert(
+        "clip".to_string(),
+        ParameterValue::Boolean(boundary_lonlat.is_some()),
+    );
 
     // Step 3: Apply per-layer projection (ST_Transform, clip to horizon)
     for (idx, layer) in layers.iter_mut().enumerate() {
@@ -62,7 +65,6 @@ pub(crate) fn apply_map_transforms(
             &layer_queries[idx],
             projection,
             dialect,
-            clip,
             &mut layer.mappings,
             &mut layer.partition_by,
         )?;

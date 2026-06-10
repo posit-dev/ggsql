@@ -86,7 +86,6 @@ impl GeomTrait for Line {
         query: &str,
         projection: &Projection,
         dialect: &dyn SqlDialect,
-        _clip: bool,
         mappings: &mut Mappings,
         partition_by: &mut Vec<String>,
     ) -> Result<String> {
@@ -155,7 +154,6 @@ mod tests {
                 "SELECT * FROM t",
                 &projection,
                 &AnsiDialect,
-                false,
                 &mut mappings,
                 &mut vec![],
             )

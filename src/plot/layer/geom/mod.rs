@@ -311,7 +311,6 @@ pub trait GeomTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
         query: &str,
         _projection: &Projection,
         _dialect: &dyn SqlDialect,
-        _clip: bool,
         _mappings: &mut Mappings,
         _partition_by: &mut Vec<String>,
     ) -> Result<String> {
@@ -847,12 +846,11 @@ impl Geom {
         query: &str,
         projection: &Projection,
         dialect: &dyn SqlDialect,
-        clip: bool,
         mappings: &mut Mappings,
         partition_by: &mut Vec<String>,
     ) -> Result<String> {
         self.0
-            .apply_projection(query, projection, dialect, clip, mappings, partition_by)
+            .apply_projection(query, projection, dialect, mappings, partition_by)
     }
 
     /// Adjust layer mappings and parameters based on geom-specific logic
