@@ -74,6 +74,43 @@ function renderTable(data: SqlResult): string {
   return `<table class="ggsql-table"><thead><tr>${ths}</tr></thead><tbody>${bodyRows}${truncationRow}</tbody></table>`;
 }
 
+// Fetch + compile extensions only when an example needs one.
+const EXTENSION_URLS: Record<string, string> = {
+  mod_spatialite: WASM_BASE + "mod_spatialite.wasm",
+};
+const extensionInstalls = new Map<string, Promise<void>>();
+
+function ensureExtension(name: string): Promise<void> {
+  let install = extensionInstalls.get(name);
+  if (!install) {
+    const url = EXTENSION_URLS[name];
+    if (!url) {
+      return Promise.reject(new Error(`Unknown extension '${name}'`));
+    }
+    setStatus(`Installing ${name} extension...`, "loading");
+    install = contextManager.installExtension(name, url).catch((e) => {
+      extensionInstalls.delete(name);
+      throw e;
+    });
+    extensionInstalls.set(name, install);
+  }
+  return install;
+}
+
+// Install the given extensions, reporting any failure to the user.
+async function ensureExtensions(names: string[] | undefined): Promise<boolean> {
+  try {
+    for (const name of names ?? []) {
+      await ensureExtension(name);
+    }
+    return true;
+  } catch (e: any) {
+    showProblems([`Extension install error: ${e}`], []);
+    setStatus("Extension error", "error");
+    return false;
+  }
+}
+
 async function executeQuery(query: string) {
   if (!query.trim()) {
     showProblems([], []);
@@ -156,7 +193,8 @@ function initializeExamples() {
     const button = document.createElement("button");
     button.className = "example-button";
     button.textContent = example.name;
-    button.onclick = () => {
+    button.onclick = async () => {
+      await ensureExtensions(example.extensions);
       editorManager.setValue(example.query);
     };
     examplesList.appendChild(button);
@@ -183,10 +221,12 @@ function initializeMobileExamples() {
     optgroup!.appendChild(option);
   });
 
-  select.addEventListener("change", () => {
+  select.addEventListener("change", async () => {
     const idx = parseInt(select.value, 10);
     if (!isNaN(idx) && examples[idx]) {
-      editorManager.setValue(examples[idx].query);
+      const example = examples[idx];
+      await ensureExtensions(example.extensions);
+      editorManager.setValue(example.query);
     }
   });
 }
@@ -199,10 +239,6 @@ async function main() {
     // Load builtin datasets
     setStatus("Loading builtin datasets...", "loading");
     await contextManager.registerBuiltinDatasets();
-
-    // Install extensions (fetch + compile, but don't load into SQLite yet)
-    setStatus("Installing extensions...", "loading");
-    await contextManager.installExtension("mod_spatialite", WASM_BASE + "mod_spatialite.wasm");
 
     setStatus("Initializing editor...", "loading");
     await editorManager.initialize(editorContainer, examples[0].query);

@@ -2,7 +2,7 @@ export interface Example {
   name: string;
   query: string;
   section: string;
-  loadExtension?: string;
+  extensions?: string[];
 }
 
 export const examples: Example[] = [
@@ -213,80 +213,60 @@ DRAW point MAPPING bill_len AS x, bill_dep AS y, body_mass AS size
 LABEL title => 'Penguin Measurements', x => 'Bill Length (mm)', y => 'Bill Depth (mm)'`,
   },
 
-  // === Extensions ===
+  // === Spatial ===
   {
-    section: "Extensions",
-    name: "Wasm Extension",
-    query: `-- Loaded from test_ext.wasm via the SQLite extension API
-SELECT test_ext_hello() AS greeting`,
-    loadExtension: "test_ext",
-  },
-  {
-    section: "Extensions",
-    name: "SpatiaLite",
-    query: `-- SpatiaLite reprojects world cities from WGS84 lon/lat (EPSG:4326)
--- to Web Mercator metres (EPSG:3857) via PROJ, then plots them as a map.
-WITH cities(name, lon, lat) AS (
-  VALUES
-    ('London',          -0.1276,  51.5074),
-    ('New York',       -74.0060,  40.7128),
-    ('Tokyo',          139.6917,  35.6895),
-    ('Sydney',         151.2093, -33.8688),
-    ('Cape Town',       18.4241, -33.9249),
-    ('Rio de Janeiro', -43.1729, -22.9068),
-    ('Moscow',          37.6173,  55.7558)
-)
-SELECT
-  name,
-  ST_X(ST_Transform(MakePoint(lon, lat, 4326), 3857)) AS x,
-  ST_Y(ST_Transform(MakePoint(lon, lat, 4326), 3857)) AS y
-FROM cities
-VISUALISE x AS x, y AS y
-DRAW point SETTING size => 6
-DRAW text MAPPING name AS label SETTING vjust => 'bottom', offset => [0, -8]
-LABEL
-  title => 'World cities in Web Mercator (EPSG:3857)',
-  subtitle => 'Reprojected from WGS84 with SpatiaLite ST_Transform (PROJ)',
-  x => 'Easting (m)',
-  y => 'Northing (m)'`,
-    loadExtension: "mod_spatialite",
-  },
-  {
-    section: "Extensions",
+    section: "Spatial",
+    extensions: ["mod_spatialite"],
     name: "World map",
-    query: `-- Country outlines from the built-in ggsql:world dataset. SpatiaLite
--- reprojects each country (PROJ, to equal-area EPSG:6933), simplifies it
--- (GEOS, 25 km) to thin the geometry, then a numbers table explodes every
--- polygon ring into ordered vertices for the path layer (ggsql can't pass
--- recursive CTEs to SQLite, so the vertex indices come from a join).
-WITH
-nums(i) AS (
-  SELECT 1 + d0.d + 10 * d1.d + 100 * d2.d AS i
-  FROM (SELECT 0 AS d UNION ALL SELECT 1 UNION ALL SELECT 2 UNION ALL SELECT 3 UNION ALL SELECT 4 UNION ALL SELECT 5 UNION ALL SELECT 6 UNION ALL SELECT 7 UNION ALL SELECT 8 UNION ALL SELECT 9) d0,
-       (SELECT 0 AS d UNION ALL SELECT 1 UNION ALL SELECT 2 UNION ALL SELECT 3 UNION ALL SELECT 4 UNION ALL SELECT 5 UNION ALL SELECT 6 UNION ALL SELECT 7 UNION ALL SELECT 8 UNION ALL SELECT 9) d1,
-       (SELECT 0 AS d UNION ALL SELECT 1 UNION ALL SELECT 2 UNION ALL SELECT 3 UNION ALL SELECT 4 UNION ALL SELECT 5 UNION ALL SELECT 6 UNION ALL SELECT 7 UNION ALL SELECT 8 UNION ALL SELECT 9) d2
-),
-geo AS (
-  SELECT name, continent,
-         ST_Simplify(ST_Transform(CastToMulti(GeomFromWKB(geom, 4326)), 6933), 25000) AS g
-  FROM ggsql:world
-),
-ring AS (
-  SELECT name, continent, ST_ExteriorRing(ST_GeometryN(g, nums.i)) AS r, nums.i AS pidx
-  FROM geo JOIN nums ON nums.i <= ST_NumGeometries(g)
-)
-SELECT
-  ring.name || '-' || ring.pidx AS ring_id,
-  ring.continent,
-  nums.i AS vidx,
-  ST_X(ST_PointN(ring.r, nums.i)) AS x,
-  ST_Y(ST_PointN(ring.r, nums.i)) AS y
-FROM ring JOIN nums ON nums.i <= ST_NumPoints(ring.r)
-VISUALISE x AS x, y AS y
-DRAW path MAPPING continent AS color SETTING linewidth => 0.5 PARTITION BY ring_id ORDER BY vidx
-LABEL
-  title => 'World country outlines (EPSG:6933 equal-area)',
-  color => 'Continent'`,
-    loadExtension: "mod_spatialite",
+    query: `-- The spatial layer draws geographic geometries. The geometry column
+-- of ggsql:world is detected automatically, so no mapping is needed.
+VISUALISE FROM ggsql:world
+DRAW spatial`,
+  },
+  {
+    section: "Spatial",
+    extensions: ["mod_spatialite"],
+    name: "Choropleth",
+    query: `-- Shade each country by a variable. Population is heavily skewed,
+-- so a log scale makes the gradient readable.
+VISUALISE FROM ggsql:world
+DRAW spatial
+  MAPPING population AS fill
+  SETTING opacity => 1
+SCALE fill TO viridis VIA log
+LABEL title => 'Population by country', fill => 'Population'`,
+  },
+  {
+    section: "Spatial",
+    extensions: ["mod_spatialite"],
+    name: "Projection",
+    query: `-- PROJECT TO a named map projection. Robinson is a good default
+-- for world maps; try mercator, mollweide, natural or eckert4.
+VISUALISE continent AS fill FROM ggsql:world
+DRAW spatial
+PROJECT TO robinson`,
+  },
+  {
+    section: "Spatial",
+    extensions: ["mod_spatialite"],
+    name: "Globe",
+    query: `-- The orthographic projection shows the Earth as a globe. The origin
+-- setting (lon, lat) chooses which hemisphere faces the viewer.
+VISUALISE continent AS fill FROM ggsql:world
+DRAW spatial
+PROJECT TO orthographic
+  SETTING origin => (133.77, -25.27)`,
+  },
+  {
+    section: "Spatial",
+    extensions: ["mod_spatialite"],
+    name: "Regional map",
+    query: `-- Filtering the data zooms the map to that region, and a conic
+-- projection like Lambert suits a single continent.
+VISUALISE continent AS fill FROM ggsql:world
+DRAW spatial
+  FILTER continent == 'Africa'
+PROJECT TO lambert
+  SETTING origin => (20, 5)`,
   },
 ];
