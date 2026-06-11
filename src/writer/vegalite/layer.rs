@@ -1603,6 +1603,48 @@ impl GeomRenderer for SegmentRenderer {
 }
 
 // =============================================================================
+// Ribbon Renderer
+// =============================================================================
+
+/// Renderer for ribbon geom — normally an area (x/y/y2), but when densified
+/// under map projection the ribbon is expanded to a closed polygon.
+pub struct RibbonRenderer;
+
+impl GeomRenderer for RibbonRenderer {
+    fn modify_spec(
+        &self,
+        layer_spec: &mut Value,
+        layer: &Layer,
+        context: &RenderContext,
+    ) -> Result<()> {
+        if layer
+            .partition_by
+            .contains(&"__ggsql_ribbon_id__".to_string())
+        {
+            layer_spec["mark"] = json!({
+                "type": "line",
+                "interpolate": "linear-closed"
+            });
+
+            if let Some(encoding) = layer_spec
+                .get_mut("encoding")
+                .and_then(|e| e.as_object_mut())
+            {
+                let (_, pos1_end, _, _, pos2_end, _) = &context.channels;
+                encoding.remove(pos1_end.as_str());
+                encoding.remove(pos2_end.as_str());
+                encoding.insert(
+                    "order".to_string(),
+                    json!({"field": ROW_INDEX_COLUMN, "type": "quantitative"}),
+                );
+            }
+        }
+
+        Ok(())
+    }
+}
+
+// =============================================================================
 // Violin Renderer
 // =============================================================================
 
@@ -2532,9 +2574,10 @@ pub fn get_renderer(geom: &Geom) -> Box<dyn GeomRenderer> {
         GeomType::Text => Box::new(TextRenderer),
         GeomType::Range => Box::new(RangeRenderer),
         GeomType::Rule => Box::new(RuleRenderer),
+        GeomType::Ribbon => Box::new(RibbonRenderer),
         GeomType::Segment => Box::new(SegmentRenderer),
         GeomType::Spatial => Box::new(SpatialRenderer),
-        // All other geoms (Point, Area, Ribbon, Density, etc.) use the default renderer
+        // All other geoms (Point, Area, Density, etc.) use the default renderer
         _ => Box::new(DefaultRenderer),
     }
 }
