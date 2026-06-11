@@ -31,16 +31,9 @@ check_wasm32_support() {
 echo "Building WASM library..."
 (cd "$SCRIPT_DIR/library" && npm install && npm run build)
 
-SQLITE_WASM_RS="${SQLITE_WASM_RS:-$REPO_ROOT/../sqlite-wasm-rs}"
-
 if [ "$SKIP_BINARY" = false ]; then
     echo "Checking wasm build prerequisites..."
     check_wasm32_support
-
-    if [ -d "$SQLITE_WASM_RS/loadable_extensions" ]; then
-        echo "Building loadable extensions..."
-        make -C "$SQLITE_WASM_RS/loadable_extensions"
-    fi
 
     echo "Building WASM binary..."
     rm -rf "$SCRIPT_DIR/pkg"   # start clean so stale wasm-bindgen snippets don't accumulate
@@ -74,17 +67,28 @@ else
     echo "Skipping WASM binary build (--skip-binary)."
 fi
 
+SPATIALITE_TAG="spatialite-5.1.0-wasm"
+SPATIALITE_URL="https://github.com/ggsql-dev/sqlite-wasm-rs/releases/download/$SPATIALITE_TAG/mod_spatialite.wasm"
+
+# SPATIALITE_WASM overrides the download with a locally built binary.
+if [ -n "${SPATIALITE_WASM:-}" ]; then
+    echo "Using local mod_spatialite.wasm: $SPATIALITE_WASM"
+    cp "$SPATIALITE_WASM" "$SCRIPT_DIR/pkg/mod_spatialite.wasm"
+else
+    CACHED="$REPO_ROOT/target/wasm-extensions/$SPATIALITE_TAG/mod_spatialite.wasm"
+    if [ ! -f "$CACHED" ]; then
+        echo "Downloading mod_spatialite.wasm ($SPATIALITE_TAG)..."
+        mkdir -p "$(dirname "$CACHED")"
+        curl -sSfL -o "$CACHED.tmp" "$SPATIALITE_URL"
+        mv "$CACHED.tmp" "$CACHED"
+    else
+        echo "Using cached mod_spatialite.wasm: $CACHED"
+    fi
+    cp "$CACHED" "$SCRIPT_DIR/pkg/mod_spatialite.wasm"
+fi
+
 echo "Building WASM demo and Quarto integration..."
 (cd "$SCRIPT_DIR/demo" && npm install && npm run build)
-
-for wasm in "$SQLITE_WASM_RS"/loadable_extensions/*/mod_spatialite.wasm; do
-    if [ -f "$wasm" ]; then
-        name="$(basename "$wasm")"
-        echo "Copying $name..."
-        cp "$wasm" "$SCRIPT_DIR/pkg/"
-        cp "$wasm" "$SCRIPT_DIR/demo/dist/" 2>/dev/null || true
-    fi
-done
 
 echo "Copying output to doc/wasm..."
 rm -rf "$REPO_ROOT/doc/wasm"

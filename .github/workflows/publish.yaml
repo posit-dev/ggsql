@@ -66,34 +66,8 @@ jobs:
       - name: Install Jupyter kernel
         run: ./target/release/ggsql-jupyter --install
 
-      - name: Build WASM library
-        working-directory: ggsql-wasm/library
-        run: npm install && npm run build
-
       - name: Build WASM package
-        working-directory: ggsql-wasm
-        run: wasm-pack build --target web --profile wasm --no-opt
-
-      # TODO: drop once rustwasm/wasm-pack#1092 is resolved.
-      - name: Rebuild wasm bindings with --keep-lld-exports
-        run: |
-          wb=$(find "$HOME/.cache/.wasm-pack" "$HOME/Library/Caches/.wasm-pack" -name wasm-bindgen -type f 2>/dev/null | sort -V | tail -1 || true)
-          : "${wb:?cached wasm-bindgen not found}"
-          "$wb" --target web --keep-lld-exports \
-            --out-dir ggsql-wasm/pkg \
-            target/wasm32-unknown-unknown/wasm/ggsql_wasm.wasm
-
-      - name: Optimise WASM binary
-        working-directory: ggsql-wasm
-        run: wasm-opt pkg/ggsql_wasm_bg.wasm -o pkg/ggsql_wasm_bg.wasm -Oz --all-features
-
-      - name: Build WASM demo
-        working-directory: ggsql-wasm/demo
-        run: npm install && npm run build
-
-      - name: Copying output to doc/wasm...
-        working-directory: ggsql-wasm/demo
-        run: cp -r dist ../../doc/wasm
+        run: ./ggsql-wasm/build-wasm.sh
 
       - name: Copy CHANGELOG.md to root
         run: cp CHANGELOG.md doc/

@@ -4049,6 +4049,7 @@ dependencies = [
 [[package]]
 name = "sqlite-wasm-rs"
 version = "0.5.5"
+source = "git+https://github.com/ggsql-dev/sqlite-wasm-rs.git?branch=loadable-extensions#119e2c7e5b0d0c136dc931a8df089c2914113817"
 dependencies = [
  "cc",
  "js-sys",

@@ -82,4 +82,4 @@ opt-level = "z"
 panic = "abort"
 
 [patch.crates-io]
-sqlite-wasm-rs = { path = "../sqlite-wasm-rs" }
+sqlite-wasm-rs = { git = "https://github.com/ggsql-dev/sqlite-wasm-rs.git", branch = "loadable-extensions" }
