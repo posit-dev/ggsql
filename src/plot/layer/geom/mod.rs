@@ -318,8 +318,9 @@ pub trait GeomTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
     ) -> Result<String> {
         if needs_projection(projection) {
             return Err(crate::GgsqlError::ValidationError(format!(
-                "Layer '{}' is not supported under map projection.",
-                self.geom_type()
+                "Layer '{}' is not supported under '{}' projection.",
+                self.geom_type(),
+                projection.coord.name()
             )));
         }
         Ok(query.to_string())
@@ -1156,7 +1157,7 @@ mod tests {
         let err = result.unwrap_err();
         assert_eq!(
             err.to_string(),
-            "Validation error: Layer 'bar' is not supported under map projection."
+            "Validation error: Layer 'bar' is not supported under 'Unknown' projection."
         );
     }
 
