@@ -5,6 +5,7 @@ use super::{
     GeomType, ParamDefinition,
 };
 use crate::plot::projection::coord::map::clip_boundary_table;
+use crate::plot::projection::coord::CoordKind;
 use crate::plot::projection::Projection;
 use crate::plot::types::{DefaultAestheticValue, ParameterValue};
 use crate::reader::SqlDialect;
@@ -54,22 +55,27 @@ impl GeomTrait for Rule {
             return Ok(query.to_string());
         }
 
-        // Rules only densify when clipping is active (clip boundary table exists)
-        let clip_active = matches!(
-            projection.properties.get("clip"),
-            Some(ParameterValue::Boolean(true))
-        );
         // The rule input always has one position column named __ggsql_aes_pos1__
         // regardless of whether the aesthetic key is "pos1" or "pos2" — the executor
         // normalizes it to the pos1 slot.
         let columns = vec![naming::aesthetic_column("pos1")];
-        if !clip_active {
-            return project_position_columns(query, projection, dialect, &columns);
-        }
 
         let has_pos1 = mappings.contains_key("pos1");
+        let bbox_expr = match projection.coord.coord_kind() {
+            CoordKind::Map
+                if matches!(
+                    projection.properties.get("clip"),
+                    Some(ParameterValue::Boolean(true))
+                ) =>
+            {
+                let boundary_table = clip_boundary_table();
+                dialect.sql_geometry_bbox("geom", &boundary_table)
+            }
+            // If we don't have a bbox, we cannot expand rule layer
+            _ => return project_position_columns(query, projection, dialect, &columns),
+        };
         let (expanded, expanded_columns) =
-            expand_rule_to_segment(query, &columns, has_pos1, dialect);
+            expand_rule_to_segment(query, &columns, has_pos1, &bbox_expr);
 
         partition_by.push(naming::DENSIFY_ID_COLUMN.to_string());
         parameters.insert("densified".to_string(), ParameterValue::Boolean(true));
@@ -84,14 +90,18 @@ impl GeomTrait for Rule {
             1.0,
             360,
         );
-        // Clip densified vertices to the clip boundary before projecting.
-        let pos1_q = naming::quote_ident(&naming::aesthetic_column("pos1"));
-        let pos2_q = naming::quote_ident(&naming::aesthetic_column("pos2"));
-        let clip_table = clip_boundary_table();
-        let clipped = format!(
-            "SELECT * FROM ({densified}) WHERE ST_Contains(\
-             (SELECT geom FROM {clip_table}), ST_Point({pos1_q}, {pos2_q}))"
-        );
+        let clipped = match projection.coord.coord_kind() {
+            CoordKind::Map => {
+                let pos1_q = naming::quote_ident(&naming::aesthetic_column("pos1"));
+                let pos2_q = naming::quote_ident(&naming::aesthetic_column("pos2"));
+                let clip_table = clip_boundary_table();
+                format!(
+                    "SELECT * FROM ({densified}) WHERE ST_Contains(\
+                     (SELECT geom FROM {clip_table}), ST_Point({pos1_q}, {pos2_q}))"
+                )
+            }
+            _ => densified,
+        };
 
         let projected = project_position_columns(&clipped, projection, dialect, &expanded_columns)?;
 
@@ -214,19 +224,18 @@ impl GeomTrait for Rule {
 /// - true (vertical rule): pos1 is longitude (fixed), synthesize pos2 from bbox y.
 /// - false (horizontal rule): pos1 is latitude (fixed), rename to pos2, synthesize
 ///   pos1 from bbox x.
+///
+/// `bbox_expr` is a SQL expression that yields xmin, ymin, xmax, ymax columns.
 fn expand_rule_to_segment(
     query: &str,
     columns: &[String],
     has_pos1: bool,
-    dialect: &dyn SqlDialect,
+    bbox_expr: &str,
 ) -> (String, Vec<String>) {
     let pos1_col = naming::aesthetic_column("pos1");
     let pos2_col = naming::aesthetic_column("pos2");
     let pos1_q = naming::quote_ident(&pos1_col);
     let pos2_q = naming::quote_ident(&pos2_col);
-
-    let boundary_table = clip_boundary_table();
-    let bbox_expr = dialect.sql_geometry_bbox("geom", &boundary_table);
 
     // The input column is always __ggsql_aes_pos1__. Build the SELECT
     // expressions that produce both pos1 and pos2 in the output.
@@ -584,8 +593,9 @@ mod tests {
         // Run expand + densify manually to verify latitude stays constant pre-projection.
         let columns = vec![naming::aesthetic_column("pos1")];
         let has_pos1 = false;
+        let bbox_expr = dialect.sql_geometry_bbox("geom", &boundary_table);
         let (expanded, expanded_columns) =
-            expand_rule_to_segment(&input, &columns, has_pos1, dialect);
+            expand_rule_to_segment(&input, &columns, has_pos1, &bbox_expr);
         let densified = densify_edges(
             &expanded,
             dialect,
