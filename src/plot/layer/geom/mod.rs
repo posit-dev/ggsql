@@ -448,6 +448,9 @@ pub(crate) fn needs_projection(projection: &Projection) -> bool {
 ///   row index is used (path/polygon).
 /// - `close_ring`: when true, the last vertex connects back to the first (polygon).
 /// - `segment_length`: target edge length after subdivision (in position units).
+///   Callers pass 1.0 assuming geographic (lon/lat) source coordinates. For
+///   projected sources this over-densifies, but `n_segments` caps the vertex
+///   count per edge so the cost stays bounded.
 /// - `n_segments`: size of the integer series (must be at least as large as the
 ///   maximum number of subdivisions any single edge can produce).
 #[allow(clippy::too_many_arguments)]
