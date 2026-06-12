@@ -710,7 +710,6 @@ impl GeomRenderer for RuleRenderer {
             // Regular horizontal/vertical rule - no special rendering needed
             return Ok(());
         }
-
         // Use layer's pre-computed orientation
         let (pos1, pos1_end, _, pos2, pos2_end, _) = &context.channels;
         let (primary, primary2, secondary, secondary2, extent_aes) = if is_transposed(layer) {
@@ -759,6 +758,29 @@ impl GeomRenderer for RuleRenderer {
         layer: &Layer,
         context: &RenderContext,
     ) -> Result<()> {
+        // Densified rule: expanded to a multi-row line under map projection
+        if layer
+            .partition_by
+            .contains(&"__ggsql_rule_id__".to_string())
+        {
+            layer_spec["mark"] = json!({
+                "type": "line",
+                "clip": true
+            });
+
+            if let Some(encoding) = layer_spec
+                .get_mut("encoding")
+                .and_then(|e| e.as_object_mut())
+            {
+                encoding.insert(
+                    "order".to_string(),
+                    json!({"field": ROW_INDEX_COLUMN, "type": "quantitative"}),
+                );
+            }
+
+            return Ok(());
+        }
+
         // Determine slope expression: either a literal value or a field reference
         let slope_expr = match layer.mappings.get("slope") {
             Some(AestheticValue::Literal(ParameterValue::Number(n))) if *n == 0.0 => {

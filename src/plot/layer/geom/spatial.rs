@@ -78,6 +78,7 @@ impl GeomTrait for Spatial {
         dialect: &dyn SqlDialect,
         mappings: &mut Mappings,
         _partition_by: &mut Vec<String>,
+        _parameters: &mut std::collections::HashMap<String, crate::plot::types::ParameterValue>,
     ) -> crate::Result<String> {
         let columns = mappings.column_names();
         let col = naming::quote_ident(&naming::aesthetic_column("geometry"));
@@ -148,6 +149,7 @@ mod tests {
                 &AnsiDialect,
                 &mut Mappings::new(),
                 &mut vec![],
+                &mut std::collections::HashMap::new(),
             )
             .unwrap();
 
@@ -166,6 +168,7 @@ mod tests {
                 &AnsiDialect,
                 &mut Mappings::new(),
                 &mut vec![],
+                &mut std::collections::HashMap::new(),
             )
             .unwrap();
 
@@ -189,6 +192,7 @@ mod tests {
                 &AnsiDialect,
                 &mut Mappings::new(),
                 &mut vec![],
+                &mut std::collections::HashMap::new(),
             )
             .unwrap();
 
@@ -217,6 +221,7 @@ mod tests {
                 &AnsiDialect,
                 &mut Mappings::new(),
                 &mut vec![],
+                &mut std::collections::HashMap::new(),
             )
             .unwrap();
 
@@ -243,6 +248,7 @@ mod tests {
                 &AnsiDialect,
                 &mut Mappings::new(),
                 &mut vec![],
+                &mut std::collections::HashMap::new(),
             )
             .unwrap();
 
@@ -271,6 +277,7 @@ mod tests {
                 &AnsiDialect,
                 &mut Mappings::new(),
                 &mut vec![],
+                &mut std::collections::HashMap::new(),
             )
             .unwrap();
 

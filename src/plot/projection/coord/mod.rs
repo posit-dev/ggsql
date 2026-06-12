@@ -157,6 +157,7 @@ pub trait CoordTrait: std::fmt::Debug + Send + Sync {
                 dialect,
                 &mut layer.mappings,
                 &mut layer.partition_by,
+                &mut layer.parameters,
             )?;
         }
         Ok(())

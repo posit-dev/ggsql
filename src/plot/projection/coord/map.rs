@@ -67,6 +67,7 @@ pub(crate) fn apply_map_transforms(
             dialect,
             &mut layer.mappings,
             &mut layer.partition_by,
+            &mut layer.parameters,
         )?;
     }
 

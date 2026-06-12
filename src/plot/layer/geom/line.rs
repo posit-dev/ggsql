@@ -88,6 +88,7 @@ impl GeomTrait for Line {
         dialect: &dyn SqlDialect,
         mappings: &mut Mappings,
         partition_by: &mut Vec<String>,
+        _parameters: &mut std::collections::HashMap<String, crate::plot::types::ParameterValue>,
     ) -> Result<String> {
         if !needs_projection(projection) {
             return Ok(query.to_string());
@@ -117,7 +118,6 @@ impl std::fmt::Display for Line {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::naming;
     use crate::plot::types::ParameterValue;
     use crate::reader::AnsiDialect;
 
@@ -144,6 +144,7 @@ mod tests {
                 &AnsiDialect,
                 &mut mappings,
                 &mut vec![],
+                &mut std::collections::HashMap::new(),
             )
             .unwrap();
 

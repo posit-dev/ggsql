@@ -57,6 +57,7 @@ impl GeomTrait for Segment {
         dialect: &dyn SqlDialect,
         mappings: &mut Mappings,
         partition_by: &mut Vec<String>,
+        _parameters: &mut std::collections::HashMap<String, crate::plot::types::ParameterValue>,
     ) -> Result<String> {
         if !needs_projection(projection) {
             return Ok(query.to_string());
@@ -220,6 +221,7 @@ mod tests {
                 &crate::reader::AnsiDialect,
                 &mut mappings,
                 &mut partition_by,
+                &mut std::collections::HashMap::new(),
             )
             .unwrap();
 
@@ -250,6 +252,7 @@ mod tests {
                 &crate::reader::AnsiDialect,
                 &mut mappings,
                 &mut partition_by,
+                &mut std::collections::HashMap::new(),
             )
             .unwrap();
 
@@ -306,6 +309,7 @@ mod tests {
                 dialect,
                 &mut mappings,
                 &mut partition_by,
+                &mut std::collections::HashMap::new(),
             )
             .unwrap();
 

@@ -154,6 +154,7 @@ pub trait GeomTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
         &self,
         _mappings: &crate::Mappings,
         _aesthetic_ctx: &Option<AestheticContext>,
+        _partition_by: &[String],
     ) -> std::result::Result<(), String> {
         Ok(())
     }
@@ -313,6 +314,7 @@ pub trait GeomTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
         _dialect: &dyn SqlDialect,
         _mappings: &mut Mappings,
         _partition_by: &mut Vec<String>,
+        _parameters: &mut std::collections::HashMap<String, ParameterValue>,
     ) -> Result<String> {
         Ok(query.to_string())
     }
@@ -848,9 +850,16 @@ impl Geom {
         dialect: &dyn SqlDialect,
         mappings: &mut Mappings,
         partition_by: &mut Vec<String>,
+        parameters: &mut std::collections::HashMap<String, ParameterValue>,
     ) -> Result<String> {
-        self.0
-            .apply_projection(query, projection, dialect, mappings, partition_by)
+        self.0.apply_projection(
+            query,
+            projection,
+            dialect,
+            mappings,
+            partition_by,
+            parameters,
+        )
     }
 
     /// Adjust layer mappings and parameters based on geom-specific logic
@@ -884,8 +893,10 @@ impl Geom {
         &self,
         mappings: &Mappings,
         aesthetic_ctx: &Option<AestheticContext>,
+        partition_by: &[String],
     ) -> std::result::Result<(), String> {
-        self.0.validate_aesthetics(mappings, aesthetic_ctx)
+        self.0
+            .validate_aesthetics(mappings, aesthetic_ctx, partition_by)
     }
 }
 

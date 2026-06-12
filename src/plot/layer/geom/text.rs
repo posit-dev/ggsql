@@ -77,6 +77,7 @@ impl GeomTrait for Text {
         dialect: &dyn SqlDialect,
         mappings: &mut Mappings,
         _partition_by: &mut Vec<String>,
+        _parameters: &mut std::collections::HashMap<String, crate::plot::types::ParameterValue>,
     ) -> Result<String> {
         let columns = mappings.column_names();
         project_position_columns(query, projection, dialect, &columns)

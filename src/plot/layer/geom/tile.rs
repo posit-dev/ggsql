@@ -216,6 +216,7 @@ impl GeomTrait for Tile {
         dialect: &dyn SqlDialect,
         mappings: &mut Mappings,
         partition_by: &mut Vec<String>,
+        _parameters: &mut std::collections::HashMap<String, crate::plot::types::ParameterValue>,
     ) -> Result<String> {
         if !needs_projection(projection) {
             return Ok(query.to_string());
@@ -1406,6 +1407,7 @@ mod tests {
                 &crate::reader::AnsiDialect,
                 &mut mappings,
                 &mut vec![],
+                &mut std::collections::HashMap::new(),
             )
             .unwrap();
 
@@ -1434,6 +1436,7 @@ mod tests {
                 &crate::reader::AnsiDialect,
                 &mut mappings,
                 &mut vec![],
+                &mut std::collections::HashMap::new(),
             )
             .unwrap();
 
@@ -1486,7 +1489,14 @@ mod tests {
         }
 
         let projected_sql = tile
-            .apply_projection(input, &projection, dialect, &mut mappings, &mut vec![])
+            .apply_projection(
+                input,
+                &projection,
+                dialect,
+                &mut mappings,
+                &mut vec![],
+                &mut std::collections::HashMap::new(),
+            )
             .unwrap();
 
         let df = reader.execute_sql(&projected_sql).unwrap();
@@ -1551,6 +1561,7 @@ mod tests {
                 &crate::reader::AnsiDialect,
                 &mut mappings,
                 &mut vec![],
+                &mut std::collections::HashMap::new(),
             )
             .unwrap();
 
