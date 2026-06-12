@@ -306,16 +306,22 @@ pub trait GeomTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
     /// (e.g. tile adds `__ggsql_poly_id__`) push them here so they survive
     /// downstream pruning.
     ///
-    /// The default is a no-op (returns query unchanged).
+    /// The default returns an error for unsupported geoms under map projection.
     fn apply_projection(
         &self,
         query: &str,
-        _projection: &Projection,
+        projection: &Projection,
         _dialect: &dyn SqlDialect,
         _mappings: &mut Mappings,
         _partition_by: &mut Vec<String>,
         _parameters: &mut std::collections::HashMap<String, ParameterValue>,
     ) -> Result<String> {
+        if needs_projection(projection) {
+            return Err(crate::GgsqlError::ValidationError(format!(
+                "Layer '{}' is not supported under map projection.",
+                self.geom_type()
+            )));
+        }
         Ok(query.to_string())
     }
 
@@ -1120,6 +1126,35 @@ mod tests {
             ParameterValue::String("+proj=ortho".to_string()),
         );
         assert!(needs_projection(&projection));
+    }
+
+    #[test]
+    fn test_apply_projection_default_errors_for_unsupported_geom() {
+        let mut projection = Projection::map();
+        projection.properties.insert(
+            "source".to_string(),
+            ParameterValue::String("EPSG:4326".to_string()),
+        );
+        projection.properties.insert(
+            "target".to_string(),
+            ParameterValue::String("+proj=ortho".to_string()),
+        );
+
+        let geom = Geom::bar();
+        let result = geom.apply_projection(
+            "SELECT * FROM t",
+            &projection,
+            &crate::reader::AnsiDialect,
+            &mut Mappings::new(),
+            &mut vec![],
+            &mut std::collections::HashMap::new(),
+        );
+
+        let err = result.unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            "Validation error: Layer 'bar' is not supported under map projection."
+        );
     }
 
     #[test]
