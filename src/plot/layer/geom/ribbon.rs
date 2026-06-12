@@ -205,9 +205,10 @@ fn expand_ribbon_to_polygon(
     lower_parts.push(format!("{pos2min_q} AS {pos2_q}"));
 
     let sql = format!(
-        "SELECT {} FROM ({numbered}) \"__ggsql_r__\" \
+        "WITH \"__ggsql_r__\" AS ({numbered}) \
+         SELECT {} FROM \"__ggsql_r__\" \
          UNION ALL \
-         SELECT {} FROM ({numbered}) \"__ggsql_r__\"",
+         SELECT {} FROM \"__ggsql_r__\"",
         upper_parts.join(", "),
         lower_parts.join(", "),
     );
