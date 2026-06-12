@@ -125,6 +125,8 @@ website:
         - section: Coordinate systems
           contents:
             - auto: syntax/coord/*
+        - text: Agent Skill
+          href: syntax/skill.qmd
     - id: get_started
       title: Get started
       style: "floating"
