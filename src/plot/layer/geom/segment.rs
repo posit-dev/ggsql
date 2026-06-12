@@ -66,8 +66,7 @@ impl GeomTrait for Segment {
         let columns = mappings.column_names();
         let (expanded, expanded_columns) = expand_segment_to_vertices(query, &columns);
 
-        let segment_id_col = "__ggsql_segment_id__".to_string();
-        partition_by.push(segment_id_col);
+        partition_by.push(naming::DENSIFY_ID_COLUMN.to_string());
 
         let densified = densify_edges(
             &expanded,
@@ -93,7 +92,7 @@ impl GeomTrait for Segment {
 ///
 /// Input: one row per segment with pos1/pos2 (start) and pos1end/pos2end (end).
 /// Output: two rows per segment with pos1/pos2 vertex positions and a
-/// `__ggsql_segment_id__` grouping column. Material aesthetics pass through unchanged.
+/// `DENSIFY_ID_COLUMN` grouping column. Material aesthetics pass through unchanged.
 fn expand_segment_to_vertices(query: &str, columns: &[String]) -> (String, Vec<String>) {
     let pos1_col = naming::aesthetic_column("pos1");
     let pos2_col = naming::aesthetic_column("pos2");
@@ -109,9 +108,11 @@ fn expand_segment_to_vertices(query: &str, columns: &[String]) -> (String, Vec<S
         .map(|c| naming::quote_ident(c))
         .collect();
 
+    let densify_id_q = naming::quote_ident(naming::DENSIFY_ID_COLUMN);
+
     let numbered = format!(
         "SELECT *, ROW_NUMBER() OVER (ORDER BY (SELECT NULL)) \
-         AS \"__ggsql_segment_id__\" FROM ({query})"
+         AS {densify_id_q} FROM ({query})"
     );
 
     let vertices_table = "(SELECT 0 AS \"__ggsql_vertex__\" UNION ALL SELECT 1)";
@@ -122,7 +123,7 @@ fn expand_segment_to_vertices(query: &str, columns: &[String]) -> (String, Vec<S
     let pos2end_q = naming::quote_ident(&pos2end_col);
 
     let mut select_parts: Vec<String> = passthrough;
-    select_parts.push("\"__ggsql_segment_id__\"".to_string());
+    select_parts.push(densify_id_q.to_string());
     select_parts.push("\"__ggsql_vertex__\"".to_string());
     select_parts.push(format!(
         "CASE \"__ggsql_vertex__\" WHEN 0 THEN {pos1_q} WHEN 1 THEN {pos1end_q} END AS {pos1_q}"
@@ -138,7 +139,7 @@ fn expand_segment_to_vertices(query: &str, columns: &[String]) -> (String, Vec<S
     );
 
     let mut out_columns: Vec<String> = passthrough_cols.into_iter().cloned().collect();
-    out_columns.push("__ggsql_segment_id__".to_string());
+    out_columns.push(naming::DENSIFY_ID_COLUMN.to_string());
     out_columns.push(pos1_col);
     out_columns.push(pos2_col);
 
@@ -256,10 +257,10 @@ mod tests {
             )
             .unwrap();
 
-        assert!(result.contains("__ggsql_segment_id__"));
+        assert!(result.contains(naming::DENSIFY_ID_COLUMN));
         assert!(result.contains("CROSS JOIN"));
         assert!(result.contains("ST_Transform"));
-        assert!(partition_by.contains(&"__ggsql_segment_id__".to_string()));
+        assert!(partition_by.contains(&naming::DENSIFY_ID_COLUMN.to_string()));
         // pos1end/pos2end remapped to pos1/pos2 columns
         assert!(mappings.contains_key("pos1end"));
         assert!(mappings.contains_key("pos2end"));

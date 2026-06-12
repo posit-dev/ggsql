@@ -68,8 +68,7 @@ impl GeomTrait for Ribbon {
         let columns = mappings.column_names();
         let (expanded, expanded_columns) = expand_ribbon_to_polygon(query, &columns, partition_by);
 
-        let ribbon_id_col = "__ggsql_ribbon_id__".to_string();
-        partition_by.push(ribbon_id_col);
+        partition_by.push(naming::DENSIFY_ID_COLUMN.to_string());
 
         let densified = densify_edges(
             &expanded,
@@ -175,17 +174,19 @@ fn expand_ribbon_to_polygon(
         format!("DENSE_RANK() OVER (ORDER BY {})", parts.join(", "))
     };
 
+    let densify_id_q = naming::quote_ident(naming::DENSIFY_ID_COLUMN);
+
     let numbered = format!(
         "SELECT *, \
          ROW_NUMBER() OVER ({partition_clause}ORDER BY {pos1_q}) AS \"__ggsql_row_idx__\", \
          COUNT(*) OVER ({partition_clause}) AS \"__ggsql_n_rows__\", \
-         {ribbon_id_expr} AS \"__ggsql_ribbon_id__\" \
+         {ribbon_id_expr} AS {densify_id_q} \
          FROM ({query})"
     );
 
     // Build select list for each half
     let mut common_select: Vec<String> = passthrough_quoted.clone();
-    common_select.push("\"__ggsql_ribbon_id__\"".to_string());
+    common_select.push(densify_id_q.to_string());
 
     // Upper edge: vertex index = row_idx (1..n), pos2 = pos2max
     let mut upper_parts = common_select.clone();
@@ -211,7 +212,7 @@ fn expand_ribbon_to_polygon(
     );
 
     let mut out_columns: Vec<String> = passthrough_cols.into_iter().cloned().collect();
-    out_columns.push("__ggsql_ribbon_id__".to_string());
+    out_columns.push(naming::DENSIFY_ID_COLUMN.to_string());
     out_columns.push(pos1_col);
     out_columns.push(pos2_col);
 
@@ -289,10 +290,10 @@ mod tests {
             )
             .unwrap();
 
-        assert!(result.contains("__ggsql_ribbon_id__"));
+        assert!(result.contains(naming::DENSIFY_ID_COLUMN));
         assert!(result.contains("UNION ALL"));
         assert!(result.contains("ST_Transform"));
-        assert!(partition_by.contains(&"__ggsql_ribbon_id__".to_string()));
+        assert!(partition_by.contains(&naming::DENSIFY_ID_COLUMN.to_string()));
         assert!(mappings.contains_key("pos2"));
     }
 

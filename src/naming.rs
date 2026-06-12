@@ -88,6 +88,11 @@ pub const SOURCE_COLUMN: &str = concatcp!(GGSQL_PREFIX, "source", GGSQL_SUFFIX);
 /// Alias for schema extraction queries
 pub const SCHEMA_ALIAS: &str = concatcp!(GGSQL_SUFFIX, "schema", GGSQL_SUFFIX);
 
+/// Column name for densification group ID.
+/// Used by geoms that expand geometry (tile, segment, ribbon, rule) to group
+/// densified vertices back into their original feature.
+pub const DENSIFY_ID_COLUMN: &str = concatcp!(GGSQL_PREFIX, "densify_id", GGSQL_SUFFIX);
+
 // ============================================================================
 // Constructor Functions
 // ============================================================================

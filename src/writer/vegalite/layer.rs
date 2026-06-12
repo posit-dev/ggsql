@@ -761,7 +761,7 @@ impl GeomRenderer for RuleRenderer {
         // Densified rule: expanded to a multi-row line under map projection
         if layer
             .partition_by
-            .contains(&"__ggsql_rule_id__".to_string())
+            .contains(&naming::DENSIFY_ID_COLUMN.to_string())
         {
             layer_spec["mark"] = json!({
                 "type": "line",
@@ -1459,7 +1459,7 @@ impl GeomRenderer for TileRenderer {
         // Polygonized tile: densified rectangle rendered as closed line
         if layer
             .partition_by
-            .contains(&"__ggsql_poly_id__".to_string())
+            .contains(&naming::DENSIFY_ID_COLUMN.to_string())
         {
             layer_spec["mark"] = json!({
                 "type": "line",
@@ -1599,7 +1599,7 @@ impl GeomRenderer for SegmentRenderer {
     ) -> Result<()> {
         if layer
             .partition_by
-            .contains(&"__ggsql_segment_id__".to_string())
+            .contains(&naming::DENSIFY_ID_COLUMN.to_string())
         {
             layer_spec["mark"] = json!({
                 "type": "line",
@@ -1641,7 +1641,7 @@ impl GeomRenderer for RibbonRenderer {
     ) -> Result<()> {
         if layer
             .partition_by
-            .contains(&"__ggsql_ribbon_id__".to_string())
+            .contains(&naming::DENSIFY_ID_COLUMN.to_string())
         {
             layer_spec["mark"] = json!({
                 "type": "line",

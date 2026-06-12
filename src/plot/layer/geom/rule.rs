@@ -71,8 +71,7 @@ impl GeomTrait for Rule {
         let (expanded, expanded_columns) =
             expand_rule_to_segment(query, &columns, has_pos1, dialect);
 
-        let rule_id_col = "__ggsql_rule_id__".to_string();
-        partition_by.push(rule_id_col);
+        partition_by.push(naming::DENSIFY_ID_COLUMN.to_string());
 
         let densified = densify_edges(
             &expanded,
@@ -123,7 +122,7 @@ impl GeomTrait for Rule {
     ) -> std::result::Result<(), String> {
         // Rule requires exactly one of pos1 or pos2 (XOR logic).
         // After densification both axes are present — skip the check.
-        if partition_by.contains(&"__ggsql_rule_id__".to_string()) {
+        if partition_by.contains(&naming::DENSIFY_ID_COLUMN.to_string()) {
             return Ok(());
         }
 
@@ -252,15 +251,17 @@ fn expand_rule_to_segment(
         .map(|c| naming::quote_ident(c))
         .collect();
 
+    let densify_id_q = naming::quote_ident(naming::DENSIFY_ID_COLUMN);
+
     let numbered = format!(
         "SELECT *, ROW_NUMBER() OVER (ORDER BY (SELECT NULL)) \
-         AS \"__ggsql_rule_id__\" FROM ({query})"
+         AS {densify_id_q} FROM ({query})"
     );
 
     let vertices_table = "(SELECT 0 AS \"__ggsql_vertex__\" UNION ALL SELECT 1)";
 
     let mut select_parts: Vec<String> = passthrough_quoted;
-    select_parts.push("\"__ggsql_rule_id__\"".to_string());
+    select_parts.push(densify_id_q.to_string());
     select_parts.push("\"__ggsql_vertex__\"".to_string());
     select_parts.push(fixed_expr);
     select_parts.push(span_expr);
@@ -272,7 +273,7 @@ fn expand_rule_to_segment(
     );
 
     let mut out_columns: Vec<String> = passthrough_cols.into_iter().cloned().collect();
-    out_columns.push("__ggsql_rule_id__".to_string());
+    out_columns.push(naming::DENSIFY_ID_COLUMN.to_string());
     out_columns.push(pos1_col);
     out_columns.push(pos2_col);
 
@@ -396,7 +397,7 @@ mod tests {
             .unwrap();
 
         assert!(result.contains("ST_Transform"));
-        assert!(!result.contains("__ggsql_rule_id__"));
+        assert!(!result.contains(naming::DENSIFY_ID_COLUMN));
         assert!(partition_by.is_empty());
     }
 
@@ -431,10 +432,10 @@ mod tests {
             )
             .unwrap();
 
-        assert!(result.contains("__ggsql_rule_id__"));
+        assert!(result.contains(naming::DENSIFY_ID_COLUMN));
         assert!(result.contains("CROSS JOIN"));
         assert!(result.contains("ST_Transform"));
-        assert!(partition_by.contains(&"__ggsql_rule_id__".to_string()));
+        assert!(partition_by.contains(&naming::DENSIFY_ID_COLUMN.to_string()));
         // pos2 should be added to mappings (the spanning axis)
         assert!(mappings.contains_key("pos2"));
     }
@@ -585,7 +586,7 @@ mod tests {
             &expanded,
             dialect,
             &expanded_columns,
-            &["__ggsql_rule_id__".to_string()],
+            &[naming::DENSIFY_ID_COLUMN.to_string()],
             Some("__ggsql_vertex__"),
             false,
             1.0,

@@ -237,8 +237,7 @@ impl GeomTrait for Tile {
 
         let (expanded, expanded_columns) = expand_rect_to_polygon(query, &columns);
 
-        let poly_id_col = "__ggsql_poly_id__".to_string();
-        partition_by.push(poly_id_col.clone());
+        partition_by.push(naming::DENSIFY_ID_COLUMN.to_string());
 
         let densified = densify_edges(
             &expanded,
@@ -270,7 +269,7 @@ impl GeomTrait for Tile {
 ///
 /// Input: one row per rectangle with pos1min/pos1max/pos2min/pos2max bounds.
 /// Output: four rows per rectangle with pos1/pos2 corner positions and a
-/// `__ggsql_poly_id__` grouping column. Material aesthetics pass through unchanged.
+/// `DENSIFY_ID_COLUMN` grouping column. Material aesthetics pass through unchanged.
 /// The bound columns are dropped — callers that need them should re-derive them
 /// from pos1/pos2 after densification and projection.
 ///
@@ -296,9 +295,11 @@ fn expand_rect_to_polygon(query: &str, columns: &[String]) -> (String, Vec<Strin
     // Step 1: Number each rectangle.
     // ORDER BY (SELECT NULL) is a workaround: ROW_NUMBER requires ORDER BY
     // syntactically, but we don't care about the order — just need unique IDs.
+    let densify_id_q = naming::quote_ident(naming::DENSIFY_ID_COLUMN);
+
     let numbered = format!(
         "SELECT *, ROW_NUMBER() OVER (ORDER BY (SELECT NULL)) \
-         AS \"__ggsql_poly_id__\" FROM ({query})"
+         AS {densify_id_q} FROM ({query})"
     );
 
     // Step 2: Expand to 4 corners via CROSS JOIN with UNION ALL literal table.
@@ -317,7 +318,7 @@ fn expand_rect_to_polygon(query: &str, columns: &[String]) -> (String, Vec<Strin
     let pos2_q = naming::quote_ident(&naming::aesthetic_column("pos2"));
 
     let mut select_parts: Vec<String> = passthrough;
-    select_parts.push("\"__ggsql_poly_id__\"".to_string());
+    select_parts.push(densify_id_q.to_string());
     select_parts.push("\"__ggsql_corner__\"".to_string());
     select_parts.push(format!(
         "CASE \"__ggsql_corner__\" \
@@ -340,7 +341,7 @@ fn expand_rect_to_polygon(query: &str, columns: &[String]) -> (String, Vec<Strin
     // __ggsql_corner__ is in the SQL (for ordering) but not in the column list
     // so densify_edges won't attempt to interpolate it.
     let mut out_columns: Vec<String> = passthrough_cols.into_iter().cloned().collect();
-    out_columns.push("__ggsql_poly_id__".to_string());
+    out_columns.push(naming::DENSIFY_ID_COLUMN.to_string());
     out_columns.push(naming::aesthetic_column("pos1"));
     out_columns.push(naming::aesthetic_column("pos2"));
 
@@ -1375,7 +1376,7 @@ mod tests {
         let (sql, out_cols) = expand_rect_to_polygon("SELECT * FROM t", &columns);
 
         // Should have poly_id assignment
-        assert!(sql.contains("__ggsql_poly_id__"));
+        assert!(sql.contains(naming::DENSIFY_ID_COLUMN));
         // Should use CROSS JOIN with UNION ALL corner table
         assert!(sql.contains("CROSS JOIN"));
         assert!(sql.contains("UNION ALL"));
@@ -1392,7 +1393,7 @@ mod tests {
         // Should carry through fill
         assert!(out_cols.contains(&naming::aesthetic_column("fill")));
         // Should include poly_id
-        assert!(out_cols.contains(&"__ggsql_poly_id__".to_string()));
+        assert!(out_cols.contains(&naming::DENSIFY_ID_COLUMN.to_string()));
     }
 
     #[test]
@@ -1441,7 +1442,7 @@ mod tests {
             .unwrap();
 
         // Polygon expansion happened
-        assert!(result.contains("__ggsql_poly_id__"));
+        assert!(result.contains(naming::DENSIFY_ID_COLUMN));
         assert!(result.contains("CROSS JOIN"));
         // Densification happened
         assert!(result.contains("__ggsql_seq__"));
@@ -1567,7 +1568,7 @@ mod tests {
 
         // Should just project, no densification
         assert!(result.contains("ST_Transform"));
-        assert!(!result.contains("__ggsql_poly_id__"));
+        assert!(!result.contains(naming::DENSIFY_ID_COLUMN));
         assert!(!result.contains("CROSS JOIN"));
     }
 }

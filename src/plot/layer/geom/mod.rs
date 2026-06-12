@@ -303,7 +303,7 @@ pub trait GeomTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
     /// `columns` lists all column names in the query (for portable column
     /// replacement on backends that don't support `SELECT * REPLACE`).
     /// `partition_by` is mutable: geoms that introduce new grouping columns
-    /// (e.g. tile adds `__ggsql_poly_id__`) push them here so they survive
+    /// (e.g. tile adds `DENSIFY_ID_COLUMN`) push them here so they survive
     /// downstream pruning.
     ///
     /// The default returns an error for unsupported geoms under map projection.
