@@ -6,7 +6,7 @@ use super::{
     DefaultParamValue, GeomTrait, GeomType, ParamConstraint, ParamDefinition,
 };
 use crate::plot::projection::Projection;
-use crate::plot::types::DefaultAestheticValue;
+use crate::plot::types::{DefaultAestheticValue, ParameterValue};
 use crate::reader::SqlDialect;
 use crate::{naming, Mappings, Result};
 
@@ -57,7 +57,7 @@ impl GeomTrait for Segment {
         dialect: &dyn SqlDialect,
         mappings: &mut Mappings,
         partition_by: &mut Vec<String>,
-        _parameters: &mut std::collections::HashMap<String, crate::plot::types::ParameterValue>,
+        parameters: &mut std::collections::HashMap<String, crate::plot::types::ParameterValue>,
     ) -> Result<String> {
         if !needs_projection(projection) {
             return Ok(query.to_string());
@@ -67,6 +67,7 @@ impl GeomTrait for Segment {
         let (expanded, expanded_columns) = expand_segment_to_vertices(query, &columns);
 
         partition_by.push(naming::DENSIFY_ID_COLUMN.to_string());
+        parameters.insert("densified".to_string(), ParameterValue::Boolean(true));
 
         let densified = densify_edges(
             &expanded,

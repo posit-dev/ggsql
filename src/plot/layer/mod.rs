@@ -306,7 +306,7 @@ impl Layer {
 
         // Call geom-specific validation (e.g., XOR constraints for Rule)
         self.geom
-            .validate_aesthetics(&self.mappings, context, &self.partition_by)?;
+            .validate_aesthetics(&self.mappings, context, &self.parameters)?;
 
         Ok(())
     }

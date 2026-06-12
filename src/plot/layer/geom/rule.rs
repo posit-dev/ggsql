@@ -72,6 +72,7 @@ impl GeomTrait for Rule {
             expand_rule_to_segment(query, &columns, has_pos1, dialect);
 
         partition_by.push(naming::DENSIFY_ID_COLUMN.to_string());
+        parameters.insert("densified".to_string(), ParameterValue::Boolean(true));
 
         let densified = densify_edges(
             &expanded,
@@ -118,11 +119,14 @@ impl GeomTrait for Rule {
         &self,
         mappings: &crate::Mappings,
         aesthetic_ctx: &Option<crate::plot::aesthetic::AestheticContext>,
-        partition_by: &[String],
+        parameters: &std::collections::HashMap<String, crate::plot::types::ParameterValue>,
     ) -> std::result::Result<(), String> {
         // Rule requires exactly one of pos1 or pos2 (XOR logic).
         // After densification both axes are present — skip the check.
-        if partition_by.contains(&naming::DENSIFY_ID_COLUMN.to_string()) {
+        if matches!(
+            parameters.get("densified"),
+            Some(ParameterValue::Boolean(true))
+        ) {
             return Ok(());
         }
 

@@ -216,7 +216,7 @@ impl GeomTrait for Tile {
         dialect: &dyn SqlDialect,
         mappings: &mut Mappings,
         partition_by: &mut Vec<String>,
-        _parameters: &mut std::collections::HashMap<String, crate::plot::types::ParameterValue>,
+        parameters: &mut std::collections::HashMap<String, crate::plot::types::ParameterValue>,
     ) -> Result<String> {
         if !needs_projection(projection) {
             return Ok(query.to_string());
@@ -238,6 +238,7 @@ impl GeomTrait for Tile {
         let (expanded, expanded_columns) = expand_rect_to_polygon(query, &columns);
 
         partition_by.push(naming::DENSIFY_ID_COLUMN.to_string());
+        parameters.insert("densified".to_string(), ParameterValue::Boolean(true));
 
         let densified = densify_edges(
             &expanded,

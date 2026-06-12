@@ -154,7 +154,7 @@ pub trait GeomTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
         &self,
         _mappings: &crate::Mappings,
         _aesthetic_ctx: &Option<AestheticContext>,
-        _partition_by: &[String],
+        _parameters: &HashMap<String, ParameterValue>,
     ) -> std::result::Result<(), String> {
         Ok(())
     }
@@ -902,10 +902,10 @@ impl Geom {
         &self,
         mappings: &Mappings,
         aesthetic_ctx: &Option<AestheticContext>,
-        partition_by: &[String],
+        parameters: &HashMap<String, ParameterValue>,
     ) -> std::result::Result<(), String> {
         self.0
-            .validate_aesthetics(mappings, aesthetic_ctx, partition_by)
+            .validate_aesthetics(mappings, aesthetic_ctx, parameters)
     }
 }
 

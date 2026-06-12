@@ -7,7 +7,7 @@ use super::{
     DefaultAesthetics, GeomTrait, GeomType, StatResult,
 };
 use crate::plot::projection::Projection;
-use crate::plot::types::DefaultAestheticValue;
+use crate::plot::types::{DefaultAestheticValue, ParameterValue};
 use crate::plot::{DefaultParamValue, ParamConstraint, ParamDefinition};
 use crate::reader::SqlDialect;
 use crate::{naming, Mappings, Result};
@@ -59,7 +59,7 @@ impl GeomTrait for Ribbon {
         dialect: &dyn SqlDialect,
         mappings: &mut Mappings,
         partition_by: &mut Vec<String>,
-        _parameters: &mut std::collections::HashMap<String, crate::plot::types::ParameterValue>,
+        parameters: &mut std::collections::HashMap<String, crate::plot::types::ParameterValue>,
     ) -> Result<String> {
         if !needs_projection(projection) {
             return Ok(query.to_string());
@@ -69,6 +69,7 @@ impl GeomTrait for Ribbon {
         let (expanded, expanded_columns) = expand_ribbon_to_polygon(query, &columns, partition_by);
 
         partition_by.push(naming::DENSIFY_ID_COLUMN.to_string());
+        parameters.insert("densified".to_string(), ParameterValue::Boolean(true));
 
         let densified = densify_edges(
             &expanded,
