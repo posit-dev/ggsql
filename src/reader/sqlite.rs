@@ -101,6 +101,14 @@ impl super::SqlDialect for SqliteDialect {
         }
     }
 
+    fn sql_make_envelope(&self, xmin: f64, ymin: f64, xmax: f64, ymax: f64) -> String {
+        format!("BuildMbr({xmin}, {ymin}, {xmax}, {ymax})")
+    }
+
+    fn sql_ensure_geometry(&self, column: &str) -> String {
+        format!("COALESCE(GeomFromWKB({column}, 4326), {column})")
+    }
+
     fn sql_geometry_bbox(&self, column: &str, from: &str) -> String {
         format!(
             "SELECT MIN(MbrMinX({column})) AS xmin, MIN(MbrMinY({column})) AS ymin, \
@@ -213,26 +221,6 @@ impl Default for SqliteReader {
     }
 }
 
-/// Validate a table name
-fn validate_table_name(name: &str) -> Result<()> {
-    if name.is_empty() {
-        return Err(GgsqlError::ReaderError("Table name cannot be empty".into()));
-    }
-
-    let forbidden = ['\0', '\n', '\r'];
-    for ch in forbidden {
-        if name.contains(ch) {
-            return Err(GgsqlError::ReaderError(format!(
-                "Table name '{}' contains invalid character '{}'",
-                name,
-                ch.escape_default()
-            )));
-        }
-    }
-
-    Ok(())
-}
-
 /// Map an Arrow DataType to a SQLite column type string
 fn arrow_type_to_sqlite(dtype: &DataType) -> &'static str {
     match dtype {
@@ -249,6 +237,7 @@ fn arrow_type_to_sqlite(dtype: &DataType) -> &'static str {
         DataType::Date32 => "TEXT",
         DataType::Timestamp(_, _) => "TEXT",
         DataType::Time64(_) => "TEXT",
+        DataType::Binary | DataType::LargeBinary => "BLOB",
         _ => "TEXT",
     }
 }
@@ -352,6 +341,14 @@ fn array_value_to_sqlite(array: &ArrayRef, row_idx: usize) -> rusqlite::types::V
                 .and_then(|t| to_sql_value(&t))
                 .unwrap_or(Value::Null)
         }
+        DataType::Binary => {
+            let arr = array.as_any().downcast_ref::<BinaryArray>().unwrap();
+            Value::Blob(arr.value(row_idx).to_vec())
+        }
+        DataType::LargeBinary => {
+            let arr = array.as_any().downcast_ref::<LargeBinaryArray>().unwrap();
+            Value::Blob(arr.value(row_idx).to_vec())
+        }
         _ => {
             // Fallback: use array_util::value_to_string
             Value::Text(crate::array_util::value_to_string(array, row_idx))
@@ -445,7 +442,7 @@ impl Reader for SqliteReader {
     }
 
     fn register(&self, name: &str, df: DataFrame, replace: bool) -> Result<()> {
-        validate_table_name(name)?;
+        super::validate_table_name(name)?;
 
         if self.table_exists(name) {
             if replace {
@@ -708,6 +705,19 @@ fn sqlite_values_to_array(name: &str, values: Vec<rusqlite::types::Value>) -> Re
         if let Some(array) = try_parse_as_datetime(&values) {
             return Ok(array);
         }
+    }
+
+    // A pure BLOB column (e.g. WKB geometry) maps to Arrow Binary so geometry
+    // auto-detection and spatial layers receive raw bytes, not a debug string.
+    if has_blob && !has_text && !has_int && !has_real {
+        let vals: Vec<Option<Vec<u8>>> = values
+            .into_iter()
+            .map(|v| match v {
+                Value::Blob(b) => Some(b),
+                _ => None,
+            })
+            .collect();
+        return Ok(Arc::new(BinaryArray::from_iter(vals.iter().map(|o| o.as_deref()))) as ArrayRef);
     }
 
     if has_text || has_blob {
@@ -1090,6 +1100,43 @@ mod tests {
         let df = reader.execute_sql("SELECT * FROM mixed").unwrap();
         assert_eq!(df.height(), 3);
         // Should fall back to String since we have mixed types
+    }
+
+    #[test]
+    fn test_binary_column_stored_as_blob() {
+        let reader = SqliteReader::new().unwrap();
+
+        // Arrow Binary must reach SQLite as a BLOB (not stringified), so spatial
+        // functions like GeomFromWKB receive raw bytes.
+        let blobs: ArrayRef = Arc::new(BinaryArray::from(vec![
+            Some([0x01u8, 0x02, 0x03].as_slice()),
+            Some([0xDE, 0xAD, 0xBE, 0xEF].as_slice()),
+            None,
+        ]));
+        let df = DataFrame::new(vec![("b", blobs)]).unwrap();
+        reader.register("blob_data", df, false).unwrap();
+
+        let result = reader
+            .execute_sql("SELECT typeof(b) AS t, hex(b) AS h FROM blob_data ORDER BY rowid")
+            .unwrap();
+        assert_eq!(result.height(), 3);
+        let t = result.column("t").unwrap();
+        let h = result.column("h").unwrap();
+        assert_eq!(crate::array_util::value_to_string(t, 0), "blob");
+        assert_eq!(crate::array_util::value_to_string(h, 0), "010203");
+        assert_eq!(crate::array_util::value_to_string(h, 1), "DEADBEEF");
+        assert_eq!(crate::array_util::value_to_string(t, 2), "null");
+
+        // Reading a BLOB column back yields Arrow Binary.
+        let back = reader
+            .execute_sql("SELECT b FROM blob_data ORDER BY rowid")
+            .unwrap();
+        assert_eq!(back.column_dtype("b").unwrap(), DataType::Binary);
+        let col = back.column("b").unwrap();
+        let arr = col.as_any().downcast_ref::<BinaryArray>().unwrap();
+        assert_eq!(arr.value(0), &[0x01u8, 0x02, 0x03]);
+        assert_eq!(arr.value(1), &[0xDE, 0xAD, 0xBE, 0xEF]);
+        assert!(arr.is_null(2));
     }
 
     #[test]

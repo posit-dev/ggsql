@@ -39,7 +39,7 @@ arrow = { version = "58", default-features = false }
 duckdb = { version = "~1.10502", features = ["bundled", "vtab-arrow"] }
 parquet = { version = "58", default-features = false, features = ["arrow", "snap"] }
 bytes = "1"
-rusqlite = { version = "0.38", features = ["bundled", "chrono"] }
+rusqlite = { version = "0.38", features = ["bundled", "chrono", "load_extension"] }
 
 # ODBC
 toml_edit = "0.22"
@@ -80,3 +80,6 @@ strip = true
 inherits = "release"
 opt-level = "z"
 panic = "abort"
+
+[patch.crates-io]
+sqlite-wasm-rs = { git = "https://github.com/ggsql-dev/sqlite-wasm-rs.git", branch = "loadable-extensions" }

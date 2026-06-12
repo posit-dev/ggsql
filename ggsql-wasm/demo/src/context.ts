@@ -1,4 +1,8 @@
-import init, { GgsqlContext } from "ggsql-wasm";
+import init, {
+  GgsqlContext,
+  initExtensionLoader,
+  installExtension,
+} from "ggsql-wasm";
 import { WASM_BASE } from "./wasmBase";
 
 export class WasmContextManager {
@@ -8,9 +12,14 @@ export class WasmContextManager {
   async initialize(): Promise<void> {
     if (this.initialized) return;
 
-    await init(WASM_BASE + "ggsql_wasm_bg.wasm");
+    const wasmExports = await init(WASM_BASE + "ggsql_wasm_bg.wasm");
+    initExtensionLoader(wasmExports);
     this.context = new GgsqlContext();
     this.initialized = true;
+  }
+
+  async installExtension(name: string, url: string): Promise<void> {
+    await installExtension(name, url);
   }
 
   private getContext(): GgsqlContext {

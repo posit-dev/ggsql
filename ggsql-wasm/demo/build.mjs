@@ -25,6 +25,14 @@ copyFileSync(
   join(__dirname, "../../ggsql-vscode/syntaxes/ggsql.tmLanguage.json"),
   join(distDir, "ggsql.tmLanguage.json"),
 );
+for (const ext of ["mod_spatialite"]) {
+  try {
+    copyFileSync(
+      join(__dirname, `../pkg/${ext}.wasm`),
+      join(distDir, `${ext}.wasm`),
+    );
+  } catch (_) {}
+}
 
 // Build Monaco editor web worker
 console.log("Building Monaco editor worker...");
