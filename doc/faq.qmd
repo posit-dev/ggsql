@@ -101,6 +101,22 @@ ggsql integrates very deeply with the database backends and handles all statisti
 ggsql does not yet support interactive functionality like tool tips and zooming. This is a point of focus for us and we will rather get the syntax and implementation right than rush to it.
 :::
 
+## AI assistance
+
+::: {.callout-note collapse="true"}
+## How do I get my AI assistant to write ggsql?
+
+We maintain a [skill](syntax/skill.qmd) — a compact syntax reference designed for LLMs. You can install it with:
+
+```sh
+npx skills add posit-dev/skills --skill ggsql
+```
+
+This works with any AI coding assistant that supports the [skills](https://github.com/posit-dev/skills) framework. Once installed, your assistant can write and modify ggsql queries using the full syntax.
+
+Alternatively, the same reference is available via `ggsql skill` on the command line.
+:::
+
 ## Troubleshooting
 
 ::: {.callout-note collapse="true"}
