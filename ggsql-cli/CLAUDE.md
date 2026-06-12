@@ -28,6 +28,7 @@ The binary name is `ggsql` (not `ggsql-cli`) — that's what release artifacts a
 | `validate` | Syntax + semantic check without executing SQL |
 | `docs` | Render embedded ggsql syntax docs (TTY → ANSI via termimad, pipe → markdown, `--format json` → structured) |
 | `skill` | Render the AI-assistant skill from `/doc/vendor/SKILL.md` |
+| `agent-info` | Alias for `skill` |
 
 Only public `ggsql::*` API is used (`reader`, `writer`, `validate`, `parser`, `VERSION`) — this crate has no awareness of internal modules.
 
