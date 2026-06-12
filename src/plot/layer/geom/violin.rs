@@ -6,12 +6,10 @@ use crate::{
     naming,
     plot::{
         geom::types::get_column_name, DefaultAestheticValue, DefaultParamValue, ParamConstraint,
-        ParamDefinition, ParameterValue,
+        ParamDefinition, ParameterValue, Parameters,
     },
     DataFrame, GgsqlError, Mappings, Result,
 };
-use std::collections::HashMap;
-
 /// Valid kernel types for violin density estimation
 const KERNEL_VALUES: &[&str] = &[
     "gaussian",
@@ -118,7 +116,7 @@ impl GeomTrait for Violin {
         _schema: &crate::plot::Schema,
         aesthetics: &Mappings,
         group_by: &[String],
-        parameters: &HashMap<String, ParameterValue>,
+        parameters: &Parameters,
         _execute_query: &dyn Fn(&str) -> crate::Result<crate::DataFrame>,
         dialect: &dyn crate::reader::SqlDialect,
         aesthetic_ctx: &crate::plot::aesthetic::AestheticContext,
@@ -138,11 +136,7 @@ impl GeomTrait for Violin {
     /// Uses global max normalization so relative differences across groups are preserved:
     /// - Narrow distributions will have higher peaks (normalized density)
     /// - Groups with more data will be wider when using intensity remapping
-    fn post_process(
-        &self,
-        df: DataFrame,
-        parameters: &HashMap<String, ParameterValue>,
-    ) -> Result<DataFrame> {
+    fn post_process(&self, df: DataFrame, parameters: &Parameters) -> Result<DataFrame> {
         let offset_col = naming::aesthetic_column("offset");
 
         // Get width parameter (default 0.9)
@@ -207,7 +201,7 @@ fn stat_violin(
     query: &str,
     aesthetics: &Mappings,
     group_by: &[String],
-    parameters: &HashMap<String, ParameterValue>,
+    parameters: &Parameters,
     dialect: &dyn crate::reader::SqlDialect,
     aesthetic_ctx: &crate::plot::aesthetic::AestheticContext,
 ) -> Result<StatResult> {
@@ -285,6 +279,7 @@ fn stat_violin(
 mod tests {
     use super::*;
     use crate::plot::AestheticValue;
+    use crate::plot::Parameters;
     use crate::reader::duckdb::DuckDBReader;
     use crate::reader::AnsiDialect;
     use crate::reader::Reader;
@@ -334,7 +329,7 @@ mod tests {
         let query = "SELECT species, flipper_length FROM penguins";
         let aesthetics = create_basic_aesthetics();
         let groups: Vec<String> = vec![];
-        let mut parameters = HashMap::new();
+        let mut parameters = Parameters::new();
         parameters.insert("bandwidth".to_string(), ParameterValue::Number(5.0));
         parameters.insert(
             "kernel".to_string(),
@@ -398,7 +393,7 @@ mod tests {
         let query = "SELECT species, flipper_length, island FROM penguins";
         let aesthetics = create_aesthetics_with_color();
         let groups = vec!["island".to_string()]; // Additional grouping via color aesthetic
-        let mut parameters = HashMap::new();
+        let mut parameters = Parameters::new();
         parameters.insert("bandwidth".to_string(), ParameterValue::Number(5.0));
         parameters.insert(
             "kernel".to_string(),
@@ -518,7 +513,7 @@ mod tests {
         let query = "SELECT species, flipper_length FROM penguins";
         let aesthetics = create_basic_aesthetics();
         let groups: Vec<String> = vec![];
-        let mut parameters = HashMap::new();
+        let mut parameters = Parameters::new();
         parameters.insert("bandwidth".to_string(), ParameterValue::Number(5.0));
         parameters.insert(
             "kernel".to_string(),
@@ -578,7 +573,7 @@ mod tests {
 
         // With default width 0.9, half_width = 0.45
         // Offset should be scaled to [0, 0.45]
-        let parameters = HashMap::new();
+        let parameters = Parameters::new();
         let result = violin.post_process(df, &parameters).unwrap();
 
         let scaled_arr = crate::array_util::as_f64(result.column(&offset_col).unwrap()).unwrap();
@@ -612,7 +607,7 @@ mod tests {
         .unwrap();
 
         // With width 0.6, half_width = 0.3
-        let mut parameters = HashMap::new();
+        let mut parameters = Parameters::new();
         parameters.insert("width".to_string(), ParameterValue::Number(0.6));
 
         let result = violin.post_process(df, &parameters).unwrap();
@@ -639,7 +634,7 @@ mod tests {
             AestheticValue::standard_column("flipper_length".to_string()),
         );
         let groups: Vec<String> = vec![];
-        let mut parameters = HashMap::new();
+        let mut parameters = Parameters::new();
         parameters.insert("bandwidth".to_string(), ParameterValue::Number(5.0));
         parameters.insert(
             "kernel".to_string(),
@@ -690,7 +685,7 @@ mod tests {
         }
         .unwrap();
 
-        let parameters = HashMap::new();
+        let parameters = Parameters::new();
         let result = violin.post_process(df.clone(), &parameters).unwrap();
 
         // Should return unchanged DataFrame

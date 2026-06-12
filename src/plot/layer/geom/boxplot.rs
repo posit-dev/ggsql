@@ -1,14 +1,12 @@
 //! Boxplot geom implementation
 
-use std::collections::HashMap;
-
 use super::types::{wrap_with_dummy_axis, POSITION_VALUES, SIDE_VALUES};
 use super::{DefaultAesthetics, GeomTrait, GeomType};
 use crate::{
     naming,
     plot::{
         geom::types::get_column_name, DefaultAestheticValue, DefaultParamValue, ParamConstraint,
-        ParamDefinition, ParameterValue, StatResult,
+        ParamDefinition, ParameterValue, Parameters, StatResult,
     },
     reader::SqlDialect,
     DataFrame, GgsqlError, Mappings, Result,
@@ -101,7 +99,7 @@ impl GeomTrait for Boxplot {
         _schema: &crate::plot::Schema,
         aesthetics: &Mappings,
         group_by: &[String],
-        parameters: &HashMap<String, ParameterValue>,
+        parameters: &Parameters,
         _execute_query: &dyn Fn(&str) -> Result<DataFrame>,
         dialect: &dyn SqlDialect,
         aesthetic_ctx: &crate::plot::aesthetic::AestheticContext,
@@ -127,7 +125,7 @@ fn stat_boxplot(
     query: &str,
     aesthetics: &Mappings,
     group_by: &[String],
-    parameters: &HashMap<String, ParameterValue>,
+    parameters: &Parameters,
     dialect: &dyn SqlDialect,
     aesthetic_ctx: &crate::plot::aesthetic::AestheticContext,
 ) -> Result<StatResult> {
@@ -340,6 +338,7 @@ fn boxplot_sql_append_outliers(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::plot::Parameters;
     use crate::reader::AnsiDialect;
 
     // ==================== SQL Generation Tests (Compact) ====================
@@ -639,7 +638,7 @@ mod tests {
             "pos2".to_string(),
             AestheticValue::standard_column("value".to_string()),
         );
-        let mut parameters: HashMap<String, ParameterValue> = HashMap::new();
+        let mut parameters = Parameters::new();
         parameters.insert("coef".to_string(), ParameterValue::Number(1.5));
         parameters.insert("outliers".to_string(), ParameterValue::Boolean(true));
 

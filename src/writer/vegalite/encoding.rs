@@ -1131,6 +1131,7 @@ pub(super) fn build_detail_encoding(partition_by: &[String]) -> Option<Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::plot::Parameters;
 
     #[test]
     fn test_build_label_expr_temporal_uses_utc_format() {
@@ -1254,7 +1255,7 @@ mod tests {
                 output_range: None,
                 transform: None,
                 explicit_transform: false,
-                properties: std::collections::HashMap::new(),
+                properties: Parameters::new(),
                 resolved: false,
                 label_mapping: None,
                 label_template: "{}".to_string(),

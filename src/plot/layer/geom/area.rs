@@ -1,7 +1,7 @@
 //! Area geom implementation
 
 use crate::plot::layer::orientation::{ALIGNED, ORIENTATION_VALUES};
-use crate::plot::types::DefaultAestheticValue;
+use crate::plot::types::{DefaultAestheticValue, Parameters};
 use crate::plot::{DefaultParamValue, ParamDefinition};
 use crate::Mappings;
 
@@ -66,7 +66,7 @@ impl GeomTrait for Area {
         schema: &crate::plot::Schema,
         aesthetics: &Mappings,
         group_by: &[String],
-        parameters: &std::collections::HashMap<String, crate::plot::ParameterValue>,
+        parameters: &Parameters,
         _execute_query: &dyn Fn(&str) -> crate::Result<crate::DataFrame>,
         dialect: &dyn crate::reader::SqlDialect,
         aesthetic_ctx: &crate::plot::aesthetic::AestheticContext,

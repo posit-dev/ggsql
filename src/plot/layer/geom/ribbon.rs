@@ -3,7 +3,7 @@
 use super::stat_aggregate;
 use super::types::{wrap_with_order_by, POSITION_VALUES};
 use super::{has_aggregate_param, DefaultAesthetics, GeomTrait, GeomType, StatResult};
-use crate::plot::types::DefaultAestheticValue;
+use crate::plot::types::{DefaultAestheticValue, Parameters};
 use crate::plot::{DefaultParamValue, ParamConstraint, ParamDefinition};
 use crate::Mappings;
 
@@ -53,7 +53,7 @@ impl GeomTrait for Ribbon {
         schema: &crate::plot::Schema,
         aesthetics: &Mappings,
         group_by: &[String],
-        parameters: &std::collections::HashMap<String, crate::plot::ParameterValue>,
+        parameters: &Parameters,
         _execute_query: &dyn Fn(&str) -> crate::Result<crate::DataFrame>,
         dialect: &dyn crate::reader::SqlDialect,
         aesthetic_ctx: &crate::plot::aesthetic::AestheticContext,

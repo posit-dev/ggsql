@@ -2477,6 +2477,7 @@ pub fn get_renderer(geom: &Geom) -> Box<dyn GeomRenderer> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::plot::Parameters;
 
     #[test]
     fn test_violin_detail_encoding() {
@@ -4172,7 +4173,7 @@ mod tests {
             output_range: None,
             transform: None,
             explicit_transform: false,
-            properties: std::collections::HashMap::new(),
+            properties: Parameters::new(),
             resolved: false,
             label_mapping: None,
             label_template: "{}".to_string(),
@@ -4205,7 +4206,7 @@ mod tests {
             output_range: None,
             transform: None,
             explicit_transform: false,
-            properties: std::collections::HashMap::new(),
+            properties: Parameters::new(),
             resolved: false,
             label_mapping: None,
             label_template: "{}".to_string(),
@@ -4234,7 +4235,7 @@ mod tests {
             output_range: None,
             transform: None,
             explicit_transform: false,
-            properties: std::collections::HashMap::new(),
+            properties: Parameters::new(),
             resolved: false,
             label_mapping: None,
             label_template: "{}".to_string(),

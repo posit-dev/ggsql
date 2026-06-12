@@ -1,14 +1,12 @@
 //! Histogram geom implementation
 
-use std::collections::HashMap;
-
 use super::types::{get_quoted_column_name, CLOSED_VALUES, POSITION_VALUES};
 use super::{
     DefaultAesthetics, DefaultParamValue, GeomTrait, GeomType, ParamConstraint, ParamDefinition,
     StatResult,
 };
 use crate::naming;
-use crate::plot::types::{DefaultAestheticValue, ParameterValue};
+use crate::plot::types::{DefaultAestheticValue, ParameterValue, Parameters};
 use crate::reader::SqlDialect;
 use crate::{DataFrame, GgsqlError, Mappings, Result};
 
@@ -90,7 +88,7 @@ impl GeomTrait for Histogram {
         _schema: &Schema,
         aesthetics: &Mappings,
         group_by: &[String],
-        parameters: &HashMap<String, ParameterValue>,
+        parameters: &Parameters,
         execute_query: &dyn Fn(&str) -> Result<DataFrame>,
         dialect: &dyn SqlDialect,
         aesthetic_ctx: &crate::plot::aesthetic::AestheticContext,
@@ -118,7 +116,7 @@ fn stat_histogram(
     query: &str,
     aesthetics: &Mappings,
     group_by: &[String],
-    parameters: &HashMap<String, ParameterValue>,
+    parameters: &Parameters,
     execute_query: &dyn Fn(&str) -> Result<DataFrame>,
     dialect: &dyn SqlDialect,
     aesthetic_ctx: &crate::plot::aesthetic::AestheticContext,

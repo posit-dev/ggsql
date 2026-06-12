@@ -1,11 +1,10 @@
-use std::collections::HashMap;
 use std::fmt;
 use std::sync::Arc;
 
 use super::CoordKind;
 use crate::plot::types::{
     validate_parameter, ArrayElement, DefaultParamValue, ParamConstraint, ParamDefinition,
-    TypeConstraint,
+    Parameters, TypeConstraint,
 };
 use crate::plot::{Layer, ParameterValue};
 use crate::reader::SqlDialect;
@@ -180,8 +179,8 @@ impl<T: MapProjectionTrait + 'static> super::CoordTrait for T {
     fn resolve_properties(
         &self,
         coord_type_name: Option<&str>,
-        properties: &HashMap<String, ParameterValue>,
-    ) -> Result<HashMap<String, ParameterValue>, String> {
+        properties: &Parameters,
+    ) -> Result<Parameters, String> {
         if let Some(name) = coord_type_name {
             if name != "crs" && properties.contains_key("target") {
                 return Err(format!(
@@ -373,7 +372,7 @@ macro_rules! build_projection {
 /// Returns `None` if the name is not recognised.
 pub fn build_map_projection(
     name: Option<&str>,
-    properties: &HashMap<String, ParameterValue>,
+    properties: &Parameters,
 ) -> Option<Arc<dyn super::CoordTrait>> {
     let name = name?;
     let obj: Arc<dyn super::CoordTrait> = build_projection!(name, properties);
@@ -1316,10 +1315,11 @@ fn antimeridian_crossing_lat(a: (f64, f64), b: (f64, f64)) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::plot::Parameters;
 
     fn build_map_projection_trait(
         name: Option<&str>,
-        properties: &HashMap<String, ParameterValue>,
+        properties: &Parameters,
     ) -> Option<Arc<dyn MapProjectionTrait>> {
         let name = name?;
         let obj: Arc<dyn MapProjectionTrait> = build_projection!(name, properties);
@@ -1327,7 +1327,7 @@ mod tests {
     }
 
     fn build_from_proj_str(crs: &str) -> Arc<dyn MapProjectionTrait> {
-        let mut properties = HashMap::new();
+        let mut properties = Parameters::new();
         properties.insert(
             "target".to_string(),
             ParameterValue::String(crs.to_string()),
@@ -1355,7 +1355,7 @@ mod tests {
 
     #[test]
     fn new_from_target_albers() {
-        let mut props = HashMap::new();
+        let mut props = Parameters::new();
         props.insert(
             "target".to_string(),
             ParameterValue::String("+proj=aea +lon_0=5 +lat_0=10 +lat_1=30 +lat_2=50".to_string()),
@@ -1371,7 +1371,7 @@ mod tests {
 
     #[test]
     fn new_named_albers_with_settings() {
-        let mut props = HashMap::new();
+        let mut props = Parameters::new();
         props.insert(
             "origin".to_string(),
             ParameterValue::Array(vec![
@@ -1552,7 +1552,7 @@ mod tests {
 
     #[test]
     fn utm_from_named_origin() {
-        let mut props = HashMap::new();
+        let mut props = Parameters::new();
         props.insert(
             "origin".to_string(),
             ParameterValue::Array(vec![ArrayElement::Number(5.0), ArrayElement::Number(52.0)]),
@@ -1564,7 +1564,7 @@ mod tests {
 
     #[test]
     fn utm_southern_hemisphere() {
-        let mut props = HashMap::new();
+        let mut props = Parameters::new();
         props.insert(
             "origin".to_string(),
             ParameterValue::Array(vec![

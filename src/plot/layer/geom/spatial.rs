@@ -3,7 +3,7 @@ use crate::naming;
 use crate::plot::projection::coord::map::clip_boundary_table;
 use crate::plot::projection::coord::CoordKind;
 use crate::plot::projection::Projection;
-use crate::plot::types::DefaultAestheticValue;
+use crate::plot::types::{DefaultAestheticValue, Parameters};
 use crate::plot::ParameterValue;
 use crate::reader::SqlDialect;
 use crate::Mappings;
@@ -54,7 +54,7 @@ impl GeomTrait for Spatial {
         _schema: &crate::plot::Schema,
         _aesthetics: &Mappings,
         _group_by: &[String],
-        _parameters: &std::collections::HashMap<String, crate::plot::ParameterValue>,
+        _parameters: &Parameters,
         execute_query: &dyn Fn(&str) -> crate::Result<crate::DataFrame>,
         dialect: &dyn crate::reader::SqlDialect,
         _aesthetic_ctx: &crate::plot::aesthetic::AestheticContext,

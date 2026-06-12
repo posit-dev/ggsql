@@ -1,7 +1,7 @@
 //! Rule geom implementation
 
 use super::{DefaultAesthetics, GeomTrait, GeomType, ParamDefinition};
-use crate::plot::types::DefaultAestheticValue;
+use crate::plot::types::{DefaultAestheticValue, Parameters};
 
 /// Rule geom - horizontal and vertical reference lines
 #[derive(Debug, Clone, Copy)]
@@ -61,7 +61,7 @@ impl GeomTrait for Rule {
     fn setup_layer(
         &self,
         mappings: &mut crate::plot::layer::Mappings,
-        parameters: &mut std::collections::HashMap<String, crate::plot::ParameterValue>,
+        parameters: &mut Parameters,
     ) -> crate::Result<()> {
         use crate::plot::layer::AestheticValue;
         use crate::plot::ParameterValue;

@@ -352,6 +352,9 @@ pub enum ParameterValue {
     Null,
 }
 
+/// A collection of named parameter values, typically from `SET` clauses.
+pub type Parameters = HashMap<String, ParameterValue>;
+
 impl std::fmt::Display for ParameterValue {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {

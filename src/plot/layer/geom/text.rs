@@ -3,14 +3,13 @@
 use super::types::POSITION_VALUES;
 use super::{
     project_position_columns, DefaultAesthetics, DefaultParamValue, GeomTrait, GeomType,
-    ParamConstraint, ParamDefinition, ParameterValue,
+    ParamConstraint, ParamDefinition,
 };
 use crate::plot::projection::Projection;
-use crate::plot::types::DefaultAestheticValue;
+use crate::plot::types::{DefaultAestheticValue, ParameterValue, Parameters};
 use crate::plot::{ArrayConstraint, NumberConstraint};
 use crate::reader::SqlDialect;
 use crate::{naming, DataFrame, Result};
-use std::collections::HashMap;
 
 /// Text geom - text labels at positions
 #[derive(Debug, Clone, Copy)]
@@ -81,11 +80,7 @@ impl GeomTrait for Text {
         project_position_columns(query, projection, dialect, columns)
     }
 
-    fn post_process(
-        &self,
-        df: DataFrame,
-        parameters: &HashMap<String, ParameterValue>,
-    ) -> Result<DataFrame> {
+    fn post_process(&self, df: DataFrame, parameters: &Parameters) -> Result<DataFrame> {
         // Check if format parameter is specified
         let format_template = match parameters.get("format") {
             Some(ParameterValue::String(template)) => template,
