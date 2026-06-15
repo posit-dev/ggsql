@@ -73,7 +73,10 @@ cd tree-sitter-ggsql && npx tree-sitter generate
 
 The toolchain is **pinned to Rust 1.86** (`rust-toolchain.toml` + `rust-version` in `/Cargo.toml`). This is the maximum Rust version CRAN ships, and the R bindings must build against it — **only bump it when CRAN does.** Setting `rust-version` also turns on clippy's MSRV-aware lints, so accidental use of a newer std API fails `clippy`/build with a clear message instead of a cryptic `E0658`.
 
-One exception: the experimental `adbc` feature's test path depends (dev-only) on `adbc_datafusion` → `datafusion` ≥53.1.0, which requires rustc ≥1.88. The shipped library still builds on 1.86; only the test / `--all-targets` build needs the newer toolchain. CI (`build.yaml`) runs fmt, clippy and the library build on 1.86, and runs the test-compiling steps with `cargo +stable`.
+Two things are exempt from the pin:
+
+- **The `adbc` test path.** The experimental `adbc` feature depends (dev-only) on `adbc_datafusion` → `datafusion` ≥53.1.0, which requires rustc ≥1.88. The shipped library still builds on 1.86; only the test / `--all-targets` build needs the newer toolchain. CI (`build.yaml`) runs fmt, clippy and the library build on 1.86, and runs the test-compiling steps with `cargo +stable`.
+- **The wasm bindings (`ggsql-wasm`).** R doesn't use wasm, and some wasm-only dependencies require a newer rustc, so the crate has no `rust-version` and a nested `ggsql-wasm/rust-toolchain.toml` selects **stable** for any build done from that directory (`./build-wasm.sh`, `wasm-pack`, `library/`).
 
 Cross-platform installers (NSIS / MSI / DMG / Deb): see [`INSTALLERS.md`](INSTALLERS.md). Releases are tag-driven via `.github/workflows/`.
 

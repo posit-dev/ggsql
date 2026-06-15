@@ -2,7 +2,9 @@
 name = "ggsql-wasm"
 version.workspace = true
 edition.workspace = true
-rust-version.workspace = true
+# No `rust-version`: the wasm bindings are not part of the R/CRAN 1.86 MSRV
+# guarantee (R doesn't use them) and some wasm-only dependencies require a newer
+# rustc. This crate builds on stable — see ggsql-wasm/rust-toolchain.toml.
 authors.workspace = true
 license.workspace = true
 repository.workspace = true

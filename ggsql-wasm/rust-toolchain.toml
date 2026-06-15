@@ -1,0 +1,7 @@
+# The wasm bindings are exempt from the workspace's 1.86 MSRV pin (R/CRAN, see
+# /rust-toolchain.toml): R doesn't use wasm, and some wasm-only dependencies
+# require a newer rustc. Building from this directory (./build-wasm.sh,
+# wasm-pack, library/) picks up this file and uses stable instead.
+[toolchain]
+channel = "stable"
+targets = ["wasm32-unknown-unknown"]

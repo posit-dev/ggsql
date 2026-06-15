@@ -31,6 +31,7 @@ ggsql-wasm/
 
 ## Toolchain
 
+- **Rust stable, not the workspace 1.86 MSRV.** The rest of the workspace is pinned to 1.86 for the R/CRAN bindings (see [`/CLAUDE.md`](../CLAUDE.md)), but R doesn't use wasm and some wasm-only deps need a newer rustc. A nested [`rust-toolchain.toml`](rust-toolchain.toml) selects stable for any build run from this directory; this crate has no `rust-version`. In CI the wasm tool installs (`cargo install wasm-pack`/`wasm-opt`) run at the repo root, so they use `cargo +stable` to avoid the 1.86 pin.
 - Rust target `wasm32-unknown-unknown` and [`wasm-pack`](https://rustwasm.github.io/wasm-pack/) for compilation.
 - A clang/llvm with wasm backend support (the build script verifies this with a one-line probe).
 - `wasm-opt` (from binaryen) for the `-Oz` optimization step.
