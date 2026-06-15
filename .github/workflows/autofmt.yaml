@@ -51,7 +51,7 @@ jobs:
           gh pr checkout ${{ github.event.issue.number }} --repo "$GITHUB_REPOSITORY"
 
       - name: Install Rust (rustfmt)
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@1.86.0
         with:
           components: rustfmt
 

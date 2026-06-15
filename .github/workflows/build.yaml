@@ -38,7 +38,18 @@ jobs:
         run: sudo apt-get install -y protobuf-compiler
 
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+        # 1.86 is the MSRV (pinned via rust-toolchain.toml, see /CLAUDE.md). Plain
+        # `cargo` resolves to it. fmt, clippy and the library build run on 1.86 to
+        # guarantee the shipped crate builds there.
+        uses: dtolnay/rust-toolchain@1.86.0
+
+      - name: Install Rust (test toolchain)
+        # The experimental `adbc` feature's test path pulls `adbc_datafusion` →
+        # `datafusion` ≥53.1.0, which requires rustc ≥1.88. Steps that compile
+        # tests/dev-dependencies use this newer toolchain via `cargo +stable`.
+        # Installing it here does not change the default — rust-toolchain.toml
+        # keeps plain `cargo` on 1.86.
+        run: rustup toolchain install stable --profile minimal
 
       - name: Caching
         uses: Swatinem/rust-cache@v2
@@ -54,17 +65,23 @@ jobs:
         run: cargo clippy -- -D warnings
 
       - name: Install wasm-pack
-        run: cargo install wasm-pack
+        # Compile the tool itself on stable; the actual wasm build below still
+        # runs on the pinned 1.86 toolchain.
+        run: cargo +stable install wasm-pack
 
-      - name: Build with cargo
-        run: cargo build --all-targets
+      - name: Build library (MSRV 1.86)
+        run: cargo build
+
+      - name: Build all targets
+        # --all-targets compiles dev-dependencies (datafusion), so it needs ≥1.88.
+        run: cargo +stable build --all-targets
 
       - name: Run tree-sitter tests
         working-directory: tree-sitter-ggsql
         run: tree-sitter test
 
       - name: Run Rust tests
-        run: cargo test --lib --bins
+        run: cargo +stable test --lib --bins
 
       - name: Install dbc CLI and SQLite ADBC driver
         run: |
@@ -72,10 +89,10 @@ jobs:
           "$HOME/.local/bin/dbc" install sqlite
 
       - name: Run ADBC unit tests
-        run: cargo test --features "adbc sqlite" --lib
+        run: cargo +stable test --features "adbc sqlite" --lib
 
       - name: Run ADBC SQLite equivalence tests
-        run: cargo test --features "adbc sqlite" --lib -- --ignored equivalence
+        run: cargo +stable test --features "adbc sqlite" --lib -- --ignored equivalence
 
       - name: Build WASM library
         working-directory: ggsql-wasm/library

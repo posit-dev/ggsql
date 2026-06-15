@@ -17,6 +17,10 @@ resolver = "2"
 [workspace.package]
 version = "0.3.3"
 edition = "2021"
+# Pinned to CRAN's maximum supported Rust version for the R bindings. Only bump
+# this when CRAN does. Setting it here also turns on clippy's `incompatible_msrv`
+# lint, which catches accidental use of std APIs newer than this version.
+rust-version = "1.86"
 authors = ["ggsql Team"]
 license = "MIT"
 repository = "https://github.com/posit-dev/ggsql"

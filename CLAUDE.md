@@ -69,6 +69,12 @@ cd ggsql-vscode && npm install && npm run package
 cd tree-sitter-ggsql && npx tree-sitter generate
 ```
 
+### Rust version (MSRV)
+
+The toolchain is **pinned to Rust 1.86** (`rust-toolchain.toml` + `rust-version` in `/Cargo.toml`). This is the maximum Rust version CRAN ships, and the R bindings must build against it — **only bump it when CRAN does.** Setting `rust-version` also turns on clippy's MSRV-aware lints, so accidental use of a newer std API fails `clippy`/build with a clear message instead of a cryptic `E0658`.
+
+One exception: the experimental `adbc` feature's test path depends (dev-only) on `adbc_datafusion` → `datafusion` ≥53.1.0, which requires rustc ≥1.88. The shipped library still builds on 1.86; only the test / `--all-targets` build needs the newer toolchain. CI (`build.yaml`) runs fmt, clippy and the library build on 1.86, and runs the test-compiling steps with `cargo +stable`.
+
 Cross-platform installers (NSIS / MSI / DMG / Deb): see [`INSTALLERS.md`](INSTALLERS.md). Releases are tag-driven via `.github/workflows/`.
 
 ## Testing

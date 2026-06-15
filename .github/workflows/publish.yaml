@@ -37,7 +37,7 @@ jobs:
         run: sudo apt-get install -y unixodbc-dev
 
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@1.86.0
 
       - name: Caching
         uses: Swatinem/rust-cache@v2

@@ -1,0 +1,7 @@
+# Pinned to CRAN's maximum supported Rust version so the R bindings keep
+# building. Only bump this (and `rust-version` in Cargo.toml) when CRAN raises
+# the Rust version it ships. See /CLAUDE.md.
+[toolchain]
+channel = "1.86"
+components = ["rustfmt", "clippy"]
+targets = ["wasm32-unknown-unknown"]
