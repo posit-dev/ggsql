@@ -2,10 +2,9 @@
 //!
 //! This module defines faceting configuration for small multiples.
 
-use crate::plot::types::{DefaultParamValue, ParamConstraint, ParamDefinition};
+use crate::plot::types::{DefaultParamValue, ParamConstraint, ParamDefinition, Parameters};
 use crate::plot::ParameterValue;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 
 /// Faceting specification (from FACET clause)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -15,7 +14,7 @@ pub struct Facet {
     /// Properties from SETTING clause (e.g., scales, ncol, missing)
     /// After resolution, includes validated and defaulted values
     #[serde(default)]
-    pub properties: HashMap<String, ParameterValue>,
+    pub properties: Parameters,
     /// Whether properties have been resolved (validated and defaults applied)
     #[serde(skip, default)]
     pub resolved: bool,
@@ -41,7 +40,7 @@ impl Facet {
     pub fn new(layout: FacetLayout) -> Self {
         Self {
             layout,
-            properties: HashMap::new(),
+            properties: Parameters::new(),
             resolved: false,
         }
     }

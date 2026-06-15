@@ -6,13 +6,11 @@ use crate::{
     naming,
     plot::{
         geom::types::get_column_name, DefaultAestheticValue, DefaultParamValue, ParamConstraint,
-        ParamDefinition, ParameterValue, StatResult,
+        ParamDefinition, ParameterValue, Parameters, StatResult,
     },
     reader::SqlDialect,
     GgsqlError, Mappings, Result,
 };
-use std::collections::HashMap;
-
 /// Gaussian kernel normalization constant: 1/sqrt(2*pi)
 /// Precomputed at compile time to avoid repeated SQRT and PI() calls in SQL
 const GAUSSIAN_NORM: f64 = 0.3989422804014327; // 1.0 / (2.0 * std::f64::consts::PI).sqrt()
@@ -104,7 +102,7 @@ impl GeomTrait for Density {
         _schema: &crate::plot::Schema,
         aesthetics: &Mappings,
         group_by: &[String],
-        parameters: &std::collections::HashMap<String, crate::plot::ParameterValue>,
+        parameters: &Parameters,
         _execute_query: &dyn Fn(&str) -> crate::Result<crate::DataFrame>,
         dialect: &dyn SqlDialect,
         aesthetic_ctx: &crate::plot::aesthetic::AestheticContext,
@@ -154,7 +152,7 @@ pub(crate) fn stat_density(
     value_aesthetic: &str,
     smooth_aesthetic: Option<&str>,
     group_by: &[String],
-    parameters: &HashMap<String, ParameterValue>,
+    parameters: &Parameters,
     dialect: &dyn SqlDialect,
     aesthetic_ctx: &crate::plot::aesthetic::AestheticContext,
 ) -> Result<StatResult> {
@@ -214,7 +212,7 @@ fn density_sql_bandwidth(
     from: &str,
     groups: &[String],
     value: &str,
-    parameters: &HashMap<String, ParameterValue>,
+    parameters: &Parameters,
     dialect: &dyn SqlDialect,
 ) -> String {
     let adjust = match parameters.get("adjust") {
@@ -279,10 +277,7 @@ fn silverman_rule(
     format!("{adjust} * {min_expr} * POW(COUNT(*), -0.2)")
 }
 
-fn choose_kde_kernel(
-    parameters: &HashMap<String, ParameterValue>,
-    smooth: Option<String>,
-) -> Result<String> {
+fn choose_kde_kernel(parameters: &Parameters, smooth: Option<String>) -> Result<String> {
     let kernel = match parameters.get("kernel") {
         Some(ParameterValue::String(krnl)) => krnl.as_str(),
         _ => {
@@ -609,6 +604,7 @@ fn compute_density(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::plot::Parameters;
     use crate::reader::duckdb::DuckDBReader;
     use crate::reader::AnsiDialect;
     use crate::reader::Reader;
@@ -618,7 +614,7 @@ mod tests {
     fn test_density_sql_no_groups() {
         let query = "SELECT x FROM (VALUES (1.0), (2.0), (3.0)) AS t(x)";
         let groups: Vec<String> = vec![];
-        let mut parameters = HashMap::new();
+        let mut parameters = Parameters::new();
         parameters.insert("bandwidth".to_string(), ParameterValue::Number(0.5));
         parameters.insert(
             "kernel".to_string(),
@@ -694,7 +690,7 @@ mod tests {
     fn test_density_sql_with_two_groups() {
         let query = "SELECT x, region, category FROM (VALUES (1.0, 'A', 'X'), (2.0, 'B', 'Y')) AS t(x, region, category)";
         let groups = vec!["region".to_string(), "category".to_string()];
-        let mut parameters = HashMap::new();
+        let mut parameters = Parameters::new();
         parameters.insert("bandwidth".to_string(), ParameterValue::Number(0.5));
         parameters.insert(
             "kernel".to_string(),
@@ -816,7 +812,7 @@ mod tests {
         // Test 1: No groups
         let query = "SELECT x FROM (VALUES (1.0), (2.0), (3.0), (4.0), (5.0)) AS t(x)";
         let groups: Vec<String> = vec![];
-        let parameters = HashMap::new(); // No explicit bandwidth - will compute
+        let parameters = Parameters::new(); // No explicit bandwidth - will compute
 
         let bw_cte = density_sql_bandwidth(query, &groups, "x", &parameters, &AnsiDialect);
 
@@ -872,7 +868,7 @@ mod tests {
     fn test_kernel_integration(kernel_name: &str, tolerance: f64) {
         let query = "SELECT x FROM (VALUES (1.0), (2.0), (3.0), (4.0), (5.0)) AS t(x)";
         let groups: Vec<String> = vec![];
-        let mut parameters = HashMap::new();
+        let mut parameters = Parameters::new();
         parameters.insert("bandwidth".to_string(), ParameterValue::Number(1.0));
         parameters.insert(
             "kernel".to_string(),
@@ -968,7 +964,7 @@ mod tests {
 
     #[test]
     fn test_kernel_invalid() {
-        let mut parameters = HashMap::new();
+        let mut parameters = Parameters::new();
         parameters.insert(
             "kernel".to_string(),
             ParameterValue::String("invalid_kernel".to_string()),
@@ -991,7 +987,7 @@ mod tests {
         // Compare weighted and unweighted results
         let query = "SELECT x FROM (VALUES (1.0), (2.0), (3.0)) AS t(x)";
         let groups: Vec<String> = vec![];
-        let mut parameters = HashMap::new();
+        let mut parameters = Parameters::new();
         parameters.insert("bandwidth".to_string(), ParameterValue::Number(0.5));
         parameters.insert(
             "kernel".to_string(),
@@ -1148,7 +1144,7 @@ mod tests {
 
         let query = "SELECT x FROM bench_data";
         let groups: Vec<String> = vec![];
-        let mut parameters = HashMap::new();
+        let mut parameters = Parameters::new();
         parameters.insert("bandwidth".to_string(), ParameterValue::Number(5.0));
         parameters.insert(
             "kernel".to_string(),
@@ -1197,7 +1193,7 @@ mod tests {
     #[test]
     fn stat_density_missing_value_aesthetic_emits_user_facing_name() {
         let mappings = crate::Mappings::new();
-        let parameters = std::collections::HashMap::new();
+        let parameters = Parameters::new();
         let dialect = AnsiDialect;
         let ctx = crate::plot::aesthetic::AestheticContext::from_static(&["x", "y"], &[]);
 

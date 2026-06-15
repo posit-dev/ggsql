@@ -78,7 +78,7 @@ pub use violin::Violin;
 
 use crate::plot::aesthetic::AestheticContext;
 use crate::plot::projection::Projection;
-use crate::plot::types::{ParameterValue, Schema};
+use crate::plot::types::{ParameterValue, Parameters, Schema};
 use crate::reader::SqlDialect;
 
 /// Enum of all geom types for pattern matching and serialization
@@ -243,7 +243,7 @@ pub trait GeomTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
         schema: &Schema,
         aesthetics: &Mappings,
         group_by: &[String],
-        parameters: &HashMap<String, ParameterValue>,
+        parameters: &Parameters,
         _execute_query: &dyn Fn(&str) -> Result<DataFrame>,
         dialect: &dyn SqlDialect,
         aesthetic_ctx: &AestheticContext,
@@ -284,11 +284,7 @@ pub trait GeomTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
     ///
     /// Used by violin to scale the offset column to [0, 0.5 * width] using global
     /// max normalization before Vega-Lite rendering.
-    fn post_process(
-        &self,
-        df: DataFrame,
-        _parameters: &HashMap<String, ParameterValue>,
-    ) -> Result<DataFrame> {
+    fn post_process(&self, df: DataFrame, _parameters: &Parameters) -> Result<DataFrame> {
         Ok(df)
     }
 
@@ -333,11 +329,7 @@ pub trait GeomTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
     /// This is called after parameters are validated, which allows for internal
     /// parameters.
     /// The default implementation does nothing.
-    fn setup_layer(
-        &self,
-        _mappings: &mut Mappings,
-        _parameters: &mut HashMap<String, ParameterValue>,
-    ) -> Result<()> {
+    fn setup_layer(&self, _mappings: &mut Mappings, _parameters: &mut Parameters) -> Result<()> {
         Ok(())
     }
 
@@ -621,7 +613,7 @@ pub(crate) fn densify_edges(
 }
 
 /// True when `parameters["aggregate"]` is set to a non-null string or array.
-pub(crate) fn has_aggregate_param(parameters: &HashMap<String, ParameterValue>) -> bool {
+pub(crate) fn has_aggregate_param(parameters: &Parameters) -> bool {
     matches!(
         parameters.get("aggregate"),
         Some(ParameterValue::String(_)) | Some(ParameterValue::Array(_))
@@ -826,7 +818,7 @@ impl Geom {
         schema: &Schema,
         aesthetics: &Mappings,
         group_by: &[String],
-        parameters: &HashMap<String, ParameterValue>,
+        parameters: &Parameters,
         execute_query: &dyn Fn(&str) -> Result<DataFrame>,
         dialect: &dyn SqlDialect,
         aesthetic_ctx: &AestheticContext,
@@ -844,11 +836,7 @@ impl Geom {
     }
 
     /// Post-process DataFrame after stat query execution
-    pub fn post_process(
-        &self,
-        df: DataFrame,
-        parameters: &HashMap<String, ParameterValue>,
-    ) -> Result<DataFrame> {
+    pub fn post_process(&self, df: DataFrame, parameters: &Parameters) -> Result<DataFrame> {
         self.0.post_process(df, parameters)
     }
 
@@ -873,11 +861,7 @@ impl Geom {
     }
 
     /// Adjust layer mappings and parameters based on geom-specific logic
-    pub fn setup_layer(
-        &self,
-        mappings: &mut Mappings,
-        parameters: &mut HashMap<String, ParameterValue>,
-    ) -> Result<()> {
+    pub fn setup_layer(&self, mappings: &mut Mappings, parameters: &mut Parameters) -> Result<()> {
         self.0.setup_layer(mappings, parameters)
     }
 

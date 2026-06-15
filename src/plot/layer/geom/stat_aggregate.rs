@@ -33,7 +33,7 @@ use regex::Regex;
 use super::types::StatResult;
 use crate::naming;
 use crate::plot::aesthetic::AestheticContext;
-use crate::plot::types::{ArrayElement, ParameterValue, Schema};
+use crate::plot::types::{ArrayElement, ParameterValue, Parameters, Schema};
 use crate::reader::SqlDialect;
 use crate::{GgsqlError, Mappings, Result};
 
@@ -617,7 +617,7 @@ pub(crate) fn resolve_aggregate_targets(
 /// doesn't need a schema — so post-stat callers can use it without rebuilding
 /// type information from a materialised DataFrame.
 pub fn targeted_aesthetics(
-    parameters: &HashMap<String, ParameterValue>,
+    parameters: &Parameters,
     aesthetics: &Mappings,
     aesthetic_ctx: &AestheticContext,
 ) -> HashSet<String> {
@@ -652,7 +652,7 @@ pub fn targeted_aesthetics(
 /// when the stat will return `Identity` and no aesthetic is touched. Parse
 /// errors are swallowed; the stat itself surfaces a clean diagnostic.
 pub fn aggregated_aesthetics(
-    parameters: &HashMap<String, ParameterValue>,
+    parameters: &Parameters,
     aesthetics: &Mappings,
     schema: &Schema,
     aesthetic_ctx: &AestheticContext,
@@ -720,7 +720,7 @@ pub fn apply(
     schema: &Schema,
     aesthetics: &Mappings,
     group_by: &[String],
-    parameters: &HashMap<String, ParameterValue>,
+    parameters: &Parameters,
     dialect: &dyn SqlDialect,
     aesthetic_ctx: &AestheticContext,
     domain_aesthetics: &[&'static str],
@@ -1041,6 +1041,7 @@ mod tests {
     use super::*;
     use crate::plot::aesthetic::AestheticContext;
     use crate::plot::types::{AestheticValue, ColumnInfo};
+    use crate::plot::Parameters;
     use arrow::datatypes::DataType;
 
     /// A test dialect that mimics DuckDB: native QUANTILE_CONT plus the
@@ -1116,7 +1117,7 @@ mod tests {
         dialect: &dyn SqlDialect,
         domain: &[&'static str],
     ) -> Result<StatResult> {
-        let mut p = HashMap::new();
+        let mut p = Parameters::new();
         p.insert("aggregate".to_string(), params);
         let ctx = cartesian_ctx();
         apply(
@@ -1340,7 +1341,7 @@ mod tests {
     fn returns_identity_when_param_unset() {
         let aes = Mappings::new();
         let schema: Schema = vec![];
-        let p: HashMap<String, ParameterValue> = HashMap::new();
+        let p = Parameters::new();
         let ctx = cartesian_ctx();
         let result = apply(
             "SELECT * FROM t",

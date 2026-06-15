@@ -5,7 +5,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-use super::super::types::{ArrayElement, ParameterValue};
+use super::super::types::{ArrayElement, ParameterValue, Parameters};
 use super::scale_type::ScaleType;
 use super::transform::Transform;
 
@@ -54,7 +54,7 @@ pub struct Scale {
     /// Additional scale properties (SETTING clause)
     /// Note: `breaks` can be either a Number (count) or Array (explicit positions).
     /// If scalar at parse time, it's converted to Array during resolution.
-    pub properties: HashMap<String, ParameterValue>,
+    pub properties: Parameters,
     /// Whether this scale has been resolved (set by resolve() method)
     /// Used to skip re-resolution of pre-resolved scales (e.g., Binned scales)
     #[serde(default)]
@@ -83,7 +83,7 @@ impl Scale {
             output_range: None,
             transform: None,
             explicit_transform: false,
-            properties: HashMap::new(),
+            properties: Parameters::new(),
             resolved: false,
             label_mapping: None,
             label_template: "{}".to_string(),

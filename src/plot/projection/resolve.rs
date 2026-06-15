@@ -3,13 +3,12 @@
 //! Resolves the default coordinate system by inspecting aesthetic mappings,
 //! and post-scale resolution of projection properties like `radar`.
 
-use std::collections::HashMap;
-
 use super::coord::{Coord, CoordKind};
 use super::Projection;
 use crate::plot::aesthetic::{MATERIAL_AESTHETICS, POSITION_SUFFIXES};
 use crate::plot::layer::GeomType;
 use crate::plot::scale::ScaleTypeKind;
+use crate::plot::Parameters;
 use crate::plot::{Mappings, ParameterValue, Scale};
 use crate::GgsqlError;
 
@@ -106,8 +105,8 @@ pub fn resolve_coord(
         return Ok(Some(Projection {
             coord,
             aesthetics,
-            properties: HashMap::new(),
-            computed: HashMap::new(),
+            properties: Parameters::new(),
+            computed: Parameters::new(),
         }));
     }
 
@@ -122,8 +121,8 @@ pub fn resolve_coord(
         return Ok(Some(Projection {
             coord,
             aesthetics,
-            properties: HashMap::new(),
-            computed: HashMap::new(),
+            properties: Parameters::new(),
+            computed: Parameters::new(),
         }));
     }
 
@@ -138,8 +137,8 @@ pub fn resolve_coord(
         return Ok(Some(Projection {
             coord,
             aesthetics,
-            properties: HashMap::new(),
-            computed: HashMap::new(),
+            properties: Parameters::new(),
+            computed: Parameters::new(),
         }));
     }
 

@@ -1416,7 +1416,7 @@ pub fn apply_oob_to_column_discrete(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::plot::ArrayElement;
+    use crate::plot::{ArrayElement, Parameters};
     use crate::Geom;
     use arrow::datatypes::DataType;
 
@@ -1722,8 +1722,8 @@ mod tests {
         spec.project = Some(Projection {
             coord,
             aesthetics,
-            properties: std::collections::HashMap::new(),
-            computed: std::collections::HashMap::new(),
+            properties: Parameters::new(),
+            computed: Parameters::new(),
         });
 
         // Create scale for pos2 (theta in polar) without explicit expand

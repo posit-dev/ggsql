@@ -26,7 +26,7 @@ mod layer;
 mod projection;
 
 use crate::plot::ArrayElement;
-use crate::plot::{ParameterValue, Scale, ScaleTypeKind};
+use crate::plot::{ParameterValue, Parameters, Scale, ScaleTypeKind};
 use crate::writer::Writer;
 use crate::{naming, AestheticValue, DataFrame, GgsqlError, Plot, Result};
 use serde_json::{json, Value};
@@ -664,7 +664,7 @@ fn apply_facet_ordering(vl_spec: &mut Value, facet_col: &str, index_map: &[(Valu
 /// - Polar: pos1 -> "radius", pos2 -> "theta"
 fn apply_facet_scale_resolution(
     vl_spec: &mut Value,
-    properties: &HashMap<String, ParameterValue>,
+    properties: &Parameters,
     projection: &dyn ProjectionRenderer,
 ) {
     let Some(ParameterValue::Array(arr)) = properties.get("free") else {
@@ -1018,11 +1018,7 @@ pub(super) fn escape_vega_string(s: &str) -> String {
 /// - ncol: Number of columns for wrap facets (maps to Vega-Lite's "columns")
 ///
 /// Note: free is handled separately by apply_facet_scale_resolution
-fn apply_facet_properties(
-    vl_spec: &mut Value,
-    properties: &HashMap<String, ParameterValue>,
-    is_wrap: bool,
-) {
+fn apply_facet_properties(vl_spec: &mut Value, properties: &Parameters, is_wrap: bool) {
     for (name, value) in properties {
         match name.as_str() {
             "ncol" if is_wrap => {
@@ -2657,7 +2653,7 @@ mod tests {
 
         // Add facet with free => [true, true] (both x and y free)
         // This is the normalized format after facet resolution
-        let mut facet_properties = HashMap::new();
+        let mut facet_properties = Parameters::new();
         facet_properties.insert(
             "free".to_string(),
             ParameterValue::Array(vec![
@@ -2737,7 +2733,7 @@ mod tests {
 
         // Add facet with free => [false, true] (only y is free)
         // This is the normalized format after facet resolution
-        let mut facet_properties = HashMap::new();
+        let mut facet_properties = Parameters::new();
         facet_properties.insert(
             "free".to_string(),
             ParameterValue::Array(vec![
@@ -2834,7 +2830,7 @@ mod tests {
             layout: FacetLayout::Wrap {
                 variables: vec!["category".to_string()],
             },
-            properties: HashMap::new(), // No free property
+            properties: Parameters::new(), // No free property
             resolved: true,
         });
 
@@ -3030,8 +3026,8 @@ mod tests {
             spec.project = Some(Projection {
                 aesthetics: vec!["angle".to_string(), "radius".to_string()],
                 coord: Coord::polar(),
-                properties: HashMap::new(),
-                computed: HashMap::new(),
+                properties: Parameters::new(),
+                computed: Parameters::new(),
             });
             let layer = Layer::new(Geom::point())
                 .with_aesthetic(

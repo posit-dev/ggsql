@@ -1,7 +1,5 @@
 //! Tile geom implementation with flexible parameter specification
 
-use std::collections::HashMap;
-
 use super::stat_aggregate;
 use super::types::POSITION_VALUES;
 use super::types::{get_column_name, get_quoted_column_name};
@@ -11,7 +9,7 @@ use super::{
 };
 use crate::naming;
 use crate::plot::projection::Projection;
-use crate::plot::types::{ColumnInfo, DefaultAestheticValue, ParameterValue};
+use crate::plot::types::{ColumnInfo, DefaultAestheticValue, ParameterValue, Parameters};
 use crate::plot::{DefaultParamValue, ParamDefinition};
 use crate::reader::SqlDialect;
 use crate::{DataFrame, GgsqlError, Mappings, Result};
@@ -115,7 +113,7 @@ impl GeomTrait for Tile {
         schema: &Schema,
         aesthetics: &Mappings,
         group_by: &[String],
-        parameters: &HashMap<String, ParameterValue>,
+        parameters: &Parameters,
         _execute_query: &dyn Fn(&str) -> Result<DataFrame>,
         dialect: &dyn SqlDialect,
         aesthetic_ctx: &crate::plot::aesthetic::AestheticContext,
@@ -386,7 +384,7 @@ impl std::fmt::Display for Tile {
 fn process_direction(
     axis: &str,
     aesthetics: &Mappings,
-    parameters: &HashMap<String, ParameterValue>,
+    parameters: &Parameters,
     schema: &Schema,
     display_name: &str,
 ) -> Result<(Vec<String>, Vec<String>)> {
@@ -465,7 +463,7 @@ fn stat_tile(
     schema: &Schema,
     aesthetics: &Mappings,
     _group_by: &[String],
-    parameters: &HashMap<String, ParameterValue>,
+    parameters: &Parameters,
     aesthetic_ctx: &crate::plot::aesthetic::AestheticContext,
 ) -> Result<StatResult> {
     let display_x = aesthetic_ctx.map_internal_to_user("pos1");
@@ -613,7 +611,8 @@ fn generate_continuous_position_expressions(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::plot::types::{AestheticValue, ColumnInfo};
+    use crate::plot::types::{AestheticValue, ColumnInfo, ParameterValue};
+    use crate::plot::Parameters;
     use arrow::datatypes::DataType;
 
     // ==================== Helper Functions ====================
@@ -783,7 +782,7 @@ mod tests {
             let aesthetics = create_aesthetics(&all_mappings);
             let schema = create_schema(&[]);
             let group_by = vec![];
-            let parameters = HashMap::new();
+            let parameters = Parameters::new();
 
             let ctx = crate::plot::aesthetic::AestheticContext::from_static(&["x", "y"], &[]);
             let result = stat_tile(
@@ -895,7 +894,7 @@ mod tests {
             let aesthetics = create_aesthetics(&all_mappings);
             let schema = create_schema(&[]);
             let group_by = vec![];
-            let parameters = HashMap::new();
+            let parameters = Parameters::new();
 
             let ctx = crate::plot::aesthetic::AestheticContext::from_static(&["x", "y"], &[]);
             let result = stat_tile(
@@ -962,7 +961,7 @@ mod tests {
         let aesthetics = create_aesthetics(&["pos1", "width", "pos2min", "pos2max"]);
         let schema = create_schema(&["pos1"]);
         let group_by = vec![];
-        let parameters = HashMap::new();
+        let parameters = Parameters::new();
 
         let ctx = crate::plot::aesthetic::AestheticContext::from_static(&["x", "y"], &[]);
         let result = stat_tile(
@@ -995,7 +994,7 @@ mod tests {
         let aesthetics = create_aesthetics(&["pos1min", "pos1max", "pos2", "height"]);
         let schema = create_schema(&["pos2"]);
         let group_by = vec![];
-        let parameters = HashMap::new();
+        let parameters = Parameters::new();
 
         let ctx = crate::plot::aesthetic::AestheticContext::from_static(&["x", "y"], &[]);
         let result = stat_tile(
@@ -1028,7 +1027,7 @@ mod tests {
         let aesthetics = create_aesthetics(&["pos1", "width", "pos2", "height"]);
         let schema = create_schema(&["pos1", "pos2"]);
         let group_by = vec![];
-        let parameters = HashMap::new();
+        let parameters = Parameters::new();
 
         let ctx = crate::plot::aesthetic::AestheticContext::from_static(&["x", "y"], &[]);
         let result = stat_tile(
@@ -1063,7 +1062,7 @@ mod tests {
         let aesthetics = create_aesthetics(&["pos1", "pos2min", "pos2max"]);
         let schema = create_schema(&[]);
         let group_by = vec![];
-        let parameters = HashMap::new();
+        let parameters = Parameters::new();
 
         let ctx = crate::plot::aesthetic::AestheticContext::from_static(&["x", "y"], &[]);
         let result = stat_tile(
@@ -1096,7 +1095,7 @@ mod tests {
         let aesthetics = create_aesthetics(&["pos1", "pos1min", "pos1max", "pos2min", "pos2max"]);
         let schema = create_schema(&[]);
         let group_by = vec![];
-        let parameters = HashMap::new();
+        let parameters = Parameters::new();
 
         let ctx = crate::plot::aesthetic::AestheticContext::from_static(&["x", "y"], &[]);
         let result = stat_tile(
@@ -1117,7 +1116,7 @@ mod tests {
         let aesthetics = create_aesthetics(&["pos1", "pos1min", "pos2min", "pos2max"]);
         let schema = create_schema(&["pos1"]);
         let group_by = vec![];
-        let parameters = HashMap::new();
+        let parameters = Parameters::new();
 
         let ctx = crate::plot::aesthetic::AestheticContext::from_static(&["x", "y"], &[]);
         let result = stat_tile(
@@ -1139,7 +1138,7 @@ mod tests {
         let aesthetics = create_aesthetics(&["pos1", "pos2min", "pos2max"]);
         let schema = create_schema(&["pos1"]);
         let group_by = vec![];
-        let parameters = HashMap::new();
+        let parameters = Parameters::new();
 
         let ctx = crate::plot::aesthetic::AestheticContext::from_static(&["x", "y"], &[]);
         let result = stat_tile(
@@ -1173,7 +1172,7 @@ mod tests {
         // Include fill in schema (it's a non-consumed aesthetic)
         let schema = create_schema_with_extra(&["pos1", "pos2"], &["__ggsql_aes_fill__"]);
         let group_by = vec![];
-        let parameters = HashMap::new();
+        let parameters = Parameters::new();
 
         let ctx = crate::plot::aesthetic::AestheticContext::from_static(&["x", "y"], &[]);
         let result = stat_tile(
@@ -1218,7 +1217,7 @@ mod tests {
             max: None,
         });
         let ctx = AestheticContext::from_static(&["x", "y"], &[]);
-        let mut parameters = HashMap::new();
+        let mut parameters = Parameters::new();
         parameters.insert(
             "aggregate".to_string(),
             ParameterValue::String("mean".to_string()),
@@ -1289,7 +1288,7 @@ mod tests {
             max: None,
         });
         let ctx = AestheticContext::from_static(&["x", "y"], &[]);
-        let mut parameters = HashMap::new();
+        let mut parameters = Parameters::new();
         parameters.insert(
             "aggregate".to_string(),
             ParameterValue::Array(vec![
@@ -1341,7 +1340,7 @@ mod tests {
         let aesthetics = create_aesthetics(&["pos1", "pos2"]);
         let schema = create_schema(&["pos1", "pos2"]);
         let group_by = vec![];
-        let mut parameters = HashMap::new();
+        let mut parameters = Parameters::new();
         parameters.insert("width".to_string(), ParameterValue::Number(0.7));
         parameters.insert("height".to_string(), ParameterValue::Number(0.9));
 

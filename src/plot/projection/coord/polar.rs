@@ -55,8 +55,7 @@ impl CoordTrait for Polar {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::plot::ParameterValue;
-    use std::collections::HashMap;
+    use crate::plot::{ParameterValue, Parameters};
 
     #[test]
     fn test_polar_properties() {
@@ -92,7 +91,7 @@ mod tests {
     #[test]
     fn test_polar_rejects_unknown_property() {
         let polar = Polar;
-        let mut props = HashMap::new();
+        let mut props = Parameters::new();
         props.insert(
             "unknown".to_string(),
             ParameterValue::String("value".to_string()),
@@ -107,7 +106,7 @@ mod tests {
     #[test]
     fn test_polar_resolve_with_explicit_start() {
         let polar = Polar;
-        let mut props = HashMap::new();
+        let mut props = Parameters::new();
         props.insert("start".to_string(), ParameterValue::Number(90.0));
 
         let resolved = polar.resolve_properties(None, &props);
@@ -122,7 +121,7 @@ mod tests {
     #[test]
     fn test_polar_resolve_adds_start_default() {
         let polar = Polar;
-        let props = HashMap::new();
+        let props = Parameters::new();
 
         let resolved = polar.resolve_properties(None, &props);
         assert!(resolved.is_ok());
@@ -134,7 +133,7 @@ mod tests {
     #[test]
     fn test_polar_resolve_with_explicit_end() {
         let polar = Polar;
-        let mut props = HashMap::new();
+        let mut props = Parameters::new();
         props.insert("end".to_string(), ParameterValue::Number(180.0));
 
         let resolved = polar.resolve_properties(None, &props);
@@ -148,7 +147,7 @@ mod tests {
     #[test]
     fn test_polar_resolve_with_start_and_end() {
         let polar = Polar;
-        let mut props = HashMap::new();
+        let mut props = Parameters::new();
         props.insert("start".to_string(), ParameterValue::Number(-90.0));
         props.insert("end".to_string(), ParameterValue::Number(90.0));
 
@@ -165,7 +164,7 @@ mod tests {
     #[test]
     fn test_polar_resolve_with_inner() {
         let polar = Polar;
-        let mut props = HashMap::new();
+        let mut props = Parameters::new();
         props.insert("inner".to_string(), ParameterValue::Number(0.5));
 
         let resolved = polar.resolve_properties(None, &props);

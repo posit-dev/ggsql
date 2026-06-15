@@ -1,12 +1,10 @@
 //! Map coordinate system — helper functions for map projection transforms.
 
-use std::collections::HashMap;
-
 use super::map_projections::MapProjectionTrait;
 use crate::naming;
 use crate::plot::layer::geom::GeomType;
 use crate::plot::scale::breaks::graticule_breaks;
-use crate::plot::{DataSource, Layer, ParameterValue};
+use crate::plot::{DataSource, Layer, ParameterValue, Parameters};
 use crate::reader::SqlDialect;
 use crate::DataFrame;
 
@@ -780,7 +778,7 @@ pub(crate) fn resolve_map_projection(
 /// database engine may still handle it). Returns `None` when the property is absent.
 fn resolve_epsg_property(
     key: &str,
-    properties: &HashMap<String, ParameterValue>,
+    properties: &Parameters,
     execute_query: &dyn Fn(&str) -> crate::Result<DataFrame>,
 ) -> Option<String> {
     let code: u32 = match properties.get(key) {
@@ -883,19 +881,18 @@ fn builtin_epsg_lookup(code: u32) -> Option<String> {
 mod tests {
     use super::*;
     use crate::plot::projection::coord::{Coord, CoordKind};
-    use crate::plot::ParameterValue;
-    use std::collections::HashMap;
+    use crate::plot::{ParameterValue, Parameters};
 
     #[test]
     fn test_map_properties() {
-        let coord = Coord::map("crs", &HashMap::new());
+        let coord = Coord::map("crs", &Parameters::new());
         assert_eq!(coord.coord_kind(), CoordKind::Map);
         assert_eq!(coord.position_aesthetic_names(), &["lon", "lat"]);
     }
 
     #[test]
     fn test_map_default_properties() {
-        let coord = Coord::map("crs", &HashMap::new());
+        let coord = Coord::map("crs", &Parameters::new());
         let defaults = coord.default_properties();
         let names: Vec<&str> = defaults.iter().map(|p| p.name).collect();
         assert!(names.contains(&"target"));
@@ -909,7 +906,7 @@ mod tests {
 
     #[test]
     fn test_map_accepts_target_string() {
-        let mut props = HashMap::new();
+        let mut props = Parameters::new();
         props.insert(
             "target".to_string(),
             ParameterValue::String("+proj=merc".to_string()),
@@ -927,8 +924,8 @@ mod tests {
 
     #[test]
     fn test_map_rejects_unknown_property() {
-        let coord = Coord::map("crs", &HashMap::new());
-        let mut props = HashMap::new();
+        let coord = Coord::map("crs", &Parameters::new());
+        let mut props = Parameters::new();
         props.insert(
             "unknown".to_string(),
             ParameterValue::String("value".to_string()),
@@ -942,7 +939,7 @@ mod tests {
 
     #[test]
     fn test_target_rejects_origin_and_parallel() {
-        let mut props = HashMap::new();
+        let mut props = Parameters::new();
         props.insert(
             "target".to_string(),
             ParameterValue::String("+proj=ortho".to_string()),
@@ -958,7 +955,7 @@ mod tests {
 
     #[test]
     fn test_origin_rejects_latitude_out_of_range() {
-        let mut props = HashMap::new();
+        let mut props = Parameters::new();
         props.insert(
             "origin".to_string(),
             ParameterValue::Array(vec![

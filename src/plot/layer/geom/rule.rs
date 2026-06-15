@@ -7,7 +7,7 @@ use super::{
 use crate::plot::projection::coord::map::clip_boundary_table;
 use crate::plot::projection::coord::CoordKind;
 use crate::plot::projection::Projection;
-use crate::plot::types::{DefaultAestheticValue, ParameterValue};
+use crate::plot::types::{DefaultAestheticValue, ParameterValue, Parameters};
 use crate::reader::SqlDialect;
 use crate::{naming, Mappings, Result};
 
@@ -161,7 +161,7 @@ impl GeomTrait for Rule {
     fn setup_layer(
         &self,
         mappings: &mut crate::plot::layer::Mappings,
-        parameters: &mut std::collections::HashMap<String, crate::plot::ParameterValue>,
+        parameters: &mut Parameters,
     ) -> crate::Result<()> {
         use crate::plot::layer::AestheticValue;
         use crate::plot::ParameterValue;

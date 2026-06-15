@@ -4,7 +4,7 @@
 //! a single visualization layer (from DRAW clause) in a ggsql specification.
 
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 
 // Geom is a submodule of layer
 pub mod geom;
@@ -30,7 +30,8 @@ use crate::{
     plot::{
         is_facet_aesthetic, parse_position,
         types::{
-            validate_parameter, AestheticValue, DataSource, Mappings, ParameterValue, SqlExpression,
+            validate_parameter, AestheticValue, DataSource, Mappings, ParameterValue, Parameters,
+            SqlExpression,
         },
     },
     AestheticContext,
@@ -68,7 +69,7 @@ pub struct Layer {
     /// Maps stat-computed columns (e.g., "count") to aesthetic channels (e.g., "y")
     pub remappings: Mappings,
     /// Geom parameters (not aesthetic mappings)
-    pub parameters: HashMap<String, ParameterValue>,
+    pub parameters: Parameters,
     /// Optional data source for this layer (from MAPPING ... FROM)
     pub source: Option<DataSource>,
     /// Optional filter expression for this layer (from FILTER clause)
@@ -97,7 +98,7 @@ impl Layer {
             position: Position::default(),
             mappings: Mappings::new(),
             remappings: Mappings::new(),
-            parameters: HashMap::new(),
+            parameters: Parameters::new(),
             source: None,
             filter: None,
             order_by: None,

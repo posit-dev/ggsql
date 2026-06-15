@@ -40,8 +40,7 @@ impl CoordTrait for Cartesian {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::plot::ParameterValue;
-    use std::collections::HashMap;
+    use crate::plot::{ParameterValue, Parameters};
 
     #[test]
     fn test_cartesian_properties() {
@@ -62,7 +61,7 @@ mod tests {
     #[test]
     fn test_cartesian_resolve_valid_properties() {
         let cartesian = Cartesian;
-        let props = HashMap::new();
+        let props = Parameters::new();
         // Empty properties should resolve successfully
         let resolved = cartesian.resolve_properties(None, &props);
         assert!(resolved.is_ok());
@@ -71,7 +70,7 @@ mod tests {
     #[test]
     fn test_cartesian_rejects_unknown_property() {
         let cartesian = Cartesian;
-        let mut props = HashMap::new();
+        let mut props = Parameters::new();
         props.insert(
             "unknown".to_string(),
             ParameterValue::String("value".to_string()),

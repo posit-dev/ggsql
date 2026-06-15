@@ -21,11 +21,10 @@
 //! ```
 
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::sync::Arc;
 
-use crate::plot::types::{validate_parameter, ParamDefinition};
-use crate::plot::{Layer, ParameterValue};
+use crate::plot::types::{validate_parameter, ParamDefinition, Parameters};
+use crate::plot::Layer;
 use crate::reader::SqlDialect;
 use crate::DataFrame;
 
@@ -93,8 +92,8 @@ pub trait CoordTrait: std::fmt::Debug + Send + Sync {
     fn resolve_properties(
         &self,
         _coord_type_name: Option<&str>,
-        properties: &HashMap<String, ParameterValue>,
-    ) -> Result<HashMap<String, ParameterValue>, String> {
+        properties: &Parameters,
+    ) -> Result<Parameters, String> {
         let defaults = self.default_properties();
 
         // Validate values against constraints
@@ -187,7 +186,7 @@ impl Coord {
     }
 
     /// Create a Map coord type from a projection name and properties.
-    pub fn map(name: &str, properties: &HashMap<String, ParameterValue>) -> Self {
+    pub fn map(name: &str, properties: &Parameters) -> Self {
         Self(
             map_projections::build_map_projection(Some(name), properties)
                 .expect("map coord name must be a known projection or 'map'"),
@@ -199,7 +198,7 @@ impl Coord {
         match kind {
             CoordKind::Cartesian => Self::cartesian(),
             CoordKind::Polar => Self::polar(),
-            CoordKind::Map => Self::map("crs", &HashMap::new()),
+            CoordKind::Map => Self::map("crs", &Parameters::new()),
         }
     }
 
@@ -228,8 +227,8 @@ impl Coord {
     pub fn resolve_properties(
         &self,
         coord_type_name: Option<&str>,
-        properties: &HashMap<String, ParameterValue>,
-    ) -> Result<HashMap<String, ParameterValue>, String> {
+        properties: &Parameters,
+    ) -> Result<Parameters, String> {
         self.0.resolve_properties(coord_type_name, properties)
     }
 

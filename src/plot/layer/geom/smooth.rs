@@ -5,7 +5,7 @@ use super::{
     DefaultAesthetics, DefaultParamValue, GeomTrait, GeomType, ParamConstraint, ParamDefinition,
 };
 use crate::plot::geom::types::get_quoted_column_name;
-use crate::plot::types::DefaultAestheticValue;
+use crate::plot::types::{DefaultAestheticValue, Parameters};
 use crate::plot::{ParameterValue, StatResult};
 use crate::reader::SqlDialect;
 use crate::{naming, GgsqlError, Mappings, Result};
@@ -93,7 +93,7 @@ impl GeomTrait for Smooth {
         _schema: &crate::plot::Schema,
         aesthetics: &Mappings,
         group_by: &[String],
-        parameters: &std::collections::HashMap<String, crate::plot::ParameterValue>,
+        parameters: &Parameters,
         _execute_query: &dyn Fn(&str) -> crate::Result<crate::DataFrame>,
         dialect: &dyn SqlDialect,
         aesthetic_ctx: &crate::plot::aesthetic::AestheticContext,

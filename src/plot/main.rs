@@ -303,6 +303,7 @@ impl Default for Plot {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::plot::Parameters;
 
     #[test]
     fn test_plot_creation() {
@@ -773,8 +774,8 @@ mod tests {
         spec.project = Some(Projection {
             coord: Coord::cartesian(),
             aesthetics: vec!["y".to_string(), "x".to_string()],
-            properties: HashMap::new(),
-            computed: HashMap::new(),
+            properties: Parameters::new(),
+            computed: Parameters::new(),
         });
         spec.labels = Some(Labels {
             labels: HashMap::from([
@@ -804,8 +805,8 @@ mod tests {
         spec.project = Some(Projection {
             coord: Coord::polar(),
             aesthetics: vec!["angle".to_string(), "radius".to_string()],
-            properties: HashMap::new(),
-            computed: HashMap::new(),
+            properties: Parameters::new(),
+            computed: Parameters::new(),
         });
         spec.labels = Some(Labels {
             labels: HashMap::from([

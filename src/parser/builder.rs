@@ -453,7 +453,7 @@ fn build_layer(node: &Node, source: &SourceTree) -> Result<Layer> {
     let mut geom = Geom::point(); // default
     let mut aesthetics = Mappings::new();
     let mut remappings = Mappings::new();
-    let mut parameters = HashMap::new();
+    let mut parameters = Parameters::new();
     let mut partition_by = Vec::new();
     let mut filter = None;
     let mut order_by = None;
@@ -542,11 +542,8 @@ fn build_place_layer(node: &Node, source: &SourceTree) -> Result<Layer> {
 }
 
 /// Parse a setting_clause: SETTING param => value, ...
-fn parse_setting_clause(
-    node: &Node,
-    source: &SourceTree,
-) -> Result<HashMap<String, ParameterValue>> {
-    let mut parameters = HashMap::new();
+fn parse_setting_clause(node: &Node, source: &SourceTree) -> Result<Parameters> {
+    let mut parameters = Parameters::new();
 
     // Find all parameter_assignment nodes
     let query = "(parameter_assignment) @param";
@@ -671,7 +668,7 @@ fn build_scale(node: &Node, source: &SourceTree) -> Result<Scale> {
     let mut output_range: Option<OutputRange> = None;
     let mut transform: Option<Transform> = None;
     let mut explicit_transform = false;
-    let mut properties = HashMap::new();
+    let mut properties = Parameters::new();
     let mut label_mapping: Option<HashMap<String, Option<String>>> = None;
     let mut label_template = "{}".to_string();
 
@@ -904,7 +901,7 @@ fn parse_scale_renaming_clause(
 fn build_facet(node: &Node, source: &SourceTree) -> Result<Facet> {
     let mut row_vars = Vec::new();
     let mut column_vars = Vec::new();
-    let mut properties = HashMap::new();
+    let mut properties = Parameters::new();
 
     let mut cursor = node.walk();
     let mut next_vars_are_cols = false;
@@ -971,7 +968,7 @@ fn parse_facet_vars(node: &Node, source: &SourceTree) -> Result<Vec<String>> {
 /// Aesthetics are optional and default to the coord's standard names.
 fn build_project(node: &Node, source: &SourceTree) -> Result<Projection> {
     let mut coord_type_name: Option<String> = None;
-    let mut properties = HashMap::new();
+    let mut properties = Parameters::new();
     let mut user_aesthetics: Option<Vec<String>> = None;
 
     let mut cursor = node.walk();
@@ -1032,7 +1029,7 @@ fn build_project(node: &Node, source: &SourceTree) -> Result<Projection> {
         coord,
         aesthetics,
         properties,
-        computed: HashMap::new(),
+        computed: Parameters::new(),
     })
 }
 
@@ -1096,7 +1093,7 @@ fn parse_single_project_property(
 fn validate_project_properties(
     coord: &Coord,
     coord_type_name: Option<&str>,
-    properties: &HashMap<String, ParameterValue>,
+    properties: &Parameters,
 ) -> Result<()> {
     coord
         .resolve_properties(coord_type_name, properties)
@@ -1104,10 +1101,7 @@ fn validate_project_properties(
     Ok(())
 }
 
-fn parse_coord_system(
-    name: Option<&str>,
-    properties: &HashMap<String, ParameterValue>,
-) -> Result<Coord> {
+fn parse_coord_system(name: Option<&str>, properties: &Parameters) -> Result<Coord> {
     use crate::plot::projection::coord::map_projections::NAMED_PROJECTIONS;
     match name {
         Some("cartesian") | None => Ok(Coord::cartesian()),

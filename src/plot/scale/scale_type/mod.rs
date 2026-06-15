@@ -23,12 +23,11 @@
 use arrow::array::{Array, ArrayRef};
 use arrow::datatypes::DataType;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::sync::Arc;
 
 use super::transform::{Transform, TransformKind};
 use crate::plot::aesthetic::{is_facet_aesthetic, is_position_aesthetic};
-use crate::plot::types::{validate_parameter, DefaultParamValue, ParamDefinition};
+use crate::plot::types::{validate_parameter, DefaultParamValue, ParamDefinition, Parameters};
 use crate::plot::{ArrayElement, ColumnInfo, ParameterValue};
 
 // Scale type implementations
@@ -628,8 +627,8 @@ pub trait ScaleTypeTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
     fn resolve_properties(
         &self,
         aesthetic: &str,
-        properties: &HashMap<String, ParameterValue>,
-    ) -> Result<HashMap<String, ParameterValue>, String> {
+        properties: &Parameters,
+    ) -> Result<Parameters, String> {
         let defaults = self.default_properties();
         let is_position = is_position_aesthetic(aesthetic);
 
@@ -726,7 +725,7 @@ pub trait ScaleTypeTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
     fn resolve_breaks(
         &self,
         input_range: Option<&[ArrayElement]>,
-        properties: &HashMap<String, ParameterValue>,
+        properties: &Parameters,
         transform: Option<&Transform>,
     ) -> Option<Vec<ArrayElement>> {
         // Only applicable to continuous-like scales
@@ -1261,8 +1260,8 @@ impl ScaleType {
     pub fn resolve_properties(
         &self,
         aesthetic: &str,
-        properties: &HashMap<String, ParameterValue>,
-    ) -> Result<HashMap<String, ParameterValue>, String> {
+        properties: &Parameters,
+    ) -> Result<Parameters, String> {
         self.0.resolve_properties(aesthetic, properties)
     }
 
@@ -1305,7 +1304,7 @@ impl ScaleType {
     pub fn resolve_breaks(
         &self,
         input_range: Option<&[ArrayElement]>,
-        properties: &HashMap<String, ParameterValue>,
+        properties: &Parameters,
         transform: Option<&Transform>,
     ) -> Option<Vec<ArrayElement>> {
         self.0.resolve_breaks(input_range, properties, transform)
@@ -1722,7 +1721,7 @@ pub(crate) fn expand_numeric_range_selective(
 
 /// Get expand factors from properties, using defaults for continuous/temporal scales.
 #[allow(dead_code)]
-pub(crate) fn get_expand_factors(properties: &HashMap<String, ParameterValue>) -> (f64, f64) {
+pub(crate) fn get_expand_factors(properties: &Parameters) -> (f64, f64) {
     properties
         .get("expand")
         .and_then(parse_expand_value)
@@ -1734,7 +1733,7 @@ pub(crate) fn get_expand_factors(properties: &HashMap<String, ParameterValue>) -
 /// Uses `context.default_expand` if set (e.g., for polar full-circle theta).
 /// Users can still explicitly set expand via SETTING if they want expansion.
 pub(crate) fn get_expand_factors_for_aesthetic(
-    properties: &HashMap<String, ParameterValue>,
+    properties: &Parameters,
     _aesthetic: &str,
     context: &ScaleDataContext,
     user_explicit_expand: bool,
@@ -2410,14 +2409,14 @@ mod tests {
     #[test]
     fn test_resolve_properties_rejection_cases() {
         // Unknown property rejected
-        let mut props = HashMap::new();
+        let mut props = Parameters::new();
         props.insert("unknown".to_string(), ParameterValue::Number(1.0));
         let result = ScaleType::continuous().resolve_properties("x", &props);
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("unknown"));
 
         // Discrete rejects expand
-        let mut expand_props = HashMap::new();
+        let mut expand_props = Parameters::new();
         expand_props.insert("expand".to_string(), ParameterValue::Number(0.1));
         let result = ScaleType::discrete().resolve_properties("color", &expand_props);
         assert!(result.is_err());
@@ -2428,7 +2427,7 @@ mod tests {
         assert!(result.is_err());
 
         // Binned rejects oob='keep'
-        let mut keep_props = HashMap::new();
+        let mut keep_props = Parameters::new();
         keep_props.insert(
             "oob".to_string(),
             ParameterValue::String("keep".to_string()),
@@ -2446,7 +2445,7 @@ mod tests {
     #[test]
     fn test_resolve_properties_defaults() {
         // Continuous position: default expand
-        let props = HashMap::new();
+        let props = Parameters::new();
         let resolved = ScaleType::continuous()
             .resolve_properties("pos1", &props)
             .unwrap();
@@ -2482,7 +2481,7 @@ mod tests {
 
     #[test]
     fn test_resolve_properties_user_values_preserved() {
-        let mut props = HashMap::new();
+        let mut props = Parameters::new();
         props.insert("expand".to_string(), ParameterValue::Number(0.1));
         let resolved = ScaleType::continuous()
             .resolve_properties("pos1", &props)
@@ -2503,7 +2502,7 @@ mod tests {
         }
 
         // Binned allows squish oob
-        let mut oob_props = HashMap::new();
+        let mut oob_props = Parameters::new();
         oob_props.insert(
             "oob".to_string(),
             ParameterValue::String("squish".to_string()),
@@ -2520,7 +2519,7 @@ mod tests {
             "pos1", "pos1min", "pos1max", "pos1end", "pos2", "pos2min", "pos2max", "pos2end",
         ];
 
-        let mut props = HashMap::new();
+        let mut props = Parameters::new();
         props.insert("expand".to_string(), ParameterValue::Number(0.1));
 
         // Position aesthetics should allow expand
@@ -2552,7 +2551,7 @@ mod tests {
             "pos1", "pos1min", "pos1max", "pos1end", "pos2", "pos2min", "pos2max", "pos2end",
         ];
 
-        let props = HashMap::new();
+        let props = Parameters::new();
 
         // Position aesthetics default to 'keep'
         for aesthetic in internal_position.iter() {
@@ -2585,7 +2584,7 @@ mod tests {
     fn test_oob_valid_and_invalid_values() {
         // Valid values accepted
         for oob_value in &["censor", "squish", "keep"] {
-            let mut props = HashMap::new();
+            let mut props = Parameters::new();
             props.insert(
                 "oob".to_string(),
                 ParameterValue::String(oob_value.to_string()),
@@ -2600,7 +2599,7 @@ mod tests {
         }
 
         // Invalid value rejected with helpful message
-        let mut props = HashMap::new();
+        let mut props = Parameters::new();
         props.insert("oob".to_string(), ParameterValue::String("invalid".into()));
         let result = ScaleType::continuous().resolve_properties("x", &props);
         assert!(result.is_err());
@@ -2614,7 +2613,7 @@ mod tests {
 
     #[test]
     fn test_oob_user_value_preserved() {
-        let mut props = HashMap::new();
+        let mut props = Parameters::new();
         props.insert("oob".to_string(), ParameterValue::String("squish".into()));
         let resolved = ScaleType::continuous()
             .resolve_properties("x", &props)
@@ -2627,7 +2626,7 @@ mod tests {
 
     #[test]
     fn test_oob_scale_type_support() {
-        let props = HashMap::new();
+        let props = Parameters::new();
 
         // Continuous and binned support oob
         for scale_type in &[ScaleType::continuous(), ScaleType::binned()] {
@@ -2640,7 +2639,7 @@ mod tests {
         }
 
         // Identity and discrete reject oob
-        let mut oob_props = HashMap::new();
+        let mut oob_props = Parameters::new();
         oob_props.insert("oob".to_string(), ParameterValue::String("censor".into()));
         assert!(ScaleType::identity()
             .resolve_properties("color", &oob_props)
@@ -2852,7 +2851,7 @@ mod tests {
 
     #[test]
     fn test_reverse_property_default_false() {
-        let props = HashMap::new();
+        let props = Parameters::new();
 
         // Continuous scale should have reverse default to false
         let resolved = ScaleType::continuous()
@@ -2875,7 +2874,7 @@ mod tests {
 
     #[test]
     fn test_reverse_property_accepts_true() {
-        let mut props = HashMap::new();
+        let mut props = Parameters::new();
         props.insert("reverse".to_string(), ParameterValue::Boolean(true));
 
         let resolved = ScaleType::continuous()
@@ -2889,7 +2888,7 @@ mod tests {
 
     #[test]
     fn test_reverse_property_supported_by_all_scales() {
-        let mut props = HashMap::new();
+        let mut props = Parameters::new();
         props.insert("reverse".to_string(), ParameterValue::Boolean(true));
 
         // All scale types should support reverse property
@@ -2917,7 +2916,7 @@ mod tests {
     #[test]
     fn test_identity_scale_rejects_reverse_property() {
         // Identity scale should not support reverse (no properties at all)
-        let mut props = HashMap::new();
+        let mut props = Parameters::new();
         props.insert("reverse".to_string(), ParameterValue::Boolean(true));
 
         let result = ScaleType::identity().resolve_properties("x", &props);
@@ -2930,7 +2929,7 @@ mod tests {
 
     #[test]
     fn test_breaks_property_default_is_7() {
-        let props = HashMap::new();
+        let props = Parameters::new();
         let resolved = ScaleType::continuous()
             .resolve_properties("x", &props)
             .unwrap();
@@ -2939,7 +2938,7 @@ mod tests {
 
     #[test]
     fn test_pretty_property_default_is_true() {
-        let props = HashMap::new();
+        let props = Parameters::new();
         let resolved = ScaleType::continuous()
             .resolve_properties("x", &props)
             .unwrap();
@@ -2948,7 +2947,7 @@ mod tests {
 
     #[test]
     fn test_breaks_property_accepts_number() {
-        let mut props = HashMap::new();
+        let mut props = Parameters::new();
         props.insert("breaks".to_string(), ParameterValue::Number(10.0));
 
         let result = ScaleType::continuous().resolve_properties("x", &props);
@@ -2961,7 +2960,7 @@ mod tests {
     fn test_breaks_property_accepts_array() {
         use crate::plot::ArrayElement;
 
-        let mut props = HashMap::new();
+        let mut props = Parameters::new();
         props.insert(
             "breaks".to_string(),
             ParameterValue::Array(vec![
@@ -2977,7 +2976,7 @@ mod tests {
 
     #[test]
     fn test_pretty_property_accepts_false() {
-        let mut props = HashMap::new();
+        let mut props = Parameters::new();
         props.insert("pretty".to_string(), ParameterValue::Boolean(false));
 
         let result = ScaleType::continuous().resolve_properties("x", &props);
@@ -2991,7 +2990,7 @@ mod tests {
 
     #[test]
     fn test_breaks_supported_by_continuous_scales() {
-        let mut props = HashMap::new();
+        let mut props = Parameters::new();
         props.insert("breaks".to_string(), ParameterValue::Number(5.0));
 
         for scale_type in &[ScaleType::continuous(), ScaleType::binned()] {
@@ -3006,7 +3005,7 @@ mod tests {
 
     #[test]
     fn test_discrete_does_not_support_breaks() {
-        let mut props = HashMap::new();
+        let mut props = Parameters::new();
         props.insert("breaks".to_string(), ParameterValue::Number(5.0));
 
         let result = ScaleType::discrete().resolve_properties("x", &props);
@@ -3016,7 +3015,7 @@ mod tests {
 
     #[test]
     fn test_identity_does_not_support_breaks() {
-        let mut props = HashMap::new();
+        let mut props = Parameters::new();
         props.insert("breaks".to_string(), ParameterValue::Number(5.0));
 
         let result = ScaleType::identity().resolve_properties("x", &props);
@@ -3026,7 +3025,7 @@ mod tests {
     #[test]
     fn test_breaks_available_for_material_aesthetics() {
         // breaks should work for color legends too
-        let mut props = HashMap::new();
+        let mut props = Parameters::new();
         props.insert("breaks".to_string(), ParameterValue::Number(4.0));
 
         let result = ScaleType::continuous().resolve_properties("color", &props);
@@ -3040,7 +3039,7 @@ mod tests {
     #[test]
     fn test_resolve_breaks_continuous_identity() {
         let input_range = Some(vec![ArrayElement::Number(0.0), ArrayElement::Number(100.0)]);
-        let mut props = HashMap::new();
+        let mut props = Parameters::new();
         props.insert("breaks".to_string(), ParameterValue::Number(5.0));
         props.insert("pretty".to_string(), ParameterValue::Boolean(true));
 
@@ -3060,7 +3059,7 @@ mod tests {
             ArrayElement::Number(1.0),
             ArrayElement::Number(1000.0),
         ]);
-        let mut props = HashMap::new();
+        let mut props = Parameters::new();
         props.insert("breaks".to_string(), ParameterValue::Number(10.0));
         props.insert("pretty".to_string(), ParameterValue::Boolean(false));
 
@@ -3080,7 +3079,7 @@ mod tests {
     #[test]
     fn test_resolve_breaks_continuous_log10_pretty() {
         let input_range = Some(vec![ArrayElement::Number(1.0), ArrayElement::Number(100.0)]);
-        let mut props = HashMap::new();
+        let mut props = Parameters::new();
         props.insert("breaks".to_string(), ParameterValue::Number(10.0));
         props.insert("pretty".to_string(), ParameterValue::Boolean(true));
 
@@ -3099,7 +3098,7 @@ mod tests {
     #[test]
     fn test_resolve_breaks_continuous_sqrt() {
         let input_range = Some(vec![ArrayElement::Number(0.0), ArrayElement::Number(100.0)]);
-        let mut props = HashMap::new();
+        let mut props = Parameters::new();
         props.insert("breaks".to_string(), ParameterValue::Number(5.0));
         props.insert("pretty".to_string(), ParameterValue::Boolean(false));
 
@@ -3121,7 +3120,7 @@ mod tests {
     #[test]
     fn test_resolve_breaks_discrete_returns_none() {
         let input_range = Some(vec![ArrayElement::Number(0.0), ArrayElement::Number(100.0)]);
-        let props = HashMap::new();
+        let props = Parameters::new();
 
         let breaks = ScaleType::discrete().resolve_breaks(input_range.as_deref(), &props, None);
 
@@ -3132,7 +3131,7 @@ mod tests {
     #[test]
     fn test_resolve_breaks_identity_scale_returns_none() {
         let input_range = Some(vec![ArrayElement::Number(0.0), ArrayElement::Number(100.0)]);
-        let props = HashMap::new();
+        let props = Parameters::new();
 
         let breaks = ScaleType::identity().resolve_breaks(input_range.as_deref(), &props, None);
 
@@ -3142,7 +3141,7 @@ mod tests {
 
     #[test]
     fn test_resolve_breaks_no_input_range() {
-        let props = HashMap::new();
+        let props = Parameters::new();
 
         let breaks = ScaleType::continuous().resolve_breaks(None, &props, None);
 
@@ -3153,7 +3152,7 @@ mod tests {
     #[test]
     fn test_resolve_breaks_uses_default_count() {
         let input_range = Some(vec![ArrayElement::Number(0.0), ArrayElement::Number(100.0)]);
-        let props = HashMap::new(); // No explicit breaks count
+        let props = Parameters::new(); // No explicit breaks count
 
         let identity = Transform::identity();
         let breaks =

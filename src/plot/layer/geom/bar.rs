@@ -1,6 +1,5 @@
 //! Bar geom implementation
 
-use std::collections::HashMap;
 use std::collections::HashSet;
 
 use super::stat_aggregate;
@@ -10,7 +9,7 @@ use super::{
     ParamConstraint, ParamDefinition, StatResult,
 };
 use crate::naming;
-use crate::plot::types::{DefaultAestheticValue, ParameterValue};
+use crate::plot::types::{DefaultAestheticValue, Parameters};
 use crate::reader::SqlDialect;
 use crate::{DataFrame, GgsqlError, Mappings, Result};
 
@@ -90,7 +89,7 @@ impl GeomTrait for Bar {
         schema: &Schema,
         aesthetics: &Mappings,
         group_by: &[String],
-        parameters: &HashMap<String, ParameterValue>,
+        parameters: &Parameters,
         _execute_query: &dyn Fn(&str) -> Result<DataFrame>,
         dialect: &dyn SqlDialect,
         aesthetic_ctx: &crate::plot::aesthetic::AestheticContext,
