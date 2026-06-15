@@ -74,7 +74,7 @@ visualisation. A layer is a single instance of a visual representation of a data
 [...]
 ```
 
-A ggsql skill, a usage guide intended for AI assistants and humans, can also be output using the `ggsql skill` command.
+A ggsql [skill](../../syntax/skill.llms.md), a usage guide intended for AI assistants and humans, can also be output using the `ggsql skill` command (also available as `ggsql agent-info`).
 
 ``` bash
 $ ggsql skill
