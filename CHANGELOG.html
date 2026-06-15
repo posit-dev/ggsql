@@ -289,6 +289,9 @@ gradient teal.
 <li>Added <code>radar</code> setting to polar coordinates for making radar plots (#418).</li>
 <li>New <code>side</code> SETTING on the <code>boxplot</code> layer and the <code>jitter</code> position, mirroring the existing <code>violin</code> setting (#439).</li>
 <li>New <code>hinge</code> SETTING on the <code>boxplot</code> layer, mirroring the existing <code>range</code> setting (#438)</li>
+<li>New <code>DRAW spatial</code> layer for rendering simple features (WKT/WKB) for drawing maps and choropleths (#370).</li>
+<li>New builtin dataset <code>ggsql:world</code> for showcasing spatial examples. Data is a subset of columns from the <a href="https://www.naturalearthdata.com/">Natural Earth</a> country data at 1:110m resolution (#370).</li>
+<li>New <code>PROJECT TO &lt;map&gt;</code> family of spatial map projections. For general projections, one can use <code>PROJECT TO crs SETTING target =&gt; '+proj=...'</code>. Several named projections have explicit support using e.g.&nbsp; <code>PROJECT TO mollweide</code>. Works for a subset of layers, notably <code>spatial</code>, <code>point</code>, <code>text</code>, <code>path</code>, <code>polygon</code> and <code>tile</code>. Requires a spatial backend like PostGIS, SpatiaLite, or DuckDB spatial extension (#455).</li>
 </ul>
 </section>
 <section id="fixed" class="level3">
