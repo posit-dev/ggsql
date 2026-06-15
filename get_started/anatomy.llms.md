@@ -10,7 +10,7 @@ Layers may show data directly, e.g. a [point](../syntax/layer/type/point.llms.m
 
 ## Aesthetics
 
-You will encounter aesthetics throughout the documentation and it is arguably one of the most important concepts to get right. Aesthetics are the things that describe the visual entities that makes up a layer, e.g. the [color](../syntax/scale/aesthetic/1_color.llms.md) of a point, the [linewidth](../syntax/scale/aesthetic/linewidth.llms.md) of a line, and the [opacity](../syntax/scale/aesthetic/2_opacity.llms.md) of a polygon.
+You will encounter aesthetics throughout the documentation and it is arguably one of the most important concepts to understand. Aesthetics are the visual characteristics that entities take on to make up a layer, e.g. the [color](../syntax/scale/aesthetic/1_color.llms.md) of a point, the [linewidth](../syntax/scale/aesthetic/linewidth.llms.md) of a line, and the [opacity](../syntax/scale/aesthetic/2_opacity.llms.md) of a polygon.
 
 There are two types of aesthetics: position aesthetics and material aesthetics. The former are related to *where* an entity is *placed* and is deeply connected to the coordinate system of the plot. The latter are related to *how* the entity *looks*.
 
