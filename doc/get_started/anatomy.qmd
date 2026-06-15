@@ -10,7 +10,7 @@ ggsql is composable, allowing you to create arbitrarily complex visualizations. 
 Layers may show data directly, e.g. a [point](../syntax/layer/type/point.qmd) layer will show each observation as a point, or it may apply a statistical transformation and show the result of that, e.g. a [histogram](../syntax/layer/type/histogram.qmd) layer will bin and count your data before showing the result as bars. 
 
 ## Aesthetics
-You will encounter aesthetics throughout the documentation and it is arguably one of the most important concepts to get right. Aesthetics are the things that describe the visual entities that makes up a layer, e.g. the [color](../syntax/scale/aesthetic/1_color.qmd) of a point, the [linewidth](../syntax/scale/aesthetic/linewidth.qmd) of a line, and the [opacity](../syntax/scale/aesthetic/2_opacity.qmd) of a polygon.
+You will encounter aesthetics throughout the documentation and it is arguably one of the most important concepts to get right. Aesthetics are the visual characteristics that entities take on to make up a layer, e.g. the [color](../syntax/scale/aesthetic/1_color.qmd) of a point, the [linewidth](../syntax/scale/aesthetic/linewidth.qmd) of a line, and the [opacity](../syntax/scale/aesthetic/2_opacity.qmd) of a polygon.
 
 There are two types of aesthetics: position aesthetics and material aesthetics. The former are related to *where* an entity is *placed* and is deeply connected to the coordinate system of the plot. The latter are related to *how* the entity *looks*.
 
