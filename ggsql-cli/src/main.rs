@@ -120,6 +120,14 @@ pub enum Commands {
         #[arg(long, value_enum)]
         format: Option<DocsFormat>,
     },
+
+    /// Alias for `skill` — show the ggsql usage guide for AI assistants
+    #[command(name = "agent-info")]
+    AgentInfo {
+        /// Output format. Defaults to rendered text on a TTY, raw markdown when piped.
+        #[arg(long, value_enum)]
+        format: Option<DocsFormat>,
+    },
 }
 
 #[derive(ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]
@@ -178,7 +186,7 @@ fn main() -> anyhow::Result<()> {
             cmd_docs(first, second, format);
         }
 
-        Commands::Skill { format } => {
+        Commands::Skill { format } | Commands::AgentInfo { format } => {
             cmd_skill(format);
         }
     }

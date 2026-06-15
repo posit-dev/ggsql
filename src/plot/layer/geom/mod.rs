@@ -23,6 +23,7 @@
 use crate::plot::types::DefaultAestheticValue;
 use crate::{naming, DataFrame, Mappings, Result};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::sync::Arc;
 
 pub mod types;
@@ -153,6 +154,7 @@ pub trait GeomTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
         &self,
         _mappings: &crate::Mappings,
         _aesthetic_ctx: &Option<AestheticContext>,
+        _parameters: &HashMap<String, ParameterValue>,
     ) -> std::result::Result<(), String> {
         Ok(())
     }
@@ -291,20 +293,32 @@ pub trait GeomTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
     /// Called after stat transforms, before data fetch. Each geom decides what
     /// projection means for its parameterization:
     /// - Spatial: ST_AsWKB (always), plus ST_Transform when Map coord has a CRS
-    /// - Future geoms: rectangles transform corners, lines segmentize, etc.
+    /// - Line/path/polygon: densify segments before ST_Transform
+    /// - Tile (continuous): expand to polygon corners, densify, project
     ///
     /// `columns` lists all column names in the query (for portable column
     /// replacement on backends that don't support `SELECT * REPLACE`).
+    /// `partition_by` is mutable: geoms that introduce new grouping columns
+    /// (e.g. tile adds `DENSIFY_ID_COLUMN`) push them here so they survive
+    /// downstream pruning.
     ///
-    /// The default is a no-op (returns query unchanged).
+    /// The default returns an error for unsupported geoms under map projection.
     fn apply_projection(
         &self,
         query: &str,
-        _projection: &Projection,
+        projection: &Projection,
         _dialect: &dyn SqlDialect,
-        _clip: bool,
-        _columns: &[String],
+        _mappings: &mut Mappings,
+        _partition_by: &mut Vec<String>,
+        _parameters: &mut std::collections::HashMap<String, ParameterValue>,
     ) -> Result<String> {
+        if needs_projection(projection) {
+            return Err(crate::GgsqlError::ValidationError(format!(
+                "Layer '{}' is not supported under '{}' projection.",
+                self.geom_type(),
+                projection.coord.name()
+            )));
+        }
         Ok(query.to_string())
     }
 
@@ -394,6 +408,208 @@ pub(crate) fn project_position_columns(
         "SELECT {} FROM ({inner}) \"__ggsql_pp__\"",
         select_list.join(", ")
     ))
+}
+
+/// Returns true when the projection requires position transformation (Map coord
+/// with distinct source and target CRS). Used to guard densification and
+/// `project_position_columns`.
+pub(crate) fn needs_projection(projection: &Projection) -> bool {
+    use crate::plot::projection::coord::CoordKind;
+
+    if projection.coord.coord_kind() != CoordKind::Map {
+        return false;
+    }
+    let target = match projection.properties.get("target") {
+        Some(ParameterValue::String(s)) => s.as_str(),
+        _ => return false,
+    };
+    let source = match projection.properties.get("source") {
+        Some(ParameterValue::String(s)) => s.as_str(),
+        _ => return false,
+    };
+    source != target
+}
+
+/// Subdivide edges in a tabular dataset by linear interpolation.
+///
+/// Inserts intermediate vertices along edges longer than `max_segment`.
+/// Continuous aesthetics (columns that are neither positions nor in `partition_by`)
+/// are interpolated too. Discrete (partition) columns are carried through unchanged.
+///
+/// - `domain_order`: column name to ORDER BY within each partition (e.g.
+///   `naming::aesthetic_column("pos1")` for line). When `None`, a synthetic
+///   row index is used (path/polygon).
+/// - `close_ring`: when true, the last vertex connects back to the first (polygon).
+/// - `segment_length`: target edge length after subdivision (in position units).
+///   Callers pass 1.0 assuming geographic (lon/lat) source coordinates. For
+///   projected sources this over-densifies, but `n_segments` caps the vertex
+///   count per edge so the cost stays bounded.
+/// - `n_segments`: size of the integer series (must be at least as large as the
+///   maximum number of subdivisions any single edge can produce).
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn densify_edges(
+    query: &str,
+    dialect: &dyn SqlDialect,
+    columns: &[String],
+    partition_by: &[String],
+    domain_order: Option<&str>,
+    close_ring: bool,
+    segment_length: f64,
+    n_segments: usize,
+) -> String {
+    let pos1 = naming::quote_ident(&naming::aesthetic_column("pos1"));
+    let pos2 = naming::quote_ident(&naming::aesthetic_column("pos2"));
+
+    // Continuous aesthetics to interpolate: columns - partition_by - positions
+    let pos1_col = naming::aesthetic_column("pos1");
+    let pos2_col = naming::aesthetic_column("pos2");
+    let continuous_cols: Vec<&String> = columns
+        .iter()
+        .filter(|c| *c != &pos1_col && *c != &pos2_col && !partition_by.contains(c))
+        .collect();
+
+    // Ordering column (raw column name, already unquoted)
+    let order_col = match domain_order {
+        Some(col) => naming::quote_ident(col),
+        None => "\"__ggsql_edge_idx__\"".to_string(),
+    };
+
+    // PARTITION BY clause for window functions
+    let partition_clause = if partition_by.is_empty() {
+        String::new()
+    } else {
+        let parts: Vec<String> = partition_by
+            .iter()
+            .map(|c| naming::quote_ident(c))
+            .collect();
+        format!("PARTITION BY {}", parts.join(", "))
+    };
+
+    let window_def = if partition_clause.is_empty() {
+        format!("ORDER BY {order_col}")
+    } else {
+        format!("{partition_clause} ORDER BY {order_col}")
+    };
+
+    let seq_cte = dialect.sql_generate_series(n_segments);
+
+    // Synthesize row ordering for path/polygon
+    let indexed_query = if domain_order.is_none() {
+        format!(
+            "SELECT *, ROW_NUMBER() OVER ({partition_clause} ORDER BY (SELECT NULL)) \
+             AS \"__ggsql_edge_idx__\" FROM ({query})"
+        )
+    } else {
+        query.to_string()
+    };
+
+    // LEAD expressions for positions — polygon closes the ring via FIRST_VALUE fallback
+    let pos1_lead = if close_ring {
+        format!(
+            "COALESCE(LEAD({pos1}) OVER w, FIRST_VALUE({pos1}) OVER w) AS \"__ggsql_next_pos1__\""
+        )
+    } else {
+        format!("LEAD({pos1}) OVER w AS \"__ggsql_next_pos1__\"")
+    };
+    let pos2_lead = if close_ring {
+        format!(
+            "COALESCE(LEAD({pos2}) OVER w, FIRST_VALUE({pos2}) OVER w) AS \"__ggsql_next_pos2__\""
+        )
+    } else {
+        format!("LEAD({pos2}) OVER w AS \"__ggsql_next_pos2__\"")
+    };
+
+    // LEAD expressions for continuous aesthetics
+    let mut cont_leads = String::new();
+    for c in &continuous_cols {
+        let qc = naming::quote_ident(c);
+        let alias = format!("\"__ggsql_next_{}\"", c.replace('"', ""));
+        if close_ring {
+            cont_leads.push_str(&format!(
+                ", COALESCE(LEAD({qc}) OVER w, FIRST_VALUE({qc}) OVER w) AS {alias}"
+            ));
+        } else {
+            cont_leads.push_str(&format!(", LEAD({qc}) OVER w AS {alias}"));
+        }
+    }
+
+    // Segment length (Euclidean in source CRS units)
+    let seg_len = format!(
+        "SQRT(POWER(\"__ggsql_next_pos1__\" - {pos1}, 2) + \
+         POWER(\"__ggsql_next_pos2__\" - {pos2}, 2))"
+    );
+
+    // Edges CTE: original rows + LEAD columns + segment length
+    let edges_query = format!(
+        "SELECT *, {pos1_lead}, {pos2_lead}{cont_leads}, \
+         {seg_len} AS \"__ggsql_seg_len__\" \
+         FROM ({indexed_query}) \"__ggsql_src__\" \
+         WINDOW w AS ({window_def})"
+    );
+
+    // Interpolation: n / CEIL(seg_len / threshold) gives fraction [0, 1)
+    let threshold_lit = format!("{:.6}", segment_length);
+    let n_subdivs = format!("CEIL(\"__ggsql_seg_len__\" / {threshold_lit})");
+
+    // SELECT list
+    let mut select_parts: Vec<String> = Vec::new();
+
+    // Discrete columns — unchanged
+    for c in partition_by {
+        select_parts.push(naming::quote_ident(c));
+    }
+
+    // Interpolation fraction
+    let frac = format!("CAST(\"__ggsql_seq__\".n AS REAL) / {n_subdivs}");
+
+    // Position columns — interpolated; COALESCE handles the last vertex (NULL next)
+    select_parts.push(format!(
+        "{pos1} + COALESCE((\"__ggsql_next_pos1__\" - {pos1}) * ({frac}), 0.0) AS {pos1}"
+    ));
+    select_parts.push(format!(
+        "{pos2} + COALESCE((\"__ggsql_next_pos2__\" - {pos2}) * ({frac}), 0.0) AS {pos2}"
+    ));
+
+    // Continuous aesthetics — interpolated
+    for c in &continuous_cols {
+        let qc = naming::quote_ident(c);
+        let next = format!("\"__ggsql_next_{}\"", c.replace('"', ""));
+        select_parts.push(format!(
+            "{qc} + COALESCE(({next} - {qc}) * ({frac}), 0.0) AS {qc}"
+        ));
+    }
+
+    // WHERE: emit n < subdivisions per segment; for open geoms, keep last vertex
+    let where_clause = if close_ring {
+        format!("\"__ggsql_seq__\".n < {n_subdivs}")
+    } else {
+        format!(
+            "(\"__ggsql_next_pos1__\" IS NOT NULL AND \"__ggsql_seq__\".n < {n_subdivs}) \
+             OR (\"__ggsql_next_pos1__\" IS NULL AND \"__ggsql_seq__\".n = 0)"
+        )
+    };
+
+    // ORDER BY
+    let order_parts = if partition_by.is_empty() {
+        format!("{order_col}, \"__ggsql_seq__\".n")
+    } else {
+        let parts: Vec<String> = partition_by
+            .iter()
+            .map(|c| naming::quote_ident(c))
+            .collect();
+        format!("{}, {order_col}, \"__ggsql_seq__\".n", parts.join(", "))
+    };
+
+    format!(
+        "WITH {seq_cte}, \
+         \"__ggsql_edges__\" AS ({edges_query}) \
+         SELECT {select} \
+         FROM \"__ggsql_edges__\" \
+         CROSS JOIN \"__ggsql_seq__\" \
+         WHERE {where_clause} \
+         ORDER BY {order_parts}",
+        select = select_parts.join(", "),
+    )
 }
 
 /// True when `parameters["aggregate"]` is set to a non-null string or array.
@@ -630,11 +846,18 @@ impl Geom {
         query: &str,
         projection: &Projection,
         dialect: &dyn SqlDialect,
-        clip: bool,
-        columns: &[String],
+        mappings: &mut Mappings,
+        partition_by: &mut Vec<String>,
+        parameters: &mut std::collections::HashMap<String, ParameterValue>,
     ) -> Result<String> {
-        self.0
-            .apply_projection(query, projection, dialect, clip, columns)
+        self.0.apply_projection(
+            query,
+            projection,
+            dialect,
+            mappings,
+            partition_by,
+            parameters,
+        )
     }
 
     /// Adjust layer mappings and parameters based on geom-specific logic
@@ -664,8 +887,10 @@ impl Geom {
         &self,
         mappings: &Mappings,
         aesthetic_ctx: &Option<AestheticContext>,
+        parameters: &HashMap<String, ParameterValue>,
     ) -> std::result::Result<(), String> {
-        self.0.validate_aesthetics(mappings, aesthetic_ctx)
+        self.0
+            .validate_aesthetics(mappings, aesthetic_ctx, parameters)
     }
 }
 
@@ -839,5 +1064,213 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn test_needs_projection_false_for_cartesian() {
+        let projection = Projection::cartesian();
+        assert!(!needs_projection(&projection));
+    }
+
+    #[test]
+    fn test_needs_projection_false_without_target() {
+        let projection = Projection::map();
+        assert!(!needs_projection(&projection));
+    }
+
+    #[test]
+    fn test_needs_projection_false_without_source() {
+        let mut projection = Projection::map();
+        projection.properties.insert(
+            "target".to_string(),
+            ParameterValue::String("+proj=ortho".to_string()),
+        );
+        assert!(!needs_projection(&projection));
+    }
+
+    #[test]
+    fn test_needs_projection_false_when_same_crs() {
+        let mut projection = Projection::map();
+        projection.properties.insert(
+            "source".to_string(),
+            ParameterValue::String("EPSG:4326".to_string()),
+        );
+        projection.properties.insert(
+            "target".to_string(),
+            ParameterValue::String("EPSG:4326".to_string()),
+        );
+        assert!(!needs_projection(&projection));
+    }
+
+    #[test]
+    fn test_needs_projection_true_when_different_crs() {
+        let mut projection = Projection::map();
+        projection.properties.insert(
+            "source".to_string(),
+            ParameterValue::String("EPSG:4326".to_string()),
+        );
+        projection.properties.insert(
+            "target".to_string(),
+            ParameterValue::String("+proj=ortho".to_string()),
+        );
+        assert!(needs_projection(&projection));
+    }
+
+    #[test]
+    fn test_apply_projection_default_errors_for_unsupported_geom() {
+        let mut projection = Projection::map();
+        projection.properties.insert(
+            "source".to_string(),
+            ParameterValue::String("EPSG:4326".to_string()),
+        );
+        projection.properties.insert(
+            "target".to_string(),
+            ParameterValue::String("+proj=ortho".to_string()),
+        );
+
+        let geom = Geom::bar();
+        let result = geom.apply_projection(
+            "SELECT * FROM t",
+            &projection,
+            &crate::reader::AnsiDialect,
+            &mut Mappings::new(),
+            &mut vec![],
+            &mut std::collections::HashMap::new(),
+        );
+
+        let err = result.unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            "Validation error: Layer 'bar' is not supported under 'Unknown' projection."
+        );
+    }
+
+    #[test]
+    fn test_densify_edges_basic_structure() {
+        use crate::reader::AnsiDialect;
+
+        let columns = vec![
+            naming::aesthetic_column("pos1"),
+            naming::aesthetic_column("pos2"),
+        ];
+        let pos1_col = naming::aesthetic_column("pos1");
+        let result = densify_edges(
+            "SELECT * FROM t",
+            &AnsiDialect,
+            &columns,
+            &[],
+            Some(&pos1_col),
+            false,
+            1.0,
+            360,
+        );
+
+        assert!(result.contains("__ggsql_seq__"));
+        assert!(result.contains("LEAD("));
+        assert!(result.contains("__ggsql_seg_len__"));
+        assert!(result.contains("__ggsql_next_pos1__"));
+        assert!(result.contains("__ggsql_next_pos2__"));
+    }
+
+    #[test]
+    fn test_densify_edges_with_partition() {
+        use crate::reader::AnsiDialect;
+
+        let columns = vec![
+            naming::aesthetic_column("pos1"),
+            naming::aesthetic_column("pos2"),
+            naming::aesthetic_column("stroke"),
+        ];
+        let partition_by = vec![naming::aesthetic_column("stroke")];
+        let pos1_col = naming::aesthetic_column("pos1");
+        let result = densify_edges(
+            "SELECT * FROM t",
+            &AnsiDialect,
+            &columns,
+            &partition_by,
+            Some(&pos1_col),
+            false,
+            1.0,
+            360,
+        );
+
+        assert!(result.contains("PARTITION BY"));
+        assert!(result.contains("__ggsql_aes_stroke__"));
+    }
+
+    #[test]
+    fn test_densify_edges_interpolates_continuous_aesthetics() {
+        use crate::reader::AnsiDialect;
+
+        let columns = vec![
+            naming::aesthetic_column("pos1"),
+            naming::aesthetic_column("pos2"),
+            naming::aesthetic_column("stroke"),
+            naming::aesthetic_column("opacity"),
+        ];
+        let partition_by = vec![naming::aesthetic_column("stroke")];
+        let pos1_col = naming::aesthetic_column("pos1");
+        let result = densify_edges(
+            "SELECT * FROM t",
+            &AnsiDialect,
+            &columns,
+            &partition_by,
+            Some(&pos1_col),
+            false,
+            1.0,
+            360,
+        );
+
+        // opacity is continuous (not in partition_by, not a position) — should be interpolated
+        assert!(result.contains("__ggsql_next___ggsql_aes_opacity__"));
+    }
+
+    #[test]
+    fn test_densify_edges_close_ring() {
+        use crate::reader::AnsiDialect;
+
+        let columns = vec![
+            naming::aesthetic_column("pos1"),
+            naming::aesthetic_column("pos2"),
+        ];
+        let result = densify_edges(
+            "SELECT * FROM t",
+            &AnsiDialect,
+            &columns,
+            &[],
+            None,
+            true,
+            1.0,
+            360,
+        );
+
+        // Closed ring uses COALESCE(LEAD(...), FIRST_VALUE(...))
+        assert!(result.contains("FIRST_VALUE("));
+        // Uses synthetic row index
+        assert!(result.contains("__ggsql_edge_idx__"));
+    }
+
+    #[test]
+    fn test_densify_edges_open_keeps_last_vertex() {
+        use crate::reader::AnsiDialect;
+
+        let columns = vec![
+            naming::aesthetic_column("pos1"),
+            naming::aesthetic_column("pos2"),
+        ];
+        let pos1_col = naming::aesthetic_column("pos1");
+        let result = densify_edges(
+            "SELECT * FROM t",
+            &AnsiDialect,
+            &columns,
+            &[],
+            Some(&pos1_col),
+            false,
+            1.0,
+            360,
+        );
+
+        // Open geom: WHERE clause keeps last vertex via IS NULL check
+        assert!(result.contains("IS NULL AND"));
     }
 }

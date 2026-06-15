@@ -2,9 +2,13 @@
 
 use super::types::POSITION_VALUES;
 use super::{
-    DefaultAesthetics, DefaultParamValue, GeomTrait, GeomType, ParamConstraint, ParamDefinition,
+    densify_edges, needs_projection, project_position_columns, DefaultAesthetics,
+    DefaultParamValue, GeomTrait, GeomType, ParamConstraint, ParamDefinition,
 };
+use crate::plot::projection::Projection;
 use crate::plot::types::DefaultAestheticValue;
+use crate::reader::SqlDialect;
+use crate::{Mappings, Result};
 
 /// Polygon geom - arbitrary polygons
 #[derive(Debug, Clone, Copy)]
@@ -36,6 +40,23 @@ impl GeomTrait for Polygon {
             constraint: ParamConstraint::string_option(POSITION_VALUES),
         }];
         PARAMS
+    }
+
+    fn apply_projection(
+        &self,
+        query: &str,
+        projection: &Projection,
+        dialect: &dyn SqlDialect,
+        mappings: &mut Mappings,
+        partition_by: &mut Vec<String>,
+        _parameters: &mut std::collections::HashMap<String, crate::plot::types::ParameterValue>,
+    ) -> Result<String> {
+        if !needs_projection(projection) {
+            return Ok(query.to_string());
+        }
+        let columns = mappings.column_names();
+        let densified = densify_edges(query, dialect, &columns, partition_by, None, true, 1.0, 360);
+        project_position_columns(&densified, projection, dialect, &columns)
     }
 }
 

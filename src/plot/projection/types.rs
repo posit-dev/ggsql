@@ -67,7 +67,7 @@ impl Projection {
     /// Orchestrate projection transforms for all layers.
     pub fn apply_projection_transforms(
         &mut self,
-        layers: &[Layer],
+        layers: &mut [Layer],
         layer_queries: &mut [String],
         dialect: &dyn SqlDialect,
         execute_query: &dyn Fn(&str) -> crate::Result<DataFrame>,

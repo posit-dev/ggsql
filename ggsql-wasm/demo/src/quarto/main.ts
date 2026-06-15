@@ -1,6 +1,7 @@
 import "./styles.css";
 import vegaEmbed from "vega-embed";
 import { WasmContextManager } from "../context";
+import { WASM_BASE } from "../wasmBase";
 import { createEditor, type EditorInstance } from "./editor";
 
 // ---------------------------------------------------------------------------
@@ -56,6 +57,43 @@ function rewriteCsvRefs(query: string): string {
     /(?<=FROM|JOIN)\s+'([^']+)\.csv'/gi,
     (_match, name) => ` ${name}`
   );
+}
+
+// ---------------------------------------------------------------------------
+// Extensions
+// ---------------------------------------------------------------------------
+
+// Doc examples activate reader-specific spatial support with an
+// `INSTALL spatial;` cell (DuckDB syntax). In this runtime that line is a
+// cue to install the SpatiaLite extension before running later cells.
+const INSTALL_SPATIAL_RE = /^\s*INSTALL\s+spatial\s*;/im;
+
+let spatialInstall: Promise<void> | null = null;
+
+function ensureSpatialExtension(ctx: WasmContextManager): Promise<void> {
+  if (!spatialInstall) {
+    console.log("[ggsql-quarto] Installing spatial extension…");
+    spatialInstall = ctx
+      .installExtension("mod_spatialite", WASM_BASE + "mod_spatialite.wasm")
+      .catch((e) => {
+        spatialInstall = null;
+        throw e;
+      });
+  }
+  return spatialInstall;
+}
+
+async function installRequestedExtensions(
+  ctx: WasmContextManager,
+  query: string
+): Promise<void> {
+  if (INSTALL_SPATIAL_RE.test(query)) {
+    try {
+      await ensureSpatialExtension(ctx);
+    } catch (e) {
+      console.error("[ggsql-quarto] Spatial extension install failed:", e);
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -173,6 +211,7 @@ async function initAndExecute(
   console.log(`[ggsql-quarto] Executing ${total} cells…`);
   for (let i = 0; i < total; i++) {
     const cell = cells[i];
+    await installRequestedExtensions(ctx, cell.query);
     try {
       if (ctx.hasVisual(cell.rewrittenQuery)) {
         cell.result = ctx.execute(cell.rewrittenQuery);
@@ -304,6 +343,7 @@ async function executeCell(
   clearError(cell);
 
   const currentQuery = rewriteCsvRefs(editorInst.getValue());
+  await installRequestedExtensions(ctx, currentQuery);
 
   try {
     if (ctx.hasVisual(currentQuery)) {

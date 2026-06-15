@@ -1,6 +1,7 @@
 #include <string.h>
 
 // Derived from musl (MIT): https://git.musl-libc.org/cgit/musl/tree/src/string/memchr.c
+__attribute__((weak))
 void *memchr(const void *src, int c, size_t n) {
 	const unsigned char *s = src;
 	c = (unsigned char)c;
@@ -8,6 +9,7 @@ void *memchr(const void *src, int c, size_t n) {
 	return n ? (void *)s : 0;
 }
 
+__attribute__((weak))
 int memcmp(const void *lhs, const void *rhs, size_t count) {
   const unsigned char *l = lhs;
   const unsigned char *r = rhs;
@@ -21,6 +23,7 @@ int memcmp(const void *lhs, const void *rhs, size_t count) {
   return 0;
 }
 
+__attribute__((weak))
 void *memcpy(void *restrict dst, const void *restrict src, size_t size) {
   unsigned char *d = dst;
   const unsigned char *s = src;
@@ -30,6 +33,7 @@ void *memcpy(void *restrict dst, const void *restrict src, size_t size) {
   return dst;
 }
 
+__attribute__((weak))
 void *memmove(void *dst, const void *src, size_t count) {
   unsigned char *d = dst;
   const unsigned char *s = src;
@@ -47,6 +51,7 @@ void *memmove(void *dst, const void *src, size_t count) {
   return dst;
 }
 
+__attribute__((weak))
 void *memset(void *dst, int value, size_t count) {
   unsigned char *p = dst;
   while (count--) {
@@ -55,6 +60,7 @@ void *memset(void *dst, int value, size_t count) {
   return dst;
 }
 
+__attribute__((weak))
 char *strchr(const char *str, int c) {
   while (*str != (char)c) {
     if (*str == '\0') {
@@ -65,12 +71,14 @@ char *strchr(const char *str, int c) {
   return (char *)str;
 }
 
+__attribute__((weak))
 size_t strlen(const char *str) {
   const char *s = str;
   while (*s) s++;
   return s - str;
 }
 
+__attribute__((weak))
 int strncmp(const char *left, const char *right, size_t n) {
   while (n-- > 0) {
     if (*left != *right) {

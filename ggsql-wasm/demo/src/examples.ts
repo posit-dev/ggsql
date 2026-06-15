@@ -2,6 +2,7 @@ export interface Example {
   name: string;
   query: string;
   section: string;
+  extensions?: string[];
 }
 
 export const examples: Example[] = [
@@ -210,5 +211,62 @@ SCALE shape TO ['star', 'bowtie', 'square-plus']`,
 VISUALISE
 DRAW point MAPPING bill_len AS x, bill_dep AS y, body_mass AS size
 LABEL title => 'Penguin Measurements', x => 'Bill Length (mm)', y => 'Bill Depth (mm)'`,
+  },
+
+  // === Spatial ===
+  {
+    section: "Spatial",
+    extensions: ["mod_spatialite"],
+    name: "World map",
+    query: `-- The spatial layer draws geographic geometries. The geometry column
+-- of ggsql:world is detected automatically, so no mapping is needed.
+VISUALISE FROM ggsql:world
+DRAW spatial`,
+  },
+  {
+    section: "Spatial",
+    extensions: ["mod_spatialite"],
+    name: "Choropleth",
+    query: `-- Shade each country by a variable. Population is heavily skewed,
+-- so a log scale makes the gradient readable.
+VISUALISE FROM ggsql:world
+DRAW spatial
+  MAPPING population AS fill
+  SETTING opacity => 1
+SCALE fill TO viridis VIA log
+LABEL title => 'Population by country', fill => 'Population'`,
+  },
+  {
+    section: "Spatial",
+    extensions: ["mod_spatialite"],
+    name: "Projection",
+    query: `-- PROJECT TO a named map projection. Robinson is a good default
+-- for world maps; try mercator, mollweide, natural or eckert4.
+VISUALISE continent AS fill FROM ggsql:world
+DRAW spatial
+PROJECT TO robinson`,
+  },
+  {
+    section: "Spatial",
+    extensions: ["mod_spatialite"],
+    name: "Globe",
+    query: `-- The orthographic projection shows the Earth as a globe. The origin
+-- setting (lon, lat) chooses which hemisphere faces the viewer.
+VISUALISE continent AS fill FROM ggsql:world
+DRAW spatial
+PROJECT TO orthographic
+  SETTING origin => (133.77, -25.27)`,
+  },
+  {
+    section: "Spatial",
+    extensions: ["mod_spatialite"],
+    name: "Regional map",
+    query: `-- Filtering the data zooms the map to that region, and a conic
+-- projection like Lambert suits a single continent.
+VISUALISE continent AS fill FROM ggsql:world
+DRAW spatial
+  FILTER continent == 'Africa'
+PROJECT TO lambert
+  SETTING origin => (20, 5)`,
   },
 ];

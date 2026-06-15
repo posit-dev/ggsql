@@ -487,17 +487,8 @@ jobs:
       - name: Install wasm-opt
         run: cargo install wasm-opt
 
-      - name: Build WASM library
-        working-directory: ggsql-wasm/library
-        run: npm install && npm run build
-
       - name: Build WASM package
-        working-directory: ggsql-wasm
-        run: wasm-pack build --target web --profile wasm --no-opt
-
-      - name: Optimise WASM binary
-        working-directory: ggsql-wasm
-        run: wasm-opt pkg/ggsql_wasm_bg.wasm -o pkg/ggsql_wasm_bg.wasm -Oz --all-features
+        run: ./ggsql-wasm/build-wasm.sh
 
       - name: Create npm tarball
         working-directory: ggsql-wasm/pkg

@@ -22,6 +22,8 @@ export async function convert_parquet(
 
   const rows: Record<string, unknown>[] = await parquetReadObjects({
     file: asyncBuffer,
+    geoparquet: false,
+    utf8: false,
   });
 
   if (rows.length === 0) return [];
@@ -41,6 +43,7 @@ function inferColumnType(values: unknown[]): ColumnType {
   let hasNumber = false;
   let hasBool = false;
   let hasDate = false;
+  let hasBinary = false;
   let allSafeInt = true;
   let allMidnight = true;
 
@@ -48,7 +51,9 @@ function inferColumnType(values: unknown[]): ColumnType {
     const v = values[i];
     if (v === null || v === undefined) continue;
 
-    if (v instanceof Date) {
+    if (v instanceof Uint8Array) {
+      hasBinary = true;
+    } else if (v instanceof Date) {
       hasDate = true;
       if (
         v.getUTCHours() !== 0 ||
@@ -71,6 +76,7 @@ function inferColumnType(values: unknown[]): ColumnType {
     }
   }
 
+  if (hasBinary) return "binary";
   if (hasDate) return allMidnight ? "date" : "datetime";
   if (hasBool && !hasNumber) return "bool";
   if (hasNumber) return allSafeInt ? "i64" : "f64";
@@ -136,6 +142,21 @@ function buildColumn(name: string, rawValues: unknown[]): ColumnDescriptor {
         nulls[i] = 0;
       } else {
         values[i] = v.getTime();
+        nulls[i] = 1;
+      }
+    }
+    return { name, type, values, nulls };
+  }
+
+  if (type === "binary") {
+    const values: Uint8Array[] = [];
+    for (let i = 0; i < len; i++) {
+      const v = rawValues[i];
+      if (v === null || v === undefined) {
+        values.push(new Uint8Array(0));
+        nulls[i] = 0;
+      } else {
+        values.push(v as Uint8Array);
         nulls[i] = 1;
       }
     }

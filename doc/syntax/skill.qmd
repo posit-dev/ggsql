@@ -1,0 +1,15 @@
+---
+title: "Skill"
+description: "A complete ggsql syntax reference designed for AI coding assistants and humans alike."
+title-block-style: none
+---
+
+The ggsql skill is a self-contained reference designed for AI coding assistants. It documents the full query syntax in a compact format that can be consumed by LLMs or read by humans as a quick-reference.
+
+The same content is available via the CLI with `ggsql skill`, or can be installed as an [AI skill](https://github.com/posit-dev/skills) with `npx skills add posit-dev/skills --skill ggsql`.
+
+[Raw source](https://github.com/posit-dev/skills/blob/main/ggsql/ggsql/SKILL.md)
+
+---
+
+{{< include ../vendor/SKILL.md >}}

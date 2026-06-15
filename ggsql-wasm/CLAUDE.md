@@ -22,6 +22,7 @@ ggsql-wasm/
 │   └── src/              UI code (editor + Vega-Lite preview)
 └── pkg/                  wasm-pack output (committed; consumed by library/ and demo/)
     ├── ggsql_wasm_bg.wasm
+    ├── mod_spatialite.wasm
     ├── ggsql_wasm.js, .d.ts
     └── package.json
 ```
@@ -49,8 +50,9 @@ This sequentially:
 1. `npm install && npm run build` in `library/` — produces the typed JS wrapper.
 2. `wasm-pack build --target web --profile wasm --no-opt` — compiles `src/lib.rs` to `pkg/`. The `wasm` profile is defined in the workspace `Cargo.toml` (release-style, `opt-level = "z"`, LTO, `panic = "abort"`).
 3. `wasm-opt pkg/ggsql_wasm_bg.wasm -o pkg/ggsql_wasm_bg.wasm -Oz` — shrinks the binary further.
-4. `npm install && npm run build` in `demo/` — bundles the playground UI.
-5. Copies `demo/dist/` to `/doc/wasm/` so Quarto can serve it under the docs site.
+4. Downloads the prebuilt `mod_spatialite.wasm` from the [ggsql-dev/sqlite-wasm-rs releases](https://github.com/ggsql-dev/sqlite-wasm-rs/releases) into `pkg/`, caching it under `/target/wasm-extensions/`.
+5. `npm install && npm run build` in `demo/` — bundles the playground UI (copies extension wasm from `pkg/` into `dist/`).
+6. Copies `demo/dist/` to `/doc/wasm/` so Quarto can serve it under the docs site.
 
 Flags:
 

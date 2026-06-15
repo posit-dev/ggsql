@@ -137,7 +137,6 @@ fn main() {
             .include(&src_dir)
             .opt_level_str(opt_level)
             .file(sysroot_dir.join("src").join("stdio.c"))
-            .file(sysroot_dir.join("src").join("stdlib.c"))
             .file(sysroot_dir.join("src").join("string.c"))
             .file(sysroot_dir.join("src").join("wctype.c"))
             .compile("stdlib");

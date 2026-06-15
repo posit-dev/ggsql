@@ -106,6 +106,7 @@ static int ptr_to_str(void *ptr, char *buffer) {
   return 2 + len;
 }
 
+__attribute__((weak))
 char *strncpy(char *dest, const char *src, size_t n) {
   char *d = dest;
   const char *s = src;
@@ -259,6 +260,7 @@ static int vsnprintf_impl(char *buffer, size_t buffsz, const char *format, va_li
   return total_chars;
 }
 
+__attribute__((weak))
 int snprintf(char *restrict buffer, size_t buffsz, const char *restrict format, ...) {
   if (!buffer || buffsz == 0 || !format) return -1;
 
@@ -270,38 +272,45 @@ int snprintf(char *restrict buffer, size_t buffsz, const char *restrict format, 
   return result;
 }
 
+__attribute__((weak))
 int vsnprintf(char *restrict buffer, size_t buffsz, const char *restrict format, va_list vlist) {
   return vsnprintf_impl(buffer, buffsz, format, vlist);
 }
 
+__attribute__((weak))
 int fclose(FILE *stream) {
   (void)stream;
   return 0;
 }
 
+__attribute__((weak))
 FILE* fdopen(int fd, const char *mode) {
   (void)fd;
   (void)mode;
   return 0;
 }
 
+__attribute__((weak))
 int fputc(int c, FILE *stream) {
   (void)stream;
   return c;
 }
 
+__attribute__((weak))
 int fputs(const char *restrict str, FILE *restrict stream) {
   (void)str;
   (void)stream;
   return 0;
 }
 
+__attribute__((weak))
 size_t fwrite(const void *restrict buffer, size_t size, size_t nmemb, FILE *restrict stream) {
   (void)buffer;
   (void)stream;
   return size * nmemb;
 }
 
+__attribute__((weak))
 int fprintf(FILE *restrict stream, const char *restrict format, ...) {
   (void)stream;
   (void)format;

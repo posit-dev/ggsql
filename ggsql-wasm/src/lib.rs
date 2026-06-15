@@ -1,5 +1,5 @@
 use arrow::array::{
-    ArrayRef, BooleanArray, Date32Array, Float64Array, Int64Array, StringArray,
+    ArrayRef, BinaryArray, BooleanArray, Date32Array, Float64Array, Int64Array, StringArray,
     TimestampMillisecondArray,
 };
 use ggsql::array_util::value_to_string;
@@ -16,16 +16,47 @@ use std::sync::Arc;
 use wasm_bindgen::prelude::*;
 
 // ============================================================================
-// JS bridge declarations — CSV and Parquet parsing only
+// JS bridge declarations
 // ============================================================================
 
 #[wasm_bindgen(module = "/library/dist/lib.js")]
 extern "C" {
-    #[wasm_bindgen(catch)]
-    async fn convert_parquet(data: &[u8]) -> Result<JsValue, JsValue>;
+    #[wasm_bindgen(catch, js_name = convert_parquet)]
+    async fn convert_parquet_js(data: &[u8]) -> Result<JsValue, JsValue>;
 
-    #[wasm_bindgen(catch)]
-    fn convert_csv(data: &[u8]) -> Result<JsValue, JsValue>;
+    #[wasm_bindgen(catch, js_name = convert_csv)]
+    fn convert_csv_js(data: &[u8]) -> Result<JsValue, JsValue>;
+
+    #[wasm_bindgen(catch, js_name = initExtensionLoader)]
+    fn init_extension_loader_js(exports: &JsValue) -> Result<(), JsValue>;
+
+    #[wasm_bindgen(catch, js_name = installExtension)]
+    async fn install_extension_js(name: &str, source: JsValue) -> Result<JsValue, JsValue>;
+}
+
+// ============================================================================
+// Package exports — forward to the JS helpers above
+// ============================================================================
+
+#[wasm_bindgen(js_name = convert_csv)]
+pub fn convert_csv_export(data: &[u8]) -> Result<JsValue, JsValue> {
+    convert_csv_js(data)
+}
+
+#[wasm_bindgen(js_name = convert_parquet)]
+pub async fn convert_parquet_export(data: &[u8]) -> Result<JsValue, JsValue> {
+    convert_parquet_js(data).await
+}
+
+#[wasm_bindgen(js_name = initExtensionLoader)]
+pub fn init_extension_loader(exports: JsValue) -> Result<(), JsValue> {
+    init_extension_loader_js(&exports)
+}
+
+#[wasm_bindgen(js_name = installExtension)]
+pub async fn install_extension(name: String, source: JsValue) -> Result<(), JsValue> {
+    install_extension_js(&name, source).await?;
+    Ok(())
 }
 
 // ============================================================================
@@ -116,6 +147,21 @@ fn columns_js_to_dataframe(columns_js: JsValue) -> Result<DataFrame, JsValue> {
                     .map(|(j, &n)| if n != 0 { arr.get(j).as_string() } else { None })
                     .collect();
                 Arc::new(StringArray::from(values))
+            }
+            "binary" => {
+                // One Uint8Array per row (e.g. WKB geometry from GeoParquet).
+                let arr = js_sys::Array::from(&values_js);
+                let values: Vec<Option<Vec<u8>>> = (0..arr.length())
+                    .zip(nulls.iter())
+                    .map(|(j, &n)| {
+                        if n != 0 {
+                            Some(js_sys::Uint8Array::new(&arr.get(j)).to_vec())
+                        } else {
+                            None
+                        }
+                    })
+                    .collect();
+                Arc::new(BinaryArray::from_iter(values.iter().map(|o| o.as_deref())))
             }
             "date" => {
                 // Date32: days since Unix epoch
@@ -251,7 +297,7 @@ impl GgsqlContext {
 
     /// Register a CSV file as a table from raw bytes
     pub fn register_csv(&self, name: &str, data: &[u8]) -> Result<(), JsValue> {
-        let columns_js = convert_csv(data)
+        let columns_js = convert_csv_js(data)
             .map_err(|e| JsValue::from_str(&format!("CSV parse error: {:?}", e)))?;
         let df = columns_js_to_dataframe(columns_js)?;
         let reader = self.reader.borrow();
@@ -262,7 +308,7 @@ impl GgsqlContext {
 
     /// Register a Parquet file as a table from raw bytes
     pub async fn register_parquet(&self, name: &str, data: &[u8]) -> Result<(), JsValue> {
-        let columns_js = convert_parquet(data)
+        let columns_js = convert_parquet_js(data)
             .await
             .map_err(|e| JsValue::from_str(&format!("Parquet parse error: {:?}", e)))?;
         let df = columns_js_to_dataframe(columns_js)?;
@@ -277,7 +323,7 @@ impl GgsqlContext {
         for &name in ggsql::reader::data::KNOWN_DATASETS {
             if let Some(bytes) = ggsql::reader::data::builtin_parquet_bytes(name) {
                 let table_name = ggsql::naming::builtin_data_table(name);
-                let columns_js = convert_parquet(bytes).await.map_err(|e| {
+                let columns_js = convert_parquet_js(bytes).await.map_err(|e| {
                     JsValue::from_str(&format!("Parquet error for '{}': {:?}", name, e))
                 })?;
                 let df = columns_js_to_dataframe(columns_js)?;
@@ -286,6 +332,22 @@ impl GgsqlContext {
                     JsValue::from_str(&format!("Registration error for '{}': {:?}", name, e))
                 })?;
             }
+        }
+        Ok(())
+    }
+
+    /// Load a previously installed SQLite extension.
+    ///
+    /// `entry_point` is the C init function name. If omitted, SQLite
+    /// derives it from the extension name.
+    pub fn load_extension(&self, name: &str, entry_point: Option<String>) -> Result<(), JsValue> {
+        let reader = self.reader.borrow();
+        let conn = reader.connection();
+        unsafe {
+            conn.load_extension_enable()
+                .map_err(|e| JsValue::from_str(&format!("Enable load_extension error: {:?}", e)))?;
+            conn.load_extension(name, entry_point.as_deref())
+                .map_err(|e| JsValue::from_str(&format!("Load extension error: {:?}", e)))?;
         }
         Ok(())
     }

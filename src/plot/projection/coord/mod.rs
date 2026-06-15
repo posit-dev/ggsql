@@ -143,25 +143,20 @@ pub trait CoordTrait: std::fmt::Debug + Send + Sync {
     /// Override to add coord-specific setup (e.g., Map loads the spatial extension).
     fn apply_projection_transforms(
         &self,
-        layers: &[Layer],
+        layers: &mut [Layer],
         layer_queries: &mut [String],
         projection: &mut super::Projection,
         dialect: &dyn SqlDialect,
         _execute_query: &dyn Fn(&str) -> crate::Result<DataFrame>,
     ) -> crate::Result<()> {
-        for (idx, layer) in layers.iter().enumerate() {
-            let columns: Vec<String> = layer
-                .mappings
-                .aesthetics
-                .keys()
-                .map(|k| crate::naming::aesthetic_column(k))
-                .collect();
+        for (idx, layer) in layers.iter_mut().enumerate() {
             layer_queries[idx] = layer.geom.apply_projection(
                 &layer_queries[idx],
                 projection,
                 dialect,
-                false,
-                &columns,
+                &mut layer.mappings,
+                &mut layer.partition_by,
+                &mut layer.parameters,
             )?;
         }
         Ok(())
@@ -245,7 +240,7 @@ impl Coord {
     /// Orchestrate projection transforms for all layers.
     pub fn apply_projection_transforms(
         &self,
-        layers: &[Layer],
+        layers: &mut [Layer],
         layer_queries: &mut [String],
         projection: &mut super::Projection,
         dialect: &dyn SqlDialect,

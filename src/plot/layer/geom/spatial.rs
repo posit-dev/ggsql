@@ -76,16 +76,22 @@ impl GeomTrait for Spatial {
         query: &str,
         projection: &Projection,
         dialect: &dyn SqlDialect,
-        clip: bool,
-        columns: &[String],
+        mappings: &mut Mappings,
+        _partition_by: &mut Vec<String>,
+        _parameters: &mut std::collections::HashMap<String, crate::plot::types::ParameterValue>,
     ) -> crate::Result<String> {
+        let columns = mappings.column_names();
         let col = naming::quote_ident(&naming::aesthetic_column("geometry"));
         let is_map = projection.coord.coord_kind() == CoordKind::Map;
+        let clip = matches!(
+            projection.properties.get("clip"),
+            Some(ParameterValue::Boolean(true))
+        );
 
         // WORKAROUND(duckdb-rs#714): normalize column to GEOMETRY since it may
         // be WKB BLOB from the Arrow export workaround.
         let ensure_geom = dialect.sql_ensure_geometry(&col);
-        let geom_query = dialect.sql_select_replace(&ensure_geom, &col, query, columns);
+        let geom_query = dialect.sql_select_replace(&ensure_geom, &col, query, &columns);
 
         let geom_expr = if let (true, Some(ParameterValue::String(crs))) =
             (is_map, projection.properties.get("target"))
@@ -102,7 +108,7 @@ impl GeomTrait for Spatial {
                     source,
                     crs,
                     dialect,
-                    columns,
+                    &columns,
                 ));
             }
 
@@ -113,11 +119,11 @@ impl GeomTrait for Spatial {
         } else {
             // Non-map coord — convert to WKB directly
             let wkb_expr = dialect.sql_geometry_to_wkb(&col);
-            return Ok(dialect.sql_select_replace(&wkb_expr, &col, &geom_query, columns));
+            return Ok(dialect.sql_select_replace(&wkb_expr, &col, &geom_query, &columns));
         };
 
         // Map coord with CRS — output native projected geometry (WKB added by framing)
-        Ok(dialect.sql_select_replace(&geom_expr, &col, &geom_query, columns))
+        Ok(dialect.sql_select_replace(&geom_expr, &col, &geom_query, &columns))
     }
 }
 
@@ -137,7 +143,14 @@ mod tests {
         let spatial = Spatial;
         let projection = Projection::cartesian();
         let result = spatial
-            .apply_projection("SELECT * FROM t", &projection, &AnsiDialect, false, &[])
+            .apply_projection(
+                "SELECT * FROM t",
+                &projection,
+                &AnsiDialect,
+                &mut Mappings::new(),
+                &mut vec![],
+                &mut std::collections::HashMap::new(),
+            )
             .unwrap();
 
         assert!(result.contains("ST_AsBinary"));
@@ -149,7 +162,14 @@ mod tests {
         let spatial = Spatial;
         let projection = Projection::map();
         let result = spatial
-            .apply_projection("SELECT * FROM t", &projection, &AnsiDialect, false, &[])
+            .apply_projection(
+                "SELECT * FROM t",
+                &projection,
+                &AnsiDialect,
+                &mut Mappings::new(),
+                &mut vec![],
+                &mut std::collections::HashMap::new(),
+            )
             .unwrap();
 
         // Map without CRS passes through (ensure_geometry is identity for AnsiDialect)
@@ -166,7 +186,14 @@ mod tests {
             ParameterValue::String("+proj=merc".to_string()),
         );
         let result = spatial
-            .apply_projection("SELECT * FROM t", &projection, &AnsiDialect, false, &[])
+            .apply_projection(
+                "SELECT * FROM t",
+                &projection,
+                &AnsiDialect,
+                &mut Mappings::new(),
+                &mut vec![],
+                &mut std::collections::HashMap::new(),
+            )
             .unwrap();
 
         // Without clip=true, just ST_Transform
@@ -184,8 +211,18 @@ mod tests {
             "target".to_string(),
             ParameterValue::String("+proj=merc".to_string()),
         );
+        projection
+            .properties
+            .insert("clip".to_string(), ParameterValue::Boolean(true));
         let result = spatial
-            .apply_projection("SELECT * FROM t", &projection, &AnsiDialect, true, &[])
+            .apply_projection(
+                "SELECT * FROM t",
+                &projection,
+                &AnsiDialect,
+                &mut Mappings::new(),
+                &mut vec![],
+                &mut std::collections::HashMap::new(),
+            )
             .unwrap();
 
         assert!(result.contains("ST_Intersection"));
@@ -201,8 +238,18 @@ mod tests {
             "target".to_string(),
             ParameterValue::String("+proj=ortho +lat_0=45 +lon_0=10".to_string()),
         );
+        projection
+            .properties
+            .insert("clip".to_string(), ParameterValue::Boolean(true));
         let result = spatial
-            .apply_projection("SELECT * FROM t", &projection, &AnsiDialect, true, &[])
+            .apply_projection(
+                "SELECT * FROM t",
+                &projection,
+                &AnsiDialect,
+                &mut Mappings::new(),
+                &mut vec![],
+                &mut std::collections::HashMap::new(),
+            )
             .unwrap();
 
         assert!(result.contains("ST_Transform"));
@@ -220,8 +267,18 @@ mod tests {
             "target".to_string(),
             ParameterValue::String("+proj=gnom +lat_0=90 +lon_0=0".to_string()),
         );
+        projection
+            .properties
+            .insert("clip".to_string(), ParameterValue::Boolean(true));
         let result = spatial
-            .apply_projection("SELECT * FROM t", &projection, &AnsiDialect, true, &[])
+            .apply_projection(
+                "SELECT * FROM t",
+                &projection,
+                &AnsiDialect,
+                &mut Mappings::new(),
+                &mut vec![],
+                &mut std::collections::HashMap::new(),
+            )
             .unwrap();
 
         assert!(result.contains("ST_MakeValid"));

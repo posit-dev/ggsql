@@ -4,10 +4,12 @@ use super::stat_aggregate;
 use super::types::POSITION_VALUES;
 use super::types::{get_column_name, get_quoted_column_name};
 use super::{
-    has_aggregate_param, DefaultAesthetics, GeomTrait, GeomType, ParamConstraint, StatResult,
+    densify_edges, has_aggregate_param, needs_projection, project_position_columns,
+    DefaultAesthetics, GeomTrait, GeomType, ParamConstraint, StatResult,
 };
 use crate::naming;
-use crate::plot::types::{ColumnInfo, DefaultAestheticValue, Parameters};
+use crate::plot::projection::Projection;
+use crate::plot::types::{ColumnInfo, DefaultAestheticValue, ParameterValue, Parameters};
 use crate::plot::{DefaultParamValue, ParamDefinition};
 use crate::reader::SqlDialect;
 use crate::{DataFrame, GgsqlError, Mappings, Result};
@@ -204,6 +206,145 @@ impl GeomTrait for Tile {
         }
         Ok(tile_result)
     }
+
+    fn apply_projection(
+        &self,
+        query: &str,
+        projection: &Projection,
+        dialect: &dyn SqlDialect,
+        mappings: &mut Mappings,
+        partition_by: &mut Vec<String>,
+        parameters: &mut std::collections::HashMap<String, crate::plot::types::ParameterValue>,
+    ) -> Result<String> {
+        if !needs_projection(projection) {
+            return Ok(query.to_string());
+        }
+
+        let columns = mappings.column_names();
+
+        // Only densify continuous tiles (those parameterized by pos1min/pos1max/pos2min/pos2max).
+        // Discrete tiles use categorical positions and don't appear on maps.
+        let bound_aes = ["pos1min", "pos1max", "pos2min", "pos2max"];
+        let is_continuous = bound_aes
+            .iter()
+            .all(|a| columns.contains(&naming::aesthetic_column(a)));
+
+        if !is_continuous {
+            return project_position_columns(query, projection, dialect, &columns);
+        }
+
+        let (expanded, expanded_columns) = expand_rect_to_polygon(query, &columns);
+
+        partition_by.push(naming::DENSIFY_ID_COLUMN.to_string());
+        parameters.insert("densified".to_string(), ParameterValue::Boolean(true));
+
+        let densified = densify_edges(
+            &expanded,
+            dialect,
+            &expanded_columns,
+            partition_by,
+            Some("__ggsql_corner__"),
+            true,
+            1.0,
+            360,
+        );
+        let projected =
+            project_position_columns(&densified, projection, dialect, &expanded_columns)?;
+
+        // After polygonization, the data has pos1/pos2 columns (not pos1min/pos1max/pos2min/pos2max).
+        // Update mappings to reflect the new column structure so downstream stages
+        // (schema validation, encoding) reference the correct columns.
+        for aes in &bound_aes {
+            mappings.aesthetics.remove(*aes);
+        }
+        mappings.insert_column("pos1", "pos1");
+        mappings.insert_column("pos2", "pos2");
+
+        Ok(projected)
+    }
+}
+
+/// Expand each continuous-scale rectangle into 4 corner vertices (polygon outline).
+///
+/// Input: one row per rectangle with pos1min/pos1max/pos2min/pos2max bounds.
+/// Output: four rows per rectangle with pos1/pos2 corner positions and a
+/// `DENSIFY_ID_COLUMN` grouping column. Material aesthetics pass through unchanged.
+/// The bound columns are dropped — callers that need them should re-derive them
+/// from pos1/pos2 after densification and projection.
+///
+/// Returns the expanded query and the new column list.
+fn expand_rect_to_polygon(query: &str, columns: &[String]) -> (String, Vec<String>) {
+    let pos1min_col = naming::aesthetic_column("pos1min");
+    let pos1max_col = naming::aesthetic_column("pos1max");
+    let pos2min_col = naming::aesthetic_column("pos2min");
+    let pos2max_col = naming::aesthetic_column("pos2max");
+
+    // Columns to carry through unchanged (everything except the 4 bound columns)
+    let passthrough_cols: Vec<&String> = columns
+        .iter()
+        .filter(|c| {
+            *c != &pos1min_col && *c != &pos1max_col && *c != &pos2min_col && *c != &pos2max_col
+        })
+        .collect();
+    let passthrough: Vec<String> = passthrough_cols
+        .iter()
+        .map(|c| naming::quote_ident(c))
+        .collect();
+
+    // Step 1: Number each rectangle.
+    // ORDER BY (SELECT NULL) is a workaround: ROW_NUMBER requires ORDER BY
+    // syntactically, but we don't care about the order — just need unique IDs.
+    let densify_id_q = naming::quote_ident(naming::DENSIFY_ID_COLUMN);
+
+    let numbered = format!(
+        "SELECT *, ROW_NUMBER() OVER (ORDER BY (SELECT NULL)) \
+         AS {densify_id_q} FROM ({query})"
+    );
+
+    // Step 2: Expand to 4 corners via CROSS JOIN with UNION ALL literal table.
+    // More portable than VALUES(...) whose aliasing syntax varies across backends.
+    // Corner order: bottom-left, bottom-right, top-right, top-left (CCW)
+    let corners_table = "(SELECT 1 AS \"__ggsql_corner__\" \
+         UNION ALL SELECT 2 \
+         UNION ALL SELECT 3 \
+         UNION ALL SELECT 4)";
+
+    let pos1min_q = naming::quote_ident(&pos1min_col);
+    let pos1max_q = naming::quote_ident(&pos1max_col);
+    let pos2min_q = naming::quote_ident(&pos2min_col);
+    let pos2max_q = naming::quote_ident(&pos2max_col);
+    let pos1_q = naming::quote_ident(&naming::aesthetic_column("pos1"));
+    let pos2_q = naming::quote_ident(&naming::aesthetic_column("pos2"));
+
+    let mut select_parts: Vec<String> = passthrough;
+    select_parts.push(densify_id_q.to_string());
+    select_parts.push("\"__ggsql_corner__\"".to_string());
+    select_parts.push(format!(
+        "CASE \"__ggsql_corner__\" \
+         WHEN 1 THEN {pos1min_q} WHEN 2 THEN {pos1max_q} \
+         WHEN 3 THEN {pos1max_q} WHEN 4 THEN {pos1min_q} END AS {pos1_q}"
+    ));
+    select_parts.push(format!(
+        "CASE \"__ggsql_corner__\" \
+         WHEN 1 THEN {pos2min_q} WHEN 2 THEN {pos2min_q} \
+         WHEN 3 THEN {pos2max_q} WHEN 4 THEN {pos2max_q} END AS {pos2_q}"
+    ));
+
+    let sql = format!(
+        "SELECT {} FROM ({numbered}) \"__ggsql_rect__\" \
+         CROSS JOIN {corners_table} \"__ggsql_corners__\"",
+        select_parts.join(", ")
+    );
+
+    // Output columns: passthrough + poly_id + pos1 + pos2
+    // __ggsql_corner__ is in the SQL (for ordering) but not in the column list
+    // so densify_edges won't attempt to interpolate it.
+    let mut out_columns: Vec<String> = passthrough_cols.into_iter().cloned().collect();
+    out_columns.push(naming::DENSIFY_ID_COLUMN.to_string());
+    out_columns.push(naming::aesthetic_column("pos1"));
+    out_columns.push(naming::aesthetic_column("pos2"));
+
+    (sql, out_columns)
 }
 
 /// Wrap an aggregated query so each `__ggsql_stat_<aes>__` column is also
@@ -475,6 +616,14 @@ mod tests {
     use arrow::datatypes::DataType;
 
     // ==================== Helper Functions ====================
+
+    fn create_bound_mappings(aesthetics: &[&str]) -> Mappings {
+        let mut mappings = Mappings::new();
+        for aes in aesthetics {
+            mappings.insert_column(aes, aes);
+        }
+        mappings
+    }
 
     fn create_schema(discrete_cols: &[&str]) -> Schema {
         create_schema_with_extra(discrete_cols, &[])
@@ -1211,5 +1360,215 @@ mod tests {
             assert!(query.contains("0.7 AS \"__ggsql_stat_width"));
             assert!(query.contains("0.9 AS \"__ggsql_stat_height"));
         }
+    }
+
+    // ==================== Projection / Densification Tests ====================
+
+    #[test]
+    fn test_expand_rect_to_polygon_structure() {
+        let columns = vec![
+            naming::aesthetic_column("pos1min"),
+            naming::aesthetic_column("pos1max"),
+            naming::aesthetic_column("pos2min"),
+            naming::aesthetic_column("pos2max"),
+            naming::aesthetic_column("fill"),
+        ];
+        let (sql, out_cols) = expand_rect_to_polygon("SELECT * FROM t", &columns);
+
+        // Should have poly_id assignment
+        assert!(sql.contains(naming::DENSIFY_ID_COLUMN));
+        // Should use CROSS JOIN with UNION ALL corner table
+        assert!(sql.contains("CROSS JOIN"));
+        assert!(sql.contains("UNION ALL"));
+        // Should produce CASE expressions for pos1/pos2
+        assert!(sql.contains("CASE \"__ggsql_corner__\""));
+        // Should emit pos1 and pos2
+        let pos1_col = naming::aesthetic_column("pos1");
+        let pos2_col = naming::aesthetic_column("pos2");
+        assert!(out_cols.contains(&pos1_col));
+        assert!(out_cols.contains(&pos2_col));
+        // Should NOT contain bound columns in output (they are dropped)
+        assert!(!out_cols.contains(&naming::aesthetic_column("pos1min")));
+        assert!(!out_cols.contains(&naming::aesthetic_column("pos1max")));
+        // Should carry through fill
+        assert!(out_cols.contains(&naming::aesthetic_column("fill")));
+        // Should include poly_id
+        assert!(out_cols.contains(&naming::DENSIFY_ID_COLUMN.to_string()));
+    }
+
+    #[test]
+    fn test_apply_projection_no_op_without_map() {
+        let tile = Tile;
+        let projection = Projection::cartesian();
+        let mut mappings = create_bound_mappings(&["pos1min", "pos1max", "pos2min", "pos2max"]);
+        let result = tile
+            .apply_projection(
+                "SELECT * FROM t",
+                &projection,
+                &crate::reader::AnsiDialect,
+                &mut mappings,
+                &mut vec![],
+                &mut std::collections::HashMap::new(),
+            )
+            .unwrap();
+
+        assert_eq!(result, "SELECT * FROM t");
+    }
+
+    #[test]
+    fn test_apply_projection_densifies_continuous_tiles() {
+        let tile = Tile;
+        let mut projection = Projection::map();
+        projection.properties.insert(
+            "source".to_string(),
+            ParameterValue::String("EPSG:4326".to_string()),
+        );
+        projection.properties.insert(
+            "target".to_string(),
+            ParameterValue::String("+proj=ortho +lat_0=0 +lon_0=0".to_string()),
+        );
+
+        let mut mappings =
+            create_bound_mappings(&["pos1min", "pos1max", "pos2min", "pos2max", "fill"]);
+        let result = tile
+            .apply_projection(
+                "SELECT * FROM t",
+                &projection,
+                &crate::reader::AnsiDialect,
+                &mut mappings,
+                &mut vec![],
+                &mut std::collections::HashMap::new(),
+            )
+            .unwrap();
+
+        // Polygon expansion happened
+        assert!(result.contains(naming::DENSIFY_ID_COLUMN));
+        assert!(result.contains("CROSS JOIN"));
+        // Densification happened
+        assert!(result.contains("__ggsql_seq__"));
+        assert!(result.contains("LEAD("));
+        // Projection happened
+        assert!(result.contains("ST_Transform"));
+        // Mappings mutated: bound aesthetics replaced by pos1/pos2
+        assert!(!mappings.contains_key("pos1min"));
+        assert!(!mappings.contains_key("pos1max"));
+        assert!(!mappings.contains_key("pos2min"));
+        assert!(!mappings.contains_key("pos2max"));
+        assert!(mappings.contains_key("pos1"));
+        assert!(mappings.contains_key("pos2"));
+    }
+
+    #[cfg(feature = "duckdb")]
+    #[test]
+    fn test_densified_rectangle_vertex_order() {
+        use crate::reader::{DuckDBReader, Reader};
+
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        let dialect = reader.dialect();
+
+        // A simple 20°×20° rectangle
+        let input = "SELECT -80.0 AS \"__ggsql_aes_pos1min__\", \
+                     -60.0 AS \"__ggsql_aes_pos1max__\", \
+                     30.0 AS \"__ggsql_aes_pos2min__\", \
+                     50.0 AS \"__ggsql_aes_pos2max__\"";
+
+        let mut mappings = create_bound_mappings(&["pos1min", "pos1max", "pos2min", "pos2max"]);
+
+        let tile = Tile;
+        let mut projection = Projection::map();
+        projection.properties.insert(
+            "source".to_string(),
+            ParameterValue::String("EPSG:4326".to_string()),
+        );
+        projection.properties.insert(
+            "target".to_string(),
+            ParameterValue::String("+proj=ortho +lat_0=40 +lon_0=-70".to_string()),
+        );
+
+        for stmt in dialect.sql_spatial_setup() {
+            reader.execute_sql(&stmt).unwrap();
+        }
+
+        let projected_sql = tile
+            .apply_projection(
+                input,
+                &projection,
+                dialect,
+                &mut mappings,
+                &mut vec![],
+                &mut std::collections::HashMap::new(),
+            )
+            .unwrap();
+
+        let df = reader.execute_sql(&projected_sql).unwrap();
+        let n = df.inner().num_rows();
+        assert!(n > 4, "expected densified vertices, got {n}");
+
+        // After polygonization, columns are pos1/pos2 (not pos1min/pos2min)
+        let pos1_col = df
+            .inner()
+            .column_by_name(&naming::aesthetic_column("pos1"))
+            .unwrap()
+            .as_any()
+            .downcast_ref::<arrow::array::Float64Array>()
+            .unwrap();
+        let pos2_col = df
+            .inner()
+            .column_by_name(&naming::aesthetic_column("pos2"))
+            .unwrap()
+            .as_any()
+            .downcast_ref::<arrow::array::Float64Array>()
+            .unwrap();
+
+        // A bowtie would show the polygon self-intersecting: edges cross.
+        // Check that consecutive edges don't cross by computing signed area.
+        // A simple (non-self-intersecting) polygon has consistent winding →
+        // the signed area is non-zero with one sign.
+        let mut signed_area: f64 = 0.0;
+        for i in 0..n {
+            let j = (i + 1) % n;
+            let x0 = pos1_col.value(i);
+            let y0 = pos2_col.value(i);
+            let x1 = pos1_col.value(j);
+            let y1 = pos2_col.value(j);
+            signed_area += (x1 - x0) * (y1 + y0);
+        }
+        // Non-zero signed area means consistent winding (no bowtie)
+        assert!(
+            signed_area.abs() > 1e6,
+            "signed area too small ({signed_area}), likely a bowtie or degenerate polygon"
+        );
+    }
+
+    #[test]
+    fn test_apply_projection_discrete_tiles_only_project() {
+        let tile = Tile;
+        let mut projection = Projection::map();
+        projection.properties.insert(
+            "source".to_string(),
+            ParameterValue::String("EPSG:4326".to_string()),
+        );
+        projection.properties.insert(
+            "target".to_string(),
+            ParameterValue::String("+proj=merc".to_string()),
+        );
+
+        // Discrete tiles only have pos1/pos2
+        let mut mappings = create_bound_mappings(&["pos1", "pos2"]);
+        let result = tile
+            .apply_projection(
+                "SELECT * FROM t",
+                &projection,
+                &crate::reader::AnsiDialect,
+                &mut mappings,
+                &mut vec![],
+                &mut std::collections::HashMap::new(),
+            )
+            .unwrap();
+
+        // Should just project, no densification
+        assert!(result.contains("ST_Transform"));
+        assert!(!result.contains(naming::DENSIFY_ID_COLUMN));
+        assert!(!result.contains("CROSS JOIN"));
     }
 }
