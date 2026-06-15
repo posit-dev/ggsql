@@ -19,6 +19,9 @@
   setting (#438)
 - New `DRAW spatial` layer for rendering simple features (WKT/WKB) for drawing 
   maps and choropleths (#370).
+- New builtin dataset `ggsql:world` for showcasing spatial examples. Data is
+  a subset of columns from the [Natural Earth](https://www.naturalearthdata.com/) 
+  country data at 1:110m resolution (#370).
 - New `PROJECT TO <map>` family of spatial map projections. For general 
   projections, one can use `PROJECT TO crs SETTING target => '+proj=...'`. 
   Several named projections have explicit support using e.g. 
