@@ -17,6 +17,14 @@
   the existing `violin` setting (#439).
 - New `hinge` SETTING on the `boxplot` layer, mirroring the existing `range` 
   setting (#438)
+- New `DRAW spatial` layer for rendering simple features (WKT/WKB) for drawing 
+  maps and choropleths (#370).
+- New `PROJECT TO <map>` family of spatial map projections. For general 
+  projections, one can use `PROJECT TO crs SETTING target => '+proj=...'`. 
+  Several named projections have explicit support using e.g. 
+  `PROJECT TO mollweide`. Works for a subset of layers, notably `spatial`, 
+  `point`, `text`, `path`, `polygon` and `tile`. Requires a spatial backend 
+  like PostGIS, SpatiaLite, or DuckDB spatial extension (#455).
 
 ### Fixed
 
