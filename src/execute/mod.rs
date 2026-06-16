@@ -3316,7 +3316,10 @@ mod tests {
     #[test]
     fn test_partition_by_preserved_through_map_projection() {
         let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
-        reader.connection().execute_batch("LOAD spatial").unwrap();
+        reader
+            .connection()
+            .execute_batch("INSTALL spatial; LOAD spatial")
+            .unwrap();
         reader
             .connection()
             .execute(
