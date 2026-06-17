@@ -1204,6 +1204,35 @@ mod tests {
     }
 
     #[test]
+    fn test_symbol_legend_label_expr_uses_datum_label() {
+        use crate::plot::ArrayElement;
+
+        // Breaks: -20, 0, 20 → VL predicts labels "-20 – 0" and "≥ 0"
+        let breaks = vec![
+            ArrayElement::Number(-20.0),
+            ArrayElement::Number(0.0),
+            ArrayElement::Number(20.0),
+        ];
+        let mut label_mapping = HashMap::new();
+        label_mapping.insert("-20".to_string(), Some("cold".to_string()));
+        label_mapping.insert("0".to_string(), Some("hot".to_string()));
+
+        let symbol_mapping = build_symbol_legend_label_mapping(&breaks, &label_mapping, "left");
+
+        // The resulting mapping uses VL's range-style label strings as keys
+        let expr = build_label_expr(&symbol_mapping, None, None, "nominal");
+
+        assert!(
+            expr.contains("datum.label =="),
+            "symbol legend labelExpr must use datum.label (string comparison), got: {expr}"
+        );
+        assert!(
+            !expr.contains("datum.value =="),
+            "symbol legend labelExpr must not use datum.value (keys contain en-dashes), got: {expr}"
+        );
+    }
+
+    #[test]
     fn test_literal_shape_converts_to_svg_path() {
         let lit = ParameterValue::String("square".to_string());
         let result = build_literal_encoding("shape", &lit).unwrap();
