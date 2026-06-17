@@ -725,44 +725,31 @@ fn apply_label_mapping_to_encoding(
             _ => None,
         });
 
-    // Build the mapping and null_key based on legend style
-    let (filtered_mapping, null_key) = if is_binned_legend {
-        let legend_style = determine_legend_style(aesthetic, spec);
+    let is_symbol =
+        is_binned_legend && determine_legend_style(aesthetic, spec) == LegendStyle::Symbol;
 
-        if legend_style == LegendStyle::Symbol {
-            // Symbol legend: map VL's range-style labels to our labels
-            let closed = scale
-                .properties
-                .get("closed")
-                .and_then(|v| {
-                    if let ParameterValue::String(s) = v {
-                        Some(s.as_str())
-                    } else {
-                        None
-                    }
-                })
-                .unwrap_or("left");
+    let breaks = match scale.properties.get("breaks") {
+        Some(ParameterValue::Array(b)) => Some(b.as_slice()),
+        _ => None,
+    };
 
-            if let Some(ParameterValue::Array(breaks)) = scale.properties.get("breaks") {
-                let symbol_mapping =
-                    build_symbol_legend_label_mapping(breaks, label_mapping, closed);
-                (symbol_mapping, None)
-            } else {
-                (label_mapping.clone(), None)
-            }
-        } else {
-            // Gradient legend: use null_key for first terminal
-            let first_key = scale.properties.get("breaks").and_then(|b| {
-                if let ParameterValue::Array(breaks) = b {
-                    breaks.first().map(|e| e.to_key_string())
-                } else {
-                    None
-                }
-            });
-            (label_mapping.clone(), first_key)
-        }
+    // Symbol legends compare VL's predicted range labels (e.g. "-20 – 0")
+    // as strings via datum.label, not as numeric datum.value.
+    let filtered_mapping = if let (true, Some(breaks)) = (is_symbol, breaks) {
+        let closed = match scale.properties.get("closed") {
+            Some(ParameterValue::String(s)) => s.as_str(),
+            _ => "left",
+        };
+        build_symbol_legend_label_mapping(breaks, label_mapping, closed)
     } else {
-        (label_mapping.clone(), None)
+        label_mapping.clone()
+    };
+
+    // Gradient legends use null for the first terminal's label
+    let null_key = if is_binned_legend && !is_symbol {
+        breaks.and_then(|b| b.first().map(|e| e.to_key_string()))
+    } else {
+        None
     };
 
     let label_expr = build_label_expr(
