@@ -752,11 +752,13 @@ fn apply_label_mapping_to_encoding(
         None
     };
 
+    let effective_field_type = if is_symbol { "nominal" } else { field_type };
+
     let label_expr = build_label_expr(
         &filtered_mapping,
         time_format,
         null_key.as_deref(),
-        field_type,
+        effective_field_type,
     );
 
     if is_position_aesthetic(aesthetic) {
