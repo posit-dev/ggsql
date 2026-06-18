@@ -43,6 +43,8 @@ jobs:
         # uses it. fmt, clippy and the library build run on 1.86 to guarantee
         # the shipped crate builds there.
         uses: dtolnay/rust-toolchain@1.86.0
+        with:
+          components: rustfmt, clippy
 
       - name: Install Rust (test toolchain)
         # The experimental `adbc` feature's test path pulls `adbc_datafusion` →
