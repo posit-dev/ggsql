@@ -48,6 +48,8 @@ For details — module layout, traits, where extension points live — see [`src
 
 ## Building
 
+**Prerequisite: `tree-sitter-cli`.** Any Rust build regenerates the parser from `grammar.js` via `tree-sitter-ggsql`'s build script, which runs `tree-sitter generate` and **fails if `tree-sitter-cli` is not on `PATH`**. Install it once with `npm install -g tree-sitter-cli`. To build against the committed `tree-sitter-ggsql/src/parser.c` without the CLI (e.g. if you're not touching the grammar), set `GGSQL_SKIP_GENERATE=1`.
+
 ```sh
 # Rust workspace (default members: tree-sitter-ggsql, src, ggsql-cli, ggsql-jupyter)
 cargo build --workspace
@@ -71,11 +73,13 @@ cd tree-sitter-ggsql && npx tree-sitter generate
 
 ### Rust version (MSRV)
 
-The toolchain is **pinned to Rust 1.86** (`rust-toolchain.toml` + `rust-version` in `/Cargo.toml`). This is the maximum Rust version CRAN ships, and the R bindings must build against it — **only bump it when CRAN does.** Setting `rust-version` also turns on clippy's MSRV-aware lints, so accidental use of a newer std API fails `clippy`/build with a clear message instead of a cryptic `E0658`.
+The MSRV is **Rust 1.86**, declared as `rust-version` in `/Cargo.toml`. This is the maximum Rust version CRAN ships, and the R bindings must build against it — **only bump it when CRAN does.** `rust-version` also turns on clippy's MSRV-aware lints, so accidental use of a newer std API is flagged by `clippy` with a clear message instead of a cryptic `E0658`.
 
-Two things are exempt from the pin:
+There is deliberately **no root `rust-toolchain.toml`**: pinning the toolchain to 1.86 would force local `cargo test`/rust-analyzer onto 1.86, where the `adbc` test path can't build (see below). Instead, the MSRV is *enforced in CI* — `build.yaml` installs 1.86 as the default toolchain and runs fmt, clippy and the library build on it. Locally, use your normal toolchain; run `cargo +1.86 build` if you want to check MSRV compatibility directly.
 
-- **The `adbc` test path.** The experimental `adbc` feature depends (dev-only) on `adbc_datafusion` → `datafusion` ≥53.1.0, which requires rustc ≥1.88. The shipped library still builds on 1.86; only the test / `--all-targets` build needs the newer toolchain. CI (`build.yaml`) runs fmt, clippy and the library build on 1.86, and runs the test-compiling steps with `cargo +stable`.
+Two things are exempt from the 1.86 MSRV:
+
+- **The `adbc` test path.** The experimental `adbc` feature depends (dev-only) on `adbc_datafusion` → `datafusion` ≥53.1.0, which requires rustc ≥1.88. The shipped library still builds on 1.86 (it uses only `adbc_core`); only the test / `--all-targets` build pulls `datafusion`. CI runs the test-compiling steps with `cargo +stable`.
 - **The wasm bindings (`ggsql-wasm`).** R doesn't use wasm, and some wasm-only dependencies require a newer rustc, so the crate has no `rust-version` and a nested `ggsql-wasm/rust-toolchain.toml` selects **stable** for any build done from that directory (`./build-wasm.sh`, `wasm-pack`, `library/`).
 
 Cross-platform installers (NSIS / MSI / DMG / Deb): see [`INSTALLERS.md`](INSTALLERS.md). Releases are tag-driven via `.github/workflows/`.

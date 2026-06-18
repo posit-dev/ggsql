@@ -476,21 +476,19 @@ jobs:
         run: npm install -g tree-sitter-cli
 
       - name: Install Rust toolchain
-        # The wasm build is exempt from the 1.86 MSRV pin (R doesn't use wasm);
-        # some wasm-only deps need a newer rustc. ggsql-wasm/rust-toolchain.toml
-        # selects stable for the actual build.
+        # This job only builds wasm, which is exempt from the 1.86 MSRV (R
+        # doesn't use wasm) and needs a newer rustc, so the whole job runs on
+        # stable. ggsql-wasm/rust-toolchain.toml also selects stable for the build.
         uses: dtolnay/rust-toolchain@stable
 
       - name: Install LLVM
         run: sudo apt-get install -y llvm
 
       - name: Install wasm-pack
-        # `cargo install` runs at the repo root, where rust-toolchain.toml pins
-        # 1.86; `+stable` builds these tools on the newer toolchain instead.
-        run: cargo +stable install wasm-pack
+        run: cargo install wasm-pack
 
       - name: Install wasm-opt
-        run: cargo +stable install wasm-opt
+        run: cargo install wasm-opt
 
       - name: Build WASM package
         run: ./ggsql-wasm/build-wasm.sh
