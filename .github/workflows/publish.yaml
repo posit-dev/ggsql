@@ -37,15 +37,15 @@ jobs:
         run: sudo apt-get install -y unixodbc-dev
 
       - name: Install Rust
-        # 1.86 is the MSRV (see /CLAUDE.md); the Jupyter kernel build below runs
-        # on it. Plain `cargo` resolves to 1.86 via rust-toolchain.toml.
+        # 1.86 is the MSRV (see /CLAUDE.md); this is the default toolchain, and
+        # the Jupyter kernel build below runs on it.
         uses: dtolnay/rust-toolchain@1.86.0
 
       - name: Install Rust (wasm toolchain)
-        # The wasm build is exempt from the 1.86 pin (R doesn't use wasm); some
+        # The wasm build is exempt from the 1.86 MSRV (R doesn't use wasm); some
         # wasm-only deps need a newer rustc. Installing stable here does not
-        # change the default — rust-toolchain.toml keeps plain `cargo` on 1.86,
-        # and ggsql-wasm/rust-toolchain.toml selects stable for the wasm build.
+        # change the default — plain `cargo` stays on 1.86, and
+        # ggsql-wasm/rust-toolchain.toml selects stable for the wasm build.
         run: rustup toolchain install stable --profile minimal
 
       - name: Caching

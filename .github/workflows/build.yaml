@@ -38,17 +38,18 @@ jobs:
         run: sudo apt-get install -y protobuf-compiler
 
       - name: Install Rust
-        # 1.86 is the MSRV (pinned via rust-toolchain.toml, see /CLAUDE.md). Plain
-        # `cargo` resolves to it. fmt, clippy and the library build run on 1.86 to
-        # guarantee the shipped crate builds there.
+        # 1.86 is the MSRV (declared as `rust-version` in /Cargo.toml, see
+        # /CLAUDE.md); this sets it as the default toolchain so plain `cargo`
+        # uses it. fmt, clippy and the library build run on 1.86 to guarantee
+        # the shipped crate builds there.
         uses: dtolnay/rust-toolchain@1.86.0
 
       - name: Install Rust (test toolchain)
         # The experimental `adbc` feature's test path pulls `adbc_datafusion` →
         # `datafusion` ≥53.1.0, which requires rustc ≥1.88. Steps that compile
         # tests/dev-dependencies use this newer toolchain via `cargo +stable`.
-        # Installing it here does not change the default — rust-toolchain.toml
-        # keeps plain `cargo` on 1.86.
+        # Installing it here does not change the default — plain `cargo` stays
+        # on 1.86.
         run: rustup toolchain install stable --profile minimal
 
       - name: Caching
@@ -65,8 +66,9 @@ jobs:
         run: cargo clippy -- -D warnings
 
       - name: Install wasm-pack
-        # Compile the tool itself on stable; the actual wasm build below still
-        # runs on the pinned 1.86 toolchain.
+        # `cargo install` runs at the repo root, where 1.86 is the default;
+        # `+stable` builds the tool on the newer toolchain. The actual wasm build
+        # below runs in ggsql-wasm/, whose nested rust-toolchain.toml selects stable.
         run: cargo +stable install wasm-pack
 
       - name: Build library (MSRV 1.86)
