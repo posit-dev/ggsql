@@ -23,6 +23,7 @@
 - `boxplot`, `violin`, and `range` now support omitting the categorical aesthetic, matching `bar`. `point` now treats both position aesthetics as optional.
 - Upgraded dependencies: duckdb-rs v1.10502, arrow v58 (#447).
 - Renamed the `width` setting in the `range` layer to `hinge`. This prevents it from clashing with `width` needed by `position => 'dodge'` (#437).
+- Pinned the minimum supported Rust version to 1.86 (the maximum Rust version CRAN ships) so the crate keeps building for the R bindings.
 
 ## 0.3.3 - 2026-05-27
 

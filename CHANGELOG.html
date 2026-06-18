@@ -308,6 +308,7 @@ gradient teal.
 <li><code>boxplot</code>, <code>violin</code>, and <code>range</code> now support omitting the categorical aesthetic, matching <code>bar</code>. <code>point</code> now treats both position aesthetics as optional.</li>
 <li>Upgraded dependencies: duckdb-rs v1.10502, arrow v58 (#447).</li>
 <li>Renamed the <code>width</code> setting in the <code>range</code> layer to <code>hinge</code>. This prevents it from clashing with <code>width</code> needed by <code>position =&gt; 'dodge'</code> (#437).</li>
+<li>Pinned the minimum supported Rust version to 1.86 (the maximum Rust version CRAN ships) so the crate keeps building for the R bindings.</li>
 </ul>
 </section>
 </section>
