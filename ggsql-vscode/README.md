@@ -25,7 +25,7 @@ LABEL title => 'Sales by Region'
 
 You can either install ggsql from the extension marketplace or download and install it manually:
 
-1. Download [`ggsql.vsix`](https://github.com/posit-dev/ggsql/releases/latest/download/ggsql.vsix)
+1. Download `ggsql.vsix` from [Open VSX extension marketplace](https://open-vsx.org/extension/ggsql/ggsql)
 2. Install via the command line:
 
 ```bash
