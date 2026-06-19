@@ -728,10 +728,8 @@ pub(crate) fn resolve_map_projection(
     }
 
     // Step 2: Resolve source and target from numeric EPSG to PROJ strings
-    let source = resolve_epsg_property("source", properties, execute_query)
-        .unwrap_or_else(|| "EPSG:4326".to_string());
-    let target = resolve_epsg_property("target", properties, execute_query)
-        .unwrap_or_else(|| source.clone());
+    let source = resolve_epsg_property("source", properties, "EPSG:4326", execute_query);
+    let target = resolve_epsg_property("target", properties, &source, execute_query);
 
     properties.insert("source".to_string(), ParameterValue::String(source.clone()));
     properties.insert("target".to_string(), ParameterValue::String(target.clone()));
@@ -776,27 +774,31 @@ pub(crate) fn resolve_map_projection(
 
 /// If `key` holds a numeric EPSG code or an `"EPSG:N"` string, resolve it to a PROJ
 /// string. Falls back to `"EPSG:N"` format when no PROJ string can be found (the
-/// database engine may still handle it). Returns `None` when the property is absent.
+/// database engine may still handle it). When the property is absent, resolves
+/// `fallback` through the same lookup path.
 fn resolve_epsg_property(
     key: &str,
     properties: &Parameters,
+    fallback: &str,
     execute_query: &dyn Fn(&str) -> crate::Result<DataFrame>,
-) -> Option<String> {
+) -> String {
     let code: u32 = match properties.get(key) {
         Some(ParameterValue::Number(n)) => *n as u32,
         Some(ParameterValue::String(s)) => {
             match s.strip_prefix("EPSG:").and_then(|n| n.parse().ok()) {
                 Some(c) => c,
                 // Raw PROJ strings (`+proj=foo`) don't have EPSG prefixes
-                None => return Some(s.clone()),
+                None => return s.clone(),
             }
         }
-        _ => return None,
+        _ => match fallback.strip_prefix("EPSG:").and_then(|n| n.parse().ok()) {
+            Some(c) => c,
+            None => return fallback.to_string(),
+        },
     };
-    let resolved = query_spatial_ref_sys(code, execute_query)
+    query_spatial_ref_sys(code, execute_query)
         .or_else(|| builtin_epsg_lookup(code))
-        .unwrap_or_else(|| format!("EPSG:{code}"));
-    Some(resolved)
+        .unwrap_or_else(|| format!("EPSG:{code}"))
 }
 
 fn query_spatial_ref_sys(
@@ -1144,5 +1146,42 @@ mod tests {
     #[test]
     fn epsg_unknown_code() {
         assert_eq!(builtin_epsg_lookup(99999), None);
+    }
+
+    fn noop_execute(_sql: &str) -> crate::Result<DataFrame> {
+        Err(crate::GgsqlError::InternalError("no db".into()))
+    }
+
+    #[test]
+    fn resolve_epsg_property_from_existing() {
+        let mut props = Parameters::new();
+        props.insert(
+            "source".to_string(),
+            ParameterValue::String("EPSG:4326".to_string()),
+        );
+        let result = resolve_epsg_property("source", &props, "EPSG:4326", &noop_execute);
+        assert!(result.contains("+proj=longlat"), "got: {result}");
+    }
+
+    #[test]
+    fn resolve_epsg_property_uses_fallback_when_absent() {
+        let props = Parameters::new();
+        let result = resolve_epsg_property("source", &props, "EPSG:4326", &noop_execute);
+        assert!(
+            result.contains("+proj=longlat"),
+            "fallback should resolve EPSG:4326 to PROJ string, got: {result}"
+        );
+    }
+
+    #[test]
+    fn resolve_epsg_property_fallback_proj_string_passthrough() {
+        let props = Parameters::new();
+        let result = resolve_epsg_property(
+            "target",
+            &props,
+            "+proj=merc +lon_0=0 +k=1 +x_0=0 +y_0=0",
+            &noop_execute,
+        );
+        assert_eq!(result, "+proj=merc +lon_0=0 +k=1 +x_0=0 +y_0=0");
     }
 }
