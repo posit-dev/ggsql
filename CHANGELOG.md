@@ -1,5 +1,11 @@
 ## [Unreleased]
 
+## 0.4.1 - 2026-06-22
+
+### Changed
+
+- Pinned the Windows image for GitHub Actions runners to Windows Server 2022.
+
 ## 0.4.0 - 2026-06-22
 
 ### Added
