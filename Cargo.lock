@@ -2067,7 +2067,7 @@ dependencies = [
 
 [[package]]
 name = "ggsql"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "adbc_core",
  "adbc_datafusion",
@@ -2100,7 +2100,7 @@ dependencies = [
 
 [[package]]
 name = "ggsql-cli"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "anyhow",
  "clap",
@@ -2113,7 +2113,7 @@ dependencies = [
 
 [[package]]
 name = "ggsql-jupyter"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "anyhow",
  "arrow",
@@ -2137,7 +2137,7 @@ dependencies = [
 
 [[package]]
 name = "ggsql-wasm"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "arrow",
  "getrandom 0.2.17",
@@ -4595,7 +4595,7 @@ dependencies = [
 
 [[package]]
 name = "tree-sitter-ggsql"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "cc",
  "tree-sitter",
