@@ -99,7 +99,7 @@ jobs:
 
   windows:
     needs: generate
-    runs-on: windows-latest
+    runs-on: windows-2022
     env:
       GGSQL_SKIP_GENERATE: "1"
     steps:
