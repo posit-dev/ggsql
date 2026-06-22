@@ -1,5 +1,7 @@
 ## [Unreleased]
 
+## 0.4.0 - 2026-06-22
+
 ### Added
 - New `AdbcReader<D: Driver>` for connecting to data sources via
   [ADBC](https://arrow.apache.org/adbc/) (Arrow Database Connectivity), behind
