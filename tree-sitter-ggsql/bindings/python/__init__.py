@@ -31,5 +31,5 @@ except ImportError:
         except Exception as e:
             raise ImportError(f"Could not load tree-sitter-ggsql language: {e}")
 
-__version__ = "0.3.3"
+__version__ = "0.4.0"
 __all__ = ["language"]
