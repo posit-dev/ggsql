@@ -1,0 +1,137 @@
+---
+title: DuckDB
+---
+
+ggsql is available as a [DuckDB community extension](https://duckdb.org/community_extensions/extensions/ggsql),
+letting you run `VISUALISE` queries directly from the DuckDB shell, Python `duckdb` module,
+or any other DuckDB client - no separate ggsql installation required.
+
+## Installing and loading
+
+```sql
+INSTALL ggsql FROM community;
+LOAD ggsql;
+```
+
+Once loaded, any query with a `VISUALISE` clause is handled by ggsql.
+The chart is served from an in-process HTTP server and opened in your default browser.
+
+::: {.callout-note}
+## Check your version
+
+The community registry may lag behind the latest release. Verify you have the
+current version with:
+
+```sql
+SELECT * FROM duckdb_extensions() WHERE extension_name = 'ggsql';
+```
+
+If the version is outdated, check the [ggsql-duckdb](https://github.com/posit-dev/ggsql-duckdb/)
+for manual installation instructions.
+:::
+
+## Example
+
+```sql
+WITH nums AS (SELECT unnest(range(10)) AS x)
+SELECT x, x*x AS y FROM nums
+VISUALISE x, y
+DRAW line;
+```
+
+## Output modes
+
+Use the `ggsql_output` setting to control what the query returns:
+
+| Value    | Behaviour | Use case |
+|----------|-----------|----------|
+| `silent` | Opens the browser, no result set **(default)** | Interactive use |
+| `url`    | Opens the browser and returns the plot URL | Scripts that need the URL |
+| `spec`   | Returns the raw Vega-Lite JSON as `VARCHAR` | Inspecting or saving the spec |
+| `html`   | Returns a self-contained HTML document | Saving a shareable snapshot |
+
+```sql
+-- default: just see the plot, no shell output
+WITH nums AS (SELECT unnest(range(10)) AS x)
+SELECT x, x*x AS y FROM nums
+VISUALISE x, y
+DRAW line;
+
+-- get the URL back
+SET ggsql_output = 'url';
+WITH nums AS (SELECT unnest(range(10)) AS x)
+SELECT x, x*x AS y FROM nums
+VISUALISE x, y
+DRAW line;
+
+-- get the raw Vega-Lite spec
+SET ggsql_output = 'spec';
+WITH nums AS (SELECT unnest(range(10)) AS x)
+SELECT x, x*x AS y FROM nums
+VISUALISE x, y
+DRAW line;
+-- → { "$schema": "...", "data": {...}, "mark": "line", ... }
+
+-- get a self-contained HTML document
+SET ggsql_output = 'html';
+WITH nums AS (SELECT unnest(range(10)) AS x)
+SELECT x, x*x AS y FROM nums
+VISUALISE x, y
+DRAW line;
+
+RESET ggsql_output;  -- back to silent
+```
+
+## Limitations
+
+### Temporary tables are not visible
+
+ggsql queries run on a fresh DuckDB connection to the same database instance.
+This means **temporary tables are not visible** to ggsql queries - use regular
+views or attach a file-backed database instead.
+
+::: {.callout-important}
+## Temporary tables are not visible
+
+```sql
+-- Fails: temp table is not accessible to ggsql
+CREATE TEMP TABLE flights AS SELECT * FROM 'flights.csv';
+SELECT * FROM flights VISUALISE dep_delay, arr_delay DRAW point;
+```
+:::
+
+::: {.callout-tip}
+## Use a view instead
+
+```sql
+-- Works: regular views are visible across connections
+CREATE OR REPLACE VIEW flights AS SELECT * FROM 'flights.csv';
+SELECT * FROM flights VISUALISE dep_delay, arr_delay DRAW point;
+```
+:::
+
+### Table-valued function column aliases
+
+The ggsql parser does not currently support DuckDB's column alias syntax for
+table-valued functions. Use a CTE with `unnest()` instead:
+
+::: {.callout-important}
+## Column alias syntax not supported yet
+
+```sql
+-- Fails: parser does not support this alias form
+SELECT * FROM range(10) t(x) VISUALISE x, x*x AS y DRAW line;
+```
+:::
+
+::: {.callout-tip}
+## Use a CTE instead
+
+```sql
+-- Works
+WITH nums AS (SELECT unnest(range(10)) AS x)
+SELECT x, x*x AS y FROM nums
+VISUALISE x, y
+DRAW line;
+```
+:::
