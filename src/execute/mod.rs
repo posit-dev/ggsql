@@ -1383,12 +1383,15 @@ pub fn prepare_data_with_reader(query: &str, reader: &dyn Reader) -> Result<Prep
             &execute_query,
         )?;
     }
+    let scales = std::mem::take(&mut specs[0].scales);
     project.apply_projection_transforms(
         &mut specs[0].layers,
         &mut layer_queries,
+        &scales,
         dialect,
         &execute_query,
     )?;
+    specs[0].scales = scales;
     specs[0].project = Some(project);
 
     // Phase 2: Deduplicate and execute unique queries

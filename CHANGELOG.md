@@ -1,5 +1,10 @@
 ## [Unreleased]
 
+### Changed
+
+- Position scales like `SCALE lon` and `SCALE lat` transfer their limits to
+  map projections, and transfer their `breaks` setting to the graticule (#492).
+
 ## 0.4.1 - 2026-06-22
 
 ### Changed

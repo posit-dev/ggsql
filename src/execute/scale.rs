@@ -1084,10 +1084,21 @@ pub fn find_columns_for_aesthetic<'a>(
 /// - The scale has an explicit input range, AND
 /// - NULL is not part of the explicit input range
 pub fn apply_scale_oob(spec: &Plot, data_map: &mut HashMap<String, DataFrame>) -> Result<()> {
+    use crate::plot::projection::CoordKind;
+
     let aesthetic_ctx = spec.get_aesthetic_context();
+    let is_map = spec
+        .project
+        .as_ref()
+        .is_some_and(|p| p.coord.coord_kind() == CoordKind::Map);
 
     // First pass: apply OOB transformations (censor sets to NULL, squish clamps)
     for scale in &spec.scales {
+        // Map position scales have limits in geographic coordinates but data in projected
+        // CRS — viewport clipping is handled by the projection pipeline, not OOB.
+        if is_map && (scale.aesthetic == "pos1" || scale.aesthetic == "pos2") {
+            continue;
+        }
         // Get oob mode:
         // - If explicitly set, use that value (skip if "keep")
         // - If not set but has explicit input range, use default for aesthetic

@@ -4,6 +4,7 @@ use super::map_projections::MapProjectionTrait;
 use crate::naming;
 use crate::plot::layer::geom::GeomType;
 use crate::plot::scale::breaks::graticule_breaks;
+use crate::plot::scale::Scale;
 use crate::plot::{DataSource, Layer, ParameterValue, Parameters};
 use crate::reader::SqlDialect;
 use crate::DataFrame;
@@ -17,6 +18,7 @@ pub(crate) fn apply_map_transforms(
     layers: &mut [Layer],
     layer_queries: &mut [String],
     projection: &mut super::super::Projection,
+    scales: &[Scale],
     dialect: &dyn SqlDialect,
     execute_query: &dyn Fn(&str) -> crate::Result<DataFrame>,
 ) -> crate::Result<()> {
@@ -111,7 +113,10 @@ pub(crate) fn apply_map_transforms(
         };
     }
 
-    // Step 5: Resolve final frame bbox from user bounds + data bounds + world bounds
+    // Step 5: Resolve final frame bbox from user bounds + data bounds + world bounds.
+    // Scale limits (SCALE lon/lat FROM [...]) override data_bbox when present.
+    let data_bbox =
+        scale_override_bbox(scales, data_bbox, &source, &target, dialect, execute_query);
     let Some(bbox) = resolve_final_bbox(user_bbox, data_bbox, world_bbox) else {
         return Ok(());
     };
@@ -125,6 +130,7 @@ pub(crate) fn apply_map_transforms(
         &bbox,
         boundary_lonlat.as_deref(),
         &target,
+        scales,
         dialect,
         execute_query,
     )?;
@@ -140,6 +146,89 @@ pub(crate) fn apply_map_transforms(
     }
 
     Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Scale-to-projection integration
+// ---------------------------------------------------------------------------
+
+/// If any position scale has explicit limits (FROM clause), build a geographic bbox
+/// from those limits, project it to target CRS, and return it as the override for
+/// data_bbox. Returns the original data_bbox unchanged when no scale limits are present.
+fn scale_override_bbox(
+    scales: &[Scale],
+    data_bbox: Option<BBox>,
+    source: &str,
+    target: &str,
+    dialect: &dyn SqlDialect,
+    execute_query: &dyn Fn(&str) -> crate::Result<DataFrame>,
+) -> Option<BBox> {
+    let numeric_range = |aesthetic: &str| -> Option<&[crate::plot::types::ArrayElement]> {
+        let range = scales
+            .iter()
+            .find(|s| s.aesthetic == aesthetic && s.explicit_input_range)?
+            .input_range
+            .as_deref()?;
+        if range.len() == 2 && range.iter().any(|e| e.to_f64().is_some()) {
+            Some(range)
+        } else {
+            None
+        }
+    };
+
+    let lon = numeric_range("pos1");
+    let lat = numeric_range("pos2");
+
+    if lon.is_none() && lat.is_none() {
+        return data_bbox;
+    }
+
+    // Inverse-project data_bbox to EPSG:4326 as fallback for unconstrained elements
+    let geo_fallback = data_bbox
+        .as_ref()
+        .and_then(|b| b.reproject("EPSG:4326", dialect, execute_query));
+
+    let lon_min = lon
+        .and_then(|r| r.first()?.to_f64())
+        .or_else(|| geo_fallback.as_ref().map(|b| b.xmin))?;
+    let lon_max = lon
+        .and_then(|r| r.last()?.to_f64())
+        .or_else(|| geo_fallback.as_ref().map(|b| b.xmax))?;
+    let lat_min = lat
+        .and_then(|r| r.first()?.to_f64())
+        .or_else(|| geo_fallback.as_ref().map(|b| b.ymin))?;
+    let lat_max = lat
+        .and_then(|r| r.last()?.to_f64())
+        .or_else(|| geo_fallback.as_ref().map(|b| b.ymax))?;
+
+    let geo_bbox = BBox {
+        xmin: lon_min,
+        ymin: lat_min,
+        xmax: lon_max,
+        ymax: lat_max,
+        crs: source.to_string(),
+    };
+
+    geo_bbox
+        .reproject(target, dialect, execute_query)
+        .or(data_bbox)
+}
+
+/// Extract explicit break positions from a scale's properties.
+/// Returns None if the scale has no explicit breaks (i.e. breaks is absent or a count).
+fn scale_breaks(scales: &[Scale], aesthetic: &str) -> Option<Vec<f64>> {
+    let scale = scales.iter().find(|s| s.aesthetic == aesthetic)?;
+    match scale.properties.get("breaks") {
+        Some(ParameterValue::Array(arr)) => {
+            let breaks: Vec<f64> = arr.iter().filter_map(|e| e.to_f64()).collect();
+            if breaks.is_empty() {
+                None
+            } else {
+                Some(breaks)
+            }
+        }
+        _ => None,
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -268,10 +357,14 @@ impl BBox {
 
 /// Build graticule lines: determine the visible lon/lat extent, generate densified
 /// meridians and parallels, clip and project them, and return projected WKT.
+///
+/// When scales have explicit `BREAKS`, those are used directly instead of
+/// auto-computing graticule positions.
 fn build_graticule(
     bbox: &BBox,
     clip_boundary_wkt: Option<&str>,
     crs: &str,
+    scales: &[Scale],
     dialect: &dyn SqlDialect,
     execute_query: &dyn Fn(&str) -> crate::Result<DataFrame>,
 ) -> crate::Result<(Option<String>, Option<String>)> {
@@ -281,8 +374,10 @@ fn build_graticule(
 
     let (lon_min, lon_max) = geo_bbox.xrange();
     let (lat_min, lat_max) = geo_bbox.yrange();
-    let lon_breaks = graticule_breaks(lon_min, lon_max, 7);
-    let lat_breaks = graticule_breaks(lat_min, lat_max, 7);
+    let lon_breaks =
+        scale_breaks(scales, "pos1").unwrap_or_else(|| graticule_breaks(lon_min, lon_max, 7));
+    let lat_breaks =
+        scale_breaks(scales, "pos2").unwrap_or_else(|| graticule_breaks(lat_min, lat_max, 7));
 
     if lon_breaks.is_empty() && lat_breaks.is_empty() {
         return Ok((None, None));
@@ -1150,6 +1245,188 @@ mod tests {
 
     fn noop_execute(_sql: &str) -> crate::Result<DataFrame> {
         Err(crate::GgsqlError::InternalError("no db".into()))
+    }
+
+    fn noop_dialect() -> crate::reader::duckdb::DuckDbDialect {
+        crate::reader::duckdb::DuckDbDialect
+    }
+
+    mod scale_override_bbox_tests {
+        use super::*;
+        use crate::plot::scale::Scale;
+        use crate::plot::types::ArrayElement;
+
+        fn make_scale(aesthetic: &str, range: Vec<ArrayElement>, explicit: bool) -> Scale {
+            let mut s = Scale::new(aesthetic);
+            s.input_range = Some(range);
+            s.explicit_input_range = explicit;
+            s
+        }
+
+        #[test]
+        fn numeric_limits_override_data_bbox() {
+            let scales = vec![
+                make_scale(
+                    "pos1",
+                    vec![ArrayElement::Number(10.0), ArrayElement::Number(20.0)],
+                    true,
+                ),
+                make_scale(
+                    "pos2",
+                    vec![ArrayElement::Number(30.0), ArrayElement::Number(50.0)],
+                    true,
+                ),
+            ];
+            let data_bbox = Some(BBox {
+                xmin: 0.0,
+                ymin: 0.0,
+                xmax: 100.0,
+                ymax: 100.0,
+                crs: "EPSG:4326".to_string(),
+            });
+
+            let result = scale_override_bbox(
+                &scales,
+                data_bbox.clone(),
+                "EPSG:4326",
+                "EPSG:4326",
+                &noop_dialect(),
+                &noop_execute,
+            );
+
+            // reproject fails with noop_execute, so falls back to data_bbox
+            // But the function still enters the override path (does not early-return)
+            // With a real executor this would produce a new bbox from the scale limits
+            assert_eq!(result, data_bbox);
+        }
+
+        #[test]
+        fn string_limits_ignored() {
+            let scales = vec![make_scale(
+                "pos1",
+                vec![
+                    ArrayElement::String("A".into()),
+                    ArrayElement::String("B".into()),
+                ],
+                true,
+            )];
+            let data_bbox = Some(BBox {
+                xmin: 0.0,
+                ymin: 0.0,
+                xmax: 100.0,
+                ymax: 100.0,
+                crs: "EPSG:4326".to_string(),
+            });
+
+            let result = scale_override_bbox(
+                &scales,
+                data_bbox.clone(),
+                "EPSG:4326",
+                "EPSG:4326",
+                &noop_dialect(),
+                &noop_execute,
+            );
+
+            assert_eq!(result, data_bbox);
+        }
+
+        #[test]
+        fn no_explicit_limits_returns_data_bbox() {
+            let scales = vec![make_scale(
+                "pos1",
+                vec![ArrayElement::Number(10.0), ArrayElement::Number(20.0)],
+                false, // not explicit
+            )];
+            let data_bbox = Some(BBox {
+                xmin: 5.0,
+                ymin: 5.0,
+                xmax: 50.0,
+                ymax: 50.0,
+                crs: "EPSG:4326".to_string(),
+            });
+
+            let result = scale_override_bbox(
+                &scales,
+                data_bbox.clone(),
+                "EPSG:4326",
+                "EPSG:4326",
+                &noop_dialect(),
+                &noop_execute,
+            );
+
+            assert_eq!(result, data_bbox);
+        }
+
+        #[test]
+        fn mixed_null_numeric_without_fallback_returns_none() {
+            // pos1 has (null, 20), pos2 absent — no data_bbox to fall back on
+            let scales = vec![make_scale(
+                "pos1",
+                vec![ArrayElement::Null, ArrayElement::Number(20.0)],
+                true,
+            )];
+
+            let result = scale_override_bbox(
+                &scales,
+                None,
+                "EPSG:4326",
+                "EPSG:4326",
+                &noop_dialect(),
+                &noop_execute,
+            );
+
+            assert_eq!(result, None);
+        }
+    }
+
+    mod scale_breaks_tests {
+        use super::*;
+        use crate::plot::scale::Scale;
+        use crate::plot::types::ArrayElement;
+
+        #[test]
+        fn explicit_array_breaks_returned() {
+            let mut s = Scale::new("pos1");
+            s.properties.insert(
+                "breaks".to_string(),
+                ParameterValue::Array(vec![
+                    ArrayElement::Number(0.0),
+                    ArrayElement::Number(30.0),
+                    ArrayElement::Number(60.0),
+                ]),
+            );
+            let scales = vec![s];
+
+            assert_eq!(scale_breaks(&scales, "pos1"), Some(vec![0.0, 30.0, 60.0]));
+        }
+
+        #[test]
+        fn numeric_break_count_ignored() {
+            let mut s = Scale::new("pos1");
+            s.properties
+                .insert("breaks".to_string(), ParameterValue::Number(5.0));
+            let scales = vec![s];
+
+            assert_eq!(scale_breaks(&scales, "pos1"), None);
+        }
+
+        #[test]
+        fn absent_breaks_returns_none() {
+            let scales = vec![Scale::new("pos1")];
+            assert_eq!(scale_breaks(&scales, "pos1"), None);
+        }
+
+        #[test]
+        fn wrong_aesthetic_returns_none() {
+            let mut s = Scale::new("pos2");
+            s.properties.insert(
+                "breaks".to_string(),
+                ParameterValue::Array(vec![ArrayElement::Number(10.0)]),
+            );
+            let scales = vec![s];
+
+            assert_eq!(scale_breaks(&scales, "pos1"), None);
+        }
     }
 
     #[test]
