@@ -2,6 +2,7 @@ use std::fmt;
 use std::sync::Arc;
 
 use super::CoordKind;
+use crate::plot::scale::Scale;
 use crate::plot::types::{
     validate_parameter, ArrayElement, DefaultParamValue, ParamConstraint, ParamDefinition,
     Parameters, TypeConstraint,
@@ -240,6 +241,7 @@ impl<T: MapProjectionTrait + 'static> super::CoordTrait for T {
         layers: &mut [Layer],
         layer_queries: &mut [String],
         projection: &mut super::super::Projection,
+        scales: &[Scale],
         dialect: &dyn SqlDialect,
         execute_query: &dyn Fn(&str) -> crate::Result<DataFrame>,
     ) -> crate::Result<()> {
@@ -248,6 +250,7 @@ impl<T: MapProjectionTrait + 'static> super::CoordTrait for T {
             layers,
             layer_queries,
             projection,
+            scales,
             dialect,
             execute_query,
         )

@@ -23,6 +23,7 @@
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
+use crate::plot::scale::Scale;
 use crate::plot::types::{validate_parameter, ParamDefinition, Parameters};
 use crate::plot::Layer;
 use crate::reader::SqlDialect;
@@ -146,6 +147,7 @@ pub trait CoordTrait: std::fmt::Debug + Send + Sync {
         layers: &mut [Layer],
         layer_queries: &mut [String],
         projection: &mut super::Projection,
+        _scales: &[Scale],
         dialect: &dyn SqlDialect,
         _execute_query: &dyn Fn(&str) -> crate::Result<DataFrame>,
     ) -> crate::Result<()> {
@@ -243,6 +245,7 @@ impl Coord {
         layers: &mut [Layer],
         layer_queries: &mut [String],
         projection: &mut super::Projection,
+        scales: &[Scale],
         dialect: &dyn SqlDialect,
         execute_query: &dyn Fn(&str) -> crate::Result<DataFrame>,
     ) -> crate::Result<()> {
@@ -250,6 +253,7 @@ impl Coord {
             layers,
             layer_queries,
             projection,
+            scales,
             dialect,
             execute_query,
         )

@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 use super::coord::Coord;
+use crate::plot::scale::Scale;
 use crate::plot::{Layer, Parameters};
 use crate::reader::SqlDialect;
 use crate::DataFrame;
@@ -69,10 +70,18 @@ impl Projection {
         &mut self,
         layers: &mut [Layer],
         layer_queries: &mut [String],
+        scales: &[Scale],
         dialect: &dyn SqlDialect,
         execute_query: &dyn Fn(&str) -> crate::Result<DataFrame>,
     ) -> crate::Result<()> {
         let coord = self.coord.clone();
-        coord.apply_projection_transforms(layers, layer_queries, self, dialect, execute_query)
+        coord.apply_projection_transforms(
+            layers,
+            layer_queries,
+            self,
+            scales,
+            dialect,
+            execute_query,
+        )
     }
 }
