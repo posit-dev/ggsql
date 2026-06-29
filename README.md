@@ -26,7 +26,7 @@ ggsql is built for immediate familiarity and alignment with the SQL language. It
 The syntax has been designed to be easy to learn, read, and write. This also means that it is a great fit for AI agents to produce as the output query is immediately easy to understand and validate by the user so that you can have certainty in its validity.
 
 ## Project status
-We are approaching an alpha release with the main architectural parts finished. Future development will focus on adding new readers (database support) and writers (output types) to compliment the DuckDB/SQLite + Vegalite setup we have focused on during early development.
+Our current release is in alpha with the main architectural parts finished, but is still subject to change. Future development will focus on adding new readers (database support) and writers (output types) to compliment the DuckDB/SQLite + Vegalite setup we have focused on during early development.
 
 ## Installation
 Please follow the instructions on [the website](https://ggsql.org/get_started/installation.html) for up to date information on how to install ggsql.
