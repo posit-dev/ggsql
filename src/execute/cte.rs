@@ -146,16 +146,11 @@ pub fn materialize_ctes(ctes: &[CteDefinition], reader: &dyn Reader) -> Result<H
 
         let temp_table_name = naming::cte_table(&cte.name);
 
-        let statements = reader.dialect().create_or_replace_temp_table_sql(
-            &temp_table_name,
-            &cte.column_aliases,
-            &transformed_body,
-        );
-        for stmt in &statements {
-            reader.execute_sql(stmt).map_err(|e| {
+        reader
+            .materialize_table(&temp_table_name, &cte.column_aliases, &transformed_body)
+            .map_err(|e| {
                 GgsqlError::ReaderError(format!("Failed to materialize CTE '{}': {}", cte.name, e))
             })?;
-        }
 
         materialized.insert(cte.name.clone());
     }

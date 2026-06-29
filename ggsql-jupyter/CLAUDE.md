@@ -32,7 +32,7 @@ ggsql-jupyter/
 
 1. `ggsql-jupyter --install` writes a kernelspec into the active Python environment (Jupyter, conda, uv, virtualenv — auto-detected).
 2. `ggsql-jupyter <connection-file>` is the entry point Jupyter invokes; it reads the connection JSON, opens the five ZMQ sockets (shell, control, iopub, stdin, heartbeat), and runs `kernel.rs`'s message loop.
-3. Each `execute_request` is dispatched through `executor.rs` → `ggsql::reader::DuckDBReader::execute(...)`. The kernel keeps a single persistent in-memory DuckDB session so cells share state.
+3. Each `execute_request` is dispatched through `executor.rs` → `ggsql::reader::DuckDBReader::execute(...)`. The kernel keeps a single persistent in-memory DuckDB session so cells share state. Readers are built via the library factory `ggsql::reader::connection::reader_from_uri`, so a composite `<primary>+<cache>://` connection string (e.g. via `-- @connect:`) wraps the reader in an in-memory caching layer — the persistent kernel session means repeated cells reuse cached remote reads.
 4. The result is wrapped by `display.rs` into a Jupyter `display_data` message — Vega-Lite specs go through vega-embed in an HTML payload (works in classic Jupyter, JupyterLab, and Positron); pure SQL goes out as an HTML table.
 
 ## Positron-specific bits

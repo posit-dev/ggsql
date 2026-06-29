@@ -32,6 +32,8 @@ The binary name is `ggsql` (not `ggsql-cli`) — that's what release artifacts a
 
 Only public `ggsql::*` API is used (`reader`, `writer`, `validate`, `parser`, `VERSION`) — this crate has no awareness of internal modules.
 
+`exec`/`run` build their reader via the library factory `ggsql::reader::connection::reader_from_uri`. They accept an in-memory caching layer (off by default) selected either by the composite connection scheme `<primary>+<cache>://…` (e.g. `odbc+duckdb://…`) or the `--cache <duckdb|sqlite>` flag; the two cannot be combined.
+
 ## Build & install
 
 ```sh

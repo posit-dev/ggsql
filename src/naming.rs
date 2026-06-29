@@ -137,6 +137,48 @@ pub fn cte_table(cte_name: &str) -> String {
     )
 }
 
+/// Generate temp table name for a memoized primary query result in a cache.
+///
+/// Format: `__ggsql_cache_<uuid>_<id>__`
+///
+/// # Example
+/// ```
+/// use ggsql::naming;
+/// let table = naming::cache_result_table(0);
+/// assert!(table.starts_with("__ggsql_cache_"));
+/// assert!(table.ends_with("_0__"));
+/// ```
+pub fn cache_result_table(id: u64) -> String {
+    format!(
+        "{}cache_{}_{}{}",
+        GGSQL_PREFIX,
+        session_id(),
+        id,
+        GGSQL_SUFFIX
+    )
+}
+
+/// Generate temp table name for a materialized explicit layer source.
+///
+/// Format: `__ggsql_layer_src_<index>_<uuid>__`
+///
+/// # Example
+/// ```
+/// use ggsql::naming;
+/// let table = naming::layer_source_table(2);
+/// assert!(table.starts_with("__ggsql_layer_src_2_"));
+/// assert!(table.ends_with("__"));
+/// ```
+pub fn layer_source_table(index: usize) -> String {
+    format!(
+        "{}layer_src_{}_{}{}",
+        GGSQL_PREFIX,
+        index,
+        session_id(),
+        GGSQL_SUFFIX
+    )
+}
+
 /// Generate table name for a builtin dataset.
 ///
 /// Used when rewriting `ggsql:penguins` to the internal table name.

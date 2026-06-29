@@ -7,8 +7,8 @@
 use anyhow::Result;
 use ggsql::{
     reader::{
-        connection::{extract_odbc_value, parse_connection_string},
-        DuckDBReader, Reader,
+        connection::{extract_odbc_value, reader_from_uri},
+        Reader,
     },
     validate::validate,
     writer::{VegaLiteWriter, Writer},
@@ -26,41 +26,6 @@ pub enum ExecutionResult {
     },
     /// Connection changed via meta-command
     ConnectionChanged { uri: String, display_name: String },
-}
-
-/// Create a reader from a connection URI string.
-///
-/// Supported schemes:
-/// - `duckdb://memory` or `duckdb://<path>` (always available)
-/// - `sqlite://<path>` (requires `sqlite` feature)
-/// - `odbc://...` (requires `odbc` feature)
-pub fn create_reader(uri: &str) -> Result<Box<dyn Reader + Send>> {
-    use ggsql::reader::connection::ConnectionInfo;
-
-    let info = parse_connection_string(uri)?;
-    match info {
-        ConnectionInfo::DuckDBMemory => {
-            let reader = DuckDBReader::from_connection_string("duckdb://memory")?;
-            Ok(Box::new(reader))
-        }
-        ConnectionInfo::DuckDBFile(path) => {
-            let reader = DuckDBReader::from_connection_string(&format!("duckdb://{}", path))?;
-            Ok(Box::new(reader))
-        }
-        #[cfg(feature = "odbc")]
-        ConnectionInfo::ODBC(conn_str) => {
-            let reader =
-                ggsql::reader::OdbcReader::from_connection_string(&format!("odbc://{}", conn_str))?;
-            Ok(Box::new(reader))
-        }
-        #[cfg(feature = "sqlite")]
-        ConnectionInfo::SQLite(path) => {
-            let reader =
-                ggsql::reader::SqliteReader::from_connection_string(&format!("sqlite://{}", path))?;
-            Ok(Box::new(reader))
-        }
-        _ => anyhow::bail!("Unsupported reader type for connection string: {}", uri),
-    }
 }
 
 /// Generate a human-readable display name for a connection URI.
@@ -156,7 +121,7 @@ impl QueryExecutor {
     /// Create a new query executor with a given connection URI
     pub fn new_with_uri(uri: &str) -> Result<Self> {
         tracing::info!("Initializing query executor with reader: {}", uri);
-        let reader = create_reader(uri)?;
+        let reader = reader_from_uri(uri)?;
         let writer = VegaLiteWriter::new();
 
         Ok(Self {
@@ -184,7 +149,7 @@ impl QueryExecutor {
 
     /// Swap the reader to a new connection, returning the old URI
     pub fn swap_reader(&mut self, uri: &str) -> Result<String> {
-        let new_reader = create_reader(uri)?;
+        let new_reader = reader_from_uri(uri)?;
         self.reader = new_reader;
         let old_uri = std::mem::replace(&mut self.reader_uri, uri.to_string());
         Ok(old_uri)

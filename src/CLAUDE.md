@@ -46,10 +46,13 @@ Grammar lives in [`/tree-sitter-ggsql/`](../tree-sitter-ggsql/) — when adding 
 | `duckdb.rs` | DuckDB (in-memory or file) | `duckdb` (default) |
 | `sqlite.rs` | SQLite | `sqlite` (default) |
 | `odbc.rs` | ODBC | `odbc` (default) |
+| `cache.rs` | `CachingReader` — wraps any primary `Reader` with an in-memory cache | `duckdb` or `sqlite` |
 | `connection.rs` | Connection-string parsing for all of the above | — |
 | `data.rs`, `spec.rs` | `Spec` type returned by `execute()`, plus DataFrame conversion | — |
 
 `SqlDialect` trait in `mod.rs` lets each driver supply its own type names, information-schema queries, and spatial helper methods (`sql_st_transform`, `sql_geometry_to_wkb`, `sql_geometry_bbox`, `sql_ensure_geometry`, `sql_select_replace`, `sql_spatial_setup`).
+
+**Caching layer.** `CachingReader` (`cache.rs`) wraps a primary reader plus an in-memory `CacheBackend`. It routes each `execute_sql`: cache-resident names and `ggsql:` builtins go to the cache, base reads go to the primary (and are memoized). The `Reader::materialize_table` seam (default = `CREATE TEMP TABLE` on the reader, no Rust roundtrip) is overridden to run the read and `register()` the result into the cache, so the primary is never written to; `Reader::caches_sources()` (default `false`, `true` for `CachingReader`) gates the executor's extra materialization of explicit per-layer sources. `dialect()` returns the **cache** dialect because every executor-generated query targets a cache-resident table. Selected via the composite `<primary>+<cache>://` connection scheme (`reader_from_uri` / `split_cache_uri`) or the CLI `--cache` flag; off by default.
 
 ### `execute/`
 

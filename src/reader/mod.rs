@@ -429,6 +429,12 @@ pub mod odbc;
 #[cfg(feature = "adbc")]
 pub mod adbc;
 
+#[cfg(any(feature = "duckdb", feature = "sqlite"))]
+pub mod cache;
+
+#[cfg(all(test, feature = "duckdb", feature = "sqlite"))]
+mod cache_equivalence;
+
 pub mod connection;
 pub mod data;
 mod spec;
@@ -444,6 +450,9 @@ pub use odbc::OdbcReader;
 
 #[cfg(feature = "adbc")]
 pub use adbc::AdbcReader;
+
+#[cfg(any(feature = "duckdb", feature = "sqlite"))]
+pub use cache::CachingReader;
 
 // ============================================================================
 // Shared utilities
@@ -487,6 +496,177 @@ pub(crate) fn returns_rows(sql: &str) -> bool {
         first_word.to_ascii_uppercase().as_str(),
         "SELECT" | "WITH" | "DESCRIBE" | "SHOW" | "EXPLAIN" | "FROM"
     )
+}
+
+/// Shared test helpers for reader equivalence suites.
+#[cfg(test)]
+pub(crate) mod test_support {
+    use super::{
+        execute_with_reader, returns_rows, ColumnInfo, Reader, Spec, SqlDialect, TableInfo,
+    };
+    use crate::{DataFrame, GgsqlError, Result};
+    use std::sync::{Arc, Mutex};
+
+    /// A `Reader` that records every `execute_sql` it receives, delegating
+    /// everything to an inner reader.
+    pub(crate) struct SpyReader {
+        inner: Box<dyn Reader + Send>,
+        log: Arc<Mutex<Vec<String>>>,
+    }
+
+    impl SpyReader {
+        /// Wrap `inner`, returning the boxed spy and a handle to its call log.
+        pub(crate) fn wrap(
+            inner: Box<dyn Reader + Send>,
+        ) -> (Box<dyn Reader + Send>, Arc<Mutex<Vec<String>>>) {
+            let log = Arc::new(Mutex::new(Vec::new()));
+            (
+                Box::new(SpyReader {
+                    inner,
+                    log: log.clone(),
+                }),
+                log,
+            )
+        }
+    }
+
+    impl Reader for SpyReader {
+        fn execute_sql(&self, sql: &str) -> Result<DataFrame> {
+            self.log.lock().unwrap().push(sql.to_string());
+            self.inner.execute_sql(sql)
+        }
+        fn register(&self, name: &str, df: DataFrame, replace: bool) -> Result<()> {
+            self.inner.register(name, df, replace)
+        }
+        fn unregister(&self, name: &str) -> Result<()> {
+            self.inner.unregister(name)
+        }
+        fn execute(&self, query: &str) -> Result<Spec> {
+            execute_with_reader(self, query)
+        }
+        fn dialect(&self) -> &dyn SqlDialect {
+            self.inner.dialect()
+        }
+        fn list_catalogs(&self) -> Result<Vec<String>> {
+            self.inner.list_catalogs()
+        }
+        fn list_schemas(&self, c: &str) -> Result<Vec<String>> {
+            self.inner.list_schemas(c)
+        }
+        fn list_tables(&self, c: &str, s: &str) -> Result<Vec<TableInfo>> {
+            self.inner.list_tables(c, s)
+        }
+        fn list_columns(&self, c: &str, s: &str, t: &str) -> Result<Vec<ColumnInfo>> {
+            self.inner.list_columns(c, s, t)
+        }
+    }
+
+    /// A `Reader` that wraps an inner reader and **refuses every write**: any
+    /// `register`/`unregister` and any non-row-returning `execute_sql`
+    /// (CREATE/INSERT/DROP/…) returns an error.
+    pub(crate) struct ReadOnlyReader {
+        inner: Box<dyn Reader + Send>,
+    }
+
+    impl ReadOnlyReader {
+        pub(crate) fn new(inner: Box<dyn Reader + Send>) -> Self {
+            Self { inner }
+        }
+
+        fn refuse(op: &str) -> GgsqlError {
+            GgsqlError::ReaderError(format!("read-only primary: refused {op}"))
+        }
+    }
+
+    impl Reader for ReadOnlyReader {
+        fn execute_sql(&self, sql: &str) -> Result<DataFrame> {
+            if !returns_rows(sql) {
+                return Err(Self::refuse(&format!("write statement: {sql}")));
+            }
+            self.inner.execute_sql(sql)
+        }
+        fn register(&self, _name: &str, _df: DataFrame, _replace: bool) -> Result<()> {
+            Err(Self::refuse("register"))
+        }
+        fn unregister(&self, _name: &str) -> Result<()> {
+            Err(Self::refuse("unregister"))
+        }
+        fn execute(&self, query: &str) -> Result<Spec> {
+            execute_with_reader(self, query)
+        }
+        fn dialect(&self) -> &dyn SqlDialect {
+            self.inner.dialect()
+        }
+        fn list_catalogs(&self) -> Result<Vec<String>> {
+            self.inner.list_catalogs()
+        }
+        fn list_schemas(&self, c: &str) -> Result<Vec<String>> {
+            self.inner.list_schemas(c)
+        }
+        fn list_tables(&self, c: &str, s: &str) -> Result<Vec<TableInfo>> {
+            self.inner.list_tables(c, s)
+        }
+        fn list_columns(&self, c: &str, s: &str, t: &str) -> Result<Vec<ColumnInfo>> {
+            self.inner.list_columns(c, s, t)
+        }
+    }
+
+    /// Compare two DataFrames by schema (field names + types) and by
+    /// per-column Arrow array contents. We don't use a blanket
+    /// `assert_eq!(df, df)` because `DataFrame` doesn't implement `PartialEq`;
+    /// going through schema + per-column equality is also more diagnostic
+    /// when one of them diverges.
+    #[cfg(feature = "adbc")]
+    pub(crate) fn assert_dataframes_equal(a: &DataFrame, b: &DataFrame, ctx: &str) {
+        let a_schema = a.schema();
+        let b_schema = b.schema();
+        assert_eq!(
+            a_schema.fields().len(),
+            b_schema.fields().len(),
+            "{ctx}: column count mismatch (a={}, b={})",
+            a_schema.fields().len(),
+            b_schema.fields().len(),
+        );
+        for (i, (af, bf)) in a_schema
+            .fields()
+            .iter()
+            .zip(b_schema.fields().iter())
+            .enumerate()
+        {
+            assert_eq!(
+                af.name(),
+                bf.name(),
+                "{ctx}: column {i} name mismatch (a='{}', b='{}')",
+                af.name(),
+                bf.name(),
+            );
+            assert_eq!(
+                af.data_type(),
+                bf.data_type(),
+                "{ctx}: column '{}' type mismatch (a={:?}, b={:?})",
+                af.name(),
+                af.data_type(),
+                bf.data_type(),
+            );
+        }
+        assert_eq!(
+            a.height(),
+            b.height(),
+            "{ctx}: row count mismatch (a={}, b={})",
+            a.height(),
+            b.height(),
+        );
+        for field in a_schema.fields() {
+            let ac = a.column(field.name()).unwrap();
+            let bc = b.column(field.name()).unwrap();
+            assert_eq!(
+                ac.as_ref(),
+                bc.as_ref(),
+                "{ctx}: column '{}' data mismatch",
+                field.name(),
+            );
+        }
+    }
 }
 
 // ============================================================================
@@ -642,6 +822,27 @@ pub trait Reader {
         &AnsiDialect
     }
 
+    /// Materialize the result of `body_sql` as a temporary table named `name`.
+    fn materialize_table(
+        &self,
+        name: &str,
+        column_aliases: &[String],
+        body_sql: &str,
+    ) -> Result<()> {
+        for stmt in self
+            .dialect()
+            .create_or_replace_temp_table_sql(name, column_aliases, body_sql)
+        {
+            self.execute_sql(&stmt)?;
+        }
+        Ok(())
+    }
+
+    /// Whether this reader stages external data sources into a separate cache.
+    fn caches_sources(&self) -> bool {
+        false
+    }
+
     // =========================================================================
     // Schema introspection
     // =========================================================================
@@ -719,6 +920,16 @@ pub trait Reader {
         }
         Ok(results)
     }
+}
+
+/// A reader that can serve as an in-memory, writable caching backend.
+///
+/// Cache backends take no options: they are always a fresh in-memory, writable
+/// database scoped to the process; consumed by [`CachingReader`].
+pub trait CacheBackend: Reader {
+    fn new_in_memory() -> Result<Self>
+    where
+        Self: Sized;
 }
 
 /// A table or view in the schema.
