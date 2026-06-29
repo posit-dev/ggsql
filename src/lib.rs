@@ -1293,4 +1293,92 @@ mod integration_tests {
         assert!(x.abs() < 2000.0, "Expected x near 0, got {x}");
         assert!(y.abs() < 2000.0, "Expected y near 0, got {y}");
     }
+
+    #[cfg(feature = "spatial")]
+    #[test]
+    fn test_scale_limits_override_map_bbox() {
+        use crate::plot::types::{ArrayElement, ParameterValue};
+
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        // Query with explicit lon/lat scale limits on a mercator map
+        let query = r#"
+            VISUALISE FROM ggsql:world
+            DRAW spatial PROJECT TO mercator
+            SCALE lon FROM [5, 15]
+            SCALE lat FROM [45, 55]
+        "#;
+
+        let prepared = execute::prepare_data_with_reader(query, &reader).unwrap();
+
+        let project = prepared.specs[0].project.as_ref().unwrap();
+        let bbox_param = project
+            .computed
+            .get("bbox")
+            .expect("bbox should be computed");
+
+        // The bbox should reflect the projected [5,15] x [45,55] extent,
+        // not the full world data extent.
+        let ParameterValue::Array(bbox_arr) = bbox_param else {
+            panic!("bbox should be an Array");
+        };
+        let xmin = bbox_arr[0].to_f64().unwrap();
+        let ymin = bbox_arr[1].to_f64().unwrap();
+        let xmax = bbox_arr[2].to_f64().unwrap();
+        let ymax = bbox_arr[3].to_f64().unwrap();
+
+        // In Web Mercator (EPSG:3857), lon 5° ≈ 556597, lon 15° ≈ 1669792
+        // lat 45° ≈ 5621521, lat 55° ≈ 7361866
+        // The bbox should be in that ballpark, not world-sized (~±20M).
+        assert!(
+            xmin > 400_000.0 && xmin < 700_000.0,
+            "xmin out of range: {xmin}"
+        );
+        assert!(
+            xmax > 1_500_000.0 && xmax < 1_800_000.0,
+            "xmax out of range: {xmax}"
+        );
+        assert!(
+            ymin > 5_000_000.0 && ymin < 6_000_000.0,
+            "ymin out of range: {ymin}"
+        );
+        assert!(
+            ymax > 7_000_000.0 && ymax < 7_500_000.0,
+            "ymax out of range: {ymax}"
+        );
+    }
+
+    #[cfg(feature = "spatial")]
+    #[test]
+    fn test_scale_breaks_control_graticule() {
+        use crate::plot::types::ParameterValue;
+
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        let query = r#"
+            VISUALISE FROM ggsql:world
+            DRAW spatial PROJECT TO mercator
+            SCALE lon SETTING breaks => [0, 30, 60, 90]
+        "#;
+
+        let prepared = execute::prepare_data_with_reader(query, &reader).unwrap();
+
+        let project = prepared.specs[0].project.as_ref().unwrap();
+        let grat_lon = project
+            .computed
+            .get("graticule_lon")
+            .expect("graticule_lon should be set");
+
+        let ParameterValue::String(wkt) = grat_lon else {
+            panic!("graticule_lon should be a String (WKT)");
+        };
+
+        // Each meridian in the MULTILINESTRING is a (...) group.
+        // Count by splitting on "), (" which separates individual lines.
+        let line_count = wkt.split("), (").count();
+        assert_eq!(
+            line_count, 4,
+            "Expected 4 graticule meridians for breaks [0, 30, 60, 90], got {line_count}\nWKT: {wkt:.200}"
+        );
+    }
 }

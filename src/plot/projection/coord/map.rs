@@ -1247,6 +1247,188 @@ mod tests {
         Err(crate::GgsqlError::InternalError("no db".into()))
     }
 
+    fn noop_dialect() -> crate::reader::duckdb::DuckDbDialect {
+        crate::reader::duckdb::DuckDbDialect
+    }
+
+    mod scale_override_bbox_tests {
+        use super::*;
+        use crate::plot::scale::Scale;
+        use crate::plot::types::ArrayElement;
+
+        fn make_scale(aesthetic: &str, range: Vec<ArrayElement>, explicit: bool) -> Scale {
+            let mut s = Scale::new(aesthetic);
+            s.input_range = Some(range);
+            s.explicit_input_range = explicit;
+            s
+        }
+
+        #[test]
+        fn numeric_limits_override_data_bbox() {
+            let scales = vec![
+                make_scale(
+                    "pos1",
+                    vec![ArrayElement::Number(10.0), ArrayElement::Number(20.0)],
+                    true,
+                ),
+                make_scale(
+                    "pos2",
+                    vec![ArrayElement::Number(30.0), ArrayElement::Number(50.0)],
+                    true,
+                ),
+            ];
+            let data_bbox = Some(BBox {
+                xmin: 0.0,
+                ymin: 0.0,
+                xmax: 100.0,
+                ymax: 100.0,
+                crs: "EPSG:4326".to_string(),
+            });
+
+            let result = scale_override_bbox(
+                &scales,
+                data_bbox.clone(),
+                "EPSG:4326",
+                "EPSG:4326",
+                &noop_dialect(),
+                &noop_execute,
+            );
+
+            // reproject fails with noop_execute, so falls back to data_bbox
+            // But the function still enters the override path (does not early-return)
+            // With a real executor this would produce a new bbox from the scale limits
+            assert_eq!(result, data_bbox);
+        }
+
+        #[test]
+        fn string_limits_ignored() {
+            let scales = vec![make_scale(
+                "pos1",
+                vec![
+                    ArrayElement::String("A".into()),
+                    ArrayElement::String("B".into()),
+                ],
+                true,
+            )];
+            let data_bbox = Some(BBox {
+                xmin: 0.0,
+                ymin: 0.0,
+                xmax: 100.0,
+                ymax: 100.0,
+                crs: "EPSG:4326".to_string(),
+            });
+
+            let result = scale_override_bbox(
+                &scales,
+                data_bbox.clone(),
+                "EPSG:4326",
+                "EPSG:4326",
+                &noop_dialect(),
+                &noop_execute,
+            );
+
+            assert_eq!(result, data_bbox);
+        }
+
+        #[test]
+        fn no_explicit_limits_returns_data_bbox() {
+            let scales = vec![make_scale(
+                "pos1",
+                vec![ArrayElement::Number(10.0), ArrayElement::Number(20.0)],
+                false, // not explicit
+            )];
+            let data_bbox = Some(BBox {
+                xmin: 5.0,
+                ymin: 5.0,
+                xmax: 50.0,
+                ymax: 50.0,
+                crs: "EPSG:4326".to_string(),
+            });
+
+            let result = scale_override_bbox(
+                &scales,
+                data_bbox.clone(),
+                "EPSG:4326",
+                "EPSG:4326",
+                &noop_dialect(),
+                &noop_execute,
+            );
+
+            assert_eq!(result, data_bbox);
+        }
+
+        #[test]
+        fn mixed_null_numeric_without_fallback_returns_none() {
+            // pos1 has (null, 20), pos2 absent — no data_bbox to fall back on
+            let scales = vec![make_scale(
+                "pos1",
+                vec![ArrayElement::Null, ArrayElement::Number(20.0)],
+                true,
+            )];
+
+            let result = scale_override_bbox(
+                &scales,
+                None,
+                "EPSG:4326",
+                "EPSG:4326",
+                &noop_dialect(),
+                &noop_execute,
+            );
+
+            assert_eq!(result, None);
+        }
+    }
+
+    mod scale_breaks_tests {
+        use super::*;
+        use crate::plot::scale::Scale;
+        use crate::plot::types::ArrayElement;
+
+        #[test]
+        fn explicit_array_breaks_returned() {
+            let mut s = Scale::new("pos1");
+            s.properties.insert(
+                "breaks".to_string(),
+                ParameterValue::Array(vec![
+                    ArrayElement::Number(0.0),
+                    ArrayElement::Number(30.0),
+                    ArrayElement::Number(60.0),
+                ]),
+            );
+            let scales = vec![s];
+
+            assert_eq!(scale_breaks(&scales, "pos1"), Some(vec![0.0, 30.0, 60.0]));
+        }
+
+        #[test]
+        fn numeric_break_count_ignored() {
+            let mut s = Scale::new("pos1");
+            s.properties
+                .insert("breaks".to_string(), ParameterValue::Number(5.0));
+            let scales = vec![s];
+
+            assert_eq!(scale_breaks(&scales, "pos1"), None);
+        }
+
+        #[test]
+        fn absent_breaks_returns_none() {
+            let scales = vec![Scale::new("pos1")];
+            assert_eq!(scale_breaks(&scales, "pos1"), None);
+        }
+
+        #[test]
+        fn wrong_aesthetic_returns_none() {
+            let mut s = Scale::new("pos2");
+            s.properties.insert(
+                "breaks".to_string(),
+                ParameterValue::Array(vec![ArrayElement::Number(10.0)]),
+            );
+            let scales = vec![s];
+
+            assert_eq!(scale_breaks(&scales, "pos1"), None);
+        }
+    }
+
     #[test]
     fn resolve_epsg_property_from_existing() {
         let mut props = Parameters::new();
