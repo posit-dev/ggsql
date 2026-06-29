@@ -1,5 +1,11 @@
 ## [Unreleased]
 
+### Added
+
+- New caching layer that wraps any `Reader` with an in-memory, writeable cache
+  backend (currently duckdb or sqlite), making write-constrained databases
+  usable and avoiding repeated remote reads during interactive iteration.
+
 ## 0.4.1 - 2026-06-22
 
 ### Changed
