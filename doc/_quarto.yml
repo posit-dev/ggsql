@@ -157,6 +157,8 @@ website:
               href: get_started/tooling/r.qmd
             - text: WebAssembly
               href: get_started/tooling/webassembly.qmd
+            - text: DuckDB
+              href: get_started/tooling/duckdb.qmd
         - text: The rest of the owl
           href: get_started/the_rest.qmd
         - text: Wrap up
