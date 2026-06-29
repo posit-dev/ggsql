@@ -1211,7 +1211,13 @@ pub fn prepare_data_with_reader(query: &str, reader: &dyn Reader) -> Result<Prep
                 Some(t) => t.clone(),
                 None => {
                     let t = naming::layer_source_table(materialized_sources.len());
-                    reader.materialize_table(&t, &[], &source_query)?;
+                    if matches!(layer.source, Some(crate::DataSource::FilePath(_))) {
+                        // The cache backend reads local files
+                        let df = reader.execute_sql(&source_query)?;
+                        reader.register(&t, df, true)?;
+                    } else {
+                        reader.materialize_table(&t, &[], &source_query)?;
+                    }
                     materialized_sources.insert(source_query, t.clone());
                     t
                 }

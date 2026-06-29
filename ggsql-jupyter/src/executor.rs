@@ -177,8 +177,8 @@ impl QueryExecutor {
 
         // 2. Check if there's a visualization
         if !validated.has_visual() {
-            // Pure SQL query - execute directly and return DataFrame
-            let df = self.reader.execute_sql(code)?;
+            // Pure SQL query - execute directly and return DataFrame.
+            let df = self.reader.execute_sql_primary(code)?;
             tracing::info!(
                 "Pure SQL executed: {} rows, {} cols",
                 df.height(),

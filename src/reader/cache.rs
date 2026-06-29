@@ -14,7 +14,7 @@
 use crate::reader::{execute_with_reader, ColumnInfo, Reader, Spec, SqlDialect, TableInfo};
 use crate::{naming, DataFrame, Result};
 use std::cell::{Cell, RefCell};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 pub struct CachingReader {
     /// Primary backend — the real data source.
@@ -25,6 +25,9 @@ pub struct CachingReader {
     result_cache: RefCell<HashMap<String, String>>,
     /// Monotonic counter for unique memo table names.
     next_id: Cell<u64>,
+    /// Names registered into the cache. A source read that references one
+    /// is routed to the cache rather than the primary.
+    resident: RefCell<HashSet<String>>,
 }
 
 impl CachingReader {
@@ -36,6 +39,7 @@ impl CachingReader {
             cache,
             result_cache: RefCell::new(HashMap::new()),
             next_id: Cell::new(0),
+            resident: RefCell::new(HashSet::new()),
         }
     }
 }
@@ -48,7 +52,12 @@ impl Reader for CachingReader {
 
     /// Source surface: base reads of the user's data (plus user setup/DML).
     fn execute_sql_primary(&self, sql: &str) -> Result<DataFrame> {
-        if sql.contains("ggsql:") || sql.contains("__ggsql_") {
+        // Route to the cache when the read targets cache-resident objects
+        let references_cache_table = {
+            let resident = self.resident.borrow();
+            resident.iter().any(|t| sql.contains(t.as_str()))
+        };
+        if sql.contains("ggsql:") || references_cache_table {
             return self.cache.execute_sql(sql);
         }
 
@@ -68,17 +77,25 @@ impl Reader for CachingReader {
             self.result_cache
                 .borrow_mut()
                 .insert(sql.to_string(), table);
+        } else {
+            // A source-side write or DDL on the primary can change the data
+            // behind a memoized read; drop the memo.
+            self.result_cache.borrow_mut().clear();
         }
 
         Ok(df)
     }
 
     fn register(&self, name: &str, df: DataFrame, replace: bool) -> Result<()> {
-        self.cache.register(name, df, replace)
+        self.cache.register(name, df, replace)?;
+        self.resident.borrow_mut().insert(name.to_string());
+        Ok(())
     }
 
     fn unregister(&self, name: &str) -> Result<()> {
-        self.cache.unregister(name)
+        self.cache.unregister(name)?;
+        self.resident.borrow_mut().remove(name);
+        Ok(())
     }
 
     fn execute(&self, query: &str) -> Result<Spec> {
@@ -318,6 +335,146 @@ mod behavior_tests {
         assert!(
             spec.is_ok(),
             "explicit-source histogram failed: {:?}",
+            spec.err()
+        );
+    }
+
+    #[test]
+    fn test_aliased_cte_reading_primary_routes_to_primary() {
+        // A column-aliased CTE whose body reads a primary-only table must run on
+        // the primary. The `__ggsql_aliased__` column-alias wrapper must not
+        // misroute the read to the (empty) cache.
+        let base = DuckDBReader::new_in_memory().unwrap();
+        base.register("base", df! { "v" => vec![1_i64, 2, 3] }.unwrap(), true)
+            .unwrap();
+        let primary = Box::new(ReadOnlyReader::new(Box::new(base)));
+        let cache = Box::new(DuckDBReader::new_in_memory().unwrap());
+        let reader = CachingReader::new(primary, cache);
+
+        let spec = reader.execute(
+            "WITH t(a) AS (SELECT v FROM base) SELECT a FROM t VISUALISE a AS x DRAW point",
+        );
+        assert!(
+            spec.is_ok(),
+            "aliased CTE over a primary table should succeed: {:?}",
+            spec.err()
+        );
+    }
+
+    #[test]
+    fn test_aliased_cte_referencing_prior_cte_routes_to_cache() {
+        // A column-aliased CTE that references a *prior* CTE reads a table that
+        // lives in the cache, so its body must route to the cache, while the
+        // first CTE still reads the primary.
+        let base = DuckDBReader::new_in_memory().unwrap();
+        base.register("base", df! { "v" => vec![1_i64, 2, 3] }.unwrap(), true)
+            .unwrap();
+        let primary = Box::new(ReadOnlyReader::new(Box::new(base)));
+        let cache = Box::new(DuckDBReader::new_in_memory().unwrap());
+        let reader = CachingReader::new(primary, cache);
+
+        let spec = reader.execute(
+            "WITH a(p) AS (SELECT v FROM base), b(q) AS (SELECT p FROM a) \
+             SELECT q FROM b VISUALISE q AS x DRAW point",
+        );
+        assert!(
+            spec.is_ok(),
+            "dependent aliased CTE should succeed: {:?}",
+            spec.err()
+        );
+    }
+
+    #[test]
+    fn test_source_write_invalidates_memo() {
+        // Memoize a base read, mutate the primary, then re-read: the memo must be
+        // invalidated by the non-row-returning statement so the second read is fresh.
+        let primary = DuckDBReader::new_in_memory().unwrap();
+        primary
+            .register("t", df! { "v" => vec![1_i64, 2, 3] }.unwrap(), true)
+            .unwrap();
+        let cache = Box::new(DuckDBReader::new_in_memory().unwrap());
+        let reader = CachingReader::new(Box::new(primary), cache);
+
+        let q = "SELECT v FROM t";
+        let d1 = reader.execute_sql_primary(q).unwrap();
+        assert_eq!(d1.height(), 3);
+
+        reader
+            .execute_sql_primary("INSERT INTO t VALUES (4)")
+            .unwrap();
+
+        let d2 = reader.execute_sql_primary(q).unwrap();
+        assert_eq!(
+            d2.height(),
+            4,
+            "re-read must see the inserted row, not the memo"
+        );
+    }
+
+    #[test]
+    fn test_pure_sql_reads_primary_not_cache() {
+        // The pure-SQL display path uses `execute_sql_primary`, which reads the
+        // primary; `execute_sql` would hit the empty cache and fail.
+        let primary = DuckDBReader::new_in_memory().unwrap();
+        primary
+            .register("t", df! { "v" => vec![1_i64, 2, 3] }.unwrap(), true)
+            .unwrap();
+        let cache = Box::new(DuckDBReader::new_in_memory().unwrap());
+        let reader = CachingReader::new(Box::new(primary), cache);
+
+        let df = reader.execute_sql_primary("SELECT v FROM t").unwrap();
+        assert_eq!(df.height(), 3);
+        assert!(
+            reader.execute_sql("SELECT v FROM t").is_err(),
+            "compute surface should not find the primary-only table"
+        );
+    }
+
+    #[test]
+    fn test_cache_resident_table_as_layer_source() {
+        // A table registered directly on the CachingReader lives only in the
+        // cache.
+        let primary = Box::new(DuckDBReader::new_in_memory().unwrap());
+        let cache = Box::new(DuckDBReader::new_in_memory().unwrap());
+        let reader = CachingReader::new(primary, cache);
+        reader
+            .register(
+                "only_in_cache",
+                df! { "val" => vec![1.0_f64, 2.0, 2.0, 3.0, 3.0, 3.0, 9.0] }.unwrap(),
+                true,
+            )
+            .unwrap();
+
+        let spec = reader.execute("VISUALISE x DRAW histogram MAPPING val AS x FROM only_in_cache");
+        assert!(
+            spec.is_ok(),
+            "cache-resident layer source should succeed: {:?}",
+            spec.err()
+        );
+    }
+
+    #[cfg(feature = "sqlite")]
+    #[test]
+    fn test_file_layer_source_staged_via_cache() {
+        use crate::reader::SqliteReader;
+        // A file source must be staged on the cache surface.
+        let dir = std::env::temp_dir();
+        let path = dir.join(format!("ggsql_cache_file_test_{}.csv", std::process::id()));
+        std::fs::write(&path, "val\n1.0\n2.0\n2.0\n3.0\n3.0\n3.0\n9.0\n").unwrap();
+        let path_str = path.to_str().unwrap().to_string();
+
+        let primary = Box::new(SqliteReader::new().unwrap());
+        let cache = Box::new(DuckDBReader::new_in_memory().unwrap());
+        let reader = CachingReader::new(primary, cache);
+
+        let spec = reader.execute(&format!(
+            "VISUALISE x DRAW histogram MAPPING val AS x FROM '{}'",
+            path_str
+        ));
+        let _ = std::fs::remove_file(&path);
+        assert!(
+            spec.is_ok(),
+            "file layer source via cache should succeed: {:?}",
             spec.err()
         );
     }
