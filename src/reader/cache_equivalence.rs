@@ -228,6 +228,33 @@ fn factory_builds_caching_readers() {
     }
 }
 
+/// Map projections run entirely on the cache.
+#[cfg(all(feature = "spatial", feature = "builtin-data"))]
+#[test]
+fn map_projection_runs_on_cache_not_primary() {
+    let (primary, log) = SpyReader::wrap(Box::new(DuckDBReader::new_in_memory().unwrap()));
+    let cache = Box::new(DuckDBReader::new_in_memory().unwrap());
+    let reader = CachingReader::new(primary, cache);
+
+    let spec = reader.execute("VISUALISE FROM ggsql:world DRAW spatial PROJECT TO orthographic");
+    assert!(
+        spec.is_ok(),
+        "map projection via cache failed: {:?}",
+        spec.err()
+    );
+
+    // No dialect-specific spatial SQL, temp-table DDL, or `__ggsql_*` reference
+    // ever reached the primary.
+    let log = log.lock().unwrap();
+    for stmt in log.iter() {
+        let upper = stmt.to_uppercase();
+        assert!(
+            !upper.contains("ST_") && !upper.contains("TEMP TABLE") && !stmt.contains("__ggsql_"),
+            "derived spatial SQL leaked to the primary: {stmt}"
+        );
+    }
+}
+
 /// A real external ADBC SQLite primary + DuckDB cache, compared against a bare ADBC reader.
 /// `#[ignore]` — requires `dbc install sqlite`.
 #[cfg(feature = "adbc")]
@@ -318,12 +345,13 @@ mod adbc_mode {
         let cache = DuckDBReader::new_in_memory().unwrap();
         let cached = CachingReader::new(Box::new(primary), Box::new(cache));
 
-        let miss = cached.execute_sql(sql).unwrap();
+        // Base reads go through the source surface; the cache memoizes them.
+        let miss = cached.execute_sql_primary(sql).unwrap();
         assert_dataframes_equal(&golden, &miss, "adbc cache miss");
         let after_miss = calls.load(Ordering::SeqCst);
         assert!(after_miss >= 1, "miss should reach the ADBC primary");
 
-        let hit = cached.execute_sql(sql).unwrap();
+        let hit = cached.execute_sql_primary(sql).unwrap();
         assert_dataframes_equal(&golden, &hit, "adbc cache hit");
         let after_hit = calls.load(Ordering::SeqCst);
         assert_eq!(

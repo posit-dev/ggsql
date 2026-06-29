@@ -1,30 +1,27 @@
-//! Caching reader: any primary [`Reader`] + an in-memory writable cache.
+//! Caching reader: any primary [`Reader`] + an in-memory writeable cache.
 //!
-//! [`CachingReader`] wraps a `primary` reader and a `cache` backend (an
-//! in-memory [`CacheBackend`]). It sits between the primary reader and the
-//! rest of ggsql:
+//! [`CachingReader`] wraps a `primary` reader and an in-memory `cache` backend,
+//! splitting work across two surfaces:
 //!
-//! - [`Reader::register`] writes to the cache and records the name.
-//! - [`Reader::materialize_table`] runs the body and `register`s the resulting
-//!   DataFrame into the cache, so the primary is only ever read from — base
-//!   reads happen via passthrough SQL, derived tables live in the cache.
-//! - [`Reader::execute_sql`] routes each statement: queries referencing a
-//!   cache-resident name (or a `ggsql:` builtin) run on the cache; base reads
-//!   run on the primary and are memoized into the cache.
-//! - [`Reader::dialect`] returns the **cache** dialect: every dialect-specific
-//!   query the executor builds targets a cache-resident table.
+//! - **Compute** ([`Reader::execute_sql`]) runs on the cache: all derived,
+//!   dialect-generated SQL operates on the `__ggsql_*` tables.
+//! - **Source** ([`Reader::execute_sql_primary`]) reads the primary: base reads of
+//!   the user's data, plus user setup/DML.
+//! - [`Reader::materialize_table`] reads a body via the source surface and
+//!   `register`s the result into the cache.
+//! - [`Reader::dialect`] returns the cache dialect.
 
 use crate::reader::{execute_with_reader, ColumnInfo, Reader, Spec, SqlDialect, TableInfo};
 use crate::{naming, DataFrame, Result};
 use std::cell::{Cell, RefCell};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 pub struct CachingReader {
+    /// Primary backend — the real data source.
     primary: Box<dyn Reader + Send>,
+    /// In-memory writeable cache: derived tables, registered data, memoized reads.
     cache: Box<dyn Reader + Send>,
-    /// Names that currently live in the cache (registered tables / memo results).
-    cached_names: RefCell<HashSet<String>>,
-    /// Memo of base primary reads: SQL text -> cache table name holding the result.
+    /// Memo of base primary reads: source SQL text -> cache table holding the result.
     result_cache: RefCell<HashMap<String, String>>,
     /// Monotonic counter for unique memo table names.
     next_id: Cell<u64>,
@@ -37,38 +34,24 @@ impl CachingReader {
         Self {
             primary,
             cache,
-            cached_names: RefCell::new(HashSet::new()),
             result_cache: RefCell::new(HashMap::new()),
             next_id: Cell::new(0),
         }
     }
-
-    /// Whether `sql` is one of the cache dialect's spatial setup statements.
-    ///
-    /// ggsql-generated spatial setup (`INSTALL`/`LOAD spatial`, …) must run on
-    /// the cache, where the spatial SQL executes — not on the primary.
-    fn is_cache_spatial_setup(&self, sql: &str) -> bool {
-        self.cache
-            .dialect()
-            .sql_spatial_setup()
-            .iter()
-            .any(|stmt| stmt == sql)
-    }
 }
 
 impl Reader for CachingReader {
+    /// Compute surface: all derived/dialect-generated SQL runs on the cache.
     fn execute_sql(&self, sql: &str) -> Result<DataFrame> {
-        // Cache-resident names and `ggsql:` builtins are served by the cache.
-        if references_cached_name(sql, &self.cached_names.borrow()) || sql.contains("ggsql:") {
+        self.cache.execute_sql(sql)
+    }
+
+    /// Source surface: base reads of the user's data (plus user setup/DML).
+    fn execute_sql_primary(&self, sql: &str) -> Result<DataFrame> {
+        if sql.contains("ggsql:") || sql.contains("__ggsql_") {
             return self.cache.execute_sql(sql);
         }
 
-        // ggsql-generated spatial setup targets the cache (where spatial SQL runs).
-        if self.is_cache_spatial_setup(sql) {
-            return self.cache.execute_sql(sql);
-        }
-
-        // Base read against the primary, with result memoization.
         if let Some(table) = self.result_cache.borrow().get(sql) {
             return self
                 .cache
@@ -82,7 +65,6 @@ impl Reader for CachingReader {
             self.next_id.set(id + 1);
             let table = naming::cache_result_table(id);
             self.cache.register(&table, df.clone(), true)?;
-            self.cached_names.borrow_mut().insert(table.clone());
             self.result_cache
                 .borrow_mut()
                 .insert(sql.to_string(), table);
@@ -92,15 +74,11 @@ impl Reader for CachingReader {
     }
 
     fn register(&self, name: &str, df: DataFrame, replace: bool) -> Result<()> {
-        self.cache.register(name, df, replace)?;
-        self.cached_names.borrow_mut().insert(name.to_string());
-        Ok(())
+        self.cache.register(name, df, replace)
     }
 
     fn unregister(&self, name: &str) -> Result<()> {
-        self.cache.unregister(name)?;
-        self.cached_names.borrow_mut().remove(name);
-        Ok(())
+        self.cache.unregister(name)
     }
 
     fn execute(&self, query: &str) -> Result<Spec> {
@@ -118,8 +96,10 @@ impl Reader for CachingReader {
         column_aliases: &[String],
         body_sql: &str,
     ) -> Result<()> {
+        // Read the body via the source surface, then register the result
+        // into the cache.
         let body = super::wrap_with_column_aliases(body_sql, column_aliases);
-        let df = self.execute_sql(&body)?;
+        let df = self.execute_sql_primary(&body)?;
         self.register(name, df, true)
     }
 
@@ -146,142 +126,6 @@ impl Reader for CachingReader {
     }
 }
 
-/// Check whether `sql` references any name in `cached_names` as a SQL
-/// identifier (not part of a longer identifier, not inside a single-quoted
-/// string literal).
-///
-/// Matches a bare reference (`FROM orders`), a double-quoted identifier
-/// (`FROM "orders"`), or a qualified reference (`FROM catalog.schema.orders`).
-/// Does not match substrings of longer identifiers (`orders_detail`) or
-/// string-literal contents (`'orders of magnitude'`). This is a lightweight
-/// scanner, not a full SQL parser: a cached name appearing only inside a
-/// comment is misrouted to the cache and fails with a clear error rather than
-/// silently hitting the primary.
-fn references_cached_name(sql: &str, cached_names: &HashSet<String>) -> bool {
-    cached_names
-        .iter()
-        .any(|name| sql_references_identifier(sql, name))
-}
-
-fn sql_references_identifier(sql: &str, name: &str) -> bool {
-    let bytes = sql.as_bytes();
-    let name_bytes = name.as_bytes();
-    let n = name_bytes.len();
-    if n == 0 {
-        return false;
-    }
-    let mut i = 0;
-    while i + n <= bytes.len() {
-        if &bytes[i..i + n] == name_bytes {
-            let before_ok = i == 0 || !is_identifier_byte(bytes[i - 1]);
-            let after_ok = i + n == bytes.len() || !is_identifier_byte(bytes[i + n]);
-            if before_ok && after_ok && !is_inside_string_literal(bytes, i) {
-                return true;
-            }
-        }
-        i += 1;
-    }
-    false
-}
-
-fn is_identifier_byte(b: u8) -> bool {
-    b.is_ascii_alphanumeric() || b == b'_'
-}
-
-/// Walk from start to `pos` tracking whether we're inside a single-quoted
-/// string literal. SQL-standard doubled-single-quote (`''`) is an escape that
-/// keeps us inside the literal.
-fn is_inside_string_literal(bytes: &[u8], pos: usize) -> bool {
-    let mut inside = false;
-    let mut i = 0;
-    while i < pos && i < bytes.len() {
-        if bytes[i] == b'\'' {
-            if inside && i + 1 < bytes.len() && bytes[i + 1] == b'\'' {
-                i += 2;
-                continue;
-            }
-            inside = !inside;
-        }
-        i += 1;
-    }
-    inside
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_references_cached_name_empty_set() {
-        let set = HashSet::new();
-        assert!(!references_cached_name("SELECT * FROM foo", &set));
-    }
-
-    #[test]
-    fn test_references_cached_name_match() {
-        let mut set = HashSet::new();
-        set.insert("__ggsql_global_abc123__".to_string());
-        assert!(references_cached_name(
-            "SELECT * FROM __ggsql_global_abc123__ WHERE x > 1",
-            &set
-        ));
-    }
-
-    #[test]
-    fn test_references_cached_name_rejects_longer_identifier() {
-        let mut set = HashSet::new();
-        set.insert("orders".to_string());
-        assert!(!references_cached_name(
-            "SELECT * FROM orders_detail WHERE x > 1",
-            &set
-        ));
-    }
-
-    #[test]
-    fn test_references_cached_name_rejects_prefix_of_longer_identifier() {
-        let mut set = HashSet::new();
-        set.insert("col".to_string());
-        assert!(!references_cached_name("SELECT col_id FROM users", &set));
-    }
-
-    #[test]
-    fn test_references_cached_name_rejects_inside_string_literal() {
-        let mut set = HashSet::new();
-        set.insert("orders".to_string());
-        assert!(!references_cached_name(
-            "SELECT 'orders of magnitude' AS label",
-            &set
-        ));
-    }
-
-    #[test]
-    fn test_references_cached_name_matches_quoted_identifier() {
-        let mut set = HashSet::new();
-        set.insert("orders".to_string());
-        assert!(references_cached_name(r#"SELECT * FROM "orders""#, &set));
-    }
-
-    #[test]
-    fn test_references_cached_name_matches_qualified_reference() {
-        let mut set = HashSet::new();
-        set.insert("orders".to_string());
-        assert!(references_cached_name(
-            "SELECT * FROM catalog.schema.orders WHERE x > 1",
-            &set
-        ));
-    }
-
-    #[test]
-    fn test_references_cached_name_handles_escaped_quotes_in_literal() {
-        let mut set = HashSet::new();
-        set.insert("orders".to_string());
-        assert!(references_cached_name(
-            "SELECT 'it''s fine' FROM orders",
-            &set
-        ));
-    }
-}
-
 #[cfg(all(test, feature = "duckdb"))]
 mod behavior_tests {
     use super::*;
@@ -299,15 +143,16 @@ mod behavior_tests {
         reader
             .register("t", df! { "x" => vec![1_i64, 2, 3] }.unwrap(), true)
             .unwrap();
+        // register writes to the cache; the compute surface reads it back.
         let out = reader.execute_sql("SELECT COUNT(*) AS n FROM t").unwrap();
 
         assert_eq!(as_i64(out.column("n").unwrap()).unwrap().value(0), 3);
-        // The query routed to the cache; the primary was never touched.
+        // The primary was never touched.
         assert!(log.lock().unwrap().is_empty());
     }
 
     #[test]
-    fn test_base_read_routes_to_primary_and_memoizes() {
+    fn test_source_read_hits_primary_and_memoizes() {
         let inner = DuckDBReader::new_in_memory().unwrap();
         inner
             .register("base", df! { "y" => vec![1_i64, 2, 3] }.unwrap(), true)
@@ -317,8 +162,8 @@ mod behavior_tests {
         let reader = CachingReader::new(primary, cache);
 
         let q = "SELECT y FROM base ORDER BY y";
-        let d1 = reader.execute_sql(q).unwrap();
-        let d2 = reader.execute_sql(q).unwrap();
+        let d1 = reader.execute_sql_primary(q).unwrap();
+        let d2 = reader.execute_sql_primary(q).unwrap();
         assert_eq!(d1.height(), 3);
         assert_eq!(d2.height(), 3);
 
@@ -436,31 +281,6 @@ mod behavior_tests {
                 .any(|s| s.to_uppercase().contains("TEMP TABLE")),
             "default path must materialize on the reader"
         );
-    }
-
-    #[cfg(feature = "spatial")]
-    #[test]
-    fn test_spatial_setup_routes_to_cache() {
-        let (primary, log) = SpyReader::wrap(Box::new(DuckDBReader::new_in_memory().unwrap()));
-        let cache = Box::new(DuckDBReader::new_in_memory().unwrap());
-        let reader = CachingReader::new(primary, cache);
-
-        // ggsql-generated spatial setup must run on the cache (where the spatial
-        // SQL executes), never on the primary.
-        let setup = reader.dialect().sql_spatial_setup();
-        assert!(!setup.is_empty(), "DuckDB cache should emit spatial setup");
-        for stmt in &setup {
-            // Ignore execution result (may require the extension); we only assert routing.
-            let _ = reader.execute_sql(stmt);
-        }
-        let log = log.lock().unwrap();
-        for stmt in &setup {
-            assert!(
-                !log.contains(stmt),
-                "spatial setup must route to the cache, not the primary: {}",
-                stmt
-            );
-        }
     }
 
     #[cfg(feature = "sqlite")]

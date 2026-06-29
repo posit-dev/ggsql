@@ -724,15 +724,12 @@ pub struct Metadata {
 /// let result = reader.execute_sql("SELECT * FROM sales WHERE amount > 100")?;
 /// ```
 pub trait Reader {
-    /// Execute a SQL query and return the result as a DataFrame
+    /// Execute a SQL query and return the result as a DataFrame.
     ///
-    /// # Arguments
-    ///
-    /// * `sql` - The SQL query to execute
-    ///
-    /// # Returns
-    ///
-    /// A Polars DataFrame containing the query results
+    /// This is the **compute surface**: ggsql runs all dialect-generated/derived
+    /// SQL here. A plain reader runs it on its own connection; a
+    /// caching reader runs it on the in-memory cache, where all derived
+    /// `__ggsql_*` tables live.
     ///
     /// # Errors
     ///
@@ -741,6 +738,23 @@ pub trait Reader {
     /// - The connection fails
     /// - The table or columns don't exist
     fn execute_sql(&self, sql: &str) -> Result<DataFrame>;
+
+    /// Execute SQL against the *source* surface — base reads of the user's data
+    /// plus user setup/DML.
+    ///
+    /// Defaults to the compute surface ([`Reader::execute_sql`]), so a plain
+    /// reader runs everything on one connection. A caching reader overrides this
+    /// to read the primary (with result memoization).
+    ///
+    /// # Errors
+    ///
+    /// Returns `GgsqlError::ReaderError` if:
+    /// - The SQL is invalid
+    /// - The connection fails
+    /// - The table or columns don't exist
+    fn execute_sql_primary(&self, sql: &str) -> Result<DataFrame> {
+        self.execute_sql(sql)
+    }
 
     /// Register a DataFrame as a queryable table (takes ownership)
     ///

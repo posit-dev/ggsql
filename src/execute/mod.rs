@@ -1098,7 +1098,12 @@ pub struct PreparedData {
 /// * `query` - The full ggsql query string
 /// * `reader` - A Reader implementation for executing SQL
 pub fn prepare_data_with_reader(query: &str, reader: &dyn Reader) -> Result<PreparedData> {
+    // Two execution surfaces: `execute_query` is the COMPUTE surface for
+    // derived/dialect-generated SQL over internal `__ggsql_*` tables;
+    // `execute_query_primary` is the SOURCE surface for base reads of the
+    // user's data and user setup/DML.
     let execute_query = |sql: &str| reader.execute_sql(sql);
+    let execute_query_primary = |sql: &str| reader.execute_sql_primary(sql);
     let dialect = reader.dialect();
 
     // Parse once and create SourceTree
@@ -1129,7 +1134,7 @@ pub fn prepare_data_with_reader(query: &str, reader: &dyn Reader) -> Result<Prep
     // Structured DML (CREATE, INSERT, UPDATE, DELETE) is handled separately as
     // side-effects in cte::transform_global_sql.
     for stmt in source_tree.find_texts(&root, "(sql_statement (other_sql_statement) @stmt)") {
-        execute_query(&stmt)?;
+        execute_query_primary(&stmt)?;
     }
 
     // Extract CTE definitions from the source tree (in declaration order)
@@ -1152,7 +1157,7 @@ pub fn prepare_data_with_reader(query: &str, reader: &dyn Reader) -> Result<Prep
         let (side_effects, query) = cte::transform_global_sql(&source_tree, &materialized_ctes);
 
         for stmt in &side_effects {
-            execute_query(stmt)?;
+            execute_query_primary(stmt)?;
         }
 
         if let Some(query) = query {
