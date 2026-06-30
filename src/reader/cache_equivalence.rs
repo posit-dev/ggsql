@@ -346,12 +346,12 @@ mod adbc_mode {
         let cached = CachingReader::new(Box::new(primary), Box::new(cache), "test://primary");
 
         // Base reads go through the source surface; the cache memoizes them.
-        let miss = cached.execute_sql_primary(sql).unwrap();
+        let miss = cached.execute_sql(sql).unwrap();
         assert_dataframes_equal(&golden, &miss, "adbc cache miss");
         let after_miss = calls.load(Ordering::SeqCst);
         assert!(after_miss >= 1, "miss should reach the ADBC primary");
 
-        let hit = cached.execute_sql_primary(sql).unwrap();
+        let hit = cached.execute_sql(sql).unwrap();
         assert_dataframes_equal(&golden, &hit, "adbc cache hit");
         let after_hit = calls.load(Ordering::SeqCst);
         assert_eq!(

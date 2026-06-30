@@ -3,10 +3,10 @@
 //! [`CachingReader`] wraps a `primary` reader and an in-memory `cache` backend,
 //! splitting work across two surfaces:
 //!
-//! - **Compute** ([`Reader::execute_sql`]) runs on the cache: all derived,
+//! - **Source** ([`Reader::execute_sql`]) reads the primary: base reads of the
+//!   user's data, plus user setup/DML.
+//! - **Compute** ([`Reader::execute_sql_cached`]) runs on the cache: all derived,
 //!   dialect-generated SQL operates on the `__ggsql_*` tables.
-//! - **Source** ([`Reader::execute_sql_primary`]) reads the primary: base reads of
-//!   the user's data, plus user setup/DML.
 //! - [`Reader::materialize_table`] reads a body via the source surface and
 //!   `register`s the result into the cache.
 //! - [`Reader::dialect`] returns the cache dialect.
@@ -119,6 +119,18 @@ impl CachingReader {
         Ok((0..n).map(|i| col.value(i).to_string()).collect())
     }
 
+    /// Whether `sql` references a cache-resident table by exact name.
+    ///
+    /// Parses the query's `table_ref` targets and tests them against `resident`.
+    /// On a parse failure we conservatively return `false`.
+    fn references_resident(&self, sql: &str) -> bool {
+        let Ok(refs) = super::data::extract_table_refs(sql) else {
+            return false;
+        };
+        let resident = self.resident.borrow();
+        refs.iter().any(|t| resident.contains(t))
+    }
+
     /// Drop every memoized result and empty the metadata table.
     fn clear_memo(&self) -> Result<()> {
         self.ensure_meta_table()?;
@@ -135,22 +147,13 @@ impl CachingReader {
 }
 
 impl Reader for CachingReader {
-    /// Compute surface: all derived/dialect-generated SQL runs on the cache.
-    fn execute_sql(&self, sql: &str) -> Result<DataFrame> {
-        self.cache.execute_sql(sql)
-    }
-
     /// Source surface: base reads of the user's data (plus user setup/DML).
-    fn execute_sql_primary(&self, sql: &str) -> Result<DataFrame> {
+    fn execute_sql(&self, sql: &str) -> Result<DataFrame> {
         // Route to the cache when the read targets cache-resident objects, the
         // metadata table, or a builtin dataset.
-        let references_cache_table = {
-            let resident = self.resident.borrow();
-            resident.iter().any(|t| sql.contains(t.as_str()))
-        };
         if sql.contains("ggsql:")
             || sql.contains(naming::CACHE_META_TABLE)
-            || references_cache_table
+            || self.references_resident(sql)
         {
             return self.cache.execute_sql(sql);
         }
@@ -177,6 +180,11 @@ impl Reader for CachingReader {
         }
 
         Ok(df)
+    }
+
+    /// Compute surface: derived/dialect-generated SQL runs on the cache.
+    fn execute_sql_cached(&self, sql: &str) -> Result<DataFrame> {
+        self.cache.execute_sql(sql)
     }
 
     fn register(&self, name: &str, df: DataFrame, replace: bool) -> Result<()> {
@@ -209,7 +217,7 @@ impl Reader for CachingReader {
         // Read the body via the source surface, then register the result
         // into the cache.
         let body = super::wrap_with_column_aliases(body_sql, column_aliases);
-        let df = self.execute_sql_primary(&body)?;
+        let df = self.execute_sql(&body)?;
         self.register(name, df, true)
     }
 
@@ -254,7 +262,9 @@ mod behavior_tests {
             .register("t", df! { "x" => vec![1_i64, 2, 3] }.unwrap(), true)
             .unwrap();
         // register writes to the cache; the compute surface reads it back.
-        let out = reader.execute_sql("SELECT COUNT(*) AS n FROM t").unwrap();
+        let out = reader
+            .execute_sql_cached("SELECT COUNT(*) AS n FROM t")
+            .unwrap();
 
         assert_eq!(as_i64(out.column("n").unwrap()).unwrap().value(0), 3);
         // The primary was never touched.
@@ -272,8 +282,8 @@ mod behavior_tests {
         let reader = CachingReader::new(primary, cache, "test://primary");
 
         let q = "SELECT y FROM base ORDER BY y";
-        let d1 = reader.execute_sql_primary(q).unwrap();
-        let d2 = reader.execute_sql_primary(q).unwrap();
+        let d1 = reader.execute_sql(q).unwrap();
+        let d2 = reader.execute_sql(q).unwrap();
         assert_eq!(d1.height(), 3);
         assert_eq!(d2.height(), 3);
 
@@ -491,7 +501,7 @@ mod behavior_tests {
         let reader = CachingReader::new(primary, cache, "test://primary");
 
         let q = "SELECT y FROM base ORDER BY y";
-        reader.execute_sql_primary(q).unwrap();
+        reader.execute_sql(q).unwrap();
 
         // The metadata table now has exactly one row for this read.
         let meta = reader
@@ -506,7 +516,7 @@ mod behavior_tests {
         );
 
         // The repeat read is served from the cache, not the primary.
-        reader.execute_sql_primary(q).unwrap();
+        reader.execute_sql(q).unwrap();
         let hits = log
             .lock()
             .unwrap()
@@ -531,8 +541,8 @@ mod behavior_tests {
         let reader = CachingReader::new(primary, cache, "test://primary");
 
         let q = "SELECT y FROM base ORDER BY y";
-        let d1 = reader.execute_sql_primary(q).unwrap();
-        let d2 = reader.execute_sql_primary(q).unwrap();
+        let d1 = reader.execute_sql(q).unwrap();
+        let d2 = reader.execute_sql(q).unwrap();
         assert_eq!(d1.height(), 3);
         assert_eq!(d2.height(), 3);
         let hits = log
@@ -548,6 +558,34 @@ mod behavior_tests {
     }
 
     #[test]
+    fn test_resident_substring_not_false_matched() {
+        // A primary-only table whose name *contains* a cache-resident table name
+        // as a substring must still route to the primary. Exact-identifier
+        // matching distinguishes `orders` (resident) from `orders_archive`
+        // (primary-only).
+        let primary = DuckDBReader::new_in_memory().unwrap();
+        primary
+            .register(
+                "orders_archive",
+                df! { "v" => vec![1_i64, 2, 3] }.unwrap(),
+                true,
+            )
+            .unwrap();
+        let cache = Box::new(DuckDBReader::new_in_memory().unwrap());
+        let reader = CachingReader::new(Box::new(primary), cache, "test://primary");
+
+        // `orders` lives only in the cache.
+        reader
+            .register("orders", df! { "v" => vec![9_i64] }.unwrap(), true)
+            .unwrap();
+
+        // Reading the primary-only `orders_archive` must hit the primary (3 rows),
+        // not the resident `orders` (1 row).
+        let df = reader.execute_sql("SELECT v FROM orders_archive").unwrap();
+        assert_eq!(df.height(), 3);
+    }
+
+    #[test]
     fn test_source_write_invalidates_memo() {
         // Memoize a base read, mutate the primary, then re-read: the memo must be
         // invalidated by the non-row-returning statement so the second read is fresh.
@@ -559,14 +597,12 @@ mod behavior_tests {
         let reader = CachingReader::new(Box::new(primary), cache, "test://primary");
 
         let q = "SELECT v FROM t";
-        let d1 = reader.execute_sql_primary(q).unwrap();
+        let d1 = reader.execute_sql(q).unwrap();
         assert_eq!(d1.height(), 3);
 
-        reader
-            .execute_sql_primary("INSERT INTO t VALUES (4)")
-            .unwrap();
+        reader.execute_sql("INSERT INTO t VALUES (4)").unwrap();
 
-        let d2 = reader.execute_sql_primary(q).unwrap();
+        let d2 = reader.execute_sql(q).unwrap();
         assert_eq!(
             d2.height(),
             4,
@@ -576,8 +612,8 @@ mod behavior_tests {
 
     #[test]
     fn test_pure_sql_reads_primary_not_cache() {
-        // The pure-SQL display path uses `execute_sql_primary`, which reads the
-        // primary; `execute_sql` would hit the empty cache and fail.
+        // The pure-SQL display path uses `execute_sql` (source), which reads the
+        // primary; `execute_sql_cached` (compute) would hit the empty cache and fail.
         let primary = DuckDBReader::new_in_memory().unwrap();
         primary
             .register("t", df! { "v" => vec![1_i64, 2, 3] }.unwrap(), true)
@@ -585,10 +621,10 @@ mod behavior_tests {
         let cache = Box::new(DuckDBReader::new_in_memory().unwrap());
         let reader = CachingReader::new(Box::new(primary), cache, "test://primary");
 
-        let df = reader.execute_sql_primary("SELECT v FROM t").unwrap();
+        let df = reader.execute_sql("SELECT v FROM t").unwrap();
         assert_eq!(df.height(), 3);
         assert!(
-            reader.execute_sql("SELECT v FROM t").is_err(),
+            reader.execute_sql_cached("SELECT v FROM t").is_err(),
             "compute surface should not find the primary-only table"
         );
     }

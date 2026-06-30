@@ -446,7 +446,7 @@ fn print_table_fallback<R: Reader + ?Sized>(query: &str, reader: &R, max_rows: u
 
     let sql_part = source_tree.extract_sql().unwrap_or_default();
 
-    let data = reader.execute_sql_primary(&sql_part);
+    let data = reader.execute_sql(&sql_part);
     if let Err(e) = data {
         eprintln!("Failed to execute SQL query: {}", e);
         std::process::exit(1)

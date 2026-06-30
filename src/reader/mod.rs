@@ -726,10 +726,9 @@ pub struct Metadata {
 pub trait Reader {
     /// Execute a SQL query and return the result as a DataFrame.
     ///
-    /// This is the **compute surface**: ggsql runs all dialect-generated/derived
-    /// SQL here. A plain reader runs it on its own connection; a
-    /// caching reader runs it on the in-memory cache, where all derived
-    /// `__ggsql_*` tables live.
+    /// This is the **source surface**: base reads of the user's data plus user
+    /// setup/DML. A plain reader runs everything on its one connection; a caching
+    /// reader reads the primary here (with result memoization).
     ///
     /// # Errors
     ///
@@ -739,12 +738,12 @@ pub trait Reader {
     /// - The table or columns don't exist
     fn execute_sql(&self, sql: &str) -> Result<DataFrame>;
 
-    /// Execute SQL against the *source* surface — base reads of the user's data
-    /// plus user setup/DML.
+    /// Execute SQL against the *compute surface* — dialect-generated/derived SQL
+    /// over internal `__ggsql_*` tables.
     ///
-    /// Defaults to the compute surface ([`Reader::execute_sql`]), so a plain
-    /// reader runs everything on one connection. A caching reader overrides this
-    /// to read the primary (with result memoization).
+    /// Defaults to the source surface ([`Reader::execute_sql`]), so a plain reader
+    /// runs everything on one connection. A caching reader overrides this to run
+    /// on the in-memory cache, where all derived `__ggsql_*` tables live.
     ///
     /// # Errors
     ///
@@ -752,7 +751,7 @@ pub trait Reader {
     /// - The SQL is invalid
     /// - The connection fails
     /// - The table or columns don't exist
-    fn execute_sql_primary(&self, sql: &str) -> Result<DataFrame> {
+    fn execute_sql_cached(&self, sql: &str) -> Result<DataFrame> {
         self.execute_sql(sql)
     }
 

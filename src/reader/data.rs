@@ -146,6 +146,22 @@ pub fn extract_builtin_dataset_names(sql: &str) -> Result<Vec<String>, GgsqlErro
     Ok(datasets)
 }
 
+/// Extract the table names referenced in a SQL query's `FROM`/`JOIN` clauses.
+///
+/// Returns the `table_ref` targets (deduplicated), with surrounding quotes
+/// stripped via [`naming::unquote_ident`] so they can be compared against
+/// unquoted registered table names. Subquery sources contribute no name.
+pub fn extract_table_refs(sql: &str) -> Result<Vec<String>, GgsqlError> {
+    let token_def = r#"(table_ref table: (_) @table)"#;
+    let mut tokens = tokens_from_tree(sql, token_def, "table")?
+        .iter()
+        .map(|t| naming::unquote_ident(t))
+        .collect::<Vec<_>>();
+    tokens.sort_unstable();
+    tokens.dedup();
+    Ok(tokens)
+}
+
 /// Rewrite SQL to replace namespaced identifiers with internal table names.
 ///
 /// e.g., `SELECT * FROM ggsql:penguins` -> `SELECT * FROM __ggsql_data_penguins__`
