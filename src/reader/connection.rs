@@ -107,7 +107,11 @@ pub fn reader_from_uri(uri: &str) -> Result<Box<dyn Reader + Send>> {
         {
             let primary = build_reader(&primary_uri)?;
             let cache = build_reader(cache_uri(&cache_scheme)?)?;
-            return Ok(Box::new(crate::reader::CachingReader::new(primary, cache)));
+            return Ok(Box::new(crate::reader::CachingReader::new(
+                primary,
+                cache,
+                primary_uri,
+            )));
         }
         #[cfg(not(any(feature = "duckdb", feature = "sqlite")))]
         {

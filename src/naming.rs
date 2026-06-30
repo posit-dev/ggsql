@@ -85,6 +85,9 @@ pub const ORDER_COLUMN: &str = concatcp!(GGSQL_PREFIX, "order", GGSQL_SUFFIX);
 /// Used with Vega-Lite filter transforms to select per-layer data.
 pub const SOURCE_COLUMN: &str = concatcp!(GGSQL_PREFIX, "source", GGSQL_SUFFIX);
 
+/// Name of the caching layer's metadata table, held in the cache backend.
+pub const CACHE_META_TABLE: &str = concatcp!(GGSQL_PREFIX, "cache_meta", GGSQL_SUFFIX);
+
 /// Alias for schema extraction queries
 pub const SCHEMA_ALIAS: &str = concatcp!(GGSQL_SUFFIX, "schema", GGSQL_SUFFIX);
 
@@ -139,21 +142,22 @@ pub fn cte_table(cte_name: &str) -> String {
 
 /// Generate temp table name for a memoized primary query result in a cache.
 ///
-/// Format: `__ggsql_cache_<uuid>_<id>__`
+/// The cache key is a hex hash of the primary URI and SQL.
+/// Format: `__ggsql_cache_<uuid>_<key>__`
 ///
 /// # Example
 /// ```
 /// use ggsql::naming;
-/// let table = naming::cache_result_table(0);
+/// let table = naming::cache_result_table("deadbeef");
 /// assert!(table.starts_with("__ggsql_cache_"));
-/// assert!(table.ends_with("_0__"));
+/// assert!(table.ends_with("_deadbeef__"));
 /// ```
-pub fn cache_result_table(id: u64) -> String {
+pub fn cache_result_table(key: &str) -> String {
     format!(
         "{}cache_{}_{}{}",
         GGSQL_PREFIX,
         session_id(),
-        id,
+        key,
         GGSQL_SUFFIX
     )
 }
@@ -536,6 +540,7 @@ mod tests {
         assert_eq!(ORDER_COLUMN, "__ggsql_order__");
         assert_eq!(SOURCE_COLUMN, "__ggsql_source__");
         assert_eq!(SCHEMA_ALIAS, "__schema__");
+        assert_eq!(CACHE_META_TABLE, "__ggsql_cache_meta__");
     }
 
     #[test]

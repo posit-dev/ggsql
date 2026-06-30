@@ -14,33 +14,123 @@
 use crate::reader::{execute_with_reader, ColumnInfo, Reader, Spec, SqlDialect, TableInfo};
 use crate::{naming, DataFrame, Result};
 use std::cell::{Cell, RefCell};
-use std::collections::{HashMap, HashSet};
+use std::collections::hash_map::DefaultHasher;
+use std::collections::HashSet;
+use std::hash::Hasher;
 
 pub struct CachingReader {
     /// Primary backend — the real data source.
     primary: Box<dyn Reader + Send>,
     /// In-memory writeable cache: derived tables, registered data, memoized reads.
     cache: Box<dyn Reader + Send>,
-    /// Memo of base primary reads: source SQL text -> cache table holding the result.
-    result_cache: RefCell<HashMap<String, String>>,
-    /// Monotonic counter for unique memo table names.
-    next_id: Cell<u64>,
+    /// Connection URI of the primary.
+    primary_uri: String,
+    /// Whether the metadata table has been created in the cache backend.
+    meta_ready: Cell<bool>,
     /// Names registered into the cache. A source read that references one
     /// is routed to the cache rather than the primary.
     resident: RefCell<HashSet<String>>,
 }
 
 impl CachingReader {
-    /// Construct a `CachingReader` from a primary reader and an in-memory cache
-    /// backend. The cache is owned by the `CachingReader` and dropped with it.
-    pub fn new(primary: Box<dyn Reader + Send>, cache: Box<dyn Reader + Send>) -> Self {
+    /// Construct a `CachingReader` from a primary reader, an in-memory cache
+    /// backend, and the primary's connection URI. The cache is owned by the
+    /// `CachingReader` and dropped with it.
+    pub fn new(
+        primary: Box<dyn Reader + Send>,
+        cache: Box<dyn Reader + Send>,
+        primary_uri: impl Into<String>,
+    ) -> Self {
         Self {
             primary,
             cache,
-            result_cache: RefCell::new(HashMap::new()),
-            next_id: Cell::new(0),
+            primary_uri: primary_uri.into(),
+            meta_ready: Cell::new(false),
             resident: RefCell::new(HashSet::new()),
         }
+    }
+
+    /// Derive a stable cache key from the primary URI and the SQL text.
+    fn cache_key(&self, sql: &str) -> String {
+        let mut hasher = DefaultHasher::new();
+        hasher.write(self.primary_uri.as_bytes());
+        hasher.write(b"\n");
+        hasher.write(sql.as_bytes());
+        format!("{:016x}", hasher.finish())
+    }
+
+    /// Create the metadata table in the cache backend if it doesn't exist yet.
+    fn ensure_meta_table(&self) -> Result<()> {
+        if self.meta_ready.get() {
+            return Ok(());
+        }
+        let sql = format!(
+            "CREATE TABLE IF NOT EXISTS {} \
+             (cache_key VARCHAR PRIMARY KEY, sql VARCHAR NOT NULL, table_name VARCHAR NOT NULL)",
+            naming::quote_ident(naming::CACHE_META_TABLE)
+        );
+        self.cache.execute_sql(&sql)?;
+        self.meta_ready.set(true);
+        Ok(())
+    }
+
+    /// Look up the cache table holding the memoized result for `key`.
+    fn lookup_memo(&self, key: &str) -> Result<Option<String>> {
+        let sql = format!(
+            "SELECT table_name FROM {} WHERE cache_key = {}",
+            naming::quote_ident(naming::CACHE_META_TABLE),
+            naming::quote_literal(key),
+        );
+        let df = self.cache.execute_sql(&sql)?;
+        if df.height() == 0 {
+            return Ok(None);
+        }
+        let table = crate::array_util::as_str(df.column("table_name")?)?
+            .value(0)
+            .to_string();
+        Ok(Some(table))
+    }
+
+    /// Record a memoized read in the metadata table.
+    fn insert_memo(&self, key: &str, sql: &str, table: &str) -> Result<()> {
+        let stmt = format!(
+            "INSERT OR REPLACE INTO {} (cache_key, sql, table_name) VALUES ({}, {}, {})",
+            naming::quote_ident(naming::CACHE_META_TABLE),
+            naming::quote_literal(key),
+            naming::quote_literal(sql),
+            naming::quote_literal(table),
+        );
+        self.cache.execute_sql(&stmt)?;
+        Ok(())
+    }
+
+    /// The cache tables holding all currently-memoized results.
+    fn memo_tables(&self) -> Result<Vec<String>> {
+        let sql = format!(
+            "SELECT table_name FROM {}",
+            naming::quote_ident(naming::CACHE_META_TABLE)
+        );
+        let df = self.cache.execute_sql(&sql)?;
+        let n = df.height();
+        if n == 0 {
+            return Ok(Vec::new());
+        }
+        let col = crate::array_util::as_str(df.column("table_name")?)?;
+        Ok((0..n).map(|i| col.value(i).to_string()).collect())
+    }
+
+    /// Drop every memoized result and empty the metadata table.
+    fn clear_memo(&self) -> Result<()> {
+        self.ensure_meta_table()?;
+        for table in self.memo_tables()? {
+            let _ = self.cache.unregister(&table);
+        }
+        let del = format!(
+            "DELETE FROM {}",
+            naming::quote_ident(naming::CACHE_META_TABLE)
+        );
+        self.cache.execute_sql(&del)?;
+        Ok(())
     }
 }
 
@@ -52,35 +142,38 @@ impl Reader for CachingReader {
 
     /// Source surface: base reads of the user's data (plus user setup/DML).
     fn execute_sql_primary(&self, sql: &str) -> Result<DataFrame> {
-        // Route to the cache when the read targets cache-resident objects
+        // Route to the cache when the read targets cache-resident objects, the
+        // metadata table, or a builtin dataset.
         let references_cache_table = {
             let resident = self.resident.borrow();
             resident.iter().any(|t| sql.contains(t.as_str()))
         };
-        if sql.contains("ggsql:") || references_cache_table {
+        if sql.contains("ggsql:")
+            || sql.contains(naming::CACHE_META_TABLE)
+            || references_cache_table
+        {
             return self.cache.execute_sql(sql);
         }
 
-        if let Some(table) = self.result_cache.borrow().get(sql) {
+        self.ensure_meta_table()?;
+        let key = self.cache_key(sql);
+
+        if let Some(table) = self.lookup_memo(&key)? {
             return self
                 .cache
-                .execute_sql(&format!("SELECT * FROM {}", naming::quote_ident(table)));
+                .execute_sql(&format!("SELECT * FROM {}", naming::quote_ident(&table)));
         }
 
         let df = self.primary.execute_sql(sql)?;
 
         if super::returns_rows(sql) {
-            let id = self.next_id.get();
-            self.next_id.set(id + 1);
-            let table = naming::cache_result_table(id);
+            let table = naming::cache_result_table(&key);
             self.cache.register(&table, df.clone(), true)?;
-            self.result_cache
-                .borrow_mut()
-                .insert(sql.to_string(), table);
+            self.insert_memo(&key, sql, &table)?;
         } else {
             // A source-side write or DDL on the primary can change the data
             // behind a memoized read; drop the memo.
-            self.result_cache.borrow_mut().clear();
+            self.clear_memo()?;
         }
 
         Ok(df)
@@ -155,7 +248,7 @@ mod behavior_tests {
     fn test_register_writes_to_cache_and_query_routes_there() {
         let (primary, log) = SpyReader::wrap(Box::new(DuckDBReader::new_in_memory().unwrap()));
         let cache = Box::new(DuckDBReader::new_in_memory().unwrap());
-        let reader = CachingReader::new(primary, cache);
+        let reader = CachingReader::new(primary, cache, "test://primary");
 
         reader
             .register("t", df! { "x" => vec![1_i64, 2, 3] }.unwrap(), true)
@@ -176,7 +269,7 @@ mod behavior_tests {
             .unwrap();
         let (primary, log) = SpyReader::wrap(Box::new(inner));
         let cache = Box::new(DuckDBReader::new_in_memory().unwrap());
-        let reader = CachingReader::new(primary, cache);
+        let reader = CachingReader::new(primary, cache, "test://primary");
 
         let q = "SELECT y FROM base ORDER BY y";
         let d1 = reader.execute_sql_primary(q).unwrap();
@@ -207,7 +300,7 @@ mod behavior_tests {
             .unwrap();
         let (primary, log) = SpyReader::wrap(Box::new(inner));
         let cache = Box::new(DuckDBReader::new_in_memory().unwrap());
-        let reader = CachingReader::new(primary, cache);
+        let reader = CachingReader::new(primary, cache, "test://primary");
 
         reader
             .execute("SELECT x, y FROM sales VISUALISE x, y DRAW point")
@@ -266,6 +359,7 @@ mod behavior_tests {
         let cached = CachingReader::new(
             Box::new(ReadOnlyReader::new(Box::new(primary))),
             Box::new(DuckDBReader::new_in_memory().unwrap()),
+            "test://primary",
         );
         assert!(
             cached.execute(query).is_ok(),
@@ -308,7 +402,7 @@ mod behavior_tests {
         // GREATEST), not SQLite's (CASE fallback).
         let primary = Box::new(SqliteReader::new().unwrap());
         let cache = Box::new(DuckDBReader::new_in_memory().unwrap());
-        let reader = CachingReader::new(primary, cache);
+        let reader = CachingReader::new(primary, cache, "test://primary");
         assert_eq!(reader.dialect().sql_greatest(&["a", "b"]), "GREATEST(a, b)");
     }
 
@@ -329,7 +423,7 @@ mod behavior_tests {
             )
             .unwrap();
         let cache = Box::new(DuckDBReader::new_in_memory().unwrap());
-        let reader = CachingReader::new(Box::new(primary), cache);
+        let reader = CachingReader::new(Box::new(primary), cache, "test://primary");
 
         let spec = reader.execute("VISUALISE x DRAW histogram MAPPING val AS x FROM tbl");
         assert!(
@@ -349,7 +443,7 @@ mod behavior_tests {
             .unwrap();
         let primary = Box::new(ReadOnlyReader::new(Box::new(base)));
         let cache = Box::new(DuckDBReader::new_in_memory().unwrap());
-        let reader = CachingReader::new(primary, cache);
+        let reader = CachingReader::new(primary, cache, "test://primary");
 
         let spec = reader.execute(
             "WITH t(a) AS (SELECT v FROM base) SELECT a FROM t VISUALISE a AS x DRAW point",
@@ -371,7 +465,7 @@ mod behavior_tests {
             .unwrap();
         let primary = Box::new(ReadOnlyReader::new(Box::new(base)));
         let cache = Box::new(DuckDBReader::new_in_memory().unwrap());
-        let reader = CachingReader::new(primary, cache);
+        let reader = CachingReader::new(primary, cache, "test://primary");
 
         let spec = reader.execute(
             "WITH a(p) AS (SELECT v FROM base), b(q) AS (SELECT p FROM a) \
@@ -385,6 +479,75 @@ mod behavior_tests {
     }
 
     #[test]
+    fn test_meta_table_records_and_serves_memo() {
+        // A memoized read is recorded in the metadata table and served back from
+        // the cache on repeat, without touching the primary again.
+        let inner = DuckDBReader::new_in_memory().unwrap();
+        inner
+            .register("base", df! { "y" => vec![1_i64, 2, 3] }.unwrap(), true)
+            .unwrap();
+        let (primary, log) = SpyReader::wrap(Box::new(inner));
+        let cache = Box::new(DuckDBReader::new_in_memory().unwrap());
+        let reader = CachingReader::new(primary, cache, "test://primary");
+
+        let q = "SELECT y FROM base ORDER BY y";
+        reader.execute_sql_primary(q).unwrap();
+
+        // The metadata table now has exactly one row for this read.
+        let meta = reader
+            .execute_sql(&format!("SELECT sql FROM {}", naming::CACHE_META_TABLE))
+            .unwrap();
+        assert_eq!(meta.height(), 1);
+        assert_eq!(
+            crate::array_util::as_str(meta.column("sql").unwrap())
+                .unwrap()
+                .value(0),
+            q
+        );
+
+        // The repeat read is served from the cache, not the primary.
+        reader.execute_sql_primary(q).unwrap();
+        let hits = log
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|s| s.as_str() == q)
+            .count();
+        assert_eq!(hits, 1);
+    }
+
+    #[cfg(feature = "sqlite")]
+    #[test]
+    fn test_sqlite_cache_backend_memoizes() {
+        use crate::reader::SqliteReader;
+        // A SQLite cache backend must support the metadata table DDL/DML
+        // (CREATE TABLE IF NOT EXISTS, INSERT OR REPLACE) and serve memoized reads.
+        let inner = DuckDBReader::new_in_memory().unwrap();
+        inner
+            .register("base", df! { "y" => vec![1_i64, 2, 3] }.unwrap(), true)
+            .unwrap();
+        let (primary, log) = SpyReader::wrap(Box::new(inner));
+        let cache = Box::new(SqliteReader::new().unwrap());
+        let reader = CachingReader::new(primary, cache, "test://primary");
+
+        let q = "SELECT y FROM base ORDER BY y";
+        let d1 = reader.execute_sql_primary(q).unwrap();
+        let d2 = reader.execute_sql_primary(q).unwrap();
+        assert_eq!(d1.height(), 3);
+        assert_eq!(d2.height(), 3);
+        let hits = log
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|s| s.as_str() == q)
+            .count();
+        assert_eq!(
+            hits, 1,
+            "SQLite cache should serve the repeat from the memo"
+        );
+    }
+
+    #[test]
     fn test_source_write_invalidates_memo() {
         // Memoize a base read, mutate the primary, then re-read: the memo must be
         // invalidated by the non-row-returning statement so the second read is fresh.
@@ -393,7 +556,7 @@ mod behavior_tests {
             .register("t", df! { "v" => vec![1_i64, 2, 3] }.unwrap(), true)
             .unwrap();
         let cache = Box::new(DuckDBReader::new_in_memory().unwrap());
-        let reader = CachingReader::new(Box::new(primary), cache);
+        let reader = CachingReader::new(Box::new(primary), cache, "test://primary");
 
         let q = "SELECT v FROM t";
         let d1 = reader.execute_sql_primary(q).unwrap();
@@ -420,7 +583,7 @@ mod behavior_tests {
             .register("t", df! { "v" => vec![1_i64, 2, 3] }.unwrap(), true)
             .unwrap();
         let cache = Box::new(DuckDBReader::new_in_memory().unwrap());
-        let reader = CachingReader::new(Box::new(primary), cache);
+        let reader = CachingReader::new(Box::new(primary), cache, "test://primary");
 
         let df = reader.execute_sql_primary("SELECT v FROM t").unwrap();
         assert_eq!(df.height(), 3);
@@ -436,7 +599,7 @@ mod behavior_tests {
         // cache.
         let primary = Box::new(DuckDBReader::new_in_memory().unwrap());
         let cache = Box::new(DuckDBReader::new_in_memory().unwrap());
-        let reader = CachingReader::new(primary, cache);
+        let reader = CachingReader::new(primary, cache, "test://primary");
         reader
             .register(
                 "only_in_cache",
@@ -465,7 +628,7 @@ mod behavior_tests {
 
         let primary = Box::new(SqliteReader::new().unwrap());
         let cache = Box::new(DuckDBReader::new_in_memory().unwrap());
-        let reader = CachingReader::new(primary, cache);
+        let reader = CachingReader::new(primary, cache, "test://primary");
 
         let spec = reader.execute(&format!(
             "VISUALISE x DRAW histogram MAPPING val AS x FROM '{}'",
