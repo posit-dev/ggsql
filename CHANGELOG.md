@@ -5,6 +5,8 @@
 - New caching layer that wraps any `Reader` with an in-memory, writeable cache
   backend (currently duckdb or sqlite), making write-constrained databases
   usable and avoiding repeated remote reads during interactive iteration.
+  Memoized reads are bounded by a TTL and an LRU byte budget, configurable per
+  connection. The cache can be cleared mid-session with the `-- @uncache` meta-command.
 
 ## 0.4.1 - 2026-06-22
 

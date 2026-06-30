@@ -29,6 +29,45 @@ pub fn split_cache_uri(uri: &str) -> Option<(String, String)> {
     Some((format!("{}://{}", primary, rest), cache.to_string()))
 }
 
+/// Cache-config keys recognised in a connection URI's trailing `?` query string.
+#[cfg(any(feature = "duckdb", feature = "sqlite"))]
+const KNOWN_CACHE_PARAMS: &[&str] = &["ttl", "max_bytes", "disabled"];
+
+/// Pull cache-config keys out of a connection URI's trailing `?key=value&…`
+/// query string, returning the URI with those keys removed plus the overrides.
+#[cfg(any(feature = "duckdb", feature = "sqlite"))]
+fn strip_cache_params(uri: &str) -> (String, crate::reader::cache::CacheConfigOverride) {
+    use crate::reader::cache::{parse_human_bytes, CacheConfigOverride};
+
+    let mut over = CacheConfigOverride::default();
+    let Some((body, query)) = uri.split_once('?') else {
+        return (uri.to_string(), over);
+    };
+
+    let mut kept: Vec<&str> = Vec::new();
+    for segment in query.split('&') {
+        match segment.split_once('=') {
+            Some((key, value)) if KNOWN_CACHE_PARAMS.contains(&key) => match key {
+                "ttl" => over.ttl_secs = value.trim().parse::<u64>().ok(),
+                "max_bytes" => over.max_bytes = parse_human_bytes(value),
+                "disabled" => {
+                    let v = value.trim().to_ascii_lowercase();
+                    over.enabled = Some(!matches!(v.as_str(), "1" | "true" | "yes"));
+                }
+                _ => unreachable!("validated against KNOWN_CACHE_PARAMS"),
+            },
+            // Not a cache key: keep it on the URI for the primary reader.
+            _ => kept.push(segment),
+        }
+    }
+
+    if kept.is_empty() {
+        (body.to_string(), over)
+    } else {
+        (format!("{}?{}", body, kept.join("&")), over)
+    }
+}
+
 /// Map a cache-backend scheme to its in-memory connection URI.
 #[cfg(any(feature = "duckdb", feature = "sqlite"))]
 fn cache_uri(scheme: &str) -> Result<&'static str> {
@@ -105,12 +144,17 @@ pub fn reader_from_uri(uri: &str) -> Result<Box<dyn Reader + Send>> {
     if let Some((primary_uri, cache_scheme)) = split_cache_uri(uri) {
         #[cfg(any(feature = "duckdb", feature = "sqlite"))]
         {
+            use crate::reader::cache::CacheConfig;
+
+            let (primary_uri, over) = strip_cache_params(&primary_uri);
+            let config = CacheConfig::from_env().merge(over);
             let primary = build_reader(&primary_uri)?;
             let cache = build_reader(cache_uri(&cache_scheme)?)?;
-            return Ok(Box::new(crate::reader::CachingReader::new(
+            return Ok(Box::new(crate::reader::CachingReader::with_config(
                 primary,
                 cache,
                 primary_uri,
+                config,
             )));
         }
         #[cfg(not(any(feature = "duckdb", feature = "sqlite")))]
@@ -216,5 +260,58 @@ mod tests {
     fn test_split_cache_uri_rejects_empty_parts() {
         assert_eq!(split_cache_uri("+duckdb://x"), None);
         assert_eq!(split_cache_uri("odbc+://x"), None);
+    }
+
+    #[cfg(any(feature = "duckdb", feature = "sqlite"))]
+    #[test]
+    fn test_strip_cache_params_parses_known_keys() {
+        let (uri, over) = strip_cache_params("duckdb://memory?ttl=600");
+        assert_eq!(uri, "duckdb://memory");
+        assert_eq!(over.ttl_secs, Some(600));
+        assert_eq!(over.max_bytes, None);
+        assert_eq!(over.enabled, None);
+
+        let (uri, over) = strip_cache_params("duckdb://memory?max_bytes=256mb&disabled=true");
+        assert_eq!(uri, "duckdb://memory");
+        assert_eq!(over.max_bytes, Some(256 * 1024 * 1024));
+        assert_eq!(over.enabled, Some(false));
+    }
+
+    #[cfg(any(feature = "duckdb", feature = "sqlite"))]
+    #[test]
+    fn test_strip_cache_params_keeps_non_cache_segments() {
+        // A non-cache `?key=` tail contributes no overrides and is left in place.
+        let (uri, over) = strip_cache_params("odbc://DSN=foo?warehouse=PROD");
+        assert_eq!(uri, "odbc://DSN=foo?warehouse=PROD");
+        assert_eq!(over.ttl_secs, None);
+
+        // ODBC body with `=`/`;` and no `?` is returned verbatim.
+        let (uri, over) = strip_cache_params("odbc://Driver=Snowflake;Server=x");
+        assert_eq!(uri, "odbc://Driver=Snowflake;Server=x");
+        assert_eq!(over.enabled, None);
+
+        // Cache keys are extracted; other params (e.g. ODBC settings) are kept.
+        let (uri, over) = strip_cache_params("odbc://DSN=foo?warehouse=PROD&ttl=10&max_bytes=8mb");
+        assert_eq!(uri, "odbc://DSN=foo?warehouse=PROD");
+        assert_eq!(over.ttl_secs, Some(10));
+        assert_eq!(over.max_bytes, Some(8 * 1024 * 1024));
+
+        // When every param is a cache key, the `?` is dropped entirely.
+        let (uri, over) = strip_cache_params("duckdb://memory?ttl=10&disabled=1");
+        assert_eq!(uri, "duckdb://memory");
+        assert_eq!(over.ttl_secs, Some(10));
+        assert_eq!(over.enabled, Some(false));
+
+        // Plain URI, no query string.
+        let (uri, over) = strip_cache_params("duckdb://memory");
+        assert_eq!(uri, "duckdb://memory");
+        assert_eq!(over.ttl_secs, None);
+    }
+
+    #[cfg(all(feature = "duckdb", feature = "sqlite"))]
+    #[test]
+    fn test_reader_from_uri_applies_uri_cache_params() {
+        // A composite URI with a cache-param tail builds a CachingReader
+        assert!(reader_from_uri("duckdb+sqlite://memory?ttl=600&max_bytes=64mb").is_ok());
     }
 }
