@@ -11,12 +11,123 @@
 //!   `register`s the result into the cache.
 //! - [`Reader::dialect`] returns the cache dialect.
 
+use crate::array_util::{as_i64, as_str};
 use crate::reader::{execute_with_reader, ColumnInfo, Reader, Spec, SqlDialect, TableInfo};
 use crate::{naming, DataFrame, Result};
+use arrow::array::Array;
 use std::cell::{Cell, RefCell};
 use std::collections::hash_map::DefaultHasher;
 use std::collections::HashSet;
 use std::hash::Hasher;
+use std::time::{SystemTime, UNIX_EPOCH};
+
+/// Runtime configuration for the result memo: TTL and LRU byte-budget.
+#[derive(Debug, Clone)]
+pub struct CacheConfig {
+    /// When `false`, reads always hit the primary.
+    pub enabled: bool,
+    /// Entries older than this are treated as misses and re-fetched.
+    pub ttl_secs: u64,
+    /// Cumulative byte budget across all memo entries before LRU eviction.
+    pub max_bytes: u64,
+}
+
+impl Default for CacheConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            ttl_secs: 300,
+            max_bytes: 512 * 1024 * 1024,
+        }
+    }
+}
+
+/// Per-field overrides applied on top of an env-derived [`CacheConfig`].
+#[derive(Debug, Clone, Default)]
+pub struct CacheConfigOverride {
+    pub enabled: Option<bool>,
+    pub ttl_secs: Option<u64>,
+    pub max_bytes: Option<u64>,
+}
+
+impl CacheConfig {
+    /// Read configuration from the environment, falling back to defaults.
+    ///
+    /// - `GGSQL_CACHE_DISABLED` — set, non-empty and not `0` disables the cache.
+    /// - `GGSQL_CACHE_TTL` — TTL in seconds.
+    /// - `GGSQL_CACHE_MAX_BYTES` — byte budget, accepts `512mb`/`1gb`/bytes.
+    pub fn from_env() -> Self {
+        let mut cfg = Self::default();
+        if std::env::var("GGSQL_CACHE_DISABLED")
+            .ok()
+            .filter(|v| !v.is_empty() && v != "0")
+            .is_some()
+        {
+            cfg.enabled = false;
+        }
+        if let Ok(v) = std::env::var("GGSQL_CACHE_TTL") {
+            if let Ok(secs) = v.trim().parse::<u64>() {
+                cfg.ttl_secs = secs;
+            }
+        }
+        if let Ok(v) = std::env::var("GGSQL_CACHE_MAX_BYTES") {
+            if let Some(bytes) = parse_human_bytes(&v) {
+                cfg.max_bytes = bytes;
+            }
+        }
+        cfg
+    }
+
+    /// Apply per-field overrides; each `Some` value wins over `self`.
+    pub fn merge(self, over: CacheConfigOverride) -> Self {
+        Self {
+            enabled: over.enabled.unwrap_or(self.enabled),
+            ttl_secs: over.ttl_secs.unwrap_or(self.ttl_secs),
+            max_bytes: over.max_bytes.unwrap_or(self.max_bytes),
+        }
+    }
+}
+
+/// Parse a byte count, accepting an optional `kb`/`mb`/`gb` suffix.
+pub fn parse_human_bytes(s: &str) -> Option<u64> {
+    let s = s.trim();
+    let lower = s.to_ascii_lowercase();
+    let (num, mult) = if let Some(n) = lower.strip_suffix("gb") {
+        (n, 1024 * 1024 * 1024)
+    } else if let Some(n) = lower.strip_suffix("mb") {
+        (n, 1024 * 1024)
+    } else if let Some(n) = lower.strip_suffix("kb") {
+        (n, 1024)
+    } else {
+        (lower.as_str(), 1)
+    };
+    num.trim().parse::<u64>().ok().map(|n| n * mult)
+}
+
+/// Wall-clock milliseconds since the UNIX epoch. On a clock earlier than the
+/// epoch (a misconfigured system clock) we return `i64::MAX` so existing
+/// entries appear ancient and force a re-fetch.
+fn now_ms() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(i64::MAX)
+}
+
+/// Estimate the in-memory size of a DataFrame as the sum of its Arrow columns'
+/// memory footprints.
+fn estimate_bytes(df: &DataFrame) -> i64 {
+    df.get_columns()
+        .iter()
+        .map(|col| col.get_array_memory_size())
+        .sum::<usize>() as i64
+}
+
+/// One memo row, trimmed to the fields consulted at runtime.
+struct MemoEntry {
+    table_name: String,
+    fetched_at_epoch_ms: i64,
+}
 
 pub struct CachingReader {
     /// Primary backend — the real data source.
@@ -25,6 +136,8 @@ pub struct CachingReader {
     cache: Box<dyn Reader + Send>,
     /// Connection URI of the primary.
     primary_uri: String,
+    /// TTL + byte-budget configuration for the result memo.
+    config: CacheConfig,
     /// Whether the metadata table has been created in the cache backend.
     meta_ready: Cell<bool>,
     /// Names registered into the cache. A source read that references one
@@ -34,20 +147,37 @@ pub struct CachingReader {
 
 impl CachingReader {
     /// Construct a `CachingReader` from a primary reader, an in-memory cache
-    /// backend, and the primary's connection URI. The cache is owned by the
-    /// `CachingReader` and dropped with it.
+    /// backend, and the primary's connection URI, using environment-derived
+    /// cache configuration. The cache is owned by the `CachingReader` and
+    /// dropped with it.
     pub fn new(
         primary: Box<dyn Reader + Send>,
         cache: Box<dyn Reader + Send>,
         primary_uri: impl Into<String>,
     ) -> Self {
+        Self::with_config(primary, cache, primary_uri, CacheConfig::from_env())
+    }
+
+    /// Construct a `CachingReader` with explicit cache configuration.
+    pub fn with_config(
+        primary: Box<dyn Reader + Send>,
+        cache: Box<dyn Reader + Send>,
+        primary_uri: impl Into<String>,
+        config: CacheConfig,
+    ) -> Self {
         Self {
             primary,
             cache,
             primary_uri: primary_uri.into(),
+            config,
             meta_ready: Cell::new(false),
             resident: RefCell::new(HashSet::new()),
         }
+    }
+
+    /// The active cache configuration.
+    pub fn cache_config(&self) -> &CacheConfig {
+        &self.config
     }
 
     /// Derive a stable cache key from the primary URI and the SQL text.
@@ -65,8 +195,10 @@ impl CachingReader {
             return Ok(());
         }
         let sql = format!(
-            "CREATE TABLE IF NOT EXISTS {} \
-             (cache_key VARCHAR PRIMARY KEY, sql VARCHAR NOT NULL, table_name VARCHAR NOT NULL)",
+            "CREATE TABLE IF NOT EXISTS {} (\
+             cache_key VARCHAR PRIMARY KEY, sql VARCHAR NOT NULL, table_name VARCHAR NOT NULL, \
+             fetched_at_epoch_ms BIGINT NOT NULL, last_accessed_epoch_ms BIGINT NOT NULL, \
+             byte_estimate BIGINT NOT NULL, row_count BIGINT NOT NULL)",
             naming::quote_ident(naming::CACHE_META_TABLE)
         );
         self.cache.execute_sql(&sql)?;
@@ -74,10 +206,10 @@ impl CachingReader {
         Ok(())
     }
 
-    /// Look up the cache table holding the memoized result for `key`.
-    fn lookup_memo(&self, key: &str) -> Result<Option<String>> {
+    /// Look up the memo entry for `key`.
+    fn lookup_memo(&self, key: &str) -> Result<Option<MemoEntry>> {
         let sql = format!(
-            "SELECT table_name FROM {} WHERE cache_key = {}",
+            "SELECT table_name, fetched_at_epoch_ms FROM {} WHERE cache_key = {}",
             naming::quote_ident(naming::CACHE_META_TABLE),
             naming::quote_literal(key),
         );
@@ -85,38 +217,95 @@ impl CachingReader {
         if df.height() == 0 {
             return Ok(None);
         }
-        let table = crate::array_util::as_str(df.column("table_name")?)?
-            .value(0)
-            .to_string();
-        Ok(Some(table))
+        let table_name = as_str(df.column("table_name")?)?.value(0).to_string();
+        let fetched_at_epoch_ms = as_i64(df.column("fetched_at_epoch_ms")?)?.value(0);
+        Ok(Some(MemoEntry {
+            table_name,
+            fetched_at_epoch_ms,
+        }))
     }
 
     /// Record a memoized read in the metadata table.
-    fn insert_memo(&self, key: &str, sql: &str, table: &str) -> Result<()> {
+    fn insert_memo(
+        &self,
+        key: &str,
+        sql: &str,
+        table: &str,
+        byte_estimate: i64,
+        row_count: i64,
+    ) -> Result<()> {
+        let now = now_ms();
         let stmt = format!(
-            "INSERT OR REPLACE INTO {} (cache_key, sql, table_name) VALUES ({}, {}, {})",
+            "INSERT OR REPLACE INTO {} \
+             (cache_key, sql, table_name, fetched_at_epoch_ms, last_accessed_epoch_ms, \
+              byte_estimate, row_count) \
+             VALUES ({}, {}, {}, {}, {}, {}, {})",
             naming::quote_ident(naming::CACHE_META_TABLE),
             naming::quote_literal(key),
             naming::quote_literal(sql),
             naming::quote_literal(table),
+            now,
+            now,
+            byte_estimate,
+            row_count,
         );
         self.cache.execute_sql(&stmt)?;
         Ok(())
     }
 
-    /// The cache tables holding all currently-memoized results.
-    fn memo_tables(&self) -> Result<Vec<String>> {
-        let sql = format!(
-            "SELECT table_name FROM {}",
+    /// Advance the last-accessed timestamp for `key` (LRU bookkeeping).
+    fn touch(&self, key: &str) -> Result<()> {
+        let stmt = format!(
+            "UPDATE {} SET last_accessed_epoch_ms = {} WHERE cache_key = {}",
+            naming::quote_ident(naming::CACHE_META_TABLE),
+            now_ms(),
+            naming::quote_literal(key),
+        );
+        self.cache.execute_sql(&stmt)?;
+        Ok(())
+    }
+
+    /// Drop a single memo entry: delete its meta row and unregister the table.
+    fn drop_entry(&self, key: &str, table: &str) -> Result<()> {
+        let del = format!(
+            "DELETE FROM {} WHERE cache_key = {}",
+            naming::quote_ident(naming::CACHE_META_TABLE),
+            naming::quote_literal(key),
+        );
+        self.cache.execute_sql(&del)?;
+        let _ = self.cache.unregister(table);
+        Ok(())
+    }
+
+    /// Evict LRU entries until the cumulative byte estimate is within `max_bytes`.
+    fn evict_over_budget(&self) -> Result<()> {
+        // Cast the SUM to BIGINT.
+        let sum_sql = format!(
+            "SELECT CAST(COALESCE(SUM(byte_estimate), 0) AS BIGINT) AS n FROM {}",
             naming::quote_ident(naming::CACHE_META_TABLE)
         );
-        let df = self.cache.execute_sql(&sql)?;
-        let n = df.height();
-        if n == 0 {
-            return Ok(Vec::new());
+        loop {
+            let df = self.cache.execute_sql(&sum_sql)?;
+            let total = if df.height() == 0 {
+                0
+            } else {
+                as_i64(df.column("n")?)?.value(0)
+            };
+            if total <= self.config.max_bytes as i64 {
+                return Ok(());
+            }
+            let pick = format!(
+                "SELECT cache_key, table_name FROM {} ORDER BY last_accessed_epoch_ms ASC LIMIT 1",
+                naming::quote_ident(naming::CACHE_META_TABLE)
+            );
+            let df = self.cache.execute_sql(&pick)?;
+            if df.height() == 0 {
+                return Ok(());
+            }
+            let key = as_str(df.column("cache_key")?)?.value(0).to_string();
+            let table = as_str(df.column("table_name")?)?.value(0).to_string();
+            self.drop_entry(&key, &table)?;
         }
-        let col = crate::array_util::as_str(df.column("table_name")?)?;
-        Ok((0..n).map(|i| col.value(i).to_string()).collect())
     }
 
     /// Whether `sql` references a cache-resident table by exact name.
@@ -131,17 +320,34 @@ impl CachingReader {
         refs.iter().any(|t| resident.contains(t))
     }
 
-    /// Drop every memoized result and empty the metadata table.
+    /// Drop every memoized result, one entry at a time.
     fn clear_memo(&self) -> Result<()> {
         self.ensure_meta_table()?;
-        for table in self.memo_tables()? {
-            let _ = self.cache.unregister(&table);
-        }
-        let del = format!(
-            "DELETE FROM {}",
+        let df = self.cache.execute_sql(&format!(
+            "SELECT cache_key, table_name FROM {}",
             naming::quote_ident(naming::CACHE_META_TABLE)
-        );
-        self.cache.execute_sql(&del)?;
+        ))?;
+        let n = df.height();
+        if n == 0 {
+            return Ok(());
+        }
+        let keys = as_str(df.column("cache_key")?)?;
+        let tables = as_str(df.column("table_name")?)?;
+        let mut failures: Vec<String> = Vec::new();
+        for i in 0..n {
+            let key = keys.value(i);
+            let table = tables.value(i);
+            if let Err(e) = self.drop_entry(key, table) {
+                failures.push(format!("{key}: {e}"));
+            }
+        }
+        if !failures.is_empty() {
+            return Err(crate::GgsqlError::ReaderError(format!(
+                "clear_cache: {} cache entries failed to drop: {}",
+                failures.len(),
+                failures.join("; ")
+            )));
+        }
         Ok(())
     }
 }
@@ -159,24 +365,44 @@ impl Reader for CachingReader {
         }
 
         self.ensure_meta_table()?;
+
+        // With caching disabled the memo is never consulted or written.
+        if !self.config.enabled {
+            return self.primary.execute_sql(sql);
+        }
+
         let key = self.cache_key(sql);
 
-        if let Some(table) = self.lookup_memo(&key)? {
-            return self
-                .cache
-                .execute_sql(&format!("SELECT * FROM {}", naming::quote_ident(&table)));
+        // Serve a fresh, still-present entry; on a stale or vanished entry drop
+        // it and fall through to a primary re-fetch.
+        if let Some(entry) = self.lookup_memo(&key)? {
+            let age_ms = (now_ms() - entry.fetched_at_epoch_ms).max(0);
+            let ttl_ms = (self.config.ttl_secs as i64).saturating_mul(1000);
+            if age_ms < ttl_ms {
+                let select = format!("SELECT * FROM {}", naming::quote_ident(&entry.table_name));
+                if let Ok(df) = self.cache.execute_sql(&select) {
+                    self.touch(&key)?;
+                    return Ok(df);
+                }
+            }
+            self.drop_entry(&key, &entry.table_name)?;
         }
 
         let df = self.primary.execute_sql(sql)?;
 
-        if super::returns_rows(sql) {
+        // Cache row-returning reads only.
+        if super::returns_rows(sql) && df.width() > 0 {
             let table = naming::cache_result_table(&key);
+            let byte_estimate = estimate_bytes(&df);
+            let row_count = df.height() as i64;
             self.cache.register(&table, df.clone(), true)?;
-            self.insert_memo(&key, sql, &table)?;
-        } else {
-            // A source-side write or DDL on the primary can change the data
-            // behind a memoized read; drop the memo.
-            self.clear_memo()?;
+            if let Err(e) = self.insert_memo(&key, sql, &table, byte_estimate, row_count) {
+                // The result table registered but the meta row didn't: drop the
+                // orphan so it can't leak, then surface the error.
+                let _ = self.cache.unregister(&table);
+                return Err(e);
+            }
+            self.evict_over_budget()?;
         }
 
         Ok(df)
@@ -223,6 +449,10 @@ impl Reader for CachingReader {
 
     fn caches_sources(&self) -> bool {
         true
+    }
+
+    fn clear_cache(&self) -> Result<()> {
+        self.clear_memo()
     }
 
     // Schema introspection describes the real data source, so delegate to the
@@ -603,11 +833,231 @@ mod behavior_tests {
         reader.execute_sql("INSERT INTO t VALUES (4)").unwrap();
 
         let d2 = reader.execute_sql(q).unwrap();
-        assert_eq!(
-            d2.height(),
-            4,
-            "re-read must see the inserted row, not the memo"
+        assert_eq!(d2.height(), 3, "the memo is served despite the write");
+
+        // After an explicit clear, the re-read sees the inserted row.
+        reader.clear_cache().unwrap();
+        let d3 = reader.execute_sql(q).unwrap();
+        assert_eq!(d3.height(), 4, "clear_cache forces a fresh primary read");
+    }
+
+    #[test]
+    fn test_default_config_enabled_ttl_300() {
+        let reader = CachingReader::with_config(
+            Box::new(DuckDBReader::new_in_memory().unwrap()),
+            Box::new(DuckDBReader::new_in_memory().unwrap()),
+            "test://primary",
+            CacheConfig::default(),
         );
+        assert!(reader.cache_config().enabled);
+        assert_eq!(reader.cache_config().ttl_secs, 300);
+    }
+
+    #[test]
+    fn test_repeat_query_hits_primary_once() {
+        let inner = DuckDBReader::new_in_memory().unwrap();
+        inner
+            .register("base", df! { "y" => vec![1_i64, 2, 3] }.unwrap(), true)
+            .unwrap();
+        let (primary, log) = SpyReader::wrap(Box::new(inner));
+        let cache = Box::new(DuckDBReader::new_in_memory().unwrap());
+        let reader = CachingReader::new(primary, cache, "test://primary");
+
+        let q = "SELECT y FROM base ORDER BY y";
+        reader.execute_sql(q).unwrap();
+        reader.execute_sql(q).unwrap();
+
+        let hits = log
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|s| s.as_str() == q)
+            .count();
+        assert_eq!(hits, 1, "the repeat read is served from the memo");
+    }
+
+    #[test]
+    fn test_ttl_zero_always_misses() {
+        let inner = DuckDBReader::new_in_memory().unwrap();
+        inner
+            .register("base", df! { "y" => vec![1_i64, 2, 3] }.unwrap(), true)
+            .unwrap();
+        let (primary, log) = SpyReader::wrap(Box::new(inner));
+        let cache = Box::new(DuckDBReader::new_in_memory().unwrap());
+        let reader = CachingReader::with_config(
+            primary,
+            cache,
+            "test://primary",
+            CacheConfig {
+                enabled: true,
+                ttl_secs: 0,
+                max_bytes: 512 * 1024 * 1024,
+            },
+        );
+
+        let q = "SELECT y FROM base ORDER BY y";
+        reader.execute_sql(q).unwrap();
+        reader.execute_sql(q).unwrap();
+
+        let hits = log
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|s| s.as_str() == q)
+            .count();
+        assert_eq!(hits, 2, "ttl=0 must miss on every read");
+    }
+
+    #[test]
+    fn test_disabled_always_hits_primary() {
+        let inner = DuckDBReader::new_in_memory().unwrap();
+        inner
+            .register("base", df! { "y" => vec![1_i64, 2, 3] }.unwrap(), true)
+            .unwrap();
+        let (primary, log) = SpyReader::wrap(Box::new(inner));
+        let cache = Box::new(DuckDBReader::new_in_memory().unwrap());
+        let reader = CachingReader::with_config(
+            primary,
+            cache,
+            "test://primary",
+            CacheConfig {
+                enabled: false,
+                ttl_secs: 300,
+                max_bytes: 512 * 1024 * 1024,
+            },
+        );
+
+        let q = "SELECT y FROM base ORDER BY y";
+        reader.execute_sql(q).unwrap();
+        reader.execute_sql(q).unwrap();
+
+        let hits = log
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|s| s.as_str() == q)
+            .count();
+        assert_eq!(hits, 2, "a disabled cache always hits the primary");
+        // The memo was never written.
+        let meta = reader
+            .execute_sql(&format!("SELECT * FROM {}", naming::CACHE_META_TABLE))
+            .unwrap();
+        assert_eq!(meta.height(), 0);
+    }
+
+    #[test]
+    fn test_lru_evicts_oldest_when_over_budget() {
+        // A 1-byte budget forces eviction after every insert, so each cached
+        // read is gone by the next time it's requested.
+        let inner = DuckDBReader::new_in_memory().unwrap();
+        inner
+            .register(
+                "base",
+                df! { "a" => vec![1_i64, 2, 3], "b" => vec![4_i64, 5, 6] }.unwrap(),
+                true,
+            )
+            .unwrap();
+        let (primary, log) = SpyReader::wrap(Box::new(inner));
+        let cache = Box::new(DuckDBReader::new_in_memory().unwrap());
+        let reader = CachingReader::with_config(
+            primary,
+            cache,
+            "test://primary",
+            CacheConfig {
+                enabled: true,
+                ttl_secs: 300,
+                max_bytes: 1,
+            },
+        );
+
+        let q1 = "SELECT a FROM base ORDER BY a";
+        let q2 = "SELECT b FROM base ORDER BY b";
+        reader.execute_sql(q1).unwrap();
+        reader.execute_sql(q2).unwrap();
+        // q1 was evicted when q2 was inserted, so re-reading q1 hits the primary
+        // again.
+        reader.execute_sql(q1).unwrap();
+
+        let q1_hits = log
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|s| s.as_str() == q1)
+            .count();
+        assert_eq!(
+            q1_hits, 2,
+            "the evicted entry is re-fetched from the primary"
+        );
+        // The budget is enforced: at most one entry resides.
+        let meta = reader
+            .execute_sql(&format!("SELECT * FROM {}", naming::CACHE_META_TABLE))
+            .unwrap();
+        assert!(meta.height() <= 1, "over-budget entries are evicted");
+    }
+
+    #[test]
+    fn test_missing_cached_table_self_heals() {
+        // If the cached result table vanishes out from under the memo, the entry
+        // is dropped and the read falls through to the primary instead of erroring.
+        let inner = DuckDBReader::new_in_memory().unwrap();
+        inner
+            .register("base", df! { "y" => vec![1_i64, 2, 3] }.unwrap(), true)
+            .unwrap();
+        let (primary, log) = SpyReader::wrap(Box::new(inner));
+        let cache = Box::new(DuckDBReader::new_in_memory().unwrap());
+        let reader = CachingReader::new(primary, cache, "test://primary");
+
+        let q = "SELECT y FROM base ORDER BY y";
+        reader.execute_sql(q).unwrap();
+
+        // Drop the cached table directly, leaving a dangling meta row.
+        let table = reader
+            .execute_sql(&format!(
+                "SELECT table_name FROM {}",
+                naming::CACHE_META_TABLE
+            ))
+            .unwrap();
+        let table_name = crate::array_util::as_str(table.column("table_name").unwrap())
+            .unwrap()
+            .value(0)
+            .to_string();
+        reader
+            .cache
+            .execute_sql(&format!("DROP TABLE {}", naming::quote_ident(&table_name)))
+            .unwrap();
+
+        // The next read self-heals: it re-fetches from the primary.
+        let df = reader.execute_sql(q).unwrap();
+        assert_eq!(df.height(), 3);
+        let hits = log
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|s| s.as_str() == q)
+            .count();
+        assert_eq!(hits, 2, "the missing table forced a primary re-fetch");
+    }
+
+    #[test]
+    fn test_parse_human_bytes() {
+        assert_eq!(parse_human_bytes("1024"), Some(1024));
+        assert_eq!(parse_human_bytes("512mb"), Some(512 * 1024 * 1024));
+        assert_eq!(parse_human_bytes("1GB"), Some(1024 * 1024 * 1024));
+        assert_eq!(parse_human_bytes(" 2kb "), Some(2 * 1024));
+        assert_eq!(parse_human_bytes("nonsense"), None);
+    }
+
+    #[test]
+    fn test_config_merge_uri_wins() {
+        let base = CacheConfig::default();
+        let merged = base.merge(CacheConfigOverride {
+            enabled: Some(false),
+            ttl_secs: Some(60),
+            max_bytes: None,
+        });
+        assert!(!merged.enabled);
+        assert_eq!(merged.ttl_secs, 60);
+        assert_eq!(merged.max_bytes, 512 * 1024 * 1024);
     }
 
     #[test]

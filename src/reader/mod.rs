@@ -856,6 +856,11 @@ pub trait Reader {
         false
     }
 
+    /// Clear any cached query results held by this reader.
+    fn clear_cache(&self) -> Result<()> {
+        Ok(())
+    }
+
     // =========================================================================
     // Schema introspection
     // =========================================================================
