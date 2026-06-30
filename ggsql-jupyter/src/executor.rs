@@ -2,7 +2,8 @@
 //!
 //! This module handles the execution of ggsql queries using the existing
 //! ggsql library components (parser, DuckDB reader, Vega-Lite writer).
-//! It supports dynamic reader switching via `-- @connect:` meta-commands.
+//! It supports leading `--` meta-command lines. Each occupies its own comment
+//! line, so a cell may stack them above a query that then runs as normal.
 
 use anyhow::Result;
 use ggsql::{
@@ -25,7 +26,7 @@ pub enum ExecutionResult {
         spec: String, // Vega-Lite JSON
     },
     /// Connection changed via meta-command
-    ConnectionChanged { uri: String, display_name: String },
+    ConnectionChanged { display_name: String },
 }
 
 /// Generate a human-readable display name for a connection URI.
@@ -101,13 +102,49 @@ pub fn host_for_uri(uri: &str) -> String {
 
 /// The `-- @connect:` meta-command prefix.
 const META_CONNECT_PREFIX: &str = "-- @connect:";
+/// The `-- @uncache` meta-command prefix.
+const META_UNCACHE_PREFIX: &str = "-- @uncache";
 
-/// Parse a `-- @connect: <uri>` meta-command, returning the URI if present.
-pub fn parse_meta_command(code: &str) -> Option<String> {
-    let trimmed = code.trim();
-    trimmed
-        .strip_prefix(META_CONNECT_PREFIX)
-        .map(|rest| rest.trim().to_string())
+/// A leading cell directive expressed as a `--` line comment.
+#[derive(Debug, PartialEq, Eq)]
+pub enum MetaCommand {
+    /// Switch the active reader to the given connection URI.
+    Connect(String),
+    /// Clear the active reader's cache.
+    Uncache,
+}
+
+/// Split `code` into its first line and the remainder.
+/// Handles `\n`, `\r\n`, and a lone `\r`.
+fn split_first_line(code: &str) -> (&str, &str) {
+    match code.find(['\n', '\r']) {
+        None => (code, ""),
+        Some(i) => {
+            let line = &code[..i];
+            let rest = &code[i..];
+            let rest = rest
+                .strip_prefix("\r\n")
+                .or_else(|| rest.strip_prefix('\n'))
+                .or_else(|| rest.strip_prefix('\r'))
+                .unwrap_or(rest);
+            (line, rest)
+        }
+    }
+}
+
+/// Peel a single leading meta-command from `code`, returning it together with
+/// the rest of the cell to process next.
+pub fn take_leading_meta(code: &str) -> Option<(MetaCommand, &str)> {
+    let trimmed = code.trim_start();
+    let (line, rest) = split_first_line(trimmed);
+    let line = line.trim();
+    if let Some(uri) = line.strip_prefix(META_CONNECT_PREFIX) {
+        return Some((MetaCommand::Connect(uri.trim().to_string()), rest));
+    }
+    if line == META_UNCACHE_PREFIX {
+        return Some((MetaCommand::Uncache, rest));
+    }
+    None
 }
 
 /// Query executor maintaining persistent database connection
@@ -158,18 +195,38 @@ impl QueryExecutor {
     /// Execute a ggsql query or meta-command
     ///
     /// This handles:
-    /// - `-- @connect: <uri>` meta-commands for switching readers
+    /// - `-- @` meta-commands
     /// - Pure SQL queries (no VISUALISE)
     /// - ggsql queries with VISUALISE clauses
     pub fn execute(&mut self, code: &str) -> Result<ExecutionResult> {
         tracing::debug!("Executing query: {} chars", code.len());
 
-        // Check for meta-commands first
-        if let Some(uri) = parse_meta_command(code) {
-            tracing::info!("Meta-command: switching reader to {}", uri);
-            self.swap_reader(&uri)?;
-            let display_name = display_name_for_uri(&uri);
-            return Ok(ExecutionResult::ConnectionChanged { uri, display_name });
+        // Apply any leading meta-command lines, then run whatever SQL remains.
+        let mut code = code;
+        let mut last_connect: Option<String> = None;
+        while let Some((cmd, rest)) = take_leading_meta(code) {
+            match cmd {
+                MetaCommand::Connect(uri) => {
+                    tracing::info!("Meta-command: switching reader to {}", uri);
+                    self.swap_reader(&uri)?;
+                    last_connect = Some(uri);
+                }
+                MetaCommand::Uncache => {
+                    tracing::info!("Meta-command: clearing cache");
+                    self.reader.clear_cache()?;
+                }
+            }
+            code = rest;
+        }
+
+        // A cell that was nothing but meta-commands.
+        if code.trim().is_empty() {
+            if let Some(uri) = last_connect {
+                let display_name = display_name_for_uri(&uri);
+                return Ok(ExecutionResult::ConnectionChanged { display_name });
+            }
+            // An empty DataFrame renders no cell output.
+            return Ok(ExecutionResult::DataFrame(DataFrame::empty()));
         }
 
         // 1. Validate to check if there's a visualization
@@ -238,16 +295,44 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_meta_command() {
+    fn test_take_leading_meta_connect() {
+        // `-- @connect:` takes the rest of its line as the URI; the next line is
+        // the remainder.
         assert_eq!(
-            parse_meta_command("-- @connect: duckdb://memory"),
-            Some("duckdb://memory".to_string())
+            take_leading_meta("-- @connect: duckdb://memory"),
+            Some((MetaCommand::Connect("duckdb://memory".to_string()), ""))
         );
         assert_eq!(
-            parse_meta_command("  -- @connect:  duckdb://my.db  "),
-            Some("duckdb://my.db".to_string())
+            take_leading_meta("  -- @connect:  duckdb://my.db  \nSELECT 1"),
+            Some((
+                MetaCommand::Connect("duckdb://my.db".to_string()),
+                "SELECT 1"
+            ))
         );
-        assert_eq!(parse_meta_command("SELECT 1"), None);
+    }
+
+    #[test]
+    fn test_take_leading_meta_uncache() {
+        assert_eq!(
+            take_leading_meta("-- @uncache"),
+            Some((MetaCommand::Uncache, ""))
+        );
+        assert_eq!(
+            take_leading_meta("-- @uncache\nSELECT 1"),
+            Some((MetaCommand::Uncache, "SELECT 1"))
+        );
+        assert_eq!(
+            take_leading_meta("-- @uncache  \r\nSELECT 1"),
+            Some((MetaCommand::Uncache, "SELECT 1"))
+        );
+        // `-- @uncache foo` on one line is an ordinary SQL comment, not the directive.
+        assert_eq!(take_leading_meta("-- @uncache foo"), None);
+    }
+
+    #[test]
+    fn test_take_leading_meta_non_directive() {
+        assert_eq!(take_leading_meta("SELECT 1"), None);
+        assert_eq!(take_leading_meta("-- a normal comment\nSELECT 1"), None);
     }
 
     #[test]
@@ -257,6 +342,42 @@ mod tests {
 
         let result = executor.execute("-- @connect: duckdb://memory").unwrap();
         assert!(matches!(result, ExecutionResult::ConnectionChanged { .. }));
+    }
+
+    #[test]
+    fn test_connect_then_runs_remaining_query() {
+        // A leading `-- @connect:` switches the reader and still runs the query
+        // below it in the same cell.
+        let mut executor = QueryExecutor::new().unwrap();
+        let result = executor
+            .execute(
+                "-- @connect: duckdb://memory\nSELECT 1 AS x, 2 AS y VISUALISE x, y DRAW point",
+            )
+            .unwrap();
+        assert_eq!(executor.reader_uri(), "duckdb://memory");
+        assert!(matches!(result, ExecutionResult::Visualization { .. }));
+    }
+
+    #[test]
+    fn test_uncache_meta_command_clears_cache() {
+        // On the default reader (no cache) `clear_cache` is a no-op; this proves
+        // the dispatch arm is wired and yields an empty DataFrame.
+        let mut executor = QueryExecutor::new().unwrap();
+        let result = executor.execute("-- @uncache").unwrap();
+        match result {
+            ExecutionResult::DataFrame(df) => assert_eq!(df.width(), 0),
+            other => panic!("expected empty DataFrame, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_uncache_then_runs_remaining_query() {
+        // A leading `-- @uncache` clears the cache and still runs the query below.
+        let mut executor = QueryExecutor::new().unwrap();
+        let result = executor
+            .execute("-- @uncache\nSELECT 1 AS x, 2 AS y VISUALISE x, y DRAW point")
+            .unwrap();
+        assert!(matches!(result, ExecutionResult::Visualization { .. }));
     }
 
     #[test]
