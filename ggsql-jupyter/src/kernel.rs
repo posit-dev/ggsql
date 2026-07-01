@@ -137,17 +137,14 @@ impl KernelServer {
                     }
                 }
                 _ = tokio::signal::ctrl_c() => {
-                    tracing::warn!("Received SIGINT, shutting down gracefully");
-                    // Send a final idle status before exiting
-                    // Note: We don't have a parent message here, so we'll send without one
-                    let msg = self.create_message(
-                        "status",
-                        json!({"execution_state": "idle"}),
-                        None,
-                    );
-                    let zmq_msg = self.serialize_message_with_topic(&msg, "status")?;
-                    let _ = self.iopub.send(zmq_msg).await;
-                    break;
+                    // With `interrupt_mode: "signal"`, the frontend sends SIGINT to
+                    // interrupt a running cell, not to stop the kernel. Emit a busy
+                    // -> idle pair to acknowledge the interrupt.
+                    // TODO: When cell execution becomes async, cancel any in-flight
+                    //       request here instead.
+                    tracing::debug!("Received SIGINT; acknowledging.");
+                    self.send_status_initial("busy").await?;
+                    self.send_status_initial("idle").await?;
                 }
             }
         }
