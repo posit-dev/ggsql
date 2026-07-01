@@ -308,16 +308,24 @@ impl CachingReader {
         }
     }
 
-    /// Whether `sql` references a cache-resident table by exact name.
+    /// Whether `sql` reads something the cache backend owns: a cache-resident
+    /// table, the metadata table, or a `ggsql:` builtin dataset.
     ///
-    /// Parses the query's `table_ref` targets and tests them against `resident`.
+    /// Determined from the parsed `table_ref`/namespaced-identifier targets.
     /// On a parse failure we conservatively return `false`.
-    fn references_resident(&self, sql: &str) -> bool {
-        let Ok(refs) = super::data::extract_table_refs(sql) else {
+    fn references_cache_resident(&self, sql: &str) -> bool {
+        if crate::parser::extract_builtin_dataset_names(sql)
+            .map(|d| !d.is_empty())
+            .unwrap_or(false)
+        {
+            return true;
+        }
+        let Ok(refs) = crate::parser::extract_table_refs(sql) else {
             return false;
         };
         let resident = self.resident.borrow();
-        refs.iter().any(|t| resident.contains(t))
+        refs.iter()
+            .any(|t| t == naming::CACHE_META_TABLE || resident.contains(t))
     }
 
     /// Drop every memoized result, one entry at a time.
@@ -357,10 +365,7 @@ impl Reader for CachingReader {
     fn execute_sql(&self, sql: &str) -> Result<DataFrame> {
         // Route to the cache when the read targets cache-resident objects, the
         // metadata table, or a builtin dataset.
-        if sql.contains("ggsql:")
-            || sql.contains(naming::CACHE_META_TABLE)
-            || self.references_resident(sql)
-        {
+        if self.references_cache_resident(sql) {
             return self.cache.execute_sql(sql);
         }
 
@@ -765,6 +770,135 @@ mod behavior_tests {
         assert!(
             spec.is_ok(),
             "CTE joined against a schema-qualified base table should succeed: {:?}",
+            spec.err()
+        );
+    }
+
+    #[test]
+    fn test_multiple_primary_joins_in_chain() {
+        // A chain of joins bringing in two distinct primary tables must stage both.
+        let base = DuckDBReader::new_in_memory().unwrap();
+        base.execute_sql("CREATE TABLE base AS SELECT 1 AS k, 10 AS w")
+            .unwrap();
+        base.execute_sql("CREATE TABLE base2 AS SELECT 1 AS k, 20 AS z")
+            .unwrap();
+        let primary = Box::new(ReadOnlyReader::new(Box::new(base)));
+        let cache = Box::new(DuckDBReader::new_in_memory().unwrap());
+        let reader = CachingReader::new(primary, cache, "test://primary");
+
+        let spec = reader.execute(
+            "WITH t AS (SELECT 1 AS k) \
+             SELECT base.w, base2.z FROM t JOIN base ON t.k = base.k JOIN base2 ON t.k = base2.k \
+             VISUALISE w AS x, z AS y DRAW point",
+        );
+        assert!(
+            spec.is_ok(),
+            "two primaries in a join chain should both be staged: {:?}",
+            spec.err()
+        );
+    }
+
+    #[test]
+    fn test_same_named_schema_tables_joined() {
+        // Two tables sharing a final name across schemas, joined and referenced
+        // by full qualifier: they must not collapse to the same alias.
+        let base = DuckDBReader::new_in_memory().unwrap();
+        base.execute_sql("CREATE SCHEMA a").unwrap();
+        base.execute_sql("CREATE SCHEMA b").unwrap();
+        base.execute_sql("CREATE TABLE a.base AS SELECT 1 AS k, 10 AS w")
+            .unwrap();
+        base.execute_sql("CREATE TABLE b.base AS SELECT 1 AS k, 20 AS w")
+            .unwrap();
+        let primary = Box::new(ReadOnlyReader::new(Box::new(base)));
+        let cache = Box::new(DuckDBReader::new_in_memory().unwrap());
+        let reader = CachingReader::new(primary, cache, "test://primary");
+
+        let spec = reader.execute(
+            "WITH t AS (SELECT 1 AS k) \
+             SELECT a.base.w AS aw, b.base.w AS bw \
+             FROM t JOIN a.base ON t.k = a.base.k JOIN b.base ON t.k = b.base.k \
+             VISUALISE aw AS x, bw AS y DRAW point",
+        );
+        assert!(
+            spec.is_ok(),
+            "same-named schema tables should stage to distinct aliases: {:?}",
+            spec.err()
+        );
+    }
+
+    #[test]
+    fn test_setup_dml_runs_before_staging() {
+        // A query that CREATEs a primary table and then joins it against a CTE
+        // (mixed) must run the CREATE before staging reads the table.
+        let primary = Box::new(DuckDBReader::new_in_memory().unwrap());
+        let cache = Box::new(DuckDBReader::new_in_memory().unwrap());
+        let reader = CachingReader::new(primary, cache, "test://primary");
+
+        let spec = reader.execute(
+            "CREATE TABLE sales AS SELECT * FROM (VALUES (1, 10), (2, 20)) t(k, w); \
+             WITH c AS (SELECT 1 AS k UNION ALL SELECT 2) \
+             SELECT sales.k, sales.w FROM sales JOIN c ON sales.k = c.k \
+             VISUALISE k AS x, w AS y DRAW point",
+        );
+        assert!(
+            spec.is_ok(),
+            "setup DML must run before staging reads the created table: {:?}",
+            spec.err()
+        );
+    }
+
+    #[test]
+    fn test_multi_statement_dml_ordering_before_staging() {
+        // Multiple dependent side-effects (CREATE, INSERT, UPDATE) must run in
+        // order before staging, and the staged data must reflect them.
+        let primary = Box::new(DuckDBReader::new_in_memory().unwrap());
+        let cache = Box::new(DuckDBReader::new_in_memory().unwrap());
+        let reader = CachingReader::new(primary, cache, "test://primary");
+
+        let prepared = crate::execute::prepare_data_with_reader(
+            "CREATE TABLE t(k INTEGER, w INTEGER); \
+             INSERT INTO t VALUES (1, 10), (2, 20); \
+             UPDATE t SET w = w + 5 WHERE k = 1; \
+             WITH c AS (SELECT 1 AS k UNION ALL SELECT 2) \
+             SELECT t.k, t.w FROM t JOIN c ON t.k = c.k \
+             VISUALISE k AS x, w AS y DRAW point",
+            &reader,
+        )
+        .expect("multi-statement setup DML + staging should succeed");
+
+        let df = prepared.data.get(&naming::layer_key(0)).unwrap();
+        // Row for k=1 must reflect the UPDATE (w = 15), k=2 unchanged (w = 20).
+        assert_eq!(df.height(), 2);
+        let ws = df.column("__ggsql_aes_pos2__").unwrap();
+        let mut vals: Vec<String> = (0..df.height())
+            .map(|i| crate::array_util::value_to_string(ws, i))
+            .collect();
+        vals.sort();
+        assert_eq!(vals, vec!["15".to_string(), "20".to_string()]);
+    }
+
+    #[test]
+    fn test_fully_quoted_schema_qualified_join() {
+        // A fully double-quoted schema-qualified primary (`"s"."t"`) joined with
+        // a cache-resident CTE: the last component must be extracted correctly so
+        // the staged alias is valid.
+        let base = DuckDBReader::new_in_memory().unwrap();
+        base.execute_sql("CREATE SCHEMA myschema").unwrap();
+        base.execute_sql("CREATE TABLE myschema.base AS SELECT 1 AS k, 10 AS w")
+            .unwrap();
+        let primary = Box::new(ReadOnlyReader::new(Box::new(base)));
+        let cache = Box::new(DuckDBReader::new_in_memory().unwrap());
+        let reader = CachingReader::new(primary, cache, "test://primary");
+
+        let spec = reader.execute(
+            "WITH t AS (SELECT 1 AS k) \
+             SELECT \"myschema\".\"base\".w FROM t JOIN \"myschema\".\"base\" \
+             ON t.k = \"myschema\".\"base\".k \
+             VISUALISE w AS x DRAW point",
+        );
+        assert!(
+            spec.is_ok(),
+            "fully-quoted schema-qualified join should succeed: {:?}",
             spec.err()
         );
     }

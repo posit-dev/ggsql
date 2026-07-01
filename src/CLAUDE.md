@@ -34,6 +34,7 @@ src/
 - `mod.rs` exposes `parse_query()` which builds a `Vec<Plot>` from a query string.
 - `source_tree.rs` is the parse-once wrapper: holds the tree-sitter `Tree`, source text, and language; offers a declarative query API (`find_node`, `find_text`, …) plus lazy `extract_sql()` / `extract_visualise()` extractors. It also handles the `VISUALISE FROM <source>` shorthand by injecting `SELECT * FROM <source>`.
 - `builder.rs` walks the CST and produces typed `Plot` values. This is where new grammar nodes become `Plot` fields.
+- `sql.rs` extracts structure from SQL fragments over the parse tree.
 
 Grammar lives in [`/tree-sitter-ggsql/`](../tree-sitter-ggsql/) — when adding syntax, edit `grammar.js`, regenerate, then teach `builder.rs` about the new nodes.
 
@@ -48,7 +49,8 @@ Grammar lives in [`/tree-sitter-ggsql/`](../tree-sitter-ggsql/) — when adding 
 | `odbc.rs` | ODBC | `odbc` (default) |
 | `cache.rs` | `CachingReader` — wraps any primary `Reader` with an in-memory cache | `duckdb` or `sqlite` |
 | `connection.rs` | Connection-string parsing for all of the above | — |
-| `data.rs`, `spec.rs` | `Spec` type returned by `execute()`, plus DataFrame conversion | — |
+| `spec.rs` | `Spec` type returned by `execute()`, plus DataFrame conversion | — |
+| `data.rs` | Bundled sample datasets — the `ggsql:` builtins | `builtin-data` |
 
 `SqlDialect` trait in `mod.rs` lets each driver supply its own type names, information-schema queries, and spatial helper methods (`sql_st_transform`, `sql_geometry_to_wkb`, `sql_geometry_bbox`, `sql_ensure_geometry`, `sql_select_replace`, `sql_spatial_setup`).
 

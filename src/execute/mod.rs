@@ -1135,6 +1135,13 @@ pub fn prepare_data_with_reader(query: &str, reader: &dyn Reader) -> Result<Prep
         reader.execute_sql(&stmt)?;
     }
 
+    // Run structured DML (CREATE, INSERT, UPDATE, DELETE) before CTE
+    // materialization and the global query, so any table they create or
+    // populate exists before it is read.
+    for stmt in cte::extract_side_effects(&source_tree) {
+        reader.execute_sql(&stmt)?;
+    }
+
     // Extract CTE definitions from the source tree (in declaration order)
     let ctes = cte::extract_ctes(&source_tree);
 
@@ -1152,12 +1159,9 @@ pub fn prepare_data_with_reader(query: &str, reader: &dyn Reader) -> Result<Prep
     // The global result is stored as a temp table so filtered layers can query it efficiently.
     let mut has_global_table = false;
     if sql_part.is_some() {
-        let (side_effects, query) =
-            cte::transform_global_sql(&source_tree, &materialized_ctes, reader)?;
-
-        for stmt in &side_effects {
-            reader.execute_sql(stmt)?;
-        }
+        // Side-effect DML has already run above; this yields just the global
+        // query (CTE references rewritten, primary sources staged).
+        let query = cte::transform_global_sql(&source_tree, &materialized_ctes, reader)?;
 
         if let Some(query) = query {
             // Materialize the global result as a temp table. For a plain reader

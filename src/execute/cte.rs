@@ -79,55 +79,118 @@ pub(crate) fn get_node_text<'a>(node: &Node, source: &'a str) -> &'a str {
     &source[node.start_byte()..node.end_byte()]
 }
 
-/// Transform CTE references in SQL to use temp table names
+/// Transform CTE references in SQL to use temp table names.
 ///
-/// Replaces references to CTEs (e.g., `FROM sales`, `JOIN sales`) with
-/// the corresponding temp table names (e.g., `FROM __ggsql_cte_sales__`).
+/// Replaces references to CTEs (e.g. `FROM sales`, `JOIN sales`, `sales.col`)
+/// with the corresponding temp table names (e.g. `__ggsql_cte_sales__`).
 ///
-/// This handles table references after FROM and JOIN keywords, being careful
-/// to only replace whole word matches (not substrings).
+/// Table references are found via the parser; column references are rewritten
+/// tolerant of whitespace around the dot and never inside string literals.
 pub fn transform_cte_references(sql: &str, cte_names: &HashSet<String>) -> String {
     if cte_names.is_empty() {
         return sql.to_string();
     }
 
-    let mut result = sql.to_string();
+    // On a parse failure leave the SQL unchanged.
+    let Ok(sites) = crate::parser::extract_table_ref_sites(sql) else {
+        return sql.to_string();
+    };
+    let string_ranges = crate::parser::string_literal_ranges(sql);
+    let in_string = |pos: usize| string_ranges.iter().any(|&(s, e)| pos >= s && pos < e);
 
-    for cte_name in cte_names {
-        let temp_table_name = naming::quote_ident(&naming::cte_table(cte_name));
+    // Match CTE names against the unquoted reference text, mirroring the
+    // definition names.
+    let temp_of = |raw: &str| -> Option<String> {
+        let name = naming::unquote_ident(raw);
+        cte_names
+            .iter()
+            .find(|c| naming::unquote_ident(c).eq_ignore_ascii_case(&name))
+            .map(|c| naming::quote_ident(&naming::cte_table(c)))
+    };
 
-        // Replace table references: FROM cte_name, JOIN cte_name, cte_name.column
-        // Use word boundary matching to avoid replacing substrings
-        // Pattern: (FROM|JOIN)\s+<cte_name>(\s|,|)|$)
-        let patterns = [
-            // FROM cte_name (case insensitive)
-            (
-                format!(r"(?i)(\bFROM\s+){}(\s|,|\)|$)", regex::escape(cte_name)),
-                format!("${{1}}{}${{2}}", temp_table_name),
-            ),
-            // JOIN cte_name (case insensitive) - handles LEFT JOIN, RIGHT JOIN, etc.
-            (
-                format!(r"(?i)(\bJOIN\s+){}(\s|,|\)|$)", regex::escape(cte_name)),
-                format!("${{1}}{}${{2}}", temp_table_name),
-            ),
-            // Qualified column references: cte_name.column (case insensitive)
-            (
-                format!(
-                    r"(?i)\b{}(\.[a-zA-Z_][a-zA-Z0-9_]*)",
-                    regex::escape(cte_name)
-                ),
-                format!("{}${{1}}", temp_table_name),
-            ),
-        ];
+    let mut replacements: Vec<(usize, usize, String)> = Vec::new();
 
-        for (pattern, replacement) in patterns {
-            if let Ok(re) = regex::Regex::new(&pattern) {
-                result = re.replace_all(&result, replacement.as_str()).to_string();
+    // Rewrite each table_ref that names a CTE to its temp table.
+    for site in &sites {
+        if let Some(temp) = temp_of(&site.raw) {
+            replacements.push((site.start, site.end, temp));
+        }
+    }
+
+    // Rewrite qualified column references `cte.col` -> `temp.col`.
+    let site_starts: HashSet<usize> = sites.iter().map(|s| s.start).collect();
+    for cte in cte_names {
+        let temp = naming::quote_ident(&naming::cte_table(cte));
+        let bare = naming::unquote_ident(cte);
+        let pattern = format!(r"((?i:{}))\s*\.", regex::escape(&bare));
+        let Ok(re) = regex::Regex::new(&pattern) else {
+            continue;
+        };
+        for caps in re.captures_iter(sql) {
+            let name = caps.get(1).unwrap();
+            let start = name.start();
+            if site_starts.contains(&start) || in_string(start) {
+                continue;
+            }
+            // Require a boundary before the name.
+            let ok_prefix = sql[..start]
+                .chars()
+                .next_back()
+                .is_none_or(|c| !(c.is_alphanumeric() || c == '_' || c == '.' || c == '"'));
+            if ok_prefix {
+                replacements.push((name.start(), name.end(), temp.clone()));
             }
         }
     }
 
+    // Apply in reverse byte order so earlier offsets stay valid.
+    let mut result = sql.to_string();
+    replacements.sort_by_key(|(start, _, _)| std::cmp::Reverse(*start));
+    // Distinct offsets only.
+    replacements.dedup_by_key(|(start, _, _)| *start);
+
+    for (start, end, replacement) in replacements {
+        result.replace_range(start..end, &replacement);
+    }
+
     result
+}
+
+/// Byte offsets of the `.` separators in a (possibly quoted) dotted identifier.
+fn unquoted_dot_positions(raw: &str) -> Vec<usize> {
+    let mut positions = Vec::new();
+    let mut in_quote = false;
+    for (i, b) in raw.bytes().enumerate() {
+        match b {
+            b'"' => in_quote = !in_quote,
+            b'.' if !in_quote => positions.push(i),
+            _ => {}
+        }
+    }
+    positions
+}
+
+/// Split a (possibly quoted) dotted identifier into its components, trimming
+/// surrounding whitespace: `schema . base` → `["schema","base"]`.
+fn identifier_components(raw: &str) -> Vec<&str> {
+    let mut parts = Vec::new();
+    let mut start = 0;
+    for pos in unquoted_dot_positions(raw) {
+        parts.push(raw[start..pos].trim());
+        start = pos + 1;
+    }
+    parts.push(raw[start..].trim());
+    parts
+}
+
+/// The final component of a (possibly quoted) dotted identifier: `base` for
+/// `schema.base`, `"base"` for `"schema"."base"`, and the whole (trimmed) string
+/// for a single (possibly quoted) name.
+fn last_identifier_component(raw: &str) -> &str {
+    match unquoted_dot_positions(raw).last() {
+        Some(&pos) => raw[pos + 1..].trim(),
+        None => raw.trim(),
+    }
 }
 
 /// Stage the primary base tables in a body destined for the cache.
@@ -139,66 +202,128 @@ pub fn transform_source_references(sql: &str, reader: &dyn Reader) -> Result<Str
         return Ok(sql.to_string());
     }
 
-    // Discover the names referenced after FROM/JOIN — including quoted (`"foo"`)
-    // and schema-qualified (`schema.table`) names. Subqueries contribute no name.
-    let re = match regex::Regex::new(
-        r#"(?i)\b(?:FROM|JOIN)\s+("(?:[^"]|"")*"|[A-Za-z_][A-Za-z0-9_$]*(?:\.[A-Za-z_][A-Za-z0-9_$]*)*)"#,
-    ) {
-        Ok(re) => re,
+    // Discover table references via the parser.
+    let sites = match crate::parser::extract_table_ref_sites(sql) {
+        Ok(sites) => sites,
         Err(_) => return Ok(sql.to_string()),
     };
 
-    let mut seen = HashSet::new();
-    let mut refs: Vec<String> = Vec::new();
-    for caps in re.captures_iter(sql) {
-        if let Some(m) = caps.get(1) {
-            let name = m.as_str().to_string();
-            if seen.insert(name.clone()) {
-                refs.push(name);
-            }
-        }
-    }
-
-    // A name resolves against the cache backend (rather than the primary) if it
-    // is an internal `__ggsql_*` table or a `ggsql:` builtin dataset.
-    let is_cache_resolvable = |name: &str| {
-        naming::is_internal_table(&naming::unquote_ident(name)) || name.starts_with("ggsql:")
+    // A ref resolves against the cache backend (rather than the primary) when it
+    // is an internal `__ggsql_*` table, a `ggsql:` builtin, or a file-path string.
+    let is_cache_resolvable = |raw: &str| {
+        raw.starts_with('\'')
+            || raw.starts_with("ggsql:")
+            || naming::is_internal_table(&naming::unquote_ident(raw))
     };
 
-    let has_cache_ref = refs.iter().any(|r| is_cache_resolvable(r));
-    let primary_refs: Vec<&String> = refs.iter().filter(|r| !is_cache_resolvable(r)).collect();
+    let has_cache_ref = sites.iter().any(|s| is_cache_resolvable(&s.raw));
+    let primary_sites: Vec<&crate::parser::TableRefSite> = sites
+        .iter()
+        .filter(|s| !is_cache_resolvable(&s.raw))
+        .collect();
 
     // Only mixed bodies need staging.
-    if !has_cache_ref || primary_refs.is_empty() {
+    if !has_cache_ref || primary_sites.is_empty() {
         return Ok(sql.to_string());
     }
 
-    let mut result = sql.to_string();
-    for (index, raw) in primary_refs.into_iter().enumerate() {
-        let staged = naming::staged_source_table(index);
-        reader.materialize_table(&staged, &[], &format!("SELECT * FROM {}", raw))?;
-        let target = naming::quote_ident(&staged);
+    // The final identifier component of a ref. This is how an unaliased ref
+    // is spelled at column sites, so it doubles as the alias to attach.
+    let last_of = |raw: &str| -> String { last_identifier_component(raw).to_string() };
 
-        // Rewrite FROM/JOIN/qualified references to the staged copy.
-        let patterns = [
-            (
-                format!(r"(?i)(\bFROM\s+){}(\s|,|\)|$)", regex::escape(raw)),
-                format!("${{1}}{}${{2}}", target),
-            ),
-            (
-                format!(r"(?i)(\bJOIN\s+){}(\s|,|\)|$)", regex::escape(raw)),
-                format!("${{1}}{}${{2}}", target),
-            ),
-            (
-                format!(r"(?i)\b{}(\.[a-zA-Z_][a-zA-Z0-9_]*)", regex::escape(raw)),
-                format!("{}${{1}}", target),
-            ),
-        ];
-        for (pattern, replacement) in patterns {
-            if let Ok(re) = regex::Regex::new(&pattern) {
-                result = re.replace_all(&result, replacement.as_str()).to_string();
+    // Stage each distinct primary table into the cache once.
+    let mut staged_for: std::collections::HashMap<String, String> =
+        std::collections::HashMap::new();
+    for site in &primary_sites {
+        if !staged_for.contains_key(&site.raw) {
+            let t = naming::staged_source_table(staged_for.len());
+            reader.materialize_table(&t, &[], &format!("SELECT * FROM {}", site.raw))?;
+            staged_for.insert(site.raw.clone(), t);
+        }
+    }
+
+    // An unaliased ref is aliased back to its last component so `base.col` keeps
+    // resolving. Two unaliased refs sharing a last component (`a.base`+`b.base`)
+    // would collide, so those use their unique staged name instead.
+    let mut last_counts: std::collections::HashMap<String, usize> =
+        std::collections::HashMap::new();
+    let mut seen_unaliased: HashSet<&str> = HashSet::new();
+    for site in &primary_sites {
+        if !site.has_alias && seen_unaliased.insert(site.raw.as_str()) {
+            *last_counts.entry(last_of(&site.raw)).or_default() += 1;
+        }
+    }
+    let last_collides = |raw: &str| last_counts.get(&last_of(raw)).copied().unwrap_or(0) > 1;
+
+    let string_ranges = crate::parser::string_literal_ranges(sql);
+    let in_string = |pos: usize| string_ranges.iter().any(|&(s, e)| pos >= s && pos < e);
+    let site_starts: HashSet<usize> = primary_sites.iter().map(|s| s.start).collect();
+
+    let mut replacements: Vec<(usize, usize, String)> = Vec::new();
+
+    // Rewrite each table_ref occurrence to the staged table.
+    for site in &primary_sites {
+        let quoted = naming::quote_ident(&staged_for[&site.raw]);
+        let replacement = if site.has_alias || last_collides(&site.raw) {
+            quoted
+        } else {
+            format!("{} AS {}", quoted, last_of(&site.raw))
+        };
+        replacements.push((site.start, site.end, replacement));
+    }
+
+    // Rewrite full column qualifiers (`schema.base.col`) to the alias, or the
+    // staged table when it collides — skipping string literals and table_ref sites.
+    for raw in staged_for.keys() {
+        // Only multi-part refs can appear as a full qualifier at column sites.
+        if unquoted_dot_positions(raw).is_empty() {
+            continue;
+        }
+        let target = if last_collides(raw) {
+            naming::quote_ident(&staged_for[raw])
+        } else {
+            last_of(raw)
+        };
+        // Match the qualifier tolerant of whitespace around its dots.
+        let pattern = format!(
+            r"({})\s*\.",
+            identifier_components(raw)
+                .iter()
+                .map(|c| {
+                    if c.starts_with('"') {
+                        regex::escape(c)
+                    } else {
+                        format!("(?i:{})", regex::escape(c))
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join(r"\s*\.\s*")
+        );
+        let Ok(re) = regex::Regex::new(&pattern) else {
+            continue;
+        };
+        for caps in re.captures_iter(sql) {
+            let qualifier = caps.get(1).unwrap();
+            let start = qualifier.start();
+            if site_starts.contains(&start) || in_string(start) {
+                continue;
+            }
+            // Require a boundary before the qualifier.
+            let ok_prefix = sql[..start]
+                .chars()
+                .next_back()
+                .is_none_or(|c| !(c.is_alphanumeric() || c == '_' || c == '.' || c == '"'));
+            if ok_prefix {
+                replacements.push((start, qualifier.end(), target.clone()));
             }
         }
+    }
+
+    // Apply in reverse byte order so earlier offsets stay valid.
+    let mut result = sql.to_string();
+    replacements.sort_by_key(|(start, _, _)| std::cmp::Reverse(*start));
+    for (start, end, replacement) in replacements {
+        result.replace_range(start..end, &replacement);
     }
 
     Ok(result)
@@ -281,24 +406,13 @@ pub fn split_with_query(source_tree: &SourceTree) -> Option<(String, String)> {
     Some((cte_prefix, trailing))
 }
 
-/// Transform global SQL for execution with temp tables.
+/// Collect side-effect statements (CREATE, INSERT, UPDATE, DELETE) that
+/// need to run before the main query.
 ///
-/// Returns statements to execute directly as side effects (CREATE, INSERT, …)
-/// and an optional query whose result should be wrapped as the global temp
-/// table.
-pub fn transform_global_sql(
-    source_tree: &SourceTree,
-    materialized_ctes: &HashSet<String>,
-    reader: &dyn Reader,
-) -> Result<(Vec<String>, Option<String>)> {
-    // Collect side-effect statements (CREATE, INSERT, UPDATE, DELETE) that
-    // need to run before the main query. These appear alongside a trailing
-    // SELECT or VISUALISE FROM.
-    //
-    // Only structured DML is handled here — other_sql_statement nodes
-    // (INSTALL, LOAD, SET, …) are pre-executed in prepare_data_with_reader.
+/// Only structured DML is handled here — other_sql_statement nodes
+/// (INSTALL, LOAD, SET, …) are pre-executed in prepare_data_with_reader.
+pub fn extract_side_effects(source_tree: &SourceTree) -> Vec<String> {
     let root = source_tree.root();
-
     let side_effect_stmts = r#"
         (sql_statement
           [(create_statement)
@@ -306,12 +420,24 @@ pub fn transform_global_sql(
            (update_statement)
            (delete_statement)] @stmt)
     "#;
-    let side_effects: Vec<String> = source_tree
+    source_tree
         .find_texts(&root, side_effect_stmts)
         .into_iter()
-        .map(|s| transform_cte_references(s.trim(), materialized_ctes))
+        .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
-        .collect();
+        .collect()
+}
+
+/// Transform global SQL for execution as the global temp table.
+///
+/// Returns the query whose result should be wrapped as the global temp table,
+/// with CTE references rewritten and primary base tables staged.
+pub fn transform_global_sql(
+    source_tree: &SourceTree,
+    materialized_ctes: &HashSet<String>,
+    reader: &dyn Reader,
+) -> Result<Option<String>> {
+    let root = source_tree.root();
 
     // Try to extract trailing SELECT (WITH...SELECT or direct SELECT)
     let select_sql = split_with_query(source_tree)
@@ -323,20 +449,17 @@ pub fn transform_global_sql(
 
     if let Some(select_sql) = select_sql {
         let select_sql = transform_cte_references(&select_sql, materialized_ctes);
-        return Ok((
-            side_effects,
-            Some(transform_source_references(&select_sql, reader)?),
-        ));
+        return Ok(Some(transform_source_references(&select_sql, reader)?));
     }
 
     if !has_executable_sql(source_tree) {
-        return Ok((vec![], None));
+        return Ok(None);
     }
 
-    // We have non-SELECT executable SQL and/or VISUALISE FROM.
-    // Side-effects run directly, VISUALISE FROM becomes the queryable part.
-    // A bare WITH clause without a trailing statement is not executable on
-    // its own (its CTEs are already materialized separately).
+    // We have non-SELECT executable SQL and/or VISUALISE FROM. VISUALISE FROM
+    // becomes the queryable part; a bare WITH clause without a trailing
+    // statement is not executable on its own (its CTEs are materialized
+    // separately).
     let viz_from_query = source_tree
         .find_text(
             &root,
@@ -349,19 +472,18 @@ pub fn transform_global_sql(
         })
         .transpose()?;
 
-    if !side_effects.is_empty() || viz_from_query.is_some() {
-        Ok((side_effects, viz_from_query))
+    if viz_from_query.is_some() || !extract_side_effects(source_tree).is_empty() {
+        Ok(viz_from_query)
     } else {
         // has_executable_sql was true but we found no specific statements or
         // VISUALISE FROM — fall back to extract_sql as the query.
-        let query = source_tree
+        source_tree
             .extract_sql()
             .map(|s| {
                 let s = transform_cte_references(&s, materialized_ctes);
                 transform_source_references(&s, reader)
             })
-            .transpose()?;
-        Ok((vec![], query))
+            .transpose()
     }
 }
 
@@ -553,6 +675,46 @@ mod tests {
         }
     }
 
+    #[test]
+    fn test_transform_cte_references_comma_join_second_position() {
+        // A CTE in a non-first comma position must still be rewritten.
+        let ctes: HashSet<String> = ["cte"].iter().map(|s| s.to_string()).collect();
+        let out = transform_cte_references("SELECT * FROM base, cte WHERE base.k = cte.k", &ctes);
+        assert!(
+            !out.contains("FROM base, cte "),
+            "cte table ref not rewritten: {out}"
+        );
+        assert!(out.contains("__ggsql_cte_cte_"));
+        // Both the table ref and the qualified column ref are rewritten.
+        assert_eq!(out.matches("__ggsql_cte_cte_").count(), 2);
+    }
+
+    #[test]
+    fn test_transform_cte_references_preserves_string_literals() {
+        // A CTE name inside a string literal must not be rewritten.
+        let ctes: HashSet<String> = ["cte"].iter().map(|s| s.to_string()).collect();
+        let out = transform_cte_references("SELECT cte.k, 'cte.k' AS lit FROM cte", &ctes);
+        assert!(out.contains("'cte.k'"), "literal was corrupted: {out}");
+        // The real qualifier and table ref are still rewritten.
+        assert_eq!(out.matches("__ggsql_cte_cte_").count(), 2);
+    }
+
+    #[test]
+    fn test_transform_cte_references_whitespace_around_dot() {
+        let ctes: HashSet<String> = ["cte"].iter().map(|s| s.to_string()).collect();
+        let out = transform_cte_references("SELECT cte . v FROM cte", &ctes);
+        // The whitespace-separated qualifier is rewritten too.
+        assert!(!out.contains("cte . v"), "qualifier not rewritten: {out}");
+        assert_eq!(out.matches("__ggsql_cte_cte_").count(), 2);
+    }
+
+    #[test]
+    fn test_transform_cte_references_case_insensitive() {
+        let ctes: HashSet<String> = ["cte"].iter().map(|s| s.to_string()).collect();
+        let out = transform_cte_references("SELECT CTE.v FROM CTE", &ctes);
+        assert_eq!(out.matches("__ggsql_cte_cte_").count(), 2);
+    }
+
     /// Minimal reader that records `materialize_table` calls, used to unit-test
     /// source-reference staging without a database.
     struct MockReader {
@@ -657,6 +819,65 @@ mod tests {
     }
 
     #[test]
+    fn test_transform_source_references_case_insensitive_qualifier() {
+        let reader = MockReader::new(true);
+        // The full qualifier is spelled in a different case than the table_ref;
+        // unquoted identifiers fold, so it must still be rewritten.
+        let sql = "SELECT MYSCHEMA.BASE.w FROM \"__ggsql_cte_t__\" \
+                   JOIN myschema.base ON MYSCHEMA.BASE.k = 1";
+        let out = transform_source_references(sql, &reader).unwrap();
+
+        assert_eq!(reader.staged.borrow().len(), 1);
+        assert!(
+            !out.contains("MYSCHEMA"),
+            "case-variant qualifier not rewritten: {out}"
+        );
+    }
+
+    #[test]
+    fn test_last_identifier_component() {
+        assert_eq!(last_identifier_component("base"), "base");
+        assert_eq!(last_identifier_component("schema.base"), "base");
+        assert_eq!(last_identifier_component("cat.schema.base"), "base");
+        assert_eq!(last_identifier_component("\"schema\".\"base\""), "\"base\"");
+        assert_eq!(last_identifier_component("schema.\"base\""), "\"base\"");
+        // A dot inside a quoted component is not a separator.
+        assert_eq!(last_identifier_component("\"my.base\""), "\"my.base\"");
+    }
+
+    #[test]
+    fn test_transform_source_references_fully_quoted_qualified() {
+        let reader = MockReader::new(true);
+        // `"s"."t"` must stage and alias to the (quoted) last component.
+        let sql = "SELECT \"myschema\".\"base\".w FROM \"__ggsql_cte_t__\" \
+                   JOIN \"myschema\".\"base\" ON \"myschema\".\"base\".k = 1";
+        let out = transform_source_references(sql, &reader).unwrap();
+
+        let staged = reader.staged.borrow();
+        assert_eq!(staged.len(), 1);
+        assert_eq!(staged[0].1, "SELECT * FROM \"myschema\".\"base\"");
+        // The staged table is aliased AS "base" and full qualifiers rewritten.
+        assert!(out.contains("AS \"base\""));
+        assert!(!out.contains("\"myschema\".\"base\""));
+    }
+
+    #[test]
+    fn test_transform_source_references_whitespace_around_dot() {
+        let reader = MockReader::new(true);
+        // Whitespace/newlines around the dots (in both the table_ref and the full
+        // column qualifier) must not defeat staging or the qualifier rewrite.
+        let sql = "SELECT myschema .\nbase . w FROM \"__ggsql_cte_t__\" \
+                   JOIN myschema . base ON myschema . base . k = 1";
+        let out = transform_source_references(sql, &reader).unwrap();
+
+        let staged = reader.staged.borrow();
+        assert_eq!(staged.len(), 1);
+        // The full column qualifiers are rewritten to the alias despite spacing.
+        assert!(!out.contains("myschema"), "qualifier not rewritten: {out}");
+        assert!(out.contains("AS base"));
+    }
+
+    #[test]
     fn test_transform_source_references_schema_qualified() {
         let reader = MockReader::new(true);
         let sql = "SELECT * FROM \"__ggsql_cte_t__\" JOIN myschema.base ON base.k = 1";
@@ -675,6 +896,47 @@ mod tests {
         let sql = "SELECT * FROM base JOIN \"__ggsql_cte_t__\" ON base.k = base.j";
         let _ = transform_source_references(sql, &reader).unwrap();
         assert_eq!(reader.staged.borrow().len(), 1);
+    }
+
+    #[test]
+    fn test_transform_source_references_comma_join() {
+        // A comma join between a cache-resident temp and a primary base table:
+        // the primary side must be staged (the old FROM/JOIN regex missed this).
+        let reader = MockReader::new(true);
+        let sql = "SELECT * FROM \"__ggsql_cte_t__\", base";
+        let out = transform_source_references(sql, &reader).unwrap();
+
+        let staged = reader.staged.borrow();
+        assert_eq!(staged.len(), 1);
+        assert_eq!(staged[0].1, "SELECT * FROM base");
+        assert!(out.contains("__ggsql_staged_0_"));
+        assert!(out.contains("\"__ggsql_cte_t__\""));
+    }
+
+    #[test]
+    fn test_transform_source_references_preserves_string_literals() {
+        // A string literal that happens to look like a qualified reference must
+        // not be rewritten.
+        let reader = MockReader::new(true);
+        let sql = "SELECT * FROM \"__ggsql_cte_t__\" JOIN myschema.base \
+                   ON note = 'myschema.base.k'";
+        let out = transform_source_references(sql, &reader).unwrap();
+
+        assert_eq!(reader.staged.borrow().len(), 1);
+        // The literal is untouched; the real qualifier in the table_ref is staged.
+        assert!(out.contains("'myschema.base.k'"));
+        assert!(!out.contains("JOIN myschema.base "));
+    }
+
+    #[test]
+    fn test_transform_source_references_builtin_not_staged() {
+        // A `ggsql:` builtin resolves against the cache, so a JOIN against it and
+        // a resident temp is entirely cache-side and needs no staging.
+        let reader = MockReader::new(true);
+        let sql = "SELECT * FROM \"__ggsql_cte_t__\" JOIN ggsql:penguins ON 1 = 1";
+        let out = transform_source_references(sql, &reader).unwrap();
+        assert!(reader.staged.borrow().is_empty());
+        assert_eq!(out, sql);
     }
 
     #[test]
