@@ -265,15 +265,15 @@ impl CachingReader {
         Ok(())
     }
 
-    /// Drop a single memo entry: delete its meta row and unregister the table.
+    /// Drop a single memo entry: unregister the table, then delete its meta row.
     fn drop_entry(&self, key: &str, table: &str) -> Result<()> {
+        self.cache.unregister(table)?;
         let del = format!(
             "DELETE FROM {} WHERE cache_key = {}",
             naming::quote_ident(naming::CACHE_META_TABLE),
             naming::quote_literal(key),
         );
         self.cache.execute_sql(&del)?;
-        let _ = self.cache.unregister(table);
         Ok(())
     }
 
