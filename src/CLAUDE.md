@@ -34,6 +34,7 @@ src/
 - `mod.rs` exposes `parse_query()` which builds a `Vec<Plot>` from a query string.
 - `source_tree.rs` is the parse-once wrapper: holds the tree-sitter `Tree`, source text, and language; offers a declarative query API (`find_node`, `find_text`, …) plus lazy `extract_sql()` / `extract_visualise()` extractors. It also handles the `VISUALISE FROM <source>` shorthand by injecting `SELECT * FROM <source>`.
 - `builder.rs` walks the CST and produces typed `Plot` values. This is where new grammar nodes become `Plot` fields.
+- `sql.rs` extracts structure from SQL fragments over the parse tree.
 
 Grammar lives in [`/tree-sitter-ggsql/`](../tree-sitter-ggsql/) — when adding syntax, edit `grammar.js`, regenerate, then teach `builder.rs` about the new nodes.
 
@@ -46,10 +47,14 @@ Grammar lives in [`/tree-sitter-ggsql/`](../tree-sitter-ggsql/) — when adding 
 | `duckdb.rs` | DuckDB (in-memory or file) | `duckdb` (default) |
 | `sqlite.rs` | SQLite | `sqlite` (default) |
 | `odbc.rs` | ODBC | `odbc` (default) |
+| `cache.rs` | `CachingReader` — wraps any primary `Reader` with an in-memory cache | `duckdb` or `sqlite` |
 | `connection.rs` | Connection-string parsing for all of the above | — |
-| `data.rs`, `spec.rs` | `Spec` type returned by `execute()`, plus DataFrame conversion | — |
+| `spec.rs` | `Spec` type returned by `execute()`, plus DataFrame conversion | — |
+| `data.rs` | Bundled sample datasets — the `ggsql:` builtins | `builtin-data` |
 
 `SqlDialect` trait in `mod.rs` lets each driver supply its own type names, information-schema queries, and spatial helper methods (`sql_st_transform`, `sql_geometry_to_wkb`, `sql_geometry_bbox`, `sql_ensure_geometry`, `sql_select_replace`, `sql_spatial_setup`).
+
+**Caching layer.** `CachingReader` (`cache.rs`) wraps a primary reader plus an in-memory `CacheBackend`, splitting work across two `Reader` surfaces. **`execute_sql` = source**: base reads of the user's data plus user setup/DML run on the primary (with result memoization), except `ggsql:` builtins, the `__ggsql_cache_meta__` table, and reads that reference a cache-resident internal table, which go to the cache. **`execute_sql_cached` = compute**: all dialect-generated/derived SQL (schema probes, stats, projection/map transforms, spatial setup, final layer queries — everything operating on `__ggsql_*` tables) runs on the cache; it defaults to `execute_sql` so a plain reader runs everything on one connection. Cache routing is by **exact-identifier membership** in the set of tables registered into the cache. Memoization keys on `hash(primary_uri + sql)` and is tracked in the `__ggsql_cache_meta__` table inside the cache backend. Each memoized read is bounded by a **TTL** (default 300s) and the whole memo by an **LRU byte budget** (default 512 MB); both are configurable via `CacheConfig` (env `GGSQL_CACHE_DISABLED`/`GGSQL_CACHE_TTL`/`GGSQL_CACHE_MAX_BYTES`, or per-connection URI query parameters `?cache_ttl=…&cache_max_bytes=…&cache_disabled=…`). The `__ggsql_cache_meta__` table is queryable for introspection (`SELECT * FROM __ggsql_cache_meta__`). Pure/non-visual SQL (CLI table fallback, Jupyter) goes through `execute_sql` so it reads the primary rather than the empty cache. `Reader::materialize_table` (default = `CREATE TEMP TABLE` on the reader, no Rust roundtrip) is overridden to read the body via the source surface and `register()` the result into the cache, so the primary is never written to; `Reader::caches_sources()` (default `false`, `true` for `CachingReader`) gates the executor's per-layer source staging: file sources are staged on the cache surface, while identifiers go through `materialize_table`, which routes the read to the cache (CTEs, builtins, cache-resident tables) or the primary as needed. `dialect()` returns the **cache** dialect. Selected via the composite `<primary>+<cache>://` scheme (`reader_from_uri` / `split_cache_uri`) or the CLI `--cache` flag; off by default.
 
 ### `execute/`
 

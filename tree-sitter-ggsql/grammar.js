@@ -310,16 +310,7 @@ module.exports = grammar({
 
     non_from_sql_keyword: $ => choice(
       caseInsensitive('WHERE'),
-      caseInsensitive('JOIN'),
-      caseInsensitive('LEFT'),
-      caseInsensitive('RIGHT'),
-      caseInsensitive('INNER'),
-      caseInsensitive('OUTER'),
       caseInsensitive('LATERAL'),
-      caseInsensitive('CROSS'),
-      caseInsensitive('NATURAL'),
-      caseInsensitive('FULL'),
-      caseInsensitive('ON'),
       caseInsensitive('AND'),
       caseInsensitive('OR'),
       caseInsensitive('NOT'),
@@ -518,8 +509,8 @@ module.exports = grammar({
     window_partition_clause: $ => seq(
       caseInsensitive('PARTITION'),
       caseInsensitive('BY'),
-      $.identifier,
-      repeat(seq(',', $.identifier))
+      $._dotted_column,
+      repeat(seq(',', $._dotted_column))
     ),
 
     window_order_clause: $ => seq(
@@ -529,11 +520,18 @@ module.exports = grammar({
       repeat(seq(',', $.order_item))
     ),
 
+    // ORDER BY
     order_item: $ => seq(
-      $.identifier,
+      $._dotted_column,
       optional(choice(caseInsensitive('ASC'), caseInsensitive('DESC'))),
       optional(seq(caseInsensitive('NULLS'), choice(caseInsensitive('FIRST'), caseInsensitive('LAST'))))
     ),
+
+    // A (possibly dotted) column reference used as a window sort/partition key.
+    _dotted_column: $ => prec.right(seq(
+      $.identifier,
+      repeat(seq('.', $.identifier))
+    )),
 
     frame_clause: $ => seq(
       choice(caseInsensitive('ROWS'), caseInsensitive('RANGE')),
@@ -576,8 +574,76 @@ module.exports = grammar({
     from_clause: $ => prec.right(1, seq(
       token(prec(1, caseInsensitive('FROM'))),
       $.table_ref,
-      repeat(seq(',', $.table_ref))
+      repeat(choice(
+        seq(',', $.table_ref),
+        $.join_clause
+      ))
     )),
+
+    // ANSI join: an operator, the target table, and an ON or USING condition.
+    join_clause: $ => prec.right(seq(
+      $.join_operator,
+      $.table_ref,
+      optional($.join_condition)
+    )),
+
+    // ANSI join operators.
+    join_operator: $ => choice(
+      seq(caseInsensitive('CROSS'), caseInsensitive('JOIN')),
+      seq(
+        optional(caseInsensitive('NATURAL')),
+        optional(choice(
+          caseInsensitive('INNER'),
+          seq(
+            choice(
+              caseInsensitive('LEFT'),
+              caseInsensitive('RIGHT'),
+              caseInsensitive('FULL')
+            ),
+            optional(caseInsensitive('OUTER'))
+          )
+        )),
+        caseInsensitive('JOIN')
+      )
+    ),
+
+    join_condition: $ => choice(
+      seq(caseInsensitive('ON'), $.join_condition_expression),
+      seq(
+        caseInsensitive('USING'),
+        '(',
+        $.identifier,
+        repeat(seq(',', $.identifier)),
+        ')'
+      )
+    ),
+
+    // The ON search condition.
+    join_condition_expression: $ => prec.right(repeat1(choice(
+      $.case_expression,
+      $.cast_expression,
+      $.function_call,
+      $.jinja_template,
+      $.join_condition_keyword,
+      $.string,
+      $.number,
+      '.', '*', '=', '<', '>', '!', '+', '-', '/', '%', '|', '&', '^', '~', '::',
+      $.subquery,
+      $.identifier
+    ))),
+
+    // Expression-level keywords allowed inside an ON condition.
+    join_condition_keyword: $ => choice(
+      caseInsensitive('AND'),
+      caseInsensitive('OR'),
+      caseInsensitive('NOT'),
+      caseInsensitive('IN'),
+      caseInsensitive('IS'),
+      caseInsensitive('NULL'),
+      caseInsensitive('EXISTS'),
+      caseInsensitive('BETWEEN'),
+      caseInsensitive('LIKE')
+    ),
 
     // VISUALISE/VISUALIZE [global_mapping] [FROM source] with clauses
     // Global mapping sets default aesthetics for all layers

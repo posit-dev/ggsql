@@ -1098,7 +1098,10 @@ pub struct PreparedData {
 /// * `query` - The full ggsql query string
 /// * `reader` - A Reader implementation for executing SQL
 pub fn prepare_data_with_reader(query: &str, reader: &dyn Reader) -> Result<PreparedData> {
-    let execute_query = |sql: &str| reader.execute_sql(sql);
+    // `execute_query` is the COMPUTE surface for derived/dialect-generated SQL
+    // over internal `__ggsql_*` tables. Base source reads (user setup/DML, the
+    // global query) call `reader.execute_sql(...)` directly.
+    let execute_query = |sql: &str| reader.execute_sql_cached(sql);
     let dialect = reader.dialect();
 
     // Parse once and create SourceTree
@@ -1129,7 +1132,14 @@ pub fn prepare_data_with_reader(query: &str, reader: &dyn Reader) -> Result<Prep
     // Structured DML (CREATE, INSERT, UPDATE, DELETE) is handled separately as
     // side-effects in cte::transform_global_sql.
     for stmt in source_tree.find_texts(&root, "(sql_statement (other_sql_statement) @stmt)") {
-        execute_query(&stmt)?;
+        reader.execute_sql(&stmt)?;
+    }
+
+    // Run structured DML (CREATE, INSERT, UPDATE, DELETE) before CTE
+    // materialization and the global query, so any table they create or
+    // populate exists before it is read.
+    for stmt in cte::extract_side_effects(&source_tree) {
+        reader.execute_sql(&stmt)?;
     }
 
     // Extract CTE definitions from the source tree (in declaration order)
@@ -1149,23 +1159,16 @@ pub fn prepare_data_with_reader(query: &str, reader: &dyn Reader) -> Result<Prep
     // The global result is stored as a temp table so filtered layers can query it efficiently.
     let mut has_global_table = false;
     if sql_part.is_some() {
-        let (side_effects, query) = cte::transform_global_sql(&source_tree, &materialized_ctes);
-
-        for stmt in &side_effects {
-            execute_query(stmt)?;
-        }
+        // Side-effect DML has already run above; this yields just the global
+        // query (CTE references rewritten, primary sources staged).
+        let query = cte::transform_global_sql(&source_tree, &materialized_ctes, reader)?;
 
         if let Some(query) = query {
-            // Materialize global result as a temp table directly on the backend
-            // (no roundtrip through Rust).
-            let statements = reader.dialect().create_or_replace_temp_table_sql(
-                &naming::global_table(),
-                &[],
-                &query,
-            );
-            for stmt in &statements {
-                execute_query(stmt)?;
-            }
+            // Materialize the global result as a temp table. For a plain reader
+            // this emits `CREATE TEMP TABLE … AS …` on the backend (no roundtrip
+            // through Rust); a caching reader runs the query and registers the
+            // result into its cache.
+            reader.materialize_table(&naming::global_table(), &[], &query)?;
 
             // NOTE: Don't read into data_map yet - defer until after casting is determined
             // The temp table exists and can be used for schema fetching
@@ -1186,11 +1189,45 @@ pub fn prepare_data_with_reader(query: &str, reader: &dyn Reader) -> Result<Prep
     // Build source queries for each layer to fetch initial type info
     // Every layer now has its own source query (either explicit source or global table)
     // For annotation layers, this is where array recycling and parameter→mapping conversion happens
-    let layer_source_queries: Vec<String> = specs[0]
+    let mut layer_source_queries: Vec<String> = specs[0]
         .layers
         .iter_mut()
         .map(|l| layer::layer_source_query(l, &materialized_ctes, has_global_table, dialect))
         .collect::<Result<Vec<_>>>()?;
+
+    // When the reader stages sources into a cache (a caching layer is active),
+    // materialize explicit external layer sources into the cache and rewrite the
+    // layer to read the cached table.
+    if reader.caches_sources() {
+        let mut materialized_sources: HashMap<String, String> = HashMap::new();
+        for (idx, layer) in specs[0].layers.iter().enumerate() {
+            let is_external = match &layer.source {
+                Some(crate::DataSource::Identifier(name)) => !materialized_ctes.contains(name),
+                Some(crate::DataSource::FilePath(_)) => true,
+                _ => false,
+            };
+            if !is_external {
+                continue;
+            }
+            let source_query = layer_source_queries[idx].clone();
+            let table = match materialized_sources.get(&source_query) {
+                Some(t) => t.clone(),
+                None => {
+                    let t = naming::layer_source_table(materialized_sources.len());
+                    if matches!(layer.source, Some(crate::DataSource::FilePath(_))) {
+                        // The cache backend reads local files
+                        let df = reader.execute_sql_cached(&source_query)?;
+                        reader.register(&t, df, true)?;
+                    } else {
+                        reader.materialize_table(&t, &[], &source_query)?;
+                    }
+                    materialized_sources.insert(source_query, t.clone());
+                    t
+                }
+            };
+            layer_source_queries[idx] = format!("SELECT * FROM {}", naming::quote_ident(&table));
+        }
+    }
 
     // Get types for each layer from source queries (Phase 1: types only, no min/max yet)
     let mut layer_type_info: Vec<Vec<schema::TypeInfo>> = Vec::new();

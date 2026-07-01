@@ -323,21 +323,24 @@ impl KernelServer {
         }
 
         // Execute the query
+        let uri_before = self.executor.reader_uri().to_string();
         let result = self.executor.execute(code);
+        let connection_changed = self.executor.reader_uri() != uri_before;
+        if connection_changed {
+            let uri = self.executor.reader_uri().to_string();
+            self.open_connection_comm(&uri).await?;
+        }
 
         match result {
             Ok(exec_result) => {
-                // If the connection changed, open a new connection comm
-                let is_connection_changed =
+                // A bare connection change renders nothing.
+                let suppress_output =
                     matches!(&exec_result, ExecutionResult::ConnectionChanged { .. });
-                if let ExecutionResult::ConnectionChanged { ref uri, .. } = &exec_result {
-                    self.open_connection_comm(uri).await?;
-                }
 
                 // Send execute_result (not display_data)
                 // Per Jupyter spec: execute_result includes execution_count
                 // Only send if there's something to display (DDL returns None)
-                if !silent && !is_connection_changed {
+                if !silent && !suppress_output {
                     if let Some(display_data) = format_display_data(exec_result, &hints) {
                         // Build message content, including output_location if present
                         let mut content = json!({
