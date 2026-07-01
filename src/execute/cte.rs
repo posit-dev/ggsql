@@ -130,6 +130,80 @@ pub fn transform_cte_references(sql: &str, cte_names: &HashSet<String>) -> Strin
     result
 }
 
+/// Stage the primary base tables in a body destined for the cache.
+///
+/// A body that is entirely primary (no cache-resident reference) or entirely
+/// cache-resident is returned unchanged.
+pub fn transform_source_references(sql: &str, reader: &dyn Reader) -> Result<String> {
+    if !reader.caches_sources() {
+        return Ok(sql.to_string());
+    }
+
+    // Discover the names referenced after FROM/JOIN — including quoted (`"foo"`)
+    // and schema-qualified (`schema.table`) names. Subqueries contribute no name.
+    let re = match regex::Regex::new(
+        r#"(?i)\b(?:FROM|JOIN)\s+("(?:[^"]|"")*"|[A-Za-z_][A-Za-z0-9_$]*(?:\.[A-Za-z_][A-Za-z0-9_$]*)*)"#,
+    ) {
+        Ok(re) => re,
+        Err(_) => return Ok(sql.to_string()),
+    };
+
+    let mut seen = HashSet::new();
+    let mut refs: Vec<String> = Vec::new();
+    for caps in re.captures_iter(sql) {
+        if let Some(m) = caps.get(1) {
+            let name = m.as_str().to_string();
+            if seen.insert(name.clone()) {
+                refs.push(name);
+            }
+        }
+    }
+
+    // A name resolves against the cache backend (rather than the primary) if it
+    // is an internal `__ggsql_*` table or a `ggsql:` builtin dataset.
+    let is_cache_resolvable = |name: &str| {
+        naming::is_internal_table(&naming::unquote_ident(name)) || name.starts_with("ggsql:")
+    };
+
+    let has_cache_ref = refs.iter().any(|r| is_cache_resolvable(r));
+    let primary_refs: Vec<&String> = refs.iter().filter(|r| !is_cache_resolvable(r)).collect();
+
+    // Only mixed bodies need staging.
+    if !has_cache_ref || primary_refs.is_empty() {
+        return Ok(sql.to_string());
+    }
+
+    let mut result = sql.to_string();
+    for (index, raw) in primary_refs.into_iter().enumerate() {
+        let staged = naming::staged_source_table(index);
+        reader.materialize_table(&staged, &[], &format!("SELECT * FROM {}", raw))?;
+        let target = naming::quote_ident(&staged);
+
+        // Rewrite FROM/JOIN/qualified references to the staged copy.
+        let patterns = [
+            (
+                format!(r"(?i)(\bFROM\s+){}(\s|,|\)|$)", regex::escape(raw)),
+                format!("${{1}}{}${{2}}", target),
+            ),
+            (
+                format!(r"(?i)(\bJOIN\s+){}(\s|,|\)|$)", regex::escape(raw)),
+                format!("${{1}}{}${{2}}", target),
+            ),
+            (
+                format!(r"(?i)\b{}(\.[a-zA-Z_][a-zA-Z0-9_]*)", regex::escape(raw)),
+                format!("{}${{1}}", target),
+            ),
+        ];
+        for (pattern, replacement) in patterns {
+            if let Ok(re) = regex::Regex::new(&pattern) {
+                result = re.replace_all(&result, replacement.as_str()).to_string();
+            }
+        }
+    }
+
+    Ok(result)
+}
+
 /// Materialize CTEs as temporary tables in the database
 ///
 /// Creates a temp table for each CTE in declaration order. When a CTE
@@ -143,6 +217,8 @@ pub fn materialize_ctes(ctes: &[CteDefinition], reader: &dyn Reader) -> Result<H
     for cte in ctes {
         // Transform the CTE body to replace references to earlier CTEs
         let transformed_body = transform_cte_references(&cte.body, &materialized);
+        // Stage any primary base tables this body joins against into the cache.
+        let transformed_body = transform_source_references(&transformed_body, reader)?;
 
         let temp_table_name = naming::cte_table(&cte.name);
 
@@ -213,7 +289,8 @@ pub fn split_with_query(source_tree: &SourceTree) -> Option<(String, String)> {
 pub fn transform_global_sql(
     source_tree: &SourceTree,
     materialized_ctes: &HashSet<String>,
-) -> (Vec<String>, Option<String>) {
+    reader: &dyn Reader,
+) -> Result<(Vec<String>, Option<String>)> {
     // Collect side-effect statements (CREATE, INSERT, UPDATE, DELETE) that
     // need to run before the main query. These appear alongside a trailing
     // SELECT or VISUALISE FROM.
@@ -245,14 +322,15 @@ pub fn transform_global_sql(
         });
 
     if let Some(select_sql) = select_sql {
-        return (
+        let select_sql = transform_cte_references(&select_sql, materialized_ctes);
+        return Ok((
             side_effects,
-            Some(transform_cte_references(&select_sql, materialized_ctes)),
-        );
+            Some(transform_source_references(&select_sql, reader)?),
+        ));
     }
 
     if !has_executable_sql(source_tree) {
-        return (vec![], None);
+        return Ok((vec![], None));
     }
 
     // We have non-SELECT executable SQL and/or VISUALISE FROM.
@@ -266,18 +344,24 @@ pub fn transform_global_sql(
         )
         .map(|table| {
             let q = format!("SELECT * FROM {}", table);
-            transform_cte_references(&q, materialized_ctes)
-        });
+            let q = transform_cte_references(&q, materialized_ctes);
+            transform_source_references(&q, reader)
+        })
+        .transpose()?;
 
     if !side_effects.is_empty() || viz_from_query.is_some() {
-        (side_effects, viz_from_query)
+        Ok((side_effects, viz_from_query))
     } else {
         // has_executable_sql was true but we found no specific statements or
         // VISUALISE FROM — fall back to extract_sql as the query.
         let query = source_tree
             .extract_sql()
-            .map(|s| transform_cte_references(&s, materialized_ctes));
-        (vec![], query)
+            .map(|s| {
+                let s = transform_cte_references(&s, materialized_ctes);
+                transform_source_references(&s, reader)
+            })
+            .transpose()?;
+        Ok((vec![], query))
     }
 }
 
@@ -467,6 +551,130 @@ mod tests {
                 }
             }
         }
+    }
+
+    /// Minimal reader that records `materialize_table` calls, used to unit-test
+    /// source-reference staging without a database.
+    struct MockReader {
+        caches: bool,
+        staged: std::cell::RefCell<Vec<(String, String)>>,
+    }
+
+    impl MockReader {
+        fn new(caches: bool) -> Self {
+            Self {
+                caches,
+                staged: std::cell::RefCell::new(Vec::new()),
+            }
+        }
+    }
+
+    impl Reader for MockReader {
+        fn execute_sql(&self, _sql: &str) -> Result<crate::DataFrame> {
+            unreachable!("staging must not touch execute_sql in these tests")
+        }
+        fn register(&self, _name: &str, _df: crate::DataFrame, _replace: bool) -> Result<()> {
+            Ok(())
+        }
+        fn execute(&self, _query: &str) -> Result<crate::reader::Spec> {
+            unreachable!()
+        }
+        fn caches_sources(&self) -> bool {
+            self.caches
+        }
+        fn materialize_table(
+            &self,
+            name: &str,
+            _column_aliases: &[String],
+            body_sql: &str,
+        ) -> Result<()> {
+            self.staged
+                .borrow_mut()
+                .push((name.to_string(), body_sql.to_string()));
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn test_transform_source_references_quoted_primary_ref() {
+        let reader = MockReader::new(true);
+        // A quoted primary base table joined against a cache-resident CTE temp.
+        let sql = "SELECT * FROM \"__ggsql_cte_t__\" JOIN \"my base\" ON 1 = 1";
+        let out = transform_source_references(sql, &reader).unwrap();
+
+        let staged = reader.staged.borrow();
+        assert_eq!(staged.len(), 1);
+        assert_eq!(staged[0].1, "SELECT * FROM \"my base\"");
+        assert!(out.contains("__ggsql_staged_0_"));
+        assert!(!out.contains("JOIN \"my base\""));
+    }
+
+    #[test]
+    fn test_transform_source_references_non_caching_reader_unchanged() {
+        let reader = MockReader::new(false);
+        let sql = "SELECT * FROM \"__ggsql_cte_t__\" JOIN base ON base.k = 1";
+        let out = transform_source_references(sql, &reader).unwrap();
+        assert_eq!(out, sql);
+        assert!(reader.staged.borrow().is_empty());
+    }
+
+    #[test]
+    fn test_transform_source_references_all_primary_unchanged() {
+        let reader = MockReader::new(true);
+        let out = transform_source_references("SELECT * FROM a JOIN base ON a.k = base.k", &reader)
+            .unwrap();
+        assert_eq!(out, "SELECT * FROM a JOIN base ON a.k = base.k");
+        assert!(reader.staged.borrow().is_empty());
+    }
+
+    #[test]
+    fn test_transform_source_references_stages_mixed_body() {
+        let reader = MockReader::new(true);
+        // A cache-resident CTE temp joined against a primary base table.
+        let sql = "SELECT * FROM \"__ggsql_cte_t__\" JOIN base ON base.k = 1";
+        let out = transform_source_references(sql, &reader).unwrap();
+
+        let staged = reader.staged.borrow();
+        assert_eq!(staged.len(), 1, "base should be staged exactly once");
+        assert!(staged[0].0.starts_with("__ggsql_staged_0_"));
+        assert_eq!(staged[0].1, "SELECT * FROM base");
+
+        assert!(out.contains("__ggsql_staged_0_"));
+        assert!(out.contains("\"__ggsql_cte_t__\"")); // cte ref preserved
+        assert!(!out.contains("JOIN base"));
+    }
+
+    #[test]
+    fn test_transform_source_references_reversed_from_join() {
+        let reader = MockReader::new(true);
+        // Primary base table in FROM, cache-resident CTE temp in JOIN.
+        let sql = "SELECT * FROM base JOIN \"__ggsql_cte_t__\" ON base.k = 1";
+        let out = transform_source_references(sql, &reader).unwrap();
+
+        assert_eq!(reader.staged.borrow().len(), 1);
+        assert!(out.contains("FROM \"__ggsql_staged_0_"));
+        assert!(!out.contains("FROM base"));
+    }
+
+    #[test]
+    fn test_transform_source_references_schema_qualified() {
+        let reader = MockReader::new(true);
+        let sql = "SELECT * FROM \"__ggsql_cte_t__\" JOIN myschema.base ON base.k = 1";
+        let out = transform_source_references(sql, &reader).unwrap();
+
+        let staged = reader.staged.borrow();
+        assert_eq!(staged.len(), 1);
+        assert_eq!(staged[0].1, "SELECT * FROM myschema.base");
+        assert!(out.contains("__ggsql_staged_0_"));
+        assert!(!out.contains("JOIN myschema.base"));
+    }
+
+    #[test]
+    fn test_transform_source_references_same_ref_staged_once() {
+        let reader = MockReader::new(true);
+        let sql = "SELECT * FROM base JOIN \"__ggsql_cte_t__\" ON base.k = base.j";
+        let _ = transform_source_references(sql, &reader).unwrap();
+        assert_eq!(reader.staged.borrow().len(), 1);
     }
 
     #[test]

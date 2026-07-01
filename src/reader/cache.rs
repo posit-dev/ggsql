@@ -719,6 +719,84 @@ mod behavior_tests {
     }
 
     #[test]
+    fn test_cte_joined_against_primary_base_table() {
+        // A materialized CTE (cache-resident) joined against a primary-only base
+        // table: the global query is mixed, so the base table must be staged
+        // into the cache for the join to resolve there.
+        let base = DuckDBReader::new_in_memory().unwrap();
+        base.register(
+            "base",
+            df! { "k" => vec![1_i64, 2], "w" => vec![10_i64, 20] }.unwrap(),
+            true,
+        )
+        .unwrap();
+        let primary = Box::new(ReadOnlyReader::new(Box::new(base)));
+        let cache = Box::new(DuckDBReader::new_in_memory().unwrap());
+        let reader = CachingReader::new(primary, cache, "test://primary");
+
+        let spec = reader.execute(
+            "WITH t AS (SELECT 1 AS k, 100 AS v) \
+             SELECT t.v, base.w FROM t JOIN base ON t.k = base.k \
+             VISUALISE v AS x, w AS y DRAW point",
+        );
+        assert!(
+            spec.is_ok(),
+            "CTE joined against a primary base table should succeed: {:?}",
+            spec.err()
+        );
+    }
+
+    #[test]
+    fn test_schema_qualified_base_table_join() {
+        // Same as above, but the primary base table is schema-qualified.
+        let base = DuckDBReader::new_in_memory().unwrap();
+        base.execute_sql("CREATE SCHEMA myschema").unwrap();
+        base.execute_sql("CREATE TABLE myschema.base AS SELECT 1 AS k, 10 AS w")
+            .unwrap();
+        let primary = Box::new(ReadOnlyReader::new(Box::new(base)));
+        let cache = Box::new(DuckDBReader::new_in_memory().unwrap());
+        let reader = CachingReader::new(primary, cache, "test://primary");
+
+        let spec = reader.execute(
+            "WITH t AS (SELECT 1 AS k, 100 AS v) \
+             SELECT t.v, myschema.base.w FROM t JOIN myschema.base ON t.k = myschema.base.k \
+             VISUALISE v AS x, w AS y DRAW point",
+        );
+        assert!(
+            spec.is_ok(),
+            "CTE joined against a schema-qualified base table should succeed: {:?}",
+            spec.err()
+        );
+    }
+
+    #[test]
+    fn test_mixed_later_cte_body_joins_primary() {
+        // A later CTE whose body references an earlier (cache-resident) CTE and a
+        // primary-only base table: the CTE body is mixed and must stage the base.
+        let base = DuckDBReader::new_in_memory().unwrap();
+        base.register(
+            "base",
+            df! { "k" => vec![1_i64], "w" => vec![10_i64] }.unwrap(),
+            true,
+        )
+        .unwrap();
+        let primary = Box::new(ReadOnlyReader::new(Box::new(base)));
+        let cache = Box::new(DuckDBReader::new_in_memory().unwrap());
+        let reader = CachingReader::new(primary, cache, "test://primary");
+
+        let spec = reader.execute(
+            "WITH a AS (SELECT 1 AS k, 5 AS p), \
+                  b AS (SELECT a.p, base.w FROM a JOIN base ON a.k = base.k) \
+             SELECT * FROM b VISUALISE p AS x, w AS y DRAW point",
+        );
+        assert!(
+            spec.is_ok(),
+            "mixed later-CTE body joining a primary table should succeed: {:?}",
+            spec.err()
+        );
+    }
+
+    #[test]
     fn test_meta_table_records_and_serves_memo() {
         // A memoized read is recorded in the metadata table and served back from
         // the cache on repeat, without touching the primary again.

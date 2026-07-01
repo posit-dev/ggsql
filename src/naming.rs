@@ -183,6 +183,27 @@ pub fn layer_source_table(index: usize) -> String {
     )
 }
 
+/// Generate temp table name for a primary base table staged into the cache.
+///
+/// Format: `__ggsql_staged_<index>_<uuid>__`
+///
+/// # Example
+/// ```
+/// use ggsql::naming;
+/// let table = naming::staged_source_table(1);
+/// assert!(table.starts_with("__ggsql_staged_1_"));
+/// assert!(table.ends_with("__"));
+/// ```
+pub fn staged_source_table(index: usize) -> String {
+    format!(
+        "{}staged_{}_{}{}",
+        GGSQL_PREFIX,
+        index,
+        session_id(),
+        GGSQL_SUFFIX
+    )
+}
+
 /// Generate table name for a builtin dataset.
 ///
 /// Used when rewriting `ggsql:penguins` to the internal table name.
@@ -327,6 +348,20 @@ pub fn quote_literal(s: &str) -> String {
 // ============================================================================
 // Detection Functions
 // ============================================================================
+
+/// Check if a name refers to an internal ggsql table (CTE temp, staged source,
+/// global, builtin dataset, cache result, …).
+///
+/// # Example
+/// ```
+/// use ggsql::naming;
+/// assert!(naming::is_internal_table("__ggsql_cte_sales_abc__"));
+/// assert!(naming::is_internal_table("__ggsql_staged_0_abc__"));
+/// assert!(!naming::is_internal_table("sales"));
+/// ```
+pub fn is_internal_table(name: &str) -> bool {
+    name.starts_with(GGSQL_PREFIX)
+}
 
 /// Check if a column name is a synthetic constant column.
 ///

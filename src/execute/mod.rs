@@ -1152,7 +1152,8 @@ pub fn prepare_data_with_reader(query: &str, reader: &dyn Reader) -> Result<Prep
     // The global result is stored as a temp table so filtered layers can query it efficiently.
     let mut has_global_table = false;
     if sql_part.is_some() {
-        let (side_effects, query) = cte::transform_global_sql(&source_tree, &materialized_ctes);
+        let (side_effects, query) =
+            cte::transform_global_sql(&source_tree, &materialized_ctes, reader)?;
 
         for stmt in &side_effects {
             reader.execute_sql(stmt)?;
