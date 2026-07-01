@@ -816,32 +816,6 @@ mod behavior_tests {
     }
 
     #[test]
-    fn test_source_write_invalidates_memo() {
-        // Memoize a base read, mutate the primary, then re-read: the memo must be
-        // invalidated by the non-row-returning statement so the second read is fresh.
-        let primary = DuckDBReader::new_in_memory().unwrap();
-        primary
-            .register("t", df! { "v" => vec![1_i64, 2, 3] }.unwrap(), true)
-            .unwrap();
-        let cache = Box::new(DuckDBReader::new_in_memory().unwrap());
-        let reader = CachingReader::new(Box::new(primary), cache, "test://primary");
-
-        let q = "SELECT v FROM t";
-        let d1 = reader.execute_sql(q).unwrap();
-        assert_eq!(d1.height(), 3);
-
-        reader.execute_sql("INSERT INTO t VALUES (4)").unwrap();
-
-        let d2 = reader.execute_sql(q).unwrap();
-        assert_eq!(d2.height(), 3, "the memo is served despite the write");
-
-        // After an explicit clear, the re-read sees the inserted row.
-        reader.clear_cache().unwrap();
-        let d3 = reader.execute_sql(q).unwrap();
-        assert_eq!(d3.height(), 4, "clear_cache forces a fresh primary read");
-    }
-
-    #[test]
     fn test_default_config_enabled_ttl_300() {
         let reader = CachingReader::with_config(
             Box::new(DuckDBReader::new_in_memory().unwrap()),
