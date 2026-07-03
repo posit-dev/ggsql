@@ -156,6 +156,19 @@ impl ScaleDataContext {
         }
     }
 
+    /// Create from an explicit numeric range.
+    pub fn from_range(min: f64, max: f64) -> Self {
+        Self {
+            range: Some(InputRange::Continuous(vec![
+                ArrayElement::Number(min),
+                ArrayElement::Number(max),
+            ])),
+            dtype: Some(DataType::Float64),
+            is_discrete: false,
+            default_expand: None,
+        }
+    }
+
     /// Get the continuous range as [min, max] if available.
     pub fn continuous_range(&self) -> Option<&[ArrayElement]> {
         match &self.range {

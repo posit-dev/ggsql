@@ -612,6 +612,8 @@ fn apply_transform_to_scale(
         TransformKind::String | TransformKind::Bool => {}
         // Integer transform: casting happens at SQL level
         TransformKind::Integer => {}
+        // Geographic transform: degree-aligned breaks, no VL equivalent
+        TransformKind::Geographic => {}
     }
 }
 

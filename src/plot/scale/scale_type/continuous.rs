@@ -74,6 +74,7 @@ impl ScaleTypeTrait for Continuous {
             TransformKind::Date,
             TransformKind::DateTime,
             TransformKind::Time,
+            TransformKind::Geographic,
         ]
     }
 

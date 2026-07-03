@@ -43,6 +43,7 @@ mod bool;
 mod date;
 mod datetime;
 mod exp;
+mod geographic;
 mod identity;
 mod integer;
 mod log;
@@ -57,6 +58,7 @@ pub use self::bool::Bool;
 pub use self::date::Date;
 pub use self::datetime::DateTime;
 pub use self::exp::Exp;
+pub use self::geographic::Geographic;
 pub use self::identity::Identity;
 pub use self::integer::Integer;
 pub use self::log::Log;
@@ -104,6 +106,8 @@ pub enum TransformKind {
     Bool,
     /// Integer transform (linear with integer casting)
     Integer,
+    /// Geographic transform (for map position scales — degree-aligned breaks)
+    Geographic,
 }
 
 impl TransformKind {
@@ -136,6 +140,7 @@ impl std::fmt::Display for TransformKind {
             TransformKind::String => "string",
             TransformKind::Bool => "bool",
             TransformKind::Integer => "integer",
+            TransformKind::Geographic => "geographic",
         };
         write!(f, "{}", name)
     }
@@ -336,6 +341,11 @@ impl Transform {
         Self(Arc::new(Integer))
     }
 
+    /// Create a Geographic transform (degree-aligned breaks for map projections)
+    pub fn geographic() -> Self {
+        Self(Arc::new(Geographic))
+    }
+
     /// Create a Transform from a string name
     ///
     /// Returns None if the name is not recognized.
@@ -371,6 +381,7 @@ impl Transform {
             "string" | "str" | "varchar" => Some(Self::string()),
             "bool" | "boolean" => Some(Self::bool()),
             "integer" | "int" | "bigint" => Some(Self::integer()),
+            "geographic" | "geo" => Some(Self::geographic()),
             _ => None,
         }
     }
@@ -395,6 +406,7 @@ impl Transform {
             TransformKind::String => Self::string(),
             TransformKind::Bool => Self::bool(),
             TransformKind::Integer => Self::integer(),
+            TransformKind::Geographic => Self::geographic(),
         }
     }
 
@@ -602,6 +614,8 @@ pub const ALL_TRANSFORM_NAMES: &[&str] = &[
     "integer",
     "int",    // alias for integer
     "bigint", // alias for integer
+    "geographic",
+    "geo", // alias for geographic
 ];
 
 #[cfg(test)]
