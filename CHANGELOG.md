@@ -9,6 +9,8 @@
 ## 0.4.0 - 2026-06-22
 
 ### Added
+
+- New `HybridReader` that composes any primary `Reader` with an in-process `DuckDBReader` for staging. `register()` writes to staging; `execute_sql` routes queries that reference registered names to staging and everything else to the primary. Available behind the existing `duckdb` feature.
 - New `AdbcReader<D: Driver>` for connecting to data sources via
   [ADBC](https://arrow.apache.org/adbc/) (Arrow Database Connectivity), behind
   a new off-by-default `adbc` feature flag. Generic over any concrete
