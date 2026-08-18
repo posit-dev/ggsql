@@ -15,65 +15,121 @@ import type { JupyterKernelSpec, PositronSupervisorApi } from './types';
 import { log } from './extension';
 
 /** Where a kernel candidate was discovered */
-type KernelSource = 'Setting' | 'Jupyter' | 'System' | 'Path';
+type KernelSource = 'Bundled' | 'Setting' | 'Jupyter' | 'System' | 'Path';
+
+/**
+ * How to pick a kernel, from the `ggsql.kernelStrategy` setting.
+ *
+ * - `bundled`: the kernel shipped inside the extension.
+ * - `environment`: a kernel installed on the machine, falling back to the
+ *   bundled one.
+ * - `path`: the binary named by `ggsql.kernelPath`.
+ */
+export type KernelStrategy = 'bundled' | 'environment' | 'path';
+
+const KERNEL_STRATEGIES: readonly string[] = ['bundled', 'environment', 'path'];
 
 /**
  * A discovered ggsql-jupyter kernel candidate
  */
-interface KernelCandidate {
-    /** Absolute path to the ggsql-jupyter binary (or bare name for PATH fallback) */
+export interface KernelCandidate {
+    /** Path to the ggsql-jupyter binary */
     kernelPath: string;
     /** Human-readable label for where this was found */
     source: KernelSource;
 }
 
+/** Platform-specific file name of the kernel executable */
+function kernelBinaryName(): string {
+    return process.platform === 'win32' ? 'ggsql-jupyter.exe' : 'ggsql-jupyter';
+}
+
 /**
- * Try to resolve a binary name to its absolute path via the system PATH.
- * Returns the original value if resolution fails or the path is already absolute.
+ * Look a binary up on the system PATH.
+ *
+ * Returns undefined when it is not there. Callers must not fall back to the
+ * bare name: a bare name satisfies every existence check further down and so
+ * registers a runtime that cannot start.
  */
-function resolveToAbsolutePath(binaryPath: string): string {
-    if (path.isAbsolute(binaryPath)) {
-        return binaryPath;
-    }
+function findOnPath(binaryName: string): string | undefined {
     try {
         const cmd = process.platform === 'win32' ? 'where' : 'which';
-        const resolved = cp.execFileSync(cmd, [binaryPath], {
+        const resolved = cp.execFileSync(cmd, [binaryName], {
             encoding: 'utf8',
             timeout: 5000,
         }).trim().split(/\r?\n/)[0];
         if (resolved && path.isAbsolute(resolved)) {
-            log(`Resolved '${binaryPath}' to '${resolved}'`);
+            log(`Resolved '${binaryName}' to '${resolved}'`);
             return resolved;
         }
     } catch {
-        log(`Could not resolve '${binaryPath}' to absolute path, using as-is`);
+        // which/where exit non-zero when the name is not on PATH
     }
-    return binaryPath;
+    log(`'${binaryName}' is not on PATH`);
+    return undefined;
 }
 
 /**
- * Discover all available ggsql-jupyter kernel binaries
+ * Absolutise `ggsql.kernelPath`.
  *
- * Checks in priority order:
- * 1. Configured path in settings
- * 2. Jupyter kernelspec locations (user and system)
- * 3. Cargo-packager install locations
- * 4. Fall back to PATH
- *
- * Returns deduplicated candidates, keeping the highest-priority occurrence.
+ * A bare name is looked up on PATH; if that fails the configured value is kept
+ * as-is, so that discovery rejects it as inaccessible and logs it back to the
+ * user rather than silently ignoring the setting.
  */
-function discoverKernelPaths(): KernelCandidate[] {
-    const candidates: KernelCandidate[] = [];
-    const binaryName = process.platform === 'win32' ? 'ggsql-jupyter.exe' : 'ggsql-jupyter';
-
-    // 1. User-configured setting (highest priority)
-    const config = vscode.workspace.getConfiguration('ggsql');
-    const configuredPath = config.get<string>('kernelPath', '');
-    if (configuredPath && configuredPath.trim() !== '') {
-        candidates.push({ kernelPath: configuredPath, source: 'Setting' });
+export function resolveConfiguredPath(configuredPath: string): string {
+    if (path.isAbsolute(configuredPath)) {
+        return configuredPath;
     }
+    return findOnPath(configuredPath) ?? configuredPath;
+}
 
-    // 2. Jupyter kernelspec locations
+/**
+ * Restore the executable bit on the bundled kernel if it is missing.
+ *
+ * `vsce` preserves the bit through package and install, so this should never
+ * fire; it is insurance against an unpack that drops it, which would otherwise
+ * present as the bundled kernel silently not being discovered.
+ */
+function ensureExecutable(binaryPath: string): void {
+    if (process.platform === 'win32') {
+        return;
+    }
+    try {
+        fs.accessSync(binaryPath, fs.constants.X_OK);
+        return;
+    } catch {
+        // Fall through and try to fix it
+    }
+    try {
+        fs.chmodSync(binaryPath, fs.statSync(binaryPath).mode | 0o111);
+        log(`Restored the executable bit on ${binaryPath}`);
+    } catch (err) {
+        log(`Could not make ${binaryPath} executable: ${err}`);
+    }
+}
+
+/**
+ * Path to the kernel shipped inside the extension, or undefined for a build
+ * that carries none (the platform-neutral VSIX).
+ */
+function bundledKernelPath(context: vscode.ExtensionContext): string | undefined {
+    const bundled = path.join(context.extensionPath, 'bundled', 'bin', kernelBinaryName());
+    if (!fs.existsSync(bundled)) {
+        return undefined;
+    }
+    ensureExecutable(bundled);
+    return bundled;
+}
+
+/**
+ * Find kernels installed on the machine: Jupyter kernelspec locations, then the
+ * install locations of the native packages, then PATH.
+ */
+function discoverHostKernels(): KernelCandidate[] {
+    const candidates: KernelCandidate[] = [];
+    const binaryName = kernelBinaryName();
+
+    // Jupyter kernelspec locations
     const homeDir = process.env.HOME || process.env.USERPROFILE || '';
     const kernelspecPaths = [
         // User kernelspec (macOS)
@@ -96,7 +152,7 @@ function discoverKernelPaths(): KernelCandidate[] {
         }
     }
 
-    // 3. Cargo-packager install locations
+    // Cargo-packager install locations
     const packagerPaths: string[] = [];
     if (process.platform === 'darwin') {
         // PKG installer (current)
@@ -120,18 +176,80 @@ function discoverKernelPaths(): KernelCandidate[] {
         }
     }
 
-    // 4. PATH fallback (last resort)
-    candidates.push({ kernelPath: resolveToAbsolutePath(binaryName), source: 'Path' });
+    // PATH, last of the host locations
+    const onPath = findOnPath(binaryName);
+    if (onPath) {
+        candidates.push({ kernelPath: onPath, source: 'Path' });
+    }
 
-    // Deduplicate by resolved absolute path
+    return candidates;
+}
+
+/**
+ * Resolve `ggsql.kernelStrategy`.
+ *
+ * Migration for users who configured `ggsql.kernelPath` before the strategy
+ * setting existed: a non-empty path with no explicitly set strategy still
+ * means "use that path", so their setting keeps working untouched.
+ */
+export function resolveKernelStrategy(config: vscode.WorkspaceConfiguration): KernelStrategy {
+    const inspected = config.inspect<string>('kernelStrategy');
+    const explicit = inspected?.workspaceFolderValue
+        ?? inspected?.workspaceValue
+        ?? inspected?.globalValue;
+
+    if (explicit !== undefined) {
+        if (KERNEL_STRATEGIES.includes(explicit)) {
+            return explicit as KernelStrategy;
+        }
+        log(`Ignoring unknown ggsql.kernelStrategy '${explicit}'`);
+    } else if (config.get<string>('kernelPath', '').trim() !== '') {
+        return 'path';
+    }
+
+    return 'bundled';
+}
+
+/**
+ * Apply a strategy to the places a kernel can come from.
+ *
+ * `hostKernels` is a callback so that the common case — the bundled kernel with
+ * the default strategy — does not pay for a PATH lookup it will not use.
+ */
+export function selectKernelCandidates(
+    strategy: KernelStrategy,
+    bundledPath: string | undefined,
+    configuredPath: string | undefined,
+    hostKernels: () => KernelCandidate[],
+): KernelCandidate[] {
+    const bundled: KernelCandidate[] = bundledPath
+        ? [{ kernelPath: bundledPath, source: 'Bundled' }]
+        : [];
+
+    if (strategy === 'path') {
+        if (configuredPath) {
+            return [{ kernelPath: configuredPath, source: 'Setting' }];
+        }
+        // Nothing to point at. Treat it as the default rather than registering
+        // no runtime at all.
+        log('ggsql.kernelStrategy is "path" but ggsql.kernelPath is empty; using the bundled kernel');
+    } else if (strategy === 'environment') {
+        return [...hostKernels(), ...bundled];
+    }
+
+    // A build that carries no kernel still looks for a host install, or it
+    // would offer nothing at all.
+    return bundled.length > 0 ? bundled : hostKernels();
+}
+
+/**
+ * Drop candidates that name a file an earlier candidate already named, keeping
+ * the highest-priority occurrence.
+ */
+function dedupeCandidates(candidates: KernelCandidate[]): KernelCandidate[] {
     const seen = new Set<string>();
     const deduped: KernelCandidate[] = [];
     for (const candidate of candidates) {
-        if (!path.isAbsolute(candidate.kernelPath)) {
-            // Non-absolute paths (PATH fallback) can't be deduplicated
-            deduped.push(candidate);
-            continue;
-        }
         let resolved: string;
         try {
             resolved = fs.realpathSync(candidate.kernelPath);
@@ -145,32 +263,72 @@ function discoverKernelPaths(): KernelCandidate[] {
             log(`Skipping duplicate kernel path: ${candidate.kernelPath} (resolves to ${resolved})`);
         }
     }
-
     return deduped;
 }
 
 /**
- * Check if a kernel executable exists and is accessible
+ * Discover the ggsql-jupyter kernels this window should offer, in priority
+ * order.
  */
-async function isKernelAccessible(kernelPath: string): Promise<boolean> {
-    if (path.isAbsolute(kernelPath)) {
-        try {
-            await fs.promises.access(kernelPath, fs.constants.X_OK);
-            return true;
-        } catch {
+export function discoverKernelPaths(context: vscode.ExtensionContext): KernelCandidate[] {
+    const config = vscode.workspace.getConfiguration('ggsql');
+    const strategy = resolveKernelStrategy(config);
+    log(`Kernel strategy: ${strategy}`);
+
+    const configuredPath = config.get<string>('kernelPath', '').trim();
+
+    return dedupeCandidates(selectKernelCandidates(
+        strategy,
+        bundledKernelPath(context),
+        configuredPath === '' ? undefined : resolveConfiguredPath(configuredPath),
+        discoverHostKernels,
+    ));
+}
+
+/**
+ * Check that a candidate is a file this process can execute.
+ *
+ * A path that is not absolute is rejected: discovery absolutises every source
+ * it can, so a bare name reaching here means the PATH lookup failed, and
+ * accepting it would register a runtime that fails at session start.
+ */
+export async function isKernelAccessible(kernelPath: string): Promise<boolean> {
+    if (!path.isAbsolute(kernelPath)) {
+        return false;
+    }
+    try {
+        const stats = await fs.promises.stat(kernelPath);
+        if (!stats.isFile()) {
             return false;
         }
+        await fs.promises.access(kernelPath, fs.constants.X_OK);
+        return true;
+    } catch {
+        return false;
     }
+}
 
-    // For non-absolute paths (relying on PATH), always return true
-    // and let the actual kernel startup fail with a proper error message
-    return true;
+/**
+ * Stable runtime identifier for a candidate.
+ *
+ * Hashing the path gives one identifier per installed kernel, which is what
+ * Positron needs to keep runtime affinity and restorable sessions across
+ * windows. The bundled kernel lives inside the versioned extension directory,
+ * so its path changes on every extension update: it gets a fixed identifier
+ * instead, or each update would look like a different runtime.
+ */
+function runtimeIdFor(candidate: KernelCandidate): string {
+    if (candidate.source === 'Bundled') {
+        return 'ggsql-bundled';
+    }
+    const pathHash = crypto.createHash('sha256').update(candidate.kernelPath).digest('hex').substring(0, 12);
+    return `ggsql-${pathHash}`;
 }
 
 /**
  * Generate runtime metadata for a ggsql kernel candidate
  */
-function generateMetadata(
+export function generateMetadata(
     context: vscode.ExtensionContext,
     candidate: KernelCandidate,
 ): positron.LanguageRuntimeMetadata {
@@ -179,11 +337,12 @@ function generateMetadata(
     const iconPath = path.join(context.extensionPath, 'resources', 'ggsql-icon.svg');
     const base64Icon = fs.readFileSync(iconPath).toString('base64');
 
-    const pathHash = crypto.createHash('sha256').update(candidate.kernelPath).digest('hex').substring(0, 12);
     return {
-        runtimeId: `ggsql-${pathHash}`,
+        runtimeId: runtimeIdFor(candidate),
         runtimePath: candidate.kernelPath,
-        runtimeName: `ggsql (${candidate.source})`,
+        // The bundled kernel is the default, so it is just "ggsql". Only a
+        // kernel the user went out of their way to use is worth qualifying.
+        runtimeName: candidate.source === 'Bundled' ? 'ggsql' : `ggsql (${candidate.source})`,
         runtimeShortName: 'ggsql',
         runtimeVersion: version,
         runtimeSource: 'ggsql',
@@ -341,6 +500,21 @@ export async function getSupervisorApi(): Promise<PositronSupervisorApi> {
 }
 
 /**
+ * Overrides for GgsqlRuntimeManager's environment.
+ */
+export interface RuntimeManagerOptions {
+    /**
+     * Directory the discovered kernel is advertised in, as a Jupyter kernel
+     * spec. Defaults to the user-level Jupyter kernels directory.
+     *
+     * Discovery writes that spec as a side effect, so tests point this at a
+     * temp directory: otherwise running discovery would repoint the real
+     * kernelspec — the one Quarto and Jupyter resolve — at a test fixture.
+     */
+    kernelSpecDir?: string;
+}
+
+/**
  * ggsql Language Runtime Manager
  *
  * Manages the lifecycle of ggsql runtime sessions in Positron.
@@ -350,17 +524,19 @@ export class GgsqlRuntimeManager implements positron.LanguageRuntimeManager {
      * Run discovery on every window open rather than trusting Positron's
      * cross-window cache.
      *
-     * ggsql runtimes are not marked cacheable: the ggsql.kernelPath setting is
-     * workspace scoped, and the PATH fallback is not guaranteed to resolve to
-     * a real file. A cache hit would therefore register only some of the
-     * candidates and silently hide the rest on warm starts.
+     * ggsql runtimes are not marked cacheable: ggsql.kernelStrategy and
+     * ggsql.kernelPath are workspace scoped, and the host kernels a machine
+     * offers change as packages come and go. A cache hit would therefore
+     * register a stale set of candidates on warm starts.
      */
     public readonly alwaysRediscover = true;
 
     private _context: vscode.ExtensionContext;
+    private _kernelSpecDir: string;
 
-    constructor(context: vscode.ExtensionContext) {
+    constructor(context: vscode.ExtensionContext, options: RuntimeManagerOptions = {}) {
         this._context = context;
+        this._kernelSpecDir = options.kernelSpecDir ?? getUserJupyterKernelDir();
     }
 
     /**
@@ -370,28 +546,31 @@ export class GgsqlRuntimeManager implements positron.LanguageRuntimeManager {
      */
     discoverAllRuntimes(): AsyncGenerator<positron.LanguageRuntimeMetadata> {
         const context = this._context;
+        const kernelSpecDir = this._kernelSpecDir;
 
         const generator = async function* discoverGgsqlRuntimes() {
             log('Discovering ggsql runtimes...');
 
-            const candidates = discoverKernelPaths();
+            const candidates = discoverKernelPaths(context);
             log(`Found ${candidates.length} kernel candidate(s)`);
 
             for (const candidate of candidates) {
                 const accessible = await isKernelAccessible(candidate.kernelPath);
                 if (accessible) {
-                    // When a system install is found, write the kernel spec to
-                    // the user kernelspec dir immediately so that Quarto/Jupyter
-                    // can discover ggsql even if no session is ever started.
-                    if (candidate.source === 'System') {
-                        writeKernelJson(getUserJupyterKernelDir(), candidate.kernelPath);
+                    // Write the kernel spec to the user kernelspec dir
+                    // immediately so that Quarto/Jupyter can discover ggsql
+                    // even if no session is ever started. The bundled kernel
+                    // additionally needs this on every extension update, or the
+                    // spec keeps pointing into the removed extension directory.
+                    if (candidate.source === 'System' || candidate.source === 'Bundled') {
+                        writeKernelJson(kernelSpecDir, candidate.kernelPath);
                     }
 
                     const metadata = generateMetadata(context, candidate);
                     log(`Yielding runtime: ${metadata.runtimeName} (${metadata.runtimeId}) at ${candidate.kernelPath}`);
                     yield metadata;
                 } else {
-                    log(`Skipping inaccessible kernel: ${candidate.kernelPath}`);
+                    log(`Skipping inaccessible kernel (${candidate.source}): ${candidate.kernelPath}`);
                 }
             }
 

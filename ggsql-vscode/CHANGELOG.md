@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+- The extension now ships the `ggsql-jupyter` kernel, so installing it is enough
+  to run queries in Positron. `ggsql.kernelStrategy` picks between the bundled
+  kernel (the default), a kernel installed on this machine, and a fixed path in
+  `ggsql.kernelPath`.
+- Fixed: no ggsql runtime is offered when no kernel can be found, rather than one
+  that fails at session start with `KS-19: Kernel path not found`.
+
 ## 0.3.2
 
 - Improved configuration options shown in Positron Connection pane for sqlite

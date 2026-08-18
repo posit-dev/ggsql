@@ -37,6 +37,16 @@
   transformation. This has no Vega-Lite equivalent and is ignored by that writer;
   the png writer draws them.
 
+- The VS Code / Positron extension now ships the `ggsql-jupyter` kernel, so
+  installing the extension is all that is needed to run queries — no separate
+  native install. The per-platform builds (`darwin-arm64`, `darwin-x64`,
+  `linux-arm64`, `linux-x64`, `win32-x64`) each carry the same signed kernel
+  binary the matching installer does, and a kernel-less universal build remains
+  for any other platform, where the installer is still required. A new
+  `ggsql.kernelStrategy` setting picks between the bundled kernel (the default),
+  a kernel installed on the machine, and a fixed path in `ggsql.kernelPath`;
+  configuring `ggsql.kernelPath` alone continues to mean that path is used.
+
 ### Changed
 - Dodging now only takes effect where groups actually meet on a position. A
   layer whose grouping gives every group a position of its own — `colour` mapped
@@ -64,6 +74,11 @@
   category ticks pulled toward the middle of the panel.
 
 ### Fixed
+- Positron no longer offers a ggsql runtime on a machine that has no kernel.
+  Discovery added `ggsql-jupyter` as a candidate whether or not it was on `PATH`,
+  and the accessibility check waved through any bare name, so starting the
+  console failed with `KS-19: Kernel path not found` instead of ggsql simply not
+  being listed.
 - A dodged violin or half-boxplot on a categorical `y` axis is no longer flipped
   in the Vega-Lite writer. Both took their band displacement from an encoding of
   their own that read a ggsql offset as pointing down the screen, so their groups

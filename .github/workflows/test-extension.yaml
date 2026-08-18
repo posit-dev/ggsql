@@ -8,14 +8,23 @@ on:
   workflow_dispatch:
 
 jobs:
-  # Runs the suite against stock VS Code. A sibling job will run the same
-  # extension against Positron, which covers the language runtime, connection
-  # drivers and cell execution that stock VS Code cannot reach.
+  # Runs the suite against stock VS Code, on all three platforms the extension
+  # ships a bundled kernel for. The platform matrix is not incidental: kernel
+  # discovery branches on the OS for the binary name, the PATH lookup
+  # (which/where), the executable-bit repair, and the install locations it
+  # searches.
   test-extension:
-    runs-on: ubuntu-latest
-    name: Test (VS Code)
+    runs-on: ${{ matrix.os }}
+    name: Test (VS Code, ${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
     defaults:
       run:
+        # bash on every runner, so the npm scripts and their globs behave
+        # identically rather than going through PowerShell on Windows.
+        shell: bash
         working-directory: ggsql-vscode
 
     steps:
@@ -32,13 +41,103 @@ jobs:
       - name: Install XVFB
         # The extension tests drive a real VS Code instance, which needs a
         # display. The grammar tests do not, but run under the same command.
+        if: runner.os == 'Linux'
         run: sudo apt-get -y update && sudo apt-get -y install xvfb
 
       - name: Install dependencies
         run: npm ci
 
       - name: Lint
+        # Nothing platform-specific to check, so once is enough.
+        if: runner.os == 'Linux'
         run: npm run lint
 
       - name: Run tests
+        if: runner.os == 'Linux'
         run: xvfb-run -a npm test
+
+      - name: Run tests
+        if: runner.os != 'Linux'
+        run: npm test
+
+      # Packaging invariants the release workflow depends on. That workflow only
+      # runs on a tag, so on its own a broken .vscodeignore would not surface
+      # until release time.
+      #
+      # This runs *after* the tests, deliberately: by now .vscode-test/ holds a
+      # downloaded VS Code, which is the state that catches an ignore rule
+      # letting a test cache into the package. A fresh checkout cannot.
+      - name: Package VSIX
+        if: runner.os == 'Linux'
+        run: npx --yes @vscode/vsce package --out ggsql-universal.vsix
+
+      - name: Check the VSIX contents
+        if: runner.os == 'Linux'
+        run: |
+          unzip -l ggsql-universal.vsix
+          # No kernel was staged, so this is the universal build.
+          for unwanted in 'extension/bundled/' '\.vscode-test' '\.positron-test' '\.d\.ts$'; do
+            if unzip -l ggsql-universal.vsix | grep -q "$unwanted"; then
+              echo "::error::$unwanted must not be in the VSIX"
+              exit 1
+            fi
+          done
+          for required in extension/out/extension.js extension/syntaxes/ggsql.tmLanguage.json extension/resources/ggsql-icon.svg; do
+            if ! unzip -l ggsql-universal.vsix | grep -q "$required"; then
+              echo "::error::$required is missing from the VSIX"
+              exit 1
+            fi
+          done
+
+  # The one check that proves the bundled binary actually starts. The unit
+  # suites cover precedence and metadata, and the release workflow proves the
+  # binary is inside the VSIX; only this launches it, which is the failure the
+  # bundling work is about.
+  test-integration:
+    runs-on: ubuntu-latest
+    name: Integration (Positron + bundled kernel)
+    defaults:
+      run:
+        working-directory: ggsql-vscode
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: ggsql-vscode/package-lock.json
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.86.0
+
+      - name: Cache cargo build
+        # The kernel links DuckDB statically, so an uncached release build is
+        # the expensive part of this job by a wide margin.
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install tree-sitter-cli
+        run: npm install -g tree-sitter-cli
+
+      - name: Install XVFB
+        run: sudo apt-get -y update && sudo apt-get -y install xvfb
+
+      - name: Build the kernel
+        working-directory: .
+        run: cargo build --release --bin ggsql-jupyter
+
+      - name: Stage the kernel where the VSIX would carry it
+        working-directory: .
+        run: |
+          mkdir -p ggsql-vscode/bundled/bin
+          cp target/release/ggsql-jupyter ggsql-vscode/bundled/bin/
+          chmod +x ggsql-vscode/bundled/bin/ggsql-jupyter
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run integration tests
+        run: xvfb-run -a npm run test:integration

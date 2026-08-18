@@ -52,6 +52,16 @@ jobs:
           SM_CLIENT_CERT_PASSWORD: ${{ secrets.SM_CLIENT_CERT_PASSWORD }}
           SM_CLIENT_CERT_FINGERPRINT: ${{ secrets.SM_CLIENT_CERT_FINGERPRINT }}
 
+      - name: Upload ggsql-jupyter kernel (win32-x64)
+        # Consumed by the build-vsix job, which bundles it into the per-platform
+        # VSIX. Uploaded after signing and before installer packaging, so the
+        # extension ships the same binary the installers do.
+        uses: actions/upload-artifact@v4
+        with:
+          name: ggsql-jupyter-win32-x64
+          path: target/release/ggsql-jupyter.exe
+          retention-days: 30
+
       - name: Build NSIS installer
         run: cargo packager --release --formats nsis
 
@@ -152,6 +162,18 @@ jobs:
           codesign --force --options runtime --timestamp \
             --entitlements entitlements.plist \
             --sign "$SIGN_ID" target/release/ggsql-jupyter
+
+      - name: Upload ggsql-jupyter kernel (darwin-x64)
+        # Consumed by the build-vsix job, which bundles it into the per-platform
+        # VSIX. Uploaded after signing and before installer packaging, so the
+        # extension ships the same signed binary the installers do. The Mach-O
+        # signature is embedded in the file, so it survives the artifact zip;
+        # the executable bit does not, and build-vsix restores it.
+        uses: actions/upload-artifact@v4
+        with:
+          name: ggsql-jupyter-darwin-x64
+          path: target/release/ggsql-jupyter
+          retention-days: 30
 
       - name: Build and notarize PKG installer (x86_64)
         # NOTE: --sign uses the Developer ID *Installer* cert (signs .pkg only),
@@ -260,6 +282,14 @@ jobs:
             --entitlements entitlements.plist \
             --sign "$SIGN_ID" target/release/ggsql-jupyter
 
+      - name: Upload ggsql-jupyter kernel (darwin-arm64)
+        # See the darwin-x64 job for why this sits between signing and packaging.
+        uses: actions/upload-artifact@v4
+        with:
+          name: ggsql-jupyter-darwin-arm64
+          path: target/release/ggsql-jupyter
+          retention-days: 30
+
       - name: Build and notarize PKG installer (aarch64)
         # NOTE: --sign uses the Developer ID *Installer* cert (signs .pkg only),
         # distinct from the Developer ID Application cert used to sign Mach-O above.
@@ -337,6 +367,15 @@ jobs:
       - name: Build ggsql binary (x86_64)
         run: cargo build --release --bin ggsql --bin ggsql-jupyter
 
+      - name: Upload ggsql-jupyter kernel (linux-x64)
+        # Consumed by the build-vsix job, which bundles it into the per-platform
+        # VSIX and restores the executable bit the artifact zip drops.
+        uses: actions/upload-artifact@v4
+        with:
+          name: ggsql-jupyter-linux-x64
+          path: target/release/ggsql-jupyter
+          retention-days: 30
+
       - name: Build Debian package (x86_64)
         run: cargo packager --release --formats deb
 
@@ -383,6 +422,14 @@ jobs:
 
       - name: Build ggsql binary (aarch64)
         run: cargo build --release --bin ggsql --bin ggsql-jupyter
+
+      - name: Upload ggsql-jupyter kernel (linux-arm64)
+        # See the linux-x64 job.
+        uses: actions/upload-artifact@v4
+        with:
+          name: ggsql-jupyter-linux-arm64
+          path: target/release/ggsql-jupyter
+          retention-days: 30
 
       - name: Build Debian package (aarch64)
         run: cargo packager --release --formats deb
@@ -545,6 +592,150 @@ jobs:
       - name: Publish to npm
         run: npm publish ./npm-tarball/*.tgz --access=public --provenance --tag ${{ steps.dist-tag.outputs.tag }}
 
+  build-vsix:
+    name: Build VSIX (${{ matrix.target }})
+    # This lives here rather than in its own workflow because the kernel
+    # binaries are artifacts scoped to a single workflow run: a separate
+    # workflow triggered by the same tag could not download them. Building the
+    # VSIX in the same run also means the bundled kernel and the extension can
+    # never come from different commits.
+    needs: [build-windows, build-macos-x86_64, build-macos-aarch64, build-linux-x86_64, build-linux-aarch64]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        # win32-arm64 is deliberately absent: no runner builds that kernel yet.
+        # "universal" carries no kernel and is what users on any other platform
+        # install, alongside the kernel from a native installer.
+        target:
+          - darwin-arm64
+          - darwin-x64
+          - linux-arm64
+          - linux-x64
+          - win32-x64
+          - universal
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: ggsql-vscode/package-lock.json
+
+      - name: Install vsce
+        run: npm install -g @vscode/vsce
+
+      - name: Install dependencies
+        working-directory: ggsql-vscode
+        run: npm ci
+
+      - name: Download ggsql-jupyter kernel (${{ matrix.target }})
+        if: matrix.target != 'universal'
+        uses: actions/download-artifact@v4
+        with:
+          name: ggsql-jupyter-${{ matrix.target }}
+          path: ggsql-vscode/bundled/bin
+
+      - name: Make the kernel executable
+        # Artifact upload and download do not preserve the executable bit. The
+        # extension repairs it at runtime too, but it has to be right inside the
+        # VSIX for a fresh install to start a session.
+        if: matrix.target != 'universal'
+        run: |
+          chmod +x ggsql-vscode/bundled/bin/*
+          ls -l ggsql-vscode/bundled/bin
+
+      - name: Package VSIX
+        id: package
+        working-directory: ggsql-vscode
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          VERSION="$(node -p 'require("./package.json").version')"
+          VSIX="ggsql-${VERSION}-${TARGET}.vsix"
+          if [ "$TARGET" = universal ]; then
+            vsce package --out "$VSIX"
+          else
+            # --target writes TargetPlatform into the vsixmanifest, which is what
+            # Open VSX records and what Positron's bootstrap asks for by name.
+            vsce package --target "$TARGET" --out "$VSIX"
+          fi
+          echo "vsix=$VSIX" >> "$GITHUB_OUTPUT"
+
+      - name: Check the VSIX contents
+        working-directory: ggsql-vscode
+        env:
+          TARGET: ${{ matrix.target }}
+          VSIX: ${{ steps.package.outputs.vsix }}
+        run: |
+          unzip -l "$VSIX"
+          unzip -p "$VSIX" extension.vsixmanifest \
+            | grep -o 'TargetPlatform="[^"]*"' || echo 'no TargetPlatform: universal'
+          if [ "$TARGET" = universal ]; then
+            if unzip -l "$VSIX" | grep -q 'extension/bundled/'; then
+              echo "::error::the universal VSIX must not carry a kernel"
+              exit 1
+            fi
+          elif ! unzip -l "$VSIX" | grep -q 'extension/bundled/bin/ggsql-jupyter'; then
+            echo "::error::the $TARGET VSIX is missing its bundled kernel"
+            exit 1
+          fi
+
+      - name: Upload VSIX
+        uses: actions/upload-artifact@v4
+        with:
+          name: ggsql-vsix-${{ matrix.target }}
+          path: ggsql-vscode/${{ steps.package.outputs.vsix }}
+          retention-days: 30
+
+  publish-openvsx:
+    name: Publish VSIX (${{ matrix.target }})
+    # Separate from build-vsix so that a registry failure neither blocks the
+    # GitHub release nor forces the VSIXes to be rebuilt on a retry.
+    needs: [build-vsix]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - darwin-arm64
+          - darwin-x64
+          - linux-arm64
+          - linux-x64
+          - win32-x64
+          - universal
+
+    steps:
+      - name: Download VSIX
+        uses: actions/download-artifact@v4
+        with:
+          name: ggsql-vsix-${{ matrix.target }}
+          path: vsix
+
+      - name: Locate the VSIX
+        id: vsix
+        run: echo "path=$(ls vsix/*.vsix)" >> "$GITHUB_OUTPUT"
+
+      - name: Publish to Open VSX Registry
+        # The packaged file is published rather than a target being passed here:
+        # Open VSX reads the platform from TargetPlatform in the vsixmanifest
+        # that `vsce package --target` wrote, and ovsx discards a target option
+        # when it is handed an already-packaged vsix.
+        uses: HaaLeo/publish-vscode-extension@v2
+        with:
+          pat: ${{ secrets.OPEN_VSX_TOKEN }}
+          skipDuplicate: true
+          extensionFile: ${{ steps.vsix.outputs.path }}
+
   create-release:
     name: Create GitHub Release
     needs: [build-windows, build-macos-x86_64, build-macos-aarch64, build-linux-x86_64, build-linux-aarch64, build-cargo, build-wasm]
@@ -565,11 +756,17 @@ jobs:
       - name: Create release and upload installers
         uses: softprops/action-gh-release@v2
         with:
+          # Scoped to one artifact directory each, rather than matching an
+          # extension anywhere under artifacts/. Release assets are the only
+          # anonymously downloadable output of this workflow, so what lands there
+          # is named explicitly: an `artifacts/**/*.exe` glob would also sweep up
+          # the raw ggsql-jupyter.exe that build-vsix consumes, publishing one
+          # platform's bare kernel next to the installers.
           files: |
-            artifacts/**/*.exe
-            artifacts/**/*.msi
-            artifacts/**/*.pkg
-            artifacts/**/*.deb
-            artifacts/**/*.tgz
+            artifacts/ggsql-windows-nsis/*.exe
+            artifacts/ggsql-windows-msi/*.msi
+            artifacts/ggsql-macos-pkg-*/*.pkg
+            artifacts/ggsql-linux-deb-*/*.deb
+            artifacts/ggsql-wasm-npm/*.tgz
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
