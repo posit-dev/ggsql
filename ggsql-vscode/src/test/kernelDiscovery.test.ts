@@ -9,10 +9,12 @@ import {
 	discoverKernelPaths,
 	generateMetadata,
 	isKernelAccessible,
+	probeKernel,
 	resolveConfiguredPath,
 	resolveKernelStrategy,
 	selectKernelCandidates,
 	type KernelCandidate,
+	type KernelProbe,
 } from '../manager';
 
 const EXTENSION_ID = 'ggsql.ggsql';
@@ -198,48 +200,69 @@ suite('kernel strategy', () => {
 suite('kernel candidate selection', () => {
 	const bundled = '/ext/ggsql.ggsql-0.5.0-darwin-arm64/bundled/bin/ggsql-jupyter';
 
-	test('bundled uses only the bundled kernel', () => {
-		const candidates = selectKernelCandidates('bundled', bundled, undefined, hostKernels);
-		assert.deepStrictEqual(candidates, [{ kernelPath: bundled, source: 'Bundled' }]);
+	test('bundled offers only the bundled kernel, with host kernels behind it', () => {
+		const selection = selectKernelCandidates('bundled', bundled, undefined, hostKernels);
+		assert.deepStrictEqual(selection.candidates, [{ kernelPath: bundled, source: 'Bundled' }]);
+		// Reachable only when the bundled kernel turns out not to run.
+		assert.deepStrictEqual(selection.fallback(), HOST);
+	});
+
+	test('the host lookup is not performed while choosing the bundled kernel', () => {
+		// The PATH lookup shells out to which/where. The default strategy is the
+		// common case and must not pay for it.
+		let calls = 0;
+		const counted = () => {
+			calls++;
+			return HOST;
+		};
+		selectKernelCandidates('bundled', bundled, undefined, counted);
+		assert.strictEqual(calls, 0);
 	});
 
 	test('bundled falls back to host kernels when the build carries none', () => {
-		// The platform-neutral VSIX ships no kernel and must keep working the
-		// way it does today.
-		const candidates = selectKernelCandidates('bundled', undefined, undefined, hostKernels);
-		assert.deepStrictEqual(candidates, HOST);
+		// The platform-neutral VSIX, and the win32-arm64 build, ship no kernel
+		// and must keep working through a host install.
+		const selection = selectKernelCandidates('bundled', undefined, undefined, hostKernels);
+		assert.deepStrictEqual(selection.candidates, HOST);
+		assert.deepStrictEqual(selection.fallback(), []);
 	});
 
 	test('no bundle and no host kernel yields no candidates', () => {
-		// Regression test for the phantom runtime: discovery used to append the
-		// bare binary name unconditionally, so Positron registered a ggsql
-		// runtime that failed at session start with KS-19.
-		const candidates = selectKernelCandidates('bundled', undefined, undefined, noHostKernels);
-		assert.deepStrictEqual(candidates, []);
+		// Regression test for the phantom runtime: a ggsql runtime registered
+		// against a kernel that is not there fails at session start with KS-19.
+		const selection = selectKernelCandidates('bundled', undefined, undefined, noHostKernels);
+		assert.deepStrictEqual(selection.candidates, []);
+		assert.deepStrictEqual(selection.fallback(), []);
 	});
 
 	test('environment puts host kernels ahead of the bundled one', () => {
-		const candidates = selectKernelCandidates('environment', bundled, undefined, hostKernels);
-		assert.deepStrictEqual(candidates, [...HOST, { kernelPath: bundled, source: 'Bundled' }]);
+		const selection = selectKernelCandidates('environment', bundled, undefined, hostKernels);
+		// One tier: the bundled kernel already stands behind the host ones.
+		assert.deepStrictEqual(selection.candidates, [...HOST, { kernelPath: bundled, source: 'Bundled' }]);
+		assert.deepStrictEqual(selection.fallback(), []);
 	});
 
 	test('environment falls back to the bundled kernel', () => {
-		const candidates = selectKernelCandidates('environment', bundled, undefined, noHostKernels);
-		assert.deepStrictEqual(candidates, [{ kernelPath: bundled, source: 'Bundled' }]);
+		const selection = selectKernelCandidates('environment', bundled, undefined, noHostKernels);
+		assert.deepStrictEqual(selection.candidates, [{ kernelPath: bundled, source: 'Bundled' }]);
 	});
 
 	test('path uses the configured kernel alone', () => {
 		// Neither the bundled kernel nor a host install may quietly stand in for
-		// the one the user named.
-		const candidates = selectKernelCandidates('path', bundled, '/opt/ggsql/ggsql-jupyter', hostKernels);
-		assert.deepStrictEqual(candidates, [
+		// the one the user named, so there is no fallback tier either.
+		const selection = selectKernelCandidates('path', bundled, '/opt/ggsql/ggsql-jupyter', hostKernels);
+		assert.deepStrictEqual(selection.candidates, [
 			{ kernelPath: '/opt/ggsql/ggsql-jupyter', source: 'Setting' },
 		]);
+		assert.deepStrictEqual(selection.fallback(), []);
 	});
 
 	test('path with no configured kernel behaves as bundled', () => {
-		const candidates = selectKernelCandidates('path', bundled, undefined, hostKernels);
-		assert.deepStrictEqual(candidates, [{ kernelPath: bundled, source: 'Bundled' }]);
+		const selection = selectKernelCandidates('path', bundled, undefined, hostKernels);
+		assert.deepStrictEqual(selection.candidates, [{ kernelPath: bundled, source: 'Bundled' }]);
+		// Including the dead-end notice, which an empty setting must not suppress.
+		assert.strictEqual(selection.strategy, 'bundled');
+		assert.deepStrictEqual(selection.fallback(), HOST);
 	});
 });
 
@@ -280,7 +303,7 @@ suite('kernel strategy from real settings', () => {
 		// A bundled kernel is present and must lose to the setting.
 		const { extensionPath } = extensionDirWithBundle();
 		assert.deepStrictEqual(
-			discoverKernelPaths(contextFor(extensionPath)),
+			discoverKernelPaths(contextFor(extensionPath)).candidates,
 			[{ kernelPath: configured, source: 'Setting' }],
 		);
 	});
@@ -288,7 +311,7 @@ suite('kernel strategy from real settings', () => {
 	test('the environment strategy puts the bundled kernel last', async () => {
 		const { extensionPath, kernelPath } = extensionDirWithBundle();
 		await set('kernelStrategy', 'environment');
-		const candidates = discoverKernelPaths(contextFor(extensionPath));
+		const candidates = discoverKernelPaths(contextFor(extensionPath)).candidates;
 		// Whether this machine has host kernels is unknown, but the bundled one
 		// is the fallback either way, so it comes last.
 		assert.strictEqual(candidates.at(-1)?.source, 'Bundled');
@@ -344,7 +367,7 @@ suite('kernel accessibility', () => {
 suite('bundled kernel discovery', () => {
 	test('the bundled kernel is the only candidate under the default strategy', () => {
 		const { extensionPath, kernelPath } = extensionDirWithBundle();
-		const candidates = discoverKernelPaths(contextFor(extensionPath));
+		const candidates = discoverKernelPaths(contextFor(extensionPath)).candidates;
 		assert.deepStrictEqual(candidates, [{ kernelPath, source: 'Bundled' }]);
 	});
 
@@ -355,7 +378,7 @@ suite('bundled kernel discovery', () => {
 			this.skip();
 		}
 		const { extensionPath, kernelPath } = extensionDirWithBundle(0o644);
-		const candidates = discoverKernelPaths(contextFor(extensionPath));
+		const candidates = discoverKernelPaths(contextFor(extensionPath)).candidates;
 		assert.deepStrictEqual(candidates, [{ kernelPath, source: 'Bundled' }]);
 		assert.ok(fs.statSync(kernelPath).mode & 0o111, 'the executable bit was not restored');
 	});
@@ -378,7 +401,7 @@ suite('host kernel discovery', () => {
 			this.skip();
 		}
 		const kernel = writeStubKernel(path.join(home, '.local', 'share', 'jupyter', 'kernels', 'ggsql'));
-		const candidates = discoverKernelPaths(contextFor(tempDir()));
+		const candidates = discoverKernelPaths(contextFor(tempDir())).candidates;
 		assert.deepStrictEqual(candidates, [{ kernelPath: kernel, source: 'Jupyter' }]);
 		for (const candidate of candidates) {
 			assert.ok(path.isAbsolute(candidate.kernelPath), `${candidate.kernelPath} is not absolute`);
@@ -401,7 +424,7 @@ suite('host kernel discovery', () => {
 			fs.mkdirSync(dir, { recursive: true });
 			fs.symlinkSync(real, path.join(dir, binaryName));
 		}
-		const candidates = discoverKernelPaths(contextFor(tempDir()));
+		const candidates = discoverKernelPaths(contextFor(tempDir())).candidates;
 		assert.strictEqual(
 			candidates.length,
 			1,
@@ -412,11 +435,14 @@ suite('host kernel discovery', () => {
 	test('a bundled kernel outranks an installed one', () => {
 		const hostKernel = writeStubKernel(path.join(home, '.local', 'share', 'jupyter', 'kernels', 'ggsql'));
 		const { extensionPath, kernelPath } = extensionDirWithBundle();
+		const selection = discoverKernelPaths(contextFor(extensionPath));
+		assert.deepStrictEqual(selection.candidates, [{ kernelPath, source: 'Bundled' }]);
+		// The installed one is not gone, just behind: it is what the fallback
+		// tier reaches for when the bundled kernel cannot run.
 		assert.deepStrictEqual(
-			discoverKernelPaths(contextFor(extensionPath)),
-			[{ kernelPath, source: 'Bundled' }],
+			selection.fallback(),
+			[{ kernelPath: hostKernel, source: 'Jupyter' }],
 		);
-		assert.ok(fs.existsSync(hostKernel), 'the host kernel was never there to be outranked');
 	});
 });
 
@@ -431,17 +457,71 @@ suite('runtime registration', () => {
 		return collected;
 	}
 
-	function managerFor(extensionPath: string, kernelSpecDir: string): GgsqlRuntimeManager {
+	/** An in-memory stand-in for context.globalState, which the probe cache uses. */
+	function memoryState(): vscode.Memento {
+		const store = new Map<string, unknown>();
+		return {
+			keys: () => [...store.keys()],
+			get: (key: string, defaultValue?: unknown) =>
+				store.has(key) ? store.get(key) : defaultValue,
+			update: async (key: string, value: unknown) => {
+				store.set(key, value);
+			},
+		} as unknown as vscode.Memento;
+	}
+
+	/**
+	 * A manager over a stand-in extension directory.
+	 *
+	 * The probe defaults to passing: a stand-in kernel cannot be a real
+	 * executable on every platform, so running one for real is left to the
+	 * `kernel probe` suite and these tests inject the verdict instead.
+	 */
+	function managerFor(
+		extensionPath: string,
+		kernelSpecDir: string,
+		options: { probe?: KernelProbe; globalState?: vscode.Memento } = {},
+	): { manager: GgsqlRuntimeManager; globalState: vscode.Memento } {
+		const globalState = options.globalState ?? memoryState();
 		const context = {
 			extensionPath,
+			globalState,
 			extension: { packageJSON: { version: realExtension().packageJSON.version } },
 		} as unknown as vscode.ExtensionContext;
-		return new GgsqlRuntimeManager(context, { kernelSpecDir });
+		const manager = new GgsqlRuntimeManager(context, {
+			kernelSpecDir,
+			probe: options.probe ?? (async () => true),
+		});
+		return { manager, globalState };
 	}
+
+	/** The key reportNoUsableKernel stamps once it has warned for this version. */
+	const NOTICE_KEY = 'ggsql.noUsableKernelNotice';
+
+	// The dead-end notice is fire-and-forget, so it is captured rather than
+	// awaited. Stubbing it also keeps the suite from raising real notifications
+	// in the test window.
+	let warnings: string[] = [];
+	let realShowWarningMessage: typeof vscode.window.showWarningMessage;
+
+	setup(() => {
+		warnings = [];
+		realShowWarningMessage = vscode.window.showWarningMessage;
+		(vscode.window as unknown as Record<string, unknown>).showWarningMessage =
+			(message: string) => {
+				warnings.push(message);
+				return Promise.resolve(undefined);
+			};
+	});
+
+	teardown(() => {
+		(vscode.window as unknown as Record<string, unknown>).showWarningMessage =
+			realShowWarningMessage;
+	});
 
 	test('the bundled kernel is registered as a single runtime', async () => {
 		const { extensionPath, kernelPath } = extensionDirWithBundle();
-		const runtimes = await collect(managerFor(extensionPath, tempDir()).discoverAllRuntimes());
+		const runtimes = await collect(managerFor(extensionPath, tempDir()).manager.discoverAllRuntimes());
 		assert.strictEqual(runtimes.length, 1);
 		assert.strictEqual(runtimes[0].runtimeId, 'ggsql-bundled');
 		assert.strictEqual(runtimes[0].runtimePath, kernelPath);
@@ -454,7 +534,7 @@ suite('runtime registration', () => {
 		// pointing into a directory that no longer exists.
 		const { extensionPath, kernelPath } = extensionDirWithBundle();
 		const kernelSpecDir = tempDir();
-		await collect(managerFor(extensionPath, kernelSpecDir).discoverAllRuntimes());
+		await collect(managerFor(extensionPath, kernelSpecDir).manager.discoverAllRuntimes());
 		const spec = JSON.parse(fs.readFileSync(path.join(kernelSpecDir, 'kernel.json'), 'utf8'));
 		assert.strictEqual(spec.argv[0], kernelPath);
 		assert.strictEqual(spec.language, 'ggsql');
@@ -474,9 +554,151 @@ suite('runtime registration', () => {
 		fs.mkdirSync(path.join(extensionPath, 'bundled', 'bin', binaryName), { recursive: true });
 
 		const kernelSpecDir = tempDir();
-		const runtimes = await collect(managerFor(extensionPath, kernelSpecDir).discoverAllRuntimes());
+		const runtimes = await collect(managerFor(extensionPath, kernelSpecDir).manager.discoverAllRuntimes());
 		assert.deepStrictEqual(runtimes, []);
 		assert.strictEqual(fs.existsSync(path.join(kernelSpecDir, 'kernel.json')), false);
+	});
+
+	test('a bundled kernel that cannot run hands over to an installed one', async function () {
+		// The bundled kernel is built for the platform, not for every system on
+		// it: one built against newer shared libraries than the host provides
+		// execs and then dies under the dynamic linker. Nothing on the
+		// filesystem shows that, so the host install has to be reachable.
+		if (systemInstallPresent()) {
+			this.skip();
+		}
+		const home = tempDir();
+		isolateHostEnv(home);
+		try {
+			const hostKernel = writeStubKernel(
+				path.join(home, '.local', 'share', 'jupyter', 'kernels', 'ggsql'),
+			);
+			const { extensionPath, kernelPath } = extensionDirWithBundle();
+			const { manager } = managerFor(extensionPath, tempDir(), {
+				probe: async candidate => candidate !== kernelPath,
+			});
+
+			const runtimes = await collect(manager.discoverAllRuntimes());
+			assert.strictEqual(runtimes.length, 1);
+			assert.strictEqual(runtimes[0].runtimePath, hostKernel);
+			// Named for where it came from, which is how the handover is
+			// disclosed without interrupting the user.
+			assert.strictEqual(runtimes[0].runtimeName, 'ggsql (Jupyter)');
+			// A fallback that works is not worth interrupting anyone over.
+			assert.deepStrictEqual(warnings, []);
+		} finally {
+			restoreHostEnv();
+		}
+	});
+
+	test('a bundled kernel that cannot run is not advertised to Jupyter', async function () {
+		// The kernel spec outlives the window and is what Quarto resolves, so
+		// pointing it at a binary that does not run would break tools that
+		// never see this extension's fallback.
+		if (systemInstallPresent()) {
+			this.skip();
+		}
+		isolateHostEnv(tempDir());
+		try {
+			const { extensionPath } = extensionDirWithBundle();
+			const kernelSpecDir = tempDir();
+			const { manager } = managerFor(extensionPath, kernelSpecDir, {
+				probe: async () => false,
+			});
+
+			const runtimes = await collect(manager.discoverAllRuntimes());
+			assert.deepStrictEqual(runtimes, []);
+			assert.strictEqual(fs.existsSync(path.join(kernelSpecDir, 'kernel.json')), false);
+		} finally {
+			restoreHostEnv();
+		}
+	});
+
+	test('a bundled kernel that cannot run and no installed one warns once', async function () {
+		if (systemInstallPresent()) {
+			this.skip();
+		}
+		isolateHostEnv(tempDir());
+		try {
+			const { extensionPath } = extensionDirWithBundle();
+			const globalState = memoryState();
+
+			const first = managerFor(extensionPath, tempDir(), {
+				probe: async () => false,
+				globalState,
+			});
+			assert.deepStrictEqual(await collect(first.manager.discoverAllRuntimes()), []);
+			assert.strictEqual(warnings.length, 1);
+			assert.match(warnings[0], /cannot run on this system/);
+			assert.strictEqual(globalState.get(NOTICE_KEY), realExtension().packageJSON.version);
+
+			// Discovery runs on every window open; the notice must not repeat.
+			const second = managerFor(extensionPath, tempDir(), {
+				probe: async () => false,
+				globalState,
+			});
+			assert.deepStrictEqual(await collect(second.manager.discoverAllRuntimes()), []);
+			assert.strictEqual(warnings.length, 1, 'the dead-end notice was shown twice');
+		} finally {
+			restoreHostEnv();
+		}
+	});
+
+	test('a bundled kernel that runs is not re-probed on the next window', async () => {
+		const { extensionPath } = extensionDirWithBundle();
+		const globalState = memoryState();
+		let probes = 0;
+		const probe: KernelProbe = async () => {
+			probes++;
+			return true;
+		};
+
+		const first = managerFor(extensionPath, tempDir(), { probe, globalState });
+		assert.strictEqual((await collect(first.manager.discoverAllRuntimes())).length, 1);
+		assert.strictEqual(probes, 1);
+
+		const second = managerFor(extensionPath, tempDir(), { probe, globalState });
+		assert.strictEqual((await collect(second.manager.discoverAllRuntimes())).length, 1);
+		assert.strictEqual(probes, 1, 'the bundled kernel was probed again');
+	});
+
+	test('a bundled kernel that runs never reaches for an installed one', async () => {
+		// The fallback costs a PATH lookup that shells out. The default
+		// strategy is the common case and must not pay for it.
+		const home = tempDir();
+		isolateHostEnv(home);
+		try {
+			writeStubKernel(path.join(home, '.local', 'share', 'jupyter', 'kernels', 'ggsql'));
+			const { extensionPath, kernelPath } = extensionDirWithBundle();
+			const { manager } = managerFor(extensionPath, tempDir());
+
+			const runtimes = await collect(manager.discoverAllRuntimes());
+			assert.strictEqual(runtimes.length, 1);
+			assert.strictEqual(runtimes[0].runtimePath, kernelPath);
+			assert.strictEqual(runtimes[0].runtimeName, 'ggsql');
+		} finally {
+			restoreHostEnv();
+		}
+	});
+
+	test('a build with no kernel and nothing installed warns too', async function () {
+		// The win32-arm64 and platform-neutral VSIXes carry no kernel at all.
+		// That dead end is the same one, and gets the same notice.
+		if (systemInstallPresent()) {
+			this.skip();
+		}
+		isolateHostEnv(tempDir());
+		try {
+			const globalState = memoryState();
+			const { manager } = managerFor(tempDir(), tempDir(), { globalState });
+			assert.deepStrictEqual(await collect(manager.discoverAllRuntimes()), []);
+			assert.strictEqual(warnings.length, 1);
+			// Worded for a build that never carried a kernel, not a broken one.
+			assert.match(warnings[0], /does not include a kernel/);
+			assert.strictEqual(globalState.get(NOTICE_KEY), realExtension().packageJSON.version);
+		} finally {
+			restoreHostEnv();
+		}
 	});
 
 	test('a machine with no kernel at all registers nothing', async function () {
@@ -487,7 +709,7 @@ suite('runtime registration', () => {
 		// than what the precedence rule returns.
 		isolateHostEnv(tempDir());
 		try {
-			const runtimes = await collect(managerFor(tempDir(), tempDir()).discoverAllRuntimes());
+			const runtimes = await collect(managerFor(tempDir(), tempDir()).manager.discoverAllRuntimes());
 			assert.deepStrictEqual(runtimes, []);
 		} finally {
 			restoreHostEnv();
@@ -542,6 +764,45 @@ suite('runtime metadata', () => {
 		assert.strictEqual(setting.runtimeName, 'ggsql (Setting)');
 		assert.notStrictEqual(system.runtimeId, setting.runtimeId);
 		assert.notStrictEqual(system.runtimeId, 'ggsql-bundled');
+	});
+});
+
+suite('kernel probe', () => {
+	// The probe is what separates a kernel that is present from one that runs.
+	// The failure it exists for is a binary built against newer shared
+	// libraries than the host provides: exec succeeds, the dynamic linker then
+	// rejects it, and the process exits non-zero.
+
+	test('a binary that exits non-zero does not pass', async function () {
+		if (process.platform === 'win32') {
+			this.skip();
+		}
+		const dir = tempDir();
+		const kernelPath = path.join(dir, binaryName);
+		fs.writeFileSync(kernelPath, '#!/bin/sh\nexit 1\n');
+		fs.chmodSync(kernelPath, 0o755);
+		assert.strictEqual(await probeKernel(kernelPath), false);
+	});
+
+	test('a binary that exits zero passes', async function () {
+		if (process.platform === 'win32') {
+			this.skip();
+		}
+		assert.strictEqual(await probeKernel(writeStubKernel(tempDir())), true);
+	});
+
+	test('a file that is not executable at all does not pass', async () => {
+		// The nearest reachable stand-in for a binary the loader rejects: the
+		// spawn fails rather than the process exiting non-zero, and the probe
+		// has to treat both the same way.
+		const kernelPath = path.join(tempDir(), binaryName);
+		fs.writeFileSync(kernelPath, 'not a real executable\n');
+		fs.chmodSync(kernelPath, 0o644);
+		assert.strictEqual(await probeKernel(kernelPath), false);
+	});
+
+	test('a missing binary does not pass', async () => {
+		assert.strictEqual(await probeKernel(path.join(tempDir(), binaryName)), false);
 	});
 });
 

@@ -47,6 +47,17 @@
   a kernel installed on the machine, and a fixed path in `ggsql.kernelPath`;
   configuring `ggsql.kernelPath` alone continues to mean that path is used.
 
+- The extension now runs the bundled kernel before offering it, and falls back to
+  a kernel installed on the machine when it does not start. A bundled binary can
+  be built against newer system libraries than the host provides — every
+  filesystem check passes and the kernel still dies the moment it is launched —
+  so the extension runs `ggsql-jupyter --version` once per update and treats a
+  failure as "not usable here". When nothing on the machine can run, including
+  builds that carry no kernel at all, the extension says so once and points at
+  the install instructions instead of offering a runtime that cannot start.
+
+- `ggsql-jupyter` accepts `--version`.
+
 ### Changed
 - Dodging now only takes effect where groups actually meet on a position. A
   layer whose grouping gives every group a position of its own — `colour` mapped

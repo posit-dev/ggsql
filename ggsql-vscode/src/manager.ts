@@ -12,7 +12,7 @@ import * as cp from 'child_process';
 import * as crypto from 'crypto';
 import type * as positron from '@posit-dev/positron';
 import type { JupyterKernelSpec, PositronSupervisorApi } from './types';
-import { log } from './extension';
+import { log, showLog } from './extension';
 
 /** Where a kernel candidate was discovered */
 type KernelSource = 'Bundled' | 'Setting' | 'Jupyter' | 'System' | 'Path';
@@ -211,6 +211,25 @@ export function resolveKernelStrategy(config: vscode.WorkspaceConfiguration): Ke
 }
 
 /**
+ * The kernels a window should consider, in priority order, plus the tier to
+ * fall back to when none of them can run.
+ */
+export interface KernelSelection {
+    /** The strategy these candidates were chosen under. */
+    strategy: KernelStrategy;
+    /** Candidates to offer, best first. */
+    candidates: KernelCandidate[];
+    /**
+     * Host kernels to consult when nothing in `candidates` turns out to be
+     * runnable. A callback, not a list, so that the common case — a bundled
+     * kernel that runs — never pays for the PATH lookup.
+     */
+    fallback: () => KernelCandidate[];
+}
+
+const NO_FALLBACK = (): KernelCandidate[] => [];
+
+/**
  * Apply a strategy to the places a kernel can come from.
  *
  * `hostKernels` is a callback so that the common case — the bundled kernel with
@@ -221,25 +240,42 @@ export function selectKernelCandidates(
     bundledPath: string | undefined,
     configuredPath: string | undefined,
     hostKernels: () => KernelCandidate[],
-): KernelCandidate[] {
+): KernelSelection {
     const bundled: KernelCandidate[] = bundledPath
         ? [{ kernelPath: bundledPath, source: 'Bundled' }]
         : [];
 
+    let effective = strategy;
     if (strategy === 'path') {
         if (configuredPath) {
-            return [{ kernelPath: configuredPath, source: 'Setting' }];
+            // The user named a binary. Nothing may quietly stand in for it, so
+            // there is no fallback tier here.
+            return {
+                strategy,
+                candidates: [{ kernelPath: configuredPath, source: 'Setting' }],
+                fallback: NO_FALLBACK,
+            };
         }
         // Nothing to point at. Treat it as the default rather than registering
         // no runtime at all.
         log('ggsql.kernelStrategy is "path" but ggsql.kernelPath is empty; using the bundled kernel');
+        effective = 'bundled';
     } else if (strategy === 'environment') {
-        return [...hostKernels(), ...bundled];
+        // Host kernels are already ahead of the bundled one, so a failure among
+        // them falls through to it within the same tier.
+        return { strategy, candidates: [...hostKernels(), ...bundled], fallback: NO_FALLBACK };
     }
 
+    if (bundled.length > 0) {
+        // The bundled kernel is built for this platform but not for every
+        // system it can be installed on: it can be too new for the host's
+        // shared libraries, which only shows up when it is run. Host kernels
+        // stand behind it for exactly that case.
+        return { strategy: effective, candidates: bundled, fallback: hostKernels };
+    }
     // A build that carries no kernel still looks for a host install, or it
     // would offer nothing at all.
-    return bundled.length > 0 ? bundled : hostKernels();
+    return { strategy: effective, candidates: hostKernels(), fallback: NO_FALLBACK };
 }
 
 /**
@@ -270,19 +306,25 @@ function dedupeCandidates(candidates: KernelCandidate[]): KernelCandidate[] {
  * Discover the ggsql-jupyter kernels this window should offer, in priority
  * order.
  */
-export function discoverKernelPaths(context: vscode.ExtensionContext): KernelCandidate[] {
+export function discoverKernelPaths(context: vscode.ExtensionContext): KernelSelection {
     const config = vscode.workspace.getConfiguration('ggsql');
     const strategy = resolveKernelStrategy(config);
     log(`Kernel strategy: ${strategy}`);
 
     const configuredPath = config.get<string>('kernelPath', '').trim();
 
-    return dedupeCandidates(selectKernelCandidates(
+    const selection = selectKernelCandidates(
         strategy,
         bundledKernelPath(context),
         configuredPath === '' ? undefined : resolveConfiguredPath(configuredPath),
         discoverHostKernels,
-    ));
+    );
+
+    return {
+        strategy: selection.strategy,
+        candidates: dedupeCandidates(selection.candidates),
+        fallback: () => dedupeCandidates(selection.fallback()),
+    };
 }
 
 /**
@@ -306,6 +348,134 @@ export async function isKernelAccessible(kernelPath: string): Promise<boolean> {
     } catch {
         return false;
     }
+}
+
+/** How long the probe waits for the kernel to report its version. */
+const KERNEL_PROBE_TIMEOUT_MS = 15000;
+
+/** Where the last successful probe is remembered, to keep it to one per update. */
+const PROBE_CACHE_KEY = 'ggsql.bundledKernelProbe';
+
+/** Where the dead-end notice records the version it has already reported. */
+const NO_KERNEL_NOTICE_KEY = 'ggsql.noUsableKernelNotice';
+
+/** Install instructions offered when no kernel on this machine can run. */
+const INSTALL_DOCS_URL = 'https://ggsql.org/get_started/installation.html';
+
+interface ProbeCacheEntry {
+    extensionVersion: string;
+    kernelPath: string;
+}
+
+/** Runs a kernel binary and reports whether it started. */
+export type KernelProbe = (kernelPath: string) => Promise<boolean>;
+
+/**
+ * Run the kernel and see whether it starts.
+ *
+ * An accessibility check cannot answer this. A binary built against newer
+ * shared libraries than the host provides passes every filesystem test and
+ * still fails: the kernel is exec'd successfully and then the dynamic linker
+ * rejects it, so the process exits non-zero before it can serve a session.
+ * `--version` is the cheapest thing that exercises that whole path.
+ */
+export function probeKernel(kernelPath: string): Promise<boolean> {
+    return new Promise(resolve => {
+        cp.execFile(
+            kernelPath,
+            ['--version'],
+            { timeout: KERNEL_PROBE_TIMEOUT_MS, windowsHide: true },
+            err => {
+                if (err) {
+                    log(`Kernel probe failed for ${kernelPath}: ${err.message}`);
+                }
+                resolve(!err);
+            },
+        );
+    });
+}
+
+/**
+ * Probe the bundled kernel, remembering a success across windows.
+ *
+ * Only a success is cached, and only for the extension version that produced
+ * it: a failure is cheap to repeat (the linker gives up immediately) and
+ * re-running it means a host that gains the libraries the kernel needs starts
+ * working without waiting for an extension update.
+ */
+async function probeBundledKernel(
+    context: vscode.ExtensionContext,
+    kernelPath: string,
+    probe: KernelProbe,
+): Promise<boolean> {
+    const extensionVersion = context.extension.packageJSON.version as string;
+    const cached = context.globalState.get<ProbeCacheEntry>(PROBE_CACHE_KEY);
+    if (cached?.extensionVersion === extensionVersion && cached.kernelPath === kernelPath) {
+        return true;
+    }
+
+    const ok = await probe(kernelPath);
+    if (ok) {
+        await context.globalState.update(PROBE_CACHE_KEY, { extensionVersion, kernelPath });
+    }
+    return ok;
+}
+
+/**
+ * Decide whether a candidate can actually serve a session.
+ *
+ * The bundled kernel is additionally run, because it is the one the extension
+ * chose rather than the user, and it is the one that can be wrong about the
+ * system it landed on. A kernel the user installed is taken at its word.
+ */
+async function canRunKernel(
+    context: vscode.ExtensionContext,
+    candidate: KernelCandidate,
+    probe: KernelProbe,
+): Promise<boolean> {
+    if (!await isKernelAccessible(candidate.kernelPath)) {
+        return false;
+    }
+    if (candidate.source !== 'Bundled') {
+        return true;
+    }
+    return probeBundledKernel(context, candidate.kernelPath, probe);
+}
+
+/**
+ * Tell the user that nothing on this machine can run ggsql queries.
+ *
+ * Only for the dead end: a fallback that succeeds is reported by the runtime's
+ * name in the picker and by the log, and needs no interruption. Shown once per
+ * extension version, and never awaited, so discovery does not sit waiting for
+ * the notification to be dismissed.
+ */
+function reportNoUsableKernel(
+    context: vscode.ExtensionContext,
+    bundledRejected: boolean,
+): void {
+    const version = context.extension.packageJSON.version as string;
+    if (context.globalState.get<string>(NO_KERNEL_NOTICE_KEY) === version) {
+        return;
+    }
+    void context.globalState.update(NO_KERNEL_NOTICE_KEY, version);
+
+    const reason = bundledRejected
+        ? 'The ggsql kernel bundled with this extension cannot run on this system.'
+        : 'This build of the ggsql extension does not include a kernel.';
+    log(`${reason} No kernel installed on this machine could be used instead.`);
+
+    const install = 'Install ggsql';
+    const showOutput = 'Show Log';
+    void vscode.window
+        .showWarningMessage(`${reason} Install ggsql to run queries.`, install, showOutput)
+        .then(choice => {
+            if (choice === install) {
+                void vscode.env.openExternal(vscode.Uri.parse(INSTALL_DOCS_URL));
+            } else if (choice === showOutput) {
+                showLog();
+            }
+        });
 }
 
 /**
@@ -512,6 +682,15 @@ export interface RuntimeManagerOptions {
      * kernelspec — the one Quarto and Jupyter resolve — at a test fixture.
      */
     kernelSpecDir?: string;
+
+    /**
+     * Liveness probe for the bundled kernel. Defaults to running it.
+     *
+     * Tests override it because a stand-in kernel cannot be a real executable
+     * on every platform: a shell script named ggsql-jupyter.exe is not
+     * something Windows can spawn.
+     */
+    probe?: KernelProbe;
 }
 
 /**
@@ -533,10 +712,12 @@ export class GgsqlRuntimeManager implements positron.LanguageRuntimeManager {
 
     private _context: vscode.ExtensionContext;
     private _kernelSpecDir: string;
+    private _probe: KernelProbe;
 
     constructor(context: vscode.ExtensionContext, options: RuntimeManagerOptions = {}) {
         this._context = context;
         this._kernelSpecDir = options.kernelSpecDir ?? getUserJupyterKernelDir();
+        this._probe = options.probe ?? probeKernel;
     }
 
     /**
@@ -547,31 +728,60 @@ export class GgsqlRuntimeManager implements positron.LanguageRuntimeManager {
     discoverAllRuntimes(): AsyncGenerator<positron.LanguageRuntimeMetadata> {
         const context = this._context;
         const kernelSpecDir = this._kernelSpecDir;
+        const probe = this._probe;
 
         const generator = async function* discoverGgsqlRuntimes() {
             log('Discovering ggsql runtimes...');
 
-            const candidates = discoverKernelPaths(context);
-            log(`Found ${candidates.length} kernel candidate(s)`);
+            const selection = discoverKernelPaths(context);
+            log(`Found ${selection.candidates.length} kernel candidate(s)`);
 
-            for (const candidate of candidates) {
-                const accessible = await isKernelAccessible(candidate.kernelPath);
-                if (accessible) {
-                    // Write the kernel spec to the user kernelspec dir
-                    // immediately so that Quarto/Jupyter can discover ggsql
-                    // even if no session is ever started. The bundled kernel
-                    // additionally needs this on every extension update, or the
-                    // spec keeps pointing into the removed extension directory.
-                    if (candidate.source === 'System' || candidate.source === 'Bundled') {
-                        writeKernelJson(kernelSpecDir, candidate.kernelPath);
+            let registered = 0;
+            let bundledRejected = false;
+
+            async function* offer(candidates: KernelCandidate[]) {
+                for (const candidate of candidates) {
+                    if (await canRunKernel(context, candidate, probe)) {
+                        // Write the kernel spec to the user kernelspec dir
+                        // immediately so that Quarto/Jupyter can discover ggsql
+                        // even if no session is ever started. The bundled kernel
+                        // additionally needs this on every extension update, or
+                        // the spec keeps pointing into the removed extension
+                        // directory. Only a kernel that has proven it runs is
+                        // advertised this way: the spec outlives the window, and
+                        // Quarto has no discovery of its own to fall back on.
+                        if (candidate.source === 'System' || candidate.source === 'Bundled') {
+                            writeKernelJson(kernelSpecDir, candidate.kernelPath);
+                        }
+
+                        const metadata = generateMetadata(context, candidate);
+                        log(`Yielding runtime: ${metadata.runtimeName} (${metadata.runtimeId}) at ${candidate.kernelPath}`);
+                        registered++;
+                        yield metadata;
+                    } else {
+                        if (candidate.source === 'Bundled') {
+                            bundledRejected = true;
+                        }
+                        log(`Skipping unusable kernel (${candidate.source}): ${candidate.kernelPath}`);
                     }
-
-                    const metadata = generateMetadata(context, candidate);
-                    log(`Yielding runtime: ${metadata.runtimeName} (${metadata.runtimeId}) at ${candidate.kernelPath}`);
-                    yield metadata;
-                } else {
-                    log(`Skipping inaccessible kernel (${candidate.source}): ${candidate.kernelPath}`);
                 }
+            }
+
+            yield* offer(selection.candidates);
+
+            if (registered === 0) {
+                const fallback = selection.fallback();
+                if (fallback.length > 0) {
+                    log(`No usable kernel among the primary candidates; trying ${fallback.length} installed kernel(s)`);
+                    yield* offer(fallback);
+                }
+            }
+
+            if (registered === 0 && selection.strategy !== 'path') {
+                // Under the path strategy the user named a binary that did not
+                // work out, which the log already reports; there is nothing to
+                // install that would change it.
+                reportNoUsableKernel(context, bundledRejected);
             }
 
             log('Runtime discovery complete');

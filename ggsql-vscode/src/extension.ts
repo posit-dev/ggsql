@@ -23,6 +23,11 @@ export function log(message: string): void {
     outputChannel.appendLine(`[${new Date().toISOString()}] ${message}`);
 }
 
+/** Reveal the ggsql output channel, for notifications that offer it. */
+export function showLog(): void {
+    outputChannel.show();
+}
+
 /**
  * Activates the extension.
  *

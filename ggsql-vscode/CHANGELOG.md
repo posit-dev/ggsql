@@ -9,6 +9,10 @@
   uses one installed on the machine.
 - Fixed: no ggsql runtime is offered when no kernel can be found, rather than one
   that fails at session start with `KS-19: Kernel path not found`.
+- The bundled kernel is run before it is offered, and a kernel installed on the
+  machine is used instead when it does not start. If nothing on the machine can
+  run, the extension points at the install instructions once rather than offering
+  a runtime that fails at session start.
 
 ## 0.3.2
 
