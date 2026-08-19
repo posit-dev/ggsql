@@ -5,7 +5,8 @@
 - The extension now ships the `ggsql-jupyter` kernel, so installing it is enough
   to run queries in Positron. `ggsql.kernelStrategy` picks between the bundled
   kernel (the default), a kernel installed on this machine, and a fixed path in
-  `ggsql.kernelPath`.
+  `ggsql.kernelPath`. On Windows arm64 the extension ships without a kernel and
+  uses one installed on the machine.
 - Fixed: no ggsql runtime is offered when no kernel can be found, rather than one
   that fails at session start with `KS-19: Kernel path not found`.
 

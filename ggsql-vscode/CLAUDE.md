@@ -155,14 +155,15 @@ code --install-extension ggsql-<version>.vsix
 
 A local `vsce package` produces the kernel-less VSIX, since `bundled/` only exists in a release build.
 
-**Release builds** live in [`/.github/workflows/release-packages.yml`](../.github/workflows/release-packages.yml), not in a workflow of their own. Its `build-vsix` job runs a matrix of six — the five platform targets plus `universal` — downloading the `ggsql-jupyter-<target>` artifact each platform job uploaded between signing and installer packaging, restoring the executable bit, and running `vsce package --target <target>`. `publish-openvsx` then publishes the packaged file to Open VSX.
+**Release builds** live in [`/.github/workflows/release-packages.yml`](../.github/workflows/release-packages.yml), not in a workflow of their own. Its `build-vsix` job runs a matrix of seven, each entry carrying a `kernel` flag. The five `kernel: true` targets download the `ggsql-jupyter-<target>` artifact each platform job uploaded between signing and installer packaging, restore the executable bit, and run `vsce package --target <target>`. `win32-arm64` and `universal` are `kernel: false` and skip the download. `publish-openvsx` then publishes the packaged file to Open VSX.
 
-Four things about that arrangement are deliberate:
+Five things about that arrangement are deliberate:
 
 - **The VSIX build cannot live in its own workflow.** Actions artifacts are scoped to a single workflow run, and two workflows triggered by the same tag run in parallel, so a separate workflow could not download the kernels. Building in the same run also means the kernel and the extension always come from one commit.
 - **The executable bit has to be restored after download.** Artifact upload and download drop it. It does survive `vsce package` into the VSIX itself, so restoring it once in CI is enough; `ensureExecutable()` in `manager.ts` is belt-and-braces for an install that loses it.
 - **The published artefact is the packaged `.vsix`, with no `target` passed to the publish action.** Open VSX reads the platform from the `TargetPlatform` attribute that `vsce package --target` writes into `extension.vsixmanifest`, and defaults to `universal` when it is absent; `ovsx` discards a target option when handed an already-packaged vsix.
-- **`win32-arm64` is not built.** No runner produces that kernel yet. Positron's bootstrap appends `?targetPlatform=<target>` and gets an HTTP 403 rather than the universal build for a target that was never published, so the universal VSIX is not a fallback for it — see posit-dev/positron#14954.
+- **`win32-arm64` is published without a kernel.** No runner produces that kernel yet, but the target is published anyway. Positron's bootstrap appends `?targetPlatform=<target>` to the gallery asset URL and a target that was never published answers HTTP 403, not the universal build — so an absent `win32-arm64` fails Positron's own Windows arm64 build rather than degrading to universal. Publishing the target with no kernel answers 200, and the extension falls back to a host-installed kernel there. It gains a real kernel later with no change on the Positron side. See posit-dev/positron#14954.
+- **`universal` is not a fallback for any target.** The gallery matches `targetPlatform` exactly, in both directions: a universal build does not answer a targeted request, and targeted builds do not answer an untargeted one. `universal` exists for clients that ask without a target at all.
 
 Watch mode for development: `npm run watch` (runs esbuild + tsc in parallel).
 

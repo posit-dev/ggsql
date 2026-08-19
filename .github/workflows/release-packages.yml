@@ -606,16 +606,33 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # win32-arm64 is deliberately absent: no runner builds that kernel yet.
-        # "universal" carries no kernel and is what users on any other platform
-        # install, alongside the kernel from a native installer.
-        target:
-          - darwin-arm64
-          - darwin-x64
-          - linux-arm64
-          - linux-x64
-          - win32-x64
-          - universal
+        # `kernel: false` targets are packaged and published like any other, but
+        # ship without a kernel and fall back to a host-installed one.
+        #
+        # win32-arm64 is published that way because no runner builds that kernel
+        # yet. It is still published: Positron's bootstrap asks the gallery for
+        # an asset by exact targetPlatform, and a target that was never
+        # published answers 403 rather than falling back to the untargeted
+        # build, which fails Positron's own Windows arm64 build. A kernel-less
+        # target answers 200, so the entry can land, and gains a kernel later
+        # with no change on the Positron side.
+        #
+        # "universal" answers requests that carry no targetPlatform at all.
+        include:
+          - target: darwin-arm64
+            kernel: true
+          - target: darwin-x64
+            kernel: true
+          - target: linux-arm64
+            kernel: true
+          - target: linux-x64
+            kernel: true
+          - target: win32-x64
+            kernel: true
+          - target: win32-arm64
+            kernel: false
+          - target: universal
+            kernel: false
 
     steps:
       - name: Checkout code
@@ -636,7 +653,7 @@ jobs:
         run: npm ci
 
       - name: Download ggsql-jupyter kernel (${{ matrix.target }})
-        if: matrix.target != 'universal'
+        if: matrix.kernel
         uses: actions/download-artifact@v4
         with:
           name: ggsql-jupyter-${{ matrix.target }}
@@ -646,7 +663,7 @@ jobs:
         # Artifact upload and download do not preserve the executable bit. The
         # extension repairs it at runtime too, but it has to be right inside the
         # VSIX for a fresh install to start a session.
-        if: matrix.target != 'universal'
+        if: matrix.kernel
         run: |
           chmod +x ggsql-vscode/bundled/bin/*
           ls -l ggsql-vscode/bundled/bin
@@ -672,18 +689,19 @@ jobs:
         working-directory: ggsql-vscode
         env:
           TARGET: ${{ matrix.target }}
+          KERNEL: ${{ matrix.kernel }}
           VSIX: ${{ steps.package.outputs.vsix }}
         run: |
           unzip -l "$VSIX"
           unzip -p "$VSIX" extension.vsixmanifest \
             | grep -o 'TargetPlatform="[^"]*"' || echo 'no TargetPlatform: universal'
-          if [ "$TARGET" = universal ]; then
-            if unzip -l "$VSIX" | grep -q 'extension/bundled/'; then
-              echo "::error::the universal VSIX must not carry a kernel"
+          if [ "$KERNEL" = true ]; then
+            if ! unzip -l "$VSIX" | grep -q 'extension/bundled/bin/ggsql-jupyter'; then
+              echo "::error::the $TARGET VSIX is missing its bundled kernel"
               exit 1
             fi
-          elif ! unzip -l "$VSIX" | grep -q 'extension/bundled/bin/ggsql-jupyter'; then
-            echo "::error::the $TARGET VSIX is missing its bundled kernel"
+          elif unzip -l "$VSIX" | grep -q 'extension/bundled/'; then
+            echo "::error::the $TARGET VSIX must not carry a kernel"
             exit 1
           fi
 
@@ -712,6 +730,7 @@ jobs:
           - linux-arm64
           - linux-x64
           - win32-x64
+          - win32-arm64
           - universal
 
     steps:

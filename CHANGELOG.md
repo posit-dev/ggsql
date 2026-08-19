@@ -41,8 +41,8 @@
   installing the extension is all that is needed to run queries — no separate
   native install. The per-platform builds (`darwin-arm64`, `darwin-x64`,
   `linux-arm64`, `linux-x64`, `win32-x64`) each carry the same signed kernel
-  binary the matching installer does, and a kernel-less universal build remains
-  for any other platform, where the installer is still required. A new
+  binary the matching installer does. `win32-arm64` and a universal build are
+  published without a kernel, and still require the native installer. A new
   `ggsql.kernelStrategy` setting picks between the bundled kernel (the default),
   a kernel installed on the machine, and a fixed path in `ggsql.kernelPath`;
   configuring `ggsql.kernelPath` alone continues to mean that path is used.
