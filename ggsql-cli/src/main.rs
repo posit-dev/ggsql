@@ -68,6 +68,10 @@ pub enum Commands {
         #[arg(short, long, default_value = "duckdb://memory")]
         reader: String,
 
+        /// In-memory cache backend wrapping the reader (duckdb, sqlite). Off by default.
+        #[arg(long)]
+        cache: Option<String>,
+
         /// Output format: vegalite (JSON), or png (raster image; requires the
         /// `png` feature and a GPU adapter)
         #[arg(short, long, default_value = "vegalite")]
@@ -103,6 +107,10 @@ pub enum Commands {
         /// Data source connection string (duckdb://, sqlite://, odbc://)
         #[arg(short, long, default_value = "duckdb://memory")]
         reader: String,
+
+        /// In-memory cache backend wrapping the reader (duckdb, sqlite). Off by default.
+        #[arg(long)]
+        cache: Option<String>,
 
         /// Output format: vegalite (JSON), or png (raster image; requires the
         /// `png` feature and a GPU adapter)
@@ -205,6 +213,7 @@ fn main() -> anyhow::Result<()> {
         Commands::Exec {
             query,
             reader,
+            cache,
             writer,
             writer_options,
             output,
@@ -214,12 +223,13 @@ fn main() -> anyhow::Result<()> {
                 eprintln!("Executing query: {}", query);
             }
             let writer = WriterSpec::new(writer, writer_options);
-            cmd_exec(query, reader, &writer, output, verbose);
+            cmd_exec(query, reader, cache, &writer, output, verbose);
         }
 
         Commands::Run {
             file,
             reader,
+            cache,
             writer,
             writer_options,
             output,
@@ -229,7 +239,7 @@ fn main() -> anyhow::Result<()> {
                 eprintln!("Running query from file: {}", file.display());
             }
             let writer = WriterSpec::new(writer, writer_options);
-            cmd_run(file, reader, &writer, output, verbose);
+            cmd_run(file, reader, cache, &writer, output, verbose);
         }
 
         Commands::Parse { query, format } => {
@@ -259,12 +269,13 @@ fn main() -> anyhow::Result<()> {
 fn cmd_run(
     file: PathBuf,
     reader: String,
+    cache: Option<String>,
     writer: &WriterSpec,
     output: Option<PathBuf>,
     verbose: bool,
 ) {
     match std::fs::read_to_string(&file) {
-        Ok(query) => cmd_exec(query, reader, writer, output, verbose),
+        Ok(query) => cmd_exec(query, reader, cache, writer, output, verbose),
         Err(e) => {
             eprintln!("Failed to read file {}: {}", file.display(), e);
             std::process::exit(1);
@@ -275,79 +286,61 @@ fn cmd_run(
 fn cmd_exec(
     query: String,
     reader: String,
+    cache: Option<String>,
     writer: &WriterSpec,
     output: Option<PathBuf>,
     verbose: bool,
 ) {
+    use ggsql::reader::connection;
+
     if verbose {
         eprintln!("Reader: {}", reader);
+        if let Some(ref cache) = cache {
+            eprintln!("Cache: {}", cache);
+        }
         eprintln!("Writer: {}", writer.name);
         if let Some(ref output_file) = output {
             eprintln!("Output: {}", output_file.display());
         }
     }
 
-    if reader.starts_with("duckdb://") {
-        #[cfg(feature = "duckdb")]
-        {
-            let r = match ggsql::reader::DuckDBReader::from_connection_string(&reader) {
-                Ok(r) => r,
-                Err(e) => {
-                    eprintln!("Failed to create reader: {}", e);
+    // Build the reader. A composite `<cache>+<primary>://` URI is handled by
+    // `reader_from_uri`; the `--cache` flag is an explicit alternative and may
+    // not be combined with a composite URI.
+    let built = match cache {
+        Some(cache_scheme) => {
+            if connection::split_cache_uri(&reader).is_some() {
+                eprintln!(
+                    "Cannot combine --cache with a composite '<cache>+<primary>://' connection string"
+                );
+                std::process::exit(1);
+            }
+            // `--cache <scheme>` is sugar for the composite `<scheme>+<primary>://` URI.
+            match reader.split_once("://") {
+                Some((scheme, rest)) => {
+                    connection::reader_from_uri(&format!("{cache_scheme}+{scheme}://{rest}"))
+                }
+                None => {
+                    eprintln!("Invalid --reader connection string: {reader}");
                     std::process::exit(1);
                 }
-            };
-            exec_with_reader(&query, &r, writer, output, verbose);
+            }
         }
-        #[cfg(not(feature = "duckdb"))]
-        {
-            eprintln!("DuckDB reader not compiled in. Rebuild with --features duckdb");
+        None => connection::reader_from_uri(&reader),
+    };
+
+    let reader = match built {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("Failed to create reader: {}", e);
             std::process::exit(1);
         }
-    } else if reader.starts_with("sqlite://") {
-        #[cfg(feature = "sqlite")]
-        {
-            let r = match ggsql::reader::SqliteReader::from_connection_string(&reader) {
-                Ok(r) => r,
-                Err(e) => {
-                    eprintln!("Failed to create reader: {}", e);
-                    std::process::exit(1);
-                }
-            };
-            exec_with_reader(&query, &r, writer, output, verbose);
-        }
-        #[cfg(not(feature = "sqlite"))]
-        {
-            eprintln!("SQLite reader not compiled in. Rebuild with --features sqlite");
-            std::process::exit(1);
-        }
-    } else if reader.starts_with("odbc://") {
-        #[cfg(feature = "odbc")]
-        {
-            let r = match ggsql::reader::OdbcReader::from_connection_string(&reader) {
-                Ok(r) => r,
-                Err(e) => {
-                    eprintln!("Failed to create reader: {}", e);
-                    std::process::exit(1);
-                }
-            };
-            exec_with_reader(&query, &r, writer, output, verbose);
-        }
-        #[cfg(not(feature = "odbc"))]
-        {
-            eprintln!("ODBC reader not compiled in. Rebuild with --features odbc");
-            std::process::exit(1);
-        }
-    } else if reader.starts_with("postgres://") || reader.starts_with("postgresql://") {
-        eprintln!("PostgreSQL reader is not yet implemented");
-        std::process::exit(1);
-    } else {
-        eprintln!("Unsupported connection string: {}", reader);
-        std::process::exit(1);
-    }
+    };
+
+    exec_with_reader(&query, reader.as_ref(), writer, output, verbose);
 }
 
-fn exec_with_reader<R: Reader>(
+fn exec_with_reader<R: Reader + ?Sized>(
     query: &str,
     reader: &R,
     writer: &WriterSpec,
@@ -510,7 +503,7 @@ fn cmd_validate(query: String, _reader: Option<String>) {
 }
 
 // Prints a CSV-like output to stdout with aligned columns
-fn print_table_fallback<R: Reader>(query: &str, reader: &R, max_rows: usize) {
+fn print_table_fallback<R: Reader + ?Sized>(query: &str, reader: &R, max_rows: usize) {
     let source_tree = match parser::SourceTree::new(query) {
         Ok(st) => st,
         Err(e) => {

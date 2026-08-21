@@ -3,7 +3,7 @@
 //! Provides a reader for SQLite databases with Arrow DataFrame integration.
 //! Works on both native targets and wasm32-unknown-unknown (via sqlite-wasm-rs).
 
-use crate::reader::Reader;
+use crate::reader::{CacheBackend, Reader};
 use crate::{naming, DataFrame, GgsqlError, Result};
 use arrow::array::*;
 use arrow::datatypes::{DataType, TimeUnit};
@@ -161,21 +161,31 @@ impl SqliteReader {
     }
 
     /// Create a SQLite reader from a connection string
+    ///
+    /// `sqlite://memory` (or `sqlite://:memory:`) opens an in-memory database;
+    /// any other path opens that file.
     pub fn from_connection_string(uri: &str) -> Result<Self> {
-        let conn_info = super::connection::parse_connection_string(uri)?;
+        let path = uri.strip_prefix("sqlite://").ok_or_else(|| {
+            GgsqlError::ReaderError(format!(
+                "SQLite URI must start with sqlite://, got '{}'",
+                uri
+            ))
+        })?;
 
-        let conn = match conn_info {
-            super::connection::ConnectionInfo::SQLite(path) => {
-                Connection::open(&path).map_err(|e| {
-                    GgsqlError::ReaderError(format!("Failed to open SQLite file '{}': {}", path, e))
-                })?
-            }
-            _ => {
-                return Err(GgsqlError::ReaderError(format!(
-                    "Connection string '{}' is not supported by SqliteReader",
-                    uri
-                )))
-            }
+        if path.is_empty() {
+            return Err(GgsqlError::ReaderError(
+                "SQLite file path cannot be empty".to_string(),
+            ));
+        }
+
+        let conn = if path == "memory" || path == ":memory:" {
+            Connection::open_in_memory().map_err(|e| {
+                GgsqlError::ReaderError(format!("Failed to open in-memory SQLite: {}", e))
+            })?
+        } else {
+            Connection::open(path).map_err(|e| {
+                GgsqlError::ReaderError(format!("Failed to open SQLite file '{}': {}", path, e))
+            })?
         };
 
         #[cfg(feature = "spatial")]
@@ -366,12 +376,18 @@ fn to_sql_value(v: &dyn rusqlite::types::ToSql) -> Option<rusqlite::types::Value
     }
 }
 
+impl CacheBackend for SqliteReader {
+    fn new_in_memory() -> Result<Self> {
+        Self::new()
+    }
+}
+
 impl Reader for SqliteReader {
     fn execute_sql(&self, sql: &str) -> Result<DataFrame> {
         // Handle ggsql:name namespaced identifiers (builtin datasets)
         #[cfg(all(feature = "builtin-data", feature = "parquet"))]
         {
-            let dataset_names = super::data::extract_builtin_dataset_names(sql)?;
+            let dataset_names = crate::parser::extract_builtin_dataset_names(sql)?;
             for name in &dataset_names {
                 let table_name = naming::builtin_data_table(name);
                 if !self.table_exists(&table_name) {
@@ -382,7 +398,7 @@ impl Reader for SqliteReader {
         }
 
         // Rewrite ggsql:name → __ggsql_data_name__ in SQL
-        let sql = super::data::rewrite_namespaced_sql(sql)?;
+        let sql = crate::parser::rewrite_namespaced_sql(sql)?;
 
         if !super::returns_rows(&sql) {
             self.conn

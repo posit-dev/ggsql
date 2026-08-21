@@ -42,9 +42,14 @@ use crate::{Plot, Result};
 
 pub mod builder;
 pub mod source_tree;
+pub mod sql;
 
 pub use builder::build_ast;
 pub use source_tree::SourceTree;
+pub use sql::{
+    extract_builtin_dataset_names, extract_table_ref_sites, extract_table_refs,
+    rewrite_namespaced_sql, string_literal_ranges, TableRefSite,
+};
 
 /// Main entry point for parsing ggsql queries
 ///

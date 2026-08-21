@@ -149,8 +149,8 @@ pub fn validate(query: &str) -> Result<Validated> {
         let (message, location) = if visualise_side_failed {
             (
                 "VISUALISE clause was not recognized. Mappings accept column \
-                 names only — not SQL expressions like CAST() or function \
-                 calls. Move data transformations to the SELECT clause and \
+                 names only, and FROM accepts a single bare source — not SQL \
+                 expressions. Move data transformations to the SELECT clause and \
                  reference the resulting column by name in VISUALISE."
                     .to_string(),
                 kw_pos.map(|p| Location {

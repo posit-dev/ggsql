@@ -2,7 +2,7 @@
 //!
 //! Provides a reader for DuckDB databases with Arrow DataFrame integration.
 
-use crate::reader::{connection::ConnectionInfo, Reader};
+use crate::reader::{CacheBackend, Reader};
 use crate::{naming, DataFrame, GgsqlError, Result};
 use arrow::compute::{cast, concat_batches};
 use arrow::datatypes::{DataType, Field, Schema};
@@ -25,7 +25,7 @@ use std::sync::Arc;
 fn register_builtin_datasets_duckdb(sql: &str, conn: &Connection) -> Result<()> {
     use std::{env, fs};
 
-    let dataset_names = super::data::extract_builtin_dataset_names(sql)?;
+    let dataset_names = crate::parser::extract_builtin_dataset_names(sql)?;
 
     // Load spatial extension before registering datasets that contain
     // geometry columns, so that spatial features are available.
@@ -243,21 +243,25 @@ impl DuckDBReader {
     /// - The database file cannot be opened
     /// - DuckDB initialization fails
     pub fn from_connection_string(uri: &str) -> Result<Self> {
-        let conn_info = super::connection::parse_connection_string(uri)?;
+        let path = uri.strip_prefix("duckdb://").ok_or_else(|| {
+            GgsqlError::ReaderError(format!(
+                "DuckDB URI must start with duckdb://, got '{}'",
+                uri
+            ))
+        })?;
 
-        let conn = match conn_info {
-            ConnectionInfo::DuckDBMemory => Connection::open_in_memory().map_err(|e| {
+        let conn = if path == "memory" {
+            Connection::open_in_memory().map_err(|e| {
                 GgsqlError::ReaderError(format!("Failed to open in-memory DuckDB: {}", e))
-            })?,
-            ConnectionInfo::DuckDBFile(path) => Connection::open(&path).map_err(|e| {
+            })?
+        } else if path.is_empty() {
+            return Err(GgsqlError::ReaderError(
+                "DuckDB file path cannot be empty".to_string(),
+            ));
+        } else {
+            Connection::open(path).map_err(|e| {
                 GgsqlError::ReaderError(format!("Failed to open DuckDB file '{}': {}", path, e))
-            })?,
-            _ => {
-                return Err(GgsqlError::ReaderError(format!(
-                    "Connection string '{}' is not supported by DuckDBReader",
-                    uri
-                )))
-            }
+            })?
         };
 
         // https://github.com/duckdb/duckdb/issues/22133
@@ -349,6 +353,12 @@ fn normalize_arrow_types(batch: RecordBatch) -> Result<RecordBatch> {
         .map_err(|e| GgsqlError::ReaderError(format!("Failed to normalize types: {}", e)))
 }
 
+impl CacheBackend for DuckDBReader {
+    fn new_in_memory() -> Result<Self> {
+        Self::from_connection_string("duckdb://memory")
+    }
+}
+
 impl Reader for DuckDBReader {
     fn execute_sql(&self, sql: &str) -> Result<DataFrame> {
         // Register builtin datasets if referenced
@@ -356,7 +366,7 @@ impl Reader for DuckDBReader {
         register_builtin_datasets_duckdb(sql, &self.conn)?;
 
         // Rewrite ggsql:name → __ggsql_data_name__ in SQL
-        let sql = super::data::rewrite_namespaced_sql(sql)?;
+        let sql = crate::parser::rewrite_namespaced_sql(sql)?;
 
         if !super::returns_rows(&sql) {
             self.conn

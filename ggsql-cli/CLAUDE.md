@@ -34,6 +34,8 @@ The binary name is `ggsql` (not `ggsql-cli`) — that's what release artifacts a
 
 Only public `ggsql::*` API is used (`reader`, `writer`, `validate`, `parser`, `VERSION`) — this crate has no awareness of internal modules.
 
+`exec`/`run` build their reader via the library factory `ggsql::reader::connection::reader_from_uri`. They accept an in-memory caching layer (off by default) selected either by the composite connection scheme `<cache>+<primary>://…` (e.g. `duckdb+odbc://…`) or the `--cache <duckdb|sqlite>` flag; the two cannot be combined.
+
 `exec` and `run` share a `WriterSpec { name, options }`: `--writer` names the writer and repeated `--writer-option key=value` flags (short `-D`, visible alias `--writer-options`, several settings per flag when separated by `;`) become a `ggsql::writer::WriterOptions`, parsed up front in `main` so a malformed pair fails before any SQL runs. The two travel together down `cmd_exec` → `exec_with_reader` → `render_spec`, which dispatches on the name and hands the options to `Writer::from_options`. Adding a setting to a writer therefore needs no CLI change; which keys exist is the writer's business, and an unknown one is its error to report. User-facing keys are documented in [`/doc/get_started/tooling/cli.qmd`](../doc/get_started/tooling/cli.qmd).
 
 ## Build & install

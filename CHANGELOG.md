@@ -1,6 +1,12 @@
 ## [Unreleased]
 
 ### Added
+
+- New caching layer that wraps any `Reader` with an in-memory, writeable cache
+  backend (currently duckdb or sqlite), making write-constrained databases
+  usable and avoiding repeated remote reads during interactive iteration.
+  Memoized reads are bounded by a TTL and an LRU byte budget, configurable per
+  connection. The cache can be cleared mid-session with the `-- @uncache` meta-command.
 - New `PngWriter` renders a plot to a PNG raster image via
   [hephaestus](https://github.com/posit-dev/hephaestus), behind a new
   off-by-default `png` feature (`--writer png` in the CLI). `LABEL caption`
@@ -38,6 +44,12 @@
   the png writer draws them.
 
 ### Changed
+- A `FROM` on the `VISUALISE` clause now takes exactly one bare source. It
+  previously reused the SQL `FROM` grammar while only ever reading the first
+  source, so `VISUALISE FROM a, b` silently plotted `a` alone and
+  `VISUALISE FROM a JOIN b ON …` silently dropped the join. Both are now parse
+  errors, as is an alias (`VISUALISE FROM tbl AS t`), which parsed before but
+  had no effect. Join two tables in a `SELECT` and visualise its result.
 - Dodging now only takes effect where groups actually meet on a position. A
   layer whose grouping gives every group a position of its own — `colour` mapped
   to the same column as the discrete axis, say — is drawn at its full width
