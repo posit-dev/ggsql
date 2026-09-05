@@ -37,6 +37,7 @@ pub const NAMED_PROJECTIONS: &[&str] = &[
     "azimuthal_equidistant",
     "igh",
     "robinson",
+    "equal_earth",
 ];
 
 // =============================================================================
@@ -338,6 +339,7 @@ macro_rules! build_projection {
             "eqc" | "equirectangular" => Arc::new(Equirectangular { lon_0 }),
             "cea" | "equal_area" => Arc::new(CylindricalEqualArea { lon_0 }),
             "robin" | "robinson" => Arc::new(Robinson { lon_0 }),
+            "eqearth" | "equal_earth" => Arc::new(EqualEarth { lon_0 }),
             "moll" | "mollweide" => Arc::new(Mollweide { lon_0 }),
             "sinu" | "sinusoidal" => Arc::new(Sinusoidal { lon_0 }),
             "eck4" | "eckert4" => Arc::new(Eckert4 { lon_0 }),
@@ -783,6 +785,26 @@ impl MapProjectionTrait for Robinson {
     }
     fn to_proj_str(&self) -> String {
         format!("+proj=robin +lon_0={}", self.lon_0)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct EqualEarth {
+    pub lon_0: f64,
+}
+
+impl MapProjectionTrait for EqualEarth {
+    fn proj_code(&self) -> &'static str {
+        "eqearth"
+    }
+    fn display_name(&self) -> &'static str {
+        "Equal Earth"
+    }
+    fn origin(&self) -> (f64, f64) {
+        (self.lon_0, 0.0)
+    }
+    fn to_proj_str(&self) -> String {
+        format!("+proj=eqearth +lon_0={}", self.lon_0)
     }
 }
 
@@ -1445,6 +1467,29 @@ mod tests {
     #[test]
     fn slit_at_dateline_returns_none() {
         let proj = build_from_proj_str("+proj=robin +lon_0=0");
+        assert!(proj.slit_wkt(0.005).is_none());
+    }
+
+    #[test]
+    fn equal_earth_from_name_and_proj_str() {
+        let mut props = Parameters::new();
+        props.insert("origin".to_string(), ParameterValue::Number(11.0));
+        let proj = build_map_projection_trait(Some("equal_earth"), &props).unwrap();
+        assert_eq!(proj.proj_code(), "eqearth");
+        assert_eq!(proj.origin(), (11.0, 0.0));
+        assert_eq!(proj.to_proj_str(), "+proj=eqearth +lon_0=11");
+
+        let proj = build_from_proj_str("+proj=eqearth +lon_0=11");
+        assert_eq!(proj.proj_code(), "eqearth");
+        assert_eq!(proj.to_proj_str(), "+proj=eqearth +lon_0=11");
+    }
+
+    #[test]
+    fn equal_earth_covers_whole_globe() {
+        let proj = build_from_proj_str("+proj=eqearth");
+        assert_eq!(proj.lat_bounds(), (-90.0, 90.0));
+        let wkt = proj.visible_area_wkt().unwrap();
+        assert!(wkt.starts_with("POLYGON(("), "{wkt}");
         assert!(proj.slit_wkt(0.005).is_none());
     }
 
