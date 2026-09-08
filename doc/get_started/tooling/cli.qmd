@@ -49,7 +49,7 @@ $ ggsql validate "VISUALISE x, y FROM table DRAW point"
 
 ## Database connections
 
-Both `ggsql exec` and `ggsql run` accept a `--reader` flag (short `-r`) that can be used to specify a connection string to be used when executing the query. If not provided, ggsql will use an empty in-memory duckdb connection, equivalent to `--reader duckdb://memory`.
+`ggsql exec`, `ggsql run` and `ggsql view` all accept a `--reader` flag (short `-r`) that can be used to specify a connection string to be used when executing the query. If not provided, ggsql will use an empty in-memory duckdb connection, equivalent to `--reader duckdb://memory`.
 
 ```bash
 $ ggsql exec --reader sqlite://sample/ggsql_test.sqlite \
@@ -66,6 +66,24 @@ col_a,  col_b, col_c
 299.08, 49.36, epsilon
 12.5,   29.48, gamma
 ```
+
+### Caching reads
+
+A remote or write-constrained database can be wrapped in an in-memory cache with `--cache`, naming the backend to cache into (`duckdb` or `sqlite`). It is off by default. Repeated reads of the same query — several layers over one table, or the same plot re-run while you iterate on it — are then served from memory instead of the remote:
+
+```bash
+$ ggsql view --reader odbc://DSN=ggsql-pg-test --cache duckdb \
+  "SELECT * FROM test_table VISUALISE col_a AS x, col_b AS y DRAW point"
+```
+
+The same thing can be spelled as a composite connection string, `<cache>+<primary>://…`, which is what `--cache` is rewritten to:
+
+```bash
+$ ggsql exec --reader duckdb+odbc://DSN=ggsql-pg-test \
+  "SELECT * FROM test_table LIMIT 3"
+```
+
+The two forms cannot be combined — there would be no saying which cache was meant.
 
 ## Output format
 

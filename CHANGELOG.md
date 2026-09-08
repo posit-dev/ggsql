@@ -26,8 +26,8 @@
   Memoized reads are bounded by a TTL and an LRU byte budget, configurable per
   connection. Selected by the composite connection scheme
   `<cache>+<primary>://…` (e.g. `duckdb+odbc://…`) or, in the CLI, by
-  `--cache <duckdb|sqlite>` on `exec` and `run`. The cache can be cleared
-  mid-session with the `-- @uncache` meta-command.
+  `--cache <duckdb|sqlite>` on `exec`, `run` and `view`. The cache can be
+  cleared mid-session with the `-- @uncache` meta-command.
 - Writers can be configured from key–value options: `Writer::from_options` takes
   a `WriterOptions` set, and the CLI collects them from a repeatable
   `--writer-option key=value` flag on `exec` and `run` (short `-D`, also

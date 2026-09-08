@@ -34,10 +34,13 @@ struct WriterSpec {
     options: WriterOptions,
 }
 
-/// The flags shared by `exec` and `run`: where the data comes from, which
-/// writer renders it, and where the result goes.
+/// Where a subcommand's data comes from.
+///
+/// Flattened into both [`RenderArgs`] and [`ViewArgs`], so the two flags are
+/// declared — and helped, and defaulted — once: where a plot's data comes from
+/// does not depend on whether the plot ends up in a file or in a window.
 #[derive(Args)]
-pub struct RenderArgs {
+pub struct ReaderArgs {
     /// Data source connection string (duckdb://, sqlite://, odbc://)
     #[arg(short, long, default_value = "duckdb://memory")]
     pub reader: String,
@@ -45,6 +48,14 @@ pub struct RenderArgs {
     /// In-memory cache backend wrapping the reader (duckdb, sqlite). Off by default.
     #[arg(long)]
     pub cache: Option<String>,
+}
+
+/// The flags shared by `exec` and `run`: where the data comes from, which
+/// writer renders it, and where the result goes.
+#[derive(Args)]
+pub struct RenderArgs {
+    #[command(flatten)]
+    pub source: ReaderArgs,
 
     /// Output format — run with --help for the writers this build has
     ///
@@ -78,12 +89,12 @@ pub struct RenderArgs {
 ///
 /// Deliberately not [`RenderArgs`]: there is no `--writer` to choose and no
 /// `--output` to write, and `-D` carries the viewer's own settings rather than
-/// a writer's.
+/// a writer's. The reader flags are the same ones, so they come from the same
+/// [`ReaderArgs`].
 #[derive(Args)]
 pub struct ViewArgs {
-    /// Data source connection string (duckdb://, sqlite://, odbc://)
-    #[arg(short, long, default_value = "duckdb://memory")]
-    pub reader: String,
+    #[command(flatten)]
+    pub source: ReaderArgs,
 
     /// Viewer settings, as `key=value` (repeatable)
     #[arg(
@@ -323,8 +334,8 @@ fn cmd_run(file: PathBuf, args: &RenderArgs, writer: &WriterSpec) {
 
 fn cmd_exec(query: String, args: &RenderArgs, writer: &WriterSpec) {
     if args.verbose {
-        eprintln!("Reader: {}", args.reader);
-        if let Some(ref cache) = args.cache {
+        eprintln!("Reader: {}", args.source.reader);
+        if let Some(ref cache) = args.source.cache {
             eprintln!("Cache: {}", cache);
         }
         eprintln!("Writer: {}", writer.info.name);
@@ -333,10 +344,11 @@ fn cmd_exec(query: String, args: &RenderArgs, writer: &WriterSpec) {
         }
     }
 
-    let reader = open_reader(&args.reader, args.cache.as_deref()).unwrap_or_else(|e| {
-        eprintln!("{}", e);
-        std::process::exit(1);
-    });
+    let reader =
+        open_reader(&args.source.reader, args.source.cache.as_deref()).unwrap_or_else(|e| {
+            eprintln!("{}", e);
+            std::process::exit(1);
+        });
 
     exec_with_reader(&query, reader.as_ref(), args, writer);
 }
@@ -485,10 +497,18 @@ fn cmd_view(query: String, args: &ViewArgs) {
             std::process::exit(1);
         });
 
-        let reader = open_reader(&args.reader, None).unwrap_or_else(|e| {
-            eprintln!("{}", e);
-            std::process::exit(1);
-        });
+        if args.verbose {
+            eprintln!("Reader: {}", args.source.reader);
+            if let Some(ref cache) = args.source.cache {
+                eprintln!("Cache: {}", cache);
+            }
+        }
+
+        let reader =
+            open_reader(&args.source.reader, args.source.cache.as_deref()).unwrap_or_else(|e| {
+                eprintln!("{}", e);
+                std::process::exit(1);
+            });
 
         let validated = validate(&query).unwrap_or_else(|e| {
             eprintln!("Failed to validate query: {}", e);

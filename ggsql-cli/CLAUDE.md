@@ -61,11 +61,13 @@ This is why `RenderArgs::writer` is `Option<String>` with no clap `default_value
 
 `open_reader(uri, cache) -> Result<Box<dyn Reader + Send>, String>` is the matching single place for connection strings, and it delegates to the library factory `ggsql::reader::connection::reader_from_uri`. Which schemes exist, which of them this build has, and how a cache wraps a primary are the library's business; `ggsql::reader::Reader` is object-safe on purpose, so `exec`, `run` and `view` all go through this one function.
 
-`--cache <duckdb|sqlite>` on `exec` and `run` wraps the reader in an in-memory caching layer, off by default. It is sugar for the composite connection scheme `<cache>+<primary>://…` (e.g. `duckdb+odbc://…`) that `reader_from_uri` already understands, so `open_reader` rewrites the flag into that URI and refuses the two forms together — there would be no saying which cache was meant. The composite scheme works on `view` too, which has no flag of its own.
+`--cache <duckdb|sqlite>` wraps the reader in an in-memory caching layer, off by default. It is sugar for the composite connection scheme `<cache>+<primary>://…` (e.g. `duckdb+odbc://…`) that `reader_from_uri` already understands, so `open_reader` rewrites the flag into that URI and refuses the two forms together — there would be no saying which cache was meant.
+
+**Both flags live in one `ReaderArgs`**, flattened into `RenderArgs` and `ViewArgs` in turn, so `--reader` and `--cache` are declared, helped and defaulted once and `exec`, `run` and `view` cannot drift apart. Where a plot's data comes from does not depend on whether the plot ends up in a file or in a window. Nesting one `#[derive(Args)]` inside another keeps the flag names flat, so this costs nothing at the command line — only `args.source.reader` instead of `args.reader` in the source.
 
 ### `view`, and why the window code is not here
 
-`view` flattens its own `ViewArgs` rather than `RenderArgs`: there is no `--writer` to pick and no `--output` to write, and its `-D` (`--viewer-option`) carries the viewer's settings rather than a writer's.
+`view` flattens its own `ViewArgs` rather than `RenderArgs`: there is no `--writer` to pick and no `--output` to write, and its `-D` (`--viewer-option`) carries the viewer's settings rather than a writer's. What it does share is `ReaderArgs`, so `--reader` and `--cache` behave identically here.
 
 **The window itself lives in the library, as `ggsql::writer::PlotViewer`** — and that is the decision most likely to be re-litigated, so: *only public `ggsql::*` API is used; this crate has no awareness of internal modules.* For the CLI to call the renderer's `window::run` itself it would have to take a direct hephaestus dependency, name `PlotComposition` and `WindowConfig` in its own source, and pin hephaestus in a second place — breaking that invariant three ways. So the *behaviour* goes public as a type instead, and `cmd_view` stays thin: parse options, open the reader, execute, call `show`. `show` blocks on the main thread until the window closes.
 
