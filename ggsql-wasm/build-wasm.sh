@@ -43,17 +43,37 @@ if [ "$SKIP_BINARY" = false ]; then
     # which preserves the LLD symbols that loadable extensions import.
     # wasm-pack cannot forward that flag (rustwasm/wasm-pack#1092).
     echo "Re-running wasm-bindgen with --keep-lld-exports..."
-    # The schema versions have to agree exactly, so pick the cached binary
-    # matching the wasm-bindgen the crate was built against rather than the
-    # newest one on the machine.
+    # The schema versions have to agree exactly, so pick the binary matching
+    # the wasm-bindgen the crate was built against rather than the newest one
+    # on the machine.
     WB_VERSION="$(awk '/^name = "wasm-bindgen"$/{f=1;next} f&&/^version = /{gsub(/[",]/,"");print $3;exit}' "$REPO_ROOT/Cargo.lock")"
     WASM_BINDGEN=""
     if [ -n "$WB_VERSION" ]; then
-        WASM_BINDGEN="$(find "$HOME/Library/Caches/.wasm-pack" "$HOME/.cache/.wasm-pack" \
-            -path "*wasm-bindgen-cargo-install-$WB_VERSION/wasm-bindgen" -type f 2>/dev/null | head -1 || true)"
+        # wasm-pack caches a binary it downloaded differently from one it had
+        # to build, and which you get depends on the platform: a prebuilt
+        # tarball is keyed by a hash of its URL, putting the version nowhere in
+        # the path, while the `cargo install` fallback taken where no prebuilt
+        # exists gives `wasm-bindgen-cargo-install-<version>/`. So match on the
+        # file name only and ask each candidate its version — which also makes
+        # the match an actual check rather than trust in a directory name. A
+        # hand-installed copy on PATH counts too.
+        candidates=()
+        while IFS= read -r found; do
+            candidates+=("$found")
+        done < <(find "$HOME/Library/Caches/.wasm-pack" \
+            "${XDG_CACHE_HOME:-$HOME/.cache}/.wasm-pack" \
+            -name wasm-bindgen -type f 2>/dev/null)
+        candidates+=("$(command -v wasm-bindgen 2>/dev/null || true)")
+        for candidate in "${candidates[@]}"; do
+            [ -n "$candidate" ] && [ -x "$candidate" ] || continue
+            if [ "$("$candidate" --version 2>/dev/null | awk '{print $2}')" = "$WB_VERSION" ]; then
+                WASM_BINDGEN="$candidate"
+                break
+            fi
+        done
     fi
     if [ -z "$WASM_BINDGEN" ]; then
-        echo "Error: no cached wasm-bindgen ${WB_VERSION:-(version unknown)} found." >&2
+        echo "Error: no wasm-bindgen ${WB_VERSION:-(version unknown)} found." >&2
         echo "Install it with: cargo install -f wasm-bindgen-cli --version $WB_VERSION" >&2
         exit 1
     fi
