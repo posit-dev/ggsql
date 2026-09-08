@@ -5,7 +5,7 @@ Provides commands for executing ggsql queries with various data sources and outp
 */
 
 use clap::{Parser, Subcommand, ValueEnum};
-use ggsql::reader::{Reader, Spec};
+use ggsql::reader::{Reader, ResolvedPlot};
 use ggsql::validate::validate;
 use ggsql::writer::{Writer, WriterOptions};
 use ggsql::{parser, VERSION};
@@ -376,7 +376,7 @@ fn exec_with_reader<R: Reader + ?Sized>(
     render_spec(spec, writer, output, verbose);
 }
 
-fn render_spec(spec: Spec, writer: &WriterSpec, output: Option<PathBuf>, verbose: bool) {
+fn render_spec(spec: ResolvedPlot, writer: &WriterSpec, output: Option<PathBuf>, verbose: bool) {
     if verbose {
         let metadata = spec.metadata();
         eprintln!("\nQuery executed:");
@@ -784,7 +784,7 @@ fn cmd_skill(format: Option<DocsFormat>) {
     }
 }
 
-fn render_vegalite(spec: &Spec, options: &WriterOptions) -> Output {
+fn render_vegalite(spec: &ResolvedPlot, options: &WriterOptions) -> Output {
     #[cfg(feature = "vegalite")]
     {
         // Configure from --writer-option, then render
@@ -805,7 +805,7 @@ fn render_vegalite(spec: &Spec, options: &WriterOptions) -> Output {
     }
 }
 
-fn render_png(spec: &Spec, options: &WriterOptions) -> Output {
+fn render_png(spec: &ResolvedPlot, options: &WriterOptions) -> Output {
     #[cfg(feature = "png")]
     {
         // Configure from --writer-option, then render

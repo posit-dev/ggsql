@@ -7,7 +7,7 @@
 //!
 //! All readers implement the `Reader` trait, which provides:
 //! - SQL query execution → DataFrame conversion
-//! - Visualization query execution → Spec
+//! - Visualization query execution → ResolvedPlot
 //! - Optional DataFrame registration for queryable tables
 //! - Connection management and error handling
 //!
@@ -502,7 +502,7 @@ pub(crate) fn returns_rows(sql: &str) -> bool {
 #[cfg(test)]
 pub(crate) mod test_support {
     use super::{
-        execute_with_reader, returns_rows, ColumnInfo, Reader, Spec, SqlDialect, TableInfo,
+        execute_with_reader, returns_rows, ColumnInfo, Reader, ResolvedPlot, SqlDialect, TableInfo,
     };
     use crate::{DataFrame, GgsqlError, Result};
     use std::sync::{Arc, Mutex};
@@ -541,7 +541,7 @@ pub(crate) mod test_support {
         fn unregister(&self, name: &str) -> Result<()> {
             self.inner.unregister(name)
         }
-        fn execute(&self, query: &str) -> Result<Spec> {
+        fn execute(&self, query: &str) -> Result<ResolvedPlot> {
             execute_with_reader(self, query)
         }
         fn dialect(&self) -> &dyn SqlDialect {
@@ -591,7 +591,7 @@ pub(crate) mod test_support {
         fn unregister(&self, _name: &str) -> Result<()> {
             Err(Self::refuse("unregister"))
         }
-        fn execute(&self, query: &str) -> Result<Spec> {
+        fn execute(&self, query: &str) -> Result<ResolvedPlot> {
             execute_with_reader(self, query)
         }
         fn dialect(&self) -> &dyn SqlDialect {
@@ -670,11 +670,11 @@ pub(crate) mod test_support {
 }
 
 // ============================================================================
-// Spec - Result of reader.execute()
+// ResolvedPlot - Result of reader.execute()
 // ============================================================================
 
 /// Result of executing a ggsql query, ready for rendering.
-pub struct Spec {
+pub struct ResolvedPlot {
     /// Single resolved plot specification
     pub(crate) plot: Plot,
     /// Internal data map (global + layer-specific DataFrames)
@@ -797,7 +797,7 @@ pub trait Reader {
     /// Execute a ggsql query and return the visualization specification.
     ///
     /// This is the main entry point for creating visualizations. It parses the query,
-    /// executes the SQL portion, and returns a `Spec` ready for rendering.
+    /// executes the SQL portion, and returns a `ResolvedPlot` ready for rendering.
     ///
     /// # Arguments
     ///
@@ -805,7 +805,7 @@ pub trait Reader {
     ///
     /// # Returns
     ///
-    /// A `Spec` containing the resolved visualization specification and data.
+    /// A `ResolvedPlot` containing the visualization specification and data.
     ///
     /// # Errors
     ///
@@ -826,7 +826,7 @@ pub trait Reader {
     /// let writer = VegaLiteWriter::new();
     /// let json = writer.render(&spec)?;
     /// ```
-    fn execute(&self, query: &str) -> Result<Spec>;
+    fn execute(&self, query: &str) -> Result<ResolvedPlot>;
 
     /// Get the SQL dialect for this reader.
     ///
@@ -967,7 +967,7 @@ pub struct ColumnInfo {
 /// This is the shared implementation behind `Reader::execute()`. Concrete
 /// readers delegate to this so the trait stays object-safe (no `Self: Sized`
 /// bound on `execute`).
-pub fn execute_with_reader(reader: &dyn Reader, query: &str) -> Result<Spec> {
+pub fn execute_with_reader(reader: &dyn Reader, query: &str) -> Result<ResolvedPlot> {
     let validated = validate(query)?;
     let warnings: Vec<ValidationWarning> = validated.warnings().to_vec();
 
@@ -981,7 +981,7 @@ pub fn execute_with_reader(reader: &dyn Reader, query: &str) -> Result<Spec> {
     let layer_sql = vec![None; plot.layers.len()];
     let stat_sql = vec![None; plot.layers.len()];
 
-    Ok(Spec::new(
+    Ok(ResolvedPlot::new(
         plot,
         prepared_data.data,
         prepared_data.sql,

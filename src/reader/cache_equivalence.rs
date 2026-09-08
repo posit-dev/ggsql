@@ -272,7 +272,7 @@ mod adbc_mode {
     use super::*;
     use crate::reader::sqlite::SqliteDialect;
     use crate::reader::test_support::assert_dataframes_equal;
-    use crate::reader::{AdbcReader, Spec, SqlDialect};
+    use crate::reader::{AdbcReader, ResolvedPlot, SqlDialect};
     use crate::{DataFrame, Result};
     use adbc_core::options::{AdbcVersion, OptionDatabase, OptionValue};
     use adbc_core::LOAD_FLAG_DEFAULT;
@@ -329,7 +329,7 @@ mod adbc_mode {
         fn unregister(&self, name: &str) -> Result<()> {
             self.inner.unregister(name)
         }
-        fn execute(&self, query: &str) -> Result<Spec> {
+        fn execute(&self, query: &str) -> Result<ResolvedPlot> {
             crate::reader::execute_with_reader(self, query)
         }
         fn dialect(&self) -> &dyn SqlDialect {

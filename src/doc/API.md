@@ -4,7 +4,7 @@ This document provides a comprehensive reference for the ggsql public API.
 
 ## Overview
 
-- **Stage 1: `reader.execute()`** - Parse query, execute SQL, resolve mappings, create Spec
+- **Stage 1: `reader.execute()`** - Parse query, execute SQL, resolve mappings, create ResolvedPlot
 - **Stage 2: `writer.render()`** - Generate output (Vega-Lite JSON, etc.)
 
 ### API Functions
@@ -12,7 +12,7 @@ This document provides a comprehensive reference for the ggsql public API.
 | Function           | Use Case                                             |
 | ------------------ | ---------------------------------------------------- |
 | `reader.execute()` | Main entry point - full visualization pipeline       |
-| `writer.render()`  | Generate output from Spec                            |
+| `writer.render()`  | Generate output from ResolvedPlot                       |
 | `validate()`       | Validate syntax + semantics, inspect query structure |
 
 ---
@@ -22,7 +22,7 @@ This document provides a comprehensive reference for the ggsql public API.
 ### `Reader::execute`
 
 ```rust
-fn execute(&self, query: &str) -> Result<Spec>
+fn execute(&self, query: &str) -> Result<ResolvedPlot>
 ```
 
 Execute a ggsql query for visualization. This is the main entry point - a default method on the Reader trait.
@@ -43,7 +43,7 @@ Execute a ggsql query for visualization. This is the main entry point - a defaul
 
 **Returns:**
 
-- `Ok(Spec)` - Ready for rendering
+- `Ok(ResolvedPlot)` - Ready for rendering
 - `Err(GgsqlError)` - Parse, validation, or execution error
 
 **Example:**
@@ -183,7 +183,7 @@ if let Some(tree) = validated.tree() {
 
 ---
 
-### `Spec`
+### `ResolvedPlot`
 
 Result of executing a ggsql query, ready for rendering.
 
@@ -401,8 +401,8 @@ pub trait Writer {
     /// Check whether a spec can be rendered by this writer, without rendering it
     fn validate(&self, spec: &Plot) -> Result<()>;
 
-    /// Render a prepared `Spec` from `reader.execute()` — the usual entry point
-    fn render(&self, spec: &Spec) -> Result<Self::Output>;
+    /// Render a `ResolvedPlot` from `reader.execute()` — the usual entry point
+    fn render(&self, spec: &ResolvedPlot) -> Result<Self::Output>;
 }
 ```
 

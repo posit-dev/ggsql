@@ -1,4 +1,4 @@
-//! Implementation of Spec methods.
+//! Implementation of ResolvedPlot methods.
 
 use std::collections::HashMap;
 
@@ -7,10 +7,10 @@ use crate::plot::Plot;
 use crate::validate::ValidationWarning;
 use crate::DataFrame;
 
-use super::{Metadata, Spec};
+use super::{Metadata, ResolvedPlot};
 
-impl Spec {
-    /// Create a new Spec from PreparedData
+impl ResolvedPlot {
+    /// Create a new ResolvedPlot from PreparedData
     pub(crate) fn new(
         plot: Plot,
         data: HashMap<String, DataFrame>,

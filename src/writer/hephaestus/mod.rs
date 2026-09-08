@@ -1,6 +1,6 @@
 //! PNG raster writer.
 //!
-//! Renders a resolved ggsql `Spec` to PNG bytes via the [`hephaestus`] 2D scene
+//! Renders a ggsql `ResolvedPlot` to PNG bytes via the [`hephaestus`] 2D scene
 //! renderer. Only [`PngWriter`] is public; the renderer behind it is an
 //! implementation detail.
 //!

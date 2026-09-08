@@ -738,7 +738,7 @@ mod tests {
         fn register(&self, _name: &str, _df: crate::DataFrame, _replace: bool) -> Result<()> {
             Ok(())
         }
-        fn execute(&self, _query: &str) -> Result<crate::reader::Spec> {
+        fn execute(&self, _query: &str) -> Result<crate::reader::ResolvedPlot> {
             unreachable!()
         }
         fn caches_sources(&self) -> bool {

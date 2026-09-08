@@ -761,7 +761,7 @@ mod integration_tests {
         // Verify the spec has the facet configuration
         assert!(
             prepared.specs[0].facet.is_some(),
-            "Spec should have facet configuration"
+            "ResolvedPlot should have facet configuration"
         );
     }
 

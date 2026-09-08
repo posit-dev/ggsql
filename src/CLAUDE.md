@@ -23,7 +23,7 @@ src/
 ├── parser/      Tree-sitter integration → typed AST (Plot)
 ├── plot/        AST: Plot, Layer, Geom, Scale, Facet, Projection, Mappings  (see plot/CLAUDE.md)
 ├── reader/      Reader trait + drivers (DuckDB, SQLite, ODBC, Snowflake, …)
-├── execute/     Pipeline that turns Plot + Reader → executed Spec
+├── execute/     Pipeline that turns Plot + Reader → ResolvedPlot
 ├── writer/      Writer trait + Vega-Lite implementation  (see writer/vegalite/CLAUDE.md)
 ├── data/        Bundled sample datasets (penguins, airquality)
 └── doc/         API.md — public Rust API reference
@@ -49,7 +49,7 @@ Grammar lives in [`/tree-sitter-ggsql/`](../tree-sitter-ggsql/) — when adding 
 | `odbc.rs` | ODBC | `odbc` (default) |
 | `cache.rs` | `CachingReader` — wraps any primary `Reader` with an in-memory cache | `duckdb` or `sqlite` |
 | `connection.rs` | Connection-string parsing for all of the above | — |
-| `spec.rs` | `Spec` type returned by `execute()`, plus DataFrame conversion | — |
+| `spec.rs` | `ResolvedPlot` type returned by `execute()`, plus DataFrame conversion | — |
 | `data.rs` | Bundled sample datasets — the `ggsql:` builtins | `builtin-data` |
 
 `SqlDialect` trait in `mod.rs` lets each driver supply its own type names, information-schema queries, and spatial helper methods (`sql_st_transform`, `sql_geometry_to_wkb`, `sql_geometry_bbox`, `sql_ensure_geometry`, `sql_select_replace`, `sql_spatial_setup`).
@@ -58,7 +58,7 @@ Grammar lives in [`/tree-sitter-ggsql/`](../tree-sitter-ggsql/) — when adding 
 
 ### `execute/`
 
-The pipeline that takes a parsed `Plot` plus a `Reader` and produces a fully-resolved `Spec` (typed data per layer, scales resolved, casts applied). Submodules:
+The pipeline that takes a parsed `Plot` plus a `Reader` and produces a `ResolvedPlot` (typed data per layer, scales resolved, casts applied). Submodules:
 
 - `mod.rs` — top-level `prepare_data_with_reader()` and validation glue.
 - `cte.rs` — CTE extraction / materialization for shared subqueries.
@@ -83,13 +83,13 @@ Sufficiently large to have its own [`plot/CLAUDE.md`](plot/CLAUDE.md). It holds 
 
 ### `doc/`
 
-Just `API.md` — the public Rust API reference for `Reader::execute`, `Writer::render`, `validate`, `Spec`, `Validated`, `Metadata`. End-user docs live in `/doc/`, not here.
+Just `API.md` — the public Rust API reference for `Reader::execute`, `Writer::render`, `validate`, `ResolvedPlot`, `Validated`, `Metadata`. End-user docs live in `/doc/`, not here.
 
 ## Public API quick reference
 
 Two-stage pipeline:
 
-1. **`reader.execute(query)`** → `Spec` (parses, runs SQL, resolves mappings, applies stats).
+1. **`reader.execute(query)`** → `ResolvedPlot` (parses, runs SQL, resolves mappings, applies stats).
 2. **`writer.render(&spec)`** → output (Vega-Lite JSON for `VegaLiteWriter`).
 
 `validate(query)` performs syntax + semantic checks without touching a reader.

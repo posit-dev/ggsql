@@ -503,7 +503,7 @@ impl Reader for DuckDBReader {
         Ok(())
     }
 
-    fn execute(&self, query: &str) -> Result<super::Spec> {
+    fn execute(&self, query: &str) -> Result<super::ResolvedPlot> {
         super::execute_with_reader(self, query)
     }
 

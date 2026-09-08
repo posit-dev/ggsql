@@ -6,7 +6,7 @@
 //! # Architecture
 //!
 //! All writers implement the `Writer` trait, which provides:
-//! - Spec + Data → Output conversion
+//! - ResolvedPlot + Data → Output conversion
 //! - Validation for writer compatibility
 //! - Format-specific rendering logic
 //!
@@ -28,7 +28,7 @@
 //! key–value [`WriterOptions`] when a frontend collects settings from a user
 //! without knowing which writer they picked.
 
-use crate::reader::Spec;
+use crate::reader::ResolvedPlot;
 use crate::{DataFrame, Plot, Result};
 use std::collections::HashMap;
 
@@ -114,7 +114,7 @@ pub trait Writer {
     /// Ok(()) if the spec is compatible, otherwise an error
     fn validate(&self, spec: &Plot) -> Result<()>;
 
-    /// Render a Spec to output format
+    /// Render a ResolvedPlot to output format
     ///
     /// This is the main entry point for generating visualization output.
     ///
@@ -138,7 +138,7 @@ pub trait Writer {
     /// let writer = VegaLiteWriter::new();
     /// let json = writer.render(&spec)?;
     /// ```
-    fn render(&self, spec: &Spec) -> Result<Self::Output> {
+    fn render(&self, spec: &ResolvedPlot) -> Result<Self::Output> {
         self.write(spec.plot(), spec.data())
     }
 }
