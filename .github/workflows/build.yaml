@@ -130,12 +130,12 @@ jobs:
         # svg, pdf and hep are default features and need no adapter, so these
         # are hard assertions on every runner. hep-read adds the document
         # round trip. Fast, and its failure is unambiguous, so it runs first.
-        run: cargo test --features hep-read --lib writer::
+        run: 'cargo test --features hep-read --lib writer::'
 
       - name: Run raster writer tests
         # Non-default features needing a GPU adapter. Skips its render
         # assertions gracefully if lavapipe did not come up.
-        run: cargo test --features "png jpeg tiff webp" --lib writer::
+        run: 'cargo test --features "png jpeg tiff webp" --lib writer::'
 
       - name: Check the plot viewer builds
         # Not a writer and it blocks on a window, so it is compiled, not run.
