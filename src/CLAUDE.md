@@ -17,11 +17,13 @@ src/
 ├── dataframe.rs                 DataFrame wrapper around arrow RecordBatch
 ├── format.rs                    Label/number/date formatting
 ├── naming.rs                    Internal column-name conventions (__ggsql_*)
+├── spec.rs                      Spec: parse-time result of one VISUALISE/TABULATE statement (Plot or Table)
 ├── util.rs                      String helpers (and_list, or_list, …)
 ├── validate.rs                  validate(): syntax + semantic checks without SQL execution
 │
-├── parser/      Tree-sitter integration → typed AST (Plot)
+├── parser/      Tree-sitter integration → typed AST (Spec: Plot or Table)
 ├── plot/        AST: Plot, Layer, Geom, Scale, Facet, Projection, Mappings  (see plot/CLAUDE.md)
+├── table/       AST stub for TABULATE, parallel to plot/ (no fields yet)
 ├── reader/      Reader trait + drivers (DuckDB, SQLite, ODBC, Snowflake, …)
 ├── execute/     Pipeline that turns Plot + Reader → ResolvedPlot
 ├── writer/      Writer trait + Vega-Lite implementation  (see writer/vegalite/CLAUDE.md)
@@ -31,9 +33,9 @@ src/
 
 ### `parser/`
 
-- `mod.rs` exposes `parse_query()` which builds a `Vec<Plot>` from a query string.
+- `mod.rs` exposes `parse_query()` which builds a `Vec<Spec>` from a query string — one `Spec` per `VISUALISE`/`TABULATE` statement, in source order. Today `build_ast` only ever produces `Spec::Plot`; `TABULATE` isn't wired into the grammar yet.
 - `source_tree.rs` is the parse-once wrapper: holds the tree-sitter `Tree`, source text, and language; offers a declarative query API (`find_node`, `find_text`, …) plus lazy `extract_sql()` / `extract_visualise()` extractors. It also handles the `VISUALISE FROM <source>` shorthand by injecting `SELECT * FROM <source>`.
-- `builder.rs` walks the CST and produces typed `Plot` values. This is where new grammar nodes become `Plot` fields.
+- `builder.rs` walks the CST and produces typed `Spec` values (`Plot`, boxed for size, or `Table`). This is where new grammar nodes become `Plot`/`Table` fields.
 - `sql.rs` extracts structure from SQL fragments over the parse tree.
 
 Grammar lives in [`/tree-sitter-ggsql/`](../tree-sitter-ggsql/) — when adding syntax, edit `grammar.js`, regenerate, then teach `builder.rs` about the new nodes.

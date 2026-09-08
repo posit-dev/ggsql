@@ -4,7 +4,7 @@
 //! any SQL. Use this for IDE integration, syntax checking, and query inspection.
 
 use crate::parser;
-use crate::Result;
+use crate::{Plot, Result, Spec};
 
 // ============================================================================
 // Core Types
@@ -186,9 +186,14 @@ pub fn validate(query: &str) -> Result<Validated> {
         });
     }
 
-    // Build AST from existing tree for validation
-    let plots = match parser::build_ast(&source_tree) {
-        Ok(p) => p,
+    // Build AST from existing tree for validation. Table specs are silently
+    // dropped here: there is no table-validation path yet, so a TABULATE-only
+    // query ends up with an empty `plots`, skips the `if let Some(plot) =
+    // plots.first()` block below entirely, and is reported `valid: true`
+    // without anything having actually been validated. Known gap, not a
+    // deliberate choice.
+    let plots: Vec<Plot> = match parser::build_ast(&source_tree) {
+        Ok(specs) => specs.into_iter().filter_map(Spec::into_plot).collect(),
         Err(e) => {
             errors.push(ValidationError {
                 message: e.to_string(),

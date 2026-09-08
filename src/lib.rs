@@ -42,6 +42,8 @@ pub mod format;
 pub mod naming;
 pub mod parser;
 pub mod plot;
+pub mod spec;
+pub mod table;
 pub mod util;
 
 pub mod reader;
@@ -58,6 +60,10 @@ pub use plot::{
     AestheticValue, DataSource, Facet, FacetLayout, Geom, Layer, Mappings, Parameters, Plot, Scale,
     SqlExpression,
 };
+
+// Re-export the parse-time Plot/Table result and the Table stub
+pub use spec::Spec;
+pub use table::Table;
 
 // Re-export aesthetic classification utilities
 pub use plot::aesthetic::{

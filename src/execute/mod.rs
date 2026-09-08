@@ -29,7 +29,7 @@ use crate::plot::facet::{resolve_properties as resolve_facet_properties, FacetDa
 use crate::plot::layer::is_transposed;
 use crate::plot::projection::resolve_projection_properties;
 use crate::plot::{AestheticValue, Layer, Scale, ScaleTypeKind, Schema};
-use crate::{DataFrame, DataSource, GgsqlError, Plot, Result};
+use crate::{DataFrame, DataSource, GgsqlError, Plot, Result, Spec};
 use std::collections::{HashMap, HashSet};
 
 use crate::reader::Reader;
@@ -1108,7 +1108,10 @@ pub fn prepare_data_with_reader(query: &str, reader: &dyn Reader) -> Result<Prep
     let source_tree = parser::SourceTree::new(query)?;
     source_tree.validate()?;
 
-    // Check if query has VISUALISE statements
+    // Check if query has VISUALISE statements. Known gap: a TABULATE-only
+    // query (no VISUALISE at all) has no visualise_statement node, so it
+    // bails out right here with "No visualization specifications found" —
+    // there is no table-execution path yet to route it to instead.
     let root = source_tree.root();
     if source_tree
         .find_node(&root, "(visualise_statement) @viz")
@@ -1119,8 +1122,13 @@ pub fn prepare_data_with_reader(query: &str, reader: &dyn Reader) -> Result<Prep
         ));
     }
 
-    // Build AST from existing tree
-    let mut specs = parser::build_ast(&source_tree)?;
+    // Build AST from existing tree. Table specs are silently dropped here too
+    // (belt-and-braces after the check above): only visualizations flow
+    // through this pipeline.
+    let mut specs: Vec<Plot> = parser::build_ast(&source_tree)?
+        .into_iter()
+        .filter_map(Spec::into_plot)
+        .collect();
 
     if specs.is_empty() {
         return Err(GgsqlError::ValidationError(

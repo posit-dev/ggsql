@@ -461,12 +461,19 @@ fn cmd_parse(query: String, format: String) {
         "pretty" => {
             println!("ggsql Specifications: {} total", specs.len());
             for (i, spec) in specs.iter().enumerate() {
-                println!("\nVisualization #{}:", i + 1);
-                println!("  Global Mappings: {:?}", spec.global_mappings);
-                println!("  Layers: {}", spec.layers.len());
-                println!("  Scales: {}", spec.scales.len());
-                if spec.facet.is_some() {
-                    println!("  Faceting: Yes");
+                match spec {
+                    ggsql::Spec::Plot(plot) => {
+                        println!("\nVisualization #{}:", i + 1);
+                        println!("  Global Mappings: {:?}", plot.global_mappings);
+                        println!("  Layers: {}", plot.layers.len());
+                        println!("  Scales: {}", plot.scales.len());
+                        if plot.facet.is_some() {
+                            println!("  Faceting: Yes");
+                        }
+                    }
+                    ggsql::Spec::Table(_) => {
+                        println!("\nTable #{}:", i + 1);
+                    }
                 }
             }
         }

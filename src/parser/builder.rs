@@ -8,7 +8,7 @@ use crate::plot::layer::geom::Geom;
 use crate::plot::projection::resolve_coord;
 use crate::plot::scale::{color_to_hex, is_color_aesthetic, is_user_facet_aesthetic, Transform};
 use crate::plot::*;
-use crate::{GgsqlError, Result};
+use crate::{GgsqlError, Result, Spec};
 use std::collections::HashMap;
 use tree_sitter::Node;
 
@@ -194,7 +194,7 @@ fn parse_literal_value(node: &Node, source: &SourceTree) -> Result<AestheticValu
 // ============================================================================
 
 /// Build a Plot struct from a tree-sitter parse tree
-pub fn build_ast(source: &SourceTree) -> Result<Vec<Plot>> {
+pub fn build_ast(source: &SourceTree) -> Result<Vec<Spec>> {
     let root = source.root();
 
     // Check if root is a query node
@@ -234,7 +234,7 @@ pub fn build_ast(source: &SourceTree) -> Result<Vec<Plot>> {
             ));
         }
 
-        specs.push(spec);
+        specs.push(Spec::Plot(Box::new(spec)));
     }
 
     if specs.is_empty() {
@@ -1216,7 +1216,10 @@ mod tests {
         let source = SourceTree::new(query)?;
         source.validate()?;
 
-        build_ast(&source)
+        Ok(build_ast(&source)?
+            .into_iter()
+            .filter_map(Spec::into_plot)
+            .collect())
     }
 
     // ========================================
