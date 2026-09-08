@@ -196,11 +196,13 @@ pip install ggsql-jupyter && ggsql-jupyter --install
 ## Features
 
 ```toml
-default = ["all-readers"]
+default = ["all-readers", "raster-plots"]
 all-readers = ["sqlite", "odbc", "duckdb"]
 ```
 
-Each feature passes through to `ggsql/<feature>`. The default install therefore supports DuckDB, SQLite, and ODBC connection strings.
+The reader features pass through to `ggsql/<feature>`, so the default install supports DuckDB, SQLite and ODBC connection strings. `raster-plots` adds `ggsql/png`, `ggsql/jpeg` and `ggsql/tiff` — **default on purpose**, for the reason in [`choose`](#choose): the Plots pane asks for `png`, every shipped build enables it, and a plain `cargo build` that quietly produced SVG-only plots differed from the released kernel in the way hardest to notice. `--no-default-features --features all-readers` builds without wgpu; plots then render as SVG. The release workflow passes no feature flags at all, so a wheel is exactly what a plain build produces.
+
+The vector writers are not features here: `ggsql`'s `svg` and `pdf` are named unconditionally in `[dependencies]`, because the fallback path has to be compiled in whatever else is.
 
 ## Testing
 

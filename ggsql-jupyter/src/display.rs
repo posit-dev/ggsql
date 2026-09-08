@@ -16,10 +16,8 @@ use serde_json::{json, Value};
 
 /// What the frontend declared itself to be, via `--session-mode`.
 ///
-/// Only a frontend that knows which kind of session it is launching passes
-/// this — in practice the ggsql extension, which knows because it is the one
-/// creating the session. Everything else leaves it unset and is classified by
-/// the heuristic below.
+/// Only a frontend that knows what it is launching passes this — in practice
+/// the ggsql extension. Everything else is classified by the heuristic below.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 pub enum SessionMode {
     /// A Positron console session: plots belong in the Plots pane.
@@ -34,24 +32,16 @@ pub enum SessionMode {
 
 /// Where a plot this kernel produces is meant to end up.
 ///
-/// The distinction is not cosmetic: Positron routes a plot comm to the Plots
-/// pane whatever kind of session opened it, so a notebook that used the comm
-/// would put its picture in the pane and leave the cell empty. Console and
-/// notebook therefore need different output paths, and this is what tells them
-/// apart.
+/// Positron routes a plot comm to the Plots pane whatever kind of session
+/// opened it, so a notebook using the comm would leave its cell empty. Console
+/// and notebook therefore need different output paths.
 ///
-/// - **`PositronConsole`**: output lands in the Plots pane. The Vega-Lite
-///   container upgrades to `100vh` inside `.positron-output-container`, so
-///   Vega-Lite's own container observer tracks pane resizes.
-/// - **`PositronNotebook`**: inline code-chunk output in an editor view.
-///   Rendered into a plain 400px container that watches layout only when the
-///   first measurement collapsed, because Positron animates the slot during
-///   its reveal transition.
-/// - **`Standalone`**: anything else — Jupyter, Quarto, nbconvert, and a
-///   Positron *background* session, which is attached to no UI. The HTML
-///   embeds in a static document. An outer/inner div wrapper with a 450px
-///   design width applies a uniform CSS-transform scale when the viewport is
-///   narrower, so the plot shrinks in proportion instead of squashing.
+/// - `PositronConsole`: a `positron.plot` comm and no `execute_result` — the
+///   comm alone creates the pane entry, and the pane re-asks on resize.
+/// - `PositronNotebook`: a static image bundle in the cell, sized from
+///   `output_width_px`.
+/// - `Standalone`: anything else — Jupyter, Quarto, nbconvert, and a Positron
+///   background session. A static bundle in `QUARTO_FIG_FORMAT`'s format.
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SessionKind {
     PositronConsole,
@@ -63,10 +53,8 @@ pub enum SessionKind {
 impl SessionKind {
     /// Classify a session, preferring what the frontend declared.
     ///
-    /// `mode` comes from `--session-mode` and is authoritative: a frontend that
-    /// passes it knows what it launched. The session-id heuristic is the
-    /// fallback for external Jupyter and Quarto, which pass nothing, and for
-    /// older versions of the extension that predate the flag.
+    /// `--session-mode` is authoritative; the session-id heuristic is the
+    /// fallback for Jupyter, Quarto and extensions predating the flag.
     pub fn resolve(session: &str, mode: Option<SessionMode>) -> Self {
         match mode {
             Some(SessionMode::Console) => Self::PositronConsole,
@@ -74,10 +62,8 @@ impl SessionKind {
             // A background session has no pane and no cell, so there is no
             // Positron-specific slot to render into.
             Some(SessionMode::Background) => Self::Standalone,
-            // Positron's supervisor tags every session it manages with a
-            // `ggsql-` prefix; standalone Jupyter/Quarto uses UUIDs without
-            // one. A session that is not Positron's is standalone whatever
-            // else its id says.
+            // Positron's supervisor prefixes every session it manages with
+            // `ggsql-`; Jupyter and Quarto use bare UUIDs.
             None if !session.starts_with("ggsql-") => Self::Standalone,
             None if session.contains("notebook") => Self::PositronNotebook,
             None => Self::PositronConsole,
@@ -101,9 +87,8 @@ impl RenderHints {
         content: &Value,
         mode: Option<SessionMode>,
     ) -> Self {
-        // Positron puts both of these on the execute request for a notebook
-        // or inline cell — see `runtimeNotebookKernel.ts`, which measures the
-        // output slot and reads the window's `devicePixelRatio`.
+        // Positron puts both on the execute request for a notebook or inline
+        // cell — see `runtimeNotebookKernel.ts`.
         let positron = content.get("positron");
         let output_width_px = positron
             .and_then(|p| p.get("output_width_px"))
@@ -122,18 +107,12 @@ impl RenderHints {
 
     /// The canvas a static render should use.
     ///
-    /// **An execute request reports a width but no height**, because the slot
-    /// it describes is a cell output — as wide as the cell and as tall as
-    /// whatever it is given. So the height is ours to pick, and the golden
-    /// ratio is close to ggplot2's own default figure and a better answer than
-    /// a square.
+    /// An execute request reports a width but no height: a cell output is as
+    /// wide as the cell and as tall as it is given. The height is therefore
+    /// ours to pick, and the golden ratio is close to ggplot2's default figure.
     ///
-    /// This is not how the Plots pane is sized. A pane reports a **full**
-    /// size, through the plot comm's `render` request and through the ui
-    /// comm's `did_change_plots_render_settings` — both carrying a required
-    /// `{width, height}` plus a pixel ratio — which is why a plot in the pane
-    /// fits it exactly. Neither reaches this function: the pane's size arrives
-    /// per render, not per execution.
+    /// The Plots pane is sized elsewhere — it reports a full `{width, height}`
+    /// per render, not per execution, so none of it reaches here.
     pub fn canvas(&self) -> Canvas {
         let ratio = self.pixel_ratio.unwrap_or(1.0);
         match self.output_width_px {
@@ -183,9 +162,8 @@ pub fn format_display_data(
     backend: &PlotBackend,
 ) -> Result<Formatted> {
     match result {
-        // Rendering happens here rather than at execution time — which is the
-        // point: the format is chosen where the destination is known, and so
-        // it can also fail here.
+        // Rendered here rather than at execution time, so the format is chosen
+        // where the destination is known — and can fail here too.
         ExecutionResult::Visualization(spec) => {
             match plot::choose(hints.kind, backend.raster(), hints.canvas()) {
                 Delivery::Comm => Ok(Formatted::PlotComm(spec)),
@@ -222,14 +200,11 @@ fn format_connection_changed(display_name: &str) -> Value {
 
 /// Render a plot to an image and wrap it as a static display bundle.
 ///
-/// **No `output_location`.** That key routes an output to Positron's plot
-/// widget, which would show the picture in the Plots pane *as well as* putting
-/// it in the cell — one plot arriving twice. A static bundle belongs wherever
-/// the cell's output goes and nowhere else.
+/// No `output_location`: it routes the output to the Plots pane as well as the
+/// cell, so the plot would arrive twice.
 ///
-/// `metadata[mime].width/height` carries the size the frontend should display
-/// at, in CSS pixels. Without it a 2x render appears at twice its intended
-/// size; JupyterLab and nbconvert both honour it.
+/// `metadata[mime].width/height` is the CSS-pixel size to display at, honoured
+/// by JupyterLab and nbconvert; without it a 2x render appears twice as large.
 fn format_static(spec: Box<Spec>, request: RenderRequest, backend: &PlotBackend) -> Result<Value> {
     let metadata = spec.metadata();
     let summary = format!(
@@ -373,10 +348,9 @@ mod tests {
 
     #[test]
     fn test_a_console_gets_a_comm_even_without_an_adapter() {
-        // This test's backend has no GPU, and the console still opens a comm:
-        // a static bundle would be inlined in the console by Positron on the
-        // strength of its `image/*` mime alone, whatever else it carried. The
-        // comm renders SVG instead of `png` and says so in `mime_type`.
+        // No GPU here, and the console still opens a comm — Positron would
+        // inline a static bundle on its `image/*` mime alone. The comm falls
+        // back to SVG and says so in `mime_type`.
         let formatted = format_display_data(
             ExecutionResult::Visualization(Box::new(a_spec())),
             &positron_console(),
@@ -413,9 +387,8 @@ mod tests {
 
     #[test]
     fn test_a_retina_notebook_renders_at_its_own_ratio() {
-        // Positron puts `output_pixel_ratio` on the execute request next to
-        // `output_width_px`, so a retina cell gets a sharp plot rather than an
-        // upscaled one.
+        // `output_pixel_ratio` rides alongside `output_width_px`, so a retina
+        // cell gets a sharp plot rather than an upscaled one.
         let hints = RenderHints::from_request(
             &header("ggsql-notebook-abc"),
             &json!({"positron": {"output_width_px": 600, "output_pixel_ratio": 2.0}}),
@@ -433,9 +406,9 @@ mod tests {
 
     #[test]
     fn test_a_missing_ratio_falls_back_to_one() {
-        // Plain Jupyter reports nothing, and an older Positron reports only a
-        // width. Rendering at 1x is soft on a retina display; assuming 2x
-        // would waste four times the pixels on every plot everywhere else.
+        // Plain Jupyter reports nothing and an older Positron only a width. 1x
+        // is soft on retina, but assuming 2x wastes four times the pixels
+        // everywhere else.
         let hints = RenderHints::from_request(
             &header("abcd-1234"),
             &json!({"positron": {"output_width_px": 600}}),
@@ -467,8 +440,8 @@ mod tests {
 
     #[test]
     fn test_standalone_gets_a_static_image_and_needs_no_network() {
-        // The headline change: a plain Jupyter or Quarto render no longer
-        // reaches for a CDN, so a plot works offline and in CI.
+        // A plain Jupyter or Quarto render reaches for no CDN, so a plot works
+        // offline and in CI.
         let display = render(&RenderHints::default());
         assert!(display["data"]["image/svg+xml"].is_string());
         let bundle = serde_json::to_string(&display).unwrap();
@@ -566,8 +539,7 @@ mod tests {
 
     #[test]
     fn test_session_mode_overrides_the_heuristic() {
-        // A frontend that declares itself is believed, whatever its session id
-        // happens to look like — the id is a guess, the flag is a statement.
+        // A declared mode is believed whatever the session id looks like.
         assert_eq!(
             kind("abcd-efgh-1234", Some(SessionMode::Console)),
             SessionKind::PositronConsole
@@ -584,9 +556,8 @@ mod tests {
 
     #[test]
     fn test_a_background_session_has_no_positron_slot() {
-        // It is Positron's session, but attached to no UI — so the heuristic's
-        // answer (console, from the `ggsql-` prefix) would aim output at a
-        // pane that is not showing it.
+        // Positron's session, but attached to no UI — the heuristic's answer
+        // (console, from the prefix) would aim output at a pane nobody sees.
         assert_eq!(
             kind("ggsql-bg-4471", Some(SessionMode::Background)),
             SessionKind::Standalone
@@ -596,9 +567,8 @@ mod tests {
 
     #[test]
     fn test_a_non_positron_session_is_standalone_whatever_its_id_says() {
-        // The heuristic keys on the "ggsql-" prefix the extension gives its
-        // sessions, so a foreign session id containing "notebook" is still
-        // standalone rather than a Positron notebook.
+        // The heuristic keys on the "ggsql-" prefix, so a foreign id containing
+        // "notebook" is still standalone.
         assert_eq!(kind("jupyter-notebook-9f2c", None), SessionKind::Standalone);
         assert_eq!(kind("notebook", None), SessionKind::Standalone);
     }

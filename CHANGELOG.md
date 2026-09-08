@@ -28,6 +28,26 @@
   error naming the option, not a silently ignored setting.
 - `--reader`, `--writer`, and `--output` gained the short forms `-r`, `-w`, and
   `-o` on `exec` and `run`; `validate --reader` also takes `-r`.
+- `--output`'s extension picks the writer when `--writer` is omitted: `svg`,
+  `pdf`, `hep`, `png`, `jpg`/`jpeg`, `tif`/`tiff`, `webp` and `json`/`vl.json`
+  each name their own. An explicit `--writer` still wins, warning on stderr if
+  it disagrees with the extension. An unrecognised extension falls back to
+  Vega-Lite; an extension naming a writer the build lacks is an error.
+- New `ggsql::fonts::{register_font, registered_font_families,
+  set_generic_family}` let a host register font faces itself, for a platform
+  with no font database to enumerate. A browser is the case that needs it: it
+  enumerates nothing, so the wasm package ships four Roboto faces and registers
+  them before drawing — without them a plot has no text at all, and, since text
+  is what sets the layout, the wrong margins with it. A page wanting its own
+  typography calls `registerFontFromUrl(url, { genericFor })` instead, which
+  registers the face and points a generic at whatever family name the file
+  turned out to carry — the one place that name exists.
+- New off-by-default `webfonts` feature: `fonts::register_font` also accepts the
+  WOFF and WOFF2 containers a font CDN serves a browser, unwrapping them to the
+  sfnt inside. That is how a font arrives at a web page, so `ggsql-wasm` turns
+  it on. Without the feature such a container is refused by name rather than
+  reaching the shaper and registering nothing, which would draw a plot with no
+  text and no indication why.
 - Text is rendered as rich text (markdown) by the new writers. A text layer's
   `label` is parsed for `**bold**`, `*italic*`, `_underline_`, `~~strike~~`,
   `` `code` `` and marquee-style `{selector body}` spans that set a colour or
@@ -54,21 +74,6 @@
   `GgsqlContext.execute` returns a `GgsqlPlot` to draw rather than a Vega-Lite
   JSON string; the npm package is entered through a new `ggsql.js` wrapper that
   adds `PlotView` and `registerDefaultFonts` beside it.
-- A browser enumerates no fonts of its own, so the wasm package ships four
-  Roboto faces and registers them before drawing. Without them a plot has no
-  text at all — and, since text is what sets the layout, the wrong margins with
-  it. New `ggsql::fonts::{register_font, registered_font_families,
-  set_generic_family}` are the library side of that, available to any host
-  whose platform has no font database to enumerate. A page wanting its own
-  typography calls `registerFontFromUrl(url, { genericFor })` instead, which
-  registers the face and points a generic at whatever family name the file
-  turned out to carry — the one place that name exists.
-- New off-by-default `webfonts` feature: `fonts::register_font` also accepts the
-  WOFF and WOFF2 containers a font CDN serves a browser, unwrapping them to the
-  sfnt inside. That is how a font arrives at a web page, so `ggsql-wasm` turns
-  it on. Without the feature such a container is refused by name rather than
-  reaching the shaper and registering nothing, which would draw a plot with no
-  text and no indication why.
 - Plots in a Positron console now open a `positron.plot` comm, so the Plots pane
   renders them at its own size, re-renders sharp when resized, and its save,
   copy and zoom affordances work on them. A new `--max-plots` (default 32) caps
@@ -85,11 +90,6 @@
 - Kernel plots render as SVG wherever raster output is unavailable — no GPU
   adapter, or a build with the new `raster-plots` feature turned off — so a GPU
   is needed for raster output, not to see a plot.
-- `--output`'s extension picks the writer when `--writer` is omitted: `svg`,
-  `pdf`, `hep`, `png`, `jpg`/`jpeg`, `tif`/`tiff`, `webp` and `json`/`vl.json`
-  each name their own. An explicit `--writer` still wins, warning on stderr if
-  it disagrees with the extension. An unrecognised extension falls back to
-  Vega-Lite; an extension naming a writer the build lacks is an error.
 - An unknown writer, a writer whose feature is off, and an unusable writer
   setting are now reported **before** the query runs rather than after.
   `--writer` and `-D` list every writer and its settings in their long help,

@@ -14,10 +14,9 @@ const PDF_OPTIONS: &[&str] = &["compress", "links"];
 
 /// Writer that renders a ggsql plot to a PDF page.
 ///
-/// Needs **no GPU adapter** — like the SVG writer, it records the same drawing
-/// commands the rasteriser would have executed. The page carries vector
-/// geometry and subset-embedded fonts, so a figure placed in a paper or a
-/// report scales and prints without resampling, and its text stays selectable.
+/// Needs no GPU adapter — like the SVG writer, it records the same drawing
+/// commands the rasteriser would have executed. The page carries vector geometry
+/// and subset-embedded fonts, so a figure prints without resampling.
 ///
 /// [`PdfWriter::from_options`] takes:
 ///
@@ -78,9 +77,8 @@ impl PdfWriter {
     /// Render, reporting anything PDF could not express.
     ///
     /// [`Writer::write`] discards the report. Take it when the output is an
-    /// artifact someone will ship: a dropped gradient is a defect in the file,
-    /// not a detail of how it was made. The list is empty for everything ggsql
-    /// itself draws.
+    /// artifact someone will ship — a dropped gradient is a defect in the file.
+    /// The list is empty for everything ggsql draws.
     ///
     /// # Errors
     ///

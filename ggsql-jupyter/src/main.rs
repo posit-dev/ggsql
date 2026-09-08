@@ -1,6 +1,7 @@
 //! ggsql Jupyter Kernel
 //!
-//! A Jupyter kernel for executing ggsql queries with rich Vega-Lite visualizations.
+//! A Jupyter kernel for executing ggsql queries. Plots are rendered here, in
+//! the kernel, and travel as images — nothing fetches a renderer from a CDN.
 
 mod connection;
 mod data_explorer;

@@ -1,9 +1,8 @@
 //! The canvas configuration every renderer-backed writer carries.
 //!
-//! Raster and vector output both need concrete dimensions and a resolution —
-//! unlike the resolution-independent Vega-Lite writer — so the size, DPI and
-//! background live here rather than being restated by each writer. A writer adds
-//! only the keys its own format has: a JPEG quality, a TIFF compression.
+//! Raster and vector output both need concrete dimensions and a resolution, so
+//! the size, DPI and background live here rather than in each writer. A writer
+//! adds only its own format's keys: a JPEG quality, a TIFF compression.
 
 use hephaestus::color::{rgba, Color};
 use hephaestus::geometry::Size;
@@ -34,11 +33,11 @@ pub const CANVAS_OPTIONS: &[&str] = &["width", "height", "units", "dpi", "backgr
 
 /// The canvas keys that describe a *size* rather than an appearance.
 ///
-/// A writer whose canvas is only a hint needs to tell "no size was asked for"
-/// apart from "a size was asked for that happens to equal the default", and
-/// these are the keys that decide it.
+/// A writer whose canvas is only a hint tells "no size given" from "a size that
+/// happens to equal the default" by these keys. `dpi` is its own hint and so is
+/// not among them.
 #[cfg(feature = "hep")]
-pub const CANVAS_HINT_OPTIONS: &[&str] = &["width", "height", "units", "dpi"];
+pub const CANVAS_SIZE_OPTIONS: &[&str] = &["width", "height", "units"];
 
 /// Units a `width` / `height` option may be given in.
 const UNITS: &[&str] = &["px", "in", "cm", "mm", "pt"];
@@ -52,9 +51,8 @@ pub struct Canvas {
     pub background: Color,
     /// Whether the dimensions were given in a physical unit rather than pixels.
     ///
-    /// Only the vector backends consult it: a file asked for in inches should
-    /// declare a physical size so it prints at the size it was asked for, while
-    /// one asked for in pixels should stay in pixels.
+    /// Only the vector backends consult it: a file asked for in inches declares
+    /// a physical size so it prints at that size; one in pixels stays in pixels.
     pub physical: bool,
 }
 
@@ -136,11 +134,9 @@ impl Canvas {
     /// The background as a vector backend wants it: `None` when fully
     /// transparent.
     ///
-    /// A rasteriser is always handed a colour to clear with, even a transparent
-    /// one. A vector backend instead takes `None` to mean *emit no background
-    /// element at all*, which is what a transparent canvas should become — a
-    /// full-canvas rect painted in transparent black is a real element that
-    /// some consumers still composite, and it is dead weight in every other.
+    /// A rasteriser is always handed a colour to clear with; a vector backend
+    /// takes `None` to mean "emit no background element", which is what a
+    /// transparent canvas should become rather than a transparent-black rect.
     pub fn vector_background(&self) -> Option<Color> {
         if self.background.components[3] <= 0.0 {
             None
@@ -159,8 +155,7 @@ impl Default for Canvas {
 /// Read a `background` option's value as a color.
 ///
 /// A free function rather than a `Canvas` method because the plot viewer takes
-/// a background without taking a canvas — a window's size is logical pixels and
-/// its resolution belongs to the display.
+/// a background without taking a canvas.
 ///
 /// # Errors
 ///
@@ -226,14 +221,11 @@ pub(super) trait Canvased {
 
 /// Assert the five shared canvas options behave identically for `W`.
 ///
-/// They are parsed in one place, so they are asserted in one place too, and a
-/// writer's own tests cover only the keys its format adds. Calling this per
-/// writer is what catches a writer that parses a canvas key itself, or forgets
-/// to pass its own keys through to [`Canvas::from_options`] — either way the
-/// shared behaviour stops matching.
+/// Parsed in one place, so asserted in one place; a writer's own tests cover
+/// only the keys its format adds. Catches a writer that parses a canvas key
+/// itself or forgets to pass its own keys to [`Canvas::from_options`].
 ///
-/// Transparency is not covered here: a format without an alpha channel refuses
-/// it. See [`assert_transparent_background`] for the writers that accept it.
+/// Transparency is not covered here — see [`assert_transparent_background`].
 #[cfg(all(
     test,
     any(
@@ -318,9 +310,8 @@ pub(super) fn assert_canvas_semantics<W: crate::writer::Writer + Canvased + std:
 ///
 /// Separate from [`assert_canvas_semantics`] because a format with no alpha
 /// channel refuses one instead — see `JpegWriter`.
-// Every writer but `jpeg`, which is the one that refuses a transparent canvas
-// rather than accepting one — so it is also the one config where nothing here
-// has a caller.
+// Every writer but `jpeg`, which refuses transparency — so a jpeg-only build
+// is the one config where this has no caller.
 #[cfg(all(
     test,
     any(

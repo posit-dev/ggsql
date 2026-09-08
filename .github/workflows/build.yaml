@@ -138,6 +138,12 @@ jobs:
         # Not a writer and it blocks on a window, so it is compiled, not run.
         run: cargo check --features window
 
+      - name: Check the visual-test harness builds
+        # `required-features` keeps it out of every other build here, so
+        # nothing else would catch it failing to compile. Checked, not run:
+        # it renders the whole doc corpus and wants an adapter to do it.
+        run: cargo check -p ggsql-cli --features png --example visual_test
+
       - name: Build WASM library
         working-directory: ggsql-wasm/library
         run: npm install && npm run build

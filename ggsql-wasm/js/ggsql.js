@@ -9,34 +9,37 @@ import init, {
   convert_csv,
   convert_parquet,
   GgsqlContext,
+  GgsqlPlot,
   hasFonts,
   initExtensionLoader,
   installExtension,
   registerFont,
   setGenericFamily,
+  SvgRender,
 } from './ggsql_wasm.js';
 
 // One entry point for the package: everything the glue exposes, plus the
-// browser-shaped helpers below.
+// browser-shaped helpers below. `ggsql.d.ts` declares exactly this list, so a
+// name missing here type-checks and is `undefined` at run time.
 export {
   init as default,
   convert_csv,
   convert_parquet,
   GgsqlContext,
+  GgsqlPlot,
   hasFonts,
   initExtensionLoader,
   installExtension,
   registerFont,
   setGenericFamily,
+  SvgRender,
 };
 
 // The faces shipped with the package, one file per (weight, style).
 //
-// One file per weight and style is a rule, not an accident: the shaper selects
-// within a family by weight, width and style and has no notion of CSS
-// `unicode-range`, so registering several subset files that share a family name
-// lets one without basic Latin win the attribute match — every tick label
-// becomes tofu while the bold title still renders.
+// One file per weight and style is a rule: the shaper selects within a family
+// by weight, width and style and knows nothing of `unicode-range`, so two
+// subset files sharing a family name let the wrong one win the attribute match.
 const FACES = [
   { file: 'roboto-regular.ttf', weight: 400, style: 'normal' },
   { file: 'roboto-bold.ttf', weight: 700, style: 'normal' },
@@ -62,27 +65,27 @@ const GENERICS = new Set([
 /**
  * Register the bundled faces, and tell the browser about them too.
  *
- * Both halves are needed, and for different reasons. The shaper needs the faces
- * because it measures every string to lay the plot out — without them a plot
- * has no text and the wrong margins. The *browser* needs them because the SVG
- * positions each run with one anchor plus `textLength`: if it resolves some
- * other face than the one the advances were measured from, it squeezes that
- * face into the measured box, which looks plausible and is wrong. Pointing both
- * at the same files is what keeps them agreeing.
+ * Both halves are needed. The shaper measures every string to lay the plot out,
+ * so without the faces a plot has no text and the wrong margins. The browser
+ * needs them because the SVG places each run with one anchor plus `textLength`,
+ * and a face other than the measured one gets squeezed into the measured box.
  *
- * Registration is process-global and permanent, so this is once per page. Safe
- * to call repeatedly; the work happens once.
+ * Process-global and permanent, so this is once per page. Safe to call
+ * repeatedly; the work happens once.
  */
 export function registerDefaultFonts(baseUrl) {
   if (fontsPromise) return fontsPromise;
-  // Resolved against the document first: `new URL(file, './fonts/')` throws,
-  // since a URL base has to be absolute, and a relative path is the natural
-  // thing for a caller to pass.
+  // Resolved against the document first, since a URL base has to be absolute
+  // and a caller naturally passes a relative path. The trailing slash matters:
+  // to `new URL`, `/assets` names a file, not a directory.
   const base = baseUrl
-    ? new URL(baseUrl, typeof document !== 'undefined' ? document.baseURI : import.meta.url).href
+    ? new URL(
+        baseUrl.replace(/\/?$/, '/'),
+        typeof document !== 'undefined' ? document.baseURI : import.meta.url,
+      ).href
     : new URL('./fonts/', import.meta.url).href;
 
-  fontsPromise = (async () => {
+  const attempt = (async () => {
     const families = new Set();
     for (const face of FACES) {
       const url = new URL(face.file, base).href;
@@ -101,6 +104,13 @@ export function registerDefaultFonts(baseUrl) {
     return names;
   })();
 
+  // Only success is memoised: a cached failure would make one offline moment
+  // permanent and leave every later plot textless. Registration is idempotent,
+  // so retrying after a partial attempt costs nothing.
+  fontsPromise = attempt.catch((e) => {
+    fontsPromise = null;
+    throw e;
+  });
   return fontsPromise;
 }
 
@@ -114,15 +124,13 @@ function pointGenericAt(kind, families) {
  * Register a font from a URL, and optionally make a generic mean it.
  *
  * The two steps belong together: a generic is an indirection through the font
- * context rather than a name, so fetching a face is not enough on its own —
- * a theme asking for `sans-serif` resolves to nothing until something says
- * what `sans-serif` means here, and only the file knows its own family name.
+ * context, so a theme asking for `sans-serif` resolves to nothing until
+ * something says what it means — and only the file knows its own family name.
  *
- * WOFF and WOFF2 are accepted, which is what makes a font CDN's URL usable
- * directly: those are what it serves a browser.
+ * WOFF and WOFF2 are accepted, so a font CDN's URL works directly.
  *
- * Registration is process-global and permanent, and must precede the first
- * draw — a plot shaped without a font has no text and the wrong layout.
+ * Process-global, permanent, and must precede the first draw — a plot shaped
+ * without a font has no text and the wrong layout.
  */
 export async function registerFontFromUrl(url, opts = {}) {
   const response = await fetch(url);
@@ -152,15 +160,12 @@ function injectFontFace(face, url) {
  * Point the drawn SVG at the face its advances were measured from.
  *
  * Every run is placed with one anchor plus `textLength`, so the browser fits
- * whatever it resolves into the width the shaper measured. The shaper measured
- * with the registered face; the root names only the generic the theme asked
- * for, which the browser resolves to its own default — a different face, at
- * which point `textLength` scales it horizontally to fit. That reads as
- * plausible and is wrong, and it is wrong differently on every platform.
+ * whatever it resolves into the width the shaper measured. Left to the generic
+ * alone it resolves its own default and `textLength` scales that face to fit —
+ * plausible, wrong, and wrong differently on every platform.
  *
  * Naming the family on the root is enough: `font-family` inherits, and a span
- * that named its own — `code`, which has to stay monospace — keeps it. The
- * generic stays on as the fallback for the glyphs the face lacks.
+ * that named its own keeps it. The generic stays on as the fallback.
  */
 function nameRegisteredFamily(root) {
   if (!root || root.tagName?.toLowerCase() !== 'svg') return;
@@ -205,10 +210,8 @@ export class PlotView {
   constructor(container, opts = {}) {
     this.container = container;
     // Without this the height comes from the container, which is fine when CSS
-    // gives it one. Where the container is instead sized *by* its content —
-    // a docs cell wrapping whatever output it holds — measuring it after
-    // filling it feeds back on itself and collapses to nothing. Deriving the
-    // height from the width breaks that loop and keeps the page from shifting.
+    // gives it one. A container sized *by* its content instead feeds back on
+    // itself and collapses; deriving height from width breaks that loop.
     this.aspect = opts.aspect && opts.aspect > 0 ? opts.aspect : null;
     // Inline SVGs share the page's id space, so two plots on one page collide
     // on gradient and clip-path ids without this. A docs page carries several.
@@ -220,11 +223,9 @@ export class PlotView {
     this._freed = false;
     this._box = null;
 
-    // `contentRect` is the *content* box. Measuring with `clientHeight`
-    // instead would include padding, so each draw would be taller than the
-    // space it was given — and where the container is free to grow rather
-    // than clip, that feeds straight back in and the plot climbs by the
-    // padding every frame.
+    // `contentRect` is the content box; `clientHeight` includes padding, so
+    // each draw would be taller than its space and, in a container free to
+    // grow, climb by the padding every frame.
     this._observer = new ResizeObserver((entries) => {
       const rect = entries[entries.length - 1]?.contentRect;
       if (rect) this._box = [rect.width, rect.height];
@@ -240,13 +241,17 @@ export class PlotView {
    * is not reclaimed by the garbage collector.
    */
   setPlot(plot) {
-    if (this._freed) return;
+    // Ownership transfers even to a freed view, so the plot is released rather
+    // than leaked — nothing else holds a reference to reclaim it.
+    if (this._freed) {
+      plot?.free();
+      return;
+    }
     if (this.plot && this.plot !== plot) this.plot.free();
     this.plot = plot;
     this._lastSize = null;
-    // Cleared before drawing, not after: a draw that cannot happen yet —
-    // a container with no size, because it is in a hidden tab — would
-    // otherwise leave the last plot's warnings standing against this one.
+    // Cleared before drawing: a draw that cannot happen yet — a container in a
+    // hidden tab — would leave the last plot's warnings standing.
     this.warnings = [];
     if (!plot) {
       this.container.replaceChildren();
@@ -263,10 +268,8 @@ export class PlotView {
 
   _schedule() {
     if (this._freed || !this.plot) return;
-    // Coalesce to one draw per frame. Unlike a canvas — where assigning
-    // `width` clears the drawing buffer and a deferred draw shows the cleared
-    // one — the markup already in the page stays visible until it is replaced,
-    // so there is nothing to flicker and no reason to draw synchronously.
+    // Coalesce to one draw per frame. Unlike a canvas, the markup already in
+    // the page stays visible until it is replaced, so nothing flickers.
     if (this._frame !== null) return;
     this._frame = requestAnimationFrame(() => {
       this._frame = null;
@@ -291,9 +294,8 @@ export class PlotView {
       this.warnings = render.warnings;
       this.container.innerHTML = render.svg;
       const root = this.container.firstElementChild;
-      // An SVG is inline by default, which reserves descender space under it.
-      // That is a few more pixels of content than the box being measured —
-      // the same feedback the padding caused, in miniature.
+      // An SVG is inline by default, reserving descender space under it — the
+      // same feedback loop the padding caused, in miniature.
       if (root) root.style.display = 'block';
       nameRegisteredFamily(root);
       this._lastSize = [width, height];

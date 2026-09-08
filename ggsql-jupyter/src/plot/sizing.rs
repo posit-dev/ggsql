@@ -18,14 +18,10 @@ const MIN_PX: u32 = 32;
 
 /// Largest canvas dimension we will render, in device pixels.
 ///
-/// The same number as `ggsql::writer::MAX_RASTER_DIMENSION`, spelled out
-/// rather than imported because a default kernel build has no raster writer to
-/// import it from. No frontend can ask for a pane this large, so the clamp is
-/// really a guard against a nonsense `size` or `pixel_ratio` arriving over the
-/// comm — a GPU with a lower limit than this rejects the frame itself, naming
-/// the limit it does have. It applies to the vector formats too: capping them
-/// costs nothing, since they are resolution independent and the *displayed*
-/// size is unaffected.
+/// The same number as `ggsql::writer::MAX_RASTER_DIMENSION`, spelled out rather
+/// than imported because a default kernel build has no raster writer. No pane is
+/// this large, so it really guards against a nonsense `size` or `pixel_ratio`
+/// over the comm. Vector formats are capped too, which costs nothing.
 const MAX_PX: u32 = 16_384;
 
 /// Device pixel ratios we will honour. Beyond this a frontend is either
@@ -44,14 +40,10 @@ pub struct Canvas {
 impl Canvas {
     /// The canvas for a logical size at a device pixel ratio.
     ///
-    /// **All three scale together**, which is the part that is easy to get
-    /// wrong: the renderer converts the theme's point sizes at render dpi, so
-    /// scaling the pixel dimensions alone would render the same chrome into
-    /// more pixels (a blurry plot at the right size), and scaling dpi alone
-    /// would grow the chrome instead of the resolution. This matches
-    /// matplotlib's Positron backend, which scales `figure.dpi` by the ratio
-    /// and divides the requested size by the scaled dpi, holding physical size
-    /// invariant.
+    /// All three scale together: the renderer converts the theme's point sizes
+    /// at render dpi, so scaling the pixels alone gives a blurry plot at the
+    /// right size and scaling dpi alone grows the chrome. Matches matplotlib's
+    /// Positron backend, which holds physical size invariant the same way.
     pub fn from_logical(width: f64, height: f64, pixel_ratio: f64) -> Self {
         let ratio = if pixel_ratio.is_finite() {
             pixel_ratio.clamp(MIN_RATIO, MAX_RATIO)
@@ -80,6 +72,15 @@ impl Canvas {
         }
     }
 
+    /// The default figure at a given resolution.
+    ///
+    /// The default is a physical size, not a pixel count, so that a caller who
+    /// knows the resolution but not the size — Quarto with `fig-dpi` and no
+    /// `fig-width` — still gets the resolution it asked for.
+    pub fn default_at(dpi: f64) -> Self {
+        Self::from_inches(DEFAULT_WIDTH_IN, DEFAULT_HEIGHT_IN, dpi)
+    }
+
     /// The size a frontend should display this at, in CSS pixels.
     ///
     /// A 2× render has to be shown at half its pixel dimensions or it appears
@@ -94,14 +95,15 @@ impl Canvas {
     }
 }
 
+/// The default figure's physical size: 1000×618 CSS pixels, close to
+/// ggplot2's default and at the golden ratio.
+const DEFAULT_WIDTH_IN: f64 = 1000.0 / CSS_DPI;
+const DEFAULT_HEIGHT_IN: f64 = 618.0 / CSS_DPI;
+
 impl Default for Canvas {
     /// A reasonable figure for a frontend that told us nothing at all.
     fn default() -> Self {
-        Self {
-            width: 1000,
-            height: 618,
-            dpi: CSS_DPI,
-        }
+        Self::default_at(CSS_DPI)
     }
 }
 
@@ -151,9 +153,8 @@ mod tests {
 
     #[test]
     fn a_large_pane_at_two_x_renders_at_its_full_size() {
-        // A wide pane on a retina display: 2400 logical px at 2x is 4800
-        // device px, comfortably inside what a GPU grants. Nothing is clamped,
-        // so the plot is sharp rather than upscaled from a capped render.
+        // 2400 logical px at 2x is 4800 device px, well inside the cap — so
+        // the plot is sharp rather than upscaled from a clamped render.
         let canvas = Canvas::from_logical(2400.0, 1400.0, 2.0);
         assert_eq!((canvas.width, canvas.height), (4800, 2800));
         assert_eq!(canvas.css_size(), (2400, 1400));
@@ -178,6 +179,15 @@ mod tests {
         assert_eq!(canvas.dpi, 150.0);
         // Six inches at 150 dpi is 900 px, shown at 576 CSS px (6 in × 96).
         assert_eq!(canvas.css_size(), (576, 384));
+    }
+
+    #[test]
+    fn the_default_figure_holds_its_size_across_resolutions() {
+        assert_eq!(Canvas::default(), Canvas::default_at(CSS_DPI));
+        let dense = Canvas::default_at(300.0);
+        assert_eq!(dense.dpi, 300.0);
+        // Same figure, more dots: the displayed size is unchanged.
+        assert_eq!(dense.css_size(), Canvas::default().css_size());
     }
 
     #[test]

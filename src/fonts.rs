@@ -1,15 +1,12 @@
 //! Font registration.
 //!
-//! Every renderer-backed writer shapes text before it can lay a plot out: tick
-//! labels set the margins, legend entries set their column width, a title wraps
-//! against the space it has. Natively that shaping resolves against the fonts
-//! the operating system enumerates and nothing here is needed.
+//! Every renderer-backed writer shapes text before it can lay a plot out — tick
+//! labels set the margins, a title wraps against the space it has. Natively
+//! that resolves against the fonts the OS enumerates and nothing here is needed.
 //!
-//! A browser enumerates none. `fontique` falls back to a dummy backend, so the
-//! collection starts empty, `sans-serif` resolves to nothing, and a plot comes
-//! out with its chrome drawn and no text at all — no error and no warning. A
-//! wasm host has to hand the faces over itself, which is what this module is
-//! for.
+//! A browser enumerates none, so `fontique` falls back to a dummy backend and a
+//! plot comes out with its chrome drawn and no text at all, with no error. A
+//! wasm host has to hand the faces over itself.
 //!
 //! Registration is process-global and permanent, so it is once per process, not
 //! once per plot, and it must happen before the first render.
@@ -25,16 +22,12 @@ use crate::{GgsqlError, Result};
 /// feature a container is refused by name rather than reaching the shaper and
 /// registering nothing.
 ///
-/// **The return value is the point.** A generic family is an indirection
-/// through the font context rather than a name, so registering a face does not
-/// make `sans-serif` mean it — that takes [`set_generic_family`], which takes
-/// names. The only place a family's name exists is inside the file, and
-/// deriving it from the filename resolves to nothing at shaping time, which
-/// surfaces as a plot with no text rather than as an error.
+/// The return value is the point: registering a face does not make `sans-serif`
+/// mean it — that takes [`set_generic_family`], which takes names, and the only
+/// place a family's name exists is inside the file. Guessing it from the
+/// filename resolves to nothing at shaping time, i.e. a plot with no text.
 ///
-/// Bytes holding no recognisable face are an error rather than an empty list,
-/// since registering nothing silently is the failure this module exists to
-/// prevent.
+/// Bytes holding no recognisable face are an error rather than an empty list.
 pub fn register_font(bytes: impl Into<Vec<u8>>) -> Result<Vec<String>> {
     let families = hephaestus::text::register_font_families(decode_webfont(bytes.into())?);
     if families.is_empty() {
@@ -96,9 +89,8 @@ fn decode_webfont(bytes: Vec<u8>) -> Result<Vec<u8>> {
     }
 }
 
-/// Refuse a container this build cannot open, rather than letting it reach the
-/// shaper: compressed bytes hold no recognisable face, so registration would
-/// report nothing and the plot would come out with no text and no reason why.
+/// Refuse a container this build cannot open: compressed bytes hold no
+/// recognisable face, so registration would silently report nothing.
 #[cfg(not(feature = "webfonts"))]
 fn decode_webfont(bytes: Vec<u8>) -> Result<Vec<u8>> {
     match bytes.get(..4) {

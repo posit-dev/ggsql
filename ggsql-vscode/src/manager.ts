@@ -194,13 +194,10 @@ function generateMetadata(
         startupBehavior: 'explicit' as positron.LanguageRuntimeStartupBehavior,
         sessionLocation: 'workspace' as positron.LanguageRuntimeSessionLocation,
         extraRuntimeData: {},
-        // Without this subscription the frontend never tells the kernel how
-        // large the Plots pane is. The kernel only needs it for one thing: to
-        // pre-render a new plot at the right size, so the pane shows it
-        // immediately instead of blank until its own render request lands.
-        // Every other render already carries its own size on the request.
-        // A string cast rather than the enum, because `positron` is imported
-        // as a type here — the same pattern as `startupBehavior` above.
+        // Without this the frontend never tells the kernel how large the Plots
+        // pane is, which it needs only to pre-render a new plot at the right
+        // size; every other render carries its own size. A string cast because
+        // `positron` is imported as a type — as with `startupBehavior` above.
         uiSubscriptions: ['did_change_plots_render_settings' as positron.UiRuntimeNotifications]
     };
 }
@@ -208,12 +205,10 @@ function generateMetadata(
 /**
  * Create a Jupyter kernel spec for ggsql-jupyter
  *
- * `--session-mode` tells the kernel where its output is meant to go, which it
- * cannot work out for itself: a plot comm always lands in the Plots pane, so a
- * notebook session that used one would leave its cell empty. Only we know,
- * because we are the ones creating the session. Left off, the kernel guesses
- * from the session id — which is what external Jupyter and Quarto rely on, and
- * why `writeKernelJson` deliberately does not pass it.
+ * `--session-mode` tells the kernel where its output goes, which it cannot work
+ * out for itself: a plot comm always lands in the Plots pane, so a notebook
+ * session using one would leave its cell empty. Left off, the kernel guesses
+ * from the session id — which is why `writeKernelJson` does not pass it.
  *
  * @param kernelPath - Path to the ggsql-jupyter executable
  * @param readerUri - Data source the kernel should open, if not the default

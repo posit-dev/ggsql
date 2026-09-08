@@ -1,13 +1,12 @@
 //! Rasterising a composition to pixels.
 //!
 //! The one module that names a GPU renderer, and the only part of the writer
-//! that needs an adapter at all: the vector and document writers build a scene
-//! or a byte string from the same `PlotComposition` and never come through here.
+//! needing an adapter: the vector and document writers never come through here.
 //!
-//! The backend is Vello Hybrid — coverage computed on the CPU, a plain render
-//! pipeline on the GPU — chosen over vello classic because its buffers are
-//! sized to the scene rather than capped, so a dense plot has no draw-count
-//! ceiling. Which backend that is stays inside this file.
+//! The backend is Vello Hybrid — CPU coverage, a plain GPU render pipeline —
+//! chosen over vello classic because its buffers are sized to the scene rather
+//! than capped, so a dense plot has no draw-count ceiling. Which backend that
+//! is stays inside this file.
 
 use std::collections::HashMap;
 
@@ -23,15 +22,13 @@ use crate::{DataFrame, GgsqlError, Plot, Result};
 /// A GPU renderer held across renders.
 ///
 /// Constructing one creates a wgpu device and builds the rasteriser's
-/// pipelines, which is far too expensive to repeat per figure. A host rendering
-/// more than one plot — a kernel serving a plot pane, a batch job — should keep
-/// one of these and hand it to `render_with`; a one-shot caller can ignore it
-/// and let the writer make its own. It is `Send` but not `Sync`, so it moves to
-/// a render thread rather than being shared between them.
+/// pipelines, too expensive to repeat per figure. A host rendering more than
+/// one plot should keep one and hand it to `render_with`; a one-shot caller can
+/// let the writer make its own. `Send` but not `Sync`, so it moves to a render
+/// thread rather than being shared.
 ///
-/// Sizing is handled internally: the renderer rebuilds whatever is bound to the
-/// frame dimensions when they change, so one of these serves a sequence of
-/// differently-sized renders.
+/// Sizing is internal: the renderer rebuilds whatever is bound to the frame
+/// dimensions when they change, so one serves differently-sized renders.
 pub struct RasterRenderer(HybridRenderer);
 
 impl RasterRenderer {
@@ -40,9 +37,8 @@ impl RasterRenderer {
     /// # Errors
     ///
     /// Returns `GgsqlError::WriterError` when no adapter is available, or when
-    /// one is but the rasteriser could not be set up on it. The two are worth
-    /// telling apart by a caller that falls back to a different output format,
-    /// so the message names which happened.
+    /// one is but the rasteriser could not be set up on it — the message names
+    /// which, since a caller may fall back on the first but not the second.
     pub fn new() -> Result<Self> {
         // Not `with_picking`: indexing costs CPU per draw call and nothing here
         // hit-tests. A host that wants picking wants a live scene, not a file.
@@ -54,19 +50,16 @@ impl RasterRenderer {
 
 /// Largest canvas dimension a rasterising build can be asked for, in pixels.
 ///
-/// The true ceiling belongs to the GPU: it is the device's own
-/// `max_texture_dimension_2d`, and this is the most the renderer will ask a
-/// device to grant. A device offering less fails the render with its own
-/// limit named, which is why this is a cheap up-front guard against the
-/// absurd rather than a promise that anything under it will work.
+/// The true ceiling is the device's `max_texture_dimension_2d`; this is the
+/// most the renderer will ask for. A device offering less fails the render
+/// naming its own limit, so this is a cheap guard rather than a promise.
 pub const MAX_RASTER_DIMENSION: u32 = MAX_TEXTURE_DIMENSION;
 
 /// Reject a canvas no GPU could rasterise, before anything is allocated.
 ///
-/// A device with a lower limit than [`MAX_RASTER_DIMENSION`] rejects the frame
-/// itself, naming the limit it does have; this catches the sizes no device
-/// would take, and is the one place that points at the writers with no ceiling
-/// at all.
+/// A device with a lower limit rejects the frame itself, naming its own; this
+/// catches the sizes no device would take, and points at the writers with no
+/// ceiling at all.
 ///
 /// # Errors
 ///
@@ -122,7 +115,6 @@ pub fn pixels(
     canvas: &Canvas,
     renderer: &mut RasterRenderer,
 ) -> Result<Vec<u8>> {
-    compose::validate_plot(spec)?;
-    let mut view = compose::build_composition(spec, data)?;
+    let mut view = compose::prepare(spec, data)?;
     render_rgba8(&mut view, canvas, renderer)
 }

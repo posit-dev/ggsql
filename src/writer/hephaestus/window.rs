@@ -1,9 +1,8 @@
 //! The plot viewer.
 //!
-//! Not a writer: it produces no output. It is here because it needs the same
-//! composition every writer builds, and because the CLI cannot reach it any
-//! other way — `ggsql-cli` uses only public `ggsql::*` API and has no renderer
-//! dependency of its own, so the behaviour has to go public as a type.
+//! Not a writer: it produces no output. It lives here because it needs the same
+//! composition every writer builds, and because `ggsql-cli` uses only public
+//! `ggsql::*` API and has no renderer dependency of its own.
 
 use hephaestus::plot::PlotComposition;
 use hephaestus::window::{self, Event, EventCtx, Frame, WindowApp, WindowConfig};
@@ -15,9 +14,8 @@ use crate::{GgsqlError, Result};
 
 /// Option keys the viewer understands.
 ///
-/// Notably **not** `units` or `dpi`: a window's size is logical pixels and its
-/// resolution belongs to whatever display it opens on, so accepting either
-/// would be accepting a setting that gets ignored.
+/// Notably not `units` or `dpi`: a window's size is logical pixels and its
+/// resolution belongs to the display it opens on.
 const VIEWER_OPTIONS: &[&str] = &["width", "height", "background", "title"];
 
 /// Default window size, matching the renderer's own.
@@ -26,10 +24,9 @@ const DEFAULT_HEIGHT: u32 = 600;
 
 /// Shows a ggsql plot in a native window.
 ///
-/// **Resizing needs no code.** The composition re-solves its layout at the size
-/// and resolution the window reports each frame, so the plot re-lays-out rather
-/// than stretching — the same property that makes the `.hep` document format
-/// worth having.
+/// Resizing needs no code: the composition re-solves its layout at the size and
+/// resolution the window reports each frame, so the plot re-lays-out rather
+/// than stretching.
 ///
 /// [`PlotViewer::from_options`] takes:
 ///
@@ -40,10 +37,9 @@ const DEFAULT_HEIGHT: u32 = 600;
 /// | `background` | Any CSS color, e.g. `white`, `#ff0000`, `transparent` | `white` |
 /// | `title` | Window title | `ggsql` |
 ///
-/// Not a [`Writer`](crate::writer::Writer): it returns no output, it blocks,
-/// and it must run on the main thread — none of which belong in that trait's
-/// contract. `from_options` plus `show` gives the same option ergonomics
-/// without claiming otherwise.
+/// Not a [`Writer`](crate::writer::Writer): it returns no output, blocks, and
+/// must run on the main thread. `from_options` plus `show` gives the same
+/// option ergonomics without claiming otherwise.
 ///
 /// Requires a working GPU adapter, like the raster writers.
 #[derive(Debug, Clone, PartialEq)]
@@ -81,9 +77,7 @@ impl PlotViewer {
     /// # Errors
     ///
     /// Returns `GgsqlError::WriterError` for an unknown key or an unusable
-    /// value. `units` and `dpi` are rejected with a reason rather than as
-    /// simple typos, since a caller reaching for them has a real expectation
-    /// the viewer cannot meet.
+    /// value. `units` and `dpi` are rejected with a reason rather than as typos.
     pub fn from_options(options: &WriterOptions) -> Result<Self> {
         for (key, why) in [
             ("units", "a window is sized in logical pixels"),
@@ -119,16 +113,14 @@ impl PlotViewer {
 
     /// Show the plot and **block until the window closes.**
     ///
-    /// Must be called from the main thread: the platform event loops require
-    /// it, and the composition is single-threaded by design anyway.
+    /// Must be called from the main thread, as the platform event loops require.
     ///
     /// # Errors
     ///
     /// Returns `GgsqlError::WriterError` if the plot cannot be composed, if no
     /// GPU adapter can drive a window, or if the event loop fails.
     pub fn show(&self, spec: &Spec) -> Result<()> {
-        super::compose::validate_plot(spec.plot())?;
-        let view = super::compose::build_composition(spec.plot(), spec.data())?;
+        let view = super::compose::prepare(spec.plot(), spec.data())?;
 
         let config = WindowConfig::new(self.title.clone())
             .size(self.width, self.height)
@@ -209,9 +201,8 @@ mod option_tests {
 
     #[test]
     fn a_physical_size_is_refused_with_a_reason() {
-        // Accepting a `dpi` the viewer then ignores is exactly the silent
-        // failure `reject_unknown` exists to prevent, so these say why rather
-        // than being reported as typos.
+        // Accepting a `dpi` the viewer ignores is the silent failure
+        // `reject_unknown` exists to prevent, so these say why.
         for (option, expected) in [
             ("units=in", "sized in logical pixels"),
             ("dpi=300", "belongs to the display"),

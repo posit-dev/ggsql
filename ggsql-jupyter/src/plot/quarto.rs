@@ -1,14 +1,10 @@
 //! Reading Quarto's figure settings out of the environment.
 //!
-//! Quarto's jupyter engine tells a kernel exactly what figure it wants before
-//! executing anything — `quarto/share/jupyter/notebook.py` sets four variables
-//! on the kernel process. They map one-to-one onto what the writers already
-//! take, so this is a translation rather than new machinery.
-//!
-//! The payoff is that a PDF document gets a real vector figure with embedded
-//! fonts instead of a rasterised screenshot, an HTML document gets a
-//! correctly-sized raster at the requested dpi instead of a chart fetched from
-//! a CDN, and `fig-width: 6` finally means six inches.
+//! Quarto's jupyter engine sets four environment variables on the kernel
+//! process (`quarto/share/jupyter/notebook.py`) saying exactly what figure it
+//! wants. They map one-to-one onto what the writers take, so a PDF document
+//! gets a vector figure with embedded fonts, an HTML one a correctly-sized
+//! raster at the requested dpi, and `fig-width: 6` means six inches.
 
 use super::sizing::Canvas;
 use super::Format;
@@ -29,18 +25,16 @@ pub fn from_env() -> Option<QuartoFigure> {
     from_vars(|key| std::env::var(key).ok())
 }
 
-/// [`from_env`] against an arbitrary source, so the mapping is testable
-/// without touching the process environment — which is global, and which two
-/// tests running in parallel would fight over.
+/// [`from_env`] against an arbitrary source, so the mapping is testable without
+/// touching the global process environment.
 pub fn from_vars(get: impl Fn(&str) -> Option<String>) -> Option<QuartoFigure> {
     let format = match get("QUARTO_FIG_FORMAT")?.trim().to_lowercase().as_str() {
         "png" => Format::Png,
         "jpeg" | "jpg" => Format::Jpeg,
         "svg" => Format::Svg,
         "pdf" => Format::Pdf,
-        // `retina` is normalised to `png` at doubled dpi by Quarto itself
-        // before it reaches us, so seeing it here means a version that does
-        // not — and png is the right answer either way.
+        // Quarto normalises `retina` to `png` at doubled dpi before it reaches
+        // us; seeing it here means a version that does not, and png still fits.
         "retina" => Format::Png,
         _ => return None,
     };
@@ -51,13 +45,16 @@ pub fn from_vars(get: impl Fn(&str) -> Option<String>) -> Option<QuartoFigure> {
     let height = number("QUARTO_FIG_HEIGHT").filter(|v| *v > 0.0);
     let dpi = number("QUARTO_FIG_DPI").filter(|v| *v > 0.0);
 
+    // The only one of the three with a real default, resolved once here so
+    // `fig-dpi: 300` works with or without a size alongside it.
+    let dpi = dpi.unwrap_or(super::sizing::CSS_DPI);
     let canvas = match (width, height) {
-        (Some(w), Some(h)) => Canvas::from_inches(w, h, dpi.unwrap_or(super::sizing::CSS_DPI)),
+        (Some(w), Some(h)) => Canvas::from_inches(w, h, dpi),
         // A document that sets one dimension and not the other is unusual, but
         // the golden ratio is a better guess than refusing the figure.
-        (Some(w), None) => Canvas::from_inches(w, w / 1.618, dpi.unwrap_or(super::sizing::CSS_DPI)),
-        (None, Some(h)) => Canvas::from_inches(h * 1.618, h, dpi.unwrap_or(super::sizing::CSS_DPI)),
-        (None, None) => Canvas::default(),
+        (Some(w), None) => Canvas::from_inches(w, w / 1.618, dpi),
+        (None, Some(h)) => Canvas::from_inches(h * 1.618, h, dpi),
+        (None, None) => Canvas::default_at(dpi),
     };
 
     Some(QuartoFigure { format, canvas })
@@ -125,6 +122,19 @@ mod tests {
         let figure = from_vars(vars(&[("QUARTO_FIG_FORMAT", "pdf")])).unwrap();
         assert_eq!(figure.format, Format::Pdf);
         assert_eq!(figure.canvas, Canvas::default());
+    }
+
+    #[test]
+    fn a_dpi_without_a_size_still_sets_the_resolution() {
+        // `fig-dpi: 300` alone: the default figure at print resolution rather
+        // than a silent 96 dpi.
+        let figure = from_vars(vars(&[
+            ("QUARTO_FIG_FORMAT", "png"),
+            ("QUARTO_FIG_DPI", "300"),
+        ]))
+        .unwrap();
+        assert_eq!(figure.canvas.dpi, 300.0);
+        assert_eq!(figure.canvas.css_size(), Canvas::default().css_size());
     }
 
     #[test]

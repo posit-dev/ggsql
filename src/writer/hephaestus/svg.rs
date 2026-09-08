@@ -17,11 +17,9 @@ const TEXT_VALUES: &[&str] = &["text", "outline"];
 
 /// Writer that renders a ggsql plot to SVG.
 ///
-/// Needs **no GPU adapter**: SVG records the same drawing commands the
-/// rasteriser would have executed, so this writer works on a headless box, in
-/// a container with no graphics stack, and in CI. The output is resolution
-/// independent and its text is real text — selectable, searchable, and
-/// editable in a vector tool.
+/// Needs no GPU adapter: SVG records the same drawing commands the rasteriser
+/// would have executed, so this works on a headless box and in CI. The output
+/// is resolution independent and its text is real, selectable text.
 ///
 /// [`SvgWriter::from_options`] takes:
 ///
@@ -43,14 +41,12 @@ const TEXT_VALUES: &[&str] = &["text", "outline"];
 /// pixels.
 ///
 /// `text=outline` makes the file self-contained without embedding a font, at
-/// the cost of text that can no longer be selected or searched. `embed-fonts`
-/// keeps the text but can take a 30 kB plot past 3 MB, since a system font is
-/// often megabytes — which is why neither is the default.
+/// the cost of selectable text; `embed-fonts` keeps the text but can take a
+/// 30 kB plot past 3 MB. Hence neither is the default.
 ///
-/// **`id-prefix` is a correctness setting, not a nicety.** Two SVGs inlined
-/// into one HTML page that both define `#lg0` will have the second's
-/// `url(#lg0)` resolve to the first's gradient, in every browser. Give each
-/// one its own prefix when inlining more than one.
+/// `id-prefix` is a correctness setting: two SVGs inlined into one HTML page
+/// that both define `#lg0` will have the second's `url(#lg0)` resolve to the
+/// first's gradient, in every browser.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct SvgWriter {
     canvas: Canvas,
@@ -102,9 +98,8 @@ impl SvgWriter {
     /// Render, reporting anything SVG could not express.
     ///
     /// [`Writer::write`] discards the report. Take it when the output is an
-    /// artifact someone will ship: a dropped gradient is a defect in the file,
-    /// not a detail of how it was made. The list is empty for everything ggsql
-    /// itself draws.
+    /// artifact someone will ship — a dropped gradient is a defect in the file.
+    /// The list is empty for everything ggsql draws.
     ///
     /// # Errors
     ///
@@ -178,10 +173,9 @@ impl Writer for SvgWriter {
 
 /// Put what the format could not express into ggsql's own words.
 ///
-/// The renderer's warning variants are `#[non_exhaustive]`, so mirroring them
-/// as a ggsql enum would mean re-deriving a growing list on every release, and
-/// re-exporting them would leak the renderer's type names into ggsql's API.
-/// Translating at the boundary is also where those names get scrubbed.
+/// The renderer's warning variants are `#[non_exhaustive]`, and re-exporting
+/// them would leak its type names into ggsql's API. Translating at the boundary
+/// is also where those names get scrubbed.
 fn describe(warnings: &[SvgWarning]) -> Vec<String> {
     warnings
         .iter()

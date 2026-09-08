@@ -43,10 +43,9 @@ if [ "$SKIP_BINARY" = false ]; then
     # which preserves the LLD symbols that loadable extensions import.
     # wasm-pack cannot forward that flag (rustwasm/wasm-pack#1092).
     echo "Re-running wasm-bindgen with --keep-lld-exports..."
-    # Pick the cached binary matching the wasm-bindgen the crate was built
-    # against. The two schema versions have to agree exactly, so taking the
-    # newest cached one fails as soon as any other project caches a later
-    # release.
+    # The schema versions have to agree exactly, so pick the cached binary
+    # matching the wasm-bindgen the crate was built against rather than the
+    # newest one on the machine.
     WB_VERSION="$(awk '/^name = "wasm-bindgen"$/{f=1;next} f&&/^version = /{gsub(/[",]/,"");print $3;exit}' "$REPO_ROOT/Cargo.lock")"
     WASM_BINDGEN=""
     if [ -n "$WB_VERSION" ]; then
@@ -65,35 +64,11 @@ if [ "$SKIP_BINARY" = false ]; then
         --out-dir "$SCRIPT_DIR/pkg" \
         "$REPO_ROOT/target/wasm32-unknown-unknown/wasm/ggsql_wasm.wasm"
 
-    # The hand-written wrapper is the package entry point, not wasm-pack's
-    # generated glue: it owns the resize and font wiring a page actually needs.
-    # Both live at './' so the import path is the same here and once published.
-    echo "Adding wrapper, fonts and snippets to the package..."
-    cp "$SCRIPT_DIR/js/ggsql.js" "$SCRIPT_DIR/pkg/ggsql.js"
-    cp "$SCRIPT_DIR/js/ggsql.d.ts" "$SCRIPT_DIR/pkg/ggsql.d.ts"
-    mkdir -p "$SCRIPT_DIR/pkg/fonts"
-    cp "$SCRIPT_DIR/fonts/roboto-"*.ttf "$SCRIPT_DIR/fonts/OFL-Roboto.txt" "$SCRIPT_DIR/pkg/fonts/"
-    (
-        cd "$SCRIPT_DIR/pkg"
-        npm pkg set 'files[]=snippets/'
-        npm pkg set 'files[]=ggsql.js'
-        npm pkg set 'files[]=ggsql.d.ts'
-        npm pkg set 'types=ggsql.d.ts'
-        npm pkg set 'files[]=fonts/'
-        npm pkg set 'main=ggsql.js'
-        npm pkg set 'module=ggsql.js'
-        npm pkg set 'exports[.]=./ggsql.js'
-        npm pkg set 'exports[./fonts/*]=./fonts/*'
-    )
     if [ "$SKIP_OPT" = false ]; then
         echo "Optimising WASM binary..."
-        # The features rustc actually emits for wasm32-unknown-unknown, named
-        # one by one. Not `--all-features`: that turns on everything binaryen
-        # knows, including post-MVP proposals browsers still reject — binaryen
-        # 132 emits compact imports under it, which Chrome refuses to compile
-        # with "Invalid import kind 127". wasm-opt also rejects the ones rustc
-        # does emit unless told to expect them, so the list is required either
-        # way.
+        # The features rustc actually emits, named one by one. wasm-opt rejects
+        # them unless told to expect them, and `--all-features` is not the
+        # shortcut: it enables post-MVP proposals browsers still reject.
         (cd "$SCRIPT_DIR" && wasm-opt pkg/ggsql_wasm_bg.wasm -o pkg/ggsql_wasm_bg.wasm -Oz \
             --enable-bulk-memory \
             --enable-nontrapping-float-to-int \
@@ -107,6 +82,42 @@ if [ "$SKIP_BINARY" = false ]; then
 
 else
     echo "Skipping WASM binary build (--skip-binary)."
+    if [ ! -f "$SCRIPT_DIR/pkg/ggsql_wasm_bg.wasm" ]; then
+        echo "Error: --skip-binary needs an existing pkg/; run once without it first." >&2
+        exit 1
+    fi
+fi
+
+# Outside the --skip-binary guard on purpose. These are copies, not a build,
+# and `--skip-binary` means "don't recompile the wasm" — a wrapper edit has to
+# reach the package either way, or you debug a fix that was never in the
+# bundle. Cheap and idempotent, so running it every time costs nothing.
+#
+# The hand-written wrapper is the package entry point, not wasm-pack's
+# generated glue: it owns the resize and font wiring a page actually needs.
+# Both live at './' so the import path is the same here and once published.
+echo "Adding wrapper, fonts and snippets to the package..."
+cp "$SCRIPT_DIR/js/ggsql.js" "$SCRIPT_DIR/pkg/ggsql.js"
+cp "$SCRIPT_DIR/js/ggsql.d.ts" "$SCRIPT_DIR/pkg/ggsql.d.ts"
+mkdir -p "$SCRIPT_DIR/pkg/fonts"
+cp "$SCRIPT_DIR/fonts/roboto-"*.ttf "$SCRIPT_DIR/fonts/OFL-Roboto.txt" "$SCRIPT_DIR/pkg/fonts/"
+# Guarded because `files[]=` *appends*: run twice over one package.json and the
+# file list accumulates duplicates. wasm-pack rewrites package.json on every
+# full build, so "does `main` already point at the wrapper" is exactly the
+# question of whether this has been done to *this* package.json.
+if [ "$(cd "$SCRIPT_DIR/pkg" && npm pkg get main)" != '"ggsql.js"' ]; then
+    (
+        cd "$SCRIPT_DIR/pkg"
+        npm pkg set 'files[]=snippets/'
+        npm pkg set 'files[]=ggsql.js'
+        npm pkg set 'files[]=ggsql.d.ts'
+        npm pkg set 'types=ggsql.d.ts'
+        npm pkg set 'files[]=fonts/'
+        npm pkg set 'main=ggsql.js'
+        npm pkg set 'module=ggsql.js'
+        npm pkg set 'exports[.]=./ggsql.js'
+        npm pkg set 'exports[./fonts/*]=./fonts/*'
+    )
 fi
 
 SPATIALITE_TAG="spatialite-5.1.0-wasm"

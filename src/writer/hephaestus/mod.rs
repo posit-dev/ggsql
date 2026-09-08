@@ -64,7 +64,7 @@ pub use hephaestus::color::{rgba, Color};
 
 pub use canvas::Canvas;
 #[cfg(feature = "hep")]
-use canvas::CANVAS_HINT_OPTIONS;
+use canvas::CANVAS_SIZE_OPTIONS;
 
 #[cfg(feature = "raster-writer")]
 pub use raster::{RasterRenderer, MAX_RASTER_DIMENSION};
@@ -86,19 +86,14 @@ pub use webp::WebpWriter;
 #[cfg(feature = "window")]
 pub use window::PlotViewer;
 
-// Re-exported so a caller can name a writer's own setting without depending on
-// the renderer crate. Both are plain enums whose variants are the format's own
-// vocabulary, so passing them through leaks no renderer concepts.
+// Re-exported so a caller can name the setting without depending on the
+// renderer crate; the variants are the format's own vocabulary.
 #[cfg(feature = "png")]
 pub use hephaestus::png::PngCompression;
 
-// The shared corpus. Every `renders_*` test below is one query the composition
-// layer must handle, driven through **every** writer this build has — so a
-// corpus entry is written once and checked by each backend.
-//
-// The vector writers are what make this a real regression net: they need no GPU
-// adapter, so their assertions run in CI and on a headless box instead of
-// skipping. The raster assertion still skips where there is no adapter.
+// The shared corpus: every `renders_*` test is one query the composition layer
+// must handle, driven through every writer this build has. The vector writers
+// need no GPU adapter, so they run in CI; the raster assertion skips without one.
 #[cfg(all(
     test,
     feature = "duckdb",
@@ -128,16 +123,9 @@ mod tests {
     /// Render `query` through every compiled writer, asserting each output
     /// carries its own format's signature and that nothing was degraded.
     ///
-    /// **The vector assertions never skip.** They prove the composition built,
-    /// laid out and drew — for every geom, facet mode, scale kind and
-    /// projection in the corpus — which is exactly what the raster assertion
-    /// silently stops proving on a machine with no adapter.
-    ///
-    /// The empty-warnings assertion is a real constraint, not a formality:
-    /// ggsql registers only built-in geoms and labels its scales with resolved
-    /// break labels rather than formatter closures, so nothing it draws should
-    /// ever reach a case a vector format cannot express. This is where that
-    /// stays true.
+    /// The vector assertions never skip, so they keep proving the composition
+    /// built and drew on a machine where the raster one can't. Warnings must be
+    /// empty: ggsql draws nothing a vector format cannot express.
     fn assert_renders(query: &str) {
         let (w, h, dpi) = CORPUS_SIZE;
         let spec = spec_for(query);
@@ -264,10 +252,8 @@ mod tests {
         );
     }
 
-    /// An identity column is a per-row literal, so a `linetype` column holds ggsql
-    /// names or hex patterns and must go through `map_linetype` exactly as the
-    /// literal does — the channel takes dash patterns, not strings, so passing the
-    /// names through drew a solid line.
+    /// An identity `linetype` column holds ggsql names or hex patterns, so it must
+    /// go through `map_linetype` like a literal — the channel takes dash patterns.
     #[test]
     fn renders_identity_linetype() {
         assert_renders(
@@ -277,9 +263,8 @@ mod tests {
 
     #[test]
     fn renders_colorbar_beside_size_legend() {
-        // Two distinct scales: a merged colorbar for `color` plus a keyed size
-        // legend whose glyphs fall back to a neutral color (the mapped `fill`
-        // column holds domain values, not a constant to borrow).
+        // A merged colorbar for `color` beside a keyed size legend whose glyphs
+        // fall back to a neutral color (`fill` holds domain values, not a constant).
         assert_renders(
             "SELECT x, y, c, w FROM (VALUES (1,2,10,100),(2,3,50,200),(3,1,90,300)) t(x,y,c,w) \
              VISUALISE x AS x, y AS y, c AS color, w AS size DRAW point",
@@ -488,9 +473,8 @@ mod tests {
 
     #[test]
     fn renders_multiple_diagonal_rules() {
-        // Per-row slope + intercept + a data-mapped material aesthetic: three
-        // differently-sloped, differently-colored ablines over a scatter (the
-        // Vega-Lite writer's `test_rule_renderer_multiple_diagonal_lines` query).
+        // Per-row slope + intercept + a mapped color: three differently-sloped
+        // ablines over a scatter.
         assert_renders(
             "WITH points AS (SELECT * FROM (VALUES (0, 5), (5, 15), (10, 25)) t(x, y)), \
                   lines AS (SELECT * FROM (VALUES (2, 5, 'A'), (1, 10, 'B'), (3, 0, 'C')) \
@@ -616,9 +600,8 @@ mod tests {
 
     #[test]
     fn renders_polar_pie() {
-        // A stacked bar under polar becomes a pie: pos2 (count) → theta,
-        // pos1 (dummy) → radius. Includes a 180° slice, which exercises the
-        // wide-wedge path.
+        // A stacked bar under polar becomes a pie: pos2 (count) → theta, pos1
+        // (dummy) → radius. The 180° slice exercises the wide-wedge path.
         assert_renders(
             "SELECT c FROM (VALUES ('a'),('a'),('a'),('b'),('b'),('c')) t(c) \
              VISUALISE c AS fill DRAW bar PROJECT TO polar",
@@ -654,9 +637,8 @@ mod tests {
 
     #[test]
     fn renders_sparse_grid_facet() {
-        // A grid whose row × column combinations are not all present: the absent
-        // cells are still drawn — framed, gridded, axed and strip-labelled — so the
-        // grid stays rectangular. `('b','q')` has no rows here.
+        // `('b','q')` has no rows, but the cell is still framed, gridded, axed and
+        // strip-labelled so the grid stays rectangular.
         assert_renders(
             "SELECT 1 AS x, 2 AS y, 'a' AS r, 'p' AS c UNION ALL SELECT 2, 3, 'b', 'p' \
              UNION ALL SELECT 3, 1, 'a', 'q' \
@@ -812,10 +794,8 @@ mod tests {
 
     #[test]
     fn axis_titles_are_one_per_dimension() {
-        // Axis titles are outer chrome: exactly one per dimension for the whole
-        // figure, however many panels there are and whether or not a dimension
-        // is free (a free dimension draws its rail on every panel, but still
-        // gets a single centred title).
+        // Axis titles are outer chrome: one per dimension for the whole figure,
+        // however many panels, free or not.
         let expected = vec![
             (AxisSide::Bottom, "v".to_string()),
             (AxisSide::Left, "y".to_string()),
@@ -917,8 +897,6 @@ mod tests {
     #[test]
     fn facet_strips_binned_squish() {
         // `oob => 'squish'` opens the terminal bins: "< upper" / "≥ lower".
-        // Two breaks-interior bins here, both terminal — matches the Vega-Lite
-        // writer's labelExpr for the same query.
         assert_eq!(
             top_strips(&format!(
                 "{FACET_DATA} VISUALISE v AS x, y AS y DRAW point FACET v \
@@ -966,9 +944,8 @@ mod tests {
 
     #[test]
     fn facet_strips_binned_temporal() {
-        // Temporal binned facets label as date ranges. Vega-Lite silently fails
-        // this case (its midpoint-string comparison never matches); computing the
-        // label from typed values here avoids that whole class of bug.
+        // Temporal binned facets label as date ranges, computed from the typed
+        // values rather than from a midpoint string.
         let data = "SELECT CAST(d AS DATE) AS d, v FROM (VALUES \
              ('1973-05-04', 1), ('1973-05-20', 2), ('1973-06-08', 3)) t(d, v)";
         assert_eq!(
@@ -983,8 +960,7 @@ mod tests {
     #[test]
     fn facet_strips_null_and_empty_are_separate_panels() {
         // `column_to_strings` renders both a NULL and an empty category as "",
-        // so they need the null flag to stay apart — the Vega-Lite writer gives
-        // them a panel each.
+        // so the null flag is what keeps them in separate panels.
         let data = "SELECT g, v FROM (VALUES ('', 1), (NULL, 2), ('a', 3)) t(g, v)";
         assert_eq!(
             top_strips(&format!(
@@ -1297,10 +1273,18 @@ mod tests {
         assert_eq!(*r.end(), 3.5);
     }
 
-    /// The one geom no renderer-backed writer draws. `arrow` is a stub — the
-    /// Vega-Lite writer has no implementation either and none is intended — so
-    /// this is a guard against a stub rather than a fallback path, and it lives
-    /// in the shared composition layer rather than in any writer.
+    #[test]
+    fn map_range_orients_an_inverted_extent() {
+        // A reversed bbox reaches here — `map_bbox` checks its four numbers
+        // for finiteness, not for order — and a scale cannot map an inverted
+        // range at all, so it is oriented rather than passed through.
+        let r = compose::map_range(10.0, 0.0);
+        assert_eq!(*r.start(), -0.5);
+        assert_eq!(*r.end(), 10.5);
+    }
+
+    /// `arrow` is a stub in both writers, so the rejection lives in the shared
+    /// composition layer rather than in any one of them.
     #[test]
     fn rejects_unsupported_geom() {
         let spec = spec_for(
@@ -1313,14 +1297,9 @@ mod tests {
     }
 }
 
-// The assertions no raster test can make.
-//
-// SVG output is readable text, so these check the writer's governing principle
-// *directly*: that the breaks, labels and titles ggsql resolved are the ones
-// that reach the output, rather than something the renderer worked out for
-// itself. A PNG can only ever say "some pixels were produced".
-//
-// None of it needs a GPU, so all of it runs in CI.
+// SVG output is readable text, so these check directly that the breaks, labels
+// and titles ggsql resolved are the ones reaching the output — which a PNG
+// cannot show. None of it needs a GPU.
 #[cfg(all(test, feature = "duckdb", feature = "svg"))]
 mod svg_text {
     use super::*;
@@ -1376,10 +1355,8 @@ mod svg_text {
 
     #[test]
     fn tick_labels_are_the_ones_ggsql_resolved() {
-        // Both axes, at ggsql's own break spacing and in ggsql's own number
-        // formatting — the trailing `.0` on one axis and not the other is the
-        // giveaway that these are pass-throughs rather than the renderer's own
-        // idea of a nice tick.
+        // ggsql's own break spacing and number formatting: the trailing `.0`
+        // shows these are pass-throughs, not the renderer's idea of a nice tick.
         let linear = svg("SELECT x, y FROM (VALUES (1,2),(2,3),(3,1)) t(x,y) \
              VISUALISE x AS x, y AS y DRAW point");
         for label in ["1.0", "1.5", "2.0", "2.5", "3.0"] {
@@ -1394,15 +1371,10 @@ mod svg_text {
         assert!(contains(&renamed, "b"));
     }
 
-    /// A log axis should carry decade ticks. It carries denormal garbage
-    /// instead — but that is **ggsql's scale resolution, not this writer**:
-    /// `Scale::numeric_breaks()` comes back as `[5e-308, 2e-256, …, 100]` for
-    /// a 1–100 log10 domain, and the Vega-Lite writer emits the same labels
-    /// from the same resolved values.
-    ///
-    /// Left as a failing expectation rather than as prose so it turns green on
-    /// its own when the scale is fixed. Nothing in the writer changes then —
-    /// the labels already pass straight through.
+    /// A log axis should carry decade ticks, but `Scale::numeric_breaks()`
+    /// resolves `[5e-308, 2e-256, …, 100]` for a 1–100 log10 domain and both
+    /// writers pass that through. Kept as a failing expectation so it turns
+    /// green on its own once the scale is fixed.
     #[test]
     #[ignore = "ggsql resolves log-scale breaks to denormals; not a writer bug"]
     fn log_tick_labels_should_be_decades() {
@@ -1415,9 +1387,8 @@ mod svg_text {
 
     #[test]
     fn a_binned_scales_edge_labels_reach_the_legend() {
-        // ggsql resolves the bin ladder; the renderer has no way to derive
-        // those edges, so finding all five verbatim on the colorbar rail is
-        // the pass-through.
+        // The renderer cannot derive a bin ladder, so all five edges appearing
+        // verbatim on the colorbar rail is the pass-through.
         let binned = svg(
             "VISUALISE bill_len AS x, bill_dep AS y, body_mass AS color \
              FROM ggsql:penguins DRAW point \
@@ -1559,8 +1530,7 @@ mod svg_text {
         };
 
         // Six inches at 300 dpi: an 1800 px viewBox on a 432 pt root, so the
-        // file prints six inches wide. No extra option asks for this — `units`
-        // means one thing, and the vector backend honours it in the output too.
+        // file prints six inches wide.
         let physical = build(&["width=6", "height=4", "units=in", "dpi=300"]);
         assert!(
             physical.contains("width=\"432pt\""),
@@ -1664,19 +1634,11 @@ mod pdf_structure {
     }
 }
 
-// The `hep` round trip.
-//
-// A document is written from a live composition, read back into a *new* one,
-// and both are rendered to SVG and compared byte for byte. That single
-// assertion covers the whole format — every scale, break, label, theme entry,
-// channel column and geom the plot carries has to survive, because any loss
-// shows up as different drawing commands.
-//
-// SVG is the comparison surface precisely because it is deterministic text: a
-// rasterised comparison would be at the mercy of GPU antialiasing, which is not
-// bit-reproducible even between two runs of the same code.
-//
-// Behind the test-only `hep-read` feature — the shipped library only writes.
+// The `hep` round trip: a document is written from a live composition, read
+// back into a new one, and both are rendered to SVG and compared byte for byte.
+// Any scale, break, label, theme entry, channel or geom that fails to survive
+// shows up as different drawing commands. SVG rather than raster because it is
+// deterministic; GPU antialiasing is not. Test-only — the library only writes.
 #[cfg(all(
     test,
     feature = "duckdb",
@@ -1687,9 +1649,8 @@ mod pdf_structure {
 mod hep_roundtrip {
     use super::*;
     use crate::reader::{DuckDBReader, Reader};
-    // The round trip drives the format directly rather than only through the
-    // writer, so that a loss shows up as different drawing commands rather
-    // than as a difference in how the writer was configured.
+    // Driven directly rather than through the writer, so a loss shows up as a
+    // drawing difference rather than as writer configuration.
     use hephaestus::document::{
         read_composition, read_hints, unsupported_items_for, write_composition, ReadContext,
         WriteOptions,
@@ -1755,10 +1716,8 @@ mod hep_roundtrip {
         }
     }
 
-    /// A plot under a non-Cartesian projection, which exercises the part of
-    /// the round trip a Cartesian plot cannot: the projection has to be
-    /// restored before the axes are attached, or a polar placement is
-    /// validated against the Cartesian default and rejected.
+    /// The projection has to be restored before the axes are attached, or a
+    /// polar placement is validated against the Cartesian default and rejected.
     #[test]
     fn a_polar_document_rebuilds_too() {
         let query = "SELECT c FROM (VALUES ('a'),('a'),('a'),('b'),('b'),('c')) t(c) \
@@ -1771,10 +1730,7 @@ mod hep_roundtrip {
 
     #[test]
     fn nothing_ggsql_draws_is_beyond_the_format() {
-        // The writer registers only built-in geoms and labels its scales with
-        // resolved break labels rather than formatter closures, so this should
-        // hold across the corpus. A failure means the writer grew something
-        // the format cannot name.
+        // A failure means the writer grew something the format cannot name.
         for (label, query) in QUERIES {
             let view = compose_for(query);
             let problems = unsupported_items_for(&view, &WriteOptions::default());
@@ -1801,6 +1757,18 @@ mod hep_roundtrip {
         assert_eq!(
             hints.background.map(|c| c.components),
             Some([0.0, 0.0, 0.0, 1.0])
+        );
+
+        // A transparent background is a request, not the absence of one: read
+        // back as `None` a consumer paints white behind the plot instead.
+        let (transparent, _) = HepWriter::new(1600, 900, 150.0)
+            .background(rgba(0.0, 0.0, 0.0, 0.0))
+            .render_reporting(&spec)
+            .unwrap();
+        let hints = read_hints(&transparent).unwrap();
+        assert_eq!(
+            hints.background.map(|c| c.components),
+            Some([0.0, 0.0, 0.0, 0.0])
         );
     }
 

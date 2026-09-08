@@ -47,9 +47,8 @@ use ggsql::writer::SvgWriter;
 use ggsql::writer::WebpWriter;
 
 /// What a writer produced: text to print, or bytes to pipe.
-// Each variant is constructed only by the writers that produce that shape, so
-// a build with none of them compiled in has an unused variant. The gates name
-// exactly those writers; extend them when a writer of that shape is added.
+// A build with none of the listed writers compiled in has an unused variant;
+// extend the gates when a writer of that shape is added.
 pub enum Output {
     #[cfg_attr(not(any(feature = "vegalite", feature = "svg")), allow(dead_code))]
     Text(String),
@@ -208,13 +207,11 @@ pub const WRITERS: &[WriterInfo] = &[
 ];
 
 /// The writer used when neither `--writer` nor `--output`'s extension names
-/// one. Vega-Lite: it is the only writer with no system requirements at all,
-/// and it is what `ggsql exec` has always printed to stdout.
+/// one. Vega-Lite is the only one with no system requirements at all.
 pub const DEFAULT_WRITER: &str = "vegalite";
 
-/// Closes `--writer`'s long help. The image writers all rasterise through the
-/// GPU, which is a runtime requirement worth stating once rather than in four
-/// blurbs.
+/// Closes `--writer`'s long help: the image writers all rasterise through the
+/// GPU, stated once rather than in four blurbs.
 const WRITER_FOOTER: &str = "png, jpeg, tiff and webp rasterise on the GPU and need a working \
                              adapter at render time. svg, pdf and hep do not.\n\n\
                              Left unset, --output's extension picks the writer \
@@ -232,13 +229,11 @@ pub fn find(name: &str) -> Option<&'static WriterInfo> {
 /// The writer a filename implies, from its extension.
 ///
 /// Matches the longest extension first, so `chart.vl.json` picks Vega-Lite
-/// rather than stopping at `json` — both spellings map to the same writer
-/// today, but a two-part extension has to win on principle or adding one
-/// later would be shadowed by its own tail.
+/// rather than stopping at `json`, and a future two-part extension is not
+/// shadowed by its own tail.
 ///
-/// Returns `None` for a path with no extension, an unrecognised one, or a
-/// bare `-`: none of those is an error, they just leave `--writer`'s default
-/// in place.
+/// `None` for a path with no extension, an unrecognised one, or a bare `-` —
+/// none of which is an error; they leave `--writer`'s default in place.
 pub fn for_extension(path: &Path) -> Option<&'static WriterInfo> {
     let name = path.file_name()?.to_str()?.to_ascii_lowercase();
     // Longest first: "vl.json" before "json".
@@ -254,9 +249,8 @@ pub fn for_extension(path: &Path) -> Option<&'static WriterInfo> {
 }
 
 /// The message for a `--writer` name that matches no row. Lists every writer,
-/// marking the ones this build does not have — picking a real writer that
-/// isn't compiled in is the more common mistake, and a bare list of compiled
-/// names makes it look like the name was wrong.
+/// marking the ones this build lacks — naming a real writer that isn't
+/// compiled in is the commoner mistake.
 pub fn unknown_writer(name: &str) -> String {
     let mut msg = format!("Unknown writer '{name}'\nAvailable writers:\n");
     for info in WRITERS {
@@ -588,10 +582,8 @@ mod tests {
 
     #[test]
     fn a_two_part_extension_beats_its_own_tail() {
-        // "vl.json" and "json" both reach vegalite today, so this asserts the
-        // ordering rather than the destination: the longer match is the one
-        // that wins, which is what keeps a future two-part extension from
-        // being shadowed by its tail.
+        // Both spellings reach vegalite, so this asserts the ordering rather
+        // than the destination: the longer match wins.
         let mut candidates: Vec<&str> = WRITERS
             .iter()
             .flat_map(|w| w.extensions.iter().copied())

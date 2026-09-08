@@ -10,7 +10,7 @@ End-user playground: <https://ggsql.org/wasm/>. This file describes the *build*.
 
 ```
 ggsql-wasm/
-├── Cargo.toml            cdylib; ggsql with default-features = false + svg, sqlite, builtin-data, spatial
+├── Cargo.toml            cdylib; ggsql with default-features = false + svg, webfonts, sqlite, builtin-data, spatial
 ├── build-wasm.sh         End-to-end build orchestrator (library + wasm + demo → doc/wasm)
 ├── src/
 │   └── lib.rs            wasm-bindgen entry points (the only Rust here)
@@ -48,7 +48,7 @@ stops, while `ResizeObserver`, font fetching and DOM insertion live in JS.
 
 ## Toolchain
 
-- **Rust stable, not the workspace 1.86 MSRV.** The rest of the workspace targets the 1.86 MSRV for the R/CRAN bindings (see [`/CLAUDE.md`](../CLAUDE.md)), but R doesn't use wasm and some wasm-only deps need a newer rustc. A nested [`rust-toolchain.toml`](rust-toolchain.toml) selects stable for any build run from this directory; this crate has no `rust-version`. In CI, the multi-purpose jobs (`build.yaml`, `publish.yaml`) default to 1.86, so their wasm tool installs (`cargo install wasm-pack`/`wasm-opt`, run at the repo root) use `cargo +stable`; the wasm-only release job runs entirely on stable.
+- **Rust stable, not the workspace 1.86 MSRV.** The rest of the workspace targets the 1.86 MSRV for the R/CRAN bindings (see [`/CLAUDE.md`](../CLAUDE.md)), but R doesn't use wasm and some wasm-only deps need a newer rustc. A nested [`rust-toolchain.toml`](rust-toolchain.toml) selects stable for any build run from this directory; this crate has no `rust-version`. Every CI job installs `dtolnay/rust-toolchain@stable` and there is **no root `rust-toolchain.toml`**, so nothing here needs a `cargo +stable` — the 1.86 claim is enforced by its own check step in `build.yaml`, not by pinning the toolchain.
 - Rust target `wasm32-unknown-unknown` and [`wasm-pack`](https://rustwasm.github.io/wasm-pack/) for compilation.
 - A clang/llvm with wasm backend support (the build script verifies this with a one-line probe).
 - `wasm-opt` (from binaryen) for the `-Oz` optimization step. **Not** `wasm-tools`,
@@ -81,7 +81,7 @@ This sequentially:
 
 Flags:
 
-- `--skip-binary` — reuse the existing `pkg/` (skip steps 2–3); useful when iterating on `library/` or `demo/`.
+- `--skip-binary` — reuse the existing `pkg/` wasm (skip steps 2–3); useful when iterating on `js/`, `library/` or `demo/`. **Step 4 still runs**, so an edit to the hand-written wrapper reaches the bundle without a recompile — that is the point of the flag. Fails if there is no `pkg/` to reuse.
 - `--skip-opt` — compile but skip `wasm-opt` (faster, larger binary).
 
 ## Fonts are the thing that surprises people

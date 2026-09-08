@@ -30,11 +30,9 @@ const COMPRESSION_VALUES: &[&str] = &["none", "deflate", "lzw", "packbits"];
 /// | `background` | Any CSS color, e.g. `white`, `#ff0000`, `transparent` | `white` |
 /// | `compression` | `none`, `deflate`, `lzw`, or `packbits` | `deflate` |
 ///
-/// `compression` is a compatibility choice rather than a speed one, since all
-/// four are lossless: `deflate` is the smallest and what a file wants, `lzw` is
-/// the compressed form the widest range of old readers open, `packbits` is cheap
-/// and does well on the flat fills a plot is mostly made of, and `none` stores
-/// rows verbatim for a reader that handles no compression at all.
+/// All four are lossless, so `compression` is a compatibility choice: `deflate`
+/// is smallest, `lzw` opens in the widest range of old readers, `packbits` is
+/// cheap and does well on flat fills, and `none` stores rows verbatim.
 ///
 /// Rendering requires a working wgpu adapter (hardware or software, e.g.
 /// lavapipe) at render time.

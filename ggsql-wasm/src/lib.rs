@@ -16,6 +16,17 @@ use std::sync::Arc;
 
 use wasm_bindgen::prelude::*;
 
+/// Report a panic to the console before the module aborts.
+///
+/// Composition asserts in a handful of documented cases and the `wasm` profile
+/// sets `panic = "abort"`, so one bad plot traps the instance for the whole
+/// page. The hook turns a bare `RuntimeError: unreachable executed` into a
+/// console message naming the assertion. Runs on module instantiation.
+#[wasm_bindgen(start)]
+pub fn start() {
+    console_error_panic_hook::set_once();
+}
+
 // ============================================================================
 // JS bridge declarations
 // ============================================================================
@@ -235,9 +246,8 @@ impl GgsqlContext {
 
     /// Run a ggsql query and keep the resolved plot, ready to draw.
     ///
-    /// Drawing is a separate step because a plot is redrawn on every resize:
-    /// the layout is re-solved at the new size, and re-running the SQL to do
-    /// that would put a database query behind every frame of a window drag.
+    /// Drawing is separate because a resize re-solves the layout, and doing
+    /// that through the query would put SQL behind every frame of a drag.
     pub fn execute(&self, query: &str) -> Result<GgsqlPlot, JsValue> {
         let reader = self.reader.borrow();
         let spec = reader
@@ -395,21 +405,18 @@ pub struct GgsqlPlot {
 impl GgsqlPlot {
     /// Draw the plot as SVG at the given size in CSS pixels.
     ///
-    /// The layout is re-solved at this size rather than scaled to it, so a
-    /// wider box gets more tick labels rather than stretched ones. That is why
-    /// a resize calls this again instead of setting a `viewBox`.
+    /// The layout is re-solved at this size rather than scaled to it, so a wider
+    /// box gets more tick labels rather than stretched ones — which is why a
+    /// resize calls this again instead of setting a `viewBox`.
     ///
-    /// `id_prefix` namespaces every generated element id. Inline SVGs share the
-    /// page's id space, so two plots on one page collide without it — which is
-    /// the ordinary case in the docs, where a page carries several.
+    /// `id_prefix` namespaces every generated element id: inline SVGs share the
+    /// page's id space, so two plots on one page collide without it.
     ///
-    /// The background is left transparent so the page's own background, and
-    /// whatever light/dark rule it follows, shows through.
+    /// The background is left transparent so the page's own shows through.
     #[wasm_bindgen(js_name = toSvg)]
     pub fn to_svg(&self, width: u32, height: u32, id_prefix: &str) -> Result<SvgRender, JsValue> {
-        // 96 dpi: CSS pixels are the unit the caller measured its box in, and
-        // an SVG scales for a retina screen by itself. There is no backing
-        // store here whose resolution has to be chosen.
+        // 96 dpi: the caller measured its box in CSS pixels, and an SVG scales
+        // for a retina screen by itself.
         let writer = SvgWriter::new(width.max(1), height.max(1), 96.0)
             .background(rgba(0.0, 0.0, 0.0, 0.0))
             .id_prefix(id_prefix);
@@ -449,18 +456,13 @@ impl SvgRender {
 /// Register every font face in `bytes`, returning the family names they landed
 /// under.
 ///
-/// **A page must call this before drawing anything.** A browser enumerates no
-/// system fonts, so the shaper starts with an empty collection and a plot comes
-/// out with its chrome drawn and no text at all — no error, no warning. Text is
-/// also what sets the layout, so the margins and legend widths of a fontless
-/// plot are wrong as well as empty.
+/// A page must call this before drawing anything: a browser enumerates no system
+/// fonts, so the shaper starts empty and a plot comes out with no text and no
+/// warning — and with wrong margins too, since text sets the layout.
 ///
-/// Takes sfnt bytes — TTF, OTF, TTC or OTC. A WOFF or WOFF2 file, which is what
-/// a font CDN serves a browser, has to be decoded before it gets here.
-///
-/// The returned names are what [`set_generic_family`] takes: a generic is an
-/// indirection through the font context, so registering a face does not on its
-/// own make `sans-serif` mean it.
+/// Takes sfnt bytes (TTF, OTF, TTC, OTC); a WOFF or WOFF2 file has to be decoded
+/// first. The returned names are what [`set_generic_family`] takes — registering
+/// a face does not on its own make `sans-serif` mean it.
 #[wasm_bindgen(js_name = registerFont)]
 pub fn register_font(bytes: Vec<u8>) -> Result<Vec<String>, JsValue> {
     ggsql::fonts::register_font(bytes).map_err(|e| JsValue::from_str(&e.to_string()))

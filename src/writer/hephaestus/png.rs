@@ -32,9 +32,8 @@ const COMPRESSION_VALUES: &[&str] = &["none", "fast", "balanced", "small"];
 /// | `compression` | `none`, `fast`, `balanced`, or `small` | `balanced` |
 ///
 /// `compression` trades encode time against file size, losslessly either way.
-/// `balanced` is what a file wants. `fast` is for a caller on a frame deadline —
-/// a host encoding a plot per resize, say — where it costs a fraction of the
-/// time for about half again the bytes.
+/// `balanced` is what a file wants; `fast` suits a caller on a frame deadline,
+/// costing a fraction of the time for about half again the bytes.
 ///
 /// Rendering requires a working wgpu adapter (hardware or software, e.g.
 /// lavapipe) at render time.

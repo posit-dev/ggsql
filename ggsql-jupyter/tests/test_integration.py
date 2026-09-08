@@ -37,10 +37,10 @@ def kernel_binary():
     return str(binary_path)
 
 
-@pytest.fixture
-def kernel_manager(kernel_binary):
-    """Create and start a kernel manager."""
+def _launch(kernel_binary, extra_args=()):
+    """Start a kernel and yield its manager. Shared by the fixtures below."""
     kernel_process = None
+    km = None
     try:
         # Use KernelManager to write connection file with proper ports
         km = KernelManager()
@@ -49,7 +49,7 @@ def kernel_manager(kernel_binary):
 
         # Start our kernel process directly
         kernel_process = subprocess.Popen(
-            [kernel_binary, "-f", connection_file],
+            [kernel_binary, "-f", connection_file, *extra_args],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
         )
@@ -80,10 +80,30 @@ def kernel_manager(kernel_binary):
                     kernel_process.kill()
                 except:
                     pass
-        try:
-            os.unlink(km.connection_file)
-        except:
-            pass
+        if km is not None:
+            try:
+                os.unlink(km.connection_file)
+            except:
+                pass
+
+
+@pytest.fixture
+def kernel_manager(kernel_binary):
+    """Create and start a kernel manager."""
+    yield from _launch(kernel_binary)
+
+
+@pytest.fixture
+def console_kernel_manager(kernel_binary):
+    """A kernel that believes it is a Positron console session.
+
+    `--session-mode` is what the extension's `createKernelSpec` appends, and it
+    is authoritative over the session-id heuristic — so this is the only way to
+    reach the plot-comm path from a test. Everything driven through plain
+    `jupyter_client` lands in `SessionKind::Standalone`, because its session id
+    is a bare UUID.
+    """
+    yield from _launch(kernel_binary, ["--session-mode", "console"])
 
 
 @pytest.fixture
@@ -94,6 +114,32 @@ def client(kernel_manager):
     kc.wait_for_ready(timeout=10)
     yield kc
     kc.stop_channels()
+
+
+@pytest.fixture
+def console_client(console_kernel_manager):
+    """A client talking to a console-mode kernel."""
+    kc = console_kernel_manager.client()
+    kc.start_channels()
+    kc.wait_for_ready(timeout=10)
+    yield kc
+    kc.stop_channels()
+
+
+def drain_iopub(client, timeout=5):
+    """Collect iopub messages up to and including the closing `idle` status."""
+    messages = []
+    while True:
+        try:
+            msg = client.get_iopub_msg(timeout=timeout)
+        except Exception:
+            return messages
+        messages.append(msg)
+        if (
+            msg["msg_type"] == "status"
+            and msg["content"]["execution_state"] == "idle"
+        ):
+            return messages
 
 
 class TestKernelInfo:
@@ -290,6 +336,168 @@ class TestExecution:
         # Should succeed (table exists)
         reply = client.get_shell_msg(timeout=5)
         assert reply["content"]["status"] == "ok"
+
+
+PLOT_QUERY = "SELECT 1 as x, 2 as y VISUALISE x, y DRAW point"
+
+
+class TestPlotComm:
+    """The console session's plot path: a `positron.plot` comm, and its RPCs.
+
+    This is the only route to `open_plot_comm`, `pre_render`, `finish_render`
+    and eviction — everything else in this file is a `Standalone` session, which
+    takes the static-bundle path instead.
+    """
+
+    def _open_plot(self, console_client):
+        """Run a plot cell and return its comm_id."""
+        msg_id = console_client.execute(PLOT_QUERY, silent=False, store_history=True)
+        messages = drain_iopub(console_client)
+
+        opens = [m for m in messages if m["msg_type"] == "comm_open"]
+        plots = [
+            m for m in opens if m["content"]["target_name"] == "positron.plot"
+        ]
+        assert plots, (
+            "a console session must open a positron.plot comm; got "
+            f"{[m['msg_type'] for m in messages]}"
+        )
+        assert len(plots) == 1, "one comm per plot"
+
+        # The comm alone creates the pane entry. An output message as well
+        # would put a second, fixed-size copy of the plot in the pane.
+        assert not [m for m in messages if m["msg_type"] == "execute_result"]
+
+        # Parented to the execute_request: that is how the frontend ties the
+        # plot to the cell that produced it, and where its `code` comes from.
+        assert plots[0]["parent_header"]["msg_id"] == msg_id
+
+        # `execute_input` must come first — Positron fills `_recentExecutions`
+        # from it, so a comm arriving earlier has no execution to attach to.
+        order = [m["msg_type"] for m in messages]
+        assert order.index("execute_input") < order.index("comm_open")
+
+        reply = console_client.get_shell_msg(timeout=5)
+        assert reply["msg_type"] == "execute_reply"
+        assert reply["content"]["status"] == "ok"
+
+        return plots[0]["content"]["comm_id"]
+
+    def test_console_opens_a_plot_comm_and_no_output(self, console_client):
+        self._open_plot(console_client)
+
+    def test_render_is_answered_and_the_kernel_returns_to_idle(self, console_client):
+        comm_id = self._open_plot(console_client)
+
+        console_client.session.send(
+            console_client.shell_channel.socket,
+            "comm_msg",
+            {
+                "comm_id": comm_id,
+                "data": {
+                    "jsonrpc": "2.0",
+                    "id": "render-1",
+                    "method": "render",
+                    "params": {
+                        "size": {"width": 400, "height": 300},
+                        "pixel_ratio": 1.0,
+                        "format": "png",
+                    },
+                },
+            },
+        )
+
+        # The reply comes back on shell, from `finish_render` rather than from
+        # the handler — the render is dispatched to a thread.
+        reply = console_client.get_shell_msg(timeout=30)
+        assert reply["msg_type"] == "comm_msg"
+        data = reply["content"]["data"]
+        assert "error" not in data, data
+        result = data["result"]
+        assert result["data"], "a render must carry bytes"
+        # Whatever this build and machine can produce; SVG is the fallback.
+        assert result["mime_type"] in ("image/png", "image/svg+xml")
+
+        # And the `busy` that the request opened is closed. Missing this is how
+        # the kernel gets stuck busy forever.
+        states = [
+            m["content"]["execution_state"]
+            for m in drain_iopub(console_client)
+            if m["msg_type"] == "status"
+        ]
+        assert states[-1] == "idle", states
+
+    def test_a_bad_render_request_still_returns_to_idle(self, console_client):
+        """A rejected `render` is answered here, not by `finish_render`.
+
+        No ticket is queued for it, so nothing will ever arrive on the outcome
+        channel — the `idle` has to be sent by the handler, or the kernel stays
+        busy with the frontend waiting out its 30 s timeout.
+        """
+        comm_id = self._open_plot(console_client)
+
+        console_client.session.send(
+            console_client.shell_channel.socket,
+            "comm_msg",
+            {
+                "comm_id": comm_id,
+                "data": {
+                    "jsonrpc": "2.0",
+                    "id": "render-bad",
+                    "method": "render",
+                    # No pixel_ratio and no format: InvalidParams.
+                    "params": {"size": {"width": 400, "height": 300}},
+                },
+            },
+        )
+
+        reply = console_client.get_shell_msg(timeout=10)
+        assert reply["msg_type"] == "comm_msg"
+        assert "error" in reply["content"]["data"], reply["content"]["data"]
+
+        states = [
+            m["content"]["execution_state"]
+            for m in drain_iopub(console_client)
+            if m["msg_type"] == "status"
+        ]
+        assert states[-1] == "idle", states
+
+    def test_get_metadata_carries_the_cell_that_made_the_plot(self, console_client):
+        comm_id = self._open_plot(console_client)
+
+        console_client.session.send(
+            console_client.shell_channel.socket,
+            "comm_msg",
+            {
+                "comm_id": comm_id,
+                "data": {"jsonrpc": "2.0", "id": "meta-1", "method": "get_metadata"},
+            },
+        )
+
+        reply = console_client.get_shell_msg(timeout=5)
+        result = reply["content"]["data"]["result"]
+        assert result["code"] == PLOT_QUERY
+        assert result["kind"] == "ggsql"
+        assert result["name"]
+        assert result["execution_id"]
+
+    def test_an_unknown_method_is_an_error_not_a_null_result(self, console_client):
+        """`show` and `update` land here on purpose — see `handle_plot_rpc`."""
+        comm_id = self._open_plot(console_client)
+
+        console_client.session.send(
+            console_client.shell_channel.socket,
+            "comm_msg",
+            {
+                "comm_id": comm_id,
+                "data": {"jsonrpc": "2.0", "id": "show-1", "method": "show"},
+            },
+        )
+
+        reply = console_client.get_shell_msg(timeout=5)
+        data = reply["content"]["data"]
+        assert "error" in data, data
+        assert "result" not in data
 
 
 class TestStatus:

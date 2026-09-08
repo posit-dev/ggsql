@@ -142,7 +142,7 @@ Defined in `Cargo.toml`:
 | `all-readers` | — | `duckdb` + `sqlite` + `odbc` |
 | `all-writers` | — | every writer above except the test-only `hep-read` |
 
-`ggsql-wasm` builds with `default-features = false` plus `svg`, `sqlite`, `builtin-data`, `spatial` — it draws plots in the browser with `SvgWriter`, which needs no GPU adapter. `ggsql-jupyter` builds with `duckdb`, `vegalite`.
+`ggsql-wasm` builds with `default-features = false` plus `svg`, `webfonts`, `sqlite`, `builtin-data`, `spatial` — it draws plots in the browser with `SvgWriter`, which needs no GPU adapter, and `webfonts` is what lets a page hand it the WOFF/WOFF2 a font CDN serves. `ggsql-jupyter` builds with `duckdb`, `svg`, `pdf` plus ggsql's defaults, and its own default `raster-plots` feature adds `png`, `jpeg` and `tiff`; `svg` and `pdf` are non-optional there because the no-adapter fallback has to be compiled in whatever else is.
 
 ## Testing
 

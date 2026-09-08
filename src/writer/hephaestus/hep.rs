@@ -7,7 +7,7 @@ use hephaestus::document::{
 };
 
 use super::canvas::Canvas;
-use super::{compose, CANVAS_HINT_OPTIONS};
+use super::{compose, CANVAS_SIZE_OPTIONS};
 use crate::writer::{Writer, WriterOptions};
 use crate::{DataFrame, GgsqlError, Plot, Result};
 
@@ -19,16 +19,12 @@ const HEP_OPTIONS: &[&str] = &["lossy", "embed-fonts"];
 ///
 /// Unlike every other writer here, this one produces no picture. It records the
 /// resolved plot — scales, breaks, labels, theme, geometry and data channels —
-/// so a consumer can render it *itself*, at whatever size and resolution it has,
-/// and re-render on resize without going back to the query. That is what makes
-/// it the format for an interactive host: hit-testing a mark or hovering a
-/// legend key never crosses a wire.
+/// so a consumer can render it itself at any size and re-render on resize
+/// without going back to the query, which is what makes it the format for an
+/// interactive host.
 ///
-/// **The name is the format's**, not ggsql's. ggsql does not define `.hep`, so
-/// calling it anything else would imply a container ggsql owns.
-///
-/// Needs no GPU adapter, and no encoder: it serialises the same composition the
-/// other writers draw.
+/// The name is the format's; ggsql does not define `.hep`. Needs no GPU adapter
+/// and no encoder — it serialises the composition the other writers draw.
 ///
 /// [`HepWriter::from_options`] takes:
 ///
@@ -42,23 +38,22 @@ const HEP_OPTIONS: &[&str] = &["lossy", "embed-fonts"];
 /// | `lossy` | Drop what the format cannot carry instead of refusing | `false` |
 /// | `embed-fonts` | Inline the font files the plot's text needs | `false` |
 ///
-/// **The size is a hint, not a canvas.** Any size works — that is the point of
-/// the format — so `width`/`height`/`dpi` record what a consumer should default
-/// to rather than fixing anything.
+/// The size is a hint, not a canvas: `width`/`height`/`dpi` record what a
+/// consumer should default to rather than fixing anything.
 ///
 /// `lossy` decides what happens to a plot the format cannot fully carry.
-/// Refusing is the default because silently changing a plot is worse than
-/// saying what is wrong; with `lossy` on, the same list comes back as warnings
-/// from [`HepWriter::write_reporting`]. Nothing ggsql itself builds should trip
-/// it — the writer registers only built-in geoms and gives its scales resolved
-/// break labels rather than formatter closures — so a non-empty list is a bug
-/// here rather than a limit of the format.
+/// Refusing is the default; with `lossy` on the same list comes back as
+/// warnings from [`HepWriter::write_reporting`]. Nothing ggsql builds should
+/// trip it, so a non-empty list is a bug here rather than a format limit.
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct HepWriter {
     canvas: Canvas,
     /// Whether a size was asked for at all, since an unset hint and a hint that
     /// happens to match the canvas default are different things to record.
-    sized: bool,
+    size_asked: bool,
+    /// The same for `dpi`: the two are independent hints, so neither may record
+    /// the other on the caller's behalf.
+    dpi_asked: bool,
     lossy: bool,
     embed_fonts: bool,
 }
@@ -69,7 +64,8 @@ impl HepWriter {
     pub fn new(width: u32, height: u32, dpi: f64) -> Self {
         Self {
             canvas: Canvas::new(width, height, dpi),
-            sized: true,
+            size_asked: true,
+            dpi_asked: true,
             ..Self::default()
         }
     }
@@ -88,9 +84,8 @@ impl HepWriter {
 
     /// Inline the font files the plot's text needs.
     ///
-    /// Off by default, and expensively so: a system family is often megabytes.
-    /// A consumer that can register its own fonts — a web page already serving
-    /// a subsetted font — should.
+    /// Off by default: a system family is often megabytes, and a consumer that
+    /// can register its own fonts should.
     pub fn embed_fonts(mut self, embed: bool) -> Self {
         self.embed_fonts = embed;
         self
@@ -111,8 +106,7 @@ impl HepWriter {
         spec: &Plot,
         data: &HashMap<String, DataFrame>,
     ) -> Result<(Vec<u8>, Vec<String>)> {
-        compose::validate_plot(spec)?;
-        let view = compose::build_composition(spec, data)?;
+        let view = compose::prepare(spec, data)?;
         let options = self.options();
 
         // Checked here rather than left to `write_composition` so the error is
@@ -142,18 +136,19 @@ impl HepWriter {
 
     /// The write options this writer's settings amount to.
     ///
-    /// The canvas becomes hints, which is exactly what those fields are for.
-    /// `embed_images` is left off: nothing ggsql builds registers an image, so
-    /// the option provably cannot take effect and exposing it would only teach
-    /// a user that it exists.
+    /// The canvas becomes hints. `embed_images` is left off: nothing ggsql
+    /// builds registers an image, so the option cannot take effect.
     fn options(&self) -> WriteOptions {
         let mut options = WriteOptions::default();
         options.lossy = self.lossy;
-        options.background = self.canvas.vector_background();
+        // Recorded unconditionally, unlike the size. `None` means unspecified
+        // rather than transparent, so a transparent canvas has to travel as a
+        // colour with zero alpha or a consumer paints white behind the plot.
+        options.background = Some(self.canvas.background);
         options.size_hint = self
-            .sized
+            .size_asked
             .then_some((self.canvas.width as f64, self.canvas.height as f64));
-        options.dpi_hint = self.sized.then_some(self.canvas.dpi);
+        options.dpi_hint = self.dpi_asked.then_some(self.canvas.dpi);
         options.embed_fonts = self.embed_fonts;
         options.embed_images = false;
         options
@@ -165,13 +160,14 @@ impl Writer for HepWriter {
 
     fn from_options(options: &WriterOptions) -> Result<Self> {
         let canvas = Canvas::from_options(options, HEP_OPTIONS)?;
-        // A hint is only recorded when one was actually asked for.
-        let sized = CANVAS_HINT_OPTIONS
+        // Each hint is recorded only when that hint was actually asked for.
+        let size_asked = CANVAS_SIZE_OPTIONS
             .iter()
             .any(|key| options.get(key).is_some());
         Ok(Self {
             canvas,
-            sized,
+            size_asked,
+            dpi_asked: options.get("dpi").is_some(),
             lossy: options.boolean("lossy")?.unwrap_or(false),
             embed_fonts: options.boolean("embed-fonts")?.unwrap_or(false),
         })
@@ -188,11 +184,40 @@ impl Writer for HepWriter {
 
 /// Put what the format could not carry into ggsql's own words.
 ///
-/// `UnsupportedItem` already `Display`s actionably and names the scale, patch or
-/// shape involved, so this only strips the renderer's own vocabulary from the
-/// front of it.
+/// As `svg::describe` and `pdf::describe`: the renderer's variants are
+/// `#[non_exhaustive]`, and its `Display` text names renderer API and cargo
+/// features a ggsql user cannot act on. Nothing ggsql builds should reach any
+/// of these, so the wording aims at a writer bug rather than a format limit.
 fn describe(problems: &[UnsupportedItem]) -> Vec<String> {
-    problems.iter().map(ToString::to_string).collect()
+    problems
+        .iter()
+        .map(|problem| match problem {
+            UnsupportedItem::CustomFormatter { scale } => format!(
+                "the {scale} scale's tick labels are computed rather than listed, so a \
+                 consumer cannot reproduce them"
+            ),
+            UnsupportedItem::UnnameableGeom { patch, index } => format!(
+                "layer {} of panel {patch:?} is a mark the document cannot name, so nothing \
+                 records how to draw it again",
+                index + 1
+            ),
+            UnsupportedItem::TrackReference { location } => format!(
+                "{location} is sized relative to another part of the layout, which only means \
+                 something while this figure is being laid out"
+            ),
+            UnsupportedItem::UnnameableShape { patch, name } => format!(
+                "the {name:?} marker on panel {patch:?} is a glyph with no source text, so a \
+                 consumer cannot rebuild it"
+            ),
+            UnsupportedItem::UnembeddableImage { patch, name } => format!(
+                "the {name:?} image on panel {patch:?} cannot be embedded by this build, so a \
+                 consumer would have to supply it"
+            ),
+            // Non-exhaustive upstream, so report a problem this build has no
+            // words for — without naming the renderer.
+            _ => "something in this plot cannot be captured as a document".to_string(),
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -228,23 +253,63 @@ mod option_tests {
     }
 
     #[test]
-    fn a_size_is_recorded_only_when_one_was_asked_for() {
+    fn a_hint_is_recorded_only_when_that_hint_was_asked_for() {
         // Any size works, so an unrecorded hint and a hint that happens to
         // equal the default are different things.
         let unset = writer(&[]).unwrap().options();
         assert_eq!(unset.size_hint, None);
         assert_eq!(unset.dpi_hint, None);
 
+        // The two are independent: neither implies the other, or the document
+        // would claim a default the caller never gave.
         let sized = writer(&["width=1600", "height=900"]).unwrap().options();
         assert_eq!(sized.size_hint, Some((1600.0, 900.0)));
-        assert!(sized.dpi_hint.is_some());
+        assert_eq!(sized.dpi_hint, None);
 
-        // A physical size resolves to pixels first, as it does everywhere.
+        let dense = writer(&["dpi=150"]).unwrap().options();
+        assert_eq!(dense.size_hint, None);
+        assert_eq!(dense.dpi_hint, Some(150.0));
+
+        // A physical size resolves to pixels first, as it does everywhere —
+        // and needs the dpi to do it, so both are asked for here.
         let physical = writer(&["width=6", "units=in", "dpi=100"])
             .unwrap()
             .options();
         assert_eq!(physical.size_hint.map(|(w, _)| w), Some(600.0));
         assert_eq!(physical.dpi_hint, Some(100.0));
+    }
+
+    #[test]
+    fn a_background_is_always_recorded_transparent_included() {
+        // `None` means unspecified rather than transparent, so a transparent
+        // canvas travels as a colour with zero alpha.
+        assert_eq!(
+            writer(&[]).unwrap().options().background,
+            Some(Canvas::default().background)
+        );
+        let transparent = writer(&["background=transparent"]).unwrap().options();
+        let background = transparent.background.expect("recorded, not dropped");
+        assert_eq!(background.components[3], 0.0);
+    }
+
+    #[test]
+    fn a_problem_is_reported_without_naming_the_renderer() {
+        let problems = [
+            UnsupportedItem::CustomFormatter {
+                scale: "pos1".into(),
+            },
+            UnsupportedItem::UnnameableGeom {
+                patch: "panel".into(),
+                index: 0,
+            },
+        ];
+        for message in describe(&problems) {
+            for leak in ["with_named_format", "Geom::kind", "hephaestus"] {
+                assert!(!message.contains(leak), "{message} leaks {leak}");
+            }
+        }
+        // And the layer is named in ggsql's own 1-based draw order.
+        assert!(describe(&problems[1..])[0].contains("layer 1"));
     }
 
     #[test]

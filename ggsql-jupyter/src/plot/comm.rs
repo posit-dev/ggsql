@@ -60,11 +60,9 @@ pub struct RenderParams {
 impl RenderParams {
     /// Read a `render` request's params.
     ///
-    /// `size` is optional in the schema — the frontend omits it when it wants
-    /// the plot's own idea of a size — so an absent one falls back to a
-    /// default rather than being an error. `pixel_ratio` and `format` are
-    /// required, and a format outside the five Positron defines is
-    /// `InvalidParams` rather than a guess.
+    /// `size` is optional in the schema, so an absent one falls back to the
+    /// default canvas. `pixel_ratio` and `format` are required, and an unknown
+    /// format is `InvalidParams` rather than a guess.
     ///
     /// # Errors
     ///
@@ -114,25 +112,23 @@ impl RenderParams {
         })
     }
 
-    /// Encode rendered bytes the way a comm reply carries them.
-    ///
-    /// **Always base64, even for SVG.** Positron builds
-    /// `data:{mime_type};base64,{data}` from the reply
-    /// (`languageRuntimePlotClient.ts`), so text sent as itself would produce
-    /// an invalid URI. This is the opposite of a static display bundle, where
-    /// `image/svg+xml` travels as text — two transports, two conventions. The
-    /// reference Python backend encodes unconditionally for the same reason.
     /// The same request, in a format this build and machine can produce.
     ///
-    /// The pane always asks for `png`. A build with no raster writer answers
-    /// in SVG rather than failing the render and leaving the pane empty; the
-    /// reply's `mime_type` says so, which is what keeps the substitution
-    /// honest. See [`Format::available`](crate::plot::Format::available).
+    /// The pane always asks for `png`, so a build with no raster writer answers
+    /// in SVG rather than leaving the pane empty, and says so in `mime_type`.
+    /// See [`Format::available`](crate::plot::Format::available).
     pub fn available(mut self, backend_raster: bool) -> Self {
         self.request.format = self.request.format.available(backend_raster);
         self
     }
 
+    /// Encode rendered bytes the way a comm reply carries them.
+    ///
+    /// Always base64, even for SVG: Positron builds
+    /// `data:{mime_type};base64,{data}` from the reply
+    /// (`languageRuntimePlotClient.ts`), so text sent as itself is an invalid
+    /// URI. A static display bundle is the other way round, which is why this
+    /// is the comm's one entry point.
     pub fn encode(bytes: &[u8]) -> String {
         use base64::engine::general_purpose::STANDARD;
         use base64::Engine;
@@ -141,11 +137,9 @@ impl RenderParams {
 
     /// The `result` half of a successful `render` reply.
     ///
-    /// **`mime_type` names the format that was actually produced.** Positron
-    /// builds its data URI from this but records the format from its own
-    /// *request*, so answering a `png` request with SVG bytes would display
-    /// correctly and then write SVG into a file called `.png`. The renderer
-    /// must therefore never substitute a format, and this echoes what it did.
+    /// `mime_type` names the format actually produced. Positron builds its data
+    /// URI from it but takes the save extension from its own request, so a
+    /// substituted format would write the wrong bytes into the wrong file.
     pub fn to_result(self, encoded: String) -> Value {
         json!({
             "data": encoded,
@@ -187,10 +181,9 @@ pub struct PlotMetadata {
 impl PlotMetadata {
     /// The `result` half of a `get_metadata` reply.
     ///
-    /// Answered from state the kernel already holds — never through the render
-    /// thread. `get_metadata` gets Positron's default 5 s RPC timeout, where
-    /// `render` and `get_intrinsic_size` get 30 s, so it must not queue behind
-    /// a render.
+    /// Answered from state the kernel already holds, never through the render
+    /// thread: `get_metadata` gets a 5 s RPC timeout where `render` gets 30 s,
+    /// so it must not queue behind one.
     pub fn to_result(&self) -> Value {
         json!({
             "name": self.name,
@@ -321,9 +314,8 @@ mod tests {
     #[test]
     fn the_panes_render_settings_parse_as_a_render_request() {
         // `did_change_plots_render_settings` carries a `plot_render_settings`,
-        // whose shape is a `render` request's params — size, pixel_ratio and
-        // format, all required there. Parsing them with the same function is
-        // what keeps a pre-render identical to what a render would produce.
+        // which has a `render` request's shape — parsed by the same function so
+        // a pre-render matches what a render would produce.
         let settings = json!({
             "size": {"width": 500, "height": 400},
             "pixel_ratio": 2,
@@ -344,8 +336,7 @@ mod tests {
     #[test]
     fn svg_is_base64_encoded_like_every_other_format() {
         // Positron builds `data:<mime>;base64,<data>` from a comm reply, so
-        // text sent as itself would produce an invalid URI. A static display
-        // bundle is the other way round — this is the comm's convention.
+        // text sent as itself would be an invalid URI.
         let encoded = RenderParams::encode(b"<svg/>");
         assert_eq!(encoded, "PHN2Zy8+");
         assert!(
@@ -356,8 +347,8 @@ mod tests {
 
     #[test]
     fn an_unknown_method_is_method_not_found() {
-        // Not `result: null`: a catch-all would silently satisfy a future
-        // Positron method with garbage rather than letting it fail loudly.
+        // An error rather than `result: null`, so a future method fails loudly
+        // instead of being satisfied with garbage.
         let err = RpcError::MethodNotFound("hover".into());
         assert_eq!(err.code(), -32601);
         assert_eq!(err.to_json()["code"], -32601);

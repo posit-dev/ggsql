@@ -1,9 +1,8 @@
 //! The render thread.
 //!
-//! Rendering does not happen on the message loop, for one concrete reason:
-//! `kernel.rs` awaits `handle_shell_message` *inline* in its `select!`, so
-//! anything blocking there stalls the heartbeat, the control channel and the
-//! SIGINT handler alike.
+//! Rendering does not happen on the message loop: `kernel.rs` awaits
+//! `handle_shell_message` inline in its `select!`, so anything blocking there
+//! stalls the heartbeat, the control channel and the SIGINT handler alike.
 //!
 //! # What the cold start actually costs
 //!
@@ -16,19 +15,14 @@
 //! | later renders, 3-point plot at 1200×800 | 5 ms | 5 ms |
 //! | later renders, 50k points | ~200 ms | ~200 ms |
 //!
-//! **Constructing the renderer is not the expensive part — the first render
-//! is**, and most of that is text: parley/fontique enumerating and loading
-//! system faces. Rendering an SVG first (which needs no GPU but does the same
-//! text work) drops the first raster render from ~85 ms to ~20 ms, which is
-//! what identifies the cost. It is per *process*, not per renderer.
+//! The first render, not the renderer's construction, is the expensive part,
+//! and most of it is parley/fontique loading system faces — a per-process cost.
+//! Rendering an SVG first does the same text work with no GPU and drops the
+//! first raster render from ~85 ms to ~20 ms.
 //!
-//! So this thread does two things at startup: builds the renderer, and renders
-//! a throwaway frame to pay that cost before any user is waiting on it. With
-//! the warm-up, the first plot of a session renders in ~14 ms instead of
-//! ~85 ms — and in the genuinely cold case, instead of well over a second.
-//!
-//! The renderer is `Send` but not `Sync`, which is exactly the shape this
-//! wants: it moves here once and is never shared.
+//! So the thread builds the renderer and renders a throwaway frame at startup,
+//! before anyone is waiting. The renderer is `Send` but not `Sync`, which suits
+//! a thread that owns it and never shares it.
 
 use std::collections::HashMap;
 use std::sync::mpsc::{self, Receiver, Sender};
@@ -40,10 +34,17 @@ use super::{Format, RenderRequest, RenderTicket};
 
 /// How long to wait for a GPU adapter before deciding there isn't one.
 ///
-/// The probe is worth doing eagerly — a lazy one would leave the *first* plot
-/// unable to choose a path — but not worth hanging on. A driver that has not
-/// answered in ten seconds is not one to render through.
+/// Eager, because a lazy probe would leave the first plot unable to choose a
+/// path — but a driver silent for ten seconds is not one to render through.
 const PROBE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
+
+/// How long the message loop will wait for a pre-render before opening the
+/// comm without one.
+///
+/// [`PlotBackend::render_stored`] blocks the loop and can queue behind the
+/// pane's own jobs, so the wait is bounded — a stalled heartbeat costs more
+/// than a missing pre-render.
+const PRE_RENDER_BUDGET: std::time::Duration = std::time::Duration::from_millis(500);
 
 /// A finished render, on its way back to the message loop.
 pub struct RenderOutcome {
@@ -53,9 +54,8 @@ pub struct RenderOutcome {
 
 /// Work for the render thread.
 enum Job {
-    /// Keep `spec` so it can be re-rendered on demand. This is what lets a
-    /// plot be re-drawn at a new size without re-running the query — and it is
-    /// why the retained `DataFrame`s live here rather than on the async task.
+    /// Keep `spec` so the plot can be re-drawn at a new size without re-running
+    /// the query. Its `DataFrame`s stay here rather than on the async task.
     Store { comm_id: String, spec: Box<Spec> },
     /// Forget a stored plot, because its comm closed or it was evicted.
     Forget { comm_id: String },
@@ -90,28 +90,57 @@ enum Job {
 /// A handle to the render thread.
 pub struct PlotBackend {
     jobs: Sender<Job>,
-    /// Whether a GPU adapter was found at startup, and therefore whether the
-    /// raster formats are available at all. Decided once: a machine does not
-    /// grow a GPU mid-session.
+    /// Whether a GPU adapter was found at startup, and so whether the raster
+    /// formats are available. Decided once. `false` until [`Self::finish_probe`]
+    /// answers, which is the safe direction to be wrong in — it means SVG.
     raster: bool,
+    /// The probe's answer, until it is collected. `None` once collected, and
+    /// for a backend that never probes.
+    probe: Option<Receiver<bool>>,
 }
 
 impl PlotBackend {
-    /// Start the render thread and probe for a GPU adapter.
+    /// Start the render thread and begin probing for a GPU adapter.
     ///
-    /// Blocks until the probe finishes, so callers know from the first plot
-    /// onward whether raster output is possible. Call it after announcing
-    /// `starting` status, not before.
+    /// Returns immediately; [`Self::finish_probe`] collects the answer. Eager,
+    /// so the first plot can choose a path, but non-blocking so it does not
+    /// delay the `starting` status.
     pub fn spawn(outcomes: tokio::sync::mpsc::UnboundedSender<RenderOutcome>) -> Self {
         Self::start(true, Some(outcomes))
     }
 
+    /// Wait for the GPU probe, so every later [`Self::raster`] is answered.
+    ///
+    /// Blocks for up to [`PROBE_TIMEOUT`]. Call it *after* announcing
+    /// `starting`: a wedged driver would otherwise leave the kernel silent on a
+    /// bound socket, which a supervisor reads as a failed launch.
+    pub fn finish_probe(&mut self) {
+        let Some(probe) = self.probe.take() else {
+            return;
+        };
+
+        // A thread that died before probing, or a driver that never answered,
+        // both mean the same thing to us.
+        self.raster = probe.recv_timeout(PROBE_TIMEOUT).unwrap_or_else(|_| {
+            tracing::warn!("GPU probe did not finish within {PROBE_TIMEOUT:?}");
+            false
+        });
+
+        if self.raster {
+            tracing::info!("GPU adapter available; raster plot formats enabled");
+        } else if cfg!(feature = "raster-plots") {
+            tracing::info!("no GPU adapter; plots will render as SVG");
+        } else {
+            // Distinct from the line above: the machine may well have an
+            // adapter, and saying otherwise misdirects the debugging.
+            tracing::info!("built without the raster-plots feature; plots will render as SVG");
+        }
+    }
+
     /// A backend that never builds a GPU renderer.
     ///
-    /// For tests: the probe is the one slow, machine-dependent part of
-    /// starting up, and skipping it makes a test both fast and the same
-    /// everywhere. The SVG path it leaves is the one that always works, which
-    /// is what a test should be asserting on anyway.
+    /// For tests: the probe is the one slow, machine-dependent part of startup,
+    /// and the SVG path it leaves is the one that always works.
     #[cfg(test)]
     pub fn without_raster() -> Self {
         Self::start(false, None)
@@ -129,27 +158,12 @@ impl PlotBackend {
             .spawn(move || render_loop(inbox, probed, allow_raster, outcomes))
             .expect("failed to spawn the render thread");
 
-        // A thread that died before probing, or a driver that never answered,
-        // both mean the same thing to us.
-        let raster = probe_result
-            .recv_timeout(PROBE_TIMEOUT)
-            .unwrap_or_else(|_| {
-                tracing::warn!("GPU probe did not finish within {PROBE_TIMEOUT:?}");
-                false
-            });
-
-        if raster {
-            tracing::info!("GPU adapter available; raster plot formats enabled");
-        } else if cfg!(feature = "raster-plots") {
-            tracing::info!("no GPU adapter; plots will render as SVG");
-        } else {
-            // Distinct from the line above on purpose: this machine may well
-            // have an adapter, and reporting one missing sends anyone
-            // debugging a fixed-size plot after the wrong thing entirely.
-            tracing::info!("built without the raster-plots feature; plots will render as SVG");
+        Self {
+            jobs,
+            raster: false,
+            // Nothing to wait for in a build or a test that never probes.
+            probe: allow_raster.then_some(probe_result),
         }
-
-        Self { jobs, raster }
     }
 
     /// Whether this build and this machine can produce raster output.
@@ -159,11 +173,9 @@ impl PlotBackend {
 
     /// Render a plot once, blocking until the thread answers.
     ///
-    /// Deliberately blocking, unlike [`Self::request_render`]. This is the
-    /// static path: it runs once per execution, inside a cell that has already
-    /// paid for parsing and SQL, and its output has to be ordered between the
-    /// `execute_input` and the `execute_reply`. A few milliseconds there buys
-    /// a great deal of simplicity.
+    /// Blocking, unlike [`Self::request_render`]: the static path runs once per
+    /// execution and its output has to be ordered between `execute_input` and
+    /// `execute_reply`, which a few milliseconds buys cheaply.
     ///
     /// # Errors
     ///
@@ -195,17 +207,19 @@ impl PlotBackend {
         });
     }
 
-    /// Render a stored plot, blocking until the thread answers.
+    /// Render a stored plot, blocking until the thread answers or
+    /// [`PRE_RENDER_BUDGET`] runs out.
     ///
-    /// Blocking is fine here and only here: this runs once, while a plot comm
-    /// is being opened and the pane has not yet asked for anything, so nothing
-    /// is queued behind it. Every render the *pane* asks for goes through
+    /// The pre-render riding on `comm_open`, and the one blocking call made
+    /// from the message loop. The pane's earlier jobs can queue ahead of it, so
+    /// the wait is capped: giving up costs a comm without a pre-render, waiting
+    /// costs the heartbeat. The pane's own renders go through
     /// [`Self::request_render`].
     ///
     /// # Errors
     ///
-    /// Returns an error if the thread has stopped, the plot is unknown, or the
-    /// render failed.
+    /// Returns an error if the thread has stopped, the plot is unknown, the
+    /// render failed, or the budget expired.
     pub fn render_stored(&self, comm_id: &str, request: RenderRequest) -> Result<Vec<u8>> {
         let (reply, answer) = mpsc::channel();
         self.jobs
@@ -215,24 +229,37 @@ impl PlotBackend {
                 reply,
             })
             .map_err(|_| anyhow!("the render thread has stopped"))?;
+        // The job stays on the queue and its result is dropped, which the
+        // thread treats as a caller that gave up — not as an error.
         answer
-            .recv()
-            .map_err(|_| anyhow!("the render thread stopped while rendering"))?
+            .recv_timeout(PRE_RENDER_BUDGET)
+            .map_err(|_| anyhow!("the render did not finish within {PRE_RENDER_BUDGET:?}"))?
     }
 
     /// Ask for a stored plot to be re-rendered, and return immediately.
     ///
-    /// **This is why the thread exists.** The reply arrives later on the
-    /// outcome channel, so a render — up to a couple of hundred milliseconds
-    /// on a dense plot, and asked for once per frame while a pane is being
-    /// dragged — never blocks the message loop, and with it the heartbeat, the
-    /// control channel and the interrupt handler.
-    pub fn request_render(&self, comm_id: &str, request: RenderRequest, ticket: RenderTicket) {
-        let _ = self.jobs.send(Job::Render {
-            comm_id: comm_id.to_string(),
-            request,
-            ticket: Box::new(ticket),
-        });
+    /// Why the thread exists. The reply arrives later on the outcome channel,
+    /// so a render — up to a few hundred milliseconds, and asked for once per
+    /// frame while a pane is dragged — never blocks the message loop.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the render thread has stopped, in which case no
+    /// outcome will ever arrive — so the caller has to answer the request
+    /// itself rather than wait for one.
+    pub fn request_render(
+        &self,
+        comm_id: &str,
+        request: RenderRequest,
+        ticket: RenderTicket,
+    ) -> Result<()> {
+        self.jobs
+            .send(Job::Render {
+                comm_id: comm_id.to_string(),
+                request,
+                ticket: Box::new(ticket),
+            })
+            .map_err(|_| anyhow!("the render thread has stopped"))
     }
 }
 
@@ -249,9 +276,8 @@ fn render_loop(
     allow_raster: bool,
     outcomes: Option<tokio::sync::mpsc::UnboundedSender<RenderOutcome>>,
 ) {
-    // One renderer for the whole session. Building it is the expensive part,
-    // and it handles a changing frame size internally, so it serves every
-    // subsequent render whatever size that render asks for.
+    // One renderer for the whole session; it handles a changing frame size
+    // internally, so it serves every render whatever size is asked for.
     let mut renderer = if allow_raster {
         raster_renderer()
     } else {
@@ -318,14 +344,10 @@ fn render_loop(
 /// Render a throwaway frame so the first real plot does not pay for the
 /// process's font enumeration and pipeline setup.
 ///
-/// Uses a **throwaway in-memory database of its own**, never the session's
-/// reader: executing a query through that would materialise ggsql's internal
-/// views in the user's session, and a warm-up must leave no trace. It also
-/// keeps this self-contained — nothing has to be wired in from the kernel.
-///
-/// Rendered tiny, since what is being paid for is not proportional to area.
-/// Best-effort throughout: a warm-up that fails costs a slower first plot and
-/// nothing else, so it is logged at debug and forgotten.
+/// Uses a throwaway in-memory database rather than the session's reader, which
+/// would materialise ggsql's internal views in the user's session. Rendered
+/// tiny, since the cost is not proportional to area, and best-effort: a failed
+/// warm-up costs a slower first plot and nothing else.
 fn warm_up(renderer: Option<&mut Renderer>) {
     const QUERY: &str = "SELECT 1 AS x, 1 AS y VISUALISE x AS x, y AS y DRAW point";
 
@@ -341,9 +363,8 @@ fn warm_up(renderer: Option<&mut Renderer>) {
     };
 
     let request = RenderRequest {
-        // SVG warms the text stack whether or not there is a GPU, and the text
-        // stack is where most of the cost is. A raster warm-up on top would
-        // save a further ~15 ms, which is not worth a second pass.
+        // SVG warms the text stack with or without a GPU, and that is most of
+        // the cost; a raster pass on top would save only ~15 ms more.
         format: Format::Svg,
         canvas: super::Canvas {
             width: 64,
@@ -415,9 +436,8 @@ fn render_one(
                 Format::Png => {
                     Ok(
                         ggsql::writer::PngWriter::new(canvas.width, canvas.height, canvas.dpi)
-                            // The interactive path re-encodes on every resize, so trade
-                            // bytes for latency; a static figure is written once and the
-                            // difference is imperceptible either way.
+                            // The interactive path re-encodes on every resize,
+                            // so trade bytes for latency there.
                             .compression(ggsql::writer::PngCompression::Fast)
                             .render_with(spec, renderer)?,
                     )
@@ -450,8 +470,7 @@ fn render_one(
 /// Put anything a format could not express in front of a human.
 ///
 /// Not behind a verbosity flag: a dropped gradient is a defect in the figure a
-/// document is about to embed. The list is empty for everything ggsql draws,
-/// so anything here is worth reading.
+/// document is about to embed, and the list is empty for everything ggsql draws.
 fn report(warnings: &[String], format: &str) {
     for warning in warnings {
         tracing::warn!("{format}: {warning}");

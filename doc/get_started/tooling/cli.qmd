@@ -90,6 +90,8 @@ ggsql exec -o chart.pdf "VISUALISE species AS fill FROM ggsql:penguins DRAW bar"
 
 `json` and `vl.json` mean Vega-Lite; `svg`, `pdf`, `hep`, `png`, `jpg`/`jpeg`, `tif`/`tiff` and `webp` mean themselves. An extension `ggsql` doesn't recognise, or no `--output` at all, falls back to Vega-Lite as before. An explicit `--writer` always wins, and if it disagrees with the extension you get the format you asked for plus a note on `stderr`.
 
+**A binary format needs somewhere to go.** `pdf`, `hep` and the raster formats write bytes, so running one straight to a terminal would fill it with them. `ggsql` refuses instead, saying so on `stderr` and exiting non-zero — pass `--output`, or pipe it somewhere. A query with no `VISUALISE` prints its table, and honours `--output` the same way.
+
 The four raster formats render through the GPU, so they need a graphics adapter — hardware or software — available where `ggsql` runs, and they are not compiled into every build. `svg` and `pdf` need neither, which makes them the ones to reach for on a server, in a container or in CI. Run `ggsql exec --help` to see which writers your build has; asking for one it doesn't says so, and names the feature that would add it.
 
 `hep` is the odd one out: it produces no picture at all. It captures the *resolved* plot — scales, breaks, labels, theme, geometry and data — so a host can draw it itself at any size, and redraw it on resize, without re-running the query.

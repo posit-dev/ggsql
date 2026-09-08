@@ -42,19 +42,15 @@ pub mod vegalite;
 #[cfg(feature = "vegalite")]
 pub use vegalite::VegaLiteWriter;
 
-// The renderer-backed writers live in one private module, named after the
-// renderer they share. That name is an implementation detail: each writer is
-// public under its own format's name and the module is not part of the API.
-//
-// Gated on `graphics` — the shared composition layer — rather than on any one
-// format, so adding a writer needs no change here beyond its own re-export.
+// The renderer-backed writers live in one private module named after the
+// renderer they share; each is public under its own format's name. Gated on
+// `graphics`, the shared composition layer, rather than on any one format.
 #[cfg(feature = "graphics")]
-// `graphics` and `raster-writer` are internal features, turned on by the writer
-// features rather than named directly. Selecting one alone is a legitimate
-// build — it is how `cargo tree --features graphics` proves the vector path
-// pulls in no wgpu — but it leaves the whole composition layer with nothing
-// consuming it, so every item in here is then genuinely unused. Silence that
-// case only; any build with an actual writer still reports real dead code.
+// `graphics` and `raster-writer` are internal features the writer features turn
+// on. Selecting one alone is legitimate — `cargo tree --features graphics`
+// proves the vector path pulls in no wgpu — but leaves the composition layer
+// with no consumer, so silence that case only. Any build with an actual writer
+// still reports real dead code.
 #[cfg_attr(
     not(any(
         feature = "png",
@@ -104,8 +100,9 @@ pub use hephaestus::{TiffCompression, TiffWriter};
 ///
 /// # Associated Types
 ///
-/// * `Output` - The type returned by `write()` and `render()`. Use `Option<String>`
-///   for text output, `Option<Vec<u8>>` for binary, `()` for void writers, etc.
+/// * `Output` - The type returned by `write()` and `render()`: `String` for a
+///   text format, `Vec<u8>` for a binary one. Never an `Option` — failure is
+///   the `Result`'s business — and a type producing nothing is not a writer.
 pub trait Writer {
     /// The output type produced by this writer.
     type Output;

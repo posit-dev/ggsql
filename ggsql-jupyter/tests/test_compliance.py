@@ -86,7 +86,7 @@ class ggsqlKernelTests(jkt.KernelTests):
 
     # Test visualization output
     def test_execute_visualization(self):
-        """Test that visualization output includes Vega-Lite MIME type."""
+        """A plot arrives as a rendered image bundle, in this build's format."""
         self.flush_channels()
 
         code = """
@@ -109,11 +109,9 @@ class ggsqlKernelTests(jkt.KernelTests):
 
         self.assertIsNotNone(execute_result, "No execute_result message found")
 
-        # A plot arrives as a rendered image, in whichever format this build
-        # can produce: PNG when the raster writers are compiled in and a GPU
-        # adapter is available, SVG otherwise. Both are static bundles that
-        # need no network, so this holds with and without --features
-        # raster-plots and on a machine with no GPU.
+        # A plot arrives as a rendered image, in whichever format this build can
+        # produce: PNG with the raster writers and a GPU adapter, SVG otherwise.
+        # Both are static bundles that need no network.
         data = execute_result["content"]["data"]
         self.assertTrue(
             "image/png" in data or "image/svg+xml" in data,

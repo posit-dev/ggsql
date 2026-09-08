@@ -51,9 +51,8 @@ pub mod reader;
 #[cfg(feature = "graphics")]
 pub mod fonts;
 
-// Any writer at all makes the module worth having: `graphics` is the gate the
-// renderer-backed writers share, so an `svg`-only build reaches `SvgWriter`
-// without dragging the Vega-Lite one in.
+// `graphics` is the gate the renderer-backed writers share, so an `svg`-only
+// build reaches `SvgWriter` without dragging the Vega-Lite one in.
 #[cfg(any(feature = "vegalite", feature = "graphics"))]
 pub mod writer;
 

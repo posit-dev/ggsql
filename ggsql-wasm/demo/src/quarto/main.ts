@@ -15,8 +15,8 @@ interface CellInfo {
   codeScaffold: HTMLElement;
   /**
    * The cell's output box. Holds whatever the kernel rendered at build time,
-   * which stays on screen until wasm has a plot to put in its place — so a
-   * failed load leaves the picture rather than a blank gap.
+   * which stays until wasm has a plot to replace it — so a failed load leaves
+   * the picture rather than a blank gap.
    */
   visContainer: HTMLElement | null;
   view: PlotView | null;
@@ -232,12 +232,19 @@ const DEFAULT_ASPECT = 7 / 5;
  * Draw a cell's plot into its output box, creating the view on first use.
  *
  * The view is kept for the life of the cell: it owns the `ResizeObserver`, and
- * an editor that re-runs on every keystroke would otherwise build one per
- * edit. Nothing touches the box until there is a plot to put in it, so the
- * kernel-rendered picture stays up if wasm never gets that far.
+ * an editor re-running on every keystroke would otherwise build one per edit.
+ * Nothing touches the box until there is a plot for it.
  */
 function showPlot(cell: CellInfo): void {
-  if (!cell.visContainer || !cell.plot) return;
+  if (!cell.plot) return;
+  // Nowhere to draw it, but the plot still has to be released — nothing else
+  // holds a reference, so a cell with no output box would leak a result set
+  // per keystroke.
+  if (!cell.visContainer) {
+    cell.plot.free();
+    cell.plot = null;
+    return;
+  }
   if (!cell.view) {
     // Measured before the box is emptied, so the inline SVG keeps the shape
     // the page already reserved and nothing shifts under the reader.
@@ -289,7 +296,13 @@ async function applyEditors(
     const editorInst = await createEditor(editorContainer, cell.query, SITE_ROOT);
     cell.editor = editorInst;
 
-    showPlot(cell);
+    // The first draw, and the first thing that can panic in the renderer, so
+    // one bad plot must not stop the page wiring up the rest.
+    try {
+      showPlot(cell);
+    } catch (e) {
+      showError(cell, String(ctx.noteError(e)));
+    }
 
     // Re-execute on every edit, debounced
     let debounceTimer: number | undefined;
@@ -358,7 +371,9 @@ async function executeCell(
       ctx.executeSql(currentQuery);
     }
   } catch (e: any) {
-    showError(cell, String(e));
+    // Through `noteError` because drawing bypasses the manager: a composition
+    // panic escapes `showPlot` and kills the module for the whole page.
+    showError(cell, String(ctx.noteError(e)));
   }
 }
 

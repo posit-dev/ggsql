@@ -1,10 +1,9 @@
 //! Free-form key–value options for writers.
 //!
-//! A frontend collects `key=value` pairs from its user (`-D width=1600`, or
-//! `-D 'width=1600;dpi=150'`, on the CLI) and hands them to
-//! [`Writer::from_options`](super::Writer::from_options). Each writer therefore
-//! exposes its own configuration without any frontend needing to know the
-//! writer's shape, and a writer that takes no options needs no special casing.
+//! A frontend collects `key=value` pairs from its user (`-D width=1600` on the
+//! CLI) and hands them to
+//! [`Writer::from_options`](super::Writer::from_options), so each writer
+//! exposes its configuration without the frontend knowing its shape.
 
 use std::collections::BTreeMap;
 
@@ -40,10 +39,9 @@ impl WriterOptions {
     /// ["width=1600;height=1200"]         // collapsed into one
     /// ```
     ///
-    /// `;` is the only separator. `,` is not, because it is common *inside* a
-    /// value — `background=rgba(0,0,0,0)` has to survive. The value is
-    /// everything from the first `=` to the next `;`, so values may contain `=`
-    /// themselves, and a later occurrence of a key overrides an earlier one.
+    /// `;` is the only separator; `,` is common inside a value
+    /// (`background=rgba(0,0,0,0)`). The value runs from the first `=` to the
+    /// next `;`, and a later occurrence of a key overrides an earlier one.
     ///
     /// # Errors
     ///
@@ -112,10 +110,9 @@ impl WriterOptions {
 
     /// The value of `key` parsed as a boolean.
     ///
-    /// Accepts `true`/`false`, `yes`/`no`, `on`/`off` and `1`/`0`, matching how
-    /// keys are normalised: case and surrounding whitespace are ignored. A
-    /// writer with a flag whose default is `true` still gets `None` for
-    /// "unsupplied", so it can tell that apart from an explicit `false`.
+    /// Accepts `true`/`false`, `yes`/`no`, `on`/`off` and `1`/`0`, ignoring case
+    /// and surrounding whitespace. Unsupplied is `None`, so a flag defaulting to
+    /// `true` can tell that apart from an explicit `false`.
     ///
     /// # Errors
     ///
@@ -169,8 +166,8 @@ impl WriterOptions {
     /// the supported ones.
     pub fn reject_unknown(&self, known: &[&str]) -> Result<()> {
         // The declared names are normalised too, so a writer may declare the
-        // hyphenated spelling its docs use (`embed-fonts`) and still match a
-        // key given either way. The error still lists them as declared.
+        // hyphenated spelling its docs use and still match either form. The
+        // error lists them as declared.
         let canonical: Vec<String> = known.iter().map(|key| normalise_key(key)).collect();
         let unknown: Vec<&str> = self
             .values

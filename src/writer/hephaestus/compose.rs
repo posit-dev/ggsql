@@ -1,10 +1,8 @@
 //! Turning a resolved ggsql `Plot` into a live hephaestus composition.
 //!
 //! Everything up to the point where an output format matters. Each writer calls
-//! [`build_composition`] and then does one format-specific thing with the
-//! result: rasterise it, render it into a vector scene, or serialise it. The
-//! ~200 lines below are therefore shared by all of them, which is why they live
-//! here rather than in any one writer.
+//! [`build_composition`] and then rasterises, renders or serialises the result,
+//! so this lives here rather than in any one writer.
 
 use std::collections::HashMap;
 
@@ -29,9 +27,8 @@ const MAP_PADDING: f64 = 0.1;
 
 /// Reject a plot no renderer-backed writer can draw.
 ///
-/// Shared by every one of them, and phrased without naming a format: what
-/// cannot be drawn here is a limit of the composition layer, not of the encoder
-/// the caller happened to pick.
+/// Phrased without naming a format: what cannot be drawn here is a limit of the
+/// composition layer, not of the encoder the caller happened to pick.
 ///
 /// # Errors
 ///
@@ -54,10 +51,24 @@ pub fn validate_plot(spec: &Plot) -> Result<()> {
     Ok(())
 }
 
+/// Validate `spec` and build its composition — the two steps every writer runs
+/// before it does anything of its own.
+///
+/// One function so the pair cannot drift: skipping the validation lets a
+/// refused plot reach the renderer and fail in the renderer's words.
+///
+/// # Errors
+///
+/// As [`validate_plot`] and [`build_composition`].
+pub fn prepare(spec: &Plot, data: &HashMap<String, DataFrame>) -> Result<PlotComposition> {
+    validate_plot(spec)?;
+    build_composition(spec, data)
+}
+
 /// Build the composition for `spec`, ready to render at any size.
 ///
 /// Layers are built in `spec.layers` order, which is DRAW order, which is
-/// z-order. The caller is expected to have run [`validate_plot`] already.
+/// z-order. Callers go through [`prepare`], which validates first.
 ///
 /// # Errors
 ///
@@ -77,10 +88,9 @@ pub fn build_composition(
         .shape_registry(ShapeRegistry::with_builtins())
         .theme(wiring::ggsql_theme());
 
-    // Plot title/subtitle/caption from the LABEL clause. These live on the
-    // composition, not the per-panel plots, so one label spans the whole
-    // figure — which is also correct for the unfaceted 1x1 case (a plot-level
-    // title would resolve to the same layout row and be painted over).
+    // LABEL title/subtitle/caption live on the composition rather than the
+    // panels, so one label spans the whole figure — also correct unfaceted,
+    // where a panel-level title would resolve to the same layout row.
     if let Some(text) = wiring::plot_label(spec, "title") {
         view = view.title(text);
     }
@@ -122,34 +132,27 @@ pub fn build_composition(
         }
     }
 
-    // Frame a map to its bounding box. Under a `PROJECT map` every mark, the
-    // clip boundary and the graticules share one pre-projected data space, so
-    // the position scales must span the map's extent rather than the marks'
-    // — otherwise the data is zoomed in and drifts off the boundary. A
-    // spatial layer additionally has no `pos1`/`pos2` columns at all (it
-    // positions by geometry), so ggsql resolves no position scales for it and
-    // these are the only ones. The bbox comes from ggsql
-    // (`computed["bbox"]` when projected, else the geometry extent), keeping
-    // the "writer never invents extents" principle.
+    // Frame a map to its bounding box. Marks, clip boundary and graticules
+    // share one pre-projected data space, so the position scales must span the
+    // map's extent rather than the marks' or the data drifts off the boundary.
+    // A spatial layer has no `pos1`/`pos2` at all, so these are its only
+    // scales. The bbox is ggsql's, per the "never invent extents" principle.
     let map_bbox = map_bbox(spec, data)?;
     if let Some((xmin, ymin, xmax, ymax)) = map_bbox {
         view.insert_scale("pos1".to_string(), scale::continuous(map_range(xmin, xmax)));
         view.insert_scale("pos2".to_string(), scale::continuous(map_range(ymin, ymax)));
     }
 
-    // Legends are collected from the first panel only and registered once on
-    // the composition's own legend ring, so a faceted plot gets a single shared
-    // legend rather than one per panel. Every panel produces the same legends
-    // (all built from the globally resolved scales), so one capture suffices.
+    // Collected from the first panel only and registered once on the
+    // composition's legend ring, so a faceted plot gets one shared legend.
+    // Every panel builds the same legends from the same global scales.
     let legend_sink = std::cell::RefCell::new(Vec::new());
     let mut legends_captured = false;
 
     for panel in &panels {
-        // Slice each layer's data to this panel. A Grid cell whose facet
-        // combination doesn't occur in the data still becomes a panel — framed,
-        // axed and strip-labelled like any other, just with no marks — so the
-        // grid stays rectangular and its strips keep describing every row and
-        // column (the ggplot2 look).
+        // Slice each layer's data to this panel. A Grid cell with no matching
+        // rows still becomes a panel — framed, axed and strip-labelled, just
+        // without marks — so the grid stays rectangular (the ggplot2 look).
         let slices: Vec<(&Layer, DataFrame)> = spec
             .layers
             .iter()
@@ -163,17 +166,17 @@ pub fn build_composition(
             .collect::<Result<_>>()?;
         let empty = slices.iter().all(|(_, df)| df.height() == 0);
 
-        // Fixed dimensions bind the shared `pos1`/`pos2`; free dimensions get
-        // a per-panel scale whose domain is computed from this panel's slices
-        // (the one place the writer computes extents — free facets only).
+        // Fixed dimensions bind the shared `pos1`/`pos2`; free ones get a
+        // per-panel scale over this panel's slices — the one place the writer
+        // computes an extent of its own.
         let mut ps = facet::PanelScales::new(spec, panel);
         let layer_dfs: Vec<&DataFrame> = slices.iter().map(|(_, df)| df).collect();
         if ps.free_x {
             match scales::free_position_scale(spec.find_scale("pos1"), &layer_dfs, "pos1") {
                 Some(hs) => view.insert_scale(ps.pos1.clone(), hs),
-                // No panel extent to free the dimension over (an empty cell),
-                // so read the shared scale rather than leave the axis and the
-                // channel bindings pointing at a scale that was never inserted.
+                // An empty cell has no extent to free the dimension over, so
+                // fall back to the shared scale rather than leave the axis and
+                // channels bound to a scale that was never inserted.
                 None => ps.use_shared("pos1"),
             }
         }
@@ -184,11 +187,9 @@ pub fn build_composition(
             }
         }
 
-        // Build every layer's geom into this panel; geoms bind channels and
-        // record legends (first panel only) into `legend_sink`, drawing in
-        // layer (DRAW) = z-order. An empty panel builds no geoms — a hephaestus
-        // geom over zero rows has nothing to draw — and so must not count as
-        // the legend-capturing panel either.
+        // Build every layer's geom into this panel, in DRAW = z-order; geoms
+        // bind channels and record legends into `legend_sink`. An empty panel
+        // builds no geoms, so it cannot be the legend-capturing one.
         let panel_legends = (!legends_captured).then_some(&legend_sink);
         let mut plot = HPlot::new(&composition, panel.id.as_str())
             .shape_registry(ShapeRegistry::with_builtins());
@@ -207,12 +208,11 @@ pub fn build_composition(
             }
             legends_captured = true;
         } else {
-            // hephaestus draws a panel's grid lines from the scales bound to
-            // the projection's channels — which a geom would have bound. With
-            // no geoms to do it, bind the position channels here so an empty
-            // cell carries the same grid as its populated neighbours. A
-            // position ggsql resolved no scale for stays unbound, since a
-            // binding to an unregistered scale fails validation.
+            // Grid lines come from the scales bound to the projection's
+            // channels, which a geom would normally bind. With no geoms, bind
+            // them here so an empty cell keeps its neighbours' grid. A position
+            // with no resolved scale stays unbound — binding one that was never
+            // registered fails validation.
             for (channel, name) in [("x", &ps.pos1), ("y", &ps.pos2)] {
                 if view.scale(name).is_some() {
                     plot.set_binding(channel, name.clone());
@@ -224,14 +224,9 @@ pub fn build_composition(
         plot = apply_projection(plot, spec, panel, &ps);
 
         // Lock a map panel to square units so the projection keeps its
-        // proportions (a globe stays round), the raster analog of the
-        // Vega-Lite writer's single uniform projection scale.
-        //
-        // `aspect_ratio` is the *data-space* x-unit : y-unit ratio, not a
-        // panel width:height ratio. Map coordinates arrive pre-projected, so
-        // one unit means the same length on both axes and the ratio is 1 —
-        // passing the bbox's own height/width instead stretches every map by
-        // exactly that factor.
+        // proportions (a globe stays round). `aspect_ratio` is the data-space
+        // x-unit : y-unit ratio, not width:height — map coordinates arrive
+        // pre-projected, so one unit is the same length on both axes.
         if map_bbox.is_some() {
             plot = plot.aspect_ratio(1.0).aspect_mode(AspectMode::Range);
         }
@@ -321,9 +316,12 @@ fn map_bbox(
 ///
 /// The extent is padded by [`MAP_PADDING`] around its centre, matching the
 /// Vega-Lite writer, which fits the projection to `span * 1.1` centred on the
-/// bbox (`vegalite/projection/map.rs`). A zero-width or inverted extent is
-/// widened instead, so the scale can still map it.
+/// bbox (`vegalite/projection/map.rs`). An inverted extent is oriented first
+/// and a zero-width one widened, so the scale can always map the result.
 pub(super) fn map_range(min: f64, max: f64) -> std::ops::RangeInclusive<f64> {
+    // Orient first: `map_bbox` only checks its four numbers for finiteness, and
+    // padding a reversed bbox leaves a range no scale can map.
+    let (min, max) = if min <= max { (min, max) } else { (max, min) };
     let span = max - min;
     if span > f64::EPSILON {
         let pad = span * MAP_PADDING / 2.0;

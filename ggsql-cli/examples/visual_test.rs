@@ -5,12 +5,24 @@ Every executable ```` ```{ggsql} ```` cell in the Quarto docs is a query the
 project already vouches for, which makes them a ready-made corpus for
 exercising a writer. This example runs them — in document order, against one
 reader per source file so `CREATE TABLE` setup cells still apply — renders each
-visualisation with the [`PngWriter`], and emits a single HTML report
-pairing every query with its rendered output.
+visualisation, and emits a single HTML report pairing every query with its
+rendered output.
 
 ```sh
 cargo run -p ggsql-cli --features png --example visual_test
 open target/visual-test/index.html
+```
+
+`--writer` picks what draws the corpus. `png` is the default and what a visual
+check wants; `svg` needs **no GPU adapter**, so it is the mode that runs on a
+headless box, and its `--baseline` comparison reads coordinates rather than
+pixels. The SVG writer also reports what it could not express, which is the
+regression signal
+[`writer/hephaestus/CLAUDE.md`](../../src/writer/hephaestus/CLAUDE.md) says
+should be empty for everything in this corpus.
+
+```sh
+cargo run -p ggsql-cli --features png --example visual_test -- --writer svg
 ```
 
 Failures never abort the run: an execution error, a render error, or a panic
@@ -23,10 +35,10 @@ the two side by side — the comparison
 when checking visual correctness.
 */
 
-use clap::Parser;
+use clap::{Parser, ValueEnum};
 use ggsql::reader::{DuckDBReader, Reader};
 use ggsql::validate::validate;
-use ggsql::writer::{PngWriter, VegaLiteWriter, Writer};
+use ggsql::writer::{PngWriter, SvgWriter, VegaLiteWriter, Writer};
 use std::fmt::Write as _;
 use std::fs;
 use std::panic::{catch_unwind, AssertUnwindSafe};
@@ -36,12 +48,16 @@ use std::time::Instant;
 #[derive(Parser)]
 #[command(
     name = "visual_test",
-    about = "Render every {ggsql} documentation example with the png writer into an HTML report"
+    about = "Render every {ggsql} documentation example into an HTML report"
 )]
 struct Args {
     /// Directories to scan for `.qmd` files, or individual `.qmd` files
     #[arg(default_values = ["doc/syntax", "doc/gallery"])]
     paths: Vec<PathBuf>,
+
+    /// Which writer draws the corpus. `svg` needs no GPU adapter.
+    #[arg(long, value_enum, default_value_t = Renderer::Png)]
+    writer: Renderer,
 
     /// Directory to write the report and its images into
     #[arg(short, long, default_value = "target/visual-test")]
@@ -69,12 +85,60 @@ struct Args {
 
     /// A previous `--out` directory to diff this run's renders against.
     ///
-    /// Every cell is labelled unchanged / changed / new in the report, and the
-    /// header carries the counts. A hephaestus bump changes behaviour on
-    /// purpose, so the point is not a zero diff — it is turning "eyeball 190
-    /// cells" into "eyeball the ones that moved".
+    /// Every cell is labelled unchanged / changed / new, with counts in the
+    /// header — a renderer bump changes behaviour on purpose, so the point is to
+    /// narrow the eyeballing to the cells that moved.
     #[arg(long, value_name = "DIR")]
     baseline: Option<PathBuf>,
+}
+
+/// Which writer draws the corpus.
+///
+/// Both go through the same composition. PNG is the picture a human eyeballs and
+/// needs an adapter; SVG needs none, carries readable coordinates, and reports
+/// what the format could not express.
+#[derive(Copy, Clone, PartialEq, Eq, ValueEnum)]
+enum Renderer {
+    Png,
+    Svg,
+}
+
+impl Renderer {
+    /// The extension a render is written under, which is also what tells the
+    /// report's `<img>` what it is looking at.
+    fn extension(self) -> &'static str {
+        match self {
+            Renderer::Png => "png",
+            Renderer::Svg => "svg",
+        }
+    }
+
+    /// Draw one spec, reporting anything the format could not express.
+    ///
+    /// The SVG list should be empty for everything in this corpus, so it goes
+    /// beside the execution warnings rather than into the render error.
+    fn render(
+        self,
+        spec: &ggsql::reader::Spec,
+        args: &Args,
+    ) -> ggsql::Result<(Vec<u8>, Vec<String>)> {
+        match self {
+            Renderer::Png => PngWriter::new(args.width, args.height, args.dpi)
+                .render(spec)
+                .map(|bytes| (bytes, Vec::new())),
+            Renderer::Svg => SvgWriter::new(args.width, args.height, args.dpi)
+                .render_reporting(spec)
+                .map(|(svg, warnings)| (svg.into_bytes(), warnings)),
+        }
+    }
+
+    /// Compare a render with the baseline's, the way this format wants.
+    fn compare(self, baseline: &Path, name: &str, bytes: &[u8]) -> Delta {
+        match self {
+            Renderer::Png => Delta::against_pixels(baseline, name, bytes),
+            Renderer::Svg => Delta::against_markup(baseline, name, bytes),
+        }
+    }
 }
 
 // ============================================================================
@@ -224,9 +288,8 @@ enum Delta {
 }
 
 /// Mean absolute grey difference, 0–255, below which an aligned pair counts as
-/// the same picture. Antialiasing alone puts a genuine match a little above
-/// zero, so this cannot be `0.0`; it is set from the observed spread across the
-/// doc corpus rather than derived.
+/// the same picture. Antialiasing puts a genuine match a little above zero, so
+/// this cannot be `0.0`; it comes from the observed spread across the corpus.
 const SHIFT_TOLERANCE: f64 = 2.0;
 
 /// How far to search for an alignment, in pixels of the full-size render.
@@ -240,13 +303,11 @@ const COMPARE_SCALE: u32 = 8;
 impl Delta {
     /// Compare freshly rendered bytes with the baseline's copy of `name`.
     ///
-    /// Exact equality is close to useless across a dependency bump: a few
-    /// pixels of chrome-width change shifts every panel, so almost every cell
-    /// "differs" while looking identical. So the comparison aligns first —
-    /// searching a small translation and keeping the best residual — which
-    /// collapses a uniform shift to nearly nothing and leaves anything
-    /// structural large.
-    fn against(baseline: &Path, name: &str, bytes: &[u8]) -> Self {
+    /// Exact equality is useless across a dependency bump: a few pixels of
+    /// chrome-width change shifts every panel. Aligning first — searching a
+    /// small translation for the best residual — collapses a uniform shift to
+    /// nearly nothing and leaves anything structural large.
+    fn against_pixels(baseline: &Path, name: &str, bytes: &[u8]) -> Self {
         let Ok(old) = fs::read(baseline.join("assets").join(name)) else {
             return Delta::New;
         };
@@ -262,6 +323,28 @@ impl Delta {
             },
             // Undecodable, so fall back to saying it moved rather than
             // claiming a match we cannot support.
+            _ => Delta::Changed(f64::INFINITY),
+        }
+    }
+
+    /// Compare freshly drawn markup with the baseline's copy of `name`.
+    ///
+    /// As a multiset of elements, not as bytes: a query with no `ORDER BY` emits
+    /// the same marks in a different order each run. Sorting first leaves a real
+    /// change — a moved mark, a different label, an element gained or lost —
+    /// showing. A jittered layer genuinely differs each run and stays "changed".
+    ///
+    /// No shift alignment: markup carries its coordinates, so a moved panel
+    /// shows up as changed coordinates rather than as a translated image.
+    fn against_markup(baseline: &Path, name: &str, bytes: &[u8]) -> Self {
+        let Ok(old) = fs::read(baseline.join("assets").join(name)) else {
+            return Delta::New;
+        };
+        if old == bytes {
+            return Delta::Identical;
+        }
+        match (std::str::from_utf8(&old), std::str::from_utf8(bytes)) {
+            (Ok(a), Ok(b)) if sorted_elements(a) == sorted_elements(b) => Delta::Identical,
             _ => Delta::Changed(f64::INFINITY),
         }
     }
@@ -290,6 +373,13 @@ impl Delta {
     fn needs_review(self) -> bool {
         matches!(self, Delta::Changed(_))
     }
+}
+
+/// An SVG's elements in a comparable order.
+fn sorted_elements(svg: &str) -> Vec<&str> {
+    let mut parts: Vec<&str> = svg.split('>').collect();
+    parts.sort_unstable();
+    parts
 }
 
 /// A render reduced to one grey byte per pixel, downsampled for comparison.
@@ -393,8 +483,9 @@ impl Grey {
 enum Outcome {
     /// A query with a `VISUALISE` clause: the renders it produced.
     Plot {
-        png: Option<String>,
-        png_error: Option<String>,
+        /// Filename of the render in `assets/`, whatever writer produced it.
+        image: Option<String>,
+        image_error: Option<String>,
         /// How the render compares with `--baseline`, when one was given.
         delta: Option<Delta>,
         /// Vega-Lite JSON, inlined into the report when `--compare` is on
@@ -420,10 +511,10 @@ impl CellResult {
         match &self.outcome {
             Outcome::Failed(_) => true,
             Outcome::Plot {
-                png_error,
+                image_error,
                 vegalite_error,
                 ..
-            } => png_error.is_some() || vegalite_error.is_some(),
+            } => image_error.is_some() || vegalite_error.is_some(),
             Outcome::Setup { .. } => false,
         }
     }
@@ -437,13 +528,10 @@ struct SourceResult {
 
 /// Run every cell of one source file against a fresh reader.
 ///
-/// The reader is per file, not per cell, because the docs rely on it: a page
-/// may build a table in one cell and plot it in the next.
-///
-/// The cells run in their own file's directory, because a page reads its data
-/// by a path relative to itself (`FROM 'minard_troops.csv'`) — that is how
-/// Quarto executes them. `assets` is therefore resolved to an absolute path by
-/// the caller, since it outlives that switch.
+/// The reader is per file, not per cell: a page may build a table in one cell
+/// and plot it in the next. Cells run in their own file's directory, since a
+/// page reads its data by a relative path, so the caller resolves `assets` to
+/// an absolute path first.
 fn run_source(source: Source, args: &Args, assets: &Path) -> SourceResult {
     let restore = std::env::current_dir().ok();
     if let Err(e) = std::env::set_current_dir(&source.dir) {
@@ -486,7 +574,6 @@ fn run_cells(source: Source, args: &Args, assets: &Path) -> SourceResult {
         }
     };
 
-    let png_writer = PngWriter::new(args.width, args.height, args.dpi);
     let vegalite = VegaLiteWriter::new();
 
     let mut results = Vec::new();
@@ -505,16 +592,24 @@ fn run_cells(source: Source, args: &Args, assets: &Path) -> SourceResult {
                     warnings.extend(spec.warnings().iter().map(|w| w.message.clone()));
 
                     let mut delta = None;
-                    let (png, png_error) = match capture(|| png_writer.render(&spec)) {
-                        Ok(bytes) => {
-                            let name = format!("{}-{:02}.png", slug(&label), cell.index);
+                    let (image, image_error) = match capture(|| args.writer.render(&spec, args)) {
+                        Ok((bytes, degraded)) => {
+                            // Beside the execution warnings, not folded into the
+                            // render error: the render succeeded.
+                            warnings.extend(degraded);
+                            let name = format!(
+                                "{}-{:02}.{}",
+                                slug(&label),
+                                cell.index,
+                                args.writer.extension()
+                            );
                             delta = args
                                 .baseline
                                 .as_deref()
-                                .map(|b| Delta::against(b, &name, &bytes));
+                                .map(|b| args.writer.compare(b, &name, &bytes));
                             match fs::write(assets.join(&name), &bytes) {
                                 Ok(()) => (Some(name), None),
-                                Err(e) => (None, Some(format!("could not write PNG: {e}"))),
+                                Err(e) => (None, Some(format!("could not write the render: {e}"))),
                             }
                         }
                         Err(e) => (None, Some(e)),
@@ -530,8 +625,8 @@ fn run_cells(source: Source, args: &Args, assets: &Path) -> SourceResult {
                     };
 
                     Outcome::Plot {
-                        png,
-                        png_error,
+                        image,
+                        image_error,
                         delta,
                         vegalite: vl,
                         vegalite_error: vl_error,
@@ -578,7 +673,8 @@ fn status_word(outcome: &Outcome) -> &'static str {
         Outcome::Failed(_) => "FAILED",
         Outcome::Setup { .. } => "setup",
         Outcome::Plot {
-            png_error: Some(_), ..
+            image_error: Some(_),
+            ..
         } => "RENDER FAILED",
         Outcome::Plot {
             vegalite_error: Some(_),
@@ -627,9 +723,8 @@ fn escape(text: &str) -> String {
 /// Prepare a Vega-Lite spec for inlining in a `<script>` block.
 ///
 /// The writer pretty-prints, which triples the size of a spec carrying a few
-/// hundred data rows — worth compacting when 190 of them share one page. A
-/// literal `</` would close the script element early, and `<\/` is a valid JSON
-/// escape for the same character.
+/// hundred rows — worth compacting when 190 share one page. A literal `</` would
+/// close the script element early; `<\/` is a valid JSON escape for it.
 fn inline_json(text: &str) -> String {
     let compact = serde_json::from_str::<serde_json::Value>(text)
         .map(|value| value.to_string())
@@ -718,7 +813,8 @@ fn render_cell(cell: &CellResult, label: &str, aspect: &str) -> String {
         Outcome::Failed(_) => ("failed", "bad"),
         Outcome::Setup { .. } => ("setup", "neutral"),
         Outcome::Plot {
-            png_error: Some(_), ..
+            image_error: Some(_),
+            ..
         } => ("render failed", "bad"),
         Outcome::Plot {
             vegalite_error: Some(_),
@@ -767,22 +863,27 @@ fn render_cell(cell: &CellResult, label: &str, aspect: &str) -> String {
             );
         }
         Outcome::Plot {
-            png,
-            png_error,
+            image,
+            image_error,
             delta,
             vegalite,
             vegalite_error,
         } => {
+            let format = image
+                .as_deref()
+                .and_then(|name| name.rsplit_once('.'))
+                .map(|(_, ext)| ext)
+                .unwrap_or("render");
             let caption = match delta {
                 Some(d) => format!(
-                    "png <span class=\"delta {}\">{}</span>",
+                    "{format} <span class=\"delta {}\">{}</span>",
                     d.class(),
                     d.label()
                 ),
-                None => "png".to_string(),
+                None => format.to_string(),
             };
             let _ = write!(html, "<figure><figcaption>{caption}</figcaption>");
-            match (png, png_error) {
+            match (image, image_error) {
                 (Some(name), _) => {
                     let _ = write!(
                         html,
@@ -797,11 +898,9 @@ fn render_cell(cell: &CellResult, label: &str, aspect: &str) -> String {
             html.push_str("</figure>");
 
             if let Some(json) = vegalite {
-                // A ggsql Vega-Lite spec sizes itself to its container
-                // (`"width": "container"`), so the pane needs a definite box
-                // before anything is embedded into it — otherwise the chart
-                // renders at zero height. Matching the raster canvas's aspect
-                // also makes the two panes directly comparable.
+                // A ggsql Vega-Lite spec sizes itself to its container, so the
+                // pane needs a definite box or the chart renders at zero height.
+                // Matching the raster aspect keeps the two panes comparable.
                 let _ = write!(
                     html,
                     "<figure><figcaption>vega-lite</figcaption>\
@@ -847,10 +946,8 @@ fn report_head(
     } else {
         ""
     };
-    // The count that matters after a dependency bump is `changed`: it is the
-    // set a human still has to look at.
-    // `changed` is the count that matters after a dependency bump: it is the
-    // set a shift does not explain, and therefore the set to look at.
+    // `changed` is the count that matters after a dependency bump: the set a
+    // shift does not explain, and therefore the set to look at.
     let drift = match drift {
         Some((aligned, changed, new)) => format!(
             " · <span class=\"delta changed\">{changed} to review</span> \
@@ -995,9 +1092,8 @@ fn main() {
     // path that does not move with them.
     let assets = fs::canonicalize(&assets).unwrap_or(assets);
 
-    // The baseline is read from inside that same directory switch, so it needs
-    // resolving up front for the same reason. A relative `--baseline` would
-    // otherwise silently resolve to nothing and report every cell as new.
+    // Read from inside that same directory switch, so a relative `--baseline`
+    // would silently resolve to nothing and report every cell as new.
     let mut args = args;
     if let Some(baseline) = args.baseline.take() {
         match fs::canonicalize(&baseline) {

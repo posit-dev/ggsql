@@ -19,11 +19,10 @@ const DEFAULT_QUALITY: u8 = 90;
 
 /// Writer that renders a ggsql plot to a JPEG image.
 ///
-/// **JPEG is the wrong codec for most plots.** It is lossy, and its ringing
-/// lands on exactly the thin dark strokes and small text a plot is made of. Use
-/// it when something downstream insists on JPEG; reach for `png` or `webp`
-/// otherwise, both of which are lossless and — on plot content, which is flat
-/// fills and hard edges rather than photographic detail — usually smaller too.
+/// JPEG is the wrong codec for most plots: its ringing lands on exactly the thin
+/// dark strokes and small text a plot is made of. Use it when something
+/// downstream insists; `png` and `webp` are lossless and usually smaller on
+/// plot content.
 ///
 /// [`JpegWriter::from_options`] takes:
 ///
@@ -59,10 +58,9 @@ impl JpegWriter {
 
     /// Set the background the plot is composited onto.
     ///
-    /// Any alpha the color carries is ignored — the format has no channel for
-    /// it. [`JpegWriter::from_options`] rejects a transparent `background`
-    /// rather than dropping it silently, but a caller building the writer
-    /// directly has already chosen.
+    /// Any alpha is ignored, since the format has no channel for it.
+    /// [`JpegWriter::from_options`] rejects a transparent `background` rather
+    /// than dropping it silently; a caller building the writer has chosen.
     pub fn background(mut self, color: super::Color) -> Self {
         self.canvas = self.canvas.background(color);
         self

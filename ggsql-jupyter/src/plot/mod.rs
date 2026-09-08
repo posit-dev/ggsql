@@ -1,11 +1,9 @@
 //! Deciding what a plot should become, and producing it.
 //!
-//! Three things have to agree before a plot can be rendered: where the output
-//! is going ([`SessionKind`](crate::display::SessionKind)), what this build and
-//! this machine can produce ([`PlotBackend::raster`]), and what the frontend
-//! asked for. [`choose`] is the single place that reconciles them, so the
-//! policy is readable in one function rather than spread across the formatting
-//! code.
+//! Three things have to agree: where the output is going
+//! ([`SessionKind`](crate::display::SessionKind)), what this build and machine
+//! can produce ([`PlotBackend::raster`]), and what the frontend asked for.
+//! [`choose`] is the single place that reconciles them.
 
 pub mod backend;
 pub mod comm;
@@ -55,13 +53,9 @@ impl Format {
 
     /// The nearest format this build and this machine can actually produce.
     ///
-    /// The Plots pane hard-codes `png` in its render settings, so without a
-    /// raster writer that request cannot be met. Failing it would leave the
-    /// pane empty, so it degrades to SVG, which needs no adapter and carries
-    /// the same resolved scales, breaks and labels. Nothing is hidden by
-    /// doing so: the reply's `mime_type` names the format actually produced,
-    /// and Positron builds both its data URI and its save-dialog extension
-    /// from that.
+    /// The Plots pane hard-codes `png`, so without a raster writer the request
+    /// degrades to SVG rather than leaving the pane empty. Nothing is hidden:
+    /// the reply's `mime_type` names what was actually produced.
     pub fn available(self, backend_raster: bool) -> Self {
         if self.needs_raster() && !backend_raster {
             Self::Svg
@@ -104,9 +98,8 @@ pub enum Delivery {
     /// Quarto render and plain Jupyter all want.
     Static(RenderRequest),
     /// A `positron.plot` comm, which the kernel opens and then serves render
-    /// requests on. **No `execute_result` accompanies it** — the comm alone
-    /// creates the pane entry, so an output message as well would show the
-    /// plot twice.
+    /// requests on. No `execute_result` accompanies it — the comm alone creates
+    /// the pane entry.
     Comm,
 }
 
@@ -114,24 +107,15 @@ pub enum Delivery {
 ///
 /// The rules, in the order they apply:
 ///
-/// 1. **A Positron console session opens a plot comm**, whatever this build
-///    can render. A console has no cell to put a picture in, and Positron
-///    inlines *any* output carrying an `image/*` mime — its
-///    `createActivityItemOutput` keys on the mime alone and consults neither
-///    `output_location` nor the output kind — so a static bundle would land in
-///    the console *and* leave a fixed-size pane entry that no longer tracks
-///    the pane. The comm is the only delivery that reaches the pane and
-///    nothing else. Where raster is unavailable its renders answer in SVG;
-///    see [`Format::available`].
-/// 2. **Quarto is obeyed.** If `QUARTO_FIG_FORMAT` and friends are set, the
-///    document has told us exactly what figure it wants, including its size
-///    in inches. Only for a standalone session — Quarto never drives a
+/// 1. A Positron console session opens a plot comm, whatever this build can
+///    render. Positron inlines any output carrying an `image/*` mime, so a
+///    static bundle would land in the console *and* leave a fixed-size pane
+///    entry; the comm is the only delivery that reaches the pane alone.
+/// 2. Quarto is obeyed: `QUARTO_FIG_FORMAT` and friends say exactly what figure
+///    the document wants. Standalone sessions only — Quarto never drives a
 ///    Positron console.
-/// 3. **Raster where possible, SVG where not.** Everything else gets a PNG at
-///    the frontend's size, falling back to SVG when there is no GPU adapter or
-///    the build has no raster formats. SVG is the right fallback precisely
-///    because it needs neither: it carries the same resolved scales, breaks
-///    and labels the raster path would.
+/// 3. Everything else gets a PNG at the frontend's size, falling back to SVG
+///    where there is no adapter or no raster writer.
 pub fn choose(kind: SessionKind, backend_raster: bool, canvas: Canvas) -> Delivery {
     if kind == SessionKind::PositronConsole {
         return Delivery::Comm;
@@ -166,11 +150,9 @@ mod tests {
 
     #[test]
     fn a_console_session_always_opens_a_plot_comm() {
-        // Whatever this build can render: Positron inlines any output carrying
-        // an `image/*` mime, so a static bundle in a console arrives twice —
-        // inline *and* as a pane entry that no longer resizes. The comm is the
-        // only delivery that reaches the pane alone, and it answers in SVG
-        // where raster is unavailable.
+        // Whatever this build can render: a static bundle would be inlined on
+        // its mime alone and arrive twice. The comm answers in SVG where raster
+        // is unavailable.
         for backend_raster in [true, false] {
             assert_eq!(
                 choose(SessionKind::PositronConsole, backend_raster, CANVAS),

@@ -1,8 +1,10 @@
 //! Query execution module for ggsql Jupyter kernel
 //!
 //! This module handles the execution of ggsql queries using the existing
-//! ggsql library components (parser, DuckDB reader, Vega-Lite writer).
-//! It supports dynamic reader switching via `-- @connect:` meta-commands.
+//! ggsql library components (parser and reader). Formatting the result — and
+//! rendering a plot — is `display.rs`'s, since the format depends on where the
+//! output is going. Supports dynamic reader switching via `-- @connect:`
+//! meta-commands.
 
 use anyhow::Result;
 use ggsql::{
@@ -27,14 +29,9 @@ pub enum ExecutionResult {
     /// A query carrying a `VISUALISE` clause, as the resolved plot rather than
     /// as rendered output.
     ///
-    /// **Deliberately not pre-rendered.** Which format this becomes depends on
-    /// where the output is going and what the frontend asked for — and, once a
-    /// plot comm is open, is asked again on every resize. Rendering here would
-    /// mean guessing a size and a format at execution time and being unable to
-    /// revise either.
-    ///
-    /// Boxed because a `Spec` carries the post-stat DataFrames and dwarfs the
-    /// other variants.
+    /// Not pre-rendered: the format depends on where the output is going, and
+    /// once a plot comm is open it is asked again on every resize. Boxed because
+    /// a `Spec` carries the post-stat DataFrames and dwarfs the other variants.
     Visualization(Box<Spec>),
     /// Connection changed via meta-command
     ConnectionChanged { uri: String, display_name: String },

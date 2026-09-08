@@ -11,14 +11,12 @@ use crate::{DataFrame, GgsqlError, Plot, Result};
 
 /// Writer that renders a ggsql plot to a lossless WebP image.
 ///
-/// The best default for a raster plot delivered over a wire: it is lossless
-/// like PNG, alpha included, encodes about as fast as `png` at
-/// `compression=fast`, and on plot content — flat fills and hard edges rather
-/// than photographic detail — lands at roughly half the bytes.
+/// The best default for a raster plot delivered over a wire: lossless like PNG,
+/// alpha included, about as fast as `png` at `compression=fast`, and roughly
+/// half the bytes on plot content.
 ///
-/// There is no `quality` and no `compression`: the writer emits the VP8L
-/// lossless bitstream, which has no rate control to expose. Every other option
-/// is the shared canvas set:
+/// No `quality` and no `compression` — the VP8L lossless bitstream has no rate
+/// control to expose. Every other option is the shared canvas set:
 ///
 /// | Option | Value | Default |
 /// | --- | --- | --- |

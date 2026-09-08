@@ -89,7 +89,16 @@ The extension declares `contributes.languageRuntimes` for `ggsql` (see `package.
 
 1. Discovers a `ggsql-jupyter` binary via, in order: the `ggsql.kernelPath` setting, an installed Jupyter kernelspec named `ggsql`, or `ggsql-jupyter` on `PATH`.
 2. Registers it as a Positron language runtime so `▶ Run` and the Console route to the kernel.
-3. Routes plot output to Positron's Plot pane via metadata coming back from the kernel (`output_location: "plot"`).
+3. Tells the kernel what kind of session this is, and subscribes to the one notification it needs — see below.
+
+### The two things the extension has to tell the kernel
+
+**Plots are rendered in the kernel and reach the Plots pane over a `positron.plot` comm.** The extension routes nothing itself: there is no `output_location` metadata and no client-side renderer. What it does do is supply the two pieces of context the kernel cannot work out for itself.
+
+- **`createKernelSpec` appends `--session-mode <console|notebook|background>`** from `sessionMetadata.sessionMode`. The kernel keys every output decision off that: a console session gets the comm, a notebook session gets a static image in its cell, and background gets the standalone path. Without the flag the kernel falls back to guessing from its session id, which works but is a heuristic. `restoreSession` deliberately does *not* rebuild the spec — the supervisor replays the argv the session was created with, and a session's mode never changes.
+- **`uiSubscriptions: ['did_change_plots_render_settings']`** on the runtime metadata. Without it the frontend never tells the kernel how large the Plots pane is, and the kernel needs that for exactly one thing: rendering a *new* plot at the right size so its `comm_open` can carry it, and the pane shows it immediately instead of blank. Every other render carries its own size on the request.
+
+Both live in `manager.ts`. The kernel side of the contract — why the comm alone creates the pane entry, and why an output bundle alongside it would show the plot twice — is in [`/ggsql-jupyter/CLAUDE.md`](../ggsql-jupyter/CLAUDE.md).
 
 Outside Positron there is no way to execute a query: `activate()` returns early, so every command that runs code stays unregistered. To avoid offering actions that cannot work, everything execution-related gates on Positron's built-in **`isPositron`** context key ([extension development docs](https://positron.posit.co/extension-development.html#option-1-context-keys)):
 

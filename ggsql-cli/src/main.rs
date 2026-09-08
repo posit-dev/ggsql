@@ -45,10 +45,9 @@ pub struct RenderArgs {
     /// Output format — run with --help for the writers this build has
     ///
     /// Left unset, `--output`'s extension picks the writer, falling back to
-    /// vegalite. `Option` rather than a clap `default_value` precisely so
-    /// "unset" is distinguishable from "explicitly vegalite": the extension is
-    /// only consulted in the former case. The default is stated in the long
-    /// help instead, which is where clap would otherwise have put it.
+    /// vegalite. `Option` rather than a clap `default_value` so "unset" stays
+    /// distinguishable from "explicitly vegalite"; the long help states the
+    /// default instead.
     #[arg(short, long, long_help = writers::writer_help())]
     pub writer: Option<String>,
 
@@ -102,8 +101,7 @@ pub struct ViewArgs {
 
 impl RenderArgs {
     /// Resolve `--writer` and its settings, exiting on an unknown name or a
-    /// setting that is not `key=value`. Both are the user's mistake, and
-    /// neither should be discovered after the SQL has already run.
+    /// malformed setting rather than discovering either after the SQL has run.
     fn writer(&self) -> WriterSpec {
         let info = self.resolve_writer();
         if !info.compiled {
@@ -124,11 +122,8 @@ impl RenderArgs {
     /// Which writer to use: `--writer` if given, else what `--output`'s
     /// extension implies, else the default.
     ///
-    /// An explicit `--writer` always wins, because it is what the user said.
-    /// When it disagrees with the extension the file still gets the flag's
-    /// format, with a note on stderr — writing SVG to a `.txt` to read it is a
-    /// legitimate thing to do, so this is a warning rather than an error, and
-    /// stderr keeps it out of piped output.
+    /// An explicit `--writer` always wins; disagreeing with the extension only
+    /// warns on stderr, since writing SVG to a `.txt` is legitimate.
     fn resolve_writer(&self) -> &'static writers::WriterInfo {
         if let Some(name) = &self.writer {
             let info = writers::find(name).unwrap_or_else(|| {
@@ -147,10 +142,9 @@ impl RenderArgs {
             }
             return info;
         }
-        // No --writer. The extension decides, and a writer it names but this
-        // build lacks is an error rather than a silent fallback: emitting
-        // Vega-Lite JSON into a file called `.png` is the mistake this exists
-        // to prevent.
+        // No --writer, so the extension decides. A writer it names but this
+        // build lacks is an error, not a silent fallback to Vega-Lite JSON in
+        // a file called `.png`.
         self.output
             .as_deref()
             .and_then(writers::for_extension)
@@ -342,9 +336,8 @@ fn cmd_exec(query: String, args: &RenderArgs, writer: &WriterSpec) {
 
 /// Open the reader named by a connection string.
 ///
-/// `Reader` is object-safe on purpose, so every caller — `exec`, `run` and
-/// anything added later — shares one place that knows which schemes exist and
-/// which of them this build has.
+/// `Reader` is object-safe so every caller shares one place that knows which
+/// schemes exist and which of them this build has.
 fn open_reader(uri: &str) -> Result<Box<dyn Reader>, String> {
     /// A reader whose scheme is known but whose feature is off. Unused when
     /// every reader feature happens to be on, which the default build is.
@@ -401,7 +394,7 @@ fn exec_with_reader(query: &str, reader: &dyn Reader, args: &RenderArgs, writer:
         if args.verbose {
             eprintln!("Visualisation is empty. Printing table instead.");
         }
-        print_table_fallback(query, reader, 100);
+        print_table_fallback(query, reader, 100, args.output.as_deref());
         return;
     }
 
@@ -437,9 +430,8 @@ fn render_spec(spec: Spec, args: &RenderArgs, writer: &WriterSpec) {
         std::process::exit(1);
     });
 
-    // Unconditionally, not behind -v: something the writer could not express
-    // is a defect in the file the user is about to ship. stderr keeps it out
-    // of a piped artifact.
+    // Not behind -v: a degraded render is a defect in the file about to be
+    // shipped. stderr keeps it out of a piped artifact.
     for warning in &warnings {
         eprintln!("warning: {}", warning);
     }
@@ -461,7 +453,10 @@ fn render_spec(spec: Spec, args: &RenderArgs, writer: &WriterSpec) {
         },
         (Output::Bin(buf), None) => {
             if std::io::stdout().is_terminal() {
+                // Non-zero, since nothing was produced: `… && publish` must
+                // not carry on as though it had a file.
                 eprintln!("Suppressing output in terminal. Pipe output to another process or use --output <FILE> to save to a file.");
+                std::process::exit(1);
             } else {
                 std::io::stdout().write_all(&buf).unwrap_or_else(|e| {
                     eprintln!("Failed to write buffer with the error: {}", e);
@@ -485,8 +480,8 @@ fn render_spec(spec: Spec, args: &RenderArgs, writer: &WriterSpec) {
 
 /// Show a query's plot in a window, blocking until it closes.
 ///
-/// The subcommand exists whether or not the feature does: one that vanishes
-/// between builds is worse than one that says what would bring it back.
+/// The subcommand exists whether or not the feature does, so a build without
+/// it says what would bring it back rather than dropping the command.
 fn cmd_view(query: String, args: &ViewArgs) {
     #[cfg(feature = "window")]
     {
@@ -604,8 +599,18 @@ fn cmd_validate(query: String, _reader: Option<String>) {
     }
 }
 
-// Prints a CSV-like output to stdout with aligned columns
-fn print_table_fallback(query: &str, reader: &dyn Reader, max_rows: usize) {
+/// Print a query's table, for a query with nothing to draw.
+///
+/// CSV-like, with the columns aligned.
+///
+/// Honours `--output` like every other result — printing to stdout while
+/// leaving the named file absent is hard to notice from a script.
+fn print_table_fallback(
+    query: &str,
+    reader: &dyn Reader,
+    max_rows: usize,
+    output: Option<&std::path::Path>,
+) {
     let source_tree = match parser::SourceTree::new(query) {
         Ok(st) => st,
         Err(e) => {
@@ -662,8 +667,16 @@ fn print_table_fallback(query: &str, reader: &dyn Reader, max_rows: usize) {
         }
     }
 
-    let output = rows.join("\n");
-    println!("{}", output);
+    let table = rows.join("\n");
+    match output {
+        None => println!("{}", table),
+        Some(path) => {
+            if let Err(e) = std::fs::write(path, format!("{table}\n")) {
+                eprintln!("Failed to write to output file: {}", e);
+                std::process::exit(1);
+            }
+        }
+    }
 }
 
 fn cmd_docs(first: Option<String>, second: Option<String>, format: Option<DocsFormat>) {

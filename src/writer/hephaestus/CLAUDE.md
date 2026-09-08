@@ -31,10 +31,21 @@ also what makes them the test surface: see [Testing](#testing).
 
 **hephaestus is not a public name.** The user-facing names are the formats
 (`--writer png`, `--features webp`, `ggsql::writer::TiffWriter`); the module is
-named after the renderer it wraps and is private, so nothing but the writers,
-`Canvas`, `RasterRenderer`, `Color` and `rgba` leaves the crate. More
-hephaestus-backed writers (svg, pdf, window) are expected, each with its own
-public name. Keep the renderer's name out of anything a user reads — CLI help,
+named after the renderer it wraps and is private. What leaves the crate is the
+seven writers, `PlotViewer`, and this list ([`../mod.rs`](../mod.rs)):
+
+| Re-export | Origin |
+| --- | --- |
+| `Canvas` | ggsql's own |
+| `MAX_RASTER_DIMENSION` | ggsql's own |
+| `Color`, `rgba` | **the renderer's** (`hephaestus::color`) |
+| `PngCompression`, `TiffCompression` | **the renderer's** |
+
+The bottom two rows are why a hephaestus bump is a breaking change to ggsql
+even when the renderer's own API holds still: those types are in ggsql's public
+API by re-export, so a rename or an added variant upstream lands here. Anything
+new that has to go public should be ggsql's own type unless there is a reason
+it cannot be. Keep the renderer's name out of anything a user reads — CLI help,
 error messages, `/doc/`.
 
 The one carve-out: **a foreign format may be called by its own name.**
@@ -142,7 +153,7 @@ raster::pixels(spec, data, canvas, renderer)
  ├─ compose::validate_plot                    ← rejects a zero-layer plot, and
  │                                               the `arrow` stub no writer draws
  ├─ compose::build_composition                ← the diagram above
- └─ raster::render_rgba8: VelloRenderer → straight-alpha RGBA8 buffer
+ └─ raster::render_rgba8: HybridRenderer → straight-alpha RGBA8 buffer
 
 <raster>::write_with  = raster::pixels, then one encoder call
 <vector>::write_reporting = vector::draw into an SvgScene / PdfScene, then encode

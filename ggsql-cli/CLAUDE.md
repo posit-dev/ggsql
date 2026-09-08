@@ -21,6 +21,8 @@ The binary name is `ggsql` (not `ggsql-cli`) — that's what release artifacts a
 
 `build.rs` finds `/doc/` via `CARGO_MANIFEST_DIR/..` (workspace root). It walks `/doc/syntax/*.qmd` to embed clause/layer/scale/aesthetic/coord docs as constants in `OUT_DIR/docs_data.rs`, and reads `/doc/vendor/SKILL.md` (with optional `GGSQL_UPDATE_SKILL=1` to refresh from GitHub) for the `skill` subcommand. The `docs` and `skill` commands therefore work offline once the binary is built.
 
+**`doc/vendor/SKILL.md` is a *cache*, not a source.** `GGSQL_UPDATE_SKILL=1` overwrites it wholesale from [`posit-dev/skills`](https://github.com/posit-dev/skills/blob/main/ggsql/ggsql/SKILL.md), so an edit made here survives only until the next refresh. Anything that has to stick — a new writer, a changed setting, a corrected claim about a format — belongs in that repository; editing the cache is how the local build sees it in the meantime, and the upstream PR is what keeps it.
+
 ## Subcommands
 
 | Command | Purpose |

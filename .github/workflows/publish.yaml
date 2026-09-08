@@ -37,9 +37,11 @@ jobs:
         run: sudo apt-get install -y unixodbc-dev
 
       - name: Install Rust
-        # Stable. The MSRV declared in /Cargo.toml is 1.88 (see /CLAUDE.md), and
-        # ggsql-wasm/rust-toolchain.toml selects stable for the wasm build
-        # regardless.
+        # Stable. The MSRV declared in /Cargo.toml is 1.86 — CRAN's, for the R
+        # package's vendored copy (see /CLAUDE.md) — and it is checked by its
+        # own step in build.yaml rather than by pinning here; clippy reads
+        # `rust-version`, not the toolchain. ggsql-wasm/rust-toolchain.toml
+        # selects stable for the wasm build regardless.
         uses: dtolnay/rust-toolchain@stable
 
       - name: Caching
