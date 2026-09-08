@@ -40,7 +40,7 @@ The subcommand list does not change with features: `view` is always defined, and
 
 Only public `ggsql::*` API is used (`reader`, `writer`, `validate`, `parser`, `VERSION`) — this crate has no awareness of internal modules.
 
-`exec` and `run` share their flags through one `#[derive(Args)] RenderArgs` (`--reader`, `--writer`, `-D`, `--output`, `--verbose`) that both subcommands `#[command(flatten)]`, so a flag's help text and default exist once. `RenderArgs::writer()` resolves them into a `WriterSpec { info, options }` **in `main`, before any SQL runs** — an unknown `--writer`, a writer whose feature is off, and a `-D` pair that is not `key=value` all fail there rather than after the query has executed. `WriterSpec` then travels down `cmd_exec` → `exec_with_reader` → `render_spec`.
+`exec` and `run` share their flags through one `#[derive(Args)] RenderArgs` (`--reader`, `--cache`, `--writer`, `-D`, `--output`, `--verbose`) that both subcommands `#[command(flatten)]`, so a flag's help text and default exist once. `RenderArgs::writer()` resolves them into a `WriterSpec { info, options }` **in `main`, before any SQL runs** — an unknown `--writer`, a writer whose feature is off, and a `-D` pair that is not `key=value` all fail there rather than after the query has executed. `WriterSpec` then travels down `cmd_exec` → `exec_with_reader` → `render_spec`.
 
 Which keys a writer accepts is the writer's business, and an unknown one is its error to report — so adding a setting needs no CLI change. User-facing keys are documented in [`/doc/get_started/tooling/cli.qmd`](../doc/get_started/tooling/cli.qmd).
 
@@ -59,7 +59,9 @@ Render functions return `Result<(Output, Vec<String>), String>`: the output plus
 
 This is why `RenderArgs::writer` is `Option<String>` with no clap `default_value`: "unset" has to be distinguishable from "explicitly vegalite", or step 2 could never fire. The default is stated in the long help instead.
 
-`open_reader(uri) -> Result<Box<dyn Reader>, String>` is the matching single place for connection strings. `ggsql::reader::Reader` is object-safe on purpose, so every subcommand that needs data shares one function that knows which schemes exist and which of them this build has — `exec`, `run` and `view` all go through it.
+`open_reader(uri, cache) -> Result<Box<dyn Reader + Send>, String>` is the matching single place for connection strings, and it delegates to the library factory `ggsql::reader::connection::reader_from_uri`. Which schemes exist, which of them this build has, and how a cache wraps a primary are the library's business; `ggsql::reader::Reader` is object-safe on purpose, so `exec`, `run` and `view` all go through this one function.
+
+`--cache <duckdb|sqlite>` on `exec` and `run` wraps the reader in an in-memory caching layer, off by default. It is sugar for the composite connection scheme `<cache>+<primary>://…` (e.g. `duckdb+odbc://…`) that `reader_from_uri` already understands, so `open_reader` rewrites the flag into that URI and refuses the two forms together — there would be no saying which cache was meant. The composite scheme works on `view` too, which has no flag of its own.
 
 ### `view`, and why the window code is not here
 

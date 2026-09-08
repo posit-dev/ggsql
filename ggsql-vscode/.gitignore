@@ -1,3 +1,6 @@
 out
 out-test
 .vscode-test/
+.positron-test/
+bundled
+*.vsix

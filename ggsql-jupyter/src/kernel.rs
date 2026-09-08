@@ -394,18 +394,25 @@ impl KernelServer {
             .await?;
         }
 
+        // A cell may connect and then go on to query, so a connection change is
+        // read from the executor's URI rather than from the result variant,
+        // which only reports a cell that was nothing but meta-commands.
+        let uri_before = self.executor.reader_uri().to_string();
+        let executed = self.executor.execute(code);
+        if self.executor.reader_uri() != uri_before {
+            let uri = self.executor.reader_uri().to_string();
+            self.open_connection_comm(&uri).await?;
+        }
+
         // Formatting renders the plot, so it is fallible and its failures are
         // the user's. Both stages feed one `Result` and share the error path
         // below; propagating out of the loop would end the process and take
         // the session's database with it.
-        let result = match self.executor.execute(code) {
+        let result = match executed {
             Ok(exec_result) => {
-                // If the connection changed, open a new connection comm
+                // A bare connection change renders nothing.
                 let is_connection_changed =
                     matches!(&exec_result, ExecutionResult::ConnectionChanged { .. });
-                if let ExecutionResult::ConnectionChanged { ref uri, .. } = &exec_result {
-                    self.open_connection_comm(uri).await?;
-                }
 
                 // Nothing to display for a silent cell, for a connection
                 // change, or for DDL (which formats to `Nothing`).

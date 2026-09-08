@@ -352,8 +352,8 @@ fn warm_up(renderer: Option<&mut Renderer>) {
     const QUERY: &str = "SELECT 1 AS x, 1 AS y VISUALISE x AS x, y AS y DRAW point";
 
     let started = std::time::Instant::now();
-    let spec = match crate::executor::create_reader("duckdb://memory")
-        .and_then(|reader| reader.execute(QUERY).map_err(Into::into))
+    let spec = match ggsql::reader::connection::reader_from_uri("duckdb://memory")
+        .and_then(|reader| reader.execute(QUERY))
     {
         Ok(spec) => spec,
         Err(e) => {

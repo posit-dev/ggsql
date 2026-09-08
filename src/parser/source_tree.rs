@@ -50,7 +50,7 @@ impl<'a> SourceTree<'a> {
             .find_node(&root, "(sql_statement (from_statement) @stmt)")
             .is_some();
         let has_viz_from = self
-            .find_node(&root, "(visualise_statement (from_clause (table_ref) @t))")
+            .find_node(&root, "(visualise_statement (visualise_from) @t)")
             .is_some();
         if has_sql_from && has_viz_from {
             return Err(GgsqlError::ParseError(
@@ -196,8 +196,8 @@ impl<'a> SourceTree<'a> {
             &root,
             r#"
                 (visualise_statement
-                  (from_clause
-                    (table_ref) @table))
+                  (visualise_from
+                    source: (_) @source))
             "#,
         );
 
@@ -472,6 +472,36 @@ mod tests {
             "expected double-FROM rejection, got: {}",
             msg
         );
+    }
+
+    #[test]
+    fn test_visualise_from_takes_exactly_one_bare_source() {
+        // A VISUALISE-level FROM names a single source. Anything else — a join,
+        // a comma list, an alias — would have only its first source read, so it
+        // is rejected rather than silently narrowed.
+        for query in [
+            "VISUALISE FROM a JOIN b ON a.k = b.k DRAW point",
+            "VISUALISE FROM a, b DRAW point",
+            "VISUALISE FROM tbl AS t DRAW point",
+            "VISUALISE FROM tbl t DRAW point",
+        ] {
+            let tree = SourceTree::new(query).expect("tree should build even when invalid");
+            assert!(
+                tree.validate().is_err(),
+                "expected `{query}` to be rejected"
+            );
+        }
+
+        // The single-source forms still parse, one per source_ref kind.
+        for query in [
+            "VISUALISE FROM tbl DRAW point",
+            "VISUALISE FROM schema.tbl DRAW point",
+            "VISUALISE FROM 'data.csv' DRAW point",
+            "VISUALISE FROM ggsql:penguins DRAW point",
+        ] {
+            let tree = SourceTree::new(query).expect("valid query should build a tree");
+            assert!(tree.validate().is_ok(), "expected `{query}` to be accepted");
+        }
     }
 
     #[test]

@@ -162,7 +162,7 @@
         "ggsql.kernelPath": {
           "type": "string",
           "default": "",
-          "description": "Path to the ggsql-jupyter executable. If empty, uses 'ggsql-jupyter' from PATH."
+          "markdownDescription": "Path to a `ggsql-jupyter` executable to offer alongside the kernels found automatically, listed ahead of them. A bare name is looked up on `PATH`. Leave this empty unless you have a kernel in a place the extension does not look: it ships one, and it finds the ones installed on this machine."
         },
         "ggsql.enableSqlFiles": {
           "type": "boolean",
@@ -185,6 +185,7 @@
     "pretest": "npm run compile-tests && npm run package",
     "test:grammar": "vscode-tmgrammar-test -g syntaxes/ggsql.tmLanguage.json \"src/test/grammar/*.gsql\"",
     "test:extension": "vscode-test",
+    "test:integration": "npm run compile-tests && npm run package && node ./out-test/test/runIntegration.js",
     "test": "npm run test:grammar && npm run test:extension"
   },
   "dependencies": {
@@ -192,6 +193,7 @@
   },
   "devDependencies": {
     "@posit-dev/positron": "^0.2.7",
+    "@posit-dev/positron-test-electron": "^0.0.3",
     "@types/mocha": "^10.0.10",
     "@types/node": "^18.x",
     "@types/vscode": "^1.75.0",

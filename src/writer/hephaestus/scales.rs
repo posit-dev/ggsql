@@ -675,8 +675,10 @@ fn temporal_value(transform: Option<GTransform>, pos: f64) -> HValue {
 }
 
 /// Map a ggsql transform to its hephaestus equivalent. Cast/temporal transforms
-/// have no spacing effect (values arrive already projected to f64), so they map
-/// to identity (`None` — hephaestus defaults to identity).
+/// have no spacing effect (values arrive already projected to f64), and
+/// `Geographic` is identity in value space — it differs from `Identity` only in
+/// the breaks it picks, which arrive resolved through `apply_breaks`. All of them
+/// map to identity (`None` — hephaestus defaults to identity).
 fn map_transform(kind: GTransform) -> Option<HTransform> {
     match kind {
         GTransform::Log10 => Some(HTransform::Log10),
@@ -695,7 +697,8 @@ fn map_transform(kind: GTransform) -> Option<HTransform> {
         | GTransform::Time
         | GTransform::String
         | GTransform::Bool
-        | GTransform::Integer => None,
+        | GTransform::Integer
+        | GTransform::Geographic => None,
     }
 }
 

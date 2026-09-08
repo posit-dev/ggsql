@@ -1989,7 +1989,6 @@ mod tests {
         // Issue: breaks like [2600, 3550, 4050, 4750, 6400] were getting terminal
         // breaks removed when data range was ~[2700, 6300].
         use super::ScaleTypeTrait;
-        use arrow::datatypes::DataType;
 
         let binned = Binned;
         let mut scale = Scale::new("fill");
@@ -2009,15 +2008,7 @@ mod tests {
         scale.explicit_input_range = false;
 
         // Data context with narrower range than breaks
-        let context = ScaleDataContext {
-            range: Some(InputRange::Continuous(vec![
-                ArrayElement::Number(2700.0),
-                ArrayElement::Number(6300.0),
-            ])),
-            dtype: Some(DataType::Float64),
-            is_discrete: false,
-            default_expand: None,
-        };
+        let context = ScaleDataContext::from_range(2700.0, 6300.0);
 
         binned.resolve(&mut scale, &context, "fill").unwrap();
 
@@ -2043,7 +2034,6 @@ mod tests {
         // When BOTH explicit breaks AND explicit range are provided,
         // breaks should be filtered to the range.
         use super::ScaleTypeTrait;
-        use arrow::datatypes::DataType;
 
         let binned = Binned;
         let mut scale = Scale::new("fill");
@@ -2066,15 +2056,7 @@ mod tests {
         ]);
         scale.explicit_input_range = true;
 
-        let context = ScaleDataContext {
-            range: Some(InputRange::Continuous(vec![
-                ArrayElement::Number(2700.0),
-                ArrayElement::Number(6300.0),
-            ])),
-            dtype: Some(DataType::Float64),
-            is_discrete: false,
-            default_expand: None,
-        };
+        let context = ScaleDataContext::from_range(2700.0, 6300.0);
 
         binned.resolve(&mut scale, &context, "fill").unwrap();
 

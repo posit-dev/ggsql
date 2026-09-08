@@ -266,11 +266,9 @@ fn build_visualise_statement(node: &Node, source: &SourceTree) -> Result<Plot> {
                 // Handle standalone wildcard (*) mapping
                 spec.global_mappings.wildcard = true;
             }
-            "from_clause" => {
-                // Extract the 'table' field from table_ref (grammar: FROM table_ref)
-                let query = "(table_ref table: (_) @table)";
-                if let Some(table_node) = source.find_node(&child, query) {
-                    spec.source = Some(parse_data_source(&table_node, source));
+            "visualise_from" => {
+                if let Some(source_node) = child.child_by_field_name("source") {
+                    spec.source = Some(parse_data_source(&source_node, source));
                 }
             }
             "viz_clause" => {
@@ -3510,17 +3508,18 @@ mod tests {
         let source = make_source("VISUALISE FROM sales DRAW bar");
         let root = source.root();
 
-        let from_node = source.find_node(&root, "(table_ref) @ref").unwrap();
+        let query = "(visualise_from source: (_) @source)";
+
+        let from_node = source.find_node(&root, query).unwrap();
         let parsed = parse_data_source(&from_node, &source);
         assert!(matches!(parsed, DataSource::Identifier(ref name) if name == "sales"));
 
-        // Test file path - table_ref contains a string child
+        // Test file path — the source field is the string node itself
         let source2 = make_source("VISUALISE FROM 'data.csv' DRAW bar");
         let root2 = source2.root();
 
-        let from_node2 = source2.find_node(&root2, "(table_ref) @ref").unwrap();
-        let string_node = source2.find_node(&from_node2, "(string) @s").unwrap();
-        let parsed2 = parse_data_source(&string_node, &source2);
+        let from_node2 = source2.find_node(&root2, query).unwrap();
+        let parsed2 = parse_data_source(&from_node2, &source2);
         assert!(matches!(parsed2, DataSource::FilePath(ref path) if path == "data.csv"));
     }
 

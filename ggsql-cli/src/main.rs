@@ -5,7 +5,7 @@ Provides commands for executing ggsql queries with various data sources and outp
 */
 
 use clap::{Args, Parser, Subcommand, ValueEnum};
-use ggsql::reader::{Reader, Spec};
+use ggsql::reader::{connection, Reader, Spec};
 use ggsql::validate::validate;
 use ggsql::writer::WriterOptions;
 use ggsql::{parser, VERSION};
@@ -41,6 +41,10 @@ pub struct RenderArgs {
     /// Data source connection string (duckdb://, sqlite://, odbc://)
     #[arg(short, long, default_value = "duckdb://memory")]
     pub reader: String,
+
+    /// In-memory cache backend wrapping the reader (duckdb, sqlite). Off by default.
+    #[arg(long)]
+    pub cache: Option<String>,
 
     /// Output format — run with --help for the writers this build has
     ///
@@ -320,13 +324,16 @@ fn cmd_run(file: PathBuf, args: &RenderArgs, writer: &WriterSpec) {
 fn cmd_exec(query: String, args: &RenderArgs, writer: &WriterSpec) {
     if args.verbose {
         eprintln!("Reader: {}", args.reader);
+        if let Some(ref cache) = args.cache {
+            eprintln!("Cache: {}", cache);
+        }
         eprintln!("Writer: {}", writer.info.name);
         if let Some(ref output_file) = args.output {
             eprintln!("Output: {}", output_file.display());
         }
     }
 
-    let reader = open_reader(&args.reader).unwrap_or_else(|e| {
+    let reader = open_reader(&args.reader, args.cache.as_deref()).unwrap_or_else(|e| {
         eprintln!("{}", e);
         std::process::exit(1);
     });
@@ -334,50 +341,32 @@ fn cmd_exec(query: String, args: &RenderArgs, writer: &WriterSpec) {
     exec_with_reader(&query, reader.as_ref(), args, writer);
 }
 
-/// Open the reader named by a connection string.
+/// Open the reader named by a connection string, wrapped in a cache if asked
+/// for one.
 ///
-/// `Reader` is object-safe so every caller shares one place that knows which
-/// schemes exist and which of them this build has.
-fn open_reader(uri: &str) -> Result<Box<dyn Reader>, String> {
-    /// A reader whose scheme is known but whose feature is off. Unused when
-    /// every reader feature happens to be on, which the default build is.
-    #[allow(dead_code)]
-    fn missing(name: &str, feature: &str) -> String {
-        format!("{name} reader not compiled in. Rebuild with --features {feature}")
-    }
+/// Which schemes exist, which of them this build has, and how a cache wraps a
+/// primary all live in the library, as `connection::reader_from_uri`. What is
+/// left here is the CLI's own spelling of it: `ggsql::reader::Reader` is
+/// object-safe on purpose, so `exec`, `run` and `view` share one function.
+///
+/// `--cache <scheme>` is sugar for the composite `<scheme>+<primary>://` URI
+/// `reader_from_uri` already understands. The two forms may not be combined —
+/// there would be no saying which cache was meant.
+fn open_reader(uri: &str, cache: Option<&str>) -> Result<Box<dyn Reader + Send>, String> {
+    let uri = match cache {
+        Some(cache_scheme) => {
+            if connection::split_cache_uri(uri).is_some() {
+                return Err("Cannot combine --cache with a composite \'<cache>+<primary>://\' connection string".to_string());
+            }
+            let Some((scheme, rest)) = uri.split_once("://") else {
+                return Err(format!("Invalid --reader connection string: {uri}"));
+            };
+            format!("{cache_scheme}+{scheme}://{rest}")
+        }
+        None => uri.to_string(),
+    };
 
-    if uri.starts_with("duckdb://") {
-        #[cfg(feature = "duckdb")]
-        return ggsql::reader::DuckDBReader::from_connection_string(uri)
-            .map(|r| Box::new(r) as Box<dyn Reader>)
-            .map_err(|e| format!("Failed to create reader: {e}"));
-        #[cfg(not(feature = "duckdb"))]
-        return Err(missing("DuckDB", "duckdb"));
-    }
-
-    if uri.starts_with("sqlite://") {
-        #[cfg(feature = "sqlite")]
-        return ggsql::reader::SqliteReader::from_connection_string(uri)
-            .map(|r| Box::new(r) as Box<dyn Reader>)
-            .map_err(|e| format!("Failed to create reader: {e}"));
-        #[cfg(not(feature = "sqlite"))]
-        return Err(missing("SQLite", "sqlite"));
-    }
-
-    if uri.starts_with("odbc://") {
-        #[cfg(feature = "odbc")]
-        return ggsql::reader::OdbcReader::from_connection_string(uri)
-            .map(|r| Box::new(r) as Box<dyn Reader>)
-            .map_err(|e| format!("Failed to create reader: {e}"));
-        #[cfg(not(feature = "odbc"))]
-        return Err(missing("ODBC", "odbc"));
-    }
-
-    if uri.starts_with("postgres://") || uri.starts_with("postgresql://") {
-        return Err("PostgreSQL reader is not yet implemented".to_string());
-    }
-
-    Err(format!("Unsupported connection string: {uri}"))
+    connection::reader_from_uri(&uri).map_err(|e| format!("Failed to create reader: {e}"))
 }
 
 fn exec_with_reader(query: &str, reader: &dyn Reader, args: &RenderArgs, writer: &WriterSpec) {
@@ -496,7 +485,7 @@ fn cmd_view(query: String, args: &ViewArgs) {
             std::process::exit(1);
         });
 
-        let reader = open_reader(&args.reader).unwrap_or_else(|e| {
+        let reader = open_reader(&args.reader, None).unwrap_or_else(|e| {
             eprintln!("{}", e);
             std::process::exit(1);
         });

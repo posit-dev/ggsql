@@ -19,6 +19,15 @@
   its resolution belongs to the display. Behind a new off-by-default `window`
   feature, and needs a GPU adapter; the subcommand exists either way and says
   what would enable it.
+- New `equal_earth` map projection (`+proj=eqearth`).
+- New caching layer that wraps any `Reader` with an in-memory, writeable cache
+  backend (currently duckdb or sqlite), making write-constrained databases
+  usable and avoiding repeated remote reads during interactive iteration.
+  Memoized reads are bounded by a TTL and an LRU byte budget, configurable per
+  connection. Selected by the composite connection scheme
+  `<cache>+<primary>://…` (e.g. `duckdb+odbc://…`) or, in the CLI, by
+  `--cache <duckdb|sqlite>` on `exec` and `run`. The cache can be cleared
+  mid-session with the `-- @uncache` meta-command.
 - Writers can be configured from key–value options: `Writer::from_options` takes
   a `WriterOptions` set, and the CLI collects them from a repeatable
   `--writer-option key=value` flag on `exec` and `run` (short `-D`, also
@@ -63,6 +72,16 @@
   scales — an interval such as `'week'`. Defaults to a value chosen by the
   transformation. This has no Vega-Lite equivalent and is ignored by that writer.
 
+- The VS Code / Positron extension now ships the `ggsql-jupyter` kernel, so
+  installing the extension is all that is needed to run queries. It is offered
+  alongside every ggsql kernel found on the machine — a Jupyter kernelspec, a
+  native install, one on `PATH`, or the path in `ggsql.kernelPath` — each named
+  for the version it reports, so the New Console Session picker shows which is
+  which. A kernel too old to report one is still offered, named without a
+  version. The bundled kernel is the default.
+
+- `ggsql-jupyter` accepts `--version`.
+
 ### Changed
 - The wasm bundle draws plots with ggsql's own renderer instead of emitting
   Vega-Lite. A query is executed in the browser and drawn straight to SVG, so
@@ -95,6 +114,12 @@
   `--writer` and `-D` list every writer and its settings in their long help,
   marking the ones this build does not have and naming the feature that would
   add each.
+- A `FROM` on the `VISUALISE` clause now takes exactly one bare source. It
+  previously reused the SQL `FROM` grammar while only ever reading the first
+  source, so `VISUALISE FROM a, b` silently plotted `a` alone and
+  `VISUALISE FROM a JOIN b ON …` silently dropped the join. Both are now parse
+  errors, as is an alias (`VISUALISE FROM tbl AS t`), which parsed before but
+  had no effect. Join two tables in a `SELECT` and visualise its result.
 - Dodging now only takes effect where groups actually meet on a position. A
   layer whose grouping gives every group a position of its own — `colour` mapped
   to the same column as the discrete axis, say — is drawn at its full width
@@ -108,7 +133,8 @@
 - Categorical `y` axes now run bottom-up, so the first level sits at the bottom
   of the panel as it does in ggplot2. This affects every plot with a discrete or
   ordinal `y` — horizontal bars, boxplots and violins by category, points and
-  2D jitter.
+  2D jitter — and brings the Vega-Lite writer in line with the new writers,
+  which already read this way.
 - Banded marks now measure against the full step in the Vega-Lite writer. A band
   fraction (a bar's `width`, a dodge displacement, a jitter spread, a violin or
   boxplot half-width, a discrete tile's extent) is a fraction of the whole
@@ -117,8 +143,11 @@
   further 20% of every step for dodged, jittered and half-sided layers, so
   their marks were narrower, their displacements smaller and their category
   ticks pulled toward the middle of the panel.
+- Position scales like `SCALE lon` and `SCALE lat` transfer their limits to
+  map projections, and transfer their `breaks` setting to the graticule (#492).
 
 ### Fixed
+- Positron no longer offers a ggsql runtime on a machine that has no kernel.
 - A dodged violin or half-boxplot on a categorical `y` axis is no longer flipped
   in the Vega-Lite writer. Both took their band displacement from an encoding of
   their own that read a ggsql offset as pointing down the screen, so their groups

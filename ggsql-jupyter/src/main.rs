@@ -21,6 +21,7 @@ use std::process::Command;
 #[derive(Parser)]
 #[command(name = "ggsql-jupyter")]
 #[command(about = "Jupyter kernel for ggsql", long_about = None)]
+#[command(version)]
 struct Args {
     /// Path to the Jupyter connection file
     #[arg(short = 'f', long = "connection-file")]

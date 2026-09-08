@@ -85,6 +85,9 @@ pub const ORDER_COLUMN: &str = concatcp!(GGSQL_PREFIX, "order", GGSQL_SUFFIX);
 /// Used with Vega-Lite filter transforms to select per-layer data.
 pub const SOURCE_COLUMN: &str = concatcp!(GGSQL_PREFIX, "source", GGSQL_SUFFIX);
 
+/// Name of the caching layer's metadata table, held in the cache backend.
+pub const CACHE_META_TABLE: &str = concatcp!(GGSQL_PREFIX, "cache_meta", GGSQL_SUFFIX);
+
 /// Alias for schema extraction queries
 pub const SCHEMA_ALIAS: &str = concatcp!(GGSQL_SUFFIX, "schema", GGSQL_SUFFIX);
 
@@ -132,6 +135,70 @@ pub fn cte_table(cte_name: &str) -> String {
         "{}{}_{}{}",
         CTE_PREFIX,
         cte_name,
+        session_id(),
+        GGSQL_SUFFIX
+    )
+}
+
+/// Generate temp table name for a memoized primary query result in a cache.
+///
+/// The cache key is a hex hash of the primary URI and SQL.
+/// Format: `__ggsql_cache_<uuid>_<key>__`
+///
+/// # Example
+/// ```
+/// use ggsql::naming;
+/// let table = naming::cache_result_table("deadbeef");
+/// assert!(table.starts_with("__ggsql_cache_"));
+/// assert!(table.ends_with("_deadbeef__"));
+/// ```
+pub fn cache_result_table(key: &str) -> String {
+    format!(
+        "{}cache_{}_{}{}",
+        GGSQL_PREFIX,
+        session_id(),
+        key,
+        GGSQL_SUFFIX
+    )
+}
+
+/// Generate temp table name for a materialized explicit layer source.
+///
+/// Format: `__ggsql_layer_src_<index>_<uuid>__`
+///
+/// # Example
+/// ```
+/// use ggsql::naming;
+/// let table = naming::layer_source_table(2);
+/// assert!(table.starts_with("__ggsql_layer_src_2_"));
+/// assert!(table.ends_with("__"));
+/// ```
+pub fn layer_source_table(index: usize) -> String {
+    format!(
+        "{}layer_src_{}_{}{}",
+        GGSQL_PREFIX,
+        index,
+        session_id(),
+        GGSQL_SUFFIX
+    )
+}
+
+/// Generate temp table name for a primary base table staged into the cache.
+///
+/// Format: `__ggsql_staged_<index>_<uuid>__`
+///
+/// # Example
+/// ```
+/// use ggsql::naming;
+/// let table = naming::staged_source_table(1);
+/// assert!(table.starts_with("__ggsql_staged_1_"));
+/// assert!(table.ends_with("__"));
+/// ```
+pub fn staged_source_table(index: usize) -> String {
+    format!(
+        "{}staged_{}_{}{}",
+        GGSQL_PREFIX,
+        index,
         session_id(),
         GGSQL_SUFFIX
     )
@@ -281,6 +348,20 @@ pub fn quote_literal(s: &str) -> String {
 // ============================================================================
 // Detection Functions
 // ============================================================================
+
+/// Check if a name refers to an internal ggsql table (CTE temp, staged source,
+/// global, builtin dataset, cache result, …).
+///
+/// # Example
+/// ```
+/// use ggsql::naming;
+/// assert!(naming::is_internal_table("__ggsql_cte_sales_abc__"));
+/// assert!(naming::is_internal_table("__ggsql_staged_0_abc__"));
+/// assert!(!naming::is_internal_table("sales"));
+/// ```
+pub fn is_internal_table(name: &str) -> bool {
+    name.starts_with(GGSQL_PREFIX)
+}
 
 /// Check if a column name is a synthetic constant column.
 ///
@@ -494,6 +575,7 @@ mod tests {
         assert_eq!(ORDER_COLUMN, "__ggsql_order__");
         assert_eq!(SOURCE_COLUMN, "__ggsql_source__");
         assert_eq!(SCHEMA_ALIAS, "__schema__");
+        assert_eq!(CACHE_META_TABLE, "__ggsql_cache_meta__");
     }
 
     #[test]

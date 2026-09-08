@@ -687,71 +687,7 @@ mod equivalence_tests {
             .expect("SqliteReader at the same path")
     }
 
-    /// Compare two DataFrames by schema (field names + types) and by
-    /// per-column Arrow array contents. We don't use a blanket
-    /// `assert_eq!(df, df)` because `DataFrame` doesn't implement `PartialEq`;
-    /// going through schema + per-column equality is also more diagnostic
-    /// when one of them diverges.
-    fn assert_dataframes_equal(
-        adbc_df: &crate::DataFrame,
-        sqlite_df: &crate::DataFrame,
-        ctx: &str,
-    ) {
-        let adbc_schema = adbc_df.schema();
-        let sqlite_schema = sqlite_df.schema();
-        assert_eq!(
-            adbc_schema.fields().len(),
-            sqlite_schema.fields().len(),
-            "{}: column count mismatch (adbc={}, sqlite={})",
-            ctx,
-            adbc_schema.fields().len(),
-            sqlite_schema.fields().len(),
-        );
-        for (i, (a, s)) in adbc_schema
-            .fields()
-            .iter()
-            .zip(sqlite_schema.fields().iter())
-            .enumerate()
-        {
-            assert_eq!(
-                a.name(),
-                s.name(),
-                "{}: column {} name mismatch (adbc='{}', sqlite='{}')",
-                ctx,
-                i,
-                a.name(),
-                s.name(),
-            );
-            assert_eq!(
-                a.data_type(),
-                s.data_type(),
-                "{}: column '{}' type mismatch (adbc={:?}, sqlite={:?})",
-                ctx,
-                a.name(),
-                a.data_type(),
-                s.data_type(),
-            );
-        }
-        assert_eq!(
-            adbc_df.height(),
-            sqlite_df.height(),
-            "{}: row count mismatch (adbc={}, sqlite={})",
-            ctx,
-            adbc_df.height(),
-            sqlite_df.height(),
-        );
-        for field in adbc_schema.fields() {
-            let a = adbc_df.column(field.name()).unwrap();
-            let s = sqlite_df.column(field.name()).unwrap();
-            assert_eq!(
-                a.as_ref(),
-                s.as_ref(),
-                "{}: column '{}' data mismatch",
-                ctx,
-                field.name(),
-            );
-        }
-    }
+    use crate::reader::test_support::assert_dataframes_equal;
 
     #[test]
     #[ignore = "requires `dbc install sqlite`; see module docs"]

@@ -30,6 +30,9 @@ jobs:
       - name: Install tree-sitter-cli
         run: npm install -g tree-sitter-cli
 
+      - name: Update apt package index
+        run: sudo apt-get update
+
       - name: Install LLVM
         run: sudo apt-get install -y llvm
 
