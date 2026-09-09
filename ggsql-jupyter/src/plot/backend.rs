@@ -307,7 +307,7 @@ fn render_loop(
                 request,
                 reply,
             } => {
-                let result = render_one(&spec, &request, renderer.as_mut());
+                let result = render_one(&spec, &request, renderer.as_mut(), &one_shot_namespace());
                 // A caller that gave up before we finished is not an error.
                 let _ = reply.send(result);
             }
@@ -317,7 +317,9 @@ fn render_loop(
                 reply,
             } => {
                 let result = match stored.get(&comm_id) {
-                    Some(spec) => render_one(spec, &request, renderer.as_mut()),
+                    Some(spec) => {
+                        render_one(spec, &request, renderer.as_mut(), &comm_namespace(&comm_id))
+                    }
                     None => Err(anyhow!("this plot is no longer available")),
                 };
                 let _ = reply.send(result);
@@ -328,7 +330,9 @@ fn render_loop(
                 ticket,
             } => {
                 let result = match stored.get(&comm_id) {
-                    Some(spec) => render_one(spec, &request, renderer.as_mut()),
+                    Some(spec) => {
+                        render_one(spec, &request, renderer.as_mut(), &comm_namespace(&comm_id))
+                    }
                     // The comm closed, or the plot was evicted, between the
                     // request arriving and us reaching it.
                     None => Err(anyhow!("this plot is no longer available")),
@@ -372,7 +376,7 @@ fn warm_up(renderer: Option<&mut Renderer>) {
             dpi: 96.0,
         },
     };
-    match render_one(&spec, &request, renderer) {
+    match render_one(&spec, &request, renderer, "warmup-") {
         Ok(_) => tracing::debug!("renderer warmed up in {:?}", started.elapsed()),
         Err(e) => tracing::debug!("renderer warm-up failed: {e}"),
     }
@@ -407,16 +411,43 @@ type Renderer = ggsql::writer::RasterRenderer;
 #[cfg(not(feature = "raster-plots"))]
 type Renderer = Never;
 
+/// The id namespace for a plot rendered once and not kept.
+///
+/// SVG element ids are per-document counters (`c0`, `lg1`), so two plots in one
+/// notebook both define `#lg1` and the second's `url(#lg1)` resolves to the
+/// first's gradient — a silently wrong figure, in every browser. A namespace
+/// per plot is what keeps them apart, since every cell's output shares one DOM.
+///
+/// A uuid rather than a counter, because a counter restarts with the kernel
+/// while the notebook still shows the outputs it already handed out. The cost
+/// is that re-running a cell rewrites the ids of an otherwise identical plot.
+fn one_shot_namespace() -> String {
+    format!("p{}-", uuid::Uuid::new_v4())
+}
+
+/// The id namespace for a plot the render thread keeps, from its comm id.
+///
+/// One namespace for the plot's whole life, so resizing redraws it to the same
+/// ids. The comm id is already a uuid, and already unique per plot.
+fn comm_namespace(comm_id: &str) -> String {
+    format!("p{comm_id}-")
+}
+
 /// Render one plot in whichever format was asked for.
+///
+/// `id_namespace` prefixes the ids the SVG writer generates; the other formats
+/// have no such thing and ignore it.
 fn render_one(
     spec: &Spec,
     request: &RenderRequest,
     renderer: Option<&mut Renderer>,
+    id_namespace: &str,
 ) -> Result<Vec<u8>> {
     let canvas = request.canvas;
     match request.format {
         Format::Svg => {
-            let writer = ggsql::writer::SvgWriter::new(canvas.width, canvas.height, canvas.dpi);
+            let writer = ggsql::writer::SvgWriter::new(canvas.width, canvas.height, canvas.dpi)
+                .id_prefix(id_namespace);
             let (svg, warnings) = writer.render_reporting(spec)?;
             report(&warnings, "svg");
             Ok(svg.into_bytes())
@@ -474,5 +505,91 @@ fn render_one(
 fn report(warnings: &[String], format: &str) {
     for warning in warnings {
         tracing::warn!("{format}: {warning}");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A plot with a colour scale, so the SVG carries a gradient — the ids that
+    /// collide are the ones a legend gradient defines and references.
+    fn a_spec() -> Box<Spec> {
+        use ggsql::reader::{DuckDBReader, Reader};
+        let query = "SELECT * FROM (VALUES (1,2,10),(2,3,50),(3,1,90)) t(x,y,c) \
+                     VISUALISE x AS x, y AS y, c AS color DRAW point";
+        Box::new(
+            DuckDBReader::from_connection_string("duckdb://memory")
+                .unwrap()
+                .execute(query)
+                .unwrap(),
+        )
+    }
+
+    fn an_svg_request() -> RenderRequest {
+        RenderRequest {
+            format: Format::Svg,
+            canvas: super::super::Canvas {
+                width: 400,
+                height: 300,
+                dpi: 96.0,
+            },
+        }
+    }
+
+    fn ids(svg: &[u8]) -> Vec<String> {
+        let svg = std::str::from_utf8(svg).unwrap();
+        svg.match_indices("id=\"")
+            .map(|(at, marker)| {
+                let rest = &svg[at + marker.len()..];
+                rest[..rest.find('"').unwrap()].to_string()
+            })
+            .collect()
+    }
+
+    #[test]
+    fn a_static_plot_gets_its_own_id_namespace() {
+        let backend = PlotBackend::without_raster();
+        let first = backend
+            .render_once(a_spec(), an_svg_request())
+            .expect("the SVG path needs no adapter");
+        let second = backend
+            .render_once(a_spec(), an_svg_request())
+            .expect("the SVG path needs no adapter");
+
+        let (first, second) = (ids(&first), ids(&second));
+        assert!(!first.is_empty(), "the plot defines no ids to namespace");
+        // The whole point: the same plot twice in one notebook shares no id.
+        for id in &first {
+            assert!(
+                !second.contains(id),
+                "'{id}' would collide across two cells"
+            );
+        }
+    }
+
+    #[test]
+    fn a_stored_plot_keeps_one_namespace_across_renders() {
+        let backend = PlotBackend::without_raster();
+        backend.store("comm-1".to_string(), a_spec());
+
+        let first = backend.render_stored("comm-1", an_svg_request()).unwrap();
+        let second = backend.render_stored("comm-1", an_svg_request()).unwrap();
+
+        // A resize must not renumber the ids of a plot already on screen.
+        assert_eq!(ids(&first), ids(&second));
+        assert!(ids(&first).iter().all(|id| id.starts_with("pcomm-1-")));
+    }
+
+    #[test]
+    fn a_namespace_is_a_valid_xml_name() {
+        // An id may not start with a digit, and a uuid can.
+        for namespace in [one_shot_namespace(), comm_namespace("8-4-4-4-12")] {
+            let first = namespace.chars().next().unwrap();
+            assert!(
+                first.is_ascii_alphabetic() || first == '_',
+                "'{namespace}' is not a valid XML name"
+            );
+        }
     }
 }
