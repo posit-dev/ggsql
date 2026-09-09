@@ -84,7 +84,7 @@ debt that would disappear if ggsql resolved more:
 | Exception | Where | Why |
 | --- | --- | --- |
 | Free facet dimensions | `scales::{free_position_scale, free_binned_scale}` | ggsql resolves one global domain; a `free` panel needs its own. Only the *extent* is computed — the padding around it is still ggsql's, via `Scale::expand_range`. |
-| Spatial `pos1`/`pos2` | `compose.rs::map_bbox` | A spatial layer positions by geometry, so ggsql resolves no position scales. The bbox still comes from ggsql (`Projection.computed["bbox"]`), falling back to the geometry extent only for a bare `spatial` geom. |
+| Spatial `pos1`/`pos2` | `compose.rs::map_bbox` | A map's frame is `Projection.computed["bbox"]`, in the target CRS, with `SCALE lon`/`lat` limits already folded in. A resolved `pos1`/`pos2` is *not* the alternative: for a map, ggsql resolves those against the graticule extent in EPSG:4326, so their domain is degrees and their breaks are graticule positions, not the frame. Only a bare `spatial` geom with no `PROJECT` falls back to the geometry extent. |
 
 ## Configuration
 
@@ -660,16 +660,15 @@ so one run inventories every gap at once. Implementation notes:
   rather than a blend of two — vello classic antialiases its pick pass and can
   report an id that was never drawn. The second matters only once interaction
   lands, but it is the reason not to defer the choice. Output differs from
-  vello classic by antialiasing alone (~2% of pixels on a scatter, max channel
-  delta under 70, geometry identical). `hephaestus/vello-hybrid` transitively
-  enables `hephaestus/png`, so a webp-only build still compiles the PNG codec.
+  vello classic by antialiasing alone; geometry is identical.
+  `hephaestus/vello-hybrid` transitively enables `hephaestus/png`, so a
+  webp-only build still compiles the PNG codec.
 - **The raster ceiling is the GPU's, not the renderer's.** The device is asked
   for as much as it grants up to 16384 px per dimension, which is
   `MAX_RASTER_DIMENSION` and what `check_size` guards before anything is
   allocated — so the error can name the limit and point at `svg`/`pdf`, which
   have none. A device offering less rejects the frame itself with its own limit
-  named. Verified on Apple silicon: 4600×3100, 8000×2000, 16000×1000 and a
-  faceted 10000×6000 all render; 17000×1000 is refused up front.
+  named.
 - **fontconfig is a *runtime* dependency on Linux, not a build-time one.** Text
   layout goes through parley/fontique, which enumerates fonts through the
   system fontconfig whatever backend draws — so this applies to `svg` and `pdf`
@@ -678,17 +677,14 @@ so one run inventories every gap at once. Implementation notes:
   With it, `yeslogic-fontconfig-sys`'s build script makes no pkg-config call at
   all and `libfontconfig.so.1` is loaded on use, so **`libfontconfig1-dev` is
   not needed to build** — which is what lets `svg`/`pdf`/`hep` be default
-  features without breaking `cargo install ggsql-cli` on a bare box. Verified
-  in `debian:bookworm-slim` and `manylinux_2_28`, neither of which ships the
-  `-dev` package; CI installs only the runtime library so every run re-checks
-  it. macOS uses CoreText and needs nothing.
+  features without breaking `cargo install ggsql-cli` on a bare box. CI and
+  the release images install only the runtime library, never the `-dev`
+  package, so every build re-checks that. macOS uses CoreText and needs
+  nothing.
 
   **With no fontconfig at all, a render silently loses all text**: geometry
   draws, every `<text>` disappears, and the exit code is 0. Worth knowing when
   a minimal container produces an unlabelled plot.
-- **A GPU is needed for raster output, not to see a plot.** `svg`, `pdf` and
-  `hep` need no adapter and no wgpu, so they are the fallback for a machine
-  that has none — and the reason CI has hard assertions at all.
 - **The vector and document writers are default features *and* MSRV-clean.**
   `svg`, `pdf` and `hep` need no adapter, no wgpu and no `-dev` package, so
   there is nothing to opt into — and they still compile on CRAN's 1.86, which
@@ -707,8 +703,8 @@ so one run inventories every gap at once. Implementation notes:
   is why the declaration stays at 1.86 rather than following `parley`'s.
 - **The dependency is the published `0.4.1` crate** (`src/Cargo.toml`), pinned
   with `default-features = false` so the GPU rasteriser arrives only with
-  `raster`. So
-  nothing here blocks publishing ggsql. hephaestus's own semver contract extends
+  `raster`, and nothing here blocks publishing ggsql. hephaestus's own semver
+  contract extends
   to the `kurbo`, `peniko` and `wgpu` types in its public API, so a bump in any
   of those is a breaking change to this writer even when hephaestus's own API
   holds still.

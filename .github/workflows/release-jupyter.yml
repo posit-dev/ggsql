@@ -60,9 +60,8 @@ jobs:
           # writers, which need a GPU adapter at *run* time and fall back to
           # SVG without one, so a wheel carrying them still works on a
           # headless machine. No before-script-linux either: ggsql enables
-          # fontique's `fontconfig-dlopen`, so nothing here needs
-          # fontconfig-devel at build time — verified in this exact image,
-          # which does not ship it.
+          # fontique's `fontconfig-dlopen`, so the build needs no
+          # fontconfig-devel, which this image does not ship.
           args: --release --out dist --auditwheel=skip
           working-directory: ggsql-jupyter
           manylinux: 2_28

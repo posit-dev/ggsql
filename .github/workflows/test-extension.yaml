@@ -107,10 +107,8 @@ jobs:
 
       - name: Install Rust toolchain
         # Stable, matching every other job that builds a real binary — and the
-        # kernel released to PyPI. Not the MSRV: that 1.86 floor exists for the
-        # R package's vendored copy of the *library*, and build.yaml checks it
-        # directly. The kernel enables `raster-plots`, so it pulls wgpu and
-        # parley and cannot build on 1.86 at all.
+        # kernel released to PyPI. The 1.86 MSRV covers the library only and is
+        # checked in build.yaml; see /CLAUDE.md, "Rust version (MSRV)".
         uses: dtolnay/rust-toolchain@stable
 
       # Use publish.yaml's cargo cache with `save-if: false`.

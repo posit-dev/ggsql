@@ -20,9 +20,11 @@ pub(super) const DEFAULT_HEIGHT: u32 = 1000;
 /// is relative to the canvas as well as the print size of a physical figure.
 pub(super) const DEFAULT_DPI: f64 = 300.0;
 
-/// Largest canvas dimension accepted, in pixels. Far beyond any real figure, but
-/// small enough that a slipped unit conversion fails with a message instead of
-/// exhausting GPU memory.
+/// Largest canvas dimension accepted, in pixels: 2^15, which is a memory budget
+/// rather than a format limit. A square canvas at this size is a gigapixel —
+/// 4 GB of RGBA — so it is the point past which a slipped unit conversion
+/// should fail with a message instead of trying to allocate. Far beyond any
+/// real figure: 32768px is 109 inches at 300 dpi.
 const MAX_DIMENSION: f64 = 32_768.0;
 
 /// Option keys every renderer-backed writer understands.

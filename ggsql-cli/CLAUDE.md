@@ -40,7 +40,7 @@ The subcommand list does not change with features: `view` is always defined, and
 
 Only public `ggsql::*` API is used (`reader`, `writer`, `validate`, `parser`, `VERSION`) — this crate has no awareness of internal modules.
 
-`exec` and `run` share their flags through one `#[derive(Args)] RenderArgs` (`--reader`, `--cache`, `--writer`, `-D`, `--output`, `--verbose`) that both subcommands `#[command(flatten)]`, so a flag's help text and default exist once. `RenderArgs::writer()` resolves them into a `WriterSpec { info, options }` **in `main`, before any SQL runs** — an unknown `--writer`, a writer whose feature is off, and a `-D` pair that is not `key=value` all fail there rather than after the query has executed. `WriterSpec` then travels down `cmd_exec` → `exec_with_reader` → `render_spec`.
+`exec` and `run` share their flags through one `#[derive(Args)] RenderArgs` that both subcommands `#[command(flatten)]`, so a flag's help text and default exist once. `RenderArgs::writer()` resolves them into a `WriterSpec` **in `main`, before any SQL runs**, so a bad writer name, an uncompiled writer or a malformed `-D` pair fails before the query costs anything.
 
 Which keys a writer accepts is the writer's business, and an unknown one is its error to report — so adding a setting needs no CLI change. User-facing keys are documented in [`/doc/get_started/tooling/cli.qmd`](../doc/get_started/tooling/cli.qmd).
 
@@ -50,20 +50,13 @@ Which keys a writer accepts is the writer's business, and an unknown one is its 
 
 Render functions return `Result<(Output, Vec<String>), String>`: the output plus anything the writer had to degrade to produce it. They report failure rather than exiting, so `render_spec` owns how a problem is presented. **Warnings go to stderr unconditionally, not behind `-v`** — something the writer could not express is a defect in the file the user is about to ship, and stderr keeps it out of a piped artifact.
 
-**`RenderArgs::resolve_writer` decides which writer runs**, and the order is deliberate:
-
-1. An explicit `--writer` wins — it is what the user said. If it disagrees with `--output`'s extension the flag is still obeyed, with a note on stderr; writing SVG to a `.txt` to read it is legitimate, so this is a warning, not an error.
-2. Otherwise `--output`'s extension picks one, via `writers::for_extension`. Longest extension first, so a two-part `vl.json` cannot be shadowed by its own `json` tail.
-3. **An extension naming a writer this build lacks is an error**, with the feature named — the same message an explicit `--writer` gives. Falling back here would write Vega-Lite JSON into a file called `.png`, which is the mistake the feature exists to prevent.
-4. An unrecognised extension, or no `--output`, falls back to `writers::DEFAULT_WRITER`.
-
-This is why `RenderArgs::writer` is `Option<String>` with no clap `default_value`: "unset" has to be distinguishable from "explicitly vegalite", or step 2 could never fire. The default is stated in the long help instead.
+**`RenderArgs::resolve_writer` decides which writer runs**: an explicit `--writer`, else `--output`'s extension, else `writers::DEFAULT_WRITER`. Two consequences are worth knowing before reading it — an extension that names a writer this build lacks is an *error* rather than a fallback, and `--writer` is `Option<String>` rather than a clap `default_value` so that "unset" stays distinguishable from "explicitly vegalite".
 
 `open_reader(uri, cache) -> Result<Box<dyn Reader + Send>, String>` is the matching single place for connection strings, and it delegates to the library factory `ggsql::reader::connection::reader_from_uri`. Which schemes exist, which of them this build has, and how a cache wraps a primary are the library's business; `ggsql::reader::Reader` is object-safe on purpose, so `exec`, `run` and `view` all go through this one function.
 
 `--cache <duckdb|sqlite>` wraps the reader in an in-memory caching layer, off by default. It is sugar for the composite connection scheme `<cache>+<primary>://…` (e.g. `duckdb+odbc://…`) that `reader_from_uri` already understands, so `open_reader` rewrites the flag into that URI and refuses the two forms together — there would be no saying which cache was meant.
 
-**Both flags live in one `ReaderArgs`**, flattened into `RenderArgs` and `ViewArgs` in turn, so `--reader` and `--cache` are declared, helped and defaulted once and `exec`, `run` and `view` cannot drift apart. Where a plot's data comes from does not depend on whether the plot ends up in a file or in a window. Nesting one `#[derive(Args)]` inside another keeps the flag names flat, so this costs nothing at the command line — only `args.source.reader` instead of `args.reader` in the source.
+**Both flags live in one `ReaderArgs`**, flattened into `RenderArgs` and `ViewArgs` in turn, so `exec`, `run` and `view` cannot drift apart: where a plot's data comes from does not depend on whether the plot ends up in a file or in a window. The flag names stay flat; only the field access is nested (`args.source.reader`).
 
 ### `view`, and why the window code is not here
 

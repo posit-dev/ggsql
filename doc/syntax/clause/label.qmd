@@ -17,10 +17,10 @@ There are a few additional labels beside the aesthetics that govern the differen
 
 * `title`: The main title of the plot
 * `subtitle`: An additional, often longer and more descriptive, title beneath the main title
-* `caption`: A string placed below the plot, often used to add additional information about the data source etc. Not supported by the Vega-Lite writer, which has no equivalent; every other writer renders it.
+* `caption`: A string placed below the plot, often used to add additional information about the data source etc. Supported by every writer except Vega-Lite, which has no equivalent.
 
 ## Rich text
-Every writer except Vega-Lite reads the strings you provide here as markdown, so `LABEL title => 'Sales in **2024**'` renders the year in bold.
+Every writer except Vega-Lite interprets the strings you provide here as markdown, so `LABEL title => 'Sales in **2024**'` renders the year in bold.
 This applies to the plot title, subtitle and caption, to the axis and legend titles, and to break labels (axis tick labels and legend keys).
 The Vega-Lite writer has no rich-text support at all and draws every label exactly as given.
 

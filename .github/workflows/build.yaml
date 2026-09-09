@@ -60,12 +60,9 @@ jobs:
         run: sudo apt-get install -y mesa-vulkan-drivers libfontconfig1 fonts-dejavu-core
 
       - name: Install Rust
-        # Stable is the default toolchain. It is *not* the MSRV: `rust-version`
-        # in /Cargo.toml is 1.86 (CRAN's), which is what points clippy's
-        # MSRV-aware lints at 1.86 — so running clippy here still guards it.
-        # The default cannot be 1.86 itself, because the default writers pull
-        # `parley`, which declares 1.88, and the `adbc` test path needs 1.88
-        # for real.
+        # Stable, not the MSRV — clippy reads `rust-version` from /Cargo.toml,
+        # so running it here still guards the 1.86 floor. Why the default
+        # cannot be 1.86 itself: /CLAUDE.md, "Rust version (MSRV)".
         uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
@@ -99,13 +96,11 @@ jobs:
         run: cargo build --all-targets
 
       - name: Check the library builds on CRAN's toolchain (MSRV 1.86)
-        # The R package vendors ggsql and CRAN builds it on 1.86, so the code
-        # has to keep compiling there. `--ignore-rust-version` is needed only
-        # because `parley` *declares* 1.88 while compiling fine on 1.86 — do
-        # not delete the flag; delete this job and the MSRV silently rots.
-        #
-        # Library only, not --all-targets: the `adbc` dev-dependency path pulls
-        # datafusion, which uses let-chains and genuinely requires 1.88.
+        # The one step that actually proves the 1.86 floor — delete it and the
+        # MSRV silently rots. Keep the two flags: `--ignore-rust-version`
+        # bypasses `parley`'s *declared* 1.88, and library-only avoids the
+        # `adbc` dev-dependency path, which needs 1.88 for real. Background:
+        # /CLAUDE.md, "Rust version (MSRV)".
         run: cargo +1.86 check --ignore-rust-version -p ggsql
 
       - name: Run tree-sitter tests

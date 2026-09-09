@@ -136,7 +136,12 @@ pub fn build_composition(
     // share one pre-projected data space, so the position scales must span the
     // map's extent rather than the marks' or the data drifts off the boundary.
     // A spatial layer has no `pos1`/`pos2` at all, so these are its only
-    // scales. The bbox is ggsql's, per the "never invent extents" principle.
+    // scales. The bbox is ggsql's, per the "never invent extents" principle,
+    // and it is the authority here rather than a resolved `pos1`/`pos2`: a map
+    // resolves those against the *graticule* extent in EPSG:4326, so their
+    // domain is in degrees while the data is in the target CRS. Any
+    // `SCALE lon`/`lat` limits are already folded into the bbox, and the breaks
+    // those scales carry arrive as projected geometry in `computed`.
     let map_bbox = map_bbox(spec, data)?;
     if let Some((xmin, ymin, xmax, ymax)) = map_bbox {
         view.insert_scale("pos1".to_string(), scale::continuous(map_range(xmin, xmax)));

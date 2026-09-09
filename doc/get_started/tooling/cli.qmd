@@ -106,9 +106,9 @@ The two forms cannot be combined — there would be no saying which cache was me
 ggsql exec -o chart.pdf "VISUALISE species AS fill FROM ggsql:penguins DRAW bar"
 ```
 
-`json` and `vl.json` mean Vega-Lite; `svg`, `pdf`, `hep`, `png`, `jpg`/`jpeg`, `tif`/`tiff` and `webp` mean themselves. An extension `ggsql` doesn't recognise, or no `--output` at all, falls back to Vega-Lite as before. An explicit `--writer` always wins, and if it disagrees with the extension you get the format you asked for plus a note on `stderr`.
+`json` and `vl.json` mean Vega-Lite; `svg`, `pdf`, `hep`, `png`, `jpg`/`jpeg`, `tif`/`tiff` and `webp` indicate file extensions. An extension `ggsql` doesn't recognise, or no `--output` at all, falls back to Vega-Lite. An explicit `--writer` always wins: if it disagrees with the extension, the file holds the format `--writer` named — a `.png` written by `-w svg` is an SVG — and the mismatch is noted on `stderr`.
 
-**A binary format needs somewhere to go.** `pdf`, `hep` and the raster formats write bytes, so running one straight to a terminal would fill it with them. `ggsql` refuses instead, saying so on `stderr` and exiting non-zero — pass `--output`, or pipe it somewhere. A query with no `VISUALISE` prints its table, and honours `--output` the same way.
+**A binary format needs somewhere to go.** `ggsql` will not print the bytes of a `pdf`, `hep` or raster format to a terminal: it says so on `stderr` and exits non-zero. Give the bytes a destination with `--output`, or pipe them somewhere; to just look at the plot, [`ggsql view`](#viewing-a-plot) draws it in a window and writes no file at all. A query with no `VISUALISE` prints its table, and honours `--output` the same way.
 
 The four raster formats render through the GPU, so they need a graphics adapter — hardware or software — available where `ggsql` runs, and they are not compiled into every build. `svg` and `pdf` need neither, which makes them the ones to reach for on a server, in a container or in CI. Run `ggsql exec --help` to see which writers your build has; asking for one it doesn't says so, and names the feature that would add it.
 
@@ -157,14 +157,13 @@ Every writer above except `vegalite` takes the same five canvas settings:
 
 #### Per-format settings
 
-Each format additionally takes whatever it actually offers:
+Each format offers additional settings:
 
 | Writer | Option | Value | Default |
 | --- | --- | --- | --- |
 | `png` | `compression` | `none`, `fast`, `balanced`, `small` | `balanced` |
 | `jpeg` | `quality` | `1`–`100` | `90` |
 | `tiff` | `compression` | `none`, `deflate`, `lzw`, `packbits` | `deflate` |
-| `webp` | — | lossless, with no rate control to set | — |
 | `svg` | `text` | `text` keeps real text; `outline` converts it to paths | `text` |
 | `svg` | `embed-fonts` | Inline font faces so the file stands alone | `false` |
 | `svg` | `id-prefix` | Prefix for generated element ids | none |
@@ -175,9 +174,9 @@ Each format additionally takes whatever it actually offers:
 
 `jpeg` has no alpha channel, so it refuses `background=transparent` rather than quietly compositing onto black. `svg`'s `id-prefix` matters when two SVGs are inlined in one page: without it, both define the same gradient ids and each resolves to the other's.
 
-The Vega-Lite writer takes no options: its output is resolution-independent, so size, resolution and background belong to whatever renders the spec. Passing an option a writer doesn't understand is an error rather than a setting quietly ignored — and so is a setting a writer cannot honour, reported before the query runs rather than after.
+`webp` is lossless, with no rate control to set, so it takes the canvas settings and nothing else. The Vega-Lite writer takes no options at all: its output is resolution-independent, so size, resolution and background belong to whatever renders the spec. Passing an option a writer doesn't understand or can't honour is an error rather than a setting quietly ignored. Such a misunderstanding is reported before the query runs rather than after.
 
-Where a format cannot express something the plot asks for, `ggsql` says so on `stderr` and still writes the file. That is a defect in an artifact you are about to publish, so it is reported whether or not `--verbose` is set, and it stays out of a piped `svg`.
+When a plot asks for a graphic a format cannot express, `ggsql` says so on `stderr` and still writes the file. This is a defect in the file you produced, so the defect is reported whether or not `--verbose` is set, and it stays out of a piped `svg`.
 
 ## Viewing a plot
 
