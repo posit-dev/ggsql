@@ -356,7 +356,7 @@ fn exec_with_reader<R: Reader + ?Sized>(
         }
     };
 
-    if !validated.has_visual() {
+    if !validated.has_spec() {
         if verbose {
             eprintln!("Visualisation is empty. Printing table instead.");
         }

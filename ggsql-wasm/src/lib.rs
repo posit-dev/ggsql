@@ -255,7 +255,7 @@ impl GgsqlContext {
     /// Check whether a query contains a VISUALISE clause
     pub fn has_visual(&self, query: &str) -> bool {
         match validate(query) {
-            Ok(v) => v.has_visual(),
+            Ok(v) => v.has_spec(),
             Err(_) => false,
         }
     }

@@ -233,7 +233,7 @@ impl QueryExecutor {
         let validated = validate(code)?;
 
         // 2. Check if there's a visualization
-        if !validated.has_visual() {
+        if !validated.has_spec() {
             // Pure SQL query - execute directly and return DataFrame.
             let df = self.reader.execute_sql(code)?;
             tracing::info!(

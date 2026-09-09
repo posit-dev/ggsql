@@ -302,11 +302,9 @@ fn run_cells(source: Source, args: &Args, assets: &Path) -> SourceResult {
         let start = Instant::now();
         let mut warnings = Vec::new();
 
-        let has_visual = validate(&cell.query)
-            .map(|v| v.has_visual())
-            .unwrap_or(true);
+        let has_spec = validate(&cell.query).map(|v| v.has_spec()).unwrap_or(true);
 
-        let outcome = if has_visual {
+        let outcome = if has_spec {
             match capture(|| reader.execute(&cell.query)) {
                 Err(e) => Outcome::Failed(e),
                 Ok(spec) => {

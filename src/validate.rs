@@ -14,7 +14,7 @@ use crate::{Plot, Result, Spec};
 pub struct Validated {
     sql: String,
     visual: String,
-    has_visual: bool,
+    has_spec: bool,
     tree: Option<tree_sitter::Tree>,
     valid: bool,
     errors: Vec<ValidationError>,
@@ -22,9 +22,9 @@ pub struct Validated {
 }
 
 impl Validated {
-    /// Whether the query contains a VISUALISE clause.
-    pub fn has_visual(&self) -> bool {
-        self.has_visual
+    /// Whether the query contains a Spec (a VISUALISE or TABULATE clause).
+    pub fn has_spec(&self) -> bool {
+        self.has_spec
     }
 
     /// The SQL portion (before VISUALISE).
@@ -111,7 +111,7 @@ pub fn validate(query: &str) -> Result<Validated> {
             return Ok(Validated {
                 sql: String::new(),
                 visual: String::new(),
-                has_visual: false,
+                has_spec: false,
                 tree: None,
                 valid: false,
                 errors,
@@ -122,11 +122,12 @@ pub fn validate(query: &str) -> Result<Validated> {
 
     // Extract SQL and viz portions using existing tree
     let sql_part = source_tree.extract_sql().unwrap_or_default();
-    let viz_part = source_tree.extract_visualise().unwrap_or_default();
+    let viz_part = source_tree.extract_spec().unwrap_or_default();
 
     let root = source_tree.root();
     let visualise_stmt = source_tree.find_node(&root, "(visualise_statement) @viz");
-    let has_visual = visualise_stmt.is_some();
+    let tabulate_stmt = source_tree.find_node(&root, "(tabulate_statement) @tab");
+    let has_spec = visualise_stmt.is_some() || tabulate_stmt.is_some();
 
     if let Err(e) = source_tree.validate() {
         // The lexer always tokenises VISUALISE / VISUALIZE as
@@ -165,7 +166,7 @@ pub fn validate(query: &str) -> Result<Validated> {
         return Ok(Validated {
             sql: sql_part,
             visual: viz_part,
-            has_visual,
+            has_spec,
             tree: Some(source_tree.tree),
             valid: false,
             errors,
@@ -173,12 +174,12 @@ pub fn validate(query: &str) -> Result<Validated> {
         });
     }
 
-    // Genuine SQL-only query (no parse errors, no VISUALISE clause).
-    if !has_visual {
+    // Genuine SQL-only query (no parse errors, no VISUALISE/TABULATE clause).
+    if !has_spec {
         return Ok(Validated {
             sql: sql_part,
             visual: viz_part,
-            has_visual: false,
+            has_spec: false,
             tree: None,
             valid: true,
             errors,
@@ -202,7 +203,7 @@ pub fn validate(query: &str) -> Result<Validated> {
             return Ok(Validated {
                 sql: sql_part,
                 visual: viz_part,
-                has_visual,
+                has_spec,
                 tree: Some(source_tree.tree),
                 valid: false,
                 errors,
@@ -273,7 +274,7 @@ pub fn validate(query: &str) -> Result<Validated> {
     Ok(Validated {
         sql: sql_part,
         visual: viz_part,
-        has_visual,
+        has_spec,
         tree: Some(source_tree.tree),
         valid: errors.is_empty(),
         errors,
@@ -289,7 +290,7 @@ mod tests {
     fn test_validate_with_visual() {
         let validated =
             validate("SELECT 1 as x, 2 as y VISUALISE DRAW point MAPPING x AS x, y AS y").unwrap();
-        assert!(validated.has_visual());
+        assert!(validated.has_spec());
         assert_eq!(validated.sql(), "SELECT 1 as x, 2 as y");
         assert!(validated.visual().starts_with("VISUALISE"));
         assert!(validated.tree().is_some());
@@ -299,11 +300,27 @@ mod tests {
     #[test]
     fn test_validate_without_visual() {
         let validated = validate("SELECT 1 as x, 2 as y").unwrap();
-        assert!(!validated.has_visual());
+        assert!(!validated.has_spec());
         assert_eq!(validated.sql(), "SELECT 1 as x, 2 as y");
         assert!(validated.visual().is_empty());
         assert!(validated.tree().is_none());
         assert!(validated.valid());
+    }
+
+    #[test]
+    fn test_validate_tabulate_only_is_known_gap() {
+        // Documents the known gap in src/validate.rs: a TABULATE-only query
+        // is recognized as having a Spec (has_spec() is true, sql() is
+        // empty rather than swallowing "TABULATE" as SQL text), but nothing
+        // about the Table is actually validated — it's reported valid with
+        // no errors. Update this test (and the "Known gap" comment above the
+        // `plots: Vec<Plot>` filter) once table validation exists.
+        let validated = validate("TABULATE FROM sales").unwrap();
+        assert!(validated.has_spec());
+        assert!(validated.sql().is_empty());
+        assert!(validated.visual().starts_with("TABULATE"));
+        assert!(validated.valid());
+        assert!(validated.errors().is_empty());
     }
 
     #[test]
@@ -340,7 +357,7 @@ mod tests {
         let query = "SELECT 1 as x, 2 as y VISUALISE DRAW point MAPPING x AS x, y AS y DRAW line MAPPING x AS x, y AS y";
         let validated = validate(query).unwrap();
 
-        assert!(validated.has_visual());
+        assert!(validated.has_spec());
         assert_eq!(validated.sql(), "SELECT 1 as x, 2 as y");
         assert!(validated.visual().contains("DRAW point"));
         assert!(validated.visual().contains("DRAW line"));
@@ -413,7 +430,7 @@ mod tests {
     }
 
     // Issue #256: SQL expressions in VISUALISE mappings used to be silently
-    // consumed as SQL, with validate() reporting valid=true and has_visual=false.
+    // consumed as SQL, with validate() reporting valid=true and has_spec=false.
     // The fix detects a stray visualise_keyword node (one that didn't make it
     // into a visualise_statement) and emits an actionable error.
 
@@ -484,7 +501,7 @@ mod tests {
             "string literal containing VISUALISE should be valid: {:?}",
             validated.errors()
         );
-        assert!(!validated.has_visual());
+        assert!(!validated.has_spec());
     }
 
     #[test]
@@ -496,6 +513,6 @@ mod tests {
             "comment containing VISUALISE should be valid: {:?}",
             validated.errors()
         );
-        assert!(!validated.has_visual());
+        assert!(!validated.has_spec());
     }
 }

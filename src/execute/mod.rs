@@ -1629,7 +1629,7 @@ pub fn prepare_data_with_reader(query: &str, reader: &dyn Reader) -> Result<Prep
     prune_dataframes_per_layer(&specs, &mut data_map)?;
 
     // Extract VISUALISE text for PreparedData (SQL already extracted earlier)
-    let visual_part = source_tree.extract_visualise().unwrap_or_default();
+    let visual_part = source_tree.extract_spec().unwrap_or_default();
 
     Ok(PreparedData {
         data: data_map,
@@ -1664,6 +1664,26 @@ mod tests {
 
         let result = prepare_data_with_reader(query, &reader);
         assert!(result.is_err());
+    }
+
+    #[cfg(feature = "duckdb")]
+    #[test]
+    fn test_prepare_data_tabulate_only_is_known_gap() {
+        // Documents the known gap noted above the visualise_statement check:
+        // a TABULATE-only query has no table-execution path, so it bails out
+        // with the same generic error as a plain SQL-only query, rather than
+        // anything TABULATE-specific. Update this test once table execution
+        // exists.
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        let query = "TABULATE FROM sales";
+
+        let result = prepare_data_with_reader(query, &reader);
+        match result {
+            Err(e) => assert!(e
+                .to_string()
+                .contains("No visualization specifications found")),
+            Ok(_) => panic!("expected an error for a TABULATE-only query"),
+        }
     }
 
     #[cfg(feature = "duckdb")]

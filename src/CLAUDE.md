@@ -34,7 +34,7 @@ src/
 ### `parser/`
 
 - `mod.rs` exposes `parse_query()` which builds a `Vec<Spec>` from a query string — one `Spec` per `VISUALISE`/`TABULATE` statement, in source order. Today `build_ast` only ever produces `Spec::Plot`; `TABULATE` isn't wired into the grammar yet.
-- `source_tree.rs` is the parse-once wrapper: holds the tree-sitter `Tree`, source text, and language; offers a declarative query API (`find_node`, `find_text`, …) plus lazy `extract_sql()` / `extract_visualise()` extractors. It also handles the `VISUALISE FROM <source>` shorthand by injecting `SELECT * FROM <source>`.
+- `source_tree.rs` is the parse-once wrapper: holds the tree-sitter `Tree`, source text, and language; offers a declarative query API (`find_node`, `find_text`, …) plus lazy `extract_sql()` / `extract_spec()` extractors (the latter covers both `VISUALISE` and `TABULATE`). It also handles the `VISUALISE FROM <source>` shorthand by injecting `SELECT * FROM <source>`.
 - `builder.rs` walks the CST and produces typed `Spec` values (`Plot`, boxed for size, or `Table`). This is where new grammar nodes become `Plot`/`Table` fields.
 - `sql.rs` extracts structure from SQL fragments over the parse tree.
 

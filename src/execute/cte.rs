@@ -463,7 +463,7 @@ pub fn transform_global_sql(
     let viz_from_query = source_tree
         .find_text(
             &root,
-            r#"(visualise_statement (visualise_from source: (_) @source))"#,
+            r#"(visualise_statement (single_source_from source: (_) @source))"#,
         )
         .map(|table| {
             let q = format!("SELECT * FROM {}", table);
@@ -520,7 +520,7 @@ pub fn has_executable_sql(source_tree: &SourceTree) -> bool {
     // Check for VISUALISE FROM (which injects SELECT * FROM <source>)
     let visualise_from = r#"
         (visualise_statement
-          (visualise_from) @from)
+          (single_source_from) @from)
     "#;
     if source_tree.find_node(&root, visualise_from).is_some() {
         return true;

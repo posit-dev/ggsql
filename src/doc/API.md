@@ -118,7 +118,7 @@ if !validated.valid() {
 }
 
 // Inspect query structure
-if validated.has_visual() {
+if validated.has_spec() {
     println!("SQL: {}", validated.sql());
     println!("Visual: {}", validated.visual());
 }
@@ -150,7 +150,7 @@ pub struct Validated {
 
 | Method       | Signature                                    | Description                        |
 | ------------ | -------------------------------------------- | ---------------------------------- |
-| `has_visual` | `fn has_visual(&self) -> bool`               | Whether query contains VISUALISE   |
+| `has_spec`   | `fn has_spec(&self) -> bool`                 | Whether query contains a Spec (VISUALISE or TABULATE) |
 | `sql`        | `fn sql(&self) -> &str`                      | The SQL portion (before VISUALISE) |
 | `visual`     | `fn visual(&self) -> &str`                   | The VISUALISE portion (raw text)   |
 | `tree`       | `fn tree(&self) -> Option<&Tree>`            | CST for advanced inspection        |
@@ -171,7 +171,7 @@ if !validated.valid() {
 }
 
 // Inspect query structure
-assert!(validated.has_visual());
+assert!(validated.has_spec());
 assert_eq!(validated.sql(), "SELECT 1 as x");
 assert!(validated.visual().starts_with("VISUALISE"));
 
