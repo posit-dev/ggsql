@@ -159,17 +159,17 @@ impl<'a> SourceTree<'a> {
     ///   `from_statement`. Each such statement is rewritten by prepending
     ///   `SELECT * ` — so `FROM sales VISUALISE …` becomes
     ///   `SELECT * FROM sales`.
-    /// - `VISUALISE FROM <source>`: the FROM appears on the VISUALISE clause.
-    ///   We append `SELECT * FROM <source>` to the SQL so the reader sees an
-    ///   executable query. TABULATE FROM is not injected here yet — there is
-    ///   no table-execution path to feed it to (see Known gap comments in
-    ///   validate.rs/execute/mod.rs) — so a TABULATE FROM is currently
-    ///   dropped from the extracted SQL entirely rather than executed.
+    /// - `VISUALISE FROM <source>` / `TABULATE FROM <source>`: the FROM
+    ///   appears on the statement itself rather than as SQL. We append
+    ///   `SELECT * FROM <source>` to the SQL so the reader sees an
+    ///   executable query. Plots and tables share this extraction exactly —
+    ///   the only difference between them is that a table has no per-layer
+    ///   granular sources to also account for.
     ///
-    /// Returns `None` if there's no SQL portion and no VISUALISE FROM to
-    /// inject. The ambiguous double-FROM case (`FROM a VISUALISE FROM b …`)
-    /// is rejected in `SourceTree::new`, so any tree reaching here has at
-    /// most one of the two FROMs.
+    /// Returns `None` if there's no SQL portion and no FROM (on either
+    /// VISUALISE or TABULATE) to inject. The ambiguous double-FROM case
+    /// (`FROM a VISUALISE FROM b …`) is rejected in `SourceTree::new`, so any
+    /// tree reaching here has at most one of the two FROMs.
     pub fn extract_sql(&self) -> Option<String> {
         let root = self.root();
 
@@ -208,17 +208,23 @@ impl<'a> SourceTree<'a> {
             }
         }
 
-        // VISUALISE FROM <source>: append "SELECT * FROM <source>".
-        let viz_from = self.find_text(
+        // VISUALISE FROM <source> / TABULATE FROM <source>: append
+        // "SELECT * FROM <source>". Explicitly anchored to both statement
+        // kinds (rather than a bare `(single_source_from …)`) so this can't
+        // silently start matching some unrelated future use of
+        // single_source_from — today it's only ever a child of one of these
+        // two, but this doesn't rely on that staying true.
+        let stmt_from = self.find_text(
             &root,
             r#"
-                (visualise_statement
-                  (single_source_from
-                    source: (_) @source))
+                [
+                  (visualise_statement (single_source_from source: (_) @source))
+                  (tabulate_statement (single_source_from source: (_) @source))
+                ]
             "#,
         );
 
-        if let Some(from_identifier) = viz_from {
+        if let Some(from_identifier) = stmt_from {
             let result = if sql_text.trim().is_empty() {
                 format!("SELECT * FROM {}", from_identifier)
             } else {
@@ -312,6 +318,25 @@ mod tests {
 
         let viz = tree.extract_spec().unwrap();
         assert!(viz.starts_with("VISUALISE FROM mtcars"));
+    }
+
+    #[test]
+    fn test_extract_sql_tabulate_from_matches_bare_select() {
+        // TABULATE FROM <source> and SELECT * FROM <source> TABULATE should
+        // extract to the identical SQL, the same equivalence VISUALISE FROM
+        // already has with a bare SELECT.
+        let from_only = SourceTree::new("TABULATE FROM ggsql:penguins").unwrap();
+        let select_then_tabulate =
+            SourceTree::new("SELECT * FROM ggsql:penguins TABULATE").unwrap();
+
+        assert_eq!(
+            from_only.extract_sql().unwrap(),
+            select_then_tabulate.extract_sql().unwrap()
+        );
+        assert_eq!(
+            from_only.extract_sql().unwrap(),
+            "SELECT * FROM ggsql:penguins"
+        );
     }
 
     #[test]

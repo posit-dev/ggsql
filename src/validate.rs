@@ -310,14 +310,17 @@ mod tests {
     #[test]
     fn test_validate_tabulate_only_is_known_gap() {
         // Documents the known gap in src/validate.rs: a TABULATE-only query
-        // is recognized as having a Spec (has_spec() is true, sql() is
-        // empty rather than swallowing "TABULATE" as SQL text), but nothing
-        // about the Table is actually validated — it's reported valid with
-        // no errors. Update this test (and the "Known gap" comment above the
-        // `plots: Vec<Plot>` filter) once table validation exists.
+        // is recognized as having a Spec (has_spec() is true), and sql()
+        // correctly reflects the FROM source (extract_sql injects
+        // "SELECT * FROM <source>" for TABULATE FROM the same way it does
+        // for VISUALISE FROM) — but nothing about the Table itself is
+        // actually validated, so it's reported valid with no errors
+        // regardless of what the Table contains. Update this test (and the
+        // "Known gap" comment above the `plots: Vec<Plot>` filter) once table
+        // validation exists.
         let validated = validate("TABULATE FROM sales").unwrap();
         assert!(validated.has_spec());
-        assert!(validated.sql().is_empty());
+        assert_eq!(validated.sql(), "SELECT * FROM sales");
         assert!(validated.visual().starts_with("TABULATE"));
         assert!(validated.valid());
         assert!(validated.errors().is_empty());
