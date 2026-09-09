@@ -1,13 +1,13 @@
-//! Implementation of ResolvedPlot methods.
+//! Implementation of ResolvedPlot and ResolvedTable methods.
 
 use std::collections::HashMap;
 
 use crate::naming;
 use crate::plot::Plot;
 use crate::validate::ValidationWarning;
-use crate::DataFrame;
+use crate::{DataFrame, Table};
 
-use super::{Metadata, ResolvedPlot};
+use super::{Metadata, ResolvedPlot, ResolvedTable};
 
 impl ResolvedPlot {
     /// Create a new ResolvedPlot from PreparedData
@@ -103,6 +103,45 @@ impl ResolvedPlot {
     /// Stat transform query, or `None` if no stat transform.
     pub fn stat_sql(&self, layer_index: usize) -> Option<&str> {
         self.stat_sql.get(layer_index).and_then(|s| s.as_deref())
+    }
+
+    /// Validation warnings from preparation.
+    pub fn warnings(&self) -> &[ValidationWarning] {
+        &self.warnings
+    }
+}
+
+impl ResolvedTable {
+    /// Create a new ResolvedTable.
+    pub(crate) fn new(
+        table: Table,
+        body: DataFrame,
+        sql: String,
+        warnings: Vec<ValidationWarning>,
+    ) -> Self {
+        Self {
+            table,
+            body,
+            sql,
+            warnings,
+        }
+    }
+
+    /// Get the resolved table specification.
+    pub fn table(&self) -> &Table {
+        &self.table
+    }
+
+    /// Get the resolved body data. See the PROVISIONAL note on the `body`
+    /// field in `reader::mod` — this accessor's return type will likely
+    /// change once real table writers exist.
+    pub fn body(&self) -> &DataFrame {
+        &self.body
+    }
+
+    /// The SQL query that was executed to produce `body`.
+    pub fn sql(&self) -> &str {
+        &self.sql
     }
 
     /// Validation warnings from preparation.

@@ -36,7 +36,7 @@ use std::collections::HashMap;
 use crate::execute::prepare_data_with_reader;
 use crate::plot::{CastTargetType, Plot};
 use crate::validate::{validate, ValidationWarning};
-use crate::{naming, DataFrame, GgsqlError, Result};
+use crate::{naming, DataFrame, GgsqlError, Result, Table};
 
 // =============================================================================
 // SQL Dialect
@@ -699,6 +699,43 @@ pub struct Metadata {
     pub rows: usize,
     pub columns: Vec<String>,
     pub layer_count: usize,
+}
+
+// ============================================================================
+// ResolvedTable - Result of reader.execute() for a TABULATE statement
+// ============================================================================
+
+/// Result of executing a ggsql TABULATE query, ready for rendering.
+pub struct ResolvedTable {
+    /// The resolved table specification
+    pub(crate) table: Table,
+    // PROVISIONAL, NOT A FINAL DESIGN DECISION: a plain `DataFrame` is enough
+    // to design the execution plumbing against, but this was never settled
+    // as the real representation. It will very likely need to become a
+    // table-specific intermediate representation once real table writers
+    // exist (e.g. an HTML/gt-style writer) and we know what they actually
+    // need `body` to carry. Don't build on this shape assuming it's final.
+    /// The data resolved from `table.source` (or the main SQL if there was no
+    /// TABULATE FROM)
+    pub(crate) body: DataFrame,
+    /// The SQL query that was executed to produce `body`
+    pub(crate) sql: String,
+    /// Validation warnings from preparation
+    pub(crate) warnings: Vec<ValidationWarning>,
+}
+
+// ============================================================================
+// ResolvedSpec - Result of reader.execute()
+// ============================================================================
+
+/// Result of executing a ggsql query: either a resolved plot or a resolved
+/// table, mirroring the parse-time `Spec` (`Plot` or `Table`).
+pub enum ResolvedSpec {
+    // Boxed for the same reason `Spec::Plot` is: `ResolvedPlot` is far larger
+    // than `ResolvedTable`, and clippy flags the resulting size gap
+    // (`large_enum_variant`) otherwise.
+    Plot(Box<ResolvedPlot>),
+    Table(ResolvedTable),
 }
 
 // ============================================================================
