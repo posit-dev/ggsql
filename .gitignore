@@ -80,9 +80,8 @@ perf.data*
 criterion/
 
 # WASM artifacts
-/ggsql-wasm/pkg/
+/ggsql-wasm/pkg/dist/
 /ggsql-wasm/demo/dist/
-/ggsql-wasm/library/dist/
 
 # C/C++ build artifacts (from tree-sitter)
 *.o

@@ -89,7 +89,7 @@ There is deliberately **no root `rust-toolchain.toml`**: pinning to 1.86 would f
 Two things are exempt from the 1.86 MSRV:
 
 - **The `adbc` test path.** The experimental `adbc` feature depends (dev-only) on `adbc_datafusion` → `datafusion` ≥53.1.0, which uses let-chains and so requires rustc ≥1.88 for real. The shipped library still builds on 1.86 (it uses only `adbc_core`); only the test / `--all-targets` build pulls `datafusion`.
-- **The wasm bindings (`ggsql-wasm`).** R doesn't use wasm, and some wasm-only dependencies require a newer rustc, so the crate has no `rust-version` and a nested `ggsql-wasm/rust-toolchain.toml` selects **stable** for any build done from that directory (`./build-wasm.sh`, `wasm-pack`, `library/`).
+- **The wasm bindings (`ggsql-wasm`).** R doesn't use wasm, and some wasm-only dependencies require a newer rustc, so the crate has no `rust-version` and a nested `ggsql-wasm/rust-toolchain.toml` selects **stable** for builds run from that directory (`./build-wasm.sh`, Cargo, or `pkg/`).
 
 ### Rendering plots on Linux
 

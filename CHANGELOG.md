@@ -92,7 +92,8 @@
   pane gets more tick labels rather than stretched ones. **Breaking:**
   `GgsqlContext.execute` returns a `GgsqlPlot` to draw rather than a Vega-Lite
   JSON string; the npm package is entered through a new `ggsql.js` wrapper that
-  adds `PlotView` and `registerDefaultFonts` beside it.
+  adds `PlotView` and `registerDefaultFonts` beside it. `init()` now wires the
+  extension loader itself, so `initExtensionLoader` is gone.
 - Plots in a Positron console now open a `positron.plot` comm, so the Plots pane
   renders them at its own size, re-renders sharp when resized, and its save,
   copy and zoom affordances work on them. A new `--max-plots` (default 32) caps

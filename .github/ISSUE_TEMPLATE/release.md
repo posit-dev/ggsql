@@ -21,6 +21,8 @@ assignees: ''
       - `version` in `[project]` section in `ggsql-jupyter/pyproject.toml`.
     - ggsql-vscode
       - `version` in `ggsql-vscode/package.json`.
+    - ggsql-wasm
+      - `version` in `ggsql-wasm/pkg/package.json`.
 - [ ] Update lock files:
     - Run `cargo build`, ensure `Cargo.lock` updates.
     - Run `(cd ggsql-wasm && ./build-wasm.sh && cd demo && npm install)`, ensure that `ggsql-wasm/demo/package-lock.json` updates.

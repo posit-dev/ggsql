@@ -14,7 +14,7 @@ for arg in "$@"; do
     esac
 done
 
-check_wasm32_support() {
+check_prerequisites() {
     local cc="${CC:-clang}"
     if ! echo "int main(){return 0;}" | \
         "$cc" -target wasm32-unknown-unknown -c -o /dev/null -x c - 2>/dev/null; then
@@ -22,123 +22,69 @@ check_wasm32_support() {
         echo "Install an LLVM/clang toolchain with wasm backend support (e.g. 'sudo apt-get install llvm' on Debian/Ubuntu)." >&2
         exit 1
     fi
-    if ! command -v wasm-pack >/dev/null 2>&1; then
-        echo "Error: wasm-pack not found. Install with: cargo install wasm-pack" >&2
+
+    if ! command -v wasm-opt >/dev/null 2>&1; then
+        echo "Error: wasm-opt not found. Install binaryen or run: cargo install wasm-opt" >&2
         exit 1
     fi
+
+    local expected_version
+    expected_version="$(awk '/^name = "wasm-bindgen"$/{f=1;next} f&&/^version = /{gsub(/[",]/,"");print $3;exit}' "$REPO_ROOT/Cargo.lock")"
+    if [ -z "$expected_version" ]; then
+        echo "Error: could not find the wasm-bindgen version in Cargo.lock." >&2
+        exit 1
+    fi
+    if ! command -v wasm-bindgen >/dev/null 2>&1 || \
+        [ "$(wasm-bindgen --version 2>/dev/null | awk '{print $2}')" != "$expected_version" ]; then
+        echo "Error: wasm-bindgen $expected_version is required." >&2
+        echo "Install it with: cargo install -f wasm-bindgen-cli --version $expected_version" >&2
+        exit 1
+    fi
+    echo "Using wasm-bindgen $expected_version"
 }
 
-echo "Building WASM library..."
-(cd "$SCRIPT_DIR/library" && npm install && npm run build)
+echo "Checking wasm build prerequisites..."
+check_prerequisites
 
 if [ "$SKIP_BINARY" = false ]; then
-    echo "Checking wasm build prerequisites..."
-    check_wasm32_support
-
     echo "Building WASM binary..."
-    rm -rf "$SCRIPT_DIR/pkg"   # start clean so stale wasm-bindgen snippets don't accumulate
-    (cd "$SCRIPT_DIR" && wasm-pack build --target web --profile wasm --no-opt)
+    (cd "$SCRIPT_DIR" && cargo build \
+        --target wasm32-unknown-unknown \
+        --profile wasm \
+        -p ggsql-wasm)
 
-    # wasm-bindgen is invoked directly so we can pass --keep-lld-exports,
-    # which preserves the LLD symbols that loadable extensions import.
-    # wasm-pack cannot forward that flag (rustwasm/wasm-pack#1092).
-    echo "Re-running wasm-bindgen with --keep-lld-exports..."
-    # The schema versions have to agree exactly, so pick the binary matching
-    # the wasm-bindgen the crate was built against rather than the newest one
-    # on the machine.
-    WB_VERSION="$(awk '/^name = "wasm-bindgen"$/{f=1;next} f&&/^version = /{gsub(/[",]/,"");print $3;exit}' "$REPO_ROOT/Cargo.lock")"
-    WASM_BINDGEN=""
-    if [ -n "$WB_VERSION" ]; then
-        # wasm-pack caches a binary it downloaded differently from one it had
-        # to build, and which you get depends on the platform: a prebuilt
-        # tarball is keyed by a hash of its URL, putting the version nowhere in
-        # the path, while the `cargo install` fallback taken where no prebuilt
-        # exists gives `wasm-bindgen-cargo-install-<version>/`. So match on the
-        # file name only and ask each candidate its version — which also makes
-        # the match an actual check rather than trust in a directory name. A
-        # hand-installed copy on PATH counts too.
-        candidates=()
-        while IFS= read -r found; do
-            candidates+=("$found")
-        done < <(find "$HOME/Library/Caches/.wasm-pack" \
-            "${XDG_CACHE_HOME:-$HOME/.cache}/.wasm-pack" \
-            -name wasm-bindgen -type f 2>/dev/null)
-        candidates+=("$(command -v wasm-bindgen 2>/dev/null || true)")
-        for candidate in "${candidates[@]}"; do
-            [ -n "$candidate" ] && [ -x "$candidate" ] || continue
-            if [ "$("$candidate" --version 2>/dev/null | awk '{print $2}')" = "$WB_VERSION" ]; then
-                WASM_BINDGEN="$candidate"
-                break
-            fi
-        done
-    fi
-    if [ -z "$WASM_BINDGEN" ]; then
-        echo "Error: no wasm-bindgen ${WB_VERSION:-(version unknown)} found." >&2
-        echo "Install it with: cargo install -f wasm-bindgen-cli --version $WB_VERSION" >&2
-        exit 1
-    fi
-    echo "Using wasm-bindgen $WB_VERSION"
-    "$WASM_BINDGEN" \
+    rm -rf "$SCRIPT_DIR/pkg/dist"
+    wasm-bindgen \
         --target web \
         --keep-lld-exports \
-        --out-dir "$SCRIPT_DIR/pkg" \
+        --out-dir "$SCRIPT_DIR/pkg/dist" \
         "$REPO_ROOT/target/wasm32-unknown-unknown/wasm/ggsql_wasm.wasm"
 
     if [ "$SKIP_OPT" = false ]; then
         echo "Optimising WASM binary..."
-        # The features rustc actually emits, named one by one. wasm-opt rejects
-        # them unless told to expect them, and `--all-features` is not the
-        # shortcut: it enables post-MVP proposals browsers still reject.
-        (cd "$SCRIPT_DIR" && wasm-opt pkg/ggsql_wasm_bg.wasm -o pkg/ggsql_wasm_bg.wasm -Oz \
+        wasm-opt \
+            "$SCRIPT_DIR/pkg/dist/ggsql_wasm_bg.wasm" \
+            -o "$SCRIPT_DIR/pkg/dist/ggsql_wasm_bg.wasm" \
+            -Oz \
             --enable-bulk-memory \
             --enable-nontrapping-float-to-int \
             --enable-reference-types \
             --enable-sign-ext \
             --enable-mutable-globals \
-            --enable-multivalue)
+            --enable-multivalue
     else
         echo "Skipping wasm-opt (--skip-opt)."
     fi
-
 else
     echo "Skipping WASM binary build (--skip-binary)."
-    if [ ! -f "$SCRIPT_DIR/pkg/ggsql_wasm_bg.wasm" ]; then
-        echo "Error: --skip-binary needs an existing pkg/; run once without it first." >&2
+    if [ ! -f "$SCRIPT_DIR/pkg/dist/ggsql_wasm_bg.wasm" ]; then
+        echo "Error: --skip-binary needs pkg/dist/ggsql_wasm_bg.wasm; run once without it first." >&2
         exit 1
     fi
 fi
 
-# Outside the --skip-binary guard on purpose. These are copies, not a build,
-# and `--skip-binary` means "don't recompile the wasm" — a wrapper edit has to
-# reach the package either way, or you debug a fix that was never in the
-# bundle. Cheap and idempotent, so running it every time costs nothing.
-#
-# The hand-written wrapper is the package entry point, not wasm-pack's
-# generated glue: it owns the resize and font wiring a page actually needs.
-# Both live at './' so the import path is the same here and once published.
-echo "Adding wrapper, fonts and snippets to the package..."
-cp "$SCRIPT_DIR/js/ggsql.js" "$SCRIPT_DIR/pkg/ggsql.js"
-cp "$SCRIPT_DIR/js/ggsql.d.ts" "$SCRIPT_DIR/pkg/ggsql.d.ts"
-mkdir -p "$SCRIPT_DIR/pkg/fonts"
-cp "$SCRIPT_DIR/fonts/roboto-"*.ttf "$SCRIPT_DIR/fonts/OFL-Roboto.txt" "$SCRIPT_DIR/pkg/fonts/"
-# Guarded because `files[]=` *appends*: run twice over one package.json and the
-# file list accumulates duplicates. wasm-pack rewrites package.json on every
-# full build, so "does `main` already point at the wrapper" is exactly the
-# question of whether this has been done to *this* package.json.
-if [ "$(cd "$SCRIPT_DIR/pkg" && npm pkg get main)" != '"ggsql.js"' ]; then
-    (
-        cd "$SCRIPT_DIR/pkg"
-        npm pkg set 'files[]=snippets/'
-        npm pkg set 'files[]=ggsql.js'
-        npm pkg set 'files[]=ggsql.d.ts'
-        npm pkg set 'types=ggsql.d.ts'
-        npm pkg set 'files[]=fonts/'
-        npm pkg set 'main=ggsql.js'
-        npm pkg set 'module=ggsql.js'
-        npm pkg set 'exports[.]=./ggsql.js'
-        npm pkg set 'exports[./fonts/*]=./fonts/*'
-    )
-fi
+echo "Building npm package..."
+(cd "$SCRIPT_DIR/pkg" && npm install && npm run build)
 
 SPATIALITE_TAG="spatialite-5.1.0-wasm"
 SPATIALITE_URL="https://github.com/ggsql-dev/sqlite-wasm-rs/releases/download/$SPATIALITE_TAG/mod_spatialite.wasm"
@@ -146,22 +92,22 @@ SPATIALITE_URL="https://github.com/ggsql-dev/sqlite-wasm-rs/releases/download/$S
 # SPATIALITE_WASM overrides the download with a locally built binary.
 if [ -n "${SPATIALITE_WASM:-}" ]; then
     echo "Using local mod_spatialite.wasm: $SPATIALITE_WASM"
-    cp "$SPATIALITE_WASM" "$SCRIPT_DIR/pkg/mod_spatialite.wasm"
+    SPATIALITE_SOURCE="$SPATIALITE_WASM"
 else
-    CACHED="$REPO_ROOT/target/wasm-extensions/$SPATIALITE_TAG/mod_spatialite.wasm"
-    if [ ! -f "$CACHED" ]; then
+    SPATIALITE_SOURCE="$REPO_ROOT/target/wasm-extensions/$SPATIALITE_TAG/mod_spatialite.wasm"
+    if [ ! -f "$SPATIALITE_SOURCE" ]; then
         echo "Downloading mod_spatialite.wasm ($SPATIALITE_TAG)..."
-        mkdir -p "$(dirname "$CACHED")"
-        curl -sSfL -o "$CACHED.tmp" "$SPATIALITE_URL"
-        mv "$CACHED.tmp" "$CACHED"
+        mkdir -p "$(dirname "$SPATIALITE_SOURCE")"
+        curl -sSfL -o "$SPATIALITE_SOURCE.tmp" "$SPATIALITE_URL"
+        mv "$SPATIALITE_SOURCE.tmp" "$SPATIALITE_SOURCE"
     else
-        echo "Using cached mod_spatialite.wasm: $CACHED"
+        echo "Using cached mod_spatialite.wasm: $SPATIALITE_SOURCE"
     fi
-    cp "$CACHED" "$SCRIPT_DIR/pkg/mod_spatialite.wasm"
 fi
 
 echo "Building WASM demo and Quarto integration..."
 (cd "$SCRIPT_DIR/demo" && npm install && npm run build)
+cp "$SPATIALITE_SOURCE" "$SCRIPT_DIR/demo/dist/mod_spatialite.wasm"
 
 echo "Copying output to doc/wasm..."
 rm -rf "$REPO_ROOT/doc/wasm"

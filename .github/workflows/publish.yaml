@@ -51,8 +51,9 @@ jobs:
           cache-on-failure: true
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
-      - name: Install wasm-pack
-        run: cargo install wasm-pack
+      - name: Install wasm-bindgen CLI
+        run: |
+          cargo install -f wasm-bindgen-cli --version "$(awk '/^name = "wasm-bindgen"$/{f=1;next} f&&/^version = /{gsub(/[",]/,"");print $3;exit}' Cargo.lock)"
 
       - name: Install wasm-opt
         run: cargo install wasm-opt

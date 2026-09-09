@@ -31,44 +31,44 @@ pub fn start() {
 // JS bridge declarations
 // ============================================================================
 
-#[wasm_bindgen(module = "/library/dist/lib.js")]
-extern "C" {
-    #[wasm_bindgen(catch, js_name = convert_parquet)]
-    async fn convert_parquet_js(data: &[u8]) -> Result<JsValue, JsValue>;
-
-    #[wasm_bindgen(catch, js_name = convert_csv)]
-    fn convert_csv_js(data: &[u8]) -> Result<JsValue, JsValue>;
-
-    #[wasm_bindgen(catch, js_name = initExtensionLoader)]
-    fn init_extension_loader_js(exports: &JsValue) -> Result<(), JsValue>;
-
-    #[wasm_bindgen(catch, js_name = installExtension)]
-    async fn install_extension_js(name: &str, source: JsValue) -> Result<JsValue, JsValue>;
+thread_local! {
+    static CONVERTERS: RefCell<Option<(js_sys::Function, js_sys::Function)>> =
+        const { RefCell::new(None) };
 }
 
-// ============================================================================
-// Package exports — forward to the JS helpers above
-// ============================================================================
-
-#[wasm_bindgen(js_name = convert_csv)]
-pub fn convert_csv_export(data: &[u8]) -> Result<JsValue, JsValue> {
-    convert_csv_js(data)
+/// Supply the JavaScript CSV and Parquet converters.
+///
+/// Called by the npm package's `init` wrapper; not intended for direct use.
+#[wasm_bindgen(js_name = setConverters)]
+pub fn set_converters(csv: js_sys::Function, parquet: js_sys::Function) {
+    CONVERTERS.with(|converters| {
+        *converters.borrow_mut() = Some((csv, parquet));
+    });
 }
 
-#[wasm_bindgen(js_name = convert_parquet)]
-pub async fn convert_parquet_export(data: &[u8]) -> Result<JsValue, JsValue> {
-    convert_parquet_js(data).await
+fn converters() -> Result<(js_sys::Function, js_sys::Function), JsValue> {
+    CONVERTERS.with(|converters| {
+        converters.borrow().clone().ok_or_else(|| {
+            JsValue::from_str(
+                "CSV and Parquet converters are not configured; initialize through ggsql-wasm",
+            )
+        })
+    })
 }
 
-#[wasm_bindgen(js_name = initExtensionLoader)]
-pub fn init_extension_loader(exports: JsValue) -> Result<(), JsValue> {
-    init_extension_loader_js(&exports)
+fn convert_csv_js(data: &[u8]) -> Result<JsValue, JsValue> {
+    let (convert_csv, _) = converters()?;
+    let bytes = js_sys::Uint8Array::from(data);
+    convert_csv.call1(&JsValue::UNDEFINED, &bytes)
 }
 
-#[wasm_bindgen(js_name = installExtension)]
-pub async fn install_extension(name: String, source: JsValue) -> Result<(), JsValue> {
-    install_extension_js(&name, source).await?;
-    Ok(())
+async fn convert_parquet_js(data: &[u8]) -> Result<JsValue, JsValue> {
+    let (_, convert_parquet) = converters()?;
+    let bytes = js_sys::Uint8Array::from(data);
+    let promise = convert_parquet
+        .call1(&JsValue::UNDEFINED, &bytes)?
+        .dyn_into::<js_sys::Promise>()?;
+    wasm_bindgen_futures::JsFuture::from(promise).await
 }
 
 // ============================================================================

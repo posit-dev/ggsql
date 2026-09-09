@@ -84,10 +84,14 @@ jobs:
       - name: Run Clippy
         run: cargo clippy -- -D warnings
 
-      - name: Install wasm-pack
+      - name: Install wasm-bindgen CLI
         # The wasm build itself runs in ggsql-wasm/, whose nested
         # rust-toolchain.toml selects stable.
-        run: cargo install wasm-pack
+        run: |
+          cargo install -f wasm-bindgen-cli --version "$(awk '/^name = "wasm-bindgen"$/{f=1;next} f&&/^version = /{gsub(/[",]/,"");print $3;exit}' Cargo.lock)"
+
+      - name: Install wasm-opt
+        run: cargo install wasm-opt
 
       - name: Build library
         run: cargo build
@@ -142,10 +146,5 @@ jobs:
         # it renders the whole doc corpus and wants an adapter to do it.
         run: cargo check -p ggsql-cli --features png --example visual_test
 
-      - name: Build WASM library
-        working-directory: ggsql-wasm/library
-        run: npm install && npm run build
-
       - name: Build WASM package
-        working-directory: ggsql-wasm
-        run: wasm-pack build --target web --profile wasm --no-opt
+        run: ./ggsql-wasm/build-wasm.sh --skip-opt

@@ -1,5 +1,5 @@
-import type { ColumnDescriptor, ColumnType } from "./index";
-import { EPOCH, MS_PER_DAY } from "./index";
+import type { ColumnDescriptor, ColumnType } from "./columns";
+import { EPOCH, MS_PER_DAY } from "./columns";
 import { parquetReadObjects } from "hyparquet";
 
 /**

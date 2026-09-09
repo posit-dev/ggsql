@@ -1,4 +1,4 @@
-import type { ColumnDescriptor, ColumnType } from "./index";
+import type { ColumnDescriptor, ColumnType } from "./columns";
 
 /**
  * Convert CSV bytes to column descriptors.
