@@ -9,6 +9,7 @@
 //! - `casting`: Type requirements determination and casting logic
 //! - `layer`: Layer query building, data transforms, and stat application
 //! - `scale`: Scale creation, resolution, type coercion, and OOB handling
+//! - `table`: Table (TABULATE) resolution
 
 mod casting;
 mod cte;
@@ -16,11 +17,13 @@ mod layer;
 mod position;
 mod scale;
 mod schema;
+mod table;
 
 // Re-export public API
 pub use casting::TypeRequirement;
 pub use cte::CteDefinition;
 pub use schema::TypeInfo;
+pub use table::resolve_table_with_reader;
 
 use crate::naming;
 use crate::parser;
