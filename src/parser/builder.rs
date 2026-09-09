@@ -224,14 +224,10 @@ pub fn build_ast(source: &SourceTree) -> Result<Vec<Spec>> {
     stmt_nodes.sort_by_key(|n| n.start_byte());
 
     // TODO: the "FROM after a trailing SELECT" check below is duplicated
-    // (with a different keyword) across the two arms. The message-building
-    // could be factored into a shared `fn(has_from, last_is_select, keyword)`
-    // helper today. The `has_from` *detection* can't be unified as cleanly
-    // yet, though: the VISUALISE arm checks a real `spec.source` field, while
-    // the TABULATE arm has to query the CST directly since `Table` has none.
-    // Once `Table` stores its own `source` field, both arms would do the same
-    // `.source.is_some()` shape and this whole block could be deduplicated
-    // properly, not just have its message text shared.
+    // (with a different keyword) across the two arms. Both now check the same
+    // `.source.is_some()` shape, so the message-building (only difference
+    // left) could be factored into a shared `fn(has_from, last_is_select,
+    // keyword)` helper.
     let mut specs = Vec::new();
     for stmt_node in stmt_nodes {
         match stmt_node.kind() {
@@ -251,13 +247,10 @@ pub fn build_ast(source: &SourceTree) -> Result<Vec<Spec>> {
                 specs.push(Spec::Plot(Box::new(spec)));
             }
             "tabulate_statement" => {
+                let table = build_tabulate_statement(&stmt_node, source);
+
                 // Validate TABULATE FROM usage, mirroring VISUALISE FROM above.
-                // There's no `Table.source` field to check yet (Table has no
-                // fields at all), so this checks the CST directly instead.
-                let has_from = source
-                    .find_node(&stmt_node, "(single_source_from) @from")
-                    .is_some();
-                if has_from && last_is_select {
+                if table.source.is_some() && last_is_select {
                     return Err(GgsqlError::ParseError(
                         "Cannot use TABULATE FROM when the last SQL statement is SELECT. \
                          Use either 'SELECT ... TABULATE' or remove the SELECT and use \
@@ -266,7 +259,7 @@ pub fn build_ast(source: &SourceTree) -> Result<Vec<Spec>> {
                     ));
                 }
 
-                specs.push(Spec::Table(Table {}));
+                specs.push(Spec::Table(table));
             }
             other => {
                 return Err(GgsqlError::InternalError(format!(
@@ -351,6 +344,22 @@ fn build_visualise_statement(node: &Node, source: &SourceTree) -> Result<Plot> {
     // This keeps all annotation-specific logic in one place.
 
     Ok(spec)
+}
+
+/// Build a single Table from a tabulate_statement node
+fn build_tabulate_statement(node: &Node, source: &SourceTree) -> Table {
+    let mut table = Table::new();
+
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        if child.kind() == "single_source_from" {
+            if let Some(source_node) = child.child_by_field_name("source") {
+                table.source = Some(parse_data_source(&source_node, source));
+            }
+        }
+    }
+
+    table
 }
 
 /// Process a visualization clause node
@@ -1278,18 +1287,24 @@ mod tests {
     fn test_tabulate_bare() {
         let specs = parse_test_specs("SELECT 1 TABULATE").unwrap();
         assert_eq!(specs.len(), 1);
-        assert!(matches!(specs[0], Spec::Table(_)));
+        let table = specs[0].as_table().expect("expected a Table spec");
+        assert!(table.source.is_none());
     }
 
     #[test]
     fn test_tabulate_from() {
-        // Table has no fields yet, so this only checks that a FROM clause
-        // parses without error — the source itself is discarded, not stored.
-        // Once Table starts capturing it, this test needs a matches!/assert
-        // on that field too, not just the variant.
         let specs = parse_test_specs("TABULATE FROM sales").unwrap();
         assert_eq!(specs.len(), 1);
-        assert!(matches!(specs[0], Spec::Table(_)));
+        let table = specs[0].as_table().expect("expected a Table spec");
+        assert!(matches!(table.source, Some(DataSource::Identifier(ref name)) if name == "sales"));
+    }
+
+    #[test]
+    fn test_tabulate_from_file_path() {
+        let specs = parse_test_specs("TABULATE FROM 'data.csv'").unwrap();
+        assert_eq!(specs.len(), 1);
+        let table = specs[0].as_table().expect("expected a Table spec");
+        assert!(matches!(table.source, Some(DataSource::FilePath(ref path)) if path == "data.csv"));
     }
 
     #[test]

@@ -60,7 +60,7 @@ mod tests {
         assert!(plot.as_plot().is_some());
         assert!(plot.as_table().is_none());
 
-        let table = Spec::Table(Table {});
+        let table = Spec::Table(Table::default());
         assert!(table.as_plot().is_none());
         assert!(table.as_table().is_some());
     }
@@ -70,10 +70,10 @@ mod tests {
         let plot = Spec::Plot(Box::default());
         assert!(plot.into_plot().is_some());
 
-        let table = Spec::Table(Table {});
+        let table = Spec::Table(Table::default());
         assert!(table.into_table().is_some());
 
         assert!(Spec::Plot(Box::default()).into_table().is_none());
-        assert!(Spec::Table(Table {}).into_plot().is_none());
+        assert!(Spec::Table(Table::default()).into_plot().is_none());
     }
 }
