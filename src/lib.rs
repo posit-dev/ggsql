@@ -51,9 +51,11 @@ pub mod reader;
 #[cfg(feature = "graphics")]
 pub mod fonts;
 
-// `graphics` is the gate the renderer-backed writers share, so an `svg`-only
-// build reaches `SvgWriter` without dragging the Vega-Lite one in.
-#[cfg(any(feature = "vegalite", feature = "graphics"))]
+// Ungated, because `Writer` and `WriterOptions` name nothing a writer feature
+// brings in: a frontend can accept writer settings, or be generic over the
+// trait, before it knows which writer it will get. Each writer inside is gated
+// on its own format, and the renderer-backed ones share `graphics` — so an
+// `svg`-only build reaches `SvgWriter` without dragging the Vega-Lite one in.
 pub mod writer;
 
 pub mod execute;
