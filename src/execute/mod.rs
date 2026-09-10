@@ -1093,6 +1093,19 @@ pub struct PreparedData {
     pub visual: String,
 }
 
+/// Execute setup statements (INSTALL, LOAD, SET, etc.) ahead of the main
+/// query. Shared by the Plot and Table pipelines (`prepare_data_with_reader`
+/// and `table::resolve_table_with_reader`). Structured DML (CREATE, INSERT,
+/// UPDATE, DELETE) is out of scope here — see `cte::extract_side_effects`,
+/// which only the Plot pipeline currently runs.
+fn execute_setup_statements(source_tree: &parser::SourceTree, reader: &dyn Reader) -> Result<()> {
+    let root = source_tree.root();
+    for stmt in source_tree.find_texts(&root, "(sql_statement (other_sql_statement) @stmt)") {
+        reader.execute_sql(&stmt)?;
+    }
+    Ok(())
+}
+
 /// Build data map from a query using a Reader
 ///
 /// This is the main entry point for preparing visualization data from a ggsql query.
@@ -1139,12 +1152,7 @@ pub fn prepare_data_with_reader(query: &str, reader: &dyn Reader) -> Result<Prep
         ));
     }
 
-    // Execute setup statements (INSTALL, LOAD, SET, etc.) before the main query.
-    // Structured DML (CREATE, INSERT, UPDATE, DELETE) is handled separately as
-    // side-effects in cte::transform_global_sql.
-    for stmt in source_tree.find_texts(&root, "(sql_statement (other_sql_statement) @stmt)") {
-        reader.execute_sql(&stmt)?;
-    }
+    execute_setup_statements(&source_tree, reader)?;
 
     // Run structured DML (CREATE, INSERT, UPDATE, DELETE) before CTE
     // materialization and the global query, so any table they create or
@@ -1667,6 +1675,25 @@ mod tests {
 
         let result = prepare_data_with_reader(query, &reader);
         assert!(result.is_err());
+    }
+
+    // Covers `execute_setup_statements`, shared by `prepare_data_with_reader`
+    // and `table::resolve_table_with_reader` — exercised once here rather
+    // than duplicated at each call site.
+    #[cfg(feature = "duckdb")]
+    #[test]
+    fn test_execute_setup_statements_runs_set_before_query() {
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        let query = "SET VARIABLE ggsql_test_var = 42; SELECT 1 AS x";
+        let source_tree = parser::SourceTree::new(query).unwrap();
+
+        execute_setup_statements(&source_tree, &reader).unwrap();
+
+        let df = reader
+            .execute_sql("SELECT getvariable('ggsql_test_var') AS v")
+            .unwrap();
+        let v = df.column("v").unwrap();
+        assert_eq!(crate::array_util::value_to_string(v, 0), "42");
     }
 
     #[cfg(feature = "duckdb")]

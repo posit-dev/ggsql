@@ -24,9 +24,12 @@ use crate::{GgsqlError, Result, Spec};
 /// statements, or a mix of VISUALISE and TABULATE, isn't disambiguated any
 /// further than that yet.
 ///
-/// Setup statements (INSTALL, LOAD, SET, etc.) ahead of a TABULATE are not
-/// executed here yet, unlike the Plot pipeline's handling of the same thing
-/// in `prepare_data_with_reader` — a known gap, not a deliberate choice.
+/// Setup statements (INSTALL, LOAD, SET, etc.) ahead of a TABULATE are
+/// executed here too, via the same `execute_setup_statements` helper
+/// `prepare_data_with_reader` uses — structured DML (CREATE, INSERT, UPDATE,
+/// DELETE) ahead of a TABULATE isn't handled, since there's no CTE/side-effect
+/// extraction step in this pipeline to mirror `prepare_data_with_reader`'s use
+/// of `cte::extract_side_effects`.
 pub fn resolve_table_with_reader(query: &str, reader: &dyn Reader) -> Result<ResolvedTable> {
     let validated = validate(query)?;
     let warnings: Vec<ValidationWarning> = validated.warnings().to_vec();
@@ -38,6 +41,8 @@ pub fn resolve_table_with_reader(query: &str, reader: &dyn Reader) -> Result<Res
         .into_iter()
         .find_map(Spec::into_table)
         .ok_or_else(|| GgsqlError::ValidationError("No table specification found".to_string()))?;
+
+    super::execute_setup_statements(&source_tree, reader)?;
 
     let sql = source_tree.extract_sql().ok_or_else(|| {
         GgsqlError::ValidationError(
