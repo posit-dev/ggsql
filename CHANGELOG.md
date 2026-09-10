@@ -91,9 +91,11 @@
   JavaScript. A plot re-solves its layout when its box changes size, so a wider
   pane gets more tick labels rather than stretched ones. **Breaking:**
   `GgsqlContext.execute` returns a `GgsqlPlot` to draw rather than a Vega-Lite
-  JSON string; the npm package is entered through a new `ggsql.js` wrapper that
-  adds `PlotView` and `registerDefaultFonts` beside it. `init()` now wires the
-  extension loader itself, so `initExtensionLoader` is gone.
+  JSON string; the npm package is entered through a new TypeScript client that
+  adds `PlotView` and `registerDefaultFonts` beside it. `init()` — and a new
+  `initSync()` — wire the extension loader and the CSV/Parquet converters
+  themselves, so `initExtensionLoader` is gone and entering through the package
+  rather than the generated glue is now required.
 - Plots in a Positron console now open a `positron.plot` comm, so the Plots pane
   renders them at its own size, re-renders sharp when resized, and its save,
   copy and zoom affordances work on them. A new `--max-plots` (default 32) caps

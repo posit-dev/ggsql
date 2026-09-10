@@ -86,12 +86,11 @@ jobs:
 
       - name: Install wasm-bindgen CLI
         # The wasm build itself runs in ggsql-wasm/, whose nested
-        # rust-toolchain.toml selects stable.
+        # rust-toolchain.toml selects stable. No wasm-opt here: this job builds
+        # with --skip-opt, and the flag no longer requires the binary it skips.
+        # The release workflows optimise for real.
         run: |
           cargo install -f wasm-bindgen-cli --version "$(awk '/^name = "wasm-bindgen"$/{f=1;next} f&&/^version = /{gsub(/[",]/,"");print $3;exit}' Cargo.lock)"
-
-      - name: Install wasm-opt
-        run: cargo install wasm-opt
 
       - name: Build library
         run: cargo build

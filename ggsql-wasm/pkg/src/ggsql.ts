@@ -21,7 +21,19 @@ import { convert_csv } from "./csv";
 import { convert_parquet } from "./parquet";
 import { initExtensionLoader } from "./extensions";
 
-export * from "./ggsql_wasm.js";
+// One entry point for the package: the glue's API, minus the plumbing `init`
+// uses to reach back into it, plus the browser-shaped helpers below. The list
+// is explicit rather than `export *` so that `setConverters` stays internal —
+// a caller who replaced the converters would break every registered format.
+export {
+  GgsqlContext,
+  GgsqlPlot,
+  SvgRender,
+  hasFonts,
+  registerFont,
+  setGenericFamily,
+} from "./ggsql_wasm.js";
+export type { InitInput, InitOutput, SyncInitInput } from "./ggsql_wasm.js";
 export { convert_csv } from "./csv";
 export { convert_parquet } from "./parquet";
 export { installExtension } from "./extensions";
@@ -32,6 +44,10 @@ type AsyncInitInput =
   | InitInput
   | Promise<InitInput>;
 
+// Distinguishing the options bag from a bare module source, which is itself an
+// object — a `Response`, `URL`, `WebAssembly.Module` or `Promise`. A plain
+// object prototype is what separates the two; passing the source directly is
+// what a caller reaches for, and what the glue now warns about.
 function isAsyncInitOptions(
   input: AsyncInitInput,
 ): input is { module_or_path: InitInput | Promise<InitInput> } {
@@ -45,6 +61,11 @@ function isAsyncInitOptions(
 
 /**
  * Instantiate ggsql and connect the package's converters and extension loader.
+ *
+ * The wiring belongs here rather than in the caller's hands: the Rust side
+ * calls back into JavaScript for CSV and Parquet, and a context built before
+ * `setConverters` fails on the first registered file. Entering through the
+ * package is therefore the contract, and the glue's own `init` is not exported.
  */
 export default async function init(input?: AsyncInitInput): Promise<InitOutput> {
   const output =
@@ -60,6 +81,9 @@ export default async function init(input?: AsyncInitInput): Promise<InitOutput> 
 
 /**
  * Synchronously instantiate ggsql and connect the package helpers.
+ *
+ * Needs the module's bytes already in hand — a bundler that inlines the wasm,
+ * not a URL. Same wiring as `init`, so the same contract holds.
  */
 export function initSync(
   input: { module: SyncInitInput } | SyncInitInput,
@@ -184,6 +208,10 @@ export interface RegisterFontOptions {
 /**
  * Register a font from a URL, and optionally make a generic mean it.
  *
+ * The two steps belong together: a generic is an indirection through the font
+ * context, so a theme asking for `sans-serif` resolves to nothing until
+ * something says what it means — and only the file knows its own family name.
+ *
  * WOFF and WOFF2 are accepted, so a font CDN's URL works directly.
  *
  * Process-global, permanent, and must precede the first draw — a plot shaped
@@ -218,6 +246,14 @@ function injectFontFace(face: BundledFace, url: string): void {
 
 /**
  * Point the drawn SVG at the face its advances were measured from.
+ *
+ * Every run is placed with one anchor plus `textLength`, so the browser fits
+ * whatever it resolves into the width the shaper measured. Left to the generic
+ * alone it resolves its own default and `textLength` scales that face to fit —
+ * plausible, wrong, and wrong differently on every platform.
+ *
+ * Naming the family on the root is enough: `font-family` inherits, and a span
+ * that named its own keeps it. The generic stays on as the fallback.
  */
 function nameRegisteredFamily(root: Element | null): void {
   if (!root || root.tagName.toLowerCase() !== "svg") return;
@@ -233,7 +269,8 @@ function nameRegisteredFamily(root: Element | null): void {
 
 /**
  * The container's content box, for the first draw — before the observer has
- * reported one.
+ * reported one. `clientWidth` / `clientHeight` include padding, so it is
+ * subtracted back off rather than drawn over.
  */
 function contentBox(element: HTMLElement): [number, number] {
   const style = getComputedStyle(element);
@@ -255,7 +292,8 @@ export interface PlotViewOptions {
  * One plot bound to one container element.
  *
  * Redraws on resize rather than scaling: the layout is re-solved at the new
- * size, so a wider box gets more tick labels instead of stretched ones.
+ * size, so a wider box gets more tick labels instead of stretched ones. That is
+ * the whole reason a resize costs a render at all.
  */
 export class PlotView {
   private readonly container: HTMLElement;
@@ -276,11 +314,12 @@ export class PlotView {
     // itself and collapses; deriving height from width breaks that loop.
     this.aspect = opts.aspect && opts.aspect > 0 ? opts.aspect : null;
     // Inline SVGs share the page's id space, so two plots on one page collide
-    // on gradient and clip-path ids without this.
+    // on gradient and clip-path ids without this. A docs page carries several.
     this.idPrefix = opts.idPrefix || `ggsql-${nextViewId++}-`;
 
     // `contentRect` is the content box; `clientHeight` includes padding, so
-    // each draw would otherwise be taller than its space.
+    // each draw would be taller than its space and, in a container free to
+    // grow, climb by the padding every frame.
     this.observer = new ResizeObserver((entries) => {
       const rect = entries[entries.length - 1]?.contentRect;
       if (rect) this.box = [rect.width, rect.height];
@@ -297,10 +336,12 @@ export class PlotView {
   /**
    * Show a plot, or clear the view when given `null`.
    *
-   * Takes ownership: the previous plot is freed, and so is this one if the
-   * view has already been freed.
+   * Takes ownership of `plot`: the previous one is freed, since a wasm object
+   * is not reclaimed by the garbage collector.
    */
   setPlot(plot: GgsqlPlot | null): void {
+    // Ownership transfers even to a freed view, so the plot is released rather
+    // than leaked — nothing else holds a reference to reclaim it.
     if (this.freed) {
       plot?.free();
       return;
@@ -308,6 +349,8 @@ export class PlotView {
     if (this.plot && this.plot !== plot) this.plot.free();
     this.plot = plot;
     this.lastSize = null;
+    // Cleared before drawing: a draw that cannot happen yet — a container in a
+    // hidden tab — would leave the last plot's warnings standing.
     this._warnings = [];
     if (!plot) {
       this.container.replaceChildren();
@@ -323,6 +366,8 @@ export class PlotView {
   }
 
   private schedule(): void {
+    // Coalesce to one draw per frame. Unlike a canvas, the markup already in
+    // the page stays visible until it is replaced, so nothing flickers.
     if (this.freed || !this.plot || this.frame !== null) return;
     this.frame = requestAnimationFrame(() => {
       this.frame = null;
@@ -338,6 +383,8 @@ export class PlotView {
       ? Math.round(width / this.aspect)
       : Math.round(boxHeight);
     if (width < 1 || height < 1) return;
+    // A hidden element reports zero and a scrollbar can settle a pixel either
+    // way, so skip a size we already drew.
     if (
       this.lastSize &&
       this.lastSize[0] === width &&
@@ -351,6 +398,8 @@ export class PlotView {
       this._warnings = render.warnings;
       this.container.innerHTML = render.svg;
       const root = this.container.firstElementChild;
+      // An SVG is inline by default, reserving descender space under it — the
+      // same feedback loop the padding caused, in miniature.
       if (root instanceof HTMLElement || root instanceof SVGElement) {
         root.style.display = "block";
       }

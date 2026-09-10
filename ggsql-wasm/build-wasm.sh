@@ -14,7 +14,10 @@ for arg in "$@"; do
     esac
 done
 
-check_prerequisites() {
+# Each check guards one step, and is called only when that step is going to
+# run: `--skip-binary` is for iterating on TypeScript and the demo, so it must
+# not demand the wasm toolchain, and `--skip-opt` must not demand wasm-opt.
+check_compiler() {
     local cc="${CC:-clang}"
     if ! echo "int main(){return 0;}" | \
         "$cc" -target wasm32-unknown-unknown -c -o /dev/null -x c - 2>/dev/null; then
@@ -22,12 +25,19 @@ check_prerequisites() {
         echo "Install an LLVM/clang toolchain with wasm backend support (e.g. 'sudo apt-get install llvm' on Debian/Ubuntu)." >&2
         exit 1
     fi
+}
 
+check_wasm_opt() {
     if ! command -v wasm-opt >/dev/null 2>&1; then
         echo "Error: wasm-opt not found. Install binaryen or run: cargo install wasm-opt" >&2
         exit 1
     fi
+}
 
+# The schema the CLI writes has to match the one the crate was built against,
+# so the version is read from Cargo.lock rather than taking whatever is on
+# PATH.
+check_wasm_bindgen() {
     local expected_version
     expected_version="$(awk '/^name = "wasm-bindgen"$/{f=1;next} f&&/^version = /{gsub(/[",]/,"");print $3;exit}' "$REPO_ROOT/Cargo.lock")"
     if [ -z "$expected_version" ]; then
@@ -43,10 +53,14 @@ check_prerequisites() {
     echo "Using wasm-bindgen $expected_version"
 }
 
-echo "Checking wasm build prerequisites..."
-check_prerequisites
-
 if [ "$SKIP_BINARY" = false ]; then
+    # Everything the binary steps need, checked before the long compile rather
+    # than after it.
+    echo "Checking wasm build prerequisites..."
+    check_compiler
+    check_wasm_bindgen
+    if [ "$SKIP_OPT" = false ]; then check_wasm_opt; fi
+
     echo "Building WASM binary..."
     (cd "$SCRIPT_DIR" && cargo build \
         --target wasm32-unknown-unknown \
@@ -62,6 +76,11 @@ if [ "$SKIP_BINARY" = false ]; then
 
     if [ "$SKIP_OPT" = false ]; then
         echo "Optimising WASM binary..."
+        # The features rustc actually emits, named one by one. wasm-opt rejects
+        # them unless told to expect them, and `--all-features` is not the
+        # shortcut: it enables post-MVP proposals browsers still reject —
+        # binaryen 132 emits compact imports under it, which a browser refuses
+        # to compile ("Invalid import kind 127").
         wasm-opt \
             "$SCRIPT_DIR/pkg/dist/ggsql_wasm_bg.wasm" \
             -o "$SCRIPT_DIR/pkg/dist/ggsql_wasm_bg.wasm" \
@@ -83,6 +102,23 @@ else
     fi
 fi
 
+# The npm version is stamped from the crate's, not maintained beside it: two
+# hand-edited numbers drift, and the mismatch would only show up at publish
+# time. `cargo pkgid` prints `<url>#<version>` or `<url>#<name>@<version>`
+# depending on whether the directory name matches the package name.
+CRATE_VERSION="$( (cd "$SCRIPT_DIR" && cargo pkgid -p ggsql-wasm) | sed -e 's/.*#//' -e 's/.*[@:]//')"
+if [ -z "$CRATE_VERSION" ]; then
+    echo "Error: could not read the ggsql-wasm version from cargo pkgid." >&2
+    exit 1
+fi
+PKG_VERSION="$(cd "$SCRIPT_DIR/pkg" && npm pkg get version | tr -d '"')"
+if [ "$CRATE_VERSION" != "$PKG_VERSION" ]; then
+    echo "Stamping pkg/package.json version: $PKG_VERSION -> $CRATE_VERSION"
+    (cd "$SCRIPT_DIR/pkg" && npm pkg set "version=$CRATE_VERSION")
+fi
+
+# `npm install` follows the stamp, so package-lock.json picks the version up in
+# the same run.
 echo "Building npm package..."
 (cd "$SCRIPT_DIR/pkg" && npm install && npm run build)
 
