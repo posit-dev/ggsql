@@ -9,10 +9,10 @@ use anyhow::Result;
 use ggsql::{
     reader::{
         connection::{extract_odbc_value, reader_from_uri},
-        Reader,
+        Reader, ResolvedSpec,
     },
     validate::validate,
-    writer::{VegaLiteWriter, Writer},
+    writer::{HtmlWriter, VegaLiteWriter, Writer},
     DataFrame,
 };
 
@@ -25,6 +25,8 @@ pub enum ExecutionResult {
     Visualization {
         spec: String, // Vega-Lite JSON
     },
+    /// TABULATE query, already rendered as an HTML table via `HtmlWriter`.
+    Table { html: String },
     /// Connection changed via meta-command
     ConnectionChanged { display_name: String },
 }
@@ -247,26 +249,35 @@ impl QueryExecutor {
         // 3. Execute ggsql query using reader
         let spec = self.reader.execute(code)?;
 
-        if let Some(plot) = spec.as_plot() {
-            tracing::info!(
-                "Query executed: {} rows, {} layers",
-                plot.metadata().rows,
-                plot.metadata().layer_count
-            );
+        // 4. Render to output format: a table goes through a fresh
+        // HtmlWriter (bare <table>, no Positron-specific wrapping), a plot
+        // through the persistent VegaLiteWriter.
+        match &spec {
+            ResolvedSpec::Table(table) => {
+                tracing::info!(
+                    "Query executed: {} rows, {} cols",
+                    table.body().height(),
+                    table.body().width()
+                );
+
+                let html = HtmlWriter::new().render(&spec)?;
+                tracing::debug!("Generated HTML table: {} chars", html.len());
+
+                Ok(ExecutionResult::Table { html })
+            }
+            ResolvedSpec::Plot(plot) => {
+                tracing::info!(
+                    "Query executed: {} rows, {} layers",
+                    plot.metadata().rows,
+                    plot.metadata().layer_count
+                );
+
+                let vega_json = self.writer.render(&spec)?;
+                tracing::debug!("Generated Vega-Lite spec: {} chars", vega_json.len());
+
+                Ok(ExecutionResult::Visualization { spec: vega_json })
+            }
         }
-
-        // 4. Render to output format. Known gap: a TABULATE query reaches
-        // here too (it has a Spec, so step 2's has_spec() check doesn't
-        // divert it to the pure-SQL path), and errors out right here since
-        // no writer supports ResolvedSpec::Table yet. There is no
-        // table-specific output path (HTML table, Positron data-explorer,
-        // etc.) wired up for it — only the pure-SQL branch above gets that.
-        let vega_json = self.writer.render(&spec)?;
-
-        tracing::debug!("Generated Vega-Lite spec: {} chars", vega_json.len());
-
-        // 5. Return result
-        Ok(ExecutionResult::Visualization { spec: vega_json })
     }
 }
 
@@ -281,6 +292,21 @@ mod tests {
         let result = executor.execute(code).unwrap();
 
         assert!(matches!(result, ExecutionResult::Visualization { .. }));
+    }
+
+    #[test]
+    fn test_tabulate() {
+        let mut executor = QueryExecutor::new().unwrap();
+        let code = "SELECT 1 AS x, 2 AS y TABULATE";
+        let result = executor.execute(code).unwrap();
+
+        match result {
+            ExecutionResult::Table { html } => {
+                assert!(html.contains("<table>"));
+                assert!(html.contains("<th>x</th>"));
+            }
+            other => panic!("expected Table, got {other:?}"),
+        }
     }
 
     #[test]

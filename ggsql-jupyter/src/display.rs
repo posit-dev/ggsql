@@ -72,6 +72,7 @@ impl RenderHints {
 pub fn format_display_data(result: ExecutionResult, hints: &RenderHints) -> Option<Value> {
     match result {
         ExecutionResult::Visualization { spec } => Some(format_vegalite(spec, hints)),
+        ExecutionResult::Table { html } => Some(format_table(html)),
         ExecutionResult::DataFrame(df) => {
             // DDL statements return DataFrames with 0 columns - don't display anything
             if df.width() == 0 {
@@ -84,6 +85,20 @@ pub fn format_display_data(result: ExecutionResult, hints: &RenderHints) -> Opti
             Some(format_connection_changed(&display_name))
         }
     }
+}
+
+/// Format a TABULATE result (already rendered to HTML by `HtmlWriter`) as
+/// display_data. No `RenderHints` involved — a plain `<table>` needs no
+/// container sizing or Positron-specific wrapping.
+fn format_table(html: String) -> Value {
+    json!({
+        "data": {
+            "text/html": html,
+            "text/plain": "ggsql table".to_string()
+        },
+        "metadata": {},
+        "transient": {}
+    })
 }
 
 /// Format a connection-changed message
@@ -402,6 +417,17 @@ mod tests {
             .expect("Visualization should return Some");
 
         assert!(display["data"]["text/html"].is_string());
+        assert!(display["data"]["text/plain"].is_string());
+    }
+
+    #[test]
+    fn test_table_format() {
+        let html = "<table><tr><td>1</td></tr></table>".to_string();
+        let result = ExecutionResult::Table { html: html.clone() };
+        let display =
+            format_display_data(result, &RenderHints::default()).expect("Table should return Some");
+
+        assert_eq!(display["data"]["text/html"], html);
         assert!(display["data"]["text/plain"].is_string());
     }
 
