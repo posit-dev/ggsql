@@ -57,7 +57,8 @@ format. Adding a binding to `lib.rs` therefore means adding it to that list too.
   ```
 
 - A clang/LLVM with wasm backend support. The build script verifies it with a
-  one-line compile probe.
+  one-line compile probe, and on macOS falls back to Homebrew's LLVM by itself
+  (see below).
 - `wasm-opt` from binaryen for the `-Oz` optimization step. This is not
   `wasm-tools`, which is a different project and has no equivalent; use
   `brew install binaryen` or `cargo install wasm-opt`. The optimizer is passed
@@ -66,13 +67,15 @@ format. Adding a binding to `lib.rs` therefore means adding it to that list too.
   under it, which browsers refuse to compile ("Invalid import kind 127").
 - Node.js for `pkg/` and `demo/`.
 
-On macOS, the system clang may lack the wasm backend. A Homebrew LLVM setup is:
+Apple's clang has no wasm backend, so on macOS the probe fails for the default
+compiler. `check_compiler` then looks for `$(brew --prefix llvm)/bin/clang` and
+uses that instead, exporting `CC`, `AR` and the directory on `PATH` — cc-rs
+resolves `llvm-ar` by name for a wasm target, so `CC` on its own is not enough.
+Install it with `brew install llvm`; nothing needs exporting by hand.
 
-```sh
-export PATH=/opt/homebrew/opt/llvm/bin:$PATH
-export CC=/opt/homebrew/opt/llvm/bin/clang
-export AR=/opt/homebrew/opt/llvm/bin/llvm-ar
-```
+The fallback only applies when the caller set no `CC`. An explicit `CC` that
+cannot target wasm is reported rather than overridden, so naming a compiler
+still means getting that compiler.
 
 ## Build
 
