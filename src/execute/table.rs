@@ -13,7 +13,7 @@ use crate::{GgsqlError, Result, Spec};
 ///
 /// This is the Table-side substitute for *two* Plot-side functions combined:
 /// `execute::prepare_data_with_reader` (parses, resolves layers/scales/facets,
-/// returns the intermediate `PreparedData`) and `reader::execute_with_reader`
+/// returns the intermediate `PreparedData`) and `reader::resolve_plot_with_reader`
 /// (takes the first `Plot` from that, wraps it into `ResolvedPlot`). Table
 /// collapses both into one function because there's no per-layer/scale/facet
 /// resolution step for a `PreparedTable`-equivalent to do — `ResolvedTable`

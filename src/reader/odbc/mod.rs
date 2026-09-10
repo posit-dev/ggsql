@@ -226,7 +226,7 @@ impl Reader for OdbcReader {
         Ok(())
     }
 
-    fn execute(&self, query: &str) -> Result<super::ResolvedPlot> {
+    fn execute(&self, query: &str) -> Result<super::ResolvedSpec> {
         super::execute_with_reader(self, query)
     }
 
@@ -1436,8 +1436,9 @@ mod tests {
             )
             .unwrap();
 
-        assert_eq!(spec.plot.layers.len(), 1);
-        assert!(spec.layer_data(0).unwrap().height() > 0);
+        let plot = spec.as_plot().unwrap();
+        assert_eq!(plot.plot.layers.len(), 1);
+        assert!(plot.layer_data(0).unwrap().height() > 0);
 
         reader.execute_sql("DROP TABLE __ggsql_countries").unwrap();
     }
@@ -1481,7 +1482,7 @@ mod tests {
             .unwrap();
 
         // Only the visible polygon should survive clipping
-        assert_eq!(spec.layer_data(0).unwrap().height(), 1);
+        assert_eq!(spec.as_plot().unwrap().layer_data(0).unwrap().height(), 1);
 
         reader.execute_sql("DROP TABLE __ggsql_clip_test").unwrap();
     }
@@ -1524,17 +1525,18 @@ mod tests {
             )
             .unwrap();
 
-        assert_eq!(spec.plot.layers.len(), 1);
-        let df = spec.layer_data(0).unwrap();
+        let plot = spec.as_plot().unwrap();
+        assert_eq!(plot.plot.layers.len(), 1);
+        let df = plot.layer_data(0).unwrap();
         assert_eq!(df.height(), 3);
 
         let writer = crate::writer::vegalite::VegaLiteWriter::new();
-        let json_str = writer.write(&spec.plot, &spec.data).unwrap();
+        let json_str = writer.write(&plot.plot, &plot.data).unwrap();
         let vl_spec: serde_json::Value = serde_json::from_str(&json_str).unwrap();
 
         // Coordinates should be projected (not raw lon/lat)
         let data = vl_spec["data"]["values"].as_array().unwrap();
-        let layer_key = spec.plot.layers[0].data_key.as_ref().unwrap();
+        let layer_key = plot.plot.layers[0].data_key.as_ref().unwrap();
         let rows: Vec<_> = data
             .iter()
             .filter(|r| r[crate::naming::SOURCE_COLUMN] == layer_key.as_str())

@@ -5,7 +5,7 @@ Provides commands for executing ggsql queries with various data sources and outp
 */
 
 use clap::{Parser, Subcommand, ValueEnum};
-use ggsql::reader::{Reader, ResolvedPlot};
+use ggsql::reader::{Reader, ResolvedSpec};
 use ggsql::validate::validate;
 use ggsql::writer::{Writer, WriterOptions};
 use ggsql::{parser, VERSION};
@@ -376,16 +376,27 @@ fn exec_with_reader<R: Reader + ?Sized>(
     render_spec(spec, writer, output, verbose);
 }
 
-fn render_spec(spec: ResolvedPlot, writer: &WriterSpec, output: Option<PathBuf>, verbose: bool) {
+fn render_spec(spec: ResolvedSpec, writer: &WriterSpec, output: Option<PathBuf>, verbose: bool) {
+    // Known gap: no writer renders tables yet, so bail out here with a
+    // CLI-specific message rather than letting it flow into Plot-specific
+    // pre-checks below (metadata, layer checks) or a generic writer error.
+    let plot = match spec.as_plot() {
+        Some(plot) => plot,
+        None => {
+            eprintln!("TABULATE queries aren't supported by `exec`/`run` yet.");
+            std::process::exit(1);
+        }
+    };
+
     if verbose {
-        let metadata = spec.metadata();
+        let metadata = plot.metadata();
         eprintln!("\nQuery executed:");
         eprintln!("  Rows: {}", metadata.rows);
         eprintln!("  Columns: {}", metadata.columns.join(", "));
         eprintln!("  Layers: {}", metadata.layer_count);
     }
 
-    if spec.plot().layers.is_empty() {
+    if plot.plot().layers.is_empty() {
         eprintln!("No visualization specifications found");
         std::process::exit(1);
     }
@@ -791,7 +802,7 @@ fn cmd_skill(format: Option<DocsFormat>) {
     }
 }
 
-fn render_vegalite(spec: &ResolvedPlot, options: &WriterOptions) -> Output {
+fn render_vegalite(spec: &ResolvedSpec, options: &WriterOptions) -> Output {
     #[cfg(feature = "vegalite")]
     {
         // Configure from --writer-option, then render
@@ -812,7 +823,7 @@ fn render_vegalite(spec: &ResolvedPlot, options: &WriterOptions) -> Output {
     }
 }
 
-fn render_png(spec: &ResolvedPlot, options: &WriterOptions) -> Output {
+fn render_png(spec: &ResolvedSpec, options: &WriterOptions) -> Output {
     #[cfg(feature = "png")]
     {
         // Configure from --writer-option, then render

@@ -503,7 +503,7 @@ impl Reader for DuckDBReader {
         Ok(())
     }
 
-    fn execute(&self, query: &str) -> Result<super::ResolvedPlot> {
+    fn execute(&self, query: &str) -> Result<super::ResolvedSpec> {
         super::execute_with_reader(self, query)
     }
 
@@ -836,8 +836,9 @@ mod tests {
             .execute("SELECT * FROM bar_data VISUALISE DRAW bar MAPPING category AS x")
             .unwrap();
 
-        assert_eq!(spec.plot().layers.len(), 1);
-        assert!(spec.layer_data(0).is_some());
+        let plot = spec.as_plot().unwrap();
+        assert_eq!(plot.plot().layers.len(), 1);
+        assert!(plot.layer_data(0).is_some());
 
         let writer = VegaLiteWriter::new();
         let json = writer.render(&spec).unwrap();
@@ -864,8 +865,9 @@ mod tests {
             .execute("SELECT * FROM hist_data VISUALISE DRAW histogram MAPPING value AS x")
             .unwrap();
 
-        assert_eq!(spec.plot().layers.len(), 1);
-        let layer_df = spec.layer_data(0).unwrap();
+        let plot = spec.as_plot().unwrap();
+        assert_eq!(plot.plot().layers.len(), 1);
+        let layer_df = plot.layer_data(0).unwrap();
         assert!(
             layer_df.height() < 50,
             "Histogram should bin data: got {} rows",
@@ -897,8 +899,9 @@ mod tests {
             .execute("SELECT * FROM density_data VISUALISE DRAW density MAPPING value AS x")
             .unwrap();
 
-        assert_eq!(spec.plot().layers.len(), 1);
-        assert!(spec.layer_data(0).is_some());
+        let plot = spec.as_plot().unwrap();
+        assert_eq!(plot.plot().layers.len(), 1);
+        assert!(plot.layer_data(0).is_some());
 
         let writer = VegaLiteWriter::new();
         let json = writer.render(&spec).unwrap();
@@ -928,7 +931,7 @@ mod tests {
             .execute("SELECT * FROM box_data VISUALISE DRAW boxplot MAPPING grp AS x, value AS y")
             .unwrap();
 
-        assert!(spec.layer_data(0).is_some());
+        assert!(spec.as_plot().unwrap().layer_data(0).is_some());
 
         let writer = VegaLiteWriter::new();
         let json = writer.render(&spec).unwrap();

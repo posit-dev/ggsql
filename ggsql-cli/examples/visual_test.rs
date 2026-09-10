@@ -307,8 +307,16 @@ fn run_cells(source: Source, args: &Args, assets: &Path) -> SourceResult {
         let outcome = if has_spec {
             match capture(|| reader.execute(&cell.query)) {
                 Err(e) => Outcome::Failed(e),
+                // Known gap: this harness only renders VISUALISE cells (the
+                // `Outcome` enum has no table variant), so a TABULATE cell
+                // is reported as failed rather than actually rendered — fine
+                // while no doc page uses TABULATE, but revisit once one does.
+                Ok(spec) if spec.as_plot().is_none() => {
+                    Outcome::Failed("TABULATE cells aren't rendered by this harness yet".into())
+                }
                 Ok(spec) => {
-                    warnings.extend(spec.warnings().iter().map(|w| w.message.clone()));
+                    let plot = spec.as_plot().unwrap();
+                    warnings.extend(plot.warnings().iter().map(|w| w.message.clone()));
 
                     let (png, png_error) = match capture(|| png_writer.render(&spec)) {
                         Ok(bytes) => {

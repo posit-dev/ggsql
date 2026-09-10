@@ -568,7 +568,7 @@ impl Reader for SqliteReader {
         Ok(())
     }
 
-    fn execute(&self, query: &str) -> Result<super::ResolvedPlot> {
+    fn execute(&self, query: &str) -> Result<super::ResolvedSpec> {
         super::execute_with_reader(self, query)
     }
 
@@ -1260,8 +1260,9 @@ mod tests {
             .execute("SELECT * FROM bar_data VISUALISE DRAW bar MAPPING category AS x")
             .unwrap();
 
-        assert_eq!(spec.plot().layers.len(), 1);
-        assert!(spec.layer_data(0).is_some());
+        let plot = spec.as_plot().unwrap();
+        assert_eq!(plot.plot().layers.len(), 1);
+        assert!(plot.layer_data(0).is_some());
 
         let writer = VegaLiteWriter::new();
         let json = writer.render(&spec).unwrap();
@@ -1293,8 +1294,9 @@ mod tests {
             .execute("SELECT * FROM hist_data VISUALISE DRAW histogram MAPPING value AS x")
             .unwrap();
 
-        assert_eq!(spec.plot().layers.len(), 1);
-        let layer_df = spec.layer_data(0).unwrap();
+        let plot = spec.as_plot().unwrap();
+        assert_eq!(plot.plot().layers.len(), 1);
+        let layer_df = plot.layer_data(0).unwrap();
         assert!(
             layer_df.height() < 50,
             "Histogram should bin data: got {} rows",
@@ -1331,8 +1333,9 @@ mod tests {
             .execute("SELECT * FROM density_data VISUALISE DRAW density MAPPING value AS x")
             .unwrap();
 
-        assert_eq!(spec.plot().layers.len(), 1);
-        assert!(spec.layer_data(0).is_some());
+        let plot = spec.as_plot().unwrap();
+        assert_eq!(plot.plot().layers.len(), 1);
+        assert!(plot.layer_data(0).is_some());
 
         let writer = VegaLiteWriter::new();
         let json = writer.render(&spec).unwrap();
@@ -1370,7 +1373,7 @@ mod tests {
             .execute("SELECT * FROM box_data VISUALISE DRAW boxplot MAPPING grp AS x, value AS y")
             .unwrap();
 
-        assert!(spec.layer_data(0).is_some());
+        assert!(spec.as_plot().unwrap().layer_data(0).is_some());
 
         let writer = VegaLiteWriter::new();
         let json = writer.render(&spec).unwrap();
@@ -1589,8 +1592,9 @@ mod spatialite_tests {
             )
             .unwrap();
 
-        assert_eq!(spec.plot.layers.len(), 1);
-        assert!(spec.layer_data(0).unwrap().height() > 0);
+        let plot = spec.as_plot().unwrap();
+        assert_eq!(plot.plot.layers.len(), 1);
+        assert!(plot.layer_data(0).unwrap().height() > 0);
     }
 
     #[cfg(feature = "vegalite")]
@@ -1622,7 +1626,7 @@ mod spatialite_tests {
             .unwrap();
 
         // Only the visible polygon should survive clipping
-        assert_eq!(spec.layer_data(0).unwrap().height(), 1);
+        assert_eq!(spec.as_plot().unwrap().layer_data(0).unwrap().height(), 1);
     }
 
     #[cfg(feature = "vegalite")]
@@ -1653,16 +1657,17 @@ mod spatialite_tests {
             )
             .unwrap();
 
-        assert_eq!(spec.plot.layers.len(), 1);
-        let df = spec.layer_data(0).unwrap();
+        let plot = spec.as_plot().unwrap();
+        assert_eq!(plot.plot.layers.len(), 1);
+        let df = plot.layer_data(0).unwrap();
         assert_eq!(df.height(), 3);
 
         let writer = crate::writer::vegalite::VegaLiteWriter::new();
-        let json_str = writer.write(&spec.plot, &spec.data).unwrap();
+        let json_str = writer.write(&plot.plot, &plot.data).unwrap();
         let vl_spec: serde_json::Value = serde_json::from_str(&json_str).unwrap();
 
         let data = vl_spec["data"]["values"].as_array().unwrap();
-        let layer_key = spec.plot.layers[0].data_key.as_ref().unwrap();
+        let layer_key = plot.plot.layers[0].data_key.as_ref().unwrap();
         let rows: Vec<_> = data
             .iter()
             .filter(|r| r[crate::naming::SOURCE_COLUMN] == layer_key.as_str())

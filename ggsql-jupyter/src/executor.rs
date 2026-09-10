@@ -247,13 +247,20 @@ impl QueryExecutor {
         // 3. Execute ggsql query using reader
         let spec = self.reader.execute(code)?;
 
-        tracing::info!(
-            "Query executed: {} rows, {} layers",
-            spec.metadata().rows,
-            spec.metadata().layer_count
-        );
+        if let Some(plot) = spec.as_plot() {
+            tracing::info!(
+                "Query executed: {} rows, {} layers",
+                plot.metadata().rows,
+                plot.metadata().layer_count
+            );
+        }
 
-        // 4. Render to output format
+        // 4. Render to output format. Known gap: a TABULATE query reaches
+        // here too (it has a Spec, so step 2's has_spec() check doesn't
+        // divert it to the pure-SQL path), and errors out right here since
+        // no writer supports ResolvedSpec::Table yet. There is no
+        // table-specific output path (HTML table, Positron data-explorer,
+        // etc.) wired up for it — only the pure-SQL branch above gets that.
         let vega_json = self.writer.render(&spec)?;
 
         tracing::debug!("Generated Vega-Lite spec: {} chars", vega_json.len());

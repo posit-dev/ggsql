@@ -28,8 +28,8 @@
 //! key–value [`WriterOptions`] when a frontend collects settings from a user
 //! without knowing which writer they picked.
 
-use crate::reader::ResolvedPlot;
-use crate::{DataFrame, Plot, Result};
+use crate::reader::ResolvedSpec;
+use crate::{DataFrame, GgsqlError, Plot, Result};
 use std::collections::HashMap;
 
 pub mod options;
@@ -114,13 +114,17 @@ pub trait Writer {
     /// Ok(()) if the spec is compatible, otherwise an error
     fn validate(&self, spec: &Plot) -> Result<()>;
 
-    /// Render a ResolvedPlot to output format
+    /// Render a ResolvedSpec (a resolved plot or table) to output format
     ///
     /// This is the main entry point for generating visualization output.
+    /// Writers that don't support tables yet (all of them, as of this
+    /// writing) return a `WriterError` for `ResolvedSpec::Table` rather than
+    /// rejecting it at the type level — see the `ResolvedSpec::Table` arm
+    /// below.
     ///
     /// # Arguments
     ///
-    /// * `spec` - The prepared visualization specification from `reader.execute()`
+    /// * `spec` - The resolved specification from `reader.execute()`
     ///
     /// # Returns
     ///
@@ -138,7 +142,12 @@ pub trait Writer {
     /// let writer = VegaLiteWriter::new();
     /// let json = writer.render(&spec)?;
     /// ```
-    fn render(&self, spec: &ResolvedPlot) -> Result<Self::Output> {
-        self.write(spec.plot(), spec.data())
+    fn render(&self, spec: &ResolvedSpec) -> Result<Self::Output> {
+        match spec {
+            ResolvedSpec::Plot(plot) => self.write(plot.plot(), plot.data()),
+            ResolvedSpec::Table(_) => Err(GgsqlError::WriterError(
+                "this writer does not support tables yet".to_string(),
+            )),
+        }
     }
 }

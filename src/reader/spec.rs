@@ -1,4 +1,4 @@
-//! Implementation of ResolvedPlot and ResolvedTable methods.
+//! Implementation of ResolvedPlot, ResolvedTable, and ResolvedSpec methods.
 
 use std::collections::HashMap;
 
@@ -7,7 +7,7 @@ use crate::plot::Plot;
 use crate::validate::ValidationWarning;
 use crate::{DataFrame, Table};
 
-use super::{Metadata, ResolvedPlot, ResolvedTable};
+use super::{Metadata, ResolvedPlot, ResolvedSpec, ResolvedTable};
 
 impl ResolvedPlot {
     /// Create a new ResolvedPlot from PreparedData
@@ -147,5 +147,41 @@ impl ResolvedTable {
     /// Validation warnings from preparation.
     pub fn warnings(&self) -> &[ValidationWarning] {
         &self.warnings
+    }
+}
+
+impl ResolvedSpec {
+    /// Borrow the inner `ResolvedPlot`, or `None` if this is a `ResolvedTable`.
+    pub fn as_plot(&self) -> Option<&ResolvedPlot> {
+        match self {
+            ResolvedSpec::Plot(plot) => Some(plot),
+            ResolvedSpec::Table(_) => None,
+        }
+    }
+
+    /// Borrow the inner `ResolvedTable`, or `None` if this is a `ResolvedPlot`.
+    pub fn as_table(&self) -> Option<&ResolvedTable> {
+        match self {
+            ResolvedSpec::Plot(_) => None,
+            ResolvedSpec::Table(table) => Some(table),
+        }
+    }
+
+    /// Consume this `ResolvedSpec`, returning the inner `ResolvedPlot`, or
+    /// `None` if it was a `ResolvedTable`.
+    pub fn into_plot(self) -> Option<ResolvedPlot> {
+        match self {
+            ResolvedSpec::Plot(plot) => Some(*plot),
+            ResolvedSpec::Table(_) => None,
+        }
+    }
+
+    /// Consume this `ResolvedSpec`, returning the inner `ResolvedTable`, or
+    /// `None` if it was a `ResolvedPlot`.
+    pub fn into_table(self) -> Option<ResolvedTable> {
+        match self {
+            ResolvedSpec::Plot(_) => None,
+            ResolvedSpec::Table(table) => Some(table),
+        }
     }
 }
