@@ -51,6 +51,8 @@ DRAW area
   MAPPING Date AS x, Wind AS y
 ```
 
+[![](area_files/figure-html/cell-2-output-1.svg)](area_files/figure-html/cell-2-output-1.svg)
+
 We can reshape the data to ‘long format’ from our wide format.
 
 ``` ggsql
@@ -68,6 +70,8 @@ DRAW area
   MAPPING Series AS colour
 ```
 
+[![](area_files/figure-html/cell-4-output-1.svg)](area_files/figure-html/cell-4-output-1.svg)
+
 By default the areas are stacked on top of each other. If you’d rather see all with a 0 baseline set the position to identity
 
 ``` ggsql
@@ -75,6 +79,8 @@ VISUALISE Date AS x, Value AS y, Series AS colour FROM long_airquality
 DRAW area 
   SETTING position => 'identity', opacity => 0.5
 ```
+
+[![](area_files/figure-html/cell-5-output-1.svg)](area_files/figure-html/cell-5-output-1.svg)
 
 With the default `position => 'stack'` we can normalise the total so that each stack totals to the same value. These only make sense if every series is measured in the same absolute unit. (Wind and temperature have different units and the temperature is not absolute.)
 
@@ -84,6 +90,8 @@ DRAW area
   SETTING total => 100
 ```
 
+[![](area_files/figure-html/cell-6-output-1.svg)](area_files/figure-html/cell-6-output-1.svg)
+
 An alternative is to center the stacks to create a steamgraph
 
 ``` ggsql
@@ -92,6 +100,8 @@ DRAW area
   SETTING position => 'stack', center => true
 ```
 
+[![](area_files/figure-html/cell-7-output-1.svg)](area_files/figure-html/cell-7-output-1.svg)
+
 You can combine this with the `orientation` setting to make a vertical steamgraph
 
 ``` ggsql
@@ -99,3 +109,5 @@ VISUALISE Date AS y, Value AS x, Series AS colour FROM long_airquality
 DRAW area 
   SETTING position => 'stack', center => true, orientation => 'transposed'
 ```
+
+[![](area_files/figure-html/cell-8-output-1.svg)](area_files/figure-html/cell-8-output-1.svg)

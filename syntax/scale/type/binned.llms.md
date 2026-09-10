@@ -26,6 +26,8 @@ DRAW bar
 SCALE BINNED x
 ```
 
+[![](binned_files/figure-html/cell-2-output-1.svg)](binned_files/figure-html/cell-2-output-1.svg)
+
 #### Setting input range will force boundary of terminal bins
 
 ``` ggsql
@@ -33,6 +35,8 @@ VISUALISE body_mass AS x FROM ggsql:penguins
 DRAW bar
 SCALE BINNED x FROM (2700, 6300)
 ```
+
+[![](binned_files/figure-html/cell-3-output-1.svg)](binned_files/figure-html/cell-3-output-1.svg)
 
 ## Output range
 
@@ -58,6 +62,8 @@ VISUALISE bill_len AS x, bill_dep AS y, body_mass AS color FROM ggsql:penguins
 DRAW point
 SCALE BINNED color TO viridis
 ```
+
+[![](binned_files/figure-html/cell-4-output-1.svg)](binned_files/figure-html/cell-4-output-1.svg)
 
 ## Transform
 
@@ -116,6 +122,8 @@ SCALE BINNED x
   SETTING pretty => false
 ```
 
+[![](binned_files/figure-html/cell-5-output-1.svg)](binned_files/figure-html/cell-5-output-1.svg)
+
 #### Use a date transform to bin on months
 
 ``` ggsql
@@ -124,6 +132,8 @@ DRAW boxplot
 SCALE BINNED x VIA date
   SETTING breaks => 'month'
 ```
+
+[![](binned_files/figure-html/cell-6-output-1.svg)](binned_files/figure-html/cell-6-output-1.svg)
 
 ## Settings
 
@@ -148,6 +158,8 @@ SCALE BINNED x
     oob => 'squish',
     breaks => (4000, 4250, 4500, 4750, 5000, 5250, 5500)
 ```
+
+[![](binned_files/figure-html/cell-7-output-1.svg)](binned_files/figure-html/cell-7-output-1.svg)
 
 ## Renaming
 
@@ -180,6 +192,8 @@ SCALE BINNED x
   RENAMING 20 => 'Twenty'
 ```
 
+[![](binned_files/figure-html/cell-8-output-1.svg)](binned_files/figure-html/cell-8-output-1.svg)
+
 #### Adding suffix to break labels
 
 ``` ggsql
@@ -189,6 +203,8 @@ SCALE BINNED x
   RENAMING * => '{} mm'
 ```
 
+[![](binned_files/figure-html/cell-9-output-1.svg)](binned_files/figure-html/cell-9-output-1.svg)
+
 #### Using a formatter to control number formats
 
 ``` ggsql
@@ -197,3 +213,5 @@ DRAW bar
 SCALE BINNED x
   RENAMING * => '{:num %.1f}'
 ```
+
+[![](binned_files/figure-html/cell-10-output-1.svg)](binned_files/figure-html/cell-10-output-1.svg)

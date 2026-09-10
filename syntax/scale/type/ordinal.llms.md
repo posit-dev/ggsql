@@ -39,6 +39,8 @@ SCALE ORDINAL color
   )
 ```
 
+[![](ordinal_files/figure-html/cell-2-output-1.svg)](ordinal_files/figure-html/cell-2-output-1.svg)
+
 ## Output range
 
 The output range can either be given as an array of values or a named palette. For interpretable aesthetics (`color`, `opacity`, `size`, and `linewidth`) the value for each value will be interpolated from the output range. For linetype there is a special sequential palette which is used by default. It will construct linetype patterns that gradually increase in ink-density for the number of bins needed (up to 15 bins). For shape the values will be selected directly from the output range. If there are fewer values in the palette than there are in the input range an error is emitted.
@@ -65,6 +67,8 @@ DRAW point
 SCALE ORDINAL color TO lapaz
 ```
 
+[![](ordinal_files/figure-html/cell-3-output-1.svg)](ordinal_files/figure-html/cell-3-output-1.svg)
+
 #### Use linetype for sequential data
 
 ``` ggsql
@@ -73,6 +77,8 @@ DRAW line
   MAPPING Month AS linetype
 SCALE ORDINAL linetype
 ```
+
+[![](ordinal_files/figure-html/cell-4-output-1.svg)](ordinal_files/figure-html/cell-4-output-1.svg)
 
 ## Transform
 
@@ -95,6 +101,8 @@ DRAW point
 SCALE ORDINAL color
   SETTING reverse => true
 ```
+
+[![](ordinal_files/figure-html/cell-5-output-1.svg)](ordinal_files/figure-html/cell-5-output-1.svg)
 
 ## Renaming
 
@@ -122,6 +130,8 @@ SCALE ORDINAL color
   RENAMING 6 => 'June'
 ```
 
+[![](ordinal_files/figure-html/cell-6-output-1.svg)](ordinal_files/figure-html/cell-6-output-1.svg)
+
 #### Use string interpolation to add a suffix
 
 ``` ggsql
@@ -131,6 +141,8 @@ DRAW point
 SCALE ORDINAL color
   RENAMING * => '{}th month'
 ```
+
+[![](ordinal_files/figure-html/cell-7-output-1.svg)](ordinal_files/figure-html/cell-7-output-1.svg)
 
 #### Use a formatter to make labels shouty
 
@@ -159,3 +171,5 @@ SCALE ORDINAL color
   )
   RENAMING * => '{:UPPER}'
 ```
+
+[![](ordinal_files/figure-html/cell-8-output-1.svg)](ordinal_files/figure-html/cell-8-output-1.svg)

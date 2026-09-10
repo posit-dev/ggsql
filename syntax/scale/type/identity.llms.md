@@ -21,6 +21,8 @@ DRAW point
 SCALE IDENTITY size
 ```
 
+[![](identity_files/figure-html/cell-2-output-1.svg)](identity_files/figure-html/cell-2-output-1.svg)
+
 #### Use color values directly
 
 ``` ggsql
@@ -35,3 +37,5 @@ VISUALISE category AS x, value AS y, style AS fill
 DRAW bar
 SCALE IDENTITY fill
 ```
+
+[![](identity_files/figure-html/cell-3-output-1.svg)](identity_files/figure-html/cell-3-output-1.svg)

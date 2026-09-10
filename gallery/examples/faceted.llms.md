@@ -21,6 +21,8 @@ LABEL
   y => 'Bill Depth (mm)'
 ```
 
+[![](faceted_files/figure-html/cell-2-output-1.svg)](faceted_files/figure-html/cell-2-output-1.svg)
+
 ## Explanation
 
 - `FACET species` creates a separate panel for each penguin species
@@ -44,6 +46,8 @@ LABEL
   y => 'Bill Depth (mm)'
 ```
 
+[![](faceted_files/figure-html/cell-3-output-1.svg)](faceted_files/figure-html/cell-3-output-1.svg)
+
 ### Free scales
 
 Allow each facet to have independent axis scales with `SETTING free`:
@@ -58,3 +62,5 @@ LABEL
   x => 'Bill Length (mm)',
   y => 'Bill Depth (mm)'
 ```
+
+[![](faceted_files/figure-html/cell-4-output-1.svg)](faceted_files/figure-html/cell-4-output-1.svg)

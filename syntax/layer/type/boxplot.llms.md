@@ -63,6 +63,8 @@ DRAW boxplot
   MAPPING species AS x, bill_len AS y
 ```
 
+[![](boxplot_files/figure-html/cell-2-output-1.svg)](boxplot_files/figure-html/cell-2-output-1.svg)
+
 Additional groups will dodge the boxplots.
 
 ``` ggsql
@@ -70,6 +72,8 @@ VISUALISE FROM ggsql:penguins
 DRAW boxplot
   MAPPING species AS x, bill_len AS y, island AS stroke
 ```
+
+[![](boxplot_files/figure-html/cell-3-output-1.svg)](boxplot_files/figure-html/cell-3-output-1.svg)
 
 Narrow boxes by shrinking the `width` parameter.
 
@@ -80,6 +84,8 @@ DRAW boxplot
   SETTING width => 0.2
 ```
 
+[![](boxplot_files/figure-html/cell-4-output-1.svg)](boxplot_files/figure-html/cell-4-output-1.svg)
+
 Consider more observations as outliers by setting a smaller `coef`:
 
 ``` ggsql
@@ -89,6 +95,8 @@ DRAW boxplot
   SETTING coef => 0.1
 ```
 
+[![](boxplot_files/figure-html/cell-5-output-1.svg)](boxplot_files/figure-html/cell-5-output-1.svg)
+
 Create a horizontal boxplot by swapping `x` and `y`:
 
 ``` ggsql
@@ -96,6 +104,8 @@ VISUALISE FROM ggsql:penguins
 DRAW boxplot
   MAPPING species AS y, bill_len AS x
 ```
+
+[![](boxplot_files/figure-html/cell-6-output-1.svg)](boxplot_files/figure-html/cell-6-output-1.svg)
 
 Omit the categorical axis to summarise the whole distribution as a single boxplot:
 
@@ -105,6 +115,8 @@ DRAW boxplot
   MAPPING bill_len AS y
 ```
 
+[![](boxplot_files/figure-html/cell-7-output-1.svg)](boxplot_files/figure-html/cell-7-output-1.svg)
+
 Pair a half-violin with a half-boxplot on the same category by setting opposite `side` values:
 
 ``` ggsql
@@ -112,3 +124,5 @@ VISUALISE bill_len AS x, species AS y FROM ggsql:penguins
 DRAW violin SETTING side => 'top'
 DRAW boxplot SETTING side => 'bottom', width => 0.3
 ```
+
+[![](boxplot_files/figure-html/cell-8-output-1.svg)](boxplot_files/figure-html/cell-8-output-1.svg)

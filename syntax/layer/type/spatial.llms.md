@@ -52,6 +52,8 @@ VISUALISE FROM ggsql:world
 DRAW spatial
 ```
 
+[![](spatial_files/figure-html/cell-3-output-1.svg)](spatial_files/figure-html/cell-3-output-1.svg)
+
 If the geometry column isn’t automatically detected —for example because it has a non-standard name— you may need to declare the mapping explicitly.
 
 ``` ggsql
@@ -61,6 +63,8 @@ DRAW spatial
   MAPPING foo AS geometry
 ```
 
+[![](spatial_files/figure-html/cell-4-output-1.svg)](spatial_files/figure-html/cell-4-output-1.svg)
+
 Filtering on other columns.
 
 ``` ggsql
@@ -68,6 +72,8 @@ VISUALISE FROM ggsql:world
 DRAW spatial 
   FILTER continent == 'Asia'
 ```
+
+[![](spatial_files/figure-html/cell-5-output-1.svg)](spatial_files/figure-html/cell-5-output-1.svg)
 
 Filtering based on spatial operations.
 
@@ -77,6 +83,8 @@ DRAW spatial
   FILTER ST_Intersects(ST_GeomFromWKB(geom), ST_MakeEnvelope(-20.0, -35.0, 55.0, 38.0))
 ```
 
+[![](spatial_files/figure-html/cell-6-output-1.svg)](spatial_files/figure-html/cell-6-output-1.svg)
+
 Make a choropleth map by mapping a variable to a fill aesthetic.
 
 ``` ggsql
@@ -85,3 +93,5 @@ DRAW spatial
   MAPPING population AS fill
   SETTING opacity => 1
 ```
+
+[![](spatial_files/figure-html/cell-7-output-1.svg)](spatial_files/figure-html/cell-7-output-1.svg)

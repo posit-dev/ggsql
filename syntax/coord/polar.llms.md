@@ -45,6 +45,8 @@ DRAW bar
 PROJECT TO polar
 ```
 
+[![](polar_files/figure-html/cell-2-output-1.svg)](polar_files/figure-html/cell-2-output-1.svg)
+
 ### Pie chart starting at 3 o’clock
 
 ``` ggsql
@@ -53,6 +55,8 @@ DRAW bar
 PROJECT TO polar 
   SETTING start => 90
 ```
+
+[![](polar_files/figure-html/cell-3-output-1.svg)](polar_files/figure-html/cell-3-output-1.svg)
 
 ### Pie chart starting at 9 o’clock
 
@@ -63,6 +67,8 @@ PROJECT TO polar
   SETTING start => -90
 ```
 
+[![](polar_files/figure-html/cell-4-output-1.svg)](polar_files/figure-html/cell-4-output-1.svg)
+
 ### Half-circle gauge chart
 
 ``` ggsql
@@ -71,6 +77,8 @@ DRAW bar
 PROJECT TO polar 
   SETTING start => -90, end => 90
 ```
+
+[![](polar_files/figure-html/cell-5-output-1.svg)](polar_files/figure-html/cell-5-output-1.svg)
 
 This creates a gauge chart spanning from the 9 o’clock to 3 o’clock position (a 180° arc at the top). Note that scale expansion is applied by default so the data does not fill the whole half-circle.
 
@@ -84,6 +92,8 @@ PROJECT TO polar
   SETTING end => 270
 ```
 
+[![](polar_files/figure-html/cell-6-output-1.svg)](polar_files/figure-html/cell-6-output-1.svg)
+
 This creates a pie chart using only 270° (three-quarters of a circle), starting from 0° (12 o’clock) and ending at 270° (9 o’clock). We have turned off the scale expansion by using `SCALE angle SETTING expand => 0`.
 
 ### Donut chart with 50% hole
@@ -94,6 +104,8 @@ DRAW bar
 PROJECT TO polar 
   SETTING inner => 0.5
 ```
+
+[![](polar_files/figure-html/cell-7-output-1.svg)](polar_files/figure-html/cell-7-output-1.svg)
 
 This creates a donut chart where the inner 50% of the radius is empty, leaving a ring-shaped visualization.
 
@@ -106,6 +118,8 @@ PROJECT TO polar
   SETTING inner => 0.3
 ```
 
+[![](polar_files/figure-html/cell-8-output-1.svg)](polar_files/figure-html/cell-8-output-1.svg)
+
 This creates a donut chart with a smaller hole (30% of the radius).
 
 ### Half-circle donut chart
@@ -117,6 +131,8 @@ SCALE angle SETTING expand => 0
 PROJECT TO polar 
   SETTING start => -90, end => 90, inner => 0.5
 ```
+
+[![](polar_files/figure-html/cell-9-output-1.svg)](polar_files/figure-html/cell-9-output-1.svg)
 
 This combines the `start`, `end`, and `inner` settings to create a half-circle donut chart (gauge style) spanning from 9 o’clock to 3 o’clock with a 50% hole.
 
@@ -133,5 +149,7 @@ WITH data(angle, radius) AS (VALUES
 VISUALISE angle, radius FROM data
 DRAW polygon
 ```
+
+[![](polar_files/figure-html/cell-10-output-1.svg)](polar_files/figure-html/cell-10-output-1.svg)
 
 The key to drawing a radar chart is having discrete data for the `angle` aesthetic. You can turn off the radar chart by using `PROJECT TO polar SETTING radar => false`.

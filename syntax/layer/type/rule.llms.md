@@ -62,6 +62,8 @@ PLACE rule
   SETTING y => 70
 ```
 
+[![](rule_files/figure-html/cell-2-output-1.svg)](rule_files/figure-html/cell-2-output-1.svg)
+
 Add a vertical line to mark a specific value:
 
 ``` ggsql
@@ -71,6 +73,8 @@ DRAW point
 PLACE rule 
   SETTING x => 45
 ```
+
+[![](rule_files/figure-html/cell-3-output-1.svg)](rule_files/figure-html/cell-3-output-1.svg)
 
 Add multiple threshold lines with different colors. Note that because we’re mapping data from data, we use the `DRAW` clause instead of the `PLACE` clause.
 
@@ -91,6 +95,8 @@ DRAW rule
   MAPPING value AS y, label AS colour FROM thresholds
 ```
 
+[![](rule_files/figure-html/cell-4-output-1.svg)](rule_files/figure-html/cell-4-output-1.svg)
+
 Add a diagonal reference line to a scatterplot by using `slope`
 
 ``` ggsql
@@ -98,6 +104,8 @@ VISUALISE FROM ggsql:penguins
   DRAW point MAPPING bill_len AS x, bill_dep AS y
   PLACE rule SETTING slope => 0.4, y => -1
 ```
+
+[![](rule_files/figure-html/cell-5-output-1.svg)](rule_files/figure-html/cell-5-output-1.svg)
 
 Add multiple reference lines with different colors from a separate dataset. Note we’re mapping from data here, so we use `DRAW` instead of `PLACE`.
 
@@ -119,6 +127,8 @@ VISUALISE FROM ggsql:penguins
     FROM lines
 ```
 
+[![](rule_files/figure-html/cell-6-output-1.svg)](rule_files/figure-html/cell-6-output-1.svg)
+
 Show a max rule for a timeseries
 
 ``` ggsql
@@ -128,3 +138,5 @@ DRAW line
 DRAW rule
   SETTING aggregate => 'max'
 ```
+
+[![](rule_files/figure-html/cell-7-output-1.svg)](rule_files/figure-html/cell-7-output-1.svg)

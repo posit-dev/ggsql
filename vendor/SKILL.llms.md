@@ -407,7 +407,7 @@ Reference lines spanning the full panel. Required: x or y. Optional: `slope` (fo
 
 ### text
 
-Text labels. Required: x, y, label. Settings: `offset` (number or `(h, v)`), `format` (string interpolation like RENAMING), `parse` (boolean, default `true`: read the label as markdown — `**bold**`, `*italic*`, `~~strike~~`, `` `code` ``, `{.red span}` — set `false` to draw it literally; png writer only). `hjust`: `'left'`/`'right'`/`'centre'` or 0-1. `vjust`: `'top'`/`'bottom'`/`'middle'` or 0-1.
+Text labels. Required: x, y, label. Settings: `offset` (number or `(h, v)`), `format` (string interpolation like RENAMING), `parse` (boolean, default `true`: read the label as markdown — `**bold**`, `*italic*`, `~~strike~~`, `` `code` ``, `{.red span}` — set `false` to draw it literally; not Vega-Lite, which has no rich text). `hjust`: `'left'`/`'right'`/`'centre'` or 0-1. `vjust`: `'top'`/`'bottom'`/`'middle'` or 0-1.
 
 ### rect
 
@@ -496,12 +496,17 @@ DRAW ribbon
 
 ## CLI
 
-The `ggsql` CLI should be on the PATH. Subcommands: `exec <QUERY>`, `run <FILE>`, `validate <QUERY>`, `parse <QUERY>`. Common options: `--reader <URI>` (default `duckdb://memory`), `--writer <FORMAT>` (default `vegalite`), `--output <PATH>`, `-v` (verbose).
+The `ggsql` CLI should be on the PATH. Subcommands: `exec <QUERY>`, `run <FILE>`, `validate <QUERY>`, `parse <QUERY>`, `view <QUERY>` (native window, blocks until closed). Common options: `--reader <URI>` (default `duckdb://memory`), `--writer <FORMAT>` (default `vegalite`), `--output <PATH>` (its extension picks the writer when `--writer` is omitted), `-D key=value` (writer settings), `-v` (verbose). Writers: `vegalite`, `svg`, `pdf`, `hep` (no GPU needed) and `png`, `jpeg`, `tiff`, `webp` (rasterise on the GPU, not in every build).
+
+**Do not run `ggsql view` unless the user asked for a window.** It blocks until a person closes the window, and you cannot close it yourself. Write a file with `--output` and look at that instead.
+
+**Prefer `svg` or `pdf` when you need a picture**, since they need no GPU adapter. The raster writers do, and discover it only at render time. `ggsql exec --help` lists the writers this build has and names the feature that would add a missing one; it cannot tell you whether an adapter is present.
 
 ``` bash
 ggsql validate "VISUALISE x, y FROM data DRAW point"
 ggsql exec "VISUALISE bill_len AS x, bill_dep AS y FROM ggsql:penguins DRAW point" -v
 ggsql run query.sql --output chart.vl.json
+ggsql exec "VISUALISE species AS fill FROM ggsql:penguins DRAW bar" -o chart.svg
 ```
 
 ------------------------------------------------------------------------

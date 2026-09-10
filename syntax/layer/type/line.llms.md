@@ -52,6 +52,8 @@ DRAW line
   MAPPING Date AS x, Temp AS y
 ```
 
+[![](line_files/figure-html/cell-2-output-1.svg)](line_files/figure-html/cell-2-output-1.svg)
+
 Use `PARTITION BY` to create multiple lines
 
 ``` ggsql
@@ -61,6 +63,8 @@ DRAW line
   PARTITION BY Month
 ```
 
+[![](line_files/figure-html/cell-3-output-1.svg)](line_files/figure-html/cell-3-output-1.svg)
+
 or split them with a *discrete* aesthetic. We can make a continuous variable (`Month`) discrete by using an ordinal scale.
 
 ``` ggsql
@@ -69,6 +73,8 @@ DRAW line
   MAPPING Day AS x, Temp AS y, Month AS stroke
   SCALE ordinal stroke
 ```
+
+[![](line_files/figure-html/cell-4-output-1.svg)](line_files/figure-html/cell-4-output-1.svg)
 
 When `stroke` or `opacity` varies, the properties of the preceding datapoint carry over. In the case below, we don’t see the blue of the last datapoint.
 
@@ -83,6 +89,8 @@ DRAW line
   MAPPING z AS stroke
 SCALE stroke TO ('red', 'green', 'blue')
 ```
+
+[![](line_files/figure-html/cell-5-output-1.svg)](line_files/figure-html/cell-5-output-1.svg)
 
 The `linewidth` aesthetic can vary point to point.
 
@@ -99,6 +107,8 @@ DRAW line
 SCALE linewidth TO (0, 30)
 ```
 
+[![](line_files/figure-html/cell-6-output-1.svg)](line_files/figure-html/cell-6-output-1.svg)
+
 Use aggregation to draw min and max lines from a set of observations on a single layer. Targeting `y` twice produces one summary row per function within the same group. A synthetic `aggregate` column tags each row with the different function names, that you can remap to colour the lines distinctly:
 
 ``` ggsql
@@ -108,3 +118,5 @@ DRAW line
   SETTING aggregate => ('y:min', 'y:max')
 DRAW point
 ```
+
+[![](line_files/figure-html/cell-7-output-1.svg)](line_files/figure-html/cell-7-output-1.svg)

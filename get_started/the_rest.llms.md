@@ -81,12 +81,16 @@ DRAW bar
 PROJECT TO polar
 ```
 
+[![](the_rest_files/figure-html/cell-2-output-1.svg)](the_rest_files/figure-html/cell-2-output-1.svg)
+
 It may be easier to see how the bar chart turns into a pie by looking at it unstacked:
 
 ``` ggsql
 VISUALISE species AS radius, species AS fill FROM ggsql:penguins
 DRAW bar
 ```
+
+[![](the_rest_files/figure-html/cell-3-output-1.svg)](the_rest_files/figure-html/cell-3-output-1.svg)
 
 See how we didn’t have to specify the polar coordinate system in the last example because we have a mapping to radius, allowing ggsql to deduce the coordinate system automatically.
 
@@ -98,6 +102,8 @@ DRAW bar
 PROJECT TO polar SETTING radar => false
 ```
 
+[![](the_rest_files/figure-html/cell-4-output-1.svg)](the_rest_files/figure-html/cell-4-output-1.svg)
+
 Moving back to the regular pie chart, we might be interested in comparing how the species distribution varies by sex. We can do this with faceting:
 
 ``` ggsql
@@ -108,6 +114,8 @@ FACET island
   SETTING free => 'angle'
 SCALE panel FROM ('Biscoe', 'Dream')
 ```
+
+[![](the_rest_files/figure-html/cell-5-output-1.svg)](the_rest_files/figure-html/cell-5-output-1.svg)
 
 Above, we use the `free` parameter of facet to allow each facet to have their own angle scale. Further, we use `SCALE` on the panel aesthetic to only show panels for the Biscoe and Dream islands.
 
@@ -125,6 +133,8 @@ LABEL
   subtitle => 'Compared across 344 penguins',
   fill => 'Species'
 ```
+
+[![](the_rest_files/figure-html/cell-6-output-1.svg)](the_rest_files/figure-html/cell-6-output-1.svg)
 
 ## The rest of the rest of the owl
 

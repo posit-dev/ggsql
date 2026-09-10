@@ -25,6 +25,8 @@ VISUALISE species AS x, bill_dep AS y, sex AS fill FROM ggsql:penguins
 DRAW boxplot
 ```
 
+[![](dodge_files/figure-html/cell-2-output-1.svg)](dodge_files/figure-html/cell-2-output-1.svg)
+
 Turning it off allows you to see the effect of it
 
 ``` ggsql
@@ -32,6 +34,8 @@ VISUALISE species AS x, bill_dep AS y, sex AS fill FROM ggsql:penguins
 DRAW boxplot 
   SETTING position => 'identity'
 ```
+
+[![](dodge_files/figure-html/cell-3-output-1.svg)](dodge_files/figure-html/cell-3-output-1.svg)
 
 Dodge can be used for bar plots as an alternative to the default stack
 
@@ -41,6 +45,8 @@ DRAW bar
   SETTING position => 'dodge'
 ```
 
+[![](dodge_files/figure-html/cell-4-output-1.svg)](dodge_files/figure-html/cell-4-output-1.svg)
+
 Often `width` is part of the layer settings and gets used directly by the dodge position, but for layers with no inherent width setting dodge provides that setting as well
 
 ``` ggsql
@@ -48,3 +54,5 @@ VISUALISE species AS x, bill_dep AS y, sex AS shape FROM ggsql:penguins
 DRAW point 
   SETTING position => 'dodge', width => 0.5
 ```
+
+[![](dodge_files/figure-html/cell-5-output-1.svg)](dodge_files/figure-html/cell-5-output-1.svg)

@@ -32,6 +32,8 @@ DRAW point
 PROJECT p, q TO cartesian
 ```
 
+[![](cartesian_files/figure-html/cell-2-output-1.svg)](cartesian_files/figure-html/cell-2-output-1.svg)
+
 ### Flip the x and y axes
 
 ``` ggsql
@@ -39,3 +41,5 @@ VISUALISE bill_len AS x, bill_dep AS y FROM ggsql:penguins
 DRAW point
 PROJECT y, x TO cartesian
 ```
+
+[![](cartesian_files/figure-html/cell-3-output-1.svg)](cartesian_files/figure-html/cell-3-output-1.svg)

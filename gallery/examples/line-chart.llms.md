@@ -23,6 +23,8 @@ LABEL
   y => 'Temperature (F)'
 ```
 
+[![](line-chart_files/figure-html/cell-2-output-1.svg)](line-chart_files/figure-html/cell-2-output-1.svg)
+
 ## Explanation
 
 - `SELECT ... FROM ggsql:airquality` queries the built-in air quality dataset
@@ -47,3 +49,5 @@ LABEL
   x => 'Date',
   y => 'Temperature (F)'
 ```
+
+[![](line-chart_files/figure-html/cell-3-output-1.svg)](line-chart_files/figure-html/cell-3-output-1.svg)

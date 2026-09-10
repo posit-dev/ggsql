@@ -17,6 +17,8 @@ VISUALISE island AS fill FROM ggsql:penguins
   DRAW bar
 ```
 
+[![](pie-chart_files/figure-html/cell-2-output-1.svg)](pie-chart_files/figure-html/cell-2-output-1.svg)
+
 Now we need to add the polar coordinate system to make a pie chart.
 
 ``` ggsql
@@ -24,6 +26,8 @@ VISUALISE island AS fill FROM ggsql:penguins
   DRAW bar
   PROJECT TO polar
 ```
+
+[![](pie-chart_files/figure-html/cell-3-output-1.svg)](pie-chart_files/figure-html/cell-3-output-1.svg)
 
 ## Explanation
 
@@ -54,6 +58,8 @@ VISUALISE n AS angle, 'dummy' AS radius, species AS fill FROM count_data
   DRAW bar
 ```
 
+[![](pie-chart_files/figure-html/cell-4-output-1.svg)](pie-chart_files/figure-html/cell-4-output-1.svg)
+
 Note that because we’re using `angle` and `radius`, we no longer need to specify `PROJECT TO polar` because it is inferred from the aesthetic names.
 
 ### Don’t use `radius` for pie charts
@@ -65,6 +71,8 @@ VISUALISE island AS radius, species AS fill FROM ggsql:penguins
   DRAW bar SETTING total => 100
 ```
 
+[![](pie-chart_files/figure-html/cell-5-output-1.svg)](pie-chart_files/figure-html/cell-5-output-1.svg)
+
 ### Donut charts
 
 Donut charts are a variation of the pie chart that shows a ring instead of a full circle. You can create a donut chart by setting the `inner` of the polar coordinate system.
@@ -74,6 +82,8 @@ VISUALISE island AS fill FROM ggsql:penguins
   DRAW bar
   PROJECT TO polar SETTING inner => 0.5
 ```
+
+[![](pie-chart_files/figure-html/cell-6-output-1.svg)](pie-chart_files/figure-html/cell-6-output-1.svg)
 
 ### Semicircular pie charts
 
@@ -86,6 +96,8 @@ VISUALISE island AS fill FROM ggsql:penguins
   SCALE angle SETTING expand => 0
 ```
 
+[![](pie-chart_files/figure-html/cell-7-output-1.svg)](pie-chart_files/figure-html/cell-7-output-1.svg)
+
 ### Faceting pie charts
 
 When faceting, you will typically want the pies to be whole, which requires the `SETTING free => 'angle'` specification.
@@ -96,3 +108,5 @@ VISUALISE island AS fill FROM ggsql:penguins
   PROJECT TO polar 
   FACET species SETTING free => 'angle'
 ```
+
+[![](pie-chart_files/figure-html/cell-8-output-1.svg)](pie-chart_files/figure-html/cell-8-output-1.svg)

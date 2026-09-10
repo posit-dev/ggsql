@@ -23,6 +23,8 @@ SCALE x
   SETTING breaks => 'weeks'
 ```
 
+[![](Z_faceting_files/figure-html/cell-2-output-1.svg)](Z_faceting_files/figure-html/cell-2-output-1.svg)
+
 In order to show data where the facet variable is null, it is necessary to explicitly include `null` in the input range of a facet aesthetic scale. Just like discrete position aesthetics. You can also use `RENAMING` on the scale to customize facet strip labels.
 
 ``` ggsql
@@ -32,3 +34,5 @@ FACET species
 SCALE panel FROM ('Adelie', null)
   RENAMING null => 'The rest'
 ```
+
+[![](Z_faceting_files/figure-html/cell-3-output-1.svg)](Z_faceting_files/figure-html/cell-3-output-1.svg)

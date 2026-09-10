@@ -61,6 +61,8 @@ VISUALISE Day AS x, Month AS y, Temp AS colour FROM ggsql:airquality
 DRAW tile 
 ```
 
+[![](tile_files/figure-html/cell-2-output-1.svg)](tile_files/figure-html/cell-2-output-1.svg)
+
 Customising `width` and `height` with either the `MAPPING` or `SETTING` clauses.
 
 ``` ggsql
@@ -69,6 +71,8 @@ DRAW tile
   MAPPING 0.5 AS width 
   SETTING height => 0.8
 ```
+
+[![](tile_files/figure-html/cell-3-output-1.svg)](tile_files/figure-html/cell-3-output-1.svg)
 
 If `x` is continuous, then `width` can be variable. Likewise for `y` and `height`.
 
@@ -82,6 +86,8 @@ VISUALISE Day AS x, Month AS y, Temp AS colour
 DRAW tile 
   MAPPING norm_temp AS width, norm_temp AS height
 ```
+
+[![](tile_files/figure-html/cell-4-output-1.svg)](tile_files/figure-html/cell-4-output-1.svg)
 
 Using top, right, bottom, left parameterisation instead.
 
@@ -98,6 +104,8 @@ VISUALISE start AS xmin, end AS xmax, min AS ymin, max AS ymax
 DRAW tile
 ```
 
+[![](tile_files/figure-html/cell-5-output-1.svg)](tile_files/figure-html/cell-5-output-1.svg)
+
 Building a heatmap from raw rows by aggregating per cell.
 
 ``` ggsql
@@ -106,6 +114,8 @@ DRAW tile
   MAPPING species AS x, sex AS y, body_mass AS fill
   SETTING aggregate => 'mean', opacity => 1
 ```
+
+[![](tile_files/figure-html/cell-6-output-1.svg)](tile_files/figure-html/cell-6-output-1.svg)
 
 Using a tile as an annotation. Note we’re using the `PLACE` clause here instead of `DRAW` because we’re not mapping from data.
 
@@ -121,3 +131,5 @@ PLACE tile
 DRAW line 
   MAPPING Date AS x, Temp AS y
 ```
+
+[![](tile_files/figure-html/cell-7-output-1.svg)](tile_files/figure-html/cell-7-output-1.svg)

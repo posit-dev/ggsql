@@ -19,6 +19,8 @@ VISUALISE species AS x, bill_len AS y FROM ggsql:penguins
   DRAW violin
 ```
 
+[![](violin_files/figure-html/cell-2-output-1.svg)](violin_files/figure-html/cell-2-output-1.svg)
+
 ## Explanation
 
 - The `VISUALISE ... FROM ggsql:penguins` loads the built-in penguins dataset.
@@ -37,6 +39,8 @@ VISUALISE species AS x, bill_len AS y, island AS colour FROM ggsql:penguins
   DRAW violin
 ```
 
+[![](violin_files/figure-html/cell-3-output-1.svg)](violin_files/figure-html/cell-3-output-1.svg)
+
 However, dodging might be unproductive or counterintuitive in some cases. For example if we double-encode groups, like `species` as both `x` *and* `colour` in the plot below, dodging looks bad.
 
 ``` ggsql
@@ -44,12 +48,16 @@ VISUALISE species AS x, bill_len AS y, species AS colour FROM ggsql:penguins
   DRAW violin
 ```
 
+[![](violin_files/figure-html/cell-4-output-1.svg)](violin_files/figure-html/cell-4-output-1.svg)
+
 We can disable the dodging by setting `position => 'identity'`.
 
 ``` ggsql
 VISUALISE species AS x, bill_len AS y, species AS colour FROM ggsql:penguins
   DRAW violin SETTING position => 'identity'
 ```
+
+[![](violin_files/figure-html/cell-5-output-1.svg)](violin_files/figure-html/cell-5-output-1.svg)
 
 ### Half-violins
 
@@ -60,12 +68,16 @@ VISUALISE bill_len AS x, species AS y FROM ggsql:penguins
   DRAW violin
 ```
 
+[![](violin_files/figure-html/cell-6-output-1.svg)](violin_files/figure-html/cell-6-output-1.svg)
+
 To get ridges, we can set `side => 'top'`.
 
 ``` ggsql
 VISUALISE bill_len AS x, species AS y FROM ggsql:penguins
   DRAW violin SETTING side => 'top'
 ```
+
+[![](violin_files/figure-html/cell-7-output-1.svg)](violin_files/figure-html/cell-7-output-1.svg)
 
 To display variables split across two different groups, you can combine two halves to get an asymmetrical violin. Here we’re using the `FILTER` clause to draw separate layers for the ‘male’ and ‘female’ groups.
 
@@ -79,6 +91,8 @@ VISUALISE bill_len AS x, species AS y, sex AS colour FROM ggsql:penguins
     FILTER sex == 'male'
 ```
 
+[![](violin_files/figure-html/cell-8-output-1.svg)](violin_files/figure-html/cell-8-output-1.svg)
+
 ### With individual datapoints
 
 It might be tempting to combine the display of individual datapoints with a violin to accentuate the distribution. The datapoints can be jittered by setting `position => 'jitter'`.
@@ -89,6 +103,8 @@ VISUALISE species AS x, bill_len AS y FROM ggsql:penguins
   DRAW violin SETTING opacity => 0.3
 ```
 
+[![](violin_files/figure-html/cell-9-output-1.svg)](violin_files/figure-html/cell-9-output-1.svg)
+
 This can be made even more clear by also using the `distrion => 'density'` setting.
 
 ``` ggsql
@@ -96,3 +112,5 @@ VISUALISE species AS x, bill_len AS y FROM ggsql:penguins
   DRAW point SETTING position => 'jitter', distribution => 'density'
   DRAW violin SETTING opacity => 0.3
 ```
+
+[![](violin_files/figure-html/cell-10-output-1.svg)](violin_files/figure-html/cell-10-output-1.svg)

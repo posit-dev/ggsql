@@ -56,6 +56,8 @@ VISUALISE x, y FROM df
 DRAW path
 ```
 
+[![](path_files/figure-html/cell-3-output-1.svg)](path_files/figure-html/cell-3-output-1.svg)
+
 Contrary to `line` drawings, `path` is not forced to follow the order along the axis.
 
 ``` ggsql
@@ -66,6 +68,8 @@ DRAW line
   MAPPING 'Line' AS colour
 ```
 
+[![](path_files/figure-html/cell-4-output-1.svg)](path_files/figure-html/cell-4-output-1.svg)
+
 Groups of individual paths can be declared via `PARTITION BY`.
 
 ``` ggsql
@@ -74,6 +78,8 @@ DRAW path
   PARTITION BY id
 ```
 
+[![](path_files/figure-html/cell-5-output-1.svg)](path_files/figure-html/cell-5-output-1.svg)
+
 Invoking a group through discrete aesthetics works as well.
 
 ``` ggsql
@@ -81,6 +87,8 @@ VISUALISE x, y FROM df
 DRAW path 
   MAPPING id AS colour
 ```
+
+[![](path_files/figure-html/cell-6-output-1.svg)](path_files/figure-html/cell-6-output-1.svg)
 
 Compared to polygons, paths don’t close their shapes and fill their interiors.
 
@@ -91,6 +99,8 @@ DRAW polygon
 DRAW path 
   MAPPING 'Path' AS stroke
 ```
+
+[![](path_files/figure-html/cell-7-output-1.svg)](path_files/figure-html/cell-7-output-1.svg)
 
 When `stroke` or `opacity` varies, the properties of the preceding datapoint carry over. In the case below, we don’t see the blue of the last datapoint.
 
@@ -107,6 +117,8 @@ DRAW path
 SCALE stroke TO ('red', 'green', 'blue')
 ```
 
+[![](path_files/figure-html/cell-8-output-1.svg)](path_files/figure-html/cell-8-output-1.svg)
+
 The `linewidth` aesthetic can vary point to point.
 
 ``` ggsql
@@ -121,3 +133,5 @@ DRAW path
   MAPPING z AS linewidth
 SCALE linewidth TO (0, 30)
 ```
+
+[![](path_files/figure-html/cell-9-output-1.svg)](path_files/figure-html/cell-9-output-1.svg)

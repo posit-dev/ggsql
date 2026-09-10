@@ -2,7 +2,7 @@
 <html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
 
 <meta charset="utf-8">
-<meta name="generator" content="quarto-1.11.3">
+<meta name="generator" content="quarto-1.11.4">
 
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
@@ -64,7 +64,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </style>
 
 
-<script src="https://cdn.jsdelivr.net/npm/jquery@3.5.1/dist/jquery.min.js" integrity="sha384-ZvpUoO/+PpLXR1lu4jmpXWu80pZlYUAfxl5NsBMWOEPSjUn/6Z/hRTt8+pR6L4N2" crossorigin="anonymous"></script><script src="../../../site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="../../../site_libs/quarto-nav/quarto-nav.js"></script>
 <script src="../../../site_libs/quarto-nav/headroom.min.js"></script>
 <script src="../../../site_libs/clipboard/clipboard.min.js"></script>
 <script src="../../../site_libs/quarto-search/autocomplete.umd.js"></script>
@@ -78,15 +78,18 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <script src="../../../site_libs/quarto-html/tippy.umd.min.js"></script>
 <script src="../../../site_libs/quarto-html/anchor.min.js"></script>
 <link href="../../../site_libs/quarto-html/tippy.css" rel="stylesheet">
-<link href="../../../site_libs/quarto-html/quarto-syntax-highlighting-dcb1874e0c6aa5279562b677d1a72506.css" rel="stylesheet" class="quarto-color-scheme" id="quarto-text-highlighting-styles">
-<link href="../../../site_libs/quarto-html/quarto-syntax-highlighting-dark-dcb1874e0c6aa5279562b677d1a72506.css" rel="stylesheet" class="quarto-color-scheme quarto-color-alternate" id="quarto-text-highlighting-styles">
-<link href="../../../site_libs/quarto-html/quarto-syntax-highlighting-dcb1874e0c6aa5279562b677d1a72506.css" rel="stylesheet" class="quarto-color-scheme-extra" id="quarto-text-highlighting-styles">
+<link href="../../../site_libs/quarto-html/quarto-syntax-highlighting-3b3e5ab417bc8a85daaddba4ecbda1b0.css" rel="stylesheet" class="quarto-color-scheme" id="quarto-text-highlighting-styles">
+<link href="../../../site_libs/quarto-html/quarto-syntax-highlighting-dark-3b3e5ab417bc8a85daaddba4ecbda1b0.css" rel="stylesheet" class="quarto-color-scheme quarto-color-alternate" id="quarto-text-highlighting-styles">
+<link href="../../../site_libs/quarto-html/quarto-syntax-highlighting-3b3e5ab417bc8a85daaddba4ecbda1b0.css" rel="stylesheet" class="quarto-color-scheme-extra" id="quarto-text-highlighting-styles">
 <script src="../../../site_libs/bootstrap/bootstrap.min.js"></script>
 <link href="../../../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
 <link href="../../../site_libs/bootstrap/bootstrap-ee2fbf1385f1445439e0330faa874de9.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme" id="quarto-bootstrap" data-mode="light">
 <link href="../../../site_libs/bootstrap/bootstrap-dark-48c390d65c4999e95bad94a105d94c4e.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme quarto-color-alternate" id="quarto-bootstrap" data-mode="light">
 <link href="../../../site_libs/bootstrap/bootstrap-ee2fbf1385f1445439e0330faa874de9.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme-extra" id="quarto-bootstrap" data-mode="light">
 <script src="../../../site_libs/quarto-contrib/iconify-3.0.0/iconify-icon.min.js"></script>
+<script src="../../../site_libs/quarto-contrib/glightbox/glightbox.min.js"></script>
+<link href="../../../site_libs/quarto-contrib/glightbox/glightbox.min.css" rel="stylesheet">
+<link href="../../../site_libs/quarto-contrib/glightbox/lightbox.css" rel="stylesheet">
 <script id="quarto-search-options" type="application/json">{
   "location": "navbar",
   "copy-button": false,
@@ -109,9 +112,6 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
     "search-label": "Search"
   }
 }</script>
-<script src="https://cdn.jsdelivr.net/npm/requirejs@2.3.6/require.min.js" integrity="sha384-c9c+LnTbwQ3aujuU7ULEPVvgLs+Fn6fJUvIGTsuu1ZcCf11fiEubah0ttpca4ntM sha384-6V1/AdqZRWk1KAlWbKBlGhN7VG4iE/yAZcO6NZPMF8od0vukrvr0tg4qY6NSrItx" crossorigin="anonymous"></script>
-
-<script type="application/javascript">define('jquery', [],function() {return window.jQuery;})</script>
 <script src="https://cdn.jsdelivr.net/gh/posit-dev/supported-by-posit/js/badge.min.js" data-light-bg="#94D2BD" data-dark-bg="#001219"></script>
 <!-- Privacy-friendly analytics by Plausible -->
 <script async="" src="https://plausible.io/js/pa-eH2pS73nQmBLURrhxXgML.js"></script>
@@ -123,27 +123,19 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 
 <meta property="og:title" content="Range – ggsql">
 <meta property="og:description" content="The home of ggsql. A declarative visualisation language build on top of SQL and the grammar of graphics.">
-<meta property="og:image" content="https://ggsql.org/syntax/layer/type/assets/logo.png">
+<meta property="og:image" content="https://ggsql.org/syntax/layer/type/range_files/figure-html/cell-3-output-1.svg">
 <meta property="og:site_name" content="ggsql">
-<meta property="og:image:alt" content="The ggsql logo showing a pencil tracing a lineplot with points. The pencil
-handle is made up of the classic database silo icon and is coloured in a
-gradient teal.
-">
 <meta name="twitter:title" content="Range – ggsql">
 <meta name="twitter:description" content="The home of ggsql. A declarative visualisation language build on top of SQL and the grammar of graphics.">
-<meta name="twitter:image" content="https://ggsql.org/syntax/layer/type/assets/logo.png">
+<meta name="twitter:image" content="https://ggsql.org/syntax/layer/type/range_files/figure-html/cell-3-output-1.svg">
 <meta name="twitter:card" content="summary">
-<meta name="twitter:image:alt" content="The ggsql logo showing a pencil tracing a lineplot with points. The pencil
-handle is made up of the classic database silo icon and is coloured in a
-gradient teal.
-">
 </head>
 
 <body class="nav-sidebar floating nav-fixed quarto-light"><a id="quarto-skip-link" class="visually-hidden-focusable" href="#quarto-document-content">Skip to main content</a>
 
 <div id="quarto-search-results"></div>
   <header id="quarto-header" class="headroom fixed-top">
-    <nav class="navbar navbar-expand-lg " data-bs-theme="dark">
+    <nav class="navbar navbar-expand-lg " data-bs-theme="dark" aria-label="Site">
       <div class="navbar-container container-fluid">
       <div class="navbar-brand-container mx-auto">
     <a href="../../../index.html" class="navbar-brand navbar-brand-logo">
@@ -268,12 +260,12 @@ gradient teal.
 </div>
       </div> <!-- /container-fluid -->
     </nav>
-  <nav class="quarto-secondary-nav">
+  <nav class="quarto-secondary-nav" aria-label="Toolbar">
     <div class="container-fluid d-flex">
       <button type="button" class="quarto-btn-toggle btn" data-bs-toggle="collapse" role="button" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
         <i class="bi bi-layout-text-sidebar-reverse"></i>
       </button>
-        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item">Layers</li><li class="breadcrumb-item"><a href="../../../syntax/layer/type/area.html">Types</a></li><li class="breadcrumb-item"><a href="../../../syntax/layer/type/range.html">Range</a></li></ol></nav>
+        <nav class="quarto-page-breadcrumbs" aria-label="Breadcrumbs"><ol class="breadcrumb"><li class="breadcrumb-item">Layers</li><li class="breadcrumb-item"><a href="../../../syntax/layer/type/area.html">Types</a></li><li class="breadcrumb-item"><a href="../../../syntax/layer/type/range.html">Range</a></li></ol></nav>
         <a class="flex-grow-1" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">      
         </a>
       <button type="button" class="btn quarto-search-button" aria-label="Search" onclick="window.quartoOpenSearch();">
@@ -288,7 +280,7 @@ gradient teal.
 <!-- content -->
 <div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article page-navbar">
 <!-- sidebar -->
-  <nav id="quarto-sidebar" class="sidebar collapse collapse-horizontal quarto-sidebar-collapse-item sidebar-navigation floating overflow-auto">
+  <nav id="quarto-sidebar" class="sidebar collapse collapse-horizontal quarto-sidebar-collapse-item sidebar-navigation floating overflow-auto" aria-label="Section">
         <div class="mt-2 flex-shrink-0 align-items-center">
         <div class="sidebar-search">
         <div id="quarto-search" class="" title="Search"></div>
@@ -648,7 +640,7 @@ gradient teal.
 <div id="quarto-sidebar-glass" class="quarto-sidebar-collapse-item" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item"></div>
 <!-- margin-sidebar -->
     <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
-        <nav id="TOC" role="doc-toc" class="toc-active">
+        <nav id="TOC" role="doc-toc" aria-labelledby="toc-title" class="toc-active">
     <h2 id="toc-title">On this page</h2>
    
   <ul>
@@ -667,7 +659,7 @@ gradient teal.
 <!-- main -->
 <main class="content" id="quarto-document-content" tabindex="-1">
 
-<header id="title-block-header" class="quarto-title-block default"><nav class="quarto-page-breadcrumbs quarto-title-breadcrumbs d-none d-lg-block" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item">Layers</li><li class="breadcrumb-item"><a href="../../../syntax/layer/type/area.html">Types</a></li><li class="breadcrumb-item"><a href="../../../syntax/layer/type/range.html">Range</a></li></ol></nav>
+<header id="title-block-header" class="quarto-title-block default"><nav class="quarto-page-breadcrumbs quarto-title-breadcrumbs d-none d-lg-block" aria-label="Breadcrumbs"><ol class="breadcrumb"><li class="breadcrumb-item">Layers</li><li class="breadcrumb-item"><a href="../../../syntax/layer/type/area.html">Types</a></li><li class="breadcrumb-item"><a href="../../../syntax/layer/type/range.html">Range</a></li></ol></nav>
 <div class="quarto-title">
 <h1 class="title">Range</h1>
 </div>
@@ -732,7 +724,7 @@ gradient teal.
 </section>
 <section id="examples" class="level2">
 <h2 class="anchored" data-anchor-id="examples">Examples</h2>
-<div id="8177f9ad" class="cell" data-execution_count="1">
+<div id="347ee3f8" class="cell" data-execution_count="1">
 <details class="code-fold">
 <summary>Create example data</summary>
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb1"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="kw">CREATE</span> <span class="kw">TABLE</span> penguin_summary <span class="kw">AS</span></span>
@@ -746,88 +738,22 @@ gradient teal.
 </details>
 </div>
 <p>A classic interval-with-point display.</p>
-<div id="d7156a9d" class="cell" data-execution_count="2">
+<div id="273e2760" class="cell" data-execution_count="2">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb2"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> species <span class="kw">AS</span> <span class="at">x</span> <span class="kw">FROM</span> penguin_summary</span>
 <span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">range</span></span>
 <span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>  <span class="kw">MAPPING</span> low AS <span class="at">ymax</span>, high AS <span class="at">ymin</span></span>
 <span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">point</span></span>
 <span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>  <span class="kw">MAPPING</span> mean AS <span class="at">y</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="2">
-<div id="vis-1788774955331-outer" style="width: 100%; overflow: hidden;">
-<div id="vis-1788774955331" style="width: 100%; min-width: 450px; height: 400px;"></div>
+<div>
+<figure class="figure">
+<p><a href="range_files/figure-html/cell-3-output-1.svg" class="lightbox" data-gallery="quarto-lightbox-gallery-1"><img src="range_files/figure-html/cell-3-output-1.svg" width="672" height="480" class="figure-img"></a></p>
+</figure>
 </div>
-<script type="text/javascript">
-(function() {
-var spec = {"$schema":"https://vega.github.io/schema/vega-lite/v6.json","config":{"axis":{"domain":false,"grid":true,"gridColor":"#FFFFFF","gridWidth":1,"labelColor":"#4D4D4D","labelFontSize":12,"tickColor":"#333333","tickSize":4,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":10},"header":{"labelColor":"#000000","labelFontSize":15,"labelFontWeight":"normal","labelPadding":5,"title":null},"legend":{"labelColor":"#4D4D4D","labelFontSize":12,"rowPadding":6,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":8},"scale":{"bandPaddingInner":0,"bandWithNestedOffsetPaddingInner":0,"bandWithNestedOffsetPaddingOuter":0},"title":{"anchor":"start","color":"#000000","fontSize":18,"fontWeight":"normal","frame":"group","offset":10,"subtitleColor":"#4D4D4D","subtitleFontSize":15,"subtitleFontWeight":"normal"},"view":{"fill":"#EBEBEB","stroke":null}},"data":{"values":[{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos2__":null,"__ggsql_aes_pos2max__":13.482113821138206,"__ggsql_aes_pos2min__":16.482113821138206,"__ggsql_row_index__":0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Chinstrap","__ggsql_aes_pos2__":null,"__ggsql_aes_pos2max__":16.920588235294115,"__ggsql_aes_pos2min__":19.920588235294115,"__ggsql_row_index__":1,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos2__":null,"__ggsql_aes_pos2max__":16.846357615894032,"__ggsql_aes_pos2min__":19.846357615894032,"__ggsql_row_index__":2,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos2__":14.982113821138206,"__ggsql_aes_pos2max__":null,"__ggsql_aes_pos2min__":null,"__ggsql_row_index__":3,"__ggsql_source__":"__ggsql_layer_1__"},{"__ggsql_aes_pos1__":"Chinstrap","__ggsql_aes_pos2__":18.420588235294115,"__ggsql_aes_pos2max__":null,"__ggsql_aes_pos2min__":null,"__ggsql_row_index__":4,"__ggsql_source__":"__ggsql_layer_1__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos2__":18.346357615894032,"__ggsql_aes_pos2max__":null,"__ggsql_aes_pos2min__":null,"__ggsql_row_index__":5,"__ggsql_source__":"__ggsql_layer_1__"}]},"height":"container","layer":[{"encoding":{"opacity":{"value":1.0},"stroke":{"value":"black"},"strokeDash":{"value":[]},"strokeWidth":{"value":1.3333333333333333},"x":{"axis":{"labelExpr":"datum.label == 'Adelie' ? 'Adelie' : datum.label == 'Chinstrap' ? 'Chinstrap' : datum.label == 'Gentoo' ? 'Gentoo' : datum.label"},"field":"__ggsql_aes_pos1__","scale":{"domain":["Adelie","Chinstrap","Gentoo"],"zero":false},"title":"species","type":"nominal"},"y":{"axis":{"labelExpr":"datum.value == 18 ? '18' : datum.value == 20 ? '20' : datum.value == 14 ? '14' : datum.value == 16 ? '16' : datum.label","values":[14.0,16.0,18.0,20.0]},"field":"__ggsql_aes_pos2min__","scale":{"domain":[13.16019010043041,20.24251195600191]},"stack":null,"title":"mean","type":"quantitative"},"y2":{"field":"__ggsql_aes_pos2max__"}},"mark":{"clip":true,"type":"rule"},"transform":[{"filter":{"equal":"__ggsql_layer_0__","field":"__ggsql_source__"}}]},{"encoding":{"opacity":{"value":1.0},"stroke":{"value":"black"},"strokeDash":{"value":[]},"strokeWidth":{"value":1.3333333333333333},"x":{"axis":{"labelExpr":"datum.label == 'Adelie' ? 'Adelie' : datum.label == 'Chinstrap' ? 'Chinstrap' : datum.label == 'Gentoo' ? 'Gentoo' : datum.label"},"field":"__ggsql_aes_pos1__","scale":{"domain":["Adelie","Chinstrap","Gentoo"],"zero":false},"title":"species","type":"nominal"},"y":{"axis":{"labelExpr":"datum.value == 18 ? '18' : datum.value == 20 ? '20' : datum.value == 14 ? '14' : datum.value == 16 ? '16' : datum.label","values":[14.0,16.0,18.0,20.0]},"field":"__ggsql_aes_pos2min__","scale":{"domain":[13.16019010043041,20.24251195600191]},"stack":null,"title":"mean","type":"quantitative"}},"mark":{"clip":true,"orient":"horizontal","size":13.333333333333332,"thickness":0,"type":"tick"},"transform":[{"filter":{"equal":"__ggsql_layer_0__","field":"__ggsql_source__"}}]},{"encoding":{"opacity":{"value":1.0},"stroke":{"value":"black"},"strokeDash":{"value":[]},"strokeWidth":{"value":1.3333333333333333},"x":{"axis":{"labelExpr":"datum.label == 'Adelie' ? 'Adelie' : datum.label == 'Chinstrap' ? 'Chinstrap' : datum.label == 'Gentoo' ? 'Gentoo' : datum.label"},"field":"__ggsql_aes_pos1__","scale":{"domain":["Adelie","Chinstrap","Gentoo"],"zero":false},"title":"species","type":"nominal"},"y":{"axis":{"labelExpr":"datum.value == 18 ? '18' : datum.value == 20 ? '20' : datum.value == 14 ? '14' : datum.value == 16 ? '16' : datum.label","values":[14.0,16.0,18.0,20.0]},"field":"__ggsql_aes_pos2max__","scale":{"domain":[13.16019010043041,20.24251195600191]},"stack":null,"title":"mean","type":"quantitative"}},"mark":{"clip":true,"orient":"horizontal","size":13.333333333333332,"thickness":0,"type":"tick"},"transform":[{"filter":{"equal":"__ggsql_layer_0__","field":"__ggsql_source__"}}]},{"encoding":{"fill":{"value":"black"},"fillOpacity":{"value":0.8},"opacity":{"value":1.0},"shape":{"value":"M0.800,0.000 L0.785,0.156 L0.739,0.306 L0.665,0.444 L0.566,0.566 L0.444,0.665 L0.306,0.739 L0.156,0.785 L0.000,0.800 L-0.156,0.785 L-0.306,0.739 L-0.444,0.665 L-0.566,0.566 L-0.665,0.444 L-0.739,0.306 L-0.785,0.156 L-0.800,0.000 L-0.785,-0.156 L-0.739,-0.306 L-0.665,-0.444 L-0.566,-0.566 L-0.444,-0.665 L-0.306,-0.739 L-0.156,-0.785 L-0.000,-0.800 L0.156,-0.785 L0.306,-0.739 L0.444,-0.665 L0.566,-0.566 L0.665,-0.444 L0.739,-0.306 L0.785,-0.156 Z"},"size":{"value":50.26548245743668},"stroke":{"value":"black"},"strokeWidth":{"value":1.3333333333333333},"x":{"axis":{"labelExpr":"datum.label == 'Adelie' ? 'Adelie' : datum.label == 'Chinstrap' ? 'Chinstrap' : datum.label == 'Gentoo' ? 'Gentoo' : datum.label"},"field":"__ggsql_aes_pos1__","scale":{"domain":["Adelie","Chinstrap","Gentoo"],"zero":false},"title":"species","type":"nominal"},"y":{"axis":{"labelExpr":"datum.value == 18 ? '18' : datum.value == 20 ? '20' : datum.value == 14 ? '14' : datum.value == 16 ? '16' : datum.label","values":[14.0,16.0,18.0,20.0]},"field":"__ggsql_aes_pos2__","scale":{"domain":[13.16019010043041,20.24251195600191],"zero":false},"stack":null,"title":"mean","type":"quantitative"}},"mark":{"clip":true,"filled":false,"type":"point"},"transform":[{"filter":{"equal":"__ggsql_layer_1__","field":"__ggsql_source__"}}]}],"width":"container"};
-var visId = 'vis-1788774955331';
-var minWidth = 450;
-var inner = document.getElementById(visId);
-var outer = document.getElementById(visId + '-outer');
-var options = {"actions": true, "renderer": "svg"};
-function scaleToFit(o, i) {
-var available = o.clientWidth;
-if (available < minWidth) {
-var scale = available / minWidth;
-i.style.transform = 'scale(' + scale + ')';
-i.style.transformOrigin = 'top left';
-o.style.height = (i.scrollHeight * scale) + 'px';
-} else {
-i.style.transform = '';
-o.style.height = '';
-}
-}
-function onRendered() {
-scaleToFit(outer, inner);
-var ro = new ResizeObserver(function() { scaleToFit(outer, inner); });
-ro.observe(outer);
-}
-if (typeof window.requirejs !== 'undefined') {
-window.requirejs.config({
-paths: {
-'dom-ready': 'https://cdn.jsdelivr.net/npm/domready@1/ready.min',
-'vega': 'https://cdn.jsdelivr.net/npm/vega@6/build/vega.min',
-'vega-lite': 'https://cdn.jsdelivr.net/npm/vega-lite@6.4.1/build/vega-lite.min',
-'vega-embed': 'https://cdn.jsdelivr.net/npm/vega-embed@7/build/vega-embed.min'
-}
-});
-function docReady(fn) {
-if (document.readyState === 'complete') fn();
-else window.addEventListener("load", function() { fn(); });
-}
-docReady(function() {
-window.requirejs(["dom-ready", "vega", "vega-embed"], function(domReady, vega, vegaEmbed) {
-domReady(function () {
-vegaEmbed('#' + visId, spec, options).then(onRendered).catch(console.error);
-});
-});
-});
-} else {
-function loadScript(src) {
-return new Promise(function(resolve, reject) {
-var script = document.createElement('script');
-script.src = src;
-script.onload = resolve;
-script.onerror = reject;
-document.head.appendChild(script);
-});
-}
-Promise.all([
-loadScript('https://cdn.jsdelivr.net/npm/vega@6'),
-loadScript('https://cdn.jsdelivr.net/npm/vega-lite@6.4.1'),
-loadScript('https://cdn.jsdelivr.net/npm/vega-embed@7')
-])
-.then(function() { return vegaEmbed('#' + visId, spec, options); })
-.then(onRendered)
-.catch(function(err) {
-console.error('Failed to load Vega libraries:', err);
-});
-}
-})();
-</script>
 </div>
 </div>
 <p>Dynamite plot using bars instead of points, with extra wide hinges.</p>
-<div id="6fadab3b" class="cell" data-execution_count="3">
+<div id="5ea92b44" class="cell" data-execution_count="3">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb3"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> species <span class="kw">AS</span> <span class="at">x</span> <span class="kw">FROM</span> penguin_summary</span>
 <span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">range</span></span>
 <span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>  <span class="kw">MAPPING</span> low AS <span class="at">ymax</span>, high AS <span class="at">ymin</span></span>
@@ -835,242 +761,44 @@ console.error('Failed to load Vega libraries:', err);
 <span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">bar</span></span>
 <span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a>  <span class="kw">MAPPING</span> mean AS <span class="at">y</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="3">
-<div id="vis-1788774955383-outer" style="width: 100%; overflow: hidden;">
-<div id="vis-1788774955383" style="width: 100%; min-width: 450px; height: 400px;"></div>
+<div>
+<figure class="figure">
+<p><a href="range_files/figure-html/cell-4-output-1.svg" class="lightbox" data-gallery="quarto-lightbox-gallery-2"><img src="range_files/figure-html/cell-4-output-1.svg" width="672" height="480" class="figure-img"></a></p>
+</figure>
 </div>
-<script type="text/javascript">
-(function() {
-var spec = {"$schema":"https://vega.github.io/schema/vega-lite/v6.json","config":{"axis":{"domain":false,"grid":true,"gridColor":"#FFFFFF","gridWidth":1,"labelColor":"#4D4D4D","labelFontSize":12,"tickColor":"#333333","tickSize":4,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":10},"header":{"labelColor":"#000000","labelFontSize":15,"labelFontWeight":"normal","labelPadding":5,"title":null},"legend":{"labelColor":"#4D4D4D","labelFontSize":12,"rowPadding":6,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":8},"scale":{"bandPaddingInner":0,"bandWithNestedOffsetPaddingInner":0,"bandWithNestedOffsetPaddingOuter":0},"title":{"anchor":"start","color":"#000000","fontSize":18,"fontWeight":"normal","frame":"group","offset":10,"subtitleColor":"#4D4D4D","subtitleFontSize":15,"subtitleFontWeight":"normal"},"view":{"fill":"#EBEBEB","stroke":null}},"data":{"values":[{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos2__":null,"__ggsql_aes_pos2end__":null,"__ggsql_aes_pos2max__":13.482113821138206,"__ggsql_aes_pos2min__":16.482113821138206,"__ggsql_row_index__":0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Chinstrap","__ggsql_aes_pos2__":null,"__ggsql_aes_pos2end__":null,"__ggsql_aes_pos2max__":16.920588235294115,"__ggsql_aes_pos2min__":19.920588235294115,"__ggsql_row_index__":1,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos2__":null,"__ggsql_aes_pos2end__":null,"__ggsql_aes_pos2max__":16.846357615894032,"__ggsql_aes_pos2min__":19.846357615894032,"__ggsql_row_index__":2,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos2__":18.346357615894032,"__ggsql_aes_pos2end__":0.0,"__ggsql_aes_pos2max__":null,"__ggsql_aes_pos2min__":null,"__ggsql_row_index__":3,"__ggsql_source__":"__ggsql_layer_1__"},{"__ggsql_aes_pos1__":"Chinstrap","__ggsql_aes_pos2__":18.420588235294115,"__ggsql_aes_pos2end__":0.0,"__ggsql_aes_pos2max__":null,"__ggsql_aes_pos2min__":null,"__ggsql_row_index__":4,"__ggsql_source__":"__ggsql_layer_1__"},{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos2__":14.982113821138206,"__ggsql_aes_pos2end__":0.0,"__ggsql_aes_pos2max__":null,"__ggsql_aes_pos2min__":null,"__ggsql_row_index__":5,"__ggsql_source__":"__ggsql_layer_1__"}]},"height":"container","layer":[{"encoding":{"opacity":{"value":1.0},"stroke":{"value":"black"},"strokeDash":{"value":[]},"strokeWidth":{"value":1.3333333333333333},"x":{"axis":{"labelExpr":"datum.label == 'Chinstrap' ? 'Chinstrap' : datum.label == 'Gentoo' ? 'Gentoo' : datum.label == 'Adelie' ? 'Adelie' : datum.label"},"field":"__ggsql_aes_pos1__","scale":{"domain":["Adelie","Chinstrap","Gentoo"],"zero":false},"title":"species","type":"nominal"},"y":{"axis":{"labelExpr":"datum.value == 0 ? '0' : datum.value == 10 ? '10' : datum.value == 5 ? '5' : datum.value == 15 ? '15' : datum.value == 20 ? '20' : datum.label","values":[0.0,5.0,10.0,15.0,20.0]},"field":"__ggsql_aes_pos2min__","scale":{"domain":[-0.9960294117647058,20.91661764705882]},"stack":null,"title":"mean","type":"quantitative"},"y2":{"field":"__ggsql_aes_pos2max__"}},"mark":{"clip":true,"type":"rule"},"transform":[{"filter":{"equal":"__ggsql_layer_0__","field":"__ggsql_source__"}}]},{"encoding":{"opacity":{"value":1.0},"stroke":{"value":"black"},"strokeDash":{"value":[]},"strokeWidth":{"value":1.3333333333333333},"x":{"axis":{"labelExpr":"datum.label == 'Chinstrap' ? 'Chinstrap' : datum.label == 'Gentoo' ? 'Gentoo' : datum.label == 'Adelie' ? 'Adelie' : datum.label"},"field":"__ggsql_aes_pos1__","scale":{"domain":["Adelie","Chinstrap","Gentoo"],"zero":false},"title":"species","type":"nominal"},"y":{"axis":{"labelExpr":"datum.value == 0 ? '0' : datum.value == 10 ? '10' : datum.value == 5 ? '5' : datum.value == 15 ? '15' : datum.value == 20 ? '20' : datum.label","values":[0.0,5.0,10.0,15.0,20.0]},"field":"__ggsql_aes_pos2min__","scale":{"domain":[-0.9960294117647058,20.91661764705882]},"stack":null,"title":"mean","type":"quantitative"}},"mark":{"clip":true,"orient":"horizontal","size":53.33333333333333,"thickness":0,"type":"tick"},"transform":[{"filter":{"equal":"__ggsql_layer_0__","field":"__ggsql_source__"}}]},{"encoding":{"opacity":{"value":1.0},"stroke":{"value":"black"},"strokeDash":{"value":[]},"strokeWidth":{"value":1.3333333333333333},"x":{"axis":{"labelExpr":"datum.label == 'Chinstrap' ? 'Chinstrap' : datum.label == 'Gentoo' ? 'Gentoo' : datum.label == 'Adelie' ? 'Adelie' : datum.label"},"field":"__ggsql_aes_pos1__","scale":{"domain":["Adelie","Chinstrap","Gentoo"],"zero":false},"title":"species","type":"nominal"},"y":{"axis":{"labelExpr":"datum.value == 0 ? '0' : datum.value == 10 ? '10' : datum.value == 5 ? '5' : datum.value == 15 ? '15' : datum.value == 20 ? '20' : datum.label","values":[0.0,5.0,10.0,15.0,20.0]},"field":"__ggsql_aes_pos2max__","scale":{"domain":[-0.9960294117647058,20.91661764705882]},"stack":null,"title":"mean","type":"quantitative"}},"mark":{"clip":true,"orient":"horizontal","size":53.33333333333333,"thickness":0,"type":"tick"},"transform":[{"filter":{"equal":"__ggsql_layer_0__","field":"__ggsql_source__"}}]},{"encoding":{"fill":{"value":"black"},"fillOpacity":{"value":0.8},"stroke":{"value":"black"},"x":{"axis":{"labelExpr":"datum.label == 'Chinstrap' ? 'Chinstrap' : datum.label == 'Gentoo' ? 'Gentoo' : datum.label == 'Adelie' ? 'Adelie' : datum.label"},"field":"__ggsql_aes_pos1__","scale":{"domain":["Adelie","Chinstrap","Gentoo"],"zero":false},"title":"species","type":"nominal"},"y":{"axis":{"labelExpr":"datum.value == 0 ? '0' : datum.value == 10 ? '10' : datum.value == 5 ? '5' : datum.value == 15 ? '15' : datum.value == 20 ? '20' : datum.label","values":[0.0,5.0,10.0,15.0,20.0]},"field":"__ggsql_aes_pos2__","scale":{"domain":[-0.9960294117647058,20.91661764705882],"zero":false},"stack":null,"title":"mean","type":"quantitative"},"y2":{"field":"__ggsql_aes_pos2end__"}},"mark":{"align":"center","clip":true,"type":"bar","width":{"expr":"bandwidth('x') * 0.9"}},"transform":[{"filter":{"equal":"__ggsql_layer_1__","field":"__ggsql_source__"}}]}],"width":"container"};
-var visId = 'vis-1788774955383';
-var minWidth = 450;
-var inner = document.getElementById(visId);
-var outer = document.getElementById(visId + '-outer');
-var options = {"actions": true, "renderer": "svg"};
-function scaleToFit(o, i) {
-var available = o.clientWidth;
-if (available < minWidth) {
-var scale = available / minWidth;
-i.style.transform = 'scale(' + scale + ')';
-i.style.transformOrigin = 'top left';
-o.style.height = (i.scrollHeight * scale) + 'px';
-} else {
-i.style.transform = '';
-o.style.height = '';
-}
-}
-function onRendered() {
-scaleToFit(outer, inner);
-var ro = new ResizeObserver(function() { scaleToFit(outer, inner); });
-ro.observe(outer);
-}
-if (typeof window.requirejs !== 'undefined') {
-window.requirejs.config({
-paths: {
-'dom-ready': 'https://cdn.jsdelivr.net/npm/domready@1/ready.min',
-'vega': 'https://cdn.jsdelivr.net/npm/vega@6/build/vega.min',
-'vega-lite': 'https://cdn.jsdelivr.net/npm/vega-lite@6.4.1/build/vega-lite.min',
-'vega-embed': 'https://cdn.jsdelivr.net/npm/vega-embed@7/build/vega-embed.min'
-}
-});
-function docReady(fn) {
-if (document.readyState === 'complete') fn();
-else window.addEventListener("load", function() { fn(); });
-}
-docReady(function() {
-window.requirejs(["dom-ready", "vega", "vega-embed"], function(domReady, vega, vegaEmbed) {
-domReady(function () {
-vegaEmbed('#' + visId, spec, options).then(onRendered).catch(console.error);
-});
-});
-});
-} else {
-function loadScript(src) {
-return new Promise(function(resolve, reject) {
-var script = document.createElement('script');
-script.src = src;
-script.onload = resolve;
-script.onerror = reject;
-document.head.appendChild(script);
-});
-}
-Promise.all([
-loadScript('https://cdn.jsdelivr.net/npm/vega@6'),
-loadScript('https://cdn.jsdelivr.net/npm/vega-lite@6.4.1'),
-loadScript('https://cdn.jsdelivr.net/npm/vega-embed@7')
-])
-.then(function() { return vegaEmbed('#' + visId, spec, options); })
-.then(onRendered)
-.catch(function(err) {
-console.error('Failed to load Vega libraries:', err);
-});
-}
-})();
-</script>
 </div>
 </div>
 <p>The hinges can be omitted by setting <code>null</code> as hinge, leaving just the line segment between the endpoints.</p>
-<div id="c43703d7" class="cell" data-execution_count="4">
+<div id="e770010a" class="cell" data-execution_count="4">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb4"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> species <span class="kw">AS</span> <span class="at">x</span> <span class="kw">FROM</span> penguin_summary</span>
 <span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">range</span></span>
 <span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>  <span class="kw">MAPPING</span> low AS <span class="at">ymax</span>, high AS <span class="at">ymin</span></span>
 <span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>  <span class="kw">SETTING</span> hinge <span class="op">=&gt;</span> null</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="4">
-<div id="vis-1788774955422-outer" style="width: 100%; overflow: hidden;">
-<div id="vis-1788774955422" style="width: 100%; min-width: 450px; height: 400px;"></div>
+<div>
+<figure class="figure">
+<p><a href="range_files/figure-html/cell-5-output-1.svg" class="lightbox" data-gallery="quarto-lightbox-gallery-3"><img src="range_files/figure-html/cell-5-output-1.svg" width="672" height="480" class="figure-img"></a></p>
+</figure>
 </div>
-<script type="text/javascript">
-(function() {
-var spec = {"$schema":"https://vega.github.io/schema/vega-lite/v6.json","config":{"axis":{"domain":false,"grid":true,"gridColor":"#FFFFFF","gridWidth":1,"labelColor":"#4D4D4D","labelFontSize":12,"tickColor":"#333333","tickSize":4,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":10},"header":{"labelColor":"#000000","labelFontSize":15,"labelFontWeight":"normal","labelPadding":5,"title":null},"legend":{"labelColor":"#4D4D4D","labelFontSize":12,"rowPadding":6,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":8},"scale":{"bandPaddingInner":0,"bandWithNestedOffsetPaddingInner":0,"bandWithNestedOffsetPaddingOuter":0},"title":{"anchor":"start","color":"#000000","fontSize":18,"fontWeight":"normal","frame":"group","offset":10,"subtitleColor":"#4D4D4D","subtitleFontSize":15,"subtitleFontWeight":"normal"},"view":{"fill":"#EBEBEB","stroke":null}},"data":{"values":[{"__ggsql_aes_pos1__":"Gentoo","__ggsql_aes_pos2max__":13.482113821138206,"__ggsql_aes_pos2min__":16.482113821138206,"__ggsql_row_index__":0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Chinstrap","__ggsql_aes_pos2max__":16.920588235294115,"__ggsql_aes_pos2min__":19.920588235294115,"__ggsql_row_index__":1,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"Adelie","__ggsql_aes_pos2max__":16.846357615894032,"__ggsql_aes_pos2min__":19.846357615894032,"__ggsql_row_index__":2,"__ggsql_source__":"__ggsql_layer_0__"}]},"height":"container","layer":[{"encoding":{"opacity":{"value":1.0},"stroke":{"value":"black"},"strokeDash":{"value":[]},"strokeWidth":{"value":1.3333333333333333},"x":{"axis":{"labelExpr":"datum.label == 'Gentoo' ? 'Gentoo' : datum.label == 'Adelie' ? 'Adelie' : datum.label == 'Chinstrap' ? 'Chinstrap' : datum.label"},"field":"__ggsql_aes_pos1__","scale":{"domain":["Adelie","Chinstrap","Gentoo"],"zero":false},"title":"species","type":"nominal"},"y":{"axis":{"labelExpr":"datum.value == 14 ? '14' : datum.value == 16 ? '16' : datum.value == 18 ? '18' : datum.value == 20 ? '20' : datum.label","values":[14.0,16.0,18.0,20.0]},"field":"__ggsql_aes_pos2min__","scale":{"domain":[13.16019010043041,20.24251195600191]},"stack":null,"title":"low","type":"quantitative"},"y2":{"field":"__ggsql_aes_pos2max__"}},"mark":{"clip":true,"type":"rule"},"transform":[{"filter":{"equal":"__ggsql_layer_0__","field":"__ggsql_source__"}}]}],"width":"container"};
-var visId = 'vis-1788774955422';
-var minWidth = 450;
-var inner = document.getElementById(visId);
-var outer = document.getElementById(visId + '-outer');
-var options = {"actions": true, "renderer": "svg"};
-function scaleToFit(o, i) {
-var available = o.clientWidth;
-if (available < minWidth) {
-var scale = available / minWidth;
-i.style.transform = 'scale(' + scale + ')';
-i.style.transformOrigin = 'top left';
-o.style.height = (i.scrollHeight * scale) + 'px';
-} else {
-i.style.transform = '';
-o.style.height = '';
-}
-}
-function onRendered() {
-scaleToFit(outer, inner);
-var ro = new ResizeObserver(function() { scaleToFit(outer, inner); });
-ro.observe(outer);
-}
-if (typeof window.requirejs !== 'undefined') {
-window.requirejs.config({
-paths: {
-'dom-ready': 'https://cdn.jsdelivr.net/npm/domready@1/ready.min',
-'vega': 'https://cdn.jsdelivr.net/npm/vega@6/build/vega.min',
-'vega-lite': 'https://cdn.jsdelivr.net/npm/vega-lite@6.4.1/build/vega-lite.min',
-'vega-embed': 'https://cdn.jsdelivr.net/npm/vega-embed@7/build/vega-embed.min'
-}
-});
-function docReady(fn) {
-if (document.readyState === 'complete') fn();
-else window.addEventListener("load", function() { fn(); });
-}
-docReady(function() {
-window.requirejs(["dom-ready", "vega", "vega-embed"], function(domReady, vega, vegaEmbed) {
-domReady(function () {
-vegaEmbed('#' + visId, spec, options).then(onRendered).catch(console.error);
-});
-});
-});
-} else {
-function loadScript(src) {
-return new Promise(function(resolve, reject) {
-var script = document.createElement('script');
-script.src = src;
-script.onload = resolve;
-script.onerror = reject;
-document.head.appendChild(script);
-});
-}
-Promise.all([
-loadScript('https://cdn.jsdelivr.net/npm/vega@6'),
-loadScript('https://cdn.jsdelivr.net/npm/vega-lite@6.4.1'),
-loadScript('https://cdn.jsdelivr.net/npm/vega-embed@7')
-])
-.then(function() { return vegaEmbed('#' + visId, spec, options); })
-.then(onRendered)
-.catch(function(err) {
-console.error('Failed to load Vega libraries:', err);
-});
-}
-})();
-</script>
 </div>
 </div>
 <p>A horizontal range can be rendered by swapping the <code>x</code> and <code>y</code> directions.</p>
-<div id="ecf21e19" class="cell" data-execution_count="5">
+<div id="883c7823" class="cell" data-execution_count="5">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb5"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> species <span class="kw">AS</span> <span class="at">y</span> <span class="kw">FROM</span> penguin_summary</span>
 <span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">range</span></span>
 <span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>  <span class="kw">MAPPING</span> low AS <span class="at">xmax</span>, high AS <span class="at">xmin</span></span>
 <span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">point</span></span>
 <span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a>  <span class="kw">MAPPING</span> mean AS <span class="at">x</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="5">
-<div id="vis-1788774955473-outer" style="width: 100%; overflow: hidden;">
-<div id="vis-1788774955473" style="width: 100%; min-width: 450px; height: 400px;"></div>
+<div>
+<figure class="figure">
+<p><a href="range_files/figure-html/cell-6-output-1.svg" class="lightbox" data-gallery="quarto-lightbox-gallery-4"><img src="range_files/figure-html/cell-6-output-1.svg" width="672" height="480" class="figure-img"></a></p>
+</figure>
 </div>
-<script type="text/javascript">
-(function() {
-var spec = {"$schema":"https://vega.github.io/schema/vega-lite/v6.json","config":{"axis":{"domain":false,"grid":true,"gridColor":"#FFFFFF","gridWidth":1,"labelColor":"#4D4D4D","labelFontSize":12,"tickColor":"#333333","tickSize":4,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":10},"header":{"labelColor":"#000000","labelFontSize":15,"labelFontWeight":"normal","labelPadding":5,"title":null},"legend":{"labelColor":"#4D4D4D","labelFontSize":12,"rowPadding":6,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":8},"scale":{"bandPaddingInner":0,"bandWithNestedOffsetPaddingInner":0,"bandWithNestedOffsetPaddingOuter":0},"title":{"anchor":"start","color":"#000000","fontSize":18,"fontWeight":"normal","frame":"group","offset":10,"subtitleColor":"#4D4D4D","subtitleFontSize":15,"subtitleFontWeight":"normal"},"view":{"fill":"#EBEBEB","stroke":null}},"data":{"values":[{"__ggsql_aes_pos1__":null,"__ggsql_aes_pos1max__":13.482113821138206,"__ggsql_aes_pos1min__":16.482113821138206,"__ggsql_aes_pos2__":"Gentoo","__ggsql_row_index__":0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":null,"__ggsql_aes_pos1max__":16.920588235294115,"__ggsql_aes_pos1min__":19.920588235294115,"__ggsql_aes_pos2__":"Chinstrap","__ggsql_row_index__":1,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":null,"__ggsql_aes_pos1max__":16.846357615894032,"__ggsql_aes_pos1min__":19.846357615894032,"__ggsql_aes_pos2__":"Adelie","__ggsql_row_index__":2,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":14.982113821138206,"__ggsql_aes_pos1max__":null,"__ggsql_aes_pos1min__":null,"__ggsql_aes_pos2__":"Gentoo","__ggsql_row_index__":3,"__ggsql_source__":"__ggsql_layer_1__"},{"__ggsql_aes_pos1__":18.420588235294115,"__ggsql_aes_pos1max__":null,"__ggsql_aes_pos1min__":null,"__ggsql_aes_pos2__":"Chinstrap","__ggsql_row_index__":4,"__ggsql_source__":"__ggsql_layer_1__"},{"__ggsql_aes_pos1__":18.346357615894032,"__ggsql_aes_pos1max__":null,"__ggsql_aes_pos1min__":null,"__ggsql_aes_pos2__":"Adelie","__ggsql_row_index__":5,"__ggsql_source__":"__ggsql_layer_1__"}]},"height":"container","layer":[{"encoding":{"opacity":{"value":1.0},"stroke":{"value":"black"},"strokeDash":{"value":[]},"strokeWidth":{"value":1.3333333333333333},"x":{"axis":{"labelExpr":"datum.value == 20 ? '20' : datum.value == 16 ? '16' : datum.value == 18 ? '18' : datum.value == 14 ? '14' : datum.label","values":[14.0,16.0,18.0,20.0]},"field":"__ggsql_aes_pos1min__","scale":{"domain":[13.16019010043041,20.24251195600191]},"title":"mean","type":"quantitative"},"x2":{"field":"__ggsql_aes_pos1max__"},"y":{"axis":{"labelExpr":"datum.label == 'Adelie' ? 'Adelie' : datum.label == 'Chinstrap' ? 'Chinstrap' : datum.label == 'Gentoo' ? 'Gentoo' : datum.label"},"field":"__ggsql_aes_pos2__","scale":{"domain":["Gentoo","Chinstrap","Adelie"],"zero":false},"stack":null,"title":"species","type":"nominal"}},"mark":{"clip":true,"type":"rule"},"transform":[{"filter":{"equal":"__ggsql_layer_0__","field":"__ggsql_source__"}}]},{"encoding":{"opacity":{"value":1.0},"stroke":{"value":"black"},"strokeDash":{"value":[]},"strokeWidth":{"value":1.3333333333333333},"x":{"axis":{"labelExpr":"datum.value == 20 ? '20' : datum.value == 16 ? '16' : datum.value == 18 ? '18' : datum.value == 14 ? '14' : datum.label","values":[14.0,16.0,18.0,20.0]},"field":"__ggsql_aes_pos1min__","scale":{"domain":[13.16019010043041,20.24251195600191]},"title":"mean","type":"quantitative"},"y":{"axis":{"labelExpr":"datum.label == 'Adelie' ? 'Adelie' : datum.label == 'Chinstrap' ? 'Chinstrap' : datum.label == 'Gentoo' ? 'Gentoo' : datum.label"},"field":"__ggsql_aes_pos2__","scale":{"domain":["Gentoo","Chinstrap","Adelie"],"zero":false},"stack":null,"title":"species","type":"nominal"}},"mark":{"clip":true,"orient":"vertical","size":13.333333333333332,"thickness":0,"type":"tick"},"transform":[{"filter":{"equal":"__ggsql_layer_0__","field":"__ggsql_source__"}}]},{"encoding":{"opacity":{"value":1.0},"stroke":{"value":"black"},"strokeDash":{"value":[]},"strokeWidth":{"value":1.3333333333333333},"x":{"axis":{"labelExpr":"datum.value == 20 ? '20' : datum.value == 16 ? '16' : datum.value == 18 ? '18' : datum.value == 14 ? '14' : datum.label","values":[14.0,16.0,18.0,20.0]},"field":"__ggsql_aes_pos1max__","scale":{"domain":[13.16019010043041,20.24251195600191]},"title":"mean","type":"quantitative"},"y":{"axis":{"labelExpr":"datum.label == 'Adelie' ? 'Adelie' : datum.label == 'Chinstrap' ? 'Chinstrap' : datum.label == 'Gentoo' ? 'Gentoo' : datum.label"},"field":"__ggsql_aes_pos2__","scale":{"domain":["Gentoo","Chinstrap","Adelie"],"zero":false},"stack":null,"title":"species","type":"nominal"}},"mark":{"clip":true,"orient":"vertical","size":13.333333333333332,"thickness":0,"type":"tick"},"transform":[{"filter":{"equal":"__ggsql_layer_0__","field":"__ggsql_source__"}}]},{"encoding":{"fill":{"value":"black"},"fillOpacity":{"value":0.8},"opacity":{"value":1.0},"shape":{"value":"M0.800,0.000 L0.785,0.156 L0.739,0.306 L0.665,0.444 L0.566,0.566 L0.444,0.665 L0.306,0.739 L0.156,0.785 L0.000,0.800 L-0.156,0.785 L-0.306,0.739 L-0.444,0.665 L-0.566,0.566 L-0.665,0.444 L-0.739,0.306 L-0.785,0.156 L-0.800,0.000 L-0.785,-0.156 L-0.739,-0.306 L-0.665,-0.444 L-0.566,-0.566 L-0.444,-0.665 L-0.306,-0.739 L-0.156,-0.785 L-0.000,-0.800 L0.156,-0.785 L0.306,-0.739 L0.444,-0.665 L0.566,-0.566 L0.665,-0.444 L0.739,-0.306 L0.785,-0.156 Z"},"size":{"value":50.26548245743668},"stroke":{"value":"black"},"strokeWidth":{"value":1.3333333333333333},"x":{"axis":{"labelExpr":"datum.value == 20 ? '20' : datum.value == 16 ? '16' : datum.value == 18 ? '18' : datum.value == 14 ? '14' : datum.label","values":[14.0,16.0,18.0,20.0]},"field":"__ggsql_aes_pos1__","scale":{"domain":[13.16019010043041,20.24251195600191],"zero":false},"title":"mean","type":"quantitative"},"y":{"axis":{"labelExpr":"datum.label == 'Adelie' ? 'Adelie' : datum.label == 'Chinstrap' ? 'Chinstrap' : datum.label == 'Gentoo' ? 'Gentoo' : datum.label"},"field":"__ggsql_aes_pos2__","scale":{"domain":["Gentoo","Chinstrap","Adelie"],"zero":false},"stack":null,"title":"species","type":"nominal"}},"mark":{"clip":true,"filled":false,"type":"point"},"transform":[{"filter":{"equal":"__ggsql_layer_1__","field":"__ggsql_source__"}}]}],"width":"container"};
-var visId = 'vis-1788774955473';
-var minWidth = 450;
-var inner = document.getElementById(visId);
-var outer = document.getElementById(visId + '-outer');
-var options = {"actions": true, "renderer": "svg"};
-function scaleToFit(o, i) {
-var available = o.clientWidth;
-if (available < minWidth) {
-var scale = available / minWidth;
-i.style.transform = 'scale(' + scale + ')';
-i.style.transformOrigin = 'top left';
-o.style.height = (i.scrollHeight * scale) + 'px';
-} else {
-i.style.transform = '';
-o.style.height = '';
-}
-}
-function onRendered() {
-scaleToFit(outer, inner);
-var ro = new ResizeObserver(function() { scaleToFit(outer, inner); });
-ro.observe(outer);
-}
-if (typeof window.requirejs !== 'undefined') {
-window.requirejs.config({
-paths: {
-'dom-ready': 'https://cdn.jsdelivr.net/npm/domready@1/ready.min',
-'vega': 'https://cdn.jsdelivr.net/npm/vega@6/build/vega.min',
-'vega-lite': 'https://cdn.jsdelivr.net/npm/vega-lite@6.4.1/build/vega-lite.min',
-'vega-embed': 'https://cdn.jsdelivr.net/npm/vega-embed@7/build/vega-embed.min'
-}
-});
-function docReady(fn) {
-if (document.readyState === 'complete') fn();
-else window.addEventListener("load", function() { fn(); });
-}
-docReady(function() {
-window.requirejs(["dom-ready", "vega", "vega-embed"], function(domReady, vega, vegaEmbed) {
-domReady(function () {
-vegaEmbed('#' + visId, spec, options).then(onRendered).catch(console.error);
-});
-});
-});
-} else {
-function loadScript(src) {
-return new Promise(function(resolve, reject) {
-var script = document.createElement('script');
-script.src = src;
-script.onload = resolve;
-script.onerror = reject;
-document.head.appendChild(script);
-});
-}
-Promise.all([
-loadScript('https://cdn.jsdelivr.net/npm/vega@6'),
-loadScript('https://cdn.jsdelivr.net/npm/vega-lite@6.4.1'),
-loadScript('https://cdn.jsdelivr.net/npm/vega-embed@7')
-])
-.then(function() { return vegaEmbed('#' + visId, spec, options); })
-.then(onRendered)
-.catch(function(err) {
-console.error('Failed to load Vega libraries:', err);
-});
-}
-})();
-</script>
 </div>
 </div>
 <p>By overlaying a thick range over a thin one, you can build a candlestick chart. Both layers turn the hinges off so the marks read as clean vertical lines: the wick spans low-to-high and the body spans open-to-close.</p>
-<div id="3f6d7b43" class="cell" data-execution_count="6">
+<div id="d952beca" class="cell" data-execution_count="6">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb6"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="kw">SELECT</span></span>
 <span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>  <span class="kw">FIRST</span>(Date) <span class="kw">AS</span> date,</span>
 <span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>  <span class="kw">FIRST</span>(<span class="kw">temp</span>) <span class="kw">AS</span> open,</span>
@@ -1092,81 +820,15 @@ console.error('Failed to load Vega libraries:', err);
 <span id="cb6-19"><a href="#cb6-19" aria-hidden="true" tabindex="-1"></a>  <span class="kw">MAPPING</span> low AS <span class="at">ymin</span>, high AS <span class="at">ymax</span></span>
 <span id="cb6-20"><a href="#cb6-20" aria-hidden="true" tabindex="-1"></a>  <span class="kw">SETTING</span> hinge <span class="op">=&gt;</span> null</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="6">
-<div id="vis-1788774955532-outer" style="width: 100%; overflow: hidden;">
-<div id="vis-1788774955532" style="width: 100%; min-width: 450px; height: 400px;"></div>
+<div>
+<figure class="figure">
+<p><a href="range_files/figure-html/cell-7-output-1.svg" class="lightbox" data-gallery="quarto-lightbox-gallery-5"><img src="range_files/figure-html/cell-7-output-1.svg" width="672" height="480" class="figure-img"></a></p>
+</figure>
 </div>
-<script type="text/javascript">
-(function() {
-var spec = {"$schema":"https://vega.github.io/schema/vega-lite/v6.json","config":{"axis":{"domain":false,"grid":true,"gridColor":"#FFFFFF","gridWidth":1,"labelColor":"#4D4D4D","labelFontSize":12,"tickColor":"#333333","tickSize":4,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":10},"header":{"labelColor":"#000000","labelFontSize":15,"labelFontWeight":"normal","labelPadding":5,"title":null},"legend":{"labelColor":"#4D4D4D","labelFontSize":12,"rowPadding":6,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":8},"scale":{"bandPaddingInner":0,"bandWithNestedOffsetPaddingInner":0,"bandWithNestedOffsetPaddingOuter":0},"title":{"anchor":"start","color":"#000000","fontSize":18,"fontWeight":"normal","frame":"group","offset":10,"subtitleColor":"#4D4D4D","subtitleFontSize":15,"subtitleFontWeight":"normal"},"view":{"fill":"#EBEBEB","stroke":null}},"data":{"values":[{"__ggsql_aes_pos1__":"1973-05-01","__ggsql_aes_pos2max__":66,"__ggsql_aes_pos2min__":67,"__ggsql_aes_stroke__":"colder","__ggsql_row_index__":0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"1973-05-07","__ggsql_aes_pos2max__":66,"__ggsql_aes_pos2min__":65,"__ggsql_aes_stroke__":"warmer","__ggsql_row_index__":1,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"1973-05-14","__ggsql_aes_pos2max__":62,"__ggsql_aes_pos2min__":68,"__ggsql_aes_stroke__":"colder","__ggsql_row_index__":2,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"1973-05-21","__ggsql_aes_pos2max__":57,"__ggsql_aes_pos2min__":59,"__ggsql_aes_stroke__":"colder","__ggsql_row_index__":3,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"1973-05-28","__ggsql_aes_pos2max__":67,"__ggsql_aes_pos2min__":67,"__ggsql_aes_stroke__":"warmer","__ggsql_row_index__":4,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"1973-06-04","__ggsql_aes_pos2max__":87,"__ggsql_aes_pos2min__":84,"__ggsql_aes_stroke__":"warmer","__ggsql_row_index__":5,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"1973-06-11","__ggsql_aes_pos2max__":72,"__ggsql_aes_pos2min__":93,"__ggsql_aes_stroke__":"colder","__ggsql_row_index__":6,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"1973-06-18","__ggsql_aes_pos2max__":76,"__ggsql_aes_pos2min__":65,"__ggsql_aes_stroke__":"warmer","__ggsql_row_index__":7,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"1973-06-25","__ggsql_aes_pos2max__":84,"__ggsql_aes_pos2min__":75,"__ggsql_aes_stroke__":"warmer","__ggsql_row_index__":8,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"1973-07-02","__ggsql_aes_pos2max__":92,"__ggsql_aes_pos2min__":85,"__ggsql_aes_stroke__":"warmer","__ggsql_row_index__":9,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"1973-07-09","__ggsql_aes_pos2max__":80,"__ggsql_aes_pos2min__":92,"__ggsql_aes_stroke__":"colder","__ggsql_row_index__":10,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"1973-07-16","__ggsql_aes_pos2max__":81,"__ggsql_aes_pos2min__":81,"__ggsql_aes_stroke__":"warmer","__ggsql_row_index__":11,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"1973-07-23","__ggsql_aes_pos2max__":86,"__ggsql_aes_pos2min__":82,"__ggsql_aes_stroke__":"warmer","__ggsql_row_index__":12,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"1973-07-30","__ggsql_aes_pos2max__":85,"__ggsql_aes_pos2min__":83,"__ggsql_aes_stroke__":"warmer","__ggsql_row_index__":13,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"1973-08-06","__ggsql_aes_pos2max__":86,"__ggsql_aes_pos2min__":87,"__ggsql_aes_stroke__":"colder","__ggsql_row_index__":14,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"1973-08-13","__ggsql_aes_pos2max__":78,"__ggsql_aes_pos2min__":82,"__ggsql_aes_stroke__":"colder","__ggsql_row_index__":15,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"1973-08-20","__ggsql_aes_pos2max__":86,"__ggsql_aes_pos2min__":78,"__ggsql_aes_stroke__":"warmer","__ggsql_row_index__":16,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"1973-08-27","__ggsql_aes_pos2max__":92,"__ggsql_aes_pos2min__":88,"__ggsql_aes_stroke__":"warmer","__ggsql_row_index__":17,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"1973-09-03","__ggsql_aes_pos2max__":75,"__ggsql_aes_pos2min__":93,"__ggsql_aes_stroke__":"colder","__ggsql_row_index__":18,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"1973-09-10","__ggsql_aes_pos2max__":78,"__ggsql_aes_pos2min__":73,"__ggsql_aes_stroke__":"warmer","__ggsql_row_index__":19,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"1973-09-17","__ggsql_aes_pos2max__":81,"__ggsql_aes_pos2min__":67,"__ggsql_aes_stroke__":"warmer","__ggsql_row_index__":20,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"1973-09-24","__ggsql_aes_pos2max__":68,"__ggsql_aes_pos2min__":69,"__ggsql_aes_stroke__":"colder","__ggsql_row_index__":21,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":"1973-05-01","__ggsql_aes_pos2max__":74,"__ggsql_aes_pos2min__":56,"__ggsql_aes_stroke__":"colder","__ggsql_row_index__":22,"__ggsql_source__":"__ggsql_layer_1__"},{"__ggsql_aes_pos1__":"1973-05-07","__ggsql_aes_pos2max__":74,"__ggsql_aes_pos2min__":59,"__ggsql_aes_stroke__":"warmer","__ggsql_row_index__":23,"__ggsql_source__":"__ggsql_layer_1__"},{"__ggsql_aes_pos1__":"1973-05-14","__ggsql_aes_pos2max__":68,"__ggsql_aes_pos2min__":57,"__ggsql_aes_stroke__":"colder","__ggsql_row_index__":24,"__ggsql_source__":"__ggsql_layer_1__"},{"__ggsql_aes_pos1__":"1973-05-21","__ggsql_aes_pos2max__":73,"__ggsql_aes_pos2min__":57,"__ggsql_aes_stroke__":"colder","__ggsql_row_index__":25,"__ggsql_source__":"__ggsql_layer_1__"},{"__ggsql_aes_pos1__":"1973-05-28","__ggsql_aes_pos2max__":81,"__ggsql_aes_pos2min__":67,"__ggsql_aes_stroke__":"warmer","__ggsql_row_index__":26,"__ggsql_source__":"__ggsql_layer_1__"},{"__ggsql_aes_pos1__":"1973-06-04","__ggsql_aes_pos2max__":90,"__ggsql_aes_pos2min__":79,"__ggsql_aes_stroke__":"warmer","__ggsql_row_index__":27,"__ggsql_source__":"__ggsql_layer_1__"},{"__ggsql_aes_pos1__":"1973-06-11","__ggsql_aes_pos2max__":93,"__ggsql_aes_pos2min__":72,"__ggsql_aes_stroke__":"colder","__ggsql_row_index__":28,"__ggsql_source__":"__ggsql_layer_1__"},{"__ggsql_aes_pos1__":"1973-06-18","__ggsql_aes_pos2max__":77,"__ggsql_aes_pos2min__":65,"__ggsql_aes_stroke__":"warmer","__ggsql_row_index__":29,"__ggsql_source__":"__ggsql_layer_1__"},{"__ggsql_aes_pos1__":"1973-06-25","__ggsql_aes_pos2max__":84,"__ggsql_aes_pos2min__":73,"__ggsql_aes_stroke__":"warmer","__ggsql_row_index__":30,"__ggsql_source__":"__ggsql_layer_1__"},{"__ggsql_aes_pos1__":"1973-07-02","__ggsql_aes_pos2max__":92,"__ggsql_aes_pos2min__":81,"__ggsql_aes_stroke__":"warmer","__ggsql_row_index__":31,"__ggsql_source__":"__ggsql_layer_1__"},{"__ggsql_aes_pos1__":"1973-07-09","__ggsql_aes_pos2max__":92,"__ggsql_aes_pos2min__":73,"__ggsql_aes_stroke__":"colder","__ggsql_row_index__":32,"__ggsql_source__":"__ggsql_layer_1__"},{"__ggsql_aes_pos1__":"1973-07-16","__ggsql_aes_pos2max__":87,"__ggsql_aes_pos2min__":74,"__ggsql_aes_stroke__":"warmer","__ggsql_row_index__":33,"__ggsql_source__":"__ggsql_layer_1__"},{"__ggsql_aes_pos1__":"1973-07-23","__ggsql_aes_pos2max__":88,"__ggsql_aes_pos2min__":82,"__ggsql_aes_stroke__":"warmer","__ggsql_row_index__":34,"__ggsql_source__":"__ggsql_layer_1__"},{"__ggsql_aes_pos1__":"1973-07-30","__ggsql_aes_pos2max__":86,"__ggsql_aes_pos2min__":81,"__ggsql_aes_stroke__":"warmer","__ggsql_row_index__":35,"__ggsql_source__":"__ggsql_layer_1__"},{"__ggsql_aes_pos1__":"1973-08-06","__ggsql_aes_pos2max__":92,"__ggsql_aes_pos2min__":86,"__ggsql_aes_stroke__":"colder","__ggsql_row_index__":36,"__ggsql_source__":"__ggsql_layer_1__"},{"__ggsql_aes_pos1__":"1973-08-13","__ggsql_aes_pos2max__":82,"__ggsql_aes_pos2min__":76,"__ggsql_aes_stroke__":"colder","__ggsql_row_index__":37,"__ggsql_source__":"__ggsql_layer_1__"},{"__ggsql_aes_pos1__":"1973-08-20","__ggsql_aes_pos2max__":86,"__ggsql_aes_pos2min__":72,"__ggsql_aes_stroke__":"warmer","__ggsql_row_index__":38,"__ggsql_source__":"__ggsql_layer_1__"},{"__ggsql_aes_pos1__":"1973-08-27","__ggsql_aes_pos2max__":97,"__ggsql_aes_pos2min__":88,"__ggsql_aes_stroke__":"warmer","__ggsql_row_index__":39,"__ggsql_source__":"__ggsql_layer_1__"},{"__ggsql_aes_pos1__":"1973-09-03","__ggsql_aes_pos2max__":93,"__ggsql_aes_pos2min__":75,"__ggsql_aes_stroke__":"colder","__ggsql_row_index__":40,"__ggsql_source__":"__ggsql_layer_1__"},{"__ggsql_aes_pos1__":"1973-09-10","__ggsql_aes_pos2max__":81,"__ggsql_aes_pos2min__":71,"__ggsql_aes_stroke__":"warmer","__ggsql_row_index__":41,"__ggsql_source__":"__ggsql_layer_1__"},{"__ggsql_aes_pos1__":"1973-09-17","__ggsql_aes_pos2max__":82,"__ggsql_aes_pos2min__":64,"__ggsql_aes_stroke__":"warmer","__ggsql_row_index__":42,"__ggsql_source__":"__ggsql_layer_1__"},{"__ggsql_aes_pos1__":"1973-09-24","__ggsql_aes_pos2max__":77,"__ggsql_aes_pos2min__":63,"__ggsql_aes_stroke__":"colder","__ggsql_row_index__":43,"__ggsql_source__":"__ggsql_layer_1__"}]},"height":"container","layer":[{"encoding":{"detail":{"field":"__ggsql_aes_stroke__","type":"nominal"},"opacity":{"value":1.0},"stroke":{"field":"__ggsql_aes_stroke__","legend":{"labelExpr":"datum.label == 'warmer' ? 'warmer' : datum.label == 'colder' ? 'colder' : datum.label"},"scale":{"domain":["colder","warmer"],"range":["#0067A5","#F38400"]},"title":"trend","type":"nominal"},"strokeDash":{"value":[]},"strokeWidth":{"value":6.666666666666666},"x":{"axis":{"labelExpr":"utcFormat(datum.value, '%Y-%m-%d') == '1973-04-23' ? '1973-04-23' : utcFormat(datum.value, '%Y-%m-%d') == '1973-05-21' ? '1973-05-21' : utcFormat(datum.value, '%Y-%m-%d') == '1973-06-18' ? '1973-06-18' : utcFormat(datum.value, '%Y-%m-%d') == '1973-08-13' ? '1973-08-13' : utcFormat(datum.value, '%Y-%m-%d') == '1973-07-16' ? '1973-07-16' : utcFormat(datum.value, '%Y-%m-%d') == '1973-09-10' ? '1973-09-10' : datum.label","values":["1973-04-23","1973-05-21","1973-06-18","1973-07-16","1973-08-13","1973-09-10"]},"field":"__ggsql_aes_pos1__","scale":{"domain":["1973-04-23","1973-10-01"],"zero":false},"title":"date","type":"temporal"},"y":{"axis":{"labelExpr":"datum.value == 70 ? '70' : datum.value == 60 ? '60' : datum.value == 90 ? '90' : datum.value == 80 ? '80' : datum.label","values":[60.0,70.0,80.0,90.0]},"field":"__ggsql_aes_pos2min__","scale":{"domain":[53.95,99.05]},"stack":null,"title":"close","type":"quantitative"},"y2":{"field":"__ggsql_aes_pos2max__"}},"mark":{"clip":true,"type":"rule"},"transform":[{"filter":{"equal":"__ggsql_layer_0__","field":"__ggsql_source__"}}]},{"encoding":{"detail":{"field":"__ggsql_aes_stroke__","type":"nominal"},"opacity":{"value":1.0},"stroke":{"field":"__ggsql_aes_stroke__","legend":{"labelExpr":"datum.label == 'warmer' ? 'warmer' : datum.label == 'colder' ? 'colder' : datum.label"},"scale":{"domain":["colder","warmer"],"range":["#0067A5","#F38400"]},"title":"trend","type":"nominal"},"strokeDash":{"value":[]},"strokeWidth":{"value":1.3333333333333333},"x":{"axis":{"labelExpr":"utcFormat(datum.value, '%Y-%m-%d') == '1973-04-23' ? '1973-04-23' : utcFormat(datum.value, '%Y-%m-%d') == '1973-05-21' ? '1973-05-21' : utcFormat(datum.value, '%Y-%m-%d') == '1973-06-18' ? '1973-06-18' : utcFormat(datum.value, '%Y-%m-%d') == '1973-08-13' ? '1973-08-13' : utcFormat(datum.value, '%Y-%m-%d') == '1973-07-16' ? '1973-07-16' : utcFormat(datum.value, '%Y-%m-%d') == '1973-09-10' ? '1973-09-10' : datum.label","values":["1973-04-23","1973-05-21","1973-06-18","1973-07-16","1973-08-13","1973-09-10"]},"field":"__ggsql_aes_pos1__","scale":{"domain":["1973-04-23","1973-10-01"],"zero":false},"title":"date","type":"temporal"},"y":{"axis":{"labelExpr":"datum.value == 70 ? '70' : datum.value == 60 ? '60' : datum.value == 90 ? '90' : datum.value == 80 ? '80' : datum.label","values":[60.0,70.0,80.0,90.0]},"field":"__ggsql_aes_pos2min__","scale":{"domain":[53.95,99.05]},"stack":null,"title":"close","type":"quantitative"},"y2":{"field":"__ggsql_aes_pos2max__"}},"mark":{"clip":true,"type":"rule"},"transform":[{"filter":{"equal":"__ggsql_layer_1__","field":"__ggsql_source__"}}]}],"width":"container"};
-var visId = 'vis-1788774955532';
-var minWidth = 450;
-var inner = document.getElementById(visId);
-var outer = document.getElementById(visId + '-outer');
-var options = {"actions": true, "renderer": "svg"};
-function scaleToFit(o, i) {
-var available = o.clientWidth;
-if (available < minWidth) {
-var scale = available / minWidth;
-i.style.transform = 'scale(' + scale + ')';
-i.style.transformOrigin = 'top left';
-o.style.height = (i.scrollHeight * scale) + 'px';
-} else {
-i.style.transform = '';
-o.style.height = '';
-}
-}
-function onRendered() {
-scaleToFit(outer, inner);
-var ro = new ResizeObserver(function() { scaleToFit(outer, inner); });
-ro.observe(outer);
-}
-if (typeof window.requirejs !== 'undefined') {
-window.requirejs.config({
-paths: {
-'dom-ready': 'https://cdn.jsdelivr.net/npm/domready@1/ready.min',
-'vega': 'https://cdn.jsdelivr.net/npm/vega@6/build/vega.min',
-'vega-lite': 'https://cdn.jsdelivr.net/npm/vega-lite@6.4.1/build/vega-lite.min',
-'vega-embed': 'https://cdn.jsdelivr.net/npm/vega-embed@7/build/vega-embed.min'
-}
-});
-function docReady(fn) {
-if (document.readyState === 'complete') fn();
-else window.addEventListener("load", function() { fn(); });
-}
-docReady(function() {
-window.requirejs(["dom-ready", "vega", "vega-embed"], function(domReady, vega, vegaEmbed) {
-domReady(function () {
-vegaEmbed('#' + visId, spec, options).then(onRendered).catch(console.error);
-});
-});
-});
-} else {
-function loadScript(src) {
-return new Promise(function(resolve, reject) {
-var script = document.createElement('script');
-script.src = src;
-script.onload = resolve;
-script.onerror = reject;
-document.head.appendChild(script);
-});
-}
-Promise.all([
-loadScript('https://cdn.jsdelivr.net/npm/vega@6'),
-loadScript('https://cdn.jsdelivr.net/npm/vega-lite@6.4.1'),
-loadScript('https://cdn.jsdelivr.net/npm/vega-embed@7')
-])
-.then(function() { return vegaEmbed('#' + visId, spec, options); })
-.then(onRendered)
-.catch(function(err) {
-console.error('Failed to load Vega libraries:', err);
-});
-}
-})();
-</script>
 </div>
 </div>
 <p>Rather than precomputing the values and plotting them, you can use the aggregate functionality to calculate the relevant statistics dynamically:</p>
-<div id="72dcaefd" class="cell" data-execution_count="7">
+<div id="33508bae" class="cell" data-execution_count="7">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb7"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> Date <span class="kw">AS</span> <span class="at">x</span>, Temp <span class="kw">AS</span> <span class="at">ymin</span>, Temp <span class="kw">AS</span> <span class="at">ymax</span>, Temp <span class="kw">AS</span> <span class="at">color</span> </span>
 <span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>  <span class="kw">FROM</span> ggsql:airquality</span>
 <span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">range</span></span>
@@ -1184,77 +846,11 @@ console.error('Failed to load Vega libraries:', err);
 <span id="cb7-15"><a href="#cb7-15" aria-hidden="true" tabindex="-1"></a><span class="kw">SCALE</span> <span class="kw">BINNED</span> <span class="at">color</span> <span class="kw">TO</span> (<span class="st">'steelblue'</span>, <span class="st">'firebrick'</span>)</span>
 <span id="cb7-16"><a href="#cb7-16" aria-hidden="true" tabindex="-1"></a>  <span class="kw">SETTING</span> <span class="at">breaks</span> <span class="op">=&gt;</span> (<span class="dv">-20</span>, <span class="dv">0</span>, <span class="dv">20</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="7">
-<div id="vis-1788774955589-outer" style="width: 100%; overflow: hidden;">
-<div id="vis-1788774955589" style="width: 100%; min-width: 450px; height: 400px;"></div>
+<div>
+<figure class="figure">
+<p><a href="range_files/figure-html/cell-8-output-1.svg" class="lightbox" data-gallery="quarto-lightbox-gallery-6"><img src="range_files/figure-html/cell-8-output-1.svg" width="672" height="480" class="figure-img"></a></p>
+</figure>
 </div>
-<script type="text/javascript">
-(function() {
-var spec = {"$schema":"https://vega.github.io/schema/vega-lite/v6.json","config":{"axis":{"domain":false,"grid":true,"gridColor":"#FFFFFF","gridWidth":1,"labelColor":"#4D4D4D","labelFontSize":12,"tickColor":"#333333","tickSize":4,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":10},"header":{"labelColor":"#000000","labelFontSize":15,"labelFontWeight":"normal","labelPadding":5,"title":null},"legend":{"labelColor":"#4D4D4D","labelFontSize":12,"rowPadding":6,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":8},"scale":{"bandPaddingInner":0,"bandWithNestedOffsetPaddingInner":0,"bandWithNestedOffsetPaddingOuter":0},"title":{"anchor":"start","color":"#000000","fontSize":18,"fontWeight":"normal","frame":"group","offset":10,"subtitleColor":"#4D4D4D","subtitleFontSize":15,"subtitleFontWeight":"normal"},"view":{"fill":"#EBEBEB","stroke":null}},"data":{"values":[{"Week":22,"__ggsql_aes_linewidth__":"first/last","__ggsql_aes_pos1__":"1973-05-28","__ggsql_aes_pos2max__":67,"__ggsql_aes_pos2min__":67,"__ggsql_aes_stroke__":10.0,"__ggsql_row_index__":0,"__ggsql_source__":"__ggsql_layer_0__"},{"Week":26,"__ggsql_aes_linewidth__":"first/last","__ggsql_aes_pos1__":"1973-06-25","__ggsql_aes_pos2max__":84,"__ggsql_aes_pos2min__":75,"__ggsql_aes_stroke__":10.0,"__ggsql_row_index__":1,"__ggsql_source__":"__ggsql_layer_0__"},{"Week":30,"__ggsql_aes_linewidth__":"first/last","__ggsql_aes_pos1__":"1973-07-23","__ggsql_aes_pos2max__":86,"__ggsql_aes_pos2min__":82,"__ggsql_aes_stroke__":10.0,"__ggsql_row_index__":2,"__ggsql_source__":"__ggsql_layer_0__"},{"Week":31,"__ggsql_aes_linewidth__":"first/last","__ggsql_aes_pos1__":"1973-07-30","__ggsql_aes_pos2max__":85,"__ggsql_aes_pos2min__":83,"__ggsql_aes_stroke__":10.0,"__ggsql_row_index__":3,"__ggsql_source__":"__ggsql_layer_0__"},{"Week":32,"__ggsql_aes_linewidth__":"first/last","__ggsql_aes_pos1__":"1973-08-06","__ggsql_aes_pos2max__":86,"__ggsql_aes_pos2min__":87,"__ggsql_aes_stroke__":-10.0,"__ggsql_row_index__":4,"__ggsql_source__":"__ggsql_layer_0__"},{"Week":35,"__ggsql_aes_linewidth__":"first/last","__ggsql_aes_pos1__":"1973-08-27","__ggsql_aes_pos2max__":92,"__ggsql_aes_pos2min__":88,"__ggsql_aes_stroke__":10.0,"__ggsql_row_index__":5,"__ggsql_source__":"__ggsql_layer_0__"},{"Week":37,"__ggsql_aes_linewidth__":"first/last","__ggsql_aes_pos1__":"1973-09-10","__ggsql_aes_pos2max__":78,"__ggsql_aes_pos2min__":73,"__ggsql_aes_stroke__":10.0,"__ggsql_row_index__":6,"__ggsql_source__":"__ggsql_layer_0__"},{"Week":18,"__ggsql_aes_linewidth__":"first/last","__ggsql_aes_pos1__":"1973-05-01","__ggsql_aes_pos2max__":66,"__ggsql_aes_pos2min__":67,"__ggsql_aes_stroke__":-10.0,"__ggsql_row_index__":7,"__ggsql_source__":"__ggsql_layer_0__"},{"Week":28,"__ggsql_aes_linewidth__":"first/last","__ggsql_aes_pos1__":"1973-07-09","__ggsql_aes_pos2max__":80,"__ggsql_aes_pos2min__":92,"__ggsql_aes_stroke__":-10.0,"__ggsql_row_index__":8,"__ggsql_source__":"__ggsql_layer_0__"},{"Week":29,"__ggsql_aes_linewidth__":"first/last","__ggsql_aes_pos1__":"1973-07-16","__ggsql_aes_pos2max__":81,"__ggsql_aes_pos2min__":81,"__ggsql_aes_stroke__":10.0,"__ggsql_row_index__":9,"__ggsql_source__":"__ggsql_layer_0__"},{"Week":34,"__ggsql_aes_linewidth__":"first/last","__ggsql_aes_pos1__":"1973-08-20","__ggsql_aes_pos2max__":86,"__ggsql_aes_pos2min__":78,"__ggsql_aes_stroke__":10.0,"__ggsql_row_index__":10,"__ggsql_source__":"__ggsql_layer_0__"},{"Week":39,"__ggsql_aes_linewidth__":"first/last","__ggsql_aes_pos1__":"1973-09-24","__ggsql_aes_pos2max__":68,"__ggsql_aes_pos2min__":69,"__ggsql_aes_stroke__":-10.0,"__ggsql_row_index__":11,"__ggsql_source__":"__ggsql_layer_0__"},{"Week":19,"__ggsql_aes_linewidth__":"first/last","__ggsql_aes_pos1__":"1973-05-07","__ggsql_aes_pos2max__":66,"__ggsql_aes_pos2min__":65,"__ggsql_aes_stroke__":10.0,"__ggsql_row_index__":12,"__ggsql_source__":"__ggsql_layer_0__"},{"Week":21,"__ggsql_aes_linewidth__":"first/last","__ggsql_aes_pos1__":"1973-05-21","__ggsql_aes_pos2max__":57,"__ggsql_aes_pos2min__":59,"__ggsql_aes_stroke__":-10.0,"__ggsql_row_index__":13,"__ggsql_source__":"__ggsql_layer_0__"},{"Week":25,"__ggsql_aes_linewidth__":"first/last","__ggsql_aes_pos1__":"1973-06-18","__ggsql_aes_pos2max__":76,"__ggsql_aes_pos2min__":65,"__ggsql_aes_stroke__":10.0,"__ggsql_row_index__":14,"__ggsql_source__":"__ggsql_layer_0__"},{"Week":27,"__ggsql_aes_linewidth__":"first/last","__ggsql_aes_pos1__":"1973-07-02","__ggsql_aes_pos2max__":92,"__ggsql_aes_pos2min__":85,"__ggsql_aes_stroke__":10.0,"__ggsql_row_index__":15,"__ggsql_source__":"__ggsql_layer_0__"},{"Week":20,"__ggsql_aes_linewidth__":"first/last","__ggsql_aes_pos1__":"1973-05-14","__ggsql_aes_pos2max__":62,"__ggsql_aes_pos2min__":68,"__ggsql_aes_stroke__":-10.0,"__ggsql_row_index__":16,"__ggsql_source__":"__ggsql_layer_0__"},{"Week":23,"__ggsql_aes_linewidth__":"first/last","__ggsql_aes_pos1__":"1973-06-04","__ggsql_aes_pos2max__":87,"__ggsql_aes_pos2min__":84,"__ggsql_aes_stroke__":10.0,"__ggsql_row_index__":17,"__ggsql_source__":"__ggsql_layer_0__"},{"Week":33,"__ggsql_aes_linewidth__":"first/last","__ggsql_aes_pos1__":"1973-08-13","__ggsql_aes_pos2max__":78,"__ggsql_aes_pos2min__":82,"__ggsql_aes_stroke__":-10.0,"__ggsql_row_index__":18,"__ggsql_source__":"__ggsql_layer_0__"},{"Week":36,"__ggsql_aes_linewidth__":"first/last","__ggsql_aes_pos1__":"1973-09-03","__ggsql_aes_pos2max__":75,"__ggsql_aes_pos2min__":93,"__ggsql_aes_stroke__":-10.0,"__ggsql_row_index__":19,"__ggsql_source__":"__ggsql_layer_0__"},{"Week":38,"__ggsql_aes_linewidth__":"first/last","__ggsql_aes_pos1__":"1973-09-17","__ggsql_aes_pos2max__":81,"__ggsql_aes_pos2min__":67,"__ggsql_aes_stroke__":10.0,"__ggsql_row_index__":20,"__ggsql_source__":"__ggsql_layer_0__"},{"Week":22,"__ggsql_aes_linewidth__":"min/max","__ggsql_aes_pos1__":"1973-05-28","__ggsql_aes_pos2max__":81,"__ggsql_aes_pos2min__":67,"__ggsql_aes_stroke__":10.0,"__ggsql_row_index__":21,"__ggsql_source__":"__ggsql_layer_0__"},{"Week":26,"__ggsql_aes_linewidth__":"min/max","__ggsql_aes_pos1__":"1973-06-25","__ggsql_aes_pos2max__":84,"__ggsql_aes_pos2min__":73,"__ggsql_aes_stroke__":10.0,"__ggsql_row_index__":22,"__ggsql_source__":"__ggsql_layer_0__"},{"Week":30,"__ggsql_aes_linewidth__":"min/max","__ggsql_aes_pos1__":"1973-07-23","__ggsql_aes_pos2max__":88,"__ggsql_aes_pos2min__":82,"__ggsql_aes_stroke__":10.0,"__ggsql_row_index__":23,"__ggsql_source__":"__ggsql_layer_0__"},{"Week":31,"__ggsql_aes_linewidth__":"min/max","__ggsql_aes_pos1__":"1973-07-30","__ggsql_aes_pos2max__":86,"__ggsql_aes_pos2min__":81,"__ggsql_aes_stroke__":10.0,"__ggsql_row_index__":24,"__ggsql_source__":"__ggsql_layer_0__"},{"Week":32,"__ggsql_aes_linewidth__":"min/max","__ggsql_aes_pos1__":"1973-08-06","__ggsql_aes_pos2max__":92,"__ggsql_aes_pos2min__":86,"__ggsql_aes_stroke__":-10.0,"__ggsql_row_index__":25,"__ggsql_source__":"__ggsql_layer_0__"},{"Week":35,"__ggsql_aes_linewidth__":"min/max","__ggsql_aes_pos1__":"1973-08-27","__ggsql_aes_pos2max__":97,"__ggsql_aes_pos2min__":88,"__ggsql_aes_stroke__":10.0,"__ggsql_row_index__":26,"__ggsql_source__":"__ggsql_layer_0__"},{"Week":37,"__ggsql_aes_linewidth__":"min/max","__ggsql_aes_pos1__":"1973-09-10","__ggsql_aes_pos2max__":81,"__ggsql_aes_pos2min__":71,"__ggsql_aes_stroke__":10.0,"__ggsql_row_index__":27,"__ggsql_source__":"__ggsql_layer_0__"},{"Week":18,"__ggsql_aes_linewidth__":"min/max","__ggsql_aes_pos1__":"1973-05-01","__ggsql_aes_pos2max__":74,"__ggsql_aes_pos2min__":56,"__ggsql_aes_stroke__":-10.0,"__ggsql_row_index__":28,"__ggsql_source__":"__ggsql_layer_0__"},{"Week":28,"__ggsql_aes_linewidth__":"min/max","__ggsql_aes_pos1__":"1973-07-09","__ggsql_aes_pos2max__":92,"__ggsql_aes_pos2min__":73,"__ggsql_aes_stroke__":-10.0,"__ggsql_row_index__":29,"__ggsql_source__":"__ggsql_layer_0__"},{"Week":29,"__ggsql_aes_linewidth__":"min/max","__ggsql_aes_pos1__":"1973-07-16","__ggsql_aes_pos2max__":87,"__ggsql_aes_pos2min__":74,"__ggsql_aes_stroke__":10.0,"__ggsql_row_index__":30,"__ggsql_source__":"__ggsql_layer_0__"},{"Week":34,"__ggsql_aes_linewidth__":"min/max","__ggsql_aes_pos1__":"1973-08-20","__ggsql_aes_pos2max__":86,"__ggsql_aes_pos2min__":72,"__ggsql_aes_stroke__":10.0,"__ggsql_row_index__":31,"__ggsql_source__":"__ggsql_layer_0__"},{"Week":39,"__ggsql_aes_linewidth__":"min/max","__ggsql_aes_pos1__":"1973-09-24","__ggsql_aes_pos2max__":77,"__ggsql_aes_pos2min__":63,"__ggsql_aes_stroke__":-10.0,"__ggsql_row_index__":32,"__ggsql_source__":"__ggsql_layer_0__"},{"Week":19,"__ggsql_aes_linewidth__":"min/max","__ggsql_aes_pos1__":"1973-05-07","__ggsql_aes_pos2max__":74,"__ggsql_aes_pos2min__":59,"__ggsql_aes_stroke__":10.0,"__ggsql_row_index__":33,"__ggsql_source__":"__ggsql_layer_0__"},{"Week":21,"__ggsql_aes_linewidth__":"min/max","__ggsql_aes_pos1__":"1973-05-21","__ggsql_aes_pos2max__":73,"__ggsql_aes_pos2min__":57,"__ggsql_aes_stroke__":-10.0,"__ggsql_row_index__":34,"__ggsql_source__":"__ggsql_layer_0__"},{"Week":25,"__ggsql_aes_linewidth__":"min/max","__ggsql_aes_pos1__":"1973-06-18","__ggsql_aes_pos2max__":77,"__ggsql_aes_pos2min__":65,"__ggsql_aes_stroke__":10.0,"__ggsql_row_index__":35,"__ggsql_source__":"__ggsql_layer_0__"},{"Week":27,"__ggsql_aes_linewidth__":"min/max","__ggsql_aes_pos1__":"1973-07-02","__ggsql_aes_pos2max__":92,"__ggsql_aes_pos2min__":81,"__ggsql_aes_stroke__":10.0,"__ggsql_row_index__":36,"__ggsql_source__":"__ggsql_layer_0__"},{"Week":20,"__ggsql_aes_linewidth__":"min/max","__ggsql_aes_pos1__":"1973-05-14","__ggsql_aes_pos2max__":68,"__ggsql_aes_pos2min__":57,"__ggsql_aes_stroke__":-10.0,"__ggsql_row_index__":37,"__ggsql_source__":"__ggsql_layer_0__"},{"Week":23,"__ggsql_aes_linewidth__":"min/max","__ggsql_aes_pos1__":"1973-06-04","__ggsql_aes_pos2max__":90,"__ggsql_aes_pos2min__":79,"__ggsql_aes_stroke__":10.0,"__ggsql_row_index__":38,"__ggsql_source__":"__ggsql_layer_0__"},{"Week":33,"__ggsql_aes_linewidth__":"min/max","__ggsql_aes_pos1__":"1973-08-13","__ggsql_aes_pos2max__":82,"__ggsql_aes_pos2min__":76,"__ggsql_aes_stroke__":-10.0,"__ggsql_row_index__":39,"__ggsql_source__":"__ggsql_layer_0__"},{"Week":36,"__ggsql_aes_linewidth__":"min/max","__ggsql_aes_pos1__":"1973-09-03","__ggsql_aes_pos2max__":93,"__ggsql_aes_pos2min__":75,"__ggsql_aes_stroke__":-10.0,"__ggsql_row_index__":40,"__ggsql_source__":"__ggsql_layer_0__"},{"Week":38,"__ggsql_aes_linewidth__":"min/max","__ggsql_aes_pos1__":"1973-09-17","__ggsql_aes_pos2max__":82,"__ggsql_aes_pos2min__":64,"__ggsql_aes_stroke__":10.0,"__ggsql_row_index__":41,"__ggsql_source__":"__ggsql_layer_0__"}]},"height":"container","layer":[{"encoding":{"detail":[{"field":"Week","type":"nominal"},{"field":"__ggsql_aes_linewidth__","type":"nominal"}],"opacity":{"value":1.0},"stroke":{"field":"__ggsql_aes_stroke__","legend":{"labelExpr":"datum.label == '-20 – 0' ? '-20 – 0' : datum.label == '≥ 0' ? '0 – 20' : datum.label","values":[-20.0,0.0]},"scale":{"domain":[0.0],"range":["#4682b4","#b22222"],"type":"threshold"},"title":"Temp","type":"quantitative"},"strokeDash":{"value":[]},"strokeWidth":{"field":"__ggsql_aes_linewidth__","legend":{"labelExpr":"datum.label == 'min/max' ? 'min/max' : datum.label == 'first/last' ? 'first/last' : datum.label"},"scale":{"domain":["first/last","min/max"],"range":[6.666666666666666,1.3333333333333333]},"title":"linewidth","type":"nominal"},"x":{"axis":{"labelExpr":"utcFormat(datum.value, '%Y-%m-%d') == '1973-05-21' ? '1973-05-21' : utcFormat(datum.value, '%Y-%m-%d') == '1973-07-16' ? '1973-07-16' : utcFormat(datum.value, '%Y-%m-%d') == '1973-04-23' ? '1973-04-23' : utcFormat(datum.value, '%Y-%m-%d') == '1973-08-13' ? '1973-08-13' : utcFormat(datum.value, '%Y-%m-%d') == '1973-06-18' ? '1973-06-18' : utcFormat(datum.value, '%Y-%m-%d') == '1973-09-10' ? '1973-09-10' : datum.label","values":["1973-04-23","1973-05-21","1973-06-18","1973-07-16","1973-08-13","1973-09-10"]},"field":"__ggsql_aes_pos1__","scale":{"domain":["1973-04-23","1973-10-01"],"zero":false},"title":"Date","type":"temporal"},"y":{"axis":{"labelExpr":"datum.value == 70 ? '70' : datum.value == 60 ? '60' : datum.value == 90 ? '90' : datum.value == 80 ? '80' : datum.label","values":[60.0,70.0,80.0,90.0]},"field":"__ggsql_aes_pos2min__","scale":{"domain":[53.95,99.05]},"stack":null,"title":"Temp","type":"quantitative"},"y2":{"field":"__ggsql_aes_pos2max__"}},"mark":{"clip":true,"type":"rule"},"transform":[{"filter":{"equal":"__ggsql_layer_0__","field":"__ggsql_source__"}}]}],"width":"container"};
-var visId = 'vis-1788774955589';
-var minWidth = 450;
-var inner = document.getElementById(visId);
-var outer = document.getElementById(visId + '-outer');
-var options = {"actions": true, "renderer": "svg"};
-function scaleToFit(o, i) {
-var available = o.clientWidth;
-if (available < minWidth) {
-var scale = available / minWidth;
-i.style.transform = 'scale(' + scale + ')';
-i.style.transformOrigin = 'top left';
-o.style.height = (i.scrollHeight * scale) + 'px';
-} else {
-i.style.transform = '';
-o.style.height = '';
-}
-}
-function onRendered() {
-scaleToFit(outer, inner);
-var ro = new ResizeObserver(function() { scaleToFit(outer, inner); });
-ro.observe(outer);
-}
-if (typeof window.requirejs !== 'undefined') {
-window.requirejs.config({
-paths: {
-'dom-ready': 'https://cdn.jsdelivr.net/npm/domready@1/ready.min',
-'vega': 'https://cdn.jsdelivr.net/npm/vega@6/build/vega.min',
-'vega-lite': 'https://cdn.jsdelivr.net/npm/vega-lite@6.4.1/build/vega-lite.min',
-'vega-embed': 'https://cdn.jsdelivr.net/npm/vega-embed@7/build/vega-embed.min'
-}
-});
-function docReady(fn) {
-if (document.readyState === 'complete') fn();
-else window.addEventListener("load", function() { fn(); });
-}
-docReady(function() {
-window.requirejs(["dom-ready", "vega", "vega-embed"], function(domReady, vega, vegaEmbed) {
-domReady(function () {
-vegaEmbed('#' + visId, spec, options).then(onRendered).catch(console.error);
-});
-});
-});
-} else {
-function loadScript(src) {
-return new Promise(function(resolve, reject) {
-var script = document.createElement('script');
-script.src = src;
-script.onload = resolve;
-script.onerror = reject;
-document.head.appendChild(script);
-});
-}
-Promise.all([
-loadScript('https://cdn.jsdelivr.net/npm/vega@6'),
-loadScript('https://cdn.jsdelivr.net/npm/vega-lite@6.4.1'),
-loadScript('https://cdn.jsdelivr.net/npm/vega-embed@7')
-])
-.then(function() { return vegaEmbed('#' + visId, spec, options); })
-.then(onRendered)
-.catch(function(err) {
-console.error('Failed to load Vega libraries:', err);
-});
-}
-})();
-</script>
 </div>
 </div>
 
@@ -1672,6 +1268,38 @@ console.error('Failed to load Vega libraries:', err);
   document.head.appendChild(link);
   import(base + 'quarto.js');
 </script>
+<script>var lightboxQuarto = GLightbox({"closeEffect":"zoom","descPosition":"bottom","loop":false,"openEffect":"zoom","selector":".lightbox"});
+(function() {
+  let previousOnload = window.onload;
+  window.onload = () => {
+    if (previousOnload) {
+      previousOnload();
+    }
+    lightboxQuarto.on('slide_before_load', (data) => {
+      const { slideIndex, slideNode, slideConfig, player, trigger } = data;
+      const href = trigger.getAttribute('href');
+      if (href !== null) {
+        const imgEl = window.document.querySelector(`a[href="${href}"] img`);
+        if (imgEl !== null) {
+          const srcAttr = imgEl.getAttribute("src");
+          if (srcAttr && srcAttr.startsWith("data:")) {
+            slideConfig.href = srcAttr;
+          }
+        }
+      } 
+    });
+  
+    lightboxQuarto.on('slide_after_load', (data) => {
+      const { slideIndex, slideNode, slideConfig, player, trigger } = data;
+      if (window.Quarto?.typesetMath) {
+        window.Quarto.typesetMath(slideNode);
+      }
+    });
+  
+  };
+  
+})();
+          </script>
 
 
 

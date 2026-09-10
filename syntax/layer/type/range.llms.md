@@ -61,6 +61,8 @@ DRAW point
   MAPPING mean AS y
 ```
 
+[![](range_files/figure-html/cell-3-output-1.svg)](range_files/figure-html/cell-3-output-1.svg)
+
 Dynamite plot using bars instead of points, with extra wide hinges.
 
 ``` ggsql
@@ -72,6 +74,8 @@ DRAW bar
   MAPPING mean AS y
 ```
 
+[![](range_files/figure-html/cell-4-output-1.svg)](range_files/figure-html/cell-4-output-1.svg)
+
 The hinges can be omitted by setting `null` as hinge, leaving just the line segment between the endpoints.
 
 ``` ggsql
@@ -80,6 +84,8 @@ DRAW range
   MAPPING low AS ymax, high AS ymin
   SETTING hinge => null
 ```
+
+[![](range_files/figure-html/cell-5-output-1.svg)](range_files/figure-html/cell-5-output-1.svg)
 
 A horizontal range can be rendered by swapping the `x` and `y` directions.
 
@@ -90,6 +96,8 @@ DRAW range
 DRAW point
   MAPPING mean AS x
 ```
+
+[![](range_files/figure-html/cell-6-output-1.svg)](range_files/figure-html/cell-6-output-1.svg)
 
 By overlaying a thick range over a thin one, you can build a candlestick chart. Both layers turn the hinges off so the marks read as clean vertical lines: the wick spans low-to-high and the body spans open-to-close.
 
@@ -116,6 +124,8 @@ DRAW range
   SETTING hinge => null
 ```
 
+[![](range_files/figure-html/cell-7-output-1.svg)](range_files/figure-html/cell-7-output-1.svg)
+
 Rather than precomputing the values and plotting them, you can use the aggregate functionality to calculate the relevant statistics dynamically:
 
 ``` ggsql
@@ -136,3 +146,5 @@ SCALE linewidth TO (5, 1)
 SCALE BINNED color TO ('steelblue', 'firebrick')
   SETTING breaks => (-20, 0, 20)
 ```
+
+[![](range_files/figure-html/cell-8-output-1.svg)](range_files/figure-html/cell-8-output-1.svg)

@@ -95,6 +95,8 @@ DRAW point
 DRAW smooth
 ```
 
+[![](smooth_files/figure-html/cell-2-output-1.svg)](smooth_files/figure-html/cell-2-output-1.svg)
+
 You can make the fit more granular by reducing the bandwidth, for example using `adjust`.
 
 ``` ggsql
@@ -104,6 +106,8 @@ DRAW point
 DRAW smooth 
   SETTING adjust => 0.2
 ```
+
+[![](smooth_files/figure-html/cell-3-output-1.svg)](smooth_files/figure-html/cell-3-output-1.svg)
 
 There is a subtle difference between the ordinary and total least squares method.
 
@@ -118,6 +122,8 @@ DRAW smooth
   SETTING method => 'tls'
 ```
 
+[![](smooth_files/figure-html/cell-4-output-1.svg)](smooth_files/figure-html/cell-4-output-1.svg)
+
 Simpson’s Paradox is a case where a trend of combined groups is reversed when groups are considered separately.
 
 ``` ggsql
@@ -130,3 +136,5 @@ DRAW smooth
   MAPPING 'All' AS stroke 
   SETTING method => 'ols'
 ```
+
+[![](smooth_files/figure-html/cell-5-output-1.svg)](smooth_files/figure-html/cell-5-output-1.svg)

@@ -24,6 +24,8 @@ LABEL
   y => 'Temperature (F)'
 ```
 
+[![](multi-layer_files/figure-html/cell-2-output-1.svg)](multi-layer_files/figure-html/cell-2-output-1.svg)
+
 ## Explanation
 
 - The first `DRAW line` creates a line connecting all points
@@ -51,6 +53,8 @@ LABEL
   y => 'Value'
 ```
 
+[![](multi-layer_files/figure-html/cell-3-output-1.svg)](multi-layer_files/figure-html/cell-3-output-1.svg)
+
 ### Layers from different data sources
 
 Use `MAPPING ... FROM` to pull each layer from different CTEs:
@@ -74,3 +78,5 @@ LABEL
   x => 'Date',
   y => 'Value'
 ```
+
+[![](multi-layer_files/figure-html/cell-4-output-1.svg)](multi-layer_files/figure-html/cell-4-output-1.svg)

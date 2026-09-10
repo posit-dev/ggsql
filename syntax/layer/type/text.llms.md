@@ -79,7 +79,7 @@ The markdown flavour recognised is CommonMark plus a few extensions. The most us
 - `` `code` ``, rendered in the monospace typeface.
 - `{selector body}` spans, which style a fragment without a dedicated marker. The selector is a single token: a colour name or CSS colour (`{.red hot}`), a hex colour (`{#0072B2 blue}`), or a size in points (`{.20 big}`). Combine them by nesting: `{.red {.20 big and red}}`.
 
-Note that `parse` is only honoured by the png writer. The Vega-Lite writer has no rich-text support and always draws the label literally, so a query meant for both writers should either avoid markdown in its labels or set `parse => false`.
+Note that `parse` is not honoured by the Vega-Lite writer, which has no rich text and always draws the label literally, so a query meant for both writers should either avoid markdown in its labels or set `parse => false`.
 
 ## Data transformation
 
@@ -99,6 +99,8 @@ DRAW text
   MAPPING island AS label
 ```
 
+[![](text_files/figure-html/cell-2-output-1.svg)](text_files/figure-html/cell-2-output-1.svg)
+
 You can use the `format` setting to tweak the display of the label.
 
 ``` ggsql
@@ -107,6 +109,8 @@ DRAW text
   MAPPING island AS label
   SETTING format => '{:UPPER}'
 ```
+
+[![](text_files/figure-html/cell-3-output-1.svg)](text_files/figure-html/cell-3-output-1.svg)
 
 Setting font properties. Colours are typically mapped to the fill.
 
@@ -121,7 +125,9 @@ DRAW text
 SCALE fontsize TO (6, 20)
 ```
 
-Labels are read as markdown, so a `format` template can style part of the label. This only shows up in the png writer.
+[![](text_files/figure-html/cell-4-output-1.svg)](text_files/figure-html/cell-4-output-1.svg)
+
+Labels are read as markdown, so a `format` template can style part of the label. This does not show up in Vega-Lite output, which has no rich text.
 
 ``` ggsql
 VISUALISE bill_len AS x, bill_dep AS y FROM ggsql:penguins
@@ -129,6 +135,8 @@ DRAW text
   MAPPING island AS label
   SETTING format => '{:Title} *island*'
 ```
+
+[![](text_files/figure-html/cell-5-output-1.svg)](text_files/figure-html/cell-5-output-1.svg)
 
 The ‘stroke’ aesthetic is applied to the outline of the text.
 
@@ -138,6 +146,8 @@ VISUALISE x, y, 'My Label' AS label
 DRAW text
   SETTING fontsize => 30, stroke => 'red'
 ```
+
+[![](text_files/figure-html/cell-6-output-1.svg)](text_files/figure-html/cell-6-output-1.svg)
 
 Labelling precomputed bars with the data value.
 
@@ -149,6 +159,8 @@ DRAW text
   MAPPING n AS label
   SETTING vjust => 'top', offset => (0, -11), fill => 'white'
 ```
+
+[![](text_files/figure-html/cell-7-output-1.svg)](text_files/figure-html/cell-7-output-1.svg)
 
 If you label bars at the extreme end, you may need to expand the scale to accommodate the labels.
 
@@ -162,6 +174,8 @@ DRAW text
 SCALE y FROM (0, 200)
 ```
 
+[![](text_files/figure-html/cell-8-output-1.svg)](text_files/figure-html/cell-8-output-1.svg)
+
 You can use `PLACE` to annotate a plot directly without needing to map data.
 
 ``` ggsql
@@ -174,6 +188,8 @@ PLACE text
     y => (19, 19, 15)
 ```
 
+[![](text_files/figure-html/cell-9-output-1.svg)](text_files/figure-html/cell-9-output-1.svg)
+
 Use aggregation to place labels at their centroid.
 
 ``` ggsql
@@ -184,3 +200,5 @@ DRAW text
   MAPPING species AS label
   SETTING aggregate => 'mean', stroke => 'white', fontweight => 'bold', fontsize => 20
 ```
+
+[![](text_files/figure-html/cell-10-output-1.svg)](text_files/figure-html/cell-10-output-1.svg)

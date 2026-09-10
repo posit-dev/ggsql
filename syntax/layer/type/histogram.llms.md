@@ -59,6 +59,8 @@ DRAW histogram
   MAPPING body_mass AS x
 ```
 
+[![](histogram_files/figure-html/cell-2-output-1.svg)](histogram_files/figure-html/cell-2-output-1.svg)
+
 Split the histogram in two by mapping sex to fill
 
 ``` ggsql
@@ -66,6 +68,8 @@ VISUALISE FROM ggsql:penguins
 DRAW histogram
   MAPPING body_mass AS x, sex AS fill
 ```
+
+[![](histogram_files/figure-html/cell-3-output-1.svg)](histogram_files/figure-html/cell-3-output-1.svg)
 
 The default is to stack multiple histograms. To compare them from a baseline of 0 set position to identity
 
@@ -76,6 +80,8 @@ DRAW histogram
   SETTING position => 'identity'
 ```
 
+[![](histogram_files/figure-html/cell-4-output-1.svg)](histogram_files/figure-html/cell-4-output-1.svg)
+
 Make the two histograms the same scale by remapping to density
 
 ``` ggsql
@@ -84,6 +90,8 @@ DRAW histogram
   MAPPING body_mass AS x, sex AS fill
   REMAPPING density AS y
 ```
+
+[![](histogram_files/figure-html/cell-5-output-1.svg)](histogram_files/figure-html/cell-5-output-1.svg)
 
 Specify an exact binwidth if needed
 
@@ -94,6 +102,8 @@ DRAW histogram
   SETTING binwidth => 100
 ```
 
+[![](histogram_files/figure-html/cell-6-output-1.svg)](histogram_files/figure-html/cell-6-output-1.svg)
+
 Create a histogram along the y axis by changing the mapping
 
 ``` ggsql
@@ -101,3 +111,5 @@ VISUALISE FROM ggsql:penguins
 DRAW histogram
   MAPPING body_mass AS y
 ```
+
+[![](histogram_files/figure-html/cell-7-output-1.svg)](histogram_files/figure-html/cell-7-output-1.svg)

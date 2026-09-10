@@ -58,6 +58,8 @@ VISUALISE x, y FROM df
 DRAW polygon
 ```
 
+[![](polygon_files/figure-html/cell-3-output-1.svg)](polygon_files/figure-html/cell-3-output-1.svg)
+
 Groups of individual polygons can be declared via `PARTITION BY`.
 
 ``` ggsql
@@ -66,6 +68,8 @@ DRAW polygon
   PARTITION BY id
 ```
 
+[![](polygon_files/figure-html/cell-4-output-1.svg)](polygon_files/figure-html/cell-4-output-1.svg)
+
 Invoking a group through discrete aesthetics works as well.
 
 ``` ggsql
@@ -73,3 +77,5 @@ VISUALISE x, y FROM df
 DRAW polygon 
   MAPPING id AS colour
 ```
+
+[![](polygon_files/figure-html/cell-5-output-1.svg)](polygon_files/figure-html/cell-5-output-1.svg)

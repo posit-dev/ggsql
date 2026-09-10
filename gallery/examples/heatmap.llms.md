@@ -15,6 +15,8 @@ VISUALISE Day AS x, Month AS y, Temp AS fill FROM ggsql:airquality
   DRAW tile
 ```
 
+[![](heatmap_files/figure-html/cell-2-output-1.svg)](heatmap_files/figure-html/cell-2-output-1.svg)
+
 ## Explanation
 
 - The `VISUALISE ... FROM ggsql:airquality` loads the built-in air quality dataset.
@@ -32,6 +34,8 @@ VISUALISE Month AS y, Day AS x, Temp AS fill FROM ggsql:airquality
     SETTING stroke => null, opacity => 1
 ```
 
+[![](heatmap_files/figure-html/cell-3-output-1.svg)](heatmap_files/figure-html/cell-3-output-1.svg)
+
 You can change the color by adapting the scale.
 
 ``` ggsql
@@ -40,6 +44,8 @@ VISUALISE Month AS y, Day AS x, Temp AS fill FROM ggsql:airquality
   SCALE fill TO magma 
     SETTING reverse => true
 ```
+
+[![](heatmap_files/figure-html/cell-4-output-1.svg)](heatmap_files/figure-html/cell-4-output-1.svg)
 
 If you have centered data, you may want to use a divergent colour scale. It is important to the two extremes in `FROM` symmetrically around the midpoint.
 
@@ -52,3 +58,5 @@ VISUALISE Month AS y, Day AS x, centered AS fill
   DRAW tile
   SCALE fill FROM (-20, 20) TO vik
 ```
+
+[![](heatmap_files/figure-html/cell-5-output-1.svg)](heatmap_files/figure-html/cell-5-output-1.svg)

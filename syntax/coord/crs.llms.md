@@ -144,6 +144,8 @@ DRAW spatial
 PROJECT TO robinson
 ```
 
+[![](crs_files/figure-html/cell-3-output-1.svg)](crs_files/figure-html/cell-3-output-1.svg)
+
 ### Via proj string
 
 ``` ggsql
@@ -151,6 +153,8 @@ VISUALISE continent AS fill FROM ggsql:world
 DRAW spatial
 PROJECT TO crs SETTING target => '+proj=robin'
 ```
+
+[![](crs_files/figure-html/cell-4-output-1.svg)](crs_files/figure-html/cell-4-output-1.svg)
 
 ### Setting the origin
 
@@ -160,6 +164,8 @@ DRAW spatial
 PROJECT TO orthographic
   SETTING origin => (133.77, -25.27)
 ```
+
+[![](crs_files/figure-html/cell-5-output-1.svg)](crs_files/figure-html/cell-5-output-1.svg)
 
 ### Zooming in
 
@@ -172,6 +178,8 @@ DRAW spatial
 PROJECT TO orthographic
 ```
 
+[![](crs_files/figure-html/cell-6-output-1.svg)](crs_files/figure-html/cell-6-output-1.svg)
+
 An alternative is to zoom using the `bounds` setting. Note that while `ggsql:world` is defined in degrees longitude/latitude, the `orthographic` projection uses metres as unit.
 
 ``` ggsql
@@ -180,6 +188,8 @@ DRAW spatial
 PROJECT TO orthographic
   SETTING bounds => (-1868152, 468481, 1638882, 2917218)
 ```
+
+[![](crs_files/figure-html/cell-7-output-1.svg)](crs_files/figure-html/cell-7-output-1.svg)
 
 The `bounds` arguments can take infinites to take the visible area’s extreme values, or `null` to take the data’s bounds.
 
@@ -191,6 +201,8 @@ PROJECT TO orthographic
   SETTING bounds => (-1868152, -Inf, 1638882, null)
 ```
 
+[![](crs_files/figure-html/cell-8-output-1.svg)](crs_files/figure-html/cell-8-output-1.svg)
+
 ### Parallels
 
 Default conic projections aren’t always kind to the southern hemisphere. This can be changed by tweaking the `parallel` setting.
@@ -200,6 +212,8 @@ VISUALISE continent AS fill FROM ggsql:world
 DRAW spatial 
 PROJECT TO albers SETTING parallel => (-29.5, -45.5)
 ```
+
+[![](crs_files/figure-html/cell-9-output-1.svg)](crs_files/figure-html/cell-9-output-1.svg)
 
 ## Footnotes
 

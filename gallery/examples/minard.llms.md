@@ -37,6 +37,8 @@ VISUALISE long AS x, lat AS y FROM 'minard_troops.csv'
   DRAW line
 ```
 
+[![](minard_files/figure-html/cell-3-output-1.svg)](minard_files/figure-html/cell-3-output-1.svg)
+
 To explain what we have done here:
 
 - `VISUALISE ... 'minard_troops.csv'` queries a local CSV file for Napoleon’s troops.
@@ -55,6 +57,8 @@ VISUALISE long AS x, lat AS y FROM 'minard_troops.csv'
   DRAW path
 ```
 
+[![](minard_files/figure-html/cell-4-output-1.svg)](minard_files/figure-html/cell-4-output-1.svg)
+
 The second mistake is that Napoleon’s retreat was not a simple linear path. For example: a detachment of soldiers arrived in Polotsk to guard the northern flank. This detachment later joined up with the remainder of the army during the retreat. What that means for us is that we have to account for additional grouping. This grouping allows us to resolve separate paths.
 
 ``` ggsql
@@ -62,6 +66,8 @@ VISUALISE long AS x, lat AS y FROM 'minard_troops.csv'
   DRAW path
     PARTITION BY direction, group
 ```
+
+[![](minard_files/figure-html/cell-5-output-1.svg)](minard_files/figure-html/cell-5-output-1.svg)
 
 ## Enriching
 
@@ -74,6 +80,8 @@ VISUALISE long AS x, lat AS y FROM 'minard_troops.csv'
     PARTITION BY direction, group
 ```
 
+[![](minard_files/figure-html/cell-6-output-1.svg)](minard_files/figure-html/cell-6-output-1.svg)
+
 Similarly, we can include the troop numbers by mapping the `survivors` variable to the line width.
 
 ``` ggsql
@@ -82,6 +90,8 @@ VISUALISE long AS x, lat AS y FROM 'minard_troops.csv'
     MAPPING direction AS stroke, survivors AS linewidth
     PARTITION BY direction, group
 ```
+
+[![](minard_files/figure-html/cell-7-output-1.svg)](minard_files/figure-html/cell-7-output-1.svg)
 
 ## Detailing
 
@@ -96,6 +106,8 @@ VISUALISE long AS x, lat AS y FROM 'minard_troops.csv'
     RENAMING 'A' => 'Advance', 'R' => 'Retreat'
 ```
 
+[![](minard_files/figure-html/cell-8-output-1.svg)](minard_files/figure-html/cell-8-output-1.svg)
+
 Now for a slightly more complicated scale, we’re going to set one for the `linewidth` variable that represent the number of troops. If you want to build in some extra intuition for the scale, you can let 0 troops coincide with 0 linewidth. We define the output range using `TO (0, 20)` because for a continuous variable it expects the output limits. Slightly more elaborate is the input domain, where we use `FROM (0, null)` to state that the scale should start at 0 and go up to the largest value in the data. Because both the input and output ranges start at 0, we get a well-proportioned line.
 
 ``` ggsql
@@ -107,6 +119,8 @@ VISUALISE long AS x, lat AS y FROM 'minard_troops.csv'
     RENAMING 'A' => 'Advance', 'R' => 'Retreat'
   SCALE linewidth FROM (0, null) TO (0, 20)
 ```
+
+[![](minard_files/figure-html/cell-9-output-1.svg)](minard_files/figure-html/cell-9-output-1.svg)
 
 ## Polishing
 
@@ -124,6 +138,8 @@ VISUALISE long AS x, lat AS y FROM 'minard_troops.csv'
     RENAMING 'A' => 'Advance', 'R' => 'Retreat'
   SCALE linewidth FROM (0, null) TO (0, 30)
 ```
+
+[![](minard_files/figure-html/cell-10-output-1.svg)](minard_files/figure-html/cell-10-output-1.svg)
 
 An additional obvious way to polish your graphic is to add nicer titles for all your variables. We can use the `LABEL` statement to add custom labels for our plot. In the title, we escape the single quote mark by using `\'` so that we know it is not the end of the string yet. Moreover, we can use `null` to note that a title should be removed. In that way we can hide the `long` and `lat` labels from the position mapping.
 
@@ -146,6 +162,8 @@ VISUALISE long AS x, lat AS y FROM 'minard_troops.csv'
     x => null,
     y => null
 ```
+
+[![](minard_files/figure-html/cell-11-output-1.svg)](minard_files/figure-html/cell-11-output-1.svg)
 
 And there we have it: a reproduction of Minard’s infographic on Napoleon’s Russian campaign.
 

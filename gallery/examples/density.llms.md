@@ -19,6 +19,8 @@ VISUALISE bill_len AS x, species AS colour FROM ggsql:penguins
   DRAW density
 ```
 
+[![](density_files/figure-html/cell-2-output-1.svg)](density_files/figure-html/cell-2-output-1.svg)
+
 ## Explanation
 
 - The `VISUALISE ... FROM ggsql:penguins` loads the built-in penguins dataset.
@@ -37,6 +39,8 @@ VISUALISE bill_len AS x, species AS colour FROM ggsql:penguins
   DRAW density REMAPPING intensity AS y
 ```
 
+[![](density_files/figure-html/cell-3-output-1.svg)](density_files/figure-html/cell-3-output-1.svg)
+
 ### Stacking
 
 Instead of having independent groups, the density can also be stacked. Note that stacking alone does not account for relative contributions per group. For that reason, you may want to show the intensity instead.
@@ -47,6 +51,8 @@ VISUALISE bill_len AS x, species AS colour FROM ggsql:penguins
     REMAPPING intensity AS y
     SETTING position => 'stack'
 ```
+
+[![](density_files/figure-html/cell-4-output-1.svg)](density_files/figure-html/cell-4-output-1.svg)
 
 ### Annotation
 
@@ -65,6 +71,8 @@ VISUALISE bill_len AS x, species AS colour FROM ggsql:penguins
   DRAW rule MAPPING FROM mean_data
 ```
 
+[![](density_files/figure-html/cell-5-output-1.svg)](density_files/figure-html/cell-5-output-1.svg)
+
 ### Faceting
 
 Another way of comparing groups is by using facets to separate the groups into different panels.
@@ -75,6 +83,8 @@ VISUALISE bill_len AS x, species AS colour FROM ggsql:penguins
   FACET species SETTING ncol => 1
 ```
 
+[![](density_files/figure-html/cell-6-output-1.svg)](density_files/figure-html/cell-6-output-1.svg)
+
 ### Relation to violin plots
 
 Conceptually, violin plots also display densities. The similarity becomes clearer if you make a ridgeline plot by displaying the violin density on a single side. The plot below is essentially showing the same thing as the plot above, but gathered in a single panel.
@@ -83,3 +93,5 @@ Conceptually, violin plots also display densities. The similarity becomes cleare
 VISUALISE bill_len AS x, species AS y, species AS colour FROM ggsql:penguins
   DRAW violin SETTING side => 'top', width => 2
 ```
+
+[![](density_files/figure-html/cell-7-output-1.svg)](density_files/figure-html/cell-7-output-1.svg)

@@ -59,6 +59,8 @@ DRAW segment
   MAPPING type AS stroke
 ```
 
+[![](segment_files/figure-html/cell-2-output-1.svg)](segment_files/figure-html/cell-2-output-1.svg)
+
 Segments can also draw arbitrary diagonal connections between points. For example, marking a delta between two measurements:
 
 ``` ggsql
@@ -71,3 +73,5 @@ VISUALISE start_x AS x, start_y AS y, end_x AS xend, end_y AS yend FROM deltas
 DRAW segment
   MAPPING label AS stroke
 ```
+
+[![](segment_files/figure-html/cell-3-output-1.svg)](segment_files/figure-html/cell-3-output-1.svg)

@@ -27,6 +27,8 @@ DRAW area
 SCALE ORDINAL fill
 ```
 
+[![](stack_files/figure-html/cell-2-output-1.svg)](stack_files/figure-html/cell-2-output-1.svg)
+
 Turn it off to see the effect (stacking is nonsensical for wind measurements)
 
 ``` ggsql
@@ -37,6 +39,8 @@ DRAW area
   FILTER Day <= 30
 SCALE ORDINAL fill
 ```
+
+[![](stack_files/figure-html/cell-3-output-1.svg)](stack_files/figure-html/cell-3-output-1.svg)
 
 Set `center => true` to create a steamgraph
 
@@ -49,6 +53,8 @@ DRAW area
 SCALE ORDINAL fill
 ```
 
+[![](stack_files/figure-html/cell-4-output-1.svg)](stack_files/figure-html/cell-4-output-1.svg)
+
 Use `total` to see the percentage contribution from each group
 
 ``` ggsql
@@ -59,3 +65,5 @@ DRAW area
   FILTER Day <= 30
 SCALE ORDINAL fill
 ```
+
+[![](stack_files/figure-html/cell-5-output-1.svg)](stack_files/figure-html/cell-5-output-1.svg)

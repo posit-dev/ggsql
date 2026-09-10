@@ -21,6 +21,8 @@ LABEL
   y => 'Count'
 ```
 
+[![](bar-chart_files/figure-html/cell-2-output-1.svg)](bar-chart_files/figure-html/cell-2-output-1.svg)
+
 ## Explanation
 
 - The SQL query aggregates penguin counts by species
@@ -47,6 +49,8 @@ LABEL
   y => 'Count'
 ```
 
+[![](bar-chart_files/figure-html/cell-3-output-1.svg)](bar-chart_files/figure-html/cell-3-output-1.svg)
+
 ### Auto-count bar chart
 
 When you don’t specify a y aesthetic, ggsql automatically counts occurrences:
@@ -60,3 +64,5 @@ LABEL
   x => 'Species',
   y => 'Count'
 ```
+
+[![](bar-chart_files/figure-html/cell-4-output-1.svg)](bar-chart_files/figure-html/cell-4-output-1.svg)

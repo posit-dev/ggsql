@@ -19,6 +19,8 @@ SCALE x FROM ('Chinstrap', 'Gentoo', 'Adelie')
 SCALE y FROM (0, null)
 ```
 
+[![](discrete_files/figure-html/cell-2-output-1.svg)](discrete_files/figure-html/cell-2-output-1.svg)
+
 #### Remove a category by omitting it
 
 ``` ggsql
@@ -28,6 +30,8 @@ SCALE x FROM ('Adelie', 'Chinstrap')
 SCALE y FROM (0, null)
 ```
 
+[![](discrete_files/figure-html/cell-3-output-1.svg)](discrete_files/figure-html/cell-3-output-1.svg)
+
 #### Explicitly include null in range to show removed data
 
 ``` ggsql
@@ -36,6 +40,8 @@ DRAW bar
 SCALE x FROM ('Torgersen', 'Biscoe', null)
 SCALE y FROM (0, null)
 ```
+
+[![](discrete_files/figure-html/cell-4-output-1.svg)](discrete_files/figure-html/cell-4-output-1.svg)
 
 ## Output range
 
@@ -60,6 +66,8 @@ DRAW point
 SCALE color TO tableau
 ```
 
+[![](discrete_files/figure-html/cell-5-output-1.svg)](discrete_files/figure-html/cell-5-output-1.svg)
+
 #### Construct a manual output range
 
 ``` ggsql
@@ -67,6 +75,8 @@ VISUALISE bill_len AS x, bill_dep AS y, island AS shape FROM ggsql:penguins
 DRAW point
 SCALE shape TO ('star', 'circle', 'diamond')
 ```
+
+[![](discrete_files/figure-html/cell-6-output-1.svg)](discrete_files/figure-html/cell-6-output-1.svg)
 
 ## Transform
 
@@ -88,6 +98,8 @@ DRAW point
 SCALE color FROM ('Adelie', 'Chinstrap', 'Gentoo')
   SETTING reverse => true
 ```
+
+[![](discrete_files/figure-html/cell-7-output-1.svg)](discrete_files/figure-html/cell-7-output-1.svg)
 
 ## Renaming
 
@@ -115,6 +127,8 @@ SCALE x
 SCALE y FROM (0, null)
 ```
 
+[![](discrete_files/figure-html/cell-8-output-1.svg)](discrete_files/figure-html/cell-8-output-1.svg)
+
 #### Add prefix
 
 ``` ggsql
@@ -125,6 +139,8 @@ SCALE x
 SCALE y FROM (0, null)
 ```
 
+[![](discrete_files/figure-html/cell-9-output-1.svg)](discrete_files/figure-html/cell-9-output-1.svg)
+
 #### Apply formatting
 
 ``` ggsql
@@ -133,3 +149,5 @@ DRAW point
 SCALE color
   RENAMING * => '{:Title}'
 ```
+
+[![](discrete_files/figure-html/cell-10-output-1.svg)](discrete_files/figure-html/cell-10-output-1.svg)

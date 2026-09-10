@@ -2,7 +2,7 @@
 <html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
 
 <meta charset="utf-8">
-<meta name="generator" content="quarto-1.11.3">
+<meta name="generator" content="quarto-1.11.4">
 
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
@@ -64,7 +64,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </style>
 
 
-<script src="https://cdn.jsdelivr.net/npm/jquery@3.5.1/dist/jquery.min.js" integrity="sha384-ZvpUoO/+PpLXR1lu4jmpXWu80pZlYUAfxl5NsBMWOEPSjUn/6Z/hRTt8+pR6L4N2" crossorigin="anonymous"></script><script src="../../../site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="../../../site_libs/quarto-nav/quarto-nav.js"></script>
 <script src="../../../site_libs/quarto-nav/headroom.min.js"></script>
 <script src="../../../site_libs/clipboard/clipboard.min.js"></script>
 <script src="../../../site_libs/quarto-search/autocomplete.umd.js"></script>
@@ -78,15 +78,18 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <script src="../../../site_libs/quarto-html/tippy.umd.min.js"></script>
 <script src="../../../site_libs/quarto-html/anchor.min.js"></script>
 <link href="../../../site_libs/quarto-html/tippy.css" rel="stylesheet">
-<link href="../../../site_libs/quarto-html/quarto-syntax-highlighting-dcb1874e0c6aa5279562b677d1a72506.css" rel="stylesheet" class="quarto-color-scheme" id="quarto-text-highlighting-styles">
-<link href="../../../site_libs/quarto-html/quarto-syntax-highlighting-dark-dcb1874e0c6aa5279562b677d1a72506.css" rel="stylesheet" class="quarto-color-scheme quarto-color-alternate" id="quarto-text-highlighting-styles">
-<link href="../../../site_libs/quarto-html/quarto-syntax-highlighting-dcb1874e0c6aa5279562b677d1a72506.css" rel="stylesheet" class="quarto-color-scheme-extra" id="quarto-text-highlighting-styles">
+<link href="../../../site_libs/quarto-html/quarto-syntax-highlighting-3b3e5ab417bc8a85daaddba4ecbda1b0.css" rel="stylesheet" class="quarto-color-scheme" id="quarto-text-highlighting-styles">
+<link href="../../../site_libs/quarto-html/quarto-syntax-highlighting-dark-3b3e5ab417bc8a85daaddba4ecbda1b0.css" rel="stylesheet" class="quarto-color-scheme quarto-color-alternate" id="quarto-text-highlighting-styles">
+<link href="../../../site_libs/quarto-html/quarto-syntax-highlighting-3b3e5ab417bc8a85daaddba4ecbda1b0.css" rel="stylesheet" class="quarto-color-scheme-extra" id="quarto-text-highlighting-styles">
 <script src="../../../site_libs/bootstrap/bootstrap.min.js"></script>
 <link href="../../../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
 <link href="../../../site_libs/bootstrap/bootstrap-ee2fbf1385f1445439e0330faa874de9.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme" id="quarto-bootstrap" data-mode="light">
 <link href="../../../site_libs/bootstrap/bootstrap-dark-48c390d65c4999e95bad94a105d94c4e.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme quarto-color-alternate" id="quarto-bootstrap" data-mode="light">
 <link href="../../../site_libs/bootstrap/bootstrap-ee2fbf1385f1445439e0330faa874de9.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme-extra" id="quarto-bootstrap" data-mode="light">
 <script src="../../../site_libs/quarto-contrib/iconify-3.0.0/iconify-icon.min.js"></script>
+<script src="../../../site_libs/quarto-contrib/glightbox/glightbox.min.js"></script>
+<link href="../../../site_libs/quarto-contrib/glightbox/glightbox.min.css" rel="stylesheet">
+<link href="../../../site_libs/quarto-contrib/glightbox/lightbox.css" rel="stylesheet">
 <script id="quarto-search-options" type="application/json">{
   "location": "navbar",
   "copy-button": false,
@@ -109,9 +112,6 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
     "search-label": "Search"
   }
 }</script>
-<script src="https://cdn.jsdelivr.net/npm/requirejs@2.3.6/require.min.js" integrity="sha384-c9c+LnTbwQ3aujuU7ULEPVvgLs+Fn6fJUvIGTsuu1ZcCf11fiEubah0ttpca4ntM sha384-6V1/AdqZRWk1KAlWbKBlGhN7VG4iE/yAZcO6NZPMF8od0vukrvr0tg4qY6NSrItx" crossorigin="anonymous"></script>
-
-<script type="application/javascript">define('jquery', [],function() {return window.jQuery;})</script>
 <script src="https://cdn.jsdelivr.net/gh/posit-dev/supported-by-posit/js/badge.min.js" data-light-bg="#94D2BD" data-dark-bg="#001219"></script>
 <!-- Privacy-friendly analytics by Plausible -->
 <script async="" src="https://plausible.io/js/pa-eH2pS73nQmBLURrhxXgML.js"></script>
@@ -123,27 +123,19 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 
 <meta property="og:title" content="Polygon – ggsql">
 <meta property="og:description" content="The home of ggsql. A declarative visualisation language build on top of SQL and the grammar of graphics.">
-<meta property="og:image" content="https://ggsql.org/syntax/layer/type/assets/logo.png">
+<meta property="og:image" content="https://ggsql.org/syntax/layer/type/polygon_files/figure-html/cell-3-output-1.svg">
 <meta property="og:site_name" content="ggsql">
-<meta property="og:image:alt" content="The ggsql logo showing a pencil tracing a lineplot with points. The pencil
-handle is made up of the classic database silo icon and is coloured in a
-gradient teal.
-">
 <meta name="twitter:title" content="Polygon – ggsql">
 <meta name="twitter:description" content="The home of ggsql. A declarative visualisation language build on top of SQL and the grammar of graphics.">
-<meta name="twitter:image" content="https://ggsql.org/syntax/layer/type/assets/logo.png">
+<meta name="twitter:image" content="https://ggsql.org/syntax/layer/type/polygon_files/figure-html/cell-3-output-1.svg">
 <meta name="twitter:card" content="summary">
-<meta name="twitter:image:alt" content="The ggsql logo showing a pencil tracing a lineplot with points. The pencil
-handle is made up of the classic database silo icon and is coloured in a
-gradient teal.
-">
 </head>
 
 <body class="nav-sidebar floating nav-fixed quarto-light"><a id="quarto-skip-link" class="visually-hidden-focusable" href="#quarto-document-content">Skip to main content</a>
 
 <div id="quarto-search-results"></div>
   <header id="quarto-header" class="headroom fixed-top">
-    <nav class="navbar navbar-expand-lg " data-bs-theme="dark">
+    <nav class="navbar navbar-expand-lg " data-bs-theme="dark" aria-label="Site">
       <div class="navbar-container container-fluid">
       <div class="navbar-brand-container mx-auto">
     <a href="../../../index.html" class="navbar-brand navbar-brand-logo">
@@ -268,12 +260,12 @@ gradient teal.
 </div>
       </div> <!-- /container-fluid -->
     </nav>
-  <nav class="quarto-secondary-nav">
+  <nav class="quarto-secondary-nav" aria-label="Toolbar">
     <div class="container-fluid d-flex">
       <button type="button" class="quarto-btn-toggle btn" data-bs-toggle="collapse" role="button" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
         <i class="bi bi-layout-text-sidebar-reverse"></i>
       </button>
-        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item">Layers</li><li class="breadcrumb-item"><a href="../../../syntax/layer/type/area.html">Types</a></li><li class="breadcrumb-item"><a href="../../../syntax/layer/type/polygon.html">Polygon</a></li></ol></nav>
+        <nav class="quarto-page-breadcrumbs" aria-label="Breadcrumbs"><ol class="breadcrumb"><li class="breadcrumb-item">Layers</li><li class="breadcrumb-item"><a href="../../../syntax/layer/type/area.html">Types</a></li><li class="breadcrumb-item"><a href="../../../syntax/layer/type/polygon.html">Polygon</a></li></ol></nav>
         <a class="flex-grow-1" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">      
         </a>
       <button type="button" class="btn quarto-search-button" aria-label="Search" onclick="window.quartoOpenSearch();">
@@ -288,7 +280,7 @@ gradient teal.
 <!-- content -->
 <div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article page-navbar">
 <!-- sidebar -->
-  <nav id="quarto-sidebar" class="sidebar collapse collapse-horizontal quarto-sidebar-collapse-item sidebar-navigation floating overflow-auto">
+  <nav id="quarto-sidebar" class="sidebar collapse collapse-horizontal quarto-sidebar-collapse-item sidebar-navigation floating overflow-auto" aria-label="Section">
         <div class="mt-2 flex-shrink-0 align-items-center">
         <div class="sidebar-search">
         <div id="quarto-search" class="" title="Search"></div>
@@ -648,7 +640,7 @@ gradient teal.
 <div id="quarto-sidebar-glass" class="quarto-sidebar-collapse-item" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item"></div>
 <!-- margin-sidebar -->
     <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
-        <nav id="TOC" role="doc-toc" class="toc-active">
+        <nav id="TOC" role="doc-toc" aria-labelledby="toc-title" class="toc-active">
     <h2 id="toc-title">On this page</h2>
    
   <ul>
@@ -667,7 +659,7 @@ gradient teal.
 <!-- main -->
 <main class="content" id="quarto-document-content" tabindex="-1">
 
-<header id="title-block-header" class="quarto-title-block default"><nav class="quarto-page-breadcrumbs quarto-title-breadcrumbs d-none d-lg-block" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item">Layers</li><li class="breadcrumb-item"><a href="../../../syntax/layer/type/area.html">Types</a></li><li class="breadcrumb-item"><a href="../../../syntax/layer/type/polygon.html">Polygon</a></li></ol></nav>
+<header id="title-block-header" class="quarto-title-block default"><nav class="quarto-page-breadcrumbs quarto-title-breadcrumbs d-none d-lg-block" aria-label="Breadcrumbs"><ol class="breadcrumb"><li class="breadcrumb-item">Layers</li><li class="breadcrumb-item"><a href="../../../syntax/layer/type/area.html">Types</a></li><li class="breadcrumb-item"><a href="../../../syntax/layer/type/polygon.html">Polygon</a></li></ol></nav>
 <div class="quarto-title">
 <h1 class="title">Polygon</h1>
 </div>
@@ -728,7 +720,7 @@ gradient teal.
 </section>
 <section id="examples" class="level2">
 <h2 class="anchored" data-anchor-id="examples">Examples</h2>
-<div id="0331f92e" class="cell" data-execution_count="1">
+<div id="49c07fbf" class="cell" data-execution_count="1">
 <details class="code-fold">
 <summary>Create example data</summary>
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb1"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="kw">CREATE</span> <span class="kw">TABLE</span> df <span class="kw">AS</span></span>
@@ -744,239 +736,41 @@ gradient teal.
 </details>
 </div>
 <p>Simple example polygon.</p>
-<div id="d386ec43" class="cell" data-execution_count="2">
+<div id="c0011011" class="cell" data-execution_count="2">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb2"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> <span class="at">x</span>, <span class="at">y</span> <span class="kw">FROM</span> df</span>
 <span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">polygon</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="2">
-<div id="vis-1788774974151-outer" style="width: 100%; overflow: hidden;">
-<div id="vis-1788774974151" style="width: 100%; min-width: 450px; height: 400px;"></div>
+<div>
+<figure class="figure">
+<p><a href="polygon_files/figure-html/cell-3-output-1.svg" class="lightbox" data-gallery="quarto-lightbox-gallery-1"><img src="polygon_files/figure-html/cell-3-output-1.svg" width="672" height="480" class="figure-img"></a></p>
+</figure>
 </div>
-<script type="text/javascript">
-(function() {
-var spec = {"$schema":"https://vega.github.io/schema/vega-lite/v6.json","config":{"axis":{"domain":false,"grid":true,"gridColor":"#FFFFFF","gridWidth":1,"labelColor":"#4D4D4D","labelFontSize":12,"tickColor":"#333333","tickSize":4,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":10},"header":{"labelColor":"#000000","labelFontSize":15,"labelFontWeight":"normal","labelPadding":5,"title":null},"legend":{"labelColor":"#4D4D4D","labelFontSize":12,"rowPadding":6,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":8},"scale":{"bandPaddingInner":0,"bandWithNestedOffsetPaddingInner":0,"bandWithNestedOffsetPaddingOuter":0},"title":{"anchor":"start","color":"#000000","fontSize":18,"fontWeight":"normal","frame":"group","offset":10,"subtitleColor":"#4D4D4D","subtitleFontSize":15,"subtitleFontWeight":"normal"},"view":{"fill":"#EBEBEB","stroke":null}},"data":{"values":[{"__ggsql_aes_pos1__":1.0,"__ggsql_aes_pos2__":1.0,"__ggsql_row_index__":0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":1.0,"__ggsql_aes_pos2__":3.0,"__ggsql_row_index__":1,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":2.0,"__ggsql_aes_pos2__":1.0,"__ggsql_row_index__":2,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":2.0,"__ggsql_aes_pos2__":3.0,"__ggsql_row_index__":3,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":3.0,"__ggsql_aes_pos2__":1.0,"__ggsql_row_index__":4,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_pos1__":3.0,"__ggsql_aes_pos2__":3.0,"__ggsql_row_index__":5,"__ggsql_source__":"__ggsql_layer_0__"}]},"height":"container","layer":[{"encoding":{"fill":{"value":"black"},"fillOpacity":{"value":0.8},"order":{"field":"__ggsql_row_index__","type":"quantitative"},"stroke":{"value":"black"},"strokeDash":{"value":[]},"strokeWidth":{"value":1.3333333333333333},"x":{"axis":{"labelExpr":"datum.value == 2 ? '2.0' : datum.value == 1 ? '1.0' : datum.value == 2.5 ? '2.5' : datum.value == 3 ? '3.0' : datum.value == 1.5 ? '1.5' : datum.label","values":[1.0,1.5,2.0,2.5,3.0]},"field":"__ggsql_aes_pos1__","scale":{"domain":[0.9,3.1],"zero":false},"title":"x","type":"quantitative"},"y":{"axis":{"labelExpr":"datum.value == 1.5 ? '1.5' : datum.value == 3 ? '3.0' : datum.value == 1 ? '1.0' : datum.value == 2 ? '2.0' : datum.value == 2.5 ? '2.5' : datum.label","values":[1.0,1.5,2.0,2.5,3.0]},"field":"__ggsql_aes_pos2__","scale":{"domain":[0.9,3.1],"zero":false},"stack":null,"title":"y","type":"quantitative"}},"mark":{"interpolate":"linear-closed","type":"line"},"transform":[{"filter":{"equal":"__ggsql_layer_0__","field":"__ggsql_source__"}}]}],"width":"container"};
-var visId = 'vis-1788774974151';
-var minWidth = 450;
-var inner = document.getElementById(visId);
-var outer = document.getElementById(visId + '-outer');
-var options = {"actions": true, "renderer": "svg"};
-function scaleToFit(o, i) {
-var available = o.clientWidth;
-if (available < minWidth) {
-var scale = available / minWidth;
-i.style.transform = 'scale(' + scale + ')';
-i.style.transformOrigin = 'top left';
-o.style.height = (i.scrollHeight * scale) + 'px';
-} else {
-i.style.transform = '';
-o.style.height = '';
-}
-}
-function onRendered() {
-scaleToFit(outer, inner);
-var ro = new ResizeObserver(function() { scaleToFit(outer, inner); });
-ro.observe(outer);
-}
-if (typeof window.requirejs !== 'undefined') {
-window.requirejs.config({
-paths: {
-'dom-ready': 'https://cdn.jsdelivr.net/npm/domready@1/ready.min',
-'vega': 'https://cdn.jsdelivr.net/npm/vega@6/build/vega.min',
-'vega-lite': 'https://cdn.jsdelivr.net/npm/vega-lite@6.4.1/build/vega-lite.min',
-'vega-embed': 'https://cdn.jsdelivr.net/npm/vega-embed@7/build/vega-embed.min'
-}
-});
-function docReady(fn) {
-if (document.readyState === 'complete') fn();
-else window.addEventListener("load", function() { fn(); });
-}
-docReady(function() {
-window.requirejs(["dom-ready", "vega", "vega-embed"], function(domReady, vega, vegaEmbed) {
-domReady(function () {
-vegaEmbed('#' + visId, spec, options).then(onRendered).catch(console.error);
-});
-});
-});
-} else {
-function loadScript(src) {
-return new Promise(function(resolve, reject) {
-var script = document.createElement('script');
-script.src = src;
-script.onload = resolve;
-script.onerror = reject;
-document.head.appendChild(script);
-});
-}
-Promise.all([
-loadScript('https://cdn.jsdelivr.net/npm/vega@6'),
-loadScript('https://cdn.jsdelivr.net/npm/vega-lite@6.4.1'),
-loadScript('https://cdn.jsdelivr.net/npm/vega-embed@7')
-])
-.then(function() { return vegaEmbed('#' + visId, spec, options); })
-.then(onRendered)
-.catch(function(err) {
-console.error('Failed to load Vega libraries:', err);
-});
-}
-})();
-</script>
 </div>
 </div>
 <p>Groups of individual polygons can be declared via <code>PARTITION BY</code>.</p>
-<div id="950a8d22" class="cell" data-execution_count="3">
+<div id="48f7aaf8" class="cell" data-execution_count="3">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb3"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> <span class="at">x</span>, <span class="at">y</span> <span class="kw">FROM</span> df</span>
 <span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">polygon</span> </span>
 <span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>  <span class="kw">PARTITION</span> BY id</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="3">
-<div id="vis-1788774974190-outer" style="width: 100%; overflow: hidden;">
-<div id="vis-1788774974190" style="width: 100%; min-width: 450px; height: 400px;"></div>
+<div>
+<figure class="figure">
+<p><a href="polygon_files/figure-html/cell-4-output-1.svg" class="lightbox" data-gallery="quarto-lightbox-gallery-2"><img src="polygon_files/figure-html/cell-4-output-1.svg" width="672" height="480" class="figure-img"></a></p>
+</figure>
 </div>
-<script type="text/javascript">
-(function() {
-var spec = {"$schema":"https://vega.github.io/schema/vega-lite/v6.json","config":{"axis":{"domain":false,"grid":true,"gridColor":"#FFFFFF","gridWidth":1,"labelColor":"#4D4D4D","labelFontSize":12,"tickColor":"#333333","tickSize":4,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":10},"header":{"labelColor":"#000000","labelFontSize":15,"labelFontWeight":"normal","labelPadding":5,"title":null},"legend":{"labelColor":"#4D4D4D","labelFontSize":12,"rowPadding":6,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":8},"scale":{"bandPaddingInner":0,"bandWithNestedOffsetPaddingInner":0,"bandWithNestedOffsetPaddingOuter":0},"title":{"anchor":"start","color":"#000000","fontSize":18,"fontWeight":"normal","frame":"group","offset":10,"subtitleColor":"#4D4D4D","subtitleFontSize":15,"subtitleFontWeight":"normal"},"view":{"fill":"#EBEBEB","stroke":null}},"data":{"values":[{"__ggsql_aes_pos1__":1.0,"__ggsql_aes_pos2__":1.0,"__ggsql_row_index__":0,"__ggsql_source__":"__ggsql_layer_0__","id":"A"},{"__ggsql_aes_pos1__":1.0,"__ggsql_aes_pos2__":3.0,"__ggsql_row_index__":1,"__ggsql_source__":"__ggsql_layer_0__","id":"A"},{"__ggsql_aes_pos1__":2.0,"__ggsql_aes_pos2__":1.0,"__ggsql_row_index__":2,"__ggsql_source__":"__ggsql_layer_0__","id":"A"},{"__ggsql_aes_pos1__":2.0,"__ggsql_aes_pos2__":3.0,"__ggsql_row_index__":3,"__ggsql_source__":"__ggsql_layer_0__","id":"B"},{"__ggsql_aes_pos1__":3.0,"__ggsql_aes_pos2__":1.0,"__ggsql_row_index__":4,"__ggsql_source__":"__ggsql_layer_0__","id":"B"},{"__ggsql_aes_pos1__":3.0,"__ggsql_aes_pos2__":3.0,"__ggsql_row_index__":5,"__ggsql_source__":"__ggsql_layer_0__","id":"B"}]},"height":"container","layer":[{"encoding":{"detail":{"field":"id","type":"nominal"},"fill":{"value":"black"},"fillOpacity":{"value":0.8},"order":{"field":"__ggsql_row_index__","type":"quantitative"},"stroke":{"value":"black"},"strokeDash":{"value":[]},"strokeWidth":{"value":1.3333333333333333},"x":{"axis":{"labelExpr":"datum.value == 1 ? '1.0' : datum.value == 1.5 ? '1.5' : datum.value == 2 ? '2.0' : datum.value == 3 ? '3.0' : datum.value == 2.5 ? '2.5' : datum.label","values":[1.0,1.5,2.0,2.5,3.0]},"field":"__ggsql_aes_pos1__","scale":{"domain":[0.9,3.1],"zero":false},"title":"x","type":"quantitative"},"y":{"axis":{"labelExpr":"datum.value == 3 ? '3.0' : datum.value == 2.5 ? '2.5' : datum.value == 1 ? '1.0' : datum.value == 2 ? '2.0' : datum.value == 1.5 ? '1.5' : datum.label","values":[1.0,1.5,2.0,2.5,3.0]},"field":"__ggsql_aes_pos2__","scale":{"domain":[0.9,3.1],"zero":false},"stack":null,"title":"y","type":"quantitative"}},"mark":{"interpolate":"linear-closed","type":"line"},"transform":[{"filter":{"equal":"__ggsql_layer_0__","field":"__ggsql_source__"}}]}],"width":"container"};
-var visId = 'vis-1788774974190';
-var minWidth = 450;
-var inner = document.getElementById(visId);
-var outer = document.getElementById(visId + '-outer');
-var options = {"actions": true, "renderer": "svg"};
-function scaleToFit(o, i) {
-var available = o.clientWidth;
-if (available < minWidth) {
-var scale = available / minWidth;
-i.style.transform = 'scale(' + scale + ')';
-i.style.transformOrigin = 'top left';
-o.style.height = (i.scrollHeight * scale) + 'px';
-} else {
-i.style.transform = '';
-o.style.height = '';
-}
-}
-function onRendered() {
-scaleToFit(outer, inner);
-var ro = new ResizeObserver(function() { scaleToFit(outer, inner); });
-ro.observe(outer);
-}
-if (typeof window.requirejs !== 'undefined') {
-window.requirejs.config({
-paths: {
-'dom-ready': 'https://cdn.jsdelivr.net/npm/domready@1/ready.min',
-'vega': 'https://cdn.jsdelivr.net/npm/vega@6/build/vega.min',
-'vega-lite': 'https://cdn.jsdelivr.net/npm/vega-lite@6.4.1/build/vega-lite.min',
-'vega-embed': 'https://cdn.jsdelivr.net/npm/vega-embed@7/build/vega-embed.min'
-}
-});
-function docReady(fn) {
-if (document.readyState === 'complete') fn();
-else window.addEventListener("load", function() { fn(); });
-}
-docReady(function() {
-window.requirejs(["dom-ready", "vega", "vega-embed"], function(domReady, vega, vegaEmbed) {
-domReady(function () {
-vegaEmbed('#' + visId, spec, options).then(onRendered).catch(console.error);
-});
-});
-});
-} else {
-function loadScript(src) {
-return new Promise(function(resolve, reject) {
-var script = document.createElement('script');
-script.src = src;
-script.onload = resolve;
-script.onerror = reject;
-document.head.appendChild(script);
-});
-}
-Promise.all([
-loadScript('https://cdn.jsdelivr.net/npm/vega@6'),
-loadScript('https://cdn.jsdelivr.net/npm/vega-lite@6.4.1'),
-loadScript('https://cdn.jsdelivr.net/npm/vega-embed@7')
-])
-.then(function() { return vegaEmbed('#' + visId, spec, options); })
-.then(onRendered)
-.catch(function(err) {
-console.error('Failed to load Vega libraries:', err);
-});
-}
-})();
-</script>
 </div>
 </div>
 <p>Invoking a group through discrete aesthetics works as well.</p>
-<div id="c5e264fd" class="cell" data-execution_count="4">
+<div id="a690030f" class="cell" data-execution_count="4">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb4"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> <span class="at">x</span>, <span class="at">y</span> <span class="kw">FROM</span> df</span>
 <span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">polygon</span> </span>
 <span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>  <span class="kw">MAPPING</span> id AS <span class="at">colour</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="4">
-<div id="vis-1788774974228-outer" style="width: 100%; overflow: hidden;">
-<div id="vis-1788774974228" style="width: 100%; min-width: 450px; height: 400px;"></div>
+<div>
+<figure class="figure">
+<p><a href="polygon_files/figure-html/cell-5-output-1.svg" class="lightbox" data-gallery="quarto-lightbox-gallery-3"><img src="polygon_files/figure-html/cell-5-output-1.svg" width="672" height="480" class="figure-img"></a></p>
+</figure>
 </div>
-<script type="text/javascript">
-(function() {
-var spec = {"$schema":"https://vega.github.io/schema/vega-lite/v6.json","config":{"axis":{"domain":false,"grid":true,"gridColor":"#FFFFFF","gridWidth":1,"labelColor":"#4D4D4D","labelFontSize":12,"tickColor":"#333333","tickSize":4,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":10},"header":{"labelColor":"#000000","labelFontSize":15,"labelFontWeight":"normal","labelPadding":5,"title":null},"legend":{"labelColor":"#4D4D4D","labelFontSize":12,"rowPadding":6,"titleColor":"#000000","titleFontSize":15,"titleFontWeight":"normal","titlePadding":8},"scale":{"bandPaddingInner":0,"bandWithNestedOffsetPaddingInner":0,"bandWithNestedOffsetPaddingOuter":0},"title":{"anchor":"start","color":"#000000","fontSize":18,"fontWeight":"normal","frame":"group","offset":10,"subtitleColor":"#4D4D4D","subtitleFontSize":15,"subtitleFontWeight":"normal"},"view":{"fill":"#EBEBEB","stroke":null}},"data":{"values":[{"__ggsql_aes_fill__":"A","__ggsql_aes_pos1__":1.0,"__ggsql_aes_pos2__":1.0,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":0,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":"A","__ggsql_aes_pos1__":1.0,"__ggsql_aes_pos2__":3.0,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":1,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":"A","__ggsql_aes_pos1__":2.0,"__ggsql_aes_pos2__":1.0,"__ggsql_aes_stroke__":"A","__ggsql_row_index__":2,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":"B","__ggsql_aes_pos1__":2.0,"__ggsql_aes_pos2__":3.0,"__ggsql_aes_stroke__":"B","__ggsql_row_index__":3,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":"B","__ggsql_aes_pos1__":3.0,"__ggsql_aes_pos2__":1.0,"__ggsql_aes_stroke__":"B","__ggsql_row_index__":4,"__ggsql_source__":"__ggsql_layer_0__"},{"__ggsql_aes_fill__":"B","__ggsql_aes_pos1__":3.0,"__ggsql_aes_pos2__":3.0,"__ggsql_aes_stroke__":"B","__ggsql_row_index__":5,"__ggsql_source__":"__ggsql_layer_0__"}]},"height":"container","layer":[{"encoding":{"detail":[{"field":"__ggsql_aes_stroke__","type":"nominal"},{"field":"__ggsql_aes_fill__","type":"nominal"}],"fill":{"field":"__ggsql_aes_fill__","legend":{"labelExpr":"datum.label == 'A' ? 'A' : datum.label == 'B' ? 'B' : datum.label"},"scale":{"domain":["A","B"],"range":["#0067A5","#F38400"]},"title":"id","type":"nominal"},"fillOpacity":{"value":0.8},"order":{"field":"__ggsql_row_index__","type":"quantitative"},"stroke":{"field":"__ggsql_aes_stroke__","legend":{"labelExpr":"datum.label == 'B' ? 'B' : datum.label == 'A' ? 'A' : datum.label"},"scale":{"domain":["A","B"],"range":["#0067A5","#F38400"]},"title":"id","type":"nominal"},"strokeDash":{"value":[]},"strokeWidth":{"value":1.3333333333333333},"x":{"axis":{"labelExpr":"datum.value == 2.5 ? '2.5' : datum.value == 3 ? '3.0' : datum.value == 1 ? '1.0' : datum.value == 1.5 ? '1.5' : datum.value == 2 ? '2.0' : datum.label","values":[1.0,1.5,2.0,2.5,3.0]},"field":"__ggsql_aes_pos1__","scale":{"domain":[0.9,3.1],"zero":false},"title":"x","type":"quantitative"},"y":{"axis":{"labelExpr":"datum.value == 1.5 ? '1.5' : datum.value == 2.5 ? '2.5' : datum.value == 2 ? '2.0' : datum.value == 1 ? '1.0' : datum.value == 3 ? '3.0' : datum.label","values":[1.0,1.5,2.0,2.5,3.0]},"field":"__ggsql_aes_pos2__","scale":{"domain":[0.9,3.1],"zero":false},"stack":null,"title":"y","type":"quantitative"}},"mark":{"interpolate":"linear-closed","type":"line"},"transform":[{"filter":{"equal":"__ggsql_layer_0__","field":"__ggsql_source__"}}]}],"width":"container"};
-var visId = 'vis-1788774974228';
-var minWidth = 450;
-var inner = document.getElementById(visId);
-var outer = document.getElementById(visId + '-outer');
-var options = {"actions": true, "renderer": "svg"};
-function scaleToFit(o, i) {
-var available = o.clientWidth;
-if (available < minWidth) {
-var scale = available / minWidth;
-i.style.transform = 'scale(' + scale + ')';
-i.style.transformOrigin = 'top left';
-o.style.height = (i.scrollHeight * scale) + 'px';
-} else {
-i.style.transform = '';
-o.style.height = '';
-}
-}
-function onRendered() {
-scaleToFit(outer, inner);
-var ro = new ResizeObserver(function() { scaleToFit(outer, inner); });
-ro.observe(outer);
-}
-if (typeof window.requirejs !== 'undefined') {
-window.requirejs.config({
-paths: {
-'dom-ready': 'https://cdn.jsdelivr.net/npm/domready@1/ready.min',
-'vega': 'https://cdn.jsdelivr.net/npm/vega@6/build/vega.min',
-'vega-lite': 'https://cdn.jsdelivr.net/npm/vega-lite@6.4.1/build/vega-lite.min',
-'vega-embed': 'https://cdn.jsdelivr.net/npm/vega-embed@7/build/vega-embed.min'
-}
-});
-function docReady(fn) {
-if (document.readyState === 'complete') fn();
-else window.addEventListener("load", function() { fn(); });
-}
-docReady(function() {
-window.requirejs(["dom-ready", "vega", "vega-embed"], function(domReady, vega, vegaEmbed) {
-domReady(function () {
-vegaEmbed('#' + visId, spec, options).then(onRendered).catch(console.error);
-});
-});
-});
-} else {
-function loadScript(src) {
-return new Promise(function(resolve, reject) {
-var script = document.createElement('script');
-script.src = src;
-script.onload = resolve;
-script.onerror = reject;
-document.head.appendChild(script);
-});
-}
-Promise.all([
-loadScript('https://cdn.jsdelivr.net/npm/vega@6'),
-loadScript('https://cdn.jsdelivr.net/npm/vega-lite@6.4.1'),
-loadScript('https://cdn.jsdelivr.net/npm/vega-embed@7')
-])
-.then(function() { return vegaEmbed('#' + visId, spec, options); })
-.then(onRendered)
-.catch(function(err) {
-console.error('Failed to load Vega libraries:', err);
-});
-}
-})();
-</script>
 </div>
 </div>
 
@@ -1394,6 +1188,38 @@ console.error('Failed to load Vega libraries:', err);
   document.head.appendChild(link);
   import(base + 'quarto.js');
 </script>
+<script>var lightboxQuarto = GLightbox({"closeEffect":"zoom","descPosition":"bottom","loop":false,"openEffect":"zoom","selector":".lightbox"});
+(function() {
+  let previousOnload = window.onload;
+  window.onload = () => {
+    if (previousOnload) {
+      previousOnload();
+    }
+    lightboxQuarto.on('slide_before_load', (data) => {
+      const { slideIndex, slideNode, slideConfig, player, trigger } = data;
+      const href = trigger.getAttribute('href');
+      if (href !== null) {
+        const imgEl = window.document.querySelector(`a[href="${href}"] img`);
+        if (imgEl !== null) {
+          const srcAttr = imgEl.getAttribute("src");
+          if (srcAttr && srcAttr.startsWith("data:")) {
+            slideConfig.href = srcAttr;
+          }
+        }
+      } 
+    });
+  
+    lightboxQuarto.on('slide_after_load', (data) => {
+      const { slideIndex, slideNode, slideConfig, player, trigger } = data;
+      if (window.Quarto?.typesetMath) {
+        window.Quarto.typesetMath(slideNode);
+      }
+    });
+  
+  };
+  
+})();
+          </script>
 
 
 

@@ -69,6 +69,8 @@ DRAW point
 SCALE color TO category10
 ```
 
+[![](1_color_files/figure-html/cell-2-output-1.svg)](1_color_files/figure-html/cell-2-output-1.svg)
+
 Instead of using a named palette you can create one on the fly using an array of color values:
 
 ``` ggsql
@@ -78,6 +80,8 @@ DRAW point
   SETTING stroke => null
 SCALE color TO ('antiquewhite', 'firebrick')
 ```
+
+[![](1_color_files/figure-html/cell-3-output-1.svg)](1_color_files/figure-html/cell-3-output-1.svg)
 
 ### Continuous palettes
 

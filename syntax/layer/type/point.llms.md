@@ -48,6 +48,8 @@ DRAW point
   MAPPING bill_len AS x, bill_dep AS y, species AS fill
 ```
 
+[![](point_files/figure-html/cell-2-output-1.svg)](point_files/figure-html/cell-2-output-1.svg)
+
 Map to size to create a bubble chart
 
 ``` ggsql
@@ -55,6 +57,8 @@ VISUALISE FROM ggsql:penguins
 DRAW point
   MAPPING bill_len AS x, bill_dep AS y, body_mass AS size
 ```
+
+[![](point_files/figure-html/cell-3-output-1.svg)](point_files/figure-html/cell-3-output-1.svg)
 
 Use filter to only plot a subset of the data
 
@@ -65,6 +69,8 @@ DRAW point
   FILTER sex = 'female'
 ```
 
+[![](point_files/figure-html/cell-4-output-1.svg)](point_files/figure-html/cell-4-output-1.svg)
+
 When points are plotted on a discrete scale you will likely see a lot of overplotting. Use jitter position to introduce a bit of random offset to counter that.
 
 ``` ggsql
@@ -73,6 +79,8 @@ DRAW point
   SETTING position => 'jitter', distribution => 'normal'
 ```
 
+[![](point_files/figure-html/cell-5-output-1.svg)](point_files/figure-html/cell-5-output-1.svg)
+
 Use density distribution for a violin-like jitter effect, where jitter width scales with local data density.
 
 ``` ggsql
@@ -80,6 +88,8 @@ VISUALISE species AS x, bill_dep AS y FROM ggsql:penguins
 DRAW point 
   SETTING position => 'jitter', distribution => 'density'
 ```
+
+[![](point_files/figure-html/cell-6-output-1.svg)](point_files/figure-html/cell-6-output-1.svg)
 
 Use aggregation to show a single point per group
 
@@ -90,3 +100,5 @@ DRAW point
   SETTING aggregate => ('fill:mean', 'size:count') 
 SCALE size TO (5, 20)
 ```
+
+[![](point_files/figure-html/cell-7-output-1.svg)](point_files/figure-html/cell-7-output-1.svg)

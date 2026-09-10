@@ -64,6 +64,8 @@ DRAW bar
   MAPPING species AS x
 ```
 
+[![](bar_files/figure-html/cell-2-output-1.svg)](bar_files/figure-html/cell-2-output-1.svg)
+
 Use `weight` to instead show the collective mass of each species
 
 ``` ggsql
@@ -71,6 +73,8 @@ VISUALISE FROM ggsql:penguins
 DRAW bar
   MAPPING species AS x, body_mass AS weight
 ```
+
+[![](bar_files/figure-html/cell-3-output-1.svg)](bar_files/figure-html/cell-3-output-1.svg)
 
 Map fill to a discrete value to create a stacked bar chart
 
@@ -80,6 +84,8 @@ DRAW bar
   MAPPING species AS x, island AS fill
 ```
 
+[![](bar_files/figure-html/cell-4-output-1.svg)](bar_files/figure-html/cell-4-output-1.svg)
+
 Or change the position setting to e.g. get a dodged bar chart
 
 ``` ggsql
@@ -88,6 +94,8 @@ DRAW bar
   MAPPING species AS x, sex AS fill
   SETTING position => 'dodge'
 ```
+
+[![](bar_files/figure-html/cell-5-output-1.svg)](bar_files/figure-html/cell-5-output-1.svg)
 
 Map to y if the dataset already contains the value you want to show
 
@@ -99,6 +107,8 @@ DRAW bar
   MAPPING species AS x, max_mass AS y
 ```
 
+[![](bar_files/figure-html/cell-6-output-1.svg)](bar_files/figure-html/cell-6-output-1.svg)
+
 Use together with a binned scale as an alternative to the [histogram layer](../../../syntax/layer/type/histogram.llms.md)
 
 ``` ggsql
@@ -109,6 +119,8 @@ SCALE BINNED x
   SETTING breaks => 10
 ```
 
+[![](bar_files/figure-html/cell-7-output-1.svg)](bar_files/figure-html/cell-7-output-1.svg)
+
 Create a horizontal bar plot by changing the mapping
 
 ``` ggsql
@@ -116,6 +128,8 @@ VISUALISE FROM ggsql:penguins
 DRAW bar
   MAPPING species AS y
 ```
+
+[![](bar_files/figure-html/cell-8-output-1.svg)](bar_files/figure-html/cell-8-output-1.svg)
 
 And use with a polar coordinate system to create a pie chart
 
@@ -125,6 +139,8 @@ DRAW bar
   MAPPING species AS fill
 PROJECT TO polar
 ```
+
+[![](bar_files/figure-html/cell-9-output-1.svg)](bar_files/figure-html/cell-9-output-1.svg)
 
 Use a different type of aggregation for the bars through the `aggregate` setting. The `range` layer needs both `ymin` and `ymax` mapped; with two defaults, the first is applied to the lower bound and the second to the upper bound.
 
@@ -137,3 +153,5 @@ DRAW range
   MAPPING body_mass AS ymin, body_mass AS ymax
   SETTING aggregate => ('mean-1.96sdev', 'mean+1.96sdev')
 ```
+
+[![](bar_files/figure-html/cell-10-output-1.svg)](bar_files/figure-html/cell-10-output-1.svg)

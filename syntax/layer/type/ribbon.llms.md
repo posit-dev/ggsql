@@ -47,6 +47,8 @@ DRAW ribbon
   MAPPING Date AS x, Wind AS ymin, Temp AS ymax
 ```
 
+[![](ribbon_files/figure-html/cell-2-output-1.svg)](ribbon_files/figure-html/cell-2-output-1.svg)
+
 Ribbon plots are great for showing the range of some aggregation.
 
 ``` ggsql
@@ -67,6 +69,8 @@ DRAW line
   MAPPING MeanTemp AS y
 ```
 
+[![](ribbon_files/figure-html/cell-3-output-1.svg)](ribbon_files/figure-html/cell-3-output-1.svg)
+
 Use aggregation to calculate bounds on the fly. The two untargeted aggregation functions target the `ymin` and `ymax` aesthetics automatically.
 
 ``` ggsql
@@ -74,3 +78,5 @@ VISUALISE Day AS x, Temp AS ymin, Temp AS ymax FROM ggsql:airquality
 DRAW ribbon
   SETTING aggregate => ('min', 'max')
 ```
+
+[![](ribbon_files/figure-html/cell-4-output-1.svg)](ribbon_files/figure-html/cell-4-output-1.svg)

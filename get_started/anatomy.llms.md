@@ -95,6 +95,8 @@ SCALE BINNED size TO (4, 15)
   SETTING breaks => 4
 ```
 
+[![](anatomy_files/figure-html/cell-2-output-1.svg)](anatomy_files/figure-html/cell-2-output-1.svg)
+
 In the above we create a global mapping of bill_len to the `x` aesthetic and bill_dep to the `y` aesthetic using the built-in penguins dataset. We use `DRAW` to create two layers: A point layer for a scatter plot and a smooth layer for regression lines. For the point layer we *map* the body_mass to size to create a bubble chart and *set* the fill aesthetic to be empty (`null`) so only the outline is shown. For the smooth layer we set the layer parameter `method` to `'ols'` to estimate a straight regression line. Lastly, we modify the stroke scale to use the dark2 palette from the ColorBrewer project and apply a binned scale to `size` that goes from 4pt to 15pt with 4 breaks (resulting in 3 bins).
 
 While the query above may feel like a mouthful, remember that most visualizations are much simpler:
@@ -103,5 +105,7 @@ While the query above may feel like a mouthful, remember that most visualization
 VISUALISE body_mass AS x FROM ggsql:penguins
 DRAW histogram
 ```
+
+[![](anatomy_files/figure-html/cell-3-output-1.svg)](anatomy_files/figure-html/cell-3-output-1.svg)
 
 In the next section we will introduce the remaining parts of the grammar and the related syntax, but the parts covered here will already take you a very long way.

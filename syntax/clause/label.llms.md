@@ -16,11 +16,11 @@ There are a few additional labels beside the aesthetics that govern the differen
 
 - `title`: The main title of the plot
 - `subtitle`: An additional, often longer and more descriptive, title beneath the main title
-- `caption`: A string placed below the plot, often used to add additional information about the data source etc. Not supported by the Vega-Lite writer, which has no equivalent; the png (raster) writer renders it.
+- `caption`: A string placed below the plot, often used to add additional information about the data source etc. Supported by every writer except Vega-Lite, which has no equivalent.
 
 ## Rich text
 
-The png writer reads the strings you provide here as markdown, so `LABEL title => 'Sales in **2024**'` renders the year in bold. This currently applies to the plot title, subtitle and caption, and to the axis titles. Legend titles and break labels (axis tick labels and legend keys) are still drawn literally — the renderer has no rich-text support on those slots yet, so markdown in them shows its markers. This is a gap rather than a design choice, and they will parse once the renderer catches up. The Vega-Lite writer has no rich-text support at all and draws every label exactly as given.
+Every writer except Vega-Lite interprets the strings you provide here as markdown, so `LABEL title => 'Sales in **2024**'` renders the year in bold. This applies to the plot title, subtitle and caption, to the axis and legend titles, and to break labels (axis tick labels and legend keys). The Vega-Lite writer has no rich-text support at all and draws every label exactly as given.
 
 The recognised markdown is the same as for the [text layer](../../syntax/layer/type/text.llms.md#parse).
 

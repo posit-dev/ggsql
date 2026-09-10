@@ -2,7 +2,7 @@
 <html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
 
 <meta charset="utf-8">
-<meta name="generator" content="quarto-1.11.3">
+<meta name="generator" content="quarto-1.11.4">
 
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
@@ -80,9 +80,9 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <script src="../site_libs/quarto-html/tippy.umd.min.js"></script>
 <script src="../site_libs/quarto-html/anchor.min.js"></script>
 <link href="../site_libs/quarto-html/tippy.css" rel="stylesheet">
-<link href="../site_libs/quarto-html/quarto-syntax-highlighting-dcb1874e0c6aa5279562b677d1a72506.css" rel="stylesheet" class="quarto-color-scheme" id="quarto-text-highlighting-styles">
-<link href="../site_libs/quarto-html/quarto-syntax-highlighting-dark-dcb1874e0c6aa5279562b677d1a72506.css" rel="stylesheet" class="quarto-color-scheme quarto-color-alternate" id="quarto-text-highlighting-styles">
-<link href="../site_libs/quarto-html/quarto-syntax-highlighting-dcb1874e0c6aa5279562b677d1a72506.css" rel="stylesheet" class="quarto-color-scheme-extra" id="quarto-text-highlighting-styles">
+<link href="../site_libs/quarto-html/quarto-syntax-highlighting-3b3e5ab417bc8a85daaddba4ecbda1b0.css" rel="stylesheet" class="quarto-color-scheme" id="quarto-text-highlighting-styles">
+<link href="../site_libs/quarto-html/quarto-syntax-highlighting-dark-3b3e5ab417bc8a85daaddba4ecbda1b0.css" rel="stylesheet" class="quarto-color-scheme quarto-color-alternate" id="quarto-text-highlighting-styles">
+<link href="../site_libs/quarto-html/quarto-syntax-highlighting-3b3e5ab417bc8a85daaddba4ecbda1b0.css" rel="stylesheet" class="quarto-color-scheme-extra" id="quarto-text-highlighting-styles">
 <script src="../site_libs/bootstrap/bootstrap.min.js"></script>
 <link href="../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
 <link href="../site_libs/bootstrap/bootstrap-ee2fbf1385f1445439e0330faa874de9.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme" id="quarto-bootstrap" data-mode="light">
@@ -142,7 +142,7 @@ gradient teal.
 
 <div id="quarto-search-results"></div>
   <header id="quarto-header" class="headroom fixed-top">
-    <nav class="navbar navbar-expand-lg " data-bs-theme="dark">
+    <nav class="navbar navbar-expand-lg " data-bs-theme="dark" aria-label="Site">
       <div class="navbar-container container-fluid">
       <div class="navbar-brand-container mx-auto">
     <a href="../index.html" class="navbar-brand navbar-brand-logo">
@@ -276,7 +276,7 @@ gradient teal.
 <!-- sidebar -->
 <!-- margin-sidebar -->
     <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
-        <nav id="TOC" role="doc-toc" class="toc-active">
+        <nav id="TOC" role="doc-toc" aria-labelledby="toc-title" class="toc-active">
     <h2 id="toc-title">On this page</h2>
    
   <ul>
@@ -705,7 +705,7 @@ gradient teal.
 </section>
 <section id="text" class="level3">
 <h3 class="anchored" data-anchor-id="text">text</h3>
-<p>Text labels. Required: x, y, label. Settings: <code>offset</code> (number or <code>(h, v)</code>), <code>format</code> (string interpolation like RENAMING), <code>parse</code> (boolean, default <code>true</code>: read the label as markdown — <code>**bold**</code>, <code>*italic*</code>, <code>~~strike~~</code>, <code>`code`</code>, <code>{.red span}</code> — set <code>false</code> to draw it literally; png writer only). <code>hjust</code>: <code>'left'</code>/<code>'right'</code>/<code>'centre'</code> or 0-1. <code>vjust</code>: <code>'top'</code>/<code>'bottom'</code>/<code>'middle'</code> or 0-1.</p>
+<p>Text labels. Required: x, y, label. Settings: <code>offset</code> (number or <code>(h, v)</code>), <code>format</code> (string interpolation like RENAMING), <code>parse</code> (boolean, default <code>true</code>: read the label as markdown — <code>**bold**</code>, <code>*italic*</code>, <code>~~strike~~</code>, <code>`code`</code>, <code>{.red span}</code> — set <code>false</code> to draw it literally; not Vega-Lite, which has no rich text). <code>hjust</code>: <code>'left'</code>/<code>'right'</code>/<code>'centre'</code> or 0-1. <code>vjust</code>: <code>'top'</code>/<code>'bottom'</code>/<code>'middle'</code> or 0-1.</p>
 </section>
 <section id="rect" class="level3">
 <h3 class="anchored" data-anchor-id="rect">rect</h3>
@@ -791,10 +791,13 @@ gradient teal.
 </section>
 <section id="cli" class="level2">
 <h2 class="anchored" data-anchor-id="cli">CLI</h2>
-<p>The <code>ggsql</code> CLI should be on the PATH. Subcommands: <code>exec &lt;QUERY&gt;</code>, <code>run &lt;FILE&gt;</code>, <code>validate &lt;QUERY&gt;</code>, <code>parse &lt;QUERY&gt;</code>. Common options: <code>--reader &lt;URI&gt;</code> (default <code>duckdb://memory</code>), <code>--writer &lt;FORMAT&gt;</code> (default <code>vegalite</code>), <code>--output &lt;PATH&gt;</code>, <code>-v</code> (verbose).</p>
+<p>The <code>ggsql</code> CLI should be on the PATH. Subcommands: <code>exec &lt;QUERY&gt;</code>, <code>run &lt;FILE&gt;</code>, <code>validate &lt;QUERY&gt;</code>, <code>parse &lt;QUERY&gt;</code>, <code>view &lt;QUERY&gt;</code> (native window, blocks until closed). Common options: <code>--reader &lt;URI&gt;</code> (default <code>duckdb://memory</code>), <code>--writer &lt;FORMAT&gt;</code> (default <code>vegalite</code>), <code>--output &lt;PATH&gt;</code> (its extension picks the writer when <code>--writer</code> is omitted), <code>-D key=value</code> (writer settings), <code>-v</code> (verbose). Writers: <code>vegalite</code>, <code>svg</code>, <code>pdf</code>, <code>hep</code> (no GPU needed) and <code>png</code>, <code>jpeg</code>, <code>tiff</code>, <code>webp</code> (rasterise on the GPU, not in every build).</p>
+<p><strong>Do not run <code>ggsql view</code> unless the user asked for a window.</strong> It blocks until a person closes the window, and you cannot close it yourself. Write a file with <code>--output</code> and look at that instead.</p>
+<p><strong>Prefer <code>svg</code> or <code>pdf</code> when you need a picture</strong>, since they need no GPU adapter. The raster writers do, and discover it only at render time. <code>ggsql exec --help</code> lists the writers this build has and names the feature that would add a missing one; it cannot tell you whether an adapter is present.</p>
 <div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb31"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb31-1"><a href="#cb31-1" aria-hidden="true" tabindex="-1"></a><span class="ex">ggsql</span> validate <span class="st">"VISUALISE x, y FROM data DRAW point"</span></span>
 <span id="cb31-2"><a href="#cb31-2" aria-hidden="true" tabindex="-1"></a><span class="ex">ggsql</span> exec <span class="st">"VISUALISE bill_len AS x, bill_dep AS y FROM ggsql:penguins DRAW point"</span> <span class="at">-v</span></span>
-<span id="cb31-3"><a href="#cb31-3" aria-hidden="true" tabindex="-1"></a><span class="ex">ggsql</span> run query.sql <span class="at">--output</span> chart.vl.json</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<span id="cb31-3"><a href="#cb31-3" aria-hidden="true" tabindex="-1"></a><span class="ex">ggsql</span> run query.sql <span class="at">--output</span> chart.vl.json</span>
+<span id="cb31-4"><a href="#cb31-4" aria-hidden="true" tabindex="-1"></a><span class="ex">ggsql</span> exec <span class="st">"VISUALISE species AS fill FROM ggsql:penguins DRAW bar"</span> <span class="at">-o</span> chart.svg</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <hr>
 </section>
 <section id="additional-references" class="level2">

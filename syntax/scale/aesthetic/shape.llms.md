@@ -45,6 +45,8 @@ DRAW point
 SCALE shape TO open
 ```
 
+[![](shape_files/figure-html/cell-2-output-1.svg)](shape_files/figure-html/cell-2-output-1.svg)
+
 Instead of using a named palette you can create one on the fly using an array of shape names:
 
 ``` ggsql
@@ -54,6 +56,8 @@ DRAW point
   SETTING linewidth => 1, size => 5
 SCALE shape TO ('star', 'bowtie', 'square-plus')
 ```
+
+[![](shape_files/figure-html/cell-3-output-1.svg)](shape_files/figure-html/cell-3-output-1.svg)
 
 ### Default palette (`closed`)
 

@@ -39,6 +39,8 @@ VISUALISE species AS x, bill_dep AS y, sex AS fill FROM ggsql:penguins
 DRAW point
 ```
 
+[![](jitter_files/figure-html/cell-2-output-1.svg)](jitter_files/figure-html/cell-2-output-1.svg)
+
 Use jittering to better see the individual points
 
 ``` ggsql
@@ -46,6 +48,8 @@ VISUALISE species AS x, bill_dep AS y, sex AS fill FROM ggsql:penguins
 DRAW point
   SETTING position => 'jitter'
 ```
+
+[![](jitter_files/figure-html/cell-3-output-1.svg)](jitter_files/figure-html/cell-3-output-1.svg)
 
 By default, dodging is applied to separate the groups. Turn this off if you want the jitter to occupy the same space regardless of grouping
 
@@ -55,6 +59,8 @@ DRAW point
   SETTING position => 'jitter', dodge => false
 ```
 
+[![](jitter_files/figure-html/cell-4-output-1.svg)](jitter_files/figure-html/cell-4-output-1.svg)
+
 Use a `'density'` distribution to also indicate the distribution shape with the jitter
 
 ``` ggsql
@@ -62,6 +68,8 @@ VISUALISE species AS x, bill_dep AS y FROM ggsql:penguins
 DRAW point
   SETTING position => 'jitter', distribution => 'density'
 ```
+
+[![](jitter_files/figure-html/cell-5-output-1.svg)](jitter_files/figure-html/cell-5-output-1.svg)
 
 When both axes are discrete the dodging follows a grid
 
@@ -73,6 +81,8 @@ SCALE BINNED fill
   SETTING breaks => 4, pretty => false
 ```
 
+[![](jitter_files/figure-html/cell-6-output-1.svg)](jitter_files/figure-html/cell-6-output-1.svg)
+
 Pair a half-violin with one-sided jittered points by setting opposite `side` values:
 
 ``` ggsql
@@ -80,3 +90,5 @@ VISUALISE species AS x, bill_dep AS y FROM ggsql:penguins
 DRAW violin SETTING side => 'left'
 DRAW point SETTING position => 'jitter', side => 'right', width => 0.4
 ```
+
+[![](jitter_files/figure-html/cell-7-output-1.svg)](jitter_files/figure-html/cell-7-output-1.svg)

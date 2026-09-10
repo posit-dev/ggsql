@@ -19,6 +19,8 @@ LABEL
   y => 'Bill Depth (mm)'
 ```
 
+[![](scatterplot_files/figure-html/cell-2-output-1.svg)](scatterplot_files/figure-html/cell-2-output-1.svg)
+
 ## Explanation
 
 - `VISUALISE ... FROM ggsql:penguins` loads the built-in penguins dataset
@@ -41,6 +43,8 @@ LABEL
   y => 'Bill Depth (mm)'
 ```
 
+[![](scatterplot_files/figure-html/cell-3-output-1.svg)](scatterplot_files/figure-html/cell-3-output-1.svg)
+
 The color palette can be changed by detailing the `SCALE color` clause.
 
 ``` ggsql
@@ -52,6 +56,8 @@ LABEL
     x => 'Bill Length (mm)',
     y => 'Bill Depth (mm)'
 ```
+
+[![](scatterplot_files/figure-html/cell-4-output-1.svg)](scatterplot_files/figure-html/cell-4-output-1.svg)
 
 ### Encoding even more data using shape
 
@@ -71,6 +77,8 @@ LABEL
     y => 'Bill Depth (mm)'
 ```
 
+[![](scatterplot_files/figure-html/cell-5-output-1.svg)](scatterplot_files/figure-html/cell-5-output-1.svg)
+
 ### Highlighting groups
 
 Using the layer’s `FILTER` clause we can split the data across layers. Using layer level `MAPPING` ensures we apply `species AS color` only to one layer and not the other. The `SETTING` is used here to directly set a property without mapping data.
@@ -87,3 +95,5 @@ DRAW point
   SETTING color => 'grey'
   FILTER island != 'Biscoe'
 ```
+
+[![](scatterplot_files/figure-html/cell-6-output-1.svg)](scatterplot_files/figure-html/cell-6-output-1.svg)

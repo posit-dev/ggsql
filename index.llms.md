@@ -24,6 +24,8 @@ LABEL
   y => 'Bill depth (mm)'
 ```
 
+![](index_files/figure-html/cell-2-output-1.svg)
+
 ## Explore the examples
 
 ![](./gallery/examples/thumbnails/scatterplot.svg)

@@ -22,6 +22,8 @@ DRAW point
 SCALE x FROM (40, 50)
 ```
 
+[![](continuous_files/figure-html/cell-2-output-1.svg)](continuous_files/figure-html/cell-2-output-1.svg)
+
 #### Allow one end of the range to be imputed
 
 ``` ggsql
@@ -29,6 +31,8 @@ VISUALISE bill_len AS x, bill_dep AS y FROM ggsql:penguins
 DRAW point
 SCALE x FROM (0, null)
 ```
+
+[![](continuous_files/figure-html/cell-3-output-1.svg)](continuous_files/figure-html/cell-3-output-1.svg)
 
 ## Output range
 
@@ -53,6 +57,8 @@ DRAW point
 SCALE color TO batlow
 ```
 
+[![](continuous_files/figure-html/cell-4-output-1.svg)](continuous_files/figure-html/cell-4-output-1.svg)
+
 #### Define a palette manually
 
 ``` ggsql
@@ -60,6 +66,8 @@ VISUALISE bill_len AS x, bill_dep AS y, body_mass AS color FROM ggsql:penguins
 DRAW point
 SCALE color TO ('black', 'red', 'white')
 ```
+
+[![](continuous_files/figure-html/cell-5-output-1.svg)](continuous_files/figure-html/cell-5-output-1.svg)
 
 ## Transformation
 
@@ -116,7 +124,7 @@ Automatically derived minor breaks are always placed relative to the breaks, so 
 
 > **NOTE:**
 >
-> Minor breaks are only drawn by writers that support them. The Vega-Lite writer has no concept of a minor break and ignores the setting; the png (raster) writer draws them.
+> Minor breaks are only drawn by writers that support them. The Vega-Lite writer has no concept of a minor break and ignores the setting; every other writer draws them.
 
 ### The size aesthetic
 
@@ -136,6 +144,8 @@ VISUALISE Date AS x, Temp AS y FROM ggsql:airquality
 DRAW line
 ```
 
+[![](continuous_files/figure-html/cell-6-output-1.svg)](continuous_files/figure-html/cell-6-output-1.svg)
+
 #### Applying a log transformation to the y axis
 
 ``` ggsql
@@ -143,6 +153,8 @@ VISUALISE Date AS x, Temp AS y FROM ggsql:airquality
 DRAW line
 SCALE y VIA log
 ```
+
+[![](continuous_files/figure-html/cell-7-output-1.svg)](continuous_files/figure-html/cell-7-output-1.svg)
 
 #### Setting breaks to exactly dividing the input range
 
@@ -153,6 +165,8 @@ SCALE y
   SETTING breaks => 5, pretty => false
 ```
 
+[![](continuous_files/figure-html/cell-8-output-1.svg)](continuous_files/figure-html/cell-8-output-1.svg)
+
 #### Using an interval size for temporal breaks
 
 ``` ggsql
@@ -161,6 +175,8 @@ DRAW line
 SCALE x
   SETTING breaks => '2 months'
 ```
+
+[![](continuous_files/figure-html/cell-9-output-1.svg)](continuous_files/figure-html/cell-9-output-1.svg)
 
 ## Settings
 
@@ -184,6 +200,8 @@ SCALE x
   SETTING expand => (0.0, 10)
 ```
 
+[![](continuous_files/figure-html/cell-10-output-1.svg)](continuous_files/figure-html/cell-10-output-1.svg)
+
 #### Squish all y values to show them in the margin of the plot
 
 ``` ggsql
@@ -192,6 +210,8 @@ DRAW point
 SCALE y FROM (15, 20)
   SETTING oob => 'squish'
 ```
+
+[![](continuous_files/figure-html/cell-11-output-1.svg)](continuous_files/figure-html/cell-11-output-1.svg)
 
 #### Set breaks explicitly
 
@@ -202,6 +222,8 @@ SCALE x
   SETTING breaks => (37, 42, 55)
 ```
 
+[![](continuous_files/figure-html/cell-12-output-1.svg)](continuous_files/figure-html/cell-12-output-1.svg)
+
 #### Reverse the x axis
 
 ``` ggsql
@@ -210,6 +232,8 @@ DRAW point
 SCALE x
   SETTING reverse => true
 ```
+
+[![](continuous_files/figure-html/cell-13-output-1.svg)](continuous_files/figure-html/cell-13-output-1.svg)
 
 ## Renaming
 
@@ -236,6 +260,8 @@ SCALE x
   RENAMING 50 => 'Fifty'
 ```
 
+[![](continuous_files/figure-html/cell-14-output-1.svg)](continuous_files/figure-html/cell-14-output-1.svg)
+
 #### Adding suffix to break labels
 
 ``` ggsql
@@ -244,6 +270,8 @@ DRAW point
 SCALE x
   RENAMING * => '{} mm'
 ```
+
+[![](continuous_files/figure-html/cell-15-output-1.svg)](continuous_files/figure-html/cell-15-output-1.svg)
 
 #### Using a formatter to control temporal formats
 
@@ -254,6 +282,8 @@ SCALE x
   RENAMING * => '{:time %B}'
 ```
 
+[![](continuous_files/figure-html/cell-16-output-1.svg)](continuous_files/figure-html/cell-16-output-1.svg)
+
 #### Using a formatter to control number formats
 
 ``` ggsql
@@ -262,3 +292,5 @@ DRAW point
 SCALE x
   RENAMING * => '{:num %.3e}'
 ```
+
+[![](continuous_files/figure-html/cell-17-output-1.svg)](continuous_files/figure-html/cell-17-output-1.svg)
