@@ -22,7 +22,7 @@ LABEL title => 'Sales by Region'
 ggsql splits queries at the `VISUALISE` boundary:
 - **SQL portion** → passed to pluggable readers (DuckDB, PostgreSQL, CSV, etc.)
 - **VISUALISE portion** → parsed and compiled into visualization specifications
-- **Output** → rendered via pluggable writers (ggplot2, PNG, Vega-Lite, etc.)
+- **Output** → rendered via pluggable writers (Vega-Lite JSON, SVG, PDF, PNG, etc.)
 
 ## Core Components
 
@@ -46,7 +46,16 @@ pub mod util;
 
 pub mod reader;
 
-#[cfg(feature = "vegalite")]
+// Shaping a plot's text needs fonts, and a browser supplies none of its own.
+// Gated with the composition layer, which is what does the shaping.
+#[cfg(feature = "graphics")]
+pub mod fonts;
+
+// Ungated, because `Writer` and `WriterOptions` name nothing a writer feature
+// brings in: a frontend can accept writer settings, or be generic over the
+// trait, before it knows which writer it will get. Each writer inside is gated
+// on its own format, and the renderer-backed ones share `graphics` — so an
+// `svg`-only build reaches `SvgWriter` without dragging the Vega-Lite one in.
 pub mod writer;
 
 pub mod execute;

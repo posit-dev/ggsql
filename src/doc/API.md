@@ -5,7 +5,7 @@ This document provides a comprehensive reference for the ggsql public API.
 ## Overview
 
 - **Stage 1: `reader.execute()`** - Parse query, execute SQL, resolve mappings, create Spec
-- **Stage 2: `writer.render()`** - Generate output (Vega-Lite JSON, etc.)
+- **Stage 2: `writer.render()`** - Generate output (Vega-Lite JSON, SVG, PDF, PNG, …)
 
 ### API Functions
 
@@ -389,7 +389,8 @@ pub trait Reader {
 
 ```rust
 pub trait Writer {
-    /// What this writer produces — `String` for Vega-Lite JSON, `Vec<u8>` for PNG
+    /// What this writer produces — `String` for Vega-Lite JSON and SVG,
+    /// `Vec<u8>` for the binary formats
     type Output;
 
     /// Build the writer from key–value options (see `WriterOptions`)
@@ -416,7 +417,7 @@ key=value`). Keys are normalised: trimmed, lowercased, `-` folded to `_`.
 
 ```rust
 let options = WriterOptions::parse(["width=1600", "height=1200", "units=px"])?;
-let png = PngWriter::from_options(&options)?.render(&spec)?;
+let svg = SvgWriter::from_options(&options)?.render(&spec)?;
 
 // One string may carry several options, separated by `;`. Equivalent to the above:
 let options = WriterOptions::parse(["width=1600;height=1200;units=px"])?;
@@ -434,6 +435,7 @@ let options = WriterOptions::new().set("dpi", "150");
 | `new()` / `set(key, value)` | Build programmatically |
 | `get(key)` | Raw value, if supplied |
 | `number(key)` | Value as a finite `f64`, erroring with the option's name |
+| `boolean(key)` | Value as a `bool`, accepting `true`/`false`/`1`/`0`/`yes`/`no`/`on`/`off` |
 | `one_of(key, allowed)` | Value checked against a closed set |
 | `reject_unknown(known)` | Error naming keys the writer doesn't understand |
 | `is_empty()` | Whether any option was supplied |

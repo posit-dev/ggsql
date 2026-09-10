@@ -1,32 +1,67 @@
 //! Query execution module for ggsql Jupyter kernel
 //!
 //! This module handles the execution of ggsql queries using the existing
-//! ggsql library components (parser, DuckDB reader, Vega-Lite writer).
-//! It supports leading `--` meta-command lines. Each occupies its own comment
+//! ggsql library components (parser and reader). Formatting the result — and
+//! rendering a plot — is `display.rs`'s, since the format depends on where the
+//! output is going.
+//!
+//! Supports leading `--` meta-command lines. Each occupies its own comment
 //! line, so a cell may stack them above a query that then runs as normal.
 
 use anyhow::Result;
 use ggsql::{
     reader::{
         connection::{extract_odbc_value, reader_from_uri},
-        Reader,
+        Reader, Spec,
     },
     validate::validate,
-    writer::{VegaLiteWriter, Writer},
     DataFrame,
 };
 
+/// A resolved plot has to reach a render thread, so the design rests on this.
+const _: () = {
+    fn assert_send<T: Send>() {}
+    let _ = assert_send::<Spec>;
+};
+
 /// Result of executing a ggsql query
-#[derive(Debug)]
 pub enum ExecutionResult {
     /// Pure SQL query with no visualization
     DataFrame(DataFrame),
-    /// Query with visualization specification
-    Visualization {
-        spec: String, // Vega-Lite JSON
-    },
+    /// A query carrying a `VISUALISE` clause, as the resolved plot rather than
+    /// as rendered output.
+    ///
+    /// Not pre-rendered: the format depends on where the output is going, and
+    /// once a plot comm is open it is asked again on every resize. Boxed because
+    /// a `Spec` carries the post-stat DataFrames and dwarfs the other variants.
+    Visualization(Box<Spec>),
     /// Connection changed via meta-command
     ConnectionChanged { display_name: String },
+}
+
+// `Spec` is neither `Debug` nor `Clone`, so this summarises rather than
+// deriving. What a log wants from a result is its shape and size anyway.
+impl std::fmt::Debug for ExecutionResult {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::DataFrame(df) => f
+                .debug_struct("DataFrame")
+                .field("rows", &df.height())
+                .field("columns", &df.width())
+                .finish(),
+            Self::Visualization(spec) => {
+                let metadata = spec.metadata();
+                f.debug_struct("Visualization")
+                    .field("rows", &metadata.rows)
+                    .field("layers", &metadata.layer_count)
+                    .finish()
+            }
+            Self::ConnectionChanged { display_name } => f
+                .debug_struct("ConnectionChanged")
+                .field("display_name", display_name)
+                .finish(),
+        }
+    }
 }
 
 /// Generate a human-readable display name for a connection URI.
@@ -150,7 +185,6 @@ pub fn take_leading_meta(code: &str) -> Option<(MetaCommand, &str)> {
 /// Query executor maintaining persistent database connection
 pub struct QueryExecutor {
     reader: Box<dyn Reader + Send>,
-    writer: VegaLiteWriter,
     reader_uri: String,
 }
 
@@ -159,11 +193,9 @@ impl QueryExecutor {
     pub fn new_with_uri(uri: &str) -> Result<Self> {
         tracing::info!("Initializing query executor with reader: {}", uri);
         let reader = reader_from_uri(uri)?;
-        let writer = VegaLiteWriter::new();
 
         Ok(Self {
             reader,
-            writer,
             reader_uri: uri.to_string(),
         })
     }
@@ -253,13 +285,9 @@ impl QueryExecutor {
             spec.metadata().layer_count
         );
 
-        // 4. Render to output format
-        let vega_json = self.writer.render(&spec)?;
-
-        tracing::debug!("Generated Vega-Lite spec: {} chars", vega_json.len());
-
-        // 5. Return result
-        Ok(ExecutionResult::Visualization { spec: vega_json })
+        // 4. Hand back the resolved plot. Choosing a format is the display
+        //    layer's job, because only it knows where the output is going.
+        Ok(ExecutionResult::Visualization(Box::new(spec)))
     }
 }
 
@@ -273,7 +301,7 @@ mod tests {
         let code = "SELECT 1 as x, 2 as y VISUALISE x, y DRAW point";
         let result = executor.execute(code).unwrap();
 
-        assert!(matches!(result, ExecutionResult::Visualization { .. }));
+        assert!(matches!(result, ExecutionResult::Visualization(_)));
     }
 
     #[test]
@@ -325,6 +353,7 @@ mod tests {
             take_leading_meta("-- @uncache  \r\nSELECT 1"),
             Some((MetaCommand::Uncache, "SELECT 1"))
         );
+
         // `-- @uncache foo` on one line is an ordinary SQL comment, not the directive.
         assert_eq!(take_leading_meta("-- @uncache foo"), None);
     }

@@ -42,14 +42,56 @@ pub mod vegalite;
 #[cfg(feature = "vegalite")]
 pub use vegalite::VegaLiteWriter;
 
-// The raster writer is backed by the hephaestus renderer, which the module name
-// records. That is an implementation detail: the writer is public as `PngWriter`
-// and the module itself is not part of the API.
-#[cfg(feature = "png")]
+// The renderer-backed writers live in one private module named after the
+// renderer they share; each is public under its own format's name. Gated on
+// `graphics`, the shared composition layer, rather than on any one format.
+#[cfg(feature = "graphics")]
+// `graphics` and `raster-writer` are internal features the writer features turn
+// on. Selecting one alone is legitimate — `cargo tree --features graphics`
+// proves the vector path pulls in no wgpu — but leaves the composition layer
+// with no consumer, so silence that case only. Any build with an actual writer
+// still reports real dead code.
+#[cfg_attr(
+    not(any(
+        feature = "png",
+        feature = "jpeg",
+        feature = "tiff",
+        feature = "webp",
+        feature = "svg",
+        feature = "pdf",
+        feature = "hep",
+        feature = "window"
+    )),
+    allow(dead_code)
+)]
 mod hephaestus;
 
+#[cfg(feature = "graphics")]
+pub use hephaestus::{rgba, Canvas, Color};
+
+#[cfg(feature = "raster-writer")]
+pub use hephaestus::{RasterRenderer, MAX_RASTER_DIMENSION};
+
+#[cfg(feature = "jpeg")]
+pub use hephaestus::JpegWriter;
+#[cfg(feature = "webp")]
+pub use hephaestus::WebpWriter;
+
+#[cfg(feature = "hep")]
+pub use hephaestus::HepWriter;
+#[cfg(feature = "pdf")]
+pub use hephaestus::PdfWriter;
+#[cfg(feature = "svg")]
+pub use hephaestus::SvgWriter;
+
+// Not a writer — it produces no output — but it needs the same composition, so
+// it lives beside them. See its own docs for why it is not a `Writer` impl.
+#[cfg(feature = "window")]
+pub use hephaestus::PlotViewer;
 #[cfg(feature = "png")]
-pub use hephaestus::{rgba, Color, PngWriter};
+pub use hephaestus::{PngCompression, PngWriter};
+#[cfg(feature = "tiff")]
+pub use hephaestus::{TiffCompression, TiffWriter};
 
 /// Trait for visualization output writers
 ///
@@ -58,8 +100,9 @@ pub use hephaestus::{rgba, Color, PngWriter};
 ///
 /// # Associated Types
 ///
-/// * `Output` - The type returned by `write()` and `render()`. Use `Option<String>`
-///   for text output, `Option<Vec<u8>>` for binary, `()` for void writers, etc.
+/// * `Output` - The type returned by `write()` and `render()`: `String` for a
+///   text format, `Vec<u8>` for a binary one. Never an `Option` — failure is
+///   the `Result`'s business — and a type producing nothing is not a writer.
 pub trait Writer {
     /// The output type produced by this writer.
     type Output;

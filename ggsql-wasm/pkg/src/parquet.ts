@@ -1,10 +1,10 @@
-import type { ColumnDescriptor, ColumnType } from "./index";
-import { EPOCH, MS_PER_DAY } from "./index";
+import type { ColumnDescriptor, ColumnType } from "./columns";
+import { EPOCH, MS_PER_DAY } from "./columns";
 import { parquetReadObjects } from "hyparquet";
 
 /**
  * Convert Parquet bytes to column descriptors.
- * Dynamically imports hyparquet.
+ * hyparquet is bundled into the package, not fetched at run time.
  */
 export async function convert_parquet(
   bytes: Uint8Array,

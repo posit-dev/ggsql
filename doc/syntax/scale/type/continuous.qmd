@@ -113,7 +113,7 @@ Automatically derived minor breaks are always placed relative to the breaks, so 
 * `minor_breaks => <interval>`: for `date`/`datetime`/`time` only, an interval (e.g. `week` or `6 hours`) aligned at the interval boundary, exactly as `breaks` treats an interval
 
 ::: {.callout-note}
-Minor breaks are only drawn by writers that support them. The Vega-Lite writer has no concept of a minor break and ignores the setting; the png (raster) writer draws them.
+Minor breaks are only drawn by writers that support them. The Vega-Lite writer has no concept of a minor break and ignores the setting; every other writer draws them.
 :::
 
 ### The size aesthetic

@@ -18,14 +18,19 @@ name = "ggsql_jupyter"
 path = "src/lib.rs"
 
 [dependencies]
-# Core ggsql library
-ggsql = { workspace = true, features = ["duckdb", "vegalite"] }
+# Core ggsql library.
+#
+# `svg` and `pdf` are not optional: SVG is the fallback whenever raster output
+# is unavailable, so the path that always works must always be compiled in.
+# They cost no GPU stack and no wgpu, which is what makes that affordable.
+ggsql = { workspace = true, features = ["duckdb", "svg", "pdf"] }
 
 # Arrow for DataFrame array types
 arrow = { workspace = true }
 
-# Async runtime
-tokio = { workspace = true }
+# Async runtime. `sync` is named explicitly for the render thread's outcome
+# channel rather than relying on another dependency to enable it.
+tokio = { workspace = true, features = ["sync"] }
 
 # CLI
 clap = { workspace = true }
@@ -57,12 +62,24 @@ hex = "0.4"
 # UUID for message IDs
 uuid = { version = "1.0", features = ["v4"] }
 
+# Binary output travels base64-encoded in a display bundle
+base64 = { workspace = true }
+
 [features]
-default = ["all-readers"]
+default = ["all-readers", "raster-plots"]
 all-readers = ["sqlite", "odbc", "duckdb"]
 odbc = ["ggsql/odbc"]
 sqlite = ["ggsql/sqlite"]
 duckdb = ["ggsql/duckdb"]
+
+# The raster plot formats, which need the wgpu stack at build time and a GPU
+# adapter at render time. **Default**, because Positron's Plots pane asks for
+# `png` and every shipped build enables it: a plain `cargo build` that quietly
+# produced SVG-only plots differed from the released kernel in exactly the way
+# that is hardest to notice from the outside. For a build without wgpu, use
+# `--no-default-features --features all-readers`; plots then render as SVG,
+# which needs no adapter.
+raster-plots = ["ggsql/png", "ggsql/jpeg", "ggsql/tiff"]
 
 [dev-dependencies]
 tempfile = "3.8"

@@ -13,12 +13,15 @@ ggsql-cli/
 ├── examples/
 │   └── visual_test.rs  Dev harness: renders the doc examples into an HTML report
 └── src/
-    └── main.rs         clap CLI: exec, run, parse, validate, docs, skill
+    ├── main.rs         clap CLI: exec, run, parse, validate, docs, skill
+    └── writers.rs      The writer registry — one row per writer, plus dispatch
 ```
 
 The binary name is `ggsql` (not `ggsql-cli`) — that's what release artifacts and `$PATH` see.
 
 `build.rs` finds `/doc/` via `CARGO_MANIFEST_DIR/..` (workspace root). It walks `/doc/syntax/*.qmd` to embed clause/layer/scale/aesthetic/coord docs as constants in `OUT_DIR/docs_data.rs`, and reads `/doc/vendor/SKILL.md` (with optional `GGSQL_UPDATE_SKILL=1` to refresh from GitHub) for the `skill` subcommand. The `docs` and `skill` commands therefore work offline once the binary is built.
+
+**`doc/vendor/SKILL.md` is a *cache*, not a source.** `GGSQL_UPDATE_SKILL=1` overwrites it wholesale from [`posit-dev/skills`](https://github.com/posit-dev/skills/blob/main/ggsql/ggsql/SKILL.md), so an edit made here survives only until the next refresh. Anything that has to stick — a new writer, a changed setting, a corrected claim about a format — belongs in that repository; editing the cache is how the local build sees it in the meantime, and the upstream PR is what keeps it.
 
 ## Subcommands
 
@@ -26,17 +29,42 @@ The binary name is `ggsql` (not `ggsql-cli`) — that's what release artifacts a
 | --- | --- |
 | `exec` | Run a ggsql query string (default reader `duckdb://memory`, writer `vegalite`) |
 | `run` | Like `exec`, but reads the query from a file |
+| `view` | Show a query's plot in a native window; blocks until it closes (`window` feature) |
 | `parse` | Print the parsed AST (formats: `pretty`, `debug`, `json`) — debugging aid |
 | `validate` | Syntax + semantic check without executing SQL |
 | `docs` | Render embedded ggsql syntax docs (TTY → ANSI via termimad, pipe → markdown, `--format json` → structured) |
 | `skill` | Render the AI-assistant skill from `/doc/vendor/SKILL.md` |
 | `agent-info` | Alias for `skill` |
 
+The subcommand list does not change with features: `view` is always defined, and every writer is always a `--writer` name. What changes is whether it can do anything, and it says so.
+
 Only public `ggsql::*` API is used (`reader`, `writer`, `validate`, `parser`, `VERSION`) — this crate has no awareness of internal modules.
 
-`exec`/`run` build their reader via the library factory `ggsql::reader::connection::reader_from_uri`. They accept an in-memory caching layer (off by default) selected either by the composite connection scheme `<cache>+<primary>://…` (e.g. `duckdb+odbc://…`) or the `--cache <duckdb|sqlite>` flag; the two cannot be combined.
+`exec` and `run` share their flags through one `#[derive(Args)] RenderArgs` that both subcommands `#[command(flatten)]`, so a flag's help text and default exist once. `RenderArgs::writer()` resolves them into a `WriterSpec` **in `main`, before any SQL runs**, so a bad writer name, an uncompiled writer or a malformed `-D` pair fails before the query costs anything.
 
-`exec` and `run` share a `WriterSpec { name, options }`: `--writer` names the writer and repeated `--writer-option key=value` flags (short `-D`, visible alias `--writer-options`, several settings per flag when separated by `;`) become a `ggsql::writer::WriterOptions`, parsed up front in `main` so a malformed pair fails before any SQL runs. The two travel together down `cmd_exec` → `exec_with_reader` → `render_spec`, which dispatches on the name and hands the options to `Writer::from_options`. Adding a setting to a writer therefore needs no CLI change; which keys exist is the writer's business, and an unknown one is its error to report. User-facing keys are documented in [`/doc/get_started/tooling/cli.qmd`](../doc/get_started/tooling/cli.qmd).
+Which keys a writer accepts is the writer's business, and an unknown one is its error to report — so adding a setting needs no CLI change. User-facing keys are documented in [`/doc/get_started/tooling/cli.qmd`](../doc/get_started/tooling/cli.qmd).
+
+### The writer registry
+
+[`src/writers.rs`](src/writers.rs) holds one `WriterInfo` row per writer: its name and aliases, the filename extensions that imply it, the cargo feature that compiles it, the `label` used in messages ("PNG", "Vega-Lite JSON"), a `blurb` and an `options` line for help, `compiled: cfg!(feature = "…")`, and a `render` function pointer. Dispatch, `--writer`'s long help, `-D`'s long help and the "unknown writer" message are all generated from that list, so **adding a writer means adding a row and its render function** — nothing else in the CLI changes. Because `compiled` is a field rather than a `#[cfg]` around the row, the help and the error can name a writer this build lacks and say which feature would bring it in, which is the more common mistake than a misspelled name.
+
+Render functions return `Result<(Output, Vec<String>), String>`: the output plus anything the writer had to degrade to produce it. They report failure rather than exiting, so `render_spec` owns how a problem is presented. **Warnings go to stderr unconditionally, not behind `-v`** — something the writer could not express is a defect in the file the user is about to ship, and stderr keeps it out of a piped artifact.
+
+**`RenderArgs::resolve_writer` decides which writer runs**: an explicit `--writer`, else `--output`'s extension, else `writers::DEFAULT_WRITER`. Two consequences are worth knowing before reading it — an extension that names a writer this build lacks is an *error* rather than a fallback, and `--writer` is `Option<String>` rather than a clap `default_value` so that "unset" stays distinguishable from "explicitly vegalite".
+
+`open_reader(uri, cache) -> Result<Box<dyn Reader + Send>, String>` is the matching single place for connection strings, and it delegates to the library factory `ggsql::reader::connection::reader_from_uri`. Which schemes exist, which of them this build has, and how a cache wraps a primary are the library's business; `ggsql::reader::Reader` is object-safe on purpose, so `exec`, `run` and `view` all go through this one function.
+
+`--cache <duckdb|sqlite>` wraps the reader in an in-memory caching layer, off by default. It is sugar for the composite connection scheme `<cache>+<primary>://…` (e.g. `duckdb+odbc://…`) that `reader_from_uri` already understands, so `open_reader` rewrites the flag into that URI and refuses the two forms together — there would be no saying which cache was meant.
+
+**Both flags live in one `ReaderArgs`**, flattened into `RenderArgs` and `ViewArgs` in turn, so `exec`, `run` and `view` cannot drift apart: where a plot's data comes from does not depend on whether the plot ends up in a file or in a window. The flag names stay flat; only the field access is nested (`args.source.reader`).
+
+### `view`, and why the window code is not here
+
+`view` flattens its own `ViewArgs` rather than `RenderArgs`: there is no `--writer` to pick and no `--output` to write, and its `-D` (`--viewer-option`) carries the viewer's settings rather than a writer's. What it does share is `ReaderArgs`, so `--reader` and `--cache` behave identically here.
+
+**The window itself lives in the library, as `ggsql::writer::PlotViewer`** — and that is the decision most likely to be re-litigated, so: *only public `ggsql::*` API is used; this crate has no awareness of internal modules.* For the CLI to call the renderer's `window::run` itself it would have to take a direct hephaestus dependency, name `PlotComposition` and `WindowConfig` in its own source, and pin hephaestus in a second place — breaking that invariant three ways. So the *behaviour* goes public as a type instead, and `cmd_view` stays thin: parse options, open the reader, execute, call `show`. `show` blocks on the main thread until the window closes.
+
+**The subcommand is defined unconditionally.** Without the `window` feature it prints what would bring it back. A subcommand that vanishes between builds is worse than one that explains itself — the same reasoning as `WriterInfo::compiled`.
 
 ## Build & install
 
@@ -59,10 +87,12 @@ The macOS codesign step uses [`/entitlements.plist`](../entitlements.plist) at t
 ## Features
 
 ```toml
-default = ["duckdb", "sqlite", "vegalite", "ipc", "parquet", "builtin-data", "odbc"]
+default = ["duckdb", "sqlite", "vegalite", "parquet", "builtin-data", "odbc", "svg", "pdf", "hep"]
 ```
 
-Each feature passes through to `ggsql/<feature>`. The `vegalite` flag also gates the writer-rendering path in `main.rs` via `#[cfg(feature = "vegalite")]`.
+Each feature passes through to `ggsql/<feature>`. A writer feature gates only its own row's render function in `writers.rs`; the row itself is always present.
+
+`svg`, `pdf` and `hep` are default because they cost nothing to have: no GPU adapter, no wgpu, and on Linux no `libfontconfig1-dev` at build time. `png`, `jpeg`, `tiff`, `webp` and `window` are not, since those do need an adapter at run time.
 
 ## Testing
 

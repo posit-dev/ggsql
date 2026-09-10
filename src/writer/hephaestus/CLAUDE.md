@@ -1,15 +1,59 @@
-# `writer/hephaestus/` — PNG writer internals
+# `writer/hephaestus/` — renderer-backed writer internals
 
-`PngWriter` renders a resolved ggsql `Spec` to **PNG bytes** via
+The writers here render a resolved ggsql `Spec` through
 [hephaestus](https://github.com/posit-dev/hephaestus), a 2D scene renderer with a
-grammar-of-graphics plot API. Behind the non-default `png` cargo feature.
+grammar-of-graphics plot API. Seven of them exist, each behind its own cargo
+feature — the three GPU-free ones on by default, the four raster ones not:
 
-**hephaestus is not a public name.** The user-facing writer is `png`
-(`--writer png`, `--features png`, `ggsql::writer::PngWriter`); the module is
-named after the renderer it wraps and is private, so nothing but `PngWriter`,
-`Color` and `rgba` leaves the crate. More hephaestus-backed writers (svg, pdf,
-window) are expected, each with its own public name. Keep the renderer's name out
-of anything a user reads — CLI help, error messages, `/doc/`.
+| Writer | Feature | Default | GPU | Output | Its own options |
+| --- | --- | --- | --- | --- | --- |
+| `PngWriter` | `png` | — | yes | PNG bytes, lossless, alpha preserved | `compression` = `none`/`fast`/`balanced`/`small` |
+| `JpegWriter` | `jpeg` | — | yes | JPEG bytes, lossy, **no alpha** | `quality` 1–100 |
+| `TiffWriter` | `tiff` | — | yes | TIFF bytes, lossless, alpha preserved | `compression` = `none`/`deflate`/`lzw`/`packbits` |
+| `WebpWriter` | `webp` | — | yes | WebP bytes, lossless VP8L, alpha preserved | — |
+| `SvgWriter` | `svg` | ✓ | **no** | SVG text, resolution independent | `text` = `text`/`outline`, `embed-fonts`, `id-prefix` |
+| `PdfWriter` | `pdf` | ✓ | **no** | one PDF page, fonts subset in | `compress`, `links` |
+| `HepWriter` | `hep` | ✓ | **no** | a `.hep` plot document — no picture at all | `lossy`, `embed-fonts` |
+
+**Each format exposes the axis it actually has, and they share no knob they
+would have to reinterpret.** PNG's `compression` trades encode time for size,
+TIFF's trades reader compatibility for size (all four of its compressors are
+lossless, so `deflate` simply *is* the small one), JPEG's `quality` is a rate
+knob, and VP8L has no rate control at all. A shared `compression` across the
+four raster writers would mean four different things.
+
+**The three GPU-free writers are the important ones architecturally.** They go
+through the same `PlotComposition` and the same `render` call — the composition
+takes `&mut dyn SceneBuilder`, so a vector scene slots in exactly where the
+rasteriser does. That is why they need no adapter, pull in no wgpu and need no
+`-dev` package to build, which is what lets them be **default features**. It is
+also what makes them the test surface: see [Testing](#testing).
+
+**hephaestus is not a public name.** The user-facing names are the formats
+(`--writer png`, `--features webp`, `ggsql::writer::TiffWriter`); the module is
+named after the renderer it wraps and is private. What leaves the crate is the
+seven writers, `PlotViewer`, and this list ([`../mod.rs`](../mod.rs)):
+
+| Re-export | Origin |
+| --- | --- |
+| `Canvas` | ggsql's own |
+| `MAX_RASTER_DIMENSION` | ggsql's own |
+| `Color`, `rgba` | **the renderer's** (`hephaestus::color`) |
+| `PngCompression`, `TiffCompression` | **the renderer's** |
+
+The bottom two rows are why a hephaestus bump is a breaking change to ggsql
+even when the renderer's own API holds still: those types are in ggsql's public
+API by re-export, so a rename or an added variant upstream lands here. Anything
+new that has to go public should be ggsql's own type unless there is a reason
+it cannot be. Keep the renderer's name out of anything a user reads — CLI help,
+error messages, `/doc/`.
+
+The one carve-out: **a foreign format may be called by its own name.**
+`HepWriter` writes hephaestus's own `.hep` plot-document format, whose magic
+bytes are `HEPHPLOT`. ggsql does not define that format, so naming it after its
+owner is accurate rather than a leak — and "document" would have been the worse
+name, implying a generic container ggsql defines. ggsql's *own* writers still
+may not be named after the renderer.
 
 This file is the **architecture**: the abstractions, the invariants, and how to
 extend them. For how the writer's behaviour got here, read
@@ -40,15 +84,25 @@ debt that would disappear if ggsql resolved more:
 | Exception | Where | Why |
 | --- | --- | --- |
 | Free facet dimensions | `scales::{free_position_scale, free_binned_scale}` | ggsql resolves one global domain; a `free` panel needs its own. Only the *extent* is computed — the padding around it is still ggsql's, via `Scale::expand_range`. |
-| Spatial `pos1`/`pos2` | `mod.rs::map_bbox` | A spatial layer positions by geometry, so ggsql resolves no position scales. The bbox still comes from ggsql (`Projection.computed["bbox"]`), falling back to the geometry extent only for a bare `spatial` geom. |
+| Spatial `pos1`/`pos2` | `compose.rs::map_bbox` | A map's frame is `Projection.computed["bbox"]`, in the target CRS, with `SCALE lon`/`lat` limits already folded in. A resolved `pos1`/`pos2` is *not* the alternative: for a map, ggsql resolves those against the graticule extent in EPSG:4326, so their domain is degrees and their breaks are graticule positions, not the frame. Only a bare `spatial` geom with no `PROJECT` falls back to the geometry extent. |
 
 ## Configuration
 
-Raster output needs concrete dimensions, so unlike the Vega-Lite writer this one
-carries state: `width`, `height` (both pixels), `dpi`, and `background`.
-`PngWriter::new` + `.background()` set them directly;
-`Writer::from_options` builds the same thing from the frontend-agnostic
-key–value [`WriterOptions`](../options.rs) (`-D width=1600` on the CLI). The user-facing table of keys lives in the struct's rustdoc and in
+Rendering needs concrete dimensions, so unlike the Vega-Lite writer these
+carry state — and they carry the *same* state, in [`canvas.rs`](canvas.rs):
+`Canvas { width, height, dpi, background, physical }`. Each writer's `new` +
+`.background()` set it directly; `Writer::from_options` builds the same thing
+from the frontend-agnostic key–value [`WriterOptions`](../options.rs)
+(`-D width=1600` on the CLI), via `Canvas::from_options(options, extra)` where
+`extra` is the writer's own keys.
+
+`CANVAS_OPTIONS` leads the concatenation `reject_unknown` sees, so the shared
+keys come first in the "supported options" list — the nearest miss for a
+mistyped key is almost always one of them. `physical` records that `units`
+resolved to a physical unit; only a vector backend consults it, to decide
+whether to declare a print size.
+
+The user-facing table of keys lives in each writer's rustdoc and in
 [`/doc/get_started/tooling/cli.qmd`](../../../doc/get_started/tooling/cli.qmd);
 what matters here:
 
@@ -70,7 +124,7 @@ runtime do layout and scale application, hephaestus **is** the runtime. So
 `write` builds a live object graph and renders it.
 
 ```
-PngWriter::write(&Plot, &HashMap<String, DataFrame>)
+compose::build_composition(&Plot, &HashMap<String, DataFrame>)
  │
  ├─ facet::build_panels(spec, data)      → (Composition, Vec<Panel>)
  │      1×1 grid + one Panel when unfaceted; else grid(nrow, ncol, cells)
@@ -93,9 +147,34 @@ PngWriter::write(&Plot, &HashMap<String, DataFrame>)
  │    └─ view.attach_plot(plot)
  │
  ├─ legend_sink (captured from the *first* panel) → view.add_legend(..)
- ├─ view.validate()
- └─ render_png: VelloRenderer → RGBA8 buffer → hephaestus::png::encode_png
+ └─ view.validate()
+
+raster::pixels(spec, data, canvas, renderer)
+ ├─ compose::validate_plot                    ← rejects a zero-layer plot, and
+ │                                               the `arrow` stub no writer draws
+ ├─ compose::build_composition                ← the diagram above
+ └─ raster::render_rgba8: HybridRenderer → straight-alpha RGBA8 buffer
+
+<raster>::write_with  = raster::pixels, then one encoder call
+<vector>::write_reporting = vector::draw into an SvgScene / PdfScene, then encode
+HepWriter::write_reporting = write_composition — no scene, no pixels
 ```
+
+A writer is therefore its option parsing plus one line. `PlotComposition` is
+where the work is, and it is format-independent — which is why the module gate
+is the internal `graphics` feature and only `raster` pulls in wgpu.
+
+**Degradation is reported, not returned.** `SvgScene` and `PdfScene` collect
+what the format could not express, and the `hep` writer can list what the
+document cannot carry. `Writer::write` has nowhere to put that, and widening
+the trait for three of eight writers would be wrong, so those three add an
+inherent `write_reporting` / `render_reporting` returning `(output, Vec<String>)`
+and `Writer::write` discards the second half. `Vec<String>` rather than a ggsql
+enum: the renderer's variants are `#[non_exhaustive]`, so mirroring them means
+re-deriving a growing list every release and re-exporting them leaks its type
+names — each writer's `describe()` translates at the boundary instead, which is
+also where the renderer's name gets scrubbed. The list should be empty for
+everything ggsql draws, and the corpus tests assert exactly that.
 
 Layers draw in `spec.layers` order, which is DRAW order, which is z-order.
 
@@ -103,7 +182,15 @@ Layers draw in `spec.layers` order, which is DRAW order, which is z-order.
 
 | File | Role |
 | --- | --- |
-| [`mod.rs`](mod.rs) | `PngWriter` (size / dpi / background), `Writer` impl including `from_options`, the orchestration above, `map_bbox`, `render_png`, and the writer's test suite. |
+| [`mod.rs`](mod.rs) | Module wiring and the public re-exports, plus the shared `renders_*` corpus driven through the PNG writer. No writer lives here. |
+| [`canvas.rs`](canvas.rs) | `Canvas`, `CANVAS_OPTIONS`, unit conversion and the dimension bound — the configuration every writer shares. Plus the test-only `Canvased` / `assert_canvas_semantics`, so the shared option behaviour is asserted once per writer rather than restated per writer. |
+| [`compose.rs`](compose.rs) | `validate_plot` and `build_composition` — the orchestration above, and `map_bbox` / `map_range`. Format-independent, and where nearly all the code is. |
+| [`raster.rs`](raster.rs) | `RasterRenderer`, `render_rgba8`, and `pixels`. **The only file that names a GPU renderer**, and the only part needing an adapter. |
+| [`vector.rs`](vector.rs) | `draw` — the same three steps as `raster::pixels`, into a `&mut dyn SceneBuilder` instead of a pixel buffer. No GPU. |
+| [`png.rs`](png.rs), [`jpeg.rs`](jpeg.rs), [`tiff.rs`](tiff.rs), [`webp.rs`](webp.rs) | One raster writer each: its rustdoc option table, `from_options`, and one encoder call. |
+| [`svg.rs`](svg.rs), [`pdf.rs`](pdf.rs) | One vector writer each, plus a `describe()` translating what the format could not express into ggsql's vocabulary. |
+| [`hep.rs`](hep.rs) | The plot-document writer. Serialises the composition; builds no scene at all. |
+| [`window.rs`](window.rs) | `PlotViewer` — **not a writer.** Shows the composition in a native window and blocks until it closes. |
 | [`wiring.rs`](wiring.rs) | The shared, geom-generic machinery: `Ctx`, `GeomSpec` + its parts, `build_and_add`, `wire_positions`, `wire_material`, `MaterialSource`/`resolve_material`, `BandAxes`, `side`/band helpers, `material_legend`, label resolution. |
 | [`scales.rs`](scales.rs) | ggsql `Scale` → hephaestus `Scale`. `RangeKind`, transform + palette + break mapping, temporal scales, free-panel scales, `binned_bins`/`bin_at_centre`. |
 | [`channels.rs`](channels.rs) | DataFrame column → typed channel data (`ChannelData`, `column_to_*`), group keys, WKB/WKT geometry decoding. |
@@ -410,6 +497,33 @@ suppressing the colorbar frame hephaestus otherwise inherits from its default
 `RectElement`. Anything the two writers must agree on that is neither a scale nor
 a channel belongs there.
 
+## The viewer is not a writer
+
+[`window.rs`](window.rs) holds `PlotViewer`, which produces no output at all. It
+is not a `Writer` impl on purpose: `Output = ()` would put "blocks, main thread
+only, native only" into that trait's contract for one implementor's sake.
+`from_options` plus `show(&Spec)` gives the same option ergonomics without
+claiming it writes anything.
+
+It lives in this crate rather than in `ggsql-cli` because the CLI uses only
+public `ggsql::*` API and has no renderer dependency — see
+[`/ggsql-cli/CLAUDE.md`](../../../ggsql-cli/CLAUDE.md). So the *behaviour* goes
+public as a type instead of `build_composition` going public.
+
+Two things follow from what a window is:
+
+- **Resize needs no code.** `Frame::parts()` reports the surface's own size and
+  dpi each frame, and the composition re-solves its layout for them — so a
+  resize is a re-layout, not a rescale. That is the same property the `hep`
+  format exists to preserve.
+- **`units` and `dpi` are rejected, with a reason.** A window is sized in
+  logical pixels and its resolution belongs to the display (`frame.dpi()` wins
+  every draw), so accepting either would be accepting a setting that is then
+  ignored — exactly the silent failure `reject_unknown` exists to prevent. The
+  error says so rather than reporting them as typos. Option parsing reuses
+  `canvas::{whole_pixels, parse_background}`, which is why those are free
+  functions rather than `Canvas` methods.
+
 ## Adding a geom
 
 1. Add a module under [`geom/`](geom/) returning a `GeomSpec`, and dispatch it in
@@ -436,24 +550,79 @@ a channel belongs there.
 
 ## Testing
 
-Tests live at the bottom of [`mod.rs`](mod.rs):
+The shared corpus lives at the bottom of [`mod.rs`](mod.rs); each writer's own
+option tests live beside it in its own file:
 
 ```sh
-cargo test --features png --lib writer::hephaestus
+# Everything. `hep-read` is test-only and unlocks the round trip.
+cargo test --features all-writers,hep-read --lib writer::hephaestus
+
+# The GPU-free subset — hard assertions, and what CI can rely on.
+cargo test --features svg,pdf,hep,hep-read --lib writer::hephaestus
 ```
 
-Two kinds, plus a third that doesn't exist yet:
+**Option tests do not repeat themselves.** `canvas::assert_canvas_semantics::<W>()`
+covers the five shared keys — defaults, unit conversion, the `MAX_DIMENSION`
+bound, the background spellings, and that a bad value names its own option — and
+is called once per writer, which is what catches a writer that parses a canvas
+key itself or forgets to pass its own keys through. Transparency is separate
+(`assert_transparent_background`), because JPEG has no alpha channel and refuses
+it. A writer's own file then tests only the keys its format adds.
 
-- **`renders_*` smoke tests** — render succeeds and the output carries the PNG
-  signature. `assert_png_or_skip` tolerates a headless machine with no GPU
-  adapter (it skips rather than fails), so a green run does not prove a render
-  happened locally.
+### The corpus runs through every writer
+
+`assert_renders(query)` drives **each compiled writer** over one query, so a
+corpus entry is written once and checked by all of them. The ~78 `renders_*`
+tests are that corpus: one query per geom, facet mode, scale kind, position
+adjustment and projection.
+
+**The vector assertions are what makes this a regression net.** They need no
+adapter, so they run in CI and on a headless box: `<svg …>` opened and closed,
+a non-zero `<path>` count, `%PDF-` and `%%EOF`, and — the real one —
+**`warnings()` empty**, meaning nothing in the whole corpus reached a case a
+vector format cannot express. The raster assertion still skips where there is
+no adapter (`assert_png_or_skip` matches on the substring `"GPU renderer"`), so
+a green run has never proved a *raster* render happened. Before the vector
+writers existed, that was the only kind of end-to-end assertion there was.
+
+### The assertions only readable output can make
+
+`mod svg_text` checks the [governing principle](#the-governing-principle)
+*directly*, which no raster test can: SVG output is text, so the breaks, labels
+and titles ggsql resolved can be read back out of it.
+
+- Tick labels appear verbatim, in ggsql's own number formatting.
+- Facet strip labels appear **once each, in panel order** — previously asserted
+  only against `build_panels`, never against rendered output.
+- `RENAMING` reaches both an axis rail and a legend key.
+- A binned scale's resolved edges reach the colorbar.
+- Every `LABEL` slot appears, and markdown is **parsed** — no literal `*`, and
+  the emphasised run carries a style.
+- `text=outline` → zero `<text>` and more `<path>`; `id-prefix` rewrites every
+  id *and* every `url(#…)` reference.
+- `units=in` → a `pt` root over a pixel `viewBox`, so the file prints at the
+  size it was asked for.
+
+`mod pdf_structure` does the same for what PDF's structure exposes: the
+`/MediaBox` at 72 pt per inch, `compress=false` leaving no `/FlateDecode`, and
+`/FontFile2` proving the fonts are subset in.
+
+`mod hep_roundtrip` (behind the test-only `hep-read` feature) is the strongest
+single test here: write a document, read it back into a **new** composition,
+render both to SVG and compare **byte for byte**. Any loss anywhere in the
+format — a scale, a break, a theme entry, a channel column, a geom — shows up as
+different drawing commands. SVG is the comparison surface precisely because it
+is deterministic text; a raster comparison would be at the mercy of GPU
+antialiasing, which is not bit-reproducible even between two runs of the same
+code.
+
+### Still eyeballing
+
 - **Exact-text assertions** — `facet_strips_*` and the `binned_bins` /
-  `bin_at_centre` / temporal-scale unit tests need no GPU and are the real
-  regression net.
-- **Snapshot PNG tests do not exist.** Visual correctness is
-  verified by eyeballing, usually against the Vega-Lite render of the same
-  query. Assume a hephaestus version bump needs re-eyeballing:
+  `bin_at_centre` / temporal-scale unit tests need no GPU either.
+- **Snapshot tests do not exist.** Whole-picture correctness is still verified
+  by eye, usually against the Vega-Lite render of the same query. Assume a
+  hephaestus version bump needs re-eyeballing:
 
 ```sh
 cargo run -p ggsql-cli --features png -- exec "<query>" \
@@ -478,23 +647,64 @@ so one run inventories every gap at once. Implementation notes:
 
 ## Operational constraints
 
-- **A GPU adapter is required at render time.** Vello/wgpu is hephaestus's only
-  working backend. CI installs Mesa's lavapipe; headless containers need
-  something equivalent.
-- **fontconfig is a build-time dependency on Linux.** Text layout goes through
-  parley/fontique, which links the system fontconfig to enumerate fonts, so
-  `libfontconfig1-dev` (or the distro equivalent supplying `fontconfig.pc`) must
-  be installed before building with `--features png`. macOS uses CoreText and
-  needs nothing extra.
-- **Raster only.** No SVG/PDF — hephaestus's other backends are declared
-  placeholders.
-- **MSRV split.** hephaestus needs rustc ≥1.88; ggsql's MSRV is CRAN-locked at
-  1.86. The feature is therefore non-default and excluded from the MSRV job (CI
-  runs the png steps with `cargo +stable`), which also means this writer
-  is not viable for the R/CRAN target and is not the wasm default. Always check a
-  change still builds under `cargo +1.86 build` *without* the feature.
-- **The dependency is the published `0.1.0` crate** (`src/Cargo.toml`), so
-  nothing here blocks publishing ggsql. hephaestus's own semver contract extends
+- **A GPU adapter is required by the four raster writers**, at render time, and
+  by nothing else. CI installs Mesa's lavapipe; headless containers need
+  something equivalent. The vector and document writers need neither an adapter
+  nor wgpu, which is why they are the default ones.
+- **The backend is Vello Hybrid, not vello classic**, and the choice is named
+  in exactly one place ([`raster.rs`](raster.rs)) so it stays swappable. Hybrid
+  computes coverage on the CPU and gives the GPU a plain render pipeline, which
+  buys two things: its GPU buffers are sized to the scene's actual content
+  instead of fixed caps, so a dense plot has **no draw-count ceiling**; and it
+  can paint binary coverage, so a hit test reports exactly one id per pixel
+  rather than a blend of two — vello classic antialiases its pick pass and can
+  report an id that was never drawn. The second matters only once interaction
+  lands, but it is the reason not to defer the choice. Output differs from
+  vello classic by antialiasing alone; geometry is identical.
+  `hephaestus/vello-hybrid` transitively enables `hephaestus/png`, so a
+  webp-only build still compiles the PNG codec.
+- **The raster ceiling is the GPU's, not the renderer's.** The device is asked
+  for as much as it grants up to 16384 px per dimension, which is
+  `MAX_RASTER_DIMENSION` and what `check_size` guards before anything is
+  allocated — so the error can name the limit and point at `svg`/`pdf`, which
+  have none. A device offering less rejects the frame itself with its own limit
+  named.
+- **fontconfig is a *runtime* dependency on Linux, not a build-time one.** Text
+  layout goes through parley/fontique, which enumerates fonts through the
+  system fontconfig whatever backend draws — so this applies to `svg` and `pdf`
+  just as much as to `png`. But `src/Cargo.toml` names `fontique` directly for
+  one reason: to turn on `fontconfig-dlopen`, which parley does not re-export.
+  With it, `yeslogic-fontconfig-sys`'s build script makes no pkg-config call at
+  all and `libfontconfig.so.1` is loaded on use, so **`libfontconfig1-dev` is
+  not needed to build** — which is what lets `svg`/`pdf`/`hep` be default
+  features without breaking `cargo install ggsql-cli` on a bare box. CI and
+  the release images install only the runtime library, never the `-dev`
+  package, so every build re-checks that. macOS uses CoreText and needs
+  nothing.
+
+  **With no fontconfig at all, a render silently loses all text**: geometry
+  draws, every `<text>` disappears, and the exit code is 0. Worth knowing when
+  a minimal container produces an unlabelled plot.
+- **The vector and document writers are default features *and* MSRV-clean.**
+  `svg`, `pdf` and `hep` need no adapter, no wgpu and no `-dev` package, so
+  there is nothing to opt into — and they still compile on CRAN's 1.86, which
+  is what keeps them available to the R package's vendored copy. What refuses
+  on 1.86 is cargo's *declaration* check, because `parley` declares 1.88 while
+  compiling fine on it, and `--ignore-rust-version` bypasses a declaration:
+
+  ```sh
+  cargo +1.86 check --ignore-rust-version -p ggsql   # default features; passes
+  ```
+
+  CI runs exactly that, so the claim is checked rather than asserted. The four
+  raster writers are genuinely 1.88+ (wgpu), which is one more reason they are
+  not default. **Do not use a 1.87+ std API anywhere in the library** —
+  `rust-version = "1.86"` keeps clippy flagging one as a lint, and that guard
+  is why the declaration stays at 1.86 rather than following `parley`'s.
+- **The dependency is the published `0.4.1` crate** (`src/Cargo.toml`), pinned
+  with `default-features = false` so the GPU rasteriser arrives only with
+  `raster`, and nothing here blocks publishing ggsql. hephaestus's own semver
+  contract extends
   to the `kurbo`, `peniko` and `wgpu` types in its public API, so a bump in any
   of those is a breaking change to this writer even when hephaestus's own API
   holds still.
@@ -503,33 +713,24 @@ so one run inventories every gap at once. Implementation notes:
 
 Deliberately not done, in rough order of how likely they are to bite:
 
-- **No snapshot PNG tests** (see [Testing](#testing)) — visual correctness is
-  checked by eyeballing, with the harness for doing it at scale.
+- **No committed snapshot fixtures** (see [Testing](#testing)) — whole-picture
+  correctness is checked by eyeballing, with the harness's `--baseline` for
+  doing it at scale. The SVG corpus is the natural fixture surface, being
+  deterministic text where a 2 px panel shift reads as a hunk rather than as a
+  changed hash; whether to commit it is still open.
+- **Log-scale tick labels are wrong, and not because of this writer.** ggsql
+  resolves a 1–100 `log10` domain to breaks of
+  `[5e-308, 2e-256, …, 100]`, and both writers faithfully print those. The fix
+  is in scale resolution; nothing changes here. Recorded as an ignored test
+  (`svg_text::log_tick_labels_should_be_decades`).
 - **No axis label thinning.** ggsql's resolved breaks are drawn as-is, so a
   narrow facet panel can crowd or overlap long labels — which is why
   `free_continuous_scale` narrows the *global* breaks to a panel rather than
   letting hephaestus invent per-panel ones.
-- **Legend titles and break labels don't parse markdown.** [`ggsql_theme`](wiring.rs)
-  sets `markdown` on the root text element, so the flag cascades to every slot —
-  but hephaestus only consults it where a slot goes through
-  `chrome::text::measure_for_element` / `draw_text_element_in_rect` (plot title,
-  subtitle, caption, axis titles, strip labels). Legend titles
-  (`chrome/legend/mod.rs`, `chrome/legend/colorbar.rs`), legend key labels
-  (`chrome/legend/measure.rs`, `chrome/legend/render_keys.rs`) and tick labels
-  (`chrome/axis.rs`, `chrome/linear_axis.rs`, `chrome/polar.rs`) build a
-  `TextRun::new` directly and draw their markers literally. **Fixing this is
-  upstream work**; nothing changes in this writer when it lands.
 - **No switch on rich-text chrome.** [`ggsql_theme`](wiring.rs) turns markdown on
   for the whole chrome cascade, so a title that wants a literal `*` has no way to
   ask for one. The text layer has `parse`; chrome waits for ggsql to grow a theme
   concept, which is where the same switch belongs.
-- **Rich text costs ~1pt of layout.** A plain string measures slightly larger
-  through the rich shaper than through the plain one, so every axis title claims a
-  little more room and the panel comes out a few px smaller than it did before
-  markdown was on. Aligning the sheet's line height with the theme's (see
-  `ggsql_theme`) removed the bulk of it; the ~1pt that remains is the rich block
-  model's own box, which no sheet entry reaches. Visually imperceptible, but it is
-  why a residual diff over the harness shows nearly every cell as "changed".
 
 ## See also
 

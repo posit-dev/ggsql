@@ -19,6 +19,7 @@ src/
 ├── naming.rs                    Internal column-name conventions (__ggsql_*)
 ├── util.rs                      String helpers (and_list, or_list, …)
 ├── validate.rs                  validate(): syntax + semantic checks without SQL execution
+├── fonts.rs                     Font registration, for hosts with no font database
 │
 ├── parser/      Tree-sitter integration → typed AST (Plot)
 ├── plot/        AST: Plot, Layer, Geom, Scale, Facet, Projection, Mappings  (see plot/CLAUDE.md)
@@ -70,12 +71,34 @@ The pipeline that takes a parsed `Plot` plus a `Reader` and produces a fully-res
 
 ### `writer/`
 
-`Writer` trait in `mod.rs` (associated `Output` type so writers can return text or bytes, and `from_options` for configuration a frontend collects as key–value pairs — `options.rs`'s `WriterOptions`, parsed from the CLI's `--writer-option`). Two implementations:
+`Writer` trait in `mod.rs` (associated `Output` type so writers can return text or bytes, and `from_options` for configuration a frontend collects as key–value pairs — `options.rs`'s `WriterOptions`, parsed from the CLI's `--writer-option`). Two families:
 
 - **Vega-Lite** (`vegalite` feature, default) — emits Vega-Lite JSON. Deep-dive: [`writer/vegalite/CLAUDE.md`](writer/vegalite/CLAUDE.md).
-- **PNG** (`png` feature, non-default) — `PngWriter` renders PNG bytes via a GPU (wgpu/vello) backend. The module implementing it is `writer/hephaestus/`, after the renderer it wraps; that name is internal, and the module is private so only `PngWriter` is public. Deep-dive (architecture + known gaps): [`writer/hephaestus/CLAUDE.md`](writer/hephaestus/CLAUDE.md). Excluded from the MSRV 1.86 build (hephaestus needs 1.88) and needs a GPU adapter at render time.
+- **The renderer-backed writers** (seven of them; `svg`, `pdf` and `hep` default, the four raster ones not) — all live in `writer/hephaestus/`, named after the renderer they wrap; that name is internal, and the module is private so only the writers, `Canvas` and `RasterRenderer` are public. They share their whole pipeline — `Canvas` for configuration, `compose` for the plot composition, then either `raster` for pixels or `vector` for drawing commands — and differ only in what they do with the result. Deep-dive (architecture + known gaps): [`writer/hephaestus/CLAUDE.md`](writer/hephaestus/CLAUDE.md).
 
-`ggplot2` and `plotters` are reserved feature flags with no implementation.
+  | Feature | Default | Writer | Output | GPU |
+  | --- | --- | --- | --- | --- |
+  | `png` / `jpeg` / `tiff` / `webp` | — | `PngWriter`, `JpegWriter`, `TiffWriter`, `WebpWriter` | image bytes | required |
+  | `svg` / `pdf` | ✓ | `SvgWriter`, `PdfWriter` | vector text / one PDF page | **none** |
+  | `hep` | ✓ | `HepWriter` | a `.hep` plot document — no picture | **none** |
+
+  Plus `PlotViewer` behind the `window` feature — not a writer, since it returns no output, blocks, and must run on the main thread. It shows the same composition in a native window, re-laying-out on resize.
+
+  The three GPU-free writers go through the same composition and the same `render` call (which takes `&mut dyn SceneBuilder`), so they need no adapter and pull in no wgpu. **That is why they are default**: nothing about them has to be opted into, including on Linux, where `fontconfig-dlopen` removes the build-time `libfontconfig1-dev` requirement (see [`writer/hephaestus/CLAUDE.md`](writer/hephaestus/CLAUDE.md)). They also still compile on the CRAN MSRV — `cargo +1.86 check --ignore-rust-version -p ggsql`, where the flag is needed only because `parley` *declares* 1.88 while compiling fine on 1.86. Only the raster writers need an adapter and are genuinely 1.88+, and a raster dimension is capped at what the GPU grants, up to 16384 px.
+
+Three **internal** features carry the split, enabled by the writer features rather than named directly: `graphics` is the shared composition layer, and `raster = graphics + hephaestus/vello-hybrid` adds the GPU rasteriser. Only `raster` pulls in wgpu, vello_hybrid and pollster, which is what lets a vector-only build skip them — `cargo tree --features graphics` shows none of the three, `--features png` shows 19. `raster-writer` then narrows `raster` once more, to "some writer actually reads pixels back" — the viewer needs the rasteriser without ever doing that. `graphics` is the single module gate for `writer/hephaestus/`, so adding a format needs no change there.
+
+### `fonts.rs`
+
+Registering font faces with the shaper, behind `graphics`. Natively the operating
+system enumerates fonts and nothing here is needed; a browser enumerates none, so
+a wasm host has to hand the faces over itself or every plot comes out with no
+text and — since text is what sets the margins — the wrong layout too.
+
+`register_font` takes sfnt bytes, and with the optional `webfonts` feature the
+WOFF and WOFF2 containers a font CDN serves a browser as well. Without it those
+are refused by name, because compressed bytes hold no recognisable face and
+registering nothing is a silent failure.
 
 ### `plot/`
 
@@ -108,11 +131,23 @@ Defined in `Cargo.toml`:
 | `parquet` | ✓ | Parquet support in readers/data |
 | `spatial` | ✓ | Spatial/geometry support (geozero for WKT↔GeoJSON) |
 | `vegalite` | ✓ | Vega-Lite writer |
-| `png` | — | PNG raster writer (GPU; excluded from the MSRV build) |
+| `graphics` | — | *Internal.* The shared plot-composition layer; no GPU |
+| `raster` | — | *Internal.* `graphics` + the GPU rasteriser (wgpu/vello-hybrid) |
+| `png` | — | PNG writer (`raster`; genuinely 1.88+, excluded from the MSRV check) |
+| `jpeg` | — | JPEG writer (`raster`) |
+| `tiff` | — | TIFF writer (`raster`) |
+| `webp` | — | WebP writer (`raster`) |
+| `svg` | ✓ | SVG writer (`graphics`; no GPU, MSRV-clean) |
+| `pdf` | ✓ | PDF writer (`graphics`; no GPU, MSRV-clean) |
+| `hep` | ✓ | `.hep` plot-document writer (`graphics`; no GPU, MSRV-clean) |
+| `hep-read` | — | **Test-only.** Reading a `.hep` back, for the round-trip test |
+| `window` | — | `PlotViewer` — a native plot window (`raster`; not a writer) |
+| `webfonts` | — | `fonts::register_font` also accepts WOFF / WOFF2 (`graphics`) |
 | `builtin-data` | ✓ | Bundled penguins/airquality datasets |
 | `all-readers` | — | `duckdb` + `sqlite` + `odbc` |
+| `all-writers` | — | every writer above except the test-only `hep-read` |
 
-`ggsql-wasm` builds with `default-features = false` plus `vegalite`, `sqlite`, `builtin-data`. `ggsql-jupyter` builds with `duckdb`, `vegalite`.
+`ggsql-wasm` builds with `default-features = false` plus `svg`, `webfonts`, `sqlite`, `builtin-data`, `spatial` — it draws plots in the browser with `SvgWriter`, which needs no GPU adapter, and `webfonts` is what lets a page hand it the WOFF/WOFF2 a font CDN serves. `ggsql-jupyter` builds with `duckdb`, `svg`, `pdf` plus ggsql's defaults, and its own default `raster-plots` feature adds `png`, `jpeg` and `tiff`; `svg` and `pdf` are non-optional there because the no-adapter fallback has to be compiled in whatever else is.
 
 ## Testing
 

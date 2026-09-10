@@ -6,8 +6,9 @@ use ggsql::array_util::value_to_string;
 use ggsql::naming::DATA_PREFIX;
 use ggsql::reader::sqlite::SqliteReader;
 use ggsql::reader::Reader;
+use ggsql::reader::Spec;
 use ggsql::validate::validate;
-use ggsql::writer::{VegaLiteWriter, Writer};
+use ggsql::writer::{rgba, SvgWriter};
 use ggsql::DataFrame;
 use serde_json::json;
 use std::cell::RefCell;
@@ -15,48 +16,59 @@ use std::sync::Arc;
 
 use wasm_bindgen::prelude::*;
 
+/// Report a panic to the console before the module aborts.
+///
+/// Composition asserts in a handful of documented cases and the `wasm` profile
+/// sets `panic = "abort"`, so one bad plot traps the instance for the whole
+/// page. The hook turns a bare `RuntimeError: unreachable executed` into a
+/// console message naming the assertion. Runs on module instantiation.
+#[wasm_bindgen(start)]
+pub fn start() {
+    console_error_panic_hook::set_once();
+}
+
 // ============================================================================
 // JS bridge declarations
 // ============================================================================
 
-#[wasm_bindgen(module = "/library/dist/lib.js")]
-extern "C" {
-    #[wasm_bindgen(catch, js_name = convert_parquet)]
-    async fn convert_parquet_js(data: &[u8]) -> Result<JsValue, JsValue>;
-
-    #[wasm_bindgen(catch, js_name = convert_csv)]
-    fn convert_csv_js(data: &[u8]) -> Result<JsValue, JsValue>;
-
-    #[wasm_bindgen(catch, js_name = initExtensionLoader)]
-    fn init_extension_loader_js(exports: &JsValue) -> Result<(), JsValue>;
-
-    #[wasm_bindgen(catch, js_name = installExtension)]
-    async fn install_extension_js(name: &str, source: JsValue) -> Result<JsValue, JsValue>;
+thread_local! {
+    static CONVERTERS: RefCell<Option<(js_sys::Function, js_sys::Function)>> =
+        const { RefCell::new(None) };
 }
 
-// ============================================================================
-// Package exports — forward to the JS helpers above
-// ============================================================================
-
-#[wasm_bindgen(js_name = convert_csv)]
-pub fn convert_csv_export(data: &[u8]) -> Result<JsValue, JsValue> {
-    convert_csv_js(data)
+/// Supply the JavaScript CSV and Parquet converters.
+///
+/// Called by the npm package's `init` wrapper; not intended for direct use.
+#[wasm_bindgen(js_name = setConverters)]
+pub fn set_converters(csv: js_sys::Function, parquet: js_sys::Function) {
+    CONVERTERS.with(|converters| {
+        *converters.borrow_mut() = Some((csv, parquet));
+    });
 }
 
-#[wasm_bindgen(js_name = convert_parquet)]
-pub async fn convert_parquet_export(data: &[u8]) -> Result<JsValue, JsValue> {
-    convert_parquet_js(data).await
+fn converters() -> Result<(js_sys::Function, js_sys::Function), JsValue> {
+    CONVERTERS.with(|converters| {
+        converters.borrow().clone().ok_or_else(|| {
+            JsValue::from_str(
+                "CSV and Parquet converters are not configured; initialize through ggsql-wasm",
+            )
+        })
+    })
 }
 
-#[wasm_bindgen(js_name = initExtensionLoader)]
-pub fn init_extension_loader(exports: JsValue) -> Result<(), JsValue> {
-    init_extension_loader_js(&exports)
+fn convert_csv_js(data: &[u8]) -> Result<JsValue, JsValue> {
+    let (convert_csv, _) = converters()?;
+    let bytes = js_sys::Uint8Array::from(data);
+    convert_csv.call1(&JsValue::UNDEFINED, &bytes)
 }
 
-#[wasm_bindgen(js_name = installExtension)]
-pub async fn install_extension(name: String, source: JsValue) -> Result<(), JsValue> {
-    install_extension_js(&name, source).await?;
-    Ok(())
+async fn convert_parquet_js(data: &[u8]) -> Result<JsValue, JsValue> {
+    let (_, convert_parquet) = converters()?;
+    let bytes = js_sys::Uint8Array::from(data);
+    let promise = convert_parquet
+        .call1(&JsValue::UNDEFINED, &bytes)?
+        .dyn_into::<js_sys::Promise>()?;
+    wasm_bindgen_futures::JsFuture::from(promise).await
 }
 
 // ============================================================================
@@ -216,7 +228,6 @@ fn columns_js_to_dataframe(columns_js: JsValue) -> Result<DataFrame, JsValue> {
 #[wasm_bindgen]
 pub struct GgsqlContext {
     reader: RefCell<SqliteReader>,
-    writer: VegaLiteWriter,
 }
 
 #[wasm_bindgen]
@@ -228,28 +239,21 @@ impl GgsqlContext {
 
         let reader = SqliteReader::new()
             .map_err(|e| JsValue::from_str(&format!("Failed to create SQLite reader: {:?}", e)))?;
-        let writer = VegaLiteWriter::new();
         Ok(GgsqlContext {
             reader: RefCell::new(reader),
-            writer,
         })
     }
 
-    /// Execute a ggsql query and return Vega-Lite JSON
-    pub fn execute(&self, query: &str) -> Result<String, JsValue> {
-        let spec = {
-            let reader = self.reader.borrow();
-            reader
-                .execute(query)
-                .map_err(|e| JsValue::from_str(&format!("Execute error: {:?}", e)))?
-        };
-
-        let result = self
-            .writer
-            .render(&spec)
-            .map_err(|e| JsValue::from_str(&format!("Render error: {:?}", e)))?;
-
-        Ok(result)
+    /// Run a ggsql query and keep the resolved plot, ready to draw.
+    ///
+    /// Drawing is separate because a resize re-solves the layout, and doing
+    /// that through the query would put SQL behind every frame of a drag.
+    pub fn execute(&self, query: &str) -> Result<GgsqlPlot, JsValue> {
+        let reader = self.reader.borrow();
+        let spec = reader
+            .execute(query)
+            .map_err(|e| JsValue::from_str(&format!("Execute error: {:?}", e)))?;
+        Ok(GgsqlPlot { spec })
     }
 
     /// Check whether a query contains a VISUALISE clause
@@ -382,4 +386,99 @@ impl GgsqlContext {
 
         array.into()
     }
+}
+
+// ============================================================================
+// Drawing
+// ============================================================================
+
+/// A resolved plot, ready to be drawn at whatever size the page has.
+///
+/// Held across redraws so a resize costs a layout pass and not a database
+/// query — see [`GgsqlContext::execute`].
+#[wasm_bindgen]
+pub struct GgsqlPlot {
+    spec: Spec,
+}
+
+#[wasm_bindgen]
+impl GgsqlPlot {
+    /// Draw the plot as SVG at the given size in CSS pixels.
+    ///
+    /// The layout is re-solved at this size rather than scaled to it, so a wider
+    /// box gets more tick labels rather than stretched ones — which is why a
+    /// resize calls this again instead of setting a `viewBox`.
+    ///
+    /// `id_prefix` namespaces every generated element id: inline SVGs share the
+    /// page's id space, so two plots on one page collide without it.
+    ///
+    /// The background is left transparent so the page's own shows through.
+    #[wasm_bindgen(js_name = toSvg)]
+    pub fn to_svg(&self, width: u32, height: u32, id_prefix: &str) -> Result<SvgRender, JsValue> {
+        // 96 dpi: the caller measured its box in CSS pixels, and an SVG scales
+        // for a retina screen by itself.
+        let writer = SvgWriter::new(width.max(1), height.max(1), 96.0)
+            .background(rgba(0.0, 0.0, 0.0, 0.0))
+            .id_prefix(id_prefix);
+        let (svg, warnings) = writer
+            .render_reporting(&self.spec)
+            .map_err(|e| JsValue::from_str(&format!("Render error: {:?}", e)))?;
+        Ok(SvgRender { svg, warnings })
+    }
+}
+
+/// One drawn plot, plus whatever the format could not express.
+#[wasm_bindgen]
+pub struct SvgRender {
+    svg: String,
+    warnings: Vec<String>,
+}
+
+#[wasm_bindgen]
+impl SvgRender {
+    /// The SVG markup.
+    #[wasm_bindgen(getter)]
+    pub fn svg(&self) -> String {
+        self.svg.clone()
+    }
+
+    /// What the renderer had to degrade or drop, if anything.
+    #[wasm_bindgen(getter)]
+    pub fn warnings(&self) -> Vec<String> {
+        self.warnings.clone()
+    }
+}
+
+// ============================================================================
+// Fonts
+// ============================================================================
+
+/// Register every font face in `bytes`, returning the family names they landed
+/// under.
+///
+/// A page must call this before drawing anything: a browser enumerates no system
+/// fonts, so the shaper starts empty and a plot comes out with no text and no
+/// warning — and with wrong margins too, since text sets the layout.
+///
+/// Takes sfnt bytes (TTF, OTF, TTC, OTC); a WOFF or WOFF2 file has to be decoded
+/// first. The returned names are what [`set_generic_family`] takes — registering
+/// a face does not on its own make `sans-serif` mean it.
+#[wasm_bindgen(js_name = registerFont)]
+pub fn register_font(bytes: Vec<u8>) -> Result<Vec<String>, JsValue> {
+    ggsql::fonts::register_font(bytes).map_err(|e| JsValue::from_str(&e.to_string()))
+}
+
+/// Whether any font family is available to shape with.
+///
+/// `false` means the next plot drawn will have no text in it.
+#[wasm_bindgen(js_name = hasFonts)]
+pub fn has_fonts() -> bool {
+    !ggsql::fonts::registered_font_families().is_empty()
+}
+
+/// Point a generic family — `sans-serif`, `serif`, `monospace`, … — at concrete
+/// families, in preference order.
+#[wasm_bindgen(js_name = setGenericFamily)]
+pub fn set_generic_family(kind: &str, families: Vec<String>) -> Result<(), JsValue> {
+    ggsql::fonts::set_generic_family(kind, &families).map_err(|e| JsValue::from_str(&e.to_string()))
 }

@@ -1,10 +1,9 @@
 //! Free-form key–value options for writers.
 //!
-//! A frontend collects `key=value` pairs from its user (`-D width=1600`, or
-//! `-D 'width=1600;dpi=150'`, on the CLI) and hands them to
-//! [`Writer::from_options`](super::Writer::from_options). Each writer therefore
-//! exposes its own configuration without any frontend needing to know the
-//! writer's shape, and a writer that takes no options needs no special casing.
+//! A frontend collects `key=value` pairs from its user (`-D width=1600` on the
+//! CLI) and hands them to
+//! [`Writer::from_options`](super::Writer::from_options), so each writer
+//! exposes its configuration without the frontend knowing its shape.
 
 use std::collections::BTreeMap;
 
@@ -40,10 +39,9 @@ impl WriterOptions {
     /// ["width=1600;height=1200"]         // collapsed into one
     /// ```
     ///
-    /// `;` is the only separator. `,` is not, because it is common *inside* a
-    /// value — `background=rgba(0,0,0,0)` has to survive. The value is
-    /// everything from the first `=` to the next `;`, so values may contain `=`
-    /// themselves, and a later occurrence of a key overrides an earlier one.
+    /// `;` is the only separator; `,` is common inside a value
+    /// (`background=rgba(0,0,0,0)`). The value runs from the first `=` to the
+    /// next `;`, and a later occurrence of a key overrides an earlier one.
     ///
     /// # Errors
     ///
@@ -110,6 +108,30 @@ impl WriterOptions {
         }
     }
 
+    /// The value of `key` parsed as a boolean.
+    ///
+    /// Accepts `true`/`false`, `yes`/`no`, `on`/`off` and `1`/`0`, ignoring case
+    /// and surrounding whitespace. Unsupplied is `None`, so a flag defaulting to
+    /// `true` can tell that apart from an explicit `false`.
+    ///
+    /// # Errors
+    ///
+    /// Returns `GgsqlError::WriterError` if the value is not one of those
+    /// spellings.
+    pub fn boolean(&self, key: &str) -> Result<Option<bool>> {
+        let Some(raw) = self.get(key) else {
+            return Ok(None);
+        };
+        match raw.trim().to_lowercase().as_str() {
+            "true" | "yes" | "on" | "1" => Ok(Some(true)),
+            "false" | "no" | "off" | "0" => Ok(Some(false)),
+            _ => Err(GgsqlError::WriterError(format!(
+                "writer option '{}' expects true or false, got '{raw}'",
+                normalise_key(key)
+            ))),
+        }
+    }
+
     /// The value of `key`, checked against a closed set of allowed values.
     ///
     /// Matching ignores case and surrounding whitespace, mirroring how keys are
@@ -143,11 +165,15 @@ impl WriterOptions {
     /// Returns `GgsqlError::WriterError` naming the unknown keys and listing
     /// the supported ones.
     pub fn reject_unknown(&self, known: &[&str]) -> Result<()> {
+        // The declared names are normalised too, so a writer may declare the
+        // hyphenated spelling its docs use and still match either form. The
+        // error lists them as declared.
+        let canonical: Vec<String> = known.iter().map(|key| normalise_key(key)).collect();
         let unknown: Vec<&str> = self
             .values
             .keys()
             .map(String::as_str)
-            .filter(|key| !known.contains(key))
+            .filter(|key| !canonical.iter().any(|k| k == key))
             .collect();
         if unknown.is_empty() {
             return Ok(());
@@ -242,6 +268,31 @@ mod tests {
         );
         let options = WriterOptions::parse(["width=inf"]).unwrap();
         assert!(options.number("width").is_err());
+    }
+
+    #[test]
+    fn boolean_accepts_the_usual_spellings() {
+        for yes in ["true", "TRUE", " yes ", "on", "1"] {
+            let options = WriterOptions::new().set("embed_fonts", yes);
+            assert_eq!(options.boolean("embed_fonts").unwrap(), Some(true), "{yes}");
+        }
+        for no in ["false", "No", "off", "0"] {
+            let options = WriterOptions::new().set("embed_fonts", no);
+            assert_eq!(options.boolean("embed_fonts").unwrap(), Some(false), "{no}");
+        }
+        // Unsupplied stays distinct from an explicit `false`, so a writer whose
+        // default is `true` can tell them apart.
+        assert_eq!(WriterOptions::new().boolean("embed_fonts").unwrap(), None);
+    }
+
+    #[test]
+    fn boolean_rejects_anything_else() {
+        let options = WriterOptions::new().set("embed_fonts", "maybe");
+        let err = options.boolean("embed_fonts").unwrap_err().to_string();
+        assert!(
+            err.contains("'embed_fonts' expects true or false, got 'maybe'"),
+            "{err}"
+        );
     }
 
     #[test]

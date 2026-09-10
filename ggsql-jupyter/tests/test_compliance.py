@@ -86,7 +86,7 @@ class ggsqlKernelTests(jkt.KernelTests):
 
     # Test visualization output
     def test_execute_visualization(self):
-        """Test that visualization output includes Vega-Lite MIME type."""
+        """A plot arrives as a rendered image bundle, in this build's format."""
         self.flush_channels()
 
         code = """
@@ -109,14 +109,21 @@ class ggsqlKernelTests(jkt.KernelTests):
 
         self.assertIsNotNone(execute_result, "No execute_result message found")
 
-        # Check MIME types
+        # A plot arrives as a rendered image, in whichever format this build can
+        # produce: PNG with the raster writers and a GPU adapter, SVG otherwise.
+        # Both are static bundles that need no network.
         data = execute_result["content"]["data"]
-        self.assertIn("application/vnd.vegalite.v6+json", data)
+        self.assertTrue(
+            "image/png" in data or "image/svg+xml" in data,
+            f"expected a rendered plot, got {sorted(data)}",
+        )
 
-        # Verify Vega-Lite spec structure
-        vega_spec = data["application/vnd.vegalite.v6+json"]
-        self.assertIn("$schema", vega_spec)
-        self.assertIn("data", vega_spec)
+        # And a plain-text summary, for a frontend that renders neither.
+        self.assertIn("text/plain", data)
+
+        # The bundle must not claim a plot slot: `output_location` would route
+        # it to Positron's Plots pane as well as the cell, showing it twice.
+        self.assertNotIn("output_location", execute_result["content"])
 
     # Test error handling
     def test_execute_error(self):

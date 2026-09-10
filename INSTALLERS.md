@@ -17,6 +17,29 @@ ggsql ships native installers for Windows, macOS, and Linux. Windows (NSIS / MSI
    - **macOS**: Xcode Command Line Tools, plus [`dylibbundler`](https://github.com/auriamg/macdylibbundler) (`brew install dylibbundler`) for bundling Arrow / DuckDB dynamic libraries
    - **Linux**: `sudo apt-get install libgtk-3-dev libwebkit2gtk-4.0-dev libappindicator3-dev librsvg2-dev patchelf`
 
+3. **Rendering plots** (the default `svg`, `pdf` and `hep` writers, and the
+   optional raster ones):
+
+   - **A GPU is needed for *raster* output, not to see a plot.** `svg`, `pdf`
+     and `hep` need no adapter and no wgpu at all, and they are on by default.
+     The optional `png`, `jpeg`, `tiff` and `webp` writers, and `ggsql view`,
+     render through wgpu and need a Vulkan/Metal/DX12 adapter at run time —
+     hardware or software (Mesa's lavapipe, `mesa-vulkan-drivers`).
+   - **Linux needs fontconfig at *run* time only.** Text layout enumerates
+     fonts through the system fontconfig, but ggsql enables fontique's
+     `fontconfig-dlopen`, so `libfontconfig.so.1` is loaded when it is used
+     rather than linked when it is built: **no `libfontconfig1-dev` /
+     `fontconfig-devel` is required to build**, which is what keeps
+     `cargo install ggsql-cli` working on a bare box. Verified on
+     `debian:bookworm-slim` and in `manylinux_2_28`, neither of which ships the
+     `-dev` package.
+   - **A box with no fontconfig at all still renders, but silently drops every
+     label.** The geometry is drawn and the exit code is 0, so a container
+     built down to nothing produces a plot with no title, no axis labels and no
+     tick labels rather than an error. Install `libfontconfig1` (or
+     `fontconfig`) and at least one font — `fonts-dejavu-core` is enough.
+   - **macOS and Windows need nothing extra**; they use CoreText and DirectWrite.
+
 ### Build Installers Locally
 
 ```bash

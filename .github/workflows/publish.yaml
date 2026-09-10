@@ -40,16 +40,9 @@ jobs:
         run: sudo apt-get install -y unixodbc-dev
 
       - name: Install Rust
-        # 1.86 is the MSRV (see /CLAUDE.md); this is the default toolchain, and
-        # the Jupyter kernel build below runs on it.
-        uses: dtolnay/rust-toolchain@1.86.0
-
-      - name: Install Rust (wasm toolchain)
-        # The wasm build is exempt from the 1.86 MSRV (R doesn't use wasm); some
-        # wasm-only deps need a newer rustc. Installing stable here does not
-        # change the default — plain `cargo` stays on 1.86, and
-        # ggsql-wasm/rust-toolchain.toml selects stable for the wasm build.
-        run: rustup toolchain install stable --profile minimal
+        # Stable. The 1.86 MSRV is checked by its own step in build.yaml
+        # rather than by pinning here; see /CLAUDE.md, "Rust version (MSRV)".
+        uses: dtolnay/rust-toolchain@stable
 
       - name: Caching
         uses: Swatinem/rust-cache@v2
@@ -58,13 +51,12 @@ jobs:
           cache-on-failure: true
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
-      - name: Install wasm-pack
-        # `cargo install` runs at the repo root (pinned to 1.86); `+stable`
-        # builds these tools on the newer toolchain instead.
-        run: cargo +stable install wasm-pack
+      - name: Install wasm-bindgen CLI
+        run: |
+          cargo install -f wasm-bindgen-cli --version "$(awk '/^name = "wasm-bindgen"$/{f=1;next} f&&/^version = /{gsub(/[",]/,"");print $3;exit}' Cargo.lock)"
 
       - name: Install wasm-opt
-        run: cargo +stable install wasm-opt
+        run: cargo install wasm-opt
 
       - name: Setup quarto
         uses: quarto-dev/quarto-actions/setup@v2

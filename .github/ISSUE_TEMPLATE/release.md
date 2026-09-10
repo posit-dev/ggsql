@@ -21,9 +21,10 @@ assignees: ''
       - `version` in `[project]` section in `ggsql-jupyter/pyproject.toml`.
     - ggsql-vscode
       - `version` in `ggsql-vscode/package.json`.
+    - ggsql-wasm needs no edit: `build-wasm.sh` stamps `ggsql-wasm/pkg/package.json` from the crate version.
 - [ ] Update lock files:
     - Run `cargo build`, ensure `Cargo.lock` updates.
-    - Run `(cd ggsql-wasm && ./build-wasm.sh && cd demo && npm install)`, ensure that `ggsql-wasm/demo/package-lock.json` updates.
+    - Run `(cd ggsql-wasm && ./build-wasm.sh && cd demo && npm install)`, ensure that `ggsql-wasm/pkg/package-lock.json` and `ggsql-wasm/demo/package-lock.json` update.
     - Run `(cd ggsql-vscode && npm install)`, ensure that `ggsql-vscode/package-lock.json` updates.
 - [ ] Ensure news bullets are up to date, add a new header for this release.
     - `CHANGELOG.md`
