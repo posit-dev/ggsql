@@ -51,6 +51,13 @@ mod hephaestus;
 #[cfg(feature = "png")]
 pub use hephaestus::{rgba, Color, PngWriter};
 
+// Pure string formatting, no extra dependencies — unlike vegalite/png, has no
+// feature flag of its own. It's still only reachable when `vegalite` is on,
+// though, since this whole module is gated on that in lib.rs (a pre-existing
+// quirk — see the comment there).
+pub mod html;
+pub use html::HtmlWriter;
+
 /// Trait for visualization output writers
 ///
 /// Writers take a Plot and data sources and produce formatted output
