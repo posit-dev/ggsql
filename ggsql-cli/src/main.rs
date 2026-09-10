@@ -7,7 +7,7 @@ Provides commands for executing ggsql queries with various data sources and outp
 use clap::{Parser, Subcommand, ValueEnum};
 use ggsql::reader::{Reader, ResolvedSpec};
 use ggsql::validate::validate;
-use ggsql::writer::{Writer, WriterOptions};
+use ggsql::writer::{HtmlWriter, Writer, WriterOptions};
 use ggsql::{parser, VERSION};
 use std::io::{IsTerminal, Write};
 use std::path::PathBuf;
@@ -72,8 +72,9 @@ pub enum Commands {
         #[arg(long)]
         cache: Option<String>,
 
-        /// Output format: vegalite (JSON), or png (raster image; requires the
-        /// `png` feature and a GPU adapter)
+        /// Output format: vegalite (JSON), html (a plain table; TABULATE
+        /// queries only), or png (raster image; requires the `png` feature
+        /// and a GPU adapter)
         #[arg(short, long, default_value = "vegalite")]
         writer: String,
 
@@ -81,7 +82,7 @@ pub enum Commands {
         /// flag may carry several settings separated by `;` (quote it, as most
         /// shells read `;` themselves): `-D 'width=1600;dpi=150'`. The
         /// png writer takes width, height, units, dpi, and background;
-        /// the vegalite writer takes none.
+        /// the vegalite and html writers take none.
         #[arg(
             short = 'D',
             long = "writer-option",
@@ -112,8 +113,9 @@ pub enum Commands {
         #[arg(long)]
         cache: Option<String>,
 
-        /// Output format: vegalite (JSON), or png (raster image; requires the
-        /// `png` feature and a GPU adapter)
+        /// Output format: vegalite (JSON), html (a plain table; TABULATE
+        /// queries only), or png (raster image; requires the `png` feature
+        /// and a GPU adapter)
         #[arg(short, long, default_value = "vegalite")]
         writer: String,
 
@@ -121,7 +123,7 @@ pub enum Commands {
         /// flag may carry several settings separated by `;` (quote it, as most
         /// shells read `;` themselves): `-D 'width=1600;dpi=150'`. The
         /// png writer takes width, height, units, dpi, and background;
-        /// the vegalite writer takes none.
+        /// the vegalite and html writers take none.
         #[arg(
             short = 'D',
             long = "writer-option",
@@ -377,36 +379,37 @@ fn exec_with_reader<R: Reader + ?Sized>(
 }
 
 fn render_spec(spec: ResolvedSpec, writer: &WriterSpec, output: Option<PathBuf>, verbose: bool) {
-    // Known gap: no writer renders tables yet, so bail out here with a
-    // CLI-specific message rather than letting it flow into Plot-specific
-    // pre-checks below (metadata, layer checks) or a generic writer error.
-    let plot = match spec.as_plot() {
-        Some(plot) => plot,
-        None => {
-            eprintln!("TABULATE queries aren't supported by `exec`/`run` yet.");
-            std::process::exit(1);
+    match &spec {
+        ResolvedSpec::Plot(plot) => {
+            if verbose {
+                let metadata = plot.metadata();
+                eprintln!("\nQuery executed:");
+                eprintln!("  Rows: {}", metadata.rows);
+                eprintln!("  Columns: {}", metadata.columns.join(", "));
+                eprintln!("  Layers: {}", metadata.layer_count);
+            }
+
+            if plot.plot().layers.is_empty() {
+                eprintln!("No visualization specifications found");
+                std::process::exit(1);
+            }
         }
-    };
-
-    if verbose {
-        let metadata = plot.metadata();
-        eprintln!("\nQuery executed:");
-        eprintln!("  Rows: {}", metadata.rows);
-        eprintln!("  Columns: {}", metadata.columns.join(", "));
-        eprintln!("  Layers: {}", metadata.layer_count);
-    }
-
-    if plot.plot().layers.is_empty() {
-        eprintln!("No visualization specifications found");
-        std::process::exit(1);
+        ResolvedSpec::Table(table) => {
+            if verbose {
+                eprintln!("\nQuery executed:");
+                eprintln!("  Rows: {}", table.body().height());
+                eprintln!("  Columns: {}", table.body().width());
+            }
+        }
     }
 
     let render = match writer.name.as_str() {
         "vegalite" => render_vegalite(&spec, &writer.options),
         "png" => render_png(&spec, &writer.options),
+        "html" => render_html(&spec, &writer.options),
         other => {
             eprintln!("Unknown writer '{}'", other);
-            eprintln!("Available writers: png, vegalite");
+            eprintln!("Available writers: html, png, vegalite");
             std::process::exit(1)
         }
     };
@@ -418,7 +421,7 @@ fn render_spec(spec: ResolvedSpec, writer: &WriterSpec, output: Option<PathBuf>,
         (Output::Text(txt), Some(path)) => match std::fs::write(&path, txt) {
             Ok(_) => {
                 if verbose {
-                    eprintln!("\nVega-Lite JSON written to: {}", path.display());
+                    eprintln!("\nOutput written to: {}", path.display());
                 }
             }
             Err(e) => {
@@ -844,9 +847,20 @@ fn render_png(spec: &ResolvedSpec, options: &WriterOptions) -> Output {
     }
 }
 
+fn render_html(spec: &ResolvedSpec, options: &WriterOptions) -> Output {
+    // Configure from --writer-option, then render
+    let html_writer = unwrap_writer(HtmlWriter::from_options(options));
+    match html_writer.render(spec) {
+        Ok(html) => Output::Text(html),
+        Err(e) => {
+            eprintln!("Failed to generate HTML output: {}", e);
+            std::process::exit(1);
+        }
+    }
+}
+
 /// A writer built from its options, or the option error on stderr and a
 /// non-zero exit — an unusable setting is the user's mistake, not a warning.
-#[cfg(any(feature = "vegalite", feature = "png"))]
 fn unwrap_writer<W>(writer: ggsql::Result<W>) -> W {
     writer.unwrap_or_else(|e| {
         eprintln!("{}", e);

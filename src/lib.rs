@@ -48,7 +48,6 @@ pub mod util;
 
 pub mod reader;
 
-#[cfg(feature = "vegalite")]
 pub mod writer;
 
 pub mod execute;
