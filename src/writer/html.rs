@@ -11,6 +11,7 @@
 use std::collections::HashMap;
 
 use crate::array_util::value_to_string;
+use crate::util::escape_html;
 use crate::writer::{Writer, WriterOptions};
 use crate::{DataFrame, GgsqlError, Plot, Result, Table};
 
@@ -68,16 +69,6 @@ impl Writer for HtmlWriter {
 
         Ok(html)
     }
-}
-
-/// Escape HTML special characters. `&` must be replaced first, or the
-/// entities inserted for the others would themselves get escaped.
-fn escape_html(s: &str) -> String {
-    s.replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
-        .replace('"', "&quot;")
-        .replace('\'', "&#x27;")
 }
 
 #[cfg(test)]

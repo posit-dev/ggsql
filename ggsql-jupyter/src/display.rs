@@ -336,6 +336,7 @@ fn format_dataframe(df: DataFrame) -> Value {
 /// Convert DataFrame to HTML table
 fn dataframe_to_html(df: &DataFrame) -> String {
     use ggsql::array_util::value_to_string;
+    use ggsql::util::escape_html;
 
     let mut html = String::from("<table border=\"1\" class=\"dataframe\">\n<thead><tr>");
 
@@ -389,15 +390,6 @@ fn dataframe_to_text(df: &ggsql::DataFrame) -> String {
     s
 }
 
-/// Escape HTML special characters
-fn escape_html(s: &str) -> String {
-    s.replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
-        .replace('"', "&quot;")
-        .replace('\'', "&#x27;")
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -440,14 +432,6 @@ mod tests {
         assert!(
             display.is_some(),
             "DataFrame with columns but 0 rows should return Some"
-        );
-    }
-
-    #[test]
-    fn test_html_escape() {
-        assert_eq!(
-            escape_html("<script>alert('xss')</script>"),
-            "&lt;script&gt;alert(&#x27;xss&#x27;)&lt;/script&gt;"
         );
     }
 

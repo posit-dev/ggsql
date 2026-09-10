@@ -25,6 +25,7 @@ when checking visual correctness.
 
 use clap::Parser;
 use ggsql::reader::{DuckDBReader, Reader};
+use ggsql::util::escape_html;
 use ggsql::validate::validate;
 use ggsql::writer::{PngWriter, VegaLiteWriter, Writer};
 use std::fmt::Write as _;
@@ -426,12 +427,6 @@ fn slug(text: &str) -> String {
         .to_string()
 }
 
-fn escape(text: &str) -> String {
-    text.replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
-}
-
 /// Prepare a Vega-Lite spec for inlining in a `<script>` block.
 ///
 /// The writer pretty-prints, which triples the size of a spec carrying a few
@@ -475,7 +470,7 @@ fn write_report(results: &[SourceResult], args: &Args, out: &Path) -> std::io::R
             html,
             "<a href=\"#{}\">{}{}</a>",
             slug(&result.label),
-            escape(&result.label),
+            escape_html(&result.label),
             marker
         );
     }
@@ -486,8 +481,8 @@ fn write_report(results: &[SourceResult], args: &Args, out: &Path) -> std::io::R
             html,
             "<h2 id=\"{}\" class=\"source\">{}<small>{}</small></h2>",
             slug(&result.label),
-            escape(&result.title),
-            escape(&result.label)
+            escape_html(&result.title),
+            escape_html(&result.label)
         );
         for cell in &result.cells {
             html.push_str(&render_cell(cell, &result.label, &aspect));
@@ -529,22 +524,22 @@ fn render_cell(cell: &CellResult, label: &str, aspect: &str) -> String {
          <span class=\"time\">{} ms</span></header>\n",
         slug(label),
         cell.cell.index,
-        escape(label),
+        escape_html(label),
         cell.cell.line,
         cell.cell.index,
-        escape(&cell.cell.heading),
+        escape_html(&cell.cell.heading),
         cell.millis
     );
 
     let _ = write!(
         html,
         "<div class=\"body\"><pre class=\"query\"><code>{}</code></pre>\n<div class=\"renders\">",
-        escape(&cell.cell.query)
+        escape_html(&cell.cell.query)
     );
 
     match &cell.outcome {
         Outcome::Failed(message) => {
-            let _ = write!(html, "<pre class=\"error\">{}</pre>", escape(message));
+            let _ = write!(html, "<pre class=\"error\">{}</pre>", escape_html(message));
         }
         Outcome::Setup { rows, columns } => {
             let _ = write!(
@@ -567,7 +562,7 @@ fn render_cell(cell: &CellResult, label: &str, aspect: &str) -> String {
                     );
                 }
                 (None, Some(message)) => {
-                    let _ = write!(html, "<pre class=\"error\">{}</pre>", escape(message));
+                    let _ = write!(html, "<pre class=\"error\">{}</pre>", escape_html(message));
                 }
                 (None, None) => html.push_str("<p class=\"note\">no output</p>"),
             }
@@ -592,7 +587,7 @@ fn render_cell(cell: &CellResult, label: &str, aspect: &str) -> String {
                     html,
                     "<figure><figcaption>vega-lite</figcaption>\
                      <pre class=\"error\">{}</pre></figure>",
-                    escape(message)
+                    escape_html(message)
                 );
             }
         }
@@ -603,7 +598,7 @@ fn render_cell(cell: &CellResult, label: &str, aspect: &str) -> String {
     if !cell.warnings.is_empty() {
         html.push_str("<ul class=\"warnings\">");
         for warning in &cell.warnings {
-            let _ = write!(html, "<li>{}</li>", escape(warning));
+            let _ = write!(html, "<li>{}</li>", escape_html(warning));
         }
         html.push_str("</ul>");
     }
