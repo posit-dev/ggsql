@@ -29,7 +29,7 @@
 //! without knowing which writer they picked.
 
 use crate::reader::ResolvedSpec;
-use crate::{DataFrame, GgsqlError, Plot, Result};
+use crate::{DataFrame, GgsqlError, Plot, Result, Table};
 use std::collections::HashMap;
 
 pub mod options;
@@ -58,8 +58,9 @@ pub use hephaestus::{rgba, Color, PngWriter};
 ///
 /// # Associated Types
 ///
-/// * `Output` - The type returned by `write()` and `render()`. Use `Option<String>`
-///   for text output, `Option<Vec<u8>>` for binary, `()` for void writers, etc.
+/// * `Output` - The type returned by `write_plot()`, `write_table()` and
+///   `render()`. Use `Option<String>` for text output, `Option<Vec<u8>>` for
+///   binary, `()` for void writers, etc.
 pub trait Writer {
     /// The output type produced by this writer.
     type Output;
@@ -98,7 +99,7 @@ pub trait Writer {
     /// - The spec is incompatible with this writer
     /// - The data doesn't match the spec's requirements
     /// - Output generation fails
-    fn write(&self, spec: &Plot, data: &HashMap<String, DataFrame>) -> Result<Self::Output>;
+    fn write_plot(&self, spec: &Plot, data: &HashMap<String, DataFrame>) -> Result<Self::Output>;
 
     /// Validate that a spec is compatible with this writer
     ///
@@ -112,15 +113,39 @@ pub trait Writer {
     /// # Returns
     ///
     /// Ok(()) if the spec is compatible, otherwise an error
-    fn validate(&self, spec: &Plot) -> Result<()>;
+    fn validate_plot(&self, spec: &Plot) -> Result<()>;
+
+    /// Generate output from a resolved table specification and its body data
+    ///
+    /// The table-side counterpart to `write_plot()`. Defaults to rejecting
+    /// every table, so a writer that only supports Plot output (every writer,
+    /// as of this writing) needs no changes; a writer that does support
+    /// tables overrides this instead.
+    ///
+    /// # Arguments
+    ///
+    /// * `table` - The parsed TABULATE specification
+    /// * `body` - The resolved data (see the PROVISIONAL note on
+    ///   `ResolvedTable.body` — this parameter's type may change)
+    ///
+    /// # Errors
+    ///
+    /// Returns `GgsqlError::WriterError` if this writer doesn't support
+    /// tables, or output generation fails.
+    fn write_table(&self, table: &Table, body: &DataFrame) -> Result<Self::Output> {
+        let _ = (table, body);
+        Err(GgsqlError::WriterError(
+            "this writer does not support tables".to_string(),
+        ))
+    }
 
     /// Render a ResolvedSpec (a resolved plot or table) to output format
     ///
     /// This is the main entry point for generating visualization output.
-    /// Writers that don't support tables yet (all of them, as of this
-    /// writing) return a `WriterError` for `ResolvedSpec::Table` rather than
-    /// rejecting it at the type level — see the `ResolvedSpec::Table` arm
-    /// below.
+    /// Dispatches to `write_plot()` for a `ResolvedSpec::Plot`, or
+    /// `write_table()` for a `ResolvedSpec::Table` — whether a writer
+    /// supports tables is entirely down to whether it overrides
+    /// `write_table()`.
     ///
     /// # Arguments
     ///
@@ -144,10 +169,8 @@ pub trait Writer {
     /// ```
     fn render(&self, spec: &ResolvedSpec) -> Result<Self::Output> {
         match spec {
-            ResolvedSpec::Plot(plot) => self.write(plot.plot(), plot.data()),
-            ResolvedSpec::Table(_) => Err(GgsqlError::WriterError(
-                "this writer does not support tables yet".to_string(),
-            )),
+            ResolvedSpec::Plot(plot) => self.write_plot(plot.plot(), plot.data()),
+            ResolvedSpec::Table(table) => self.write_table(table.table(), table.body()),
         }
     }
 }

@@ -3182,7 +3182,7 @@ mod tests {
 
         // Generate Vega-Lite JSON
         let writer = VegaLiteWriter::new();
-        let json_str = writer.write(spec, &prepared.data).unwrap();
+        let json_str = writer.write_plot(spec, &prepared.data).unwrap();
         let vl_spec: serde_json::Value = serde_json::from_str(&json_str).unwrap();
 
         // Text renderer should create nested layers structure
@@ -3292,7 +3292,7 @@ mod tests {
 
         // Generate Vega-Lite JSON
         let writer = VegaLiteWriter::new();
-        let json_str = writer.write(spec, &prepared.data).unwrap();
+        let json_str = writer.write_plot(spec, &prepared.data).unwrap();
         let vl_spec: serde_json::Value = serde_json::from_str(&json_str).unwrap();
 
         // Text renderer creates nested layers structure
@@ -3363,7 +3363,7 @@ mod tests {
 
         // Generate Vega-Lite JSON
         let writer = VegaLiteWriter::new();
-        let json_str = writer.write(spec, &prepared.data).unwrap();
+        let json_str = writer.write_plot(spec, &prepared.data).unwrap();
         let vl_spec: serde_json::Value = serde_json::from_str(&json_str).unwrap();
 
         // Check that data has formatted labels
@@ -3410,7 +3410,7 @@ mod tests {
         let spec = &prepared.specs[0];
 
         let writer = VegaLiteWriter::new();
-        let json_str = writer.write(spec, &prepared.data).unwrap();
+        let json_str = writer.write_plot(spec, &prepared.data).unwrap();
         let vl_spec: serde_json::Value = serde_json::from_str(&json_str).unwrap();
 
         let data_values = vl_spec["data"]["values"].as_array().unwrap();
@@ -3459,7 +3459,7 @@ mod tests {
         let spec = &prepared.specs[0];
 
         let writer = VegaLiteWriter::new();
-        let json_str = writer.write(spec, &prepared.data).unwrap();
+        let json_str = writer.write_plot(spec, &prepared.data).unwrap();
         let vl_spec: serde_json::Value = serde_json::from_str(&json_str).unwrap();
 
         let data_values = vl_spec["data"]["values"].as_array().unwrap();
@@ -3534,7 +3534,7 @@ mod tests {
 
         // Generate Vega-Lite JSON
         let writer = VegaLiteWriter::new();
-        let json_str = writer.write(spec, &prepared.data).unwrap();
+        let json_str = writer.write_plot(spec, &prepared.data).unwrap();
         let vl_spec: serde_json::Value = serde_json::from_str(&json_str).unwrap();
 
         // Text renderer creates nested layers structure
@@ -3584,7 +3584,7 @@ mod tests {
         let spec = &prepared.specs[0];
 
         let writer = VegaLiteWriter::new();
-        let json_str = writer.write(spec, &prepared.data).unwrap();
+        let json_str = writer.write_plot(spec, &prepared.data).unwrap();
         let vl_spec: serde_json::Value = serde_json::from_str(&json_str).unwrap();
 
         let top_layers = vl_spec["layer"].as_array().unwrap();
@@ -3622,7 +3622,7 @@ mod tests {
         let spec = &prepared.specs[0];
 
         let writer = VegaLiteWriter::new();
-        let json_str = writer.write(spec, &prepared.data).unwrap();
+        let json_str = writer.write_plot(spec, &prepared.data).unwrap();
         let vl_spec: serde_json::Value = serde_json::from_str(&json_str).unwrap();
 
         let top_layers = vl_spec["layer"].as_array().unwrap();
@@ -3656,7 +3656,7 @@ mod tests {
         let spec = &prepared.specs[0];
 
         let writer = VegaLiteWriter::new();
-        let json_str = writer.write(spec, &prepared.data).unwrap();
+        let json_str = writer.write_plot(spec, &prepared.data).unwrap();
         let vl_spec: serde_json::Value = serde_json::from_str(&json_str).unwrap();
 
         let top_layers = vl_spec["layer"].as_array().unwrap();
@@ -3678,7 +3678,7 @@ mod tests {
         let prepared = execute::prepare_data_with_reader(query, &reader).unwrap();
         let spec = &prepared.specs[0];
 
-        let json_str = writer.write(spec, &prepared.data).unwrap();
+        let json_str = writer.write_plot(spec, &prepared.data).unwrap();
         let vl_spec: serde_json::Value = serde_json::from_str(&json_str).unwrap();
 
         let top_layers = vl_spec["layer"].as_array().unwrap();
@@ -3700,7 +3700,7 @@ mod tests {
         let prepared = execute::prepare_data_with_reader(query, &reader).unwrap();
         let spec = &prepared.specs[0];
 
-        let json_str = writer.write(spec, &prepared.data).unwrap();
+        let json_str = writer.write_plot(spec, &prepared.data).unwrap();
         let vl_spec: serde_json::Value = serde_json::from_str(&json_str).unwrap();
 
         let top_layers = vl_spec["layer"].as_array().unwrap();
@@ -3722,7 +3722,7 @@ mod tests {
         let prepared = execute::prepare_data_with_reader(query, &reader).unwrap();
         let spec = &prepared.specs[0];
 
-        let json_str = writer.write(spec, &prepared.data).unwrap();
+        let json_str = writer.write_plot(spec, &prepared.data).unwrap();
         let vl_spec: serde_json::Value = serde_json::from_str(&json_str).unwrap();
 
         let top_layers = vl_spec["layer"].as_array().unwrap();

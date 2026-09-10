@@ -161,7 +161,7 @@ impl Writer for PngWriter {
         Ok(writer)
     }
 
-    fn validate(&self, spec: &Plot) -> Result<()> {
+    fn validate_plot(&self, spec: &Plot) -> Result<()> {
         if spec.layers.is_empty() {
             return Err(GgsqlError::WriterError(
                 "png writer requires at least one layer".into(),
@@ -178,8 +178,8 @@ impl Writer for PngWriter {
         Ok(())
     }
 
-    fn write(&self, spec: &Plot, data: &HashMap<String, DataFrame>) -> Result<Self::Output> {
-        self.validate(spec)?;
+    fn write_plot(&self, spec: &Plot, data: &HashMap<String, DataFrame>) -> Result<Self::Output> {
+        self.validate_plot(spec)?;
 
         // FACET → a grid of named panels (a single panel when unfaceted). Each
         // panel becomes one hephaestus `Plot` sharing the composition's scales.
@@ -637,7 +637,8 @@ mod tests {
     fn strips(query: &str) -> Vec<(Option<String>, Option<String>)> {
         let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
         let spec = reader.execute(query).unwrap();
-        let (_, panels) = facet::build_panels(spec.plot(), spec.data()).unwrap();
+        let plot = spec.as_plot().unwrap();
+        let (_, panels) = facet::build_panels(plot.plot(), plot.data()).unwrap();
         panels
             .iter()
             .map(|p| (p.strip_top.clone(), p.strip_right.clone()))
@@ -648,7 +649,7 @@ mod tests {
     fn axis_titles(query: &str) -> Vec<(AxisSide, String)> {
         let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
         let spec = reader.execute(query).unwrap();
-        projection::composition_axis_titles(spec.plot())
+        projection::composition_axis_titles(spec.as_plot().unwrap().plot())
     }
 
     /// Just the top strip labels, in panel order.
@@ -1765,7 +1766,7 @@ mod tests {
             .unwrap();
         let writer = PngWriter::new(320, 240, 96.0);
         assert!(matches!(
-            writer.validate(spec.plot()),
+            writer.validate_plot(spec.as_plot().unwrap().plot()),
             Err(GgsqlError::WriterError(_))
         ));
     }

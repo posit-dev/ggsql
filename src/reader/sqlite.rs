@@ -1663,7 +1663,7 @@ mod spatialite_tests {
         assert_eq!(df.height(), 3);
 
         let writer = crate::writer::vegalite::VegaLiteWriter::new();
-        let json_str = writer.write(&plot.plot, &plot.data).unwrap();
+        let json_str = writer.write_plot(&plot.plot, &plot.data).unwrap();
         let vl_spec: serde_json::Value = serde_json::from_str(&json_str).unwrap();
 
         let data = vl_spec["data"]["values"].as_array().unwrap();
