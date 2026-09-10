@@ -223,43 +223,23 @@ pub fn build_ast(source: &SourceTree) -> Result<Vec<Spec>> {
     let mut stmt_nodes: Vec<Node> = viz_nodes.into_iter().chain(tab_nodes).collect();
     stmt_nodes.sort_by_key(|n| n.start_byte());
 
-    // TODO: the "FROM after a trailing SELECT" check below is duplicated
-    // (with a different keyword) across the two arms. Both now check the same
-    // `.source.is_some()` shape, so the message-building (only difference
-    // left) could be factored into a shared `fn(has_from, last_is_select,
-    // keyword)` helper.
     let mut specs = Vec::new();
     for stmt_node in stmt_nodes {
-        match stmt_node.kind() {
+        // Build the spec, then check the shared "FROM after a trailing
+        // SELECT" restriction once for whichever kind it is — VISUALISE FROM
+        // and TABULATE FROM both forbid it, differing only in keyword.
+        let (has_from, keyword, spec) = match stmt_node.kind() {
             "visualise_statement" => {
-                let spec = build_visualise_statement(&stmt_node, source)?;
-
-                // Validate VISUALISE FROM usage
-                if spec.source.is_some() && last_is_select {
-                    return Err(GgsqlError::ParseError(
-                        "Cannot use VISUALISE FROM when the last SQL statement is SELECT. \
-                         Use either 'SELECT ... VISUALISE' or remove the SELECT and use \
-                         'VISUALISE FROM ...'."
-                            .to_string(),
-                    ));
-                }
-
-                specs.push(Spec::Plot(Box::new(spec)));
+                let plot = build_visualise_statement(&stmt_node, source)?;
+                (
+                    plot.source.is_some(),
+                    "VISUALISE",
+                    Spec::Plot(Box::new(plot)),
+                )
             }
             "tabulate_statement" => {
                 let table = build_tabulate_statement(&stmt_node, source);
-
-                // Validate TABULATE FROM usage, mirroring VISUALISE FROM above.
-                if table.source.is_some() && last_is_select {
-                    return Err(GgsqlError::ParseError(
-                        "Cannot use TABULATE FROM when the last SQL statement is SELECT. \
-                         Use either 'SELECT ... TABULATE' or remove the SELECT and use \
-                         'TABULATE FROM ...'."
-                            .to_string(),
-                    ));
-                }
-
-                specs.push(Spec::Table(table));
+                (table.source.is_some(), "TABULATE", Spec::Table(table))
             }
             other => {
                 return Err(GgsqlError::InternalError(format!(
@@ -267,7 +247,17 @@ pub fn build_ast(source: &SourceTree) -> Result<Vec<Spec>> {
                     other
                 )));
             }
+        };
+
+        if has_from && last_is_select {
+            return Err(GgsqlError::ParseError(format!(
+                "Cannot use {keyword} FROM when the last SQL statement is SELECT. \
+                 Use either 'SELECT ... {keyword}' or remove the SELECT and use \
+                 '{keyword} FROM ...'."
+            )));
         }
+
+        specs.push(spec);
     }
 
     if specs.is_empty() {
