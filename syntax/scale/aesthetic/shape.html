@@ -780,7 +780,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <h2 class="anchored" data-anchor-id="palettes">Palettes</h2>
 <p>ggsql provides three built-in shape palettes, which is often all you need.</p>
 <p>Palettes are used by giving them as names in the <code>TO</code> clause:</p>
-<div id="4e3da356" class="cell" data-execution_count="1">
+<div id="93d6b650" class="cell" data-execution_count="1">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb2"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> <span class="kw">FROM</span> ggsql:penguins</span>
 <span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">point</span></span>
 <span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>  <span class="kw">MAPPING</span> bill_dep AS <span class="at">x</span>, body_mass AS <span class="at">y</span>, species AS <span class="at">shape</span></span>
@@ -795,7 +795,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </div>
 </div>
 <p>Instead of using a named palette you can create one on the fly using an array of shape names:</p>
-<div id="ab77aa25" class="cell" data-execution_count="2">
+<div id="d62166bd" class="cell" data-execution_count="2">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb3"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> <span class="kw">FROM</span> ggsql:penguins</span>
 <span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">point</span></span>
 <span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>  <span class="kw">MAPPING</span> bill_dep AS <span class="at">x</span>, body_mass AS <span class="at">y</span>, species AS <span class="at">shape</span></span>

@@ -719,13 +719,13 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="examples" class="level2">
 <h2 class="anchored" data-anchor-id="examples">Examples</h2>
 <p>Note that depending on your reader, you may need to activate modules for spatial analysis.</p>
-<div id="6f3c055c" class="cell" data-execution_count="1">
+<div id="745c974e" class="cell" data-execution_count="1">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb1"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="co">-- For example, for DuckDB, one could use:</span></span>
 <span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>INSTALL spatial;</span>
 <span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>LOAD spatial;</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 </div>
 <p>A basic map of the world using built-in data. Note that the geometry column is automatically detected.</p>
-<div id="35b05d53" class="cell" data-execution_count="2">
+<div id="6ec10a0e" class="cell" data-execution_count="2">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb2"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> <span class="kw">FROM</span> ggsql:world</span>
 <span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">spatial</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="2">
@@ -737,7 +737,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </div>
 </div>
 <p>If the geometry column isn’t automatically detected —for example because it has a non-standard name— you may need to declare the mapping explicitly.</p>
-<div id="81519b43" class="cell" data-execution_count="3">
+<div id="cc362360" class="cell" data-execution_count="3">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb3"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="kw">SELECT</span> geom <span class="kw">AS</span> foo <span class="kw">FROM</span> ggsql:world</span>
 <span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span></span>
 <span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">spatial</span> </span>
@@ -751,7 +751,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </div>
 </div>
 <p>Filtering on other columns.</p>
-<div id="bef035d0" class="cell" data-execution_count="4">
+<div id="aadee3fe" class="cell" data-execution_count="4">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb4"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> <span class="kw">FROM</span> ggsql:world</span>
 <span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">spatial</span> </span>
 <span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>  <span class="kw">FILTER</span> continent <span class="op">==</span> <span class="st">'Asia'</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
@@ -764,7 +764,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </div>
 </div>
 <p>Filtering based on spatial operations.</p>
-<div id="62e3245e" class="cell" data-execution_count="5">
+<div id="1e213d09" class="cell" data-execution_count="5">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb5"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> <span class="kw">FROM</span> ggsql:world</span>
 <span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">spatial</span> </span>
 <span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>  <span class="kw">FILTER</span> ST_Intersects(ST_GeomFromWKB(geom), ST_MakeEnvelope(<span class="dv">-20.0</span>, <span class="dv">-35.0</span>, <span class="dv">55.0</span>, <span class="dv">38.0</span>))</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
@@ -777,7 +777,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </div>
 </div>
 <p>Make a choropleth map by mapping a variable to a fill aesthetic.</p>
-<div id="8febafc7" class="cell" data-execution_count="6">
+<div id="ba79cc55" class="cell" data-execution_count="6">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb6"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> <span class="kw">FROM</span> ggsql:world</span>
 <span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">spatial</span> </span>
 <span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>  <span class="kw">MAPPING</span> population AS <span class="at">fill</span></span>

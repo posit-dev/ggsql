@@ -318,7 +318,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <p>Line charts are ideal for showing trends over time. The <code>SCALE x VIA date</code> clause ensures proper date formatting on the axis.</p>
 <section id="code" class="level2">
 <h2 class="anchored" data-anchor-id="code">Code</h2>
-<div id="286f9f97" class="cell" data-execution_count="1">
+<div id="dcfc5cb5" class="cell" data-execution_count="1">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb1"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="kw">SELECT</span> Date, <span class="kw">Temp</span> <span class="kw">FROM</span> ggsql:airquality</span>
 <span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> Date <span class="kw">AS</span> <span class="at">x</span>, Temp <span class="kw">AS</span> <span class="at">y</span></span>
 <span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">line</span></span>
@@ -351,7 +351,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="multiple-lines-by-category" class="level3">
 <h3 class="anchored" data-anchor-id="multiple-lines-by-category">Multiple lines by category</h3>
 <p>Here we show the temperature by day instead, and split the lines by month. Since month is encoded as an integer it doesn’t automatically split the lines, and we have to use an explicit ordinal scale for it (see what happens if you remove that).</p>
-<div id="7ffb4fba" class="cell" data-execution_count="2">
+<div id="8b668617" class="cell" data-execution_count="2">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb2"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="kw">SELECT</span> Day, <span class="kw">Temp</span>, Month <span class="kw">FROM</span> ggsql:airquality</span>
 <span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> Day <span class="kw">AS</span> <span class="at">x</span>, Temp <span class="kw">AS</span> <span class="at">y</span>, Month <span class="kw">AS</span> <span class="at">color</span></span>
 <span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">line</span></span>

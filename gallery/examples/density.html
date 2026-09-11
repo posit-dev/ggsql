@@ -323,7 +323,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="code" class="level2">
 <h2 class="anchored" data-anchor-id="code">Code</h2>
 <p>The x-axis gives the value of the numerical variable, whereas the y-axis gives the estimated probability density.</p>
-<div id="be593ce5" class="cell" data-execution_count="1">
+<div id="10755c2d" class="cell" data-execution_count="1">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb1"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> bill_len <span class="kw">AS</span> <span class="at">x</span>, species <span class="kw">AS</span> <span class="at">colour</span> <span class="kw">FROM</span> ggsql:penguins</span>
 <span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>  <span class="kw">DRAW</span> <span class="dt">density</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="1">
@@ -349,7 +349,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="group-contributions" class="level3">
 <h3 class="anchored" data-anchor-id="group-contributions">Group contributions</h3>
 <p>Using the density gives all groups equal area that integrates to 1. This masks differences between the sizes of groups. Instead of using density, one can use the <code>intensity</code> that also encompasses differences in group size.</p>
-<div id="5ebf0523" class="cell" data-execution_count="2">
+<div id="c7eeadf5" class="cell" data-execution_count="2">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb2"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> bill_len <span class="kw">AS</span> <span class="at">x</span>, species <span class="kw">AS</span> <span class="at">colour</span> <span class="kw">FROM</span> ggsql:penguins</span>
 <span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>  <span class="kw">DRAW</span> <span class="dt">density</span> <span class="kw">REMAPPING</span> <span class="at">intensity</span> AS <span class="at">y</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="2">
@@ -364,7 +364,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="stacking" class="level3">
 <h3 class="anchored" data-anchor-id="stacking">Stacking</h3>
 <p>Instead of having independent groups, the density can also be stacked. Note that stacking alone does not account for relative contributions per group. For that reason, you may want to show the intensity instead.</p>
-<div id="dcfe29ce" class="cell" data-execution_count="3">
+<div id="5b8f2ee3" class="cell" data-execution_count="3">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb3"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> bill_len <span class="kw">AS</span> <span class="at">x</span>, species <span class="kw">AS</span> <span class="at">colour</span> <span class="kw">FROM</span> ggsql:penguins</span>
 <span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>  <span class="kw">DRAW</span> <span class="dt">density</span> </span>
 <span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>    <span class="kw">REMAPPING</span> <span class="at">intensity</span> AS <span class="at">y</span></span>
@@ -382,7 +382,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <h3 class="anchored" data-anchor-id="annotation">Annotation</h3>
 <p>You can use the <a href="../../syntax/layer/type/rule.html">rule</a> layer to display precomputed summaries, like the mean.</p>
 <!-- TODO: This should be updated once we have aggregates working -->
-<div id="7ca287b6" class="cell" data-execution_count="4">
+<div id="50b1ed13" class="cell" data-execution_count="4">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb4"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="kw">WITH</span> mean_data <span class="kw">AS</span> (</span>
 <span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>  <span class="kw">SELECT</span> </span>
 <span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>    <span class="fu">AVG</span>(bill_len) <span class="kw">AS</span> bill_len, </span>
@@ -405,7 +405,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="faceting" class="level3">
 <h3 class="anchored" data-anchor-id="faceting">Faceting</h3>
 <p>Another way of comparing groups is by using facets to separate the groups into different panels.</p>
-<div id="1713da1e" class="cell" data-execution_count="5">
+<div id="f003d5d2" class="cell" data-execution_count="5">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb5"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> bill_len <span class="kw">AS</span> <span class="at">x</span>, species <span class="kw">AS</span> <span class="at">colour</span> <span class="kw">FROM</span> ggsql:penguins</span>
 <span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>  <span class="kw">DRAW</span> <span class="dt">density</span></span>
 <span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>  <span class="kw">FACET</span> species <span class="kw">SETTING</span> <span class="at">ncol</span> <span class="op">=&gt;</span> <span class="dv">1</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
@@ -421,7 +421,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="relation-to-violin-plots" class="level3">
 <h3 class="anchored" data-anchor-id="relation-to-violin-plots">Relation to violin plots</h3>
 <p>Conceptually, violin plots also display densities. The similarity becomes clearer if you make a ridgeline plot by displaying the violin density on a single side. The plot below is essentially showing the same thing as the plot above, but gathered in a single panel.</p>
-<div id="6721a8a6" class="cell" data-execution_count="6">
+<div id="d10504d4" class="cell" data-execution_count="6">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb6"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> bill_len <span class="kw">AS</span> <span class="at">x</span>, species <span class="kw">AS</span> <span class="at">y</span>, species <span class="kw">AS</span> <span class="at">colour</span> <span class="kw">FROM</span> ggsql:penguins</span>
 <span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>  <span class="kw">DRAW</span> <span class="dt">violin</span> <span class="kw">SETTING</span> side <span class="op">=&gt;</span> <span class="st">'top'</span>, <span class="at">width</span> <span class="op">=&gt;</span> <span class="dv">2</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="6">
