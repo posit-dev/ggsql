@@ -4,7 +4,7 @@
 //! any SQL. Use this for IDE integration, syntax checking, and query inspection.
 
 use crate::parser;
-use crate::{Plot, Result, Spec};
+use crate::{Plot, Result, Spec, Table};
 
 // ============================================================================
 // Core Types
@@ -187,14 +187,9 @@ pub fn validate(query: &str) -> Result<Validated> {
         });
     }
 
-    // Build AST from existing tree for validation. Table specs are silently
-    // dropped here: there is no table-validation path yet, so a TABULATE-only
-    // query ends up with an empty `plots`, skips the `if let Some(plot) =
-    // plots.first()` block below entirely, and is reported `valid: true`
-    // without anything having actually been validated. Known gap, not a
-    // deliberate choice.
-    let plots: Vec<Plot> = match parser::build_ast(&source_tree) {
-        Ok(specs) => specs.into_iter().filter_map(Spec::into_plot).collect(),
+    // Build AST from existing tree for validation.
+    let specs: Vec<Spec> = match parser::build_ast(&source_tree) {
+        Ok(specs) => specs,
         Err(e) => {
             errors.push(ValidationError {
                 message: e.to_string(),
@@ -211,6 +206,8 @@ pub fn validate(query: &str) -> Result<Validated> {
             });
         }
     };
+    let plots: Vec<&Plot> = specs.iter().filter_map(Spec::as_plot).collect();
+    let tables: Vec<&Table> = specs.iter().filter_map(Spec::as_table).collect();
 
     // Validate the single plot (we only support one VISUALISE statement)
     if let Some(plot) = plots.first() {
@@ -271,6 +268,20 @@ pub fn validate(query: &str) -> Result<Validated> {
         }
     }
 
+    // Validate the single table (we only support one TABULATE statement).
+    // `Table` has only `source` today, and `sql_part` already reflects it:
+    // `extract_sql` synthesizes "SELECT * FROM <source>" for a `TABULATE
+    // FROM`, so `sql_part` is only empty when there is neither a `FROM` nor
+    // preceding SQL — the same condition `resolve_table_with_reader` rejects
+    // at execution time, caught here before any SQL runs.
+    if !tables.is_empty() && sql_part.trim().is_empty() {
+        errors.push(ValidationError {
+            message: "TABULATE has no data source: add a FROM, or a SQL query before it"
+                .to_string(),
+            location: None,
+        });
+    }
+
     Ok(Validated {
         sql: sql_part,
         visual: viz_part,
@@ -308,22 +319,28 @@ mod tests {
     }
 
     #[test]
-    fn test_validate_tabulate_only_is_known_gap() {
-        // Documents the known gap in src/validate.rs: a TABULATE-only query
-        // is recognized as having a Spec (has_spec() is true), and sql()
-        // correctly reflects the FROM source (extract_sql injects
-        // "SELECT * FROM <source>" for TABULATE FROM the same way it does
-        // for VISUALISE FROM) — but nothing about the Table itself is
-        // actually validated, so it's reported valid with no errors
-        // regardless of what the Table contains. Update this test (and the
-        // "Known gap" comment above the `plots: Vec<Plot>` filter) once table
-        // validation exists.
+    fn test_validate_tabulate_from_is_valid() {
+        // A TABULATE FROM has a data source (extract_sql injects
+        // "SELECT * FROM <source>" the same way it does for VISUALISE FROM),
+        // so it's recognized as having a Spec and reported valid.
         let validated = validate("TABULATE FROM sales").unwrap();
         assert!(validated.has_spec());
         assert_eq!(validated.sql(), "SELECT * FROM sales");
         assert!(validated.visual().starts_with("TABULATE"));
         assert!(validated.valid());
         assert!(validated.errors().is_empty());
+    }
+
+    #[test]
+    fn test_validate_bare_tabulate_has_no_data_source() {
+        // A bare TABULATE, with neither a FROM nor a preceding SQL query, has
+        // no data source — caught here before any SQL runs, mirroring
+        // `resolve_table_with_reader`'s execution-time rejection of the same
+        // query.
+        let validated = validate("TABULATE").unwrap();
+        assert!(validated.has_spec());
+        assert!(!validated.valid());
+        assert!(validated.errors()[0].message.contains("no data source"));
     }
 
     #[test]
