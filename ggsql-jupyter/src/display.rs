@@ -10,7 +10,7 @@ use anyhow::Result;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine;
 use clap::ValueEnum;
-use ggsql::reader::Spec;
+use ggsql::reader::ResolvedPlot;
 use ggsql::DataFrame;
 use serde_json::{json, Value};
 
@@ -128,34 +128,31 @@ impl RenderHints {
     }
 }
 
-/// Format execution result as Jupyter display_data content
-///
-/// Returns `Some(Value)` for results that should be displayed, or `None` for
-/// empty results (e.g., DDL statements like CREATE TABLE that have no columns).
-///
-/// Note: A SELECT that returns 0 rows but has columns will still display
-/// an empty table with headers. Only truly empty DataFrames (0 columns)
-/// from DDL statements return `None`.
-///
-/// The returned JSON matches the Jupyter display_data message format:
-/// ```json
-/// {
-///   "data": { "mime/type": content, ... },
-///   "metadata": { ... },
-///   "transient": { ... }
-/// }
-/// ```
 /// What the kernel should do with a formatted result.
 pub enum Formatted {
     /// Emit this as the cell's `execute_result`.
+    ///
+    /// The JSON matches the Jupyter display_data message format:
+    /// ```json
+    /// {
+    ///   "data": { "mime/type": content, ... },
+    ///   "metadata": { ... },
+    ///   "transient": { ... }
+    /// }
+    /// ```
     Bundle(Value),
     /// Open a `positron.plot` comm for this plot and emit **no**
     /// `execute_result` — the comm alone creates the pane entry.
-    PlotComm(Box<Spec>),
+    PlotComm(Box<ResolvedPlot>),
     /// Nothing to show, as for a DDL statement.
     Nothing,
 }
 
+/// Format an execution result as a Jupyter display_data bundle, or route it
+/// to a plot comm instead.
+///
+/// A DataFrame with 0 columns (a DDL statement's result) produces `Nothing`;
+/// one with 0 rows but real columns still produces a `Bundle` with headers.
 pub fn format_display_data(
     result: ExecutionResult,
     hints: &RenderHints,
@@ -172,6 +169,7 @@ pub fn format_display_data(
                 }
             }
         }
+        ExecutionResult::Table { html } => Ok(Formatted::Bundle(format_table(html))),
         ExecutionResult::DataFrame(df) => {
             // DDL statements return DataFrames with 0 columns - don't display anything
             if df.width() == 0 {
@@ -184,6 +182,20 @@ pub fn format_display_data(
             Ok(Formatted::Bundle(format_connection_changed(&display_name)))
         }
     }
+}
+
+/// Format a TABULATE result (already rendered to HTML by `HtmlWriter`) as
+/// display_data. No `RenderHints` involved — a plain `<table>` needs no
+/// container sizing or Positron-specific wrapping.
+fn format_table(html: String) -> Value {
+    json!({
+        "data": {
+            "text/html": html,
+            "text/plain": "ggsql table".to_string()
+        },
+        "metadata": {},
+        "transient": {}
+    })
 }
 
 /// Format a connection-changed message
@@ -205,7 +217,11 @@ fn format_connection_changed(display_name: &str) -> Value {
 ///
 /// `metadata[mime].width/height` is the CSS-pixel size to display at, honoured
 /// by JupyterLab and nbconvert; without it a 2x render appears twice as large.
-fn format_static(spec: Box<Spec>, request: RenderRequest, backend: &PlotBackend) -> Result<Value> {
+fn format_static(
+    spec: Box<ResolvedPlot>,
+    request: RenderRequest,
+    backend: &PlotBackend,
+) -> Result<Value> {
     let metadata = spec.metadata();
     let summary = format!(
         "<ggsql plot: {} layer{}, {} row{}>",
@@ -256,6 +272,7 @@ fn format_dataframe(df: DataFrame) -> Value {
 /// Convert DataFrame to HTML table
 fn dataframe_to_html(df: &DataFrame) -> String {
     use ggsql::array_util::value_to_string;
+    use ggsql::util::escape_html;
 
     let mut html = String::from("<table border=\"1\" class=\"dataframe\">\n<thead><tr>");
 
@@ -309,26 +326,19 @@ fn dataframe_to_text(df: &ggsql::DataFrame) -> String {
     s
 }
 
-/// Escape HTML special characters
-fn escape_html(s: &str) -> String {
-    s.replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
-        .replace('"', "&quot;")
-        .replace('\'', "&#x27;")
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     /// A resolved plot, from a real query — the display layer renders it now,
     /// so a hand-written Vega-Lite string is no longer a stand-in for one.
-    fn a_spec() -> Spec {
+    fn a_spec() -> ResolvedPlot {
         use ggsql::reader::{DuckDBReader, Reader};
         DuckDBReader::from_connection_string("duckdb://memory")
             .unwrap()
             .execute("SELECT 1 AS x, 2 AS y VISUALISE x, y DRAW point")
+            .unwrap()
+            .into_plot()
             .unwrap()
     }
 
@@ -452,6 +462,20 @@ mod tests {
     }
 
     #[test]
+    fn test_table_format() {
+        let html = "<table><tr><td>1</td></tr></table>".to_string();
+        let result = ExecutionResult::Table { html: html.clone() };
+        let formatted = format_display_data(result, &RenderHints::default(), &backend())
+            .expect("rendering should succeed");
+
+        let Formatted::Bundle(display) = formatted else {
+            panic!("expected a bundle");
+        };
+        assert_eq!(display["data"]["text/html"], html);
+        assert!(display["data"]["text/plain"].is_string());
+    }
+
+    #[test]
     fn test_empty_dataframe_returns_none() {
         // DDL statements return DataFrames with 0 columns
         let df = DataFrame::empty();
@@ -478,14 +502,6 @@ mod tests {
         assert!(
             matches!(display, Formatted::Bundle(_)),
             "DataFrame with columns but 0 rows should produce a bundle"
-        );
-    }
-
-    #[test]
-    fn test_html_escape() {
-        assert_eq!(
-            escape_html("<script>alert('xss')</script>"),
-            "&lt;script&gt;alert(&#x27;xss&#x27;)&lt;/script&gt;"
         );
     }
 

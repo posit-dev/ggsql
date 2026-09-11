@@ -8,7 +8,7 @@ use crate::plot::layer::geom::Geom;
 use crate::plot::projection::resolve_coord;
 use crate::plot::scale::{color_to_hex, is_color_aesthetic, is_user_facet_aesthetic, Transform};
 use crate::plot::*;
-use crate::{GgsqlError, Result};
+use crate::{GgsqlError, Result, Spec, Table};
 use std::collections::HashMap;
 use tree_sitter::Node;
 
@@ -194,7 +194,7 @@ fn parse_literal_value(node: &Node, source: &SourceTree) -> Result<AestheticValu
 // ============================================================================
 
 /// Build a Plot struct from a tree-sitter parse tree
-pub fn build_ast(source: &SourceTree) -> Result<Vec<Plot>> {
+pub fn build_ast(source: &SourceTree) -> Result<Vec<Spec>> {
     let root = source.root();
 
     // Check if root is a query node
@@ -216,22 +216,45 @@ pub fn build_ast(source: &SourceTree) -> Result<Vec<Plot>> {
         false
     };
 
-    // Find all visualise_statement nodes
-    let query = "(visualise_statement) @viz";
-    let viz_nodes = source.find_nodes(&root, query);
+    // Find all visualise_statement and tabulate_statement nodes, in source
+    // order (they can be interleaved, e.g. `VISUALISE ... TABULATE ...`).
+    let viz_nodes = source.find_nodes(&root, "(visualise_statement) @viz");
+    let tab_nodes = source.find_nodes(&root, "(tabulate_statement) @tab");
+    let mut stmt_nodes: Vec<Node> = viz_nodes.into_iter().chain(tab_nodes).collect();
+    stmt_nodes.sort_by_key(|n| n.start_byte());
 
     let mut specs = Vec::new();
-    for viz_node in viz_nodes {
-        let spec = build_visualise_statement(&viz_node, source)?;
+    for stmt_node in stmt_nodes {
+        // Build the spec, then check the shared "FROM after a trailing
+        // SELECT" restriction once for whichever kind it is — VISUALISE FROM
+        // and TABULATE FROM both forbid it, differing only in keyword.
+        let (has_from, keyword, spec) = match stmt_node.kind() {
+            "visualise_statement" => {
+                let plot = build_visualise_statement(&stmt_node, source)?;
+                (
+                    plot.source.is_some(),
+                    "VISUALISE",
+                    Spec::Plot(Box::new(plot)),
+                )
+            }
+            "tabulate_statement" => {
+                let table = build_tabulate_statement(&stmt_node, source);
+                (table.source.is_some(), "TABULATE", Spec::Table(table))
+            }
+            other => {
+                return Err(GgsqlError::InternalError(format!(
+                    "Unexpected top-level statement kind: '{}'",
+                    other
+                )));
+            }
+        };
 
-        // Validate VISUALISE FROM usage
-        if spec.source.is_some() && last_is_select {
-            return Err(GgsqlError::ParseError(
-                "Cannot use VISUALISE FROM when the last SQL statement is SELECT. \
-                 Use either 'SELECT ... VISUALISE' or remove the SELECT and use \
-                 'VISUALISE FROM ...'."
-                    .to_string(),
-            ));
+        if has_from && last_is_select {
+            return Err(GgsqlError::ParseError(format!(
+                "Cannot use {keyword} FROM when the last SQL statement is SELECT. \
+                 Use either 'SELECT ... {keyword}' or remove the SELECT and use \
+                 '{keyword} FROM ...'."
+            )));
         }
 
         specs.push(spec);
@@ -239,7 +262,7 @@ pub fn build_ast(source: &SourceTree) -> Result<Vec<Plot>> {
 
     if specs.is_empty() {
         return Err(GgsqlError::ParseError(
-            "No VISUALISE statements found in query".to_string(),
+            "No VISUALISE or TABULATE statements found in query".to_string(),
         ));
     }
 
@@ -266,7 +289,7 @@ fn build_visualise_statement(node: &Node, source: &SourceTree) -> Result<Plot> {
                 // Handle standalone wildcard (*) mapping
                 spec.global_mappings.wildcard = true;
             }
-            "visualise_from" => {
+            "single_source_from" => {
                 if let Some(source_node) = child.child_by_field_name("source") {
                     spec.source = Some(parse_data_source(&source_node, source));
                 }
@@ -311,6 +334,22 @@ fn build_visualise_statement(node: &Node, source: &SourceTree) -> Result<Plot> {
     // This keeps all annotation-specific logic in one place.
 
     Ok(spec)
+}
+
+/// Build a single Table from a tabulate_statement node
+fn build_tabulate_statement(node: &Node, source: &SourceTree) -> Table {
+    let mut table = Table::new();
+
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        if child.kind() == "single_source_from" {
+            if let Some(source_node) = child.child_by_field_name("source") {
+                table.source = Some(parse_data_source(&source_node, source));
+            }
+        }
+    }
+
+    table
 }
 
 /// Process a visualization clause node
@@ -1216,7 +1255,65 @@ mod tests {
         let source = SourceTree::new(query)?;
         source.validate()?;
 
+        Ok(build_ast(&source)?
+            .into_iter()
+            .filter_map(Spec::into_plot)
+            .collect())
+    }
+
+    /// Like `parse_test_query`, but keeps `Table` specs instead of filtering
+    /// them out — for tests that need to see the raw `Spec` variants.
+    fn parse_test_specs(query: &str) -> Result<Vec<Spec>> {
+        let source = SourceTree::new(query)?;
+        source.validate()?;
         build_ast(&source)
+    }
+
+    // ========================================
+    // TABULATE Tests
+    // ========================================
+
+    #[test]
+    fn test_tabulate_bare() {
+        let specs = parse_test_specs("SELECT 1 TABULATE").unwrap();
+        assert_eq!(specs.len(), 1);
+        let table = specs[0].as_table().expect("expected a Table spec");
+        assert!(table.source.is_none());
+    }
+
+    #[test]
+    fn test_tabulate_from() {
+        let specs = parse_test_specs("TABULATE FROM sales").unwrap();
+        assert_eq!(specs.len(), 1);
+        let table = specs[0].as_table().expect("expected a Table spec");
+        assert!(matches!(table.source, Some(DataSource::Identifier(ref name)) if name == "sales"));
+    }
+
+    #[test]
+    fn test_tabulate_from_file_path() {
+        let specs = parse_test_specs("TABULATE FROM 'data.csv'").unwrap();
+        assert_eq!(specs.len(), 1);
+        let table = specs[0].as_table().expect("expected a Table spec");
+        assert!(matches!(table.source, Some(DataSource::FilePath(ref path)) if path == "data.csv"));
+    }
+
+    #[test]
+    fn test_tabulate_from_after_select_errors() {
+        // Mirrors VISUALISE FROM's own "last statement is SELECT" restriction.
+        let result = parse_test_specs("SELECT 1 TABULATE FROM sales");
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Cannot use TABULATE FROM"));
+    }
+
+    #[test]
+    fn test_visualise_then_tabulate_interleaved() {
+        let specs = parse_test_specs("SELECT 1 AS x VISUALISE x DRAW point TABULATE").unwrap();
+        assert_eq!(specs.len(), 2);
+        assert!(matches!(specs[0], Spec::Plot(_)));
+        assert!(matches!(specs[1], Spec::Table(_)));
     }
 
     // ========================================
@@ -3508,7 +3605,7 @@ mod tests {
         let source = make_source("VISUALISE FROM sales DRAW bar");
         let root = source.root();
 
-        let query = "(visualise_from source: (_) @source)";
+        let query = "(single_source_from source: (_) @source)";
 
         let from_node = source.find_node(&root, query).unwrap();
         let parsed = parse_data_source(&from_node, &source);

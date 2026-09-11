@@ -6,7 +6,7 @@
 //! # Architecture
 //!
 //! All writers implement the `Writer` trait, which provides:
-//! - Spec + Data → Output conversion
+//! - ResolvedPlot + Data → Output conversion
 //! - Validation for writer compatibility
 //! - Format-specific rendering logic
 //!
@@ -28,8 +28,8 @@
 //! key–value [`WriterOptions`] when a frontend collects settings from a user
 //! without knowing which writer they picked.
 
-use crate::reader::Spec;
-use crate::{DataFrame, Plot, Result};
+use crate::reader::ResolvedSpec;
+use crate::{DataFrame, GgsqlError, Plot, Result, Table};
 use std::collections::HashMap;
 
 pub mod options;
@@ -93,6 +93,12 @@ pub use hephaestus::{PngCompression, PngWriter};
 #[cfg(feature = "tiff")]
 pub use hephaestus::{TiffCompression, TiffWriter};
 
+// Pure string formatting, no extra dependencies — gated for symmetry with
+// every other writer, not because it needs anything to compile.
+#[cfg(feature = "html")]
+pub mod html;
+#[cfg(feature = "html")]
+pub use html::HtmlWriter;
 /// Trait for visualization output writers
 ///
 /// Writers take a Plot and data sources and produce formatted output
@@ -100,9 +106,10 @@ pub use hephaestus::{TiffCompression, TiffWriter};
 ///
 /// # Associated Types
 ///
-/// * `Output` - The type returned by `write()` and `render()`: `String` for a
-///   text format, `Vec<u8>` for a binary one. Never an `Option` — failure is
-///   the `Result`'s business — and a type producing nothing is not a writer.
+/// * `Output` - The type returned by `write_plot()`, `write_table()` and
+///   `render()`: `String` for a text format, `Vec<u8>` for a binary one.
+///   Never an `Option` — failure is the `Result`'s business — and a type
+///   producing nothing is not a writer.
 pub trait Writer {
     /// The output type produced by this writer.
     type Output;
@@ -141,7 +148,7 @@ pub trait Writer {
     /// - The spec is incompatible with this writer
     /// - The data doesn't match the spec's requirements
     /// - Output generation fails
-    fn write(&self, spec: &Plot, data: &HashMap<String, DataFrame>) -> Result<Self::Output>;
+    fn write_plot(&self, spec: &Plot, data: &HashMap<String, DataFrame>) -> Result<Self::Output>;
 
     /// Validate that a spec is compatible with this writer
     ///
@@ -155,15 +162,43 @@ pub trait Writer {
     /// # Returns
     ///
     /// Ok(()) if the spec is compatible, otherwise an error
-    fn validate(&self, spec: &Plot) -> Result<()>;
+    fn validate_plot(&self, spec: &Plot) -> Result<()>;
 
-    /// Render a Spec to output format
+    /// Generate output from a resolved table specification and its body data
     ///
-    /// This is the main entry point for generating visualization output.
+    /// The table-side counterpart to `write_plot()`. Defaults to rejecting
+    /// every table, so a writer that only supports Plot output (every writer,
+    /// as of this writing) needs no changes; a writer that does support
+    /// tables overrides this instead.
     ///
     /// # Arguments
     ///
-    /// * `spec` - The prepared visualization specification from `reader.execute()`
+    /// * `table` - The parsed TABULATE specification
+    /// * `body` - The resolved data (see the PROVISIONAL note on
+    ///   `ResolvedTable.body` — this parameter's type may change)
+    ///
+    /// # Errors
+    ///
+    /// Returns `GgsqlError::WriterError` if this writer doesn't support
+    /// tables, or output generation fails.
+    fn write_table(&self, table: &Table, body: &DataFrame) -> Result<Self::Output> {
+        let _ = (table, body);
+        Err(GgsqlError::WriterError(
+            "this writer does not support tables".to_string(),
+        ))
+    }
+
+    /// Render a ResolvedSpec (a resolved plot or table) to output format
+    ///
+    /// This is the main entry point for generating visualization output.
+    /// Dispatches to `write_plot()` for a `ResolvedSpec::Plot`, or
+    /// `write_table()` for a `ResolvedSpec::Table` — whether a writer
+    /// supports tables is entirely down to whether it overrides
+    /// `write_table()`.
+    ///
+    /// # Arguments
+    ///
+    /// * `spec` - The resolved specification from `reader.execute()`
     ///
     /// # Returns
     ///
@@ -181,7 +216,10 @@ pub trait Writer {
     /// let writer = VegaLiteWriter::new();
     /// let json = writer.render(&spec)?;
     /// ```
-    fn render(&self, spec: &Spec) -> Result<Self::Output> {
-        self.write(spec.plot(), spec.data())
+    fn render(&self, spec: &ResolvedSpec) -> Result<Self::Output> {
+        match spec {
+            ResolvedSpec::Plot(plot) => self.write_plot(plot.plot(), plot.data()),
+            ResolvedSpec::Table(table) => self.write_table(table.table(), table.body()),
+        }
     }
 }

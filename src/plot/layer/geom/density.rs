@@ -1082,12 +1082,16 @@ mod tests {
 
         // Debug: print what SQL was generated and what data we have
         println!("Generated stat SQL:");
-        if let Some(sql) = spec.stat_sql(0) {
+        if let Some(sql) = spec.as_plot().unwrap().stat_sql(0) {
             println!("{}", sql);
         }
 
         // Get the stat-transformed data for layer 0
-        let df = spec.stat_data(0).expect("Layer 0 should have stat data");
+        let df = spec
+            .as_plot()
+            .unwrap()
+            .stat_data(0)
+            .expect("Layer 0 should have stat data");
         println!("\nActual columns in stat_data: {:?}", df.get_column_names());
         println!("Number of rows: {}", df.height());
 

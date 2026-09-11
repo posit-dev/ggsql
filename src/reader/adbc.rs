@@ -282,7 +282,7 @@ where
         Ok(())
     }
 
-    fn execute(&self, query: &str) -> Result<crate::reader::Spec> {
+    fn execute(&self, query: &str) -> Result<crate::reader::ResolvedSpec> {
         crate::reader::execute_with_reader(self, query)
     }
 
@@ -455,7 +455,7 @@ mod tests {
             DRAW line
         "#;
         let spec = reader.execute(query).expect("ggsql execute ok");
-        let meta = spec.metadata();
+        let meta = spec.as_plot().unwrap().metadata();
         // Full pipeline verification: SQL executed (3 rows after WHERE),
         // VISUALISE parsed, plot resolved with 1 layer.
         assert_eq!(meta.rows, 3);

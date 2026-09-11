@@ -4,7 +4,7 @@ This document provides a comprehensive reference for the ggsql public API.
 
 ## Overview
 
-- **Stage 1: `reader.execute()`** - Parse query, execute SQL, resolve mappings, create Spec
+- **Stage 1: `reader.execute()`** - Parse query, execute SQL, resolve mappings, create a ResolvedSpec (a resolved Plot or Table)
 - **Stage 2: `writer.render()`** - Generate output (Vega-Lite JSON, SVG, PDF, PNG, …)
 
 ### API Functions
@@ -12,7 +12,7 @@ This document provides a comprehensive reference for the ggsql public API.
 | Function           | Use Case                                             |
 | ------------------ | ---------------------------------------------------- |
 | `reader.execute()` | Main entry point - full visualization pipeline       |
-| `writer.render()`  | Generate output from Spec                            |
+| `writer.render()`  | Generate output from a ResolvedSpec (Plot or Table)  |
 | `validate()`       | Validate syntax + semantics, inspect query structure |
 
 ---
@@ -22,10 +22,10 @@ This document provides a comprehensive reference for the ggsql public API.
 ### `Reader::execute`
 
 ```rust
-fn execute(&self, query: &str) -> Result<Spec>
+fn execute(&self, query: &str) -> Result<ResolvedSpec>
 ```
 
-Execute a ggsql query for visualization. This is the main entry point - a default method on the Reader trait.
+Execute a ggsql query for visualization or tabulation. This is the main entry point - a required method on the Reader trait. `ResolvedSpec` is `Plot(Box<ResolvedPlot>)` or `Table(ResolvedTable)`, depending on whether the query used `VISUALISE` or `TABULATE`; `.as_plot()` / `.as_table()` (or the consuming `.into_plot()` / `.into_table()`) narrow it.
 
 **What happens during execution:**
 
@@ -43,7 +43,7 @@ Execute a ggsql query for visualization. This is the main entry point - a defaul
 
 **Returns:**
 
-- `Ok(Spec)` - Ready for rendering
+- `Ok(ResolvedSpec)` - Ready for rendering
 - `Err(GgsqlError)` - Parse, validation, or execution error
 
 **Example:**
@@ -57,11 +57,14 @@ let spec = reader.execute(
     "SELECT x, y FROM data VISUALISE x, y DRAW point"
 )?;
 
-// Access metadata
-println!("Rows: {}", spec.metadata().rows);
-println!("Columns: {:?}", spec.metadata().columns);
+// Access metadata (Plot-specific)
+if let Some(plot) = spec.as_plot() {
+    println!("Rows: {}", plot.metadata().rows);
+    println!("Columns: {:?}", plot.metadata().columns);
+}
 
-// Render to Vega-Lite
+// Render to Vega-Lite — dispatches to write_plot/write_table based on
+// which variant `spec` is
 let writer = VegaLiteWriter::new();
 let result = writer.render(&spec)?;
 ```
@@ -118,7 +121,7 @@ if !validated.valid() {
 }
 
 // Inspect query structure
-if validated.has_visual() {
+if validated.has_spec() {
     println!("SQL: {}", validated.sql());
     println!("Visual: {}", validated.visual());
 }
@@ -150,7 +153,7 @@ pub struct Validated {
 
 | Method       | Signature                                    | Description                        |
 | ------------ | -------------------------------------------- | ---------------------------------- |
-| `has_visual` | `fn has_visual(&self) -> bool`               | Whether query contains VISUALISE   |
+| `has_spec`   | `fn has_spec(&self) -> bool`                 | Whether query contains a Spec (VISUALISE or TABULATE) |
 | `sql`        | `fn sql(&self) -> &str`                      | The SQL portion (before VISUALISE) |
 | `visual`     | `fn visual(&self) -> &str`                   | The VISUALISE portion (raw text)   |
 | `tree`       | `fn tree(&self) -> Option<&Tree>`            | CST for advanced inspection        |
@@ -171,7 +174,7 @@ if !validated.valid() {
 }
 
 // Inspect query structure
-assert!(validated.has_visual());
+assert!(validated.has_spec());
 assert_eq!(validated.sql(), "SELECT 1 as x");
 assert!(validated.visual().starts_with("VISUALISE"));
 
@@ -183,13 +186,16 @@ if let Some(tree) = validated.tree() {
 
 ---
 
-### `Spec`
+### `ResolvedPlot`
 
-Result of executing a ggsql query, ready for rendering.
+Result of executing a `VISUALISE` query, ready for rendering. `reader.execute()`
+returns this wrapped in `ResolvedSpec::Plot(Box<ResolvedPlot>)`; get here via
+`spec.as_plot()` (or the consuming `spec.into_plot()`).
 
 #### Rendering
 
-Use `writer.render(&spec)` to generate output.
+Pass the `ResolvedSpec` itself to `writer.render()` — it dispatches to
+`write_plot`/`write_table` depending on which variant it is.
 
 **Example:**
 
@@ -297,9 +303,9 @@ for i in 0..spec.layer_count() {
 ```rust
 let spec = reader.execute(query)?;
 
-// Check for warnings
-if !spec.warnings().is_empty() {
-    for warning in spec.warnings() {
+// Check for warnings (Plot-specific)
+if let Some(plot) = spec.as_plot() {
+    for warning in plot.warnings() {
         eprintln!("Warning: {}", warning.message);
     }
 }
@@ -397,13 +403,18 @@ pub trait Writer {
     fn from_options(options: &WriterOptions) -> Result<Self> where Self: Sized;
 
     /// Render a plot specification and its data to the output format
-    fn write(&self, spec: &Plot, data: &HashMap<String, DataFrame>) -> Result<Self::Output>;
+    fn write_plot(&self, spec: &Plot, data: &HashMap<String, DataFrame>) -> Result<Self::Output>;
 
-    /// Check whether a spec can be rendered by this writer, without rendering it
-    fn validate(&self, spec: &Plot) -> Result<()>;
+    /// Check whether a plot can be rendered by this writer, without rendering it
+    fn validate_plot(&self, spec: &Plot) -> Result<()>;
 
-    /// Render a prepared `Spec` from `reader.execute()` — the usual entry point
-    fn render(&self, spec: &Spec) -> Result<Self::Output>;
+    /// Render a resolved table and its body data. Defaults to an "unsupported"
+    /// error; only `HtmlWriter` overrides it as of this writing.
+    fn write_table(&self, table: &Table, body: &DataFrame) -> Result<Self::Output> { .. }
+
+    /// Render a `ResolvedSpec` from `reader.execute()` — the usual entry point.
+    /// Dispatches to `write_plot`/`write_table` depending on the variant.
+    fn render(&self, spec: &ResolvedSpec) -> Result<Self::Output>;
 }
 ```
 

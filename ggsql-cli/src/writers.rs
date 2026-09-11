@@ -3,7 +3,7 @@ The writer registry.
 
 Every writer the CLI can drive is one [`WriterInfo`] row in [`WRITERS`]: its
 name, the feature that compiles it, the words used for it in help and verbose
-output, and the function that renders a [`Spec`] with it. Dispatch, the
+output, and the function that renders a [`ResolvedSpec`] with it. Dispatch, the
 `--writer` long help, the `-D` long help and the "unknown writer" message are
 all derived from that one list, so adding a writer means adding a row and its
 render function — nothing else in the CLI changes.
@@ -12,7 +12,7 @@ The render functions return their error as a `String` rather than exiting, so
 the caller decides how a failure is reported.
 */
 
-use ggsql::reader::Spec;
+use ggsql::reader::ResolvedSpec;
 use ggsql::writer::WriterOptions;
 use std::path::Path;
 use std::sync::LazyLock;
@@ -21,6 +21,9 @@ use std::sync::LazyLock;
 // writer at all would otherwise carry an unused import.
 #[cfg(feature = "any-writer")]
 use ggsql::writer::Writer;
+
+#[cfg(feature = "html")]
+use ggsql::writer::HtmlWriter;
 
 #[cfg(feature = "vegalite")]
 use ggsql::writer::VegaLiteWriter;
@@ -50,7 +53,10 @@ use ggsql::writer::WebpWriter;
 // A build with none of the listed writers compiled in has an unused variant;
 // extend the gates when a writer of that shape is added.
 pub enum Output {
-    #[cfg_attr(not(any(feature = "vegalite", feature = "svg")), allow(dead_code))]
+    #[cfg_attr(
+        not(any(feature = "vegalite", feature = "svg", feature = "html")),
+        allow(dead_code)
+    )]
     Text(String),
     #[cfg_attr(
         not(any(
@@ -95,7 +101,7 @@ pub struct WriterInfo {
     /// reported before any SQL runs rather than after.
     pub check: fn(&WriterOptions) -> Result<(), String>,
     /// Render a spec with this writer.
-    pub render: fn(&Spec, &WriterOptions) -> Rendered,
+    pub render: fn(&ResolvedSpec, &WriterOptions) -> Rendered,
 }
 
 /// Build `W` from `options` and throw it away — the whole of what a row's
@@ -119,6 +125,18 @@ pub const WRITERS: &[WriterInfo] = &[
         compiled: cfg!(feature = "vegalite"),
         check: check_vegalite,
         render: render_vegalite,
+    },
+    WriterInfo {
+        name: "html",
+        aliases: &[],
+        extensions: &["html", "htm"],
+        feature: "html",
+        label: "HTML table",
+        blurb: "HTML <table> — the only writer that renders a TABULATE query",
+        options: "none",
+        compiled: cfg!(feature = "html"),
+        check: check_html,
+        render: render_html,
     },
     WriterInfo {
         name: "png",
@@ -207,7 +225,8 @@ pub const WRITERS: &[WriterInfo] = &[
 ];
 
 /// The writer used when neither `--writer` nor `--output`'s extension names
-/// one. Vega-Lite is the only one with no system requirements at all.
+/// one. `html` has no system requirements either, but only renders a
+/// TABULATE query — Vega-Lite is the default because most queries VISUALISE.
 pub const DEFAULT_WRITER: &str = "vegalite";
 
 /// Closes `--writer`'s long help: the image writers all rasterise through the
@@ -323,7 +342,7 @@ fn check_vegalite(options: &WriterOptions) -> Result<(), String> {
     }
 }
 
-fn render_vegalite(spec: &Spec, options: &WriterOptions) -> Rendered {
+fn render_vegalite(spec: &ResolvedSpec, options: &WriterOptions) -> Rendered {
     #[cfg(feature = "vegalite")]
     {
         let writer = VegaLiteWriter::from_options(options).map_err(|e| e.to_string())?;
@@ -337,6 +356,30 @@ fn render_vegalite(spec: &Spec, options: &WriterOptions) -> Rendered {
     }
 }
 
+fn check_html(options: &WriterOptions) -> Result<(), String> {
+    #[cfg(feature = "html")]
+    return check_options::<HtmlWriter>(options);
+    #[cfg(not(feature = "html"))]
+    {
+        let _ = options;
+        Ok(())
+    }
+}
+
+fn render_html(spec: &ResolvedSpec, options: &WriterOptions) -> Rendered {
+    #[cfg(feature = "html")]
+    {
+        let writer = HtmlWriter::from_options(options).map_err(|e| e.to_string())?;
+        let html = writer.render(spec).map_err(|e| e.to_string())?;
+        Ok((Output::Text(html), Vec::new()))
+    }
+    #[cfg(not(feature = "html"))]
+    {
+        let _ = (spec, options);
+        Err(not_compiled("HTML table", "html"))
+    }
+}
+
 fn check_png(options: &WriterOptions) -> Result<(), String> {
     #[cfg(feature = "png")]
     return check_options::<PngWriter>(options);
@@ -347,7 +390,7 @@ fn check_png(options: &WriterOptions) -> Result<(), String> {
     }
 }
 
-fn render_png(spec: &Spec, options: &WriterOptions) -> Rendered {
+fn render_png(spec: &ResolvedSpec, options: &WriterOptions) -> Rendered {
     #[cfg(feature = "png")]
     {
         let writer = PngWriter::from_options(options).map_err(|e| e.to_string())?;
@@ -371,7 +414,7 @@ fn check_jpeg(options: &WriterOptions) -> Result<(), String> {
     }
 }
 
-fn render_jpeg(spec: &Spec, options: &WriterOptions) -> Rendered {
+fn render_jpeg(spec: &ResolvedSpec, options: &WriterOptions) -> Rendered {
     #[cfg(feature = "jpeg")]
     {
         let writer = JpegWriter::from_options(options).map_err(|e| e.to_string())?;
@@ -395,7 +438,7 @@ fn check_tiff(options: &WriterOptions) -> Result<(), String> {
     }
 }
 
-fn render_tiff(spec: &Spec, options: &WriterOptions) -> Rendered {
+fn render_tiff(spec: &ResolvedSpec, options: &WriterOptions) -> Rendered {
     #[cfg(feature = "tiff")]
     {
         let writer = TiffWriter::from_options(options).map_err(|e| e.to_string())?;
@@ -419,7 +462,7 @@ fn check_webp(options: &WriterOptions) -> Result<(), String> {
     }
 }
 
-fn render_webp(spec: &Spec, options: &WriterOptions) -> Rendered {
+fn render_webp(spec: &ResolvedSpec, options: &WriterOptions) -> Rendered {
     #[cfg(feature = "webp")]
     {
         let writer = WebpWriter::from_options(options).map_err(|e| e.to_string())?;
@@ -433,6 +476,16 @@ fn render_webp(spec: &Spec, options: &WriterOptions) -> Rendered {
     }
 }
 
+/// The `ResolvedPlot` a Plot-only writer needs, or a clear error for a
+/// TABULATE query — `svg`, `pdf` and `hep` render only plots; `html` is the
+/// only writer that renders a table.
+#[cfg(any(feature = "svg", feature = "pdf", feature = "hep"))]
+fn require_plot(spec: &ResolvedSpec) -> Result<&ggsql::reader::ResolvedPlot, String> {
+    spec.as_plot().ok_or_else(|| {
+        "this writer does not support TABULATE queries; use --writer html".to_string()
+    })
+}
+
 fn check_svg(options: &WriterOptions) -> Result<(), String> {
     #[cfg(feature = "svg")]
     return check_options::<SvgWriter>(options);
@@ -443,11 +496,13 @@ fn check_svg(options: &WriterOptions) -> Result<(), String> {
     }
 }
 
-fn render_svg(spec: &Spec, options: &WriterOptions) -> Rendered {
+fn render_svg(spec: &ResolvedSpec, options: &WriterOptions) -> Rendered {
     #[cfg(feature = "svg")]
     {
         let writer = SvgWriter::from_options(options).map_err(|e| e.to_string())?;
-        let (svg, warnings) = writer.render_reporting(spec).map_err(|e| e.to_string())?;
+        let (svg, warnings) = writer
+            .render_reporting(require_plot(spec)?)
+            .map_err(|e| e.to_string())?;
         Ok((Output::Text(svg), warnings))
     }
     #[cfg(not(feature = "svg"))]
@@ -467,11 +522,13 @@ fn check_pdf(options: &WriterOptions) -> Result<(), String> {
     }
 }
 
-fn render_pdf(spec: &Spec, options: &WriterOptions) -> Rendered {
+fn render_pdf(spec: &ResolvedSpec, options: &WriterOptions) -> Rendered {
     #[cfg(feature = "pdf")]
     {
         let writer = PdfWriter::from_options(options).map_err(|e| e.to_string())?;
-        let (pdf, warnings) = writer.render_reporting(spec).map_err(|e| e.to_string())?;
+        let (pdf, warnings) = writer
+            .render_reporting(require_plot(spec)?)
+            .map_err(|e| e.to_string())?;
         Ok((Output::Bin(pdf), warnings))
     }
     #[cfg(not(feature = "pdf"))]
@@ -491,11 +548,13 @@ fn check_hep(options: &WriterOptions) -> Result<(), String> {
     }
 }
 
-fn render_hep(spec: &Spec, options: &WriterOptions) -> Rendered {
+fn render_hep(spec: &ResolvedSpec, options: &WriterOptions) -> Rendered {
     #[cfg(feature = "hep")]
     {
         let writer = HepWriter::from_options(options).map_err(|e| e.to_string())?;
-        let (bytes, warnings) = writer.render_reporting(spec).map_err(|e| e.to_string())?;
+        let (bytes, warnings) = writer
+            .render_reporting(require_plot(spec)?)
+            .map_err(|e| e.to_string())?;
         Ok((Output::Bin(bytes), warnings))
     }
     #[cfg(not(feature = "hep"))]
@@ -571,6 +630,8 @@ mod tests {
             ("chart.tiff", "tiff"),
             ("chart.webp", "webp"),
             ("chart.json", "vegalite"),
+            ("chart.html", "html"),
+            ("chart.htm", "html"),
         ] {
             assert_eq!(
                 for_extension(Path::new(path)).map(|w| w.name),
@@ -662,5 +723,43 @@ mod tests {
             assert!(option_help.contains(info.name), "{} missing", info.name);
             assert!(unknown.contains(info.name), "{} missing", info.name);
         }
+    }
+
+    #[cfg(all(feature = "html", feature = "duckdb"))]
+    #[test]
+    fn the_html_writer_renders_a_tabulate_query() {
+        use ggsql::reader::{DuckDBReader, Reader};
+
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        reader
+            .execute_sql(
+                "CREATE TABLE sales AS SELECT * FROM (VALUES (1, 'a'), (2, 'b')) AS t(id, name)",
+            )
+            .unwrap();
+        let spec = reader.execute("TABULATE FROM sales").unwrap();
+
+        let info = find("html").unwrap();
+        let (output, warnings) = (info.render)(&spec, &WriterOptions::new()).unwrap();
+        assert!(warnings.is_empty());
+        let Output::Text(html) = output else {
+            panic!("expected Output::Text from the html writer");
+        };
+        assert!(html.starts_with("<table>"), "{html}");
+        assert!(html.contains("<th>id</th>"), "{html}");
+        assert!(html.contains("<td>a</td>"), "{html}");
+    }
+
+    #[cfg(all(feature = "html", feature = "duckdb"))]
+    #[test]
+    fn the_html_writer_rejects_a_visualise_query() {
+        use ggsql::reader::{DuckDBReader, Reader};
+
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        let spec = reader
+            .execute("SELECT 1 AS x, 2 AS y VISUALISE x, y DRAW point")
+            .unwrap();
+
+        let info = find("html").unwrap();
+        assert!((info.render)(&spec, &WriterOptions::new()).is_err());
     }
 }

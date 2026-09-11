@@ -82,7 +82,7 @@ adbc_datafusion = "0.23"
 adbc_driver_manager = "0.23"
 
 [features]
-default = ["adbc", "duckdb", "sqlite", "vegalite", "parquet", "builtin-data", "odbc", "spatial", "svg", "pdf", "hep"]
+default = ["adbc", "duckdb", "sqlite", "vegalite", "html", "parquet", "builtin-data", "odbc", "spatial", "svg", "pdf", "hep"]
 duckdb = ["dep:duckdb"]
 parquet = ["dep:parquet"]
 sqlite = ["dep:rusqlite"]
@@ -90,6 +90,9 @@ adbc = ["dep:adbc_core"]
 odbc = ["dep:toml_edit", "dep:libloading"]
 spatial = ["dep:geozero", "rusqlite?/load_extension"]
 vegalite = []
+# Pure string formatting, no extra dependencies — like `vegalite`, gated only
+# so a minimal build can drop it, not because it needs anything to compile.
+html = []
 # Internal, enabled by the writer features below rather than named directly.
 # `graphics` is the shared plot-composition layer; `raster` adds the GPU
 # rasteriser on top of it. Splitting them is what lets a vector-only build skip
@@ -143,4 +146,4 @@ webfonts = ["graphics", "dep:wuff"]
 
 builtin-data = []
 all-readers = ["duckdb", "sqlite", "odbc"]
-all-writers = ["vegalite", "png", "jpeg", "tiff", "webp", "svg", "pdf", "hep"]
+all-writers = ["vegalite", "html", "png", "jpeg", "tiff", "webp", "svg", "pdf", "hep"]

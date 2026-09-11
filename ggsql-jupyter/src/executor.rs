@@ -12,16 +12,17 @@ use anyhow::Result;
 use ggsql::{
     reader::{
         connection::{extract_odbc_value, reader_from_uri},
-        Reader, Spec,
+        Reader, ResolvedPlot, ResolvedSpec,
     },
     validate::validate,
+    writer::{HtmlWriter, Writer},
     DataFrame,
 };
 
 /// A resolved plot has to reach a render thread, so the design rests on this.
 const _: () = {
     fn assert_send<T: Send>() {}
-    let _ = assert_send::<Spec>;
+    let _ = assert_send::<ResolvedPlot>;
 };
 
 /// Result of executing a ggsql query
@@ -33,14 +34,17 @@ pub enum ExecutionResult {
     ///
     /// Not pre-rendered: the format depends on where the output is going, and
     /// once a plot comm is open it is asked again on every resize. Boxed because
-    /// a `Spec` carries the post-stat DataFrames and dwarfs the other variants.
-    Visualization(Box<Spec>),
+    /// a `ResolvedPlot` carries the post-stat DataFrames and dwarfs the other
+    /// variants.
+    Visualization(Box<ResolvedPlot>),
+    /// TABULATE query, already rendered as an HTML table via `HtmlWriter`.
+    Table { html: String },
     /// Connection changed via meta-command
     ConnectionChanged { display_name: String },
 }
 
-// `Spec` is neither `Debug` nor `Clone`, so this summarises rather than
-// deriving. What a log wants from a result is its shape and size anyway.
+// `ResolvedPlot` is neither `Debug` nor `Clone`, so this summarises rather
+// than deriving. What a log wants from a result is its shape and size anyway.
 impl std::fmt::Debug for ExecutionResult {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -56,6 +60,10 @@ impl std::fmt::Debug for ExecutionResult {
                     .field("layers", &metadata.layer_count)
                     .finish()
             }
+            Self::Table { html } => f
+                .debug_struct("Table")
+                .field("html_len", &html.len())
+                .finish(),
             Self::ConnectionChanged { display_name } => f
                 .debug_struct("ConnectionChanged")
                 .field("display_name", display_name)
@@ -265,7 +273,7 @@ impl QueryExecutor {
         let validated = validate(code)?;
 
         // 2. Check if there's a visualization
-        if !validated.has_visual() {
+        if !validated.has_spec() {
             // Pure SQL query - execute directly and return DataFrame.
             let df = self.reader.execute_sql(code)?;
             tracing::info!(
@@ -279,15 +287,32 @@ impl QueryExecutor {
         // 3. Execute ggsql query using reader
         let spec = self.reader.execute(code)?;
 
-        tracing::info!(
-            "Query executed: {} rows, {} layers",
-            spec.metadata().rows,
-            spec.metadata().layer_count
-        );
+        // 4. A table is rendered here, since a static HTML table needs no
+        // choice about where the output is going. A plot is not: choosing a
+        // format is the display layer's job, because only it knows that.
+        match spec {
+            ResolvedSpec::Table(table) => {
+                tracing::info!(
+                    "Query executed: {} rows, {} cols",
+                    table.body().height(),
+                    table.body().width()
+                );
 
-        // 4. Hand back the resolved plot. Choosing a format is the display
-        //    layer's job, because only it knows where the output is going.
-        Ok(ExecutionResult::Visualization(Box::new(spec)))
+                let html = HtmlWriter::new().write_table(table.table(), table.body())?;
+                tracing::debug!("Generated HTML table: {} chars", html.len());
+
+                Ok(ExecutionResult::Table { html })
+            }
+            ResolvedSpec::Plot(plot) => {
+                tracing::info!(
+                    "Query executed: {} rows, {} layers",
+                    plot.metadata().rows,
+                    plot.metadata().layer_count
+                );
+
+                Ok(ExecutionResult::Visualization(plot))
+            }
+        }
     }
 }
 
@@ -302,6 +327,21 @@ mod tests {
         let result = executor.execute(code).unwrap();
 
         assert!(matches!(result, ExecutionResult::Visualization(_)));
+    }
+
+    #[test]
+    fn test_tabulate() {
+        let mut executor = QueryExecutor::new().unwrap();
+        let code = "SELECT 1 AS x, 2 AS y TABULATE";
+        let result = executor.execute(code).unwrap();
+
+        match result {
+            ExecutionResult::Table { html } => {
+                assert!(html.contains("<table>"));
+                assert!(html.contains("<th>x</th>"));
+            }
+            other => panic!("expected Table, got {other:?}"),
+        }
     }
 
     #[test]
@@ -384,7 +424,7 @@ mod tests {
             )
             .unwrap();
         assert_eq!(executor.reader_uri(), "duckdb://memory");
-        assert!(matches!(result, ExecutionResult::Visualization { .. }));
+        assert!(matches!(result, ExecutionResult::Visualization(_)));
     }
 
     #[test]
@@ -406,7 +446,7 @@ mod tests {
         let result = executor
             .execute("-- @uncache\nSELECT 1 AS x, 2 AS y VISUALISE x, y DRAW point")
             .unwrap();
-        assert!(matches!(result, ExecutionResult::Visualization { .. }));
+        assert!(matches!(result, ExecutionResult::Visualization(_)));
     }
 
     #[test]

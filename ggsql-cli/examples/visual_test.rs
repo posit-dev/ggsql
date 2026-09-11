@@ -37,6 +37,7 @@ when checking visual correctness.
 
 use clap::{Parser, ValueEnum};
 use ggsql::reader::{DuckDBReader, Reader};
+use ggsql::util::escape_html;
 use ggsql::validate::validate;
 use ggsql::writer::{PngWriter, SvgWriter, VegaLiteWriter, Writer};
 use std::fmt::Write as _;
@@ -119,12 +120,12 @@ impl Renderer {
     /// beside the execution warnings rather than into the render error.
     fn render(
         self,
-        spec: &ggsql::reader::Spec,
+        spec: &ggsql::reader::ResolvedPlot,
         args: &Args,
     ) -> ggsql::Result<(Vec<u8>, Vec<String>)> {
         match self {
             Renderer::Png => PngWriter::new(args.width, args.height, args.dpi)
-                .render(spec)
+                .write_plot(spec.plot(), spec.data())
                 .map(|bytes| (bytes, Vec::new())),
             Renderer::Svg => SvgWriter::new(args.width, args.height, args.dpi)
                 .render_reporting(spec)
@@ -581,18 +582,24 @@ fn run_cells(source: Source, args: &Args, assets: &Path) -> SourceResult {
         let start = Instant::now();
         let mut warnings = Vec::new();
 
-        let has_visual = validate(&cell.query)
-            .map(|v| v.has_visual())
-            .unwrap_or(true);
+        let has_spec = validate(&cell.query).map(|v| v.has_spec()).unwrap_or(true);
 
-        let outcome = if has_visual {
+        let outcome = if has_spec {
             match capture(|| reader.execute(&cell.query)) {
                 Err(e) => Outcome::Failed(e),
+                // Known gap: this harness only renders VISUALISE cells (the
+                // `Outcome` enum has no table variant), so a TABULATE cell
+                // is reported as failed rather than actually rendered — fine
+                // while no doc page uses TABULATE, but revisit once one does.
+                Ok(spec) if spec.as_plot().is_none() => {
+                    Outcome::Failed("TABULATE cells aren't rendered by this harness yet".into())
+                }
                 Ok(spec) => {
-                    warnings.extend(spec.warnings().iter().map(|w| w.message.clone()));
+                    let plot = spec.as_plot().unwrap();
+                    warnings.extend(plot.warnings().iter().map(|w| w.message.clone()));
 
                     let mut delta = None;
-                    let (image, image_error) = match capture(|| args.writer.render(&spec, args)) {
+                    let (image, image_error) = match capture(|| args.writer.render(plot, args)) {
                         Ok((bytes, degraded)) => {
                             // Beside the execution warnings, not folded into the
                             // render error: the render succeeded.
@@ -714,12 +721,6 @@ fn slug(text: &str) -> String {
         .to_string()
 }
 
-fn escape(text: &str) -> String {
-    text.replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
-}
-
 /// Prepare a Vega-Lite spec for inlining in a `<script>` block.
 ///
 /// The writer pretty-prints, which triples the size of a spec carrying a few
@@ -778,7 +779,7 @@ fn write_report(results: &[SourceResult], args: &Args, out: &Path) -> std::io::R
             html,
             "<a href=\"#{}\">{}{}</a>",
             slug(&result.label),
-            escape(&result.label),
+            escape_html(&result.label),
             marker
         );
     }
@@ -789,8 +790,8 @@ fn write_report(results: &[SourceResult], args: &Args, out: &Path) -> std::io::R
             html,
             "<h2 id=\"{}\" class=\"source\">{}<small>{}</small></h2>",
             slug(&result.label),
-            escape(&result.title),
-            escape(&result.label)
+            escape_html(&result.title),
+            escape_html(&result.label)
         );
         for cell in &result.cells {
             html.push_str(&render_cell(cell, &result.label, &aspect));
@@ -839,22 +840,22 @@ fn render_cell(cell: &CellResult, label: &str, aspect: &str) -> String {
          <span class=\"time\">{} ms</span></header>\n",
         slug(label),
         cell.cell.index,
-        escape(label),
+        escape_html(label),
         cell.cell.line,
         cell.cell.index,
-        escape(&cell.cell.heading),
+        escape_html(&cell.cell.heading),
         cell.millis
     );
 
     let _ = write!(
         html,
         "<div class=\"body\"><pre class=\"query\"><code>{}</code></pre>\n<div class=\"renders\">",
-        escape(&cell.cell.query)
+        escape_html(&cell.cell.query)
     );
 
     match &cell.outcome {
         Outcome::Failed(message) => {
-            let _ = write!(html, "<pre class=\"error\">{}</pre>", escape(message));
+            let _ = write!(html, "<pre class=\"error\">{}</pre>", escape_html(message));
         }
         Outcome::Setup { rows, columns } => {
             let _ = write!(
@@ -891,7 +892,7 @@ fn render_cell(cell: &CellResult, label: &str, aspect: &str) -> String {
                     );
                 }
                 (None, Some(message)) => {
-                    let _ = write!(html, "<pre class=\"error\">{}</pre>", escape(message));
+                    let _ = write!(html, "<pre class=\"error\">{}</pre>", escape_html(message));
                 }
                 (None, None) => html.push_str("<p class=\"note\">no output</p>"),
             }
@@ -914,7 +915,7 @@ fn render_cell(cell: &CellResult, label: &str, aspect: &str) -> String {
                     html,
                     "<figure><figcaption>vega-lite</figcaption>\
                      <pre class=\"error\">{}</pre></figure>",
-                    escape(message)
+                    escape_html(message)
                 );
             }
         }
@@ -925,7 +926,7 @@ fn render_cell(cell: &CellResult, label: &str, aspect: &str) -> String {
     if !cell.warnings.is_empty() {
         html.push_str("<ul class=\"warnings\">");
         for warning in &cell.warnings {
-            let _ = write!(html, "<li>{}</li>", escape(warning));
+            let _ = write!(html, "<li>{}</li>", escape_html(warning));
         }
         html.push_str("</ul>");
     }

@@ -119,7 +119,10 @@ impl SvgWriter {
     /// # Errors
     ///
     /// As [`Self::write_reporting`].
-    pub fn render_reporting(&self, spec: &crate::reader::Spec) -> Result<(String, Vec<String>)> {
+    pub fn render_reporting(
+        &self,
+        spec: &crate::reader::ResolvedPlot,
+    ) -> Result<(String, Vec<String>)> {
         self.write_reporting(spec.plot(), spec.data())
     }
 
@@ -162,11 +165,11 @@ impl Writer for SvgWriter {
         })
     }
 
-    fn validate(&self, spec: &Plot) -> Result<()> {
+    fn validate_plot(&self, spec: &Plot) -> Result<()> {
         compose::validate_plot(spec)
     }
 
-    fn write(&self, spec: &Plot, data: &HashMap<String, DataFrame>) -> Result<Self::Output> {
+    fn write_plot(&self, spec: &Plot, data: &HashMap<String, DataFrame>) -> Result<Self::Output> {
         self.write_reporting(spec, data).map(|(svg, _)| svg)
     }
 }
