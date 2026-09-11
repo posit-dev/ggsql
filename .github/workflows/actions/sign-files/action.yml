@@ -121,7 +121,9 @@ runs:
         }
         foreach ($path in $paths) {
           Write-Output "::group::Signing ${path}"
-          smctl sign --keypair-alias $env:SM_KEYPAIR_ALIAS --input $path --digalg SHA256 --sigalg SHA256 --timestamp=true --verbose --exit-non-zero-on-fail
+          # The pinned smctl build exits 0 even when signing fails and lacks
+          # --exit-non-zero-on-fail; the verify steps below are the failure gate.
+          smctl sign --keypair-alias $env:SM_KEYPAIR_ALIAS --input $path --digalg SHA256 --sigalg SHA256 --timestamp=true --verbose
           if ($LASTEXITCODE -ne 0) {
             Write-Output "::error title=Signing error::Error while signing ${path}"
             exit 1
