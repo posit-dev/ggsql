@@ -100,4 +100,16 @@ mod tests {
         let result = resolve_table_with_reader("TABULATE", &reader);
         assert!(result.is_err());
     }
+
+    #[test]
+    fn test_tabulate_does_not_borrow_a_later_visualise_from() {
+        // A source-less TABULATE followed by an unrelated VISUALISE FROM must
+        // still error "no data source", not silently resolve against the
+        // VISUALISE's FROM — regression for a bug where extract_sql matched
+        // any statement's FROM in the whole query, not just the one being
+        // resolved.
+        let reader = reader_with_sales();
+        let result = resolve_table_with_reader("TABULATE VISUALISE FROM sales DRAW point", &reader);
+        assert!(result.is_err());
+    }
 }

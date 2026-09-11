@@ -216,12 +216,18 @@ pub fn build_ast(source: &SourceTree) -> Result<Vec<Spec>> {
         false
     };
 
-    // Find all visualise_statement and tabulate_statement nodes, in source
-    // order (they can be interleaved, e.g. `VISUALISE ... TABULATE ...`).
-    let viz_nodes = source.find_nodes(&root, "(visualise_statement) @viz");
-    let tab_nodes = source.find_nodes(&root, "(tabulate_statement) @tab");
-    let mut stmt_nodes: Vec<Node> = viz_nodes.into_iter().chain(tab_nodes).collect();
-    stmt_nodes.sort_by_key(|n| n.start_byte());
+    // A single alternation query visits the tree once and yields
+    // visualise_statement/tabulate_statement nodes already in document order,
+    // so they arrive correctly interleaved (e.g. `VISUALISE ... TABULATE ...`).
+    let stmt_nodes = source.find_nodes(
+        &root,
+        r#"
+            [
+              (visualise_statement) @stmt
+              (tabulate_statement) @stmt
+            ]
+        "#,
+    );
 
     let mut specs = Vec::new();
     for stmt_node in stmt_nodes {

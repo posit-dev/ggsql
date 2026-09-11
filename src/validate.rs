@@ -97,7 +97,7 @@ fn has_error_ancestor(node: &tree_sitter::Node) -> bool {
 /// Validate query syntax and semantics without executing SQL.
 pub fn validate(query: &str) -> Result<Validated> {
     let mut errors = Vec::new();
-    let warnings = Vec::new();
+    let mut warnings = Vec::new();
 
     // Parse once and create SourceTree
     let source_tree = match parser::SourceTree::new(query) {
@@ -209,6 +209,20 @@ pub fn validate(query: &str) -> Result<Validated> {
     let plots: Vec<&Plot> = specs.iter().filter_map(Spec::as_plot).collect();
     let tables: Vec<&Table> = specs.iter().filter_map(Spec::as_table).collect();
 
+    // Reader::execute() resolves only the first VISUALISE/TABULATE statement
+    // and silently drops the rest — a query with more than one gets no
+    // diagnostic otherwise. This warning is the only signal a caller has that
+    // part of their query was ignored.
+    if specs.len() > 1 {
+        warnings.push(ValidationWarning {
+            message: format!(
+                "Query has {} VISUALISE/TABULATE statements; only the first is resolved, the rest are ignored.",
+                specs.len()
+            ),
+            location: None,
+        });
+    }
+
     // Validate the single plot (we only support one VISUALISE statement)
     if let Some(plot) = plots.first() {
         // Validate each layer
@@ -316,6 +330,19 @@ mod tests {
         assert!(validated.visual().is_empty());
         assert!(validated.tree().is_none());
         assert!(validated.valid());
+    }
+
+    #[test]
+    fn test_validate_warns_on_multiple_spec_statements() {
+        // Reader::execute() only ever resolves the first VISUALISE/TABULATE
+        // statement; a query with more than one should warn rather than
+        // silently drop the rest with no diagnostic at all.
+        let validated = validate("SELECT 1 AS x VISUALISE x DRAW point TABULATE").unwrap();
+        assert!(validated.valid());
+        assert!(!validated.warnings().is_empty());
+        assert!(validated.warnings()[0]
+            .message
+            .contains("only the first is resolved"));
     }
 
     #[test]

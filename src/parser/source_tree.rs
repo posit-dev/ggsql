@@ -134,17 +134,22 @@ impl<'a> SourceTree<'a> {
             .collect()
     }
 
-    /// The start byte of the first VISUALISE or TABULATE statement, whichever
-    /// comes first. `None` if the query has neither.
-    fn first_stmt_start(&self, root: &Node) -> Option<usize> {
-        let viz = self
-            .find_node(root, "(visualise_statement) @viz")
-            .map(|n| n.start_byte());
-        let tab = self
-            .find_node(root, "(tabulate_statement) @tab")
-            .map(|n| n.start_byte());
+    /// The first VISUALISE or TABULATE statement node, whichever comes first.
+    /// `None` if the query has neither.
+    ///
+    /// This is the statement `Reader::execute()`'s dispatch actually resolves
+    /// — it always acts on the first top-level `Spec`, of whichever kind — so
+    /// it is also the only statement `extract_sql`'s FROM-injection should
+    /// ever look inside.
+    fn first_stmt<'b>(&self, root: &Node<'b>) -> Option<Node<'b>> {
+        let viz = self.find_node(root, "(visualise_statement) @viz");
+        let tab = self.find_node(root, "(tabulate_statement) @tab");
         match (viz, tab) {
-            (Some(a), Some(b)) => Some(a.min(b)),
+            (Some(a), Some(b)) => Some(if a.start_byte() <= b.start_byte() {
+                a
+            } else {
+                b
+            }),
             (Some(a), None) | (None, Some(a)) => Some(a),
             (None, None) => None,
         }
@@ -173,11 +178,13 @@ impl<'a> SourceTree<'a> {
     pub fn extract_sql(&self) -> Option<String> {
         let root = self.root();
 
-        // Check if there's any VISUALISE or TABULATE statement
-        if self.first_stmt_start(&root).is_none() {
-            // Neither at all - return entire source as SQL
+        // The statement `Reader::execute()` will actually resolve — the only
+        // one a FROM belonging to some *other*, later statement should ever
+        // be allowed to feed into.
+        let Some(first_stmt) = self.first_stmt(&root) else {
+            // Neither VISUALISE nor TABULATE at all - return entire source as SQL
             return Some(self.source.to_string());
-        }
+        };
 
         // Find sql_portion node and extract its text
         let sql_portion_node = self.find_node(&root, "(sql_portion) @sql");
@@ -214,8 +221,16 @@ impl<'a> SourceTree<'a> {
         // silently start matching some unrelated future use of
         // single_source_from — today it's only ever a child of one of these
         // two, but this doesn't rely on that staying true.
+        //
+        // Scoped to `first_stmt` specifically, not `root`: a query can have
+        // several VISUALISE/TABULATE statements (interleaved, even), and only
+        // the first one is ever actually resolved. Searching the whole tree
+        // here would let a *later* statement's FROM leak into the one being
+        // resolved — e.g. `TABULATE VISUALISE FROM sales DRAW point` would
+        // silently pick up the VISUALISE's `FROM sales` for the source-less
+        // TABULATE instead of correctly reporting no data source.
         let stmt_from = self.find_text(
-            &root,
+            &first_stmt,
             r#"
                 [
                   (visualise_statement (single_source_from source: (_) @source))
@@ -246,7 +261,7 @@ impl<'a> SourceTree<'a> {
     pub fn extract_spec(&self) -> Option<String> {
         let root = self.root();
 
-        let spec_start = self.first_stmt_start(&root)?;
+        let spec_start = self.first_stmt(&root)?.start_byte();
 
         // Extract spec text from first VISUALISE/TABULATE onwards
         let spec_text = &self.source[spec_start..];
@@ -337,6 +352,21 @@ mod tests {
             from_only.extract_sql().unwrap(),
             "SELECT * FROM ggsql:penguins"
         );
+    }
+
+    #[test]
+    fn test_extract_sql_does_not_borrow_a_later_statements_from() {
+        // A source-less TABULATE followed by an unrelated VISUALISE FROM must
+        // not pick up the VISUALISE's FROM — extract_sql is scoped to the
+        // first statement (the one Reader::execute() actually resolves), not
+        // the whole tree.
+        let tree = SourceTree::new("TABULATE VISUALISE FROM sales DRAW point").unwrap();
+        assert_eq!(tree.extract_sql(), None);
+
+        // Same in the other order: a source-less VISUALISE must not borrow a
+        // later TABULATE's FROM either.
+        let tree = SourceTree::new("VISUALISE DRAW point TABULATE FROM sales").unwrap();
+        assert_eq!(tree.extract_sql(), None);
     }
 
     #[test]

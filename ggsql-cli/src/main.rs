@@ -436,6 +436,17 @@ fn render_spec(spec: ResolvedSpec, args: &RenderArgs, writer: &WriterSpec) {
         }
     }
 
+    // Not behind -v: a query that silently dropped a statement (e.g. a mix of
+    // VISUALISE and TABULATE, only the first of which is resolved) is a
+    // correctness-relevant fact, not a verbose-only detail.
+    let query_warnings = match &spec {
+        ResolvedSpec::Plot(plot) => plot.warnings(),
+        ResolvedSpec::Table(table) => table.warnings(),
+    };
+    for warning in query_warnings {
+        eprintln!("warning: {}", warning.message);
+    }
+
     let info = writer.info;
     let (render, warnings) = (info.render)(&spec, &writer.options).unwrap_or_else(|e| {
         eprintln!("Failed to generate {} output: {}", info.label, e);

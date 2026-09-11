@@ -297,6 +297,9 @@ impl QueryExecutor {
                     table.body().height(),
                     table.body().width()
                 );
+                for warning in table.warnings() {
+                    tracing::warn!("{}", warning.message);
+                }
 
                 let html = HtmlWriter::new().write_table(table.table(), table.body())?;
                 tracing::debug!("Generated HTML table: {} chars", html.len());
@@ -309,6 +312,9 @@ impl QueryExecutor {
                     plot.metadata().rows,
                     plot.metadata().layer_count
                 );
+                for warning in plot.warnings() {
+                    tracing::warn!("{}", warning.message);
+                }
 
                 Ok(ExecutionResult::Visualization(plot))
             }
