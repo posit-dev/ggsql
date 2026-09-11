@@ -452,38 +452,54 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Get crates.io publish token
-        uses: rust-lang/crates-io-auth-action@v1
-        id: auth
-
       - name: Build tree-sitter-ggsql
         run: cargo build --package tree-sitter-ggsql
+
+      # A trusted publishing token is valid for 30 minutes, and each
+      # `cargo publish` spends most of that on its verification build. Every
+      # publish therefore mints its own token immediately beforehand, so no
+      # single step has to finish within the previous step's window.
+      - name: Get crates.io publish token for tree-sitter-ggsql
+        uses: rust-lang/crates-io-auth-action@v1
+        id: auth-tree-sitter-ggsql
 
       - name: Publish tree-sitter-ggsql
         run: cargo publish --package tree-sitter-ggsql --allow-dirty
         env:
-          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth-tree-sitter-ggsql.outputs.token }}
 
       - name: Wait for crates.io index update
         run: sleep 30
+
+      - name: Get crates.io publish token for ggsql
+        uses: rust-lang/crates-io-auth-action@v1
+        id: auth-ggsql
 
       - name: Publish ggsql
         run: cargo publish --package ggsql
         env:
-          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth-ggsql.outputs.token }}
 
       - name: Wait for crates.io index update
         run: sleep 30
 
+      - name: Get crates.io publish token for ggsql-jupyter
+        uses: rust-lang/crates-io-auth-action@v1
+        id: auth-ggsql-jupyter
+
       - name: Publish ggsql-jupyter
         run: cargo publish --package ggsql-jupyter
         env:
-          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth-ggsql-jupyter.outputs.token }}
+
+      - name: Get crates.io publish token for ggsql-cli
+        uses: rust-lang/crates-io-auth-action@v1
+        id: auth-ggsql-cli
 
       - name: Publish ggsql-cli
         run: cargo publish --package ggsql-cli
         env:
-          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth-ggsql-cli.outputs.token }}
 
   build-wasm:
     name: Build Wasm Package (wasm32)
