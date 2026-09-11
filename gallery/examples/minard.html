@@ -346,7 +346,7 @@ div.csl-indent {
 <section id="getting-started" class="level2">
 <h2 class="anchored" data-anchor-id="getting-started">Getting started</h2>
 <p>Before building a graphic it is always good to be aware of the columns and data structures that are present in your data.</p>
-<div id="62e644bd" class="cell" data-execution_count="1">
+<div id="e77f9807" class="cell" data-execution_count="1">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb1"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="kw">SELECT</span> <span class="op">*</span> <span class="kw">FROM</span> <span class="st">'minard_troops.csv'</span> <span class="kw">LIMIT</span> <span class="dv">5</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="1">
 <table class="dataframe caption-top table table-sm table-striped small" data-border="1">
@@ -400,7 +400,7 @@ div.csl-indent {
 </div>
 </div>
 <p>Our first goal is commit <em>something</em> to paper. We’ll iron out mistakes and polish the graphic later.</p>
-<div id="52547e75" class="cell" data-execution_count="2">
+<div id="4bfe24dc" class="cell" data-execution_count="2">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb2"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> long <span class="kw">AS</span> <span class="at">x</span>, lat <span class="kw">AS</span> <span class="at">y</span> <span class="kw">FROM</span> <span class="st">'minard_troops.csv'</span></span>
 <span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>  <span class="kw">DRAW</span> <span class="dt">line</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="2">
@@ -423,7 +423,7 @@ div.csl-indent {
 <section id="correcting-mistakes" class="level2">
 <h2 class="anchored" data-anchor-id="correcting-mistakes">Correcting mistakes</h2>
 <p>The first ‘mistake’ we made is choosing the <code>line</code> layer. Line layers automatically sort along the axis, so we’re mixing coordinates from the advance and the retreat. To rectify this, we should use the <code>path</code> layer instead. Path layers connect datapoints in the order they appear in, so we’re no longer sorting along west-east.</p>
-<div id="a1cecbcb" class="cell" data-execution_count="3">
+<div id="24a39288" class="cell" data-execution_count="3">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb3"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> long <span class="kw">AS</span> <span class="at">x</span>, lat <span class="kw">AS</span> <span class="at">y</span> <span class="kw">FROM</span> <span class="st">'minard_troops.csv'</span></span>
 <span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>  <span class="kw">DRAW</span> <span class="dt">path</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="3">
@@ -435,7 +435,7 @@ div.csl-indent {
 </div>
 </div>
 <p>The second mistake is that Napoleon’s retreat was not a simple linear path. For example: a detachment of soldiers arrived in Polotsk to guard the northern flank. This detachment later joined up with the remainder of the army during the retreat. What that means for us is that we have to account for additional grouping. This grouping allows us to resolve separate paths.</p>
-<div id="92796f24" class="cell" data-execution_count="4">
+<div id="086a3186" class="cell" data-execution_count="4">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb4"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> long <span class="kw">AS</span> <span class="at">x</span>, lat <span class="kw">AS</span> <span class="at">y</span> <span class="kw">FROM</span> <span class="st">'minard_troops.csv'</span></span>
 <span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>  <span class="kw">DRAW</span> <span class="dt">path</span></span>
 <span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>    <span class="kw">PARTITION</span> BY direction, group</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
@@ -451,7 +451,7 @@ div.csl-indent {
 <section id="enriching" class="level2">
 <h2 class="anchored" data-anchor-id="enriching">Enriching</h2>
 <p>One of the appealing aspects of Minard’s visualisation is that it is rich. Not only does it display a map and the route of the army; it also separates the advance from the retreat in different colours, and displays the troop numbers as line thickness. We can also separate the advance from the retreat by mapping the <code>direction</code> variable to the stroke colour.</p>
-<div id="51fb987a" class="cell" data-execution_count="5">
+<div id="52acaa63" class="cell" data-execution_count="5">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb5"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> long <span class="kw">AS</span> <span class="at">x</span>, lat <span class="kw">AS</span> <span class="at">y</span> <span class="kw">FROM</span> <span class="st">'minard_troops.csv'</span></span>
 <span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>  <span class="kw">DRAW</span> <span class="dt">path</span></span>
 <span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>    <span class="kw">MAPPING</span> direction AS <span class="at">stroke</span></span>
@@ -465,7 +465,7 @@ div.csl-indent {
 </div>
 </div>
 <p>Similarly, we can include the troop numbers by mapping the <code>survivors</code> variable to the line width.</p>
-<div id="5b76d11a" class="cell" data-execution_count="6">
+<div id="e2b9b68a" class="cell" data-execution_count="6">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb6"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> long <span class="kw">AS</span> <span class="at">x</span>, lat <span class="kw">AS</span> <span class="at">y</span> <span class="kw">FROM</span> <span class="st">'minard_troops.csv'</span></span>
 <span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>  <span class="kw">DRAW</span> <span class="dt">path</span></span>
 <span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>    <span class="kw">MAPPING</span> direction AS <span class="at">stroke</span>, survivors AS <span class="at">linewidth</span></span>
@@ -482,7 +482,7 @@ div.csl-indent {
 <section id="detailing" class="level2">
 <h2 class="anchored" data-anchor-id="detailing">Detailing</h2>
 <p>Now that we have all the data included in the ways we want, we can start detailing the graphic to our tastes. The first thing we might do is to pick some better colours. Because we have two levels for the <code>direction</code> variable —<strong>A</strong>dvance and <strong>R</strong>etreat— we can create a new colour scale for the <code>stroke</code> aesthetic. We’ll choose the colours to more closely resemble the original graphic by Minard. We set the palette using the <code>TO</code> keyword, and format the labels using <code>RENAMING</code>.</p>
-<div id="8a58b3ed" class="cell" data-execution_count="7">
+<div id="a4b9a9c6" class="cell" data-execution_count="7">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb7"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> long <span class="kw">AS</span> <span class="at">x</span>, lat <span class="kw">AS</span> <span class="at">y</span> <span class="kw">FROM</span> <span class="st">'minard_troops.csv'</span></span>
 <span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>  <span class="kw">DRAW</span> <span class="dt">path</span></span>
 <span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a>    <span class="kw">MAPPING</span> direction AS <span class="at">stroke</span>, survivors AS <span class="at">linewidth</span></span>
@@ -498,7 +498,7 @@ div.csl-indent {
 </div>
 </div>
 <p>Now for a slightly more complicated scale, we’re going to set one for the <code>linewidth</code> variable that represent the number of troops. If you want to build in some extra intuition for the scale, you can let 0 troops coincide with 0 linewidth. We define the output range using <code>TO (0, 20)</code> because for a continuous variable it expects the output limits. Slightly more elaborate is the input domain, where we use <code>FROM (0, null)</code> to state that the scale should start at 0 and go up to the largest value in the data. Because both the input and output ranges start at 0, we get a well-proportioned line.</p>
-<div id="369e9337" class="cell" data-execution_count="8">
+<div id="38cf7bf0" class="cell" data-execution_count="8">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb8"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> long <span class="kw">AS</span> <span class="at">x</span>, lat <span class="kw">AS</span> <span class="at">y</span> <span class="kw">FROM</span> <span class="st">'minard_troops.csv'</span></span>
 <span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a>  <span class="kw">DRAW</span> <span class="dt">path</span></span>
 <span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a>    <span class="kw">MAPPING</span> direction AS <span class="at">stroke</span>, survivors AS <span class="at">linewidth</span></span>
@@ -518,7 +518,7 @@ div.csl-indent {
 <section id="polishing" class="level2">
 <h2 class="anchored" data-anchor-id="polishing">Polishing</h2>
 <p>While this map is nice, it is a little bit lacking in context. For sure the longitude and latitude coordinates are meaningful to cartographers among us. However, for the rest of us we may like some city names to contextualise the march a bit. There is a separate dataset wherein we’ve saved the city coordinates and their names. We can use this by adding a second <code>DRAW</code> layer. Note that <code>long AS x, lat AS y</code> is applied globally, so it also applies to our city layer. In our new layer, we need so set additional mapping <code>city AS label</code> and the new dataset using <code>FROM</code>. We can also make text a little bit smaller by setting the font size.</p>
-<div id="e4c74844" class="cell" data-execution_count="9">
+<div id="83c94ab5" class="cell" data-execution_count="9">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb9"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> long <span class="kw">AS</span> <span class="at">x</span>, lat <span class="kw">AS</span> <span class="at">y</span> <span class="kw">FROM</span> <span class="st">'minard_troops.csv'</span></span>
 <span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a>  <span class="kw">DRAW</span> <span class="dt">path</span></span>
 <span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a>    <span class="kw">MAPPING</span> direction AS <span class="at">stroke</span>, survivors AS <span class="at">linewidth</span></span>
@@ -538,7 +538,7 @@ div.csl-indent {
 </div>
 </div>
 <p>An additional obvious way to polish your graphic is to add nicer titles for all your variables. We can use the <code>LABEL</code> statement to add custom labels for our plot. In the title, we escape the single quote mark by using <code>\'</code> so that we know it is not the end of the string yet. Moreover, we can use <code>null</code> to note that a title should be removed. In that way we can hide the <code>long</code> and <code>lat</code> labels from the position mapping.</p>
-<div id="1dcec266" class="cell" data-execution_count="10">
+<div id="3fdac7a2" class="cell" data-execution_count="10">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb10"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> long <span class="kw">AS</span> <span class="at">x</span>, lat <span class="kw">AS</span> <span class="at">y</span> <span class="kw">FROM</span> <span class="st">'minard_troops.csv'</span></span>
 <span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a>  <span class="kw">DRAW</span> <span class="dt">path</span></span>
 <span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a>    <span class="kw">MAPPING</span> direction AS <span class="at">stroke</span>, survivors AS <span class="at">linewidth</span></span>
