@@ -237032,7 +237032,10 @@ var GgsqlPlot = class _GgsqlPlot {
    * `id_prefix` namespaces every generated element id: inline SVGs share the
    * page's id space, so two plots on one page collide without it.
    *
-   * The background is left transparent so the page's own shows through.
+   * The canvas is opaque, matching every other ggsql writer. A transparent
+   * one would let the page show through wherever the theme's plot background
+   * does not reach — the slack a panel with a locked aspect (a polar coord,
+   * a map) leaves beside itself, which the legend sits in.
    * @param {number} width
    * @param {number} height
    * @param {string} id_prefix

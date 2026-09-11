@@ -681,7 +681,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="use-data-values-directly-for-size" class="level4">
 <h4 class="anchored" data-anchor-id="use-data-values-directly-for-size">Use data values directly for size</h4>
 <p><code>flipper_len</code> is measured in millimetres, so it is scaled down in SQL to give radii of a few points before being handed to the aesthetic:</p>
-<div id="bedec7b9" class="cell" data-execution_count="1">
+<div id="12520781" class="cell" data-execution_count="1">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb1"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="kw">SELECT</span> bill_len, bill_dep, flipper_len <span class="op">/</span> <span class="dv">40.0</span> <span class="kw">AS</span> radius <span class="kw">FROM</span> ggsql:penguins</span>
 <span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> bill_len <span class="kw">AS</span> <span class="at">x</span>, bill_dep <span class="kw">AS</span> <span class="at">y</span>, <span class="at">radius</span> <span class="kw">AS</span> <span class="at">size</span></span>
 <span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">point</span></span>
@@ -697,7 +697,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </section>
 <section id="use-color-values-directly" class="level4">
 <h4 class="anchored" data-anchor-id="use-color-values-directly">Use color values directly</h4>
-<div id="3e5f06e2" class="cell" data-execution_count="2">
+<div id="b8d07faf" class="cell" data-execution_count="2">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb2"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="kw">WITH</span> t(category, value, style) <span class="kw">AS</span> (<span class="kw">VALUES</span></span>
 <span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>  (<span class="st">'A'</span>, <span class="dv">45</span>, <span class="st">'forestgreen'</span>),</span>
 <span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>  (<span class="st">'B'</span>, <span class="dv">72</span>, <span class="st">'#3401e3'</span>),</span>
