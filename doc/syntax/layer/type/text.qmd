@@ -81,8 +81,7 @@ The most useful parts for a label are:
 * `` `code` ``, rendered in the monospace typeface.
 * `{selector body}` spans, which style a fragment without a dedicated marker. The selector is a single token: a colour name or CSS colour (`{.red hot}`), a hex colour (`{#0072B2 blue}`), or a size in points (`{.20 big}`). Combine them by nesting: `{.red {.20 big and red}}`.
 
-Note that `parse` is only honoured by the png writer.
-The Vega-Lite writer has no rich-text support and always draws the label literally, so a query meant for both writers should either avoid markdown in its labels or set `parse => false`.
+Note that `parse` is not honoured by the Vega-Lite writer, which has no rich text and always draws the label literally, so a query meant for both writers should either avoid markdown in its labels or set `parse => false`.
 
 ## Data transformation
 This layer supports aggregation through the `aggregate` setting. Aggregation groups are defined by `PARTITION BY` and all discrete mappings. Within each group, every numeric mapping is replaced in place by its aggregated value. Use a default like `'mean'` or target individual aesthetics with `'<aes>:<func>'`. See [the `DRAW` documentation](../../clause/draw.qmd#aggregate) for the full setting shape.
@@ -122,7 +121,7 @@ DRAW text
 SCALE fontsize TO (6, 20)
 ```
 
-Labels are read as markdown, so a `format` template can style part of the label. This only shows up in the png writer.
+Labels are read as markdown, so a `format` template can style part of the label. This does not show up in Vega-Lite output, which has no rich text.
 
 ```{ggsql}
 VISUALISE bill_len AS x, bill_dep AS y FROM ggsql:penguins

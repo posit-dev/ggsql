@@ -55,7 +55,7 @@ mod tests {
         let breaks = t.calculate_breaks(-180.0, 180.0, 7, true);
         assert!(!breaks.is_empty());
         for &b in &breaks {
-            assert!(b >= -180.0 && b <= 180.0);
+            assert!((-180.0..=180.0).contains(&b));
         }
         // Should pick nice degree intervals (multiples of 30° or 45°)
         assert!(breaks.iter().all(|b| b % 30.0 == 0.0 || b % 45.0 == 0.0));

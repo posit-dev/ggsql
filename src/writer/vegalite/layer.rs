@@ -1064,15 +1064,14 @@ impl TextRenderer {
         // First select which value to use (prefer literal)
         let value = if let Some(ParameterValue::Boolean(b)) = literal {
             *b
-        } else if let Some(s) = column_value {
+        } else {
+            let s = column_value?;
             // Parse string to boolean
             match s.to_lowercase().as_str() {
                 "true" | "1" => true,
                 "false" | "0" => false,
                 _ => return None,
             }
-        } else {
-            return None;
         };
 
         // Convert boolean to fontStyle

@@ -4,15 +4,15 @@ This document provides a comprehensive reference for the ggsql public API.
 
 ## Overview
 
-- **Stage 1: `reader.execute()`** - Parse query, execute SQL, resolve mappings, create ResolvedPlot
-- **Stage 2: `writer.render()`** - Generate output (Vega-Lite JSON, etc.)
+- **Stage 1: `reader.execute()`** - Parse query, execute SQL, resolve mappings, create a ResolvedSpec (a resolved Plot or Table)
+- **Stage 2: `writer.render()`** - Generate output (Vega-Lite JSON, SVG, PDF, PNG, …)
 
 ### API Functions
 
 | Function           | Use Case                                             |
 | ------------------ | ---------------------------------------------------- |
 | `reader.execute()` | Main entry point - full visualization pipeline       |
-| `writer.render()`  | Generate output from ResolvedPlot                       |
+| `writer.render()`  | Generate output from a ResolvedSpec (Plot or Table)  |
 | `validate()`       | Validate syntax + semantics, inspect query structure |
 
 ---
@@ -22,10 +22,10 @@ This document provides a comprehensive reference for the ggsql public API.
 ### `Reader::execute`
 
 ```rust
-fn execute(&self, query: &str) -> Result<ResolvedPlot>
+fn execute(&self, query: &str) -> Result<ResolvedSpec>
 ```
 
-Execute a ggsql query for visualization. This is the main entry point - a default method on the Reader trait.
+Execute a ggsql query for visualization or tabulation. This is the main entry point - a required method on the Reader trait. `ResolvedSpec` is `Plot(Box<ResolvedPlot>)` or `Table(ResolvedTable)`, depending on whether the query used `VISUALISE` or `TABULATE`; `.as_plot()` / `.as_table()` (or the consuming `.into_plot()` / `.into_table()`) narrow it.
 
 **What happens during execution:**
 
@@ -43,7 +43,7 @@ Execute a ggsql query for visualization. This is the main entry point - a defaul
 
 **Returns:**
 
-- `Ok(ResolvedPlot)` - Ready for rendering
+- `Ok(ResolvedSpec)` - Ready for rendering
 - `Err(GgsqlError)` - Parse, validation, or execution error
 
 **Example:**
@@ -57,11 +57,14 @@ let spec = reader.execute(
     "SELECT x, y FROM data VISUALISE x, y DRAW point"
 )?;
 
-// Access metadata
-println!("Rows: {}", spec.metadata().rows);
-println!("Columns: {:?}", spec.metadata().columns);
+// Access metadata (Plot-specific)
+if let Some(plot) = spec.as_plot() {
+    println!("Rows: {}", plot.metadata().rows);
+    println!("Columns: {:?}", plot.metadata().columns);
+}
 
-// Render to Vega-Lite
+// Render to Vega-Lite — dispatches to write_plot/write_table based on
+// which variant `spec` is
 let writer = VegaLiteWriter::new();
 let result = writer.render(&spec)?;
 ```
@@ -185,11 +188,14 @@ if let Some(tree) = validated.tree() {
 
 ### `ResolvedPlot`
 
-Result of executing a ggsql query, ready for rendering.
+Result of executing a `VISUALISE` query, ready for rendering. `reader.execute()`
+returns this wrapped in `ResolvedSpec::Plot(Box<ResolvedPlot>)`; get here via
+`spec.as_plot()` (or the consuming `spec.into_plot()`).
 
 #### Rendering
 
-Use `writer.render(&spec)` to generate output.
+Pass the `ResolvedSpec` itself to `writer.render()` — it dispatches to
+`write_plot`/`write_table` depending on which variant it is.
 
 **Example:**
 
@@ -297,9 +303,9 @@ for i in 0..spec.layer_count() {
 ```rust
 let spec = reader.execute(query)?;
 
-// Check for warnings
-if !spec.warnings().is_empty() {
-    for warning in spec.warnings() {
+// Check for warnings (Plot-specific)
+if let Some(plot) = spec.as_plot() {
+    for warning in plot.warnings() {
         eprintln!("Warning: {}", warning.message);
     }
 }
@@ -389,20 +395,26 @@ pub trait Reader {
 
 ```rust
 pub trait Writer {
-    /// What this writer produces — `String` for Vega-Lite JSON, `Vec<u8>` for PNG
+    /// What this writer produces — `String` for Vega-Lite JSON and SVG,
+    /// `Vec<u8>` for the binary formats
     type Output;
 
     /// Build the writer from key–value options (see `WriterOptions`)
     fn from_options(options: &WriterOptions) -> Result<Self> where Self: Sized;
 
     /// Render a plot specification and its data to the output format
-    fn write(&self, spec: &Plot, data: &HashMap<String, DataFrame>) -> Result<Self::Output>;
+    fn write_plot(&self, spec: &Plot, data: &HashMap<String, DataFrame>) -> Result<Self::Output>;
 
-    /// Check whether a spec can be rendered by this writer, without rendering it
-    fn validate(&self, spec: &Plot) -> Result<()>;
+    /// Check whether a plot can be rendered by this writer, without rendering it
+    fn validate_plot(&self, spec: &Plot) -> Result<()>;
 
-    /// Render a `ResolvedPlot` from `reader.execute()` — the usual entry point
-    fn render(&self, spec: &ResolvedPlot) -> Result<Self::Output>;
+    /// Render a resolved table and its body data. Defaults to an "unsupported"
+    /// error; only `HtmlWriter` overrides it as of this writing.
+    fn write_table(&self, table: &Table, body: &DataFrame) -> Result<Self::Output> { .. }
+
+    /// Render a `ResolvedSpec` from `reader.execute()` — the usual entry point.
+    /// Dispatches to `write_plot`/`write_table` depending on the variant.
+    fn render(&self, spec: &ResolvedSpec) -> Result<Self::Output>;
 }
 ```
 
@@ -416,7 +428,7 @@ key=value`). Keys are normalised: trimmed, lowercased, `-` folded to `_`.
 
 ```rust
 let options = WriterOptions::parse(["width=1600", "height=1200", "units=px"])?;
-let png = PngWriter::from_options(&options)?.render(&spec)?;
+let svg = SvgWriter::from_options(&options)?.render(&spec)?;
 
 // One string may carry several options, separated by `;`. Equivalent to the above:
 let options = WriterOptions::parse(["width=1600;height=1200;units=px"])?;
@@ -434,6 +446,7 @@ let options = WriterOptions::new().set("dpi", "150");
 | `new()` / `set(key, value)` | Build programmatically |
 | `get(key)` | Raw value, if supplied |
 | `number(key)` | Value as a finite `f64`, erroring with the option's name |
+| `boolean(key)` | Value as a `bool`, accepting `true`/`false`/`1`/`0`/`yes`/`no`/`on`/`off` |
 | `one_of(key, allowed)` | Value checked against a closed set |
 | `reject_unknown(known)` | Error naming keys the writer doesn't understand |
 | `is_empty()` | Whether any option was supplied |

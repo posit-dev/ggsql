@@ -39,8 +39,15 @@ adbc_core = { version = "0.23", optional = true }
 # Spatial
 geozero = { workspace = true, optional = true, features = ["with-wkb", "with-wkt", "with-geojson"] }
 
-# Backend for the PNG writer (non-default; gated, excluded from the MSRV 1.86 build)
-hephaestus = { version = "0.1.0", optional = true, default-features = false, features = ["vello", "png", "geom-wkb", "geom-wkt"] }
+# Backend for the renderer-backed writers (non-default; gated, excluded from the
+# MSRV 1.86 build). The GPU rasteriser is *not* requested here: it arrives with
+# the `raster` feature, so a build wanting only vector output pulls no wgpu.
+hephaestus = { version = "0.4.1", optional = true, default-features = false, features = ["geom-wkb", "geom-wkt"] }
+
+# WOFF / WOFF2 decoding for `fonts::register_font`, behind `webfonts`. Pure
+# Rust and no build script; `brotli` here is `brotli-decompressor`, the
+# decode-only half, so the gate costs a decompressor and nothing else.
+wuff = { version = "0.2", optional = true, default-features = false, features = ["brotli", "z"] }
 
 # Serialization
 serde.workspace = true
@@ -57,6 +64,16 @@ sprintf = "0.4"
 const_format.workspace = true
 uuid.workspace = true
 
+# Named only to reach one feature parley does not re-export. `fontconfig-dlopen`
+# makes fontique load `libfontconfig.so.1` at runtime instead of asking
+# pkg-config for it at build time, so building any renderer-backed writer needs
+# only the runtime library and not the `-dev` package — which is what keeps
+# `cargo install ggsql-cli` working on a bare box now that `svg`, `pdf` and
+# `hep` are default. Cargo unions features, so this applies to the `fontique`
+# parley resolves; Linux-only because that is the only target with fontconfig.
+[target.'cfg(target_os = "linux")'.dependencies]
+fontique = { version = "0.9", optional = true, default-features = false, features = ["fontconfig-dlopen"] }
+
 [dev-dependencies]
 jsonschema = { version = "0.44", default-features = false, features = ["resolve-file"] }
 tempfile = "3.8"
@@ -65,7 +82,7 @@ adbc_datafusion = "0.23"
 adbc_driver_manager = "0.23"
 
 [features]
-default = ["adbc", "duckdb", "sqlite", "vegalite", "parquet", "builtin-data", "odbc", "spatial"]
+default = ["adbc", "duckdb", "sqlite", "vegalite", "html", "parquet", "builtin-data", "odbc", "spatial", "svg", "pdf", "hep"]
 duckdb = ["dep:duckdb"]
 parquet = ["dep:parquet"]
 sqlite = ["dep:rusqlite"]
@@ -73,6 +90,60 @@ adbc = ["dep:adbc_core"]
 odbc = ["dep:toml_edit", "dep:libloading"]
 spatial = ["dep:geozero", "rusqlite?/load_extension"]
 vegalite = []
-png = ["dep:hephaestus"]
+# Pure string formatting, no extra dependencies — like `vegalite`, gated only
+# so a minimal build can drop it, not because it needs anything to compile.
+html = []
+# Internal, enabled by the writer features below rather than named directly.
+# `graphics` is the shared plot-composition layer; `raster` adds the GPU
+# rasteriser on top of it. Splitting them is what lets a vector-only build skip
+# wgpu, vello_hybrid and pollster entirely — hephaestus gates only its GPU
+# backends behind that feature, not the plot layer.
+graphics = ["dep:hephaestus", "dep:fontique"]
+# The GPU rasteriser. `vello-hybrid` rather than vello classic: it computes
+# coverage on the CPU and hands the GPU a plain render pipeline. Its GPU buffers
+# are sized to the scene's actual content rather than to fixed caps, so there is
+# no draw-count ceiling to budget against on a dense plot.
+#
+# It transitively enables `hephaestus/png`, so a build wanting only, say, webp
+# still compiles the PNG codec. A few kB, and not worth working around.
+raster = ["graphics", "hephaestus/vello-hybrid"]
+# On when at least one writer reads pixels back. Distinct from `raster`, which
+# only says the GPU rasteriser is available — the plot viewer needs that and
+# presents its frames straight to a window, never through a buffer.
+raster-writer = ["raster"]
+
+# One feature per output format, each pulling in exactly one codec. The knob
+# each writer exposes is the axis its format actually has — png trades encode
+# time for size, jpeg trades quality for size, tiff picks a compressor, and
+# webp is lossless with no rate control at all — so they share no setting they
+# would each have to reinterpret.
+png = ["raster-writer", "hephaestus/png"]
+jpeg = ["raster-writer", "hephaestus/jpeg"]
+tiff = ["raster-writer", "hephaestus/tiff"]
+webp = ["raster-writer", "hephaestus/webp"]
+
+# The vector writers need only `graphics`: they record the composition's own
+# drawing commands rather than rasterising them, so they pull in no wgpu, need
+# no GPU adapter at render time, and compile on the MSRV toolchain.
+svg = ["graphics", "hephaestus/svg"]
+pdf = ["graphics", "hephaestus/pdf"]
+
+# The plot-document writer. Named after the format, which ggsql does not own —
+# see `src/writer/hephaestus/CLAUDE.md` on why that is accurate rather than a
+# leak. `hep-read` is test-only: it is what lets the round trip be asserted.
+hep = ["graphics", "hephaestus/document-write"]
+hep-read = ["hep", "hephaestus/document-read"]
+
+# The plot viewer, which is not a writer: it shows a window and returns nothing.
+# Needs `raster` because a window is presented by the GPU rasteriser.
+window = ["raster", "hephaestus/window"]
+
+# Accept the font containers a CDN serves a browser — WOFF and WOFF2 — in
+# `fonts::register_font`, unwrapping them to the sfnt inside before the shaper
+# sees it. Off by default: a host reading fonts off a filesystem has sfnt
+# already, and this is the one place the decompressor is worth its bytes.
+webfonts = ["graphics", "dep:wuff"]
+
 builtin-data = []
 all-readers = ["duckdb", "sqlite", "odbc"]
+all-writers = ["vegalite", "html", "png", "jpeg", "tiff", "webp", "svg", "pdf", "hep"]

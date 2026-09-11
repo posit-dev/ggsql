@@ -36,7 +36,7 @@ impl ConnectionInfo {
 }
 
 /// A Jupyter protocol message
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct JupyterMessage {
     pub header: MessageHeader,
     pub parent_header: Value,
@@ -47,7 +47,7 @@ pub struct JupyterMessage {
 }
 
 /// Message header
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct MessageHeader {
     pub msg_id: String,
     pub session: String,

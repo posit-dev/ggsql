@@ -1,5 +1,5 @@
 import * as esbuild from "esbuild";
-import { copyFileSync, mkdirSync } from "fs";
+import { copyFileSync, existsSync, mkdirSync, readdirSync } from "fs";
 import { dirname, join } from "path";
 import { fileURLToPath } from "url";
 
@@ -14,7 +14,7 @@ mkdirSync(distDir, { recursive: true });
 console.log("Copying static files...");
 copyFileSync(join(__dirname, "src/index.qmd"), join(distDir, "index.qmd"));
 copyFileSync(
-  join(__dirname, "../pkg/ggsql_wasm_bg.wasm"),
+  join(__dirname, "../pkg/dist/ggsql_wasm_bg.wasm"),
   join(distDir, "ggsql_wasm_bg.wasm"),
 );
 copyFileSync(
@@ -25,13 +25,19 @@ copyFileSync(
   join(__dirname, "../../ggsql-vscode/syntaxes/ggsql.tmLanguage.json"),
   join(distDir, "ggsql.tmLanguage.json"),
 );
-for (const ext of ["mod_spatialite"]) {
-  try {
-    copyFileSync(
-      join(__dirname, `../pkg/${ext}.wasm`),
-      join(distDir, `${ext}.wasm`),
-    );
-  } catch (_) {}
+// A browser enumerates no fonts of its own, so the faces have to be served
+// alongside the wasm — see `registerDefaultFonts` in the client. Worth stopping
+// for: the demo would build and every plot would come out textless.
+const fontsDir = join(__dirname, "../pkg/dist/fonts");
+if (!existsSync(fontsDir)) {
+  console.error(
+    `No fonts in ${fontsDir}. Run ggsql-wasm/build-wasm.sh, which puts them there.`,
+  );
+  process.exit(1);
+}
+mkdirSync(join(distDir, "fonts"), { recursive: true });
+for (const face of readdirSync(fontsDir)) {
+  copyFileSync(join(fontsDir, face), join(distDir, "fonts", face));
 }
 
 // Build Monaco editor web worker

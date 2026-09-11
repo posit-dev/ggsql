@@ -1,0 +1,32 @@
+{
+  "name": "ggsql-wasm",
+  "version": "0.5.0",
+  "description": "WebAssembly bindings for ggsql.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/posit-dev/ggsql"
+  },
+  "homepage": "https://ggsql.org",
+  "type": "module",
+  "main": "dist/ggsql.js",
+  "module": "dist/ggsql.js",
+  "types": "dist/ggsql.d.ts",
+  "exports": {
+    ".": "./dist/ggsql.js",
+    "./fonts/*": "./dist/fonts/*"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "node build.mjs && tsc --emitDeclarationOnly",
+    "dev": "node build.mjs --watch",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "esbuild": "^0.27.0",
+    "hyparquet": "^1.25.0",
+    "typescript": "^5.9.0"
+  }
+}

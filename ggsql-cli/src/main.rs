@@ -4,19 +4,16 @@ ggsql Command Line Interface
 Provides commands for executing ggsql queries with various data sources and output formats.
 */
 
-use clap::{Parser, Subcommand, ValueEnum};
-use ggsql::reader::{Reader, ResolvedSpec};
+use clap::{Args, Parser, Subcommand, ValueEnum};
+use ggsql::reader::{connection, Reader, ResolvedSpec};
 use ggsql::validate::validate;
-use ggsql::writer::{HtmlWriter, Writer, WriterOptions};
+use ggsql::writer::WriterOptions;
 use ggsql::{parser, VERSION};
 use std::io::{IsTerminal, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use writers::{Output, WriterInfo};
 
-#[cfg(feature = "vegalite")]
-use ggsql::writer::VegaLiteWriter;
-
-#[cfg(feature = "png")]
-use ggsql::writer::PngWriter;
+mod writers;
 
 mod docs {
     include!(concat!(env!("OUT_DIR"), "/docs_data.rs"));
@@ -31,29 +28,145 @@ pub struct Cli {
     pub command: Commands,
 }
 
-enum Output {
-    Text(String),
-    /// Only a raster writer produces bytes, so nothing constructs this when no
-    /// such writer is compiled in.
-    #[cfg_attr(not(feature = "png"), allow(dead_code))]
-    Bin(Vec<u8>),
-}
-
 /// The writer to render with, plus the `--writer-option` settings for it.
 struct WriterSpec {
-    name: String,
+    info: &'static WriterInfo,
     options: WriterOptions,
 }
 
-impl WriterSpec {
-    /// Build from the raw flags, exiting with the parse error if an option is
-    /// not `key=value`.
-    fn new(name: String, options: Vec<String>) -> Self {
-        let options = WriterOptions::parse(options).unwrap_or_else(|e| {
+/// Where a subcommand's data comes from.
+///
+/// Flattened into both [`RenderArgs`] and [`ViewArgs`], so the two flags are
+/// declared — and helped, and defaulted — once: where a plot's data comes from
+/// does not depend on whether the plot ends up in a file or in a window.
+#[derive(Args)]
+pub struct ReaderArgs {
+    /// Data source connection string (duckdb://, sqlite://, odbc://)
+    #[arg(short, long, default_value = "duckdb://memory")]
+    pub reader: String,
+
+    /// In-memory cache backend wrapping the reader (duckdb, sqlite). Off by default.
+    #[arg(long)]
+    pub cache: Option<String>,
+}
+
+/// The flags shared by `exec` and `run`: where the data comes from, which
+/// writer renders it, and where the result goes.
+#[derive(Args)]
+pub struct RenderArgs {
+    #[command(flatten)]
+    pub source: ReaderArgs,
+
+    /// Output format — run with --help for the writers this build has
+    ///
+    /// Left unset, `--output`'s extension picks the writer, falling back to
+    /// vegalite. `Option` rather than a clap `default_value` so "unset" stays
+    /// distinguishable from "explicitly vegalite"; the long help states the
+    /// default instead.
+    #[arg(short, long, long_help = writers::writer_help())]
+    pub writer: Option<String>,
+
+    /// Settings for the chosen writer, as `key=value` (repeatable)
+    #[arg(
+        short = 'D',
+        long = "writer-option",
+        visible_alias = "writer-options",
+        value_name = "KEY=VALUE[;...]",
+        long_help = writers::option_help()
+    )]
+    pub writer_options: Vec<String>,
+
+    /// Output file path
+    #[arg(short, long)]
+    pub output: Option<PathBuf>,
+
+    /// Show verbose output (execution details, statistics)
+    #[arg(short, long)]
+    pub verbose: bool,
+}
+
+/// The flags `view` takes: where the data comes from and how the window looks.
+///
+/// Deliberately not [`RenderArgs`]: there is no `--writer` to choose and no
+/// `--output` to write, and `-D` carries the viewer's own settings rather than
+/// a writer's. The reader flags are the same ones, so they come from the same
+/// [`ReaderArgs`].
+#[derive(Args)]
+pub struct ViewArgs {
+    #[command(flatten)]
+    pub source: ReaderArgs,
+
+    /// Viewer settings, as `key=value` (repeatable)
+    #[arg(
+        short = 'D',
+        long = "viewer-option",
+        visible_alias = "viewer-options",
+        value_name = "KEY=VALUE[;...]",
+        long_help = "Settings for the viewer window, as `key=value`. Repeatable, and one flag \
+                     may carry several settings separated by `;` (quote it, as most shells read \
+                     `;` themselves): `-D 'width=1280;title=My plot'`.\n\nSettings:\n  \
+                     width, height, background, title"
+    )]
+    pub viewer_options: Vec<String>,
+
+    /// Show verbose output (execution details, statistics)
+    #[arg(short, long)]
+    pub verbose: bool,
+}
+
+impl RenderArgs {
+    /// Resolve `--writer` and its settings, exiting on an unknown name or a
+    /// malformed setting rather than discovering either after the SQL has run.
+    fn writer(&self) -> WriterSpec {
+        let info = self.resolve_writer();
+        if !info.compiled {
+            eprintln!("{}", writers::not_compiled_message(info));
+            std::process::exit(1);
+        }
+        let options = WriterOptions::parse(self.writer_options.clone()).unwrap_or_else(|e| {
             eprintln!("{}", e);
             std::process::exit(1);
         });
-        Self { name, options }
+        if let Err(e) = (info.check)(&options) {
+            eprintln!("{}", e);
+            std::process::exit(1);
+        }
+        WriterSpec { info, options }
+    }
+
+    /// Which writer to use: `--writer` if given, else what `--output`'s
+    /// extension implies, else the default.
+    ///
+    /// An explicit `--writer` always wins; disagreeing with the extension only
+    /// warns on stderr, since writing SVG to a `.txt` is legitimate.
+    fn resolve_writer(&self) -> &'static writers::WriterInfo {
+        if let Some(name) = &self.writer {
+            let info = writers::find(name).unwrap_or_else(|| {
+                eprintln!("{}", writers::unknown_writer(name));
+                std::process::exit(1);
+            });
+            if let Some(implied) = self.output.as_deref().and_then(writers::for_extension) {
+                if !std::ptr::eq(implied, info) {
+                    eprintln!(
+                        "Warning: writing {} to '{}', whose extension says {}",
+                        info.label,
+                        self.output.as_deref().unwrap_or(Path::new("")).display(),
+                        implied.name
+                    );
+                }
+            }
+            return info;
+        }
+        // No --writer, so the extension decides. A writer it names but this
+        // build lacks is an error, not a silent fallback to Vega-Lite JSON in
+        // a file called `.png`.
+        self.output
+            .as_deref()
+            .and_then(writers::for_extension)
+            .unwrap_or_else(|| {
+                writers::find(writers::DEFAULT_WRITER)
+                    .expect("the default writer has a registry row")
+            })
     }
 }
 
@@ -64,40 +177,8 @@ pub enum Commands {
         /// The ggsql query to execute
         query: String,
 
-        /// Data source connection string (duckdb://, sqlite://, odbc://)
-        #[arg(short, long, default_value = "duckdb://memory")]
-        reader: String,
-
-        /// In-memory cache backend wrapping the reader (duckdb, sqlite). Off by default.
-        #[arg(long)]
-        cache: Option<String>,
-
-        /// Output format: vegalite (JSON), html (a plain table; TABULATE
-        /// queries only), or png (raster image; requires the `png` feature
-        /// and a GPU adapter)
-        #[arg(short, long, default_value = "vegalite")]
-        writer: String,
-
-        /// Settings for the chosen writer, as `key=value`. Repeatable, and one
-        /// flag may carry several settings separated by `;` (quote it, as most
-        /// shells read `;` themselves): `-D 'width=1600;dpi=150'`. The
-        /// png writer takes width, height, units, dpi, and background;
-        /// the vegalite and html writers take none.
-        #[arg(
-            short = 'D',
-            long = "writer-option",
-            visible_alias = "writer-options",
-            value_name = "KEY=VALUE[;...]"
-        )]
-        writer_options: Vec<String>,
-
-        /// Output file path
-        #[arg(short, long)]
-        output: Option<PathBuf>,
-
-        /// Show verbose output (execution details, statistics)
-        #[arg(short, long)]
-        verbose: bool,
+        #[command(flatten)]
+        render: RenderArgs,
     },
 
     /// Execute a ggsql query from a file
@@ -105,40 +186,22 @@ pub enum Commands {
         /// Path to .sql file containing ggsql query
         file: PathBuf,
 
-        /// Data source connection string (duckdb://, sqlite://, odbc://)
-        #[arg(short, long, default_value = "duckdb://memory")]
-        reader: String,
+        #[command(flatten)]
+        render: RenderArgs,
+    },
 
-        /// In-memory cache backend wrapping the reader (duckdb, sqlite). Off by default.
-        #[arg(long)]
-        cache: Option<String>,
+    /// Show a ggsql query's plot in a window
+    ///
+    /// Blocks until the window is closed. Resizing the window re-lays-out the
+    /// plot rather than stretching it.
+    ///
+    /// Requires the `window` feature and a working GPU adapter.
+    View {
+        /// The ggsql query to show
+        query: String,
 
-        /// Output format: vegalite (JSON), html (a plain table; TABULATE
-        /// queries only), or png (raster image; requires the `png` feature
-        /// and a GPU adapter)
-        #[arg(short, long, default_value = "vegalite")]
-        writer: String,
-
-        /// Settings for the chosen writer, as `key=value`. Repeatable, and one
-        /// flag may carry several settings separated by `;` (quote it, as most
-        /// shells read `;` themselves): `-D 'width=1600;dpi=150'`. The
-        /// png writer takes width, height, units, dpi, and background;
-        /// the vegalite and html writers take none.
-        #[arg(
-            short = 'D',
-            long = "writer-option",
-            visible_alias = "writer-options",
-            value_name = "KEY=VALUE[;...]"
-        )]
-        writer_options: Vec<String>,
-
-        /// Output file path
-        #[arg(short, long)]
-        output: Option<PathBuf>,
-
-        /// Show verbose output (execution details, statistics)
-        #[arg(short, long)]
-        verbose: bool,
+        #[command(flatten)]
+        view: ViewArgs,
     },
 
     /// Parse a query and show the AST (for debugging)
@@ -212,36 +275,27 @@ fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::Exec {
-            query,
-            reader,
-            cache,
-            writer,
-            writer_options,
-            output,
-            verbose,
-        } => {
-            if verbose {
+        Commands::Exec { query, render } => {
+            if render.verbose {
                 eprintln!("Executing query: {}", query);
             }
-            let writer = WriterSpec::new(writer, writer_options);
-            cmd_exec(query, reader, cache, &writer, output, verbose);
+            let writer = render.writer();
+            cmd_exec(query, &render, &writer);
         }
 
-        Commands::Run {
-            file,
-            reader,
-            cache,
-            writer,
-            writer_options,
-            output,
-            verbose,
-        } => {
-            if verbose {
+        Commands::Run { file, render } => {
+            if render.verbose {
                 eprintln!("Running query from file: {}", file.display());
             }
-            let writer = WriterSpec::new(writer, writer_options);
-            cmd_run(file, reader, cache, &writer, output, verbose);
+            let writer = render.writer();
+            cmd_run(file, &render, &writer);
+        }
+
+        Commands::View { query, view } => {
+            if view.verbose {
+                eprintln!("Showing query: {}", query);
+            }
+            cmd_view(query, &view);
         }
 
         Commands::Parse { query, format } => {
@@ -268,16 +322,9 @@ fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-fn cmd_run(
-    file: PathBuf,
-    reader: String,
-    cache: Option<String>,
-    writer: &WriterSpec,
-    output: Option<PathBuf>,
-    verbose: bool,
-) {
+fn cmd_run(file: PathBuf, args: &RenderArgs, writer: &WriterSpec) {
     match std::fs::read_to_string(&file) {
-        Ok(query) => cmd_exec(query, reader, cache, writer, output, verbose),
+        Ok(query) => cmd_exec(query, args, writer),
         Err(e) => {
             eprintln!("Failed to read file {}: {}", file.display(), e);
             std::process::exit(1);
@@ -285,70 +332,56 @@ fn cmd_run(
     }
 }
 
-fn cmd_exec(
-    query: String,
-    reader: String,
-    cache: Option<String>,
-    writer: &WriterSpec,
-    output: Option<PathBuf>,
-    verbose: bool,
-) {
-    use ggsql::reader::connection;
-
-    if verbose {
-        eprintln!("Reader: {}", reader);
-        if let Some(ref cache) = cache {
+fn cmd_exec(query: String, args: &RenderArgs, writer: &WriterSpec) {
+    if args.verbose {
+        eprintln!("Reader: {}", args.source.reader);
+        if let Some(ref cache) = args.source.cache {
             eprintln!("Cache: {}", cache);
         }
-        eprintln!("Writer: {}", writer.name);
-        if let Some(ref output_file) = output {
+        eprintln!("Writer: {}", writer.info.name);
+        if let Some(ref output_file) = args.output {
             eprintln!("Output: {}", output_file.display());
         }
     }
 
-    // Build the reader. A composite `<cache>+<primary>://` URI is handled by
-    // `reader_from_uri`; the `--cache` flag is an explicit alternative and may
-    // not be combined with a composite URI.
-    let built = match cache {
-        Some(cache_scheme) => {
-            if connection::split_cache_uri(&reader).is_some() {
-                eprintln!(
-                    "Cannot combine --cache with a composite '<cache>+<primary>://' connection string"
-                );
-                std::process::exit(1);
-            }
-            // `--cache <scheme>` is sugar for the composite `<scheme>+<primary>://` URI.
-            match reader.split_once("://") {
-                Some((scheme, rest)) => {
-                    connection::reader_from_uri(&format!("{cache_scheme}+{scheme}://{rest}"))
-                }
-                None => {
-                    eprintln!("Invalid --reader connection string: {reader}");
-                    std::process::exit(1);
-                }
-            }
-        }
-        None => connection::reader_from_uri(&reader),
-    };
-
-    let reader = match built {
-        Ok(r) => r,
-        Err(e) => {
-            eprintln!("Failed to create reader: {}", e);
+    let reader =
+        open_reader(&args.source.reader, args.source.cache.as_deref()).unwrap_or_else(|e| {
+            eprintln!("{}", e);
             std::process::exit(1);
-        }
-    };
+        });
 
-    exec_with_reader(&query, reader.as_ref(), writer, output, verbose);
+    exec_with_reader(&query, reader.as_ref(), args, writer);
 }
 
-fn exec_with_reader<R: Reader + ?Sized>(
-    query: &str,
-    reader: &R,
-    writer: &WriterSpec,
-    output: Option<PathBuf>,
-    verbose: bool,
-) {
+/// Open the reader named by a connection string, wrapped in a cache if asked
+/// for one.
+///
+/// Which schemes exist, which of them this build has, and how a cache wraps a
+/// primary all live in the library, as `connection::reader_from_uri`. What is
+/// left here is the CLI's own spelling of it: `ggsql::reader::Reader` is
+/// object-safe on purpose, so `exec`, `run` and `view` share one function.
+///
+/// `--cache <scheme>` is sugar for the composite `<scheme>+<primary>://` URI
+/// `reader_from_uri` already understands. The two forms may not be combined —
+/// there would be no saying which cache was meant.
+fn open_reader(uri: &str, cache: Option<&str>) -> Result<Box<dyn Reader + Send>, String> {
+    let uri = match cache {
+        Some(cache_scheme) => {
+            if connection::split_cache_uri(uri).is_some() {
+                return Err("Cannot combine --cache with a composite \'<cache>+<primary>://\' connection string".to_string());
+            }
+            let Some((scheme, rest)) = uri.split_once("://") else {
+                return Err(format!("Invalid --reader connection string: {uri}"));
+            };
+            format!("{cache_scheme}+{scheme}://{rest}")
+        }
+        None => uri.to_string(),
+    };
+
+    connection::reader_from_uri(&uri).map_err(|e| format!("Failed to create reader: {e}"))
+}
+
+fn exec_with_reader(query: &str, reader: &dyn Reader, args: &RenderArgs, writer: &WriterSpec) {
     // Use validate() to check if query has visualization
     let validated = match validate(query) {
         Ok(v) => v,
@@ -359,10 +392,10 @@ fn exec_with_reader<R: Reader + ?Sized>(
     };
 
     if !validated.has_spec() {
-        if verbose {
+        if args.verbose {
             eprintln!("Visualisation is empty. Printing table instead.");
         }
-        print_table_fallback(query, reader, 100);
+        print_table_fallback(query, reader, 100, args.output.as_deref());
         return;
     }
 
@@ -375,13 +408,13 @@ fn exec_with_reader<R: Reader + ?Sized>(
         }
     };
 
-    render_spec(spec, writer, output, verbose);
+    render_spec(spec, args, writer);
 }
 
-fn render_spec(spec: ResolvedSpec, writer: &WriterSpec, output: Option<PathBuf>, verbose: bool) {
+fn render_spec(spec: ResolvedSpec, args: &RenderArgs, writer: &WriterSpec) {
     match &spec {
         ResolvedSpec::Plot(plot) => {
-            if verbose {
+            if args.verbose {
                 let metadata = plot.metadata();
                 eprintln!("\nQuery executed:");
                 eprintln!("  Rows: {}", metadata.rows);
@@ -395,7 +428,7 @@ fn render_spec(spec: ResolvedSpec, writer: &WriterSpec, output: Option<PathBuf>,
             }
         }
         ResolvedSpec::Table(table) => {
-            if verbose {
+            if args.verbose {
                 eprintln!("\nQuery executed:");
                 eprintln!("  Rows: {}", table.body().height());
                 eprintln!("  Columns: {}", table.body().width());
@@ -403,25 +436,26 @@ fn render_spec(spec: ResolvedSpec, writer: &WriterSpec, output: Option<PathBuf>,
         }
     }
 
-    let render = match writer.name.as_str() {
-        "vegalite" => render_vegalite(&spec, &writer.options),
-        "png" => render_png(&spec, &writer.options),
-        "html" => render_html(&spec, &writer.options),
-        other => {
-            eprintln!("Unknown writer '{}'", other);
-            eprintln!("Available writers: html, png, vegalite");
-            std::process::exit(1)
-        }
-    };
+    let info = writer.info;
+    let (render, warnings) = (info.render)(&spec, &writer.options).unwrap_or_else(|e| {
+        eprintln!("Failed to generate {} output: {}", info.label, e);
+        std::process::exit(1);
+    });
 
-    match (render, output) {
+    // Not behind -v: a degraded render is a defect in the file about to be
+    // shipped. stderr keeps it out of a piped artifact.
+    for warning in &warnings {
+        eprintln!("warning: {}", warning);
+    }
+
+    match (render, &args.output) {
         (Output::Text(txt), None) => {
             println!("{}", txt);
         }
-        (Output::Text(txt), Some(path)) => match std::fs::write(&path, txt) {
+        (Output::Text(txt), Some(path)) => match std::fs::write(path, txt) {
             Ok(_) => {
-                if verbose {
-                    eprintln!("\nOutput written to: {}", path.display());
+                if args.verbose {
+                    eprintln!("\n{} written to: {}", info.label, path.display());
                 }
             }
             Err(e) => {
@@ -431,7 +465,10 @@ fn render_spec(spec: ResolvedSpec, writer: &WriterSpec, output: Option<PathBuf>,
         },
         (Output::Bin(buf), None) => {
             if std::io::stdout().is_terminal() {
+                // Non-zero, since nothing was produced: `… && publish` must
+                // not carry on as though it had a file.
                 eprintln!("Suppressing output in terminal. Pipe output to another process or use --output <FILE> to save to a file.");
+                std::process::exit(1);
             } else {
                 std::io::stdout().write_all(&buf).unwrap_or_else(|e| {
                     eprintln!("Failed to write buffer with the error: {}", e);
@@ -439,10 +476,10 @@ fn render_spec(spec: ResolvedSpec, writer: &WriterSpec, output: Option<PathBuf>,
                 });
             }
         }
-        (Output::Bin(buf), Some(path)) => match std::fs::write(&path, buf) {
+        (Output::Bin(buf), Some(path)) => match std::fs::write(path, buf) {
             Ok(_) => {
-                if verbose {
-                    eprintln!("\nPNG written to: {}", path.display());
+                if args.verbose {
+                    eprintln!("\n{} written to: {}", info.label, path.display());
                 }
             }
             Err(e) => {
@@ -451,6 +488,76 @@ fn render_spec(spec: ResolvedSpec, writer: &WriterSpec, output: Option<PathBuf>,
             }
         },
     };
+}
+
+/// Show a query's plot in a window, blocking until it closes.
+///
+/// The subcommand exists whether or not the feature does, so a build without
+/// it says what would bring it back rather than dropping the command.
+fn cmd_view(query: String, args: &ViewArgs) {
+    #[cfg(feature = "window")]
+    {
+        use ggsql::writer::PlotViewer;
+
+        let options = WriterOptions::parse(args.viewer_options.clone()).unwrap_or_else(|e| {
+            eprintln!("{}", e);
+            std::process::exit(1);
+        });
+        let viewer = PlotViewer::from_options(&options).unwrap_or_else(|e| {
+            eprintln!("{}", e);
+            std::process::exit(1);
+        });
+
+        if args.verbose {
+            eprintln!("Reader: {}", args.source.reader);
+            if let Some(ref cache) = args.source.cache {
+                eprintln!("Cache: {}", cache);
+            }
+        }
+
+        let reader =
+            open_reader(&args.source.reader, args.source.cache.as_deref()).unwrap_or_else(|e| {
+                eprintln!("{}", e);
+                std::process::exit(1);
+            });
+
+        let validated = validate(&query).unwrap_or_else(|e| {
+            eprintln!("Failed to validate query: {}", e);
+            std::process::exit(1);
+        });
+        if !validated.has_spec() {
+            eprintln!("This query has no VISUALISE clause, so there is no plot to show.");
+            std::process::exit(1);
+        }
+
+        let spec = reader.execute(&query).unwrap_or_else(|e| {
+            eprintln!("Failed to execute query: {}", e);
+            std::process::exit(1);
+        });
+        let plot = spec.as_plot().unwrap_or_else(|| {
+            eprintln!("This is a TABULATE query; there is no plot to show.");
+            std::process::exit(1);
+        });
+
+        if args.verbose {
+            let metadata = plot.metadata();
+            eprintln!("  Rows: {}", metadata.rows);
+            eprintln!("  Layers: {}", metadata.layer_count);
+            eprintln!("Close the window to exit.");
+        }
+
+        // Blocks on the main thread until the window closes.
+        if let Err(e) = viewer.show(plot) {
+            eprintln!("{}", e);
+            std::process::exit(1);
+        }
+    }
+    #[cfg(not(feature = "window"))]
+    {
+        let _ = (query, args);
+        eprintln!("The plot viewer is not compiled in. Rebuild with --features window");
+        std::process::exit(1);
+    }
 }
 
 fn cmd_parse(query: String, format: String) {
@@ -523,8 +630,18 @@ fn cmd_validate(query: String, _reader: Option<String>) {
     }
 }
 
-// Prints a CSV-like output to stdout with aligned columns
-fn print_table_fallback<R: Reader + ?Sized>(query: &str, reader: &R, max_rows: usize) {
+/// Print a query's table, for a query with nothing to draw.
+///
+/// CSV-like, with the columns aligned.
+///
+/// Honours `--output` like every other result — printing to stdout while
+/// leaving the named file absent is hard to notice from a script.
+fn print_table_fallback(
+    query: &str,
+    reader: &dyn Reader,
+    max_rows: usize,
+    output: Option<&std::path::Path>,
+) {
     let source_tree = match parser::SourceTree::new(query) {
         Ok(st) => st,
         Err(e) => {
@@ -581,8 +698,16 @@ fn print_table_fallback<R: Reader + ?Sized>(query: &str, reader: &R, max_rows: u
         }
     }
 
-    let output = rows.join("\n");
-    println!("{}", output);
+    let table = rows.join("\n");
+    match output {
+        None => println!("{}", table),
+        Some(path) => {
+            if let Err(e) = std::fs::write(path, format!("{table}\n")) {
+                eprintln!("Failed to write to output file: {}", e);
+                std::process::exit(1);
+            }
+        }
+    }
 }
 
 fn cmd_docs(first: Option<String>, second: Option<String>, format: Option<DocsFormat>) {
@@ -803,67 +928,4 @@ fn cmd_skill(format: Option<DocsFormat>) {
             }
         }
     }
-}
-
-fn render_vegalite(spec: &ResolvedSpec, options: &WriterOptions) -> Output {
-    #[cfg(feature = "vegalite")]
-    {
-        // Configure from --writer-option, then render
-        let vl_writer = unwrap_writer(VegaLiteWriter::from_options(options));
-        match vl_writer.render(spec) {
-            Ok(json) => Output::Text(json),
-            Err(e) => {
-                eprintln!("Failed to generate Vega-Lite output: {}", e);
-                std::process::exit(1);
-            }
-        }
-    }
-    #[cfg(not(feature = "vegalite"))]
-    {
-        let _ = (spec, options);
-        eprintln!("VegaLite writer not compiled in. Rebuild with --features vegalite");
-        std::process::exit(1)
-    }
-}
-
-fn render_png(spec: &ResolvedSpec, options: &WriterOptions) -> Output {
-    #[cfg(feature = "png")]
-    {
-        // Configure from --writer-option, then render
-        let png_writer = unwrap_writer(PngWriter::from_options(options));
-        match png_writer.render(spec) {
-            Ok(png) => Output::Bin(png),
-            Err(e) => {
-                eprintln!("Failed to generate PNG output: {}", e);
-                std::process::exit(1);
-            }
-        }
-    }
-    #[cfg(not(feature = "png"))]
-    {
-        let _ = (spec, options);
-        eprintln!("PNG writer not compiled in. Rebuild with --features png");
-        std::process::exit(1)
-    }
-}
-
-fn render_html(spec: &ResolvedSpec, options: &WriterOptions) -> Output {
-    // Configure from --writer-option, then render
-    let html_writer = unwrap_writer(HtmlWriter::from_options(options));
-    match html_writer.render(spec) {
-        Ok(html) => Output::Text(html),
-        Err(e) => {
-            eprintln!("Failed to generate HTML output: {}", e);
-            std::process::exit(1);
-        }
-    }
-}
-
-/// A writer built from its options, or the option error on stderr and a
-/// non-zero exit — an unusable setting is the user's mistake, not a warning.
-fn unwrap_writer<W>(writer: ggsql::Result<W>) -> W {
-    writer.unwrap_or_else(|e| {
-        eprintln!("{}", e);
-        std::process::exit(1);
-    })
 }

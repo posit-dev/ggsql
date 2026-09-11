@@ -21,6 +21,12 @@ name = "visual_test"
 path = "examples/visual_test.rs"
 required-features = ["png", "duckdb", "vegalite", "builtin-data"]
 
+[dev-dependencies]
+# Decoding renders back to pixels, so `visual_test --baseline` can compare
+# pictures rather than files. Dev-only: nothing in the shipped binary reads a
+# PNG. Same major as the encoder hephaestus uses, so no second copy is built.
+png = "0.18"
+
 [dependencies]
 ggsql = { workspace = true }
 
@@ -44,15 +50,33 @@ regex.workspace = true
 ureq = "3"
 
 [features]
-default = ["duckdb", "sqlite", "vegalite", "parquet", "builtin-data", "odbc"]
+default = ["duckdb", "sqlite", "vegalite", "html", "parquet", "builtin-data", "odbc", "svg", "pdf", "hep"]
 duckdb = ["ggsql/duckdb"]
 parquet = ["ggsql/parquet"]
 sqlite = ["ggsql/sqlite"]
 odbc = ["ggsql/odbc"]
-vegalite = ["ggsql/vegalite"]
-png = ["ggsql/png"]
+# Internal, and enabled by each writer feature rather than named directly: on
+# when at least one writer is compiled in. It lets the code that exists only to
+# serve a writer be gated on one name instead of an `any(...)` list that has to
+# grow with every format.
+any-writer = []
+
+vegalite = ["ggsql/vegalite", "any-writer"]
+html = ["ggsql/html", "any-writer"]
+png = ["ggsql/png", "any-writer"]
+jpeg = ["ggsql/jpeg", "any-writer"]
+tiff = ["ggsql/tiff", "any-writer"]
+webp = ["ggsql/webp", "any-writer"]
+svg = ["ggsql/svg", "any-writer"]
+pdf = ["ggsql/pdf", "any-writer"]
+hep = ["ggsql/hep", "any-writer"]
+
+# The plot viewer. Not a writer, so deliberately not in `all-writers`: it
+# blocks, it is native-only, and it produces no output.
+window = ["ggsql/window"]
 builtin-data = ["ggsql/builtin-data"]
 all-readers = ["duckdb", "sqlite", "odbc"]
+all-writers = ["vegalite", "html", "png", "jpeg", "tiff", "webp", "svg", "pdf", "hep"]
 
 # cargo-packager configuration for cross-platform installers
 [package.metadata.packager]
@@ -74,4 +98,11 @@ binaries = [
   { path = "ggsql", main = true },
   { path = "ggsql-jupyter", main = false },
 ]
+
+# The default `svg`/`pdf`/`hep` writers lay text out through fontconfig, loaded
+# at run time (see /CLAUDE.md). Nothing is needed to *build* against it, but
+# without the runtime library and a font a plot renders with no labels at all
+# and no error, so the package declares both rather than degrading silently.
+[package.metadata.packager.deb]
+depends = ["libfontconfig1", "fonts-dejavu-core"]
 

@@ -525,19 +525,40 @@ export function generateMetadata(
         base64EncodedIconSvg: base64Icon,
         startupBehavior: 'explicit' as positron.LanguageRuntimeStartupBehavior,
         sessionLocation: 'workspace' as positron.LanguageRuntimeSessionLocation,
-        extraRuntimeData: {}
+        extraRuntimeData: {},
+        // Without this the frontend never tells the kernel how large the Plots
+        // pane is, which it needs only to pre-render a new plot at the right
+        // size; every other render carries its own size. A string cast because
+        // `positron` is imported as a type — as with `startupBehavior` above.
+        uiSubscriptions: ['did_change_plots_render_settings' as positron.UiRuntimeNotifications]
     };
 }
 
 /**
  * Create a Jupyter kernel spec for ggsql-jupyter
  *
+ * `--session-mode` tells the kernel where its output goes, which it cannot work
+ * out for itself: a plot comm always lands in the Plots pane, so a notebook
+ * session using one would leave its cell empty. Left off, the kernel guesses
+ * from the session id — which is why `writeKernelJson` does not pass it.
+ *
  * @param kernelPath - Path to the ggsql-jupyter executable
+ * @param readerUri - Data source the kernel should open, if not the default
+ * @param sessionMode - What kind of session this is, when known
  */
-function createKernelSpec(kernelPath: string, readerUri?: string): JupyterKernelSpec {
+function createKernelSpec(
+    kernelPath: string,
+    readerUri?: string,
+    sessionMode?: positron.LanguageRuntimeSessionMode
+): JupyterKernelSpec {
     const argv = [kernelPath, '-f', '{connection_file}'];
     if (readerUri) {
         argv.push('--reader', readerUri);
+    }
+    if (sessionMode) {
+        // The enum's values are already the kernel's spelling (`console`,
+        // `notebook`, `background`), so there is nothing to translate.
+        argv.push('--session-mode', sessionMode);
     }
 
     return {
@@ -818,7 +839,11 @@ export class GgsqlRuntimeManager implements positron.LanguageRuntimeManager {
         const supervisorApi = await getSupervisorApi();
 
         // Create the kernel spec using the runtime's kernel path
-        const kernelSpec = createKernelSpec(runtimeMetadata.runtimePath);
+        const kernelSpec = createKernelSpec(
+            runtimeMetadata.runtimePath,
+            undefined,
+            sessionMetadata.sessionMode
+        );
 
         const dynState = createDynState();
 
@@ -848,6 +873,9 @@ export class GgsqlRuntimeManager implements positron.LanguageRuntimeManager {
 
         const dynState = createDynState(sessionName);
 
+        // No kernel spec here on purpose: the supervisor replays the argv the
+        // session was created with, and a session's mode never changes, so the
+        // restored kernel keeps the `--session-mode` it started with.
         // Re-advertise this kernel on restore
         ensureKernelSpecInstalled(runtimeMetadata.runtimePath);
 

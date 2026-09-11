@@ -187,15 +187,6 @@ body {
   justify-content: center;
 }
 
-#viz-output .vega-embed {
-  width: 100%;
-}
-
-#viz-output .chart-wrapper {
-  min-width: 400px;
-  min-height: 400px;
-}
-
 #viz-output table.ggsql-table {
   border-collapse: separate;
   border-spacing: 0;

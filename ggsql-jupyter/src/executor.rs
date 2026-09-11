@@ -1,34 +1,75 @@
 //! Query execution module for ggsql Jupyter kernel
 //!
 //! This module handles the execution of ggsql queries using the existing
-//! ggsql library components (parser, DuckDB reader, Vega-Lite writer).
-//! It supports leading `--` meta-command lines. Each occupies its own comment
+//! ggsql library components (parser and reader). Formatting the result — and
+//! rendering a plot — is `display.rs`'s, since the format depends on where the
+//! output is going.
+//!
+//! Supports leading `--` meta-command lines. Each occupies its own comment
 //! line, so a cell may stack them above a query that then runs as normal.
 
 use anyhow::Result;
 use ggsql::{
     reader::{
         connection::{extract_odbc_value, reader_from_uri},
-        Reader, ResolvedSpec,
+        Reader, ResolvedPlot, ResolvedSpec,
     },
     validate::validate,
-    writer::{HtmlWriter, VegaLiteWriter, Writer},
+    writer::{HtmlWriter, Writer},
     DataFrame,
 };
 
+/// A resolved plot has to reach a render thread, so the design rests on this.
+const _: () = {
+    fn assert_send<T: Send>() {}
+    let _ = assert_send::<ResolvedPlot>;
+};
+
 /// Result of executing a ggsql query
-#[derive(Debug)]
 pub enum ExecutionResult {
     /// Pure SQL query with no visualization
     DataFrame(DataFrame),
-    /// Query with visualization specification
-    Visualization {
-        spec: String, // Vega-Lite JSON
-    },
+    /// A query carrying a `VISUALISE` clause, as the resolved plot rather than
+    /// as rendered output.
+    ///
+    /// Not pre-rendered: the format depends on where the output is going, and
+    /// once a plot comm is open it is asked again on every resize. Boxed because
+    /// a `ResolvedPlot` carries the post-stat DataFrames and dwarfs the other
+    /// variants.
+    Visualization(Box<ResolvedPlot>),
     /// TABULATE query, already rendered as an HTML table via `HtmlWriter`.
     Table { html: String },
     /// Connection changed via meta-command
     ConnectionChanged { display_name: String },
+}
+
+// `ResolvedPlot` is neither `Debug` nor `Clone`, so this summarises rather
+// than deriving. What a log wants from a result is its shape and size anyway.
+impl std::fmt::Debug for ExecutionResult {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::DataFrame(df) => f
+                .debug_struct("DataFrame")
+                .field("rows", &df.height())
+                .field("columns", &df.width())
+                .finish(),
+            Self::Visualization(spec) => {
+                let metadata = spec.metadata();
+                f.debug_struct("Visualization")
+                    .field("rows", &metadata.rows)
+                    .field("layers", &metadata.layer_count)
+                    .finish()
+            }
+            Self::Table { html } => f
+                .debug_struct("Table")
+                .field("html_len", &html.len())
+                .finish(),
+            Self::ConnectionChanged { display_name } => f
+                .debug_struct("ConnectionChanged")
+                .field("display_name", display_name)
+                .finish(),
+        }
+    }
 }
 
 /// Generate a human-readable display name for a connection URI.
@@ -152,7 +193,6 @@ pub fn take_leading_meta(code: &str) -> Option<(MetaCommand, &str)> {
 /// Query executor maintaining persistent database connection
 pub struct QueryExecutor {
     reader: Box<dyn Reader + Send>,
-    writer: VegaLiteWriter,
     reader_uri: String,
 }
 
@@ -161,11 +201,9 @@ impl QueryExecutor {
     pub fn new_with_uri(uri: &str) -> Result<Self> {
         tracing::info!("Initializing query executor with reader: {}", uri);
         let reader = reader_from_uri(uri)?;
-        let writer = VegaLiteWriter::new();
 
         Ok(Self {
             reader,
-            writer,
             reader_uri: uri.to_string(),
         })
     }
@@ -249,10 +287,10 @@ impl QueryExecutor {
         // 3. Execute ggsql query using reader
         let spec = self.reader.execute(code)?;
 
-        // 4. Render to output format: a table goes through a fresh
-        // HtmlWriter (bare <table>, no Positron-specific wrapping), a plot
-        // through the persistent VegaLiteWriter.
-        match &spec {
+        // 4. A table is rendered here, since a static HTML table needs no
+        // choice about where the output is going. A plot is not: choosing a
+        // format is the display layer's job, because only it knows that.
+        match spec {
             ResolvedSpec::Table(table) => {
                 tracing::info!(
                     "Query executed: {} rows, {} cols",
@@ -260,7 +298,7 @@ impl QueryExecutor {
                     table.body().width()
                 );
 
-                let html = HtmlWriter::new().render(&spec)?;
+                let html = HtmlWriter::new().write_table(table.table(), table.body())?;
                 tracing::debug!("Generated HTML table: {} chars", html.len());
 
                 Ok(ExecutionResult::Table { html })
@@ -272,10 +310,7 @@ impl QueryExecutor {
                     plot.metadata().layer_count
                 );
 
-                let vega_json = self.writer.render(&spec)?;
-                tracing::debug!("Generated Vega-Lite spec: {} chars", vega_json.len());
-
-                Ok(ExecutionResult::Visualization { spec: vega_json })
+                Ok(ExecutionResult::Visualization(plot))
             }
         }
     }
@@ -291,7 +326,7 @@ mod tests {
         let code = "SELECT 1 as x, 2 as y VISUALISE x, y DRAW point";
         let result = executor.execute(code).unwrap();
 
-        assert!(matches!(result, ExecutionResult::Visualization { .. }));
+        assert!(matches!(result, ExecutionResult::Visualization(_)));
     }
 
     #[test]
@@ -358,6 +393,7 @@ mod tests {
             take_leading_meta("-- @uncache  \r\nSELECT 1"),
             Some((MetaCommand::Uncache, "SELECT 1"))
         );
+
         // `-- @uncache foo` on one line is an ordinary SQL comment, not the directive.
         assert_eq!(take_leading_meta("-- @uncache foo"), None);
     }
@@ -388,7 +424,7 @@ mod tests {
             )
             .unwrap();
         assert_eq!(executor.reader_uri(), "duckdb://memory");
-        assert!(matches!(result, ExecutionResult::Visualization { .. }));
+        assert!(matches!(result, ExecutionResult::Visualization(_)));
     }
 
     #[test]
@@ -410,7 +446,7 @@ mod tests {
         let result = executor
             .execute("-- @uncache\nSELECT 1 AS x, 2 AS y VISUALISE x, y DRAW point")
             .unwrap();
-        assert!(matches!(result, ExecutionResult::Visualization { .. }));
+        assert!(matches!(result, ExecutionResult::Visualization(_)));
     }
 
     #[test]

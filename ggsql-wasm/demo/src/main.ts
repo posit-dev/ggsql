@@ -1,6 +1,5 @@
 import "./styles.css";
-import vegaEmbed from "vega-embed";
-import { Warn } from "vega";
+import { PlotView } from "ggsql-wasm";
 import { WasmContextManager } from "./context";
 import { EditorManager } from "./editor";
 import { TableManager } from "./tableManager";
@@ -16,6 +15,11 @@ let tableManager: TableManager;
 const statusEl = document.getElementById("status")!;
 const editorContainer = document.getElementById("editor-container")!;
 const vizOutput = document.getElementById("viz-output")!;
+
+// One view for the life of the page. It observes `vizOutput` and redraws the
+// current plot whenever the pane changes size, so the layout follows the box
+// rather than being scaled into it.
+const plotView = new PlotView(vizOutput, { idPrefix: "playground-" });
 const errorMessages = document.getElementById("error-messages")!;
 const tableList = document.getElementById("table-list")!;
 const csvUpload = document.getElementById("csv-upload") as HTMLInputElement;
@@ -111,9 +115,15 @@ async function ensureExtensions(names: string[] | undefined): Promise<boolean> {
   }
 }
 
+// Hand `vizOutput` back from the plot view, so a table or a message can use it.
+function clearPlot() {
+  plotView.setPlot(null);
+}
+
 async function executeQuery(query: string) {
   if (!query.trim()) {
     showProblems([], []);
+    clearPlot();
     vizOutput.innerHTML =
       '<p style="color: #005F73; text-align: center; padding: 40px;">Enter a query to visualize</p>';
     return;
@@ -123,34 +133,12 @@ async function executeQuery(query: string) {
     setStatus("Executing query...", "loading");
 
     if (contextManager.hasVisual(query)) {
-      const result = contextManager.execute(query);
-      const spec = JSON.parse(result);
-
-      vizOutput.innerHTML = "";
-
-      const warnings: string[] = [];
-      let _level = Warn;
-      const logger = {
-        level(_: number) { if (arguments.length) { _level = _; return this; } return _level; },
-        error: (...args: any[]) => { console.error(...args); return logger; },
-        warn: (...args: any[]) => { warnings.push(args.map(String).join(" ")); return logger; },
-        info: () => logger,
-        debug: () => logger,
-      };
-
-      await vegaEmbed(vizOutput, spec, {
-        actions: {
-          export: true,
-          source: false,
-          compiled: false,
-          editor: false,
-        },
-        renderer: "svg",
-        logger: logger as any,
-      });
-
-      showProblems([], warnings);
+      // The view is kept across queries: it owns the ResizeObserver, and
+      // re-solving the layout on resize is the point of drawing at all.
+      plotView.setPlot(contextManager.execute(query));
+      showProblems([], plotView.warnings);
     } else {
+      clearPlot();
       const result = JSON.parse(contextManager.executeSql(query));
       vizOutput.innerHTML = renderTable(result);
       showProblems([], []);

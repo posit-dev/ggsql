@@ -1,40 +1,68 @@
-## [Unreleased]
+## 0.5.0 - 2026-09-10
 
 ### Added
-
+- Seven new writers render a plot directly, through
+  [hephaestus](https://github.com/posit-dev/hephaestus): `svg`, `pdf` and `hep`
+  as default features, and `png`, `jpeg`, `tiff` and `webp` off by default and
+  needing a GPU adapter at render time. Each takes the canvas settings `width`,
+  `height`, `units` (`px`, `in`, `cm`, `mm`, `pt`), `dpi` and `background`,
+  plus what its own format offers: `compression` for `png` and `tiff`,
+  `quality` for `jpeg`, `text`, `embed-fonts` and `id-prefix` for `svg`,
+  `compress` and `links` for `pdf`, `lossy` and `embed-fonts` for `hep`.
+  `webp` has none — it is lossless with no rate control.
+- `LABEL caption` is honored by the new writers. It has no Vega-Lite equivalent
+  and is ignored there.
+- New `ggsql view` subcommand shows a query's plot in a native window, blocking
+  until it is closed. Resizing re-lays-out the plot rather than stretching it.
+  `-D` (`--viewer-option`) takes `width`, `height`, `background` and `title`;
+  `units` and `dpi` are refused, since a window is sized in logical pixels and
+  its resolution belongs to the display. Behind a new off-by-default `window`
+  feature, and needs a GPU adapter; the subcommand exists either way and says
+  what would enable it.
 - New `equal_earth` map projection (`+proj=eqearth`).
-
 - New caching layer that wraps any `Reader` with an in-memory, writeable cache
   backend (currently duckdb or sqlite), making write-constrained databases
   usable and avoiding repeated remote reads during interactive iteration.
   Memoized reads are bounded by a TTL and an LRU byte budget, configurable per
-  connection. The cache can be cleared mid-session with the `-- @uncache` meta-command.
-- New `PngWriter` renders a plot to a PNG raster image via
-  [hephaestus](https://github.com/posit-dev/hephaestus), behind a new
-  off-by-default `png` feature (`--writer png` in the CLI). `LABEL caption`
-  and the new `minor_breaks` setting have no Vega-Lite equivalent and render
-  only here. Requires a working GPU adapter — hardware or software, e.g.
-  lavapipe — at render time.
+  connection. Selected by the composite connection scheme
+  `<cache>+<primary>://…` (e.g. `duckdb+odbc://…`) or, in the CLI, by
+  `--cache <duckdb|sqlite>` on `exec`, `run` and `view`. The cache can be
+  cleared mid-session with the `-- @uncache` meta-command.
 - Writers can be configured from key–value options: `Writer::from_options` takes
   a `WriterOptions` set, and the CLI collects them from a repeatable
   `--writer-option key=value` flag on `exec` and `run` (short `-D`, also
   spellable `--writer-options`). Several settings can be collapsed into one flag
   separated by `;` — `-D 'width=1600;dpi=150'`, quoted because shells read `;`
-  themselves — and the two forms mix. The png writer
-  takes `width`, `height`, `units` (`px`, `in`, `cm`, `mm`, `pt`), `dpi`, and
-  `background` (any CSS color, including `transparent`), defaulting to a
-  1500×1000 px white canvas at 300 dpi; the Vega-Lite writer takes none. An
-  unknown key or unusable value is an error naming the option, not a silently
-  ignored setting.
+  themselves — and the two forms mix. An unknown key or unusable value is an
+  error naming the option, not a silently ignored setting.
 - `--reader`, `--writer`, and `--output` gained the short forms `-r`, `-w`, and
   `-o` on `exec` and `run`; `validate --reader` also takes `-r`.
-- Text is rendered as rich text (markdown) by the png writer. A text layer's
+- `--output`'s extension picks the writer when `--writer` is omitted: `svg`,
+  `pdf`, `hep`, `png`, `jpg`/`jpeg`, `tif`/`tiff`, `webp` and `json`/`vl.json`
+  each name their own. An explicit `--writer` still wins, warning on stderr if
+  it disagrees with the extension. An unrecognised extension falls back to
+  Vega-Lite; an extension naming a writer the build lacks is an error.
+- New `ggsql::fonts::{register_font, registered_font_families,
+  set_generic_family}` let a host register font faces itself, for a platform
+  with no font database to enumerate. A browser is the case that needs it: it
+  enumerates nothing, so the wasm package ships four Roboto faces and registers
+  them before drawing — without them a plot has no text at all, and, since text
+  is what sets the layout, the wrong margins with it. A page wanting its own
+  typography calls `registerFontFromUrl(url, { genericFor })` instead, which
+  registers the face and points a generic at whatever family name the file
+  turned out to carry — the one place that name exists.
+- New off-by-default `webfonts` feature: `fonts::register_font` also accepts the
+  WOFF and WOFF2 containers a font CDN serves a browser, unwrapping them to the
+  sfnt inside. That is how a font arrives at a web page, so `ggsql-wasm` turns
+  it on. Without the feature such a container is refused by name rather than
+  reaching the shaper and registering nothing, which would draw a plot with no
+  text and no indication why.
+- Text is rendered as rich text (markdown) by the new writers. A text layer's
   `label` is parsed for `**bold**`, `*italic*`, `_underline_`, `~~strike~~`,
   `` `code` `` and marquee-style `{selector body}` spans that set a colour or
   size (`{.red hot}`, `{#0072B2 blue}`, `{.20 big}`), and so are the plot title,
-  subtitle, caption and axis titles set with `LABEL`. Legend titles and break
-  labels (axis tick labels, legend keys) do not parse yet and show their markers.
-  The new `parse` setting on the text layer turns it off for that layer
+  subtitle, caption, axis titles, legend titles and break labels. The new
+  `parse` setting on the text layer turns it off for that layer
   (`SETTING parse => false`), drawing the label exactly as given; it defaults to
   `true`. Chrome text has no switch yet. The Vega-Lite writer has no rich-text
   equivalent and ignores `parse`, always drawing text literally.
@@ -42,8 +70,7 @@
   subdivisions between breaks: a whole number of minor breaks *per interval between
   two breaks* (`0` removes them), an array of exact positions, or — for temporal
   scales — an interval such as `'week'`. Defaults to a value chosen by the
-  transformation. This has no Vega-Lite equivalent and is ignored by that writer;
-  the png writer draws them.
+  transformation. This has no Vega-Lite equivalent and is ignored by that writer.
 
 - The VS Code / Positron extension now ships the `ggsql-jupyter` kernel, so
   installing the extension is all that is needed to run queries. It is offered
@@ -56,6 +83,40 @@
 - `ggsql-jupyter` accepts `--version`.
 
 ### Changed
+- The wasm bundle draws plots with ggsql's own renderer instead of emitting
+  Vega-Lite. A query is executed in the browser and drawn straight to SVG, so
+  the playground and the live examples on the docs site look like every other
+  ggsql output rather than like a second implementation, and `vega`,
+  `vega-lite` and `vega-embed` are gone from the page — about 1.8 MB less
+  JavaScript. A plot re-solves its layout when its box changes size, so a wider
+  pane gets more tick labels rather than stretched ones. **Breaking:**
+  `GgsqlContext.execute` returns a `GgsqlPlot` to draw rather than a Vega-Lite
+  JSON string; the npm package is entered through a new TypeScript client that
+  adds `PlotView` and `registerDefaultFonts` beside it. `init()` — and a new
+  `initSync()` — wire the extension loader and the CSV/Parquet converters
+  themselves, so `initExtensionLoader` is gone and entering through the package
+  rather than the generated glue is now required.
+- Plots in a Positron console now open a `positron.plot` comm, so the Plots pane
+  renders them at its own size, re-renders sharp when resized, and its save,
+  copy and zoom affordances work on them. A new `--max-plots` (default 32) caps
+  the retained history, closing the oldest first. Once the pane has reported a
+  size, a new plot arrives already rendered at it.
+- Plots in notebooks and documents are now rendered by the kernel and no longer
+  need network access. A `VISUALISE` query in JupyterLab, a Positron notebook or
+  a Quarto render previously emitted HTML that fetched vega, vega-lite and
+  vega-embed from a CDN on every render; it now emits a rendered image.
+- Quarto's figure settings are honoured: `QUARTO_FIG_FORMAT` selects the writer
+  (`png`, `jpeg`, `svg`, `pdf`) and `QUARTO_FIG_WIDTH`/`_HEIGHT` are read as
+  inches at `QUARTO_FIG_DPI`, so `fig-width: 6` means six inches and a PDF
+  document gets a vector figure.
+- Kernel plots render as SVG wherever raster output is unavailable — no GPU
+  adapter, or a build with the new `raster-plots` feature turned off — so a GPU
+  is needed for raster output, not to see a plot.
+- An unknown writer, a writer whose feature is off, and an unusable writer
+  setting are now reported **before** the query runs rather than after.
+  `--writer` and `-D` list every writer and its settings in their long help,
+  marking the ones this build does not have and naming the feature that would
+  add each.
 - A `FROM` on the `VISUALISE` clause now takes exactly one bare source. It
   previously reused the SQL `FROM` grammar while only ever reading the first
   source, so `VISUALISE FROM a, b` silently plotted `a` alone and
@@ -75,17 +136,16 @@
 - Categorical `y` axes now run bottom-up, so the first level sits at the bottom
   of the panel as it does in ggplot2. This affects every plot with a discrete or
   ordinal `y` — horizontal bars, boxplots and violins by category, points and
-  2D jitter — and brings the Vega-Lite writer in line with the raster one, which
-  already read this way.
-- Banded marks now measure against the full step in the VegaLite writer. A band fraction
-  (a bar's `width`, a dodge displacement, a jitter spread, a violin or boxplot
-  half-width, a discrete tile's extent) is a fraction of the whole category step,
-  so `width => 0.9` leaves a 10% gap — ggplot2's convention. Vega-Lite previously
-  subtracted its own default band padding first, making every banded mark there
-  narrower than the same query rendered as a raster. This applies to dodged,
-  jittered and half-sided layers too, where Vega-Lite reserved a further 20% of
-  every step: their marks were narrower, their displacements smaller, and their
-  category ticks pulled toward the middle of the panel.
+  2D jitter — and brings the Vega-Lite writer in line with the new writers,
+  which already read this way.
+- Banded marks now measure against the full step in the Vega-Lite writer. A band
+  fraction (a bar's `width`, a dodge displacement, a jitter spread, a violin or
+  boxplot half-width, a discrete tile's extent) is a fraction of the whole
+  category step, so `width => 0.9` leaves a 10% gap — ggplot2's convention.
+  Vega-Lite previously subtracted its own default band padding first, and a
+  further 20% of every step for dodged, jittered and half-sided layers, so
+  their marks were narrower, their displacements smaller and their category
+  ticks pulled toward the middle of the panel.
 - Position scales like `SCALE lon` and `SCALE lat` transfer their limits to
   map projections, and transfer their `breaks` setting to the graticule (#492).
 
@@ -151,12 +211,6 @@
 - In plain VS Code, the extension no longer offers run buttons, keybindings or
   Command Palette entries for commands that need the Positron runtime and so
   had no handler there.
-- Plots in Positron notebooks no longer come out blank when the cell output is
-  rendered before Positron has laid the slot out, which happened on the first
-  execution after a kernel started and when reopening a saved notebook. The
-  plot sizes itself from its container, so a zero-width first measurement drew
-  it at zero size with nothing left to correct it. It now recovers once the
-  container has a real width.
 - ggsql interpreter sessions in Positron now come back after an extension host
   restart as well as after a window reload. A session the user renamed also
   keeps its name across the restore, and ggsql runtimes are rediscovered on

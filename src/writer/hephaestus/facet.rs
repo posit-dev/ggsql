@@ -99,7 +99,7 @@ pub fn build_panels(
     let Some(facet) = &spec.facet else {
         return Ok(single_panel());
     };
-    let layer0 = super::layer_dataframe(&spec.layers[0], 0, data)?;
+    let layer0 = super::compose::layer_dataframe(&spec.layers[0], 0, data)?;
     match &facet.layout {
         FacetLayout::Wrap { .. } => build_wrap(spec, facet, layer0),
         FacetLayout::Grid { .. } => build_grid(spec, layer0),

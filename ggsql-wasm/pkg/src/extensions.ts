@@ -75,7 +75,7 @@ export async function installExtension(
   wasmSource: BufferSource | Response | string,
 ): Promise<void> {
   if (!sharedMemory || !sharedTable || !hostExports) {
-    throw new Error("Call initExtensionLoader() before installExtension()");
+    throw new Error("Call the ggsql-wasm init() function before installExtension()");
   }
 
   if (registry.has(name)) {

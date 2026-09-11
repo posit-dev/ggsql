@@ -40,7 +40,7 @@ pub fn build(plot: &mut HPlot, ctx: &Ctx) -> Result<()> {
             build_and_add::<PolygonGeom>(plot, polygon::spec(ctx), ctx)
         }
         other => Err(GgsqlError::WriterError(format!(
-            "png writer cannot draw a densified '{other}' geom"
+            "the plot renderer cannot draw a densified '{other}' geom"
         ))),
     }
 }

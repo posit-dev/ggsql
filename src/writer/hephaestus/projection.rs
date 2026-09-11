@@ -180,7 +180,7 @@ fn apply_proj_polar(mut plot: HPlot, proj: &Projection, spec: &Plot, ps: &PanelS
 /// performs no reprojection: a `Custom` projection uses the projected clip
 /// boundary as its drawing surface (clip + background) and the projected
 /// graticule lines as its grid. Position scales are the bbox-framed `pos1`/`pos2`
-/// registered in `PngWriter::write`. Mirrors the Vega-Lite writer's
+/// registered in `compose::build_composition`. Mirrors the Vega-Lite writer's
 /// identity `MapProjection` (`panel_boundary` + `graticule_*` from `computed`).
 fn apply_proj_map(mut plot: HPlot, proj: &Projection) -> HPlot {
     // A map has no Cartesian rails; the boundary + graticules are the chrome.

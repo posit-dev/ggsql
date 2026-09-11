@@ -5,14 +5,17 @@
 
 use crate::connection;
 use crate::data_explorer::{DataExplorerState, RpcResponse};
-use crate::display::{format_display_data, RenderHints};
+use crate::display::{format_display_data, Formatted, RenderHints, SessionMode};
 use crate::executor::{self, ExecutionResult, QueryExecutor};
 use crate::message::{ConnectionInfo, JupyterMessage, MessageHeader};
+use crate::plot::comm::{PlotMetadata, RenderParams, RpcError};
+use crate::plot::{PlotBackend, RenderOutcome, RenderTicket};
 use anyhow::Result;
+use ggsql::reader::ResolvedPlot;
 use hmac::{Hmac, Mac};
 use serde_json::{json, Value};
 use sha2::Sha256;
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use zeromq::{PubSocket, RepSocket, RouterSocket, Socket, SocketRecv, SocketSend};
 
 type HmacSha256 = Hmac<Sha256>;
@@ -28,20 +31,50 @@ pub struct KernelServer {
     #[allow(dead_code)]
     connection: ConnectionInfo,
     executor: QueryExecutor,
+    /// The render thread, and whether it found a GPU adapter.
+    plots: PlotBackend,
+    /// Finished comm renders, coming back from the render thread.
+    ///
+    /// Taken out of `self` before the event loop, because `select!` cannot
+    /// borrow `self` mutably for this arm while the other arms do the same.
+    render_outcomes: Option<tokio::sync::mpsc::UnboundedReceiver<RenderOutcome>>,
+    /// Open plot comms, metadata only — each plot's `ResolvedPlot` lives on the render
+    /// thread, keeping the retained `DataFrame`s off the async task.
+    plot_comms: HashMap<String, PlotMetadata>,
+    /// Comm ids in the order they were opened, for oldest-first eviction.
+    plot_order: VecDeque<String>,
+    /// How many plots to keep. Positron imposes no cap of its own, so a long
+    /// console session would otherwise retain every post-stat `DataFrame`.
+    max_plots: usize,
+    /// Counts plots this session, so an untitled one can be named.
+    plot_seq: u32,
+    /// The size, ratio and format the Plots pane last reported, from the ui
+    /// comm's `did_change_plots_render_settings`.
+    ///
+    /// `None` until the pane has reported once, which is why the first plot of
+    /// a session carries no pre-render.
+    plot_render_settings: Option<RenderParams>,
     session: String,
+    /// What the frontend declared this session to be, if it declared anything.
+    /// `None` leaves classification to the session-id heuristic.
+    session_mode: Option<SessionMode>,
     execution_count: u32,
     key: Vec<u8>,
     // Positron comm IDs
     variables_comm_id: Option<String>,
     ui_comm_id: Option<String>,
-    plot_comm_id: Option<String>,
     connection_comm_id: Option<String>,
     data_explorer_comms: HashMap<String, DataExplorerState>,
 }
 
 impl KernelServer {
     /// Create a new kernel server from connection info
-    pub async fn new(connection: ConnectionInfo, reader_uri: &str) -> Result<Self> {
+    pub async fn new(
+        connection: ConnectionInfo,
+        reader_uri: &str,
+        session_mode: Option<SessionMode>,
+        max_plots: usize,
+    ) -> Result<Self> {
         tracing::info!("Initializing kernel server");
 
         // Initialize sockets
@@ -83,6 +116,8 @@ impl KernelServer {
 
         let key = connection.key.as_bytes().to_vec();
 
+        let (render_tx, render_rx) = tokio::sync::mpsc::unbounded_channel();
+
         let mut kernel = Self {
             shell,
             iopub,
@@ -91,12 +126,19 @@ impl KernelServer {
             heartbeat,
             connection,
             executor,
+            plots: PlotBackend::spawn(render_tx),
+            render_outcomes: Some(render_rx),
+            plot_comms: HashMap::new(),
+            plot_order: VecDeque::new(),
+            max_plots: max_plots.max(1),
+            plot_seq: 0,
+            plot_render_settings: None,
             session,
+            session_mode,
             execution_count: 0,
             key,
             variables_comm_id: None,
             ui_comm_id: None,
-            plot_comm_id: None,
             connection_comm_id: None,
             data_explorer_comms: HashMap::new(),
         };
@@ -104,6 +146,11 @@ impl KernelServer {
         // Send initial "starting" status on IOPub
         // This is required by Jupyter protocol - exactly once at process startup
         kernel.send_status_initial("starting").await?;
+
+        // Only after `starting`: the probe can block for ten seconds, and a
+        // kernel that has bound its sockets but announced nothing looks to a
+        // supervisor like a failed launch.
+        kernel.plots.finish_probe();
 
         // Open initial connection comm so the Connections pane shows the database
         kernel.open_connection_comm(reader_uri).await?;
@@ -115,8 +162,32 @@ impl KernelServer {
     pub async fn run(&mut self) -> Result<()> {
         tracing::info!("Starting kernel event loop");
 
+        // Out of `self`, so the outcome arm below can borrow it while the
+        // other arms borrow `self` mutably.
+        let mut render_outcomes = self
+            .render_outcomes
+            .take()
+            .expect("the event loop runs once");
+
+        // The render thread holds the only sender, so `None` means it is gone.
+        // The arm is disabled rather than left to complete instantly on every
+        // iteration and spin at 100% CPU; the session carries on serving SQL.
+        let mut renders_alive = true;
+
         loop {
             tokio::select! {
+                outcome = render_outcomes.recv(), if renders_alive => {
+                    match outcome {
+                        Some(outcome) => self.finish_render(outcome).await?,
+                        None => {
+                            tracing::error!(
+                                "the render thread has stopped; plots will fail for the \
+                                 rest of this session"
+                            );
+                            renders_alive = false;
+                        }
+                    }
+                }
                 msg = self.shell.recv() => {
                     if let Ok(msg) = msg {
                         self.handle_shell_message(msg).await?;
@@ -137,11 +208,10 @@ impl KernelServer {
                     }
                 }
                 _ = tokio::signal::ctrl_c() => {
-                    // With `interrupt_mode: "signal"`, the frontend sends SIGINT to
-                    // interrupt a running cell, not to stop the kernel. Emit a busy
-                    // -> idle pair to acknowledge the interrupt.
-                    // TODO: When cell execution becomes async, cancel any in-flight
-                    //       request here instead.
+                    // With `interrupt_mode: "signal"` a SIGINT interrupts the
+                    // running cell rather than stopping the kernel, so
+                    // acknowledge it with a busy -> idle pair.
+                    // TODO: cancel the in-flight request here once execution is async.
                     tracing::debug!("Received SIGINT; acknowledging.");
                     self.send_status_initial("busy").await?;
                     self.send_status_initial("idle").await?;
@@ -288,13 +358,18 @@ impl KernelServer {
         let content = &parent.content;
         let code = content["code"].as_str().unwrap_or("");
         let silent = content["silent"].as_bool().unwrap_or(false);
-        let hints = RenderHints::from_request(&parent.header, content);
+        let hints = RenderHints::from_request(&parent.header, content, self.session_mode);
 
+        // `kind` decides where a plot goes, so log its two inputs: the declared
+        // mode and the session id the heuristic falls back to. A plot in the
+        // wrong slot is otherwise indistinguishable from one rendered wrongly.
         tracing::info!(
-            "Executing code ({} chars, silent={}, notebook={}, width_px={:?})",
+            "Executing code ({} chars, silent={}, kind={:?} from mode={:?} session={}, width_px={:?})",
             code.len(),
             silent,
-            hints.is_notebook,
+            hints.kind,
+            self.session_mode,
+            parent.header.session,
             hints.output_width_px
         );
 
@@ -319,41 +394,58 @@ impl KernelServer {
             .await?;
         }
 
-        // Execute the query
+        // A cell may connect and then go on to query, so a connection change is
+        // read from the executor's URI rather than from the result variant,
+        // which only reports a cell that was nothing but meta-commands.
         let uri_before = self.executor.reader_uri().to_string();
-        let result = self.executor.execute(code);
-        let connection_changed = self.executor.reader_uri() != uri_before;
-        if connection_changed {
+        let executed = self.executor.execute(code);
+        if self.executor.reader_uri() != uri_before {
             let uri = self.executor.reader_uri().to_string();
             self.open_connection_comm(&uri).await?;
         }
 
-        match result {
+        // Formatting renders the plot, so it is fallible and its failures are
+        // the user's. Both stages feed one `Result` and share the error path
+        // below; propagating out of the loop would end the process and take
+        // the session's database with it.
+        let result = match executed {
             Ok(exec_result) => {
                 // A bare connection change renders nothing.
-                let suppress_output =
+                let is_connection_changed =
                     matches!(&exec_result, ExecutionResult::ConnectionChanged { .. });
 
+                // Nothing to display for a silent cell, for a connection
+                // change, or for DDL (which formats to `Nothing`).
+                if silent || is_connection_changed {
+                    Ok(Formatted::Nothing)
+                } else {
+                    format_display_data(exec_result, &hints, &self.plots)
+                }
+            }
+            Err(err) => Err(err),
+        };
+
+        match result {
+            Ok(formatted) => {
                 // Send execute_result (not display_data)
                 // Per Jupyter spec: execute_result includes execution_count
-                // Only send if there's something to display (DDL returns None)
-                if !silent && !suppress_output {
-                    if let Some(display_data) = format_display_data(exec_result, &hints) {
-                        // Build message content, including output_location if present
-                        let mut content = json!({
+                match formatted {
+                    // No `output_location`: it routes the output to the Plots
+                    // pane as well as the cell, so the plot would arrive twice.
+                    Formatted::Bundle(display_data) => {
+                        let content = json!({
                             "execution_count": self.execution_count,
                             "data": display_data["data"],
                             "metadata": display_data["metadata"]
                         });
-
-                        // Add output_location for Positron routing (e.g., to Plots pane)
-                        if let Some(location) = display_data.get("output_location") {
-                            content["output_location"] = location.clone();
-                            tracing::info!("Setting output_location: {}", location);
-                        }
-
                         self.send_iopub("execute_result", content, parent).await?;
                     }
+                    // No `execute_result`: the comm alone creates the pane
+                    // entry, and an output message would duplicate it.
+                    Formatted::PlotComm(spec) => {
+                        self.open_plot_comm(spec, code, parent).await?;
+                    }
+                    Formatted::Nothing => {}
                 }
 
                 // Send execute_reply
@@ -371,6 +463,8 @@ impl KernelServer {
                 .await?;
             }
             Err(err) => {
+                // Both stages report here: whether the query or the rendering
+                // of its result failed, the cell failed.
                 tracing::error!("Execution error: {}", err);
 
                 // Send error message
@@ -613,37 +707,40 @@ impl KernelServer {
             }
             // Handle positron.ui requests
             else if Some(comm_id.to_string()) == self.ui_comm_id {
-                self.send_shell_reply(
-                    "comm_msg",
-                    json!({
-                        "comm_id": comm_id,
-                        "data": {
-                            "jsonrpc": "2.0",
-                            "id": rpc_id,
-                            "result": null
-                        }
-                    }),
-                    parent,
-                    identities,
-                )
-                .await?;
+                // A notification carries no `id` and replying to one is a
+                // protocol error, so check the shape before building a reply.
+                if rpc_id.is_null() {
+                    self.handle_ui_notification(method, &data["params"]);
+                } else {
+                    self.send_shell_reply(
+                        "comm_msg",
+                        json!({
+                            "comm_id": comm_id,
+                            "data": {
+                                "jsonrpc": "2.0",
+                                "id": rpc_id,
+                                "result": null
+                            }
+                        }),
+                        parent,
+                        identities,
+                    )
+                    .await?;
+                }
             }
             // Handle positron.plot requests
-            else if Some(comm_id.to_string()) == self.plot_comm_id {
-                self.send_shell_reply(
-                    "comm_msg",
-                    json!({
-                        "comm_id": comm_id,
-                        "data": {
-                            "jsonrpc": "2.0",
-                            "id": rpc_id,
-                            "result": null
-                        }
-                    }),
-                    parent,
-                    identities,
-                )
-                .await?;
+            else if self.plot_comms.contains_key(comm_id) {
+                let rpc_id = rpc_id.clone();
+                let deferred = self
+                    .handle_plot_rpc(method, &rpc_id, comm_id, parent, identities)
+                    .await?;
+                // A render in flight has its `busy` closed by `finish_render`,
+                // so return rather than close it here. The flag reports whether
+                // one was actually dispatched, not whether `render` was asked
+                // for, so a rejected request stays paired too.
+                if deferred {
+                    return Ok(());
+                }
             }
             // Handle positron.connection requests
             else if Some(comm_id.to_string()) == self.connection_comm_id {
@@ -708,8 +805,10 @@ impl KernelServer {
                 comms[id] = json!({"target_name": "positron.ui"});
             }
         }
-        if let Some(id) = &self.plot_comm_id {
-            if target_name.is_none() || target_name == Some("positron.plot") {
+        // Positron calls `listClients(Plot)` on reconnect, so every open plot
+        // has to be listed — not just one.
+        if target_name.is_none() || target_name == Some("positron.plot") {
+            for id in self.plot_comms.keys() {
                 comms[id] = json!({"target_name": "positron.plot"});
             }
         }
@@ -763,9 +862,12 @@ impl KernelServer {
         } else if Some(comm_id.to_string()) == self.ui_comm_id {
             tracing::info!("Closing positron.ui comm");
             self.ui_comm_id = None;
-        } else if Some(comm_id.to_string()) == self.plot_comm_id {
-            tracing::info!("Closing positron.plot comm");
-            self.plot_comm_id = None;
+        } else if self.plot_comms.remove(comm_id).is_some() {
+            tracing::info!("Closing positron.plot comm {}", comm_id);
+            self.plot_order.retain(|id| id != comm_id);
+            // Drop the retained plot too, or closing a comm would leak its
+            // post-stat DataFrames for the rest of the session.
+            self.plots.forget(comm_id);
         } else if Some(comm_id.to_string()) == self.connection_comm_id {
             tracing::info!("Closing positron.connection comm");
             self.connection_comm_id = None;
@@ -824,6 +926,303 @@ impl KernelServer {
 
         self.connection_comm_id = Some(comm_id);
         Ok(())
+    }
+
+    /// Open a `positron.plot` comm for a freshly executed plot.
+    ///
+    /// Backend-initiated, one comm per plot like `positron.dataExplorer`, since
+    /// the pane shows a session's plots as a history.
+    ///
+    /// Must follow `execute_input`: Positron takes the plot's `code` metadata
+    /// from the `_recentExecutions` map that message populates.
+    async fn open_plot_comm(
+        &mut self,
+        spec: Box<ResolvedPlot>,
+        code: &str,
+        parent: &JupyterMessage,
+    ) -> Result<()> {
+        let comm_id = uuid::Uuid::new_v4().to_string();
+        self.plot_seq = self.plot_seq.saturating_add(1);
+
+        let title = spec
+            .plot()
+            .labels
+            .as_ref()
+            .and_then(|labels| labels.labels.get("title"))
+            .and_then(|title| title.as_deref());
+        let metadata = PlotMetadata {
+            name: crate::plot::comm::plot_name(title, self.plot_seq),
+            execution_id: parent.header.msg_id.clone(),
+            code: code.to_string(),
+        };
+
+        tracing::info!("Opening positron.plot comm {} ({})", comm_id, metadata.name);
+
+        // The plot itself goes to the render thread, which owns it from here.
+        self.plots.store(comm_id.clone(), spec);
+        self.plot_comms.insert(comm_id.clone(), metadata);
+        self.plot_order.push_back(comm_id.clone());
+
+        // Rendered at the size the pane last reported; `None` for the first
+        // plot of a session, before the pane has reported at all.
+        let data = match self.pre_render(&comm_id) {
+            Some(pre_render) => json!({ "pre_render": pre_render }),
+            None => Value::Null,
+        };
+
+        // Parented to the `execute_request`, as every iopub message during an
+        // execution must be — it ties the plot to the cell that produced it.
+        let msg = self.create_message(
+            "comm_open",
+            json!({
+                "comm_id": comm_id,
+                "target_name": "positron.plot",
+                "data": data,
+            }),
+            Some(parent),
+        );
+        let zmq_msg = self.serialize_message_with_topic(&msg, "comm_open")?;
+        self.iopub.send(zmq_msg).await?;
+
+        self.evict_old_plots(parent).await
+    }
+
+    /// Act on a notification pushed at us over the ui comm.
+    ///
+    /// Nothing is replied to — see the call site.
+    fn handle_ui_notification(&mut self, method: &str, params: &Value) {
+        match method {
+            // The Plots pane reporting its size, ratio and preferred format on
+            // resize. The only place a pane's size reaches us outside a render
+            // request, and so the only thing that makes a pre-render possible.
+            "did_change_plots_render_settings" => {
+                match RenderParams::from_rpc(&params["settings"]) {
+                    Ok(settings) => {
+                        // The pane asks for `png`; a build with no raster
+                        // writer stores the SVG it can actually pre-render.
+                        let settings = settings.available(self.plots.raster());
+                        tracing::debug!(
+                            "plots pane render settings: {}x{} @ {}x",
+                            settings.request.canvas.width,
+                            settings.request.canvas.height,
+                            settings.pixel_ratio
+                        );
+                        self.plot_render_settings = Some(settings);
+                    }
+                    Err(e) => tracing::warn!("unusable plot render settings: {:?}", e),
+                }
+            }
+            other => tracing::debug!("ignoring ui notification '{other}'"),
+        }
+    }
+
+    /// Render a plot at the pane's last known settings, for `comm_open`.
+    ///
+    /// `None` before the pane has reported, i.e. the first plot of a session:
+    /// a guessed size would flash a wrong-sized picture and be replaced at
+    /// once. The reference Python backend skips it for the same reason.
+    ///
+    /// Positron discards a pre-render without `settings`
+    /// (`languageRuntimePlotClient.ts`), so this goes through `to_result`.
+    fn pre_render(&self, comm_id: &str) -> Option<Value> {
+        let settings = self.plot_render_settings?;
+        // A pre-render is a nicety: if it fails or times out the comm still
+        // opens, and the pane's own render request follows a moment later.
+        match self.plots.render_stored(comm_id, settings.request) {
+            Ok(bytes) => Some(settings.to_result(RenderParams::encode(&bytes))),
+            Err(e) => {
+                tracing::debug!("no pre-render for this plot: {e}");
+                None
+            }
+        }
+    }
+
+    /// Close the oldest plot comms until the history is back within its cap.
+    ///
+    /// `comm_close` on iopub removes the plot from the pane, which is what "the
+    /// kernel no longer keeps that plot" means; leaving it listed and failing
+    /// its renders would be worse. Parented to the `execute_request` that
+    /// pushed the history over its cap — a frontend may drop an unparented
+    /// message mid-execution.
+    async fn evict_old_plots(&mut self, parent: &JupyterMessage) -> Result<()> {
+        while self.plot_order.len() > self.max_plots {
+            let Some(comm_id) = self.plot_order.pop_front() else {
+                break;
+            };
+            tracing::info!("Evicting plot comm {} (history is full)", comm_id);
+            self.plot_comms.remove(&comm_id);
+            self.plots.forget(&comm_id);
+
+            let msg =
+                self.create_message("comm_close", json!({ "comm_id": comm_id }), Some(parent));
+            let zmq_msg = self.serialize_message_with_topic(&msg, "comm_close")?;
+            self.iopub.send(zmq_msg).await?;
+        }
+        Ok(())
+    }
+
+    /// Serve a JSON-RPC request on a plot comm.
+    ///
+    /// `render` is dispatched to the render thread and answered later from
+    /// [`Self::finish_render`]; the others are answered from state held here,
+    /// because `get_metadata` gets Positron's default 5 s timeout where
+    /// `render` gets 30 s and so must never queue behind one.
+    ///
+    /// Returns whether a render was dispatched. `true` means the reply — and
+    /// the `idle` closing the request's `busy` — is [`Self::finish_render`]'s
+    /// to send; every other outcome is answered here.
+    async fn handle_plot_rpc(
+        &mut self,
+        method: &str,
+        rpc_id: &Value,
+        comm_id: &str,
+        parent: &JupyterMessage,
+        identities: &[Vec<u8>],
+    ) -> Result<bool> {
+        match method {
+            "render" => {
+                let params = match RenderParams::from_rpc(&parent.content["data"]["params"]) {
+                    Ok(params) => params.available(self.plots.raster()),
+                    Err(e) => {
+                        self.reply_plot_error(&e, rpc_id, comm_id, parent, identities)
+                            .await?;
+                        return Ok(false);
+                    }
+                };
+                let ticket = RenderTicket {
+                    comm_id: comm_id.to_string(),
+                    rpc_id: rpc_id.clone(),
+                    params,
+                    parent: parent.clone(),
+                    identities: identities.to_vec(),
+                };
+                // Answered when the thread reports back — unless it is gone, in
+                // which case no outcome will arrive and Positron would sit out
+                // its 30 s timeout against a kernel that never returns to `idle`.
+                match self.plots.request_render(comm_id, params.request, ticket) {
+                    Ok(()) => Ok(true),
+                    Err(e) => {
+                        tracing::error!("could not dispatch a render: {e}");
+                        let e = RpcError::Internal(format!("could not render this plot: {e}"));
+                        self.reply_plot_error(&e, rpc_id, comm_id, parent, identities)
+                            .await?;
+                        Ok(false)
+                    }
+                }
+            }
+            // ggsql has no figure-size syntax, so there is no intrinsic size.
+            // `null` makes Positron use its fill policy rather than offer an
+            // "Intrinsic" option that would be a lie.
+            "get_intrinsic_size" => {
+                self.reply_plot_result(Value::Null, rpc_id, comm_id, parent, identities)
+                    .await?;
+                Ok(false)
+            }
+            "get_metadata" => {
+                match self.plot_comms.get(comm_id) {
+                    Some(metadata) => {
+                        let result = metadata.to_result();
+                        self.reply_plot_result(result, rpc_id, comm_id, parent, identities)
+                            .await?;
+                    }
+                    None => {
+                        let e = RpcError::Internal("this plot is no longer available".into());
+                        self.reply_plot_error(&e, rpc_id, comm_id, parent, identities)
+                            .await?;
+                    }
+                }
+                Ok(false)
+            }
+            // An error rather than `result: null`, so a future Positron method
+            // fails visibly instead of being satisfied with garbage. `show` and
+            // `update` belong here: they mean "re-fetch this figure", but a
+            // `ResolvedPlot` is immutable per execution, so re-running a cell opens a
+            // new comm as the R and matplotlib backends do. Do not add them.
+            other => {
+                let e = RpcError::MethodNotFound(format!("the plot comm has no '{other}' method"));
+                self.reply_plot_error(&e, rpc_id, comm_id, parent, identities)
+                    .await?;
+                Ok(false)
+            }
+        }
+    }
+
+    /// Send a finished render back as its comm's RPC reply.
+    async fn finish_render(&mut self, outcome: RenderOutcome) -> Result<()> {
+        let RenderOutcome { ticket, result } = outcome;
+        let RenderTicket {
+            comm_id,
+            rpc_id,
+            params,
+            parent,
+            identities,
+        } = *ticket;
+
+        match result {
+            Ok(bytes) => {
+                // Always base64 here, SVG included — see `RenderParams::encode`.
+                let encoded = RenderParams::encode(&bytes);
+                self.reply_plot_result(
+                    params.to_result(encoded),
+                    &rpc_id,
+                    &comm_id,
+                    &parent,
+                    &identities,
+                )
+                .await?;
+            }
+            Err(e) => {
+                tracing::warn!("plot render failed: {e}");
+                // Reply with an error rather than switching output kind
+                // mid-comm; Positron shows a render error in the pane.
+                let e = RpcError::Internal(format!("could not render this plot: {e}"));
+                self.reply_plot_error(&e, &rpc_id, &comm_id, &parent, &identities)
+                    .await?;
+            }
+        }
+
+        // The `busy` that went out when the request arrived is now answered.
+        self.send_status("idle", &parent).await
+    }
+
+    async fn reply_plot_result(
+        &mut self,
+        result: Value,
+        rpc_id: &Value,
+        comm_id: &str,
+        parent: &JupyterMessage,
+        identities: &[Vec<u8>],
+    ) -> Result<()> {
+        self.send_shell_reply(
+            "comm_msg",
+            json!({
+                "comm_id": comm_id,
+                "data": { "jsonrpc": "2.0", "id": rpc_id, "result": result }
+            }),
+            parent,
+            identities,
+        )
+        .await
+    }
+
+    async fn reply_plot_error(
+        &mut self,
+        error: &RpcError,
+        rpc_id: &Value,
+        comm_id: &str,
+        parent: &JupyterMessage,
+        identities: &[Vec<u8>],
+    ) -> Result<()> {
+        self.send_shell_reply(
+            "comm_msg",
+            json!({
+                "comm_id": comm_id,
+                "data": { "jsonrpc": "2.0", "id": rpc_id, "error": error.to_json() }
+            }),
+            parent,
+            identities,
+        )
+        .await
     }
 
     /// Handle JSON-RPC requests on the connection comm
