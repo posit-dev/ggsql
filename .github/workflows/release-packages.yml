@@ -45,12 +45,12 @@ jobs:
             ./target/release/ggsql.exe
             ./target/release/ggsql-jupyter.exe
         env:
-          # environment variables required to sign with signtool
-          SM_HOST: ${{ secrets.SM_HOST }}
-          SM_API_KEY: ${{ secrets.SM_API_KEY }}
-          SM_CLIENT_CERT_FILE_B64: ${{ secrets.SM_CLIENT_CERT_FILE_B64 }}
-          SM_CLIENT_CERT_PASSWORD: ${{ secrets.SM_CLIENT_CERT_PASSWORD }}
-          SM_CLIENT_CERT_FINGERPRINT: ${{ secrets.SM_CLIENT_CERT_FINGERPRINT }}
+          # environment variables required to sign with smctl
+          SM_HOST: ${{ secrets.SM_HOST_2026 }}
+          SM_API_KEY: ${{ secrets.SM_API_KEY_2026 }}
+          SM_CLIENT_CERT_FILE_B64: ${{ secrets.SM_CLIENT_CERT_FILE_B64_2026 }}
+          SM_CLIENT_CERT_PASSWORD: ${{ secrets.SM_CLIENT_CERT_PASSWORD_2026 }}
+          SM_KEYPAIR_ALIAS: ${{ secrets.SM_KEYPAIR_ALIAS_2026 }}
 
       - name: Upload ggsql-jupyter kernel (win32-x64)
         uses: actions/upload-artifact@v4
@@ -72,12 +72,12 @@ jobs:
             ./ggsql-cli/target/release/packager/*.exe
             ./ggsql-cli/target/release/packager/*.msi
         env:
-          # environment variables required to sign with signtool
-          SM_HOST: ${{ secrets.SM_HOST }}
-          SM_API_KEY: ${{ secrets.SM_API_KEY }}
-          SM_CLIENT_CERT_FILE_B64: ${{ secrets.SM_CLIENT_CERT_FILE_B64 }}
-          SM_CLIENT_CERT_PASSWORD: ${{ secrets.SM_CLIENT_CERT_PASSWORD }}
-          SM_CLIENT_CERT_FINGERPRINT: ${{ secrets.SM_CLIENT_CERT_FINGERPRINT }}
+          # environment variables required to sign with smctl
+          SM_HOST: ${{ secrets.SM_HOST_2026 }}
+          SM_API_KEY: ${{ secrets.SM_API_KEY_2026 }}
+          SM_CLIENT_CERT_FILE_B64: ${{ secrets.SM_CLIENT_CERT_FILE_B64_2026 }}
+          SM_CLIENT_CERT_PASSWORD: ${{ secrets.SM_CLIENT_CERT_PASSWORD_2026 }}
+          SM_KEYPAIR_ALIAS: ${{ secrets.SM_KEYPAIR_ALIAS_2026 }}
 
       - name: Upload NSIS installer
         uses: actions/upload-artifact@v4
