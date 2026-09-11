@@ -4,8 +4,6 @@ inputs:
   paths:
     description: "Paths to sign"
     required: true
-  signtools-extra-args:
-    description: "Additional arguments to pass to signtool"
 outputs:
   cert_path:
     description: "certificate path"
@@ -95,13 +93,13 @@ runs:
         }
         Write-Output "::endgroup::"
 
-    - name: Sign files with signtool
+    - name: Sign files
       shell: pwsh
       env:
         SM_CLIENT_CERT_FILE: ${{ steps.setup-cert.outputs.SM_CLIENT_CERT_FILE }}
       run: |
         Write-Output "::group::Check for required environment variables"
-        $requiredEnvVars = @('SM_HOST', 'SM_API_KEY', 'SM_CLIENT_CERT_FILE', 'SM_CLIENT_CERT_PASSWORD', 'SM_CLIENT_CERT_FINGERPRINT')
+        $requiredEnvVars = @('SM_HOST', 'SM_API_KEY', 'SM_CLIENT_CERT_FILE', 'SM_CLIENT_CERT_PASSWORD', 'SM_KEYPAIR_ALIAS')
         foreach ($envVar in $requiredEnvVars) {
           if (-not $(Get-Item -Path "Env:$envVar" -ErrorAction SilentlyContinue)) {
             Write-Output "::error title=Missing environment variable::Environment variable $envVar is not set."
@@ -109,9 +107,6 @@ runs:
           }
           Write-Output "All env var correctly set."
         }
-        Write-Output "::endgroup::"
-        Write-Output "::group::Sync certificates"
-        smctl windows certsync
         Write-Output "::endgroup::"
         # Sign each file that will be bundled in the installer
         $rawPaths = "${{ inputs.paths }}" -split "`n" | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne "" }
@@ -126,14 +121,36 @@ runs:
         }
         foreach ($path in $paths) {
           Write-Output "::group::Signing ${path}"
-          signtool.exe sign /sha1 $env:SM_CLIENT_CERT_FINGERPRINT /tr http://timestamp.digicert.com /td SHA256 /fd SHA256 ${{ inputs.signtools-extra-args }} $path
+          smctl sign --keypair-alias $env:SM_KEYPAIR_ALIAS --input $path --digalg SHA256 --sigalg SHA256 --timestamp=true --verbose --exit-non-zero-on-fail
           if ($LASTEXITCODE -ne 0) {
             Write-Output "::error title=Signing error::Error while signing ${path}"
             exit 1
           }
-          signtool.exe verify /v /pa $path
+          signtool.exe verify /v /pa /tw $path
           if ($LASTEXITCODE -ne 0) {
             Write-Output "::error title=Verify signature error::Error while verifying ${path}"
+            exit 1
+          }
+          $signature = Get-AuthenticodeSignature -FilePath $path
+          if ($signature.Status -ne 'Valid') {
+            Write-Output "::error title=Verify signature error::Signature status for ${path} is $($signature.Status), expected Valid"
+            exit 1
+          }
+          if ($null -eq $signature.TimeStamperCertificate) {
+            Write-Output "::error title=Verify signature error::Signature for ${path} has no timestamp certificate"
+            exit 1
+          }
+          if ($null -eq $signature.SignerCertificate) {
+            Write-Output "::error title=Verify signature error::Signature for ${path} has no signer certificate"
+            exit 1
+          }
+          $signerName = $signature.SignerCertificate.GetNameInfo(
+            [System.Security.Cryptography.X509Certificates.X509NameType]::SimpleName,
+            $false
+          )
+          $expectedSignerName = 'Posit Software, PBC'
+          if ($signerName -ne $expectedSignerName) {
+            Write-Output "::error title=Verify signature error::Signer subject for ${path} is '$($signature.SignerCertificate.Subject)', expected CN=$expectedSignerName"
             exit 1
           }
           Write-Output "::endgroup::"
