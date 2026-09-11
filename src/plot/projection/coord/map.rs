@@ -1265,8 +1265,8 @@ mod tests {
         Err(crate::GgsqlError::InternalError("no db".into()))
     }
 
-    fn noop_dialect() -> crate::reader::duckdb::DuckDbDialect {
-        crate::reader::duckdb::DuckDbDialect
+    fn noop_dialect() -> crate::reader::AnsiDialect {
+        crate::reader::AnsiDialect
     }
 
     mod scale_override_bbox_tests {
