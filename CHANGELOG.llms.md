@@ -1,3 +1,11 @@
+## \[Unreleased\]
+
+## 0.5.1 - 2026-09-11
+
+### Changed
+
+- Update GitHub Actions to deal with issues publishing Windows installers and cargo packages.
+
 ## 0.5.0 - 2026-09-10
 
 ### Added

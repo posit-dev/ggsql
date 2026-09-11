@@ -734,7 +734,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <h2 class="anchored" data-anchor-id="palettes">Palettes</h2>
 <p>There are two different types of palettes for fill and stroke — those intended for continuous data and those intended for discrete data. While they both consist of multiple color values, the continuous palettes are meant for interpolation between successive values whereas the discrete palettes are not.</p>
 <p>Palettes are used by giving them as names in the <code>TO</code> clause:</p>
-<div id="c8ad8aae" class="cell" data-execution_count="1">
+<div id="fd8adaae" class="cell" data-execution_count="1">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb6"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> <span class="kw">FROM</span> ggsql:penguins</span>
 <span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">point</span></span>
 <span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>  <span class="kw">MAPPING</span> bill_dep AS <span class="at">x</span>, body_mass AS <span class="at">y</span>, species AS <span class="at">fill</span></span>
@@ -749,7 +749,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </div>
 </div>
 <p>Instead of using a named palette you can create one on the fly using an array of color values:</p>
-<div id="4d24d12c" class="cell" data-execution_count="2">
+<div id="b2abe73c" class="cell" data-execution_count="2">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb7"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> <span class="kw">FROM</span> ggsql:penguins</span>
 <span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">point</span></span>
 <span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a>  <span class="kw">MAPPING</span> bill_dep AS <span class="at">x</span>, body_mass AS <span class="at">y</span>, flipper_len AS <span class="at">fill</span></span>
