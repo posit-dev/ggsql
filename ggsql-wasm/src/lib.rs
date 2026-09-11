@@ -8,7 +8,7 @@ use ggsql::reader::sqlite::SqliteReader;
 use ggsql::reader::Reader;
 use ggsql::reader::Spec;
 use ggsql::validate::validate;
-use ggsql::writer::{rgba, SvgWriter};
+use ggsql::writer::SvgWriter;
 use ggsql::DataFrame;
 use serde_json::json;
 use std::cell::RefCell;
@@ -412,14 +412,15 @@ impl GgsqlPlot {
     /// `id_prefix` namespaces every generated element id: inline SVGs share the
     /// page's id space, so two plots on one page collide without it.
     ///
-    /// The background is left transparent so the page's own shows through.
+    /// The canvas is opaque, matching every other ggsql writer. A transparent
+    /// one would let the page show through wherever the theme's plot background
+    /// does not reach — the slack a panel with a locked aspect (a polar coord,
+    /// a map) leaves beside itself, which the legend sits in.
     #[wasm_bindgen(js_name = toSvg)]
     pub fn to_svg(&self, width: u32, height: u32, id_prefix: &str) -> Result<SvgRender, JsValue> {
         // 96 dpi: the caller measured its box in CSS pixels, and an SVG scales
         // for a retina screen by itself.
-        let writer = SvgWriter::new(width.max(1), height.max(1), 96.0)
-            .background(rgba(0.0, 0.0, 0.0, 0.0))
-            .id_prefix(id_prefix);
+        let writer = SvgWriter::new(width.max(1), height.max(1), 96.0).id_prefix(id_prefix);
         let (svg, warnings) = writer
             .render_reporting(&self.spec)
             .map_err(|e| JsValue::from_str(&format!("Render error: {:?}", e)))?;

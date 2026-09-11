@@ -2527,7 +2527,7 @@ dependencies = [
 
 [[package]]
 name = "ggsql"
-version = "0.4.1"
+version = "0.5.0"
 dependencies = [
  "adbc_core",
  "adbc_datafusion",
@@ -2563,7 +2563,7 @@ dependencies = [
 
 [[package]]
 name = "ggsql-cli"
-version = "0.4.1"
+version = "0.5.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -2577,7 +2577,7 @@ dependencies = [
 
 [[package]]
 name = "ggsql-jupyter"
-version = "0.4.1"
+version = "0.5.0"
 dependencies = [
  "anyhow",
  "arrow",
@@ -2602,7 +2602,7 @@ dependencies = [
 
 [[package]]
 name = "ggsql-wasm"
-version = "0.4.1"
+version = "0.5.0"
 dependencies = [
  "arrow",
  "console_error_panic_hook",
@@ -6332,7 +6332,7 @@ dependencies = [
 
 [[package]]
 name = "tree-sitter-ggsql"
-version = "0.4.1"
+version = "0.5.0"
 dependencies = [
  "cc",
  "tree-sitter",

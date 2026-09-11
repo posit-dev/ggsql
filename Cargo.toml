@@ -15,7 +15,7 @@ default-members = [
 resolver = "2"
 
 [workspace.package]
-version = "0.4.1"
+version = "0.5.0"
 edition = "2021"
 # CRAN's maximum Rust version, which the R package's vendored copy of ggsql has
 # to build against — **only bump this when CRAN does.** Declaring it here also
@@ -36,8 +36,8 @@ description = "A declarative visualization language that extends SQL with powerf
 
 [workspace.dependencies]
 # workspace packages
-tree-sitter-ggsql = { path = "tree-sitter-ggsql", version = "0.4.1" }
-ggsql = { path = "src", version = "0.4.1" }
+tree-sitter-ggsql = { path = "tree-sitter-ggsql", version = "0.5.0" }
+ggsql = { path = "src", version = "0.5.0" }
 
 # Parsing
 csscolorparser = "0.8.1"

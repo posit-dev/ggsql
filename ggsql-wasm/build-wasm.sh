@@ -17,14 +17,54 @@ done
 # Each check guards one step, and is called only when that step is going to
 # run: `--skip-binary` is for iterating on TypeScript and the demo, so it must
 # not demand the wasm toolchain, and `--skip-opt` must not demand wasm-opt.
+supports_wasm() {
+    echo "int main(){return 0;}" | \
+        "$1" -target wasm32-unknown-unknown -c -o /dev/null -x c - 2>/dev/null
+}
+
+# Homebrew's clang, if it is installed and can target wasm. `brew --prefix
+# llvm` answers with the path the formula would occupy whether or not it is
+# there, so the executable itself is the test.
+brew_llvm_clang() {
+    command -v brew >/dev/null 2>&1 || return 1
+    local prefix
+    prefix="$(brew --prefix llvm 2>/dev/null)" || return 1
+    [ -x "$prefix/bin/clang" ] || return 1
+    printf '%s' "$prefix/bin/clang"
+}
+
+# The C in the dependency tree (tree-sitter's parser, SQLite) is compiled by
+# `cc-rs`. Apple's clang carries no wasm backend, so on a stock macOS the
+# default compiler cannot build any of it — find the Homebrew LLVM that can
+# rather than make every contributor export it.
+#
+# `CC` alone is not enough: cc-rs archives with `llvm-ar` for a wasm target and
+# resolves that by name, not from `AR`, so the toolchain's directory has to be
+# reachable. It goes on the *end* of `PATH` — everything else in there is a
+# name Apple's toolchain does not also provide, so appending adds `llvm-ar`
+# without shadowing the host compiler for anyone's build scripts.
 check_compiler() {
     local cc="${CC:-clang}"
-    if ! echo "int main(){return 0;}" | \
-        "$cc" -target wasm32-unknown-unknown -c -o /dev/null -x c - 2>/dev/null; then
-        echo "Error: '$cc' does not support the wasm32-unknown-unknown target." >&2
-        echo "Install an LLVM/clang toolchain with wasm backend support (e.g. 'sudo apt-get install llvm' on Debian/Ubuntu)." >&2
-        exit 1
+    if supports_wasm "$cc"; then
+        return
     fi
+    # Only when the caller named no compiler. An explicit `CC` that cannot do
+    # the job is a mistake to report, not one to silently work around.
+    if [ -z "${CC:-}" ]; then
+        local fallback
+        if fallback="$(brew_llvm_clang)" && supports_wasm "$fallback"; then
+            echo "Using Homebrew LLVM ('$cc' has no wasm backend): $fallback"
+            export CC="$fallback"
+            export AR="$(dirname "$fallback")/llvm-ar"
+            export PATH="$PATH:$(dirname "$fallback")"
+            return
+        fi
+    fi
+    echo "Error: '$cc' does not support the wasm32-unknown-unknown target." >&2
+    echo "Install an LLVM/clang toolchain with wasm backend support:" >&2
+    echo "  macOS:         brew install llvm" >&2
+    echo "  Debian/Ubuntu: sudo apt-get install llvm" >&2
+    exit 1
 }
 
 check_wasm_opt() {

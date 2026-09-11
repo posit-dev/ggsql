@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## 0.5.0 - 2026-09-10
 
 - The extension now ships the `ggsql-jupyter` kernel, so installing it is enough
   to run queries in Positron. It is the default, and is offered alongside every
