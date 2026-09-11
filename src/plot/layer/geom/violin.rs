@@ -280,8 +280,10 @@ mod tests {
     use super::*;
     use crate::plot::AestheticValue;
     use crate::plot::Parameters;
+    #[cfg(feature = "duckdb")]
     use crate::reader::duckdb::DuckDBReader;
     use crate::reader::AnsiDialect;
+    #[cfg(feature = "duckdb")]
     use crate::reader::Reader;
     use arrow::array::Array;
 
@@ -323,6 +325,7 @@ mod tests {
 
     // ==================== Basic Behavior Tests ====================
 
+    #[cfg(feature = "duckdb")]
     #[test]
     fn test_violin_no_extra_groups() {
         // Test violin with just x and y (no additional grouping variables)
@@ -387,6 +390,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "duckdb")]
     #[test]
     fn test_violin_with_extra_groups() {
         // Test violin with x, y, and an additional color grouping variable
@@ -484,6 +488,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "duckdb")]
     #[test]
     fn test_violin_tails_parameter() {
         // Verify that the violin geom has a tails parameter with default 3.0
@@ -624,6 +629,7 @@ mod tests {
         assert!((values[2] - 0.3).abs() < 1e-6, "1.0 should become 0.3");
     }
 
+    #[cfg(feature = "duckdb")]
     #[test]
     fn test_violin_dummy_pos1_when_unmapped() {
         // pos2 only - pos1 omitted should produce a single violin via dummy x.

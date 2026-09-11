@@ -1637,6 +1637,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "builtin-data")]
     #[test]
     fn test_stacked_bar_chart_dummy_x() {
         // Test stacked bar chart with no x mapping (dummy x column)
@@ -1671,6 +1672,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "builtin-data")]
     #[test]
     fn test_boxplot_dummy_x() {
         // Boxplot with only y mapped: should render a single boxplot of the
@@ -1697,6 +1699,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "builtin-data")]
     #[test]
     fn test_violin_dummy_x() {
         // Violin with only y mapped: single violin spanning the whole dataset.
@@ -1720,6 +1723,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "builtin-data")]
     #[test]
     fn test_point_dummy_x() {
         // Point with only y mapped: strip plot at a single dummy x position.
@@ -1767,6 +1771,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "builtin-data")]
     #[test]
     fn test_point_dummy_y() {
         // Symmetric to test_point_dummy_x: only x mapped means dummy y.
@@ -1790,6 +1795,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "builtin-data")]
     #[test]
     fn test_point_dummy_both_with_aggregate() {
         // Both axes omitted, but aggregate gives the single point meaning:
@@ -1820,6 +1826,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "builtin-data")]
     #[test]
     fn test_point_dummy_x_with_aggregate() {
         // Point with aggregate SETTING and no x mapping: should aggregate the
@@ -1845,6 +1852,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "builtin-data")]
     #[test]
     fn test_bar_chart_with_expand_setting() {
         // Test bar chart with SCALE y SETTING expand - should work even when y is stat-derived

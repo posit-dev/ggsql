@@ -605,11 +605,14 @@ fn compute_density(
 mod tests {
     use super::*;
     use crate::plot::Parameters;
+    #[cfg(feature = "duckdb")]
     use crate::reader::duckdb::DuckDBReader;
     use crate::reader::AnsiDialect;
+    #[cfg(feature = "duckdb")]
     use crate::reader::Reader;
     use arrow::array::Array;
 
+    #[cfg(feature = "duckdb")]
     #[test]
     fn test_density_sql_no_groups() {
         let query = "SELECT x FROM (VALUES (1.0), (2.0), (3.0)) AS t(x)";
@@ -686,6 +689,7 @@ mod tests {
         assert_eq!(df.height(), 512); // 512 grid points
     }
 
+    #[cfg(feature = "duckdb")]
     #[test]
     fn test_density_sql_with_two_groups() {
         let query = "SELECT x, region, category FROM (VALUES (1.0, 'A', 'X'), (2.0, 'B', 'Y')) AS t(x, region, category)";
@@ -807,6 +811,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "duckdb")]
     #[test]
     fn test_density_sql_computed_bandwidth() {
         // Test 1: No groups
@@ -865,6 +870,7 @@ mod tests {
     }
 
     /// Helper function to test that a kernel integrates to 1
+    #[cfg(feature = "duckdb")]
     fn test_kernel_integration(kernel_name: &str, tolerance: f64) {
         let query = "SELECT x FROM (VALUES (1.0), (2.0), (3.0), (4.0), (5.0)) AS t(x)";
         let groups: Vec<String> = vec![];
@@ -941,6 +947,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "duckdb")]
     #[test]
     fn test_all_kernels_integrate_to_one() {
         let kernels = vec![
@@ -982,6 +989,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "duckdb")]
     #[test]
     fn test_weighted_vs_unweighted_density() {
         // Compare weighted and unweighted results
@@ -1060,6 +1068,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "duckdb")]
     #[test]
     fn test_density_with_intensity_remapping() {
         use crate::reader::duckdb::DuckDBReader;
@@ -1127,6 +1136,7 @@ mod tests {
         println!("✓ Successfully used REMAPPING to map y to intensity instead of density");
     }
 
+    #[cfg(feature = "duckdb")]
     #[test]
     #[ignore] // Run with: cargo test bench_density_performance -- --ignored --nocapture
     fn bench_density_performance() {
