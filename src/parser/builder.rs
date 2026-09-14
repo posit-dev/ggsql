@@ -244,7 +244,7 @@ pub fn build_ast(source: &SourceTree) -> Result<Vec<Spec>> {
                 )
             }
             "tabulate_statement" => {
-                let table = build_tabulate_statement(&stmt_node, source);
+                let table = build_tabulate_statement(&stmt_node, source)?;
                 (table.source.is_some(), "TABULATE", Spec::Table(table))
             }
             other => {
@@ -343,19 +343,40 @@ fn build_visualise_statement(node: &Node, source: &SourceTree) -> Result<Plot> {
 }
 
 /// Build a single Table from a tabulate_statement node
-fn build_tabulate_statement(node: &Node, source: &SourceTree) -> Table {
+fn build_tabulate_statement(node: &Node, source: &SourceTree) -> Result<Table> {
     let mut table = Table::new();
 
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
-        if child.kind() == "single_source_from" {
-            if let Some(source_node) = child.child_by_field_name("source") {
-                table.source = Some(parse_data_source(&source_node, source));
+        match child.kind() {
+            "single_source_from" => {
+                if let Some(source_node) = child.child_by_field_name("source") {
+                    table.source = Some(parse_data_source(&source_node, source));
+                }
             }
+            "label_clause" => {
+                process_tab_clause(&child, source, &mut table)?;
+            }
+            _ => {}
         }
     }
 
-    table
+    Ok(table)
+}
+
+/// Process a table clause node
+// A single arm today, deliberately: this mirrors process_viz_clause's match
+// shape so a second TABULATE clause (FACET/SCALE) only needs a new arm.
+#[allow(clippy::single_match)]
+fn process_tab_clause(node: &Node, source: &SourceTree, table: &mut Table) -> Result<()> {
+    match node.kind() {
+        "label_clause" => {
+            table.labels = build_labels(node, source)?;
+        }
+        _ => {}
+    }
+
+    Ok(())
 }
 
 /// Process a visualization clause node

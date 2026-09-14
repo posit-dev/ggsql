@@ -10,6 +10,7 @@
 
 use crate::array_util::value_to_string;
 use crate::parser::{self, SourceTree};
+use crate::plot::Labels;
 use crate::reader::{Reader, ResolvedTable};
 use crate::validate::{validate, ValidationWarning};
 use crate::{DataFrame, GgsqlError, Result, Spec};
@@ -56,7 +57,7 @@ pub fn resolve_table_with_reader(query: &str, reader: &dyn Reader) -> Result<Res
     })?;
 
     let df = reader.execute_sql(&sql)?;
-    let column_labels = create_column_labels(&df);
+    let column_labels = create_column_labels(&df, &table.labels);
     let table_body = create_body(&df);
     let cells = compose_cells(column_labels, table_body);
 
@@ -67,19 +68,32 @@ pub fn resolve_table_with_reader(query: &str, reader: &dyn Reader) -> Result<Res
 ///
 /// Row numbering here is local to this function alone — `compose_cells`
 /// is what decides where this sits relative to the body, not this function.
-fn create_column_labels(df: &DataFrame) -> Vec<TableCell> {
-    df.get_column_names()
-        .into_iter()
-        .enumerate()
-        .map(|(index, name)| TableCell {
+///
+/// `labels` (from a `TABULATE LABEL` clause) is the one authority for a
+/// column's content. Three outcomes: a name absent from `labels` keeps the
+/// column name; an explicit `LABEL col => NULL` empties the cell;
+/// `LABEL col => 'text'` sets it to `text`.
+fn create_column_labels(df: &DataFrame, labels: &Labels) -> Vec<TableCell> {
+    let mut cells = Vec::new();
+
+    for (index, name) in df.get_column_names().into_iter().enumerate() {
+        let content = match labels.labels.get(&name) {
+            None => name,
+            Some(None) => String::new(),
+            Some(Some(label)) => label.clone(),
+        };
+
+        cells.push(TableCell {
             kind: TableCellKind::ColumnLabel,
             top: 0,
             bottom: 0,
             left: index,
             right: index,
-            content: name,
-        })
-        .collect()
+            content,
+        });
+    }
+
+    cells
 }
 
 /// Build one `Body` cell per `DataFrame` value, numbered from `top == 0`.
@@ -212,7 +226,7 @@ mod layout_tests {
         }
         .unwrap();
 
-        let labels = create_column_labels(&frame);
+        let labels = create_column_labels(&frame, &Labels::default());
 
         assert_eq!(labels.len(), 2);
         assert_eq!(labels[0].kind, TableCellKind::ColumnLabel);
@@ -224,6 +238,29 @@ mod layout_tests {
         assert_eq!(labels[1].left, 1);
         assert_eq!(labels[1].right, 1);
         assert_eq!(labels[1].content, "name");
+    }
+
+    #[test]
+    fn create_column_labels_resolves_default_suppress_and_override() {
+        let frame = df! {
+            "id" => vec![1i32],
+            "name" => vec!["a".to_string()],
+            "extra" => vec![true],
+        }
+        .unwrap();
+
+        let mut labels = Labels::default();
+        labels
+            .labels
+            .insert("id".to_string(), Some("ID".to_string()));
+        labels.labels.insert("name".to_string(), None);
+        // "extra" has no entry at all: no LABEL clause mentioned it.
+
+        let column_labels = create_column_labels(&frame, &labels);
+
+        assert_eq!(column_labels[0].content, "ID"); // overridden
+        assert_eq!(column_labels[1].content, ""); // explicitly suppressed
+        assert_eq!(column_labels[2].content, "extra"); // absent: kept as-is
     }
 
     #[test]
