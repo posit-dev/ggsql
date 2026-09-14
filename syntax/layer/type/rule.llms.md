@@ -110,12 +110,10 @@ VISUALISE FROM ggsql:penguins
 Add multiple reference lines with different colors from a separate dataset. Note we’re mapping from data here, so we use `DRAW` instead of `PLACE`.
 
 ``` ggsql
-WITH lines AS (
-    SELECT * FROM (VALUES
-        (0.4, -1, 'Line A'),
-        (0.2, 8, 'Line B'),
-        (0.8, -19, 'Line C')
-    ) AS t(slope, intercept, label)
+WITH lines(slope, intercept, label) AS (VALUES
+    (0.4, -1, 'Line A'),
+    (0.2, 8, 'Line B'),
+    (0.8, -19, 'Line C')
 )
 VISUALISE FROM ggsql:penguins
   DRAW point MAPPING bill_len AS x, bill_dep AS y
