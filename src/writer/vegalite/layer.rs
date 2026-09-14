@@ -3142,6 +3142,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "duckdb")]
     #[test]
     fn test_text_angle_integration() {
         use crate::execute;
@@ -3260,6 +3261,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "duckdb")]
     #[test]
     fn test_text_offset_parameters() {
         use crate::execute;
@@ -3327,6 +3329,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "duckdb")]
     #[test]
     fn test_text_label_formatting() {
         use crate::execute;
@@ -3384,6 +3387,7 @@ mod tests {
         assert!(labels.contains(&"Region: East Region"));
     }
 
+    #[cfg(feature = "duckdb")]
     #[test]
     fn test_text_label_formatting_numeric() {
         use crate::execute;
@@ -3427,6 +3431,7 @@ mod tests {
         assert!(labels.contains(&"$21.00"));
     }
 
+    #[cfg(feature = "duckdb")]
     #[test]
     fn test_text_label_newline_splitting() {
         use crate::execute;
@@ -3502,6 +3507,7 @@ mod tests {
         assert_eq!(annotation_lines[1].as_str().unwrap(), "With Newline");
     }
 
+    #[cfg(feature = "duckdb")]
     #[test]
     fn test_text_setting_fontweight() {
         use crate::execute;
@@ -3559,6 +3565,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "duckdb")]
     #[test]
     fn test_text_setting_fontweight_numeric() {
         use crate::execute;
@@ -3597,6 +3604,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "duckdb")]
     #[test]
     fn test_text_setting_fontweight_numeric_normal() {
         use crate::execute;
@@ -3635,6 +3643,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "duckdb")]
     #[test]
     fn test_text_setting_fontweight_keywords() {
         use crate::execute;
@@ -4378,6 +4387,7 @@ mod tests {
             .contains("no valid numeric range"));
     }
 
+    #[cfg(feature = "duckdb")]
     #[test]
     fn test_rule_renderer_multiple_diagonal_lines() {
         use crate::reader::{DuckDBReader, Reader};
@@ -4560,6 +4570,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "duckdb")]
     #[test]
     fn test_sloped_rule_renderer_horizontal_orientation() {
         use crate::reader::{DuckDBReader, Reader};

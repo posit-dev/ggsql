@@ -214,6 +214,7 @@ mod duckdb_tests {
         );
     }
 
+    #[cfg(feature = "vegalite")]
     #[test]
     fn test_ribbon_transposed_vegalite_encoding() {
         use crate::reader::Reader;

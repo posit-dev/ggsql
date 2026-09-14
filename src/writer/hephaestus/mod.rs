@@ -1012,6 +1012,7 @@ mod tests {
         ));
     }
 
+    #[cfg(feature = "builtin-data")]
     #[test]
     fn renders_free_binned_facet() {
         // A free binned position dimension: each panel keeps ggsql's global bin
@@ -1023,6 +1024,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "builtin-data")]
     #[test]
     fn renders_binned_size_legend() {
         // A binned *keyed* legend: one key per bin, sized at the bin's midpoint,
@@ -1034,6 +1036,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "builtin-data")]
     #[test]
     fn renders_binned_color_legend() {
         // The same ladder driving color: a stepped colorbar, one block per bin.
@@ -1110,6 +1113,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "builtin-data")]
     #[test]
     fn renders_jittered_points() {
         // `position => 'jitter'` spreads the points across their category band;
@@ -1147,6 +1151,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "builtin-data")]
     #[test]
     fn renders_jitter_with_half_boxplot() {
         // The documented raincloud layout: a one-sided jitter above the
@@ -1385,6 +1390,7 @@ mod svg_text {
         }
     }
 
+    #[cfg(feature = "builtin-data")]
     #[test]
     fn a_binned_scales_edge_labels_reach_the_legend() {
         // The renderer cannot derive a bin ladder, so all five edges appearing
