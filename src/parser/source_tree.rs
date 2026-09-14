@@ -49,12 +49,13 @@ impl<'a> SourceTree<'a> {
         let has_sql_from = self
             .find_node(&root, "(sql_statement (from_statement) @stmt)")
             .is_some();
-        let has_viz_from = self
-            .find_node(&root, "(visualise_statement (visualise_from) @t)")
-            .is_some();
-        if has_sql_from && has_viz_from {
+        // single_source_from is shared by visualise_statement and
+        // tabulate_statement, so this covers both `FROM a VISUALISE FROM b`
+        // and `FROM a TABULATE FROM b` in one check.
+        let has_stmt_from = self.find_node(&root, "(single_source_from) @t").is_some();
+        if has_sql_from && has_stmt_from {
             return Err(GgsqlError::ParseError(
-                "VISUALISE has two FROM clauses (one before VISUALISE and one after). \
+                "Query has two FROM clauses (one before VISUALISE/TABULATE and one after). \
                  Use only one."
                     .to_string(),
             ));
@@ -133,7 +134,28 @@ impl<'a> SourceTree<'a> {
             .collect()
     }
 
-    /// Extract the SQL portion of the query (before VISUALISE).
+    /// The first VISUALISE or TABULATE statement node, whichever comes first.
+    /// `None` if the query has neither.
+    ///
+    /// This is the statement `Reader::execute()`'s dispatch actually resolves
+    /// — it always acts on the first top-level `Spec`, of whichever kind — so
+    /// it is also the only statement `extract_sql`'s FROM-injection should
+    /// ever look inside.
+    fn first_stmt<'b>(&self, root: &Node<'b>) -> Option<Node<'b>> {
+        let viz = self.find_node(root, "(visualise_statement) @viz");
+        let tab = self.find_node(root, "(tabulate_statement) @tab");
+        match (viz, tab) {
+            (Some(a), Some(b)) => Some(if a.start_byte() <= b.start_byte() {
+                a
+            } else {
+                b
+            }),
+            (Some(a), None) | (None, Some(a)) => Some(a),
+            (None, None) => None,
+        }
+    }
+
+    /// Extract the SQL portion of the query (before VISUALISE/TABULATE).
     ///
     /// Two rewrites happen here so the returned SQL is always something a
     /// plain SQL reader can execute:
@@ -142,25 +164,27 @@ impl<'a> SourceTree<'a> {
     ///   `from_statement`. Each such statement is rewritten by prepending
     ///   `SELECT * ` — so `FROM sales VISUALISE …` becomes
     ///   `SELECT * FROM sales`.
-    /// - `VISUALISE FROM <source>`: the FROM appears on the VISUALISE clause.
-    ///   We append `SELECT * FROM <source>` to the SQL so the reader sees an
-    ///   executable query.
+    /// - `VISUALISE FROM <source>` / `TABULATE FROM <source>`: the FROM
+    ///   appears on the statement itself rather than as SQL. We append
+    ///   `SELECT * FROM <source>` to the SQL so the reader sees an
+    ///   executable query. Plots and tables share this extraction exactly —
+    ///   the only difference between them is that a table has no per-layer
+    ///   granular sources to also account for.
     ///
-    /// Returns `None` if there's no SQL portion and no VISUALISE FROM to
-    /// inject. The ambiguous double-FROM case (`FROM a VISUALISE FROM b …`)
-    /// is rejected in `SourceTree::new`, so any tree reaching here has at
-    /// most one of the two FROMs.
+    /// Returns `None` if there's no SQL portion and no FROM (on either
+    /// VISUALISE or TABULATE) to inject. The ambiguous double-FROM case
+    /// (`FROM a VISUALISE FROM b …`) is rejected in `SourceTree::new`, so any
+    /// tree reaching here has at most one of the two FROMs.
     pub fn extract_sql(&self) -> Option<String> {
         let root = self.root();
 
-        // Check if there's any VISUALISE statement
-        if self
-            .find_node(&root, "(visualise_statement) @viz")
-            .is_none()
-        {
-            // No VISUALISE at all - return entire source as SQL
+        // The statement `Reader::execute()` will actually resolve — the only
+        // one a FROM belonging to some *other*, later statement should ever
+        // be allowed to feed into.
+        let Some(first_stmt) = self.first_stmt(&root) else {
+            // Neither VISUALISE nor TABULATE at all - return entire source as SQL
             return Some(self.source.to_string());
-        }
+        };
 
         // Find sql_portion node and extract its text
         let sql_portion_node = self.find_node(&root, "(sql_portion) @sql");
@@ -191,17 +215,31 @@ impl<'a> SourceTree<'a> {
             }
         }
 
-        // VISUALISE FROM <source>: append "SELECT * FROM <source>".
-        let viz_from = self.find_text(
-            &root,
+        // VISUALISE FROM <source> / TABULATE FROM <source>: append
+        // "SELECT * FROM <source>". Explicitly anchored to both statement
+        // kinds (rather than a bare `(single_source_from …)`) so this can't
+        // silently start matching some unrelated future use of
+        // single_source_from — today it's only ever a child of one of these
+        // two, but this doesn't rely on that staying true.
+        //
+        // Scoped to `first_stmt` specifically, not `root`: a query can have
+        // several VISUALISE/TABULATE statements (interleaved, even), and only
+        // the first one is ever actually resolved. Searching the whole tree
+        // here would let a *later* statement's FROM leak into the one being
+        // resolved — e.g. `TABULATE VISUALISE FROM sales DRAW point` would
+        // silently pick up the VISUALISE's `FROM sales` for the source-less
+        // TABULATE instead of correctly reporting no data source.
+        let stmt_from = self.find_text(
+            &first_stmt,
             r#"
-                (visualise_statement
-                  (visualise_from
-                    source: (_) @source))
+                [
+                  (visualise_statement (single_source_from source: (_) @source))
+                  (tabulate_statement (single_source_from source: (_) @source))
+                ]
             "#,
         );
 
-        if let Some(from_identifier) = viz_from {
+        if let Some(from_identifier) = stmt_from {
             let result = if sql_text.trim().is_empty() {
                 format!("SELECT * FROM {}", from_identifier)
             } else {
@@ -218,20 +256,16 @@ impl<'a> SourceTree<'a> {
         }
     }
 
-    /// Extract the VISUALISE portion of the query (from first VISUALISE onwards)
-    ///
-    /// Returns the raw text of all VISUALISE statements
-    pub fn extract_visualise(&self) -> Option<String> {
+    /// Extract the `Spec` portion of the query — the VISUALISE/TABULATE
+    /// statement(s), from whichever comes first onwards.
+    pub fn extract_spec(&self) -> Option<String> {
         let root = self.root();
 
-        // Find byte offset of first VISUALISE
-        let viz_start = self
-            .find_node(&root, "(visualise_statement) @viz")
-            .map(|node| node.start_byte())?;
+        let spec_start = self.first_stmt(&root)?.start_byte();
 
-        // Extract viz text from first VISUALISE onwards
-        let viz_text = &self.source[viz_start..];
-        Some(viz_text.trim().to_string())
+        // Extract spec text from first VISUALISE/TABULATE onwards
+        let spec_text = &self.source[spec_start..];
+        Some(spec_text.trim().to_string())
     }
 }
 
@@ -247,7 +281,7 @@ mod tests {
         let sql = tree.extract_sql().unwrap();
         assert_eq!(sql, "SELECT * FROM data");
 
-        let viz = tree.extract_visualise().unwrap();
+        let viz = tree.extract_spec().unwrap();
         assert!(viz.starts_with("VISUALISE"));
         assert!(viz.contains("DRAW point"));
     }
@@ -260,7 +294,7 @@ mod tests {
         let sql = tree.extract_sql().unwrap();
         assert_eq!(sql, "SELECT * FROM data");
 
-        let viz = tree.extract_visualise().unwrap();
+        let viz = tree.extract_spec().unwrap();
         assert!(viz.starts_with("visualise"));
     }
 
@@ -284,7 +318,7 @@ mod tests {
         let sql = tree.extract_sql().unwrap();
         assert_eq!(sql, query);
 
-        let viz = tree.extract_visualise();
+        let viz = tree.extract_spec();
         assert!(viz.is_none());
     }
 
@@ -297,8 +331,42 @@ mod tests {
         // Should inject SELECT * FROM mtcars
         assert_eq!(sql, "SELECT * FROM mtcars");
 
-        let viz = tree.extract_visualise().unwrap();
+        let viz = tree.extract_spec().unwrap();
         assert!(viz.starts_with("VISUALISE FROM mtcars"));
+    }
+
+    #[test]
+    fn test_extract_sql_tabulate_from_matches_bare_select() {
+        // TABULATE FROM <source> and SELECT * FROM <source> TABULATE should
+        // extract to the identical SQL, the same equivalence VISUALISE FROM
+        // already has with a bare SELECT.
+        let from_only = SourceTree::new("TABULATE FROM ggsql:penguins").unwrap();
+        let select_then_tabulate =
+            SourceTree::new("SELECT * FROM ggsql:penguins TABULATE").unwrap();
+
+        assert_eq!(
+            from_only.extract_sql().unwrap(),
+            select_then_tabulate.extract_sql().unwrap()
+        );
+        assert_eq!(
+            from_only.extract_sql().unwrap(),
+            "SELECT * FROM ggsql:penguins"
+        );
+    }
+
+    #[test]
+    fn test_extract_sql_does_not_borrow_a_later_statements_from() {
+        // A source-less TABULATE followed by an unrelated VISUALISE FROM must
+        // not pick up the VISUALISE's FROM — extract_sql is scoped to the
+        // first statement (the one Reader::execute() actually resolves), not
+        // the whole tree.
+        let tree = SourceTree::new("TABULATE VISUALISE FROM sales DRAW point").unwrap();
+        assert_eq!(tree.extract_sql(), None);
+
+        // Same in the other order: a source-less VISUALISE must not borrow a
+        // later TABULATE's FROM either.
+        let tree = SourceTree::new("VISUALISE DRAW point TABULATE FROM sales").unwrap();
+        assert_eq!(tree.extract_sql(), None);
     }
 
     #[test]
@@ -309,7 +377,7 @@ mod tests {
         let sql = tree.extract_sql().unwrap();
         assert_eq!(sql, "SELECT * FROM {{ ref('fct_orders') }}");
 
-        let viz = tree.extract_visualise().unwrap();
+        let viz = tree.extract_spec().unwrap();
         assert!(viz.starts_with("VISUALISE FROM {{ ref('fct_orders') }}"));
     }
 
@@ -324,7 +392,7 @@ mod tests {
         assert!(sql.contains("WITH cte AS (SELECT * FROM x)"));
         assert!(sql.contains("SELECT * FROM cte"));
 
-        let viz = tree.extract_visualise().unwrap();
+        let viz = tree.extract_spec().unwrap();
         assert!(viz.starts_with("VISUALISE FROM cte"));
     }
 
@@ -337,7 +405,7 @@ mod tests {
         assert!(sql.contains("CREATE TABLE x AS SELECT 1;"));
         assert!(sql.contains("SELECT * FROM x"));
 
-        let viz = tree.extract_visualise().unwrap();
+        let viz = tree.extract_spec().unwrap();
         assert!(viz.starts_with("VISUALISE FROM x"));
 
         // Without semicolon, the visualise statement should also be recognised
@@ -348,7 +416,7 @@ mod tests {
         assert!(sql2.contains("CREATE TABLE x AS SELECT 1"));
         assert!(sql2.contains("SELECT * FROM x"));
 
-        let viz2 = tree2.extract_visualise().unwrap();
+        let viz2 = tree2.extract_spec().unwrap();
         assert!(viz2.starts_with("VISUALISE FROM x"));
     }
 
@@ -360,7 +428,7 @@ mod tests {
         let sql = tree.extract_sql().unwrap();
         assert!(sql.contains("INSERT"));
 
-        let viz = tree.extract_visualise().unwrap();
+        let viz = tree.extract_spec().unwrap();
         assert!(viz.contains("DRAW"));
     }
 
@@ -387,7 +455,7 @@ mod tests {
         let sql = tree.extract_sql().unwrap();
         assert!(sql.contains("SELECT * FROM mtcars"));
 
-        let viz = tree.extract_visualise().unwrap();
+        let viz = tree.extract_spec().unwrap();
         assert!(viz.starts_with("VISUALISE"));
     }
 
@@ -537,7 +605,7 @@ mod tests {
         // Should inject SELECT * FROM 'mtcars.csv' with quotes preserved
         assert_eq!(sql, "SELECT * FROM 'mtcars.csv'");
 
-        let viz = tree.extract_visualise().unwrap();
+        let viz = tree.extract_spec().unwrap();
         assert!(viz.starts_with("VISUALISE FROM 'mtcars.csv'"));
     }
 
@@ -551,7 +619,7 @@ mod tests {
         // Should inject SELECT * FROM "data/sales.parquet" with quotes preserved
         assert_eq!(sql, r#"SELECT * FROM "data/sales.parquet""#);
 
-        let viz = tree.extract_visualise().unwrap();
+        let viz = tree.extract_spec().unwrap();
         assert!(viz.starts_with(r#"VISUALISE FROM "data/sales.parquet""#));
     }
 

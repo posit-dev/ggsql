@@ -9,6 +9,7 @@
 //! - `casting`: Type requirements determination and casting logic
 //! - `layer`: Layer query building, data transforms, and stat application
 //! - `scale`: Scale creation, resolution, type coercion, and OOB handling
+//! - `table`: Table (TABULATE) resolution
 
 mod casting;
 mod cte;
@@ -16,11 +17,13 @@ mod layer;
 mod position;
 mod scale;
 mod schema;
+mod table;
 
 // Re-export public API
 pub use casting::TypeRequirement;
 pub use cte::CteDefinition;
 pub use schema::TypeInfo;
+pub use table::resolve_table_with_reader;
 
 use crate::naming;
 use crate::parser;
@@ -29,7 +32,7 @@ use crate::plot::facet::{resolve_properties as resolve_facet_properties, FacetDa
 use crate::plot::layer::is_transposed;
 use crate::plot::projection::resolve_projection_properties;
 use crate::plot::{AestheticValue, Layer, Scale, ScaleTypeKind, Schema};
-use crate::{DataFrame, DataSource, GgsqlError, Plot, Result};
+use crate::{DataFrame, DataSource, GgsqlError, Plot, Result, Spec};
 use std::collections::{HashMap, HashSet};
 
 use crate::reader::Reader;
@@ -1090,6 +1093,19 @@ pub struct PreparedData {
     pub visual: String,
 }
 
+/// Execute setup statements (INSTALL, LOAD, SET, etc.) ahead of the main
+/// query. Shared by the Plot and Table pipelines (`prepare_data_with_reader`
+/// and `table::resolve_table_with_reader`). Structured DML (CREATE, INSERT,
+/// UPDATE, DELETE) is out of scope here — see `cte::extract_side_effects`,
+/// which only the Plot pipeline currently runs.
+fn execute_setup_statements(source_tree: &parser::SourceTree, reader: &dyn Reader) -> Result<()> {
+    let root = source_tree.root();
+    for stmt in source_tree.find_texts(&root, "(sql_statement (other_sql_statement) @stmt)") {
+        reader.execute_sql(&stmt)?;
+    }
+    Ok(())
+}
+
 /// Build data map from a query using a Reader
 ///
 /// This is the main entry point for preparing visualization data from a ggsql query.
@@ -1108,7 +1124,10 @@ pub fn prepare_data_with_reader(query: &str, reader: &dyn Reader) -> Result<Prep
     let source_tree = parser::SourceTree::new(query)?;
     source_tree.validate()?;
 
-    // Check if query has VISUALISE statements
+    // Check if query has VISUALISE statements. Known gap: a TABULATE-only
+    // query (no VISUALISE at all) has no visualise_statement node, so it
+    // bails out right here with "No visualization specifications found" —
+    // there is no table-execution path yet to route it to instead.
     let root = source_tree.root();
     if source_tree
         .find_node(&root, "(visualise_statement) @viz")
@@ -1119,8 +1138,13 @@ pub fn prepare_data_with_reader(query: &str, reader: &dyn Reader) -> Result<Prep
         ));
     }
 
-    // Build AST from existing tree
-    let mut specs = parser::build_ast(&source_tree)?;
+    // Build AST from existing tree. Table specs are silently dropped here too
+    // (belt-and-braces after the check above): only visualizations flow
+    // through this pipeline.
+    let mut specs: Vec<Plot> = parser::build_ast(&source_tree)?
+        .into_iter()
+        .filter_map(Spec::into_plot)
+        .collect();
 
     if specs.is_empty() {
         return Err(GgsqlError::ValidationError(
@@ -1128,12 +1152,7 @@ pub fn prepare_data_with_reader(query: &str, reader: &dyn Reader) -> Result<Prep
         ));
     }
 
-    // Execute setup statements (INSTALL, LOAD, SET, etc.) before the main query.
-    // Structured DML (CREATE, INSERT, UPDATE, DELETE) is handled separately as
-    // side-effects in cte::transform_global_sql.
-    for stmt in source_tree.find_texts(&root, "(sql_statement (other_sql_statement) @stmt)") {
-        reader.execute_sql(&stmt)?;
-    }
+    execute_setup_statements(&source_tree, reader)?;
 
     // Run structured DML (CREATE, INSERT, UPDATE, DELETE) before CTE
     // materialization and the global query, so any table they create or
@@ -1621,7 +1640,7 @@ pub fn prepare_data_with_reader(query: &str, reader: &dyn Reader) -> Result<Prep
     prune_dataframes_per_layer(&specs, &mut data_map)?;
 
     // Extract VISUALISE text for PreparedData (SQL already extracted earlier)
-    let visual_part = source_tree.extract_visualise().unwrap_or_default();
+    let visual_part = source_tree.extract_spec().unwrap_or_default();
 
     Ok(PreparedData {
         data: data_map,
@@ -1656,6 +1675,45 @@ mod tests {
 
         let result = prepare_data_with_reader(query, &reader);
         assert!(result.is_err());
+    }
+
+    // Covers `execute_setup_statements`, shared by `prepare_data_with_reader`
+    // and `table::resolve_table_with_reader` — exercised once here rather
+    // than duplicated at each call site.
+    #[cfg(feature = "duckdb")]
+    #[test]
+    fn test_execute_setup_statements_runs_set_before_query() {
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        let query = "SET VARIABLE ggsql_test_var = 42; SELECT 1 AS x";
+        let source_tree = parser::SourceTree::new(query).unwrap();
+
+        execute_setup_statements(&source_tree, &reader).unwrap();
+
+        let df = reader
+            .execute_sql("SELECT getvariable('ggsql_test_var') AS v")
+            .unwrap();
+        let v = df.column("v").unwrap();
+        assert_eq!(crate::array_util::value_to_string(v, 0), "42");
+    }
+
+    #[cfg(feature = "duckdb")]
+    #[test]
+    fn test_prepare_data_tabulate_only_is_known_gap() {
+        // Documents the known gap noted above the visualise_statement check:
+        // a TABULATE-only query has no table-execution path, so it bails out
+        // with the same generic error as a plain SQL-only query, rather than
+        // anything TABULATE-specific. Update this test once table execution
+        // exists.
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        let query = "TABULATE FROM sales";
+
+        let result = prepare_data_with_reader(query, &reader);
+        match result {
+            Err(e) => assert!(e
+                .to_string()
+                .contains("No visualization specifications found")),
+            Ok(_) => panic!("expected an error for a TABULATE-only query"),
+        }
     }
 
     #[cfg(feature = "duckdb")]

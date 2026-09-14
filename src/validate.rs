@@ -4,7 +4,7 @@
 //! any SQL. Use this for IDE integration, syntax checking, and query inspection.
 
 use crate::parser;
-use crate::Result;
+use crate::{Plot, Result, Spec, Table};
 
 // ============================================================================
 // Core Types
@@ -14,7 +14,7 @@ use crate::Result;
 pub struct Validated {
     sql: String,
     visual: String,
-    has_visual: bool,
+    has_spec: bool,
     tree: Option<tree_sitter::Tree>,
     valid: bool,
     errors: Vec<ValidationError>,
@@ -22,9 +22,9 @@ pub struct Validated {
 }
 
 impl Validated {
-    /// Whether the query contains a VISUALISE clause.
-    pub fn has_visual(&self) -> bool {
-        self.has_visual
+    /// Whether the query contains a Spec (a VISUALISE or TABULATE clause).
+    pub fn has_spec(&self) -> bool {
+        self.has_spec
     }
 
     /// The SQL portion (before VISUALISE).
@@ -97,7 +97,7 @@ fn has_error_ancestor(node: &tree_sitter::Node) -> bool {
 /// Validate query syntax and semantics without executing SQL.
 pub fn validate(query: &str) -> Result<Validated> {
     let mut errors = Vec::new();
-    let warnings = Vec::new();
+    let mut warnings = Vec::new();
 
     // Parse once and create SourceTree
     let source_tree = match parser::SourceTree::new(query) {
@@ -111,7 +111,7 @@ pub fn validate(query: &str) -> Result<Validated> {
             return Ok(Validated {
                 sql: String::new(),
                 visual: String::new(),
-                has_visual: false,
+                has_spec: false,
                 tree: None,
                 valid: false,
                 errors,
@@ -122,11 +122,12 @@ pub fn validate(query: &str) -> Result<Validated> {
 
     // Extract SQL and viz portions using existing tree
     let sql_part = source_tree.extract_sql().unwrap_or_default();
-    let viz_part = source_tree.extract_visualise().unwrap_or_default();
+    let viz_part = source_tree.extract_spec().unwrap_or_default();
 
     let root = source_tree.root();
     let visualise_stmt = source_tree.find_node(&root, "(visualise_statement) @viz");
-    let has_visual = visualise_stmt.is_some();
+    let tabulate_stmt = source_tree.find_node(&root, "(tabulate_statement) @tab");
+    let has_spec = visualise_stmt.is_some() || tabulate_stmt.is_some();
 
     if let Err(e) = source_tree.validate() {
         // The lexer always tokenises VISUALISE / VISUALIZE as
@@ -165,7 +166,7 @@ pub fn validate(query: &str) -> Result<Validated> {
         return Ok(Validated {
             sql: sql_part,
             visual: viz_part,
-            has_visual,
+            has_spec,
             tree: Some(source_tree.tree),
             valid: false,
             errors,
@@ -173,12 +174,12 @@ pub fn validate(query: &str) -> Result<Validated> {
         });
     }
 
-    // Genuine SQL-only query (no parse errors, no VISUALISE clause).
-    if !has_visual {
+    // Genuine SQL-only query (no parse errors, no VISUALISE/TABULATE clause).
+    if !has_spec {
         return Ok(Validated {
             sql: sql_part,
             visual: viz_part,
-            has_visual: false,
+            has_spec: false,
             tree: None,
             valid: true,
             errors,
@@ -186,9 +187,9 @@ pub fn validate(query: &str) -> Result<Validated> {
         });
     }
 
-    // Build AST from existing tree for validation
-    let plots = match parser::build_ast(&source_tree) {
-        Ok(p) => p,
+    // Build AST from existing tree for validation.
+    let specs: Vec<Spec> = match parser::build_ast(&source_tree) {
+        Ok(specs) => specs,
         Err(e) => {
             errors.push(ValidationError {
                 message: e.to_string(),
@@ -197,7 +198,7 @@ pub fn validate(query: &str) -> Result<Validated> {
             return Ok(Validated {
                 sql: sql_part,
                 visual: viz_part,
-                has_visual,
+                has_spec,
                 tree: Some(source_tree.tree),
                 valid: false,
                 errors,
@@ -205,6 +206,22 @@ pub fn validate(query: &str) -> Result<Validated> {
             });
         }
     };
+    let plots: Vec<&Plot> = specs.iter().filter_map(Spec::as_plot).collect();
+    let tables: Vec<&Table> = specs.iter().filter_map(Spec::as_table).collect();
+
+    // Reader::execute() resolves only the first VISUALISE/TABULATE statement
+    // and silently drops the rest — a query with more than one gets no
+    // diagnostic otherwise. This warning is the only signal a caller has that
+    // part of their query was ignored.
+    if specs.len() > 1 {
+        warnings.push(ValidationWarning {
+            message: format!(
+                "Query has {} VISUALISE/TABULATE statements; only the first is resolved, the rest are ignored.",
+                specs.len()
+            ),
+            location: None,
+        });
+    }
 
     // Validate the single plot (we only support one VISUALISE statement)
     if let Some(plot) = plots.first() {
@@ -265,10 +282,24 @@ pub fn validate(query: &str) -> Result<Validated> {
         }
     }
 
+    // Validate the single table (we only support one TABULATE statement).
+    // `Table` has only `source` today, and `sql_part` already reflects it:
+    // `extract_sql` synthesizes "SELECT * FROM <source>" for a `TABULATE
+    // FROM`, so `sql_part` is only empty when there is neither a `FROM` nor
+    // preceding SQL — the same condition `resolve_table_with_reader` rejects
+    // at execution time, caught here before any SQL runs.
+    if !tables.is_empty() && sql_part.trim().is_empty() {
+        errors.push(ValidationError {
+            message: "TABULATE has no data source: add a FROM, or a SQL query before it"
+                .to_string(),
+            location: None,
+        });
+    }
+
     Ok(Validated {
         sql: sql_part,
         visual: viz_part,
-        has_visual,
+        has_spec,
         tree: Some(source_tree.tree),
         valid: errors.is_empty(),
         errors,
@@ -284,7 +315,7 @@ mod tests {
     fn test_validate_with_visual() {
         let validated =
             validate("SELECT 1 as x, 2 as y VISUALISE DRAW point MAPPING x AS x, y AS y").unwrap();
-        assert!(validated.has_visual());
+        assert!(validated.has_spec());
         assert_eq!(validated.sql(), "SELECT 1 as x, 2 as y");
         assert!(validated.visual().starts_with("VISUALISE"));
         assert!(validated.tree().is_some());
@@ -294,11 +325,49 @@ mod tests {
     #[test]
     fn test_validate_without_visual() {
         let validated = validate("SELECT 1 as x, 2 as y").unwrap();
-        assert!(!validated.has_visual());
+        assert!(!validated.has_spec());
         assert_eq!(validated.sql(), "SELECT 1 as x, 2 as y");
         assert!(validated.visual().is_empty());
         assert!(validated.tree().is_none());
         assert!(validated.valid());
+    }
+
+    #[test]
+    fn test_validate_warns_on_multiple_spec_statements() {
+        // Reader::execute() only ever resolves the first VISUALISE/TABULATE
+        // statement; a query with more than one should warn rather than
+        // silently drop the rest with no diagnostic at all.
+        let validated = validate("SELECT 1 AS x VISUALISE x DRAW point TABULATE").unwrap();
+        assert!(validated.valid());
+        assert!(!validated.warnings().is_empty());
+        assert!(validated.warnings()[0]
+            .message
+            .contains("only the first is resolved"));
+    }
+
+    #[test]
+    fn test_validate_tabulate_from_is_valid() {
+        // A TABULATE FROM has a data source (extract_sql injects
+        // "SELECT * FROM <source>" the same way it does for VISUALISE FROM),
+        // so it's recognized as having a Spec and reported valid.
+        let validated = validate("TABULATE FROM sales").unwrap();
+        assert!(validated.has_spec());
+        assert_eq!(validated.sql(), "SELECT * FROM sales");
+        assert!(validated.visual().starts_with("TABULATE"));
+        assert!(validated.valid());
+        assert!(validated.errors().is_empty());
+    }
+
+    #[test]
+    fn test_validate_bare_tabulate_has_no_data_source() {
+        // A bare TABULATE, with neither a FROM nor a preceding SQL query, has
+        // no data source — caught here before any SQL runs, mirroring
+        // `resolve_table_with_reader`'s execution-time rejection of the same
+        // query.
+        let validated = validate("TABULATE").unwrap();
+        assert!(validated.has_spec());
+        assert!(!validated.valid());
+        assert!(validated.errors()[0].message.contains("no data source"));
     }
 
     #[test]
@@ -335,7 +404,7 @@ mod tests {
         let query = "SELECT 1 as x, 2 as y VISUALISE DRAW point MAPPING x AS x, y AS y DRAW line MAPPING x AS x, y AS y";
         let validated = validate(query).unwrap();
 
-        assert!(validated.has_visual());
+        assert!(validated.has_spec());
         assert_eq!(validated.sql(), "SELECT 1 as x, 2 as y");
         assert!(validated.visual().contains("DRAW point"));
         assert!(validated.visual().contains("DRAW line"));
@@ -408,7 +477,7 @@ mod tests {
     }
 
     // Issue #256: SQL expressions in VISUALISE mappings used to be silently
-    // consumed as SQL, with validate() reporting valid=true and has_visual=false.
+    // consumed as SQL, with validate() reporting valid=true and has_spec=false.
     // The fix detects a stray visualise_keyword node (one that didn't make it
     // into a visualise_statement) and emits an actionable error.
 
@@ -479,7 +548,7 @@ mod tests {
             "string literal containing VISUALISE should be valid: {:?}",
             validated.errors()
         );
-        assert!(!validated.has_visual());
+        assert!(!validated.has_spec());
     }
 
     #[test]
@@ -491,6 +560,6 @@ mod tests {
             "comment containing VISUALISE should be valid: {:?}",
             validated.errors()
         );
-        assert!(!validated.has_visual());
+        assert!(!validated.has_spec());
     }
 }

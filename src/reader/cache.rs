@@ -12,7 +12,7 @@
 //! - [`Reader::dialect`] returns the cache dialect.
 
 use crate::array_util::{as_i64, as_str};
-use crate::reader::{execute_with_reader, ColumnInfo, Reader, Spec, SqlDialect, TableInfo};
+use crate::reader::{execute_with_reader, ColumnInfo, Reader, ResolvedSpec, SqlDialect, TableInfo};
 use crate::{naming, DataFrame, Result};
 use arrow::array::Array;
 use std::cell::{Cell, RefCell};
@@ -456,7 +456,7 @@ impl Reader for CachingReader {
         Ok(())
     }
 
-    fn execute(&self, query: &str) -> Result<Spec> {
+    fn execute(&self, query: &str) -> Result<ResolvedSpec> {
         execute_with_reader(self, query)
     }
 

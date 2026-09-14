@@ -7,7 +7,7 @@
 //!
 //! All readers implement the `Reader` trait, which provides:
 //! - SQL query execution → DataFrame conversion
-//! - Visualization query execution → Spec
+//! - Visualization query execution → ResolvedPlot
 //! - Optional DataFrame registration for queryable tables
 //! - Connection management and error handling
 //!
@@ -33,10 +33,11 @@
 
 use std::collections::HashMap;
 
-use crate::execute::prepare_data_with_reader;
+use crate::execute::{prepare_data_with_reader, resolve_table_with_reader};
+use crate::parser::{self, SourceTree};
 use crate::plot::{CastTargetType, Plot};
 use crate::validate::{validate, ValidationWarning};
-use crate::{naming, DataFrame, GgsqlError, Result};
+use crate::{naming, DataFrame, GgsqlError, Result, Spec, Table};
 
 // =============================================================================
 // SQL Dialect
@@ -502,7 +503,7 @@ pub(crate) fn returns_rows(sql: &str) -> bool {
 #[cfg(test)]
 pub(crate) mod test_support {
     use super::{
-        execute_with_reader, returns_rows, ColumnInfo, Reader, Spec, SqlDialect, TableInfo,
+        execute_with_reader, returns_rows, ColumnInfo, Reader, ResolvedSpec, SqlDialect, TableInfo,
     };
     use crate::{DataFrame, GgsqlError, Result};
     use std::sync::{Arc, Mutex};
@@ -541,7 +542,7 @@ pub(crate) mod test_support {
         fn unregister(&self, name: &str) -> Result<()> {
             self.inner.unregister(name)
         }
-        fn execute(&self, query: &str) -> Result<Spec> {
+        fn execute(&self, query: &str) -> Result<ResolvedSpec> {
             execute_with_reader(self, query)
         }
         fn dialect(&self) -> &dyn SqlDialect {
@@ -591,7 +592,7 @@ pub(crate) mod test_support {
         fn unregister(&self, _name: &str) -> Result<()> {
             Err(Self::refuse("unregister"))
         }
-        fn execute(&self, query: &str) -> Result<Spec> {
+        fn execute(&self, query: &str) -> Result<ResolvedSpec> {
             execute_with_reader(self, query)
         }
         fn dialect(&self) -> &dyn SqlDialect {
@@ -670,11 +671,11 @@ pub(crate) mod test_support {
 }
 
 // ============================================================================
-// Spec - Result of reader.execute()
+// ResolvedPlot - Result of reader.execute()
 // ============================================================================
 
 /// Result of executing a ggsql query, ready for rendering.
-pub struct Spec {
+pub struct ResolvedPlot {
     /// Single resolved plot specification
     pub(crate) plot: Plot,
     /// Internal data map (global + layer-specific DataFrames)
@@ -699,6 +700,43 @@ pub struct Metadata {
     pub rows: usize,
     pub columns: Vec<String>,
     pub layer_count: usize,
+}
+
+// ============================================================================
+// ResolvedTable - Result of reader.execute() for a TABULATE statement
+// ============================================================================
+
+/// Result of executing a ggsql TABULATE query, ready for rendering.
+pub struct ResolvedTable {
+    /// The resolved table specification
+    pub(crate) table: Table,
+    // PROVISIONAL, NOT A FINAL DESIGN DECISION: a plain `DataFrame` is enough
+    // to design the execution plumbing against, but this was never settled
+    // as the real representation. It will very likely need to become a
+    // table-specific intermediate representation once real table writers
+    // exist (e.g. an HTML/gt-style writer) and we know what they actually
+    // need `body` to carry. Don't build on this shape assuming it's final.
+    /// The data resolved from `table.source` (or the main SQL if there was no
+    /// TABULATE FROM)
+    pub(crate) body: DataFrame,
+    /// The SQL query that was executed to produce `body`
+    pub(crate) sql: String,
+    /// Validation warnings from preparation
+    pub(crate) warnings: Vec<ValidationWarning>,
+}
+
+// ============================================================================
+// ResolvedSpec - Result of reader.execute()
+// ============================================================================
+
+/// Result of executing a ggsql query: either a resolved plot or a resolved
+/// table, mirroring the parse-time `Spec` (`Plot` or `Table`).
+pub enum ResolvedSpec {
+    // Boxed for the same reason `Spec::Plot` is: `ResolvedPlot` is far larger
+    // than `ResolvedTable`, and clippy flags the resulting size gap
+    // (`large_enum_variant`) otherwise.
+    Plot(Box<ResolvedPlot>),
+    Table(ResolvedTable),
 }
 
 // ============================================================================
@@ -794,24 +832,32 @@ pub trait Reader {
         )))
     }
 
-    /// Execute a ggsql query and return the visualization specification.
+    /// Execute a ggsql query and return the resolved specification.
     ///
-    /// This is the main entry point for creating visualizations. It parses the query,
-    /// executes the SQL portion, and returns a `Spec` ready for rendering.
+    /// This is the main entry point for creating visualizations or tables.
+    /// It parses the query, executes the SQL portion, and returns a
+    /// `ResolvedSpec` ready for rendering — either a `ResolvedPlot` (from a
+    /// `VISUALISE`) or a `ResolvedTable` (from a `TABULATE`).
+    ///
+    /// No default body: implementations delegate to `execute_with_reader`
+    /// (each with a concrete, `Sized` `self`) so the trait stays object-safe
+    /// — a default method here would need to unsize `&Self` into
+    /// `&dyn Reader` to call that same free function, which requires
+    /// `Self: Sized` and would remove `execute` from `dyn Reader`'s vtable.
     ///
     /// # Arguments
     ///
-    /// * `query` - The ggsql query (SQL + VISUALISE clause)
+    /// * `query` - The ggsql query (SQL + VISUALISE/TABULATE clause)
     ///
     /// # Returns
     ///
-    /// A `Spec` containing the resolved visualization specification and data.
+    /// A `ResolvedSpec` containing the resolved plot or table.
     ///
     /// # Errors
     ///
     /// Returns an error if:
     /// - The query syntax is invalid
-    /// - The query has no VISUALISE clause
+    /// - The query has no VISUALISE/TABULATE clause
     /// - The SQL execution fails
     ///
     /// # Example
@@ -826,7 +872,7 @@ pub trait Reader {
     /// let writer = VegaLiteWriter::new();
     /// let json = writer.render(&spec)?;
     /// ```
-    fn execute(&self, query: &str) -> Result<Spec>;
+    fn execute(&self, query: &str) -> Result<ResolvedSpec>;
 
     /// Get the SQL dialect for this reader.
     ///
@@ -962,12 +1008,11 @@ pub struct ColumnInfo {
     pub data_type: String,
 }
 
-/// Execute a ggsql query using any reader
+/// Resolve a VISUALISE query into a `ResolvedPlot`.
 ///
-/// This is the shared implementation behind `Reader::execute()`. Concrete
-/// readers delegate to this so the trait stays object-safe (no `Self: Sized`
-/// bound on `execute`).
-pub fn execute_with_reader(reader: &dyn Reader, query: &str) -> Result<Spec> {
+/// This is the Plot-side counterpart to `execute::resolve_table_with_reader`
+/// — see that function's doc comment for how the two relate.
+pub fn resolve_plot_with_reader(reader: &dyn Reader, query: &str) -> Result<ResolvedPlot> {
     let validated = validate(query)?;
     let warnings: Vec<ValidationWarning> = validated.warnings().to_vec();
 
@@ -981,7 +1026,7 @@ pub fn execute_with_reader(reader: &dyn Reader, query: &str) -> Result<Spec> {
     let layer_sql = vec![None; plot.layers.len()];
     let stat_sql = vec![None; plot.layers.len()];
 
-    Ok(Spec::new(
+    Ok(ResolvedPlot::new(
         plot,
         prepared_data.data,
         prepared_data.sql,
@@ -990,6 +1035,29 @@ pub fn execute_with_reader(reader: &dyn Reader, query: &str) -> Result<Spec> {
         stat_sql,
         warnings,
     ))
+}
+
+/// Execute a ggsql query using any reader.
+///
+/// This is the shared implementation behind `Reader::execute()`. Concrete
+/// readers delegate to this so the trait stays object-safe (no `Self: Sized`
+/// bound on `execute`). Dispatches to the Plot or Table pipeline depending on
+/// which kind of `Spec` the query's first statement is.
+pub fn execute_with_reader(reader: &dyn Reader, query: &str) -> Result<ResolvedSpec> {
+    let source_tree = SourceTree::new(query)?;
+    source_tree.validate()?;
+    let specs = parser::build_ast(&source_tree)?;
+
+    match specs.into_iter().next() {
+        Some(Spec::Table(_)) => {
+            let resolved = resolve_table_with_reader(query, reader)?;
+            Ok(ResolvedSpec::Table(resolved))
+        }
+        _ => {
+            let resolved = resolve_plot_with_reader(reader, query)?;
+            Ok(ResolvedSpec::Plot(Box::new(resolved)))
+        }
+    }
 }
 
 #[cfg(test)]
@@ -1021,13 +1089,40 @@ mod tests {
             .execute("SELECT 1 as x, 2 as y VISUALISE x, y DRAW point")
             .unwrap();
 
-        assert_eq!(spec.plot().layers.len(), 1);
-        assert_eq!(spec.metadata().layer_count, 1);
-        assert!(spec.layer_data(0).is_some());
+        let plot = spec.as_plot().unwrap();
+        assert_eq!(plot.plot().layers.len(), 1);
+        assert_eq!(plot.metadata().layer_count, 1);
+        assert!(plot.layer_data(0).is_some());
 
         let writer = VegaLiteWriter::new();
         let result = writer.render(&spec).unwrap();
         assert!(result.contains("point"));
+    }
+
+    /// Confirms the actual dispatch in `execute_with_reader` — not just its
+    /// two pieces (`resolve_plot_with_reader`, `resolve_table_with_reader`)
+    /// tested elsewhere — routes each Spec kind correctly through
+    /// `Reader::execute()`, and that `Writer::render()` rejects a Table
+    /// cleanly rather than panicking.
+    #[test]
+    fn test_execute_dispatches_plot_and_table() {
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        reader
+            .execute_sql("CREATE TABLE sales AS SELECT 1 AS id")
+            .unwrap();
+
+        let plot_spec = reader
+            .execute("SELECT 1 as x, 2 as y VISUALISE x, y DRAW point")
+            .unwrap();
+        assert!(plot_spec.as_plot().is_some());
+        assert!(plot_spec.as_table().is_none());
+
+        let table_spec = reader.execute("TABULATE FROM sales").unwrap();
+        assert!(table_spec.as_table().is_some());
+        assert!(table_spec.as_plot().is_none());
+
+        let writer = VegaLiteWriter::new();
+        assert!(writer.render(&table_spec).is_err());
     }
 
     #[test]
@@ -1039,7 +1134,7 @@ mod tests {
             )
             .unwrap();
 
-        let metadata = spec.metadata();
+        let metadata = spec.as_plot().unwrap().metadata();
         assert_eq!(metadata.rows, 3);
         // Columns now includes both user mappings (pos1, pos2) and resolved defaults (size, stroke, fill, opacity, shape, linewidth)
         // Aesthetics are transformed to internal names (x -> pos1, y -> pos2)
@@ -1060,11 +1155,11 @@ mod tests {
         "#;
 
         let spec = reader.execute(query).unwrap();
+        let plot = spec.as_plot().unwrap();
 
-        assert_eq!(spec.plot().layers.len(), 1);
-        assert!(spec.layer_data(0).is_some());
-        let df = spec.layer_data(0).unwrap();
-        assert_eq!(df.height(), 2);
+        assert_eq!(plot.plot().layers.len(), 1);
+        assert!(plot.layer_data(0).is_some());
+        assert_eq!(plot.layer_data(0).unwrap().height(), 2);
     }
 
     #[test]
@@ -1364,9 +1459,10 @@ mod tests {
         let query = "SELECT * FROM my_data VISUALISE x, y DRAW point";
         let spec = reader.execute(query).unwrap();
 
-        assert_eq!(spec.metadata().rows, 3);
+        let plot = spec.as_plot().unwrap();
+        assert_eq!(plot.metadata().rows, 3);
         // Aesthetics are transformed to internal names (x -> pos1)
-        assert!(spec.metadata().columns.contains(&"pos1".to_string()));
+        assert!(plot.metadata().columns.contains(&"pos1".to_string()));
 
         let writer = VegaLiteWriter::new();
         let result = writer.render(&spec).unwrap();
@@ -1402,7 +1498,7 @@ mod tests {
         "#;
 
         let spec = reader.execute(query).unwrap();
-        assert_eq!(spec.metadata().rows, 3);
+        assert_eq!(spec.as_plot().unwrap().metadata().rows, 3);
     }
 
     #[test]
@@ -1437,10 +1533,11 @@ mod tests {
         let spec = reader.execute(query).unwrap();
 
         // Verify spec structure
-        assert_eq!(spec.plot().layers.len(), 1);
+        let plot = spec.as_plot().unwrap();
+        assert_eq!(plot.plot().layers.len(), 1);
         // Note: scales may include auto-generated x/y scales plus the explicit fill scale
         assert!(
-            spec.plot().find_scale("fill").is_some(),
+            plot.plot().find_scale("fill").is_some(),
             "Should have a fill scale"
         );
 

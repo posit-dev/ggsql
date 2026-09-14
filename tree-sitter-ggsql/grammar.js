@@ -26,10 +26,10 @@ module.exports = grammar({
   ],
 
   rules: {
-    // Main entry point - SQL followed by VISUALISE statements
+    // Main entry point - SQL followed by VISUALISE/TABULATE statements
     query: $ => seq(
       optional($.sql_portion),
-      repeat($.visualise_statement)
+      repeat(choice($.visualise_statement, $.tabulate_statement))
     ),
 
     // SQL portion - multiple statements separated by semicolons
@@ -650,13 +650,14 @@ module.exports = grammar({
     visualise_statement: $ => prec.dynamic(1, seq(
       $.visualise_keyword,
       optional($.global_mapping),
-      optional($.visualise_from),
+      optional($.single_source_from),
       repeat($.viz_clause)
     )),
 
-    // The VISUALISE-level source: exactly one table, CTE, or file path.
-    // Unlike a SQL FROM clause this admits no joins and no comma list.
-    visualise_from: $ => seq(
+    // The statement-level source shared by VISUALISE and TABULATE: exactly
+    // one table, CTE, or file path. Unlike a SQL FROM clause this admits no
+    // joins and no comma list.
+    single_source_from: $ => seq(
       token(prec(1, caseInsensitive('FROM'))),
       field('source', $.source_ref)
     ),
@@ -666,6 +667,18 @@ module.exports = grammar({
       caseInsensitive("VISUALISE"),
       caseInsensitive("VISUALIZE")
     ))),
+
+    // TABULATE — placeholder for tabular output, parallel to VISUALISE: an
+    // optional FROM right after the keyword, same single_source_from as
+    // visualise_statement (no joins, no comma list). No other clauses yet:
+    // the Table AST it builds has no fields to populate.
+    tabulate_statement: $ => prec.dynamic(1, seq(
+      $.tabulate_keyword,
+      optional($.single_source_from),
+    )),
+
+    // TABULATE keyword as explicit high-precedence token (mirrors visualise_keyword)
+    tabulate_keyword: $ => token(prec(10, caseInsensitive("TABULATE"))),
 
     // Shared mapping list: comma-separated mapping elements
     // Used by both global (VISUALISE) and layer (MAPPING) mappings

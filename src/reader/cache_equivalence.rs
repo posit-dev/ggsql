@@ -130,6 +130,12 @@ fn assert_equivalent(plain: &dyn Reader, cached: &dyn Reader, query: &str) {
         b.as_ref().err(),
     );
     let (Ok(sa), Ok(sb)) = (a, b) else { return };
+    let sa = sa
+        .into_plot()
+        .expect("cache-equivalence corpus is VISUALISE-only");
+    let sb = sb
+        .into_plot()
+        .expect("cache-equivalence corpus is VISUALISE-only");
 
     assert_eq!(
         sa.layer_count(),
@@ -272,7 +278,7 @@ mod adbc_mode {
     use super::*;
     use crate::reader::sqlite::SqliteDialect;
     use crate::reader::test_support::assert_dataframes_equal;
-    use crate::reader::{AdbcReader, Spec, SqlDialect};
+    use crate::reader::{AdbcReader, ResolvedSpec, SqlDialect};
     use crate::{DataFrame, Result};
     use adbc_core::options::{AdbcVersion, OptionDatabase, OptionValue};
     use adbc_core::LOAD_FLAG_DEFAULT;
@@ -329,7 +335,7 @@ mod adbc_mode {
         fn unregister(&self, name: &str) -> Result<()> {
             self.inner.unregister(name)
         }
-        fn execute(&self, query: &str) -> Result<Spec> {
+        fn execute(&self, query: &str) -> Result<ResolvedSpec> {
             crate::reader::execute_with_reader(self, query)
         }
         fn dialect(&self) -> &dyn SqlDialect {
