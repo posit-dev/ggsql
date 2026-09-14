@@ -282,71 +282,22 @@ gradient teal.
   <ul>
   <li><a href="#ggsql-query-writer" id="toc-ggsql-query-writer" class="nav-link active" data-scroll-target="#ggsql-query-writer">ggsql Query Writer</a>
   <ul class="collapse">
-  <li><a href="#query-structure" id="toc-query-structure" class="nav-link" data-scroll-target="#query-structure">Query structure</a>
-  <ul class="collapse">
-  <li><a href="#pattern-a-select-visualise" id="toc-pattern-a-select-visualise" class="nav-link" data-scroll-target="#pattern-a-select-visualise">Pattern A: SELECT → VISUALISE</a></li>
-  <li><a href="#pattern-b-visualise-from" id="toc-pattern-b-visualise-from" class="nav-link" data-scroll-target="#pattern-b-visualise-from">Pattern B: VISUALISE FROM</a></li>
-  </ul></li>
-  <li><a href="#data-sources" id="toc-data-sources" class="nav-link" data-scroll-target="#data-sources">Data sources</a></li>
-  <li><a href="#visualise-clause" id="toc-visualise-clause" class="nav-link" data-scroll-target="#visualise-clause">VISUALISE clause</a>
-  <ul class="collapse">
-  <li><a href="#mapping-forms" id="toc-mapping-forms" class="nav-link" data-scroll-target="#mapping-forms">Mapping forms</a></li>
-  </ul></li>
+  <li><a href="#query-structure" id="toc-query-structure" class="nav-link" data-scroll-target="#query-structure">Query structure</a></li>
+  <li><a href="#visualise-clause" id="toc-visualise-clause" class="nav-link" data-scroll-target="#visualise-clause">VISUALISE clause</a></li>
   <li><a href="#draw-clause" id="toc-draw-clause" class="nav-link" data-scroll-target="#draw-clause">DRAW clause</a>
   <ul class="collapse">
-  <li><a href="#mapping" id="toc-mapping" class="nav-link" data-scroll-target="#mapping">MAPPING</a></li>
-  <li><a href="#remapping" id="toc-remapping" class="nav-link" data-scroll-target="#remapping">REMAPPING</a></li>
-  <li><a href="#setting" id="toc-setting" class="nav-link" data-scroll-target="#setting">SETTING</a></li>
-  <li><a href="#filter" id="toc-filter" class="nav-link" data-scroll-target="#filter">FILTER</a></li>
-  <li><a href="#partition-by" id="toc-partition-by" class="nav-link" data-scroll-target="#partition-by">PARTITION BY</a></li>
-  <li><a href="#order-by" id="toc-order-by" class="nav-link" data-scroll-target="#order-by">ORDER BY</a></li>
+  <li><a href="#aggregate-a-setting" id="toc-aggregate-a-setting" class="nav-link" data-scroll-target="#aggregate-a-setting">Aggregate (a SETTING)</a></li>
   </ul></li>
   <li><a href="#place-clause" id="toc-place-clause" class="nav-link" data-scroll-target="#place-clause">PLACE clause</a></li>
-  <li><a href="#scale-clause" id="toc-scale-clause" class="nav-link" data-scroll-target="#scale-clause">SCALE clause</a>
-  <ul class="collapse">
-  <li><a href="#scale-types-optional-placed-before-aesthetic" id="toc-scale-types-optional-placed-before-aesthetic" class="nav-link" data-scroll-target="#scale-types-optional-placed-before-aesthetic">Scale types (optional, placed before aesthetic)</a></li>
-  <li><a href="#aesthetic-names" id="toc-aesthetic-names" class="nav-link" data-scroll-target="#aesthetic-names">Aesthetic names</a></li>
-  <li><a href="#from-input-range" id="toc-from-input-range" class="nav-link" data-scroll-target="#from-input-range">FROM (input range)</a></li>
-  <li><a href="#to-output-range" id="toc-to-output-range" class="nav-link" data-scroll-target="#to-output-range">TO (output range)</a></li>
-  <li><a href="#via-transform" id="toc-via-transform" class="nav-link" data-scroll-target="#via-transform">VIA (transform)</a></li>
-  <li><a href="#setting-1" id="toc-setting-1" class="nav-link" data-scroll-target="#setting-1">SETTING</a></li>
-  <li><a href="#renaming" id="toc-renaming" class="nav-link" data-scroll-target="#renaming">RENAMING</a></li>
-  </ul></li>
-  <li><a href="#facet-clause" id="toc-facet-clause" class="nav-link" data-scroll-target="#facet-clause">FACET clause</a>
-  <ul class="collapse">
-  <li><a href="#settings" id="toc-settings" class="nav-link" data-scroll-target="#settings">Settings</a></li>
-  <li><a href="#customizing-strip-labels" id="toc-customizing-strip-labels" class="nav-link" data-scroll-target="#customizing-strip-labels">Customizing strip labels</a></li>
-  <li><a href="#filtering-panels" id="toc-filtering-panels" class="nav-link" data-scroll-target="#filtering-panels">Filtering panels</a></li>
-  </ul></li>
-  <li><a href="#project-clause" id="toc-project-clause" class="nav-link" data-scroll-target="#project-clause">PROJECT clause</a>
-  <ul class="collapse">
-  <li><a href="#coordinate-types" id="toc-coordinate-types" class="nav-link" data-scroll-target="#coordinate-types">Coordinate types</a></li>
-  </ul></li>
+  <li><a href="#scale-clause" id="toc-scale-clause" class="nav-link" data-scroll-target="#scale-clause">SCALE clause</a></li>
+  <li><a href="#facet-clause" id="toc-facet-clause" class="nav-link" data-scroll-target="#facet-clause">FACET clause</a></li>
+  <li><a href="#project-clause" id="toc-project-clause" class="nav-link" data-scroll-target="#project-clause">PROJECT clause</a></li>
   <li><a href="#label-clause" id="toc-label-clause" class="nav-link" data-scroll-target="#label-clause">LABEL clause</a></li>
-  <li><a href="#layer-types" id="toc-layer-types" class="nav-link" data-scroll-target="#layer-types">Layer types</a>
-  <ul class="collapse">
-  <li><a href="#point" id="toc-point" class="nav-link" data-scroll-target="#point">point</a></li>
-  <li><a href="#line" id="toc-line" class="nav-link" data-scroll-target="#line">line</a></li>
-  <li><a href="#path" id="toc-path" class="nav-link" data-scroll-target="#path">path</a></li>
-  <li><a href="#bar" id="toc-bar" class="nav-link" data-scroll-target="#bar">bar</a></li>
-  <li><a href="#histogram" id="toc-histogram" class="nav-link" data-scroll-target="#histogram">histogram</a></li>
-  <li><a href="#density" id="toc-density" class="nav-link" data-scroll-target="#density">density</a></li>
-  <li><a href="#boxplot" id="toc-boxplot" class="nav-link" data-scroll-target="#boxplot">boxplot</a></li>
-  <li><a href="#violin" id="toc-violin" class="nav-link" data-scroll-target="#violin">violin</a></li>
-  <li><a href="#smooth" id="toc-smooth" class="nav-link" data-scroll-target="#smooth">smooth</a></li>
-  <li><a href="#area" id="toc-area" class="nav-link" data-scroll-target="#area">area</a></li>
-  <li><a href="#ribbon" id="toc-ribbon" class="nav-link" data-scroll-target="#ribbon">ribbon</a></li>
-  <li><a href="#segment" id="toc-segment" class="nav-link" data-scroll-target="#segment">segment</a></li>
-  <li><a href="#rule" id="toc-rule" class="nav-link" data-scroll-target="#rule">rule</a></li>
-  <li><a href="#text" id="toc-text" class="nav-link" data-scroll-target="#text">text</a></li>
-  <li><a href="#rect" id="toc-rect" class="nav-link" data-scroll-target="#rect">rect</a></li>
-  <li><a href="#polygon" id="toc-polygon" class="nav-link" data-scroll-target="#polygon">polygon</a></li>
-  <li><a href="#range" id="toc-range" class="nav-link" data-scroll-target="#range">range</a></li>
-  </ul></li>
+  <li><a href="#layer-types" id="toc-layer-types" class="nav-link" data-scroll-target="#layer-types">Layer types</a></li>
   <li><a href="#named-color-palettes" id="toc-named-color-palettes" class="nav-link" data-scroll-target="#named-color-palettes">Named color palettes</a></li>
   <li><a href="#common-patterns" id="toc-common-patterns" class="nav-link" data-scroll-target="#common-patterns">Common patterns</a></li>
   <li><a href="#cli" id="toc-cli" class="nav-link" data-scroll-target="#cli">CLI</a></li>
-  <li><a href="#additional-references" id="toc-additional-references" class="nav-link" data-scroll-target="#additional-references">Additional References</a></li>
+  <li><a href="#reference" id="toc-reference" class="nav-link" data-scroll-target="#reference">Reference</a></li>
   <li><a href="#instructions-for-responding" id="toc-instructions-for-responding" class="nav-link" data-scroll-target="#instructions-for-responding">Instructions for responding</a></li>
   </ul></li>
   </ul>
@@ -386,63 +337,33 @@ gradient teal.
 
 <section id="ggsql-query-writer" class="level1">
 <h1>ggsql Query Writer</h1>
-<p>ggsql is a SQL extension for declarative data visualization based on Grammar of Graphics principles. It lets users combine SQL data queries with visualization specifications in a single, composable syntax.</p>
-<p>When the user describes a visualization they want, write a valid ggsql query. Use ONLY syntax documented below. NEVER invent clauses, settings, aesthetics, or layer types.</p>
+<p>ggsql combines a SQL query with a Grammar-of-Graphics visualization spec in one syntax. Write queries using ONLY the syntax below — NEVER invent clauses, settings, aesthetics, layer types, or palette names; say so if unsure whether something exists.</p>
 <section id="query-structure" class="level2">
 <h2 class="anchored" data-anchor-id="query-structure">Query structure</h2>
-<p>A ggsql query has two parts:</p>
-<ol type="1">
-<li><strong>SQL part</strong> (optional): Standard SQL executed on the backend. Any tables, CTEs, or SELECT results are available to the visualization.</li>
-<li><strong>VISUALISE part</strong> (required): Begins with <code>VISUALISE</code> (or <code>VISUALIZE</code>). Everything after this is the visualization query.</li>
-</ol>
-<p>There are two patterns for combining SQL with VISUALISE:</p>
-<section id="pattern-a-select-visualise" class="level3">
-<h3 class="anchored" data-anchor-id="pattern-a-select-visualise">Pattern A: SELECT → VISUALISE</h3>
-<p>The last SQL statement is a SELECT. Data flows from its result set into VISUALISE, which has no <code>FROM</code> clause.</p>
+<p>Optional SQL part + required <code>VISUALISE</code>/<code>VISUALIZE</code> part.</p>
+<ul>
+<li><p><strong>SELECT → VISUALISE</strong>: last statement is a SELECT (bare, <code>WITH...SELECT</code>, set ops); its result feeds VISUALISE, which has no <code>FROM</code>.</p>
 <div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb1"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="kw">SELECT</span> name, score_a, score_b <span class="kw">FROM</span> <span class="st">'dataset.csv'</span> <span class="kw">WHERE</span> value <span class="op">&gt;</span> <span class="dv">50</span></span>
 <span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> score_a <span class="kw">AS</span> <span class="at">x</span>, score_b <span class="kw">AS</span> <span class="at">y</span></span>
-<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>[<span class="kw">DRAW</span> <span class="op">/</span> <span class="kw">PLACE</span> <span class="op">/</span> <span class="kw">SCALE</span> <span class="op">/</span> <span class="kw">FACET</span> <span class="op">/</span> <span class="kw">PROJECT</span> <span class="op">/</span> <span class="kw">LABEL</span> clauses]</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<p>Works with any SQL that ends in a SELECT: bare SELECT, WITH…SELECT, UNION/INTERSECT/EXCEPT.</p>
-</section>
-<section id="pattern-b-visualise-from" class="level3">
-<h3 class="anchored" data-anchor-id="pattern-b-visualise-from">Pattern B: VISUALISE FROM</h3>
-<p>VISUALISE provides its own data source via <code>FROM</code>. Use when referencing a table, file, CTE, or built-in dataset directly without a trailing SELECT.</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb2"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> score_a <span class="kw">AS</span> <span class="at">x</span>, score_b <span class="kw">AS</span> <span class="at">y</span> <span class="kw">FROM</span> <span class="st">'dataset.csv'</span></span>
-<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">point</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb3"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="kw">WITH</span> summary <span class="kw">AS</span> (<span class="kw">SELECT</span> category, <span class="fu">COUNT</span>(<span class="op">*</span>) <span class="kw">AS</span> n <span class="kw">FROM</span> <span class="st">'dataset.csv'</span> <span class="kw">GROUP</span> <span class="kw">BY</span> category)</span>
-<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> category <span class="kw">AS</span> <span class="at">x</span>, n <span class="kw">AS</span> <span class="at">y</span> <span class="kw">FROM</span> summary</span>
-<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">bar</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-</section>
-</section>
-<section id="data-sources" class="level2">
-<h2 class="anchored" data-anchor-id="data-sources">Data sources</h2>
-<p>Data sources can appear in <code>VISUALISE ... FROM</code> or <code>DRAW ... MAPPING ... FROM</code>:</p>
-<ul>
-<li><strong>Table/CTE name</strong> (unquoted): <code>FROM sales</code>, <code>FROM my_cte</code></li>
-<li><strong>File path</strong> (single-quoted string): <code>FROM 'data.parquet'</code>, <code>FROM 'data.csv'</code></li>
-<li><strong>Built-in datasets</strong>: <code>FROM ggsql:penguins</code>, <code>FROM ggsql:airquality</code></li>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>[<span class="kw">DRAW</span> <span class="op">/</span> <span class="kw">PLACE</span> <span class="op">/</span> <span class="kw">SCALE</span> <span class="op">/</span> <span class="kw">FACET</span> <span class="op">/</span> <span class="kw">PROJECT</span> <span class="op">/</span> <span class="kw">LABEL</span> clauses]</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div></li>
+<li><p><strong>VISUALISE FROM</strong>: VISUALISE supplies its own source (table/file/CTE/built-in), no trailing SELECT.</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb2"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="kw">WITH</span> summary <span class="kw">AS</span> (<span class="kw">SELECT</span> category, <span class="fu">COUNT</span>(<span class="op">*</span>) <span class="kw">AS</span> n <span class="kw">FROM</span> <span class="st">'dataset.csv'</span> <span class="kw">GROUP</span> <span class="kw">BY</span> category)</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> category <span class="kw">AS</span> <span class="at">x</span>, n <span class="kw">AS</span> <span class="at">y</span> <span class="kw">FROM</span> summary</span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">bar</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div></li>
 </ul>
+<p><strong>Data sources</strong> (in <code>VISUALISE ... FROM</code> or <code>DRAW ... MAPPING ... FROM</code>): unquoted table/CTE (<code>FROM sales</code>), quoted file path (<code>FROM 'data.csv'</code>), built-in dataset (<code>FROM ggsql:penguins</code>, <code>FROM ggsql:airquality</code>).</p>
 </section>
 <section id="visualise-clause" class="level2">
 <h2 class="anchored" data-anchor-id="visualise-clause">VISUALISE clause</h2>
-<p>Marks the start of the visualization. Optionally defines global mappings inherited by all layers.</p>
+<p>Starts the viz; optional global mappings inherited by every layer.</p>
 <pre><code>VISUALISE &lt;mapping&gt;, ... FROM &lt;data-source&gt;</code></pre>
-<section id="mapping-forms" class="level3">
-<h3 class="anchored" data-anchor-id="mapping-forms">Mapping forms</h3>
-<ul>
-<li><strong>Explicit</strong>: <code>column AS aesthetic</code> — e.g.&nbsp;<code>revenue AS y</code></li>
-<li><strong>Implicit</strong>: <code>column</code> — column name must match aesthetic name, e.g.&nbsp;<code>x</code> maps to <code>x</code></li>
-<li><strong>Wildcard</strong>: <code>*</code> — all columns with names matching aesthetics are mapped</li>
-<li><strong>Constants</strong>: <code>'red' AS fill</code>, <code>42 AS size</code> — literal values mapped to aesthetic</li>
-</ul>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb5"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> bill_len <span class="kw">AS</span> <span class="at">x</span>, bill_dep <span class="kw">AS</span> <span class="at">y</span>, species <span class="kw">AS</span> <span class="at">fill</span> <span class="kw">FROM</span> ggsql:penguins</span>
-<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> <span class="op">*</span> <span class="kw">FROM</span> my_table</span>
-<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> <span class="kw">FROM</span> ggsql:penguins</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-</section>
+<p>Mapping forms: explicit <code>column AS aesthetic</code> (e.g.&nbsp;<code>revenue AS y</code>); implicit <code>column</code> (name = aesthetic name); wildcard <code>*</code> (all matching columns); constant <code>'red' AS fill</code>.</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb4"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> bill_len <span class="kw">AS</span> <span class="at">x</span>, bill_dep <span class="kw">AS</span> <span class="at">y</span>, species <span class="kw">AS</span> <span class="at">fill</span> <span class="kw">FROM</span> ggsql:penguins</span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> <span class="op">*</span> <span class="kw">FROM</span> my_table</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 </section>
 <section id="draw-clause" class="level2">
 <h2 class="anchored" data-anchor-id="draw-clause">DRAW clause</h2>
-<p>Defines a layer. Multiple DRAW clauses stack layers (first = bottom, last = top).</p>
+<p>Defines a layer; multiple DRAW stack bottom→top. All subclauses optional given global mappings/data.</p>
 <pre><code>DRAW &lt;layer-type&gt;
   MAPPING &lt;mapping&gt;, ... FROM &lt;data-source&gt;
   REMAPPING &lt;stat-property&gt; AS &lt;aesthetic&gt;, ...
@@ -450,376 +371,155 @@ gradient teal.
   FILTER &lt;condition&gt;
   PARTITION BY &lt;column&gt;, ...
   ORDER BY &lt;column&gt;, ...</code></pre>
-<p>All subclauses are optional if VISUALISE provides global mappings and data.</p>
-<section id="mapping" class="level3">
-<h3 class="anchored" data-anchor-id="mapping">MAPPING</h3>
-<p>Same syntax as VISUALISE mappings. Layer mappings merge with global mappings (layer takes precedence). Can include <code>FROM</code> for layer-specific data.</p>
 <ul>
-<li>Use <code>null</code> to prevent inheriting a global mapping: <code>MAPPING null AS color</code></li>
+<li><strong>MAPPING</strong> — same forms as VISUALISE; merges with (layer wins over) global mappings, can add its own <code>FROM</code>. <code>null</code> blocks inheriting a global mapping: <code>MAPPING null AS color</code>.</li>
+<li><strong>REMAPPING</strong> — for stat layers (<code>histogram</code>, <code>density</code>, <code>boxplot</code>, <code>violin</code>, <code>smooth</code>, <code>bar</code> w/o y): maps a computed stat to an aesthetic, e.g.&nbsp;<code>REMAPPING density AS y</code> instead of a layer’s default stat.</li>
+<li><strong>SETTING</strong> — literal aesthetic values or layer params (bypasses scales), e.g.&nbsp;<code>SETTING size =&gt; 5, stroke =&gt; 'red'</code>. Position adjustment: <code>'identity'</code> (default, most layers), <code>'stack'</code> (default bar/histogram/area), <code>'dodge'</code> (default boxplot/violin), <code>'jitter'</code>.</li>
+<li><strong>FILTER</strong> — SQL WHERE condition on layer data: <code>FILTER sex = 'female' AND body_mass &gt; 4000</code>.</li>
+<li><strong>PARTITION BY</strong> — extra grouping columns beyond discrete mappings: <code>PARTITION BY Month</code>.</li>
+<li><strong>ORDER BY</strong> — record order, matters for <code>path</code>: <code>ORDER BY timestamp</code>.</li>
 </ul>
-</section>
-<section id="remapping" class="level3">
-<h3 class="anchored" data-anchor-id="remapping">REMAPPING</h3>
-<p>For statistical layers (histogram, density, boxplot, violin, smooth, bar without y). Maps calculated statistics to aesthetics. Each layer documents its available stats and default remapping.</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb7"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">histogram</span></span>
-<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>  <span class="kw">MAPPING</span> body_mass AS <span class="at">x</span></span>
-<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a>  <span class="kw">REMAPPING</span> <span class="dt">density</span> AS <span class="at">y</span>  <span class="co">-- use density instead of default count</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-</section>
-<section id="setting" class="level3">
-<h3 class="anchored" data-anchor-id="setting">SETTING</h3>
-<p>Set literal aesthetic values or layer parameters. Aesthetics set here bypass scales.</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb8"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">point</span></span>
-<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a>  <span class="kw">SETTING</span> <span class="at">size</span> <span class="op">=&gt;</span> <span class="dv">5</span>, <span class="at">opacity</span> <span class="op">=&gt;</span> <span class="dv">0.7</span>, <span class="at">stroke</span> <span class="op">=&gt;</span> <span class="st">'red'</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<p><strong>Position adjustment</strong> is a special setting:</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb9"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="kw">SETTING</span> position <span class="op">=&gt;</span> <span class="st">'identity'</span>   <span class="co">-- no adjustment (default for most)</span></span>
-<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a><span class="kw">SETTING</span> position <span class="op">=&gt;</span> <span class="st">'stack'</span>      <span class="co">-- stack (default for bar, histogram, area)</span></span>
-<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a><span class="kw">SETTING</span> position <span class="op">=&gt;</span> <span class="st">'dodge'</span>      <span class="co">-- side by side (default for boxplot, violin)</span></span>
-<span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a><span class="kw">SETTING</span> position <span class="op">=&gt;</span> <span class="st">'jitter'</span>     <span class="co">-- random offset</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<p><strong>Aggregate</strong> collapses each group to a single row, replacing every numeric mapping in place with its aggregated value. Groups = <code>PARTITION BY</code> columns + all discrete mappings. Supported by <code>point</code>, <code>line</code>, <code>path</code>, <code>bar</code>, <code>area</code>, <code>ribbon</code>, <code>range</code>, <code>segment</code>, <code>rule</code>, <code>text</code>, <code>tile</code>. Not supported by <code>histogram</code>, <code>density</code>, <code>smooth</code>, <code>boxplot</code>, <code>violin</code> (they have their own stats).</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb10"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="kw">SETTING</span> aggregate <span class="op">=&gt;</span> <span class="st">'&lt;spec&gt;'</span>                <span class="co">-- single</span></span>
-<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a><span class="kw">SETTING</span> aggregate <span class="op">=&gt;</span> (<span class="st">'&lt;spec&gt;'</span>, <span class="st">'&lt;spec&gt;'</span>, …) <span class="co">-- list</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<p>Each <code>&lt;spec&gt;</code> is either: - <strong>Untargeted</strong> — <code>'&lt;func&gt;'</code>. Applies to every numeric mapping without an explicit target. With two untargeted defaults, the first applies to lower-side aesthetics (<code>x</code>/<code>xmin</code>/etc.) plus all non-range layers, the second to upper-side (<code>xend</code>/<code>xmax</code>). More than two untargeted defaults is an error. - <strong>Targeted</strong> — <code>'&lt;aes&gt;:&lt;func&gt;'</code>. Applies <code>func</code> to the named aesthetic only. Overrides any untargeted default for that aesthetic.</p>
-<p>Functions: - Standard reductions: <code>count</code>, <code>sum</code>, <code>prod</code>, <code>min</code>, <code>max</code>, <code>range</code> (max−min), <code>mid</code> ((min+max)/2), <code>mean</code>, <code>median</code>, <code>geomean</code>, <code>harmean</code>, <code>rms</code>, <code>sdev</code>, <code>var</code>, <code>iqr</code>, <code>se</code>, <code>p05</code>–<code>p95</code>. - Positional (rely on upstream <code>ORDER BY</code> for deterministic order): <code>first</code>, <code>last</code>, <code>diff</code> (last − first). - Band: <code>&lt;offset&gt;±[&lt;mult&gt;]&lt;expansion&gt;</code>, e.g.&nbsp;<code>'mean+1.96sdev'</code>, <code>'median-iqr'</code>. Offsets: <code>mean</code>, <code>median</code>, <code>geomean</code>, <code>harmean</code>, <code>rms</code>, <code>sum</code>, <code>prod</code>, <code>min</code>, <code>max</code>, <code>mid</code>, <code>p05</code>–<code>p95</code>. Expansions: <code>sdev</code>, <code>se</code>, <code>var</code>, <code>iqr</code>, <code>range</code>.</p>
-<p><strong>Explosion</strong> — targeting the same aesthetic with multiple functions emits one row per function per group. A synthetic <code>aggregate</code> column tags each row with the function name. Use <code>REMAPPING aggregate AS &lt;aes&gt;</code> to drive another aesthetic from it. When several aesthetics are exploded with the same length, they explode in lockstep (row 1 = each target’s first function, row 2 = second, …); single-function targets are reused on every row. Mixing target lengths &gt; 1 is an error.</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb11"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a><span class="co">-- min/max envelope as two lines per group, coloured by function</span></span>
-<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">line</span></span>
-<span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a>  <span class="kw">MAPPING</span> Date AS <span class="at">x</span>, Temp AS <span class="at">y</span></span>
-<span id="cb11-4"><a href="#cb11-4" aria-hidden="true" tabindex="-1"></a>  <span class="kw">REMAPPING</span> aggregate AS <span class="at">color</span></span>
-<span id="cb11-5"><a href="#cb11-5" aria-hidden="true" tabindex="-1"></a>  <span class="kw">SETTING</span> aggregate <span class="op">=&gt;</span> (<span class="st">'y:min'</span>, <span class="st">'y:max'</span>)</span>
-<span id="cb11-6"><a href="#cb11-6" aria-hidden="true" tabindex="-1"></a>  <span class="kw">PARTITION</span> BY Year</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<p><strong>Scale interaction</strong> — for an aesthetic that is <em>targeted</em> by aggregate, <code>SCALE BINNED &lt;aes&gt;</code> runs <strong>after</strong> aggregation (otherwise the diff/mean/etc. would cancel within a bin). Untargeted <code>SCALE BINNED</code> still bins pre-aggregate so the bins can drive grouping. Continuous censoring (<code>SCALE &lt;aes&gt; FROM (lo, hi)</code>) and discrete OOB filtering defer to post-aggregate whenever the aesthetic is being aggregated (targeted or untargeted default).</p>
-</section>
-<section id="filter" class="level3">
-<h3 class="anchored" data-anchor-id="filter">FILTER</h3>
-<p>SQL WHERE condition applied to layer data. Content is passed to the database:</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb12"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">point</span></span>
-<span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a>  <span class="kw">FILTER</span> sex <span class="op">=</span> <span class="st">'female'</span> AND body_mass <span class="op">&gt;</span> <span class="dv">4000</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-</section>
-<section id="partition-by" class="level3">
-<h3 class="anchored" data-anchor-id="partition-by">PARTITION BY</h3>
-<p>Additional grouping columns beyond mapped discrete aesthetics:</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb13"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">line</span></span>
-<span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a>  <span class="kw">MAPPING</span> Day AS <span class="at">x</span>, Temp AS <span class="at">y</span></span>
-<span id="cb13-3"><a href="#cb13-3" aria-hidden="true" tabindex="-1"></a>  <span class="kw">PARTITION</span> BY Month</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-</section>
-<section id="order-by" class="level3">
-<h3 class="anchored" data-anchor-id="order-by">ORDER BY</h3>
-<p>Controls record order (important for path layers):</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb14"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">path</span></span>
-<span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a>  <span class="kw">ORDER</span> BY timestamp</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<section id="aggregate-a-setting" class="level3">
+<h3 class="anchored" data-anchor-id="aggregate-a-setting">Aggregate (a SETTING)</h3>
+<p>Collapses each group (<code>PARTITION BY</code> cols + discrete mappings) to one row, replacing numeric mappings with aggregated values. Layers: <code>point line path bar area ribbon range segment rule text tile</code> (not stat layers, which have their own).</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb6"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="kw">SETTING</span> aggregate <span class="op">=&gt;</span> <span class="st">'&lt;spec&gt;'</span>                <span class="co">-- single</span></span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a><span class="kw">SETTING</span> aggregate <span class="op">=&gt;</span> (<span class="st">'&lt;spec&gt;'</span>, <span class="st">'&lt;spec&gt;'</span>, …) <span class="co">-- list</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Spec is <strong>untargeted</strong> <code>'&lt;func&gt;'</code> (every unmapped-target numeric aesthetic; ≤2 untargeted defaults — 1st for lower-side aesthetics x/xmin/etc + all non-range layers, 2nd for upper-side xend/xmax) or <strong>targeted</strong> <code>'&lt;aes&gt;:&lt;func&gt;'</code> (overrides untargeted for that aesthetic).</p>
+<p>Functions — reductions: <code>count sum prod min max range mid mean median geomean harmean rms sdev var iqr se p05–p95</code>; positional (need upstream <code>ORDER BY</code>): <code>first last diff</code>; band <code>&lt;offset&gt;±[&lt;mult&gt;]&lt;expansion&gt;</code> e.g.&nbsp;<code>'mean+1.96sdev'</code> (offsets: <code>mean median geomean harmean rms sum prod min max mid p05–p95</code>; expansions: <code>sdev se var iqr range</code>).</p>
+<p><strong>Explosion</strong>: targeting one aesthetic with multiple functions emits one row/function/group, tagged by a synthetic <code>aggregate</code> column — drive another aesthetic via <code>REMAPPING aggregate AS &lt;aes&gt;</code>. Equal-length exploded aesthetics run in lockstep; single-function targets repeat each row. Mixed lengths &gt;1 error.</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb7"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="co">-- min/max envelope as two lines per group, coloured by function</span></span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">line</span> <span class="kw">MAPPING</span> Date AS <span class="at">x</span>, Temp AS <span class="at">y</span></span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a>  <span class="kw">REMAPPING</span> aggregate AS <span class="at">color</span></span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a>  <span class="kw">SETTING</span> aggregate <span class="op">=&gt;</span> (<span class="st">'y:min'</span>, <span class="st">'y:max'</span>)</span>
+<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a>  <span class="kw">PARTITION</span> BY Year</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p><strong>Scale interaction</strong>: for a <em>targeted</em> aesthetic, <code>SCALE BINNED</code> runs after aggregation (so stats aren’t cancelled within a bin); untargeted <code>SCALE BINNED</code> still bins pre-aggregate to drive grouping. Continuous censoring (<code>SCALE &lt;aes&gt; FROM (lo, hi)</code>) and discrete OOB filtering defer to post-aggregate whenever that aesthetic is aggregated.</p>
 </section>
 </section>
 <section id="place-clause" class="level2">
 <h2 class="anchored" data-anchor-id="place-clause">PLACE clause</h2>
-<p>Creates annotation layers with literal values only (no data mappings). Supports tuples for multiple annotations.</p>
-<pre><code>PLACE &lt;layer-type&gt;
-  SETTING &lt;aesthetic/param&gt; =&gt; &lt;value&gt;, ...</code></pre>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb16"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a><span class="kw">PLACE</span> <span class="dt">point</span> <span class="kw">SETTING</span> <span class="at">x</span> <span class="op">=&gt;</span> <span class="dv">5</span>, <span class="at">y</span> <span class="op">=&gt;</span> <span class="dv">10</span>, <span class="at">color</span> <span class="op">=&gt;</span> <span class="st">'red'</span></span>
-<span id="cb16-2"><a href="#cb16-2" aria-hidden="true" tabindex="-1"></a><span class="kw">PLACE</span> <span class="dt">rule</span> <span class="kw">SETTING</span> <span class="at">y</span> <span class="op">=&gt;</span> <span class="dv">70</span>, <span class="at">linetype</span> <span class="op">=&gt;</span> <span class="st">'dotted'</span></span>
-<span id="cb16-3"><a href="#cb16-3" aria-hidden="true" tabindex="-1"></a><span class="kw">PLACE</span> <span class="dt">text</span> <span class="kw">SETTING</span> <span class="at">x</span> <span class="op">=&gt;</span> (<span class="dv">34</span>, <span class="dv">44</span>), <span class="at">y</span> <span class="op">=&gt;</span> (<span class="dv">66</span>, <span class="dv">49</span>), <span class="kw">label</span> <span class="op">=&gt;</span> (<span class="st">'Mean = 34'</span>, <span class="st">'Mean = 44'</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Annotation layer, literal values only, no data mapping; tuples for multiple annotations.</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb8"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="kw">PLACE</span> <span class="dt">point</span> <span class="kw">SETTING</span> <span class="at">x</span> <span class="op">=&gt;</span> <span class="dv">5</span>, <span class="at">y</span> <span class="op">=&gt;</span> <span class="dv">10</span>, <span class="at">color</span> <span class="op">=&gt;</span> <span class="st">'red'</span></span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a><span class="kw">PLACE</span> <span class="dt">text</span> <span class="kw">SETTING</span> <span class="at">x</span> <span class="op">=&gt;</span> (<span class="dv">34</span>, <span class="dv">44</span>), <span class="at">y</span> <span class="op">=&gt;</span> (<span class="dv">66</span>, <span class="dv">49</span>), <span class="kw">label</span> <span class="op">=&gt;</span> (<span class="st">'Mean = 34'</span>, <span class="st">'Mean = 44'</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 </section>
 <section id="scale-clause" class="level2">
 <h2 class="anchored" data-anchor-id="scale-clause">SCALE clause</h2>
-<p>Controls how data values are translated to aesthetic values. Sensible defaults are always provided.</p>
+<p>Maps data → aesthetic output; sensible defaults always apply. Only <code>aesthetic</code> is required.</p>
 <pre><code>SCALE &lt;type&gt; &lt;aesthetic&gt; FROM &lt;input-range&gt; TO &lt;output-range&gt; VIA &lt;transform&gt;
   SETTING &lt;param&gt; =&gt; &lt;value&gt;, ...
   RENAMING &lt;value&gt; =&gt; &lt;label&gt;, ...</code></pre>
-<p>All parts except <code>aesthetic</code> are optional.</p>
-<section id="scale-types-optional-placed-before-aesthetic" class="level3">
-<h3 class="anchored" data-anchor-id="scale-types-optional-placed-before-aesthetic">Scale types (optional, placed before aesthetic)</h3>
 <ul>
-<li><code>CONTINUOUS</code> — continuous numeric/temporal data</li>
-<li><code>DISCRETE</code> — categorical/string data</li>
-<li><code>BINNED</code> — bin continuous data into discrete groups (never auto-selected, must be explicit)</li>
-<li><code>ORDINAL</code> — ordered discrete data (never auto-selected, must be explicit)</li>
-<li><code>IDENTITY</code> — pass data through unchanged (no legend created)</li>
+<li><strong>Type</strong> (before aesthetic; inferred if omitted): <code>CONTINUOUS</code>, <code>DISCRETE</code>, <code>BINNED</code> (bin continuous→discrete, never auto), <code>ORDINAL</code> (never auto), <code>IDENTITY</code> (pass through, no legend).</li>
+<li><strong>Aesthetic</strong> — base name only: <code>x y fill stroke color(=fill+stroke) opacity size linewidth linetype shape panel row column</code>. Position families (xmin/xmax/xend/ymin/ymax/yend) scale via base name (<code>SCALE x ...</code>).</li>
+<li><strong>FROM</strong> — continuous <code>(min, max)</code>, <code>null</code> infers (<code>(0, null)</code>); discrete <code>('A','B','C')</code> sets order &amp; nulls the rest, or include null explicitly.</li>
+<li><strong>TO</strong> — value array (<code>('red','blue')</code>, <code>(1, 6)</code>) or named palette (<code>viridis</code>, <code>dark2</code>, <code>tableau10</code>).</li>
+<li><strong>VIA</strong> — continuous: <code>linear log log2 ln exp10 exp2 exp sqrt square asinh pseudo_log pseudo_log2 pseudo_ln integer</code>; temporal (auto for date/datetime/time cols): <code>date datetime time</code>; discrete: <code>string bool</code>.</li>
+<li><strong>SETTING</strong> — continuous/binned: <code>expand</code> (factor or <code>(mult,add)</code>, default 0.05, x/y only), <code>oob</code> (<code>'keep'</code> default x/y, <code>'censor'</code> default others, <code>'squish'</code>), <code>breaks</code> (count/array/interval string e.g.&nbsp;<code>'2 months'</code>), <code>pretty</code> (bool, default true), <code>reverse</code> (bool). Continuous only: <code>minor_breaks</code> (count/array/interval string; ignored by Vega-Lite). Binned only: <code>closed</code> (<code>'left'</code>/<code>'right'</code>). Discrete/ordinal: <code>reverse</code>.</li>
+<li><strong>RENAMING</strong> — direct + wildcard formatting (direct wins): <code>RENAMING 'Adelie' =&gt; 'Pygoscelis adeliae', 'adelie' =&gt; null</code> or <code>RENAMING * =&gt; '{:Title}'</code> (formatters: <code>Title UPPER lower</code>, time <code>%B %Y</code>, num <code>%.1f</code>).</li>
 </ul>
-<p>If omitted, type is inferred from data.</p>
-</section>
-<section id="aesthetic-names" class="level3">
-<h3 class="anchored" data-anchor-id="aesthetic-names">Aesthetic names</h3>
-<p>Use the base name: <code>x</code>, <code>y</code>, <code>fill</code>, <code>stroke</code>, <code>color</code> (sets both fill and stroke), <code>opacity</code>, <code>size</code>, <code>linewidth</code>, <code>linetype</code>, <code>shape</code>, <code>panel</code> (facet), <code>row</code>, <code>column</code>.</p>
-<p>For position families (xmin/xmax/xend/ymin/ymax/yend), scale with the base name: <code>SCALE x ...</code></p>
-</section>
-<section id="from-input-range" class="level3">
-<h3 class="anchored" data-anchor-id="from-input-range">FROM (input range)</h3>
-<ul>
-<li>Continuous: <code>FROM (min, max)</code> — use <code>null</code> to infer from data: <code>FROM (0, null)</code></li>
-<li>Discrete: <code>FROM ('A', 'B', 'C')</code> — controls order, omitted values are nulled</li>
-<li>Include null explicitly: <code>FROM ('Torgersen', 'Biscoe', null)</code></li>
-</ul>
-</section>
-<section id="to-output-range" class="level3">
-<h3 class="anchored" data-anchor-id="to-output-range">TO (output range)</h3>
-<ul>
-<li>Array of values: <code>TO ('red', 'blue', 'green')</code>, <code>TO (1, 6)</code></li>
-<li>Named palette: <code>TO viridis</code>, <code>TO dark2</code>, <code>TO tableau10</code></li>
-</ul>
-</section>
-<section id="via-transform" class="level3">
-<h3 class="anchored" data-anchor-id="via-transform">VIA (transform)</h3>
-<p>Continuous transforms: <code>linear</code>, <code>log</code>, <code>log2</code>, <code>ln</code>, <code>exp10</code>, <code>exp2</code>, <code>exp</code>, <code>sqrt</code>, <code>square</code>, <code>asinh</code>, <code>pseudo_log</code>, <code>pseudo_log2</code>, <code>pseudo_ln</code>, <code>integer</code></p>
-<p>Temporal transforms: <code>date</code>, <code>datetime</code>, <code>time</code> — automatically chosen for date/datetime/time columns.</p>
-<p>Discrete transforms: <code>string</code>, <code>bool</code></p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb18"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a><span class="kw">SCALE</span> <span class="at">x</span> <span class="kw">VIA</span> <span class="dt">date</span>        <span class="co">-- treat x as temporal</span></span>
-<span id="cb18-2"><a href="#cb18-2" aria-hidden="true" tabindex="-1"></a><span class="kw">SCALE</span> <span class="at">y</span> <span class="kw">VIA</span> <span class="dt">log</span>         <span class="co">-- log transform</span></span>
-<span id="cb18-3"><a href="#cb18-3" aria-hidden="true" tabindex="-1"></a><span class="kw">SCALE</span> <span class="at">size</span> <span class="kw">VIA</span> square   <span class="co">-- scale by radius not area</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-</section>
-<section id="setting-1" class="level3">
-<h3 class="anchored" data-anchor-id="setting-1">SETTING</h3>
-<p>Continuous/binned scales: - <code>expand</code> — expansion factor, scalar or <code>(mult, add)</code>. Default <code>0.05</code>. Only for x/y. - <code>oob</code> — out-of-bounds: <code>'keep'</code> (default for x/y), <code>'censor'</code> (default for others), <code>'squish'</code> - <code>breaks</code> — integer count, array of values, or interval string for temporal (e.g.&nbsp;<code>'2 months'</code>, <code>'week'</code>) - <code>pretty</code> — boolean, default <code>true</code>. Use Wilkinson’s algorithm for nice breaks. - <code>reverse</code> — boolean, default <code>false</code>. Reverse scale direction.</p>
-<p>Continuous scales additionally: - <code>minor_breaks</code> — unlabelled subdivisions between breaks. Integer count <strong>per interval between two breaks</strong> (<code>0</code> removes them), array of values, or interval string for temporal. Defaults to a per-transformation value. Only drawn by writers that support minor breaks; Vega-Lite ignores it.</p>
-<p>Binned scales additionally: - <code>closed</code> — <code>'left'</code> (default) or <code>'right'</code></p>
-<p>Discrete/ordinal scales: - <code>reverse</code> — boolean</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb19"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a><span class="kw">SCALE</span> <span class="at">x</span> <span class="kw">SETTING</span> <span class="at">breaks</span> <span class="op">=&gt;</span> <span class="st">'2 months'</span></span>
-<span id="cb19-2"><a href="#cb19-2" aria-hidden="true" tabindex="-1"></a><span class="kw">SCALE</span> <span class="at">y</span> <span class="kw">FROM</span> (<span class="dv">0</span>, <span class="dv">100</span>) <span class="kw">SETTING</span> oob <span class="op">=&gt;</span> <span class="st">'squish'</span></span>
-<span id="cb19-3"><a href="#cb19-3" aria-hidden="true" tabindex="-1"></a><span class="kw">SCALE</span> <span class="kw">BINNED</span> <span class="at">x</span> <span class="kw">SETTING</span> <span class="at">breaks</span> <span class="op">=&gt;</span> <span class="dv">10</span>, pretty <span class="op">=&gt;</span> false</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-</section>
-<section id="renaming" class="level3">
-<h3 class="anchored" data-anchor-id="renaming">RENAMING</h3>
-<p>Rename break labels. Direct renaming, wildcard formatting, or both (direct takes priority):</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb20"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb20-1"><a href="#cb20-1" aria-hidden="true" tabindex="-1"></a><span class="kw">RENAMING</span> <span class="st">'Adelie'</span> <span class="op">=&gt;</span> <span class="st">'Pygoscelis adeliae'</span>, <span class="st">'adelie'</span> <span class="op">=&gt;</span> <span class="cn">null</span>  <span class="co">-- direct / suppress</span></span>
-<span id="cb20-2"><a href="#cb20-2" aria-hidden="true" tabindex="-1"></a><span class="kw">RENAMING</span> <span class="op">*</span> <span class="op">=&gt;</span> <span class="st">'{} mm'</span>                <span class="co">-- string interpolation</span></span>
-<span id="cb20-3"><a href="#cb20-3" aria-hidden="true" tabindex="-1"></a><span class="kw">RENAMING</span> <span class="op">*</span> <span class="op">=&gt;</span> <span class="st">'{:Title}'</span>             <span class="co">-- formatters: Title, UPPER, lower, time %B %Y, num %.1f</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-</section>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb10"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="kw">SCALE</span> <span class="at">x</span> <span class="kw">VIA</span> <span class="dt">date</span> <span class="kw">SETTING</span> <span class="at">breaks</span> <span class="op">=&gt;</span> <span class="st">'2 months'</span></span>
+<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a><span class="kw">SCALE</span> <span class="at">y</span> <span class="kw">FROM</span> (<span class="dv">0</span>, <span class="dv">100</span>) <span class="kw">SETTING</span> oob <span class="op">=&gt;</span> <span class="st">'squish'</span></span>
+<span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a><span class="kw">SCALE</span> <span class="kw">BINNED</span> <span class="at">x</span> <span class="kw">SETTING</span> <span class="at">breaks</span> <span class="op">=&gt;</span> <span class="dv">10</span>, pretty <span class="op">=&gt;</span> false</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 </section>
 <section id="facet-clause" class="level2">
 <h2 class="anchored" data-anchor-id="facet-clause">FACET clause</h2>
-<p>Split data into small multiples.</p>
-<pre><code>FACET &lt;column&gt; BY &lt;column&gt;
-  SETTING &lt;param&gt; =&gt; &lt;value&gt;, ...</code></pre>
-<ul>
-<li>1D: <code>FACET region</code> — wrap layout, aesthetic name is <code>panel</code></li>
-<li>2D: <code>FACET region BY category</code> — grid layout, aesthetics are <code>row</code> and <code>column</code></li>
-</ul>
-<section id="settings" class="level3">
-<h3 class="anchored" data-anchor-id="settings">Settings</h3>
-<ul>
-<li><code>free</code> — <code>null</code> (default/fixed), <code>'x'</code>, <code>'y'</code>, or <code>('x', 'y')</code> for independent scales</li>
-<li><code>missing</code> — <code>'repeat'</code> (default, show layer in all panels) or <code>'null'</code> (only show in null panel)</li>
-<li><code>ncol</code>/<code>nrow</code> — layout dimensions for 1D faceting (only one allowed)</li>
-</ul>
-</section>
-<section id="customizing-strip-labels" class="level3">
-<h3 class="anchored" data-anchor-id="customizing-strip-labels">Customizing strip labels</h3>
-<p>Use SCALE on the facet aesthetic:</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb22"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb22-1"><a href="#cb22-1" aria-hidden="true" tabindex="-1"></a><span class="kw">FACET</span> region</span>
-<span id="cb22-2"><a href="#cb22-2" aria-hidden="true" tabindex="-1"></a><span class="kw">SCALE</span> <span class="at">panel</span></span>
-<span id="cb22-3"><a href="#cb22-3" aria-hidden="true" tabindex="-1"></a>  <span class="kw">RENAMING</span> <span class="st">'N'</span> <span class="op">=&gt;</span> <span class="st">'North'</span>, <span class="st">'S'</span> <span class="op">=&gt;</span> <span class="st">'South'</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-</section>
-<section id="filtering-panels" class="level3">
-<h3 class="anchored" data-anchor-id="filtering-panels">Filtering panels</h3>
-<p>Use SCALE FROM to select which panels to show:</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb23"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a><span class="kw">FACET</span> island</span>
-<span id="cb23-2"><a href="#cb23-2" aria-hidden="true" tabindex="-1"></a><span class="kw">SCALE</span> <span class="at">panel</span> <span class="kw">FROM</span> (<span class="st">'Biscoe'</span>, <span class="st">'Dream'</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-</section>
+<p>Small multiples. 1D <code>FACET region</code> (wrap, aesthetic <code>panel</code>); 2D <code>FACET region BY category</code> (grid, aesthetics <code>row</code>/<code>column</code>). Settings: <code>free</code> (<code>null</code> default/fixed, <code>'x'</code>, <code>'y'</code>, <code>('x','y')</code>), <code>missing</code> (<code>'repeat'</code> default / <code>'null'</code>), <code>ncol</code>/<code>nrow</code> (1D only, pick one). Customize/filter via SCALE on the facet aesthetic:</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb11"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a><span class="kw">FACET</span> region</span>
+<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a><span class="kw">SCALE</span> <span class="at">panel</span> <span class="kw">RENAMING</span> <span class="st">'N'</span> <span class="op">=&gt;</span> <span class="st">'North'</span>, <span class="st">'S'</span> <span class="op">=&gt;</span> <span class="st">'South'</span></span>
+<span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a><span class="kw">FACET</span> island</span>
+<span id="cb11-4"><a href="#cb11-4" aria-hidden="true" tabindex="-1"></a><span class="kw">SCALE</span> <span class="at">panel</span> <span class="kw">FROM</span> (<span class="st">'Biscoe'</span>, <span class="st">'Dream'</span>)   <span class="co">-- filters panels shown</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 </section>
 <section id="project-clause" class="level2">
 <h2 class="anchored" data-anchor-id="project-clause">PROJECT clause</h2>
-<p>Controls the coordinate system.</p>
-<pre><code>PROJECT &lt;aesthetic&gt;, ... TO &lt;coord-type&gt;
-  SETTING &lt;param&gt; =&gt; &lt;value&gt;, ...</code></pre>
-<section id="coordinate-types" class="level3">
-<h3 class="anchored" data-anchor-id="coordinate-types">Coordinate types</h3>
-<p><strong>cartesian</strong> (default) — horizontal x, vertical y - Settings: <code>clip</code> (boolean, default true), <code>ratio</code> (aspect ratio number or null) - Default aesthetics: <code>x</code>, <code>y</code></p>
-<p><strong>polar</strong> — angle + radius from center - Settings: <code>clip</code>, <code>start</code> (degrees, default 0 = 12 o’clock), <code>end</code> (degrees, default start+360), <code>inner</code> (0-1 proportion for donut hole, default 0) - Default aesthetics: <code>radius</code> (primary), <code>angle</code> (secondary)</p>
-<p>Swap aesthetic order to flip axes: <code>PROJECT y, x TO cartesian</code>. If no PROJECT clause, coordinate type is inferred from mappings (x/y = cartesian, radius/angle = polar).</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb25"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb25-1"><a href="#cb25-1" aria-hidden="true" tabindex="-1"></a><span class="kw">PROJECT</span> <span class="kw">TO</span> <span class="dt">polar</span> <span class="kw">SETTING</span> inner <span class="op">=&gt;</span> <span class="dv">0.5</span>  <span class="co">-- donut chart</span></span>
-<span id="cb25-2"><a href="#cb25-2" aria-hidden="true" tabindex="-1"></a><span class="kw">PROJECT</span> <span class="kw">TO</span> <span class="dt">polar</span> <span class="kw">SETTING</span> start <span class="op">=&gt;</span> <span class="dv">-90</span>, end <span class="op">=&gt;</span> <span class="dv">90</span>  <span class="co">-- half-circle gauge</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-</section>
+<p>Coordinate system.</p>
+<pre><code>PROJECT &lt;aesthetic&gt;, ... TO &lt;coord-type&gt; SETTING &lt;param&gt; =&gt; &lt;value&gt;, ...</code></pre>
+<p><code>cartesian</code> (default): aesthetics x/y; settings <code>clip</code> (bool, default true), <code>ratio</code> (number or null). <code>polar</code>: aesthetics <code>radius</code>(primary)/<code>angle</code>(secondary); settings <code>clip</code>, <code>start</code>/<code>end</code> (degrees, default 0/start+360), <code>inner</code> (0-1 donut hole, default 0). Swap order to flip axes (<code>PROJECT y, x TO cartesian</code>); without PROJECT, type is inferred from mappings.</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb13"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a><span class="kw">PROJECT</span> <span class="kw">TO</span> <span class="dt">polar</span> <span class="kw">SETTING</span> inner <span class="op">=&gt;</span> <span class="dv">0.5</span>   <span class="co">-- donut chart</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 </section>
 <section id="label-clause" class="level2">
 <h2 class="anchored" data-anchor-id="label-clause">LABEL clause</h2>
-<p>Override default axis/legend labels and add titles.</p>
-<pre><code>LABEL
-  &lt;aesthetic/title&gt; =&gt; &lt;string&gt;, ...</code></pre>
-<p>Available labels: - <code>title</code> — main title - <code>subtitle</code> — subtitle below title - <code>caption</code> — text below the plot - Any aesthetic name — axis/legend title: <code>x</code>, <code>y</code>, <code>fill</code>, <code>color</code>, etc. - Use <code>null</code> to suppress a label: <code>fill =&gt; null</code></p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb27"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb27-1"><a href="#cb27-1" aria-hidden="true" tabindex="-1"></a><span class="kw">LABEL</span></span>
-<span id="cb27-2"><a href="#cb27-2" aria-hidden="true" tabindex="-1"></a>  <span class="at">title</span> <span class="op">=&gt;</span> <span class="st">'Sales by Region'</span>,</span>
-<span id="cb27-3"><a href="#cb27-3" aria-hidden="true" tabindex="-1"></a>  <span class="at">subtitle</span> <span class="op">=&gt;</span> <span class="st">'Q4 2024 data'</span>,</span>
-<span id="cb27-4"><a href="#cb27-4" aria-hidden="true" tabindex="-1"></a>  <span class="at">x</span> <span class="op">=&gt;</span> <span class="st">'Date'</span>,</span>
-<span id="cb27-5"><a href="#cb27-5" aria-hidden="true" tabindex="-1"></a>  <span class="at">y</span> <span class="op">=&gt;</span> <span class="st">'Revenue (USD)'</span>,</span>
-<span id="cb27-6"><a href="#cb27-6" aria-hidden="true" tabindex="-1"></a>  <span class="at">fill</span> <span class="op">=&gt;</span> <span class="st">'Region'</span>,</span>
-<span id="cb27-7"><a href="#cb27-7" aria-hidden="true" tabindex="-1"></a>  <span class="at">caption</span> <span class="op">=&gt;</span> <span class="st">'Source: internal sales database'</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Overrides axis/legend labels &amp; titles: <code>title</code>, <code>subtitle</code>, <code>caption</code>, or any aesthetic name; <code>null</code> suppresses.</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb14"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a><span class="kw">LABEL</span> <span class="at">title</span> <span class="op">=&gt;</span> <span class="st">'Sales by Region'</span>, <span class="at">x</span> <span class="op">=&gt;</span> <span class="st">'Date'</span>, <span class="at">y</span> <span class="op">=&gt;</span> <span class="st">'Revenue (USD)'</span>, <span class="at">fill</span> <span class="op">=&gt;</span> null</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <hr>
 </section>
 <section id="layer-types" class="level2">
 <h2 class="anchored" data-anchor-id="layer-types">Layer types</h2>
-<section id="point" class="level3">
-<h3 class="anchored" data-anchor-id="point">point</h3>
-<p>Scatterplot. Required: x, y. Optional: size, colour, stroke, fill, opacity, shape.</p>
-</section>
-<section id="line" class="level3">
-<h3 class="anchored" data-anchor-id="line">line</h3>
-<p>Line plot sorted along primary axis. Required: x, y. Optional: colour/stroke, opacity, linewidth, linetype. Settings: <code>position</code>, <code>orientation</code> (<code>'aligned'</code>/<code>'transposed'</code>).</p>
-</section>
-<section id="path" class="level3">
-<h3 class="anchored" data-anchor-id="path">path</h3>
-<p>Like line but connects points in data order (not sorted). Same aesthetics as line.</p>
-</section>
-<section id="bar" class="level3">
-<h3 class="anchored" data-anchor-id="bar">bar</h3>
-<p>Bar chart. Auto-counts if y not provided. Optional: x (categories), y (height), fill, colour, stroke. Stats: <code>count</code>, <code>proportion</code>. Properties: <code>weight</code>. Settings: <code>position</code> (default <code>'stack'</code>), <code>width</code> (0-1). Orientation inferred from mapping (categories on x = vertical, on y = horizontal).</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb28"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb28-1"><a href="#cb28-1" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">bar</span> <span class="kw">MAPPING</span> species AS <span class="at">x</span>                              <span class="co">-- auto-count</span></span>
-<span id="cb28-2"><a href="#cb28-2" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">bar</span> <span class="kw">MAPPING</span> species AS <span class="at">x</span>, total AS <span class="at">y</span>                  <span class="co">-- pre-computed</span></span>
-<span id="cb28-3"><a href="#cb28-3" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">bar</span> <span class="kw">MAPPING</span> species AS <span class="at">x</span>, sex AS <span class="at">fill</span>                 <span class="co">-- stacked (default)</span></span>
-<span id="cb28-4"><a href="#cb28-4" aria-hidden="true" tabindex="-1"></a>  <span class="kw">SETTING</span> position <span class="op">=&gt;</span> <span class="st">'dodge'</span>                              <span class="co">-- side by side</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-</section>
-<section id="histogram" class="level3">
-<h3 class="anchored" data-anchor-id="histogram">histogram</h3>
-<p>Bins continuous data. Required: x. Stats: <code>count</code>, <code>density</code>. Default remapping: <code>count AS &lt;secondary&gt;</code>. Settings: <code>position</code> (default <code>'stack'</code>), <code>bins</code> (default 30), <code>binwidth</code>, <code>closed</code> (<code>'left'</code>/<code>'right'</code>).</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb29"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb29-1"><a href="#cb29-1" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">histogram</span> <span class="kw">MAPPING</span> body_mass AS <span class="at">x</span> <span class="kw">SETTING</span> binwidth <span class="op">=&gt;</span> <span class="dv">100</span></span>
-<span id="cb29-2"><a href="#cb29-2" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">histogram</span> <span class="kw">MAPPING</span> body_mass AS <span class="at">x</span> <span class="kw">REMAPPING</span> <span class="dt">density</span> AS <span class="at">y</span>  <span class="co">-- density instead of count</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-</section>
-<section id="density" class="level3">
-<h3 class="anchored" data-anchor-id="density">density</h3>
-<p>Kernel density estimation. Required: x. Stats: <code>density</code>, <code>intensity</code>. Settings: <code>position</code> (default <code>'identity'</code>), <code>bandwidth</code>, <code>adjust</code> (default 1), <code>kernel</code> (<code>'gaussian'</code> default, <code>'epanechnikov'</code>, <code>'triangular'</code>, <code>'rectangular'</code>, <code>'biweight'</code>, <code>'cosine'</code>).</p>
-</section>
-<section id="boxplot" class="level3">
-<h3 class="anchored" data-anchor-id="boxplot">boxplot</h3>
-<p>Five-number summary with outliers. Required: x (categorical), y (continuous). Stats: <code>type</code>, <code>value</code>. Settings: <code>position</code> (default <code>'dodge'</code>), <code>outliers</code> (default true), <code>coef</code> (whisker IQR multiple, default 1.5), <code>width</code> (default 0.9), <code>hinge</code> (whisker cap width in points, default null/hidden).</p>
-</section>
-<section id="violin" class="level3">
-<h3 class="anchored" data-anchor-id="violin">violin</h3>
-<p>Mirrored kernel density for groups. Required: x (categorical), y (continuous). Stats: <code>density</code>, <code>intensity</code>. Default remapping: <code>density AS offset</code>. Settings: <code>position</code> (default <code>'dodge'</code>), <code>bandwidth</code>, <code>adjust</code>, <code>kernel</code> (same as density), <code>width</code> (default 0.9), <code>side</code> (<code>'both'</code>/<code>'left'</code>/<code>'bottom'</code>/<code>'right'</code>/<code>'top'</code>), <code>tails</code> (number or null, default 3).</p>
-</section>
-<section id="smooth" class="level3">
-<h3 class="anchored" data-anchor-id="smooth">smooth</h3>
-<p>Trendline. Required: x, y. Stats: <code>intensity</code>. Settings: <code>method</code> (<code>'nw'</code> default, <code>'ols'</code>, <code>'tls'</code>), <code>bandwidth</code>, <code>adjust</code>, <code>kernel</code> (same as density, nw only).</p>
-</section>
-<section id="area" class="level3">
-<h3 class="anchored" data-anchor-id="area">area</h3>
-<p>Area chart anchored at zero. Required: x, y. Settings: <code>position</code> (default <code>'stack'</code>), <code>orientation</code>, <code>total</code> (normalize stacks), <code>center</code> (boolean, for steamgraph).</p>
-</section>
-<section id="ribbon" class="level3">
-<h3 class="anchored" data-anchor-id="ribbon">ribbon</h3>
-<p>Like area but with explicit ymin/ymax (unanchored). Required: x, ymin, ymax.</p>
-</section>
-<section id="segment" class="level3">
-<h3 class="anchored" data-anchor-id="segment">segment</h3>
-<p>Line segments between two endpoints. Required: x, y, xend, yend. For axis-aligned intervals where one coordinate is shared between start and end, use <code>range</code> instead.</p>
-</section>
-<section id="rule" class="level3">
-<h3 class="anchored" data-anchor-id="rule">rule</h3>
-<p>Reference lines spanning the full panel. Required: x or y. Optional: <code>slope</code> (for diagonal: <code>y = a + slope * x</code>).</p>
-</section>
-<section id="text" class="level3">
-<h3 class="anchored" data-anchor-id="text">text</h3>
-<p>Text labels. Required: x, y, label. Settings: <code>offset</code> (number or <code>(h, v)</code>), <code>format</code> (string interpolation like RENAMING), <code>parse</code> (boolean, default <code>true</code>: read the label as markdown — <code>**bold**</code>, <code>*italic*</code>, <code>~~strike~~</code>, <code>`code`</code>, <code>{.red span}</code> — set <code>false</code> to draw it literally; not Vega-Lite, which has no rich text). <code>hjust</code>: <code>'left'</code>/<code>'right'</code>/<code>'centre'</code> or 0-1. <code>vjust</code>: <code>'top'</code>/<code>'bottom'</code>/<code>'middle'</code> or 0-1.</p>
-</section>
-<section id="rect" class="level3">
-<h3 class="anchored" data-anchor-id="rect">rect</h3>
-<p>Rectangles. Required: pick 2 per axis from center (x/y), min (xmin/ymin), max (xmax/ymax), width, height. Or just center (defaults width/height to 1).</p>
-</section>
-<section id="polygon" class="level3">
-<h3 class="anchored" data-anchor-id="polygon">polygon</h3>
-<p>Closed shapes from ordered coordinates. Required: x, y. Use PARTITION BY to separate distinct polygons.</p>
-</section>
-<section id="range" class="level3">
-<h3 class="anchored" data-anchor-id="range">range</h3>
-<p>Range/interval display between two values along the secondary axis. Required: x, ymin, ymax. Settings: <code>hinge</code> (hinge width in points, default 10, null to hide).</p>
-<p>All layers accept common optional aesthetics (colour/stroke, fill, opacity, linewidth, linetype) and <code>position</code> setting where applicable.</p>
-<hr>
-</section>
+<ul>
+<li><strong>point</strong> — required x, y; optional size, colour, stroke, fill, opacity, shape.</li>
+<li><strong>line</strong> — required x, y; sorted by primary axis; optional colour/stroke, opacity, linewidth, linetype; settings <code>position</code>, <code>orientation</code> (<code>'aligned'</code>/<code>'transposed'</code>).</li>
+<li><strong>path</strong> — like line but data-order (unsorted); same aesthetics.</li>
+<li><strong>bar</strong> — auto-counts if no y; optional x, y, fill, colour, stroke; stats <code>count</code>, <code>proportion</code>; property <code>weight</code>; settings <code>position</code> (default <code>'stack'</code>), <code>width</code>. Orientation from mapping (x=vertical, y=horizontal).</li>
+<li><strong>histogram</strong> — required x; stats <code>count</code>, <code>density</code> (default remap <code>count AS &lt;secondary&gt;</code>); settings <code>position</code> (<code>'stack'</code>), <code>bins</code> (30), <code>binwidth</code>, <code>closed</code>.</li>
+<li><strong>density</strong> — required x; stats <code>density</code>, <code>intensity</code>; settings <code>position</code> (<code>'identity'</code>), <code>bandwidth</code>, <code>adjust</code> (1), <code>kernel</code> (<code>'gaussian'</code> default, <code>epanechnikov triangular rectangular biweight cosine</code>).</li>
+<li><strong>boxplot</strong> — required x (cat), y (cont); stats <code>type</code>, <code>value</code>; settings <code>position</code> (<code>'dodge'</code>), <code>outliers</code> (true), <code>coef</code> (1.5), <code>width</code> (0.9), <code>hinge</code> (points, default null/hidden).</li>
+<li><strong>violin</strong> — required x (cat), y (cont); stats <code>density</code>, <code>intensity</code> (default remap <code>density AS offset</code>); settings <code>position</code> (<code>'dodge'</code>), <code>bandwidth</code>, <code>adjust</code>, <code>kernel</code>, <code>width</code> (0.9), <code>side</code> (<code>'both' 'left' 'bottom' 'right' 'top'</code>), <code>tails</code> (default 3).</li>
+<li><strong>smooth</strong> — required x, y; stat <code>intensity</code>; settings <code>method</code> (<code>'nw'</code> default, <code>'ols'</code>, <code>'tls'</code>), <code>bandwidth</code>, <code>adjust</code>, <code>kernel</code> (nw only).</li>
+<li><strong>area</strong> — required x, y, anchored at zero; settings <code>position</code> (<code>'stack'</code>), <code>orientation</code>, <code>total</code> (normalize), <code>center</code> (steamgraph).</li>
+<li><strong>ribbon</strong> — like area but explicit ymin/ymax, unanchored.</li>
+<li><strong>segment</strong> — required x, y, xend, yend; use <code>range</code> instead when one coord is shared between start/end.</li>
+<li><strong>rule</strong> — required x or y (full-panel reference line); optional <code>slope</code> (diagonal: <code>y = a + slope*x</code>).</li>
+<li><strong>text</strong> — required x, y, label; settings <code>offset</code> (number or <code>(h,v)</code>), <code>format</code> (RENAMING-style interpolation), <code>parse</code> (bool, default true: markdown <code>**bold**</code>/<code>*italic*</code>/<code>~~strike~~</code>/<code>`code`</code>/<code>{.red span}</code>; not in Vega-Lite), <code>hjust</code> (<code>'left' 'right' 'centre'</code> or 0-1), <code>vjust</code> (<code>'top' 'bottom' 'middle'</code> or 0-1).</li>
+<li><strong>rect</strong> — pick 2 per axis from center/min/max/width/height, or just center (defaults size to 1).</li>
+<li><strong>polygon</strong> — required x, y; ordered coords; PARTITION BY separates distinct polygons.</li>
+<li><strong>range</strong> — required x, ymin, ymax; setting <code>hinge</code> (points, default 10, null hides).</li>
+</ul>
+<p>All layers accept colour/stroke, fill, opacity, linewidth, linetype, and <code>position</code> where applicable.</p>
 </section>
 <section id="named-color-palettes" class="level2">
 <h2 class="anchored" data-anchor-id="named-color-palettes">Named color palettes</h2>
 <ul>
-<li><strong>Discrete</strong>: <code>ggsql10</code> (default), <code>tableau10</code>, <code>category10</code>, <code>set1</code>, <code>set2</code>, <code>set3</code>, <code>dark2</code>, <code>paired</code>, <code>pastel1</code>, <code>pastel2</code>, <code>accent</code>, <code>kelly22</code></li>
-<li><strong>Sequential</strong>: <code>sequential</code> (default), <code>viridis</code>, <code>plasma</code>, <code>magma</code>, <code>inferno</code>, <code>cividis</code>, <code>blues</code>, <code>greens</code>, <code>oranges</code>, <code>reds</code>, <code>purples</code>, <code>greys</code>, <code>ylgnbu</code>, <code>ylorbr</code>, <code>ylorrd</code>, <code>batlow</code>, <code>hawaii</code>, <code>lajolla</code>, <code>turku</code>, and more</li>
-<li><strong>Diverging</strong>: <code>vik</code>/<code>diverging</code>, <code>rdbu</code>, <code>rdylbu</code>, <code>rdylgn</code>, <code>spectral</code>, <code>brbg</code>, <code>prgn</code>, <code>piyg</code>, <code>puor</code>, <code>berlin</code>, <code>roma</code>, and more</li>
-<li><strong>Cyclic</strong>: <code>romao</code>/<code>cyclic</code>, <code>bamo</code>, <code>broco</code>, <code>corko</code>, <code>viko</code></li>
+<li>Discrete: <code>ggsql10</code>(default) <code>tableau10 category10 set1 set2 set3 dark2 paired pastel1 pastel2 accent kelly22</code></li>
+<li>Sequential: <code>sequential</code>(default) <code>viridis plasma magma inferno cividis blues greens oranges reds purples greys ylgnbu ylorbr ylorrd batlow hawaii lajolla turku</code> …</li>
+<li>Diverging: <code>vik</code>/<code>diverging</code> <code>rdbu rdylbu rdylgn spectral brbg prgn piyg puor berlin roma</code> …</li>
+<li>Cyclic: <code>romao</code>/<code>cyclic</code> <code>bamo broco corko viko</code></li>
 </ul>
-<hr>
 </section>
 <section id="common-patterns" class="level2">
 <h2 class="anchored" data-anchor-id="common-patterns">Common patterns</h2>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb30"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb30-1"><a href="#cb30-1" aria-hidden="true" tabindex="-1"></a><span class="co">-- Pie chart</span></span>
-<span id="cb30-2"><a href="#cb30-2" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> species <span class="kw">AS</span> <span class="at">fill</span> <span class="kw">FROM</span> ggsql:penguins</span>
-<span id="cb30-3"><a href="#cb30-3" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">bar</span></span>
-<span id="cb30-4"><a href="#cb30-4" aria-hidden="true" tabindex="-1"></a><span class="kw">PROJECT</span> <span class="kw">TO</span> <span class="dt">polar</span></span>
-<span id="cb30-5"><a href="#cb30-5" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb30-6"><a href="#cb30-6" aria-hidden="true" tabindex="-1"></a><span class="co">-- Horizontal bar chart</span></span>
-<span id="cb30-7"><a href="#cb30-7" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">bar</span> <span class="kw">MAPPING</span> species AS <span class="at">y</span></span>
-<span id="cb30-8"><a href="#cb30-8" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb30-9"><a href="#cb30-9" aria-hidden="true" tabindex="-1"></a><span class="co">-- Multi-series line chart</span></span>
-<span id="cb30-10"><a href="#cb30-10" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> Date <span class="kw">AS</span> x</span>
-<span id="cb30-11"><a href="#cb30-11" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">line</span> <span class="kw">MAPPING</span> Temp AS <span class="at">y</span>, <span class="st">'Temperature'</span> AS <span class="at">color</span></span>
-<span id="cb30-12"><a href="#cb30-12" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">line</span> <span class="kw">MAPPING</span> Ozone AS <span class="at">y</span>, <span class="st">'Ozone'</span> AS <span class="at">color</span></span>
-<span id="cb30-13"><a href="#cb30-13" aria-hidden="true" tabindex="-1"></a><span class="kw">SCALE</span> <span class="at">x</span> <span class="kw">VIA</span> <span class="dt">date</span></span>
-<span id="cb30-14"><a href="#cb30-14" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb30-15"><a href="#cb30-15" aria-hidden="true" tabindex="-1"></a><span class="co">-- Lollipop chart</span></span>
-<span id="cb30-16"><a href="#cb30-16" aria-hidden="true" tabindex="-1"></a><span class="kw">SELECT</span> <span class="fu">ROUND</span>(bill_dep) <span class="kw">AS</span> bill_dep, <span class="fu">COUNT</span>(<span class="op">*</span>) <span class="kw">AS</span> n <span class="kw">FROM</span> ggsql:penguins <span class="kw">GROUP</span> <span class="kw">BY</span> <span class="dv">1</span></span>
-<span id="cb30-17"><a href="#cb30-17" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> bill_dep <span class="kw">AS</span> <span class="at">x</span></span>
-<span id="cb30-18"><a href="#cb30-18" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">range</span> <span class="kw">MAPPING</span> <span class="dv">0</span> AS <span class="at">ymin</span>, n AS <span class="at">ymax</span> <span class="kw">SETTING</span> hinge <span class="op">=&gt;</span> null</span>
-<span id="cb30-19"><a href="#cb30-19" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">point</span> <span class="kw">MAPPING</span> n AS <span class="at">y</span></span>
-<span id="cb30-20"><a href="#cb30-20" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb30-21"><a href="#cb30-21" aria-hidden="true" tabindex="-1"></a><span class="co">-- Ridgeline / joy plot</span></span>
-<span id="cb30-22"><a href="#cb30-22" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> <span class="kw">Temp</span> <span class="kw">AS</span> x, Month <span class="kw">AS</span> y <span class="kw">FROM</span> ggsql:airquality</span>
-<span id="cb30-23"><a href="#cb30-23" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">violin</span> <span class="kw">SETTING</span> <span class="at">width</span> <span class="op">=&gt;</span> <span class="dv">4</span>, side <span class="op">=&gt;</span> <span class="st">'top'</span></span>
-<span id="cb30-24"><a href="#cb30-24" aria-hidden="true" tabindex="-1"></a><span class="kw">SCALE</span> <span class="kw">ORDINAL</span> <span class="at">y</span></span>
-<span id="cb30-25"><a href="#cb30-25" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb30-26"><a href="#cb30-26" aria-hidden="true" tabindex="-1"></a><span class="co">-- Bar labels</span></span>
-<span id="cb30-27"><a href="#cb30-27" aria-hidden="true" tabindex="-1"></a><span class="kw">SELECT</span> island, <span class="fu">COUNT</span>(<span class="op">*</span>) <span class="kw">AS</span> n <span class="kw">FROM</span> ggsql:penguins <span class="kw">GROUP</span> <span class="kw">BY</span> island</span>
-<span id="cb30-28"><a href="#cb30-28" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> island <span class="kw">AS</span> <span class="at">x</span>, n <span class="kw">AS</span> <span class="at">y</span></span>
-<span id="cb30-29"><a href="#cb30-29" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">bar</span></span>
-<span id="cb30-30"><a href="#cb30-30" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">text</span> <span class="kw">MAPPING</span> n AS <span class="kw">label</span> SETTING <span class="at">vjust</span> <span class="op">=&gt;</span> <span class="st">'top'</span>, <span class="at">offset</span> <span class="op">=&gt;</span> (<span class="dv">0</span>, <span class="dv">-11</span>), <span class="at">fill</span> <span class="op">=&gt;</span> <span class="st">'white'</span></span>
-<span id="cb30-31"><a href="#cb30-31" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb30-32"><a href="#cb30-32" aria-hidden="true" tabindex="-1"></a><span class="co">-- CTEs with separate layer data</span></span>
-<span id="cb30-33"><a href="#cb30-33" aria-hidden="true" tabindex="-1"></a><span class="kw">WITH</span> temps <span class="kw">AS</span> (<span class="kw">SELECT</span> Date, <span class="kw">Temp</span> <span class="kw">as</span> value <span class="kw">FROM</span> ggsql:airquality),</span>
-<span id="cb30-34"><a href="#cb30-34" aria-hidden="true" tabindex="-1"></a>ozone <span class="kw">AS</span> (<span class="kw">SELECT</span> Date, Ozone <span class="kw">as</span> value <span class="kw">FROM</span> ggsql:airquality <span class="kw">WHERE</span> Ozone <span class="kw">IS</span> <span class="kw">NOT</span> <span class="cn">NULL</span>)</span>
-<span id="cb30-35"><a href="#cb30-35" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span></span>
-<span id="cb30-36"><a href="#cb30-36" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">line</span> <span class="kw">MAPPING</span> Date AS <span class="at">x</span>, value AS <span class="at">y</span>, <span class="st">'Temperature'</span> AS <span class="at">color</span> <span class="kw">FROM</span> temps</span>
-<span id="cb30-37"><a href="#cb30-37" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">point</span> <span class="kw">MAPPING</span> Date AS <span class="at">x</span>, value AS <span class="at">y</span>, <span class="st">'Ozone'</span> AS <span class="at">color</span> <span class="kw">FROM</span> ozone</span>
-<span id="cb30-38"><a href="#cb30-38" aria-hidden="true" tabindex="-1"></a><span class="kw">SCALE</span> <span class="at">x</span> <span class="kw">VIA</span> <span class="dt">date</span></span>
-<span id="cb30-39"><a href="#cb30-39" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb30-40"><a href="#cb30-40" aria-hidden="true" tabindex="-1"></a><span class="co">-- Per-week summary: open/close range, weekly temperature change (binned post-aggregate)</span></span>
-<span id="cb30-41"><a href="#cb30-41" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> Date <span class="kw">AS</span> x, <span class="kw">Temp</span> <span class="kw">AS</span> ymin, <span class="kw">Temp</span> <span class="kw">AS</span> ymax, <span class="kw">Temp</span> <span class="kw">AS</span> color</span>
-<span id="cb30-42"><a href="#cb30-42" aria-hidden="true" tabindex="-1"></a>  <span class="kw">FROM</span> ggsql:airquality</span>
-<span id="cb30-43"><a href="#cb30-43" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">range</span></span>
-<span id="cb30-44"><a href="#cb30-44" aria-hidden="true" tabindex="-1"></a>  <span class="kw">SETTING</span> aggregate <span class="op">=&gt;</span> (<span class="st">'x:first'</span>, <span class="st">'ymin:first'</span>, <span class="st">'ymax:last'</span>, <span class="st">'color:diff'</span>),</span>
-<span id="cb30-45"><a href="#cb30-45" aria-hidden="true" tabindex="-1"></a>          hinge <span class="op">=&gt;</span> null</span>
-<span id="cb30-46"><a href="#cb30-46" aria-hidden="true" tabindex="-1"></a>  <span class="kw">PARTITION</span> BY Week</span>
-<span id="cb30-47"><a href="#cb30-47" aria-hidden="true" tabindex="-1"></a><span class="kw">SCALE</span> <span class="kw">BINNED</span> <span class="at">color</span></span>
-<span id="cb30-48"><a href="#cb30-48" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb30-49"><a href="#cb30-49" aria-hidden="true" tabindex="-1"></a><span class="co">-- Mean ± 1.96·sdev band per group, drawn as a ribbon</span></span>
-<span id="cb30-50"><a href="#cb30-50" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> Day <span class="kw">AS</span> x, <span class="kw">Temp</span> <span class="kw">AS</span> ymin, <span class="kw">Temp</span> <span class="kw">AS</span> ymax <span class="kw">FROM</span> ggsql:airquality</span>
-<span id="cb30-51"><a href="#cb30-51" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">ribbon</span></span>
-<span id="cb30-52"><a href="#cb30-52" aria-hidden="true" tabindex="-1"></a>  <span class="kw">SETTING</span> aggregate <span class="op">=&gt;</span> (<span class="st">'mean-1.96sdev'</span>, <span class="st">'mean+1.96sdev'</span>)</span>
-<span id="cb30-53"><a href="#cb30-53" aria-hidden="true" tabindex="-1"></a>  <span class="kw">PARTITION</span> BY Month</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<hr>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb15"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a><span class="co">-- Pie chart: bar layer in polar coords</span></span>
+<span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> species <span class="kw">AS</span> <span class="at">fill</span> <span class="kw">FROM</span> ggsql:penguins</span>
+<span id="cb15-3"><a href="#cb15-3" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">bar</span></span>
+<span id="cb15-4"><a href="#cb15-4" aria-hidden="true" tabindex="-1"></a><span class="kw">PROJECT</span> <span class="kw">TO</span> <span class="dt">polar</span></span>
+<span id="cb15-5"><a href="#cb15-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb15-6"><a href="#cb15-6" aria-hidden="true" tabindex="-1"></a><span class="co">-- Multi-series line chart</span></span>
+<span id="cb15-7"><a href="#cb15-7" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> Date <span class="kw">AS</span> x</span>
+<span id="cb15-8"><a href="#cb15-8" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">line</span> <span class="kw">MAPPING</span> Temp AS <span class="at">y</span>, <span class="st">'Temperature'</span> AS <span class="at">color</span></span>
+<span id="cb15-9"><a href="#cb15-9" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">line</span> <span class="kw">MAPPING</span> Ozone AS <span class="at">y</span>, <span class="st">'Ozone'</span> AS <span class="at">color</span></span>
+<span id="cb15-10"><a href="#cb15-10" aria-hidden="true" tabindex="-1"></a><span class="kw">SCALE</span> <span class="at">x</span> <span class="kw">VIA</span> <span class="dt">date</span></span>
+<span id="cb15-11"><a href="#cb15-11" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb15-12"><a href="#cb15-12" aria-hidden="true" tabindex="-1"></a><span class="co">-- Lollipop chart</span></span>
+<span id="cb15-13"><a href="#cb15-13" aria-hidden="true" tabindex="-1"></a><span class="kw">SELECT</span> <span class="fu">ROUND</span>(bill_dep) <span class="kw">AS</span> bill_dep, <span class="fu">COUNT</span>(<span class="op">*</span>) <span class="kw">AS</span> n <span class="kw">FROM</span> ggsql:penguins <span class="kw">GROUP</span> <span class="kw">BY</span> <span class="dv">1</span></span>
+<span id="cb15-14"><a href="#cb15-14" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> bill_dep <span class="kw">AS</span> <span class="at">x</span></span>
+<span id="cb15-15"><a href="#cb15-15" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">range</span> <span class="kw">MAPPING</span> <span class="dv">0</span> AS <span class="at">ymin</span>, n AS <span class="at">ymax</span> <span class="kw">SETTING</span> hinge <span class="op">=&gt;</span> null</span>
+<span id="cb15-16"><a href="#cb15-16" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">point</span> <span class="kw">MAPPING</span> n AS <span class="at">y</span></span>
+<span id="cb15-17"><a href="#cb15-17" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb15-18"><a href="#cb15-18" aria-hidden="true" tabindex="-1"></a><span class="co">-- Ridgeline / joy plot</span></span>
+<span id="cb15-19"><a href="#cb15-19" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> <span class="kw">Temp</span> <span class="kw">AS</span> x, Month <span class="kw">AS</span> y <span class="kw">FROM</span> ggsql:airquality</span>
+<span id="cb15-20"><a href="#cb15-20" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">violin</span> <span class="kw">SETTING</span> <span class="at">width</span> <span class="op">=&gt;</span> <span class="dv">4</span>, side <span class="op">=&gt;</span> <span class="st">'top'</span></span>
+<span id="cb15-21"><a href="#cb15-21" aria-hidden="true" tabindex="-1"></a><span class="kw">SCALE</span> <span class="kw">ORDINAL</span> <span class="at">y</span></span>
+<span id="cb15-22"><a href="#cb15-22" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb15-23"><a href="#cb15-23" aria-hidden="true" tabindex="-1"></a><span class="co">-- Mean ± 1.96·sdev band per group, as a ribbon</span></span>
+<span id="cb15-24"><a href="#cb15-24" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> Day <span class="kw">AS</span> x, <span class="kw">Temp</span> <span class="kw">AS</span> ymin, <span class="kw">Temp</span> <span class="kw">AS</span> ymax <span class="kw">FROM</span> ggsql:airquality</span>
+<span id="cb15-25"><a href="#cb15-25" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">ribbon</span> <span class="kw">SETTING</span> aggregate <span class="op">=&gt;</span> (<span class="st">'mean-1.96sdev'</span>, <span class="st">'mean+1.96sdev'</span>) <span class="kw">PARTITION</span> BY Month</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 </section>
 <section id="cli" class="level2">
 <h2 class="anchored" data-anchor-id="cli">CLI</h2>
-<p>The <code>ggsql</code> CLI should be on the PATH. Subcommands: <code>exec &lt;QUERY&gt;</code>, <code>run &lt;FILE&gt;</code>, <code>validate &lt;QUERY&gt;</code>, <code>parse &lt;QUERY&gt;</code>, <code>view &lt;QUERY&gt;</code> (native window, blocks until closed). Common options: <code>--reader &lt;URI&gt;</code> (default <code>duckdb://memory</code>), <code>--writer &lt;FORMAT&gt;</code> (default <code>vegalite</code>), <code>--output &lt;PATH&gt;</code> (its extension picks the writer when <code>--writer</code> is omitted), <code>-D key=value</code> (writer settings), <code>-v</code> (verbose). Writers: <code>vegalite</code>, <code>svg</code>, <code>pdf</code>, <code>hep</code> (no GPU needed) and <code>png</code>, <code>jpeg</code>, <code>tiff</code>, <code>webp</code> (rasterise on the GPU, not in every build).</p>
-<p><strong>Do not run <code>ggsql view</code> unless the user asked for a window.</strong> It blocks until a person closes the window, and you cannot close it yourself. Write a file with <code>--output</code> and look at that instead.</p>
-<p><strong>Prefer <code>svg</code> or <code>pdf</code> when you need a picture</strong>, since they need no GPU adapter. The raster writers do, and discover it only at render time. <code>ggsql exec --help</code> lists the writers this build has and names the feature that would add a missing one; it cannot tell you whether an adapter is present.</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb31"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb31-1"><a href="#cb31-1" aria-hidden="true" tabindex="-1"></a><span class="ex">ggsql</span> validate <span class="st">"VISUALISE x, y FROM data DRAW point"</span></span>
-<span id="cb31-2"><a href="#cb31-2" aria-hidden="true" tabindex="-1"></a><span class="ex">ggsql</span> exec <span class="st">"VISUALISE bill_len AS x, bill_dep AS y FROM ggsql:penguins DRAW point"</span> <span class="at">-v</span></span>
-<span id="cb31-3"><a href="#cb31-3" aria-hidden="true" tabindex="-1"></a><span class="ex">ggsql</span> run query.sql <span class="at">--output</span> chart.vl.json</span>
-<span id="cb31-4"><a href="#cb31-4" aria-hidden="true" tabindex="-1"></a><span class="ex">ggsql</span> exec <span class="st">"VISUALISE species AS fill FROM ggsql:penguins DRAW bar"</span> <span class="at">-o</span> chart.svg</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<hr>
+<p><code>ggsql</code> subcommands: <code>exec &lt;QUERY&gt;</code>, <code>run &lt;FILE&gt;</code>, <code>validate &lt;QUERY&gt;</code>, <code>parse &lt;QUERY&gt;</code>, <code>view &lt;QUERY&gt;</code> (window, blocks until closed). Options: <code>--reader &lt;URI&gt;</code> (default <code>duckdb://memory</code>), <code>--writer &lt;FORMAT&gt;</code> (default <code>vegalite</code>), <code>--output &lt;PATH&gt;</code> (extension picks writer), <code>-D key=value</code>, <code>-v</code>. Writers: <code>vegalite svg pdf hep</code> (no GPU) and <code>png jpeg tiff webp</code> (GPU, not every build).</p>
+<p><strong>Don’t run <code>ggsql view</code></strong> unless a window was requested — it blocks and you can’t close it; use <code>--output</code> instead. <strong>Prefer <code>svg</code>/<code>pdf</code></strong> for pictures (no GPU adapter needed); <code>ggsql exec --help</code> lists available writers.</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb16"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a><span class="ex">ggsql</span> exec <span class="st">"VISUALISE bill_len AS x, bill_dep AS y FROM ggsql:penguins DRAW point"</span> <span class="at">-v</span></span>
+<span id="cb16-2"><a href="#cb16-2" aria-hidden="true" tabindex="-1"></a><span class="ex">ggsql</span> exec <span class="st">"VISUALISE species AS fill FROM ggsql:penguins DRAW bar"</span> <span class="at">-o</span> chart.svg</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 </section>
-<section id="additional-references" class="level2">
-<h2 class="anchored" data-anchor-id="additional-references">Additional References</h2>
-<ul>
-<li>https://ggsql.org/syntax/index.llms.md — Online documentation with the latest syntax</li>
-</ul>
-<hr>
+<section id="reference" class="level2">
+<h2 class="anchored" data-anchor-id="reference">Reference</h2>
+<p>https://ggsql.org/syntax/index.llms.md — latest syntax docs.</p>
 </section>
 <section id="instructions-for-responding" class="level2">
 <h2 class="anchored" data-anchor-id="instructions-for-responding">Instructions for responding</h2>
 <ol type="1">
-<li>Write a complete, valid ggsql query matching the user’s request.</li>
-<li>Use SQL CTEs/queries before VISUALISE when data shaping is needed.</li>
-<li>Choose the simplest layer types and settings that achieve the goal.</li>
-<li>Include SCALE clauses when the defaults are insufficient (e.g.&nbsp;date formatting, custom palettes, range limits).</li>
-<li>Include LABEL for titles when the context warrants it.</li>
-<li>Briefly explain your choices after the query.</li>
-<li>NEVER invent syntax, settings, aesthetics, layer types, or palette names not documented above.</li>
-<li>If unsure whether a feature exists, say so rather than guessing.</li>
-<li>Use <code>ggsql:penguins</code> or <code>ggsql:airquality</code> as example data when no specific data is mentioned.</li>
-<li>When the user wants to validate a query, use <code>ggsql validate "&lt;query&gt;"</code>. When the user wants to see the output, use <code>ggsql exec "&lt;query&gt;" -v</code>.</li>
+<li>Write a complete, valid ggsql query for the request; use SQL/CTEs before VISUALISE for data shaping.</li>
+<li>Choose the simplest layer types/settings that work; add SCALE for formatting/palettes/ranges and LABEL for titles when warranted.</li>
+<li>Briefly explain your choices after the query. Never invent syntax — say so if unsure.</li>
+<li>Default to <code>ggsql:penguins</code>/<code>ggsql:airquality</code> when no data is specified.</li>
+<li>Use <code>ggsql validate "&lt;query&gt;"</code> to validate, <code>ggsql exec "&lt;query&gt;" -v</code> to run and show output.</li>
 </ol>
 
 
