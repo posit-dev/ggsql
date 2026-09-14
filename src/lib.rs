@@ -89,6 +89,11 @@ pub use util::{and_list, and_list_quoted, or_list, or_list_quoted};
 // DataFrame abstraction (wraps Arrow RecordBatch)
 pub use dataframe::DataFrame;
 
+// Re-export the resolved table layout Writer::write_table needs — the
+// Table-side counterpart to DataFrame, not to the plot:: AST vocabulary
+// above, since Table has no specification vocabulary of its own yet.
+pub use execute::{TableCell, TableCellKind};
+
 /// Main library error type
 #[derive(thiserror::Error, Debug)]
 pub enum GgsqlError {

@@ -430,8 +430,8 @@ fn render_spec(spec: ResolvedSpec, args: &RenderArgs, writer: &WriterSpec) {
         ResolvedSpec::Table(table) => {
             if args.verbose {
                 eprintln!("\nQuery executed:");
-                eprintln!("  Rows: {}", table.body().height());
-                eprintln!("  Columns: {}", table.body().width());
+                eprintln!("  Rows: {}", table.nrow());
+                eprintln!("  Columns: {}", table.ncol());
             }
         }
     }

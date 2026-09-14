@@ -294,14 +294,14 @@ impl QueryExecutor {
             ResolvedSpec::Table(table) => {
                 tracing::info!(
                     "Query executed: {} rows, {} cols",
-                    table.body().height(),
-                    table.body().width()
+                    table.nrow(),
+                    table.ncol()
                 );
                 for warning in table.warnings() {
                     tracing::warn!("{}", warning.message);
                 }
 
-                let html = HtmlWriter::new().write_table(table.table(), table.body())?;
+                let html = HtmlWriter::new().write_table(table.cells())?;
                 tracing::debug!("Generated HTML table: {} chars", html.len());
 
                 Ok(ExecutionResult::Table { html })

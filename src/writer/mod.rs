@@ -29,7 +29,7 @@
 //! without knowing which writer they picked.
 
 use crate::reader::ResolvedSpec;
-use crate::{DataFrame, GgsqlError, Plot, Result, Table};
+use crate::{DataFrame, GgsqlError, Plot, Result, TableCell};
 use std::collections::HashMap;
 
 pub mod options;
@@ -164,25 +164,30 @@ pub trait Writer {
     /// Ok(()) if the spec is compatible, otherwise an error
     fn validate_plot(&self, spec: &Plot) -> Result<()>;
 
-    /// Generate output from a resolved table specification and its body data
+    /// Generate output from a resolved table's cells
     ///
     /// The table-side counterpart to `write_plot()`. Defaults to rejecting
     /// every table, so a writer that only supports Plot output (every writer,
     /// as of this writing) needs no changes; a writer that does support
     /// tables overrides this instead.
     ///
+    /// Unlike `write_plot`, there is no AST parameter: `Table` (the parsed
+    /// `TABULATE` spec) has nothing left that a writer needs by the time
+    /// `cells` exists — its only field (`source`) is already consumed
+    /// building `cells`. If `Table` grows something a writer genuinely needs
+    /// that isn't itself expressible as a cell, add it back then.
+    ///
     /// # Arguments
     ///
-    /// * `table` - The parsed TABULATE specification
-    /// * `body` - The resolved data (see the PROVISIONAL note on
-    ///   `ResolvedTable.body` — this parameter's type may change)
+    /// * `cells` - The resolved table layout — see `TableCell` for the
+    ///   position/kind conventions
     ///
     /// # Errors
     ///
     /// Returns `GgsqlError::WriterError` if this writer doesn't support
     /// tables, or output generation fails.
-    fn write_table(&self, table: &Table, body: &DataFrame) -> Result<Self::Output> {
-        let _ = (table, body);
+    fn write_table(&self, cells: &[TableCell]) -> Result<Self::Output> {
+        let _ = cells;
         Err(GgsqlError::WriterError(
             "this writer does not support tables".to_string(),
         ))
@@ -219,7 +224,7 @@ pub trait Writer {
     fn render(&self, spec: &ResolvedSpec) -> Result<Self::Output> {
         match spec {
             ResolvedSpec::Plot(plot) => self.write_plot(plot.plot(), plot.data()),
-            ResolvedSpec::Table(table) => self.write_table(table.table(), table.body()),
+            ResolvedSpec::Table(table) => self.write_table(table.cells()),
         }
     }
 }
