@@ -60,6 +60,7 @@ pub fn resolve_table_with_reader(query: &str, reader: &dyn Reader) -> Result<Res
     let column_labels = create_column_labels(&df, &table.labels);
     let table_body = create_body(&df);
     let cells = compose_cells(column_labels, table_body);
+    validate_overlaps(&cells)?;
 
     Ok(ResolvedTable::new(table, cells, sql, warnings))
 }
@@ -141,6 +142,32 @@ fn compose_cells(column_labels: Vec<TableCell>, mut body: Vec<TableCell>) -> Vec
     let mut cells = column_labels;
     cells.extend(body);
     cells
+}
+
+/// Check that no two cells in a resolved layout claim the same grid position.
+///
+/// Walks every cell's full footprint (`top..=bottom` × `left..=right`, not
+/// just its corners) into a set of occupied positions, erroring as soon as a
+/// position is claimed twice. `O(total cell area)` rather than the O(n²) cost
+/// of comparing every pair of cells — cheap for the common case (one 1x1
+/// cell per data value, so area == cell count) and only grows with the
+/// footprint spanning cells actually cover, not with `cells.len()` squared.
+fn validate_overlaps(cells: &[TableCell]) -> Result<()> {
+    let mut occupied = std::collections::HashSet::new();
+
+    for cell in cells {
+        for row in cell.top..=cell.bottom {
+            for col in cell.left..=cell.right {
+                if !occupied.insert((row, col)) {
+                    return Err(GgsqlError::ValidationError(format!(
+                        "Table layout has more than one cell at row {row}, column {col}"
+                    )));
+                }
+            }
+        }
+    }
+
+    Ok(())
 }
 
 // =============================================================================
@@ -336,6 +363,62 @@ mod layout_tests {
 
         assert_eq!(cells[1].top, 2);
         assert_eq!(cells[1].bottom, 2);
+    }
+
+    fn cell_at(
+        kind: TableCellKind,
+        top: usize,
+        bottom: usize,
+        left: usize,
+        right: usize,
+    ) -> TableCell {
+        TableCell {
+            kind,
+            top,
+            bottom,
+            left,
+            right,
+            content: String::new(),
+        }
+    }
+
+    #[test]
+    fn validate_overlaps_accepts_a_disjoint_layout() {
+        let cells = vec![
+            cell_at(TableCellKind::ColumnLabel, 0, 0, 0, 0),
+            cell_at(TableCellKind::ColumnLabel, 0, 0, 1, 1),
+            cell_at(TableCellKind::Body, 1, 1, 0, 0),
+            cell_at(TableCellKind::Body, 1, 1, 1, 1),
+        ];
+
+        assert!(validate_overlaps(&cells).is_ok());
+    }
+
+    #[test]
+    fn validate_overlaps_rejects_two_cells_at_the_same_position() {
+        let cells = vec![
+            cell_at(TableCellKind::Body, 0, 0, 0, 0),
+            cell_at(TableCellKind::Body, 0, 0, 0, 0),
+        ];
+
+        let error = validate_overlaps(&cells).unwrap_err();
+        assert!(
+            matches!(error, GgsqlError::ValidationError(msg) if msg.contains("row 0, column 0"))
+        );
+    }
+
+    #[test]
+    fn validate_overlaps_rejects_a_spanning_cell_overlapping_a_later_one() {
+        // A cell spanning columns 0..=1 on row 0 overlapping a second cell
+        // that only touches column 1 on the same row — the shape a spanner
+        // bug or a bad spanner declaration would produce, not something
+        // disjoint labels/body can create on their own.
+        let cells = vec![
+            cell_at(TableCellKind::ColumnLabel, 0, 0, 0, 1),
+            cell_at(TableCellKind::Body, 0, 0, 1, 1),
+        ];
+
+        assert!(validate_overlaps(&cells).is_err());
     }
 }
 
