@@ -57,63 +57,98 @@ pub fn resolve_table_with_reader(query: &str, reader: &dyn Reader) -> Result<Res
     })?;
 
     let df = reader.execute_sql(&sql)?;
-    let column_labels = create_column_labels(&df, &table.labels);
-    let table_body = create_body(&df);
+    let columns = create_table_columns(&df, &table.labels);
+    let column_labels = create_column_labels(&columns);
+    let table_body = create_body(&df, &columns);
     let cells = compose_cells(column_labels, table_body);
     validate_overlaps(&cells)?;
 
     Ok(ResolvedTable::new(table, cells, sql, warnings))
 }
 
-/// Build one `ColumnLabel` cell per column, numbered from `top == 0`.
+/// One column's identity within a table layout: its source name and resolved
+/// display label. `create_table_columns` is the one place `Labels` gets consulted —
+/// `create_column_labels` and `create_body` both work off `name`/`label`
+/// directly instead of asking `Labels` again, and both follow `columns`'
+/// order rather than `df`'s raw column order, so a future spanner-driven
+/// reordering of this list carries through to cell positions automatically.
+///
+/// `dtype: DataType` is expected to join this once column alignment is
+/// tackled — left out for now since nothing would read it yet, and an unread
+/// struct field is a dead-code warning, not just an early add.
+struct TableColumn {
+    /// The column's name in the resolved `DataFrame` — used to look its
+    /// values up in `create_body`, independent of display order.
+    name: String,
+    /// The resolved `ColumnLabel` cell content for this column.
+    label: String,
+}
+
+/// Build one `TableColumn` per `DataFrame` column, in the `DataFrame`'s own
+/// order (nothing reorders it yet).
+///
+/// `labels` (from a `TABULATE LABEL` clause) is the one authority for a
+/// column's label. Three outcomes: a name absent from `labels` keeps the
+/// column name; an explicit `LABEL col => NULL` empties the label;
+/// `LABEL col => 'text'` sets it to `text`.
+fn create_table_columns(df: &DataFrame, labels: &Labels) -> Vec<TableColumn> {
+    df.get_column_names()
+        .into_iter()
+        .map(|name| {
+            let label = match labels.labels.get(&name) {
+                None => name.clone(),
+                Some(None) => String::new(),
+                Some(Some(label)) => label.clone(),
+            };
+            TableColumn { name, label }
+        })
+        .collect()
+}
+
+/// Build one `ColumnLabel` cell per column, numbered from `top == 0`, in
+/// `columns`' order.
 ///
 /// Row numbering here is local to this function alone — `compose_cells`
 /// is what decides where this sits relative to the body, not this function.
-///
-/// `labels` (from a `TABULATE LABEL` clause) is the one authority for a
-/// column's content. Three outcomes: a name absent from `labels` keeps the
-/// column name; an explicit `LABEL col => NULL` empties the cell;
-/// `LABEL col => 'text'` sets it to `text`.
-fn create_column_labels(df: &DataFrame, labels: &Labels) -> Vec<TableCell> {
-    let mut cells = Vec::new();
-
-    for (index, name) in df.get_column_names().into_iter().enumerate() {
-        let content = match labels.labels.get(&name) {
-            None => name,
-            Some(None) => String::new(),
-            Some(Some(label)) => label.clone(),
-        };
-
-        cells.push(TableCell {
+fn create_column_labels(columns: &[TableColumn]) -> Vec<TableCell> {
+    columns
+        .iter()
+        .enumerate()
+        .map(|(index, column)| TableCell {
             kind: TableCellKind::ColumnLabel,
             top: 0,
             bottom: 0,
             left: index,
             right: index,
-            content,
-        });
-    }
-
-    cells
+            content: column.label.clone(),
+        })
+        .collect()
 }
 
-/// Build one `Body` cell per `DataFrame` value, numbered from `top == 0`.
-///
-/// Row numbering here is local to this function alone, the same as
-/// `create_column_labels` — see that function's doc comment.
-fn create_body(df: &DataFrame) -> Vec<TableCell> {
+/// Build one `Body` cell per `DataFrame` value, numbered from `top == 0`, in
+/// `columns`' order rather than `df`'s raw column order — the same seam
+/// `create_column_labels` uses, so the two stay in sync under a future
+/// reordering. Looks each column up in `df` **by name**, not position, since
+/// `columns` may already be reordered relative to `df` by the time this runs.
+fn create_body(df: &DataFrame, columns: &[TableColumn]) -> Vec<TableCell> {
     let mut cells = Vec::new();
-    let columns = df.get_columns();
 
-    for row in 0..df.height() {
-        for (index, column) in columns.iter().enumerate() {
+    for (index, column) in columns.iter().enumerate() {
+        // Looked up once per column, outside the row loop: `DataFrame::column`
+        // is an `O(ncol)` scan over the schema, so doing this per row instead
+        // would cost `O(nrow * ncol)` lookups rather than `O(ncol)`.
+        let array = df
+            .column(&column.name)
+            .expect("TableColumn.name always names a column of df");
+
+        for row in 0..df.height() {
             cells.push(TableCell {
                 kind: TableCellKind::Body,
                 top: row,
                 bottom: row,
                 left: index,
                 right: index,
-                content: value_to_string(column, row),
+                content: value_to_string(array, row),
             });
         }
     }
@@ -245,30 +280,15 @@ mod layout_tests {
     use super::*;
     use crate::df;
 
-    #[test]
-    fn create_column_labels_builds_one_cell_per_column_at_row_zero() {
-        let frame = df! {
-            "id" => vec![1i32, 2],
-            "name" => vec!["a".to_string(), "b".to_string()],
+    fn column(name: &str, label: &str) -> TableColumn {
+        TableColumn {
+            name: name.to_string(),
+            label: label.to_string(),
         }
-        .unwrap();
-
-        let labels = create_column_labels(&frame, &Labels::default());
-
-        assert_eq!(labels.len(), 2);
-        assert_eq!(labels[0].kind, TableCellKind::ColumnLabel);
-        assert_eq!(labels[0].top, 0);
-        assert_eq!(labels[0].bottom, 0);
-        assert_eq!(labels[0].left, 0);
-        assert_eq!(labels[0].right, 0);
-        assert_eq!(labels[0].content, "id");
-        assert_eq!(labels[1].left, 1);
-        assert_eq!(labels[1].right, 1);
-        assert_eq!(labels[1].content, "name");
     }
 
     #[test]
-    fn create_column_labels_resolves_default_suppress_and_override() {
+    fn create_table_columns_resolves_default_suppress_and_override() {
         let frame = df! {
             "id" => vec![1i32],
             "name" => vec!["a".to_string()],
@@ -283,11 +303,30 @@ mod layout_tests {
         labels.labels.insert("name".to_string(), None);
         // "extra" has no entry at all: no LABEL clause mentioned it.
 
-        let column_labels = create_column_labels(&frame, &labels);
+        let columns = create_table_columns(&frame, &labels);
 
-        assert_eq!(column_labels[0].content, "ID"); // overridden
-        assert_eq!(column_labels[1].content, ""); // explicitly suppressed
-        assert_eq!(column_labels[2].content, "extra"); // absent: kept as-is
+        assert_eq!(columns[0].name, "id");
+        assert_eq!(columns[0].label, "ID"); // overridden
+        assert_eq!(columns[1].label, ""); // explicitly suppressed
+        assert_eq!(columns[2].label, "extra"); // absent: kept as-is
+    }
+
+    #[test]
+    fn create_column_labels_builds_one_cell_per_column_at_row_zero() {
+        let columns = vec![column("id", "id"), column("name", "name")];
+
+        let labels = create_column_labels(&columns);
+
+        assert_eq!(labels.len(), 2);
+        assert_eq!(labels[0].kind, TableCellKind::ColumnLabel);
+        assert_eq!(labels[0].top, 0);
+        assert_eq!(labels[0].bottom, 0);
+        assert_eq!(labels[0].left, 0);
+        assert_eq!(labels[0].right, 0);
+        assert_eq!(labels[0].content, "id");
+        assert_eq!(labels[1].left, 1);
+        assert_eq!(labels[1].right, 1);
+        assert_eq!(labels[1].content, "name");
     }
 
     #[test]
@@ -297,27 +336,48 @@ mod layout_tests {
             "name" => vec!["a".to_string(), "b".to_string()],
         }
         .unwrap();
+        let columns = create_table_columns(&frame, &Labels::default());
 
-        let body = create_body(&frame);
+        let body = create_body(&frame, &columns);
 
         assert_eq!(body.len(), 4);
         assert!(body.iter().all(|cell| cell.kind == TableCellKind::Body));
-        // Row 0
+        // Column 0 ("id"): both rows, before column 1 starts — cells are
+        // pushed column-major, not row-major (see create_body's inline
+        // comment on why `array` is looked up once per column).
         assert_eq!(body[0].top, 0);
         assert_eq!(body[0].bottom, 0);
         assert_eq!(body[0].left, 0);
         assert_eq!(body[0].content, "1");
-        assert_eq!(body[1].top, 0);
-        assert_eq!(body[1].left, 1);
-        assert_eq!(body[1].content, "a");
-        // Row 1
-        assert_eq!(body[2].top, 1);
-        assert_eq!(body[2].bottom, 1);
-        assert_eq!(body[2].left, 0);
-        assert_eq!(body[2].content, "2");
+        assert_eq!(body[1].top, 1);
+        assert_eq!(body[1].bottom, 1);
+        assert_eq!(body[1].left, 0);
+        assert_eq!(body[1].content, "2");
+        // Column 1 ("name")
+        assert_eq!(body[2].top, 0);
+        assert_eq!(body[2].left, 1);
+        assert_eq!(body[2].content, "a");
         assert_eq!(body[3].top, 1);
         assert_eq!(body[3].left, 1);
         assert_eq!(body[3].content, "b");
+    }
+
+    #[test]
+    fn create_body_looks_up_columns_by_name_not_position() {
+        // `columns` reordered relative to `frame`'s own column order —
+        // `create_body` must follow `columns`, not `df`'s raw position, for
+        // spanner-driven reordering to actually reach the body.
+        let frame = df! {
+            "id" => vec![1i32],
+            "name" => vec!["a".to_string()],
+        }
+        .unwrap();
+        let columns = vec![column("name", "name"), column("id", "id")];
+
+        let body = create_body(&frame, &columns);
+
+        assert_eq!(body[0].content, "a"); // "name" column, placed first
+        assert_eq!(body[1].content, "1"); // "id" column, placed second
     }
 
     fn cell(kind: TableCellKind, top: usize, bottom: usize, content: &str) -> TableCell {
