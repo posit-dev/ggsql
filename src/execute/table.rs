@@ -214,10 +214,61 @@ fn rowbind_cells(top: Vec<TableCell>, mut bottom: Vec<TableCell>) -> Vec<TableCe
 }
 
 /// Stack spanner rows above column labels — the header half of a table's
-/// layout. Still just one `rowbind_cells` call today, but kept as its own
-/// named step since a stubhead (another header part) is expected to join it.
+/// layout — then let a column with no spanner covering it stretch its own
+/// label upward over the gap rather than leave it a separate blank cell.
+/// Kept as its own named step (rather than folded into `rowbind_cells`)
+/// since a stubhead (another header part) is expected to join it.
 fn compose_header(spanners: Vec<TableCell>, column_labels: Vec<TableCell>) -> Vec<TableCell> {
-    rowbind_cells(spanners, column_labels)
+    let num_spanner_rows = spanners.iter().map(|c| c.bottom).max().map_or(0, |r| r + 1);
+    let header = rowbind_cells(spanners, column_labels);
+    stretch_unspanned_column_labels(header, num_spanner_rows)
+}
+
+/// Grow a column's label cell upward into every consecutive spanner row
+/// above it (starting from the row closest to the labels) that has no
+/// spanner covering that column, stopping at the first one that does —
+/// turning those rows into a `rowspan` on the label instead of separate
+/// blank filler cells. Deliberately diverges from gt here: gt only ever
+/// stretches into the single row immediately above the labels, even when
+/// rows further up are also empty for that column (verified directly
+/// against gt's own output).
+fn stretch_unspanned_column_labels(
+    mut header: Vec<TableCell>,
+    num_spanner_rows: usize,
+) -> Vec<TableCell> {
+    if num_spanner_rows == 0 {
+        return header;
+    }
+
+    let ncol = header.iter().map(|c| c.right).max().map_or(0, |r| r + 1);
+    let mut stretch_depth = vec![0usize; ncol];
+    for (column, depth) in stretch_depth.iter_mut().enumerate() {
+        for row in (0..num_spanner_rows).rev() {
+            let covered = header.iter().any(|c| {
+                c.kind == TableCellKind::Spanner
+                    && c.top == row
+                    && c.left <= column
+                    && column <= c.right
+            });
+            if covered {
+                break;
+            }
+            *depth += 1;
+        }
+    }
+
+    for label in header
+        .iter_mut()
+        .filter(|c| c.kind == TableCellKind::ColumnLabel)
+    {
+        // Assumes every ColumnLabel cell is exactly one column wide (true of
+        // everything create_column_labels produces) — a wider one would need
+        // its own stretch depth reconciled across its whole span, not just
+        // `left`.
+        label.top -= stretch_depth[label.left];
+    }
+
+    header
 }
 
 /// Check that no two cells in a resolved layout claim the same grid position.
@@ -518,9 +569,9 @@ mod layout_tests {
 
     #[test]
     fn rowbind_cells_offsets_by_the_top_rows_actual_extent_not_a_hardcoded_one() {
-        // Nothing produces a multi-row column-label section today, but
         // `rowbind_cells` computes the offset from `top` itself rather than
-        // assuming exactly one row — pin that down directly.
+        // assuming exactly one row — pin that down directly, independent of
+        // whichever caller happens to produce a multi-row `top`.
         let column_labels = vec![cell(TableCellKind::ColumnLabel, 0, 1, "id")];
         let body = vec![cell(TableCellKind::Body, 0, 0, "1")];
 
@@ -548,6 +599,92 @@ mod layout_tests {
 
         assert_eq!(cells.len(), 1);
         assert_eq!(cells[0].top, 0);
+    }
+
+    #[test]
+    fn compose_header_stretches_an_unspanned_columns_label_over_the_gap() {
+        // "G" covers a, b (columns 0, 1) at the one spanner row; c has no
+        // spanner at all.
+        let spanners = vec![cell_at(TableCellKind::Spanner, 0, 0, 0, 1)];
+        let column_labels = vec![
+            cell_at(TableCellKind::ColumnLabel, 0, 0, 0, 0),
+            cell_at(TableCellKind::ColumnLabel, 0, 0, 1, 1),
+            cell_at(TableCellKind::ColumnLabel, 0, 0, 2, 2),
+        ];
+
+        let header = compose_header(spanners, column_labels);
+
+        let a = header
+            .iter()
+            .find(|c| c.kind == TableCellKind::ColumnLabel && c.left == 0)
+            .unwrap();
+        let c = header
+            .iter()
+            .find(|c| c.kind == TableCellKind::ColumnLabel && c.left == 2)
+            .unwrap();
+        assert_eq!((a.top, a.bottom), (1, 1));
+        assert_eq!((c.top, c.bottom), (0, 1));
+    }
+
+    #[test]
+    fn compose_header_stops_stretching_at_the_first_row_that_covers_the_column() {
+        // "Outer" (row 0, the far level) covers both a and b; "Inner" (row
+        // 1, next to the labels) covers only a. b's row-1 gap is contiguous
+        // with the labels, so it stretches by one row — but row 0 already
+        // covers b, so the stretch must stop there, not skip past it.
+        let spanners = vec![
+            cell_at(TableCellKind::Spanner, 0, 0, 0, 1),
+            cell_at(TableCellKind::Spanner, 1, 1, 0, 0),
+        ];
+        let column_labels = vec![
+            cell_at(TableCellKind::ColumnLabel, 0, 0, 0, 0),
+            cell_at(TableCellKind::ColumnLabel, 0, 0, 1, 1),
+        ];
+
+        let header = compose_header(spanners, column_labels);
+
+        let a = header
+            .iter()
+            .find(|c| c.kind == TableCellKind::ColumnLabel && c.left == 0)
+            .unwrap();
+        let b = header
+            .iter()
+            .find(|c| c.kind == TableCellKind::ColumnLabel && c.left == 1)
+            .unwrap();
+        assert_eq!((a.top, a.bottom), (2, 2));
+        assert_eq!((b.top, b.bottom), (1, 2));
+    }
+
+    #[test]
+    fn compose_header_stretches_across_every_row_when_none_of_them_cover_the_column() {
+        // "G" (row 1) covers only a; "H" (row 0) covers only b; c has no
+        // spanner at either level, so its label absorbs both rows.
+        let spanners = vec![
+            cell_at(TableCellKind::Spanner, 0, 0, 1, 1),
+            cell_at(TableCellKind::Spanner, 1, 1, 0, 0),
+        ];
+        let column_labels = vec![
+            cell_at(TableCellKind::ColumnLabel, 0, 0, 0, 0),
+            cell_at(TableCellKind::ColumnLabel, 0, 0, 1, 1),
+            cell_at(TableCellKind::ColumnLabel, 0, 0, 2, 2),
+        ];
+
+        let header = compose_header(spanners, column_labels);
+
+        let c = header
+            .iter()
+            .find(|cell| cell.kind == TableCellKind::ColumnLabel && cell.left == 2)
+            .unwrap();
+        assert_eq!((c.top, c.bottom), (0, 2));
+    }
+
+    #[test]
+    fn compose_header_does_nothing_when_there_are_no_spanners() {
+        let column_labels = vec![cell_at(TableCellKind::ColumnLabel, 0, 0, 0, 0)];
+
+        let header = compose_header(Vec::new(), column_labels);
+
+        assert_eq!((header[0].top, header[0].bottom), (0, 0));
     }
 
     fn cell_at(

@@ -312,7 +312,7 @@ mod tests {
     }
 
     #[test]
-    fn test_write_table_renders_a_spanner_row_with_colspan_and_fills_gaps() {
+    fn test_write_table_renders_a_spanner_row_with_colspan() {
         let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
         reader
             .execute_sql(
@@ -326,12 +326,11 @@ mod tests {
         let writer = HtmlWriter::new();
         let html = writer.render(&spec).unwrap();
 
-        // The spanner covers id+name (colspan 2), with an empty header cell
-        // filling the gap above "amount", which has no spanner over it.
-        assert!(html.contains("<tr><th colspan=\"2\">Info</th><th></th></tr>"));
+        // "amount" has no spanner, so its label stretches up into the
+        // spanner row (rowspan) instead of a blank filler cell there.
+        assert!(html.contains("<tr><th colspan=\"2\">Info</th><th rowspan=\"2\">amount</th></tr>"));
         assert!(html.contains("<th>id</th>"));
         assert!(html.contains("<th>name</th>"));
-        assert!(html.contains("<th>amount</th>"));
         // The spanner row renders above the column-label row.
         assert!(html.find("Info").unwrap() < html.find("<th>id</th>").unwrap());
     }
