@@ -130,6 +130,14 @@ fn create_table_columns(df: &DataFrame, labels: &Labels) -> Vec<TableColumn> {
 /// `rowbind_cells` are what decide where this sits relative to spanners and
 /// the body, not this function.
 fn create_column_labels(columns: &[TableColumn]) -> Vec<TableCell> {
+    // The only way every column's label ends up empty is `LABEL col => NULL`
+    // (or `=> ''`) on every column, since an unlabeled column keeps its
+    // (non-empty) name — so a wholly suppressed row omits the row entirely
+    // rather than rendering a row of blank header cells.
+    if columns.iter().all(|c| c.label.is_empty()) {
+        return Vec::new();
+    }
+
     columns
         .iter()
         .enumerate()
@@ -686,6 +694,26 @@ mod layout_tests {
         ];
 
         assert!(build_cells(&frame, &table).is_err());
+    }
+
+    #[test]
+    fn build_cells_omits_the_column_label_row_when_every_label_is_null() {
+        let frame = df! {
+            "id" => vec![1i32],
+            "name" => vec!["a".to_string()],
+        }
+        .unwrap();
+        let mut table = Table::new();
+        table.labels.labels.insert("id".to_string(), None);
+        table.labels.labels.insert("name".to_string(), None);
+
+        let cells = build_cells(&frame, &table).unwrap();
+
+        assert!(!cells.iter().any(|c| c.kind == TableCellKind::ColumnLabel));
+        assert!(cells
+            .iter()
+            .filter(|c| c.kind == TableCellKind::Body)
+            .all(|c| c.top == 0));
     }
 }
 

@@ -370,7 +370,10 @@ fn process_tab_clause(node: &Node, source: &SourceTree, table: &mut Table) -> Re
     for child in node.children(&mut cursor) {
         match child.kind() {
             "label_clause" => {
-                table.labels = build_labels(&child, source)?;
+                let new_labels = build_labels(&child, source)?;
+                for (key, value) in new_labels.labels {
+                    table.labels.labels.insert(key, value);
+                }
             }
             "span_clause" => {
                 table.spans.push(build_span_clause(&child, source)?);
@@ -1414,6 +1417,19 @@ mod tests {
         assert_eq!(
             table.spans[0].settings.get("width"),
             Some(&ParameterValue::String("40%".to_string()))
+        );
+    }
+
+    #[test]
+    fn test_tabulate_repeated_label_clauses_merge_rather_than_overwrite() {
+        let specs =
+            parse_test_specs("TABULATE FROM sales LABEL id => 'ID' LABEL name => 'Name'").unwrap();
+        let table = specs[0].as_table().expect("expected a Table spec");
+
+        assert_eq!(table.labels.labels.get("id"), Some(&Some("ID".to_string())));
+        assert_eq!(
+            table.labels.labels.get("name"),
+            Some(&Some("Name".to_string()))
         );
     }
 
