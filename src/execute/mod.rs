@@ -10,6 +10,7 @@
 //! - `layer`: Layer query building, data transforms, and stat application
 //! - `scale`: Scale creation, resolution, type coercion, and OOB handling
 //! - `table`: Table (TABULATE) resolution
+//! - `table_spanner`: `TABULATE SPAN` resolution, called from `table`
 
 mod casting;
 mod cte;
@@ -18,6 +19,7 @@ mod position;
 mod scale;
 mod schema;
 mod table;
+mod table_spanner;
 
 // Re-export public API
 pub use casting::TypeRequirement;

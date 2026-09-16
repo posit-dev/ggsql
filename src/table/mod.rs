@@ -1,9 +1,9 @@
 //! Table types for ggsql specification
 //!
-//! This module will define the typed `Table` structure that represents parsed
-//! `TABULATE` statements, parallel to how `plot` defines `Plot` for `VISUALISE`
-//! statements. Still minimal: `source` (from `TABULATE FROM`) and `labels`
-//! (from `TABULATE LABEL`) are populated so far.
+//! Defines the typed `Table` structure that represents parsed `TABULATE`
+//! statements, parallel to how `plot` defines `Plot` for `VISUALISE`
+//! statements: `source` (from `TABULATE FROM`), `labels` (from `TABULATE
+//! LABEL`), and `spans` (from `TABULATE SPAN`) are populated so far.
 
 use serde::{Deserialize, Serialize};
 

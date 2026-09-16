@@ -283,17 +283,31 @@ pub fn validate(query: &str) -> Result<Validated> {
     }
 
     // Validate the single table (we only support one TABULATE statement).
-    // `Table` has only `source` today, and `sql_part` already reflects it:
-    // `extract_sql` synthesizes "SELECT * FROM <source>" for a `TABULATE
-    // FROM`, so `sql_part` is only empty when there is neither a `FROM` nor
-    // preceding SQL — the same condition `resolve_table_with_reader` rejects
-    // at execution time, caught here before any SQL runs.
+    // `sql_part` already reflects `Table.source`: `extract_sql` synthesizes
+    // "SELECT * FROM <source>" for a `TABULATE FROM`, so `sql_part` is only
+    // empty when there is neither a `FROM` nor preceding SQL — the same
+    // condition `resolve_table_with_reader` rejects at execution time,
+    // caught here before any SQL runs.
     if !tables.is_empty() && sql_part.trim().is_empty() {
         errors.push(ValidationError {
             message: "TABULATE has no data source: add a FROM, or a SQL query before it"
                 .to_string(),
             location: None,
         });
+    }
+
+    // Validate each SPAN's SETTING parameters (unknown key, or wrong shape
+    // for a recognized one) — mirrors the per-layer settings validation
+    // above.
+    if let Some(table) = tables.first() {
+        for (idx, spanner) in table.spans.iter().enumerate() {
+            if let Err(e) = spanner.validate_settings() {
+                errors.push(ValidationError {
+                    message: format!("SPAN {}: {}", idx + 1, e),
+                    location: None,
+                });
+            }
+        }
     }
 
     Ok(Validated {
