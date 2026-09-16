@@ -72,7 +72,7 @@ pub use plot::{
 
 // Re-export the parse-time Plot/Table result and the Table stub
 pub use spec::Spec;
-pub use table::Table;
+pub use table::{Spanner, Table};
 
 // Re-export aesthetic classification utilities
 pub use plot::aesthetic::{
