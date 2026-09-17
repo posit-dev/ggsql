@@ -685,6 +685,17 @@ module.exports = grammar({
     tab_clause: $ => choice(
       $.label_clause,
       $.span_clause,
+      $.format_clause,
+    ),
+
+    // FORMAT — configures cell formatting for a group of columns. Multiple
+    // FORMAT clauses repeat (FORMAT ... FORMAT ...) for different column
+    // groups, the same model SPAN uses.
+    format_clause: $ => seq(
+      caseInsensitive('FORMAT'),
+      $.column_list,
+      optional($.setting_clause),
+      optional($.renaming_clause)
     ),
 
     // SPAN — groups columns under one spanner cell. Multiple spanners repeat
@@ -993,12 +1004,12 @@ module.exports = grammar({
       optional($.scale_to_clause),
       optional($.scale_via_clause),
       optional($.setting_clause),  // reuse existing setting_clause from DRAW
-      optional($.scale_renaming_clause)  // custom label mappings
+      optional($.renaming_clause)  // custom label mappings
     ),
 
-    // RENAMING clause for custom axis/legend labels
-    // Syntax: RENAMING 'A' => 'Alpha', 'B' => 'Beta', 'C' => NULL
-    scale_renaming_clause: $ => seq(
+    // RENAMING clause: SCALE uses it for custom axis/legend labels, FORMAT
+    // for custom cell labels. Syntax: RENAMING 'A' => 'Alpha', 'B' => 'Beta', 'C' => NULL
+    renaming_clause: $ => seq(
       caseInsensitive('RENAMING'),
       $.renaming_assignment,
       repeat(seq(',', $.renaming_assignment))

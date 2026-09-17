@@ -9,11 +9,6 @@ use super::super::types::{ArrayElement, ParameterValue, Parameters};
 use super::scale_type::ScaleType;
 use super::transform::Transform;
 
-/// Default label template - passes through values unchanged
-fn default_label_template() -> String {
-    "{}".to_string()
-}
-
 /// One bin of a resolved binned scale: the edges bounding it and the text that
 /// names it. See [`Scale::binned_bins`].
 #[derive(Debug, Clone, PartialEq)]
@@ -78,7 +73,7 @@ pub struct Scale {
     /// Default is "{}" which passes through the value unchanged.
     /// The `{}` placeholder is replaced with each value at resolution time.
     /// Example: "{} units" -> {"0": "0 units", "25": "25 units", ...}
-    #[serde(default = "default_label_template")]
+    #[serde(default = "crate::format::default_template")]
     pub label_template: String,
 }
 

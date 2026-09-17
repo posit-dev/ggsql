@@ -2593,7 +2593,7 @@ SCALE DISCRETE x RENAMING 'A' => 'Alpha', 'B' => 'Beta'
       (scale_clause
         (scale_type_identifier)
         (aesthetic_name)
-        (scale_renaming_clause
+        (renaming_clause
           (renaming_assignment
             name: (string)
             value: (string))
@@ -2631,7 +2631,7 @@ SCALE DISCRETE x RENAMING 'internal' => NULL
       (scale_clause
         (scale_type_identifier)
         (aesthetic_name)
-        (scale_renaming_clause
+        (renaming_clause
           (renaming_assignment
             name: (string)
             value: (null_literal)))))))
@@ -2666,7 +2666,7 @@ SCALE CONTINUOUS x RENAMING * => '{} units'
       (scale_clause
         (scale_type_identifier)
         (aesthetic_name)
-        (scale_renaming_clause
+        (renaming_clause
           (renaming_assignment
             value: (string)))))))
 
@@ -2700,7 +2700,7 @@ SCALE DISCRETE x RENAMING 'A' => 'Alpha', * => 'Category {}'
       (scale_clause
         (scale_type_identifier)
         (aesthetic_name)
-        (scale_renaming_clause
+        (renaming_clause
           (renaming_assignment
             name: (string)
             value: (string))
@@ -4724,3 +4724,37 @@ TABULATE FROM sales LABEL id => 'ID' SPAN 'A' ACROSS foo, bar
             (bare_identifier))
           (identifier
             (bare_identifier)))))))
+
+================================================================================
+TABULATE FORMAT clause
+================================================================================
+
+TABULATE FROM sales FORMAT foo, bar SETTING width => '20%' RENAMING null => '-'
+
+--------------------------------------------------------------------------------
+
+(query
+  (tabulate_statement
+    (tabulate_keyword)
+    (single_source_from
+      source: (qualified_name
+        (identifier
+          (bare_identifier))))
+    (tab_clause
+      (format_clause
+        (column_list
+          (identifier
+            (bare_identifier))
+          (identifier
+            (bare_identifier)))
+        (setting_clause
+          (parameter_assignment
+            name: (parameter_name
+              (identifier
+                (bare_identifier)))
+            value: (parameter_value
+              (string))))
+        (renaming_clause
+          (renaming_assignment
+            name: (null_literal)
+            value: (string)))))))

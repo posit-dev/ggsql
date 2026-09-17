@@ -154,6 +154,15 @@ fn format_number_with_spec(value: &str, fmt: &str) -> String {
     value.to_string()
 }
 
+/// Default template: passes a value through unchanged. Shared `serde`
+/// default for every `*_template` field using this module's placeholder
+/// syntax (`Scale::label_template`, `Format::value_template`) — their
+/// default can't just be `String::default()`, since `""` would blank every
+/// value instead of passing it through.
+pub(crate) fn default_template() -> String {
+    "{}".to_string()
+}
+
 /// Apply a label template to an array of break values.
 ///
 /// Each break value is formatted using the template string.

@@ -8,7 +8,7 @@ use crate::plot::layer::geom::Geom;
 use crate::plot::projection::resolve_coord;
 use crate::plot::scale::{color_to_hex, is_color_aesthetic, is_user_facet_aesthetic, Transform};
 use crate::plot::*;
-use crate::{GgsqlError, Result, Spanner, Spec, Table};
+use crate::{Format, GgsqlError, Result, Spanner, Spec, Table};
 use std::collections::HashMap;
 use tree_sitter::Node;
 
@@ -378,6 +378,9 @@ fn process_tab_clause(node: &Node, source: &SourceTree, table: &mut Table) -> Re
             "span_clause" => {
                 table.spans.push(build_span_clause(&child, source)?);
             }
+            "format_clause" => {
+                table.formats.push(build_format_clause(&child, source)?);
+            }
             _ => {}
         }
     }
@@ -415,6 +418,36 @@ fn build_span_clause(node: &Node, source: &SourceTree) -> Result<Spanner> {
         label,
         columns,
         settings,
+    })
+}
+
+/// Build a Format from a format_clause node: FORMAT col, ... [SETTING ...] [RENAMING ...]
+fn build_format_clause(node: &Node, source: &SourceTree) -> Result<Format> {
+    let columns_node = source
+        .find_node(node, "(column_list) @cols")
+        .ok_or_else(|| GgsqlError::ParseError("Missing columns in FORMAT clause".to_string()))?;
+    let columns = parse_column_list(&columns_node, source)?;
+
+    let settings = match source.find_node(node, "(setting_clause) @s") {
+        Some(setting_node) => parse_setting_clause(&setting_node, source)?,
+        None => Parameters::new(),
+    };
+
+    let mut value_mapping = None;
+    let mut value_template = "{}".to_string();
+    if let Some(renaming_node) = source.find_node(node, "(renaming_clause) @r") {
+        let (mappings, template) = parse_renaming_clause(&renaming_node, source)?;
+        if !mappings.is_empty() {
+            value_mapping = Some(mappings);
+        }
+        value_template = template;
+    }
+
+    Ok(Format {
+        columns,
+        settings,
+        value_mapping,
+        value_template,
     })
 }
 
@@ -808,9 +841,9 @@ fn build_scale(node: &Node, source: &SourceTree) -> Result<Scale> {
                 // Reuse existing setting_clause parser
                 properties = parse_setting_clause(&child, source)?;
             }
-            "scale_renaming_clause" => {
+            "renaming_clause" => {
                 // Parse RENAMING 'A' => 'Alpha', 'B' => 'Beta', * => '{} units'
-                let (mappings, template) = parse_scale_renaming_clause(&child, source)?;
+                let (mappings, template) = parse_renaming_clause(&child, source)?;
                 if !mappings.is_empty() {
                     label_mapping = Some(mappings);
                 }
@@ -935,7 +968,7 @@ fn parse_scale_via_clause(node: &Node, source: &SourceTree) -> Result<Transform>
 /// Returns a tuple of:
 /// - HashMap where: Key = original value, Value = Some(label) or None for suppressed labels
 /// - Template string for wildcard mappings (* => '...'), defaults to "{}"
-fn parse_scale_renaming_clause(
+fn parse_renaming_clause(
     node: &Node,
     source: &SourceTree,
 ) -> Result<(HashMap<String, Option<String>>, String)> {
@@ -1451,6 +1484,53 @@ mod tests {
         assert_eq!(table.spans[0].columns, vec!["foo", "bar"]);
         assert_eq!(table.spans[1].label, Some("B".to_string()));
         assert_eq!(table.spans[1].columns, vec!["baz"]);
+    }
+
+    #[test]
+    fn test_tabulate_format_basic_has_no_settings_or_renaming() {
+        let specs = parse_test_specs("TABULATE FROM sales FORMAT foo, bar").unwrap();
+        let table = specs[0].as_table().expect("expected a Table spec");
+
+        assert_eq!(table.formats.len(), 1);
+        assert_eq!(table.formats[0].columns, vec!["foo", "bar"]);
+        assert!(table.formats[0].settings.is_empty());
+        assert_eq!(table.formats[0].value_mapping, None);
+        assert_eq!(table.formats[0].value_template, "{}");
+    }
+
+    #[test]
+    fn test_tabulate_format_with_setting_and_renaming() {
+        let specs = parse_test_specs(
+            "TABULATE FROM sales FORMAT price SETTING width => '20%' \
+             RENAMING null => '-', * => '{:num %.2f}'",
+        )
+        .unwrap();
+        let table = specs[0].as_table().expect("expected a Table spec");
+
+        assert_eq!(table.formats[0].columns, vec!["price"]);
+        assert_eq!(
+            table.formats[0].settings.get("width"),
+            Some(&ParameterValue::String("20%".to_string()))
+        );
+        assert_eq!(
+            table.formats[0].value_mapping,
+            Some(HashMap::from([("null".to_string(), Some("-".to_string()))]))
+        );
+        assert_eq!(table.formats[0].value_template, "{:num %.2f}");
+    }
+
+    #[test]
+    fn test_tabulate_multiple_format_clauses_produce_separate_formats() {
+        let specs = parse_test_specs(
+            "TABULATE FROM sales FORMAT foo RENAMING * => '{:num %.0f}' FORMAT bar",
+        )
+        .unwrap();
+        let table = specs[0].as_table().expect("expected a Table spec");
+
+        assert_eq!(table.formats.len(), 2);
+        assert_eq!(table.formats[0].columns, vec!["foo"]);
+        assert_eq!(table.formats[0].value_template, "{:num %.0f}");
+        assert_eq!(table.formats[1].columns, vec!["bar"]);
     }
 
     // ========================================
