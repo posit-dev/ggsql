@@ -8,11 +8,14 @@
 //! - `{:time %fmt}` - DateTime strftime format (e.g., `{:time %b %Y}` -> "Jan 2024")
 //! - `{:num %fmt}` - Number printf format (e.g., `{:num %.2f}` -> "25.50")
 
+use arrow::array::{Array, ArrayRef};
+use arrow::datatypes::DataType;
 use chrono::{NaiveDate, NaiveDateTime, NaiveTime};
 use regex::Regex;
 use std::collections::HashMap;
 use std::sync::OnceLock;
 
+use crate::array_util::{as_f64, as_str, cast_array};
 use crate::plot::ArrayElement;
 
 /// Placeholder types supported in label templates
@@ -200,7 +203,14 @@ pub fn apply_label_template(
         .any(|p| matches!(p.placeholder, Placeholder::Plain))
         || placeholders.is_empty();
     let numeric_precision = if has_plain {
-        compute_numeric_precision(breaks)
+        let numbers: Vec<f64> = breaks
+            .iter()
+            .filter_map(|e| match e {
+                ArrayElement::Number(n) => Some(*n),
+                _ => None,
+            })
+            .collect();
+        compute_numeric_precision(&numbers)
     } else {
         None
     };
@@ -226,20 +236,14 @@ pub fn apply_label_template(
     result
 }
 
-/// Determine the number of decimal places needed to display numeric breaks
-/// consistently. Based on the algorithm from R's `scales::precision()`:
-/// uses the smallest inter-break difference to derive display precision.
-/// Returns `None` if there are fewer than 2 numeric breaks or all are integers.
-fn compute_numeric_precision(breaks: &[ArrayElement]) -> Option<usize> {
+/// Determine the number of decimal places needed to display numeric values
+/// consistently. Based on the algorithm from R's `scales::precision()`: uses
+/// the smallest inter-value difference to derive display precision. Returns
+/// `None` if there are fewer than 2 numbers or all are integers.
+fn compute_numeric_precision(numbers: &[f64]) -> Option<usize> {
     let tol = f64::EPSILON.sqrt();
 
-    let mut numbers: Vec<f64> = breaks
-        .iter()
-        .filter_map(|e| match e {
-            ArrayElement::Number(n) => Some(*n),
-            _ => None,
-        })
-        .collect();
+    let mut numbers: Vec<f64> = numbers.to_vec();
 
     if numbers.len() < 2 {
         return None;
@@ -296,49 +300,16 @@ pub fn format_dataframe_column(
     column_name: &str,
     template: &str,
 ) -> Result<crate::DataFrame, String> {
-    use crate::array_util::{as_f64, as_str, cast_array, new_str_array};
-    use arrow::array::Array;
-    use arrow::datatypes::DataType;
+    use crate::array_util::new_str_array;
 
     // Get the column
     let column = df
         .column(column_name)
         .map_err(|e| format!("Column '{}' not found: {}", column_name, e))?;
 
-    // Step 1: Convert entire column to strings
-    let string_values: Vec<Option<String>> = if let Ok(str_col) = as_str(column) {
-        // String column (includes temporal data auto-converted to ISO format)
-        (0..str_col.len())
-            .map(|i| {
-                if str_col.is_null(i) {
-                    None
-                } else {
-                    Some(str_col.value(i).to_string())
-                }
-            })
-            .collect()
-    } else if let Ok(cast) = cast_array(column, &DataType::Float64) {
-        // Numeric column - use shared format_number helper for clean integer formatting
-        use crate::plot::format_number;
-
-        let f64_col = as_f64(&cast).map_err(|e| format!("Failed to cast column to f64: {}", e))?;
-
-        (0..f64_col.len())
-            .map(|i| {
-                if f64_col.is_null(i) {
-                    None
-                } else {
-                    Some(format_number(f64_col.value(i)))
-                }
-            })
-            .collect()
-    } else {
-        return Err(format!(
-            "Formatting doesn't support type {:?} in column '{}'. Try string or numeric types instead.",
-            column.data_type(),
-            column_name
-        ));
-    };
+    let string_values = column_to_strings(column).map_err(|e| {
+        format!("{e} in column '{column_name}'. Try string or numeric types instead.")
+    })?;
 
     // Step 2: Apply formatting template to all string values
     let placeholders = parse_placeholders(template);
@@ -354,6 +325,104 @@ pub fn format_dataframe_column(
     // Replace column in DataFrame
     df.with_column(column_name, formatted_col)
         .map_err(|e| format!("Failed to replace column: {}", e))
+}
+
+/// Convert an Arrow column to one `String` per row (`None` for a null),
+/// supporting string and numeric columns.
+fn column_to_strings(column: &ArrayRef) -> Result<Vec<Option<String>>, String> {
+    if let Ok(str_col) = as_str(column) {
+        // String column (includes temporal data auto-converted to ISO format)
+        Ok((0..str_col.len())
+            .map(|i| {
+                if str_col.is_null(i) {
+                    None
+                } else {
+                    Some(str_col.value(i).to_string())
+                }
+            })
+            .collect())
+    } else if let Ok(cast) = cast_array(column, &DataType::Float64) {
+        // Numeric column - use shared format_number helper for clean integer formatting
+        use crate::plot::format_number;
+
+        let f64_col = as_f64(&cast).map_err(|e| format!("Failed to cast column to f64: {}", e))?;
+
+        Ok((0..f64_col.len())
+            .map(|i| {
+                if f64_col.is_null(i) {
+                    None
+                } else {
+                    Some(format_number(f64_col.value(i)))
+                }
+            })
+            .collect())
+    } else {
+        Err(format!(
+            "Formatting doesn't support type {:?}",
+            column.data_type()
+        ))
+    }
+}
+
+/// Look up `key` in `mapping`. `Some(_)` (possibly empty, for an explicit
+/// `=> NULL` suppression) means the mapping resolves this key outright;
+/// `None` means there is no entry for it at all.
+fn resolve_override(
+    mapping: &Option<HashMap<String, Option<String>>>,
+    key: &str,
+) -> Option<String> {
+    match mapping.as_ref().and_then(|m| m.get(key)) {
+        Some(Some(display)) => Some(display.clone()),
+        Some(None) => Some(String::new()),
+        None => None,
+    }
+}
+
+/// Resolve one display value per row of a column, for `TABULATE FORMAT`'s
+/// `RENAMING` clause: an explicit `mapping` entry wins outright (including
+/// suppressing a cell to blank text via `=> NULL`); every other value gets
+/// `template` applied, except a null cell with no explicit `"null"` entry,
+/// which is left unresolved.
+///
+/// `Ok(None)` at a given row means "no resolution, use the caller's own
+/// default content for that row"; `Ok(Some(s))` (possibly empty) is the
+/// resolved display text.
+pub fn resolve_column_values(
+    column: &ArrayRef,
+    template: &str,
+    mapping: &Option<HashMap<String, Option<String>>>,
+) -> Result<Vec<Option<String>>, String> {
+    let string_values = column_to_strings(column)?;
+
+    let placeholders = parse_placeholders(template);
+    let has_plain = placeholders
+        .iter()
+        .any(|p| matches!(p.placeholder, Placeholder::Plain))
+        || placeholders.is_empty();
+    let numeric_precision = if has_plain {
+        let numbers: Vec<f64> = string_values
+            .iter()
+            .filter_map(|v| v.as_deref().and_then(|s| s.parse::<f64>().ok()))
+            .collect();
+        compute_numeric_precision(&numbers)
+    } else {
+        None
+    };
+
+    Ok(string_values
+        .into_iter()
+        .map(|value| match value {
+            None => resolve_override(mapping, "null"),
+            Some(raw) => resolve_override(mapping, &raw).or_else(|| {
+                Some(format_value(
+                    &raw,
+                    template,
+                    &placeholders,
+                    numeric_precision,
+                ))
+            }),
+        })
+        .collect())
 }
 
 /// Format a single value using template and parsed placeholders
@@ -637,5 +706,60 @@ mod tests {
         assert_eq!(result.get("0"), Some(&Some("0.00".to_string())));
         assert_eq!(result.get("0.05"), Some(&Some("0.05".to_string())));
         assert_eq!(result.get("0.1"), Some(&Some("0.10".to_string())));
+    }
+
+    #[test]
+    fn resolve_column_values_applies_template_to_unmapped_values() {
+        use crate::array_util::new_str_array;
+
+        let column = new_str_array(vec![Some("a"), Some("b")]);
+        let result = resolve_column_values(&column, "[{}]", &None).unwrap();
+
+        assert_eq!(
+            result,
+            vec![Some("[a]".to_string()), Some("[b]".to_string())]
+        );
+    }
+
+    #[test]
+    fn resolve_column_values_explicit_mapping_wins_over_template() {
+        use crate::array_util::new_f64_array;
+
+        let column = new_f64_array(vec![Some(0.0), Some(5.0)]);
+        let mapping = Some(HashMap::from([("0".to_string(), Some("-".to_string()))]));
+        let result = resolve_column_values(&column, "{:num %.2f}", &mapping).unwrap();
+
+        assert_eq!(
+            result,
+            vec![Some("-".to_string()), Some("5.00".to_string())]
+        );
+    }
+
+    #[test]
+    fn resolve_column_values_null_with_explicit_entry_is_resolved() {
+        use crate::array_util::new_f64_array;
+
+        let column = new_f64_array(vec![None, Some(1.0)]);
+        let mapping = Some(HashMap::from([("null".to_string(), None)])); // => NULL suppresses
+
+        let result = resolve_column_values(&column, "{:num %.0f}", &mapping).unwrap();
+
+        assert_eq!(result[0], Some(String::new())); // suppressed, not templated
+        assert_eq!(result[1], Some("1".to_string()));
+    }
+
+    #[test]
+    fn resolve_column_values_null_without_an_explicit_entry_is_left_unresolved() {
+        use crate::array_util::new_f64_array;
+
+        let column = new_f64_array(vec![None, Some(1.0)]);
+
+        let result = resolve_column_values(&column, "{:num %.2f}", &None).unwrap();
+
+        // Caller falls back to its own default rendering for this row, the
+        // same way an unmapped null break is left untouched by
+        // apply_label_template.
+        assert_eq!(result[0], None);
+        assert_eq!(result[1], Some("1.00".to_string()));
     }
 }

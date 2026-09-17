@@ -4,12 +4,15 @@
 //! resolution, or facet handling to do here — just the one query that
 //! produces `body`, plus resolving that data into positioned `TableCell`s.
 //! `SPAN`-specific resolution (column reordering, header-row assignment)
-//! lives in the sibling `table_spanner` module, the way Plot's own
-//! resolution logic is split across `schema.rs`/`casting.rs`/`layer.rs`/
-//! `scale.rs`/`position.rs`/`cte.rs` rather than left in one file.
-//! `Table::resolve_spanner_ids` is the exception — it needs no `DataFrame`,
-//! so it lives on `Table` itself, reachable from `validate()` too.
+//! lives in the sibling `table_spanner` module, and `FORMAT`-specific
+//! resolution (replacing a column's values with its resolved display text)
+//! lives in `table_format`, the way Plot's own resolution logic is split
+//! across `schema.rs`/`casting.rs`/`layer.rs`/`scale.rs`/`position.rs`/
+//! `cte.rs` rather than left in one file. `Table::resolve_spanner_ids` is the
+//! exception — it needs no `DataFrame`, so it lives on `Table` itself,
+//! reachable from `validate()` too.
 
+use super::table_format::apply_formats;
 use super::table_spanner::{create_spanners, reorder_table_columns};
 use crate::array_util::value_to_string;
 use crate::parser::{self, SourceTree};
@@ -80,12 +83,14 @@ fn build_cells(df: &DataFrame, table: &Table) -> Result<Vec<TableCell>> {
         .resolve_spanner_ids()
         .map_err(GgsqlError::ValidationError)?;
 
-    let columns = create_table_columns(df, &table.labels);
+    let df = apply_formats(df, &table.formats)?;
+
+    let columns = create_table_columns(&df, &table.labels);
     let columns = reorder_table_columns(columns, &spans)?;
     let spanners = create_spanners(&columns, &spans)?;
     let column_labels = create_column_labels(&columns);
     let header = compose_header(spanners, column_labels);
-    let table_body = create_body(df, &columns);
+    let table_body = create_body(&df, &columns);
     let cells = rowbind_cells(header, table_body);
     validate_overlaps(&cells)?;
 
@@ -785,6 +790,34 @@ mod layout_tests {
             .iter()
             .filter(|c| c.kind == TableCellKind::Body)
             .all(|c| c.top == 2));
+    }
+
+    #[test]
+    fn build_cells_applies_a_formats_renaming_to_body_cells() {
+        let frame = df! {
+            "price" => vec![0.0f64, 5.0],
+        }
+        .unwrap();
+        let mut table = Table::new();
+        table.formats = vec![crate::Format {
+            columns: vec!["price".to_string()],
+            settings: Parameters::new(),
+            value_mapping: Some(std::collections::HashMap::from([(
+                "0".to_string(),
+                Some("-".to_string()),
+            )])),
+            value_template: "${:num %.2f}".to_string(),
+        }];
+
+        let cells = build_cells(&frame, &table).unwrap();
+
+        let mut body_cells: Vec<_> = cells
+            .iter()
+            .filter(|c| c.kind == TableCellKind::Body)
+            .collect();
+        body_cells.sort_by_key(|c| c.top);
+        assert_eq!(body_cells[0].content, "-");
+        assert_eq!(body_cells[1].content, "$5.00");
     }
 
     #[test]
