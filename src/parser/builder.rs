@@ -401,7 +401,10 @@ fn build_span_clause(node: &Node, source: &SourceTree) -> Result<Spanner> {
         }
     };
 
-    let columns = source.find_texts(node, "(span_columns (identifier) @col)");
+    let columns_node = source
+        .find_node(node, "(column_list) @cols")
+        .ok_or_else(|| GgsqlError::ParseError("Missing columns in SPAN clause".to_string()))?;
+    let columns = parse_column_list(&columns_node, source)?;
 
     let settings = match source.find_node(node, "(setting_clause) @s") {
         Some(setting_node) => parse_setting_clause(&setting_node, source)?,
@@ -689,11 +692,12 @@ fn parse_parameter_assignment(
 
 /// Parse a partition_clause: PARTITION BY col1, col2, ...
 fn parse_partition_clause(node: &Node, source: &SourceTree) -> Result<Vec<String>> {
-    let query = r#"
-        (partition_columns
-          (identifier) @col)
-    "#;
-    Ok(source.find_texts(node, query))
+    let columns_node = source
+        .find_node(node, "(column_list) @cols")
+        .ok_or_else(|| {
+            GgsqlError::ParseError("Missing columns in PARTITION BY clause".to_string())
+        })?;
+    parse_column_list(&columns_node, source)
 }
 
 /// Parse a filter_clause: FILTER <raw SQL expression>
@@ -1012,9 +1016,9 @@ fn build_facet(node: &Node, source: &SourceTree) -> Result<Facet> {
             "facet_by" => {
                 next_vars_are_cols = true;
             }
-            "facet_vars" => {
+            "column_list" => {
                 // Parse list of variable names
-                let vars = parse_facet_vars(&child, source)?;
+                let vars = parse_column_list(&child, source)?;
                 if next_vars_are_cols {
                     column_vars = vars;
                 } else {
@@ -1048,9 +1052,9 @@ fn build_facet(node: &Node, source: &SourceTree) -> Result<Facet> {
     })
 }
 
-/// Parse facet variables from a facet_vars node
-fn parse_facet_vars(node: &Node, source: &SourceTree) -> Result<Vec<String>> {
-    let query = "(identifier) @var";
+/// Parse identifier texts out of a column_list node
+fn parse_column_list(node: &Node, source: &SourceTree) -> Result<Vec<String>> {
+    let query = "(identifier) @col";
     Ok(source.find_texts(node, query))
 }
 

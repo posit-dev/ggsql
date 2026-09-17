@@ -1281,7 +1281,7 @@ DRAW line PARTITION BY category
       (draw_clause
         (geom_type)
         (partition_clause
-          (partition_columns
+          (column_list
             (identifier
               (bare_identifier))))))))
 
@@ -1317,7 +1317,7 @@ DRAW line PARTITION BY category, region
       (draw_clause
         (geom_type)
         (partition_clause
-          (partition_columns
+          (column_list
             (identifier
               (bare_identifier))
             (identifier
@@ -1369,7 +1369,7 @@ DRAW line SETTING opacity => 0.5 FILTER year > 2020 PARTITION BY category
             (filter_token
               (number))))
         (partition_clause
-          (partition_columns
+          (column_list
             (identifier
               (bare_identifier))))))))
 
@@ -2013,7 +2013,7 @@ DRAW line PARTITION BY category ORDER BY date ASC
       (draw_clause
         (geom_type)
         (partition_clause
-          (partition_columns
+          (column_list
             (identifier
               (bare_identifier))))
         (order_clause
@@ -2069,7 +2069,7 @@ DRAW line SETTING opacity => 0.5 FILTER year > 2020 PARTITION BY region ORDER BY
             (filter_token
               (number))))
         (partition_clause
-          (partition_columns
+          (column_list
             (identifier
               (bare_identifier))))
         (order_clause
@@ -2911,7 +2911,7 @@ FACET region
         (geom_type)))
     (viz_clause
       (facet_clause
-        (facet_vars
+        (column_list
           (identifier
             (bare_identifier)))))))
 
@@ -2949,11 +2949,11 @@ FACET region BY category
         (geom_type)))
     (viz_clause
       (facet_clause
-        (facet_vars
+        (column_list
           (identifier
             (bare_identifier)))
         (facet_by)
-        (facet_vars
+        (column_list
           (identifier
             (bare_identifier)))))))
 
@@ -2991,7 +2991,7 @@ FACET region SETTING scales => 'free_y', ncol => 3
         (geom_type)))
     (viz_clause
       (facet_clause
-        (facet_vars
+        (column_list
           (identifier
             (bare_identifier)))
         (setting_clause
@@ -4611,7 +4611,7 @@ TABULATE FROM sales SPAN 'Pretty Name' ACROSS foo, bar, baz
     (tab_clause
       (span_clause
         label: (string)
-        (span_columns
+        (column_list
           (identifier
             (bare_identifier))
           (identifier
@@ -4637,7 +4637,7 @@ TABULATE FROM sales SPAN 'A' ACROSS foo
     (tab_clause
       (span_clause
         label: (string)
-        (span_columns
+        (column_list
           (identifier
             (bare_identifier)))))))
 
@@ -4659,7 +4659,7 @@ TABULATE FROM sales SPAN NULL ACROSS foo, bar
     (tab_clause
       (span_clause
         label: (null_literal)
-        (span_columns
+        (column_list
           (identifier
             (bare_identifier))
           (identifier
@@ -4683,7 +4683,7 @@ TABULATE FROM sales SPAN 'W' ACROSS foo SETTING width => '40%'
     (tab_clause
       (span_clause
         label: (string)
-        (span_columns
+        (column_list
           (identifier
             (bare_identifier)))
         (setting_clause
@@ -4719,7 +4719,7 @@ TABULATE FROM sales LABEL id => 'ID' SPAN 'A' ACROSS foo, bar
     (tab_clause
       (span_clause
         label: (string)
-        (span_columns
+        (column_list
           (identifier
             (bare_identifier))
           (identifier

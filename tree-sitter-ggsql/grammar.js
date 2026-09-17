@@ -698,13 +698,13 @@ module.exports = grammar({
       // Reuses label_assignment's value shape.
       field('label', choice($.string, $.null_literal)),
       caseInsensitive('ACROSS'),
-      $.span_columns,
+      $.column_list,
       optional($.setting_clause)
     ),
 
-    // The group of columns this SPAN covers — same plain identifier-list
-    // shape as partition_columns/facet_vars/project_aesthetics.
-    span_columns: $ => seq(
+    // Shared comma-separated identifier list: SPAN's columns, PARTITION BY's
+    // columns, FACET's row/column vars, FORMAT's columns.
+    column_list: $ => seq(
       $.identifier,
       repeat(seq(',', $.identifier))
     ),
@@ -843,12 +843,7 @@ module.exports = grammar({
     partition_clause: $ => seq(
       caseInsensitive('PARTITION'),
       caseInsensitive('BY'),
-      $.partition_columns
-    ),
-
-    partition_columns: $ => seq(
-      $.identifier,
-      repeat(seq(',', $.identifier))
+      $.column_list
     ),
 
     // FILTER clause for layer filtering: FILTER <raw SQL WHERE expression>
@@ -1054,20 +1049,15 @@ module.exports = grammar({
     // Single variable = wrap layout, BY clause = grid layout
     facet_clause: $ => seq(
       caseInsensitive('FACET'),
-      $.facet_vars,
+      $.column_list,
       optional(seq(
         alias(caseInsensitive('BY'), $.facet_by),
-        $.facet_vars
+        $.column_list
       )),
       optional($.setting_clause)            // Reuse from DRAW/SCALE
     ),
 
     facet_by: $ => 'BY',
-
-    facet_vars: $ => seq(
-      $.identifier,
-      repeat(seq(',', $.identifier))
-    ),
 
     // PROJECT clause - PROJECT [aesthetics] TO coord_type [SETTING prop => value, ...]
     // Examples:
@@ -1085,7 +1075,9 @@ module.exports = grammar({
       optional(seq(caseInsensitive('SETTING'), $.project_properties))
     ),
 
-    // Optional list of position aesthetic names for PROJECT clause
+    // Optional list of position aesthetic names for PROJECT clause. Kept
+    // separate from column_list even though the grammar shape is identical:
+    // this names aesthetics (x, y, angle, radius, ...), not columns.
     project_aesthetics: $ => seq(
       $.identifier,
       repeat(seq(',', $.identifier))
