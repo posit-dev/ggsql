@@ -4,6 +4,23 @@
 use super::table::TableColumn;
 use crate::{GgsqlError, Result, Spanner, TableCell, TableCellKind};
 
+/// Check that no SPAN's `id` collides with an actual column name. A
+/// duplicate `id` across spanners is already rejected by
+/// `Table::resolve_spanner_ids`, which has no access to real column names —
+/// `create_spanners` calls this once it does.
+fn check_spanner_id_column_collision(spans: &[Spanner], columns: &[TableColumn]) -> Result<()> {
+    for span in spans {
+        if let Some(id) = span.settings.get("id").and_then(|v| v.as_str()) {
+            if columns.iter().any(|c| c.name == id) {
+                return Err(GgsqlError::ValidationError(format!(
+                    "SPAN id '{id}' collides with an existing column name"
+                )));
+            }
+        }
+    }
+    Ok(())
+}
+
 /// Reorder `columns` so every `gather`-enabled spanner's members become
 /// contiguous, folding spanners in `spans`' order (declaration order) —
 /// mirrors gt's `tab_spanner(gather = TRUE)`, which is the default there and
@@ -109,19 +126,20 @@ fn assign_spanner_levels(spans: &[Spanner]) -> Vec<usize> {
                 .expect("Spanner::validate_settings already checked 'level' is a number")
                 as usize,
             None => {
-                // Bump the candidate level while it's shared with an
-                // already-assigned spanner whose columns intersect this
-                // one's — any overlap (crossing, nesting, or identical sets)
-                // would render as two rectangles claiming the same column,
-                // so "intersects at all" is the only test needed.
-                let mut candidate = 1;
-                while spans.iter().zip(&levels).any(|(other, &other_level)| {
-                    other_level == candidate
-                        && other.columns.iter().any(|c| span.columns.contains(c))
-                }) {
-                    candidate += 1;
-                }
-                candidate
+                // One more than the highest level of any already-assigned
+                // spanner whose columns intersect this one's — matches gt's
+                // own `resolve_spanner_level()`. Can use more levels than
+                // strictly necessary for a chain of pairwise-but-not-all
+                // conflicting spanners, since it never revisits a lower
+                // level once something deeper claims a shared column.
+                spans
+                    .iter()
+                    .zip(&levels)
+                    .filter(|(other, _)| other.columns.iter().any(|c| span.columns.contains(c)))
+                    .map(|(_, &level)| level)
+                    .max()
+                    .unwrap_or(0)
+                    + 1
             }
         };
         levels.push(level);
@@ -151,6 +169,7 @@ pub(crate) fn create_spanners(
     if spans.is_empty() {
         return Ok(Vec::new());
     }
+    check_spanner_id_column_collision(spans, columns)?;
 
     // Filter out spanners with `null` labels. They don't contribute to cells
     // so their level is irrellevant and shouldn't affect other levels.
@@ -381,6 +400,22 @@ mod tests {
     }
 
     #[test]
+    fn assign_spanner_levels_pushes_a_chained_conflict_past_a_free_level() {
+        // X(a,b) and Z(c,d) share no column and could both sit at level 1,
+        // but Z conflicts with Y(b,c), which conflicts with X — matching
+        // gt, Z gets pushed to level 3 rather than reusing X's level 1.
+        let spans = vec![
+            spanner(&["a", "b"]),
+            spanner(&["b", "c"]),
+            spanner(&["c", "d"]),
+        ];
+
+        let levels = assign_spanner_levels(&spans);
+
+        assert_eq!(levels, vec![1, 2, 3]);
+    }
+
+    #[test]
     fn assign_spanner_levels_pins_explicit_level_without_a_conflict_check() {
         // (a,b) auto-assigns to level 1; (b,c) is explicitly pinned to level
         // 1 too, despite conflicting with (a,b) — this function doesn't
@@ -496,5 +531,79 @@ mod tests {
         let cells = create_spanners(&columns, &[]).unwrap();
 
         assert!(cells.is_empty());
+    }
+
+    #[test]
+    fn create_spanners_rejects_a_spanner_id_that_collides_with_a_column() {
+        let columns = vec![column("a", "a"), column("b", "b")];
+        let mut settings = Parameters::new();
+        settings.insert("id".to_string(), ParameterValue::String("a".to_string()));
+        let spans = vec![spanner_with(&["a", "b"], Some("G"), settings)];
+
+        assert!(create_spanners(&columns, &spans).is_err());
+    }
+
+    fn spanner_with_id(columns: &[&str], id: &str) -> Spanner {
+        let mut settings = Parameters::new();
+        settings.insert("id".to_string(), ParameterValue::String(id.to_string()));
+        spanner_with(columns, Some(""), settings)
+    }
+
+    fn table_with_spans(spans: Vec<Spanner>) -> crate::Table {
+        crate::Table {
+            spans,
+            ..crate::Table::new()
+        }
+    }
+
+    #[test]
+    fn resolve_spanner_ids_expands_a_reference_to_an_earlier_spanners_columns() {
+        let table = table_with_spans(vec![
+            spanner_with_id(&["a", "b"], "x"),
+            spanner(&["x", "c"]),
+        ]);
+
+        let resolved = table.resolve_spanner_ids().unwrap();
+
+        assert_eq!(resolved[1].columns, vec!["a", "b", "c"]);
+    }
+
+    #[test]
+    fn resolve_spanner_ids_leaves_a_forward_reference_unresolved() {
+        // "x" is declared after it's referenced here — left as a literal
+        // string, to be caught downstream as an unknown column.
+        let table = table_with_spans(vec![
+            spanner(&["x", "c"]),
+            spanner_with_id(&["a", "b"], "x"),
+        ]);
+
+        let resolved = table.resolve_spanner_ids().unwrap();
+
+        assert_eq!(resolved[0].columns, vec!["x", "c"]);
+    }
+
+    #[test]
+    fn resolve_spanner_ids_rejects_a_duplicate_id() {
+        let table = table_with_spans(vec![
+            spanner_with_id(&["a"], "dup"),
+            spanner_with_id(&["b"], "dup"),
+        ]);
+
+        assert!(table.resolve_spanner_ids().is_err());
+    }
+
+    #[test]
+    fn resolve_spanner_ids_resolves_transitively() {
+        // z -> y -> x: z references y, which already expanded its own
+        // reference to x by the time z is processed.
+        let table = table_with_spans(vec![
+            spanner_with_id(&["a", "b"], "x"),
+            spanner_with_id(&["x", "c"], "y"),
+            spanner(&["y", "d"]),
+        ]);
+
+        let resolved = table.resolve_spanner_ids().unwrap();
+
+        assert_eq!(resolved[2].columns, vec!["a", "b", "c", "d"]);
     }
 }

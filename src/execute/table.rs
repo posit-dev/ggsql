@@ -7,6 +7,8 @@
 //! lives in the sibling `table_spanner` module, the way Plot's own
 //! resolution logic is split across `schema.rs`/`casting.rs`/`layer.rs`/
 //! `scale.rs`/`position.rs`/`cte.rs` rather than left in one file.
+//! `Table::resolve_spanner_ids` is the exception — it needs no `DataFrame`,
+//! so it lives on `Table` itself, reachable from `validate()` too.
 
 use super::table_spanner::{create_spanners, reorder_table_columns};
 use crate::array_util::value_to_string;
@@ -74,10 +76,13 @@ fn build_cells(df: &DataFrame, table: &Table) -> Result<Vec<TableCell>> {
             .validate_settings()
             .map_err(|e| GgsqlError::ValidationError(format!("SPAN {}: {}", idx + 1, e)))?;
     }
+    let spans = table
+        .resolve_spanner_ids()
+        .map_err(GgsqlError::ValidationError)?;
 
     let columns = create_table_columns(df, &table.labels);
-    let columns = reorder_table_columns(columns, &table.spans)?;
-    let spanners = create_spanners(&columns, &table.spans)?;
+    let columns = reorder_table_columns(columns, &spans)?;
+    let spanners = create_spanners(&columns, &spans)?;
     let column_labels = create_column_labels(&columns);
     let header = compose_header(spanners, column_labels);
     let table_body = create_body(df, &columns);

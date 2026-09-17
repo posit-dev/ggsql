@@ -308,6 +308,13 @@ pub fn validate(query: &str) -> Result<Validated> {
                 });
             }
         }
+
+        if let Err(e) = table.resolve_spanner_ids() {
+            errors.push(ValidationError {
+                message: e,
+                location: None,
+            });
+        }
     }
 
     Ok(Validated {

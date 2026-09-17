@@ -50,6 +50,49 @@ impl Default for Table {
     }
 }
 
+impl Table {
+    /// Expand a SPAN's `ACROSS` entry that names an earlier spanner's `id`
+    /// into that spanner's own columns — `SPAN 'Y' ACROSS x_id, c` (after
+    /// `SPAN 'X' ACROSS a, b SETTING id => 'x_id'`) resolves to columns a,
+    /// b, c for `Y`. Only ids from earlier spans are recognised; an id
+    /// declared later, or a genuine typo, is left as a literal string and
+    /// caught downstream as an unknown column, the same as any other bad
+    /// reference.
+    ///
+    /// Lives here rather than alongside its sibling spanner-resolution
+    /// steps in `execute::table_spanner` because it operates on `Spanner`
+    /// alone, with no `DataFrame` involved — `validate()` calls it directly
+    /// to catch a duplicate id without depending on `execute`.
+    pub fn resolve_spanner_ids(&self) -> Result<Vec<Spanner>, String> {
+        let mut resolved: Vec<Spanner> = Vec::with_capacity(self.spans.len());
+        let mut ids: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+
+        for span in &self.spans {
+            let columns = span
+                .columns
+                .iter()
+                .flat_map(|entry| match ids.get(entry) {
+                    Some(&idx) => resolved[idx].columns.clone(),
+                    None => vec![entry.clone()],
+                })
+                .collect();
+
+            let mut resolved_span = span.clone();
+            resolved_span.columns = columns;
+
+            if let Some(id) = resolved_span.settings.get("id").and_then(|v| v.as_str()) {
+                if ids.insert(id.to_string(), resolved.len()).is_some() {
+                    return Err(format!("Duplicate SPAN id '{id}'"));
+                }
+            }
+
+            resolved.push(resolved_span);
+        }
+
+        Ok(resolved)
+    }
+}
+
 /// One `SPAN` clause: a named group of columns rendered as one spanner cell
 /// above them.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -81,6 +124,13 @@ const SPAN_PARAMS: &[ParamDefinition] = &[
         // assign_spanner_levels), not "assume some fixed level".
         default: DefaultParamValue::Null,
         constraint: ParamConstraint::count(1.0),
+    },
+    ParamDefinition {
+        name: "id",
+        // No default: absence means this spanner has no id and can't be
+        // referenced by a later one's ACROSS list.
+        default: DefaultParamValue::Null,
+        constraint: ParamConstraint::string(),
     },
 ];
 

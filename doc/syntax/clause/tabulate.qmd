@@ -71,6 +71,17 @@ SETTING <parameter> => <value>, ...
 
 * `gather` (boolean, default `true`): moves the spanner's columns to sit contiguously, pulling them next to the first-listed member without disturbing any other column's relative order. Set to `false` to leave the columns exactly where they are.
 * `level` (whole number, no default): pins the spanner to a specific header row (`1` is the row closest to the column labels). If omitted, a level is assigned automatically, high enough to avoid every other spanner it shares a column with.
+* `id` (string, no default): names this spanner so a *later* `SPAN` clause can fold its columns into a new one.
+
+Reference an `id` in place of a column name in a later `SPAN`'s `ACROSS` list to include everything the earlier spanner covers:
+
+```ggsql
+TABULATE FROM sales
+  SPAN 'Q1' ACROSS jan, feb, mar SETTING id => 'q1'
+  SPAN 'H1' ACROSS q1, apr, may, jun
+```
+
+`H1` ends up covering `jan, feb, mar, apr, may, jun`. Only an `id` declared by an *earlier* `SPAN` clause is recognised — referencing one declared later, or a typo, is treated as an unknown column, the same error as any other bad `ACROSS` entry. Every `id` must be unique across the whole query, and can't collide with an actual column name.
 
 ### Examples
 
