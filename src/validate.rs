@@ -315,6 +315,16 @@ pub fn validate(query: &str) -> Result<Validated> {
                 location: None,
             });
         }
+
+        // Validate each FORMAT's SETTING parameters the same way.
+        for (idx, format) in table.formats.iter().enumerate() {
+            if let Err(e) = format.validate_settings() {
+                errors.push(ValidationError {
+                    message: format!("FORMAT {}: {}", idx + 1, e),
+                    location: None,
+                });
+            }
+        }
     }
 
     Ok(Validated {

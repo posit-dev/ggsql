@@ -10,7 +10,8 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 use crate::plot::{
-    validate_parameter, DefaultParamValue, Labels, ParamConstraint, ParamDefinition, Parameters,
+    validate_parameter, DefaultParamValue, Labels, NumberConstraint, ParamConstraint,
+    ParamDefinition, Parameters,
 };
 use crate::DataSource;
 
@@ -165,14 +166,13 @@ impl Spanner {
 
 /// One `FORMAT` clause: cell formatting for a group of columns.
 ///
-/// `settings` is parsed but not yet validated or applied anywhere — `SETTING`
-/// semantics for `FORMAT` land in a later change; only the grammar shape is
-/// wired up so far.
+/// `settings` is validated against `FORMAT_PARAMS` and resolved into each
+/// covered column's `TableCell` properties — not yet consumed by any writer.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Format {
     /// The columns this FORMAT applies to, in the order written.
     pub columns: Vec<String>,
-    /// `SETTING` parameters for this FORMAT (e.g. `width => '20%'`).
+    /// `SETTING` parameters for this FORMAT (e.g. `hjust => 'right'`).
     pub settings: Parameters,
     /// Value mappings for custom cell display (`RENAMING` clause). Maps a raw
     /// cell value to its display text; `None` suppresses the cell's text.
@@ -187,6 +187,38 @@ pub struct Format {
     /// as `Scale::label_template`.
     #[serde(default = "crate::format::default_template")]
     pub value_template: String,
+}
+
+/// `SETTING` parameters `FORMAT` accepts.
+const FORMAT_PARAMS: &[ParamDefinition] = &[ParamDefinition {
+    name: "hjust",
+    default: DefaultParamValue::Number(0.5),
+    // Both spellings accepted here; resolve_column_properties standardises
+    // "centre" to "center" when it builds a column's TableCell properties.
+    constraint: ParamConstraint::string_option_or_number(
+        &["left", "right", "centre", "center"],
+        NumberConstraint::range(0.0, 1.0),
+    ),
+}];
+
+impl Format {
+    /// Validate `settings` against `FORMAT_PARAMS`.
+    pub fn validate_settings(&self) -> Result<(), String> {
+        let valid: Vec<&str> = FORMAT_PARAMS.iter().map(|p| p.name).collect();
+
+        for (name, value) in &self.settings {
+            let Some(param) = FORMAT_PARAMS.iter().find(|p| p.name == name.as_str()) else {
+                return Err(format!(
+                    "FORMAT setting should be {}, not '{}'",
+                    crate::or_list_quoted(&valid, '\''),
+                    name
+                ));
+            };
+            validate_parameter(name, value, &param.constraint)?;
+        }
+
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -220,5 +252,44 @@ mod tests {
         );
 
         assert!(spanner_with_settings(settings).validate_settings().is_err());
+    }
+
+    fn format_with_settings(settings: Parameters) -> Format {
+        Format {
+            columns: vec!["a".to_string()],
+            settings,
+            value_mapping: None,
+            value_template: "{}".to_string(),
+        }
+    }
+
+    #[test]
+    fn format_validate_settings_accepts_a_string_hjust() {
+        let mut settings = Parameters::new();
+        settings.insert(
+            "hjust".to_string(),
+            ParameterValue::String("right".to_string()),
+        );
+
+        assert!(format_with_settings(settings).validate_settings().is_ok());
+    }
+
+    #[test]
+    fn format_validate_settings_accepts_a_numeric_hjust() {
+        let mut settings = Parameters::new();
+        settings.insert("hjust".to_string(), ParameterValue::Number(0.25));
+
+        assert!(format_with_settings(settings).validate_settings().is_ok());
+    }
+
+    #[test]
+    fn format_validate_settings_rejects_an_unrecognized_string() {
+        let mut settings = Parameters::new();
+        settings.insert(
+            "hjust".to_string(),
+            ParameterValue::String("up".to_string()),
+        );
+
+        assert!(format_with_settings(settings).validate_settings().is_err());
     }
 }

@@ -1372,6 +1372,21 @@ impl ParamConstraint {
         }
     }
 
+    /// String enum or Number within a range - for parameters like `hjust`
+    /// that accept either a named keyword or a continuous value.
+    pub const fn string_option_or_number(
+        values: &'static [&'static str],
+        num: NumberConstraint,
+    ) -> Self {
+        Self {
+            number: TypeConstraint::Constrained(num),
+            string: TypeConstraint::Constrained(StringConstraint::one_of(values)),
+            boolean: TypeConstraint::Forbidden,
+            array: TypeConstraint::Forbidden,
+            allow_null: true,
+        }
+    }
+
     /// String enum or Array of strings from same enum - for `free` parameter
     #[allow(dead_code)]
     pub const fn string_or_string_array(values: &'static [&'static str]) -> Self {

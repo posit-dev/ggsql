@@ -768,8 +768,8 @@ mod tests {
             panic!("expected Output::Text from the html writer");
         };
         assert!(html.starts_with("<table>"), "{html}");
-        assert!(html.contains("<th>id</th>"), "{html}");
-        assert!(html.contains("<td>a</td>"), "{html}");
+        assert!(html.contains(">id</th>"), "{html}");
+        assert!(html.contains(">a</td>"), "{html}");
     }
 
     #[cfg(all(feature = "html", feature = "duckdb"))]

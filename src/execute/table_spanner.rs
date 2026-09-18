@@ -203,14 +203,14 @@ pub(crate) fn create_spanners(
                 (true, None) => run_start = Some(index),
                 // Column not in span, end run and push cell
                 (false, Some(start)) => {
-                    cells.push(TableCell {
-                        kind: TableCellKind::Spanner,
-                        top: row,
-                        bottom: row,
-                        left: start,
-                        right: index - 1,
-                        content: label.clone(),
-                    });
+                    cells.push(TableCell::new(
+                        TableCellKind::Spanner,
+                        row,
+                        row,
+                        start,
+                        index - 1,
+                        label.clone(),
+                    ));
                     run_start = None;
                 }
                 _ => {}
@@ -218,14 +218,14 @@ pub(crate) fn create_spanners(
         }
         // Started but not ended: last column
         if let Some(start) = run_start {
-            cells.push(TableCell {
-                kind: TableCellKind::Spanner,
-                top: row,
-                bottom: row,
-                left: start,
-                right: columns.len() - 1,
-                content: label.clone(),
-            });
+            cells.push(TableCell::new(
+                TableCellKind::Spanner,
+                row,
+                row,
+                start,
+                columns.len() - 1,
+                label.clone(),
+            ));
         }
     }
 
@@ -241,6 +241,7 @@ mod tests {
         TableColumn {
             name: name.to_string(),
             label: label.to_string(),
+            properties: Parameters::new(),
         }
     }
 

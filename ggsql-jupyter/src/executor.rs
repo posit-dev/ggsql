@@ -344,7 +344,7 @@ mod tests {
         match result {
             ExecutionResult::Table { html } => {
                 assert!(html.contains("<table>"));
-                assert!(html.contains("<th>x</th>"));
+                assert!(html.contains(">x</th>"));
             }
             other => panic!("expected Table, got {other:?}"),
         }
