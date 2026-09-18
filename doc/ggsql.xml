@@ -99,6 +99,7 @@
       <item>VISUALIZE</item>
       <item>TABULATE</item>
       <item>SPAN</item>
+      <item>FORMAT</item>
     </list>
 
     <!-- ggsql Sub-keywords -->
@@ -665,6 +666,7 @@
         <WordDetect attribute="Keyword" context="LabelClause" String="LABEL" insensitive="true"/>
         <WordDetect attribute="Keyword" context="TabulateClause" String="TABULATE" insensitive="true"/>
         <WordDetect attribute="Keyword" context="SpanClause" String="SPAN" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="FormatClause" String="FORMAT" insensitive="true"/>
         <WordDetect attribute="Keyword" context="Normal" String="VISUALISE" insensitive="true"/>
         <WordDetect attribute="Keyword" context="Normal" String="VISUALIZE" insensitive="true"/>
         <WordDetect attribute="Keyword" context="Normal" String="SELECT" insensitive="true"/>
@@ -699,6 +701,7 @@
         <WordDetect attribute="Keyword" context="LabelClause" String="LABEL" insensitive="true"/>
         <WordDetect attribute="Keyword" context="TabulateClause" String="TABULATE" insensitive="true"/>
         <WordDetect attribute="Keyword" context="SpanClause" String="SPAN" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="FormatClause" String="FORMAT" insensitive="true"/>
         <WordDetect attribute="Keyword" context="Normal" String="VISUALISE" insensitive="true"/>
         <WordDetect attribute="Keyword" context="Normal" String="VISUALIZE" insensitive="true"/>
         <WordDetect attribute="Keyword" context="Normal" String="SELECT" insensitive="true"/>
@@ -727,6 +730,7 @@
         <WordDetect attribute="Keyword" context="LabelClause" String="LABEL" insensitive="true"/>
         <WordDetect attribute="Keyword" context="TabulateClause" String="TABULATE" insensitive="true"/>
         <WordDetect attribute="Keyword" context="SpanClause" String="SPAN" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="FormatClause" String="FORMAT" insensitive="true"/>
         <WordDetect attribute="Keyword" context="Normal" String="VISUALISE" insensitive="true"/>
         <WordDetect attribute="Keyword" context="Normal" String="VISUALIZE" insensitive="true"/>
         <WordDetect attribute="Keyword" context="Normal" String="SELECT" insensitive="true"/>
@@ -741,6 +745,45 @@
         <!-- SPAN's own SETTING keys -->
         <WordDetect attribute="Attribute" context="#stay" String="gather" insensitive="true"/>
         <WordDetect attribute="Attribute" context="#stay" String="level" insensitive="true"/>
+
+        <StringDetect attribute="Operator" context="#stay" String="=&gt;"/>
+        <AnyChar attribute="Operator" context="#stay" String="=!&lt;&gt;+-*/%"/>
+        <DetectChar char="(" attribute="Symbol" context="#stay"/>
+        <DetectChar char=")" attribute="Symbol" context="#stay"/>
+        <DetectChar char="[" attribute="Symbol" context="#stay"/>
+        <DetectChar char="]" attribute="Symbol" context="#stay"/>
+        <DetectChar char="," attribute="Symbol" context="#stay"/>
+      </context>
+
+      <!-- FORMAT clause context -->
+      <context name="FormatClause" attribute="Normal Text" lineEndContext="#stay">
+        <Detect2Chars char="-" char1="-" attribute="Comment" context="Comment"/>
+        <Detect2Chars char="/" char1="*" attribute="Comment" context="CommentMulti" beginRegion="comment"/>
+        <DetectChar char="'" attribute="String" context="StringSingle"/>
+        <DetectChar char="&quot;" attribute="String" context="StringDouble"/>
+        <RegExpr attribute="Number" context="#stay" String="-?[0-9]+\.?[0-9]*([eE][+-]?[0-9]+)?"/>
+
+        <!-- Exit to other clause contexts -->
+        <WordDetect attribute="Keyword" context="LabelClause" String="LABEL" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="TabulateClause" String="TABULATE" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="SpanClause" String="SPAN" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="FormatClause" String="FORMAT" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="Normal" String="VISUALISE" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="Normal" String="VISUALIZE" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="Normal" String="SELECT" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="#stay" String="FROM" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="Normal" String="WHERE" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="Normal" String="WITH" insensitive="true"/>
+
+        <!-- SETTING and RENAMING (only these two supported here) -->
+        <WordDetect attribute="Keyword" context="#stay" String="SETTING" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="#stay" String="RENAMING" insensitive="true"/>
+
+        <!-- FORMAT's own SETTING keys -->
+        <WordDetect attribute="Attribute" context="#stay" String="hjust" insensitive="true"/>
+
+        <!-- Wildcard for RENAMING -->
+        <DetectChar char="*" attribute="Operator" context="#stay"/>
 
         <StringDetect attribute="Operator" context="#stay" String="=&gt;"/>
         <AnyChar attribute="Operator" context="#stay" String="=!&lt;&gt;+-*/%"/>
