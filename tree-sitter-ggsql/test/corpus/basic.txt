@@ -4560,3 +4560,131 @@ LABEL caption => 'Data source: <https://doi.org/10.1371/journal.pone.0090081> --
             (identifier
               (bare_identifier)))
           (string))))))
+
+================================================================================
+Line comment (double slash) between clauses
+================================================================================
+
+// A leading comment
+VISUALISE x, y // trailing comment on the same line
+DRAW point
+// comment before a clause
+LABEL title => 'My Plot' // and one at the end
+
+--------------------------------------------------------------------------------
+
+(query
+  (comment)
+  (visualise_statement
+    (visualise_keyword)
+    (global_mapping
+      (mapping_list
+        (mapping_element
+          (implicit_mapping
+            (identifier
+              (bare_identifier))))
+        (mapping_element
+          (implicit_mapping
+            (identifier
+              (bare_identifier))))))
+    (comment)
+    (viz_clause
+      (draw_clause
+        (geom_type)))
+    (comment)
+    (viz_clause
+      (label_clause
+        (label_assignment
+          (label_type
+            (identifier
+              (bare_identifier)))
+          (string)))))
+  (comment))
+
+================================================================================
+SQL line comment (double dash)
+================================================================================
+
+VISUALISE x -- pick the x column
+DRAW point
+
+--------------------------------------------------------------------------------
+
+(query
+  (visualise_statement
+    (visualise_keyword)
+    (global_mapping
+      (mapping_list
+        (mapping_element
+          (implicit_mapping
+            (identifier
+              (bare_identifier))))))
+    (comment)
+    (viz_clause
+      (draw_clause
+        (geom_type)))))
+
+================================================================================
+Block comment spanning lines
+================================================================================
+
+VISUALISE /* inline block */ x, y
+DRAW point
+/* a multi-line
+   block comment */
+LABEL title => 'My Plot'
+
+--------------------------------------------------------------------------------
+
+(query
+  (visualise_statement
+    (visualise_keyword)
+    (comment)
+    (global_mapping
+      (mapping_list
+        (mapping_element
+          (implicit_mapping
+            (identifier
+              (bare_identifier))))
+        (mapping_element
+          (implicit_mapping
+            (identifier
+              (bare_identifier))))))
+    (viz_clause
+      (draw_clause
+        (geom_type)))
+    (comment)
+    (viz_clause
+      (label_clause
+        (label_assignment
+          (label_type
+            (identifier
+              (bare_identifier)))
+          (string))))))
+
+================================================================================
+Comments alongside strings that contain comment-like text
+================================================================================
+
+-- leading comment
+VISUALISE
+DRAW point
+LABEL caption => 'see https://example.com -- details' // trailing comment
+
+--------------------------------------------------------------------------------
+
+(query
+  (comment)
+  (visualise_statement
+    (visualise_keyword)
+    (viz_clause
+      (draw_clause
+        (geom_type)))
+    (viz_clause
+      (label_clause
+        (label_assignment
+          (label_type
+            (identifier
+              (bare_identifier)))
+          (string)))))
+  (comment))
