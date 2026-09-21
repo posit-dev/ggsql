@@ -37,7 +37,7 @@ use crate::execute::{prepare_data_with_reader, resolve_table_with_reader};
 use crate::parser::{self, SourceTree};
 use crate::plot::{CastTargetType, Plot};
 use crate::validate::{validate, ValidationWarning};
-use crate::{naming, DataFrame, GgsqlError, Result, Spec, Table, TableCell};
+use crate::{naming, DataFrame, GgsqlError, Result, Spec, TableCell, TableColumn, TableRow};
 
 // =============================================================================
 // SQL Dialect
@@ -708,14 +708,21 @@ pub struct Metadata {
 
 /// Result of executing a ggsql TABULATE query, ready for rendering.
 pub struct ResolvedTable {
-    /// The resolved table specification
-    pub(crate) table: Table,
     /// The resolved layout: one cell per column label and per data value,
     /// resolved from `table.source` (or the main SQL if there was no
     /// TABULATE FROM). See `TableCell` for the position/kind conventions.
     /// `nrow()`/`ncol()` are computed from this rather than stored
     /// separately, so there's one source of truth for the table's shape.
     pub(crate) cells: Vec<TableCell>,
+    /// Resolved per-column properties, for a writer wanting a whole-column
+    /// value (e.g. `width`) rather than the same value repeated across a
+    /// column's cells. `None` if resolution never got as far as building
+    /// columns (not currently possible via the public API, but kept
+    /// optional so a future construction path doesn't need one).
+    pub(crate) columns: Option<Vec<TableColumn>>,
+    /// Resolved per-row properties, symmetric with `columns`. Always `None`
+    /// today — no row-wide `TABULATE` clause exists yet to populate it.
+    pub(crate) rows: Option<Vec<TableRow>>,
     /// The SQL query that was executed to produce `cells`
     pub(crate) sql: String,
     /// Validation warnings from preparation
@@ -729,11 +736,11 @@ pub struct ResolvedTable {
 /// Result of executing a ggsql query: either a resolved plot or a resolved
 /// table, mirroring the parse-time `Spec` (`Plot` or `Table`).
 pub enum ResolvedSpec {
-    // Boxed for the same reason `Spec::Plot` is: `ResolvedPlot` is far larger
-    // than `ResolvedTable`, and clippy flags the resulting size gap
-    // (`large_enum_variant`) otherwise.
+    // Both boxed, mirroring `Spec`'s own two variants: whichever of
+    // `ResolvedPlot`/`ResolvedTable` is larger, an unboxed size gap between
+    // them trips clippy's `large_enum_variant` lint.
     Plot(Box<ResolvedPlot>),
-    Table(ResolvedTable),
+    Table(Box<ResolvedTable>),
 }
 
 // ============================================================================
@@ -1048,7 +1055,7 @@ pub fn execute_with_reader(reader: &dyn Reader, query: &str) -> Result<ResolvedS
     match specs.into_iter().next() {
         Some(Spec::Table(_)) => {
             let resolved = resolve_table_with_reader(query, reader)?;
-            Ok(ResolvedSpec::Table(resolved))
+            Ok(ResolvedSpec::Table(Box::new(resolved)))
         }
         _ => {
             let resolved = resolve_plot_with_reader(reader, query)?;

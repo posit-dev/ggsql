@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use crate::naming;
 use crate::plot::Plot;
 use crate::validate::ValidationWarning;
-use crate::{DataFrame, Table, TableCell};
+use crate::{DataFrame, TableCell, TableColumn, TableRow};
 
 use super::{Metadata, ResolvedPlot, ResolvedSpec, ResolvedTable};
 
@@ -114,27 +114,37 @@ impl ResolvedPlot {
 impl ResolvedTable {
     /// Create a new ResolvedTable.
     pub(crate) fn new(
-        table: Table,
         cells: Vec<TableCell>,
+        columns: Option<Vec<TableColumn>>,
+        rows: Option<Vec<TableRow>>,
         sql: String,
         warnings: Vec<ValidationWarning>,
     ) -> Self {
         Self {
-            table,
             cells,
+            columns,
+            rows,
             sql,
             warnings,
         }
     }
 
-    /// Get the resolved table specification.
-    pub fn table(&self) -> &Table {
-        &self.table
-    }
-
     /// Get the resolved layout: one cell per column label and per data value.
     pub fn cells(&self) -> &[TableCell] {
         &self.cells
+    }
+
+    /// Resolved per-column properties, if any were built — a writer wanting
+    /// a whole-column value (e.g. `width`) reads it here instead of the
+    /// same value repeated across the column's cells.
+    pub fn columns(&self) -> Option<&[TableColumn]> {
+        self.columns.as_deref()
+    }
+
+    /// Resolved per-row properties, symmetric with `columns`. Always `None`
+    /// today — no row-wide `TABULATE` clause exists yet to populate it.
+    pub fn rows(&self) -> Option<&[TableRow]> {
+        self.rows.as_deref()
     }
 
     /// Number of data rows (not counting the column-label row), computed
@@ -196,7 +206,7 @@ impl ResolvedSpec {
     pub fn into_table(self) -> Option<ResolvedTable> {
         match self {
             ResolvedSpec::Plot(_) => None,
-            ResolvedSpec::Table(table) => Some(table),
+            ResolvedSpec::Table(table) => Some(*table),
         }
     }
 }

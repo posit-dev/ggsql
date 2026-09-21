@@ -28,7 +28,7 @@ mod table_spanner;
 pub use casting::TypeRequirement;
 pub use cte::CteDefinition;
 pub use schema::TypeInfo;
-pub use table::{resolve_table_with_reader, TableCell, TableCellKind};
+pub use table::{resolve_table_with_reader, TableCell, TableCellKind, TableColumn, TableRow};
 
 use crate::naming;
 use crate::parser;

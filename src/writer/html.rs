@@ -19,7 +19,7 @@ use std::collections::HashSet;
 use crate::plot::{ParameterValue, Parameters};
 use crate::util::escape_html;
 use crate::writer::{Writer, WriterOptions};
-use crate::{DataFrame, GgsqlError, Plot, Result, TableCell};
+use crate::{DataFrame, GgsqlError, Plot, Result, TableCell, TableColumn, TableRow};
 
 /// Renders a resolved table as a bare HTML `<table>`. Does not support plots.
 #[derive(Debug, Default)]
@@ -53,7 +53,16 @@ impl Writer for HtmlWriter {
         ))
     }
 
-    fn write_table(&self, cells: &[TableCell]) -> Result<String> {
+    fn write_table(
+        &self,
+        cells: &[TableCell],
+        columns: Option<&[TableColumn]>,
+        rows: Option<&[TableRow]>,
+    ) -> Result<String> {
+        // Not consumed yet — no property needs whole-column/whole-row
+        // rendering (like `width`) rather than a per-cell one yet.
+        let _ = (columns, rows);
+
         let ncol = cells
             .iter()
             .map(|cell| cell.right)
@@ -323,7 +332,7 @@ mod render_tests {
             cell(TableCellKind::ColumnLabel, 0, 0, 1, 1),
         ];
 
-        assert!(HtmlWriter::new().write_table(&cells).is_err());
+        assert!(HtmlWriter::new().write_table(&cells, None, None).is_err());
     }
 
     #[test]
@@ -338,7 +347,7 @@ mod render_tests {
             cell(TableCellKind::Body, 2, 2, 1, 1),
         ];
 
-        let html = HtmlWriter::new().write_table(&cells).unwrap();
+        let html = HtmlWriter::new().write_table(&cells, None, None).unwrap();
 
         assert_eq!(
             html,

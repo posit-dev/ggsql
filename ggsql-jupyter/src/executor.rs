@@ -301,7 +301,8 @@ impl QueryExecutor {
                     tracing::warn!("{}", warning.message);
                 }
 
-                let html = HtmlWriter::new().write_table(table.cells())?;
+                let html =
+                    HtmlWriter::new().write_table(table.cells(), table.columns(), table.rows())?;
                 tracing::debug!("Generated HTML table: {} chars", html.len());
 
                 Ok(ExecutionResult::Table { html })

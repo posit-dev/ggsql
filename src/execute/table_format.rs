@@ -1,9 +1,10 @@
-//! `TABULATE FORMAT` resolution: reshaping `Table.formats` (one entry per
-//! `FORMAT` clause, each naming several columns) into one `Format` per
-//! column (`reshape_formats`), then applying that per column — `RENAMING`
-//! by replacing the column's values in the `DataFrame` (`apply_formats`),
-//! `SETTING` by resolving display properties for `TableColumn`
-//! (`resolve_column_properties`). Called from `table::build_cells`.
+//! `TABULATE FORMAT` resolution: validating `Table.formats`' `SETTING`
+//! parameters and reshaping it (one entry per `FORMAT` clause, each naming
+//! several columns) into one `Format` per column (`setup_formats`), then
+//! applying that per column — `RENAMING` by replacing the column's values in
+//! the `DataFrame` (`apply_formats`), `SETTING` by resolving display
+//! properties for `TableColumn` (`resolve_column_properties`). `setup_formats`
+//! and `apply_formats` are both called from `table::resolve_table_with_reader`.
 
 use std::collections::HashMap;
 
@@ -13,13 +14,18 @@ use crate::array_util::{new_str_array, value_to_string};
 use crate::plot::{ParameterValue, Parameters};
 use crate::{DataFrame, Format, GgsqlError, Result};
 
-/// Reshape `formats` (one `FORMAT` clause per entry, each naming several
-/// columns) into one `Format` per column it covers — a later `FORMAT`
-/// clause wins over an earlier one naming the same column.
-pub(crate) fn reshape_formats(
-    df: &DataFrame,
-    formats: &[Format],
-) -> Result<HashMap<String, Format>> {
+/// Validate every FORMAT's `SETTING` parameters, then reshape `formats`
+/// into one `Format` per column it covers.
+pub(crate) fn setup_formats(df: &DataFrame, formats: &[Format]) -> Result<HashMap<String, Format>> {
+    for (idx, format) in formats.iter().enumerate() {
+        format
+            .validate_settings()
+            .map_err(|e| GgsqlError::ValidationError(format!("FORMAT {}: {}", idx + 1, e)))?;
+    }
+
+    // `formats` has one entry per FORMAT clause, each naming several
+    // columns — reshaped here into one `Format` per column, where a later
+    // clause wins over an earlier one naming the same column.
     let mut resolved = HashMap::new();
     for format in formats {
         for name in &format.columns {
@@ -57,7 +63,7 @@ pub(crate) fn apply_formats(
 
         let array = df
             .column(name)
-            .expect("reshape_formats already checked this column exists")
+            .expect("setup_formats already checked this column exists")
             .clone();
         let resolved = crate::format::resolve_column_values(
             &array,
@@ -130,7 +136,7 @@ mod tests {
     }
 
     #[test]
-    fn reshape_formats_lets_a_later_clause_win_and_clears_columns() {
+    fn setup_formats_lets_a_later_clause_win_and_clears_columns() {
         let frame = df! { "price" => vec![1.0f64] }.unwrap();
         let formats = vec![
             Format {
@@ -143,7 +149,7 @@ mod tests {
             },
         ];
 
-        let resolved = reshape_formats(&frame, &formats).unwrap();
+        let resolved = setup_formats(&frame, &formats).unwrap();
 
         let price = resolved.get("price").unwrap();
         assert_eq!(price.value_template, "{:num %.2f}");
@@ -151,14 +157,14 @@ mod tests {
     }
 
     #[test]
-    fn reshape_formats_errors_on_an_unknown_column() {
+    fn setup_formats_errors_on_an_unknown_column() {
         let frame = df! { "price" => vec![1.0f64] }.unwrap();
         let formats = vec![Format {
             columns: vec!["typo".to_string()],
             ..format_with("{}", None)
         }];
 
-        let error = reshape_formats(&frame, &formats).unwrap_err();
+        let error = setup_formats(&frame, &formats).unwrap_err();
         assert!(matches!(error, GgsqlError::ValidationError(msg)
             if msg.contains("FORMAT references unknown column 'typo'")));
     }
