@@ -4536,3 +4536,27 @@ DRAW point SETTING bounds => [null, 1, Inf, -Inf], limit => inf
                 (bare_identifier)))
             value: (parameter_value
               (infinity))))))))
+
+================================================================================
+Label string containing URL with comment-like sequences
+================================================================================
+
+VISUALISE
+DRAW point
+LABEL caption => 'Data source: <https://doi.org/10.1371/journal.pone.0090081> -- see appendix'
+
+--------------------------------------------------------------------------------
+
+(query
+  (visualise_statement
+    (visualise_keyword)
+    (viz_clause
+      (draw_clause
+        (geom_type)))
+    (viz_clause
+      (label_clause
+        (label_assignment
+          (label_type
+            (identifier
+              (bare_identifier)))
+          (string))))))
