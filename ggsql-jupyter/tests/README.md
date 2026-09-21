@@ -70,6 +70,8 @@ Run official Jupyter kernel compliance tests:
 ```bash
 # From ggsql-jupyter/tests/ directory
 pytest test_compliance.py -v
-
-# Note: This will install the kernel spec temporarily
 ```
+
+`test_compliance.py` installs its kernelspec under a scratch `JUPYTER_DATA_DIR`
+it creates and tears down itself, using the name `ggsql-test` — running it
+never touches a real `ggsql` kernelspec you may have installed.

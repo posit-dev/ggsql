@@ -5,17 +5,22 @@ This test suite validates that ggsql-jupyter implements the Jupyter
 messaging protocol correctly according to the specification.
 """
 
+import os
 import unittest
 import jupyter_kernel_test as jkt
 import subprocess
 from pathlib import Path
+
+# Isolated from any real Jupyter install: setup_module points JUPYTER_DATA_DIR
+# at a scratch directory before this name is ever installed or removed.
+KERNEL_NAME = "ggsql-test"
 
 
 class ggsqlKernelTests(jkt.KernelTests):
     """Compliance tests for ggsql-jupyter kernel."""
 
     # Kernel name (will be overridden to use custom command)
-    kernel_name = "ggsql"
+    kernel_name = KERNEL_NAME
 
     # Language name
     language_name = "ggsql"
@@ -26,11 +31,6 @@ class ggsqlKernelTests(jkt.KernelTests):
     # Code samples for testing
     code_hello_world = "SELECT 'Hello, World!' as greeting"
 
-    # Expected output pattern (for simple SELECT)
-    # Note: jupyter_kernel_test looks for this in text/plain output
-    # We may need to adjust based on actual output format
-    code_page_something = "SELECT 'something' as result"
-
     # Override test_execute_stdout - SQL kernels don't produce stdout
     def test_execute_stdout(self):
         """SQL kernels produce execute_result, not stdout streams."""
@@ -38,35 +38,28 @@ class ggsqlKernelTests(jkt.KernelTests):
         # They produce execute_result messages instead
         pass
 
-    def setUp(self):
-        """Build kernel before tests."""
-        # Build the kernel
-        repo_root = Path(__file__).parent.parent.parent
-        result = subprocess.run(
-            ["cargo", "build", "--bin", "ggsql-jupyter"],
-            cwd=repo_root / "ggsql-jupyter",
-            capture_output=True,
-            text=True,
-        )
-        if result.returncode != 0:
-            self.fail(f"Failed to build kernel: {result.stderr}")
-
-        super().setUp()
-
     # Test that kernel_info_request works
     def test_kernel_info(self):
-        """Test kernel_info_request returns correct information."""
+        """Test kernel_info_request returns correct information.
+
+        `get_non_kernel_info_reply` (jkt's own `execute_helper` uses it to
+        skip past an unsolicited reply and get to the one actually being
+        waited on) would hang here forever: it explicitly discards
+        `kernel_info_reply` messages, but that is the only reply this
+        request ever produces. `get_shell_msg` with a bounded timeout is
+        what jkt's own base `test_kernel_info` uses for the same request.
+        """
         self.flush_channels()
 
         msg_id = self.kc.kernel_info()
-        reply = self.get_non_kernel_info_reply()
+        reply = self.kc.get_shell_msg(timeout=jkt.TIMEOUT)
 
         self.assertEqual(reply["msg_type"], "kernel_info_reply")
         content = reply["content"]
 
         self.assertEqual(content["status"], "ok")
         self.assertEqual(content["protocol_version"], "5.3")
-        self.assertEqual(content["implementation"], "ggsql")
+        self.assertEqual(content["implementation"], "ggsql-jupyter")
 
         # Language info
         lang_info = content["language_info"]
@@ -202,15 +195,32 @@ class ggsqlKernelTests(jkt.KernelTests):
 
     # Test shutdown
     def test_shutdown(self):
-        """Test that shutdown works."""
-        self.flush_channels()
+        """Test that shutdown works.
 
-        msg_id = self.kc.shutdown()
-        reply = self.kc.get_shell_msg(timeout=5)
+        `setUpClass`/`tearDownClass` own one kernel shared by every test
+        method in this class, so shutting *that* one down here would leave
+        nothing for whatever test runs next (unittest orders methods
+        alphabetically, so this would otherwise run before
+        `test_status_messages`). Start a throwaway kernel instead.
 
-        self.assertEqual(reply["msg_type"], "shutdown_reply")
-        self.assertEqual(reply["content"]["status"], "ok")
-        self.assertIn("restart", reply["content"])
+        `kc.shutdown()` sends `shutdown_request` on the *control* channel
+        (see `KernelClient.shutdown`'s docstring), and the reply comes back
+        on the same channel — not shell, despite the original version of
+        this test waiting on `get_shell_msg` and timing out here every time.
+        """
+        from jupyter_client.manager import start_new_kernel
+
+        km, kc = start_new_kernel(kernel_name=self.kernel_name)
+        try:
+            msg_id = kc.shutdown()
+            reply = kc.get_control_msg(timeout=5)
+
+            self.assertEqual(reply["msg_type"], "shutdown_reply")
+            self.assertEqual(reply["content"]["status"], "ok")
+            self.assertIn("restart", reply["content"])
+        finally:
+            kc.stop_channels()
+            km.shutdown_kernel()
 
     # Test persistent state
     def test_persistent_state(self):
@@ -233,14 +243,29 @@ class ggsqlKernelTests(jkt.KernelTests):
         self.assertEqual(reply3["content"]["status"], "ok")
 
 
+# Restored in teardown_module. Set before install so the kernelspec below
+# never touches a developer's real Jupyter data directory.
+_original_jupyter_data_dir = None
+_scratch_data_dir = None
+
+
 # Configure kernel for testing
 def setup_module():
-    """Setup module by installing kernel spec."""
+    """Build the kernel once and install it into an isolated kernelspec."""
     import tempfile
     import json
-    import os
 
-    # Build kernel
+    global _original_jupyter_data_dir, _scratch_data_dir
+
+    # Isolate JUPYTER_DATA_DIR before anything below can install or remove a
+    # kernelspec, so this suite can never clobber a developer's real "ggsql"
+    # kernel — nothing in the environment has to know to set this itself.
+    _original_jupyter_data_dir = os.environ.get("JUPYTER_DATA_DIR")
+    _scratch_data_dir = tempfile.mkdtemp(prefix="ggsql-jupyter-data-")
+    os.environ["JUPYTER_DATA_DIR"] = _scratch_data_dir
+
+    # Build kernel (once for the whole module; individual tests no longer
+    # rebuild it in setUp).
     repo_root = Path(__file__).parent.parent.parent
     result = subprocess.run(
         ["cargo", "build", "--bin", "ggsql-jupyter"],
@@ -259,7 +284,7 @@ def setup_module():
     # Create kernel spec
     kernel_spec = {
         "argv": [str(binary_path), "-f", "{connection_file}"],
-        "display_name": "ggsql",
+        "display_name": KERNEL_NAME,
         "language": "ggsql",
     }
 
@@ -268,7 +293,7 @@ def setup_module():
     with open(spec_dir / "kernel.json", "w") as f:
         json.dump(kernel_spec, f)
 
-    # Install kernel spec
+    # Install kernel spec (into the scratch JUPYTER_DATA_DIR set above)
     result = subprocess.run(
         [
             "jupyter",
@@ -276,7 +301,7 @@ def setup_module():
             "install",
             "--user",
             "--name",
-            "ggsql",
+            KERNEL_NAME,
             str(spec_dir),
         ],
         capture_output=True,
@@ -289,11 +314,21 @@ def setup_module():
 
 
 def teardown_module():
-    """Cleanup kernel spec after tests."""
+    """Cleanup kernel spec after tests and restore JUPYTER_DATA_DIR."""
     subprocess.run(
-        ["jupyter", "kernelspec", "remove", "-f", "ggsql"],
+        ["jupyter", "kernelspec", "remove", "-f", KERNEL_NAME],
         capture_output=True,
     )
+
+    if _original_jupyter_data_dir is None:
+        os.environ.pop("JUPYTER_DATA_DIR", None)
+    else:
+        os.environ["JUPYTER_DATA_DIR"] = _original_jupyter_data_dir
+
+    if _scratch_data_dir is not None:
+        import shutil
+
+        shutil.rmtree(_scratch_data_dir, ignore_errors=True)
 
 
 if __name__ == "__main__":

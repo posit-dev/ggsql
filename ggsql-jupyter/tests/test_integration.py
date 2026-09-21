@@ -44,6 +44,13 @@ def _launch(kernel_binary, extra_args=()):
     try:
         # Use KernelManager to write connection file with proper ports
         km = KernelManager()
+        # We launch and kill the process ourselves below (km.start_kernel()
+        # is never called), so km's own liveness bookkeeping never gets set
+        # up: km.is_alive() would otherwise unconditionally report the
+        # kernel dead, since has_kernel is False. Telling it we don't own
+        # the kernel process makes wait_for_ready() rely purely on getting a
+        # real kernel_info_reply within its timeout, which is what we want.
+        km._owns_kernel = False
         km.write_connection_file()
         connection_file = km.connection_file
 
@@ -57,15 +64,24 @@ def _launch(kernel_binary, extra_args=()):
         # Store the process in km for cleanup
         km._kernel_process = kernel_process
 
-        # Wait for kernel to be ready
-        time.sleep(3)
-
-        # Check if process started successfully
-        if kernel_process.poll() is not None:
-            stdout, stderr = kernel_process.communicate()
+        # Wait for the kernel to actually be ready (heartbeat up) rather than
+        # guessing with a fixed sleep. Opened and closed here rather than
+        # left open, since callers that want a client build their own via
+        # km.client() (see the `client`/`console_client` fixtures below).
+        probe = km.client()
+        probe.start_channels()
+        try:
+            probe.wait_for_ready(timeout=10)
+        except RuntimeError:
+            probe.stop_channels()
+            stdout, stderr = (b"", b"")
+            if kernel_process.poll() is not None:
+                stdout, stderr = kernel_process.communicate()
             pytest.fail(
                 f"Kernel failed to start:\nstdout: {stdout.decode()}\nstderr: {stderr.decode()}"
             )
+        else:
+            probe.stop_channels()
 
         yield km
 
