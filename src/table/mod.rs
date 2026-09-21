@@ -167,7 +167,7 @@ impl Spanner {
 /// One `FORMAT` clause: cell formatting for a group of columns.
 ///
 /// `settings` is validated against `FORMAT_PARAMS` and resolved into each
-/// covered column's `TableCell` properties — not yet consumed by any writer.
+/// covered column's `TableCell` properties.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Format {
     /// The columns this FORMAT applies to, in the order written.
@@ -190,16 +190,25 @@ pub struct Format {
 }
 
 /// `SETTING` parameters `FORMAT` accepts.
-const FORMAT_PARAMS: &[ParamDefinition] = &[ParamDefinition {
-    name: "hjust",
-    default: DefaultParamValue::Number(0.5),
-    // Both spellings accepted here; resolve_column_properties standardises
-    // "centre" to "center" when it builds a column's TableCell properties.
-    constraint: ParamConstraint::string_option_or_number(
-        &["left", "right", "centre", "center"],
-        NumberConstraint::range(0.0, 1.0),
-    ),
-}];
+const FORMAT_PARAMS: &[ParamDefinition] = &[
+    ParamDefinition {
+        name: "hjust",
+        default: DefaultParamValue::Number(0.5),
+        // Both spellings accepted here; resolve_column_properties standardises
+        // "centre" to "center" when it builds a column's TableCell properties.
+        constraint: ParamConstraint::string_option_or_number(
+            &["left", "right", "centre", "center"],
+            NumberConstraint::range(0.0, 1.0),
+        ),
+    },
+    ParamDefinition {
+        name: "width",
+        // No default: an unset width leaves column sizing to the writer,
+        // not to a value resolved here.
+        default: DefaultParamValue::Null,
+        constraint: ParamConstraint::string_numeric_with_unit(&["px", "%"]),
+    },
+];
 
 impl Format {
     /// Validate `settings` against `FORMAT_PARAMS`.
@@ -291,5 +300,22 @@ mod tests {
         );
 
         assert!(format_with_settings(settings).validate_settings().is_err());
+    }
+
+    #[test]
+    fn format_validate_settings_accepts_a_percent_or_pixel_width() {
+        let mut settings = Parameters::new();
+        settings.insert(
+            "width".to_string(),
+            ParameterValue::String("20%".to_string()),
+        );
+        assert!(format_with_settings(settings).validate_settings().is_ok());
+
+        let mut settings = Parameters::new();
+        settings.insert(
+            "width".to_string(),
+            ParameterValue::String("240px".to_string()),
+        );
+        assert!(format_with_settings(settings).validate_settings().is_ok());
     }
 }

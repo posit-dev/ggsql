@@ -1,8 +1,15 @@
 //! A minimal HTML table writer.
 //!
-//! Renders a `ResolvedTable`'s cells as a bare `<table>` — inline `style`
-//! attributes from each cell's resolved `FORMAT` properties, but no
-//! footnotes, since `Table` has no fields to describe those yet. Spanner
+//! Maps `ResolvedTable`'s three parts onto distinct pieces of the `<table>`:
+//! - `cells` → `<thead>`/`<tbody>` rows; each cell's resolved `FORMAT`
+//!   properties become an inline `style` attribute (e.g. `hjust` becomes
+//!   `text-align`).
+//! - `columns` → a `<colgroup>`, one `<col>` per column, with a `style`
+//!   attribute from that column's resolved `width` (a bare `<col>` for a
+//!   column with none).
+//! - `rows` → not consumed yet; no row-wide property exists to render.
+//!
+//! No footnotes, since `Table` has no fields to describe those yet. Spanner
 //! rows are rendered (as `colspan`, one `<tr>` per level, above the column
 //! labels); `render_cell`/`render_row` can also render a `rowspan` cell,
 //! though nothing in the resolution pipeline produces one yet, so a column
@@ -59,9 +66,8 @@ impl Writer for HtmlWriter {
         columns: Option<&[TableColumn]>,
         rows: Option<&[TableRow]>,
     ) -> Result<String> {
-        // Not consumed yet — no property needs whole-column/whole-row
-        // rendering (like `width`) rather than a per-cell one yet.
-        let _ = (columns, rows);
+        // Not consumed yet — no property needs whole-row rendering yet.
+        let _ = rows;
 
         let ncol = cells
             .iter()
@@ -104,6 +110,10 @@ impl Writer for HtmlWriter {
         let occupied = occupied_columns_per_row(cells, nrow);
 
         let mut html = String::from("<table>\n");
+
+        if let Some(colgroup) = render_colgroup(columns) {
+            html.push_str(&colgroup);
+        }
 
         if !header_rows.is_empty() {
             html.push_str("<thead>\n");
@@ -176,6 +186,42 @@ fn text_align(hjust: Option<&ParameterValue>) -> Option<&'static str> {
         ParameterValue::Number(n) if *n <= 0.25 => Some("left"),
         ParameterValue::Number(n) if *n >= 0.75 => Some("right"),
         ParameterValue::Number(_) => Some("center"),
+        _ => None,
+    }
+}
+
+/// Render a `<colgroup>` block, one `<col>` per column, or `None` if
+/// `columns` is absent or none of them resolve a `style`. Skipping the block
+/// entirely in that case avoids emitting a run of bare, attribute-less
+/// `<col>` tags that would render identically to omitting them.
+fn render_colgroup(columns: Option<&[TableColumn]>) -> Option<String> {
+    let styles: Vec<Option<String>> = columns?
+        .iter()
+        .map(|c| column_style(&c.properties))
+        .collect();
+    if styles.iter().all(Option::is_none) {
+        return None;
+    }
+
+    let mut html = String::from("<colgroup>\n");
+    for style in styles {
+        match style {
+            Some(style) => html.push_str(&format!("<col style=\"{style}\">\n")),
+            None => html.push_str("<col>\n"),
+        }
+    }
+    html.push_str("</colgroup>\n");
+    Some(html)
+}
+
+/// Translate a column's resolved `FORMAT` properties into a `<col>`'s
+/// `style` attribute value, or `None` if it has no `width`. `width`'s value
+/// is already validated (by `ParamConstraint::string_numeric_with_unit`) to
+/// be a number immediately followed by `px` or `%`, which is exactly CSS's
+/// own `width` syntax, so it's used as-is.
+fn column_style(properties: &Parameters) -> Option<String> {
+    match properties.get("width") {
+        Some(ParameterValue::String(width)) => Some(format!("width: {width}")),
         _ => None,
     }
 }
@@ -315,6 +361,52 @@ mod render_tests {
     }
 
     #[test]
+    fn column_style_reads_a_string_width_as_a_css_width() {
+        let mut properties = Parameters::new();
+        properties.insert(
+            "width".to_string(),
+            ParameterValue::String("20%".to_string()),
+        );
+        assert_eq!(column_style(&properties), Some("width: 20%".to_string()));
+
+        assert_eq!(column_style(&Parameters::new()), None);
+    }
+
+    fn column(properties: Parameters) -> TableColumn {
+        TableColumn {
+            name: String::new(),
+            label: String::new(),
+            properties,
+        }
+    }
+
+    #[test]
+    fn render_colgroup_returns_none_without_columns() {
+        assert_eq!(render_colgroup(None), None);
+    }
+
+    #[test]
+    fn render_colgroup_returns_none_when_no_column_has_a_width() {
+        let columns = vec![column(Parameters::new()), column(Parameters::new())];
+        assert_eq!(render_colgroup(Some(&columns)), None);
+    }
+
+    #[test]
+    fn render_colgroup_emits_a_bare_col_for_a_column_with_no_width() {
+        let mut widened = Parameters::new();
+        widened.insert(
+            "width".to_string(),
+            ParameterValue::String("20%".to_string()),
+        );
+        let columns = vec![column(widened), column(Parameters::new())];
+
+        assert_eq!(
+            render_colgroup(Some(&columns)).unwrap(),
+            "<colgroup>\n<col style=\"width: 20%\">\n<col>\n</colgroup>\n"
+        );
+    }
+
+    #[test]
     fn render_row_skips_a_column_occupied_by_a_rowspan_from_above() {
         let a = cell(TableCellKind::ColumnLabel, 1, 1, 0, 0);
         let c = cell(TableCellKind::ColumnLabel, 1, 1, 2, 2);
@@ -422,6 +514,27 @@ mod tests {
         assert!(html.contains(">name</th>"));
         // The spanner row renders above the column-label row.
         assert!(html.find("Info").unwrap() < html.find(">id</th>").unwrap());
+    }
+
+    #[test]
+    fn test_write_table_renders_a_colgroup_for_a_formats_width() {
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        reader
+            .execute_sql("CREATE TABLE sales AS SELECT * FROM (VALUES (1, 'a')) AS t(id, name)")
+            .unwrap();
+        let spec = reader
+            .execute("TABULATE FROM sales FORMAT id SETTING width => '20%'")
+            .unwrap();
+
+        let writer = HtmlWriter::new();
+        let html = writer.render(&spec).unwrap();
+
+        assert!(html.contains("<colgroup>"));
+        assert!(html.contains("<col style=\"width: 20%\">"));
+        // "name" has no FORMAT width, so its <col> stays bare.
+        assert!(html.contains("<col>"));
+        // <colgroup> comes before <thead>, per the HTML spec.
+        assert!(html.find("<colgroup>").unwrap() < html.find("<thead>").unwrap());
     }
 
     #[test]
