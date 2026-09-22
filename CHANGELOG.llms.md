@@ -1,5 +1,9 @@
 ## \[Unreleased\]
 
+### Fixed
+
+- Fixed a parser bug that interpreted comment characters inside string literals as initializing a comment (#555).
+
 ## 0.5.2 - 2026-09-11
 
 ### Changed
