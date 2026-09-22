@@ -1,19 +1,18 @@
 //! A minimal HTML table writer.
 //!
-//! Renders a `ResolvedTable`'s body as a bare `<table>` — no styling, no
-//! headings/spanners/footnotes, since `Table` has no fields to describe
-//! those yet. This is a stub to prove the Table → writer plumbing end to
-//! end, not the real grammar-of-tables output; it deliberately does not
-//! reuse `ggsql-jupyter`'s existing `dataframe_to_html`, since that's built
-//! around `DataFrame` specifically, and `ResolvedTable.body`'s type is
-//! itself still provisional (see the note on that field).
+//! Renders a `ResolvedTable`'s cells as a bare `<table>` — no styling, no
+//! spanners/footnotes, since `Table` has no fields to describe those yet.
+//! This is a stub to prove the Table → writer plumbing end to end, not the
+//! real grammar-of-tables output; it deliberately does not reuse
+//! `ggsql-jupyter`'s existing `dataframe_to_html`, which works directly off
+//! a `DataFrame` rather than resolved `TableCell`s.
 
+use std::collections::BTreeMap;
 use std::collections::HashMap;
 
-use crate::array_util::value_to_string;
 use crate::util::escape_html;
 use crate::writer::{Writer, WriterOptions};
-use crate::{DataFrame, GgsqlError, Plot, Result, Table};
+use crate::{DataFrame, GgsqlError, Plot, Result, TableCell, TableCellKind};
 
 /// Renders a resolved table as a bare HTML `<table>`. Does not support plots.
 #[derive(Debug, Default)]
@@ -47,21 +46,29 @@ impl Writer for HtmlWriter {
         ))
     }
 
-    fn write_table(&self, _table: &Table, body: &DataFrame) -> Result<String> {
+    fn write_table(&self, cells: &[TableCell]) -> Result<String> {
+        let mut column_labels: Vec<&TableCell> = cells
+            .iter()
+            .filter(|cell| cell.kind == TableCellKind::ColumnLabel)
+            .collect();
+        column_labels.sort_by_key(|cell| cell.left);
+
+        let mut body_rows: BTreeMap<usize, Vec<&TableCell>> = BTreeMap::new();
+        for cell in cells.iter().filter(|cell| cell.kind == TableCellKind::Body) {
+            body_rows.entry(cell.top).or_default().push(cell);
+        }
+
         let mut html = String::from("<table>\n<thead>\n<tr>");
-        for name in body.get_column_names() {
-            html.push_str(&format!("<th>{}</th>", escape_html(&name)));
+        for cell in column_labels {
+            html.push_str(&format!("<th>{}</th>", escape_html(&cell.content)));
         }
         html.push_str("</tr>\n</thead>\n<tbody>\n");
 
-        let columns = body.get_columns();
-        for row in 0..body.height() {
+        for (_, mut row) in body_rows {
+            row.sort_by_key(|cell| cell.left);
             html.push_str("<tr>");
-            for column in columns {
-                html.push_str(&format!(
-                    "<td>{}</td>",
-                    escape_html(&value_to_string(column, row))
-                ));
+            for cell in row {
+                html.push_str(&format!("<td>{}</td>", escape_html(&cell.content)));
             }
             html.push_str("</tr>\n");
         }

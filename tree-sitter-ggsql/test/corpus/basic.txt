@@ -4569,3 +4569,25 @@ TABULATE FROM sales
       source: (qualified_name
         (identifier
           (bare_identifier))))))
+
+================================================================================
+TABULATE LABEL clause
+================================================================================
+
+TABULATE FROM sales LABEL id => 'ID'
+
+--------------------------------------------------------------------------------
+
+(query
+  (tabulate_statement
+    (tabulate_keyword)
+    (single_source_from
+      source: (qualified_name
+        (identifier
+          (bare_identifier))))
+    (label_clause
+      (label_assignment
+        name: (label_type
+          (identifier
+            (bare_identifier)))
+        value: (string)))))

@@ -23,7 +23,7 @@ mod table;
 pub use casting::TypeRequirement;
 pub use cte::CteDefinition;
 pub use schema::TypeInfo;
-pub use table::resolve_table_with_reader;
+pub use table::{resolve_table_with_reader, TableCell, TableCellKind};
 
 use crate::naming;
 use crate::parser;

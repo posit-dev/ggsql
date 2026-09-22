@@ -668,13 +668,11 @@ module.exports = grammar({
       caseInsensitive("VISUALIZE")
     ))),
 
-    // TABULATE — placeholder for tabular output, parallel to VISUALISE: an
-    // optional FROM right after the keyword, same single_source_from as
-    // visualise_statement (no joins, no comma list). No other clauses yet:
-    // the Table AST it builds has no fields to populate.
+    // TABULATE — still incomplete, more clauses expected as Table grows.
     tabulate_statement: $ => prec.dynamic(1, seq(
       $.tabulate_keyword,
       optional($.single_source_from),
+      optional($.label_clause),
     )),
 
     // TABULATE keyword as explicit high-precedence token (mirrors visualise_keyword)

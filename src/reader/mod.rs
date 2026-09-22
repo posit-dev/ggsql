@@ -37,7 +37,7 @@ use crate::execute::{prepare_data_with_reader, resolve_table_with_reader};
 use crate::parser::{self, SourceTree};
 use crate::plot::{CastTargetType, Plot};
 use crate::validate::{validate, ValidationWarning};
-use crate::{naming, DataFrame, GgsqlError, Result, Spec, Table};
+use crate::{naming, DataFrame, GgsqlError, Result, Spec, Table, TableCell};
 
 // =============================================================================
 // SQL Dialect
@@ -710,16 +710,13 @@ pub struct Metadata {
 pub struct ResolvedTable {
     /// The resolved table specification
     pub(crate) table: Table,
-    // PROVISIONAL, NOT A FINAL DESIGN DECISION: a plain `DataFrame` is enough
-    // to design the execution plumbing against, but this was never settled
-    // as the real representation. It will very likely need to become a
-    // table-specific intermediate representation once real table writers
-    // exist (e.g. an HTML/gt-style writer) and we know what they actually
-    // need `body` to carry. Don't build on this shape assuming it's final.
-    /// The data resolved from `table.source` (or the main SQL if there was no
-    /// TABULATE FROM)
-    pub(crate) body: DataFrame,
-    /// The SQL query that was executed to produce `body`
+    /// The resolved layout: one cell per column label and per data value,
+    /// resolved from `table.source` (or the main SQL if there was no
+    /// TABULATE FROM). See `TableCell` for the position/kind conventions.
+    /// `nrow()`/`ncol()` are computed from this rather than stored
+    /// separately, so there's one source of truth for the table's shape.
+    pub(crate) cells: Vec<TableCell>,
+    /// The SQL query that was executed to produce `cells`
     pub(crate) sql: String,
     /// Validation warnings from preparation
     pub(crate) warnings: Vec<ValidationWarning>,

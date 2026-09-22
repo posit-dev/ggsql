@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use crate::naming;
 use crate::plot::Plot;
 use crate::validate::ValidationWarning;
-use crate::{DataFrame, Table};
+use crate::{DataFrame, Table, TableCell};
 
 use super::{Metadata, ResolvedPlot, ResolvedSpec, ResolvedTable};
 
@@ -115,13 +115,13 @@ impl ResolvedTable {
     /// Create a new ResolvedTable.
     pub(crate) fn new(
         table: Table,
-        body: DataFrame,
+        cells: Vec<TableCell>,
         sql: String,
         warnings: Vec<ValidationWarning>,
     ) -> Self {
         Self {
             table,
-            body,
+            cells,
             sql,
             warnings,
         }
@@ -132,14 +132,29 @@ impl ResolvedTable {
         &self.table
     }
 
-    /// Get the resolved body data. See the PROVISIONAL note on the `body`
-    /// field in `reader::mod` — this accessor's return type will likely
-    /// change once real table writers exist.
-    pub fn body(&self) -> &DataFrame {
-        &self.body
+    /// Get the resolved layout: one cell per column label and per data value.
+    pub fn cells(&self) -> &[TableCell] {
+        &self.cells
     }
 
-    /// The SQL query that was executed to produce `body`.
+    /// Number of data rows (not counting the column-label row), computed
+    /// from `cells`. The column-label row is always `bottom == 0`, so it
+    /// only determines this max when there are no data rows, where it
+    /// correctly gives `0`.
+    pub fn nrow(&self) -> usize {
+        self.cells.iter().map(|cell| cell.bottom).max().unwrap_or(0)
+    }
+
+    /// Number of columns, computed from `cells`.
+    pub fn ncol(&self) -> usize {
+        self.cells
+            .iter()
+            .map(|cell| cell.right)
+            .max()
+            .map_or(0, |right| right + 1)
+    }
+
+    /// The SQL query that was executed to produce `cells`.
     pub fn sql(&self) -> &str {
         &self.sql
     }
