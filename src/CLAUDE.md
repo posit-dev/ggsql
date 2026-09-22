@@ -24,7 +24,7 @@ src/
 │
 ├── parser/      Tree-sitter integration → typed AST (Spec: Plot or Table)
 ├── plot/        AST: Plot, Layer, Geom, Scale, Facet, Projection, Mappings  (see plot/CLAUDE.md)
-├── table/       AST stub for TABULATE, parallel to plot/ (no fields yet)
+├── table/       AST for TABULATE, parallel to plot/ (source, labels, spans)
 ├── reader/      Reader trait + drivers (DuckDB, SQLite, ODBC, Snowflake, …)
 ├── execute/     Pipeline that turns Plot + Reader → ResolvedPlot
 ├── writer/      Writer trait + Vega-Lite implementation  (see writer/vegalite/CLAUDE.md)

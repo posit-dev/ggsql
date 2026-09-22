@@ -669,14 +669,45 @@ module.exports = grammar({
     ))),
 
     // TABULATE — still incomplete, more clauses expected as Table grows.
+    // LABEL and SPAN clauses may repeat and appear in any order after the
+    // source, the same "any order, repeated" shape viz_clause gives VISUALISE
+    // — only single_source_from is fixed in position.
     tabulate_statement: $ => prec.dynamic(1, seq(
       $.tabulate_keyword,
       optional($.single_source_from),
-      optional($.label_clause),
+      repeat($.tab_clause)
     )),
 
     // TABULATE keyword as explicit high-precedence token (mirrors visualise_keyword)
     tabulate_keyword: $ => token(prec(10, caseInsensitive("TABULATE"))),
+
+    // All the TABULATE clauses (mirrors viz_clause's role for VISUALISE).
+    tab_clause: $ => choice(
+      $.label_clause,
+      $.span_clause,
+    ),
+
+    // SPAN — groups columns under one spanner cell. Multiple spanners repeat
+    // the whole clause (SPAN ... SPAN ...), the same model DRAW/SCALE use for
+    // more than one instance — not a comma list inside one SPAN.
+    span_clause: $ => seq(
+      caseInsensitive('SPAN'),
+      // Mandatory: a string sets the cell's text (possibly '', a
+      // present-but-blank cell); NULL suppresses the cell while still
+      // grouping the columns (e.g. for a shared SETTING like width).
+      // Reuses label_assignment's value shape.
+      field('label', choice($.string, $.null_literal)),
+      caseInsensitive('ACROSS'),
+      $.span_columns,
+      optional($.setting_clause)
+    ),
+
+    // The group of columns this SPAN covers — same plain identifier-list
+    // shape as partition_columns/facet_vars/project_aesthetics.
+    span_columns: $ => seq(
+      $.identifier,
+      repeat(seq(',', $.identifier))
+    ),
 
     // Shared mapping list: comma-separated mapping elements
     // Used by both global (VISUALISE) and layer (MAPPING) mappings

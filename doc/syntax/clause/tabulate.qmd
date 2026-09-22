@@ -1,0 +1,104 @@
+---
+title: "Output a table instead of a plot with `TABULATE`"
+---
+
+<!-- 
+This document is work in progress.
+Take statements herein as malleable truths.
+We will be adding more clauses, more settings and rephrasing language.
+-->
+
+The `TABULATE` clause marks the beginning of a ggsql table declaration — the plain-table counterpart to [`VISUALISE`](visualise.qmd). Instead of building a plot, it renders the query result directly as a table. As with `VISUALISE`, it demarcates where the regular SQL query ends: everything before `TABULATE` is standard SQL sent to the backend, and if it ends with a `SELECT`, that result becomes the table's data unless overridden by `FROM`.
+
+`TABULATE` currently only produces output through the HTML writer — every other writer (Vega-Lite, SVG, PDF, `.hep`, the raster writers) supports plots only and errors if given a `TABULATE` query.
+
+## Clause syntax
+`TABULATE` doesn't require any additional clauses.
+
+```ggsql
+TABULATE FROM <data-source>
+  LABEL <column> => <string>, ...
+  SPAN <string> ACROSS <column>, ...
+    SETTING <parameter> => <value>, ...
+```
+
+`LABEL` and `SPAN` may each appear more than once, in any order, after the source.
+
+### `FROM`
+```ggsql
+FROM <data-source>
+```
+
+Same shape as [`VISUALISE`'s `FROM`](visualise.qmd#from): a bare identifier names a CTE or table already available in the backend, and a string names a file path the backend can read directly. `FROM` is optional if the query already ends with a `SELECT`; combining both (a trailing `SELECT` *and* `TABULATE FROM`) is an error, since it would leave two candidate data sources.
+
+### `LABEL`
+```ggsql
+LABEL <column> => <string>, ...
+```
+
+Overrides the display header text for one or more columns. Unlike `VISUALISE`'s `LABEL` (which is keyed by aesthetic), `TABULATE`'s `LABEL` is keyed by column name, and there is no equivalent to `VISUALISE`'s automatic labelling logic — a column with no `LABEL` entry keeps its own name as its header.
+
+Give `NULL` instead of a string to blank a column's header while keeping the column itself:
+
+```ggsql
+TABULATE FROM sales
+  LABEL revenue => 'Revenue ($)', region => NULL
+```
+
+If every column ends up with a blank header this way, the header row is omitted entirely rather than rendered as a row of empty cells.
+
+### `SPAN`
+```ggsql
+SPAN <string> ACROSS <column>, ...
+  SETTING <parameter> => <value>, ...
+```
+
+Groups columns under one spanner cell, drawn in a row above the column labels:
+
+```ggsql
+TABULATE FROM sales
+  SPAN 'Q1' ACROSS jan, feb, mar
+```
+
+The label is mandatory and can be a string (`''` is a present-but-blank cell) or `NULL`, which suppresses the spanner cell itself while still grouping the columns — useful when the only reason for the `SPAN` is a shared `SETTING`. Each `SPAN` clause defines exactly one spanner; give several `SPAN` clauses for several spanners, the same way multiple `DRAW` clauses give multiple layers.
+
+Spanners whose column sets overlap (but aren't identical) are placed on separate header rows automatically, closest-to-the-columns first.
+
+#### `SETTING`
+```ggsql
+SETTING <parameter> => <value>, ...
+```
+
+* `gather` (boolean, default `true`): moves the spanner's columns to sit contiguously, pulling them next to the first-listed member without disturbing any other column's relative order. Set to `false` to leave the columns exactly where they are.
+* `level` (whole number, no default): pins the spanner to a specific header row (`1` is the row closest to the column labels). If omitted, a level is assigned automatically, high enough to avoid every other spanner it shares a column with.
+* `id` (string, no default): names this spanner so a *later* `SPAN` clause can fold its columns into a new one.
+
+Reference an `id` in place of a column name in a later `SPAN`'s `ACROSS` list to include everything the earlier spanner covers:
+
+```ggsql
+TABULATE FROM sales
+  SPAN 'Q1' ACROSS jan, feb, mar SETTING id => 'q1'
+  SPAN 'H1' ACROSS q1, apr, may, jun
+```
+
+`H1` ends up covering `jan, feb, mar, apr, may, jun`. Only an `id` declared by an *earlier* `SPAN` clause is recognised — referencing one declared later, or a typo, is treated as an unknown column, the same error as any other bad `ACROSS` entry. Every `id` must be unique across the whole query, and can't collide with an actual column name.
+
+### Examples
+
+```{ggsql}
+SELECT * FROM ggsql:penguins LIMIT 5
+
+TABULATE
+```
+
+
+
+```{ggsql}
+SELECT * FROM ggsql:penguins LIMIT 5
+
+TABULATE
+  SPAN 'Bill' ACROSS bill_len, bill_dep
+  LABEL 
+    bill_len => 'Length',
+    bill_dep => 'Depth'
+```

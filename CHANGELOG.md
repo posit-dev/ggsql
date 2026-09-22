@@ -91,6 +91,13 @@
 
 - `ggsql-jupyter` accepts `--version`.
 
+- (WIP) New `TABULATE` clause renders a query result as a table instead of a 
+  plot. Tables are rendered via new `html` writer. `TABULATE` supports the 
+  following clauses:
+  - `LABEL` overrides the display of column labels
+  - `SPAN` groups columns under a shared header cell (spanner).
+
+
 ### Changed
 - The wasm bundle draws plots with ggsql's own renderer instead of emitting
   Vega-Lite. A query is executed in the browser and drawn straight to SVG, so

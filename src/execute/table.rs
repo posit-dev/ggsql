@@ -2,18 +2,21 @@
 //!
 //! A Table has no layers, so there's no per-layer CTE materialization, scale
 //! resolution, or facet handling to do here — just the one query that
-//! produces `body`, plus (as `Table` grows headings/spanners/footnotes)
-//! resolving that data into positioned `TableCell`s. As those concerns grow
-//! they're expected to split into sibling files here, the way Plot's own
+//! produces `body`, plus resolving that data into positioned `TableCell`s.
+//! `SPAN`-specific resolution (column reordering, header-row assignment)
+//! lives in the sibling `table_spanner` module, the way Plot's own
 //! resolution logic is split across `schema.rs`/`casting.rs`/`layer.rs`/
 //! `scale.rs`/`position.rs`/`cte.rs` rather than left in one file.
+//! `Table::resolve_spanner_ids` is the exception — it needs no `DataFrame`,
+//! so it lives on `Table` itself, reachable from `validate()` too.
 
+use super::table_spanner::{create_spanners, reorder_table_columns};
 use crate::array_util::value_to_string;
 use crate::parser::{self, SourceTree};
 use crate::plot::Labels;
 use crate::reader::{Reader, ResolvedTable};
 use crate::validate::{validate, ValidationWarning};
-use crate::{DataFrame, GgsqlError, Result, Spec};
+use crate::{DataFrame, GgsqlError, Result, Spec, Table};
 
 /// Resolve a TABULATE query into a `ResolvedTable`.
 ///
@@ -57,13 +60,36 @@ pub fn resolve_table_with_reader(query: &str, reader: &dyn Reader) -> Result<Res
     })?;
 
     let df = reader.execute_sql(&sql)?;
-    let columns = create_table_columns(&df, &table.labels);
-    let column_labels = create_column_labels(&columns);
-    let table_body = create_body(&df, &columns);
-    let cells = compose_cells(column_labels, table_body);
-    validate_overlaps(&cells)?;
+    let cells = build_cells(&df, &table)?;
 
     Ok(ResolvedTable::new(table, cells, sql, warnings))
+}
+
+/// Build the resolved cell layout for a table — columns (reordered for any
+/// spanners), spanner rows, column labels, and body, composed together and
+/// checked for overlaps. Split out from `resolve_table_with_reader` so the
+/// whole layout pipeline can be tested directly against a `df!()`-built
+/// `DataFrame` and a `Table`, without needing a `Reader`/real SQL execution.
+fn build_cells(df: &DataFrame, table: &Table) -> Result<Vec<TableCell>> {
+    for (idx, spanner) in table.spans.iter().enumerate() {
+        spanner
+            .validate_settings()
+            .map_err(|e| GgsqlError::ValidationError(format!("SPAN {}: {}", idx + 1, e)))?;
+    }
+    let spans = table
+        .resolve_spanner_ids()
+        .map_err(GgsqlError::ValidationError)?;
+
+    let columns = create_table_columns(df, &table.labels);
+    let columns = reorder_table_columns(columns, &spans)?;
+    let spanners = create_spanners(&columns, &spans)?;
+    let column_labels = create_column_labels(&columns);
+    let header = compose_header(spanners, column_labels);
+    let table_body = create_body(df, &columns);
+    let cells = rowbind_cells(header, table_body);
+    validate_overlaps(&cells)?;
+
+    Ok(cells)
 }
 
 /// One column's identity within a table layout: its source name and resolved
@@ -76,21 +102,18 @@ pub fn resolve_table_with_reader(query: &str, reader: &dyn Reader) -> Result<Res
 /// `dtype: DataType` is expected to join this once column alignment is
 /// tackled — left out for now since nothing would read it yet, and an unread
 /// struct field is a dead-code warning, not just an early add.
-struct TableColumn {
+pub(crate) struct TableColumn {
     /// The column's name in the resolved `DataFrame` — used to look its
     /// values up in `create_body`, independent of display order.
-    name: String,
+    pub(crate) name: String,
     /// The resolved `ColumnLabel` cell content for this column.
-    label: String,
+    pub(crate) label: String,
 }
 
 /// Build one `TableColumn` per `DataFrame` column, in the `DataFrame`'s own
-/// order (nothing reorders it yet).
-///
-/// `labels` (from a `TABULATE LABEL` clause) is the one authority for a
-/// column's label. Three outcomes: a name absent from `labels` keeps the
-/// column name; an explicit `LABEL col => NULL` empties the label;
-/// `LABEL col => 'text'` sets it to `text`.
+/// order — `reorder_table_columns` is what may reorder this list
+/// afterward, not this function. `labels` (from a `TABULATE LABEL` clause)
+/// is the one authority for a column's label.
 fn create_table_columns(df: &DataFrame, labels: &Labels) -> Vec<TableColumn> {
     df.get_column_names()
         .into_iter()
@@ -108,9 +131,18 @@ fn create_table_columns(df: &DataFrame, labels: &Labels) -> Vec<TableColumn> {
 /// Build one `ColumnLabel` cell per column, numbered from `top == 0`, in
 /// `columns`' order.
 ///
-/// Row numbering here is local to this function alone — `compose_cells`
-/// is what decides where this sits relative to the body, not this function.
+/// Row numbering here is local to this function alone — `compose_header`/
+/// `rowbind_cells` are what decide where this sits relative to spanners and
+/// the body, not this function.
 fn create_column_labels(columns: &[TableColumn]) -> Vec<TableCell> {
+    // The only way every column's label ends up empty is `LABEL col => NULL`
+    // (or `=> ''`) on every column, since an unlabeled column keeps its
+    // (non-empty) name — so a wholly suppressed row omits the row entirely
+    // rather than rendering a row of blank header cells.
+    if columns.iter().all(|c| c.label.is_empty()) {
+        return Vec::new();
+    }
+
     columns
         .iter()
         .enumerate()
@@ -156,46 +188,114 @@ fn create_body(df: &DataFrame, columns: &[TableColumn]) -> Vec<TableCell> {
     cells
 }
 
-/// Compose a column-label row and a body into one layout: a pure function of
-/// its two arguments, with no `DataFrame`/SQL knowledge of its own. Shifts
-/// `body` down by however many rows `column_labels` occupies — today always
-/// one, but this is what lets the two stay ignorant of each other's size. As
-/// `Table` grows (headings/spanners/footnotes), more of these intermediate
-/// composers are expected alongside this one (e.g. for a header or footer),
-/// each combining a subset of parts the same way.
-fn compose_cells(column_labels: Vec<TableCell>, mut body: Vec<TableCell>) -> Vec<TableCell> {
-    let row_offset = column_labels
+/// Stack `bottom` below `top`, offsetting `bottom` down by whatever row
+/// extent `top` actually occupies — a pure function of its two arguments,
+/// with no `DataFrame`/SQL knowledge of its own, and no assumption about
+/// either side's row count. R's `rbind()` for already-positioned cells:
+/// every part of the table (spanners, column labels, body, ...) gets
+/// stacked together with the same primitive rather than each combination
+/// hardcoding its own offset arithmetic.
+fn rowbind_cells(top: Vec<TableCell>, mut bottom: Vec<TableCell>) -> Vec<TableCell> {
+    if top.is_empty() {
+        return bottom;
+    }
+    if bottom.is_empty() {
+        return top;
+    }
+
+    let row_offset = top
         .iter()
         .map(|cell| cell.bottom)
         .max()
         .map_or(0, |bottom| bottom + 1);
 
-    for cell in &mut body {
+    for cell in &mut bottom {
         cell.offset_rows(row_offset);
     }
 
-    let mut cells = column_labels;
-    cells.extend(body);
+    let mut cells = top;
+    cells.extend(bottom);
     cells
+}
+
+/// Stack spanner rows above column labels — the header half of a table's
+/// layout — then let a column with no spanner covering it stretch its own
+/// label upward over the gap rather than leave it a separate blank cell.
+/// Kept as its own named step (rather than folded into `rowbind_cells`)
+/// since a stubhead (another header part) is expected to join it.
+fn compose_header(spanners: Vec<TableCell>, column_labels: Vec<TableCell>) -> Vec<TableCell> {
+    let num_spanner_rows = spanners.iter().map(|c| c.bottom).max().map_or(0, |r| r + 1);
+    let header = rowbind_cells(spanners, column_labels);
+    stretch_unspanned_column_labels(header, num_spanner_rows)
+}
+
+/// Grow a column's label cell upward into every consecutive spanner row
+/// above it (starting from the row closest to the labels) that has no
+/// spanner covering that column, stopping at the first one that does —
+/// turning those rows into a `rowspan` on the label instead of separate
+/// blank filler cells. Deliberately diverges from gt here: gt only ever
+/// stretches into the single row immediately above the labels, even when
+/// rows further up are also empty for that column (verified directly
+/// against gt's own output).
+fn stretch_unspanned_column_labels(
+    mut header: Vec<TableCell>,
+    num_spanner_rows: usize,
+) -> Vec<TableCell> {
+    if num_spanner_rows == 0 {
+        return header;
+    }
+
+    let ncol = header.iter().map(|c| c.right).max().map_or(0, |r| r + 1);
+    let mut stretch_depth = vec![0usize; ncol];
+    for (column, depth) in stretch_depth.iter_mut().enumerate() {
+        for row in (0..num_spanner_rows).rev() {
+            let covered = header.iter().any(|c| {
+                c.kind == TableCellKind::Spanner
+                    && c.top == row
+                    && c.left <= column
+                    && column <= c.right
+            });
+            if covered {
+                break;
+            }
+            *depth += 1;
+        }
+    }
+
+    for label in header
+        .iter_mut()
+        .filter(|c| c.kind == TableCellKind::ColumnLabel)
+    {
+        // Assumes every ColumnLabel cell is exactly one column wide (true of
+        // everything create_column_labels produces) — a wider one would need
+        // its own stretch depth reconciled across its whole span, not just
+        // `left`.
+        label.top -= stretch_depth[label.left];
+    }
+
+    header
 }
 
 /// Check that no two cells in a resolved layout claim the same grid position.
 ///
 /// Walks every cell's full footprint (`top..=bottom` × `left..=right`, not
-/// just its corners) into a set of occupied positions, erroring as soon as a
-/// position is claimed twice. `O(total cell area)` rather than the O(n²) cost
-/// of comparing every pair of cells — cheap for the common case (one 1x1
-/// cell per data value, so area == cell count) and only grows with the
+/// just its corners) into a map of occupied positions to the `TableCellKind`
+/// that claimed each one, erroring — naming both kinds involved — as soon as
+/// a position is claimed twice. `O(total cell area)` rather than the O(n²)
+/// cost of comparing every pair of cells — cheap for the common case (one
+/// 1x1 cell per data value, so area == cell count) and only grows with the
 /// footprint spanning cells actually cover, not with `cells.len()` squared.
 fn validate_overlaps(cells: &[TableCell]) -> Result<()> {
-    let mut occupied = std::collections::HashSet::new();
+    let mut occupied: std::collections::HashMap<(usize, usize), TableCellKind> =
+        std::collections::HashMap::new();
 
     for cell in cells {
         for row in cell.top..=cell.bottom {
             for col in cell.left..=cell.right {
-                if !occupied.insert((row, col)) {
+                if let Some(existing_kind) = occupied.insert((row, col), cell.kind) {
                     return Err(GgsqlError::ValidationError(format!(
-                        "Table layout has more than one cell at row {row}, column {col}"
+                        "Table layout has a {existing_kind} cell and a {} cell clashing at row {row}, column {col}",
+                        cell.kind
                     )));
                 }
             }
@@ -226,6 +326,20 @@ pub enum TableCellKind {
     ColumnLabel,
     /// A data value (gt's `body`).
     Body,
+    /// A spanner cell, grouping several columns under one label (`TABULATE
+    /// SPAN`).
+    Spanner,
+}
+
+impl std::fmt::Display for TableCellKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let text = match self {
+            TableCellKind::ColumnLabel => "column label",
+            TableCellKind::Body => "body",
+            TableCellKind::Spanner => "spanner",
+        };
+        write!(f, "{text}")
+    }
 }
 
 /// A single positioned cell within a resolved table layout.
@@ -273,12 +387,37 @@ impl TableCell {
         self.left += cols;
         self.right += cols;
     }
+
+    /// Whether this cell belongs in a table's header (`ColumnLabel`,
+    /// `Spanner`) rather than its body (`Body`) — lets a writer pick `<th>`
+    /// vs `<td>` (or an equivalent) off the cell itself, without matching on
+    /// `TableCellKind` at every call site.
+    pub fn is_header(&self) -> bool {
+        matches!(
+            self.kind,
+            TableCellKind::ColumnLabel | TableCellKind::Spanner
+        )
+    }
+
+    /// This cell's width in columns — `right - left + 1`, since both bounds
+    /// are inclusive.
+    pub fn width(&self) -> usize {
+        self.right - self.left + 1
+    }
+
+    /// This cell's height in rows — `bottom - top + 1`, since both bounds
+    /// are inclusive. No caller yet; kept alongside `width` for symmetry.
+    pub fn height(&self) -> usize {
+        self.bottom - self.top + 1
+    }
 }
 
 #[cfg(test)]
 mod layout_tests {
     use super::*;
     use crate::df;
+    use crate::plot::{ParameterValue, Parameters};
+    use crate::Spanner;
 
     fn column(name: &str, label: &str) -> TableColumn {
         TableColumn {
@@ -309,6 +448,28 @@ mod layout_tests {
         assert_eq!(columns[0].label, "ID"); // overridden
         assert_eq!(columns[1].label, ""); // explicitly suppressed
         assert_eq!(columns[2].label, "extra"); // absent: kept as-is
+    }
+
+    fn spanner_with(columns: &[&str], label: Option<&str>, settings: Parameters) -> Spanner {
+        Spanner {
+            label: label.map(str::to_string),
+            columns: columns.iter().map(|s| s.to_string()).collect(),
+            settings,
+        }
+    }
+
+    fn spanner(columns: &[&str]) -> Spanner {
+        spanner_with(columns, Some(""), Parameters::new())
+    }
+
+    fn spanner_with_setting(columns: &[&str], key: &str, value: ParameterValue) -> Spanner {
+        let mut settings = Parameters::new();
+        settings.insert(key.to_string(), value);
+        spanner_with(columns, Some(""), settings)
+    }
+
+    fn labeled_spanner(columns: &[&str], label: &str) -> Spanner {
+        spanner_with(columns, Some(label), Parameters::new())
     }
 
     #[test]
@@ -392,14 +553,14 @@ mod layout_tests {
     }
 
     #[test]
-    fn compose_cells_shifts_the_body_below_a_single_label_row() {
+    fn rowbind_cells_shifts_the_bottom_below_a_single_top_row() {
         let column_labels = vec![cell(TableCellKind::ColumnLabel, 0, 0, "id")];
         let body = vec![
             cell(TableCellKind::Body, 0, 0, "1"),
             cell(TableCellKind::Body, 1, 1, "2"),
         ];
 
-        let cells = compose_cells(column_labels, body);
+        let cells = rowbind_cells(column_labels, body);
 
         assert_eq!(cells.len(), 3);
         assert_eq!(cells[0].kind, TableCellKind::ColumnLabel);
@@ -412,17 +573,123 @@ mod layout_tests {
     }
 
     #[test]
-    fn compose_cells_offsets_by_the_label_rows_actual_extent_not_a_hardcoded_one() {
-        // Nothing produces a multi-row column-label section today, but
-        // `compose_cells` computes the offset from `column_labels` itself
-        // rather than assuming exactly one row — pin that down directly.
+    fn rowbind_cells_offsets_by_the_top_rows_actual_extent_not_a_hardcoded_one() {
+        // `rowbind_cells` computes the offset from `top` itself rather than
+        // assuming exactly one row — pin that down directly, independent of
+        // whichever caller happens to produce a multi-row `top`.
         let column_labels = vec![cell(TableCellKind::ColumnLabel, 0, 1, "id")];
         let body = vec![cell(TableCellKind::Body, 0, 0, "1")];
 
-        let cells = compose_cells(column_labels, body);
+        let cells = rowbind_cells(column_labels, body);
 
         assert_eq!(cells[1].top, 2);
         assert_eq!(cells[1].bottom, 2);
+    }
+
+    #[test]
+    fn rowbind_cells_returns_bottom_unchanged_when_top_is_empty() {
+        let body = vec![cell(TableCellKind::Body, 0, 0, "1")];
+
+        let cells = rowbind_cells(Vec::new(), body);
+
+        assert_eq!(cells.len(), 1);
+        assert_eq!(cells[0].top, 0);
+    }
+
+    #[test]
+    fn rowbind_cells_returns_top_unchanged_when_bottom_is_empty() {
+        let column_labels = vec![cell(TableCellKind::ColumnLabel, 0, 0, "id")];
+
+        let cells = rowbind_cells(column_labels, Vec::new());
+
+        assert_eq!(cells.len(), 1);
+        assert_eq!(cells[0].top, 0);
+    }
+
+    #[test]
+    fn compose_header_stretches_an_unspanned_columns_label_over_the_gap() {
+        // "G" covers a, b (columns 0, 1) at the one spanner row; c has no
+        // spanner at all.
+        let spanners = vec![cell_at(TableCellKind::Spanner, 0, 0, 0, 1)];
+        let column_labels = vec![
+            cell_at(TableCellKind::ColumnLabel, 0, 0, 0, 0),
+            cell_at(TableCellKind::ColumnLabel, 0, 0, 1, 1),
+            cell_at(TableCellKind::ColumnLabel, 0, 0, 2, 2),
+        ];
+
+        let header = compose_header(spanners, column_labels);
+
+        let a = header
+            .iter()
+            .find(|c| c.kind == TableCellKind::ColumnLabel && c.left == 0)
+            .unwrap();
+        let c = header
+            .iter()
+            .find(|c| c.kind == TableCellKind::ColumnLabel && c.left == 2)
+            .unwrap();
+        assert_eq!((a.top, a.bottom), (1, 1));
+        assert_eq!((c.top, c.bottom), (0, 1));
+    }
+
+    #[test]
+    fn compose_header_stops_stretching_at_the_first_row_that_covers_the_column() {
+        // "Outer" (row 0, the far level) covers both a and b; "Inner" (row
+        // 1, next to the labels) covers only a. b's row-1 gap is contiguous
+        // with the labels, so it stretches by one row — but row 0 already
+        // covers b, so the stretch must stop there, not skip past it.
+        let spanners = vec![
+            cell_at(TableCellKind::Spanner, 0, 0, 0, 1),
+            cell_at(TableCellKind::Spanner, 1, 1, 0, 0),
+        ];
+        let column_labels = vec![
+            cell_at(TableCellKind::ColumnLabel, 0, 0, 0, 0),
+            cell_at(TableCellKind::ColumnLabel, 0, 0, 1, 1),
+        ];
+
+        let header = compose_header(spanners, column_labels);
+
+        let a = header
+            .iter()
+            .find(|c| c.kind == TableCellKind::ColumnLabel && c.left == 0)
+            .unwrap();
+        let b = header
+            .iter()
+            .find(|c| c.kind == TableCellKind::ColumnLabel && c.left == 1)
+            .unwrap();
+        assert_eq!((a.top, a.bottom), (2, 2));
+        assert_eq!((b.top, b.bottom), (1, 2));
+    }
+
+    #[test]
+    fn compose_header_stretches_across_every_row_when_none_of_them_cover_the_column() {
+        // "G" (row 1) covers only a; "H" (row 0) covers only b; c has no
+        // spanner at either level, so its label absorbs both rows.
+        let spanners = vec![
+            cell_at(TableCellKind::Spanner, 0, 0, 1, 1),
+            cell_at(TableCellKind::Spanner, 1, 1, 0, 0),
+        ];
+        let column_labels = vec![
+            cell_at(TableCellKind::ColumnLabel, 0, 0, 0, 0),
+            cell_at(TableCellKind::ColumnLabel, 0, 0, 1, 1),
+            cell_at(TableCellKind::ColumnLabel, 0, 0, 2, 2),
+        ];
+
+        let header = compose_header(spanners, column_labels);
+
+        let c = header
+            .iter()
+            .find(|cell| cell.kind == TableCellKind::ColumnLabel && cell.left == 2)
+            .unwrap();
+        assert_eq!((c.top, c.bottom), (0, 2));
+    }
+
+    #[test]
+    fn compose_header_does_nothing_when_there_are_no_spanners() {
+        let column_labels = vec![cell_at(TableCellKind::ColumnLabel, 0, 0, 0, 0)];
+
+        let header = compose_header(Vec::new(), column_labels);
+
+        assert_eq!((header[0].top, header[0].bottom), (0, 0));
     }
 
     fn cell_at(
@@ -462,9 +729,8 @@ mod layout_tests {
         ];
 
         let error = validate_overlaps(&cells).unwrap_err();
-        assert!(
-            matches!(error, GgsqlError::ValidationError(msg) if msg.contains("row 0, column 0"))
-        );
+        assert!(matches!(error, GgsqlError::ValidationError(msg)
+            if msg.contains("row 0, column 0") && msg.contains("body cell and a body cell")));
     }
 
     #[test]
@@ -475,10 +741,121 @@ mod layout_tests {
         // disjoint labels/body can create on their own.
         let cells = vec![
             cell_at(TableCellKind::ColumnLabel, 0, 0, 0, 1),
-            cell_at(TableCellKind::Body, 0, 0, 1, 1),
+            cell_at(TableCellKind::Spanner, 0, 0, 1, 1),
         ];
 
-        assert!(validate_overlaps(&cells).is_err());
+        let error = validate_overlaps(&cells).unwrap_err();
+        assert!(matches!(error, GgsqlError::ValidationError(msg)
+            if msg.contains("column label cell and a spanner cell")));
+    }
+
+    #[test]
+    fn table_cell_kind_display_names_all_three_variants() {
+        assert_eq!(TableCellKind::ColumnLabel.to_string(), "column label");
+        assert_eq!(TableCellKind::Body.to_string(), "body");
+        assert_eq!(TableCellKind::Spanner.to_string(), "spanner");
+    }
+
+    #[test]
+    fn build_cells_composes_spanners_labels_and_body_together() {
+        let frame = df! {
+            "a" => vec![1i32],
+            "b" => vec![2i32],
+        }
+        .unwrap();
+        let mut table = Table::new();
+        table.spans = vec![labeled_spanner(&["a", "b"], "G")];
+
+        let cells = build_cells(&frame, &table).unwrap();
+
+        let spanner_cell = cells
+            .iter()
+            .find(|c| c.kind == TableCellKind::Spanner)
+            .unwrap();
+        assert_eq!(spanner_cell.top, 0);
+        assert_eq!(spanner_cell.left, 0);
+        assert_eq!(spanner_cell.right, 1);
+        assert_eq!(spanner_cell.content, "G");
+
+        assert!(cells
+            .iter()
+            .filter(|c| c.kind == TableCellKind::ColumnLabel)
+            .all(|c| c.top == 1));
+        assert!(cells
+            .iter()
+            .filter(|c| c.kind == TableCellKind::Body)
+            .all(|c| c.top == 2));
+    }
+
+    #[test]
+    fn build_cells_reorders_columns_for_a_spanner_before_building_labels_and_body() {
+        let frame = df! {
+            "a" => vec![1i32],
+            "x" => vec![9i32],
+            "b" => vec![2i32],
+        }
+        .unwrap();
+        let mut table = Table::new();
+        table.spans = vec![labeled_spanner(&["a", "b"], "G")];
+
+        let cells = build_cells(&frame, &table).unwrap();
+
+        let mut label_cells: Vec<_> = cells
+            .iter()
+            .filter(|c| c.kind == TableCellKind::ColumnLabel)
+            .collect();
+        label_cells.sort_by_key(|c| c.left);
+        let label_order: Vec<&str> = label_cells.iter().map(|c| c.content.as_str()).collect();
+        assert_eq!(label_order, vec!["a", "b", "x"]);
+
+        let mut body_cells: Vec<_> = cells
+            .iter()
+            .filter(|c| c.kind == TableCellKind::Body)
+            .collect();
+        body_cells.sort_by_key(|c| c.left);
+        let body_order: Vec<&str> = body_cells.iter().map(|c| c.content.as_str()).collect();
+        assert_eq!(body_order, vec!["1", "2", "9"]);
+    }
+
+    #[test]
+    fn build_cells_surfaces_a_genuine_spanner_overlap_as_an_error() {
+        // (a,b) auto-assigns level 1; (b,c) is explicitly pinned to level 1
+        // too, and neither reordering nor level assignment resolves that —
+        // build_cells should surface this via validate_overlaps, not
+        // silently produce a broken layout.
+        let frame = df! {
+            "a" => vec![1i32],
+            "b" => vec![2i32],
+            "c" => vec![3i32],
+        }
+        .unwrap();
+        let mut table = Table::new();
+        table.spans = vec![
+            spanner(&["a", "b"]),
+            spanner_with_setting(&["b", "c"], "level", ParameterValue::Number(1.0)),
+        ];
+
+        assert!(build_cells(&frame, &table).is_err());
+    }
+
+    #[test]
+    fn build_cells_omits_the_column_label_row_when_every_label_is_null() {
+        let frame = df! {
+            "id" => vec![1i32],
+            "name" => vec!["a".to_string()],
+        }
+        .unwrap();
+        let mut table = Table::new();
+        table.labels.labels.insert("id".to_string(), None);
+        table.labels.labels.insert("name".to_string(), None);
+
+        let cells = build_cells(&frame, &table).unwrap();
+
+        assert!(!cells.iter().any(|c| c.kind == TableCellKind::ColumnLabel));
+        assert!(cells
+            .iter()
+            .filter(|c| c.kind == TableCellKind::Body)
+            .all(|c| c.top == 0));
     }
 }
 
@@ -529,11 +906,26 @@ mod tests {
     fn test_tabulate_does_not_borrow_a_later_visualise_from() {
         // A source-less TABULATE followed by an unrelated VISUALISE FROM must
         // still error "no data source", not silently resolve against the
-        // VISUALISE's FROM — regression for a bug where extract_sql matched
-        // any statement's FROM in the whole query, not just the one being
-        // resolved.
+        // VISUALISE's FROM.
         let reader = reader_with_sales();
         let result = resolve_table_with_reader("TABULATE VISUALISE FROM sales DRAW point", &reader);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_tabulate_label_applies_under_the_tab_clause_wrapper() {
+        // label_clause is nested under tab_clause in the grammar (so LABEL
+        // and SPAN can appear in any order) — build_tabulate_statement must
+        // unwrap it, not match "label_clause" as a direct child.
+        let reader = reader_with_sales();
+        let resolved =
+            resolve_table_with_reader("TABULATE FROM sales LABEL id => 'ID'", &reader).unwrap();
+
+        let label_cell = resolved
+            .cells()
+            .iter()
+            .find(|c| c.kind == TableCellKind::ColumnLabel && c.left == 0)
+            .unwrap();
+        assert_eq!(label_cell.content, "ID");
     }
 }

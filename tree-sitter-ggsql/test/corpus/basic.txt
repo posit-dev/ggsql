@@ -4585,9 +4585,142 @@ TABULATE FROM sales LABEL id => 'ID'
       source: (qualified_name
         (identifier
           (bare_identifier))))
-    (label_clause
-      (label_assignment
-        name: (label_type
+    (tab_clause
+      (label_clause
+        (label_assignment
+          name: (label_type
+            (identifier
+              (bare_identifier)))
+          value: (string))))))
+
+================================================================================
+TABULATE SPAN clause
+================================================================================
+
+TABULATE FROM sales SPAN 'Pretty Name' ACROSS foo, bar, baz
+
+--------------------------------------------------------------------------------
+
+(query
+  (tabulate_statement
+    (tabulate_keyword)
+    (single_source_from
+      source: (qualified_name
+        (identifier
+          (bare_identifier))))
+    (tab_clause
+      (span_clause
+        label: (string)
+        (span_columns
+          (identifier
+            (bare_identifier))
+          (identifier
+            (bare_identifier))
+          (identifier
+            (bare_identifier)))))))
+
+================================================================================
+TABULATE SPAN clause with a single column
+================================================================================
+
+TABULATE FROM sales SPAN 'A' ACROSS foo
+
+--------------------------------------------------------------------------------
+
+(query
+  (tabulate_statement
+    (tabulate_keyword)
+    (single_source_from
+      source: (qualified_name
+        (identifier
+          (bare_identifier))))
+    (tab_clause
+      (span_clause
+        label: (string)
+        (span_columns
+          (identifier
+            (bare_identifier)))))))
+
+================================================================================
+TABULATE SPAN clause with a NULL label
+================================================================================
+
+TABULATE FROM sales SPAN NULL ACROSS foo, bar
+
+--------------------------------------------------------------------------------
+
+(query
+  (tabulate_statement
+    (tabulate_keyword)
+    (single_source_from
+      source: (qualified_name
+        (identifier
+          (bare_identifier))))
+    (tab_clause
+      (span_clause
+        label: (null_literal)
+        (span_columns
+          (identifier
+            (bare_identifier))
+          (identifier
+            (bare_identifier)))))))
+
+================================================================================
+TABULATE SPAN clause with a SETTING
+================================================================================
+
+TABULATE FROM sales SPAN 'W' ACROSS foo SETTING width => '40%'
+
+--------------------------------------------------------------------------------
+
+(query
+  (tabulate_statement
+    (tabulate_keyword)
+    (single_source_from
+      source: (qualified_name
+        (identifier
+          (bare_identifier))))
+    (tab_clause
+      (span_clause
+        label: (string)
+        (span_columns
           (identifier
             (bare_identifier)))
-        value: (string)))))
+        (setting_clause
+          (parameter_assignment
+            name: (parameter_name
+              (identifier
+                (bare_identifier)))
+            value: (parameter_value
+              (string))))))))
+
+================================================================================
+TABULATE LABEL then SPAN clause, any order
+================================================================================
+
+TABULATE FROM sales LABEL id => 'ID' SPAN 'A' ACROSS foo, bar
+
+--------------------------------------------------------------------------------
+
+(query
+  (tabulate_statement
+    (tabulate_keyword)
+    (single_source_from
+      source: (qualified_name
+        (identifier
+          (bare_identifier))))
+    (tab_clause
+      (label_clause
+        (label_assignment
+          name: (label_type
+            (identifier
+              (bare_identifier)))
+          value: (string))))
+    (tab_clause
+      (span_clause
+        label: (string)
+        (span_columns
+          (identifier
+            (bare_identifier))
+          (identifier
+            (bare_identifier)))))))

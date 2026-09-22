@@ -8,7 +8,7 @@ use crate::plot::layer::geom::Geom;
 use crate::plot::projection::resolve_coord;
 use crate::plot::scale::{color_to_hex, is_color_aesthetic, is_user_facet_aesthetic, Transform};
 use crate::plot::*;
-use crate::{GgsqlError, Result, Spec, Table};
+use crate::{GgsqlError, Result, Spanner, Spec, Table};
 use std::collections::HashMap;
 use tree_sitter::Node;
 
@@ -354,7 +354,7 @@ fn build_tabulate_statement(node: &Node, source: &SourceTree) -> Result<Table> {
                     table.source = Some(parse_data_source(&source_node, source));
                 }
             }
-            "label_clause" => {
+            "tab_clause" => {
                 process_tab_clause(&child, source, &mut table)?;
             }
             _ => {}
@@ -365,18 +365,54 @@ fn build_tabulate_statement(node: &Node, source: &SourceTree) -> Result<Table> {
 }
 
 /// Process a table clause node
-// A single arm today, deliberately: this mirrors process_viz_clause's match
-// shape so a second TABULATE clause (FACET/SCALE) only needs a new arm.
-#[allow(clippy::single_match)]
 fn process_tab_clause(node: &Node, source: &SourceTree, table: &mut Table) -> Result<()> {
-    match node.kind() {
-        "label_clause" => {
-            table.labels = build_labels(node, source)?;
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        match child.kind() {
+            "label_clause" => {
+                let new_labels = build_labels(&child, source)?;
+                for (key, value) in new_labels.labels {
+                    table.labels.labels.insert(key, value);
+                }
+            }
+            "span_clause" => {
+                table.spans.push(build_span_clause(&child, source)?);
+            }
+            _ => {}
         }
-        _ => {}
     }
 
     Ok(())
+}
+
+/// Build a Spanner from a span_clause node: SPAN label ACROSS col, ... [SETTING ...]
+fn build_span_clause(node: &Node, source: &SourceTree) -> Result<Spanner> {
+    let label_node = node.child_by_field_name("label").ok_or_else(|| {
+        GgsqlError::ParseError("Missing 'label' field in SPAN clause".to_string())
+    })?;
+    let label = match label_node.kind() {
+        "string" => Some(parse_string_node(&label_node, source)),
+        "null_literal" => None,
+        _ => {
+            return Err(GgsqlError::ParseError(format!(
+                "SPAN label must be a string or null, got: {}",
+                label_node.kind()
+            )));
+        }
+    };
+
+    let columns = source.find_texts(node, "(span_columns (identifier) @col)");
+
+    let settings = match source.find_node(node, "(setting_clause) @s") {
+        Some(setting_node) => parse_setting_clause(&setting_node, source)?,
+        None => Parameters::new(),
+    };
+
+    Ok(Spanner {
+        label,
+        columns,
+        settings,
+    })
 }
 
 /// Process a visualization clause node
@@ -1341,6 +1377,76 @@ mod tests {
         assert_eq!(specs.len(), 2);
         assert!(matches!(specs[0], Spec::Plot(_)));
         assert!(matches!(specs[1], Spec::Table(_)));
+    }
+
+    #[test]
+    fn test_tabulate_span_basic() {
+        let specs = parse_test_specs("TABULATE FROM sales SPAN 'Pretty Name' ACROSS foo, bar, baz")
+            .unwrap();
+        let table = specs[0].as_table().expect("expected a Table spec");
+
+        assert_eq!(table.spans.len(), 1);
+        assert_eq!(table.spans[0].label, Some("Pretty Name".to_string()));
+        assert_eq!(table.spans[0].columns, vec!["foo", "bar", "baz"]);
+        assert!(table.spans[0].settings.is_empty());
+    }
+
+    #[test]
+    fn test_tabulate_span_null_label_suppresses_the_cell() {
+        let specs = parse_test_specs("TABULATE FROM sales SPAN NULL ACROSS foo, bar").unwrap();
+        let table = specs[0].as_table().expect("expected a Table spec");
+
+        assert_eq!(table.spans[0].label, None);
+    }
+
+    #[test]
+    fn test_tabulate_span_empty_label_is_distinct_from_null() {
+        let specs = parse_test_specs("TABULATE FROM sales SPAN '' ACROSS foo, bar").unwrap();
+        let table = specs[0].as_table().expect("expected a Table spec");
+
+        assert_eq!(table.spans[0].label, Some(String::new()));
+    }
+
+    #[test]
+    fn test_tabulate_span_with_setting() {
+        let specs =
+            parse_test_specs("TABULATE FROM sales SPAN 'W' ACROSS foo SETTING width => '40%'")
+                .unwrap();
+        let table = specs[0].as_table().expect("expected a Table spec");
+
+        assert_eq!(
+            table.spans[0].settings.get("width"),
+            Some(&ParameterValue::String("40%".to_string()))
+        );
+    }
+
+    #[test]
+    fn test_tabulate_repeated_label_clauses_merge_rather_than_overwrite() {
+        let specs =
+            parse_test_specs("TABULATE FROM sales LABEL id => 'ID' LABEL name => 'Name'").unwrap();
+        let table = specs[0].as_table().expect("expected a Table spec");
+
+        assert_eq!(table.labels.labels.get("id"), Some(&Some("ID".to_string())));
+        assert_eq!(
+            table.labels.labels.get("name"),
+            Some(&Some("Name".to_string()))
+        );
+    }
+
+    #[test]
+    fn test_tabulate_multiple_spans_and_label_in_any_order() {
+        let specs = parse_test_specs(
+            "TABULATE FROM sales LABEL id => 'ID' SPAN 'A' ACROSS foo, bar SPAN 'B' ACROSS baz",
+        )
+        .unwrap();
+        let table = specs[0].as_table().expect("expected a Table spec");
+
+        assert_eq!(table.labels.labels.get("id"), Some(&Some("ID".to_string())));
+        assert_eq!(table.spans.len(), 2);
+        assert_eq!(table.spans[0].label, Some("A".to_string()));
+        assert_eq!(table.spans[0].columns, vec!["foo", "bar"]);
+        assert_eq!(table.spans[1].label, Some("B".to_string()));
+        assert_eq!(table.spans[1].columns, vec!["baz"]);
     }
 
     // ========================================
