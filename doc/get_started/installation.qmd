@@ -297,3 +297,19 @@ npm install ggsql-wasm
 ```
 
 :::
+
+::: {.icon-section}
+[![](../assets/logos/duckdb.svg){height=60}]{.section-icons}
+
+## DuckDB extension
+
+To use ggsql from DuckDB, install it as a community extension:
+
+```sql
+INSTALL ggsql FROM community;
+LOAD ggsql;
+```
+
+See the [DuckDB tooling page](tooling/duckdb.qmd) for full details and output mode options.
+
+:::
