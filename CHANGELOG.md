@@ -96,6 +96,7 @@
   following clauses:
   - `LABEL` overrides the display of column labels
   - `SPAN` groups columns under a shared header cell (spanner).
+  - `FORMAT` configures how a column's cells are displayed.
 
 
 ### Changed

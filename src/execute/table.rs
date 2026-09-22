@@ -4,19 +4,24 @@
 //! resolution, or facet handling to do here — just the one query that
 //! produces `body`, plus resolving that data into positioned `TableCell`s.
 //! `SPAN`-specific resolution (column reordering, header-row assignment)
-//! lives in the sibling `table_spanner` module, the way Plot's own
-//! resolution logic is split across `schema.rs`/`casting.rs`/`layer.rs`/
-//! `scale.rs`/`position.rs`/`cte.rs` rather than left in one file.
-//! `Table::resolve_spanner_ids` is the exception — it needs no `DataFrame`,
-//! so it lives on `Table` itself, reachable from `validate()` too.
+//! lives in the sibling `table_spanner` module, and `FORMAT`-specific
+//! resolution (replacing a column's values with its resolved display text)
+//! lives in `table_format`, the way Plot's own resolution logic is split
+//! across `schema.rs`/`casting.rs`/`layer.rs`/`scale.rs`/`position.rs`/
+//! `cte.rs` rather than left in one file. `Table::resolve_spanner_ids` is the
+//! exception — it needs no `DataFrame`, so it lives on `Table` itself,
+//! reachable from `validate()` too.
 
+use std::collections::HashMap;
+
+use super::table_format::{apply_formats, resolve_column_properties, setup_formats};
 use super::table_spanner::{create_spanners, reorder_table_columns};
 use crate::array_util::value_to_string;
 use crate::parser::{self, SourceTree};
-use crate::plot::Labels;
+use crate::plot::{Labels, Parameters};
 use crate::reader::{Reader, ResolvedTable};
 use crate::validate::{validate, ValidationWarning};
-use crate::{DataFrame, GgsqlError, Result, Spec, Table};
+use crate::{DataFrame, Format, GgsqlError, Result, Spanner, Spec, Table};
 
 /// Resolve a TABULATE query into a `ResolvedTable`.
 ///
@@ -60,17 +65,34 @@ pub fn resolve_table_with_reader(query: &str, reader: &dyn Reader) -> Result<Res
     })?;
 
     let df = reader.execute_sql(&sql)?;
-    let cells = build_cells(&df, &table)?;
 
-    Ok(ResolvedTable::new(table, cells, sql, warnings))
+    // The shape both create_table_columns (SETTING) and apply_formats
+    // (RENAMING) read from.
+    let formats = setup_formats(&df, &table.formats)?;
+    let (columns, spans) = setup_columns(&df, &table, &formats)?;
+    let df = apply_formats(&df, &formats)?;
+    let cells = build_cells(&df, &columns, &spans)?;
+
+    Ok(ResolvedTable::new(
+        cells,
+        Some(columns),
+        None,
+        sql,
+        warnings,
+    ))
 }
 
-/// Build the resolved cell layout for a table — columns (reordered for any
-/// spanners), spanner rows, column labels, and body, composed together and
-/// checked for overlaps. Split out from `resolve_table_with_reader` so the
-/// whole layout pipeline can be tested directly against a `df!()`-built
-/// `DataFrame` and a `Table`, without needing a `Reader`/real SQL execution.
-fn build_cells(df: &DataFrame, table: &Table) -> Result<Vec<TableCell>> {
+/// Resolve a table's columns: validated SPAN settings, spanner ids
+/// expanded, one `TableColumn` per `DataFrame` column (labelled, with
+/// `formats`' resolved `SETTING` properties), reordered for any
+/// `gather`-ing spanner. Also returns `spans` alongside `columns` — already
+/// resolved here, and still needed by `build_cells` for the spanner cells
+/// themselves, so recomputing it there would just repeat this work.
+fn setup_columns(
+    df: &DataFrame,
+    table: &Table,
+    formats: &HashMap<String, Format>,
+) -> Result<(Vec<TableColumn>, Vec<Spanner>)> {
     for (idx, spanner) in table.spans.iter().enumerate() {
         spanner
             .validate_settings()
@@ -80,41 +102,74 @@ fn build_cells(df: &DataFrame, table: &Table) -> Result<Vec<TableCell>> {
         .resolve_spanner_ids()
         .map_err(GgsqlError::ValidationError)?;
 
-    let columns = create_table_columns(df, &table.labels);
+    let columns = create_table_columns(df, &table.labels, formats);
     let columns = reorder_table_columns(columns, &spans)?;
-    let spanners = create_spanners(&columns, &spans)?;
-    let column_labels = create_column_labels(&columns);
+
+    Ok((columns, spans))
+}
+
+/// Build the resolved cell layout for a table from its already-resolved
+/// `columns` and already-`FORMAT`-applied `df` — spanner rows, column
+/// labels, and body, composed together and checked for overlaps. Split out
+/// from `resolve_table_with_reader` so the layout pipeline can be tested
+/// directly against a `df!()`-built `DataFrame` and a `Table`, without
+/// needing a `Reader`/real SQL execution.
+fn build_cells(
+    df: &DataFrame,
+    columns: &[TableColumn],
+    spans: &[Spanner],
+) -> Result<Vec<TableCell>> {
+    let spanners = create_spanners(columns, spans)?;
+    let column_labels = create_column_labels(columns);
     let header = compose_header(spanners, column_labels);
-    let table_body = create_body(df, &columns);
+    let table_body = create_body(df, columns);
     let cells = rowbind_cells(header, table_body);
     validate_overlaps(&cells)?;
 
     Ok(cells)
 }
 
-/// One column's identity within a table layout: its source name and resolved
-/// display label. `create_table_columns` is the one place `Labels` gets consulted —
-/// `create_column_labels` and `create_body` both work off `name`/`label`
-/// directly instead of asking `Labels` again, and both follow `columns`'
-/// order rather than `df`'s raw column order, so a future spanner-driven
-/// reordering of this list carries through to cell positions automatically.
-///
-/// `dtype: DataType` is expected to join this once column alignment is
-/// tackled — left out for now since nothing would read it yet, and an unread
-/// struct field is a dead-code warning, not just an early add.
-pub(crate) struct TableColumn {
+/// One column's identity within a table layout: its source name and
+/// resolved display label/properties. `create_table_columns` is the one
+/// place `Labels` and `FORMAT`'s `SETTING` get consulted — `create_column_labels`
+/// and `create_body` both work off this resolved data directly instead of
+/// asking again, and both follow `columns`' order rather than `df`'s raw
+/// column order, so a future spanner-driven reordering of this list carries
+/// through to cell positions automatically.
+#[derive(Debug, Clone)]
+pub struct TableColumn {
     /// The column's name in the resolved `DataFrame` — used to look its
     /// values up in `create_body`, independent of display order.
-    pub(crate) name: String,
+    pub name: String,
     /// The resolved `ColumnLabel` cell content for this column.
-    pub(crate) label: String,
+    pub label: String,
+    /// Resolved `SETTING` properties for this column's cells (e.g. `hjust`),
+    /// carried onto every `ColumnLabel`/`Body` cell in this column. A
+    /// writer wanting a whole-column property (e.g. `width`) reads it here
+    /// instead of the same value repeated across the column's cells.
+    pub properties: Parameters,
+}
+
+/// One row's resolved properties within a table layout. No row-wide
+/// `TABULATE` clause exists yet to populate anything beyond `properties`
+/// staying empty — the type exists so `ResolvedTable`/`Writer::write_table`
+/// have a row-wide counterpart to `TableColumn` ready before one is needed.
+#[derive(Debug, Clone, Default)]
+pub struct TableRow {
+    /// Resolved properties for this row's cells.
+    pub properties: Parameters,
 }
 
 /// Build one `TableColumn` per `DataFrame` column, in the `DataFrame`'s own
 /// order — `reorder_table_columns` is what may reorder this list
-/// afterward, not this function. `labels` (from a `TABULATE LABEL` clause)
-/// is the one authority for a column's label.
-fn create_table_columns(df: &DataFrame, labels: &Labels) -> Vec<TableColumn> {
+/// afterward, not this function. `labels` is the one authority for a
+/// column's label; `formats` (already reshaped to one `Format` per column
+/// by `setup_formats`) is the one authority for its properties.
+fn create_table_columns(
+    df: &DataFrame,
+    labels: &Labels,
+    formats: &HashMap<String, Format>,
+) -> Vec<TableColumn> {
     df.get_column_names()
         .into_iter()
         .map(|name| {
@@ -123,7 +178,18 @@ fn create_table_columns(df: &DataFrame, labels: &Labels) -> Vec<TableColumn> {
                 Some(None) => String::new(),
                 Some(Some(label)) => label.clone(),
             };
-            TableColumn { name, label }
+            // Not stored on TableColumn: nothing needs it once `properties`
+            // (which may default from it) is resolved.
+            let dtype = df
+                .column(&name)
+                .expect("name comes from df's own columns")
+                .data_type();
+            let properties = resolve_column_properties(dtype, formats.get(&name));
+            TableColumn {
+                name,
+                label,
+                properties,
+            }
         })
         .collect()
 }
@@ -146,13 +212,16 @@ fn create_column_labels(columns: &[TableColumn]) -> Vec<TableCell> {
     columns
         .iter()
         .enumerate()
-        .map(|(index, column)| TableCell {
-            kind: TableCellKind::ColumnLabel,
-            top: 0,
-            bottom: 0,
-            left: index,
-            right: index,
-            content: column.label.clone(),
+        .map(|(index, column)| {
+            TableCell::new(
+                TableCellKind::ColumnLabel,
+                0,
+                0,
+                index,
+                index,
+                column.label.clone(),
+            )
+            .with_properties(column.properties.clone())
         })
         .collect()
 }
@@ -174,14 +243,17 @@ fn create_body(df: &DataFrame, columns: &[TableColumn]) -> Vec<TableCell> {
             .expect("TableColumn.name always names a column of df");
 
         for row in 0..df.height() {
-            cells.push(TableCell {
-                kind: TableCellKind::Body,
-                top: row,
-                bottom: row,
-                left: index,
-                right: index,
-                content: value_to_string(array, row),
-            });
+            cells.push(
+                TableCell::new(
+                    TableCellKind::Body,
+                    row,
+                    row,
+                    index,
+                    index,
+                    value_to_string(array, row),
+                )
+                .with_properties(column.properties.clone()),
+            );
         }
     }
 
@@ -355,8 +427,7 @@ impl std::fmt::Display for TableCellKind {
 /// and adjacency helpers beyond `offset_rows`/`offset_cols` are expected to
 /// live elsewhere and account for the inclusive convention themselves,
 /// rather than each caller doing `+ 1` arithmetic against these fields
-/// directly. Style/formatting fields are deliberately not included yet — add
-/// them once a feature needs them.
+/// directly.
 #[derive(Debug, Clone)]
 pub struct TableCell {
     /// What role this cell plays (column label, body, ...).
@@ -371,9 +442,44 @@ pub struct TableCell {
     pub right: usize,
     /// The cell's text content.
     pub content: String,
+    /// Display properties for this cell (e.g. `hjust`), resolved from its
+    /// column's `FORMAT` `SETTING`. `ColumnLabel` and `Body` cells inherit
+    /// their column's properties; a `Spanner` cell covers several columns
+    /// at once, so it has none of its own.
+    pub properties: Parameters,
 }
 
 impl TableCell {
+    /// Build a cell with no display properties — the common case for a
+    /// `Spanner` or filler cell, which covers several columns rather than
+    /// resolving from one. A `ColumnLabel`/`Body` cell should follow this
+    /// with `with_properties` instead of leaving the default.
+    pub(crate) fn new(
+        kind: TableCellKind,
+        top: usize,
+        bottom: usize,
+        left: usize,
+        right: usize,
+        content: String,
+    ) -> Self {
+        Self {
+            kind,
+            top,
+            bottom,
+            left,
+            right,
+            content,
+            properties: Parameters::new(),
+        }
+    }
+
+    /// Set this cell's display properties, e.g. to a column's resolved
+    /// `FORMAT` `SETTING`.
+    pub(crate) fn with_properties(mut self, properties: Parameters) -> Self {
+        self.properties = properties;
+        self
+    }
+
     /// Shift this cell down by `rows`, moving `top` and `bottom` together so
     /// a spanning cell keeps its height.
     pub fn offset_rows(&mut self, rows: usize) {
@@ -419,10 +525,21 @@ mod layout_tests {
     use crate::plot::{ParameterValue, Parameters};
     use crate::Spanner;
 
+    /// Runs the same steps `resolve_table_with_reader` does, minus the
+    /// `Reader`/SQL execution — lets a test build a `Table`'s resolved cells
+    /// directly against a `df!()`-built `DataFrame`.
+    fn resolve_cells(df: &DataFrame, table: &Table) -> Result<Vec<TableCell>> {
+        let formats = setup_formats(df, &table.formats)?;
+        let (columns, spans) = setup_columns(df, table, &formats)?;
+        let df = apply_formats(df, &formats)?;
+        build_cells(&df, &columns, &spans)
+    }
+
     fn column(name: &str, label: &str) -> TableColumn {
         TableColumn {
             name: name.to_string(),
             label: label.to_string(),
+            properties: Parameters::new(),
         }
     }
 
@@ -442,7 +559,7 @@ mod layout_tests {
         labels.labels.insert("name".to_string(), None);
         // "extra" has no entry at all: no LABEL clause mentioned it.
 
-        let columns = create_table_columns(&frame, &labels);
+        let columns = create_table_columns(&frame, &labels, &HashMap::new());
 
         assert_eq!(columns[0].name, "id");
         assert_eq!(columns[0].label, "ID"); // overridden
@@ -497,7 +614,7 @@ mod layout_tests {
             "name" => vec!["a".to_string(), "b".to_string()],
         }
         .unwrap();
-        let columns = create_table_columns(&frame, &Labels::default());
+        let columns = create_table_columns(&frame, &Labels::default(), &HashMap::new());
 
         let body = create_body(&frame, &columns);
 
@@ -542,14 +659,7 @@ mod layout_tests {
     }
 
     fn cell(kind: TableCellKind, top: usize, bottom: usize, content: &str) -> TableCell {
-        TableCell {
-            kind,
-            top,
-            bottom,
-            left: 0,
-            right: 0,
-            content: content.to_string(),
-        }
+        TableCell::new(kind, top, bottom, 0, 0, content.to_string())
     }
 
     #[test]
@@ -699,14 +809,7 @@ mod layout_tests {
         left: usize,
         right: usize,
     ) -> TableCell {
-        TableCell {
-            kind,
-            top,
-            bottom,
-            left,
-            right,
-            content: String::new(),
-        }
+        TableCell::new(kind, top, bottom, left, right, String::new())
     }
 
     #[test]
@@ -766,7 +869,7 @@ mod layout_tests {
         let mut table = Table::new();
         table.spans = vec![labeled_spanner(&["a", "b"], "G")];
 
-        let cells = build_cells(&frame, &table).unwrap();
+        let cells = resolve_cells(&frame, &table).unwrap();
 
         let spanner_cell = cells
             .iter()
@@ -788,6 +891,68 @@ mod layout_tests {
     }
 
     #[test]
+    fn build_cells_applies_a_formats_renaming_to_body_cells() {
+        let frame = df! {
+            "price" => vec![0.0f64, 5.0],
+        }
+        .unwrap();
+        let mut table = Table::new();
+        table.formats = vec![crate::Format {
+            columns: vec!["price".to_string()],
+            settings: Parameters::new(),
+            value_mapping: Some(std::collections::HashMap::from([(
+                "0".to_string(),
+                Some("-".to_string()),
+            )])),
+            value_template: "${:num %.2f}".to_string(),
+        }];
+
+        let cells = resolve_cells(&frame, &table).unwrap();
+
+        let mut body_cells: Vec<_> = cells
+            .iter()
+            .filter(|c| c.kind == TableCellKind::Body)
+            .collect();
+        body_cells.sort_by_key(|c| c.top);
+        assert_eq!(body_cells[0].content, "-");
+        assert_eq!(body_cells[1].content, "$5.00");
+    }
+
+    #[test]
+    fn build_cells_defaults_hjust_by_dtype_on_label_and_body_cells() {
+        let frame = df! {
+            "price" => vec![1.0f64],
+            "name" => vec!["a".to_string()],
+        }
+        .unwrap();
+        let table = Table::new();
+
+        let cells = resolve_cells(&frame, &table).unwrap();
+
+        let hjust = |left: usize, kind: TableCellKind| {
+            cells
+                .iter()
+                .find(|c| c.left == left && c.kind == kind)
+                .unwrap()
+                .properties
+                .get("hjust")
+                .cloned()
+        };
+        assert_eq!(
+            hjust(0, TableCellKind::ColumnLabel),
+            Some(ParameterValue::Number(1.0))
+        );
+        assert_eq!(
+            hjust(0, TableCellKind::Body),
+            Some(ParameterValue::Number(1.0))
+        );
+        assert_eq!(
+            hjust(1, TableCellKind::Body),
+            Some(ParameterValue::Number(0.0))
+        );
+    }
+
+    #[test]
     fn build_cells_reorders_columns_for_a_spanner_before_building_labels_and_body() {
         let frame = df! {
             "a" => vec![1i32],
@@ -798,7 +963,7 @@ mod layout_tests {
         let mut table = Table::new();
         table.spans = vec![labeled_spanner(&["a", "b"], "G")];
 
-        let cells = build_cells(&frame, &table).unwrap();
+        let cells = resolve_cells(&frame, &table).unwrap();
 
         let mut label_cells: Vec<_> = cells
             .iter()
@@ -835,7 +1000,7 @@ mod layout_tests {
             spanner_with_setting(&["b", "c"], "level", ParameterValue::Number(1.0)),
         ];
 
-        assert!(build_cells(&frame, &table).is_err());
+        assert!(resolve_cells(&frame, &table).is_err());
     }
 
     #[test]
@@ -849,7 +1014,7 @@ mod layout_tests {
         table.labels.labels.insert("id".to_string(), None);
         table.labels.labels.insert("name".to_string(), None);
 
-        let cells = build_cells(&frame, &table).unwrap();
+        let cells = resolve_cells(&frame, &table).unwrap();
 
         assert!(!cells.iter().any(|c| c.kind == TableCellKind::ColumnLabel));
         assert!(cells

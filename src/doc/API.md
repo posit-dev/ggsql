@@ -25,7 +25,7 @@ This document provides a comprehensive reference for the ggsql public API.
 fn execute(&self, query: &str) -> Result<ResolvedSpec>
 ```
 
-Execute a ggsql query for visualization or tabulation. This is the main entry point - a required method on the Reader trait. `ResolvedSpec` is `Plot(Box<ResolvedPlot>)` or `Table(ResolvedTable)`, depending on whether the query used `VISUALISE` or `TABULATE`; `.as_plot()` / `.as_table()` (or the consuming `.into_plot()` / `.into_table()`) narrow it.
+Execute a ggsql query for visualization or tabulation. This is the main entry point - a required method on the Reader trait. `ResolvedSpec` is `Plot(Box<ResolvedPlot>)` or `Table(Box<ResolvedTable>)`, depending on whether the query used `VISUALISE` or `TABULATE`; `.as_plot()` / `.as_table()` (or the consuming `.into_plot()` / `.into_table()`) narrow it.
 
 **What happens during execution:**
 

@@ -20,9 +20,12 @@ TABULATE FROM <data-source>
   LABEL <column> => <string>, ...
   SPAN <string> ACROSS <column>, ...
     SETTING <parameter> => <value>, ...
+  FORMAT <column>, ...
+    SETTING <parameter> => <value>, ...
+    RENAMING <value> => <string>, ...
 ```
 
-`LABEL` and `SPAN` may each appear more than once, in any order, after the source.
+`LABEL`, `SPAN` and `FORMAT` may each appear more than once, in any order, after the source.
 
 ### `FROM`
 ```ggsql
@@ -83,6 +86,41 @@ TABULATE FROM sales
 
 `H1` ends up covering `jan, feb, mar, apr, may, jun`. Only an `id` declared by an *earlier* `SPAN` clause is recognised — referencing one declared later, or a typo, is treated as an unknown column, the same error as any other bad `ACROSS` entry. Every `id` must be unique across the whole query, and can't collide with an actual column name.
 
+### `FORMAT`
+```ggsql
+FORMAT <column>, ...
+  SETTING <parameter> => <value>, ...
+  RENAMING <value> => <string>, ...
+```
+
+Configures cell display for one or more columns. Give several `FORMAT` clauses for different column groups; if two `FORMAT` clauses name the same column, the later one wins for it.
+
+```ggsql
+TABULATE FROM sales
+  FORMAT price SETTING hjust => 'right'
+```
+
+#### `SETTING`
+```ggsql
+SETTING <parameter> => <value>, ...
+```
+
+* `hjust` (default: right for numeric columns, left otherwise): horizontal alignment for the column's cells. One of `'left'`, `'right'`, `'center'`/`'centre'`, or a number between 0 and 1 (0 is left, 1 is right, 0.5 is centered).
+
+#### `RENAMING`
+```ggsql
+RENAMING <value> => <string>, ...
+```
+
+Works the same way as [`SCALE`'s `RENAMING`](scale.qmd#renaming), just applied to the columns' own cell values instead of a scale's breaks: give a value on the left and its display text on the right, or `* => '...'` to format every value with [a template](scale.qmd#break-formatting). `NULL` on the right suppresses a cell's text.
+
+`null` (unquoted) matches an actual missing value, which makes `RENAMING` a convenient way to blank out missing data or zeroes:
+
+```ggsql
+TABULATE FROM sales
+  FORMAT price RENAMING null => '-', 0 => '-'
+```
+
 ### Examples
 
 ```{ggsql}
@@ -98,7 +136,18 @@ SELECT * FROM ggsql:penguins LIMIT 5
 
 TABULATE
   SPAN 'Bill' ACROSS bill_len, bill_dep
-  LABEL 
+  LABEL
     bill_len => 'Length',
     bill_dep => 'Depth'
+```
+
+
+
+```{ggsql}
+SELECT * FROM ggsql:penguins LIMIT 5
+
+TABULATE
+  FORMAT body_mass
+    SETTING hjust => 'right'
+    RENAMING null => '-', * => '{:num %.0f}g'
 ```

@@ -29,7 +29,7 @@
 //! without knowing which writer they picked.
 
 use crate::reader::ResolvedSpec;
-use crate::{DataFrame, GgsqlError, Plot, Result, TableCell};
+use crate::{DataFrame, GgsqlError, Plot, Result, TableCell, TableColumn, TableRow};
 use std::collections::HashMap;
 
 pub mod options;
@@ -174,20 +174,27 @@ pub trait Writer {
     /// Unlike `write_plot`, there is no AST parameter: `Table` (the parsed
     /// `TABULATE` spec) has nothing left that a writer needs by the time
     /// `cells` exists — its only field (`source`) is already consumed
-    /// building `cells`. If `Table` grows something a writer genuinely needs
-    /// that isn't itself expressible as a cell, add it back then.
+    /// building `cells`. `columns`/`rows` cover a whole-column or whole-row
+    /// property (e.g. `width`) that can't be expressed as a per-cell value.
     ///
     /// # Arguments
     ///
     /// * `cells` - The resolved table layout — see `TableCell` for the
     ///   position/kind conventions
+    /// * `columns` - Resolved per-column properties, if any were built
+    /// * `rows` - Resolved per-row properties, if any were built
     ///
     /// # Errors
     ///
     /// Returns `GgsqlError::WriterError` if this writer doesn't support
     /// tables, or output generation fails.
-    fn write_table(&self, cells: &[TableCell]) -> Result<Self::Output> {
-        let _ = cells;
+    fn write_table(
+        &self,
+        cells: &[TableCell],
+        columns: Option<&[TableColumn]>,
+        rows: Option<&[TableRow]>,
+    ) -> Result<Self::Output> {
+        let _ = (cells, columns, rows);
         Err(GgsqlError::WriterError(
             "this writer does not support tables".to_string(),
         ))
@@ -224,7 +231,9 @@ pub trait Writer {
     fn render(&self, spec: &ResolvedSpec) -> Result<Self::Output> {
         match spec {
             ResolvedSpec::Plot(plot) => self.write_plot(plot.plot(), plot.data()),
-            ResolvedSpec::Table(table) => self.write_table(table.cells()),
+            ResolvedSpec::Table(table) => {
+                self.write_table(table.cells(), table.columns(), table.rows())
+            }
         }
     }
 }

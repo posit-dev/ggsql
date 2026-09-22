@@ -3,12 +3,15 @@
 //! Defines the typed `Table` structure that represents parsed `TABULATE`
 //! statements, parallel to how `plot` defines `Plot` for `VISUALISE`
 //! statements: `source` (from `TABULATE FROM`), `labels` (from `TABULATE
-//! LABEL`), and `spans` (from `TABULATE SPAN`) are populated so far.
+//! LABEL`), `spans` (from `TABULATE SPAN`), and `formats` (from `TABULATE
+//! FORMAT`) are populated so far.
 
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 use crate::plot::{
-    validate_parameter, DefaultParamValue, Labels, ParamConstraint, ParamDefinition, Parameters,
+    validate_parameter, DefaultParamValue, Labels, NumberConstraint, ParamConstraint,
+    ParamDefinition, Parameters,
 };
 use crate::DataSource;
 
@@ -31,6 +34,9 @@ pub struct Table {
     /// not one `Spanner` with several groups (`SPAN` itself never bundles
     /// more than one group per clause).
     pub spans: Vec<Spanner>,
+    /// Cell formatting (from `TABULATE FORMAT`), one per `FORMAT` clause
+    /// written — same one-clause-per-group model as `spans`.
+    pub formats: Vec<Format>,
 }
 
 impl Table {
@@ -40,6 +46,7 @@ impl Table {
             source: None,
             labels: Labels::default(),
             spans: Vec::new(),
+            formats: Vec::new(),
         }
     }
 }
@@ -157,6 +164,72 @@ impl Spanner {
     }
 }
 
+/// One `FORMAT` clause: cell formatting for a group of columns.
+///
+/// `settings` is validated against `FORMAT_PARAMS` and resolved into each
+/// covered column's `TableCell` properties.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Format {
+    /// The columns this FORMAT applies to, in the order written.
+    pub columns: Vec<String>,
+    /// `SETTING` parameters for this FORMAT (e.g. `hjust => 'right'`).
+    pub settings: Parameters,
+    /// Value mappings for custom cell display (`RENAMING` clause). Maps a raw
+    /// cell value to its display text; `None` suppresses the cell's text.
+    /// Same shape as `Scale::label_mapping` — named `value_mapping` rather
+    /// than `label_mapping` here because `Table::labels` already uses
+    /// "label" for column headers, a different concept from a cell's value.
+    #[serde(default)]
+    pub value_mapping: Option<HashMap<String, Option<String>>>,
+    /// Template for generating display text from cell values (e.g.
+    /// `"{:num %.2f}"`), applied to values with no specific `value_mapping`
+    /// entry. Default `"{}"` passes the value through unchanged. Same shape
+    /// as `Scale::label_template`.
+    #[serde(default = "crate::format::default_template")]
+    pub value_template: String,
+}
+
+/// `SETTING` parameters `FORMAT` accepts.
+const FORMAT_PARAMS: &[ParamDefinition] = &[
+    ParamDefinition {
+        name: "hjust",
+        default: DefaultParamValue::Number(0.5),
+        // Both spellings accepted here; resolve_column_properties standardises
+        // "centre" to "center" when it builds a column's TableCell properties.
+        constraint: ParamConstraint::string_option_or_number(
+            &["left", "right", "centre", "center"],
+            NumberConstraint::range(0.0, 1.0),
+        ),
+    },
+    ParamDefinition {
+        name: "width",
+        // No default: an unset width leaves column sizing to the writer,
+        // not to a value resolved here.
+        default: DefaultParamValue::Null,
+        constraint: ParamConstraint::string_numeric_with_unit(&["px", "%"]),
+    },
+];
+
+impl Format {
+    /// Validate `settings` against `FORMAT_PARAMS`.
+    pub fn validate_settings(&self) -> Result<(), String> {
+        let valid: Vec<&str> = FORMAT_PARAMS.iter().map(|p| p.name).collect();
+
+        for (name, value) in &self.settings {
+            let Some(param) = FORMAT_PARAMS.iter().find(|p| p.name == name.as_str()) else {
+                return Err(format!(
+                    "FORMAT setting should be {}, not '{}'",
+                    crate::or_list_quoted(&valid, '\''),
+                    name
+                ));
+            };
+            validate_parameter(name, value, &param.constraint)?;
+        }
+
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -188,5 +261,61 @@ mod tests {
         );
 
         assert!(spanner_with_settings(settings).validate_settings().is_err());
+    }
+
+    fn format_with_settings(settings: Parameters) -> Format {
+        Format {
+            columns: vec!["a".to_string()],
+            settings,
+            value_mapping: None,
+            value_template: "{}".to_string(),
+        }
+    }
+
+    #[test]
+    fn format_validate_settings_accepts_a_string_hjust() {
+        let mut settings = Parameters::new();
+        settings.insert(
+            "hjust".to_string(),
+            ParameterValue::String("right".to_string()),
+        );
+
+        assert!(format_with_settings(settings).validate_settings().is_ok());
+    }
+
+    #[test]
+    fn format_validate_settings_accepts_a_numeric_hjust() {
+        let mut settings = Parameters::new();
+        settings.insert("hjust".to_string(), ParameterValue::Number(0.25));
+
+        assert!(format_with_settings(settings).validate_settings().is_ok());
+    }
+
+    #[test]
+    fn format_validate_settings_rejects_an_unrecognized_string() {
+        let mut settings = Parameters::new();
+        settings.insert(
+            "hjust".to_string(),
+            ParameterValue::String("up".to_string()),
+        );
+
+        assert!(format_with_settings(settings).validate_settings().is_err());
+    }
+
+    #[test]
+    fn format_validate_settings_accepts_a_percent_or_pixel_width() {
+        let mut settings = Parameters::new();
+        settings.insert(
+            "width".to_string(),
+            ParameterValue::String("20%".to_string()),
+        );
+        assert!(format_with_settings(settings).validate_settings().is_ok());
+
+        let mut settings = Parameters::new();
+        settings.insert(
+            "width".to_string(),
+            ParameterValue::String("240px".to_string()),
+        );
+        assert!(format_with_settings(settings).validate_settings().is_ok());
     }
 }

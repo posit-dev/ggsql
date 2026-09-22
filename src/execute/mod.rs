@@ -11,6 +11,8 @@
 //! - `scale`: Scale creation, resolution, type coercion, and OOB handling
 //! - `table`: Table (TABULATE) resolution
 //! - `table_spanner`: `TABULATE SPAN` resolution, called from `table`
+//! - `table_format`: `TABULATE FORMAT` resolution (replaces a column's
+//!   values with its resolved display text), called from `table`
 
 mod casting;
 mod cte;
@@ -19,13 +21,14 @@ mod position;
 mod scale;
 mod schema;
 mod table;
+mod table_format;
 mod table_spanner;
 
 // Re-export public API
 pub use casting::TypeRequirement;
 pub use cte::CteDefinition;
 pub use schema::TypeInfo;
-pub use table::{resolve_table_with_reader, TableCell, TableCellKind};
+pub use table::{resolve_table_with_reader, TableCell, TableCellKind, TableColumn, TableRow};
 
 use crate::naming;
 use crate::parser;

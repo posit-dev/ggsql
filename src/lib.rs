@@ -72,7 +72,7 @@ pub use plot::{
 
 // Re-export the parse-time Plot/Table result and the Table stub
 pub use spec::Spec;
-pub use table::{Spanner, Table};
+pub use table::{Format, Spanner, Table};
 
 // Re-export aesthetic classification utilities
 pub use plot::aesthetic::{
@@ -92,7 +92,7 @@ pub use dataframe::DataFrame;
 // Re-export the resolved table layout Writer::write_table needs — the
 // Table-side counterpart to DataFrame, not to the plot:: AST vocabulary
 // above, since Table has no specification vocabulary of its own yet.
-pub use execute::{TableCell, TableCellKind};
+pub use execute::{TableCell, TableCellKind, TableColumn, TableRow};
 
 /// Main library error type
 #[derive(thiserror::Error, Debug)]

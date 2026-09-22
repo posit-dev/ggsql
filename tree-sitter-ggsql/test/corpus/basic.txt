@@ -1281,7 +1281,7 @@ DRAW line PARTITION BY category
       (draw_clause
         (geom_type)
         (partition_clause
-          (partition_columns
+          (column_list
             (identifier
               (bare_identifier))))))))
 
@@ -1317,7 +1317,7 @@ DRAW line PARTITION BY category, region
       (draw_clause
         (geom_type)
         (partition_clause
-          (partition_columns
+          (column_list
             (identifier
               (bare_identifier))
             (identifier
@@ -1369,7 +1369,7 @@ DRAW line SETTING opacity => 0.5 FILTER year > 2020 PARTITION BY category
             (filter_token
               (number))))
         (partition_clause
-          (partition_columns
+          (column_list
             (identifier
               (bare_identifier))))))))
 
@@ -2013,7 +2013,7 @@ DRAW line PARTITION BY category ORDER BY date ASC
       (draw_clause
         (geom_type)
         (partition_clause
-          (partition_columns
+          (column_list
             (identifier
               (bare_identifier))))
         (order_clause
@@ -2069,7 +2069,7 @@ DRAW line SETTING opacity => 0.5 FILTER year > 2020 PARTITION BY region ORDER BY
             (filter_token
               (number))))
         (partition_clause
-          (partition_columns
+          (column_list
             (identifier
               (bare_identifier))))
         (order_clause
@@ -2593,7 +2593,7 @@ SCALE DISCRETE x RENAMING 'A' => 'Alpha', 'B' => 'Beta'
       (scale_clause
         (scale_type_identifier)
         (aesthetic_name)
-        (scale_renaming_clause
+        (renaming_clause
           (renaming_assignment
             name: (string)
             value: (string))
@@ -2631,7 +2631,7 @@ SCALE DISCRETE x RENAMING 'internal' => NULL
       (scale_clause
         (scale_type_identifier)
         (aesthetic_name)
-        (scale_renaming_clause
+        (renaming_clause
           (renaming_assignment
             name: (string)
             value: (null_literal)))))))
@@ -2666,7 +2666,7 @@ SCALE CONTINUOUS x RENAMING * => '{} units'
       (scale_clause
         (scale_type_identifier)
         (aesthetic_name)
-        (scale_renaming_clause
+        (renaming_clause
           (renaming_assignment
             value: (string)))))))
 
@@ -2700,7 +2700,7 @@ SCALE DISCRETE x RENAMING 'A' => 'Alpha', * => 'Category {}'
       (scale_clause
         (scale_type_identifier)
         (aesthetic_name)
-        (scale_renaming_clause
+        (renaming_clause
           (renaming_assignment
             name: (string)
             value: (string))
@@ -2911,7 +2911,7 @@ FACET region
         (geom_type)))
     (viz_clause
       (facet_clause
-        (facet_vars
+        (column_list
           (identifier
             (bare_identifier)))))))
 
@@ -2949,11 +2949,11 @@ FACET region BY category
         (geom_type)))
     (viz_clause
       (facet_clause
-        (facet_vars
+        (column_list
           (identifier
             (bare_identifier)))
         (facet_by)
-        (facet_vars
+        (column_list
           (identifier
             (bare_identifier)))))))
 
@@ -2991,7 +2991,7 @@ FACET region SETTING scales => 'free_y', ncol => 3
         (geom_type)))
     (viz_clause
       (facet_clause
-        (facet_vars
+        (column_list
           (identifier
             (bare_identifier)))
         (setting_clause
@@ -4611,7 +4611,7 @@ TABULATE FROM sales SPAN 'Pretty Name' ACROSS foo, bar, baz
     (tab_clause
       (span_clause
         label: (string)
-        (span_columns
+        (column_list
           (identifier
             (bare_identifier))
           (identifier
@@ -4637,7 +4637,7 @@ TABULATE FROM sales SPAN 'A' ACROSS foo
     (tab_clause
       (span_clause
         label: (string)
-        (span_columns
+        (column_list
           (identifier
             (bare_identifier)))))))
 
@@ -4659,7 +4659,7 @@ TABULATE FROM sales SPAN NULL ACROSS foo, bar
     (tab_clause
       (span_clause
         label: (null_literal)
-        (span_columns
+        (column_list
           (identifier
             (bare_identifier))
           (identifier
@@ -4683,7 +4683,7 @@ TABULATE FROM sales SPAN 'W' ACROSS foo SETTING width => '40%'
     (tab_clause
       (span_clause
         label: (string)
-        (span_columns
+        (column_list
           (identifier
             (bare_identifier)))
         (setting_clause
@@ -4719,8 +4719,42 @@ TABULATE FROM sales LABEL id => 'ID' SPAN 'A' ACROSS foo, bar
     (tab_clause
       (span_clause
         label: (string)
-        (span_columns
+        (column_list
           (identifier
             (bare_identifier))
           (identifier
             (bare_identifier)))))))
+
+================================================================================
+TABULATE FORMAT clause
+================================================================================
+
+TABULATE FROM sales FORMAT foo, bar SETTING width => '20%' RENAMING null => '-'
+
+--------------------------------------------------------------------------------
+
+(query
+  (tabulate_statement
+    (tabulate_keyword)
+    (single_source_from
+      source: (qualified_name
+        (identifier
+          (bare_identifier))))
+    (tab_clause
+      (format_clause
+        (column_list
+          (identifier
+            (bare_identifier))
+          (identifier
+            (bare_identifier)))
+        (setting_clause
+          (parameter_assignment
+            name: (parameter_name
+              (identifier
+                (bare_identifier)))
+            value: (parameter_value
+              (string))))
+        (renaming_clause
+          (renaming_assignment
+            name: (null_literal)
+            value: (string)))))))

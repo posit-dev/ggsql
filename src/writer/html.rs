@@ -1,7 +1,15 @@
 //! A minimal HTML table writer.
 //!
-//! Renders a `ResolvedTable`'s cells as a bare `<table>` — no styling, no
-//! footnotes, since `Table` has no fields to describe those yet. Spanner
+//! Maps `ResolvedTable`'s three parts onto distinct pieces of the `<table>`:
+//! - `cells` → `<thead>`/`<tbody>` rows; each cell's resolved `FORMAT`
+//!   properties become an inline `style` attribute (e.g. `hjust` becomes
+//!   `text-align`).
+//! - `columns` → a `<colgroup>`, one `<col>` per column, with a `style`
+//!   attribute from that column's resolved `width` (a bare `<col>` for a
+//!   column with none).
+//! - `rows` → not consumed yet; no row-wide property exists to render.
+//!
+//! No footnotes, since `Table` has no fields to describe those yet. Spanner
 //! rows are rendered (as `colspan`, one `<tr>` per level, above the column
 //! labels); `render_cell`/`render_row` can also render a `rowspan` cell,
 //! though nothing in the resolution pipeline produces one yet, so a column
@@ -15,9 +23,10 @@ use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
 
+use crate::plot::{ParameterValue, Parameters};
 use crate::util::escape_html;
 use crate::writer::{Writer, WriterOptions};
-use crate::{DataFrame, GgsqlError, Plot, Result, TableCell};
+use crate::{DataFrame, GgsqlError, Plot, Result, TableCell, TableColumn, TableRow};
 
 /// Renders a resolved table as a bare HTML `<table>`. Does not support plots.
 #[derive(Debug, Default)]
@@ -51,7 +60,15 @@ impl Writer for HtmlWriter {
         ))
     }
 
-    fn write_table(&self, cells: &[TableCell]) -> Result<String> {
+    fn write_table(
+        &self,
+        cells: &[TableCell],
+        columns: Option<&[TableColumn]>,
+        rows: Option<&[TableRow]>,
+    ) -> Result<String> {
+        // Not consumed yet — no property needs whole-row rendering yet.
+        let _ = rows;
+
         let ncol = cells
             .iter()
             .map(|cell| cell.right)
@@ -94,6 +111,10 @@ impl Writer for HtmlWriter {
 
         let mut html = String::from("<table>\n");
 
+        if let Some(colgroup) = render_colgroup(columns) {
+            html.push_str(&colgroup);
+        }
+
         if !header_rows.is_empty() {
             html.push_str("<thead>\n");
             for (row, row_cells) in header_rows {
@@ -118,7 +139,8 @@ impl Writer for HtmlWriter {
 
 /// Render one `TableCell` as an HTML tag — `<th>`/`<td>` from
 /// `cell.is_header()`, with a `colspan`/`rowspan` attribute only when the
-/// cell actually spans more than one column/row.
+/// cell actually spans more than one column/row, and a `style` attribute
+/// only when `cell.properties` resolves to one.
 fn render_cell(cell: &TableCell) -> String {
     let tag = if cell.is_header() { "th" } else { "td" };
     let colspan = cell.width();
@@ -130,7 +152,78 @@ fn render_cell(cell: &TableCell) -> String {
     if rowspan > 1 {
         attrs.push_str(&format!(" rowspan=\"{rowspan}\""));
     }
+    if let Some(style) = cell_style(&cell.properties) {
+        attrs.push_str(&format!(" style=\"{style}\""));
+    }
     format!("<{tag}{attrs}>{}</{tag}>", escape_html(&cell.content))
+}
+
+/// Translate a cell's resolved `FORMAT` properties into a `style` attribute
+/// value, or `None` if none of them produce a CSS declaration.
+fn cell_style(properties: &Parameters) -> Option<String> {
+    let mut declarations = Vec::new();
+
+    if let Some(align) = text_align(properties.get("hjust")) {
+        declarations.push(format!("text-align: {align}"));
+        // Right-aligned data reads as numeric — keep digit widths uniform
+        // so they still line up under one another.
+        if align == "right" {
+            declarations.push("font-variant-numeric: tabular-nums".to_string());
+        }
+    }
+
+    (!declarations.is_empty()).then(|| declarations.join("; "))
+}
+
+/// Map a resolved `hjust` number to a CSS `text-align` keyword, bucketed
+/// with the same `0.25`/`0.75` thresholds `VegaLiteWriter`'s `convert_hjust`
+/// uses for its own `align` conversion, so `hjust` means the same alignment
+/// in both writers. `resolve_column_properties` already standardises every
+/// `hjust` (however the user wrote it) to a number before it reaches a
+/// `TableCell`, so a non-`Number` here is unreachable in practice.
+fn text_align(hjust: Option<&ParameterValue>) -> Option<&'static str> {
+    match hjust? {
+        ParameterValue::Number(n) if *n <= 0.25 => Some("left"),
+        ParameterValue::Number(n) if *n >= 0.75 => Some("right"),
+        ParameterValue::Number(_) => Some("center"),
+        _ => None,
+    }
+}
+
+/// Render a `<colgroup>` block, one `<col>` per column, or `None` if
+/// `columns` is absent or none of them resolve a `style`. Skipping the block
+/// entirely in that case avoids emitting a run of bare, attribute-less
+/// `<col>` tags that would render identically to omitting them.
+fn render_colgroup(columns: Option<&[TableColumn]>) -> Option<String> {
+    let styles: Vec<Option<String>> = columns?
+        .iter()
+        .map(|c| column_style(&c.properties))
+        .collect();
+    if styles.iter().all(Option::is_none) {
+        return None;
+    }
+
+    let mut html = String::from("<colgroup>\n");
+    for style in styles {
+        match style {
+            Some(style) => html.push_str(&format!("<col style=\"{style}\">\n")),
+            None => html.push_str("<col>\n"),
+        }
+    }
+    html.push_str("</colgroup>\n");
+    Some(html)
+}
+
+/// Translate a column's resolved `FORMAT` properties into a `<col>`'s
+/// `style` attribute value, or `None` if it has no `width`. `width`'s value
+/// is already validated (by `ParamConstraint::string_numeric_with_unit`) to
+/// be a number immediately followed by `px` or `%`, which is exactly CSS's
+/// own `width` syntax, so it's used as-is.
+fn column_style(properties: &Parameters) -> Option<String> {
+    match properties.get("width") {
+        Some(ParameterValue::String(width)) => Some(format!("width: {width}")),
+        _ => None,
+    }
 }
 
 /// Per row, the column positions already covered by a cell that started in
@@ -184,14 +277,7 @@ fn render_row(mut cells: Vec<&TableCell>, ncol: usize, occupied: &HashSet<usize>
             // by another spanner's occupancy) renders through `render_cell`
             // too, so one place decides which tag a `TableCellKind` gets,
             // not two.
-            let filler = TableCell {
-                kind,
-                top: cells[0].top,
-                bottom: cells[0].top,
-                left: col,
-                right: col,
-                content: String::new(),
-            };
+            let filler = TableCell::new(kind, cells[0].top, cells[0].top, col, col, String::new());
             html.push_str(&render_cell(&filler));
             col += 1;
         }
@@ -213,14 +299,7 @@ mod render_tests {
         left: usize,
         right: usize,
     ) -> TableCell {
-        TableCell {
-            kind,
-            top,
-            bottom,
-            left,
-            right,
-            content: String::new(),
-        }
+        TableCell::new(kind, top, bottom, left, right, String::new())
     }
 
     #[test]
@@ -232,6 +311,99 @@ mod render_tests {
     fn render_cell_emits_rowspan_when_height_is_greater_than_one() {
         let c = cell(TableCellKind::ColumnLabel, 0, 1, 0, 0);
         assert_eq!(render_cell(&c), "<th rowspan=\"2\"></th>");
+    }
+
+    #[test]
+    fn render_cell_emits_a_style_attribute_from_properties() {
+        // The exact declarations a given `hjust` produces are `cell_style`'s
+        // own tests' job — this just checks render_cell embeds whatever
+        // `cell_style` returns as a `style="..."` attribute.
+        let mut c = cell(TableCellKind::Body, 0, 0, 0, 0);
+        c.properties
+            .insert("hjust".to_string(), ParameterValue::Number(1.0));
+        let style = cell_style(&c.properties).unwrap();
+        assert_eq!(render_cell(&c), format!("<td style=\"{style}\"></td>"));
+    }
+
+    #[test]
+    fn text_align_buckets_a_resolved_hjust_number() {
+        assert_eq!(text_align(None), None);
+        assert_eq!(text_align(Some(&ParameterValue::Number(0.0))), Some("left"));
+        assert_eq!(text_align(Some(&ParameterValue::Number(0.1))), Some("left"));
+        assert_eq!(
+            text_align(Some(&ParameterValue::Number(0.5))),
+            Some("center")
+        );
+        assert_eq!(
+            text_align(Some(&ParameterValue::Number(0.9))),
+            Some("right")
+        );
+        assert_eq!(
+            text_align(Some(&ParameterValue::Number(1.0))),
+            Some("right")
+        );
+    }
+
+    #[test]
+    fn cell_style_only_adds_tabular_nums_when_right_aligned() {
+        let mut left = Parameters::new();
+        left.insert("hjust".to_string(), ParameterValue::Number(0.0));
+        assert_eq!(cell_style(&left), Some("text-align: left".to_string()));
+
+        let mut right = Parameters::new();
+        right.insert("hjust".to_string(), ParameterValue::Number(1.0));
+        assert_eq!(
+            cell_style(&right),
+            Some("text-align: right; font-variant-numeric: tabular-nums".to_string())
+        );
+
+        assert_eq!(cell_style(&Parameters::new()), None);
+    }
+
+    #[test]
+    fn column_style_reads_a_string_width_as_a_css_width() {
+        let mut properties = Parameters::new();
+        properties.insert(
+            "width".to_string(),
+            ParameterValue::String("20%".to_string()),
+        );
+        assert_eq!(column_style(&properties), Some("width: 20%".to_string()));
+
+        assert_eq!(column_style(&Parameters::new()), None);
+    }
+
+    fn column(properties: Parameters) -> TableColumn {
+        TableColumn {
+            name: String::new(),
+            label: String::new(),
+            properties,
+        }
+    }
+
+    #[test]
+    fn render_colgroup_returns_none_without_columns() {
+        assert_eq!(render_colgroup(None), None);
+    }
+
+    #[test]
+    fn render_colgroup_returns_none_when_no_column_has_a_width() {
+        let columns = vec![column(Parameters::new()), column(Parameters::new())];
+        assert_eq!(render_colgroup(Some(&columns)), None);
+    }
+
+    #[test]
+    fn render_colgroup_emits_a_bare_col_for_a_column_with_no_width() {
+        let mut widened = Parameters::new();
+        widened.insert(
+            "width".to_string(),
+            ParameterValue::String("20%".to_string()),
+        );
+        let columns = vec![column(widened), column(Parameters::new())];
+
+        assert_eq!(
+            render_colgroup(Some(&columns)).unwrap(),
+            "<colgroup>\n<col style=\"width: 20%\">\n<col>\n</colgroup>\n"
+        );
     }
 
     #[test]
@@ -252,7 +424,7 @@ mod render_tests {
             cell(TableCellKind::ColumnLabel, 0, 0, 1, 1),
         ];
 
-        assert!(HtmlWriter::new().write_table(&cells).is_err());
+        assert!(HtmlWriter::new().write_table(&cells, None, None).is_err());
     }
 
     #[test]
@@ -267,7 +439,7 @@ mod render_tests {
             cell(TableCellKind::Body, 2, 2, 1, 1),
         ];
 
-        let html = HtmlWriter::new().write_table(&cells).unwrap();
+        let html = HtmlWriter::new().write_table(&cells, None, None).unwrap();
 
         assert_eq!(
             html,
@@ -303,10 +475,15 @@ mod tests {
         let writer = HtmlWriter::new();
         let html = writer.render(&spec).unwrap();
 
+        // Precise per-dtype alignment is covered directly by
+        // resolve_column_properties's/cell_style's own tests — this just
+        // checks the columns render and escaping works end to end.
         assert!(html.starts_with("<table>"));
-        assert!(html.contains("<th>id</th>"));
-        assert!(html.contains("<th>name</th>"));
-        assert!(html.contains("<td>1</td>"));
+        assert!(html.contains(">id</th>"));
+        assert!(html.contains(">name</th>"));
+        assert!(html.contains(">1</td>"));
+        assert!(html.contains("text-align: right")); // "id"/1, numeric
+        assert!(html.contains("text-align: left")); // "name", text
         assert!(html.contains("&lt;b&gt;a&lt;/b&gt;"));
         assert!(!html.contains("<b>a</b>"));
     }
@@ -328,11 +505,36 @@ mod tests {
 
         // "amount" has no spanner, so its label stretches up into the
         // spanner row (rowspan) instead of a blank filler cell there.
-        assert!(html.contains("<tr><th colspan=\"2\">Info</th><th rowspan=\"2\">amount</th></tr>"));
-        assert!(html.contains("<th>id</th>"));
-        assert!(html.contains("<th>name</th>"));
+        // Alignment styling is incidental here (amount/id are numeric) and
+        // covered precisely by resolve_column_properties's own tests — this
+        // checks colspan/rowspan/ordering, not exact style content.
+        assert!(html.contains("<tr><th colspan=\"2\">Info</th><th rowspan=\"2\""));
+        assert!(html.contains(">amount</th>"));
+        assert!(html.contains(">id</th>"));
+        assert!(html.contains(">name</th>"));
         // The spanner row renders above the column-label row.
-        assert!(html.find("Info").unwrap() < html.find("<th>id</th>").unwrap());
+        assert!(html.find("Info").unwrap() < html.find(">id</th>").unwrap());
+    }
+
+    #[test]
+    fn test_write_table_renders_a_colgroup_for_a_formats_width() {
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        reader
+            .execute_sql("CREATE TABLE sales AS SELECT * FROM (VALUES (1, 'a')) AS t(id, name)")
+            .unwrap();
+        let spec = reader
+            .execute("TABULATE FROM sales FORMAT id SETTING width => '20%'")
+            .unwrap();
+
+        let writer = HtmlWriter::new();
+        let html = writer.render(&spec).unwrap();
+
+        assert!(html.contains("<colgroup>"));
+        assert!(html.contains("<col style=\"width: 20%\">"));
+        // "name" has no FORMAT width, so its <col> stays bare.
+        assert!(html.contains("<col>"));
+        // <colgroup> comes before <thead>, per the HTML spec.
+        assert!(html.find("<colgroup>").unwrap() < html.find("<thead>").unwrap());
     }
 
     #[test]
