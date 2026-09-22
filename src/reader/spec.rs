@@ -1,16 +1,16 @@
-//! Implementation of Spec methods.
+//! Implementation of ResolvedPlot, ResolvedTable, and ResolvedSpec methods.
 
 use std::collections::HashMap;
 
 use crate::naming;
 use crate::plot::Plot;
 use crate::validate::ValidationWarning;
-use crate::DataFrame;
+use crate::{DataFrame, Table};
 
-use super::{Metadata, Spec};
+use super::{Metadata, ResolvedPlot, ResolvedSpec, ResolvedTable};
 
-impl Spec {
-    /// Create a new Spec from PreparedData
+impl ResolvedPlot {
+    /// Create a new ResolvedPlot from PreparedData
     pub(crate) fn new(
         plot: Plot,
         data: HashMap<String, DataFrame>,
@@ -108,5 +108,80 @@ impl Spec {
     /// Validation warnings from preparation.
     pub fn warnings(&self) -> &[ValidationWarning] {
         &self.warnings
+    }
+}
+
+impl ResolvedTable {
+    /// Create a new ResolvedTable.
+    pub(crate) fn new(
+        table: Table,
+        body: DataFrame,
+        sql: String,
+        warnings: Vec<ValidationWarning>,
+    ) -> Self {
+        Self {
+            table,
+            body,
+            sql,
+            warnings,
+        }
+    }
+
+    /// Get the resolved table specification.
+    pub fn table(&self) -> &Table {
+        &self.table
+    }
+
+    /// Get the resolved body data. See the PROVISIONAL note on the `body`
+    /// field in `reader::mod` — this accessor's return type will likely
+    /// change once real table writers exist.
+    pub fn body(&self) -> &DataFrame {
+        &self.body
+    }
+
+    /// The SQL query that was executed to produce `body`.
+    pub fn sql(&self) -> &str {
+        &self.sql
+    }
+
+    /// Validation warnings from preparation.
+    pub fn warnings(&self) -> &[ValidationWarning] {
+        &self.warnings
+    }
+}
+
+impl ResolvedSpec {
+    /// Borrow the inner `ResolvedPlot`, or `None` if this is a `ResolvedTable`.
+    pub fn as_plot(&self) -> Option<&ResolvedPlot> {
+        match self {
+            ResolvedSpec::Plot(plot) => Some(plot),
+            ResolvedSpec::Table(_) => None,
+        }
+    }
+
+    /// Borrow the inner `ResolvedTable`, or `None` if this is a `ResolvedPlot`.
+    pub fn as_table(&self) -> Option<&ResolvedTable> {
+        match self {
+            ResolvedSpec::Plot(_) => None,
+            ResolvedSpec::Table(table) => Some(table),
+        }
+    }
+
+    /// Consume this `ResolvedSpec`, returning the inner `ResolvedPlot`, or
+    /// `None` if it was a `ResolvedTable`.
+    pub fn into_plot(self) -> Option<ResolvedPlot> {
+        match self {
+            ResolvedSpec::Plot(plot) => Some(*plot),
+            ResolvedSpec::Table(_) => None,
+        }
+    }
+
+    /// Consume this `ResolvedSpec`, returning the inner `ResolvedTable`, or
+    /// `None` if it was a `ResolvedPlot`.
+    pub fn into_table(self) -> Option<ResolvedTable> {
+        match self {
+            ResolvedSpec::Plot(_) => None,
+            ResolvedSpec::Table(table) => Some(table),
+        }
     }
 }

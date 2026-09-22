@@ -42,6 +42,8 @@ pub mod format;
 pub mod naming;
 pub mod parser;
 pub mod plot;
+pub mod spec;
+pub mod table;
 pub mod util;
 
 pub mod reader;
@@ -67,6 +69,10 @@ pub use plot::{
     AestheticValue, DataSource, Facet, FacetLayout, Geom, Layer, Mappings, Parameters, Plot, Scale,
     SqlExpression,
 };
+
+// Re-export the parse-time Plot/Table result and the Table stub
+pub use spec::Spec;
+pub use table::Table;
 
 // Re-export aesthetic classification utilities
 pub use plot::aesthetic::{
@@ -169,7 +175,7 @@ mod integration_tests {
 
         // Generate Vega-Lite JSON
         let writer = VegaLiteWriter::new();
-        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
+        let json_str = writer.write_plot(&spec, &wrap_data(df)).unwrap();
         let vl_spec: serde_json::Value = serde_json::from_str(&json_str).unwrap();
 
         // CRITICAL ASSERTION: x-axis should be automatically inferred as "temporal"
@@ -229,7 +235,7 @@ mod integration_tests {
 
         // Generate Vega-Lite JSON
         let writer = VegaLiteWriter::new();
-        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
+        let json_str = writer.write_plot(&spec, &wrap_data(df)).unwrap();
         let vl_spec: serde_json::Value = serde_json::from_str(&json_str).unwrap();
 
         // x-axis should be automatically inferred as "temporal"
@@ -287,7 +293,7 @@ mod integration_tests {
 
         // Generate Vega-Lite JSON
         let writer = VegaLiteWriter::new();
-        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
+        let json_str = writer.write_plot(&spec, &wrap_data(df)).unwrap();
         let vl_spec: serde_json::Value = serde_json::from_str(&json_str).unwrap();
 
         // Types should be inferred as quantitative
@@ -342,7 +348,7 @@ mod integration_tests {
         spec.transform_aesthetics_to_internal();
 
         let writer = VegaLiteWriter::new();
-        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
+        let json_str = writer.write_plot(&spec, &wrap_data(df)).unwrap();
         let vl_spec: serde_json::Value = serde_json::from_str(&json_str).unwrap();
 
         // Check null handling in JSON
@@ -379,7 +385,7 @@ mod integration_tests {
         spec.transform_aesthetics_to_internal();
 
         let writer = VegaLiteWriter::new();
-        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
+        let json_str = writer.write_plot(&spec, &wrap_data(df)).unwrap();
         let vl_spec: serde_json::Value = serde_json::from_str(&json_str).unwrap();
 
         // String columns should be inferred as nominal
@@ -437,7 +443,7 @@ mod integration_tests {
         spec.transform_aesthetics_to_internal();
 
         let writer = VegaLiteWriter::new();
-        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
+        let json_str = writer.write_plot(&spec, &wrap_data(df)).unwrap();
         let vl_spec: serde_json::Value = serde_json::from_str(&json_str).unwrap();
 
         // x-axis should be temporal
@@ -485,7 +491,7 @@ mod integration_tests {
         spec.transform_aesthetics_to_internal();
 
         let writer = VegaLiteWriter::new();
-        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
+        let json_str = writer.write_plot(&spec, &wrap_data(df)).unwrap();
         let vl_spec: serde_json::Value = serde_json::from_str(&json_str).unwrap();
 
         // Check values are preserved
@@ -543,7 +549,7 @@ mod integration_tests {
         spec.transform_aesthetics_to_internal();
 
         let writer = VegaLiteWriter::new();
-        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
+        let json_str = writer.write_plot(&spec, &wrap_data(df)).unwrap();
         let vl_spec: serde_json::Value = serde_json::from_str(&json_str).unwrap();
 
         // All integer types should be quantitative
@@ -612,7 +618,9 @@ mod integration_tests {
 
         // Generate Vega-Lite
         let writer = VegaLiteWriter::new();
-        let json_str = writer.write(&prepared.specs[0], &prepared.data).unwrap();
+        let json_str = writer
+            .write_plot(&prepared.specs[0], &prepared.data)
+            .unwrap();
         let vl_spec: serde_json::Value = serde_json::from_str(&json_str).unwrap();
 
         // Verify we have two layers
@@ -770,7 +778,7 @@ mod integration_tests {
         // Verify the spec has the facet configuration
         assert!(
             prepared.specs[0].facet.is_some(),
-            "Spec should have facet configuration"
+            "ResolvedPlot should have facet configuration"
         );
     }
 
@@ -793,7 +801,9 @@ mod integration_tests {
 
         // Render to Vega-Lite
         let writer = VegaLiteWriter::new();
-        let json_str = writer.write(&prepared.specs[0], &prepared.data).unwrap();
+        let json_str = writer
+            .write_plot(&prepared.specs[0], &prepared.data)
+            .unwrap();
         let vl_spec: serde_json::Value = serde_json::from_str(&json_str).unwrap();
 
         // Find the point annotation layer (should be second layer)
@@ -912,7 +922,9 @@ mod integration_tests {
 
         // Generate Vega-Lite and verify it works
         let writer = VegaLiteWriter::new();
-        let json_str = writer.write(&prepared.specs[0], &prepared.data).unwrap();
+        let json_str = writer
+            .write_plot(&prepared.specs[0], &prepared.data)
+            .unwrap();
         let vl_spec: serde_json::Value = serde_json::from_str(&json_str).unwrap();
 
         // Both layers should have stroke field-mapped to prefixed aesthetic-named column
@@ -1035,7 +1047,9 @@ mod integration_tests {
         let prepared = execute::prepare_data_with_reader(query, &reader).unwrap();
 
         let writer = VegaLiteWriter::new();
-        let json_str = writer.write(&prepared.specs[0], &prepared.data).unwrap();
+        let json_str = writer
+            .write_plot(&prepared.specs[0], &prepared.data)
+            .unwrap();
         let vl_spec: serde_json::Value = serde_json::from_str(&json_str).unwrap();
 
         let layers = vl_spec["layer"].as_array().unwrap();
@@ -1071,7 +1085,9 @@ mod integration_tests {
         let prepared = execute::prepare_data_with_reader(query, &reader).unwrap();
 
         let writer = VegaLiteWriter::new();
-        let json_str = writer.write(&prepared.specs[0], &prepared.data).unwrap();
+        let json_str = writer
+            .write_plot(&prepared.specs[0], &prepared.data)
+            .unwrap();
         let vl_spec: serde_json::Value = serde_json::from_str(&json_str).unwrap();
 
         assert_eq!(vl_spec["layer"][0]["mark"]["type"], "geoshape");
@@ -1118,7 +1134,9 @@ mod integration_tests {
             let prepared = execute::prepare_data_with_reader(&query, &reader).unwrap();
 
             let writer = VegaLiteWriter::new();
-            let json_str = writer.write(&prepared.specs[0], &prepared.data).unwrap();
+            let json_str = writer
+                .write_plot(&prepared.specs[0], &prepared.data)
+                .unwrap();
             let vl_spec: serde_json::Value = serde_json::from_str(&json_str).unwrap();
 
             let data = vl_spec["data"]["values"].as_array().unwrap();
@@ -1246,7 +1264,9 @@ mod integration_tests {
 
         let prepared = execute::prepare_data_with_reader(query, &reader).unwrap();
         let writer = VegaLiteWriter::new();
-        let json_str = writer.write(&prepared.specs[0], &prepared.data).unwrap();
+        let json_str = writer
+            .write_plot(&prepared.specs[0], &prepared.data)
+            .unwrap();
         let vl_spec: serde_json::Value = serde_json::from_str(&json_str).unwrap();
 
         let data = vl_spec["data"]["values"].as_array().unwrap();
@@ -1278,7 +1298,9 @@ mod integration_tests {
 
         let prepared = execute::prepare_data_with_reader(query, &reader).unwrap();
         let writer = VegaLiteWriter::new();
-        let json_str = writer.write(&prepared.specs[0], &prepared.data).unwrap();
+        let json_str = writer
+            .write_plot(&prepared.specs[0], &prepared.data)
+            .unwrap();
         let vl_spec: serde_json::Value = serde_json::from_str(&json_str).unwrap();
 
         let data = vl_spec["data"]["values"].as_array().unwrap();

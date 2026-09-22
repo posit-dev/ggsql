@@ -890,7 +890,7 @@ DRAW point
                 (identifier
                   (bare_identifier))))
             name: (aesthetic_name)))))
-    (visualise_from
+    (single_source_from
       source: (qualified_name
         (identifier
           (bare_identifier))))
@@ -1138,7 +1138,7 @@ DRAW bar MAPPING category AS x, total AS y
 (query
   (visualise_statement
     (visualise_keyword)
-    (visualise_from
+    (single_source_from
       source: (qualified_name
         (identifier
           (bare_identifier))))
@@ -1664,7 +1664,7 @@ DRAW point MAPPING x AS x
                         (bare_identifier))))))))))))
   (visualise_statement
     (visualise_keyword)
-    (visualise_from
+    (single_source_from
       source: (qualified_name
         (identifier
           (bare_identifier))))
@@ -3110,7 +3110,7 @@ VISUALISE FROM data DRAW point
             (number))))))
   (visualise_statement
     (visualise_keyword)
-    (visualise_from
+    (single_source_from
       (qualified_name
         (identifier
           (bare_identifier))))
@@ -3133,7 +3133,7 @@ VISUALISE FROM data DRAW point
       (insert_statement)))
   (visualise_statement
     (visualise_keyword)
-    (visualise_from
+    (single_source_from
       (qualified_name
         (identifier
           (bare_identifier))))
@@ -3156,7 +3156,7 @@ VISUALISE FROM data DRAW point
       (update_statement)))
   (visualise_statement
     (visualise_keyword)
-    (visualise_from
+    (single_source_from
       (qualified_name
         (identifier
           (bare_identifier))))
@@ -3179,7 +3179,7 @@ VISUALISE FROM data DRAW point
       (delete_statement)))
   (visualise_statement
     (visualise_keyword)
-    (visualise_from
+    (single_source_from
       (qualified_name
         (identifier
           (bare_identifier))))
@@ -3205,7 +3205,7 @@ VISUALISE FROM data DRAW point
       (insert_statement)))
   (visualise_statement
     (visualise_keyword)
-    (visualise_from
+    (single_source_from
       (qualified_name
         (identifier
           (bare_identifier))))
@@ -4536,3 +4536,36 @@ DRAW point SETTING bounds => [null, 1, Inf, -Inf], limit => inf
                 (bare_identifier)))
             value: (parameter_value
               (infinity))))))))
+
+================================================================================
+TABULATE bare keyword
+================================================================================
+
+SELECT 1 TABULATE
+
+--------------------------------------------------------------------------------
+
+(query
+  (sql_portion
+    (sql_statement
+      (select_statement
+        (select_body
+          (number)))))
+  (tabulate_statement
+    (tabulate_keyword)))
+
+================================================================================
+TABULATE FROM single source
+================================================================================
+
+TABULATE FROM sales
+
+--------------------------------------------------------------------------------
+
+(query
+  (tabulate_statement
+    (tabulate_keyword)
+    (single_source_from
+      source: (qualified_name
+        (identifier
+          (bare_identifier))))))
