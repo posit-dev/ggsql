@@ -481,6 +481,9 @@ impl Layer {
                 &spec,
                 &self.mappings,
                 ctx,
+                // The validate path runs before orientation resolution, so
+                // mappings are still in user orientation.
+                false,
             )?;
         }
         Ok(())

@@ -533,17 +533,38 @@ fn unquote(qcol: &str) -> String {
 /// 3. The name is a material aesthetic with the same internal name (e.g. `size`).
 ///
 /// Returns the empty vector if no resolution finds a mapped aesthetic.
+/// Read the layer's resolved orientation out of its parameters. The executor
+/// stores the `resolve_orientations` verdict on the layer before any stat
+/// runs; the standalone validate path has no such entry (and its mappings are
+/// still in user orientation), so absence means "not transposed".
+fn is_transposed_param(parameters: &Parameters) -> bool {
+    parameters.get("orientation").and_then(|v| v.as_str())
+        == Some(crate::plot::layer::orientation::TRANSPOSED)
+}
+
 fn resolve_target_aesthetic(
     user_aes: &str,
     aesthetics: &Mappings,
     aesthetic_ctx: &AestheticContext,
+    transposed: bool,
 ) -> Vec<String> {
     use crate::plot::layer::geom::types::AESTHETIC_ALIASES;
     let mut out = Vec::new();
     if let Some(internal) = aesthetic_ctx.map_user_to_internal(user_aes) {
-        if aesthetics.aesthetics.contains_key(internal) {
-            out.push(internal.to_string());
-            return out;
+        // Transposed layers have their position mappings flipped to aligned
+        // orientation before the stat runs (e.g. user `xmin` lives at
+        // `pos2min`), so the flipped internal name is the primary candidate.
+        let flipped = aesthetic_ctx.flip_position(internal);
+        let candidates: [&str; 2] = if transposed {
+            [&flipped, internal]
+        } else {
+            [internal, &flipped]
+        };
+        for candidate in candidates {
+            if aesthetics.aesthetics.contains_key(candidate) {
+                out.push(candidate.to_string());
+                return out;
+            }
         }
     }
     for (alias, targets) in AESTHETIC_ALIASES {
@@ -589,10 +610,11 @@ pub(crate) fn resolve_aggregate_targets(
     spec: &AggregateSpec,
     aesthetics: &Mappings,
     aesthetic_ctx: &AestheticContext,
+    transposed: bool,
 ) -> std::result::Result<HashMap<String, Vec<AggSpec>>, String> {
     let mut targets_internal: HashMap<String, Vec<AggSpec>> = HashMap::new();
     for (user_aes, fns) in &spec.targets {
-        let resolved = resolve_target_aesthetic(user_aes, aesthetics, aesthetic_ctx);
+        let resolved = resolve_target_aesthetic(user_aes, aesthetics, aesthetic_ctx, transposed);
         if resolved.is_empty() {
             return Err(format!(
                 "aggregate target '{}' is not mapped on this layer",
@@ -629,9 +651,10 @@ pub fn targeted_aesthetics(
         Some(s) => s,
         None => return HashSet::new(),
     };
+    let transposed = is_transposed_param(parameters);
     let mut targeted: HashSet<String> = HashSet::new();
     for (user_aes, _fns) in &spec.targets {
-        for internal in resolve_target_aesthetic(user_aes, aesthetics, aesthetic_ctx) {
+        for internal in resolve_target_aesthetic(user_aes, aesthetics, aesthetic_ctx, transposed) {
             targeted.insert(internal);
         }
     }
@@ -664,9 +687,10 @@ pub fn aggregated_aesthetics(
     }
     let spec = parse_aggregate_param(raw).ok()??;
 
+    let transposed = is_transposed_param(parameters);
     let mut targeted: HashSet<String> = HashSet::new();
     for (user_aes, _fns) in &spec.targets {
-        for internal in resolve_target_aesthetic(user_aes, aesthetics, aesthetic_ctx) {
+        for internal in resolve_target_aesthetic(user_aes, aesthetics, aesthetic_ctx, transposed) {
             targeted.insert(internal);
         }
     }
@@ -740,8 +764,13 @@ pub fn apply(
     // Resolve target keys (user-facing) → internal aesthetic names. An alias
     // like `color` expands to whichever of its targets (stroke/fill) is mapped
     // on the layer; the same function list applies to all of them.
-    let targets_internal = resolve_aggregate_targets(&spec, aesthetics, aesthetic_ctx)
-        .map_err(GgsqlError::ValidationError)?;
+    let targets_internal = resolve_aggregate_targets(
+        &spec,
+        aesthetics,
+        aesthetic_ctx,
+        is_transposed_param(parameters),
+    )
+    .map_err(GgsqlError::ValidationError)?;
 
     // Walk mappings. Three buckets:
     //   - aggregated: (internal_aes, raw_col, fns of length n) — each emits one column per row
@@ -804,8 +833,16 @@ pub fn apply(
         }
     }
 
+    let transposed = is_transposed_param(parameters);
     for d in &dropped {
-        let user_aes = aesthetic_ctx.map_internal_to_user(d);
+        // On transposed layers the internal name is flipped relative to the
+        // user's axes, so flip it back before translating for display.
+        let display_internal = if transposed {
+            aesthetic_ctx.flip_position(d)
+        } else {
+            d.clone()
+        };
+        let user_aes = aesthetic_ctx.map_internal_to_user(&display_internal);
         eprintln!(
             "Warning: aggregate dropped numeric mapping for aesthetic '{}' \
              (no applicable default and no targeted function). \
@@ -851,7 +888,11 @@ pub fn apply(
     };
 
     let mut stat_columns: Vec<String> = aggregated.iter().map(|(a, _, _)| a.clone()).collect();
-    let consumed_aesthetics: Vec<String> = stat_columns.clone();
+    // Dropped mappings are removed alongside consumed ones: their columns
+    // won't exist in the stat output, so leaving the mapping in place would
+    // produce a dangling column reference at write time.
+    let mut consumed_aesthetics: Vec<String> = stat_columns.clone();
+    consumed_aesthetics.extend(dropped.iter().cloned());
     // The synthetic `aggregate` column is only emitted for the multi-row
     // (explosion) case, where it differentiates rows that share the same
     // group key.
