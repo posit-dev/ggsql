@@ -11,6 +11,8 @@ import jupyter_kernel_test as jkt
 import subprocess
 from pathlib import Path
 
+from conftest import build_kernel_binary
+
 # Isolated from any real Jupyter install: setup_module points JUPYTER_DATA_DIR
 # at a scratch directory before this name is ever installed or removed.
 KERNEL_NAME = "ggsql-test"
@@ -31,11 +33,51 @@ class ggsqlKernelTests(jkt.KernelTests):
     # Code samples for testing
     code_hello_world = "SELECT 'Hello, World!' as greeting"
 
+    # These have a real implementation behind them, so defining the sample
+    # lets jupyter_kernel_test's own inherited test exercise it directly
+    # rather than duplicating the assertions in a test we wrote ourselves.
+    code_generate_error = "SELECT * FROM nonexistent_table"
+    code_execute_result = [{"code": "SELECT 123 as num", "mime": "text/plain"}]
+    complete_code_samples = ["SELECT 1"]
+    incomplete_code_samples = ["SELECT (1"]
+
     # Override test_execute_stdout - SQL kernels don't produce stdout
     def test_execute_stdout(self):
         """SQL kernels produce execute_result, not stdout streams."""
         # Skip this test for SQL kernels - they don't produce stdout
         # They produce execute_result messages instead
+        pass
+
+    # Everything below has no backing implementation in the kernel: there is
+    # no complete_request, inspect_request or history_request handler (see
+    # kernel.rs's message dispatch), `payload` is hardcoded to `[]` so there
+    # is no pager support, and nothing is ever emitted as `display_data` —
+    # results always go out as `execute_result`. Defining the sample
+    # attributes that would make these inherited tests run would exercise
+    # protocol features this kernel doesn't have, so they're overridden here
+    # to record that as a deliberate choice rather than a silent SkipTest.
+    def test_execute_stderr(self):
+        """No stream messages of any kind are ever emitted."""
+        pass
+
+    def test_completion(self):
+        """No complete_request handler exists."""
+        pass
+
+    def test_pager(self):
+        """`payload` is hardcoded to `[]`; there is no pager support."""
+        pass
+
+    def test_display_data(self):
+        """Results always go out as execute_result, never display_data."""
+        pass
+
+    def test_history(self):
+        """No history_request handler exists."""
+        pass
+
+    def test_inspect(self):
+        """No inspect_request handler exists."""
         pass
 
     # Test that kernel_info_request works
@@ -265,25 +307,12 @@ def setup_module():
     os.environ["JUPYTER_DATA_DIR"] = _scratch_data_dir
 
     # Build kernel (once for the whole module; individual tests no longer
-    # rebuild it in setUp).
-    repo_root = Path(__file__).parent.parent.parent
-    result = subprocess.run(
-        ["cargo", "build", "--bin", "ggsql-jupyter"],
-        cwd=repo_root / "ggsql-jupyter",
-        capture_output=True,
-        text=True,
-    )
-    if result.returncode != 0:
-        raise RuntimeError(f"Failed to build kernel: {result.stderr}")
-
-    # Find binary
-    binary_path = repo_root / "target" / "debug" / "ggsql-jupyter"
-    if not binary_path.exists():
-        raise RuntimeError(f"Kernel binary not found at {binary_path}")
+    # rebuild it in setUp). Shared with test_integration.py via conftest.py.
+    binary_path = build_kernel_binary()
 
     # Create kernel spec
     kernel_spec = {
-        "argv": [str(binary_path), "-f", "{connection_file}"],
+        "argv": [binary_path, "-f", "{connection_file}"],
         "display_name": KERNEL_NAME,
         "language": "ggsql",
     }

@@ -5,36 +5,16 @@ These tests launch the kernel and send real Jupyter protocol messages
 to verify correct behavior.
 """
 
+import contextlib
 import json
 import time
 import subprocess
-import tempfile
 import os
-from pathlib import Path
 import pytest
 from jupyter_client import KernelManager
 
-
-@pytest.fixture(scope="session")
-def kernel_binary():
-    """Build and return path to ggsql-jupyter binary."""
-    # Build the kernel
-    repo_root = Path(__file__).parent.parent.parent
-    result = subprocess.run(
-        ["cargo", "build", "--bin", "ggsql-jupyter"],
-        cwd=repo_root / "ggsql-jupyter",
-        capture_output=True,
-        text=True,
-    )
-    if result.returncode != 0:
-        pytest.fail(f"Failed to build kernel: {result.stderr}")
-
-    # Find binary
-    binary_path = repo_root / "target" / "debug" / "ggsql-jupyter"
-    if not binary_path.exists():
-        pytest.fail(f"Kernel binary not found at {binary_path}")
-
-    return str(binary_path)
+# kernel_binary is defined in conftest.py, shared with test_compliance.py so
+# the kernel is built once rather than once per test file.
 
 
 def _launch(kernel_binary, extra_args=()):
@@ -103,15 +83,26 @@ def _launch(kernel_binary, extra_args=()):
                 pass
 
 
-@pytest.fixture
+# Also usable as `with _launch_kernel(binary) as km:` outside of pytest's
+# fixture machinery — see TestShutdown.test_shutdown_request below, which
+# needs a kernel of its own rather than the session-scoped one.
+_launch_kernel = contextlib.contextmanager(_launch)
+
+
+@pytest.fixture(scope="session")
 def kernel_manager(kernel_binary):
-    """Create and start a kernel manager."""
+    """Start one kernel manager, shared by every test in this session.
+
+    Session-scoped so the suite doesn't pay kernel startup cost per test.
+    Any test that needs to shut down or otherwise damage its kernel — see
+    TestShutdown — must launch a private one instead of using this fixture.
+    """
     yield from _launch(kernel_binary)
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def console_kernel_manager(kernel_binary):
-    """A kernel that believes it is a Positron console session.
+    """A session-scoped kernel that believes it is a Positron console session.
 
     `--session-mode` is what the extension's `createKernelSpec` appends, and it
     is authoritative over the session-id heuristic — so this is the only way to
@@ -545,37 +536,32 @@ class TestStatus:
 class TestShutdown:
     """Test shutdown_request/reply messages."""
 
-    def test_shutdown_request(self, kernel_manager):
-        """Test that kernel responds to shutdown_request."""
-        kc = kernel_manager.client()
-        kc.start_channels()
+    def test_shutdown_request(self, kernel_binary):
+        """Test that kernel responds to shutdown_request.
 
-        try:
-            kc.wait_for_ready(timeout=10)
+        Launches its own kernel rather than taking the session-scoped
+        `kernel_manager` fixture: this test's whole point is to shut its
+        kernel down, which would take every other test in this module down
+        with it if it were the shared one.
 
-            # Send shutdown request on control channel
-            msg_id = kc.shutdown()
-
-            # Try to get reply with a longer timeout
+        The reply comes back on the *control* channel — `kc.shutdown()`
+        sends `shutdown_request` there, per `KernelClient.shutdown`'s
+        docstring — not shell.
+        """
+        with _launch_kernel(kernel_binary) as km:
+            kc = km.client()
+            kc.start_channels()
             try:
-                reply = kc.get_shell_msg(timeout=10)
+                kc.wait_for_ready(timeout=10)
+
+                msg_id = kc.shutdown()
+                reply = kc.get_control_msg(timeout=10)
 
                 assert reply["msg_type"] == "shutdown_reply"
                 assert reply["content"]["status"] == "ok"
                 assert "restart" in reply["content"]
-            except:
-                # If we can't get the reply, at least verify the kernel process is terminating
-                # Wait a bit for shutdown to process
-                time.sleep(2)
-                kernel_process = kernel_manager._kernel_process
-                # Process should either be terminated or terminating
-                if kernel_process.poll() is None:
-                    # Still running, send explicit shutdown
-                    kernel_process.terminate()
-                    kernel_process.wait(timeout=5)
-
-        finally:
-            kc.stop_channels()
+            finally:
+                kc.stop_channels()
 
 
 class TestExecuteInput:
