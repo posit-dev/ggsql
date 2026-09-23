@@ -1,12 +1,16 @@
 //! A minimal HTML table writer.
 //!
 //! Maps `ResolvedTable`'s three parts onto distinct pieces of the `<table>`:
-//! - `cells` → `<thead>`/`<tbody>` rows; each cell's resolved `FORMAT`
-//!   properties become an inline `style` attribute (e.g. `hjust` becomes
-//!   `text-align`).
+//! - `cells` → `<thead>`/`<tbody>` rows. How a cell's styling is expressed
+//!   depends on the `css_mode` option: `class` (the default) puts `ggsql_*`
+//!   classes on the elements — from the cell's recorded `TableCellClass`es
+//!   plus property-derived classes like alignment — backed by a `<style>`
+//!   block; `inline` renders the same declarations into each element's
+//!   `style` attribute instead (the two gt `as_raw_html()` modes).
 //! - `columns` → a `<colgroup>`, one `<col>` per column, with a `style`
 //!   attribute from that column's resolved `width` (a bare `<col>` for a
-//!   column with none).
+//!   column with none) in both modes — targeted column styling stays inline,
+//!   as gt keeps `tab_style()` rules inline.
 //! - `rows` → not consumed yet; no row-wide property exists to render.
 //!
 //! No footnotes, since `Table` has no fields to describe those yet. Spanner
@@ -26,26 +30,49 @@ use std::collections::HashSet;
 use crate::plot::{ParameterValue, Parameters};
 use crate::util::escape_html;
 use crate::writer::{Writer, WriterOptions};
-use crate::{DataFrame, GgsqlError, Plot, Result, TableCell, TableColumn, TableRow};
+use crate::{
+    DataFrame, GgsqlError, Plot, Result, TableCell, TableCellClass, TableColumn, TableRow,
+};
 
 /// Renders a resolved table as a bare HTML `<table>`. Does not support plots.
 #[derive(Debug, Default)]
-pub struct HtmlWriter;
+pub struct HtmlWriter {
+    css_mode: CssMode,
+}
+
+/// How cell styling is expressed in the output HTML — the two gt
+/// `as_raw_html()` modes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+enum CssMode {
+    /// `ggsql_*` classes on the elements, backed by a `<style>` block
+    /// carrying the style classes' rules (gt's `inline_css = FALSE`).
+    #[default]
+    Class,
+    /// Declarations rendered into each element's `style` attribute; no
+    /// classes, no `<style>` block (gt's `inline_css = TRUE`).
+    Inline,
+}
 
 impl HtmlWriter {
-    /// Create a new HtmlWriter.
+    /// Create a new HtmlWriter (class mode; see `css_mode`).
     pub fn new() -> Self {
-        Self
+        Self::default()
     }
 }
 
 impl Writer for HtmlWriter {
     type Output = String;
 
-    /// This writer takes no options and rejects any.
+    /// Takes one option: `css_mode` — `class` (default) renders `ggsql_*`
+    /// classes backed by a `<style>` block; `inline` renders the same
+    /// declarations into each element's `style` attribute.
     fn from_options(options: &WriterOptions) -> Result<Self> {
-        options.reject_unknown(&[])?;
-        Ok(Self::new())
+        options.reject_unknown(&["css_mode"])?;
+        let css_mode = match options.one_of("css_mode", &["inline", "class"])? {
+            Some("inline") => CssMode::Inline,
+            _ => CssMode::Class,
+        };
+        Ok(Self { css_mode })
     }
 
     fn write_plot(&self, _spec: &Plot, _data: &HashMap<String, DataFrame>) -> Result<String> {
@@ -69,6 +96,14 @@ impl Writer for HtmlWriter {
         // Not consumed yet — no property needs whole-row rendering yet.
         let _ = rows;
 
+        // Fold `hjust` into alignment classes up front, so rendering reads
+        // `classes` alone.
+        let cells: Vec<TableCell> = cells
+            .iter()
+            .cloned()
+            .map(TableCell::discretise_hjust)
+            .collect();
+
         let ncol = cells
             .iter()
             .map(|cell| cell.right)
@@ -80,7 +115,7 @@ impl Writer for HtmlWriter {
         let mut body_rows: BTreeMap<usize, Vec<&TableCell>> = BTreeMap::new();
 
         // Sorting Hat: Hmmm... Yes... BODY ROW!!! *applause*
-        for cell in cells {
+        for cell in &cells {
             if cell.is_header() {
                 header_rows.entry(cell.top).or_default().push(cell);
             } else {
@@ -107,9 +142,13 @@ impl Writer for HtmlWriter {
             .map(|cell| cell.bottom)
             .max()
             .map_or(0, |r| r + 1);
-        let occupied = occupied_columns_per_row(cells, nrow);
+        let occupied = occupied_columns_per_row(&cells, nrow);
 
-        let mut html = String::from("<table>\n");
+        let mut html = String::new();
+        if self.css_mode == CssMode::Class {
+            html.push_str(&render_style_block());
+        }
+        html.push_str("<table>\n");
 
         if let Some(colgroup) = render_colgroup(columns) {
             html.push_str(&colgroup);
@@ -118,7 +157,7 @@ impl Writer for HtmlWriter {
         if !header_rows.is_empty() {
             html.push_str("<thead>\n");
             for (row, row_cells) in header_rows {
-                html.push_str(&render_row(row_cells, ncol, &occupied[row]));
+                html.push_str(&render_row(row_cells, ncol, &occupied[row], self.css_mode));
             }
             html.push_str("</thead>\n");
         }
@@ -126,7 +165,7 @@ impl Writer for HtmlWriter {
         if !body_rows.is_empty() {
             html.push_str("<tbody>\n");
             for (row, row_cells) in body_rows {
-                html.push_str(&render_row(row_cells, ncol, &occupied[row]));
+                html.push_str(&render_row(row_cells, ncol, &occupied[row], self.css_mode));
             }
             html.push_str("</tbody>\n");
         }
@@ -137,11 +176,87 @@ impl Writer for HtmlWriter {
     }
 }
 
+/// What a `TableCellClass` stands for in CSS, as property–value pairs. The
+/// single source of truth both `css_mode`s render from — class mode puts
+/// these in the `<style>` block, inline mode folds them into the element's
+/// `style` attribute. Structural classes carry no declarations — they're
+/// pure semantic hooks for the embedder.
+fn class_declarations(class: TableCellClass) -> &'static [(&'static str, &'static str)] {
+    match class {
+        TableCellClass::Row
+        | TableCellClass::ColHeading
+        | TableCellClass::Spanner
+        | TableCellClass::SpannerOuter => &[],
+        TableCellClass::AlignLeft => &[("text-align", "left")],
+        TableCellClass::AlignCenter => &[("text-align", "center")],
+        TableCellClass::AlignRight => &[
+            ("text-align", "right"),
+            // Right-aligned data reads as numeric — keep digit widths uniform
+            // so they still line up under one another.
+            ("font-variant-numeric", "tabular-nums"),
+        ],
+    }
+}
+
+/// The styled classes (those carrying declarations), in `<style>`-block rule
+/// order. With equal specificity the later rule wins, so this decides
+/// precedence in class mode; `inline_style`'s own precedence instead follows
+/// the order of the cell's `classes` field (see its doc comment).
+const STYLED_CLASSES: &[TableCellClass] = &[
+    TableCellClass::AlignLeft,
+    TableCellClass::AlignCenter,
+    TableCellClass::AlignRight,
+];
+
+/// The `<style>` block class mode prepends — one rule per styled class,
+/// generated from the same lookup inline mode folds into `style` attributes,
+/// so the modes can't drift. Emitted unconditionally: three short rules
+/// aren't worth a pass over the cells to see which are used.
+fn render_style_block() -> String {
+    let mut block = String::from("<style>\n");
+    for &class in STYLED_CLASSES {
+        let name = format!("ggsql_{class}");
+        let declarations = class_declarations(class)
+            .iter()
+            .map(|(property, value)| format!("{property}: {value}"))
+            .collect::<Vec<_>>()
+            .join("; ");
+        block.push_str(&format!(".{name} {{ {declarations}; }}\n"));
+    }
+    block.push_str("</style>\n");
+    block
+}
+
+/// Fold classes' declarations into a `style` attribute value, each CSS
+/// property appearing at most once — a later class's declaration overrides
+/// an earlier one's (CSS's last-wins rule, made explicit so the output
+/// doesn't rely on browsers' duplicate-declaration handling).
+fn inline_style(classes: &[TableCellClass]) -> Option<String> {
+    let mut folded: Vec<(&str, &str)> = Vec::new();
+    for class in classes {
+        for &(property, value) in class_declarations(*class) {
+            match folded.iter_mut().find(|(p, _)| *p == property) {
+                Some(entry) => entry.1 = value,
+                None => folded.push((property, value)),
+            }
+        }
+    }
+    (!folded.is_empty()).then(|| {
+        folded
+            .iter()
+            .map(|(property, value)| format!("{property}: {value}"))
+            .collect::<Vec<_>>()
+            .join("; ")
+    })
+}
+
 /// Render one `TableCell` as an HTML tag — `<th>`/`<td>` from
 /// `cell.is_header()`, with a `colspan`/`rowspan` attribute only when the
-/// cell actually spans more than one column/row, and a `style` attribute
-/// only when `cell.properties` resolves to one.
-fn render_cell(cell: &TableCell) -> String {
+/// cell actually spans more than one column/row. Styling per `mode`: class
+/// mode emits a `class` attribute naming the cell's `TableCellClass`es;
+/// inline mode folds their declarations into a `style` attribute. Each
+/// attribute appears only when non-empty.
+fn render_cell(cell: &TableCell, mode: CssMode) -> String {
     let tag = if cell.is_header() { "th" } else { "td" };
     let colspan = cell.width();
     let rowspan = cell.height();
@@ -152,42 +267,26 @@ fn render_cell(cell: &TableCell) -> String {
     if rowspan > 1 {
         attrs.push_str(&format!(" rowspan=\"{rowspan}\""));
     }
-    if let Some(style) = cell_style(&cell.properties) {
-        attrs.push_str(&format!(" style=\"{style}\""));
-    }
-    format!("<{tag}{attrs}>{}</{tag}>", escape_html(&cell.content))
-}
 
-/// Translate a cell's resolved `FORMAT` properties into a `style` attribute
-/// value, or `None` if none of them produce a CSS declaration.
-fn cell_style(properties: &Parameters) -> Option<String> {
-    let mut declarations = Vec::new();
-
-    if let Some(align) = text_align(properties.get("hjust")) {
-        declarations.push(format!("text-align: {align}"));
-        // Right-aligned data reads as numeric — keep digit widths uniform
-        // so they still line up under one another.
-        if align == "right" {
-            declarations.push("font-variant-numeric: tabular-nums".to_string());
+    match mode {
+        CssMode::Class => {
+            if !cell.classes.is_empty() {
+                let names = cell
+                    .classes
+                    .iter()
+                    .map(|&class| format!("ggsql_{class}"))
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                attrs.push_str(&format!(" class=\"{names}\""));
+            }
+        }
+        CssMode::Inline => {
+            if let Some(style) = inline_style(&cell.classes) {
+                attrs.push_str(&format!(" style=\"{style}\""));
+            }
         }
     }
-
-    (!declarations.is_empty()).then(|| declarations.join("; "))
-}
-
-/// Map a resolved `hjust` number to a CSS `text-align` keyword, bucketed
-/// with the same `0.25`/`0.75` thresholds `VegaLiteWriter`'s `convert_hjust`
-/// uses for its own `align` conversion, so `hjust` means the same alignment
-/// in both writers. `resolve_column_properties` already standardises every
-/// `hjust` (however the user wrote it) to a number before it reaches a
-/// `TableCell`, so a non-`Number` here is unreachable in practice.
-fn text_align(hjust: Option<&ParameterValue>) -> Option<&'static str> {
-    match hjust? {
-        ParameterValue::Number(n) if *n <= 0.25 => Some("left"),
-        ParameterValue::Number(n) if *n >= 0.75 => Some("right"),
-        ParameterValue::Number(_) => Some("center"),
-        _ => None,
-    }
+    format!("<{tag}{attrs}>{}</{tag}>", escape_html(&cell.content))
 }
 
 /// Render a `<colgroup>` block, one `<col>` per column, or `None` if
@@ -247,7 +346,12 @@ fn occupied_columns_per_row(cells: &[TableCell], nrow: usize) -> Vec<HashSet<usi
 /// empty cell of the same kind. `occupied` (from `occupied_columns_per_row`)
 /// names the columns a rowspan from an earlier row already claims — those
 /// get neither a cell nor a filler here.
-fn render_row(mut cells: Vec<&TableCell>, ncol: usize, occupied: &HashSet<usize>) -> String {
+fn render_row(
+    mut cells: Vec<&TableCell>,
+    ncol: usize,
+    occupied: &HashSet<usize>,
+    mode: CssMode,
+) -> String {
     // write_table's only caller never hands this an empty `cells` (an entry
     // is only ever created already holding a cell), but an empty row has no
     // `kind` to synthesize fillers with, so this returns early rather than
@@ -258,7 +362,14 @@ fn render_row(mut cells: Vec<&TableCell>, ncol: usize, occupied: &HashSet<usize>
 
     // The walk below depends on `left`-ascending order.
     cells.sort_by_key(|cell| cell.left);
+    // Known gap: `kind` and `filler_classes` both assume every real cell in
+    // this row shares one `TableCellKind`/structural class, true of every row
+    // today but not guaranteed to stay true once row stubs (labels/groups)
+    // can share a row with `Body` cells — revisit then.
     let kind = cells[0].kind;
+    // A real cell's classes are uniform across the row by construction, so
+    // any of them names the filler's correctly.
+    let filler_classes = cells[0].classes.clone();
     let mut html = String::from("<tr>");
 
     // `ncol` comes from the whole table, not this row's own cells — a row
@@ -269,7 +380,7 @@ fn render_row(mut cells: Vec<&TableCell>, ncol: usize, occupied: &HashSet<usize>
         if occupied.contains(&col) {
             col += 1;
         } else if i < cells.len() && cells[i].left == col {
-            html.push_str(&render_cell(cells[i]));
+            html.push_str(&render_cell(cells[i], mode));
             col = cells[i].right + 1;
             i += 1;
         } else {
@@ -277,8 +388,9 @@ fn render_row(mut cells: Vec<&TableCell>, ncol: usize, occupied: &HashSet<usize>
             // by another spanner's occupancy) renders through `render_cell`
             // too, so one place decides which tag a `TableCellKind` gets,
             // not two.
-            let filler = TableCell::new(kind, cells[0].top, cells[0].top, col, col, String::new());
-            html.push_str(&render_cell(&filler));
+            let filler = TableCell::new(kind, cells[0].top, cells[0].top, col, col, String::new())
+                .with_classes(filler_classes.clone());
+            html.push_str(&render_cell(&filler, mode));
             col += 1;
         }
     }
@@ -290,7 +402,7 @@ fn render_row(mut cells: Vec<&TableCell>, ncol: usize, occupied: &HashSet<usize>
 #[cfg(test)]
 mod render_tests {
     use super::*;
-    use crate::TableCellKind;
+    use crate::{TableCellClass, TableCellKind};
 
     fn cell(
         kind: TableCellKind,
@@ -303,61 +415,117 @@ mod render_tests {
     }
 
     #[test]
+    fn from_options_defaults_to_class_mode() {
+        assert_eq!(HtmlWriter::new().css_mode, CssMode::Class);
+        let writer = HtmlWriter::from_options(&WriterOptions::new()).unwrap();
+        assert_eq!(writer.css_mode, CssMode::Class);
+    }
+
+    #[test]
+    fn from_options_accepts_inline_and_class_case_insensitively() {
+        let options = WriterOptions::parse(["css-mode=INLINE"]).unwrap();
+        assert_eq!(
+            HtmlWriter::from_options(&options).unwrap().css_mode,
+            CssMode::Inline
+        );
+        let options = WriterOptions::parse(["css_mode=Class"]).unwrap();
+        assert_eq!(
+            HtmlWriter::from_options(&options).unwrap().css_mode,
+            CssMode::Class
+        );
+    }
+
+    #[test]
+    fn from_options_rejects_bad_values_and_unknown_keys() {
+        let err = HtmlWriter::from_options(&WriterOptions::parse(["css_mode=banana"]).unwrap())
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("expects 'inline' or 'class'"), "{err}");
+        assert!(HtmlWriter::from_options(&WriterOptions::parse(["widdth=3"]).unwrap()).is_err());
+    }
+
+    #[test]
     fn render_row_returns_empty_string_for_no_cells() {
-        assert_eq!(render_row(Vec::new(), 3, &HashSet::new()), "");
+        assert_eq!(
+            render_row(Vec::new(), 3, &HashSet::new(), CssMode::Inline),
+            ""
+        );
     }
 
     #[test]
     fn render_cell_emits_rowspan_when_height_is_greater_than_one() {
         let c = cell(TableCellKind::ColumnLabel, 0, 1, 0, 0);
-        assert_eq!(render_cell(&c), "<th rowspan=\"2\"></th>");
+        assert_eq!(render_cell(&c, CssMode::Inline), "<th rowspan=\"2\"></th>");
     }
 
     #[test]
-    fn render_cell_emits_a_style_attribute_from_properties() {
-        // The exact declarations a given `hjust` produces are `cell_style`'s
-        // own tests' job — this just checks render_cell embeds whatever
-        // `cell_style` returns as a `style="..."` attribute.
+    fn render_cell_emits_a_style_attribute_from_properties_in_inline_mode() {
+        // Declaration content is inline_style's tests' job — this just checks
+        // render_cell routes `hjust` through it as a `style="..."` attribute.
         let mut c = cell(TableCellKind::Body, 0, 0, 0, 0);
         c.properties
             .insert("hjust".to_string(), ParameterValue::Number(1.0));
-        let style = cell_style(&c.properties).unwrap();
-        assert_eq!(render_cell(&c), format!("<td style=\"{style}\"></td>"));
+        let html = render_cell(&c.discretise_hjust(), CssMode::Inline);
+        assert!(html.starts_with("<td style=\"text-align: right;"));
+        assert!(html.ends_with("\"></td>"));
     }
 
     #[test]
-    fn text_align_buckets_a_resolved_hjust_number() {
-        assert_eq!(text_align(None), None);
-        assert_eq!(text_align(Some(&ParameterValue::Number(0.0))), Some("left"));
-        assert_eq!(text_align(Some(&ParameterValue::Number(0.1))), Some("left"));
+    fn render_cell_emits_classes_in_class_mode() {
+        let mut body =
+            cell(TableCellKind::Body, 0, 0, 0, 0).with_classes(vec![TableCellClass::Row]);
+        body.properties
+            .insert("hjust".to_string(), ParameterValue::Number(1.0));
+        let body = body.discretise_hjust();
         assert_eq!(
-            text_align(Some(&ParameterValue::Number(0.5))),
-            Some("center")
+            render_cell(&body, CssMode::Class),
+            "<td class=\"ggsql_row ggsql_right\"></td>"
         );
+
+        let label = cell(TableCellKind::ColumnLabel, 0, 0, 0, 0)
+            .with_classes(vec![TableCellClass::ColHeading]);
         assert_eq!(
-            text_align(Some(&ParameterValue::Number(0.9))),
-            Some("right")
+            render_cell(&label, CssMode::Class),
+            "<th class=\"ggsql_col_heading\"></th>"
         );
+
+        let spanner =
+            cell(TableCellKind::Spanner, 0, 0, 0, 1).with_classes(vec![TableCellClass::Spanner]);
         assert_eq!(
-            text_align(Some(&ParameterValue::Number(1.0))),
-            Some("right")
+            render_cell(&spanner, CssMode::Class),
+            "<th colspan=\"2\" class=\"ggsql_spanner\"></th>"
+        );
+
+        let outer = cell(TableCellKind::Spanner, 0, 0, 0, 1)
+            .with_classes(vec![TableCellClass::SpannerOuter]);
+        assert_eq!(
+            render_cell(&outer, CssMode::Class),
+            "<th colspan=\"2\" class=\"ggsql_spanner_outer\"></th>"
         );
     }
 
     #[test]
-    fn cell_style_only_adds_tabular_nums_when_right_aligned() {
-        let mut left = Parameters::new();
-        left.insert("hjust".to_string(), ParameterValue::Number(0.0));
-        assert_eq!(cell_style(&left), Some("text-align: left".to_string()));
-
-        let mut right = Parameters::new();
-        right.insert("hjust".to_string(), ParameterValue::Number(1.0));
+    fn inline_style_folds_declarations_per_class() {
+        assert_eq!(inline_style(&[]), None);
         assert_eq!(
-            cell_style(&right),
+            inline_style(&[TableCellClass::AlignLeft]),
+            Some("text-align: left".to_string())
+        );
+        assert_eq!(
+            inline_style(&[TableCellClass::AlignRight]),
             Some("text-align: right; font-variant-numeric: tabular-nums".to_string())
         );
+        // Structural classes carry no declarations.
+        assert_eq!(inline_style(&[TableCellClass::Row]), None);
+    }
 
-        assert_eq!(cell_style(&Parameters::new()), None);
+    #[test]
+    fn inline_style_lets_a_later_class_override_an_earlier_ones_property() {
+        // AlignLeft and AlignRight both declare text-align — last wins.
+        assert_eq!(
+            inline_style(&[TableCellClass::AlignLeft, TableCellClass::AlignRight]),
+            Some("text-align: right; font-variant-numeric: tabular-nums".to_string())
+        );
     }
 
     #[test]
@@ -412,9 +580,26 @@ mod render_tests {
         let c = cell(TableCellKind::ColumnLabel, 1, 1, 2, 2);
         let occupied = HashSet::from([1]);
 
-        let row = render_row(vec![&a, &c], 3, &occupied);
+        let row = render_row(vec![&a, &c], 3, &occupied, CssMode::Inline);
 
         assert_eq!(row, "<tr><th></th><th></th></tr>\n");
+    }
+
+    #[test]
+    fn render_row_gives_a_filler_the_same_classes_as_its_row_siblings() {
+        let a = cell(TableCellKind::Spanner, 0, 0, 0, 0)
+            .with_classes(vec![TableCellClass::SpannerOuter]);
+        let b = cell(TableCellKind::Spanner, 0, 0, 2, 2)
+            .with_classes(vec![TableCellClass::SpannerOuter]);
+
+        let row = render_row(vec![&a, &b], 3, &HashSet::new(), CssMode::Class);
+
+        assert_eq!(
+            row,
+            "<tr><th class=\"ggsql_spanner_outer\"></th>\
+             <th class=\"ggsql_spanner_outer\"></th>\
+             <th class=\"ggsql_spanner_outer\"></th></tr>\n"
+        );
     }
 
     #[test]
@@ -439,7 +624,11 @@ mod render_tests {
             cell(TableCellKind::Body, 2, 2, 1, 1),
         ];
 
-        let html = HtmlWriter::new().write_table(&cells, None, None).unwrap();
+        let html = HtmlWriter {
+            css_mode: CssMode::Inline,
+        }
+        .write_table(&cells, None, None)
+        .unwrap();
 
         assert_eq!(
             html,
@@ -476,16 +665,41 @@ mod tests {
         let html = writer.render(&spec).unwrap();
 
         // Precise per-dtype alignment is covered directly by
-        // resolve_column_properties's/cell_style's own tests — this just
-        // checks the columns render and escaping works end to end.
-        assert!(html.starts_with("<table>"));
+        // resolve_column_properties's/discretise_hjust's own tests — this
+        // just checks the columns render and escaping works end to end.
+        assert!(html.starts_with("<style>"));
+        assert!(html.contains("<table>"));
         assert!(html.contains(">id</th>"));
         assert!(html.contains(">name</th>"));
-        assert!(html.contains(">1</td>"));
-        assert!(html.contains("text-align: right")); // "id"/1, numeric
-        assert!(html.contains("text-align: left")); // "name", text
+        // Class mode: "id"/1 is numeric (right), "name" is text (left) —
+        // alignment is a class on the cell, declarations in the <style>
+        // block, nothing inline.
+        assert!(html.contains("<td class=\"ggsql_row ggsql_right\">1</td>"));
+        assert!(html.contains("ggsql_left"));
+        assert!(html
+            .contains(".ggsql_right { text-align: right; font-variant-numeric: tabular-nums; }"));
+        assert!(!html.contains("style=\"text-align"));
         assert!(html.contains("&lt;b&gt;a&lt;/b&gt;"));
         assert!(!html.contains("<b>a</b>"));
+    }
+
+    #[test]
+    fn test_write_table_inline_mode_keeps_declarations_on_the_cells() {
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        reader
+            .execute_sql("CREATE TABLE sales AS SELECT * FROM (VALUES (1, 'a')) AS t(id, name)")
+            .unwrap();
+        let spec = reader.execute("TABULATE FROM sales").unwrap();
+
+        let writer =
+            HtmlWriter::from_options(&WriterOptions::parse(["css_mode=inline"]).unwrap()).unwrap();
+        let html = writer.render(&spec).unwrap();
+
+        assert!(html.starts_with("<table>"));
+        assert!(!html.contains("<style>"));
+        assert!(!html.contains("class="));
+        assert!(html.contains("style=\"text-align: right")); // "id"/1, numeric
+        assert!(html.contains("style=\"text-align: left")); // "name", text
     }
 
     #[test]
@@ -507,8 +721,11 @@ mod tests {
         // spanner row (rowspan) instead of a blank filler cell there.
         // Alignment styling is incidental here (amount/id are numeric) and
         // covered precisely by resolve_column_properties's own tests — this
-        // checks colspan/rowspan/ordering, not exact style content.
-        assert!(html.contains("<tr><th colspan=\"2\">Info</th><th rowspan=\"2\""));
+        // checks colspan/rowspan/ordering, not exact style content. The
+        // single spanner level is the topmost one, hence `spanner_outer`.
+        assert!(html.contains(
+            "<tr><th colspan=\"2\" class=\"ggsql_spanner_outer\">Info</th><th rowspan=\"2\""
+        ));
         assert!(html.contains(">amount</th>"));
         assert!(html.contains(">id</th>"));
         assert!(html.contains(">name</th>"));

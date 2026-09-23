@@ -2,7 +2,7 @@
 //! (level) assignment for spanners, called from `table::build_cells`.
 
 use super::table::TableColumn;
-use crate::{GgsqlError, Result, Spanner, TableCell, TableCellKind};
+use crate::{GgsqlError, Result, Spanner, TableCell, TableCellClass, TableCellKind};
 
 /// Check that no SPAN's `id` collides with an actual column name. A
 /// duplicate `id` across spanners is already rejected by
@@ -191,6 +191,13 @@ pub(crate) fn create_spanners(
             .expect("spans is filtered to only Some(label) spanners");
         // Row 0 is topmost. Level 1 is bottom-most.
         let row = max_level - level;
+        // The topmost level's class supplants the base one, mirroring gt's
+        // `gt_column_spanner_outer`.
+        let class = if row == 0 {
+            TableCellClass::SpannerOuter
+        } else {
+            TableCellClass::Spanner
+        };
 
         // We use run length encoding to find 'runs' of columns belonging to span.
         // If span has disjoint columns, these are multiple runs.
@@ -203,14 +210,17 @@ pub(crate) fn create_spanners(
                 (true, None) => run_start = Some(index),
                 // Column not in span, end run and push cell
                 (false, Some(start)) => {
-                    cells.push(TableCell::new(
-                        TableCellKind::Spanner,
-                        row,
-                        row,
-                        start,
-                        index - 1,
-                        label.clone(),
-                    ));
+                    cells.push(
+                        TableCell::new(
+                            TableCellKind::Spanner,
+                            row,
+                            row,
+                            start,
+                            index - 1,
+                            label.clone(),
+                        )
+                        .with_classes(vec![class]),
+                    );
                     run_start = None;
                 }
                 _ => {}
@@ -218,14 +228,17 @@ pub(crate) fn create_spanners(
         }
         // Started but not ended: last column
         if let Some(start) = run_start {
-            cells.push(TableCell::new(
-                TableCellKind::Spanner,
-                row,
-                row,
-                start,
-                columns.len() - 1,
-                label.clone(),
-            ));
+            cells.push(
+                TableCell::new(
+                    TableCellKind::Spanner,
+                    row,
+                    row,
+                    start,
+                    columns.len() - 1,
+                    label.clone(),
+                )
+                .with_classes(vec![class]),
+            );
         }
     }
 
@@ -491,6 +504,23 @@ mod tests {
         assert_eq!(g2.top, 0);
         assert_eq!(g2.left, 1);
         assert_eq!(g2.right, 2);
+    }
+
+    #[test]
+    fn create_spanners_marks_only_the_topmost_level_outer() {
+        let columns = vec![column("a", "a"), column("b", "b"), column("c", "c")];
+        let spans = vec![
+            labeled_spanner(&["a", "b"], "G1"),
+            labeled_spanner(&["b", "c"], "G2"),
+        ];
+
+        let cells = create_spanners(&columns, &spans).unwrap();
+
+        let g1 = cells.iter().find(|c| c.content == "G1").unwrap();
+        let g2 = cells.iter().find(|c| c.content == "G2").unwrap();
+        // G2 sits in the topmost row (row 0) — its class supplants Spanner.
+        assert_eq!(g2.classes, [TableCellClass::SpannerOuter]);
+        assert_eq!(g1.classes, [TableCellClass::Spanner]);
     }
 
     #[test]

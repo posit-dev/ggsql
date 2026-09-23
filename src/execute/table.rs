@@ -14,7 +14,9 @@
 
 use std::collections::HashMap;
 
-use super::table_format::{apply_formats, resolve_column_properties, setup_formats};
+use super::table_format::{
+    apply_formats, resolve_column_properties, setup_formats, standardise_hjust,
+};
 use super::table_spanner::{create_spanners, reorder_table_columns};
 use crate::array_util::value_to_string;
 use crate::parser::{self, SourceTree};
@@ -222,6 +224,7 @@ fn create_column_labels(columns: &[TableColumn]) -> Vec<TableCell> {
                 column.label.clone(),
             )
             .with_properties(column.properties.clone())
+            .with_classes(vec![TableCellClass::ColHeading])
         })
         .collect()
 }
@@ -252,7 +255,8 @@ fn create_body(df: &DataFrame, columns: &[TableColumn]) -> Vec<TableCell> {
                     index,
                     value_to_string(array, row),
                 )
-                .with_properties(column.properties.clone()),
+                .with_properties(column.properties.clone())
+                .with_classes(vec![TableCellClass::Row]),
             );
         }
     }
@@ -414,6 +418,54 @@ impl std::fmt::Display for TableCellKind {
     }
 }
 
+/// A writer-neutral style class recorded on a `TableCell` at build time.
+///
+/// Styling roles are recorded here rather than derived from `TableCellKind`:
+/// `kind` informs layout (header vs body, spans), while classes inform style,
+/// and positional variants like `SpannerOuter` are only known while the
+/// layout is being built. A writer maps each variant to its own class
+/// vocabulary — the HTML writer prefixes its `Display` with `ggsql_`.
+///
+/// Naming follows gt's classes (`gt_row`, `gt_col_heading`,
+/// `gt_column_spanner_outer`, ...). The structural variants are recorded by
+/// `build_cells()`; the alignment variants are a cell's resolved `hjust`
+/// expressed as a class, appended by `TableCell::discretise_hjust` rather
+/// than recorded here.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TableCellClass {
+    /// A body cell (gt's `gt_row`).
+    Row,
+    /// A column-label cell (gt's `gt_col_heading`).
+    ColHeading,
+    /// A spanner cell below the topmost spanner level.
+    Spanner,
+    /// A spanner cell in the topmost spanner level, supplanting `Spanner`
+    /// (gt's `gt_column_spanner_outer`).
+    SpannerOuter,
+    /// Left/center/right-aligned cell content (gt's
+    /// `gt_left`/`gt_center`/`gt_right`).
+    AlignLeft,
+    AlignCenter,
+    AlignRight,
+}
+
+impl std::fmt::Display for TableCellClass {
+    /// The class-name suffix a writer hangs its own prefix on, e.g.
+    /// `ggsql_row` for `Row` in the HTML writer.
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let text = match self {
+            TableCellClass::Row => "row",
+            TableCellClass::ColHeading => "col_heading",
+            TableCellClass::Spanner => "spanner",
+            TableCellClass::SpannerOuter => "spanner_outer",
+            TableCellClass::AlignLeft => "left",
+            TableCellClass::AlignCenter => "center",
+            TableCellClass::AlignRight => "right",
+        };
+        write!(f, "{text}")
+    }
+}
+
 /// A single positioned cell within a resolved table layout.
 ///
 /// Parallel to `PreparedData` on the Plot side (an intermediate resolution
@@ -447,13 +499,17 @@ pub struct TableCell {
     /// their column's properties; a `Spanner` cell covers several columns
     /// at once, so it has none of its own.
     pub properties: Parameters,
+    /// Style classes recorded at build time (see `TableCellClass`). Ordered;
+    /// a writer renders them in order.
+    pub classes: Vec<TableCellClass>,
 }
 
 impl TableCell {
-    /// Build a cell with no display properties — the common case for a
-    /// `Spanner` or filler cell, which covers several columns rather than
-    /// resolving from one. A `ColumnLabel`/`Body` cell should follow this
-    /// with `with_properties` instead of leaving the default.
+    /// Build a cell with no display properties or classes — the common case
+    /// for a `Spanner` or filler cell, which covers several columns rather
+    /// than resolving from one. A `ColumnLabel`/`Body` cell should follow
+    /// this with `with_properties` and `with_classes` instead of leaving the
+    /// defaults.
     pub(crate) fn new(
         kind: TableCellKind,
         top: usize,
@@ -470,6 +526,7 @@ impl TableCell {
             right,
             content,
             properties: Parameters::new(),
+            classes: Vec::new(),
         }
     }
 
@@ -477,6 +534,40 @@ impl TableCell {
     /// `FORMAT` `SETTING`.
     pub(crate) fn with_properties(mut self, properties: Parameters) -> Self {
         self.properties = properties;
+        self
+    }
+
+    /// Record this cell's style classes, e.g. `TableCellClass::Row` for a
+    /// body cell.
+    pub(crate) fn with_classes(mut self, classes: Vec<TableCellClass>) -> Self {
+        self.classes = classes;
+        self
+    }
+
+    /// Fold this cell's resolved `hjust` into an alignment class appended to
+    /// `classes`, removing `hjust` from `properties` so no writer renders it
+    /// twice. Numbers and keyword spellings standardise via
+    /// `standardise_hjust`; the number is then bucketed with the same
+    /// `0.25`/`0.75` thresholds `VegaLiteWriter`'s `convert_hjust` uses for
+    /// its own `align` conversion, so `hjust` means the same alignment in
+    /// both writers.
+    pub fn discretise_hjust(mut self) -> Self {
+        let Some(hjust) = self.properties.remove("hjust") else {
+            return self;
+        };
+        let Some(n) = standardise_hjust(&hjust) else {
+            // Unrecognized value — don't silently drop it.
+            self.properties.insert("hjust".to_string(), hjust);
+            return self;
+        };
+        let class = if n <= 0.25 {
+            TableCellClass::AlignLeft
+        } else if n >= 0.75 {
+            TableCellClass::AlignRight
+        } else {
+            TableCellClass::AlignCenter
+        };
+        self.classes.push(class);
         self
     }
 
@@ -888,6 +979,80 @@ mod layout_tests {
             .iter()
             .filter(|c| c.kind == TableCellKind::Body)
             .all(|c| c.top == 2));
+    }
+
+    #[test]
+    fn discretise_hjust_folds_hjust_into_a_class() {
+        let discretised = |n: f64| {
+            let mut properties = Parameters::new();
+            properties.insert("hjust".to_string(), ParameterValue::Number(n));
+            TableCell::new(TableCellKind::Body, 0, 0, 0, 0, String::new())
+                .with_properties(properties)
+                .discretise_hjust()
+        };
+        assert_eq!(discretised(0.0).classes, [TableCellClass::AlignLeft]);
+        assert_eq!(discretised(0.1).classes, [TableCellClass::AlignLeft]);
+        assert_eq!(discretised(0.5).classes, [TableCellClass::AlignCenter]);
+        assert_eq!(discretised(0.9).classes, [TableCellClass::AlignRight]);
+        assert_eq!(discretised(1.0).classes, [TableCellClass::AlignRight]);
+        // hjust is consumed, not copied.
+        assert!(discretised(1.0).properties.is_empty());
+
+        // The keyword spellings classify identically to their numbers.
+        let discretised_str = |s: &str| {
+            let mut properties = Parameters::new();
+            properties.insert("hjust".to_string(), ParameterValue::String(s.to_string()));
+            TableCell::new(TableCellKind::Body, 0, 0, 0, 0, String::new())
+                .with_properties(properties)
+                .discretise_hjust()
+        };
+        assert_eq!(discretised_str("left").classes, [TableCellClass::AlignLeft]);
+        assert_eq!(
+            discretised_str("right").classes,
+            [TableCellClass::AlignRight]
+        );
+        assert_eq!(
+            discretised_str("center").classes,
+            [TableCellClass::AlignCenter]
+        );
+        assert_eq!(
+            discretised_str("centre").classes,
+            [TableCellClass::AlignCenter]
+        );
+        // No hjust → no class.
+        assert!(
+            TableCell::new(TableCellKind::Body, 0, 0, 0, 0, String::new())
+                .discretise_hjust()
+                .classes
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn build_cells_records_style_classes() {
+        let frame = df! {
+            "a" => vec![1i32],
+            "b" => vec![2i32],
+        }
+        .unwrap();
+        let mut table = Table::new();
+        table.spans = vec![labeled_spanner(&["a", "b"], "G")];
+
+        let cells = resolve_cells(&frame, &table).unwrap();
+
+        assert!(cells
+            .iter()
+            .filter(|c| c.kind == TableCellKind::ColumnLabel)
+            .all(|c| c.classes == [TableCellClass::ColHeading]));
+        assert!(cells
+            .iter()
+            .filter(|c| c.kind == TableCellKind::Body)
+            .all(|c| c.classes == [TableCellClass::Row]));
+        // The only spanner level is the topmost one.
+        assert!(cells
+            .iter()
+            .filter(|c| c.kind == TableCellKind::Spanner)
+            .all(|c| c.classes == [TableCellClass::SpannerOuter]));
     }
 
     #[test]
