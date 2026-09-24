@@ -2,6 +2,7 @@
 
 use std::collections::HashMap;
 
+use crate::execute::{count_cell_cols, count_cell_rows};
 use crate::naming;
 use crate::plot::Plot;
 use crate::validate::ValidationWarning;
@@ -141,27 +142,23 @@ impl ResolvedTable {
         self.columns.as_deref()
     }
 
-    /// Resolved per-row properties, symmetric with `columns`. Always `None`
-    /// today — no row-wide `TABULATE` clause exists yet to populate it.
+    /// Resolved per-row properties, symmetric with `columns`. `properties`
+    /// has no row-wide `TABULATE` clause to populate it yet, but `classes`
+    /// does — a `Title`/`Subtitle` cell's row carries `TableClass::Heading`
+    /// here, for a writer to put on the enclosing `<tr>`.
     pub fn rows(&self) -> Option<&[TableRow]> {
         self.rows.as_deref()
     }
 
-    /// Number of data rows (not counting the column-label row), computed
-    /// from `cells`. The column-label row is always `bottom == 0`, so it
-    /// only determines this max when there are no data rows, where it
-    /// correctly gives `0`.
+    /// Total number of rows in the table's rendered grid — heading, spanner,
+    /// and column-label rows included, not just data rows.
     pub fn nrow(&self) -> usize {
-        self.cells.iter().map(|cell| cell.bottom).max().unwrap_or(0)
+        count_cell_rows(&self.cells)
     }
 
     /// Number of columns, computed from `cells`.
     pub fn ncol(&self) -> usize {
-        self.cells
-            .iter()
-            .map(|cell| cell.right)
-            .max()
-            .map_or(0, |right| right + 1)
+        count_cell_cols(&self.cells)
     }
 
     /// The SQL query that was executed to produce `cells`.

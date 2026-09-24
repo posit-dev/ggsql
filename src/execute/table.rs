@@ -57,6 +57,8 @@ pub fn resolve_table_with_reader(query: &str, reader: &dyn Reader) -> Result<Res
         .into_iter()
         .find_map(Spec::into_table)
         .ok_or_else(|| GgsqlError::ValidationError("No table specification found".to_string()))?;
+    let mut labels = table.labels.clone();
+    let (title, subtitle, caption) = extract_heading_labels(&mut labels);
 
     super::execute_setup_statements(&source_tree, reader)?;
 
@@ -71,17 +73,38 @@ pub fn resolve_table_with_reader(query: &str, reader: &dyn Reader) -> Result<Res
     // The shape both create_table_columns (SETTING) and apply_formats
     // (RENAMING) read from.
     let formats = setup_formats(&df, &table.formats)?;
-    let (columns, spans) = setup_columns(&df, &table, &formats)?;
+    let (columns, spans) = setup_columns(&df, &table, &labels, &formats)?;
     let df = apply_formats(&df, &formats)?;
-    let cells = build_cells(&df, &columns, &spans)?;
+    let (cells, rows) = build_cells(
+        &df,
+        &columns,
+        &spans,
+        title.as_deref(),
+        subtitle.as_deref(),
+        caption.as_deref(),
+    )?;
 
     Ok(ResolvedTable::new(
         cells,
         Some(columns),
-        None,
+        Some(rows),
         sql,
         warnings,
     ))
+}
+
+/// Pop the reserved `title`/`subtitle`/`caption` keys out of a `TABULATE`
+/// `LABEL` clause's resolved map, leaving only genuine column-name
+/// overrides behind — `create_table_columns` never needs to know these
+/// three names are special, since by the time it runs they're already gone.
+/// `.flatten()` treats "key absent" and "key present but NULL" the same:
+/// neither produces a title/subtitle/caption, and there's no default value
+/// for either to suppress the way an aesthetic's computed label has one.
+fn extract_heading_labels(labels: &mut Labels) -> (Option<String>, Option<String>, Option<String>) {
+    let title = labels.labels.remove("title").flatten();
+    let subtitle = labels.labels.remove("subtitle").flatten();
+    let caption = labels.labels.remove("caption").flatten();
+    (title, subtitle, caption)
 }
 
 /// Resolve a table's columns: validated SPAN settings, spanner ids
@@ -93,6 +116,7 @@ pub fn resolve_table_with_reader(query: &str, reader: &dyn Reader) -> Result<Res
 fn setup_columns(
     df: &DataFrame,
     table: &Table,
+    labels: &Labels,
     formats: &HashMap<String, Format>,
 ) -> Result<(Vec<TableColumn>, Vec<Spanner>)> {
     for (idx, spanner) in table.spans.iter().enumerate() {
@@ -104,7 +128,7 @@ fn setup_columns(
         .resolve_spanner_ids()
         .map_err(GgsqlError::ValidationError)?;
 
-    let columns = create_table_columns(df, &table.labels, formats);
+    let columns = create_table_columns(df, labels, formats);
     let columns = reorder_table_columns(columns, &spans)?;
 
     Ok((columns, spans))
@@ -120,15 +144,186 @@ fn build_cells(
     df: &DataFrame,
     columns: &[TableColumn],
     spans: &[Spanner],
-) -> Result<Vec<TableCell>> {
+    title: Option<&str>,
+    subtitle: Option<&str>,
+    caption: Option<&str>,
+) -> Result<(Vec<TableCell>, Vec<TableRow>)> {
+    let ncol = columns.len();
     let spanners = create_spanners(columns, spans)?;
     let column_labels = create_column_labels(columns);
     let header = compose_header(spanners, column_labels);
+    let heading = create_heading(title, subtitle, ncol);
+    let header = rowbind(heading, header);
     let table_body = create_body(df, columns);
-    let cells = rowbind_cells(header, table_body);
-    validate_overlaps(&cells)?;
+    let section = rowbind(header, table_body);
+    let caption_section = create_caption(caption, ncol);
+    let section = rowbind(section, caption_section);
 
-    Ok(cells)
+    validate_overlaps(&section.cells)?;
+
+    Ok((section.cells, section.rows))
+}
+
+/// One layout part's cells alongside one `TableRow` **per row index it
+/// occupies** — not one per cell, since several cells can share a row (a
+/// column-label row has one cell per column, but is still a single row).
+/// Every `create_*` helper below builds both together, sized correctly from
+/// the row count it already knows (column labels: always 1; body:
+/// `df.height()`; spanners: however many levels `assign_spanner_levels`
+/// used; heading: 0/1/2) — `rows` is therefore never *derived* from `cells`
+/// anywhere, which is what keeps `TableRow`'s classification (e.g.
+/// `Heading`) a decision made exactly once, where a cell is built.
+///
+/// Kept private: this is build-pipeline plumbing between this file and
+/// `table_spanner`, not part of `ResolvedTable`'s shape — `build_cells`
+/// unpacks it into the plain `(Vec<TableCell>, Vec<TableRow>)` a
+/// `ResolvedTable` actually holds. `pub(super)` on the type itself (rather
+/// than fully private) because `table_spanner::create_spanners` needs to
+/// name it and build one via `Section::new`; the fields stay private to
+/// this module so `new` is the only way to construct one, from anywhere.
+pub(super) struct Section {
+    rows: Vec<TableRow>,
+    cells: Vec<TableCell>,
+}
+
+impl Section {
+    /// Build a `Section`, `debug_assert`ing that `rows.len()` matches the
+    /// row extent `cells` implies — the invariant every `create_*` function
+    /// is expected to already satisfy. Checked here, where a `Section`
+    /// comes into existence, rather than only once something later
+    /// consumes it — so it covers every `Section` ever built, not just ones
+    /// that happen to reach `rowbind`.
+    pub(super) fn new(rows: Vec<TableRow>, cells: Vec<TableCell>) -> Section {
+        debug_assert_eq!(
+            rows.len(),
+            count_cell_rows(&cells),
+            "Section's row count doesn't match its own cells' row extent"
+        );
+        Section { rows, cells }
+    }
+
+    /// Consume `self` into just its cells — `table_spanner`'s own tests are
+    /// the one place outside this module that need to read a `Section`
+    /// (rather than only ever construct one), to check `create_spanners`'
+    /// cells directly.
+    #[cfg(test)]
+    pub(super) fn into_cells(self) -> Vec<TableCell> {
+        self.cells
+    }
+}
+
+/// Stack `bottom` below `top`, offsetting `bottom`'s cells down by whatever
+/// row extent `top` actually occupies, and plain-concatenating both sides'
+/// `rows` — no offsetting needed there, since a `TableRow`'s position *is*
+/// its index, unlike a `TableCell`'s rectangle. Both inputs already went
+/// through `Section::new`'s check when they were built, so there's nothing
+/// left to (re-)validate here.
+fn rowbind(top: Section, mut bottom: Section) -> Section {
+    if top.cells.is_empty() {
+        return bottom;
+    }
+    if bottom.cells.is_empty() {
+        return top;
+    }
+
+    let row_offset = top.rows.len();
+    for cell in &mut bottom.cells {
+        cell.offset_rows(row_offset);
+    }
+
+    let mut rows = top.rows;
+    rows.extend(bottom.rows);
+    let mut cells = top.cells;
+    cells.extend(bottom.cells);
+
+    Section::new(rows, cells)
+}
+
+/// The row extent a set of cells implies — the highest `bottom` plus one, or
+/// `0` for no cells. Shared by `Section::new`'s `debug_assert`,
+/// `stretch_unspanned_column_labels`, `HtmlWriter::write_table`, and
+/// `ResolvedTable::nrow`/`ncol`, alongside its column counterpart
+/// `count_cell_cols`.
+pub(crate) fn count_cell_rows(cells: &[TableCell]) -> usize {
+    cells
+        .iter()
+        .map(|cell| cell.bottom)
+        .max()
+        .map_or(0, |r| r + 1)
+}
+
+/// The column extent a set of cells implies — the highest `right` plus one,
+/// or `0` for no cells. `count_cell_rows`'s column counterpart.
+pub(crate) fn count_cell_cols(cells: &[TableCell]) -> usize {
+    cells
+        .iter()
+        .map(|cell| cell.right)
+        .max()
+        .map_or(0, |r| r + 1)
+}
+
+/// Build the title/subtitle heading rows (gt's `title_row`/`subtitle_row`),
+/// each spanning the table's full width and numbered locally from
+/// `top == 0` — `rowbind` is what stacks this above the rest of the header,
+/// the same primitive every other part of the layout stacks with. Each row
+/// carries `TableClass::Heading` (gt's `gt_heading`, applied to the whole
+/// `<tr>` rather than to the cell inside it — see `TableClass`'s own doc
+/// comment for why that split exists).
+fn create_heading(title: Option<&str>, subtitle: Option<&str>, ncol: usize) -> Section {
+    let right = ncol.saturating_sub(1);
+    let mut cells = Vec::new();
+    if let Some(title) = title {
+        cells.push(
+            TableCell::new(TableCellKind::Title, 0, 0, 0, right, title.to_string())
+                .with_classes(vec![TableClass::Title]),
+        );
+    }
+    if let Some(subtitle) = subtitle {
+        let row = cells.len();
+        cells.push(
+            TableCell::new(
+                TableCellKind::Subtitle,
+                row,
+                row,
+                0,
+                right,
+                subtitle.to_string(),
+            )
+            .with_classes(vec![TableClass::Subtitle]),
+        );
+    }
+    let rows = vec![
+        TableRow {
+            classes: vec![TableClass::Heading],
+            ..TableRow::default()
+        };
+        cells.len()
+    ];
+    Section::new(rows, cells)
+}
+
+/// Build the caption cell (gt's `tab_caption()`), spanning the table's full
+/// width at row 0 (locally numbered; `rowbind` places it after everything
+/// else, at the very end of the layout). `HtmlWriter` pulls this cell out of
+/// the grid before rendering — see its own module doc — since HTML requires
+/// `<caption>` outside `<thead>`/`<tbody>`. Its row carries no class — a
+/// caption never lands in a rendered `<tr>` at all.
+fn create_caption(caption: Option<&str>, ncol: usize) -> Section {
+    match caption {
+        Some(caption) => Section::new(
+            vec![TableRow::default()],
+            vec![TableCell::new(
+                TableCellKind::Caption,
+                0,
+                0,
+                0,
+                ncol.saturating_sub(1),
+                caption.to_string(),
+            )
+            .with_classes(vec![TableClass::Caption])],
+        ),
+        None => Section::new(Vec::new(), Vec::new()),
+    }
 }
 
 /// One column's identity within a table layout: its source name and
@@ -152,14 +347,19 @@ pub struct TableColumn {
     pub properties: Parameters,
 }
 
-/// One row's resolved properties within a table layout. No row-wide
-/// `TABULATE` clause exists yet to populate anything beyond `properties`
-/// staying empty — the type exists so `ResolvedTable`/`Writer::write_table`
-/// have a row-wide counterpart to `TableColumn` ready before one is needed.
+/// One row's resolved properties within a table layout. `properties` has no
+/// row-wide `TABULATE` clause to populate it yet, but `classes` does: a
+/// `Title`/`Subtitle` row gets `TableClass::Heading` here (see
+/// `create_heading`) — a class on the enclosing `<tr>` has nowhere else to
+/// live, which is this type's whole reason to exist as a sibling to
+/// `TableColumn` rather than being read off `TableCell` directly.
 #[derive(Debug, Clone, Default)]
 pub struct TableRow {
     /// Resolved properties for this row's cells.
     pub properties: Parameters,
+    /// Style classes recorded at build time (see `TableClass`) — row-scoped
+    /// ones, e.g. `Heading`. Ordered, like `TableCell::classes`.
+    pub classes: Vec<TableClass>,
 }
 
 /// Build one `TableColumn` per `DataFrame` column, in the `DataFrame`'s own
@@ -197,21 +397,21 @@ fn create_table_columns(
 }
 
 /// Build one `ColumnLabel` cell per column, numbered from `top == 0`, in
-/// `columns`' order.
+/// `columns`' order — always exactly one row.
 ///
 /// Row numbering here is local to this function alone — `compose_header`/
-/// `rowbind_cells` are what decide where this sits relative to spanners and
-/// the body, not this function.
-fn create_column_labels(columns: &[TableColumn]) -> Vec<TableCell> {
+/// `rowbind` are what decide where this sits relative to spanners and the
+/// body, not this function.
+fn create_column_labels(columns: &[TableColumn]) -> Section {
     // The only way every column's label ends up empty is `LABEL col => NULL`
     // (or `=> ''`) on every column, since an unlabeled column keeps its
     // (non-empty) name — so a wholly suppressed row omits the row entirely
     // rather than rendering a row of blank header cells.
     if columns.iter().all(|c| c.label.is_empty()) {
-        return Vec::new();
+        return Section::new(Vec::new(), Vec::new());
     }
 
-    columns
+    let cells = columns
         .iter()
         .enumerate()
         .map(|(index, column)| {
@@ -224,9 +424,11 @@ fn create_column_labels(columns: &[TableColumn]) -> Vec<TableCell> {
                 column.label.clone(),
             )
             .with_properties(column.properties.clone())
-            .with_classes(vec![TableCellClass::ColHeading])
+            .with_classes(vec![TableClass::ColHeading])
         })
-        .collect()
+        .collect();
+
+    Section::new(vec![TableRow::default()], cells)
 }
 
 /// Build one `Body` cell per `DataFrame` value, numbered from `top == 0`, in
@@ -234,7 +436,8 @@ fn create_column_labels(columns: &[TableColumn]) -> Vec<TableCell> {
 /// `create_column_labels` uses, so the two stay in sync under a future
 /// reordering. Looks each column up in `df` **by name**, not position, since
 /// `columns` may already be reordered relative to `df` by the time this runs.
-fn create_body(df: &DataFrame, columns: &[TableColumn]) -> Vec<TableCell> {
+/// Always exactly `df.height()` rows.
+fn create_body(df: &DataFrame, columns: &[TableColumn]) -> Section {
     let mut cells = Vec::new();
 
     for (index, column) in columns.iter().enumerate() {
@@ -256,52 +459,22 @@ fn create_body(df: &DataFrame, columns: &[TableColumn]) -> Vec<TableCell> {
                     value_to_string(array, row),
                 )
                 .with_properties(column.properties.clone())
-                .with_classes(vec![TableCellClass::Row]),
+                .with_classes(vec![TableClass::Row]),
             );
         }
     }
 
-    cells
-}
-
-/// Stack `bottom` below `top`, offsetting `bottom` down by whatever row
-/// extent `top` actually occupies — a pure function of its two arguments,
-/// with no `DataFrame`/SQL knowledge of its own, and no assumption about
-/// either side's row count. R's `rbind()` for already-positioned cells:
-/// every part of the table (spanners, column labels, body, ...) gets
-/// stacked together with the same primitive rather than each combination
-/// hardcoding its own offset arithmetic.
-fn rowbind_cells(top: Vec<TableCell>, mut bottom: Vec<TableCell>) -> Vec<TableCell> {
-    if top.is_empty() {
-        return bottom;
-    }
-    if bottom.is_empty() {
-        return top;
-    }
-
-    let row_offset = top
-        .iter()
-        .map(|cell| cell.bottom)
-        .max()
-        .map_or(0, |bottom| bottom + 1);
-
-    for cell in &mut bottom {
-        cell.offset_rows(row_offset);
-    }
-
-    let mut cells = top;
-    cells.extend(bottom);
-    cells
+    Section::new(vec![TableRow::default(); df.height()], cells)
 }
 
 /// Stack spanner rows above column labels — the header half of a table's
 /// layout — then let a column with no spanner covering it stretch its own
 /// label upward over the gap rather than leave it a separate blank cell.
-/// Kept as its own named step (rather than folded into `rowbind_cells`)
-/// since a stubhead (another header part) is expected to join it.
-fn compose_header(spanners: Vec<TableCell>, column_labels: Vec<TableCell>) -> Vec<TableCell> {
-    let num_spanner_rows = spanners.iter().map(|c| c.bottom).max().map_or(0, |r| r + 1);
-    let header = rowbind_cells(spanners, column_labels);
+/// Kept as its own named step (rather than folded into `rowbind`) since a
+/// stubhead (another header part) is expected to join it.
+fn compose_header(spanners: Section, column_labels: Section) -> Section {
+    let num_spanner_rows = spanners.rows.len();
+    let header = rowbind(spanners, column_labels);
     stretch_unspanned_column_labels(header, num_spanner_rows)
 }
 
@@ -312,20 +485,19 @@ fn compose_header(spanners: Vec<TableCell>, column_labels: Vec<TableCell>) -> Ve
 /// blank filler cells. Deliberately diverges from gt here: gt only ever
 /// stretches into the single row immediately above the labels, even when
 /// rows further up are also empty for that column (verified directly
-/// against gt's own output).
-fn stretch_unspanned_column_labels(
-    mut header: Vec<TableCell>,
-    num_spanner_rows: usize,
-) -> Vec<TableCell> {
+/// against gt's own output). Only touches cells — the row count/order is
+/// unaffected, since this never adds, removes, or reassigns a row, only
+/// grows an existing `ColumnLabel` cell's `top` upward.
+fn stretch_unspanned_column_labels(mut header: Section, num_spanner_rows: usize) -> Section {
     if num_spanner_rows == 0 {
         return header;
     }
 
-    let ncol = header.iter().map(|c| c.right).max().map_or(0, |r| r + 1);
+    let ncol = count_cell_cols(&header.cells);
     let mut stretch_depth = vec![0usize; ncol];
     for (column, depth) in stretch_depth.iter_mut().enumerate() {
         for row in (0..num_spanner_rows).rev() {
-            let covered = header.iter().any(|c| {
+            let covered = header.cells.iter().any(|c| {
                 c.kind == TableCellKind::Spanner
                     && c.top == row
                     && c.left <= column
@@ -339,6 +511,7 @@ fn stretch_unspanned_column_labels(
     }
 
     for label in header
+        .cells
         .iter_mut()
         .filter(|c| c.kind == TableCellKind::ColumnLabel)
     {
@@ -393,9 +566,7 @@ fn validate_overlaps(cells: &[TableCell]) -> Result<()> {
 ///
 /// Lets a writer tell cells apart (e.g. `<th>` vs `<td>`) without relying on
 /// position — a column label is a `ColumnLabel` cell, not "whatever's in row
-/// 0". A caption is expected to become a `TableCell` too once `Table` can
-/// resolve one (still just text with a position, spanning the full width) —
-/// not added yet, since nothing produces one today.
+/// 0".
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TableCellKind {
     /// A column label (gt's `column_labels`).
@@ -405,6 +576,33 @@ pub enum TableCellKind {
     /// A spanner cell, grouping several columns under one label (`TABULATE
     /// SPAN`).
     Spanner,
+    /// The table's title (`LABEL title => ...`, gt's `gt_title`).
+    Title,
+    /// The table's subtitle (`LABEL subtitle => ...`, gt's `gt_subtitle`).
+    Subtitle,
+    /// The table's caption (`LABEL caption => ...`, gt's `tab_caption()`).
+    /// Full-width like `Title`/`Subtitle`, but rendered outside the normal
+    /// row grid entirely — see `HtmlWriter`'s module doc.
+    Caption,
+}
+
+impl TableCellKind {
+    /// Whether a cell of this kind belongs in a table's header (`ColumnLabel`,
+    /// `Spanner`, `Title`, `Subtitle`) rather than its body (`Body`) — the
+    /// kind alone decides it, which is what lets this be asked off a bare
+    /// `TableCellKind` (a synthesized filler has no real `TableCell` of its
+    /// own) as well as off a full cell, via `TableCell::is_header` below.
+    /// `Caption` stays out of this: a writer is expected to pull it out of
+    /// the grid entirely rather than render it as either.
+    pub fn is_header(self) -> bool {
+        matches!(
+            self,
+            TableCellKind::ColumnLabel
+                | TableCellKind::Spanner
+                | TableCellKind::Title
+                | TableCellKind::Subtitle
+        )
+    }
 }
 
 impl std::fmt::Display for TableCellKind {
@@ -413,12 +611,16 @@ impl std::fmt::Display for TableCellKind {
             TableCellKind::ColumnLabel => "column label",
             TableCellKind::Body => "body",
             TableCellKind::Spanner => "spanner",
+            TableCellKind::Title => "title",
+            TableCellKind::Subtitle => "subtitle",
+            TableCellKind::Caption => "caption",
         };
         write!(f, "{text}")
     }
 }
 
-/// A writer-neutral style class recorded on a `TableCell` at build time.
+/// A writer-neutral style class, one shared vocabulary for whichever part of
+/// a table layout carries a `classes` field.
 ///
 /// Styling roles are recorded here rather than derived from `TableCellKind`:
 /// `kind` informs layout (header vs body, spans), while classes inform style,
@@ -426,13 +628,22 @@ impl std::fmt::Display for TableCellKind {
 /// layout is being built. A writer maps each variant to its own class
 /// vocabulary — the HTML writer prefixes its `Display` with `ggsql_`.
 ///
+/// Not every variant applies to every carrier: `Heading` is row-scoped
+/// (`TableRow::classes`, the `<tr>` wrapping a `Title`/`Subtitle` cell, gt's
+/// `gt_heading`); every other variant is cell-scoped (`TableCell::classes`).
+/// Nothing in the type enforces that split — it's a per-variant convention,
+/// since a writer maps every carrier through the same class-name/declaration
+/// lookup regardless of where it came from. A future `TableColumn`-scoped
+/// class (a `<col>`/`<colgroup>` concern) or a table-wide one
+/// (`<table>`/`<thead>`/`<tbody>` itself) belongs in this same enum too.
+///
 /// Naming follows gt's classes (`gt_row`, `gt_col_heading`,
 /// `gt_column_spanner_outer`, ...). The structural variants are recorded by
 /// `build_cells()`; the alignment variants are a cell's resolved `hjust`
 /// expressed as a class, appended by `TableCell::discretise_hjust` rather
 /// than recorded here.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TableCellClass {
+pub enum TableClass {
     /// A body cell (gt's `gt_row`).
     Row,
     /// A column-label cell (gt's `gt_col_heading`).
@@ -447,20 +658,33 @@ pub enum TableCellClass {
     AlignLeft,
     AlignCenter,
     AlignRight,
+    /// The title cell (gt's `gt_title`).
+    Title,
+    /// The subtitle cell (gt's `gt_subtitle`).
+    Subtitle,
+    /// The caption cell (gt's `gt_caption`).
+    Caption,
+    /// Row-scoped: the `<tr>` wrapping a `Title`/`Subtitle` cell (gt's
+    /// `gt_heading`).
+    Heading,
 }
 
-impl std::fmt::Display for TableCellClass {
+impl std::fmt::Display for TableClass {
     /// The class-name suffix a writer hangs its own prefix on, e.g.
     /// `ggsql_row` for `Row` in the HTML writer.
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let text = match self {
-            TableCellClass::Row => "row",
-            TableCellClass::ColHeading => "col_heading",
-            TableCellClass::Spanner => "spanner",
-            TableCellClass::SpannerOuter => "spanner_outer",
-            TableCellClass::AlignLeft => "left",
-            TableCellClass::AlignCenter => "center",
-            TableCellClass::AlignRight => "right",
+            TableClass::Row => "row",
+            TableClass::ColHeading => "col_heading",
+            TableClass::Spanner => "spanner",
+            TableClass::SpannerOuter => "spanner_outer",
+            TableClass::AlignLeft => "left",
+            TableClass::AlignCenter => "center",
+            TableClass::AlignRight => "right",
+            TableClass::Title => "title",
+            TableClass::Subtitle => "subtitle",
+            TableClass::Caption => "caption",
+            TableClass::Heading => "heading",
         };
         write!(f, "{text}")
     }
@@ -499,9 +723,9 @@ pub struct TableCell {
     /// their column's properties; a `Spanner` cell covers several columns
     /// at once, so it has none of its own.
     pub properties: Parameters,
-    /// Style classes recorded at build time (see `TableCellClass`). Ordered;
+    /// Style classes recorded at build time (see `TableClass`). Ordered;
     /// a writer renders them in order.
-    pub classes: Vec<TableCellClass>,
+    pub classes: Vec<TableClass>,
 }
 
 impl TableCell {
@@ -537,9 +761,9 @@ impl TableCell {
         self
     }
 
-    /// Record this cell's style classes, e.g. `TableCellClass::Row` for a
+    /// Record this cell's style classes, e.g. `TableClass::Row` for a
     /// body cell.
-    pub(crate) fn with_classes(mut self, classes: Vec<TableCellClass>) -> Self {
+    pub(crate) fn with_classes(mut self, classes: Vec<TableClass>) -> Self {
         self.classes = classes;
         self
     }
@@ -561,11 +785,11 @@ impl TableCell {
             return self;
         };
         let class = if n <= 0.25 {
-            TableCellClass::AlignLeft
+            TableClass::AlignLeft
         } else if n >= 0.75 {
-            TableCellClass::AlignRight
+            TableClass::AlignRight
         } else {
-            TableCellClass::AlignCenter
+            TableClass::AlignCenter
         };
         self.classes.push(class);
         self
@@ -585,15 +809,12 @@ impl TableCell {
         self.right += cols;
     }
 
-    /// Whether this cell belongs in a table's header (`ColumnLabel`,
-    /// `Spanner`) rather than its body (`Body`) — lets a writer pick `<th>`
-    /// vs `<td>` (or an equivalent) off the cell itself, without matching on
-    /// `TableCellKind` at every call site.
+    /// Whether this cell belongs in a table's header rather than its body —
+    /// lets a writer pick `<th>` vs `<td>` (or an equivalent) off the cell
+    /// itself, without matching on `TableCellKind` at every call site. See
+    /// `TableCellKind::is_header`, which this just delegates to.
     pub fn is_header(&self) -> bool {
-        matches!(
-            self.kind,
-            TableCellKind::ColumnLabel | TableCellKind::Spanner
-        )
+        self.kind.is_header()
     }
 
     /// This cell's width in columns — `right - left + 1`, since both bounds
@@ -619,11 +840,26 @@ mod layout_tests {
     /// Runs the same steps `resolve_table_with_reader` does, minus the
     /// `Reader`/SQL execution — lets a test build a `Table`'s resolved cells
     /// directly against a `df!()`-built `DataFrame`.
-    fn resolve_cells(df: &DataFrame, table: &Table) -> Result<Vec<TableCell>> {
+    fn resolve_section(df: &DataFrame, table: &Table) -> Result<Section> {
+        let mut labels = table.labels.clone();
+        let (title, subtitle, caption) = extract_heading_labels(&mut labels);
         let formats = setup_formats(df, &table.formats)?;
-        let (columns, spans) = setup_columns(df, table, &formats)?;
+        let (columns, spans) = setup_columns(df, table, &labels, &formats)?;
         let df = apply_formats(df, &formats)?;
-        build_cells(&df, &columns, &spans)
+        let (cells, rows) = build_cells(
+            &df,
+            &columns,
+            &spans,
+            title.as_deref(),
+            subtitle.as_deref(),
+            caption.as_deref(),
+        )?;
+        Ok(Section::new(rows, cells))
+    }
+
+    /// `resolve_section`, for the (common) tests that only care about cells.
+    fn resolve_cells(df: &DataFrame, table: &Table) -> Result<Vec<TableCell>> {
+        resolve_section(df, table).map(|section| section.cells)
     }
 
     fn column(name: &str, label: &str) -> TableColumn {
@@ -684,7 +920,9 @@ mod layout_tests {
     fn create_column_labels_builds_one_cell_per_column_at_row_zero() {
         let columns = vec![column("id", "id"), column("name", "name")];
 
-        let labels = create_column_labels(&columns);
+        let section = create_column_labels(&columns);
+        assert_eq!(section.rows.len(), 1);
+        let labels = section.cells;
 
         assert_eq!(labels.len(), 2);
         assert_eq!(labels[0].kind, TableCellKind::ColumnLabel);
@@ -707,7 +945,9 @@ mod layout_tests {
         .unwrap();
         let columns = create_table_columns(&frame, &Labels::default(), &HashMap::new());
 
-        let body = create_body(&frame, &columns);
+        let section = create_body(&frame, &columns);
+        assert_eq!(section.rows.len(), 2);
+        let body = section.cells;
 
         assert_eq!(body.len(), 4);
         assert!(body.iter().all(|cell| cell.kind == TableCellKind::Body));
@@ -743,7 +983,7 @@ mod layout_tests {
         .unwrap();
         let columns = vec![column("name", "name"), column("id", "id")];
 
-        let body = create_body(&frame, &columns);
+        let body = create_body(&frame, &columns).cells;
 
         assert_eq!(body[0].content, "a"); // "name" column, placed first
         assert_eq!(body[1].content, "1"); // "id" column, placed second
@@ -753,15 +993,24 @@ mod layout_tests {
         TableCell::new(kind, top, bottom, 0, 0, content.to_string())
     }
 
+    /// Wrap a hand-built `Vec<TableCell>` into a `Section` for a test, with
+    /// exactly as many default rows as `cells` implies (via
+    /// `count_cell_rows`) — satisfies `Section::new`'s row-count invariant
+    /// without every test having to spell out a `rows` vec of its own.
+    fn section(cells: Vec<TableCell>) -> Section {
+        let rows = vec![TableRow::default(); count_cell_rows(&cells)];
+        Section::new(rows, cells)
+    }
+
     #[test]
-    fn rowbind_cells_shifts_the_bottom_below_a_single_top_row() {
+    fn rowbind_shifts_the_bottom_below_a_single_top_row() {
         let column_labels = vec![cell(TableCellKind::ColumnLabel, 0, 0, "id")];
         let body = vec![
             cell(TableCellKind::Body, 0, 0, "1"),
             cell(TableCellKind::Body, 1, 1, "2"),
         ];
 
-        let cells = rowbind_cells(column_labels, body);
+        let cells = rowbind(section(column_labels), section(body)).cells;
 
         assert_eq!(cells.len(), 3);
         assert_eq!(cells[0].kind, TableCellKind::ColumnLabel);
@@ -774,34 +1023,34 @@ mod layout_tests {
     }
 
     #[test]
-    fn rowbind_cells_offsets_by_the_top_rows_actual_extent_not_a_hardcoded_one() {
-        // `rowbind_cells` computes the offset from `top` itself rather than
-        // assuming exactly one row — pin that down directly, independent of
-        // whichever caller happens to produce a multi-row `top`.
+    fn rowbind_offsets_by_the_top_rows_actual_extent_not_a_hardcoded_one() {
+        // `rowbind` offsets by `top.rows.len()` rather than assuming exactly
+        // one row — pin that down directly, independent of whichever caller
+        // happens to produce a multi-row `top`.
         let column_labels = vec![cell(TableCellKind::ColumnLabel, 0, 1, "id")];
         let body = vec![cell(TableCellKind::Body, 0, 0, "1")];
 
-        let cells = rowbind_cells(column_labels, body);
+        let cells = rowbind(section(column_labels), section(body)).cells;
 
         assert_eq!(cells[1].top, 2);
         assert_eq!(cells[1].bottom, 2);
     }
 
     #[test]
-    fn rowbind_cells_returns_bottom_unchanged_when_top_is_empty() {
+    fn rowbind_returns_bottom_unchanged_when_top_is_empty() {
         let body = vec![cell(TableCellKind::Body, 0, 0, "1")];
 
-        let cells = rowbind_cells(Vec::new(), body);
+        let cells = rowbind(section(Vec::new()), section(body)).cells;
 
         assert_eq!(cells.len(), 1);
         assert_eq!(cells[0].top, 0);
     }
 
     #[test]
-    fn rowbind_cells_returns_top_unchanged_when_bottom_is_empty() {
+    fn rowbind_returns_top_unchanged_when_bottom_is_empty() {
         let column_labels = vec![cell(TableCellKind::ColumnLabel, 0, 0, "id")];
 
-        let cells = rowbind_cells(column_labels, Vec::new());
+        let cells = rowbind(section(column_labels), section(Vec::new())).cells;
 
         assert_eq!(cells.len(), 1);
         assert_eq!(cells[0].top, 0);
@@ -818,7 +1067,7 @@ mod layout_tests {
             cell_at(TableCellKind::ColumnLabel, 0, 0, 2, 2),
         ];
 
-        let header = compose_header(spanners, column_labels);
+        let header = compose_header(section(spanners), section(column_labels)).cells;
 
         let a = header
             .iter()
@@ -847,7 +1096,7 @@ mod layout_tests {
             cell_at(TableCellKind::ColumnLabel, 0, 0, 1, 1),
         ];
 
-        let header = compose_header(spanners, column_labels);
+        let header = compose_header(section(spanners), section(column_labels)).cells;
 
         let a = header
             .iter()
@@ -875,7 +1124,7 @@ mod layout_tests {
             cell_at(TableCellKind::ColumnLabel, 0, 0, 2, 2),
         ];
 
-        let header = compose_header(spanners, column_labels);
+        let header = compose_header(section(spanners), section(column_labels)).cells;
 
         let c = header
             .iter()
@@ -888,7 +1137,7 @@ mod layout_tests {
     fn compose_header_does_nothing_when_there_are_no_spanners() {
         let column_labels = vec![cell_at(TableCellKind::ColumnLabel, 0, 0, 0, 0)];
 
-        let header = compose_header(Vec::new(), column_labels);
+        let header = compose_header(section(Vec::new()), section(column_labels)).cells;
 
         assert_eq!((header[0].top, header[0].bottom), (0, 0));
     }
@@ -944,10 +1193,13 @@ mod layout_tests {
     }
 
     #[test]
-    fn table_cell_kind_display_names_all_three_variants() {
+    fn table_cell_kind_display_names_every_variant() {
         assert_eq!(TableCellKind::ColumnLabel.to_string(), "column label");
         assert_eq!(TableCellKind::Body.to_string(), "body");
         assert_eq!(TableCellKind::Spanner.to_string(), "spanner");
+        assert_eq!(TableCellKind::Title.to_string(), "title");
+        assert_eq!(TableCellKind::Subtitle.to_string(), "subtitle");
+        assert_eq!(TableCellKind::Caption.to_string(), "caption");
     }
 
     #[test]
@@ -990,11 +1242,11 @@ mod layout_tests {
                 .with_properties(properties)
                 .discretise_hjust()
         };
-        assert_eq!(discretised(0.0).classes, [TableCellClass::AlignLeft]);
-        assert_eq!(discretised(0.1).classes, [TableCellClass::AlignLeft]);
-        assert_eq!(discretised(0.5).classes, [TableCellClass::AlignCenter]);
-        assert_eq!(discretised(0.9).classes, [TableCellClass::AlignRight]);
-        assert_eq!(discretised(1.0).classes, [TableCellClass::AlignRight]);
+        assert_eq!(discretised(0.0).classes, [TableClass::AlignLeft]);
+        assert_eq!(discretised(0.1).classes, [TableClass::AlignLeft]);
+        assert_eq!(discretised(0.5).classes, [TableClass::AlignCenter]);
+        assert_eq!(discretised(0.9).classes, [TableClass::AlignRight]);
+        assert_eq!(discretised(1.0).classes, [TableClass::AlignRight]);
         // hjust is consumed, not copied.
         assert!(discretised(1.0).properties.is_empty());
 
@@ -1006,19 +1258,10 @@ mod layout_tests {
                 .with_properties(properties)
                 .discretise_hjust()
         };
-        assert_eq!(discretised_str("left").classes, [TableCellClass::AlignLeft]);
-        assert_eq!(
-            discretised_str("right").classes,
-            [TableCellClass::AlignRight]
-        );
-        assert_eq!(
-            discretised_str("center").classes,
-            [TableCellClass::AlignCenter]
-        );
-        assert_eq!(
-            discretised_str("centre").classes,
-            [TableCellClass::AlignCenter]
-        );
+        assert_eq!(discretised_str("left").classes, [TableClass::AlignLeft]);
+        assert_eq!(discretised_str("right").classes, [TableClass::AlignRight]);
+        assert_eq!(discretised_str("center").classes, [TableClass::AlignCenter]);
+        assert_eq!(discretised_str("centre").classes, [TableClass::AlignCenter]);
         // No hjust → no class.
         assert!(
             TableCell::new(TableCellKind::Body, 0, 0, 0, 0, String::new())
@@ -1043,16 +1286,16 @@ mod layout_tests {
         assert!(cells
             .iter()
             .filter(|c| c.kind == TableCellKind::ColumnLabel)
-            .all(|c| c.classes == [TableCellClass::ColHeading]));
+            .all(|c| c.classes == [TableClass::ColHeading]));
         assert!(cells
             .iter()
             .filter(|c| c.kind == TableCellKind::Body)
-            .all(|c| c.classes == [TableCellClass::Row]));
+            .all(|c| c.classes == [TableClass::Row]));
         // The only spanner level is the topmost one.
         assert!(cells
             .iter()
             .filter(|c| c.kind == TableCellKind::Spanner)
-            .all(|c| c.classes == [TableCellClass::SpannerOuter]));
+            .all(|c| c.classes == [TableClass::SpannerOuter]));
     }
 
     #[test]
@@ -1187,6 +1430,160 @@ mod layout_tests {
             .filter(|c| c.kind == TableCellKind::Body)
             .all(|c| c.top == 0));
     }
+
+    #[test]
+    fn build_cells_stacks_title_and_subtitle_above_the_column_labels() {
+        let frame = df! {
+            "id" => vec![1i32],
+        }
+        .unwrap();
+        let mut table = Table::new();
+        table
+            .labels
+            .labels
+            .insert("title".to_string(), Some("Title".to_string()));
+        table
+            .labels
+            .labels
+            .insert("subtitle".to_string(), Some("Subtitle".to_string()));
+
+        let cells = resolve_cells(&frame, &table).unwrap();
+
+        let title = cells
+            .iter()
+            .find(|c| c.kind == TableCellKind::Title)
+            .unwrap();
+        let subtitle = cells
+            .iter()
+            .find(|c| c.kind == TableCellKind::Subtitle)
+            .unwrap();
+        let label = cells
+            .iter()
+            .find(|c| c.kind == TableCellKind::ColumnLabel)
+            .unwrap();
+        let body = cells
+            .iter()
+            .find(|c| c.kind == TableCellKind::Body)
+            .unwrap();
+
+        assert_eq!(
+            (title.top, title.bottom, title.left, title.right),
+            (0, 0, 0, 0)
+        );
+        assert_eq!(title.classes, [TableClass::Title]);
+        assert_eq!((subtitle.top, subtitle.bottom), (1, 1));
+        assert_eq!(subtitle.classes, [TableClass::Subtitle]);
+        assert_eq!(label.top, 2);
+        assert_eq!(body.top, 3);
+    }
+
+    #[test]
+    fn build_cells_omits_a_heading_row_for_an_unset_title_or_subtitle() {
+        let frame = df! {
+            "id" => vec![1i32],
+        }
+        .unwrap();
+        let mut table = Table::new();
+        table
+            .labels
+            .labels
+            .insert("subtitle".to_string(), Some("Subtitle only".to_string()));
+
+        let cells = resolve_cells(&frame, &table).unwrap();
+
+        assert!(!cells.iter().any(|c| c.kind == TableCellKind::Title));
+        let subtitle = cells
+            .iter()
+            .find(|c| c.kind == TableCellKind::Subtitle)
+            .unwrap();
+        // No title row above it, so subtitle takes row 0 itself.
+        assert_eq!(subtitle.top, 0);
+    }
+
+    #[test]
+    fn build_cells_places_the_caption_after_the_body() {
+        let frame = df! {
+            "id" => vec![1i32, 2i32],
+        }
+        .unwrap();
+        let mut table = Table::new();
+        table
+            .labels
+            .labels
+            .insert("caption".to_string(), Some("Source: test".to_string()));
+
+        let cells = resolve_cells(&frame, &table).unwrap();
+
+        let caption = cells
+            .iter()
+            .find(|c| c.kind == TableCellKind::Caption)
+            .unwrap();
+        let max_other_bottom = cells
+            .iter()
+            .filter(|c| c.kind != TableCellKind::Caption)
+            .map(|c| c.bottom)
+            .max()
+            .unwrap();
+        assert_eq!(caption.top, max_other_bottom + 1);
+        assert_eq!(caption.left, 0);
+        assert_eq!(caption.right, 0);
+        assert_eq!(caption.classes, [TableClass::Caption]);
+    }
+
+    #[test]
+    fn resolve_section_marks_only_the_heading_rows() {
+        let frame = df! {
+            "id" => vec![1i32],
+        }
+        .unwrap();
+        let mut table = Table::new();
+        table
+            .labels
+            .labels
+            .insert("title".to_string(), Some("Title".to_string()));
+        table
+            .labels
+            .labels
+            .insert("subtitle".to_string(), Some("Subtitle".to_string()));
+
+        let section = resolve_section(&frame, &table).unwrap();
+
+        // Title (row 0), Subtitle (row 1), ColumnLabel (row 2), Body (row 3).
+        assert_eq!(section.rows.len(), 4);
+        assert_eq!(section.rows[0].classes, vec![TableClass::Heading]);
+        assert_eq!(section.rows[1].classes, vec![TableClass::Heading]);
+        assert!(section.rows[2].classes.is_empty());
+        assert!(section.rows[3].classes.is_empty());
+    }
+
+    #[test]
+    fn reserved_label_keys_always_win_over_a_same_named_column() {
+        // A column literally named "title" can't get a header override via
+        // LABEL — the reserved key always wins, and the column just keeps
+        // its own name, exactly as if no LABEL entry existed for it.
+        let frame = df! {
+            "title" => vec![1i32],
+        }
+        .unwrap();
+        let mut table = Table::new();
+        table
+            .labels
+            .labels
+            .insert("title".to_string(), Some("The Table's Title".to_string()));
+
+        let cells = resolve_cells(&frame, &table).unwrap();
+
+        let heading = cells
+            .iter()
+            .find(|c| c.kind == TableCellKind::Title)
+            .unwrap();
+        assert_eq!(heading.content, "The Table's Title");
+        let column_label = cells
+            .iter()
+            .find(|c| c.kind == TableCellKind::ColumnLabel)
+            .unwrap();
+        assert_eq!(column_label.content, "title");
+    }
 }
 
 #[cfg(test)]
@@ -1209,7 +1606,9 @@ mod tests {
         let resolved = resolve_table_with_reader("TABULATE FROM sales", &reader).unwrap();
 
         assert_eq!(resolved.sql(), "SELECT * FROM sales");
-        assert_eq!(resolved.nrow(), 3);
+        // 3 data rows + 1 column-label row: nrow() is the whole grid, not
+        // just the data rows.
+        assert_eq!(resolved.nrow(), 4);
         assert_eq!(resolved.ncol(), 2);
     }
 

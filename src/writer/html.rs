@@ -1,9 +1,14 @@
 //! A minimal HTML table writer.
 //!
 //! Maps `ResolvedTable`'s three parts onto distinct pieces of the `<table>`:
-//! - `cells` → `<thead>`/`<tbody>` rows. How a cell's styling is expressed
-//!   depends on the `css_mode` option: `class` (the default) puts `ggsql_*`
-//!   classes on the elements — from the cell's recorded `TableCellClass`es
+//! - `cells` → `<thead>`/`<tbody>` rows, plus one carve-out: a `Caption`-kind
+//!   cell is pulled out of the grid before row rendering and emitted as a
+//!   `<caption>` (HTML requires it as `<table>`'s first child, outside
+//!   `<thead>`/`<tbody>` entirely) — see `write_table`. Everything else,
+//!   including the new `Title`/`Subtitle` heading rows, renders through the
+//!   normal row logic below. How a cell's (or a heading row's) styling is
+//!   expressed depends on the `css_mode` option: `class` (the default) puts
+//!   `ggsql_*` classes on the elements — from the recorded `TableClass`es
 //!   plus property-derived classes like alignment — backed by a `<style>`
 //!   block; `inline` renders the same declarations into each element's
 //!   `style` attribute instead (the two gt `as_raw_html()` modes).
@@ -11,27 +16,32 @@
 //!   attribute from that column's resolved `width` (a bare `<col>` for a
 //!   column with none) in both modes — targeted column styling stays inline,
 //!   as gt keeps `tab_style()` rules inline.
-//! - `rows` → not consumed yet; no row-wide property exists to render.
+//! - `rows` → a class on the `<tr>` itself (`Heading`, for a `Title`/
+//!   `Subtitle` row) — the only row-wide property that exists to render so
+//!   far.
 //!
-//! No footnotes, since `Table` has no fields to describe those yet. Spanner
-//! rows are rendered (as `colspan`, one `<tr>` per level, above the column
-//! labels); `render_cell`/`render_row` can also render a `rowspan` cell,
-//! though nothing in the resolution pipeline produces one yet, so a column
-//! with no spanner at a given level still gets a blank filler cell rather
-//! than a merged one. This is a stub to prove the Table → writer plumbing
-//! end to end, not the real grammar-of-tables output; it deliberately does
-//! not reuse `ggsql-jupyter`'s existing `dataframe_to_html`, which works
-//! directly off a `DataFrame` rather than resolved `TableCell`s.
+//! No footnotes yet, since `Table` has no field for those. Spanner rows are
+//! rendered (as `colspan`, one `<tr>` per level, above the column labels);
+//! `render_cell`/`render_row` can also render a `rowspan` cell, though
+//! nothing in the resolution pipeline produces one for a data column yet, so
+//! a column with no spanner at a given level still gets a blank filler cell
+//! rather than a merged one. This is a stub to prove the Table → writer
+//! plumbing end to end, not the real grammar-of-tables output; it
+//! deliberately does not reuse `ggsql-jupyter`'s existing
+//! `dataframe_to_html`, which works directly off a `DataFrame` rather than
+//! resolved `TableCell`s.
 
 use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 use std::collections::HashMap;
-use std::collections::HashSet;
 
+use crate::execute::{count_cell_cols, count_cell_rows};
 use crate::plot::{ParameterValue, Parameters};
 use crate::util::escape_html;
 use crate::writer::{Writer, WriterOptions};
 use crate::{
-    DataFrame, GgsqlError, Plot, Result, TableCell, TableCellClass, TableColumn, TableRow,
+    DataFrame, GgsqlError, Plot, Result, TableCell, TableCellKind, TableClass, TableColumn,
+    TableRow,
 };
 
 /// Renders a resolved table as a bare HTML `<table>`. Does not support plots.
@@ -93,9 +103,6 @@ impl Writer for HtmlWriter {
         columns: Option<&[TableColumn]>,
         rows: Option<&[TableRow]>,
     ) -> Result<String> {
-        // Not consumed yet — no property needs whole-row rendering yet.
-        let _ = rows;
-
         // Fold `hjust` into alignment classes up front, so rendering reads
         // `classes` alone.
         let cells: Vec<TableCell> = cells
@@ -104,29 +111,41 @@ impl Writer for HtmlWriter {
             .map(TableCell::discretise_hjust)
             .collect();
 
-        let ncol = cells
-            .iter()
-            .map(|cell| cell.right)
-            .max()
-            .map_or(0, |r| r + 1);
+        // Computed from every cell, caption included — harmless, since a
+        // caption never spans rows (`top == bottom`), so at worst `nrow`
+        // covers one extra row nothing below ever looks up.
+        let ncol = count_cell_cols(&cells);
+        let nrow = count_cell_rows(&cells);
+        let row_at = |row: usize| rows.and_then(|rows| rows.get(row));
 
-        // BTreeMap because essentially Vec<Vec<&TableCell>> but compact for missing rows
-        let mut header_rows: BTreeMap<usize, Vec<&TableCell>> = BTreeMap::new();
-        let mut body_rows: BTreeMap<usize, Vec<&TableCell>> = BTreeMap::new();
+        // A caption never joins the header/body grid the rest of this
+        // function lays out: HTML requires `<caption>` outside
+        // `<thead>`/`<tbody>`, as `<table>`'s first child, so it's rendered
+        // separately below through `render_caption` rather than
+        // `render_row`/`render_cell`. This loop pulls it into
+        // `caption_cells` for that, and keeps it out of
+        // `header_rows`/`body_rows` so it's never looked up as a row to
+        // render — `build_all_slots` can still see it in `cells` below;
+        // its own row is simply never queried.
+        let mut caption_cells: Vec<&TableCell> = Vec::new();
+        let mut header_rows: BTreeSet<usize> = BTreeSet::new();
+        let mut body_rows: BTreeSet<usize> = BTreeSet::new();
 
         // Sorting Hat: Hmmm... Yes... BODY ROW!!! *applause*
         for cell in &cells {
-            if cell.is_header() {
-                header_rows.entry(cell.top).or_default().push(cell);
+            if cell.kind == TableCellKind::Caption {
+                caption_cells.push(cell);
+            } else if cell.is_header() {
+                header_rows.insert(cell.top);
             } else {
-                body_rows.entry(cell.top).or_default().push(cell);
+                body_rows.insert(cell.top);
             }
         }
 
         // Not a general TableCell invariant — just what this writer's split
         // into two blocks requires.
         if let (Some(&max_header_row), Some(&min_body_row)) =
-            (header_rows.keys().next_back(), body_rows.keys().next())
+            (header_rows.iter().next_back(), body_rows.iter().next())
         {
             if max_header_row >= min_body_row {
                 return Err(GgsqlError::WriterError(format!(
@@ -137,12 +156,7 @@ impl Writer for HtmlWriter {
             }
         }
 
-        let nrow = cells
-            .iter()
-            .map(|cell| cell.bottom)
-            .max()
-            .map_or(0, |r| r + 1);
-        let occupied = occupied_columns_per_row(&cells, nrow);
+        let mut all_slots = build_all_slots(&cells, ncol, nrow);
 
         let mut html = String::new();
         if self.css_mode == CssMode::Class {
@@ -150,22 +164,33 @@ impl Writer for HtmlWriter {
         }
         html.push_str("<table>\n");
 
+        for caption in caption_cells {
+            html.push_str(&render_caption(caption, self.css_mode));
+            html.push('\n');
+        }
+
         if let Some(colgroup) = render_colgroup(columns) {
             html.push_str(&colgroup);
         }
 
         if !header_rows.is_empty() {
             html.push_str("<thead>\n");
-            for (row, row_cells) in header_rows {
-                html.push_str(&render_row(row_cells, ncol, &occupied[row], self.css_mode));
+            for row in &header_rows {
+                let slots = all_slots
+                    .remove(row)
+                    .expect("a header row's own cell always puts it in build_all_slots' result");
+                html.push_str(&render_row(&slots, row_at(*row), self.css_mode));
             }
             html.push_str("</thead>\n");
         }
 
         if !body_rows.is_empty() {
             html.push_str("<tbody>\n");
-            for (row, row_cells) in body_rows {
-                html.push_str(&render_row(row_cells, ncol, &occupied[row], self.css_mode));
+            for row in &body_rows {
+                let slots = all_slots
+                    .remove(row)
+                    .expect("a body row's own cell always puts it in build_all_slots' result");
+                html.push_str(&render_row(&slots, row_at(*row), self.css_mode));
             }
             html.push_str("</tbody>\n");
         }
@@ -176,20 +201,24 @@ impl Writer for HtmlWriter {
     }
 }
 
-/// What a `TableCellClass` stands for in CSS, as property–value pairs. The
+/// What a `TableClass` stands for in CSS, as property–value pairs. The
 /// single source of truth both `css_mode`s render from — class mode puts
 /// these in the `<style>` block, inline mode folds them into the element's
 /// `style` attribute. Structural classes carry no declarations — they're
 /// pure semantic hooks for the embedder.
-fn class_declarations(class: TableCellClass) -> &'static [(&'static str, &'static str)] {
+fn class_declarations(class: TableClass) -> &'static [(&'static str, &'static str)] {
     match class {
-        TableCellClass::Row
-        | TableCellClass::ColHeading
-        | TableCellClass::Spanner
-        | TableCellClass::SpannerOuter => &[],
-        TableCellClass::AlignLeft => &[("text-align", "left")],
-        TableCellClass::AlignCenter => &[("text-align", "center")],
-        TableCellClass::AlignRight => &[
+        TableClass::Row
+        | TableClass::ColHeading
+        | TableClass::Spanner
+        | TableClass::SpannerOuter
+        | TableClass::Title
+        | TableClass::Subtitle
+        | TableClass::Caption
+        | TableClass::Heading => &[],
+        TableClass::AlignLeft => &[("text-align", "left")],
+        TableClass::AlignCenter => &[("text-align", "center")],
+        TableClass::AlignRight => &[
             ("text-align", "right"),
             // Right-aligned data reads as numeric — keep digit widths uniform
             // so they still line up under one another.
@@ -202,10 +231,10 @@ fn class_declarations(class: TableCellClass) -> &'static [(&'static str, &'stati
 /// order. With equal specificity the later rule wins, so this decides
 /// precedence in class mode; `inline_style`'s own precedence instead follows
 /// the order of the cell's `classes` field (see its doc comment).
-const STYLED_CLASSES: &[TableCellClass] = &[
-    TableCellClass::AlignLeft,
-    TableCellClass::AlignCenter,
-    TableCellClass::AlignRight,
+const STYLED_CLASSES: &[TableClass] = &[
+    TableClass::AlignLeft,
+    TableClass::AlignCenter,
+    TableClass::AlignRight,
 ];
 
 /// The `<style>` block class mode prepends — one rule per styled class,
@@ -231,7 +260,7 @@ fn render_style_block() -> String {
 /// property appearing at most once — a later class's declaration overrides
 /// an earlier one's (CSS's last-wins rule, made explicit so the output
 /// doesn't rely on browsers' duplicate-declaration handling).
-fn inline_style(classes: &[TableCellClass]) -> Option<String> {
+fn inline_style(classes: &[TableClass]) -> Option<String> {
     let mut folded: Vec<(&str, &str)> = Vec::new();
     for class in classes {
         for &(property, value) in class_declarations(*class) {
@@ -250,12 +279,36 @@ fn inline_style(classes: &[TableCellClass]) -> Option<String> {
     })
 }
 
-/// Render one `TableCell` as an HTML tag — `<th>`/`<td>` from
+/// Render a `class` (class mode) or `style` (inline mode) attribute from a
+/// set of recorded classes — shared by `render_cell` (a `<td>`/`<th>`),
+/// `render_caption` (the extracted `<caption>`) and `render_row` (the
+/// `<tr>`), since the same class list means the same declarations wherever
+/// it ends up. Empty when `classes` is empty (class mode) or resolves no
+/// declarations (inline mode).
+fn styling_attr(classes: &[TableClass], mode: CssMode) -> String {
+    match mode {
+        CssMode::Class => {
+            if classes.is_empty() {
+                String::new()
+            } else {
+                let names = classes
+                    .iter()
+                    .map(|&class| format!("ggsql_{class}"))
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                format!(" class=\"{names}\"")
+            }
+        }
+        CssMode::Inline => inline_style(classes)
+            .map(|style| format!(" style=\"{style}\""))
+            .unwrap_or_default(),
+    }
+}
+
+/// Render one `TableCell` as an HTML `<th>`/`<td>`, picked from
 /// `cell.is_header()`, with a `colspan`/`rowspan` attribute only when the
-/// cell actually spans more than one column/row. Styling per `mode`: class
-/// mode emits a `class` attribute naming the cell's `TableCellClass`es;
-/// inline mode folds their declarations into a `style` attribute. Each
-/// attribute appears only when non-empty.
+/// cell actually spans more than one column/row. Styling per `mode` via
+/// `styling_attr`. Not used for a `Caption`-kind cell — see `render_caption`.
 fn render_cell(cell: &TableCell, mode: CssMode) -> String {
     let tag = if cell.is_header() { "th" } else { "td" };
     let colspan = cell.width();
@@ -267,26 +320,17 @@ fn render_cell(cell: &TableCell, mode: CssMode) -> String {
     if rowspan > 1 {
         attrs.push_str(&format!(" rowspan=\"{rowspan}\""));
     }
-
-    match mode {
-        CssMode::Class => {
-            if !cell.classes.is_empty() {
-                let names = cell
-                    .classes
-                    .iter()
-                    .map(|&class| format!("ggsql_{class}"))
-                    .collect::<Vec<_>>()
-                    .join(" ");
-                attrs.push_str(&format!(" class=\"{names}\""));
-            }
-        }
-        CssMode::Inline => {
-            if let Some(style) = inline_style(&cell.classes) {
-                attrs.push_str(&format!(" style=\"{style}\""));
-            }
-        }
-    }
+    attrs.push_str(&styling_attr(&cell.classes, mode));
     format!("<{tag}{attrs}>{}</{tag}>", escape_html(&cell.content))
+}
+
+/// Render a `Caption`-kind `TableCell` as a `<caption>` element — no
+/// `colspan`/`rowspan`, since HTML doesn't take either there, and
+/// `write_table` already pulled it out of the row grid before this is ever
+/// called. Styling per `mode` via `styling_attr`, same as `render_cell`.
+fn render_caption(cell: &TableCell, mode: CssMode) -> String {
+    let attrs = styling_attr(&cell.classes, mode);
+    format!("<caption{attrs}>{}</caption>", escape_html(&cell.content))
 }
 
 /// Render a `<colgroup>` block, one `<col>` per column, or `None` if
@@ -325,73 +369,105 @@ fn column_style(properties: &Parameters) -> Option<String> {
     }
 }
 
-/// Per row, the column positions already covered by a cell that started in
-/// an earlier row and hasn't ended yet (a rowspan declared above that row) —
-/// those get no cell and no filler when the row is rendered, since the
-/// earlier cell already claims that grid position.
-fn occupied_columns_per_row(cells: &[TableCell], nrow: usize) -> Vec<HashSet<usize>> {
-    let mut occupied = vec![HashSet::new(); nrow];
-    for cell in cells {
-        // Excludes `top` itself — that row renders the cell normally.
-        let spanned_rows = (cell.top + 1)..=cell.bottom;
-        for occupied_row in &mut occupied[spanned_rows] {
-            occupied_row.extend(cell.left..=cell.right);
-        }
-    }
-    occupied
+/// What belongs at one column of a rendered row, decided once for the whole
+/// table by `build_all_slots` rather than worked out inline while
+/// `render_row` walks columns.
+enum Slot<'a> {
+    /// A real cell starting at this column.
+    Cell(&'a TableCell),
+    /// A genuine gap: no real cell reaches this column, so a blank cell is
+    /// synthesized matching the row's own dominant kind/classes.
+    Filler {
+        kind: TableCellKind,
+        classes: &'a [TableClass],
+    },
+    /// A column a rowspan from an earlier row already claims — nothing
+    /// rendered here at all, not even a filler.
+    Skip,
 }
 
-/// Render one row — cells sharing a `top` — as `<tr>...</tr>`, walking every
-/// column position from `0..ncol` and padding any gap with a synthesized
-/// empty cell of the same kind. `occupied` (from `occupied_columns_per_row`)
-/// names the columns a rowspan from an earlier row already claims — those
-/// get neither a cell nor a filler here.
-fn render_row(
-    mut cells: Vec<&TableCell>,
+/// Decide what belongs at every column of every row, for the whole table, in
+/// one pass over `cells` — a cell's rowspan/colspan footprint is marked as
+/// the cell itself is placed. `ncol`/`nrow` size the grid; `write_table`
+/// already has them (computed from the full cell list, caption included).
+/// `cells` itself doesn't need to be caption-free either — a caption cell
+/// just becomes an extra, unlooked-up entry in the returned map (see
+/// `write_table`'s call site).
+///
+/// Returns one entry per row that has at least one cell actually starting
+/// in it — a row entirely swallowed by an earlier rowspan (nothing in it
+/// but continuation) is omitted, since it gets no `<tr>` of its own either.
+/// The caller is expected to only ever look up rows it already knows have a
+/// real cell (e.g. from grouping the same `cells` by `top`), which is
+/// exactly the rows this always produces.
+fn build_all_slots(
+    cells: &[TableCell],
     ncol: usize,
-    occupied: &HashSet<usize>,
-    mode: CssMode,
-) -> String {
-    // write_table's only caller never hands this an empty `cells` (an entry
-    // is only ever created already holding a cell), but an empty row has no
-    // `kind` to synthesize fillers with, so this returns early rather than
-    // assume that guarantee holds forever.
-    if cells.is_empty() {
+    nrow: usize,
+) -> BTreeMap<usize, Vec<Slot<'_>>> {
+    let mut grid: Vec<Vec<Option<Slot<'_>>>> = (0..nrow)
+        .map(|_| (0..ncol).map(|_| None).collect())
+        .collect();
+    for cell in cells {
+        for row in &mut grid[cell.top..=cell.bottom] {
+            for col in &mut row[cell.left..=cell.right] {
+                *col = Some(Slot::Skip);
+            }
+        }
+        grid[cell.top][cell.left] = Some(Slot::Cell(cell));
+    }
+
+    grid.into_iter()
+        .enumerate()
+        .filter_map(|(row, row_slots)| {
+            // A gap gets a filler matching the row's own dominant
+            // kind/classes — read off whichever real cell started this row.
+            // Known gap: assumes every real cell in a row shares one
+            // `TableCellKind`/structural class, true of every row today but
+            // not guaranteed to stay true once row stubs (labels/groups)
+            // can share a row with `Body` cells — revisit then.
+            let (kind, classes) = row_slots.iter().find_map(|slot| match slot {
+                Some(Slot::Cell(cell)) => Some((cell.kind, cell.classes.as_slice())),
+                _ => None,
+            })?;
+            let slots = row_slots
+                .into_iter()
+                .map(|slot| slot.unwrap_or(Slot::Filler { kind, classes }))
+                .collect();
+            Some((row, slots))
+        })
+        .collect()
+}
+
+/// Render a synthesized filler — a genuine gap in the grid with no real
+/// cell reaching it — as a blank `<th>`/`<td>` matching its row's own
+/// dominant kind/classes. Takes `kind`/`classes` directly rather than a
+/// `&TableCell`, since a filler was never a real cell to begin with.
+fn render_filler(kind: TableCellKind, classes: &[TableClass], mode: CssMode) -> String {
+    let tag = if kind.is_header() { "th" } else { "td" };
+    let attrs = styling_attr(classes, mode);
+    format!("<{tag}{attrs}></{tag}>")
+}
+
+/// Render one row's already-decided `Slot`s as `<tr>...</tr>`. A `Skip`
+/// slot renders nothing at all; a `Cell`/`Filler` slot renders through
+/// `render_cell`/`render_filler`. Styling on the `<tr>` itself comes from
+/// `row`'s recorded classes, same as any other element, via `styling_attr`.
+fn render_row(slots: &[Slot], row: Option<&TableRow>, mode: CssMode) -> String {
+    if slots.is_empty() {
         return String::new();
     }
 
-    // The walk below depends on `left`-ascending order.
-    cells.sort_by_key(|cell| cell.left);
-    // Known gap: `kind` and `filler_classes` both assume every real cell in
-    // this row shares one `TableCellKind`/structural class, true of every row
-    // today but not guaranteed to stay true once row stubs (labels/groups)
-    // can share a row with `Body` cells — revisit then.
-    let kind = cells[0].kind;
-    // A real cell's classes are uniform across the row by construction, so
-    // any of them names the filler's correctly.
-    let filler_classes = cells[0].classes.clone();
-    let mut html = String::from("<tr>");
+    let row_classes = row.map_or(&[][..], |row| row.classes.as_slice());
+    let mut html = format!("<tr{}>", styling_attr(row_classes, mode));
 
-    // `ncol` comes from the whole table, not this row's own cells — a row
-    // that doesn't reach the last column must still pad out to it.
-    let mut col = 0;
-    let mut i = 0;
-    while col < ncol {
-        if occupied.contains(&col) {
-            col += 1;
-        } else if i < cells.len() && cells[i].left == col {
-            html.push_str(&render_cell(cells[i], mode));
-            col = cells[i].right + 1;
-            i += 1;
-        } else {
-            // A gap (a spanner not reaching every column, or one fragmented
-            // by another spanner's occupancy) renders through `render_cell`
-            // too, so one place decides which tag a `TableCellKind` gets,
-            // not two.
-            let filler = TableCell::new(kind, cells[0].top, cells[0].top, col, col, String::new())
-                .with_classes(filler_classes.clone());
-            html.push_str(&render_cell(&filler, mode));
-            col += 1;
+    for slot in slots {
+        match slot {
+            Slot::Cell(cell) => html.push_str(&render_cell(cell, mode)),
+            Slot::Filler { kind, classes } => {
+                html.push_str(&render_filler(*kind, classes, mode));
+            }
+            Slot::Skip => {}
         }
     }
 
@@ -402,7 +478,7 @@ fn render_row(
 #[cfg(test)]
 mod render_tests {
     use super::*;
-    use crate::{TableCellClass, TableCellKind};
+    use crate::{TableCellKind, TableClass};
 
     fn cell(
         kind: TableCellKind,
@@ -445,11 +521,13 @@ mod render_tests {
     }
 
     #[test]
-    fn render_row_returns_empty_string_for_no_cells() {
-        assert_eq!(
-            render_row(Vec::new(), 3, &HashSet::new(), CssMode::Inline),
-            ""
-        );
+    fn build_all_slots_returns_empty_for_no_cells() {
+        assert!(build_all_slots(&[], 0, 0).is_empty());
+    }
+
+    #[test]
+    fn render_row_returns_empty_string_for_no_slots() {
+        assert_eq!(render_row(&[], None, CssMode::Inline), "");
     }
 
     #[test]
@@ -472,8 +550,7 @@ mod render_tests {
 
     #[test]
     fn render_cell_emits_classes_in_class_mode() {
-        let mut body =
-            cell(TableCellKind::Body, 0, 0, 0, 0).with_classes(vec![TableCellClass::Row]);
+        let mut body = cell(TableCellKind::Body, 0, 0, 0, 0).with_classes(vec![TableClass::Row]);
         body.properties
             .insert("hjust".to_string(), ParameterValue::Number(1.0));
         let body = body.discretise_hjust();
@@ -482,22 +559,22 @@ mod render_tests {
             "<td class=\"ggsql_row ggsql_right\"></td>"
         );
 
-        let label = cell(TableCellKind::ColumnLabel, 0, 0, 0, 0)
-            .with_classes(vec![TableCellClass::ColHeading]);
+        let label =
+            cell(TableCellKind::ColumnLabel, 0, 0, 0, 0).with_classes(vec![TableClass::ColHeading]);
         assert_eq!(
             render_cell(&label, CssMode::Class),
             "<th class=\"ggsql_col_heading\"></th>"
         );
 
         let spanner =
-            cell(TableCellKind::Spanner, 0, 0, 0, 1).with_classes(vec![TableCellClass::Spanner]);
+            cell(TableCellKind::Spanner, 0, 0, 0, 1).with_classes(vec![TableClass::Spanner]);
         assert_eq!(
             render_cell(&spanner, CssMode::Class),
             "<th colspan=\"2\" class=\"ggsql_spanner\"></th>"
         );
 
-        let outer = cell(TableCellKind::Spanner, 0, 0, 0, 1)
-            .with_classes(vec![TableCellClass::SpannerOuter]);
+        let outer =
+            cell(TableCellKind::Spanner, 0, 0, 0, 1).with_classes(vec![TableClass::SpannerOuter]);
         assert_eq!(
             render_cell(&outer, CssMode::Class),
             "<th colspan=\"2\" class=\"ggsql_spanner_outer\"></th>"
@@ -508,22 +585,22 @@ mod render_tests {
     fn inline_style_folds_declarations_per_class() {
         assert_eq!(inline_style(&[]), None);
         assert_eq!(
-            inline_style(&[TableCellClass::AlignLeft]),
+            inline_style(&[TableClass::AlignLeft]),
             Some("text-align: left".to_string())
         );
         assert_eq!(
-            inline_style(&[TableCellClass::AlignRight]),
+            inline_style(&[TableClass::AlignRight]),
             Some("text-align: right; font-variant-numeric: tabular-nums".to_string())
         );
         // Structural classes carry no declarations.
-        assert_eq!(inline_style(&[TableCellClass::Row]), None);
+        assert_eq!(inline_style(&[TableClass::Row]), None);
     }
 
     #[test]
     fn inline_style_lets_a_later_class_override_an_earlier_ones_property() {
         // AlignLeft and AlignRight both declare text-align — last wins.
         assert_eq!(
-            inline_style(&[TableCellClass::AlignLeft, TableCellClass::AlignRight]),
+            inline_style(&[TableClass::AlignLeft, TableClass::AlignRight]),
             Some("text-align: right; font-variant-numeric: tabular-nums".to_string())
         );
     }
@@ -575,31 +652,68 @@ mod render_tests {
     }
 
     #[test]
-    fn render_row_skips_a_column_occupied_by_a_rowspan_from_above() {
+    fn build_all_slots_marks_a_rowspans_continuation_row_as_skip() {
+        // Spans rows 0-1 at column 1 — row 1's column 1 is a continuation,
+        // not a gap, even though nothing else in row 1 covers it.
+        let cells = [
+            cell(TableCellKind::ColumnLabel, 0, 1, 1, 1),
+            cell(TableCellKind::ColumnLabel, 1, 1, 0, 0),
+            cell(TableCellKind::ColumnLabel, 1, 1, 2, 2),
+        ];
+
+        let slots = build_all_slots(&cells, 3, 2);
+
+        let row1 = &slots[&1];
+        assert_eq!(row1.len(), 3);
+        assert!(matches!(&row1[0], Slot::Cell(cell) if cell.left == 0));
+        assert!(matches!(&row1[1], Slot::Skip));
+        assert!(matches!(&row1[2], Slot::Cell(cell) if cell.left == 2));
+    }
+
+    #[test]
+    fn render_row_renders_nothing_for_a_skip_slot() {
         let a = cell(TableCellKind::ColumnLabel, 1, 1, 0, 0);
         let c = cell(TableCellKind::ColumnLabel, 1, 1, 2, 2);
-        let occupied = HashSet::from([1]);
+        let slots = vec![Slot::Cell(&a), Slot::Skip, Slot::Cell(&c)];
 
-        let row = render_row(vec![&a, &c], 3, &occupied, CssMode::Inline);
+        let row = render_row(&slots, None, CssMode::Inline);
 
         assert_eq!(row, "<tr><th></th><th></th></tr>\n");
     }
 
     #[test]
-    fn render_row_gives_a_filler_the_same_classes_as_its_row_siblings() {
-        let a = cell(TableCellKind::Spanner, 0, 0, 0, 0)
-            .with_classes(vec![TableCellClass::SpannerOuter]);
-        let b = cell(TableCellKind::Spanner, 0, 0, 2, 2)
-            .with_classes(vec![TableCellClass::SpannerOuter]);
+    fn build_all_slots_fills_a_gap_with_the_row_siblings_kind_and_classes() {
+        let cells = [
+            cell(TableCellKind::Spanner, 0, 0, 0, 0).with_classes(vec![TableClass::SpannerOuter]),
+            cell(TableCellKind::Spanner, 0, 0, 2, 2).with_classes(vec![TableClass::SpannerOuter]),
+        ];
 
-        let row = render_row(vec![&a, &b], 3, &HashSet::new(), CssMode::Class);
+        let slots = build_all_slots(&cells, 3, 1);
 
-        assert_eq!(
-            row,
-            "<tr><th class=\"ggsql_spanner_outer\"></th>\
-             <th class=\"ggsql_spanner_outer\"></th>\
-             <th class=\"ggsql_spanner_outer\"></th></tr>\n"
-        );
+        let row0 = &slots[&0];
+        assert_eq!(row0.len(), 3);
+        assert!(matches!(&row0[0], Slot::Cell(cell) if cell.left == 0));
+        match &row0[1] {
+            Slot::Filler { kind, classes } => {
+                assert_eq!(*kind, TableCellKind::Spanner);
+                assert_eq!(classes.to_vec(), vec![TableClass::SpannerOuter]);
+            }
+            _ => panic!("expected a Filler slot at column 1"),
+        }
+        assert!(matches!(&row0[2], Slot::Cell(cell) if cell.left == 2));
+    }
+
+    #[test]
+    fn render_row_renders_a_filler_with_its_own_kind_and_classes() {
+        let classes = [TableClass::SpannerOuter];
+        let slots = vec![Slot::Filler {
+            kind: TableCellKind::Spanner,
+            classes: &classes,
+        }];
+
+        let row = render_row(&slots, None, CssMode::Class);
+
+        assert_eq!(row, "<tr><th class=\"ggsql_spanner_outer\"></th></tr>\n");
     }
 
     #[test]
@@ -642,6 +756,88 @@ mod render_tests {
              </tbody>\n\
              </table>"
         );
+    }
+
+    #[test]
+    fn write_table_renders_a_caption_as_tables_first_child() {
+        let cells = vec![
+            cell(TableCellKind::ColumnLabel, 0, 0, 0, 0),
+            cell(TableCellKind::Body, 1, 1, 0, 0),
+            TableCell::new(
+                TableCellKind::Caption,
+                2,
+                2,
+                0,
+                0,
+                "<b>Source</b>".to_string(),
+            ),
+        ];
+
+        let html = HtmlWriter {
+            css_mode: CssMode::Inline,
+        }
+        .write_table(&cells, None, None)
+        .unwrap();
+
+        // <caption> is table's first child, before <thead>/<tbody>, and its
+        // content is escaped like any other cell's.
+        assert!(html.starts_with("<table>\n<caption>&lt;b&gt;Source&lt;/b&gt;</caption>\n"));
+        assert!(html.find("<caption>").unwrap() < html.find("<thead>").unwrap());
+        // Not part of the grid: no <th>/<td> for it, and it doesn't trip the
+        // "header above body" check despite sitting below the body row.
+        assert!(!html.contains("<th>&lt;b&gt;Source&lt;/b&gt;"));
+        assert!(!html.contains("<td>&lt;b&gt;Source&lt;/b&gt;"));
+    }
+
+    #[test]
+    fn write_table_renders_a_heading_rows_tr_class_from_the_rows_param() {
+        let cells = vec![
+            cell(TableCellKind::Title, 0, 0, 0, 0).with_classes(vec![TableClass::Title]),
+            cell(TableCellKind::ColumnLabel, 1, 1, 0, 0),
+            cell(TableCellKind::Body, 2, 2, 0, 0),
+        ];
+        let rows = vec![
+            TableRow {
+                properties: Parameters::new(),
+                classes: vec![TableClass::Heading],
+            },
+            TableRow::default(),
+            TableRow::default(),
+        ];
+
+        let html = HtmlWriter::new()
+            .write_table(&cells, None, Some(&rows))
+            .unwrap();
+
+        assert!(html.contains("<tr class=\"ggsql_heading\"><th class=\"ggsql_title\">"));
+        // The column-label row has no recorded row classes, so its <tr> is
+        // bare.
+        assert!(html.contains("<tr><th></th></tr>"));
+    }
+
+    #[test]
+    fn write_table_omits_an_inline_mode_heading_class_with_no_declarations() {
+        // `Heading` carries no CSS declarations, so inline mode's <tr> stays
+        // bare even though a row class was recorded.
+        let cells = vec![
+            cell(TableCellKind::Title, 0, 0, 0, 0).with_classes(vec![TableClass::Title]),
+            cell(TableCellKind::Body, 1, 1, 0, 0),
+        ];
+        let rows = vec![
+            TableRow {
+                properties: Parameters::new(),
+                classes: vec![TableClass::Heading],
+            },
+            TableRow::default(),
+        ];
+
+        let html = HtmlWriter {
+            css_mode: CssMode::Inline,
+        }
+        .write_table(&cells, None, Some(&rows))
+        .unwrap();
+
+        assert!(html.contains("<tr><th></th></tr>"));
     }
 }
 
