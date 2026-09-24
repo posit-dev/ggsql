@@ -92,7 +92,7 @@ pub use dataframe::DataFrame;
 // Re-export the resolved table layout Writer::write_table needs — the
 // Table-side counterpart to DataFrame, not to the plot:: AST vocabulary
 // above, since Table has no specification vocabulary of its own yet.
-pub use execute::{TableCell, TableCellKind, TableColumn, TableRow};
+pub use execute::{TableCell, TableCellKind, TableClass, TableColumn, TableRow};
 
 /// Main library error type
 #[derive(thiserror::Error, Debug)]

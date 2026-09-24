@@ -16,7 +16,7 @@ use crate::{DataFrame, Format, GgsqlError, Result};
 
 /// Validate every FORMAT's `SETTING` parameters, then reshape `formats`
 /// into one `Format` per column it covers.
-pub(crate) fn setup_formats(df: &DataFrame, formats: &[Format]) -> Result<HashMap<String, Format>> {
+pub(super) fn setup_formats(df: &DataFrame, formats: &[Format]) -> Result<HashMap<String, Format>> {
     for (idx, format) in formats.iter().enumerate() {
         format
             .validate_settings()
@@ -47,7 +47,7 @@ pub(crate) fn setup_formats(df: &DataFrame, formats: &[Format]) -> Result<HashMa
 /// display text. A column whose `Format` has no `RENAMING` at all
 /// (`value_template` is the default `"{}"` and `value_mapping` is empty) is
 /// left untouched.
-pub(crate) fn apply_formats(
+pub(super) fn apply_formats(
     df: &DataFrame,
     formats: &HashMap<String, Format>,
 ) -> Result<DataFrame> {
@@ -86,31 +86,35 @@ pub(crate) fn apply_formats(
 }
 
 /// Resolve `SETTING` properties for one column: `format`'s own settings (if
-/// any), with `hjust` standardised to a number: the keywords `"left"`,
-/// `"center"`/`"centre"` and `"right"` become `0.0`, `0.5` and `1.0`; an
-/// already-numeric value passes through unchanged; an absent setting
-/// defaults from `dtype` (numeric columns right, everything else left).
-/// Every writer reads a plain number for `hjust` and buckets it into
-/// left/center/right itself — none of them see the keyword form.
-pub(crate) fn resolve_column_properties(dtype: &DataType, format: Option<&Format>) -> Parameters {
+/// any), with `hjust` standardised to a number (see `standardise_hjust`);
+/// an absent setting defaults from `dtype` (numeric columns right,
+/// everything else left). Every writer reads a plain number for `hjust` and
+/// buckets it into left/center/right itself — none of them see the keyword
+/// form.
+pub(super) fn resolve_column_properties(dtype: &DataType, format: Option<&Format>) -> Parameters {
     let mut properties = format.map(|f| f.settings.clone()).unwrap_or_default();
 
-    let hjust = match properties.get("hjust") {
-        Some(ParameterValue::String(s)) if s == "left" => 0.0,
-        Some(ParameterValue::String(s)) if s == "right" => 1.0,
-        Some(ParameterValue::String(_)) => 0.5, // "center" or "centre"
-        Some(ParameterValue::Number(n)) => *n,
-        _ => {
-            if dtype.is_numeric() {
-                1.0
-            } else {
-                0.0
-            }
-        }
-    };
+    let hjust = properties
+        .get("hjust")
+        .and_then(standardise_hjust)
+        .unwrap_or(if dtype.is_numeric() { 1.0 } else { 0.0 });
     properties.insert("hjust".to_string(), ParameterValue::Number(hjust));
 
     properties
+}
+
+/// Standardise an `hjust` value to a number: the keywords `"left"`,
+/// `"center"`/`"centre"` and `"right"` become `0.0`, `0.5` and `1.0` (any
+/// other string is `0.5` — validation rejects unrecognized spellings before
+/// this runs); a number passes through unchanged; anything else is `None`.
+pub(super) fn standardise_hjust(value: &ParameterValue) -> Option<f64> {
+    match value {
+        ParameterValue::String(s) if s == "left" => Some(0.0),
+        ParameterValue::String(s) if s == "right" => Some(1.0),
+        ParameterValue::String(_) => Some(0.5),
+        ParameterValue::Number(n) => Some(*n),
+        _ => None,
+    }
 }
 
 #[cfg(test)]

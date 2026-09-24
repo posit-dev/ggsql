@@ -1,8 +1,8 @@
 //! `TABULATE SPAN` resolution: column reordering (`gather`) and header-row
 //! (level) assignment for spanners, called from `table::build_cells`.
 
-use super::table::TableColumn;
-use crate::{GgsqlError, Result, Spanner, TableCell, TableCellKind};
+use super::layout::{Section, TableColumn};
+use crate::{GgsqlError, Result, Spanner, TableCell, TableCellKind, TableClass, TableRow};
 
 /// Check that no SPAN's `id` collides with an actual column name. A
 /// duplicate `id` across spanners is already rejected by
@@ -162,12 +162,11 @@ fn assign_spanner_levels(spans: &[Spanner]) -> Vec<usize> {
 /// `assign_spanner_levels` itself. Numbered locally from `top == 0`, the
 /// same convention `create_column_labels`/`create_body` use; stitching
 /// these rows above column labels and body is a separate, later step.
-pub(crate) fn create_spanners(
-    columns: &[TableColumn],
-    spans: &[Spanner],
-) -> Result<Vec<TableCell>> {
+/// `Section::rows` gets exactly `max_level` entries — the number of spanner
+/// rows, not the number of spanner cells.
+pub(crate) fn create_spanners(columns: &[TableColumn], spans: &[Spanner]) -> Result<Section> {
     if spans.is_empty() {
-        return Ok(Vec::new());
+        return Ok(Section::new(Vec::new(), Vec::new()));
     }
     check_spanner_id_column_collision(spans, columns)?;
 
@@ -191,6 +190,13 @@ pub(crate) fn create_spanners(
             .expect("spans is filtered to only Some(label) spanners");
         // Row 0 is topmost. Level 1 is bottom-most.
         let row = max_level - level;
+        // The topmost level's class supplants the base one, mirroring gt's
+        // `gt_column_spanner_outer`.
+        let class = if row == 0 {
+            TableClass::SpannerOuter
+        } else {
+            TableClass::Spanner
+        };
 
         // We use run length encoding to find 'runs' of columns belonging to span.
         // If span has disjoint columns, these are multiple runs.
@@ -203,14 +209,17 @@ pub(crate) fn create_spanners(
                 (true, None) => run_start = Some(index),
                 // Column not in span, end run and push cell
                 (false, Some(start)) => {
-                    cells.push(TableCell::new(
-                        TableCellKind::Spanner,
-                        row,
-                        row,
-                        start,
-                        index - 1,
-                        label.clone(),
-                    ));
+                    cells.push(
+                        TableCell::new(
+                            TableCellKind::Spanner,
+                            row,
+                            row,
+                            start,
+                            index - 1,
+                            label.clone(),
+                        )
+                        .with_classes(vec![class]),
+                    );
                     run_start = None;
                 }
                 _ => {}
@@ -218,18 +227,21 @@ pub(crate) fn create_spanners(
         }
         // Started but not ended: last column
         if let Some(start) = run_start {
-            cells.push(TableCell::new(
-                TableCellKind::Spanner,
-                row,
-                row,
-                start,
-                columns.len() - 1,
-                label.clone(),
-            ));
+            cells.push(
+                TableCell::new(
+                    TableCellKind::Spanner,
+                    row,
+                    row,
+                    start,
+                    columns.len() - 1,
+                    label.clone(),
+                )
+                .with_classes(vec![class]),
+            );
         }
     }
 
-    Ok(cells)
+    Ok(Section::new(vec![TableRow::header(); max_level], cells))
 }
 
 #[cfg(test)]
@@ -457,7 +469,7 @@ mod tests {
             labeled_spanner(&["c", "d"], "G2"),
         ];
 
-        let cells = create_spanners(&columns, &spans).unwrap();
+        let cells = create_spanners(&columns, &spans).unwrap().into_cells();
 
         assert_eq!(cells.len(), 2);
         assert_eq!(cells[0].top, 0);
@@ -479,7 +491,7 @@ mod tests {
             labeled_spanner(&["b", "c"], "G2"),
         ];
 
-        let cells = create_spanners(&columns, &spans).unwrap();
+        let cells = create_spanners(&columns, &spans).unwrap().into_cells();
 
         // Level 1 (G1, closest to the columns) is the bottom spanner row —
         // the higher local row number, since row 0 is the topmost row.
@@ -494,11 +506,28 @@ mod tests {
     }
 
     #[test]
+    fn create_spanners_marks_only_the_topmost_level_outer() {
+        let columns = vec![column("a", "a"), column("b", "b"), column("c", "c")];
+        let spans = vec![
+            labeled_spanner(&["a", "b"], "G1"),
+            labeled_spanner(&["b", "c"], "G2"),
+        ];
+
+        let cells = create_spanners(&columns, &spans).unwrap().into_cells();
+
+        let g1 = cells.iter().find(|c| c.content == "G1").unwrap();
+        let g2 = cells.iter().find(|c| c.content == "G2").unwrap();
+        // G2 sits in the topmost row (row 0) — its class supplants Spanner.
+        assert_eq!(g2.classes, [TableClass::SpannerOuter]);
+        assert_eq!(g1.classes, [TableClass::Spanner]);
+    }
+
+    #[test]
     fn create_spanners_fragments_a_non_contiguous_spanner_into_multiple_cells() {
         let columns = vec![column("a", "a"), column("x", "x"), column("b", "b")];
         let spans = vec![labeled_spanner(&["a", "b"], "G")];
 
-        let cells = create_spanners(&columns, &spans).unwrap();
+        let cells = create_spanners(&columns, &spans).unwrap().into_cells();
 
         assert_eq!(cells.len(), 2);
         assert!(cells.iter().all(|c| c.content == "G"));
@@ -516,7 +545,7 @@ mod tests {
         let columns = vec![column("a", "a"), column("b", "b"), column("c", "c")];
         let spans = vec![null_spanner(&["a", "b"]), labeled_spanner(&["b", "c"], "G")];
 
-        let cells = create_spanners(&columns, &spans).unwrap();
+        let cells = create_spanners(&columns, &spans).unwrap().into_cells();
 
         assert_eq!(cells.len(), 1);
         assert_eq!(cells[0].top, 0);
@@ -529,7 +558,7 @@ mod tests {
     fn create_spanners_returns_empty_for_no_spanners() {
         let columns = vec![column("a", "a"), column("b", "b")];
 
-        let cells = create_spanners(&columns, &[]).unwrap();
+        let cells = create_spanners(&columns, &[]).unwrap().into_cells();
 
         assert!(cells.is_empty());
     }

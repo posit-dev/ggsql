@@ -50,6 +50,21 @@ TABULATE FROM sales
 
 If every column ends up with a blank header this way, the header row is omitted entirely rather than rendered as a row of empty cells.
 
+Three keys are reserved rather than naming a column — the same names as [`VISUALISE`'s `LABEL`](label.qmd), for the same three parts of a plot:
+
+* `title`: The table's main title
+* `subtitle`: An additional, often longer and more descriptive, title beneath the main title
+* `caption`: Text rendered as a real HTML `<caption>` element, outside the table's header/body rows
+
+```ggsql
+TABULATE FROM sales
+  LABEL title => 'Sales by Region', subtitle => 'FY 2024', caption => 'Source: internal sales database'
+```
+
+A reserved key always wins over a same-named column: `LABEL title => 'Sales'` sets the table's title even when a column is literally named `title` — that column just can't get a header override through `LABEL` (it keeps its own name, as if no entry existed for it).
+
+`<caption>`'s position in the rendered output follows ordinary browser/CSS behaviour: it's `<table>`'s first child, so absent a `caption-side` override it renders above the title/subtitle rows, not below the data. Unlike `VISUALISE`'s `LABEL`, none of `title`/`subtitle`/`caption` support markdown here — the HTML writer has no rich-text pipeline.
+
 ### `SPAN`
 ```ggsql
 SPAN <string> ACROSS <column>, ...
@@ -129,7 +144,15 @@ SELECT * FROM ggsql:penguins LIMIT 5
 TABULATE
 ```
 
+```{ggsql}
+SELECT * FROM ggsql:penguins LIMIT 5
 
+TABULATE
+  LABEL
+    title => 'Penguins!',
+    subtitle => 'Structural size measurements',
+    caption => 'Source: Palmer Station, Antarctica'
+```
 
 ```{ggsql}
 SELECT * FROM ggsql:penguins LIMIT 5

@@ -716,13 +716,11 @@ pub struct ResolvedTable {
     pub(crate) cells: Vec<TableCell>,
     /// Resolved per-column properties, for a writer wanting a whole-column
     /// value (e.g. `width`) rather than the same value repeated across a
-    /// column's cells. `None` if resolution never got as far as building
-    /// columns (not currently possible via the public API, but kept
-    /// optional so a future construction path doesn't need one).
-    pub(crate) columns: Option<Vec<TableColumn>>,
-    /// Resolved per-row properties, symmetric with `columns`. Always `None`
-    /// today — no row-wide `TABULATE` clause exists yet to populate it.
-    pub(crate) rows: Option<Vec<TableRow>>,
+    /// column's cells. Always built alongside `cells` — see
+    /// `resolve_table_with_reader`.
+    pub(crate) columns: Vec<TableColumn>,
+    /// Resolved per-row properties, symmetric with `columns`.
+    pub(crate) rows: Vec<TableRow>,
     /// The SQL query that was executed to produce `cells`
     pub(crate) sql: String,
     /// Validation warnings from preparation
