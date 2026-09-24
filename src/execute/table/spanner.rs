@@ -1,7 +1,7 @@
 //! `TABULATE SPAN` resolution: column reordering (`gather`) and header-row
 //! (level) assignment for spanners, called from `table::build_cells`.
 
-use super::table::{Section, TableColumn};
+use super::layout::{Section, TableColumn};
 use crate::{GgsqlError, Result, Spanner, TableCell, TableCellKind, TableClass, TableRow};
 
 /// Check that no SPAN's `id` collides with an actual column name. A

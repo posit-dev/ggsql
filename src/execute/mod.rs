@@ -9,10 +9,8 @@
 //! - `casting`: Type requirements determination and casting logic
 //! - `layer`: Layer query building, data transforms, and stat application
 //! - `scale`: Scale creation, resolution, type coercion, and OOB handling
-//! - `table`: Table (TABULATE) resolution
-//! - `table_spanner`: `TABULATE SPAN` resolution, called from `table`
-//! - `table_format`: `TABULATE FORMAT` resolution (replaces a column's
-//!   values with its resolved display text), called from `table`
+//! - `table`: Table (TABULATE) resolution, with its own `spanner` (`TABULATE
+//!   SPAN`) and `format` (`TABULATE FORMAT`) submodules
 
 mod casting;
 mod cte;
@@ -21,8 +19,6 @@ mod position;
 mod scale;
 mod schema;
 mod table;
-mod table_format;
-mod table_spanner;
 
 // Re-export public API
 pub use casting::TypeRequirement;

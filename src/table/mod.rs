@@ -67,7 +67,7 @@ impl Table {
     /// reference.
     ///
     /// Lives here rather than alongside its sibling spanner-resolution
-    /// steps in `execute::table_spanner` because it operates on `Spanner`
+    /// steps in `execute::table::spanner` because it operates on `Spanner`
     /// alone, with no `DataFrame` involved — `validate()` calls it directly
     /// to catch a duplicate id without depending on `execute`.
     pub fn resolve_spanner_ids(&self) -> Result<Vec<Spanner>, String> {
