@@ -116,8 +116,8 @@ impl ResolvedTable {
     /// Create a new ResolvedTable.
     pub(crate) fn new(
         cells: Vec<TableCell>,
-        columns: Option<Vec<TableColumn>>,
-        rows: Option<Vec<TableRow>>,
+        columns: Vec<TableColumn>,
+        rows: Vec<TableRow>,
         sql: String,
         warnings: Vec<ValidationWarning>,
     ) -> Self {
@@ -135,19 +135,19 @@ impl ResolvedTable {
         &self.cells
     }
 
-    /// Resolved per-column properties, if any were built — a writer wanting
-    /// a whole-column value (e.g. `width`) reads it here instead of the
-    /// same value repeated across the column's cells.
-    pub fn columns(&self) -> Option<&[TableColumn]> {
-        self.columns.as_deref()
+    /// Resolved per-column properties — a writer wanting a whole-column
+    /// value (e.g. `width`) reads it here instead of the same value
+    /// repeated across the column's cells.
+    pub fn columns(&self) -> &[TableColumn] {
+        &self.columns
     }
 
     /// Resolved per-row properties, symmetric with `columns`. `properties`
     /// has no row-wide `TABULATE` clause to populate it yet, but `classes`
     /// does — a `Title`/`Subtitle` cell's row carries `TableClass::Heading`
     /// here, for a writer to put on the enclosing `<tr>`.
-    pub fn rows(&self) -> Option<&[TableRow]> {
-        self.rows.as_deref()
+    pub fn rows(&self) -> &[TableRow] {
+        &self.rows
     }
 
     /// Total number of rows in the table's rendered grid — heading, spanner,

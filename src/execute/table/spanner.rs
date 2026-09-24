@@ -241,7 +241,7 @@ pub(crate) fn create_spanners(columns: &[TableColumn], spans: &[Spanner]) -> Res
         }
     }
 
-    Ok(Section::new(vec![TableRow::default(); max_level], cells))
+    Ok(Section::new(vec![TableRow::header(); max_level], cells))
 }
 
 #[cfg(test)]

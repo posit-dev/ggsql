@@ -32,7 +32,6 @@
 //! resolved `TableCell`s.
 
 use std::collections::BTreeMap;
-use std::collections::BTreeSet;
 use std::collections::HashMap;
 
 use crate::execute::{count_cell_cols, count_cell_rows};
@@ -100,8 +99,8 @@ impl Writer for HtmlWriter {
     fn write_table(
         &self,
         cells: &[TableCell],
-        columns: Option<&[TableColumn]>,
-        rows: Option<&[TableRow]>,
+        columns: &[TableColumn],
+        rows: &[TableRow],
     ) -> Result<String> {
         // Fold `hjust` into alignment classes up front, so rendering reads
         // `classes` alone.
@@ -111,41 +110,27 @@ impl Writer for HtmlWriter {
             .map(TableCell::discretise_hjust)
             .collect();
 
-        // Computed from every cell, caption included — harmless, since a
-        // caption never spans rows (`top == bottom`), so at worst `nrow`
-        // covers one extra row nothing below ever looks up.
+        // HTML requires `<caption>` outside `<thead>`/`<tbody>`, as
+        // `<table>`'s first child, so it's rendered separately below
+        // through `render_caption` rather than `render_row`/`render_cell`.
+        // Splitting it out here, before `ncol`/`nrow` are computed, means
+        // the header/body grid and everything below only ever see genuine
+        // header/body rows — `create_caption`/`rowbind` always place it as
+        // the grid's trailing row, so nothing further down needs its own
+        // caption check.
+        let (caption_cells, cells): (Vec<TableCell>, Vec<TableCell>) = cells
+            .into_iter()
+            .partition(|cell| cell.kind == TableCellKind::Caption);
+
         let ncol = count_cell_cols(&cells);
         let nrow = count_cell_rows(&cells);
-        let row_at = |row: usize| rows.and_then(|rows| rows.get(row));
 
-        // A caption never joins the header/body grid the rest of this
-        // function lays out: HTML requires `<caption>` outside
-        // `<thead>`/`<tbody>`, as `<table>`'s first child, so it's rendered
-        // separately below through `render_caption` rather than
-        // `render_row`/`render_cell`. This loop pulls it into
-        // `caption_cells` for that, and keeps it out of
-        // `header_rows`/`body_rows` so it's never looked up as a row to
-        // render — `build_all_slots` can still see it in `cells` below;
-        // its own row is simply never queried.
-        let mut caption_cells: Vec<&TableCell> = Vec::new();
-        let mut header_rows: BTreeSet<usize> = BTreeSet::new();
-        let mut body_rows: BTreeSet<usize> = BTreeSet::new();
+        let (header_rows, body_rows) = split_rows(rows, nrow);
 
-        // Sorting Hat: Hmmm... Yes... BODY ROW!!! *applause*
-        for cell in &cells {
-            if cell.kind == TableCellKind::Caption {
-                caption_cells.push(cell);
-            } else if cell.is_header() {
-                header_rows.insert(cell.top);
-            } else {
-                body_rows.insert(cell.top);
-            }
-        }
-
-        // Not a general TableCell invariant — just what this writer's split
+        // Not a general TableRow invariant — just what this writer's split
         // into two blocks requires.
         if let (Some(&max_header_row), Some(&min_body_row)) =
-            (header_rows.iter().next_back(), body_rows.iter().next())
+            (header_rows.last(), body_rows.first())
         {
             if max_header_row >= min_body_row {
                 return Err(GgsqlError::WriterError(format!(
@@ -164,7 +149,7 @@ impl Writer for HtmlWriter {
         }
         html.push_str("<table>\n");
 
-        for caption in caption_cells {
+        for caption in &caption_cells {
             html.push_str(&render_caption(caption, self.css_mode));
             html.push('\n');
         }
@@ -179,7 +164,7 @@ impl Writer for HtmlWriter {
                 let slots = all_slots
                     .remove(row)
                     .expect("a header row's own cell always puts it in build_all_slots' result");
-                html.push_str(&render_row(&slots, row_at(*row), self.css_mode));
+                html.push_str(&render_row(&slots, &rows[*row], self.css_mode));
             }
             html.push_str("</thead>\n");
         }
@@ -190,7 +175,7 @@ impl Writer for HtmlWriter {
                 let slots = all_slots
                     .remove(row)
                     .expect("a body row's own cell always puts it in build_all_slots' result");
-                html.push_str(&render_row(&slots, row_at(*row), self.css_mode));
+                html.push_str(&render_row(&slots, &rows[*row], self.css_mode));
             }
             html.push_str("</tbody>\n");
         }
@@ -334,11 +319,11 @@ fn render_caption(cell: &TableCell, mode: CssMode) -> String {
 }
 
 /// Render a `<colgroup>` block, one `<col>` per column, or `None` if
-/// `columns` is absent or none of them resolve a `style`. Skipping the block
+/// `columns` is empty or none of them resolve a `style`. Skipping the block
 /// entirely in that case avoids emitting a run of bare, attribute-less
 /// `<col>` tags that would render identically to omitting them.
-fn render_colgroup(columns: Option<&[TableColumn]>) -> Option<String> {
-    let styles: Vec<Option<String>> = columns?
+fn render_colgroup(columns: &[TableColumn]) -> Option<String> {
+    let styles: Vec<Option<String>> = columns
         .iter()
         .map(|c| column_style(&c.properties))
         .collect();
@@ -386,13 +371,33 @@ enum Slot<'a> {
     Skip,
 }
 
+/// Split every row index in `0..nrow` into header or body, per
+/// `TableRow::is_header` — `rows` may carry one trailing entry for a
+/// caption's own row (see `write_table`'s own caption split); bounding by
+/// `nrow` is what keeps that entry out of either set. Each returned `Vec` is
+/// already ascending, since `idx` only ever increases as `rows` is walked.
+///
+/// Sorting Hat: Hmmm... Yes... BODY ROW!!! *applause*
+fn split_rows(rows: &[TableRow], nrow: usize) -> (Vec<usize>, Vec<usize>) {
+    let mut header_rows = Vec::new();
+    let mut body_rows = Vec::new();
+
+    for (idx, row) in rows.iter().take(nrow).enumerate() {
+        if row.is_header {
+            header_rows.push(idx);
+        } else {
+            body_rows.push(idx);
+        }
+    }
+
+    (header_rows, body_rows)
+}
+
 /// Decide what belongs at every column of every row, for the whole table, in
 /// one pass over `cells` — a cell's rowspan/colspan footprint is marked as
 /// the cell itself is placed. `ncol`/`nrow` size the grid; `write_table`
-/// already has them (computed from the full cell list, caption included).
-/// `cells` itself doesn't need to be caption-free either — a caption cell
-/// just becomes an extra, unlooked-up entry in the returned map (see
-/// `write_table`'s call site).
+/// already has them, computed from `cells` itself, which by this point is
+/// caption-free (see `write_table`'s own caption split).
 ///
 /// Returns one entry per row that has at least one cell actually starting
 /// in it — a row entirely swallowed by an earlier rowspan (nothing in it
@@ -453,13 +458,31 @@ fn render_filler(kind: TableCellKind, classes: &[TableClass], mode: CssMode) -> 
 /// slot renders nothing at all; a `Cell`/`Filler` slot renders through
 /// `render_cell`/`render_filler`. Styling on the `<tr>` itself comes from
 /// `row`'s recorded classes, same as any other element, via `styling_attr`.
-fn render_row(slots: &[Slot], row: Option<&TableRow>, mode: CssMode) -> String {
+fn render_row(slots: &[Slot], row: &TableRow, mode: CssMode) -> String {
     if slots.is_empty() {
         return String::new();
     }
 
-    let row_classes = row.map_or(&[][..], |row| row.classes.as_slice());
-    let mut html = format!("<tr{}>", styling_attr(row_classes, mode));
+    // Every `Cell`/`Filler` in a row shares one `TableCellKind` (a `Filler`
+    // inherits it from whichever real cell started the row — see
+    // `build_all_slots`), so the first one found is enough to cross-check
+    // against `row.is_header` — the two are meant to always agree. Gated on
+    // `debug_assertions` so the scan itself, not just the assertion, is
+    // compiled out of a release build.
+    #[cfg(debug_assertions)]
+    if let Some(kind) = slots.iter().find_map(|slot| match slot {
+        Slot::Cell(cell) => Some(cell.kind),
+        Slot::Filler { kind, .. } => Some(*kind),
+        Slot::Skip => None,
+    }) {
+        debug_assert_eq!(
+            kind.is_header(),
+            row.is_header,
+            "row's TableRow::is_header disagrees with its own cells' TableCellKind::is_header"
+        );
+    }
+
+    let mut html = format!("<tr{}>", styling_attr(&row.classes, mode));
 
     for slot in slots {
         match slot {
@@ -527,7 +550,7 @@ mod render_tests {
 
     #[test]
     fn render_row_returns_empty_string_for_no_slots() {
-        assert_eq!(render_row(&[], None, CssMode::Inline), "");
+        assert_eq!(render_row(&[], &TableRow::default(), CssMode::Inline), "");
     }
 
     #[test]
@@ -627,13 +650,13 @@ mod render_tests {
 
     #[test]
     fn render_colgroup_returns_none_without_columns() {
-        assert_eq!(render_colgroup(None), None);
+        assert_eq!(render_colgroup(&[]), None);
     }
 
     #[test]
     fn render_colgroup_returns_none_when_no_column_has_a_width() {
         let columns = vec![column(Parameters::new()), column(Parameters::new())];
-        assert_eq!(render_colgroup(Some(&columns)), None);
+        assert_eq!(render_colgroup(&columns), None);
     }
 
     #[test]
@@ -646,7 +669,7 @@ mod render_tests {
         let columns = vec![column(widened), column(Parameters::new())];
 
         assert_eq!(
-            render_colgroup(Some(&columns)).unwrap(),
+            render_colgroup(&columns).unwrap(),
             "<colgroup>\n<col style=\"width: 20%\">\n<col>\n</colgroup>\n"
         );
     }
@@ -676,7 +699,7 @@ mod render_tests {
         let c = cell(TableCellKind::ColumnLabel, 1, 1, 2, 2);
         let slots = vec![Slot::Cell(&a), Slot::Skip, Slot::Cell(&c)];
 
-        let row = render_row(&slots, None, CssMode::Inline);
+        let row = render_row(&slots, &TableRow::header(), CssMode::Inline);
 
         assert_eq!(row, "<tr><th></th><th></th></tr>\n");
     }
@@ -711,19 +734,20 @@ mod render_tests {
             classes: &classes,
         }];
 
-        let row = render_row(&slots, None, CssMode::Class);
+        let row = render_row(&slots, &TableRow::header(), CssMode::Class);
 
         assert_eq!(row, "<tr><th class=\"ggsql_spanner_outer\"></th></tr>\n");
     }
 
     #[test]
-    fn write_table_errors_when_a_header_cell_is_not_above_every_body_cell() {
+    fn write_table_errors_when_a_header_row_is_not_above_every_body_row() {
         let cells = vec![
             cell(TableCellKind::Body, 0, 0, 0, 0),
-            cell(TableCellKind::ColumnLabel, 0, 0, 1, 1),
+            cell(TableCellKind::ColumnLabel, 1, 1, 0, 0),
         ];
+        let rows = vec![TableRow::default(), TableRow::header()];
 
-        assert!(HtmlWriter::new().write_table(&cells, None, None).is_err());
+        assert!(HtmlWriter::new().write_table(&cells, &[], &rows).is_err());
     }
 
     #[test]
@@ -737,11 +761,12 @@ mod render_tests {
             cell(TableCellKind::Body, 2, 2, 0, 0),
             cell(TableCellKind::Body, 2, 2, 1, 1),
         ];
+        let rows = vec![TableRow::header(), TableRow::header(), TableRow::default()];
 
         let html = HtmlWriter {
             css_mode: CssMode::Inline,
         }
-        .write_table(&cells, None, None)
+        .write_table(&cells, &[], &rows)
         .unwrap();
 
         assert_eq!(
@@ -772,11 +797,12 @@ mod render_tests {
                 "<b>Source</b>".to_string(),
             ),
         ];
+        let rows = vec![TableRow::header(), TableRow::default(), TableRow::default()];
 
         let html = HtmlWriter {
             css_mode: CssMode::Inline,
         }
-        .write_table(&cells, None, None)
+        .write_table(&cells, &[], &rows)
         .unwrap();
 
         // <caption> is table's first child, before <thead>/<tbody>, and its
@@ -798,16 +824,14 @@ mod render_tests {
         ];
         let rows = vec![
             TableRow {
-                properties: Parameters::new(),
                 classes: vec![TableClass::Heading],
+                ..TableRow::header()
             },
-            TableRow::default(),
+            TableRow::header(),
             TableRow::default(),
         ];
 
-        let html = HtmlWriter::new()
-            .write_table(&cells, None, Some(&rows))
-            .unwrap();
+        let html = HtmlWriter::new().write_table(&cells, &[], &rows).unwrap();
 
         assert!(html.contains("<tr class=\"ggsql_heading\"><th class=\"ggsql_title\">"));
         // The column-label row has no recorded row classes, so its <tr> is
@@ -825,8 +849,8 @@ mod render_tests {
         ];
         let rows = vec![
             TableRow {
-                properties: Parameters::new(),
                 classes: vec![TableClass::Heading],
+                ..TableRow::header()
             },
             TableRow::default(),
         ];
@@ -834,7 +858,7 @@ mod render_tests {
         let html = HtmlWriter {
             css_mode: CssMode::Inline,
         }
-        .write_table(&cells, None, Some(&rows))
+        .write_table(&cells, &[], &rows)
         .unwrap();
 
         assert!(html.contains("<tr><th></th></tr>"));

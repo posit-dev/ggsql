@@ -100,7 +100,8 @@ pub(super) fn build_cells(
 /// `df.height()`; spanners: however many levels `assign_spanner_levels`
 /// used; heading: 0/1/2) — `rows` is therefore never *derived* from `cells`
 /// anywhere, which is what keeps `TableRow`'s classification (e.g.
-/// `Heading`) a decision made exactly once, where a cell is built.
+/// `is_header`, `Heading`) a decision made exactly once, where a cell is
+/// built.
 ///
 /// `pub(super)`, not fully private: `spanner::create_spanners` is a sibling
 /// module (not a descendant of this one), so it needs `Section` named and a
@@ -224,7 +225,7 @@ fn create_heading(title: Option<&str>, subtitle: Option<&str>, ncol: usize) -> S
     let rows = vec![
         TableRow {
             classes: vec![TableClass::Heading],
-            ..TableRow::default()
+            ..TableRow::header()
         };
         cells.len()
     ];
@@ -289,6 +290,20 @@ pub struct TableRow {
     /// Style classes recorded at build time (see `TableClass`) — row-scoped
     /// ones, e.g. `Heading`. Ordered, like `TableCell::classes`.
     pub classes: Vec<TableClass>,
+    /// Whether this row belongs in a table's header rather than its body.
+    /// `false` by default; set `true` for a spanner, column-label, title or
+    /// subtitle row.
+    pub is_header: bool,
+}
+
+impl TableRow {
+    /// A header row — everything else at its default.
+    pub fn header() -> Self {
+        Self {
+            is_header: true,
+            ..Self::default()
+        }
+    }
 }
 
 /// Build one `TableColumn` per `DataFrame` column, in the `DataFrame`'s own
@@ -357,7 +372,7 @@ fn create_column_labels(columns: &[TableColumn]) -> Section {
         })
         .collect();
 
-    Section::new(vec![TableRow::default()], cells)
+    Section::new(vec![TableRow::header()], cells)
 }
 
 /// Build one `Body` cell per `DataFrame` value, numbered from `top == 0`, in
@@ -1160,6 +1175,12 @@ mod tests {
         assert_eq!(section.rows[1].classes, vec![TableClass::Heading]);
         assert!(section.rows[2].classes.is_empty());
         assert!(section.rows[3].classes.is_empty());
+        // Title/Subtitle/ColumnLabel are all header rows; only the body row
+        // isn't.
+        assert!(section.rows[0].is_header);
+        assert!(section.rows[1].is_header);
+        assert!(section.rows[2].is_header);
+        assert!(!section.rows[3].is_header);
     }
 
     #[test]

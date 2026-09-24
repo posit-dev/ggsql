@@ -92,13 +92,7 @@ pub fn resolve_table_with_reader(query: &str, reader: &dyn Reader) -> Result<Res
         caption.as_deref(),
     )?;
 
-    Ok(ResolvedTable::new(
-        cells,
-        Some(columns),
-        Some(rows),
-        sql,
-        warnings,
-    ))
+    Ok(ResolvedTable::new(cells, columns, rows, sql, warnings))
 }
 
 // =============================================================================

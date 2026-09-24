@@ -181,8 +181,8 @@ pub trait Writer {
     ///
     /// * `cells` - The resolved table layout — see `TableCell` for the
     ///   position/kind conventions
-    /// * `columns` - Resolved per-column properties, if any were built
-    /// * `rows` - Resolved per-row properties, if any were built
+    /// * `columns` - Resolved per-column properties
+    /// * `rows` - Resolved per-row properties
     ///
     /// # Errors
     ///
@@ -191,8 +191,8 @@ pub trait Writer {
     fn write_table(
         &self,
         cells: &[TableCell],
-        columns: Option<&[TableColumn]>,
-        rows: Option<&[TableRow]>,
+        columns: &[TableColumn],
+        rows: &[TableRow],
     ) -> Result<Self::Output> {
         let _ = (cells, columns, rows);
         Err(GgsqlError::WriterError(
