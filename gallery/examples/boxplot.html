@@ -265,8 +265,8 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </div>
       </div> <!-- /container-fluid -->
     </nav>
-  <div id="quarto-announcement" data-announcement-id="b6882ac76ff276df5c5b9efee9fd644c" class="alert alert-primary hidden"><i class="bi bi-info-circle quarto-announcement-icon"></i><div class="quarto-announcement-content">
-<p>ggsql is still in early development and all functionality is subject to change. Read the <a href="https://opensource.posit.co/blog/2026-04-20_ggsql_alpha_release/">alpha-release announcement</a></p>
+  <div id="quarto-announcement" data-announcement-id="a07d721f4daf6744c526414badd102c7" class="alert alert-primary hidden"><i class="bi bi-info-circle quarto-announcement-icon"></i><div class="quarto-announcement-content">
+<p>ggsql is still in beta and many parts are being worked out. Read the <a href="https://opensource.posit.co/blog/2026-09-24_ggsql_0_5_0/">beta-release announcement</a></p>
 </div><i class="bi bi-x-lg quarto-announcement-action"></i></div>
 </header>
 <!-- content -->
@@ -332,7 +332,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </ol>
 <section id="code" class="level2">
 <h2 class="anchored" data-anchor-id="code">Code</h2>
-<div id="86097ef5" class="cell" data-execution_count="1">
+<div id="e235a15b" class="cell" data-execution_count="1">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb1"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> species <span class="kw">AS</span> <span class="at">x</span>, bill_len <span class="kw">AS</span> <span class="at">y</span> <span class="kw">FROM</span> ggsql:penguins</span>
 <span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>  <span class="kw">DRAW</span> <span class="dt">boxplot</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="1">
@@ -358,7 +358,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="dodging" class="level3">
 <h3 class="anchored" data-anchor-id="dodging">Dodging</h3>
 <p>You can refine groups beyond the axis categorical variable, and the boxplots will be displayed in a dodged way.</p>
-<div id="491bea76" class="cell" data-execution_count="2">
+<div id="210712bc" class="cell" data-execution_count="2">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb2"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> species <span class="kw">AS</span> <span class="at">x</span>, bill_len <span class="kw">AS</span> <span class="at">y</span>, island <span class="kw">AS</span> <span class="at">fill</span> <span class="kw">FROM</span> ggsql:penguins</span>
 <span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>  <span class="kw">DRAW</span> <span class="dt">boxplot</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="2">
@@ -370,7 +370,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </div>
 </div>
 <p>However, dodging might be unproductive or counterintuitive in some cases. For example if we double-encode groups, like <code>species</code> as both <code>x</code> <em>and</em> <code>fill</code> in the plot below, dodging looks bad.</p>
-<div id="37bb7c06" class="cell" data-execution_count="3">
+<div id="86ce0913" class="cell" data-execution_count="3">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb3"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> species <span class="kw">AS</span> <span class="at">x</span>, bill_len <span class="kw">AS</span> <span class="at">y</span>, species <span class="kw">AS</span> <span class="at">fill</span> <span class="kw">FROM</span> ggsql:penguins</span>
 <span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>  <span class="kw">DRAW</span> <span class="dt">boxplot</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="3">
@@ -382,7 +382,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </div>
 </div>
 <p>We can disable the dodging by setting <code>position =&gt; 'identity'</code>.</p>
-<div id="4d7f283d" class="cell" data-execution_count="4">
+<div id="ae571b72" class="cell" data-execution_count="4">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb4"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> species <span class="kw">AS</span> <span class="at">x</span>, bill_len <span class="kw">AS</span> <span class="at">y</span>, species <span class="kw">AS</span> <span class="at">fill</span> <span class="kw">FROM</span> ggsql:penguins</span>
 <span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>  <span class="kw">DRAW</span> <span class="dt">boxplot</span> <span class="kw">SETTING</span> position <span class="op">=&gt;</span> <span class="st">'identity'</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="4">
@@ -397,7 +397,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="horizontal" class="level3">
 <h3 class="anchored" data-anchor-id="horizontal">Horizontal</h3>
 <p>To draw the boxplots horizontally, simply swap the <code>x</code> and <code>y</code> mapping. The orientation is detected automatically based on which variable is continuous and which is discrete.</p>
-<div id="d1cb2d9c" class="cell" data-execution_count="5">
+<div id="d261222f" class="cell" data-execution_count="5">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb5"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> bill_len <span class="kw">AS</span> <span class="at">x</span>, species <span class="kw">AS</span> <span class="at">y</span>, island <span class="kw">AS</span> <span class="at">fill</span> <span class="kw">FROM</span> ggsql:penguins</span>
 <span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>  <span class="kw">DRAW</span> <span class="dt">boxplot</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="5">
@@ -413,7 +413,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <h3 class="anchored" data-anchor-id="with-individual-datapoints">With individual datapoints</h3>
 <p>Because a boxplot is a summary, it may be a good idea to supplement them with individual datapoints so that you can’t be accused of ‘hiding’ the distribution. The datapoints can be jittered by setting <code>position =&gt; 'jitter'</code>. When you do this, make sure to turn <code>outliers =&gt; false</code> to not draw the outlier points twice across the two layers.</p>
 <!-- TODO: Figure out why the boxplot width is so small -->
-<div id="1f03507f" class="cell" data-execution_count="6">
+<div id="ae083f05" class="cell" data-execution_count="6">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb6"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> species <span class="kw">AS</span> <span class="at">x</span>, bill_len <span class="kw">AS</span> <span class="at">y</span> <span class="kw">FROM</span> ggsql:penguins</span>
 <span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>  <span class="kw">DRAW</span> <span class="dt">point</span> <span class="kw">SETTING</span> position <span class="op">=&gt;</span> <span class="st">'jitter'</span></span>
 <span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>  <span class="kw">DRAW</span> <span class="dt">boxplot</span> <span class="kw">SETTING</span> outliers <span class="op">=&gt;</span> false</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>

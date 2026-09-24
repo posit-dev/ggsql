@@ -306,8 +306,8 @@ window.Quarto = {
       </button>
     </div>
   </nav>
-  <div id="quarto-announcement" data-announcement-id="b6882ac76ff276df5c5b9efee9fd644c" class="alert alert-primary hidden"><i class="bi bi-info-circle quarto-announcement-icon"></i><div class="quarto-announcement-content">
-<p>ggsql is still in early development and all functionality is subject to change. Read the <a href="https://opensource.posit.co/blog/2026-04-20_ggsql_alpha_release/">alpha-release announcement</a></p>
+  <div id="quarto-announcement" data-announcement-id="a07d721f4daf6744c526414badd102c7" class="alert alert-primary hidden"><i class="bi bi-info-circle quarto-announcement-icon"></i><div class="quarto-announcement-content">
+<p>ggsql is still in beta and many parts are being worked out. Read the <a href="https://opensource.posit.co/blog/2026-09-24_ggsql_0_5_0/">beta-release announcement</a></p>
 </div><i class="bi bi-x-lg quarto-announcement-action"></i></div>
 </header>
 <!-- content -->
@@ -767,7 +767,7 @@ window.Quarto = {
 <section id="examples" class="level2">
 <h2 class="anchored" data-anchor-id="examples">Examples</h2>
 <p>Add a horizontal threshold line to a time series plot:</p>
-<div id="e74cf775" class="cell" data-execution_count="1">
+<div id="1b481caf" class="cell" data-execution_count="1">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb1"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="kw">SELECT</span> Date <span class="kw">AS</span> date, <span class="kw">temp</span> <span class="kw">AS</span> temperature</span>
 <span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="kw">FROM</span> ggsql:airquality</span>
 <span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="kw">WHERE</span> Month <span class="op">=</span> <span class="dv">5</span></span>
@@ -786,7 +786,7 @@ window.Quarto = {
 </div>
 </div>
 <p>Add a vertical line to mark a specific value:</p>
-<div id="3262d7a9" class="cell" data-execution_count="2">
+<div id="7432153b" class="cell" data-execution_count="2">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb2"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> <span class="kw">FROM</span> ggsql:penguins</span>
 <span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">point</span> </span>
 <span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>  <span class="kw">MAPPING</span> bill_len AS <span class="at">x</span>, bill_dep AS <span class="at">y</span></span>
@@ -801,7 +801,7 @@ window.Quarto = {
 </div>
 </div>
 <p>Add multiple threshold lines with different colors. Note that because we’re mapping data from data, we use the <code>DRAW</code> clause instead of the <code>PLACE</code> clause.</p>
-<div id="c57bc5c6" class="cell" data-execution_count="3">
+<div id="002680aa" class="cell" data-execution_count="3">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb3"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="kw">WITH</span> thresholds(value, <span class="kw">label</span>) AS (VALUES</span>
 <span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>  (<span class="dv">70</span>, <span class="st">'Target'</span>),</span>
 <span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>  (<span class="dv">80</span>, <span class="st">'Warning'</span>),</span>
@@ -825,7 +825,7 @@ window.Quarto = {
 </div>
 </div>
 <p>Add a diagonal reference line to a scatterplot by using <code>slope</code></p>
-<div id="7992adb3" class="cell" data-execution_count="4">
+<div id="f137d6ec" class="cell" data-execution_count="4">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb4"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> <span class="kw">FROM</span> ggsql:penguins</span>
 <span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>  <span class="kw">DRAW</span> <span class="dt">point</span> <span class="kw">MAPPING</span> bill_len AS <span class="at">x</span>, bill_dep AS <span class="at">y</span></span>
 <span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>  <span class="kw">PLACE</span> <span class="dt">rule</span> <span class="kw">SETTING</span> <span class="at">slope</span> <span class="op">=&gt;</span> <span class="dv">0.4</span>, <span class="at">y</span> <span class="op">=&gt;</span> <span class="dv">-1</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
@@ -838,7 +838,7 @@ window.Quarto = {
 </div>
 </div>
 <p>Add multiple reference lines with different colors from a separate dataset. Note we’re mapping from data here, so we use <code>DRAW</code> instead of <code>PLACE</code>.</p>
-<div id="cf731fcb" class="cell" data-execution_count="5">
+<div id="a40557d9" class="cell" data-execution_count="5">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb5"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="kw">WITH</span> lines(slope, intercept, <span class="kw">label</span>) AS (VALUES</span>
 <span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>    (<span class="dv">0.4</span>, <span class="dv">-1</span>, <span class="st">'Line A'</span>),</span>
 <span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>    (<span class="dv">0.2</span>, <span class="dv">8</span>, <span class="st">'Line B'</span>),</span>
@@ -861,7 +861,7 @@ window.Quarto = {
 </div>
 </div>
 <p>Show a max rule for a timeseries</p>
-<div id="19ec956a" class="cell" data-execution_count="6">
+<div id="75d4deb4" class="cell" data-execution_count="6">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb6"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> Temp <span class="kw">AS</span> <span class="at">y</span> <span class="kw">FROM</span> ggsql:airquality</span>
 <span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">line</span></span>
 <span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>  <span class="kw">MAPPING</span> Date AS <span class="at">x</span></span>

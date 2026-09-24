@@ -277,8 +277,8 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
       </button>
     </div>
   </nav>
-  <div id="quarto-announcement" data-announcement-id="b6882ac76ff276df5c5b9efee9fd644c" class="alert alert-primary hidden"><i class="bi bi-info-circle quarto-announcement-icon"></i><div class="quarto-announcement-content">
-<p>ggsql is still in early development and all functionality is subject to change. Read the <a href="https://opensource.posit.co/blog/2026-04-20_ggsql_alpha_release/">alpha-release announcement</a></p>
+  <div id="quarto-announcement" data-announcement-id="a07d721f4daf6744c526414badd102c7" class="alert alert-primary hidden"><i class="bi bi-info-circle quarto-announcement-icon"></i><div class="quarto-announcement-content">
+<p>ggsql is still in beta and many parts are being worked out. Read the <a href="https://opensource.posit.co/blog/2026-09-24_ggsql_0_5_0/">beta-release announcement</a></p>
 </div><i class="bi bi-x-lg quarto-announcement-action"></i></div>
 </header>
 <!-- content -->
@@ -731,7 +731,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="examples" class="level2">
 <h2 class="anchored" data-anchor-id="examples">Examples</h2>
 <p>Segments are useful when you have known start and end points of the data. For example in a graph</p>
-<div id="3392e709" class="cell" data-execution_count="1">
+<div id="2d3c6199" class="cell" data-execution_count="1">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb1"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="kw">WITH</span> edges(x, y, xend, yend, type) <span class="kw">AS</span> (<span class="kw">VALUES</span></span>
 <span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>    (<span class="dv">0</span>, <span class="dv">0</span>, <span class="dv">1</span>, <span class="dv">1</span>, <span class="st">'A'</span>),</span>
 <span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>    (<span class="dv">1</span>, <span class="dv">1</span>, <span class="dv">2</span>, <span class="dv">1</span>, <span class="st">'A'</span>),</span>
@@ -754,7 +754,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </div>
 </div>
 <p>Segments can also draw arbitrary diagonal connections between points. For example, marking a delta between two measurements:</p>
-<div id="29032f0a" class="cell" data-execution_count="2">
+<div id="f05aa152" class="cell" data-execution_count="2">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb2"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="kw">WITH</span> deltas(start_x, start_y, end_x, end_y, <span class="kw">label</span>) AS (VALUES</span>
 <span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>    (<span class="dv">1</span>, <span class="dv">1</span>, <span class="dv">4</span>, <span class="dv">3</span>, <span class="st">'A → B'</span>),</span>
 <span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>    (<span class="dv">2</span>, <span class="dv">4</span>, <span class="dv">5</span>, <span class="dv">2</span>, <span class="st">'C → D'</span>),</span>

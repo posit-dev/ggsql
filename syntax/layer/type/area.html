@@ -277,8 +277,8 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
       </button>
     </div>
   </nav>
-  <div id="quarto-announcement" data-announcement-id="b6882ac76ff276df5c5b9efee9fd644c" class="alert alert-primary hidden"><i class="bi bi-info-circle quarto-announcement-icon"></i><div class="quarto-announcement-content">
-<p>ggsql is still in early development and all functionality is subject to change. Read the <a href="https://opensource.posit.co/blog/2026-04-20_ggsql_alpha_release/">alpha-release announcement</a></p>
+  <div id="quarto-announcement" data-announcement-id="a07d721f4daf6744c526414badd102c7" class="alert alert-primary hidden"><i class="bi bi-info-circle quarto-announcement-icon"></i><div class="quarto-announcement-content">
+<p>ggsql is still in beta and many parts are being worked out. Read the <a href="https://opensource.posit.co/blog/2026-09-24_ggsql_0_5_0/">beta-release announcement</a></p>
 </div><i class="bi bi-x-lg quarto-announcement-action"></i></div>
 </header>
 <!-- content -->
@@ -735,7 +735,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="examples" class="level2">
 <h2 class="anchored" data-anchor-id="examples">Examples</h2>
 <p>Create a typical area chart</p>
-<div id="932a48a3" class="cell" data-execution_count="1">
+<div id="16672736" class="cell" data-execution_count="1">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb1"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> <span class="kw">FROM</span> ggsql:airquality</span>
 <span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">area</span> </span>
 <span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>  <span class="kw">MAPPING</span> Date AS <span class="at">x</span>, Wind AS <span class="at">y</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
@@ -748,14 +748,14 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </div>
 </div>
 <p>We can reshape the data to ‘long format’ from our wide format.</p>
-<div id="cc1070f6" class="cell" data-execution_count="2">
+<div id="736266f8" class="cell" data-execution_count="2">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb2"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="kw">CREATE</span> <span class="kw">TABLE</span> long_airquality <span class="kw">AS</span></span>
 <span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="kw">SELECT</span> Date, <span class="st">'Temp'</span> <span class="kw">AS</span> Series, <span class="kw">Temp</span> <span class="kw">AS</span> Value <span class="kw">FROM</span> ggsql:airquality</span>
 <span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a><span class="kw">UNION</span> <span class="kw">ALL</span></span>
 <span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a><span class="kw">SELECT</span> Date, <span class="st">'Wind'</span> <span class="kw">AS</span> Series, Wind <span class="kw">AS</span> Value <span class="kw">FROM</span> ggsql:airquality;</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 </div>
 <p>Which means we can display multiple series at once, by mapping the identifier to an aesthetic.</p>
-<div id="278638ad" class="cell" data-execution_count="3">
+<div id="9f489dfe" class="cell" data-execution_count="3">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb3"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> Date <span class="kw">AS</span> <span class="at">x</span>, Value <span class="kw">AS</span> <span class="at">y</span> <span class="kw">FROM</span> long_airquality</span>
 <span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">area</span> </span>
 <span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>  <span class="kw">MAPPING</span> Series AS <span class="at">colour</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
@@ -768,7 +768,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </div>
 </div>
 <p>By default the areas are stacked on top of each other. If you’d rather see all with a 0 baseline set the position to identity</p>
-<div id="dda62193" class="cell" data-execution_count="4">
+<div id="42f024fd" class="cell" data-execution_count="4">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb4"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> Date <span class="kw">AS</span> <span class="at">x</span>, Value <span class="kw">AS</span> <span class="at">y</span>, Series <span class="kw">AS</span> <span class="at">colour</span> <span class="kw">FROM</span> long_airquality</span>
 <span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">area</span> </span>
 <span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>  <span class="kw">SETTING</span> position <span class="op">=&gt;</span> <span class="st">'identity'</span>, <span class="at">opacity</span> <span class="op">=&gt;</span> <span class="dv">0.5</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
@@ -781,7 +781,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </div>
 </div>
 <p>With the default <code>position =&gt; 'stack'</code> we can normalise the total so that each stack totals to the same value. These only make sense if every series is measured in the same absolute unit. (Wind and temperature have different units and the temperature is not absolute.)</p>
-<div id="bbcf22df" class="cell" data-execution_count="5">
+<div id="f9b21ce5" class="cell" data-execution_count="5">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb5"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> Date <span class="kw">AS</span> <span class="at">x</span>, Value <span class="kw">AS</span> <span class="at">y</span>, Series <span class="kw">AS</span> <span class="at">colour</span> <span class="kw">FROM</span> long_airquality</span>
 <span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">area</span> </span>
 <span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>  <span class="kw">SETTING</span> total <span class="op">=&gt;</span> <span class="dv">100</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
@@ -794,7 +794,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </div>
 </div>
 <p>An alternative is to center the stacks to create a steamgraph</p>
-<div id="545b91f7" class="cell" data-execution_count="6">
+<div id="5c8081dd" class="cell" data-execution_count="6">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb6"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> Date <span class="kw">AS</span> <span class="at">x</span>, Value <span class="kw">AS</span> <span class="at">y</span>, Series <span class="kw">AS</span> <span class="at">colour</span> <span class="kw">FROM</span> long_airquality</span>
 <span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">area</span> </span>
 <span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>  <span class="kw">SETTING</span> position <span class="op">=&gt;</span> <span class="st">'stack'</span>, center <span class="op">=&gt;</span> true</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
@@ -807,7 +807,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </div>
 </div>
 <p>You can combine this with the <code>orientation</code> setting to make a vertical steamgraph</p>
-<div id="1c4b5c15" class="cell" data-execution_count="7">
+<div id="03334784" class="cell" data-execution_count="7">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb7"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> Date <span class="kw">AS</span> <span class="at">y</span>, Value <span class="kw">AS</span> <span class="at">x</span>, Series <span class="kw">AS</span> <span class="at">colour</span> <span class="kw">FROM</span> long_airquality</span>
 <span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">area</span> </span>
 <span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a>  <span class="kw">SETTING</span> position <span class="op">=&gt;</span> <span class="st">'stack'</span>, center <span class="op">=&gt;</span> true, orientation <span class="op">=&gt;</span> <span class="st">'transposed'</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
