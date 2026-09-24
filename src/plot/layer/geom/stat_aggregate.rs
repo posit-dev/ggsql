@@ -533,15 +533,6 @@ fn unquote(qcol: &str) -> String {
 /// 3. The name is a material aesthetic with the same internal name (e.g. `size`).
 ///
 /// Returns the empty vector if no resolution finds a mapped aesthetic.
-/// Read the layer's resolved orientation out of its parameters. The executor
-/// stores the `resolve_orientations` verdict on the layer before any stat
-/// runs; the standalone validate path has no such entry (and its mappings are
-/// still in user orientation), so absence means "not transposed".
-fn is_transposed_param(parameters: &Parameters) -> bool {
-    parameters.get("orientation").and_then(|v| v.as_str())
-        == Some(crate::plot::layer::orientation::TRANSPOSED)
-}
-
 fn resolve_target_aesthetic(
     user_aes: &str,
     aesthetics: &Mappings,
@@ -651,7 +642,7 @@ pub fn targeted_aesthetics(
         Some(s) => s,
         None => return HashSet::new(),
     };
-    let transposed = is_transposed_param(parameters);
+    let transposed = crate::plot::layer::orientation::is_transposed_params(parameters);
     let mut targeted: HashSet<String> = HashSet::new();
     for (user_aes, _fns) in &spec.targets {
         for internal in resolve_target_aesthetic(user_aes, aesthetics, aesthetic_ctx, transposed) {
@@ -687,7 +678,7 @@ pub fn aggregated_aesthetics(
     }
     let spec = parse_aggregate_param(raw).ok()??;
 
-    let transposed = is_transposed_param(parameters);
+    let transposed = crate::plot::layer::orientation::is_transposed_params(parameters);
     let mut targeted: HashSet<String> = HashSet::new();
     for (user_aes, _fns) in &spec.targets {
         for internal in resolve_target_aesthetic(user_aes, aesthetics, aesthetic_ctx, transposed) {
@@ -768,7 +759,7 @@ pub fn apply(
         &spec,
         aesthetics,
         aesthetic_ctx,
-        is_transposed_param(parameters),
+        crate::plot::layer::orientation::is_transposed_params(parameters),
     )
     .map_err(GgsqlError::ValidationError)?;
 
@@ -833,7 +824,7 @@ pub fn apply(
         }
     }
 
-    let transposed = is_transposed_param(parameters);
+    let transposed = crate::plot::layer::orientation::is_transposed_params(parameters);
     for d in &dropped {
         // On transposed layers the internal name is flipped relative to the
         // user's axes, so flip it back before translating for display.
