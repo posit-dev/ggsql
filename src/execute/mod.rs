@@ -1712,7 +1712,7 @@ mod tests {
         // anything TABULATE-specific. Update this test once table execution
         // exists.
         let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
-        let query = "TABULATE FROM sales";
+        let query = "TABULATE * FROM sales";
 
         let result = prepare_data_with_reader(query, &reader);
         match result {

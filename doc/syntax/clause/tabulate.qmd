@@ -13,10 +13,11 @@ The `TABULATE` clause marks the beginning of a ggsql table declaration — the p
 `TABULATE` currently only produces output through the HTML writer — every other writer (Vega-Lite, SVG, PDF, `.hep`, the raster writers) supports plots only and errors if given a `TABULATE` query.
 
 ## Clause syntax
-`TABULATE` doesn't require any additional clauses.
+`TABULATE` requires a column selection right after the keyword, naming which columns end up in the table and in what order; every other clause is optional.
 
 ```ggsql
-TABULATE FROM <data-source>
+TABULATE <column>, ... | *
+  FROM <data-source>
   LABEL <column> => <string>, ...
   SPAN <string> ACROSS <column>, ...
     SETTING <parameter> => <value>, ...
@@ -26,6 +27,22 @@ TABULATE FROM <data-source>
 ```
 
 `LABEL`, `SPAN` and `FORMAT` may each appear more than once, in any order, after the source.
+
+### Column selection
+```ggsql
+TABULATE <column>, ...
+TABULATE *
+```
+
+Right after `TABULATE`, a comma-separated list says which columns to keep and in what order:
+
+* `<column>`: keep that column as-is.
+* `<column> AS <name>`: keep it, renamed to `<name>`.
+* `*`: every column, in the source's own order.
+
+`*` can be combined with renames — `TABULATE *, bill_dep AS Depth` keeps every column but renames `bill_dep`. Without a `*`, only the columns named are kept, in the order written: `TABULATE bill_len, bill_dep AS Depth` drops every other column and puts `bill_len` before `bill_dep`.
+
+A rename here changes the column's actual name (so `LABEL`, `SPAN` and `FORMAT` refer to it by the new name), unlike `LABEL`, which only changes its displayed header text.
 
 ### `FROM`
 ```ggsql
@@ -44,7 +61,7 @@ Overrides the display header text for one or more columns. Unlike `VISUALISE`'s 
 Give `NULL` instead of a string to blank a column's header while keeping the column itself:
 
 ```ggsql
-TABULATE FROM sales
+TABULATE * FROM sales
   LABEL revenue => 'Revenue ($)', region => NULL
 ```
 
@@ -57,7 +74,7 @@ Three keys are reserved rather than naming a column — the same names as [`VISU
 * `caption`: Text rendered as a real HTML `<caption>` element, outside the table's header/body rows
 
 ```ggsql
-TABULATE FROM sales
+TABULATE * FROM sales
   LABEL title => 'Sales by Region', subtitle => 'FY 2024', caption => 'Source: internal sales database'
 ```
 
@@ -74,7 +91,7 @@ SPAN <string> ACROSS <column>, ...
 Groups columns under one spanner cell, drawn in a row above the column labels:
 
 ```ggsql
-TABULATE FROM sales
+TABULATE * FROM sales
   SPAN 'Q1' ACROSS jan, feb, mar
 ```
 
@@ -94,7 +111,7 @@ SETTING <parameter> => <value>, ...
 Reference an `id` in place of a column name in a later `SPAN`'s `ACROSS` list to include everything the earlier spanner covers:
 
 ```ggsql
-TABULATE FROM sales
+TABULATE * FROM sales
   SPAN 'Q1' ACROSS jan, feb, mar SETTING id => 'q1'
   SPAN 'H1' ACROSS q1, apr, may, jun
 ```
@@ -111,7 +128,7 @@ FORMAT <column>, ...
 Configures cell display for one or more columns. Give several `FORMAT` clauses for different column groups; if two `FORMAT` clauses name the same column, the later one wins for it.
 
 ```ggsql
-TABULATE FROM sales
+TABULATE * FROM sales
   FORMAT price SETTING hjust => 'right'
 ```
 
@@ -132,7 +149,7 @@ Works the same way as [`SCALE`'s `RENAMING`](scale.qmd#renaming), just applied t
 `null` (unquoted) matches an actual missing value, which makes `RENAMING` a convenient way to blank out missing data or zeroes:
 
 ```ggsql
-TABULATE FROM sales
+TABULATE * FROM sales
   FORMAT price RENAMING null => '-', 0 => '-'
 ```
 
@@ -141,13 +158,13 @@ TABULATE FROM sales
 ```{ggsql}
 SELECT * FROM ggsql:penguins LIMIT 5
 
-TABULATE
+TABULATE *
 ```
 
 ```{ggsql}
 SELECT * FROM ggsql:penguins LIMIT 5
 
-TABULATE
+TABULATE *
   LABEL
     title => 'Penguins!',
     subtitle => 'Structural size measurements',
@@ -157,7 +174,7 @@ TABULATE
 ```{ggsql}
 SELECT * FROM ggsql:penguins LIMIT 5
 
-TABULATE
+TABULATE *
   SPAN 'Bill' ACROSS bill_len, bill_dep
   LABEL
     bill_len => 'Length',
@@ -169,8 +186,14 @@ TABULATE
 ```{ggsql}
 SELECT * FROM ggsql:penguins LIMIT 5
 
-TABULATE
+TABULATE *
   FORMAT body_mass
     SETTING hjust => 'right'
     RENAMING null => '-', * => '{:num %.0f}g'
+```
+
+```{ggsql}
+SELECT * FROM ggsql:penguins LIMIT 5
+
+TABULATE bill_len, bill_dep AS Depth
 ```

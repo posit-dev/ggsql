@@ -339,7 +339,7 @@ mod tests {
     #[test]
     fn test_tabulate() {
         let mut executor = QueryExecutor::new().unwrap();
-        let code = "SELECT 1 AS x, 2 AS y TABULATE";
+        let code = "SELECT 1 AS x, 2 AS y TABULATE *";
         let result = executor.execute(code).unwrap();
 
         match result {

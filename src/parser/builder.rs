@@ -349,6 +349,9 @@ fn build_tabulate_statement(node: &Node, source: &SourceTree) -> Result<Table> {
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
         match child.kind() {
+            "column_selection" => {
+                table.selection = source.get_text(&child);
+            }
             "single_source_from" => {
                 if let Some(source_node) = child.child_by_field_name("source") {
                     table.source = Some(parse_data_source(&source_node, source));
@@ -1375,7 +1378,7 @@ mod tests {
 
     #[test]
     fn test_tabulate_bare() {
-        let specs = parse_test_specs("SELECT 1 TABULATE").unwrap();
+        let specs = parse_test_specs("SELECT 1 TABULATE *").unwrap();
         assert_eq!(specs.len(), 1);
         let table = specs[0].as_table().expect("expected a Table spec");
         assert!(table.source.is_none());
@@ -1383,7 +1386,7 @@ mod tests {
 
     #[test]
     fn test_tabulate_from() {
-        let specs = parse_test_specs("TABULATE FROM sales").unwrap();
+        let specs = parse_test_specs("TABULATE * FROM sales").unwrap();
         assert_eq!(specs.len(), 1);
         let table = specs[0].as_table().expect("expected a Table spec");
         assert!(matches!(table.source, Some(DataSource::Identifier(ref name)) if name == "sales"));
@@ -1391,7 +1394,7 @@ mod tests {
 
     #[test]
     fn test_tabulate_from_file_path() {
-        let specs = parse_test_specs("TABULATE FROM 'data.csv'").unwrap();
+        let specs = parse_test_specs("TABULATE * FROM 'data.csv'").unwrap();
         assert_eq!(specs.len(), 1);
         let table = specs[0].as_table().expect("expected a Table spec");
         assert!(matches!(table.source, Some(DataSource::FilePath(ref path)) if path == "data.csv"));
@@ -1400,7 +1403,7 @@ mod tests {
     #[test]
     fn test_tabulate_from_after_select_errors() {
         // Mirrors VISUALISE FROM's own "last statement is SELECT" restriction.
-        let result = parse_test_specs("SELECT 1 TABULATE FROM sales");
+        let result = parse_test_specs("SELECT 1 TABULATE * FROM sales");
         assert!(result.is_err());
         assert!(result
             .unwrap_err()
@@ -1410,7 +1413,7 @@ mod tests {
 
     #[test]
     fn test_visualise_then_tabulate_interleaved() {
-        let specs = parse_test_specs("SELECT 1 AS x VISUALISE x DRAW point TABULATE").unwrap();
+        let specs = parse_test_specs("SELECT 1 AS x VISUALISE x DRAW point TABULATE *").unwrap();
         assert_eq!(specs.len(), 2);
         assert!(matches!(specs[0], Spec::Plot(_)));
         assert!(matches!(specs[1], Spec::Table(_)));
@@ -1418,8 +1421,9 @@ mod tests {
 
     #[test]
     fn test_tabulate_span_basic() {
-        let specs = parse_test_specs("TABULATE FROM sales SPAN 'Pretty Name' ACROSS foo, bar, baz")
-            .unwrap();
+        let specs =
+            parse_test_specs("TABULATE * FROM sales SPAN 'Pretty Name' ACROSS foo, bar, baz")
+                .unwrap();
         let table = specs[0].as_table().expect("expected a Table spec");
 
         assert_eq!(table.spans.len(), 1);
@@ -1430,7 +1434,7 @@ mod tests {
 
     #[test]
     fn test_tabulate_span_null_label_suppresses_the_cell() {
-        let specs = parse_test_specs("TABULATE FROM sales SPAN NULL ACROSS foo, bar").unwrap();
+        let specs = parse_test_specs("TABULATE * FROM sales SPAN NULL ACROSS foo, bar").unwrap();
         let table = specs[0].as_table().expect("expected a Table spec");
 
         assert_eq!(table.spans[0].label, None);
@@ -1438,7 +1442,7 @@ mod tests {
 
     #[test]
     fn test_tabulate_span_empty_label_is_distinct_from_null() {
-        let specs = parse_test_specs("TABULATE FROM sales SPAN '' ACROSS foo, bar").unwrap();
+        let specs = parse_test_specs("TABULATE * FROM sales SPAN '' ACROSS foo, bar").unwrap();
         let table = specs[0].as_table().expect("expected a Table spec");
 
         assert_eq!(table.spans[0].label, Some(String::new()));
@@ -1447,7 +1451,7 @@ mod tests {
     #[test]
     fn test_tabulate_span_with_setting() {
         let specs =
-            parse_test_specs("TABULATE FROM sales SPAN 'W' ACROSS foo SETTING width => '40%'")
+            parse_test_specs("TABULATE * FROM sales SPAN 'W' ACROSS foo SETTING width => '40%'")
                 .unwrap();
         let table = specs[0].as_table().expect("expected a Table spec");
 
@@ -1459,8 +1463,8 @@ mod tests {
 
     #[test]
     fn test_tabulate_repeated_label_clauses_merge_rather_than_overwrite() {
-        let specs =
-            parse_test_specs("TABULATE FROM sales LABEL id => 'ID' LABEL name => 'Name'").unwrap();
+        let specs = parse_test_specs("TABULATE * FROM sales LABEL id => 'ID' LABEL name => 'Name'")
+            .unwrap();
         let table = specs[0].as_table().expect("expected a Table spec");
 
         assert_eq!(table.labels.labels.get("id"), Some(&Some("ID".to_string())));
@@ -1473,7 +1477,7 @@ mod tests {
     #[test]
     fn test_tabulate_multiple_spans_and_label_in_any_order() {
         let specs = parse_test_specs(
-            "TABULATE FROM sales LABEL id => 'ID' SPAN 'A' ACROSS foo, bar SPAN 'B' ACROSS baz",
+            "TABULATE * FROM sales LABEL id => 'ID' SPAN 'A' ACROSS foo, bar SPAN 'B' ACROSS baz",
         )
         .unwrap();
         let table = specs[0].as_table().expect("expected a Table spec");
@@ -1488,7 +1492,7 @@ mod tests {
 
     #[test]
     fn test_tabulate_format_basic_has_no_settings_or_renaming() {
-        let specs = parse_test_specs("TABULATE FROM sales FORMAT foo, bar").unwrap();
+        let specs = parse_test_specs("TABULATE * FROM sales FORMAT foo, bar").unwrap();
         let table = specs[0].as_table().expect("expected a Table spec");
 
         assert_eq!(table.formats.len(), 1);
@@ -1501,7 +1505,7 @@ mod tests {
     #[test]
     fn test_tabulate_format_with_setting_and_renaming() {
         let specs = parse_test_specs(
-            "TABULATE FROM sales FORMAT price SETTING width => '20%' \
+            "TABULATE * FROM sales FORMAT price SETTING width => '20%' \
              RENAMING null => '-', * => '{:num %.2f}'",
         )
         .unwrap();
@@ -1522,7 +1526,7 @@ mod tests {
     #[test]
     fn test_tabulate_multiple_format_clauses_produce_separate_formats() {
         let specs = parse_test_specs(
-            "TABULATE FROM sales FORMAT foo RENAMING * => '{:num %.0f}' FORMAT bar",
+            "TABULATE * FROM sales FORMAT foo RENAMING * => '{:num %.0f}' FORMAT bar",
         )
         .unwrap();
         let table = specs[0].as_table().expect("expected a Table spec");

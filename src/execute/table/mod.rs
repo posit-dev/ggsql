@@ -27,6 +27,7 @@ pub(crate) use layout::{count_cell_cols, count_cell_rows};
 use format::{apply_formats, setup_formats, standardise_hjust};
 use layout::{build_cells, extract_heading_labels, setup_columns};
 
+use super::cte::split_with_query;
 use crate::parser::{self, SourceTree};
 use crate::plot::Parameters;
 use crate::reader::{Reader, ResolvedTable};
@@ -70,7 +71,7 @@ pub fn resolve_table_with_reader(query: &str, reader: &dyn Reader) -> Result<Res
 
     super::execute_setup_statements(&source_tree, reader)?;
 
-    let sql = source_tree.extract_sql().ok_or_else(|| {
+    let sql = build_table_sql(&source_tree, &table.selection).ok_or_else(|| {
         GgsqlError::ValidationError(
             "TABULATE has no data source: add a FROM, or a SQL query before it".to_string(),
         )
@@ -93,6 +94,48 @@ pub fn resolve_table_with_reader(query: &str, reader: &dyn Reader) -> Result<Res
     )?;
 
     Ok(ResolvedTable::new(cells, columns, rows, sql, warnings))
+}
+
+/// Builds the SQL a `TABULATE` query executes, folding `selection`
+/// (`Table::selection`) in as the outer projection. Table-side counterpart
+/// to `execute::cte::transform_global_sql`, without its CTE-rewriting or
+/// cache-staging — a `Table` has neither.
+fn build_table_sql(source_tree: &SourceTree, selection: &str) -> Option<String> {
+    let root = source_tree.root();
+
+    // A WITH...SELECT tail, or a plain trailing SELECT.
+    let select_sql = split_with_query(source_tree)
+        .map(|(_, select)| select)
+        .or_else(|| source_tree.find_text(&root, "(sql_statement (select_statement) @select)"));
+
+    if let Some(select_sql) = select_sql {
+        return Some(if selection == "*" {
+            select_sql
+        } else {
+            format!("SELECT {selection} FROM ({select_sql})")
+        });
+    }
+
+    // No trailing SELECT: fall back to TABULATE FROM <source>.
+    let first_stmt = source_tree.first_stmt(&root)?;
+    let from_source = source_tree.find_text(
+        &first_stmt,
+        r#"(tabulate_statement (single_source_from source: (_) @source))"#,
+    );
+
+    if let Some(source) = from_source {
+        return Some(format!("SELECT {selection} FROM {source}"));
+    }
+
+    // Neither: e.g. a bare DuckDB-style `FROM t`. This text may carry a
+    // leading setup-statement prefix (INSTALL/LOAD/SET), which a non-"*"
+    // selection then wraps into an invalid subquery — a narrow, accepted gap.
+    let fallback = source_tree.extract_sql()?;
+    Some(if selection == "*" {
+        fallback
+    } else {
+        format!("SELECT {selection} FROM ({fallback})")
+    })
 }
 
 // =============================================================================
@@ -442,7 +485,7 @@ mod integration_tests {
     #[test]
     fn test_tabulate_from() {
         let reader = reader_with_sales();
-        let resolved = resolve_table_with_reader("TABULATE FROM sales", &reader).unwrap();
+        let resolved = resolve_table_with_reader("TABULATE * FROM sales", &reader).unwrap();
 
         assert_eq!(resolved.sql(), "SELECT * FROM sales");
         // 3 data rows + 1 column-label row: nrow() is the whole grid, not
@@ -452,12 +495,45 @@ mod integration_tests {
     }
 
     #[test]
+    fn test_tabulate_selection_picks_and_renames_columns() {
+        let reader = reader_with_sales();
+
+        let picked =
+            resolve_table_with_reader("TABULATE name, id AS Number FROM sales", &reader).unwrap();
+        assert_eq!(picked.sql(), "SELECT name, id AS Number FROM sales");
+        assert_eq!(picked.ncol(), 2);
+    }
+
+    #[test]
+    fn test_tabulate_selection_wildcard_with_rename() {
+        let reader = reader_with_sales();
+
+        let mixed =
+            resolve_table_with_reader("TABULATE *, id AS Number FROM sales", &reader).unwrap();
+        assert_eq!(mixed.sql(), "SELECT *, id AS Number FROM sales");
+    }
+
+    #[test]
+    fn test_tabulate_selection_with_no_tabulate_from() {
+        let reader = reader_with_sales();
+
+        let no_from =
+            resolve_table_with_reader("SELECT * FROM sales TABULATE name, id AS Number", &reader)
+                .unwrap();
+        assert_eq!(
+            no_from.sql(),
+            "SELECT name, id AS Number FROM (SELECT * FROM sales)"
+        );
+        assert_eq!(no_from.ncol(), 2);
+    }
+
+    #[test]
     fn test_bare_tabulate_uses_preceding_select() {
         let reader = reader_with_sales();
 
-        let from_only = resolve_table_with_reader("TABULATE FROM sales", &reader).unwrap();
+        let from_only = resolve_table_with_reader("TABULATE * FROM sales", &reader).unwrap();
         let select_then_tabulate =
-            resolve_table_with_reader("SELECT * FROM sales TABULATE", &reader).unwrap();
+            resolve_table_with_reader("SELECT * FROM sales TABULATE *", &reader).unwrap();
 
         assert_eq!(from_only.sql(), select_then_tabulate.sql());
         assert_eq!(from_only.nrow(), select_then_tabulate.nrow());
@@ -466,7 +542,7 @@ mod integration_tests {
     #[test]
     fn test_tabulate_with_no_source_errors() {
         let reader = reader_with_sales();
-        let result = resolve_table_with_reader("TABULATE", &reader);
+        let result = resolve_table_with_reader("TABULATE *", &reader);
         assert!(result.is_err());
     }
 
@@ -476,7 +552,8 @@ mod integration_tests {
         // still error "no data source", not silently resolve against the
         // VISUALISE's FROM.
         let reader = reader_with_sales();
-        let result = resolve_table_with_reader("TABULATE VISUALISE FROM sales DRAW point", &reader);
+        let result =
+            resolve_table_with_reader("TABULATE * VISUALISE FROM sales DRAW point", &reader);
         assert!(result.is_err());
     }
 
@@ -487,7 +564,7 @@ mod integration_tests {
         // unwrap it, not match "label_clause" as a direct child.
         let reader = reader_with_sales();
         let resolved =
-            resolve_table_with_reader("TABULATE FROM sales LABEL id => 'ID'", &reader).unwrap();
+            resolve_table_with_reader("TABULATE * FROM sales LABEL id => 'ID'", &reader).unwrap();
 
         let label_cell = resolved
             .cells()

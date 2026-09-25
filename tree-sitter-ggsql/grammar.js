@@ -669,17 +669,24 @@ module.exports = grammar({
     ))),
 
     // TABULATE — still incomplete, more clauses expected as Table grows.
-    // LABEL and SPAN clauses may repeat and appear in any order after the
-    // source, the same "any order, repeated" shape viz_clause gives VISUALISE
-    // — only single_source_from is fixed in position.
+    // column_selection and single_source_from are fixed in position, mirroring
+    // VISUALISE's global_mapping + single_source_from ahead of
+    // repeat($.viz_clause). LABEL/SPAN/FORMAT (tab_clause) repeat, any order,
+    // after that.
     tabulate_statement: $ => prec.dynamic(1, seq(
       $.tabulate_keyword,
+      $.column_selection,
       optional($.single_source_from),
       repeat($.tab_clause)
     )),
 
     // TABULATE keyword as explicit high-precedence token (mirrors visualise_keyword)
     tabulate_keyword: $ => token(prec(10, caseInsensitive("TABULATE"))),
+
+    // Column selection after TABULATE: `*`, a bare column, or `value AS
+    // name` to rename it. Reuses mapping_list, like global_mapping does for
+    // VISUALISE.
+    column_selection: $ => $.mapping_list,
 
     // All the TABULATE clauses (mirrors viz_clause's role for VISUALISE).
     tab_clause: $ => choice(
@@ -721,7 +728,8 @@ module.exports = grammar({
     ),
 
     // Shared mapping list: comma-separated mapping elements
-    // Used by both global (VISUALISE) and layer (MAPPING) mappings
+    // Used by global (VISUALISE) and layer (MAPPING) mappings, and by
+    // TABULATE's column_selection
     mapping_list: $ => seq(
       $.mapping_element,
       repeat(seq(',', $.mapping_element))

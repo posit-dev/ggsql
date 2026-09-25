@@ -879,7 +879,7 @@ mod tests {
                 "CREATE TABLE sales AS SELECT * FROM (VALUES (1, '<b>a</b>'), (2, 'b')) AS t(id, name)",
             )
             .unwrap();
-        let spec = reader.execute("TABULATE FROM sales").unwrap();
+        let spec = reader.execute("TABULATE * FROM sales").unwrap();
 
         let writer = HtmlWriter::new();
         let html = writer.render(&spec).unwrap();
@@ -909,7 +909,7 @@ mod tests {
         reader
             .execute_sql("CREATE TABLE sales AS SELECT * FROM (VALUES (1, 'a')) AS t(id, name)")
             .unwrap();
-        let spec = reader.execute("TABULATE FROM sales").unwrap();
+        let spec = reader.execute("TABULATE * FROM sales").unwrap();
 
         let writer =
             HtmlWriter::from_options(&WriterOptions::parse(["css_mode=inline"]).unwrap()).unwrap();
@@ -931,7 +931,7 @@ mod tests {
             )
             .unwrap();
         let spec = reader
-            .execute("TABULATE FROM sales SPAN 'Info' ACROSS id, name")
+            .execute("TABULATE * FROM sales SPAN 'Info' ACROSS id, name")
             .unwrap();
 
         let writer = HtmlWriter::new();
@@ -960,7 +960,7 @@ mod tests {
             .execute_sql("CREATE TABLE sales AS SELECT * FROM (VALUES (1, 'a')) AS t(id, name)")
             .unwrap();
         let spec = reader
-            .execute("TABULATE FROM sales FORMAT id SETTING width => '20%'")
+            .execute("TABULATE * FROM sales FORMAT id SETTING width => '20%'")
             .unwrap();
 
         let writer = HtmlWriter::new();
@@ -981,7 +981,7 @@ mod tests {
             .execute_sql("CREATE TABLE sales AS SELECT * FROM (VALUES (1, 'a')) AS t(id, name)")
             .unwrap();
         let spec = reader
-            .execute("SELECT * FROM sales WHERE 1 = 0 TABULATE")
+            .execute("SELECT * FROM sales WHERE 1 = 0 TABULATE *")
             .unwrap();
 
         let writer = HtmlWriter::new();

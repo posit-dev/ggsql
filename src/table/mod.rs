@@ -2,9 +2,10 @@
 //!
 //! Defines the typed `Table` structure that represents parsed `TABULATE`
 //! statements, parallel to how `plot` defines `Plot` for `VISUALISE`
-//! statements: `source` (from `TABULATE FROM`), `labels` (from `TABULATE
-//! LABEL`), `spans` (from `TABULATE SPAN`), and `formats` (from `TABULATE
-//! FORMAT`) are populated so far.
+//! statements: `source` (from `TABULATE FROM`), `selection` (from
+//! `TABULATE`'s own column list), `labels` (from `TABULATE LABEL`), `spans`
+//! (from `TABULATE SPAN`), and `formats` (from `TABULATE FORMAT`) are
+//! populated so far.
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -24,6 +25,12 @@ pub struct Table {
     /// `Plot`, there are no layers to hold a per-layer source override, so
     /// this is the only place a `TABULATE`'s data source can come from.
     pub source: Option<DataSource>,
+    /// Column selection from `TABULATE`'s own column list, right after the
+    /// keyword (e.g. `TABULATE bill_len, bill_dep AS Depth`) — mandatory in
+    /// the grammar. Captured verbatim as source text rather than parsed; see
+    /// `execute::table::build_table_sql` for how it's used. `"*"` is the
+    /// default for a `Table` built without the parser.
+    pub selection: String,
     /// Column display labels (from `TABULATE LABEL`). Reuses `plot::Labels`
     /// as-is — the same "name → text, None = suppress" shape applies
     /// unchanged, just keyed by column name instead of aesthetic name. An
@@ -44,6 +51,7 @@ impl Table {
     pub fn new() -> Self {
         Self {
             source: None,
+            selection: "*".to_string(),
             labels: Labels::default(),
             spans: Vec::new(),
             formats: Vec::new(),

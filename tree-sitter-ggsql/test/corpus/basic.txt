@@ -4538,10 +4538,10 @@ DRAW point SETTING bounds => [null, 1, Inf, -Inf], limit => inf
               (infinity))))))))
 
 ================================================================================
-TABULATE bare keyword
+TABULATE * after a preceding SELECT
 ================================================================================
 
-SELECT 1 TABULATE
+SELECT 1 TABULATE *
 
 --------------------------------------------------------------------------------
 
@@ -4552,19 +4552,27 @@ SELECT 1 TABULATE
         (select_body
           (number)))))
   (tabulate_statement
-    (tabulate_keyword)))
+    (tabulate_keyword)
+    (column_selection
+      (mapping_list
+        (mapping_element
+          (wildcard_mapping))))))
 
 ================================================================================
 TABULATE FROM single source
 ================================================================================
 
-TABULATE FROM sales
+TABULATE * FROM sales
 
 --------------------------------------------------------------------------------
 
 (query
   (tabulate_statement
     (tabulate_keyword)
+    (column_selection
+      (mapping_list
+        (mapping_element
+          (wildcard_mapping))))
     (single_source_from
       source: (qualified_name
         (identifier
@@ -4574,13 +4582,17 @@ TABULATE FROM sales
 TABULATE LABEL clause
 ================================================================================
 
-TABULATE FROM sales LABEL id => 'ID'
+TABULATE * FROM sales LABEL id => 'ID'
 
 --------------------------------------------------------------------------------
 
 (query
   (tabulate_statement
     (tabulate_keyword)
+    (column_selection
+      (mapping_list
+        (mapping_element
+          (wildcard_mapping))))
     (single_source_from
       source: (qualified_name
         (identifier
@@ -4597,13 +4609,17 @@ TABULATE FROM sales LABEL id => 'ID'
 TABULATE SPAN clause
 ================================================================================
 
-TABULATE FROM sales SPAN 'Pretty Name' ACROSS foo, bar, baz
+TABULATE * FROM sales SPAN 'Pretty Name' ACROSS foo, bar, baz
 
 --------------------------------------------------------------------------------
 
 (query
   (tabulate_statement
     (tabulate_keyword)
+    (column_selection
+      (mapping_list
+        (mapping_element
+          (wildcard_mapping))))
     (single_source_from
       source: (qualified_name
         (identifier
@@ -4623,13 +4639,17 @@ TABULATE FROM sales SPAN 'Pretty Name' ACROSS foo, bar, baz
 TABULATE SPAN clause with a single column
 ================================================================================
 
-TABULATE FROM sales SPAN 'A' ACROSS foo
+TABULATE * FROM sales SPAN 'A' ACROSS foo
 
 --------------------------------------------------------------------------------
 
 (query
   (tabulate_statement
     (tabulate_keyword)
+    (column_selection
+      (mapping_list
+        (mapping_element
+          (wildcard_mapping))))
     (single_source_from
       source: (qualified_name
         (identifier
@@ -4645,13 +4665,17 @@ TABULATE FROM sales SPAN 'A' ACROSS foo
 TABULATE SPAN clause with a NULL label
 ================================================================================
 
-TABULATE FROM sales SPAN NULL ACROSS foo, bar
+TABULATE * FROM sales SPAN NULL ACROSS foo, bar
 
 --------------------------------------------------------------------------------
 
 (query
   (tabulate_statement
     (tabulate_keyword)
+    (column_selection
+      (mapping_list
+        (mapping_element
+          (wildcard_mapping))))
     (single_source_from
       source: (qualified_name
         (identifier
@@ -4669,13 +4693,17 @@ TABULATE FROM sales SPAN NULL ACROSS foo, bar
 TABULATE SPAN clause with a SETTING
 ================================================================================
 
-TABULATE FROM sales SPAN 'W' ACROSS foo SETTING width => '40%'
+TABULATE * FROM sales SPAN 'W' ACROSS foo SETTING width => '40%'
 
 --------------------------------------------------------------------------------
 
 (query
   (tabulate_statement
     (tabulate_keyword)
+    (column_selection
+      (mapping_list
+        (mapping_element
+          (wildcard_mapping))))
     (single_source_from
       source: (qualified_name
         (identifier
@@ -4698,13 +4726,17 @@ TABULATE FROM sales SPAN 'W' ACROSS foo SETTING width => '40%'
 TABULATE LABEL then SPAN clause, any order
 ================================================================================
 
-TABULATE FROM sales LABEL id => 'ID' SPAN 'A' ACROSS foo, bar
+TABULATE * FROM sales LABEL id => 'ID' SPAN 'A' ACROSS foo, bar
 
 --------------------------------------------------------------------------------
 
 (query
   (tabulate_statement
     (tabulate_keyword)
+    (column_selection
+      (mapping_list
+        (mapping_element
+          (wildcard_mapping))))
     (single_source_from
       source: (qualified_name
         (identifier
@@ -4729,13 +4761,17 @@ TABULATE FROM sales LABEL id => 'ID' SPAN 'A' ACROSS foo, bar
 TABULATE FORMAT clause
 ================================================================================
 
-TABULATE FROM sales FORMAT foo, bar SETTING width => '20%' RENAMING null => '-'
+TABULATE * FROM sales FORMAT foo, bar SETTING width => '20%' RENAMING null => '-'
 
 --------------------------------------------------------------------------------
 
 (query
   (tabulate_statement
     (tabulate_keyword)
+    (column_selection
+      (mapping_list
+        (mapping_element
+          (wildcard_mapping))))
     (single_source_from
       source: (qualified_name
         (identifier
@@ -4758,3 +4794,36 @@ TABULATE FROM sales FORMAT foo, bar SETTING width => '20%' RENAMING null => '-'
           (renaming_assignment
             name: (null_literal)
             value: (string)))))))
+
+================================================================================
+TABULATE column selection: wildcard, bare column, and a rename
+================================================================================
+
+TABULATE *, bill_dep, bill_len AS Length FROM sales
+
+--------------------------------------------------------------------------------
+
+(query
+  (tabulate_statement
+    (tabulate_keyword)
+    (column_selection
+      (mapping_list
+        (mapping_element
+          (wildcard_mapping))
+        (mapping_element
+          (implicit_mapping
+            (identifier
+              (bare_identifier))))
+        (mapping_element
+          (explicit_mapping
+            value: (mapping_value
+              (column_reference
+                (identifier
+                  (bare_identifier))))
+            name: (aesthetic_name
+              (identifier
+                (bare_identifier)))))))
+    (single_source_from
+      source: (qualified_name
+        (identifier
+          (bare_identifier))))))
