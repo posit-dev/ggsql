@@ -87,17 +87,21 @@ pub(super) fn apply_formats(
 
 /// Resolve `SETTING` properties for one column: `format`'s own settings (if
 /// any), with `hjust` standardised to a number (see `standardise_hjust`);
-/// an absent setting defaults from `dtype` (numeric columns right,
-/// everything else left). Every writer reads a plain number for `hjust` and
-/// buckets it into left/center/right itself — none of them see the keyword
-/// form.
+/// an absent setting defaults from the column's role — a STUB column right,
+/// a numeric BODY column right, everything else left. Every writer reads a
+/// plain number for `hjust` and buckets it into left/center/right itself —
+/// none of them see the keyword form.
 pub(super) fn resolve_column_properties(dtype: &DataType, format: Option<&Format>) -> Parameters {
     let mut properties = format.map(|f| f.settings.clone()).unwrap_or_default();
 
-    let hjust = properties
-        .get("hjust")
-        .and_then(standardise_hjust)
-        .unwrap_or(if dtype.is_numeric() { 1.0 } else { 0.0 });
+    let is_stub = format.is_some_and(|f| f.target.is_stub());
+    let hjust = if let Some(value) = properties.get("hjust").and_then(standardise_hjust) {
+        value
+    } else if is_stub || dtype.is_numeric() {
+        1.0
+    } else {
+        0.0
+    };
     properties.insert("hjust".to_string(), ParameterValue::Number(hjust));
 
     properties
@@ -126,6 +130,7 @@ mod tests {
     fn format_with(template: &str, mapping: Option<HashMap<String, Option<String>>>) -> Format {
         Format {
             columns: Vec::new(),
+            target: crate::ColumnSection::Body,
             settings: Parameters::new(),
             value_mapping: mapping,
             value_template: template.to_string(),
@@ -219,6 +224,7 @@ mod tests {
         settings.insert("hjust".to_string(), hjust);
         Format {
             columns: Vec::new(),
+            target: crate::ColumnSection::Body,
             settings,
             value_mapping: None,
             value_template: "{}".to_string(),
@@ -234,6 +240,22 @@ mod tests {
         assert_eq!(
             resolve_column_properties(&DataType::Utf8, None).get("hjust"),
             Some(&ParameterValue::Number(0.0))
+        );
+    }
+
+    #[test]
+    fn resolve_column_properties_defaults_a_stub_column_to_right_regardless_of_dtype() {
+        let format = Format {
+            columns: Vec::new(),
+            target: crate::ColumnSection::Stub,
+            settings: Parameters::new(),
+            value_mapping: None,
+            value_template: "{}".to_string(),
+        };
+
+        assert_eq!(
+            resolve_column_properties(&DataType::Utf8, Some(&format)).get("hjust"),
+            Some(&ParameterValue::Number(1.0))
         );
     }
 

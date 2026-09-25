@@ -21,7 +21,7 @@ TABULATE <column>, ... | *
   LABEL <column> => <string>, ...
   SPAN <string> ACROSS <column>, ...
     SETTING <parameter> => <value>, ...
-  FORMAT <column>, ...
+  FORMAT [BODY | STUB] <column>, ...
     SETTING <parameter> => <value>, ...
     RENAMING <value> => <string>, ...
 ```
@@ -120,24 +120,35 @@ TABULATE * FROM sales
 
 ### `FORMAT`
 ```ggsql
-FORMAT <column>, ...
+FORMAT [BODY | STUB] <column>, ...
   SETTING <parameter> => <value>, ...
   RENAMING <value> => <string>, ...
 ```
 
-Configures cell display for one or more columns. Give several `FORMAT` clauses for different column groups; if two `FORMAT` clauses name the same column, the later one wins for it.
+Configures cell display for one or more columns, and — via the optional target — which section of the table they belong to. Give several `FORMAT` clauses for different column groups; if two `FORMAT` clauses name the same column, the later one wins for it, target included.
 
 ```ggsql
 TABULATE * FROM sales
   FORMAT price SETTING hjust => 'right'
 ```
 
+#### Target
+
+`BODY` (the default, so it's rarely written) leaves a column in the table's regular body. `STUB` moves it into the table's stub instead — the row-label column(s), rendered ahead of every body column regardless of where they were selected:
+
+```ggsql
+TABULATE * FROM sales
+  FORMAT STUB region
+```
+
+A stub column is otherwise an ordinary column: `LABEL` still sets its header text the same way (defaulting to its own name), and `SETTING`/`RENAMING` still apply the same way too. A `SPAN` can't include a stub column — grouping the stub under a spanner isn't supported.
+
 #### `SETTING`
 ```ggsql
 SETTING <parameter> => <value>, ...
 ```
 
-* `hjust` (default: right for numeric columns, left otherwise): horizontal alignment for the column's cells. One of `'left'`, `'right'`, `'center'`/`'centre'`, or a number between 0 and 1 (0 is left, 1 is right, 0.5 is centered).
+* `hjust` (default: right for a stub or numeric column, left otherwise): horizontal alignment for the column's cells. One of `'left'`, `'right'`, `'center'`/`'centre'`, or a number between 0 and 1 (0 is left, 1 is right, 0.5 is centered).
 
 #### `RENAMING`
 ```ggsql
@@ -190,6 +201,13 @@ TABULATE *
   FORMAT body_mass
     SETTING hjust => 'right'
     RENAMING null => '-', * => '{:num %.0f}g'
+```
+
+```{ggsql}
+SELECT * FROM ggsql:penguins LIMIT 5
+
+TABULATE *
+  FORMAT STUB species
 ```
 
 ```{ggsql}

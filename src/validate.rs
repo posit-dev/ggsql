@@ -309,11 +309,19 @@ pub fn validate(query: &str) -> Result<Validated> {
             }
         }
 
-        if let Err(e) = table.resolve_spanner_ids() {
-            errors.push(ValidationError {
+        match table.resolve_spanner_ids() {
+            Ok(resolved_spans) => {
+                if let Err(e) = table.validate_span_stub_boundary(&resolved_spans) {
+                    errors.push(ValidationError {
+                        message: e,
+                        location: None,
+                    });
+                }
+            }
+            Err(e) => errors.push(ValidationError {
                 message: e,
                 location: None,
-            });
+            }),
         }
 
         // Validate each FORMAT's SETTING parameters the same way.

@@ -4,19 +4,22 @@
 //! resolution, or facet handling to do here — just the one query that
 //! produces `body`, plus resolving that data into positioned `TableCell`s.
 //! `SPAN`-specific resolution (column reordering, header-row assignment)
-//! lives in the child `spanner` module, `FORMAT`-specific resolution
-//! (replacing a column's values with its resolved display text) lives in
-//! `format`, and building the resolved `TableCell`/`TableRow` grid out of
-//! both lives in `layout` — all three used only from here, unlike Plot's own
-//! resolution logic, which is split across the flat siblings `schema.rs`/
-//! `casting.rs`/`layer.rs`/`scale.rs`/`position.rs`/`cte.rs` because those
-//! are each reachable from more than one place. `Table::resolve_spanner_ids`
-//! is the exception — it needs no `DataFrame`, so it lives on `Table`
-//! itself, reachable from `validate()` too.
+//! lives in the child `spanner` module, `TABULATE FORMAT STUB`-specific
+//! resolution (moving stub columns to the front, building their
+//! `StubHead`/`StubRowLabel` cells) lives in `stub`, `FORMAT`-specific
+//! resolution (replacing a column's values with its resolved display text)
+//! lives in `format`, and building the resolved `TableCell`/`TableRow` grid
+//! out of all three lives in `layout` — all four used only from here, unlike
+//! Plot's own resolution logic, which is split across the flat siblings
+//! `schema.rs`/`casting.rs`/`layer.rs`/`scale.rs`/`position.rs`/`cte.rs`
+//! because those are each reachable from more than one place.
+//! `Table::resolve_spanner_ids` is the exception — it needs no `DataFrame`,
+//! so it lives on `Table` itself, reachable from `validate()` too.
 
 mod format;
 mod layout;
 mod spanner;
+mod stub;
 
 pub use layout::{TableColumn, TableRow};
 // Crate-internal only (not part of the public API): the row/column-extent-
@@ -144,9 +147,9 @@ fn build_table_sql(source_tree: &SourceTree, selection: &str) -> Option<String> 
 
 /// What role a `TableCell` plays in the table's layout.
 ///
-/// Naming follows R's gt package (`column_labels`, `body`, ...), since ggsql's
-/// table grammar is expected to keep drawing on its part vocabulary as more
-/// of it (spanners, stub, footnotes, source notes) gets built out here.
+/// Naming follows R's gt package (`column_labels`, `body`, `stub`, ...),
+/// since ggsql's table grammar is expected to keep drawing on its part
+/// vocabulary as more of it (footnotes, source notes) gets built out here.
 ///
 /// Lets a writer tell cells apart (e.g. `<th>` vs `<td>`) without relying on
 /// position — a column label is a `ColumnLabel` cell, not "whatever's in row
@@ -155,8 +158,14 @@ fn build_table_sql(source_tree: &SourceTree, selection: &str) -> Option<String> 
 pub enum TableCellKind {
     /// A column label (gt's `column_labels`).
     ColumnLabel,
+    /// The stub's own header cell (gt's `tab_stubhead()`) — same row as
+    /// `ColumnLabel`, but over a `TABULATE FORMAT STUB` column rather than
+    /// a regular one, hence its own kind.
+    StubHead,
     /// A data value (gt's `body`).
     Body,
+    /// A row-label value in the stub (`TABULATE FORMAT STUB`, gt's `stub`).
+    StubRowLabel,
     /// A spanner cell, grouping several columns under one label (`TABULATE
     /// SPAN`).
     Spanner,
@@ -172,16 +181,18 @@ pub enum TableCellKind {
 
 impl TableCellKind {
     /// Whether a cell of this kind belongs in a table's header (`ColumnLabel`,
-    /// `Spanner`, `Title`, `Subtitle`) rather than its body (`Body`) — the
-    /// kind alone decides it, which is what lets this be asked off a bare
-    /// `TableCellKind` (a synthesized filler has no real `TableCell` of its
-    /// own) as well as off a full cell, via `TableCell::is_header` below.
-    /// `Caption` stays out of this: a writer is expected to pull it out of
-    /// the grid entirely rather than render it as either.
+    /// `StubHead`, `Spanner`, `Title`, `Subtitle`) rather than its body
+    /// (`Body`, `StubRowLabel`) — the kind alone decides it, which is what
+    /// lets this be asked off a bare `TableCellKind` (a synthesized filler
+    /// has no real `TableCell` of its own) as well as off a full cell, via
+    /// `TableCell::is_header` below. `Caption` stays out of this: a writer
+    /// is expected to pull it out of the grid entirely rather than render
+    /// it as either.
     pub fn is_header(self) -> bool {
         matches!(
             self,
             TableCellKind::ColumnLabel
+                | TableCellKind::StubHead
                 | TableCellKind::Spanner
                 | TableCellKind::Title
                 | TableCellKind::Subtitle
@@ -193,7 +204,9 @@ impl std::fmt::Display for TableCellKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let text = match self {
             TableCellKind::ColumnLabel => "column label",
+            TableCellKind::StubHead => "stub head",
             TableCellKind::Body => "body",
+            TableCellKind::StubRowLabel => "stub row label",
             TableCellKind::Spanner => "spanner",
             TableCellKind::Title => "title",
             TableCellKind::Subtitle => "subtitle",
@@ -230,8 +243,14 @@ impl std::fmt::Display for TableCellKind {
 pub enum TableClass {
     /// A body cell (gt's `gt_row`).
     Row,
+    /// A row-label cell in the stub (`TableCellKind::StubRowLabel`).
+    Stub,
     /// A column-label cell (gt's `gt_col_heading`).
     ColHeading,
+    /// The stub's own header cell (`TableCellKind::StubHead`). No gt
+    /// equivalent — gt's own stubhead has no dedicated CSS class of its
+    /// own, unlike this one.
+    StubHead,
     /// A spanner cell below the topmost spanner level.
     Spanner,
     /// A spanner cell in the topmost spanner level, supplanting `Spanner`
@@ -259,7 +278,9 @@ impl std::fmt::Display for TableClass {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let text = match self {
             TableClass::Row => "row",
+            TableClass::Stub => "stub",
             TableClass::ColHeading => "col_heading",
+            TableClass::StubHead => "stub_head",
             TableClass::Spanner => "spanner",
             TableClass::SpannerOuter => "spanner_outer",
             TableClass::AlignLeft => "left",
@@ -422,7 +443,9 @@ mod tests {
     #[test]
     fn table_cell_kind_display_names_every_variant() {
         assert_eq!(TableCellKind::ColumnLabel.to_string(), "column label");
+        assert_eq!(TableCellKind::StubHead.to_string(), "stub head");
         assert_eq!(TableCellKind::Body.to_string(), "body");
+        assert_eq!(TableCellKind::StubRowLabel.to_string(), "stub row label");
         assert_eq!(TableCellKind::Spanner.to_string(), "spanner");
         assert_eq!(TableCellKind::Title.to_string(), "title");
         assert_eq!(TableCellKind::Subtitle.to_string(), "subtitle");
@@ -572,5 +595,42 @@ mod integration_tests {
             .find(|c| c.kind == TableCellKind::ColumnLabel && c.left == 0)
             .unwrap();
         assert_eq!(label_cell.content, "ID");
+    }
+
+    #[test]
+    fn test_tabulate_format_stub_moves_the_column_to_the_front() {
+        let reader = reader_with_sales();
+        let resolved =
+            resolve_table_with_reader("TABULATE * FROM sales FORMAT STUB name", &reader).unwrap();
+
+        let columns = resolved.columns();
+        assert_eq!(columns[0].name, "name");
+        assert_eq!(columns[0].target, crate::ColumnSection::Stub);
+        assert_eq!(columns[1].name, "id");
+        assert_eq!(columns[1].target, crate::ColumnSection::Body);
+
+        let stub_cell = resolved
+            .cells()
+            .iter()
+            .find(|c| c.kind == TableCellKind::StubRowLabel)
+            .unwrap();
+        assert_eq!(stub_cell.left, 0);
+        let stub_head = resolved
+            .cells()
+            .iter()
+            .find(|c| c.kind == TableCellKind::StubHead)
+            .unwrap();
+        assert_eq!(stub_head.left, 0);
+    }
+
+    #[test]
+    fn test_tabulate_span_over_a_stub_column_errors() {
+        let reader = reader_with_sales();
+        let result = resolve_table_with_reader(
+            "TABULATE * FROM sales FORMAT STUB name SPAN 'G' ACROSS name, id",
+            &reader,
+        );
+
+        assert!(result.is_err());
     }
 }

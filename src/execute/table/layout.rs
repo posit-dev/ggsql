@@ -1,11 +1,11 @@
 //! Cell-layout construction: turns already-resolved columns, spans and a
 //! `FORMAT`-applied `DataFrame` into the positioned `TableCell`/`TableRow`
-//! grid `ResolvedTable` holds — the piece that ties `spanner`'s and
+//! grid `ResolvedTable` holds — the piece that ties `spanner`'s, `stub`'s and
 //! `format`'s output together, via the `Section` building block both
 //! `build_cells` and `spanner::create_spanners` produce and `rowbind`
 //! combines. Split out of `table/mod.rs` once this became the dominant share
 //! of that file (and the part most likely to keep growing — see
-//! `TableCellKind`'s own doc comment on stub/footnotes/source notes still to
+//! `TableCellKind`'s own doc comment on footnotes/source notes still to
 //! come); `resolve_table_with_reader` stays there as the thin SQL-orchestration
 //! entry point, alongside the `TableCellKind`/`TableClass`/`TableCell` public
 //! data model this module builds instances of.
@@ -14,10 +14,11 @@ use std::collections::HashMap;
 
 use super::format::resolve_column_properties;
 use super::spanner::{create_spanners, reorder_table_columns};
+use super::stub::{create_row_labels, create_stubhead, move_stub_columns};
 use super::{TableCell, TableCellKind, TableClass};
 use crate::array_util::value_to_string;
 use crate::plot::{Labels, Parameters};
-use crate::{DataFrame, Format, GgsqlError, Result, Spanner, Table};
+use crate::{ColumnSection, DataFrame, Format, GgsqlError, Result, Spanner, Table};
 
 /// Pop the reserved `title`/`subtitle`/`caption` keys out of a `TABULATE`
 /// `LABEL` clause's resolved map, leaving only genuine column-name
@@ -38,9 +39,10 @@ pub(super) fn extract_heading_labels(
 /// Resolve a table's columns: validated SPAN settings, spanner ids
 /// expanded, one `TableColumn` per `DataFrame` column (labelled, with
 /// `formats`' resolved `SETTING` properties), reordered for any
-/// `gather`-ing spanner. Also returns `spans` alongside `columns` — already
-/// resolved here, and still needed by `build_cells` for the spanner cells
-/// themselves, so recomputing it there would just repeat this work.
+/// `gather`-ing spanner and then for STUB columns. Also returns `spans`
+/// alongside `columns` — already resolved here, and still needed by
+/// `build_cells` for the spanner cells themselves, so recomputing it there
+/// would just repeat this work.
 pub(super) fn setup_columns(
     df: &DataFrame,
     table: &Table,
@@ -55,9 +57,13 @@ pub(super) fn setup_columns(
     let spans = table
         .resolve_spanner_ids()
         .map_err(GgsqlError::ValidationError)?;
+    table
+        .validate_span_stub_boundary(&spans)
+        .map_err(GgsqlError::ValidationError)?;
 
     let columns = create_table_columns(df, labels, formats);
     let columns = reorder_table_columns(columns, &spans)?;
+    let columns = move_stub_columns(columns);
 
     Ok((columns, spans))
 }
@@ -78,11 +84,23 @@ pub(super) fn build_cells(
 ) -> Result<(Vec<TableCell>, Vec<TableRow>)> {
     let ncol = columns.len();
     let spanners = create_spanners(columns, spans)?;
-    let column_labels = create_column_labels(columns);
+    // The only way every column's label ends up empty is `LABEL col => NULL`
+    // (or `=> ''`) on every column, since an unlabeled column keeps its
+    // (non-empty) name — so a wholly suppressed row omits the row entirely
+    // rather than rendering a row of blank header cells.
+    let column_labels = if columns.iter().all(|c| c.label.is_empty()) {
+        Section::new(Vec::new(), Vec::new())
+    } else {
+        let mut label_cells = create_stubhead(columns);
+        label_cells.extend(create_column_labels(columns));
+        Section::new(vec![TableRow::header()], label_cells)
+    };
     let header = compose_header(spanners, column_labels);
     let heading = create_heading(title, subtitle, ncol);
     let header = rowbind(heading, header);
-    let table_body = create_body(df, columns);
+    let mut body_cells = create_row_labels(df, columns);
+    body_cells.extend(create_body(df, columns));
+    let table_body = Section::new(vec![TableRow::default(); df.height()], body_cells);
     let section = rowbind(header, table_body);
     let caption_section = create_caption(caption, ncol);
     let section = rowbind(section, caption_section);
@@ -106,11 +124,10 @@ pub(super) fn build_cells(
 /// `pub(super)`, not fully private: `spanner::create_spanners` is a sibling
 /// module (not a descendant of this one), so it needs `Section` named and a
 /// way to build one via `Section::new` — visible throughout `table` and its
-/// descendants covers every such sibling, current (`spanner`) and future (a
-/// stub/stubhead feature is expected to build a header `Section` the same
-/// way `spanner` does, per gt's own stub-as-header-part model). The fields
-/// stay private to this module so `new` is the only way to construct one,
-/// from anywhere.
+/// descendants covers every such sibling. `stub` is a sibling too, but its
+/// `StubHead`/`StubRowLabel` cells merge into `build_cells`'s own `Section`s
+/// directly rather than building one of their own. The fields stay private
+/// to this module so `new` is the only way to construct one, from anywhere.
 pub(super) struct Section {
     rows: Vec<TableRow>,
     cells: Vec<TableCell>,
@@ -275,6 +292,16 @@ pub struct TableColumn {
     /// writer wanting a whole-column property (e.g. `width`) reads it here
     /// instead of the same value repeated across the column's cells.
     pub properties: Parameters,
+    /// Which section of the table this column belongs to (`FORMAT`'s
+    /// `BODY`/`STUB` target, `Body` if no `FORMAT` clause named it).
+    pub target: ColumnSection,
+}
+
+impl TableColumn {
+    /// Whether this column is a `TABULATE FORMAT STUB` column.
+    pub fn is_stub(&self) -> bool {
+        self.target.is_stub()
+    }
 }
 
 /// One row's resolved properties within a table layout. `properties` has no
@@ -316,48 +343,45 @@ fn create_table_columns(
     labels: &Labels,
     formats: &HashMap<String, Format>,
 ) -> Vec<TableColumn> {
-    df.get_column_names()
-        .into_iter()
-        .map(|name| {
-            let label = match labels.labels.get(&name) {
-                None => name.clone(),
-                Some(None) => String::new(),
-                Some(Some(label)) => label.clone(),
-            };
-            // Not stored on TableColumn: nothing needs it once `properties`
-            // (which may default from it) is resolved.
-            let dtype = df
-                .column(&name)
-                .expect("name comes from df's own columns")
-                .data_type();
-            let properties = resolve_column_properties(dtype, formats.get(&name));
-            TableColumn {
-                name,
-                label,
-                properties,
-            }
-        })
-        .collect()
+    let mut columns = Vec::new();
+    for name in df.get_column_names() {
+        let label = match labels.labels.get(&name) {
+            None => name.clone(),
+            Some(None) => String::new(),
+            Some(Some(label)) => label.clone(),
+        };
+        // Not stored on TableColumn: nothing needs it once `properties`
+        // (which may default from it) is resolved.
+        let dtype = df
+            .column(&name)
+            .expect("name comes from df's own columns")
+            .data_type();
+        let format = formats.get(&name);
+        let properties = resolve_column_properties(dtype, format);
+        let target = format.map(|f| f.target).unwrap_or_default();
+        columns.push(TableColumn {
+            name,
+            label,
+            properties,
+            target,
+        });
+    }
+    columns
 }
 
-/// Build one `ColumnLabel` cell per column, numbered from `top == 0`, in
-/// `columns`' order — always exactly one row.
+/// Build one `ColumnLabel` cell per non-stub column, numbered from `top ==
+/// 0` — the same seam `create_stubhead` uses, so the two merge into one
+/// `Section` sharing a single header row (`build_cells`). Skips every stub
+/// column; `create_stubhead` builds those.
 ///
 /// Row numbering here is local to this function alone — `compose_header`/
 /// `rowbind` are what decide where this sits relative to spanners and the
 /// body, not this function.
-fn create_column_labels(columns: &[TableColumn]) -> Section {
-    // The only way every column's label ends up empty is `LABEL col => NULL`
-    // (or `=> ''`) on every column, since an unlabeled column keeps its
-    // (non-empty) name — so a wholly suppressed row omits the row entirely
-    // rather than rendering a row of blank header cells.
-    if columns.iter().all(|c| c.label.is_empty()) {
-        return Section::new(Vec::new(), Vec::new());
-    }
-
-    let cells = columns
+fn create_column_labels(columns: &[TableColumn]) -> Vec<TableCell> {
+    columns
         .iter()
         .enumerate()
+        .filter(|(_, column)| !column.is_stub())
         .map(|(index, column)| {
             TableCell::new(
                 TableCellKind::ColumnLabel,
@@ -370,9 +394,7 @@ fn create_column_labels(columns: &[TableColumn]) -> Section {
             .with_properties(column.properties.clone())
             .with_classes(vec![TableClass::ColHeading])
         })
-        .collect();
-
-    Section::new(vec![TableRow::header()], cells)
+        .collect()
 }
 
 /// Build one `Body` cell per `DataFrame` value, numbered from `top == 0`, in
@@ -380,11 +402,15 @@ fn create_column_labels(columns: &[TableColumn]) -> Section {
 /// `create_column_labels` uses, so the two stay in sync under a future
 /// reordering. Looks each column up in `df` **by name**, not position, since
 /// `columns` may already be reordered relative to `df` by the time this runs.
-/// Always exactly `df.height()` rows.
-fn create_body(df: &DataFrame, columns: &[TableColumn]) -> Section {
+/// Skips every STUB column — `create_row_labels` builds those.
+fn create_body(df: &DataFrame, columns: &[TableColumn]) -> Vec<TableCell> {
     let mut cells = Vec::new();
 
     for (index, column) in columns.iter().enumerate() {
+        if column.is_stub() {
+            continue;
+        }
+
         // Looked up once per column, outside the row loop: `DataFrame::column`
         // is an `O(ncol)` scan over the schema, so doing this per row instead
         // would cost `O(nrow * ncol)` lookups rather than `O(ncol)`.
@@ -408,7 +434,7 @@ fn create_body(df: &DataFrame, columns: &[TableColumn]) -> Section {
         }
     }
 
-    Section::new(vec![TableRow::default(); df.height()], cells)
+    cells
 }
 
 /// Stack spanner rows above column labels — the header half of a table's
@@ -536,6 +562,14 @@ mod tests {
             name: name.to_string(),
             label: label.to_string(),
             properties: Parameters::new(),
+            target: ColumnSection::Body,
+        }
+    }
+
+    fn stub_column(name: &str) -> TableColumn {
+        TableColumn {
+            target: ColumnSection::Stub,
+            ..column(name, name)
         }
     }
 
@@ -589,9 +623,7 @@ mod tests {
     fn create_column_labels_builds_one_cell_per_column_at_row_zero() {
         let columns = vec![column("id", "id"), column("name", "name")];
 
-        let section = create_column_labels(&columns);
-        assert_eq!(section.rows.len(), 1);
-        let labels = section.cells;
+        let labels = create_column_labels(&columns);
 
         assert_eq!(labels.len(), 2);
         assert_eq!(labels[0].kind, TableCellKind::ColumnLabel);
@@ -606,6 +638,18 @@ mod tests {
     }
 
     #[test]
+    fn create_column_labels_skips_a_stub_column() {
+        let columns = vec![stub_column("region"), column("sales", "sales")];
+
+        let labels = create_column_labels(&columns);
+
+        assert_eq!(labels.len(), 1);
+        assert_eq!(labels[0].kind, TableCellKind::ColumnLabel);
+        assert_eq!(labels[0].left, 1);
+        assert_eq!(labels[0].content, "sales");
+    }
+
+    #[test]
     fn create_body_numbers_rows_from_zero() {
         let frame = df! {
             "id" => vec![1i32, 2],
@@ -614,9 +658,7 @@ mod tests {
         .unwrap();
         let columns = create_table_columns(&frame, &Labels::default(), &HashMap::new());
 
-        let section = create_body(&frame, &columns);
-        assert_eq!(section.rows.len(), 2);
-        let body = section.cells;
+        let body = create_body(&frame, &columns);
 
         assert_eq!(body.len(), 4);
         assert!(body.iter().all(|cell| cell.kind == TableCellKind::Body));
@@ -652,10 +694,26 @@ mod tests {
         .unwrap();
         let columns = vec![column("name", "name"), column("id", "id")];
 
-        let body = create_body(&frame, &columns).cells;
+        let body = create_body(&frame, &columns);
 
         assert_eq!(body[0].content, "a"); // "name" column, placed first
         assert_eq!(body[1].content, "1"); // "id" column, placed second
+    }
+
+    #[test]
+    fn create_body_skips_stub_columns() {
+        let frame = df! {
+            "region" => vec!["north".to_string()],
+            "sales" => vec![1i32],
+        }
+        .unwrap();
+        let columns = vec![stub_column("region"), column("sales", "sales")];
+
+        let body = create_body(&frame, &columns);
+
+        assert_eq!(body.len(), 1);
+        assert_eq!(body[0].content, "1");
+        assert_eq!(body[0].left, 1);
     }
 
     fn cell(kind: TableCellKind, top: usize, bottom: usize, content: &str) -> TableCell {
@@ -928,6 +986,7 @@ mod tests {
         let mut table = Table::new();
         table.formats = vec![crate::Format {
             columns: vec!["price".to_string()],
+            target: crate::ColumnSection::Body,
             settings: Parameters::new(),
             value_mapping: Some(std::collections::HashMap::from([(
                 "0".to_string(),

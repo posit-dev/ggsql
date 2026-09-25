@@ -248,12 +248,14 @@ pub(crate) fn create_spanners(columns: &[TableColumn], spans: &[Spanner]) -> Res
 mod tests {
     use super::*;
     use crate::plot::{ParameterValue, Parameters};
+    use crate::ColumnSection;
 
     fn column(name: &str, label: &str) -> TableColumn {
         TableColumn {
             name: name.to_string(),
             label: label.to_string(),
             properties: Parameters::new(),
+            target: ColumnSection::Body,
         }
     }
 

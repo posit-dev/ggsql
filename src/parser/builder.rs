@@ -8,7 +8,7 @@ use crate::plot::layer::geom::Geom;
 use crate::plot::projection::resolve_coord;
 use crate::plot::scale::{color_to_hex, is_color_aesthetic, is_user_facet_aesthetic, Transform};
 use crate::plot::*;
-use crate::{Format, GgsqlError, Result, Spanner, Spec, Table};
+use crate::{ColumnSection, Format, GgsqlError, Result, Spanner, Spec, Table};
 use std::collections::HashMap;
 use tree_sitter::Node;
 
@@ -424,8 +424,10 @@ fn build_span_clause(node: &Node, source: &SourceTree) -> Result<Spanner> {
     })
 }
 
-/// Build a Format from a format_clause node: FORMAT col, ... [SETTING ...] [RENAMING ...]
+/// Build a Format from a format_clause node: FORMAT [BODY|STUB] col, ... [SETTING ...] [RENAMING ...]
 fn build_format_clause(node: &Node, source: &SourceTree) -> Result<Format> {
+    let target = parse_format_target_identifier(node, source)?;
+
     let columns_node = source
         .find_node(node, "(column_list) @cols")
         .ok_or_else(|| GgsqlError::ParseError("Missing columns in FORMAT clause".to_string()))?;
@@ -448,10 +450,28 @@ fn build_format_clause(node: &Node, source: &SourceTree) -> Result<Format> {
 
     Ok(Format {
         columns,
+        target,
         settings,
         value_mapping,
         value_template,
     })
+}
+
+/// Parse a FORMAT clause's optional target identifier (BODY, STUB), missing
+/// meaning BODY by default.
+fn parse_format_target_identifier(node: &Node, source: &SourceTree) -> Result<ColumnSection> {
+    let Some(target_node) = source.find_node(node, "(format_target_identifier) @t") else {
+        return Ok(ColumnSection::Body);
+    };
+
+    match source.get_text(&target_node).to_lowercase().as_str() {
+        "body" => Ok(ColumnSection::Body),
+        "stub" => Ok(ColumnSection::Stub),
+        text => Err(GgsqlError::ParseError(format!(
+            "Unknown FORMAT target: '{}'. Valid targets: body, stub",
+            text
+        ))),
+    }
 }
 
 /// Process a visualization clause node
@@ -1497,9 +1517,28 @@ mod tests {
 
         assert_eq!(table.formats.len(), 1);
         assert_eq!(table.formats[0].columns, vec!["foo", "bar"]);
+        assert_eq!(table.formats[0].target, ColumnSection::Body);
         assert!(table.formats[0].settings.is_empty());
         assert_eq!(table.formats[0].value_mapping, None);
         assert_eq!(table.formats[0].value_template, "{}");
+    }
+
+    #[test]
+    fn test_tabulate_format_stub_target() {
+        let specs = parse_test_specs("TABULATE * FROM sales FORMAT STUB region").unwrap();
+        let table = specs[0].as_table().expect("expected a Table spec");
+
+        assert_eq!(table.formats[0].columns, vec!["region"]);
+        assert_eq!(table.formats[0].target, ColumnSection::Stub);
+    }
+
+    #[test]
+    fn test_tabulate_format_explicit_body_target() {
+        let specs = parse_test_specs("TABULATE * FROM sales FORMAT BODY region").unwrap();
+        let table = specs[0].as_table().expect("expected a Table spec");
+
+        assert_eq!(table.formats[0].columns, vec!["region"]);
+        assert_eq!(table.formats[0].target, ColumnSection::Body);
     }
 
     #[test]

@@ -4761,7 +4761,7 @@ TABULATE * FROM sales LABEL id => 'ID' SPAN 'A' ACROSS foo, bar
 TABULATE FORMAT clause
 ================================================================================
 
-TABULATE * FROM sales FORMAT foo, bar SETTING width => '20%' RENAMING null => '-'
+TABULATE * FROM sales FORMAT foo, bar SETTING width => '20%' RENAMING null => '-' FORMAT STUB baz
 
 --------------------------------------------------------------------------------
 
@@ -4793,7 +4793,13 @@ TABULATE * FROM sales FORMAT foo, bar SETTING width => '20%' RENAMING null => '-
         (renaming_clause
           (renaming_assignment
             name: (null_literal)
-            value: (string)))))))
+            value: (string)))))
+    (tab_clause
+      (format_clause
+        (format_target_identifier)
+        (column_list
+          (identifier
+            (bare_identifier)))))))
 
 ================================================================================
 TABULATE column selection: wildcard, bare column, and a rename

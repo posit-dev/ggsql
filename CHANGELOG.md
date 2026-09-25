@@ -1,5 +1,15 @@
 ## [Unreleased]
 
+### Added
+
+- (WIP) New `TABULATE` clause renders a query result as a table instead of a 
+  plot. Tables are rendered via new `html` writer. `TABULATE` supports the 
+  following clauses:
+  - `LABEL` sets (sub)titles, captions and overrides the display of column
+    labels.
+  - `SPAN` groups columns under a shared header cell (spanner).
+  - `FORMAT` configures how a column's cells are displayed.
+
 ## 0.5.1 - 2026-09-11
 
 ### Changed
@@ -90,15 +100,6 @@
   version. The bundled kernel is the default.
 
 - `ggsql-jupyter` accepts `--version`.
-
-- (WIP) New `TABULATE` clause renders a query result as a table instead of a 
-  plot. Tables are rendered via new `html` writer. `TABULATE` supports the 
-  following clauses:
-  - `LABEL` sets (sub)titles, captions and overrides the display of column
-    labels.
-  - `SPAN` groups columns under a shared header cell (spanner).
-  - `FORMAT` configures how a column's cells are displayed.
-
 
 ### Changed
 - The wasm bundle draws plots with ggsql's own renderer instead of emitting

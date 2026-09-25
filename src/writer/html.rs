@@ -194,7 +194,9 @@ impl Writer for HtmlWriter {
 fn class_declarations(class: TableClass) -> &'static [(&'static str, &'static str)] {
     match class {
         TableClass::Row
+        | TableClass::Stub
         | TableClass::ColHeading
+        | TableClass::StubHead
         | TableClass::Spanner
         | TableClass::SpannerOuter
         | TableClass::Title
@@ -501,7 +503,7 @@ fn render_row(slots: &[Slot], row: &TableRow, mode: CssMode) -> String {
 #[cfg(test)]
 mod render_tests {
     use super::*;
-    use crate::{TableCellKind, TableClass};
+    use crate::{ColumnSection, TableCellKind, TableClass};
 
     fn cell(
         kind: TableCellKind,
@@ -645,6 +647,7 @@ mod render_tests {
             name: String::new(),
             label: String::new(),
             properties,
+            target: ColumnSection::Body,
         }
     }
 
@@ -972,6 +975,30 @@ mod tests {
         assert!(html.contains("<col>"));
         // <colgroup> comes before <thead>, per the HTML spec.
         assert!(html.find("<colgroup>").unwrap() < html.find("<thead>").unwrap());
+    }
+
+    #[test]
+    fn test_write_table_renders_a_stub_head_and_row_labels() {
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        reader
+            .execute_sql(
+                "CREATE TABLE sales AS SELECT * FROM (VALUES ('north', 1), ('south', 2)) AS t(region, amount)",
+            )
+            .unwrap();
+        let spec = reader
+            .execute("TABULATE * FROM sales FORMAT STUB region")
+            .unwrap();
+
+        let writer = HtmlWriter::new();
+        let html = writer.render(&spec).unwrap();
+
+        // The stub head renders as a <th> with its own class, the row
+        // labels as <td>s with their own class, both right-aligned
+        // (resolve_column_properties' STUB default).
+        assert!(html.contains("<th class=\"ggsql_stub_head ggsql_right\">region</th>"));
+        assert!(html.contains("<td class=\"ggsql_stub ggsql_right\">north</td>"));
+        assert!(html.contains("<td class=\"ggsql_row ggsql_right\">1</td>")); // "amount" unaffected
+        assert!(html.find(">region</th>").unwrap() < html.find(">amount</th>").unwrap());
     }
 
     #[test]

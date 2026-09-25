@@ -106,6 +106,41 @@ impl Table {
 
         Ok(resolved)
     }
+
+    /// Reject any SPAN naming a column that any FORMAT clause ever targeted
+    /// at STUB — spanners over the stub aren't supported yet. No
+    /// last-clause-wins resolution needed: a column that was ever declared
+    /// STUB is off-limits to SPAN, regardless of whether a later FORMAT
+    /// clause retargeted it to BODY. Takes already-`resolve_spanner_ids`-
+    /// resolved spans, so a SPAN's `ACROSS` id reference is checked against
+    /// the real columns it expands to, not the literal id text.
+    ///
+    /// Needs no DataFrame: FORMAT/SPAN are both plain AST, so this runs from
+    /// both `validate()` and real execution (`setup_columns`), mirroring
+    /// `resolve_spanner_ids`.
+    pub fn validate_span_stub_boundary(&self, resolved_spans: &[Spanner]) -> Result<(), String> {
+        let stub_columns: std::collections::HashSet<&str> = self
+            .formats
+            .iter()
+            .filter(|format| format.target.is_stub())
+            .flat_map(|format| format.columns.iter().map(String::as_str))
+            .collect();
+
+        for (idx, span) in resolved_spans.iter().enumerate() {
+            if let Some(name) = span
+                .columns
+                .iter()
+                .find(|name| stub_columns.contains(name.as_str()))
+            {
+                return Err(format!(
+                    "SPAN {}: cannot include stub column '{name}'.",
+                    idx + 1
+                ));
+            }
+        }
+
+        Ok(())
+    }
 }
 
 /// One `SPAN` clause: a named group of columns rendered as one spanner cell
@@ -172,6 +207,26 @@ impl Spanner {
     }
 }
 
+/// Which section of the table a `FORMAT` clause's columns belong to.
+///
+/// `FORMAT STUB` is the only thing that assigns a column to the table's
+/// stub; `FORMAT BODY`, or no target identifier at all, leaves columns in
+/// the regular body — `Body` is this enum's default for that reason.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ColumnSection {
+    #[default]
+    Body,
+    Stub,
+}
+
+impl ColumnSection {
+    /// Whether this is the `STUB` section.
+    pub fn is_stub(self) -> bool {
+        self == ColumnSection::Stub
+    }
+}
+
 /// One `FORMAT` clause: cell formatting for a group of columns.
 ///
 /// `settings` is validated against `FORMAT_PARAMS` and resolved into each
@@ -180,6 +235,10 @@ impl Spanner {
 pub struct Format {
     /// The columns this FORMAT applies to, in the order written.
     pub columns: Vec<String>,
+    /// Which section of the table these columns belong to (`BODY`, the
+    /// default, or `STUB`).
+    #[serde(default)]
+    pub target: ColumnSection,
     /// `SETTING` parameters for this FORMAT (e.g. `hjust => 'right'`).
     pub settings: Parameters,
     /// Value mappings for custom cell display (`RENAMING` clause). Maps a raw
@@ -274,6 +333,7 @@ mod tests {
     fn format_with_settings(settings: Parameters) -> Format {
         Format {
             columns: vec!["a".to_string()],
+            target: ColumnSection::Body,
             settings,
             value_mapping: None,
             value_template: "{}".to_string(),
@@ -325,5 +385,26 @@ mod tests {
             ParameterValue::String("240px".to_string()),
         );
         assert!(format_with_settings(settings).validate_settings().is_ok());
+    }
+
+    #[test]
+    fn validate_span_stub_boundary_rejects_a_span_over_a_stub_column() {
+        let table = Table {
+            formats: vec![Format {
+                columns: vec!["a".to_string()],
+                target: ColumnSection::Stub,
+                ..format_with_settings(Parameters::new())
+            }],
+            spans: vec![Spanner {
+                label: Some(String::new()),
+                columns: vec!["a".to_string(), "sales".to_string()],
+                settings: Parameters::new(),
+            }],
+            ..Table::new()
+        };
+
+        let resolved = table.resolve_spanner_ids().unwrap();
+        let error = table.validate_span_stub_boundary(&resolved).unwrap_err();
+        assert!(error.contains("cannot include stub column 'a'"));
     }
 }
