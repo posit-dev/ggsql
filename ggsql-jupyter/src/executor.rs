@@ -344,7 +344,7 @@ mod tests {
 
         match result {
             ExecutionResult::Table { html } => {
-                assert!(html.contains("<table>"));
+                assert!(html.contains("data-quarto-bootstrap=\"false\" class=\"ggsql_table\">"));
                 assert!(html.contains(">x</th>"));
             }
             other => panic!("expected Table, got {other:?}"),

@@ -93,7 +93,13 @@ pub(super) fn build_cells(
     } else {
         let mut label_cells = create_stubhead(columns);
         label_cells.extend(create_column_labels(columns));
-        Section::new(vec![TableRow::header()], label_cells)
+        Section::new(
+            vec![TableRow {
+                classes: vec![TableClass::ColHeadingRow],
+                ..TableRow::header()
+            }],
+            label_cells,
+        )
     };
     let header = compose_header(spanners, column_labels);
     let heading = create_heading(title, subtitle, ncol);
@@ -307,7 +313,8 @@ impl TableColumn {
 /// One row's resolved properties within a table layout. `properties` has no
 /// row-wide `TABULATE` clause to populate it yet, but `classes` does: a
 /// `Title`/`Subtitle` row gets `TableClass::Heading` here (see
-/// `create_heading`) — a class on the enclosing `<tr>` has nowhere else to
+/// `create_heading`), and the column-label row gets `TableClass::ColHeadingRow`
+/// where it's built above — a class on the enclosing `<tr>` has nowhere else to
 /// live, which is this type's whole reason to exist as a sibling to
 /// `TableColumn` rather than being read off `TableCell` directly.
 #[derive(Debug, Clone, Default)]
@@ -1048,11 +1055,11 @@ mod tests {
             .iter()
             .filter(|c| c.kind == TableCellKind::Body)
             .all(|c| c.classes == [TableClass::Row]));
-        // The only spanner level is the topmost one.
+        // The only spanner level is the topmost one, centred by default.
         assert!(cells
             .iter()
             .filter(|c| c.kind == TableCellKind::Spanner)
-            .all(|c| c.classes == [TableClass::SpannerOuter]));
+            .all(|c| c.classes == [TableClass::SpannerOuter, TableClass::AlignCenter]));
     }
 
     #[test]
@@ -1289,7 +1296,7 @@ mod tests {
     }
 
     #[test]
-    fn resolve_section_marks_only_the_heading_rows() {
+    fn resolve_section_marks_heading_and_col_heading_rows() {
         let frame = df! {
             "id" => vec![1i32],
         }
@@ -1310,7 +1317,7 @@ mod tests {
         assert_eq!(section.rows.len(), 4);
         assert_eq!(section.rows[0].classes, vec![TableClass::Heading]);
         assert_eq!(section.rows[1].classes, vec![TableClass::Heading]);
-        assert!(section.rows[2].classes.is_empty());
+        assert_eq!(section.rows[2].classes, vec![TableClass::ColHeadingRow]);
         assert!(section.rows[3].classes.is_empty());
         // Title/Subtitle/ColumnLabel are all header rows; only the body row
         // isn't.

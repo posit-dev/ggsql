@@ -229,14 +229,20 @@ impl std::fmt::Display for TableCellKind {
 /// layout is being built. A writer maps each variant to its own class
 /// vocabulary — the HTML writer prefixes its `Display` with `ggsql_`.
 ///
-/// Not every variant applies to every carrier: `Heading` is row-scoped
-/// (`TableRow::classes`, the `<tr>` wrapping a `Title`/`Subtitle` cell, gt's
-/// `gt_heading`); every other variant is cell-scoped (`TableCell::classes`).
-/// Nothing in the type enforces that split — it's a per-variant convention,
-/// since a writer maps every carrier through the same class-name/declaration
-/// lookup regardless of where it came from. A future `TableColumn`-scoped
-/// class (a `<col>`/`<colgroup>` concern) or a table-wide one
-/// (`<table>`/`<thead>`/`<tbody>` itself) belongs in this same enum too.
+/// Not every variant applies to every carrier: `Heading` and `ColHeadingRow`
+/// are row-scoped (`TableRow::classes` — the `<tr>` wrapping a
+/// `Title`/`Subtitle` cell, and the `<tr>` wrapping the column-label row,
+/// respectively); every other structural/alignment variant is cell-scoped
+/// (`TableCell::classes`). `Table` and `TableBody` are scoped to the table as
+/// a whole (or a whole section of it) — there is no resolved layout type
+/// representing "the whole table"/"the whole body" for either to be recorded
+/// on, so a writer applies them directly to its own top-level elements (the
+/// `<table>` and `<tbody>` respectively) rather than reading them off
+/// `cells`/`rows`. Nothing in the type enforces any of this — it's a
+/// per-variant convention, since a writer maps every carrier through the same
+/// class-name/declaration lookup regardless of where it came from. A future
+/// `TableColumn`-scoped class (a `<col>`/`<colgroup>` concern) belongs in this
+/// same enum too.
 ///
 /// Naming follows gt's classes (`gt_row`, `gt_col_heading`,
 /// `gt_column_spanner_outer`, ...). The structural variants are recorded by
@@ -245,12 +251,22 @@ impl std::fmt::Display for TableCellKind {
 /// than recorded here.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TableClass {
+    /// The whole table (gt's `gt_table`).
+    Table,
+    /// The `<tbody>` wrapping every body row (gt's `gt_table_body`). Not to
+    /// be confused with `Row`, which is per-cell rather than for the whole
+    /// section.
+    TableBody,
     /// A body cell (gt's `gt_row`).
     Row,
     /// A row-label cell in the stub (`TableCellKind::StubRowLabel`).
     Stub,
     /// A column-label cell (gt's `gt_col_heading`).
     ColHeading,
+    /// Row-scoped: the `<tr>` wrapping the row of column-label cells (gt's
+    /// `gt_col_headings` — note the plural, distinguishing it from the
+    /// singular per-cell `gt_col_heading`).
+    ColHeadingRow,
     /// The stub's own header cell (`TableCellKind::StubHead`). No gt
     /// equivalent — gt's own stubhead has no dedicated CSS class of its
     /// own, unlike this one.
@@ -281,9 +297,12 @@ impl std::fmt::Display for TableClass {
     /// `ggsql_row` for `Row` in the HTML writer.
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let text = match self {
+            TableClass::Table => "table",
+            TableClass::TableBody => "table_body",
             TableClass::Row => "row",
             TableClass::Stub => "stub",
             TableClass::ColHeading => "col_heading",
+            TableClass::ColHeadingRow => "col_heading_row",
             TableClass::StubHead => "stub_head",
             TableClass::Spanner => "spanner",
             TableClass::SpannerOuter => "spanner_outer",

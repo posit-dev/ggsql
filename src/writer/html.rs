@@ -16,9 +16,12 @@
 //!   attribute from that column's resolved `width` (a bare `<col>` for a
 //!   column with none) in both modes — targeted column styling stays inline,
 //!   as gt keeps `tab_style()` rules inline.
-//! - `rows` → a class on the `<tr>` itself (`Heading`, for a `Title`/
-//!   `Subtitle` row) — the only row-wide property that exists to render so
-//!   far.
+//! - `rows` → a class on the `<tr>` itself (`Heading` for a `Title`/
+//!   `Subtitle` row, `ColHeadingRow` for the column-label row) — the only
+//!   row-wide property that exists to render so far.
+//! - The `<table>`/`<tbody>` elements always carry `TableClass::Table`/
+//!   `TableClass::TableBody` respectively — the two classes with no
+//!   `TableCell`/`TableRow` to be recorded on — see their own doc comments.
 //!
 //! No footnotes yet, since `Table` has no field for those. Spanner rows are
 //! rendered (as `colspan`, one `<tr>` per level, above the column labels);
@@ -147,7 +150,18 @@ impl Writer for HtmlWriter {
         if self.css_mode == CssMode::Class {
             html.push_str(&render_style_block());
         }
-        html.push_str("<table>\n");
+        let table_attrs = styling_attr(&[TableClass::Table], self.css_mode);
+        // Opt out of Quarto's HTML table processing (the Bootstrap
+        // `.table`/`.table-striped` classes it adds to a raw <table> that
+        // doesn't already declare an opinion): `data-quarto-disable-processing`
+        // has to be `"true"` — Quarto reads it, and "false" means "processing
+        // is not disabled," i.e. go ahead. Verified against a real `quarto
+        // render` of doc/syntax/clause/tabulate.qmd; gt's own writer sets the
+        // same two attributes, but (confirmed the same way) with the same
+        // wrong "false" value, so it does not actually work for gt either.
+        let quarto_opt_out =
+            " data-quarto-disable-processing=\"true\" data-quarto-bootstrap=\"false\"";
+        html.push_str(&format!("<table{quarto_opt_out}{table_attrs}>\n"));
 
         for caption in &caption_cells {
             html.push_str(&render_caption(caption, self.css_mode));
@@ -170,7 +184,8 @@ impl Writer for HtmlWriter {
         }
 
         if !body_rows.is_empty() {
-            html.push_str("<tbody>\n");
+            let tbody_attrs = styling_attr(&[TableClass::TableBody], self.css_mode);
+            html.push_str(&format!("<tbody{tbody_attrs}>\n"));
             for row in &body_rows {
                 let slots = all_slots
                     .remove(row)
@@ -193,16 +208,157 @@ impl Writer for HtmlWriter {
 /// pure semantic hooks for the embedder.
 fn class_declarations(class: TableClass) -> &'static [(&'static str, &'static str)] {
     match class {
-        TableClass::Row
-        | TableClass::Stub
-        | TableClass::ColHeading
-        | TableClass::StubHead
-        | TableClass::Spanner
-        | TableClass::SpannerOuter
-        | TableClass::Title
-        | TableClass::Subtitle
-        | TableClass::Caption
-        | TableClass::Heading => &[],
+        TableClass::Table => &[
+            ("display", "table"),
+            ("border-collapse", "collapse"),
+            ("margin-left", "auto"),
+            ("margin-right", "auto"),
+            ("color", "#333333"),
+            ("font-size", "16px"),
+            ("font-weight", "normal"),
+            ("background-color", "#FFFFFF"),
+            ("width", "auto"),
+            ("border-top-style", "solid"),
+            ("border-top-width", "2px"),
+            ("border-top-color", "#A8A8A8"),
+            ("border-right-style", "none"),
+            ("border-right-width", "2px"),
+            ("border-right-color", "#D3D3D3"),
+            ("border-bottom-style", "solid"),
+            ("border-bottom-width", "2px"),
+            ("border-bottom-color", "#A8A8A8"),
+            ("border-left-style", "none"),
+            ("border-left-width", "2px"),
+            ("border-left-color", "#D3D3D3"),
+        ],
+        TableClass::TableBody => &[
+            ("border-top-style", "solid"),
+            ("border-top-width", "2px"),
+            ("border-top-color", "#D3D3D3"),
+            ("border-bottom-style", "solid"),
+            ("border-bottom-width", "2px"),
+            ("border-bottom-color", "#D3D3D3"),
+        ],
+        TableClass::Row => &[
+            ("padding-top", "8px"),
+            ("padding-bottom", "8px"),
+            ("padding-left", "5px"),
+            ("padding-right", "5px"),
+            ("margin", "10px"),
+            ("border-top-style", "solid"),
+            ("border-top-width", "1px"),
+            ("border-top-color", "#D3D3D3"),
+            ("border-left-style", "none"),
+            ("border-left-width", "1px"),
+            ("border-left-color", "#D3D3D3"),
+            ("border-right-style", "none"),
+            ("border-right-width", "1px"),
+            ("border-right-color", "#D3D3D3"),
+            ("vertical-align", "middle"),
+            ("overflow-x", "hidden"),
+        ],
+        TableClass::Stub => &[
+            ("color", "#333333"),
+            ("background-color", "#FFFFFF"),
+            ("font-size", "100%"),
+            ("font-weight", "initial"),
+            ("text-transform", "inherit"),
+            ("border-right-style", "solid"),
+            ("border-right-width", "2px"),
+            ("border-right-color", "#D3D3D3"),
+            ("padding-left", "5px"),
+            ("padding-right", "5px"),
+        ],
+        TableClass::ColHeading => &[
+            ("color", "#333333"),
+            ("background-color", "#FFFFFF"),
+            ("font-size", "100%"),
+            ("font-weight", "normal"),
+            ("text-transform", "inherit"),
+            ("border-left-style", "none"),
+            ("border-left-width", "1px"),
+            ("border-left-color", "#D3D3D3"),
+            ("border-right-style", "none"),
+            ("border-right-width", "1px"),
+            ("border-right-color", "#D3D3D3"),
+            ("vertical-align", "bottom"),
+            ("padding-top", "5px"),
+            ("padding-bottom", "6px"),
+            ("padding-left", "5px"),
+            ("padding-right", "5px"),
+            ("overflow-x", "hidden"),
+        ],
+        TableClass::StubHead => &[],
+        TableClass::ColHeadingRow => &[
+            ("border-top-style", "solid"),
+            ("border-top-width", "2px"),
+            ("border-top-color", "#D3D3D3"),
+            ("border-bottom-style", "solid"),
+            ("border-bottom-width", "2px"),
+            ("border-bottom-color", "#D3D3D3"),
+            ("border-left-style", "none"),
+            ("border-left-width", "1px"),
+            ("border-left-color", "#D3D3D3"),
+            ("border-right-style", "none"),
+            ("border-right-width", "1px"),
+            ("border-right-color", "#D3D3D3"),
+        ],
+        TableClass::Spanner => &[
+            ("border-bottom-style", "solid"),
+            ("border-bottom-width", "2px"),
+            ("border-bottom-color", "#D3D3D3"),
+            ("vertical-align", "bottom"),
+            ("padding-top", "5px"),
+            ("padding-bottom", "5px"),
+            ("overflow-x", "hidden"),
+            ("display", "inline-block"),
+            ("width", "100%"),
+        ],
+        TableClass::SpannerOuter => &[
+            ("color", "#333333"),
+            ("background-color", "#FFFFFF"),
+            ("font-size", "100%"),
+            ("font-weight", "normal"),
+            ("text-transform", "inherit"),
+            ("padding-top", "0"),
+            ("padding-bottom", "0"),
+            ("padding-left", "4px"),
+            ("padding-right", "4px"),
+        ],
+        TableClass::Title => &[
+            ("color", "#333333"),
+            ("font-size", "125%"),
+            ("font-weight", "initial"),
+            ("padding-top", "4px"),
+            ("padding-bottom", "4px"),
+            ("padding-left", "5px"),
+            ("padding-right", "5px"),
+            ("border-bottom-color", "#FFFFFF"),
+            ("border-bottom-width", "0"),
+        ],
+        TableClass::Subtitle => &[
+            ("color", "#333333"),
+            ("font-size", "85%"),
+            ("font-weight", "initial"),
+            ("padding-top", "3px"),
+            ("padding-bottom", "5px"),
+            ("padding-left", "5px"),
+            ("padding-right", "5px"),
+            ("border-top-color", "#FFFFFF"),
+            ("border-top-width", "0"),
+        ],
+        TableClass::Caption => &[("padding-top", "4px"), ("padding-bottom", "4px")],
+        TableClass::Heading => &[
+            ("background-color", "#FFFFFF"),
+            ("text-align", "center"),
+            ("border-bottom-color", "#FFFFFF"),
+            ("border-left-style", "none"),
+            ("border-left-width", "1px"),
+            ("border-left-color", "#D3D3D3"),
+            ("border-right-style", "none"),
+            ("border-right-width", "1px"),
+            ("border-right-color", "#D3D3D3"),
+        ],
         TableClass::AlignLeft => &[("text-align", "left")],
         TableClass::AlignCenter => &[("text-align", "center")],
         TableClass::AlignRight => &[
@@ -219,6 +375,18 @@ fn class_declarations(class: TableClass) -> &'static [(&'static str, &'static st
 /// precedence in class mode; `inline_style`'s own precedence instead follows
 /// the order of the cell's `classes` field (see its doc comment).
 const STYLED_CLASSES: &[TableClass] = &[
+    TableClass::Table,
+    TableClass::TableBody,
+    TableClass::Row,
+    TableClass::Stub,
+    TableClass::ColHeading,
+    TableClass::ColHeadingRow,
+    TableClass::Spanner,
+    TableClass::SpannerOuter,
+    TableClass::Title,
+    TableClass::Subtitle,
+    TableClass::Caption,
+    TableClass::Heading,
     TableClass::AlignLeft,
     TableClass::AlignCenter,
     TableClass::AlignRight,
@@ -226,8 +394,8 @@ const STYLED_CLASSES: &[TableClass] = &[
 
 /// The `<style>` block class mode prepends — one rule per styled class,
 /// generated from the same lookup inline mode folds into `style` attributes,
-/// so the modes can't drift. Emitted unconditionally: three short rules
-/// aren't worth a pass over the cells to see which are used.
+/// so the modes can't drift. Emitted unconditionally: it's not worth a pass
+/// over the cells to see which classes are actually used.
 fn render_style_block() -> String {
     let mut block = String::from("<style>\n");
     for &class in STYLED_CLASSES {
@@ -600,8 +768,9 @@ mod render_tests {
             inline_style(&[TableClass::AlignRight]),
             Some("text-align: right; font-variant-numeric: tabular-nums".to_string())
         );
-        // Structural classes carry no declarations.
-        assert_eq!(inline_style(&[TableClass::Row]), None);
+        // `StubHead` is the one structural class with no gt equivalent and
+        // so no declarations.
+        assert_eq!(inline_style(&[TableClass::StubHead]), None);
     }
 
     #[test]
@@ -733,15 +902,25 @@ mod render_tests {
         .write_table(&cells, &[], &rows)
         .unwrap();
 
+        // The <table>/<tbody> tags' own attributes are `TableClass::Table`/
+        // `TableClass::TableBody`'s concern, not this test's — split both off
+        // and check only that each is the tag it claims to be, then
+        // assert_eq! the rest verbatim.
+        let (table_tag, rest) = html.split_once('\n').unwrap();
+        assert!(table_tag.starts_with("<table") && table_tag.ends_with('>'));
+        let (before_tbody, rest) = rest.split_once("<tbody").unwrap();
+        let (tbody_tag, rest) = rest.split_once('\n').unwrap();
+        assert!(tbody_tag.ends_with('>'));
         assert_eq!(
-            html,
-            "<table>\n\
-             <thead>\n\
+            before_tbody,
+            "<thead>\n\
              <tr><th></th><th rowspan=\"2\"></th></tr>\n\
              <tr><th></th></tr>\n\
-             </thead>\n\
-             <tbody>\n\
-             <tr><td></td><td></td></tr>\n\
+             </thead>\n"
+        );
+        assert_eq!(
+            rest,
+            "<tr><td></td><td></td></tr>\n\
              </tbody>\n\
              </table>"
         );
@@ -770,8 +949,11 @@ mod render_tests {
         .unwrap();
 
         // <caption> is table's first child, before <thead>/<tbody>, and its
-        // content is escaped like any other cell's.
-        assert!(html.starts_with("<table>\n<caption>&lt;b&gt;Source&lt;/b&gt;</caption>\n"));
+        // content is escaped like any other cell's. The <table> tag's own
+        // attributes are `TableClass::Table`'s concern, not this test's.
+        let (table_tag, rest) = html.split_once('\n').unwrap();
+        assert!(table_tag.starts_with("<table") && table_tag.ends_with('>'));
+        assert!(rest.starts_with("<caption>&lt;b&gt;Source&lt;/b&gt;</caption>\n"));
         assert!(html.find("<caption>").unwrap() < html.find("<thead>").unwrap());
         // Not part of the grid: no <th>/<td> for it, and it doesn't trip the
         // "header above body" check despite sitting below the body row.
@@ -804,9 +986,9 @@ mod render_tests {
     }
 
     #[test]
-    fn write_table_omits_an_inline_mode_heading_class_with_no_declarations() {
-        // `Heading` carries no CSS declarations, so inline mode's <tr> stays
-        // bare even though a row class was recorded.
+    fn write_table_renders_an_inline_mode_heading_row_style_from_row_classes() {
+        // `Heading` carries real declarations, so inline mode's <tr> gets a
+        // style attribute from the recorded row class.
         let cells = vec![
             cell(TableCellKind::Title, 0, 0, 0, 0).with_classes(vec![TableClass::Title]),
             cell(TableCellKind::Body, 1, 1, 0, 0),
@@ -825,7 +1007,9 @@ mod render_tests {
         .write_table(&cells, &[], &rows)
         .unwrap();
 
-        assert!(html.contains("<tr><th></th></tr>"));
+        assert!(html.contains("<tr style=\"background-color: #FFFFFF"));
+        // The body row has no recorded row classes, so its <tr> stays bare.
+        assert!(html.contains("<tr><td></td></tr>"));
     }
 }
 
@@ -852,7 +1036,7 @@ mod tests {
         // resolve_column_properties's/discretise_hjust's own tests — this
         // just checks the columns render and escaping works end to end.
         assert!(html.starts_with("<style>"));
-        assert!(html.contains("<table>"));
+        assert!(html.contains("data-quarto-bootstrap=\"false\" class=\"ggsql_table\">"));
         assert!(html.contains(">id</th>"));
         assert!(html.contains(">name</th>"));
         // Class mode: "id"/1 is numeric (right), "name" is text (left) —
@@ -879,11 +1063,13 @@ mod tests {
             HtmlWriter::from_options(&WriterOptions::parse(["css_mode=inline"]).unwrap()).unwrap();
         let html = writer.render(&spec).unwrap();
 
-        assert!(html.starts_with("<table>"));
+        assert!(html.starts_with("<table"));
         assert!(!html.contains("<style>"));
         assert!(!html.contains("class="));
-        assert!(html.contains("style=\"text-align: right")); // "id"/1, numeric
-        assert!(html.contains("style=\"text-align: left")); // "name", text
+        // "id"/1 is numeric (right), "name" is text (left) — both cells also
+        // carry `Row`'s own declarations, folded in ahead of alignment's.
+        assert!(html.contains("text-align: right"));
+        assert!(html.contains("text-align: left"));
     }
 
     #[test]
@@ -906,9 +1092,10 @@ mod tests {
         // Alignment styling is incidental here (amount/id are numeric) and
         // covered precisely by resolve_column_properties's own tests — this
         // checks colspan/rowspan/ordering, not exact style content. The
-        // single spanner level is the topmost one, hence `spanner_outer`.
+        // single spanner level is the topmost one, hence `spanner_outer`,
+        // and it's centred by default.
         assert!(html.contains(
-            "<tr><th colspan=\"2\" class=\"ggsql_spanner_outer\">Info</th><th rowspan=\"2\""
+            "<tr><th colspan=\"2\" class=\"ggsql_spanner_outer ggsql_center\">Info</th><th rowspan=\"2\""
         ));
         assert!(html.contains(">amount</th>"));
         assert!(html.contains(">id</th>"));

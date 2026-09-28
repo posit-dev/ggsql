@@ -191,11 +191,12 @@ pub(crate) fn create_spanners(columns: &[TableColumn], spans: &[Spanner]) -> Res
         // Row 0 is topmost. Level 1 is bottom-most.
         let row = max_level - level;
         // The topmost level's class supplants the base one, mirroring gt's
-        // `gt_column_spanner_outer`.
-        let class = if row == 0 {
-            TableClass::SpannerOuter
+        // `gt_column_spanner_outer`. Centred by default — gt centres its
+        // spanner labels too.
+        let classes = if row == 0 {
+            vec![TableClass::SpannerOuter, TableClass::AlignCenter]
         } else {
-            TableClass::Spanner
+            vec![TableClass::Spanner, TableClass::AlignCenter]
         };
 
         // We use run length encoding to find 'runs' of columns belonging to span.
@@ -218,7 +219,7 @@ pub(crate) fn create_spanners(columns: &[TableColumn], spans: &[Spanner]) -> Res
                             index - 1,
                             label.clone(),
                         )
-                        .with_classes(vec![class]),
+                        .with_classes(classes.clone()),
                     );
                     run_start = None;
                 }
@@ -236,7 +237,7 @@ pub(crate) fn create_spanners(columns: &[TableColumn], spans: &[Spanner]) -> Res
                     columns.len() - 1,
                     label.clone(),
                 )
-                .with_classes(vec![class]),
+                .with_classes(classes),
             );
         }
     }
@@ -520,8 +521,12 @@ mod tests {
         let g1 = cells.iter().find(|c| c.content == "G1").unwrap();
         let g2 = cells.iter().find(|c| c.content == "G2").unwrap();
         // G2 sits in the topmost row (row 0) — its class supplants Spanner.
-        assert_eq!(g2.classes, [TableClass::SpannerOuter]);
-        assert_eq!(g1.classes, [TableClass::Spanner]);
+        // Both are centred by default.
+        assert_eq!(
+            g2.classes,
+            [TableClass::SpannerOuter, TableClass::AlignCenter]
+        );
+        assert_eq!(g1.classes, [TableClass::Spanner, TableClass::AlignCenter]);
     }
 
     #[test]
