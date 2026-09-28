@@ -4,13 +4,13 @@
     "items": [
       "/gallery/examples/scatterplot.html",
       "/gallery/examples/minard.html",
-      "/gallery/examples/pie-chart.html",
       "/gallery/examples/line-chart.html",
-      "/gallery/examples/violin.html",
+      "/gallery/examples/pie-chart.html",
       "/gallery/examples/boxplot.html",
-      "/gallery/examples/heatmap.html",
       "/gallery/examples/density.html",
       "/gallery/examples/bar-chart.html",
+      "/gallery/examples/heatmap.html",
+      "/gallery/examples/violin.html",
       "/gallery/examples/histogram.html",
       "/gallery/examples/multi-layer.html",
       "/gallery/examples/faceted.html"
@@ -21,13 +21,13 @@
     "items": [
       "/gallery/examples/scatterplot.html",
       "/gallery/examples/minard.html",
-      "/gallery/examples/pie-chart.html",
       "/gallery/examples/line-chart.html",
-      "/gallery/examples/violin.html",
+      "/gallery/examples/pie-chart.html",
       "/gallery/examples/boxplot.html",
-      "/gallery/examples/heatmap.html",
       "/gallery/examples/density.html",
       "/gallery/examples/bar-chart.html",
+      "/gallery/examples/heatmap.html",
+      "/gallery/examples/violin.html",
       "/gallery/examples/histogram.html",
       "/gallery/examples/multi-layer.html",
       "/gallery/examples/faceted.html"

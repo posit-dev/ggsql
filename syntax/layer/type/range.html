@@ -83,9 +83,9 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <link href="../../../site_libs/quarto-html/quarto-syntax-highlighting-e131044d240100175ae26abf2c919e9c.css" rel="stylesheet" class="quarto-color-scheme-extra" id="quarto-text-highlighting-styles">
 <script src="../../../site_libs/bootstrap/bootstrap.min.js"></script>
 <link href="../../../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
-<link href="../../../site_libs/bootstrap/bootstrap-ee2fbf1385f1445439e0330faa874de9.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme" id="quarto-bootstrap" data-mode="light">
-<link href="../../../site_libs/bootstrap/bootstrap-dark-48c390d65c4999e95bad94a105d94c4e.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme quarto-color-alternate" id="quarto-bootstrap" data-mode="light">
-<link href="../../../site_libs/bootstrap/bootstrap-ee2fbf1385f1445439e0330faa874de9.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme-extra" id="quarto-bootstrap" data-mode="light">
+<link href="../../../site_libs/bootstrap/bootstrap-1eebddb43361c49555f78b62cc697911.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme" id="quarto-bootstrap" data-mode="light">
+<link href="../../../site_libs/bootstrap/bootstrap-dark-cd2519afc2a6855f991f8038b8358226.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme quarto-color-alternate" id="quarto-bootstrap" data-mode="light">
+<link href="../../../site_libs/bootstrap/bootstrap-1eebddb43361c49555f78b62cc697911.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme-extra" id="quarto-bootstrap" data-mode="light">
 <script src="../../../site_libs/quarto-contrib/iconify-3.0.0/iconify-icon.min.js"></script>
 <script src="../../../site_libs/quarto-contrib/glightbox/glightbox.min.js"></script>
 <link href="../../../site_libs/quarto-contrib/glightbox/glightbox.min.css" rel="stylesheet">
@@ -728,7 +728,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </section>
 <section id="examples" class="level2">
 <h2 class="anchored" data-anchor-id="examples">Examples</h2>
-<div id="3360e0d5" class="cell" data-execution_count="1">
+<div id="32fb9a87" class="cell" data-execution_count="1">
 <details class="code-fold">
 <summary>Create example data</summary>
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb1"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="kw">CREATE</span> <span class="kw">TABLE</span> penguin_summary <span class="kw">AS</span></span>
@@ -742,7 +742,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </details>
 </div>
 <p>A classic interval-with-point display.</p>
-<div id="9d07f9a1" class="cell" data-execution_count="2">
+<div id="8b7edc33" class="cell" data-execution_count="2">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb2"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> species <span class="kw">AS</span> <span class="at">x</span> <span class="kw">FROM</span> penguin_summary</span>
 <span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">range</span></span>
 <span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>  <span class="kw">MAPPING</span> low AS <span class="at">ymax</span>, high AS <span class="at">ymin</span></span>
@@ -757,7 +757,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </div>
 </div>
 <p>Dynamite plot using bars instead of points, with extra wide hinges.</p>
-<div id="48616e11" class="cell" data-execution_count="3">
+<div id="615b371d" class="cell" data-execution_count="3">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb3"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> species <span class="kw">AS</span> <span class="at">x</span> <span class="kw">FROM</span> penguin_summary</span>
 <span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">range</span></span>
 <span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>  <span class="kw">MAPPING</span> low AS <span class="at">ymax</span>, high AS <span class="at">ymin</span></span>
@@ -773,7 +773,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </div>
 </div>
 <p>The hinges can be omitted by setting <code>null</code> as hinge, leaving just the line segment between the endpoints.</p>
-<div id="b5416035" class="cell" data-execution_count="4">
+<div id="5681d121" class="cell" data-execution_count="4">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb4"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> species <span class="kw">AS</span> <span class="at">x</span> <span class="kw">FROM</span> penguin_summary</span>
 <span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">range</span></span>
 <span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>  <span class="kw">MAPPING</span> low AS <span class="at">ymax</span>, high AS <span class="at">ymin</span></span>
@@ -787,7 +787,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </div>
 </div>
 <p>A horizontal range can be rendered by swapping the <code>x</code> and <code>y</code> directions.</p>
-<div id="30f59454" class="cell" data-execution_count="5">
+<div id="40e1d3df" class="cell" data-execution_count="5">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb5"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> species <span class="kw">AS</span> <span class="at">y</span> <span class="kw">FROM</span> penguin_summary</span>
 <span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">range</span></span>
 <span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>  <span class="kw">MAPPING</span> low AS <span class="at">xmax</span>, high AS <span class="at">xmin</span></span>
@@ -802,7 +802,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </div>
 </div>
 <p>By overlaying a thick range over a thin one, you can build a candlestick chart. Both layers turn the hinges off so the marks read as clean vertical lines: the wick spans low-to-high and the body spans open-to-close.</p>
-<div id="caf1f7fc" class="cell" data-execution_count="6">
+<div id="00139605" class="cell" data-execution_count="6">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb6"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="kw">SELECT</span></span>
 <span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>  <span class="kw">FIRST</span>(Date) <span class="kw">AS</span> date,</span>
 <span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>  <span class="kw">FIRST</span>(<span class="kw">temp</span>) <span class="kw">AS</span> open,</span>
@@ -832,7 +832,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </div>
 </div>
 <p>Rather than precomputing the values and plotting them, you can use the aggregate functionality to calculate the relevant statistics dynamically:</p>
-<div id="34b54ba9" class="cell" data-execution_count="7">
+<div id="2ef7eab5" class="cell" data-execution_count="7">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb7"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> Date <span class="kw">AS</span> <span class="at">x</span>, Temp <span class="kw">AS</span> <span class="at">ymin</span>, Temp <span class="kw">AS</span> <span class="at">ymax</span>, Temp <span class="kw">AS</span> <span class="at">color</span> </span>
 <span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>  <span class="kw">FROM</span> ggsql:airquality</span>
 <span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">range</span></span>

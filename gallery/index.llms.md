@@ -14,35 +14,23 @@ Basic scatter plot mapping two numeric variables to position
 
 Re-creating the famous visualisation from Minard.
 
-![](../gallery/examples/thumbnails/pie-chart.svg)
-
-##### Pie chart
-
-Visualisation of proportions
-
 ![](../gallery/examples/thumbnails/line-chart.svg)
 
 ##### Line chart
 
 Time series visualization with proper date scaling
 
-![](../gallery/examples/thumbnails/violin-plot.svg)
+![](../gallery/examples/thumbnails/pie-chart.svg)
 
-##### Violin plots
+##### Pie chart
 
-Showing groups of distributions of single numeric variables
+Visualisation of proportions
 
 ![](../gallery/examples/thumbnails/boxplot.svg)
 
 ##### Box plots
 
 Showing groups of distributions of single numeric variables
-
-![](../gallery/examples/thumbnails/heatmap.svg)
-
-##### Heatmap
-
-Arranging tiles on a grid
 
 ![](../gallery/examples/thumbnails/density-plot.svg)
 
@@ -55,6 +43,18 @@ Showing smooth distributions of single numeric variables
 ##### Bar chart
 
 Categorical comparisons using bars
+
+![](../gallery/examples/thumbnails/heatmap.svg)
+
+##### Heatmap
+
+Arranging tiles on a grid
+
+![](../gallery/examples/thumbnails/violin-plot.svg)
+
+##### Violin plots
+
+Showing groups of distributions of single numeric variables
 
 ![](../gallery/examples/thumbnails/histogram.svg)
 

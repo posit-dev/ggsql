@@ -36,21 +36,21 @@ LABEL
 
 ##### Napoleon’s march to Moscow
 
-![](./gallery/examples/thumbnails/pie-chart.svg)
-
-##### Pie chart
-
 ![](./gallery/examples/thumbnails/line-chart.svg)
 
 ##### Line chart
 
-![](./gallery/examples/thumbnails/violin-plot.svg)
+![](./gallery/examples/thumbnails/pie-chart.svg)
 
-##### Violin plots
+##### Pie chart
 
 ![](./gallery/examples/thumbnails/boxplot.svg)
 
 ##### Box plots
+
+![](./gallery/examples/thumbnails/density-plot.svg)
+
+##### Density plots
 
 [See all examples →](gallery/index.llms.md)
 
