@@ -177,14 +177,16 @@ pub enum TableCellKind {
     /// Full-width like `Title`/`Subtitle`, but rendered outside the normal
     /// row grid entirely — see `HtmlWriter`'s module doc.
     Caption,
+    /// An empty cell synthesized in `execute` to fill a grid position no
+    /// real cell reaches. Distinct from whatever kind it visually stands in
+    /// for, so kind-based filtering can't mistake it for real structure.
+    Filler,
 }
 
 impl TableCellKind {
     /// Whether a cell of this kind belongs in a table's header (`ColumnLabel`,
-    /// `StubHead`, `Spanner`, `Title`, `Subtitle`) rather than its body
-    /// (`Body`, `StubRowLabel`) — the kind alone decides it, which is what
-    /// lets this be asked off a bare `TableCellKind` (a synthesized filler
-    /// has no real `TableCell` of its own) as well as off a full cell, via
+    /// `StubHead`, `Spanner`, `Title`, `Subtitle`, `Filler`) rather than its
+    /// body (`Body`, `StubRowLabel`) — the kind alone decides it, via
     /// `TableCell::is_header` below. `Caption` stays out of this: a writer
     /// is expected to pull it out of the grid entirely rather than render
     /// it as either.
@@ -196,6 +198,7 @@ impl TableCellKind {
                 | TableCellKind::Spanner
                 | TableCellKind::Title
                 | TableCellKind::Subtitle
+                | TableCellKind::Filler // every case today is header-shaped
         )
     }
 }
@@ -211,6 +214,7 @@ impl std::fmt::Display for TableCellKind {
             TableCellKind::Title => "title",
             TableCellKind::Subtitle => "subtitle",
             TableCellKind::Caption => "caption",
+            TableCellKind::Filler => "filler",
         };
         write!(f, "{text}")
     }
@@ -450,6 +454,7 @@ mod tests {
         assert_eq!(TableCellKind::Title.to_string(), "title");
         assert_eq!(TableCellKind::Subtitle.to_string(), "subtitle");
         assert_eq!(TableCellKind::Caption.to_string(), "caption");
+        assert_eq!(TableCellKind::Filler.to_string(), "filler");
     }
 
     #[test]

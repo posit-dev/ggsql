@@ -360,16 +360,11 @@ fn column_style(properties: &Parameters) -> Option<String> {
 /// table by `build_all_slots` rather than worked out inline while
 /// `render_row` walks columns.
 enum Slot<'a> {
-    /// A real cell starting at this column.
+    /// A real cell starting at this column, `Filler` included — same
+    /// render path as any other kind.
     Cell(&'a TableCell),
-    /// A genuine gap: no real cell reaches this column, so a blank cell is
-    /// synthesized matching the row's own dominant kind/classes.
-    Filler {
-        kind: TableCellKind,
-        classes: &'a [TableClass],
-    },
     /// A column a rowspan from an earlier row already claims — nothing
-    /// rendered here at all, not even a filler.
+    /// rendered here at all.
     Skip,
 }
 
@@ -401,12 +396,8 @@ fn split_rows(rows: &[TableRow], nrow: usize) -> (Vec<usize>, Vec<usize>) {
 /// already has them, computed from `cells` itself, which by this point is
 /// caption-free (see `write_table`'s own caption split).
 ///
-/// Returns one entry per row that has at least one cell actually starting
-/// in it — a row entirely swallowed by an earlier rowspan (nothing in it
-/// but continuation) is omitted, since it gets no `<tr>` of its own either.
-/// The caller is expected to only ever look up rows it already knows have a
-/// real cell (e.g. from grouping the same `cells` by `top`), which is
-/// exactly the rows this always produces.
+/// Every grid position is expected to already be a real `Cell` or a `Skip`
+/// by the time this runs; see the `expect` below.
 fn build_all_slots(
     cells: &[TableCell],
     ncol: usize,
@@ -426,55 +417,39 @@ fn build_all_slots(
 
     grid.into_iter()
         .enumerate()
-        .filter_map(|(row, row_slots)| {
-            // A gap gets a filler matching the row's own dominant
-            // kind/classes — read off whichever real cell started this row.
-            // Known gap: assumes every real cell in a row shares one
-            // `TableCellKind`/structural class, true of every row today but
-            // not guaranteed to stay true once row stubs (labels/groups)
-            // can share a row with `Body` cells — revisit then.
-            let (kind, classes) = row_slots.iter().find_map(|slot| match slot {
-                Some(Slot::Cell(cell)) => Some((cell.kind, cell.classes.as_slice())),
-                _ => None,
-            })?;
+        .map(|(row, row_slots)| {
             let slots = row_slots
                 .into_iter()
-                .map(|slot| slot.unwrap_or(Slot::Filler { kind, classes }))
+                .map(|slot| {
+                    slot.expect(
+                        "a resolved table's cells cover every grid position; a gap here is an \
+                         execute bug",
+                    )
+                })
                 .collect();
-            Some((row, slots))
+            (row, slots)
         })
         .collect()
 }
 
-/// Render a synthesized filler — a genuine gap in the grid with no real
-/// cell reaching it — as a blank `<th>`/`<td>` matching its row's own
-/// dominant kind/classes. Takes `kind`/`classes` directly rather than a
-/// `&TableCell`, since a filler was never a real cell to begin with.
-fn render_filler(kind: TableCellKind, classes: &[TableClass], mode: CssMode) -> String {
-    let tag = if kind.is_header() { "th" } else { "td" };
-    let attrs = styling_attr(classes, mode);
-    format!("<{tag}{attrs}></{tag}>")
-}
-
 /// Render one row's already-decided `Slot`s as `<tr>...</tr>`. A `Skip`
-/// slot renders nothing at all; a `Cell`/`Filler` slot renders through
-/// `render_cell`/`render_filler`. Styling on the `<tr>` itself comes from
-/// `row`'s recorded classes, same as any other element, via `styling_attr`.
+/// slot renders nothing at all; a `Cell` slot renders through `render_cell`.
+/// Styling on the `<tr>` itself comes from `row`'s recorded classes, same as
+/// any other element, via `styling_attr`.
 fn render_row(slots: &[Slot], row: &TableRow, mode: CssMode) -> String {
-    if slots.is_empty() {
+    // Nothing to render if every slot is a Skip continuation (vacuously
+    // true for an empty `slots` too).
+    if slots.iter().all(|slot| matches!(slot, Slot::Skip)) {
         return String::new();
     }
 
-    // Every `Cell`/`Filler` in a row shares one `TableCellKind` (a `Filler`
-    // inherits it from whichever real cell started the row — see
-    // `build_all_slots`), so the first one found is enough to cross-check
-    // against `row.is_header` — the two are meant to always agree. Gated on
-    // `debug_assertions` so the scan itself, not just the assertion, is
-    // compiled out of a release build.
+    // Every `Cell` in a row shares one `TableCellKind`, so the first one
+    // found is enough to cross-check against `row.is_header` — the two are
+    // meant to always agree. Gated on `debug_assertions` so the scan
+    // itself, not just the assertion, is compiled out of a release build.
     #[cfg(debug_assertions)]
     if let Some(kind) = slots.iter().find_map(|slot| match slot {
         Slot::Cell(cell) => Some(cell.kind),
-        Slot::Filler { kind, .. } => Some(*kind),
         Slot::Skip => None,
     }) {
         debug_assert_eq!(
@@ -489,9 +464,6 @@ fn render_row(slots: &[Slot], row: &TableRow, mode: CssMode) -> String {
     for slot in slots {
         match slot {
             Slot::Cell(cell) => html.push_str(&render_cell(cell, mode)),
-            Slot::Filler { kind, classes } => {
-                html.push_str(&render_filler(*kind, classes, mode));
-            }
             Slot::Skip => {}
         }
     }
@@ -553,6 +525,17 @@ mod render_tests {
     #[test]
     fn render_row_returns_empty_string_for_no_slots() {
         assert_eq!(render_row(&[], &TableRow::default(), CssMode::Inline), "");
+    }
+
+    #[test]
+    fn render_row_returns_empty_string_when_every_slot_is_a_skip() {
+        // A row entirely swallowed by rowspans from earlier rows gets no
+        // `<tr>` of its own either.
+        let slots = vec![Slot::Skip, Slot::Skip];
+        assert_eq!(
+            render_row(&slots, &TableRow::default(), CssMode::Inline),
+            ""
+        );
     }
 
     #[test]
@@ -679,10 +662,13 @@ mod render_tests {
 
     #[test]
     fn build_all_slots_marks_a_rowspans_continuation_row_as_skip() {
-        // Spans rows 0-1 at column 1 — row 1's column 1 is a continuation,
-        // not a gap, even though nothing else in row 1 covers it.
+        // Column 1 spans rows 0-1 — row 1's column 1 is a continuation, not
+        // a gap. Columns 0 and 2 are filled at every row too, since every
+        // grid position needs a real cell.
         let cells = [
             cell(TableCellKind::ColumnLabel, 0, 1, 1, 1),
+            cell(TableCellKind::ColumnLabel, 0, 0, 0, 0),
+            cell(TableCellKind::ColumnLabel, 0, 0, 2, 2),
             cell(TableCellKind::ColumnLabel, 1, 1, 0, 0),
             cell(TableCellKind::ColumnLabel, 1, 1, 2, 2),
         ];
@@ -708,38 +694,13 @@ mod render_tests {
     }
 
     #[test]
-    fn build_all_slots_fills_a_gap_with_the_row_siblings_kind_and_classes() {
-        let cells = [
-            cell(TableCellKind::Spanner, 0, 0, 0, 0).with_classes(vec![TableClass::SpannerOuter]),
-            cell(TableCellKind::Spanner, 0, 0, 2, 2).with_classes(vec![TableClass::SpannerOuter]),
-        ];
+    #[should_panic(expected = "a resolved table's cells cover every grid position")]
+    fn build_all_slots_panics_on_a_genuine_gap() {
+        // execute is expected to have already filled this with a real
+        // Filler cell — reaching the writer at all means a bug upstream.
+        let cells = [cell(TableCellKind::Spanner, 0, 0, 0, 0)];
 
-        let slots = build_all_slots(&cells, 3, 1);
-
-        let row0 = &slots[&0];
-        assert_eq!(row0.len(), 3);
-        assert!(matches!(&row0[0], Slot::Cell(cell) if cell.left == 0));
-        match &row0[1] {
-            Slot::Filler { kind, classes } => {
-                assert_eq!(*kind, TableCellKind::Spanner);
-                assert_eq!(classes.to_vec(), vec![TableClass::SpannerOuter]);
-            }
-            _ => panic!("expected a Filler slot at column 1"),
-        }
-        assert!(matches!(&row0[2], Slot::Cell(cell) if cell.left == 2));
-    }
-
-    #[test]
-    fn render_row_renders_a_filler_with_its_own_kind_and_classes() {
-        let classes = [TableClass::SpannerOuter];
-        let slots = vec![Slot::Filler {
-            kind: TableCellKind::Spanner,
-            classes: &classes,
-        }];
-
-        let row = render_row(&slots, &TableRow::header(), CssMode::Class);
-
-        assert_eq!(row, "<tr><th class=\"ggsql_spanner_outer\"></th></tr>\n");
+        build_all_slots(&cells, 2, 1);
     }
 
     #[test]

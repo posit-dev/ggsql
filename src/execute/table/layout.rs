@@ -10,7 +10,7 @@
 //! entry point, alongside the `TableCellKind`/`TableClass`/`TableCell` public
 //! data model this module builds instances of.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use super::format::resolve_column_properties;
 use super::spanner::{create_spanners, reorder_table_columns};
@@ -445,7 +445,8 @@ fn create_body(df: &DataFrame, columns: &[TableColumn]) -> Vec<TableCell> {
 fn compose_header(spanners: Section, column_labels: Section) -> Section {
     let num_spanner_rows = spanners.rows.len();
     let header = rowbind(spanners, column_labels);
-    stretch_unspanned_column_labels(header, num_spanner_rows)
+    let header = stretch_unspanned_column_labels(header, num_spanner_rows);
+    fill_spanner_gaps(header, num_spanner_rows)
 }
 
 /// Grow a column's label cell upward into every consecutive spanner row
@@ -457,7 +458,7 @@ fn compose_header(spanners: Section, column_labels: Section) -> Section {
 /// rows further up are also empty for that column (verified directly
 /// against gt's own output). Only touches cells — the row count/order is
 /// unaffected, since this never adds, removes, or reassigns a row, only
-/// grows an existing `ColumnLabel` cell's `top` upward.
+/// grows an existing label cell's `top` upward.
 fn stretch_unspanned_column_labels(mut header: Section, num_spanner_rows: usize) -> Section {
     if num_spanner_rows == 0 {
         return header;
@@ -483,13 +484,51 @@ fn stretch_unspanned_column_labels(mut header: Section, num_spanner_rows: usize)
     for label in header
         .cells
         .iter_mut()
-        .filter(|c| c.kind == TableCellKind::ColumnLabel)
+        // A stub column can never be spanned (`Table::validate_span_stub_boundary`),
+        // so its stretch always reaches the full spanner height.
+        .filter(|c| matches!(c.kind, TableCellKind::ColumnLabel | TableCellKind::StubHead))
     {
-        // Assumes every ColumnLabel cell is exactly one column wide (true of
-        // everything create_column_labels produces) — a wider one would need
-        // its own stretch depth reconciled across its whole span, not just
-        // `left`.
+        // Assumes every label cell is exactly one column wide (true of
+        // everything create_column_labels/create_stubhead produce) — a wider
+        // one would need its own stretch depth reconciled across its whole
+        // span, not just `left`.
         label.top -= stretch_depth[label.left];
+    }
+
+    header
+}
+
+/// Fill every spanner-row position the stretch above couldn't reach with a
+/// real, empty `Filler` cell. Class follows `create_spanners`' own rule:
+/// `SpannerOuter` at row 0, `Spanner` otherwise.
+fn fill_spanner_gaps(mut header: Section, num_spanner_rows: usize) -> Section {
+    let ncol = count_cell_cols(&header.cells);
+
+    // Coverage set, O(area) like `validate_overlaps`.
+    let mut occupied: HashSet<(usize, usize)> = HashSet::new();
+    for cell in &header.cells {
+        for row in cell.top..=cell.bottom {
+            for col in cell.left..=cell.right {
+                occupied.insert((row, col));
+            }
+        }
+    }
+
+    for row in 0..num_spanner_rows {
+        for col in 0..ncol {
+            if occupied.contains(&(row, col)) {
+                continue;
+            }
+            let class = if row == 0 {
+                TableClass::SpannerOuter
+            } else {
+                TableClass::Spanner
+            };
+            header.cells.push(
+                TableCell::new(TableCellKind::Filler, row, row, col, col, String::new())
+                    .with_classes(vec![class]),
+            );
+        }
     }
 
     header
@@ -786,12 +825,13 @@ mod tests {
     #[test]
     fn compose_header_stretches_an_unspanned_columns_label_over_the_gap() {
         // "G" covers a, b (columns 0, 1) at the one spanner row; c has no
-        // spanner at all.
+        // spanner at all. c is a StubHead: a stub column is never spanned,
+        // so it stretches the same way an unspanned ColumnLabel does.
         let spanners = vec![cell_at(TableCellKind::Spanner, 0, 0, 0, 1)];
         let column_labels = vec![
             cell_at(TableCellKind::ColumnLabel, 0, 0, 0, 0),
             cell_at(TableCellKind::ColumnLabel, 0, 0, 1, 1),
-            cell_at(TableCellKind::ColumnLabel, 0, 0, 2, 2),
+            cell_at(TableCellKind::StubHead, 0, 0, 2, 2),
         ];
 
         let header = compose_header(section(spanners), section(column_labels)).cells;
@@ -802,7 +842,7 @@ mod tests {
             .unwrap();
         let c = header
             .iter()
-            .find(|c| c.kind == TableCellKind::ColumnLabel && c.left == 2)
+            .find(|c| c.kind == TableCellKind::StubHead && c.left == 2)
             .unwrap();
         assert_eq!((a.top, a.bottom), (1, 1));
         assert_eq!((c.top, c.bottom), (0, 1));
@@ -858,6 +898,44 @@ mod tests {
             .find(|cell| cell.kind == TableCellKind::ColumnLabel && cell.left == 2)
             .unwrap();
         assert_eq!((c.top, c.bottom), (0, 2));
+    }
+
+    #[test]
+    fn compose_header_fills_a_spanner_gap_a_stretch_cant_reach() {
+        // Stub column a, plus X(b,c) level 1, Y(c,d) level 2, Z(b,c) level 3:
+        // d at Z's row (topmost) and b at Y's row (middle) are gaps neither
+        // the stub head nor d's own label stretch reaches.
+        let spanners = vec![
+            cell_at(TableCellKind::Spanner, 0, 0, 1, 2), // Z, topmost
+            cell_at(TableCellKind::Spanner, 1, 1, 2, 3), // Y, middle
+            cell_at(TableCellKind::Spanner, 2, 2, 1, 2), // X, bottom-most
+        ];
+        let column_labels = vec![
+            cell_at(TableCellKind::StubHead, 0, 0, 0, 0),
+            cell_at(TableCellKind::ColumnLabel, 0, 0, 1, 1),
+            cell_at(TableCellKind::ColumnLabel, 0, 0, 2, 2),
+            cell_at(TableCellKind::ColumnLabel, 0, 0, 3, 3),
+        ];
+
+        let header = compose_header(section(spanners), section(column_labels)).cells;
+
+        let fillers: Vec<_> = header
+            .iter()
+            .filter(|c| c.kind == TableCellKind::Filler)
+            .collect();
+        assert_eq!(fillers.len(), 2);
+        let d3 = fillers.iter().find(|c| c.top == 0 && c.left == 3).unwrap();
+        assert_eq!(d3.classes, vec![TableClass::SpannerOuter]);
+        let b2 = fillers.iter().find(|c| c.top == 1 && c.left == 1).unwrap();
+        assert_eq!(b2.classes, vec![TableClass::Spanner]);
+
+        // d's own label absorbs the third gap (row 2, X's row) via the
+        // stretch — no filler there.
+        let d_label = header
+            .iter()
+            .find(|c| c.kind == TableCellKind::ColumnLabel && c.left == 3)
+            .unwrap();
+        assert_eq!((d_label.top, d_label.bottom), (2, 3));
     }
 
     #[test]
