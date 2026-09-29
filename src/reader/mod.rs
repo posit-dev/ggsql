@@ -373,6 +373,19 @@ pub trait SqlDialect {
         }
     }
 
+    /// Whether this backend fundamentally lacks the temporary-table support
+    /// ggsql needs to stage internal tables (CTEs, stat transforms), so a
+    /// connection through it must always be wrapped in a caching reader.
+    ///
+    /// Set this for query engines with no DDL at all (Druid, Drill,
+    /// DataFusion) or where `CREATE TEMP TABLE` is broadly unsupported
+    /// (Trino). Backends whose support is merely *uncertain* — e.g. the
+    /// account may be read-only — should keep the default: connections are
+    /// probed once on connect and wrapped only when the probe fails.
+    fn requires_cache(&self) -> bool {
+        false
+    }
+
     /// SQL listing catalogs, with a single `catalog_name` output column.
     ///
     /// Returns `None` to use the `Reader` default (`information_schema`).

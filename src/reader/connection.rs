@@ -358,7 +358,92 @@ pub fn reader_from_uri(uri: &str) -> Result<Box<dyn Reader + Send>> {
             ));
         }
     }
-    build_reader(uri)
+    let reader = build_reader(uri)?;
+    auto_cache_if_needed(reader, uri)
+}
+
+/// True when the URI query string carries `cache=off`, opting out of the
+/// automatic caching layer.
+fn uri_disables_cache(uri: &str) -> bool {
+    uri.split_once('?')
+        .map(|(_, q)| q.split('&').any(|seg| seg.to_lowercase() == "cache=off"))
+        .unwrap_or(false)
+}
+
+/// Probe whether a freshly connected reader can create the temporary tables
+/// ggsql stages internal results in, using the dialect's own temp-table DDL
+/// (the same mechanism the executor relies on). Best effort: the probe table
+/// is dropped afterwards, and any failure means "cannot".
+fn probe_temp_tables(reader: &dyn Reader) -> bool {
+    let probe = format!("__ggsql_probe_{}__", crate::naming::session_id());
+    let dialect = reader.dialect();
+    let stmts = dialect.create_or_replace_temp_table_sql(&probe, &[], "SELECT 1 AS x");
+    let ok = stmts.iter().all(|s| reader.execute_sql(s).is_ok());
+    let _ = reader.execute_sql(&format!(
+        "DROP TABLE IF EXISTS {}",
+        dialect.quote_ident(&probe)
+    ));
+    ok
+}
+
+/// Wrap `reader` in an in-memory [`CachingReader`] when the backend cannot
+/// host ggsql's internal tables itself: either the dialect requires it
+/// outright (Trino, Druid, Drill, DataFusion) or a one-time temp-table probe
+/// fails (e.g. a read-only account). Explicit cache selection (`<cache>+…`
+/// or `--cache`) has already been handled by the caller and wins; `cache=off`
+/// in the URI opts out.
+///
+/// `duckdb://memory` is the cache backend when the `duckdb` feature is
+/// compiled in, `sqlite://:memory:` otherwise.
+///
+/// [`CachingReader`]: crate::reader::CachingReader
+fn auto_cache_if_needed(
+    reader: Box<dyn Reader + Send>,
+    uri: &str,
+) -> Result<Box<dyn Reader + Send>> {
+    if uri_disables_cache(uri) {
+        return Ok(reader);
+    }
+    let scheme = uri
+        .split_once("://")
+        .map(|(s, _)| s.to_ascii_lowercase())
+        .unwrap_or_default();
+    // The cache backends themselves never need a cache.
+    if scheme == "duckdb" || scheme == "sqlite" {
+        return Ok(reader);
+    }
+    let needed = reader.dialect().requires_cache() || !probe_temp_tables(&*reader);
+    if !needed {
+        return Ok(reader);
+    }
+
+    #[cfg(any(feature = "duckdb", feature = "sqlite"))]
+    {
+        use crate::reader::cache::CacheConfig;
+
+        let (cache_uri, cache_scheme) = if cfg!(feature = "duckdb") {
+            ("duckdb://memory", "duckdb")
+        } else {
+            ("sqlite://:memory:", "sqlite")
+        };
+        let cache = build_reader(cache_uri)?;
+        return Ok(Box::new(crate::reader::CachingReader::with_config(
+            reader,
+            cache,
+            uri.to_string(),
+            cache_scheme.to_string(),
+            CacheConfig::from_env(),
+        )));
+    }
+    #[cfg(not(any(feature = "duckdb", feature = "sqlite")))]
+    {
+        let _ = reader;
+        Err(GgsqlError::ReaderError(format!(
+            "Connection '{uri}' needs an in-memory cache to stage intermediate tables, \
+             but this build has neither the duckdb nor the sqlite feature. \
+             Add ?cache=off to the URI to proceed without one."
+        )))
+    }
 }
 
 /// Extract a value from an ODBC connection string by key, stripping braces.
@@ -379,6 +464,75 @@ pub fn extract_odbc_value(conn_str: &str, key: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_uri_disables_cache() {
+        assert!(uri_disables_cache("postgres://u@h/db?cache=off"));
+        assert!(uri_disables_cache("postgres://u@h/db?DSN=pg&CACHE=OFF"));
+        assert!(!uri_disables_cache("postgres://u@h/db?DSN=pg"));
+        assert!(!uri_disables_cache("postgres://u@h/db"));
+    }
+
+    #[cfg(feature = "duckdb")]
+    #[test]
+    fn test_auto_cache_wraps_when_probe_fails() {
+        use crate::reader::duckdb::DuckDBReader;
+        use crate::reader::test_support::ReadOnlyReader;
+
+        // A read-only primary (temp-table probe fails) gets wrapped.
+        let primary = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        let reader = auto_cache_if_needed(
+            Box::new(ReadOnlyReader::new(Box::new(primary))),
+            "postgres://u@h/db",
+        )
+        .unwrap();
+        assert!(reader.caches_sources(), "expected a caching reader");
+
+        // The wrapped reader runs the full pipeline: temp tables and stat
+        // transforms land in the cache.
+        let spec = reader
+            .execute("SELECT 1.0 AS x, 2.0 AS y VISUALISE x, y DRAW point")
+            .unwrap();
+        assert_eq!(spec.metadata().rows, 1);
+    }
+
+    #[cfg(feature = "duckdb")]
+    #[test]
+    fn test_auto_cache_skips_writable_and_opted_out() {
+        use crate::reader::duckdb::DuckDBReader;
+        use crate::reader::test_support::ReadOnlyReader;
+
+        // A writable primary passes the probe and is used directly.
+        let primary = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        let reader = auto_cache_if_needed(Box::new(primary), "postgres://u@h/db").unwrap();
+        assert!(!reader.caches_sources(), "no cache expected");
+
+        // cache=off wins even when the probe would fail.
+        let primary = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        let reader = auto_cache_if_needed(
+            Box::new(ReadOnlyReader::new(Box::new(primary))),
+            "postgres://u@h/db?cache=off",
+        )
+        .unwrap();
+        assert!(!reader.caches_sources(), "cache=off must be honored");
+
+        // The cache backends themselves are never wrapped.
+        let primary = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        let reader = auto_cache_if_needed(Box::new(primary), "duckdb://memory").unwrap();
+        assert!(!reader.caches_sources(), "duckdb needs no cache");
+    }
+
+    #[test]
+    fn test_requires_cache_dialects() {
+        for scheme in ["trino", "druid", "drill", "datafusion"] {
+            let d = crate::reader::dialects::dialect_for_scheme(scheme).unwrap();
+            assert!(d.requires_cache(), "scheme {scheme} should require a cache");
+        }
+        for scheme in ["postgres", "duckdb", "sqlite", "clickhouse"] {
+            let d = crate::reader::dialects::dialect_for_scheme(scheme).unwrap();
+            assert!(!d.requires_cache(), "scheme {scheme} should be probed");
+        }
+    }
 
     #[test]
     fn test_build_reader_unsupported_scheme() {

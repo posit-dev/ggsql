@@ -99,13 +99,13 @@ Beyond `duckdb://` and `sqlite://`, ggsql speaks directly to the databases below
 | `databricks://` | `spark://` | |
 | `redshift://` | | |
 | `clickhouse://` | | Spatial not supported |
-| `trino://` | | Pair with `--cache` for multi-layer plots |
+| `trino://` | | In-memory cache added automatically (no temp tables) |
 | `oracle://` | | Spatial not supported |
 | `exasol://` | | |
 | `monetdb://` | | |
-| `druid://` | | No date/time/boolean types; pair with `--cache` |
-| `drill://` | | Spatial not supported |
-| `datafusion://` | | Pair with `--cache`; spatial not supported |
+| `druid://` | | No date/time/boolean types; in-memory cache added automatically |
+| `drill://` | | Spatial not supported; in-memory cache added automatically |
+| `datafusion://` | | Spatial not supported; in-memory cache added automatically |
 | `flightsql://` | | ADBC Flight SQL endpoint |
 | `adbc://` | | `adbc://<driver-name-or-path>?uri=…` for any ADBC driver |
 | `odbc://` | | Raw ODBC connection string, e.g. `odbc://Driver=…;Server=…`; the dialect is detected from the driver or DBMS name |
@@ -134,6 +134,15 @@ $ ggsql exec --reader "postgres://user@db.internal/sales?Driver={PostgreSQL Unic
 ```
 
 If the ADBC driver loads but the connection itself fails (bad credentials, unreachable host), ggsql reports that error rather than silently falling back — use `reader=odbc` to bypass ADBC in that situation.
+
+#### Automatic caching
+
+ggsql stages intermediate results (materialized CTEs, stat transforms) in temporary tables. When a backend cannot host them, the connection is wrapped in an in-memory DuckDB (or SQLite) caching reader automatically — you do not need `--cache` or the `<cache>+<primary>://` form:
+
+- Some backends never support temp tables (Trino, Druid, Drill, DataFusion); their dialects say so and the cache is always added.
+- Every other backend is probed once on connect with a `CREATE TEMP TABLE` roundtrip. A failure — typically a read-only account — wraps the connection in a cache, and only your own queries hit the server.
+
+To opt out (for example while debugging), add `cache=off` to the URI's query string; queries that need temp tables will then fail with the backend's own error.
 
 ## Output format
 

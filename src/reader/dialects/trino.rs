@@ -57,6 +57,12 @@ impl SqlDialect for TrinoDialect {
         format!("FROM_UNIXTIME({secs})")
     }
 
+    /// Most Trino connectors don't support `CREATE TEMP TABLE`; connections
+    /// are always wrapped in a caching reader rather than probed.
+    fn requires_cache(&self) -> bool {
+        true
+    }
+
     fn sql_geometry_bbox(&self, column: &str, from: &str) -> String {
         format!(
             "SELECT MIN(ST_XMin(g)) AS xmin, MIN(ST_YMin(g)) AS ymin, \

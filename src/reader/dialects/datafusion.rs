@@ -13,6 +13,12 @@ use crate::reader::SqlDialect;
 pub struct DataFusionDialect;
 
 impl SqlDialect for DataFusionDialect {
+    /// DataFusion has no temp tables; connections are always wrapped in a
+    /// caching reader rather than probed.
+    fn requires_cache(&self) -> bool {
+        true
+    }
+
     fn number_type_name(&self) -> Option<&str> {
         Some("DOUBLE")
     }

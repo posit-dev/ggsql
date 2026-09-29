@@ -13,6 +13,12 @@ use crate::reader::SqlDialect;
 pub struct DruidDialect;
 
 impl SqlDialect for DruidDialect {
+    /// Druid has no DDL at all; connections are always wrapped in a caching
+    /// reader rather than probed.
+    fn requires_cache(&self) -> bool {
+        true
+    }
+
     fn number_type_name(&self) -> Option<&str> {
         Some("DOUBLE")
     }

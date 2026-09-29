@@ -12,6 +12,12 @@ use crate::reader::SqlDialect;
 pub struct DrillDialect;
 
 impl SqlDialect for DrillDialect {
+    /// Drill has no temp tables; connections are always wrapped in a caching
+    /// reader rather than probed.
+    fn requires_cache(&self) -> bool {
+        true
+    }
+
     fn quote_ident(&self, name: &str) -> String {
         format!("`{}`", name.replace('`', "``"))
     }
