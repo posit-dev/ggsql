@@ -140,8 +140,9 @@ impl<'a> SourceTree<'a> {
     /// This is the statement `Reader::execute()`'s dispatch actually resolves
     /// — it always acts on the first top-level `Spec`, of whichever kind — so
     /// it is also the only statement `extract_sql`'s FROM-injection should
-    /// ever look inside.
-    fn first_stmt<'b>(&self, root: &Node<'b>) -> Option<Node<'b>> {
+    /// ever look inside. `pub(crate)` for `execute::table::build_table_sql`,
+    /// which scopes its own `TABULATE FROM` lookup the same way.
+    pub(crate) fn first_stmt<'b>(&self, root: &Node<'b>) -> Option<Node<'b>> {
         let viz = self.find_node(root, "(visualise_statement) @viz");
         let tab = self.find_node(root, "(tabulate_statement) @tab");
         match (viz, tab) {
@@ -340,9 +341,9 @@ mod tests {
         // TABULATE FROM <source> and SELECT * FROM <source> TABULATE should
         // extract to the identical SQL, the same equivalence VISUALISE FROM
         // already has with a bare SELECT.
-        let from_only = SourceTree::new("TABULATE FROM ggsql:penguins").unwrap();
+        let from_only = SourceTree::new("TABULATE * FROM ggsql:penguins").unwrap();
         let select_then_tabulate =
-            SourceTree::new("SELECT * FROM ggsql:penguins TABULATE").unwrap();
+            SourceTree::new("SELECT * FROM ggsql:penguins TABULATE *").unwrap();
 
         assert_eq!(
             from_only.extract_sql().unwrap(),
@@ -360,12 +361,12 @@ mod tests {
         // not pick up the VISUALISE's FROM — extract_sql is scoped to the
         // first statement (the one Reader::execute() actually resolves), not
         // the whole tree.
-        let tree = SourceTree::new("TABULATE VISUALISE FROM sales DRAW point").unwrap();
+        let tree = SourceTree::new("TABULATE * VISUALISE FROM sales DRAW point").unwrap();
         assert_eq!(tree.extract_sql(), None);
 
         // Same in the other order: a source-less VISUALISE must not borrow a
         // later TABULATE's FROM either.
-        let tree = SourceTree::new("VISUALISE DRAW point TABULATE FROM sales").unwrap();
+        let tree = SourceTree::new("VISUALISE DRAW point TABULATE * FROM sales").unwrap();
         assert_eq!(tree.extract_sql(), None);
     }
 

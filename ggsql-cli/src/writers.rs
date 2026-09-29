@@ -759,7 +759,7 @@ mod tests {
                 "CREATE TABLE sales AS SELECT * FROM (VALUES (1, 'a'), (2, 'b')) AS t(id, name)",
             )
             .unwrap();
-        let spec = reader.execute("TABULATE FROM sales").unwrap();
+        let spec = reader.execute("TABULATE * FROM sales").unwrap();
 
         let info = find("html").unwrap();
         let (output, warnings) = (info.render)(&spec, &WriterOptions::new()).unwrap();
@@ -769,7 +769,10 @@ mod tests {
         };
         // Default css_mode is `class`, which prepends a `<style>` block
         // ahead of `<table>` — so this checks presence, not position.
-        assert!(html.contains("<table>"), "{html}");
+        assert!(
+            html.contains("data-quarto-bootstrap=\"false\" class=\"ggsql_table\">"),
+            "{html}"
+        );
         assert!(html.contains(">id</th>"), "{html}");
         assert!(html.contains(">a</td>"), "{html}");
     }
@@ -797,7 +800,7 @@ mod tests {
         reader
             .execute_sql("CREATE TABLE sales AS SELECT * FROM (VALUES (1)) AS t(id)")
             .unwrap();
-        let spec = reader.execute("TABULATE FROM sales").unwrap();
+        let spec = reader.execute("TABULATE * FROM sales").unwrap();
 
         let info = find(DEFAULT_WRITER).unwrap();
         let Err(err) = (info.render)(&spec, &WriterOptions::new()) else {

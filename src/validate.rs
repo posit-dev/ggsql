@@ -309,11 +309,19 @@ pub fn validate(query: &str) -> Result<Validated> {
             }
         }
 
-        if let Err(e) = table.resolve_spanner_ids() {
-            errors.push(ValidationError {
+        match table.resolve_spanner_ids() {
+            Ok(resolved_spans) => {
+                if let Err(e) = table.validate_span_stub_boundary(&resolved_spans) {
+                    errors.push(ValidationError {
+                        message: e,
+                        location: None,
+                    });
+                }
+            }
+            Err(e) => errors.push(ValidationError {
                 message: e,
                 location: None,
-            });
+            }),
         }
 
         // Validate each FORMAT's SETTING parameters the same way.
@@ -368,7 +376,7 @@ mod tests {
         // Reader::execute() only ever resolves the first VISUALISE/TABULATE
         // statement; a query with more than one should warn rather than
         // silently drop the rest with no diagnostic at all.
-        let validated = validate("SELECT 1 AS x VISUALISE x DRAW point TABULATE").unwrap();
+        let validated = validate("SELECT 1 AS x VISUALISE x DRAW point TABULATE *").unwrap();
         assert!(validated.valid());
         assert!(!validated.warnings().is_empty());
         assert!(validated.warnings()[0]
@@ -381,7 +389,7 @@ mod tests {
         // A TABULATE FROM has a data source (extract_sql injects
         // "SELECT * FROM <source>" the same way it does for VISUALISE FROM),
         // so it's recognized as having a Spec and reported valid.
-        let validated = validate("TABULATE FROM sales").unwrap();
+        let validated = validate("TABULATE * FROM sales").unwrap();
         assert!(validated.has_spec());
         assert_eq!(validated.sql(), "SELECT * FROM sales");
         assert!(validated.visual().starts_with("TABULATE"));
@@ -395,7 +403,7 @@ mod tests {
         // no data source — caught here before any SQL runs, mirroring
         // `resolve_table_with_reader`'s execution-time rejection of the same
         // query.
-        let validated = validate("TABULATE").unwrap();
+        let validated = validate("TABULATE *").unwrap();
         assert!(validated.has_spec());
         assert!(!validated.valid());
         assert!(validated.errors()[0].message.contains("no data source"));

@@ -1119,7 +1119,7 @@ mod tests {
         assert!(plot_spec.as_plot().is_some());
         assert!(plot_spec.as_table().is_none());
 
-        let table_spec = reader.execute("TABULATE FROM sales").unwrap();
+        let table_spec = reader.execute("TABULATE * FROM sales").unwrap();
         assert!(table_spec.as_table().is_some());
         assert!(table_spec.as_plot().is_none());
 

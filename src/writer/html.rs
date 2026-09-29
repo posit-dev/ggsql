@@ -16,9 +16,12 @@
 //!   attribute from that column's resolved `width` (a bare `<col>` for a
 //!   column with none) in both modes — targeted column styling stays inline,
 //!   as gt keeps `tab_style()` rules inline.
-//! - `rows` → a class on the `<tr>` itself (`Heading`, for a `Title`/
-//!   `Subtitle` row) — the only row-wide property that exists to render so
-//!   far.
+//! - `rows` → a class on the `<tr>` itself (`Heading` for a `Title`/
+//!   `Subtitle` row, `ColHeadingRow` for the column-label row) — the only
+//!   row-wide property that exists to render so far.
+//! - The `<table>`/`<tbody>` elements always carry `TableClass::Table`/
+//!   `TableClass::TableBody` respectively — the two classes with no
+//!   `TableCell`/`TableRow` to be recorded on — see their own doc comments.
 //!
 //! No footnotes yet, since `Table` has no field for those. Spanner rows are
 //! rendered (as `colspan`, one `<tr>` per level, above the column labels);
@@ -147,7 +150,18 @@ impl Writer for HtmlWriter {
         if self.css_mode == CssMode::Class {
             html.push_str(&render_style_block());
         }
-        html.push_str("<table>\n");
+        let table_attrs = styling_attr(&[TableClass::Table], self.css_mode);
+        // Opt out of Quarto's HTML table processing (the Bootstrap
+        // `.table`/`.table-striped` classes it adds to a raw <table> that
+        // doesn't already declare an opinion): `data-quarto-disable-processing`
+        // has to be `"true"` — Quarto reads it, and "false" means "processing
+        // is not disabled," i.e. go ahead. Verified against a real `quarto
+        // render` of doc/syntax/clause/tabulate.qmd; gt's own writer sets the
+        // same two attributes, but (confirmed the same way) with the same
+        // wrong "false" value, so it does not actually work for gt either.
+        let quarto_opt_out =
+            " data-quarto-disable-processing=\"true\" data-quarto-bootstrap=\"false\"";
+        html.push_str(&format!("<table{quarto_opt_out}{table_attrs}>\n"));
 
         for caption in &caption_cells {
             html.push_str(&render_caption(caption, self.css_mode));
@@ -170,7 +184,8 @@ impl Writer for HtmlWriter {
         }
 
         if !body_rows.is_empty() {
-            html.push_str("<tbody>\n");
+            let tbody_attrs = styling_attr(&[TableClass::TableBody], self.css_mode);
+            html.push_str(&format!("<tbody{tbody_attrs}>\n"));
             for row in &body_rows {
                 let slots = all_slots
                     .remove(row)
@@ -193,14 +208,157 @@ impl Writer for HtmlWriter {
 /// pure semantic hooks for the embedder.
 fn class_declarations(class: TableClass) -> &'static [(&'static str, &'static str)] {
     match class {
-        TableClass::Row
-        | TableClass::ColHeading
-        | TableClass::Spanner
-        | TableClass::SpannerOuter
-        | TableClass::Title
-        | TableClass::Subtitle
-        | TableClass::Caption
-        | TableClass::Heading => &[],
+        TableClass::Table => &[
+            ("display", "table"),
+            ("border-collapse", "collapse"),
+            ("margin-left", "auto"),
+            ("margin-right", "auto"),
+            ("color", "#333333"),
+            ("font-size", "16px"),
+            ("font-weight", "normal"),
+            ("background-color", "#FFFFFF"),
+            ("width", "auto"),
+            ("border-top-style", "solid"),
+            ("border-top-width", "2px"),
+            ("border-top-color", "#A8A8A8"),
+            ("border-right-style", "none"),
+            ("border-right-width", "2px"),
+            ("border-right-color", "#D3D3D3"),
+            ("border-bottom-style", "solid"),
+            ("border-bottom-width", "2px"),
+            ("border-bottom-color", "#A8A8A8"),
+            ("border-left-style", "none"),
+            ("border-left-width", "2px"),
+            ("border-left-color", "#D3D3D3"),
+        ],
+        TableClass::TableBody => &[
+            ("border-top-style", "solid"),
+            ("border-top-width", "2px"),
+            ("border-top-color", "#D3D3D3"),
+            ("border-bottom-style", "solid"),
+            ("border-bottom-width", "2px"),
+            ("border-bottom-color", "#D3D3D3"),
+        ],
+        TableClass::Row => &[
+            ("padding-top", "8px"),
+            ("padding-bottom", "8px"),
+            ("padding-left", "5px"),
+            ("padding-right", "5px"),
+            ("margin", "10px"),
+            ("border-top-style", "solid"),
+            ("border-top-width", "1px"),
+            ("border-top-color", "#D3D3D3"),
+            ("border-left-style", "none"),
+            ("border-left-width", "1px"),
+            ("border-left-color", "#D3D3D3"),
+            ("border-right-style", "none"),
+            ("border-right-width", "1px"),
+            ("border-right-color", "#D3D3D3"),
+            ("vertical-align", "middle"),
+            ("overflow-x", "hidden"),
+        ],
+        TableClass::Stub => &[
+            ("color", "#333333"),
+            ("background-color", "#FFFFFF"),
+            ("font-size", "100%"),
+            ("font-weight", "initial"),
+            ("text-transform", "inherit"),
+            ("border-right-style", "solid"),
+            ("border-right-width", "2px"),
+            ("border-right-color", "#D3D3D3"),
+            ("padding-left", "5px"),
+            ("padding-right", "5px"),
+        ],
+        TableClass::ColHeading => &[
+            ("color", "#333333"),
+            ("background-color", "#FFFFFF"),
+            ("font-size", "100%"),
+            ("font-weight", "normal"),
+            ("text-transform", "inherit"),
+            ("border-left-style", "none"),
+            ("border-left-width", "1px"),
+            ("border-left-color", "#D3D3D3"),
+            ("border-right-style", "none"),
+            ("border-right-width", "1px"),
+            ("border-right-color", "#D3D3D3"),
+            ("vertical-align", "bottom"),
+            ("padding-top", "5px"),
+            ("padding-bottom", "6px"),
+            ("padding-left", "5px"),
+            ("padding-right", "5px"),
+            ("overflow-x", "hidden"),
+        ],
+        TableClass::StubHead => &[],
+        TableClass::ColHeadingRow => &[
+            ("border-top-style", "solid"),
+            ("border-top-width", "2px"),
+            ("border-top-color", "#D3D3D3"),
+            ("border-bottom-style", "solid"),
+            ("border-bottom-width", "2px"),
+            ("border-bottom-color", "#D3D3D3"),
+            ("border-left-style", "none"),
+            ("border-left-width", "1px"),
+            ("border-left-color", "#D3D3D3"),
+            ("border-right-style", "none"),
+            ("border-right-width", "1px"),
+            ("border-right-color", "#D3D3D3"),
+        ],
+        TableClass::Spanner => &[
+            ("border-bottom-style", "solid"),
+            ("border-bottom-width", "2px"),
+            ("border-bottom-color", "#D3D3D3"),
+            ("vertical-align", "bottom"),
+            ("padding-top", "5px"),
+            ("padding-bottom", "5px"),
+            ("overflow-x", "hidden"),
+            ("display", "inline-block"),
+            ("width", "100%"),
+        ],
+        TableClass::SpannerOuter => &[
+            ("color", "#333333"),
+            ("background-color", "#FFFFFF"),
+            ("font-size", "100%"),
+            ("font-weight", "normal"),
+            ("text-transform", "inherit"),
+            ("padding-top", "0"),
+            ("padding-bottom", "0"),
+            ("padding-left", "4px"),
+            ("padding-right", "4px"),
+        ],
+        TableClass::Title => &[
+            ("color", "#333333"),
+            ("font-size", "125%"),
+            ("font-weight", "initial"),
+            ("padding-top", "4px"),
+            ("padding-bottom", "4px"),
+            ("padding-left", "5px"),
+            ("padding-right", "5px"),
+            ("border-bottom-color", "#FFFFFF"),
+            ("border-bottom-width", "0"),
+        ],
+        TableClass::Subtitle => &[
+            ("color", "#333333"),
+            ("font-size", "85%"),
+            ("font-weight", "initial"),
+            ("padding-top", "3px"),
+            ("padding-bottom", "5px"),
+            ("padding-left", "5px"),
+            ("padding-right", "5px"),
+            ("border-top-color", "#FFFFFF"),
+            ("border-top-width", "0"),
+        ],
+        TableClass::Caption => &[("padding-top", "4px"), ("padding-bottom", "4px")],
+        TableClass::Heading => &[
+            ("background-color", "#FFFFFF"),
+            ("text-align", "center"),
+            ("border-bottom-color", "#FFFFFF"),
+            ("border-left-style", "none"),
+            ("border-left-width", "1px"),
+            ("border-left-color", "#D3D3D3"),
+            ("border-right-style", "none"),
+            ("border-right-width", "1px"),
+            ("border-right-color", "#D3D3D3"),
+        ],
         TableClass::AlignLeft => &[("text-align", "left")],
         TableClass::AlignCenter => &[("text-align", "center")],
         TableClass::AlignRight => &[
@@ -217,6 +375,18 @@ fn class_declarations(class: TableClass) -> &'static [(&'static str, &'static st
 /// precedence in class mode; `inline_style`'s own precedence instead follows
 /// the order of the cell's `classes` field (see its doc comment).
 const STYLED_CLASSES: &[TableClass] = &[
+    TableClass::Table,
+    TableClass::TableBody,
+    TableClass::Row,
+    TableClass::Stub,
+    TableClass::ColHeading,
+    TableClass::ColHeadingRow,
+    TableClass::Spanner,
+    TableClass::SpannerOuter,
+    TableClass::Title,
+    TableClass::Subtitle,
+    TableClass::Caption,
+    TableClass::Heading,
     TableClass::AlignLeft,
     TableClass::AlignCenter,
     TableClass::AlignRight,
@@ -224,8 +394,8 @@ const STYLED_CLASSES: &[TableClass] = &[
 
 /// The `<style>` block class mode prepends — one rule per styled class,
 /// generated from the same lookup inline mode folds into `style` attributes,
-/// so the modes can't drift. Emitted unconditionally: three short rules
-/// aren't worth a pass over the cells to see which are used.
+/// so the modes can't drift. Emitted unconditionally: it's not worth a pass
+/// over the cells to see which classes are actually used.
 fn render_style_block() -> String {
     let mut block = String::from("<style>\n");
     for &class in STYLED_CLASSES {
@@ -358,16 +528,11 @@ fn column_style(properties: &Parameters) -> Option<String> {
 /// table by `build_all_slots` rather than worked out inline while
 /// `render_row` walks columns.
 enum Slot<'a> {
-    /// A real cell starting at this column.
+    /// A real cell starting at this column, `Filler` included — same
+    /// render path as any other kind.
     Cell(&'a TableCell),
-    /// A genuine gap: no real cell reaches this column, so a blank cell is
-    /// synthesized matching the row's own dominant kind/classes.
-    Filler {
-        kind: TableCellKind,
-        classes: &'a [TableClass],
-    },
     /// A column a rowspan from an earlier row already claims — nothing
-    /// rendered here at all, not even a filler.
+    /// rendered here at all.
     Skip,
 }
 
@@ -399,12 +564,8 @@ fn split_rows(rows: &[TableRow], nrow: usize) -> (Vec<usize>, Vec<usize>) {
 /// already has them, computed from `cells` itself, which by this point is
 /// caption-free (see `write_table`'s own caption split).
 ///
-/// Returns one entry per row that has at least one cell actually starting
-/// in it — a row entirely swallowed by an earlier rowspan (nothing in it
-/// but continuation) is omitted, since it gets no `<tr>` of its own either.
-/// The caller is expected to only ever look up rows it already knows have a
-/// real cell (e.g. from grouping the same `cells` by `top`), which is
-/// exactly the rows this always produces.
+/// Every grid position is expected to already be a real `Cell` or a `Skip`
+/// by the time this runs; see the `expect` below.
 fn build_all_slots(
     cells: &[TableCell],
     ncol: usize,
@@ -424,55 +585,39 @@ fn build_all_slots(
 
     grid.into_iter()
         .enumerate()
-        .filter_map(|(row, row_slots)| {
-            // A gap gets a filler matching the row's own dominant
-            // kind/classes — read off whichever real cell started this row.
-            // Known gap: assumes every real cell in a row shares one
-            // `TableCellKind`/structural class, true of every row today but
-            // not guaranteed to stay true once row stubs (labels/groups)
-            // can share a row with `Body` cells — revisit then.
-            let (kind, classes) = row_slots.iter().find_map(|slot| match slot {
-                Some(Slot::Cell(cell)) => Some((cell.kind, cell.classes.as_slice())),
-                _ => None,
-            })?;
+        .map(|(row, row_slots)| {
             let slots = row_slots
                 .into_iter()
-                .map(|slot| slot.unwrap_or(Slot::Filler { kind, classes }))
+                .map(|slot| {
+                    slot.expect(
+                        "a resolved table's cells cover every grid position; a gap here is an \
+                         execute bug",
+                    )
+                })
                 .collect();
-            Some((row, slots))
+            (row, slots)
         })
         .collect()
 }
 
-/// Render a synthesized filler — a genuine gap in the grid with no real
-/// cell reaching it — as a blank `<th>`/`<td>` matching its row's own
-/// dominant kind/classes. Takes `kind`/`classes` directly rather than a
-/// `&TableCell`, since a filler was never a real cell to begin with.
-fn render_filler(kind: TableCellKind, classes: &[TableClass], mode: CssMode) -> String {
-    let tag = if kind.is_header() { "th" } else { "td" };
-    let attrs = styling_attr(classes, mode);
-    format!("<{tag}{attrs}></{tag}>")
-}
-
 /// Render one row's already-decided `Slot`s as `<tr>...</tr>`. A `Skip`
-/// slot renders nothing at all; a `Cell`/`Filler` slot renders through
-/// `render_cell`/`render_filler`. Styling on the `<tr>` itself comes from
-/// `row`'s recorded classes, same as any other element, via `styling_attr`.
+/// slot renders nothing at all; a `Cell` slot renders through `render_cell`.
+/// Styling on the `<tr>` itself comes from `row`'s recorded classes, same as
+/// any other element, via `styling_attr`.
 fn render_row(slots: &[Slot], row: &TableRow, mode: CssMode) -> String {
-    if slots.is_empty() {
+    // Nothing to render if every slot is a Skip continuation (vacuously
+    // true for an empty `slots` too).
+    if slots.iter().all(|slot| matches!(slot, Slot::Skip)) {
         return String::new();
     }
 
-    // Every `Cell`/`Filler` in a row shares one `TableCellKind` (a `Filler`
-    // inherits it from whichever real cell started the row — see
-    // `build_all_slots`), so the first one found is enough to cross-check
-    // against `row.is_header` — the two are meant to always agree. Gated on
-    // `debug_assertions` so the scan itself, not just the assertion, is
-    // compiled out of a release build.
+    // Every `Cell` in a row shares one `TableCellKind`, so the first one
+    // found is enough to cross-check against `row.is_header` — the two are
+    // meant to always agree. Gated on `debug_assertions` so the scan
+    // itself, not just the assertion, is compiled out of a release build.
     #[cfg(debug_assertions)]
     if let Some(kind) = slots.iter().find_map(|slot| match slot {
         Slot::Cell(cell) => Some(cell.kind),
-        Slot::Filler { kind, .. } => Some(*kind),
         Slot::Skip => None,
     }) {
         debug_assert_eq!(
@@ -487,9 +632,6 @@ fn render_row(slots: &[Slot], row: &TableRow, mode: CssMode) -> String {
     for slot in slots {
         match slot {
             Slot::Cell(cell) => html.push_str(&render_cell(cell, mode)),
-            Slot::Filler { kind, classes } => {
-                html.push_str(&render_filler(*kind, classes, mode));
-            }
             Slot::Skip => {}
         }
     }
@@ -501,7 +643,7 @@ fn render_row(slots: &[Slot], row: &TableRow, mode: CssMode) -> String {
 #[cfg(test)]
 mod render_tests {
     use super::*;
-    use crate::{TableCellKind, TableClass};
+    use crate::{ColumnSection, TableCellKind, TableClass};
 
     fn cell(
         kind: TableCellKind,
@@ -551,6 +693,17 @@ mod render_tests {
     #[test]
     fn render_row_returns_empty_string_for_no_slots() {
         assert_eq!(render_row(&[], &TableRow::default(), CssMode::Inline), "");
+    }
+
+    #[test]
+    fn render_row_returns_empty_string_when_every_slot_is_a_skip() {
+        // A row entirely swallowed by rowspans from earlier rows gets no
+        // `<tr>` of its own either.
+        let slots = vec![Slot::Skip, Slot::Skip];
+        assert_eq!(
+            render_row(&slots, &TableRow::default(), CssMode::Inline),
+            ""
+        );
     }
 
     #[test]
@@ -615,8 +768,9 @@ mod render_tests {
             inline_style(&[TableClass::AlignRight]),
             Some("text-align: right; font-variant-numeric: tabular-nums".to_string())
         );
-        // Structural classes carry no declarations.
-        assert_eq!(inline_style(&[TableClass::Row]), None);
+        // `StubHead` is the one structural class with no gt equivalent and
+        // so no declarations.
+        assert_eq!(inline_style(&[TableClass::StubHead]), None);
     }
 
     #[test]
@@ -645,6 +799,7 @@ mod render_tests {
             name: String::new(),
             label: String::new(),
             properties,
+            target: ColumnSection::Body,
         }
     }
 
@@ -676,10 +831,13 @@ mod render_tests {
 
     #[test]
     fn build_all_slots_marks_a_rowspans_continuation_row_as_skip() {
-        // Spans rows 0-1 at column 1 — row 1's column 1 is a continuation,
-        // not a gap, even though nothing else in row 1 covers it.
+        // Column 1 spans rows 0-1 — row 1's column 1 is a continuation, not
+        // a gap. Columns 0 and 2 are filled at every row too, since every
+        // grid position needs a real cell.
         let cells = [
             cell(TableCellKind::ColumnLabel, 0, 1, 1, 1),
+            cell(TableCellKind::ColumnLabel, 0, 0, 0, 0),
+            cell(TableCellKind::ColumnLabel, 0, 0, 2, 2),
             cell(TableCellKind::ColumnLabel, 1, 1, 0, 0),
             cell(TableCellKind::ColumnLabel, 1, 1, 2, 2),
         ];
@@ -705,38 +863,13 @@ mod render_tests {
     }
 
     #[test]
-    fn build_all_slots_fills_a_gap_with_the_row_siblings_kind_and_classes() {
-        let cells = [
-            cell(TableCellKind::Spanner, 0, 0, 0, 0).with_classes(vec![TableClass::SpannerOuter]),
-            cell(TableCellKind::Spanner, 0, 0, 2, 2).with_classes(vec![TableClass::SpannerOuter]),
-        ];
+    #[should_panic(expected = "a resolved table's cells cover every grid position")]
+    fn build_all_slots_panics_on_a_genuine_gap() {
+        // execute is expected to have already filled this with a real
+        // Filler cell — reaching the writer at all means a bug upstream.
+        let cells = [cell(TableCellKind::Spanner, 0, 0, 0, 0)];
 
-        let slots = build_all_slots(&cells, 3, 1);
-
-        let row0 = &slots[&0];
-        assert_eq!(row0.len(), 3);
-        assert!(matches!(&row0[0], Slot::Cell(cell) if cell.left == 0));
-        match &row0[1] {
-            Slot::Filler { kind, classes } => {
-                assert_eq!(*kind, TableCellKind::Spanner);
-                assert_eq!(classes.to_vec(), vec![TableClass::SpannerOuter]);
-            }
-            _ => panic!("expected a Filler slot at column 1"),
-        }
-        assert!(matches!(&row0[2], Slot::Cell(cell) if cell.left == 2));
-    }
-
-    #[test]
-    fn render_row_renders_a_filler_with_its_own_kind_and_classes() {
-        let classes = [TableClass::SpannerOuter];
-        let slots = vec![Slot::Filler {
-            kind: TableCellKind::Spanner,
-            classes: &classes,
-        }];
-
-        let row = render_row(&slots, &TableRow::header(), CssMode::Class);
-
-        assert_eq!(row, "<tr><th class=\"ggsql_spanner_outer\"></th></tr>\n");
+        build_all_slots(&cells, 2, 1);
     }
 
     #[test]
@@ -769,15 +902,25 @@ mod render_tests {
         .write_table(&cells, &[], &rows)
         .unwrap();
 
+        // The <table>/<tbody> tags' own attributes are `TableClass::Table`/
+        // `TableClass::TableBody`'s concern, not this test's — split both off
+        // and check only that each is the tag it claims to be, then
+        // assert_eq! the rest verbatim.
+        let (table_tag, rest) = html.split_once('\n').unwrap();
+        assert!(table_tag.starts_with("<table") && table_tag.ends_with('>'));
+        let (before_tbody, rest) = rest.split_once("<tbody").unwrap();
+        let (tbody_tag, rest) = rest.split_once('\n').unwrap();
+        assert!(tbody_tag.ends_with('>'));
         assert_eq!(
-            html,
-            "<table>\n\
-             <thead>\n\
+            before_tbody,
+            "<thead>\n\
              <tr><th></th><th rowspan=\"2\"></th></tr>\n\
              <tr><th></th></tr>\n\
-             </thead>\n\
-             <tbody>\n\
-             <tr><td></td><td></td></tr>\n\
+             </thead>\n"
+        );
+        assert_eq!(
+            rest,
+            "<tr><td></td><td></td></tr>\n\
              </tbody>\n\
              </table>"
         );
@@ -806,8 +949,11 @@ mod render_tests {
         .unwrap();
 
         // <caption> is table's first child, before <thead>/<tbody>, and its
-        // content is escaped like any other cell's.
-        assert!(html.starts_with("<table>\n<caption>&lt;b&gt;Source&lt;/b&gt;</caption>\n"));
+        // content is escaped like any other cell's. The <table> tag's own
+        // attributes are `TableClass::Table`'s concern, not this test's.
+        let (table_tag, rest) = html.split_once('\n').unwrap();
+        assert!(table_tag.starts_with("<table") && table_tag.ends_with('>'));
+        assert!(rest.starts_with("<caption>&lt;b&gt;Source&lt;/b&gt;</caption>\n"));
         assert!(html.find("<caption>").unwrap() < html.find("<thead>").unwrap());
         // Not part of the grid: no <th>/<td> for it, and it doesn't trip the
         // "header above body" check despite sitting below the body row.
@@ -840,9 +986,9 @@ mod render_tests {
     }
 
     #[test]
-    fn write_table_omits_an_inline_mode_heading_class_with_no_declarations() {
-        // `Heading` carries no CSS declarations, so inline mode's <tr> stays
-        // bare even though a row class was recorded.
+    fn write_table_renders_an_inline_mode_heading_row_style_from_row_classes() {
+        // `Heading` carries real declarations, so inline mode's <tr> gets a
+        // style attribute from the recorded row class.
         let cells = vec![
             cell(TableCellKind::Title, 0, 0, 0, 0).with_classes(vec![TableClass::Title]),
             cell(TableCellKind::Body, 1, 1, 0, 0),
@@ -861,7 +1007,9 @@ mod render_tests {
         .write_table(&cells, &[], &rows)
         .unwrap();
 
-        assert!(html.contains("<tr><th></th></tr>"));
+        assert!(html.contains("<tr style=\"background-color: #FFFFFF"));
+        // The body row has no recorded row classes, so its <tr> stays bare.
+        assert!(html.contains("<tr><td></td></tr>"));
     }
 }
 
@@ -879,7 +1027,7 @@ mod tests {
                 "CREATE TABLE sales AS SELECT * FROM (VALUES (1, '<b>a</b>'), (2, 'b')) AS t(id, name)",
             )
             .unwrap();
-        let spec = reader.execute("TABULATE FROM sales").unwrap();
+        let spec = reader.execute("TABULATE * FROM sales").unwrap();
 
         let writer = HtmlWriter::new();
         let html = writer.render(&spec).unwrap();
@@ -888,7 +1036,7 @@ mod tests {
         // resolve_column_properties's/discretise_hjust's own tests — this
         // just checks the columns render and escaping works end to end.
         assert!(html.starts_with("<style>"));
-        assert!(html.contains("<table>"));
+        assert!(html.contains("data-quarto-bootstrap=\"false\" class=\"ggsql_table\">"));
         assert!(html.contains(">id</th>"));
         assert!(html.contains(">name</th>"));
         // Class mode: "id"/1 is numeric (right), "name" is text (left) —
@@ -909,17 +1057,19 @@ mod tests {
         reader
             .execute_sql("CREATE TABLE sales AS SELECT * FROM (VALUES (1, 'a')) AS t(id, name)")
             .unwrap();
-        let spec = reader.execute("TABULATE FROM sales").unwrap();
+        let spec = reader.execute("TABULATE * FROM sales").unwrap();
 
         let writer =
             HtmlWriter::from_options(&WriterOptions::parse(["css_mode=inline"]).unwrap()).unwrap();
         let html = writer.render(&spec).unwrap();
 
-        assert!(html.starts_with("<table>"));
+        assert!(html.starts_with("<table"));
         assert!(!html.contains("<style>"));
         assert!(!html.contains("class="));
-        assert!(html.contains("style=\"text-align: right")); // "id"/1, numeric
-        assert!(html.contains("style=\"text-align: left")); // "name", text
+        // "id"/1 is numeric (right), "name" is text (left) — both cells also
+        // carry `Row`'s own declarations, folded in ahead of alignment's.
+        assert!(html.contains("text-align: right"));
+        assert!(html.contains("text-align: left"));
     }
 
     #[test]
@@ -931,7 +1081,7 @@ mod tests {
             )
             .unwrap();
         let spec = reader
-            .execute("TABULATE FROM sales SPAN 'Info' ACROSS id, name")
+            .execute("TABULATE * FROM sales SPAN 'Info' ACROSS id, name")
             .unwrap();
 
         let writer = HtmlWriter::new();
@@ -942,9 +1092,10 @@ mod tests {
         // Alignment styling is incidental here (amount/id are numeric) and
         // covered precisely by resolve_column_properties's own tests — this
         // checks colspan/rowspan/ordering, not exact style content. The
-        // single spanner level is the topmost one, hence `spanner_outer`.
+        // single spanner level is the topmost one, hence `spanner_outer`,
+        // and it's centred by default.
         assert!(html.contains(
-            "<tr><th colspan=\"2\" class=\"ggsql_spanner_outer\">Info</th><th rowspan=\"2\""
+            "<tr><th colspan=\"2\" class=\"ggsql_spanner_outer ggsql_center\">Info</th><th rowspan=\"2\""
         ));
         assert!(html.contains(">amount</th>"));
         assert!(html.contains(">id</th>"));
@@ -960,7 +1111,7 @@ mod tests {
             .execute_sql("CREATE TABLE sales AS SELECT * FROM (VALUES (1, 'a')) AS t(id, name)")
             .unwrap();
         let spec = reader
-            .execute("TABULATE FROM sales FORMAT id SETTING width => '20%'")
+            .execute("TABULATE * FROM sales FORMAT id SETTING width => '20%'")
             .unwrap();
 
         let writer = HtmlWriter::new();
@@ -975,13 +1126,38 @@ mod tests {
     }
 
     #[test]
+    fn test_write_table_renders_a_stub_head_and_row_labels() {
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        reader
+            .execute_sql(
+                "CREATE TABLE sales AS SELECT * FROM (VALUES ('north', 1), ('south', 2)) AS t(region, amount)",
+            )
+            .unwrap();
+        let spec = reader
+            .execute("TABULATE * FROM sales FORMAT STUB region")
+            .unwrap();
+
+        let writer = HtmlWriter::new();
+        let html = writer.render(&spec).unwrap();
+
+        // The stub head renders as a <th> with its own class, blank by
+        // default (no LABEL given); the row labels render as <td>s with
+        // their own class, both right-aligned (resolve_column_properties'
+        // STUB default).
+        assert!(html.contains("<th class=\"ggsql_stub_head ggsql_right\"></th>"));
+        assert!(html.contains("<td class=\"ggsql_stub ggsql_right\">north</td>"));
+        assert!(html.contains("<td class=\"ggsql_row ggsql_right\">1</td>")); // "amount" unaffected
+        assert!(html.find("ggsql_stub_head").unwrap() < html.find(">amount</th>").unwrap());
+    }
+
+    #[test]
     fn test_write_table_omits_tbody_for_a_zero_row_result() {
         let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
         reader
             .execute_sql("CREATE TABLE sales AS SELECT * FROM (VALUES (1, 'a')) AS t(id, name)")
             .unwrap();
         let spec = reader
-            .execute("SELECT * FROM sales WHERE 1 = 0 TABULATE")
+            .execute("SELECT * FROM sales WHERE 1 = 0 TABULATE *")
             .unwrap();
 
         let writer = HtmlWriter::new();

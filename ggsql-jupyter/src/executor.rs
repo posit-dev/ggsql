@@ -339,12 +339,12 @@ mod tests {
     #[test]
     fn test_tabulate() {
         let mut executor = QueryExecutor::new().unwrap();
-        let code = "SELECT 1 AS x, 2 AS y TABULATE";
+        let code = "SELECT 1 AS x, 2 AS y TABULATE *";
         let result = executor.execute(code).unwrap();
 
         match result {
             ExecutionResult::Table { html } => {
-                assert!(html.contains("<table>"));
+                assert!(html.contains("data-quarto-bootstrap=\"false\" class=\"ggsql_table\">"));
                 assert!(html.contains(">x</th>"));
             }
             other => panic!("expected Table, got {other:?}"),
