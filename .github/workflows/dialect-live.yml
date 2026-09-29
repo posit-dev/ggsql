@@ -46,6 +46,24 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
+      - name: Increase disk space
+        # Three database images (postgres, clickhouse, trino) plus a restored
+        # target/ — same cleanup as build.yaml.
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          sudo docker image prune --all --force
+          sudo docker builder prune -a
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install tree-sitter-cli
+        # parser.c is gitignored and generated from grammar.js by the
+        # tree-sitter-ggsql build script on every fresh checkout.
+        run: npm install -g tree-sitter-cli
+
       - name: Install protobuf compiler
         # adbc_datafusion (dev-dep) → datafusion → substrait → prost-build,
         # which invokes `protoc` at build time.
@@ -57,7 +75,10 @@ jobs:
       - name: Caching
         uses: Swatinem/rust-cache@v2
         with:
-          shared-key: ${{ runner.os }}-dialect-live
+          # Deliberately the same shared-key as build.yaml: rust-cache's
+          # prefix fallback then restores the build job's target/, so this
+          # job only rebuilds the feature deltas instead of every dependency.
+          shared-key: ${{ runner.os }}-build
           cache-on-failure: true
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
@@ -85,7 +106,6 @@ jobs:
 
       - name: Run live dialect tests
         env:
-          GGSQL_SKIP_GENERATE: 1
           GGSQL_TEST_URI_POSTGRES: postgres://postgres:postgres@localhost:5432/ggsql
           # The driver defaults to HTTPS; SSL=false selects plain HTTP for
           # the local container. Catalog/schema come from the URI path, so
