@@ -80,6 +80,34 @@ pub struct Scale {
     /// Example: "{} units" -> {"0": "0 units", "25": "25 units", ...}
     #[serde(default = "default_label_template")]
     pub label_template: String,
+    /// Per-panel resolution for a positional scale whose facet dimension is
+    /// `free`, indexed by panel index in the canonical order (see
+    /// [`facet::panels`](crate::plot::facet::panels)). `None` when the scale is
+    /// shared across panels (no facet, or the dimension is fixed). A `None`
+    /// entry is an empty panel; consumers fall back to the shared scale there.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub panels: Option<Vec<Option<PanelScale>>>,
+}
+
+/// The resolution of one positional scale within one facet panel: domain,
+/// breaks, and labels, all computed from the panel's own rows by core.
+///
+/// Writers read this verbatim for free facet dimensions instead of deriving
+/// per-panel extents themselves.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PanelScale {
+    /// Per-panel domain: `[min, max]` for continuous/binned (expanded for
+    /// continuous, the narrowed bin-edge window for binned), or the narrowed
+    /// category list for discrete/ordinal, in the global domain's order.
+    pub input_range: Vec<ArrayElement>,
+    /// Per-panel major breaks as `(position, label)` pairs. A `None` label was
+    /// explicitly suppressed (`RENAMING ... => NULL`): keep the break on
+    /// categorical scales (blank text), drop it on numeric ones.
+    pub breaks: Vec<(f64, Option<String>)>,
+    /// Per-panel minor break positions. Mirrors
+    /// [`Scale::numeric_minor_breaks`]: `Some(vec![])` means "resolved to no
+    /// minors" and must be honoured; `None` means none were resolved.
+    pub minor_breaks: Option<Vec<f64>>,
 }
 
 impl Scale {
@@ -97,6 +125,7 @@ impl Scale {
             resolved: false,
             label_mapping: None,
             label_template: "{}".to_string(),
+            panels: None,
         }
     }
 
@@ -181,7 +210,7 @@ impl Scale {
     /// Breaks paired with their resolved label, where `None` means the label was
     /// explicitly suppressed (as opposed to merely empty). The two public break
     /// accessors differ only in what they do with that `None`.
-    fn labelled_breaks(&self) -> Vec<(f64, Option<String>)> {
+    pub(crate) fn labelled_breaks(&self) -> Vec<(f64, Option<String>)> {
         let raw = match &self.scale_type {
             Some(st) => st.break_labels(self),
             None => self
