@@ -113,4 +113,6 @@ jobs:
           GGSQL_TEST_URI_TRINO: trino://test@localhost:8080/memory/default?SSL=false
           # The Foundry ClickHouse driver speaks the HTTP protocol.
           GGSQL_TEST_URI_CLICKHOUSE: clickhouse://localhost:8123
-        run: cargo test -p ggsql --test dialect_live -- --nocapture
+        # --features adbc is load-bearing: without it the ADBC reader path is
+        # not compiled in and every live test panics at reader_from_uri.
+        run: cargo test -p ggsql --features adbc --test dialect_live -- --nocapture
