@@ -64,7 +64,10 @@ jobs:
       - name: Install dbc and ADBC drivers
         run: |
           curl -LsSf https://dbc.columnar.tech/install.sh | sh
-          "$HOME/.local/bin/dbc" install postgresql trino clickhouse
+          # dbc install takes exactly one DRIVER per invocation.
+          "$HOME/.local/bin/dbc" install postgresql
+          "$HOME/.local/bin/dbc" install trino
+          "$HOME/.local/bin/dbc" install clickhouse
 
       - name: Start Trino
         # The stock image ships the in-memory `memory` catalog, which is
