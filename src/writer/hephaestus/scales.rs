@@ -16,12 +16,9 @@ use hephaestus::scales::value::{
 };
 use hephaestus::scales::Direction;
 
-use super::channels::{column_to_channel, column_to_f64, ChannelData, NULL_CATEGORY};
-use crate::naming;
-use crate::plot::aesthetic::POSITION_SUFFIXES;
+use super::channels::NULL_CATEGORY;
 use crate::plot::scale::{linetype_to_stroke_dash, TransformKind as GTransform};
 use crate::plot::{ArrayElement, OutputRange, ParameterValue, Scale as GScale, ScaleTypeKind};
-use crate::DataFrame;
 
 /// What kind of visual output a scale's range produces. Selects how a resolved
 /// `OutputRange::Array` is mapped onto a hephaestus range — and, for the values
@@ -124,57 +121,111 @@ pub fn build_scale(scale: &GScale, kind: RangeKind) -> Option<HScale> {
     Some(apply_breaks(hs, scale, type_kind))
 }
 
-/// Build a per-panel position scale for a **free** facet dimension, computing
-/// the domain from this panel's own data slices.
+/// Build a per-panel position scale for a **free** facet dimension from core's
+/// per-panel resolution ([`GScale::panels`]).
 ///
-/// This is a deliberate, scoped exception to ggsql owning all scale domains
-/// (fixed dimensions still pass `numeric_domain()` straight through): only free
-/// facet dimensions derive a per-panel domain here. Continuous dimensions take
-/// the numeric extent of the position family (`pos1`, `pos1min/max/end`, …)
-/// present in the slices; discrete/ordinal take the panel's distinct categories;
-/// binned dimensions keep ggsql's global bin edges, narrowed to the bins the panel
-/// occupies (see [`free_binned_scale`]). ggsql's resolved *continuous* breaks are
-/// for the global domain and don't fit a per-panel one, so those ticks are left to
-/// hephaestus.
-///
-/// The *padding* around a computed extent is still ggsql's:
-/// [`Scale::expand_range`](crate::plot::Scale::expand_range) applies the scale's
-/// own resolved `expand` factors, so a free panel is padded exactly like a fixed
-/// axis. Only the extent is derived here, never the expansion policy.
-pub fn free_position_scale(
-    global: Option<&GScale>,
-    dfs: &[&DataFrame],
-    base: &str,
-) -> Option<HScale> {
-    let type_kind = global
-        .and_then(|s| s.scale_type.as_ref())
+/// Core resolves the per-panel domain, breaks, labels, and minor breaks with
+/// the same machinery as the global scale, so this writer only translates —
+/// it never derives a positional extent itself. `None` when core resolved no
+/// per-panel entry (an empty facet cell), sending the panel back to the shared
+/// scale (`PanelScales::use_shared`).
+pub fn free_position_scale(global: Option<&GScale>, panel_index: usize) -> Option<HScale> {
+    let g = global?;
+    let panel = g.panels.as_ref()?.get(panel_index)?.as_ref()?;
+    let type_kind = g
+        .scale_type
+        .as_ref()
         .map(|st| st.scale_type_kind())
         .unwrap_or(ScaleTypeKind::Continuous);
-    let transform = global
-        .and_then(|s| s.transform.as_ref())
-        .map(|t| t.transform_kind());
+    let transform = g.transform.as_ref().map(|t| t.transform_kind());
 
     let hs = match type_kind {
         ScaleTypeKind::Discrete | ScaleTypeKind::Ordinal => {
-            let vals = panel_categories(global, dfs, base);
-            // An empty cell has no categories to free the dimension over; `None`
-            // sends the panel back to the shared scale (`PanelScales::use_shared`)
-            // rather than registering a domainless axis.
+            let vals: Vec<HValue> = panel.input_range.iter().map(category_value).collect();
+            // An empty cell has no categories to free the dimension over.
             if vals.is_empty() {
                 return None;
             }
-            if matches!(type_kind, ScaleTypeKind::Ordinal) {
+            let mut hs = if matches!(type_kind, ScaleTypeKind::Ordinal) {
                 scale::ordinal(vals)
             } else {
                 scale::discrete(vals)
+            };
+            // Pair each label with the category at its resolved position — the
+            // 1-based index into the panel's domain, exactly as the fixed path
+            // (`apply_breaks`) pairs against the global domain. A suppressed
+            // label blanks the text but keeps the category.
+            let pairs: Vec<(HValue, String)> = panel
+                .breaks
+                .iter()
+                .filter_map(|(pos, label)| {
+                    let index = (pos.round() as usize).checked_sub(1)?;
+                    Some((
+                        category_value(panel.input_range.get(index)?),
+                        label.clone().unwrap_or_default(),
+                    ))
+                })
+                .collect();
+            if !pairs.is_empty() {
+                hs = hs.with_breaks_labeled(pairs);
             }
+            hs
         }
         ScaleTypeKind::Identity => scale::identity(),
-        ScaleTypeKind::Binned => global
-            .and_then(|g| free_binned_scale(g, dfs, base))
-            // No usable break array → fall back to a plain continuous panel scale.
-            .or_else(|| free_continuous_scale(global, dfs, base, transform))?,
-        ScaleTypeKind::Continuous => free_continuous_scale(global, dfs, base, transform)?,
+        ScaleTypeKind::Binned => {
+            // The panel's domain is the narrowed bin-edge window and its breaks
+            // are those edges — a hephaestus binned scale derives band width
+            // from its edge count, so the two must narrow together.
+            let (min, max) = panel_range(&panel.input_range)?;
+            let edges: Vec<f64> = panel.breaks.iter().map(|(pos, _)| *pos).collect();
+            let edges = if edges.len() >= 2 {
+                edges
+            } else {
+                vec![min, max]
+            };
+            let mut hs = scale::binned(min..=max, edges);
+            if let Some(t) = transform.and_then(map_transform) {
+                hs = hs.with_transform(t);
+            }
+            let labels = visible_numbered_labels(&panel.breaks, None);
+            if !labels.is_empty() {
+                hs = hs.with_breaks_labeled(labels);
+            }
+            hs
+        }
+        ScaleTypeKind::Continuous => {
+            // The panel domain arrives already expanded and transform-clipped —
+            // core ran the same resolve as for a fixed axis.
+            let (min, max) = panel_range(&panel.input_range)?;
+            let (min, max) = pad_degenerate(min, max);
+            let labels = visible_numbered_labels(&panel.breaks, transform);
+            match temporal_scale(transform, min, max) {
+                Some(hs) => {
+                    if labels.is_empty() {
+                        // Leave the tick set automatic when core resolved no
+                        // breaks; pinning minors around ticks hephaestus chose
+                        // itself would mix two grids.
+                        hs
+                    } else {
+                        apply_pinned_minors(
+                            hs.with_breaks_labeled(labels),
+                            panel.minor_breaks.as_deref(),
+                            transform,
+                        )
+                    }
+                }
+                None => {
+                    let mut c = scale::continuous(min..=max);
+                    if let Some(t) = transform.and_then(map_transform) {
+                        c = c.with_transform(t);
+                    }
+                    if !labels.is_empty() {
+                        c = c.with_breaks_labeled(labels);
+                    }
+                    apply_pinned_minors(c, panel.minor_breaks.as_deref(), transform)
+                }
+            }
+        }
     };
 
     // The same flag the fixed path sets (see [`build_scale`]): freeing a
@@ -186,67 +237,27 @@ pub fn free_position_scale(
     })
 }
 
-/// A per-panel continuous position scale over the panel's own data extent.
-///
-/// A temporal dimension becomes a temporal scale, and keeps ggsql's global break
-/// labels narrowed to the panel — the same treatment [`free_binned_scale`] gives
-/// bin edges, and what the Vega-Lite writer does with a free temporal axis. The
-/// alternative, letting hephaestus pick per-panel calendar ticks, invents breaks
-/// ggsql didn't resolve and packs full ISO labels into a panel too narrow to hold
-/// them (the writer does no label thinning). A panel no global break
-/// falls inside keeps hephaestus's own ticks rather than a bare axis; they are
-/// dates either way, because the scale carries the calendar unit.
-fn free_continuous_scale(
-    global: Option<&GScale>,
-    dfs: &[&DataFrame],
-    base: &str,
+/// A panel domain's `(min, max)` from its two endpoint elements.
+fn panel_range(input_range: &[crate::plot::ArrayElement]) -> Option<(f64, f64)> {
+    let min = input_range.first()?.to_f64()?;
+    let max = input_range.last()?.to_f64()?;
+    Some((min, max))
+}
+
+/// A panel's visible breaks (suppressed labels dropped) as hephaestus
+/// `(value, label)` pairs, wrapping positions in the transform's value variant.
+fn visible_numbered_labels(
+    breaks: &[(f64, Option<String>)],
     transform: Option<GTransform>,
-) -> Option<HScale> {
-    let (min, max) = panel_extent(dfs, base)?;
-    // A panel extent is raw data, where `numeric_domain()` would already be
-    // expanded, so pad it with the scale's own resolved expansion — otherwise a
-    // free panel's marks sit hard against the panel edge while a fixed axis gets
-    // 5%, and `SETTING expand` silently stops applying once a dimension is freed.
-    let (min, max) = match global {
-        Some(g) => g.expand_range(min, max),
-        None => (min, max),
-    };
-    let (min, max) = pad_degenerate(min, max);
-    // ggsql's global minors, narrowed to this panel — the same treatment its majors
-    // get below. Pinning these is what keeps a panel showing one major from being
-    // filled with hephaestus's own sub-unit minors: ggsql derives minors from the
-    // global major spacing, so the survivors stay on that grid. `None` (no minors
-    // resolved) stays None so the fallback survives; an empty list after filtering is
-    // a panel that genuinely contains none.
-    let minors: Option<Vec<f64>> = global
-        .and_then(|g| g.numeric_minor_breaks())
-        .map(|positions| {
-            positions
-                .into_iter()
-                .filter(|pos| *pos >= min && *pos <= max)
-                .collect()
-        });
-    if let Some(hs) = temporal_scale(transform, min, max) {
-        let labels: Vec<(HValue, String)> = global
-            .map(|g| g.break_labels())
-            .unwrap_or_default()
-            .into_iter()
-            .filter(|(pos, _)| *pos >= min && *pos <= max)
-            .map(|(pos, label)| (temporal_value(transform, pos), label))
-            .collect();
-        // Leave the whole tick set automatic when no global break lands in the panel;
-        // pinning minors around ticks hephaestus chose itself would mix two grids.
-        return Some(if labels.is_empty() {
-            hs
-        } else {
-            apply_pinned_minors(hs.with_breaks_labeled(labels), minors.as_deref(), transform)
-        });
-    }
-    let mut c = scale::continuous(min..=max);
-    if let Some(t) = transform.and_then(map_transform) {
-        c = c.with_transform(t);
-    }
-    Some(apply_pinned_minors(c, minors.as_deref(), transform))
+) -> Vec<(HValue, String)> {
+    breaks
+        .iter()
+        .filter_map(|(pos, label)| {
+            label
+                .clone()
+                .map(|label| (temporal_value(transform, *pos), label))
+        })
+        .collect()
 }
 
 /// Pin `minors` (ggsql positions, already narrowed to the target domain) on `hs`,
@@ -269,127 +280,6 @@ fn apply_pinned_minors(
                 .collect(),
         ),
         None => hs,
-    }
-}
-
-/// A per-panel **binned** position scale: ggsql's globally resolved bin edges,
-/// narrowed to the window of bins this panel's data occupies.
-///
-/// The writer never invents bin boundaries — it only selects from the edges ggsql
-/// resolved, and labels them with ggsql's own edge labels. Edges and domain narrow
-/// together because a hephaestus binned scale derives band width from its edge
-/// count as `1 / (edges - 1)`: keeping every global edge while shrinking the domain
-/// would leave each bar a global bin-width wide, hanging off the panel.
-///
-/// Neither `expand_range` nor pinned minors here: the band width a bar is drawn at
-/// assumes the domain spans exactly the edges, so padding the domain would
-/// desynchronise bar width from bin width, and a binned axis's ticks are its edges,
-/// with nothing to subdivide.
-fn free_binned_scale(global: &GScale, dfs: &[&DataFrame], base: &str) -> Option<HScale> {
-    let bins = binned_bins(global);
-    if bins.is_empty() {
-        return None;
-    }
-    let (lo, hi) = panel_extent(dfs, base)?;
-    // The inclusive window of bins covering the panel's extent.
-    let first = bins.iter().rposition(|b| b.lower <= lo).unwrap_or(0);
-    let last = bins
-        .iter()
-        .position(|b| b.upper >= hi)
-        .unwrap_or(bins.len() - 1);
-    let (first, last) = (first.min(last), last);
-    let window = &bins[first..=last];
-
-    let mut edges = Vec::with_capacity(window.len() + 1);
-    edges.push(window[0].lower);
-    edges.extend(window.iter().map(|b| b.upper));
-    let mut hs = scale::binned(window[0].lower..=window[window.len() - 1].upper, edges);
-    if let Some(t) = global
-        .transform
-        .as_ref()
-        .map(|t| t.transform_kind())
-        .and_then(map_transform)
-    {
-        hs = hs.with_transform(t);
-    }
-    // ggsql's edge labels, restricted to the edges this panel's window keeps.
-    let labels: Vec<(HValue, String)> = global
-        .break_labels()
-        .into_iter()
-        .filter(|(pos, _)| *pos >= window[0].lower && *pos <= window[window.len() - 1].upper)
-        .map(|(pos, label)| (HValue::Number(pos), label))
-        .collect();
-    Some(if labels.is_empty() {
-        hs
-    } else {
-        hs.with_breaks_labeled(labels)
-    })
-}
-
-/// The finite numeric extent of a position family across the given slices.
-fn panel_extent(dfs: &[&DataFrame], base: &str) -> Option<(f64, f64)> {
-    let mut lo = f64::INFINITY;
-    let mut hi = f64::NEG_INFINITY;
-    for df in dfs {
-        // The base aesthetic plus its whole position family, so a panel holding
-        // only extents (a bar's `pos2end`, a ribbon's `pos2min`/`max`) still
-        // sizes its axis — the same family `execute/scale.rs` trains a fixed
-        // scale over.
-        for suffix in std::iter::once("").chain(POSITION_SUFFIXES.iter().copied()) {
-            let name = naming::aesthetic_column(&format!("{base}{suffix}"));
-            if df.column(&name).is_ok() {
-                if let Ok(values) = column_to_f64(df, &name) {
-                    for v in values.into_iter().filter(|v| v.is_finite()) {
-                        lo = lo.min(v);
-                        hi = hi.max(v);
-                    }
-                }
-            }
-        }
-    }
-    (lo.is_finite() && hi.is_finite()).then_some((lo, hi))
-}
-
-/// The categories a panel occupies: ggsql's globally resolved domain, narrowed
-/// to the levels these slices actually contain and left in the global order.
-///
-/// Selecting from `input_range` is what keeps a free panel agreeing with a fixed
-/// one — the same level order, the same [`channels::NULL_CATEGORY`] sentinel for
-/// a null level, and the same value *type* [`column_to_channel`] hands over.
-/// Re-deriving the domain from the column's text would break all three. The same
-/// narrowing [`free_binned_scale`] does for bin edges.
-fn panel_categories(global: Option<&GScale>, dfs: &[&DataFrame], base: &str) -> Vec<HValue> {
-    let name = naming::aesthetic_column(base);
-    let domain = domain_values(global);
-    let mut present = vec![false; domain.len()];
-    for df in dfs {
-        let Ok(data) = column_to_channel(df, &name) else {
-            continue;
-        };
-        // Matched with `key_eq`, exactly as hephaestus matches data to domain at
-        // draw time, so a level counts as present here only if it would resolve
-        // there too.
-        for value in channel_values(data) {
-            if let Some(i) = domain.iter().position(|level| level.key_eq(&value)) {
-                present[i] = true;
-            }
-        }
-    }
-    domain
-        .into_iter()
-        .zip(present)
-        .filter_map(|(level, present)| present.then_some(level))
-        .collect()
-}
-
-/// A column's values as the hephaestus values a scale domain is matched against.
-fn channel_values(data: ChannelData) -> Vec<HValue> {
-    match data {
-        ChannelData::Strings(values) => values
-            .into_iter()
-            .map(|v| HValue::String(Arc::from(v.as_str())))
-            .collect(),
-        ChannelData::Floats(values) => values.into_iter().map(HValue::Number).collect(),
     }
 }
 
@@ -599,7 +489,11 @@ fn apply_minor_breaks(hs: HScale, scale: &GScale, type_kind: ScaleTypeKind) -> H
 /// value a binned data column actually carries — see `Binned::pre_stat_transform_sql`),
 /// and its display label.
 pub struct Bin {
+    /// Kept for completeness of the bin representation; the writer currently
+    /// only joins on `centre` and reads `label`.
+    #[allow(dead_code)]
     pub lower: f64,
+    #[allow(dead_code)]
     pub upper: f64,
     pub centre: f64,
     pub label: String,
@@ -745,6 +639,7 @@ fn pad_degenerate(min: f64, max: f64) -> (f64, f64) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::writer::hephaestus::channels::{column_to_channel, ChannelData};
     use std::collections::HashMap;
 
     /// A binned scale with the given edges, plus optional per-edge label overrides
