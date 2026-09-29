@@ -169,7 +169,7 @@ impl Table {
 
 /// One `SPAN` clause: a named group of columns rendered as one spanner cell
 /// above them.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Spanner {
     /// This spanner's identifier, unparsed (quotes included, if quoted).
     /// Referenced by a later `SPAN`'s `ACROSS` list or a `LABEL <id> =>

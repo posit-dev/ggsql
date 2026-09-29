@@ -715,7 +715,10 @@ module.exports = grammar({
 
     // SPAN — groups columns under one spanner cell. Multiple spanners repeat
     // the whole clause (SPAN ... SPAN ...), the same model DRAW/SCALE use for
-    // more than one instance — not a comma list inside one SPAN.
+    // more than one instance — not a comma list inside one SPAN. Two forms,
+    // id-first or id-last: `SPAN <id> ACROSS <columns>` or `SPAN <columns>
+    // UNDER <id>`. Both produce the same `id`/column_list shape, just in a
+    // different order, so nothing downstream needs to know which was used.
     span_clause: $ => seq(
       caseInsensitive('SPAN'),
       // Mandatory: an identifier names this spanner — also its default
@@ -724,9 +727,18 @@ module.exports = grammar({
       // characters). NULL leaves it anonymous: nothing can reference it,
       // and its cell renders blank, but its columns still group (e.g. for
       // a shared SETTING like width).
-      field('id', choice($.identifier, $.null_literal)),
-      caseInsensitive('ACROSS'),
-      $.column_list,
+      choice(
+        seq(
+          field('id', choice($.identifier, $.null_literal)),
+          caseInsensitive('ACROSS'),
+          $.column_list
+        ),
+        seq(
+          $.column_list,
+          caseInsensitive('UNDER'),
+          field('id', choice($.identifier, $.null_literal))
+        )
+      ),
       optional($.setting_clause)
     ),
 

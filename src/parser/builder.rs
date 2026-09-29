@@ -1475,6 +1475,21 @@ mod tests {
     }
 
     #[test]
+    fn test_tabulate_span_columns_first_under_matches_id_first_across() {
+        let across =
+            parse_test_specs("TABULATE * FROM sales SPAN `Pretty Name` ACROSS foo, bar, baz")
+                .unwrap();
+        let under =
+            parse_test_specs("TABULATE * FROM sales SPAN foo, bar, baz UNDER `Pretty Name`")
+                .unwrap();
+
+        let across_table = across[0].as_table().expect("expected a Table spec");
+        let under_table = under[0].as_table().expect("expected a Table spec");
+
+        assert_eq!(across_table.spans, under_table.spans);
+    }
+
+    #[test]
     fn test_tabulate_span_null_id_gets_an_anonymous_generated_id() {
         let specs = parse_test_specs("TABULATE * FROM sales SPAN NULL ACROSS foo, bar").unwrap();
         let table = specs[0].as_table().expect("expected a Table spec");
