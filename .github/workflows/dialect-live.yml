@@ -1,59 +1,55 @@
 name: Live Dialect Tests
 
 # Tier 2 dialect conformance: run the canonical pipeline battery in
-# src/tests/dialect_live.rs against real backends. Postgres and ClickHouse
-# run as service containers; Trino runs as a plain container (it needs a
-# startup wait loop anyway). ADBC drivers come from the ADBC Driver Foundry
-# via dbc — the same drivers `driver_name_for_scheme` resolves in
+# src/tests/dialect_live.rs against real backends — one matrix leg per
+# backend, each starting its database as a plain docker container via
+# .github/scripts/dialect-live-start.sh (which also exports the matching
+# GGSQL_TEST_URI_* variable). ADBC drivers come from the ADBC Driver Foundry
+# via dbc — the same drivers `driver_names_for_scheme` resolves in
 # production, so the matrix also tests the driver-loading path.
 #
-# Adding a backend is a matrix row plus (if needed) a DDL template in
-# create_table_sql() — see the file header of src/tests/dialect_live.rs.
+# Adding a backend is a matrix row, a case in the start script, and (if
+# needed) a DDL template in create_table_sql() — see the file header of
+# src/tests/dialect_live.rs.
 
 on:
   push:
     branches: [main]
-    paths: ["src/**", ".github/workflows/dialect-live.yml"]
+    paths:
+      - "src/**"
+      - ".github/workflows/dialect-live.yml"
+      - ".github/scripts/dialect-live-start.sh"
   pull_request:
     branches: [main]
-    paths: ["src/**", ".github/workflows/dialect-live.yml"]
+    paths:
+      - "src/**"
+      - ".github/workflows/dialect-live.yml"
+      - ".github/scripts/dialect-live-start.sh"
   workflow_dispatch:
 
 jobs:
   live:
     runs-on: ubuntu-latest
-
-    services:
-      postgres:
-        image: postgres:17
-        env:
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: ggsql
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U postgres"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
-      clickhouse:
-        image: clickhouse/clickhouse-server:25.8
-        env:
-          # The passwordless 'default' user only authenticates from localhost,
-          # but port-mapped service connections arrive from the docker bridge
-          # IP — so give it an explicit password.
-          CLICKHOUSE_PASSWORD: clickhouse
-        ports:
-          - 9000:9000
-          - 8123:8123
+    strategy:
+      # One backend's failure must not cancel the other legs.
+      fail-fast: false
+      matrix:
+        include:
+          - { backend: postgres, driver: postgresql }
+          - { backend: clickhouse, driver: clickhouse }
+          - { backend: trino, driver: trino }
+          - { backend: mysql, driver: mysql }
+          - { backend: mariadb, driver: mysql }
+          - { backend: mssql, driver: mssql }
+          - { backend: exasol, driver: exasol }
 
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
 
       - name: Increase disk space
-        # Three database images (postgres, clickhouse, trino) plus a restored
-        # target/ — same cleanup as build.yaml.
+        # A database image plus a restored target/ — same cleanup as
+        # build.yaml.
         run: |
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
           sudo docker image prune --all --force
@@ -81,46 +77,27 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           # Deliberately the same shared-key as build.yaml: rust-cache's
-          # prefix fallback then restores the build job's target/, so this
-          # job only rebuilds the feature deltas instead of every dependency.
+          # prefix fallback then restores the build job's target/, so each
+          # leg only rebuilds the feature deltas instead of every
+          # dependency. All legs share one cache entry; concurrent saves
+          # after the first are no-ops.
           shared-key: ${{ runner.os }}-build
           cache-on-failure: true
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
-      - name: Install dbc and ADBC drivers
+      - name: Install dbc and the ${{ matrix.backend }} ADBC driver
         run: |
           curl -LsSf https://dbc.columnar.tech/install.sh | sh
           # dbc install takes exactly one DRIVER per invocation.
-          "$HOME/.local/bin/dbc" install postgresql
-          "$HOME/.local/bin/dbc" install trino
-          "$HOME/.local/bin/dbc" install clickhouse
+          "$HOME/.local/bin/dbc" install ${{ matrix.driver }}
 
-      - name: Start Trino
-        # The stock image ships the in-memory `memory` catalog, which is
-        # all the battery needs. Trino takes a while to boot; poll the
-        # info endpoint until it reports it is no longer starting.
-        run: |
-          docker run -d --name trino -p 8080:8080 trinodb/trino:476
-          for i in $(seq 1 60); do
-            if curl -sf http://localhost:8080/v1/info | grep -q '"starting":false'; then
-              echo "trino is up"; exit 0
-            fi
-            sleep 5
-          done
-          echo "trino failed to start"; docker logs trino; exit 1
+      - name: Start ${{ matrix.backend }}
+        # Exports GGSQL_TEST_URI_<BACKEND> for the test step.
+        run: bash .github/scripts/dialect-live-start.sh ${{ matrix.backend }}
 
-      - name: Run live dialect tests
-        env:
-          GGSQL_TEST_URI_POSTGRES: postgres://postgres:postgres@localhost:5432/ggsql
-          # The driver defaults to HTTPS; SSL=false selects plain HTTP for
-          # the local container. Catalog/schema come from the URI path, so
-          # the battery's unqualified table names land in memory.default.
-          GGSQL_TEST_URI_TRINO: trino://test@localhost:8080/memory/default?SSL=false
-          # The Foundry ClickHouse driver speaks the HTTP protocol and ignores
-          # userinfo in the URL — credentials must be query params (mapped to
-          # the username/password ADBC options). Password matches
-          # CLICKHOUSE_PASSWORD on the service above.
-          GGSQL_TEST_URI_CLICKHOUSE: clickhouse://localhost:8123?username=default&password=clickhouse
-        # --features adbc is load-bearing: without it the ADBC reader path is
-        # not compiled in and every live test panics at reader_from_uri.
-        run: cargo test -p ggsql --features adbc --test dialect_live -- --nocapture
+      - name: Run the ${{ matrix.backend }} live test
+        # --features adbc is load-bearing: without it the ADBC reader path
+        # is not compiled in and the test panics at reader_from_uri.
+        run: >-
+          cargo test -p ggsql --features adbc --test dialect_live
+          live_${{ matrix.backend }} -- --exact --nocapture

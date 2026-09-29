@@ -252,7 +252,8 @@ impl AdbcReader<ManagedDriver> {
     ///   URI is passed to the driver as the `uri` database option, with any
     ///   `?k=v` query params passed through as additional options. Where a
     ///   driver speaks a different wire scheme than ggsql's, the URI is
-    ///   rewritten (`clickhouse://…` → `http://…`).
+    ///   rewritten (`clickhouse://…` → `http://…`, `mysql://…` → a
+    ///   go-sql-driver DSN); see [`driver_uri_for`].
     ///
     /// The dialect is chosen from the scheme via
     /// [`crate::reader::dialects::dialect_for_scheme`], falling back to ANSI.
@@ -311,6 +312,20 @@ impl AdbcReader<ManagedDriver> {
 fn driver_uri_for(scheme: &str, body: &str, full_uri: &str) -> String {
     match scheme {
         "clickhouse" => format!("http://{body}"),
+        // The Foundry MySQL/MariaDB driver wraps go-sql-driver/mysql, whose
+        // DSN is `user[:pass]@tcp(host:port)/db` — not a URL. Translate
+        // `mysql://user:pass@host:port/db` accordingly. Query params are not
+        // carried into the DSN; they reach the driver as options instead.
+        "mysql" | "mariadb" => {
+            let (userinfo, host_db) = match body.rsplit_once('@') {
+                Some((u, h)) => (format!("{u}@"), h),
+                None => (String::new(), body),
+            };
+            match host_db.split_once('/') {
+                Some((addr, db)) => format!("{userinfo}tcp({addr})/{db}"),
+                None => format!("{userinfo}tcp({host_db})"),
+            }
+        }
         _ => full_uri.to_string(),
     }
 }
@@ -610,6 +625,27 @@ mod tests {
                 "postgres://u:p@h/db?sslmode=disable"
             ),
             "postgres://u:p@h/db?sslmode=disable"
+        );
+    }
+
+    #[test]
+    fn driver_uri_translates_mysql_to_go_dsn() {
+        assert_eq!(
+            driver_uri_for(
+                "mysql",
+                "root:pw@localhost:3306/ggsql",
+                "mysql://root:pw@localhost:3306/ggsql"
+            ),
+            "root:pw@tcp(localhost:3306)/ggsql"
+        );
+        // No userinfo.
+        assert_eq!(
+            driver_uri_for(
+                "mariadb",
+                "localhost:3306/ggsql",
+                "mariadb://localhost:3306/ggsql"
+            ),
+            "tcp(localhost:3306)/ggsql"
         );
     }
 

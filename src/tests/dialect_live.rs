@@ -6,7 +6,11 @@
 //!
 //! - `GGSQL_TEST_URI_POSTGRES`   e.g. `postgres://postgres:postgres@localhost:5432/ggsql`
 //! - `GGSQL_TEST_URI_TRINO`      e.g. `trino://localhost:8080/memory/default?username=test`
-//! - `GGSQL_TEST_URI_CLICKHOUSE` e.g. `clickhouse://localhost:9000`
+//! - `GGSQL_TEST_URI_CLICKHOUSE` e.g. `clickhouse://localhost:8123?username=default&password=x`
+//! - `GGSQL_TEST_URI_MYSQL`      e.g. `mysql://root:x@localhost:3306/ggsql`
+//! - `GGSQL_TEST_URI_MARIADB`    e.g. `mariadb://root:x@localhost:3306/ggsql`
+//! - `GGSQL_TEST_URI_MSSQL`      e.g. `mssql://sa:x@localhost:1433/master?TrustServerCertificate=true`
+//! - `GGSQL_TEST_URI_EXASOL`     e.g. `exasol://sys:exasol@localhost:8563/?tls=true&validateservercertificate=0`
 //!
 //! The DataFusion case runs in-process via the `adbc_datafusion` dev-driver
 //! and needs no setup, so one non-DuckDB engine always runs in CI.
@@ -35,6 +39,14 @@ fn create_table_sql(scheme: &str) -> String {
         "trino" => format!("CREATE TABLE {TABLE} (id INTEGER, val DOUBLE, grp VARCHAR(16))"),
         "clickhouse" => {
             format!("CREATE TABLE {TABLE} (id Int32, val Float64, grp String) ENGINE = Memory")
+        }
+        "mysql" | "mariadb" => {
+            format!("CREATE TABLE {TABLE} (id INT, val DOUBLE, grp VARCHAR(16))")
+        }
+        // T-SQL has no DOUBLE; FLOAT is the 64-bit type.
+        "mssql" => format!("CREATE TABLE {TABLE} (id INT, val FLOAT, grp VARCHAR(16))"),
+        "exasol" => {
+            format!("CREATE TABLE {TABLE} (id INT, val DOUBLE PRECISION, grp VARCHAR(16))")
         }
         other => panic!("no DDL template for scheme '{other}'"),
     }
@@ -114,6 +126,26 @@ fn live_trino() {
 #[test]
 fn live_clickhouse() {
     live_backend("clickhouse");
+}
+
+#[test]
+fn live_mysql() {
+    live_backend("mysql");
+}
+
+#[test]
+fn live_mariadb() {
+    live_backend("mariadb");
+}
+
+#[test]
+fn live_mssql() {
+    live_backend("mssql");
+}
+
+#[test]
+fn live_exasol() {
+    live_backend("exasol");
 }
 
 /// DataFusion runs in-process through its ADBC driver (already a
