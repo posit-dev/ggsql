@@ -164,26 +164,25 @@ fn uri_forces_odbc(rest: &str) -> bool {
 #[cfg_attr(not(all(feature = "adbc", feature = "odbc")), allow(unused_variables))]
 fn build_backend_reader(scheme: &str, rest: &str, uri: &str) -> Result<Box<dyn Reader + Send>> {
     #[cfg(feature = "adbc")]
-    if !uri_forces_odbc(rest) {
-        if crate::reader::adbc::adbc_driver_available(if scheme == "adbc" {
+    if !uri_forces_odbc(rest)
+        && (crate::reader::adbc::adbc_driver_available(if scheme == "adbc" {
             rest.split('?').next().unwrap_or(rest)
         } else {
             scheme
-        }) || scheme == "adbc"
-        {
-            // The driver library loaded (probe); a failure here is a genuine
-            // connection/config error, surfaced with an ODBC hint rather
-            // than silently masking it.
-            return crate::reader::adbc::AdbcReader::from_connection_string(uri)
-                .map(|r| Box::new(r) as Box<dyn Reader + Send>)
-                .map_err(|e| {
-                    GgsqlError::ReaderError(format!(
-                        "{}. The ADBC driver was found but connecting failed. \
-                         To use ODBC instead, add ?reader=odbc to the URI.",
-                        e
-                    ))
-                });
-        }
+        }) || scheme == "adbc")
+    {
+        // The driver library loaded (probe); a failure here is a genuine
+        // connection/config error, surfaced with an ODBC hint rather
+        // than silently masking it.
+        return crate::reader::adbc::AdbcReader::from_connection_string(uri)
+            .map(|r| Box::new(r) as Box<dyn Reader + Send>)
+            .map_err(|e| {
+                GgsqlError::ReaderError(format!(
+                    "{}. The ADBC driver was found but connecting failed. \
+                     To use ODBC instead, add ?reader=odbc to the URI.",
+                    e
+                ))
+            });
     }
 
     #[cfg(feature = "odbc")]
@@ -204,7 +203,7 @@ fn build_backend_reader(scheme: &str, rest: &str, uri: &str) -> Result<Box<dyn R
         scheme,
         adbc_driver_env_var(scheme),
         scheme,
-        format!("GGSQL_{}_ODBC_DRIVER", scheme.to_uppercase()),
+        odbc_driver_env_var(scheme),
     )))
 }
 
@@ -212,7 +211,17 @@ fn build_backend_reader(scheme: &str, rest: &str, uri: &str) -> Result<Box<dyn R
 /// (mirrors `adbc::driver_env_var`, duplicated here so error messages work
 /// in builds without the `adbc` feature).
 fn adbc_driver_env_var(scheme: &str) -> String {
-    let upper: String = scheme
+    format!("GGSQL_{}_ADBC_DRIVER", env_var_scheme(scheme))
+}
+
+/// Name of the env var specifying the ODBC driver for a scheme.
+fn odbc_driver_env_var(scheme: &str) -> String {
+    format!("GGSQL_{}_ODBC_DRIVER", env_var_scheme(scheme))
+}
+
+/// Uppercased, identifier-safe form of a scheme for env var names.
+fn env_var_scheme(scheme: &str) -> String {
+    scheme
         .chars()
         .map(|c| {
             if c.is_ascii_alphanumeric() {
@@ -221,8 +230,7 @@ fn adbc_driver_env_var(scheme: &str) -> String {
                 '_'
             }
         })
-        .collect();
-    format!("GGSQL_{}_ADBC_DRIVER", upper)
+        .collect()
 }
 
 /// Parsed form of `user:pass@host:port/db?params` backend URIs.
@@ -289,14 +297,14 @@ fn synthesize_odbc_conn_str(scheme: &str, rest: &str) -> Option<String> {
                 .or_else(|| p.strip_prefix("driver="))
         })
         .map(|d| d.trim_matches(|c| c == '{' || c == '}'));
-    let env_var = format!("GGSQL_{}_ODBC_DRIVER", scheme.to_uppercase());
-    let env_driver = std::env::var(&env_var).ok();
+    let env_driver = std::env::var(odbc_driver_env_var(scheme)).ok();
 
     let (mut parts, mut skip_keys): (Vec<String>, Vec<&str>) = (Vec::new(), Vec::new());
     if let Some(dsn) = dsn {
         parts.push(format!("DSN={}", dsn));
         skip_keys.push("dsn");
-    } else if let Some(driver) = driver.or(env_driver.as_deref()) {
+    } else {
+        let driver = driver.or(env_driver.as_deref())?;
         parts.push(format!("Driver={{{}}}", driver));
         skip_keys.push("driver");
         if let Some(host) = parsed.host {
@@ -308,8 +316,6 @@ fn synthesize_odbc_conn_str(scheme: &str, rest: &str) -> Option<String> {
         if let Some(db) = parsed.database {
             parts.push(format!("Database={}", db));
         }
-    } else {
-        return None;
     }
     if let Some(user) = parsed.user {
         parts.push(format!("UID={}", user));
@@ -427,13 +433,13 @@ fn auto_cache_if_needed(
             ("sqlite://:memory:", "sqlite")
         };
         let cache = build_reader(cache_uri)?;
-        return Ok(Box::new(crate::reader::CachingReader::with_config(
+        Ok(Box::new(crate::reader::CachingReader::with_config(
             reader,
             cache,
             uri.to_string(),
             cache_scheme.to_string(),
             CacheConfig::from_env(),
-        )));
+        )))
     }
     #[cfg(not(any(feature = "duckdb", feature = "sqlite")))]
     {
@@ -597,6 +603,7 @@ mod tests {
         assert_eq!(split_cache_uri("a+b+c://x"), None);
     }
 
+    #[cfg(feature = "adbc")]
     #[test]
     fn test_uri_forces_odbc() {
         assert!(uri_forces_odbc("u@h/db?reader=odbc"));

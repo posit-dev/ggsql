@@ -78,6 +78,9 @@ uuid.workspace = true
 fontique = { version = "0.9", optional = true, default-features = false, features = ["fontconfig-dlopen"] }
 
 [dev-dependencies]
+# Needed by integration tests (tests/) that build DataFrames: the `df!`
+# macro expands to `arrow::...` paths, which must resolve in the test crate.
+arrow = { workspace = true }
 jsonschema = { version = "0.44", default-features = false, features = ["resolve-file"] }
 tempfile = "3.8"
 ureq = "3"

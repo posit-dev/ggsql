@@ -1,0 +1,93 @@
+name: Live Dialect Tests
+
+# Tier 2 dialect conformance: run the canonical pipeline battery in
+# src/tests/dialect_live.rs against real backends. Postgres and ClickHouse
+# run as service containers; Trino runs as a plain container (it needs a
+# startup wait loop anyway). ADBC drivers come from the ADBC Driver Foundry
+# via dbc — the same drivers `driver_name_for_scheme` resolves in
+# production, so the matrix also tests the driver-loading path.
+#
+# Adding a backend is a matrix row plus (if needed) a DDL template in
+# create_table_sql() — see the file header of src/tests/dialect_live.rs.
+
+on:
+  push:
+    branches: [main]
+    paths: ["src/**", ".github/workflows/dialect-live.yml"]
+  pull_request:
+    branches: [main]
+    paths: ["src/**", ".github/workflows/dialect-live.yml"]
+  workflow_dispatch:
+
+jobs:
+  live:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: ggsql
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      clickhouse:
+        image: clickhouse/clickhouse-server:25.8
+        ports:
+          - 9000:9000
+          - 8123:8123
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install protobuf compiler
+        # adbc_datafusion (dev-dep) → datafusion → substrait → prost-build,
+        # which invokes `protoc` at build time.
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Caching
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: ${{ runner.os }}-dialect-live
+          cache-on-failure: true
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - name: Install dbc and ADBC drivers
+        run: |
+          curl -LsSf https://dbc.columnar.tech/install.sh | sh
+          "$HOME/.local/bin/dbc" install postgresql trino clickhouse
+
+      - name: Start Trino
+        # The stock image ships the in-memory `memory` catalog, which is
+        # all the battery needs. Trino takes a while to boot; poll the
+        # info endpoint until it reports it is no longer starting.
+        run: |
+          docker run -d --name trino -p 8080:8080 trinodb/trino:476
+          for i in $(seq 1 60); do
+            if curl -sf http://localhost:8080/v1/info | grep -q '"starting":false'; then
+              echo "trino is up"; exit 0
+            fi
+            sleep 5
+          done
+          echo "trino failed to start"; docker logs trino; exit 1
+
+      - name: Run live dialect tests
+        env:
+          GGSQL_SKIP_GENERATE: 1
+          GGSQL_TEST_URI_POSTGRES: postgres://postgres:postgres@localhost:5432/ggsql
+          # The driver defaults to HTTPS; SSL=false selects plain HTTP for
+          # the local container. Catalog/schema come from the URI path, so
+          # the battery's unqualified table names land in memory.default.
+          GGSQL_TEST_URI_TRINO: trino://test@localhost:8080/memory/default?SSL=false
+          # The Foundry ClickHouse driver speaks the HTTP protocol.
+          GGSQL_TEST_URI_CLICKHOUSE: clickhouse://localhost:8123
+        run: cargo test -p ggsql --test dialect_live -- --nocapture

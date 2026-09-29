@@ -230,7 +230,9 @@ impl AdbcReader<ManagedDriver> {
     /// - `<scheme>://<rest>` (e.g. `postgres://user:pass@host/db`) — the
     ///   scheme selects the driver via [`driver_name_for_scheme`]; the full
     ///   URI is passed to the driver as the `uri` database option, with any
-    ///   `?k=v` query params passed through as additional options.
+    ///   `?k=v` query params passed through as additional options. Where a
+    ///   driver speaks a different wire scheme than ggsql's, the URI is
+    ///   rewritten (`clickhouse://…` → `http://…`).
     ///
     /// The dialect is chosen from the scheme via
     /// [`crate::reader::dialects::dialect_for_scheme`], falling back to ANSI.
@@ -257,7 +259,15 @@ impl AdbcReader<ManagedDriver> {
             (driver, query_params_to_opts(query))
         } else {
             let driver = load_driver_for_scheme(&scheme)?;
-            let mut opts = vec![(OptionDatabase::Uri, OptionValue::String(uri.to_string()))];
+            // ggsql's scheme selects the driver and dialect, but the URI
+            // handed to the driver must use the scheme the driver itself
+            // speaks. ClickHouse's ADBC driver connects over the HTTP
+            // interface and expects http:// (or https:// for TLS).
+            let driver_uri = match scheme.as_str() {
+                "clickhouse" => uri.replacen("clickhouse://", "http://", 1),
+                _ => uri.to_string(),
+            };
+            let mut opts = vec![(OptionDatabase::Uri, OptionValue::String(driver_uri))];
             opts.extend(query_params_to_opts(query));
             (driver, opts)
         };

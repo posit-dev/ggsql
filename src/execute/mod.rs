@@ -12,6 +12,7 @@
 
 mod casting;
 mod cte;
+mod golden;
 mod layer;
 mod position;
 mod scale;
