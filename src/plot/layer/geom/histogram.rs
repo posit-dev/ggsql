@@ -191,9 +191,6 @@ fn stat_histogram(
             min = min_val
         )
     };
-    // Build the bin end expression (bin start + bin width)
-    let bin_end_expr = format!("{expr} + {w}", expr = bin_expr, w = bin_width);
-
     // Build grouped columns (group_by includes partition_by + facet variables)
     let group_cols = if group_by.is_empty() {
         bin_expr.clone()
@@ -219,9 +216,8 @@ fn stat_histogram(
         "COUNT(*)".to_string()
     };
 
-    // Use semantically meaningful column names with prefix to avoid conflicts
-    // Include bin (start), bin_end (end), count/sum, and density
-    // Use a two-stage query: first GROUP BY, then calculate density with window function
+    // Stat output columns, prefixed to avoid clashing with user columns:
+    // bin (start), bin_end (end), count/sum, density.
     let stat_bin = naming::stat_column("bin");
     let stat_bin_end = naming::stat_column("bin_end");
     let stat_count = naming::stat_column("count");
@@ -232,29 +228,44 @@ fn stat_histogram(
     let q_count = dialect.quote_ident(&stat_count);
     let q_density = dialect.quote_ident(&stat_density);
 
+    // Two-stage query. `__binned__` groups rows by the bin expression and
+    // counts them; its only non-facet grouping key is `bin_expr`. The outer
+    // SELECT then derives bin_end (bin + width) and density from the
+    // already-grouped `bin` and `count` columns. Computing the derived
+    // columns outside the GROUP BY query keeps every grouped SELECT
+    // expression equal to a grouping key, which strict dialects (e.g.
+    // BigQuery) require.
+    let (binned_select, density_window) = if group_by.is_empty() {
+        (
+            format!("{} AS {}, {} AS {}", bin_expr, q_bin, agg_expr, q_count),
+            "OVER ()".to_string(),
         )
     } else {
         let grp_cols = group_by.join(", ");
         (
             format!(
-                "{}, {} AS {}, {} AS {}, {} AS {}",
-                grp_cols, bin_expr, q_bin, bin_end_expr, q_bin_end, agg_expr, q_count
+                "{}, {} AS {}, {} AS {}",
+                grp_cols, bin_expr, q_bin, agg_expr, q_count
             ),
-            format!(
-                "*, {count} * 1.0 / SUM({count}) OVER (PARTITION BY {grp}) AS {density}",
-                count = q_count,
-                grp = grp_cols,
-                density = q_density
-            ),
+            format!("OVER (PARTITION BY {})", grp_cols),
         )
     };
 
     let transformed_query = format!(
-        "WITH \"__stat_src__\" AS ({query}), \"__binned__\" AS (SELECT {binned} FROM \"__stat_src__\" GROUP BY {group}) SELECT {final} FROM \"__binned__\"",
+        "WITH \"__stat_src__\" AS ({query}), \
+         \"__binned__\" AS (SELECT {binned} FROM \"__stat_src__\" GROUP BY {group}) \
+         SELECT *, {bin} + {width} AS {bin_end}, \
+         {count} * 1.0 / SUM({count}) {density_window} AS {density} \
+         FROM \"__binned__\"",
         query = query,
         binned = binned_select,
         group = group_cols,
-        final = final_select
+        bin = q_bin,
+        width = bin_width,
+        bin_end = q_bin_end,
+        count = q_count,
+        density_window = density_window,
+        density = q_density,
     );
 
     // Histogram always transforms - produces bin, bin_end, count, and density columns
