@@ -4626,7 +4626,7 @@ TABULATE * FROM sales SPAN `Pretty Name` ACROSS foo, bar, baz
           (bare_identifier))))
     (tab_clause
       (span_clause
-        label: (identifier
+        id: (identifier
           (quoted_identifier))
         (column_list
           (identifier
@@ -4657,14 +4657,14 @@ TABULATE * FROM sales SPAN A ACROSS foo
           (bare_identifier))))
     (tab_clause
       (span_clause
-        label: (identifier
+        id: (identifier
           (bare_identifier))
         (column_list
           (identifier
             (bare_identifier)))))))
 
 ================================================================================
-TABULATE SPAN clause with a NULL label
+TABULATE SPAN clause with a NULL id
 ================================================================================
 
 TABULATE * FROM sales SPAN NULL ACROSS foo, bar
@@ -4684,7 +4684,7 @@ TABULATE * FROM sales SPAN NULL ACROSS foo, bar
           (bare_identifier))))
     (tab_clause
       (span_clause
-        label: (null_literal)
+        id: (null_literal)
         (column_list
           (identifier
             (bare_identifier))
@@ -4712,7 +4712,7 @@ TABULATE * FROM sales SPAN W ACROSS foo SETTING width => '40%'
           (bare_identifier))))
     (tab_clause
       (span_clause
-        label: (identifier
+        id: (identifier
           (bare_identifier))
         (column_list
           (identifier
@@ -4753,7 +4753,7 @@ TABULATE * FROM sales LABEL id => 'ID' SPAN A ACROSS foo, bar
           value: (string))))
     (tab_clause
       (span_clause
-        label: (identifier
+        id: (identifier
           (bare_identifier))
         (column_list
           (identifier

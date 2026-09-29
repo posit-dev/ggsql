@@ -8,7 +8,7 @@
 //! populated so far.
 
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::plot::{
     validate_parameter, DefaultParamValue, Labels, NumberConstraint, ParamConstraint,
@@ -67,12 +67,11 @@ impl Default for Table {
 
 impl Table {
     /// Expand a SPAN's `ACROSS` entry that names an earlier spanner's `id`
-    /// into that spanner's own columns — `SPAN Y ACROSS x_id, c` (after
-    /// `SPAN X ACROSS a, b SETTING id => 'x_id'`) resolves to columns a,
-    /// b, c for `Y`. Only ids from earlier spans are recognised; an id
-    /// declared later, or a genuine typo, is left as a literal string and
-    /// caught downstream as an unknown column, the same as any other bad
-    /// reference.
+    /// into that spanner's own columns — `SPAN y ACROSS x_id, c` (after
+    /// `SPAN x_id ACROSS a, b`) resolves to columns a, b, c for `y`. Only
+    /// ids from earlier spans are recognised; an id declared later, or a
+    /// genuine typo, is left as a literal string and caught downstream as
+    /// an unknown column, the same as any other bad reference.
     ///
     /// Lives here rather than alongside its sibling spanner-resolution
     /// steps in `execute::table::spanner` because it operates on `Spanner`
@@ -95,10 +94,11 @@ impl Table {
             let mut resolved_span = span.clone();
             resolved_span.columns = columns;
 
-            if let Some(id) = resolved_span.settings.get("id").and_then(|v| v.as_str()) {
-                if ids.insert(id.to_string(), resolved.len()).is_some() {
-                    return Err(format!("Duplicate SPAN id '{id}'"));
-                }
+            if ids
+                .insert(resolved_span.id.clone(), resolved.len())
+                .is_some()
+            {
+                return Err(format!("Duplicate SPAN id '{}'", resolved_span.id));
             }
 
             resolved.push(resolved_span);
@@ -116,10 +116,10 @@ impl Table {
     /// the real columns it expands to, not the literal id text.
     ///
     /// Needs no DataFrame: FORMAT/SPAN are both plain AST, so this runs from
-    /// both `validate()` and real execution (`setup_columns`), mirroring
+    /// both `validate()` and real execution (`resolve_spanners`), mirroring
     /// `resolve_spanner_ids`.
     pub fn validate_span_stub_boundary(&self, resolved_spans: &[Spanner]) -> Result<(), String> {
-        let stub_columns: std::collections::HashSet<&str> = self
+        let stub_columns: HashSet<&str> = self
             .formats
             .iter()
             .filter(|format| format.target.is_stub())
@@ -127,19 +127,43 @@ impl Table {
             .collect();
 
         for (idx, span) in resolved_spans.iter().enumerate() {
-            if let Some(name) = span
-                .columns
-                .iter()
-                .find(|name| stub_columns.contains(name.as_str()))
-            {
-                return Err(format!(
-                    "SPAN {}: cannot include stub column '{name}'.",
-                    idx + 1
-                ));
-            }
+            span.validate_stub_boundary(&stub_columns)
+                .map_err(|e| format!("SPAN {}: {}", idx + 1, e))?;
         }
 
         Ok(())
+    }
+
+    /// Fully resolve this table's spanners for execution: settings
+    /// validated, `ACROSS` ids folded, STUB boundary checked, columns
+    /// checked against the real schema, and each `label` overlaid with any
+    /// `LABEL <id> => ...` entry.
+    pub fn resolve_spanners(
+        &self,
+        labels: &Labels,
+        column_names: Option<&[String]>,
+    ) -> Result<Vec<Spanner>, String> {
+        for (idx, spanner) in self.spans.iter().enumerate() {
+            spanner
+                .validate_settings()
+                .map_err(|e| format!("SPAN {}: {}", idx + 1, e))?;
+        }
+        let spans = self.resolve_spanner_ids()?;
+        self.validate_span_stub_boundary(&spans)?;
+        // None (validate()'s case) skips this: no real schema to check.
+        if let Some(names) = column_names {
+            for span in &spans {
+                span.validate_columns(names)?;
+            }
+        }
+
+        Ok(spans
+            .into_iter()
+            .map(|mut span| {
+                span.apply_labels(labels);
+                span
+            })
+            .collect())
     }
 }
 
@@ -147,11 +171,13 @@ impl Table {
 /// above them.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Spanner {
-    /// Display text for the spanner cell, from `SPAN`'s identifier (quote it
-    /// with backticks or double quotes to include spaces or other
-    /// non-identifier characters). `None` is `SPAN NULL` — suppress the
-    /// spanner cell but keep the column grouping (e.g. for `settings` that
-    /// apply to the group regardless of whether it has a visible label).
+    /// This spanner's identifier, unparsed (quotes included, if quoted).
+    /// Referenced by a later `SPAN`'s `ACROSS` list or a `LABEL <id> =>
+    /// ...` override. `SPAN NULL` still gets a real, internally generated
+    /// id here — nothing else can reasonably reference it.
+    pub id: String,
+    /// Dequoted default display text. `None` for `SPAN NULL` — blank cell,
+    /// columns still group. `LABEL <id> => ...` overrides either way.
     pub label: Option<String>,
     /// The columns this spanner covers, in the order written.
     pub columns: Vec<String>,
@@ -175,13 +201,6 @@ const SPAN_PARAMS: &[ParamDefinition] = &[
         default: DefaultParamValue::Null,
         constraint: ParamConstraint::count(1.0),
     },
-    ParamDefinition {
-        name: "id",
-        // No default: absence means this spanner has no id and can't be
-        // referenced by a later one's ACROSS list.
-        default: DefaultParamValue::Null,
-        constraint: ParamConstraint::string(),
-    },
 ];
 
 impl Spanner {
@@ -204,6 +223,46 @@ impl Spanner {
         }
 
         Ok(())
+    }
+
+    /// Check this spanner's columns against the table's STUB columns.
+    pub fn validate_stub_boundary(&self, stub_columns: &HashSet<&str>) -> Result<(), String> {
+        if let Some(name) = self
+            .columns
+            .iter()
+            .find(|name| stub_columns.contains(name.as_str()))
+        {
+            return Err(format!("cannot include stub column '{name}'."));
+        }
+
+        Ok(())
+    }
+
+    /// Check this spanner's columns and `id` against the real query
+    /// result's column names.
+    pub fn validate_columns(&self, column_names: &[String]) -> Result<(), String> {
+        for name in &self.columns {
+            if !column_names.contains(name) {
+                return Err(format!("SPAN references unknown column '{name}'"));
+            }
+        }
+
+        if column_names.contains(&self.id) {
+            return Err(format!(
+                "SPAN id '{}' collides with an existing column name",
+                self.id
+            ));
+        }
+
+        Ok(())
+    }
+
+    /// Overlay a `LABEL <id> => ...` entry onto `label`, if the query has
+    /// one for this spanner's id; otherwise leaves `label` as-is.
+    pub fn apply_labels(&mut self, labels: &Labels) {
+        if let Some(override_label) = labels.labels.get(&self.id) {
+            self.label = override_label.clone();
+        }
     }
 }
 
@@ -304,7 +363,8 @@ mod tests {
 
     fn spanner_with_settings(settings: Parameters) -> Spanner {
         Spanner {
-            label: Some(String::new()),
+            id: "S".to_string(),
+            label: Some("S".to_string()),
             columns: vec!["a".to_string()],
             settings,
         }
@@ -396,7 +456,8 @@ mod tests {
                 ..format_with_settings(Parameters::new())
             }],
             spans: vec![Spanner {
-                label: Some(String::new()),
+                id: "S".to_string(),
+                label: Some("S".to_string()),
                 columns: vec!["a".to_string(), "sales".to_string()],
                 settings: Parameters::new(),
             }],
@@ -406,5 +467,33 @@ mod tests {
         let resolved = table.resolve_spanner_ids().unwrap();
         let error = table.validate_span_stub_boundary(&resolved).unwrap_err();
         assert!(error.contains("cannot include stub column 'a'"));
+    }
+
+    #[test]
+    fn validate_columns_rejects_an_unknown_column() {
+        let span = Spanner {
+            id: "S".to_string(),
+            label: Some("S".to_string()),
+            columns: vec!["nope".to_string()],
+            settings: Parameters::new(),
+        };
+
+        let error = span.validate_columns(&["a".to_string()]).unwrap_err();
+        assert!(error.contains("SPAN references unknown column 'nope'"));
+    }
+
+    #[test]
+    fn validate_columns_rejects_an_id_matching_a_real_column() {
+        let span = Spanner {
+            id: "a".to_string(),
+            label: Some("a".to_string()),
+            columns: vec!["b".to_string()],
+            settings: Parameters::new(),
+        };
+
+        let error = span
+            .validate_columns(&["a".to_string(), "b".to_string()])
+            .unwrap_err();
+        assert!(error.contains("SPAN id 'a' collides with an existing column name"));
     }
 }

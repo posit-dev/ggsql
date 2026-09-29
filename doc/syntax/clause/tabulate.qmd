@@ -88,14 +88,22 @@ SPAN <identifier> ACROSS <column>, ...
   SETTING <parameter> => <value>, ...
 ```
 
-Groups columns under one spanner cell, drawn in a row above the column labels:
+Groups columns under one spanner cell, drawn in a row above the column labels. The identifier right after `SPAN` is this spanner's id — also its default display text:
 
 ```ggsql
 TABULATE * FROM sales
   SPAN Q1 ACROSS jan, feb, mar
 ```
 
-The label is mandatory and can be an identifier — quote it with backticks or double quotes to include spaces or other non-identifier characters (`` SPAN `Fiscal Q1` `` ) — or `NULL`, which suppresses the spanner cell itself while still grouping the columns — useful when the only reason for the `SPAN` is a shared `SETTING`. Each `SPAN` clause defines exactly one spanner; give several `SPAN` clauses for several spanners, the same way multiple `DRAW` clauses give multiple layers.
+The id is mandatory: an identifier (quote it with backticks or double quotes to include spaces or other non-identifier characters, e.g. `` SPAN `Fiscal Q1` ``) or `NULL`. `NULL` leaves the spanner anonymous — nothing can reference it — and its cell renders blank, useful when the only reason for the `SPAN` is a shared `SETTING` rather than a visible grouping. Each `SPAN` clause defines exactly one spanner; give several `SPAN` clauses for several spanners, the same way multiple `DRAW` clauses give multiple layers.
+
+Give a named spanner a different display text with `TABULATE`'s own `LABEL`, keyed by the spanner's id the same way it's keyed by a column name — `LABEL <id> => NULL` blanks the cell the same way `SPAN NULL` does, while keeping the grouping:
+
+```ggsql
+TABULATE * FROM sales
+  SPAN q1 ACROSS jan, feb, mar
+  LABEL q1 => 'Q1 Totals'
+```
 
 Spanners whose column sets overlap (but aren't identical) are placed on separate header rows automatically, closest-to-the-columns first.
 
@@ -106,17 +114,16 @@ SETTING <parameter> => <value>, ...
 
 * `gather` (boolean, default `true`): moves the spanner's columns to sit contiguously, pulling them next to the first-listed member without disturbing any other column's relative order. Set to `false` to leave the columns exactly where they are.
 * `level` (whole number, no default): pins the spanner to a specific header row (`1` is the row closest to the column labels). If omitted, a level is assigned automatically, high enough to avoid every other spanner it shares a column with.
-* `id` (string, no default): names this spanner so a *later* `SPAN` clause can fold its columns into a new one.
 
-Reference an `id` in place of a column name in a later `SPAN`'s `ACROSS` list to include everything the earlier spanner covers:
+Reference an earlier `SPAN`'s id in place of a column name in a later `SPAN`'s `ACROSS` list to include everything it covers:
 
 ```ggsql
 TABULATE * FROM sales
-  SPAN Q1 ACROSS jan, feb, mar SETTING id => 'q1'
-  SPAN H1 ACROSS q1, apr, may, jun
+  SPAN q1 ACROSS jan, feb, mar
+  SPAN h1 ACROSS q1, apr, may, jun
 ```
 
-`H1` ends up covering `jan, feb, mar, apr, may, jun`. Only an `id` declared by an *earlier* `SPAN` clause is recognised — referencing one declared later, or a typo, is treated as an unknown column, the same error as any other bad `ACROSS` entry. Every `id` must be unique across the whole query, and can't collide with an actual column name.
+`h1` ends up covering `jan, feb, mar, apr, may, jun`. Only an id declared by an *earlier* `SPAN` clause is recognised — referencing one declared later, or a typo, is treated as an unknown column, the same error as any other bad `ACROSS` entry. Every id must be unique across the whole query, and can't collide with an actual column name.
 
 ### `FORMAT`
 ```ggsql

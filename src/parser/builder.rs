@@ -45,10 +45,10 @@ fn parse_string_node(node: &Node, source: &SourceTree) -> String {
     process_escape_sequences(unquoted)
 }
 
-/// Parse an identifier node, stripping the single pair of surrounding
-/// backticks/quotes of a quoted_identifier; a bare_identifier passes through
-/// unchanged. Only the outer delimiter pair is removed, since the grammar
-/// allows the other quote character to appear inside the content unescaped.
+/// Strip one pair of surrounding backticks/double quotes from a quoted
+/// identifier (a bare identifier passes through unchanged) — not via
+/// `trim_matches`, which would also eat the other quote character if it
+/// appears unescaped at the edges of the content.
 fn parse_identifier_node(node: &Node, source: &SourceTree) -> String {
     let text = source.get_text(node);
     for quote in ['`', '"'] {
@@ -405,18 +405,24 @@ fn process_tab_clause(node: &Node, source: &SourceTree, table: &mut Table) -> Re
     Ok(())
 }
 
-/// Build a Spanner from a span_clause node: SPAN label ACROSS col, ... [SETTING ...]
+/// Build a Spanner from a span_clause node: SPAN id ACROSS col, ... [SETTING ...]
 fn build_span_clause(node: &Node, source: &SourceTree) -> Result<Spanner> {
-    let label_node = node.child_by_field_name("label").ok_or_else(|| {
-        GgsqlError::ParseError("Missing 'label' field in SPAN clause".to_string())
-    })?;
-    let label = match label_node.kind() {
-        "identifier" => Some(parse_identifier_node(&label_node, source)),
-        "null_literal" => None,
+    let id_node = node
+        .child_by_field_name("id")
+        .ok_or_else(|| GgsqlError::ParseError("Missing 'id' field in SPAN clause".to_string()))?;
+    // `id` stays unparsed (quotes included), matching parse_column_list's
+    // own convention, so it compares equal to a later ACROSS/LABEL
+    // reference. `label` is the dequoted form, used only for display.
+    let (id, label) = match id_node.kind() {
+        "identifier" => (
+            source.get_text(&id_node),
+            Some(parse_identifier_node(&id_node, source)),
+        ),
+        "null_literal" => (naming::anonymous_span_id(), None),
         _ => {
             return Err(GgsqlError::ParseError(format!(
-                "SPAN label must be an identifier or null, got: {}",
-                label_node.kind()
+                "SPAN id must be an identifier or null, got: {}",
+                id_node.kind()
             )));
         }
     };
@@ -432,6 +438,7 @@ fn build_span_clause(node: &Node, source: &SourceTree) -> Result<Spanner> {
     };
 
     Ok(Spanner {
+        id,
         label,
         columns,
         settings,
@@ -1461,16 +1468,18 @@ mod tests {
         let table = specs[0].as_table().expect("expected a Table spec");
 
         assert_eq!(table.spans.len(), 1);
+        assert_eq!(table.spans[0].id, "`Pretty Name`");
         assert_eq!(table.spans[0].label, Some("Pretty Name".to_string()));
         assert_eq!(table.spans[0].columns, vec!["foo", "bar", "baz"]);
         assert!(table.spans[0].settings.is_empty());
     }
 
     #[test]
-    fn test_tabulate_span_null_label_suppresses_the_cell() {
+    fn test_tabulate_span_null_id_gets_an_anonymous_generated_id() {
         let specs = parse_test_specs("TABULATE * FROM sales SPAN NULL ACROSS foo, bar").unwrap();
         let table = specs[0].as_table().expect("expected a Table spec");
 
+        assert!(!table.spans[0].id.is_empty());
         assert_eq!(table.spans[0].label, None);
     }
 

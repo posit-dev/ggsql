@@ -18,7 +18,7 @@ use super::stub::{create_row_labels, create_stubhead, move_stub_columns};
 use super::{TableCell, TableCellKind, TableClass};
 use crate::array_util::value_to_string;
 use crate::plot::{Labels, Parameters};
-use crate::{ColumnSection, DataFrame, Format, GgsqlError, Result, Spanner, Table};
+use crate::{ColumnSection, DataFrame, Format, GgsqlError, Result, Spanner};
 
 /// Pop the reserved `title`/`subtitle`/`caption` keys out of a `TABULATE`
 /// `LABEL` clause's resolved map, leaving only genuine column-name
@@ -36,36 +36,19 @@ pub(super) fn extract_heading_labels(
     (title, subtitle, caption)
 }
 
-/// Resolve a table's columns: validated SPAN settings, spanner ids
-/// expanded, one `TableColumn` per `DataFrame` column (labelled, with
-/// `formats`' resolved `SETTING` properties), reordered for any
-/// `gather`-ing spanner and then for STUB columns. Also returns `spans`
-/// alongside `columns` — already resolved here, and still needed by
-/// `build_cells` for the spanner cells themselves, so recomputing it there
-/// would just repeat this work.
+/// Resolve a table's columns: one `TableColumn` per `DataFrame` column
+/// (labelled, with `formats`' resolved `SETTING` properties), reordered for
+/// any `gather`-ing spanner and then for STUB columns. `spans` must already
+/// be resolved (`Table::resolve_spanners`).
 pub(super) fn setup_columns(
     df: &DataFrame,
-    table: &Table,
+    spans: &[Spanner],
     labels: &Labels,
     formats: &HashMap<String, Format>,
-) -> Result<(Vec<TableColumn>, Vec<Spanner>)> {
-    for (idx, spanner) in table.spans.iter().enumerate() {
-        spanner
-            .validate_settings()
-            .map_err(|e| GgsqlError::ValidationError(format!("SPAN {}: {}", idx + 1, e)))?;
-    }
-    let spans = table
-        .resolve_spanner_ids()
-        .map_err(GgsqlError::ValidationError)?;
-    table
-        .validate_span_stub_boundary(&spans)
-        .map_err(GgsqlError::ValidationError)?;
-
+) -> Vec<TableColumn> {
     let columns = create_table_columns(df, labels, formats);
-    let columns = reorder_table_columns(columns, &spans)?;
-    let columns = move_stub_columns(columns);
-
-    Ok((columns, spans))
+    let columns = reorder_table_columns(columns, spans);
+    move_stub_columns(columns)
 }
 
 /// Build the resolved cell layout for a table from its already-resolved
@@ -83,7 +66,7 @@ pub(super) fn build_cells(
     caption: Option<&str>,
 ) -> Result<(Vec<TableCell>, Vec<TableRow>)> {
     let ncol = columns.len();
-    let spanners = create_spanners(columns, spans)?;
+    let spanners = create_spanners(columns, spans);
     // The only way every column's label ends up empty is `LABEL col => NULL`
     // (or `=> ''`) on every column, since an unlabeled column keeps its
     // (non-empty) name — so a wholly suppressed row omits the row entirely
@@ -579,7 +562,7 @@ mod tests {
     use super::*;
     use crate::df;
     use crate::plot::ParameterValue;
-    use crate::Spanner;
+    use crate::{Spanner, Table};
 
     /// Runs the same steps `resolve_table_with_reader` does, minus the
     /// `Reader`/SQL execution — lets a test build a `Table`'s resolved cells
@@ -588,7 +571,11 @@ mod tests {
         let mut labels = table.labels.clone();
         let (title, subtitle, caption) = extract_heading_labels(&mut labels);
         let formats = setup_formats(df, &table.formats)?;
-        let (columns, spans) = setup_columns(df, table, &labels, &formats)?;
+        let column_names = df.get_column_names();
+        let spans = table
+            .resolve_spanners(&labels, Some(&column_names))
+            .map_err(GgsqlError::ValidationError)?;
+        let columns = setup_columns(df, &spans, &labels, &formats);
         let df = apply_formats(df, &formats)?;
         let (cells, rows) = build_cells(
             &df,
@@ -676,6 +663,7 @@ mod tests {
 
     fn spanner_with(columns: &[&str], label: Option<&str>, settings: Parameters) -> Spanner {
         Spanner {
+            id: label.unwrap_or("").to_string(),
             label: label.map(str::to_string),
             columns: columns.iter().map(|s| s.to_string()).collect(),
             settings,
@@ -1064,6 +1052,45 @@ mod tests {
             .iter()
             .filter(|c| c.kind == TableCellKind::Body)
             .all(|c| c.top == 2));
+    }
+
+    #[test]
+    fn build_cells_overrides_a_spanners_default_label_via_labels_clause() {
+        let frame = df! {
+            "a" => vec![1i32],
+            "b" => vec![2i32],
+        }
+        .unwrap();
+        let mut table = Table::new();
+        table.spans = vec![labeled_spanner(&["a", "b"], "g")];
+        table
+            .labels
+            .labels
+            .insert("g".to_string(), Some("Group".to_string()));
+
+        let cells = resolve_cells(&frame, &table).unwrap();
+
+        let spanner_cell = cells
+            .iter()
+            .find(|c| c.kind == TableCellKind::Spanner)
+            .unwrap();
+        assert_eq!(spanner_cell.content, "Group");
+    }
+
+    #[test]
+    fn build_cells_suppresses_a_named_spanners_cell_via_labels_null() {
+        let frame = df! {
+            "a" => vec![1i32],
+            "b" => vec![2i32],
+        }
+        .unwrap();
+        let mut table = Table::new();
+        table.spans = vec![labeled_spanner(&["a", "b"], "g")];
+        table.labels.labels.insert("g".to_string(), None);
+
+        let cells = resolve_cells(&frame, &table).unwrap();
+
+        assert!(!cells.iter().any(|c| c.kind == TableCellKind::Spanner));
     }
 
     #[test]

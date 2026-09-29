@@ -85,7 +85,11 @@ pub fn resolve_table_with_reader(query: &str, reader: &dyn Reader) -> Result<Res
     // The shape both create_table_columns (SETTING) and apply_formats
     // (RENAMING) read from.
     let formats = setup_formats(&df, &table.formats)?;
-    let (columns, spans) = setup_columns(&df, &table, &labels, &formats)?;
+    let column_names = df.get_column_names();
+    let spans = table
+        .resolve_spanners(&labels, Some(&column_names))
+        .map_err(GgsqlError::ValidationError)?;
+    let columns = setup_columns(&df, &spans, &labels, &formats);
     let df = apply_formats(&df, &formats)?;
     let (cells, rows) = build_cells(
         &df,
@@ -681,5 +685,23 @@ mod integration_tests {
         );
 
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_tabulate_span_unknown_column_errors_even_with_gather_disabled() {
+        // Table::resolve_spanners checks every ACROSS entry regardless of
+        // gather, so this errors even though gather_columns itself (the
+        // only place that also checks column existence) is skipped here.
+        let reader = reader_with_sales();
+        match resolve_table_with_reader(
+            "TABULATE * FROM sales SPAN G ACROSS nope, id SETTING gather => false",
+            &reader,
+        ) {
+            Ok(_) => panic!("expected an unknown ACROSS column to error"),
+            Err(GgsqlError::ValidationError(msg)) => {
+                assert!(msg.contains("SPAN references unknown column 'nope'"))
+            }
+            Err(e) => panic!("expected a ValidationError, got {e:?}"),
+        }
     }
 }

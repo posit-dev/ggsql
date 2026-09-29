@@ -718,11 +718,13 @@ module.exports = grammar({
     // more than one instance — not a comma list inside one SPAN.
     span_clause: $ => seq(
       caseInsensitive('SPAN'),
-      // Mandatory: an identifier sets the cell's text (quote it to include
-      // spaces or other non-identifier characters); NULL suppresses the
-      // cell while still grouping the columns (e.g. for a shared SETTING
-      // like width).
-      field('label', choice($.identifier, $.null_literal)),
+      // Mandatory: an identifier names this spanner — also its default
+      // display text, and how a later SPAN's ACROSS list or a LABEL entry
+      // addresses it (quote it to include spaces or other non-identifier
+      // characters). NULL leaves it anonymous: nothing can reference it,
+      // and its cell renders blank, but its columns still group (e.g. for
+      // a shared SETTING like width).
+      field('id', choice($.identifier, $.null_literal)),
       caseInsensitive('ACROSS'),
       $.column_list,
       optional($.setting_clause)
