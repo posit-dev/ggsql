@@ -114,9 +114,11 @@ const DEFAULT_LOAD_FLAGS: adbc_core::LoadFlags =
 
 /// Map a ggsql URI scheme to the canonical ADBC driver library name.
 ///
-/// Backends without a dedicated ADBC driver map to Flight SQL, which is the
-/// de-facto ADBC route for MySQL, SQL Server, Trino, ClickHouse, and Oracle
-/// deployments that front those systems with a Flight SQL endpoint.
+/// Most backend schemes resolve to a dedicated driver from the ADBC Driver
+/// Foundry (installable via `dbc install <name>`). Redshift shares the
+/// PostgreSQL wire protocol and uses the PostgreSQL driver. Schemes without
+/// a usable dedicated driver (Drill, MonetDB) return `None` and fall through
+/// to the ODBC fallback in connection setup.
 pub fn driver_name_for_scheme(scheme: &str) -> Option<&'static str> {
     Some(match scheme {
         "postgres" | "postgresql" => "adbc_driver_postgresql",
@@ -127,9 +129,14 @@ pub fn driver_name_for_scheme(scheme: &str) -> Option<&'static str> {
         "duckdb" => "adbc_driver_duckdb",
         "sqlite" => "adbc_driver_sqlite",
         "flightsql" => "adbc_driver_flightsql",
-        "mysql" | "mariadb" | "trino" | "clickhouse" | "mssql" | "sqlserver" | "oracle" => {
-            "adbc_driver_flightsql"
-        }
+        "mysql" | "mariadb" => "adbc_driver_mysql",
+        "trino" => "adbc_driver_trino",
+        "clickhouse" => "adbc_driver_clickhouse",
+        "mssql" | "sqlserver" => "adbc_driver_mssql",
+        "oracle" => "adbc_driver_oracle",
+        "exasol" => "adbc_driver_exasol",
+        // Preview driver from the Foundry as of late 2026.
+        "druid" => "adbc_driver_druid",
         _ => return None,
     })
 }
@@ -530,10 +537,16 @@ mod tests {
             driver_name_for_scheme("snowflake"),
             Some("adbc_driver_snowflake")
         );
+        assert_eq!(driver_name_for_scheme("mysql"), Some("adbc_driver_mysql"));
+        assert_eq!(driver_name_for_scheme("trino"), Some("adbc_driver_trino"));
         assert_eq!(
-            driver_name_for_scheme("mysql"),
-            Some("adbc_driver_flightsql")
+            driver_name_for_scheme("clickhouse"),
+            Some("adbc_driver_clickhouse")
         );
+        assert_eq!(driver_name_for_scheme("mssql"), Some("adbc_driver_mssql"));
+        assert_eq!(driver_name_for_scheme("oracle"), Some("adbc_driver_oracle"));
+        assert_eq!(driver_name_for_scheme("exasol"), Some("adbc_driver_exasol"));
+        assert_eq!(driver_name_for_scheme("druid"), Some("adbc_driver_druid"));
         assert_eq!(driver_name_for_scheme("nosuch"), None);
     }
 
