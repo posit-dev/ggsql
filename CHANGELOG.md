@@ -2,6 +2,13 @@
 
 ### Fixed
 
+- Free facet dimensions now resolve their domain, breaks, labels, and minor
+  breaks per panel in core (`Scale::panels`, indexed by the canonical panel
+  order shared by both writers). The Vega-Lite writer no longer pins the
+  globally resolved break set as `axis.values` on a free dimension — which had
+  left most panels showing a single tick — and the hephaestus writer consumes
+  the core-resolved per-panel scales instead of deriving panel extents itself
+  (#516).
 - Fixed a parser bug that interpreted comment characters inside string literals
   as initializing a comment (#555).
 - Fixed a bug in stat_aggregate prevented transposed layers from properly
