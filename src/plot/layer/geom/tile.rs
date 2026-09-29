@@ -4,8 +4,8 @@ use super::stat_aggregate;
 use super::types::POSITION_VALUES;
 use super::types::{get_column_name, get_quoted_column_name};
 use super::{
-    densify_edges, has_aggregate_param, needs_projection, project_position_columns,
-    DefaultAesthetics, GeomTrait, GeomType, ParamConstraint, StatResult,
+    DefaultAesthetics, GeomTrait, GeomType, ParamConstraint, StatResult, densify_edges,
+    has_aggregate_param, needs_projection, project_position_columns,
 };
 use crate::naming;
 use crate::plot::projection::Projection;
@@ -145,7 +145,7 @@ impl GeomTrait for Tile {
                 } => {
                     let exploded = agg_stats.iter().any(|s| s == "aggregate");
                     (
-                        rename_agg_stats_to_aes(agg_query, &consumed_aesthetics),
+                        rename_agg_stats_to_aes(agg_query, &consumed_aesthetics, dialect),
                         exploded,
                     )
                 }
@@ -183,6 +183,7 @@ impl GeomTrait for Tile {
             group_by,
             parameters,
             aesthetic_ctx,
+            dialect,
         )?;
 
         if exploded {
@@ -233,7 +234,7 @@ impl GeomTrait for Tile {
             return project_position_columns(query, projection, dialect, &columns);
         }
 
-        let (expanded, expanded_columns) = expand_rect_to_polygon(query, &columns);
+        let (expanded, expanded_columns) = expand_rect_to_polygon(query, &columns, dialect);
 
         partition_by.push(naming::DENSIFY_ID_COLUMN.to_string());
         parameters.insert("densified".to_string(), ParameterValue::Boolean(true));
@@ -275,7 +276,11 @@ impl GeomTrait for Tile {
 /// from pos1/pos2 after densification and projection.
 ///
 /// Returns the expanded query and the new column list.
-fn expand_rect_to_polygon(query: &str, columns: &[String]) -> (String, Vec<String>) {
+fn expand_rect_to_polygon(
+    query: &str,
+    columns: &[String],
+    dialect: &dyn SqlDialect,
+) -> (String, Vec<String>) {
     let pos1min_col = naming::aesthetic_column("pos1min");
     let pos1max_col = naming::aesthetic_column("pos1max");
     let pos2min_col = naming::aesthetic_column("pos2min");
@@ -290,13 +295,13 @@ fn expand_rect_to_polygon(query: &str, columns: &[String]) -> (String, Vec<Strin
         .collect();
     let passthrough: Vec<String> = passthrough_cols
         .iter()
-        .map(|c| naming::quote_ident(c))
+        .map(|c| dialect.quote_ident(c))
         .collect();
 
     // Step 1: Number each rectangle.
     // ORDER BY (SELECT NULL) is a workaround: ROW_NUMBER requires ORDER BY
     // syntactically, but we don't care about the order — just need unique IDs.
-    let densify_id_q = naming::quote_ident(naming::DENSIFY_ID_COLUMN);
+    let densify_id_q = dialect.quote_ident(naming::DENSIFY_ID_COLUMN);
 
     let numbered = format!(
         "SELECT *, ROW_NUMBER() OVER (ORDER BY (SELECT NULL)) \
@@ -311,12 +316,12 @@ fn expand_rect_to_polygon(query: &str, columns: &[String]) -> (String, Vec<Strin
          UNION ALL SELECT 3 \
          UNION ALL SELECT 4)";
 
-    let pos1min_q = naming::quote_ident(&pos1min_col);
-    let pos1max_q = naming::quote_ident(&pos1max_col);
-    let pos2min_q = naming::quote_ident(&pos2min_col);
-    let pos2max_q = naming::quote_ident(&pos2max_col);
-    let pos1_q = naming::quote_ident(&naming::aesthetic_column("pos1"));
-    let pos2_q = naming::quote_ident(&naming::aesthetic_column("pos2"));
+    let pos1min_q = dialect.quote_ident(&pos1min_col);
+    let pos1max_q = dialect.quote_ident(&pos1max_col);
+    let pos2min_q = dialect.quote_ident(&pos2min_col);
+    let pos2max_q = dialect.quote_ident(&pos2max_col);
+    let pos1_q = dialect.quote_ident(&naming::aesthetic_column("pos1"));
+    let pos2_q = dialect.quote_ident(&naming::aesthetic_column("pos2"));
 
     let mut select_parts: Vec<String> = passthrough;
     select_parts.push(densify_id_q.to_string());
@@ -354,7 +359,11 @@ fn expand_rect_to_polygon(query: &str, columns: &[String]) -> (String, Vec<Strin
 /// aggregated values as if they were original aesthetic columns, which is
 /// exactly the substitution the tile layer wants when only material
 /// aesthetics get aggregated.
-fn rename_agg_stats_to_aes(agg_query: String, consumed: &[String]) -> String {
+fn rename_agg_stats_to_aes(
+    agg_query: String,
+    consumed: &[String],
+    dialect: &dyn SqlDialect,
+) -> String {
     if consumed.is_empty() {
         return agg_query;
     }
@@ -363,8 +372,8 @@ fn rename_agg_stats_to_aes(agg_query: String, consumed: &[String]) -> String {
         .map(|aes| {
             format!(
                 "{} AS {}",
-                naming::quote_ident(&naming::stat_column(aes)),
-                naming::quote_ident(&naming::aesthetic_column(aes)),
+                dialect.quote_ident(&naming::stat_column(aes)),
+                dialect.quote_ident(&naming::aesthetic_column(aes)),
             )
         })
         .collect();
@@ -389,6 +398,7 @@ fn process_direction(
     parameters: &Parameters,
     schema: &Schema,
     display_name: &str,
+    dialect: &dyn SqlDialect,
 ) -> Result<(Vec<String>, Vec<String>)> {
     // Derive aesthetic names from axis
     let (center_aes, min_aes, max_aes, size_aes) = match axis {
@@ -400,10 +410,10 @@ fn process_direction(
     // Get unquoted center name for schema lookup
     let center_unquoted = get_column_name(aesthetics, center_aes);
     let center = center_unquoted.as_deref().map(naming::quote_ident);
-    let min = get_quoted_column_name(aesthetics, min_aes);
-    let max = get_quoted_column_name(aesthetics, max_aes);
+    let min = get_quoted_column_name(aesthetics, min_aes, dialect);
+    let max = get_quoted_column_name(aesthetics, max_aes, dialect);
     // SETTING fallback for size is a literal value, no quoting needed.
-    let size = get_quoted_column_name(aesthetics, size_aes)
+    let size = get_quoted_column_name(aesthetics, size_aes, dialect)
         .or_else(|| parameters.get(size_aes).map(|v| v.to_string()));
 
     // Detect if discrete by checking schema
@@ -447,12 +457,12 @@ fn process_direction(
         format!(
             "{} AS {}",
             expr_1,
-            naming::quote_ident(&naming::stat_column(&stat_cols[0]))
+            dialect.quote_ident(&naming::stat_column(&stat_cols[0]))
         ),
         format!(
             "{} AS {}",
             expr_2,
-            naming::quote_ident(&naming::stat_column(&stat_cols[1]))
+            dialect.quote_ident(&naming::stat_column(&stat_cols[1]))
         ),
     ];
 
@@ -467,17 +477,18 @@ fn stat_tile(
     _group_by: &[String],
     parameters: &Parameters,
     aesthetic_ctx: &crate::plot::aesthetic::AestheticContext,
+    dialect: &dyn SqlDialect,
 ) -> Result<StatResult> {
     let display_x = aesthetic_ctx.map_internal_to_user("pos1");
     let display_y = aesthetic_ctx.map_internal_to_user("pos2");
 
     // Process X direction
     let (x_select, x_stat_cols) =
-        process_direction("x", aesthetics, parameters, schema, &display_x)?;
+        process_direction("x", aesthetics, parameters, schema, &display_x, dialect)?;
 
     // Process Y direction
     let (y_select, y_stat_cols) =
-        process_direction("y", aesthetics, parameters, schema, &display_y)?;
+        process_direction("y", aesthetics, parameters, schema, &display_y, dialect)?;
 
     // Define consumed aesthetics (these will be transformed, not passed through)
     let consumed_aesthetic_names = [
@@ -494,7 +505,7 @@ fn stat_tile(
     let mut select_parts: Vec<String> = schema
         .iter()
         .filter(|col| !consumed_columns.contains(&col.name))
-        .map(|col| naming::quote_ident(&col.name))
+        .map(|col| dialect.quote_ident(&col.name))
         .collect();
 
     // Add X direction SELECT parts and collect stat columns
@@ -613,8 +624,8 @@ fn generate_continuous_position_expressions(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::plot::types::{AestheticValue, ColumnInfo, ParameterValue};
     use crate::plot::Parameters;
+    use crate::plot::types::{AestheticValue, ColumnInfo, ParameterValue};
     use arrow::datatypes::DataType;
 
     // ==================== Helper Functions ====================
@@ -794,6 +805,7 @@ mod tests {
                 &group_by,
                 &parameters,
                 &ctx,
+                &crate::reader::AnsiDialect,
             );
 
             assert!(
@@ -906,6 +918,7 @@ mod tests {
                 &group_by,
                 &parameters,
                 &ctx,
+                &crate::reader::AnsiDialect,
             );
 
             assert!(
@@ -973,6 +986,7 @@ mod tests {
             &group_by,
             &parameters,
             &ctx,
+            &crate::reader::AnsiDialect,
         );
         assert!(result.is_ok());
 
@@ -1006,6 +1020,7 @@ mod tests {
             &group_by,
             &parameters,
             &ctx,
+            &crate::reader::AnsiDialect,
         );
         assert!(result.is_ok());
 
@@ -1039,6 +1054,7 @@ mod tests {
             &group_by,
             &parameters,
             &ctx,
+            &crate::reader::AnsiDialect,
         );
         assert!(result.is_ok());
 
@@ -1074,6 +1090,7 @@ mod tests {
             &group_by,
             &parameters,
             &ctx,
+            &crate::reader::AnsiDialect,
         );
         assert!(result.is_ok());
         let stat_result = result.unwrap();
@@ -1107,6 +1124,7 @@ mod tests {
             &group_by,
             &parameters,
             &ctx,
+            &crate::reader::AnsiDialect,
         );
         assert!(result.is_err());
         let err_msg = result.unwrap_err().to_string();
@@ -1128,6 +1146,7 @@ mod tests {
             &group_by,
             &parameters,
             &ctx,
+            &crate::reader::AnsiDialect,
         );
         assert!(result.is_err());
         let err_msg = result.unwrap_err().to_string();
@@ -1150,6 +1169,7 @@ mod tests {
             &group_by,
             &parameters,
             &ctx,
+            &crate::reader::AnsiDialect,
         );
         assert!(result.is_ok());
         let stat_result = result.unwrap();
@@ -1184,6 +1204,7 @@ mod tests {
             &group_by,
             &parameters,
             &ctx,
+            &crate::reader::AnsiDialect,
         );
         assert!(result.is_ok());
 
@@ -1252,8 +1273,8 @@ mod tests {
                 // Re-alias stage: stat fill column re-exposed as the aesthetic name.
                 let expected_alias = format!(
                     "{} AS {}",
-                    naming::quote_ident(&naming::stat_column("fill")),
-                    naming::quote_ident(&naming::aesthetic_column("fill")),
+                    crate::reader::AnsiDialect.quote_ident(&naming::stat_column("fill")),
+                    crate::reader::AnsiDialect.quote_ident(&naming::aesthetic_column("fill")),
                 );
                 assert!(
                     query.contains(&expected_alias),
@@ -1324,7 +1345,7 @@ mod tests {
                 );
                 let synth = naming::stat_column("aggregate");
                 assert!(
-                    query.contains(&naming::quote_ident(&synth)),
+                    query.contains(&crate::reader::AnsiDialect.quote_ident(&synth)),
                     "synthetic aggregate column dropped from query: {query}"
                 );
                 assert!(
@@ -1354,6 +1375,7 @@ mod tests {
             &group_by,
             &parameters,
             &ctx,
+            &crate::reader::AnsiDialect,
         );
         assert!(result.is_ok());
 
@@ -1375,7 +1397,8 @@ mod tests {
             naming::aesthetic_column("pos2max"),
             naming::aesthetic_column("fill"),
         ];
-        let (sql, out_cols) = expand_rect_to_polygon("SELECT * FROM t", &columns);
+        let (sql, out_cols) =
+            expand_rect_to_polygon("SELECT * FROM t", &columns, &crate::reader::AnsiDialect);
 
         // Should have poly_id assignment
         assert!(sql.contains(naming::DENSIFY_ID_COLUMN));
@@ -1487,7 +1510,7 @@ mod tests {
             ParameterValue::String("+proj=ortho +lat_0=40 +lon_0=-70".to_string()),
         );
 
-        for stmt in dialect.sql_spatial_setup() {
+    for stmt in dialect.sql_spatial_setup() {
             reader.execute_sql(&stmt).unwrap();
         }
 

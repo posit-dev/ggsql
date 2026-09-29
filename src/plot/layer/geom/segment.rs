@@ -2,13 +2,13 @@
 
 use super::types::POSITION_VALUES;
 use super::{
-    densify_edges, needs_projection, project_position_columns, DefaultAesthetics,
-    DefaultParamValue, GeomTrait, GeomType, ParamConstraint, ParamDefinition,
+    DefaultAesthetics, DefaultParamValue, GeomTrait, GeomType, ParamConstraint, ParamDefinition,
+    densify_edges, needs_projection, project_position_columns,
 };
 use crate::plot::projection::Projection;
 use crate::plot::types::{DefaultAestheticValue, ParameterValue};
 use crate::reader::SqlDialect;
-use crate::{naming, Mappings, Result};
+use crate::{Mappings, Result, naming};
 
 /// Segment geom - line segments between two points
 #[derive(Debug, Clone, Copy)]
@@ -64,7 +64,7 @@ impl GeomTrait for Segment {
         }
 
         let columns = mappings.column_names();
-        let (expanded, expanded_columns) = expand_segment_to_vertices(query, &columns);
+        let (expanded, expanded_columns) = expand_segment_to_vertices(query, &columns, dialect);
 
         partition_by.push(naming::DENSIFY_ID_COLUMN.to_string());
         parameters.insert("densified".to_string(), ParameterValue::Boolean(true));
@@ -96,7 +96,11 @@ impl GeomTrait for Segment {
 /// Input: one row per segment with pos1/pos2 (start) and pos1end/pos2end (end).
 /// Output: two rows per segment with pos1/pos2 vertex positions and a
 /// `DENSIFY_ID_COLUMN` grouping column. Material aesthetics pass through unchanged.
-fn expand_segment_to_vertices(query: &str, columns: &[String]) -> (String, Vec<String>) {
+fn expand_segment_to_vertices(
+    query: &str,
+    columns: &[String],
+    dialect: &dyn SqlDialect,
+) -> (String, Vec<String>) {
     let pos1_col = naming::aesthetic_column("pos1");
     let pos2_col = naming::aesthetic_column("pos2");
     let pos1end_col = naming::aesthetic_column("pos1end");
@@ -108,10 +112,10 @@ fn expand_segment_to_vertices(query: &str, columns: &[String]) -> (String, Vec<S
         .collect();
     let passthrough: Vec<String> = passthrough_cols
         .iter()
-        .map(|c| naming::quote_ident(c))
+        .map(|c| dialect.quote_ident(c))
         .collect();
 
-    let densify_id_q = naming::quote_ident(naming::DENSIFY_ID_COLUMN);
+    let densify_id_q = dialect.quote_ident(naming::DENSIFY_ID_COLUMN);
 
     let numbered = format!(
         "SELECT *, ROW_NUMBER() OVER (ORDER BY (SELECT NULL)) \
@@ -120,10 +124,10 @@ fn expand_segment_to_vertices(query: &str, columns: &[String]) -> (String, Vec<S
 
     let vertices_table = "(SELECT 0 AS \"__ggsql_vertex__\" UNION ALL SELECT 1)";
 
-    let pos1_q = naming::quote_ident(&pos1_col);
-    let pos2_q = naming::quote_ident(&pos2_col);
-    let pos1end_q = naming::quote_ident(&pos1end_col);
-    let pos2end_q = naming::quote_ident(&pos2end_col);
+    let pos1_q = dialect.quote_ident(&pos1_col);
+    let pos2_q = dialect.quote_ident(&pos2_col);
+    let pos1end_q = dialect.quote_ident(&pos1end_col);
+    let pos2end_q = dialect.quote_ident(&pos2end_col);
 
     let mut select_parts: Vec<String> = passthrough;
     select_parts.push(densify_id_q.to_string());
@@ -162,7 +166,7 @@ mod tests {
     use crate::plot::projection::Projection;
     use crate::plot::types::ParameterValue;
     use crate::plot::{AestheticContext, AestheticValue, Geom, Layer};
-    use crate::{naming, Mappings};
+    use crate::{Mappings, naming};
 
     fn create_segment_mappings() -> Mappings {
         let mut mappings = Mappings::new();
@@ -302,7 +306,7 @@ mod tests {
         let mut mappings = create_segment_mappings();
         let mut partition_by = vec![];
 
-        for stmt in dialect.sql_spatial_setup() {
+    for stmt in dialect.sql_spatial_setup() {
             reader.execute_sql(&stmt).unwrap();
         }
 

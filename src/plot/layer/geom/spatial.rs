@@ -1,12 +1,12 @@
 use super::{DefaultAesthetics, GeomTrait, GeomType, StatResult};
-use crate::naming;
-use crate::plot::projection::coord::map::clip_boundary_table;
-use crate::plot::projection::coord::CoordKind;
-use crate::plot::projection::Projection;
-use crate::plot::types::{DefaultAestheticValue, Parameters};
-use crate::plot::ParameterValue;
-use crate::reader::SqlDialect;
 use crate::Mappings;
+use crate::naming;
+use crate::plot::ParameterValue;
+use crate::plot::projection::Projection;
+use crate::plot::projection::coord::CoordKind;
+use crate::plot::projection::coord::map::clip_boundary_table;
+use crate::plot::types::{DefaultAestheticValue, Parameters};
+use crate::reader::SqlDialect;
 
 fn apply_clip_boundary(
     query: &str,
@@ -59,7 +59,8 @@ impl GeomTrait for Spatial {
         dialect: &dyn crate::reader::SqlDialect,
         _aesthetic_ctx: &crate::plot::aesthetic::AestheticContext,
     ) -> crate::Result<StatResult> {
-        for stmt in dialect.sql_spatial_setup() {
+        crate::reader::ensure_spatial_supported(dialect)?;
+    for stmt in dialect.sql_spatial_setup() {
             execute_query(&stmt)?;
         }
 
@@ -81,7 +82,7 @@ impl GeomTrait for Spatial {
         _parameters: &mut std::collections::HashMap<String, crate::plot::types::ParameterValue>,
     ) -> crate::Result<String> {
         let columns = mappings.column_names();
-        let col = naming::quote_ident(&naming::aesthetic_column("geometry"));
+        let col = dialect.quote_ident(&naming::aesthetic_column("geometry"));
         let is_map = projection.coord.coord_kind() == CoordKind::Map;
         let clip = matches!(
             projection.properties.get("clip"),

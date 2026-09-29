@@ -1225,14 +1225,14 @@ pub fn prepare_data_with_reader(query: &str, reader: &dyn Reader) -> Result<Prep
                     t
                 }
             };
-            layer_source_queries[idx] = format!("SELECT * FROM {}", naming::quote_ident(&table));
+            layer_source_queries[idx] = format!("SELECT * FROM {}", dialect.quote_ident(&table));
         }
     }
 
     // Get types for each layer from source queries (Phase 1: types only, no min/max yet)
     let mut layer_type_info: Vec<Vec<schema::TypeInfo>> = Vec::new();
     for source_query in &layer_source_queries {
-        let type_info = schema::fetch_schema_types(source_query, &execute_query)?;
+        let type_info = schema::fetch_schema_types(source_query, &execute_query, dialect)?;
         layer_type_info.push(type_info);
     }
 
@@ -1354,8 +1354,12 @@ pub fn prepare_data_with_reader(query: &str, reader: &dyn Reader) -> Result<Prep
     // Complete schemas with min/max from base queries (Phase 2: ranges from cast data)
     // Base queries include casting via build_layer_select_list, so min/max reflect cast types
     for (idx, base_query) in layer_base_queries.iter().enumerate() {
-        layer_schemas[idx] =
-            schema::complete_schema_ranges(base_query, &layer_type_info[idx], &execute_query)?;
+        layer_schemas[idx] = schema::complete_schema_ranges(
+            base_query,
+            &layer_type_info[idx],
+            &execute_query,
+            dialect,
+        )?;
     }
 
     // Pre-resolve Binned scales using schema-derived context

@@ -10,7 +10,7 @@ use crate::plot::{
     AestheticValue, DefaultAestheticValue, Layer, ParameterValue, Scale, Schema, StatResult,
 };
 use crate::reader::SqlDialect;
-use crate::{naming, DataFrame, GgsqlError, Result};
+use crate::{DataFrame, GgsqlError, Result, naming};
 use arrow::datatypes::DataType;
 use std::collections::{HashMap, HashSet};
 
@@ -56,7 +56,7 @@ pub fn layer_source_query(
             debug_assert!(has_global, "Layer has no source and no global data");
             Ok(format!(
                 "SELECT * FROM {}",
-                naming::quote_ident(&naming::global_table())
+                dialect.quote_ident(&naming::global_table())
             ))
         }
     }
@@ -113,16 +113,16 @@ pub fn build_layer_select_list(
                     // Cast and rename to prefixed aesthetic name
                     format!(
                         "CAST({} AS {}) AS {}",
-                        naming::quote_ident(name),
+                        dialect.quote_ident(name),
                         req.sql_type_name,
-                        naming::quote_ident(&aes_col_name)
+                        dialect.quote_ident(&aes_col_name)
                     )
                 } else {
                     // Just rename to prefixed aesthetic name
                     format!(
                         "{} AS {}",
-                        naming::quote_ident(name),
-                        naming::quote_ident(&aes_col_name)
+                        dialect.quote_ident(name),
+                        dialect.quote_ident(&aes_col_name)
                     )
                 }
             }
@@ -131,7 +131,7 @@ pub fn build_layer_select_list(
                 format!(
                     "{} AS {}",
                     lit.to_sql(dialect),
-                    naming::quote_ident(&aes_col_name)
+                    dialect.quote_ident(&aes_col_name)
                 )
             }
         };
@@ -247,7 +247,9 @@ pub fn literal_to_array(lit: &ParameterValue, len: usize) -> arrow::array::Array
         }
         ParameterValue::Boolean(b) => new_constant_bool(*b, len),
         ParameterValue::Array(_) | ParameterValue::Null => {
-            unreachable!("Arrays are never moved to mappings; NULL is filtered in process_annotation_layers()")
+            unreachable!(
+                "Arrays are never moved to mappings; NULL is filtered in process_annotation_layers()"
+            )
         }
     }
 }
@@ -371,9 +373,9 @@ pub fn apply_pre_stat_transform(
         .filter(|col| seen.insert(&col.name))
         .map(|col| {
             if let Some((_, sql)) = transform_exprs.iter().find(|(c, _)| c == &col.name) {
-                format!("{} AS {}", sql, naming::quote_ident(&col.name))
+                format!("{} AS {}", sql, dialect.quote_ident(&col.name))
             } else {
-                naming::quote_ident(&col.name)
+                dialect.quote_ident(&col.name)
             }
         })
         .collect();
@@ -693,8 +695,8 @@ where
                         let prefixed_aes = naming::aesthetic_column(aes);
                         format!(
                             "{} AS {}",
-                            naming::quote_ident(&stat_col),
-                            naming::quote_ident(&prefixed_aes)
+                            dialect.quote_ident(&stat_col),
+                            dialect.quote_ident(&prefixed_aes)
                         )
                     })
                 })
@@ -895,7 +897,7 @@ fn process_annotation_layer(layer: &mut Layer, dialect: &dyn SqlDialect) -> Resu
     // Step 6: Build complete SQL query
     let column_list = column_names
         .iter()
-        .map(|c| naming::quote_ident(c))
+        .map(|c| dialect.quote_ident(c))
         .collect::<Vec<_>>()
         .join(", ");
 

@@ -1,15 +1,15 @@
 //! Rule geom implementation
 
 use super::{
-    densify_edges, needs_projection, project_position_columns, DefaultAesthetics, GeomTrait,
-    GeomType, ParamDefinition,
+    DefaultAesthetics, GeomTrait, GeomType, ParamDefinition, densify_edges, needs_projection,
+    project_position_columns,
 };
-use crate::plot::projection::coord::map::clip_boundary_table;
-use crate::plot::projection::coord::CoordKind;
 use crate::plot::projection::Projection;
+use crate::plot::projection::coord::CoordKind;
+use crate::plot::projection::coord::map::clip_boundary_table;
 use crate::plot::types::{DefaultAestheticValue, ParameterValue, Parameters};
 use crate::reader::SqlDialect;
-use crate::{naming, Mappings, Result};
+use crate::{Mappings, Result, naming};
 
 /// Rule geom - horizontal and vertical reference lines
 #[derive(Debug, Clone, Copy)]
@@ -75,7 +75,7 @@ impl GeomTrait for Rule {
             _ => return project_position_columns(query, projection, dialect, &columns),
         };
         let (expanded, expanded_columns) =
-            expand_rule_to_segment(query, &columns, has_pos1, &bbox_expr);
+            expand_rule_to_segment(query, &columns, has_pos1, &bbox_expr, dialect);
 
         partition_by.push(naming::DENSIFY_ID_COLUMN.to_string());
         parameters.insert("densified".to_string(), ParameterValue::Boolean(true));
@@ -94,8 +94,8 @@ impl GeomTrait for Rule {
         );
         let clipped = match projection.coord.coord_kind() {
             CoordKind::Map => {
-                let pos1_q = naming::quote_ident(&naming::aesthetic_column("pos1"));
-                let pos2_q = naming::quote_ident(&naming::aesthetic_column("pos2"));
+                let pos1_q = dialect.quote_ident(&naming::aesthetic_column("pos1"));
+                let pos2_q = dialect.quote_ident(&naming::aesthetic_column("pos2"));
                 let clip_table = clip_boundary_table();
                 format!(
                     "SELECT * FROM ({densified}) WHERE ST_Contains(\
@@ -165,8 +165,8 @@ impl GeomTrait for Rule {
         mappings: &mut crate::plot::layer::Mappings,
         parameters: &mut Parameters,
     ) -> crate::Result<()> {
-        use crate::plot::layer::AestheticValue;
         use crate::plot::ParameterValue;
+        use crate::plot::layer::AestheticValue;
 
         // For diagonal rules (slope present), convert position aesthetics to AnnotationColumn
         // so they don't participate in scale training. The position value is the intercept,
@@ -233,11 +233,12 @@ fn expand_rule_to_segment(
     columns: &[String],
     has_pos1: bool,
     bbox_expr: &str,
+    dialect: &dyn SqlDialect,
 ) -> (String, Vec<String>) {
     let pos1_col = naming::aesthetic_column("pos1");
     let pos2_col = naming::aesthetic_column("pos2");
-    let pos1_q = naming::quote_ident(&pos1_col);
-    let pos2_q = naming::quote_ident(&pos2_col);
+    let pos1_q = dialect.quote_ident(&pos1_col);
+    let pos2_q = dialect.quote_ident(&pos2_col);
 
     // The input column is always __ggsql_aes_pos1__. Build the SELECT
     // expressions that produce both pos1 and pos2 in the output.
@@ -263,10 +264,10 @@ fn expand_rule_to_segment(
     let passthrough_cols: Vec<&String> = columns.iter().filter(|c| *c != &pos1_col).collect();
     let passthrough_quoted: Vec<String> = passthrough_cols
         .iter()
-        .map(|c| naming::quote_ident(c))
+        .map(|c| dialect.quote_ident(c))
         .collect();
 
-    let densify_id_q = naming::quote_ident(naming::DENSIFY_ID_COLUMN);
+    let densify_id_q = dialect.quote_ident(naming::DENSIFY_ID_COLUMN);
 
     let numbered = format!(
         "SELECT *, ROW_NUMBER() OVER (ORDER BY (SELECT NULL)) \
@@ -303,12 +304,12 @@ impl std::fmt::Display for Rule {
 
 #[cfg(test)]
 mod tests {
-    use super::{expand_rule_to_segment, Rule};
-    use crate::plot::layer::geom::{densify_edges, GeomTrait};
+    use super::{Rule, expand_rule_to_segment};
+    use crate::plot::layer::geom::{GeomTrait, densify_edges};
     use crate::plot::projection::Projection;
     use crate::plot::types::ParameterValue;
     use crate::plot::{AestheticContext, AestheticValue, Geom, Layer};
-    use crate::{naming, Mappings};
+    use crate::{Mappings, naming};
 
     fn validate_rule(mappings: &[(&str, &str)]) -> Result<(), String> {
         let mut layer = Layer::new(Geom::rule());
@@ -465,7 +466,7 @@ mod tests {
         let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
         let dialect = reader.dialect();
 
-        for stmt in dialect.sql_spatial_setup() {
+    for stmt in dialect.sql_spatial_setup() {
             reader.execute_sql(&stmt).unwrap();
         }
 
@@ -546,7 +547,7 @@ mod tests {
         let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
         let dialect = reader.dialect();
 
-        for stmt in dialect.sql_spatial_setup() {
+    for stmt in dialect.sql_spatial_setup() {
             reader.execute_sql(&stmt).unwrap();
         }
 
@@ -596,8 +597,13 @@ mod tests {
         let columns = vec![naming::aesthetic_column("pos1")];
         let has_pos1 = false;
         let bbox_expr = dialect.sql_geometry_bbox("geom", &boundary_table);
-        let (expanded, expanded_columns) =
-            expand_rule_to_segment(&input, &columns, has_pos1, &bbox_expr);
+        let (expanded, expanded_columns) = expand_rule_to_segment(
+            &input,
+            &columns,
+            has_pos1,
+            &bbox_expr,
+            &crate::reader::AnsiDialect,
+        );
         let densified = densify_edges(
             &expanded,
             dialect,

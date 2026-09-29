@@ -1,13 +1,13 @@
 //! Area geom implementation
 
+use crate::Mappings;
 use crate::plot::layer::orientation::{ALIGNED, ORIENTATION_VALUES};
 use crate::plot::types::{DefaultAestheticValue, Parameters};
 use crate::plot::{DefaultParamValue, ParamDefinition};
-use crate::Mappings;
 
 use super::stat_aggregate;
-use super::types::{wrap_with_order_by, ParamConstraint, POSITION_VALUES};
-use super::{has_aggregate_param, DefaultAesthetics, GeomTrait, GeomType, StatResult};
+use super::types::{POSITION_VALUES, ParamConstraint, wrap_with_order_by};
+use super::{DefaultAesthetics, GeomTrait, GeomType, StatResult, has_aggregate_param};
 
 /// Area geom - filled area charts
 #[derive(Debug, Clone, Copy)]
@@ -87,7 +87,7 @@ impl GeomTrait for Area {
         };
         // Area needs ordering by pos1 (domain axis) for proper rendering, in both
         // the Identity and Aggregate paths.
-        Ok(wrap_with_order_by(query, result, "pos1"))
+        Ok(wrap_with_order_by(query, result, "pos1", dialect))
     }
 }
 

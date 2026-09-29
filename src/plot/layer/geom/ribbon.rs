@@ -1,16 +1,16 @@
 //! Ribbon geom implementation
 
 use super::stat_aggregate;
-use super::types::{wrap_with_order_by, POSITION_VALUES};
+use super::types::{POSITION_VALUES, wrap_with_order_by};
 use super::{
-    densify_edges, has_aggregate_param, needs_projection, project_position_columns,
-    DefaultAesthetics, GeomTrait, GeomType, StatResult,
+    DefaultAesthetics, GeomTrait, GeomType, StatResult, densify_edges, has_aggregate_param,
+    needs_projection, project_position_columns,
 };
 use crate::plot::projection::Projection;
 use crate::plot::types::{DefaultAestheticValue, ParameterValue, Parameters};
 use crate::plot::{DefaultParamValue, ParamConstraint, ParamDefinition};
 use crate::reader::SqlDialect;
-use crate::{naming, Mappings, Result};
+use crate::{Mappings, Result, naming};
 
 /// Ribbon geom - confidence bands and ranges
 #[derive(Debug, Clone, Copy)]
@@ -66,7 +66,8 @@ impl GeomTrait for Ribbon {
         }
 
         let columns = mappings.column_names();
-        let (expanded, expanded_columns) = expand_ribbon_to_polygon(query, &columns, partition_by);
+        let (expanded, expanded_columns) =
+            expand_ribbon_to_polygon(query, &columns, partition_by, dialect);
 
         partition_by.push(naming::DENSIFY_ID_COLUMN.to_string());
         parameters.insert("densified".to_string(), ParameterValue::Boolean(true));
@@ -120,7 +121,7 @@ impl GeomTrait for Ribbon {
         };
         // Ribbon needs ordering by pos1 (domain axis) for proper rendering, in both
         // the Identity and Aggregate paths.
-        Ok(wrap_with_order_by(query, result, "pos1"))
+        Ok(wrap_with_order_by(query, result, "pos1", dialect))
     }
 }
 
@@ -134,6 +135,7 @@ fn expand_ribbon_to_polygon(
     query: &str,
     columns: &[String],
     partition_by: &[String],
+    dialect: &dyn SqlDialect,
 ) -> (String, Vec<String>) {
     let pos1_col = naming::aesthetic_column("pos1");
     let pos2min_col = naming::aesthetic_column("pos2min");
@@ -146,13 +148,13 @@ fn expand_ribbon_to_polygon(
         .collect();
     let passthrough_quoted: Vec<String> = passthrough_cols
         .iter()
-        .map(|c| naming::quote_ident(c))
+        .map(|c| dialect.quote_ident(c))
         .collect();
 
-    let pos1_q = naming::quote_ident(&pos1_col);
-    let pos2min_q = naming::quote_ident(&pos2min_col);
-    let pos2max_q = naming::quote_ident(&pos2max_col);
-    let pos2_q = naming::quote_ident(&pos2_col);
+    let pos1_q = dialect.quote_ident(&pos1_col);
+    let pos2min_q = dialect.quote_ident(&pos2min_col);
+    let pos2max_q = dialect.quote_ident(&pos2max_col);
+    let pos2_q = dialect.quote_ident(&pos2_col);
 
     // Number rows within each group by pos1 order and compute the group size.
     let partition_clause = if partition_by.is_empty() {
@@ -160,7 +162,7 @@ fn expand_ribbon_to_polygon(
     } else {
         let parts: Vec<String> = partition_by
             .iter()
-            .map(|c| naming::quote_ident(c))
+            .map(|c| dialect.quote_ident(c))
             .collect();
         format!("PARTITION BY {} ", parts.join(", "))
     };
@@ -172,12 +174,12 @@ fn expand_ribbon_to_polygon(
     } else {
         let parts: Vec<String> = partition_by
             .iter()
-            .map(|c| naming::quote_ident(c))
+            .map(|c| dialect.quote_ident(c))
             .collect();
         format!("DENSE_RANK() OVER (ORDER BY {})", parts.join(", "))
     };
 
-    let densify_id_q = naming::quote_ident(naming::DENSIFY_ID_COLUMN);
+    let densify_id_q = dialect.quote_ident(naming::DENSIFY_ID_COLUMN);
 
     let numbered = format!(
         "SELECT *, \
@@ -235,7 +237,7 @@ mod tests {
     use crate::plot::layer::geom::GeomTrait;
     use crate::plot::projection::Projection;
     use crate::plot::types::ParameterValue;
-    use crate::{naming, Mappings};
+    use crate::{Mappings, naming};
 
     fn create_ribbon_mappings() -> Mappings {
         let mut mappings = Mappings::new();
@@ -336,7 +338,7 @@ mod tests {
         let mut mappings = create_ribbon_mappings();
         let mut partition_by = vec![];
 
-        for stmt in dialect.sql_spatial_setup() {
+    for stmt in dialect.sql_spatial_setup() {
             reader.execute_sql(&stmt).unwrap();
         }
 

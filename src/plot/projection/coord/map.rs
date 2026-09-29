@@ -21,6 +21,7 @@ pub(crate) fn apply_map_transforms(
     dialect: &dyn SqlDialect,
     execute_query: &dyn Fn(&str) -> crate::Result<DataFrame>,
 ) -> crate::Result<()> {
+    crate::reader::ensure_spatial_supported(dialect)?;
     for stmt in dialect.sql_spatial_setup() {
         execute_query(&stmt)?;
     }
@@ -99,7 +100,7 @@ pub(crate) fn apply_map_transforms(
         layer_queries[idx] = if is_spatial {
             let columns =
                 crate::util::set_union(layer.mappings.column_names(), &layer.partition_by);
-            let geom_col_quoted = naming::quote_ident(&naming::aesthetic_column("geometry"));
+            let geom_col_quoted = dialect.quote_ident(&naming::aesthetic_column("geometry"));
             let wkb_expr = dialect.sql_geometry_to_wkb(&geom_col_quoted);
             dialect.sql_select_replace(
                 &wkb_expr,
@@ -617,7 +618,7 @@ fn materialize_layer(
     for stmt in dialect.create_or_replace_temp_table_sql(&table_name, &[], query) {
         execute_query(&stmt)?;
     }
-    Ok(naming::quote_ident(&table_name))
+    Ok(dialect.quote_ident(&table_name))
 }
 
 /// Compute the bounding box of a single materialized layer table.
@@ -629,11 +630,11 @@ fn compute_layer_bbox(
     execute_query: &dyn Fn(&str) -> crate::Result<DataFrame>,
 ) -> Option<BBox> {
     let sql = if is_spatial {
-        let geom_col = naming::quote_ident(&naming::aesthetic_column("geometry"));
+        let geom_col = dialect.quote_ident(&naming::aesthetic_column("geometry"));
         dialect.sql_geometry_bbox(&geom_col, table)
     } else {
-        let pos1_col = naming::quote_ident(&naming::aesthetic_column("pos1"));
-        let pos2_col = naming::quote_ident(&naming::aesthetic_column("pos2"));
+        let pos1_col = dialect.quote_ident(&naming::aesthetic_column("pos1"));
+        let pos2_col = dialect.quote_ident(&naming::aesthetic_column("pos2"));
         format!(
             "SELECT MIN({pos1_col}), MIN({pos2_col}), \
              MAX({pos1_col}), MAX({pos2_col}) FROM {table}"
@@ -742,7 +743,7 @@ fn detect_source_srid(
     dialect: &dyn SqlDialect,
     execute_query: &dyn Fn(&str) -> crate::Result<DataFrame>,
 ) -> crate::Result<Option<String>> {
-    let geom_col = naming::quote_ident(&naming::aesthetic_column("geometry"));
+    let geom_col = dialect.quote_ident(&naming::aesthetic_column("geometry"));
     let ensure_geom = dialect.sql_ensure_geometry(&geom_col);
     let mut detected: Option<String> = None;
 
@@ -750,9 +751,12 @@ fn detect_source_srid(
         if layer.geom.geom_type() != GeomType::Spatial {
             continue;
         }
-        let sql = format!(
-            "SELECT ST_SRID({ensure_geom}) AS srid FROM ({}) WHERE {geom_col} IS NOT NULL LIMIT 1",
-            layer_queries[idx]
+        let sql = dialect.sql_limit(
+            &format!(
+                "SELECT ST_SRID({ensure_geom}) AS srid FROM ({}) WHERE {geom_col} IS NOT NULL",
+                layer_queries[idx]
+            ),
+            1,
         );
         if let Ok(df) = execute_query(&sql) {
             let batch = df.inner();

@@ -4,8 +4,8 @@
 //! materializing them as temporary tables, and transforming CTE references
 //! in SQL queries.
 
-use crate::reader::Reader;
-use crate::{naming, parser::SourceTree, GgsqlError, Result};
+use crate::reader::{Reader, SqlDialect};
+use crate::{GgsqlError, Result, naming, parser::SourceTree};
 use std::collections::HashSet;
 use tree_sitter::Node;
 
@@ -86,7 +86,11 @@ pub(crate) fn get_node_text<'a>(node: &Node, source: &'a str) -> &'a str {
 ///
 /// Table references are found via the parser; column references are rewritten
 /// tolerant of whitespace around the dot and never inside string literals.
-pub fn transform_cte_references(sql: &str, cte_names: &HashSet<String>) -> String {
+pub fn transform_cte_references(
+    sql: &str,
+    cte_names: &HashSet<String>,
+    dialect: &dyn SqlDialect,
+) -> String {
     if cte_names.is_empty() {
         return sql.to_string();
     }
@@ -105,7 +109,7 @@ pub fn transform_cte_references(sql: &str, cte_names: &HashSet<String>) -> Strin
         cte_names
             .iter()
             .find(|c| naming::unquote_ident(c).eq_ignore_ascii_case(&name))
-            .map(|c| naming::quote_ident(&naming::cte_table(c)))
+            .map(|c| dialect.quote_ident(&naming::cte_table(c)))
     };
 
     let mut replacements: Vec<(usize, usize, String)> = Vec::new();
@@ -120,7 +124,7 @@ pub fn transform_cte_references(sql: &str, cte_names: &HashSet<String>) -> Strin
     // Rewrite qualified column references `cte.col` -> `temp.col`.
     let site_starts: HashSet<usize> = sites.iter().map(|s| s.start).collect();
     for cte in cte_names {
-        let temp = naming::quote_ident(&naming::cte_table(cte));
+        let temp = dialect.quote_ident(&naming::cte_table(cte));
         let bare = naming::unquote_ident(cte);
         let pattern = format!(r"((?i:{}))\s*\.", regex::escape(&bare));
         let Ok(re) = regex::Regex::new(&pattern) else {
@@ -198,6 +202,7 @@ fn last_identifier_component(raw: &str) -> &str {
 /// A body that is entirely primary (no cache-resident reference) or entirely
 /// cache-resident is returned unchanged.
 pub fn transform_source_references(sql: &str, reader: &dyn Reader) -> Result<String> {
+    let dialect = reader.dialect();
     if !reader.caches_sources() {
         return Ok(sql.to_string());
     }
@@ -263,7 +268,7 @@ pub fn transform_source_references(sql: &str, reader: &dyn Reader) -> Result<Str
 
     // Rewrite each table_ref occurrence to the staged table.
     for site in &primary_sites {
-        let quoted = naming::quote_ident(&staged_for[&site.raw]);
+        let quoted = dialect.quote_ident(&staged_for[&site.raw]);
         let replacement = if site.has_alias || last_collides(&site.raw) {
             quoted
         } else {
@@ -280,7 +285,7 @@ pub fn transform_source_references(sql: &str, reader: &dyn Reader) -> Result<Str
             continue;
         }
         let target = if last_collides(raw) {
-            naming::quote_ident(&staged_for[raw])
+            dialect.quote_ident(&staged_for[raw])
         } else {
             last_of(raw)
         };
@@ -341,7 +346,7 @@ pub fn materialize_ctes(ctes: &[CteDefinition], reader: &dyn Reader) -> Result<H
 
     for cte in ctes {
         // Transform the CTE body to replace references to earlier CTEs
-        let transformed_body = transform_cte_references(&cte.body, &materialized);
+        let transformed_body = transform_cte_references(&cte.body, &materialized, reader.dialect());
         // Stage any primary base tables this body joins against into the cache.
         let transformed_body = transform_source_references(&transformed_body, reader)?;
 
@@ -448,7 +453,7 @@ pub fn transform_global_sql(
         });
 
     if let Some(select_sql) = select_sql {
-        let select_sql = transform_cte_references(&select_sql, materialized_ctes);
+        let select_sql = transform_cte_references(&select_sql, materialized_ctes, reader.dialect());
         return Ok(Some(transform_source_references(&select_sql, reader)?));
     }
 
@@ -467,7 +472,7 @@ pub fn transform_global_sql(
         )
         .map(|table| {
             let q = format!("SELECT * FROM {}", table);
-            let q = transform_cte_references(&q, materialized_ctes);
+            let q = transform_cte_references(&q, materialized_ctes, reader.dialect());
             transform_source_references(&q, reader)
         })
         .transpose()?;
@@ -480,7 +485,7 @@ pub fn transform_global_sql(
         source_tree
             .extract_sql()
             .map(|s| {
-                let s = transform_cte_references(&s, materialized_ctes);
+                let s = transform_cte_references(&s, materialized_ctes, reader.dialect());
                 transform_source_references(&s, reader)
             })
             .transpose()
@@ -613,7 +618,7 @@ mod tests {
                 vec![
                     "FROM \"__ggsql_cte_sales_",
                     "JOIN \"__ggsql_cte_targets_",
-                    "__ggsql_cte_sales_",  // qualified reference sales.date
+                    "__ggsql_cte_sales_",   // qualified reference sales.date
                     "__ggsql_cte_targets_", // qualified reference targets.revenue
                 ],
                 None,
@@ -650,7 +655,7 @@ mod tests {
 
         for (sql, cte_names_vec, expected_contains, exact_match) in test_cases {
             let cte_names: HashSet<String> = cte_names_vec.iter().map(|s| s.to_string()).collect();
-            let result = transform_cte_references(sql, &cte_names);
+            let result = transform_cte_references(sql, &cte_names, &crate::reader::AnsiDialect);
 
             if let Some(expected) = exact_match {
                 assert_eq!(result, expected, "SQL '{}' should remain unchanged", sql);
@@ -679,7 +684,11 @@ mod tests {
     fn test_transform_cte_references_comma_join_second_position() {
         // A CTE in a non-first comma position must still be rewritten.
         let ctes: HashSet<String> = ["cte"].iter().map(|s| s.to_string()).collect();
-        let out = transform_cte_references("SELECT * FROM base, cte WHERE base.k = cte.k", &ctes);
+        let out = transform_cte_references(
+            "SELECT * FROM base, cte WHERE base.k = cte.k",
+            &ctes,
+            &crate::reader::AnsiDialect,
+        );
         assert!(
             !out.contains("FROM base, cte "),
             "cte table ref not rewritten: {out}"
@@ -693,7 +702,11 @@ mod tests {
     fn test_transform_cte_references_preserves_string_literals() {
         // A CTE name inside a string literal must not be rewritten.
         let ctes: HashSet<String> = ["cte"].iter().map(|s| s.to_string()).collect();
-        let out = transform_cte_references("SELECT cte.k, 'cte.k' AS lit FROM cte", &ctes);
+        let out = transform_cte_references(
+            "SELECT cte.k, 'cte.k' AS lit FROM cte",
+            &ctes,
+            &crate::reader::AnsiDialect,
+        );
         assert!(out.contains("'cte.k'"), "literal was corrupted: {out}");
         // The real qualifier and table ref are still rewritten.
         assert_eq!(out.matches("__ggsql_cte_cte_").count(), 2);
@@ -702,7 +715,11 @@ mod tests {
     #[test]
     fn test_transform_cte_references_whitespace_around_dot() {
         let ctes: HashSet<String> = ["cte"].iter().map(|s| s.to_string()).collect();
-        let out = transform_cte_references("SELECT cte . v FROM cte", &ctes);
+        let out = transform_cte_references(
+            "SELECT cte . v FROM cte",
+            &ctes,
+            &crate::reader::AnsiDialect,
+        );
         // The whitespace-separated qualifier is rewritten too.
         assert!(!out.contains("cte . v"), "qualifier not rewritten: {out}");
         assert_eq!(out.matches("__ggsql_cte_cte_").count(), 2);
@@ -711,7 +728,8 @@ mod tests {
     #[test]
     fn test_transform_cte_references_case_insensitive() {
         let ctes: HashSet<String> = ["cte"].iter().map(|s| s.to_string()).collect();
-        let out = transform_cte_references("SELECT CTE.v FROM CTE", &ctes);
+        let out =
+            transform_cte_references("SELECT CTE.v FROM CTE", &ctes, &crate::reader::AnsiDialect);
         assert_eq!(out.matches("__ggsql_cte_cte_").count(), 2);
     }
 

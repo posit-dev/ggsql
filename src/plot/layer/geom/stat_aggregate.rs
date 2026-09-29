@@ -473,7 +473,7 @@ fn simple_stat_sql_fallback(
         let p25 = dialect.sql_percentile(raw_col, 0.25, src_alias, group_cols);
         return format!("({} - {})", p75, p25);
     }
-    let qcol = naming::quote_ident(raw_col);
+    let qcol = dialect.quote_ident(raw_col);
     simple_stat_sql_inline(name, &qcol, dialect).unwrap_or_else(|| "NULL".to_string())
 }
 
@@ -914,7 +914,7 @@ fn source_cte_chain(
         return (format!("WITH {raw_src} AS ({query})"), raw_src);
     }
     let rn_src = "\"__ggsql_stat_src_rn__\"";
-    let group_select: Vec<String> = group_cols.iter().map(|c| naming::quote_ident(c)).collect();
+    let group_select: Vec<String> = group_cols.iter().map(|c| dialect.quote_ident(c)).collect();
     // ORDER BY (SELECT 1) is the canonical "no real ordering" stand-in: it
     // satisfies the standard's required ORDER BY for window functions while
     // letting the engine pick the row order — same indeterminacy as DuckDB's
@@ -976,7 +976,7 @@ fn build_group_by_query(
     let outer_alias = "\"__ggsql_qt__\"";
     let (with_clause, src_alias) = source_cte_chain(query, aggregated, group_cols, dialect);
 
-    let group_select: Vec<String> = group_cols.iter().map(|c| naming::quote_ident(c)).collect();
+    let group_select: Vec<String> = group_cols.iter().map(|c| dialect.quote_ident(c)).collect();
     let group_by_clause = if group_cols.is_empty() {
         String::new()
     } else {
@@ -988,14 +988,14 @@ fn build_group_by_query(
     for (aes, raw_col, fns) in aggregated {
         let agg = &fns[0];
         let stat_col = naming::stat_column(aes);
-        let qcol = naming::quote_ident(raw_col);
+        let qcol = dialect.quote_ident(raw_col);
         let expr = if needs_quantile_fallback(agg, raw_col, dialect) {
             agg_sql_fallback(agg, raw_col, dialect, src_alias, group_cols)
         } else {
             agg_sql_inline(agg, &qcol, dialect)
                 .expect("agg_sql_inline must succeed when needs_quantile_fallback is false")
         };
-        select_parts.push(format!("{} AS {}", expr, naming::quote_ident(&stat_col)));
+        select_parts.push(format!("{} AS {}", expr, dialect.quote_ident(&stat_col)));
     }
 
     format!(
@@ -1021,7 +1021,7 @@ fn build_aggregate_query(
     let outer_alias = "\"__ggsql_qt__\"";
     let (with_clause, src_alias) = source_cte_chain(query, aggregated, group_cols, dialect);
 
-    let group_select: Vec<String> = group_cols.iter().map(|c| naming::quote_ident(c)).collect();
+    let group_select: Vec<String> = group_cols.iter().map(|c| dialect.quote_ident(c)).collect();
     let group_by_clause = if group_cols.is_empty() {
         String::new()
     } else {
@@ -1039,20 +1039,20 @@ fn build_aggregate_query(
             for (aes, raw_col, fns) in aggregated {
                 let agg = &fns[row_idx];
                 let stat_col = naming::stat_column(aes);
-                let qcol = naming::quote_ident(raw_col);
+                let qcol = dialect.quote_ident(raw_col);
                 let expr = if needs_quantile_fallback(agg, raw_col, dialect) {
                     agg_sql_fallback(agg, raw_col, dialect, src_alias, group_cols)
                 } else {
                     agg_sql_inline(agg, &qcol, dialect)
                         .expect("agg_sql_inline must succeed when needs_quantile_fallback is false")
                 };
-                select_parts.push(format!("{} AS {}", expr, naming::quote_ident(&stat_col)));
+                select_parts.push(format!("{} AS {}", expr, dialect.quote_ident(&stat_col)));
             }
 
             select_parts.push(format!(
                 "{} AS {}",
                 naming::quote_literal(label),
-                naming::quote_ident(&stat_aggregate_col)
+                dialect.quote_ident(&stat_aggregate_col)
             ));
 
             format!(
@@ -1071,9 +1071,9 @@ fn build_aggregate_query(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::plot::Parameters;
     use crate::plot::aesthetic::AestheticContext;
     use crate::plot::types::{AestheticValue, ColumnInfo};
-    use crate::plot::Parameters;
     use arrow::datatypes::DataType;
 
     /// A test dialect that mimics DuckDB: native QUANTILE_CONT plus the
@@ -1083,7 +1083,7 @@ mod tests {
         fn sql_quantile_inline(&self, column: &str, fraction: f64) -> Option<String> {
             Some(format!(
                 "QUANTILE_CONT({}, {})",
-                naming::quote_ident(column),
+                self.quote_ident(column),
                 fraction
             ))
         }

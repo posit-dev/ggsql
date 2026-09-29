@@ -21,7 +21,7 @@
 //! ```
 
 use crate::plot::types::DefaultAestheticValue;
-use crate::{naming, DataFrame, Mappings, Result};
+use crate::{DataFrame, Mappings, Result, naming};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -269,7 +269,7 @@ pub trait GeomTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
         let aes = self.aesthetics();
         for axis in aes.dummy_axes() {
             if !types::axis_family_has_mapping(aesthetics, axis) {
-                result = types::wrap_stat_with_dummy_axis(query, result, axis);
+                result = types::wrap_stat_with_dummy_axis(query, result, axis, dialect);
             }
         }
 
@@ -373,11 +373,11 @@ pub(crate) fn project_position_columns(
         return Ok(query.to_string());
     }
 
-    let pos1 = naming::quote_ident(&naming::aesthetic_column("pos1"));
-    let pos2 = naming::quote_ident(&naming::aesthetic_column("pos2"));
+    let pos1 = dialect.quote_ident(&naming::aesthetic_column("pos1"));
+    let pos2 = dialect.quote_ident(&naming::aesthetic_column("pos2"));
     let point_expr = format!("ST_Point({pos1}, {pos2})");
     let transformed = dialect.sql_st_transform(&point_expr, source, target);
-    let proj_col = naming::quote_ident("__ggsql_proj_pt__");
+    let proj_col = dialect.quote_ident("__ggsql_proj_pt__");
 
     let inner = format!("SELECT *, {transformed} AS {proj_col} FROM ({query})");
     let x_expr = format!("ST_X({proj_col})");
@@ -394,7 +394,7 @@ pub(crate) fn project_position_columns(
     let select_list: Vec<String> = columns
         .iter()
         .map(|c| {
-            let qc = naming::quote_ident(c);
+            let qc = dialect.quote_ident(c);
             if qc == pos1 {
                 format!("{x_expr} AS {pos1}")
             } else if qc == pos2 {
@@ -457,8 +457,8 @@ pub(crate) fn densify_edges(
     segment_length: f64,
     n_segments: usize,
 ) -> String {
-    let pos1 = naming::quote_ident(&naming::aesthetic_column("pos1"));
-    let pos2 = naming::quote_ident(&naming::aesthetic_column("pos2"));
+    let pos1 = dialect.quote_ident(&naming::aesthetic_column("pos1"));
+    let pos2 = dialect.quote_ident(&naming::aesthetic_column("pos2"));
 
     // Continuous aesthetics to interpolate: columns - partition_by - positions
     let pos1_col = naming::aesthetic_column("pos1");
@@ -470,7 +470,7 @@ pub(crate) fn densify_edges(
 
     // Ordering column (raw column name, already unquoted)
     let order_col = match domain_order {
-        Some(col) => naming::quote_ident(col),
+        Some(col) => dialect.quote_ident(col),
         None => "\"__ggsql_edge_idx__\"".to_string(),
     };
 
@@ -480,7 +480,7 @@ pub(crate) fn densify_edges(
     } else {
         let parts: Vec<String> = partition_by
             .iter()
-            .map(|c| naming::quote_ident(c))
+            .map(|c| dialect.quote_ident(c))
             .collect();
         format!("PARTITION BY {}", parts.join(", "))
     };
@@ -522,7 +522,7 @@ pub(crate) fn densify_edges(
     // LEAD expressions for continuous aesthetics
     let mut cont_leads = String::new();
     for c in &continuous_cols {
-        let qc = naming::quote_ident(c);
+        let qc = dialect.quote_ident(c);
         let alias = format!("\"__ggsql_next_{}\"", c.replace('"', ""));
         if close_ring {
             cont_leads.push_str(&format!(
@@ -556,7 +556,7 @@ pub(crate) fn densify_edges(
 
     // Discrete columns — unchanged
     for c in partition_by {
-        select_parts.push(naming::quote_ident(c));
+        select_parts.push(dialect.quote_ident(c));
     }
 
     // Interpolation fraction
@@ -572,7 +572,7 @@ pub(crate) fn densify_edges(
 
     // Continuous aesthetics — interpolated
     for c in &continuous_cols {
-        let qc = naming::quote_ident(c);
+        let qc = dialect.quote_ident(c);
         let next = format!("\"__ggsql_next_{}\"", c.replace('"', ""));
         select_parts.push(format!(
             "{qc} + COALESCE(({next} - {qc}) * ({frac}), 0.0) AS {qc}"
@@ -595,7 +595,7 @@ pub(crate) fn densify_edges(
     } else {
         let parts: Vec<String> = partition_by
             .iter()
-            .map(|c| naming::quote_ident(c))
+            .map(|c| dialect.quote_ident(c))
             .collect();
         format!("{}, {order_col}, \"__ggsql_seq__\".n", parts.join(", "))
     };

@@ -122,7 +122,7 @@ fn stat_histogram(
     aesthetic_ctx: &crate::plot::aesthetic::AestheticContext,
 ) -> Result<StatResult> {
     // Get x column name from aesthetics
-    let x_col = get_quoted_column_name(aesthetics, "pos1").ok_or_else(|| {
+    let x_col = get_quoted_column_name(aesthetics, "pos1", dialect).ok_or_else(|| {
         let name = aesthetic_ctx.map_internal_to_user("pos1");
         GgsqlError::ValidationError(format!("Histogram requires '{}' aesthetic mapping", name))
     })?;
@@ -211,7 +211,7 @@ fn stat_histogram(
             ));
         }
         if let Some(weight_col) = weight_value.column_name() {
-            format!("SUM({})", naming::quote_ident(weight_col))
+            format!("SUM({})", dialect.quote_ident(weight_col))
         } else {
             "COUNT(*)".to_string()
         }
@@ -227,21 +227,11 @@ fn stat_histogram(
     let stat_count = naming::stat_column("count");
     let stat_density = naming::stat_column("density");
 
-    let q_bin = naming::quote_ident(&stat_bin);
-    let q_bin_end = naming::quote_ident(&stat_bin_end);
-    let q_count = naming::quote_ident(&stat_count);
-    let q_density = naming::quote_ident(&stat_density);
-    let (binned_select, final_select) = if group_by.is_empty() {
-        (
-            format!(
-                "{} AS {}, {} AS {}, {} AS {}",
-                bin_expr, q_bin, bin_end_expr, q_bin_end, agg_expr, q_count
-            ),
-            format!(
-                "*, {count} * 1.0 / SUM({count}) OVER () AS {density}",
-                count = q_count,
-                density = q_density
-            ),
+    let q_bin = dialect.quote_ident(&stat_bin);
+    let q_bin_end = dialect.quote_ident(&stat_bin_end);
+    let q_count = dialect.quote_ident(&stat_count);
+    let q_density = dialect.quote_ident(&stat_density);
+
         )
     } else {
         let grp_cols = group_by.join(", ");

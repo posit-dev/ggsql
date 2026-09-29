@@ -8,6 +8,7 @@
 
 use crate::array_util::*;
 use crate::plot::{AestheticValue, ArrayElement, ColumnInfo, Layer, ParameterValue, Schema};
+use crate::reader::SqlDialect;
 use crate::{naming, DataFrame, Result};
 use arrow::array::Array;
 use arrow::datatypes::{DataType, TimeUnit};
@@ -20,11 +21,15 @@ pub type TypeInfo = (String, DataType, bool);
 /// Generates a query that returns two rows:
 /// - Row 0: MIN of each column
 /// - Row 1: MAX of each column
-pub fn build_minmax_query(source_query: &str, column_names: &[&str]) -> String {
+pub fn build_minmax_query(
+    source_query: &str,
+    column_names: &[&str],
+    dialect: &dyn SqlDialect,
+) -> String {
     let min_exprs: Vec<String> = column_names
         .iter()
         .map(|name| {
-            let q = naming::quote_ident(name);
+            let q = dialect.quote_ident(name);
             format!("MIN({q}) AS {q}")
         })
         .collect();
@@ -32,7 +37,7 @@ pub fn build_minmax_query(source_query: &str, column_names: &[&str]) -> String {
     let max_exprs: Vec<String> = column_names
         .iter()
         .map(|name| {
-            let q = naming::quote_ident(name);
+            let q = dialect.quote_ident(name);
             format!("MAX({q}) AS {q}")
         })
         .collect();
@@ -131,14 +136,17 @@ pub fn extract_series_value(
 /// 1. fetch_schema_types() - get dtypes only (before casting)
 /// 2. Apply casting to queries
 /// 3. complete_schema_ranges() - get min/max from cast queries
-pub fn fetch_schema_types<F>(query: &str, execute_query: &F) -> Result<Vec<TypeInfo>>
+pub fn fetch_schema_types<F>(
+    query: &str,
+    execute_query: &F,
+    dialect: &dyn crate::reader::SqlDialect,
+) -> Result<Vec<TypeInfo>>
 where
     F: Fn(&str) -> Result<DataFrame>,
 {
-    let schema_query = format!(
-        "SELECT * FROM ({}) AS {} LIMIT 1",
-        query,
-        naming::SCHEMA_ALIAS
+    let schema_query = dialect.sql_limit(
+        &format!("SELECT * FROM ({}) AS {}", query, naming::SCHEMA_ALIAS),
+        1,
     );
     let schema_df = execute_query(&schema_query)?;
 
@@ -165,6 +173,7 @@ pub fn complete_schema_ranges<F>(
     query: &str,
     type_info: &[TypeInfo],
     execute_query: &F,
+    dialect: &dyn SqlDialect,
 ) -> Result<Schema>
 where
     F: Fn(&str) -> Result<DataFrame>,
@@ -175,7 +184,7 @@ where
 
     // Build and execute min/max query
     let column_names: Vec<&str> = type_info.iter().map(|(n, _, _)| n.as_str()).collect();
-    let minmax_query = build_minmax_query(query, &column_names);
+    let minmax_query = build_minmax_query(query, &column_names, dialect);
     let range_df = execute_query(&minmax_query)?;
 
     // Extract min (row 0) and max (row 1) for each column
