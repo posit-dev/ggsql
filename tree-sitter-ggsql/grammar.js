@@ -718,11 +718,11 @@ module.exports = grammar({
     // more than one instance — not a comma list inside one SPAN.
     span_clause: $ => seq(
       caseInsensitive('SPAN'),
-      // Mandatory: a string sets the cell's text (possibly '', a
-      // present-but-blank cell); NULL suppresses the cell while still
-      // grouping the columns (e.g. for a shared SETTING like width).
-      // Reuses label_assignment's value shape.
-      field('label', choice($.string, $.null_literal)),
+      // Mandatory: an identifier sets the cell's text (quote it to include
+      // spaces or other non-identifier characters); NULL suppresses the
+      // cell while still grouping the columns (e.g. for a shared SETTING
+      // like width).
+      field('label', choice($.identifier, $.null_literal)),
       caseInsensitive('ACROSS'),
       $.column_list,
       optional($.setting_clause)

@@ -67,8 +67,8 @@ impl Default for Table {
 
 impl Table {
     /// Expand a SPAN's `ACROSS` entry that names an earlier spanner's `id`
-    /// into that spanner's own columns — `SPAN 'Y' ACROSS x_id, c` (after
-    /// `SPAN 'X' ACROSS a, b SETTING id => 'x_id'`) resolves to columns a,
+    /// into that spanner's own columns — `SPAN Y ACROSS x_id, c` (after
+    /// `SPAN X ACROSS a, b SETTING id => 'x_id'`) resolves to columns a,
     /// b, c for `Y`. Only ids from earlier spans are recognised; an id
     /// declared later, or a genuine typo, is left as a literal string and
     /// caught downstream as an unknown column, the same as any other bad
@@ -147,11 +147,11 @@ impl Table {
 /// above them.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Spanner {
-    /// Display text for the spanner cell. `None` is `SPAN NULL` — suppress
-    /// the spanner cell but keep the column grouping (e.g. for `settings`
-    /// that apply to the group regardless of whether it has a visible
-    /// label). `Some(String::new())` is `SPAN ''` — a present but blank
-    /// cell. Mirrors `label_assignment`'s own string/NULL value shape.
+    /// Display text for the spanner cell, from `SPAN`'s identifier (quote it
+    /// with backticks or double quotes to include spaces or other
+    /// non-identifier characters). `None` is `SPAN NULL` — suppress the
+    /// spanner cell but keep the column grouping (e.g. for `settings` that
+    /// apply to the group regardless of whether it has a visible label).
     pub label: Option<String>,
     /// The columns this spanner covers, in the order written.
     pub columns: Vec<String>,

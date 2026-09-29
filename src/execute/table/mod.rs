@@ -676,7 +676,7 @@ mod integration_tests {
     fn test_tabulate_span_over_a_stub_column_errors() {
         let reader = reader_with_sales();
         let result = resolve_table_with_reader(
-            "TABULATE * FROM sales FORMAT STUB name SPAN 'G' ACROSS name, id",
+            "TABULATE * FROM sales FORMAT STUB name SPAN G ACROSS name, id",
             &reader,
         );
 

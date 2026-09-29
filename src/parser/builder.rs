@@ -45,6 +45,20 @@ fn parse_string_node(node: &Node, source: &SourceTree) -> String {
     process_escape_sequences(unquoted)
 }
 
+/// Parse an identifier node, stripping the single pair of surrounding
+/// backticks/quotes of a quoted_identifier; a bare_identifier passes through
+/// unchanged. Only the outer delimiter pair is removed, since the grammar
+/// allows the other quote character to appear inside the content unescaped.
+fn parse_identifier_node(node: &Node, source: &SourceTree) -> String {
+    let text = source.get_text(node);
+    for quote in ['`', '"'] {
+        if let Some(inner) = text.strip_prefix(quote).and_then(|s| s.strip_suffix(quote)) {
+            return inner.to_string();
+        }
+    }
+    text
+}
+
 /// Process escape sequences in a string (e.g., \n, \t, \\, \')
 fn process_escape_sequences(s: &str) -> String {
     let mut result = String::with_capacity(s.len());
@@ -397,11 +411,11 @@ fn build_span_clause(node: &Node, source: &SourceTree) -> Result<Spanner> {
         GgsqlError::ParseError("Missing 'label' field in SPAN clause".to_string())
     })?;
     let label = match label_node.kind() {
-        "string" => Some(parse_string_node(&label_node, source)),
+        "identifier" => Some(parse_identifier_node(&label_node, source)),
         "null_literal" => None,
         _ => {
             return Err(GgsqlError::ParseError(format!(
-                "SPAN label must be a string or null, got: {}",
+                "SPAN label must be an identifier or null, got: {}",
                 label_node.kind()
             )));
         }
@@ -1442,7 +1456,7 @@ mod tests {
     #[test]
     fn test_tabulate_span_basic() {
         let specs =
-            parse_test_specs("TABULATE * FROM sales SPAN 'Pretty Name' ACROSS foo, bar, baz")
+            parse_test_specs("TABULATE * FROM sales SPAN `Pretty Name` ACROSS foo, bar, baz")
                 .unwrap();
         let table = specs[0].as_table().expect("expected a Table spec");
 
@@ -1461,17 +1475,9 @@ mod tests {
     }
 
     #[test]
-    fn test_tabulate_span_empty_label_is_distinct_from_null() {
-        let specs = parse_test_specs("TABULATE * FROM sales SPAN '' ACROSS foo, bar").unwrap();
-        let table = specs[0].as_table().expect("expected a Table spec");
-
-        assert_eq!(table.spans[0].label, Some(String::new()));
-    }
-
-    #[test]
     fn test_tabulate_span_with_setting() {
         let specs =
-            parse_test_specs("TABULATE * FROM sales SPAN 'W' ACROSS foo SETTING width => '40%'")
+            parse_test_specs("TABULATE * FROM sales SPAN W ACROSS foo SETTING width => '40%'")
                 .unwrap();
         let table = specs[0].as_table().expect("expected a Table spec");
 
@@ -1497,7 +1503,7 @@ mod tests {
     #[test]
     fn test_tabulate_multiple_spans_and_label_in_any_order() {
         let specs = parse_test_specs(
-            "TABULATE * FROM sales LABEL id => 'ID' SPAN 'A' ACROSS foo, bar SPAN 'B' ACROSS baz",
+            "TABULATE * FROM sales LABEL id => 'ID' SPAN A ACROSS foo, bar SPAN B ACROSS baz",
         )
         .unwrap();
         let table = specs[0].as_table().expect("expected a Table spec");

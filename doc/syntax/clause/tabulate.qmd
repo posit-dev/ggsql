@@ -19,7 +19,7 @@ The `TABULATE` clause marks the beginning of a ggsql table declaration — the p
 TABULATE <column>, ... | *
   FROM <data-source>
   LABEL <column> => <string>, ...
-  SPAN <string> ACROSS <column>, ...
+  SPAN <identifier> ACROSS <column>, ...
     SETTING <parameter> => <value>, ...
   FORMAT [BODY | STUB] <column>, ...
     SETTING <parameter> => <value>, ...
@@ -84,7 +84,7 @@ A reserved key always wins over a same-named column: `LABEL title => 'Sales'` se
 
 ### `SPAN`
 ```ggsql
-SPAN <string> ACROSS <column>, ...
+SPAN <identifier> ACROSS <column>, ...
   SETTING <parameter> => <value>, ...
 ```
 
@@ -92,10 +92,10 @@ Groups columns under one spanner cell, drawn in a row above the column labels:
 
 ```ggsql
 TABULATE * FROM sales
-  SPAN 'Q1' ACROSS jan, feb, mar
+  SPAN Q1 ACROSS jan, feb, mar
 ```
 
-The label is mandatory and can be a string (`''` is a present-but-blank cell) or `NULL`, which suppresses the spanner cell itself while still grouping the columns — useful when the only reason for the `SPAN` is a shared `SETTING`. Each `SPAN` clause defines exactly one spanner; give several `SPAN` clauses for several spanners, the same way multiple `DRAW` clauses give multiple layers.
+The label is mandatory and can be an identifier — quote it with backticks or double quotes to include spaces or other non-identifier characters (`` SPAN `Fiscal Q1` `` ) — or `NULL`, which suppresses the spanner cell itself while still grouping the columns — useful when the only reason for the `SPAN` is a shared `SETTING`. Each `SPAN` clause defines exactly one spanner; give several `SPAN` clauses for several spanners, the same way multiple `DRAW` clauses give multiple layers.
 
 Spanners whose column sets overlap (but aren't identical) are placed on separate header rows automatically, closest-to-the-columns first.
 
@@ -112,8 +112,8 @@ Reference an `id` in place of a column name in a later `SPAN`'s `ACROSS` list to
 
 ```ggsql
 TABULATE * FROM sales
-  SPAN 'Q1' ACROSS jan, feb, mar SETTING id => 'q1'
-  SPAN 'H1' ACROSS q1, apr, may, jun
+  SPAN Q1 ACROSS jan, feb, mar SETTING id => 'q1'
+  SPAN H1 ACROSS q1, apr, may, jun
 ```
 
 `H1` ends up covering `jan, feb, mar, apr, may, jun`. Only an `id` declared by an *earlier* `SPAN` clause is recognised — referencing one declared later, or a typo, is treated as an unknown column, the same error as any other bad `ACROSS` entry. Every `id` must be unique across the whole query, and can't collide with an actual column name.
@@ -186,7 +186,7 @@ TABULATE *
 SELECT * FROM ggsql:penguins LIMIT 5
 
 TABULATE *
-  SPAN 'Bill' ACROSS bill_len, bill_dep
+  SPAN Bill ACROSS bill_len, bill_dep
   LABEL
     bill_len => 'Length',
     bill_dep => 'Depth'
