@@ -12,11 +12,19 @@ use arrow::datatypes::DataType;
 
 use crate::array_util::{new_str_array, value_to_string};
 use crate::plot::{ParameterValue, Parameters};
-use crate::{DataFrame, Format, GgsqlError, Result};
+use crate::{DataFrame, Format, GgsqlError, Result, Spanner};
 
 /// Validate every FORMAT's `SETTING` parameters, then reshape `formats`
-/// into one `Format` per column it covers.
-pub(super) fn setup_formats(df: &DataFrame, formats: &[Format]) -> Result<HashMap<String, Format>> {
+/// into one `Format` per column it covers. `spans` must already be resolved
+/// (`Table::resolve_spanners`) — a name matching a SPAN id expands to that
+/// span's columns instead of being looked up directly. A SPAN id can never
+/// collide with a real column name (`Spanner::validate_columns`), so the two
+/// cases can't be ambiguous.
+pub(super) fn setup_formats(
+    df: &DataFrame,
+    formats: &[Format],
+    spans: &[Spanner],
+) -> Result<HashMap<String, Format>> {
     for (idx, format) in formats.iter().enumerate() {
         format
             .validate_settings()
@@ -29,15 +37,21 @@ pub(super) fn setup_formats(df: &DataFrame, formats: &[Format]) -> Result<HashMa
     let mut resolved = HashMap::new();
     for format in formats {
         for name in &format.columns {
-            if df.column(name).is_err() {
-                return Err(GgsqlError::ValidationError(format!(
-                    "FORMAT references unknown column '{name}'"
-                )));
+            let columns: Vec<&String> = match spans.iter().find(|span| &span.id == name) {
+                Some(span) => span.columns.iter().collect(),
+                None => vec![name],
+            };
+            for column in columns {
+                if df.column(column).is_err() {
+                    return Err(GgsqlError::ValidationError(format!(
+                        "FORMAT references unknown column '{column}'"
+                    )));
+                }
+                let mut format = format.clone();
+                // Redundant now: this map's own key names the column instead.
+                format.columns = Vec::new();
+                resolved.insert(column.clone(), format);
             }
-            let mut format = format.clone();
-            // Redundant now: this map's own key names the column instead.
-            format.columns = Vec::new();
-            resolved.insert(name.clone(), format);
         }
     }
     Ok(resolved)
@@ -158,11 +172,31 @@ mod tests {
             },
         ];
 
-        let resolved = setup_formats(&frame, &formats).unwrap();
+        let resolved = setup_formats(&frame, &formats, &[]).unwrap();
 
         let price = resolved.get("price").unwrap();
         assert_eq!(price.value_template, "{:num %.2f}");
         assert!(price.columns.is_empty());
+    }
+
+    #[test]
+    fn setup_formats_expands_a_span_id_into_its_columns() {
+        let frame = df! { "a" => vec![1.0f64], "b" => vec![2.0f64] }.unwrap();
+        let formats = vec![Format {
+            columns: vec!["G".to_string()],
+            ..format_with("{:num %.2f}", None)
+        }];
+        let spans = vec![Spanner {
+            id: "G".to_string(),
+            label: Some("G".to_string()),
+            columns: vec!["a".to_string(), "b".to_string()],
+            settings: Parameters::new(),
+        }];
+
+        let resolved = setup_formats(&frame, &formats, &spans).unwrap();
+
+        assert_eq!(resolved.get("a").unwrap().value_template, "{:num %.2f}");
+        assert_eq!(resolved.get("b").unwrap().value_template, "{:num %.2f}");
     }
 
     #[test]
@@ -173,7 +207,7 @@ mod tests {
             ..format_with("{}", None)
         }];
 
-        let error = setup_formats(&frame, &formats).unwrap_err();
+        let error = setup_formats(&frame, &formats, &[]).unwrap_err();
         assert!(matches!(error, GgsqlError::ValidationError(msg)
             if msg.contains("FORMAT references unknown column 'typo'")));
     }

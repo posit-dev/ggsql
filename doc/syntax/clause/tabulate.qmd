@@ -141,6 +141,16 @@ TABULATE * FROM sales
   FORMAT price SETTING hjust => 'right'
 ```
 
+A `SPAN`'s id can stand in for a column name here too, applying the same `FORMAT` to every column it covers — mixed freely with literal column names in the same clause:
+
+```ggsql
+TABULATE * FROM sales
+  SPAN Q1 ACROSS jan, feb, mar
+  FORMAT Q1, price SETTING hjust => 'right'
+```
+
+`Q1, price` formats `jan`, `feb` and `mar` (by way of the spanner) alongside `price`. A `SPAN` id can never collide with an actual column name, so there's no ambiguity between the two. Naming a `SPAN` id under `STUB` is checked the same way a literal stub column is — a `SPAN` still can't cover a stub column, whether the overlap comes from a literal column name or from `FORMAT STUB` expanding a `SPAN` id into one.
+
 #### Target
 
 `BODY` (the default, so it's rarely written) leaves a column in the table's regular body. `STUB` moves it into the table's stub instead — the row-label column(s), rendered ahead of every body column regardless of where they were selected:

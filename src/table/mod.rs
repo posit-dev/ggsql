@@ -113,7 +113,11 @@ impl Table {
     /// STUB is off-limits to SPAN, regardless of whether a later FORMAT
     /// clause retargeted it to BODY. Takes already-`resolve_spanner_ids`-
     /// resolved spans, so a SPAN's `ACROSS` id reference is checked against
-    /// the real columns it expands to, not the literal id text.
+    /// the real columns it expands to, not the literal id text — and a
+    /// STUB format's own column list gets the same treatment, expanding any
+    /// entry that names a SPAN id into the columns it covers, so `FORMAT
+    /// STUB <span_id>` is checked against real columns too rather than the
+    /// literal id, which would never appear in a span's own `columns`.
     ///
     /// Needs no DataFrame: FORMAT/SPAN are both plain AST, so this runs from
     /// both `validate()` and real execution (`resolve_spanners`), mirroring
@@ -123,7 +127,13 @@ impl Table {
             .formats
             .iter()
             .filter(|format| format.target.is_stub())
-            .flat_map(|format| format.columns.iter().map(String::as_str))
+            .flat_map(|format| &format.columns)
+            .flat_map(
+                |name| match resolved_spans.iter().find(|span| &span.id == name) {
+                    Some(span) => span.columns.iter().map(String::as_str).collect::<Vec<_>>(),
+                    None => vec![name.as_str()],
+                },
+            )
             .collect();
 
         for (idx, span) in resolved_spans.iter().enumerate() {
@@ -467,6 +477,31 @@ mod tests {
         let resolved = table.resolve_spanner_ids().unwrap();
         let error = table.validate_span_stub_boundary(&resolved).unwrap_err();
         assert!(error.contains("cannot include stub column 'a'"));
+    }
+
+    #[test]
+    fn validate_span_stub_boundary_rejects_a_format_stub_naming_a_span_id() {
+        // FORMAT STUB naming a SPAN id rather than its columns directly must
+        // still be caught: `stub_columns` has to expand "G" into "a"/"b"
+        // before comparing, or this collision goes undetected.
+        let table = Table {
+            formats: vec![Format {
+                columns: vec!["G".to_string()],
+                target: ColumnSection::Stub,
+                ..format_with_settings(Parameters::new())
+            }],
+            spans: vec![Spanner {
+                id: "G".to_string(),
+                label: Some("G".to_string()),
+                columns: vec!["a".to_string(), "b".to_string()],
+                settings: Parameters::new(),
+            }],
+            ..Table::new()
+        };
+
+        let resolved = table.resolve_spanner_ids().unwrap();
+        let error = table.validate_span_stub_boundary(&resolved).unwrap_err();
+        assert!(error.contains("cannot include stub column"));
     }
 
     #[test]

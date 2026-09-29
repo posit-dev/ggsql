@@ -82,13 +82,14 @@ pub fn resolve_table_with_reader(query: &str, reader: &dyn Reader) -> Result<Res
 
     let df = reader.execute_sql(&sql)?;
 
-    // The shape both create_table_columns (SETTING) and apply_formats
-    // (RENAMING) read from.
-    let formats = setup_formats(&df, &table.formats)?;
     let column_names = df.get_column_names();
     let spans = table
         .resolve_spanners(&labels, Some(&column_names))
         .map_err(GgsqlError::ValidationError)?;
+    // The shape both create_table_columns (SETTING) and apply_formats
+    // (RENAMING) read from. Resolved after spans so a FORMAT column entry
+    // can name a SPAN id in place of the columns it covers.
+    let formats = setup_formats(&df, &table.formats, &spans)?;
     let columns = setup_columns(&df, &spans, &labels, &formats);
     let df = apply_formats(&df, &formats)?;
     let (cells, rows) = build_cells(

@@ -570,11 +570,11 @@ mod tests {
     fn resolve_section(df: &DataFrame, table: &Table) -> Result<Section> {
         let mut labels = table.labels.clone();
         let (title, subtitle, caption) = extract_heading_labels(&mut labels);
-        let formats = setup_formats(df, &table.formats)?;
         let column_names = df.get_column_names();
         let spans = table
             .resolve_spanners(&labels, Some(&column_names))
             .map_err(GgsqlError::ValidationError)?;
+        let formats = setup_formats(df, &table.formats, &spans)?;
         let columns = setup_columns(df, &spans, &labels, &formats);
         let df = apply_formats(df, &formats)?;
         let (cells, rows) = build_cells(
