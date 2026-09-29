@@ -1140,13 +1140,14 @@ mod tests {
         let writer = HtmlWriter::new();
         let html = writer.render(&spec).unwrap();
 
-        // The stub head renders as a <th> with its own class, the row
-        // labels as <td>s with their own class, both right-aligned
-        // (resolve_column_properties' STUB default).
-        assert!(html.contains("<th class=\"ggsql_stub_head ggsql_right\">region</th>"));
+        // The stub head renders as a <th> with its own class, blank by
+        // default (no LABEL given); the row labels render as <td>s with
+        // their own class, both right-aligned (resolve_column_properties'
+        // STUB default).
+        assert!(html.contains("<th class=\"ggsql_stub_head ggsql_right\"></th>"));
         assert!(html.contains("<td class=\"ggsql_stub ggsql_right\">north</td>"));
         assert!(html.contains("<td class=\"ggsql_row ggsql_right\">1</td>")); // "amount" unaffected
-        assert!(html.find(">region</th>").unwrap() < html.find(">amount</th>").unwrap());
+        assert!(html.find("ggsql_stub_head").unwrap() < html.find(">amount</th>").unwrap());
     }
 
     #[test]

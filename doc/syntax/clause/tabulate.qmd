@@ -141,7 +141,7 @@ TABULATE * FROM sales
   FORMAT STUB region
 ```
 
-A stub column is otherwise an ordinary column: `LABEL` still sets its header text the same way (defaulting to its own name), and `SETTING`/`RENAMING` still apply the same way too. A `SPAN` can't include a stub column — grouping the stub under a spanner isn't supported.
+A stub column is otherwise an ordinary column: `SETTING`/`RENAMING` still apply the same way. `LABEL` still sets its header text the same way too, but the default differs — a stub column's header is blank unless `LABEL` gives it text, while any other column defaults to its own name. A `SPAN` can't include a stub column — grouping the stub under a spanner isn't supported.
 
 #### `SETTING`
 ```ggsql

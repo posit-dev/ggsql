@@ -648,6 +648,31 @@ mod integration_tests {
     }
 
     #[test]
+    fn test_tabulate_format_stub_head_is_blank_by_default_but_label_can_override() {
+        let reader = reader_with_sales();
+        let resolved =
+            resolve_table_with_reader("TABULATE * FROM sales FORMAT STUB name", &reader).unwrap();
+        let stub_head = resolved
+            .cells()
+            .iter()
+            .find(|c| c.kind == TableCellKind::StubHead)
+            .unwrap();
+        assert_eq!(stub_head.content, "");
+
+        let resolved = resolve_table_with_reader(
+            "TABULATE * FROM sales FORMAT STUB name LABEL name => 'Name'",
+            &reader,
+        )
+        .unwrap();
+        let stub_head = resolved
+            .cells()
+            .iter()
+            .find(|c| c.kind == TableCellKind::StubHead)
+            .unwrap();
+        assert_eq!(stub_head.content, "Name");
+    }
+
+    #[test]
     fn test_tabulate_span_over_a_stub_column_errors() {
         let reader = reader_with_sales();
         let result = resolve_table_with_reader(

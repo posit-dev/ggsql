@@ -342,9 +342,9 @@ impl TableRow {
 
 /// Build one `TableColumn` per `DataFrame` column, in the `DataFrame`'s own
 /// order — `reorder_table_columns` is what may reorder this list
-/// afterward, not this function. `labels` is the one authority for a
-/// column's label; `formats` (already reshaped to one `Format` per column
-/// by `setup_formats`) is the one authority for its properties.
+/// afterward, not this function. `labels` is the one authority for an
+/// explicit column label; `formats` (already reshaped to one `Format` per
+/// column by `setup_formats`) is the one authority for its properties.
 fn create_table_columns(
     df: &DataFrame,
     labels: &Labels,
@@ -352,11 +352,6 @@ fn create_table_columns(
 ) -> Vec<TableColumn> {
     let mut columns = Vec::new();
     for name in df.get_column_names() {
-        let label = match labels.labels.get(&name) {
-            None => name.clone(),
-            Some(None) => String::new(),
-            Some(Some(label)) => label.clone(),
-        };
         // Not stored on TableColumn: nothing needs it once `properties`
         // (which may default from it) is resolved.
         let dtype = df
@@ -366,6 +361,14 @@ fn create_table_columns(
         let format = formats.get(&name);
         let properties = resolve_column_properties(dtype, format);
         let target = format.map(|f| f.target).unwrap_or_default();
+        let label = match labels.labels.get(&name) {
+            // A stub head is a row-label header, not a data column header —
+            // default it blank rather than to the column's own name.
+            None if target.is_stub() => String::new(),
+            None => name.clone(),
+            Some(None) => String::new(),
+            Some(Some(label)) => label.clone(),
+        };
         columns.push(TableColumn {
             name,
             label,
@@ -641,6 +644,34 @@ mod tests {
         assert_eq!(columns[0].label, "ID"); // overridden
         assert_eq!(columns[1].label, ""); // explicitly suppressed
         assert_eq!(columns[2].label, "extra"); // absent: kept as-is
+    }
+
+    #[test]
+    fn create_table_columns_defaults_a_stub_column_to_a_blank_label_but_label_can_override() {
+        let frame = df! {
+            "region" => vec!["north".to_string()],
+        }
+        .unwrap();
+        let formats = HashMap::from([(
+            "region".to_string(),
+            Format {
+                columns: vec!["region".to_string()],
+                target: ColumnSection::Stub,
+                settings: Parameters::new(),
+                value_mapping: None,
+                value_template: "{}".to_string(),
+            },
+        )]);
+
+        let columns = create_table_columns(&frame, &Labels::default(), &formats);
+        assert_eq!(columns[0].label, "");
+
+        let mut labels = Labels::default();
+        labels
+            .labels
+            .insert("region".to_string(), Some("Region".to_string()));
+        let columns = create_table_columns(&frame, &labels, &formats);
+        assert_eq!(columns[0].label, "Region");
     }
 
     fn spanner_with(columns: &[&str], label: Option<&str>, settings: Parameters) -> Spanner {
