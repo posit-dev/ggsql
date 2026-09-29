@@ -537,9 +537,12 @@ fn compute_density(
             .join(" AND ")
     };
 
-    // Build WHERE clause to match grid to data groups (NULL-safe)
-    let matching_groups = if group_by.is_empty() {
-        String::new()
+    // NULL-safe match of grid rows to data groups. Emitted as JOIN ON rather
+    // than CROSS JOIN + WHERE: ClickHouse only permits IS NOT DISTINCT FROM
+    // in the JOIN ON section. Cross join filtered on null-safe equality is
+    // the same relation as an inner join on it, so this is safe everywhere.
+    let grid_join = if group_by.is_empty() {
+        "CROSS JOIN grid".to_string()
     } else {
         let grid_data_conds: Vec<String> = group_by
             .iter()
@@ -548,15 +551,15 @@ fn compute_density(
                 format!("grid.{q} IS NOT DISTINCT FROM data.{q}")
             })
             .collect();
-        format!("WHERE {}", grid_data_conds.join(" AND "))
+        format!("INNER JOIN grid ON {}", grid_data_conds.join(" AND "))
     };
 
     let join_logic = format!(
         "FROM data
         INNER JOIN bandwidth ON {bandwidth_conditions}
-        CROSS JOIN grid {matching_groups}",
+        {grid_join}",
         bandwidth_conditions = bandwidth_conditions,
-        matching_groups = matching_groups
+        grid_join = grid_join
     );
 
     // Build group-related SQL fragments
@@ -785,8 +788,7 @@ mod tests {
             SUM(data.weight) AS "__norm"
           FROM data
           INNER JOIN bandwidth ON data."region" IS NOT DISTINCT FROM bandwidth."region" AND data."category" IS NOT DISTINCT FROM bandwidth."category"
-          CROSS JOIN grid
-          WHERE grid."region" IS NOT DISTINCT FROM data."region" AND grid."category" IS NOT DISTINCT FROM data."category"
+          INNER JOIN grid ON grid."region" IS NOT DISTINCT FROM data."region" AND grid."category" IS NOT DISTINCT FROM data."category"
           GROUP BY grid.x, grid."region", grid."category"
           ORDER BY grid.x, grid."region", grid."category"
         )"#;
