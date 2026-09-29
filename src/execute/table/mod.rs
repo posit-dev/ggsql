@@ -189,12 +189,9 @@ pub enum TableCellKind {
 }
 
 impl TableCellKind {
-    /// Whether a cell of this kind belongs in a table's header (`ColumnLabel`,
-    /// `StubHead`, `Spanner`, `Title`, `Subtitle`, `Filler`) rather than its
-    /// body (`Body`, `StubRowLabel`) — the kind alone decides it, via
-    /// `TableCell::is_header` below. `Caption` stays out of this: a writer
-    /// is expected to pull it out of the grid entirely rather than render
-    /// it as either.
+    /// Whether a cell of this kind is header-shaped rather than a plain data
+    /// cell — decided by kind alone. `Caption` is excluded; a writer pulls it
+    /// out of the grid instead of rendering it as either.
     pub fn is_header(self) -> bool {
         matches!(
             self,
@@ -204,6 +201,7 @@ impl TableCellKind {
                 | TableCellKind::Title
                 | TableCellKind::Subtitle
                 | TableCellKind::Filler // every case today is header-shaped
+                | TableCellKind::StubRowLabel
         )
     }
 }

@@ -462,8 +462,9 @@ fn styling_attr(classes: &[TableClass], mode: CssMode) -> String {
 
 /// Render one `TableCell` as an HTML `<th>`/`<td>`, picked from
 /// `cell.is_header()`, with a `colspan`/`rowspan` attribute only when the
-/// cell actually spans more than one column/row. Styling per `mode` via
-/// `styling_attr`. Not used for a `Caption`-kind cell — see `render_caption`.
+/// cell actually spans more than one column/row, and a `scope` attribute per
+/// `header_scope`. Styling per `mode` via `styling_attr`. Not used for a
+/// `Caption`-kind cell — see `render_caption`.
 fn render_cell(cell: &TableCell, mode: CssMode) -> String {
     let tag = if cell.is_header() { "th" } else { "td" };
     let colspan = cell.width();
@@ -475,8 +476,29 @@ fn render_cell(cell: &TableCell, mode: CssMode) -> String {
     if rowspan > 1 {
         attrs.push_str(&format!(" rowspan=\"{rowspan}\""));
     }
+    if let Some(scope) = header_scope(cell.kind, colspan) {
+        attrs.push_str(&format!(" scope=\"{scope}\""));
+    }
     attrs.push_str(&styling_attr(&cell.classes, mode));
     format!("<{tag}{attrs}>{}</{tag}>", escape_html(&cell.content))
+}
+
+/// `scope` value for a header cell of `kind` spanning `colspan` columns, or
+/// `None` if `scope` doesn't apply. `ColumnLabel`/`StubHead` are always
+/// single-column (`"col"`); `Spanner` can span several (`"colgroup"` if
+/// `colspan > 1`); `StubRowLabel` heads its row (`"row"`); everything else
+/// gets none.
+fn header_scope(kind: TableCellKind, colspan: usize) -> Option<&'static str> {
+    match kind {
+        TableCellKind::ColumnLabel | TableCellKind::StubHead => Some("col"),
+        TableCellKind::Spanner => Some(if colspan > 1 { "colgroup" } else { "col" }),
+        TableCellKind::StubRowLabel => Some("row"),
+        TableCellKind::Body
+        | TableCellKind::Title
+        | TableCellKind::Subtitle
+        | TableCellKind::Caption
+        | TableCellKind::Filler => None,
+    }
 }
 
 /// Render a `Caption`-kind `TableCell` as a `<caption>` element — no
@@ -611,22 +633,6 @@ fn render_row(slots: &[Slot], row: &TableRow, mode: CssMode) -> String {
         return String::new();
     }
 
-    // Every `Cell` in a row shares one `TableCellKind`, so the first one
-    // found is enough to cross-check against `row.is_header` — the two are
-    // meant to always agree. Gated on `debug_assertions` so the scan
-    // itself, not just the assertion, is compiled out of a release build.
-    #[cfg(debug_assertions)]
-    if let Some(kind) = slots.iter().find_map(|slot| match slot {
-        Slot::Cell(cell) => Some(cell.kind),
-        Slot::Skip => None,
-    }) {
-        debug_assert_eq!(
-            kind.is_header(),
-            row.is_header,
-            "row's TableRow::is_header disagrees with its own cells' TableCellKind::is_header"
-        );
-    }
-
     let mut html = format!("<tr{}>", styling_attr(&row.classes, mode));
 
     for slot in slots {
@@ -709,7 +715,10 @@ mod render_tests {
     #[test]
     fn render_cell_emits_rowspan_when_height_is_greater_than_one() {
         let c = cell(TableCellKind::ColumnLabel, 0, 1, 0, 0);
-        assert_eq!(render_cell(&c, CssMode::Inline), "<th rowspan=\"2\"></th>");
+        assert_eq!(
+            render_cell(&c, CssMode::Inline),
+            "<th rowspan=\"2\" scope=\"col\"></th>"
+        );
     }
 
     #[test]
@@ -739,21 +748,21 @@ mod render_tests {
             cell(TableCellKind::ColumnLabel, 0, 0, 0, 0).with_classes(vec![TableClass::ColHeading]);
         assert_eq!(
             render_cell(&label, CssMode::Class),
-            "<th class=\"ggsql_col_heading\"></th>"
+            "<th scope=\"col\" class=\"ggsql_col_heading\"></th>"
         );
 
         let spanner =
             cell(TableCellKind::Spanner, 0, 0, 0, 1).with_classes(vec![TableClass::Spanner]);
         assert_eq!(
             render_cell(&spanner, CssMode::Class),
-            "<th colspan=\"2\" class=\"ggsql_spanner\"></th>"
+            "<th colspan=\"2\" scope=\"colgroup\" class=\"ggsql_spanner\"></th>"
         );
 
         let outer =
             cell(TableCellKind::Spanner, 0, 0, 0, 1).with_classes(vec![TableClass::SpannerOuter]);
         assert_eq!(
             render_cell(&outer, CssMode::Class),
-            "<th colspan=\"2\" class=\"ggsql_spanner_outer\"></th>"
+            "<th colspan=\"2\" scope=\"colgroup\" class=\"ggsql_spanner_outer\"></th>"
         );
     }
 
@@ -859,7 +868,10 @@ mod render_tests {
 
         let row = render_row(&slots, &TableRow::header(), CssMode::Inline);
 
-        assert_eq!(row, "<tr><th></th><th></th></tr>\n");
+        assert_eq!(
+            row,
+            "<tr><th scope=\"col\"></th><th scope=\"col\"></th></tr>\n"
+        );
     }
 
     #[test]
@@ -914,8 +926,8 @@ mod render_tests {
         assert_eq!(
             before_tbody,
             "<thead>\n\
-             <tr><th></th><th rowspan=\"2\"></th></tr>\n\
-             <tr><th></th></tr>\n\
+             <tr><th scope=\"col\"></th><th rowspan=\"2\" scope=\"col\"></th></tr>\n\
+             <tr><th scope=\"col\"></th></tr>\n\
              </thead>\n"
         );
         assert_eq!(
@@ -982,7 +994,7 @@ mod render_tests {
         assert!(html.contains("<tr class=\"ggsql_heading\"><th class=\"ggsql_title\">"));
         // The column-label row has no recorded row classes, so its <tr> is
         // bare.
-        assert!(html.contains("<tr><th></th></tr>"));
+        assert!(html.contains("<tr><th scope=\"col\"></th></tr>"));
     }
 
     #[test]
@@ -1095,7 +1107,7 @@ mod tests {
         // single spanner level is the topmost one, hence `spanner_outer`,
         // and it's centred by default.
         assert!(html.contains(
-            "<tr><th colspan=\"2\" class=\"ggsql_spanner_outer ggsql_center\">Info</th><th rowspan=\"2\""
+            "<tr><th colspan=\"2\" scope=\"colgroup\" class=\"ggsql_spanner_outer ggsql_center\">Info</th><th rowspan=\"2\" scope=\"col\""
         ));
         assert!(html.contains(">amount</th>"));
         assert!(html.contains(">id</th>"));
@@ -1140,12 +1152,11 @@ mod tests {
         let writer = HtmlWriter::new();
         let html = writer.render(&spec).unwrap();
 
-        // The stub head renders as a <th> with its own class, blank by
-        // default (no LABEL given); the row labels render as <td>s with
-        // their own class, both right-aligned (resolve_column_properties'
-        // STUB default).
-        assert!(html.contains("<th class=\"ggsql_stub_head ggsql_right\"></th>"));
-        assert!(html.contains("<td class=\"ggsql_stub ggsql_right\">north</td>"));
+        // The stub head renders as a <th scope="col">, blank by default (no
+        // LABEL given); the row labels render as <th scope="row">, both
+        // right-aligned (resolve_column_properties' STUB default).
+        assert!(html.contains("<th scope=\"col\" class=\"ggsql_stub_head ggsql_right\"></th>"));
+        assert!(html.contains("<th scope=\"row\" class=\"ggsql_stub ggsql_right\">north</th>"));
         assert!(html.contains("<td class=\"ggsql_row ggsql_right\">1</td>")); // "amount" unaffected
         assert!(html.find("ggsql_stub_head").unwrap() < html.find(">amount</th>").unwrap());
     }
