@@ -116,9 +116,11 @@ jobs:
           # the local container. Catalog/schema come from the URI path, so
           # the battery's unqualified table names land in memory.default.
           GGSQL_TEST_URI_TRINO: trino://test@localhost:8080/memory/default?SSL=false
-          # The Foundry ClickHouse driver speaks the HTTP protocol.
-          # Credentials match CLICKHOUSE_PASSWORD on the service above.
-          GGSQL_TEST_URI_CLICKHOUSE: clickhouse://default:clickhouse@localhost:8123
+          # The Foundry ClickHouse driver speaks the HTTP protocol and ignores
+          # userinfo in the URL — credentials must be query params (mapped to
+          # the username/password ADBC options). Password matches
+          # CLICKHOUSE_PASSWORD on the service above.
+          GGSQL_TEST_URI_CLICKHOUSE: clickhouse://localhost:8123?username=default&password=clickhouse
         # --features adbc is load-bearing: without it the ADBC reader path is
         # not compiled in and every live test panics at reader_from_uri.
         run: cargo test -p ggsql --features adbc --test dialect_live -- --nocapture

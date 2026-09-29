@@ -279,14 +279,7 @@ impl AdbcReader<ManagedDriver> {
             (driver, query_params_to_opts(query))
         } else {
             let driver = load_driver_for_scheme(&scheme)?;
-            // ggsql's scheme selects the driver and dialect, but the URI
-            // handed to the driver must use the scheme the driver itself
-            // speaks. ClickHouse's ADBC driver connects over the HTTP
-            // interface and expects http:// (or https:// for TLS).
-            let driver_uri = match scheme.as_str() {
-                "clickhouse" => uri.replacen("clickhouse://", "http://", 1),
-                _ => uri.to_string(),
-            };
+            let driver_uri = driver_uri_for(&scheme, body, uri);
             let mut opts = vec![(OptionDatabase::Uri, OptionValue::String(driver_uri))];
             opts.extend(query_params_to_opts(query));
             (driver, opts)
@@ -301,6 +294,24 @@ impl AdbcReader<ManagedDriver> {
             .unwrap_or_else(|| Box::new(AnsiDialect));
 
         Self::new_with_database_opts(driver, dialect, opts)
+    }
+}
+
+/// Compute the URI handed to the driver as the `uri` database option.
+///
+/// ggsql's scheme selects the driver and dialect, but the URI must use the
+/// scheme the driver itself speaks. ClickHouse's ADBC driver connects over
+/// the HTTP interface and expects http:// (or https:// for TLS). Its URI is
+/// rebuilt from the body alone, dropping userinfo and query params: the
+/// driver ignores userinfo (credentials must arrive as the dedicated
+/// `username`/`password` options) and forwards any URL query parameters to
+/// the server as ClickHouse *settings*, so `?username=…` left in the URL
+/// would fail with "Unknown setting". Other drivers (e.g. PostgreSQL) parse
+/// query parameters in the URI themselves, so their full URI passes through.
+fn driver_uri_for(scheme: &str, body: &str, full_uri: &str) -> String {
+    match scheme {
+        "clickhouse" => format!("http://{body}"),
+        _ => full_uri.to_string(),
     }
 }
 
@@ -578,6 +589,28 @@ mod tests {
         assert_eq!(driver_name_for_scheme("exasol"), Some("adbc_driver_exasol"));
         assert_eq!(driver_name_for_scheme("druid"), Some("adbc_driver_druid"));
         assert_eq!(driver_name_for_scheme("nosuch"), None);
+    }
+
+    #[test]
+    fn driver_uri_rewrites_clickhouse_and_strips_query() {
+        // Credentials must travel as dedicated options, not in the URL.
+        assert_eq!(
+            driver_uri_for(
+                "clickhouse",
+                "localhost:8123",
+                "clickhouse://localhost:8123?username=default&password=secret"
+            ),
+            "http://localhost:8123"
+        );
+        // Other schemes keep the full URI, query included.
+        assert_eq!(
+            driver_uri_for(
+                "postgres",
+                "u:p@h/db",
+                "postgres://u:p@h/db?sslmode=disable"
+            ),
+            "postgres://u:p@h/db?sslmode=disable"
+        );
     }
 
     #[test]
