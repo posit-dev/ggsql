@@ -94,6 +94,44 @@ pub trait SqlDialect {
         }
     }
 
+    /// Quote an identifier using this backend's convention.
+    ///
+    /// Default is SQL-standard double quotes. Override for backends with a
+    /// different quoting convention (e.g. backticks for MySQL/ClickHouse).
+    fn quote_ident(&self, name: &str) -> String {
+        naming::quote_ident(name)
+    }
+
+    /// Append a row limit to a query.
+    ///
+    /// Default uses `LIMIT n`. Override for backends with different limit
+    /// syntax (e.g. SQL Server's `TOP`, Oracle's `FETCH FIRST`).
+    fn sql_limit(&self, query: &str, n: usize) -> String {
+        format!("{} LIMIT {}", query, n)
+    }
+
+    /// Cast an expression to a SQL type name.
+    ///
+    /// Default uses `CAST(expr AS type)`. Override for backends that prefer a
+    /// non-throwing cast (e.g. BigQuery's `SAFE_CAST`, Snowflake/Trino's
+    /// `TRY_CAST`). `type_name` should come from [`type_name_for`] so it is
+    /// already backend-appropriate.
+    ///
+    /// [`type_name_for`]: SqlDialect::type_name_for
+    fn sql_cast(&self, expr: &str, type_name: &str) -> String {
+        format!("CAST({} AS {})", expr, type_name)
+    }
+
+    /// Whether this backend supports spatial (geometry) operations.
+    ///
+    /// When `false`, the executor should fail fast with a clear
+    /// "spatial not supported on this backend" error rather than emitting
+    /// spatial SQL that the backend cannot run. Default is `true` because the
+    /// ANSI defaults target PostGIS-compatible backends.
+    fn supports_spatial(&self) -> bool {
+        true
+    }
+
     /// Scalar MAX across any number of SQL expressions.
     fn sql_greatest(&self, exprs: &[&str]) -> String {
         let mut result = exprs[0].to_string();
@@ -335,6 +373,32 @@ pub trait SqlDialect {
         }
     }
 
+    /// SQL listing catalogs, with a single `catalog_name` output column.
+    ///
+    /// Returns `None` to use the `Reader` default (`information_schema`).
+    /// Override for backends without `information_schema` (e.g. Exasol's
+    /// `SYS.EXA_*` tables).
+    fn sql_list_catalogs(&self) -> Option<String> {
+        None
+    }
+
+    /// SQL listing schemas in `catalog`, with a single `schema_name` column.
+    fn sql_list_schemas(&self, _catalog: &str) -> Option<String> {
+        None
+    }
+
+    /// SQL listing tables in `catalog`/`schema`, with `table_name` and
+    /// `table_type` output columns.
+    fn sql_list_tables(&self, _catalog: &str, _schema: &str) -> Option<String> {
+        None
+    }
+
+    /// SQL listing columns of `catalog`/`schema`/`table`, with `column_name`
+    /// and `data_type` output columns.
+    fn sql_list_columns(&self, _catalog: &str, _schema: &str, _table: &str) -> Option<String> {
+        None
+    }
+
     /// Build the DDL statement(s) needed to (re)create a temporary table
     /// that holds the result of `body_sql`.
     ///
@@ -417,6 +481,19 @@ pub fn default_sql_aggregate(name: &str, qcol: &str) -> Option<String> {
 pub struct AnsiDialect;
 impl SqlDialect for AnsiDialect {}
 
+/// Fail fast when a spatial feature is used on a backend whose dialect
+/// reports `supports_spatial() == false`, rather than emitting spatial SQL
+/// the backend cannot run.
+pub(crate) fn ensure_spatial_supported(dialect: &dyn SqlDialect) -> Result<()> {
+    if dialect.supports_spatial() {
+        Ok(())
+    } else {
+        Err(GgsqlError::ValidationError(
+            "Spatial operations are not supported by this database backend".into(),
+        ))
+    }
+}
+
 #[cfg(feature = "duckdb")]
 pub mod duckdb;
 
@@ -437,6 +514,7 @@ mod cache_equivalence;
 
 pub mod connection;
 pub mod data;
+pub mod dialects;
 mod spec;
 
 #[cfg(feature = "duckdb")]
@@ -459,7 +537,7 @@ pub use cache::CachingReader;
 // ============================================================================
 
 /// Extract the numeric SRID from an EPSG string (e.g. "EPSG:4326" → 4326).
-fn extract_epsg_srid(crs: &str) -> Option<u32> {
+pub(crate) fn extract_epsg_srid(crs: &str) -> Option<u32> {
     crs.strip_prefix("EPSG:").and_then(|s| s.parse().ok())
 }
 
@@ -866,9 +944,11 @@ pub trait Reader {
     // =========================================================================
 
     fn list_catalogs(&self) -> Result<Vec<String>> {
-        let df = self.execute_sql(
-            "SELECT DISTINCT catalog_name FROM information_schema.schemata ORDER BY catalog_name",
-        )?;
+        let sql = self.dialect().sql_list_catalogs().unwrap_or_else(|| {
+            "SELECT DISTINCT catalog_name FROM information_schema.schemata ORDER BY catalog_name"
+                .to_string()
+        });
+        let df = self.execute_sql(&sql)?;
         let col = df.column("catalog_name")?;
         let mut results = Vec::with_capacity(df.height());
         for i in 0..df.height() {
@@ -880,11 +960,14 @@ pub trait Reader {
     }
 
     fn list_schemas(&self, catalog: &str) -> Result<Vec<String>> {
-        let df = self.execute_sql(&format!(
-            "SELECT DISTINCT schema_name FROM information_schema.schemata \
-             WHERE catalog_name = {} ORDER BY schema_name",
-            naming::quote_literal(catalog)
-        ))?;
+        let sql = self.dialect().sql_list_schemas(catalog).unwrap_or_else(|| {
+            format!(
+                "SELECT DISTINCT schema_name FROM information_schema.schemata \
+                 WHERE catalog_name = {} ORDER BY schema_name",
+                naming::quote_literal(catalog)
+            )
+        });
+        let df = self.execute_sql(&sql)?;
         let col = df.column("schema_name")?;
         let mut results = Vec::with_capacity(df.height());
         for i in 0..df.height() {
@@ -896,12 +979,18 @@ pub trait Reader {
     }
 
     fn list_tables(&self, catalog: &str, schema: &str) -> Result<Vec<TableInfo>> {
-        let df = self.execute_sql(&format!(
-            "SELECT DISTINCT table_name, table_type FROM information_schema.tables \
-             WHERE table_catalog = {} AND table_schema = {} ORDER BY table_name",
-            naming::quote_literal(catalog),
-            naming::quote_literal(schema)
-        ))?;
+        let sql = self
+            .dialect()
+            .sql_list_tables(catalog, schema)
+            .unwrap_or_else(|| {
+                format!(
+                    "SELECT DISTINCT table_name, table_type FROM information_schema.tables \
+                 WHERE table_catalog = {} AND table_schema = {} ORDER BY table_name",
+                    naming::quote_literal(catalog),
+                    naming::quote_literal(schema)
+                )
+            });
+        let df = self.execute_sql(&sql)?;
         let name_col = df.column("table_name")?;
         let type_col = df.column("table_type")?;
         let mut results = Vec::with_capacity(df.height());
@@ -917,14 +1006,20 @@ pub trait Reader {
     }
 
     fn list_columns(&self, catalog: &str, schema: &str, table: &str) -> Result<Vec<ColumnInfo>> {
-        let df = self.execute_sql(&format!(
-            "SELECT column_name, data_type FROM information_schema.columns \
-             WHERE table_catalog = {} AND table_schema = {} AND table_name = {} \
-             ORDER BY ordinal_position",
-            naming::quote_literal(catalog),
-            naming::quote_literal(schema),
-            naming::quote_literal(table)
-        ))?;
+        let sql = self
+            .dialect()
+            .sql_list_columns(catalog, schema, table)
+            .unwrap_or_else(|| {
+                format!(
+                    "SELECT column_name, data_type FROM information_schema.columns \
+                     WHERE table_catalog = {} AND table_schema = {} AND table_name = {} \
+                     ORDER BY ordinal_position",
+                    naming::quote_literal(catalog),
+                    naming::quote_literal(schema),
+                    naming::quote_literal(table)
+                )
+            });
+        let df = self.execute_sql(&sql)?;
         let name_col = df.column("column_name")?;
         let type_col = df.column("data_type")?;
         let mut results = Vec::with_capacity(df.height());

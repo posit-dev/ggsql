@@ -100,6 +100,179 @@ impl<D: Driver> AdbcReader<D> {
     }
 }
 
+// =============================================================================
+// Runtime driver loading (adbc_driver_manager)
+// =============================================================================
+
+use adbc_core::options::{AdbcVersion, OptionDatabase, OptionValue};
+use adbc_driver_manager::ManagedDriver;
+
+/// Default load flags: search `ADBC_DRIVER_PATH`, then system, then user
+/// driver directories; allow relative paths so `adbc://./libfoo.so` works.
+const DEFAULT_LOAD_FLAGS: adbc_core::LoadFlags =
+    adbc_core::LOAD_FLAG_DEFAULT | adbc_core::LOAD_FLAG_ALLOW_RELATIVE_PATHS;
+
+/// Map a ggsql URI scheme to the canonical ADBC driver library name.
+///
+/// Backends without a dedicated ADBC driver map to Flight SQL, which is the
+/// de-facto ADBC route for MySQL, SQL Server, Trino, ClickHouse, and Oracle
+/// deployments that front those systems with a Flight SQL endpoint.
+pub fn driver_name_for_scheme(scheme: &str) -> Option<&'static str> {
+    Some(match scheme {
+        "postgres" | "postgresql" => "adbc_driver_postgresql",
+        "redshift" => "adbc_driver_postgresql",
+        "snowflake" => "adbc_driver_snowflake",
+        "bigquery" => "adbc_driver_bigquery",
+        "databricks" | "spark" => "adbc_driver_databricks",
+        "duckdb" => "adbc_driver_duckdb",
+        "sqlite" => "adbc_driver_sqlite",
+        "flightsql" => "adbc_driver_flightsql",
+        "mysql" | "mariadb" | "trino" | "clickhouse" | "mssql" | "sqlserver" | "oracle" => {
+            "adbc_driver_flightsql"
+        }
+        _ => return None,
+    })
+}
+
+/// Environment variable that overrides the ADBC driver for a URI scheme,
+/// e.g. `GGSQL_POSTGRES_ADBC_DRIVER=/opt/drivers/libadbc_driver_postgresql.so`.
+pub fn driver_env_var(scheme: &str) -> String {
+    let upper: String = scheme
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() {
+                c.to_ascii_uppercase()
+            } else {
+                '_'
+            }
+        })
+        .collect();
+    format!("GGSQL_{}_ADBC_DRIVER", upper)
+}
+
+/// Parse a `k=v&…` query string into ADBC database options. The keys `uri`,
+/// `username`, and `password` map to their dedicated ADBC options; everything
+/// else passes through as a driver-specific option.
+fn query_params_to_opts(query: &str) -> Vec<(OptionDatabase, OptionValue)> {
+    let mut opts = Vec::new();
+    for segment in query.split('&') {
+        let Some((key, value)) = segment.split_once('=') else {
+            continue;
+        };
+        if key.is_empty() {
+            continue;
+        }
+        let opt_key = match key {
+            "uri" => OptionDatabase::Uri,
+            "username" => OptionDatabase::Username,
+            "password" => OptionDatabase::Password,
+            other => OptionDatabase::Other(other.to_string()),
+        };
+        opts.push((opt_key, OptionValue::String(value.to_string())));
+    }
+    opts
+}
+
+/// Load an ADBC driver for a scheme, honoring the per-scheme env override
+/// first, then the canonical driver name. The error message lists what was
+/// probed so users know where ggsql looked.
+fn load_driver_for_scheme(scheme: &str) -> Result<ManagedDriver> {
+    let env_var = driver_env_var(scheme);
+    if let Ok(path) = std::env::var(&env_var) {
+        return ManagedDriver::load_from_name(
+            &path,
+            None,
+            AdbcVersion::V110,
+            DEFAULT_LOAD_FLAGS,
+            None,
+        )
+        .map_err(|e| {
+            GgsqlError::ReaderError(format!(
+                "ADBC driver load failed for {}={}: {}",
+                env_var, path, e
+            ))
+        });
+    }
+    let name = driver_name_for_scheme(scheme).ok_or_else(|| {
+        GgsqlError::ReaderError(format!("No known ADBC driver for scheme '{}://'", scheme))
+    })?;
+    ManagedDriver::load_from_name(name, None, AdbcVersion::V110, DEFAULT_LOAD_FLAGS, None).map_err(
+        |e| {
+            GgsqlError::ReaderError(format!(
+                "ADBC driver '{}' not found or failed to load: {}. \
+                 Searched ${}, the ADBC driver paths, and system library paths. \
+                 Set it explicitly with {}=/path/to/driver, or use an odbc:// \
+                 connection string instead.",
+                name, e, env_var, env_var
+            ))
+        },
+    )
+}
+
+impl AdbcReader<ManagedDriver> {
+    /// Construct an `AdbcReader` from a connection URI, loading the driver
+    /// shared library at runtime.
+    ///
+    /// Two URI forms are accepted:
+    ///
+    /// - `adbc://<driver>?k=v&…` — `driver` is a canonical driver name
+    ///   (`adbc_driver_postgresql`), a known short name (`postgres`), or a
+    ///   path to a driver library/manifest; query params become ADBC
+    ///   database options (`uri=`, `username=`, `password=`, or
+    ///   driver-specific keys).
+    /// - `<scheme>://<rest>` (e.g. `postgres://user:pass@host/db`) — the
+    ///   scheme selects the driver via [`driver_name_for_scheme`]; the full
+    ///   URI is passed to the driver as the `uri` database option, with any
+    ///   `?k=v` query params passed through as additional options.
+    ///
+    /// The dialect is chosen from the scheme via
+    /// [`crate::reader::dialects::dialect_for_scheme`], falling back to ANSI.
+    pub fn from_connection_string(uri: &str) -> Result<Self> {
+        let (scheme, rest) = uri.split_once("://").ok_or_else(|| {
+            GgsqlError::ReaderError(format!("Invalid ADBC connection URI: {}", uri))
+        })?;
+        let scheme = scheme.to_ascii_lowercase();
+        let (body, query) = rest.split_once('?').unwrap_or((rest, ""));
+
+        let (driver, opts) = if scheme == "adbc" {
+            // body is the driver name or path (may be a short scheme alias)
+            let name = driver_name_for_scheme(body).unwrap_or(body);
+            let driver = ManagedDriver::load_from_name(
+                name,
+                None,
+                AdbcVersion::V110,
+                DEFAULT_LOAD_FLAGS,
+                None,
+            )
+            .map_err(|e| {
+                GgsqlError::ReaderError(format!("ADBC driver '{}' failed to load: {}", body, e))
+            })?;
+            (driver, query_params_to_opts(query))
+        } else {
+            let driver = load_driver_for_scheme(&scheme)?;
+            let mut opts = vec![(OptionDatabase::Uri, OptionValue::String(uri.to_string()))];
+            opts.extend(query_params_to_opts(query));
+            (driver, opts)
+        };
+
+        let dialect: Box<dyn SqlDialect + Send> =
+            crate::reader::dialects::dialect_for_scheme(if scheme == "adbc" {
+                body
+            } else {
+                &scheme
+            })
+            .unwrap_or_else(|| Box::new(AnsiDialect));
+
+        Self::new_with_database_opts(driver, dialect, opts)
+    }
+}
+
+/// Probe whether an ADBC driver for `scheme` can be loaded, without opening
+/// a connection. Used by reader dispatch to decide between ADBC and ODBC.
+pub fn adbc_driver_available(scheme: &str) -> bool {
+    load_driver_for_scheme(scheme).is_ok()
+}
+
 use adbc_core::sync::Statement;
 use arrow::record_batch::RecordBatch;
 
@@ -193,7 +366,7 @@ where
         // which is silently tolerated below.
         let schema = batch.schema();
         if replace {
-            let drop_sql = format!("DROP TABLE IF EXISTS {}", crate::naming::quote_ident(name));
+            let drop_sql = format!("DROP TABLE IF EXISTS {}", self.dialect.quote_ident(name));
             let mut drop_stmt = conn
                 .new_statement()
                 .map_err(|e| GgsqlError::ReaderError(format!("ADBC new_statement: {}", e)))?;
@@ -275,7 +448,7 @@ where
                 name
             )));
         }
-        let sql = format!("DROP TABLE IF EXISTS {}", crate::naming::quote_ident(name));
+        let sql = format!("DROP TABLE IF EXISTS {}", self.dialect.quote_ident(name));
         // Ignore the returned DataFrame — DROP TABLE has no result rows.
         self.execute_sql(&sql)?;
         self.registered_tables.borrow_mut().remove(name);
@@ -332,16 +505,12 @@ fn create_table_sql(
                 )));
             }
         };
-        cols.push(format!(
-            "{} {}",
-            crate::naming::quote_ident(field.name()),
-            ty_name
-        ));
+        cols.push(format!("{} {}", dialect.quote_ident(field.name()), ty_name));
     }
 
     Ok(format!(
         "CREATE TABLE {} ({})",
-        crate::naming::quote_ident(name),
+        dialect.quote_ident(name),
         cols.join(", ")
     ))
 }
@@ -350,6 +519,46 @@ fn create_table_sql(
 mod tests {
     use super::*;
     use adbc_datafusion::DataFusionDriver;
+
+    #[test]
+    fn driver_name_mapping() {
+        assert_eq!(
+            driver_name_for_scheme("postgres"),
+            Some("adbc_driver_postgresql")
+        );
+        assert_eq!(
+            driver_name_for_scheme("snowflake"),
+            Some("adbc_driver_snowflake")
+        );
+        assert_eq!(
+            driver_name_for_scheme("mysql"),
+            Some("adbc_driver_flightsql")
+        );
+        assert_eq!(driver_name_for_scheme("nosuch"), None);
+    }
+
+    #[test]
+    fn from_connection_string_unknown_driver_errors() {
+        let err = AdbcReader::<ManagedDriver>::from_connection_string("adbc://nosuchdriver?uri=x")
+            .err()
+            .expect("load must fail");
+        assert!(err.to_string().contains("nosuchdriver"), "got: {err}");
+    }
+
+    #[test]
+    fn from_connection_string_rejects_malformed_uri() {
+        assert!(AdbcReader::<ManagedDriver>::from_connection_string("no-scheme").is_err());
+    }
+
+    #[test]
+    fn query_params_map_to_adbc_options() {
+        let opts =
+            query_params_to_opts("uri=postgresql://h/db&username=u&password=p&sslmode=require");
+        assert!(matches!(opts[0].0, OptionDatabase::Uri));
+        assert!(matches!(opts[1].0, OptionDatabase::Username));
+        assert!(matches!(opts[2].0, OptionDatabase::Password));
+        assert!(matches!(&opts[3].0, OptionDatabase::Other(k) if k == "sslmode"));
+    }
 
     /// Construct a reader over an in-process DataFusion ADBC driver.
     /// DataFusion starts empty; callers register tables via the reader's

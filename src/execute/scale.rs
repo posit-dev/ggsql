@@ -8,9 +8,9 @@ use crate::naming;
 use crate::plot::aesthetic::AestheticContext;
 use crate::plot::projection::CoordKind;
 use crate::plot::scale::{
-    default_oob, gets_default_scale, infer_scale_target_type, infer_scale_type_from_input_range,
-    infer_transform_from_input_range, is_facet_aesthetic, transform::Transform, TransformKind,
-    OOB_CENSOR, OOB_KEEP, OOB_SQUISH,
+    OOB_CENSOR, OOB_KEEP, OOB_SQUISH, TransformKind, default_oob, gets_default_scale,
+    infer_scale_target_type, infer_scale_type_from_input_range, infer_transform_from_input_range,
+    is_facet_aesthetic, transform::Transform,
 };
 use crate::plot::{
     AestheticValue, ArrayElement, ArrayElementType, ColumnInfo, Layer, ParameterValue, Plot, Scale,
@@ -1430,8 +1430,8 @@ pub fn apply_oob_to_column_discrete(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::plot::{ArrayElement, Parameters};
     use crate::Geom;
+    use crate::plot::{ArrayElement, Parameters};
     use arrow::datatypes::DataType;
 
     #[test]
@@ -1825,11 +1825,11 @@ mod tests {
 
     mod scale_error_translation_tests {
         #[cfg(feature = "duckdb")]
+        use crate::GgsqlError;
+        #[cfg(feature = "duckdb")]
         use crate::reader::DuckDBReader;
         #[cfg(feature = "duckdb")]
         use crate::reader::Reader;
-        #[cfg(feature = "duckdb")]
-        use crate::GgsqlError;
 
         /// Site 4: facet variable + Continuous scale → user-facing facet name in message.
         #[cfg(feature = "duckdb")]

@@ -11,7 +11,7 @@ mod snowflake;
 mod wrapper;
 
 use crate::reader::Reader;
-use crate::{naming, DataFrame, GgsqlError, Result};
+use crate::{DataFrame, GgsqlError, Result};
 use arrow::array::*;
 use arrow::datatypes::DataType;
 use ffi::*;
@@ -21,29 +21,12 @@ use std::sync::Arc;
 use wrapper::{Connection, Statement};
 
 /// Detect the backend SQL dialect from the DBMS name and connection string.
+///
+/// Delegates to the shared matcher in [`crate::reader::dialects`]; the
+/// `Driver=` value from the ODBC connection string serves as the driver hint.
 fn detect_dialect(dbms_name: Option<&str>, conn_str: &str) -> Box<dyn super::SqlDialect> {
-    if let Some(name) = dbms_name {
-        let lower = name.to_lowercase();
-        #[cfg(feature = "sqlite")]
-        if lower.contains("sqlite") {
-            return Box::new(super::sqlite::SqliteDialect);
-        }
-        #[cfg(feature = "duckdb")]
-        if lower.contains("duckdb") {
-            return Box::new(super::duckdb::DuckDbDialect);
-        }
-    }
-
-    // Fall back to connection string matching
-    let driver =
-        super::connection::extract_odbc_value(conn_str, "driver").map(|s| s.to_lowercase());
-    match driver.as_deref() {
-        #[cfg(feature = "sqlite")]
-        Some(d) if d.contains("sqlite") => Box::new(super::sqlite::SqliteDialect),
-        #[cfg(feature = "duckdb")]
-        Some(d) if d.contains("duckdb") => Box::new(super::duckdb::DuckDbDialect),
-        _ => Box::new(super::AnsiDialect),
-    }
+    let driver = super::connection::extract_odbc_value(conn_str, "driver");
+    super::dialects::detect_dialect(dbms_name, driver.as_deref())
 }
 
 /// Generic ODBC reader implementing the `Reader` trait.
@@ -60,12 +43,24 @@ unsafe impl Send for OdbcReader {}
 impl OdbcReader {
     /// Create a new ODBC reader from a `odbc://` connection URI.
     pub fn from_connection_string(uri: &str) -> Result<Self> {
-        ffi::try_load()
-            .map_err(|e| GgsqlError::ReaderError(format!("ODBC is not available: {}", e)))?;
-
         let conn_str = uri
             .strip_prefix("odbc://")
             .ok_or_else(|| GgsqlError::ReaderError("ODBC URI must start with odbc://".into()))?;
+        Self::from_odbc_conn_str(conn_str, None)
+    }
+
+    /// Create a new ODBC reader from a bare ODBC connection string.
+    ///
+    /// When `dialect` is `None`, it is detected from the DBMS name reported
+    /// by the connection, falling back to the `Driver=` value in the
+    /// connection string, then ANSI. Pass `Some(...)` to pin the dialect
+    /// (e.g. from a backend-specific ggsql URI scheme).
+    pub fn from_odbc_conn_str(
+        conn_str: &str,
+        dialect: Option<Box<dyn super::SqlDialect>>,
+    ) -> Result<Self> {
+        ffi::try_load()
+            .map_err(|e| GgsqlError::ReaderError(format!("ODBC is not available: {}", e)))?;
 
         let mut conn_str = conn_str.to_string();
 
@@ -84,8 +79,13 @@ impl OdbcReader {
         let env = wrapper::odbc_env()?;
         let connection = Connection::connect(env, &conn_str)?;
 
-        let dbms_name = connection.dbms_name();
-        let dialect = detect_dialect(dbms_name.as_deref(), &conn_str);
+        let dialect = match dialect {
+            Some(d) => d,
+            None => {
+                let dbms_name = connection.dbms_name();
+                detect_dialect(dbms_name.as_deref(), &conn_str)
+            }
+        };
 
         Ok(Self {
             connection,
@@ -110,7 +110,7 @@ impl Reader for OdbcReader {
         super::validate_table_name(name)?;
 
         if replace {
-            let drop_sql = format!("DROP TABLE IF EXISTS {}", naming::quote_ident(name));
+            let drop_sql = format!("DROP TABLE IF EXISTS {}", self.dialect.quote_ident(name));
             let _ = self.connection.execute(&drop_sql);
         }
 
@@ -121,14 +121,14 @@ impl Reader for OdbcReader {
             .map(|field| {
                 format!(
                     "{} {}",
-                    naming::quote_ident(field.name()),
+                    self.dialect.quote_ident(field.name()),
                     arrow_dtype_to_sql(field.data_type())
                 )
             })
             .collect();
         let create_sql = format!(
             "CREATE TEMPORARY TABLE {} ({})",
-            naming::quote_ident(name),
+            self.dialect.quote_ident(name),
             col_defs.join(", ")
         );
         self.connection.execute(&create_sql).map_err(|e| {
@@ -141,7 +141,7 @@ impl Reader for OdbcReader {
             let placeholders: Vec<&str> = vec!["?"; num_cols];
             let insert_sql = format!(
                 "INSERT INTO {} VALUES ({})",
-                naming::quote_ident(name),
+                self.dialect.quote_ident(name),
                 placeholders.join(", ")
             );
 
@@ -217,7 +217,7 @@ impl Reader for OdbcReader {
             )));
         }
 
-        let sql = format!("DROP TABLE IF EXISTS {}", naming::quote_ident(name));
+        let sql = format!("DROP TABLE IF EXISTS {}", self.dialect.quote_ident(name));
         self.connection.execute(&sql).map_err(|e| {
             GgsqlError::ReaderError(format!("Failed to unregister table '{}': {}", name, e))
         })?;
