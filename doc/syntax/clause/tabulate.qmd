@@ -85,14 +85,16 @@ A reserved key always wins over a same-named column: `LABEL title => 'Sales'` se
 ### `SPAN`
 ```ggsql
 SPAN <identifier> ACROSS <column>, ...
+SPAN <column>, ... UNDER <identifier>
   SETTING <parameter> => <value>, ...
 ```
 
-Groups columns under one spanner cell, drawn in a row above the column labels. The identifier right after `SPAN` is this spanner's id — also its default display text:
+Groups columns under one spanner cell, drawn in a row above the column labels. The identifier is this spanner's id — also its default display text — and can come first (`ACROSS`) or last (`UNDER`); the two are otherwise identical, so pick whichever reads better:
 
 ```ggsql
 TABULATE * FROM sales
   SPAN Q1 ACROSS jan, feb, mar
+  SPAN apr, may, jun UNDER Q2
 ```
 
 The id is mandatory: an identifier (quote it with backticks or double quotes to include spaces or other non-identifier characters, e.g. `` SPAN `Fiscal Q1` ``) or `NULL`. `NULL` leaves the spanner anonymous — nothing can reference it — and its cell renders blank, useful when the only reason for the `SPAN` is a shared `SETTING` rather than a visible grouping. Each `SPAN` clause defines exactly one spanner; give several `SPAN` clauses for several spanners, the same way multiple `DRAW` clauses give multiple layers.
