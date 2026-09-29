@@ -112,33 +112,46 @@ use adbc_driver_manager::ManagedDriver;
 const DEFAULT_LOAD_FLAGS: adbc_core::LoadFlags =
     adbc_core::LOAD_FLAG_DEFAULT | adbc_core::LOAD_FLAG_ALLOW_RELATIVE_PATHS;
 
-/// Map a ggsql URI scheme to the canonical ADBC driver library name.
+/// Map a ggsql URI scheme to its ADBC driver names: the canonical driver
+/// library name and the dbc manifest ID.
+///
+/// Both names are needed because they are spelled differently on disk:
+/// `dbc install postgresql` writes a manifest named after its short driver
+/// ID (`postgresql.toml`), while a from-source or system-wide install is
+/// typically found under the library name (`adbc_driver_postgresql`).
+/// [`load_driver_for_scheme`] probes both.
 ///
 /// Most backend schemes resolve to a dedicated driver from the ADBC Driver
-/// Foundry (installable via `dbc install <name>`). Redshift shares the
+/// Foundry (installable via `dbc install <id>`). Redshift shares the
 /// PostgreSQL wire protocol and uses the PostgreSQL driver. Schemes without
 /// a usable dedicated driver (Drill, MonetDB) return `None` and fall through
 /// to the ODBC fallback in connection setup.
-pub fn driver_name_for_scheme(scheme: &str) -> Option<&'static str> {
+fn driver_names_for_scheme(scheme: &str) -> Option<(&'static str, &'static str)> {
     Some(match scheme {
-        "postgres" | "postgresql" => "adbc_driver_postgresql",
-        "redshift" => "adbc_driver_postgresql",
-        "snowflake" => "adbc_driver_snowflake",
-        "bigquery" => "adbc_driver_bigquery",
-        "databricks" | "spark" => "adbc_driver_databricks",
-        "duckdb" => "adbc_driver_duckdb",
-        "sqlite" => "adbc_driver_sqlite",
-        "flightsql" => "adbc_driver_flightsql",
-        "mysql" | "mariadb" => "adbc_driver_mysql",
-        "trino" => "adbc_driver_trino",
-        "clickhouse" => "adbc_driver_clickhouse",
-        "mssql" | "sqlserver" => "adbc_driver_mssql",
-        "oracle" => "adbc_driver_oracle",
-        "exasol" => "adbc_driver_exasol",
+        "postgres" | "postgresql" => ("adbc_driver_postgresql", "postgresql"),
+        "redshift" => ("adbc_driver_postgresql", "postgresql"),
+        "snowflake" => ("adbc_driver_snowflake", "snowflake"),
+        "bigquery" => ("adbc_driver_bigquery", "bigquery"),
+        "databricks" | "spark" => ("adbc_driver_databricks", "databricks"),
+        "duckdb" => ("adbc_driver_duckdb", "duckdb"),
+        "sqlite" => ("adbc_driver_sqlite", "sqlite"),
+        "flightsql" => ("adbc_driver_flightsql", "flightsql"),
+        "mysql" | "mariadb" => ("adbc_driver_mysql", "mysql"),
+        "trino" => ("adbc_driver_trino", "trino"),
+        "clickhouse" => ("adbc_driver_clickhouse", "clickhouse"),
+        "mssql" | "sqlserver" => ("adbc_driver_mssql", "mssql"),
+        "oracle" => ("adbc_driver_oracle", "oracle"),
+        "exasol" => ("adbc_driver_exasol", "exasol"),
         // Preview driver from the Foundry as of late 2026.
-        "druid" => "adbc_driver_druid",
+        "druid" => ("adbc_driver_druid", "druid"),
         _ => return None,
     })
+}
+
+/// Map a ggsql URI scheme to the canonical ADBC driver library name.
+/// See [`driver_names_for_scheme`] for the naming subtlety.
+pub fn driver_name_for_scheme(scheme: &str) -> Option<&'static str> {
+    driver_names_for_scheme(scheme).map(|(lib_name, _)| lib_name)
 }
 
 /// Environment variable that overrides the ADBC driver for a URI scheme,
@@ -200,20 +213,27 @@ fn load_driver_for_scheme(scheme: &str) -> Result<ManagedDriver> {
             ))
         });
     }
-    let name = driver_name_for_scheme(scheme).ok_or_else(|| {
+    let (lib_name, dbc_id) = driver_names_for_scheme(scheme).ok_or_else(|| {
         GgsqlError::ReaderError(format!("No known ADBC driver for scheme '{}://'", scheme))
     })?;
-    ManagedDriver::load_from_name(name, None, AdbcVersion::V110, DEFAULT_LOAD_FLAGS, None).map_err(
-        |e| {
-            GgsqlError::ReaderError(format!(
-                "ADBC driver '{}' not found or failed to load: {}. \
-                 Searched ${}, the ADBC driver paths, and system library paths. \
-                 Set it explicitly with {}=/path/to/driver, or use an odbc:// \
-                 connection string instead.",
-                name, e, env_var, env_var
-            ))
-        },
-    )
+    // Probe the canonical library name first, then the dbc manifest ID (see
+    // driver_names_for_scheme); collect both errors so the message shows
+    // everything that was tried.
+    let mut errors = Vec::new();
+    for name in [lib_name, dbc_id] {
+        match ManagedDriver::load_from_name(name, None, AdbcVersion::V110, DEFAULT_LOAD_FLAGS, None)
+        {
+            Ok(driver) => return Ok(driver),
+            Err(e) => errors.push(format!("'{name}': {e}")),
+        }
+    }
+    Err(GgsqlError::ReaderError(format!(
+        "ADBC driver for '{scheme}://' not found or failed to load ({}). \
+         Searched ${env_var}, the ADBC driver paths, and system library paths. \
+         Set it explicitly with {env_var}=/path/to/driver, or use an odbc:// \
+         connection string instead.",
+        errors.join("; ")
+    )))
 }
 
 impl AdbcReader<ManagedDriver> {
@@ -558,6 +578,31 @@ mod tests {
         assert_eq!(driver_name_for_scheme("exasol"), Some("adbc_driver_exasol"));
         assert_eq!(driver_name_for_scheme("druid"), Some("adbc_driver_druid"));
         assert_eq!(driver_name_for_scheme("nosuch"), None);
+    }
+
+    #[test]
+    fn driver_names_include_dbc_manifest_id() {
+        // dbc names manifests by short ID (`postgresql.toml`), which differs
+        // from the library name — both must be available for probing, or a
+        // `dbc install`-based setup is never found (first seen as a CI
+        // failure where dbc-installed drivers were not discovered).
+        assert_eq!(
+            driver_names_for_scheme("postgres"),
+            Some(("adbc_driver_postgresql", "postgresql"))
+        );
+        assert_eq!(
+            driver_names_for_scheme("redshift"),
+            Some(("adbc_driver_postgresql", "postgresql"))
+        );
+        assert_eq!(
+            driver_names_for_scheme("trino"),
+            Some(("adbc_driver_trino", "trino"))
+        );
+        assert_eq!(
+            driver_names_for_scheme("mariadb"),
+            Some(("adbc_driver_mysql", "mysql"))
+        );
+        assert_eq!(driver_names_for_scheme("nosuch"), None);
     }
 
     #[test]
