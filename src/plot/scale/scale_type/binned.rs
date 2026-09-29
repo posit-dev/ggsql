@@ -710,6 +710,9 @@ impl ScaleTypeTrait for Binned {
 ///
 /// Handles the operator selection based on closed side and bin position,
 /// and the oob_squish logic for extending first/last bins to infinity.
+// The eight parameters are all independent facets of one bin; grouping
+// them into a struct would add ceremony without improving readability.
+#[allow(clippy::too_many_arguments)]
 fn build_bin_condition(
     column_name: &str,
     lower_expr: &str,
