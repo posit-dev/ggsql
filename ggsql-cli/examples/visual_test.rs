@@ -5,8 +5,8 @@ Every executable ```` ```{ggsql} ```` cell in the Quarto docs is a query the
 project already vouches for, which makes them a ready-made corpus for
 exercising a writer. This example runs them — in document order, against one
 reader per source file so `CREATE TABLE` setup cells still apply — renders each
-visualisation, and emits a single HTML report pairing every query with its
-rendered output.
+visualisation or table, and emits a single HTML report pairing every query
+with its rendered output.
 
 ```sh
 cargo run -p ggsql-cli --features png --example visual_test
@@ -39,7 +39,7 @@ use clap::{Parser, ValueEnum};
 use ggsql::reader::{DuckDBReader, Reader};
 use ggsql::util::escape_html;
 use ggsql::validate::validate;
-use ggsql::writer::{PngWriter, SvgWriter, VegaLiteWriter, Writer};
+use ggsql::writer::{HtmlWriter, PngWriter, SvgWriter, VegaLiteWriter, Writer};
 use std::fmt::Write as _;
 use std::fs;
 use std::panic::{catch_unwind, AssertUnwindSafe};
@@ -493,6 +493,11 @@ enum Outcome {
         vegalite: Option<String>,
         vegalite_error: Option<String>,
     },
+    /// A query with a `TABULATE` clause: the HtmlWriter's rendered markup.
+    Table {
+        html: Option<String>,
+        html_error: Option<String>,
+    },
     /// A cell with no visualisation — data setup, or a bare table query.
     Setup { rows: usize, columns: usize },
     /// The cell never produced a spec.
@@ -516,6 +521,7 @@ impl CellResult {
                 vegalite_error,
                 ..
             } => image_error.is_some() || vegalite_error.is_some(),
+            Outcome::Table { html_error, .. } => html_error.is_some(),
             Outcome::Setup { .. } => false,
         }
     }
@@ -576,6 +582,7 @@ fn run_cells(source: Source, args: &Args, assets: &Path) -> SourceResult {
     };
 
     let vegalite = VegaLiteWriter::new();
+    let html_writer = HtmlWriter::new();
 
     let mut results = Vec::new();
     for cell in cells {
@@ -587,12 +594,20 @@ fn run_cells(source: Source, args: &Args, assets: &Path) -> SourceResult {
         let outcome = if has_spec {
             match capture(|| reader.execute(&cell.query)) {
                 Err(e) => Outcome::Failed(e),
-                // Known gap: this harness only renders VISUALISE cells (the
-                // `Outcome` enum has no table variant), so a TABULATE cell
-                // is reported as failed rather than actually rendered — fine
-                // while no doc page uses TABULATE, but revisit once one does.
                 Ok(spec) if spec.as_plot().is_none() => {
-                    Outcome::Failed("TABULATE cells aren't rendered by this harness yet".into())
+                    let table = spec.as_table().unwrap();
+                    warnings.extend(table.warnings().iter().map(|w| w.message.clone()));
+
+                    match capture(|| html_writer.render(&spec)) {
+                        Ok(html) => Outcome::Table {
+                            html: Some(html),
+                            html_error: None,
+                        },
+                        Err(e) => Outcome::Table {
+                            html: None,
+                            html_error: Some(e),
+                        },
+                    }
                 }
                 Ok(spec) => {
                     let plot = spec.as_plot().unwrap();
@@ -688,6 +703,11 @@ fn status_word(outcome: &Outcome) -> &'static str {
             ..
         } => "vega-lite failed",
         Outcome::Plot { .. } => "ok",
+        Outcome::Table {
+            html_error: Some(_),
+            ..
+        } => "RENDER FAILED",
+        Outcome::Table { .. } => "ok",
     }
 }
 
@@ -822,6 +842,11 @@ fn render_cell(cell: &CellResult, label: &str, aspect: &str) -> String {
             ..
         } => ("vega-lite failed", "warn"),
         Outcome::Plot { .. } => ("ok", "good"),
+        Outcome::Table {
+            html_error: Some(_),
+            ..
+        } => ("render failed", "bad"),
+        Outcome::Table { .. } => ("ok", "good"),
     };
 
     let problem = if cell.is_problem() { " problem" } else { "" };
@@ -857,6 +882,21 @@ fn render_cell(cell: &CellResult, label: &str, aspect: &str) -> String {
         Outcome::Failed(message) => {
             let _ = write!(html, "<pre class=\"error\">{}</pre>", escape_html(message));
         }
+        Outcome::Table {
+            html: table_html,
+            html_error,
+        } => match (table_html, html_error) {
+            (Some(markup), _) => {
+                let _ = write!(
+                    html,
+                    "<figure><figcaption>table</figcaption>{markup}</figure>"
+                );
+            }
+            (None, Some(message)) => {
+                let _ = write!(html, "<pre class=\"error\">{}</pre>", escape_html(message));
+            }
+            (None, None) => html.push_str("<p class=\"note\">no output</p>"),
+        },
         Outcome::Setup { rows, columns } => {
             let _ = write!(
                 html,
