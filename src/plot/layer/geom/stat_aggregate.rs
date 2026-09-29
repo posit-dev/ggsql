@@ -1071,9 +1071,9 @@ fn build_aggregate_query(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::plot::Parameters;
     use crate::plot::aesthetic::AestheticContext;
     use crate::plot::types::{AestheticValue, ColumnInfo};
+    use crate::plot::Parameters;
     use arrow::datatypes::DataType;
 
     /// A test dialect that mimics DuckDB: native QUANTILE_CONT plus the

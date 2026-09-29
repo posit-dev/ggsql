@@ -8,7 +8,7 @@ use crate::plot::geom::types::get_quoted_column_name;
 use crate::plot::types::{DefaultAestheticValue, Parameters};
 use crate::plot::{ParameterValue, StatResult};
 use crate::reader::SqlDialect;
-use crate::{GgsqlError, Mappings, Result, naming};
+use crate::{naming, GgsqlError, Mappings, Result};
 
 /// Valid methods for smoothing
 const METHOD_VALUES: &[&str] = &["nw", "nadaraya-watson", "ols", "tls"];
@@ -289,9 +289,9 @@ mod tests {
     use super::*;
     use crate::plot::AestheticValue;
     #[cfg(feature = "duckdb")]
-    use crate::reader::Reader;
-    #[cfg(feature = "duckdb")]
     use crate::reader::duckdb::DuckDBReader;
+    #[cfg(feature = "duckdb")]
+    use crate::reader::Reader;
 
     #[cfg(feature = "duckdb")]
     #[test]

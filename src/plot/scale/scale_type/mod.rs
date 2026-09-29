@@ -28,7 +28,7 @@ use std::sync::Arc;
 use super::transform::{Transform, TransformKind};
 use crate::plot::aesthetic::{is_facet_aesthetic, is_position_aesthetic};
 use crate::plot::types::{
-    DefaultParamValue, ParamDefinition, Parameters, format_number, validate_parameter,
+    format_number, validate_parameter, DefaultParamValue, ParamDefinition, Parameters,
 };
 use crate::plot::{ArrayElement, ColumnInfo, ParameterValue};
 
@@ -44,7 +44,7 @@ use crate::plot::types::CastTargetType;
 use crate::reader::SqlDialect;
 pub use binned::Binned;
 pub use continuous::Continuous;
-pub use discrete::{Discrete, infer_transform_from_input_range};
+pub use discrete::{infer_transform_from_input_range, Discrete};
 pub use identity::Identity;
 pub use ordinal::Ordinal;
 
@@ -1058,7 +1058,7 @@ pub trait ScaleTypeTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
         scale: &mut super::Scale,
         aesthetic: &str,
     ) -> Result<(), String> {
-        use super::{OutputRange, palettes};
+        use super::{palettes, OutputRange};
 
         // Phase 1: Ensure we have an Array (convert Palette or fill default)
         match &scale.output_range {
@@ -1606,8 +1606,8 @@ pub(crate) fn size_output_range(
     aesthetic: &str,
     count: usize,
 ) -> Result<(), String> {
+    use super::colour::{interpolate_colors, ColorSpace};
     use super::OutputRange;
-    use super::colour::{ColorSpace, interpolate_colors};
 
     if count == 0 {
         return Ok(());
@@ -1818,8 +1818,8 @@ pub(crate) fn temporal_interval_breaks(
     transform: &Transform,
 ) -> Option<Vec<ArrayElement>> {
     use super::breaks::{
-        TemporalInterval, filter_breaks_to_range, temporal_breaks_date, temporal_breaks_datetime,
-        temporal_breaks_time,
+        filter_breaks_to_range, temporal_breaks_date, temporal_breaks_datetime,
+        temporal_breaks_time, TemporalInterval,
     };
 
     let interval = TemporalInterval::create_from_str(interval_str)?;
@@ -2625,11 +2625,9 @@ mod tests {
             "oob".to_string(),
             ParameterValue::String("squish".to_string()),
         );
-        assert!(
-            ScaleType::binned()
-                .resolve_properties("x", &oob_props)
-                .is_ok()
-        );
+        assert!(ScaleType::binned()
+            .resolve_properties("x", &oob_props)
+            .is_ok());
     }
 
     #[test]
@@ -2761,11 +2759,9 @@ mod tests {
         // Identity and discrete reject oob
         let mut oob_props = Parameters::new();
         oob_props.insert("oob".to_string(), ParameterValue::String("censor".into()));
-        assert!(
-            ScaleType::identity()
-                .resolve_properties("color", &oob_props)
-                .is_err()
-        );
+        assert!(ScaleType::identity()
+            .resolve_properties("color", &oob_props)
+            .is_err());
         let result = ScaleType::discrete().resolve_properties("color", &oob_props);
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("not 'oob'"));
@@ -3732,11 +3728,9 @@ mod tests {
             DataType::Timestamp(TimeUnit::Microsecond, None),
         ]);
         assert!(result.is_err());
-        assert!(
-            result
-                .unwrap_err()
-                .contains("Cannot mix different temporal types")
-        );
+        assert!(result
+            .unwrap_err()
+            .contains("Cannot mix different temporal types"));
     }
 
     #[test]

@@ -1,15 +1,15 @@
 //! Rule geom implementation
 
 use super::{
-    DefaultAesthetics, GeomTrait, GeomType, ParamDefinition, densify_edges, needs_projection,
-    project_position_columns,
+    densify_edges, needs_projection, project_position_columns, DefaultAesthetics, GeomTrait,
+    GeomType, ParamDefinition,
 };
-use crate::plot::projection::Projection;
-use crate::plot::projection::coord::CoordKind;
 use crate::plot::projection::coord::map::clip_boundary_table;
+use crate::plot::projection::coord::CoordKind;
+use crate::plot::projection::Projection;
 use crate::plot::types::{DefaultAestheticValue, ParameterValue, Parameters};
 use crate::reader::SqlDialect;
-use crate::{Mappings, Result, naming};
+use crate::{naming, Mappings, Result};
 
 /// Rule geom - horizontal and vertical reference lines
 #[derive(Debug, Clone, Copy)]
@@ -165,8 +165,8 @@ impl GeomTrait for Rule {
         mappings: &mut crate::plot::layer::Mappings,
         parameters: &mut Parameters,
     ) -> crate::Result<()> {
-        use crate::plot::ParameterValue;
         use crate::plot::layer::AestheticValue;
+        use crate::plot::ParameterValue;
 
         // For diagonal rules (slope present), convert position aesthetics to AnnotationColumn
         // so they don't participate in scale training. The position value is the intercept,
@@ -304,12 +304,12 @@ impl std::fmt::Display for Rule {
 
 #[cfg(test)]
 mod tests {
-    use super::{Rule, expand_rule_to_segment};
-    use crate::plot::layer::geom::{GeomTrait, densify_edges};
+    use super::{expand_rule_to_segment, Rule};
+    use crate::plot::layer::geom::{densify_edges, GeomTrait};
     use crate::plot::projection::Projection;
     use crate::plot::types::ParameterValue;
     use crate::plot::{AestheticContext, AestheticValue, Geom, Layer};
-    use crate::{Mappings, naming};
+    use crate::{naming, Mappings};
 
     fn validate_rule(mappings: &[(&str, &str)]) -> Result<(), String> {
         let mut layer = Layer::new(Geom::rule());
@@ -466,7 +466,7 @@ mod tests {
         let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
         let dialect = reader.dialect();
 
-    for stmt in dialect.sql_spatial_setup() {
+        for stmt in dialect.sql_spatial_setup() {
             reader.execute_sql(&stmt).unwrap();
         }
 
@@ -547,7 +547,7 @@ mod tests {
         let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
         let dialect = reader.dialect();
 
-    for stmt in dialect.sql_spatial_setup() {
+        for stmt in dialect.sql_spatial_setup() {
             reader.execute_sql(&stmt).unwrap();
         }
 

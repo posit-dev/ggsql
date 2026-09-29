@@ -5,7 +5,7 @@
 //! in SQL queries.
 
 use crate::reader::{Reader, SqlDialect};
-use crate::{GgsqlError, Result, naming, parser::SourceTree};
+use crate::{naming, parser::SourceTree, GgsqlError, Result};
 use std::collections::HashSet;
 use tree_sitter::Node;
 

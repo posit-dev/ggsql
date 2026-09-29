@@ -4,7 +4,7 @@
 
 use crate::plot::aesthetic::parse_position;
 use crate::reader::SqlDialect;
-use crate::{Mappings, naming, plot::types::DefaultAestheticValue};
+use crate::{naming, plot::types::DefaultAestheticValue, Mappings};
 
 // Re-export shared types from the central location
 pub use crate::plot::types::{DefaultParamValue, ParamConstraint, ParamDefinition};
@@ -516,7 +516,11 @@ mod tests {
 
     #[test]
     fn wrap_stat_with_dummy_pos1_promotes_identity() {
-        let result = wrap_stat_with_dummy_pos1("SELECT * FROM raw", StatResult::Identity, &crate::reader::AnsiDialect);
+        let result = wrap_stat_with_dummy_pos1(
+            "SELECT * FROM raw",
+            StatResult::Identity,
+            &crate::reader::AnsiDialect,
+        );
         match result {
             StatResult::Transformed {
                 query,
@@ -543,7 +547,8 @@ mod tests {
             dummy_columns: vec![],
             consumed_aesthetics: vec!["weight".to_string()],
         };
-        let result = wrap_stat_with_dummy_pos1("SELECT * FROM raw", inner, &crate::reader::AnsiDialect);
+        let result =
+            wrap_stat_with_dummy_pos1("SELECT * FROM raw", inner, &crate::reader::AnsiDialect);
         match result {
             StatResult::Transformed {
                 query,

@@ -1,16 +1,16 @@
 //! Ribbon geom implementation
 
 use super::stat_aggregate;
-use super::types::{POSITION_VALUES, wrap_with_order_by};
+use super::types::{wrap_with_order_by, POSITION_VALUES};
 use super::{
-    DefaultAesthetics, GeomTrait, GeomType, StatResult, densify_edges, has_aggregate_param,
-    needs_projection, project_position_columns,
+    densify_edges, has_aggregate_param, needs_projection, project_position_columns,
+    DefaultAesthetics, GeomTrait, GeomType, StatResult,
 };
 use crate::plot::projection::Projection;
 use crate::plot::types::{DefaultAestheticValue, ParameterValue, Parameters};
 use crate::plot::{DefaultParamValue, ParamConstraint, ParamDefinition};
 use crate::reader::SqlDialect;
-use crate::{Mappings, Result, naming};
+use crate::{naming, Mappings, Result};
 
 /// Ribbon geom - confidence bands and ranges
 #[derive(Debug, Clone, Copy)]
@@ -237,7 +237,7 @@ mod tests {
     use crate::plot::layer::geom::GeomTrait;
     use crate::plot::projection::Projection;
     use crate::plot::types::ParameterValue;
-    use crate::{Mappings, naming};
+    use crate::{naming, Mappings};
 
     fn create_ribbon_mappings() -> Mappings {
         let mut mappings = Mappings::new();
@@ -338,7 +338,7 @@ mod tests {
         let mut mappings = create_ribbon_mappings();
         let mut partition_by = vec![];
 
-    for stmt in dialect.sql_spatial_setup() {
+        for stmt in dialect.sql_spatial_setup() {
             reader.execute_sql(&stmt).unwrap();
         }
 

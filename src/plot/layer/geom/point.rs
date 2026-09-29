@@ -2,8 +2,8 @@
 
 use super::types::POSITION_VALUES;
 use super::{
-    DefaultAesthetics, DefaultParamValue, GeomTrait, GeomType, ParamConstraint, ParamDefinition,
-    project_position_columns,
+    project_position_columns, DefaultAesthetics, DefaultParamValue, GeomTrait, GeomType,
+    ParamConstraint, ParamDefinition,
 };
 use crate::plot::projection::Projection;
 use crate::plot::types::DefaultAestheticValue;

@@ -2,14 +2,14 @@
 
 use super::types::POSITION_VALUES;
 use super::{
-    DefaultAesthetics, DefaultParamValue, GeomTrait, GeomType, ParamConstraint, ParamDefinition,
-    project_position_columns,
+    project_position_columns, DefaultAesthetics, DefaultParamValue, GeomTrait, GeomType,
+    ParamConstraint, ParamDefinition,
 };
 use crate::plot::projection::Projection;
 use crate::plot::types::{DefaultAestheticValue, ParameterValue, Parameters};
 use crate::plot::{ArrayConstraint, NumberConstraint};
 use crate::reader::SqlDialect;
-use crate::{DataFrame, Mappings, Result, naming};
+use crate::{naming, DataFrame, Mappings, Result};
 
 /// Text geom - text labels at positions
 #[derive(Debug, Clone, Copy)]

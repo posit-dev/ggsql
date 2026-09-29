@@ -2,13 +2,13 @@
 
 use super::types::POSITION_VALUES;
 use super::{
-    DefaultAesthetics, DefaultParamValue, GeomTrait, GeomType, ParamConstraint, ParamDefinition,
-    densify_edges, needs_projection, project_position_columns,
+    densify_edges, needs_projection, project_position_columns, DefaultAesthetics,
+    DefaultParamValue, GeomTrait, GeomType, ParamConstraint, ParamDefinition,
 };
 use crate::plot::projection::Projection;
 use crate::plot::types::{DefaultAestheticValue, ParameterValue};
 use crate::reader::SqlDialect;
-use crate::{Mappings, Result, naming};
+use crate::{naming, Mappings, Result};
 
 /// Segment geom - line segments between two points
 #[derive(Debug, Clone, Copy)]
@@ -166,7 +166,7 @@ mod tests {
     use crate::plot::projection::Projection;
     use crate::plot::types::ParameterValue;
     use crate::plot::{AestheticContext, AestheticValue, Geom, Layer};
-    use crate::{Mappings, naming};
+    use crate::{naming, Mappings};
 
     fn create_segment_mappings() -> Mappings {
         let mut mappings = Mappings::new();
@@ -306,7 +306,7 @@ mod tests {
         let mut mappings = create_segment_mappings();
         let mut partition_by = vec![];
 
-    for stmt in dialect.sql_spatial_setup() {
+        for stmt in dialect.sql_spatial_setup() {
             reader.execute_sql(&stmt).unwrap();
         }
 

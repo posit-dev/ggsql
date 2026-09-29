@@ -1,13 +1,14 @@
 //! Violin geom implementation
 
-use super::types::{POSITION_VALUES, SIDE_VALUES, wrap_with_dummy_axis};
+use super::types::{wrap_with_dummy_axis, POSITION_VALUES, SIDE_VALUES};
 use super::{DefaultAesthetics, GeomTrait, GeomType, StatResult};
 use crate::{
-    DataFrame, GgsqlError, Mappings, Result, naming,
+    naming,
     plot::{
-        DefaultAestheticValue, DefaultParamValue, ParamConstraint, ParamDefinition, ParameterValue,
-        Parameters, geom::types::get_column_name,
+        geom::types::get_column_name, DefaultAestheticValue, DefaultParamValue, ParamConstraint,
+        ParamDefinition, ParameterValue, Parameters,
     },
+    DataFrame, GgsqlError, Mappings, Result,
 };
 /// Valid kernel types for violin density estimation
 const KERNEL_VALUES: &[&str] = &[
@@ -279,11 +280,11 @@ mod tests {
     use super::*;
     use crate::plot::AestheticValue;
     use crate::plot::Parameters;
+    #[cfg(feature = "duckdb")]
+    use crate::reader::duckdb::DuckDBReader;
     use crate::reader::AnsiDialect;
     #[cfg(feature = "duckdb")]
     use crate::reader::Reader;
-    #[cfg(feature = "duckdb")]
-    use crate::reader::duckdb::DuckDBReader;
     use arrow::array::Array;
 
     /// Count unique non-null string values in an ArrayRef.

@@ -9,8 +9,8 @@ use arrow::datatypes::DataType;
 use super::super::transform::{Transform, TransformKind};
 use super::{ScaleTypeKind, ScaleTypeTrait};
 use crate::naming;
-use crate::plot::ArrayElement;
 use crate::plot::types::{DefaultParamValue, ParamConstraint, ParamDefinition};
+use crate::plot::ArrayElement;
 
 /// Ordinal scale type - for ordered categorical data with interpolated output
 #[derive(Debug, Clone, Copy)]
@@ -214,7 +214,7 @@ impl ScaleTypeTrait for Ordinal {
         scale: &mut super::super::Scale,
         aesthetic: &str,
     ) -> Result<(), String> {
-        use super::super::{OutputRange, palettes};
+        use super::super::{palettes, OutputRange};
         use super::size_output_range;
 
         // Get category count from input_range (key difference from Binned which uses breaks)

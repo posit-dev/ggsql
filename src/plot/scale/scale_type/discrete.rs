@@ -5,8 +5,8 @@ use arrow::datatypes::DataType;
 use super::super::transform::{Transform, TransformKind};
 use super::{ScaleTypeKind, ScaleTypeTrait};
 use crate::naming;
-use crate::plot::ArrayElement;
 use crate::plot::types::{DefaultParamValue, ParamConstraint, ParamDefinition};
+use crate::plot::ArrayElement;
 
 /// Discrete scale type - for categorical/discrete data
 #[derive(Debug, Clone, Copy)]
@@ -187,7 +187,7 @@ impl ScaleTypeTrait for Discrete {
         scale: &mut super::super::Scale,
         aesthetic: &str,
     ) -> Result<(), String> {
-        use super::super::{OutputRange, palettes};
+        use super::super::{palettes, OutputRange};
 
         // Phase 1: Ensure we have an Array (convert Palette or fill default)
         match &scale.output_range {

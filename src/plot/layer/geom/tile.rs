@@ -4,8 +4,8 @@ use super::stat_aggregate;
 use super::types::POSITION_VALUES;
 use super::types::{get_column_name, get_quoted_column_name};
 use super::{
-    DefaultAesthetics, GeomTrait, GeomType, ParamConstraint, StatResult, densify_edges,
-    has_aggregate_param, needs_projection, project_position_columns,
+    densify_edges, has_aggregate_param, needs_projection, project_position_columns,
+    DefaultAesthetics, GeomTrait, GeomType, ParamConstraint, StatResult,
 };
 use crate::naming;
 use crate::plot::projection::Projection;
@@ -624,8 +624,8 @@ fn generate_continuous_position_expressions(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::plot::Parameters;
     use crate::plot::types::{AestheticValue, ColumnInfo, ParameterValue};
+    use crate::plot::Parameters;
     use arrow::datatypes::DataType;
 
     // ==================== Helper Functions ====================
@@ -1510,7 +1510,7 @@ mod tests {
             ParameterValue::String("+proj=ortho +lat_0=40 +lon_0=-70".to_string()),
         );
 
-    for stmt in dialect.sql_spatial_setup() {
+        for stmt in dialect.sql_spatial_setup() {
             reader.execute_sql(&stmt).unwrap();
         }
 

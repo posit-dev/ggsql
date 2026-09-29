@@ -10,7 +10,7 @@ use crate::plot::{
     AestheticValue, DefaultAestheticValue, Layer, ParameterValue, Scale, Schema, StatResult,
 };
 use crate::reader::SqlDialect;
-use crate::{DataFrame, GgsqlError, Result, naming};
+use crate::{naming, DataFrame, GgsqlError, Result};
 use arrow::datatypes::DataType;
 use std::collections::{HashMap, HashSet};
 

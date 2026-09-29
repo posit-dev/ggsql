@@ -1,12 +1,12 @@
 use super::{DefaultAesthetics, GeomTrait, GeomType, StatResult};
-use crate::Mappings;
 use crate::naming;
-use crate::plot::ParameterValue;
-use crate::plot::projection::Projection;
-use crate::plot::projection::coord::CoordKind;
 use crate::plot::projection::coord::map::clip_boundary_table;
+use crate::plot::projection::coord::CoordKind;
+use crate::plot::projection::Projection;
 use crate::plot::types::{DefaultAestheticValue, Parameters};
+use crate::plot::ParameterValue;
 use crate::reader::SqlDialect;
+use crate::Mappings;
 
 fn apply_clip_boundary(
     query: &str,
@@ -60,7 +60,7 @@ impl GeomTrait for Spatial {
         _aesthetic_ctx: &crate::plot::aesthetic::AestheticContext,
     ) -> crate::Result<StatResult> {
         crate::reader::ensure_spatial_supported(dialect)?;
-    for stmt in dialect.sql_spatial_setup() {
+        for stmt in dialect.sql_spatial_setup() {
             execute_query(&stmt)?;
         }
 

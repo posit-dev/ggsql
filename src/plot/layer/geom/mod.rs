@@ -21,7 +21,7 @@
 //! ```
 
 use crate::plot::types::DefaultAestheticValue;
-use crate::{DataFrame, Mappings, Result, naming};
+use crate::{naming, DataFrame, Mappings, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;

@@ -3,14 +3,15 @@
 use super::stat_aggregate;
 use super::types::wrap_with_order_by;
 use super::{
+    densify_edges, has_aggregate_param, needs_projection, project_position_columns,
     DefaultAesthetics, DefaultParamValue, GeomTrait, GeomType, ParamConstraint, ParamDefinition,
-    StatResult, densify_edges, has_aggregate_param, needs_projection, project_position_columns,
+    StatResult,
 };
 use crate::plot::layer::orientation::{ALIGNED, ORIENTATION_VALUES};
 use crate::plot::projection::Projection;
 use crate::plot::types::{DefaultAestheticValue, Parameters};
 use crate::reader::SqlDialect;
-use crate::{Mappings, Result, naming};
+use crate::{naming, Mappings, Result};
 
 /// Line geom - line charts with connected points
 #[derive(Debug, Clone, Copy)]

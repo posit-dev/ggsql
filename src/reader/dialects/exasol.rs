@@ -159,7 +159,10 @@ mod tests {
 
         let tables = d.sql_list_tables("ignored", "O'Brien").unwrap();
         assert!(tables.contains("SYS.EXA_ALL_TABLES"), "got: {tables}");
-        assert!(tables.contains("TABLE_SCHEMA = 'O''Brien'"), "got: {tables}");
+        assert!(
+            tables.contains("TABLE_SCHEMA = 'O''Brien'"),
+            "got: {tables}"
+        );
 
         let cols = d.sql_list_columns("ignored", "S", "T'bl").unwrap();
         assert!(cols.contains("SYS.EXA_ALL_COLUMNS"), "got: {cols}");

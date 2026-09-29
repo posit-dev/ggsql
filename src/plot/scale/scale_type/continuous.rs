@@ -3,7 +3,7 @@
 use arrow::datatypes::DataType;
 
 use super::{
-    OOB_CENSOR, OOB_SQUISH, OOB_VALUES_CONTINUOUS, ScaleTypeKind, ScaleTypeTrait, TransformKind,
+    ScaleTypeKind, ScaleTypeTrait, TransformKind, OOB_CENSOR, OOB_SQUISH, OOB_VALUES_CONTINUOUS,
 };
 use crate::plot::types::{
     ArrayConstraint, DefaultParamValue, NumberConstraint, ParamConstraint, ParamDefinition,
@@ -399,16 +399,12 @@ mod tests {
 
         let continuous = Continuous;
         assert!(continuous.validate_dtype(&DataType::Date32).is_ok());
-        assert!(
-            continuous
-                .validate_dtype(&DataType::Timestamp(TimeUnit::Microsecond, None))
-                .is_ok()
-        );
-        assert!(
-            continuous
-                .validate_dtype(&DataType::Time64(TimeUnit::Nanosecond))
-                .is_ok()
-        );
+        assert!(continuous
+            .validate_dtype(&DataType::Timestamp(TimeUnit::Microsecond, None))
+            .is_ok());
+        assert!(continuous
+            .validate_dtype(&DataType::Time64(TimeUnit::Nanosecond))
+            .is_ok());
     }
 
     #[test]

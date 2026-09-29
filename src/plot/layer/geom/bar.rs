@@ -3,10 +3,10 @@
 use std::collections::HashSet;
 
 use super::stat_aggregate;
-use super::types::{POSITION_VALUES, get_column_name, wrap_stat_with_dummy_pos1};
+use super::types::{get_column_name, wrap_stat_with_dummy_pos1, POSITION_VALUES};
 use super::{
-    DefaultAesthetics, DefaultParamValue, GeomTrait, GeomType, ParamConstraint, ParamDefinition,
-    StatResult, has_aggregate_param,
+    has_aggregate_param, DefaultAesthetics, DefaultParamValue, GeomTrait, GeomType,
+    ParamConstraint, ParamDefinition, StatResult,
 };
 use crate::naming;
 use crate::plot::types::{DefaultAestheticValue, Parameters};

@@ -5,8 +5,8 @@ use std::collections::HashMap;
 use arrow::datatypes::DataType;
 
 use super::{
-    CLOSED_VALUES, OOB_CENSOR, OOB_SQUISH, OOB_VALUES_BINNED, ScaleDataContext, ScaleTypeKind,
-    ScaleTypeTrait, TransformKind, expand_numeric_range, resolve_common_steps,
+    expand_numeric_range, resolve_common_steps, ScaleDataContext, ScaleTypeKind, ScaleTypeTrait,
+    TransformKind, CLOSED_VALUES, OOB_CENSOR, OOB_SQUISH, OOB_VALUES_BINNED,
 };
 use crate::plot::types::{
     ArrayConstraint, DefaultParamValue, NumberConstraint, ParamConstraint, ParamDefinition,
@@ -253,7 +253,7 @@ impl ScaleTypeTrait for Binned {
         scale: &mut super::super::Scale,
         aesthetic: &str,
     ) -> Result<(), String> {
-        use super::super::{OutputRange, palettes};
+        use super::super::{palettes, OutputRange};
         use super::size_output_range;
 
         // Get bin count from resolved breaks
@@ -386,8 +386,8 @@ impl ScaleTypeTrait for Binned {
                 // Temporal interval string like "2 months", "week"
                 // Only valid for temporal transforms (Date, DateTime, Time)
                 use super::super::super::breaks::{
-                    TemporalInterval, temporal_breaks_date, temporal_breaks_datetime,
-                    temporal_breaks_time,
+                    temporal_breaks_date, temporal_breaks_datetime, temporal_breaks_time,
+                    TemporalInterval,
                 };
 
                 if let Some(interval) = TemporalInterval::create_from_str(interval_str) {
@@ -952,11 +952,9 @@ mod tests {
             ParameterValue::Array(vec![ArrayElement::Number(0.0)]),
         );
 
-        assert!(
-            binned
-                .pre_stat_transform_sql("x", &DataType::Float64, &scale, &AnsiDialect)
-                .is_none()
-        );
+        assert!(binned
+            .pre_stat_transform_sql("x", &DataType::Float64, &scale, &AnsiDialect)
+            .is_none());
     }
 
     #[test]
@@ -965,11 +963,9 @@ mod tests {
         let scale = Scale::new("x");
         // No breaks property at all
 
-        assert!(
-            binned
-                .pre_stat_transform_sql("x", &DataType::Float64, &scale, &AnsiDialect)
-                .is_none()
-        );
+        assert!(binned
+            .pre_stat_transform_sql("x", &DataType::Float64, &scale, &AnsiDialect)
+            .is_none());
     }
 
     #[test]
@@ -982,11 +978,9 @@ mod tests {
             .insert("breaks".to_string(), ParameterValue::Number(5.0));
 
         // Should return None because breaks hasn't been resolved to Array
-        assert!(
-            binned
-                .pre_stat_transform_sql("x", &DataType::Float64, &scale, &AnsiDialect)
-                .is_none()
-        );
+        assert!(binned
+            .pre_stat_transform_sql("x", &DataType::Float64, &scale, &AnsiDialect)
+            .is_none());
     }
 
     #[test]
@@ -1955,11 +1949,9 @@ mod tests {
 
         let binned = Binned;
         assert!(binned.validate_dtype(&DataType::Date32).is_ok());
-        assert!(
-            binned
-                .validate_dtype(&DataType::Timestamp(TimeUnit::Microsecond, None))
-                .is_ok()
-        );
+        assert!(binned
+            .validate_dtype(&DataType::Timestamp(TimeUnit::Microsecond, None))
+            .is_ok());
     }
 
     #[test]
