@@ -36,8 +36,9 @@ jobs:
         run: sudo apt-get install -y llvm
 
       - name: Install protobuf compiler
-        # adbc_datafusion (dev-dep) → datafusion → substrait → prost-build,
-        # which invokes `protoc` at build time. Required for the ADBC test path.
+        # adbc_datafusion (adbc-datafusion feature) → datafusion → substrait
+        # → prost-build, which invokes `protoc` at build time. Required for
+        # the ADBC test path.
         run: sudo apt-get install -y protobuf-compiler
 
       - name: Install renderer system libraries
@@ -102,8 +103,8 @@ jobs:
         # The one step that actually proves the 1.86 floor — delete it and the
         # MSRV silently rots. Keep the two flags: `--ignore-rust-version`
         # bypasses `parley`'s *declared* 1.88, and library-only avoids the
-        # `adbc` dev-dependency path, which needs 1.88 for real. Background:
-        # /CLAUDE.md, "Rust version (MSRV)".
+        # `adbc-datafusion` dependency path, which needs 1.88 for real.
+        # Background: /CLAUDE.md, "Rust version (MSRV)".
         run: cargo +1.86 check --ignore-rust-version -p ggsql
 
       - name: Run tree-sitter tests
@@ -119,10 +120,12 @@ jobs:
           "$HOME/.local/bin/dbc" install sqlite
 
       - name: Run ADBC unit tests
-        run: cargo test --features "adbc sqlite" --lib
+        # adbc-datafusion pulls in the in-process driver the adbc.rs unit
+        # tests fixture against.
+        run: cargo test --features "adbc sqlite adbc-datafusion" --lib
 
       - name: Run ADBC SQLite equivalence tests
-        run: cargo test --features "adbc sqlite" --lib -- --ignored equivalence
+        run: cargo test --features "adbc sqlite adbc-datafusion" --lib -- --ignored equivalence
 
       - name: Run GPU-free writer tests
         # svg, pdf and hep are default features and need no adapter, so these

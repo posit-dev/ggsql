@@ -148,15 +148,17 @@ fn live_exasol() {
     live_backend("exasol");
 }
 
-/// DataFusion runs in-process through its ADBC driver (already a
-/// dev-dependency) and would need no infrastructure — but it is currently
-/// gated behind `GGSQL_TEST_DATAFUSION=1` because `adbc_datafusion` 0.23
-/// panics converting MIN/MAX aggregate results for any non-Float64 column
-/// (`SELECT MIN(int_col) FROM t` fails with "MIN/MAX is not expected to
-/// receive scalars of incompatible types"), which the pipeline's domain
-/// query runs over every source column. Enable to check whether a newer
-/// driver has fixed it; when it passes, make this test unconditional.
-#[cfg(feature = "adbc")]
+/// DataFusion runs in-process through its ADBC driver and would need no
+/// infrastructure — but it is doubly gated. First, behind the cargo feature
+/// `adbc-datafusion`, because that optional dependency drags the full
+/// DataFusion/prost graph into the test build and the live-CI legs skip it.
+/// Second, behind `GGSQL_TEST_DATAFUSION=1`, because `adbc_datafusion` 0.23
+/// stores ingested batches without validating them against the table schema,
+/// and the ggsql register flow (SQL CREATE with dialect types + Arrow append)
+/// then panics in MIN/MAX aggregate execution — see the upstream issue filed
+/// from the ggsql repo notes. Enable both to check whether a newer driver
+/// has fixed it; when it passes, make this test unconditional.
+#[cfg(feature = "adbc-datafusion")]
 #[test]
 fn live_datafusion() {
     if std::env::var("GGSQL_TEST_DATAFUSION").is_err() {

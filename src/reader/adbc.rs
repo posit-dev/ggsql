@@ -581,6 +581,7 @@ fn create_table_sql(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(feature = "adbc-datafusion")]
     use adbc_datafusion::DataFusionDriver;
 
     #[test]
@@ -700,10 +701,12 @@ mod tests {
     /// Construct a reader over an in-process DataFusion ADBC driver.
     /// DataFusion starts empty; callers register tables via the reader's
     /// `register()` method (added in Task 4) or via raw SQL DDL.
+    #[cfg(feature = "adbc-datafusion")]
     fn fixture_reader() -> AdbcReader<DataFusionDriver> {
         AdbcReader::from_driver(DataFusionDriver::new(None)).expect("datafusion init")
     }
 
+    #[cfg(feature = "adbc-datafusion")]
     #[test]
     fn execute_sql_returns_scalar_result() {
         use crate::array_util::as_i64;
@@ -717,6 +720,7 @@ mod tests {
         assert_eq!(one, 1);
     }
 
+    #[cfg(feature = "adbc-datafusion")]
     #[test]
     fn register_then_query_roundtrip() {
         use crate::array_util::as_i64;
@@ -737,6 +741,7 @@ mod tests {
         assert_eq!(n, 3);
     }
 
+    #[cfg(feature = "adbc-datafusion")]
     #[test]
     fn unregister_removes_table() {
         use crate::df;
@@ -759,6 +764,7 @@ mod tests {
         assert!(matches!(err, GgsqlError::ReaderError(_)));
     }
 
+    #[cfg(feature = "adbc-datafusion")]
     #[test]
     fn with_dialect_plumbs_custom_dialect_through() {
         // Dummy dialect that overrides a recognizable method so we can verify
@@ -783,6 +789,7 @@ mod tests {
                 materialization, which adbc_datafusion 0.23 rejects with `NotImplemented(\"Temporary \
                 tables not supported\")`. The full pipeline works against any driver that supports \
                 TEMP TABLE (DuckDB, Trino, etc.) — see the equivalence tests for that path."]
+    #[cfg(feature = "adbc-datafusion")]
     fn reader_executes_full_ggsql_visualise_query() {
         use crate::df;
 
@@ -827,6 +834,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "adbc-datafusion")]
     #[test]
     fn execute_sql_handles_multi_batch_result() {
         use crate::array_util::as_i64;
@@ -852,6 +860,7 @@ mod tests {
         assert_eq!(arr.value(49_999), 49_999);
     }
 
+    #[cfg(feature = "adbc-datafusion")]
     #[test]
     fn execute_sql_handles_nulls() {
         use crate::array_util::as_i64;
@@ -877,6 +886,7 @@ mod tests {
         assert_eq!(arr.value(1), 3);
     }
 
+    #[cfg(feature = "adbc-datafusion")]
     #[test]
     #[ignore]
     fn bench_register_and_query_100k_rows() {
@@ -911,6 +921,7 @@ mod tests {
     /// borrow, build+execute, drop the borrow, then iterate. It also kicks
     /// off a second `execute_sql` while the first stream is still alive —
     /// only possible if the first borrow was released.
+    #[cfg(feature = "adbc-datafusion")]
     #[test]
     fn record_batch_reader_outlives_statement_and_allows_second_query() {
         use arrow::array::RecordBatchReader as _;
@@ -952,6 +963,7 @@ mod tests {
         assert_eq!(schema.field(0).name(), "v");
     }
 
+    #[cfg(feature = "adbc-datafusion")]
     #[test]
     fn execute_sql_handles_empty_result_with_schema() {
         let reader = fixture_reader();

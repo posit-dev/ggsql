@@ -65,11 +65,6 @@ jobs:
         # tree-sitter-ggsql build script on every fresh checkout.
         run: npm install -g tree-sitter-cli
 
-      - name: Install protobuf compiler
-        # adbc_datafusion (dev-dep) → datafusion → substrait → prost-build,
-        # which invokes `protoc` at build time.
-        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
-
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
@@ -96,8 +91,13 @@ jobs:
         run: bash .github/scripts/dialect-live-start.sh ${{ matrix.backend }}
 
       - name: Run the ${{ matrix.backend }} live test
-        # --features adbc is load-bearing: without it the ADBC reader path
-        # is not compiled in and the test panics at reader_from_uri.
+        # The feature set is load-bearing in two ways: `adbc` compiles in
+        # the ADBC reader path (without it the test panics at
+        # reader_from_uri), and "adbc sqlite" exactly matches build.yaml's
+        # ADBC test step so the restored cache's crate fingerprints hit.
+        # adbc-datafusion is deliberately absent: it drags the full
+        # DataFusion/prost graph into every leg for a test that is
+        # env-gated off anyway (live_datafusion compiles out instead).
         run: >-
-          cargo test -p ggsql --features adbc --test dialect_live
+          cargo test -p ggsql --features "adbc sqlite" --test dialect_live
           live_${{ matrix.backend }} -- --exact --nocapture
