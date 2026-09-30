@@ -33,6 +33,29 @@ pub struct AdbcReader<D: Driver> {
     registered_tables: RefCell<HashSet<String>>,
 }
 
+/// Execute the dialect's session-init statements on a fresh connection —
+/// see [`SqlDialect::session_init_sql`]. Failures are hard errors: the
+/// generated SQL is wrong for the backend when the init did not take effect
+/// (e.g. double-quoted identifiers read as string literals without
+/// ANSI_QUOTES), so continuing would fail later with a confusing message.
+fn run_session_init<C: adbc_core::Connection>(
+    connection: &mut C,
+    dialect: &dyn SqlDialect,
+) -> Result<()> {
+    for sql in dialect.session_init_sql() {
+        let mut stmt = connection.new_statement().map_err(|e| {
+            GgsqlError::ReaderError(format!("ADBC session init new_statement: {e}"))
+        })?;
+        stmt.set_sql_query(&sql).map_err(|e| {
+            GgsqlError::ReaderError(format!("ADBC session init set_sql_query: {e}"))
+        })?;
+        stmt.execute_update().map_err(|e| {
+            GgsqlError::ReaderError(format!("ADBC session init failed for '{sql}': {e}"))
+        })?;
+    }
+    Ok(())
+}
+
 impl<D: Driver> AdbcReader<D> {
     /// Construct an `AdbcReader` with an explicit `SqlDialect`. Use this to
     /// plug in backend-specific dialects (e.g. a TrinoDialect, SnowflakeDialect)
@@ -51,9 +74,10 @@ impl<D: Driver> AdbcReader<D> {
         let database = driver
             .new_database()
             .map_err(|e| GgsqlError::ReaderError(format!("ADBC new_database failed: {}", e)))?;
-        let connection = database
+        let mut connection = database
             .new_connection()
             .map_err(|e| GgsqlError::ReaderError(format!("ADBC new_connection failed: {}", e)))?;
+        run_session_init(&mut connection, &*dialect)?;
         Ok(Self {
             _driver: driver,
             _database: database,
@@ -80,9 +104,10 @@ impl<D: Driver> AdbcReader<D> {
         let database = driver.new_database_with_opts(opts).map_err(|e| {
             GgsqlError::ReaderError(format!("ADBC new_database_with_opts failed: {}", e))
         })?;
-        let connection = database
+        let mut connection = database
             .new_connection()
             .map_err(|e| GgsqlError::ReaderError(format!("ADBC new_connection failed: {}", e)))?;
+        run_session_init(&mut connection, &*dialect)?;
         Ok(Self {
             _driver: driver,
             _database: database,
@@ -282,7 +307,9 @@ impl AdbcReader<ManagedDriver> {
             let driver = load_driver_for_scheme(&scheme)?;
             let driver_uri = driver_uri_for(&scheme, body, uri);
             let mut opts = vec![(OptionDatabase::Uri, OptionValue::String(driver_uri))];
-            opts.extend(query_params_to_opts(query));
+            if query_params_as_driver_options(&scheme) {
+                opts.extend(query_params_to_opts(query));
+            }
             (driver, opts)
         };
 
@@ -328,6 +355,16 @@ fn driver_uri_for(scheme: &str, body: &str, full_uri: &str) -> String {
         }
         _ => full_uri.to_string(),
     }
+}
+
+/// Whether `?k=v` query params are also passed to the driver as standalone
+/// database options. (They always remain in the `uri` option as well, except
+/// where [`driver_uri_for`] strips them.) The MSSQL driver parses its own
+/// URI and rejects unknown standalone options — `?TrustServerCertificate=…`
+/// failed connection setup with "Unknown database option
+/// 'TrustServerCertificate'" — so its params stay in the URI only.
+fn query_params_as_driver_options(scheme: &str) -> bool {
+    scheme != "mssql"
 }
 
 /// Probe whether an ADBC driver for `scheme` can be loaded, without opening
@@ -648,6 +685,14 @@ mod tests {
             ),
             "tcp(localhost:3306)/ggsql"
         );
+    }
+
+    #[test]
+    fn mssql_params_stay_in_uri_not_options() {
+        assert!(!query_params_as_driver_options("mssql"));
+        assert!(query_params_as_driver_options("postgres"));
+        assert!(query_params_as_driver_options("clickhouse"));
+        assert!(query_params_as_driver_options("exasol"));
     }
 
     #[test]

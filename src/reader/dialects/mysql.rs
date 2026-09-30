@@ -14,6 +14,16 @@ impl SqlDialect for MySqlDialect {
         format!("`{}`", name.replace('`', "``"))
     }
 
+    fn session_init_sql(&self) -> Vec<String> {
+        // ggsql quotes many internal identifiers with ANSI double quotes;
+        // MySQL only accepts those as identifiers (rather than string
+        // literals) with ANSI_QUOTES in sql_mode. Append rather than replace
+        // to keep the server's defaults (STRICT_TRANS_TABLES,
+        // ONLY_FULL_GROUP_BY, ...). First seen as the live-CI mysql/mariadb
+        // legs failing every battery query.
+        vec!["SET SESSION sql_mode = CONCAT(@@sql_mode, ',ANSI_QUOTES')".to_string()]
+    }
+
     fn number_type_name(&self) -> Option<&str> {
         Some("DOUBLE")
     }
@@ -74,6 +84,13 @@ impl SqlDialect for MySqlDialect {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn session_init_enables_ansi_quotes() {
+        let stmts = MySqlDialect.session_init_sql();
+        assert_eq!(stmts.len(), 1);
+        assert!(stmts[0].contains("ANSI_QUOTES"), "got: {}", stmts[0]);
+    }
 
     #[test]
     fn identifiers_use_backticks() {

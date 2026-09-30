@@ -52,6 +52,20 @@ fn create_table_sql(scheme: &str) -> String {
     }
 }
 
+/// Statements to run once after connecting, before the test table is set up.
+fn setup_sql(scheme: &str) -> Vec<String> {
+    match scheme {
+        // Exasol rejects unqualified DDL/DML until a schema exists and is
+        // opened ("no schema specified or opened"). Fresh containers have
+        // no schemas, so create and open one for the battery.
+        "exasol" => vec![
+            "CREATE SCHEMA IF NOT EXISTS ggsql".to_string(),
+            "OPEN SCHEMA ggsql".to_string(),
+        ],
+        _ => Vec::new(),
+    }
+}
+
 /// The canonical battery, run against any live reader.
 fn run_battery(reader: &dyn Reader, ctx: &str) {
     // Grouped scatter: identifier quoting, qualified projections, and both
@@ -99,6 +113,12 @@ fn live_backend(scheme: &str) {
     };
     let reader =
         reader_from_uri(&uri).unwrap_or_else(|e| panic!("{scheme}: connection failed: {e}"));
+
+    for sql in setup_sql(scheme) {
+        reader
+            .execute_sql(&sql)
+            .unwrap_or_else(|e| panic!("{scheme}: setup failed ({sql}): {e}"));
+    }
 
     let _ = reader.execute_sql(&format!("DROP TABLE IF EXISTS {TABLE}"));
     reader

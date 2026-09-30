@@ -102,6 +102,17 @@ pub trait SqlDialect {
         naming::quote_ident(name)
     }
 
+    /// Statements to execute once on a freshly opened connection, before any
+    /// other SQL. Default: none.
+    ///
+    /// Use for session settings the generated SQL silently relies on — e.g.
+    /// MySQL's `ANSI_QUOTES`, because ggsql quotes many internal identifiers
+    /// (`__ggsql_*` CTEs and columns) with ANSI double quotes, which MySQL
+    /// otherwise parses as string literals.
+    fn session_init_sql(&self) -> Vec<String> {
+        Vec::new()
+    }
+
     /// Append a row limit to a query.
     ///
     /// Default uses `LIMIT n`. Override for backends with different limit
