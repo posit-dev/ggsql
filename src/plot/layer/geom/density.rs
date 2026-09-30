@@ -278,8 +278,11 @@ fn silverman_rule(
     let q25 = dialect.sql_percentile(value_column, 0.25, from, groups);
     let iqr = format!("({q75} - {q25}) / 1.34");
     let min_expr = dialect.sql_least(&[&stddev, &iqr]);
-    // POWER, not POW: T-SQL has no POW function.
-    format!("{adjust} * {min_expr} * POWER(COUNT(*), -0.2)")
+    // POWER, not POW: T-SQL has no POW function. And the base must not be an
+    // integer: T-SQL's POWER returns the base's type, so POWER(COUNT(*), -0.2)
+    // truncates n^(-0.2) to int 0 and the bandwidth becomes zero (divide by
+    // zero in the kernel). `1.0 *` coerces a fractional base on every dialect.
+    format!("{adjust} * {min_expr} * POWER(1.0 * COUNT(*), -0.2)")
 }
 
 fn choose_kde_kernel(parameters: &Parameters, smooth: Option<String>) -> Result<String> {
