@@ -28,7 +28,65 @@ on:
   workflow_dispatch:
 
 jobs:
+  # Build the dialect_live test binary once. rust-cache (same shared-key as
+  # build.yaml) restores build.yaml's warmed target/, so this compiles only
+  # the workspace crates and the feature deltas; the binary is then handed
+  # to every backend leg as an artifact, so the legs compile nothing.
+  compile:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install tree-sitter-cli
+        # parser.c is gitignored and generated from grammar.js by the
+        # tree-sitter-ggsql build script on every fresh checkout.
+        run: npm install -g tree-sitter-cli
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Caching
+        uses: Swatinem/rust-cache@v2
+        with:
+          # Deliberately the same shared-key as build.yaml: rust-cache's
+          # prefix fallback restores the build job's target/, so this job
+          # only rebuilds the feature deltas instead of every dependency,
+          # and on main it saves the warmed variant back for build.yaml
+          # and PR runs to reuse.
+          shared-key: ${{ runner.os }}-build
+          cache-on-failure: true
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - name: Compile the dialect_live test binary
+        # --no-run plus --message-format=json yields the binary path; the
+        # binary is self-contained (deps statically linked, ODBC/ADBC
+        # drivers dlopened at runtime), so the legs can run it directly.
+        # Feature set is load-bearing: `adbc` compiles in the ADBC reader
+        # path, `sqlite` provides the cache backend Druid wraps in, and
+        # adbc-datafusion is deliberately absent (it drags the full
+        # DataFusion/prost graph in for a test that is env-gated off).
+        run: |
+          bin=$(cargo test -p ggsql --features "adbc sqlite" --test dialect_live \
+                --no-run --message-format=json-render-diagnostics \
+                | jq -rs '[.[] | select(.target.name == "dialect_live" and .executable != null) | .executable][-1]')
+          test -n "$bin" -a -f "$bin"
+          cp "$bin" dialect-live-bin
+
+      - name: Upload the test binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: dialect-live-bin
+          path: dialect-live-bin
+          retention-days: 1
+
   live:
+    needs: compile
     runs-on: ubuntu-latest
     strategy:
       # One backend's failure must not cancel the other legs.
@@ -67,37 +125,19 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Increase disk space
-        # A database image plus a restored target/ — same cleanup as
-        # build.yaml.
+        # A database image per leg — same cleanup as build.yaml.
         run: |
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
           sudo docker image prune --all --force
           sudo docker builder prune -a
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - name: Download the test binary
+        uses: actions/download-artifact@v4
         with:
-          node-version: "22"
+          name: dialect-live-bin
 
-      - name: Install tree-sitter-cli
-        # parser.c is gitignored and generated from grammar.js by the
-        # tree-sitter-ggsql build script on every fresh checkout.
-        run: npm install -g tree-sitter-cli
-
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Caching
-        uses: Swatinem/rust-cache@v2
-        with:
-          # Deliberately the same shared-key as build.yaml: rust-cache's
-          # prefix fallback then restores the build job's target/, so each
-          # leg only rebuilds the feature deltas instead of every
-          # dependency. All legs share one cache entry; concurrent saves
-          # after the first are no-ops.
-          shared-key: ${{ runner.os }}-build
-          cache-on-failure: true
-          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: Make the test binary executable
+        run: chmod +x dialect-live-bin
 
       - name: Install dbc and the ${{ matrix.backend }} ADBC driver
         # Embedded backends (sqlite, duckdb) use ggsql's built-in readers
@@ -151,13 +191,6 @@ jobs:
         run: bash .github/scripts/dialect-live-start.sh ${{ matrix.backend }}
 
       - name: Run the ${{ matrix.backend }} live test
-        # The feature set is load-bearing in two ways: `adbc` compiles in
-        # the ADBC reader path (without it the test panics at
-        # reader_from_uri), and "adbc sqlite" exactly matches build.yaml's
-        # ADBC test step so the restored cache's crate fingerprints hit.
-        # adbc-datafusion is deliberately absent: it drags the full
-        # DataFusion/prost graph into every leg for a test that is
-        # env-gated off anyway (live_datafusion compiles out instead).
-        run: >-
-          cargo test -p ggsql --features "adbc sqlite" --test dialect_live
-          live_${{ matrix.backend }} -- --exact --nocapture
+        # The binary comes prebuilt from the compile job; invoked directly
+        # as a libtest executable (no cargo, no `--` separator).
+        run: ./dialect-live-bin live_${{ matrix.backend }} --exact --nocapture
