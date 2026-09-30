@@ -20,6 +20,12 @@ impl SqlDialect for MySqlDialect {
         format!("{left} <=> {right}")
     }
 
+    fn sql_real_cast_type(&self) -> &'static str {
+        // MariaDB's CAST has no REAL target; DOUBLE works on both MySQL
+        // (8.0.17+) and MariaDB (10.4.5+).
+        "DOUBLE"
+    }
+
     fn number_type_name(&self) -> Option<&str> {
         Some("DOUBLE")
     }

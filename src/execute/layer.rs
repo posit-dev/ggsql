@@ -708,10 +708,12 @@ where
                 transformed_query
             } else {
                 let __ggsql_stat__ = dialect.quote_ident("__ggsql_stat__");
-                format!(
-                    "SELECT *, {} FROM ({}) AS {__ggsql_stat__}",
-                    stat_rename_exprs.join(", "),
-                    transformed_query
+                // Goes through the dialect so SQL Server can hoist a leading
+                // WITH clause out of the derived table.
+                dialect.select_from_subquery(
+                    &format!("*, {}", stat_rename_exprs.join(", ")),
+                    &transformed_query,
+                    &__ggsql_stat__,
                 )
             }
         }

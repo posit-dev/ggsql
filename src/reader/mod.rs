@@ -268,6 +268,15 @@ pub trait SqlDialect {
 
     /// Generate a series of integers 0..n-1 as a CTE fragment.
     ///
+    /// Target type name for casting an expression to a floating-point type.
+    ///
+    /// `REAL` is widely supported (Postgres, SQLite, T-SQL, DuckDB, ...).
+    /// MariaDB's `CAST` has no `REAL` target; MySQL/MariaDB override this
+    /// with `DOUBLE` (both support it).
+    fn sql_real_cast_type(&self) -> &'static str {
+        "REAL"
+    }
+
     /// Returns CTE fragment(s) producing table `__ggsql_seq__` with column `n`.
     fn sql_generate_series(&self, n: usize) -> String {
         // Uses a cube-root decomposition to avoid deep recursion: only recurses
@@ -277,16 +286,25 @@ pub trait SqlDialect {
         let base_max = base_size - 1;
         let __ggsql_base__ = self.quote_ident("__ggsql_base__");
         let __ggsql_seq__ = self.quote_ident("__ggsql_seq__");
+        let real = self.sql_real_cast_type();
         format!(
             "{__ggsql_base__}(n) AS (\
                SELECT 0 UNION ALL SELECT n + 1 FROM {__ggsql_base__} WHERE n < {base_max}\
              ),\
              {__ggsql_seq__}(n) AS (\
-               SELECT CAST(a.n * {base_sq} + b.n * {base_size} + c.n AS REAL) AS n \
+               SELECT CAST(a.n * {base_sq} + b.n * {base_size} + c.n AS {real}) AS n \
                FROM {__ggsql_base__} a, {__ggsql_base__} b, {__ggsql_base__} c \
                WHERE a.n * {base_sq} + b.n * {base_size} + c.n < {n}\
              )"
         )
+    }
+
+    /// Keyword introducing a CTE block that contains recursive CTEs.
+    ///
+    /// ANSI/Postgres/MySQL accept `WITH RECURSIVE`; T-SQL and Oracle use
+    /// plain `WITH`, where recursion is implied by self-reference.
+    fn sql_with_recursive(&self) -> &'static str {
+        "WITH RECURSIVE"
     }
 
     /// Null-safe equality comparison between two expressions.
@@ -315,6 +333,16 @@ pub trait SqlDialect {
         format!("SELECT * FROM ({query}) AS {alias}")
     }
 
+    /// Wrap a query in an outer SELECT with a custom select list:
+    /// `SELECT {select_list} FROM ({query}) AS {alias}`.
+    ///
+    /// Dialects that forbid CTEs inside derived tables (SQL Server)
+    /// override this to hoist any leading `WITH` clause out of the
+    /// parentheses; see [`crate::reader::dialects::split_cte_prefix`].
+    fn select_from_subquery(&self, select_list: &str, query: &str, alias: &str) -> String {
+        format!("SELECT {select_list} FROM ({query}) AS {alias}")
+    }
+
     /// Compute a percentile of a column
     ///
     /// Returns a scalar subquery expression that computes the specified percentile
@@ -339,6 +367,10 @@ pub trait SqlDialect {
         let lo_tile = (fraction * 4.0).ceil() as usize;
         let hi_tile = lo_tile + 1;
         let quoted_column = self.quote_ident(column);
+        // The derived table needs an explicit alias: MySQL/MariaDB reject
+        // unaliased derived tables ("Every derived table must have its own
+        // alias"), and other engines accept the alias harmlessly.
+        let __ggsql_tile__ = self.quote_ident("__ggsql_tile__");
 
         format!(
             "(SELECT (\
@@ -350,7 +382,7 @@ pub trait SqlDialect {
                      NTILE(4) OVER (ORDER BY {column}) AS __tile \
               FROM ({from}) AS {__ggsql_pct__} \
               WHERE {column} IS NOT NULL {group_filter}\
-            ))",
+            ) AS {__ggsql_tile__})",
             column = quoted_column
         )
     }

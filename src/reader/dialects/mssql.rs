@@ -45,6 +45,12 @@ impl SqlDialect for MssqlDialect {
         format!("CEILING({expr})")
     }
 
+    fn sql_with_recursive(&self) -> &'static str {
+        // T-SQL CTEs are recursive by self-reference alone; the RECURSIVE
+        // keyword is a syntax error.
+        "WITH"
+    }
+
     fn sql_limit(&self, query: &str, n: usize) -> String {
         // T-SQL forbids CTEs inside a derived table ("Incorrect syntax near
         // the keyword 'WITH'"), so hoist any leading WITH clause out of the
@@ -62,6 +68,13 @@ impl SqlDialect for MssqlDialect {
         match split_cte_prefix(query) {
             Some((cte, body)) => format!("{cte} SELECT * FROM ({body}) AS {alias}"),
             None => format!("SELECT * FROM ({query}) AS {alias}"),
+        }
+    }
+
+    fn select_from_subquery(&self, select_list: &str, query: &str, alias: &str) -> String {
+        match split_cte_prefix(query) {
+            Some((cte, body)) => format!("{cte} SELECT {select_list} FROM ({body}) AS {alias}"),
+            None => format!("SELECT {select_list} FROM ({query}) AS {alias}"),
         }
     }
 
