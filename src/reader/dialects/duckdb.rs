@@ -111,11 +111,11 @@ impl SqlDialect for DuckDbDialect {
             .iter()
             .map(|g| {
                 let q = naming::quote_ident(g);
-                format!(
-                    "AND {pct}.{q} IS NOT DISTINCT FROM {qt}.{q}",
-                    pct = naming::quote_ident("__ggsql_pct__"),
-                    qt = naming::quote_ident("__ggsql_qt__")
-                )
+                let cond = self.sql_null_safe_eq(
+                    &format!("{pct}.{q}", pct = naming::quote_ident("__ggsql_pct__")),
+                    &format!("{qt}.{q}", qt = naming::quote_ident("__ggsql_qt__")),
+                );
+                format!("AND {cond}")
             })
             .collect::<Vec<_>>()
             .join(" ");

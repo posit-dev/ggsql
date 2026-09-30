@@ -144,10 +144,7 @@ pub fn fetch_schema_types<F>(
 where
     F: Fn(&str) -> Result<DataFrame>,
 {
-    let schema_query = dialect.sql_limit(
-        &format!("SELECT * FROM ({}) AS {}", query, naming::SCHEMA_ALIAS),
-        1,
-    );
+    let schema_query = dialect.sql_limit(&dialect.wrap_as_subquery(query, naming::SCHEMA_ALIAS), 1);
     let schema_df = execute_query(&schema_query)?;
 
     let schema = schema_df.schema();

@@ -460,7 +460,7 @@ fn build_grid_cte(
                 .iter()
                 .map(|g| {
                     let q = dialect.quote_ident(g);
-                    format!("full_grid.{q} IS NOT DISTINCT FROM bandwidth.{q}")
+                    dialect.sql_null_safe_eq(&format!("full_grid.{q}"), &format!("bandwidth.{q}"))
                 })
                 .collect();
             // Aliased explicitly: some engines (ClickHouse) otherwise name an
@@ -531,7 +531,7 @@ fn compute_density(
             .iter()
             .map(|g| {
                 let q = dialect.quote_ident(g);
-                format!("data.{q} IS NOT DISTINCT FROM bandwidth.{q}")
+                dialect.sql_null_safe_eq(&format!("data.{q}"), &format!("bandwidth.{q}"))
             })
             .collect::<Vec<String>>()
             .join(" AND ")
@@ -548,7 +548,7 @@ fn compute_density(
             .iter()
             .map(|g| {
                 let q = dialect.quote_ident(g);
-                format!("grid.{q} IS NOT DISTINCT FROM data.{q}")
+                dialect.sql_null_safe_eq(&format!("grid.{q}"), &format!("data.{q}"))
             })
             .collect();
         format!("INNER JOIN grid ON {}", grid_data_conds.join(" AND "))

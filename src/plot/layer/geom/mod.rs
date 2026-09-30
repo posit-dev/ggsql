@@ -549,7 +549,7 @@ pub(crate) fn densify_edges(
 
     // Interpolation: n / CEIL(seg_len / threshold) gives fraction [0, 1)
     let threshold_lit = format!("{:.6}", segment_length);
-    let n_subdivs = format!("CEIL(\"__ggsql_seg_len__\" / {threshold_lit})");
+    let n_subdivs = dialect.sql_ceil(&format!("\"__ggsql_seg_len__\" / {threshold_lit}"));
 
     // SELECT list
     let mut select_parts: Vec<String> = Vec::new();

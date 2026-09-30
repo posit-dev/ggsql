@@ -157,6 +157,120 @@ fn match_from_substring(lower: &str) -> Option<Box<dyn SqlDialect + Send>> {
     None
 }
 
+/// Split a query into its leading `WITH` clause and the remaining main
+/// query. Returns `None` when the query does not start with `WITH`.
+///
+/// Used by dialects that forbid CTEs inside derived tables (SQL Server) to
+/// hoist the CTE definitions out of a subquery wrap. The scanner is aware
+/// of string literals and quoted identifiers, and handles optional CTE
+/// column lists (`cte(c1, c2) AS (...)`) and `WITH RECURSIVE`.
+pub fn split_cte_prefix(query: &str) -> Option<(&str, &str)> {
+    let s = query.trim_start();
+    let bytes = s.as_bytes();
+    if bytes.len() < 5 || !s[..4].eq_ignore_ascii_case("with") || !bytes[4].is_ascii_whitespace() {
+        return None;
+    }
+    let mut i = 4;
+    skip_ws(bytes, &mut i);
+    if s.len() - i >= 9 && s[i..i + 9].eq_ignore_ascii_case("recursive") {
+        i += 9;
+    }
+    loop {
+        // CTE name: quoted or bare identifier
+        skip_ws(bytes, &mut i);
+        if i >= bytes.len() {
+            return None;
+        }
+        let name_start = i;
+        match bytes[i] {
+            q @ (b'"' | b'`') => skip_quoted(bytes, &mut i, q),
+            _ => {
+                while i < bytes.len()
+                    && (bytes[i].is_ascii_alphanumeric() || matches!(bytes[i], b'_' | b'$'))
+                {
+                    i += 1;
+                }
+            }
+        }
+        if i == name_start {
+            return None;
+        }
+        skip_ws(bytes, &mut i);
+        // Optional column list
+        if i < bytes.len() && bytes[i] == b'(' {
+            skip_balanced_parens(bytes, &mut i)?;
+            skip_ws(bytes, &mut i);
+        }
+        // AS keyword
+        if s.len() - i < 2 || !s[i..i + 2].eq_ignore_ascii_case("as") {
+            return None;
+        }
+        i += 2;
+        skip_ws(bytes, &mut i);
+        // CTE body: parenthesised subquery
+        if i >= bytes.len() || bytes[i] != b'(' {
+            return None;
+        }
+        skip_balanced_parens(bytes, &mut i)?;
+        // Keep whitespace out of the returned CTE slice.
+        let cte_end = i;
+        let mut j = i;
+        skip_ws(bytes, &mut j);
+        if j < bytes.len() && bytes[j] == b',' {
+            i = j + 1;
+            continue;
+        }
+        return Some((&s[..cte_end], s[j..].trim_start()));
+    }
+}
+
+fn skip_ws(bytes: &[u8], i: &mut usize) {
+    while *i < bytes.len() && bytes[*i].is_ascii_whitespace() {
+        *i += 1;
+    }
+}
+
+/// Skip past a quoted region; `*i` is at the opening quote. A doubled quote
+/// is treated as an escape (SQL string/identifier convention).
+fn skip_quoted(bytes: &[u8], i: &mut usize, quote: u8) {
+    *i += 1;
+    while *i < bytes.len() {
+        if bytes[*i] == quote {
+            if *i + 1 < bytes.len() && bytes[*i + 1] == quote {
+                *i += 2;
+                continue;
+            }
+            *i += 1;
+            return;
+        }
+        *i += 1;
+    }
+}
+
+/// Skip a balanced parenthesised region; `*i` is at the opening `(`.
+/// Returns `None` when the parens never balance.
+fn skip_balanced_parens(bytes: &[u8], i: &mut usize) -> Option<()> {
+    let mut depth = 0usize;
+    while *i < bytes.len() {
+        match bytes[*i] {
+            b'(' => {
+                depth += 1;
+                *i += 1;
+            }
+            b')' => {
+                depth -= 1;
+                *i += 1;
+                if depth == 0 {
+                    return Some(());
+                }
+            }
+            q @ (b'\'' | b'"' | b'`') => skip_quoted(bytes, i, q),
+            _ => *i += 1,
+        }
+    }
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -232,6 +346,36 @@ mod tests {
             assert_eq!(d.number_type_name(), probe, "scheme {scheme}");
         }
         assert!(dialect_for_scheme("nosuchdb").is_none());
+    }
+
+    #[test]
+    fn splits_cte_prefix() {
+        let (cte, body) = split_cte_prefix(
+            "WITH a AS (SELECT 1 AS x), b(n) AS (SELECT 2) SELECT * FROM a JOIN b ON a.x = b.n",
+        )
+        .unwrap();
+        assert_eq!(cte, "WITH a AS (SELECT 1 AS x), b(n) AS (SELECT 2)");
+        assert_eq!(body, "SELECT * FROM a JOIN b ON a.x = b.n");
+    }
+
+    #[test]
+    fn splits_cte_with_parens_and_strings() {
+        let (cte, body) = split_cte_prefix(
+            "WITH RECURSIVE \"__ggsql_t__\" AS (SELECT '(' AS s, f(1, (2)) AS v) SELECT v FROM \"__ggsql_t__\"",
+        )
+        .unwrap();
+        assert_eq!(
+            cte,
+            "WITH RECURSIVE \"__ggsql_t__\" AS (SELECT '(' AS s, f(1, (2)) AS v)"
+        );
+        assert_eq!(body, "SELECT v FROM \"__ggsql_t__\"");
+    }
+
+    #[test]
+    fn no_cte_returns_none() {
+        assert!(split_cte_prefix("SELECT 1").is_none());
+        assert!(split_cte_prefix("WITHHELD AS x").is_none());
+        assert!(split_cte_prefix("WITH a AS (SELECT 1").is_none());
     }
 
     #[test]

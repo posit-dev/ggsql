@@ -286,6 +286,32 @@ pub trait SqlDialect {
         )
     }
 
+    /// Null-safe equality comparison between two expressions.
+    ///
+    /// The ANSI form is `IS NOT DISTINCT FROM`; MySQL/MariaDB use the
+    /// `<=>` operator instead. ClickHouse only accepts the ANSI form in a
+    /// `JOIN ON` section, so callers targeting it should place the
+    /// comparison in a join condition.
+    fn sql_null_safe_eq(&self, left: &str, right: &str) -> String {
+        format!("{left} IS NOT DISTINCT FROM {right}")
+    }
+
+    /// Ceiling of a numeric expression.
+    ///
+    /// ANSI `CEIL`; SQL Server only has `CEILING`.
+    fn sql_ceil(&self, expr: &str) -> String {
+        format!("CEIL({expr})")
+    }
+
+    /// Wrap a query as a derived table: `SELECT * FROM (query) AS alias`.
+    ///
+    /// Dialects that forbid CTEs inside derived tables (SQL Server)
+    /// override this to hoist any leading `WITH` clause out of the
+    /// parentheses; see [`crate::reader::dialects::split_cte_prefix`].
+    fn wrap_as_subquery(&self, query: &str, alias: &str) -> String {
+        format!("SELECT * FROM ({query}) AS {alias}")
+    }
+
     /// Compute a percentile of a column
     ///
     /// Returns a scalar subquery expression that computes the specified percentile
@@ -296,12 +322,12 @@ pub trait SqlDialect {
             .iter()
             .map(|g| {
                 let q = naming::quote_ident(g);
-                format!(
-                    "AND {pct}.{q} IS NOT DISTINCT FROM {qt}.{q}",
-                    pct = naming::quote_ident("__ggsql_pct__"),
-                    qt = naming::quote_ident("__ggsql_qt__")
+                self.sql_null_safe_eq(
+                    &format!("{pct}.{q}", pct = naming::quote_ident("__ggsql_pct__")),
+                    &format!("{qt}.{q}", qt = naming::quote_ident("__ggsql_qt__")),
                 )
             })
+            .map(|cond| format!("AND {cond}"))
             .collect::<Vec<_>>()
             .join(" ");
 

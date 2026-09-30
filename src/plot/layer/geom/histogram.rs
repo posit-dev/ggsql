@@ -178,10 +178,13 @@ fn stat_histogram(
     } else {
         // Right-closed (a, b]: use CEIL - 1, clamped to 0 minimum
         let ceil_expr = format!(
-            "CEIL(({x} - {min} + {w} * 0.5) / {w}) - 1",
-            x = x_col,
-            min = min_val,
-            w = bin_width
+            "{} - 1",
+            dialect.sql_ceil(&format!(
+                "({x} - {min} + {w} * 0.5) / {w}",
+                x = x_col,
+                min = min_val,
+                w = bin_width
+            ))
         );
         let clamped = dialect.sql_greatest(&["0", &ceil_expr]);
         format!(

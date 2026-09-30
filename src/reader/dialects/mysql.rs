@@ -24,6 +24,12 @@ impl SqlDialect for MySqlDialect {
         vec!["SET SESSION sql_mode = CONCAT(@@sql_mode, ',ANSI_QUOTES')".to_string()]
     }
 
+    fn sql_null_safe_eq(&self, left: &str, right: &str) -> String {
+        // MySQL/MariaDB lack IS NOT DISTINCT FROM; `<=>` is their null-safe
+        // equality operator (true when both sides are NULL).
+        format!("{left} <=> {right}")
+    }
+
     fn number_type_name(&self) -> Option<&str> {
         Some("DOUBLE")
     }
@@ -90,6 +96,14 @@ mod tests {
         let stmts = MySqlDialect.session_init_sql();
         assert_eq!(stmts.len(), 1);
         assert!(stmts[0].contains("ANSI_QUOTES"), "got: {}", stmts[0]);
+    }
+
+    #[test]
+    fn null_safe_eq_uses_spaceship() {
+        assert_eq!(
+            MySqlDialect.sql_null_safe_eq("a.`g`", "b.`g`"),
+            "a.`g` <=> b.`g`"
+        );
     }
 
     #[test]

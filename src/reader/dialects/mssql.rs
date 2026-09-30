@@ -8,6 +8,7 @@
 //! (`geom.STAsBinary()`) rather than the PostGIS-style function calls the
 //! ANSI defaults emit, so we fail fast rather than produce broken SQL.
 
+use crate::reader::dialects::split_cte_prefix;
 use crate::reader::{wrap_with_column_aliases, SqlDialect};
 
 /// SQL Server dialect.
@@ -39,8 +40,28 @@ impl SqlDialect for MssqlDialect {
         }
     }
 
+    fn sql_ceil(&self, expr: &str) -> String {
+        // T-SQL has no CEIL function.
+        format!("CEILING({expr})")
+    }
+
     fn sql_limit(&self, query: &str, n: usize) -> String {
-        format!("SELECT TOP {n} * FROM ({query}) AS \"__ggsql_lim__\"")
+        // T-SQL forbids CTEs inside a derived table ("Incorrect syntax near
+        // the keyword 'WITH'"), so hoist any leading WITH clause out of the
+        // parenthesised wrapper.
+        match split_cte_prefix(query) {
+            Some((cte, body)) => {
+                format!("{cte} SELECT TOP {n} * FROM ({body}) AS \"__ggsql_lim__\"")
+            }
+            None => format!("SELECT TOP {n} * FROM ({query}) AS \"__ggsql_lim__\""),
+        }
+    }
+
+    fn wrap_as_subquery(&self, query: &str, alias: &str) -> String {
+        match split_cte_prefix(query) {
+            Some((cte, body)) => format!("{cte} SELECT * FROM ({body}) AS {alias}"),
+            None => format!("SELECT * FROM ({query}) AS {alias}"),
+        }
     }
 
     fn sql_date_literal(&self, days_since_epoch: i32) -> String {
@@ -104,6 +125,27 @@ mod tests {
             MssqlDialect.sql_limit("SELECT a FROM t", 10),
             "SELECT TOP 10 * FROM (SELECT a FROM t) AS \"__ggsql_lim__\""
         );
+    }
+
+    #[test]
+    fn limit_hoists_cte_out_of_derived_table() {
+        assert_eq!(
+            MssqlDialect.sql_limit("WITH c AS (SELECT 1 AS a) SELECT a FROM c", 10),
+            "WITH c AS (SELECT 1 AS a) SELECT TOP 10 * FROM (SELECT a FROM c) AS \"__ggsql_lim__\""
+        );
+    }
+
+    #[test]
+    fn subquery_wrap_hoists_cte() {
+        assert_eq!(
+            MssqlDialect.wrap_as_subquery("WITH c AS (SELECT 1 AS a) SELECT a FROM c", "s"),
+            "WITH c AS (SELECT 1 AS a) SELECT * FROM (SELECT a FROM c) AS s"
+        );
+    }
+
+    #[test]
+    fn ceil_is_ceiling() {
+        assert_eq!(MssqlDialect.sql_ceil("x / 2.0"), "CEILING(x / 2.0)");
     }
 
     #[test]
