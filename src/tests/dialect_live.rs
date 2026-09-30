@@ -14,7 +14,13 @@
 //! - `GGSQL_TEST_URI_SQLITE`     e.g. `sqlite://:memory:` (embedded reader, no server)
 //! - `GGSQL_TEST_URI_DUCKDB`     e.g. `duckdb://memory` (embedded reader, no server)
 //! - `GGSQL_TEST_URI_SNOWFLAKE`  e.g. `snowflake://user:pass@account/db/schema?warehouse=x`
-//! - `GGSQL_TEST_URI_BIGQUERY`   e.g. `bigquery://project/dataset`
+//! - `GGSQL_TEST_URI_BIGQUERY`   e.g. `bigquery://<project-id>/<dataset>?
+//!   bigquery.auth_type=json_credential_file&
+//!   bigquery.auth.credentials=/path/key.json&
+//!   stmt.bigquery.query.default_dataset_id=<dataset>` — the driver never
+//!   sends the connection's dataset as job defaultDataset, so the statement
+//!   option is required. Validated against the BigQuery sandbox, which
+//!   rejects DML, so this leg populates via register() load jobs.
 //! - `GGSQL_TEST_URI_DATABRICKS` e.g. `databricks://token:x@host/sql/1.0/warehouses/id?catalog=x&schema=y`
 //!
 //! The snowflake/bigquery/databricks cases are Tier 3: they need real cloud
@@ -40,39 +46,44 @@ use ggsql::reader::Reader;
 
 const TABLE: &str = "ggsql_live_test";
 
-const INSERT: &str = "INSERT INTO ggsql_live_test VALUES \
-    (1, 1.5, 'a'), (2, 2.5, 'b'), (3, 3.5, 'a'), \
-    (4, 4.5, 'b'), (5, 5.5, 'a'), (6, 6.5, 'b')";
+fn insert_sql(table: &str) -> String {
+    format!(
+        "INSERT INTO {table} VALUES \
+         (1, 1.5, 'a'), (2, 2.5, 'b'), (3, 3.5, 'a'), \
+         (4, 4.5, 'b'), (5, 5.5, 'a'), (6, 6.5, 'b')"
+    )
+}
 
-fn create_table_sql(scheme: &str) -> String {
+fn create_table_sql(scheme: &str, table: &str) -> String {
     match scheme {
         "postgres" => {
-            format!("CREATE TABLE {TABLE} (id INT, val DOUBLE PRECISION, grp VARCHAR(16))")
+            format!("CREATE TABLE {table} (id INT, val DOUBLE PRECISION, grp VARCHAR(16))")
         }
-        "trino" => format!("CREATE TABLE {TABLE} (id INTEGER, val DOUBLE, grp VARCHAR(16))"),
+        "trino" => format!("CREATE TABLE {table} (id INTEGER, val DOUBLE, grp VARCHAR(16))"),
         "clickhouse" => {
-            format!("CREATE TABLE {TABLE} (id Int32, val Float64, grp String) ENGINE = Memory")
+            format!("CREATE TABLE {table} (id Int32, val Float64, grp String) ENGINE = Memory")
         }
         "mysql" | "mariadb" => {
-            format!("CREATE TABLE {TABLE} (id INT, val DOUBLE, grp VARCHAR(16))")
+            format!("CREATE TABLE {table} (id INT, val DOUBLE, grp VARCHAR(16))")
         }
         // T-SQL has no DOUBLE; FLOAT is the 64-bit type.
-        "mssql" => format!("CREATE TABLE {TABLE} (id INT, val FLOAT, grp VARCHAR(16))"),
+        "mssql" => format!("CREATE TABLE {table} (id INT, val FLOAT, grp VARCHAR(16))"),
         "exasol" => {
-            format!("CREATE TABLE {TABLE} (id INT, val DOUBLE PRECISION, grp VARCHAR(16))")
+            format!("CREATE TABLE {table} (id INT, val DOUBLE PRECISION, grp VARCHAR(16))")
         }
         // Pseudo-leg: CI points this at a PostgreSQL container (see header).
         "redshift" => {
-            format!("CREATE TABLE {TABLE} (id INT, val DOUBLE PRECISION, grp VARCHAR(16))")
+            format!("CREATE TABLE {table} (id INT, val DOUBLE PRECISION, grp VARCHAR(16))")
         }
-        "sqlite" => format!("CREATE TABLE {TABLE} (id INTEGER, val REAL, grp TEXT)"),
-        "duckdb" => format!("CREATE TABLE {TABLE} (id INTEGER, val DOUBLE, grp VARCHAR)"),
+        "sqlite" => format!("CREATE TABLE {table} (id INTEGER, val REAL, grp TEXT)"),
+        "duckdb" => format!("CREATE TABLE {table} (id INTEGER, val DOUBLE, grp VARCHAR)"),
         // Snowflake FLOAT is 64-bit.
-        "snowflake" => format!("CREATE TABLE {TABLE} (id INT, val FLOAT, grp VARCHAR(16))"),
-        // BigQuery resolves the unqualified name against the dataset in the
-        // connection URI.
-        "bigquery" => format!("CREATE TABLE {TABLE} (id INT64, val FLOAT64, grp STRING)"),
-        "databricks" => format!("CREATE TABLE {TABLE} (id INT, val DOUBLE, grp STRING)"),
+        "snowflake" => format!("CREATE TABLE {table} (id INT, val FLOAT, grp VARCHAR(16))"),
+        // BigQuery resolves the unqualified name against the connection's
+        // default dataset (stmt.bigquery.query.default_dataset_id in the
+        // URI — the driver only sends defaultDataset as a statement option).
+        "bigquery" => format!("CREATE TABLE {table} (id INT64, val FLOAT64, grp STRING)"),
+        "databricks" => format!("CREATE TABLE {table} (id INT, val DOUBLE, grp STRING)"),
         other => panic!("no DDL template for scheme '{other}'"),
     }
 }
@@ -92,12 +103,12 @@ fn setup_sql(scheme: &str) -> Vec<String> {
 }
 
 /// The canonical battery, run against any live reader.
-fn run_battery(reader: &dyn Reader, ctx: &str) {
+fn run_battery(reader: &dyn Reader, ctx: &str, table: &str) {
     // Grouped scatter: identifier quoting, qualified projections, and both
     // discrete (color) and continuous (x/y) channels.
     let spec = reader
         .execute(&format!(
-            "VISUALISE DRAW point MAPPING id AS x, val AS y, grp AS color FROM {TABLE}"
+            "VISUALISE DRAW point MAPPING id AS x, val AS y, grp AS color FROM {table}"
         ))
         .unwrap_or_else(|e| panic!("{ctx}: scatter pipeline failed: {e}"));
     let layer = spec
@@ -108,7 +119,7 @@ fn run_battery(reader: &dyn Reader, ctx: &str) {
     // Histogram: two-stage binning with GROUP BY-safe derived columns.
     reader
         .execute(&format!(
-            "VISUALISE DRAW histogram MAPPING val AS x FROM {TABLE}"
+            "VISUALISE DRAW histogram MAPPING val AS x FROM {table}"
         ))
         .unwrap_or_else(|e| panic!("{ctx}: histogram pipeline failed: {e}"));
 
@@ -116,14 +127,14 @@ fn run_battery(reader: &dyn Reader, ctx: &str) {
     // projections (`raw."g" AS "g"`).
     reader
         .execute(&format!(
-            "VISUALISE DRAW boxplot MAPPING grp AS x, val AS y FROM {TABLE}"
+            "VISUALISE DRAW boxplot MAPPING grp AS x, val AS y FROM {table}"
         ))
         .unwrap_or_else(|e| panic!("{ctx}: boxplot pipeline failed: {e}"));
 
     // Grouped density: cross-group grid join with qualified projections.
     reader
         .execute(&format!(
-            "VISUALISE DRAW density MAPPING val AS x, grp AS color FROM {TABLE}"
+            "VISUALISE DRAW density MAPPING val AS x, grp AS color FROM {table}"
         ))
         .unwrap_or_else(|e| panic!("{ctx}: density pipeline failed: {e}"));
 }
@@ -138,6 +149,7 @@ fn live_backend(scheme: &str) {
     };
     let reader =
         reader_from_uri(&uri).unwrap_or_else(|e| panic!("{scheme}: connection failed: {e}"));
+    let table = TABLE;
 
     for sql in setup_sql(scheme) {
         reader
@@ -145,17 +157,46 @@ fn live_backend(scheme: &str) {
             .unwrap_or_else(|e| panic!("{scheme}: setup failed ({sql}): {e}"));
     }
 
-    let _ = reader.execute_sql(&format!("DROP TABLE IF EXISTS {TABLE}"));
-    reader
-        .execute_sql(&create_table_sql(scheme))
-        .unwrap_or_else(|e| panic!("{scheme}: create table failed: {e}"));
-    reader
-        .execute_sql(INSERT)
-        .unwrap_or_else(|e| panic!("{scheme}: insert failed: {e}"));
+    if scheme == "bigquery" {
+        // The BigQuery sandbox (billing-less free tier) rejects DML with
+        // billingNotEnabled, so the table cannot be populated by INSERT.
+        // register() instead CREATEs the table from the Arrow schema and
+        // appends via ADBC bulk ingest — batch load jobs, which the sandbox
+        // does allow. This also exercises the driver's ingest path.
+        use arrow::array::{Float64Array, Int64Array, StringArray};
+        use arrow::datatypes::{DataType, Field, Schema};
+        use arrow::record_batch::RecordBatch;
+        use std::sync::Arc;
 
-    run_battery(&*reader, scheme);
+        let batch = RecordBatch::try_new(
+            Arc::new(Schema::new(vec![
+                Field::new("id", DataType::Int64, false),
+                Field::new("val", DataType::Float64, false),
+                Field::new("grp", DataType::Utf8, false),
+            ])),
+            vec![
+                Arc::new(Int64Array::from(vec![1, 2, 3, 4, 5, 6])),
+                Arc::new(Float64Array::from(vec![1.5, 2.5, 3.5, 4.5, 5.5, 6.5])),
+                Arc::new(StringArray::from(vec!["a", "b", "a", "b", "a", "b"])),
+            ],
+        )
+        .expect("build bigquery test batch");
+        reader
+            .register(&table, ggsql::DataFrame::from_record_batch(batch), true)
+            .unwrap_or_else(|e| panic!("{scheme}: register failed: {e}"));
+    } else {
+        let _ = reader.execute_sql(&format!("DROP TABLE IF EXISTS {table}"));
+        reader
+            .execute_sql(&create_table_sql(scheme, &table))
+            .unwrap_or_else(|e| panic!("{scheme}: create table failed: {e}"));
+        reader
+            .execute_sql(&insert_sql(&table))
+            .unwrap_or_else(|e| panic!("{scheme}: insert failed: {e}"));
+    }
 
-    let _ = reader.execute_sql(&format!("DROP TABLE IF EXISTS {TABLE}"));
+    run_battery(&*reader, scheme, &table);
+
+    let _ = reader.execute_sql(&format!("DROP TABLE IF EXISTS {table}"));
 }
 
 #[test]

@@ -12,9 +12,19 @@ name: Nightly Cloud Dialect Tests
 #
 # Expected secret values:
 #   GGSQL_TEST_URI_SNOWFLAKE   snowflake://user:pass@account/db/schema?warehouse=WH&role=R
-#   GGSQL_TEST_URI_BIGQUERY    bigquery://project-id/dataset   (GCP auth via
-#                              GOOGLE_APPLICATION_CREDENTIALS or workload
-#                              identity — see the Foundry bigquery driver docs)
+#   GGSQL_TEST_URI_BIGQUERY    bigquery://<project-id>/<dataset>
+#                              ?bigquery.auth_type=json_credential_file
+#                              &bigquery.auth.credentials=/tmp/bq-ci-key.json
+#                              &stmt.bigquery.query.default_dataset_id=<dataset>
+#                              The default_dataset_id statement option is
+#                              required: the driver never translates the
+#                              connection's dataset into job defaultDataset.
+#                              Validated against the BigQuery sandbox (free,
+#                              billing-less tier); the harness populates via
+#                              register() load jobs because the sandbox
+#                              rejects DML.
+#   GGSQL_BIGQUERY_KEY_JSON    service-account key JSON for the URI above;
+#                              written to /tmp/bq-ci-key.json by a step below
 #   GGSQL_TEST_URI_DATABRICKS  databricks://token:dapi...@host/sql/1.0/warehouses/<id>?catalog=x&schema=y
 #
 # The secrets must be configured under Settings → Secrets and variables →
@@ -82,6 +92,13 @@ jobs:
           if [ -z "${!var:-}" ]; then
             echo "::warning title=Skipping ${matrix.backend}::$var secret is not configured"
           fi
+
+      - name: Write BigQuery service-account key
+        if: matrix.backend == 'bigquery' && env.GGSQL_TEST_URI_BIGQUERY != ''
+        env:
+          GGSQL_BIGQUERY_KEY_JSON: ${{ secrets.GGSQL_BIGQUERY_KEY_JSON }}
+        # Path must match bigquery.auth.credentials in the URI secret.
+        run: printf '%s' "$GGSQL_BIGQUERY_KEY_JSON" > /tmp/bq-ci-key.json
 
       - name: Run the ${{ matrix.backend }} live test
         # Same feature set as dialect-live.yml so the restored crate

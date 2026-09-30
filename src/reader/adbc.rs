@@ -31,6 +31,9 @@ pub struct AdbcReader<D: Driver> {
     connection: RefCell<<D::DatabaseType as Database>::ConnectionType>,
     dialect: Box<dyn SqlDialect + Send>,
     registered_tables: RefCell<HashSet<String>>,
+    // Driver-specific statement options (from `stmt.`-prefixed URI params)
+    // applied to every statement created in execute_sql.
+    statement_opts: Vec<(String, String)>,
 }
 
 /// Execute the dialect's session-init statements on a fresh connection —
@@ -84,6 +87,7 @@ impl<D: Driver> AdbcReader<D> {
             connection: RefCell::new(connection),
             dialect,
             registered_tables: RefCell::new(HashSet::new()),
+            statement_opts: Vec::new(),
         })
     }
 
@@ -114,7 +118,34 @@ impl<D: Driver> AdbcReader<D> {
             connection: RefCell::new(connection),
             dialect,
             registered_tables: RefCell::new(HashSet::new()),
+            statement_opts: Vec::new(),
         })
+    }
+
+    /// Attach driver-specific *statement* options, applied to every statement
+    /// the reader creates in `execute_sql`. These come from `stmt.`-prefixed
+    /// URI params (see [`partition_statement_opts`]) and exist because some
+    /// drivers expose per-query settings only at the statement level — e.g.
+    /// BigQuery's `bigquery.query.destination_table`, which is needed to
+    /// read query results from the goccy BigQuery emulator (it does not
+    /// serve anonymous result tables over the Storage Read API).
+    pub fn with_statement_opts(mut self, opts: Vec<(String, String)>) -> Self {
+        self.statement_opts = opts;
+        self
+    }
+
+    /// Apply [`Self::statement_opts`] to a freshly created statement.
+    fn apply_statement_opts<S: adbc_core::Statement + ?Sized>(&self, stmt: &mut S) -> Result<()> {
+        for (key, value) in &self.statement_opts {
+            stmt.set_option(
+                OptionStatement::Other(key.clone()),
+                OptionValue::String(value.clone()),
+            )
+            .map_err(|e| {
+                GgsqlError::ReaderError(format!("ADBC set statement option '{key}': {e}"))
+            })?;
+        }
+        Ok(())
     }
 
     /// Convenience: construct with the ANSI dialect. Good default for
@@ -129,7 +160,7 @@ impl<D: Driver> AdbcReader<D> {
 // Runtime driver loading (adbc_driver_manager)
 // =============================================================================
 
-use adbc_core::options::{AdbcVersion, OptionDatabase, OptionValue};
+use adbc_core::options::{AdbcVersion, OptionDatabase, OptionStatement, OptionValue};
 use adbc_driver_manager::ManagedDriver;
 
 /// Default load flags: search `ADBC_DRIVER_PATH`, then system, then user
@@ -218,6 +249,30 @@ fn query_params_to_opts(query: &str) -> Vec<(OptionDatabase, OptionValue)> {
     opts
 }
 
+/// Split `stmt.`-prefixed params out of a `k=v&…` query string. The prefix
+/// marks driver *statement* options (applied to every statement the reader
+/// creates) as opposed to database options — e.g.
+/// `stmt.bigquery.query.destination_table=ds.tbl`. Returns the statement
+/// options with the prefix stripped, and the remaining query string with
+/// those segments removed (drivers reject unknown params in their own URI
+/// parsing, so they must not leak through).
+fn partition_statement_opts(query: &str) -> (Vec<(String, String)>, String) {
+    let mut stmt_opts = Vec::new();
+    let mut rest = Vec::new();
+    for segment in query.split('&') {
+        if segment.is_empty() {
+            continue;
+        }
+        match segment.split_once('=') {
+            Some((key, value)) if key.starts_with("stmt.") => {
+                stmt_opts.push((key["stmt.".len()..].to_string(), value.to_string()));
+            }
+            _ => rest.push(segment),
+        }
+    }
+    (stmt_opts, rest.join("&"))
+}
+
 /// Load an ADBC driver for a scheme, honoring the per-scheme env override
 /// first, then the canonical driver name. The error message lists what was
 /// probed so users know where ggsql looked.
@@ -278,7 +333,8 @@ impl AdbcReader<ManagedDriver> {
     ///   `?k=v` query params passed through as additional options. Where a
     ///   driver speaks a different wire scheme than ggsql's, the URI is
     ///   rewritten (`clickhouse://…` → `http://…`, `mysql://…` → a
-    ///   go-sql-driver DSN); see [`driver_uri_for`].
+    ///   go-sql-driver DSN, `bigquery://project/dataset` → Simba grammar);
+    ///   see [`driver_uri_for`] and [`bigquery_driver_uri`].
     ///
     /// The dialect is chosen from the scheme via
     /// [`crate::reader::dialects::dialect_for_scheme`], falling back to ANSI.
@@ -288,27 +344,51 @@ impl AdbcReader<ManagedDriver> {
         })?;
         let scheme = scheme.to_ascii_lowercase();
         let (body, query) = rest.split_once('?').unwrap_or((rest, ""));
+        // `stmt.`-prefixed params become per-statement options rather than
+        // database options.
+        let (stmt_opts, query) = partition_statement_opts(query);
 
         let (driver, opts) = if scheme == "adbc" {
-            // body is the driver name or path (may be a short scheme alias)
-            let name = driver_name_for_scheme(body).unwrap_or(body);
-            let driver = ManagedDriver::load_from_name(
-                name,
-                None,
-                AdbcVersion::V110,
-                DEFAULT_LOAD_FLAGS,
-                None,
-            )
-            .map_err(|e| {
-                GgsqlError::ReaderError(format!("ADBC driver '{}' failed to load: {}", body, e))
-            })?;
-            (driver, query_params_to_opts(query))
+            // body is the driver name or path (may be a short scheme alias).
+            // Known aliases go through the same dual-probe as scheme URIs
+            // (canonical library name, then dbc manifest ID) plus the
+            // per-scheme env override; anything else is a name or path for
+            // the driver manager to resolve directly.
+            let driver = if driver_names_for_scheme(body).is_some() {
+                load_driver_for_scheme(body)?
+            } else {
+                ManagedDriver::load_from_name(
+                    body,
+                    None,
+                    AdbcVersion::V110,
+                    DEFAULT_LOAD_FLAGS,
+                    None,
+                )
+                .map_err(|e| {
+                    GgsqlError::ReaderError(format!("ADBC driver '{}' failed to load: {}", body, e))
+                })?
+            };
+            (driver, query_params_to_opts(&query))
         } else {
             let driver = load_driver_for_scheme(&scheme)?;
-            let driver_uri = driver_uri_for(&scheme, body, uri);
+            // The URI handed to the driver must not carry stmt.* params —
+            // drivers parse their own URI query string and reject unknown
+            // keys. BigQuery additionally needs its URI in the driver's
+            // Simba grammar, with non-Simba params arriving only as
+            // standalone options.
+            let (driver_uri, opts_query) = if scheme == "bigquery" {
+                bigquery_driver_uri(body, &query)
+            } else {
+                let filtered_uri = if query.is_empty() {
+                    format!("{scheme}://{body}")
+                } else {
+                    format!("{scheme}://{body}?{query}")
+                };
+                (driver_uri_for(&scheme, body, &filtered_uri), query.clone())
+            };
             let mut opts = vec![(OptionDatabase::Uri, OptionValue::String(driver_uri))];
             if query_params_as_driver_options(&scheme) {
-                opts.extend(query_params_to_opts(query));
+                opts.extend(query_params_to_opts(&opts_query));
             }
             (driver, opts)
         };
@@ -322,6 +402,7 @@ impl AdbcReader<ManagedDriver> {
             .unwrap_or_else(|| Box::new(AnsiDialect));
 
         Self::new_with_database_opts(driver, dialect, opts)
+            .map(|reader| reader.with_statement_opts(stmt_opts))
     }
 }
 
@@ -360,6 +441,94 @@ fn driver_uri_for(scheme: &str, body: &str, full_uri: &str) -> String {
         "redshift" => full_uri.replacen("redshift://", "postgres://", 1),
         _ => full_uri.to_string(),
     }
+}
+
+/// Query parameters the Foundry BigQuery driver recognises in its own URI
+/// parsing — the Simba JDBC vocabulary, case-sensitive (see the driver
+/// docs). Any other key in a bigquery:// URI is handed over as a standalone
+/// database option instead: the driver rejects unknown URI params
+/// ("unknown parameter 'bigquery.auth_type' in URI"), and the canonical
+/// `bigquery.*` option names only exist as standalone options.
+const SIMBA_BIGQUERY_URI_PARAMS: &[&str] = &[
+    "OAuthType",
+    "AuthCredentials",
+    "AuthClientId",
+    "AuthClientSecret",
+    "AuthRefreshToken",
+    "DatasetId",
+    "Location",
+    "QuotaProject",
+    "ImpersonateDelegates",
+    "ImpersonateLifetime",
+    "ImpersonateScopes",
+    "ImpersonateTargetPrincipal",
+];
+
+/// Translate ggsql's `bigquery://<project>[/<dataset>]` convention into the
+/// Simba-style URI the Foundry BigQuery driver parses,
+/// `bigquery://[host[:port]]/<project>?DatasetId=<dataset>&<Simba params>`.
+///
+/// A first path segment containing '.' or ':' is treated as a host and the
+/// second as the project (Simba form, passed through) — GCP project IDs
+/// contain only lowercase letters, digits, and dashes, so they never look
+/// host-like. Otherwise the segments are ggsql's project[/dataset] and the
+/// URI is rewritten hostless (the driver defaults to
+/// bigquery.googleapis.com; endpoint overrides arrive via the
+/// `bigquery.endpoint` option, which has no URI form).
+///
+/// Returns the driver URI plus the query string to pass as standalone
+/// database options: every param outside the Simba vocabulary. Simba params
+/// stay in the URI only — passing them standalone as well would risk
+/// duplicate-arrival errors of the kind the MSSQL and Databricks drivers
+/// raise. An explicit `DatasetId` or `bigquery.dataset_id` param wins over
+/// the path dataset.
+fn bigquery_driver_uri(body: &str, query: &str) -> (String, String) {
+    let (first, second) = match body.split_once('/') {
+        Some((a, b)) => (a, Some(b)),
+        None => (body, None),
+    };
+    let host_like = first.contains('.') || first.contains(':');
+
+    let mut simba_params: Vec<&str> = Vec::new();
+    let mut standalone: Vec<&str> = Vec::new();
+    let mut dataset_param = false;
+    for segment in query.split('&') {
+        if segment.is_empty() {
+            continue;
+        }
+        let key = segment.split('=').next().unwrap_or_default();
+        if key == "DatasetId" || key == "bigquery.dataset_id" {
+            dataset_param = true;
+        }
+        if SIMBA_BIGQUERY_URI_PARAMS.contains(&key) {
+            simba_params.push(segment);
+        } else {
+            standalone.push(segment);
+        }
+    }
+
+    let mut uri = String::from("bigquery://");
+    let mut query_started = false;
+    if host_like {
+        uri.push_str(first);
+        uri.push('/');
+        if let Some(project) = second {
+            uri.push_str(project);
+        }
+    } else {
+        uri.push('/');
+        uri.push_str(first);
+        if let (Some(dataset), false) = (second, dataset_param) {
+            uri.push_str("?DatasetId=");
+            uri.push_str(dataset);
+            query_started = true;
+        }
+    }
+    if !simba_params.is_empty() {
+        uri.push(if query_started { '&' } else { '?' });
+        uri.push_str(&simba_params.join("&"));
+    }
+    (uri, standalone.join("&"))
 }
 
 /// Whether `?k=v` query params are also passed to the driver as standalone
@@ -410,21 +579,36 @@ where
             let mut stmt = conn
                 .new_statement()
                 .map_err(|e| GgsqlError::ReaderError(format!("ADBC new_statement: {}", e)))?;
+            self.apply_statement_opts(&mut stmt)?;
             stmt.set_sql_query(sql)
                 .map_err(|e| GgsqlError::ReaderError(format!("ADBC set_sql_query: {}", e)))?;
             let reader = match stmt.execute() {
                 Ok(reader) => reader,
                 Err(e) => {
+                    let msg = e.to_string();
+                    // BigQuery DDL/DML jobs without a result set execute to
+                    // completion but fail at read time with "job has no
+                    // destination table to read". The statement has already
+                    // run — report an empty frame. Retrying via
+                    // execute_update would re-execute the statement, which
+                    // breaks non-idempotent DDL (a second CREATE TABLE fails
+                    // with "already exists").
+                    if msg.contains("no destination table to read") {
+                        return Ok(DataFrame::from_record_batch(RecordBatch::new_empty(
+                            std::sync::Arc::new(arrow::datatypes::Schema::empty()),
+                        )));
+                    }
                     // The Databricks driver's query path cannot build a result
                     // reader for statements without a result set (DDL), failing
-                    // with "schema bytes are empty". Retry via execute_update —
-                    // the ADBC path meant for exactly those statements — and
-                    // report an empty frame.
-                    if e.to_string().contains("schema bytes are empty") {
+                    // with "schema bytes are empty" before executing. Retry via
+                    // execute_update — the ADBC path meant for exactly those
+                    // statements — and report an empty frame.
+                    if msg.contains("schema bytes are empty") {
                         drop(stmt);
                         let mut update_stmt = conn.new_statement().map_err(|e| {
                             GgsqlError::ReaderError(format!("ADBC new_statement: {}", e))
                         })?;
+                        self.apply_statement_opts(&mut update_stmt)?;
                         update_stmt.set_sql_query(sql).map_err(|e| {
                             GgsqlError::ReaderError(format!("ADBC set_sql_query: {}", e))
                         })?;
@@ -499,6 +683,7 @@ where
             let mut drop_stmt = conn
                 .new_statement()
                 .map_err(|e| GgsqlError::ReaderError(format!("ADBC new_statement: {}", e)))?;
+            self.apply_statement_opts(&mut drop_stmt)?;
             drop_stmt
                 .set_sql_query(&drop_sql)
                 .map_err(|e| GgsqlError::ReaderError(format!("ADBC set_sql_query DROP: {}", e)))?;
@@ -511,6 +696,7 @@ where
         let mut create_stmt = conn
             .new_statement()
             .map_err(|e| GgsqlError::ReaderError(format!("ADBC new_statement: {}", e)))?;
+        self.apply_statement_opts(&mut create_stmt)?;
         create_stmt
             .set_sql_query(&create_sql)
             .map_err(|e| GgsqlError::ReaderError(format!("ADBC set_sql_query CREATE: {}", e)))?;
@@ -713,6 +899,44 @@ mod tests {
                 "mariadb://localhost:3306/ggsql"
             ),
             "tcp(localhost:3306)/ggsql"
+        );
+    }
+
+    #[test]
+    fn driver_uri_translates_bigquery_to_simba_grammar() {
+        // ggsql's project/dataset form becomes a hostless Simba URI;
+        // canonical bigquery.* params travel as standalone options only.
+        assert_eq!(
+            bigquery_driver_uri("my-proj/my_ds", "bigquery.auth_type=anonymous"),
+            (
+                "bigquery:///my-proj?DatasetId=my_ds".to_string(),
+                "bigquery.auth_type=anonymous".to_string()
+            )
+        );
+        // Project only, no params.
+        assert_eq!(
+            bigquery_driver_uri("my-proj", ""),
+            ("bigquery:///my-proj".to_string(), String::new())
+        );
+        // Host-like first segment: Simba form passes through, Simba params
+        // stay in the URI, everything else goes standalone.
+        assert_eq!(
+            bigquery_driver_uri(
+                "localhost:9050/ggsql-test",
+                "DatasetId=x&bigquery.endpoint=http://localhost:9050"
+            ),
+            (
+                "bigquery://localhost:9050/ggsql-test?DatasetId=x".to_string(),
+                "bigquery.endpoint=http://localhost:9050".to_string()
+            )
+        );
+        // An explicit dataset param wins over the path dataset.
+        assert_eq!(
+            bigquery_driver_uri("proj/ds1", "bigquery.dataset_id=ds2"),
+            (
+                "bigquery:///proj".to_string(),
+                "bigquery.dataset_id=ds2".to_string()
+            )
         );
     }
 
