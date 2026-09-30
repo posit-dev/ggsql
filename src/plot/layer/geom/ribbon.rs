@@ -185,12 +185,14 @@ fn expand_ribbon_to_polygon(
     let __ggsql_vertex__ = dialect.quote_ident("__ggsql_vertex__");
     let __ggsql_r__ = dialect.quote_ident("__ggsql_r__");
 
+    // Explicit alias: MySQL/MariaDB reject unaliased derived tables.
+    let __ggsql_ribbon__ = dialect.quote_ident("__ggsql_ribbon__");
     let numbered = format!(
         "SELECT *, \
          ROW_NUMBER() OVER ({partition_clause}ORDER BY {pos1_q}) AS {__ggsql_row_idx__}, \
          COUNT(*) OVER ({partition_clause}) AS {__ggsql_n_rows__}, \
          {ribbon_id_expr} AS {densify_id_q} \
-         FROM ({query})"
+         FROM ({query}) AS {__ggsql_ribbon__}"
     );
 
     // Build select list for each half

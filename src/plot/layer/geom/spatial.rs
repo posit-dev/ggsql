@@ -23,7 +23,11 @@ fn apply_clip_boundary(
     let transformed = dialect.sql_st_transform(&clipped, source, crs);
     let geom_expr = format!("ST_MakeValid({transformed})");
 
-    let filtered = format!("SELECT * FROM ({query}) WHERE ST_Intersects({col}, {clip_geom})");
+    // Explicit alias: MySQL/MariaDB reject unaliased derived tables.
+    let __ggsql_clip__ = dialect.quote_ident("__ggsql_clip__");
+    let filtered = format!(
+        "SELECT * FROM ({query}) AS {__ggsql_clip__} WHERE ST_Intersects({col}, {clip_geom})"
+    );
     dialect.sql_select_replace(&geom_expr, col, &filtered, columns)
 }
 

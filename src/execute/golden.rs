@@ -134,6 +134,69 @@ fn battery() -> Vec<Case> {
             query: "VISUALISE DRAW bar MAPPING category AS x FROM bar_data",
         },
         Case {
+            name: "smooth_lm",
+            table: "smooth_data",
+            df: df! {
+                "a" => vec![1.0f64, 2.0, 3.0, 4.0],
+                "b" => vec![2.0f64, 4.0, 5.0, 8.0],
+            }
+            .unwrap(),
+            query: "VISUALISE DRAW smooth MAPPING a AS x, b AS y FROM smooth_data SETTING method => 'ols'",
+        },
+        Case {
+            name: "ribbon",
+            table: "rib_data",
+            df: df! {
+                "a" => vec![1.0f64, 2.0, 3.0, 4.0],
+                "lo" => vec![0.0f64, 1.0, 1.5, 2.0],
+                "hi" => vec![2.0f64, 3.0, 3.5, 4.0],
+            }
+            .unwrap(),
+            query: "VISUALISE DRAW ribbon MAPPING a AS x, lo AS ymin, hi AS ymax FROM rib_data",
+        },
+        Case {
+            name: "segment",
+            table: "seg_data",
+            df: df! {
+                "a" => vec![1.0f64, 2.0, 3.0],
+                "b" => vec![1.0f64, 2.0, 3.0],
+                "c" => vec![2.0f64, 3.0, 4.0],
+                "d" => vec![2.0f64, 1.0, 4.0],
+            }
+            .unwrap(),
+            query: "VISUALISE DRAW segment MAPPING a AS x, b AS y, c AS xend, d AS yend FROM seg_data",
+        },
+        Case {
+            name: "tile",
+            table: "tile_data",
+            df: df! {
+                "a" => vec![1.0f64, 2.0, 3.0, 4.0, 5.0, 6.0],
+                "b" => vec![1.0f64, 2.0, 1.5, 2.5, 3.0, 3.5],
+            }
+            .unwrap(),
+            query: "VISUALISE DRAW tile MAPPING a AS x, b AS y FROM tile_data",
+        },
+        Case {
+            name: "area",
+            table: "area_data",
+            df: df! {
+                "a" => vec![1.0f64, 2.0, 3.0, 4.0],
+                "b" => vec![2.0f64, 4.0, 3.0, 5.0],
+            }
+            .unwrap(),
+            query: "VISUALISE DRAW area MAPPING a AS x, b AS y FROM area_data",
+        },
+        Case {
+            name: "violin",
+            table: "vio_data",
+            df: df! {
+                "g" => vec!["A", "A", "B", "B"],
+                "v" => vec![1.0f64, 2.0, 3.0, 4.0],
+            }
+            .unwrap(),
+            query: "VISUALISE DRAW violin MAPPING g AS x, v AS y FROM vio_data",
+        },
+        Case {
             name: "filter_layer",
             table: "pts",
             df: df! {

@@ -97,8 +97,10 @@ impl GeomTrait for Rule {
                 let pos1_q = dialect.quote_ident(&naming::aesthetic_column("pos1"));
                 let pos2_q = dialect.quote_ident(&naming::aesthetic_column("pos2"));
                 let clip_table = clip_boundary_table();
+                // Explicit alias: MySQL/MariaDB reject unaliased derived tables.
+                let __ggsql_dens__ = dialect.quote_ident("__ggsql_dens__");
                 format!(
-                    "SELECT * FROM ({densified}) WHERE ST_Contains(\
+                    "SELECT * FROM ({densified}) AS {__ggsql_dens__} WHERE ST_Contains(\
                      (SELECT geom FROM {clip_table}), ST_Point({pos1_q}, {pos2_q}))"
                 )
             }
@@ -243,20 +245,23 @@ fn expand_rule_to_segment(
 
     // The input column is always __ggsql_aes_pos1__. Build the SELECT
     // expressions that produce both pos1 and pos2 in the output.
+    // Explicit aliases: MySQL/MariaDB reject unaliased derived tables, even
+    // inside scalar subqueries.
+    let __ggsql_bbox__ = dialect.quote_ident("__ggsql_bbox__");
     let (fixed_expr, span_expr) = if has_pos1 {
         // Vertical rule: input pos1 = longitude (keep as pos1), synthesize pos2 from y-extent
         let fixed = pos1_q.clone();
         let span = format!(
-            "CASE {__ggsql_vertex__} WHEN 0 THEN (SELECT ymin FROM ({bbox_expr})) \
-             WHEN 1 THEN (SELECT ymax FROM ({bbox_expr})) END AS {pos2_q}"
+            "CASE {__ggsql_vertex__} WHEN 0 THEN (SELECT ymin FROM ({bbox_expr}) AS {__ggsql_bbox__}) \
+             WHEN 1 THEN (SELECT ymax FROM ({bbox_expr}) AS {__ggsql_bbox__}) END AS {pos2_q}"
         );
         (fixed, span)
     } else {
         // Horizontal rule: input pos1 = latitude (rename to pos2), synthesize pos1 from x-extent
         let fixed = format!("{pos1_q} AS {pos2_q}");
         let span = format!(
-            "CASE {__ggsql_vertex__} WHEN 0 THEN (SELECT xmin FROM ({bbox_expr})) \
-             WHEN 1 THEN (SELECT xmax FROM ({bbox_expr})) END AS {pos1_q}"
+            "CASE {__ggsql_vertex__} WHEN 0 THEN (SELECT xmin FROM ({bbox_expr}) AS {__ggsql_bbox__}) \
+             WHEN 1 THEN (SELECT xmax FROM ({bbox_expr}) AS {__ggsql_bbox__}) END AS {pos1_q}"
         );
         (fixed, span)
     };
@@ -270,9 +275,10 @@ fn expand_rule_to_segment(
 
     let densify_id_q = dialect.quote_ident(naming::DENSIFY_ID_COLUMN);
 
+    let __ggsql_rule_src__ = dialect.quote_ident("__ggsql_rule_src__");
     let numbered = format!(
         "SELECT *, ROW_NUMBER() OVER (ORDER BY (SELECT NULL)) \
-         AS {densify_id_q} FROM ({query})"
+         AS {densify_id_q} FROM ({query}) AS {__ggsql_rule_src__}"
     );
 
     let vertices_table = format!("(SELECT 0 AS {__ggsql_vertex__} UNION ALL SELECT 1)");

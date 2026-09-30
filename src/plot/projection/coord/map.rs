@@ -753,9 +753,11 @@ fn detect_source_srid(
         if layer.geom.geom_type() != GeomType::Spatial {
             continue;
         }
+        // Explicit alias: MySQL/MariaDB reject unaliased derived tables.
+        let __ggsql_srid__ = dialect.quote_ident("__ggsql_srid__");
         let sql = dialect.sql_limit(
             &format!(
-                "SELECT ST_SRID({ensure_geom}) AS srid FROM ({}) WHERE {geom_col} IS NOT NULL",
+                "SELECT ST_SRID({ensure_geom}) AS srid FROM ({}) AS {__ggsql_srid__} WHERE {geom_col} IS NOT NULL",
                 layer_queries[idx]
             ),
             1,

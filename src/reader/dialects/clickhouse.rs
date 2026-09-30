@@ -85,10 +85,12 @@ impl SqlDialect for ClickHouseDialect {
         from: &str,
         _all_columns: &[String],
     ) -> String {
+        let __ggsql_sr__ = self.quote_ident("__ggsql_sr__");
         if expr == col {
-            return format!("SELECT * FROM ({from})");
+            // Explicit alias: MySQL/MariaDB reject unaliased derived tables.
+            return format!("SELECT * FROM ({from}) {__ggsql_sr__}");
         }
-        format!("SELECT * REPLACE ({expr} AS {col}) FROM ({from})")
+        format!("SELECT * REPLACE ({expr} AS {col}) FROM ({from}) {__ggsql_sr__}")
     }
 
     fn sql_generate_series(&self, n: usize) -> String {

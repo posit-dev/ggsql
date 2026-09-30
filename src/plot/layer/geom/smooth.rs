@@ -173,7 +173,7 @@ fn stat_ols(
             AVG({x} * {x}) AS xx_mean,
             MIN({x}) AS x_min,
             MAX({x}) AS x_max
-          FROM ({data})
+          FROM ({data}) AS {data_alias}
           WHERE {x} IS NOT NULL AND {y} IS NOT NULL
           {group_by}
         )
@@ -190,6 +190,8 @@ fn stat_ols(
         x = x_col,
         y = y_col,
         data = query,
+        // Explicit alias: MySQL/MariaDB reject unaliased derived tables.
+        data_alias = dialect.quote_ident("__ggsql_smooth__"),
         x_out = dialect.quote_ident(&naming::stat_column("pos1")),
         y_out = dialect.quote_ident(&naming::stat_column("intensity")), // We name this 'intensity' to be consistent with the nadaraya-watson kernel
         group_by = group_by_clause
@@ -244,7 +246,7 @@ fn stat_tls(
             AVG({y} * {y}) AS yy_mean,
             MIN({x}) AS x_min,
             MAX({x}) AS x_max
-          FROM ({data})
+          FROM ({data}) AS {data_alias}
           WHERE {x} IS NOT NULL AND {y} IS NOT NULL
           {group_by}
         ),
@@ -271,6 +273,8 @@ fn stat_tls(
         x = x_col,
         y = y_col,
         data = query,
+        // Explicit alias: MySQL/MariaDB reject unaliased derived tables.
+        data_alias = dialect.quote_ident("__ggsql_smooth__"),
         x_out = dialect.quote_ident(&naming::stat_column("pos1")),
         y_out = dialect.quote_ident(&naming::stat_column("intensity")),
         group_by = group_by_clause

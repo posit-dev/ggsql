@@ -37,20 +37,26 @@
 //! All cases run the same battery through the public reader pipeline: a
 //! grouped scatter (quoting, projections, discrete + continuous channels),
 //! a histogram (two-stage binning), a grouped boxplot (quantiles, qualified
-//! projections), and a grouped density (cross-group grid join). The battery
-//! is validated implicitly because DuckDB-backed unit tests exercise the
-//! same code paths.
+//! projections), a grouped density (cross-group grid join), and the complex
+//! derived-table geoms: smooth (aggregate CTE), ribbon and segment
+//! (window-function densify), tile (2-D binning), area, and violin
+//! (per-group density). The battery is validated implicitly because
+//! DuckDB-backed unit tests exercise the same code paths.
 
 use ggsql::reader::connection::reader_from_uri;
 use ggsql::reader::Reader;
 
 const TABLE: &str = "ggsql_live_test";
 
+// Eight rows, four per group: density/violin compute a Silverman bandwidth
+// from NTILE(4) tiles, which is degenerate (NULL) with fewer than four
+// values per group — their grids would come back empty and the battery
+// would pass vacuously.
 fn insert_sql(table: &str) -> String {
     format!(
         "INSERT INTO {table} VALUES \
-         (1, 1.5, 'a'), (2, 2.5, 'b'), (3, 3.5, 'a'), \
-         (4, 4.5, 'b'), (5, 5.5, 'a'), (6, 6.5, 'b')"
+         (1, 1.5, 'a'), (2, 2.5, 'b'), (3, 3.5, 'a'), (4, 4.5, 'b'), \
+         (5, 5.5, 'a'), (6, 6.5, 'b'), (7, 7.5, 'a'), (8, 8.5, 'b')"
     )
 }
 
@@ -114,7 +120,7 @@ fn run_battery(reader: &dyn Reader, ctx: &str, table: &str) {
     let layer = spec
         .layer_data(0)
         .unwrap_or_else(|| panic!("{ctx}: scatter produced no layer data"));
-    assert_eq!(layer.height(), 6, "{ctx}: scatter row count");
+    assert_eq!(layer.height(), 8, "{ctx}: scatter row count");
 
     // Histogram: two-stage binning with GROUP BY-safe derived columns.
     reader
@@ -132,11 +138,64 @@ fn run_battery(reader: &dyn Reader, ctx: &str, table: &str) {
         .unwrap_or_else(|e| panic!("{ctx}: boxplot pipeline failed: {e}"));
 
     // Grouped density: cross-group grid join with qualified projections.
-    reader
+    // Row assertion: a degenerate (NULL) bandwidth would silently produce an
+    // empty result, and the pipeline would pass without it.
+    let spec = reader
         .execute(&format!(
             "VISUALISE DRAW density MAPPING val AS x, grp AS color FROM {table}"
         ))
         .unwrap_or_else(|e| panic!("{ctx}: density pipeline failed: {e}"));
+    let layer = spec
+        .layer_data(0)
+        .unwrap_or_else(|| panic!("{ctx}: density produced no layer data"));
+    assert!(layer.height() > 0, "{ctx}: density returned zero rows");
+
+    // Smooth (OLS): aggregate coefficient CTE with a derived table.
+    reader
+        .execute(&format!(
+            "VISUALISE DRAW smooth MAPPING id AS x, val AS y FROM {table} SETTING method => 'ols'"
+        ))
+        .unwrap_or_else(|e| panic!("{ctx}: smooth pipeline failed: {e}"));
+
+    // Ribbon: window-function densify into a closed polygon outline.
+    reader
+        .execute(&format!(
+            "VISUALISE DRAW ribbon MAPPING id AS x, id AS ymin, val AS ymax FROM {table}"
+        ))
+        .unwrap_or_else(|e| panic!("{ctx}: ribbon pipeline failed: {e}"));
+
+    // Segment: ROW_NUMBER densify plus a cross join against a vertex table.
+    reader
+        .execute(&format!(
+            "VISUALISE DRAW segment MAPPING id AS x, val AS y, id AS xend, val AS yend FROM {table}"
+        ))
+        .unwrap_or_else(|e| panic!("{ctx}: segment pipeline failed: {e}"));
+
+    // Tile: two-dimensional binning with post-aggregation.
+    reader
+        .execute(&format!(
+            "VISUALISE DRAW tile MAPPING val AS x, id AS y FROM {table}"
+        ))
+        .unwrap_or_else(|e| panic!("{ctx}: tile pipeline failed: {e}"));
+
+    // Area: ribbon variant with a synthesized zero baseline.
+    reader
+        .execute(&format!(
+            "VISUALISE DRAW area MAPPING id AS x, val AS y FROM {table}"
+        ))
+        .unwrap_or_else(|e| panic!("{ctx}: area pipeline failed: {e}"));
+
+    // Violin: per-group density with mirrored outline. Same row assertion
+    // as density — an empty grid would otherwise pass silently.
+    let spec = reader
+        .execute(&format!(
+            "VISUALISE DRAW violin MAPPING grp AS x, val AS y FROM {table}"
+        ))
+        .unwrap_or_else(|e| panic!("{ctx}: violin pipeline failed: {e}"));
+    let layer = spec
+        .layer_data(0)
+        .unwrap_or_else(|| panic!("{ctx}: violin produced no layer data"));
+    assert!(layer.height() > 0, "{ctx}: violin returned zero rows");
 }
 
 /// Connect to the backend named by `scheme` if its env var is set, create
@@ -175,9 +234,13 @@ fn live_backend(scheme: &str) {
                 Field::new("grp", DataType::Utf8, false),
             ])),
             vec![
-                Arc::new(Int64Array::from(vec![1, 2, 3, 4, 5, 6])),
-                Arc::new(Float64Array::from(vec![1.5, 2.5, 3.5, 4.5, 5.5, 6.5])),
-                Arc::new(StringArray::from(vec!["a", "b", "a", "b", "a", "b"])),
+                Arc::new(Int64Array::from(vec![1, 2, 3, 4, 5, 6, 7, 8])),
+                Arc::new(Float64Array::from(vec![
+                    1.5, 2.5, 3.5, 4.5, 5.5, 6.5, 7.5, 8.5,
+                ])),
+                Arc::new(StringArray::from(vec![
+                    "a", "b", "a", "b", "a", "b", "a", "b",
+                ])),
             ],
         )
         .expect("build bigquery test batch");
@@ -292,9 +355,9 @@ fn live_datafusion() {
         .expect("datafusion init");
 
     let df = ggsql::df! {
-        "id" => vec![1i32, 2, 3, 4, 5, 6],
-        "val" => vec![1.5f64, 2.5, 3.5, 4.5, 5.5, 6.5],
-        "grp" => vec!["a", "b", "a", "b", "a", "b"],
+        "id" => vec![1i32, 2, 3, 4, 5, 6, 7, 8],
+        "val" => vec![1.5f64, 2.5, 3.5, 4.5, 5.5, 6.5, 7.5, 8.5],
+        "grp" => vec!["a", "b", "a", "b", "a", "b", "a", "b"],
     }
     .expect("test dataframe");
     reader.register(TABLE, df, true).expect("register table");

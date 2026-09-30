@@ -201,7 +201,8 @@ pub trait SqlDialect {
     ) -> String {
         let __ggsql_sr__ = self.quote_ident("__ggsql_sr__");
         if expr == col {
-            return format!("SELECT * FROM ({from})");
+            // Explicit alias: MySQL/MariaDB reject unaliased derived tables.
+            return format!("SELECT * FROM ({from}) {__ggsql_sr__}");
         }
         if all_columns.is_empty() {
             return format!("SELECT {expr} AS {col}, * FROM ({from}) {__ggsql_sr__}");

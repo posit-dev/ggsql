@@ -169,6 +169,13 @@ fn scale_offset_column(df: DataFrame, offset_col: &str, half_width: f64) -> Resu
         return Ok(df);
     }
 
+    // An empty result carries no offsets to scale. Some backends (SQLite)
+    // type the columns of an empty result as strings, so bail out before
+    // touching the array.
+    if df.height() == 0 {
+        return Ok(df);
+    }
+
     // Get global max of offset column
     use arrow::array::Array;
     let offset_arr = df.column(offset_col)?;
