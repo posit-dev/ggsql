@@ -189,6 +189,13 @@ jobs:
             | sudo tee -a /etc/odbcinst.ini
           printf '[ggsql-monetdb]\nDriver=MonetDB\nHost=localhost\nPort=50000\nDatabase=ggsql\n' \
             | sudo tee -a /etc/odbc.ini
+          # Diagnostics: unixODBC's IM005 ("Driver's SQLAllocHandle on
+          # SQL_HANDLE_DBC failed") usually means the driver .so failed to
+          # dlopen. ldd prints "not found" for any unresolvable dependency.
+          sudo ldconfig
+          echo '--- /etc/odbcinst.ini:'; cat /etc/odbcinst.ini
+          echo '--- /etc/odbc.ini:'; cat /etc/odbc.ini
+          echo '--- ldd:'; ldd "$driver_so"
 
       - name: Start ${{ matrix.backend }}
         # Exports GGSQL_TEST_URI_<BACKEND> for the test step.

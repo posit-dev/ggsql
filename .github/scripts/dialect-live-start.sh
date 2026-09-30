@@ -53,11 +53,15 @@ case "$backend" in
     # battery needs. Trino takes a while to boot; poll the info endpoint
     # until it is no longer starting.
     docker run -d --name db -p 8080:8080 trinodb/trino:476
-    # starting:false means the coordinator is up, but queries still fail
-    # with "No nodes available to run query" until the (co-located) worker
-    # has announced itself — /v1/node lists it once discovery completes.
-    wait_for trino bash -c 'curl -sf http://localhost:8080/v1/info | grep -q "\"starting\":false" \
-      && curl -sf http://localhost:8080/v1/node | grep -q "\"uri\""'
+    # Readiness = actually answering a query. starting:false only means the
+    # coordinator is up; queries still fail with "No nodes available to run
+    # query" until the co-located worker is schedulable, and the statement
+    # API's error payload reflects exactly that transition. A successful
+    # SELECT 1 response contains "columns". Trino's default "insecure" auth
+    # still requires an identity: /v1/statement (unlike /v1/info) 401s
+    # without an X-Trino-User header.
+    wait_for trino bash -c 'curl -sf -X POST -H "X-Trino-User: test" -d "SELECT 1" \
+      http://localhost:8080/v1/statement | grep -q "\"columns\""'
     # The driver defaults to HTTPS; SSL=false selects plain HTTP.
     uri="trino://test@localhost:8080/memory/default?SSL=false"
     ;;
@@ -129,8 +133,22 @@ case "$backend" in
       -e MDB_CREATE_DBS=ggsql -e MDB_DB_ADMIN_PASS=monetdb \
       -p 50000:50000 monetdb/monetdb:Dec2025-SP3
     wait_for monetdb port_open 50000
-    # The daemon accepts connections before the database is fully started.
-    sleep 10
+    # Readiness plus preflight in one: poll with isql through the real
+    # driver and DSN. Keeps unixODBC diagnostics visible in the log (the
+    # Rust test otherwise reports an opaque IM005) and covers the daemon
+    # accepting connections before the database is fully started.
+    ok=0
+    for _ in $(seq 1 24); do
+      if isql -v ggsql-monetdb monetdb monetdb <<< 'SELECT 1;'; then
+        ok=1
+        break
+      fi
+      sleep 5
+    done
+    if [ "$ok" != 1 ]; then
+      echo "monetdb ODBC preflight failed"
+      exit 1
+    fi
     uri="monetdb://monetdb:monetdb@localhost:50000/ggsql?reader=odbc&DSN=ggsql-monetdb"
     ;;
   druid)
@@ -141,14 +159,22 @@ case "$backend" in
     # to the router (8888) and polled to completion; the driver then talks
     # SQL to the broker (8082). DruidDialect requires_cache, so the battery
     # runs through ggsql's automatic sqlite cache wrap.
-    # The image's /druid.sh entrypoint needs a service argument and runs a
-    # single service per container; bypass it with the classic all-in-one
-    # quickstart launcher, which execs `supervise` (foreground, starts
-    # embedded ZooKeeper plus all services from the nano-quickstart conf).
-    docker run -d --name db \
-      --entrypoint /opt/druid/bin/start-nano-quickstart \
-      -p 8888:8888 -p 8082:8082 apache/druid:37.0.0
-    wait_for druid curl -sf http://localhost:8082/status/health
+    # The 37.x image is distroless (busybox + static bash; no /usr/bin/env,
+    # no perl), so the classic all-in-one supervise quickstart cannot run
+    # inside it. The vendor-supported path is the docker-compose cluster:
+    # zookeeper, postgres metadata, and one container per Druid service at
+    # micro-quickstart sizing (~6 GiB total). MSQ ingest goes through the
+    # router (8888); the ADBC driver talks to the broker (8082); overlord
+    # and middleManager must also be up before MSQ tasks will run.
+    druid_dir=$(mktemp -d)
+    curl -sSL -o "$druid_dir/docker-compose.yml" \
+      https://raw.githubusercontent.com/apache/druid/37.0.0/distribution/docker/docker-compose.yml
+    curl -sSL -o "$druid_dir/environment" \
+      https://raw.githubusercontent.com/apache/druid/37.0.0/distribution/docker/environment
+    docker compose -f "$druid_dir/docker-compose.yml" up -d
+    wait_for druid-broker curl -sf http://localhost:8082/status/health
+    wait_for druid-overlord curl -sf http://localhost:8081/status/health
+    wait_for druid-mm curl -sf http://localhost:8091/status/health
     # MSQ INSERT: every Druid datasource needs a __time column; one shared
     # timestamp suffices. PARTITIONED BY ALL puts everything in one segment.
     payload=$(python3 - <<'EOF'
@@ -173,7 +199,7 @@ EOF
       | sed -n 's/.*"taskId":"\([^"]*\)".*/\1/p')
     if [ -z "$task_id" ]; then
       echo "MSQ ingest submission returned no taskId"
-      docker logs db || true
+      docker compose -f "$druid_dir/docker-compose.yml" logs || true
       exit 1
     fi
     # MSQ jobs are asynchronous; poll the task until it succeeds or fails.
@@ -183,7 +209,7 @@ EOF
         *'"status":"SUCCESS"'*) break ;;
         *'"statusCode":"FAILED"'*)
           echo "MSQ ingest task $task_id FAILED"
-          docker logs db || true
+          docker compose -f "$druid_dir/docker-compose.yml" logs || true
           exit 1
           ;;
       esac
@@ -200,7 +226,7 @@ EOF
     done
     if [ "$cnt" != "8" ]; then
       echo "datasource never became queryable (count=$cnt)"
-      docker logs db || true
+      docker compose -f "$druid_dir/docker-compose.yml" logs || true
       exit 1
     fi
     uri="druid://localhost:8082"
