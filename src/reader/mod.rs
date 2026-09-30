@@ -308,6 +308,16 @@ pub trait SqlDialect {
         "WITH RECURSIVE"
     }
 
+    /// An `ORDER BY` clause for a query nested in a derived table or CTE.
+    ///
+    /// Default emits `ORDER BY <ordering>`. SQL Server forbids ORDER BY in
+    /// views, derived tables, subqueries, and CTEs unless TOP, OFFSET, or
+    /// FOR XML is present (error 1033), so it appends `OFFSET 0 ROWS`,
+    /// which legitimizes the clause without changing the ordering.
+    fn sql_derived_order_by(&self, ordering: &str) -> String {
+        format!("ORDER BY {ordering}")
+    }
+
     /// Null-safe equality comparison between two expressions.
     ///
     /// The ANSI form is `IS NOT DISTINCT FROM`; MySQL/MariaDB use the
@@ -352,26 +362,40 @@ pub trait SqlDialect {
         // Uses NTILE(4) to divide data into quartiles, then interpolates between boundaries.
         let __ggsql_pct__ = self.quote_ident("__ggsql_pct__");
         let __ggsql_qt__ = self.quote_ident("__ggsql_qt__");
-        let group_filter = groups
-            .iter()
-            .map(|g| {
-                let q = self.quote_ident(g);
-                self.sql_null_safe_eq(
-                    &format!("{__ggsql_pct__}.{q}"),
-                    &format!("{__ggsql_qt__}.{q}"),
-                )
-            })
-            .map(|cond| format!("AND {cond}"))
-            .collect::<Vec<_>>()
-            .join(" ");
-
-        let lo_tile = (fraction * 4.0).ceil() as usize;
-        let hi_tile = lo_tile + 1;
-        let quoted_column = self.quote_ident(column);
         // The derived table needs an explicit alias: MySQL/MariaDB reject
         // unaliased derived tables ("Every derived table must have its own
         // alias"), and other engines accept the alias harmlessly.
         let __ggsql_tile__ = self.quote_ident("__ggsql_tile__");
+        let lo_tile = (fraction * 4.0).ceil() as usize;
+        let hi_tile = lo_tile + 1;
+        let quoted_column = self.quote_ident(column);
+
+        // Group correlation belongs in the scalar subquery's own WHERE, not
+        // the NTILE derived table's: MariaDB cannot resolve outer-query
+        // aliases from inside a derived table (Error 1054, "Unknown column
+        // ... in 'WHERE'"). NTILE is instead partitioned by the group
+        // columns and the correlation filters one level up, which assigns
+        // identical tiles for the kept group.
+        let (partition_by, group_cols, group_filter) = if groups.is_empty() {
+            (String::new(), String::new(), String::new())
+        } else {
+            let quoted: Vec<String> = groups.iter().map(|g| self.quote_ident(g)).collect();
+            let filter = quoted
+                .iter()
+                .map(|q| {
+                    self.sql_null_safe_eq(
+                        &format!("{__ggsql_tile__}.{q}"),
+                        &format!("{__ggsql_qt__}.{q}"),
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join(" AND ");
+            (
+                format!("PARTITION BY {} ", quoted.join(", ")),
+                format!(", {}", quoted.join(", ")),
+                format!(" WHERE {filter}"),
+            )
+        };
 
         format!(
             "(SELECT (\
@@ -380,10 +404,10 @@ pub trait SqlDialect {
             ) / 2.0 \
             FROM (\
               SELECT {column} AS __val, \
-                     NTILE(4) OVER (ORDER BY {column}) AS __tile \
+                     NTILE(4) OVER ({partition_by}ORDER BY {column}) AS __tile{group_cols} \
               FROM ({from}) AS {__ggsql_pct__} \
-              WHERE {column} IS NOT NULL {group_filter}\
-            ) AS {__ggsql_tile__})",
+              WHERE {column} IS NOT NULL\
+            ) AS {__ggsql_tile__}{group_filter})",
             column = quoted_column
         )
     }

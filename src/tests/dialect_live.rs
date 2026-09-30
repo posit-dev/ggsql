@@ -30,6 +30,11 @@
 //!   against a PostgreSQL container: the Foundry "redshift" driver is the
 //!   PostgreSQL driver, so this exercises RedshiftDialect end-to-end over a
 //!   wire-compatible server)
+//! - `GGSQL_TEST_URI_ODBC`       e.g. `postgres://u:p@localhost:5432/db?reader=odbc&Driver={PostgreSQL Unicode}`
+//!   (CI runs it against a PostgreSQL container over psqlODBC: the
+//!   `?reader=odbc` query forces the generic ODBC fallback, exercising
+//!   OdbcReader and the connection-string synthesis instead of the ADBC
+//!   driver)
 //!
 //! The DataFusion case runs in-process via the `adbc_datafusion` dev-driver
 //! and needs no setup, so one non-DuckDB engine always runs in CI.
@@ -79,6 +84,11 @@ fn create_table_sql(scheme: &str, table: &str) -> String {
         }
         // Pseudo-leg: CI points this at a PostgreSQL container (see header).
         "redshift" => {
+            format!("CREATE TABLE {table} (id INT, val DOUBLE PRECISION, grp VARCHAR(16))")
+        }
+        // Generic-ODBC leg: CI points this at a PostgreSQL container over
+        // psqlODBC (see header), so the DDL uses PostgreSQL types.
+        "odbc" => {
             format!("CREATE TABLE {table} (id INT, val DOUBLE PRECISION, grp VARCHAR(16))")
         }
         "sqlite" => format!("CREATE TABLE {table} (id INTEGER, val REAL, grp TEXT)"),
@@ -245,19 +255,19 @@ fn live_backend(scheme: &str) {
         )
         .expect("build bigquery test batch");
         reader
-            .register(&table, ggsql::DataFrame::from_record_batch(batch), true)
+            .register(table, ggsql::DataFrame::from_record_batch(batch), true)
             .unwrap_or_else(|e| panic!("{scheme}: register failed: {e}"));
     } else {
         let _ = reader.execute_sql(&format!("DROP TABLE IF EXISTS {table}"));
         reader
-            .execute_sql(&create_table_sql(scheme, &table))
+            .execute_sql(&create_table_sql(scheme, table))
             .unwrap_or_else(|e| panic!("{scheme}: create table failed: {e}"));
         reader
-            .execute_sql(&insert_sql(&table))
+            .execute_sql(&insert_sql(table))
             .unwrap_or_else(|e| panic!("{scheme}: insert failed: {e}"));
     }
 
-    run_battery(&*reader, scheme, &table);
+    run_battery(&*reader, scheme, table);
 
     let _ = reader.execute_sql(&format!("DROP TABLE IF EXISTS {table}"));
 }
@@ -300,6 +310,11 @@ fn live_exasol() {
 #[test]
 fn live_redshift() {
     live_backend("redshift");
+}
+
+#[test]
+fn live_odbc() {
+    live_backend("odbc");
 }
 
 #[test]
@@ -362,5 +377,5 @@ fn live_datafusion() {
     .expect("test dataframe");
     reader.register(TABLE, df, true).expect("register table");
 
-    run_battery(&reader, "datafusion");
+    run_battery(&reader, "datafusion", TABLE);
 }

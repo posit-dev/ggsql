@@ -278,7 +278,8 @@ fn silverman_rule(
     let q25 = dialect.sql_percentile(value_column, 0.25, from, groups);
     let iqr = format!("({q75} - {q25}) / 1.34");
     let min_expr = dialect.sql_least(&[&stddev, &iqr]);
-    format!("{adjust} * {min_expr} * POW(COUNT(*), -0.2)")
+    // POWER, not POW: T-SQL has no POW function.
+    format!("{adjust} * {min_expr} * POWER(COUNT(*), -0.2)")
 }
 
 fn choose_kde_kernel(parameters: &Parameters, smooth: Option<String>) -> Result<String> {
@@ -315,7 +316,7 @@ fn choose_kde_kernel(parameters: &Parameters, smooth: Option<String>) -> Result<
         }
         // Biweight = K(u) = (15/16) * (1 - u²)² for |u| ≤ 1
         "biweight" | "quartic" => format!(
-            "CASE WHEN {u_abs} <= 1 THEN (15.0/16.0) * POW(1 - {u2}, 2) ELSE 0 END",
+            "CASE WHEN {u_abs} <= 1 THEN (15.0/16.0) * POWER(1 - {u2}, 2) ELSE 0 END",
             u_abs = u_abs,
             u2 = u2
         ),
@@ -586,11 +587,11 @@ fn compute_density(
             format!("grid.{q} AS {q}")
         })
         .collect();
-    let aggregation = format!(
-        "GROUP BY grid.x{grid_group_by}
-        ORDER BY grid.x{grid_group_by}",
-        grid_group_by = with_leading_comma(&grid_groups.join(", "))
-    );
+    let grid_group_by = with_leading_comma(&grid_groups.join(", "));
+    // Dialect-adjusted: T-SQL forbids ORDER BY inside derived tables unless
+    // TOP, OFFSET, or FOR XML is present (error 1033).
+    let order_by = dialect.sql_derived_order_by(&format!("grid.x{grid_group_by}"));
+    let aggregation = format!("GROUP BY grid.x{grid_group_by}\n        {order_by}");
 
     let groups = if group_by.is_empty() {
         String::new()

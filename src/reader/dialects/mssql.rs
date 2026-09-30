@@ -51,6 +51,13 @@ impl SqlDialect for MssqlDialect {
         "WITH"
     }
 
+    fn sql_derived_order_by(&self, ordering: &str) -> String {
+        // T-SQL rejects ORDER BY in derived tables, subqueries, and CTEs
+        // unless TOP, OFFSET, or FOR XML is present (error 1033); OFFSET 0
+        // ROWS legitimizes the clause without changing the ordering.
+        format!("ORDER BY {ordering} OFFSET 0 ROWS")
+    }
+
     fn sql_limit(&self, query: &str, n: usize) -> String {
         // T-SQL forbids CTEs inside a derived table ("Incorrect syntax near
         // the keyword 'WITH'"), so hoist any leading WITH clause out of the

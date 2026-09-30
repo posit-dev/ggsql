@@ -100,6 +100,17 @@ case "$backend" in
     wait_for redshift docker exec db pg_isready -U postgres
     uri="redshift://postgres:postgres@localhost:5432/ggsql"
     ;;
+  odbc)
+    # Generic-ODBC leg: the same PostgreSQL container as the postgres leg,
+    # but the URI's ?reader=odbc forces ggsql's ODBC fallback with psqlODBC
+    # (installed by the workflow step for this leg), exercising OdbcReader
+    # and the connection-string synthesis instead of the ADBC driver.
+    docker run -d --name db \
+      -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=ggsql \
+      -p 5432:5432 postgres:17
+    wait_for odbc docker exec db pg_isready -U postgres
+    uri="postgres://postgres:postgres@localhost:5432/ggsql?reader=odbc&Driver={PostgreSQL Unicode}"
+    ;;
   sqlite)
     # Embedded reader — no server, no container, no dbc driver.
     uri="sqlite://:memory:"

@@ -87,6 +87,17 @@ impl OdbcReader {
             }
         };
 
+        // Session-init statements for the dialect — see
+        // [`SqlDialect::session_init_sql`]. Same hard-error policy as the
+        // ADBC reader: the generated SQL is wrong for the backend when the
+        // init did not take effect, so continuing would fail later with a
+        // confusing message.
+        for sql in dialect.session_init_sql() {
+            connection.execute(&sql).map_err(|e| {
+                GgsqlError::ReaderError(format!("ODBC session init failed for '{sql}': {e}"))
+            })?;
+        }
+
         Ok(Self {
             connection,
             dialect,
