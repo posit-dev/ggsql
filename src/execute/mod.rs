@@ -1102,8 +1102,8 @@ pub fn prepare_data_with_reader(query: &str, reader: &dyn Reader) -> Result<Prep
     // `execute_query` is the COMPUTE surface for derived/dialect-generated SQL
     // over internal `__ggsql_*` tables. Base source reads (user setup/DML, the
     // global query) call `reader.execute_sql(...)` directly.
-    let execute_query = |sql: &str| reader.execute_sql_cached(sql);
     let dialect = reader.dialect();
+    let execute_query = |sql: &str| reader.execute_sql_cached(sql);
 
     // Parse once and create SourceTree
     let source_tree = parser::SourceTree::new(query)?;

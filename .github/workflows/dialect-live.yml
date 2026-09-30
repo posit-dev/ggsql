@@ -42,6 +42,13 @@ jobs:
           - { backend: mariadb, driver: mysql }
           - { backend: mssql, driver: mssql }
           - { backend: exasol, driver: exasol }
+          # Pseudo-leg: redshift driver is the postgresql driver; the start
+          # script runs a stock postgres container with a redshift:// URI.
+          - { backend: redshift, driver: postgresql }
+          # Embedded readers: no container, no ADBC driver (empty driver
+          # skips the dbc install step).
+          - { backend: sqlite, driver: "" }
+          - { backend: duckdb, driver: "" }
 
     steps:
       - name: Check out repository
@@ -81,6 +88,9 @@ jobs:
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Install dbc and the ${{ matrix.backend }} ADBC driver
+        # Embedded backends (sqlite, duckdb) use ggsql's built-in readers
+        # and need no ADBC driver at all.
+        if: ${{ matrix.driver }}
         run: |
           curl -LsSf https://dbc.columnar.tech/install.sh | sh
           # dbc install takes exactly one DRIVER per invocation.

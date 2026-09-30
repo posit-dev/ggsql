@@ -11,6 +11,19 @@
 //! - `GGSQL_TEST_URI_MARIADB`    e.g. `mariadb://root:x@localhost:3306/ggsql`
 //! - `GGSQL_TEST_URI_MSSQL`      e.g. `mssql://sa:x@localhost:1433/master?TrustServerCertificate=true`
 //! - `GGSQL_TEST_URI_EXASOL`     e.g. `exasol://sys:exasol@localhost:8563/?tls=true&validateservercertificate=0`
+//! - `GGSQL_TEST_URI_SQLITE`     e.g. `sqlite://:memory:` (embedded reader, no server)
+//! - `GGSQL_TEST_URI_DUCKDB`     e.g. `duckdb://memory` (embedded reader, no server)
+//! - `GGSQL_TEST_URI_SNOWFLAKE`  e.g. `snowflake://user:pass@account/db/schema?warehouse=x`
+//! - `GGSQL_TEST_URI_BIGQUERY`   e.g. `bigquery://project/dataset`
+//! - `GGSQL_TEST_URI_DATABRICKS` e.g. `databricks://token:x@host/sql/1.0/warehouses/id?catalog=x&schema=y`
+//!
+//! The snowflake/bigquery/databricks cases are Tier 3: they need real cloud
+//! credentials and run only in the nightly .github/workflows/dialect-live-cloud.yml
+//! workflow, whose repository secrets carry the URIs.
+//! - `GGSQL_TEST_URI_REDSHIFT`   e.g. `redshift://u:p@localhost:5439/db` (CI runs it
+//!   against a PostgreSQL container: the Foundry "redshift" driver is the
+//!   PostgreSQL driver, so this exercises RedshiftDialect end-to-end over a
+//!   wire-compatible server)
 //!
 //! The DataFusion case runs in-process via the `adbc_datafusion` dev-driver
 //! and needs no setup, so one non-DuckDB engine always runs in CI.
@@ -48,6 +61,18 @@ fn create_table_sql(scheme: &str) -> String {
         "exasol" => {
             format!("CREATE TABLE {TABLE} (id INT, val DOUBLE PRECISION, grp VARCHAR(16))")
         }
+        // Pseudo-leg: CI points this at a PostgreSQL container (see header).
+        "redshift" => {
+            format!("CREATE TABLE {TABLE} (id INT, val DOUBLE PRECISION, grp VARCHAR(16))")
+        }
+        "sqlite" => format!("CREATE TABLE {TABLE} (id INTEGER, val REAL, grp TEXT)"),
+        "duckdb" => format!("CREATE TABLE {TABLE} (id INTEGER, val DOUBLE, grp VARCHAR)"),
+        // Snowflake FLOAT is 64-bit.
+        "snowflake" => format!("CREATE TABLE {TABLE} (id INT, val FLOAT, grp VARCHAR(16))"),
+        // BigQuery resolves the unqualified name against the dataset in the
+        // connection URI.
+        "bigquery" => format!("CREATE TABLE {TABLE} (id INT64, val FLOAT64, grp STRING)"),
+        "databricks" => format!("CREATE TABLE {TABLE} (id INT, val DOUBLE, grp STRING)"),
         other => panic!("no DDL template for scheme '{other}'"),
     }
 }
@@ -166,6 +191,36 @@ fn live_mssql() {
 #[test]
 fn live_exasol() {
     live_backend("exasol");
+}
+
+#[test]
+fn live_redshift() {
+    live_backend("redshift");
+}
+
+#[test]
+fn live_sqlite() {
+    live_backend("sqlite");
+}
+
+#[test]
+fn live_duckdb() {
+    live_backend("duckdb");
+}
+
+#[test]
+fn live_snowflake() {
+    live_backend("snowflake");
+}
+
+#[test]
+fn live_bigquery() {
+    live_backend("bigquery");
+}
+
+#[test]
+fn live_databricks() {
+    live_backend("databricks");
 }
 
 /// DataFusion runs in-process through its ADBC driver and would need no

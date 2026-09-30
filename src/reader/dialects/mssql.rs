@@ -49,11 +49,12 @@ impl SqlDialect for MssqlDialect {
         // T-SQL forbids CTEs inside a derived table ("Incorrect syntax near
         // the keyword 'WITH'"), so hoist any leading WITH clause out of the
         // parenthesised wrapper.
+        let __ggsql_lim__ = self.quote_ident("__ggsql_lim__");
         match split_cte_prefix(query) {
             Some((cte, body)) => {
-                format!("{cte} SELECT TOP {n} * FROM ({body}) AS \"__ggsql_lim__\"")
+                format!("{cte} SELECT TOP {n} * FROM ({body}) AS {__ggsql_lim__}")
             }
-            None => format!("SELECT TOP {n} * FROM ({query}) AS \"__ggsql_lim__\""),
+            None => format!("SELECT TOP {n} * FROM ({query}) AS {__ggsql_lim__}"),
         }
     }
 
@@ -100,13 +101,12 @@ impl SqlDialect for MssqlDialect {
         // statements, which `#name` would break — so we use regular tables
         // and rely on DROP for cleanup.
         let qname = self.quote_ident(name);
-        let body = wrap_with_column_aliases(body_sql, column_aliases);
+        let body =
+            wrap_with_column_aliases(&|c: &str| self.quote_ident(c), body_sql, column_aliases);
+        let __ggsql_src__ = self.quote_ident("__ggsql_src__");
         vec![
             format!("DROP TABLE IF EXISTS {}", qname),
-            format!(
-                "SELECT * INTO {} FROM ({}) AS \"__ggsql_src__\"",
-                qname, body
-            ),
+            format!("SELECT * INTO {} FROM ({}) AS {__ggsql_src__}", qname, body),
         ]
     }
 

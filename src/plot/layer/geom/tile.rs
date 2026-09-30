@@ -311,10 +311,15 @@ fn expand_rect_to_polygon(
     // Step 2: Expand to 4 corners via CROSS JOIN with UNION ALL literal table.
     // More portable than VALUES(...) whose aliasing syntax varies across backends.
     // Corner order: bottom-left, bottom-right, top-right, top-left (CCW)
-    let corners_table = "(SELECT 1 AS \"__ggsql_corner__\" \
+    let __ggsql_corner__ = dialect.quote_ident("__ggsql_corner__");
+    let __ggsql_rect__ = dialect.quote_ident("__ggsql_rect__");
+    let __ggsql_corners__ = dialect.quote_ident("__ggsql_corners__");
+    let corners_table = format!(
+        "(SELECT 1 AS {__ggsql_corner__} \
          UNION ALL SELECT 2 \
          UNION ALL SELECT 3 \
-         UNION ALL SELECT 4)";
+         UNION ALL SELECT 4)"
+    );
 
     let pos1min_q = dialect.quote_ident(&pos1min_col);
     let pos1max_q = dialect.quote_ident(&pos1max_col);
@@ -325,21 +330,21 @@ fn expand_rect_to_polygon(
 
     let mut select_parts: Vec<String> = passthrough;
     select_parts.push(densify_id_q.to_string());
-    select_parts.push("\"__ggsql_corner__\"".to_string());
+    select_parts.push(__ggsql_corner__.clone());
     select_parts.push(format!(
-        "CASE \"__ggsql_corner__\" \
+        "CASE {__ggsql_corner__} \
          WHEN 1 THEN {pos1min_q} WHEN 2 THEN {pos1max_q} \
          WHEN 3 THEN {pos1max_q} WHEN 4 THEN {pos1min_q} END AS {pos1_q}"
     ));
     select_parts.push(format!(
-        "CASE \"__ggsql_corner__\" \
+        "CASE {__ggsql_corner__} \
          WHEN 1 THEN {pos2min_q} WHEN 2 THEN {pos2min_q} \
          WHEN 3 THEN {pos2max_q} WHEN 4 THEN {pos2max_q} END AS {pos2_q}"
     ));
 
     let sql = format!(
-        "SELECT {} FROM ({numbered}) \"__ggsql_rect__\" \
-         CROSS JOIN {corners_table} \"__ggsql_corners__\"",
+        "SELECT {} FROM ({numbered}) {__ggsql_rect__} \
+         CROSS JOIN {corners_table} {__ggsql_corners__}",
         select_parts.join(", ")
     );
 
@@ -377,8 +382,9 @@ fn rename_agg_stats_to_aes(
             )
         })
         .collect();
+    let __ggsql_post_agg__ = dialect.quote_ident("__ggsql_post_agg__");
     format!(
-        "SELECT *, {} FROM ({}) AS \"__ggsql_post_agg__\"",
+        "SELECT *, {} FROM ({}) AS {__ggsql_post_agg__}",
         aliases.join(", "),
         agg_query
     )
@@ -409,7 +415,7 @@ fn process_direction(
 
     // Get unquoted center name for schema lookup
     let center_unquoted = get_column_name(aesthetics, center_aes);
-    let center = center_unquoted.as_deref().map(naming::quote_ident);
+    let center = center_unquoted.as_deref().map(|c| dialect.quote_ident(c));
     let min = get_quoted_column_name(aesthetics, min_aes, dialect);
     let max = get_quoted_column_name(aesthetics, max_aes, dialect);
     // SETTING fallback for size is a literal value, no quoting needed.
@@ -519,8 +525,9 @@ fn stat_tile(
     let select_list = select_parts.join(", ");
 
     // Build transformed query
+    let __ggsql_tile_stat__ = dialect.quote_ident("__ggsql_tile_stat__");
     let transformed_query = format!(
-        "SELECT {} FROM ({}) AS \"__ggsql_tile_stat__\"",
+        "SELECT {} FROM ({}) AS {__ggsql_tile_stat__}",
         select_list, query
     );
 

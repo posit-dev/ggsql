@@ -473,7 +473,11 @@ impl Reader for CachingReader {
     ) -> Result<()> {
         // Read the body via the source surface, then register the result
         // into the cache.
-        let body = super::wrap_with_column_aliases(body_sql, column_aliases);
+        let body = super::wrap_with_column_aliases(
+            &|c: &str| self.cache.dialect().quote_ident(c),
+            body_sql,
+            column_aliases,
+        );
         let df = self.execute_sql(&body)?;
         self.register(name, df, true)
     }

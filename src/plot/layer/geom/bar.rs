@@ -262,10 +262,12 @@ fn stat_bar_count(
             )
         };
 
+        let __stat_src__ = dialect.quote_ident("__stat_src__");
+        let __grouped__ = dialect.quote_ident("__grouped__");
         let query_str = if group_by.is_empty() {
             // No grouping at all - single aggregate
             format!(
-                "WITH \"__stat_src__\" AS ({query}), \"__grouped__\" AS (SELECT {grouped} FROM \"__stat_src__\") SELECT {final} FROM \"__grouped__\"",
+                "WITH {__stat_src__} AS ({query}), {__grouped__} AS (SELECT {grouped} FROM {__stat_src__}) SELECT {final} FROM {__grouped__}",
                 query = query,
                 grouped = grouped_select,
                 final = final_select
@@ -274,7 +276,7 @@ fn stat_bar_count(
             // Group by partition/facet variables only
             let group_cols = group_by.join(", ");
             format!(
-                "WITH \"__stat_src__\" AS ({query}), \"__grouped__\" AS (SELECT {grouped} FROM \"__stat_src__\" GROUP BY {group}) SELECT {final} FROM \"__grouped__\"",
+                "WITH {__stat_src__} AS ({query}), {__grouped__} AS (SELECT {grouped} FROM {__stat_src__} GROUP BY {group}) SELECT {final} FROM {__grouped__}",
                 query = query,
                 grouped = grouped_select,
                 group = group_cols,
@@ -332,8 +334,10 @@ fn stat_bar_count(
             )
         };
 
+        let __stat_src__ = dialect.quote_ident("__stat_src__");
+        let __grouped__ = dialect.quote_ident("__grouped__");
         let query_str = format!(
-            "WITH \"__stat_src__\" AS ({query}), \"__grouped__\" AS (SELECT {grouped} FROM \"__stat_src__\" GROUP BY {group}) SELECT {final} FROM \"__grouped__\"",
+            "WITH {__stat_src__} AS ({query}), {__grouped__} AS (SELECT {grouped} FROM {__stat_src__} GROUP BY {group}) SELECT {final} FROM {__grouped__}",
             query = query,
             grouped = grouped_select,
             group = group_cols,

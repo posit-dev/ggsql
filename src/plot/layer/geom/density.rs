@@ -242,6 +242,7 @@ fn density_sql_bandwidth(
     };
 
     let quoted_value = dialect.quote_ident(value);
+    let __ggsql_qt__ = dialect.quote_ident("__ggsql_qt__");
     format!(
         "WITH RECURSIVE
           bandwidth AS (
@@ -249,7 +250,7 @@ fn density_sql_bandwidth(
               {bw_expr} AS bw,{groups_select}
               MIN({value}) AS x_min,
               MAX({value}) AS x_max
-            FROM ({from}) AS \"__ggsql_qt__\"
+            FROM ({from}) AS {__ggsql_qt__}
             WHERE {value} IS NOT NULL{group_by}
           )",
         bw_expr = bw_expr,
@@ -423,13 +424,14 @@ fn build_grid_cte(
     );
 
     // Build base grid CTE
+    let __ggsql_seq__ = dialect.quote_ident("__ggsql_seq__");
     let base_grid_cte = if !has_groups {
         // Simple grid without groups
         format!(
             "grid AS (
           SELECT {x_formula} AS x
           FROM global_range AS global
-          CROSS JOIN \"__ggsql_seq__\" AS seq
+          CROSS JOIN {__ggsql_seq__} AS seq
         )",
             x_formula = x_formula
         )
@@ -444,7 +446,7 @@ fn build_grid_cte(
             {groups},
             {x_formula} AS x
           FROM global_range AS global
-          CROSS JOIN \"__ggsql_seq__\" AS seq
+          CROSS JOIN {__ggsql_seq__} AS seq
           CROSS JOIN (SELECT DISTINCT {groups} FROM bandwidth) AS groups
         )",
             cte_name = cte_name,
@@ -592,6 +594,7 @@ fn compute_density(
     let x_column = dialect.quote_ident(&naming::stat_column(value_aesthetic));
     let intensity_column = dialect.quote_ident(&naming::stat_column("intensity"));
     let density_column = dialect.quote_ident(&naming::stat_column("density"));
+    let __norm = dialect.quote_ident("__norm");
 
     // Generate the density computation query
     format!(
@@ -602,13 +605,13 @@ fn compute_density(
           {x_column},
           {groups}
           {intensity_column},
-          {intensity_column} / \"__norm\" AS {density_column}
+          {intensity_column} / {__norm} AS {density_column}
         FROM (
           SELECT
             grid.x AS {x_column},
             {grid_groups_select}
             {kernel} AS {intensity_column},
-            SUM(data.weight) AS \"__norm\"
+            SUM(data.weight) AS {__norm}
           {join_logic}
           {aggregation}
         )",

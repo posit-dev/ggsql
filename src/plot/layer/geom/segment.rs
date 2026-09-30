@@ -122,7 +122,8 @@ fn expand_segment_to_vertices(
          AS {densify_id_q} FROM ({query})"
     );
 
-    let vertices_table = "(SELECT 0 AS \"__ggsql_vertex__\" UNION ALL SELECT 1)";
+    let __ggsql_vertex__ = dialect.quote_ident("__ggsql_vertex__");
+    let vertices_table = format!("(SELECT 0 AS {__ggsql_vertex__} UNION ALL SELECT 1)");
 
     let pos1_q = dialect.quote_ident(&pos1_col);
     let pos2_q = dialect.quote_ident(&pos2_col);
@@ -131,17 +132,19 @@ fn expand_segment_to_vertices(
 
     let mut select_parts: Vec<String> = passthrough;
     select_parts.push(densify_id_q.to_string());
-    select_parts.push("\"__ggsql_vertex__\"".to_string());
+    select_parts.push(__ggsql_vertex__.to_string());
     select_parts.push(format!(
-        "CASE \"__ggsql_vertex__\" WHEN 0 THEN {pos1_q} WHEN 1 THEN {pos1end_q} END AS {pos1_q}"
+        "CASE {__ggsql_vertex__} WHEN 0 THEN {pos1_q} WHEN 1 THEN {pos1end_q} END AS {pos1_q}"
     ));
     select_parts.push(format!(
-        "CASE \"__ggsql_vertex__\" WHEN 0 THEN {pos2_q} WHEN 1 THEN {pos2end_q} END AS {pos2_q}"
+        "CASE {__ggsql_vertex__} WHEN 0 THEN {pos2_q} WHEN 1 THEN {pos2end_q} END AS {pos2_q}"
     ));
 
+    let __ggsql_seg__ = dialect.quote_ident("__ggsql_seg__");
+    let __ggsql_vertices__ = dialect.quote_ident("__ggsql_vertices__");
     let sql = format!(
-        "SELECT {} FROM ({numbered}) \"__ggsql_seg__\" \
-         CROSS JOIN {vertices_table} \"__ggsql_vertices__\"",
+        "SELECT {} FROM ({numbered}) {__ggsql_seg__} \
+         CROSS JOIN {vertices_table} {__ggsql_vertices__}",
         select_parts.join(", ")
     );
 

@@ -380,8 +380,9 @@ pub fn apply_pre_stat_transform(
         })
         .collect();
 
+    let __ggsql_pre__ = dialect.quote_ident("__ggsql_pre__");
     format!(
-        "SELECT {} FROM ({}) AS \"__ggsql_pre__\"",
+        "SELECT {} FROM ({}) AS {__ggsql_pre__}",
         select_exprs.join(", "),
         query
     )
@@ -431,16 +432,17 @@ pub fn build_layer_base_query(
     };
 
     // Build query with optional WHERE clause
+    let __ggsql_src__ = dialect.quote_ident("__ggsql_src__");
     if let Some(ref f) = layer.filter {
         format!(
-            "SELECT {} FROM ({}) AS \"__ggsql_src__\" WHERE {}",
+            "SELECT {} FROM ({}) AS {__ggsql_src__} WHERE {}",
             select_clause,
             source_query,
             f.as_str()
         )
     } else {
         format!(
-            "SELECT {} FROM ({}) AS \"__ggsql_src__\"",
+            "SELECT {} FROM ({}) AS {__ggsql_src__}",
             select_clause, source_query
         )
     }
@@ -705,8 +707,9 @@ where
             if stat_rename_exprs.is_empty() {
                 transformed_query
             } else {
+                let __ggsql_stat__ = dialect.quote_ident("__ggsql_stat__");
                 format!(
-                    "SELECT *, {} FROM ({}) AS \"__ggsql_stat__\"",
+                    "SELECT *, {} FROM ({}) AS {__ggsql_stat__}",
                     stat_rename_exprs.join(", "),
                     transformed_query
                 )

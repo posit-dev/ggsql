@@ -29,8 +29,9 @@ impl SqlDialect for DataFusionDialect {
 
     fn sql_generate_series(&self, n: usize) -> String {
         // DataFusion's generate_series is a table function.
+        let __ggsql_seq__ = self.quote_ident("__ggsql_seq__");
         format!(
-            "\"__ggsql_seq__\"(n) AS (\
+            "{__ggsql_seq__}(n) AS (\
                SELECT CAST(generate_series AS DOUBLE) AS n \
                FROM generate_series(0, {n} - 1)\
              )"

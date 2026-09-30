@@ -15,6 +15,12 @@ impl SqlDialect for DatabricksDialect {
         format!("`{}`", name.replace('`', "``"))
     }
 
+    // Note: Spark treats double quotes as string literals, and SQL warehouses
+    // reject `SET spark.sql.ansi.doubleQuotedIdentifiers` ("Configuration ...
+    // is not available"), so the MySQL-style session-init fix was never
+    // available here — ggsql-internal identifiers reach this dialect through
+    // `quote_ident` at every emission site instead.
+
     fn number_type_name(&self) -> Option<&str> {
         Some("DOUBLE")
     }
@@ -43,15 +49,39 @@ impl SqlDialect for DatabricksDialect {
     }
 
     fn sql_generate_series(&self, n: usize) -> String {
+        // Spark rejects a generator nested inside another expression
+        // ("generator is not supported: nested in expressions"), so the
+        // explode must stand alone in an inner SELECT and the CAST moves
+        // outside it.
         format!(
             "`__ggsql_seq__`(n) AS (\
-               SELECT CAST(explode(sequence(0, {n} - 1)) AS DOUBLE) AS n\
+               SELECT CAST(n AS DOUBLE) AS n FROM (\
+                 SELECT explode(sequence(0, {n} - 1)) AS n\
+               )\
              )"
         )
     }
 
     fn sql_quantile_inline(&self, column: &str, fraction: f64) -> Option<String> {
         Some(format!("percentile_approx({column}, {fraction})"))
+    }
+
+    fn sql_percentile(
+        &self,
+        column: &str,
+        fraction: f64,
+        _from: &str,
+        _groups: &[String],
+    ) -> String {
+        // Spark forbids correlated scalar subqueries in the SELECT list of a
+        // GROUP BY query ("is neither present in GROUP BY, nor in an
+        // aggregate function"), so the ANSI correlated-subquery fallback
+        // fails outright. Return a plain aggregate instead: it computes the
+        // percentile within the caller's own grouping context, which is the
+        // same semantics the correlated form encodes (same trick as
+        // ClickHouse's quantileExactInclusive override). Approximate, which
+        // is acceptable for boxplot/density statistics.
+        format!("percentile_approx({column}, {fraction})")
     }
 
     fn sql_date_literal(&self, days_since_epoch: i32) -> String {
@@ -71,7 +101,8 @@ impl SqlDialect for DatabricksDialect {
         body_sql: &str,
     ) -> Vec<String> {
         let qname = self.quote_ident(name);
-        let body = wrap_with_column_aliases(body_sql, column_aliases);
+        let body =
+            wrap_with_column_aliases(&|c: &str| self.quote_ident(c), body_sql, column_aliases);
         vec![format!("CREATE OR REPLACE TEMP VIEW {} AS {}", qname, body)]
     }
 }

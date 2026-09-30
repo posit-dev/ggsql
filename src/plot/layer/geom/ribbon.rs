@@ -180,11 +180,15 @@ fn expand_ribbon_to_polygon(
     };
 
     let densify_id_q = dialect.quote_ident(naming::DENSIFY_ID_COLUMN);
+    let __ggsql_row_idx__ = dialect.quote_ident("__ggsql_row_idx__");
+    let __ggsql_n_rows__ = dialect.quote_ident("__ggsql_n_rows__");
+    let __ggsql_vertex__ = dialect.quote_ident("__ggsql_vertex__");
+    let __ggsql_r__ = dialect.quote_ident("__ggsql_r__");
 
     let numbered = format!(
         "SELECT *, \
-         ROW_NUMBER() OVER ({partition_clause}ORDER BY {pos1_q}) AS \"__ggsql_row_idx__\", \
-         COUNT(*) OVER ({partition_clause}) AS \"__ggsql_n_rows__\", \
+         ROW_NUMBER() OVER ({partition_clause}ORDER BY {pos1_q}) AS {__ggsql_row_idx__}, \
+         COUNT(*) OVER ({partition_clause}) AS {__ggsql_n_rows__}, \
          {ribbon_id_expr} AS {densify_id_q} \
          FROM ({query})"
     );
@@ -195,24 +199,23 @@ fn expand_ribbon_to_polygon(
 
     // Upper edge: vertex index = row_idx (1..n), pos2 = pos2max
     let mut upper_parts = common_select.clone();
-    upper_parts.push("\"__ggsql_row_idx__\" AS \"__ggsql_vertex__\"".to_string());
+    upper_parts.push(format!("{__ggsql_row_idx__} AS {__ggsql_vertex__}"));
     upper_parts.push(pos1_q.to_string());
     upper_parts.push(format!("{pos2max_q} AS {pos2_q}"));
 
     // Lower edge: vertex index = 2*n - row_idx + 1 (n+1..2n), pos2 = pos2min
     let mut lower_parts = common_select;
-    lower_parts.push(
-        "(2 * \"__ggsql_n_rows__\" - \"__ggsql_row_idx__\" + 1) AS \"__ggsql_vertex__\""
-            .to_string(),
-    );
+    lower_parts.push(format!(
+        "(2 * {__ggsql_n_rows__} - {__ggsql_row_idx__} + 1) AS {__ggsql_vertex__}"
+    ));
     lower_parts.push(pos1_q.to_string());
     lower_parts.push(format!("{pos2min_q} AS {pos2_q}"));
 
     let sql = format!(
-        "WITH \"__ggsql_r__\" AS ({numbered}) \
-         SELECT {} FROM \"__ggsql_r__\" \
+        "WITH {__ggsql_r__} AS ({numbered}) \
+         SELECT {} FROM {__ggsql_r__} \
          UNION ALL \
-         SELECT {} FROM \"__ggsql_r__\"",
+         SELECT {} FROM {__ggsql_r__}",
         upper_parts.join(", "),
         lower_parts.join(", "),
     );

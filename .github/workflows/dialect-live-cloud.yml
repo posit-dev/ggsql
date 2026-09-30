@@ -1,0 +1,91 @@
+name: Nightly Cloud Dialect Tests
+
+# Tier 3 dialect conformance: the same battery as dialect-live.yml (see
+# src/tests/dialect_live.rs) against proprietary cloud backends that need
+# credentials — snowflake, bigquery, databricks. Runs nightly and on
+# demand, never on PRs: cost and flake stay off the PR path.
+#
+# Each leg's connection URI comes from a repository secret named exactly
+# like the harness env var (GGSQL_TEST_URI_<BACKEND>); when the secret is
+# unset (forks, fresh checkouts before secrets are configured) the test
+# prints a skip note and passes.
+#
+# Expected secret values:
+#   GGSQL_TEST_URI_SNOWFLAKE   snowflake://user:pass@account/db/schema?warehouse=WH&role=R
+#   GGSQL_TEST_URI_BIGQUERY    bigquery://project-id/dataset   (GCP auth via
+#                              GOOGLE_APPLICATION_CREDENTIALS or workload
+#                              identity — see the Foundry bigquery driver docs)
+#   GGSQL_TEST_URI_DATABRICKS  databricks://token:dapi...@host/sql/1.0/warehouses/<id>?catalog=x&schema=y
+#
+# The secrets must be configured under Settings → Secrets and variables →
+# Actions before the legs do anything but skip.
+
+on:
+  schedule:
+    - cron: "0 3 * * *" # 03:00 UTC daily
+  workflow_dispatch:
+
+jobs:
+  live:
+    runs-on: ubuntu-latest
+    strategy:
+      # One backend's failure must not cancel the other legs.
+      fail-fast: false
+      matrix:
+        include:
+          - { backend: snowflake, driver: snowflake }
+          - { backend: bigquery, driver: bigquery }
+          - { backend: databricks, driver: databricks }
+
+    env:
+      GGSQL_TEST_URI_SNOWFLAKE: ${{ secrets.GGSQL_TEST_URI_SNOWFLAKE }}
+      GGSQL_TEST_URI_BIGQUERY: ${{ secrets.GGSQL_TEST_URI_BIGQUERY }}
+      GGSQL_TEST_URI_DATABRICKS: ${{ secrets.GGSQL_TEST_URI_DATABRICKS }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install tree-sitter-cli
+        # parser.c is gitignored and generated from grammar.js by the
+        # tree-sitter-ggsql build script on every fresh checkout.
+        run: npm install -g tree-sitter-cli
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Caching
+        uses: Swatinem/rust-cache@v2
+        with:
+          # Same shared-key as build.yaml and dialect-live.yml: the prefix
+          # fallback restores their target/ and this job only rebuilds the
+          # feature deltas.
+          shared-key: ${{ runner.os }}-build
+          cache-on-failure: true
+
+      - name: Install dbc and the ${{ matrix.backend }} ADBC driver
+        run: |
+          curl -LsSf https://dbc.columnar.tech/install.sh | sh
+          # dbc install takes exactly one DRIVER per invocation.
+          "$HOME/.local/bin/dbc" install ${{ matrix.driver }}
+
+      - name: Check credentials
+        # Warn (rather than fail) when the leg's secret is not configured;
+        # the test itself will skip.
+        run: |
+          var="GGSQL_TEST_URI_$(echo '${{ matrix.backend }}' | tr '[:lower:]' '[:upper:]')"
+          if [ -z "${!var:-}" ]; then
+            echo "::warning title=Skipping ${matrix.backend}::$var secret is not configured"
+          fi
+
+      - name: Run the ${{ matrix.backend }} live test
+        # Same feature set as dialect-live.yml so the restored crate
+        # fingerprints hit; see the long comment there.
+        run: >-
+          cargo test -p ggsql --features "adbc sqlite" --test dialect_live
+          live_${{ matrix.backend }} -- --exact --nocapture

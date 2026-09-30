@@ -34,8 +34,9 @@ impl SqlDialect for TrinoDialect {
     }
 
     fn sql_generate_series(&self, n: usize) -> String {
+        let __ggsql_seq__ = self.quote_ident("__ggsql_seq__");
         format!(
-            "\"__ggsql_seq__\"(n) AS (\
+            "{__ggsql_seq__}(n) AS (\
                SELECT CAST(t AS DOUBLE) AS n \
                FROM UNNEST(SEQUENCE(0, {n} - 1)) AS u(t)\
              )"

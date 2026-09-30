@@ -199,16 +199,17 @@ pub trait SqlDialect {
         from: &str,
         all_columns: &[String],
     ) -> String {
+        let __ggsql_sr__ = self.quote_ident("__ggsql_sr__");
         if expr == col {
             return format!("SELECT * FROM ({from})");
         }
         if all_columns.is_empty() {
-            return format!("SELECT {expr} AS {col}, * FROM ({from}) \"__ggsql_sr__\"");
+            return format!("SELECT {expr} AS {col}, * FROM ({from}) {__ggsql_sr__}");
         }
         let select_list: Vec<String> = all_columns
             .iter()
             .map(|c| {
-                let qc = naming::quote_ident(c);
+                let qc = self.quote_ident(c);
                 if qc == col {
                     format!("{expr} AS {col}")
                 } else {
@@ -217,7 +218,7 @@ pub trait SqlDialect {
             })
             .collect();
         format!(
-            "SELECT {} FROM ({from}) \"__ggsql_sr__\"",
+            "SELECT {} FROM ({from}) {__ggsql_sr__}",
             select_list.join(", ")
         )
     }
@@ -274,13 +275,15 @@ pub trait SqlDialect {
         let base_size = (n as f64).cbrt().ceil() as usize;
         let base_sq = base_size * base_size;
         let base_max = base_size - 1;
+        let __ggsql_base__ = self.quote_ident("__ggsql_base__");
+        let __ggsql_seq__ = self.quote_ident("__ggsql_seq__");
         format!(
-            "\"__ggsql_base__\"(n) AS (\
-               SELECT 0 UNION ALL SELECT n + 1 FROM \"__ggsql_base__\" WHERE n < {base_max}\
+            "{__ggsql_base__}(n) AS (\
+               SELECT 0 UNION ALL SELECT n + 1 FROM {__ggsql_base__} WHERE n < {base_max}\
              ),\
-             \"__ggsql_seq__\"(n) AS (\
+             {__ggsql_seq__}(n) AS (\
                SELECT CAST(a.n * {base_sq} + b.n * {base_size} + c.n AS REAL) AS n \
-               FROM \"__ggsql_base__\" a, \"__ggsql_base__\" b, \"__ggsql_base__\" c \
+               FROM {__ggsql_base__} a, {__ggsql_base__} b, {__ggsql_base__} c \
                WHERE a.n * {base_sq} + b.n * {base_size} + c.n < {n}\
              )"
         )
@@ -318,13 +321,15 @@ pub trait SqlDialect {
     /// of a column within an optional grouping context.
     fn sql_percentile(&self, column: &str, fraction: f64, from: &str, groups: &[String]) -> String {
         // Uses NTILE(4) to divide data into quartiles, then interpolates between boundaries.
+        let __ggsql_pct__ = self.quote_ident("__ggsql_pct__");
+        let __ggsql_qt__ = self.quote_ident("__ggsql_qt__");
         let group_filter = groups
             .iter()
             .map(|g| {
-                let q = naming::quote_ident(g);
+                let q = self.quote_ident(g);
                 self.sql_null_safe_eq(
-                    &format!("{pct}.{q}", pct = naming::quote_ident("__ggsql_pct__")),
-                    &format!("{qt}.{q}", qt = naming::quote_ident("__ggsql_qt__")),
+                    &format!("{__ggsql_pct__}.{q}"),
+                    &format!("{__ggsql_qt__}.{q}"),
                 )
             })
             .map(|cond| format!("AND {cond}"))
@@ -333,7 +338,7 @@ pub trait SqlDialect {
 
         let lo_tile = (fraction * 4.0).ceil() as usize;
         let hi_tile = lo_tile + 1;
-        let quoted_column = naming::quote_ident(column);
+        let quoted_column = self.quote_ident(column);
 
         format!(
             "(SELECT (\
@@ -343,7 +348,7 @@ pub trait SqlDialect {
             FROM (\
               SELECT {column} AS __val, \
                      NTILE(4) OVER (ORDER BY {column}) AS __tile \
-              FROM ({from}) AS \"__ggsql_pct__\" \
+              FROM ({from}) AS {__ggsql_pct__} \
               WHERE {column} IS NOT NULL {group_filter}\
             ))",
             column = quoted_column
@@ -372,7 +377,7 @@ pub trait SqlDialect {
     /// than the percentile/iqr family, which goes through [`sql_quantile_inline`]
     /// / [`sql_percentile`] instead.
     fn sql_aggregate(&self, name: &str, qcol: &str) -> Option<String> {
-        default_sql_aggregate(name, qcol)
+        default_sql_aggregate(&|c: &str| self.quote_ident(c), name, qcol)
     }
 
     /// SQL literal for a date value (days since Unix epoch).
@@ -463,8 +468,9 @@ pub trait SqlDialect {
         column_aliases: &[String],
         body_sql: &str,
     ) -> Vec<String> {
-        let qname = naming::quote_ident(name);
-        let body = wrap_with_column_aliases(body_sql, column_aliases);
+        let qname = self.quote_ident(name);
+        let body =
+            wrap_with_column_aliases(&|c: &str| self.quote_ident(c), body_sql, column_aliases);
         vec![
             format!("DROP TABLE IF EXISTS {}", qname),
             format!("CREATE TEMP TABLE {} AS {}", qname, body),
@@ -475,17 +481,22 @@ pub trait SqlDialect {
 /// Wrap a body SQL in a CTE with a column alias list when aliases are present.
 /// This is a portable way to rename the body's output columns without relying
 /// on `CREATE TABLE t(a, b) AS ...` (which SQLite does not support).
-pub(crate) fn wrap_with_column_aliases(body_sql: &str, column_aliases: &[String]) -> String {
+pub(crate) fn wrap_with_column_aliases(
+    quote: &dyn Fn(&str) -> String,
+    body_sql: &str,
+    column_aliases: &[String],
+) -> String {
     if column_aliases.is_empty() {
         return body_sql.to_string();
     }
     let cols = column_aliases
         .iter()
-        .map(|c| naming::quote_ident(c))
+        .map(|c| quote(c))
         .collect::<Vec<_>>()
         .join(", ");
+    let __ggsql_aliased__ = quote("__ggsql_aliased__");
     format!(
-        "WITH __ggsql_aliased__({}) AS ({}) SELECT * FROM __ggsql_aliased__",
+        "WITH {__ggsql_aliased__}({}) AS ({}) SELECT * FROM {__ggsql_aliased__}",
         cols, body_sql
     )
 }
@@ -497,7 +508,13 @@ pub(crate) fn wrap_with_column_aliases(body_sql: &str, column_aliases: &[String]
 /// which depends on the row-number columns the stat layer injects when any
 /// aggregate references them. Backends with a cheaper native equivalent
 /// (e.g. DuckDB's `FIRST`/`LAST`) override [`SqlDialect::sql_aggregate`].
-pub fn default_sql_aggregate(name: &str, qcol: &str) -> Option<String> {
+pub fn default_sql_aggregate(
+    quote: &dyn Fn(&str) -> String,
+    name: &str,
+    qcol: &str,
+) -> Option<String> {
+    let __ggsql_rn__ = quote("__ggsql_rn__");
+    let __ggsql_max_rn__ = quote("__ggsql_max_rn__");
     let s = match name {
         "count" => format!("COUNT({})", qcol),
         "sum" => format!("SUM({})", qcol),
@@ -513,14 +530,14 @@ pub fn default_sql_aggregate(name: &str, qcol: &str) -> Option<String> {
         "sdev" => format!("STDDEV_POP({})", qcol),
         "se" => format!("(STDDEV_POP({c}) / SQRT(COUNT({c})))", c = qcol),
         "var" => format!("VAR_POP({})", qcol),
-        "first" => format!("MAX(CASE WHEN \"__ggsql_rn__\" = 1 THEN {} END)", qcol),
+        "first" => format!("MAX(CASE WHEN {__ggsql_rn__} = 1 THEN {} END)", qcol),
         "last" => format!(
-            "MAX(CASE WHEN \"__ggsql_rn__\" = \"__ggsql_max_rn__\" THEN {} END)",
+            "MAX(CASE WHEN {__ggsql_rn__} = {__ggsql_max_rn__} THEN {} END)",
             qcol
         ),
         "diff" => format!(
-            "(MAX(CASE WHEN \"__ggsql_rn__\" = \"__ggsql_max_rn__\" THEN {c} END) \
-             - MAX(CASE WHEN \"__ggsql_rn__\" = 1 THEN {c} END))",
+            "(MAX(CASE WHEN {__ggsql_rn__} = {__ggsql_max_rn__} THEN {c} END) \
+             - MAX(CASE WHEN {__ggsql_rn__} = 1 THEN {c} END))",
             c = qcol
         ),
         _ => return None,

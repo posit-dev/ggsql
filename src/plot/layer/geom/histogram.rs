@@ -146,8 +146,9 @@ fn stat_histogram(
     });
 
     // Query min/max to compute bin width
+    let __ggsql_stats__ = dialect.quote_ident("__ggsql_stats__");
     let stats_query = format!(
-        "SELECT MIN({x}) as min_val, MAX({x}) as max_val FROM ({query}) AS \"__ggsql_stats__\"",
+        "SELECT MIN({x}) as min_val, MAX({x}) as max_val FROM ({query}) AS {__ggsql_stats__}",
         x = x_col,
         query = query
     );
@@ -254,12 +255,14 @@ fn stat_histogram(
         )
     };
 
+    let __stat_src__ = dialect.quote_ident("__stat_src__");
+    let __binned__ = dialect.quote_ident("__binned__");
     let transformed_query = format!(
-        "WITH \"__stat_src__\" AS ({query}), \
-         \"__binned__\" AS (SELECT {binned} FROM \"__stat_src__\" GROUP BY {group}) \
+        "WITH {__stat_src__} AS ({query}), \
+         {__binned__} AS (SELECT {binned} FROM {__stat_src__} GROUP BY {group}) \
          SELECT *, {bin} + {width} AS {bin_end}, \
          {count} * 1.0 / SUM({count}) {density_window} AS {density} \
-         FROM \"__binned__\"",
+         FROM {__binned__}",
         query = query,
         binned = binned_select,
         group = group_cols,

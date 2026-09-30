@@ -6,7 +6,6 @@
 //! `GENERATE_SERIES`, `QUANTILE_CONT`) and the spatial extension's
 //! `ST_*` surface.
 
-use crate::naming;
 use crate::reader::SqlDialect;
 
 /// DuckDB SQL dialect with native function support.
@@ -74,17 +73,22 @@ impl SqlDialect for DuckDbDialect {
         column_aliases: &[String],
         body_sql: &str,
     ) -> Vec<String> {
-        let body = crate::reader::wrap_with_column_aliases(body_sql, column_aliases);
+        let body = crate::reader::wrap_with_column_aliases(
+            &|c: &str| self.quote_ident(c),
+            body_sql,
+            column_aliases,
+        );
         vec![format!(
             "CREATE OR REPLACE TEMP TABLE {} AS {}",
-            naming::quote_ident(name),
+            self.quote_ident(name),
             body
         )]
     }
 
     fn sql_generate_series(&self, n: usize) -> String {
+        let __ggsql_seq__ = self.quote_ident("__ggsql_seq__");
         format!(
-            "\"__ggsql_seq__\"(n) AS (SELECT generate_series FROM GENERATE_SERIES(0, {}))",
+            "{__ggsql_seq__}(n) AS (SELECT generate_series FROM GENERATE_SERIES(0, {}))",
             n - 1
         )
     }
@@ -92,7 +96,7 @@ impl SqlDialect for DuckDbDialect {
     fn sql_quantile_inline(&self, column: &str, fraction: f64) -> Option<String> {
         Some(format!(
             "QUANTILE_CONT({}, {})",
-            naming::quote_ident(column),
+            self.quote_ident(column),
             fraction
         ))
     }
@@ -102,28 +106,30 @@ impl SqlDialect for DuckDbDialect {
             "first" => Some(format!("FIRST({})", qcol)),
             "last" => Some(format!("LAST({})", qcol)),
             "diff" => Some(format!("(LAST({c}) - FIRST({c}))", c = qcol)),
-            _ => crate::reader::default_sql_aggregate(name, qcol),
+            _ => crate::reader::default_sql_aggregate(&|c: &str| self.quote_ident(c), name, qcol),
         }
     }
 
     fn sql_percentile(&self, column: &str, fraction: f64, from: &str, groups: &[String]) -> String {
+        let __ggsql_pct__ = self.quote_ident("__ggsql_pct__");
+        let __ggsql_qt__ = self.quote_ident("__ggsql_qt__");
         let group_filter = groups
             .iter()
             .map(|g| {
-                let q = naming::quote_ident(g);
+                let q = self.quote_ident(g);
                 let cond = self.sql_null_safe_eq(
-                    &format!("{pct}.{q}", pct = naming::quote_ident("__ggsql_pct__")),
-                    &format!("{qt}.{q}", qt = naming::quote_ident("__ggsql_qt__")),
+                    &format!("{__ggsql_pct__}.{q}"),
+                    &format!("{__ggsql_qt__}.{q}"),
                 );
                 format!("AND {cond}")
             })
             .collect::<Vec<_>>()
             .join(" ");
 
-        let quoted_column = naming::quote_ident(column);
+        let quoted_column = self.quote_ident(column);
         format!(
             "(SELECT QUANTILE_CONT({column}, {fraction}) \
-            FROM ({from}) AS \"__ggsql_pct__\" \
+            FROM ({from}) AS {__ggsql_pct__} \
             WHERE {column} IS NOT NULL {group_filter})",
             column = quoted_column
         )

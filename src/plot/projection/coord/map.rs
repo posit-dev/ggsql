@@ -352,9 +352,10 @@ impl BBox {
     ) -> Option<Self> {
         let envelope = dialect.sql_make_envelope(self.xmin, self.ymin, self.xmax, self.ymax);
         let transformed = dialect.sql_st_transform(&envelope, &self.crs, target_crs);
+        let __ggsql_bbox__ = dialect.quote_ident("__ggsql_bbox__");
         let sql = dialect.sql_geometry_bbox(
             "g",
-            &format!("(SELECT {transformed} AS g) AS \"__ggsql_bbox__\""),
+            &format!("(SELECT {transformed} AS g) AS {__ggsql_bbox__}"),
         );
         execute_query(&sql)
             .ok()
@@ -476,9 +477,10 @@ fn graticule_bbox(
     // degenerate or incomplete values. Use the clip boundary extent which
     // correctly represents the visible hemisphere.
     if let Some(wkt) = clip_boundary_wkt {
+        let __ggsql_bbox__ = dialect.quote_ident("__ggsql_bbox__");
         let sql = dialect.sql_geometry_bbox(
             "g",
-            &format!("(SELECT ST_GeomFromText('{wkt}') AS g) AS \"__ggsql_bbox__\""),
+            &format!("(SELECT ST_GeomFromText('{wkt}') AS g) AS {__ggsql_bbox__}"),
         );
         if let Ok(df) = execute_query(&sql) {
             if let Some(clip_bbox) = BBox::from_df(&df, "EPSG:4326") {

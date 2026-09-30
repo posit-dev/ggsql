@@ -219,8 +219,8 @@ fn boxplot_sql_compute_summary(
     let q1 = dialect.sql_percentile(value, 0.25, from, groups);
     let median = dialect.sql_percentile(value, 0.50, from, groups);
     let q3 = dialect.sql_percentile(value, 0.75, from, groups);
-    let qt = "\"__ggsql_qt__\"";
-    let fn_alias = "\"__ggsql_fn__\"";
+    let qt = dialect.quote_ident("__ggsql_qt__");
+    let fn_alias = dialect.quote_ident("__ggsql_fn__");
     let quoted_value = dialect.quote_ident(value);
     format!(
         "SELECT

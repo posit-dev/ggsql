@@ -89,6 +89,25 @@ case "$backend" in
     sleep 30
     uri="exasol://sys:exasol@localhost:8563/?tls=true&validateservercertificate=0"
     ;;
+  redshift)
+    # Pseudo-leg: the Foundry "redshift" ADBC driver is the PostgreSQL
+    # driver, so a stock PostgreSQL container exercises RedshiftDialect
+    # end-to-end over a wire-compatible server (ggsql rewrites the
+    # redshift:// scheme to postgres:// for the driver).
+    docker run -d --name db \
+      -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=ggsql \
+      -p 5432:5432 postgres:17
+    wait_for redshift docker exec db pg_isready -U postgres
+    uri="redshift://postgres:postgres@localhost:5432/ggsql"
+    ;;
+  sqlite)
+    # Embedded reader — no server, no container, no dbc driver.
+    uri="sqlite://:memory:"
+    ;;
+  duckdb)
+    # Embedded reader — no server, no container, no dbc driver.
+    uri="duckdb://memory"
+    ;;
   *)
     echo "unknown backend: $backend" >&2
     exit 1

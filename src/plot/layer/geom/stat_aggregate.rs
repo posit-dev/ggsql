@@ -908,12 +908,14 @@ fn source_cte_chain(
     aggregated: &[(String, String, Vec<AggSpec>)],
     group_cols: &[String],
     dialect: &dyn SqlDialect,
-) -> (String, &'static str) {
-    let raw_src = "\"__ggsql_stat_src__\"";
+) -> (String, String) {
+    let raw_src = dialect.quote_ident("__ggsql_stat_src__");
     if !needs_row_position(aggregated, dialect) {
         return (format!("WITH {raw_src} AS ({query})"), raw_src);
     }
-    let rn_src = "\"__ggsql_stat_src_rn__\"";
+    let rn_src = dialect.quote_ident("__ggsql_stat_src_rn__");
+    let __ggsql_rn__ = dialect.quote_ident("__ggsql_rn__");
+    let __ggsql_max_rn__ = dialect.quote_ident("__ggsql_max_rn__");
     let group_select: Vec<String> = group_cols.iter().map(|c| dialect.quote_ident(c)).collect();
     // ORDER BY (SELECT 1) is the canonical "no real ordering" stand-in: it
     // satisfies the standard's required ORDER BY for window functions while
@@ -927,8 +929,8 @@ fn source_cte_chain(
     let cte = format!(
         "WITH {raw_src} AS ({query}), {rn_src} AS (\
            SELECT *, \
-             ROW_NUMBER() OVER ({partition}ORDER BY (SELECT 1)) AS \"__ggsql_rn__\", \
-             COUNT(*) OVER ({partition_no_order}) AS \"__ggsql_max_rn__\" \
+             ROW_NUMBER() OVER ({partition}ORDER BY (SELECT 1)) AS {__ggsql_rn__}, \
+             COUNT(*) OVER ({partition_no_order}) AS {__ggsql_max_rn__} \
            FROM {raw_src}\
          )",
         partition_no_order = partition.trim_end(),
@@ -973,7 +975,7 @@ fn build_group_by_query(
     group_cols: &[String],
     dialect: &dyn SqlDialect,
 ) -> String {
-    let outer_alias = "\"__ggsql_qt__\"";
+    let outer_alias = dialect.quote_ident("__ggsql_qt__");
     let (with_clause, src_alias) = source_cte_chain(query, aggregated, group_cols, dialect);
 
     let group_select: Vec<String> = group_cols.iter().map(|c| dialect.quote_ident(c)).collect();
@@ -990,7 +992,7 @@ fn build_group_by_query(
         let stat_col = naming::stat_column(aes);
         let qcol = dialect.quote_ident(raw_col);
         let expr = if needs_quantile_fallback(agg, raw_col, dialect) {
-            agg_sql_fallback(agg, raw_col, dialect, src_alias, group_cols)
+            agg_sql_fallback(agg, raw_col, dialect, &src_alias, group_cols)
         } else {
             agg_sql_inline(agg, &qcol, dialect)
                 .expect("agg_sql_inline must succeed when needs_quantile_fallback is false")
@@ -1018,7 +1020,7 @@ fn build_aggregate_query(
     labels: &[String],
     dialect: &dyn SqlDialect,
 ) -> String {
-    let outer_alias = "\"__ggsql_qt__\"";
+    let outer_alias = dialect.quote_ident("__ggsql_qt__");
     let (with_clause, src_alias) = source_cte_chain(query, aggregated, group_cols, dialect);
 
     let group_select: Vec<String> = group_cols.iter().map(|c| dialect.quote_ident(c)).collect();
@@ -1041,7 +1043,7 @@ fn build_aggregate_query(
                 let stat_col = naming::stat_column(aes);
                 let qcol = dialect.quote_ident(raw_col);
                 let expr = if needs_quantile_fallback(agg, raw_col, dialect) {
-                    agg_sql_fallback(agg, raw_col, dialect, src_alias, group_cols)
+                    agg_sql_fallback(agg, raw_col, dialect, &src_alias, group_cols)
                 } else {
                     agg_sql_inline(agg, &qcol, dialect)
                         .expect("agg_sql_inline must succeed when needs_quantile_fallback is false")
@@ -1093,7 +1095,9 @@ mod tests {
                 "first" => Some(format!("FIRST({})", qcol)),
                 "last" => Some(format!("LAST({})", qcol)),
                 "diff" => Some(format!("(LAST({c}) - FIRST({c}))", c = qcol)),
-                _ => crate::reader::default_sql_aggregate(name, qcol),
+                _ => {
+                    crate::reader::default_sql_aggregate(&|c: &str| self.quote_ident(c), name, qcol)
+                }
             }
         }
     }
@@ -1580,7 +1584,7 @@ mod tests {
                 if name == "first" {
                     return None;
                 }
-                crate::reader::default_sql_aggregate(name, qcol)
+                crate::reader::default_sql_aggregate(&|c: &str| self.quote_ident(c), name, qcol)
             }
         }
 

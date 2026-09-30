@@ -63,8 +63,9 @@ impl SqlDialect for OracleDialect {
     }
 
     fn sql_generate_series(&self, n: usize) -> String {
+        let __ggsql_seq__ = self.quote_ident("__ggsql_seq__");
         format!(
-            "\"__ggsql_seq__\"(n) AS (\
+            "{__ggsql_seq__}(n) AS (\
                SELECT CAST(LEVEL - 1 AS BINARY_DOUBLE) AS n \
                FROM DUAL CONNECT BY LEVEL <= {n}\
              )"
@@ -95,7 +96,8 @@ impl SqlDialect for OracleDialect {
     ) -> Vec<String> {
         // Oracle has no DROP TABLE IF EXISTS; guard the drop with PL/SQL.
         let qname = self.quote_ident(name);
-        let body = wrap_with_column_aliases(body_sql, column_aliases);
+        let body =
+            wrap_with_column_aliases(&|c: &str| self.quote_ident(c), body_sql, column_aliases);
         vec![
             format!(
                 "BEGIN EXECUTE IMMEDIATE 'DROP TABLE {}'; EXCEPTION WHEN OTHERS THEN NULL; END;",

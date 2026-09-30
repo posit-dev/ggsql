@@ -26,8 +26,9 @@ impl SqlDialect for PostgresDialect {
     }
 
     fn sql_generate_series(&self, n: usize) -> String {
+        let __ggsql_seq__ = self.quote_ident("__ggsql_seq__");
         format!(
-            "\"__ggsql_seq__\"(n) AS (\
+            "{__ggsql_seq__}(n) AS (\
                SELECT CAST(g AS DOUBLE PRECISION) AS n \
                FROM GENERATE_SERIES(0, {n} - 1) AS g\
              )"

@@ -123,7 +123,13 @@ impl SqlDialect for SqliteDialect {
             "var" => var_pop(),
             "sdev" => format!("SQRT({})", var_pop()),
             "se" => format!("(SQRT({}) / SQRT(COUNT({c})))", var_pop(), c = qcol),
-            _ => return crate::reader::default_sql_aggregate(name, qcol),
+            _ => {
+                return crate::reader::default_sql_aggregate(
+                    &|c: &str| self.quote_ident(c),
+                    name,
+                    qcol,
+                )
+            }
         };
         Some(s)
     }

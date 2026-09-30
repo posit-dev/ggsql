@@ -353,18 +353,24 @@ fn driver_uri_for(scheme: &str, body: &str, full_uri: &str) -> String {
                 None => format!("{userinfo}tcp({host_db})"),
             }
         }
+        // The Foundry "redshift" driver is the PostgreSQL driver, whose
+        // pgx-based URI parsing rejects the redshift:// scheme; rewrite it.
+        // Rewrite the full URI (not `body`) so query params survive — they
+        // are pgx connection settings the driver reads from the URI.
+        "redshift" => full_uri.replacen("redshift://", "postgres://", 1),
         _ => full_uri.to_string(),
     }
 }
 
 /// Whether `?k=v` query params are also passed to the driver as standalone
 /// database options. (They always remain in the `uri` option as well, except
-/// where [`driver_uri_for`] strips them.) The MSSQL driver parses its own
-/// URI and rejects unknown standalone options — `?TrustServerCertificate=…`
-/// failed connection setup with "Unknown database option
-/// 'TrustServerCertificate'" — so its params stay in the URI only.
+/// where [`driver_uri_for`] strips them.) Some drivers parse their own URI
+/// and reject params arriving a second way: the MSSQL driver fails with
+/// "Unknown database option 'TrustServerCertificate'", and the Databricks
+/// driver fails with "cannot specify both URI and individual connection
+/// options". Their params stay in the URI only.
 fn query_params_as_driver_options(scheme: &str) -> bool {
-    scheme != "mssql"
+    !matches!(scheme, "mssql" | "databricks" | "spark")
 }
 
 /// Probe whether an ADBC driver for `scheme` can be loaded, without opening
@@ -406,9 +412,32 @@ where
                 .map_err(|e| GgsqlError::ReaderError(format!("ADBC new_statement: {}", e)))?;
             stmt.set_sql_query(sql)
                 .map_err(|e| GgsqlError::ReaderError(format!("ADBC set_sql_query: {}", e)))?;
-            let reader = stmt
-                .execute()
-                .map_err(|e| GgsqlError::ReaderError(format!("ADBC execute: {}", e)))?;
+            let reader = match stmt.execute() {
+                Ok(reader) => reader,
+                Err(e) => {
+                    // The Databricks driver's query path cannot build a result
+                    // reader for statements without a result set (DDL), failing
+                    // with "schema bytes are empty". Retry via execute_update —
+                    // the ADBC path meant for exactly those statements — and
+                    // report an empty frame.
+                    if e.to_string().contains("schema bytes are empty") {
+                        drop(stmt);
+                        let mut update_stmt = conn.new_statement().map_err(|e| {
+                            GgsqlError::ReaderError(format!("ADBC new_statement: {}", e))
+                        })?;
+                        update_stmt.set_sql_query(sql).map_err(|e| {
+                            GgsqlError::ReaderError(format!("ADBC set_sql_query: {}", e))
+                        })?;
+                        update_stmt.execute_update().map_err(|e| {
+                            GgsqlError::ReaderError(format!("ADBC execute_update: {}", e))
+                        })?;
+                        return Ok(DataFrame::from_record_batch(RecordBatch::new_empty(
+                            std::sync::Arc::new(arrow::datatypes::Schema::empty()),
+                        )));
+                    }
+                    return Err(GgsqlError::ReaderError(format!("ADBC execute: {}", e)));
+                }
+            };
 
             // Capture the declared result schema before draining batches —
             // the reader carries it even when zero batches are produced, and
@@ -688,8 +717,23 @@ mod tests {
     }
 
     #[test]
-    fn mssql_params_stay_in_uri_not_options() {
+    fn driver_uri_rewrites_redshift_scheme() {
+        // pgx rejects redshift://; the driver is the PostgreSQL one.
+        assert_eq!(
+            driver_uri_for(
+                "redshift",
+                "u:p@h:5439/db",
+                "redshift://u:p@h:5439/db?sslmode=disable"
+            ),
+            "postgres://u:p@h:5439/db?sslmode=disable"
+        );
+    }
+
+    #[test]
+    fn uri_parsing_drivers_reject_standalone_options() {
         assert!(!query_params_as_driver_options("mssql"));
+        assert!(!query_params_as_driver_options("databricks"));
+        assert!(!query_params_as_driver_options("spark"));
         assert!(query_params_as_driver_options("postgres"));
         assert!(query_params_as_driver_options("clickhouse"));
         assert!(query_params_as_driver_options("exasol"));

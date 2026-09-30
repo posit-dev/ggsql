@@ -42,8 +42,9 @@ impl SqlDialect for SnowflakeDialect {
     }
 
     fn sql_generate_series(&self, n: usize) -> String {
+        let __ggsql_seq__ = self.quote_ident("__ggsql_seq__");
         format!(
-            "\"__ggsql_seq__\"(n) AS (\
+            "{__ggsql_seq__}(n) AS (\
                SELECT SEQ4()::FLOAT AS n FROM TABLE(GENERATOR(ROWCOUNT => {n}))\
              )"
         )

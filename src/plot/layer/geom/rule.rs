@@ -239,6 +239,7 @@ fn expand_rule_to_segment(
     let pos2_col = naming::aesthetic_column("pos2");
     let pos1_q = dialect.quote_ident(&pos1_col);
     let pos2_q = dialect.quote_ident(&pos2_col);
+    let __ggsql_vertex__ = dialect.quote_ident("__ggsql_vertex__");
 
     // The input column is always __ggsql_aes_pos1__. Build the SELECT
     // expressions that produce both pos1 and pos2 in the output.
@@ -246,7 +247,7 @@ fn expand_rule_to_segment(
         // Vertical rule: input pos1 = longitude (keep as pos1), synthesize pos2 from y-extent
         let fixed = pos1_q.clone();
         let span = format!(
-            "CASE \"__ggsql_vertex__\" WHEN 0 THEN (SELECT ymin FROM ({bbox_expr})) \
+            "CASE {__ggsql_vertex__} WHEN 0 THEN (SELECT ymin FROM ({bbox_expr})) \
              WHEN 1 THEN (SELECT ymax FROM ({bbox_expr})) END AS {pos2_q}"
         );
         (fixed, span)
@@ -254,7 +255,7 @@ fn expand_rule_to_segment(
         // Horizontal rule: input pos1 = latitude (rename to pos2), synthesize pos1 from x-extent
         let fixed = format!("{pos1_q} AS {pos2_q}");
         let span = format!(
-            "CASE \"__ggsql_vertex__\" WHEN 0 THEN (SELECT xmin FROM ({bbox_expr})) \
+            "CASE {__ggsql_vertex__} WHEN 0 THEN (SELECT xmin FROM ({bbox_expr})) \
              WHEN 1 THEN (SELECT xmax FROM ({bbox_expr})) END AS {pos1_q}"
         );
         (fixed, span)
@@ -274,17 +275,19 @@ fn expand_rule_to_segment(
          AS {densify_id_q} FROM ({query})"
     );
 
-    let vertices_table = "(SELECT 0 AS \"__ggsql_vertex__\" UNION ALL SELECT 1)";
+    let vertices_table = format!("(SELECT 0 AS {__ggsql_vertex__} UNION ALL SELECT 1)");
 
     let mut select_parts: Vec<String> = passthrough_quoted;
     select_parts.push(densify_id_q.to_string());
-    select_parts.push("\"__ggsql_vertex__\"".to_string());
+    select_parts.push(__ggsql_vertex__.to_string());
     select_parts.push(fixed_expr);
     select_parts.push(span_expr);
 
+    let __ggsql_rule__ = dialect.quote_ident("__ggsql_rule__");
+    let __ggsql_vertices__ = dialect.quote_ident("__ggsql_vertices__");
     let sql = format!(
-        "SELECT {} FROM ({numbered}) \"__ggsql_rule__\" \
-         CROSS JOIN {vertices_table} \"__ggsql_vertices__\"",
+        "SELECT {} FROM ({numbered}) {__ggsql_rule__} \
+         CROSS JOIN {vertices_table} {__ggsql_vertices__}",
         select_parts.join(", ")
     );
 

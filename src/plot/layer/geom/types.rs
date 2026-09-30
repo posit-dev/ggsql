@@ -240,10 +240,10 @@ pub fn wrap_with_order_by(
             dummy_columns,
             consumed_aesthetics,
         } => StatResult::Transformed {
-            query: format!(
-                "SELECT * FROM ({}) AS \"__ggsql_ord__\" ORDER BY {}",
-                query, order_quoted
-            ),
+            query: {
+                let __ggsql_ord__ = dialect.quote_ident("__ggsql_ord__");
+                format!("SELECT * FROM ({query}) AS {__ggsql_ord__} ORDER BY {order_quoted}")
+            },
             stat_columns,
             dummy_columns,
             consumed_aesthetics,
@@ -269,8 +269,9 @@ pub fn wrap_with_order_by(
 pub fn wrap_with_dummy_axis(query: &str, axis: &str, dialect: &dyn SqlDialect) -> String {
     let stat_col = naming::stat_column(axis);
     let dummy_v = naming::stat_column("dummy");
+    let __ggsql_dummy_src__ = dialect.quote_ident("__ggsql_dummy_src__");
     format!(
-        "SELECT '{val}' AS {col}, * FROM ({q}) AS \"__ggsql_dummy_src__\"",
+        "SELECT '{val}' AS {col}, * FROM ({q}) AS {__ggsql_dummy_src__}",
         val = dummy_v,
         col = dialect.quote_ident(&stat_col),
         q = query,

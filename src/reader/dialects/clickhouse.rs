@@ -121,7 +121,7 @@ impl SqlDialect for ClickHouseDialect {
             "sdev" => Some(format!("stddevPop({})", qcol)),
             "var" => Some(format!("varPop({})", qcol)),
             "se" => Some(format!("(stddevPop({c}) / sqrt(count({c})))", c = qcol)),
-            _ => default_sql_aggregate(name, qcol),
+            _ => default_sql_aggregate(&|c: &str| self.quote_ident(c), name, qcol),
         }
     }
 
@@ -140,7 +140,8 @@ impl SqlDialect for ClickHouseDialect {
         body_sql: &str,
     ) -> Vec<String> {
         let qname = self.quote_ident(name);
-        let body = wrap_with_column_aliases(body_sql, column_aliases);
+        let body =
+            wrap_with_column_aliases(&|c: &str| self.quote_ident(c), body_sql, column_aliases);
         vec![
             format!("DROP TEMPORARY TABLE IF EXISTS {}", qname),
             format!("CREATE TEMPORARY TABLE {} AS {}", qname, body),
