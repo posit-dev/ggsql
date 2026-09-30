@@ -8,7 +8,7 @@ use crate::plot::layer::geom::Geom;
 use crate::plot::projection::resolve_coord;
 use crate::plot::scale::{color_to_hex, is_color_aesthetic, is_user_facet_aesthetic, Transform};
 use crate::plot::*;
-use crate::{ColumnSection, Format, GgsqlError, Result, Spanner, Spec, Table};
+use crate::{ColumnSection, Format, GgsqlError, Result, SelectionItem, Spanner, Spec, Table};
 use std::collections::HashMap;
 use tree_sitter::Node;
 
@@ -356,6 +356,38 @@ fn build_visualise_statement(node: &Node, source: &SourceTree) -> Result<Plot> {
     Ok(spec)
 }
 
+/// Build the selection items of a column_selection node in written order
+fn build_selection_items(node: &Node, source: &SourceTree) -> Result<Vec<SelectionItem>> {
+    let mut items = Vec::new();
+    for elem in source.find_nodes(node, "(mapping_element) @elem") {
+        let child = elem.child(0).ok_or_else(|| {
+            GgsqlError::ParseError("Invalid mapping_element: missing child".to_string())
+        })?;
+        let item = match child.kind() {
+            "wildcard_mapping" => SelectionItem::Wildcard,
+            "implicit_mapping" | "identifier" => SelectionItem::Column {
+                sql: source.get_text(&elem),
+                name: naming::unquote_ident(&source.get_text(&child)),
+            },
+            "explicit_mapping" => {
+                let (name_node, _) = extract_name_value_nodes(&child, "column selection")?;
+                SelectionItem::Column {
+                    sql: source.get_text(&elem),
+                    name: naming::unquote_ident(&source.get_text(&name_node)),
+                }
+            }
+            _ => {
+                return Err(GgsqlError::ParseError(format!(
+                    "Invalid column selection item: {}",
+                    child.kind()
+                )))
+            }
+        };
+        items.push(item);
+    }
+    Ok(items)
+}
+
 /// Build a single Table from a tabulate_statement node
 fn build_tabulate_statement(node: &Node, source: &SourceTree) -> Result<Table> {
     let mut table = Table::new();
@@ -364,7 +396,7 @@ fn build_tabulate_statement(node: &Node, source: &SourceTree) -> Result<Table> {
     for child in node.children(&mut cursor) {
         match child.kind() {
             "column_selection" => {
-                table.selection = source.get_text(&child);
+                table.selection = build_selection_items(&child, source)?;
             }
             "single_source_from" => {
                 if let Some(source_node) = child.child_by_field_name("source") {

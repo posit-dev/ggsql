@@ -35,7 +35,7 @@ use crate::parser::{self, SourceTree};
 use crate::plot::Parameters;
 use crate::reader::{Reader, ResolvedTable};
 use crate::validate::{validate, ValidationWarning};
-use crate::{GgsqlError, Result, Spec};
+use crate::{DataFrame, GgsqlError, Result, SelectionItem, Spec};
 
 /// Resolve a TABULATE query into a `ResolvedTable`.
 ///
@@ -80,7 +80,7 @@ pub fn resolve_table_with_reader(query: &str, reader: &dyn Reader) -> Result<Res
         )
     })?;
 
-    let df = reader.execute_sql(&sql)?;
+    let df = resolve_selection(reader.execute_sql(&sql)?, &table.selection)?;
 
     let column_names = df.get_column_names();
     let spans = table
@@ -104,11 +104,102 @@ pub fn resolve_table_with_reader(query: &str, reader: &dyn Reader) -> Result<Res
     Ok(ResolvedTable::new(cells, columns, rows, sql, warnings))
 }
 
+/// Resolves a mixed selection like `TABULATE foo, bar, *`: named columns are
+/// kept only at the position they were written, the wildcard contributes the
+/// rest. Selections without both a wildcard and a named column pass through
+/// unchanged. Duplicate output column names are an error.
+fn resolve_selection(df: DataFrame, selection: &[SelectionItem]) -> Result<DataFrame> {
+    let n_named_items = selection
+        .iter()
+        .filter(|item| matches!(item, SelectionItem::Column { .. }))
+        .count();
+    let n_wildcards = selection.len() - n_named_items;
+
+    let df = if n_named_items == 0 || n_wildcards == 0 {
+        df
+    } else {
+        let names = df.get_column_names();
+        let wildcard_width = names
+            .len()
+            .checked_sub(n_named_items)
+            .filter(|remaining| remaining % n_wildcards == 0)
+            .map(|remaining| remaining / n_wildcards)
+            .ok_or_else(|| {
+                GgsqlError::ValidationError(
+                    "TABULATE selection resolved an unexpected number of SQL columns".to_string(),
+                )
+            })?;
+
+        // Only a bare reference (no AS rename) duplicates a column the
+        // wildcard also produces; a renamed item's source column still
+        // surfaces once, unrenamed, from the wildcard.
+        let bare_names: std::collections::HashSet<&str> = selection
+            .iter()
+            .filter_map(|item| match item {
+                SelectionItem::Column { sql, name }
+                    if crate::naming::unquote_ident(sql.trim()) == *name =>
+                {
+                    Some(name.as_str())
+                }
+                _ => None,
+            })
+            .collect();
+
+        let mut columns: Vec<(String, arrow::array::ArrayRef)> = Vec::new();
+        let mut cursor = 0usize;
+        for item in selection {
+            match item {
+                SelectionItem::Column { name, .. } => {
+                    columns.push((name.clone(), df.inner().column(cursor).clone()));
+                    cursor += 1;
+                }
+                SelectionItem::Wildcard => {
+                    for (idx, name) in names.iter().enumerate().skip(cursor).take(wildcard_width) {
+                        if !bare_names.contains(name.as_str()) {
+                            columns.push((name.clone(), df.inner().column(idx).clone()));
+                        }
+                    }
+                    cursor += wildcard_width;
+                }
+            }
+        }
+        DataFrame::new(columns)?
+    };
+
+    // Downstream steps look columns up by name, so a duplicate output name
+    // would silently shadow rather than error.
+    let mut seen = std::collections::HashSet::new();
+    if let Some(dup) = df
+        .get_column_names()
+        .into_iter()
+        .find(|name| !seen.insert(name.clone()))
+    {
+        return Err(GgsqlError::ValidationError(format!(
+            "TABULATE selection produces the column '{dup}' more than once: give each occurrence a distinct name"
+        )));
+    }
+
+    Ok(df)
+}
+
+/// The selection as a SQL select list (e.g. `foo, bar AS Baz, *`).
+fn selection_sql(selection: &[SelectionItem]) -> String {
+    selection
+        .iter()
+        .map(|item| match item {
+            SelectionItem::Wildcard => "*",
+            SelectionItem::Column { sql, .. } => sql,
+        })
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
 /// Builds the SQL a `TABULATE` query executes, folding `selection`
 /// (`Table::selection`) in as the outer projection. Table-side counterpart
 /// to `execute::cte::transform_global_sql`, without its CTE-rewriting or
 /// cache-staging — a `Table` has neither.
-fn build_table_sql(source_tree: &SourceTree, selection: &str) -> Option<String> {
+fn build_table_sql(source_tree: &SourceTree, selection: &[SelectionItem]) -> Option<String> {
+    let wildcard_only = matches!(selection, [SelectionItem::Wildcard]);
     let root = source_tree.root();
 
     // A WITH...SELECT tail, or a plain trailing SELECT.
@@ -117,10 +208,10 @@ fn build_table_sql(source_tree: &SourceTree, selection: &str) -> Option<String> 
         .or_else(|| source_tree.find_text(&root, "(sql_statement (select_statement) @select)"));
 
     if let Some(select_sql) = select_sql {
-        return Some(if selection == "*" {
+        return Some(if wildcard_only {
             select_sql
         } else {
-            format!("SELECT {selection} FROM ({select_sql})")
+            format!("SELECT {} FROM ({select_sql})", selection_sql(selection))
         });
     }
 
@@ -132,17 +223,17 @@ fn build_table_sql(source_tree: &SourceTree, selection: &str) -> Option<String> 
     );
 
     if let Some(source) = from_source {
-        return Some(format!("SELECT {selection} FROM {source}"));
+        return Some(format!("SELECT {} FROM {source}", selection_sql(selection)));
     }
 
     // Neither: e.g. a bare DuckDB-style `FROM t`. This text may carry a
     // leading setup-statement prefix (INSTALL/LOAD/SET), which a non-"*"
     // selection then wraps into an invalid subquery — a narrow, accepted gap.
     let fallback = source_tree.extract_sql()?;
-    Some(if selection == "*" {
+    Some(if wildcard_only {
         fallback
     } else {
-        format!("SELECT {selection} FROM ({fallback})")
+        format!("SELECT {} FROM ({fallback})", selection_sql(selection))
     })
 }
 
@@ -561,6 +652,42 @@ mod integration_tests {
         let mixed =
             resolve_table_with_reader("TABULATE *, id AS Number FROM sales", &reader).unwrap();
         assert_eq!(mixed.sql(), "SELECT *, id AS Number FROM sales");
+    }
+
+    #[test]
+    fn test_tabulate_selection_wildcard_dedupes_named_columns() {
+        let reader = reader_with_sales();
+
+        let resolved = resolve_table_with_reader("TABULATE name, * FROM sales", &reader).unwrap();
+        assert_eq!(resolved.sql(), "SELECT name, * FROM sales");
+        // sales is (id, name): the wildcard's second `name` is dropped.
+        assert_eq!(resolved.ncol(), 2);
+
+        let trailing = resolve_table_with_reader("TABULATE *, name FROM sales", &reader).unwrap();
+        assert_eq!(trailing.ncol(), 2);
+        // The named column keeps its written position.
+        let order: Vec<_> = trailing.columns().iter().map(|c| c.name.as_str()).collect();
+        assert_eq!(order, ["id", "name"]);
+    }
+
+    #[test]
+    fn test_tabulate_selection_duplicate_alias_without_wildcard_errors() {
+        let reader = reader_with_sales();
+        match resolve_table_with_reader("TABULATE id AS x, name AS x FROM sales", &reader) {
+            Ok(_) => panic!("expected a duplicate output column to error"),
+            Err(GgsqlError::ValidationError(msg)) => assert!(msg.contains("'x'")),
+            Err(e) => panic!("expected a ValidationError, got {e:?}"),
+        }
+    }
+
+    #[test]
+    fn test_tabulate_selection_rename_colliding_with_wildcard_column_name_errors() {
+        let reader = reader_with_sales();
+        match resolve_table_with_reader("TABULATE id AS name, * FROM sales", &reader) {
+            Ok(_) => panic!("expected a duplicate output column to error"),
+            Err(GgsqlError::ValidationError(msg)) => assert!(msg.contains("'name'")),
+            Err(e) => panic!("expected a ValidationError, got {e:?}"),
+        }
     }
 
     #[test]

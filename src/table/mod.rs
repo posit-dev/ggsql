@@ -27,10 +27,8 @@ pub struct Table {
     pub source: Option<DataSource>,
     /// Column selection from `TABULATE`'s own column list, right after the
     /// keyword (e.g. `TABULATE bill_len, bill_dep AS Depth`) — mandatory in
-    /// the grammar. Captured verbatim as source text rather than parsed; see
-    /// `execute::table::build_table_sql` for how it's used. `"*"` is the
-    /// default for a `Table` built without the parser.
-    pub selection: String,
+    /// the grammar. Defaults to `*` for a `Table` built without the parser.
+    pub selection: Vec<SelectionItem>,
     /// Column display labels (from `TABULATE LABEL`). Reuses `plot::Labels`
     /// as-is — the same "name → text, None = suppress" shape applies
     /// unchanged, just keyed by column name instead of aesthetic name. An
@@ -46,12 +44,22 @@ pub struct Table {
     pub formats: Vec<Format>,
 }
 
+/// One item in a TABULATE column selection.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum SelectionItem {
+    /// `*`.
+    Wildcard,
+    /// A column or expression. `sql` is the verbatim source text (e.g.
+    /// `bill_dep AS Depth`); `name` is the output column name (`Depth`).
+    Column { sql: String, name: String },
+}
+
 impl Table {
     /// Create a new empty Table.
     pub fn new() -> Self {
         Self {
             source: None,
-            selection: "*".to_string(),
+            selection: vec![SelectionItem::Wildcard],
             labels: Labels::default(),
             spans: Vec::new(),
             formats: Vec::new(),
