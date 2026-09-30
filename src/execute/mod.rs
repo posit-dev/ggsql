@@ -1103,8 +1103,8 @@ pub struct PreparedData {
 /// Execute setup statements (INSTALL, LOAD, SET, etc.) ahead of the main
 /// query. Shared by the Plot and Table pipelines (`prepare_data_with_reader`
 /// and `table::resolve_table_with_reader`). Structured DML (CREATE, INSERT,
-/// UPDATE, DELETE) is out of scope here — see `cte::extract_side_effects`,
-/// which only the Plot pipeline currently runs.
+/// UPDATE, DELETE) is out of scope here — both pipelines run it separately
+/// via `cte::extract_side_effects`.
 fn execute_setup_statements(source_tree: &parser::SourceTree, reader: &dyn Reader) -> Result<()> {
     let root = source_tree.root();
     for stmt in source_tree.find_texts(&root, "(sql_statement (other_sql_statement) @stmt)") {

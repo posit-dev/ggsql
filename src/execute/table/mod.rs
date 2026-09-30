@@ -52,12 +52,9 @@ use crate::{DataFrame, GgsqlError, Result, SelectionItem, Spec};
 /// statements, or a mix of VISUALISE and TABULATE, isn't disambiguated any
 /// further than that yet.
 ///
-/// Setup statements (INSTALL, LOAD, SET, etc.) ahead of a TABULATE are
-/// executed here too, via the same `execute_setup_statements` helper
-/// `prepare_data_with_reader` uses — structured DML (CREATE, INSERT, UPDATE,
-/// DELETE) ahead of a TABULATE isn't handled, since there's no CTE/side-effect
-/// extraction step in this pipeline to mirror `prepare_data_with_reader`'s use
-/// of `cte::extract_side_effects`.
+/// Setup (INSTALL, LOAD, SET, etc.) and side-effect DML (CREATE, INSERT,
+/// UPDATE, DELETE) ahead of a TABULATE run here, mirroring
+/// `prepare_data_with_reader`.
 pub fn resolve_table_with_reader(query: &str, reader: &dyn Reader) -> Result<ResolvedTable> {
     let validated = validate(query)?;
     let warnings: Vec<ValidationWarning> = validated.warnings().to_vec();
@@ -73,6 +70,12 @@ pub fn resolve_table_with_reader(query: &str, reader: &dyn Reader) -> Result<Res
     let (title, subtitle, caption) = extract_heading_labels(&mut labels);
 
     super::execute_setup_statements(&source_tree, reader)?;
+
+    // Run structured DML (CREATE, INSERT, UPDATE, DELETE) so any table it
+    // creates or populate exists before the TABULATE query reads it.
+    for stmt in super::cte::extract_side_effects(&source_tree) {
+        reader.execute_sql(&stmt)?;
+    }
 
     let sql = build_table_sql(&source_tree, &table.selection).ok_or_else(|| {
         GgsqlError::ValidationError(
@@ -688,6 +691,18 @@ mod integration_tests {
             Err(GgsqlError::ValidationError(msg)) => assert!(msg.contains("'name'")),
             Err(e) => panic!("expected a ValidationError, got {e:?}"),
         }
+    }
+
+    #[test]
+    fn test_tabulate_from_table_created_by_preceding_create() {
+        let reader = reader_with_sales();
+        let resolved = resolve_table_with_reader(
+            "CREATE TEMP TABLE my_data AS SELECT * FROM sales LIMIT 2 TABULATE * FROM my_data",
+            &reader,
+        )
+        .unwrap();
+        // 2 data rows + 1 column-label row.
+        assert_eq!(resolved.nrow(), 3);
     }
 
     #[test]
