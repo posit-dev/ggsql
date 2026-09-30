@@ -111,6 +111,89 @@ case "$backend" in
     wait_for odbc docker exec db pg_isready -U postgres
     uri="postgres://postgres:postgres@localhost:5432/ggsql?reader=odbc&Driver={PostgreSQL Unicode}"
     ;;
+  monetdb)
+    # MonetDB-over-ODBC leg: no usable ADBC driver exists, so the URI's
+    # ?reader=odbc forces the ODBC fallback with the MonetDB ODBC driver and
+    # the ggsql-monetdb DSN (both registered by the workflow step for this
+    # leg). The DSN carries Host/Port/Database because the driver's
+    # connection-string keywords differ from the generic Server= the URI
+    # synthesis would emit.
+    docker run -d --name db \
+      -e MDB_CREATE_DBS=ggsql -e MDB_DB_ADMIN_PASS=monetdb \
+      -p 50000:50000 monetdb/monetdb:Dec2025-SP3
+    wait_for monetdb port_open 50000
+    # The daemon accepts connections before the database is fully started.
+    sleep 10
+    uri="monetdb://monetdb:monetdb@localhost:50000/ggsql?reader=odbc&DSN=ggsql-monetdb"
+    ;;
+  druid)
+    # Druid leg: a nano-quickstart single server (all services in one JVM)
+    # queried through the Foundry druid ADBC driver (installed with --pre by
+    # the workflow step — it is prerelease-only). Druid has no DDL or plain
+    # INSERT, so the datasource is created by an MSQ ingestion job submitted
+    # to the router (8888) and polled to completion; the driver then talks
+    # SQL to the broker (8082). DruidDialect requires_cache, so the battery
+    # runs through ggsql's automatic sqlite cache wrap.
+    docker run -d --name db \
+      -e DRUID_SINGLE_NODE_CONF=nano-quickstart \
+      -p 8888:8888 -p 8082:8082 apache/druid:37.0.0
+    wait_for druid curl -sf http://localhost:8082/status/health
+    # MSQ INSERT: every Druid datasource needs a __time column; one shared
+    # timestamp suffices. PARTITIONED BY ALL puts everything in one segment.
+    payload=$(python3 - <<'EOF'
+import json
+query = """
+INSERT INTO ggsql_live_test
+SELECT TIMESTAMP '2020-01-01 00:00:00' AS __time, 1 AS id, 1.5 AS val, 'a' AS grp UNION ALL
+SELECT TIMESTAMP '2020-01-01 00:00:00', 2, 2.5, 'b' UNION ALL
+SELECT TIMESTAMP '2020-01-01 00:00:00', 3, 3.5, 'a' UNION ALL
+SELECT TIMESTAMP '2020-01-01 00:00:00', 4, 4.5, 'b' UNION ALL
+SELECT TIMESTAMP '2020-01-01 00:00:00', 5, 5.5, 'a' UNION ALL
+SELECT TIMESTAMP '2020-01-01 00:00:00', 6, 6.5, 'b' UNION ALL
+SELECT TIMESTAMP '2020-01-01 00:00:00', 7, 7.5, 'a' UNION ALL
+SELECT TIMESTAMP '2020-01-01 00:00:00', 8, 8.5, 'b'
+PARTITIONED BY ALL
+"""
+print(json.dumps({"query": query, "context": {"engine": "msq-task"}}))
+EOF
+)
+    task_id=$(curl -sf -X POST -H 'Content-Type: application/json' \
+      -d "$payload" http://localhost:8888/druid/v2/sql \
+      | sed -n 's/.*"taskId":"\([^"]*\)".*/\1/p')
+    if [ -z "$task_id" ]; then
+      echo "MSQ ingest submission returned no taskId"
+      docker logs db || true
+      exit 1
+    fi
+    # MSQ jobs are asynchronous; poll the task until it succeeds or fails.
+    for _ in $(seq 1 60); do
+      status=$(curl -sf "http://localhost:8888/druid/indexer/v1/task/$task_id/status" || true)
+      case "$status" in
+        *'"status":"SUCCESS"'*) break ;;
+        *'"statusCode":"FAILED"'*)
+          echo "MSQ ingest task $task_id FAILED"
+          docker logs db || true
+          exit 1
+          ;;
+      esac
+      sleep 5
+    done
+    # Segment handoff lags task success; wait until the broker serves rows.
+    for _ in $(seq 1 30); do
+      cnt=$(curl -sf -X POST -H 'Content-Type: application/json' \
+        -d '{"query":"SELECT COUNT(*) AS c FROM ggsql_live_test"}' \
+        http://localhost:8082/druid/v2/sql \
+        | grep -o '"c":[0-9]*' | cut -d: -f2 || true)
+      [ "$cnt" = "8" ] && break
+      sleep 5
+    done
+    if [ "$cnt" != "8" ]; then
+      echo "datasource never became queryable (count=$cnt)"
+      docker logs db || true
+      exit 1
+    fi
+    uri="druid://localhost:8082"
+    ;;
   sqlite)
     # Embedded reader — no server, no container, no dbc driver.
     uri="sqlite://:memory:"

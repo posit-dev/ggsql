@@ -35,6 +35,16 @@
 //!   `?reader=odbc` query forces the generic ODBC fallback, exercising
 //!   OdbcReader and the connection-string synthesis instead of the ADBC
 //!   driver)
+//! - `GGSQL_TEST_URI_MONETDB`    e.g. `monetdb://u:p@localhost:50000/db?reader=odbc&DSN=ggsql-monetdb`
+//!   (CI runs it against a MonetDB container over the MonetDB ODBC driver:
+//!   no usable ADBC driver exists for MonetDB, so the `?reader=odbc` query
+//!   forces the ODBC fallback with the DSN registered by the workflow step)
+//! - `GGSQL_TEST_URI_DRUID`      e.g. `druid://localhost:8082`
+//!   (CI runs it against a nano-quickstart Druid container through the
+//!   Foundry `druid` ADBC driver (prerelease). Druid has no DDL, so the
+//!   start script creates and populates the datasource via an MSQ INSERT
+//!   job, and DruidDialect's `requires_cache` wraps the reader in a sqlite
+//!   cache that hosts the battery's derived tables)
 //!
 //! The DataFusion case runs in-process via the `adbc_datafusion` dev-driver
 //! and needs no setup, so one non-DuckDB engine always runs in CI.
@@ -91,6 +101,8 @@ fn create_table_sql(scheme: &str, table: &str) -> String {
         "odbc" => {
             format!("CREATE TABLE {table} (id INT, val DOUBLE PRECISION, grp VARCHAR(16))")
         }
+        // MonetDB-over-ODBC leg: MonetDB's 64-bit float type is DOUBLE.
+        "monetdb" => format!("CREATE TABLE {table} (id INT, val DOUBLE, grp VARCHAR(16))"),
         "sqlite" => format!("CREATE TABLE {table} (id INTEGER, val REAL, grp TEXT)"),
         "duckdb" => format!("CREATE TABLE {table} (id INTEGER, val DOUBLE, grp VARCHAR)"),
         // Snowflake FLOAT is 64-bit.
@@ -133,19 +145,30 @@ fn run_battery(reader: &dyn Reader, ctx: &str, table: &str) {
     assert_eq!(layer.height(), 8, "{ctx}: scatter row count");
 
     // Histogram: two-stage binning with GROUP BY-safe derived columns.
-    reader
+    // Row assertion: a broken binning stage could return zero rows and the
+    // pipeline would pass vacuously without it.
+    let spec = reader
         .execute(&format!(
             "VISUALISE DRAW histogram MAPPING val AS x FROM {table}"
         ))
         .unwrap_or_else(|e| panic!("{ctx}: histogram pipeline failed: {e}"));
+    let layer = spec
+        .layer_data(0)
+        .unwrap_or_else(|| panic!("{ctx}: histogram produced no layer data"));
+    assert!(layer.height() > 0, "{ctx}: histogram returned zero rows");
 
     // Grouped boxplot: dialect quantile overrides and qualified
-    // projections (`raw."g" AS "g"`).
-    reader
+    // projections (`raw."g" AS "g"`). Row assertion against vacuous passes —
+    // two groups always yield whisker/box/median rows.
+    let spec = reader
         .execute(&format!(
             "VISUALISE DRAW boxplot MAPPING grp AS x, val AS y FROM {table}"
         ))
         .unwrap_or_else(|e| panic!("{ctx}: boxplot pipeline failed: {e}"));
+    let layer = spec
+        .layer_data(0)
+        .unwrap_or_else(|| panic!("{ctx}: boxplot produced no layer data"));
+    assert!(layer.height() > 0, "{ctx}: boxplot returned zero rows");
 
     // Grouped density: cross-group grid join with qualified projections.
     // Row assertion: a degenerate (NULL) bandwidth would silently produce an
@@ -181,12 +204,17 @@ fn run_battery(reader: &dyn Reader, ctx: &str, table: &str) {
         ))
         .unwrap_or_else(|e| panic!("{ctx}: segment pipeline failed: {e}"));
 
-    // Tile: two-dimensional binning with post-aggregation.
-    reader
+    // Tile: two-dimensional binning with post-aggregation. Row assertion
+    // against vacuous passes, as with the other cases.
+    let spec = reader
         .execute(&format!(
             "VISUALISE DRAW tile MAPPING val AS x, id AS y FROM {table}"
         ))
         .unwrap_or_else(|e| panic!("{ctx}: tile pipeline failed: {e}"));
+    let layer = spec
+        .layer_data(0)
+        .unwrap_or_else(|| panic!("{ctx}: tile produced no layer data"));
+    assert!(layer.height() > 0, "{ctx}: tile returned zero rows");
 
     // Area: ribbon variant with a synthesized zero baseline.
     reader
@@ -257,6 +285,9 @@ fn live_backend(scheme: &str) {
         reader
             .register(table, ggsql::DataFrame::from_record_batch(batch), true)
             .unwrap_or_else(|e| panic!("{scheme}: register failed: {e}"));
+    } else if scheme == "druid" {
+        // Druid has no DDL/DML; the start script creates and populates the
+        // datasource via an MSQ INSERT job before the tests run.
     } else {
         let _ = reader.execute_sql(&format!("DROP TABLE IF EXISTS {table}"));
         reader
@@ -315,6 +346,14 @@ fn live_redshift() {
 #[test]
 fn live_odbc() {
     live_backend("odbc");
+}
+#[test]
+fn live_monetdb() {
+    live_backend("monetdb");
+}
+#[test]
+fn live_druid() {
+    live_backend("druid");
 }
 
 #[test]
