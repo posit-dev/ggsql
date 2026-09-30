@@ -107,9 +107,10 @@ pub fn resolve_table_with_reader(query: &str, reader: &dyn Reader) -> Result<Res
     Ok(ResolvedTable::new(cells, columns, rows, sql, warnings))
 }
 
-/// Resolves a mixed selection like `TABULATE foo, bar, *`: named columns are
-/// kept only at the position they were written, the wildcard contributes the
-/// rest. Selections without both a wildcard and a named column pass through
+/// Resolves a mixed selection like `TABULATE foo, bar AS Baz, *`: named
+/// columns are kept only at the position they were written (a rename
+/// included), the wildcard contributes the rest of the source columns.
+/// Selections without both a wildcard and a named column pass through
 /// unchanged. Duplicate output column names are an error.
 fn resolve_selection(df: DataFrame, selection: &[SelectionItem]) -> Result<DataFrame> {
     let n_named_items = selection
@@ -133,17 +134,17 @@ fn resolve_selection(df: DataFrame, selection: &[SelectionItem]) -> Result<DataF
                 )
             })?;
 
-        // Only a bare reference (no AS rename) duplicates a column the
-        // wildcard also produces; a renamed item's source column still
-        // surfaces once, unrenamed, from the wildcard.
-        let bare_names: std::collections::HashSet<&str> = selection
+        // A column item — bare or renamed — already surfaces its source
+        // column once, at its written position; drop the wildcard's copy of
+        // that same source column so a rename doesn't show it twice. A
+        // constant column (`'x' AS label`, no source) has nothing to drop.
+        let claimed_sources: std::collections::HashSet<&str> = selection
             .iter()
             .filter_map(|item| match item {
-                SelectionItem::Column { sql, name }
-                    if crate::naming::unquote_ident(sql.trim()) == *name =>
-                {
-                    Some(name.as_str())
-                }
+                SelectionItem::Column {
+                    source: Some(source),
+                    ..
+                } => Some(source.as_str()),
                 _ => None,
             })
             .collect();
@@ -158,7 +159,7 @@ fn resolve_selection(df: DataFrame, selection: &[SelectionItem]) -> Result<DataF
                 }
                 SelectionItem::Wildcard => {
                     for (idx, name) in names.iter().enumerate().skip(cursor).take(wildcard_width) {
-                        if !bare_names.contains(name.as_str()) {
+                        if !claimed_sources.contains(name.as_str()) {
                             columns.push((name.clone(), df.inner().column(idx).clone()));
                         }
                     }
@@ -649,12 +650,23 @@ mod integration_tests {
     }
 
     #[test]
-    fn test_tabulate_selection_wildcard_with_rename() {
+    fn test_tabulate_selection_wildcard_with_rename_does_not_duplicate_the_source_column() {
         let reader = reader_with_sales();
 
-        let mixed =
+        // sales is (id, name): `id AS Number` renames `id`, so the
+        // wildcard's own copy of `id` is dropped rather than shown twice.
+        let trailing =
             resolve_table_with_reader("TABULATE *, id AS Number FROM sales", &reader).unwrap();
-        assert_eq!(mixed.sql(), "SELECT *, id AS Number FROM sales");
+        assert_eq!(trailing.sql(), "SELECT *, id AS Number FROM sales");
+        assert_eq!(trailing.ncol(), 2);
+        let order: Vec<_> = trailing.columns().iter().map(|c| c.name.as_str()).collect();
+        assert_eq!(order, ["name", "Number"]);
+
+        let leading =
+            resolve_table_with_reader("TABULATE id AS Number, * FROM sales", &reader).unwrap();
+        assert_eq!(leading.ncol(), 2);
+        let order: Vec<_> = leading.columns().iter().map(|c| c.name.as_str()).collect();
+        assert_eq!(order, ["Number", "name"]);
     }
 
     #[test]

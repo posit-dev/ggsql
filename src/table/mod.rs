@@ -49,9 +49,13 @@ pub struct Table {
 pub enum SelectionItem {
     /// `*`.
     Wildcard,
-    /// A column or expression. `sql` is the verbatim source text (e.g.
+    /// A column or a constant. `sql` is the verbatim source text (e.g.
     /// `bill_dep AS Depth`); `name` is the output column name (`Depth`).
-    Column { sql: String, name: String },
+    Column {
+        sql: String,
+        name: String,
+        source: Option<String>,
+    },
 }
 
 impl Table {
