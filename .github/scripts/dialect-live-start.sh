@@ -53,7 +53,11 @@ case "$backend" in
     # battery needs. Trino takes a while to boot; poll the info endpoint
     # until it is no longer starting.
     docker run -d --name db -p 8080:8080 trinodb/trino:476
-    wait_for trino bash -c 'curl -sf http://localhost:8080/v1/info | grep -q "\"starting\":false"'
+    # starting:false means the coordinator is up, but queries still fail
+    # with "No nodes available to run query" until the (co-located) worker
+    # has announced itself — /v1/node lists it once discovery completes.
+    wait_for trino bash -c 'curl -sf http://localhost:8080/v1/info | grep -q "\"starting\":false" \
+      && curl -sf http://localhost:8080/v1/node | grep -q "\"uri\""'
     # The driver defaults to HTTPS; SSL=false selects plain HTTP.
     uri="trino://test@localhost:8080/memory/default?SSL=false"
     ;;
@@ -85,8 +89,11 @@ case "$backend" in
     docker run -d --name db --privileged \
       -p 8563:8563 exasol/docker-db:2026.1.2
     wait_for exasol port_open 8563
-    # The port opens before the database finishes its startup stages.
-    sleep 30
+    # The port opens long before the database finishes its startup stages
+    # (the driver was getting "TLS error: Connection reset by peer" on a
+    # fixed sleep). A completed TLS handshake is the earliest reliable
+    # readiness signal; the server resets connections until then.
+    wait_for exasol-tls bash -c 'echo | timeout 5 openssl s_client -connect localhost:8563 >/dev/null 2>&1'
     uri="exasol://sys:exasol@localhost:8563/?tls=true&validateservercertificate=0"
     ;;
   redshift)
@@ -134,8 +141,12 @@ case "$backend" in
     # to the router (8888) and polled to completion; the driver then talks
     # SQL to the broker (8082). DruidDialect requires_cache, so the battery
     # runs through ggsql's automatic sqlite cache wrap.
+    # The image's /druid.sh entrypoint needs a service argument and runs a
+    # single service per container; bypass it with the classic all-in-one
+    # quickstart launcher, which execs `supervise` (foreground, starts
+    # embedded ZooKeeper plus all services from the nano-quickstart conf).
     docker run -d --name db \
-      -e DRUID_SINGLE_NODE_CONF=nano-quickstart \
+      --entrypoint /opt/druid/bin/start-nano-quickstart \
       -p 8888:8888 -p 8082:8082 apache/druid:37.0.0
     wait_for druid curl -sf http://localhost:8082/status/health
     # MSQ INSERT: every Druid datasource needs a __time column; one shared

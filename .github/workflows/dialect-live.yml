@@ -163,12 +163,12 @@ jobs:
           sudo apt-get install -y unixodbc odbc-postgresql
 
       - name: Install unixODBC and the MonetDB ODBC driver
-        # The MonetDB ODBC driver (libMonetODBC.so) ships with the MonetDB
-        # server packages and does not self-register, so after installing
-        # from MonetDB's apt repo this step hand-writes the driver entry and
-        # a ggsql-monetdb system DSN into unixODBC's ini files. The packages
-        # do not auto-start a server (systemd setup is opt-in), so they
-        # cannot collide with the docker container on port 50000.
+        # The ODBC driver (libMonetODBC.so) lives in the dedicated
+        # libmonetdb-client-odbc package — NOT in monetdb5-sql or
+        # monetdb-client, despite what the MonetDB docs imply — so the
+        # server packages are not installed at all. The driver does not
+        # self-register, so this step hand-writes the driver entry and a
+        # ggsql-monetdb system DSN into unixODBC's ini files.
         if: ${{ matrix.backend == 'monetdb' }}
         run: |
           sudo apt-get update
@@ -178,9 +178,13 @@ jobs:
           echo "deb https://dev.monetdb.org/downloads/deb/ $(lsb_release -cs) monetdb" \
             | sudo tee /etc/apt/sources.list.d/monetdb.list
           sudo apt-get update
-          sudo apt-get install -y monetdb5-sql monetdb-client
+          sudo apt-get install -y libmonetdb-client-odbc
           driver_so="$(find /usr/lib -name libMonetODBC.so | head -1)"
-          test -n "$driver_so"
+          if [ -z "$driver_so" ]; then
+            echo "libMonetODBC.so not found; package contents:"
+            dpkg -L libmonetdb-client-odbc
+            exit 1
+          fi
           printf '[MonetDB]\nDescription=MonetDB ODBC Driver\nDriver=%s\n' "$driver_so" \
             | sudo tee -a /etc/odbcinst.ini
           printf '[ggsql-monetdb]\nDriver=MonetDB\nHost=localhost\nPort=50000\nDatabase=ggsql\n' \
