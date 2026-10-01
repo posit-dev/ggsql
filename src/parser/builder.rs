@@ -8,7 +8,7 @@ use crate::plot::layer::geom::Geom;
 use crate::plot::projection::resolve_coord;
 use crate::plot::scale::{color_to_hex, is_color_aesthetic, is_user_facet_aesthetic, Transform};
 use crate::plot::*;
-use crate::{ColumnSection, Format, GgsqlError, Result, Spanner, Spec, Table};
+use crate::{ColumnSection, Format, GgsqlError, Result, SelectionItem, Spanner, Spec, Table};
 use std::collections::HashMap;
 use tree_sitter::Node;
 
@@ -43,6 +43,20 @@ fn parse_string_node(node: &Node, source: &SourceTree) -> String {
     let text = source.get_text(node);
     let unquoted = text.trim_matches(|c| c == '\'' || c == '"');
     process_escape_sequences(unquoted)
+}
+
+/// Strip one pair of surrounding backticks/double quotes from a quoted
+/// identifier (a bare identifier passes through unchanged) — not via
+/// `trim_matches`, which would also eat the other quote character if it
+/// appears unescaped at the edges of the content.
+fn parse_identifier_node(node: &Node, source: &SourceTree) -> String {
+    let text = source.get_text(node);
+    for quote in ['`', '"'] {
+        if let Some(inner) = text.strip_prefix(quote).and_then(|s| s.strip_suffix(quote)) {
+            return inner.to_string();
+        }
+    }
+    text
 }
 
 /// Process escape sequences in a string (e.g., \n, \t, \\, \')
@@ -342,6 +356,60 @@ fn build_visualise_statement(node: &Node, source: &SourceTree) -> Result<Plot> {
     Ok(spec)
 }
 
+/// Build the selection items of a column_selection node in written order
+fn build_selection_items(node: &Node, source: &SourceTree) -> Result<Vec<SelectionItem>> {
+    let mut items = Vec::new();
+    for elem in source.find_nodes(node, "(mapping_element) @elem") {
+        let child = elem.child(0).ok_or_else(|| {
+            GgsqlError::ParseError("Invalid mapping_element: missing child".to_string())
+        })?;
+        let item = match child.kind() {
+            "wildcard_mapping" => SelectionItem::Wildcard,
+            "implicit_mapping" | "identifier" => {
+                let name = naming::unquote_ident(&source.get_text(&child));
+                SelectionItem::Column {
+                    sql: source.get_text(&elem),
+                    source: Some(name.clone()),
+                    name,
+                }
+            }
+            "explicit_mapping" => {
+                let (name_node, value_node) = extract_name_value_nodes(&child, "column selection")?;
+                let value_child = value_node.child(0).ok_or_else(|| {
+                    GgsqlError::ParseError(
+                        "Invalid column selection item: missing value".to_string(),
+                    )
+                })?;
+                let source_column = match value_child.kind() {
+                    "column_reference" => {
+                        Some(naming::unquote_ident(&source.get_text(&value_child)))
+                    }
+                    "literal_value" => None,
+                    _ => {
+                        return Err(GgsqlError::ParseError(format!(
+                            "Invalid column selection value type: {}",
+                            value_child.kind()
+                        )))
+                    }
+                };
+                SelectionItem::Column {
+                    sql: source.get_text(&elem),
+                    name: naming::unquote_ident(&source.get_text(&name_node)),
+                    source: source_column,
+                }
+            }
+            _ => {
+                return Err(GgsqlError::ParseError(format!(
+                    "Invalid column selection item: {}",
+                    child.kind()
+                )))
+            }
+        };
+        items.push(item);
+    }
+    Ok(items)
+}
+
 /// Build a single Table from a tabulate_statement node
 fn build_tabulate_statement(node: &Node, source: &SourceTree) -> Result<Table> {
     let mut table = Table::new();
@@ -350,7 +418,7 @@ fn build_tabulate_statement(node: &Node, source: &SourceTree) -> Result<Table> {
     for child in node.children(&mut cursor) {
         match child.kind() {
             "column_selection" => {
-                table.selection = source.get_text(&child);
+                table.selection = build_selection_items(&child, source)?;
             }
             "single_source_from" => {
                 if let Some(source_node) = child.child_by_field_name("source") {
@@ -391,18 +459,24 @@ fn process_tab_clause(node: &Node, source: &SourceTree, table: &mut Table) -> Re
     Ok(())
 }
 
-/// Build a Spanner from a span_clause node: SPAN label ACROSS col, ... [SETTING ...]
+/// Build a Spanner from a span_clause node: SPAN id ACROSS col, ... [SETTING ...]
 fn build_span_clause(node: &Node, source: &SourceTree) -> Result<Spanner> {
-    let label_node = node.child_by_field_name("label").ok_or_else(|| {
-        GgsqlError::ParseError("Missing 'label' field in SPAN clause".to_string())
-    })?;
-    let label = match label_node.kind() {
-        "string" => Some(parse_string_node(&label_node, source)),
-        "null_literal" => None,
+    let id_node = node
+        .child_by_field_name("id")
+        .ok_or_else(|| GgsqlError::ParseError("Missing 'id' field in SPAN clause".to_string()))?;
+    // `id` stays unparsed (quotes included), matching parse_column_list's
+    // own convention, so it compares equal to a later ACROSS/LABEL
+    // reference. `label` is the dequoted form, used only for display.
+    let (id, label) = match id_node.kind() {
+        "identifier" => (
+            source.get_text(&id_node),
+            Some(parse_identifier_node(&id_node, source)),
+        ),
+        "null_literal" => (naming::anonymous_span_id(), None),
         _ => {
             return Err(GgsqlError::ParseError(format!(
-                "SPAN label must be a string or null, got: {}",
-                label_node.kind()
+                "SPAN id must be an identifier or null, got: {}",
+                id_node.kind()
             )));
         }
     };
@@ -418,6 +492,7 @@ fn build_span_clause(node: &Node, source: &SourceTree) -> Result<Spanner> {
     };
 
     Ok(Spanner {
+        id,
         label,
         columns,
         settings,
@@ -1442,36 +1517,45 @@ mod tests {
     #[test]
     fn test_tabulate_span_basic() {
         let specs =
-            parse_test_specs("TABULATE * FROM sales SPAN 'Pretty Name' ACROSS foo, bar, baz")
+            parse_test_specs("TABULATE * FROM sales SPAN `Pretty Name` ACROSS foo, bar, baz")
                 .unwrap();
         let table = specs[0].as_table().expect("expected a Table spec");
 
         assert_eq!(table.spans.len(), 1);
+        assert_eq!(table.spans[0].id, "`Pretty Name`");
         assert_eq!(table.spans[0].label, Some("Pretty Name".to_string()));
         assert_eq!(table.spans[0].columns, vec!["foo", "bar", "baz"]);
         assert!(table.spans[0].settings.is_empty());
     }
 
     #[test]
-    fn test_tabulate_span_null_label_suppresses_the_cell() {
-        let specs = parse_test_specs("TABULATE * FROM sales SPAN NULL ACROSS foo, bar").unwrap();
-        let table = specs[0].as_table().expect("expected a Table spec");
+    fn test_tabulate_span_columns_first_under_matches_id_first_across() {
+        let across =
+            parse_test_specs("TABULATE * FROM sales SPAN `Pretty Name` ACROSS foo, bar, baz")
+                .unwrap();
+        let under =
+            parse_test_specs("TABULATE * FROM sales SPAN foo, bar, baz UNDER `Pretty Name`")
+                .unwrap();
 
-        assert_eq!(table.spans[0].label, None);
+        let across_table = across[0].as_table().expect("expected a Table spec");
+        let under_table = under[0].as_table().expect("expected a Table spec");
+
+        assert_eq!(across_table.spans, under_table.spans);
     }
 
     #[test]
-    fn test_tabulate_span_empty_label_is_distinct_from_null() {
-        let specs = parse_test_specs("TABULATE * FROM sales SPAN '' ACROSS foo, bar").unwrap();
+    fn test_tabulate_span_null_id_gets_an_anonymous_generated_id() {
+        let specs = parse_test_specs("TABULATE * FROM sales SPAN NULL ACROSS foo, bar").unwrap();
         let table = specs[0].as_table().expect("expected a Table spec");
 
-        assert_eq!(table.spans[0].label, Some(String::new()));
+        assert!(!table.spans[0].id.is_empty());
+        assert_eq!(table.spans[0].label, None);
     }
 
     #[test]
     fn test_tabulate_span_with_setting() {
         let specs =
-            parse_test_specs("TABULATE * FROM sales SPAN 'W' ACROSS foo SETTING width => '40%'")
+            parse_test_specs("TABULATE * FROM sales SPAN W ACROSS foo SETTING width => '40%'")
                 .unwrap();
         let table = specs[0].as_table().expect("expected a Table spec");
 
@@ -1497,7 +1581,7 @@ mod tests {
     #[test]
     fn test_tabulate_multiple_spans_and_label_in_any_order() {
         let specs = parse_test_specs(
-            "TABULATE * FROM sales LABEL id => 'ID' SPAN 'A' ACROSS foo, bar SPAN 'B' ACROSS baz",
+            "TABULATE * FROM sales LABEL id => 'ID' SPAN A ACROSS foo, bar SPAN B ACROSS baz",
         )
         .unwrap();
         let table = specs[0].as_table().expect("expected a Table spec");

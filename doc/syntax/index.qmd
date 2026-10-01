@@ -2,7 +2,7 @@
 title: "Syntax"
 ---
 
-## Main clauses
+## Visualisation clauses
 ggsql augments the standard SQL syntax with a number of new clauses to describe a visualisation. Apart from `VISUALISE` needing to be the first, the order of these clauses is arbitrary, though grouping e.g. all `DRAW` clauses will lead to queries that are easier to reason about:
 
 - [`VISUALISE`](clause/visualise.qmd) initiates the visualisation part of the query
@@ -12,6 +12,13 @@ ggsql augments the standard SQL syntax with a number of new clauses to describe 
 - [`FACET`](clause/facet.qmd) describes how data should be split into small multiples
 - [`PROJECT`](clause/project.qmd) is used for selecting the coordinate system to use
 - [`LABEL`](clause/label.qmd) is used to manually add titles to the plot or the various axes and legends
+
+## Table clauses
+
+- [`TABULATE`](clause/tabulate.qmd) initialises the table part of the query
+- [`LABEL`](clause/label-tabulate.qmd) is used to manually change column labels and titles
+- [`SPAN`](clause/span.qmd) can be used to group columns and display a label across them
+- [`FORMAT`](clause/format.qmd) declares formatting for columns
 
 ## Layers
 There are many different layers to choose from when visualising your data. Some are straightforward translations of your data into visual marks such as a point layer, while others perform more or less complicated calculations like e.g. the histogram layer. A layer is selected by providing the layer name after the `DRAW` clause

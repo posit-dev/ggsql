@@ -1103,8 +1103,8 @@ pub struct PreparedData {
 /// Execute setup statements (INSTALL, LOAD, SET, etc.) ahead of the main
 /// query. Shared by the Plot and Table pipelines (`prepare_data_with_reader`
 /// and `table::resolve_table_with_reader`). Structured DML (CREATE, INSERT,
-/// UPDATE, DELETE) is out of scope here — see `cte::extract_side_effects`,
-/// which only the Plot pipeline currently runs.
+/// UPDATE, DELETE) is out of scope here — both pipelines run it separately
+/// via `cte::extract_side_effects`.
 fn execute_setup_statements(source_tree: &parser::SourceTree, reader: &dyn Reader) -> Result<()> {
     let root = source_tree.root();
     for stmt in source_tree.find_texts(&root, "(sql_statement (other_sql_statement) @stmt)") {
@@ -1131,18 +1131,24 @@ pub fn prepare_data_with_reader(query: &str, reader: &dyn Reader) -> Result<Prep
     let source_tree = parser::SourceTree::new(query)?;
     source_tree.validate()?;
 
-    // Check if query has VISUALISE statements. Known gap: a TABULATE-only
-    // query (no VISUALISE at all) has no visualise_statement node, so it
-    // bails out right here with "No visualization specifications found" —
-    // there is no table-execution path yet to route it to instead.
+    // This function only prepares Plot data, so a TABULATE-only query is
+    // rejected here, pointing at `Reader::execute()` instead.
     let root = source_tree.root();
     if source_tree
         .find_node(&root, "(visualise_statement) @viz")
         .is_none()
     {
-        return Err(GgsqlError::ValidationError(
-            "No visualization specifications found".to_string(),
-        ));
+        let message = if source_tree
+            .find_node(&root, "(tabulate_statement) @tab")
+            .is_some()
+        {
+            "Query has a TABULATE statement but no VISUALISE; \
+             prepare_data_with_reader() only prepares plot data — \
+             use Reader::execute() instead"
+        } else {
+            "No visualization specifications found"
+        };
+        return Err(GgsqlError::ValidationError(message.to_string()));
     }
 
     // Build AST from existing tree. Table specs are silently dropped here too
@@ -1705,20 +1711,19 @@ mod tests {
 
     #[cfg(feature = "duckdb")]
     #[test]
-    fn test_prepare_data_tabulate_only_is_known_gap() {
-        // Documents the known gap noted above the visualise_statement check:
-        // a TABULATE-only query has no table-execution path, so it bails out
-        // with the same generic error as a plain SQL-only query, rather than
-        // anything TABULATE-specific. Update this test once table execution
-        // exists.
+    fn test_prepare_data_tabulate_only_points_at_reader_execute() {
+        // A TABULATE-only query points at Reader::execute() instead of the
+        // generic "no specifications" message.
         let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
         let query = "TABULATE * FROM sales";
 
         let result = prepare_data_with_reader(query, &reader);
         match result {
-            Err(e) => assert!(e
-                .to_string()
-                .contains("No visualization specifications found")),
+            Err(e) => {
+                let message = e.to_string();
+                assert!(message.contains("TABULATE"));
+                assert!(message.contains("Reader::execute()"));
+            }
             Ok(_) => panic!("expected an error for a TABULATE-only query"),
         }
     }

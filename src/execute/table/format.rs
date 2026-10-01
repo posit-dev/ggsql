@@ -1,10 +1,8 @@
-//! `TABULATE FORMAT` resolution: validating `Table.formats`' `SETTING`
-//! parameters and reshaping it (one entry per `FORMAT` clause, each naming
-//! several columns) into one `Format` per column (`setup_formats`), then
-//! applying that per column — `RENAMING` by replacing the column's values in
-//! the `DataFrame` (`apply_formats`), `SETTING` by resolving display
-//! properties for `TableColumn` (`resolve_column_properties`). `setup_formats`
-//! and `apply_formats` are both called from `table::resolve_table_with_reader`.
+//! `TABULATE FORMAT` resolution: `setup_formats` validates `SETTING`
+//! parameters and reshapes the per-clause formats into one `Format` per
+//! column, `apply_formats` replaces a column's values with their display
+//! text (`RENAMING`), and `resolve_column_properties` resolves a column's
+//! `SETTING` display properties.
 
 use std::collections::HashMap;
 
@@ -12,32 +10,45 @@ use arrow::datatypes::DataType;
 
 use crate::array_util::{new_str_array, value_to_string};
 use crate::plot::{ParameterValue, Parameters};
-use crate::{DataFrame, Format, GgsqlError, Result};
+use crate::{DataFrame, Format, GgsqlError, Result, Spanner};
 
 /// Validate every FORMAT's `SETTING` parameters, then reshape `formats`
-/// into one `Format` per column it covers.
-pub(super) fn setup_formats(df: &DataFrame, formats: &[Format]) -> Result<HashMap<String, Format>> {
+/// into one `Format` per column it covers. `spans` must already be resolved
+/// (`Table::resolve_spanners`) — a name matching a SPAN id expands to that
+/// span's columns.
+pub(super) fn setup_formats(
+    df: &DataFrame,
+    formats: &[Format],
+    spans: &[Spanner],
+) -> Result<HashMap<String, Format>> {
     for (idx, format) in formats.iter().enumerate() {
         format
             .validate_settings()
             .map_err(|e| GgsqlError::ValidationError(format!("FORMAT {}: {}", idx + 1, e)))?;
     }
 
-    // `formats` has one entry per FORMAT clause, each naming several
-    // columns — reshaped here into one `Format` per column, where a later
-    // clause wins over an earlier one naming the same column.
+    // One `Format` per column; a later clause wins over an earlier one
+    // naming the same column.
     let mut resolved = HashMap::new();
     for format in formats {
         for name in &format.columns {
-            if df.column(name).is_err() {
-                return Err(GgsqlError::ValidationError(format!(
-                    "FORMAT references unknown column '{name}'"
-                )));
+            // A SPAN id never collides with a real column name
+            // (`Spanner::validate_columns`), so this lookup is unambiguous.
+            let columns: Vec<&String> = match spans.iter().find(|span| &span.id == name) {
+                Some(span) => span.columns.iter().collect(),
+                None => vec![name],
+            };
+            for column in columns {
+                if df.column(column).is_err() {
+                    return Err(GgsqlError::ValidationError(format!(
+                        "FORMAT references unknown column '{column}'"
+                    )));
+                }
+                let mut format = format.clone();
+                // The map key names the column instead.
+                format.columns = Vec::new();
+                resolved.insert(column.clone(), format);
             }
-            let mut format = format.clone();
-            // Redundant now: this map's own key names the column instead.
-            format.columns = Vec::new();
-            resolved.insert(name.clone(), format);
         }
     }
     Ok(resolved)
@@ -86,11 +97,9 @@ pub(super) fn apply_formats(
 }
 
 /// Resolve `SETTING` properties for one column: `format`'s own settings (if
-/// any), with `hjust` standardised to a number (see `standardise_hjust`);
-/// an absent setting defaults from the column's role — a STUB column right,
-/// a numeric BODY column right, everything else left. Every writer reads a
-/// plain number for `hjust` and buckets it into left/center/right itself —
-/// none of them see the keyword form.
+/// any), with `hjust` standardised to a number (see `standardise_hjust`) —
+/// an absent setting defaults from the column's role: right for a STUB or
+/// numeric column, left otherwise.
 pub(super) fn resolve_column_properties(dtype: &DataType, format: Option<&Format>) -> Parameters {
     let mut properties = format.map(|f| f.settings.clone()).unwrap_or_default();
 
@@ -107,10 +116,9 @@ pub(super) fn resolve_column_properties(dtype: &DataType, format: Option<&Format
     properties
 }
 
-/// Standardise an `hjust` value to a number: the keywords `"left"`,
-/// `"center"`/`"centre"` and `"right"` become `0.0`, `0.5` and `1.0` (any
-/// other string is `0.5` — validation rejects unrecognized spellings before
-/// this runs); a number passes through unchanged; anything else is `None`.
+/// Standardise an `hjust` value to a number: `"left"`,
+/// `"center"`/`"centre"`, `"right"` become `0.0`, `0.5`, `1.0` (any other
+/// string is `0.5`); a number passes through; anything else is `None`.
 pub(super) fn standardise_hjust(value: &ParameterValue) -> Option<f64> {
     match value {
         ParameterValue::String(s) if s == "left" => Some(0.0),
@@ -158,11 +166,31 @@ mod tests {
             },
         ];
 
-        let resolved = setup_formats(&frame, &formats).unwrap();
+        let resolved = setup_formats(&frame, &formats, &[]).unwrap();
 
         let price = resolved.get("price").unwrap();
         assert_eq!(price.value_template, "{:num %.2f}");
         assert!(price.columns.is_empty());
+    }
+
+    #[test]
+    fn setup_formats_expands_a_span_id_into_its_columns() {
+        let frame = df! { "a" => vec![1.0f64], "b" => vec![2.0f64] }.unwrap();
+        let formats = vec![Format {
+            columns: vec!["G".to_string()],
+            ..format_with("{:num %.2f}", None)
+        }];
+        let spans = vec![Spanner {
+            id: "G".to_string(),
+            label: Some("G".to_string()),
+            columns: vec!["a".to_string(), "b".to_string()],
+            settings: Parameters::new(),
+        }];
+
+        let resolved = setup_formats(&frame, &formats, &spans).unwrap();
+
+        assert_eq!(resolved.get("a").unwrap().value_template, "{:num %.2f}");
+        assert_eq!(resolved.get("b").unwrap().value_template, "{:num %.2f}");
     }
 
     #[test]
@@ -173,7 +201,7 @@ mod tests {
             ..format_with("{}", None)
         }];
 
-        let error = setup_formats(&frame, &formats).unwrap_err();
+        let error = setup_formats(&frame, &formats, &[]).unwrap_err();
         assert!(matches!(error, GgsqlError::ValidationError(msg)
             if msg.contains("FORMAT references unknown column 'typo'")));
     }

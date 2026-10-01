@@ -1,217 +1,102 @@
 ---
-title: "Output a table instead of a plot with `TABULATE`"
+title: "Initialise a table with `TABULATE`"
 ---
 
-<!-- 
-This document is work in progress.
-Take statements herein as malleable truths.
-We will be adding more clauses, more settings and rephrasing language.
--->
+The `TABULATE` clause marks the beginning of a ggsql table declaration, like `VISUALISE` does for ggsql plots. 
+As such it demarcates where the regular query ends and the table construction query starts. 
+Everything that comes before the `TABULATE` clause is considered a standard SQL query that is sent to the backend. 
+If that standard SQL ends with a `SELECT` query, this will automatically be added as the data for the table.
 
-The `TABULATE` clause marks the beginning of a ggsql table declaration — the plain-table counterpart to [`VISUALISE`](visualise.qmd). Instead of building a plot, it renders the query result directly as a table. As with `VISUALISE`, it demarcates where the regular SQL query ends: everything before `TABULATE` is standard SQL sent to the backend, and if it ends with a `SELECT`, that result becomes the table's data unless overridden by `FROM`.
-
-`TABULATE` currently only produces output through the HTML writer — every other writer (Vega-Lite, SVG, PDF, `.hep`, the raster writers) supports plots only and errors if given a `TABULATE` query.
+Currently, the only writer supporting the `TABULATE` clause is the HTML writer.
 
 ## Clause syntax
-`TABULATE` requires a column selection right after the keyword, naming which columns end up in the table and in what order; every other clause is optional.
+The `TABULATE` clause requires a column selection and optionally a data source.
 
 ```ggsql
-TABULATE <column>, ... | *
-  FROM <data-source>
-  LABEL <column> => <string>, ...
-  SPAN <string> ACROSS <column>, ...
-    SETTING <parameter> => <value>, ...
-  FORMAT [BODY | STUB] <column>, ...
-    SETTING <parameter> => <value>, ...
-    RENAMING <value> => <string>, ...
+TABULATE <column>, ... | * FROM <data-source>
 ```
 
-`LABEL`, `SPAN` and `FORMAT` may each appear more than once, in any order, after the source.
+## Column selection
 
-### Column selection
 ```ggsql
-TABULATE <column>, ...
+<column>, ... | *
+```
+
+After `TABULATE` you can list columns separated by commas to display in the table.
+The order in which you select columns affects the display-order in the output.
+The columns can be selected in (a mixture of) one of three forms:
+
+* `<column>` reuses the column name as header label
+* `<column> AS <label>` sets a new name for a column
+* `*` selects all (remaining) columns, in the source's order
+
+Without the `*` wildcard, only the listed columns are kept.
+The wildcard can be combined with explicit columns to partially order columns.
+When a column is renamed using the `AS` keyword, other table clauses --- like `LABEL`, `SPAN` and `FORMAT` --- use the *new* name.
+It is discouraged to name column `title`, `subtitle` or `captions` as these are keywords in the [`LABEL`](label-tabulate.qmd) clause.
+
+```ggsql
+-- Select all columns
 TABULATE *
+
+-- Select 3 specific columns
+TABULATE foo, bar, baz
+
+-- Renaming columns
+TABULATE foo AS "Foo Label", bar AS "Bar Label"
+
+-- Fix position of first and last columns
+TABULATE foo, *, baz
 ```
 
-Right after `TABULATE`, a comma-separated list says which columns to keep and in what order:
+## Data source
 
-* `<column>`: keep that column as-is.
-* `<column> AS <name>`: keep it, renamed to `<name>`.
-* `*`: every column, in the source's own order.
-
-`*` can be combined with renames — `TABULATE *, bill_dep AS Depth` keeps every column but renames `bill_dep`. Without a `*`, only the columns named are kept, in the order written: `TABULATE bill_len, bill_dep AS Depth` drops every other column and puts `bill_len` before `bill_dep`.
-
-A rename here changes the column's actual name (so `LABEL`, `SPAN` and `FORMAT` refer to it by the new name), unlike `LABEL`, which only changes its displayed header text.
-
-### `FROM`
 ```ggsql
 FROM <data-source>
 ```
 
-Same shape as [`VISUALISE`'s `FROM`](visualise.qmd#from): a bare identifier names a CTE or table already available in the backend, and a string names a file path the backend can read directly. `FROM` is optional if the query already ends with a `SELECT`; combining both (a trailing `SELECT` *and* `TABULATE FROM`) is an error, since it would leave two candidate data sources.
+The `TABULATE` clause can have a `FROM` clause that defines the source of the data.
+Alternatively data can be implied from any terminal `SELECT` clause in the preceding SQL query.
+Having both a terminal `SELECT` clause and using `FROM` is an error.
+The data received via `FROM` can take two forms:
 
-### `LABEL`
-```ggsql
-LABEL <column> => <string>, ...
-```
-
-Overrides the display header text for one or more columns. Unlike `VISUALISE`'s `LABEL` (which is keyed by aesthetic), `TABULATE`'s `LABEL` is keyed by column name, and there is no equivalent to `VISUALISE`'s automatic labelling logic — a column with no `LABEL` entry keeps its own name as its header.
-
-Give `NULL` instead of a string to blank a column's header while keeping the column itself:
+* Bare **Table** or **CTE** that is available in the backend, either as CTE defined in the preceding SQL query or as a proper table in the database.
+* A **File path** as (single quoted) string, that points to a file that can be read by the backend.
 
 ```ggsql
-TABULATE * FROM sales
-  LABEL revenue => 'Revenue ($)', region => NULL
-```
+-- Use table as data source
+TABULATE * FROM my_table
 
-If every column ends up with a blank header this way, the header row is omitted entirely rather than rendered as a row of empty cells.
+-- Use file as data source
+TABULATE * FROM 'my_dataset.csv'
 
-Three keys are reserved rather than naming a column — the same names as [`VISUALISE`'s `LABEL`](label.qmd), for the same three parts of a plot:
-
-* `title`: The table's main title
-* `subtitle`: An additional, often longer and more descriptive, title beneath the main title
-* `caption`: Text rendered as a real HTML `<caption>` element, outside the table's header/body rows
-
-```ggsql
-TABULATE * FROM sales
-  LABEL title => 'Sales by Region', subtitle => 'FY 2024', caption => 'Source: internal sales database'
-```
-
-A reserved key always wins over a same-named column: `LABEL title => 'Sales'` sets the table's title even when a column is literally named `title` — that column just can't get a header override through `LABEL` (it keeps its own name, as if no entry existed for it).
-
-`<caption>`'s position in the rendered output follows ordinary browser/CSS behaviour: it's `<table>`'s first child, so absent a `caption-side` override it renders above the title/subtitle rows, not below the data. Unlike `VISUALISE`'s `LABEL`, none of `title`/`subtitle`/`caption` support markdown here — the HTML writer has no rich-text pipeline.
-
-### `SPAN`
-```ggsql
-SPAN <string> ACROSS <column>, ...
-  SETTING <parameter> => <value>, ...
-```
-
-Groups columns under one spanner cell, drawn in a row above the column labels:
-
-```ggsql
-TABULATE * FROM sales
-  SPAN 'Q1' ACROSS jan, feb, mar
-```
-
-The label is mandatory and can be a string (`''` is a present-but-blank cell) or `NULL`, which suppresses the spanner cell itself while still grouping the columns — useful when the only reason for the `SPAN` is a shared `SETTING`. Each `SPAN` clause defines exactly one spanner; give several `SPAN` clauses for several spanners, the same way multiple `DRAW` clauses give multiple layers.
-
-Spanners whose column sets overlap (but aren't identical) are placed on separate header rows automatically, closest-to-the-columns first.
-
-#### `SETTING`
-```ggsql
-SETTING <parameter> => <value>, ...
-```
-
-* `gather` (boolean, default `true`): moves the spanner's columns to sit contiguously, pulling them next to the first-listed member without disturbing any other column's relative order. Set to `false` to leave the columns exactly where they are.
-* `level` (whole number, no default): pins the spanner to a specific header row (`1` is the row closest to the column labels). If omitted, a level is assigned automatically, high enough to avoid every other spanner it shares a column with.
-* `id` (string, no default): names this spanner so a *later* `SPAN` clause can fold its columns into a new one.
-
-Reference an `id` in place of a column name in a later `SPAN`'s `ACROSS` list to include everything the earlier spanner covers:
-
-```ggsql
-TABULATE * FROM sales
-  SPAN 'Q1' ACROSS jan, feb, mar SETTING id => 'q1'
-  SPAN 'H1' ACROSS q1, apr, may, jun
-```
-
-`H1` ends up covering `jan, feb, mar, apr, may, jun`. Only an `id` declared by an *earlier* `SPAN` clause is recognised — referencing one declared later, or a typo, is treated as an unknown column, the same error as any other bad `ACROSS` entry. Every `id` must be unique across the whole query, and can't collide with an actual column name.
-
-### `FORMAT`
-```ggsql
-FORMAT [BODY | STUB] <column>, ...
-  SETTING <parameter> => <value>, ...
-  RENAMING <value> => <string>, ...
-```
-
-Configures cell display for one or more columns, and — via the optional target — which section of the table they belong to. Give several `FORMAT` clauses for different column groups; if two `FORMAT` clauses name the same column, the later one wins for it, target included.
-
-```ggsql
-TABULATE * FROM sales
-  FORMAT price SETTING hjust => 'right'
-```
-
-#### Target
-
-`BODY` (the default, so it's rarely written) leaves a column in the table's regular body. `STUB` moves it into the table's stub instead — the row-label column(s), rendered ahead of every body column regardless of where they were selected:
-
-```ggsql
-TABULATE * FROM sales
-  FORMAT STUB region
-```
-
-A stub column is otherwise an ordinary column: `SETTING`/`RENAMING` still apply the same way. `LABEL` still sets its header text the same way too, but the default differs — a stub column's header is blank unless `LABEL` gives it text, while any other column defaults to its own name. A `SPAN` can't include a stub column — grouping the stub under a spanner isn't supported.
-
-#### `SETTING`
-```ggsql
-SETTING <parameter> => <value>, ...
-```
-
-* `hjust` (default: right for a stub or numeric column, left otherwise): horizontal alignment for the column's cells. One of `'left'`, `'right'`, `'center'`/`'centre'`, or a number between 0 and 1 (0 is left, 1 is right, 0.5 is centered).
-
-#### `RENAMING`
-```ggsql
-RENAMING <value> => <string>, ...
-```
-
-Works the same way as [`SCALE`'s `RENAMING`](scale.qmd#renaming), just applied to the columns' own cell values instead of a scale's breaks: give a value on the left and its display text on the right, or `* => '...'` to format every value with [a template](scale.qmd#break-formatting). `NULL` on the right suppresses a cell's text.
-
-`null` (unquoted) matches an actual missing value, which makes `RENAMING` a convenient way to blank out missing data or zeroes:
-
-```ggsql
-TABULATE * FROM sales
-  FORMAT price RENAMING null => '-', 0 => '-'
-```
-
-### Examples
-
-```{ggsql}
-SELECT * FROM ggsql:penguins LIMIT 5
-
+-- With preceding SQL
+SELECT foo, bar, baz FROM my_table
 TABULATE *
 ```
 
-```{ggsql}
-SELECT * FROM ggsql:penguins LIMIT 5
+## Examples
 
-TABULATE *
-  LABEL
-    title => 'Penguins!',
-    subtitle => 'Structural size measurements',
-    caption => 'Source: Palmer Station, Antarctica'
+Plain table from data
+
+```{ggsql}
+CREATE TEMP TABLE my_data AS SELECT * FROM ggsql:penguins LIMIT 5
+
+TABULATE * FROM my_data
 ```
 
-```{ggsql}
-SELECT * FROM ggsql:penguins LIMIT 5
+Reordering columns
 
-TABULATE *
-  SPAN 'Bill' ACROSS bill_len, bill_dep
-  LABEL
-    bill_len => 'Length',
-    bill_dep => 'Depth'
+```{ggsql}
+TABULATE island, *, species FROM my_data
 ```
 
-
-
-```{ggsql}
-SELECT * FROM ggsql:penguins LIMIT 5
-
-TABULATE *
-  FORMAT body_mass
-    SETTING hjust => 'right'
-    RENAMING null => '-', * => '{:num %.0f}g'
-```
+Renaming columns on the fly. For order-preserving renames, see [`LABEL`](label-tabulate.qmd) clause.
 
 ```{ggsql}
-SELECT * FROM ggsql:penguins LIMIT 5
-
-TABULATE *
-  FORMAT STUB species
-```
-
-```{ggsql}
-SELECT * FROM ggsql:penguins LIMIT 5
-
-TABULATE bill_len, bill_dep AS Depth
+TABULATE 
+  bill_len AS "Bill Length",  
+  bill_dep AS "Bill Depth",
+  *
+  FROM my_data
 ```

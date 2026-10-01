@@ -53,8 +53,15 @@ website:
             href: syntax/clause/project.qmd
           - text: "`LABEL`"
             href: syntax/clause/label.qmd
+          - text: "---"
           - text: "`TABULATE`"
             href: syntax/clause/tabulate.qmd
+          - text: "`LABEL`"
+            href: syntax/clause/label-tabulate.qmd
+          - text: "`SPAN`"
+            href: syntax/clause/span.qmd
+          - text: "`FORMAT`"
+            href: syntax/clause/format.qmd
       - text: Gallery
         href: gallery/index.qmd
       - href: faq.qmd
@@ -92,7 +99,7 @@ website:
       contents:
         - text: Overview
           href: syntax/index.qmd
-        - section: "Main clauses"
+        - section: "Visualise clauses"
           contents:
             - text: "`VISUALISE`"
               href: syntax/clause/visualise.qmd
@@ -110,6 +117,16 @@ website:
               href: syntax/clause/label.qmd
             - text: "`TABULATE`"
               href: syntax/clause/tabulate.qmd
+        - section: "Tabulate clauses"
+          contents:
+            - text: "`TABULATE`"
+              href: syntax/clause/tabulate.qmd
+            - text: "`LABEL`"
+              href: syntax/clause/label-tabulate.qmd
+            - text: "`SPAN`"
+              href: syntax/clause/span.qmd
+            - text: "`FORMAT`"
+              href: syntax/clause/format.qmd
         - section: Layers
           contents:
             - section: Types

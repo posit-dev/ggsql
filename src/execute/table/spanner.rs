@@ -1,49 +1,17 @@
 //! `TABULATE SPAN` resolution: column reordering (`gather`) and header-row
-//! (level) assignment for spanners, called from `table::build_cells`.
+//! (level) assignment for spanners.
 
 use super::layout::{Section, TableColumn};
-use crate::{GgsqlError, Result, Spanner, TableCell, TableCellKind, TableClass, TableRow};
-
-/// Check that no SPAN's `id` collides with an actual column name. A
-/// duplicate `id` across spanners is already rejected by
-/// `Table::resolve_spanner_ids`, which has no access to real column names —
-/// `create_spanners` calls this once it does.
-fn check_spanner_id_column_collision(spans: &[Spanner], columns: &[TableColumn]) -> Result<()> {
-    for span in spans {
-        if let Some(id) = span.settings.get("id").and_then(|v| v.as_str()) {
-            if columns.iter().any(|c| c.name == id) {
-                return Err(GgsqlError::ValidationError(format!(
-                    "SPAN id '{id}' collides with an existing column name"
-                )));
-            }
-        }
-    }
-    Ok(())
-}
+use crate::{Spanner, TableCell, TableCellKind, TableClass, TableRow};
 
 /// Reorder `columns` so every `gather`-enabled spanner's members become
-/// contiguous, folding spanners in `spans`' order (declaration order) —
-/// mirrors gt's `tab_spanner(gather = TRUE)`, which is the default there and
-/// here. `SETTING gather => false` opts a spanner out of this entirely,
-/// leaving its columns wherever they land.
-///
-/// This only ever touches column *order* — it says nothing about which
-/// spanner ends up on which header row. Two spanners can both gather
-/// successfully and still need separate rows (their column ranges can
-/// overlap even once each is individually contiguous); that's level
-/// assignment, a separate, later concern this function doesn't address.
-///
-/// Trusts `gather`'s type without checking it — `Spanner::validate_settings`
-/// (called upstream, in both the standalone `validate()` path and
-/// `build_cells`, mirroring `Layer::validate_settings`) already rejected a
-/// non-boolean value before this ever runs. "Does this spanner name a real
-/// column" is a different kind of check (referential, needs `columns`
-/// itself as context, not just the setting's shape) and stays inline in
-/// `gather_columns`.
+/// contiguous, folding spanners in declaration order. `SETTING gather =>
+/// false` leaves a spanner's columns in place. Touches column order only;
+/// header-row assignment is `assign_spanner_levels`' concern.
 pub(crate) fn reorder_table_columns(
     mut columns: Vec<TableColumn>,
     spans: &[Spanner],
-) -> Result<Vec<TableColumn>> {
+) -> Vec<TableColumn> {
     for span in spans {
         let gather = span
             .settings
@@ -52,28 +20,25 @@ pub(crate) fn reorder_table_columns(
             .unwrap_or(true);
 
         if gather {
-            columns = gather_columns(columns, &span.columns)?;
+            columns = gather_columns(columns, &span.columns);
         }
     }
 
-    Ok(columns)
+    columns
 }
 
 /// Move `members` (in the order given) to sit contiguously where the first
 /// of them currently is, pulling the rest in around it — the minimal move
 /// that unifies them, leaving every other column's relative order untouched.
-/// Errors if `members` names a column not present in `columns` at all.
-fn gather_columns(columns: Vec<TableColumn>, members: &[String]) -> Result<Vec<TableColumn>> {
+fn gather_columns(columns: Vec<TableColumn>, members: &[String]) -> Vec<TableColumn> {
     let Some(anchor) = members.first() else {
-        return Ok(columns);
+        return columns;
     };
 
     let anchor_index = columns
         .iter()
         .position(|c| &c.name == anchor)
-        .ok_or_else(|| {
-            GgsqlError::ValidationError(format!("SPAN references unknown column '{anchor}'"))
-        })?;
+        .expect("Table::resolve_spanners already validated every ACROSS column exists");
     let insertion_index = columns[..anchor_index]
         .iter()
         .filter(|c| !members.contains(&c.name))
@@ -92,30 +57,24 @@ fn gather_columns(columns: Vec<TableColumn>, members: &[String]) -> Result<Vec<T
 
     let mut result: Vec<TableColumn> = remainder.drain(..insertion_index).collect();
     for name in members {
-        let column = by_name.remove(name).ok_or_else(|| {
-            GgsqlError::ValidationError(format!("SPAN references unknown column '{name}'"))
-        })?;
+        let column = by_name
+            .remove(name)
+            .expect("Table::resolve_spanners already validated every ACROSS column exists");
         result.push(column);
     }
     result.extend(remainder);
 
-    Ok(result)
+    result
 }
 
-/// Assign each spanner a 1-indexed level (header row), matching gt's model:
-/// an explicit `SETTING level => N` pins a spanner there directly — no
-/// conflict check, even against another spanner already at that level;
-/// `validate_overlaps` catches a genuine clash once real cells exist, the
-/// same way it catches any other overlapping `TableCell`. A spanner with no
-/// explicit level is assigned greedily instead (see the `None` arm below).
+/// Assign each spanner a 1-indexed level (header row). An explicit `SETTING
+/// level => N` pins a spanner there with no conflict check —
+/// `validate_overlaps` catches a genuine clash once real cells exist. A
+/// spanner with no explicit level is assigned greedily (see the `None`
+/// arm). Levels are then compacted to remove gaps explicit levels can leave
+/// (e.g. 1, 3, 4 → 1, 2, 3).
 ///
-/// Levels are then compacted to remove gaps a mix of explicit levels can
-/// leave behind (e.g. 1, 3, 4 → 1, 2, 3) — a spanner's level only matters
-/// relative to the others, not its literal number, so gaps would just waste
-/// header rows.
-///
-/// Infallible: `level`'s type/shape is already checked by
-/// `Spanner::validate_settings` before this ever runs.
+/// Infallible: `level`'s type is checked by `Spanner::validate_settings`.
 fn assign_spanner_levels(spans: &[Spanner]) -> Vec<usize> {
     let mut levels: Vec<usize> = Vec::with_capacity(spans.len());
 
@@ -127,11 +86,10 @@ fn assign_spanner_levels(spans: &[Spanner]) -> Vec<usize> {
                 as usize,
             None => {
                 // One more than the highest level of any already-assigned
-                // spanner whose columns intersect this one's — matches gt's
-                // own `resolve_spanner_level()`. Can use more levels than
-                // strictly necessary for a chain of pairwise-but-not-all
-                // conflicting spanners, since it never revisits a lower
-                // level once something deeper claims a shared column.
+                // spanner whose columns intersect this one's. Never revisits
+                // a lower level, so a chain of pairwise-but-not-all
+                // conflicting spanners can use more levels than strictly
+                // necessary.
                 spans
                     .iter()
                     .zip(&levels)
@@ -145,9 +103,8 @@ fn assign_spanner_levels(spans: &[Spanner]) -> Vec<usize> {
         levels.push(level);
     }
 
-    // Compact: gaps left by explicit levels (e.g. 1, 3, 4) collapse to a
-    // dense range (1, 2, 3), inline rather than a separate helper since
-    // nothing else needs this in isolation.
+    // Compact gaps left by explicit levels (e.g. 1, 3, 4) into a dense
+    // range (1, 2, 3).
     let mut distinct = levels.clone();
     distinct.sort_unstable();
     distinct.dedup();
@@ -159,19 +116,16 @@ fn assign_spanner_levels(spans: &[Spanner]) -> Vec<usize> {
 }
 
 /// Build one `TableCell` per contiguous run of a spanner's columns, calling
-/// `assign_spanner_levels` itself. Numbered locally from `top == 0`, the
-/// same convention `create_column_labels`/`create_body` use; stitching
-/// these rows above column labels and body is a separate, later step.
-/// `Section::rows` gets exactly `max_level` entries — the number of spanner
-/// rows, not the number of spanner cells.
-pub(crate) fn create_spanners(columns: &[TableColumn], spans: &[Spanner]) -> Result<Section> {
+/// `assign_spanner_levels` itself. Rows are numbered locally from
+/// `top == 0`. `Section::rows` gets exactly `max_level` entries, each
+/// carrying `TableClass::ColHeadingRow`, like the column-label row does.
+pub(crate) fn create_spanners(columns: &[TableColumn], spans: &[Spanner]) -> Section {
     if spans.is_empty() {
-        return Ok(Section::new(Vec::new(), Vec::new()));
+        return Section::new(Vec::new(), Vec::new());
     }
-    check_spanner_id_column_collision(spans, columns)?;
 
-    // Filter out spanners with `null` labels. They don't contribute to cells
-    // so their level is irrellevant and shouldn't affect other levels.
+    // Spanners with no display text (`SPAN NULL`, or `LABEL <id> => NULL`)
+    // contribute no cells, so their level shouldn't affect other levels.
     let spans: Vec<Spanner> = spans
         .iter()
         .filter(|s| s.label.is_some())
@@ -190,17 +144,14 @@ pub(crate) fn create_spanners(columns: &[TableColumn], spans: &[Spanner]) -> Res
             .expect("spans is filtered to only Some(label) spanners");
         // Row 0 is topmost. Level 1 is bottom-most.
         let row = max_level - level;
-        // The topmost level's class supplants the base one, mirroring gt's
-        // `gt_column_spanner_outer`. Centred by default — gt centres its
-        // spanner labels too.
-        let classes = if row == 0 {
-            vec![TableClass::SpannerOuter, TableClass::AlignCenter]
-        } else {
-            vec![TableClass::Spanner, TableClass::AlignCenter]
-        };
+        let classes = vec![
+            TableClass::Spanner,
+            TableClass::SpannerLabel,
+            TableClass::AlignCenter,
+        ];
 
-        // We use run length encoding to find 'runs' of columns belonging to span.
-        // If span has disjoint columns, these are multiple runs.
+        // Run-length encode the span's columns; disjoint columns give
+        // multiple runs.
         let mut run_start = None;
         for (index, column) in columns.iter().enumerate() {
             // Does column belong to span?
@@ -226,7 +177,7 @@ pub(crate) fn create_spanners(columns: &[TableColumn], spans: &[Spanner]) -> Res
                 _ => {}
             }
         }
-        // Started but not ended: last column
+        // Close a run still open at the last column.
         if let Some(start) = run_start {
             cells.push(
                 TableCell::new(
@@ -242,7 +193,16 @@ pub(crate) fn create_spanners(columns: &[TableColumn], spans: &[Spanner]) -> Res
         }
     }
 
-    Ok(Section::new(vec![TableRow::header(); max_level], cells))
+    Section::new(
+        vec![
+            TableRow {
+                classes: vec![TableClass::ColHeadingRow, TableClass::SpannerRow],
+                ..TableRow::header()
+            };
+            max_level
+        ],
+        cells,
+    )
 }
 
 #[cfg(test)]
@@ -266,6 +226,7 @@ mod tests {
 
     fn spanner_with(columns: &[&str], label: Option<&str>, settings: Parameters) -> Spanner {
         Spanner {
+            id: label.unwrap_or("").to_string(),
             label: label.map(str::to_string),
             columns: columns.iter().map(|s| s.to_string()).collect(),
             settings,
@@ -305,8 +266,7 @@ mod tests {
         let result = gather_columns(
             columns,
             &["a".to_string(), "b".to_string(), "c".to_string()],
-        )
-        .unwrap();
+        );
 
         assert_eq!(names(&result), vec!["x", "a", "b", "c", "y", "z", "w"]);
     }
@@ -327,8 +287,7 @@ mod tests {
         let result = gather_columns(
             columns,
             &["a".to_string(), "b".to_string(), "c".to_string()],
-        )
-        .unwrap();
+        );
 
         assert_eq!(names(&result), vec!["x", "a", "b", "c", "y"]);
     }
@@ -337,18 +296,17 @@ mod tests {
     fn gather_columns_is_a_no_op_when_already_contiguous() {
         let columns = vec![column("a", "a"), column("b", "b"), column("c", "c")];
 
-        let result = gather_columns(columns, &["a".to_string(), "b".to_string()]).unwrap();
+        let result = gather_columns(columns, &["a".to_string(), "b".to_string()]);
 
         assert_eq!(names(&result), vec!["a", "b", "c"]);
     }
 
     #[test]
-    fn gather_columns_errors_on_unknown_column() {
+    #[should_panic(expected = "Table::resolve_spanners already validated")]
+    fn gather_columns_panics_on_an_unvalidated_unknown_column() {
         let columns = vec![column("a", "a"), column("b", "b")];
 
-        let result = gather_columns(columns, &["a".to_string(), "nope".to_string()]);
-
-        assert!(result.is_err());
+        gather_columns(columns, &["a".to_string(), "nope".to_string()]);
     }
 
     #[test]
@@ -361,7 +319,7 @@ mod tests {
         ];
         let spans = vec![spanner(&["a", "b"])];
 
-        let result = reorder_table_columns(columns, &spans).unwrap();
+        let result = reorder_table_columns(columns, &spans);
 
         assert_eq!(names(&result), vec!["a", "b", "x", "y"]);
     }
@@ -380,7 +338,7 @@ mod tests {
             ParameterValue::Boolean(false),
         )];
 
-        let result = reorder_table_columns(columns, &spans).unwrap();
+        let result = reorder_table_columns(columns, &spans);
 
         assert_eq!(names(&result), vec!["a", "x", "b", "y"]);
     }
@@ -397,7 +355,7 @@ mod tests {
         // the original order.
         let spans = vec![spanner(&["a", "b"]), spanner(&["b", "y"])];
 
-        let result = reorder_table_columns(columns, &spans).unwrap();
+        let result = reorder_table_columns(columns, &spans);
 
         assert_eq!(names(&result), vec!["a", "b", "y", "x"]);
     }
@@ -472,7 +430,7 @@ mod tests {
             labeled_spanner(&["c", "d"], "G2"),
         ];
 
-        let cells = create_spanners(&columns, &spans).unwrap().into_cells();
+        let cells = create_spanners(&columns, &spans).into_cells();
 
         assert_eq!(cells.len(), 2);
         assert_eq!(cells[0].top, 0);
@@ -494,7 +452,7 @@ mod tests {
             labeled_spanner(&["b", "c"], "G2"),
         ];
 
-        let cells = create_spanners(&columns, &spans).unwrap().into_cells();
+        let cells = create_spanners(&columns, &spans).into_cells();
 
         // Level 1 (G1, closest to the columns) is the bottom spanner row —
         // the higher local row number, since row 0 is the topmost row.
@@ -509,32 +467,11 @@ mod tests {
     }
 
     #[test]
-    fn create_spanners_marks_only_the_topmost_level_outer() {
-        let columns = vec![column("a", "a"), column("b", "b"), column("c", "c")];
-        let spans = vec![
-            labeled_spanner(&["a", "b"], "G1"),
-            labeled_spanner(&["b", "c"], "G2"),
-        ];
-
-        let cells = create_spanners(&columns, &spans).unwrap().into_cells();
-
-        let g1 = cells.iter().find(|c| c.content == "G1").unwrap();
-        let g2 = cells.iter().find(|c| c.content == "G2").unwrap();
-        // G2 sits in the topmost row (row 0) — its class supplants Spanner.
-        // Both are centred by default.
-        assert_eq!(
-            g2.classes,
-            [TableClass::SpannerOuter, TableClass::AlignCenter]
-        );
-        assert_eq!(g1.classes, [TableClass::Spanner, TableClass::AlignCenter]);
-    }
-
-    #[test]
     fn create_spanners_fragments_a_non_contiguous_spanner_into_multiple_cells() {
         let columns = vec![column("a", "a"), column("x", "x"), column("b", "b")];
         let spans = vec![labeled_spanner(&["a", "b"], "G")];
 
-        let cells = create_spanners(&columns, &spans).unwrap().into_cells();
+        let cells = create_spanners(&columns, &spans).into_cells();
 
         assert_eq!(cells.len(), 2);
         assert!(cells.iter().all(|c| c.content == "G"));
@@ -552,7 +489,7 @@ mod tests {
         let columns = vec![column("a", "a"), column("b", "b"), column("c", "c")];
         let spans = vec![null_spanner(&["a", "b"]), labeled_spanner(&["b", "c"], "G")];
 
-        let cells = create_spanners(&columns, &spans).unwrap().into_cells();
+        let cells = create_spanners(&columns, &spans).into_cells();
 
         assert_eq!(cells.len(), 1);
         assert_eq!(cells[0].top, 0);
@@ -565,25 +502,16 @@ mod tests {
     fn create_spanners_returns_empty_for_no_spanners() {
         let columns = vec![column("a", "a"), column("b", "b")];
 
-        let cells = create_spanners(&columns, &[]).unwrap().into_cells();
+        let cells = create_spanners(&columns, &[]).into_cells();
 
         assert!(cells.is_empty());
     }
 
-    #[test]
-    fn create_spanners_rejects_a_spanner_id_that_collides_with_a_column() {
-        let columns = vec![column("a", "a"), column("b", "b")];
-        let mut settings = Parameters::new();
-        settings.insert("id".to_string(), ParameterValue::String("a".to_string()));
-        let spans = vec![spanner_with(&["a", "b"], Some("G"), settings)];
-
-        assert!(create_spanners(&columns, &spans).is_err());
-    }
-
     fn spanner_with_id(columns: &[&str], id: &str) -> Spanner {
-        let mut settings = Parameters::new();
-        settings.insert("id".to_string(), ParameterValue::String(id.to_string()));
-        spanner_with(columns, Some(""), settings)
+        Spanner {
+            id: id.to_string(),
+            ..spanner_with(columns, Some(""), Parameters::new())
+        }
     }
 
     fn table_with_spans(spans: Vec<Spanner>) -> crate::Table {

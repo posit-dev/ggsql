@@ -1,20 +1,10 @@
 //! Table resolution: turns a TABULATE query + Reader into a ResolvedTable.
 //!
 //! A Table has no layers, so there's no per-layer CTE materialization, scale
-//! resolution, or facet handling to do here — just the one query that
-//! produces `body`, plus resolving that data into positioned `TableCell`s.
-//! `SPAN`-specific resolution (column reordering, header-row assignment)
-//! lives in the child `spanner` module, `TABULATE FORMAT STUB`-specific
-//! resolution (moving stub columns to the front, building their
-//! `StubHead`/`StubRowLabel` cells) lives in `stub`, `FORMAT`-specific
-//! resolution (replacing a column's values with its resolved display text)
-//! lives in `format`, and building the resolved `TableCell`/`TableRow` grid
-//! out of all three lives in `layout` — all four used only from here, unlike
-//! Plot's own resolution logic, which is split across the flat siblings
-//! `schema.rs`/`casting.rs`/`layer.rs`/`scale.rs`/`position.rs`/`cte.rs`
-//! because those are each reachable from more than one place.
-//! `Table::resolve_spanner_ids` is the exception — it needs no `DataFrame`,
-//! so it lives on `Table` itself, reachable from `validate()` too.
+//! resolution, or facet handling here — just the one data query, plus
+//! resolving that data into positioned `TableCell`s. `SPAN`-specific
+//! resolution lives in `spanner`, `FORMAT STUB` in `stub`, `FORMAT` values
+//! and settings in `format`, and cell/row grid construction in `layout`.
 
 mod format;
 mod layout;
@@ -22,9 +12,7 @@ mod spanner;
 mod stub;
 
 pub use layout::{TableColumn, TableRow};
-// Crate-internal only (not part of the public API): the row/column-extent-
-// from-cells helpers, needed by `writer::html` and `reader::spec` as well as
-// `layout` itself.
+// Crate-internal only: also used by `writer::html` and `reader::spec`.
 pub(crate) use layout::{count_cell_cols, count_cell_rows};
 
 use format::{apply_formats, setup_formats, standardise_hjust};
@@ -35,29 +23,14 @@ use crate::parser::{self, SourceTree};
 use crate::plot::Parameters;
 use crate::reader::{Reader, ResolvedTable};
 use crate::validate::{validate, ValidationWarning};
-use crate::{GgsqlError, Result, Spec};
+use crate::{DataFrame, GgsqlError, Result, SelectionItem, Spec};
 
 /// Resolve a TABULATE query into a `ResolvedTable`.
 ///
-/// This is the Table-side substitute for *two* Plot-side functions combined:
-/// `execute::prepare_data_with_reader` (parses, resolves layers/scales/facets,
-/// returns the intermediate `PreparedData`) and `reader::resolve_plot_with_reader`
-/// (takes the first `Plot` from that, wraps it into `ResolvedPlot`). Table
-/// collapses both into one function because there's no per-layer/scale/facet
-/// resolution step for a `PreparedTable`-equivalent to do — `ResolvedTable`
-/// already holds everything this function produces.
-///
-/// Takes the *first* `Table` spec found in the query (mirroring how Plot
-/// execution takes the first `Plot` spec) — a query with several TABULATE
-/// statements, or a mix of VISUALISE and TABULATE, isn't disambiguated any
-/// further than that yet.
-///
-/// Setup statements (INSTALL, LOAD, SET, etc.) ahead of a TABULATE are
-/// executed here too, via the same `execute_setup_statements` helper
-/// `prepare_data_with_reader` uses — structured DML (CREATE, INSERT, UPDATE,
-/// DELETE) ahead of a TABULATE isn't handled, since there's no CTE/side-effect
-/// extraction step in this pipeline to mirror `prepare_data_with_reader`'s use
-/// of `cte::extract_side_effects`.
+/// Takes the *first* `Table` spec found in the query — several TABULATE
+/// statements, or a mix of VISUALISE and TABULATE, aren't disambiguated
+/// further. Setup (INSTALL, LOAD, SET) and side-effect DML (CREATE, INSERT,
+/// UPDATE, DELETE) ahead of a TABULATE run here.
 pub fn resolve_table_with_reader(query: &str, reader: &dyn Reader) -> Result<ResolvedTable> {
     let validated = validate(query)?;
     let warnings: Vec<ValidationWarning> = validated.warnings().to_vec();
@@ -74,18 +47,29 @@ pub fn resolve_table_with_reader(query: &str, reader: &dyn Reader) -> Result<Res
 
     super::execute_setup_statements(&source_tree, reader)?;
 
+    // Run structured DML (CREATE, INSERT, UPDATE, DELETE) so any table it
+    // creates exists before the TABULATE query reads it.
+    for stmt in super::cte::extract_side_effects(&source_tree) {
+        reader.execute_sql(&stmt)?;
+    }
+
     let sql = build_table_sql(&source_tree, &table.selection).ok_or_else(|| {
         GgsqlError::ValidationError(
             "TABULATE has no data source: add a FROM, or a SQL query before it".to_string(),
         )
     })?;
 
-    let df = reader.execute_sql(&sql)?;
+    let df = resolve_selection(reader.execute_sql(&sql)?, &table.selection)?;
 
+    let column_names = df.get_column_names();
+    let spans = table
+        .resolve_spanners(&labels, Some(&column_names))
+        .map_err(GgsqlError::ValidationError)?;
     // The shape both create_table_columns (SETTING) and apply_formats
-    // (RENAMING) read from.
-    let formats = setup_formats(&df, &table.formats)?;
-    let (columns, spans) = setup_columns(&df, &table, &labels, &formats)?;
+    // (RENAMING) read from. Resolved after spans so a FORMAT column entry
+    // can name a SPAN id in place of the columns it covers.
+    let formats = setup_formats(&df, &table.formats, &spans)?;
+    let columns = setup_columns(&df, &spans, &labels, &formats);
     let df = apply_formats(&df, &formats)?;
     let (cells, rows) = build_cells(
         &df,
@@ -99,11 +83,103 @@ pub fn resolve_table_with_reader(query: &str, reader: &dyn Reader) -> Result<Res
     Ok(ResolvedTable::new(cells, columns, rows, sql, warnings))
 }
 
-/// Builds the SQL a `TABULATE` query executes, folding `selection`
-/// (`Table::selection`) in as the outer projection. Table-side counterpart
-/// to `execute::cte::transform_global_sql`, without its CTE-rewriting or
-/// cache-staging — a `Table` has neither.
-fn build_table_sql(source_tree: &SourceTree, selection: &str) -> Option<String> {
+/// Resolves a mixed selection like `TABULATE foo, bar AS Baz, *`: named
+/// columns are kept only at the position they were written (a rename
+/// included), the wildcard contributes the rest of the source columns.
+/// Selections without both a wildcard and a named column pass through
+/// unchanged. Duplicate output column names are an error.
+fn resolve_selection(df: DataFrame, selection: &[SelectionItem]) -> Result<DataFrame> {
+    let n_named_items = selection
+        .iter()
+        .filter(|item| matches!(item, SelectionItem::Column { .. }))
+        .count();
+    let n_wildcards = selection.len() - n_named_items;
+
+    let df = if n_named_items == 0 || n_wildcards == 0 {
+        df
+    } else {
+        let names = df.get_column_names();
+        let wildcard_width = names
+            .len()
+            .checked_sub(n_named_items)
+            .filter(|remaining| remaining % n_wildcards == 0)
+            .map(|remaining| remaining / n_wildcards)
+            .ok_or_else(|| {
+                GgsqlError::ValidationError(
+                    "TABULATE selection resolved an unexpected number of SQL columns".to_string(),
+                )
+            })?;
+
+        // A column item — bare or renamed — already surfaces its source
+        // column once, at its written position; drop the wildcard's copy of
+        // that same source column so a rename doesn't show it twice. A
+        // constant column (`'x' AS label`, no source) has nothing to drop.
+        let claimed_sources: std::collections::HashSet<&str> = selection
+            .iter()
+            .filter_map(|item| match item {
+                SelectionItem::Column {
+                    source: Some(source),
+                    ..
+                } => Some(source.as_str()),
+                _ => None,
+            })
+            .collect();
+
+        let mut columns: Vec<(String, arrow::array::ArrayRef)> = Vec::new();
+        let mut cursor = 0usize;
+        for item in selection {
+            match item {
+                SelectionItem::Column { name, .. } => {
+                    columns.push((name.clone(), df.inner().column(cursor).clone()));
+                    cursor += 1;
+                }
+                SelectionItem::Wildcard => {
+                    for (idx, name) in names.iter().enumerate().skip(cursor).take(wildcard_width) {
+                        if !claimed_sources.contains(name.as_str()) {
+                            columns.push((name.clone(), df.inner().column(idx).clone()));
+                        }
+                    }
+                    cursor += wildcard_width;
+                }
+            }
+        }
+        DataFrame::new(columns)?
+    };
+
+    // Downstream steps look columns up by name, so a duplicate output name
+    // would silently shadow rather than error.
+    let mut seen = std::collections::HashSet::new();
+    if let Some(dup) = df
+        .get_column_names()
+        .into_iter()
+        .find(|name| !seen.insert(name.clone()))
+    {
+        return Err(GgsqlError::ValidationError(format!(
+            "TABULATE selection produces the column '{dup}' more than once: give each occurrence a distinct name"
+        )));
+    }
+
+    Ok(df)
+}
+
+/// The selection as a SQL select list (e.g. `foo, bar AS Baz, *`).
+fn selection_sql(selection: &[SelectionItem]) -> String {
+    selection
+        .iter()
+        .map(|item| match item {
+            SelectionItem::Wildcard => "*",
+            SelectionItem::Column { sql, .. } => sql,
+        })
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+/// Builds the SQL a `TABULATE` query executes, folding `selection` in as
+/// the outer projection. Table-side counterpart to
+/// `execute::cte::transform_global_sql`, without CTE-rewriting or
+/// cache-staging.
+fn build_table_sql(source_tree: &SourceTree, selection: &[SelectionItem]) -> Option<String> {
+    let wildcard_only = matches!(selection, [SelectionItem::Wildcard]);
     let root = source_tree.root();
 
     // A WITH...SELECT tail, or a plain trailing SELECT.
@@ -112,10 +188,10 @@ fn build_table_sql(source_tree: &SourceTree, selection: &str) -> Option<String> 
         .or_else(|| source_tree.find_text(&root, "(sql_statement (select_statement) @select)"));
 
     if let Some(select_sql) = select_sql {
-        return Some(if selection == "*" {
+        return Some(if wildcard_only {
             select_sql
         } else {
-            format!("SELECT {selection} FROM ({select_sql})")
+            format!("SELECT {} FROM ({select_sql})", selection_sql(selection))
         });
     }
 
@@ -127,17 +203,17 @@ fn build_table_sql(source_tree: &SourceTree, selection: &str) -> Option<String> 
     );
 
     if let Some(source) = from_source {
-        return Some(format!("SELECT {selection} FROM {source}"));
+        return Some(format!("SELECT {} FROM {source}", selection_sql(selection)));
     }
 
-    // Neither: e.g. a bare DuckDB-style `FROM t`. This text may carry a
+    // Neither: e.g. a bare DuckDB-style `FROM t`. The text may carry a
     // leading setup-statement prefix (INSTALL/LOAD/SET), which a non-"*"
-    // selection then wraps into an invalid subquery — a narrow, accepted gap.
+    // selection then wraps into an invalid subquery — a known gap.
     let fallback = source_tree.extract_sql()?;
-    Some(if selection == "*" {
+    Some(if wildcard_only {
         fallback
     } else {
-        format!("SELECT {selection} FROM ({fallback})")
+        format!("SELECT {} FROM ({fallback})", selection_sql(selection))
     })
 }
 
@@ -147,10 +223,7 @@ fn build_table_sql(source_tree: &SourceTree, selection: &str) -> Option<String> 
 
 /// What role a `TableCell` plays in the table's layout.
 ///
-/// Naming follows R's gt package (`column_labels`, `body`, `stub`, ...),
-/// since ggsql's table grammar is expected to keep drawing on its part
-/// vocabulary as more of it (footnotes, source notes) gets built out here.
-///
+/// Naming follows R's gt package (`column_labels`, `body`, `stub`, ...).
 /// Lets a writer tell cells apart (e.g. `<th>` vs `<td>`) without relying on
 /// position — a column label is a `ColumnLabel` cell, not "whatever's in row
 /// 0".
@@ -158,9 +231,8 @@ fn build_table_sql(source_tree: &SourceTree, selection: &str) -> Option<String> 
 pub enum TableCellKind {
     /// A column label (gt's `column_labels`).
     ColumnLabel,
-    /// The stub's own header cell (gt's `tab_stubhead()`) — same row as
-    /// `ColumnLabel`, but over a `TABULATE FORMAT STUB` column rather than
-    /// a regular one, hence its own kind.
+    /// The stub's own header cell (gt's `tab_stubhead()`) — sits on the
+    /// column-label row, over a `TABULATE FORMAT STUB` column.
     StubHead,
     /// A data value (gt's `body`).
     Body,
@@ -184,12 +256,9 @@ pub enum TableCellKind {
 }
 
 impl TableCellKind {
-    /// Whether a cell of this kind belongs in a table's header (`ColumnLabel`,
-    /// `StubHead`, `Spanner`, `Title`, `Subtitle`, `Filler`) rather than its
-    /// body (`Body`, `StubRowLabel`) — the kind alone decides it, via
-    /// `TableCell::is_header` below. `Caption` stays out of this: a writer
-    /// is expected to pull it out of the grid entirely rather than render
-    /// it as either.
+    /// Whether a cell of this kind is header-shaped rather than a plain data
+    /// cell — decided by kind alone. `Caption` is excluded; a writer pulls it
+    /// out of the grid instead of rendering it as either.
     pub fn is_header(self) -> bool {
         matches!(
             self,
@@ -198,7 +267,8 @@ impl TableCellKind {
                 | TableCellKind::Spanner
                 | TableCellKind::Title
                 | TableCellKind::Subtitle
-                | TableCellKind::Filler // every case today is header-shaped
+                | TableCellKind::Filler // every current case is header-shaped
+                | TableCellKind::StubRowLabel
         )
     }
 }
@@ -224,72 +294,67 @@ impl std::fmt::Display for TableCellKind {
 /// a table layout carries a `classes` field.
 ///
 /// Styling roles are recorded here rather than derived from `TableCellKind`:
-/// `kind` informs layout (header vs body, spans), while classes inform style,
-/// and positional variants like `SpannerOuter` are only known while the
-/// layout is being built. A writer maps each variant to its own class
-/// vocabulary — the HTML writer prefixes its `Display` with `ggsql_`.
+/// `kind` informs layout (header vs body, spans), classes inform style. A
+/// writer maps each variant to its own class vocabulary — the HTML writer
+/// prefixes its `Display` with `ggsql_`.
 ///
-/// Not every variant applies to every carrier: `Heading` and `ColHeadingRow`
-/// are row-scoped (`TableRow::classes` — the `<tr>` wrapping a
-/// `Title`/`Subtitle` cell, and the `<tr>` wrapping the column-label row,
-/// respectively); every other structural/alignment variant is cell-scoped
-/// (`TableCell::classes`). `Table` and `TableBody` are scoped to the table as
-/// a whole (or a whole section of it) — there is no resolved layout type
-/// representing "the whole table"/"the whole body" for either to be recorded
-/// on, so a writer applies them directly to its own top-level elements (the
-/// `<table>` and `<tbody>` respectively) rather than reading them off
-/// `cells`/`rows`. Nothing in the type enforces any of this — it's a
-/// per-variant convention, since a writer maps every carrier through the same
-/// class-name/declaration lookup regardless of where it came from. A future
-/// `TableColumn`-scoped class (a `<col>`/`<colgroup>` concern) belongs in this
-/// same enum too.
+/// Variants are grouped by scope below (table/row/cell). Nothing in the
+/// type enforces the grouping — it's a per-variant convention.
 ///
 /// Naming follows gt's classes (`gt_row`, `gt_col_heading`,
 /// `gt_column_spanner_outer`, ...). The structural variants are recorded by
 /// `build_cells()`; the alignment variants are a cell's resolved `hjust`
-/// expressed as a class, appended by `TableCell::discretise_hjust` rather
-/// than recorded here.
+/// expressed as a class, appended by `TableCell::discretise_hjust`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TableClass {
+    // ------------------------- Table-scoped -------------------------
+    // Applied by a writer to its own top-level elements (`<table>`,
+    // `<tbody>`) — there's no resolved layout type to record them on.
     /// The whole table (gt's `gt_table`).
     Table,
     /// The `<tbody>` wrapping every body row (gt's `gt_table_body`). Not to
-    /// be confused with `Row`, which is per-cell rather than for the whole
-    /// section.
+    /// be confused with the per-cell `Row`.
     TableBody,
+
+    // -------------------------- Row-scoped --------------------------
+    // Recorded on `TableRow::classes`, rendered on the `<tr>`.
+    /// The `<tr>` wrapping a `Title`/`Subtitle` cell (gt's `gt_heading`).
+    Heading,
+    /// The `<tr>` wrapping the row of column-label cells (gt's
+    /// `gt_col_headings` — note the plural, distinguishing it from the
+    /// singular per-cell `gt_col_heading`).
+    ColHeadingRow,
+    /// The `<tr>` wrapping a spanner row (gt's `gt_spanner_row`).
+    SpannerRow,
+
+    // -------------------------- Cell-scoped -------------------------
+    // Recorded on `TableCell::classes`, rendered on the `<th>`/`<td>`.
     /// A body cell (gt's `gt_row`).
     Row,
     /// A row-label cell in the stub (`TableCellKind::StubRowLabel`).
     Stub,
+    /// The stub's own header cell (`TableCellKind::StubHead`). No gt
+    /// equivalent.
+    StubHead,
     /// A column-label cell (gt's `gt_col_heading`).
     ColHeading,
-    /// Row-scoped: the `<tr>` wrapping the row of column-label cells (gt's
-    /// `gt_col_headings` — note the plural, distinguishing it from the
-    /// singular per-cell `gt_col_heading`).
-    ColHeadingRow,
-    /// The stub's own header cell (`TableCellKind::StubHead`). No gt
-    /// equivalent — gt's own stubhead has no dedicated CSS class of its
-    /// own, unlike this one.
-    StubHead,
-    /// A spanner cell below the topmost spanner level.
+    /// Every spanner cell, at every level (gt's `gt_column_spanner_outer`).
     Spanner,
-    /// A spanner cell in the topmost spanner level, supplanting `Spanner`
-    /// (gt's `gt_column_spanner_outer`).
-    SpannerOuter,
-    /// Left/center/right-aligned cell content (gt's
-    /// `gt_left`/`gt_center`/`gt_right`).
-    AlignLeft,
-    AlignCenter,
-    AlignRight,
+    /// A spanner cell's label text (gt's `gt_column_spanner`). Special
+    /// meaning for the HTML writer: it goes on an element inside the cell
+    /// rather than on the cell itself.
+    SpannerLabel,
     /// The title cell (gt's `gt_title`).
     Title,
     /// The subtitle cell (gt's `gt_subtitle`).
     Subtitle,
     /// The caption cell (gt's `gt_caption`).
     Caption,
-    /// Row-scoped: the `<tr>` wrapping a `Title`/`Subtitle` cell (gt's
-    /// `gt_heading`).
-    Heading,
+    /// Left/center/right-aligned cell content (gt's
+    /// `gt_left`/`gt_center`/`gt_right`).
+    AlignLeft,
+    AlignCenter,
+    AlignRight,
 }
 
 impl std::fmt::Display for TableClass {
@@ -303,9 +368,10 @@ impl std::fmt::Display for TableClass {
             TableClass::Stub => "stub",
             TableClass::ColHeading => "col_heading",
             TableClass::ColHeadingRow => "col_heading_row",
+            TableClass::SpannerRow => "spanner_row",
             TableClass::StubHead => "stub_head",
             TableClass::Spanner => "spanner",
-            TableClass::SpannerOuter => "spanner_outer",
+            TableClass::SpannerLabel => "spanner_label",
             TableClass::AlignLeft => "left",
             TableClass::AlignCenter => "center",
             TableClass::AlignRight => "right",
@@ -320,18 +386,9 @@ impl std::fmt::Display for TableClass {
 
 /// A single positioned cell within a resolved table layout.
 ///
-/// Parallel to `PreparedData` on the Plot side (an intermediate resolution
-/// type, not the final `ResolvedTable` envelope) — but there is no Plot-side
-/// equivalent to the shape itself, since Plot resolves at `DataFrame`
-/// granularity, not per-cell.
-///
 /// Position is an inclusive grid rectangle: `top`/`bottom` are row indices,
 /// `left`/`right` are column indices, 0-based, inclusive on both ends. A
-/// non-spanning cell has `top == bottom` and `left == right`. Colspan/rowspan
-/// and adjacency helpers beyond `offset_rows`/`offset_cols` are expected to
-/// live elsewhere and account for the inclusive convention themselves,
-/// rather than each caller doing `+ 1` arithmetic against these fields
-/// directly.
+/// non-spanning cell has `top == bottom` and `left == right`.
 #[derive(Debug, Clone)]
 pub struct TableCell {
     /// What role this cell plays (column label, body, ...).
@@ -357,11 +414,9 @@ pub struct TableCell {
 }
 
 impl TableCell {
-    /// Build a cell with no display properties or classes — the common case
-    /// for a `Spanner` or filler cell, which covers several columns rather
-    /// than resolving from one. A `ColumnLabel`/`Body` cell should follow
-    /// this with `with_properties` and `with_classes` instead of leaving the
-    /// defaults.
+    /// Build a cell with no display properties or classes. A
+    /// `ColumnLabel`/`Body` cell should follow with `with_properties` and
+    /// `with_classes`.
     pub(crate) fn new(
         kind: TableCellKind,
         top: usize,
@@ -399,10 +454,8 @@ impl TableCell {
     /// Fold this cell's resolved `hjust` into an alignment class appended to
     /// `classes`, removing `hjust` from `properties` so no writer renders it
     /// twice. Numbers and keyword spellings standardise via
-    /// `standardise_hjust`; the number is then bucketed with the same
-    /// `0.25`/`0.75` thresholds `VegaLiteWriter`'s `convert_hjust` uses for
-    /// its own `align` conversion, so `hjust` means the same alignment in
-    /// both writers.
+    /// `standardise_hjust`; the number is bucketed with the same
+    /// `0.25`/`0.75` thresholds `VegaLiteWriter`'s `convert_hjust` uses.
     pub fn discretise_hjust(mut self) -> Self {
         let Some(hjust) = self.properties.remove("hjust") else {
             return self;
@@ -438,9 +491,7 @@ impl TableCell {
     }
 
     /// Whether this cell belongs in a table's header rather than its body —
-    /// lets a writer pick `<th>` vs `<td>` (or an equivalent) off the cell
-    /// itself, without matching on `TableCellKind` at every call site. See
-    /// `TableCellKind::is_header`, which this just delegates to.
+    /// delegates to `TableCellKind::is_header`.
     pub fn is_header(&self) -> bool {
         self.kind.is_header()
     }
@@ -452,7 +503,7 @@ impl TableCell {
     }
 
     /// This cell's height in rows — `bottom - top + 1`, since both bounds
-    /// are inclusive. No caller yet; kept alongside `width` for symmetry.
+    /// are inclusive.
     pub fn height(&self) -> usize {
         self.bottom - self.top + 1
     }
@@ -552,12 +603,71 @@ mod integration_tests {
     }
 
     #[test]
-    fn test_tabulate_selection_wildcard_with_rename() {
+    fn test_tabulate_selection_wildcard_with_rename_does_not_duplicate_the_source_column() {
         let reader = reader_with_sales();
 
-        let mixed =
+        // sales is (id, name): `id AS Number` renames `id`, so the
+        // wildcard's own copy of `id` is dropped rather than shown twice.
+        let trailing =
             resolve_table_with_reader("TABULATE *, id AS Number FROM sales", &reader).unwrap();
-        assert_eq!(mixed.sql(), "SELECT *, id AS Number FROM sales");
+        assert_eq!(trailing.sql(), "SELECT *, id AS Number FROM sales");
+        assert_eq!(trailing.ncol(), 2);
+        let order: Vec<_> = trailing.columns().iter().map(|c| c.name.as_str()).collect();
+        assert_eq!(order, ["name", "Number"]);
+
+        let leading =
+            resolve_table_with_reader("TABULATE id AS Number, * FROM sales", &reader).unwrap();
+        assert_eq!(leading.ncol(), 2);
+        let order: Vec<_> = leading.columns().iter().map(|c| c.name.as_str()).collect();
+        assert_eq!(order, ["Number", "name"]);
+    }
+
+    #[test]
+    fn test_tabulate_selection_wildcard_dedupes_named_columns() {
+        let reader = reader_with_sales();
+
+        let resolved = resolve_table_with_reader("TABULATE name, * FROM sales", &reader).unwrap();
+        assert_eq!(resolved.sql(), "SELECT name, * FROM sales");
+        // sales is (id, name): the wildcard's second `name` is dropped.
+        assert_eq!(resolved.ncol(), 2);
+
+        let trailing = resolve_table_with_reader("TABULATE *, name FROM sales", &reader).unwrap();
+        assert_eq!(trailing.ncol(), 2);
+        // The named column keeps its written position.
+        let order: Vec<_> = trailing.columns().iter().map(|c| c.name.as_str()).collect();
+        assert_eq!(order, ["id", "name"]);
+    }
+
+    #[test]
+    fn test_tabulate_selection_duplicate_alias_without_wildcard_errors() {
+        let reader = reader_with_sales();
+        match resolve_table_with_reader("TABULATE id AS x, name AS x FROM sales", &reader) {
+            Ok(_) => panic!("expected a duplicate output column to error"),
+            Err(GgsqlError::ValidationError(msg)) => assert!(msg.contains("'x'")),
+            Err(e) => panic!("expected a ValidationError, got {e:?}"),
+        }
+    }
+
+    #[test]
+    fn test_tabulate_selection_rename_colliding_with_wildcard_column_name_errors() {
+        let reader = reader_with_sales();
+        match resolve_table_with_reader("TABULATE id AS name, * FROM sales", &reader) {
+            Ok(_) => panic!("expected a duplicate output column to error"),
+            Err(GgsqlError::ValidationError(msg)) => assert!(msg.contains("'name'")),
+            Err(e) => panic!("expected a ValidationError, got {e:?}"),
+        }
+    }
+
+    #[test]
+    fn test_tabulate_from_table_created_by_preceding_create() {
+        let reader = reader_with_sales();
+        let resolved = resolve_table_with_reader(
+            "CREATE TEMP TABLE my_data AS SELECT * FROM sales LIMIT 2 TABULATE * FROM my_data",
+            &reader,
+        )
+        .unwrap();
+        // 2 data rows + 1 column-label row.
+        assert_eq!(resolved.nrow(), 3);
     }
 
     #[test]
@@ -676,10 +786,28 @@ mod integration_tests {
     fn test_tabulate_span_over_a_stub_column_errors() {
         let reader = reader_with_sales();
         let result = resolve_table_with_reader(
-            "TABULATE * FROM sales FORMAT STUB name SPAN 'G' ACROSS name, id",
+            "TABULATE * FROM sales FORMAT STUB name SPAN G ACROSS name, id",
             &reader,
         );
 
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_tabulate_span_unknown_column_errors_even_with_gather_disabled() {
+        // Table::resolve_spanners checks every ACROSS entry regardless of
+        // gather, so this errors even though gather_columns itself (the
+        // only place that also checks column existence) is skipped here.
+        let reader = reader_with_sales();
+        match resolve_table_with_reader(
+            "TABULATE * FROM sales SPAN G ACROSS nope, id SETTING gather => false",
+            &reader,
+        ) {
+            Ok(_) => panic!("expected an unknown ACROSS column to error"),
+            Err(GgsqlError::ValidationError(msg)) => {
+                assert!(msg.contains("SPAN references unknown column 'nope'"))
+            }
+            Err(e) => panic!("expected a ValidationError, got {e:?}"),
+        }
     }
 }
