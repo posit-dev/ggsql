@@ -624,7 +624,10 @@ fn cursor_to_dataframe(stmt: Statement) -> Result<DataFrame> {
             SQL_NO_DATA => break,
             SQL_SUCCESS | SQL_SUCCESS_WITH_INFO => {}
             _ => {
-                return Err(GgsqlError::ReaderError("Failed to fetch batch".to_string()));
+                let diag = wrapper::extract_diagnostic(SQL_HANDLE_STMT, stmt.handle() as SqlHandle);
+                return Err(GgsqlError::ReaderError(format!(
+                    "Failed to fetch batch: {diag}"
+                )));
             }
         }
 

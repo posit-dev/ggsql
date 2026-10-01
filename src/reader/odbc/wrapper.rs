@@ -11,7 +11,7 @@ use std::sync::OnceLock;
 // Diagnostic helpers
 // ============================================================================
 
-fn extract_diagnostic(handle_type: SqlSmallInt, handle: SqlHandle) -> String {
+pub(crate) fn extract_diagnostic(handle_type: SqlSmallInt, handle: SqlHandle) -> String {
     let f = fns();
     let mut state = [0u8; 6];
     let mut native_error: SqlInteger = 0;
