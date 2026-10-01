@@ -20,7 +20,9 @@ When the user describes a visualization they want, write a valid ggsql query. Us
 A ggsql query has two parts:
 
 1. **SQL part** (optional): Standard SQL executed on the backend. Any tables, CTEs, or SELECT results are available to the visualization.
-2. **VISUALISE part** (required): Begins with `VISUALISE` (or `VISUALIZE`). Everything after this is the visualization query.
+2. **VISUALISE part** (required): Begins with `VISUALISE` (or `VISUALIZE`). Everything after this is the visualization query. Use `TABULATE` instead to render the result as a table (see below).
+
+A trailing SELECT combined with `VISUALISE FROM` / `TABULATE FROM` in the same query is a parse error — pick one pattern.
 
 There are two patterns for combining SQL with VISUALISE:
 
@@ -370,6 +372,67 @@ LABEL
   y => 'Revenue (USD)',
   fill => 'Region',
   caption => 'Source: internal sales database'
+```
+
+---
+
+## TABULATE clause
+
+Renders the query result as a table instead of a plot — the plain-table counterpart to VISUALISE. Only the HTML writer supports tables. Both data patterns from VISUALISE apply (`SELECT ... TABULATE *` or `TABULATE ... FROM <source>`).
+
+```
+TABULATE <column>, ... | *
+  FROM <data-source>
+  LABEL <column/title> => <string/null>, ...
+  SPAN <identifier> ACROSS <column>, ...
+    SETTING <param> => <value>, ...
+  FORMAT [BODY | STUB] <column>, ...
+    SETTING <param> => <value>, ...
+    RENAMING <value> => <string>, ...
+```
+
+`LABEL`, `SPAN` and `FORMAT` may each appear multiple times, in any order.
+
+### Column selection
+
+- `<column>` — keep as-is; `<column> AS <name>` — rename; `*` — all columns in source order
+- Order controls display order; `*` can be mixed with named columns: `TABULATE foo, *, baz`
+- A rename changes the actual column name, so `LABEL`/`SPAN`/`FORMAT` refer to the new name
+
+### LABEL (table)
+
+Keyed by column name, not aesthetic. Reserved keys: `title`, `subtitle`, `caption`. `null` blanks a header; if all headers are blank the header row is omitted. Also labels spanners via their SPAN id: `LABEL q1 => 'Q1 Totals'`. No automatic labelling and no markdown — a column without a `LABEL` keeps its name.
+
+### SPAN
+
+Groups columns under one spanner cell in a header row above the column labels.
+
+```ggsql
+SPAN Q1 ACROSS jan, feb, mar
+SPAN apr, may, jun UNDER Q2        -- equivalent form
+```
+
+- Id is mandatory: identifier (quote for spaces) or `null` (anonymous, blank cell — useful to reorder columns)
+- A later SPAN's ACROSS list may reference an earlier SPAN id to include its columns
+- Ids must be unique and cannot collide with column names; a SPAN cannot include a stub column
+- Settings: `gather` (boolean, default `true` — move columns next to the group), `level` (integer header row, `1` = closest to column labels; default auto-assigned to avoid clashes)
+
+### FORMAT
+
+Configures cell display and column placement.
+
+- Target: `BODY` (default) or `STUB` (move column to row-label position; stub headers are blank unless labelled). If two FORMAT clauses name the same column, the later one wins.
+- A SPAN id may stand in for its columns: `FORMAT Q1, price SETTING hjust => 'right'`
+- Settings: `hjust` (`'left'`/`'right'`/`'centre'`/`'center'` or 0–1; default right for numeric/stub, left otherwise), `width` (`'100px'` or `'20%'`)
+- `RENAMING` works like SCALE's: direct replacement (`'adelie' => 'Pygoscelis adeliae'`), `null` on the right suppresses the cell, unquoted `null` on the left matches missing values, and `* => '...'` formats every value with a template (`{:lower}`, `{:num %.0f}`, etc.)
+
+```ggsql
+SELECT * FROM ggsql:penguins LIMIT 5
+TABULATE *
+  LABEL title => 'Penguins!', bill_len => 'Length', bill_dep => 'Depth'
+  SPAN Bill ACROSS bill_len, bill_dep
+  FORMAT STUB species
+  FORMAT body_mass SETTING hjust => 'right' RENAMING null => '-', * => '{:num %.0f}g'
 ```
 
 ---
