@@ -227,29 +227,42 @@ EOF
       exit 1
     fi
     # MSQ jobs are asynchronous; poll the task until it succeeds or fails.
+    # The /status endpoint reports "status":"SUCCESS|FAILED" (statusCode only
+    # appears in the full report, not here).
+    ok=""
     for _ in $(seq 1 60); do
-      status=$(curl -sf "http://localhost:8888/druid/indexer/v1/task/$task_id/status" || true)
+      status=$(curl -sS "http://localhost:8888/druid/indexer/v1/task/$task_id/status" || true)
       case "$status" in
-        *'"status":"SUCCESS"'*) break ;;
-        *'"statusCode":"FAILED"'*)
-          echo "MSQ ingest task $task_id FAILED"
+        *'"status":"SUCCESS"'*) ok=1; break ;;
+        *'"status":"FAILED"'* | *'"statusCode":"FAILED"'*)
+          echo "MSQ ingest task $task_id FAILED; status payload:"
+          echo "$status"
           docker compose -f "$druid_dir/docker-compose.yml" logs || true
           exit 1
           ;;
       esac
       sleep 5
     done
+    if [ -z "$ok" ]; then
+      echo "MSQ ingest task $task_id never reached SUCCESS; last status:"
+      echo "$status"
+      docker compose -f "$druid_dir/docker-compose.yml" logs || true
+      exit 1
+    fi
     # Segment handoff lags task success; wait until the broker serves rows.
+    # No curl -f: a 400 body carries the broker's actual error message.
+    cnt=""
     for _ in $(seq 1 30); do
-      cnt=$(curl -sf -X POST -H 'Content-Type: application/json' \
+      body=$(curl -sS -X POST -H 'Content-Type: application/json' \
         -d '{"query":"SELECT COUNT(*) AS c FROM ggsql_live_test"}' \
-        http://localhost:8082/druid/v2/sql \
-        | grep -o '"c":[0-9]*' | cut -d: -f2 || true)
+        http://localhost:8082/druid/v2/sql || true)
+      cnt=$(printf '%s' "$body" | grep -o '"c":[0-9]*' | cut -d: -f2)
       [ "$cnt" = "8" ] && break
       sleep 5
     done
     if [ "$cnt" != "8" ]; then
-      echo "datasource never became queryable (count=$cnt)"
+      echo "datasource never became queryable (count=$cnt); last broker response:"
+      echo "$body"
       docker compose -f "$druid_dir/docker-compose.yml" logs || true
       exit 1
     fi
