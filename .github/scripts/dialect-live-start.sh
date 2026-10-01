@@ -55,14 +55,26 @@ case "$backend" in
     docker run -d --name db -p 8080:8080 trinodb/trino:476
     # Readiness needs BOTH: /v1/info starting:false (unauthenticated; the
     # dispatcher rejects real queries with "Trino server is still
-    # initializing" until then) and an accepted statement (authenticated —
-    # Trino's "insecure" auth 401s without X-Trino-User; a fresh query's
-    # first page is usually QUEUED with only id/nextUri, so success means
-    # "no error field", which is what distinguishes "No nodes available to
-    # run query" from healthy).
-    wait_for trino bash -c 'curl -sf http://localhost:8080/v1/info | grep -q "\"starting\":false" \
-      && resp=$(curl -sf -X POST -H "X-Trino-User: test" -d "SELECT 1" \
-      http://localhost:8080/v1/statement) && ! grep -q "\"error\"" <<<"$resp"'
+    # initializing" until then) and a statement that runs to completion
+    # (authenticated — Trino's "insecure" auth 401s without X-Trino-User).
+    # A fresh query's first page is QUEUED with only id/nextUri; scheduling
+    # failures like "No nodes available to run query" only appear on later
+    # pages, so the probe must follow nextUri until the query finishes.
+    trino_ready() {
+      curl -sf http://localhost:8080/v1/info | grep -q '"starting":false' || return 1
+      local resp next
+      resp=$(curl -sf -X POST -H "X-Trino-User: test" -d "SELECT 1" \
+        http://localhost:8080/v1/statement) || return 1
+      for _ in $(seq 1 60); do
+        grep -q '"error"' <<<"$resp" && return 1
+        next=$(jq -r '.nextUri // empty' <<<"$resp")
+        [ -z "$next" ] && return 0
+        sleep 1
+        resp=$(curl -sf -H "X-Trino-User: test" "$next") || return 1
+      done
+      return 1
+    }
+    wait_for trino trino_ready
     # The driver defaults to HTTPS; SSL=false selects plain HTTP.
     uri="trino://test@localhost:8080/memory/default?SSL=false"
     ;;
@@ -182,9 +194,10 @@ case "$backend" in
     wait_for druid-router curl -sf http://localhost:8888/status/health
     # MSQ INSERT: every Druid datasource needs a __time column; one shared
     # timestamp suffices. PARTITIONED BY ALL puts everything in one segment.
-    # No engine context: in Druid 37 the SQL planner routes INSERT to the
-    # MSQ task engine automatically, and the HTTP SQL endpoint's engine
-    # registry rejects an explicit "msq-task" ("Unsupported engine").
+    # The query must go to the dedicated MSQ endpoint /druid/v2/sql/task:
+    # the regular /druid/v2/sql endpoint plans with the native engine, which
+    # refuses INSERT ("consider using MSQ"), while an explicit
+    # "engine": "msq-task" context is rejected there ("Unsupported engine").
     payload=$(python3 - <<'EOF'
 import json
 query = """
@@ -205,7 +218,7 @@ EOF
     # No curl -f here: on an HTTP error the response body carries Druid's
     # actual error message, which is the only useful diagnostic.
     resp=$(curl -sS -X POST -H 'Content-Type: application/json' \
-      -d "$payload" http://localhost:8888/druid/v2/sql)
+      -d "$payload" http://localhost:8888/druid/v2/sql/task)
     task_id=$(printf '%s' "$resp" | sed -n 's/.*"taskId":"\([^"]*\)".*/\1/p')
     if [ -z "$task_id" ]; then
       echo "MSQ ingest submission failed; response:"
