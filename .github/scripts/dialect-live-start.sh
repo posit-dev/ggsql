@@ -205,6 +205,12 @@ case "$backend" in
       driver_so=$(sed -n 's/^Driver=\(\/opt.*\)/\1/p' /etc/odbcinst.ini | head -1)
       echo "--- ldd $driver_so:"
       ldd "$driver_so" || true
+      # Fallback probe: bypass the DSN entirely with a full TNS descriptor.
+      # If this connects while the DSN form does not, the ini attribute
+      # mapping (not the connect string) is at fault.
+      echo "--- fallback probe: driver path + full descriptor:"
+      isql -v -k "Driver=$driver_so;DBQ=(DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)(HOST=localhost)(PORT=1521))(CONNECT_DATA=(SERVICE_NAME=XEPDB1)));UID=ggsql;PWD=Ggsql_test1" \
+        <<< 'SELECT 1 FROM dual;' || true
       exit 1
     fi
     uri="oracle://ggsql:Ggsql_test1@localhost:1521/XEPDB1?reader=odbc&DSN=ggsql-oracle"

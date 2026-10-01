@@ -256,10 +256,12 @@ jobs:
           echo "$ic_dir" | sudo tee /etc/ld.so.conf.d/oracle-instantclient.conf
           printf '[Oracle]\nDescription=Oracle Instant Client ODBC\nDriver=%s\n' "$driver_so" \
             | sudo tee -a /etc/odbcinst.ini
-          # DBQ without the // prefix: Oracle ODBC rejects the EZCONNECT
-          # //host:port/service form with ORA-12162 ("net service name is
-          # incorrectly specified") and wants host:port/service bare.
-          printf '[ggsql-oracle]\nDriver=Oracle\nDBQ=localhost:1521/XEPDB1\n' \
+          # DBQ with the // prefix: this is the form Oracle's own
+          # odbc_update_ini.sh generates (EZCONNECT //host:port/service).
+          # An earlier bare-form attempt failed only over isql's SQLConnect
+          # path, which mangles DSN attributes; over SQLDriverConnect the
+          # // form is the known-good spelling.
+          printf '[ggsql-oracle]\nDriver=Oracle\nDBQ=//localhost:1521/XEPDB1\n' \
             | sudo tee -a /etc/odbc.ini
           # Diagnostics: same IM005-hunting ldd as the monetdb leg.
           sudo ldconfig
