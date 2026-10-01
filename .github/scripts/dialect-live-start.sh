@@ -189,6 +189,8 @@ case "$backend" in
     # "isql <dsn> <user> <pass>" uses SQLConnect, on which Oracle ODBC
     # spuriously fails with ORA-12162 even for a valid DSN. The -k string
     # deliberately mirrors what connection.rs synthesizes from the URI.
+    # The DSN's DBQ is a full TNS descriptor (see the workflow step);
+    # EZCONNECT spellings do not survive unixODBC's DSN attribute mapping.
     ok=0
     for _ in $(seq 1 24); do
       if isql -v -k "DSN=ggsql-oracle;UID=ggsql;PWD=Ggsql_test1" <<< 'SELECT 1 FROM dual;'; then
