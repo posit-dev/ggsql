@@ -1113,11 +1113,16 @@ mod tests {
             .iter()
             .filter(|c| c.kind == TableCellKind::Body)
             .all(|c| c.classes == [TableClass::Row]));
-        // The only spanner level is the topmost one, centred by default.
+        // Spanner cells carry both spanner classes, centred by default.
         assert!(cells
             .iter()
             .filter(|c| c.kind == TableCellKind::Spanner)
-            .all(|c| c.classes == [TableClass::SpannerOuter, TableClass::AlignCenter]));
+            .all(|c| c.classes
+                == [
+                    TableClass::SpannerOuter,
+                    TableClass::Spanner,
+                    TableClass::AlignCenter
+                ]));
     }
 
     #[test]

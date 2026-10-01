@@ -327,10 +327,11 @@ impl std::fmt::Display for TableCellKind {
 /// layout is being built. A writer maps each variant to its own class
 /// vocabulary — the HTML writer prefixes its `Display` with `ggsql_`.
 ///
-/// Not every variant applies to every carrier: `Heading` and `ColHeadingRow`
-/// are row-scoped (`TableRow::classes` — the `<tr>` wrapping a
-/// `Title`/`Subtitle` cell, and the `<tr>` wrapping the column-label row,
-/// respectively); every other structural/alignment variant is cell-scoped
+/// Not every variant applies to every carrier: `Heading`, `ColHeadingRow`
+/// and `SpannerRow` are row-scoped (`TableRow::classes` — the `<tr>` wrapping
+/// a `Title`/`Subtitle` cell, and the `<tr>`s wrapping the column-label row
+/// and spanner rows, respectively); every other structural/alignment variant
+/// is cell-scoped
 /// (`TableCell::classes`). `Table` and `TableBody` are scoped to the table as
 /// a whole (or a whole section of it) — there is no resolved layout type
 /// representing "the whole table"/"the whole body" for either to be recorded
@@ -361,18 +362,23 @@ pub enum TableClass {
     Stub,
     /// A column-label cell (gt's `gt_col_heading`).
     ColHeading,
-    /// Row-scoped: the `<tr>` wrapping the row of column-label cells (gt's
-    /// `gt_col_headings` — note the plural, distinguishing it from the
-    /// singular per-cell `gt_col_heading`).
+    /// Row-scoped: the `<tr>` wrapping the row of column-label cells or a
+    /// spanner row (gt's `gt_col_headings` — note the plural, distinguishing
+    /// it from the singular per-cell `gt_col_heading`).
     ColHeadingRow,
     /// The stub's own header cell (`TableCellKind::StubHead`). No gt
     /// equivalent — gt's own stubhead has no dedicated CSS class of its
     /// own, unlike this one.
     StubHead,
-    /// A spanner cell below the topmost spanner level.
+    /// Row-scoped: the `<tr>` wrapping a spanner row (gt's
+    /// `gt_spanner_row`).
+    SpannerRow,
+    /// A spanner cell's inner label span (gt's `gt_column_spanner` — there it
+    /// sits on a `<span>` inside the `<th>`, carrying the 5px padding and
+    /// underline). Not recorded by `build_cells()`; a writer wraps a spanner
+    /// cell's content with it itself.
     Spanner,
-    /// A spanner cell in the topmost spanner level, supplanting `Spanner`
-    /// (gt's `gt_column_spanner_outer`).
+    /// Every spanner cell, at every level (gt's `gt_column_spanner_outer`).
     SpannerOuter,
     /// Left/center/right-aligned cell content (gt's
     /// `gt_left`/`gt_center`/`gt_right`).
@@ -401,6 +407,7 @@ impl std::fmt::Display for TableClass {
             TableClass::Stub => "stub",
             TableClass::ColHeading => "col_heading",
             TableClass::ColHeadingRow => "col_heading_row",
+            TableClass::SpannerRow => "spanner_row",
             TableClass::StubHead => "stub_head",
             TableClass::Spanner => "spanner",
             TableClass::SpannerOuter => "spanner_outer",

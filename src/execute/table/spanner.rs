@@ -135,7 +135,9 @@ fn assign_spanner_levels(spans: &[Spanner]) -> Vec<usize> {
 /// same convention `create_column_labels`/`create_body` use; stitching
 /// these rows above column labels and body is a separate, later step.
 /// `Section::rows` gets exactly `max_level` entries — the number of spanner
-/// rows, not the number of spanner cells.
+/// rows, not the number of spanner cells. Each carries
+/// `TableClass::ColHeadingRow`, like the column-label row does — gt styles
+/// spanner rows and the label row as one `gt_col_headings` group.
 pub(crate) fn create_spanners(columns: &[TableColumn], spans: &[Spanner]) -> Section {
     if spans.is_empty() {
         return Section::new(Vec::new(), Vec::new());
@@ -163,14 +165,11 @@ pub(crate) fn create_spanners(columns: &[TableColumn], spans: &[Spanner]) -> Sec
             .expect("spans is filtered to only Some(label) spanners");
         // Row 0 is topmost. Level 1 is bottom-most.
         let row = max_level - level;
-        // The topmost level's class supplants the base one, mirroring gt's
-        // `gt_column_spanner_outer`. Centred by default — gt centres its
-        // spanner labels too.
-        let classes = if row == 0 {
-            vec![TableClass::SpannerOuter, TableClass::AlignCenter]
-        } else {
-            vec![TableClass::Spanner, TableClass::AlignCenter]
-        };
+        let classes = vec![
+            TableClass::SpannerOuter,
+            TableClass::Spanner,
+            TableClass::AlignCenter,
+        ];
 
         // We use run length encoding to find 'runs' of columns belonging to span.
         // If span has disjoint columns, these are multiple runs.
@@ -215,7 +214,16 @@ pub(crate) fn create_spanners(columns: &[TableColumn], spans: &[Spanner]) -> Sec
         }
     }
 
-    Section::new(vec![TableRow::header(); max_level], cells)
+    Section::new(
+        vec![
+            TableRow {
+                classes: vec![TableClass::ColHeadingRow, TableClass::SpannerRow],
+                ..TableRow::header()
+            };
+            max_level
+        ],
+        cells,
+    )
 }
 
 #[cfg(test)]
@@ -477,27 +485,6 @@ mod tests {
         assert_eq!(g2.top, 0);
         assert_eq!(g2.left, 1);
         assert_eq!(g2.right, 2);
-    }
-
-    #[test]
-    fn create_spanners_marks_only_the_topmost_level_outer() {
-        let columns = vec![column("a", "a"), column("b", "b"), column("c", "c")];
-        let spans = vec![
-            labeled_spanner(&["a", "b"], "G1"),
-            labeled_spanner(&["b", "c"], "G2"),
-        ];
-
-        let cells = create_spanners(&columns, &spans).into_cells();
-
-        let g1 = cells.iter().find(|c| c.content == "G1").unwrap();
-        let g2 = cells.iter().find(|c| c.content == "G2").unwrap();
-        // G2 sits in the topmost row (row 0) — its class supplants Spanner.
-        // Both are centred by default.
-        assert_eq!(
-            g2.classes,
-            [TableClass::SpannerOuter, TableClass::AlignCenter]
-        );
-        assert_eq!(g1.classes, [TableClass::Spanner, TableClass::AlignCenter]);
     }
 
     #[test]

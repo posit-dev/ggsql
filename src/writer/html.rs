@@ -289,6 +289,7 @@ fn class_declarations(class: TableClass) -> &'static [(&'static str, &'static st
             ("overflow-x", "hidden"),
         ],
         TableClass::StubHead => &[],
+        TableClass::SpannerRow => &[("border-bottom-style", "hidden")],
         TableClass::ColHeadingRow => &[
             ("border-top-style", "solid"),
             ("border-top-width", "2px"),
@@ -381,8 +382,9 @@ const STYLED_CLASSES: &[TableClass] = &[
     TableClass::Stub,
     TableClass::ColHeading,
     TableClass::ColHeadingRow,
-    TableClass::Spanner,
     TableClass::SpannerOuter,
+    TableClass::Spanner,
+    TableClass::SpannerRow,
     TableClass::Title,
     TableClass::Subtitle,
     TableClass::Caption,
@@ -391,6 +393,10 @@ const STYLED_CLASSES: &[TableClass] = &[
     TableClass::AlignCenter,
     TableClass::AlignRight,
 ];
+
+/// Classes rendered on a `<div>` around the cell's content instead of on the
+/// `<th>`/`<td>` itself (gt's `gt_column_spanner` pattern).
+const INNER_CLASSES: &[TableClass] = &[TableClass::Spanner];
 
 /// The `<style>` block class mode prepends — one rule per styled class,
 /// generated from the same lookup inline mode folds into `style` attributes,
@@ -463,8 +469,10 @@ fn styling_attr(classes: &[TableClass], mode: CssMode) -> String {
 /// Render one `TableCell` as an HTML `<th>`/`<td>`, picked from
 /// `cell.is_header()`, with a `colspan`/`rowspan` attribute only when the
 /// cell actually spans more than one column/row, and a `scope` attribute per
-/// `header_scope`. Styling per `mode` via `styling_attr`. Not used for a
-/// `Caption`-kind cell — see `render_caption`.
+/// `header_scope`. Styling per `mode` via `styling_attr` — classes in
+/// `INNER_CLASSES` go on a `<div>` around the content rather than on the
+/// `<th>`/`<td>` itself. Not used for a `Caption`-kind cell — see
+/// `render_caption`.
 fn render_cell(cell: &TableCell, mode: CssMode) -> String {
     let tag = if cell.is_header() { "th" } else { "td" };
     let colspan = cell.width();
@@ -479,8 +487,21 @@ fn render_cell(cell: &TableCell, mode: CssMode) -> String {
     if let Some(scope) = header_scope(cell.kind, colspan) {
         attrs.push_str(&format!(" scope=\"{scope}\""));
     }
-    attrs.push_str(&styling_attr(&cell.classes, mode));
-    format!("<{tag}{attrs}>{}</{tag}>", escape_html(&cell.content))
+    let (inner, outer): (Vec<TableClass>, Vec<TableClass>) = cell
+        .classes
+        .iter()
+        .copied()
+        .partition(|class| INNER_CLASSES.contains(class));
+    attrs.push_str(&styling_attr(&outer, mode));
+    if inner.is_empty() {
+        format!("<{tag}{attrs}>{}</{tag}>", escape_html(&cell.content))
+    } else {
+        let inner_attrs = styling_attr(&inner, mode);
+        format!(
+            "<{tag}{attrs}><div{inner_attrs}>{}</div></{tag}>",
+            escape_html(&cell.content)
+        )
+    }
 }
 
 /// `scope` value for a header cell of `kind` spanning `colspan` columns, or
@@ -755,7 +776,7 @@ mod render_tests {
             cell(TableCellKind::Spanner, 0, 0, 0, 1).with_classes(vec![TableClass::Spanner]);
         assert_eq!(
             render_cell(&spanner, CssMode::Class),
-            "<th colspan=\"2\" scope=\"colgroup\" class=\"ggsql_spanner\"></th>"
+            "<th colspan=\"2\" scope=\"colgroup\"><div class=\"ggsql_spanner\"></div></th>"
         );
 
         let outer =
@@ -1107,7 +1128,7 @@ mod tests {
         // single spanner level is the topmost one, hence `spanner_outer`,
         // and it's centred by default.
         assert!(html.contains(
-            "<tr><th colspan=\"2\" scope=\"colgroup\" class=\"ggsql_spanner_outer ggsql_center\">Info</th><th rowspan=\"2\" scope=\"col\""
+            "<tr class=\"ggsql_col_heading_row ggsql_spanner_row\"><th colspan=\"2\" scope=\"colgroup\" class=\"ggsql_spanner_outer ggsql_center\"><div class=\"ggsql_spanner\">Info</div></th><th rowspan=\"2\" scope=\"col\""
         ));
         assert!(html.contains(">amount</th>"));
         assert!(html.contains(">id</th>"));
