@@ -198,18 +198,25 @@ case "$backend" in
     # the regular /druid/v2/sql endpoint plans with the native engine, which
     # refuses INSERT ("consider using MSQ"), while an explicit
     # "engine": "msq-task" context is rejected there ("Unsupported engine").
+    # The row data comes from an inline EXTERN source: a UNION ALL of
+    # literal SELECTs is NOT plannable by MSQ ("Union operation is only
+    # supported between regular tables") because each literal select plans
+    # as an inline datasource. Inline CSV with a header row gives EXTERN
+    # named columns; all extern columns are strings, so CAST the numerics.
     payload=$(python3 - <<'EOF'
 import json
-query = """
+rows = "\n".join(
+    f"{i},{i + 0.5},{'a' if i % 2 == 1 else 'b'}" for i in range(1, 9)
+)
+inline = json.dumps({"type": "inline", "data": "id,val,grp\n" + rows})
+csv_fmt = json.dumps({"type": "csv", "findColumnsFromHeader": True})
+query = f"""
 INSERT INTO ggsql_live_test
-SELECT TIMESTAMP '2020-01-01 00:00:00' AS __time, 1 AS id, 1.5 AS val, 'a' AS grp UNION ALL
-SELECT TIMESTAMP '2020-01-01 00:00:00', 2, 2.5, 'b' UNION ALL
-SELECT TIMESTAMP '2020-01-01 00:00:00', 3, 3.5, 'a' UNION ALL
-SELECT TIMESTAMP '2020-01-01 00:00:00', 4, 4.5, 'b' UNION ALL
-SELECT TIMESTAMP '2020-01-01 00:00:00', 5, 5.5, 'a' UNION ALL
-SELECT TIMESTAMP '2020-01-01 00:00:00', 6, 6.5, 'b' UNION ALL
-SELECT TIMESTAMP '2020-01-01 00:00:00', 7, 7.5, 'a' UNION ALL
-SELECT TIMESTAMP '2020-01-01 00:00:00', 8, 8.5, 'b'
+SELECT TIMESTAMP '2020-01-01 00:00:00' AS __time,
+       CAST(id AS BIGINT) AS id,
+       CAST(val AS DOUBLE) AS val,
+       grp
+FROM TABLE(EXTERN('{inline}', '{csv_fmt}'))
 PARTITIONED BY ALL
 """
 print(json.dumps({"query": query}))
@@ -227,6 +234,17 @@ EOF
       exit 1
     fi
     echo "MSQ ingest submitted; response: $resp"
+    # A plan-time failure returns synchronously ("state":"FAILED") and the
+    # task never reaches the overlord — polling would only ever report
+    # "Cannot find any task". Bail out immediately with the real error.
+    case "$resp" in
+      *'"state":"FAILED"'*)
+        echo "MSQ ingest rejected at plan time; response:"
+        echo "$resp"
+        docker compose -f "$druid_dir/docker-compose.yml" logs || true
+        exit 1
+        ;;
+    esac
     # MSQ jobs are asynchronous; poll the task until it succeeds or fails.
     # The /status endpoint reports "status":"SUCCESS|FAILED" (statusCode only
     # appears in the full report, not here). If the submission returned a
