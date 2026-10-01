@@ -804,8 +804,8 @@ mod tests {
             SUM(data.weight * ((EXP(-0.5 * (grid.x - data.val) * (grid.x - data.val) / (bandwidth.bw * bandwidth.bw))) * 0.3989422804014327)) / MIN(bandwidth.bw) AS "__ggsql_stat_intensity",
             SUM(data.weight) AS "__norm"
           FROM data
-          INNER JOIN bandwidth ON data."region" IS NOT DISTINCT FROM bandwidth."region" AND data."category" IS NOT DISTINCT FROM bandwidth."category"
-          INNER JOIN grid ON grid."region" IS NOT DISTINCT FROM data."region" AND grid."category" IS NOT DISTINCT FROM data."category"
+          INNER JOIN bandwidth ON (data."region" IS NOT DISTINCT FROM bandwidth."region") AND (data."category" IS NOT DISTINCT FROM bandwidth."category")
+          INNER JOIN grid ON (grid."region" IS NOT DISTINCT FROM data."region") AND (grid."category" IS NOT DISTINCT FROM data."category")
           GROUP BY grid.x, grid."region", grid."category"
           ORDER BY grid.x, grid."region", grid."category"
         ) AS "__ggsql_kde__""#;

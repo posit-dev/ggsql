@@ -200,6 +200,9 @@ fn driver_names_for_scheme(scheme: &str) -> Option<(&'static str, &'static str)>
         "exasol" => ("adbc_driver_exasol", "exasol"),
         // Preview driver from the Foundry as of late 2026.
         "druid" => ("adbc_driver_druid", "druid"),
+        // In-process DataFusion; the driver moved from the in-tree Rust
+        // crate (stalled at 0.23) to the ADBC Driver Foundry.
+        "datafusion" => ("adbc_driver_datafusion", "datafusion"),
         _ => return None,
     })
 }
@@ -714,43 +717,75 @@ where
         self.registered_tables.borrow_mut().insert(name.to_string());
 
         {
-            let mut stmt = conn
-                .new_statement()
-                .map_err(|e| GgsqlError::ReaderError(format!("ADBC new_statement: {}", e)))?;
-            stmt.set_option(
-                OptionStatement::TargetTable,
-                OptionValue::String(name.to_string()),
-            )
-            .map_err(|e| GgsqlError::ReaderError(format!("ADBC set TargetTable: {}", e)))?;
-            // Tell the driver this is an append into the table we just
-            // CREATEd above. Compliant ADBC drivers (e.g. the Apache SQLite
-            // driver) default `IngestMode` to `Create` when only `TargetTable`
-            // is set, which would then fail because the table already exists.
-            // DataFusion 0.23 doesn't expose this option key and returns
-            // `Status::NotFound` from `set_option`; that's expected for
-            // DataFusion's bind path (it appends by default), so swallow it
-            // and continue rather than failing register().
-            if let Err(e) = stmt.set_option(
-                OptionStatement::IngestMode,
-                OptionValue::from(IngestMode::Append),
-            ) {
-                if e.status != adbc_core::error::Status::NotFound {
-                    return Err(GgsqlError::ReaderError(format!(
-                        "ADBC set IngestMode=Append: {}",
-                        e
-                    )));
+            // Ingest, with one schema-alignment retry: drivers that validate
+            // the batch against the table schema (e.g. the Foundry datafusion
+            // driver >=0.27) reject mismatches — DataFusion surfaces VARCHAR
+            // as Utf8View while our batches are Utf8. On that specific
+            // failure, align the batch to the driver-reported table schema
+            // and retry. Legacy drivers without validation (the stalled
+            // adbc_datafusion 0.23 crate, whose get_table_schema is `todo!()`)
+            // succeed on the first attempt and never touch the schema path.
+            let mut aligned: Option<arrow::record_batch::RecordBatch> = None;
+            let mut attempts = 0;
+            loop {
+                let attempt_batch = aligned.as_ref().unwrap_or(&batch).clone();
+                let mut stmt = conn
+                    .new_statement()
+                    .map_err(|e| GgsqlError::ReaderError(format!("ADBC new_statement: {}", e)))?;
+                stmt.set_option(
+                    OptionStatement::TargetTable,
+                    OptionValue::String(name.to_string()),
+                )
+                .map_err(|e| GgsqlError::ReaderError(format!("ADBC set TargetTable: {}", e)))?;
+                // Tell the driver this is an append into the table we just
+                // CREATEd above. Compliant ADBC drivers (e.g. the Apache
+                // SQLite driver) default `IngestMode` to `Create` when only
+                // `TargetTable` is set, which would then fail because the
+                // table already exists. DataFusion 0.23 doesn't expose this
+                // option key and returns `Status::NotFound` from `set_option`;
+                // that's expected for DataFusion's bind path (it appends by
+                // default), so swallow it and continue rather than failing
+                // register().
+                if let Err(e) = stmt.set_option(
+                    OptionStatement::IngestMode,
+                    OptionValue::from(IngestMode::Append),
+                ) {
+                    if e.status != adbc_core::error::Status::NotFound {
+                        return Err(GgsqlError::ReaderError(format!(
+                            "ADBC set IngestMode=Append: {}",
+                            e
+                        )));
+                    }
+                }
+                stmt.bind(attempt_batch)
+                    .map_err(|e| GgsqlError::ReaderError(format!("ADBC bind: {}", e)))?;
+                match stmt.execute_update() {
+                    Ok(_) => break,
+                    Err(e) => {
+                        if attempts == 0 && e.to_string().contains("different schema") {
+                            attempts += 1;
+                            match conn.get_table_schema(None, None, name) {
+                                Ok(target) => {
+                                    aligned = Some(align_batch_to_schema(&batch, &target)?);
+                                    continue;
+                                }
+                                Err(schema_err) => {
+                                    return Err(GgsqlError::ReaderError(format!(
+                                        "ADBC execute_update: {e} — and the \
+                                         schema-alignment fallback failed: {schema_err}"
+                                    )));
+                                }
+                            }
+                        }
+                        return Err(GgsqlError::ReaderError(format!(
+                            "ADBC execute_update: {} — \
+                             table left on server; call unregister() to drop it \
+                             or register() with replace=true to retry",
+                            e
+                        )));
+                    }
                 }
             }
-            stmt.bind(batch)
-                .map_err(|e| GgsqlError::ReaderError(format!("ADBC bind: {}", e)))?;
-            stmt.execute_update().map_err(|e| {
-                GgsqlError::ReaderError(format!(
-                    "ADBC execute_update: {} — \
-                     table left on server; call unregister() to drop it \
-                     or register() with replace=true to retry",
-                    e
-                ))
-            })?;
         }
 
         Ok(())
@@ -828,6 +863,46 @@ fn create_table_sql(
         dialect.quote_ident(name),
         cols.join(", ")
     ))
+}
+
+/// Cast `batch` columns to `target`'s field types (matched by position) so
+/// drivers that validate the ingest schema accept the append — e.g. the
+/// Foundry datafusion driver creates VARCHAR as Utf8View while our batches
+/// are Utf8. Columns whose types already agree pass through untouched; a
+/// column-count mismatch returns the batch unchanged and lets the driver's
+/// own validation report the problem.
+fn align_batch_to_schema(
+    batch: &arrow::record_batch::RecordBatch,
+    target: &arrow::datatypes::Schema,
+) -> Result<arrow::record_batch::RecordBatch> {
+    use std::sync::Arc;
+
+    if target.fields().len() != batch.num_columns() {
+        return Ok(batch.clone());
+    }
+    let mut columns = Vec::with_capacity(batch.num_columns());
+    for (i, field) in target.fields().iter().enumerate() {
+        let col = batch.column(i);
+        if col.data_type() == field.data_type() {
+            columns.push(col.clone());
+        } else {
+            columns.push(arrow::compute::cast(col, field.data_type()).map_err(|e| {
+                GgsqlError::ReaderError(format!(
+                    "AdbcReader::register: cannot align column '{}' ({:?}) to \
+                     the table's {:?}: {}",
+                    field.name(),
+                    col.data_type(),
+                    field.data_type(),
+                    e
+                ))
+            })?);
+        }
+    }
+    arrow::record_batch::RecordBatch::try_new(Arc::new(target.clone()), columns).map_err(|e| {
+        GgsqlError::ReaderError(format!(
+            "AdbcReader::register: schema alignment failed: {e}"
+        ))
+    })
 }
 
 #[cfg(test)]

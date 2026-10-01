@@ -381,32 +381,28 @@ fn live_databricks() {
     live_backend("databricks");
 }
 
-/// DataFusion runs in-process through its ADBC driver and would need no
-/// infrastructure — but it is doubly gated. First, behind the cargo feature
-/// `adbc-datafusion`, because that optional dependency drags the full
-/// DataFusion/prost graph into the test build and the live-CI legs skip it.
-/// Second, behind `GGSQL_TEST_DATAFUSION=1`, because `adbc_datafusion` 0.23
+/// DataFusion runs in-process through its ADBC driver and needs no
+/// infrastructure, but the test is gated behind `GGSQL_TEST_DATAFUSION=1`:
+/// the original in-tree Rust crate (`adbc_datafusion`, stalled at 0.23)
 /// stores ingested batches without validating them against the table schema,
-/// and the ggsql register flow (SQL CREATE with dialect types + Arrow append)
-/// then panics in MIN/MAX aggregate execution — see the upstream issue filed
-/// from the ggsql repo notes. Enable both to check whether a newer driver
-/// has fixed it; when it passes, make this test unconditional.
-#[cfg(feature = "adbc-datafusion")]
+/// and the ggsql register flow (SQL CREATE with dialect types + Arrow
+/// append) then panics in MIN/MAX aggregate execution. The driver has since
+/// moved to the ADBC Driver Foundry (`dbc install datafusion`), which this
+/// test exercises through the driver manager — no cargo feature needed, so
+/// the heavy DataFusion/prost graph stays out of the test build.
+#[cfg(feature = "adbc")]
 #[test]
 fn live_datafusion() {
     if std::env::var("GGSQL_TEST_DATAFUSION").is_err() {
         eprintln!(
             "skipping datafusion: GGSQL_TEST_DATAFUSION is not set \
-             (gated on an adbc_datafusion 0.23 MIN/MAX conversion bug)"
+             (was gated on an adbc_datafusion 0.23 MIN/MAX conversion bug)"
         );
         return;
     }
-    use adbc_datafusion::DataFusionDriver;
     use ggsql::reader::adbc::AdbcReader;
-    use ggsql::reader::dialects::DataFusionDialect;
 
-    let reader = AdbcReader::with_dialect(DataFusionDriver::new(None), Box::new(DataFusionDialect))
-        .expect("datafusion init");
+    let reader = AdbcReader::from_connection_string("datafusion://").expect("datafusion init");
 
     let df = ggsql::df! {
         "id" => vec![1i32, 2, 3, 4, 5, 6, 7, 8],

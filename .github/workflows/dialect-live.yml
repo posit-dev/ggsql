@@ -69,8 +69,9 @@ jobs:
         # drivers dlopened at runtime), so the legs can run it directly.
         # Feature set is load-bearing: `adbc` compiles in the ADBC reader
         # path, `sqlite` provides the cache backend Druid wraps in, and
-        # adbc-datafusion is deliberately absent (it drags the full
-        # DataFusion/prost graph in for a test that is env-gated off).
+        # adbc-datafusion is deliberately absent — the datafusion leg uses
+        # the Foundry driver through the driver manager, so the full
+        # DataFusion/prost graph stays out of the test build.
         run: |
           bin=$(cargo test -p ggsql --features "adbc sqlite" --test dialect_live \
                 --no-run --message-format=json-render-diagnostics \
@@ -119,6 +120,9 @@ jobs:
           # skips the dbc install step).
           - { backend: sqlite, driver: "" }
           - { backend: duckdb, driver: "" }
+          # DataFusion leg: in-process via the Foundry driver — no container;
+          # the start script just exports GGSQL_TEST_DATAFUSION=1.
+          - { backend: datafusion, driver: datafusion }
 
     steps:
       - name: Check out repository

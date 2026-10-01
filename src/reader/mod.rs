@@ -323,9 +323,12 @@ pub trait SqlDialect {
     /// The ANSI form is `IS NOT DISTINCT FROM`; MySQL/MariaDB use the
     /// `<=>` operator instead. ClickHouse only accepts the ANSI form in a
     /// `JOIN ON` section, so callers targeting it should place the
-    /// comparison in a join condition.
+    /// comparison in a join condition. The comparison is parenthesized:
+    /// DataFusion's parser otherwise binds a following `AND` into the
+    /// right-hand operand ("logical boolean operation Utf8View AND
+    /// Boolean").
     fn sql_null_safe_eq(&self, left: &str, right: &str) -> String {
-        format!("{left} IS NOT DISTINCT FROM {right}")
+        format!("({left} IS NOT DISTINCT FROM {right})")
     }
 
     /// Ceiling of a numeric expression.

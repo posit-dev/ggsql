@@ -28,11 +28,13 @@ impl SqlDialect for DataFusionDialect {
     }
 
     fn sql_generate_series(&self, n: usize) -> String {
-        // DataFusion's generate_series is a table function.
+        // DataFusion's generate_series is a table function whose single
+        // output column is named `value` in current releases (it was
+        // `generate_series` in the DataFusion bundled with the 0.23 crate).
         let __ggsql_seq__ = self.quote_ident("__ggsql_seq__");
         format!(
             "{__ggsql_seq__}(n) AS (\
-               SELECT CAST(generate_series AS DOUBLE) AS n \
+               SELECT CAST(value AS DOUBLE) AS n \
                FROM generate_series(0, {n} - 1)\
              )"
         )
@@ -40,6 +42,27 @@ impl SqlDialect for DataFusionDialect {
 
     fn sql_quantile_inline(&self, column: &str, fraction: f64) -> Option<String> {
         Some(format!("approx_percentile_cont({column}, {fraction})"))
+    }
+
+    /// DataFusion supports neither form of the default percentile
+    /// construction: its `scalar_subquery_to_join` optimizer rule cannot
+    /// decorrelate the NTILE(4) window variant, and its physical planner
+    /// rejects a correlated scalar subquery in projection outright
+    /// ("Physical plan does not support logical expression ScalarSubquery").
+    /// Every caller embeds this in a `GROUP BY {groups}` query over `from`,
+    /// so the native approximate aggregate is equivalent (same shape as the
+    /// ClickHouse override) — and far cheaper.
+    fn sql_percentile(
+        &self,
+        column: &str,
+        fraction: f64,
+        _from: &str,
+        _groups: &[String],
+    ) -> String {
+        format!(
+            "approx_percentile_cont({}, {fraction})",
+            self.quote_ident(column)
+        )
     }
 
     fn supports_spatial(&self) -> bool {

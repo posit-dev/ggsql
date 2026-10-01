@@ -284,6 +284,14 @@ EOF
     # Embedded reader — no server, no container, no dbc driver.
     uri="duckdb://memory"
     ;;
+  datafusion)
+    # In-process through the Foundry datafusion driver (installed by the
+    # workflow's dbc step) — no server, no container. The test builds its
+    # own datafusion:// reader and is gated on this flag rather than a URI.
+    echo "GGSQL_TEST_DATAFUSION=1" >> "$GITHUB_ENV"
+    echo "exported GGSQL_TEST_DATAFUSION"
+    exit 0
+    ;;
   *)
     echo "unknown backend: $backend" >&2
     exit 1
