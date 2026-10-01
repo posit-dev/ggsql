@@ -126,11 +126,13 @@ jobs:
           # Oracle-over-ODBC leg: the Foundry oracle ADBC driver is
           # Columnar-commercial and private, so this leg uses Oracle Instant
           # Client ODBC (installed below) with ?reader=odbc and a
-          # ggsql-oracle DSN against a gvenzl/oracle-xe container. DISABLED
-          # pending the Oracle Free Use Terms and Conditions license review;
-          # the start-script case, install step, and live_oracle test are
-          # already in place — uncommenting this line is the entire change.
-          # - { backend: oracle, driver: "" }
+          # ggsql-oracle DSN against a gvenzl/oracle-xe container.
+          # TEMPORARILY ENABLED to validate the leg on CI before the Oracle
+          # Free Use Terms and Conditions license review completes — if the
+          # review comes back unfavorable, remove this row, the install step
+          # below, the oracle case in dialect-live-start.sh, and the
+          # live_oracle test.
+          - { backend: oracle, driver: "" }
 
     steps:
       - name: Check out repository
