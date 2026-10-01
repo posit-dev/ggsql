@@ -256,14 +256,11 @@ jobs:
           echo "$ic_dir" | sudo tee /etc/ld.so.conf.d/oracle-instantclient.conf
           printf '[Oracle]\nDescription=Oracle Instant Client ODBC\nDriver=%s\n' "$driver_so" \
             | sudo tee -a /etc/odbcinst.ini
-          # DBQ is a full TNS descriptor, not an EZCONNECT string: both
-          # EZCONNECT spellings (//host:port/service and bare) fail with
-          # ORA-12162 when delivered through a unixODBC DSN (the ini
-          # attribute mapping mangles them), while the identical descriptor
-          # over a DSN-less connection was verified to connect. This value
-          # is the proven-working one, delivered via the DSN instead.
-          printf '[ggsql-oracle]\nDriver=Oracle\nDBQ=(DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)(HOST=localhost)(PORT=1521))(CONNECT_DATA=(SERVICE_NAME=XEPDB1)))\n' \
-            | sudo tee -a /etc/odbc.ini
+          # No DSN is registered in /etc/odbc.ini: unixODBC's DSN attribute
+          # mapping never delivers DBQ to this driver (every DBQ spelling
+          # fails with ORA-12162 via DSN while the identical values connect
+          # DSN-less). The leg's preflight and ggsql URI both carry
+          # Driver=Oracle + a full TNS descriptor in the connection string.
           # Diagnostics: same IM005-hunting ldd as the monetdb leg.
           sudo ldconfig
           echo '--- /etc/odbcinst.ini:'; cat /etc/odbcinst.ini

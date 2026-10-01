@@ -39,12 +39,11 @@
 //!   (CI runs it against a MonetDB container over the MonetDB ODBC driver:
 //!   no usable ADBC driver exists for MonetDB, so the `?reader=odbc` query
 //!   forces the ODBC fallback with the DSN registered by the workflow step)
-//! - `GGSQL_TEST_URI_ORACLE`     e.g. `oracle://u:p@localhost:1521/XEPDB1?reader=odbc&DSN=ggsql-oracle`
-//!   (CI-ready but disabled pending the Oracle Free Use Terms and Conditions
-//!   license review: the Foundry oracle ADBC driver is Columnar-commercial,
-//!   so the leg runs against a gvenzl/oracle-xe container over Instant
-//!   Client ODBC, forced by `?reader=odbc` with the DSN registered by the
-//!   workflow step)
+//! - `GGSQL_TEST_URI_ORACLE`     e.g. `oracle://u:p@localhost:1521/XEPDB1?reader=odbc&Driver={Oracle}&DBQ=<tns-descriptor>`
+//!   (the Foundry oracle ADBC driver is Columnar-commercial, so the leg
+//!   runs against a gvenzl/oracle-xe container over Instant Client ODBC,
+//!   forced by `?reader=odbc`; Driver + DBQ go in the URI because unixODBC's
+//!   DSN attribute mapping never delivers DBQ to the Oracle driver)
 //! - `GGSQL_TEST_URI_DRUID`      e.g. `druid://localhost:8082?tls=false`
 //!   (tls=false is required against a plaintext broker: the Foundry driver
 //!   defaults to https)

@@ -183,17 +183,16 @@ case "$backend" in
       -p 1521:1521 gvenzl/oracle-xe:21.3.0-slim-faststart
     # The image ships a healthcheck script doing a real sqlplus round-trip.
     wait_for oracle docker exec db healthcheck.sh
-    # Readiness plus preflight in one, like the monetdb leg, but with
-    # isql -k: ggsql connects via SQLDriverConnect with
-    # "DSN=ggsql-oracle;UID=...;PWD=...", while plain
-    # "isql <dsn> <user> <pass>" uses SQLConnect, on which Oracle ODBC
-    # spuriously fails with ORA-12162 even for a valid DSN. The -k string
-    # deliberately mirrors what connection.rs synthesizes from the URI.
-    # The DSN's DBQ is a full TNS descriptor (see the workflow step);
-    # EZCONNECT spellings do not survive unixODBC's DSN attribute mapping.
+    # Readiness plus preflight in one, like the monetdb leg, with isql -k
+    # (SQLDriverConnect — the API ggsql uses). The string is DSN-less:
+    # unixODBC's DSN attribute mapping never delivers DBQ to this driver
+    # (every DBQ spelling fails with ORA-12162 via DSN while the identical
+    # values connect DSN-less), so both the preflight and the ggsql URI
+    # carry Driver + full TNS descriptor directly. This mirrors what
+    # connection.rs synthesizes from the URI below.
     ok=0
     for _ in $(seq 1 24); do
-      if isql -v -k "DSN=ggsql-oracle;UID=ggsql;PWD=Ggsql_test1" <<< 'SELECT 1 FROM dual;'; then
+      if isql -v -k "Driver=Oracle;DBQ=(DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)(HOST=localhost)(PORT=1521))(CONNECT_DATA=(SERVICE_NAME=XEPDB1)));UID=ggsql;PWD=Ggsql_test1" <<< 'SELECT 1 FROM dual;'; then
         ok=1
         break
       fi
@@ -215,7 +214,10 @@ case "$backend" in
         <<< 'SELECT 1 FROM dual;' || true
       exit 1
     fi
-    uri="oracle://ggsql:Ggsql_test1@localhost:1521/XEPDB1?reader=odbc&DSN=ggsql-oracle"
+    # Driver + DBQ in the URI: connection.rs turns this into
+    # "Driver={Oracle};UID=...;PWD=...;DBQ=(...)" (a DBQ= param suppresses
+    # the Server/Port/Database synthesis). No DSN is involved.
+    uri="oracle://ggsql:Ggsql_test1@localhost:1521/XEPDB1?reader=odbc&Driver={Oracle}&DBQ=(DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)(HOST=localhost)(PORT=1521))(CONNECT_DATA=(SERVICE_NAME=XEPDB1)))"
     ;;
   druid)
     # Druid leg: a nano-quickstart single server (all services in one JVM)

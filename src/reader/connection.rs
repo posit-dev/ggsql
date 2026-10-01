@@ -302,6 +302,14 @@ fn synthesize_odbc_conn_str(scheme: &str, rest: &str) -> Option<String> {
         .map(|d| d.trim_matches(|c| c == '{' || c == '}'));
     let env_driver = std::env::var(odbc_driver_env_var(scheme)).ok();
 
+    // A DBQ= param (Oracle/DB2-style server address) fully specifies where
+    // to connect, so the Server/Port/Database synthesis must be suppressed —
+    // Oracle ODBC rejects a connection string that mixes the two vocabularies.
+    let has_dbq = parsed
+        .params
+        .iter()
+        .any(|p| p.starts_with("DBQ=") || p.starts_with("dbq="));
+
     let (mut parts, mut skip_keys): (Vec<String>, Vec<&str>) = (Vec::new(), Vec::new());
     if let Some(dsn) = dsn {
         parts.push(format!("DSN={}", dsn));
@@ -310,14 +318,16 @@ fn synthesize_odbc_conn_str(scheme: &str, rest: &str) -> Option<String> {
         let driver = driver.or(env_driver.as_deref())?;
         parts.push(format!("Driver={{{}}}", driver));
         skip_keys.push("driver");
-        if let Some(host) = parsed.host {
-            parts.push(format!("Server={}", host));
-        }
-        if let Some(port) = parsed.port {
-            parts.push(format!("Port={}", port));
-        }
-        if let Some(db) = parsed.database {
-            parts.push(format!("Database={}", db));
+        if !has_dbq {
+            if let Some(host) = parsed.host {
+                parts.push(format!("Server={}", host));
+            }
+            if let Some(port) = parsed.port {
+                parts.push(format!("Port={}", port));
+            }
+            if let Some(db) = parsed.database {
+                parts.push(format!("Database={}", db));
+            }
         }
     }
     if let Some(user) = parsed.user {
@@ -590,6 +600,25 @@ mod tests {
         assert!(conn.contains("Port=3306"), "got: {conn}");
         assert!(conn.contains("Database=shop"), "got: {conn}");
         assert!(conn.contains("UID=u"), "got: {conn}");
+    }
+
+    #[cfg(feature = "odbc")]
+    #[test]
+    fn test_synthesize_odbc_conn_str_dbq_suppresses_server_synthesis() {
+        // Oracle ODBC wants Driver + DBQ and nothing else: the URI's
+        // host/port/database parts must not become Server/Port/Database
+        // keywords alongside DBQ.
+        let conn = synthesize_odbc_conn_str(
+            "oracle",
+            "ggsql:pw@localhost:1521/XEPDB1?Driver={Oracle}&DBQ=(DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)(HOST=localhost)(PORT=1521))(CONNECT_DATA=(SERVICE_NAME=XEPDB1)))",
+        )
+        .unwrap();
+        assert!(conn.contains("Driver={Oracle}"), "got: {conn}");
+        assert!(conn.contains("DBQ=(DESCRIPTION="), "got: {conn}");
+        assert!(conn.contains("UID=ggsql"), "got: {conn}");
+        assert!(!conn.contains("Server="), "got: {conn}");
+        assert!(!conn.contains("Port="), "got: {conn}");
+        assert!(!conn.contains("Database="), "got: {conn}");
     }
 
     #[cfg(feature = "odbc")]
