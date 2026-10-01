@@ -647,7 +647,9 @@ where
             arrow::compute::concat_batches(&schema, &batches)
                 .map_err(|e| GgsqlError::ReaderError(format!("concat_batches: {}", e)))?
         };
-        Ok(DataFrame::from_record_batch(merged))
+        Ok(DataFrame::from_record_batch(normalize_result_strings(
+            merged,
+        )?))
     }
 
     fn register(&self, name: &str, df: DataFrame, replace: bool) -> Result<()> {
@@ -863,6 +865,55 @@ fn create_table_sql(
         dialect.quote_ident(name),
         cols.join(", ")
     ))
+}
+
+/// Normalize string columns in a query result to plain Utf8. ADBC drivers
+/// legitimately return Utf8View (DataFusion surfaces VARCHAR that way) or
+/// LargeUtf8, but ggsql's typed accessors standardize on StringArray — so
+/// convert once, here at the reader boundary, instead of teaching every
+/// downstream consumer about the string family.
+fn normalize_result_strings(
+    batch: arrow::record_batch::RecordBatch,
+) -> Result<arrow::record_batch::RecordBatch> {
+    use arrow::datatypes::{DataType, Field, Schema};
+    use std::sync::Arc;
+
+    let schema = batch.schema();
+    let needs = schema
+        .fields()
+        .iter()
+        .any(|f| matches!(f.data_type(), DataType::LargeUtf8 | DataType::Utf8View));
+    if !needs {
+        return Ok(batch);
+    }
+    let mut fields = Vec::with_capacity(schema.fields().len());
+    let mut columns = Vec::with_capacity(batch.num_columns());
+    for (i, field) in schema.fields().iter().enumerate() {
+        let col = batch.column(i);
+        if matches!(field.data_type(), DataType::LargeUtf8 | DataType::Utf8View) {
+            columns.push(arrow::compute::cast(col, &DataType::Utf8).map_err(|e| {
+                GgsqlError::ReaderError(format!(
+                    "ADBC result: cannot normalize string column '{}' ({:?}): {}",
+                    field.name(),
+                    col.data_type(),
+                    e
+                ))
+            })?);
+            fields.push(Arc::new(Field::new(
+                field.name(),
+                DataType::Utf8,
+                field.is_nullable(),
+            )));
+        } else {
+            columns.push(col.clone());
+            fields.push(field.clone());
+        }
+    }
+    RecordBatch::try_new(
+        Arc::new(Schema::new_with_metadata(fields, schema.metadata().clone())),
+        columns,
+    )
+    .map_err(|e| GgsqlError::ReaderError(format!("ADBC result normalization failed: {e}")))
 }
 
 /// Cast `batch` columns to `target`'s field types (matched by position) so

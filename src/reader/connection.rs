@@ -78,8 +78,11 @@ fn cache_uri(scheme: &str) -> Result<&'static str> {
     match scheme {
         "duckdb" => Ok("duckdb://memory"),
         "sqlite" => Ok("sqlite://memory"),
+        // In-process via the Foundry ADBC driver; its in-memory catalog
+        // matches the ephemerality of the other two defaults.
+        "datafusion" => Ok("datafusion://"),
         _ => Err(GgsqlError::ReaderError(format!(
-            "Unsupported cache backend '{}'. Supported: duckdb, sqlite",
+            "Unsupported cache backend '{}'. Supported: duckdb, sqlite, datafusion",
             scheme
         ))),
     }

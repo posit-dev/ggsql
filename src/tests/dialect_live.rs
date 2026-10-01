@@ -414,3 +414,34 @@ fn live_datafusion() {
 
     run_battery(&reader, "datafusion", TABLE);
 }
+
+/// DataFusion as a cache backend: a sqlite primary wrapped in a datafusion
+/// cache (`datafusion+sqlite://`). Runs the same plot twice so the second
+/// pass exercises the memo-hit path (meta-table upsert via DELETE+INSERT
+/// and the UPDATE last-accessed touch) against the Foundry driver.
+#[cfg(all(feature = "adbc", feature = "sqlite"))]
+#[test]
+fn live_datafusion_as_cache() {
+    if std::env::var("GGSQL_TEST_DATAFUSION").is_err() {
+        eprintln!("skipping datafusion cache: GGSQL_TEST_DATAFUSION is not set");
+        return;
+    }
+
+    let reader =
+        reader_from_uri("datafusion+sqlite://:memory:").expect("datafusion-cached sqlite reader");
+    reader
+        .execute_sql("CREATE TABLE t (id INT, val DOUBLE)")
+        .expect("create");
+    reader
+        .execute_sql("INSERT INTO t VALUES (1, 1.5), (2, 2.5), (3, 3.5), (4, 4.5)")
+        .expect("insert");
+
+    let query = "VISUALISE DRAW point MAPPING id AS x, val AS y FROM t";
+    let first = reader.execute(query).expect("first run (cache fill)");
+    let second = reader.execute(query).expect("second run (cache hit)");
+    assert!(first.layer_data(0).map(|l| l.height() > 0).unwrap_or(false));
+    assert!(second
+        .layer_data(0)
+        .map(|l| l.height() > 0)
+        .unwrap_or(false));
+}
