@@ -21,7 +21,7 @@ SELECT *, "__ggsql_stat_pos1" AS "__ggsql_aes_pos1__", "__ggsql_stat_density" AS
 
 -- case: line_temporal
 DROP TABLE IF EXISTS "__ggsql_global_<session>__";
-CREATE TEMP TABLE "__ggsql_global_<session>__" AS SELECT * FROM ts_data;
+CREATE TABLE "__ggsql_global_<session>__" AS SELECT * FROM ts_data;
 SELECT * FROM (SELECT * FROM "__ggsql_global_<session>__") AS __schema__ LIMIT 1;
 WITH "__ggsql_source__" AS (SELECT *, "day" AS "__ggsql_aes_pos1__", "value" AS "__ggsql_aes_pos2__" FROM (SELECT * FROM "__ggsql_global_<session>__") AS "__ggsql_src__") SELECT MIN("day") AS "day", MIN("value") AS "value", MIN("__ggsql_global_<session>__") AS "__ggsql_global_<session>__" FROM "__ggsql_source__" UNION ALL SELECT MAX("day") AS "day", MAX("value") AS "value", MAX("__ggsql_global_<session>__") AS "__ggsql_global_<session>__" FROM "__ggsql_source__";
 SELECT *, "day" AS "__ggsql_aes_pos1__", "value" AS "__ggsql_aes_pos2__" FROM (SELECT * FROM "__ggsql_global_<session>__") AS "__ggsql_src__" ORDER BY "__ggsql_aes_pos1__";
@@ -63,7 +63,7 @@ SELECT *, "__ggsql_stat_pos2" AS "__ggsql_aes_pos2__", "__ggsql_stat_density" AS
 
 -- case: filter_layer
 DROP TABLE IF EXISTS "__ggsql_global_<session>__";
-CREATE TEMP TABLE "__ggsql_global_<session>__" AS SELECT * FROM pts;
+CREATE TABLE "__ggsql_global_<session>__" AS SELECT * FROM pts;
 SELECT * FROM (SELECT * FROM "__ggsql_global_<session>__") AS __schema__ LIMIT 1;
 WITH "__ggsql_source__" AS (SELECT *, "a" AS "__ggsql_aes_pos1__", "b" AS "__ggsql_aes_pos2__" FROM (SELECT * FROM "__ggsql_global_<session>__") AS "__ggsql_src__" WHERE g = 'A') SELECT MIN("a") AS "a", MIN("b") AS "b", MIN("g") AS "g", MIN("__ggsql_global_<session>__") AS "__ggsql_global_<session>__" FROM "__ggsql_source__" UNION ALL SELECT MAX("a") AS "a", MAX("b") AS "b", MAX("g") AS "g", MAX("__ggsql_global_<session>__") AS "__ggsql_global_<session>__" FROM "__ggsql_source__";
 SELECT *, "a" AS "__ggsql_aes_pos1__", "b" AS "__ggsql_aes_pos2__" FROM (SELECT * FROM "__ggsql_global_<session>__") AS "__ggsql_src__" WHERE g = 'A';

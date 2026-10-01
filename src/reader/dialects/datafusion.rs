@@ -1,10 +1,10 @@
 //! DataFusion dialect.
 //!
-//! Used for the in-process `adbc_datafusion` driver. DataFusion has no TIME
-//! type, no recursive CTEs (series come from the `generate_series` table
-//! function), and no temp tables — the full ggsql pipeline therefore needs
-//! the caching reader (`duckdb+datafusion://...`); see the existing
-//! `AdbcReader` test notes.
+//! Used with the ADBC Driver Foundry's in-process datafusion driver.
+//! DataFusion has no TIME type and no recursive CTEs (series come from the
+//! `generate_series` table function). It rejects the TEMP keyword but
+//! supports in-memory CTAS on its per-connection catalog, which provides
+//! the session scoping ggsql's staged tables need — so no cache wrap.
 
 use crate::reader::SqlDialect;
 
@@ -13,10 +13,28 @@ use crate::reader::SqlDialect;
 pub struct DataFusionDialect;
 
 impl SqlDialect for DataFusionDialect {
-    /// DataFusion has no temp tables; connections are always wrapped in a
-    /// caching reader rather than probed.
-    fn requires_cache(&self) -> bool {
-        true
+    /// DataFusion rejects the TEMP keyword ("Temporary tables not
+    /// supported") but supports in-memory CTAS, and its per-connection
+    /// catalog already provides the session scoping TEMP would give — so
+    /// stage internal tables as plain CREATE TABLE. Verified against the
+    /// Foundry 0.27 driver; the connect-time probe re-checks this and falls
+    /// back to the cache wrap if a future build regresses it.
+    fn create_or_replace_temp_table_sql(
+        &self,
+        name: &str,
+        column_aliases: &[String],
+        body_sql: &str,
+    ) -> Vec<String> {
+        let qname = self.quote_ident(name);
+        let body = crate::reader::wrap_with_column_aliases(
+            &|c: &str| self.quote_ident(c),
+            body_sql,
+            column_aliases,
+        );
+        vec![
+            format!("DROP TABLE IF EXISTS {}", qname),
+            format!("CREATE TABLE {} AS {}", qname, body),
+        ]
     }
 
     fn number_type_name(&self) -> Option<&str> {

@@ -46,8 +46,8 @@
 //!   job, and DruidDialect's `requires_cache` wraps the reader in a sqlite
 //!   cache that hosts the battery's derived tables)
 //!
-//! The DataFusion case runs in-process via the `adbc_datafusion` dev-driver
-//! and needs no setup, so one non-DuckDB engine always runs in CI.
+//! The DataFusion case runs in-process via the Foundry ADBC driver and
+//! needs no container, so one non-DuckDB engine always runs in CI.
 //!
 //! All cases run the same battery through the public reader pipeline: a
 //! grouped scatter (quoting, projections, discrete + continuous channels),

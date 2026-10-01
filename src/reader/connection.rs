@@ -394,7 +394,7 @@ fn probe_temp_tables(reader: &dyn Reader) -> bool {
 
 /// Wrap `reader` in an in-memory [`CachingReader`] when the backend cannot
 /// host ggsql's internal tables itself: either the dialect requires it
-/// outright (Trino, Druid, Drill, DataFusion) or a one-time temp-table probe
+/// outright (Trino, Druid, Drill) or a one-time temp-table probe
 /// fails (e.g. a read-only account). Explicit cache selection (`<cache>+…`
 /// or `--cache`) has already been handled by the caller and wins; `cache=off`
 /// in the URI opts out.
@@ -530,11 +530,11 @@ mod tests {
 
     #[test]
     fn test_requires_cache_dialects() {
-        for scheme in ["trino", "druid", "drill", "datafusion"] {
+        for scheme in ["trino", "druid", "drill"] {
             let d = crate::reader::dialects::dialect_for_scheme(scheme).unwrap();
             assert!(d.requires_cache(), "scheme {scheme} should require a cache");
         }
-        for scheme in ["postgres", "duckdb", "sqlite", "clickhouse"] {
+        for scheme in ["postgres", "duckdb", "sqlite", "clickhouse", "datafusion"] {
             let d = crate::reader::dialects::dialect_for_scheme(scheme).unwrap();
             assert!(!d.requires_cache(), "scheme {scheme} should be probed");
         }
