@@ -1,6 +1,6 @@
 {
   "name": "ggsql-wasm",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "description": "WebAssembly bindings for ggsql.",
   "license": "MIT",
   "repository": {

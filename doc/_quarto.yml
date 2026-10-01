@@ -22,7 +22,7 @@ website:
   announcement:
     icon: info-circle
     dismissable: true
-    content: "ggsql is still in early development and all functionality is subject to change. Read the [alpha-release announcement](https://opensource.posit.co/blog/2026-04-20_ggsql_alpha_release/)"
+    content: "ggsql is still in beta and many parts are being worked out. Read the [beta-release announcement](https://opensource.posit.co/blog/2026-09-24_ggsql_0_5_0/)"
     type: primary
     position: below-navbar
   twitter-card:
@@ -69,6 +69,8 @@ website:
       - text: News
         menu:
           - text: "Releases"
+          - text: "Version 0.5.0 (beta)"
+            href: https://opensource.posit.co/blog/2026-09-24_ggsql_0_5_0/
           - text: "Version 0.3.0 (alpha)"
             href: blog/posts/2026_04_29_ggsql_0_3_0/index.qmd
           - text: "Version 0.2.7 (alpha)"

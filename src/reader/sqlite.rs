@@ -819,6 +819,7 @@ mod tests {
         assert_eq!(df.column_dtype("y").unwrap(), DataType::Int64);
     }
 
+    #[cfg(feature = "vegalite")]
     #[test]
     fn test_subquery_vegalite_quantitative() {
         use crate::writer::{VegaLiteWriter, Writer};
@@ -1213,6 +1214,7 @@ mod tests {
         assert_eq!(result.column_dtype("name").unwrap(), DataType::Utf8);
     }
 
+    #[cfg(feature = "vegalite")]
     #[test]
     fn test_date_vegalite_temporal() {
         use crate::writer::{VegaLiteWriter, Writer};

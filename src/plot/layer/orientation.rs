@@ -72,8 +72,17 @@ pub fn resolve_orientation(layer: &Layer, scales: &[Scale]) -> &'static str {
 /// Reads the orientation from the layer's parameters, which must have been
 /// set by `resolve_orientations()` during execution.
 pub fn is_transposed(layer: &Layer) -> bool {
-    layer
-        .parameters
+    is_transposed_params(&layer.parameters)
+}
+
+/// Check transposition directly from a parameter set.
+///
+/// This is the single place that knows the orientation is stored as a
+/// `"transposed"` string parameter; callers that have a `Layer` should prefer
+/// [`is_transposed`]. Absence of the parameter means "aligned" — e.g. the
+/// standalone validate path, which runs before `resolve_orientations()`.
+pub fn is_transposed_params(parameters: &crate::plot::Parameters) -> bool {
+    parameters
         .get("orientation")
         .and_then(|v| v.as_str())
         .map(|s| s == TRANSPOSED)

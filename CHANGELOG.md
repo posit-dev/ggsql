@@ -2,13 +2,26 @@
 
 ### Added
 
-- (WIP) New `TABULATE` clause renders a query result as a table instead of a 
+- New `TABULATE` clause renders a query result as a table instead of a 
   plot. Tables are rendered via new `html` writer. `TABULATE` supports the 
   following clauses:
   - `LABEL` sets (sub)titles, captions and overrides the display of column
     labels.
   - `SPAN` groups columns under a shared header cell (spanner).
   - `FORMAT` configures how a column's cells are displayed.
+
+### Fixed
+
+- Fixed a parser bug that interpreted comment characters inside string literals
+  as initializing a comment (#555).
+- Fixed a bug in stat_aggregate prevented transposed layers from properly
+  aggregating in certain situations (#561)
+
+## 0.5.2 - 2026-09-11
+
+### Changed
+
+- Update GitHub Actions to deal with issues publishing Windows installers.
 
 ## 0.5.1 - 2026-09-11
 

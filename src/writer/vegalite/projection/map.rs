@@ -248,6 +248,7 @@ mod tests {
         assert_eq!(layers[0]["mark"]["stroke"], "gray");
     }
 
+    #[cfg(feature = "spatial")]
     #[test]
     fn test_background_layer_with_boundary() {
         let mut proj = Projection::map();
@@ -301,6 +302,7 @@ mod tests {
         assert!(translate.as_str().unwrap().contains("height"));
     }
 
+    #[cfg(feature = "spatial")]
     #[test]
     fn test_graticule_layers_rendered() {
         let mut proj = Projection::map();
@@ -331,6 +333,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "spatial")]
     #[test]
     fn test_graticule_with_panel_boundary() {
         let mut proj = Projection::map();

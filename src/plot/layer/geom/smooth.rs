@@ -286,9 +286,12 @@ fn stat_tls(
 mod tests {
     use super::*;
     use crate::plot::AestheticValue;
+    #[cfg(feature = "duckdb")]
     use crate::reader::duckdb::DuckDBReader;
+    #[cfg(feature = "duckdb")]
     use crate::reader::Reader;
 
+    #[cfg(feature = "duckdb")]
     #[test]
     fn test_stat_ols_ungrouped() {
         let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
@@ -338,6 +341,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "duckdb")]
     #[test]
     fn test_stat_ols_grouped() {
         let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
@@ -390,6 +394,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "duckdb")]
     #[test]
     fn test_stat_tls_ungrouped() {
         let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
@@ -439,6 +444,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "duckdb")]
     #[test]
     fn test_stat_tls_grouped() {
         let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();

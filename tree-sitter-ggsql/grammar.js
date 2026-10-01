@@ -1190,7 +1190,7 @@ module.exports = grammar({
       )
     )),
 
-    string: $ => seq("'", repeat(choice(/[^'\\]/, /\\./)), "'"),
+    string: $ => token(seq("'", repeat(choice(/[^'\\]/, /\\./)), "'")),
 
     boolean: $ => choice('true', 'false'),
 

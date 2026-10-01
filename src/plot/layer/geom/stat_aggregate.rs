@@ -537,13 +537,25 @@ fn resolve_target_aesthetic(
     user_aes: &str,
     aesthetics: &Mappings,
     aesthetic_ctx: &AestheticContext,
+    transposed: bool,
 ) -> Vec<String> {
     use crate::plot::layer::geom::types::AESTHETIC_ALIASES;
     let mut out = Vec::new();
     if let Some(internal) = aesthetic_ctx.map_user_to_internal(user_aes) {
-        if aesthetics.aesthetics.contains_key(internal) {
-            out.push(internal.to_string());
-            return out;
+        // Transposed layers have their position mappings flipped to aligned
+        // orientation before the stat runs (e.g. user `xmin` lives at
+        // `pos2min`), so the flipped internal name is the primary candidate.
+        let flipped = aesthetic_ctx.flip_position(internal);
+        let candidates: [&str; 2] = if transposed {
+            [&flipped, internal]
+        } else {
+            [internal, &flipped]
+        };
+        for candidate in candidates {
+            if aesthetics.aesthetics.contains_key(candidate) {
+                out.push(candidate.to_string());
+                return out;
+            }
         }
     }
     for (alias, targets) in AESTHETIC_ALIASES {
@@ -589,10 +601,11 @@ pub(crate) fn resolve_aggregate_targets(
     spec: &AggregateSpec,
     aesthetics: &Mappings,
     aesthetic_ctx: &AestheticContext,
+    transposed: bool,
 ) -> std::result::Result<HashMap<String, Vec<AggSpec>>, String> {
     let mut targets_internal: HashMap<String, Vec<AggSpec>> = HashMap::new();
     for (user_aes, fns) in &spec.targets {
-        let resolved = resolve_target_aesthetic(user_aes, aesthetics, aesthetic_ctx);
+        let resolved = resolve_target_aesthetic(user_aes, aesthetics, aesthetic_ctx, transposed);
         if resolved.is_empty() {
             return Err(format!(
                 "aggregate target '{}' is not mapped on this layer",
@@ -629,9 +642,10 @@ pub fn targeted_aesthetics(
         Some(s) => s,
         None => return HashSet::new(),
     };
+    let transposed = crate::plot::layer::orientation::is_transposed_params(parameters);
     let mut targeted: HashSet<String> = HashSet::new();
     for (user_aes, _fns) in &spec.targets {
-        for internal in resolve_target_aesthetic(user_aes, aesthetics, aesthetic_ctx) {
+        for internal in resolve_target_aesthetic(user_aes, aesthetics, aesthetic_ctx, transposed) {
             targeted.insert(internal);
         }
     }
@@ -664,9 +678,10 @@ pub fn aggregated_aesthetics(
     }
     let spec = parse_aggregate_param(raw).ok()??;
 
+    let transposed = crate::plot::layer::orientation::is_transposed_params(parameters);
     let mut targeted: HashSet<String> = HashSet::new();
     for (user_aes, _fns) in &spec.targets {
-        for internal in resolve_target_aesthetic(user_aes, aesthetics, aesthetic_ctx) {
+        for internal in resolve_target_aesthetic(user_aes, aesthetics, aesthetic_ctx, transposed) {
             targeted.insert(internal);
         }
     }
@@ -740,8 +755,13 @@ pub fn apply(
     // Resolve target keys (user-facing) → internal aesthetic names. An alias
     // like `color` expands to whichever of its targets (stroke/fill) is mapped
     // on the layer; the same function list applies to all of them.
-    let targets_internal = resolve_aggregate_targets(&spec, aesthetics, aesthetic_ctx)
-        .map_err(GgsqlError::ValidationError)?;
+    let targets_internal = resolve_aggregate_targets(
+        &spec,
+        aesthetics,
+        aesthetic_ctx,
+        crate::plot::layer::orientation::is_transposed_params(parameters),
+    )
+    .map_err(GgsqlError::ValidationError)?;
 
     // Walk mappings. Three buckets:
     //   - aggregated: (internal_aes, raw_col, fns of length n) — each emits one column per row
@@ -804,8 +824,16 @@ pub fn apply(
         }
     }
 
+    let transposed = crate::plot::layer::orientation::is_transposed_params(parameters);
     for d in &dropped {
-        let user_aes = aesthetic_ctx.map_internal_to_user(d);
+        // On transposed layers the internal name is flipped relative to the
+        // user's axes, so flip it back before translating for display.
+        let display_internal = if transposed {
+            aesthetic_ctx.flip_position(d)
+        } else {
+            d.clone()
+        };
+        let user_aes = aesthetic_ctx.map_internal_to_user(&display_internal);
         eprintln!(
             "Warning: aggregate dropped numeric mapping for aesthetic '{}' \
              (no applicable default and no targeted function). \
@@ -851,7 +879,11 @@ pub fn apply(
     };
 
     let mut stat_columns: Vec<String> = aggregated.iter().map(|(a, _, _)| a.clone()).collect();
-    let consumed_aesthetics: Vec<String> = stat_columns.clone();
+    // Dropped mappings are removed alongside consumed ones: their columns
+    // won't exist in the stat output, so leaving the mapping in place would
+    // produce a dangling column reference at write time.
+    let mut consumed_aesthetics: Vec<String> = stat_columns.clone();
+    consumed_aesthetics.extend(dropped.iter().cloned());
     // The synthetic `aggregate` column is only emitted for the multi-row
     // (explosion) case, where it differentiates rows that share the same
     // group key.
@@ -2278,6 +2310,163 @@ mod tests {
                 assert!(query.contains("NTILE(4)"));
                 // No explosion any more — single SELECT, no UNION ALL.
                 assert!(!query.contains("UNION ALL"));
+            }
+            _ => panic!("expected Transformed"),
+        }
+    }
+
+    fn run_transposed(
+        params: ParameterValue,
+        aes: &Mappings,
+        schema: &Schema,
+        group_by: &[String],
+        dialect: &dyn SqlDialect,
+    ) -> Result<StatResult> {
+        let mut p = Parameters::new();
+        p.insert("aggregate".to_string(), params);
+        p.insert(
+            "orientation".to_string(),
+            ParameterValue::String(crate::plot::layer::orientation::TRANSPOSED.to_string()),
+        );
+        let ctx = cartesian_ctx();
+        apply(
+            "SELECT * FROM t",
+            schema,
+            aes,
+            group_by,
+            &p,
+            dialect,
+            &ctx,
+            &[],
+        )
+    }
+
+    /// Regression test: on a transposed layer the executor flips position
+    /// mappings to aligned orientation before the stat runs, so user-facing
+    /// aggregate targets (`xmin`, `y`) must resolve to the *flipped* internal
+    /// names. Previously this failed with "aggregate target 'xmin' is not
+    /// mapped on this layer", or silently aggregated the wrong column.
+    #[test]
+    fn transposed_targets_resolve_to_flipped_aesthetics() {
+        // Flipped mappings, as apply() sees them on a transposed layer:
+        // user y → pos1, user xmin/xmax → pos2min/pos2max.
+        let mut aes = Mappings::new();
+        aes.insert("pos1", col("__ggsql_aes_pos1__"));
+        aes.insert("pos2min", col("__ggsql_aes_pos2min__"));
+        aes.insert("pos2max", col("__ggsql_aes_pos2max__"));
+        let schema = schema_for(&[
+            ("__ggsql_aes_pos1__", false),
+            ("__ggsql_aes_pos2min__", false),
+            ("__ggsql_aes_pos2max__", false),
+        ]);
+        let result = run_transposed(
+            arr(&["y:mean", "xmin:min", "xmax:max"]),
+            &aes,
+            &schema,
+            &[],
+            &InlineQuantileDialect,
+        )
+        .unwrap();
+        match result {
+            StatResult::Transformed {
+                query,
+                stat_columns,
+                ..
+            } => {
+                // `y:mean` aggregates the column behind pos1 (user's y data),
+                // `xmin`/`xmax` hit pos2min/pos2max (the flipped slots).
+                assert!(query.contains("AVG(\"__ggsql_aes_pos1__\")"), "{}", query);
+                assert!(
+                    query.contains("MIN(\"__ggsql_aes_pos2min__\")"),
+                    "{}",
+                    query
+                );
+                assert!(
+                    query.contains("MAX(\"__ggsql_aes_pos2max__\")"),
+                    "{}",
+                    query
+                );
+                assert_eq!(
+                    stat_columns,
+                    vec![
+                        "pos1".to_string(),
+                        "pos2max".to_string(),
+                        "pos2min".to_string()
+                    ]
+                );
+            }
+            _ => panic!("expected Transformed"),
+        }
+    }
+
+    /// On an aligned layer the same user-facing targets resolve to the
+    /// unflipped internal names — transposition must not leak across layers.
+    #[test]
+    fn aligned_targets_resolve_to_unflipped_aesthetics() {
+        let mut aes = Mappings::new();
+        aes.insert("pos2", col("__ggsql_aes_pos2__"));
+        aes.insert("pos1min", col("__ggsql_aes_pos1min__"));
+        aes.insert("pos1max", col("__ggsql_aes_pos1max__"));
+        let schema = schema_for(&[
+            ("__ggsql_aes_pos2__", false),
+            ("__ggsql_aes_pos1min__", false),
+            ("__ggsql_aes_pos1max__", false),
+        ]);
+        let result = run(
+            arr(&["y:mean", "xmin:min", "xmax:max"]),
+            &aes,
+            &schema,
+            &[],
+            &InlineQuantileDialect,
+        )
+        .unwrap();
+        match result {
+            StatResult::Transformed { query, .. } => {
+                assert!(query.contains("AVG(\"__ggsql_aes_pos2__\")"), "{}", query);
+                assert!(
+                    query.contains("MIN(\"__ggsql_aes_pos1min__\")"),
+                    "{}",
+                    query
+                );
+                assert!(
+                    query.contains("MAX(\"__ggsql_aes_pos1max__\")"),
+                    "{}",
+                    query
+                );
+            }
+            _ => panic!("expected Transformed"),
+        }
+    }
+
+    /// A numeric mapping that no aggregate function applies to is dropped from
+    /// the stat output; its mapping must also be marked as consumed, otherwise
+    /// the writer sees a dangling reference to a column that no longer exists.
+    #[test]
+    fn dropped_numeric_mapping_is_consumed() {
+        let mut aes = Mappings::new();
+        aes.insert("pos1", col("__ggsql_aes_pos1__"));
+        aes.insert("pos2", col("__ggsql_aes_pos2__"));
+        let schema = schema_for(&[("__ggsql_aes_pos1__", false), ("__ggsql_aes_pos2__", false)]);
+        // Only `y` targeted, no default → x (pos1) is dropped.
+        let result = run(
+            ParameterValue::String("y:mean".to_string()),
+            &aes,
+            &schema,
+            &[],
+            &InlineQuantileDialect,
+        )
+        .unwrap();
+        match result {
+            StatResult::Transformed {
+                consumed_aesthetics,
+                ..
+            } => {
+                assert!(consumed_aesthetics.contains(&"pos2".to_string()));
+                assert!(
+                    consumed_aesthetics.contains(&"pos1".to_string()),
+                    "dropped aesthetic pos1 should be consumed, got: {:?}",
+                    consumed_aesthetics
+                );
             }
             _ => panic!("expected Transformed"),
         }

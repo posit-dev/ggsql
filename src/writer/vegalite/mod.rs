@@ -1562,6 +1562,7 @@ mod tests {
         assert_eq!(vl_spec["layer"][0]["mark"]["clip"], true);
     }
 
+    #[cfg(feature = "duckdb")]
     #[test]
     fn test_labels_newline_splitting() {
         use crate::execute;
