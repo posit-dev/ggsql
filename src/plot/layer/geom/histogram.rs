@@ -195,12 +195,18 @@ fn stat_histogram(
             min = min_val
         )
     };
-    // Build grouped columns (group_by includes partition_by + facet variables)
+    // Group by a plain column, not the bin expression itself: MonetDB does
+    // not match a complex GROUP BY expression structurally against the
+    // SELECT list ("cannot use non GROUP BY column ... without an aggregate
+    // function"), and alias references in GROUP BY are not portable either
+    // (Oracle). Computing the expression in an inner CTE and grouping by
+    // the resulting column works in every dialect.
+    let bin_key = dialect.quote_ident("__ggsql_bin_key__");
     let group_cols = if group_by.is_empty() {
-        bin_expr.clone()
+        bin_key.clone()
     } else {
         let mut cols: Vec<String> = group_by.to_vec();
-        cols.push(bin_expr.clone());
+        cols.push(bin_key.clone());
         cols.join(", ")
     };
 
@@ -232,16 +238,16 @@ fn stat_histogram(
     let q_count = dialect.quote_ident(&stat_count);
     let q_density = dialect.quote_ident(&stat_density);
 
-    // Two-stage query. `__binned__` groups rows by the bin expression and
-    // counts them; its only non-facet grouping key is `bin_expr`. The outer
-    // SELECT then derives bin_end (bin + width) and density from the
+    // Three-stage query. `__bin_src__` materializes the bin expression as a
+    // plain column (see above); `__binned__` groups by it and counts; the
+    // outer SELECT then derives bin_end (bin + width) and density from the
     // already-grouped `bin` and `count` columns. Computing the derived
     // columns outside the GROUP BY query keeps every grouped SELECT
     // expression equal to a grouping key, which strict dialects (e.g.
     // BigQuery) require.
     let (binned_select, density_window) = if group_by.is_empty() {
         (
-            format!("{} AS {}, {} AS {}", bin_expr, q_bin, agg_expr, q_count),
+            format!("{} AS {}, {} AS {}", bin_key, q_bin, agg_expr, q_count),
             "OVER ()".to_string(),
         )
     } else {
@@ -249,21 +255,25 @@ fn stat_histogram(
         (
             format!(
                 "{}, {} AS {}, {} AS {}",
-                grp_cols, bin_expr, q_bin, agg_expr, q_count
+                grp_cols, bin_key, q_bin, agg_expr, q_count
             ),
             format!("OVER (PARTITION BY {})", grp_cols),
         )
     };
 
     let __stat_src__ = dialect.quote_ident("__stat_src__");
+    let __bin_src__ = dialect.quote_ident("__bin_src__");
     let __binned__ = dialect.quote_ident("__binned__");
     let transformed_query = format!(
         "WITH {__stat_src__} AS ({query}), \
-         {__binned__} AS (SELECT {binned} FROM {__stat_src__} GROUP BY {group}) \
+         {__bin_src__} AS (SELECT *, {bin_expr} AS {bin_key} FROM {__stat_src__}), \
+         {__binned__} AS (SELECT {binned} FROM {__bin_src__} GROUP BY {group}) \
          SELECT *, {bin} + {width} AS {bin_end}, \
          {count} * 1.0 / SUM({count}) {density_window} AS {density} \
          FROM {__binned__}",
         query = query,
+        bin_expr = bin_expr,
+        bin_key = bin_key,
         binned = binned_select,
         group = group_cols,
         bin = q_bin,

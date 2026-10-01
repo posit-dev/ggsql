@@ -53,13 +53,15 @@ case "$backend" in
     # battery needs. Trino takes a while to boot; poll the info endpoint
     # until it is no longer starting.
     docker run -d --name db -p 8080:8080 trinodb/trino:476
-    # Readiness = the coordinator accepting a query. Trino's default
-    # "insecure" auth still requires an identity: /v1/statement (unlike
-    # /v1/info) 401s without an X-Trino-User header. A fresh query's first
-    # page is usually QUEUED/PLANNING with only id/nextUri — "columns" only
-    # appears once data flows — so success means "no error field"; a
-    # failure payload (e.g. "No nodes available to run query") has one.
-    wait_for trino bash -c 'resp=$(curl -sf -X POST -H "X-Trino-User: test" -d "SELECT 1" \
+    # Readiness needs BOTH: /v1/info starting:false (unauthenticated; the
+    # dispatcher rejects real queries with "Trino server is still
+    # initializing" until then) and an accepted statement (authenticated —
+    # Trino's "insecure" auth 401s without X-Trino-User; a fresh query's
+    # first page is usually QUEUED with only id/nextUri, so success means
+    # "no error field", which is what distinguishes "No nodes available to
+    # run query" from healthy).
+    wait_for trino bash -c 'curl -sf http://localhost:8080/v1/info | grep -q "\"starting\":false" \
+      && resp=$(curl -sf -X POST -H "X-Trino-User: test" -d "SELECT 1" \
       http://localhost:8080/v1/statement) && ! grep -q "\"error\"" <<<"$resp"'
     # The driver defaults to HTTPS; SSL=false selects plain HTTP.
     uri="trino://test@localhost:8080/memory/default?SSL=false"
@@ -68,14 +70,17 @@ case "$backend" in
     docker run -d --name db \
       -e MYSQL_ROOT_PASSWORD=mysql -e MYSQL_DATABASE=ggsql \
       -p 3306:3306 mysql:8.4
-    wait_for mysql docker exec db mysqladmin ping -uroot -pmysql --silent
+    # mysqladmin ping answers over the unix socket before init finishes and
+    # TCP is serving; a real TCP query against the ggsql database only
+    # succeeds once the entrypoint's init/restart cycle is complete.
+    wait_for mysql docker exec db mysql -uroot -pmysql --protocol=TCP -h127.0.0.1 -e "SELECT 1" ggsql
     uri="mysql://root:mysql@localhost:3306/ggsql"
     ;;
   mariadb)
     docker run -d --name db \
       -e MARIADB_ROOT_PASSWORD=mysql -e MARIADB_DATABASE=ggsql \
       -p 3306:3306 mariadb:11
-    wait_for mariadb docker exec db mariadb-admin ping -uroot -pmysql --silent
+    wait_for mariadb docker exec db mariadb -uroot -pmysql --protocol=TCP -h127.0.0.1 -e "SELECT 1" ggsql
     uri="mariadb://root:mysql@localhost:3306/ggsql"
     ;;
   mssql)
@@ -170,11 +175,6 @@ case "$backend" in
       https://raw.githubusercontent.com/apache/druid/37.0.0/distribution/docker/docker-compose.yml
     curl -sSL -o "$druid_dir/environment" \
       https://raw.githubusercontent.com/apache/druid/37.0.0/distribution/docker/environment
-    # The stock environment's extension list lacks druid-multi-stage-query,
-    # which the MSQ INSERT below needs — the SQL endpoint rejects
-    # engine:msq-task without it.
-    sed -i 's/^druid_extensions_loadList=\[.*\]$/druid_extensions_loadList=["druid-histogram", "druid-datasketches", "druid-lookups-cached-global", "postgresql-metadata-storage", "druid-multi-stage-query"]/' \
-      "$druid_dir/environment"
     docker compose -f "$druid_dir/docker-compose.yml" up -d
     wait_for druid-broker curl -sf http://localhost:8082/status/health
     wait_for druid-overlord curl -sf http://localhost:8081/status/health
@@ -182,6 +182,9 @@ case "$backend" in
     wait_for druid-router curl -sf http://localhost:8888/status/health
     # MSQ INSERT: every Druid datasource needs a __time column; one shared
     # timestamp suffices. PARTITIONED BY ALL puts everything in one segment.
+    # No engine context: in Druid 37 the SQL planner routes INSERT to the
+    # MSQ task engine automatically, and the HTTP SQL endpoint's engine
+    # registry rejects an explicit "msq-task" ("Unsupported engine").
     payload=$(python3 - <<'EOF'
 import json
 query = """
@@ -196,7 +199,7 @@ SELECT TIMESTAMP '2020-01-01 00:00:00', 7, 7.5, 'a' UNION ALL
 SELECT TIMESTAMP '2020-01-01 00:00:00', 8, 8.5, 'b'
 PARTITIONED BY ALL
 """
-print(json.dumps({"query": query, "context": {"engine": "msq-task"}}))
+print(json.dumps({"query": query}))
 EOF
 )
     # No curl -f here: on an HTTP error the response body carries Druid's
