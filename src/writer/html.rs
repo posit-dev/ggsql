@@ -304,7 +304,7 @@ fn class_declarations(class: TableClass) -> &'static [(&'static str, &'static st
             ("border-right-width", "1px"),
             ("border-right-color", "#D3D3D3"),
         ],
-        TableClass::Spanner => &[
+        TableClass::SpannerLabel => &[
             ("border-bottom-style", "solid"),
             ("border-bottom-width", "2px"),
             ("border-bottom-color", "#D3D3D3"),
@@ -315,7 +315,7 @@ fn class_declarations(class: TableClass) -> &'static [(&'static str, &'static st
             ("display", "inline-block"),
             ("width", "100%"),
         ],
-        TableClass::SpannerOuter => &[
+        TableClass::Spanner => &[
             ("color", "#333333"),
             ("background-color", "#FFFFFF"),
             ("font-size", "100%"),
@@ -382,8 +382,8 @@ const STYLED_CLASSES: &[TableClass] = &[
     TableClass::Stub,
     TableClass::ColHeading,
     TableClass::ColHeadingRow,
-    TableClass::SpannerOuter,
     TableClass::Spanner,
+    TableClass::SpannerLabel,
     TableClass::SpannerRow,
     TableClass::Title,
     TableClass::Subtitle,
@@ -396,7 +396,7 @@ const STYLED_CLASSES: &[TableClass] = &[
 
 /// Classes rendered on a `<div>` around the cell's content instead of on the
 /// `<th>`/`<td>` itself (gt's `gt_column_spanner` pattern).
-const INNER_CLASSES: &[TableClass] = &[TableClass::Spanner];
+const INNER_CLASSES: &[TableClass] = &[TableClass::SpannerLabel];
 
 /// The `<style>` block class mode prepends — one rule per styled class,
 /// generated from the same lookup inline mode folds into `style` attributes,
@@ -773,17 +773,17 @@ mod render_tests {
         );
 
         let spanner =
-            cell(TableCellKind::Spanner, 0, 0, 0, 1).with_classes(vec![TableClass::Spanner]);
+            cell(TableCellKind::Spanner, 0, 0, 0, 1).with_classes(vec![TableClass::SpannerLabel]);
         assert_eq!(
             render_cell(&spanner, CssMode::Class),
-            "<th colspan=\"2\" scope=\"colgroup\"><div class=\"ggsql_spanner\"></div></th>"
+            "<th colspan=\"2\" scope=\"colgroup\"><div class=\"ggsql_spanner_label\"></div></th>"
         );
 
         let outer =
-            cell(TableCellKind::Spanner, 0, 0, 0, 1).with_classes(vec![TableClass::SpannerOuter]);
+            cell(TableCellKind::Spanner, 0, 0, 0, 1).with_classes(vec![TableClass::Spanner]);
         assert_eq!(
             render_cell(&outer, CssMode::Class),
-            "<th colspan=\"2\" scope=\"colgroup\" class=\"ggsql_spanner_outer\"></th>"
+            "<th colspan=\"2\" scope=\"colgroup\" class=\"ggsql_spanner\"></th>"
         );
     }
 
@@ -1125,10 +1125,10 @@ mod tests {
         // Alignment styling is incidental here (amount/id are numeric) and
         // covered precisely by resolve_column_properties's own tests — this
         // checks colspan/rowspan/ordering, not exact style content. The
-        // single spanner level is the topmost one, hence `spanner_outer`,
-        // and it's centred by default.
+        // spanner cell carries both spanner classes, and it's centred by
+        // default.
         assert!(html.contains(
-            "<tr class=\"ggsql_col_heading_row ggsql_spanner_row\"><th colspan=\"2\" scope=\"colgroup\" class=\"ggsql_spanner_outer ggsql_center\"><div class=\"ggsql_spanner\">Info</div></th><th rowspan=\"2\" scope=\"col\""
+            "<tr class=\"ggsql_col_heading_row ggsql_spanner_row\"><th colspan=\"2\" scope=\"colgroup\" class=\"ggsql_spanner ggsql_center\"><div class=\"ggsql_spanner_label\">Info</div></th><th rowspan=\"2\" scope=\"col\""
         ));
         assert!(html.contains(">amount</th>"));
         assert!(html.contains(">id</th>"));

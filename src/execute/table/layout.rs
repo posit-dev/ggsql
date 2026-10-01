@@ -492,8 +492,7 @@ fn stretch_unspanned_column_labels(mut header: Section, num_spanner_rows: usize)
 }
 
 /// Fill every spanner-row position the stretch above couldn't reach with a
-/// real, empty `Filler` cell. Class follows `create_spanners`' own rule:
-/// `SpannerOuter` at row 0, `Spanner` otherwise.
+/// real, empty `Filler` cell.
 fn fill_spanner_gaps(mut header: Section, num_spanner_rows: usize) -> Section {
     let ncol = count_cell_cols(&header.cells);
 
@@ -512,14 +511,9 @@ fn fill_spanner_gaps(mut header: Section, num_spanner_rows: usize) -> Section {
             if occupied.contains(&(row, col)) {
                 continue;
             }
-            let class = if row == 0 {
-                TableClass::SpannerOuter
-            } else {
-                TableClass::Spanner
-            };
             header.cells.push(
                 TableCell::new(TableCellKind::Filler, row, row, col, col, String::new())
-                    .with_classes(vec![class]),
+                    .with_classes(vec![TableClass::Spanner]),
             );
         }
     }
@@ -951,7 +945,7 @@ mod tests {
             .collect();
         assert_eq!(fillers.len(), 2);
         let d3 = fillers.iter().find(|c| c.top == 0 && c.left == 3).unwrap();
-        assert_eq!(d3.classes, vec![TableClass::SpannerOuter]);
+        assert_eq!(d3.classes, vec![TableClass::Spanner]);
         let b2 = fillers.iter().find(|c| c.top == 1 && c.left == 1).unwrap();
         assert_eq!(b2.classes, vec![TableClass::Spanner]);
 
@@ -1119,8 +1113,8 @@ mod tests {
             .filter(|c| c.kind == TableCellKind::Spanner)
             .all(|c| c.classes
                 == [
-                    TableClass::SpannerOuter,
                     TableClass::Spanner,
+                    TableClass::SpannerLabel,
                     TableClass::AlignCenter
                 ]));
     }

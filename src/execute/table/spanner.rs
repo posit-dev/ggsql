@@ -166,8 +166,8 @@ pub(crate) fn create_spanners(columns: &[TableColumn], spans: &[Spanner]) -> Sec
         // Row 0 is topmost. Level 1 is bottom-most.
         let row = max_level - level;
         let classes = vec![
-            TableClass::SpannerOuter,
             TableClass::Spanner,
+            TableClass::SpannerLabel,
             TableClass::AlignCenter,
         ];
 

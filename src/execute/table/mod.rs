@@ -323,7 +323,7 @@ impl std::fmt::Display for TableCellKind {
 ///
 /// Styling roles are recorded here rather than derived from `TableCellKind`:
 /// `kind` informs layout (header vs body, spans), while classes inform style,
-/// and positional variants like `SpannerOuter` are only known while the
+/// and positional variants like `SpannerRow` are only known while the
 /// layout is being built. A writer maps each variant to its own class
 /// vocabulary — the HTML writer prefixes its `Display` with `ggsql_`.
 ///
@@ -373,13 +373,12 @@ pub enum TableClass {
     /// Row-scoped: the `<tr>` wrapping a spanner row (gt's
     /// `gt_spanner_row`).
     SpannerRow,
-    /// A spanner cell's inner label span (gt's `gt_column_spanner` — there it
-    /// sits on a `<span>` inside the `<th>`, carrying the 5px padding and
-    /// underline). Not recorded by `build_cells()`; a writer wraps a spanner
-    /// cell's content with it itself.
-    Spanner,
     /// Every spanner cell, at every level (gt's `gt_column_spanner_outer`).
-    SpannerOuter,
+    Spanner,
+    /// A spanner cell's label text (gt's `gt_column_spanner`). Special
+    /// meaning for the HTML writer: it goes on an element inside the cell
+    /// rather than on the cell itself.
+    SpannerLabel,
     /// Left/center/right-aligned cell content (gt's
     /// `gt_left`/`gt_center`/`gt_right`).
     AlignLeft,
@@ -410,7 +409,7 @@ impl std::fmt::Display for TableClass {
             TableClass::SpannerRow => "spanner_row",
             TableClass::StubHead => "stub_head",
             TableClass::Spanner => "spanner",
-            TableClass::SpannerOuter => "spanner_outer",
+            TableClass::SpannerLabel => "spanner_label",
             TableClass::AlignLeft => "left",
             TableClass::AlignCenter => "center",
             TableClass::AlignRight => "right",
