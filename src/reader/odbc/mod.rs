@@ -34,6 +34,7 @@ pub struct OdbcReader {
     connection: Connection,
     dialect: Box<dyn super::SqlDialect>,
     registered_tables: RefCell<HashSet<String>>,
+    batch_size: usize,
 }
 
 // Safety: ODBC connections are safe to use from one thread at a time.
@@ -91,12 +92,19 @@ impl OdbcReader {
             }
         };
 
+        let dbms_name = connection.dbms_name();
+
         let dialect = match dialect {
             Some(d) => d,
-            None => {
-                let dbms_name = connection.dbms_name();
-                detect_dialect(dbms_name.as_deref(), &conn_str)
-            }
+            None => detect_dialect(dbms_name.as_deref(), &conn_str),
+        };
+
+        // Oracle ODBC rejects block cursors (SQL_ATTR_ROW_ARRAY_SIZE > 1)
+        // with HY090 at SQLFetch time, and the failed fetch leaves the
+        // cursor unusable — fetch row-by-row instead.
+        let batch_size = match &dbms_name {
+            Some(name) if name.to_lowercase().contains("oracle") => 1,
+            _ => BATCH_SIZE,
         };
 
         // Session-init statements for the dialect — see
@@ -114,6 +122,7 @@ impl OdbcReader {
             connection,
             dialect,
             registered_tables: RefCell::new(HashSet::new()),
+            batch_size,
         })
     }
 }
@@ -126,7 +135,7 @@ impl Reader for OdbcReader {
             return Ok(DataFrame::empty());
         };
 
-        cursor_to_dataframe(cursor)
+        cursor_to_dataframe(cursor, self.batch_size)
     }
 
     fn register(&self, name: &str, df: DataFrame, replace: bool) -> Result<()> {
@@ -260,7 +269,7 @@ impl Reader for OdbcReader {
     fn list_catalogs(&self) -> Result<Vec<String>> {
         // ODBC spec: CatalogName="%", SchemaName="", TableName=""
         let stmt = wrapper::sql_tables(&self.connection, Some("%"), Some(""), Some(""), None)?;
-        let df = cursor_to_dataframe(stmt)?;
+        let df = cursor_to_dataframe(stmt, self.batch_size)?;
         let mut catalogs = extract_string_column_ci(&df, "TABLE_CAT")?;
         catalogs.sort();
         catalogs.dedup();
@@ -270,7 +279,7 @@ impl Reader for OdbcReader {
     fn list_schemas(&self, _catalog: &str) -> Result<Vec<String>> {
         // ODBC spec: CatalogName="", SchemaName="%", TableName=""
         let stmt = wrapper::sql_tables(&self.connection, Some(""), Some("%"), Some(""), None)?;
-        let df = cursor_to_dataframe(stmt)?;
+        let df = cursor_to_dataframe(stmt, self.batch_size)?;
         let mut schemas = extract_string_column_ci(&df, "TABLE_SCHEM")?;
         schemas.sort();
         schemas.dedup();
@@ -289,7 +298,7 @@ impl Reader for OdbcReader {
             Some(schema)
         };
         let stmt = wrapper::sql_tables(&self.connection, cat, sch, Some("%"), Some("TABLE,VIEW"))?;
-        let df = cursor_to_dataframe(stmt)?;
+        let df = cursor_to_dataframe(stmt, self.batch_size)?;
         extract_table_infos_ci(&df)
     }
 
@@ -310,7 +319,7 @@ impl Reader for OdbcReader {
             Some(schema)
         };
         let stmt = wrapper::sql_columns(&self.connection, cat, sch, Some(table), None)?;
-        let df = cursor_to_dataframe(stmt)?;
+        let df = cursor_to_dataframe(stmt, self.batch_size)?;
         extract_column_infos_ci(&df)
     }
 }
@@ -544,7 +553,7 @@ struct ColumnBuffer {
     text_buf_size: usize,
 }
 
-fn cursor_to_dataframe(stmt: Statement) -> Result<DataFrame> {
+fn cursor_to_dataframe(stmt: Statement, batch_size: usize) -> Result<DataFrame> {
     let col_count = stmt.num_result_cols()?;
     if col_count == 0 {
         return Ok(DataFrame::empty());
@@ -565,7 +574,7 @@ fn cursor_to_dataframe(stmt: Statement) -> Result<DataFrame> {
     }
 
     // Set up batch fetching
-    stmt.setup_batch_fetch(BATCH_SIZE)?;
+    stmt.setup_batch_fetch(batch_size)?;
     let mut rows_fetched: SqlULen = 0;
     unsafe { stmt.set_rows_fetched_ptr(&mut rows_fetched)? };
 
@@ -582,8 +591,8 @@ fn cursor_to_dataframe(stmt: Statement) -> Result<DataFrame> {
                 (builder.element_size(), 0)
             };
 
-            let data = vec![0u8; elem_size * BATCH_SIZE];
-            let indicators = vec![0isize; BATCH_SIZE];
+            let data = vec![0u8; elem_size * batch_size];
+            let indicators = vec![0isize; batch_size];
 
             let col_num = (i + 1) as u16;
             let c_type = builder.c_type();
@@ -618,7 +627,6 @@ fn cursor_to_dataframe(stmt: Statement) -> Result<DataFrame> {
     }
 
     // Fetch loop
-    let mut first_fetch = true;
     loop {
         rows_fetched = 0;
         let rc = stmt.fetch_raw();
@@ -626,13 +634,6 @@ fn cursor_to_dataframe(stmt: Statement) -> Result<DataFrame> {
         match rc {
             SQL_NO_DATA => break,
             SQL_SUCCESS | SQL_SUCCESS_WITH_INFO => {}
-            _ if first_fetch => {
-                // Some drivers (notably Oracle ODBC) reject block cursors with
-                // HY090 only at fetch time; retry row-by-row before giving up.
-                first_fetch = false;
-                stmt.set_row_array_size(1)?;
-                continue;
-            }
             _ => {
                 let diag = wrapper::extract_diagnostic(SQL_HANDLE_STMT, stmt.handle() as SqlHandle);
                 return Err(GgsqlError::ReaderError(format!(
@@ -640,7 +641,6 @@ fn cursor_to_dataframe(stmt: Statement) -> Result<DataFrame> {
                 )));
             }
         }
-        first_fetch = false;
 
         let n = rows_fetched as usize;
         if n == 0 {
