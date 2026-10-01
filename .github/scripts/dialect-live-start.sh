@@ -167,6 +167,38 @@ case "$backend" in
     fi
     uri="monetdb://monetdb:monetdb@localhost:50000/ggsql?reader=odbc&DSN=ggsql-monetdb"
     ;;
+  oracle)
+    # Oracle-over-ODBC leg: no usable ADBC driver exists without a Columnar
+    # commercial license (the Foundry "oracle" driver is private), so the
+    # URI's ?reader=odbc forces the ODBC fallback with the Oracle Instant
+    # Client ODBC driver and the ggsql-oracle DSN (both registered by the
+    # workflow step for this leg). gvenzl/oracle-xe slimfast ships a
+    # pre-built database, cutting startup from ~10 min to ~1-2; it is the
+    # de-facto CI image and free under Oracle's Free Use Terms and
+    # Conditions. APP_USER creates a plain schema user so the battery never
+    # runs as SYS; XEPDB1 is the XE pluggable database.
+    docker run -d --name db \
+      -e ORACLE_PASSWORD=Ggsql_test1 \
+      -e APP_USER=ggsql -e APP_USER_PASSWORD=Ggsql_test1 \
+      -p 1521:1521 gvenzl/oracle-xe:21-slimfast
+    # The image ships a healthcheck script doing a real sqlplus round-trip.
+    wait_for oracle docker exec db healthcheck.sh
+    # Readiness plus preflight in one, like the monetdb leg: poll with isql
+    # through the real driver and DSN so unixODBC diagnostics stay visible.
+    ok=0
+    for _ in $(seq 1 24); do
+      if isql -v ggsql-oracle ggsql Ggsql_test1 <<< 'SELECT 1 FROM dual;'; then
+        ok=1
+        break
+      fi
+      sleep 5
+    done
+    if [ "$ok" != 1 ]; then
+      echo "oracle ODBC preflight failed"
+      exit 1
+    fi
+    uri="oracle://ggsql:Ggsql_test1@localhost:1521/XEPDB1?reader=odbc&DSN=ggsql-oracle"
+    ;;
   druid)
     # Druid leg: a nano-quickstart single server (all services in one JVM)
     # queried through the Foundry druid ADBC driver (installed with --pre by

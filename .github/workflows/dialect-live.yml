@@ -123,6 +123,14 @@ jobs:
           # DataFusion leg: in-process via the Foundry driver — no container;
           # the start script just exports GGSQL_TEST_DATAFUSION=1.
           - { backend: datafusion, driver: datafusion }
+          # Oracle-over-ODBC leg: the Foundry oracle ADBC driver is
+          # Columnar-commercial and private, so this leg uses Oracle Instant
+          # Client ODBC (installed below) with ?reader=odbc and a
+          # ggsql-oracle DSN against a gvenzl/oracle-xe container. DISABLED
+          # pending the Oracle Free Use Terms and Conditions license review;
+          # the start-script case, install step, and live_oracle test are
+          # already in place — uncommenting this line is the entire change.
+          # - { backend: oracle, driver: "" }
 
     steps:
       - name: Check out repository
@@ -196,6 +204,45 @@ jobs:
           # Diagnostics: unixODBC's IM005 ("Driver's SQLAllocHandle on
           # SQL_HANDLE_DBC failed") usually means the driver .so failed to
           # dlopen. ldd prints "not found" for any unresolvable dependency.
+          sudo ldconfig
+          echo '--- /etc/odbcinst.ini:'; cat /etc/odbcinst.ini
+          echo '--- /etc/odbc.ini:'; cat /etc/odbc.ini
+          echo '--- ldd:'; ldd "$driver_so"
+
+      - name: Install unixODBC and Oracle Instant Client ODBC
+        # No usable ADBC avenue: the Foundry "oracle" driver is
+        # Columnar-commercial and private. Oracle's Instant Client (basic +
+        # odbc zips) is free under the Free Use Terms and Conditions and
+        # downloads from download.oracle.com without authentication. The
+        # driver does not self-register, so this step hand-writes the driver
+        # entry and a ggsql-oracle system DSN into unixODBC's ini files.
+        # DBQ=//host:port/service is the EZCONNECT spelling; XEPDB1 is the
+        # XE pluggable database.
+        if: ${{ matrix.backend == 'oracle' }}
+        run: |
+          IC_VER=23.8.0.25.04
+          IC_DIR_URL=https://download.oracle.com/otn_software/linux/instantclient/2380000
+          sudo apt-get update
+          sudo apt-get install -y unixodbc unzip libaio1t64
+          curl -sSLO "$IC_DIR_URL/instantclient-basic-linux.x64-$IC_VER.zip"
+          curl -sSLO "$IC_DIR_URL/instantclient-odbc-linux.x64-$IC_VER.zip"
+          sudo mkdir -p /opt/oracle
+          sudo unzip -o -d /opt/oracle "instantclient-basic-linux.x64-$IC_VER.zip"
+          sudo unzip -o -d /opt/oracle "instantclient-odbc-linux.x64-$IC_VER.zip"
+          ic_dir=$(echo /opt/oracle/instantclient_*)
+          driver_so=$(ls "$ic_dir"/libsqora.so* | head -1)
+          if [ -z "$driver_so" ]; then
+            echo "libsqora.so not found; instant client contents:"
+            ls "$ic_dir"
+            exit 1
+          fi
+          # libsqora needs libclntsh from the basic zip on the loader path.
+          echo "$ic_dir" | sudo tee /etc/ld.so.conf.d/oracle-instantclient.conf
+          printf '[Oracle]\nDescription=Oracle Instant Client ODBC\nDriver=%s\n' "$driver_so" \
+            | sudo tee -a /etc/odbcinst.ini
+          printf '[ggsql-oracle]\nDriver=Oracle\nDBQ=//localhost:1521/XEPDB1\n' \
+            | sudo tee -a /etc/odbc.ini
+          # Diagnostics: same IM005-hunting ldd as the monetdb leg.
           sudo ldconfig
           echo '--- /etc/odbcinst.ini:'; cat /etc/odbcinst.ini
           echo '--- /etc/odbc.ini:'; cat /etc/odbc.ini

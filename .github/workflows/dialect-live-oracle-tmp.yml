@@ -1,0 +1,121 @@
+name: Live Dialect Tests — Oracle spike (temporary)
+
+# TEMPORARY one-off spike: exercise the disabled Oracle leg of
+# dialect-live.yml end-to-end on CI before the Oracle Free Use Terms and
+# Conditions license review completes. Manual dispatch only — it never runs
+# on push or PR. DELETE THIS FILE once the license decision lands: if
+# favorable, uncomment the oracle matrix row in dialect-live.yml; if not,
+# also revert the oracle case in dialect-live-start.sh, the install step in
+# dialect-live.yml, and the live_oracle test.
+
+on:
+  workflow_dispatch:
+
+jobs:
+  # Identical to the compile job in dialect-live.yml.
+  compile:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install tree-sitter-cli
+        # parser.c is gitignored and generated from grammar.js by the
+        # tree-sitter-ggsql build script on every fresh checkout.
+        run: npm install -g tree-sitter-cli
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Caching
+        uses: Swatinem/rust-cache@v2
+        with:
+          # Deliberately the same shared-key as build.yaml: rust-cache's
+          # prefix fallback restores the build job's target/, so this job
+          # only rebuilds the feature deltas instead of every dependency.
+          shared-key: ${{ runner.os }}-build
+          cache-on-failure: true
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - name: Compile the dialect_live test binary
+        run: |
+          bin=$(cargo test -p ggsql --features "adbc sqlite" --test dialect_live \
+                --no-run --message-format=json-render-diagnostics \
+                | jq -rs '[.[] | select(.target.name == "dialect_live" and .executable != null) | .executable][-1]')
+          test -n "$bin" -a -f "$bin"
+          cp "$bin" dialect-live-bin
+
+      - name: Upload the test binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: dialect-live-bin
+          path: dialect-live-bin
+          retention-days: 1
+
+  oracle:
+    needs: compile
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Increase disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          sudo docker image prune --all --force
+          sudo docker builder prune -a
+
+      - name: Download the test binary
+        uses: actions/download-artifact@v4
+        with:
+          name: dialect-live-bin
+
+      - name: Make the test binary executable
+        run: chmod +x dialect-live-bin
+
+      - name: Install unixODBC and Oracle Instant Client ODBC
+        # Mirrors the step in dialect-live.yml. No usable ADBC avenue: the
+        # Foundry "oracle" driver is Columnar-commercial and private.
+        # Oracle's Instant Client (basic + odbc zips) downloads from
+        # download.oracle.com without authentication. DBQ=//host:port/service
+        # is the EZCONNECT spelling; XEPDB1 is the XE pluggable database.
+        run: |
+          IC_VER=23.8.0.25.04
+          IC_DIR_URL=https://download.oracle.com/otn_software/linux/instantclient/2380000
+          sudo apt-get update
+          sudo apt-get install -y unixodbc unzip libaio1t64
+          curl -sSLO "$IC_DIR_URL/instantclient-basic-linux.x64-$IC_VER.zip"
+          curl -sSLO "$IC_DIR_URL/instantclient-odbc-linux.x64-$IC_VER.zip"
+          sudo mkdir -p /opt/oracle
+          sudo unzip -o -d /opt/oracle "instantclient-basic-linux.x64-$IC_VER.zip"
+          sudo unzip -o -d /opt/oracle "instantclient-odbc-linux.x64-$IC_VER.zip"
+          ic_dir=$(echo /opt/oracle/instantclient_*)
+          driver_so=$(ls "$ic_dir"/libsqora.so* | head -1)
+          if [ -z "$driver_so" ]; then
+            echo "libsqora.so not found; instant client contents:"
+            ls "$ic_dir"
+            exit 1
+          fi
+          # libsqora needs libclntsh from the basic zip on the loader path.
+          echo "$ic_dir" | sudo tee /etc/ld.so.conf.d/oracle-instantclient.conf
+          printf '[Oracle]\nDescription=Oracle Instant Client ODBC\nDriver=%s\n' "$driver_so" \
+            | sudo tee -a /etc/odbcinst.ini
+          printf '[ggsql-oracle]\nDriver=Oracle\nDBQ=//localhost:1521/XEPDB1\n' \
+            | sudo tee -a /etc/odbc.ini
+          # Diagnostics: same IM005-hunting ldd as the monetdb leg.
+          sudo ldconfig
+          echo '--- /etc/odbcinst.ini:'; cat /etc/odbcinst.ini
+          echo '--- /etc/odbc.ini:'; cat /etc/odbc.ini
+          echo '--- ldd:'; ldd "$driver_so"
+
+      - name: Start oracle
+        # Exports GGSQL_TEST_URI_ORACLE for the test step.
+        run: bash .github/scripts/dialect-live-start.sh oracle
+
+      - name: Run the oracle live test
+        run: ./dialect-live-bin live_oracle --exact --nocapture

@@ -39,6 +39,12 @@
 //!   (CI runs it against a MonetDB container over the MonetDB ODBC driver:
 //!   no usable ADBC driver exists for MonetDB, so the `?reader=odbc` query
 //!   forces the ODBC fallback with the DSN registered by the workflow step)
+//! - `GGSQL_TEST_URI_ORACLE`     e.g. `oracle://u:p@localhost:1521/XEPDB1?reader=odbc&DSN=ggsql-oracle`
+//!   (CI-ready but disabled pending the Oracle Free Use Terms and Conditions
+//!   license review: the Foundry oracle ADBC driver is Columnar-commercial,
+//!   so the leg runs against a gvenzl/oracle-xe container over Instant
+//!   Client ODBC, forced by `?reader=odbc` with the DSN registered by the
+//!   workflow step)
 //! - `GGSQL_TEST_URI_DRUID`      e.g. `druid://localhost:8082`
 //!   (CI runs it against a nano-quickstart Druid container through the
 //!   Foundry `druid` ADBC driver (prerelease). Druid has no DDL, so the
@@ -67,7 +73,19 @@ const TABLE: &str = "ggsql_live_test";
 // from NTILE(4) tiles, which is degenerate (NULL) with fewer than four
 // values per group — their grids would come back empty and the battery
 // would pass vacuously.
-fn insert_sql(table: &str) -> String {
+fn insert_sql(scheme: &str, table: &str) -> String {
+    if scheme == "oracle" {
+        // Oracle has no multi-row VALUES; INSERT ALL ... SELECT * FROM dual
+        // is the single-statement equivalent.
+        return format!(
+            "INSERT ALL \
+             INTO {table} VALUES (1, 1.5, 'a') INTO {table} VALUES (2, 2.5, 'b') \
+             INTO {table} VALUES (3, 3.5, 'a') INTO {table} VALUES (4, 4.5, 'b') \
+             INTO {table} VALUES (5, 5.5, 'a') INTO {table} VALUES (6, 6.5, 'b') \
+             INTO {table} VALUES (7, 7.5, 'a') INTO {table} VALUES (8, 8.5, 'b') \
+             SELECT * FROM dual"
+        );
+    }
     format!(
         "INSERT INTO {table} VALUES \
          (1, 1.5, 'a'), (2, 2.5, 'b'), (3, 3.5, 'a'), (4, 4.5, 'b'), \
@@ -103,6 +121,12 @@ fn create_table_sql(scheme: &str, table: &str) -> String {
         }
         // MonetDB-over-ODBC leg: MonetDB's 64-bit float type is DOUBLE.
         "monetdb" => format!("CREATE TABLE {table} (id INT, val DOUBLE, grp VARCHAR(16))"),
+        // Oracle-over-ODBC leg: NUMBER for ints, BINARY_DOUBLE is the native
+        // 64-bit float, and the VARCHAR2 spelling is required (VARCHAR is
+        // reserved for future standard-conforming semantics).
+        "oracle" => {
+            format!("CREATE TABLE {table} (id NUMBER(10), val BINARY_DOUBLE, grp VARCHAR2(16))")
+        }
         "sqlite" => format!("CREATE TABLE {table} (id INTEGER, val REAL, grp TEXT)"),
         "duckdb" => format!("CREATE TABLE {table} (id INTEGER, val DOUBLE, grp VARCHAR)"),
         // Snowflake FLOAT is 64-bit.
@@ -294,7 +318,7 @@ fn live_backend(scheme: &str) {
             .execute_sql(&create_table_sql(scheme, table))
             .unwrap_or_else(|e| panic!("{scheme}: create table failed: {e}"));
         reader
-            .execute_sql(&insert_sql(table))
+            .execute_sql(&insert_sql(scheme, table))
             .unwrap_or_else(|e| panic!("{scheme}: insert failed: {e}"));
     }
 
@@ -350,6 +374,10 @@ fn live_odbc() {
 #[test]
 fn live_monetdb() {
     live_backend("monetdb");
+}
+#[test]
+fn live_oracle() {
+    live_backend("oracle");
 }
 #[test]
 fn live_druid() {
