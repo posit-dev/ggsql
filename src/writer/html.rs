@@ -1,38 +1,25 @@
 //! A minimal HTML table writer.
 //!
-//! Maps `ResolvedTable`'s three parts onto distinct pieces of the `<table>`:
-//! - `cells` → `<thead>`/`<tbody>` rows, plus one carve-out: a `Caption`-kind
-//!   cell is pulled out of the grid before row rendering and emitted as a
-//!   `<caption>` (HTML requires it as `<table>`'s first child, outside
-//!   `<thead>`/`<tbody>` entirely) — see `write_table`. Everything else,
-//!   including the new `Title`/`Subtitle` heading rows, renders through the
-//!   normal row logic below. How a cell's (or a heading row's) styling is
-//!   expressed depends on the `css_mode` option: `class` (the default) puts
-//!   `ggsql_*` classes on the elements — from the recorded `TableClass`es
-//!   plus property-derived classes like alignment — backed by a `<style>`
-//!   block; `inline` renders the same declarations into each element's
-//!   `style` attribute instead (the two gt `as_raw_html()` modes).
+//! Maps `ResolvedTable`'s three parts onto pieces of the `<table>`:
+//! - `cells` → `<thead>`/`<tbody>` rows. A `Caption`-kind cell is pulled out
+//!   of the grid before row rendering and emitted as a `<caption>` (HTML
+//!   requires it as `<table>`'s first child) — see `write_table`. Styling is
+//!   expressed per the `css_mode` option: `class` (the default) puts
+//!   `ggsql_*` classes on the elements, backed by a `<style>` block; `inline`
+//!   renders the same declarations into each element's `style` attribute
+//!   (the two gt `as_raw_html()` modes).
 //! - `columns` → a `<colgroup>`, one `<col>` per column, with a `style`
 //!   attribute from that column's resolved `width` (a bare `<col>` for a
 //!   column with none) in both modes — targeted column styling stays inline,
 //!   as gt keeps `tab_style()` rules inline.
 //! - `rows` → a class on the `<tr>` itself (`Heading` for a `Title`/
-//!   `Subtitle` row, `ColHeadingRow` for the column-label row) — the only
-//!   row-wide property that exists to render so far.
+//!   `Subtitle` row, `ColHeadingRow` for the column-label row).
 //! - The `<table>`/`<tbody>` elements always carry `TableClass::Table`/
-//!   `TableClass::TableBody` respectively — the two classes with no
-//!   `TableCell`/`TableRow` to be recorded on — see their own doc comments.
+//!   `TableClass::TableBody` respectively.
 //!
-//! No footnotes yet, since `Table` has no field for those. Spanner rows are
-//! rendered (as `colspan`, one `<tr>` per level, above the column labels);
-//! `render_cell`/`render_row` can also render a `rowspan` cell, though
-//! nothing in the resolution pipeline produces one for a data column yet, so
-//! a column with no spanner at a given level still gets a blank filler cell
-//! rather than a merged one. This is a stub to prove the Table → writer
-//! plumbing end to end, not the real grammar-of-tables output; it
-//! deliberately does not reuse `ggsql-jupyter`'s existing
-//! `dataframe_to_html`, which works directly off a `DataFrame` rather than
-//! resolved `TableCell`s.
+//! Spanner rows render as `colspan`, one `<tr>` per level, above the column
+//! labels; a column label no spanner covers renders as a `rowspan` cell
+//! reaching up into the spanner rows.
 
 use std::collections::BTreeMap;
 use std::collections::HashMap;
@@ -114,13 +101,9 @@ impl Writer for HtmlWriter {
             .collect();
 
         // HTML requires `<caption>` outside `<thead>`/`<tbody>`, as
-        // `<table>`'s first child, so it's rendered separately below
-        // through `render_caption` rather than `render_row`/`render_cell`.
-        // Splitting it out here, before `ncol`/`nrow` are computed, means
-        // the header/body grid and everything below only ever see genuine
-        // header/body rows — `create_caption`/`rowbind` always place it as
-        // the grid's trailing row, so nothing further down needs its own
-        // caption check.
+        // `<table>`'s first child — rendered separately via
+        // `render_caption`. Split it out here, before `ncol`/`nrow`, so the
+        // grid below only ever sees genuine header/body rows.
         let (caption_cells, cells): (Vec<TableCell>, Vec<TableCell>) = cells
             .into_iter()
             .partition(|cell| cell.kind == TableCellKind::Caption);
@@ -152,13 +135,9 @@ impl Writer for HtmlWriter {
         }
         let table_attrs = styling_attr(&[TableClass::Table], self.css_mode);
         // Opt out of Quarto's HTML table processing (the Bootstrap
-        // `.table`/`.table-striped` classes it adds to a raw <table> that
-        // doesn't already declare an opinion): `data-quarto-disable-processing`
-        // has to be `"true"` — Quarto reads it, and "false" means "processing
-        // is not disabled," i.e. go ahead. Verified against a real `quarto
-        // render` of doc/syntax/clause/tabulate.qmd; gt's own writer sets the
-        // same two attributes, but (confirmed the same way) with the same
-        // wrong "false" value, so it does not actually work for gt either.
+        // `.table`/`.table-striped` classes it adds to a raw <table>):
+        // `data-quarto-disable-processing` has to be `"true"` — "false"
+        // means "processing is not disabled", i.e. go ahead.
         let quarto_opt_out =
             " data-quarto-disable-processing=\"true\" data-quarto-bootstrap=\"false\"";
         html.push_str(&format!("<table{quarto_opt_out}{table_attrs}>\n"));
@@ -400,8 +379,8 @@ const INNER_CLASSES: &[TableClass] = &[TableClass::SpannerLabel];
 
 /// The `<style>` block class mode prepends — one rule per styled class,
 /// generated from the same lookup inline mode folds into `style` attributes,
-/// so the modes can't drift. Emitted unconditionally: it's not worth a pass
-/// over the cells to see which classes are actually used.
+/// so the modes can't drift. Emitted unconditionally, without checking
+/// which classes the table actually uses.
 fn render_style_block() -> String {
     let mut block = String::from("<style>\n");
     for &class in STYLED_CLASSES {

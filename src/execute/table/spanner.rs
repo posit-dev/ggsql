@@ -1,20 +1,13 @@
 //! `TABULATE SPAN` resolution: column reordering (`gather`) and header-row
-//! (level) assignment for spanners, called from `table::build_cells`.
+//! (level) assignment for spanners.
 
 use super::layout::{Section, TableColumn};
 use crate::{Spanner, TableCell, TableCellKind, TableClass, TableRow};
 
 /// Reorder `columns` so every `gather`-enabled spanner's members become
-/// contiguous, folding spanners in `spans`' order (declaration order) —
-/// mirrors gt's `tab_spanner(gather = TRUE)`, which is the default there and
-/// here. `SETTING gather => false` opts a spanner out of this entirely,
-/// leaving its columns wherever they land.
-///
-/// This only ever touches column *order* — it says nothing about which
-/// spanner ends up on which header row. Two spanners can both gather
-/// successfully and still need separate rows (their column ranges can
-/// overlap even once each is individually contiguous); that's level
-/// assignment, a separate, later concern this function doesn't address.
+/// contiguous, folding spanners in declaration order. `SETTING gather =>
+/// false` leaves a spanner's columns in place. Touches column order only;
+/// header-row assignment is `assign_spanner_levels`' concern.
 pub(crate) fn reorder_table_columns(
     mut columns: Vec<TableColumn>,
     spans: &[Spanner],
@@ -74,20 +67,14 @@ fn gather_columns(columns: Vec<TableColumn>, members: &[String]) -> Vec<TableCol
     result
 }
 
-/// Assign each spanner a 1-indexed level (header row), matching gt's model:
-/// an explicit `SETTING level => N` pins a spanner there directly — no
-/// conflict check, even against another spanner already at that level;
-/// `validate_overlaps` catches a genuine clash once real cells exist, the
-/// same way it catches any other overlapping `TableCell`. A spanner with no
-/// explicit level is assigned greedily instead (see the `None` arm below).
+/// Assign each spanner a 1-indexed level (header row). An explicit `SETTING
+/// level => N` pins a spanner there with no conflict check —
+/// `validate_overlaps` catches a genuine clash once real cells exist. A
+/// spanner with no explicit level is assigned greedily (see the `None`
+/// arm). Levels are then compacted to remove gaps explicit levels can leave
+/// (e.g. 1, 3, 4 → 1, 2, 3).
 ///
-/// Levels are then compacted to remove gaps a mix of explicit levels can
-/// leave behind (e.g. 1, 3, 4 → 1, 2, 3) — a spanner's level only matters
-/// relative to the others, not its literal number, so gaps would just waste
-/// header rows.
-///
-/// Infallible: `level`'s type/shape is already checked by
-/// `Spanner::validate_settings` before this ever runs.
+/// Infallible: `level`'s type is checked by `Spanner::validate_settings`.
 fn assign_spanner_levels(spans: &[Spanner]) -> Vec<usize> {
     let mut levels: Vec<usize> = Vec::with_capacity(spans.len());
 
@@ -99,11 +86,10 @@ fn assign_spanner_levels(spans: &[Spanner]) -> Vec<usize> {
                 as usize,
             None => {
                 // One more than the highest level of any already-assigned
-                // spanner whose columns intersect this one's — matches gt's
-                // own `resolve_spanner_level()`. Can use more levels than
-                // strictly necessary for a chain of pairwise-but-not-all
-                // conflicting spanners, since it never revisits a lower
-                // level once something deeper claims a shared column.
+                // spanner whose columns intersect this one's. Never revisits
+                // a lower level, so a chain of pairwise-but-not-all
+                // conflicting spanners can use more levels than strictly
+                // necessary.
                 spans
                     .iter()
                     .zip(&levels)
@@ -117,9 +103,8 @@ fn assign_spanner_levels(spans: &[Spanner]) -> Vec<usize> {
         levels.push(level);
     }
 
-    // Compact: gaps left by explicit levels (e.g. 1, 3, 4) collapse to a
-    // dense range (1, 2, 3), inline rather than a separate helper since
-    // nothing else needs this in isolation.
+    // Compact gaps left by explicit levels (e.g. 1, 3, 4) into a dense
+    // range (1, 2, 3).
     let mut distinct = levels.clone();
     distinct.sort_unstable();
     distinct.dedup();
@@ -131,22 +116,16 @@ fn assign_spanner_levels(spans: &[Spanner]) -> Vec<usize> {
 }
 
 /// Build one `TableCell` per contiguous run of a spanner's columns, calling
-/// `assign_spanner_levels` itself. Numbered locally from `top == 0`, the
-/// same convention `create_column_labels`/`create_body` use; stitching
-/// these rows above column labels and body is a separate, later step.
-/// `Section::rows` gets exactly `max_level` entries — the number of spanner
-/// rows, not the number of spanner cells. Each carries
-/// `TableClass::ColHeadingRow`, like the column-label row does — gt styles
-/// spanner rows and the label row as one `gt_col_headings` group.
+/// `assign_spanner_levels` itself. Rows are numbered locally from
+/// `top == 0`. `Section::rows` gets exactly `max_level` entries, each
+/// carrying `TableClass::ColHeadingRow`, like the column-label row does.
 pub(crate) fn create_spanners(columns: &[TableColumn], spans: &[Spanner]) -> Section {
     if spans.is_empty() {
         return Section::new(Vec::new(), Vec::new());
     }
 
-    // Filter out spanners with no display text — their own default (`SPAN
-    // NULL`), or an explicit `LABEL <id> => NULL` override already applied
-    // by `Table::resolve_spanners`. They don't contribute to cells, so
-    // their level is irrelevant and shouldn't affect other levels.
+    // Spanners with no display text (`SPAN NULL`, or `LABEL <id> => NULL`)
+    // contribute no cells, so their level shouldn't affect other levels.
     let spans: Vec<Spanner> = spans
         .iter()
         .filter(|s| s.label.is_some())
@@ -171,8 +150,8 @@ pub(crate) fn create_spanners(columns: &[TableColumn], spans: &[Spanner]) -> Sec
             TableClass::AlignCenter,
         ];
 
-        // We use run length encoding to find 'runs' of columns belonging to span.
-        // If span has disjoint columns, these are multiple runs.
+        // Run-length encode the span's columns; disjoint columns give
+        // multiple runs.
         let mut run_start = None;
         for (index, column) in columns.iter().enumerate() {
             // Does column belong to span?
@@ -198,7 +177,7 @@ pub(crate) fn create_spanners(columns: &[TableColumn], spans: &[Spanner]) -> Sec
                 _ => {}
             }
         }
-        // Started but not ended: last column
+        // Close a run still open at the last column.
         if let Some(start) = run_start {
             cells.push(
                 TableCell::new(

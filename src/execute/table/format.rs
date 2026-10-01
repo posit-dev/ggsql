@@ -1,10 +1,8 @@
-//! `TABULATE FORMAT` resolution: validating `Table.formats`' `SETTING`
-//! parameters and reshaping it (one entry per `FORMAT` clause, each naming
-//! several columns) into one `Format` per column (`setup_formats`), then
-//! applying that per column — `RENAMING` by replacing the column's values in
-//! the `DataFrame` (`apply_formats`), `SETTING` by resolving display
-//! properties for `TableColumn` (`resolve_column_properties`). `setup_formats`
-//! and `apply_formats` are both called from `table::resolve_table_with_reader`.
+//! `TABULATE FORMAT` resolution: `setup_formats` validates `SETTING`
+//! parameters and reshapes the per-clause formats into one `Format` per
+//! column, `apply_formats` replaces a column's values with their display
+//! text (`RENAMING`), and `resolve_column_properties` resolves a column's
+//! `SETTING` display properties.
 
 use std::collections::HashMap;
 
@@ -17,9 +15,7 @@ use crate::{DataFrame, Format, GgsqlError, Result, Spanner};
 /// Validate every FORMAT's `SETTING` parameters, then reshape `formats`
 /// into one `Format` per column it covers. `spans` must already be resolved
 /// (`Table::resolve_spanners`) — a name matching a SPAN id expands to that
-/// span's columns instead of being looked up directly. A SPAN id can never
-/// collide with a real column name (`Spanner::validate_columns`), so the two
-/// cases can't be ambiguous.
+/// span's columns.
 pub(super) fn setup_formats(
     df: &DataFrame,
     formats: &[Format],
@@ -31,12 +27,13 @@ pub(super) fn setup_formats(
             .map_err(|e| GgsqlError::ValidationError(format!("FORMAT {}: {}", idx + 1, e)))?;
     }
 
-    // `formats` has one entry per FORMAT clause, each naming several
-    // columns — reshaped here into one `Format` per column, where a later
-    // clause wins over an earlier one naming the same column.
+    // One `Format` per column; a later clause wins over an earlier one
+    // naming the same column.
     let mut resolved = HashMap::new();
     for format in formats {
         for name in &format.columns {
+            // A SPAN id never collides with a real column name
+            // (`Spanner::validate_columns`), so this lookup is unambiguous.
             let columns: Vec<&String> = match spans.iter().find(|span| &span.id == name) {
                 Some(span) => span.columns.iter().collect(),
                 None => vec![name],
@@ -48,7 +45,7 @@ pub(super) fn setup_formats(
                     )));
                 }
                 let mut format = format.clone();
-                // Redundant now: this map's own key names the column instead.
+                // The map key names the column instead.
                 format.columns = Vec::new();
                 resolved.insert(column.clone(), format);
             }
@@ -100,11 +97,9 @@ pub(super) fn apply_formats(
 }
 
 /// Resolve `SETTING` properties for one column: `format`'s own settings (if
-/// any), with `hjust` standardised to a number (see `standardise_hjust`);
-/// an absent setting defaults from the column's role — a STUB column right,
-/// a numeric BODY column right, everything else left. Every writer reads a
-/// plain number for `hjust` and buckets it into left/center/right itself —
-/// none of them see the keyword form.
+/// any), with `hjust` standardised to a number (see `standardise_hjust`) —
+/// an absent setting defaults from the column's role: right for a STUB or
+/// numeric column, left otherwise.
 pub(super) fn resolve_column_properties(dtype: &DataType, format: Option<&Format>) -> Parameters {
     let mut properties = format.map(|f| f.settings.clone()).unwrap_or_default();
 
@@ -121,10 +116,9 @@ pub(super) fn resolve_column_properties(dtype: &DataType, format: Option<&Format
     properties
 }
 
-/// Standardise an `hjust` value to a number: the keywords `"left"`,
-/// `"center"`/`"centre"` and `"right"` become `0.0`, `0.5` and `1.0` (any
-/// other string is `0.5` — validation rejects unrecognized spellings before
-/// this runs); a number passes through unchanged; anything else is `None`.
+/// Standardise an `hjust` value to a number: `"left"`,
+/// `"center"`/`"centre"`, `"right"` become `0.0`, `0.5`, `1.0` (any other
+/// string is `0.5`); a number passes through; anything else is `None`.
 pub(super) fn standardise_hjust(value: &ParameterValue) -> Option<f64> {
     match value {
         ParameterValue::String(s) if s == "left" => Some(0.0),

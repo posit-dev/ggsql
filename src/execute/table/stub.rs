@@ -1,20 +1,15 @@
 //! `TABULATE FORMAT STUB` resolution: moving stub columns to the front and
-//! building their `StubHead`/`StubRowLabel` cells, called from
-//! `table::layout`.
+//! building their `StubHead`/`StubRowLabel` cells.
 
 use super::layout::TableColumn;
 use super::{TableCell, TableCellKind, TableClass};
 use crate::array_util::value_to_string;
 use crate::DataFrame;
 
-/// Move every STUB-targeted column (`TableColumn.target`, already resolved
-/// by `create_table_columns` from `formats`' one-clause-per-column mapping)
-/// to the front, preserving each group's relative order — R's gt package
-/// doesn't support multi-column row labels either, so there's no ordering
-/// rule beyond "whatever order the columns already had" to get right here.
-/// Runs after `reorder_table_columns`, as the final word on column
-/// position, though a SPAN can never touch a stub column in the first
-/// place (`Table::validate_span_stub_boundary`).
+/// Move every STUB-targeted column to the front, preserving each group's
+/// relative order. Runs after `reorder_table_columns`, as the final word on
+/// column position — a SPAN can never cover a stub column
+/// (`Table::validate_span_stub_boundary`).
 pub(crate) fn move_stub_columns(columns: Vec<TableColumn>) -> Vec<TableColumn> {
     let (mut stub, body): (Vec<_>, Vec<_>) = columns.into_iter().partition(TableColumn::is_stub);
     stub.extend(body);
@@ -22,7 +17,7 @@ pub(crate) fn move_stub_columns(columns: Vec<TableColumn>) -> Vec<TableColumn> {
 }
 
 /// Build one `StubHead` cell per stub column, numbered from `top == 0`.
-/// Skips every non-stub column; `layout::create_column_labels` builds those.
+/// Skips every non-stub column.
 pub(crate) fn create_stubhead(columns: &[TableColumn]) -> Vec<TableCell> {
     columns
         .iter()
@@ -43,11 +38,8 @@ pub(crate) fn create_stubhead(columns: &[TableColumn]) -> Vec<TableCell> {
         .collect()
 }
 
-/// Build one `StubRowLabel` cell per `DataFrame` value in every `TABULATE
-/// FORMAT STUB` column, numbered from `top == 0` — the same seam
-/// `layout::create_body` uses, so the two merge into one `Section` sharing a
-/// single `rows` vec (`layout::build_cells`). Skips every non-stub column;
-/// `create_body` builds those.
+/// Build one `StubRowLabel` cell per `DataFrame` value in every stub
+/// column, numbered from `top == 0`. Skips every non-stub column.
 pub(crate) fn create_row_labels(df: &DataFrame, columns: &[TableColumn]) -> Vec<TableCell> {
     let mut cells = Vec::new();
 
