@@ -172,7 +172,7 @@ case "$backend" in
     # commercial license (the Foundry "oracle" driver is private), so the
     # URI's ?reader=odbc forces the ODBC fallback with the Oracle Instant
     # Client ODBC driver and the ggsql-oracle DSN (both registered by the
-    # workflow step for this leg). gvenzl/oracle-xe slimfast ships a
+    # workflow step for this leg). gvenzl/oracle-xe faststart ships a
     # pre-built database, cutting startup from ~10 min to ~1-2; it is the
     # de-facto CI image and free under Oracle's Free Use Terms and
     # Conditions. APP_USER creates a plain schema user so the battery never
@@ -180,7 +180,7 @@ case "$backend" in
     docker run -d --name db \
       -e ORACLE_PASSWORD=Ggsql_test1 \
       -e APP_USER=ggsql -e APP_USER_PASSWORD=Ggsql_test1 \
-      -p 1521:1521 gvenzl/oracle-xe:21-slimfast
+      -p 1521:1521 gvenzl/oracle-xe:21.3.0-slim-faststart
     # The image ships a healthcheck script doing a real sqlplus round-trip.
     wait_for oracle docker exec db healthcheck.sh
     # Readiness plus preflight in one, like the monetdb leg: poll with isql
@@ -290,8 +290,9 @@ EOF
     # appears in the full report, not here). If the submission returned a
     # bare query id, the overlord knows it as query-<id>, so retry prefixed.
     ok=""
-    for _ in $(seq 1 60); do
+    for i in $(seq 1 60); do
       status=$(curl -sS "http://localhost:8888/druid/indexer/v1/task/$task_id/status" || true)
+      echo "poll $i: $status"
       if grep -q "Cannot find any task" <<<"$status"; then
         case "$task_id" in
           query-*) : ;;
@@ -322,7 +323,9 @@ EOF
       body=$(curl -sS -X POST -H 'Content-Type: application/json' \
         -d '{"query":"SELECT COUNT(*) AS c FROM ggsql_live_test"}' \
         http://localhost:8082/druid/v2/sql || true)
-      cnt=$(printf '%s' "$body" | grep -o '"c":[0-9]*' | cut -d: -f2)
+      # The || true matters: with pipefail, grep finding no "c":N in an
+      # error/empty body would kill the script silently via set -e.
+      cnt=$(printf '%s' "$body" | grep -o '"c":[0-9]*' | cut -d: -f2 || true)
       [ "$cnt" = "8" ] && break
       sleep 5
     done
