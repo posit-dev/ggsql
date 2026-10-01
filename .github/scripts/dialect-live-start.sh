@@ -226,12 +226,20 @@ EOF
       docker compose -f "$druid_dir/docker-compose.yml" logs || true
       exit 1
     fi
+    echo "MSQ ingest submitted; response: $resp"
     # MSQ jobs are asynchronous; poll the task until it succeeds or fails.
     # The /status endpoint reports "status":"SUCCESS|FAILED" (statusCode only
-    # appears in the full report, not here).
+    # appears in the full report, not here). If the submission returned a
+    # bare query id, the overlord knows it as query-<id>, so retry prefixed.
     ok=""
     for _ in $(seq 1 60); do
       status=$(curl -sS "http://localhost:8888/druid/indexer/v1/task/$task_id/status" || true)
+      if grep -q "Cannot find any task" <<<"$status"; then
+        case "$task_id" in
+          query-*) : ;;
+          *) task_id="query-$task_id"; continue ;;
+        esac
+      fi
       case "$status" in
         *'"status":"SUCCESS"'*) ok=1; break ;;
         *'"status":"FAILED"'* | *'"statusCode":"FAILED"'*)
