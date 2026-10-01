@@ -45,7 +45,9 @@
 //!   so the leg runs against a gvenzl/oracle-xe container over Instant
 //!   Client ODBC, forced by `?reader=odbc` with the DSN registered by the
 //!   workflow step)
-//! - `GGSQL_TEST_URI_DRUID`      e.g. `druid://localhost:8082`
+//! - `GGSQL_TEST_URI_DRUID`      e.g. `druid://localhost:8082?tls=false`
+//!   (tls=false is required against a plaintext broker: the Foundry driver
+//!   defaults to https)
 //!   (CI runs it against a nano-quickstart Druid container through the
 //!   Foundry `druid` ADBC driver (prerelease). Druid has no DDL, so the
 //!   start script creates and populates the datasource via an MSQ INSERT

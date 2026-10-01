@@ -195,6 +195,12 @@ case "$backend" in
     done
     if [ "$ok" != 1 ]; then
       echo "oracle ODBC preflight failed"
+      # unixODBC's "Can't open lib ... file not found" usually means a
+      # NEEDED library of the driver failed to resolve, not that the driver
+      # itself is missing — ldd names the culprit.
+      driver_so=$(sed -n 's/^Driver=\(\/opt.*\)/\1/p' /etc/odbcinst.ini | head -1)
+      echo "--- ldd $driver_so:"
+      ldd "$driver_so" || true
       exit 1
     fi
     uri="oracle://ggsql:Ggsql_test1@localhost:1521/XEPDB1?reader=odbc&DSN=ggsql-oracle"
@@ -335,7 +341,10 @@ EOF
       docker compose -f "$druid_dir/docker-compose.yml" logs || true
       exit 1
     fi
-    uri="druid://localhost:8082"
+    # tls=false: the Foundry driver defaults to https for the broker URL
+    # (its README: "druid://localhost:8888?tls=false"); the compose cluster
+    # serves plain HTTP.
+    uri="druid://localhost:8082?tls=false"
     ;;
   sqlite)
     # Embedded reader — no server, no container, no dbc driver.

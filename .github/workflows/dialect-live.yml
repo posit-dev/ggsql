@@ -226,6 +226,20 @@ jobs:
           IC_DIR_URL=https://download.oracle.com/otn_software/linux/instantclient/2380000
           sudo apt-get update
           sudo apt-get install -y unixodbc unzip libaio1t64
+          # libsqora needs libaio.so.1 by exact SONAME; the noble t64 build
+          # does not always provide that name, so verify and symlink.
+          if ! ldconfig -p | grep -q 'libaio\.so\.1 '; then
+            aio_real=$(find /usr/lib/x86_64-linux-gnu /lib/x86_64-linux-gnu \
+              -name 'libaio.so*' | head -1)
+            if [ -z "$aio_real" ]; then
+              echo "no libaio file at all; libaio1t64 contents:"
+              dpkg -L libaio1t64
+              exit 1
+            fi
+            echo "libaio.so.1 missing from ldconfig; symlinking to $aio_real"
+            sudo ln -sf "$aio_real" /usr/lib/x86_64-linux-gnu/libaio.so.1
+            sudo ldconfig
+          fi
           curl -sSLO "$IC_DIR_URL/instantclient-basic-linux.x64-$IC_VER.zip"
           curl -sSLO "$IC_DIR_URL/instantclient-odbc-linux.x64-$IC_VER.zip"
           sudo mkdir -p /opt/oracle
