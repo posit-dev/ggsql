@@ -540,9 +540,11 @@ fn bigquery_driver_uri(body: &str, query: &str) -> (String, String) {
 /// and reject params arriving a second way: the MSSQL driver fails with
 /// "Unknown database option 'TrustServerCertificate'", and the Databricks
 /// driver fails with "cannot specify both URI and individual connection
-/// options". Their params stay in the URI only.
+/// options". Their params stay in the URI only. The Druid driver likewise
+/// rejects standalone params ("Unsupported option: Other(\"tls\")") — its
+/// README documents tls=false strictly as a param of the uri option.
 fn query_params_as_driver_options(scheme: &str) -> bool {
-    !matches!(scheme, "mssql" | "databricks" | "spark")
+    !matches!(scheme, "mssql" | "databricks" | "spark" | "druid")
 }
 
 /// Probe whether an ADBC driver for `scheme` can be loaded, without opening
@@ -1084,6 +1086,7 @@ mod tests {
         assert!(!query_params_as_driver_options("mssql"));
         assert!(!query_params_as_driver_options("databricks"));
         assert!(!query_params_as_driver_options("spark"));
+        assert!(!query_params_as_driver_options("druid"));
         assert!(query_params_as_driver_options("postgres"));
         assert!(query_params_as_driver_options("clickhouse"));
         assert!(query_params_as_driver_options("exasol"));
