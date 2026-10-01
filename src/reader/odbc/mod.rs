@@ -76,8 +76,20 @@ impl OdbcReader {
             }
         }
 
-        let env = wrapper::odbc_env()?;
-        let connection = Connection::connect(env, &conn_str)?;
+        let connection = match Connection::connect(wrapper::odbc_env()?, &conn_str) {
+            Ok(c) => c,
+            Err(e) => {
+                // unixODBC IM005 ("Driver's SQLAllocHandle on
+                // SQL_HANDLE_DBC failed"): some drivers (MonetDB) refuse
+                // DBC allocation under an ODBC 3.80 environment. Retry once
+                // under 3.0 semantics before giving up.
+                if e.to_string().contains("IM005") {
+                    Connection::connect(wrapper::odbc_env_legacy()?, &conn_str)?
+                } else {
+                    return Err(e);
+                }
+            }
+        };
 
         let dialect = match dialect {
             Some(d) => d,

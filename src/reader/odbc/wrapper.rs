@@ -101,7 +101,7 @@ unsafe impl Send for Environment {}
 unsafe impl Sync for Environment {}
 
 impl Environment {
-    fn new() -> Result<Self> {
+    fn new(version: SqlInteger) -> Result<Self> {
         let f = fns();
         let mut handle = SQL_NULL_HANDLE;
         let rc = unsafe { (f.SQLAllocHandle)(SQL_HANDLE_ENV, SQL_NULL_HANDLE, &mut handle) };
@@ -111,14 +111,8 @@ impl Environment {
             ));
         }
 
-        let rc = unsafe {
-            (f.SQLSetEnvAttr)(
-                handle,
-                SQL_ATTR_ODBC_VERSION,
-                SQL_OV_ODBC3_80 as SqlPointer,
-                0,
-            )
-        };
+        let rc =
+            unsafe { (f.SQLSetEnvAttr)(handle, SQL_ATTR_ODBC_VERSION, version as SqlPointer, 0) };
         check(rc, SQL_HANDLE_ENV, handle, "Failed to set ODBC version")?;
 
         Ok(Environment { handle })
@@ -139,7 +133,20 @@ impl Drop for Environment {
 /// Global ODBC environment (singleton per process).
 pub fn odbc_env() -> Result<&'static Environment> {
     static ENV: OnceLock<std::result::Result<Environment, String>> = OnceLock::new();
-    let result = ENV.get_or_init(|| Environment::new().map_err(|e| e.to_string()));
+    let result = ENV.get_or_init(|| Environment::new(SQL_OV_ODBC3_80).map_err(|e| e.to_string()));
+    match result {
+        Ok(env) => Ok(env),
+        Err(e) => Err(GgsqlError::ReaderError(e.clone())),
+    }
+}
+
+/// Environment with ODBC 3.0 (rather than 3.80) semantics. Some drivers
+/// (MonetDB) fail `SQLAllocHandle` on SQL_HANDLE_DBC under a 3.80
+/// environment — unixODBC's IM005 — but connect fine under 3.0; used as a
+/// fallback after an IM005 from [`odbc_env`].
+pub fn odbc_env_legacy() -> Result<&'static Environment> {
+    static ENV: OnceLock<std::result::Result<Environment, String>> = OnceLock::new();
+    let result = ENV.get_or_init(|| Environment::new(SQL_OV_ODBC3).map_err(|e| e.to_string()));
     match result {
         Ok(env) => Ok(env),
         Err(e) => Err(GgsqlError::ReaderError(e.clone())),

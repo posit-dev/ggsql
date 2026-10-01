@@ -53,15 +53,14 @@ case "$backend" in
     # battery needs. Trino takes a while to boot; poll the info endpoint
     # until it is no longer starting.
     docker run -d --name db -p 8080:8080 trinodb/trino:476
-    # Readiness = actually answering a query. starting:false only means the
-    # coordinator is up; queries still fail with "No nodes available to run
-    # query" until the co-located worker is schedulable, and the statement
-    # API's error payload reflects exactly that transition. A successful
-    # SELECT 1 response contains "columns". Trino's default "insecure" auth
-    # still requires an identity: /v1/statement (unlike /v1/info) 401s
-    # without an X-Trino-User header.
-    wait_for trino bash -c 'curl -sf -X POST -H "X-Trino-User: test" -d "SELECT 1" \
-      http://localhost:8080/v1/statement | grep -q "\"columns\""'
+    # Readiness = the coordinator accepting a query. Trino's default
+    # "insecure" auth still requires an identity: /v1/statement (unlike
+    # /v1/info) 401s without an X-Trino-User header. A fresh query's first
+    # page is usually QUEUED/PLANNING with only id/nextUri — "columns" only
+    # appears once data flows — so success means "no error field"; a
+    # failure payload (e.g. "No nodes available to run query") has one.
+    wait_for trino bash -c 'resp=$(curl -sf -X POST -H "X-Trino-User: test" -d "SELECT 1" \
+      http://localhost:8080/v1/statement) && ! grep -q "\"error\"" <<<"$resp"'
     # The driver defaults to HTTPS; SSL=false selects plain HTTP.
     uri="trino://test@localhost:8080/memory/default?SSL=false"
     ;;
@@ -171,10 +170,16 @@ case "$backend" in
       https://raw.githubusercontent.com/apache/druid/37.0.0/distribution/docker/docker-compose.yml
     curl -sSL -o "$druid_dir/environment" \
       https://raw.githubusercontent.com/apache/druid/37.0.0/distribution/docker/environment
+    # The stock environment's extension list lacks druid-multi-stage-query,
+    # which the MSQ INSERT below needs — the SQL endpoint rejects
+    # engine:msq-task without it.
+    sed -i 's/^druid_extensions_loadList=\[.*\]$/druid_extensions_loadList=["druid-histogram", "druid-datasketches", "druid-lookups-cached-global", "postgresql-metadata-storage", "druid-multi-stage-query"]/' \
+      "$druid_dir/environment"
     docker compose -f "$druid_dir/docker-compose.yml" up -d
     wait_for druid-broker curl -sf http://localhost:8082/status/health
     wait_for druid-overlord curl -sf http://localhost:8081/status/health
     wait_for druid-mm curl -sf http://localhost:8091/status/health
+    wait_for druid-router curl -sf http://localhost:8888/status/health
     # MSQ INSERT: every Druid datasource needs a __time column; one shared
     # timestamp suffices. PARTITIONED BY ALL puts everything in one segment.
     payload=$(python3 - <<'EOF'
@@ -194,11 +199,14 @@ PARTITIONED BY ALL
 print(json.dumps({"query": query, "context": {"engine": "msq-task"}}))
 EOF
 )
-    task_id=$(curl -sf -X POST -H 'Content-Type: application/json' \
-      -d "$payload" http://localhost:8888/druid/v2/sql \
-      | sed -n 's/.*"taskId":"\([^"]*\)".*/\1/p')
+    # No curl -f here: on an HTTP error the response body carries Druid's
+    # actual error message, which is the only useful diagnostic.
+    resp=$(curl -sS -X POST -H 'Content-Type: application/json' \
+      -d "$payload" http://localhost:8888/druid/v2/sql)
+    task_id=$(printf '%s' "$resp" | sed -n 's/.*"taskId":"\([^"]*\)".*/\1/p')
     if [ -z "$task_id" ]; then
-      echo "MSQ ingest submission returned no taskId"
+      echo "MSQ ingest submission failed; response:"
+      echo "$resp"
       docker compose -f "$druid_dir/docker-compose.yml" logs || true
       exit 1
     fi
