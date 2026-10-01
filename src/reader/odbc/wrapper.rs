@@ -450,6 +450,14 @@ impl Statement {
         Ok(())
     }
 
+    /// Change the fetch rowset size after setup.
+    ///
+    /// Fallback for drivers without block-cursor support (e.g. Oracle ODBC
+    /// rejects rowset sizes > 1 with HY090 at SQLFetch time).
+    pub fn set_row_array_size(&self, size: usize) -> Result<()> {
+        self.set_stmt_attr(SQL_ATTR_ROW_ARRAY_SIZE, size as SqlPointer, 0)
+    }
+
     /// Set the rows-fetched pointer.
     ///
     /// # Safety

@@ -575,7 +575,9 @@ fn cursor_to_dataframe(stmt: Statement) -> Result<DataFrame> {
         .enumerate()
         .map(|(i, builder)| {
             let (elem_size, text_buf_size) = if matches!(builder, ColumnBuilder::Text(_)) {
-                (DEFAULT_TEXT_BUF_SIZE + 1, DEFAULT_TEXT_BUF_SIZE) // +1 for null terminator
+                // +2: null terminator, and keep the bind length even — some
+                // Unicode drivers (Oracle) reject odd buffer lengths with HY090
+                (DEFAULT_TEXT_BUF_SIZE + 2, DEFAULT_TEXT_BUF_SIZE)
             } else {
                 (builder.element_size(), 0)
             };
@@ -601,7 +603,7 @@ fn cursor_to_dataframe(stmt: Statement) -> Result<DataFrame> {
         let col_num = (i + 1) as u16;
         let c_type = builder.c_type();
         let elem_size = if matches!(builder, ColumnBuilder::Text(_)) {
-            (buf.text_buf_size + 1) as SqlLen
+            (buf.text_buf_size + 2) as SqlLen
         } else {
             builder.element_size() as SqlLen
         };
@@ -616,6 +618,7 @@ fn cursor_to_dataframe(stmt: Statement) -> Result<DataFrame> {
     }
 
     // Fetch loop
+    let mut first_fetch = true;
     loop {
         rows_fetched = 0;
         let rc = stmt.fetch_raw();
@@ -623,6 +626,13 @@ fn cursor_to_dataframe(stmt: Statement) -> Result<DataFrame> {
         match rc {
             SQL_NO_DATA => break,
             SQL_SUCCESS | SQL_SUCCESS_WITH_INFO => {}
+            _ if first_fetch => {
+                // Some drivers (notably Oracle ODBC) reject block cursors with
+                // HY090 only at fetch time; retry row-by-row before giving up.
+                first_fetch = false;
+                stmt.set_row_array_size(1)?;
+                continue;
+            }
             _ => {
                 let diag = wrapper::extract_diagnostic(SQL_HANDLE_STMT, stmt.handle() as SqlHandle);
                 return Err(GgsqlError::ReaderError(format!(
@@ -630,6 +640,7 @@ fn cursor_to_dataframe(stmt: Statement) -> Result<DataFrame> {
                 )));
             }
         }
+        first_fetch = false;
 
         let n = rows_fetched as usize;
         if n == 0 {
@@ -763,7 +774,7 @@ fn extract_batch(
                 if is_null {
                     v.push(None);
                 } else {
-                    let elem_size = buf.text_buf_size + 1;
+                    let elem_size = buf.text_buf_size + 2;
                     let offset = row * elem_size;
                     // indicator is the actual byte length, but may be
                     // SQL_NO_TOTAL (-4) if the driver can't determine length.
