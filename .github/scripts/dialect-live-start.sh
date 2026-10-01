@@ -233,8 +233,11 @@ case "$backend" in
     # The row data comes from an inline EXTERN source: a UNION ALL of
     # literal SELECTs is NOT plannable by MSQ ("Union operation is only
     # supported between regular tables") because each literal select plans
-    # as an inline datasource. Inline CSV with a header row gives EXTERN
-    # named columns; all extern columns are strings, so CAST the numerics.
+    # as an inline datasource. Inline CSV with a header row names the
+    # columns, but the planner still requires an explicit signature as
+    # EXTERN's third argument ("EXTERN requires either a [signature] value
+    # or an EXTEND clause"). All extern columns are strings, so CAST the
+    # numerics in the SELECT.
     payload=$(python3 - <<'EOF'
 import json
 rows = "\n".join(
@@ -242,13 +245,18 @@ rows = "\n".join(
 )
 inline = json.dumps({"type": "inline", "data": "id,val,grp\n" + rows})
 csv_fmt = json.dumps({"type": "csv", "findColumnsFromHeader": True})
+sig = json.dumps([
+    {"name": "id", "type": "STRING"},
+    {"name": "val", "type": "STRING"},
+    {"name": "grp", "type": "STRING"},
+])
 query = f"""
 INSERT INTO ggsql_live_test
 SELECT TIMESTAMP '2020-01-01 00:00:00' AS __time,
        CAST(id AS BIGINT) AS id,
        CAST(val AS DOUBLE) AS val,
        grp
-FROM TABLE(EXTERN('{inline}', '{csv_fmt}'))
+FROM TABLE(EXTERN('{inline}', '{csv_fmt}', '{sig}'))
 PARTITIONED BY ALL
 """
 print(json.dumps({"query": query}))
