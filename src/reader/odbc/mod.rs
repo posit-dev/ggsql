@@ -135,7 +135,12 @@ impl Reader for OdbcReader {
             return Ok(DataFrame::empty());
         };
 
-        cursor_to_dataframe(cursor, self.batch_size)
+        cursor_to_dataframe(cursor, self.batch_size).map_err(|e| {
+            // Identify which pipeline statement failed — fetch errors from
+            // the driver (e.g. Oracle HY090) otherwise carry no query context.
+            let snippet: String = sql.chars().take(200).collect();
+            GgsqlError::ReaderError(format!("{e} [statement: {snippet}]"))
+        })
     }
 
     fn register(&self, name: &str, df: DataFrame, replace: bool) -> Result<()> {
@@ -425,8 +430,8 @@ enum ColumnBuilder {
 impl ColumnBuilder {
     fn from_sql_type(
         sql_type: SqlSmallInt,
-        col_size: SqlULen,
-        decimal_digits: SqlSmallInt,
+        _col_size: SqlULen,
+        _decimal_digits: SqlSmallInt,
     ) -> Self {
         match sql_type {
             SQL_TINYINT => Self::Int8(Vec::new()),
@@ -435,19 +440,11 @@ impl ColumnBuilder {
             SQL_BIGINT => Self::Int64(Vec::new()),
             SQL_REAL => Self::Float32(Vec::new()),
             SQL_DOUBLE | SQL_FLOAT => Self::Float64(Vec::new()),
-            SQL_NUMERIC | SQL_DECIMAL => {
-                if decimal_digits == 0 {
-                    if col_size < 10 {
-                        Self::Int32(Vec::new())
-                    } else if col_size < 19 {
-                        Self::Int64(Vec::new())
-                    } else {
-                        Self::Float64(Vec::new())
-                    }
-                } else {
-                    Self::Float64(Vec::new())
-                }
-            }
+            // Bind as double rather than a sized integer: Oracle ODBC fails
+            // with HY090 when converting SQL_DECIMAL to SQL_C_SLONG/SBIGINT,
+            // and numeric→double conversion is supported by every driver.
+            // Values are bound for plot coordinates (f64) anyway.
+            SQL_NUMERIC | SQL_DECIMAL => Self::Float64(Vec::new()),
             SQL_BIT => Self::Boolean(Vec::new()),
             SQL_TYPE_DATE => Self::Date(Vec::new()),
             SQL_TYPE_TIME => Self::Time(Vec::new()),
@@ -881,14 +878,15 @@ mod tests {
             ColumnBuilder::from_sql_type(SQL_LONGVARCHAR, 0, 0),
             ColumnBuilder::Text(_)
         ));
-        // Decimal with scale=0 maps to integer types based on precision
+        // Decimals bind as double regardless of precision/scale: Oracle ODBC
+        // rejects SQL_DECIMAL → SQL_C_SBIGINT conversion with HY090
         assert!(matches!(
             ColumnBuilder::from_sql_type(SQL_NUMERIC, 5, 0),
-            ColumnBuilder::Int32(_)
+            ColumnBuilder::Float64(_)
         ));
         assert!(matches!(
             ColumnBuilder::from_sql_type(SQL_NUMERIC, 15, 0),
-            ColumnBuilder::Int64(_)
+            ColumnBuilder::Float64(_)
         ));
         assert!(matches!(
             ColumnBuilder::from_sql_type(SQL_NUMERIC, 25, 0),

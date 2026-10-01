@@ -13,48 +13,68 @@ use std::sync::OnceLock;
 
 pub(crate) fn extract_diagnostic(handle_type: SqlSmallInt, handle: SqlHandle) -> String {
     let f = fns();
-    let mut state = [0u8; 6];
-    let mut native_error: SqlInteger = 0;
-    let mut buf = vec![0u8; 512];
-    let mut text_len: SqlSmallInt = 0;
+    let mut parts = Vec::new();
 
-    let rc = unsafe {
-        (f.SQLGetDiagRec)(
-            handle_type,
-            handle,
-            1,
-            state.as_mut_ptr(),
-            &mut native_error,
-            buf.as_mut_ptr(),
-            buf.len() as SqlSmallInt,
-            &mut text_len,
-        )
-    };
+    // Drivers may stack several records; the first is not always the most
+    // specific (unixODBC translation errors can shadow the driver's record).
+    for rec in 1..=8u16 {
+        let mut state = [0u8; 6];
+        let mut native_error: SqlInteger = 0;
+        let mut buf = vec![0u8; 1024];
+        let mut text_len: SqlSmallInt = 0;
 
-    if !succeeded(rc) {
-        return "Unknown ODBC error (no diagnostic record)".to_string();
-    }
-
-    // Retry with larger buffer if truncated
-    if text_len as usize >= buf.len() {
-        buf.resize(text_len as usize + 1, 0);
-        unsafe {
+        let rc = unsafe {
             (f.SQLGetDiagRec)(
                 handle_type,
                 handle,
-                1,
+                rec as SqlSmallInt,
                 state.as_mut_ptr(),
                 &mut native_error,
                 buf.as_mut_ptr(),
                 buf.len() as SqlSmallInt,
                 &mut text_len,
-            );
+            )
+        };
+
+        if rc == SQL_NO_DATA {
+            break;
         }
+        if !succeeded(rc) {
+            break;
+        }
+
+        // Retry with a larger buffer if the message was truncated
+        if text_len as usize >= buf.len() {
+            buf.resize(text_len as usize + 1, 0);
+            let mut text_len2: SqlSmallInt = 0;
+            let rc2 = unsafe {
+                (f.SQLGetDiagRec)(
+                    handle_type,
+                    handle,
+                    rec as SqlSmallInt,
+                    state.as_mut_ptr(),
+                    &mut native_error,
+                    buf.as_mut_ptr(),
+                    buf.len() as SqlSmallInt,
+                    &mut text_len2,
+                )
+            };
+            if succeeded(rc2) {
+                text_len = text_len2;
+            }
+        }
+
+        let n = (text_len.max(0) as usize).min(buf.len());
+        let state_str = std::str::from_utf8(&state[..5]).unwrap_or("?????");
+        let msg = std::str::from_utf8(&buf[..n]).unwrap_or("(invalid UTF-8)");
+        parts.push(format!("[{state_str}] (native {native_error}) {msg}"));
     }
 
-    let state_str = std::str::from_utf8(&state[..5]).unwrap_or("?????");
-    let msg = std::str::from_utf8(&buf[..text_len as usize]).unwrap_or("(invalid UTF-8)");
-    format!("[{}] {}", state_str, msg)
+    if parts.is_empty() {
+        "Unknown ODBC error (no diagnostic record)".to_string()
+    } else {
+        parts.join(" | ")
+    }
 }
 
 fn check(rc: SqlReturn, handle_type: SqlSmallInt, handle: SqlHandle, context: &str) -> Result<()> {
