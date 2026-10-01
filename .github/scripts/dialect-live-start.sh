@@ -183,11 +183,15 @@ case "$backend" in
       -p 1521:1521 gvenzl/oracle-xe:21.3.0-slim-faststart
     # The image ships a healthcheck script doing a real sqlplus round-trip.
     wait_for oracle docker exec db healthcheck.sh
-    # Readiness plus preflight in one, like the monetdb leg: poll with isql
-    # through the real driver and DSN so unixODBC diagnostics stay visible.
+    # Readiness plus preflight in one, like the monetdb leg, but with
+    # isql -k: ggsql connects via SQLDriverConnect with
+    # "DSN=ggsql-oracle;UID=...;PWD=...", while plain
+    # "isql <dsn> <user> <pass>" uses SQLConnect, on which Oracle ODBC
+    # spuriously fails with ORA-12162 even for a valid DSN. The -k string
+    # deliberately mirrors what connection.rs synthesizes from the URI.
     ok=0
     for _ in $(seq 1 24); do
-      if isql -v ggsql-oracle ggsql Ggsql_test1 <<< 'SELECT 1 FROM dual;'; then
+      if isql -v -k "DSN=ggsql-oracle;UID=ggsql;PWD=Ggsql_test1" <<< 'SELECT 1 FROM dual;'; then
         ok=1
         break
       fi
