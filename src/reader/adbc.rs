@@ -1,14 +1,12 @@
 //! ADBC (Arrow Database Connectivity) reader.
 //!
-//! Generic over any concrete ADBC `Driver` implementation. Verified against
-//! two drivers in this crate's tests:
+//! Generic over any concrete ADBC `Driver` implementation. Verified against:
 //!
-//! - `adbc_datafusion` — pure-Rust, in-process. Used for routing and
-//!   conversion unit tests where loading a native driver isn't worth the
-//!   build complexity.
-//! - `adbc_driver_duckdb` (loaded via `adbc_driver_manager::ManagedDriver`)
+//! - `adbc_driver_sqlite` (loaded via `adbc_driver_manager::ManagedDriver`)
 //!   — a real ADBC C driver, used for an equivalence suite that compares
-//!   `AdbcReader<DuckDB>` output against ggsql's existing `DuckDBReader`.
+//!   `AdbcReader<SQLite>` output against ggsql's existing `SqliteReader`.
+//! - the Foundry `datafusion` driver (also via `ManagedDriver`) — exercised
+//!   end-to-end by the `live_datafusion` case in `tests/dialect_live.rs`.
 //!
 //! The `Reader` trait takes `&self`, but ADBC's `Statement` API takes
 //! `&mut self`. We bridge this with `RefCell` around the `Connection`,
@@ -680,10 +678,9 @@ where
         // `execute_update()`. We do the CREATE ourselves (rather than relying
         // on `IngestMode::Create`) so we control the column types via the
         // `SqlDialect` and so registers behave identically across drivers
-        // with varying ingest-option support — in particular,
-        // `adbc_datafusion` 0.23 has `bind_stream` as `todo!()` and rejects
-        // the `IngestMode` option key (`set_option` returns `NotFound`),
-        // which is silently tolerated below.
+        // with varying ingest-option support — drivers that reject the
+        // `IngestMode` option key (`set_option` returns `NotFound`) are
+        // silently tolerated below.
         let schema = batch.schema();
         if replace {
             let drop_sql = format!("DROP TABLE IF EXISTS {}", self.dialect.quote_ident(name));
@@ -726,9 +723,8 @@ where
             // driver >=0.27) reject mismatches — DataFusion surfaces VARCHAR
             // as Utf8View while our batches are Utf8. On that specific
             // failure, align the batch to the driver-reported table schema
-            // and retry. Legacy drivers without validation (the stalled
-            // adbc_datafusion 0.23 crate, whose get_table_schema is `todo!()`)
-            // succeed on the first attempt and never touch the schema path.
+            // and retry. Drivers without ingest-time validation succeed on
+            // the first attempt and never touch the schema path.
             let mut aligned: Option<arrow::record_batch::RecordBatch> = None;
             let mut attempts = 0;
             loop {
@@ -745,8 +741,8 @@ where
                 // CREATEd above. Compliant ADBC drivers (e.g. the Apache
                 // SQLite driver) default `IngestMode` to `Create` when only
                 // `TargetTable` is set, which would then fail because the
-                // table already exists. DataFusion 0.23 doesn't expose this
-                // option key and returns `Status::NotFound` from `set_option`;
+                // table already exists. DataFusion drivers don't expose this
+                // option key and return `Status::NotFound` from `set_option`;
                 // that's expected for DataFusion's bind path (it appends by
                 // default), so swallow it and continue rather than failing
                 // register().
@@ -961,8 +957,6 @@ fn align_batch_to_schema(
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[cfg(feature = "adbc-datafusion")]
-    use adbc_datafusion::DataFusionDriver;
 
     #[test]
     fn driver_name_mapping() {
@@ -1138,293 +1132,6 @@ mod tests {
         assert!(matches!(opts[1].0, OptionDatabase::Username));
         assert!(matches!(opts[2].0, OptionDatabase::Password));
         assert!(matches!(&opts[3].0, OptionDatabase::Other(k) if k == "sslmode"));
-    }
-
-    /// Construct a reader over an in-process DataFusion ADBC driver.
-    /// DataFusion starts empty; callers register tables via the reader's
-    /// `register()` method (added in Task 4) or via raw SQL DDL.
-    #[cfg(feature = "adbc-datafusion")]
-    fn fixture_reader() -> AdbcReader<DataFusionDriver> {
-        AdbcReader::from_driver(DataFusionDriver::new(None)).expect("datafusion init")
-    }
-
-    #[cfg(feature = "adbc-datafusion")]
-    #[test]
-    fn execute_sql_returns_scalar_result() {
-        use crate::array_util::as_i64;
-        let reader = fixture_reader();
-        let df = reader
-            .execute_sql("SELECT 1 AS one, 'hello' AS greeting")
-            .expect("query ok");
-        assert_eq!(df.height(), 1);
-        assert_eq!(df.width(), 2);
-        let one = as_i64(df.column("one").unwrap()).unwrap().value(0);
-        assert_eq!(one, 1);
-    }
-
-    #[cfg(feature = "adbc-datafusion")]
-    #[test]
-    fn register_then_query_roundtrip() {
-        use crate::array_util::as_i64;
-        use crate::df;
-
-        let reader = fixture_reader();
-        let df = df! {
-            "x" => vec![1i64, 2, 3],
-            "y" => vec!["a", "b", "c"],
-        }
-        .unwrap();
-        reader.register("t", df, false).expect("register ok");
-
-        let out = reader
-            .execute_sql("SELECT COUNT(*) AS n FROM t")
-            .expect("count ok");
-        let n = as_i64(out.column("n").unwrap()).unwrap().value(0);
-        assert_eq!(n, 3);
-    }
-
-    #[cfg(feature = "adbc-datafusion")]
-    #[test]
-    fn unregister_removes_table() {
-        use crate::df;
-
-        let reader = fixture_reader();
-        let df = df! { "x" => vec![1i64] }.unwrap();
-        reader.register("tmp", df, false).unwrap();
-
-        // First unregister should succeed: table was registered via this reader.
-        reader.unregister("tmp").expect("unregister ok");
-
-        // Second unregister must fail: the name was removed from
-        // registered_tables, so the guard in unregister() triggers.
-        // This verifies the bookkeeping without triggering the
-        // adbc_datafusion 0.23 Statement::execute panic that happens on
-        // `SELECT * FROM <dropped-table>` (the driver .unwrap()s a DataFusion
-        // planning error at lib.rs:913 instead of returning a proper ADBC
-        // error — captured in Task 9 findings).
-        let err = reader.unregister("tmp").unwrap_err();
-        assert!(matches!(err, GgsqlError::ReaderError(_)));
-    }
-
-    #[cfg(feature = "adbc-datafusion")]
-    #[test]
-    fn with_dialect_plumbs_custom_dialect_through() {
-        // Dummy dialect that overrides a recognizable method so we can verify
-        // the reader actually stored and exposes our dialect rather than the
-        // default AnsiDialect.
-        struct ShoutyDialect;
-        impl super::SqlDialect for ShoutyDialect {
-            fn integer_type_name(&self) -> Option<&str> {
-                Some("SHOUTY_BIGINT")
-            }
-        }
-
-        let reader = AdbcReader::with_dialect(DataFusionDriver::new(None), Box::new(ShoutyDialect))
-            .expect("reader");
-
-        // The Reader trait's dialect() accessor should return our ShoutyDialect.
-        assert_eq!(reader.dialect().integer_type_name(), Some("SHOUTY_BIGINT"));
-    }
-
-    #[test]
-    #[ignore = "ggsql's execute pipeline issues `CREATE OR REPLACE TEMP TABLE` for layer/stat \
-                materialization, which adbc_datafusion 0.23 rejects with `NotImplemented(\"Temporary \
-                tables not supported\")`. The full pipeline works against any driver that supports \
-                TEMP TABLE (DuckDB, Trino, etc.) — see the equivalence tests for that path."]
-    #[cfg(feature = "adbc-datafusion")]
-    fn reader_executes_full_ggsql_visualise_query() {
-        use crate::df;
-
-        let reader = fixture_reader();
-        let data = df! {
-            "date"   => vec!["2024-01-01", "2024-01-02", "2024-01-03"],
-            "value"  => vec![10i64, 20, 30],
-            "region" => vec!["N", "S", "N"],
-        }
-        .unwrap();
-        reader.register("sales", data, false).unwrap();
-
-        let query = r#"
-            SELECT date, value, region FROM sales WHERE value > 5
-            VISUALISE date AS x, value AS y, region AS color
-            DRAW line
-        "#;
-        let spec = reader.execute(query).expect("ggsql execute ok");
-        let meta = spec.metadata();
-        // Full pipeline verification: SQL executed (3 rows after WHERE),
-        // VISUALISE parsed, plot resolved with 1 layer.
-        assert_eq!(meta.rows, 3);
-        assert_eq!(meta.layer_count, 1);
-        // The `columns` list reports the *transformed aesthetic* column names
-        // (e.g. x -> pos1, y -> pos2, color -> stroke on a line layer) not the
-        // raw SQL column names. See `test_execute_metadata` in reader/mod.rs
-        // for the same convention.
-        assert!(
-            meta.columns.iter().any(|c| c == "pos1"),
-            "expected pos1 (x aesthetic) in columns: {:?}",
-            meta.columns
-        );
-        assert!(
-            meta.columns.iter().any(|c| c == "pos2"),
-            "expected pos2 (y aesthetic) in columns: {:?}",
-            meta.columns
-        );
-        assert!(
-            meta.columns.iter().any(|c| c == "stroke"),
-            "expected stroke (color aesthetic on line) in columns: {:?}",
-            meta.columns
-        );
-    }
-
-    #[cfg(feature = "adbc-datafusion")]
-    #[test]
-    fn execute_sql_handles_multi_batch_result() {
-        use crate::array_util::as_i64;
-        use crate::df;
-
-        // Register a 50k-row frame. DataFusion's default batch size is typically
-        // around 8k rows, so the result read-side should produce >1 RecordBatch
-        // and exercise the `for batch in reader` loop.
-        let reader = fixture_reader();
-        let xs: Vec<i64> = (0..50_000i64).collect();
-        let df = df! { "x" => xs }.unwrap();
-        reader.register("big", df, false).expect("register ok");
-
-        let out = reader
-            .execute_sql("SELECT x FROM big ORDER BY x")
-            .expect("query ok");
-        assert_eq!(out.height(), 50_000);
-
-        // Spot-check: first + last rows should round-trip correctly.
-        let col = out.column("x").unwrap();
-        let arr = as_i64(col).unwrap();
-        assert_eq!(arr.value(0), 0);
-        assert_eq!(arr.value(49_999), 49_999);
-    }
-
-    #[cfg(feature = "adbc-datafusion")]
-    #[test]
-    fn execute_sql_handles_nulls() {
-        use crate::array_util::as_i64;
-        use arrow::array::Array;
-
-        let reader = fixture_reader();
-        // Use DataFusion DDL to create a table with a NULL.
-        reader
-            .execute_sql("CREATE TABLE nulltest (x BIGINT) AS VALUES (1), (NULL), (3)")
-            .expect("ddl ok");
-
-        let out = reader
-            .execute_sql("SELECT x FROM nulltest ORDER BY x NULLS LAST")
-            .expect("query ok");
-        assert_eq!(out.height(), 3);
-
-        let col = out.column("x").unwrap();
-        let arr = as_i64(col).unwrap();
-        // Row 2 should be NULL in the returned DataFrame.
-        assert!(arr.is_null(2));
-        // Rows 0 and 1 are the non-null values.
-        assert_eq!(arr.value(0), 1);
-        assert_eq!(arr.value(1), 3);
-    }
-
-    #[cfg(feature = "adbc-datafusion")]
-    #[test]
-    #[ignore]
-    fn bench_register_and_query_100k_rows() {
-        use crate::array_util::as_i64;
-        use crate::df;
-        use std::time::Instant;
-
-        let reader = fixture_reader();
-        let n = 100_000i64;
-        let xs: Vec<i64> = (0..n).collect();
-        let df = df! { "x" => xs }.unwrap();
-
-        let t0 = Instant::now();
-        reader.register("big", df, false).unwrap();
-        let reg_ms = t0.elapsed().as_millis();
-
-        let t1 = Instant::now();
-        let out = reader.execute_sql("SELECT COUNT(*) AS n FROM big").unwrap();
-        let q_ms = t1.elapsed().as_millis();
-
-        let n_out = as_i64(out.column("n").unwrap()).unwrap().value(0);
-        assert_eq!(n_out, n);
-        eprintln!("register 100k rows: {} ms | query: {} ms", reg_ms, q_ms);
-    }
-
-    /// Issue #12: `execute_sql` must hold `conn.borrow_mut()` only long enough
-    /// to build + execute the Statement — the returned `RecordBatchReader` is
-    /// `Box<dyn ... + 'static>`, so iteration must not require the statement
-    /// or the connection borrow to stay alive.
-    ///
-    /// This mirrors the exact borrow pattern `execute_sql` uses post-fix:
-    /// borrow, build+execute, drop the borrow, then iterate. It also kicks
-    /// off a second `execute_sql` while the first stream is still alive —
-    /// only possible if the first borrow was released.
-    #[cfg(feature = "adbc-datafusion")]
-    #[test]
-    fn record_batch_reader_outlives_statement_and_allows_second_query() {
-        use arrow::array::RecordBatchReader as _;
-
-        let reader = fixture_reader();
-
-        let stream = {
-            // Use `try_borrow_mut` here to mirror `execute_sql`'s production
-            // path — if this ever panics in the test, the fix in `execute_sql`
-            // has regressed and the borrow scope has crept wider again.
-            let mut conn = reader
-                .connection
-                .try_borrow_mut()
-                .expect("fresh reader should allow a mutable borrow");
-            let mut stmt = conn.new_statement().expect("new_statement");
-            stmt.set_sql_query("SELECT 1 AS v UNION ALL SELECT 2 UNION ALL SELECT 3")
-                .expect("set_sql_query");
-            stmt.execute().expect("execute")
-            // `stmt` and the `RefMut<Connection>` both drop here.
-        };
-
-        // With the borrow released, another query on the same reader must
-        // work while `stream` is still live.
-        let df2 = reader
-            .execute_sql("SELECT 42 AS answer")
-            .expect("second query");
-        assert_eq!(df2.height(), 1);
-
-        // `stream` must still iterate — it does not depend on `stmt` or the
-        // original borrow. `schema()` is called before `collect()` consumes
-        // the reader.
-        let schema = stream.schema();
-        let batches = stream
-            .collect::<std::result::Result<Vec<_>, _>>()
-            .expect("drain");
-        let total: usize = batches.iter().map(|b| b.num_rows()).sum();
-        assert_eq!(total, 3);
-        assert_eq!(schema.fields().len(), 1);
-        assert_eq!(schema.field(0).name(), "v");
-    }
-
-    #[cfg(feature = "adbc-datafusion")]
-    #[test]
-    fn execute_sql_handles_empty_result_with_schema() {
-        let reader = fixture_reader();
-        let df = reader
-            .execute_sql("SELECT 1 AS a, 'x' AS b WHERE false")
-            .expect("query ok");
-        // The schema is preserved on zero-batch results: we now pull the
-        // declared schema off the `RecordBatchReader` *before* draining
-        // batches and hand it to the IPC bridge so an empty result still
-        // produces a 0-row DataFrame with the correct columns.
-        assert_eq!(df.height(), 0);
-        assert_eq!(df.width(), 2);
-        let names: Vec<String> = df
-            .get_column_names()
-            .iter()
-            .map(|s| s.to_string())
-            .collect();
-        assert!(names.contains(&"a".to_string()));
-        assert!(names.contains(&"b".to_string()));
     }
 }
 

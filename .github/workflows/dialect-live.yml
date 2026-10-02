@@ -68,10 +68,9 @@ jobs:
         # binary is self-contained (deps statically linked, ODBC/ADBC
         # drivers dlopened at runtime), so the legs can run it directly.
         # Feature set is load-bearing: `adbc` compiles in the ADBC reader
-        # path, `sqlite` provides the cache backend Druid wraps in, and
-        # adbc-datafusion is deliberately absent — the datafusion leg uses
-        # the Foundry driver through the driver manager, so the full
-        # DataFusion/prost graph stays out of the test build.
+        # path and `sqlite` provides the cache backend Druid wraps in. The
+        # datafusion leg uses the Foundry driver through the driver manager,
+        # so the DataFusion graph never enters the test build.
         run: |
           bin=$(cargo test -p ggsql --features "adbc sqlite" --test dialect_live \
                 --no-run --message-format=json-render-diagnostics \

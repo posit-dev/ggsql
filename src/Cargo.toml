@@ -38,11 +38,6 @@ adbc_core = { version = "0.23", optional = true }
 # Runtime loading of ADBC driver shared libraries (driver .so/.dylib/.dll
 # files are discovered on the user's system, never bundled).
 adbc_driver_manager = { version = "0.23", optional = true }
-# In-process DataFusion ADBC driver, test-only in practice (the adbc.rs unit
-# tests and the gated live_datafusion case). Optional because it drags in the
-# entire DataFusion/prost/substrait graph — roughly half the test-compile
-# time — so the live-CI legs build without it.
-adbc_datafusion = { version = "0.23", optional = true }
 
 # Spatial
 geozero = { workspace = true, optional = true, features = ["with-wkb", "with-wkt", "with-geojson"] }
@@ -97,10 +92,6 @@ duckdb = ["dep:duckdb"]
 parquet = ["dep:parquet"]
 sqlite = ["dep:rusqlite"]
 adbc = ["dep:adbc_core", "dep:adbc_driver_manager"]
-# The in-process DataFusion driver used by tests. Not in `default` and not
-# enabled by the live-dialect CI legs: it is the single largest chunk of the
-# test-dependency graph and only the env-gated live_datafusion case needs it.
-adbc-datafusion = ["adbc", "dep:adbc_datafusion"]
 odbc = ["dep:toml_edit", "dep:libloading"]
 spatial = ["dep:geozero", "rusqlite?/load_extension"]
 vegalite = []
