@@ -74,69 +74,99 @@ const TABLE: &str = "ggsql_live_test";
 // from NTILE(4) tiles, which is degenerate (NULL) with fewer than four
 // values per group — their grids would come back empty and the battery
 // would pass vacuously.
+//
+// Beyond id/val/grp the table carries:
+// - `day` (a real date column): temporal literal/cast paths, exercised by
+//   the binned-scale and temporal-filter cases,
+// - `mixed Case` (float): a column whose name requires quoting, exercising
+//   the dialects' quote_ident handling through stats that pass raw column
+//   names (quantiles) and PARTITION BY.
 fn insert_sql(scheme: &str, table: &str) -> String {
+    let row = |i: i32| {
+        let day = date_literal(scheme, i);
+        format!(
+            "({i}, {v}, '{g}', {day}, {m})",
+            v = i as f64 + 0.5,
+            g = if i % 2 == 1 { 'a' } else { 'b' },
+            m = i as f64 + 9.5,
+        )
+    };
+    let rows: Vec<String> = (1..=8).map(row).collect();
     if scheme == "oracle" {
         // Oracle has no multi-row VALUES; INSERT ALL ... SELECT * FROM dual
         // is the single-statement equivalent.
-        return format!(
-            "INSERT ALL \
-             INTO {table} VALUES (1, 1.5, 'a') INTO {table} VALUES (2, 2.5, 'b') \
-             INTO {table} VALUES (3, 3.5, 'a') INTO {table} VALUES (4, 4.5, 'b') \
-             INTO {table} VALUES (5, 5.5, 'a') INTO {table} VALUES (6, 6.5, 'b') \
-             INTO {table} VALUES (7, 7.5, 'a') INTO {table} VALUES (8, 8.5, 'b') \
-             SELECT * FROM dual"
-        );
+        let into: Vec<String> = rows
+            .iter()
+            .map(|r| format!("INTO {table} VALUES {r}"))
+            .collect();
+        return format!("INSERT ALL {} SELECT * FROM dual", into.join(" "));
     }
-    format!(
-        "INSERT INTO {table} VALUES \
-         (1, 1.5, 'a'), (2, 2.5, 'b'), (3, 3.5, 'a'), (4, 4.5, 'b'), \
-         (5, 5.5, 'a'), (6, 6.5, 'b'), (7, 7.5, 'a'), (8, 8.5, 'b')"
-    )
+    format!("INSERT INTO {table} VALUES {}", rows.join(", "))
+}
+
+/// A date literal for 2022-01-0`i` in the spelling the backend accepts.
+/// Most take the ANSI `DATE 'YYYY-MM-DD'`; T-SQL wants the unambiguous
+/// `YYYYMMDD` string form; ClickHouse and SQLite (TEXT column) take the
+/// ISO string.
+fn date_literal(scheme: &str, i: i32) -> String {
+    match scheme {
+        "mssql" => format!("'2022010{i}'"),
+        "clickhouse" | "sqlite" => format!("'2022-01-0{i}'"),
+        _ => format!("DATE '2022-01-0{i}'"),
+    }
+}
+
+/// Identifier quoting for DDL: backtick for the MySQL-family and
+/// standard-SQL-on-backtick engines, double quote elsewhere. The pipeline
+/// itself re-quotes via the dialect; this is only for the raw DDL here.
+fn ddl_quote(scheme: &str) -> char {
+    match scheme {
+        "mysql" | "mariadb" | "clickhouse" | "bigquery" | "databricks" => '`',
+        _ => '"',
+    }
 }
 
 fn create_table_sql(scheme: &str, table: &str) -> String {
+    let q = ddl_quote(scheme);
+    let ddl = |id_ty: &str, val_ty: &str, grp_ty: &str, day_ty: &str| {
+        format!(
+            "CREATE TABLE {table} (id {id_ty}, val {val_ty}, grp {grp_ty}, \
+             day {day_ty}, {q}mixed Case{q} {val_ty})"
+        )
+    };
     match scheme {
-        "postgres" => {
-            format!("CREATE TABLE {table} (id INT, val DOUBLE PRECISION, grp VARCHAR(16))")
-        }
-        "trino" => format!("CREATE TABLE {table} (id INTEGER, val DOUBLE, grp VARCHAR(16))"),
-        "clickhouse" => {
-            format!("CREATE TABLE {table} (id Int32, val Float64, grp String) ENGINE = Memory")
-        }
-        "mysql" | "mariadb" => {
-            format!("CREATE TABLE {table} (id INT, val DOUBLE, grp VARCHAR(16))")
-        }
+        "postgres" => ddl("INT", "DOUBLE PRECISION", "VARCHAR(16)", "DATE"),
+        "trino" => ddl("INTEGER", "DOUBLE", "VARCHAR(16)", "DATE"),
+        "clickhouse" => format!(
+            "{ddl} ENGINE = Memory",
+            ddl = ddl("Int32", "Float64", "String", "Date")
+        ),
+        "mysql" | "mariadb" => ddl("INT", "DOUBLE", "VARCHAR(16)", "DATE"),
         // T-SQL has no DOUBLE; FLOAT is the 64-bit type.
-        "mssql" => format!("CREATE TABLE {table} (id INT, val FLOAT, grp VARCHAR(16))"),
-        "exasol" => {
-            format!("CREATE TABLE {table} (id INT, val DOUBLE PRECISION, grp VARCHAR(16))")
-        }
+        "mssql" => ddl("INT", "FLOAT", "VARCHAR(16)", "DATE"),
+        "exasol" => ddl("INT", "DOUBLE PRECISION", "VARCHAR(16)", "DATE"),
         // Pseudo-leg: CI points this at a PostgreSQL container (see header).
-        "redshift" => {
-            format!("CREATE TABLE {table} (id INT, val DOUBLE PRECISION, grp VARCHAR(16))")
-        }
+        "redshift" => ddl("INT", "DOUBLE PRECISION", "VARCHAR(16)", "DATE"),
         // Generic-ODBC leg: CI points this at a PostgreSQL container over
         // psqlODBC (see header), so the DDL uses PostgreSQL types.
-        "odbc" => {
-            format!("CREATE TABLE {table} (id INT, val DOUBLE PRECISION, grp VARCHAR(16))")
-        }
+        "odbc" => ddl("INT", "DOUBLE PRECISION", "VARCHAR(16)", "DATE"),
         // MonetDB-over-ODBC leg: MonetDB's 64-bit float type is DOUBLE.
-        "monetdb" => format!("CREATE TABLE {table} (id INT, val DOUBLE, grp VARCHAR(16))"),
+        "monetdb" => ddl("INT", "DOUBLE", "VARCHAR(16)", "DATE"),
         // Oracle-over-ODBC leg: NUMBER for ints, BINARY_DOUBLE is the native
         // 64-bit float, and the VARCHAR2 spelling is required (VARCHAR is
         // reserved for future standard-conforming semantics).
-        "oracle" => {
-            format!("CREATE TABLE {table} (id NUMBER(10), val BINARY_DOUBLE, grp VARCHAR2(16))")
-        }
-        "sqlite" => format!("CREATE TABLE {table} (id INTEGER, val REAL, grp TEXT)"),
-        "duckdb" => format!("CREATE TABLE {table} (id INTEGER, val DOUBLE, grp VARCHAR)"),
+        "oracle" => ddl("NUMBER(10)", "BINARY_DOUBLE", "VARCHAR2(16)", "DATE"),
+        // SQLite has no date type; day stays TEXT (ISO strings compare
+        // lexicographically, so range filters still behave).
+        "sqlite" => ddl("INTEGER", "REAL", "TEXT", "TEXT"),
+        "duckdb" => ddl("INTEGER", "DOUBLE", "VARCHAR", "DATE"),
         // Snowflake FLOAT is 64-bit.
-        "snowflake" => format!("CREATE TABLE {table} (id INT, val FLOAT, grp VARCHAR(16))"),
+        "snowflake" => ddl("INT", "FLOAT", "VARCHAR(16)", "DATE"),
         // BigQuery resolves the unqualified name against the connection's
         // default dataset (stmt.bigquery.query.default_dataset_id in the
         // URI — the driver only sends defaultDataset as a statement option).
-        "bigquery" => format!("CREATE TABLE {table} (id INT64, val FLOAT64, grp STRING)"),
-        "databricks" => format!("CREATE TABLE {table} (id INT, val DOUBLE, grp STRING)"),
+        "bigquery" => ddl("INT64", "FLOAT64", "STRING", "DATE"),
+        "databricks" => ddl("INT", "DOUBLE", "STRING", "DATE"),
         other => panic!("no DDL template for scheme '{other}'"),
     }
 }
@@ -259,6 +289,149 @@ fn run_battery(reader: &dyn Reader, ctx: &str, table: &str) {
         .layer_data(0)
         .unwrap_or_else(|| panic!("{ctx}: violin produced no layer data"));
     assert!(layer.height() > 0, "{ctx}: violin returned zero rows");
+
+    // ------------------------------------------------------------------
+    // Dialect conformance regression cases (2026-10 review)
+    // ------------------------------------------------------------------
+
+    // Grouped variants of the derived-table geoms: the group columns join
+    // the partition columns into stat queries, exercising grouped window
+    // and derived-table paths the ungrouped cases miss (unaliased derived
+    // tables break MySQL/MariaDB).
+    reader
+        .execute(&format!(
+            "VISUALISE DRAW bar MAPPING grp AS x, grp AS fill FROM {table}"
+        ))
+        .unwrap_or_else(|e| panic!("{ctx}: grouped bar pipeline failed: {e}"));
+
+    let spec = reader
+        .execute(&format!(
+            "VISUALISE DRAW histogram MAPPING val AS x, grp AS fill FROM {table}"
+        ))
+        .unwrap_or_else(|e| panic!("{ctx}: grouped histogram pipeline failed: {e}"));
+    let layer = spec
+        .layer_data(0)
+        .unwrap_or_else(|| panic!("{ctx}: grouped histogram produced no layer data"));
+    assert!(
+        layer.height() > 0,
+        "{ctx}: grouped histogram returned zero rows"
+    );
+
+    reader
+        .execute(&format!(
+            "VISUALISE DRAW smooth MAPPING id AS x, val AS y, grp AS color FROM {table} SETTING method => 'ols'"
+        ))
+        .unwrap_or_else(|e| panic!("{ctx}: grouped smooth pipeline failed: {e}"));
+
+    // A column whose name needs quoting, through the quantile path:
+    // stat_aggregate passes the raw name to sql_quantile_inline /
+    // sql_percentile, so dialects must quote it themselves. A name with a
+    // space and mixed case breaks any dialect that interpolates it raw.
+    let spec = reader
+        .execute(&format!(
+            "VISUALISE DRAW boxplot MAPPING grp AS x, \"mixed Case\" AS y FROM {table}"
+        ))
+        .unwrap_or_else(|e| panic!("{ctx}: quoted-column boxplot pipeline failed: {e}"));
+    let layer = spec
+        .layer_data(0)
+        .unwrap_or_else(|| panic!("{ctx}: quoted-column boxplot produced no layer data"));
+    assert!(
+        layer.height() > 0,
+        "{ctx}: quoted-column boxplot returned zero rows"
+    );
+
+    // Percentile aggregates off the quartiles, with real value assertions:
+    // the generic sql_percentile fallback uses NTILE(4), which is exact
+    // only for p25/p50/p75. Group a is {1.5, 3.5, 5.5, 7.5}, so the correct
+    // p10 is ~2.1 (the fallback returns the tile-boundary average 2.5) and
+    // the correct p90 is ~6.9 (the fallback returns NULL: hi_tile = 5 does
+    // not exist). Bounds are wide enough for approximate-quantile engines.
+    for (func, lo, hi) in [("p10", 1.5, 2.35), ("p90", 6.5, 7.5)] {
+        let spec = reader
+            .execute(&format!(
+                "VISUALISE DRAW point MAPPING grp AS x, val AS y FROM {table} \
+                 SETTING aggregate => 'y:{func}' FILTER grp = 'a'"
+            ))
+            .unwrap_or_else(|e| panic!("{ctx}: {func} aggregate pipeline failed: {e}"));
+        let layer = spec
+            .layer_data(0)
+            .unwrap_or_else(|| panic!("{ctx}: {func} aggregate produced no layer data"));
+        let y = first_f64(layer, "__ggsql_aes_pos2__", ctx, func);
+        assert!(
+            (lo..=hi).contains(&y),
+            "{ctx}: {func} of group a (vals 1.5, 3.5, 5.5, 7.5) should be in \
+             [{lo}, {hi}], got {y}"
+        );
+    }
+
+    // Binned scale over a temporal column with a non-temporal transform:
+    // the numeric-CASE fallback (build_case_expression_numeric) must quote
+    // the column with the active dialect, not hard-coded ANSI.
+    let spec = reader
+        .execute(&format!(
+            "VISUALISE DRAW point MAPPING day AS x, val AS y FROM {table} SCALE BINNED x VIA identity"
+        ))
+        .unwrap_or_else(|e| panic!("{ctx}: binned temporal pipeline failed: {e}"));
+    let layer = spec
+        .layer_data(0)
+        .unwrap_or_else(|| panic!("{ctx}: binned temporal produced no layer data"));
+    assert!(
+        layer.height() > 0,
+        "{ctx}: binned temporal returned zero rows"
+    );
+
+    // PARTITION BY follows the same identifier rules as MAPPING: the name
+    // is stored unquoted and re-quoted via the dialect. With a float column
+    // every row is its own group, so the mean is the value itself.
+    let spec = reader
+        .execute(&format!(
+            "VISUALISE DRAW point MAPPING id AS x, \"mixed Case\" AS y FROM {table} \
+             SETTING aggregate => 'y:mean' PARTITION BY \"mixed Case\""
+        ))
+        .unwrap_or_else(|e| panic!("{ctx}: quoted PARTITION BY pipeline failed: {e}"));
+    let layer = spec
+        .layer_data(0)
+        .unwrap_or_else(|| panic!("{ctx}: quoted PARTITION BY produced no layer data"));
+    assert_eq!(
+        layer.height(),
+        8,
+        "{ctx}: quoted PARTITION BY should yield one group per row"
+    );
+}
+
+/// Read the single f64 at row 0 of `col`, with a schema dump on any
+/// surprise (wrong name, wrong type, NULL — the NTILE(4) fallback produces
+/// NULL for p90, so the message names that explicitly).
+fn first_f64(df: &ggsql::DataFrame, col: &str, ctx: &str, case: &str) -> f64 {
+    use arrow::array::Array;
+    let arr = df.column(col).unwrap_or_else(|_| {
+        panic!(
+            "{ctx}: {case}: column '{col}' missing; schema: {:?}",
+            df.schema()
+        )
+    });
+    if arr.is_null(0) {
+        panic!("{ctx}: {case}: value is NULL (NTILE(4) fallback returns NULL off-quartiles)");
+    }
+    match arr.data_type() {
+        arrow::datatypes::DataType::Float64 => arr
+            .as_any()
+            .downcast_ref::<arrow::array::Float64Array>()
+            .unwrap()
+            .value(0),
+        other => panic!("{ctx}: {case}: expected Float64, got {other:?}"),
+    }
+}
+
+/// When `GGSQL_TEST_REQUIRE=1`, a missing backend URI is a failure rather
+/// than a skip. CI sets this so a misconfigured leg cannot pass silently;
+/// local runs keep the skip-and-note behavior.
+fn require_backend(env_var: &str) {
+    assert!(
+        std::env::var("GGSQL_TEST_REQUIRE").is_err(),
+        "{env_var} is not set and GGSQL_TEST_REQUIRE=1: \
+         refusing to pass a live leg without its backend"
+    );
 }
 
 /// Connect to the backend named by `scheme` if its env var is set, create
@@ -266,6 +439,7 @@ fn run_battery(reader: &dyn Reader, ctx: &str, table: &str) {
 fn live_backend(scheme: &str) {
     let env_var = format!("GGSQL_TEST_URI_{}", scheme.to_uppercase());
     let Ok(uri) = std::env::var(&env_var) else {
+        require_backend(&env_var);
         eprintln!("skipping {scheme}: {env_var} is not set");
         return;
     };
@@ -285,7 +459,7 @@ fn live_backend(scheme: &str) {
         // register() instead CREATEs the table from the Arrow schema and
         // appends via ADBC bulk ingest — batch load jobs, which the sandbox
         // does allow. This also exercises the driver's ingest path.
-        use arrow::array::{Float64Array, Int64Array, StringArray};
+        use arrow::array::{Date32Array, Float64Array, Int64Array, StringArray};
         use arrow::datatypes::{DataType, Field, Schema};
         use arrow::record_batch::RecordBatch;
         use std::sync::Arc;
@@ -295,6 +469,8 @@ fn live_backend(scheme: &str) {
                 Field::new("id", DataType::Int64, false),
                 Field::new("val", DataType::Float64, false),
                 Field::new("grp", DataType::Utf8, false),
+                Field::new("day", DataType::Date32, false),
+                Field::new("mixed Case", DataType::Float64, false),
             ])),
             vec![
                 Arc::new(Int64Array::from(vec![1, 2, 3, 4, 5, 6, 7, 8])),
@@ -303,6 +479,13 @@ fn live_backend(scheme: &str) {
                 ])),
                 Arc::new(StringArray::from(vec![
                     "a", "b", "a", "b", "a", "b", "a", "b",
+                ])),
+                // 2022-01-01 .. 2022-01-08 as days since the epoch
+                Arc::new(Date32Array::from(vec![
+                    18993, 18994, 18995, 18996, 18997, 18998, 18999, 19000,
+                ])),
+                Arc::new(Float64Array::from(vec![
+                    10.5, 11.5, 12.5, 13.5, 14.5, 15.5, 16.5, 17.5,
                 ])),
             ],
         )
@@ -325,7 +508,52 @@ fn live_backend(scheme: &str) {
 
     run_battery(&*reader, scheme, table);
 
+    // register() round-trip on the ODBC legs: the ODBC register path
+    // builds temp-table DDL per dialect (Oracle: GLOBAL TEMPORARY) with
+    // dialect type names — a plain CREATE TEMPORARY TABLE is invalid on
+    // Oracle and MSSQL.
+    if matches!(scheme, "odbc" | "monetdb" | "oracle") {
+        let df = ggsql::df! {
+            "id" => vec![1i32, 2, 3, 4],
+            "val" => vec![1.5f64, 2.5, 3.5, 4.5],
+        }
+        .expect("register df");
+        reader
+            .register("ggsql_live_register", df, true)
+            .unwrap_or_else(|e| panic!("{scheme}: register failed: {e}"));
+        let spec = reader
+            .execute("VISUALISE DRAW point MAPPING id AS x, val AS y FROM ggsql_live_register")
+            .unwrap_or_else(|e| panic!("{scheme}: plot from registered table failed: {e}"));
+        assert_eq!(
+            spec.layer_data(0).map(|l| l.height()),
+            Some(4),
+            "{scheme}: registered table row count"
+        );
+        let _ = reader.unregister("ggsql_live_register");
+    }
+
     let _ = reader.execute_sql(&format!("DROP TABLE IF EXISTS {table}"));
+}
+
+/// ggsql-owned URI params (`cache=off`, cache tuning) are consumed during
+/// dispatch and must not leak into the ADBC driver's own URI — drivers
+/// reject unknown keys. Regression test for the param-strip fix.
+#[test]
+fn live_postgres_ggsql_params() {
+    let env_var = "GGSQL_TEST_URI_POSTGRES";
+    let Ok(uri) = std::env::var(env_var) else {
+        require_backend(env_var);
+        eprintln!("skipping postgres params: {env_var} is not set");
+        return;
+    };
+    let sep = if uri.contains('?') { '&' } else { '?' };
+    let uri = format!("{uri}{sep}cache=off&cache_ttl=60&cache_max_bytes=1MB");
+    let reader =
+        reader_from_uri(&uri).unwrap_or_else(|e| panic!("postgres+params: connect failed: {e}"));
+    let spec = reader
+        .execute("SELECT 1 AS x, 2 AS y VISUALISE DRAW point")
+        .unwrap_or_else(|e| panic!("postgres+params: query failed: {e}"));
+    assert!(spec.layer_data(0).map(|l| l.height() > 0).unwrap_or(false));
 }
 
 #[test]
@@ -423,6 +651,7 @@ fn live_databricks() {
 #[test]
 fn live_datafusion() {
     if std::env::var("GGSQL_TEST_DATAFUSION").is_err() {
+        require_backend("GGSQL_TEST_DATAFUSION");
         eprintln!(
             "skipping datafusion: GGSQL_TEST_DATAFUSION is not set \
              (was gated on an adbc_datafusion 0.23 MIN/MAX conversion bug)"
@@ -430,14 +659,41 @@ fn live_datafusion() {
         return;
     }
     use ggsql::reader::adbc::AdbcReader;
+    use std::sync::Arc;
 
     let reader = AdbcReader::from_connection_string("datafusion://").expect("datafusion init");
 
-    let df = ggsql::df! {
-        "id" => vec![1i32, 2, 3, 4, 5, 6, 7, 8],
-        "val" => vec![1.5f64, 2.5, 3.5, 4.5, 5.5, 6.5, 7.5, 8.5],
-        "grp" => vec!["a", "b", "a", "b", "a", "b", "a", "b"],
-    }
+    let df = ggsql::DataFrame::new(vec![
+        (
+            "id",
+            Arc::new(arrow::array::Int32Array::from(vec![1, 2, 3, 4, 5, 6, 7, 8]))
+                as arrow::array::ArrayRef,
+        ),
+        (
+            "val",
+            Arc::new(arrow::array::Float64Array::from(vec![
+                1.5, 2.5, 3.5, 4.5, 5.5, 6.5, 7.5, 8.5,
+            ])) as arrow::array::ArrayRef,
+        ),
+        (
+            "grp",
+            Arc::new(arrow::array::StringArray::from(vec![
+                "a", "b", "a", "b", "a", "b", "a", "b",
+            ])) as arrow::array::ArrayRef,
+        ),
+        (
+            "day",
+            Arc::new(arrow::array::Date32Array::from(vec![
+                18993, 18994, 18995, 18996, 18997, 18998, 18999, 19000,
+            ])) as arrow::array::ArrayRef,
+        ),
+        (
+            "mixed Case",
+            Arc::new(arrow::array::Float64Array::from(vec![
+                10.5, 11.5, 12.5, 13.5, 14.5, 15.5, 16.5, 17.5,
+            ])) as arrow::array::ArrayRef,
+        ),
+    ])
     .expect("test dataframe");
     reader.register(TABLE, df, true).expect("register table");
 
@@ -452,6 +708,7 @@ fn live_datafusion() {
 #[test]
 fn live_datafusion_as_cache() {
     if std::env::var("GGSQL_TEST_DATAFUSION").is_err() {
+        require_backend("GGSQL_TEST_DATAFUSION");
         eprintln!("skipping datafusion cache: GGSQL_TEST_DATAFUSION is not set");
         return;
     }
@@ -473,4 +730,16 @@ fn live_datafusion_as_cache() {
         .layer_data(0)
         .map(|l| l.height() > 0)
         .unwrap_or(false));
+
+    // Empty results must round-trip through the cache too: the fill pass
+    // registers a zero-row frame, which ADBC readers used to reject.
+    let empty_query = "VISUALISE DRAW point MAPPING id AS x, val AS y FROM t FILTER id > 100";
+    let first = reader
+        .execute(empty_query)
+        .expect("empty first run (cache fill)");
+    let second = reader
+        .execute(empty_query)
+        .expect("empty second run (cache hit)");
+    assert_eq!(first.layer_data(0).map(|l| l.height()), Some(0));
+    assert_eq!(second.layer_data(0).map(|l| l.height()), Some(0));
 }

@@ -44,7 +44,10 @@ impl SqlDialect for TrinoDialect {
     }
 
     fn sql_quantile_inline(&self, column: &str, fraction: f64) -> Option<String> {
-        Some(format!("approx_percentile({column}, {fraction})"))
+        Some(format!(
+            "approx_percentile({column}, {fraction})",
+            column = self.quote_ident(column)
+        ))
     }
 
     fn sql_date_literal(&self, days_since_epoch: i32) -> String {

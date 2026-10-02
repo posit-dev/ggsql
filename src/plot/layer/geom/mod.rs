@@ -380,7 +380,10 @@ pub(crate) fn project_position_columns(
     let proj_col = dialect.quote_ident("__ggsql_proj_pt__");
     let __ggsql_pp__ = dialect.quote_ident("__ggsql_pp__");
 
-    let inner = format!("SELECT *, {transformed} AS {proj_col} FROM ({query})");
+    let inner = format!(
+        "SELECT *, {transformed} AS {proj_col} FROM ({query}) AS {__ggsql_proj__}",
+        __ggsql_proj__ = dialect.quote_ident("__ggsql_proj__")
+    );
     let x_expr = format!("ST_X({proj_col})");
     let y_expr = format!("ST_Y({proj_col})");
 
@@ -505,7 +508,8 @@ pub(crate) fn densify_edges(
     let indexed_query = if domain_order.is_none() {
         format!(
             "SELECT *, ROW_NUMBER() OVER ({partition_clause} ORDER BY (SELECT NULL)) \
-             AS {__ggsql_edge_idx__} FROM ({query})"
+             AS {__ggsql_edge_idx__} FROM ({query}) AS {__ggsql_indexed__}",
+            __ggsql_indexed__ = dialect.quote_ident("__ggsql_indexed__")
         )
     } else {
         query.to_string()

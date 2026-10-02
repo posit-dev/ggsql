@@ -46,6 +46,21 @@ impl SqlDialect for SqliteDialect {
         format!("date('1970-01-01', '+{} days')", days_since_epoch)
     }
 
+    fn sql_temporal_as_number(
+        &self,
+        expr: &str,
+        kind: crate::plot::types::CastTargetType,
+    ) -> String {
+        // Temporal values are ISO text here; julianday converts them.
+        // julianday('1970-01-01') = 2440587.5.
+        use crate::plot::types::CastTargetType as C;
+        match kind {
+            C::Date => format!("(JULIANDAY({expr}) - 2440587.5)"),
+            C::DateTime => format!("((JULIANDAY({expr}) - 2440587.5) * 86400000000.0)"),
+            _ => format!("CAST({expr} AS REAL)"),
+        }
+    }
+
     fn sql_datetime_literal(&self, microseconds_since_epoch: i64) -> String {
         let seconds = microseconds_since_epoch as f64 / 1_000_000.0;
         format!("datetime('1970-01-01 00:00:00', '+{} seconds')", seconds)

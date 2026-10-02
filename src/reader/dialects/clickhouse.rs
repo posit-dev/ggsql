@@ -102,7 +102,10 @@ impl SqlDialect for ClickHouseDialect {
     }
 
     fn sql_quantile_inline(&self, column: &str, fraction: f64) -> Option<String> {
-        Some(format!("quantileExactInclusive({fraction})({column})"))
+        Some(format!(
+            "quantileExactInclusive({fraction})({column})",
+            column = self.quote_ident(column)
+        ))
     }
 
     /// Every caller embeds this in a `GROUP BY {groups}` query over `from`, so
@@ -115,7 +118,10 @@ impl SqlDialect for ClickHouseDialect {
         _from: &str,
         _groups: &[String],
     ) -> String {
-        format!("quantileExactInclusive({fraction})({column})")
+        format!(
+            "quantileExactInclusive({fraction})({column})",
+            column = self.quote_ident(column)
+        )
     }
 
     fn sql_aggregate(&self, name: &str, qcol: &str) -> Option<String> {
@@ -189,11 +195,11 @@ mod tests {
     #[test]
     fn quantile_uses_exact_inclusive() {
         assert_eq!(
-            ClickHouseDialect.sql_quantile_inline("`v`", 0.9).as_deref(),
+            ClickHouseDialect.sql_quantile_inline("v", 0.9).as_deref(),
             Some("quantileExactInclusive(0.9)(`v`)")
         );
         assert_eq!(
-            ClickHouseDialect.sql_percentile("`v`", 0.5, "SELECT * FROM t", &[]),
+            ClickHouseDialect.sql_percentile("v", 0.5, "SELECT * FROM t", &[]),
             "quantileExactInclusive(0.5)(`v`)"
         );
     }

@@ -51,7 +51,10 @@ impl SqlDialect for SnowflakeDialect {
     }
 
     fn sql_quantile_inline(&self, column: &str, fraction: f64) -> Option<String> {
-        Some(format!("APPROX_PERCENTILE({column}, {fraction})"))
+        Some(format!(
+            "APPROX_PERCENTILE({column}, {fraction})",
+            column = self.quote_ident(column)
+        ))
     }
 
     fn sql_date_literal(&self, days_since_epoch: i32) -> String {

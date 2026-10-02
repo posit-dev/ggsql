@@ -348,6 +348,11 @@ impl AdbcReader<ManagedDriver> {
         // `stmt.`-prefixed params become per-statement options rather than
         // database options.
         let (stmt_opts, query) = partition_statement_opts(query);
+        // ggsql's own keys (`cache`, `reader`, cache tuning) are consumed
+        // during dispatch and must not leak into the driver's URI or option
+        // map — drivers reject unknown keys.
+        let query = crate::reader::connection::strip_ggsql_params(&query);
+        let query = query.as_str();
 
         let (driver, opts) = if scheme == "adbc" {
             // body is the driver name or path (may be a short scheme alias).
@@ -369,7 +374,7 @@ impl AdbcReader<ManagedDriver> {
                     GgsqlError::ReaderError(format!("ADBC driver '{}' failed to load: {}", body, e))
                 })?
             };
-            (driver, query_params_to_opts(&query))
+            (driver, query_params_to_opts(query))
         } else {
             let driver = load_driver_for_scheme(&scheme)?;
             // The URI handed to the driver must not carry stmt.* params —
@@ -378,14 +383,17 @@ impl AdbcReader<ManagedDriver> {
             // Simba grammar, with non-Simba params arriving only as
             // standalone options.
             let (driver_uri, opts_query) = if scheme == "bigquery" {
-                bigquery_driver_uri(body, &query)
+                bigquery_driver_uri(body, query)
             } else {
                 let filtered_uri = if query.is_empty() {
                     format!("{scheme}://{body}")
                 } else {
                     format!("{scheme}://{body}?{query}")
                 };
-                (driver_uri_for(&scheme, body, &filtered_uri), query.clone())
+                (
+                    driver_uri_for(&scheme, body, &filtered_uri),
+                    query.to_string(),
+                )
             };
             let mut opts = vec![(OptionDatabase::Uri, OptionValue::String(driver_uri))];
             if query_params_as_driver_options(&scheme) {
@@ -658,11 +666,9 @@ where
         use adbc_core::options::{IngestMode, OptionStatement, OptionValue};
         use adbc_core::Optionable;
 
-        if df.height() == 0 {
-            return Err(GgsqlError::ReaderError(
-                "AdbcReader::register: empty DataFrame not supported".into(),
-            ));
-        }
+        // Zero-row frames are fine: the CREATE below still runs, leaving an
+        // empty table — the caching reader relies on this to memoize empty
+        // query results.
         let batch = df.into_inner();
 
         let mut conn = self.connection.try_borrow_mut().map_err(|_| {
@@ -717,7 +723,7 @@ where
         // an orphan table the reader can't reach.
         self.registered_tables.borrow_mut().insert(name.to_string());
 
-        {
+        if batch.num_rows() > 0 {
             // Ingest, with one schema-alignment retry: drivers that validate
             // the batch against the table schema (e.g. the Foundry datafusion
             // driver >=0.27) reject mismatches — DataFusion surfaces VARCHAR

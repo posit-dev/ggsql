@@ -251,7 +251,11 @@ fn stat_histogram(
             "OVER ()".to_string(),
         )
     } else {
-        let grp_cols = group_by.join(", ");
+        let grp_cols = group_by
+            .iter()
+            .map(|c| dialect.quote_ident(c))
+            .collect::<Vec<_>>()
+            .join(", ");
         (
             format!(
                 "{}, {} AS {}, {} AS {}",

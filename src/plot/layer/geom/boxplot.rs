@@ -365,7 +365,7 @@ mod tests {
     fn test_sql_compute_summary_basic() {
         let groups = vec!["category".to_string()];
         let result = boxplot_sql_compute_summary("data", &groups, "value", &1.5, &AnsiDialect);
-        assert!(result.contains("NTILE(4) OVER (PARTITION BY \"category\" ORDER BY \"value\")"));
+        assert!(result.contains("ROW_NUMBER() OVER (PARTITION BY \"category\" ORDER BY \"value\")"));
         assert!(result.contains("AS q1"));
         assert!(result.contains("AS median"));
         assert!(result.contains("AS q3"));
@@ -382,9 +382,8 @@ mod tests {
         let groups = vec!["cat".to_string(), "region".to_string()];
         let result = boxplot_sql_compute_summary("tbl", &groups, "val", &1.5, &AnsiDialect);
         assert!(result.contains("GROUP BY \"cat\", \"region\""));
-        assert!(
-            result.contains("NTILE(4) OVER (PARTITION BY \"cat\", \"region\" ORDER BY \"val\")")
-        );
+        assert!(result
+            .contains("ROW_NUMBER() OVER (PARTITION BY \"cat\", \"region\" ORDER BY \"val\")"));
     }
 
     #[test]

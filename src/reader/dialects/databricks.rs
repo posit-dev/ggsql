@@ -63,7 +63,10 @@ impl SqlDialect for DatabricksDialect {
     }
 
     fn sql_quantile_inline(&self, column: &str, fraction: f64) -> Option<String> {
-        Some(format!("percentile_approx({column}, {fraction})"))
+        Some(format!(
+            "percentile_approx({column}, {fraction})",
+            column = self.quote_ident(column)
+        ))
     }
 
     fn sql_percentile(
@@ -81,7 +84,10 @@ impl SqlDialect for DatabricksDialect {
         // same semantics the correlated form encodes (same trick as
         // ClickHouse's quantileExactInclusive override). Approximate, which
         // is acceptable for boxplot/density statistics.
-        format!("percentile_approx({column}, {fraction})")
+        format!(
+            "percentile_approx({column}, {fraction})",
+            column = self.quote_ident(column)
+        )
     }
 
     fn sql_date_literal(&self, days_since_epoch: i32) -> String {

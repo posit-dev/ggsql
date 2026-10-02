@@ -74,7 +74,8 @@ impl SqlDialect for OracleDialect {
 
     fn sql_quantile_inline(&self, column: &str, fraction: f64) -> Option<String> {
         Some(format!(
-            "PERCENTILE_CONT({fraction}) WITHIN GROUP (ORDER BY {column})"
+            "PERCENTILE_CONT({fraction}) WITHIN GROUP (ORDER BY {column})",
+            column = self.quote_ident(column)
         ))
     }
 
@@ -99,12 +100,31 @@ impl SqlDialect for OracleDialect {
         let body =
             wrap_with_column_aliases(&|c: &str| self.quote_ident(c), body_sql, column_aliases);
         vec![
+            // The drop must spell the name exactly like the CREATE below:
+            // an unquoted name would be folded to uppercase by Oracle and
+            // never match the quoted (case-preserved) table, silently
+            // leaving stale tables behind under the WHEN OTHERS guard.
             format!(
                 "BEGIN EXECUTE IMMEDIATE 'DROP TABLE {}'; EXCEPTION WHEN OTHERS THEN NULL; END;",
-                name.replace('\'', "''")
+                qname.replace('\'', "''")
             ),
             format!("CREATE TABLE {} AS {}", qname, body),
         ]
+    }
+
+    fn sql_with_recursive(&self) -> &'static str {
+        // Oracle has no RECURSIVE keyword; recursion is implied by
+        // self-reference.
+        "WITH"
+    }
+
+    fn sql_create_empty_temp_table(&self, name: &str, column_defs: &[String]) -> Vec<String> {
+        // Oracle temp tables are GLOBAL TEMPORARY with session-private rows.
+        vec![format!(
+            "CREATE GLOBAL TEMPORARY TABLE {} ({}) ON COMMIT PRESERVE ROWS",
+            self.quote_ident(name),
+            column_defs.join(", ")
+        )]
     }
 
     fn supports_spatial(&self) -> bool {
@@ -131,13 +151,37 @@ mod tests {
     }
 
     #[test]
+    fn with_recursive_is_plain_with() {
+        assert_eq!(OracleDialect.sql_with_recursive(), "WITH");
+    }
+
+    #[test]
     fn drop_is_plsql_guarded() {
         let stmts = OracleDialect.create_or_replace_temp_table_sql("t", &[], "SELECT 1 FROM dual");
         assert!(
-            stmts[0].contains("EXECUTE IMMEDIATE 'DROP TABLE t'"),
+            stmts[0].contains("EXECUTE IMMEDIATE 'DROP TABLE \"t\"'"),
             "got: {}",
             stmts[0]
         );
         assert_eq!(stmts[1], "CREATE TABLE \"t\" AS SELECT 1 FROM dual");
+    }
+
+    #[test]
+    fn drop_quotes_like_create() {
+        // A name needing quoting must be quoted identically in DROP and
+        // CREATE, or the drop never matches (Oracle folds unquoted names
+        // to uppercase).
+        let stmts =
+            OracleDialect.create_or_replace_temp_table_sql("my Temp", &[], "SELECT 1 FROM dual");
+        assert!(
+            stmts[0].contains("DROP TABLE \"my Temp\""),
+            "got: {}",
+            stmts[0]
+        );
+        assert!(
+            stmts[1].starts_with("CREATE TABLE \"my Temp\" AS"),
+            "got: {}",
+            stmts[1]
+        );
     }
 }

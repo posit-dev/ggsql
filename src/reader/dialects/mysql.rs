@@ -20,6 +20,24 @@ impl SqlDialect for MySqlDialect {
         format!("{left} <=> {right}")
     }
 
+    fn sql_temporal_as_number(
+        &self,
+        expr: &str,
+        kind: crate::plot::types::CastTargetType,
+    ) -> String {
+        // MySQL CAST has no DOUBLE target before 8.0.17 and no
+        // date -> number cast at all; TO_DAYS/TIMESTAMPDIFF are the
+        // portable epoch conversions. TO_DAYS('1970-01-01') = 719528.
+        use crate::plot::types::CastTargetType as C;
+        match kind {
+            C::Date => format!("(TO_DAYS({expr}) - 719528)"),
+            C::DateTime => {
+                format!("TIMESTAMPDIFF(MICROSECOND, '1970-01-01 00:00:00', {expr})")
+            }
+            _ => format!("CAST({expr} AS DOUBLE)"),
+        }
+    }
+
     fn sql_real_cast_type(&self) -> &'static str {
         // MariaDB's CAST has no REAL target; DOUBLE works on both MySQL
         // (8.0.17+) and MariaDB (10.4.5+).

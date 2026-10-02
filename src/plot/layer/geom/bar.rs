@@ -244,7 +244,11 @@ fn stat_bar_count(
                 ),
             )
         } else {
-            let grp_cols = group_by.join(", ");
+            let grp_cols = group_by
+                .iter()
+                .map(|c| dialect.quote_ident(c))
+                .collect::<Vec<_>>()
+                .join(", ");
             (
                 format!(
                     "{g}, '{dummy}' AS {x}, {agg}",
@@ -274,7 +278,11 @@ fn stat_bar_count(
             )
         } else {
             // Group by partition/facet variables only
-            let group_cols = group_by.join(", ");
+            let group_cols = group_by
+                .iter()
+                .map(|c| dialect.quote_ident(c))
+                .collect::<Vec<_>>()
+                .join(", ");
             format!(
                 "WITH {__stat_src__} AS ({query}), {__grouped__} AS (SELECT {grouped} FROM {__stat_src__} GROUP BY {group}) SELECT {final} FROM {__grouped__}",
                 query = query,
@@ -322,7 +330,11 @@ fn stat_bar_count(
                 ),
             )
         } else {
-            let grp_cols = group_by.join(", ");
+            let grp_cols = group_by
+                .iter()
+                .map(|c| dialect.quote_ident(c))
+                .collect::<Vec<_>>()
+                .join(", ");
             (
                 format!("{g}, {x}, {agg}", g = grp_cols, x = x_col, agg = agg_expr),
                 format!(

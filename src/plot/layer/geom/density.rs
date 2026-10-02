@@ -876,9 +876,9 @@ mod tests {
 
         let bw_cte = density_sql_bandwidth(query, &groups, "x", &parameters, &AnsiDialect);
 
-        // Verify SQL uses NTILE-based percentile subqueries
+        // Verify SQL uses ROW_NUMBER-based percentile subqueries
         let normalize = |s: &str| s.split_whitespace().collect::<Vec<_>>().join(" ");
-        assert!(bw_cte.contains("NTILE(4)"));
+        assert!(bw_cte.contains("ROW_NUMBER()"));
         assert!(bw_cte.contains("bandwidth AS"));
         // Verify the generated rule matches silverman_rule output
         let expected_rule = silverman_rule(1.0, "x", query, &groups, &AnsiDialect);
@@ -903,8 +903,8 @@ mod tests {
 
         let bw_cte = density_sql_bandwidth(query, &groups, "x", &parameters, &AnsiDialect);
 
-        // Verify SQL uses NTILE-based percentile subqueries with grouping
-        assert!(bw_cte.contains("NTILE(4)"));
+        // Verify SQL uses ROW_NUMBER-based percentile subqueries with grouping
+        assert!(bw_cte.contains("ROW_NUMBER()"));
         assert!(bw_cte.contains("GROUP BY \"region\""));
         let expected_rule = silverman_rule(1.0, "x", query, &groups, &AnsiDialect);
         assert!(normalize(&bw_cte).contains(&normalize(&expected_rule)));

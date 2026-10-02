@@ -261,21 +261,26 @@ case "$backend" in
     payload=$(python3 - <<'EOF'
 import json
 rows = "\n".join(
-    f"{i},{i + 0.5},{'a' if i % 2 == 1 else 'b'}" for i in range(1, 9)
+    f"{i},{i + 0.5},{'a' if i % 2 == 1 else 'b'},2022-01-0{i},{i + 9.5}"
+    for i in range(1, 9)
 )
-inline = json.dumps({"type": "inline", "data": "id,val,grp\n" + rows})
+inline = json.dumps({"type": "inline", "data": "id,val,grp,day,mixed Case\n" + rows})
 csv_fmt = json.dumps({"type": "csv", "findColumnsFromHeader": True})
 sig = json.dumps([
     {"name": "id", "type": "STRING"},
     {"name": "val", "type": "STRING"},
     {"name": "grp", "type": "STRING"},
+    {"name": "day", "type": "STRING"},
+    {"name": "mixed Case", "type": "STRING"},
 ])
 query = f"""
 INSERT INTO ggsql_live_test
 SELECT TIMESTAMP '2020-01-01 00:00:00' AS __time,
        CAST(id AS BIGINT) AS id,
        CAST(val AS DOUBLE) AS val,
-       grp
+       grp,
+       CAST(day AS DATE) AS day,
+       CAST("mixed Case" AS DOUBLE) AS "mixed Case"
 FROM TABLE(EXTERN('{inline}', '{csv_fmt}', '{sig}'))
 PARTITIONED BY ALL
 """

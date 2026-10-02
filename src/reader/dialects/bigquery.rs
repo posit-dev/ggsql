@@ -71,7 +71,8 @@ impl SqlDialect for BigQueryDialect {
         // APPROX_QUANTILES(x, 100) returns an array of 101 boundaries.
         let offset = (fraction * 100.0).round() as i64;
         Some(format!(
-            "APPROX_QUANTILES({column}, 100)[SAFE_OFFSET({offset})]"
+            "APPROX_QUANTILES({column}, 100)[SAFE_OFFSET({offset})]",
+            column = self.quote_ident(column)
         ))
     }
 
@@ -158,7 +159,7 @@ mod tests {
 
     #[test]
     fn quantile_uses_approx_quantiles() {
-        let sql = BigQueryDialect.sql_quantile_inline("`v`", 0.25).unwrap();
+        let sql = BigQueryDialect.sql_quantile_inline("v", 0.25).unwrap();
         assert_eq!(sql, "APPROX_QUANTILES(`v`, 100)[SAFE_OFFSET(25)]");
     }
 
@@ -167,8 +168,7 @@ mod tests {
         // sql_percentile must not emit a correlated subquery — BigQuery
         // rejects those. It delegates to the APPROX_QUANTILES aggregate,
         // valid inside the GROUP BY queries that boxplot and density build.
-        let sql =
-            BigQueryDialect.sql_percentile("`v`", 0.75, "SELECT * FROM t", &["g".to_string()]);
+        let sql = BigQueryDialect.sql_percentile("v", 0.75, "SELECT * FROM t", &["g".to_string()]);
         assert_eq!(sql, "APPROX_QUANTILES(`v`, 100)[SAFE_OFFSET(75)]");
         assert!(!sql.contains("SELECT"), "must not be a subquery: {sql}");
     }

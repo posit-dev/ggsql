@@ -9,7 +9,8 @@ use super::{
     TransformKind, CLOSED_VALUES, OOB_CENSOR, OOB_SQUISH, OOB_VALUES_BINNED,
 };
 use crate::plot::types::{
-    ArrayConstraint, DefaultParamValue, NumberConstraint, ParamConstraint, ParamDefinition,
+    ArrayConstraint, CastTargetType, DefaultParamValue, NumberConstraint, ParamConstraint,
+    ParamDefinition,
 };
 use crate::plot::{ArrayElement, ParameterValue};
 
@@ -661,12 +662,23 @@ impl ScaleTypeTrait for Binned {
                             )
                         }
                         None => {
-                            // No type name available - use raw numeric values
+                            // No temporal type name available: fall back to
+                            // a numeric comparison, converting the column to
+                            // its epoch number so the break values compare
+                            // against a number rather than a temporal value.
+                            let kind = match column_dtype {
+                                DataType::Date32 => CastTargetType::Date,
+                                DataType::Timestamp(..) => CastTargetType::DateTime,
+                                DataType::Time64(_) => CastTargetType::Time,
+                                _ => CastTargetType::Number,
+                            };
                             return Some(build_case_expression_numeric(
                                 column_name,
                                 &break_values,
                                 closed_left,
                                 oob_squish,
+                                Some(kind),
+                                dialect,
                             ));
                         }
                     }
@@ -723,6 +735,31 @@ fn build_bin_condition(
     is_last: bool,
     dialect: &dyn super::SqlDialect,
 ) -> String {
+    build_bin_condition_expr(
+        &dialect.quote_ident(column_name),
+        lower_expr,
+        upper_expr,
+        closed_left,
+        oob_squish,
+        is_first,
+        is_last,
+        dialect,
+    )
+}
+
+/// As [`build_bin_condition`], but takes the column as a finished SQL
+/// expression (already quoted/cast) rather than a name to quote.
+#[allow(clippy::too_many_arguments)]
+fn build_bin_condition_expr(
+    column_expr: &str,
+    lower_expr: &str,
+    upper_expr: &str,
+    closed_left: bool,
+    oob_squish: bool,
+    is_first: bool,
+    is_last: bool,
+    dialect: &dyn super::SqlDialect,
+) -> String {
     // Determine operators based on closed side and bin position
     // closed="left": [lower, upper) except last bin which is [lower, upper]
     // closed="right": (lower, upper] except first bin which is [lower, upper]
@@ -732,34 +769,44 @@ fn build_bin_condition(
         (if is_first { ">=" } else { ">" }, "<=")
     };
 
-    let quoted = dialect.quote_ident(column_name);
     if oob_squish && is_first && is_last {
         // Single bin with squish: capture everything
-        "TRUE".to_string()
+        dialect.sql_boolean_literal(true)
     } else if oob_squish && is_first {
         // First bin with squish: no lower bound, extends to -∞
-        format!("{} {} {}", quoted, upper_op, upper_expr)
+        format!("{} {} {}", column_expr, upper_op, upper_expr)
     } else if oob_squish && is_last {
         // Last bin with squish: no upper bound, extends to +∞
-        format!("{} {} {}", quoted, lower_op, lower_expr)
+        format!("{} {} {}", column_expr, lower_op, lower_expr)
     } else {
         // Normal bin with both bounds
         format!(
             "{} {} {} AND {} {} {}",
-            quoted, lower_op, lower_expr, quoted, upper_op, upper_expr
+            column_expr, lower_op, lower_expr, column_expr, upper_op, upper_expr
         )
     }
 }
 
-/// Build a CASE expression for numeric binning (helper for non-temporal cases).
+/// Build a CASE expression for numeric binning.
+///
+/// With `temporal`, the column holds temporal values and is first
+/// converted to its epoch number via the dialect, so the numeric break
+/// values compare against a number rather than a temporal value.
 fn build_case_expression_numeric(
     column_name: &str,
     break_values: &[f64],
     closed_left: bool,
     oob_squish: bool,
+    temporal: Option<CastTargetType>,
+    dialect: &dyn super::SqlDialect,
 ) -> String {
     let num_bins = break_values.len() - 1;
     let mut cases = Vec::with_capacity(num_bins);
+
+    let column_expr = match temporal {
+        Some(kind) => dialect.sql_temporal_as_number(&dialect.quote_ident(column_name), kind),
+        None => dialect.quote_ident(column_name),
+    };
 
     for i in 0..num_bins {
         let lower = break_values[i];
@@ -769,15 +816,15 @@ fn build_case_expression_numeric(
         let is_first = i == 0;
         let is_last = i == num_bins - 1;
 
-        let condition = build_bin_condition(
-            column_name,
+        let condition = build_bin_condition_expr(
+            &column_expr,
             &lower.to_string(),
             &upper.to_string(),
             closed_left,
             oob_squish,
             is_first,
             is_last,
-            &crate::reader::AnsiDialect,
+            dialect,
         );
 
         cases.push(format!("WHEN {} THEN {}", condition, center));
@@ -1679,7 +1726,8 @@ mod tests {
             } else {
                 vec![0.0, 10.0, 20.0]
             };
-            let sql = build_case_expression_numeric("col", &breaks, true, oob_squish);
+            let sql =
+                build_case_expression_numeric("col", &breaks, true, oob_squish, None, &AnsiDialect);
             for pattern in expected {
                 assert!(
                     sql.contains(pattern),

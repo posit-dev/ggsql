@@ -159,18 +159,15 @@ impl Reader for OdbcReader {
                 format!(
                     "{} {}",
                     self.dialect.quote_ident(field.name()),
-                    arrow_dtype_to_sql(field.data_type())
+                    dialect_col_type(&*self.dialect, field.data_type())
                 )
             })
             .collect();
-        let create_sql = format!(
-            "CREATE TEMPORARY TABLE {} ({})",
-            self.dialect.quote_ident(name),
-            col_defs.join(", ")
-        );
-        self.connection.execute(&create_sql).map_err(|e| {
-            GgsqlError::ReaderError(format!("Failed to create temp table '{}': {}", name, e))
-        })?;
+        for create_sql in self.dialect.sql_create_empty_temp_table(name, &col_defs) {
+            self.connection.execute(&create_sql).map_err(|e| {
+                GgsqlError::ReaderError(format!("Failed to create temp table '{}': {}", name, e))
+            })?;
+        }
 
         let num_rows = df.height();
         if num_rows > 0 {
@@ -407,6 +404,33 @@ fn arrow_dtype_to_sql(dtype: &DataType) -> &'static str {
         DataType::Time64(_) => "TIME",
         _ => "TEXT",
     }
+}
+
+/// Column type for `register` DDL: the dialect's own type names where the
+/// Arrow type maps to a cast target (so e.g. Oracle gets `VARCHAR2` rather
+/// than the nonexistent `TEXT`), falling back to [`arrow_dtype_to_sql`].
+fn dialect_col_type(dialect: &dyn crate::reader::SqlDialect, dtype: &DataType) -> String {
+    use crate::reader::CastTargetType as C;
+    let target = match dtype {
+        DataType::Boolean => Some(C::Boolean),
+        DataType::Int8
+        | DataType::Int16
+        | DataType::Int32
+        | DataType::Int64
+        | DataType::UInt8
+        | DataType::UInt16
+        | DataType::UInt32
+        | DataType::UInt64 => Some(C::Integer),
+        DataType::Float16 | DataType::Float32 | DataType::Float64 => Some(C::Number),
+        DataType::Utf8 | DataType::LargeUtf8 | DataType::Utf8View => Some(C::String),
+        DataType::Date32 | DataType::Date64 => Some(C::Date),
+        DataType::Timestamp(_, _) => Some(C::DateTime),
+        DataType::Time32(_) | DataType::Time64(_) => Some(C::Time),
+        _ => None,
+    };
+    target
+        .and_then(|t| dialect.type_name_for(t).map(str::to_string))
+        .unwrap_or_else(|| arrow_dtype_to_sql(dtype).to_string())
 }
 
 // ============================================================================

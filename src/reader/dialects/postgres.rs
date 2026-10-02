@@ -35,9 +35,25 @@ impl SqlDialect for PostgresDialect {
         )
     }
 
+    fn sql_temporal_as_number(
+        &self,
+        expr: &str,
+        kind: crate::plot::types::CastTargetType,
+    ) -> String {
+        // Postgres rejects temporal -> numeric casts; date subtraction
+        // yields integer days, EXTRACT EPOCH covers datetimes.
+        use crate::plot::types::CastTargetType as C;
+        match kind {
+            C::Date => format!("({expr} - DATE '1970-01-01')"),
+            C::DateTime => format!("(EXTRACT(EPOCH FROM {expr}) * 1000000)"),
+            _ => format!("CAST({expr} AS DOUBLE PRECISION)"),
+        }
+    }
+
     fn sql_quantile_inline(&self, column: &str, fraction: f64) -> Option<String> {
         Some(format!(
-            "PERCENTILE_CONT({fraction}) WITHIN GROUP (ORDER BY {column})"
+            "PERCENTILE_CONT({fraction}) WITHIN GROUP (ORDER BY {column})",
+            column = self.quote_ident(column)
         ))
     }
 
@@ -61,7 +77,7 @@ mod tests {
 
     #[test]
     fn quantile_uses_ordered_set() {
-        let sql = PostgresDialect.sql_quantile_inline("\"v\"", 0.5).unwrap();
+        let sql = PostgresDialect.sql_quantile_inline("v", 0.5).unwrap();
         assert_eq!(sql, "PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY \"v\")");
     }
 

@@ -87,10 +87,10 @@ impl SqlDialect for DuckDbDialect {
 
     fn sql_generate_series(&self, n: usize) -> String {
         let __ggsql_seq__ = self.quote_ident("__ggsql_seq__");
-        format!(
-            "{__ggsql_seq__}(n) AS (SELECT generate_series FROM GENERATE_SERIES(0, {}))",
-            n - 1
-        )
+        // The subtraction happens in SQL: computing `n - 1` in Rust would
+        // underflow for n = 0, while GENERATE_SERIES(0, -1) correctly
+        // yields no rows.
+        format!("{__ggsql_seq__}(n) AS (SELECT generate_series FROM GENERATE_SERIES(0, {n} - 1))")
     }
 
     fn sql_quantile_inline(&self, column: &str, fraction: f64) -> Option<String> {
@@ -99,6 +99,24 @@ impl SqlDialect for DuckDbDialect {
             self.quote_ident(column),
             fraction
         ))
+    }
+
+    fn sql_temporal_as_number(
+        &self,
+        expr: &str,
+        kind: crate::plot::types::CastTargetType,
+    ) -> String {
+        // DuckDB rejects temporal -> numeric casts; date subtraction
+        // yields integer days, and EPOCH_US covers datetimes.
+        use crate::plot::types::CastTargetType as C;
+        match kind {
+            C::Date => format!("({expr} - DATE '1970-01-01')"),
+            C::DateTime => format!("EPOCH_US({expr})"),
+            _ => {
+                let ty = self.number_type_name().unwrap_or("DOUBLE");
+                self.sql_cast(expr, ty)
+            }
+        }
     }
 
     fn sql_aggregate(&self, name: &str, qcol: &str) -> Option<String> {
@@ -133,5 +151,25 @@ impl SqlDialect for DuckDbDialect {
             WHERE {column} IS NOT NULL {group_filter})",
             column = quoted_column
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn series_handles_zero() {
+        // Regression: `n - 1` computed in Rust underflowed usize for n = 0.
+        let sql = DuckDbDialect.sql_generate_series(0);
+        assert!(sql.contains("GENERATE_SERIES(0, 0 - 1)"), "got: {sql}");
+    }
+
+    #[test]
+    fn series_sql_shape() {
+        assert_eq!(
+            DuckDbDialect.sql_generate_series(5),
+            "\"__ggsql_seq__\"(n) AS (SELECT generate_series FROM GENERATE_SERIES(0, 5 - 1))"
+        );
     }
 }

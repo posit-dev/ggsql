@@ -59,7 +59,10 @@ impl SqlDialect for DataFusionDialect {
     }
 
     fn sql_quantile_inline(&self, column: &str, fraction: f64) -> Option<String> {
-        Some(format!("approx_percentile_cont({column}, {fraction})"))
+        Some(format!(
+            "approx_percentile_cont({column}, {fraction})",
+            column = self.quote_ident(column)
+        ))
     }
 
     /// DataFusion supports neither form of the default percentile

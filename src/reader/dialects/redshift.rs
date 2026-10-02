@@ -26,9 +26,24 @@ impl SqlDialect for RedshiftDialect {
         format!("LEAST({})", exprs.join(", "))
     }
 
+    fn sql_temporal_as_number(
+        &self,
+        expr: &str,
+        kind: crate::plot::types::CastTargetType,
+    ) -> String {
+        // Same date arithmetic as Postgres.
+        use crate::plot::types::CastTargetType as C;
+        match kind {
+            C::Date => format!("({expr} - DATE '1970-01-01')"),
+            C::DateTime => format!("(EXTRACT(EPOCH FROM {expr}) * 1000000)"),
+            _ => format!("CAST({expr} AS DOUBLE PRECISION)"),
+        }
+    }
+
     fn sql_quantile_inline(&self, column: &str, fraction: f64) -> Option<String> {
         Some(format!(
-            "APPROXIMATE PERCENTILE_DISC({fraction}) WITHIN GROUP (ORDER BY {column})"
+            "APPROXIMATE PERCENTILE_DISC({fraction}) WITHIN GROUP (ORDER BY {column})",
+            column = self.quote_ident(column)
         ))
     }
 }

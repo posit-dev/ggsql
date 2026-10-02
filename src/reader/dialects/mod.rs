@@ -390,4 +390,69 @@ mod tests {
             "\"c\""
         );
     }
+
+    /// All schemes `dialect_for_scheme` knows, for conformance sweeps.
+    const ALL_SCHEMES: &[&str] = &[
+        "postgres",
+        "redshift",
+        "mysql",
+        "mariadb",
+        "snowflake",
+        "mssql",
+        "bigquery",
+        "databricks",
+        "clickhouse",
+        "oracle",
+        "trino",
+        "exasol",
+        "monetdb",
+        "druid",
+        "drill",
+        "datafusion",
+        "duckdb",
+        "sqlite",
+    ];
+
+    /// Contract for the quantile hooks: callers pass the raw (unquoted)
+    /// column name and the dialect quotes it. A name needing quoting must
+    /// appear quoted — interpolating it raw breaks on any real column whose
+    /// name is not a bare lowercase identifier.
+    #[test]
+    fn quantile_hooks_quote_raw_column_names() {
+        for scheme in ALL_SCHEMES {
+            let d = dialect_for_scheme(scheme).unwrap();
+            let quoted = d.quote_ident("mixed Case");
+            if let Some(sql) = d.sql_quantile_inline("mixed Case", 0.5) {
+                assert!(
+                    sql.contains(&quoted),
+                    "{scheme}: sql_quantile_inline does not quote its column: {sql}"
+                );
+            }
+            let pct = d.sql_percentile("mixed Case", 0.5, "t", &[]);
+            assert!(
+                pct.contains(&quoted),
+                "{scheme}: sql_percentile does not quote its column: {pct}"
+            );
+        }
+    }
+
+    /// The ANSI defaults render temporal literals in ISO form; arithmetic
+    /// on `INTERVAL n DAY/MICROSECOND/NANOSECOND` is not portable (and not
+    /// valid ANSI), so backends without an override get real literals.
+    #[test]
+    fn ansi_temporal_literals_are_iso() {
+        let d = crate::reader::AnsiDialect;
+        assert_eq!(d.sql_date_literal(18993), "DATE '2022-01-01'");
+        assert_eq!(d.sql_date_literal(0), "DATE '1970-01-01'");
+        assert_eq!(d.sql_datetime_literal(0), "TIMESTAMP '1970-01-01 00:00:00'");
+        assert_eq!(
+            d.sql_datetime_literal(1_500_000),
+            "TIMESTAMP '1970-01-01 00:00:01.500000'"
+        );
+        assert_eq!(d.sql_time_literal(0), "TIME '00:00:00'");
+        assert_eq!(
+            d.sql_time_literal(3_723_000_000_001),
+            "TIME '01:02:03.000000001'"
+        );
+    }
 }

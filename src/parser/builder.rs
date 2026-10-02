@@ -586,12 +586,19 @@ fn parse_parameter_assignment(
 }
 
 /// Parse a partition_clause: PARTITION BY col1, col2, ...
+///
+/// Identifiers follow the same convention as MAPPING columns: stored
+/// unquoted, re-quoted per dialect at SQL emission.
 fn parse_partition_clause(node: &Node, source: &SourceTree) -> Result<Vec<String>> {
     let query = r#"
         (partition_columns
           (identifier) @col)
     "#;
-    Ok(source.find_texts(node, query))
+    Ok(source
+        .find_texts(node, query)
+        .iter()
+        .map(|t| naming::unquote_ident(t))
+        .collect())
 }
 
 /// Parse a filter_clause: FILTER <raw SQL expression>

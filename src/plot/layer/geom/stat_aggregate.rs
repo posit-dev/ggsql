@@ -2310,8 +2310,8 @@ mod tests {
         .unwrap();
         match result {
             StatResult::Transformed { query, .. } => {
-                // The fallback dialect's sql_percentile uses NTILE.
-                assert!(query.contains("NTILE(4)"));
+                // The fallback dialect's sql_percentile uses ROW_NUMBER.
+                assert!(query.contains("ROW_NUMBER()"));
                 // No explosion any more — single SELECT, no UNION ALL.
                 assert!(!query.contains("UNION ALL"));
             }

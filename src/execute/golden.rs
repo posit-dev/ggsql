@@ -207,6 +207,96 @@ fn battery() -> Vec<Case> {
             .unwrap(),
             query: "SELECT * FROM pts VISUALISE DRAW point MAPPING a AS x, b AS y FILTER g = 'A'",
         },
+        // Regression cases from the 2026-10 dialect review. Each mirrors a
+        // live-battery case in src/tests/dialect_live.rs and pins the SQL
+        // shape per dialect.
+        Case {
+            name: "binned_temporal",
+            table: "ts_data",
+            df: DataFrame::new(vec![
+                (
+                    "day",
+                    Arc::new(arrow::array::Date32Array::from(vec![19000, 19001, 19002]))
+                        as arrow::array::ArrayRef,
+                ),
+                (
+                    "value",
+                    Arc::new(arrow::array::Float64Array::from(vec![1.0, 2.0, 3.0])),
+                ),
+            ])
+            .unwrap(),
+            // A non-temporal transform on a temporal column forces the
+            // numeric-CASE fallback: the column must be cast to the
+            // dialect's number type and quoted per dialect.
+            query: "VISUALISE DRAW point MAPPING day AS x, value AS y FROM ts_data SCALE BINNED x VIA identity",
+        },
+        Case {
+            name: "percentile_aggregate",
+            table: "box_data",
+            df: df! {
+                "grp" => vec!["A", "A", "B", "B"],
+                "value" => vec![1.0f64, 2.0, 3.0, 4.0],
+            }
+            .unwrap(),
+            // p10 is off the quartiles: pins the ROW_NUMBER-based
+            // percentile fallback (and native inline forms) per dialect.
+            query: "VISUALISE DRAW point MAPPING grp AS x, value AS y FROM box_data SETTING aggregate => 'y:p10'",
+        },
+        Case {
+            name: "quoted_column",
+            table: "box_data",
+            df: df! {
+                "grp" => vec!["A", "A", "B", "B"],
+                "mixed Case" => vec![1.0f64, 2.0, 3.0, 4.0],
+            }
+            .unwrap(),
+            // A column name needing quoting through the quantile path:
+            // dialects receive the raw name and must quote it themselves.
+            query: "VISUALISE DRAW boxplot MAPPING grp AS x, \"mixed Case\" AS y FROM box_data",
+        },
+        Case {
+            name: "partition_by_quoted",
+            table: "pts",
+            df: df! {
+                "a" => vec![1.0f64, 2.0, 3.0],
+                "mixed Case" => vec![10.0f64, 20.0, 15.0],
+            }
+            .unwrap(),
+            // PARTITION BY identifiers follow the MAPPING convention:
+            // stored unquoted, re-quoted via the dialect at emission.
+            query: "VISUALISE DRAW point MAPPING a AS x, \"mixed Case\" AS y FROM pts SETTING aggregate => 'y:mean' PARTITION BY \"mixed Case\"",
+        },
+        Case {
+            name: "grouped_bar",
+            table: "bar_data",
+            df: df! {
+                "category" => vec!["a", "b", "a", "b"],
+                "grp" => vec!["A", "A", "B", "B"],
+            }
+            .unwrap(),
+            query: "VISUALISE DRAW bar MAPPING category AS x, grp AS fill FROM bar_data",
+        },
+        Case {
+            name: "grouped_histogram",
+            table: "hist_data",
+            df: df! {
+                "value" => vec![1.0f64, 2.0, 2.5, 3.0, 3.5, 4.0],
+                "grp" => vec!["A", "A", "A", "B", "B", "B"],
+            }
+            .unwrap(),
+            query: "VISUALISE DRAW histogram MAPPING value AS x, grp AS fill FROM hist_data",
+        },
+        Case {
+            name: "grouped_smooth",
+            table: "smooth_data",
+            df: df! {
+                "a" => vec![1.0f64, 2.0, 3.0, 4.0],
+                "b" => vec![2.0f64, 4.0, 5.0, 8.0],
+                "grp" => vec!["A", "A", "B", "B"],
+            }
+            .unwrap(),
+            query: "VISUALISE DRAW smooth MAPPING a AS x, b AS y, grp AS color FROM smooth_data SETTING method => 'ols'",
+        },
     ]
 }
 

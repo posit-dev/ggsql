@@ -37,6 +37,37 @@ pub fn split_cache_uri(uri: &str) -> Option<(String, String)> {
 #[cfg(any(feature = "duckdb", feature = "sqlite"))]
 const KNOWN_CACHE_PARAMS: &[&str] = &["cache_ttl", "cache_max_bytes", "cache_disabled"];
 
+/// Query-string keys ggsql consumes itself. These must never reach a
+/// driver's own URI parsing or option map — ADBC drivers reject unknown
+/// keys in their URI grammar.
+#[cfg(any(feature = "adbc", test))]
+pub(crate) const GGSQL_OWNED_PARAMS: &[&str] = &[
+    "cache",
+    "cache_ttl",
+    "cache_max_bytes",
+    "cache_disabled",
+    "reader",
+];
+
+/// Remove [`GGSQL_OWNED_PARAMS`] keys from a `k=v&…` query string.
+/// Matching is case-insensitive, like the consumers (`cache=off`).
+#[cfg(any(feature = "adbc", test))]
+pub(crate) fn strip_ggsql_params(query: &str) -> String {
+    query
+        .split('&')
+        .filter(|seg| {
+            if seg.is_empty() {
+                return false;
+            }
+            match seg.split_once('=') {
+                Some((key, _)) => !GGSQL_OWNED_PARAMS.contains(&key.to_ascii_lowercase().as_str()),
+                None => true,
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("&")
+}
+
 /// Pull cache-config keys out of a connection URI's trailing `?key=value&…`
 /// query string, returning the URI with those keys removed plus the overrides.
 #[cfg(any(feature = "duckdb", feature = "sqlite"))]
@@ -490,6 +521,23 @@ mod tests {
         assert!(uri_disables_cache("postgres://u@h/db?DSN=pg&CACHE=OFF"));
         assert!(!uri_disables_cache("postgres://u@h/db?DSN=pg"));
         assert!(!uri_disables_cache("postgres://u@h/db"));
+    }
+
+    #[test]
+    fn test_strip_ggsql_params() {
+        // ggsql-owned keys never reach a driver; everything else is kept
+        // in order.
+        assert_eq!(
+            strip_ggsql_params("cache=off&user=x&cache_ttl=60&reader=odbc&cache_max_bytes=1MB"),
+            "user=x"
+        );
+        assert_eq!(
+            strip_ggsql_params("CACHE=OFF&Driver={PostgreSQL Unicode}&cache_disabled=1"),
+            "Driver={PostgreSQL Unicode}"
+        );
+        assert_eq!(strip_ggsql_params("user=x&password=y"), "user=x&password=y");
+        assert_eq!(strip_ggsql_params(""), "");
+        assert_eq!(strip_ggsql_params("cache=off"), "");
     }
 
     #[cfg(feature = "duckdb")]

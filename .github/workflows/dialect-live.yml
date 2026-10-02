@@ -273,4 +273,23 @@ jobs:
       - name: Run the ${{ matrix.backend }} live test
         # The binary comes prebuilt from the compile job; invoked directly
         # as a libtest executable (no cargo, no `--` separator).
+        # GGSQL_TEST_REQUIRE=1 turns a missing backend URI into a failure,
+        # so a broken start script or missing driver can't pass silently.
+        env:
+          GGSQL_TEST_REQUIRE: "1"
         run: ./dialect-live-bin live_${{ matrix.backend }} --exact --nocapture
+
+      - name: Run the DataFusion cache live test
+        # datafusion+sqlite:// memoization path; only the datafusion leg has
+        # the Foundry driver installed, so it hosts this extra test.
+        if: ${{ matrix.backend == 'datafusion' }}
+        env:
+          GGSQL_TEST_REQUIRE: "1"
+        run: ./dialect-live-bin live_datafusion_as_cache --exact --nocapture
+
+      - name: Run the ggsql-owned URI params test
+        # cache=off & friends must not leak into the ADBC driver's URI.
+        if: ${{ matrix.backend == 'postgres' }}
+        env:
+          GGSQL_TEST_REQUIRE: "1"
+        run: ./dialect-live-bin live_postgres_ggsql_params --exact --nocapture

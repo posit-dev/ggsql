@@ -154,8 +154,22 @@ fn stat_ols(
         (String::new(), String::new())
     } else {
         (
-            format!("{}, ", group_by.join(", ")),
-            format!("GROUP BY {}", group_by.join(", ")),
+            format!(
+                "{}, ",
+                group_by
+                    .iter()
+                    .map(|c| dialect.quote_ident(c))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
+            format!(
+                "GROUP BY {}",
+                group_by
+                    .iter()
+                    .map(|c| dialect.quote_ident(c))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
         )
     };
 
@@ -226,8 +240,22 @@ fn stat_tls(
         (String::new(), String::new())
     } else {
         (
-            format!("{}, ", group_by.join(", ")),
-            format!("GROUP BY {}", group_by.join(", ")),
+            format!(
+                "{}, ",
+                group_by
+                    .iter()
+                    .map(|c| dialect.quote_ident(c))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
+            format!(
+                "GROUP BY {}",
+                group_by
+                    .iter()
+                    .map(|c| dialect.quote_ident(c))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
         )
     };
 

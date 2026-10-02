@@ -17,7 +17,10 @@ impl SqlDialect for MonetDbDialect {
     }
 
     fn sql_quantile_inline(&self, column: &str, fraction: f64) -> Option<String> {
-        Some(format!("QUANTILE({column}, {fraction})"))
+        Some(format!(
+            "QUANTILE({column}, {fraction})",
+            column = self.quote_ident(column)
+        ))
     }
 }
 
@@ -28,7 +31,7 @@ mod tests {
     #[test]
     fn quantile_is_native() {
         assert_eq!(
-            MonetDbDialect.sql_quantile_inline("\"v\"", 0.75).as_deref(),
+            MonetDbDialect.sql_quantile_inline("v", 0.75).as_deref(),
             Some("QUANTILE(\"v\", 0.75)")
         );
     }

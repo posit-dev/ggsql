@@ -85,12 +85,17 @@ jobs:
           "$HOME/.local/bin/dbc" install ${{ matrix.driver }}
 
       - name: Check credentials
-        # Warn (rather than fail) when the leg's secret is not configured;
-        # the test itself will skip.
+        # Fail when the leg's secret is missing on a non-fork repository
+        # (the nightly on origin must not pass silently); forks only get a
+        # warning and the test below skips.
         run: |
           var="GGSQL_TEST_URI_$(echo '${{ matrix.backend }}' | tr '[:lower:]' '[:upper:]')"
           if [ -z "${!var:-}" ]; then
-            echo "::warning title=Skipping ${matrix.backend}::$var secret is not configured"
+            if [ "${{ github.event.repository.fork }}" = "false" ]; then
+              echo "::error title=Missing secret::$var secret is not configured"
+              exit 1
+            fi
+            echo "::warning title=Skipping ${{ matrix.backend }}::$var secret is not configured"
           fi
 
       - name: Write BigQuery service-account key
@@ -103,6 +108,10 @@ jobs:
       - name: Run the ${{ matrix.backend }} live test
         # Same feature set as dialect-live.yml so the restored crate
         # fingerprints hit; see the long comment there.
+        # GGSQL_TEST_REQUIRE=1: with the credential check above failing on
+        # missing secrets, the URI is always present here, so require it.
+        env:
+          GGSQL_TEST_REQUIRE: "1"
         run: >-
           cargo test -p ggsql --features "adbc sqlite" --test dialect_live
           live_${{ matrix.backend }} -- --exact --nocapture

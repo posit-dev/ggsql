@@ -245,10 +245,12 @@ pub trait SqlDialect {
     /// Must return a single row with columns `xmin`, `ymin`, `xmax`, `ymax` (DOUBLE).
     /// `from` is the table or subquery to aggregate over.
     fn sql_geometry_bbox(&self, column: &str, from: &str) -> String {
+        // The derived table must be aliased: Postgres (< 16) and
+        // MySQL/MariaDB reject unaliased derived tables.
         format!(
             "SELECT ST_XMin(ext) AS xmin, ST_YMin(ext) AS ymin, \
                     ST_XMax(ext) AS xmax, ST_YMax(ext) AS ymax \
-             FROM (SELECT ST_Extent({column}) AS ext FROM {from})"
+             FROM (SELECT ST_Extent({column}) AS ext FROM {from}) AS __ggsql_ext__"
         )
     }
 
@@ -361,24 +363,36 @@ pub trait SqlDialect {
     ///
     /// Returns a scalar subquery expression that computes the specified percentile
     /// of a column within an optional grouping context.
+    ///
+    /// The default implements `percentile_cont` semantics with window
+    /// functions only (no native quantile aggregate required): with
+    /// `x = fraction * (cnt - 1)`, the result interpolates linearly between
+    /// the rows ranked `floor(x) + 1` and `ceil(x) + 1`. This is exact for
+    /// every fraction — the earlier NTILE(4) construction was only exact at
+    /// the quartiles and returned boundary averages (or NULL past p75)
+    /// elsewhere.
     fn sql_percentile(&self, column: &str, fraction: f64, from: &str, groups: &[String]) -> String {
-        // Uses NTILE(4) to divide data into quartiles, then interpolates between boundaries.
         let __ggsql_pct__ = self.quote_ident("__ggsql_pct__");
         let __ggsql_qt__ = self.quote_ident("__ggsql_qt__");
         // The derived table needs an explicit alias: MySQL/MariaDB reject
         // unaliased derived tables ("Every derived table must have its own
         // alias"), and other engines accept the alias harmlessly.
         let __ggsql_tile__ = self.quote_ident("__ggsql_tile__");
-        let lo_tile = (fraction * 4.0).ceil() as usize;
-        let hi_tile = lo_tile + 1;
         let quoted_column = self.quote_ident(column);
 
+        // x = fraction * (cnt - 1) is the zero-based fractional rank of the
+        // percentile; interpolate between the rows bracketing it.
+        let x = format!("{fraction} * (cnt - 1)");
+        let lo = format!("1 + FLOOR({x})");
+        let hi = format!("1 + {}", self.sql_ceil(&x));
+        let frac = format!("{x} - FLOOR({x})");
+
         // Group correlation belongs in the scalar subquery's own WHERE, not
-        // the NTILE derived table's: MariaDB cannot resolve outer-query
+        // the windowed derived table's: MariaDB cannot resolve outer-query
         // aliases from inside a derived table (Error 1054, "Unknown column
-        // ... in 'WHERE'"). NTILE is instead partitioned by the group
-        // columns and the correlation filters one level up, which assigns
-        // identical tiles for the kept group.
+        // ... in 'WHERE'"). The windows are instead partitioned by the
+        // group columns and the correlation filters one level up, which
+        // keeps the kept group's ranks identical.
         let (partition_by, group_cols, group_filter) = if groups.is_empty() {
             (String::new(), String::new(), String::new())
         } else {
@@ -401,17 +415,17 @@ pub trait SqlDialect {
         };
 
         format!(
-            "(SELECT (\
-              MAX(CASE WHEN __tile = {lo_tile} THEN __val END) + \
-              MIN(CASE WHEN __tile = {hi_tile} THEN __val END)\
-            ) / 2.0 \
-            FROM (\
-              SELECT {column} AS __val, \
-                     NTILE(4) OVER ({partition_by}ORDER BY {column}) AS __tile{group_cols} \
-              FROM ({from}) AS {__ggsql_pct__} \
-              WHERE {column} IS NOT NULL\
-            ) AS {__ggsql_tile__}{group_filter})",
-            column = quoted_column
+            "(SELECT \
+               MAX(CASE WHEN rn = {lo} THEN __val END) + \
+               (MAX(CASE WHEN rn = {hi} THEN __val END) - \
+                MAX(CASE WHEN rn = {lo} THEN __val END)) * MAX({frac}) \
+             FROM (\
+               SELECT {quoted_column} AS __val, \
+                      ROW_NUMBER() OVER ({partition_by}ORDER BY {quoted_column}) AS rn, \
+                      COUNT(*) OVER ({partition_by}) AS cnt{group_cols} \
+               FROM ({from}) AS {__ggsql_pct__} \
+               WHERE {quoted_column} IS NOT NULL\
+             ) AS {__ggsql_tile__}{group_filter})"
         )
     }
 
@@ -441,29 +455,58 @@ pub trait SqlDialect {
     }
 
     /// SQL literal for a date value (days since Unix epoch).
+    ///
+    /// The default renders an ISO `DATE 'YYYY-MM-DD'` literal, valid on
+    /// every backend that accepts ANSI literals; interval arithmetic
+    /// (`INTERVAL n DAY`) is not portable.
     fn sql_date_literal(&self, days_since_epoch: i32) -> String {
-        format!(
-            "CAST(DATE '1970-01-01' + INTERVAL {} DAY AS DATE)",
-            days_since_epoch
-        )
+        // 719163 is the proleptic Gregorian day number of the Unix epoch.
+        let date = chrono::NaiveDate::from_num_days_from_ce_opt(719163 + days_since_epoch)
+            .expect("date literal out of range");
+        format!("DATE '{}'", date.format("%Y-%m-%d"))
     }
 
     /// SQL literal for a datetime value (microseconds since Unix epoch).
     fn sql_datetime_literal(&self, microseconds_since_epoch: i64) -> String {
-        format!(
-            "TIMESTAMP '1970-01-01 00:00:00' + INTERVAL {} MICROSECOND",
-            microseconds_since_epoch
-        )
+        let dt = chrono::DateTime::from_timestamp_micros(microseconds_since_epoch)
+            .expect("datetime literal out of range")
+            .naive_utc();
+        let base = dt.format("%Y-%m-%d %H:%M:%S");
+        let micros = microseconds_since_epoch.rem_euclid(1_000_000);
+        if micros == 0 {
+            format!("TIMESTAMP '{base}'")
+        } else {
+            format!("TIMESTAMP '{base}.{micros:06}'")
+        }
     }
 
     /// SQL literal for a time value (nanoseconds since midnight).
     fn sql_time_literal(&self, nanoseconds_since_midnight: i64) -> String {
-        let seconds = nanoseconds_since_midnight / 1_000_000_000;
-        let nanos = nanoseconds_since_midnight % 1_000_000_000;
-        format!(
-            "TIME '00:00:00' + INTERVAL {} SECOND + INTERVAL {} NANOSECOND",
-            seconds, nanos
-        )
+        let seconds = nanoseconds_since_midnight.div_euclid(1_000_000_000);
+        let nanos = nanoseconds_since_midnight.rem_euclid(1_000_000_000);
+        let time =
+            chrono::NaiveTime::from_num_seconds_from_midnight_opt(seconds as u32, nanos as u32)
+                .expect("time literal out of range");
+        let base = time.format("%H:%M:%S");
+        if nanos == 0 {
+            format!("TIME '{base}'")
+        } else {
+            format!("TIME '{base}.{nanos:09}'")
+        }
+    }
+
+    /// Expression converting a temporal value to its epoch number, for
+    /// numeric comparison: days since epoch for dates, microseconds for
+    /// datetimes, nanoseconds for times (matching the units ggsql uses for
+    /// temporal scale values). Used when a temporal column must be compared
+    /// numerically (binned scales with a non-temporal transform).
+    ///
+    /// Default: a plain cast to the number type, valid where temporal →
+    /// numeric casts are allowed (T-SQL, ClickHouse). Dialects with
+    /// stricter casts (DuckDB, Postgres, MySQL, …) override.
+    fn sql_temporal_as_number(&self, expr: &str, _kind: CastTargetType) -> String {
+        let ty = self.number_type_name().unwrap_or("DOUBLE PRECISION");
+        self.sql_cast(expr, ty)
     }
 
     /// SQL literal for a boolean value.
@@ -512,6 +555,17 @@ pub trait SqlDialect {
     /// and `data_type` output columns.
     fn sql_list_columns(&self, _catalog: &str, _schema: &str, _table: &str) -> Option<String> {
         None
+    }
+
+    /// DDL statement(s) creating an empty temporary table with explicit
+    /// column definitions (`"name TYPE"` pairs), used by `Reader::register`
+    /// to stage a data frame before bulk-inserting into it.
+    fn sql_create_empty_temp_table(&self, name: &str, column_defs: &[String]) -> Vec<String> {
+        vec![format!(
+            "CREATE TEMPORARY TABLE {} ({})",
+            self.quote_ident(name),
+            column_defs.join(", ")
+        )]
     }
 
     /// Build the DDL statement(s) needed to (re)create a temporary table
@@ -927,6 +981,13 @@ pub(crate) mod test_support {
             }
 
             for name in scan_internal_idents(sql) {
+                // Temp-table names are internal identifiers too, but they
+                // name tables, not columns: without this filter a probe
+                // against a temp table would invent a column named after
+                // the table itself.
+                if self.tables.lock().unwrap().contains_key(&name) {
+                    continue;
+                }
                 let ty = self
                     .type_from_alias_definition(sql, &name)
                     .unwrap_or(DataType::Float64);

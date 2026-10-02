@@ -112,9 +112,8 @@ pub fn build_layer_select_list(
                 if let Some(req) = cast_map.get(name.as_str()) {
                     // Cast and rename to prefixed aesthetic name
                     format!(
-                        "CAST({} AS {}) AS {}",
-                        dialect.quote_ident(name),
-                        req.sql_type_name,
+                        "{} AS {}",
+                        dialect.sql_cast(&dialect.quote_ident(name), &req.sql_type_name),
                         dialect.quote_ident(&aes_col_name)
                     )
                 } else {

@@ -119,7 +119,8 @@ fn expand_segment_to_vertices(
 
     let numbered = format!(
         "SELECT *, ROW_NUMBER() OVER (ORDER BY (SELECT NULL)) \
-         AS {densify_id_q} FROM ({query})"
+         AS {densify_id_q} FROM ({query}) AS {__ggsql_numbered__}",
+        __ggsql_numbered__ = dialect.quote_ident("__ggsql_numbered__")
     );
 
     let __ggsql_vertex__ = dialect.quote_ident("__ggsql_vertex__");
