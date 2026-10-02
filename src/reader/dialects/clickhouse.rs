@@ -101,6 +101,21 @@ impl SqlDialect for ClickHouseDialect {
         )
     }
 
+    fn sql_temporal_as_number(
+        &self,
+        expr: &str,
+        kind: crate::plot::types::CastTargetType,
+    ) -> String {
+        // ClickHouse rejects Date -> Float casts ("Illegal type"); Date is
+        // epoch days internally and toUnixTimestamp covers datetimes.
+        use crate::plot::types::CastTargetType as C;
+        match kind {
+            C::Date => format!("toInt32({expr})"),
+            C::DateTime => format!("(toUnixTimestamp({expr}) * 1000000)"),
+            _ => format!("toFloat64({expr})"),
+        }
+    }
+
     fn sql_quantile_inline(&self, column: &str, fraction: f64) -> Option<String> {
         Some(format!(
             "quantileExactInclusive({fraction})({column})",
@@ -164,6 +179,17 @@ impl SqlDialect for ClickHouseDialect {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn temporal_as_number_uses_clickhouse_conversions() {
+        use crate::plot::types::CastTargetType as C;
+        let d = ClickHouseDialect;
+        assert_eq!(d.sql_temporal_as_number("`d`", C::Date), "toInt32(`d`)");
+        assert_eq!(
+            d.sql_temporal_as_number("`d`", C::DateTime),
+            "(toUnixTimestamp(`d`) * 1000000)"
+        );
+    }
 
     #[test]
     fn type_names_are_nullable() {

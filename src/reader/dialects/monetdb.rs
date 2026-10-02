@@ -22,11 +22,35 @@ impl SqlDialect for MonetDbDialect {
             column = self.quote_ident(column)
         ))
     }
+
+    fn sql_temporal_as_number(
+        &self,
+        expr: &str,
+        kind: crate::plot::types::CastTargetType,
+    ) -> String {
+        // MonetDB has no direct temporal -> double cast ("types date and
+        // double are not equal"); EXTRACT EPOCH yields seconds.
+        use crate::plot::types::CastTargetType as C;
+        match kind {
+            C::Date => format!("(EXTRACT(EPOCH FROM {expr}) / 86400)"),
+            C::DateTime => format!("(EXTRACT(EPOCH FROM {expr}) * 1000000)"),
+            _ => format!("CAST({expr} AS DOUBLE)"),
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn temporal_as_number_uses_epoch_extract() {
+        use crate::plot::types::CastTargetType as C;
+        assert_eq!(
+            MonetDbDialect.sql_temporal_as_number("\"d\"", C::Date),
+            "(EXTRACT(EPOCH FROM \"d\") / 86400)"
+        );
+    }
 
     #[test]
     fn quantile_is_native() {

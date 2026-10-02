@@ -139,9 +139,12 @@ fn create_table_sql(scheme: &str, table: &str) -> String {
     match scheme {
         "postgres" => ddl("INT", "DOUBLE PRECISION", "VARCHAR(16)", "DATE"),
         "trino" => ddl("INTEGER", "DOUBLE", "VARCHAR(16)", "DATE"),
+        // Date32 rather than Date: the ADBC driver surfaces the 2-byte Date
+        // as its native UInt16 (not Arrow Date32), so temporal columns are
+        // not recognised as dates downstream.
         "clickhouse" => format!(
             "{ddl} ENGINE = Memory",
-            ddl = ddl("Int32", "Float64", "String", "Date")
+            ddl = ddl("Int32", "Float64", "String", "Date32")
         ),
         "mysql" | "mariadb" => ddl("INT", "DOUBLE", "VARCHAR(16)", "DATE"),
         // T-SQL has no DOUBLE; FLOAT is the 64-bit type.

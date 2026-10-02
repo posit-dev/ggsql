@@ -45,6 +45,23 @@ impl SqlDialect for MssqlDialect {
         format!("CEILING({expr})")
     }
 
+    fn sql_temporal_as_number(
+        &self,
+        expr: &str,
+        kind: crate::plot::types::CastTargetType,
+    ) -> String {
+        // T-SQL rejects explicit temporal -> float casts (error 529);
+        // DATEDIFF against the epoch is the idiomatic conversion.
+        use crate::plot::types::CastTargetType as C;
+        match kind {
+            C::Date => format!("DATEDIFF(DAY, '1970-01-01', {expr})"),
+            C::DateTime => {
+                format!("DATEDIFF_BIG(MICROSECOND, '1970-01-01T00:00:00', {expr})")
+            }
+            _ => format!("CAST({expr} AS FLOAT)"),
+        }
+    }
+
     fn sql_with_recursive(&self) -> &'static str {
         // T-SQL CTEs are recursive by self-reference alone; the RECURSIVE
         // keyword is a syntax error.
@@ -144,6 +161,19 @@ mod tests {
         assert_eq!(
             MssqlDialect.sql_limit("SELECT a FROM t", 10),
             "SELECT TOP 10 * FROM (SELECT a FROM t) AS \"__ggsql_lim__\""
+        );
+    }
+
+    #[test]
+    fn temporal_as_number_uses_datediff() {
+        use crate::plot::types::CastTargetType as C;
+        assert_eq!(
+            MssqlDialect.sql_temporal_as_number("[d]", C::Date),
+            "DATEDIFF(DAY, '1970-01-01', [d])"
+        );
+        assert_eq!(
+            MssqlDialect.sql_temporal_as_number("[d]", C::DateTime),
+            "DATEDIFF_BIG(MICROSECOND, '1970-01-01T00:00:00', [d])"
         );
     }
 
