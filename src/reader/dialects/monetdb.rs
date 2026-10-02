@@ -23,6 +23,16 @@ impl SqlDialect for MonetDbDialect {
         ))
     }
 
+    fn sql_create_empty_temp_table(&self, name: &str, column_defs: &[String]) -> Vec<String> {
+        // MonetDB temp tables default to ON COMMIT DELETE ROWS; with ODBC
+        // autocommit the register INSERT's commit would wipe the staged rows.
+        vec![format!(
+            "CREATE TEMPORARY TABLE {} ({}) ON COMMIT PRESERVE ROWS",
+            self.quote_ident(name),
+            column_defs.join(", ")
+        )]
+    }
+
     fn sql_temporal_as_number(
         &self,
         expr: &str,
@@ -42,6 +52,17 @@ impl SqlDialect for MonetDbDialect {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn temp_table_preserves_rows_on_commit() {
+        let ddl = MonetDbDialect.sql_create_empty_temp_table("t", &["\"a\" INT".to_string()]);
+        assert_eq!(ddl.len(), 1);
+        assert!(
+            ddl[0].contains("ON COMMIT PRESERVE ROWS"),
+            "got: {}",
+            ddl[0]
+        );
+    }
 
     #[test]
     fn temporal_as_number_uses_epoch_extract() {

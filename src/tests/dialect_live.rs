@@ -380,10 +380,20 @@ fn run_battery(reader: &dyn Reader, ctx: &str, table: &str) {
     let layer = spec
         .layer_data(0)
         .unwrap_or_else(|| panic!("{ctx}: binned temporal produced no layer data"));
-    assert!(
-        layer.height() > 0,
-        "{ctx}: binned temporal returned zero rows"
-    );
+    if layer.height() == 0 {
+        // Zero rows means every bin comparison came back false — almost
+        // always a units/type mismatch between the trained breaks and the
+        // dialect's temporal-to-number conversion. Probe the raw extent so
+        // CI output shows what the driver actually returned for `day`.
+        let q = ddl_quote(ctx);
+        let probe = reader.execute_sql(&format!(
+            "SELECT count(*) AS n, MIN({q}day{q}) AS mn, MAX({q}day{q}) AS mx FROM {table}"
+        ));
+        panic!(
+            "{ctx}: binned temporal returned zero rows; \
+             day extent probe: {probe:?}"
+        );
+    }
 
     // PARTITION BY follows the same identifier rules as MAPPING: the name
     // is stored unquoted and re-quoted via the dialect. With a float column
