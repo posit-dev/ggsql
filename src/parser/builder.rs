@@ -8,7 +8,7 @@ use crate::plot::layer::geom::Geom;
 use crate::plot::projection::resolve_coord;
 use crate::plot::scale::{color_to_hex, is_color_aesthetic, is_user_facet_aesthetic, Transform};
 use crate::plot::*;
-use crate::{GgsqlError, Result};
+use crate::{ColumnSection, Format, GgsqlError, Result, SelectionItem, Spanner, Spec, Table};
 use std::collections::HashMap;
 use tree_sitter::Node;
 
@@ -43,6 +43,20 @@ fn parse_string_node(node: &Node, source: &SourceTree) -> String {
     let text = source.get_text(node);
     let unquoted = text.trim_matches(|c| c == '\'' || c == '"');
     process_escape_sequences(unquoted)
+}
+
+/// Strip one pair of surrounding backticks/double quotes from a quoted
+/// identifier (a bare identifier passes through unchanged) — not via
+/// `trim_matches`, which would also eat the other quote character if it
+/// appears unescaped at the edges of the content.
+fn parse_identifier_node(node: &Node, source: &SourceTree) -> String {
+    let text = source.get_text(node);
+    for quote in ['`', '"'] {
+        if let Some(inner) = text.strip_prefix(quote).and_then(|s| s.strip_suffix(quote)) {
+            return inner.to_string();
+        }
+    }
+    text
 }
 
 /// Process escape sequences in a string (e.g., \n, \t, \\, \')
@@ -194,7 +208,7 @@ fn parse_literal_value(node: &Node, source: &SourceTree) -> Result<AestheticValu
 // ============================================================================
 
 /// Build a Plot struct from a tree-sitter parse tree
-pub fn build_ast(source: &SourceTree) -> Result<Vec<Plot>> {
+pub fn build_ast(source: &SourceTree) -> Result<Vec<Spec>> {
     let root = source.root();
 
     // Check if root is a query node
@@ -216,22 +230,51 @@ pub fn build_ast(source: &SourceTree) -> Result<Vec<Plot>> {
         false
     };
 
-    // Find all visualise_statement nodes
-    let query = "(visualise_statement) @viz";
-    let viz_nodes = source.find_nodes(&root, query);
+    // A single alternation query visits the tree once and yields
+    // visualise_statement/tabulate_statement nodes already in document order,
+    // so they arrive correctly interleaved (e.g. `VISUALISE ... TABULATE ...`).
+    let stmt_nodes = source.find_nodes(
+        &root,
+        r#"
+            [
+              (visualise_statement) @stmt
+              (tabulate_statement) @stmt
+            ]
+        "#,
+    );
 
     let mut specs = Vec::new();
-    for viz_node in viz_nodes {
-        let spec = build_visualise_statement(&viz_node, source)?;
+    for stmt_node in stmt_nodes {
+        // Build the spec, then check the shared "FROM after a trailing
+        // SELECT" restriction once for whichever kind it is — VISUALISE FROM
+        // and TABULATE FROM both forbid it, differing only in keyword.
+        let (has_from, keyword, spec) = match stmt_node.kind() {
+            "visualise_statement" => {
+                let plot = build_visualise_statement(&stmt_node, source)?;
+                (
+                    plot.source.is_some(),
+                    "VISUALISE",
+                    Spec::Plot(Box::new(plot)),
+                )
+            }
+            "tabulate_statement" => {
+                let table = build_tabulate_statement(&stmt_node, source)?;
+                (table.source.is_some(), "TABULATE", Spec::Table(table))
+            }
+            other => {
+                return Err(GgsqlError::InternalError(format!(
+                    "Unexpected top-level statement kind: '{}'",
+                    other
+                )));
+            }
+        };
 
-        // Validate VISUALISE FROM usage
-        if spec.source.is_some() && last_is_select {
-            return Err(GgsqlError::ParseError(
-                "Cannot use VISUALISE FROM when the last SQL statement is SELECT. \
-                 Use either 'SELECT ... VISUALISE' or remove the SELECT and use \
-                 'VISUALISE FROM ...'."
-                    .to_string(),
-            ));
+        if has_from && last_is_select {
+            return Err(GgsqlError::ParseError(format!(
+                "Cannot use {keyword} FROM when the last SQL statement is SELECT. \
+                 Use either 'SELECT ... {keyword}' or remove the SELECT and use \
+                 '{keyword} FROM ...'."
+            )));
         }
 
         specs.push(spec);
@@ -239,7 +282,7 @@ pub fn build_ast(source: &SourceTree) -> Result<Vec<Plot>> {
 
     if specs.is_empty() {
         return Err(GgsqlError::ParseError(
-            "No VISUALISE statements found in query".to_string(),
+            "No VISUALISE or TABULATE statements found in query".to_string(),
         ));
     }
 
@@ -266,7 +309,7 @@ fn build_visualise_statement(node: &Node, source: &SourceTree) -> Result<Plot> {
                 // Handle standalone wildcard (*) mapping
                 spec.global_mappings.wildcard = true;
             }
-            "visualise_from" => {
+            "single_source_from" => {
                 if let Some(source_node) = child.child_by_field_name("source") {
                     spec.source = Some(parse_data_source(&source_node, source));
                 }
@@ -311,6 +354,199 @@ fn build_visualise_statement(node: &Node, source: &SourceTree) -> Result<Plot> {
     // This keeps all annotation-specific logic in one place.
 
     Ok(spec)
+}
+
+/// Build the selection items of a column_selection node in written order
+fn build_selection_items(node: &Node, source: &SourceTree) -> Result<Vec<SelectionItem>> {
+    let mut items = Vec::new();
+    for elem in source.find_nodes(node, "(mapping_element) @elem") {
+        let child = elem.child(0).ok_or_else(|| {
+            GgsqlError::ParseError("Invalid mapping_element: missing child".to_string())
+        })?;
+        let item = match child.kind() {
+            "wildcard_mapping" => SelectionItem::Wildcard,
+            "implicit_mapping" | "identifier" => {
+                let name = naming::unquote_ident(&source.get_text(&child));
+                SelectionItem::Column {
+                    sql: source.get_text(&elem),
+                    source: Some(name.clone()),
+                    name,
+                }
+            }
+            "explicit_mapping" => {
+                let (name_node, value_node) = extract_name_value_nodes(&child, "column selection")?;
+                let value_child = value_node.child(0).ok_or_else(|| {
+                    GgsqlError::ParseError(
+                        "Invalid column selection item: missing value".to_string(),
+                    )
+                })?;
+                let source_column = match value_child.kind() {
+                    "column_reference" => {
+                        Some(naming::unquote_ident(&source.get_text(&value_child)))
+                    }
+                    "literal_value" => None,
+                    _ => {
+                        return Err(GgsqlError::ParseError(format!(
+                            "Invalid column selection value type: {}",
+                            value_child.kind()
+                        )))
+                    }
+                };
+                SelectionItem::Column {
+                    sql: source.get_text(&elem),
+                    name: naming::unquote_ident(&source.get_text(&name_node)),
+                    source: source_column,
+                }
+            }
+            _ => {
+                return Err(GgsqlError::ParseError(format!(
+                    "Invalid column selection item: {}",
+                    child.kind()
+                )))
+            }
+        };
+        items.push(item);
+    }
+    Ok(items)
+}
+
+/// Build a single Table from a tabulate_statement node
+fn build_tabulate_statement(node: &Node, source: &SourceTree) -> Result<Table> {
+    let mut table = Table::new();
+
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        match child.kind() {
+            "column_selection" => {
+                table.selection = build_selection_items(&child, source)?;
+            }
+            "single_source_from" => {
+                if let Some(source_node) = child.child_by_field_name("source") {
+                    table.source = Some(parse_data_source(&source_node, source));
+                }
+            }
+            "tab_clause" => {
+                process_tab_clause(&child, source, &mut table)?;
+            }
+            _ => {}
+        }
+    }
+
+    Ok(table)
+}
+
+/// Process a table clause node
+fn process_tab_clause(node: &Node, source: &SourceTree, table: &mut Table) -> Result<()> {
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        match child.kind() {
+            "label_clause" => {
+                let new_labels = build_labels(&child, source)?;
+                for (key, value) in new_labels.labels {
+                    table.labels.labels.insert(key, value);
+                }
+            }
+            "span_clause" => {
+                table.spans.push(build_span_clause(&child, source)?);
+            }
+            "format_clause" => {
+                table.formats.push(build_format_clause(&child, source)?);
+            }
+            _ => {}
+        }
+    }
+
+    Ok(())
+}
+
+/// Build a Spanner from a span_clause node: SPAN id OVER col, ... [SETTING ...]
+fn build_span_clause(node: &Node, source: &SourceTree) -> Result<Spanner> {
+    let id_node = node
+        .child_by_field_name("id")
+        .ok_or_else(|| GgsqlError::ParseError("Missing 'id' field in SPAN clause".to_string()))?;
+    // `id` stays unparsed (quotes included), matching parse_column_list's
+    // own convention, so it compares equal to a later OVER/LABEL
+    // reference. `label` is the dequoted form, used only for display.
+    let (id, label) = match id_node.kind() {
+        "identifier" => (
+            source.get_text(&id_node),
+            Some(parse_identifier_node(&id_node, source)),
+        ),
+        "null_literal" => (naming::anonymous_span_id(), None),
+        _ => {
+            return Err(GgsqlError::ParseError(format!(
+                "SPAN id must be an identifier or null, got: {}",
+                id_node.kind()
+            )));
+        }
+    };
+
+    let columns_node = source
+        .find_node(node, "(column_list) @cols")
+        .ok_or_else(|| GgsqlError::ParseError("Missing columns in SPAN clause".to_string()))?;
+    let columns = parse_column_list(&columns_node, source)?;
+
+    let settings = match source.find_node(node, "(setting_clause) @s") {
+        Some(setting_node) => parse_setting_clause(&setting_node, source)?,
+        None => Parameters::new(),
+    };
+
+    Ok(Spanner {
+        id,
+        label,
+        columns,
+        settings,
+    })
+}
+
+/// Build a Format from a format_clause node: FORMAT [BODY|STUB] col, ... [SETTING ...] [RENAMING ...]
+fn build_format_clause(node: &Node, source: &SourceTree) -> Result<Format> {
+    let target = parse_format_target_identifier(node, source)?;
+
+    let columns_node = source
+        .find_node(node, "(column_list) @cols")
+        .ok_or_else(|| GgsqlError::ParseError("Missing columns in FORMAT clause".to_string()))?;
+    let columns = parse_column_list(&columns_node, source)?;
+
+    let settings = match source.find_node(node, "(setting_clause) @s") {
+        Some(setting_node) => parse_setting_clause(&setting_node, source)?,
+        None => Parameters::new(),
+    };
+
+    let mut value_mapping = None;
+    let mut value_template = "{}".to_string();
+    if let Some(renaming_node) = source.find_node(node, "(renaming_clause) @r") {
+        let (mappings, template) = parse_renaming_clause(&renaming_node, source)?;
+        if !mappings.is_empty() {
+            value_mapping = Some(mappings);
+        }
+        value_template = template;
+    }
+
+    Ok(Format {
+        columns,
+        target,
+        settings,
+        value_mapping,
+        value_template,
+    })
+}
+
+/// Parse a FORMAT clause's optional target identifier (BODY, STUB), missing
+/// meaning BODY by default.
+fn parse_format_target_identifier(node: &Node, source: &SourceTree) -> Result<ColumnSection> {
+    let Some(target_node) = source.find_node(node, "(format_target_identifier) @t") else {
+        return Ok(ColumnSection::Body);
+    };
+
+    match source.get_text(&target_node).to_lowercase().as_str() {
+        "body" => Ok(ColumnSection::Body),
+        "stub" => Ok(ColumnSection::Stub),
+        text => Err(GgsqlError::ParseError(format!(
+            "Unknown FORMAT target: '{}'. Valid targets: body, stub",
+            text
+        ))),
+    }
 }
 
 /// Process a visualization clause node
@@ -587,11 +823,12 @@ fn parse_parameter_assignment(
 
 /// Parse a partition_clause: PARTITION BY col1, col2, ...
 fn parse_partition_clause(node: &Node, source: &SourceTree) -> Result<Vec<String>> {
-    let query = r#"
-        (partition_columns
-          (identifier) @col)
-    "#;
-    Ok(source.find_texts(node, query))
+    let columns_node = source
+        .find_node(node, "(column_list) @cols")
+        .ok_or_else(|| {
+            GgsqlError::ParseError("Missing columns in PARTITION BY clause".to_string())
+        })?;
+    parse_column_list(&columns_node, source)
 }
 
 /// Parse a filter_clause: FILTER <raw SQL expression>
@@ -702,9 +939,9 @@ fn build_scale(node: &Node, source: &SourceTree) -> Result<Scale> {
                 // Reuse existing setting_clause parser
                 properties = parse_setting_clause(&child, source)?;
             }
-            "scale_renaming_clause" => {
+            "renaming_clause" => {
                 // Parse RENAMING 'A' => 'Alpha', 'B' => 'Beta', * => '{} units'
-                let (mappings, template) = parse_scale_renaming_clause(&child, source)?;
+                let (mappings, template) = parse_renaming_clause(&child, source)?;
                 if !mappings.is_empty() {
                     label_mapping = Some(mappings);
                 }
@@ -829,7 +1066,7 @@ fn parse_scale_via_clause(node: &Node, source: &SourceTree) -> Result<Transform>
 /// Returns a tuple of:
 /// - HashMap where: Key = original value, Value = Some(label) or None for suppressed labels
 /// - Template string for wildcard mappings (* => '...'), defaults to "{}"
-fn parse_scale_renaming_clause(
+fn parse_renaming_clause(
     node: &Node,
     source: &SourceTree,
 ) -> Result<(HashMap<String, Option<String>>, String)> {
@@ -910,9 +1147,9 @@ fn build_facet(node: &Node, source: &SourceTree) -> Result<Facet> {
             "facet_by" => {
                 next_vars_are_cols = true;
             }
-            "facet_vars" => {
+            "column_list" => {
                 // Parse list of variable names
-                let vars = parse_facet_vars(&child, source)?;
+                let vars = parse_column_list(&child, source)?;
                 if next_vars_are_cols {
                     column_vars = vars;
                 } else {
@@ -946,9 +1183,9 @@ fn build_facet(node: &Node, source: &SourceTree) -> Result<Facet> {
     })
 }
 
-/// Parse facet variables from a facet_vars node
-fn parse_facet_vars(node: &Node, source: &SourceTree) -> Result<Vec<String>> {
-    let query = "(identifier) @var";
+/// Parse identifier texts out of a column_list node
+fn parse_column_list(node: &Node, source: &SourceTree) -> Result<Vec<String>> {
+    let query = "(identifier) @col";
     Ok(source.find_texts(node, query))
 }
 
@@ -1216,7 +1453,209 @@ mod tests {
         let source = SourceTree::new(query)?;
         source.validate()?;
 
+        Ok(build_ast(&source)?
+            .into_iter()
+            .filter_map(Spec::into_plot)
+            .collect())
+    }
+
+    /// Like `parse_test_query`, but keeps `Table` specs instead of filtering
+    /// them out — for tests that need to see the raw `Spec` variants.
+    fn parse_test_specs(query: &str) -> Result<Vec<Spec>> {
+        let source = SourceTree::new(query)?;
+        source.validate()?;
         build_ast(&source)
+    }
+
+    // ========================================
+    // TABULATE Tests
+    // ========================================
+
+    #[test]
+    fn test_tabulate_bare() {
+        let specs = parse_test_specs("SELECT 1 TABULATE *").unwrap();
+        assert_eq!(specs.len(), 1);
+        let table = specs[0].as_table().expect("expected a Table spec");
+        assert!(table.source.is_none());
+    }
+
+    #[test]
+    fn test_tabulate_from() {
+        let specs = parse_test_specs("TABULATE * FROM sales").unwrap();
+        assert_eq!(specs.len(), 1);
+        let table = specs[0].as_table().expect("expected a Table spec");
+        assert!(matches!(table.source, Some(DataSource::Identifier(ref name)) if name == "sales"));
+    }
+
+    #[test]
+    fn test_tabulate_from_file_path() {
+        let specs = parse_test_specs("TABULATE * FROM 'data.csv'").unwrap();
+        assert_eq!(specs.len(), 1);
+        let table = specs[0].as_table().expect("expected a Table spec");
+        assert!(matches!(table.source, Some(DataSource::FilePath(ref path)) if path == "data.csv"));
+    }
+
+    #[test]
+    fn test_tabulate_from_after_select_errors() {
+        // Mirrors VISUALISE FROM's own "last statement is SELECT" restriction.
+        let result = parse_test_specs("SELECT 1 TABULATE * FROM sales");
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Cannot use TABULATE FROM"));
+    }
+
+    #[test]
+    fn test_visualise_then_tabulate_interleaved() {
+        let specs = parse_test_specs("SELECT 1 AS x VISUALISE x DRAW point TABULATE *").unwrap();
+        assert_eq!(specs.len(), 2);
+        assert!(matches!(specs[0], Spec::Plot(_)));
+        assert!(matches!(specs[1], Spec::Table(_)));
+    }
+
+    #[test]
+    fn test_tabulate_span_basic() {
+        let specs = parse_test_specs("TABULATE * FROM sales SPAN `Pretty Name` OVER foo, bar, baz")
+            .unwrap();
+        let table = specs[0].as_table().expect("expected a Table spec");
+
+        assert_eq!(table.spans.len(), 1);
+        assert_eq!(table.spans[0].id, "`Pretty Name`");
+        assert_eq!(table.spans[0].label, Some("Pretty Name".to_string()));
+        assert_eq!(table.spans[0].columns, vec!["foo", "bar", "baz"]);
+        assert!(table.spans[0].settings.is_empty());
+    }
+
+    #[test]
+    fn test_tabulate_span_columns_first_under_matches_id_first_over() {
+        let over = parse_test_specs("TABULATE * FROM sales SPAN `Pretty Name` OVER foo, bar, baz")
+            .unwrap();
+        let under =
+            parse_test_specs("TABULATE * FROM sales SPAN foo, bar, baz UNDER `Pretty Name`")
+                .unwrap();
+
+        let over_table = over[0].as_table().expect("expected a Table spec");
+        let under_table = under[0].as_table().expect("expected a Table spec");
+
+        assert_eq!(over_table.spans, under_table.spans);
+    }
+
+    #[test]
+    fn test_tabulate_span_null_id_gets_an_anonymous_generated_id() {
+        let specs = parse_test_specs("TABULATE * FROM sales SPAN NULL OVER foo, bar").unwrap();
+        let table = specs[0].as_table().expect("expected a Table spec");
+
+        assert!(!table.spans[0].id.is_empty());
+        assert_eq!(table.spans[0].label, None);
+    }
+
+    #[test]
+    fn test_tabulate_span_with_setting() {
+        let specs =
+            parse_test_specs("TABULATE * FROM sales SPAN W OVER foo SETTING width => '40%'")
+                .unwrap();
+        let table = specs[0].as_table().expect("expected a Table spec");
+
+        assert_eq!(
+            table.spans[0].settings.get("width"),
+            Some(&ParameterValue::String("40%".to_string()))
+        );
+    }
+
+    #[test]
+    fn test_tabulate_repeated_label_clauses_merge_rather_than_overwrite() {
+        let specs = parse_test_specs("TABULATE * FROM sales LABEL id => 'ID' LABEL name => 'Name'")
+            .unwrap();
+        let table = specs[0].as_table().expect("expected a Table spec");
+
+        assert_eq!(table.labels.labels.get("id"), Some(&Some("ID".to_string())));
+        assert_eq!(
+            table.labels.labels.get("name"),
+            Some(&Some("Name".to_string()))
+        );
+    }
+
+    #[test]
+    fn test_tabulate_multiple_spans_and_label_in_any_order() {
+        let specs = parse_test_specs(
+            "TABULATE * FROM sales LABEL id => 'ID' SPAN A OVER foo, bar SPAN B OVER baz",
+        )
+        .unwrap();
+        let table = specs[0].as_table().expect("expected a Table spec");
+
+        assert_eq!(table.labels.labels.get("id"), Some(&Some("ID".to_string())));
+        assert_eq!(table.spans.len(), 2);
+        assert_eq!(table.spans[0].label, Some("A".to_string()));
+        assert_eq!(table.spans[0].columns, vec!["foo", "bar"]);
+        assert_eq!(table.spans[1].label, Some("B".to_string()));
+        assert_eq!(table.spans[1].columns, vec!["baz"]);
+    }
+
+    #[test]
+    fn test_tabulate_format_basic_has_no_settings_or_renaming() {
+        let specs = parse_test_specs("TABULATE * FROM sales FORMAT foo, bar").unwrap();
+        let table = specs[0].as_table().expect("expected a Table spec");
+
+        assert_eq!(table.formats.len(), 1);
+        assert_eq!(table.formats[0].columns, vec!["foo", "bar"]);
+        assert_eq!(table.formats[0].target, ColumnSection::Body);
+        assert!(table.formats[0].settings.is_empty());
+        assert_eq!(table.formats[0].value_mapping, None);
+        assert_eq!(table.formats[0].value_template, "{}");
+    }
+
+    #[test]
+    fn test_tabulate_format_stub_target() {
+        let specs = parse_test_specs("TABULATE * FROM sales FORMAT STUB region").unwrap();
+        let table = specs[0].as_table().expect("expected a Table spec");
+
+        assert_eq!(table.formats[0].columns, vec!["region"]);
+        assert_eq!(table.formats[0].target, ColumnSection::Stub);
+    }
+
+    #[test]
+    fn test_tabulate_format_explicit_body_target() {
+        let specs = parse_test_specs("TABULATE * FROM sales FORMAT BODY region").unwrap();
+        let table = specs[0].as_table().expect("expected a Table spec");
+
+        assert_eq!(table.formats[0].columns, vec!["region"]);
+        assert_eq!(table.formats[0].target, ColumnSection::Body);
+    }
+
+    #[test]
+    fn test_tabulate_format_with_setting_and_renaming() {
+        let specs = parse_test_specs(
+            "TABULATE * FROM sales FORMAT price SETTING width => '20%' \
+             RENAMING null => '-', * => '{:num %.2f}'",
+        )
+        .unwrap();
+        let table = specs[0].as_table().expect("expected a Table spec");
+
+        assert_eq!(table.formats[0].columns, vec!["price"]);
+        assert_eq!(
+            table.formats[0].settings.get("width"),
+            Some(&ParameterValue::String("20%".to_string()))
+        );
+        assert_eq!(
+            table.formats[0].value_mapping,
+            Some(HashMap::from([("null".to_string(), Some("-".to_string()))]))
+        );
+        assert_eq!(table.formats[0].value_template, "{:num %.2f}");
+    }
+
+    #[test]
+    fn test_tabulate_multiple_format_clauses_produce_separate_formats() {
+        let specs = parse_test_specs(
+            "TABULATE * FROM sales FORMAT foo RENAMING * => '{:num %.0f}' FORMAT bar",
+        )
+        .unwrap();
+        let table = specs[0].as_table().expect("expected a Table spec");
+
+        assert_eq!(table.formats.len(), 2);
+        assert_eq!(table.formats[0].columns, vec!["foo"]);
+        assert_eq!(table.formats[0].value_template, "{:num %.0f}");
+        assert_eq!(table.formats[1].columns, vec!["bar"]);
     }
 
     // ========================================
@@ -3508,7 +3947,7 @@ mod tests {
         let source = make_source("VISUALISE FROM sales DRAW bar");
         let root = source.root();
 
-        let query = "(visualise_from source: (_) @source)";
+        let query = "(single_source_from source: (_) @source)";
 
         let from_node = source.find_node(&root, query).unwrap();
         let parsed = parse_data_source(&from_node, &source);

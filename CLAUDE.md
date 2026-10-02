@@ -48,7 +48,7 @@ For details — module layout, traits, where extension points live — see [`src
 
 ## Building
 
-**Prerequisite: `tree-sitter-cli`.** Any Rust build regenerates the parser from `grammar.js` via `tree-sitter-ggsql`'s build script, which runs `tree-sitter generate` and **fails if `tree-sitter-cli` is not on `PATH`**. Install it once with `npm install -g tree-sitter-cli`. To build against the committed `tree-sitter-ggsql/src/parser.c` without the CLI (e.g. if you're not touching the grammar), set `GGSQL_SKIP_GENERATE=1`.
+**Prerequisite: `tree-sitter-cli`.** Any Rust build regenerates the parser from `grammar.js` via `tree-sitter-ggsql`'s build script, which runs `tree-sitter generate` and **fails if `tree-sitter-cli` is not on `PATH`**. Install it once with `npm install -g tree-sitter-cli`. To build against a pre-generated `tree-sitter-ggsql/src/parser.c` without the CLI (e.g. if you're not touching the grammar), set `GGSQL_SKIP_GENERATE=1`.
 
 ```sh
 # Rust workspace (default members: tree-sitter-ggsql, src, ggsql-cli, ggsql-jupyter)

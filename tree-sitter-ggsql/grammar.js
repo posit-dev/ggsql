@@ -26,10 +26,10 @@ module.exports = grammar({
   ],
 
   rules: {
-    // Main entry point - SQL followed by VISUALISE statements
+    // Main entry point - SQL followed by VISUALISE/TABULATE statements
     query: $ => seq(
       optional($.sql_portion),
-      repeat($.visualise_statement)
+      repeat(choice($.visualise_statement, $.tabulate_statement))
     ),
 
     // SQL portion - multiple statements separated by semicolons
@@ -650,13 +650,14 @@ module.exports = grammar({
     visualise_statement: $ => prec.dynamic(1, seq(
       $.visualise_keyword,
       optional($.global_mapping),
-      optional($.visualise_from),
+      optional($.single_source_from),
       repeat($.viz_clause)
     )),
 
-    // The VISUALISE-level source: exactly one table, CTE, or file path.
-    // Unlike a SQL FROM clause this admits no joins and no comma list.
-    visualise_from: $ => seq(
+    // The statement-level source shared by VISUALISE and TABULATE: exactly
+    // one table, CTE, or file path. Unlike a SQL FROM clause this admits no
+    // joins and no comma list.
+    single_source_from: $ => seq(
       token(prec(1, caseInsensitive('FROM'))),
       field('source', $.source_ref)
     ),
@@ -667,8 +668,90 @@ module.exports = grammar({
       caseInsensitive("VISUALIZE")
     ))),
 
+    // TABULATE — still incomplete, more clauses expected as Table grows.
+    // column_selection and single_source_from are fixed in position, mirroring
+    // VISUALISE's global_mapping + single_source_from ahead of
+    // repeat($.viz_clause). LABEL/SPAN/FORMAT (tab_clause) repeat, any order,
+    // after that.
+    tabulate_statement: $ => prec.dynamic(1, seq(
+      $.tabulate_keyword,
+      $.column_selection,
+      optional($.single_source_from),
+      repeat($.tab_clause)
+    )),
+
+    // TABULATE keyword as explicit high-precedence token (mirrors visualise_keyword)
+    tabulate_keyword: $ => token(prec(10, caseInsensitive("TABULATE"))),
+
+    // Column selection after TABULATE: `*`, a bare column, or `value AS
+    // name` to rename it. Reuses mapping_list, like global_mapping does for
+    // VISUALISE.
+    column_selection: $ => $.mapping_list,
+
+    // All the TABULATE clauses (mirrors viz_clause's role for VISUALISE).
+    tab_clause: $ => choice(
+      $.label_clause,
+      $.span_clause,
+      $.format_clause,
+    ),
+
+    // FORMAT — configures cell formatting for a group of columns. Multiple
+    // FORMAT clauses repeat (FORMAT ... FORMAT ...) for different column
+    // groups, the same model SPAN uses. Optional target identifier before
+    // the column list, defaulting to BODY.
+    format_clause: $ => seq(
+      caseInsensitive('FORMAT'),
+      optional($.format_target_identifier),  // optional target before columns
+      $.column_list,
+      optional($.setting_clause),
+      optional($.renaming_clause)
+    ),
+
+    // FORMAT targets - which section of the table the columns belong to
+    format_target_identifier: $ => choice(
+      caseInsensitive('BODY'),  // regular table body (default)
+      caseInsensitive('STUB')   // row-label column(s)
+    ),
+
+    // SPAN — groups columns under one spanner cell. Multiple spanners repeat
+    // the whole clause (SPAN ... SPAN ...), the same model DRAW/SCALE use for
+    // more than one instance — not a comma list inside one SPAN. Two forms,
+    // id-first or id-last: `SPAN <id> OVER <columns>` or `SPAN <columns>
+    // UNDER <id>`. Both produce the same `id`/column_list shape, just in a
+    // different order, so nothing downstream needs to know which was used.
+    span_clause: $ => seq(
+      caseInsensitive('SPAN'),
+      // Mandatory: an identifier names this spanner — also its default
+      // display text, and how a later SPAN's OVER list or a LABEL entry
+      // addresses it (quote it to include spaces or other non-identifier
+      // characters). NULL leaves it anonymous: nothing can reference it,
+      // and its cell renders blank, but its columns still group (e.g. for
+      // a shared SETTING like width).
+      choice(
+        seq(
+          field('id', choice($.identifier, $.null_literal)),
+          caseInsensitive('OVER'),
+          $.column_list
+        ),
+        seq(
+          $.column_list,
+          caseInsensitive('UNDER'),
+          field('id', choice($.identifier, $.null_literal))
+        )
+      ),
+      optional($.setting_clause)
+    ),
+
+    // Shared comma-separated identifier list: SPAN's columns, PARTITION BY's
+    // columns, FACET's row/column vars, FORMAT's columns.
+    column_list: $ => seq(
+      $.identifier,
+      repeat(seq(',', $.identifier))
+    ),
+
     // Shared mapping list: comma-separated mapping elements
-    // Used by both global (VISUALISE) and layer (MAPPING) mappings
+    // Used by global (VISUALISE) and layer (MAPPING) mappings, and by
+    // TABULATE's column_selection
     mapping_list: $ => seq(
       $.mapping_element,
       repeat(seq(',', $.mapping_element))
@@ -801,12 +884,7 @@ module.exports = grammar({
     partition_clause: $ => seq(
       caseInsensitive('PARTITION'),
       caseInsensitive('BY'),
-      $.partition_columns
-    ),
-
-    partition_columns: $ => seq(
-      $.identifier,
-      repeat(seq(',', $.identifier))
+      $.column_list
     ),
 
     // FILTER clause for layer filtering: FILTER <raw SQL WHERE expression>
@@ -956,12 +1034,12 @@ module.exports = grammar({
       optional($.scale_to_clause),
       optional($.scale_via_clause),
       optional($.setting_clause),  // reuse existing setting_clause from DRAW
-      optional($.scale_renaming_clause)  // custom label mappings
+      optional($.renaming_clause)  // custom label mappings
     ),
 
-    // RENAMING clause for custom axis/legend labels
-    // Syntax: RENAMING 'A' => 'Alpha', 'B' => 'Beta', 'C' => NULL
-    scale_renaming_clause: $ => seq(
+    // RENAMING clause: SCALE uses it for custom axis/legend labels, FORMAT
+    // for custom cell labels. Syntax: RENAMING 'A' => 'Alpha', 'B' => 'Beta', 'C' => NULL
+    renaming_clause: $ => seq(
       caseInsensitive('RENAMING'),
       $.renaming_assignment,
       repeat(seq(',', $.renaming_assignment))
@@ -1012,20 +1090,15 @@ module.exports = grammar({
     // Single variable = wrap layout, BY clause = grid layout
     facet_clause: $ => seq(
       caseInsensitive('FACET'),
-      $.facet_vars,
+      $.column_list,
       optional(seq(
         alias(caseInsensitive('BY'), $.facet_by),
-        $.facet_vars
+        $.column_list
       )),
       optional($.setting_clause)            // Reuse from DRAW/SCALE
     ),
 
     facet_by: $ => 'BY',
-
-    facet_vars: $ => seq(
-      $.identifier,
-      repeat(seq(',', $.identifier))
-    ),
 
     // PROJECT clause - PROJECT [aesthetics] TO coord_type [SETTING prop => value, ...]
     // Examples:
@@ -1043,7 +1116,9 @@ module.exports = grammar({
       optional(seq(caseInsensitive('SETTING'), $.project_properties))
     ),
 
-    // Optional list of position aesthetic names for PROJECT clause
+    // Optional list of position aesthetic names for PROJECT clause. Kept
+    // separate from column_list even though the grammar shape is identical:
+    // this names aesthetics (x, y, angle, radius, ...), not columns.
     project_aesthetics: $ => seq(
       $.identifier,
       repeat(seq(',', $.identifier))

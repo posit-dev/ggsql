@@ -74,7 +74,7 @@ pub struct Plot {
 }
 
 /// Text labels (from LABELS clause)
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub struct Labels {
     /// Label assignments (label type → text, None = suppress)
     pub labels: HashMap<String, Option<String>>,

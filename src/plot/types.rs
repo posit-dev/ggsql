@@ -1168,13 +1168,21 @@ impl NumberConstraint {
 pub struct StringConstraint {
     /// String must be one of these values (empty = any string allowed)
     pub allowed_values: &'static [&'static str],
+    /// String must be a number immediately followed by one of these units
+    /// (empty = no restriction) — for a CSS-style measurement like
+    /// `width => '20%'`/`'240px'`, where the numeric part is unbounded but
+    /// the unit isn't. Checked by stripping a candidate unit and parsing
+    /// what's left as `f64`, not just a suffix match, so `'pxpx'` or a bare
+    /// `'%'` are rejected too.
+    pub numeric_units: &'static [&'static str],
 }
 
 impl StringConstraint {
-    /// Any string allowed (empty slice = no restriction)
+    /// Any string allowed (empty slices = no restriction)
     pub const fn unconstrained() -> Self {
         Self {
             allowed_values: &[],
+            numeric_units: &[],
         }
     }
 
@@ -1182,6 +1190,15 @@ impl StringConstraint {
     pub const fn one_of(values: &'static [&'static str]) -> Self {
         Self {
             allowed_values: values,
+            numeric_units: &[],
+        }
+    }
+
+    /// String must be a number immediately followed by one of the given units
+    pub const fn numeric_with_unit(units: &'static [&'static str]) -> Self {
+        Self {
+            allowed_values: &[],
+            numeric_units: units,
         }
     }
 }
@@ -1328,6 +1345,19 @@ impl ParamConstraint {
         }
     }
 
+    /// String only, constrained to a number immediately followed by one of
+    /// the given units — for a CSS-style measurement like
+    /// `width => '20%'`/`'240px'`.
+    pub const fn string_numeric_with_unit(units: &'static [&'static str]) -> Self {
+        Self {
+            number: TypeConstraint::Forbidden,
+            string: TypeConstraint::Constrained(StringConstraint::numeric_with_unit(units)),
+            boolean: TypeConstraint::Forbidden,
+            array: TypeConstraint::Forbidden,
+            allow_null: true,
+        }
+    }
+
     /// String only
     pub const fn string() -> Self {
         Self {
@@ -1368,6 +1398,21 @@ impl ParamConstraint {
             string: TypeConstraint::Any, // Any string (temporal interval validated elsewhere)
             boolean: TypeConstraint::Forbidden,
             array: TypeConstraint::Constrained(arr),
+            allow_null: true,
+        }
+    }
+
+    /// String enum or Number within a range - for parameters like `hjust`
+    /// that accept either a named keyword or a continuous value.
+    pub const fn string_option_or_number(
+        values: &'static [&'static str],
+        num: NumberConstraint,
+    ) -> Self {
+        Self {
+            number: TypeConstraint::Constrained(num),
+            string: TypeConstraint::Constrained(StringConstraint::one_of(values)),
+            boolean: TypeConstraint::Forbidden,
+            array: TypeConstraint::Forbidden,
             allow_null: true,
         }
     }
@@ -1515,17 +1560,27 @@ fn validate_number(name: &str, n: f64, c: &NumberConstraint) -> Result<(), Strin
 }
 
 fn validate_string(name: &str, s: &str, c: &StringConstraint) -> Result<(), String> {
-    // Empty allowed_values = unconstrained (any string)
-    if c.allowed_values.is_empty() {
-        return Ok(());
-    }
-    if !c.allowed_values.contains(&s) {
+    if !c.allowed_values.is_empty() && !c.allowed_values.contains(&s) {
         return Err(format!(
             "'{}' should be {}, not '{}'",
             name,
             crate::or_list_quoted(c.allowed_values, '\''),
             s
         ));
+    }
+    if !c.numeric_units.is_empty() {
+        let has_valid_unit = c.numeric_units.iter().any(|unit| {
+            s.strip_suffix(unit)
+                .is_some_and(|prefix| prefix.parse::<f64>().is_ok())
+        });
+        if !has_valid_unit {
+            return Err(format!(
+                "'{}' should be a number followed by {}, not '{}'",
+                name,
+                crate::or_list_quoted(c.numeric_units, '\''),
+                s
+            ));
+        }
     }
     Ok(())
 }
@@ -2179,6 +2234,56 @@ mod tests {
         let result = validate_parameter("test", &ParameterValue::Number(1.0), &constraint);
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("should be String"));
+    }
+
+    #[test]
+    fn test_string_numeric_with_unit_accepts_a_number_with_an_allowed_unit() {
+        let constraint = ParamConstraint::string_numeric_with_unit(&["px", "%"]);
+        assert!(validate_parameter(
+            "width",
+            &ParameterValue::String("20%".to_string()),
+            &constraint
+        )
+        .is_ok());
+        assert!(validate_parameter(
+            "width",
+            &ParameterValue::String("240px".to_string()),
+            &constraint
+        )
+        .is_ok());
+    }
+
+    #[test]
+    fn test_string_numeric_with_unit_rejects_a_non_numeric_prefix() {
+        let constraint = ParamConstraint::string_numeric_with_unit(&["px", "%"]);
+        let result = validate_parameter(
+            "width",
+            &ParameterValue::String("wide%".to_string()),
+            &constraint,
+        );
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_string_numeric_with_unit_rejects_a_disallowed_unit() {
+        let constraint = ParamConstraint::string_numeric_with_unit(&["px", "%"]);
+        let result = validate_parameter(
+            "width",
+            &ParameterValue::String("20em".to_string()),
+            &constraint,
+        );
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_string_numeric_with_unit_rejects_a_bare_unit() {
+        let constraint = ParamConstraint::string_numeric_with_unit(&["px", "%"]);
+        let result = validate_parameter(
+            "width",
+            &ParameterValue::String("%".to_string()),
+            &constraint,
+        );
+        assert!(result.is_err());
     }
 
     #[test]
