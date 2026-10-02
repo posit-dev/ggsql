@@ -4609,7 +4609,7 @@ TABULATE * FROM sales LABEL id => 'ID'
 TABULATE SPAN clause
 ================================================================================
 
-TABULATE * FROM sales SPAN `Pretty Name` ACROSS foo, bar, baz
+TABULATE * FROM sales SPAN `Pretty Name` OVER foo, bar, baz
 
 --------------------------------------------------------------------------------
 
@@ -4640,7 +4640,7 @@ TABULATE * FROM sales SPAN `Pretty Name` ACROSS foo, bar, baz
 TABULATE SPAN clause with a single column
 ================================================================================
 
-TABULATE * FROM sales SPAN A ACROSS foo
+TABULATE * FROM sales SPAN A OVER foo
 
 --------------------------------------------------------------------------------
 
@@ -4667,7 +4667,7 @@ TABULATE * FROM sales SPAN A ACROSS foo
 TABULATE SPAN clause with a NULL id
 ================================================================================
 
-TABULATE * FROM sales SPAN NULL ACROSS foo, bar
+TABULATE * FROM sales SPAN NULL OVER foo, bar
 
 --------------------------------------------------------------------------------
 
@@ -4695,7 +4695,7 @@ TABULATE * FROM sales SPAN NULL ACROSS foo, bar
 TABULATE SPAN clause with a SETTING
 ================================================================================
 
-TABULATE * FROM sales SPAN W ACROSS foo SETTING width => '40%'
+TABULATE * FROM sales SPAN W OVER foo SETTING width => '40%'
 
 --------------------------------------------------------------------------------
 
@@ -4758,7 +4758,7 @@ TABULATE * FROM sales SPAN foo, bar UNDER baz
 TABULATE LABEL then SPAN clause, any order
 ================================================================================
 
-TABULATE * FROM sales LABEL id => 'ID' SPAN A ACROSS foo, bar
+TABULATE * FROM sales LABEL id => 'ID' SPAN A OVER foo, bar
 
 --------------------------------------------------------------------------------
 

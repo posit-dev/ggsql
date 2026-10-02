@@ -78,9 +78,9 @@ impl Default for Table {
 }
 
 impl Table {
-    /// Expand a SPAN's `ACROSS` entry that names an earlier spanner's `id`
-    /// into that spanner's own columns — `SPAN y ACROSS x_id, c` (after
-    /// `SPAN x_id ACROSS a, b`) resolves to columns a, b, c for `y`. Only
+    /// Expand a SPAN's `OVER` entry that names an earlier spanner's `id`
+    /// into that spanner's own columns — `SPAN y OVER x_id, c` (after
+    /// `SPAN x_id OVER a, b`) resolves to columns a, b, c for `y`. Only
     /// ids from earlier spans are recognised; an id declared later, or a
     /// genuine typo, is left as a literal string and caught downstream as
     /// an unknown column, the same as any other bad reference.
@@ -124,7 +124,7 @@ impl Table {
     /// last-clause-wins resolution needed: a column that was ever declared
     /// STUB is off-limits to SPAN, regardless of whether a later FORMAT
     /// clause retargeted it to BODY. Takes already-`resolve_spanner_ids`-
-    /// resolved spans, so a SPAN's `ACROSS` id reference is checked against
+    /// resolved spans, so a SPAN's `OVER` id reference is checked against
     /// the real columns it expands to, not the literal id text — and a
     /// STUB format's own column list gets the same treatment, expanding any
     /// entry that names a SPAN id into the columns it covers, so `FORMAT
@@ -157,7 +157,7 @@ impl Table {
     }
 
     /// Fully resolve this table's spanners for execution: settings
-    /// validated, `ACROSS` ids folded, STUB boundary checked, columns
+    /// validated, `OVER` ids folded, STUB boundary checked, columns
     /// checked against the real schema, and each `label` overlaid with any
     /// `LABEL <id> => ...` entry.
     pub fn resolve_spanners(
@@ -194,7 +194,7 @@ impl Table {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Spanner {
     /// This spanner's identifier, unparsed (quotes included, if quoted).
-    /// Referenced by a later `SPAN`'s `ACROSS` list or a `LABEL <id> =>
+    /// Referenced by a later `SPAN`'s `OVER` list or a `LABEL <id> =>
     /// ...` override. `SPAN NULL` still gets a real, internally generated
     /// id here — nothing else can reasonably reference it.
     pub id: String,

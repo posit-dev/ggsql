@@ -101,7 +101,7 @@
       <item>RENAMING</item>
       <item>TO</item>
       <item>VIA</item>
-      <item>ACROSS</item>
+      <item>OVER</item>
     </list>
 
     <!-- Scale Type Modifiers (before aesthetic name in SCALE) -->
@@ -732,8 +732,8 @@
         <WordDetect attribute="Keyword" context="Normal" String="WHERE" insensitive="true"/>
         <WordDetect attribute="Keyword" context="Normal" String="WITH" insensitive="true"/>
 
-        <!-- ACROSS/UNDER and SETTING (only SETTING supported here, not FILTER/PARTITION/ORDER) -->
-        <WordDetect attribute="Keyword" context="#stay" String="ACROSS" insensitive="true"/>
+        <!-- OVER/UNDER and SETTING (only SETTING supported here, not FILTER/PARTITION/ORDER) -->
+        <WordDetect attribute="Keyword" context="#stay" String="OVER" insensitive="true"/>
         <WordDetect attribute="Keyword" context="#stay" String="UNDER" insensitive="true"/>
         <WordDetect attribute="Keyword" context="#stay" String="SETTING" insensitive="true"/>
 

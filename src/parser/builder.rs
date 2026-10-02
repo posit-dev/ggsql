@@ -459,13 +459,13 @@ fn process_tab_clause(node: &Node, source: &SourceTree, table: &mut Table) -> Re
     Ok(())
 }
 
-/// Build a Spanner from a span_clause node: SPAN id ACROSS col, ... [SETTING ...]
+/// Build a Spanner from a span_clause node: SPAN id OVER col, ... [SETTING ...]
 fn build_span_clause(node: &Node, source: &SourceTree) -> Result<Spanner> {
     let id_node = node
         .child_by_field_name("id")
         .ok_or_else(|| GgsqlError::ParseError("Missing 'id' field in SPAN clause".to_string()))?;
     // `id` stays unparsed (quotes included), matching parse_column_list's
-    // own convention, so it compares equal to a later ACROSS/LABEL
+    // own convention, so it compares equal to a later OVER/LABEL
     // reference. `label` is the dequoted form, used only for display.
     let (id, label) = match id_node.kind() {
         "identifier" => (
@@ -1516,9 +1516,8 @@ mod tests {
 
     #[test]
     fn test_tabulate_span_basic() {
-        let specs =
-            parse_test_specs("TABULATE * FROM sales SPAN `Pretty Name` ACROSS foo, bar, baz")
-                .unwrap();
+        let specs = parse_test_specs("TABULATE * FROM sales SPAN `Pretty Name` OVER foo, bar, baz")
+            .unwrap();
         let table = specs[0].as_table().expect("expected a Table spec");
 
         assert_eq!(table.spans.len(), 1);
@@ -1529,23 +1528,22 @@ mod tests {
     }
 
     #[test]
-    fn test_tabulate_span_columns_first_under_matches_id_first_across() {
-        let across =
-            parse_test_specs("TABULATE * FROM sales SPAN `Pretty Name` ACROSS foo, bar, baz")
-                .unwrap();
+    fn test_tabulate_span_columns_first_under_matches_id_first_over() {
+        let over = parse_test_specs("TABULATE * FROM sales SPAN `Pretty Name` OVER foo, bar, baz")
+            .unwrap();
         let under =
             parse_test_specs("TABULATE * FROM sales SPAN foo, bar, baz UNDER `Pretty Name`")
                 .unwrap();
 
-        let across_table = across[0].as_table().expect("expected a Table spec");
+        let over_table = over[0].as_table().expect("expected a Table spec");
         let under_table = under[0].as_table().expect("expected a Table spec");
 
-        assert_eq!(across_table.spans, under_table.spans);
+        assert_eq!(over_table.spans, under_table.spans);
     }
 
     #[test]
     fn test_tabulate_span_null_id_gets_an_anonymous_generated_id() {
-        let specs = parse_test_specs("TABULATE * FROM sales SPAN NULL ACROSS foo, bar").unwrap();
+        let specs = parse_test_specs("TABULATE * FROM sales SPAN NULL OVER foo, bar").unwrap();
         let table = specs[0].as_table().expect("expected a Table spec");
 
         assert!(!table.spans[0].id.is_empty());
@@ -1555,7 +1553,7 @@ mod tests {
     #[test]
     fn test_tabulate_span_with_setting() {
         let specs =
-            parse_test_specs("TABULATE * FROM sales SPAN W ACROSS foo SETTING width => '40%'")
+            parse_test_specs("TABULATE * FROM sales SPAN W OVER foo SETTING width => '40%'")
                 .unwrap();
         let table = specs[0].as_table().expect("expected a Table spec");
 
@@ -1581,7 +1579,7 @@ mod tests {
     #[test]
     fn test_tabulate_multiple_spans_and_label_in_any_order() {
         let specs = parse_test_specs(
-            "TABULATE * FROM sales LABEL id => 'ID' SPAN A ACROSS foo, bar SPAN B ACROSS baz",
+            "TABULATE * FROM sales LABEL id => 'ID' SPAN A OVER foo, bar SPAN B OVER baz",
         )
         .unwrap();
         let table = specs[0].as_table().expect("expected a Table spec");

@@ -45,7 +45,7 @@ In addition to column names, it can use [`SPAN`](span.qmd) identifiers as well t
 FORMAT foo, bar
 
 -- Targeting spanner id: bar, baz and qux become targeted
-SPAN foo ACROSS bar, baz
+SPAN foo OVER bar, baz
 FORMAT foo, qux
 ```
 
@@ -113,7 +113,7 @@ Stub columns cannot be targetted by spans. The boundary between stub and body is
 #| error: true
 TABULATE * FROM my_data
   FORMAT STUB island
-  SPAN "My label" ACROSS island, species
+  SPAN "My label" OVER island, species
 ```
 
 When a column is targeted by multiple `FORMAT` clauses, the last one wins.

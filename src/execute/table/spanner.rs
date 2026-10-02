@@ -38,7 +38,7 @@ fn gather_columns(columns: Vec<TableColumn>, members: &[String]) -> Vec<TableCol
     let anchor_index = columns
         .iter()
         .position(|c| &c.name == anchor)
-        .expect("Table::resolve_spanners already validated every ACROSS column exists");
+        .expect("Table::resolve_spanners already validated every OVER column exists");
     let insertion_index = columns[..anchor_index]
         .iter()
         .filter(|c| !members.contains(&c.name))
@@ -59,7 +59,7 @@ fn gather_columns(columns: Vec<TableColumn>, members: &[String]) -> Vec<TableCol
     for name in members {
         let column = by_name
             .remove(name)
-            .expect("Table::resolve_spanners already validated every ACROSS column exists");
+            .expect("Table::resolve_spanners already validated every OVER column exists");
         result.push(column);
     }
     result.extend(remainder);

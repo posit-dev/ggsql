@@ -1093,7 +1093,7 @@ mod tests {
             )
             .unwrap();
         let spec = reader
-            .execute("TABULATE * FROM sales SPAN Info ACROSS id, name")
+            .execute("TABULATE * FROM sales SPAN Info OVER id, name")
             .unwrap();
 
         let writer = HtmlWriter::new();

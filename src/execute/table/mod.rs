@@ -786,7 +786,7 @@ mod integration_tests {
     fn test_tabulate_span_over_a_stub_column_errors() {
         let reader = reader_with_sales();
         let result = resolve_table_with_reader(
-            "TABULATE * FROM sales FORMAT STUB name SPAN G ACROSS name, id",
+            "TABULATE * FROM sales FORMAT STUB name SPAN G OVER name, id",
             &reader,
         );
 
@@ -795,15 +795,15 @@ mod integration_tests {
 
     #[test]
     fn test_tabulate_span_unknown_column_errors_even_with_gather_disabled() {
-        // Table::resolve_spanners checks every ACROSS entry regardless of
+        // Table::resolve_spanners checks every OVER entry regardless of
         // gather, so this errors even though gather_columns itself (the
         // only place that also checks column existence) is skipped here.
         let reader = reader_with_sales();
         match resolve_table_with_reader(
-            "TABULATE * FROM sales SPAN G ACROSS nope, id SETTING gather => false",
+            "TABULATE * FROM sales SPAN G OVER nope, id SETTING gather => false",
             &reader,
         ) {
-            Ok(_) => panic!("expected an unknown ACROSS column to error"),
+            Ok(_) => panic!("expected an unknown OVER column to error"),
             Err(GgsqlError::ValidationError(msg)) => {
                 assert!(msg.contains("SPAN references unknown column 'nope'"))
             }

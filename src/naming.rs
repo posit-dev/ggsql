@@ -296,7 +296,7 @@ pub fn aesthetic_column(aesthetic: &str) -> String {
     format!("{}{}{}", AES_PREFIX, aesthetic, GGSQL_SUFFIX)
 }
 
-/// Generate an id for an anonymous `TABULATE SPAN` (`SPAN NULL ACROSS
+/// Generate an id for an anonymous `TABULATE SPAN` (`SPAN NULL OVER
 /// ...`). Nothing in the query can reference this text, so any fresh value
 /// works; the `__ggsql_*` convention just keeps it out of the way of a real
 /// column name, the same guarantee every other name here gives SQL.

@@ -11,7 +11,7 @@ Spanners are extra table cells in the heading that stretch on top of the column 
 There are two equivalent forms for convenience:
 
 ```ggsql
-SPAN <identifier> ACROSS <column>, ...
+SPAN <identifier> OVER <column>, ...
   SETTING <parameter> => <value>, ...
 ```
 
@@ -25,7 +25,7 @@ SPAN <column>, ... UNDER <identifier>
 ## Identifier
 
 ```ggsql
-<identifier> ACROSS
+<identifier> OVER
 -- or
 UNDER <identifier>
 ```
@@ -52,7 +52,7 @@ Anonymous spanners do not render labels.
 <column>, ...
 ```
 
-The list of comma-separated columns to be grouped can be declared after `ACROSS` or before `UNDER`.
+The list of comma-separated columns to be grouped can be declared after `OVER` or before `UNDER`.
 In addition, the span identifiers of previously declared spans can be used as shorthand.
 By default, columns will be relocated in the table to next to other group members.
 
@@ -78,23 +78,23 @@ Simple spanner across two columns.
 CREATE TEMP TABLE my_data AS SELECT * FROM ggsql:penguins LIMIT 5
 
 TABULATE * FROM my_data
-  SPAN Bill ACROSS bill_len, bill_dep
+  SPAN Bill OVER bill_len, bill_dep
 ```
 
 By default, disjoint spanners are displayed on the same level.
 
 ```{ggsql}
 TABULATE * FROM my_data
-  SPAN Bill ACROSS bill_len, bill_dep
-  SPAN "My label" ACROSS sex, year
+  SPAN Bill OVER bill_len, bill_dep
+  SPAN "My label" OVER sex, year
 ```
 
 Setting a custom row level for a span using `SETTING`.
 
 ```{ggsql}
 TABULATE * FROM my_data
-  SPAN Bill ACROSS bill_len, bill_dep
-  SPAN "My label" ACROSS sex, year
+  SPAN Bill OVER bill_len, bill_dep
+  SPAN "My label" OVER sex, year
     SETTING level => 2
 ```
 
@@ -103,15 +103,15 @@ Note the use of the `Bill` span identifier in the second spanner to include `bil
 
 ```{ggsql}
 TABULATE * FROM my_data
-  SPAN Bill ACROSS bill_len, bill_dep
-  SPAN Lengths ACROSS Bill, flipper_len
+  SPAN Bill OVER bill_len, bill_dep
+  SPAN Lengths OVER Bill, flipper_len
 ```
 
 The `LABEL` clause can be used for complex labels.
 
 ```{ggsql}
 TABULATE * FROM my_data
-  SPAN Bill ACROSS bill_len, bill_dep
+  SPAN Bill OVER bill_len, bill_dep
   LABEL Bill => '🐧 bills'
 ```
 
@@ -119,7 +119,7 @@ Anonymous spanners can be used to reorder columns.
 
 ```{ggsql}
 TABULATE * FROM my_data
-  SPAN null ACROSS species, island, sex, year
+  SPAN null OVER species, island, sex, year
 ```
 
 Automatic grouping can be turned off using the `gather` setting.
@@ -127,6 +127,6 @@ Note that spanners may become fragmented if columns don't form a contiguous bloc
 
 ```{ggsql}
 TABULATE * FROM my_data
-  SPAN "My label" ACROSS species, sex
+  SPAN "My label" OVER species, sex
     SETTING gather => false
 ```

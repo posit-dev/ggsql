@@ -153,7 +153,7 @@ Renders the query result as a table instead of a plot — the plain-table counte
 TABULATE <column>, ... | *
   FROM <data-source>
   LABEL <column/title> => <string/null>, ...
-  SPAN <identifier> ACROSS <column>, ...
+  SPAN <identifier> OVER <column>, ...
     SETTING <param> => <value>, ...
   FORMAT [BODY | STUB] <column>, ...
     SETTING <param> => <value>, ...
@@ -177,12 +177,12 @@ Keyed by column name, not aesthetic. Reserved keys: `title`, `subtitle`, `captio
 Groups columns under one spanner cell in a header row above the column labels.
 
 ```ggsql
-SPAN Q1 ACROSS jan, feb, mar
+SPAN Q1 OVER jan, feb, mar
 SPAN apr, may, jun UNDER Q2        -- equivalent form
 ```
 
 - Id is mandatory: identifier (quote for spaces) or `null` (anonymous, blank cell — useful to reorder columns)
-- A later SPAN's ACROSS list may reference an earlier SPAN id to include its columns
+- A later SPAN's OVER list may reference an earlier SPAN id to include its columns
 - Ids must be unique and cannot collide with column names; a SPAN cannot include a stub column
 - Settings: `gather` (boolean, default `true` — move columns next to the group), `level` (integer header row, `1` = closest to column labels; default auto-assigned to avoid clashes)
 
@@ -199,7 +199,7 @@ Configures cell display and column placement.
 SELECT * FROM ggsql:penguins LIMIT 5
 TABULATE *
   LABEL title => 'Penguins!', bill_len => 'Length', bill_dep => 'Depth'
-  SPAN Bill ACROSS bill_len, bill_dep
+  SPAN Bill OVER bill_len, bill_dep
   FORMAT STUB species
   FORMAT body_mass SETTING hjust => 'right' RENAMING null => '-', * => '{:num %.0f}g'
 ```
