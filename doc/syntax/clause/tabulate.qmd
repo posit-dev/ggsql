@@ -27,7 +27,7 @@ The order in which you select columns affects the display-order in the output.
 The columns can be selected in (a mixture of) one of three forms:
 
 * `<column>` reuses the column name as header label
-* `<column> AS <label>` sets a new name for a column
+* `<column> AS <identifier>` sets an alias for a column
 * `*` selects all (remaining) columns, in the source's order
 
 Without the `*` wildcard, only the listed columns are kept.
@@ -43,7 +43,7 @@ TABULATE *
 TABULATE foo, bar, baz
 
 -- Renaming columns
-TABULATE foo AS "Foo Label", bar AS "Bar Label"
+TABULATE foo AS bar, baz AS qux
 
 -- Fix position of first and last columns
 TABULATE foo, *, baz
@@ -95,8 +95,8 @@ Renaming columns on the fly. For order-preserving renames, see [`LABEL`](label-t
 
 ```{ggsql}
 TABULATE 
-  bill_len AS "Bill Length",  
-  bill_dep AS "Bill Depth",
+  bill_len AS length,  
+  bill_dep AS depth,
   *
   FROM my_data
 ```
