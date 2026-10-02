@@ -116,7 +116,7 @@ TABULATE * FROM my_data
   SPAN "My label" OVER island, species
 ```
 
-When a column is targeted by multiple `FORMAT` clauses, the last one wins.
+When a column is targeted by multiple `FORMAT` clauses, the clauses are combined; in case of conflicts the last `FORMAT` wins.
 Note that the `island` column is not in the stub.
 
 ```{ggsql}
