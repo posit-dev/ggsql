@@ -66,9 +66,62 @@
 //! DuckDB-backed unit tests exercise the same code paths.
 
 use ggsql::reader::connection::reader_from_uri;
-use ggsql::reader::Reader;
+use ggsql::reader::{ColumnInfo, Reader, Spec, SqlDialect, TableInfo};
+use ggsql::{DataFrame, Result};
 
 const TABLE: &str = "ggsql_live_test";
+
+/// A `Reader` wrapper that records every statement the pipeline issues, so
+/// a failing battery case can dump the exact SQL and re-run individual
+/// statements for diagnosis.
+struct SqlSpy<'a> {
+    inner: &'a dyn Reader,
+    log: std::cell::RefCell<Vec<String>>,
+}
+
+impl<'a> SqlSpy<'a> {
+    fn new(inner: &'a dyn Reader) -> Self {
+        Self {
+            inner,
+            log: std::cell::RefCell::new(Vec::new()),
+        }
+    }
+
+    fn take_log(&self) -> Vec<String> {
+        self.log.borrow().clone()
+    }
+}
+
+impl Reader for SqlSpy<'_> {
+    fn execute_sql(&self, sql: &str) -> Result<DataFrame> {
+        self.log.borrow_mut().push(sql.to_string());
+        self.inner.execute_sql(sql)
+    }
+    fn register(&self, name: &str, df: DataFrame, replace: bool) -> Result<()> {
+        self.inner.register(name, df, replace)
+    }
+    fn unregister(&self, name: &str) -> Result<()> {
+        self.inner.unregister(name)
+    }
+    fn execute(&self, query: &str) -> Result<Spec> {
+        ggsql::reader::execute_with_reader(self, query)
+    }
+    fn dialect(&self) -> &dyn SqlDialect {
+        self.inner.dialect()
+    }
+    fn list_catalogs(&self) -> Result<Vec<String>> {
+        self.inner.list_catalogs()
+    }
+    fn list_schemas(&self, c: &str) -> Result<Vec<String>> {
+        self.inner.list_schemas(c)
+    }
+    fn list_tables(&self, c: &str, s: &str) -> Result<Vec<TableInfo>> {
+        self.inner.list_tables(c, s)
+    }
+    fn list_columns(&self, c: &str, s: &str, t: &str) -> Result<Vec<ColumnInfo>> {
+        self.inner.list_columns(c, s, t)
+    }
+}
 
 // Eight rows, four per group: density/violin compute a Silverman bandwidth
 // from NTILE(4) tiles, which is degenerate (NULL) with fewer than four
@@ -372,7 +425,8 @@ fn run_battery(reader: &dyn Reader, ctx: &str, table: &str) {
     // Binned scale over a temporal column with a non-temporal transform:
     // the numeric-CASE fallback (build_case_expression_numeric) must quote
     // the column with the active dialect, not hard-coded ANSI.
-    let spec = reader
+    let spy = SqlSpy::new(reader);
+    let spec = spy
         .execute(&format!(
             "VISUALISE DRAW point MAPPING day AS x, val AS y FROM {table} SCALE BINNED x VIA identity"
         ))
@@ -383,15 +437,23 @@ fn run_battery(reader: &dyn Reader, ctx: &str, table: &str) {
     if layer.height() == 0 {
         // Zero rows means every bin comparison came back false — almost
         // always a units/type mismatch between the trained breaks and the
-        // dialect's temporal-to-number conversion. Probe the raw extent so
-        // CI output shows what the driver actually returned for `day`.
-        let q = ddl_quote(ctx);
-        let probe = reader.execute_sql(&format!(
-            "SELECT count(*) AS n, MIN({q}day{q}) AS mn, MAX({q}day{q}) AS mx FROM {table}"
-        ));
+        // dialect's temporal-to-number conversion. Dump the exact pipeline
+        // SQL and re-run its extent and CASE statements so CI output shows
+        // what the driver actually returned at each stage.
+        let log = spy.take_log();
+        let extent = log
+            .iter()
+            .find(|s| s.contains("MIN("))
+            .map(|sql| reader.execute_sql(sql));
+        let case = log
+            .iter()
+            .rev()
+            .find(|s| s.contains("CASE"))
+            .map(|sql| reader.execute_sql(sql));
         panic!(
-            "{ctx}: binned temporal returned zero rows; \
-             day extent probe: {probe:?}"
+            "{ctx}: binned temporal returned zero rows\n\
+             pipeline SQL:\n{}\nextent result: {extent:?}\ncase result: {case:?}",
+            log.join("\n")
         );
     }
 
