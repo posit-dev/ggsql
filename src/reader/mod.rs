@@ -414,6 +414,18 @@ pub trait SqlDialect {
             )
         };
 
+        // Wrap `from` in parens only when it's a query: a bare table or CTE
+        // name must not be parenthesized (MySQL/MariaDB/T-SQL reject
+        // `FROM (name) AS alias` for anything but a subquery).
+        let from_trim = from.trim();
+        let from_ref = if from_trim.starts_with('(') {
+            from_trim.to_string()
+        } else if from_trim.contains(char::is_whitespace) {
+            format!("({from_trim})")
+        } else {
+            from_trim.to_string()
+        };
+
         format!(
             "(SELECT \
                MAX(CASE WHEN rn = {lo} THEN __val END) + \
@@ -423,7 +435,7 @@ pub trait SqlDialect {
                SELECT {quoted_column} AS __val, \
                       ROW_NUMBER() OVER ({partition_by}ORDER BY {quoted_column}) AS rn, \
                       COUNT(*) OVER ({partition_by}) AS cnt{group_cols} \
-               FROM ({from}) AS {__ggsql_pct__} \
+               FROM {from_ref} AS {__ggsql_pct__} \
                WHERE {quoted_column} IS NOT NULL\
              ) AS {__ggsql_tile__}{group_filter})"
         )

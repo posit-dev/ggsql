@@ -89,6 +89,22 @@ impl SqlDialect for DataFusionDialect {
     fn supports_spatial(&self) -> bool {
         false
     }
+
+    fn sql_temporal_as_number(
+        &self,
+        expr: &str,
+        kind: crate::plot::types::CastTargetType,
+    ) -> String {
+        // DataFusion rejects temporal -> numeric casts ("Unsupported CAST
+        // from Date32 to Float64"); EXTRACT EPOCH yields seconds for both
+        // dates and timestamps, so scale to ggsql's epoch units.
+        use crate::plot::types::CastTargetType as C;
+        match kind {
+            C::Date => format!("(EXTRACT(EPOCH FROM {expr}) / 86400)"),
+            C::DateTime => format!("(EXTRACT(EPOCH FROM {expr}) * 1000000)"),
+            _ => format!("CAST({expr} AS DOUBLE)"),
+        }
+    }
 }
 
 #[cfg(test)]

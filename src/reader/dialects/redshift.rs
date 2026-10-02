@@ -2,8 +2,11 @@
 //!
 //! Redshift is Postgres-derived, so this mirrors [`PostgresDialect`] where
 //! Redshift kept the feature, and falls back to ANSI elsewhere: no
-//! `GENERATE_SERIES` (recursive-CTE default applies), approximate quantiles
-//! via `APPROXIMATE PERCENTILE_DISC`, and native (PostGIS-subset) spatial.
+//! `GENERATE_SERIES` (recursive-CTE default applies), and native
+//! (PostGIS-subset) spatial. Quantiles use the portable window-function
+//! default rather than `APPROXIMATE PERCENTILE_DISC` — exact rather than
+//! approximate, and the live CI leg runs the redshift driver against a
+//! PostgreSQL container, which lacks the Redshift-only spelling.
 
 use crate::reader::SqlDialect;
 
@@ -38,26 +41,5 @@ impl SqlDialect for RedshiftDialect {
             C::DateTime => format!("(EXTRACT(EPOCH FROM {expr}) * 1000000)"),
             _ => format!("CAST({expr} AS DOUBLE PRECISION)"),
         }
-    }
-
-    fn sql_quantile_inline(&self, column: &str, fraction: f64) -> Option<String> {
-        Some(format!(
-            "APPROXIMATE PERCENTILE_DISC({fraction}) WITHIN GROUP (ORDER BY {column})",
-            column = self.quote_ident(column)
-        ))
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn quantile_uses_approximate_percentile_disc() {
-        let sql = RedshiftDialect.sql_quantile_inline("\"v\"", 0.5).unwrap();
-        assert!(
-            sql.contains("APPROXIMATE PERCENTILE_DISC(0.5)"),
-            "got: {sql}"
-        );
     }
 }

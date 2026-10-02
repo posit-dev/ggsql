@@ -129,9 +129,11 @@ fn ddl_quote(scheme: &str) -> char {
 fn create_table_sql(scheme: &str, table: &str) -> String {
     let q = ddl_quote(scheme);
     let ddl = |id_ty: &str, val_ty: &str, grp_ty: &str, day_ty: &str| {
+        // `day` is a reserved word on several backends (Exasol, MonetDB,
+        // Druid's Calcite parser), so it is quoted like `mixed Case`.
         format!(
             "CREATE TABLE {table} (id {id_ty}, val {val_ty}, grp {grp_ty}, \
-             day {day_ty}, {q}mixed Case{q} {val_ty})"
+             {q}day{q} {day_ty}, {q}mixed Case{q} {val_ty})"
         )
     };
     match scheme {

@@ -279,7 +279,7 @@ SELECT TIMESTAMP '2020-01-01 00:00:00' AS __time,
        CAST(id AS BIGINT) AS id,
        CAST(val AS DOUBLE) AS val,
        grp,
-       CAST(day AS DATE) AS day,
+       CAST("day" AS DATE) AS "day",
        CAST("mixed Case" AS DOUBLE) AS "mixed Case"
 FROM TABLE(EXTERN('{inline}', '{csv_fmt}', '{sig}'))
 PARTITIONED BY ALL

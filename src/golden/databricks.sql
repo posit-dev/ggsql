@@ -74,7 +74,7 @@ SELECT `day`, `value`, (CASE WHEN CAST(`__ggsql_aes_pos1__` AS DOUBLE) >= 19000 
 -- case: percentile_aggregate
 SELECT * FROM (SELECT * FROM box_data) AS __schema__ LIMIT 1;
 WITH `__ggsql_source__` AS (SELECT *, `grp` AS `__ggsql_aes_pos1__`, `value` AS `__ggsql_aes_pos2__` FROM (SELECT * FROM box_data) AS `__ggsql_src__`) SELECT MIN(`grp`) AS `grp`, MIN(`value`) AS `value` FROM `__ggsql_source__` UNION ALL SELECT MAX(`grp`) AS `grp`, MAX(`value`) AS `value` FROM `__ggsql_source__`;
-SELECT *, `__ggsql_stat_pos2` AS `__ggsql_aes_pos2__` FROM (WITH `__ggsql_stat_src__` AS (SELECT *, `grp` AS `__ggsql_aes_pos1__`, `value` AS `__ggsql_aes_pos2__` FROM (SELECT * FROM box_data) AS `__ggsql_src__`) SELECT `__ggsql_aes_pos1__`, percentile_approx(```__ggsql_aes_pos2__```, 0.1) AS `__ggsql_stat_pos2` FROM `__ggsql_stat_src__` AS `__ggsql_qt__` GROUP BY `__ggsql_aes_pos1__`) AS `__ggsql_stat__`;
+SELECT *, `__ggsql_stat_pos2` AS `__ggsql_aes_pos2__` FROM (WITH `__ggsql_stat_src__` AS (SELECT *, `grp` AS `__ggsql_aes_pos1__`, `value` AS `__ggsql_aes_pos2__` FROM (SELECT * FROM box_data) AS `__ggsql_src__`) SELECT `__ggsql_aes_pos1__`, percentile_approx(`__ggsql_aes_pos2__`, 0.1) AS `__ggsql_stat_pos2` FROM `__ggsql_stat_src__` AS `__ggsql_qt__` GROUP BY `__ggsql_aes_pos1__`) AS `__ggsql_stat__`;
 
 -- case: quoted_column
 SELECT * FROM (SELECT * FROM box_data) AS __schema__ LIMIT 1;
