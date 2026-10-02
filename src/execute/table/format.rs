@@ -27,8 +27,8 @@ pub(super) fn setup_formats(
             .map_err(|e| GgsqlError::ValidationError(format!("FORMAT {}: {}", idx + 1, e)))?;
     }
 
-    // One `Format` per column; a later clause wins over an earlier one
-    // naming the same column.
+    // One `Format` per column; clauses naming the same column merge
+    // (`Format::merge`), with the later clause winning per field.
     let mut resolved = HashMap::new();
     for format in formats {
         for name in &format.columns {
@@ -47,7 +47,10 @@ pub(super) fn setup_formats(
                 let mut format = format.clone();
                 // The map key names the column instead.
                 format.columns = Vec::new();
-                resolved.insert(column.clone(), format);
+                resolved
+                    .entry(column.clone())
+                    .and_modify(|existing: &mut Format| existing.merge(&format))
+                    .or_insert(format);
             }
         }
     }
@@ -153,7 +156,7 @@ mod tests {
     }
 
     #[test]
-    fn setup_formats_lets_a_later_clause_win_and_clears_columns() {
+    fn setup_formats_lets_a_later_template_win_and_clears_columns() {
         let frame = df! { "price" => vec![1.0f64] }.unwrap();
         let formats = vec![
             Format {
@@ -171,6 +174,48 @@ mod tests {
         let price = resolved.get("price").unwrap();
         assert_eq!(price.value_template, "{:num %.2f}");
         assert!(price.columns.is_empty());
+    }
+
+    #[test]
+    fn setup_formats_merges_clauses_on_the_same_column() {
+        let frame = df! {
+            "amount" => vec![1.0f64],
+            "price" => vec![2.0f64],
+            "currency" => vec![3.0f64]
+        }
+        .unwrap();
+        let formats = vec![
+            Format {
+                columns: vec!["amount".to_string(), "price".to_string()],
+                ..format_with("{:num %.2f}", None)
+            },
+            Format {
+                columns: vec!["price".to_string(), "currency".to_string()],
+                ..format_with_hjust(ParameterValue::String("left".to_string()))
+            },
+        ];
+
+        let resolved = setup_formats(&frame, &formats, &[]).unwrap();
+
+        // `price` merges both clauses: the later clause has the default "{}"
+        // template, so the earlier template survives; its settings are added.
+        let price = resolved.get("price").unwrap();
+        assert_eq!(price.value_template, "{:num %.2f}");
+        assert_eq!(
+            price.settings.get("hjust"),
+            Some(&ParameterValue::String("left".to_string()))
+        );
+
+        let amount = resolved.get("amount").unwrap();
+        assert_eq!(amount.value_template, "{:num %.2f}");
+        assert!(!amount.settings.contains_key("hjust"));
+
+        let currency = resolved.get("currency").unwrap();
+        assert_eq!(currency.value_template, "{}");
+        assert_eq!(
+            currency.settings.get("hjust"),
+            Some(&ParameterValue::String("left".to_string()))
+        );
     }
 
     #[test]
