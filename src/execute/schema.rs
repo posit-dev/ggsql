@@ -18,9 +18,11 @@ pub type TypeInfo = (String, DataType, bool);
 
 /// Build SQL query to compute min and max for all columns
 ///
-/// Generates a query that returns two rows:
-/// - Row 0: MIN of each column
-/// - Row 1: MAX of each column
+/// Generates a query that returns two rows, one holding every column's MIN
+/// and the other its MAX. The row order is **not** guaranteed — UNION ALL
+/// branch order is unspecified and parallel engines (ClickHouse) emit them
+/// either way — so consumers must merge the rows order-agnostically (see
+/// [`complete_schema_ranges`]).
 pub fn build_minmax_query(
     source_query: &str,
     column_names: &[&str],
@@ -185,12 +187,17 @@ where
     let minmax_query = build_minmax_query(query, &column_names, dialect);
     let range_df = execute_query(&minmax_query)?;
 
-    // Extract min (row 0) and max (row 1) for each column
+    // One row holds every column's MIN and the other its MAX, but UNION ALL
+    // branch order is unspecified (parallel engines like ClickHouse emit
+    // the MAX row first), so merge the two rows order-agnostically: the
+    // component-wise smaller value is always the true MIN regardless of
+    // which row arrived first.
     let schema = type_info
         .iter()
         .map(|(name, dtype, is_discrete)| {
-            let min = extract_series_value(&range_df, name, 0);
-            let max = extract_series_value(&range_df, name, 1);
+            let first = extract_series_value(&range_df, name, 0);
+            let second = extract_series_value(&range_df, name, 1);
+            let (min, max) = merge_extent_rows(first, second);
             ColumnInfo {
                 name: name.clone(),
                 dtype: dtype.clone(),
@@ -202,6 +209,51 @@ where
         .collect();
 
     Ok(schema)
+}
+
+/// Merge the two min/max extent rows into a (min, max) pair without
+/// assuming row order. A missing value (all-NULL column or empty source)
+/// is mirrored from the other row, matching the degenerate single-value
+/// case where MIN and MAX coincide.
+fn merge_extent_rows(
+    first: Option<ArrayElement>,
+    second: Option<ArrayElement>,
+) -> (Option<ArrayElement>, Option<ArrayElement>) {
+    match (first, second) {
+        (Some(a), Some(b)) => {
+            if array_element_le(&a, &b) {
+                (Some(a), Some(b))
+            } else {
+                (Some(b), Some(a))
+            }
+        }
+        (Some(a), None) => {
+            let b = a.clone();
+            (Some(a), Some(b))
+        }
+        (None, Some(b)) => {
+            let a = b.clone();
+            (Some(a), Some(b))
+        }
+        (None, None) => (None, None),
+    }
+}
+
+/// Natural ordering for extent merging. Same-variant pairs compare by
+/// their inner value; anything else (mismatched variants, Null) keeps the
+/// original row order, which is no worse than the positional read this
+/// replaces.
+fn array_element_le(a: &ArrayElement, b: &ArrayElement) -> bool {
+    use ArrayElement as E;
+    match (a, b) {
+        (E::Number(x), E::Number(y)) => x <= y,
+        (E::String(x), E::String(y)) => x <= y,
+        (E::Boolean(x), E::Boolean(y)) => !x | y,
+        (E::Date(x), E::Date(y)) => x <= y,
+        (E::DateTime(x), E::DateTime(y)) => x <= y,
+        (E::Time(x), E::Time(y)) => x <= y,
+        _ => true,
+    }
 }
 
 /// Convert type info to schema (without min/max).
@@ -373,4 +425,46 @@ pub fn build_aesthetic_schema(layer: &Layer, schema: &Schema) -> Schema {
     }
 
     aesthetic_schema
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::reader::AnsiDialect;
+
+    /// The min/max UNION ALL may return the MAX row first (ClickHouse
+    /// executes union branches in parallel); the consumer must merge the
+    /// rows order-agnostically or every downstream range inverts.
+    #[test]
+    fn minmax_rows_merge_regardless_of_order() {
+        let type_info: Vec<TypeInfo> = vec![
+            ("id".to_string(), DataType::Int32, false),
+            ("val".to_string(), DataType::Float64, false),
+        ];
+        // Reversed arrival: row 0 holds the MAXes, row 1 the MINs.
+        let reversed = crate::df! {
+            "id" => vec![8i32, 1],
+            "val" => vec![8.5f64, 1.5],
+        }
+        .unwrap();
+        let execute = |_sql: &str| Ok(reversed.clone());
+        let schema =
+            complete_schema_ranges("SELECT id, val FROM t", &type_info, &execute, &AnsiDialect)
+                .unwrap();
+        assert_eq!(schema[0].min, Some(ArrayElement::Number(1.0)));
+        assert_eq!(schema[0].max, Some(ArrayElement::Number(8.0)));
+        assert_eq!(schema[1].min, Some(ArrayElement::Number(1.5)));
+        assert_eq!(schema[1].max, Some(ArrayElement::Number(8.5)));
+    }
+
+    #[test]
+    fn minmax_rows_merge_in_written_order() {
+        let type_info: Vec<TypeInfo> = vec![("id".to_string(), DataType::Int32, false)];
+        let ordered = crate::df! { "id" => vec![1i32, 8] }.unwrap();
+        let execute = |_sql: &str| Ok(ordered.clone());
+        let schema =
+            complete_schema_ranges("SELECT id FROM t", &type_info, &execute, &AnsiDialect).unwrap();
+        assert_eq!(schema[0].min, Some(ArrayElement::Number(1.0)));
+        assert_eq!(schema[0].max, Some(ArrayElement::Number(8.0)));
+    }
 }
