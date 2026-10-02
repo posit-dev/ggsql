@@ -75,7 +75,7 @@ impl GeomTrait for Rule {
             _ => return project_position_columns(query, projection, dialect, &columns),
         };
         let (expanded, expanded_columns) =
-            expand_rule_to_segment(query, &columns, has_pos1, &bbox_expr);
+            expand_rule_to_segment(query, &columns, has_pos1, &bbox_expr, dialect);
 
         partition_by.push(naming::DENSIFY_ID_COLUMN.to_string());
         parameters.insert("densified".to_string(), ParameterValue::Boolean(true));
@@ -94,11 +94,13 @@ impl GeomTrait for Rule {
         );
         let clipped = match projection.coord.coord_kind() {
             CoordKind::Map => {
-                let pos1_q = naming::quote_ident(&naming::aesthetic_column("pos1"));
-                let pos2_q = naming::quote_ident(&naming::aesthetic_column("pos2"));
+                let pos1_q = dialect.quote_ident(&naming::aesthetic_column("pos1"));
+                let pos2_q = dialect.quote_ident(&naming::aesthetic_column("pos2"));
                 let clip_table = clip_boundary_table();
+                // Explicit alias: MySQL/MariaDB reject unaliased derived tables.
+                let __ggsql_dens__ = dialect.quote_ident("__ggsql_dens__");
                 format!(
-                    "SELECT * FROM ({densified}) WHERE ST_Contains(\
+                    "SELECT * FROM ({densified}) AS {__ggsql_dens__} WHERE ST_Contains(\
                      (SELECT geom FROM {clip_table}), ST_Point({pos1_q}, {pos2_q}))"
                 )
             }
@@ -233,28 +235,33 @@ fn expand_rule_to_segment(
     columns: &[String],
     has_pos1: bool,
     bbox_expr: &str,
+    dialect: &dyn SqlDialect,
 ) -> (String, Vec<String>) {
     let pos1_col = naming::aesthetic_column("pos1");
     let pos2_col = naming::aesthetic_column("pos2");
-    let pos1_q = naming::quote_ident(&pos1_col);
-    let pos2_q = naming::quote_ident(&pos2_col);
+    let pos1_q = dialect.quote_ident(&pos1_col);
+    let pos2_q = dialect.quote_ident(&pos2_col);
+    let __ggsql_vertex__ = dialect.quote_ident("__ggsql_vertex__");
 
     // The input column is always __ggsql_aes_pos1__. Build the SELECT
     // expressions that produce both pos1 and pos2 in the output.
+    // Explicit aliases: MySQL/MariaDB reject unaliased derived tables, even
+    // inside scalar subqueries.
+    let __ggsql_bbox__ = dialect.quote_ident("__ggsql_bbox__");
     let (fixed_expr, span_expr) = if has_pos1 {
         // Vertical rule: input pos1 = longitude (keep as pos1), synthesize pos2 from y-extent
         let fixed = pos1_q.clone();
         let span = format!(
-            "CASE \"__ggsql_vertex__\" WHEN 0 THEN (SELECT ymin FROM ({bbox_expr})) \
-             WHEN 1 THEN (SELECT ymax FROM ({bbox_expr})) END AS {pos2_q}"
+            "CASE {__ggsql_vertex__} WHEN 0 THEN (SELECT ymin FROM ({bbox_expr}) AS {__ggsql_bbox__}) \
+             WHEN 1 THEN (SELECT ymax FROM ({bbox_expr}) AS {__ggsql_bbox__}) END AS {pos2_q}"
         );
         (fixed, span)
     } else {
         // Horizontal rule: input pos1 = latitude (rename to pos2), synthesize pos1 from x-extent
         let fixed = format!("{pos1_q} AS {pos2_q}");
         let span = format!(
-            "CASE \"__ggsql_vertex__\" WHEN 0 THEN (SELECT xmin FROM ({bbox_expr})) \
-             WHEN 1 THEN (SELECT xmax FROM ({bbox_expr})) END AS {pos1_q}"
+            "CASE {__ggsql_vertex__} WHEN 0 THEN (SELECT xmin FROM ({bbox_expr}) AS {__ggsql_bbox__}) \
+             WHEN 1 THEN (SELECT xmax FROM ({bbox_expr}) AS {__ggsql_bbox__}) END AS {pos1_q}"
         );
         (fixed, span)
     };
@@ -263,27 +270,30 @@ fn expand_rule_to_segment(
     let passthrough_cols: Vec<&String> = columns.iter().filter(|c| *c != &pos1_col).collect();
     let passthrough_quoted: Vec<String> = passthrough_cols
         .iter()
-        .map(|c| naming::quote_ident(c))
+        .map(|c| dialect.quote_ident(c))
         .collect();
 
-    let densify_id_q = naming::quote_ident(naming::DENSIFY_ID_COLUMN);
+    let densify_id_q = dialect.quote_ident(naming::DENSIFY_ID_COLUMN);
 
+    let __ggsql_rule_src__ = dialect.quote_ident("__ggsql_rule_src__");
     let numbered = format!(
         "SELECT *, ROW_NUMBER() OVER (ORDER BY (SELECT NULL)) \
-         AS {densify_id_q} FROM ({query})"
+         AS {densify_id_q} FROM ({query}) AS {__ggsql_rule_src__}"
     );
 
-    let vertices_table = "(SELECT 0 AS \"__ggsql_vertex__\" UNION ALL SELECT 1)";
+    let vertices_table = format!("(SELECT 0 AS {__ggsql_vertex__} UNION ALL SELECT 1)");
 
     let mut select_parts: Vec<String> = passthrough_quoted;
     select_parts.push(densify_id_q.to_string());
-    select_parts.push("\"__ggsql_vertex__\"".to_string());
+    select_parts.push(__ggsql_vertex__.to_string());
     select_parts.push(fixed_expr);
     select_parts.push(span_expr);
 
+    let __ggsql_rule__ = dialect.quote_ident("__ggsql_rule__");
+    let __ggsql_vertices__ = dialect.quote_ident("__ggsql_vertices__");
     let sql = format!(
-        "SELECT {} FROM ({numbered}) \"__ggsql_rule__\" \
-         CROSS JOIN {vertices_table} \"__ggsql_vertices__\"",
+        "SELECT {} FROM ({numbered}) {__ggsql_rule__} \
+         CROSS JOIN {vertices_table} {__ggsql_vertices__}",
         select_parts.join(", ")
     );
 
@@ -596,8 +606,13 @@ mod tests {
         let columns = vec![naming::aesthetic_column("pos1")];
         let has_pos1 = false;
         let bbox_expr = dialect.sql_geometry_bbox("geom", &boundary_table);
-        let (expanded, expanded_columns) =
-            expand_rule_to_segment(&input, &columns, has_pos1, &bbox_expr);
+        let (expanded, expanded_columns) = expand_rule_to_segment(
+            &input,
+            &columns,
+            has_pos1,
+            &bbox_expr,
+            &crate::reader::AnsiDialect,
+        );
         let densified = densify_edges(
             &expanded,
             dialect,

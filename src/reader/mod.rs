@@ -94,6 +94,55 @@ pub trait SqlDialect {
         }
     }
 
+    /// Quote an identifier using this backend's convention.
+    ///
+    /// Default is SQL-standard double quotes. Override for backends with a
+    /// different quoting convention (e.g. backticks for MySQL/ClickHouse).
+    fn quote_ident(&self, name: &str) -> String {
+        naming::quote_ident(name)
+    }
+
+    /// Statements to execute once on a freshly opened connection, before any
+    /// other SQL. Default: none.
+    ///
+    /// Use for session settings the generated SQL silently relies on — e.g.
+    /// MySQL's `ANSI_QUOTES`, because ggsql quotes many internal identifiers
+    /// (`__ggsql_*` CTEs and columns) with ANSI double quotes, which MySQL
+    /// otherwise parses as string literals.
+    fn session_init_sql(&self) -> Vec<String> {
+        Vec::new()
+    }
+
+    /// Append a row limit to a query.
+    ///
+    /// Default uses `LIMIT n`. Override for backends with different limit
+    /// syntax (e.g. SQL Server's `TOP`, Oracle's `FETCH FIRST`).
+    fn sql_limit(&self, query: &str, n: usize) -> String {
+        format!("{} LIMIT {}", query, n)
+    }
+
+    /// Cast an expression to a SQL type name.
+    ///
+    /// Default uses `CAST(expr AS type)`. Override for backends that prefer a
+    /// non-throwing cast (e.g. BigQuery's `SAFE_CAST`, Snowflake/Trino's
+    /// `TRY_CAST`). `type_name` should come from [`type_name_for`] so it is
+    /// already backend-appropriate.
+    ///
+    /// [`type_name_for`]: SqlDialect::type_name_for
+    fn sql_cast(&self, expr: &str, type_name: &str) -> String {
+        format!("CAST({} AS {})", expr, type_name)
+    }
+
+    /// Whether this backend supports spatial (geometry) operations.
+    ///
+    /// When `false`, the executor should fail fast with a clear
+    /// "spatial not supported on this backend" error rather than emitting
+    /// spatial SQL that the backend cannot run. Default is `true` because the
+    /// ANSI defaults target PostGIS-compatible backends.
+    fn supports_spatial(&self) -> bool {
+        true
+    }
+
     /// Scalar MAX across any number of SQL expressions.
     fn sql_greatest(&self, exprs: &[&str]) -> String {
         let mut result = exprs[0].to_string();
@@ -150,16 +199,18 @@ pub trait SqlDialect {
         from: &str,
         all_columns: &[String],
     ) -> String {
+        let __ggsql_sr__ = self.quote_ident("__ggsql_sr__");
         if expr == col {
-            return format!("SELECT * FROM ({from})");
+            // Explicit alias: MySQL/MariaDB reject unaliased derived tables.
+            return format!("SELECT * FROM ({from}) {__ggsql_sr__}");
         }
         if all_columns.is_empty() {
-            return format!("SELECT {expr} AS {col}, * FROM ({from}) \"__ggsql_sr__\"");
+            return format!("SELECT {expr} AS {col}, * FROM ({from}) {__ggsql_sr__}");
         }
         let select_list: Vec<String> = all_columns
             .iter()
             .map(|c| {
-                let qc = naming::quote_ident(c);
+                let qc = self.quote_ident(c);
                 if qc == col {
                     format!("{expr} AS {col}")
                 } else {
@@ -168,7 +219,7 @@ pub trait SqlDialect {
             })
             .collect();
         format!(
-            "SELECT {} FROM ({from}) \"__ggsql_sr__\"",
+            "SELECT {} FROM ({from}) {__ggsql_sr__}",
             select_list.join(", ")
         )
     }
@@ -194,10 +245,12 @@ pub trait SqlDialect {
     /// Must return a single row with columns `xmin`, `ymin`, `xmax`, `ymax` (DOUBLE).
     /// `from` is the table or subquery to aggregate over.
     fn sql_geometry_bbox(&self, column: &str, from: &str) -> String {
+        // The derived table must be aliased: Postgres (< 16) and
+        // MySQL/MariaDB reject unaliased derived tables.
         format!(
             "SELECT ST_XMin(ext) AS xmin, ST_YMin(ext) AS ymin, \
                     ST_XMax(ext) AS xmax, ST_YMax(ext) AS ymax \
-             FROM (SELECT ST_Extent({column}) AS ext FROM {from})"
+             FROM (SELECT ST_Extent({column}) AS ext FROM {from}) AS __ggsql_ext__"
         )
     }
 
@@ -218,6 +271,15 @@ pub trait SqlDialect {
 
     /// Generate a series of integers 0..n-1 as a CTE fragment.
     ///
+    /// Target type name for casting an expression to a floating-point type.
+    ///
+    /// `REAL` is widely supported (Postgres, SQLite, T-SQL, DuckDB, ...).
+    /// MariaDB's `CAST` has no `REAL` target; MySQL/MariaDB override this
+    /// with `DOUBLE` (both support it).
+    fn sql_real_cast_type(&self) -> &'static str {
+        "REAL"
+    }
+
     /// Returns CTE fragment(s) producing table `__ggsql_seq__` with column `n`.
     fn sql_generate_series(&self, n: usize) -> String {
         // Uses a cube-root decomposition to avoid deep recursion: only recurses
@@ -225,53 +287,157 @@ pub trait SqlDialect {
         let base_size = (n as f64).cbrt().ceil() as usize;
         let base_sq = base_size * base_size;
         let base_max = base_size - 1;
+        let __ggsql_base__ = self.quote_ident("__ggsql_base__");
+        let __ggsql_seq__ = self.quote_ident("__ggsql_seq__");
+        let real = self.sql_real_cast_type();
         format!(
-            "\"__ggsql_base__\"(n) AS (\
-               SELECT 0 UNION ALL SELECT n + 1 FROM \"__ggsql_base__\" WHERE n < {base_max}\
+            "{__ggsql_base__}(n) AS (\
+               SELECT 0 UNION ALL SELECT n + 1 FROM {__ggsql_base__} WHERE n < {base_max}\
              ),\
-             \"__ggsql_seq__\"(n) AS (\
-               SELECT CAST(a.n * {base_sq} + b.n * {base_size} + c.n AS REAL) AS n \
-               FROM \"__ggsql_base__\" a, \"__ggsql_base__\" b, \"__ggsql_base__\" c \
+             {__ggsql_seq__}(n) AS (\
+               SELECT CAST(a.n * {base_sq} + b.n * {base_size} + c.n AS {real}) AS n \
+               FROM {__ggsql_base__} a, {__ggsql_base__} b, {__ggsql_base__} c \
                WHERE a.n * {base_sq} + b.n * {base_size} + c.n < {n}\
              )"
         )
+    }
+
+    /// Keyword introducing a CTE block that contains recursive CTEs.
+    ///
+    /// ANSI/Postgres/MySQL accept `WITH RECURSIVE`; T-SQL and Oracle use
+    /// plain `WITH`, where recursion is implied by self-reference.
+    fn sql_with_recursive(&self) -> &'static str {
+        "WITH RECURSIVE"
+    }
+
+    /// An `ORDER BY` clause for a query nested in a derived table or CTE.
+    ///
+    /// Default emits `ORDER BY <ordering>`. SQL Server forbids ORDER BY in
+    /// views, derived tables, subqueries, and CTEs unless TOP, OFFSET, or
+    /// FOR XML is present (error 1033), so it appends `OFFSET 0 ROWS`,
+    /// which legitimizes the clause without changing the ordering.
+    fn sql_derived_order_by(&self, ordering: &str) -> String {
+        format!("ORDER BY {ordering}")
+    }
+
+    /// Null-safe equality comparison between two expressions.
+    ///
+    /// The ANSI form is `IS NOT DISTINCT FROM`; MySQL/MariaDB use the
+    /// `<=>` operator instead. ClickHouse only accepts the ANSI form in a
+    /// `JOIN ON` section, so callers targeting it should place the
+    /// comparison in a join condition. The comparison is parenthesized:
+    /// DataFusion's parser otherwise binds a following `AND` into the
+    /// right-hand operand ("logical boolean operation Utf8View AND
+    /// Boolean").
+    fn sql_null_safe_eq(&self, left: &str, right: &str) -> String {
+        format!("({left} IS NOT DISTINCT FROM {right})")
+    }
+
+    /// Ceiling of a numeric expression.
+    ///
+    /// ANSI `CEIL`; SQL Server only has `CEILING`.
+    fn sql_ceil(&self, expr: &str) -> String {
+        format!("CEIL({expr})")
+    }
+
+    /// Wrap a query as a derived table: `SELECT * FROM (query) AS alias`.
+    ///
+    /// Dialects that forbid CTEs inside derived tables (SQL Server)
+    /// override this to hoist any leading `WITH` clause out of the
+    /// parentheses; see [`crate::reader::dialects::split_cte_prefix`].
+    fn wrap_as_subquery(&self, query: &str, alias: &str) -> String {
+        format!("SELECT * FROM ({query}) AS {alias}")
+    }
+
+    /// Wrap a query in an outer SELECT with a custom select list:
+    /// `SELECT {select_list} FROM ({query}) AS {alias}`.
+    ///
+    /// Dialects that forbid CTEs inside derived tables (SQL Server)
+    /// override this to hoist any leading `WITH` clause out of the
+    /// parentheses; see [`crate::reader::dialects::split_cte_prefix`].
+    fn select_from_subquery(&self, select_list: &str, query: &str, alias: &str) -> String {
+        format!("SELECT {select_list} FROM ({query}) AS {alias}")
     }
 
     /// Compute a percentile of a column
     ///
     /// Returns a scalar subquery expression that computes the specified percentile
     /// of a column within an optional grouping context.
+    ///
+    /// The default implements `percentile_cont` semantics with window
+    /// functions only (no native quantile aggregate required): with
+    /// `x = fraction * (cnt - 1)`, the result interpolates linearly between
+    /// the rows ranked `floor(x) + 1` and `ceil(x) + 1`. This is exact for
+    /// every fraction — the earlier NTILE(4) construction was only exact at
+    /// the quartiles and returned boundary averages (or NULL past p75)
+    /// elsewhere.
     fn sql_percentile(&self, column: &str, fraction: f64, from: &str, groups: &[String]) -> String {
-        // Uses NTILE(4) to divide data into quartiles, then interpolates between boundaries.
-        let group_filter = groups
-            .iter()
-            .map(|g| {
-                let q = naming::quote_ident(g);
-                format!(
-                    "AND {pct}.{q} IS NOT DISTINCT FROM {qt}.{q}",
-                    pct = naming::quote_ident("__ggsql_pct__"),
-                    qt = naming::quote_ident("__ggsql_qt__")
-                )
-            })
-            .collect::<Vec<_>>()
-            .join(" ");
+        let __ggsql_pct__ = self.quote_ident("__ggsql_pct__");
+        let __ggsql_qt__ = self.quote_ident("__ggsql_qt__");
+        // The derived table needs an explicit alias: MySQL/MariaDB reject
+        // unaliased derived tables ("Every derived table must have its own
+        // alias"), and other engines accept the alias harmlessly.
+        let __ggsql_tile__ = self.quote_ident("__ggsql_tile__");
+        let quoted_column = self.quote_ident(column);
 
-        let lo_tile = (fraction * 4.0).ceil() as usize;
-        let hi_tile = lo_tile + 1;
-        let quoted_column = naming::quote_ident(column);
+        // x = fraction * (cnt - 1) is the zero-based fractional rank of the
+        // percentile; interpolate between the rows bracketing it.
+        let x = format!("{fraction} * (cnt - 1)");
+        let lo = format!("1 + FLOOR({x})");
+        let hi = format!("1 + {}", self.sql_ceil(&x));
+        let frac = format!("{x} - FLOOR({x})");
+
+        // Group correlation belongs in the scalar subquery's own WHERE, not
+        // the windowed derived table's: MariaDB cannot resolve outer-query
+        // aliases from inside a derived table (Error 1054, "Unknown column
+        // ... in 'WHERE'"). The windows are instead partitioned by the
+        // group columns and the correlation filters one level up, which
+        // keeps the kept group's ranks identical.
+        let (partition_by, group_cols, group_filter) = if groups.is_empty() {
+            (String::new(), String::new(), String::new())
+        } else {
+            let quoted: Vec<String> = groups.iter().map(|g| self.quote_ident(g)).collect();
+            let filter = quoted
+                .iter()
+                .map(|q| {
+                    self.sql_null_safe_eq(
+                        &format!("{__ggsql_tile__}.{q}"),
+                        &format!("{__ggsql_qt__}.{q}"),
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join(" AND ");
+            (
+                format!("PARTITION BY {} ", quoted.join(", ")),
+                format!(", {}", quoted.join(", ")),
+                format!(" WHERE {filter}"),
+            )
+        };
+
+        // Wrap `from` in parens only when it's a query: a bare table or CTE
+        // name must not be parenthesized (MySQL/MariaDB/T-SQL reject
+        // `FROM (name) AS alias` for anything but a subquery).
+        let from_trim = from.trim();
+        let from_ref = if from_trim.starts_with('(') {
+            from_trim.to_string()
+        } else if from_trim.contains(char::is_whitespace) {
+            format!("({from_trim})")
+        } else {
+            from_trim.to_string()
+        };
 
         format!(
-            "(SELECT (\
-              MAX(CASE WHEN __tile = {lo_tile} THEN __val END) + \
-              MIN(CASE WHEN __tile = {hi_tile} THEN __val END)\
-            ) / 2.0 \
-            FROM (\
-              SELECT {column} AS __val, \
-                     NTILE(4) OVER (ORDER BY {column}) AS __tile \
-              FROM ({from}) AS \"__ggsql_pct__\" \
-              WHERE {column} IS NOT NULL {group_filter}\
-            ))",
-            column = quoted_column
+            "(SELECT \
+               MAX(CASE WHEN rn = {lo} THEN __val END) + \
+               (MAX(CASE WHEN rn = {hi} THEN __val END) - \
+                MAX(CASE WHEN rn = {lo} THEN __val END)) * MAX({frac}) \
+             FROM (\
+               SELECT {quoted_column} AS __val, \
+                      ROW_NUMBER() OVER ({partition_by}ORDER BY {quoted_column}) AS rn, \
+                      COUNT(*) OVER ({partition_by}) AS cnt{group_cols} \
+               FROM {from_ref} AS {__ggsql_pct__} \
+               WHERE {quoted_column} IS NOT NULL\
+             ) AS {__ggsql_tile__}{group_filter})"
         )
     }
 
@@ -297,33 +463,62 @@ pub trait SqlDialect {
     /// than the percentile/iqr family, which goes through [`sql_quantile_inline`]
     /// / [`sql_percentile`] instead.
     fn sql_aggregate(&self, name: &str, qcol: &str) -> Option<String> {
-        default_sql_aggregate(name, qcol)
+        default_sql_aggregate(&|c: &str| self.quote_ident(c), name, qcol)
     }
 
     /// SQL literal for a date value (days since Unix epoch).
+    ///
+    /// The default renders an ISO `DATE 'YYYY-MM-DD'` literal, valid on
+    /// every backend that accepts ANSI literals; interval arithmetic
+    /// (`INTERVAL n DAY`) is not portable.
     fn sql_date_literal(&self, days_since_epoch: i32) -> String {
-        format!(
-            "CAST(DATE '1970-01-01' + INTERVAL {} DAY AS DATE)",
-            days_since_epoch
-        )
+        // 719163 is the proleptic Gregorian day number of the Unix epoch.
+        let date = chrono::NaiveDate::from_num_days_from_ce_opt(719163 + days_since_epoch)
+            .expect("date literal out of range");
+        format!("DATE '{}'", date.format("%Y-%m-%d"))
     }
 
     /// SQL literal for a datetime value (microseconds since Unix epoch).
     fn sql_datetime_literal(&self, microseconds_since_epoch: i64) -> String {
-        format!(
-            "TIMESTAMP '1970-01-01 00:00:00' + INTERVAL {} MICROSECOND",
-            microseconds_since_epoch
-        )
+        let dt = chrono::DateTime::from_timestamp_micros(microseconds_since_epoch)
+            .expect("datetime literal out of range")
+            .naive_utc();
+        let base = dt.format("%Y-%m-%d %H:%M:%S");
+        let micros = microseconds_since_epoch.rem_euclid(1_000_000);
+        if micros == 0 {
+            format!("TIMESTAMP '{base}'")
+        } else {
+            format!("TIMESTAMP '{base}.{micros:06}'")
+        }
     }
 
     /// SQL literal for a time value (nanoseconds since midnight).
     fn sql_time_literal(&self, nanoseconds_since_midnight: i64) -> String {
-        let seconds = nanoseconds_since_midnight / 1_000_000_000;
-        let nanos = nanoseconds_since_midnight % 1_000_000_000;
-        format!(
-            "TIME '00:00:00' + INTERVAL {} SECOND + INTERVAL {} NANOSECOND",
-            seconds, nanos
-        )
+        let seconds = nanoseconds_since_midnight.div_euclid(1_000_000_000);
+        let nanos = nanoseconds_since_midnight.rem_euclid(1_000_000_000);
+        let time =
+            chrono::NaiveTime::from_num_seconds_from_midnight_opt(seconds as u32, nanos as u32)
+                .expect("time literal out of range");
+        let base = time.format("%H:%M:%S");
+        if nanos == 0 {
+            format!("TIME '{base}'")
+        } else {
+            format!("TIME '{base}.{nanos:09}'")
+        }
+    }
+
+    /// Expression converting a temporal value to its epoch number, for
+    /// numeric comparison: days since epoch for dates, microseconds for
+    /// datetimes, nanoseconds for times (matching the units ggsql uses for
+    /// temporal scale values). Used when a temporal column must be compared
+    /// numerically (binned scales with a non-temporal transform).
+    ///
+    /// Default: a plain cast to the number type, valid where temporal →
+    /// numeric casts are allowed (T-SQL, ClickHouse). Dialects with
+    /// stricter casts (DuckDB, Postgres, MySQL, …) override.
+    fn sql_temporal_as_number(&self, expr: &str, _kind: CastTargetType) -> String {
+        let ty = self.number_type_name().unwrap_or("DOUBLE PRECISION");
+        self.sql_cast(expr, ty)
     }
 
     /// SQL literal for a boolean value.
@@ -333,6 +528,56 @@ pub trait SqlDialect {
         } else {
             "FALSE".to_string()
         }
+    }
+
+    /// Whether this backend fundamentally lacks the temporary-table support
+    /// ggsql needs to stage internal tables (CTEs, stat transforms), so a
+    /// connection through it must always be wrapped in a caching reader.
+    ///
+    /// Set this for query engines with no DDL at all (Druid, Drill,
+    /// DataFusion) or where `CREATE TEMP TABLE` is broadly unsupported
+    /// (Trino). Backends whose support is merely *uncertain* — e.g. the
+    /// account may be read-only — should keep the default: connections are
+    /// probed once on connect and wrapped only when the probe fails.
+    fn requires_cache(&self) -> bool {
+        false
+    }
+
+    /// SQL listing catalogs, with a single `catalog_name` output column.
+    ///
+    /// Returns `None` to use the `Reader` default (`information_schema`).
+    /// Override for backends without `information_schema` (e.g. Exasol's
+    /// `SYS.EXA_*` tables).
+    fn sql_list_catalogs(&self) -> Option<String> {
+        None
+    }
+
+    /// SQL listing schemas in `catalog`, with a single `schema_name` column.
+    fn sql_list_schemas(&self, _catalog: &str) -> Option<String> {
+        None
+    }
+
+    /// SQL listing tables in `catalog`/`schema`, with `table_name` and
+    /// `table_type` output columns.
+    fn sql_list_tables(&self, _catalog: &str, _schema: &str) -> Option<String> {
+        None
+    }
+
+    /// SQL listing columns of `catalog`/`schema`/`table`, with `column_name`
+    /// and `data_type` output columns.
+    fn sql_list_columns(&self, _catalog: &str, _schema: &str, _table: &str) -> Option<String> {
+        None
+    }
+
+    /// DDL statement(s) creating an empty temporary table with explicit
+    /// column definitions (`"name TYPE"` pairs), used by `Reader::register`
+    /// to stage a data frame before bulk-inserting into it.
+    fn sql_create_empty_temp_table(&self, name: &str, column_defs: &[String]) -> Vec<String> {
+        vec![format!(
+            "CREATE TEMPORARY TABLE {} ({})",
+            self.quote_ident(name),
+            column_defs.join(", ")
+        )]
     }
 
     /// Build the DDL statement(s) needed to (re)create a temporary table
@@ -349,8 +594,9 @@ pub trait SqlDialect {
         column_aliases: &[String],
         body_sql: &str,
     ) -> Vec<String> {
-        let qname = naming::quote_ident(name);
-        let body = wrap_with_column_aliases(body_sql, column_aliases);
+        let qname = self.quote_ident(name);
+        let body =
+            wrap_with_column_aliases(&|c: &str| self.quote_ident(c), body_sql, column_aliases);
         vec![
             format!("DROP TABLE IF EXISTS {}", qname),
             format!("CREATE TEMP TABLE {} AS {}", qname, body),
@@ -361,17 +607,22 @@ pub trait SqlDialect {
 /// Wrap a body SQL in a CTE with a column alias list when aliases are present.
 /// This is a portable way to rename the body's output columns without relying
 /// on `CREATE TABLE t(a, b) AS ...` (which SQLite does not support).
-pub(crate) fn wrap_with_column_aliases(body_sql: &str, column_aliases: &[String]) -> String {
+pub(crate) fn wrap_with_column_aliases(
+    quote: &dyn Fn(&str) -> String,
+    body_sql: &str,
+    column_aliases: &[String],
+) -> String {
     if column_aliases.is_empty() {
         return body_sql.to_string();
     }
     let cols = column_aliases
         .iter()
-        .map(|c| naming::quote_ident(c))
+        .map(|c| quote(c))
         .collect::<Vec<_>>()
         .join(", ");
+    let __ggsql_aliased__ = quote("__ggsql_aliased__");
     format!(
-        "WITH __ggsql_aliased__({}) AS ({}) SELECT * FROM __ggsql_aliased__",
+        "WITH {__ggsql_aliased__}({}) AS ({}) SELECT * FROM {__ggsql_aliased__}",
         cols, body_sql
     )
 }
@@ -383,7 +634,13 @@ pub(crate) fn wrap_with_column_aliases(body_sql: &str, column_aliases: &[String]
 /// which depends on the row-number columns the stat layer injects when any
 /// aggregate references them. Backends with a cheaper native equivalent
 /// (e.g. DuckDB's `FIRST`/`LAST`) override [`SqlDialect::sql_aggregate`].
-pub fn default_sql_aggregate(name: &str, qcol: &str) -> Option<String> {
+pub fn default_sql_aggregate(
+    quote: &dyn Fn(&str) -> String,
+    name: &str,
+    qcol: &str,
+) -> Option<String> {
+    let __ggsql_rn__ = quote("__ggsql_rn__");
+    let __ggsql_max_rn__ = quote("__ggsql_max_rn__");
     let s = match name {
         "count" => format!("COUNT({})", qcol),
         "sum" => format!("SUM({})", qcol),
@@ -399,14 +656,14 @@ pub fn default_sql_aggregate(name: &str, qcol: &str) -> Option<String> {
         "sdev" => format!("STDDEV_POP({})", qcol),
         "se" => format!("(STDDEV_POP({c}) / SQRT(COUNT({c})))", c = qcol),
         "var" => format!("VAR_POP({})", qcol),
-        "first" => format!("MAX(CASE WHEN \"__ggsql_rn__\" = 1 THEN {} END)", qcol),
+        "first" => format!("MAX(CASE WHEN {__ggsql_rn__} = 1 THEN {} END)", qcol),
         "last" => format!(
-            "MAX(CASE WHEN \"__ggsql_rn__\" = \"__ggsql_max_rn__\" THEN {} END)",
+            "MAX(CASE WHEN {__ggsql_rn__} = {__ggsql_max_rn__} THEN {} END)",
             qcol
         ),
         "diff" => format!(
-            "(MAX(CASE WHEN \"__ggsql_rn__\" = \"__ggsql_max_rn__\" THEN {c} END) \
-             - MAX(CASE WHEN \"__ggsql_rn__\" = 1 THEN {c} END))",
+            "(MAX(CASE WHEN {__ggsql_rn__} = {__ggsql_max_rn__} THEN {c} END) \
+             - MAX(CASE WHEN {__ggsql_rn__} = 1 THEN {c} END))",
             c = qcol
         ),
         _ => return None,
@@ -416,6 +673,19 @@ pub fn default_sql_aggregate(name: &str, qcol: &str) -> Option<String> {
 
 pub struct AnsiDialect;
 impl SqlDialect for AnsiDialect {}
+
+/// Fail fast when a spatial feature is used on a backend whose dialect
+/// reports `supports_spatial() == false`, rather than emitting spatial SQL
+/// the backend cannot run.
+pub(crate) fn ensure_spatial_supported(dialect: &dyn SqlDialect) -> Result<()> {
+    if dialect.supports_spatial() {
+        Ok(())
+    } else {
+        Err(GgsqlError::ValidationError(
+            "Spatial operations are not supported by this database backend".into(),
+        ))
+    }
+}
 
 #[cfg(feature = "duckdb")]
 pub mod duckdb;
@@ -437,6 +707,7 @@ mod cache_equivalence;
 
 pub mod connection;
 pub mod data;
+pub mod dialects;
 mod spec;
 
 #[cfg(feature = "duckdb")]
@@ -459,7 +730,7 @@ pub use cache::CachingReader;
 // ============================================================================
 
 /// Extract the numeric SRID from an EPSG string (e.g. "EPSG:4326" → 4326).
-fn extract_epsg_srid(crs: &str) -> Option<u32> {
+pub(crate) fn extract_epsg_srid(crs: &str) -> Option<u32> {
     crs.strip_prefix("EPSG:").and_then(|s| s.parse().ok())
 }
 
@@ -505,6 +776,9 @@ pub(crate) mod test_support {
         execute_with_reader, returns_rows, ColumnInfo, Reader, Spec, SqlDialect, TableInfo,
     };
     use crate::{DataFrame, GgsqlError, Result};
+    use arrow::array::RecordBatch;
+    use arrow::datatypes::{DataType, Field, Schema};
+    use std::collections::HashMap;
     use std::sync::{Arc, Mutex};
 
     /// A `Reader` that records every `execute_sql` it receives, delegating
@@ -609,6 +883,509 @@ pub(crate) mod test_support {
         fn list_columns(&self, c: &str, s: &str, t: &str) -> Result<Vec<ColumnInfo>> {
             self.inner.list_columns(c, s, t)
         }
+    }
+
+    /// A `Reader` that never connects anywhere: it records every SQL
+    /// statement it is asked to run and fabricates an empty result whose
+    /// schema is inferred from the statement's top-level SELECT list.
+    ///
+    /// Combined with a per-test dialect this lets the golden SQL tests
+    /// capture exactly what the plot pipeline emits for each backend
+    /// without needing a live server. Column types are recovered from
+    /// registered tables by name; anything unrecognized defaults to
+    /// `Float64`, which is the right shape for the derived columns
+    /// (bins, densities, quantiles) the pipeline produces.
+    pub(crate) struct StubReader {
+        dialect: Box<dyn SqlDialect>,
+        tables: Mutex<HashMap<String, Arc<Schema>>>,
+        log: Arc<Mutex<Vec<String>>>,
+    }
+
+    impl StubReader {
+        /// Create a stub for `dialect`, returning it together with a
+        /// handle to the shared SQL log.
+        pub(crate) fn new(dialect: Box<dyn SqlDialect>) -> (Self, Arc<Mutex<Vec<String>>>) {
+            let log = Arc::new(Mutex::new(Vec::new()));
+            (
+                Self {
+                    dialect,
+                    tables: Mutex::new(HashMap::new()),
+                    log: log.clone(),
+                },
+                log,
+            )
+        }
+
+        /// Fabricate a three-row result for a row-returning statement.
+        ///
+        /// Three rows (rather than zero) so that data-dependent stages —
+        /// scale training, histogram statistics — have values to work
+        /// with, and min/max ranges are non-degenerate.
+        fn fake_result(&self, sql: &str) -> DataFrame {
+            let cols = self.projected_columns(sql);
+            if cols.is_empty() {
+                return DataFrame::empty();
+            }
+            let fields: Vec<Field> = cols
+                .iter()
+                .map(|(name, ty)| Field::new(name, ty.clone(), true))
+                .collect();
+            let schema = Arc::new(Schema::new(fields));
+            let arrays: Vec<arrow::array::ArrayRef> = schema
+                .fields()
+                .iter()
+                .map(|f| sample_array(f.data_type()))
+                .collect();
+            let batch = RecordBatch::try_new(schema, arrays)
+                .expect("stub arrays must match fabricated schema");
+            DataFrame::from_record_batch(batch)
+        }
+
+        /// Names and types of the columns a row-returning statement would
+        /// produce, inferred well enough for the pipeline's generated SQL:
+        ///
+        /// - `AS` aliases and plain identifiers in the outermost SELECT
+        ///   list (after stripping `DISTINCT` / `TOP n`),
+        /// - bare `*`, expanded from every registered table the statement
+        ///   references (the pipeline's subqueries carry base columns
+        ///   through, so this matches even when the FROM is a subquery),
+        /// - internal `"__ggsql_*"` identifiers mentioned anywhere in the
+        ///   statement (aesthetic/stat channel columns), typed via the
+        ///   expression that defines them.
+        ///
+        /// Column types come from the registered table whose column appears
+        /// in the defining expression; anything unrecognized defaults to
+        /// `Float64`, the right shape for derived numeric columns (bins,
+        /// densities, counts, quantiles).
+        fn projected_columns(&self, sql: &str) -> Vec<(String, DataType)> {
+            let mut cols: Vec<(String, DataType)> = Vec::new();
+            let push = |name: String, ty: DataType, cols: &mut Vec<(String, DataType)>| {
+                if !cols.iter().any(|(n, _)| n == &name) {
+                    cols.push((name, ty));
+                }
+            };
+
+            let mut has_star = false;
+            if let Some((list, _)) = select_list_span(sql) {
+                for item in split_top_level_commas(&list) {
+                    let item = item.trim();
+                    if item == "*" {
+                        has_star = true;
+                    } else if let Some(name) = output_name(item) {
+                        let ty = self
+                            .registered_type(&name)
+                            .or_else(|| self.type_from_expr(item))
+                            .unwrap_or(DataType::Float64);
+                        push(name, ty, &mut cols);
+                    }
+                }
+            }
+
+            if has_star {
+                let tables = self.tables.lock().unwrap();
+                for (table, schema) in tables.iter() {
+                    if contains_word(sql, table) {
+                        for field in schema.fields() {
+                            push(field.name().clone(), field.data_type().clone(), &mut cols);
+                        }
+                    }
+                }
+            }
+
+            for name in scan_internal_idents(sql) {
+                // Temp-table names are internal identifiers too, but they
+                // name tables, not columns: without this filter a probe
+                // against a temp table would invent a column named after
+                // the table itself.
+                if self.tables.lock().unwrap().contains_key(&name) {
+                    continue;
+                }
+                let ty = self
+                    .type_from_alias_definition(sql, &name)
+                    .unwrap_or(DataType::Float64);
+                push(name, ty, &mut cols);
+            }
+
+            cols
+        }
+
+        /// Type of a registered table column with this exact
+        /// (case-insensitive) name.
+        fn registered_type(&self, name: &str) -> Option<DataType> {
+            let tables = self.tables.lock().unwrap();
+            tables.values().find_map(|schema| {
+                schema.fields().iter().find_map(|f| {
+                    if f.name().eq_ignore_ascii_case(name) {
+                        Some(f.data_type().clone())
+                    } else {
+                        None
+                    }
+                })
+            })
+        }
+
+        /// Type of the longest registered column name appearing as a word
+        /// in `expr` (e.g. `CAST("day" AS DATE)` → the type of `day`).
+        fn type_from_expr(&self, expr: &str) -> Option<DataType> {
+            let tables = self.tables.lock().unwrap();
+            let mut best: Option<DataType> = None;
+            let mut best_len = 0;
+            for schema in tables.values() {
+                for field in schema.fields() {
+                    if field.name().len() > best_len && contains_word(expr, field.name()) {
+                        best = Some(field.data_type().clone());
+                        best_len = field.name().len();
+                    }
+                }
+            }
+            best
+        }
+
+        /// Track temp-table lineage for non-row-returning statements:
+        /// a statement that mentions an internal `"__ggsql_*"` name and a
+        /// registered source table (`CREATE ... AS SELECT * FROM t`,
+        /// `SELECT * INTO ... FROM t`) aliases the temp name to the
+        /// source schema; `DROP` removes it. Later probes against the
+        /// temp copy then see the source columns.
+        fn track_ddl(&self, sql: &str) {
+            let idents = scan_internal_idents(sql);
+            if idents.is_empty() {
+                return;
+            }
+            let mut tables = self.tables.lock().unwrap();
+            if sql
+                .split_whitespace()
+                .next()
+                .unwrap_or("")
+                .eq_ignore_ascii_case("drop")
+            {
+                for name in idents {
+                    tables.remove(&name);
+                }
+                return;
+            }
+            // Prefer real source tables over stale internal aliases when
+            // resolving lineage (the statement names the temp table it
+            // creates too, and HashMap iteration order is arbitrary).
+            let source = tables
+                .iter()
+                .filter(|(name, _)| !name.starts_with("__ggsql_"))
+                .find(|(name, _)| contains_word(sql, name))
+                .or_else(|| tables.iter().find(|(name, _)| contains_word(sql, name)))
+                .map(|(_, schema)| schema.clone());
+            if let Some(schema) = source {
+                for name in idents {
+                    tables.insert(name, schema.clone());
+                }
+            }
+        }
+
+        /// Find `<expr> AS <name>` in the statement and infer the type
+        /// from `expr`. Used for internal channel columns whose defining
+        /// expression wraps a registered column (`"category" AS
+        /// "__ggsql_aes_pos1__"`, `toDate32("day") AS ...`).
+        fn type_from_alias_definition(&self, sql: &str, name: &str) -> Option<DataType> {
+            let quoted = format!("\"{name}\"");
+            let mut search_from = 0;
+            while let Some(rel) = sql[search_from..].find(&quoted) {
+                let pos = search_from + rel;
+                let before = sql[..pos].trim_end();
+                if before.len() >= 2 && before[before.len() - 2..].eq_ignore_ascii_case("as") {
+                    let expr_start = before[..before.len() - 2]
+                        .rfind(['(', ','])
+                        .map(|i| i + 1)
+                        .unwrap_or(0);
+                    let expr = &before[expr_start..before.len() - 2];
+                    if let Some(ty) = self.type_from_expr(expr) {
+                        return Some(ty);
+                    }
+                }
+                search_from = pos + quoted.len();
+            }
+            None
+        }
+    }
+
+    impl Reader for StubReader {
+        fn execute_sql(&self, sql: &str) -> Result<DataFrame> {
+            self.log.lock().unwrap().push(sql.to_string());
+            // MSSQL's `SELECT ... INTO <temp> FROM ...` starts with SELECT
+            // but is DDL — treat it as a write so lineage is tracked.
+            let mut is_select_into = false;
+            for_each_top_level_keyword(sql, "into", |_| is_select_into = true);
+            if returns_rows(sql) && !is_select_into {
+                Ok(self.fake_result(sql))
+            } else {
+                self.track_ddl(sql);
+                Ok(DataFrame::empty())
+            }
+        }
+        fn register(&self, name: &str, df: DataFrame, replace: bool) -> Result<()> {
+            let mut tables = self.tables.lock().unwrap();
+            if replace || !tables.contains_key(name) {
+                tables.insert(name.to_string(), df.schema());
+            }
+            Ok(())
+        }
+        fn unregister(&self, name: &str) -> Result<()> {
+            self.tables.lock().unwrap().remove(name);
+            Ok(())
+        }
+        fn execute(&self, query: &str) -> Result<Spec> {
+            execute_with_reader(self, query)
+        }
+        fn dialect(&self) -> &dyn SqlDialect {
+            &*self.dialect
+        }
+    }
+
+    // ------------------------------------------------------------------------
+    // Minimal top-level SQL scanning helpers for `StubReader`
+    // ------------------------------------------------------------------------
+
+    /// Strip one layer of identifier quoting: `"x"`, `` `x` ``, or `[x]`.
+    fn unquote_ident(s: &str) -> String {
+        let t = s.trim();
+        for (open, close) in [('"', '"'), ('`', '`'), ('[', ']')] {
+            if t.len() >= 2 && t.starts_with(open) && t.ends_with(close) {
+                return t[1..t.len() - 1].to_string();
+            }
+        }
+        t.to_string()
+    }
+
+    /// Scan `sql`, calling `f` for each top-level keyword occurrence.
+    ///
+    /// Tracks parenthesis depth and single/double/backtick quoting, so
+    /// keywords inside subqueries, string literals, and quoted identifiers
+    /// are skipped. `f` receives the keyword's byte start.
+    fn for_each_top_level_keyword(sql: &str, keyword: &str, mut f: impl FnMut(usize)) {
+        let bytes = sql.as_bytes();
+        let kw = keyword.as_bytes();
+        let mut depth = 0i32;
+        let mut quote: Option<u8> = None;
+        let mut i = 0;
+        while i < bytes.len() {
+            let c = bytes[i];
+            if let Some(q) = quote {
+                if c == q {
+                    // SQL escapes a quote by doubling it; skip the pair.
+                    if i + 1 < bytes.len() && bytes[i + 1] == q {
+                        i += 2;
+                        continue;
+                    }
+                    quote = None;
+                }
+                i += 1;
+                continue;
+            }
+            match c {
+                b'\'' | b'"' | b'`' => quote = Some(c),
+                b'(' => depth += 1,
+                b')' => depth -= 1,
+                _ => {
+                    if depth == 0
+                        && i + kw.len() <= bytes.len()
+                        && bytes[i..i + kw.len()].eq_ignore_ascii_case(kw)
+                        && (i == 0 || !is_ident_byte(bytes[i - 1]))
+                        && (i + kw.len() >= bytes.len() || !is_ident_byte(bytes[i + kw.len()]))
+                    {
+                        f(i);
+                    }
+                }
+            }
+            i += 1;
+        }
+    }
+
+    fn is_ident_byte(b: u8) -> bool {
+        b.is_ascii_alphanumeric() || b == b'_' || b == b'$'
+    }
+
+    /// Locate the outermost SELECT list, returning the list text and the
+    /// bare table name following the top-level FROM, if any.
+    fn select_list_span(sql: &str) -> Option<(String, Option<String>)> {
+        let mut sel = None;
+        for_each_top_level_keyword(sql, "select", |pos| {
+            if sel.is_none() {
+                sel = Some(pos);
+            }
+        });
+        let sel = sel?;
+        let mut from = None;
+        for_each_top_level_keyword(sql, "from", |pos| {
+            if pos > sel && from.is_none() {
+                from = Some(pos);
+            }
+        });
+        let list_start = sel + "select".len();
+        let list = match from {
+            Some(f) => sql[list_start..f].trim().to_string(),
+            None => sql[list_start..].trim().to_string(),
+        };
+        let list = strip_select_modifiers(list);
+        let table = from.and_then(|f| {
+            let rest = sql[f + "from".len()..].trim_start();
+            let end = rest
+                .find(|c: char| c.is_whitespace() || c == '(' || c == ',')
+                .unwrap_or(rest.len());
+            let name = rest[..end].trim();
+            if name.is_empty() {
+                None
+            } else {
+                Some(name.to_string())
+            }
+        });
+        Some((list, table))
+    }
+
+    /// Does `needle` appear in `haystack` bounded by non-identifier bytes
+    /// (so `cat` doesn't match `category`)? Case-insensitive.
+    fn contains_word(haystack: &str, needle: &str) -> bool {
+        let hay = haystack.as_bytes();
+        let nee = needle.as_bytes();
+        if nee.is_empty() || hay.len() < nee.len() {
+            return false;
+        }
+        (0..=hay.len() - nee.len()).any(|i| {
+            hay[i..i + nee.len()].eq_ignore_ascii_case(nee)
+                && (i == 0 || !is_ident_byte(hay[i - 1]))
+                && (i + nee.len() >= hay.len() || !is_ident_byte(hay[i + nee.len()]))
+        })
+    }
+
+    /// All internal `"__ggsql_*"` identifiers mentioned in the statement,
+    /// in either double-quote or backtick quoting. These name channel
+    /// columns (`__ggsql_aes_pos1__`, `__ggsql_stat_count`, …) that the
+    /// pipeline carries through subqueries and later looks up by name.
+    fn scan_internal_idents(sql: &str) -> Vec<String> {
+        let mut out = Vec::new();
+        let bytes = sql.as_bytes();
+        let mut i = 0;
+        while i < bytes.len() {
+            if (bytes[i] == b'"' || bytes[i] == b'`') && sql[i + 1..].starts_with("__ggsql_") {
+                let quote = bytes[i];
+                let start = i + 1;
+                if let Some(end) = sql[start..].find(quote as char) {
+                    let name = &sql[start..start + end];
+                    if name.bytes().all(is_ident_byte) && !out.iter().any(|n| n == name) {
+                        out.push(name.to_string());
+                    }
+                    i = start + end + 1;
+                    continue;
+                }
+            }
+            i += 1;
+        }
+        out
+    }
+
+    /// A deterministic three-row array for a fabricated column. Types the
+    /// pipeline doesn't map to a registered table column fall back to
+    /// all-null via `new_null_array`.
+    fn sample_array(dtype: &DataType) -> arrow::array::ArrayRef {
+        use arrow::array::{
+            BooleanArray, Date32Array, Float64Array, Int32Array, Int64Array, StringArray,
+        };
+        match dtype {
+            DataType::Float64 => Arc::new(Float64Array::from(vec![1.0, 2.0, 3.0])),
+            DataType::Int32 => Arc::new(Int32Array::from(vec![1, 2, 3])),
+            DataType::Int64 => Arc::new(Int64Array::from(vec![1i64, 2, 3])),
+            DataType::Utf8 => Arc::new(StringArray::from(vec!["a", "b", "c"])),
+            DataType::Boolean => Arc::new(BooleanArray::from(vec![true, false, true])),
+            DataType::Date32 => Arc::new(Date32Array::from(vec![19000, 19001, 19002])),
+            other => arrow::array::new_null_array(other, 3),
+        }
+    }
+
+    /// Drop leading SELECT-list modifiers the schema probe may add:
+    /// `DISTINCT` and MSSQL's `TOP n`.
+    fn strip_select_modifiers(list: String) -> String {
+        let mut rest = list.trim_start().to_string();
+        loop {
+            let lower = rest.to_ascii_lowercase();
+            if let Some(after) = lower.strip_prefix("distinct") {
+                if after.starts_with(|c: char| c.is_whitespace()) {
+                    rest = rest["distinct".len()..].trim_start().to_string();
+                    continue;
+                }
+            }
+            if let Some(after) = lower.strip_prefix("top") {
+                let after = after.trim_start();
+                let digits: usize = after.chars().take_while(|c| c.is_ascii_digit()).count();
+                if digits > 0 {
+                    let ws: usize = rest.len() - rest.trim_start().len();
+                    rest = rest[ws + 3..]
+                        .trim_start()
+                        .chars()
+                        .skip(digits)
+                        .collect::<String>()
+                        .trim_start()
+                        .to_string();
+                    continue;
+                }
+            }
+            return rest;
+        }
+    }
+
+    /// Split a SELECT list on top-level commas.
+    fn split_top_level_commas(list: &str) -> Vec<String> {
+        let mut parts = Vec::new();
+        let mut depth = 0i32;
+        let mut quote: Option<u8> = None;
+        let mut start = 0;
+        let bytes = list.as_bytes();
+        let mut i = 0;
+        while i < bytes.len() {
+            let c = bytes[i];
+            if let Some(q) = quote {
+                if c == q {
+                    if i + 1 < bytes.len() && bytes[i + 1] == q {
+                        i += 2;
+                        continue;
+                    }
+                    quote = None;
+                }
+            } else {
+                match c {
+                    b'\'' | b'"' | b'`' => quote = Some(c),
+                    b'(' => depth += 1,
+                    b')' => depth -= 1,
+                    b',' if depth == 0 => {
+                        parts.push(list[start..i].to_string());
+                        start = i + 1;
+                    }
+                    _ => {}
+                }
+            }
+            i += 1;
+        }
+        parts.push(list[start..].to_string());
+        parts
+    }
+
+    /// Output column name for one SELECT-list item: the `AS` alias if
+    /// present, else the final segment of a plain (possibly qualified)
+    /// identifier, else `None` for unaliased expressions.
+    fn output_name(item: &str) -> Option<String> {
+        let mut alias = None;
+        for_each_top_level_keyword(item, "as", |pos| alias = Some(pos));
+        if let Some(pos) = alias {
+            let name = item[pos + 2..].trim();
+            if !name.is_empty() {
+                return Some(unquote_ident(name));
+            }
+        }
+        let t = item.trim();
+        if !t.is_empty()
+            && t.bytes()
+                .all(|b| is_ident_byte(b) || b == b'.' || b == b'"' || b == b'`')
+        {
+            let last = t.rsplit('.').next().unwrap_or(t);
+            return Some(unquote_ident(last));
+        }
+        None
     }
 
     /// Compare two DataFrames by schema (field names + types) and by
@@ -866,9 +1643,11 @@ pub trait Reader {
     // =========================================================================
 
     fn list_catalogs(&self) -> Result<Vec<String>> {
-        let df = self.execute_sql(
-            "SELECT DISTINCT catalog_name FROM information_schema.schemata ORDER BY catalog_name",
-        )?;
+        let sql = self.dialect().sql_list_catalogs().unwrap_or_else(|| {
+            "SELECT DISTINCT catalog_name FROM information_schema.schemata ORDER BY catalog_name"
+                .to_string()
+        });
+        let df = self.execute_sql(&sql)?;
         let col = df.column("catalog_name")?;
         let mut results = Vec::with_capacity(df.height());
         for i in 0..df.height() {
@@ -880,11 +1659,14 @@ pub trait Reader {
     }
 
     fn list_schemas(&self, catalog: &str) -> Result<Vec<String>> {
-        let df = self.execute_sql(&format!(
-            "SELECT DISTINCT schema_name FROM information_schema.schemata \
-             WHERE catalog_name = {} ORDER BY schema_name",
-            naming::quote_literal(catalog)
-        ))?;
+        let sql = self.dialect().sql_list_schemas(catalog).unwrap_or_else(|| {
+            format!(
+                "SELECT DISTINCT schema_name FROM information_schema.schemata \
+                 WHERE catalog_name = {} ORDER BY schema_name",
+                naming::quote_literal(catalog)
+            )
+        });
+        let df = self.execute_sql(&sql)?;
         let col = df.column("schema_name")?;
         let mut results = Vec::with_capacity(df.height());
         for i in 0..df.height() {
@@ -896,12 +1678,18 @@ pub trait Reader {
     }
 
     fn list_tables(&self, catalog: &str, schema: &str) -> Result<Vec<TableInfo>> {
-        let df = self.execute_sql(&format!(
-            "SELECT DISTINCT table_name, table_type FROM information_schema.tables \
-             WHERE table_catalog = {} AND table_schema = {} ORDER BY table_name",
-            naming::quote_literal(catalog),
-            naming::quote_literal(schema)
-        ))?;
+        let sql = self
+            .dialect()
+            .sql_list_tables(catalog, schema)
+            .unwrap_or_else(|| {
+                format!(
+                    "SELECT DISTINCT table_name, table_type FROM information_schema.tables \
+                 WHERE table_catalog = {} AND table_schema = {} ORDER BY table_name",
+                    naming::quote_literal(catalog),
+                    naming::quote_literal(schema)
+                )
+            });
+        let df = self.execute_sql(&sql)?;
         let name_col = df.column("table_name")?;
         let type_col = df.column("table_type")?;
         let mut results = Vec::with_capacity(df.height());
@@ -917,14 +1705,20 @@ pub trait Reader {
     }
 
     fn list_columns(&self, catalog: &str, schema: &str, table: &str) -> Result<Vec<ColumnInfo>> {
-        let df = self.execute_sql(&format!(
-            "SELECT column_name, data_type FROM information_schema.columns \
-             WHERE table_catalog = {} AND table_schema = {} AND table_name = {} \
-             ORDER BY ordinal_position",
-            naming::quote_literal(catalog),
-            naming::quote_literal(schema),
-            naming::quote_literal(table)
-        ))?;
+        let sql = self
+            .dialect()
+            .sql_list_columns(catalog, schema, table)
+            .unwrap_or_else(|| {
+                format!(
+                    "SELECT column_name, data_type FROM information_schema.columns \
+                     WHERE table_catalog = {} AND table_schema = {} AND table_name = {} \
+                     ORDER BY ordinal_position",
+                    naming::quote_literal(catalog),
+                    naming::quote_literal(schema),
+                    naming::quote_literal(table)
+                )
+            });
+        let df = self.execute_sql(&sql)?;
         let name_col = df.column("column_name")?;
         let type_col = df.column("data_type")?;
         let mut results = Vec::with_capacity(df.height());

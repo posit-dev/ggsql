@@ -5,7 +5,6 @@ use arrow::datatypes::DataType;
 use super::{
     ScaleTypeKind, ScaleTypeTrait, TransformKind, OOB_CENSOR, OOB_SQUISH, OOB_VALUES_CONTINUOUS,
 };
-use crate::naming;
 use crate::plot::types::{
     ArrayConstraint, DefaultParamValue, NumberConstraint, ParamConstraint, ParamDefinition,
 };
@@ -230,7 +229,7 @@ impl ScaleTypeTrait for Continuous {
 
         match oob {
             OOB_CENSOR => {
-                let quoted = naming::quote_ident(column_name);
+                let quoted = dialect.quote_ident(column_name);
                 Some(format!(
                     "(CASE WHEN {} >= {} AND {} <= {} THEN {} ELSE NULL END)",
                     quoted, min, quoted, max, quoted
@@ -239,7 +238,7 @@ impl ScaleTypeTrait for Continuous {
             OOB_SQUISH => {
                 let min_s = min.to_string();
                 let max_s = max.to_string();
-                let quoted = naming::quote_ident(column_name);
+                let quoted = dialect.quote_ident(column_name);
                 let inner = dialect.sql_least(&[&max_s, &quoted]);
                 Some(dialect.sql_greatest(&[&min_s, &inner]))
             }

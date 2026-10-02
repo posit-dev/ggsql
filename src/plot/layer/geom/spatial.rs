@@ -23,7 +23,11 @@ fn apply_clip_boundary(
     let transformed = dialect.sql_st_transform(&clipped, source, crs);
     let geom_expr = format!("ST_MakeValid({transformed})");
 
-    let filtered = format!("SELECT * FROM ({query}) WHERE ST_Intersects({col}, {clip_geom})");
+    // Explicit alias: MySQL/MariaDB reject unaliased derived tables.
+    let __ggsql_clip__ = dialect.quote_ident("__ggsql_clip__");
+    let filtered = format!(
+        "SELECT * FROM ({query}) AS {__ggsql_clip__} WHERE ST_Intersects({col}, {clip_geom})"
+    );
     dialect.sql_select_replace(&geom_expr, col, &filtered, columns)
 }
 
@@ -59,6 +63,7 @@ impl GeomTrait for Spatial {
         dialect: &dyn crate::reader::SqlDialect,
         _aesthetic_ctx: &crate::plot::aesthetic::AestheticContext,
     ) -> crate::Result<StatResult> {
+        crate::reader::ensure_spatial_supported(dialect)?;
         for stmt in dialect.sql_spatial_setup() {
             execute_query(&stmt)?;
         }
@@ -81,7 +86,7 @@ impl GeomTrait for Spatial {
         _parameters: &mut std::collections::HashMap<String, crate::plot::types::ParameterValue>,
     ) -> crate::Result<String> {
         let columns = mappings.column_names();
-        let col = naming::quote_ident(&naming::aesthetic_column("geometry"));
+        let col = dialect.quote_ident(&naming::aesthetic_column("geometry"));
         let is_map = projection.coord.coord_kind() == CoordKind::Map;
         let clip = matches!(
             projection.properties.get("clip"),

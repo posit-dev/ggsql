@@ -3,6 +3,7 @@
 //! These types are used by all geom implementations and are shared across the module.
 
 use crate::plot::aesthetic::parse_position;
+use crate::reader::SqlDialect;
 use crate::{naming, plot::types::DefaultAestheticValue, Mappings};
 
 // Re-export shared types from the central location
@@ -218,9 +219,14 @@ pub use crate::plot::types::Schema;
 /// - `Transformed` → wraps the existing query in
 ///   `SELECT * FROM (<query>) AS "__ggsql_ord__" ORDER BY <aes>` and preserves
 ///   the stat metadata.
-pub fn wrap_with_order_by(input_query: &str, result: StatResult, aesthetic: &str) -> StatResult {
+pub fn wrap_with_order_by(
+    input_query: &str,
+    result: StatResult,
+    aesthetic: &str,
+    dialect: &dyn SqlDialect,
+) -> StatResult {
     let order_col = naming::aesthetic_column(aesthetic);
-    let order_quoted = naming::quote_ident(&order_col);
+    let order_quoted = dialect.quote_ident(&order_col);
     match result {
         StatResult::Identity => StatResult::Transformed {
             query: format!("{} ORDER BY {}", input_query, order_quoted),
@@ -234,10 +240,10 @@ pub fn wrap_with_order_by(input_query: &str, result: StatResult, aesthetic: &str
             dummy_columns,
             consumed_aesthetics,
         } => StatResult::Transformed {
-            query: format!(
-                "SELECT * FROM ({}) AS \"__ggsql_ord__\" ORDER BY {}",
-                query, order_quoted
-            ),
+            query: {
+                let __ggsql_ord__ = dialect.quote_ident("__ggsql_ord__");
+                format!("SELECT * FROM ({query}) AS {__ggsql_ord__} ORDER BY {order_quoted}")
+            },
             stat_columns,
             dummy_columns,
             consumed_aesthetics,
@@ -260,13 +266,14 @@ pub fn wrap_with_order_by(input_query: &str, result: StatResult, aesthetic: &str
 /// groups by the dummied axis, e.g. boxplot/violin) so the existing
 /// `GROUP BY` collapses to a single group, or post-wrap a stat output
 /// (aggregate / identity) so the dummy column is just decoration.
-pub fn wrap_with_dummy_axis(query: &str, axis: &str) -> String {
+pub fn wrap_with_dummy_axis(query: &str, axis: &str, dialect: &dyn SqlDialect) -> String {
     let stat_col = naming::stat_column(axis);
     let dummy_v = naming::stat_column("dummy");
+    let __ggsql_dummy_src__ = dialect.quote_ident("__ggsql_dummy_src__");
     format!(
-        "SELECT '{val}' AS {col}, * FROM ({q}) AS \"__ggsql_dummy_src__\"",
+        "SELECT '{val}' AS {col}, * FROM ({q}) AS {__ggsql_dummy_src__}",
         val = dummy_v,
-        col = naming::quote_ident(&stat_col),
+        col = dialect.quote_ident(&stat_col),
         q = query,
     )
 }
@@ -278,10 +285,15 @@ pub fn wrap_with_dummy_axis(query: &str, axis: &str) -> String {
 /// into a `Transformed` over the original input) and appends `axis` to
 /// both `stat_columns` and `dummy_columns` so `execute/layer.rs` flips
 /// `is_dummy: true` on the resulting aesthetic.
-pub fn wrap_stat_with_dummy_axis(input_query: &str, result: StatResult, axis: &str) -> StatResult {
+pub fn wrap_stat_with_dummy_axis(
+    input_query: &str,
+    result: StatResult,
+    axis: &str,
+    dialect: &dyn SqlDialect,
+) -> StatResult {
     match result {
         StatResult::Identity => StatResult::Transformed {
-            query: wrap_with_dummy_axis(input_query, axis),
+            query: wrap_with_dummy_axis(input_query, axis, dialect),
             stat_columns: vec![axis.to_string()],
             dummy_columns: vec![axis.to_string()],
             consumed_aesthetics: vec![],
@@ -298,7 +310,7 @@ pub fn wrap_stat_with_dummy_axis(input_query: &str, result: StatResult, axis: &s
             let wrapped = if already_dummied {
                 query
             } else {
-                wrap_with_dummy_axis(&query, axis)
+                wrap_with_dummy_axis(&query, axis, dialect)
             };
             if !stat_columns.iter().any(|s| s == axis) {
                 stat_columns.push(axis.to_string());
@@ -317,8 +329,12 @@ pub fn wrap_stat_with_dummy_axis(input_query: &str, result: StatResult, axis: &s
 }
 
 /// Convenience wrapper for the common case of dummying `pos1`.
-pub fn wrap_stat_with_dummy_pos1(input_query: &str, result: StatResult) -> StatResult {
-    wrap_stat_with_dummy_axis(input_query, result, "pos1")
+pub fn wrap_stat_with_dummy_pos1(
+    input_query: &str,
+    result: StatResult,
+    dialect: &dyn SqlDialect,
+) -> StatResult {
+    wrap_stat_with_dummy_axis(input_query, result, "pos1", dialect)
 }
 
 /// Returns true when at least one aesthetic in the same axis family as
@@ -351,8 +367,12 @@ pub fn get_column_name(aesthetics: &Mappings, aesthetic: &str) -> Option<String>
 }
 
 /// Helper to extract a double-quoted column name for use in SQL expressions.
-pub fn get_quoted_column_name(aesthetics: &Mappings, aesthetic: &str) -> Option<String> {
-    get_column_name(aesthetics, aesthetic).map(|n| naming::quote_ident(&n))
+pub fn get_quoted_column_name(
+    aesthetics: &Mappings,
+    aesthetic: &str,
+    dialect: &dyn SqlDialect,
+) -> Option<String> {
+    get_column_name(aesthetics, aesthetic).map(|n| dialect.quote_ident(&n))
 }
 
 #[cfg(test)]
@@ -428,7 +448,12 @@ mod tests {
 
     #[test]
     fn wrap_with_order_by_identity_appends_order() {
-        let result = wrap_with_order_by("SELECT * FROM t", StatResult::Identity, "pos1");
+        let result = wrap_with_order_by(
+            "SELECT * FROM t",
+            StatResult::Identity,
+            "pos1",
+            &crate::reader::AnsiDialect,
+        );
         match result {
             StatResult::Transformed {
                 query,
@@ -453,7 +478,12 @@ mod tests {
             dummy_columns: vec!["pos1".to_string()],
             consumed_aesthetics: vec!["pos2".to_string()],
         };
-        let result = wrap_with_order_by("SELECT * FROM raw", inner, "pos1");
+        let result = wrap_with_order_by(
+            "SELECT * FROM raw",
+            inner,
+            "pos1",
+            &crate::reader::AnsiDialect,
+        );
         match result {
             StatResult::Transformed {
                 query,
@@ -478,7 +508,7 @@ mod tests {
 
     #[test]
     fn wrap_with_dummy_pos1_produces_expected_sql() {
-        let wrapped = wrap_with_dummy_axis("SELECT * FROM t", "pos1");
+        let wrapped = wrap_with_dummy_axis("SELECT * FROM t", "pos1", &crate::reader::AnsiDialect);
         assert_eq!(
             wrapped,
             "SELECT '__ggsql_stat_dummy' AS \"__ggsql_stat_pos1\", * FROM (SELECT * FROM t) AS \"__ggsql_dummy_src__\""
@@ -487,7 +517,11 @@ mod tests {
 
     #[test]
     fn wrap_stat_with_dummy_pos1_promotes_identity() {
-        let result = wrap_stat_with_dummy_pos1("SELECT * FROM raw", StatResult::Identity);
+        let result = wrap_stat_with_dummy_pos1(
+            "SELECT * FROM raw",
+            StatResult::Identity,
+            &crate::reader::AnsiDialect,
+        );
         match result {
             StatResult::Transformed {
                 query,
@@ -514,7 +548,8 @@ mod tests {
             dummy_columns: vec![],
             consumed_aesthetics: vec!["weight".to_string()],
         };
-        let result = wrap_stat_with_dummy_pos1("SELECT * FROM raw", inner);
+        let result =
+            wrap_stat_with_dummy_pos1("SELECT * FROM raw", inner, &crate::reader::AnsiDialect);
         match result {
             StatResult::Transformed {
                 query,
@@ -543,7 +578,7 @@ mod tests {
             dummy_columns: vec!["pos1".to_string()],
             consumed_aesthetics: vec![],
         };
-        let result = wrap_stat_with_dummy_pos1("SELECT *", inner);
+        let result = wrap_stat_with_dummy_pos1("SELECT *", inner, &crate::reader::AnsiDialect);
         match result {
             StatResult::Transformed {
                 stat_columns,

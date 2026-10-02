@@ -176,6 +176,7 @@ pub(crate) fn stat_density(
         weight.as_deref(),
         query,
         group_by,
+        dialect,
     );
     let grid_cte = build_grid_cte(group_by, 512, tails, dialect);
     let kernel = choose_kde_kernel(parameters, smooth)?;
@@ -187,6 +188,7 @@ pub(crate) fn stat_density(
         &bw_cte,
         &data_cte,
         &grid_cte,
+        dialect,
     );
 
     let mut consumed = vec![value_aesthetic.to_string()];
@@ -231,7 +233,7 @@ fn density_sql_bandwidth(
     let (groups_select, group_by) = if groups.is_empty() {
         (String::new(), String::new())
     } else {
-        let quoted_groups: Vec<String> = groups.iter().map(|g| naming::quote_ident(g)).collect();
+        let quoted_groups: Vec<String> = groups.iter().map(|g| dialect.quote_ident(g)).collect();
         let groups_str = quoted_groups.join(", ");
         (
             format!("\n      {},", groups_str),
@@ -239,17 +241,19 @@ fn density_sql_bandwidth(
         )
     };
 
-    let quoted_value = naming::quote_ident(value);
+    let quoted_value = dialect.quote_ident(value);
+    let __ggsql_qt__ = dialect.quote_ident("__ggsql_qt__");
     format!(
-        "WITH RECURSIVE
+        "{with_recursive}
           bandwidth AS (
             SELECT
               {bw_expr} AS bw,{groups_select}
               MIN({value}) AS x_min,
               MAX({value}) AS x_max
-            FROM ({from}) AS \"__ggsql_qt__\"
+            FROM ({from}) AS {__ggsql_qt__}
             WHERE {value} IS NOT NULL{group_by}
           )",
+        with_recursive = dialect.sql_with_recursive(),
         bw_expr = bw_expr,
         groups_select = groups_select,
         value = quoted_value,
@@ -268,13 +272,17 @@ fn silverman_rule(
     // The query computes Silverman's rule of thumb (R's `stats::bw.nrd0()`).
     // We absorb the adjustment in the 0.9 multiplier of the rule
     let adjust = 0.9 * adjust;
-    let v = naming::quote_ident(value_column);
+    let v = dialect.quote_ident(value_column);
     let stddev = format!("SQRT(AVG({v}*{v}) - AVG({v})*AVG({v}))", v = v);
     let q75 = dialect.sql_percentile(value_column, 0.75, from, groups);
     let q25 = dialect.sql_percentile(value_column, 0.25, from, groups);
     let iqr = format!("({q75} - {q25}) / 1.34");
     let min_expr = dialect.sql_least(&[&stddev, &iqr]);
-    format!("{adjust} * {min_expr} * POW(COUNT(*), -0.2)")
+    // POWER, not POW: T-SQL has no POW function. And the base must not be an
+    // integer: T-SQL's POWER returns the base's type, so POWER(COUNT(*), -0.2)
+    // truncates n^(-0.2) to int 0 and the bandwidth becomes zero (divide by
+    // zero in the kernel). `1.0 *` coerces a fractional base on every dialect.
+    format!("{adjust} * {min_expr} * POWER(1.0 * COUNT(*), -0.2)")
 }
 
 fn choose_kde_kernel(parameters: &Parameters, smooth: Option<String>) -> Result<String> {
@@ -283,7 +291,7 @@ fn choose_kde_kernel(parameters: &Parameters, smooth: Option<String>) -> Result<
         _ => {
             return Err(GgsqlError::ValidationError(
                 "The density's `kernel` parameter must be a string.".to_string(),
-            ))
+            ));
         }
     };
 
@@ -297,7 +305,8 @@ fn choose_kde_kernel(parameters: &Parameters, smooth: Option<String>) -> Result<
         // Epanechnikov: K(u) = 0.75 * (1 - u²) for |u| ≤ 1
         "epanechnikov" => format!(
             "CASE WHEN {u_abs} <= 1 THEN 0.75 * (1 - {u2}) ELSE 0 END",
-            u_abs = u_abs, u2 = u2
+            u_abs = u_abs,
+            u2 = u2
         ),
         //  Triangular: K(u) = (1 - |u|) for |u| ≤ 1
         "triangular" => format!(
@@ -310,8 +319,9 @@ fn choose_kde_kernel(parameters: &Parameters, smooth: Option<String>) -> Result<
         }
         // Biweight = K(u) = (15/16) * (1 - u²)² for |u| ≤ 1
         "biweight" | "quartic" => format!(
-            "CASE WHEN {u_abs} <= 1 THEN (15.0/16.0) * POW(1 - {u2}, 2) ELSE 0 END",
-            u_abs = u_abs, u2 = u2
+            "CASE WHEN {u_abs} <= 1 THEN (15.0/16.0) * POWER(1 - {u2}, 2) ELSE 0 END",
+            u_abs = u_abs,
+            u2 = u2
         ),
         // Cosine: K(u) = (π/4) * cos(πu/2) for |u| ≤ 1
         "cosine" => format!(
@@ -350,35 +360,38 @@ fn build_data_cte(
     weight: Option<&str>,
     from: &str,
     group_by: &[String],
+    dialect: &dyn SqlDialect,
 ) -> String {
     // Include weight column if provided, otherwise default to 1.0
     let weight_col = if let Some(w) = weight {
-        format!(", {} AS weight", naming::quote_ident(w))
+        format!(", {} AS weight", dialect.quote_ident(w))
     } else {
         ", 1.0 AS weight".to_string()
     };
     let smooth_col = if let Some(s) = smooth {
-        format!(", {}", naming::quote_ident(s))
+        format!(", {}", dialect.quote_ident(s))
     } else {
         "".to_string()
     };
 
-    let quoted_value = naming::quote_ident(value);
+    let quoted_value = dialect.quote_ident(value);
     // Only filter out nulls in value column, keep NULLs in group columns
     let mut filter_valid = format!("{} IS NOT NULL", quoted_value);
     if let Some(s) = smooth {
         filter_valid = format!(
             "{filter} AND {} IS NOT NULL",
-            naming::quote_ident(s),
+            dialect.quote_ident(s),
             filter = filter_valid,
         );
     }
 
-    let quoted_groups: Vec<String> = group_by.iter().map(|g| naming::quote_ident(g)).collect();
+    let quoted_groups: Vec<String> = group_by.iter().map(|g| dialect.quote_ident(g)).collect();
+    // Explicit alias: MySQL/MariaDB reject unaliased derived tables.
+    let __ggsql_data__ = dialect.quote_ident("__ggsql_data__");
     format!(
         "data AS (
           SELECT {groups}{value} AS val{weight_col}{smooth_col}
-          FROM ({from})
+          FROM ({from}) AS {__ggsql_data__}
           WHERE {filter_valid}
         )",
         groups = with_trailing_comma(&quoted_groups.join(", ")),
@@ -411,26 +424,32 @@ fn build_grid_cte(
           FROM bandwidth
         )";
 
-    // Shared: x-coordinate formula
+    // Shared: x-coordinate formula. The `global_range` alias is a quoted
+    // internal name: bare `global`/`groups` collide with reserved words
+    // (GLOBAL in T-SQL, GROUPS in MySQL 8.0.2+).
+    let global_alias = dialect.quote_ident("__ggsql_global__");
     let x_formula = format!(
-        "(global.min - global.expansion) + (seq.n * ((global.max - global.min) + 2 * global.expansion) / {n_points})",
+        "({g}.min - {g}.expansion) + (seq.n * (({g}.max - {g}.min) + 2 * {g}.expansion) / {n_points})",
+        g = global_alias,
         n_points = n_points_minus_1
     );
 
     // Build base grid CTE
+    let __ggsql_seq__ = dialect.quote_ident("__ggsql_seq__");
     let base_grid_cte = if !has_groups {
         // Simple grid without groups
         format!(
             "grid AS (
           SELECT {x_formula} AS x
-          FROM global_range AS global
-          CROSS JOIN \"__ggsql_seq__\" AS seq
+          FROM global_range AS {global_alias}
+          CROSS JOIN {__ggsql_seq__} AS seq
         )",
             x_formula = x_formula
         )
     } else {
-        let quoted_groups: Vec<String> = groups.iter().map(|g| naming::quote_ident(g)).collect();
+        let quoted_groups: Vec<String> = groups.iter().map(|g| dialect.quote_ident(g)).collect();
         let groups_str = quoted_groups.join(", ");
+        let groups_alias = dialect.quote_ident("__ggsql_groups__");
         // When tails is specified, create full_grid; otherwise create grid directly
         let cte_name = if tails.is_some() { "full_grid" } else { "grid" };
         format!(
@@ -438,9 +457,9 @@ fn build_grid_cte(
           SELECT
             {groups},
             {x_formula} AS x
-          FROM global_range AS global
-          CROSS JOIN \"__ggsql_seq__\" AS seq
-          CROSS JOIN (SELECT DISTINCT {groups} FROM bandwidth) AS groups
+          FROM global_range AS {global_alias}
+          CROSS JOIN {__ggsql_seq__} AS seq
+          CROSS JOIN (SELECT DISTINCT {groups} FROM bandwidth) AS {groups_alias}
         )",
             cte_name = cte_name,
             groups = groups_str,
@@ -454,13 +473,18 @@ fn build_grid_cte(
             let bandwidth_join_conds: Vec<String> = groups
                 .iter()
                 .map(|g| {
-                    let q = naming::quote_ident(g);
-                    format!("full_grid.{q} IS NOT DISTINCT FROM bandwidth.{q}")
+                    let q = dialect.quote_ident(g);
+                    dialect.sql_null_safe_eq(&format!("full_grid.{q}"), &format!("bandwidth.{q}"))
                 })
                 .collect();
+            // Aliased explicitly: some engines (ClickHouse) otherwise name an
+            // unaliased `full_grid.col` projection `full_grid.col`.
             let grid_groups_select: Vec<String> = groups
                 .iter()
-                .map(|g| format!("full_grid.{}", naming::quote_ident(g)))
+                .map(|g| {
+                    let q = dialect.quote_ident(g);
+                    format!("full_grid.{q} AS {q}")
+                })
                 .collect();
 
             format!(
@@ -511,6 +535,7 @@ fn compute_density(
     bandwidth_cte: &str,
     data_cte: &str,
     grid_cte: &str,
+    dialect: &dyn SqlDialect,
 ) -> String {
     // Build bandwidth join condition (NULL-safe)
     let bandwidth_conditions = if group_by.is_empty() {
@@ -519,56 +544,71 @@ fn compute_density(
         group_by
             .iter()
             .map(|g| {
-                let q = naming::quote_ident(g);
-                format!("data.{q} IS NOT DISTINCT FROM bandwidth.{q}")
+                let q = dialect.quote_ident(g);
+                dialect.sql_null_safe_eq(&format!("data.{q}"), &format!("bandwidth.{q}"))
             })
             .collect::<Vec<String>>()
             .join(" AND ")
     };
 
-    // Build WHERE clause to match grid to data groups (NULL-safe)
-    let matching_groups = if group_by.is_empty() {
-        String::new()
+    // NULL-safe match of grid rows to data groups. Emitted as JOIN ON rather
+    // than CROSS JOIN + WHERE: ClickHouse only permits IS NOT DISTINCT FROM
+    // in the JOIN ON section. Cross join filtered on null-safe equality is
+    // the same relation as an inner join on it, so this is safe everywhere.
+    let grid_join = if group_by.is_empty() {
+        "CROSS JOIN grid".to_string()
     } else {
         let grid_data_conds: Vec<String> = group_by
             .iter()
             .map(|g| {
-                let q = naming::quote_ident(g);
-                format!("grid.{q} IS NOT DISTINCT FROM data.{q}")
+                let q = dialect.quote_ident(g);
+                dialect.sql_null_safe_eq(&format!("grid.{q}"), &format!("data.{q}"))
             })
             .collect();
-        format!("WHERE {}", grid_data_conds.join(" AND "))
+        format!("INNER JOIN grid ON {}", grid_data_conds.join(" AND "))
     };
 
     let join_logic = format!(
         "FROM data
         INNER JOIN bandwidth ON {bandwidth_conditions}
-        CROSS JOIN grid {matching_groups}",
+        {grid_join}",
         bandwidth_conditions = bandwidth_conditions,
-        matching_groups = matching_groups
+        grid_join = grid_join
     );
 
     // Build group-related SQL fragments
     let grid_groups: Vec<String> = group_by
         .iter()
-        .map(|g| format!("grid.{}", naming::quote_ident(g)))
+        .map(|g| format!("grid.{}", dialect.quote_ident(g)))
         .collect();
-    let aggregation = format!(
-        "GROUP BY grid.x{grid_group_by}
-        ORDER BY grid.x{grid_group_by}",
-        grid_group_by = with_leading_comma(&grid_groups.join(", "))
-    );
+    // Projected with an explicit alias: some engines (ClickHouse) otherwise
+    // name an unaliased `grid.col` projection `grid.col`.
+    let grid_groups_select: Vec<String> = group_by
+        .iter()
+        .map(|g| {
+            let q = dialect.quote_ident(g);
+            format!("grid.{q} AS {q}")
+        })
+        .collect();
+    let grid_group_by = with_leading_comma(&grid_groups.join(", "));
+    // Dialect-adjusted: T-SQL forbids ORDER BY inside derived tables unless
+    // TOP, OFFSET, or FOR XML is present (error 1033).
+    let order_by = dialect.sql_derived_order_by(&format!("grid.x{grid_group_by}"));
+    let aggregation = format!("GROUP BY grid.x{grid_group_by}\n        {order_by}");
 
     let groups = if group_by.is_empty() {
         String::new()
     } else {
-        let quoted: Vec<String> = group_by.iter().map(|g| naming::quote_ident(g)).collect();
+        let quoted: Vec<String> = group_by.iter().map(|g| dialect.quote_ident(g)).collect();
         format!("{},", quoted.join(", "))
     };
 
-    let x_column = naming::quote_ident(&naming::stat_column(value_aesthetic));
-    let intensity_column = naming::quote_ident(&naming::stat_column("intensity"));
-    let density_column = naming::quote_ident(&naming::stat_column("density"));
+    let x_column = dialect.quote_ident(&naming::stat_column(value_aesthetic));
+    let intensity_column = dialect.quote_ident(&naming::stat_column("intensity"));
+    let density_column = dialect.quote_ident(&naming::stat_column("density"));
+    let __norm = dialect.quote_ident("__norm");
+    // Explicit alias: MySQL/MariaDB reject unaliased derived tables.
+    let __ggsql_kde__ = dialect.quote_ident("__ggsql_kde__");
 
     // Generate the density computation query
     format!(
@@ -579,16 +619,16 @@ fn compute_density(
           {x_column},
           {groups}
           {intensity_column},
-          {intensity_column} / \"__norm\" AS {density_column}
+          {intensity_column} / {__norm} AS {density_column}
         FROM (
           SELECT
             grid.x AS {x_column},
-            {grid_groups}
+            {grid_groups_select}
             {kernel} AS {intensity_column},
-            SUM(data.weight) AS \"__norm\"
+            SUM(data.weight) AS {__norm}
           {join_logic}
           {aggregation}
-        )",
+        ) AS {__ggsql_kde__}",
         bandwidth_cte = bandwidth_cte,
         data_cte = data_cte,
         grid_cte = grid_cte,
@@ -597,7 +637,7 @@ fn compute_density(
         intensity_column = intensity_column,
         density_column = density_column,
         aggregation = aggregation,
-        grid_groups = with_trailing_comma(&grid_groups.join(", "))
+        grid_groups_select = with_trailing_comma(&grid_groups_select.join(", "))
     )
 }
 
@@ -625,10 +665,18 @@ mod tests {
         );
 
         let bw_cte = density_sql_bandwidth(query, &groups, "x", &parameters, &AnsiDialect);
-        let data_cte = build_data_cte("x", None, None, query, &groups);
+        let data_cte = build_data_cte("x", None, None, query, &groups, &AnsiDialect);
         let grid_cte = build_grid_cte(&groups, 512, None, &AnsiDialect);
         let kernel = choose_kde_kernel(&parameters, None).expect("kernel should be valid");
-        let sql = compute_density("x", &groups, kernel, &bw_cte, &data_cte, &grid_cte);
+        let sql = compute_density(
+            "x",
+            &groups,
+            kernel,
+            &bw_cte,
+            &data_cte,
+            &grid_cte,
+            &AnsiDialect,
+        );
 
         let expected = r#"WITH RECURSIVE
           bandwidth AS (
@@ -641,7 +689,7 @@ mod tests {
           ),
         data AS (
           SELECT "x" AS val, 1.0 AS weight
-          FROM (SELECT x FROM (VALUES (1.0), (2.0), (3.0)) AS t(x))
+          FROM (SELECT x FROM (VALUES (1.0), (2.0), (3.0)) AS t(x)) AS "__ggsql_data__"
           WHERE "x" IS NOT NULL
         ),
         "__ggsql_base__"(n) AS (SELECT 0 UNION ALL SELECT n + 1 FROM "__ggsql_base__" WHERE n < 7),"__ggsql_seq__"(n) AS (SELECT CAST(a.n * 64 + b.n * 8 + c.n AS REAL) AS n FROM "__ggsql_base__" a, "__ggsql_base__" b, "__ggsql_base__" c WHERE a.n * 64 + b.n * 8 + c.n < 512),
@@ -650,8 +698,8 @@ mod tests {
           FROM bandwidth
         ),
         grid AS (
-          SELECT (global.min - global.expansion) + (seq.n * ((global.max - global.min) + 2 * global.expansion) / 511) AS x
-          FROM global_range AS global
+          SELECT ("__ggsql_global__".min - "__ggsql_global__".expansion) + (seq.n * (("__ggsql_global__".max - "__ggsql_global__".min) + 2 * "__ggsql_global__".expansion) / 511) AS x
+          FROM global_range AS "__ggsql_global__"
           CROSS JOIN "__ggsql_seq__" AS seq
         )
         SELECT
@@ -668,7 +716,7 @@ mod tests {
           CROSS JOIN grid
           GROUP BY grid.x
           ORDER BY grid.x
-        )"#;
+        ) AS "__ggsql_kde__""#;
 
         // Normalize whitespace for comparison
         let normalize = |s: &str| s.split_whitespace().collect::<Vec<_>>().join(" ");
@@ -702,10 +750,18 @@ mod tests {
         );
 
         let bw_cte = density_sql_bandwidth(query, &groups, "x", &parameters, &AnsiDialect);
-        let data_cte = build_data_cte("x", None, None, query, &groups);
+        let data_cte = build_data_cte("x", None, None, query, &groups, &AnsiDialect);
         let grid_cte = build_grid_cte(&groups, 512, None, &AnsiDialect);
         let kernel = choose_kde_kernel(&parameters, None).expect("kernel should be valid");
-        let sql = compute_density("x", &groups, kernel, &bw_cte, &data_cte, &grid_cte);
+        let sql = compute_density(
+            "x",
+            &groups,
+            kernel,
+            &bw_cte,
+            &data_cte,
+            &grid_cte,
+            &AnsiDialect,
+        );
 
         let expected = r#"WITH RECURSIVE
           bandwidth AS (
@@ -720,7 +776,7 @@ mod tests {
           ),
         data AS (
           SELECT "region", "category", "x" AS val, 1.0 AS weight
-          FROM (SELECT x, region, category FROM (VALUES (1.0, 'A', 'X'), (2.0, 'B', 'Y')) AS t(x, region, category))
+          FROM (SELECT x, region, category FROM (VALUES (1.0, 'A', 'X'), (2.0, 'B', 'Y')) AS t(x, region, category)) AS "__ggsql_data__"
           WHERE "x" IS NOT NULL
         ),
         "__ggsql_base__"(n) AS (SELECT 0 UNION ALL SELECT n + 1 FROM "__ggsql_base__" WHERE n < 7),"__ggsql_seq__"(n) AS (SELECT CAST(a.n * 64 + b.n * 8 + c.n AS REAL) AS n FROM "__ggsql_base__" a, "__ggsql_base__" b, "__ggsql_base__" c WHERE a.n * 64 + b.n * 8 + c.n < 512),
@@ -731,10 +787,10 @@ mod tests {
         grid AS (
           SELECT
             "region", "category",
-            (global.min - global.expansion) + (seq.n * ((global.max - global.min) + 2 * global.expansion) / 511) AS x
-          FROM global_range AS global
+            ("__ggsql_global__".min - "__ggsql_global__".expansion) + (seq.n * (("__ggsql_global__".max - "__ggsql_global__".min) + 2 * "__ggsql_global__".expansion) / 511) AS x
+          FROM global_range AS "__ggsql_global__"
           CROSS JOIN "__ggsql_seq__" AS seq
-          CROSS JOIN (SELECT DISTINCT "region", "category" FROM bandwidth) AS groups
+          CROSS JOIN (SELECT DISTINCT "region", "category" FROM bandwidth) AS "__ggsql_groups__"
         )
         SELECT
           "__ggsql_stat_x",
@@ -744,16 +800,15 @@ mod tests {
         FROM (
           SELECT
             grid.x AS "__ggsql_stat_x",
-            grid."region", grid."category",
+            grid."region" AS "region", grid."category" AS "category",
             SUM(data.weight * ((EXP(-0.5 * (grid.x - data.val) * (grid.x - data.val) / (bandwidth.bw * bandwidth.bw))) * 0.3989422804014327)) / MIN(bandwidth.bw) AS "__ggsql_stat_intensity",
             SUM(data.weight) AS "__norm"
           FROM data
-          INNER JOIN bandwidth ON data."region" IS NOT DISTINCT FROM bandwidth."region" AND data."category" IS NOT DISTINCT FROM bandwidth."category"
-          CROSS JOIN grid
-          WHERE grid."region" IS NOT DISTINCT FROM data."region" AND grid."category" IS NOT DISTINCT FROM data."category"
+          INNER JOIN bandwidth ON (data."region" IS NOT DISTINCT FROM bandwidth."region") AND (data."category" IS NOT DISTINCT FROM bandwidth."category")
+          INNER JOIN grid ON (grid."region" IS NOT DISTINCT FROM data."region") AND (grid."category" IS NOT DISTINCT FROM data."category")
           GROUP BY grid.x, grid."region", grid."category"
           ORDER BY grid.x, grid."region", grid."category"
-        )"#;
+        ) AS "__ggsql_kde__""#;
 
         // Normalize whitespace for comparison
         let normalize = |s: &str| s.split_whitespace().collect::<Vec<_>>().join(" ");
@@ -821,9 +876,9 @@ mod tests {
 
         let bw_cte = density_sql_bandwidth(query, &groups, "x", &parameters, &AnsiDialect);
 
-        // Verify SQL uses NTILE-based percentile subqueries
+        // Verify SQL uses ROW_NUMBER-based percentile subqueries
         let normalize = |s: &str| s.split_whitespace().collect::<Vec<_>>().join(" ");
-        assert!(bw_cte.contains("NTILE(4)"));
+        assert!(bw_cte.contains("ROW_NUMBER()"));
         assert!(bw_cte.contains("bandwidth AS"));
         // Verify the generated rule matches silverman_rule output
         let expected_rule = silverman_rule(1.0, "x", query, &groups, &AnsiDialect);
@@ -848,8 +903,8 @@ mod tests {
 
         let bw_cte = density_sql_bandwidth(query, &groups, "x", &parameters, &AnsiDialect);
 
-        // Verify SQL uses NTILE-based percentile subqueries with grouping
-        assert!(bw_cte.contains("NTILE(4)"));
+        // Verify SQL uses ROW_NUMBER-based percentile subqueries with grouping
+        assert!(bw_cte.contains("ROW_NUMBER()"));
         assert!(bw_cte.contains("GROUP BY \"region\""));
         let expected_rule = silverman_rule(1.0, "x", query, &groups, &AnsiDialect);
         assert!(normalize(&bw_cte).contains(&normalize(&expected_rule)));
@@ -882,11 +937,19 @@ mod tests {
         );
 
         let bw_cte = density_sql_bandwidth(query, &groups, "x", &parameters, &AnsiDialect);
-        let data_cte = build_data_cte("x", None, None, query, &groups);
+        let data_cte = build_data_cte("x", None, None, query, &groups, &AnsiDialect);
         // Use wide range to capture essentially all density mass
         let grid_cte = build_grid_cte(&groups, 512, None, &AnsiDialect);
         let kernel = choose_kde_kernel(&parameters, None).expect("kernel should be valid");
-        let sql = compute_density("x", &groups, kernel, &bw_cte, &data_cte, &grid_cte);
+        let sql = compute_density(
+            "x",
+            &groups,
+            kernel,
+            &bw_cte,
+            &data_cte,
+            &grid_cte,
+            &AnsiDialect,
+        );
 
         // Execute query
         let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
@@ -1007,7 +1070,7 @@ mod tests {
         let kernel = choose_kde_kernel(&parameters, None).expect("kernel should be valid");
 
         // Unweighted (default weights of 1.0)
-        let data_cte_unweighted = build_data_cte("x", None, None, query, &groups);
+        let data_cte_unweighted = build_data_cte("x", None, None, query, &groups, &AnsiDialect);
         let sql_unweighted = compute_density(
             "x",
             &groups,
@@ -1015,6 +1078,7 @@ mod tests {
             &bw_cte,
             &data_cte_unweighted,
             &grid_cte,
+            &AnsiDialect,
         );
 
         let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
@@ -1024,9 +1088,23 @@ mod tests {
 
         // With explicit uniform weights (should be equivalent)
         let query_weighted = "SELECT x, 1.0 AS weight FROM (VALUES (1.0), (2.0), (3.0)) AS t(x)";
-        let data_cte_weighted = build_data_cte("x", None, Some("weight"), query_weighted, &groups);
-        let sql_weighted =
-            compute_density("x", &groups, kernel, &bw_cte, &data_cte_weighted, &grid_cte);
+        let data_cte_weighted = build_data_cte(
+            "x",
+            None,
+            Some("weight"),
+            query_weighted,
+            &groups,
+            &AnsiDialect,
+        );
+        let sql_weighted = compute_density(
+            "x",
+            &groups,
+            kernel,
+            &bw_cte,
+            &data_cte_weighted,
+            &grid_cte,
+            &AnsiDialect,
+        );
         let df_weighted = reader
             .execute_sql(&sql_weighted)
             .expect("SQL should execute");
@@ -1162,10 +1240,18 @@ mod tests {
         );
 
         let bw_cte = density_sql_bandwidth(query, &groups, "x", &parameters, &AnsiDialect);
-        let data_cte = build_data_cte("x", None, None, query, &groups);
+        let data_cte = build_data_cte("x", None, None, query, &groups, &AnsiDialect);
         let grid_cte = build_grid_cte(&groups, 512, None, &AnsiDialect);
         let kernel = choose_kde_kernel(&parameters, None).expect("kernel should be valid");
-        let sql = compute_density("x", &groups, kernel, &bw_cte, &data_cte, &grid_cte);
+        let sql = compute_density(
+            "x",
+            &groups,
+            kernel,
+            &bw_cte,
+            &data_cte,
+            &grid_cte,
+            &AnsiDialect,
+        );
 
         // Warm-up run
         reader.execute_sql(&sql).expect("Warm-up failed");

@@ -246,8 +246,18 @@ impl CachingReader {
         row_count: i64,
     ) -> Result<()> {
         let now = now_ms();
+        // Upsert as DELETE + INSERT rather than INSERT OR REPLACE: the cache
+        // is a local single-connection store, so the non-transactional pair
+        // is safe, and the SQLite-specific OR REPLACE form is the one upsert
+        // syntax DataFusion (a supported cache backend) does not implement.
+        let del = format!(
+            "DELETE FROM {} WHERE cache_key = {}",
+            naming::quote_ident(naming::CACHE_META_TABLE),
+            naming::quote_literal(key),
+        );
+        self.cache.execute_sql(&del)?;
         let stmt = format!(
-            "INSERT OR REPLACE INTO {} \
+            "INSERT INTO {} \
              (cache_key, sql, table_name, fetched_at_epoch_ms, last_accessed_epoch_ms, \
               byte_estimate, row_count) \
              VALUES ({}, {}, {}, {}, {}, {}, {})",
@@ -473,7 +483,11 @@ impl Reader for CachingReader {
     ) -> Result<()> {
         // Read the body via the source surface, then register the result
         // into the cache.
-        let body = super::wrap_with_column_aliases(body_sql, column_aliases);
+        let body = super::wrap_with_column_aliases(
+            &|c: &str| self.cache.dialect().quote_ident(c),
+            body_sql,
+            column_aliases,
+        );
         let df = self.execute_sql(&body)?;
         self.register(name, df, true)
     }
