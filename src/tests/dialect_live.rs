@@ -97,6 +97,29 @@ impl Reader for SqlSpy<'_> {
         self.log.borrow_mut().push(sql.to_string());
         self.inner.execute_sql(sql)
     }
+    // Every defaulted method must delegate: routing e.g. execute_sql_cached
+    // through the default (which calls execute_sql) would bypass a wrapping
+    // CachingReader and send cache-dialect SQL to the remote server.
+    fn execute_sql_cached(&self, sql: &str) -> Result<DataFrame> {
+        // Log the logical statement, but delegate execution so a wrapping
+        // CachingReader still routes it through the cache.
+        self.log.borrow_mut().push(sql.to_string());
+        self.inner.execute_sql_cached(sql)
+    }
+    fn materialize_table(
+        &self,
+        name: &str,
+        column_aliases: &[String],
+        body_sql: &str,
+    ) -> Result<()> {
+        self.inner.materialize_table(name, column_aliases, body_sql)
+    }
+    fn caches_sources(&self) -> bool {
+        self.inner.caches_sources()
+    }
+    fn clear_cache(&self) -> Result<()> {
+        self.inner.clear_cache()
+    }
     fn register(&self, name: &str, df: DataFrame, replace: bool) -> Result<()> {
         self.inner.register(name, df, replace)
     }
@@ -430,7 +453,12 @@ fn run_battery(reader: &dyn Reader, ctx: &str, table: &str) {
         .execute(&format!(
             "VISUALISE DRAW point MAPPING day AS x, val AS y FROM {table} SCALE BINNED x VIA identity"
         ))
-        .unwrap_or_else(|e| panic!("{ctx}: binned temporal pipeline failed: {e}"));
+        .unwrap_or_else(|e| {
+            panic!(
+                "{ctx}: binned temporal pipeline failed: {e}\npipeline SQL:\n{}",
+                spy.take_log().join("\n")
+            )
+        });
     let layer = spec
         .layer_data(0)
         .unwrap_or_else(|| panic!("{ctx}: binned temporal produced no layer data"));
