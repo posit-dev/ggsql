@@ -29,7 +29,7 @@ On the left hand side of the arrow, the following keys can be used:
 On the right hand side of the arrow, one can use a string to give new label, or `null` to hide the label.
 
 ## Rich text
-The support of rich text in tables is still on our wishlist.
+The support of rich text in tables is planned but not yet implemented.
 
 ## Examples
 

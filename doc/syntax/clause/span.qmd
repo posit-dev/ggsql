@@ -2,7 +2,7 @@
 title: "Group columns with a spanner label using `SPAN`"
 ---
 
-Columns can be grouped and display a group label using spanners.
+Columns can be grouped and will display a group label using spanners.
 These are helpful in controlling the visual layout of a table.
 Spanners are extra table cells in the heading that stretch on top of the column labels.
 `SPAN` can be repeated to stack multiple spanners.
