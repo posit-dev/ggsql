@@ -24,9 +24,18 @@ use wrapper::{Connection, Statement};
 ///
 /// Delegates to the shared matcher in [`crate::reader::dialects`]; the
 /// `Driver=` value from the ODBC connection string serves as the driver hint.
-fn detect_dialect(dbms_name: Option<&str>, conn_str: &str) -> Box<dyn super::SqlDialect> {
+fn detect_dialect(dbms_name: Option<&str>, conn_str: &str) -> Result<Box<dyn super::SqlDialect>> {
     let driver = super::connection::extract_odbc_value(conn_str, "driver");
     super::dialects::detect_dialect(dbms_name, driver.as_deref())
+        .map(|d| d as Box<dyn super::SqlDialect>)
+}
+
+/// Pull ggsql-owned keys (`Dialect=<name>`) out of an ODBC connection
+/// string before connecting. `Dialect=` is ggsql's escape hatch for unknown
+/// backends, not a driver option — drivers reject unknown keys.
+fn take_dialect_override(conn_str: &str) -> (String, Option<String>) {
+    let (conn_str, ggsql) = super::connection::take_odbc_ggsql_params(conn_str);
+    (conn_str, ggsql.dialect)
 }
 
 /// Generic ODBC reader implementing the `Reader` trait.
@@ -65,6 +74,25 @@ impl OdbcReader {
 
         let mut conn_str = conn_str.to_string();
 
+        // ggsql's `Dialect=` escape hatch: resolved here, stripped from the
+        // connection string before the driver ever sees it.
+        let (stripped, dialect_override) = take_dialect_override(&conn_str);
+        conn_str = stripped;
+        let dialect = match (dialect, dialect_override) {
+            (d @ Some(_), _) => d,
+            (None, Some(name)) => Some(
+                crate::reader::registry::dialect_override(&name)
+                    .map(|d| d as Box<dyn super::SqlDialect>)
+                    .ok_or_else(|| {
+                        GgsqlError::ReaderError(format!(
+                            "Unknown dialect '{name}' in ODBC connection string. Use \
+                             Dialect=ansi or any supported scheme (postgres, mysql, …)."
+                        ))
+                    })?,
+            ),
+            (None, None) => None,
+        };
+
         if snowflake::is_snowflake(&conn_str) {
             if let Some(resolved) = snowflake::resolve_connection_name(&conn_str) {
                 conn_str = resolved;
@@ -96,7 +124,7 @@ impl OdbcReader {
 
         let dialect = match dialect {
             Some(d) => d,
-            None => detect_dialect(dbms_name.as_deref(), &conn_str),
+            None => detect_dialect(dbms_name.as_deref(), &conn_str)?,
         };
 
         // Oracle ODBC rejects block cursors (SQL_ATTR_ROW_ARRAY_SIZE > 1)
@@ -814,14 +842,18 @@ mod tests {
 
     #[test]
     fn test_detect_dialect_from_dbms_name() {
-        let d = detect_dialect(Some("Snowflake"), "anything");
+        let d = detect_dialect(Some("Snowflake"), "anything").unwrap();
         assert!(!d.sql_greatest(&["a", "b"]).is_empty());
 
-        let d = detect_dialect(None, "Driver=Snowflake;Server=foo");
+        let d = detect_dialect(None, "Driver=Snowflake;Server=foo").unwrap();
         assert!(!d.sql_greatest(&["a", "b"]).is_empty());
 
-        let d = detect_dialect(None, "Driver=SomeOther;Server=localhost");
-        assert!(!d.sql_greatest(&["a", "b"]).is_empty());
+        // Unknown backends error rather than silently using ANSI.
+        let err = detect_dialect(None, "Driver=SomeOther;Server=localhost")
+            .err()
+            .unwrap()
+            .to_string();
+        assert!(err.contains("dialect=ansi"), "got: {err}");
     }
 
     #[test]

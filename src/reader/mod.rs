@@ -891,6 +891,7 @@ mod cache_equivalence;
 pub mod connection;
 pub mod data;
 pub mod dialects;
+pub mod registry;
 mod spec;
 
 #[cfg(feature = "duckdb")]

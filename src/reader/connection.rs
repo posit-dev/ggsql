@@ -33,73 +33,155 @@ pub fn split_cache_uri(uri: &str) -> Option<(String, String)> {
     Some((format!("{}://{}", primary, rest), cache.to_string()))
 }
 
-/// Cache-config keys recognised in a connection URI's trailing `?` query string.
-#[cfg(any(feature = "duckdb", feature = "sqlite"))]
-const KNOWN_CACHE_PARAMS: &[&str] = &["cache_ttl", "cache_max_bytes", "cache_disabled"];
-
-/// Query-string keys ggsql consumes itself. These must never reach a
-/// driver's own URI parsing or option map — ADBC drivers reject unknown
-/// keys in their URI grammar.
-#[cfg(any(feature = "adbc", test))]
-pub(crate) const GGSQL_OWNED_PARAMS: &[&str] = &[
-    "cache",
-    "cache_ttl",
-    "cache_max_bytes",
-    "cache_disabled",
-    "reader",
-];
-
-/// Remove [`GGSQL_OWNED_PARAMS`] keys from a `k=v&…` query string.
-/// Matching is case-insensitive, like the consumers (`cache=off`).
-#[cfg(any(feature = "adbc", test))]
-pub(crate) fn strip_ggsql_params(query: &str) -> String {
-    query
-        .split('&')
-        .filter(|seg| {
-            if seg.is_empty() {
-                return false;
-            }
-            match seg.split_once('=') {
-                Some((key, _)) => !GGSQL_OWNED_PARAMS.contains(&key.to_ascii_lowercase().as_str()),
-                None => true,
-            }
-        })
-        .collect::<Vec<_>>()
-        .join("&")
+/// ggsql's own query-string parameters, lifted out of a [`ConnUri`].
+///
+/// These are consumed during dispatch and must never reach a driver's own
+/// URI parsing or option map — drivers reject unknown keys.
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct GgsqlParams {
+    /// `cache=off`: opt out of the automatic caching layer.
+    pub cache_off: bool,
+    /// `reader=odbc`: force the ODBC path over ADBC.
+    pub reader: Option<String>,
+    /// `dialect=<scheme|ansi>`: pin the SQL dialect explicitly — the escape
+    /// hatch for backends ggsql doesn't recognise.
+    pub dialect: Option<String>,
+    /// `cache_ttl=<secs>`: raw value; parsed by
+    /// [`ConnUri::cache_config_override`].
+    pub cache_ttl: Option<String>,
+    /// `cache_max_bytes=<n|1MB|…>`: raw value.
+    pub cache_max_bytes: Option<String>,
+    /// `cache_disabled=1|true|yes`.
+    pub cache_disabled: Option<bool>,
+    /// `stmt.<key>=<value>` params (prefix stripped): driver *statement*
+    /// options, applied to every statement the reader creates.
+    pub stmt_options: Vec<(String, String)>,
 }
 
-/// Pull cache-config keys out of a connection URI's trailing `?key=value&…`
-/// query string, returning the URI with those keys removed plus the overrides.
-#[cfg(any(feature = "duckdb", feature = "sqlite"))]
-fn strip_cache_params(uri: &str) -> (String, crate::reader::cache::CacheConfigOverride) {
-    use crate::reader::cache::{parse_human_bytes, CacheConfigOverride};
+/// A connection URI parsed once: scheme, body, and query parameters with
+/// ggsql's own keys lifted out into [`GgsqlParams`].
+///
+/// Everything dispatched from a connection string — cache wrapping, reader
+/// selection, ADBC driver setup, ODBC connection-string synthesis — reads
+/// from this struct rather than re-splitting the raw URI.
+#[derive(Debug, Clone)]
+pub struct ConnUri {
+    /// Lowercased scheme (`postgres`).
+    pub scheme: String,
+    /// Everything between `://` and `?` (`user:pass@host:5432/db`).
+    pub body: String,
+    /// Driver-bound query params in original order and case; the value is
+    /// `None` for a bare `&flag&` segment.
+    pub params: Vec<(String, Option<String>)>,
+    /// ggsql's own parameters.
+    pub ggsql: GgsqlParams,
+}
 
-    let mut over = CacheConfigOverride::default();
-    let Some((body, query)) = uri.split_once('?') else {
-        return (uri.to_string(), over);
-    };
+impl ConnUri {
+    /// Parse `<scheme>://<body>[?k=v&…]`.
+    pub fn parse(uri: &str) -> Result<Self> {
+        let (scheme, rest) = uri
+            .split_once("://")
+            .ok_or_else(|| GgsqlError::ReaderError(format!("Invalid connection URI: {}", uri)))?;
+        let (body, query) = rest.split_once('?').unwrap_or((rest, ""));
 
-    let mut kept: Vec<&str> = Vec::new();
-    for segment in query.split('&') {
-        match segment.split_once('=') {
-            Some((key, value)) if KNOWN_CACHE_PARAMS.contains(&key) => match key {
-                "cache_ttl" => over.ttl_secs = value.trim().parse::<u64>().ok(),
-                "cache_max_bytes" => over.max_bytes = parse_human_bytes(value),
-                "cache_disabled" => {
-                    let v = value.trim().to_ascii_lowercase();
-                    over.enabled = Some(!matches!(v.as_str(), "1" | "true" | "yes"));
+        let mut params = Vec::new();
+        let mut ggsql = GgsqlParams::default();
+        for segment in query.split('&') {
+            if segment.is_empty() {
+                continue;
+            }
+            let (key, value) = match segment.split_once('=') {
+                Some((k, v)) => (k, Some(v)),
+                None => (segment, None),
+            };
+            match key.to_ascii_lowercase().as_str() {
+                "cache" => {
+                    ggsql.cache_off = value.is_some_and(|v| v.trim().eq_ignore_ascii_case("off"))
                 }
-                _ => unreachable!("validated against KNOWN_CACHE_PARAMS"),
-            },
-            // Not a cache key: keep it on the URI for the primary reader.
-            _ => kept.push(segment),
+                "cache_ttl" => ggsql.cache_ttl = value.map(|v| v.to_string()),
+                "cache_max_bytes" => ggsql.cache_max_bytes = value.map(|v| v.to_string()),
+                "cache_disabled" => {
+                    ggsql.cache_disabled = value.map(|v| {
+                        matches!(v.trim().to_ascii_lowercase().as_str(), "1" | "true" | "yes")
+                    })
+                }
+                "reader" => ggsql.reader = value.map(|v| v.to_string()),
+                "dialect" => ggsql.dialect = value.map(|v| v.to_string()),
+                _ if key.starts_with("stmt.") => {
+                    if let Some(v) = value {
+                        ggsql
+                            .stmt_options
+                            .push((key["stmt.".len()..].to_string(), v.to_string()));
+                    }
+                }
+                _ => params.push((key.to_string(), value.map(|v| v.to_string()))),
+            }
+        }
+
+        Ok(Self {
+            scheme: scheme.to_ascii_lowercase(),
+            body: body.to_string(),
+            params,
+            ggsql,
+        })
+    }
+
+    /// The driver-bound query string (`k=v&k2=v2`), ggsql keys excluded.
+    pub fn query_string(&self) -> String {
+        self.params
+            .iter()
+            .map(|(k, v)| match v {
+                Some(v) => format!("{k}={v}"),
+                None => k.clone(),
+            })
+            .collect::<Vec<_>>()
+            .join("&")
+    }
+
+    /// The URI with ggsql-owned keys stripped — safe to hand to drivers and
+    /// to use as a cache key.
+    pub fn to_uri(&self) -> String {
+        let query = self.query_string();
+        if query.is_empty() {
+            format!("{}://{}", self.scheme, self.body)
+        } else {
+            format!("{}://{}?{}", self.scheme, self.body, query)
         }
     }
 
-    if kept.is_empty() {
-        (body.to_string(), over)
-    } else {
-        (format!("{}?{}", body, kept.join("&")), over)
+    /// True when the URI opts out of the automatic caching layer
+    /// (`cache=off`).
+    pub fn cache_disabled_off(&self) -> bool {
+        self.ggsql.cache_off
+    }
+
+    /// True when the URI forces the ODBC reader path (`reader=odbc`).
+    pub fn forces_odbc(&self) -> bool {
+        self.ggsql
+            .reader
+            .as_deref()
+            .is_some_and(|r| r.eq_ignore_ascii_case("odbc"))
+    }
+
+    /// Cache-config overrides from the URI's `cache_*` keys.
+    #[cfg(any(feature = "duckdb", feature = "sqlite"))]
+    pub fn cache_config_override(&self) -> crate::reader::cache::CacheConfigOverride {
+        use crate::reader::cache::{parse_human_bytes, CacheConfigOverride};
+
+        CacheConfigOverride {
+            ttl_secs: self
+                .ggsql
+                .cache_ttl
+                .as_deref()
+                .and_then(|v| v.trim().parse::<u64>().ok()),
+            max_bytes: self
+                .ggsql
+                .cache_max_bytes
+                .as_deref()
+                .and_then(parse_human_bytes),
+            enabled: self.ggsql.cache_disabled.map(|disabled| !disabled),
+        }
     }
 }
 
@@ -121,35 +203,20 @@ fn cache_uri(scheme: &str) -> Result<&'static str> {
 
 /// Build a reader from a non-composite connection URI
 pub fn build_reader(uri: &str) -> Result<Box<dyn Reader + Send>> {
-    if uri.starts_with("duckdb://") {
-        #[cfg(feature = "duckdb")]
-        {
-            return Ok(Box::new(
-                crate::reader::DuckDBReader::from_connection_string(uri)?,
-            ));
-        }
-        #[cfg(not(feature = "duckdb"))]
-        {
-            return Err(GgsqlError::ReaderError(
-                "DuckDB reader not compiled in. Rebuild with --features duckdb".to_string(),
-            ));
-        }
-    }
-    if uri.starts_with("sqlite://") {
-        #[cfg(feature = "sqlite")]
-        {
-            return Ok(Box::new(
-                crate::reader::SqliteReader::from_connection_string(uri)?,
-            ));
-        }
-        #[cfg(not(feature = "sqlite"))]
-        {
-            return Err(GgsqlError::ReaderError(
-                "SQLite reader not compiled in. Rebuild with --features sqlite".to_string(),
-            ));
-        }
-    }
-    if uri.starts_with("odbc://") {
+    let conn = ConnUri::parse(uri)?;
+    build_reader_parsed(&conn, uri)
+}
+
+/// Build a reader from a parsed URI.
+///
+/// `odbc://` and `adbc://` are *transports*, not databases — a raw ODBC
+/// connection string or a named ADBC driver — so they are dispatched
+/// directly. Everything else resolves through the [registry] into one
+/// uniform preference order (see [`build_backend_reader`]).
+///
+/// [registry]: crate::reader::registry
+fn build_reader_parsed(conn: &ConnUri, uri: &str) -> Result<Box<dyn Reader + Send>> {
+    if conn.scheme == "odbc" {
         #[cfg(feature = "odbc")]
         {
             return Ok(Box::new(crate::reader::OdbcReader::from_connection_string(
@@ -163,48 +230,82 @@ pub fn build_reader(uri: &str) -> Result<Box<dyn Reader + Send>> {
             ));
         }
     }
-    // Backend-specific schemes (postgres://, mysql://, snowflake://, …).
-    // Selection: ADBC is tried first when a driver library is available;
-    // otherwise we fall back to ODBC automatically. A `reader=odbc` query
-    // param forces the ODBC path.
-    if let Some((scheme, rest)) = uri.split_once("://") {
-        let scheme = scheme.to_ascii_lowercase();
-        let known = crate::reader::dialects::dialect_for_scheme(&scheme).is_some()
-            || scheme == "adbc"
-            || scheme == "flightsql";
-        if known {
-            return build_backend_reader(&scheme, rest, uri);
-        }
+    if conn.scheme == "adbc" {
+        return build_backend_reader(None, conn, uri);
+    }
+    if let Some(entry) = crate::reader::registry::by_scheme(&conn.scheme) {
+        return build_backend_reader(Some(entry), conn, uri);
     }
     Err(GgsqlError::ReaderError(format!(
-        "Unsupported connection string: {}. Supported: duckdb://, sqlite://, odbc://, \
-         adbc://, postgres://, mysql://, snowflake://, mssql://, bigquery://, \
-         databricks://, clickhouse://, trino://, redshift://, oracle://, \
-         exasol://, monetdb://, druid://, drill://, datafusion://, flightsql://",
-        uri
+        "Unsupported connection string: {}. Supported: {}",
+        uri,
+        crate::reader::registry::supported_schemes(),
     )))
 }
 
-/// True when the URI query string carries `reader=odbc`.
-#[cfg(feature = "adbc")]
-fn uri_forces_odbc(rest: &str) -> bool {
-    rest.split_once('?')
-        .map(|(_, q)| q.split('&').any(|seg| seg.to_lowercase() == "reader=odbc"))
-        .unwrap_or(false)
-}
-
-/// Build a reader for a backend-specific scheme, preferring ADBC when a
-/// driver library is loadable and falling back to ODBC automatically.
+/// Build a reader for a registered database backend, trying each reader
+/// kind in one preference order:
+///
+/// 1. the in-process native reader, when the backend has one and its cargo
+///    feature is compiled in (duckdb, sqlite);
+/// 2. ADBC, when a driver library is loadable;
+/// 3. ODBC, when the URI or environment provides enough to synthesize a
+///    connection string.
+///
+/// A `reader=native|adbc|odbc` query param forces one kind. Native readers
+/// come first because they need no external driver; ADBC precedes ODBC
+/// because its drivers are the better-supported path for most backends.
 #[cfg_attr(not(all(feature = "adbc", feature = "odbc")), allow(unused_variables))]
-fn build_backend_reader(scheme: &str, rest: &str, uri: &str) -> Result<Box<dyn Reader + Send>> {
+fn build_backend_reader(
+    entry: Option<&crate::reader::registry::DatabaseEntry>,
+    conn: &ConnUri,
+    uri: &str,
+) -> Result<Box<dyn Reader + Send>> {
+    use crate::reader::registry::NativeReader;
+
+    let scheme = conn.scheme.as_str();
+    let forced = conn.ggsql.reader.as_deref().map(str::to_ascii_lowercase);
+    match forced.as_deref() {
+        None | Some("native") | Some("adbc") | Some("odbc") => {}
+        Some(other) => {
+            return Err(GgsqlError::ReaderError(format!(
+                "Unknown reader '{other}' in connection URI. Supported: native, adbc, odbc."
+            )))
+        }
+    }
+    let wants_native = forced.is_none() || forced.as_deref() == Some("native");
+    let wants_adbc = forced.is_none() || forced.as_deref() == Some("adbc");
+
+    // 1. Native in-process reader. These readers' grammar is just
+    // `scheme://path` — anything past the body (ggsql params like
+    // `cache=off`, driver-bound params) would be misread as part of the
+    // file path, so only the body is passed on.
+    if wants_native {
+        let native_uri = || format!("{}://{}", conn.scheme, conn.body);
+        match entry.and_then(|e| e.native_reader) {
+            Some(NativeReader::DuckDb) => {
+                #[cfg(feature = "duckdb")]
+                {
+                    return Ok(Box::new(
+                        crate::reader::DuckDBReader::from_connection_string(&native_uri())?,
+                    ));
+                }
+            }
+            Some(NativeReader::Sqlite) => {
+                #[cfg(feature = "sqlite")]
+                {
+                    return Ok(Box::new(
+                        crate::reader::SqliteReader::from_connection_string(&native_uri())?,
+                    ));
+                }
+            }
+            None => {}
+        }
+    }
+
+    // 2. ADBC driver, when loadable.
     #[cfg(feature = "adbc")]
-    if !uri_forces_odbc(rest)
-        && (crate::reader::adbc::adbc_driver_available(if scheme == "adbc" {
-            rest.split('?').next().unwrap_or(rest)
-        } else {
-            scheme
-        }) || scheme == "adbc")
-    {
+    if wants_adbc && (scheme == "adbc" || crate::reader::adbc::adbc_driver_available(scheme)) {
         // The driver library loaded (probe); a failure here is a genuine
         // connection/config error, surfaced with an ODBC hint rather
         // than silently masking it.
@@ -218,56 +319,66 @@ fn build_backend_reader(scheme: &str, rest: &str, uri: &str) -> Result<Box<dyn R
                 ))
             });
     }
+    if forced.as_deref() == Some("adbc") {
+        return Err(GgsqlError::ReaderError(format!(
+            "reader=adbc was requested but no loadable ADBC driver was found for '{scheme}://' \
+             (searched ${}, ADBC driver paths, and system library paths).",
+            crate::reader::registry::adbc_driver_env_var(scheme),
+        )));
+    }
 
+    // 3. ODBC fallback.
     #[cfg(feature = "odbc")]
-    {
-        if let Some(conn_str) = synthesize_odbc_conn_str(scheme, rest) {
-            let dialect = crate::reader::dialects::dialect_for_scheme(scheme)
-                .map(|d| d as Box<dyn crate::reader::SqlDialect>);
+    if let Some(entry) = entry {
+        if let Some(conn_str) = synthesize_odbc_conn_str(entry, conn) {
+            // An explicit `dialect=` override wins; otherwise the scheme's
+            // dialect. Flight SQL's registry dialect is generic ANSI, and
+            // detection from the connected DBMS is strictly better, so
+            // leave it unset there.
+            let dialect = if let Some(name) = &conn.ggsql.dialect {
+                Some(
+                    crate::reader::registry::dialect_override(name)
+                        .map(|d| d as Box<dyn crate::reader::SqlDialect>)
+                        .ok_or_else(|| {
+                            GgsqlError::ReaderError(format!(
+                                "Unknown dialect '{name}' in connection URI. Use dialect=ansi \
+                                 or any supported scheme (postgres, mysql, …)."
+                            ))
+                        })?,
+                )
+            } else if entry.scheme == "flightsql" {
+                None
+            } else {
+                Some(entry.dialect() as Box<dyn crate::reader::SqlDialect>)
+            };
             let reader = crate::reader::OdbcReader::from_odbc_conn_str(&conn_str, dialect)?;
             return Ok(Box::new(reader));
         }
     }
 
+    let native_hint = match entry.and_then(|e| e.native_reader) {
+        Some(NativeReader::DuckDb) if !cfg!(feature = "duckdb") => {
+            " The DuckDB reader is not compiled in (rebuild with --features duckdb), and"
+        }
+        Some(NativeReader::Sqlite) if !cfg!(feature = "sqlite") => {
+            " The SQLite reader is not compiled in (rebuild with --features sqlite), and"
+        }
+        _ => "",
+    };
     Err(GgsqlError::ReaderError(format!(
-        "Could not connect for scheme '{}://'. No loadable ADBC driver was found \
+        "Could not connect for scheme '{}://'.{} no loadable ADBC driver was found \
          (searched ${}, ADBC driver paths, and system library paths), and no ODBC \
          fallback was available: provide DSN= or Driver= in the URI query \
          ({}://host/db?DSN=mydsn) or set {} to the name of an installed ODBC driver.",
         scheme,
-        adbc_driver_env_var(scheme),
+        native_hint,
+        crate::reader::registry::adbc_driver_env_var(scheme),
         scheme,
-        odbc_driver_env_var(scheme),
+        crate::reader::registry::odbc_driver_env_var(scheme),
     )))
 }
 
-/// Name of the env var overriding the ADBC driver for a scheme
-/// (mirrors `adbc::driver_env_var`, duplicated here so error messages work
-/// in builds without the `adbc` feature).
-fn adbc_driver_env_var(scheme: &str) -> String {
-    format!("GGSQL_{}_ADBC_DRIVER", env_var_scheme(scheme))
-}
-
-/// Name of the env var specifying the ODBC driver for a scheme.
-fn odbc_driver_env_var(scheme: &str) -> String {
-    format!("GGSQL_{}_ODBC_DRIVER", env_var_scheme(scheme))
-}
-
-/// Uppercased, identifier-safe form of a scheme for env var names.
-fn env_var_scheme(scheme: &str) -> String {
-    scheme
-        .chars()
-        .map(|c| {
-            if c.is_ascii_alphanumeric() {
-                c.to_ascii_uppercase()
-            } else {
-                '_'
-            }
-        })
-        .collect()
-}
-
-/// Parsed form of `user:pass@host:port/db?params` backend URIs.
+/// Parsed form of the `user:pass@host:port/db` authority in backend URIs.
 #[cfg(feature = "odbc")]
 struct BackendUri<'a> {
     user: Option<&'a str>,
@@ -275,14 +386,10 @@ struct BackendUri<'a> {
     host: Option<&'a str>,
     port: Option<&'a str>,
     database: Option<&'a str>,
-    params: Vec<&'a str>,
 }
 
 #[cfg(feature = "odbc")]
-fn parse_backend_uri(rest: &str) -> BackendUri<'_> {
-    let (body, query) = rest.split_once('?').unwrap_or((rest, ""));
-    let params: Vec<&str> = query.split('&').filter(|s| !s.is_empty()).collect();
-
+fn parse_backend_uri(body: &str) -> BackendUri<'_> {
     let (auth, hostpath) = match body.split_once('@') {
         Some((a, h)) => (Some(a), h),
         None => (None, body),
@@ -305,7 +412,6 @@ fn parse_backend_uri(rest: &str) -> BackendUri<'_> {
         host,
         port,
         database,
-        params,
     }
 }
 
@@ -315,33 +421,32 @@ fn parse_backend_uri(rest: &str) -> BackendUri<'_> {
 /// `GGSQL_<SCHEME>_ODBC_DRIVER` names an installed driver; otherwise `None`
 /// so the caller can report that no fallback was configured.
 #[cfg(feature = "odbc")]
-fn synthesize_odbc_conn_str(scheme: &str, rest: &str) -> Option<String> {
-    let parsed = parse_backend_uri(rest);
+fn synthesize_odbc_conn_str(
+    entry: &crate::reader::registry::DatabaseEntry,
+    conn: &ConnUri,
+) -> Option<String> {
+    use crate::reader::registry::odbc_driver_env_var;
 
-    // Case 1: query params are already a (partial) ODBC connection string.
-    let dsn = parsed
-        .params
-        .iter()
-        .find_map(|p| p.strip_prefix("DSN=").or_else(|| p.strip_prefix("dsn=")));
-    let driver = parsed
-        .params
-        .iter()
-        .find_map(|p| {
-            p.strip_prefix("Driver=")
-                .or_else(|| p.strip_prefix("driver="))
-        })
-        .map(|d| d.trim_matches(|c| c == '{' || c == '}'));
-    let env_driver = std::env::var(odbc_driver_env_var(scheme)).ok();
+    let parsed = parse_backend_uri(&conn.body);
+    let param = |key: &str| {
+        conn.params
+            .iter()
+            .find(|(k, _)| k.eq_ignore_ascii_case(key))
+            .and_then(|(_, v)| v.as_deref())
+    };
 
-    // A DBQ= param (Oracle/DB2-style server address) fully specifies where
-    // to connect, so the Server/Port/Database synthesis must be suppressed —
+    // Query params may already be a (partial) ODBC connection string.
+    let dsn = param("dsn");
+    let driver = param("driver").map(|d| d.trim_matches(|c| c == '{' || c == '}'));
+    let env_driver = std::env::var(odbc_driver_env_var(entry.scheme)).ok();
+
+    // On DBQ-style backends (Oracle/DB2) a DBQ= param fully specifies where
+    // to connect, so Server/Port/Database synthesis must be suppressed —
     // Oracle ODBC rejects a connection string that mixes the two vocabularies.
-    let has_dbq = parsed
-        .params
-        .iter()
-        .any(|p| p.starts_with("DBQ=") || p.starts_with("dbq="));
+    let has_dbq = entry.odbc_dbq_style && param("dbq").is_some();
 
-    let (mut parts, mut skip_keys): (Vec<String>, Vec<&str>) = (Vec::new(), Vec::new());
+    let mut parts: Vec<String> = Vec::new();
+    let mut skip_keys: Vec<&str> = Vec::new();
     if let Some(dsn) = dsn {
         parts.push(format!("DSN={}", dsn));
         skip_keys.push("dsn");
@@ -368,12 +473,14 @@ fn synthesize_odbc_conn_str(scheme: &str, rest: &str) -> Option<String> {
         parts.push(format!("PWD={}", password));
     }
     // Pass through remaining query params verbatim.
-    for p in &parsed.params {
-        let key = p.split('=').next().unwrap_or("").to_ascii_lowercase();
-        if skip_keys.contains(&key.as_str()) || key == "reader" {
+    for (key, value) in &conn.params {
+        if skip_keys.contains(&key.to_ascii_lowercase().as_str()) {
             continue;
         }
-        parts.push(p.to_string());
+        match value {
+            Some(v) => parts.push(format!("{key}={v}")),
+            None => parts.push(key.clone()),
+        }
     }
     Some(parts.join(";"))
 }
@@ -388,9 +495,10 @@ pub fn reader_from_uri(uri: &str) -> Result<Box<dyn Reader + Send>> {
         {
             use crate::reader::cache::CacheConfig;
 
-            let (primary_uri, over) = strip_cache_params(&primary_uri);
-            let config = CacheConfig::from_env().merge(over);
-            let primary = build_reader(&primary_uri)?;
+            let conn = ConnUri::parse(&primary_uri)?;
+            let config = CacheConfig::from_env().merge(conn.cache_config_override());
+            let primary_uri = conn.to_uri();
+            let primary = build_reader_parsed(&conn, &primary_uri)?;
             let cache = build_reader(cache_uri(&cache_scheme)?)?;
             return Ok(Box::new(crate::reader::CachingReader::with_config(
                 primary,
@@ -408,16 +516,9 @@ pub fn reader_from_uri(uri: &str) -> Result<Box<dyn Reader + Send>> {
             ));
         }
     }
-    let reader = build_reader(uri)?;
-    auto_cache_if_needed(reader, uri)
-}
-
-/// True when the URI query string carries `cache=off`, opting out of the
-/// automatic caching layer.
-fn uri_disables_cache(uri: &str) -> bool {
-    uri.split_once('?')
-        .map(|(_, q)| q.split('&').any(|seg| seg.to_lowercase() == "cache=off"))
-        .unwrap_or(false)
+    let conn = ConnUri::parse(uri)?;
+    let reader = build_reader_parsed(&conn, uri)?;
+    auto_cache_if_needed(reader, &conn)
 }
 
 /// Probe whether a freshly connected reader can create the temporary tables
@@ -449,17 +550,13 @@ fn probe_temp_tables(reader: &dyn Reader) -> bool {
 /// [`CachingReader`]: crate::reader::CachingReader
 fn auto_cache_if_needed(
     reader: Box<dyn Reader + Send>,
-    uri: &str,
+    conn: &ConnUri,
 ) -> Result<Box<dyn Reader + Send>> {
-    if uri_disables_cache(uri) {
+    if conn.cache_disabled_off() {
         return Ok(reader);
     }
-    let scheme = uri
-        .split_once("://")
-        .map(|(s, _)| s.to_ascii_lowercase())
-        .unwrap_or_default();
     // The cache backends themselves never need a cache.
-    if scheme == "duckdb" || scheme == "sqlite" {
+    if conn.scheme == "duckdb" || conn.scheme == "sqlite" {
         return Ok(reader);
     }
     let needed = reader.dialect().requires_cache() || !probe_temp_tables(&*reader);
@@ -480,7 +577,7 @@ fn auto_cache_if_needed(
         Ok(Box::new(crate::reader::CachingReader::with_config(
             reader,
             cache,
-            uri.to_string(),
+            conn.to_uri(),
             cache_scheme.to_string(),
             CacheConfig::from_env(),
         )))
@@ -489,11 +586,36 @@ fn auto_cache_if_needed(
     {
         let _ = reader;
         Err(GgsqlError::ReaderError(format!(
-            "Connection '{uri}' needs an in-memory cache to stage intermediate tables, \
+            "Connection '{}' needs an in-memory cache to stage intermediate tables, \
              but this build has neither the duckdb nor the sqlite feature. \
-             Add ?cache=off to the URI to proceed without one."
+             Add ?cache=off to the URI to proceed without one.",
+            conn.to_uri()
         )))
     }
+}
+
+/// Lift ggsql-owned keys out of an ODBC connection string, returning the
+/// remaining string and the overrides.
+///
+/// This is the `;`-separated sibling of [`ConnUri::parse`]: ODBC conn
+/// strings (`odbc://Driver=X;DSN=foo`) carry `k=v` pairs in their body
+/// rather than a `?` query, so ggsql's own keys need a separate extraction
+/// — but the knowledge of *which* keys are ggsql's lives here, alongside
+/// `ConnUri`, not in the ODBC reader. Only keys meaningful inside a conn
+/// string are recognized; URI-level keys (`cache`, `reader`) are parsed
+/// from the `odbc://…?` query by `ConnUri` as usual.
+pub(crate) fn take_odbc_ggsql_params(conn_str: &str) -> (String, GgsqlParams) {
+    let mut kept = Vec::new();
+    let mut ggsql = GgsqlParams::default();
+    for segment in conn_str.split(';') {
+        match segment.split_once('=') {
+            Some((key, value)) if key.trim().eq_ignore_ascii_case("dialect") => {
+                ggsql.dialect = Some(value.trim().to_string());
+            }
+            _ => kept.push(segment),
+        }
+    }
+    (kept.join(";"), ggsql)
 }
 
 /// Extract a value from an ODBC connection string by key, stripping braces.
@@ -516,28 +638,71 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_uri_disables_cache() {
-        assert!(uri_disables_cache("postgres://u@h/db?cache=off"));
-        assert!(uri_disables_cache("postgres://u@h/db?DSN=pg&CACHE=OFF"));
-        assert!(!uri_disables_cache("postgres://u@h/db?DSN=pg"));
-        assert!(!uri_disables_cache("postgres://u@h/db"));
+    fn test_take_odbc_ggsql_params() {
+        let (conn, ggsql) = take_odbc_ggsql_params("Driver=X;Server=h;Dialect=ansi;UID=u");
+        assert_eq!(conn, "Driver=X;Server=h;UID=u");
+        assert_eq!(ggsql.dialect.as_deref(), Some("ansi"));
+
+        let (conn, ggsql) = take_odbc_ggsql_params("dialect=postgres;DSN=x");
+        assert_eq!(conn, "DSN=x");
+        assert_eq!(ggsql.dialect.as_deref(), Some("postgres"));
+
+        let (conn, ggsql) = take_odbc_ggsql_params("Driver=X;Server=h");
+        assert_eq!(conn, "Driver=X;Server=h");
+        assert_eq!(ggsql.dialect, None);
     }
 
     #[test]
-    fn test_strip_ggsql_params() {
+    fn test_conn_uri_cache_off() {
+        assert!(ConnUri::parse("postgres://u@h/db?cache=off")
+            .unwrap()
+            .cache_disabled_off());
+        assert!(ConnUri::parse("postgres://u@h/db?DSN=pg&CACHE=OFF")
+            .unwrap()
+            .cache_disabled_off());
+        assert!(!ConnUri::parse("postgres://u@h/db?DSN=pg")
+            .unwrap()
+            .cache_disabled_off());
+        assert!(!ConnUri::parse("postgres://u@h/db")
+            .unwrap()
+            .cache_disabled_off());
+    }
+
+    #[test]
+    fn test_conn_uri_strips_ggsql_params() {
         // ggsql-owned keys never reach a driver; everything else is kept
-        // in order.
+        // in order and original case.
+        let conn = ConnUri::parse(
+            "postgres://u@h/db?cache=off&user=x&cache_ttl=60&reader=odbc&cache_max_bytes=1MB",
+        )
+        .unwrap();
+        assert_eq!(conn.query_string(), "user=x");
+        assert!(conn.cache_disabled_off());
+        assert!(conn.forces_odbc());
+        assert_eq!(conn.ggsql.cache_ttl.as_deref(), Some("60"));
+
+        let conn = ConnUri::parse("postgres://h/db?CACHE=OFF&Driver={PostgreSQL Unicode}&cache_disabled=1&dialect=ansi&stmt.x=y")
+            .unwrap();
+        assert_eq!(conn.query_string(), "Driver={PostgreSQL Unicode}");
+        assert_eq!(conn.ggsql.cache_disabled, Some(true));
+        assert_eq!(conn.ggsql.dialect.as_deref(), Some("ansi"));
         assert_eq!(
-            strip_ggsql_params("cache=off&user=x&cache_ttl=60&reader=odbc&cache_max_bytes=1MB"),
-            "user=x"
+            conn.ggsql.stmt_options,
+            vec![("x".to_string(), "y".to_string())]
         );
+
+        let conn = ConnUri::parse("postgres://h/db?user=x&password=y&flag").unwrap();
+        assert_eq!(conn.query_string(), "user=x&password=y&flag");
+        assert_eq!(conn.to_uri(), "postgres://h/db?user=x&password=y&flag");
+
+        let conn = ConnUri::parse("duckdb://memory").unwrap();
+        assert_eq!(conn.to_uri(), "duckdb://memory");
         assert_eq!(
-            strip_ggsql_params("CACHE=OFF&Driver={PostgreSQL Unicode}&cache_disabled=1"),
-            "Driver={PostgreSQL Unicode}"
+            ConnUri::parse("postgres://h/db?cache=off")
+                .unwrap()
+                .to_uri(),
+            "postgres://h/db"
         );
-        assert_eq!(strip_ggsql_params("user=x&password=y"), "user=x&password=y");
-        assert_eq!(strip_ggsql_params(""), "");
-        assert_eq!(strip_ggsql_params("cache=off"), "");
     }
 
     #[cfg(feature = "duckdb")]
@@ -548,11 +713,9 @@ mod tests {
 
         // A read-only primary (temp-table probe fails) gets wrapped.
         let primary = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
-        let reader = auto_cache_if_needed(
-            Box::new(ReadOnlyReader::new(Box::new(primary))),
-            "postgres://u@h/db",
-        )
-        .unwrap();
+        let conn = ConnUri::parse("postgres://u@h/db").unwrap();
+        let reader =
+            auto_cache_if_needed(Box::new(ReadOnlyReader::new(Box::new(primary))), &conn).unwrap();
         assert!(reader.caches_sources(), "expected a caching reader");
 
         // The wrapped reader runs the full pipeline: temp tables and stat
@@ -571,21 +734,21 @@ mod tests {
 
         // A writable primary passes the probe and is used directly.
         let primary = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
-        let reader = auto_cache_if_needed(Box::new(primary), "postgres://u@h/db").unwrap();
+        let conn = ConnUri::parse("postgres://u@h/db").unwrap();
+        let reader = auto_cache_if_needed(Box::new(primary), &conn).unwrap();
         assert!(!reader.caches_sources(), "no cache expected");
 
         // cache=off wins even when the probe would fail.
         let primary = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
-        let reader = auto_cache_if_needed(
-            Box::new(ReadOnlyReader::new(Box::new(primary))),
-            "postgres://u@h/db?cache=off",
-        )
-        .unwrap();
+        let conn = ConnUri::parse("postgres://u@h/db?cache=off").unwrap();
+        let reader =
+            auto_cache_if_needed(Box::new(ReadOnlyReader::new(Box::new(primary))), &conn).unwrap();
         assert!(!reader.caches_sources(), "cache=off must be honored");
 
         // The cache backends themselves are never wrapped.
         let primary = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
-        let reader = auto_cache_if_needed(Box::new(primary), "duckdb://memory").unwrap();
+        let conn = ConnUri::parse("duckdb://memory").unwrap();
+        let reader = auto_cache_if_needed(Box::new(primary), &conn).unwrap();
         assert!(!reader.caches_sources(), "duckdb needs no cache");
     }
 
@@ -611,6 +774,53 @@ mod tests {
     }
 
     #[test]
+    fn test_unknown_reader_param_errors() {
+        let err = build_reader("postgres://u@h/db?reader=jdbc")
+            .err()
+            .unwrap()
+            .to_string();
+        assert!(err.contains("Unknown reader 'jdbc'"), "got: {err}");
+    }
+
+    #[cfg(feature = "adbc")]
+    #[test]
+    fn test_forced_adbc_errors_when_driver_unavailable() {
+        // With reader=adbc, an unloadable driver is an explicit error rather
+        // than a silent fallthrough to the ODBC/native paths. (Relies on no
+        // MonetDB ADBC driver existing — the registry has none.)
+        let err = build_reader("monetdb://u@h/db?reader=adbc")
+            .err()
+            .unwrap()
+            .to_string();
+        assert!(err.contains("reader=adbc was requested"), "got: {err}");
+    }
+
+    #[cfg(feature = "duckdb")]
+    #[test]
+    fn test_native_reader_still_preferred_for_duckdb() {
+        // duckdb:// goes through the native in-process reader even though
+        // the registry also lists an ADBC driver for it.
+        assert!(build_reader("duckdb://memory").is_ok());
+        assert!(build_reader("duckdb://memory?reader=native").is_ok());
+    }
+
+    #[cfg(feature = "duckdb")]
+    #[test]
+    fn test_native_reader_drops_query_params_from_path() {
+        // Regression: the native readers treat everything after `://` as a
+        // file path, so a URI carrying query params must be reduced to
+        // `scheme://body` before dispatch — otherwise DuckDB opens an
+        // on-disk database literally named e.g. `memory?cache=off`.
+        let leaked = "memory?cache=off&reader=native";
+        let _ = std::fs::remove_file(leaked); // clean slate; ignore absence
+        assert!(build_reader("duckdb://memory?cache=off&reader=native").is_ok());
+        assert!(
+            !std::path::Path::new(leaked).exists(),
+            "query params leaked into the DuckDB file path"
+        );
+    }
+
+    #[test]
     fn test_build_reader_postgres_errors_informatively_without_drivers() {
         // With no ADBC driver installed and no ODBC hints, the error must
         // explain both paths rather than saying "not yet implemented".
@@ -623,9 +833,16 @@ mod tests {
     }
 
     #[cfg(feature = "odbc")]
+    fn synthesize(scheme: &str, uri_body_query: &str) -> Option<String> {
+        let entry = crate::reader::registry::by_scheme(scheme).unwrap();
+        let conn = ConnUri::parse(&format!("{scheme}://{uri_body_query}")).unwrap();
+        synthesize_odbc_conn_str(entry, &conn)
+    }
+
+    #[cfg(feature = "odbc")]
     #[test]
     fn test_synthesize_odbc_conn_str_from_dsn() {
-        let conn = synthesize_odbc_conn_str(
+        let conn = synthesize(
             "postgres",
             "user:pw@dbhost:5432/sales?DSN=pg&sslmode=require",
         )
@@ -641,8 +858,7 @@ mod tests {
     #[cfg(feature = "odbc")]
     #[test]
     fn test_synthesize_odbc_conn_str_from_driver() {
-        let conn = synthesize_odbc_conn_str("mysql", "u@dbhost:3306/shop?Driver={MySQL ODBC 9.0}")
-            .unwrap();
+        let conn = synthesize("mysql", "u@dbhost:3306/shop?Driver={MySQL ODBC 9.0}").unwrap();
         assert!(conn.contains("Driver={MySQL ODBC 9.0}"), "got: {conn}");
         assert!(conn.contains("Server=dbhost"), "got: {conn}");
         assert!(conn.contains("Port=3306"), "got: {conn}");
@@ -656,7 +872,7 @@ mod tests {
         // Oracle ODBC wants Driver + DBQ and nothing else: the URI's
         // host/port/database parts must not become Server/Port/Database
         // keywords alongside DBQ.
-        let conn = synthesize_odbc_conn_str(
+        let conn = synthesize(
             "oracle",
             "ggsql:pw@localhost:1521/XEPDB1?Driver={Oracle}&DBQ=(DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)(HOST=localhost)(PORT=1521))(CONNECT_DATA=(SERVICE_NAME=XEPDB1)))",
         )
@@ -672,7 +888,7 @@ mod tests {
     #[cfg(feature = "odbc")]
     #[test]
     fn test_synthesize_odbc_conn_str_none_without_hints() {
-        assert!(synthesize_odbc_conn_str("postgres", "u@h/db").is_none());
+        assert!(synthesize("postgres", "u@h/db").is_none());
     }
 
     #[test]
@@ -683,15 +899,15 @@ mod tests {
         assert_eq!(split_cache_uri("a+b+c://x"), None);
     }
 
-    #[cfg(feature = "adbc")]
     #[test]
-    fn test_uri_forces_odbc() {
-        assert!(uri_forces_odbc("u@h/db?reader=odbc"));
-        assert!(uri_forces_odbc("u@h/db?DSN=pg&reader=odbc"));
-        assert!(uri_forces_odbc("u@h/db?READER=ODBC"));
-        assert!(uri_forces_odbc("u@h/db?Reader=Odbc"));
-        assert!(!uri_forces_odbc("u@h/db?DSN=pg"));
-        assert!(!uri_forces_odbc("u@h/db"));
+    fn test_conn_uri_forces_odbc() {
+        let forces = |uri: &str| ConnUri::parse(uri).unwrap().forces_odbc();
+        assert!(forces("postgres://u@h/db?reader=odbc"));
+        assert!(forces("postgres://u@h/db?DSN=pg&reader=odbc"));
+        assert!(forces("postgres://u@h/db?READER=ODBC"));
+        assert!(forces("postgres://u@h/db?Reader=Odbc"));
+        assert!(!forces("postgres://u@h/db?DSN=pg"));
+        assert!(!forces("postgres://u@h/db"));
     }
 
     #[test]
@@ -763,50 +979,28 @@ mod tests {
 
     #[cfg(any(feature = "duckdb", feature = "sqlite"))]
     #[test]
-    fn test_strip_cache_params_parses_known_keys() {
-        let (uri, over) = strip_cache_params("duckdb://memory?cache_ttl=600");
-        assert_eq!(uri, "duckdb://memory");
+    fn test_conn_uri_cache_config_override() {
+        let conn = ConnUri::parse("duckdb://memory?cache_ttl=600").unwrap();
+        let over = conn.cache_config_override();
+        assert_eq!(conn.to_uri(), "duckdb://memory");
         assert_eq!(over.ttl_secs, Some(600));
         assert_eq!(over.max_bytes, None);
         assert_eq!(over.enabled, None);
 
-        let (uri, over) =
-            strip_cache_params("duckdb://memory?cache_max_bytes=256mb&cache_disabled=true");
-        assert_eq!(uri, "duckdb://memory");
+        let conn =
+            ConnUri::parse("duckdb://memory?cache_max_bytes=256mb&cache_disabled=true").unwrap();
+        let over = conn.cache_config_override();
+        assert_eq!(conn.to_uri(), "duckdb://memory");
         assert_eq!(over.max_bytes, Some(256 * 1024 * 1024));
         assert_eq!(over.enabled, Some(false));
-    }
 
-    #[cfg(any(feature = "duckdb", feature = "sqlite"))]
-    #[test]
-    fn test_strip_cache_params_keeps_non_cache_segments() {
-        // A non-cache `?key=` tail contributes no overrides and is left in place.
-        let (uri, over) = strip_cache_params("odbc://DSN=foo?warehouse=PROD");
-        assert_eq!(uri, "odbc://DSN=foo?warehouse=PROD");
-        assert_eq!(over.ttl_secs, None);
-
-        // ODBC body with `=`/`;` and no `?` is returned verbatim.
-        let (uri, over) = strip_cache_params("odbc://Driver=Snowflake;Server=x");
-        assert_eq!(uri, "odbc://Driver=Snowflake;Server=x");
-        assert_eq!(over.enabled, None);
-
-        // Cache keys are extracted; other params (e.g. ODBC settings) are kept.
-        let (uri, over) =
-            strip_cache_params("odbc://DSN=foo?ttl=99&cache_ttl=10&cache_max_bytes=8mb");
-        assert_eq!(uri, "odbc://DSN=foo?ttl=99");
+        // Non-cache params contribute no overrides and are left in place.
+        let conn =
+            ConnUri::parse("odbc://DSN=foo?ttl=99&cache_ttl=10&cache_max_bytes=8mb").unwrap();
+        let over = conn.cache_config_override();
+        assert_eq!(conn.to_uri(), "odbc://DSN=foo?ttl=99");
         assert_eq!(over.ttl_secs, Some(10));
         assert_eq!(over.max_bytes, Some(8 * 1024 * 1024));
-
-        // When every param is a cache key, the `?` is dropped entirely.
-        let (uri, over) = strip_cache_params("duckdb://memory?cache_ttl=10&cache_disabled=1");
-        assert_eq!(uri, "duckdb://memory");
-        assert_eq!(over.ttl_secs, Some(10));
-        assert_eq!(over.enabled, Some(false));
-
-        // Plain URI, no query string.
-        let (uri, over) = strip_cache_params("duckdb://memory");
-        assert_eq!(uri, "duckdb://memory");
-        assert_eq!(over.ttl_secs, None);
     }
 
     #[cfg(all(feature = "duckdb", feature = "sqlite"))]

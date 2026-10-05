@@ -97,7 +97,8 @@ impl<D: Driver> AdbcReader<D> {
 
     /// Attach driver-specific *statement* options, applied to every statement
     /// the reader creates in `execute_sql`. These come from `stmt.`-prefixed
-    /// URI params (see [`partition_statement_opts`]) and exist because some
+    /// URI params (lifted out by [`crate::reader::connection::ConnUri`]) and
+    /// exist because some
     /// drivers expose per-query settings only at the statement level — e.g.
     /// BigQuery's `bigquery.query.destination_table`, which is needed to
     /// read query results from the goccy BigQuery emulator (it does not
@@ -141,65 +142,28 @@ use adbc_driver_manager::ManagedDriver;
 const DEFAULT_LOAD_FLAGS: adbc_core::LoadFlags =
     adbc_core::LOAD_FLAG_DEFAULT | adbc_core::LOAD_FLAG_ALLOW_RELATIVE_PATHS;
 
-/// Map a ggsql URI scheme to its ADBC driver names: the canonical driver
-/// library name and the dbc manifest ID.
+/// ADBC driver details for a URI scheme, from the
+/// [registry](crate::reader::registry): the canonical driver library name
+/// and the dbc manifest ID.
 ///
 /// Both names are needed because they are spelled differently on disk:
 /// `dbc install postgresql` writes a manifest named after its short driver
 /// ID (`postgresql.toml`), while a from-source or system-wide install is
 /// typically found under the library name (`adbc_driver_postgresql`).
 /// [`load_driver_for_scheme`] probes both.
-///
-/// Most backend schemes resolve to a dedicated driver from the ADBC Driver
-/// Foundry (installable via `dbc install <id>`). Redshift shares the
-/// PostgreSQL wire protocol and uses the PostgreSQL driver. Schemes without
-/// a usable dedicated driver (Drill, MonetDB) return `None` and fall through
-/// to the ODBC fallback in connection setup.
-fn driver_names_for_scheme(scheme: &str) -> Option<(&'static str, &'static str)> {
-    Some(match scheme {
-        "postgres" | "postgresql" => ("adbc_driver_postgresql", "postgresql"),
-        "redshift" => ("adbc_driver_postgresql", "postgresql"),
-        "snowflake" => ("adbc_driver_snowflake", "snowflake"),
-        "bigquery" => ("adbc_driver_bigquery", "bigquery"),
-        "databricks" | "spark" => ("adbc_driver_databricks", "databricks"),
-        "duckdb" => ("adbc_driver_duckdb", "duckdb"),
-        "sqlite" => ("adbc_driver_sqlite", "sqlite"),
-        "flightsql" => ("adbc_driver_flightsql", "flightsql"),
-        "mysql" | "mariadb" => ("adbc_driver_mysql", "mysql"),
-        "trino" => ("adbc_driver_trino", "trino"),
-        "clickhouse" => ("adbc_driver_clickhouse", "clickhouse"),
-        "mssql" | "sqlserver" => ("adbc_driver_mssql", "mssql"),
-        "oracle" => ("adbc_driver_oracle", "oracle"),
-        "exasol" => ("adbc_driver_exasol", "exasol"),
-        // Preview driver from the Foundry as of late 2026.
-        "druid" => ("adbc_driver_druid", "druid"),
-        // In-process DataFusion; the driver moved from the in-tree Rust
-        // crate (stalled at 0.23) to the ADBC Driver Foundry.
-        "datafusion" => ("adbc_driver_datafusion", "datafusion"),
-        _ => return None,
-    })
+fn adbc_info_for_scheme(scheme: &str) -> Option<crate::reader::registry::AdbcInfo> {
+    crate::reader::registry::by_scheme(scheme).and_then(|e| e.adbc)
 }
 
 /// Map a ggsql URI scheme to the canonical ADBC driver library name.
-/// See [`driver_names_for_scheme`] for the naming subtlety.
 pub fn driver_name_for_scheme(scheme: &str) -> Option<&'static str> {
-    driver_names_for_scheme(scheme).map(|(lib_name, _)| lib_name)
+    adbc_info_for_scheme(scheme).map(|info| info.lib_name)
 }
 
 /// Environment variable that overrides the ADBC driver for a URI scheme,
 /// e.g. `GGSQL_POSTGRES_ADBC_DRIVER=/opt/drivers/libadbc_driver_postgresql.so`.
 pub fn driver_env_var(scheme: &str) -> String {
-    let upper: String = scheme
-        .chars()
-        .map(|c| {
-            if c.is_ascii_alphanumeric() {
-                c.to_ascii_uppercase()
-            } else {
-                '_'
-            }
-        })
-        .collect();
-    format!("GGSQL_{}_ADBC_DRIVER", upper)
+    crate::reader::registry::adbc_driver_env_var(scheme)
 }
 
 /// Parse a `k=v&…` query string into ADBC database options. The keys `uri`,
@@ -225,30 +189,6 @@ fn query_params_to_opts(query: &str) -> Vec<(OptionDatabase, OptionValue)> {
     opts
 }
 
-/// Split `stmt.`-prefixed params out of a `k=v&…` query string. The prefix
-/// marks driver *statement* options (applied to every statement the reader
-/// creates) as opposed to database options — e.g.
-/// `stmt.bigquery.query.destination_table=ds.tbl`. Returns the statement
-/// options with the prefix stripped, and the remaining query string with
-/// those segments removed (drivers reject unknown params in their own URI
-/// parsing, so they must not leak through).
-fn partition_statement_opts(query: &str) -> (Vec<(String, String)>, String) {
-    let mut stmt_opts = Vec::new();
-    let mut rest = Vec::new();
-    for segment in query.split('&') {
-        if segment.is_empty() {
-            continue;
-        }
-        match segment.split_once('=') {
-            Some((key, value)) if key.starts_with("stmt.") => {
-                stmt_opts.push((key["stmt.".len()..].to_string(), value.to_string()));
-            }
-            _ => rest.push(segment),
-        }
-    }
-    (stmt_opts, rest.join("&"))
-}
-
 /// Load an ADBC driver for a scheme, honoring the per-scheme env override
 /// first, then the canonical driver name. The error message lists what was
 /// probed so users know where ggsql looked.
@@ -269,12 +209,12 @@ fn load_driver_for_scheme(scheme: &str) -> Result<ManagedDriver> {
             ))
         });
     }
-    let (lib_name, dbc_id) = driver_names_for_scheme(scheme).ok_or_else(|| {
+    let info = adbc_info_for_scheme(scheme).ok_or_else(|| {
         GgsqlError::ReaderError(format!("No known ADBC driver for scheme '{}://'", scheme))
     })?;
-    // Probe the canonical library name first, then the dbc manifest ID (see
-    // driver_names_for_scheme); collect both errors so the message shows
-    // everything that was tried.
+    let (lib_name, dbc_id) = (info.lib_name, info.dbc_id);
+    // Probe the canonical library name first, then the dbc manifest ID;
+    // collect both errors so the message shows everything that was tried.
     let mut errors = Vec::new();
     for name in [lib_name, dbc_id] {
         match ManagedDriver::load_from_name(name, None, AdbcVersion::V110, DEFAULT_LOAD_FLAGS, None)
@@ -315,18 +255,13 @@ impl AdbcReader<ManagedDriver> {
     /// The dialect is chosen from the scheme via
     /// [`crate::reader::dialects::dialect_for_scheme`], falling back to ANSI.
     pub fn from_connection_string(uri: &str) -> Result<Self> {
-        let (scheme, rest) = uri.split_once("://").ok_or_else(|| {
-            GgsqlError::ReaderError(format!("Invalid ADBC connection URI: {}", uri))
-        })?;
-        let scheme = scheme.to_ascii_lowercase();
-        let (body, query) = rest.split_once('?').unwrap_or((rest, ""));
-        // `stmt.`-prefixed params become per-statement options rather than
-        // database options.
-        let (stmt_opts, query) = partition_statement_opts(query);
-        // ggsql's own keys (`cache`, `reader`, cache tuning) are consumed
-        // during dispatch and must not leak into the driver's URI or option
-        // map — drivers reject unknown keys.
-        let query = crate::reader::connection::strip_ggsql_params(&query);
+        let conn = crate::reader::connection::ConnUri::parse(uri)?;
+        let scheme = conn.scheme.as_str();
+        let body = conn.body.as_str();
+        // ggsql's own keys (`cache`, `reader`, `dialect`, cache tuning) and
+        // `stmt.`-prefixed keys were lifted out by the parse, so what remains
+        // is safe to hand to the driver's own URI/option parsing.
+        let query = conn.query_string();
         let query = query.as_str();
 
         let (driver, opts) = if scheme == "adbc" {
@@ -335,7 +270,7 @@ impl AdbcReader<ManagedDriver> {
             // (canonical library name, then dbc manifest ID) plus the
             // per-scheme env override; anything else is a name or path for
             // the driver manager to resolve directly.
-            let driver = if driver_names_for_scheme(body).is_some() {
+            let driver = if adbc_info_for_scheme(body).is_some() {
                 load_driver_for_scheme(body)?
             } else {
                 ManagedDriver::load_from_name(
@@ -351,64 +286,76 @@ impl AdbcReader<ManagedDriver> {
             };
             (driver, query_params_to_opts(query))
         } else {
-            let driver = load_driver_for_scheme(&scheme)?;
-            // The URI handed to the driver must not carry stmt.* params —
-            // drivers parse their own URI query string and reject unknown
-            // keys. BigQuery additionally needs its URI in the driver's
-            // Simba grammar, with non-Simba params arriving only as
+            let entry = crate::reader::registry::by_scheme(scheme).ok_or_else(|| {
+                GgsqlError::ReaderError(format!("No known ADBC driver for scheme '{}://'", scheme))
+            })?;
+            let driver = load_driver_for_scheme(scheme)?;
+            // The URI handed to the driver must not carry stmt.* or ggsql
+            // params — drivers parse their own URI query string and reject
+            // unknown keys. BigQuery additionally needs its URI in the
+            // driver's Simba grammar, with non-Simba params arriving only as
             // standalone options.
-            let (driver_uri, opts_query) = if scheme == "bigquery" {
-                bigquery_driver_uri(body, query)
-            } else {
-                let filtered_uri = if query.is_empty() {
-                    format!("{scheme}://{body}")
+            let info = entry.adbc.expect("registry entry implies ADBC info");
+            let (driver_uri, opts_query) =
+                if info.driver_uri == crate::reader::registry::DriverUri::BigQuerySimba {
+                    bigquery_driver_uri(body, query)
                 } else {
-                    format!("{scheme}://{body}?{query}")
+                    (
+                        driver_uri_for(info.driver_uri, body, &conn.to_uri()),
+                        query.to_string(),
+                    )
                 };
-                (
-                    driver_uri_for(&scheme, body, &filtered_uri),
-                    query.to_string(),
-                )
-            };
             let mut opts = vec![(OptionDatabase::Uri, OptionValue::String(driver_uri))];
-            if query_params_as_driver_options(&scheme) {
+            if info.params_as_options {
                 opts.extend(query_params_to_opts(&opts_query));
             }
             (driver, opts)
         };
 
-        let dialect: Box<dyn SqlDialect + Send> =
-            crate::reader::dialects::dialect_for_scheme(if scheme == "adbc" {
-                body
-            } else {
-                &scheme
-            })
-            .unwrap_or_else(|| Box::new(AnsiDialect));
+        let dialect = resolve_dialect(&conn)?;
 
         Self::new_with_database_opts(driver, dialect, opts)
-            .map(|reader| reader.with_statement_opts(stmt_opts))
+            .map(|reader| reader.with_statement_opts(conn.ggsql.stmt_options.clone()))
     }
 }
 
-/// Compute the URI handed to the driver as the `uri` database option.
-///
-/// ggsql's scheme selects the driver and dialect, but the URI must use the
-/// scheme the driver itself speaks. ClickHouse's ADBC driver connects over
-/// the HTTP interface and expects http:// (or https:// for TLS). Its URI is
-/// rebuilt from the body alone, dropping userinfo and query params: the
-/// driver ignores userinfo (credentials must arrive as the dedicated
-/// `username`/`password` options) and forwards any URL query parameters to
-/// the server as ClickHouse *settings*, so `?username=…` left in the URL
-/// would fail with "Unknown setting". Other drivers (e.g. PostgreSQL) parse
-/// query parameters in the URI themselves, so their full URI passes through.
-fn driver_uri_for(scheme: &str, body: &str, full_uri: &str) -> String {
-    match scheme {
-        "clickhouse" => format!("http://{body}"),
-        // The Foundry MySQL/MariaDB driver wraps go-sql-driver/mysql, whose
-        // DSN is `user[:pass]@tcp(host:port)/db` — not a URL. Translate
-        // `mysql://user:pass@host:port/db` accordingly. Query params are not
-        // carried into the DSN; they reach the driver as options instead.
-        "mysql" | "mariadb" => {
+/// Pick the dialect for an ADBC connection: an explicit `dialect=` override
+/// wins; otherwise the scheme (or, for `adbc://<driver>`, the driver name)
+/// resolves through the registry. Unknown backends are an error pointing at
+/// the override — never a silent ANSI fallback.
+fn resolve_dialect(
+    conn: &crate::reader::connection::ConnUri,
+) -> Result<Box<dyn SqlDialect + Send>> {
+    if let Some(name) = &conn.ggsql.dialect {
+        return crate::reader::registry::dialect_override(name).ok_or_else(|| {
+            GgsqlError::ReaderError(format!(
+                "Unknown dialect '{name}' in connection URI. Use dialect=ansi or any \
+                 supported scheme (postgres, mysql, …)."
+            ))
+        });
+    }
+    if conn.scheme != "adbc" {
+        return Ok(crate::reader::registry::by_scheme(&conn.scheme)
+            .expect("checked by caller")
+            .dialect());
+    }
+    // `adbc://<driver>`: the body may be a scheme alias (postgres) or a
+    // canonical driver name (adbc_driver_postgresql) — try both.
+    let body = conn.body.as_str();
+    if let Some(entry) = crate::reader::registry::by_scheme(body) {
+        return Ok(entry.dialect());
+    }
+    crate::reader::dialects::detect_dialect(None, Some(body))
+}
+
+/// Compute the URI handed to the driver as the `uri` database option,
+/// applying the registry's rewrite rule for the backend.
+fn driver_uri_for(kind: crate::reader::registry::DriverUri, body: &str, full_uri: &str) -> String {
+    use crate::reader::registry::DriverUri;
+    match kind {
+        DriverUri::Passthrough => full_uri.to_string(),
+        DriverUri::ClickHouseHttp => format!("http://{body}"),
+        DriverUri::MySqlGoDsn => {
             let (userinfo, host_db) = match body.rsplit_once('@') {
                 Some((u, h)) => (format!("{u}@"), h),
                 None => (String::new(), body),
@@ -418,12 +365,8 @@ fn driver_uri_for(scheme: &str, body: &str, full_uri: &str) -> String {
                 None => format!("{userinfo}tcp({host_db})"),
             }
         }
-        // The Foundry "redshift" driver is the PostgreSQL driver, whose
-        // pgx-based URI parsing rejects the redshift:// scheme; rewrite it.
-        // Rewrite the full URI (not `body`) so query params survive — they
-        // are pgx connection settings the driver reads from the URI.
-        "redshift" => full_uri.replacen("redshift://", "postgres://", 1),
-        _ => full_uri.to_string(),
+        DriverUri::RedshiftAsPostgres => full_uri.replacen("redshift://", "postgres://", 1),
+        DriverUri::BigQuerySimba => unreachable!("handled by bigquery_driver_uri"),
     }
 }
 
@@ -513,19 +456,6 @@ fn bigquery_driver_uri(body: &str, query: &str) -> (String, String) {
         uri.push_str(&simba_params.join("&"));
     }
     (uri, standalone.join("&"))
-}
-
-/// Whether `?k=v` query params are also passed to the driver as standalone
-/// database options. (They always remain in the `uri` option as well, except
-/// where [`driver_uri_for`] strips them.) Some drivers parse their own URI
-/// and reject params arriving a second way: the MSSQL driver fails with
-/// "Unknown database option 'TrustServerCertificate'", and the Databricks
-/// driver fails with "cannot specify both URI and individual connection
-/// options". Their params stay in the URI only. The Druid driver likewise
-/// rejects standalone params ("Unsupported option: Other(\"tls\")") — its
-/// README documents tls=false strictly as a param of the uri option.
-fn query_params_as_driver_options(scheme: &str) -> bool {
-    !matches!(scheme, "mssql" | "databricks" | "spark" | "druid")
 }
 
 /// Probe whether an ADBC driver for `scheme` can be loaded, without opening
@@ -964,10 +894,11 @@ mod tests {
 
     #[test]
     fn driver_uri_rewrites_clickhouse_and_strips_query() {
+        use crate::reader::registry::DriverUri;
         // Credentials must travel as dedicated options, not in the URL.
         assert_eq!(
             driver_uri_for(
-                "clickhouse",
+                DriverUri::ClickHouseHttp,
                 "localhost:8123",
                 "clickhouse://localhost:8123?username=default&password=secret"
             ),
@@ -976,7 +907,7 @@ mod tests {
         // Other schemes keep the full URI, query included.
         assert_eq!(
             driver_uri_for(
-                "postgres",
+                DriverUri::Passthrough,
                 "u:p@h/db",
                 "postgres://u:p@h/db?sslmode=disable"
             ),
@@ -986,9 +917,10 @@ mod tests {
 
     #[test]
     fn driver_uri_translates_mysql_to_go_dsn() {
+        use crate::reader::registry::DriverUri;
         assert_eq!(
             driver_uri_for(
-                "mysql",
+                DriverUri::MySqlGoDsn,
                 "root:pw@localhost:3306/ggsql",
                 "mysql://root:pw@localhost:3306/ggsql"
             ),
@@ -997,7 +929,7 @@ mod tests {
         // No userinfo.
         assert_eq!(
             driver_uri_for(
-                "mariadb",
+                DriverUri::MySqlGoDsn,
                 "localhost:3306/ggsql",
                 "mariadb://localhost:3306/ggsql"
             ),
@@ -1048,7 +980,7 @@ mod tests {
         // pgx rejects redshift://; the driver is the PostgreSQL one.
         assert_eq!(
             driver_uri_for(
-                "redshift",
+                crate::reader::registry::DriverUri::RedshiftAsPostgres,
                 "u:p@h:5439/db",
                 "redshift://u:p@h:5439/db?sslmode=disable"
             ),
@@ -1058,13 +990,18 @@ mod tests {
 
     #[test]
     fn uri_parsing_drivers_reject_standalone_options() {
-        assert!(!query_params_as_driver_options("mssql"));
-        assert!(!query_params_as_driver_options("databricks"));
-        assert!(!query_params_as_driver_options("spark"));
-        assert!(!query_params_as_driver_options("druid"));
-        assert!(query_params_as_driver_options("postgres"));
-        assert!(query_params_as_driver_options("clickhouse"));
-        assert!(query_params_as_driver_options("exasol"));
+        let params_as_options = |scheme: &str| {
+            crate::reader::registry::by_scheme(scheme)
+                .and_then(|e| e.adbc)
+                .map(|i| i.params_as_options)
+        };
+        assert_eq!(params_as_options("mssql"), Some(false));
+        assert_eq!(params_as_options("databricks"), Some(false));
+        assert_eq!(params_as_options("spark"), Some(false));
+        assert_eq!(params_as_options("druid"), Some(false));
+        assert_eq!(params_as_options("postgres"), Some(true));
+        assert_eq!(params_as_options("clickhouse"), Some(true));
+        assert_eq!(params_as_options("exasol"), Some(true));
     }
 
     #[test]
@@ -1073,23 +1010,18 @@ mod tests {
         // from the library name — both must be available for probing, or a
         // `dbc install`-based setup is never found (first seen as a CI
         // failure where dbc-installed drivers were not discovered).
+        let names = |scheme: &str| adbc_info_for_scheme(scheme).map(|i| (i.lib_name, i.dbc_id));
         assert_eq!(
-            driver_names_for_scheme("postgres"),
+            names("postgres"),
             Some(("adbc_driver_postgresql", "postgresql"))
         );
         assert_eq!(
-            driver_names_for_scheme("redshift"),
+            names("redshift"),
             Some(("adbc_driver_postgresql", "postgresql"))
         );
-        assert_eq!(
-            driver_names_for_scheme("trino"),
-            Some(("adbc_driver_trino", "trino"))
-        );
-        assert_eq!(
-            driver_names_for_scheme("mariadb"),
-            Some(("adbc_driver_mysql", "mysql"))
-        );
-        assert_eq!(driver_names_for_scheme("nosuch"), None);
+        assert_eq!(names("trino"), Some(("adbc_driver_trino", "trino")));
+        assert_eq!(names("mariadb"), Some(("adbc_driver_mysql", "mysql")));
+        assert_eq!(names("nosuch"), None);
     }
 
     #[test]

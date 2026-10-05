@@ -45,24 +45,39 @@ pub use snowflake::SnowflakeDialect;
 pub use sqlite::SqliteDialect;
 pub use trino::TrinoDialect;
 
-use crate::reader::{AnsiDialect, SqlDialect};
+use crate::reader::SqlDialect;
 
 /// Detect the backend SQL dialect from a DBMS name and/or a driver hint
-/// (ODBC driver name, ADBC driver name, or URI scheme).
+/// (ODBC driver name, ADBC driver name).
 ///
 /// The DBMS name is checked first; the driver hint is a fallback. Matching
-/// is case-insensitive substring matching with the more specific patterns
-/// ordered before generic ones (e.g. `microsoft sql server` before `sql`).
+/// is case-insensitive substring matching against the [`registry`], most
+/// specific entries first (e.g. SQL Server before anything containing
+/// "sql").
+///
+/// Unknown backends are an **error** naming what was seen — silently
+/// falling back to ANSI produced broken SQL too often. The escape hatch is
+/// a `dialect=ansi` (or `dialect=<scheme>`) parameter on the connection
+/// URI; see [`crate::reader::registry::dialect_override`].
+///
+/// [`registry`]: crate::reader::registry
 pub fn detect_dialect(
     dbms_name: Option<&str>,
     driver_hint: Option<&str>,
-) -> Box<dyn SqlDialect + Send> {
-    for text in [dbms_name, driver_hint].into_iter().flatten() {
-        if let Some(d) = match_from_substring(&text.to_lowercase()) {
-            return d;
-        }
-    }
-    Box::new(AnsiDialect)
+) -> crate::Result<Box<dyn SqlDialect + Send>> {
+    crate::reader::registry::detect(dbms_name, driver_hint)
+        .map(|e| e.dialect())
+        .ok_or_else(|| {
+            crate::GgsqlError::ReaderError(format!(
+                "Unrecognized database backend (DBMS name: {}, driver: {}). \
+                 ggsql does not know which SQL dialect to use. If the backend \
+                 is close to a supported one, pin the dialect explicitly with \
+                 a `dialect=<scheme>` parameter (e.g. dialect=postgres), or use \
+                 dialect=ansi for generic ANSI SQL.",
+                dbms_name.unwrap_or("<none>"),
+                driver_hint.unwrap_or("<none>"),
+            ))
+        })
 }
 
 /// Pick a dialect from a ggsql URI scheme (`postgres`, `mysql`, …).
@@ -70,91 +85,7 @@ pub fn detect_dialect(
 /// Returns `None` for unknown schemes so dispatch can report the scheme
 /// itself as unsupported.
 pub fn dialect_for_scheme(scheme: &str) -> Option<Box<dyn SqlDialect + Send>> {
-    let d: Box<dyn SqlDialect + Send> = match scheme.to_ascii_lowercase().as_str() {
-        "postgres" | "postgresql" => Box::new(PostgresDialect),
-        "redshift" => Box::new(RedshiftDialect),
-        "mysql" | "mariadb" => Box::new(MySqlDialect),
-        "snowflake" => Box::new(SnowflakeDialect),
-        "mssql" | "sqlserver" => Box::new(MssqlDialect),
-        "bigquery" => Box::new(BigQueryDialect),
-        "databricks" | "spark" => Box::new(DatabricksDialect),
-        "clickhouse" => Box::new(ClickHouseDialect),
-        "oracle" => Box::new(OracleDialect),
-        "trino" => Box::new(TrinoDialect),
-        "exasol" => Box::new(ExasolDialect),
-        "monetdb" => Box::new(MonetDbDialect),
-        "druid" => Box::new(DruidDialect),
-        "drill" => Box::new(DrillDialect),
-        "datafusion" => Box::new(DataFusionDialect),
-        "duckdb" => Box::new(DuckDbDialect),
-        "sqlite" => Box::new(SqliteDialect),
-        _ => return None,
-    };
-    Some(d)
-}
-
-/// Substring matcher shared by both entry points. Returns `None` when
-/// nothing matches so callers can fall through to the next hint, then ANSI.
-fn match_from_substring(lower: &str) -> Option<Box<dyn SqlDialect + Send>> {
-    // Most specific first. `microsoft sql server`/`msodbcsql` before anything
-    // containing "sql"; `redshift` before `postgres`.
-    if lower.contains("microsoft sql server")
-        || lower.contains("msodbcsql")
-        || lower.contains("sql server")
-        || lower.contains("sqlserver")
-        || lower.contains("mssql")
-    {
-        return Some(Box::new(MssqlDialect));
-    }
-    if lower.contains("redshift") {
-        return Some(Box::new(RedshiftDialect));
-    }
-    if lower.contains("postgres") || lower.contains("psql") {
-        return Some(Box::new(PostgresDialect));
-    }
-    if lower.contains("mariadb") || lower.contains("mysql") {
-        return Some(Box::new(MySqlDialect));
-    }
-    if lower.contains("snowflake") {
-        return Some(Box::new(SnowflakeDialect));
-    }
-    if lower.contains("bigquery") {
-        return Some(Box::new(BigQueryDialect));
-    }
-    if lower.contains("databricks") || lower.contains("spark") {
-        return Some(Box::new(DatabricksDialect));
-    }
-    if lower.contains("clickhouse") {
-        return Some(Box::new(ClickHouseDialect));
-    }
-    if lower.contains("oracle") || lower.contains("ora") && lower.contains("driver") {
-        return Some(Box::new(OracleDialect));
-    }
-    if lower.contains("trino") {
-        return Some(Box::new(TrinoDialect));
-    }
-    if lower.contains("exasol") || lower.contains("exa") && lower.contains("odbc") {
-        return Some(Box::new(ExasolDialect));
-    }
-    if lower.contains("monet") {
-        return Some(Box::new(MonetDbDialect));
-    }
-    if lower.contains("druid") {
-        return Some(Box::new(DruidDialect));
-    }
-    if lower.contains("drill") {
-        return Some(Box::new(DrillDialect));
-    }
-    if lower.contains("datafusion") {
-        return Some(Box::new(DataFusionDialect));
-    }
-    if lower.contains("duckdb") {
-        return Some(Box::new(DuckDbDialect));
-    }
-    if lower.contains("sqlite") {
-        return Some(Box::new(SqliteDialect));
-    }
-    None
+    crate::reader::registry::by_scheme(scheme).map(|e| e.dialect())
 }
 
 /// CASE-based scalar greatest/least for backends without `GREATEST`/`LEAST`
@@ -303,25 +234,31 @@ mod tests {
     fn detects_from_dbms_name() {
         // Probe with number_type_name, which differs across these dialects.
         assert_type_name(
-            &*detect_dialect(Some("PostgreSQL"), None),
+            &*detect_dialect(Some("PostgreSQL"), None).unwrap(),
             Some("DOUBLE PRECISION"),
         );
-        assert_type_name(&*detect_dialect(Some("MySQL"), None), Some("DOUBLE"));
         assert_type_name(
-            &*detect_dialect(Some("Microsoft SQL Server"), None),
+            &*detect_dialect(Some("MySQL"), None).unwrap(),
+            Some("DOUBLE"),
+        );
+        assert_type_name(
+            &*detect_dialect(Some("Microsoft SQL Server"), None).unwrap(),
             Some("FLOAT"),
         );
-        assert_type_name(&*detect_dialect(Some("Snowflake"), None), Some("DOUBLE"));
         assert_type_name(
-            &*detect_dialect(Some("Oracle"), None),
+            &*detect_dialect(Some("Snowflake"), None).unwrap(),
+            Some("DOUBLE"),
+        );
+        assert_type_name(
+            &*detect_dialect(Some("Oracle"), None).unwrap(),
             Some("BINARY_DOUBLE"),
         );
         assert_type_name(
-            &*detect_dialect(Some("ClickHouse"), None),
+            &*detect_dialect(Some("ClickHouse"), None).unwrap(),
             Some("Nullable(Float64)"),
         );
         assert_type_name(
-            &*detect_dialect(Some("Amazon Redshift"), None),
+            &*detect_dialect(Some("Amazon Redshift"), None).unwrap(),
             Some("DOUBLE PRECISION"),
         );
     }
@@ -329,23 +266,29 @@ mod tests {
     #[test]
     fn falls_through_to_driver_hint() {
         assert_type_name(
-            &*detect_dialect(Some("Unknown DBMS"), Some("PostgreSQL Unicode")),
+            &*detect_dialect(Some("Unknown DBMS"), Some("PostgreSQL Unicode")).unwrap(),
             Some("DOUBLE PRECISION"),
         );
-        assert_type_name(&*detect_dialect(None, Some("msodbcsql18")), Some("FLOAT"));
+        assert_type_name(
+            &*detect_dialect(None, Some("msodbcsql18")).unwrap(),
+            Some("FLOAT"),
+        );
     }
 
     #[test]
-    fn unknown_falls_back_to_ansi() {
-        let d = detect_dialect(Some("mystery-db"), None);
-        assert_type_name(&*d, Some("DOUBLE PRECISION"));
-        assert_eq!(d.quote_ident("x"), "\"x\"");
+    fn unknown_backend_errors_with_escape_hatch_hint() {
+        let err = detect_dialect(Some("mystery-db"), None)
+            .err()
+            .unwrap()
+            .to_string();
+        assert!(err.contains("mystery-db"), "got: {err}");
+        assert!(err.contains("dialect=ansi"), "got: {err}");
     }
 
     #[test]
     fn mssql_wins_over_generic_sql() {
         // "SQL" appears in many names; make sure MSSQL patterns win.
-        let d = detect_dialect(Some("Microsoft SQL Server"), None);
+        let d = detect_dialect(Some("Microsoft SQL Server"), None).unwrap();
         assert_eq!(d.boolean_type_name(), Some("BIT"));
     }
 
