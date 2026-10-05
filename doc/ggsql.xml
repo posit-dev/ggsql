@@ -102,6 +102,7 @@
       <item>TO</item>
       <item>VIA</item>
       <item>OVER</item>
+      <item>UNDER</item>
     </list>
 
     <!-- Scale Type Modifiers (before aesthetic name in SCALE) -->

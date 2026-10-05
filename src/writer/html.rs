@@ -563,8 +563,6 @@ enum Slot<'a> {
 /// caption's own row (see `write_table`'s own caption split); bounding by
 /// `nrow` is what keeps that entry out of either set. Each returned `Vec` is
 /// already ascending, since `idx` only ever increases as `rows` is walked.
-///
-/// Sorting Hat: Hmmm... Yes... BODY ROW!!! *applause*
 fn split_rows(rows: &[TableRow], nrow: usize) -> (Vec<usize>, Vec<usize>) {
     let mut header_rows = Vec::new();
     let mut body_rows = Vec::new();
