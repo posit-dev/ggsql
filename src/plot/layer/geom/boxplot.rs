@@ -219,35 +219,36 @@ fn boxplot_sql_compute_summary(
     let q1 = dialect.sql_percentile(value, 0.25, from, groups);
     let median = dialect.sql_percentile(value, 0.50, from, groups);
     let q3 = dialect.sql_percentile(value, 0.75, from, groups);
-    let qt = dialect.quote_ident("__ggsql_qt__");
-    let fn_alias = dialect.quote_ident("__ggsql_fn__");
     let quoted_value = dialect.quote_ident(value);
-    format!(
-        "SELECT
-          *,
-          {lower_expr} AS lower,
-          {upper_expr} AS upper
-        FROM (
-          SELECT
-            {groups},
-            MIN({value}) AS min,
-            MAX({value}) AS max,
-            {q1} AS q1,
-            {median} AS median,
-            {q3} AS q3
-          FROM ({from}) AS {qt}
-          WHERE {value} IS NOT NULL
-          GROUP BY {groups}
-        ) AS {fn_alias}",
-        lower_expr = lower_expr,
-        upper_expr = upper_expr,
-        groups = groups_str,
-        value = quoted_value,
-        from = from,
-        q1 = q1,
-        median = median,
-        q3 = q3,
-    )
+    let mut items: Vec<String> = Vec::new();
+    if !groups_str.is_empty() {
+        items.push(groups_str.clone());
+    }
+    items.extend([
+        format!("MIN({quoted_value}) AS min"),
+        format!("MAX({quoted_value}) AS max"),
+        format!("{q1} AS q1"),
+        format!("{median} AS median"),
+        format!("{q3} AS q3"),
+    ]);
+    let mut inner = crate::sql::Select::new(dialect)
+        .select_items(&items)
+        .from_aliased(from, "__ggsql_qt__")
+        .and_where(format!("{quoted_value} IS NOT NULL"));
+    if !groups_str.is_empty() {
+        inner = inner.group_by(&groups_str);
+    }
+    let inner = inner.build();
+    crate::sql::Select::new(dialect)
+        .select_star_plus(
+            &[
+                format!("{lower_expr} AS lower"),
+                format!("{upper_expr} AS upper"),
+            ],
+            "__ggsql_fn__",
+        )
+        .from_aliased(&inner, "__ggsql_fn__")
+        .build()
 }
 
 fn boxplot_sql_filter_outliers(
@@ -269,19 +270,19 @@ fn boxplot_sql_filter_outliers(
     let quoted_value = dialect.quote_ident(value);
     // We're joining outliers with the summary to use the lower/upper whisker
     // values as a filter
-    format!(
-        "SELECT
-          raw.{value} AS value,
-          'outlier' AS type,
-          {groups}
-        FROM ({from}) raw
-        JOIN summary ON {pairs}
-        WHERE raw.{value} NOT BETWEEN summary.lower AND summary.upper",
-        value = quoted_value,
-        groups = keep_columns.join(", "),
-        pairs = join_pairs.join(" AND "),
-        from = from
-    )
+    let mut items = vec![
+        format!("raw.{quoted_value} AS value"),
+        "'outlier' AS type".to_string(),
+    ];
+    items.extend(keep_columns);
+    crate::sql::Select::new(dialect)
+        .select_items(&items)
+        .from_aliased(from, "raw")
+        .join_raw(&format!("JOIN summary ON {}", join_pairs.join(" AND ")))
+        .and_where(format!(
+            "raw.{quoted_value} NOT BETWEEN summary.lower AND summary.upper"
+        ))
+        .build()
 }
 
 fn boxplot_sql_append_outliers(
@@ -413,6 +414,17 @@ mod tests {
 
     // ==================== SQL Snapshot Tests ====================
 
+    /// Whitespace-insensitive SQL comparison: collapses whitespace runs and
+    /// drops spaces adjacent to parens, so expectations can wrap and indent
+    /// freely without depending on where line breaks fall.
+    fn normalize_sql(s: &str) -> String {
+        s.split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ")
+            .replace("( ", "(")
+            .replace(" )", ")")
+    }
+
     #[test]
     fn test_boxplot_sql_compute_summary_single_group() {
         let groups = vec!["category".to_string()];
@@ -428,25 +440,23 @@ mod tests {
         let median = AnsiDialect.sql_percentile("price", 0.50, "SELECT * FROM sales", &groups);
         let q3 = AnsiDialect.sql_percentile("price", 0.75, "SELECT * FROM sales", &groups);
         let expected = format!(
-            r#"SELECT
-          *,
-          (CASE WHEN (q1 - 1.5 * (q3 - q1)) >= (min) THEN (q1 - 1.5 * (q3 - q1)) ELSE (min) END) AS lower,
-          (CASE WHEN (q3 + 1.5 * (q3 - q1)) <= (max) THEN (q3 + 1.5 * (q3 - q1)) ELSE (max) END) AS upper
-        FROM (
-          SELECT
-            "category",
-            MIN("price") AS min,
-            MAX("price") AS max,
-            {q1} AS q1,
-            {median} AS median,
-            {q3} AS q3
-          FROM (SELECT * FROM sales) AS "__ggsql_qt__"
-          WHERE "price" IS NOT NULL
-          GROUP BY "category"
-        ) AS "__ggsql_fn__""#
+            r#"SELECT *,
+                 (CASE WHEN (q1 - 1.5 * (q3 - q1)) >= (min) THEN (q1 - 1.5 * (q3 - q1)) ELSE (min) END) AS lower,
+                 (CASE WHEN (q3 + 1.5 * (q3 - q1)) <= (max) THEN (q3 + 1.5 * (q3 - q1)) ELSE (max) END) AS upper
+               FROM (
+                 SELECT "category",
+                   MIN("price") AS min,
+                   MAX("price") AS max,
+                   {q1} AS q1,
+                   {median} AS median,
+                   {q3} AS q3
+                 FROM (SELECT * FROM sales) AS "__ggsql_qt__"
+                 WHERE "price" IS NOT NULL
+                 GROUP BY "category"
+               ) AS "__ggsql_fn__""#
         );
 
-        assert_eq!(result, expected);
+        assert_eq!(normalize_sql(&result), normalize_sql(&expected));
     }
 
     #[test]
@@ -464,25 +474,23 @@ mod tests {
         let median = AnsiDialect.sql_percentile("revenue", 0.50, "SELECT * FROM data", &groups);
         let q3 = AnsiDialect.sql_percentile("revenue", 0.75, "SELECT * FROM data", &groups);
         let expected = format!(
-            r#"SELECT
-          *,
-          (CASE WHEN (q1 - 1.5 * (q3 - q1)) >= (min) THEN (q1 - 1.5 * (q3 - q1)) ELSE (min) END) AS lower,
-          (CASE WHEN (q3 + 1.5 * (q3 - q1)) <= (max) THEN (q3 + 1.5 * (q3 - q1)) ELSE (max) END) AS upper
-        FROM (
-          SELECT
-            "region", "product",
-            MIN("revenue") AS min,
-            MAX("revenue") AS max,
-            {q1} AS q1,
-            {median} AS median,
-            {q3} AS q3
-          FROM (SELECT * FROM data) AS "__ggsql_qt__"
-          WHERE "revenue" IS NOT NULL
-          GROUP BY "region", "product"
-        ) AS "__ggsql_fn__""#
+            r#"SELECT *,
+                 (CASE WHEN (q1 - 1.5 * (q3 - q1)) >= (min) THEN (q1 - 1.5 * (q3 - q1)) ELSE (min) END) AS lower,
+                 (CASE WHEN (q3 + 1.5 * (q3 - q1)) <= (max) THEN (q3 + 1.5 * (q3 - q1)) ELSE (max) END) AS upper
+               FROM (
+                 SELECT "region", "product",
+                   MIN("revenue") AS min,
+                   MAX("revenue") AS max,
+                   {q1} AS q1,
+                   {median} AS median,
+                   {q3} AS q3
+                 FROM (SELECT * FROM data) AS "__ggsql_qt__"
+                 WHERE "revenue" IS NOT NULL
+                 GROUP BY "region", "product"
+               ) AS "__ggsql_fn__""#
         );
 
-        assert_eq!(result, expected);
+        assert_eq!(normalize_sql(&result), normalize_sql(&expected));
     }
 
     #[test]

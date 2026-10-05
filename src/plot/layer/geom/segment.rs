@@ -117,11 +117,15 @@ fn expand_segment_to_vertices(
 
     let densify_id_q = dialect.quote_ident(naming::DENSIFY_ID_COLUMN);
 
-    let numbered = format!(
-        "SELECT *, ROW_NUMBER() OVER (ORDER BY (SELECT NULL)) \
-         AS {densify_id_q} FROM ({query}) AS {__ggsql_numbered__}",
-        __ggsql_numbered__ = dialect.quote_ident("__ggsql_numbered__")
-    );
+    let numbered = crate::sql::Select::new(dialect)
+        .select_star_plus(
+            &[format!(
+                "ROW_NUMBER() OVER (ORDER BY (SELECT NULL)) AS {densify_id_q}"
+            )],
+            "__ggsql_numbered__",
+        )
+        .from_aliased(query, "__ggsql_numbered__")
+        .build();
 
     let __ggsql_vertex__ = dialect.quote_ident("__ggsql_vertex__");
     let vertices_table = format!("(SELECT 0 AS {__ggsql_vertex__} UNION ALL SELECT 1)");
@@ -141,13 +145,12 @@ fn expand_segment_to_vertices(
         "CASE {__ggsql_vertex__} WHEN 0 THEN {pos2_q} WHEN 1 THEN {pos2end_q} END AS {pos2_q}"
     ));
 
-    let __ggsql_seg__ = dialect.quote_ident("__ggsql_seg__");
     let __ggsql_vertices__ = dialect.quote_ident("__ggsql_vertices__");
-    let sql = format!(
-        "SELECT {} FROM ({numbered}) {__ggsql_seg__} \
-         CROSS JOIN {vertices_table} {__ggsql_vertices__}",
-        select_parts.join(", ")
-    );
+    let sql = crate::sql::Select::new(dialect)
+        .select(select_parts.join(", "))
+        .from_aliased(&numbered, "__ggsql_seg__")
+        .join_raw(&format!("CROSS JOIN {vertices_table} {__ggsql_vertices__}"))
+        .build();
 
     let mut out_columns: Vec<String> = passthrough_cols.into_iter().cloned().collect();
     out_columns.push(naming::DENSIFY_ID_COLUMN.to_string());

@@ -45,10 +45,13 @@ pub fn build_minmax_query(
         .collect();
 
     let __ggsql_source__ = dialect.quote_ident("__ggsql_source__");
+    let min_branch = crate::sql::Select::new(dialect)
+        .with_cte(&__ggsql_source__, source_query)
+        .select(min_exprs.join(", "))
+        .from(&__ggsql_source__)
+        .build();
     format!(
-        "WITH {__ggsql_source__} AS ({}) SELECT {} FROM {__ggsql_source__} UNION ALL SELECT {} FROM {__ggsql_source__}",
-        source_query,
-        min_exprs.join(", "),
+        "{min_branch} UNION ALL SELECT {} FROM {__ggsql_source__}",
         max_exprs.join(", ")
     )
 }
@@ -147,7 +150,10 @@ pub fn fetch_schema_types<F>(
 where
     F: Fn(&str) -> Result<DataFrame>,
 {
-    let schema_query = dialect.sql_limit(&dialect.wrap_as_subquery(query, naming::SCHEMA_ALIAS), 1);
+    let schema_query = crate::sql::Select::new(dialect)
+        .select_star()
+        .from_aliased(query, naming::SCHEMA_ALIAS)
+        .build_limited(1);
     let schema_df = execute_query(&schema_query)?;
 
     let schema = schema_df.schema();

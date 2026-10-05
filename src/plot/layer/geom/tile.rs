@@ -303,11 +303,15 @@ fn expand_rect_to_polygon(
     // syntactically, but we don't care about the order — just need unique IDs.
     let densify_id_q = dialect.quote_ident(naming::DENSIFY_ID_COLUMN);
 
-    let numbered = format!(
-        "SELECT *, ROW_NUMBER() OVER (ORDER BY (SELECT NULL)) \
-         AS {densify_id_q} FROM ({query}) AS {__ggsql_numbered__}",
-        __ggsql_numbered__ = dialect.quote_ident("__ggsql_numbered__")
-    );
+    let numbered = crate::sql::Select::new(dialect)
+        .select_star_plus(
+            &[format!(
+                "ROW_NUMBER() OVER (ORDER BY (SELECT NULL)) AS {densify_id_q}"
+            )],
+            "__ggsql_numbered__",
+        )
+        .from_aliased(query, "__ggsql_numbered__")
+        .build();
 
     // Step 2: Expand to 4 corners via CROSS JOIN with UNION ALL literal table.
     // More portable than VALUES(...) whose aliasing syntax varies across backends.
@@ -343,11 +347,11 @@ fn expand_rect_to_polygon(
          WHEN 3 THEN {pos2max_q} WHEN 4 THEN {pos2max_q} END AS {pos2_q}"
     ));
 
-    let sql = format!(
-        "SELECT {} FROM ({numbered}) {__ggsql_rect__} \
-         CROSS JOIN {corners_table} {__ggsql_corners__}",
-        select_parts.join(", ")
-    );
+    let sql = crate::sql::Select::new(dialect)
+        .select(select_parts.join(", "))
+        .from_aliased(&numbered, "__ggsql_rect__")
+        .join_raw(&format!("CROSS JOIN {corners_table} {__ggsql_corners__}"))
+        .build();
 
     // Output columns: passthrough + poly_id + pos1 + pos2
     // __ggsql_corner__ is in the SQL (for ordering) but not in the column list
@@ -383,12 +387,10 @@ fn rename_agg_stats_to_aes(
             )
         })
         .collect();
-    let __ggsql_post_agg__ = dialect.quote_ident("__ggsql_post_agg__");
-    format!(
-        "SELECT *, {} FROM ({}) AS {__ggsql_post_agg__}",
-        aliases.join(", "),
-        agg_query
-    )
+    crate::sql::Select::new(dialect)
+        .select_star_plus(&aliases, "__ggsql_post_agg__")
+        .from_aliased(&agg_query, "__ggsql_post_agg__")
+        .build()
 }
 
 impl std::fmt::Display for Tile {
@@ -526,11 +528,8 @@ fn stat_tile(
     let select_list = select_parts.join(", ");
 
     // Build transformed query
-    let __ggsql_tile_stat__ = dialect.quote_ident("__ggsql_tile_stat__");
-    let transformed_query = format!(
-        "SELECT {} FROM ({}) AS {__ggsql_tile_stat__}",
-        select_list, query
-    );
+    let transformed_query =
+        crate::sql::select_from(dialect, &select_list, query, "__ggsql_tile_stat__");
 
     // Use the same consumed aesthetic names for StatResult
     Ok(StatResult::Transformed {

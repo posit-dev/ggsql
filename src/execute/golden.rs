@@ -96,6 +96,16 @@ fn battery() -> Vec<Case> {
             query: "VISUALISE DRAW boxplot MAPPING grp AS x, value AS y FROM box_data",
         },
         Case {
+            name: "line_aggregate",
+            table: "line_data",
+            df: df! {
+                "grp" => vec!["A", "A", "B", "B"],
+                "value" => vec![1.0f64, 2.0, 3.0, 4.0],
+            }
+            .unwrap(),
+            query: "VISUALISE DRAW line MAPPING grp AS x, value AS y FROM line_data SETTING aggregate => 'y:mean'",
+        },
+        Case {
             name: "density_grouped",
             table: "dens_data",
             df: df! {

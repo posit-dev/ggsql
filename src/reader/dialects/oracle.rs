@@ -118,6 +118,16 @@ impl SqlDialect for OracleDialect {
         "WITH"
     }
 
+    fn sql_table_alias(&self, alias: &str) -> String {
+        // Oracle rejects AS before table aliases (ORA-00933).
+        self.quote_ident(alias)
+    }
+
+    fn sql_select_star(&self, table_alias: &str) -> String {
+        // Oracle rejects an unqualified * alongside other select items.
+        format!("{}.*", self.quote_ident(table_alias))
+    }
+
     fn sql_create_empty_temp_table(&self, name: &str, column_defs: &[String]) -> Vec<String> {
         // Oracle temp tables are GLOBAL TEMPORARY with session-private rows.
         vec![format!(

@@ -404,6 +404,27 @@ fn run_battery(reader: &dyn Reader, ctx: &str, table: &str) {
         ))
         .unwrap_or_else(|e| panic!("{ctx}: grouped smooth pipeline failed: {e}"));
 
+    // Line with an aggregating stat: the geom appends ORDER BY after the
+    // stat transform, and the layer's stat-rename wrap then nests that
+    // ORDER BY inside a derived table. T-SQL rejects ORDER BY in derived
+    // tables without TOP/OFFSET (error 1033), so MSSQL is skipped until
+    // the pipeline applies ordering to final queries only; the broken
+    // shape is pinned in golden/mssql.sql under "line_aggregate". On all
+    // other backends the nested ORDER BY is valid, and the row assertion
+    // pins the composed line+aggregate path (one row per group).
+    if ctx != "mssql" {
+        let spec = reader
+            .execute(&format!(
+                "VISUALISE DRAW line MAPPING grp AS x, val AS y FROM {table} \
+                 SETTING aggregate => 'y:mean'"
+            ))
+            .unwrap_or_else(|e| panic!("{ctx}: line aggregate pipeline failed: {e}"));
+        let layer = spec
+            .layer_data(0)
+            .unwrap_or_else(|| panic!("{ctx}: line aggregate produced no layer data"));
+        assert_eq!(layer.height(), 2, "{ctx}: line aggregate row count");
+    }
+
     // A column whose name needs quoting, through the quantile path:
     // stat_aggregate passes the raw name to sql_quantile_inline /
     // sql_percentile, so dialects must quote it themselves. A name with a

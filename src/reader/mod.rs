@@ -199,13 +199,16 @@ pub trait SqlDialect {
         from: &str,
         all_columns: &[String],
     ) -> String {
-        let __ggsql_sr__ = self.quote_ident("__ggsql_sr__");
         if expr == col {
-            // Explicit alias: MySQL/MariaDB reject unaliased derived tables.
-            return format!("SELECT * FROM ({from}) {__ggsql_sr__}");
+            return crate::sql::wrap_all(self, from, "__ggsql_sr__");
         }
         if all_columns.is_empty() {
-            return format!("SELECT {expr} AS {col}, * FROM ({from}) {__ggsql_sr__}");
+            // The replacement expression comes first so its occurrence of a
+            // duplicated column wins over the star's.
+            return crate::sql::Select::new(self)
+                .select_plus_star(&[format!("{expr} AS {col}")], "__ggsql_sr__")
+                .from_aliased(from, "__ggsql_sr__")
+                .build();
         }
         let select_list: Vec<String> = all_columns
             .iter()
@@ -218,10 +221,62 @@ pub trait SqlDialect {
                 }
             })
             .collect();
-        format!(
-            "SELECT {} FROM ({from}) {__ggsql_sr__}",
-            select_list.join(", ")
-        )
+        crate::sql::select_from(self, &select_list.join(", "), from, "__ggsql_sr__")
+    }
+
+    /// SQL expression constructing a point geometry from x/y expressions.
+    ///
+    /// Default is the PostGIS-style `ST_Point`. Override for backends with
+    /// different constructors (e.g. SpatiaLite's `MakePoint`).
+    fn sql_st_point(&self, x: &str, y: &str) -> String {
+        format!("ST_Point({x}, {y})")
+    }
+
+    /// SQL predicate: whether geometry `a` contains geometry `b`.
+    fn sql_st_contains(&self, a: &str, b: &str) -> String {
+        format!("ST_Contains({a}, {b})")
+    }
+
+    /// SQL predicate: whether geometries `a` and `b` intersect.
+    fn sql_st_intersects(&self, a: &str, b: &str) -> String {
+        format!("ST_Intersects({a}, {b})")
+    }
+
+    /// SQL expression constructing a geometry from WKT. `wkt` is the raw
+    /// WKT content; the hook adds the string-literal quoting.
+    fn sql_geom_from_text(&self, wkt: &str) -> String {
+        format!("ST_GeomFromText('{wkt}')")
+    }
+
+    /// SQL expression returning the SRID of a geometry.
+    fn sql_st_srid(&self, geom: &str) -> String {
+        format!("ST_SRID({geom})")
+    }
+
+    /// SQL expression converting a geometry to WKT text.
+    fn sql_st_as_text(&self, geom: &str) -> String {
+        format!("ST_AsText({geom})")
+    }
+
+    /// SQL expression for the difference of two geometries (`a` minus `b`).
+    fn sql_st_difference(&self, a: &str, b: &str) -> String {
+        format!("ST_Difference({a}, {b})")
+    }
+
+    /// SQL expression for the intersection of two geometries.
+    fn sql_st_intersection(&self, a: &str, b: &str) -> String {
+        format!("ST_Intersection({a}, {b})")
+    }
+
+    /// SQL expression repairing an invalid geometry.
+    fn sql_st_make_valid(&self, geom: &str) -> String {
+        format!("ST_MakeValid({geom})")
+    }
+
+    /// SQL expression extracting geometries of one type from a collection
+    /// (`type_index`: 1 = points, 2 = linestrings, 3 = polygons).
+    fn sql_st_collection_extract(&self, geom: &str, type_index: u32) -> String {
+        format!("ST_CollectionExtract({geom}, {type_index})")
     }
 
     /// SQL expression to transform a geometry from one CRS to another.
@@ -245,12 +300,16 @@ pub trait SqlDialect {
     /// Must return a single row with columns `xmin`, `ymin`, `xmax`, `ymax` (DOUBLE).
     /// `from` is the table or subquery to aggregate over.
     fn sql_geometry_bbox(&self, column: &str, from: &str) -> String {
-        // The derived table must be aliased: Postgres (< 16) and
-        // MySQL/MariaDB reject unaliased derived tables.
-        format!(
-            "SELECT ST_XMin(ext) AS xmin, ST_YMin(ext) AS ymin, \
-                    ST_XMax(ext) AS xmax, ST_YMax(ext) AS ymax \
-             FROM (SELECT ST_Extent({column}) AS ext FROM {from}) AS __ggsql_ext__"
+        let extent = crate::sql::Select::new(self)
+            .select(format!("ST_Extent({column}) AS ext"))
+            .from(from)
+            .build();
+        crate::sql::select_from(
+            self,
+            "ST_XMin(ext) AS xmin, ST_YMin(ext) AS ymin, \
+             ST_XMax(ext) AS xmax, ST_YMax(ext) AS ymax",
+            &extent,
+            "__ggsql_ext__",
         )
     }
 
@@ -310,16 +369,6 @@ pub trait SqlDialect {
         "WITH RECURSIVE"
     }
 
-    /// An `ORDER BY` clause for a query nested in a derived table or CTE.
-    ///
-    /// Default emits `ORDER BY <ordering>`. SQL Server forbids ORDER BY in
-    /// views, derived tables, subqueries, and CTEs unless TOP, OFFSET, or
-    /// FOR XML is present (error 1033), so it appends `OFFSET 0 ROWS`,
-    /// which legitimizes the clause without changing the ordering.
-    fn sql_derived_order_by(&self, ordering: &str) -> String {
-        format!("ORDER BY {ordering}")
-    }
-
     /// Null-safe equality comparison between two expressions.
     ///
     /// The ANSI form is `IS NOT DISTINCT FROM`; MySQL/MariaDB use the
@@ -340,23 +389,31 @@ pub trait SqlDialect {
         format!("CEIL({expr})")
     }
 
-    /// Wrap a query as a derived table: `SELECT * FROM (query) AS alias`.
+    /// Table-alias clause for a FROM item.
     ///
-    /// Dialects that forbid CTEs inside derived tables (SQL Server)
-    /// override this to hoist any leading `WITH` clause out of the
-    /// parentheses; see [`crate::reader::dialects::split_cte_prefix`].
-    fn wrap_as_subquery(&self, query: &str, alias: &str) -> String {
-        format!("SELECT * FROM ({query}) AS {alias}")
+    /// Default is the ANSI `AS "alias"`. Oracle rejects `AS` before table
+    /// aliases and emits just the quoted alias.
+    fn sql_table_alias(&self, alias: &str) -> String {
+        format!("AS {}", self.quote_ident(alias))
     }
 
-    /// Wrap a query in an outer SELECT with a custom select list:
-    /// `SELECT {select_list} FROM ({query}) AS {alias}`.
+    /// How `*` is emitted in a select list that also contains other items,
+    /// when selecting from a derived table with this alias.
     ///
-    /// Dialects that forbid CTEs inside derived tables (SQL Server)
-    /// override this to hoist any leading `WITH` clause out of the
-    /// parentheses; see [`crate::reader::dialects::split_cte_prefix`].
-    fn select_from_subquery(&self, select_list: &str, query: &str, alias: &str) -> String {
-        format!("SELECT {select_list} FROM ({query}) AS {alias}")
+    /// Default is a bare `*`. Oracle rejects an unqualified `*` alongside
+    /// other items and requires `alias.*`. (A select list consisting only
+    /// of `*` is valid everywhere and does not go through this hook.)
+    fn sql_select_star(&self, table_alias: &str) -> String {
+        let _ = table_alias;
+        "*".to_string()
+    }
+
+    /// Whether a `WITH` clause may appear inside a parenthesized derived
+    /// table. T-SQL forbids it ("Incorrect syntax near the keyword
+    /// 'WITH'"), so [`crate::sql`] hoists leading CTEs out of the derived
+    /// table for dialects returning `false`.
+    fn allows_cte_in_derived_table(&self) -> bool {
+        true
     }
 
     /// Compute a percentile of a column
@@ -372,11 +429,9 @@ pub trait SqlDialect {
     /// the quartiles and returned boundary averages (or NULL past p75)
     /// elsewhere.
     fn sql_percentile(&self, column: &str, fraction: f64, from: &str, groups: &[String]) -> String {
-        let __ggsql_pct__ = self.quote_ident("__ggsql_pct__");
+        // The correlation predicate references the enclosing query's alias
+        // and this scalar subquery's own alias, so both are needed quoted.
         let __ggsql_qt__ = self.quote_ident("__ggsql_qt__");
-        // The derived table needs an explicit alias: MySQL/MariaDB reject
-        // unaliased derived tables ("Every derived table must have its own
-        // alias"), and other engines accept the alias harmlessly.
         let __ggsql_tile__ = self.quote_ident("__ggsql_tile__");
         let quoted_column = self.quote_ident(column);
 
@@ -394,7 +449,7 @@ pub trait SqlDialect {
         // group columns and the correlation filters one level up, which
         // keeps the kept group's ranks identical.
         let (partition_by, group_cols, group_filter) = if groups.is_empty() {
-            (String::new(), String::new(), String::new())
+            (String::new(), String::new(), None)
         } else {
             let quoted: Vec<String> = groups.iter().map(|g| self.quote_ident(g)).collect();
             let filter = quoted
@@ -410,35 +465,31 @@ pub trait SqlDialect {
             (
                 format!("PARTITION BY {} ", quoted.join(", ")),
                 format!(", {}", quoted.join(", ")),
-                format!(" WHERE {filter}"),
+                Some(filter),
             )
         };
 
-        // Wrap `from` in parens only when it's a query: a bare table or CTE
-        // name must not be parenthesized (MySQL/MariaDB/T-SQL reject
-        // `FROM (name) AS alias` for anything but a subquery).
-        let from_trim = from.trim();
-        let from_ref = if from_trim.starts_with('(') {
-            from_trim.to_string()
-        } else if from_trim.contains(char::is_whitespace) {
-            format!("({from_trim})")
-        } else {
-            from_trim.to_string()
-        };
+        let inner = crate::sql::Select::new(self)
+            .select(format!(
+                "{quoted_column} AS __val, \
+                 ROW_NUMBER() OVER ({partition_by}ORDER BY {quoted_column}) AS rn, \
+                 COUNT(*) OVER ({partition_by}) AS cnt{group_cols}"
+            ))
+            .from_aliased(from, "__ggsql_pct__")
+            .and_where(format!("{quoted_column} IS NOT NULL"))
+            .build();
 
-        format!(
-            "(SELECT \
-               MAX(CASE WHEN rn = {lo} THEN __val END) + \
-               (MAX(CASE WHEN rn = {hi} THEN __val END) - \
-                MAX(CASE WHEN rn = {lo} THEN __val END)) * MAX({frac}) \
-             FROM (\
-               SELECT {quoted_column} AS __val, \
-                      ROW_NUMBER() OVER ({partition_by}ORDER BY {quoted_column}) AS rn, \
-                      COUNT(*) OVER ({partition_by}) AS cnt{group_cols} \
-               FROM {from_ref} AS {__ggsql_pct__} \
-               WHERE {quoted_column} IS NOT NULL\
-             ) AS {__ggsql_tile__}{group_filter})"
-        )
+        let mut outer = crate::sql::Select::new(self)
+            .select(format!(
+                "MAX(CASE WHEN rn = {lo} THEN __val END) + \
+                 (MAX(CASE WHEN rn = {hi} THEN __val END) - \
+                  MAX(CASE WHEN rn = {lo} THEN __val END)) * MAX({frac})"
+            ))
+            .from_aliased(&inner, "__ggsql_tile__");
+        if let Some(filter) = group_filter {
+            outer = outer.and_where(filter);
+        }
+        format!("({})", outer.build())
     }
 
     /// Inline-form quantile aggregate, usable directly in a `SELECT` list.

@@ -19,15 +19,15 @@ fn apply_clip_boundary(
     let clip_table = clip_boundary_table();
     let clip_geom = format!("(SELECT geom FROM {clip_table})");
 
-    let clipped = format!("ST_Intersection({col}, {clip_geom})");
+    let clipped = dialect.sql_st_intersection(col, &clip_geom);
     let transformed = dialect.sql_st_transform(&clipped, source, crs);
-    let geom_expr = format!("ST_MakeValid({transformed})");
+    let geom_expr = dialect.sql_st_make_valid(&transformed);
 
-    // Explicit alias: MySQL/MariaDB reject unaliased derived tables.
-    let __ggsql_clip__ = dialect.quote_ident("__ggsql_clip__");
-    let filtered = format!(
-        "SELECT * FROM ({query}) AS {__ggsql_clip__} WHERE ST_Intersects({col}, {clip_geom})"
-    );
+    let filtered = crate::sql::Select::new(dialect)
+        .select_star()
+        .from_aliased(query, "__ggsql_clip__")
+        .and_where(dialect.sql_st_intersects(col, &clip_geom))
+        .build();
     dialect.sql_select_replace(&geom_expr, col, &filtered, columns)
 }
 

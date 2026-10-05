@@ -375,25 +375,27 @@ pub(crate) fn project_position_columns(
 
     let pos1 = dialect.quote_ident(&naming::aesthetic_column("pos1"));
     let pos2 = dialect.quote_ident(&naming::aesthetic_column("pos2"));
-    let point_expr = format!("ST_Point({pos1}, {pos2})");
+    let point_expr = dialect.sql_st_point(&pos1, &pos2);
     let transformed = dialect.sql_st_transform(&point_expr, source, target);
     let proj_col = dialect.quote_ident("__ggsql_proj_pt__");
-    let __ggsql_pp__ = dialect.quote_ident("__ggsql_pp__");
 
-    let inner = format!(
-        "SELECT *, {transformed} AS {proj_col} FROM ({query}) AS {__ggsql_proj__}",
-        __ggsql_proj__ = dialect.quote_ident("__ggsql_proj__")
-    );
+    let inner = crate::sql::Select::new(dialect)
+        .select_star_plus(&[format!("{transformed} AS {proj_col}")], "__ggsql_proj__")
+        .from_aliased(query, "__ggsql_proj__")
+        .build();
     let x_expr = format!("ST_X({proj_col})");
     let y_expr = format!("ST_Y({proj_col})");
 
     // Build a column list that replaces pos1 and pos2 with projected values
     // and drops the temporary projected-point column.
     if columns.is_empty() {
-        return Ok(format!(
-            "SELECT {x_expr} AS {pos1}, {y_expr} AS {pos2}, * \
-             FROM ({inner}) {__ggsql_pp__}"
-        ));
+        return Ok(crate::sql::Select::new(dialect)
+            .select_plus_star(
+                &[format!("{x_expr} AS {pos1}"), format!("{y_expr} AS {pos2}")],
+                "__ggsql_pp__",
+            )
+            .from_aliased(&inner, "__ggsql_pp__")
+            .build());
     }
     let select_list: Vec<String> = columns
         .iter()
@@ -408,9 +410,11 @@ pub(crate) fn project_position_columns(
             }
         })
         .collect();
-    Ok(format!(
-        "SELECT {} FROM ({inner}) {__ggsql_pp__}",
-        select_list.join(", ")
+    Ok(crate::sql::select_from(
+        dialect,
+        &select_list.join(", "),
+        &inner,
+        "__ggsql_pp__",
     ))
 }
 
@@ -506,11 +510,16 @@ pub(crate) fn densify_edges(
 
     // Synthesize row ordering for path/polygon
     let indexed_query = if domain_order.is_none() {
-        format!(
-            "SELECT *, ROW_NUMBER() OVER ({partition_clause} ORDER BY (SELECT NULL)) \
-             AS {__ggsql_edge_idx__} FROM ({query}) AS {__ggsql_indexed__}",
-            __ggsql_indexed__ = dialect.quote_ident("__ggsql_indexed__")
-        )
+        crate::sql::Select::new(dialect)
+            .select_star_plus(
+                &[format!(
+                    "ROW_NUMBER() OVER ({partition_clause} ORDER BY (SELECT NULL)) \
+                     AS {__ggsql_edge_idx__}"
+                )],
+                "__ggsql_indexed__",
+            )
+            .from_aliased(query, "__ggsql_indexed__")
+            .build()
     } else {
         query.to_string()
     };
@@ -552,12 +561,16 @@ pub(crate) fn densify_edges(
     );
 
     // Edges CTE: original rows + LEAD columns + segment length
-    let edges_query = format!(
-        "SELECT *, {pos1_lead}, {pos2_lead}{cont_leads}, \
-         {seg_len} AS {__ggsql_seg_len__} \
-         FROM ({indexed_query}) {__ggsql_src__} \
-         WINDOW w AS ({window_def})"
-    );
+    let mut edge_extras = vec![pos1_lead, pos2_lead];
+    if !cont_leads.is_empty() {
+        edge_extras.push(cont_leads.trim_start_matches(", ").to_string());
+    }
+    edge_extras.push(format!("{seg_len} AS {__ggsql_seg_len__}"));
+    let edges_query = crate::sql::Select::new(dialect)
+        .select_star_plus(&edge_extras, "__ggsql_src__")
+        .from_aliased(&indexed_query, "__ggsql_src__")
+        .window(format!("w AS ({window_def})"))
+        .build();
 
     // Interpolation: n / CEIL(seg_len / threshold) gives fraction [0, 1)
     let threshold_lit = format!("{:.6}", segment_length);

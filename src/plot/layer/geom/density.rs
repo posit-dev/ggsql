@@ -591,10 +591,7 @@ fn compute_density(
         })
         .collect();
     let grid_group_by = with_leading_comma(&grid_groups.join(", "));
-    // Dialect-adjusted: T-SQL forbids ORDER BY inside derived tables unless
-    // TOP, OFFSET, or FOR XML is present (error 1033).
-    let order_by = dialect.sql_derived_order_by(&format!("grid.x{grid_group_by}"));
-    let aggregation = format!("GROUP BY grid.x{grid_group_by}\n        {order_by}");
+    let aggregation = format!("GROUP BY grid.x{grid_group_by}");
 
     let groups = if group_by.is_empty() {
         String::new()
@@ -715,7 +712,6 @@ mod tests {
           INNER JOIN bandwidth ON true
           CROSS JOIN grid
           GROUP BY grid.x
-          ORDER BY grid.x
         ) AS "__ggsql_kde__""#;
 
         // Normalize whitespace for comparison
@@ -807,7 +803,6 @@ mod tests {
           INNER JOIN bandwidth ON (data."region" IS NOT DISTINCT FROM bandwidth."region") AND (data."category" IS NOT DISTINCT FROM bandwidth."category")
           INNER JOIN grid ON (grid."region" IS NOT DISTINCT FROM data."region") AND (grid."category" IS NOT DISTINCT FROM data."category")
           GROUP BY grid.x, grid."region", grid."category"
-          ORDER BY grid.x, grid."region", grid."category"
         ) AS "__ggsql_kde__""#;
 
         // Normalize whitespace for comparison
@@ -1117,16 +1112,20 @@ mod tests {
             .column("__ggsql_stat_density")
             .expect("density exists");
 
+        // Row order is unspecified (no ORDER BY in generated SQL), so compare
+        // sorted values.
         let unweighted_arr = crate::array_util::as_f64(density_unweighted).expect("f64");
-        let unweighted_values: Vec<f64> = (0..unweighted_arr.len())
+        let mut unweighted_values: Vec<f64> = (0..unweighted_arr.len())
             .filter(|&i| !unweighted_arr.is_null(i))
             .map(|i| unweighted_arr.value(i))
             .collect();
+        unweighted_values.sort_by(f64::total_cmp);
         let weighted_arr = crate::array_util::as_f64(density_weighted).expect("f64");
-        let weighted_values: Vec<f64> = (0..weighted_arr.len())
+        let mut weighted_values: Vec<f64> = (0..weighted_arr.len())
             .filter(|&i| !weighted_arr.is_null(i))
             .map(|i| weighted_arr.value(i))
             .collect();
+        weighted_values.sort_by(f64::total_cmp);
 
         assert_eq!(unweighted_values.len(), weighted_values.len());
 

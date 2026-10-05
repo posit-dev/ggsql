@@ -240,10 +240,11 @@ pub fn wrap_with_order_by(
             dummy_columns,
             consumed_aesthetics,
         } => StatResult::Transformed {
-            query: {
-                let __ggsql_ord__ = dialect.quote_ident("__ggsql_ord__");
-                format!("SELECT * FROM ({query}) AS {__ggsql_ord__} ORDER BY {order_quoted}")
-            },
+            query: crate::sql::Select::new(dialect)
+                .select_star()
+                .from_aliased(&query, "__ggsql_ord__")
+                .order_by(order_quoted)
+                .build(),
             stat_columns,
             dummy_columns,
             consumed_aesthetics,
@@ -269,13 +270,13 @@ pub fn wrap_with_order_by(
 pub fn wrap_with_dummy_axis(query: &str, axis: &str, dialect: &dyn SqlDialect) -> String {
     let stat_col = naming::stat_column(axis);
     let dummy_v = naming::stat_column("dummy");
-    let __ggsql_dummy_src__ = dialect.quote_ident("__ggsql_dummy_src__");
-    format!(
-        "SELECT '{val}' AS {col}, * FROM ({q}) AS {__ggsql_dummy_src__}",
-        val = dummy_v,
-        col = dialect.quote_ident(&stat_col),
-        q = query,
-    )
+    crate::sql::Select::new(dialect)
+        .select_plus_star(
+            &[format!("'{dummy_v}' AS {}", dialect.quote_ident(&stat_col))],
+            "__ggsql_dummy_src__",
+        )
+        .from_aliased(query, "__ggsql_dummy_src__")
+        .build()
 }
 
 /// Post-wrap a `StatResult` to add a dummy column for `axis` (`"pos1"` or

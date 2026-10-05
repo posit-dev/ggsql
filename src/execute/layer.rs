@@ -379,12 +379,7 @@ pub fn apply_pre_stat_transform(
         })
         .collect();
 
-    let __ggsql_pre__ = dialect.quote_ident("__ggsql_pre__");
-    format!(
-        "SELECT {} FROM ({}) AS {__ggsql_pre__}",
-        select_exprs.join(", "),
-        query
-    )
+    crate::sql::select_from(dialect, &select_exprs.join(", "), query, "__ggsql_pre__")
 }
 
 /// Part 1: Build the initial layer query with SELECT, casts, filters, and aesthetic renames.
@@ -431,20 +426,13 @@ pub fn build_layer_base_query(
     };
 
     // Build query with optional WHERE clause
-    let __ggsql_src__ = dialect.quote_ident("__ggsql_src__");
+    let mut query = crate::sql::Select::new(dialect)
+        .select(select_clause)
+        .from_aliased(source_query, "__ggsql_src__");
     if let Some(ref f) = layer.filter {
-        format!(
-            "SELECT {} FROM ({}) AS {__ggsql_src__} WHERE {}",
-            select_clause,
-            source_query,
-            f.as_str()
-        )
-    } else {
-        format!(
-            "SELECT {} FROM ({}) AS {__ggsql_src__}",
-            select_clause, source_query
-        )
+        query = query.and_where(f.as_str());
     }
+    query.build()
 }
 
 /// Part 2: Apply stat transforms and ORDER BY to a base query.
@@ -706,14 +694,10 @@ where
             if stat_rename_exprs.is_empty() {
                 transformed_query
             } else {
-                let __ggsql_stat__ = dialect.quote_ident("__ggsql_stat__");
-                // Goes through the dialect so SQL Server can hoist a leading
-                // WITH clause out of the derived table.
-                dialect.select_from_subquery(
-                    &format!("*, {}", stat_rename_exprs.join(", ")),
-                    &transformed_query,
-                    &__ggsql_stat__,
-                )
+                crate::sql::Select::new(dialect)
+                    .select_star_plus(&stat_rename_exprs, "__ggsql_stat__")
+                    .from_aliased(&transformed_query, "__ggsql_stat__")
+                    .build()
             }
         }
         StatResult::Identity => query,

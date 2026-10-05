@@ -146,11 +146,11 @@ fn stat_histogram(
     });
 
     // Query min/max to compute bin width
-    let __ggsql_stats__ = dialect.quote_ident("__ggsql_stats__");
-    let stats_query = format!(
-        "SELECT MIN({x}) as min_val, MAX({x}) as max_val FROM ({query}) AS {__ggsql_stats__}",
-        x = x_col,
-        query = query
+    let stats_query = crate::sql::select_from(
+        dialect,
+        &format!("MIN({x_col}) as min_val, MAX({x_col}) as max_val"),
+        query,
+        "__ggsql_stats__",
     );
     let stats_df = execute_query(&stats_query)?;
 

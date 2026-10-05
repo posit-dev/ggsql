@@ -8,7 +8,6 @@
 //! (`geom.STAsBinary()`) rather than the PostGIS-style function calls the
 //! ANSI defaults emit, so we fail fast rather than produce broken SQL.
 
-use crate::reader::dialects::split_cte_prefix;
 use crate::reader::{wrap_with_column_aliases, SqlDialect};
 
 /// SQL Server dialect.
@@ -68,38 +67,17 @@ impl SqlDialect for MssqlDialect {
         "WITH"
     }
 
-    fn sql_derived_order_by(&self, ordering: &str) -> String {
-        // T-SQL rejects ORDER BY in derived tables, subqueries, and CTEs
-        // unless TOP, OFFSET, or FOR XML is present (error 1033); OFFSET 0
-        // ROWS legitimizes the clause without changing the ordering.
-        format!("ORDER BY {ordering} OFFSET 0 ROWS")
-    }
-
     fn sql_limit(&self, query: &str, n: usize) -> String {
+        crate::sql::Select::new(self)
+            .select(format!("TOP {n} *"))
+            .from_aliased(query, "__ggsql_lim__")
+            .build()
+    }
+
+    fn allows_cte_in_derived_table(&self) -> bool {
         // T-SQL forbids CTEs inside a derived table ("Incorrect syntax near
-        // the keyword 'WITH'"), so hoist any leading WITH clause out of the
-        // parenthesised wrapper.
-        let __ggsql_lim__ = self.quote_ident("__ggsql_lim__");
-        match split_cte_prefix(query) {
-            Some((cte, body)) => {
-                format!("{cte} SELECT TOP {n} * FROM ({body}) AS {__ggsql_lim__}")
-            }
-            None => format!("SELECT TOP {n} * FROM ({query}) AS {__ggsql_lim__}"),
-        }
-    }
-
-    fn wrap_as_subquery(&self, query: &str, alias: &str) -> String {
-        match split_cte_prefix(query) {
-            Some((cte, body)) => format!("{cte} SELECT * FROM ({body}) AS {alias}"),
-            None => format!("SELECT * FROM ({query}) AS {alias}"),
-        }
-    }
-
-    fn select_from_subquery(&self, select_list: &str, query: &str, alias: &str) -> String {
-        match split_cte_prefix(query) {
-            Some((cte, body)) => format!("{cte} SELECT {select_list} FROM ({body}) AS {alias}"),
-            None => format!("SELECT {select_list} FROM ({query}) AS {alias}"),
-        }
+        // the keyword 'WITH'"); the query builder hoists them out.
+        false
     }
 
     fn sql_date_literal(&self, days_since_epoch: i32) -> String {
@@ -188,8 +166,12 @@ mod tests {
     #[test]
     fn subquery_wrap_hoists_cte() {
         assert_eq!(
-            MssqlDialect.wrap_as_subquery("WITH c AS (SELECT 1 AS a) SELECT a FROM c", "s"),
-            "WITH c AS (SELECT 1 AS a) SELECT * FROM (SELECT a FROM c) AS s"
+            crate::sql::wrap_all(
+                &MssqlDialect,
+                "WITH c AS (SELECT 1 AS a) SELECT a FROM c",
+                "s"
+            ),
+            "WITH c AS (SELECT 1 AS a) SELECT * FROM (SELECT a FROM c) AS \"s\""
         );
     }
 
