@@ -14,7 +14,7 @@ use crate::params::{
     validate_parameter, DefaultParamValue, NumberConstraint, ParamConstraint, ParamDefinition,
     Parameters,
 };
-use crate::plot::Labels;
+use crate::labels::Labels;
 use crate::DataSource;
 
 /// Complete ggsql table specification.
@@ -30,7 +30,7 @@ pub struct Table {
     /// keyword (e.g. `TABULATE bill_len, bill_dep AS Depth`) — mandatory in
     /// the grammar. Defaults to `*` for a `Table` built without the parser.
     pub selection: Vec<SelectionItem>,
-    /// Column display labels (from `TABULATE LABEL`). Reuses `plot::Labels`
+    /// Column display labels (from `TABULATE LABEL`). Reuses `labels::Labels`
     /// as-is — the same "name → text, None = suppress" shape applies
     /// unchanged, just keyed by column name instead of aesthetic name. An
     /// empty `Labels` means no overrides at all.
@@ -283,8 +283,8 @@ impl Spanner {
     /// Overlay a `LABEL <id> => ...` entry onto `label`, if the query has
     /// one for this spanner's id; otherwise leaves `label` as-is.
     pub fn apply_labels(&mut self, labels: &Labels) {
-        if let Some(override_label) = labels.labels.get(&self.id) {
-            self.label = override_label.clone();
+        if let Some(override_label) = labels.lookup(&self.id) {
+            self.label = override_label.map(|s| s.to_string());
         }
     }
 }

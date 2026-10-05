@@ -442,9 +442,7 @@ fn process_tab_clause(node: &Node, source: &SourceTree, table: &mut Table) -> Re
         match child.kind() {
             "label_clause" => {
                 let new_labels = build_labels(&child, source)?;
-                for (key, value) in new_labels.labels {
-                    table.labels.labels.insert(key, value);
-                }
+                table.labels.merge(new_labels);
             }
             "span_clause" => {
                 table.spans.push(build_span_clause(&child, source)?);
@@ -574,14 +572,9 @@ fn process_viz_clause(node: &Node, source: &SourceTree, spec: &mut Plot) -> Resu
             }
             "label_clause" => {
                 let new_labels = build_labels(&child, source)?;
-                // Merge with existing labels if any
-                if let Some(ref mut existing_labels) = spec.labels {
-                    for (key, value) in new_labels.labels {
-                        existing_labels.labels.insert(key, value);
-                    }
-                } else {
-                    spec.labels = Some(new_labels);
-                }
+                spec.labels
+                    .get_or_insert_with(Labels::default)
+                    .merge(new_labels);
             }
             _ => {
                 // Unknown clause type

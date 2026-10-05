@@ -39,6 +39,7 @@ pub mod array_util;
 pub mod compute;
 pub mod dataframe;
 pub mod format;
+pub mod labels;
 pub mod naming;
 pub mod params;
 pub mod parser;
