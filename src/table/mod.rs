@@ -360,6 +360,22 @@ const FORMAT_PARAMS: &[ParamDefinition] = &[
 ];
 
 impl Format {
+    /// Merge `other` into `self`: `other`'s settings and value mappings
+    /// override per-key, and its target replaces `self`'s; its template
+    /// replaces `self`'s unless it is the default `"{}"`.
+    pub fn merge(&mut self, other: &Format) {
+        self.target = other.target;
+        self.settings.extend(other.settings.clone());
+        match (&mut self.value_mapping, &other.value_mapping) {
+            (Some(mapping), Some(other)) => mapping.extend(other.clone()),
+            (slot @ None, Some(other)) => *slot = Some(other.clone()),
+            _ => {}
+        }
+        if other.value_template != "{}" {
+            self.value_template = other.value_template.clone();
+        }
+    }
+
     /// Validate `settings` against `FORMAT_PARAMS`.
     pub fn validate_settings(&self) -> Result<(), String> {
         let valid: Vec<&str> = FORMAT_PARAMS.iter().map(|p| p.name).collect();
