@@ -6,7 +6,7 @@
 
 use crate::naming;
 use crate::reader::SqlDialect;
-use chrono::{DateTime, NaiveDate, NaiveDateTime, NaiveTime, Timelike, Datelike};
+use chrono::{DateTime, Datelike, NaiveDate, NaiveDateTime, NaiveTime, Timelike};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -27,7 +27,6 @@ pub enum ArrayElementType {
     DateTime,
     Time,
 }
-
 
 /// Value for geom parameters (also used for literals)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -71,7 +70,6 @@ impl std::fmt::Display for ParameterValue {
         }
     }
 }
-
 
 /// Format number for display (remove trailing zeros for integers)
 pub fn format_number(n: f64) -> String {
@@ -123,7 +121,6 @@ fn time_to_iso_string(nanos: i64) -> String {
         .map(|t| t.format("%H:%M:%S").to_string())
         .unwrap_or_else(|| format!("{}ns", nanos))
 }
-
 
 /// Get type name for error messages
 fn target_type_name(t: ArrayElementType) -> &'static str {
@@ -665,7 +662,6 @@ impl ParameterValue {
         }
     }
 }
-
 
 // =============================================================================
 // Default Property Types (Shared by Coord, Scale, and Geom traits)
@@ -1326,7 +1322,6 @@ impl ParamDefinition {
         }
     }
 }
-
 
 #[cfg(test)]
 mod tests {
