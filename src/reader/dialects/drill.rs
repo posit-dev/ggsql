@@ -12,6 +12,21 @@ use crate::reader::SqlDialect;
 pub struct DrillDialect;
 
 impl SqlDialect for DrillDialect {
+    fn type_names(&self) -> crate::reader::TypeNames {
+        crate::reader::TypeNames {
+            number: Some("DOUBLE"),
+            ..crate::reader::TypeNames::ANSI
+        }
+    }
+
+    fn sql_greatest(&self, exprs: &[&str]) -> String {
+        super::case_greatest(exprs)
+    }
+
+    fn sql_least(&self, exprs: &[&str]) -> String {
+        super::case_least(exprs)
+    }
+
     /// Drill has no temp tables; connections are always wrapped in a caching
     /// reader rather than probed.
     fn requires_cache(&self) -> bool {
@@ -20,14 +35,6 @@ impl SqlDialect for DrillDialect {
 
     fn quote_ident(&self, name: &str) -> String {
         format!("`{}`", name.replace('`', "``"))
-    }
-
-    fn number_type_name(&self) -> Option<&str> {
-        Some("DOUBLE")
-    }
-
-    fn supports_spatial(&self) -> bool {
-        false
     }
 }
 

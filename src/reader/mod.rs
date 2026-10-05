@@ -46,39 +46,55 @@ use crate::{naming, DataFrame, GgsqlError, Result};
 ///
 /// Default implementations produce portable ANSI SQL.
 pub trait SqlDialect {
-    /// SQL type name for numeric columns (e.g., "DOUBLE PRECISION")
+    /// SQL type names for table creation and casts. Dialects override this
+    /// one method with a [`TypeNames`] literal rather than the individual
+    /// `*_type_name` accessors below.
+    fn type_names(&self) -> TypeNames {
+        TypeNames::ANSI
+    }
+
+    /// SQL type name for numeric columns (e.g., "DOUBLE PRECISION").
+    /// Derived from [`type_names`]; override that, not this.
+    ///
+    /// [`type_names`]: SqlDialect::type_names
     fn number_type_name(&self) -> Option<&str> {
-        Some("DOUBLE PRECISION")
+        self.type_names().number
     }
 
-    /// SQL type name for integer columns (e.g., "BIGINT")
+    /// SQL type name for integer columns (e.g., "BIGINT"); see
+    /// [`number_type_name`](SqlDialect::number_type_name).
     fn integer_type_name(&self) -> Option<&str> {
-        Some("BIGINT")
+        self.type_names().integer
     }
 
-    /// SQL type name for DATE columns (e.g., "DATE")
+    /// SQL type name for DATE columns (e.g., "DATE"); see
+    /// [`number_type_name`](SqlDialect::number_type_name).
     fn date_type_name(&self) -> Option<&str> {
-        Some("DATE")
+        self.type_names().date
     }
 
-    /// SQL type name for DATETIME/TIMESTAMP columns
+    /// SQL type name for DATETIME/TIMESTAMP columns; see
+    /// [`number_type_name`](SqlDialect::number_type_name).
     fn datetime_type_name(&self) -> Option<&str> {
-        Some("TIMESTAMP")
+        self.type_names().datetime
     }
 
-    /// SQL type name for TIME columns
+    /// SQL type name for TIME columns; see
+    /// [`number_type_name`](SqlDialect::number_type_name).
     fn time_type_name(&self) -> Option<&str> {
-        Some("TIME")
+        self.type_names().time
     }
 
-    /// SQL type name for STRING/VARCHAR columns
+    /// SQL type name for STRING/VARCHAR columns; see
+    /// [`number_type_name`](SqlDialect::number_type_name).
     fn string_type_name(&self) -> Option<&str> {
-        Some("VARCHAR")
+        self.type_names().string
     }
 
-    /// SQL type name for BOOLEAN columns
+    /// SQL type name for BOOLEAN columns; see
+    /// [`number_type_name`](SqlDialect::number_type_name).
     fn boolean_type_name(&self) -> Option<&str> {
-        Some("BOOLEAN")
+        self.type_names().boolean
     }
 
     /// Get the SQL type name for a cast target type.
@@ -100,17 +116,6 @@ pub trait SqlDialect {
     /// different quoting convention (e.g. backticks for MySQL/ClickHouse).
     fn quote_ident(&self, name: &str) -> String {
         naming::quote_ident(name)
-    }
-
-    /// Statements to execute once on a freshly opened connection, before any
-    /// other SQL. Default: none.
-    ///
-    /// Use for session settings the generated SQL silently relies on — e.g.
-    /// MySQL's `ANSI_QUOTES`, because ggsql quotes many internal identifiers
-    /// (`__ggsql_*` CTEs and columns) with ANSI double quotes, which MySQL
-    /// otherwise parses as string literals.
-    fn session_init_sql(&self) -> Vec<String> {
-        Vec::new()
     }
 
     /// Append a row limit to a query.
@@ -135,32 +140,36 @@ pub trait SqlDialect {
 
     /// Whether this backend supports spatial (geometry) operations.
     ///
-    /// When `false`, the executor should fail fast with a clear
-    /// "spatial not supported on this backend" error rather than emitting
-    /// spatial SQL that the backend cannot run. Default is `true` because the
-    /// ANSI defaults target PostGIS-compatible backends.
+    /// Default is `false`: most backends are not PostGIS-compatible, and an
+    /// opt-in means an unsupported backend fails fast with a clear "spatial
+    /// not supported on this backend" error rather than emitting spatial SQL
+    /// it cannot run. Dialects opt in by returning `true`.
     fn supports_spatial(&self) -> bool {
-        true
+        false
     }
 
     /// Scalar MAX across any number of SQL expressions.
+    ///
+    /// Default uses the `GREATEST` function, supported by most backends.
+    /// Backends without it (SQL Server, SQLite, Druid, Drill, MonetDB)
+    /// override with the `dialects::case_greatest` helper.
     fn sql_greatest(&self, exprs: &[&str]) -> String {
-        let mut result = exprs[0].to_string();
-        for expr in &exprs[1..] {
-            result =
-                format!("(CASE WHEN ({result}) >= ({expr}) THEN ({result}) ELSE ({expr}) END)");
+        if exprs.len() == 1 {
+            return exprs[0].to_string();
         }
-        result
+        format!("GREATEST({})", exprs.join(", "))
     }
 
     /// Scalar MIN across any number of SQL expressions.
+    ///
+    /// Default uses the `LEAST` function; see [`sql_greatest`].
+    ///
+    /// [`sql_greatest`]: SqlDialect::sql_greatest
     fn sql_least(&self, exprs: &[&str]) -> String {
-        let mut result = exprs[0].to_string();
-        for expr in &exprs[1..] {
-            result =
-                format!("(CASE WHEN ({result}) <= ({expr}) THEN ({result}) ELSE ({expr}) END)");
+        if exprs.len() == 1 {
+            return exprs[0].to_string();
         }
-        result
+        format!("LEAST({})", exprs.join(", "))
     }
 
     /// SQL expression to convert a geometry column to WKB.
@@ -328,37 +337,10 @@ pub trait SqlDialect {
         vec![]
     }
 
-    /// Generate a series of integers 0..n-1 as a CTE fragment.
-    ///
-    /// Target type name for casting an expression to a floating-point type.
-    ///
-    /// `REAL` is widely supported (Postgres, SQLite, T-SQL, DuckDB, ...).
-    /// MariaDB's `CAST` has no `REAL` target; MySQL/MariaDB override this
-    /// with `DOUBLE` (both support it).
-    fn sql_real_cast_type(&self) -> &'static str {
-        "REAL"
-    }
-
-    /// Returns CTE fragment(s) producing table `__ggsql_seq__` with column `n`.
+    /// Returns CTE fragment(s) producing table `__ggsql_seq__` with column `n`,
+    /// holding the integers 0..n-1.
     fn sql_generate_series(&self, n: usize) -> String {
-        // Uses a cube-root decomposition to avoid deep recursion: only recurses
-        // ~cbrt(n) times, then cross-joins three copies to cover the full range.
-        let base_size = (n as f64).cbrt().ceil() as usize;
-        let base_sq = base_size * base_size;
-        let base_max = base_size - 1;
-        let __ggsql_base__ = self.quote_ident("__ggsql_base__");
-        let __ggsql_seq__ = self.quote_ident("__ggsql_seq__");
-        let real = self.sql_real_cast_type();
-        format!(
-            "{__ggsql_base__}(n) AS (\
-               SELECT 0 UNION ALL SELECT n + 1 FROM {__ggsql_base__} WHERE n < {base_max}\
-             ),\
-             {__ggsql_seq__}(n) AS (\
-               SELECT CAST(a.n * {base_sq} + b.n * {base_size} + c.n AS {real}) AS n \
-               FROM {__ggsql_base__} a, {__ggsql_base__} b, {__ggsql_base__} c \
-               WHERE a.n * {base_sq} + b.n * {base_size} + c.n < {n}\
-             )"
-        )
+        recursive_series_cte(self, n, "REAL")
     }
 
     /// Keyword introducing a CTE block that contains recursive CTEs.
@@ -416,10 +398,15 @@ pub trait SqlDialect {
         true
     }
 
-    /// Compute a percentile of a column
+    /// Compute a quantile of a column, as a SELECT-list item.
     ///
-    /// Returns a scalar subquery expression that computes the specified percentile
-    /// of a column within an optional grouping context.
+    /// `column` is the raw (unquoted) column name; the dialect quotes it.
+    /// The result must be valid as an item in the SELECT list of a query
+    /// `SELECT ... FROM (<from>) AS "__ggsql_qt__" [WHERE ...] GROUP BY
+    /// <groups>` — every caller (boxplot, density, aggregate stats) embeds it
+    /// in exactly that shape. Dialects with a native quantile aggregate
+    /// return it directly (it computes per group, so `from`/`groups` go
+    /// unused); the default instead builds a correlated scalar subquery.
     ///
     /// The default implements `percentile_cont` semantics with window
     /// functions only (no native quantile aggregate required): with
@@ -428,7 +415,7 @@ pub trait SqlDialect {
     /// every fraction — the earlier NTILE(4) construction was only exact at
     /// the quartiles and returned boundary averages (or NULL past p75)
     /// elsewhere.
-    fn sql_percentile(&self, column: &str, fraction: f64, from: &str, groups: &[String]) -> String {
+    fn sql_quantile(&self, column: &str, fraction: f64, from: &str, groups: &[String]) -> String {
         // The correlation predicate references the enclosing query's alias
         // and this scalar subquery's own alias, so both are needed quoted.
         let __ggsql_qt__ = self.quote_ident("__ggsql_qt__");
@@ -492,17 +479,6 @@ pub trait SqlDialect {
         format!("({})", outer.build())
     }
 
-    /// Inline-form quantile aggregate, usable directly in a `SELECT` list.
-    ///
-    /// Returns `Some(sql_fragment)` when the dialect supports a native quantile
-    /// aggregate that can be combined with other aggregates in the same `GROUP BY`
-    /// query (e.g. DuckDB's `QUANTILE_CONT`). Returns `None` when no native
-    /// inline form exists; callers should then fall back to [`sql_percentile`],
-    /// which produces a correlated scalar subquery.
-    fn sql_quantile_inline(&self, _column: &str, _fraction: f64) -> Option<String> {
-        None
-    }
-
     /// SQL fragment for a simple aggregate function applied to an
     /// already-quoted column expression.
     ///
@@ -511,8 +487,10 @@ pub trait SqlDialect {
     /// supported by this backend; the stat layer surfaces a clear error.
     ///
     /// Names handled here are the entries of `stat_aggregate::AGG_NAMES` other
-    /// than the percentile/iqr family, which goes through [`sql_quantile_inline`]
-    /// / [`sql_percentile`] instead.
+    /// than the percentile/iqr family, which goes through [`sql_quantile`]
+    /// instead.
+    ///
+    /// [`sql_quantile`]: SqlDialect::sql_quantile
     fn sql_aggregate(&self, name: &str, qcol: &str) -> Option<String> {
         default_sql_aggregate(&|c: &str| self.quote_ident(c), name, qcol)
     }
@@ -596,28 +574,44 @@ pub trait SqlDialect {
 
     /// SQL listing catalogs, with a single `catalog_name` output column.
     ///
-    /// Returns `None` to use the `Reader` default (`information_schema`).
-    /// Override for backends without `information_schema` (e.g. Exasol's
-    /// `SYS.EXA_*` tables).
-    fn sql_list_catalogs(&self) -> Option<String> {
-        None
+    /// Default queries `information_schema`; override for backends without it
+    /// (e.g. Exasol's `SYS.EXA_*` tables).
+    fn sql_list_catalogs(&self) -> String {
+        "SELECT DISTINCT catalog_name FROM information_schema.schemata ORDER BY catalog_name"
+            .to_string()
     }
 
     /// SQL listing schemas in `catalog`, with a single `schema_name` column.
-    fn sql_list_schemas(&self, _catalog: &str) -> Option<String> {
-        None
+    fn sql_list_schemas(&self, catalog: &str) -> String {
+        format!(
+            "SELECT DISTINCT schema_name FROM information_schema.schemata \
+             WHERE catalog_name = {} ORDER BY schema_name",
+            naming::quote_literal(catalog)
+        )
     }
 
     /// SQL listing tables in `catalog`/`schema`, with `table_name` and
     /// `table_type` output columns.
-    fn sql_list_tables(&self, _catalog: &str, _schema: &str) -> Option<String> {
-        None
+    fn sql_list_tables(&self, catalog: &str, schema: &str) -> String {
+        format!(
+            "SELECT DISTINCT table_name, table_type FROM information_schema.tables \
+             WHERE table_catalog = {} AND table_schema = {} ORDER BY table_name",
+            naming::quote_literal(catalog),
+            naming::quote_literal(schema)
+        )
     }
 
     /// SQL listing columns of `catalog`/`schema`/`table`, with `column_name`
     /// and `data_type` output columns.
-    fn sql_list_columns(&self, _catalog: &str, _schema: &str, _table: &str) -> Option<String> {
-        None
+    fn sql_list_columns(&self, catalog: &str, schema: &str, table: &str) -> String {
+        format!(
+            "SELECT column_name, data_type FROM information_schema.columns \
+             WHERE table_catalog = {} AND table_schema = {} AND table_name = {} \
+             ORDER BY ordinal_position",
+            naming::quote_literal(catalog),
+            naming::quote_literal(schema),
+            naming::quote_literal(table)
+        )
     }
 
     /// DDL statement(s) creating an empty temporary table with explicit
@@ -631,6 +625,15 @@ pub trait SqlDialect {
         )]
     }
 
+    /// How this backend (re)creates a temporary table holding a query
+    /// result. Drives the default [`create_or_replace_temp_table_sql`];
+    /// dialects pick a variant instead of overriding that method.
+    ///
+    /// [`create_or_replace_temp_table_sql`]: SqlDialect::create_or_replace_temp_table_sql
+    fn temp_table_style(&self) -> TempTableStyle {
+        TempTableStyle::DropThenCreateTemp
+    }
+
     /// Build the DDL statement(s) needed to (re)create a temporary table
     /// that holds the result of `body_sql`.
     ///
@@ -638,7 +641,13 @@ pub trait SqlDialect {
     /// wrapping the body in a named CTE with a column alias list, so the
     /// backend never needs to support `CREATE TABLE t(a, b) AS ...` syntax.
     ///
+    /// The statement shapes are data-driven via [`temp_table_style`]; the
+    /// default implementation covers every style, so dialects should not
+    /// need to override this method.
+    ///
     /// Returned statements must be executed in order via `Reader::execute_sql`.
+    ///
+    /// [`temp_table_style`]: SqlDialect::temp_table_style
     fn create_or_replace_temp_table_sql(
         &self,
         name: &str,
@@ -648,11 +657,134 @@ pub trait SqlDialect {
         let qname = self.quote_ident(name);
         let body =
             wrap_with_column_aliases(&|c: &str| self.quote_ident(c), body_sql, column_aliases);
-        vec![
-            format!("DROP TABLE IF EXISTS {}", qname),
-            format!("CREATE TEMP TABLE {} AS {}", qname, body),
-        ]
+        match self.temp_table_style() {
+            TempTableStyle::DropThenCreateTemp => vec![
+                format!("DROP TABLE IF EXISTS {}", qname),
+                format!("CREATE TEMP TABLE {} AS {}", qname, body),
+            ],
+            TempTableStyle::CreateOrReplaceTemp => {
+                vec![format!("CREATE OR REPLACE TEMP TABLE {} AS {}", qname, body)]
+            }
+            TempTableStyle::DropTemporaryThenCreateTemp => vec![
+                format!("DROP TEMPORARY TABLE IF EXISTS {}", qname),
+                format!("CREATE TEMPORARY TABLE {} AS {}", qname, body),
+            ],
+            TempTableStyle::CreateOrReplaceTempView => {
+                vec![format!("CREATE OR REPLACE TEMP VIEW {} AS {}", qname, body)]
+            }
+            TempTableStyle::DropThenCreate => vec![
+                format!("DROP TABLE IF EXISTS {}", qname),
+                format!("CREATE TABLE {} AS {}", qname, body),
+            ],
+            TempTableStyle::GuardedDropThenCreate => vec![
+                // The drop must spell the name exactly like the CREATE below:
+                // an unquoted name would be folded to uppercase by Oracle and
+                // never match the quoted (case-preserved) table, silently
+                // leaving stale tables behind under the WHEN OTHERS guard.
+                format!(
+                    "BEGIN EXECUTE IMMEDIATE 'DROP TABLE {}'; EXCEPTION WHEN OTHERS THEN NULL; END;",
+                    qname.replace('\'', "''")
+                ),
+                format!("CREATE TABLE {} AS {}", qname, body),
+            ],
+            TempTableStyle::SelectInto => {
+                // Session-local `#temp` tables would be ideal, but ggsql
+                // references materialized tables by their plain (quoted) name
+                // in later statements, which `#name` would break — so regular
+                // tables + DROP cleanup.
+                let __ggsql_src__ = self.quote_ident("__ggsql_src__");
+                vec![
+                    format!("DROP TABLE IF EXISTS {}", qname),
+                    format!("SELECT * INTO {} FROM ({}) AS {__ggsql_src__}", qname, body),
+                ]
+            }
+        }
     }
+}
+
+/// SQL type names a dialect uses for table creation and casts. `None` means
+/// the backend has no native type for that kind (e.g. ClickHouse TIME);
+/// callers surface a clear error. Override per field against
+/// [`TypeNames::ANSI`]:
+///
+/// ```ignore
+/// fn type_names(&self) -> TypeNames {
+///     TypeNames { number: Some("DOUBLE"), ..TypeNames::ANSI }
+/// }
+/// ```
+#[derive(Debug, Clone, Copy)]
+pub struct TypeNames {
+    pub number: Option<&'static str>,
+    pub integer: Option<&'static str>,
+    pub date: Option<&'static str>,
+    pub datetime: Option<&'static str>,
+    pub time: Option<&'static str>,
+    pub string: Option<&'static str>,
+    pub boolean: Option<&'static str>,
+}
+
+impl TypeNames {
+    /// ANSI defaults, close to PostgreSQL.
+    pub const ANSI: Self = Self {
+        number: Some("DOUBLE PRECISION"),
+        integer: Some("BIGINT"),
+        date: Some("DATE"),
+        datetime: Some("TIMESTAMP"),
+        time: Some("TIME"),
+        string: Some("VARCHAR"),
+        boolean: Some("BOOLEAN"),
+    };
+}
+
+/// How a backend (re)creates a temporary table holding a query result; see
+/// [`SqlDialect::temp_table_style`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TempTableStyle {
+    /// `DROP TABLE IF EXISTS` then `CREATE TEMP TABLE AS`.
+    DropThenCreateTemp,
+    /// Single `CREATE OR REPLACE TEMP TABLE AS` (BigQuery, DuckDB).
+    CreateOrReplaceTemp,
+    /// `DROP TEMPORARY TABLE IF EXISTS` then `CREATE TEMPORARY TABLE AS`
+    /// (MySQL/MariaDB, ClickHouse).
+    DropTemporaryThenCreateTemp,
+    /// Single `CREATE OR REPLACE TEMP VIEW AS` (Databricks/Spark).
+    CreateOrReplaceTempView,
+    /// `DROP TABLE IF EXISTS` then plain `CREATE TABLE AS` — no temp-table
+    /// support (DataFusion).
+    DropThenCreate,
+    /// PL/SQL-guarded `DROP TABLE` then plain `CREATE TABLE AS` (Oracle has
+    /// no `DROP TABLE IF EXISTS`).
+    GuardedDropThenCreate,
+    /// `DROP TABLE IF EXISTS` then `SELECT * INTO` (SQL Server has no
+    /// `CREATE TABLE AS`).
+    SelectInto,
+}
+
+/// Cube-root-decomposed recursive series CTE: recurses only ~cbrt(n) times,
+/// then cross-joins three copies to cover the full range. Shared by the
+/// default [`SqlDialect::sql_generate_series`] and dialects that differ only
+/// in the float cast target (MySQL/MariaDB: `DOUBLE` — their `CAST` has no
+/// `REAL` target).
+pub(crate) fn recursive_series_cte<D: SqlDialect + ?Sized>(
+    dialect: &D,
+    n: usize,
+    real_cast: &str,
+) -> String {
+    let base_size = (n as f64).cbrt().ceil() as usize;
+    let base_sq = base_size * base_size;
+    let base_max = base_size - 1;
+    let __ggsql_base__ = dialect.quote_ident("__ggsql_base__");
+    let __ggsql_seq__ = dialect.quote_ident("__ggsql_seq__");
+    format!(
+        "{__ggsql_base__}(n) AS (\
+           SELECT 0 UNION ALL SELECT n + 1 FROM {__ggsql_base__} WHERE n < {base_max}\
+         ),\
+         {__ggsql_seq__}(n) AS (\
+           SELECT CAST(a.n * {base_sq} + b.n * {base_size} + c.n AS {real_cast}) AS n \
+           FROM {__ggsql_base__} a, {__ggsql_base__} b, {__ggsql_base__} c \
+           WHERE a.n * {base_sq} + b.n * {base_size} + c.n < {n}\
+         )"
+    )
 }
 
 /// Wrap a body SQL in a CTE with a column alias list when aliases are present.
@@ -1694,10 +1826,7 @@ pub trait Reader {
     // =========================================================================
 
     fn list_catalogs(&self) -> Result<Vec<String>> {
-        let sql = self.dialect().sql_list_catalogs().unwrap_or_else(|| {
-            "SELECT DISTINCT catalog_name FROM information_schema.schemata ORDER BY catalog_name"
-                .to_string()
-        });
+        let sql = self.dialect().sql_list_catalogs();
         let df = self.execute_sql(&sql)?;
         let col = df.column("catalog_name")?;
         let mut results = Vec::with_capacity(df.height());
@@ -1710,13 +1839,7 @@ pub trait Reader {
     }
 
     fn list_schemas(&self, catalog: &str) -> Result<Vec<String>> {
-        let sql = self.dialect().sql_list_schemas(catalog).unwrap_or_else(|| {
-            format!(
-                "SELECT DISTINCT schema_name FROM information_schema.schemata \
-                 WHERE catalog_name = {} ORDER BY schema_name",
-                naming::quote_literal(catalog)
-            )
-        });
+        let sql = self.dialect().sql_list_schemas(catalog);
         let df = self.execute_sql(&sql)?;
         let col = df.column("schema_name")?;
         let mut results = Vec::with_capacity(df.height());
@@ -1729,17 +1852,7 @@ pub trait Reader {
     }
 
     fn list_tables(&self, catalog: &str, schema: &str) -> Result<Vec<TableInfo>> {
-        let sql = self
-            .dialect()
-            .sql_list_tables(catalog, schema)
-            .unwrap_or_else(|| {
-                format!(
-                    "SELECT DISTINCT table_name, table_type FROM information_schema.tables \
-                 WHERE table_catalog = {} AND table_schema = {} ORDER BY table_name",
-                    naming::quote_literal(catalog),
-                    naming::quote_literal(schema)
-                )
-            });
+        let sql = self.dialect().sql_list_tables(catalog, schema);
         let df = self.execute_sql(&sql)?;
         let name_col = df.column("table_name")?;
         let type_col = df.column("table_type")?;
@@ -1756,19 +1869,7 @@ pub trait Reader {
     }
 
     fn list_columns(&self, catalog: &str, schema: &str, table: &str) -> Result<Vec<ColumnInfo>> {
-        let sql = self
-            .dialect()
-            .sql_list_columns(catalog, schema, table)
-            .unwrap_or_else(|| {
-                format!(
-                    "SELECT column_name, data_type FROM information_schema.columns \
-                     WHERE table_catalog = {} AND table_schema = {} AND table_name = {} \
-                     ORDER BY ordinal_position",
-                    naming::quote_literal(catalog),
-                    naming::quote_literal(schema),
-                    naming::quote_literal(table)
-                )
-            });
+        let sql = self.dialect().sql_list_columns(catalog, schema, table);
         let df = self.execute_sql(&sql)?;
         let name_col = df.column("column_name")?;
         let type_col = df.column("data_type")?;

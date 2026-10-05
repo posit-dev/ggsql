@@ -216,9 +216,9 @@ fn boxplot_sql_compute_summary(
     let groups_str = quoted_groups.join(", ");
     let lower_expr = dialect.sql_greatest(&[&format!("q1 - {coef} * (q3 - q1)"), "min"]);
     let upper_expr = dialect.sql_least(&[&format!("q3 + {coef} * (q3 - q1)"), "max"]);
-    let q1 = dialect.sql_percentile(value, 0.25, from, groups);
-    let median = dialect.sql_percentile(value, 0.50, from, groups);
-    let q3 = dialect.sql_percentile(value, 0.75, from, groups);
+    let q1 = dialect.sql_quantile(value, 0.25, from, groups);
+    let median = dialect.sql_quantile(value, 0.50, from, groups);
+    let q3 = dialect.sql_quantile(value, 0.75, from, groups);
     let quoted_value = dialect.quote_ident(value);
     let mut items: Vec<String> = Vec::new();
     if !groups_str.is_empty() {
@@ -374,8 +374,8 @@ mod tests {
         assert!(result.contains("MAX(\"value\") AS max"));
         assert!(result.contains("WHERE \"value\" IS NOT NULL"));
         assert!(result.contains("GROUP BY \"category\""));
-        assert!(result.contains("CASE WHEN (q1 - 1.5"));
-        assert!(result.contains("CASE WHEN (q3 + 1.5"));
+        assert!(result.contains("GREATEST(q1 - 1.5"));
+        assert!(result.contains("LEAST(q3 + 1.5"));
     }
 
     #[test]
@@ -392,12 +392,8 @@ mod tests {
         let groups = vec!["pos1".to_string()];
         let result = boxplot_sql_compute_summary("q", &groups, "pos2", &2.5, &AnsiDialect);
         assert!(result.contains("2.5"));
-        assert!(result.contains(
-            "(CASE WHEN (q1 - 2.5 * (q3 - q1)) >= (min) THEN (q1 - 2.5 * (q3 - q1)) ELSE (min) END)"
-        ));
-        assert!(result.contains(
-            "(CASE WHEN (q3 + 2.5 * (q3 - q1)) <= (max) THEN (q3 + 2.5 * (q3 - q1)) ELSE (max) END)"
-        ));
+        assert!(result.contains("GREATEST(q1 - 2.5 * (q3 - q1), min)"));
+        assert!(result.contains("LEAST(q3 + 2.5 * (q3 - q1), max)"));
     }
 
     #[test]
@@ -436,13 +432,13 @@ mod tests {
             &AnsiDialect,
         );
 
-        let q1 = AnsiDialect.sql_percentile("price", 0.25, "SELECT * FROM sales", &groups);
-        let median = AnsiDialect.sql_percentile("price", 0.50, "SELECT * FROM sales", &groups);
-        let q3 = AnsiDialect.sql_percentile("price", 0.75, "SELECT * FROM sales", &groups);
+        let q1 = AnsiDialect.sql_quantile("price", 0.25, "SELECT * FROM sales", &groups);
+        let median = AnsiDialect.sql_quantile("price", 0.50, "SELECT * FROM sales", &groups);
+        let q3 = AnsiDialect.sql_quantile("price", 0.75, "SELECT * FROM sales", &groups);
         let expected = format!(
             r#"SELECT *,
-                 (CASE WHEN (q1 - 1.5 * (q3 - q1)) >= (min) THEN (q1 - 1.5 * (q3 - q1)) ELSE (min) END) AS lower,
-                 (CASE WHEN (q3 + 1.5 * (q3 - q1)) <= (max) THEN (q3 + 1.5 * (q3 - q1)) ELSE (max) END) AS upper
+                 GREATEST(q1 - 1.5 * (q3 - q1), min) AS lower,
+                 LEAST(q3 + 1.5 * (q3 - q1), max) AS upper
                FROM (
                  SELECT "category",
                    MIN("price") AS min,
@@ -470,13 +466,13 @@ mod tests {
             &AnsiDialect,
         );
 
-        let q1 = AnsiDialect.sql_percentile("revenue", 0.25, "SELECT * FROM data", &groups);
-        let median = AnsiDialect.sql_percentile("revenue", 0.50, "SELECT * FROM data", &groups);
-        let q3 = AnsiDialect.sql_percentile("revenue", 0.75, "SELECT * FROM data", &groups);
+        let q1 = AnsiDialect.sql_quantile("revenue", 0.25, "SELECT * FROM data", &groups);
+        let median = AnsiDialect.sql_quantile("revenue", 0.50, "SELECT * FROM data", &groups);
+        let q3 = AnsiDialect.sql_quantile("revenue", 0.75, "SELECT * FROM data", &groups);
         let expected = format!(
             r#"SELECT *,
-                 (CASE WHEN (q1 - 1.5 * (q3 - q1)) >= (min) THEN (q1 - 1.5 * (q3 - q1)) ELSE (min) END) AS lower,
-                 (CASE WHEN (q3 + 1.5 * (q3 - q1)) <= (max) THEN (q3 + 1.5 * (q3 - q1)) ELSE (max) END) AS upper
+                 GREATEST(q1 - 1.5 * (q3 - q1), min) AS lower,
+                 LEAST(q3 + 1.5 * (q3 - q1), max) AS upper
                FROM (
                  SELECT "region", "product",
                    MIN("revenue") AS min,

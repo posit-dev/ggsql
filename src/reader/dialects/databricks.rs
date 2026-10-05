@@ -4,13 +4,22 @@
 //! series, `percentile_approx`, `DATE_ADD` literals, and temp views instead
 //! of temp tables (Spark has no `CREATE TEMP TABLE AS`).
 
-use crate::reader::{wrap_with_column_aliases, SqlDialect};
+use crate::reader::SqlDialect;
 
 /// Databricks / Spark SQL dialect.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct DatabricksDialect;
 
 impl SqlDialect for DatabricksDialect {
+    fn type_names(&self) -> crate::reader::TypeNames {
+        crate::reader::TypeNames {
+            number: Some("DOUBLE"),
+            string: Some("STRING"),
+            time: None,
+            ..crate::reader::TypeNames::ANSI
+        }
+    }
+
     fn quote_ident(&self, name: &str) -> String {
         format!("`{}`", name.replace('`', "``"))
     }
@@ -20,33 +29,6 @@ impl SqlDialect for DatabricksDialect {
     // is not available"), so the MySQL-style session-init fix was never
     // available here — ggsql-internal identifiers reach this dialect through
     // `quote_ident` at every emission site instead.
-
-    fn number_type_name(&self) -> Option<&str> {
-        Some("DOUBLE")
-    }
-
-    fn string_type_name(&self) -> Option<&str> {
-        Some("STRING")
-    }
-
-    fn time_type_name(&self) -> Option<&str> {
-        // Spark SQL has no TIME type.
-        None
-    }
-
-    fn sql_greatest(&self, exprs: &[&str]) -> String {
-        if exprs.len() == 1 {
-            return exprs[0].to_string();
-        }
-        format!("GREATEST({})", exprs.join(", "))
-    }
-
-    fn sql_least(&self, exprs: &[&str]) -> String {
-        if exprs.len() == 1 {
-            return exprs[0].to_string();
-        }
-        format!("LEAST({})", exprs.join(", "))
-    }
 
     fn sql_generate_series(&self, n: usize) -> String {
         // Spark rejects a generator nested inside another expression
@@ -62,28 +44,14 @@ impl SqlDialect for DatabricksDialect {
         )
     }
 
-    fn sql_quantile_inline(&self, column: &str, fraction: f64) -> Option<String> {
-        Some(format!(
-            "percentile_approx({column}, {fraction})",
-            column = self.quote_ident(column)
-        ))
-    }
-
-    fn sql_percentile(
-        &self,
-        column: &str,
-        fraction: f64,
-        _from: &str,
-        _groups: &[String],
-    ) -> String {
+    fn sql_quantile(&self, column: &str, fraction: f64, _from: &str, _groups: &[String]) -> String {
         // Spark forbids correlated scalar subqueries in the SELECT list of a
         // GROUP BY query ("is neither present in GROUP BY, nor in an
-        // aggregate function"), so the ANSI correlated-subquery fallback
-        // fails outright. Return a plain aggregate instead: it computes the
-        // percentile within the caller's own grouping context, which is the
-        // same semantics the correlated form encodes (same trick as
-        // ClickHouse's quantileExactInclusive override). Approximate, which
-        // is acceptable for boxplot/density statistics.
+        // aggregate function"), so the correlated-subquery default fails
+        // outright. The plain aggregate computes the percentile within the
+        // caller's own grouping context, which is the same semantics the
+        // correlated form encodes — `from` and `groups` are unused.
+        // Approximate, which is acceptable for boxplot/density statistics.
         format!(
             "percentile_approx({column}, {fraction})",
             column = self.quote_ident(column)
@@ -100,16 +68,8 @@ impl SqlDialect for DatabricksDialect {
         )
     }
 
-    fn create_or_replace_temp_table_sql(
-        &self,
-        name: &str,
-        column_aliases: &[String],
-        body_sql: &str,
-    ) -> Vec<String> {
-        let qname = self.quote_ident(name);
-        let body =
-            wrap_with_column_aliases(&|c: &str| self.quote_ident(c), body_sql, column_aliases);
-        vec![format!("CREATE OR REPLACE TEMP VIEW {} AS {}", qname, body)]
+    fn temp_table_style(&self) -> crate::reader::TempTableStyle {
+        crate::reader::TempTableStyle::CreateOrReplaceTempView
     }
 }
 

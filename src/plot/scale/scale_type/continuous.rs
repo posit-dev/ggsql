@@ -298,10 +298,9 @@ mod tests {
 
         assert!(sql.is_some());
         let sql = sql.unwrap();
-        // Should generate portable scalar MAX/MIN via subquery for squish
-        assert!(sql.contains("CASE WHEN"));
-        assert!(sql.contains(">=")); // scalar_max uses >=
-        assert!(sql.contains("<=")); // scalar_min uses <=
+        // Should generate scalar MAX/MIN for squish (ANSI default: GREATEST/LEAST)
+        assert!(sql.contains("GREATEST("));
+        assert!(sql.contains("LEAST("));
     }
 
     #[test]

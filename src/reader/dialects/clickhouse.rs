@@ -15,7 +15,7 @@
 //! FROM` in any clause). Override SQL verified against a live server in
 //! PR #535.
 
-use crate::reader::{default_sql_aggregate, wrap_with_column_aliases, SqlDialect};
+use crate::reader::{default_sql_aggregate, SqlDialect};
 
 /// ClickHouse dialect.
 #[derive(Debug, Default, Clone, Copy)]
@@ -31,37 +31,20 @@ fn float_args(exprs: &[&str]) -> String {
 }
 
 impl SqlDialect for ClickHouseDialect {
+    fn type_names(&self) -> crate::reader::TypeNames {
+        crate::reader::TypeNames {
+            number: Some("Nullable(Float64)"),
+            integer: Some("Nullable(Int64)"),
+            date: Some("Nullable(Date32)"),
+            datetime: Some("Nullable(DateTime64(6))"),
+            time: None,
+            string: Some("Nullable(String)"),
+            boolean: Some("Nullable(Bool)"),
+        }
+    }
+
     fn quote_ident(&self, name: &str) -> String {
         format!("`{}`", name.replace('`', "``"))
-    }
-
-    fn number_type_name(&self) -> Option<&str> {
-        Some("Nullable(Float64)")
-    }
-
-    fn integer_type_name(&self) -> Option<&str> {
-        Some("Nullable(Int64)")
-    }
-
-    fn string_type_name(&self) -> Option<&str> {
-        Some("Nullable(String)")
-    }
-
-    fn date_type_name(&self) -> Option<&str> {
-        Some("Nullable(Date32)")
-    }
-
-    fn datetime_type_name(&self) -> Option<&str> {
-        Some("Nullable(DateTime64(6))")
-    }
-
-    /// ClickHouse has no portable time-of-day type; time columns are left as is.
-    fn time_type_name(&self) -> Option<&str> {
-        None
-    }
-
-    fn boolean_type_name(&self) -> Option<&str> {
-        Some("Nullable(Bool)")
     }
 
     fn sql_greatest(&self, exprs: &[&str]) -> String {
@@ -116,23 +99,10 @@ impl SqlDialect for ClickHouseDialect {
         }
     }
 
-    fn sql_quantile_inline(&self, column: &str, fraction: f64) -> Option<String> {
-        Some(format!(
-            "quantileExactInclusive({fraction})({column})",
-            column = self.quote_ident(column)
-        ))
-    }
-
     /// Every caller embeds this in a `GROUP BY {groups}` query over `from`, so
     /// the native aggregate is equivalent to the correlated scalar subquery
     /// other dialects produce, and far cheaper.
-    fn sql_percentile(
-        &self,
-        column: &str,
-        fraction: f64,
-        _from: &str,
-        _groups: &[String],
-    ) -> String {
+    fn sql_quantile(&self, column: &str, fraction: f64, _from: &str, _groups: &[String]) -> String {
         format!(
             "quantileExactInclusive({fraction})({column})",
             column = self.quote_ident(column)
@@ -156,23 +126,8 @@ impl SqlDialect for ClickHouseDialect {
         format!("fromUnixTimestamp64Micro({microseconds_since_epoch})")
     }
 
-    fn create_or_replace_temp_table_sql(
-        &self,
-        name: &str,
-        column_aliases: &[String],
-        body_sql: &str,
-    ) -> Vec<String> {
-        let qname = self.quote_ident(name);
-        let body =
-            wrap_with_column_aliases(&|c: &str| self.quote_ident(c), body_sql, column_aliases);
-        vec![
-            format!("DROP TEMPORARY TABLE IF EXISTS {}", qname),
-            format!("CREATE TEMPORARY TABLE {} AS {}", qname, body),
-        ]
-    }
-
-    fn supports_spatial(&self) -> bool {
-        false
+    fn temp_table_style(&self) -> crate::reader::TempTableStyle {
+        crate::reader::TempTableStyle::DropTemporaryThenCreateTemp
     }
 }
 
@@ -221,11 +176,11 @@ mod tests {
     #[test]
     fn quantile_uses_exact_inclusive() {
         assert_eq!(
-            ClickHouseDialect.sql_quantile_inline("v", 0.9).as_deref(),
-            Some("quantileExactInclusive(0.9)(`v`)")
+            ClickHouseDialect.sql_quantile("v", 0.9, "t", &[]),
+            "quantileExactInclusive(0.9)(`v`)"
         );
         assert_eq!(
-            ClickHouseDialect.sql_percentile("v", 0.5, "SELECT * FROM t", &[]),
+            ClickHouseDialect.sql_quantile("v", 0.5, "SELECT * FROM t", &[]),
             "quantileExactInclusive(0.5)(`v`)"
         );
     }

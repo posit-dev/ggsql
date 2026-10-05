@@ -8,27 +8,30 @@
 //! (`geom.STAsBinary()`) rather than the PostGIS-style function calls the
 //! ANSI defaults emit, so we fail fast rather than produce broken SQL.
 
-use crate::reader::{wrap_with_column_aliases, SqlDialect};
+use crate::reader::SqlDialect;
 
 /// SQL Server dialect.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct MssqlDialect;
 
 impl SqlDialect for MssqlDialect {
-    fn number_type_name(&self) -> Option<&str> {
-        Some("FLOAT")
+    fn type_names(&self) -> crate::reader::TypeNames {
+        crate::reader::TypeNames {
+            number: Some("FLOAT"),
+            datetime: Some("DATETIME2"),
+            string: Some("NVARCHAR(MAX)"),
+            boolean: Some("BIT"),
+            ..crate::reader::TypeNames::ANSI
+        }
     }
 
-    fn string_type_name(&self) -> Option<&str> {
-        Some("NVARCHAR(MAX)")
+    // SQL Server only gained GREATEST/LEAST in 2022; stay portable.
+    fn sql_greatest(&self, exprs: &[&str]) -> String {
+        super::case_greatest(exprs)
     }
 
-    fn datetime_type_name(&self) -> Option<&str> {
-        Some("DATETIME2")
-    }
-
-    fn boolean_type_name(&self) -> Option<&str> {
-        Some("BIT")
+    fn sql_least(&self, exprs: &[&str]) -> String {
+        super::case_least(exprs)
     }
 
     fn sql_boolean_literal(&self, value: bool) -> String {
@@ -104,29 +107,9 @@ impl SqlDialect for MssqlDialect {
         )
     }
 
-    fn create_or_replace_temp_table_sql(
-        &self,
-        name: &str,
-        column_aliases: &[String],
-        body_sql: &str,
-    ) -> Vec<String> {
+    fn temp_table_style(&self) -> crate::reader::TempTableStyle {
         // SQL Server has no CREATE TABLE AS; SELECT INTO is the idiom.
-        // Session-local `#temp` tables would be ideal, but ggsql references
-        // materialized tables by their plain (quoted) name in later
-        // statements, which `#name` would break — so we use regular tables
-        // and rely on DROP for cleanup.
-        let qname = self.quote_ident(name);
-        let body =
-            wrap_with_column_aliases(&|c: &str| self.quote_ident(c), body_sql, column_aliases);
-        let __ggsql_src__ = self.quote_ident("__ggsql_src__");
-        vec![
-            format!("DROP TABLE IF EXISTS {}", qname),
-            format!("SELECT * INTO {} FROM ({}) AS {__ggsql_src__}", qname, body),
-        ]
-    }
-
-    fn supports_spatial(&self) -> bool {
-        false
+        crate::reader::TempTableStyle::SelectInto
     }
 }
 

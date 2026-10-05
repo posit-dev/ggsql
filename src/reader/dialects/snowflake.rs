@@ -11,34 +11,21 @@ use crate::reader::SqlDialect;
 pub struct SnowflakeDialect;
 
 impl SqlDialect for SnowflakeDialect {
-    fn number_type_name(&self) -> Option<&str> {
-        Some("DOUBLE")
+    fn type_names(&self) -> crate::reader::TypeNames {
+        crate::reader::TypeNames {
+            number: Some("DOUBLE"),
+            integer: Some("NUMBER"),
+            datetime: Some("TIMESTAMP_NTZ"),
+            ..crate::reader::TypeNames::ANSI
+        }
     }
 
-    fn integer_type_name(&self) -> Option<&str> {
-        Some("NUMBER")
-    }
-
-    fn datetime_type_name(&self) -> Option<&str> {
-        Some("TIMESTAMP_NTZ")
+    fn supports_spatial(&self) -> bool {
+        true
     }
 
     fn sql_cast(&self, expr: &str, type_name: &str) -> String {
         format!("TRY_CAST({} AS {})", expr, type_name)
-    }
-
-    fn sql_greatest(&self, exprs: &[&str]) -> String {
-        if exprs.len() == 1 {
-            return exprs[0].to_string();
-        }
-        format!("GREATEST({})", exprs.join(", "))
-    }
-
-    fn sql_least(&self, exprs: &[&str]) -> String {
-        if exprs.len() == 1 {
-            return exprs[0].to_string();
-        }
-        format!("LEAST({})", exprs.join(", "))
     }
 
     fn sql_generate_series(&self, n: usize) -> String {
@@ -50,11 +37,13 @@ impl SqlDialect for SnowflakeDialect {
         )
     }
 
-    fn sql_quantile_inline(&self, column: &str, fraction: f64) -> Option<String> {
-        Some(format!(
+    fn sql_quantile(&self, column: &str, fraction: f64, _from: &str, _groups: &[String]) -> String {
+        // Native aggregate; computes within the caller's GROUP BY, so `from`
+        // and `groups` are unused.
+        format!(
             "APPROX_PERCENTILE({column}, {fraction})",
             column = self.quote_ident(column)
-        ))
+        )
     }
 
     fn sql_date_literal(&self, days_since_epoch: i32) -> String {

@@ -3,13 +3,22 @@
 //! Main deviations from ANSI: backtick identifier quoting, no `DATE 'literal'`
 //! syntax, `CREATE TEMPORARY TABLE`, and no nanosecond intervals.
 
-use crate::reader::{wrap_with_column_aliases, SqlDialect};
+use crate::reader::SqlDialect;
 
 /// MySQL dialect (also used for MariaDB).
 #[derive(Debug, Default, Clone, Copy)]
 pub struct MySqlDialect;
 
 impl SqlDialect for MySqlDialect {
+    fn type_names(&self) -> crate::reader::TypeNames {
+        crate::reader::TypeNames {
+            number: Some("DOUBLE"),
+            datetime: Some("DATETIME"),
+            string: Some("TEXT"),
+            ..crate::reader::TypeNames::ANSI
+        }
+    }
+
     fn quote_ident(&self, name: &str) -> String {
         format!("`{}`", name.replace('`', "``"))
     }
@@ -38,37 +47,10 @@ impl SqlDialect for MySqlDialect {
         }
     }
 
-    fn sql_real_cast_type(&self) -> &'static str {
+    fn sql_generate_series(&self, n: usize) -> String {
         // MariaDB's CAST has no REAL target; DOUBLE works on both MySQL
         // (8.0.17+) and MariaDB (10.4.5+).
-        "DOUBLE"
-    }
-
-    fn number_type_name(&self) -> Option<&str> {
-        Some("DOUBLE")
-    }
-
-    fn string_type_name(&self) -> Option<&str> {
-        // VARCHAR requires a length in MySQL; TEXT does not.
-        Some("TEXT")
-    }
-
-    fn datetime_type_name(&self) -> Option<&str> {
-        Some("DATETIME")
-    }
-
-    fn sql_greatest(&self, exprs: &[&str]) -> String {
-        if exprs.len() == 1 {
-            return exprs[0].to_string();
-        }
-        format!("GREATEST({})", exprs.join(", "))
-    }
-
-    fn sql_least(&self, exprs: &[&str]) -> String {
-        if exprs.len() == 1 {
-            return exprs[0].to_string();
-        }
-        format!("LEAST({})", exprs.join(", "))
+        crate::reader::recursive_series_cte(self, n, "DOUBLE")
     }
 
     fn sql_date_literal(&self, days_since_epoch: i32) -> String {
@@ -86,19 +68,8 @@ impl SqlDialect for MySqlDialect {
         format!("CAST('00:00:00' + INTERVAL {micros} MICROSECOND AS TIME)")
     }
 
-    fn create_or_replace_temp_table_sql(
-        &self,
-        name: &str,
-        column_aliases: &[String],
-        body_sql: &str,
-    ) -> Vec<String> {
-        let qname = self.quote_ident(name);
-        let body =
-            wrap_with_column_aliases(&|c: &str| self.quote_ident(c), body_sql, column_aliases);
-        vec![
-            format!("DROP TEMPORARY TABLE IF EXISTS {}", qname),
-            format!("CREATE TEMPORARY TABLE {} AS {}", qname, body),
-        ]
+    fn temp_table_style(&self) -> crate::reader::TempTableStyle {
+        crate::reader::TempTableStyle::DropTemporaryThenCreateTemp
     }
 }
 

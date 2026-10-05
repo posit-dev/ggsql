@@ -8,32 +8,22 @@
 //! Spatial is disabled: Oracle Spatial uses the `SDO_*` API rather than the
 //! OGC `ST_` function surface the ANSI defaults emit.
 
-use crate::reader::{wrap_with_column_aliases, SqlDialect};
+use crate::reader::SqlDialect;
 
 /// Oracle dialect.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct OracleDialect;
 
 impl SqlDialect for OracleDialect {
-    fn number_type_name(&self) -> Option<&str> {
-        Some("BINARY_DOUBLE")
-    }
-
-    fn integer_type_name(&self) -> Option<&str> {
-        Some("NUMBER(19)")
-    }
-
-    fn string_type_name(&self) -> Option<&str> {
-        Some("VARCHAR2(4000)")
-    }
-
-    fn time_type_name(&self) -> Option<&str> {
-        None
-    }
-
-    fn boolean_type_name(&self) -> Option<&str> {
-        // No boolean SQL type before 23c; NUMBER(1) is the convention.
-        Some("NUMBER(1)")
+    fn type_names(&self) -> crate::reader::TypeNames {
+        crate::reader::TypeNames {
+            number: Some("BINARY_DOUBLE"),
+            integer: Some("NUMBER(19)"),
+            time: None,
+            string: Some("VARCHAR2(4000)"),
+            boolean: Some("NUMBER(1)"),
+            ..crate::reader::TypeNames::ANSI
+        }
     }
 
     fn sql_boolean_literal(&self, value: bool) -> String {
@@ -48,20 +38,6 @@ impl SqlDialect for OracleDialect {
         format!("SELECT * FROM ({query}) WHERE ROWNUM <= {n}")
     }
 
-    fn sql_greatest(&self, exprs: &[&str]) -> String {
-        if exprs.len() == 1 {
-            return exprs[0].to_string();
-        }
-        format!("GREATEST({})", exprs.join(", "))
-    }
-
-    fn sql_least(&self, exprs: &[&str]) -> String {
-        if exprs.len() == 1 {
-            return exprs[0].to_string();
-        }
-        format!("LEAST({})", exprs.join(", "))
-    }
-
     fn sql_generate_series(&self, n: usize) -> String {
         let __ggsql_seq__ = self.quote_ident("__ggsql_seq__");
         format!(
@@ -72,11 +48,13 @@ impl SqlDialect for OracleDialect {
         )
     }
 
-    fn sql_quantile_inline(&self, column: &str, fraction: f64) -> Option<String> {
-        Some(format!(
+    fn sql_quantile(&self, column: &str, fraction: f64, _from: &str, _groups: &[String]) -> String {
+        // Native aggregate; computes within the caller's GROUP BY, so `from`
+        // and `groups` are unused.
+        format!(
             "PERCENTILE_CONT({fraction}) WITHIN GROUP (ORDER BY {column})",
             column = self.quote_ident(column)
-        ))
+        )
     }
 
     fn sql_date_literal(&self, days_since_epoch: i32) -> String {
@@ -89,27 +67,9 @@ impl SqlDialect for OracleDialect {
         format!("TIMESTAMP '1970-01-01 00:00:00' + NUMTODSINTERVAL({secs}, 'SECOND')")
     }
 
-    fn create_or_replace_temp_table_sql(
-        &self,
-        name: &str,
-        column_aliases: &[String],
-        body_sql: &str,
-    ) -> Vec<String> {
+    fn temp_table_style(&self) -> crate::reader::TempTableStyle {
         // Oracle has no DROP TABLE IF EXISTS; guard the drop with PL/SQL.
-        let qname = self.quote_ident(name);
-        let body =
-            wrap_with_column_aliases(&|c: &str| self.quote_ident(c), body_sql, column_aliases);
-        vec![
-            // The drop must spell the name exactly like the CREATE below:
-            // an unquoted name would be folded to uppercase by Oracle and
-            // never match the quoted (case-preserved) table, silently
-            // leaving stale tables behind under the WHEN OTHERS guard.
-            format!(
-                "BEGIN EXECUTE IMMEDIATE 'DROP TABLE {}'; EXCEPTION WHEN OTHERS THEN NULL; END;",
-                qname.replace('\'', "''")
-            ),
-            format!("CREATE TABLE {} AS {}", qname, body),
-        ]
+        crate::reader::TempTableStyle::GuardedDropThenCreate
     }
 
     fn sql_with_recursive(&self) -> &'static str {
@@ -135,10 +95,6 @@ impl SqlDialect for OracleDialect {
             self.quote_ident(name),
             column_defs.join(", ")
         )]
-    }
-
-    fn supports_spatial(&self) -> bool {
-        false
     }
 }
 

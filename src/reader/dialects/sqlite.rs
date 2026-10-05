@@ -14,32 +14,28 @@ use crate::reader::SqlDialect;
 pub struct SqliteDialect;
 
 impl SqlDialect for SqliteDialect {
-    fn string_type_name(&self) -> Option<&str> {
-        Some("TEXT")
+    fn type_names(&self) -> crate::reader::TypeNames {
+        crate::reader::TypeNames {
+            number: Some("REAL"),
+            integer: Some("INTEGER"),
+            date: Some("TEXT"),
+            datetime: Some("TEXT"),
+            time: Some("TEXT"),
+            string: Some("TEXT"),
+            boolean: Some("INTEGER"),
+        }
     }
 
-    fn number_type_name(&self) -> Option<&str> {
-        Some("REAL")
+    fn sql_greatest(&self, exprs: &[&str]) -> String {
+        super::case_greatest(exprs)
     }
 
-    fn integer_type_name(&self) -> Option<&str> {
-        Some("INTEGER")
+    fn sql_least(&self, exprs: &[&str]) -> String {
+        super::case_least(exprs)
     }
 
-    fn boolean_type_name(&self) -> Option<&str> {
-        Some("INTEGER")
-    }
-
-    fn date_type_name(&self) -> Option<&str> {
-        Some("TEXT")
-    }
-
-    fn datetime_type_name(&self) -> Option<&str> {
-        Some("TEXT")
-    }
-
-    fn time_type_name(&self) -> Option<&str> {
-        Some("TEXT")
+    fn supports_spatial(&self) -> bool {
+        true
     }
 
     fn sql_date_literal(&self, days_since_epoch: i32) -> String {

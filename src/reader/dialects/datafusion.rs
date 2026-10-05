@@ -13,36 +13,22 @@ use crate::reader::SqlDialect;
 pub struct DataFusionDialect;
 
 impl SqlDialect for DataFusionDialect {
+    fn type_names(&self) -> crate::reader::TypeNames {
+        crate::reader::TypeNames {
+            number: Some("DOUBLE"),
+            time: None,
+            ..crate::reader::TypeNames::ANSI
+        }
+    }
+
     /// DataFusion rejects the TEMP keyword ("Temporary tables not
     /// supported") but supports in-memory CTAS, and its per-connection
     /// catalog already provides the session scoping TEMP would give — so
     /// stage internal tables as plain CREATE TABLE. Verified against the
     /// Foundry 0.27 driver; the connect-time probe re-checks this and falls
     /// back to the cache wrap if a future build regresses it.
-    fn create_or_replace_temp_table_sql(
-        &self,
-        name: &str,
-        column_aliases: &[String],
-        body_sql: &str,
-    ) -> Vec<String> {
-        let qname = self.quote_ident(name);
-        let body = crate::reader::wrap_with_column_aliases(
-            &|c: &str| self.quote_ident(c),
-            body_sql,
-            column_aliases,
-        );
-        vec![
-            format!("DROP TABLE IF EXISTS {}", qname),
-            format!("CREATE TABLE {} AS {}", qname, body),
-        ]
-    }
-
-    fn number_type_name(&self) -> Option<&str> {
-        Some("DOUBLE")
-    }
-
-    fn time_type_name(&self) -> Option<&str> {
-        None
+    fn temp_table_style(&self) -> crate::reader::TempTableStyle {
+        crate::reader::TempTableStyle::DropThenCreate
     }
 
     fn sql_generate_series(&self, n: usize) -> String {
@@ -58,36 +44,16 @@ impl SqlDialect for DataFusionDialect {
         )
     }
 
-    fn sql_quantile_inline(&self, column: &str, fraction: f64) -> Option<String> {
-        Some(format!(
-            "approx_percentile_cont({column}, {fraction})",
-            column = self.quote_ident(column)
-        ))
-    }
-
-    /// DataFusion supports neither form of the default percentile
-    /// construction: its `scalar_subquery_to_join` optimizer rule cannot
-    /// decorrelate the NTILE(4) window variant, and its physical planner
-    /// rejects a correlated scalar subquery in projection outright
-    /// ("Physical plan does not support logical expression ScalarSubquery").
-    /// Every caller embeds this in a `GROUP BY {groups}` query over `from`,
-    /// so the native approximate aggregate is equivalent (same shape as the
-    /// ClickHouse override) — and far cheaper.
-    fn sql_percentile(
-        &self,
-        column: &str,
-        fraction: f64,
-        _from: &str,
-        _groups: &[String],
-    ) -> String {
+    /// DataFusion's physical planner rejects a correlated scalar subquery in
+    /// projection outright ("Physical plan does not support logical
+    /// expression ScalarSubquery"), so the default construction fails. Every
+    /// caller embeds this in a `GROUP BY {groups}` query over `from`, so the
+    /// native approximate aggregate is equivalent — and far cheaper.
+    fn sql_quantile(&self, column: &str, fraction: f64, _from: &str, _groups: &[String]) -> String {
         format!(
             "approx_percentile_cont({}, {fraction})",
             self.quote_ident(column)
         )
-    }
-
-    fn supports_spatial(&self) -> bool {
-        false
     }
 
     fn sql_temporal_as_number(

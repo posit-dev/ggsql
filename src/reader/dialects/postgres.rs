@@ -11,18 +11,8 @@ use crate::reader::SqlDialect;
 pub struct PostgresDialect;
 
 impl SqlDialect for PostgresDialect {
-    fn sql_greatest(&self, exprs: &[&str]) -> String {
-        if exprs.len() == 1 {
-            return exprs[0].to_string();
-        }
-        format!("GREATEST({})", exprs.join(", "))
-    }
-
-    fn sql_least(&self, exprs: &[&str]) -> String {
-        if exprs.len() == 1 {
-            return exprs[0].to_string();
-        }
-        format!("LEAST({})", exprs.join(", "))
+    fn supports_spatial(&self) -> bool {
+        true
     }
 
     fn sql_generate_series(&self, n: usize) -> String {
@@ -50,11 +40,13 @@ impl SqlDialect for PostgresDialect {
         }
     }
 
-    fn sql_quantile_inline(&self, column: &str, fraction: f64) -> Option<String> {
-        Some(format!(
+    fn sql_quantile(&self, column: &str, fraction: f64, _from: &str, _groups: &[String]) -> String {
+        // Native aggregate; computes within the caller's GROUP BY, so `from`
+        // and `groups` are unused.
+        format!(
             "PERCENTILE_CONT({fraction}) WITHIN GROUP (ORDER BY {column})",
             column = self.quote_ident(column)
-        ))
+        )
     }
 
     fn sql_spatial_setup(&self) -> Vec<String> {
@@ -77,7 +69,7 @@ mod tests {
 
     #[test]
     fn quantile_uses_ordered_set() {
-        let sql = PostgresDialect.sql_quantile_inline("v", 0.5).unwrap();
+        let sql = PostgresDialect.sql_quantile("v", 0.5, "t", &[]);
         assert_eq!(sql, "PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY \"v\")");
     }
 

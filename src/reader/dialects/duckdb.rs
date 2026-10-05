@@ -13,18 +13,8 @@ use crate::reader::SqlDialect;
 pub struct DuckDbDialect;
 
 impl SqlDialect for DuckDbDialect {
-    fn sql_greatest(&self, exprs: &[&str]) -> String {
-        if exprs.len() == 1 {
-            return exprs[0].to_string();
-        }
-        format!("GREATEST({})", exprs.join(", "))
-    }
-
-    fn sql_least(&self, exprs: &[&str]) -> String {
-        if exprs.len() == 1 {
-            return exprs[0].to_string();
-        }
-        format!("LEAST({})", exprs.join(", "))
+    fn supports_spatial(&self) -> bool {
+        true
     }
 
     fn sql_st_transform(&self, column: &str, source_crs: &str, target_crs: &str) -> String {
@@ -67,22 +57,8 @@ impl SqlDialect for DuckDbDialect {
         vec!["LOAD spatial".into()]
     }
 
-    fn create_or_replace_temp_table_sql(
-        &self,
-        name: &str,
-        column_aliases: &[String],
-        body_sql: &str,
-    ) -> Vec<String> {
-        let body = crate::reader::wrap_with_column_aliases(
-            &|c: &str| self.quote_ident(c),
-            body_sql,
-            column_aliases,
-        );
-        vec![format!(
-            "CREATE OR REPLACE TEMP TABLE {} AS {}",
-            self.quote_ident(name),
-            body
-        )]
+    fn temp_table_style(&self) -> crate::reader::TempTableStyle {
+        crate::reader::TempTableStyle::CreateOrReplaceTemp
     }
 
     fn sql_generate_series(&self, n: usize) -> String {
@@ -93,12 +69,10 @@ impl SqlDialect for DuckDbDialect {
         format!("{__ggsql_seq__}(n) AS (SELECT generate_series FROM GENERATE_SERIES(0, {n} - 1))")
     }
 
-    fn sql_quantile_inline(&self, column: &str, fraction: f64) -> Option<String> {
-        Some(format!(
-            "QUANTILE_CONT({}, {})",
-            self.quote_ident(column),
-            fraction
-        ))
+    fn sql_quantile(&self, column: &str, fraction: f64, _from: &str, _groups: &[String]) -> String {
+        // Native aggregate; computes within the caller's GROUP BY, so `from`
+        // and `groups` are unused.
+        format!("QUANTILE_CONT({}, {})", self.quote_ident(column), fraction)
     }
 
     fn sql_temporal_as_number(
@@ -126,31 +100,6 @@ impl SqlDialect for DuckDbDialect {
             "diff" => Some(format!("(LAST({c}) - FIRST({c}))", c = qcol)),
             _ => crate::reader::default_sql_aggregate(&|c: &str| self.quote_ident(c), name, qcol),
         }
-    }
-
-    fn sql_percentile(&self, column: &str, fraction: f64, from: &str, groups: &[String]) -> String {
-        let __ggsql_pct__ = self.quote_ident("__ggsql_pct__");
-        let __ggsql_qt__ = self.quote_ident("__ggsql_qt__");
-        let group_filter = groups
-            .iter()
-            .map(|g| {
-                let q = self.quote_ident(g);
-                let cond = self.sql_null_safe_eq(
-                    &format!("{__ggsql_pct__}.{q}"),
-                    &format!("{__ggsql_qt__}.{q}"),
-                );
-                format!("AND {cond}")
-            })
-            .collect::<Vec<_>>()
-            .join(" ");
-
-        let quoted_column = self.quote_ident(column);
-        format!(
-            "(SELECT QUANTILE_CONT({column}, {fraction}) \
-            FROM ({from}) AS {__ggsql_pct__} \
-            WHERE {column} IS NOT NULL {group_filter})",
-            column = quoted_column
-        )
     }
 }
 

@@ -34,29 +34,6 @@ pub struct AdbcReader<D: Driver> {
     statement_opts: Vec<(String, String)>,
 }
 
-/// Execute the dialect's session-init statements on a fresh connection —
-/// see [`SqlDialect::session_init_sql`]. Failures are hard errors: the
-/// generated SQL is wrong for the backend when the init did not take effect
-/// (e.g. double-quoted identifiers read as string literals without
-/// ANSI_QUOTES), so continuing would fail later with a confusing message.
-fn run_session_init<C: adbc_core::Connection>(
-    connection: &mut C,
-    dialect: &dyn SqlDialect,
-) -> Result<()> {
-    for sql in dialect.session_init_sql() {
-        let mut stmt = connection.new_statement().map_err(|e| {
-            GgsqlError::ReaderError(format!("ADBC session init new_statement: {e}"))
-        })?;
-        stmt.set_sql_query(&sql).map_err(|e| {
-            GgsqlError::ReaderError(format!("ADBC session init set_sql_query: {e}"))
-        })?;
-        stmt.execute_update().map_err(|e| {
-            GgsqlError::ReaderError(format!("ADBC session init failed for '{sql}': {e}"))
-        })?;
-    }
-    Ok(())
-}
-
 impl<D: Driver> AdbcReader<D> {
     /// Construct an `AdbcReader` with an explicit `SqlDialect`. Use this to
     /// plug in backend-specific dialects (e.g. a TrinoDialect, SnowflakeDialect)
@@ -75,10 +52,9 @@ impl<D: Driver> AdbcReader<D> {
         let database = driver
             .new_database()
             .map_err(|e| GgsqlError::ReaderError(format!("ADBC new_database failed: {}", e)))?;
-        let mut connection = database
+        let connection = database
             .new_connection()
             .map_err(|e| GgsqlError::ReaderError(format!("ADBC new_connection failed: {}", e)))?;
-        run_session_init(&mut connection, &*dialect)?;
         Ok(Self {
             _driver: driver,
             _database: database,
@@ -106,10 +82,9 @@ impl<D: Driver> AdbcReader<D> {
         let database = driver.new_database_with_opts(opts).map_err(|e| {
             GgsqlError::ReaderError(format!("ADBC new_database_with_opts failed: {}", e))
         })?;
-        let mut connection = database
+        let connection = database
             .new_connection()
             .map_err(|e| GgsqlError::ReaderError(format!("ADBC new_connection failed: {}", e)))?;
-        run_session_init(&mut connection, &*dialect)?;
         Ok(Self {
             _driver: driver,
             _database: database,

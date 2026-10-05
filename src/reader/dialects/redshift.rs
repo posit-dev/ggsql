@@ -15,20 +15,6 @@ use crate::reader::SqlDialect;
 pub struct RedshiftDialect;
 
 impl SqlDialect for RedshiftDialect {
-    fn sql_greatest(&self, exprs: &[&str]) -> String {
-        if exprs.len() == 1 {
-            return exprs[0].to_string();
-        }
-        format!("GREATEST({})", exprs.join(", "))
-    }
-
-    fn sql_least(&self, exprs: &[&str]) -> String {
-        if exprs.len() == 1 {
-            return exprs[0].to_string();
-        }
-        format!("LEAST({})", exprs.join(", "))
-    }
-
     fn sql_temporal_as_number(
         &self,
         expr: &str,

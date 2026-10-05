@@ -16,46 +16,22 @@ use crate::reader::SqlDialect;
 pub struct BigQueryDialect;
 
 impl SqlDialect for BigQueryDialect {
+    fn type_names(&self) -> crate::reader::TypeNames {
+        crate::reader::TypeNames {
+            number: Some("FLOAT64"),
+            integer: Some("INT64"),
+            string: Some("STRING"),
+            boolean: Some("BOOL"),
+            ..crate::reader::TypeNames::ANSI
+        }
+    }
+
     fn quote_ident(&self, name: &str) -> String {
         format!("`{}`", name.replace('`', "``"))
     }
 
-    fn number_type_name(&self) -> Option<&str> {
-        Some("FLOAT64")
-    }
-
-    fn integer_type_name(&self) -> Option<&str> {
-        Some("INT64")
-    }
-
-    fn string_type_name(&self) -> Option<&str> {
-        Some("STRING")
-    }
-
-    fn datetime_type_name(&self) -> Option<&str> {
-        Some("TIMESTAMP")
-    }
-
-    fn boolean_type_name(&self) -> Option<&str> {
-        Some("BOOL")
-    }
-
     fn sql_cast(&self, expr: &str, type_name: &str) -> String {
         format!("SAFE_CAST({} AS {})", expr, type_name)
-    }
-
-    fn sql_greatest(&self, exprs: &[&str]) -> String {
-        if exprs.len() == 1 {
-            return exprs[0].to_string();
-        }
-        format!("GREATEST({})", exprs.join(", "))
-    }
-
-    fn sql_least(&self, exprs: &[&str]) -> String {
-        if exprs.len() == 1 {
-            return exprs[0].to_string();
-        }
-        format!("LEAST({})", exprs.join(", "))
     }
 
     fn sql_generate_series(&self, n: usize) -> String {
@@ -67,55 +43,20 @@ impl SqlDialect for BigQueryDialect {
         )
     }
 
-    fn sql_quantile_inline(&self, column: &str, fraction: f64) -> Option<String> {
+    fn sql_quantile(&self, column: &str, fraction: f64, _from: &str, _groups: &[String]) -> String {
         // APPROX_QUANTILES(x, 100) returns an array of 101 boundaries.
+        // BigQuery rejects the correlated scalar subquery of the default; the
+        // native aggregate computes within the caller's GROUP BY, so `from`
+        // and `groups` are unused.
         let offset = (fraction * 100.0).round() as i64;
-        Some(format!(
+        format!(
             "APPROX_QUANTILES({column}, 100)[SAFE_OFFSET({offset})]",
             column = self.quote_ident(column)
-        ))
+        )
     }
 
-    fn sql_percentile(
-        &self,
-        column: &str,
-        fraction: f64,
-        _from: &str,
-        _groups: &[String],
-    ) -> String {
-        // BigQuery rejects the correlated scalar subquery produced by the
-        // default. Every caller (boxplot, density) embeds the result in the
-        // SELECT list of a GROUP BY query, where the APPROX_QUANTILES
-        // aggregate computes per group — so `from` and `groups` are unused.
-        self.sql_quantile_inline(column, fraction)
-            .expect("BigQuery sql_quantile_inline always returns Some")
-    }
-
-    fn create_or_replace_temp_table_sql(
-        &self,
-        name: &str,
-        column_aliases: &[String],
-        body_sql: &str,
-    ) -> Vec<String> {
-        // Single CREATE OR REPLACE statement; the alias-wrapping CTE must use
-        // BigQuery's backtick quoting, not the portable double-quote helper.
-        let body = if column_aliases.is_empty() {
-            body_sql.to_string()
-        } else {
-            let cols = column_aliases
-                .iter()
-                .map(|c| self.quote_ident(c))
-                .collect::<Vec<_>>()
-                .join(", ");
-            format!(
-                "WITH __ggsql_aliased__({cols}) AS ({body_sql}) SELECT * FROM __ggsql_aliased__"
-            )
-        };
-        vec![format!(
-            "CREATE OR REPLACE TEMP TABLE {} AS {}",
-            self.quote_ident(name),
-            body
-        )]
+    fn temp_table_style(&self) -> crate::reader::TempTableStyle {
+        crate::reader::TempTableStyle::CreateOrReplaceTemp
     }
 
     fn sql_date_literal(&self, days_since_epoch: i32) -> String {
@@ -159,16 +100,16 @@ mod tests {
 
     #[test]
     fn quantile_uses_approx_quantiles() {
-        let sql = BigQueryDialect.sql_quantile_inline("v", 0.25).unwrap();
+        let sql = BigQueryDialect.sql_quantile("v", 0.25, "t", &[]);
         assert_eq!(sql, "APPROX_QUANTILES(`v`, 100)[SAFE_OFFSET(25)]");
     }
 
     #[test]
-    fn percentile_is_not_correlated() {
-        // sql_percentile must not emit a correlated subquery — BigQuery
-        // rejects those. It delegates to the APPROX_QUANTILES aggregate,
-        // valid inside the GROUP BY queries that boxplot and density build.
-        let sql = BigQueryDialect.sql_percentile("v", 0.75, "SELECT * FROM t", &["g".to_string()]);
+    fn quantile_is_not_correlated() {
+        // sql_quantile must not emit a correlated subquery — BigQuery
+        // rejects those. It uses the APPROX_QUANTILES aggregate, valid
+        // inside the GROUP BY queries that boxplot and density build.
+        let sql = BigQueryDialect.sql_quantile("v", 0.75, "SELECT * FROM t", &["g".to_string()]);
         assert_eq!(sql, "APPROX_QUANTILES(`v`, 100)[SAFE_OFFSET(75)]");
         assert!(!sql.contains("SELECT"), "must not be a subquery: {sql}");
     }
@@ -183,7 +124,7 @@ mod tests {
         assert_eq!(
             stmts,
             vec![
-                "CREATE OR REPLACE TEMP TABLE `__ggsql_data` AS WITH __ggsql_aliased__(`x`) AS (SELECT 1) SELECT * FROM __ggsql_aliased__"
+                "CREATE OR REPLACE TEMP TABLE `__ggsql_data` AS WITH `__ggsql_aliased__`(`x`) AS (SELECT 1) SELECT * FROM `__ggsql_aliased__`"
                     .to_string()
             ]
         );

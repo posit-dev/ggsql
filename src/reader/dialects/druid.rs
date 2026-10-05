@@ -13,31 +13,28 @@ use crate::reader::SqlDialect;
 pub struct DruidDialect;
 
 impl SqlDialect for DruidDialect {
+    fn type_names(&self) -> crate::reader::TypeNames {
+        crate::reader::TypeNames {
+            number: Some("DOUBLE"),
+            date: None,
+            time: None,
+            boolean: None,
+            ..crate::reader::TypeNames::ANSI
+        }
+    }
+
+    fn sql_greatest(&self, exprs: &[&str]) -> String {
+        super::case_greatest(exprs)
+    }
+
+    fn sql_least(&self, exprs: &[&str]) -> String {
+        super::case_least(exprs)
+    }
+
     /// Druid has no DDL at all; connections are always wrapped in a caching
     /// reader rather than probed.
     fn requires_cache(&self) -> bool {
         true
-    }
-
-    fn number_type_name(&self) -> Option<&str> {
-        Some("DOUBLE")
-    }
-
-    fn date_type_name(&self) -> Option<&str> {
-        // Druid has no DATE type; time columns are TIMESTAMP.
-        None
-    }
-
-    fn time_type_name(&self) -> Option<&str> {
-        None
-    }
-
-    fn boolean_type_name(&self) -> Option<&str> {
-        None
-    }
-
-    fn supports_spatial(&self) -> bool {
-        false
     }
 }
 

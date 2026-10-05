@@ -157,6 +157,26 @@ fn match_from_substring(lower: &str) -> Option<Box<dyn SqlDialect + Send>> {
     None
 }
 
+/// CASE-based scalar greatest/least for backends without `GREATEST`/`LEAST`
+/// (SQL Server, SQLite, Druid, Drill, MonetDB). Builds a left-folded chain of
+/// two-way comparisons, matching the old trait default.
+pub(crate) fn case_greatest(exprs: &[&str]) -> String {
+    let mut result = exprs[0].to_string();
+    for expr in &exprs[1..] {
+        result = format!("(CASE WHEN ({result}) >= ({expr}) THEN ({result}) ELSE ({expr}) END)");
+    }
+    result
+}
+
+/// See [`case_greatest`].
+pub(crate) fn case_least(exprs: &[&str]) -> String {
+    let mut result = exprs[0].to_string();
+    for expr in &exprs[1..] {
+        result = format!("(CASE WHEN ({result}) <= ({expr}) THEN ({result}) ELSE ({expr}) END)");
+    }
+    result
+}
+
 /// Split a query into its leading `WITH` clause and the remaining main
 /// query. Returns `None` when the query does not start with `WITH`.
 ///
@@ -413,25 +433,19 @@ mod tests {
         "sqlite",
     ];
 
-    /// Contract for the quantile hooks: callers pass the raw (unquoted)
+    /// Contract for the quantile hook: callers pass the raw (unquoted)
     /// column name and the dialect quotes it. A name needing quoting must
     /// appear quoted — interpolating it raw breaks on any real column whose
     /// name is not a bare lowercase identifier.
     #[test]
-    fn quantile_hooks_quote_raw_column_names() {
+    fn quantile_hook_quotes_raw_column_names() {
         for scheme in ALL_SCHEMES {
             let d = dialect_for_scheme(scheme).unwrap();
             let quoted = d.quote_ident("mixed Case");
-            if let Some(sql) = d.sql_quantile_inline("mixed Case", 0.5) {
-                assert!(
-                    sql.contains(&quoted),
-                    "{scheme}: sql_quantile_inline does not quote its column: {sql}"
-                );
-            }
-            let pct = d.sql_percentile("mixed Case", 0.5, "t", &[]);
+            let sql = d.sql_quantile("mixed Case", 0.5, "t", &[]);
             assert!(
-                pct.contains(&quoted),
-                "{scheme}: sql_percentile does not quote its column: {pct}"
+                sql.contains(&quoted),
+                "{scheme}: sql_quantile does not quote its column: {sql}"
             );
         }
     }

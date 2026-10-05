@@ -27,33 +27,13 @@ use crate::reader::SqlDialect;
 pub struct ExasolDialect;
 
 impl SqlDialect for ExasolDialect {
-    fn string_type_name(&self) -> Option<&str> {
-        // Exasol requires a length on VARCHAR; this is its practical max.
-        Some("VARCHAR(2000000)")
-    }
-
-    fn integer_type_name(&self) -> Option<&str> {
-        Some("DECIMAL(19,0)")
-    }
-
-    fn time_type_name(&self) -> Option<&str> {
-        // Exasol has no SQL TIME type (`TIME '01:02:03'` raises
-        // "Feature not supported: SQL-Type TIME"); store as a string.
-        Some("VARCHAR(32)")
-    }
-
-    fn sql_greatest(&self, exprs: &[&str]) -> String {
-        if exprs.len() == 1 {
-            return exprs[0].to_string();
+    fn type_names(&self) -> crate::reader::TypeNames {
+        crate::reader::TypeNames {
+            integer: Some("DECIMAL(19,0)"),
+            time: Some("VARCHAR(32)"),
+            string: Some("VARCHAR(2000000)"),
+            ..crate::reader::TypeNames::ANSI
         }
-        format!("GREATEST({})", exprs.join(", "))
-    }
-
-    fn sql_least(&self, exprs: &[&str]) -> String {
-        if exprs.len() == 1 {
-            return exprs[0].to_string();
-        }
-        format!("LEAST({})", exprs.join(", "))
     }
 
     fn sql_date_literal(&self, days_since_epoch: i32) -> String {
@@ -76,40 +56,34 @@ impl SqlDialect for ExasolDialect {
         format!("'{h:02}:{m:02}:{s:02}.{micros:06}'")
     }
 
-    fn sql_list_catalogs(&self) -> Option<String> {
-        Some(
-            "SELECT SCHEMA_NAME AS catalog_name FROM SYS.EXA_SCHEMAS ORDER BY SCHEMA_NAME"
-                .to_string(),
-        )
+    fn sql_list_catalogs(&self) -> String {
+        "SELECT SCHEMA_NAME AS catalog_name FROM SYS.EXA_SCHEMAS ORDER BY SCHEMA_NAME".to_string()
     }
 
-    fn sql_list_schemas(&self, _catalog: &str) -> Option<String> {
-        Some(
-            "SELECT SCHEMA_NAME AS schema_name FROM SYS.EXA_SCHEMAS ORDER BY SCHEMA_NAME"
-                .to_string(),
-        )
+    fn sql_list_schemas(&self, _catalog: &str) -> String {
+        "SELECT SCHEMA_NAME AS schema_name FROM SYS.EXA_SCHEMAS ORDER BY SCHEMA_NAME".to_string()
     }
 
-    fn sql_list_tables(&self, _catalog: &str, schema: &str) -> Option<String> {
-        Some(format!(
+    fn sql_list_tables(&self, _catalog: &str, schema: &str) -> String {
+        format!(
             "SELECT TABLE_NAME AS table_name, \
                 CASE WHEN TABLE_IS_VIRTUAL THEN 'VIEW' ELSE 'BASE TABLE' END AS table_type \
              FROM SYS.EXA_ALL_TABLES \
              WHERE TABLE_SCHEMA = '{}' \
              ORDER BY TABLE_NAME",
             schema.replace('\'', "''")
-        ))
+        )
     }
 
-    fn sql_list_columns(&self, _catalog: &str, schema: &str, table: &str) -> Option<String> {
-        Some(format!(
+    fn sql_list_columns(&self, _catalog: &str, schema: &str, table: &str) -> String {
+        format!(
             "SELECT COLUMN_NAME AS column_name, COLUMN_TYPE AS data_type \
              FROM SYS.EXA_ALL_COLUMNS \
              WHERE COLUMN_SCHEMA = '{}' AND COLUMN_TABLE = '{}' \
              ORDER BY COLUMN_ORDINAL_POSITION",
             schema.replace('\'', "''"),
             table.replace('\'', "''")
-        ))
+        )
     }
 }
 
@@ -153,18 +127,18 @@ mod tests {
     #[test]
     fn introspection_uses_sys_tables() {
         let d = ExasolDialect;
-        let cats = d.sql_list_catalogs().unwrap();
+        let cats = d.sql_list_catalogs();
         assert!(cats.contains("SYS.EXA_SCHEMAS"), "got: {cats}");
         assert!(!cats.to_lowercase().contains("information_schema"));
 
-        let tables = d.sql_list_tables("ignored", "O'Brien").unwrap();
+        let tables = d.sql_list_tables("ignored", "O'Brien");
         assert!(tables.contains("SYS.EXA_ALL_TABLES"), "got: {tables}");
         assert!(
             tables.contains("TABLE_SCHEMA = 'O''Brien'"),
             "got: {tables}"
         );
 
-        let cols = d.sql_list_columns("ignored", "S", "T'bl").unwrap();
+        let cols = d.sql_list_columns("ignored", "S", "T'bl");
         assert!(cols.contains("SYS.EXA_ALL_COLUMNS"), "got: {cols}");
         assert!(cols.contains("COLUMN_TABLE = 'T''bl'"), "got: {cols}");
     }

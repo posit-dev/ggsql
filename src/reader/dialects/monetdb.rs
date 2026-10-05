@@ -12,15 +12,28 @@ use crate::reader::SqlDialect;
 pub struct MonetDbDialect;
 
 impl SqlDialect for MonetDbDialect {
-    fn number_type_name(&self) -> Option<&str> {
-        Some("DOUBLE")
+    fn type_names(&self) -> crate::reader::TypeNames {
+        crate::reader::TypeNames {
+            number: Some("DOUBLE"),
+            ..crate::reader::TypeNames::ANSI
+        }
     }
 
-    fn sql_quantile_inline(&self, column: &str, fraction: f64) -> Option<String> {
-        Some(format!(
+    fn sql_greatest(&self, exprs: &[&str]) -> String {
+        super::case_greatest(exprs)
+    }
+
+    fn sql_least(&self, exprs: &[&str]) -> String {
+        super::case_least(exprs)
+    }
+
+    fn sql_quantile(&self, column: &str, fraction: f64, _from: &str, _groups: &[String]) -> String {
+        // Native aggregate; computes within the caller's GROUP BY, so `from`
+        // and `groups` are unused.
+        format!(
             "QUANTILE({column}, {fraction})",
             column = self.quote_ident(column)
-        ))
+        )
     }
 
     fn sql_create_empty_temp_table(&self, name: &str, column_defs: &[String]) -> Vec<String> {
@@ -76,8 +89,8 @@ mod tests {
     #[test]
     fn quantile_is_native() {
         assert_eq!(
-            MonetDbDialect.sql_quantile_inline("v", 0.75).as_deref(),
-            Some("QUANTILE(\"v\", 0.75)")
+            MonetDbDialect.sql_quantile("v", 0.75, "t", &[]),
+            "QUANTILE(\"v\", 0.75)"
         );
     }
 }
