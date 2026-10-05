@@ -40,6 +40,7 @@ pub mod compute;
 pub mod dataframe;
 pub mod format;
 pub mod naming;
+pub mod params;
 pub mod parser;
 pub mod plot;
 pub mod spec;

@@ -10,10 +10,11 @@
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 
-use crate::plot::{
-    validate_parameter, DefaultParamValue, Labels, NumberConstraint, ParamConstraint,
-    ParamDefinition, Parameters,
+use crate::params::{
+    validate_parameter, DefaultParamValue, NumberConstraint, ParamConstraint, ParamDefinition,
+    Parameters,
 };
+use crate::plot::Labels;
 use crate::DataSource;
 
 /// Complete ggsql table specification.

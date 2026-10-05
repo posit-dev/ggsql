@@ -17,6 +17,7 @@ src/
 ├── dataframe.rs                 DataFrame wrapper around arrow RecordBatch
 ├── format.rs                    Label/number/date formatting
 ├── naming.rs                    Internal column-name conventions (__ggsql_*)
+├── params.rs                    SETTING-parameter machinery: values, constraints, validation
 ├── spec.rs                      Spec: parse-time result of one VISUALISE/TABULATE statement (Plot or Table)
 ├── util.rs                      String helpers (and_list, or_list, …)
 ├── validate.rs                  validate(): syntax + semantic checks without SQL execution
