@@ -1,5 +1,15 @@
 ## [Unreleased]
 
+### Added
+
+- New `TABULATE` clause renders a query result as a table instead of a 
+  plot. Tables are rendered via new `html` writer. `TABULATE` supports the 
+  following clauses:
+  - `LABEL` sets (sub)titles, captions and overrides the display of column
+    labels.
+  - `SPAN` groups columns under a shared header cell (spanner).
+  - `FORMAT` configures how a column's cells are displayed.
+
 ### Fixed
 
 - Fixed a parser bug that interpreted comment characters inside string literals

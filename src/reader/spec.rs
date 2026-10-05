@@ -1,16 +1,17 @@
-//! Implementation of Spec methods.
+//! Implementation of ResolvedPlot, ResolvedTable, and ResolvedSpec methods.
 
 use std::collections::HashMap;
 
+use crate::execute::{count_cell_cols, count_cell_rows};
 use crate::naming;
 use crate::plot::Plot;
 use crate::validate::ValidationWarning;
-use crate::DataFrame;
+use crate::{DataFrame, TableCell, TableColumn, TableRow};
 
-use super::{Metadata, Spec};
+use super::{Metadata, ResolvedPlot, ResolvedSpec, ResolvedTable};
 
-impl Spec {
-    /// Create a new Spec from PreparedData
+impl ResolvedPlot {
+    /// Create a new ResolvedPlot from PreparedData
     pub(crate) fn new(
         plot: Plot,
         data: HashMap<String, DataFrame>,
@@ -108,5 +109,101 @@ impl Spec {
     /// Validation warnings from preparation.
     pub fn warnings(&self) -> &[ValidationWarning] {
         &self.warnings
+    }
+}
+
+impl ResolvedTable {
+    /// Create a new ResolvedTable.
+    pub(crate) fn new(
+        cells: Vec<TableCell>,
+        columns: Vec<TableColumn>,
+        rows: Vec<TableRow>,
+        sql: String,
+        warnings: Vec<ValidationWarning>,
+    ) -> Self {
+        Self {
+            cells,
+            columns,
+            rows,
+            sql,
+            warnings,
+        }
+    }
+
+    /// Get the resolved layout: one cell per column label and per data value.
+    pub fn cells(&self) -> &[TableCell] {
+        &self.cells
+    }
+
+    /// Resolved per-column properties — a writer wanting a whole-column
+    /// value (e.g. `width`) reads it here instead of the same value
+    /// repeated across the column's cells.
+    pub fn columns(&self) -> &[TableColumn] {
+        &self.columns
+    }
+
+    /// Resolved per-row properties, symmetric with `columns`. `properties`
+    /// has no row-wide `TABULATE` clause to populate it yet, but `classes`
+    /// does — a `Title`/`Subtitle` cell's row carries `TableClass::Heading`
+    /// here, for a writer to put on the enclosing `<tr>`.
+    pub fn rows(&self) -> &[TableRow] {
+        &self.rows
+    }
+
+    /// Total number of rows in the table's rendered grid — heading, spanner,
+    /// and column-label rows included, not just data rows.
+    pub fn nrow(&self) -> usize {
+        count_cell_rows(&self.cells)
+    }
+
+    /// Number of columns, computed from `cells`.
+    pub fn ncol(&self) -> usize {
+        count_cell_cols(&self.cells)
+    }
+
+    /// The SQL query that was executed to produce `cells`.
+    pub fn sql(&self) -> &str {
+        &self.sql
+    }
+
+    /// Validation warnings from preparation.
+    pub fn warnings(&self) -> &[ValidationWarning] {
+        &self.warnings
+    }
+}
+
+impl ResolvedSpec {
+    /// Borrow the inner `ResolvedPlot`, or `None` if this is a `ResolvedTable`.
+    pub fn as_plot(&self) -> Option<&ResolvedPlot> {
+        match self {
+            ResolvedSpec::Plot(plot) => Some(plot),
+            ResolvedSpec::Table(_) => None,
+        }
+    }
+
+    /// Borrow the inner `ResolvedTable`, or `None` if this is a `ResolvedPlot`.
+    pub fn as_table(&self) -> Option<&ResolvedTable> {
+        match self {
+            ResolvedSpec::Plot(_) => None,
+            ResolvedSpec::Table(table) => Some(table),
+        }
+    }
+
+    /// Consume this `ResolvedSpec`, returning the inner `ResolvedPlot`, or
+    /// `None` if it was a `ResolvedTable`.
+    pub fn into_plot(self) -> Option<ResolvedPlot> {
+        match self {
+            ResolvedSpec::Plot(plot) => Some(*plot),
+            ResolvedSpec::Table(_) => None,
+        }
+    }
+
+    /// Consume this `ResolvedSpec`, returning the inner `ResolvedTable`, or
+    /// `None` if it was a `ResolvedPlot`.
+    pub fn into_table(self) -> Option<ResolvedTable> {
+        match self {
+            ResolvedSpec::Plot(_) => None,
+            ResolvedSpec::Table(table) => Some(*table),
+        }
     }
 }

@@ -1,0 +1,161 @@
+---
+title: "Configure column display using `FORMAT`"
+---
+
+The `FORMAT` clause is used to tweak the formatting and structure of one or more whole columns.
+It is the workhorse for column-focussed changes: value formatting, display properties and stub design.
+
+## Clause syntax
+
+```ggsql
+FORMAT [BODY | STUB] <column>, ...
+  SETTING <parameter> => <value>, ...
+  RENAMING <value> => <string>, ...
+```
+## Target
+
+```
+[BODY | STUB]
+```
+
+The target directly following the `FORMAT` clause determines what kind of column is being formatted.
+The optional target defaults to `BODY` which targets cells in the table body.
+`FORMAT` can be used without spelling out a target, in which case it is interpreted as a `BODY` target.
+The target can be set to `STUB`, which will move the column to the left of the table to serve as row labels.
+
+```ggsql
+-- Same as `FORMAT BODY foo, bar`
+FORMAT foo, bar
+
+-- Designate column as stub
+FORMAT STUB foo
+```
+
+## Column selection
+
+```ggsql
+<column>, ...
+```
+
+The `FORMAT` clause requires a comma-separated list of columns to format.
+In addition to column names, it can use [`SPAN`](span.qmd) identifiers as well to target the spanner's columns.
+
+```ggsql
+-- Targeting regular columns
+FORMAT foo, bar
+
+-- Targeting spanner id: bar, baz and qux become targeted
+SPAN foo OVER bar, baz
+FORMAT foo, qux
+```
+
+## Settings
+
+```ggsql
+SETTING <parameter> => <value>, ...
+```
+
+It takes a typical `SETTING` clause with key-value pairs.
+It currently takes the following parameters:
+
+* `hjust`: numeric value between 0-1 or string, for horizontal justification of cell content. 
+  Strings can be `'left'`, `'right'`', `'centre'`, or `'center'`.
+  By default content is left-aligned for strings, and right-aligned for numbers or stub columns.
+* `width`: a unit as a string giving the number of pixels (e.g. `'100px'`) or a percentage (`'20%'`).
+  Sets the display width of the column.
+
+## Renaming
+
+```ggsql
+RENAMING <value> => <string>, ...
+```
+
+The `RENAMING` clause is *the* place to format the cell contents.
+It works the same as the namesake in the [`SCALE`](scale.qmd#renaming) clause.
+Generally, it works not unlike the [`LABEL`](label-tabulate.qmd) clause in the sense that you specify a cell's content on the left and a replacement value on the right.
+Alternatively, you can use a formatter with the `* => '...'` syntax.
+Specifically see the [break formatting](scale.qmd#break-formatting) section for a list of formatters.
+
+```ggsql
+-- Replace a specific piece of content
+FORMAT species RENAMING 'adelie' => 'Pygoscelis adeliae'
+
+-- Suppress/hide a specific piece of content
+FORMAT species RENAMING 'adelie' => null
+
+-- Format all cells in the column as lower-case
+FORMAT species RENAMING * => '{:lower}'
+```
+
+## Examples
+
+Declare a stub column.
+
+```{ggsql}
+CREATE TEMP TABLE my_data AS SELECT * FROM ggsql:penguins LIMIT 5
+
+TABULATE * FROM my_data
+  FORMAT STUB island
+```
+
+Stubheads, the column labels for stub columns, are hidden by default.
+To display these, you can use the `LABEL` clause.
+
+```{ggsql}
+TABULATE * FROM my_data
+  FORMAT STUB island
+  LABEL island => 'Island'
+```
+
+Stub columns cannot be targetted by spans. The boundary between stub and body is un-spannable.
+
+```{ggsql}
+#| error: true
+TABULATE * FROM my_data
+  FORMAT STUB island
+  SPAN "My label" OVER island, species
+```
+
+When a column is targeted by multiple `FORMAT` clauses, the last one wins.
+Note that the `island` column is not in the stub.
+
+```{ggsql}
+TABULATE * FROM my_data
+  FORMAT STUB island
+  FORMAT BODY island
+```
+
+Control content alignment.
+
+```{ggsql}
+TABULATE * FROM my_data
+  FORMAT sex
+    SETTING hjust => 'right'
+```
+
+Set the width of columns.
+
+```{ggsql}
+TABULATE * FROM my_data
+  FORMAT species, island
+    SETTING width => '150px'
+```
+
+Replacing specific pieces of content.
+
+```{ggsql}
+TABULATE * FROM my_data
+  FORMAT body_mass, sex
+    RENAMING 
+      null => '?',
+      'male' => '♂',
+      'female' => '♀'
+```
+
+Using a formatter to target all cells in a column.
+
+```{ggsql}
+TABULATE * FROM my_data
+  FORMAT body_mass
+    RENAMING * => '{:num %.0f}g'
+```

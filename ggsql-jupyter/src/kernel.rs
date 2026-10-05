@@ -11,7 +11,7 @@ use crate::message::{ConnectionInfo, JupyterMessage, MessageHeader};
 use crate::plot::comm::{PlotMetadata, RenderParams, RpcError};
 use crate::plot::{PlotBackend, RenderOutcome, RenderTicket};
 use anyhow::Result;
-use ggsql::reader::Spec;
+use ggsql::reader::ResolvedPlot;
 use hmac::{Hmac, Mac};
 use serde_json::{json, Value};
 use sha2::Sha256;
@@ -38,7 +38,7 @@ pub struct KernelServer {
     /// Taken out of `self` before the event loop, because `select!` cannot
     /// borrow `self` mutably for this arm while the other arms do the same.
     render_outcomes: Option<tokio::sync::mpsc::UnboundedReceiver<RenderOutcome>>,
-    /// Open plot comms, metadata only — each plot's `Spec` lives on the render
+    /// Open plot comms, metadata only — each plot's `ResolvedPlot` lives on the render
     /// thread, keeping the retained `DataFrame`s off the async task.
     plot_comms: HashMap<String, PlotMetadata>,
     /// Comm ids in the order they were opened, for oldest-first eviction.
@@ -937,7 +937,7 @@ impl KernelServer {
     /// from the `_recentExecutions` map that message populates.
     async fn open_plot_comm(
         &mut self,
-        spec: Box<Spec>,
+        spec: Box<ResolvedPlot>,
         code: &str,
         parent: &JupyterMessage,
     ) -> Result<()> {
@@ -1136,7 +1136,7 @@ impl KernelServer {
             // An error rather than `result: null`, so a future Positron method
             // fails visibly instead of being satisfied with garbage. `show` and
             // `update` belong here: they mean "re-fetch this figure", but a
-            // `Spec` is immutable per execution, so re-running a cell opens a
+            // `ResolvedPlot` is immutable per execution, so re-running a cell opens a
             // new comm as the R and matplotlib backends do. Do not add them.
             other => {
                 let e = RpcError::MethodNotFound(format!("the plot comm has no '{other}' method"));

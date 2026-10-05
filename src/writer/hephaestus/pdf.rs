@@ -98,7 +98,10 @@ impl PdfWriter {
     /// # Errors
     ///
     /// As [`Self::write_reporting`].
-    pub fn render_reporting(&self, spec: &crate::reader::Spec) -> Result<(Vec<u8>, Vec<String>)> {
+    pub fn render_reporting(
+        &self,
+        spec: &crate::reader::ResolvedPlot,
+    ) -> Result<(Vec<u8>, Vec<String>)> {
         self.write_reporting(spec.plot(), spec.data())
     }
 
@@ -132,11 +135,11 @@ impl Writer for PdfWriter {
         })
     }
 
-    fn validate(&self, spec: &Plot) -> Result<()> {
+    fn validate_plot(&self, spec: &Plot) -> Result<()> {
         compose::validate_plot(spec)
     }
 
-    fn write(&self, spec: &Plot, data: &HashMap<String, DataFrame>) -> Result<Self::Output> {
+    fn write_plot(&self, spec: &Plot, data: &HashMap<String, DataFrame>) -> Result<Self::Output> {
         self.write_reporting(spec, data).map(|(pdf, _)| pdf)
     }
 }

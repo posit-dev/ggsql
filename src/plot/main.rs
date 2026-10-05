@@ -17,6 +17,8 @@
 //! └─ labels: Option<Labels>         (optional, merged from LABEL clauses)
 //! ```
 
+pub use crate::labels::Labels;
+
 use crate::naming;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -71,13 +73,6 @@ pub struct Plot {
     /// Computed from the coord type and facet, used for transformations
     #[serde(skip)]
     pub aesthetic_context: Option<AestheticContext>,
-}
-
-/// Text labels (from LABELS clause)
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct Labels {
-    /// Label assignments (label type → text, None = suppress)
-    pub labels: HashMap<String, Option<String>>,
 }
 
 // Manual PartialEq implementation (aesthetic_context is derived, not compared)
@@ -238,12 +233,7 @@ impl Plot {
         let aesthetic_ctx = self.get_aesthetic_context();
 
         // Ensure Labels struct exists
-        if self.labels.is_none() {
-            self.labels = Some(Labels {
-                labels: HashMap::new(),
-            });
-        }
-        let labels = self.labels.as_mut().unwrap();
+        let labels = self.labels.get_or_insert_with(Labels::default);
 
         // Two passes: first primaries, then variants
         // This ensures primaries always get priority regardless of HashMap iteration order
@@ -261,7 +251,7 @@ impl Plot {
                     }
 
                     // Skip if label already set (user-specified or from earlier)
-                    if labels.labels.contains_key(primary) {
+                    if labels.contains(primary) {
                         continue;
                     }
 

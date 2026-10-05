@@ -6,7 +6,7 @@ use ggsql::array_util::value_to_string;
 use ggsql::naming::DATA_PREFIX;
 use ggsql::reader::sqlite::SqliteReader;
 use ggsql::reader::Reader;
-use ggsql::reader::Spec;
+use ggsql::reader::ResolvedPlot;
 use ggsql::validate::validate;
 use ggsql::writer::SvgWriter;
 use ggsql::DataFrame;
@@ -253,13 +253,16 @@ impl GgsqlContext {
         let spec = reader
             .execute(query)
             .map_err(|e| JsValue::from_str(&format!("Execute error: {:?}", e)))?;
+        let spec = spec.into_plot().ok_or_else(|| {
+            JsValue::from_str("TABULATE queries are not supported in the browser playground")
+        })?;
         Ok(GgsqlPlot { spec })
     }
 
     /// Check whether a query contains a VISUALISE clause
     pub fn has_visual(&self, query: &str) -> bool {
         match validate(query) {
-            Ok(v) => v.has_visual(),
+            Ok(v) => v.has_spec(),
             Err(_) => false,
         }
     }
@@ -398,7 +401,7 @@ impl GgsqlContext {
 /// query — see [`GgsqlContext::execute`].
 #[wasm_bindgen]
 pub struct GgsqlPlot {
-    spec: Spec,
+    spec: ResolvedPlot,
 }
 
 #[wasm_bindgen]
