@@ -219,6 +219,24 @@ pub fn cases() -> Vec<Case> {
             "SELECT * FROM {table} VISUALISE day AS x, val AS y DRAW line",
             Expect::ExactRows(8),
         ),
+        // Global-SQL source + multi-reference stat: the source is
+        // materialized as a temp table and the boxplot stats query
+        // references it many times in one statement. MySQL refuses to
+        // open a temporary table twice in one query (error 1137, "Can't
+        // reopen table") — the single-scan minmax query avoids it, but a
+        // stats query cannot. Skipped on MySQL until the pipeline stops
+        // materializing global sources into temporary tables there.
+        Case {
+            live_skip: &[(
+                "mysql",
+                "error 1137: stats query references a temporary table multiple times",
+            )],
+            ..shared(
+                "boxplot_global_source",
+                "SELECT * FROM {table} VISUALISE DRAW boxplot MAPPING grp AS x, val AS y",
+                Expect::MinRows(1),
+            )
+        },
         shared(
             "bar_count",
             "VISUALISE DRAW bar MAPPING grp AS x FROM {table}",
