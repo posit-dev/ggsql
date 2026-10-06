@@ -276,13 +276,30 @@ fn run_battery(reader: &dyn Reader, ctx: &str, table: &str) {
             continue;
         }
         let query = case.query.replace("{table}", table);
-        let spec = spy.execute(&query).unwrap_or_else(|e| {
-            panic!(
+        // Catch panics too, not just Err: a Rust-side panic (e.g. a chrono
+        // overflow in scale training) otherwise surfaces with no case name
+        // and no pipeline SQL, which is undiagnosable from CI output.
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| spy.execute(&query)));
+        let spec = match result {
+            Ok(Ok(spec)) => spec,
+            Ok(Err(e)) => panic!(
                 "{ctx}: case '{}' failed: {e}\npipeline SQL:\n{}",
                 case.name,
                 spy.take_log().join("\n")
-            )
-        });
+            ),
+            Err(payload) => {
+                let msg = payload
+                    .downcast_ref::<&str>()
+                    .map(|s| s.to_string())
+                    .or_else(|| payload.downcast_ref::<String>().cloned())
+                    .unwrap_or_else(|| "unknown panic".to_string());
+                panic!(
+                    "{ctx}: case '{}' panicked: {msg}\npipeline SQL:\n{}",
+                    case.name,
+                    spy.take_log().join("\n")
+                );
+            }
+        };
         check_expect(&spec, &case, ctx, &spy);
     }
 }

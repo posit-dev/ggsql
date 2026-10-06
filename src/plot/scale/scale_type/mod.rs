@@ -1904,7 +1904,7 @@ pub(crate) struct ResolveCommonResult {
 /// Time64 value counts nanoseconds.
 fn temporal_unit_micros(dtype: &DataType) -> Option<f64> {
     match dtype {
-        DataType::Date32 => Some(86_400_000_000.0),
+        DataType::Date32 | DataType::Date64 => Some(86_400_000_000.0),
         DataType::Timestamp(_, _) => Some(1.0),
         DataType::Time64(_) => Some(0.001),
         _ => None,

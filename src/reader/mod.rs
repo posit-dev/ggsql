@@ -1037,6 +1037,9 @@ pub(crate) fn normalize_result_batch(
     let target_for = |dtype: &DataType| match dtype {
         DataType::Decimal128(_, _) => Some(DataType::Float64),
         DataType::LargeUtf8 | DataType::Utf8View => Some(DataType::Utf8),
+        // JDBC-style drivers (e.g. the Druid Foundry driver) surface DATE
+        // as Date64; Date32 is the date type the whole pipeline keys on.
+        DataType::Date64 => Some(DataType::Date32),
         _ => None,
     };
     if !schema
@@ -1122,7 +1125,7 @@ pub(crate) mod test_support;
 #[cfg(all(test, feature = "duckdb"))]
 mod helper_tests {
     use super::*;
-    use arrow::array::{Decimal128Array, StringViewArray};
+    use arrow::array::{Array, Decimal128Array, StringViewArray};
     use arrow::datatypes::{DataType, Field, Schema};
     use arrow::record_batch::RecordBatch;
     use std::sync::Arc;
@@ -1155,6 +1158,28 @@ mod helper_tests {
             .downcast_ref::<arrow::array::Float64Array>()
             .unwrap();
         assert!((col.value(0) - 123.45).abs() < 1e-9);
+    }
+
+    #[test]
+    fn normalize_result_batch_casts_date64_to_date32() {
+        let schema = Arc::new(Schema::new(vec![Field::new("d", DataType::Date64, true)]));
+        let batch = RecordBatch::try_new(
+            schema,
+            vec![Arc::new(arrow::array::Date64Array::from(vec![
+                Some(19000 * 86_400_000),
+                None,
+            ]))],
+        )
+        .unwrap();
+
+        let out = normalize_result_batch(batch).unwrap();
+        let col = out
+            .column(0)
+            .as_any()
+            .downcast_ref::<arrow::array::Date32Array>()
+            .expect("Date64 should normalize to Date32");
+        assert_eq!(col.value(0), 19000);
+        assert!(col.is_null(1));
     }
 
     #[test]

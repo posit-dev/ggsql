@@ -122,6 +122,12 @@ pub fn extract_series_value(
                 .ok()
                 .map(|a| ArrayElement::Number(a.value(row) as f64))
         }
+        DataType::Date64 => {
+            // Millisecond-precision days: convert to days since epoch
+            as_date64(col)
+                .ok()
+                .map(|a| ArrayElement::Number(a.value(row) as f64 / 86_400_000.0))
+        }
         DataType::Timestamp(_, _) => {
             // Return numeric microseconds since epoch (for range computation)
             as_timestamp_us(col)
