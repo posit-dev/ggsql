@@ -21,7 +21,7 @@ impl SqlDialect for DatabricksDialect {
     }
 
     fn quote_ident(&self, name: &str) -> String {
-        format!("`{}`", name.replace('`', "``"))
+        super::backtick_quote_ident(name)
     }
 
     // Spark treats double quotes as string literals, and SQL warehouses

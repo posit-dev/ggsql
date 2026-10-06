@@ -35,11 +35,7 @@ impl SqlDialect for MssqlDialect {
     }
 
     fn sql_boolean_literal(&self, value: bool) -> String {
-        if value {
-            "1".to_string()
-        } else {
-            "0".to_string()
-        }
+        super::one_zero_boolean_literal(value)
     }
 
     fn sql_ceil(&self, expr: &str) -> String {

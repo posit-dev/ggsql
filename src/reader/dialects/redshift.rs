@@ -22,11 +22,6 @@ impl SqlDialect for RedshiftDialect {
         expr: &str,
         kind: crate::plot::types::CastTargetType,
     ) -> String {
-        use crate::plot::types::CastTargetType as C;
-        match kind {
-            C::Date => format!("({expr} - DATE '1970-01-01')"),
-            C::DateTime => format!("(EXTRACT(EPOCH FROM {expr}) * 1000000)"),
-            _ => format!("CAST({expr} AS DOUBLE PRECISION)"),
-        }
+        super::epoch_via_subtract_extract(self, expr, kind)
     }
 }

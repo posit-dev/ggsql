@@ -43,7 +43,7 @@ impl SqlDialect for ClickHouseDialect {
     }
 
     fn quote_ident(&self, name: &str) -> String {
-        format!("`{}`", name.replace('`', "``"))
+        super::backtick_quote_ident(name)
     }
 
     fn sql_greatest(&self, exprs: &[&str]) -> String {

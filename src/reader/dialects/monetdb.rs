@@ -61,13 +61,8 @@ impl SqlDialect for MonetDbDialect {
         kind: crate::plot::types::CastTargetType,
     ) -> String {
         // MonetDB has no direct temporal -> double cast ("types date and
-        // double are not equal"); EXTRACT EPOCH yields seconds.
-        use crate::plot::types::CastTargetType as C;
-        match kind {
-            C::Date => format!("(EXTRACT(EPOCH FROM {expr}) / 86400)"),
-            C::DateTime => format!("(EXTRACT(EPOCH FROM {expr}) * 1000000)"),
-            _ => format!("CAST({expr} AS DOUBLE)"),
-        }
+        // double are not equal").
+        super::epoch_via_extract_seconds(self, expr, kind)
     }
 }
 

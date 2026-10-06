@@ -35,7 +35,7 @@ impl SqlDialect for DrillDialect {
     }
 
     fn quote_ident(&self, name: &str) -> String {
-        format!("`{}`", name.replace('`', "``"))
+        super::backtick_quote_ident(name)
     }
 }
 

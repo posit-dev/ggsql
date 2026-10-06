@@ -50,6 +50,58 @@ pub struct AnsiDialect;
 
 impl SqlDialect for AnsiDialect {}
 
+/// Backtick identifier quoting (MySQL/MariaDB, ClickHouse, BigQuery,
+/// Databricks, Drill); embedded backticks are doubled.
+pub(crate) fn backtick_quote_ident(name: &str) -> String {
+    format!("`{}`", name.replace('`', "``"))
+}
+
+/// `1`/`0` boolean literal for backends without a real BOOLEAN literal
+/// (SQL Server, Oracle, SQLite).
+pub(crate) fn one_zero_boolean_literal(value: bool) -> String {
+    if value { "1" } else { "0" }.to_string()
+}
+
+/// Postgres-style epoch conversion for backends that reject temporal →
+/// numeric casts: date subtraction yields integer days, EXTRACT EPOCH
+/// yields seconds scaled to microseconds. Shared by the Postgres and
+/// Redshift dialects.
+pub(crate) fn epoch_via_subtract_extract<D: SqlDialect + ?Sized>(
+    dialect: &D,
+    expr: &str,
+    kind: crate::plot::types::CastTargetType,
+) -> String {
+    use crate::plot::types::CastTargetType as C;
+    match kind {
+        C::Date => format!("({expr} - DATE '1970-01-01')"),
+        C::DateTime => format!("(EXTRACT(EPOCH FROM {expr}) * 1000000)"),
+        _ => {
+            let ty = dialect.number_type_name().unwrap_or("DOUBLE PRECISION");
+            dialect.sql_cast(expr, ty)
+        }
+    }
+}
+
+/// Epoch conversion for backends where EXTRACT EPOCH yields seconds for
+/// both dates and timestamps (DataFusion, MonetDB): dates scale to days,
+/// datetimes to microseconds; anything else falls through to a numeric
+/// cast in the dialect's number type.
+pub(crate) fn epoch_via_extract_seconds<D: SqlDialect + ?Sized>(
+    dialect: &D,
+    expr: &str,
+    kind: crate::plot::types::CastTargetType,
+) -> String {
+    use crate::plot::types::CastTargetType as C;
+    match kind {
+        C::Date => format!("(EXTRACT(EPOCH FROM {expr}) / 86400)"),
+        C::DateTime => format!("(EXTRACT(EPOCH FROM {expr}) * 1000000)"),
+        _ => {
+            let ty = dialect.number_type_name().unwrap_or("DOUBLE");
+            dialect.sql_cast(expr, ty)
+        }
+    }
+}
+
 /// CASE-based scalar greatest/least for backends without `GREATEST`/`LEAST`
 /// (SQL Server, SQLite, Druid, Drill, MonetDB). Builds a left-folded chain of
 /// two-way comparisons.
