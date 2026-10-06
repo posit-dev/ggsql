@@ -27,6 +27,9 @@ pub struct AdbcReader<D: Driver> {
     // takes &self.
     connection: RefCell<<D::DatabaseType as Database>::ConnectionType>,
     dialect: Box<dyn SqlDialect + Send>,
+    /// Registry-declared driver quirks (error-text conventions), when the
+    /// reader was built for a registered backend. `None` for ad-hoc drivers.
+    adbc_info: Option<crate::reader::registry::AdbcInfo>,
     registered_tables: crate::reader::RegisteredTables,
     // Driver-specific statement options (from `stmt.`-prefixed URI params)
     // applied to every statement created in execute_sql.
@@ -59,6 +62,7 @@ impl<D: Driver> AdbcReader<D> {
             _database: database,
             connection: RefCell::new(connection),
             dialect,
+            adbc_info: None,
             registered_tables: crate::reader::RegisteredTables::new(),
             statement_opts: Vec::new(),
         })
@@ -89,6 +93,7 @@ impl<D: Driver> AdbcReader<D> {
             _database: database,
             connection: RefCell::new(connection),
             dialect,
+            adbc_info: None,
             registered_tables: crate::reader::RegisteredTables::new(),
             statement_opts: Vec::new(),
         })
@@ -104,6 +109,14 @@ impl<D: Driver> AdbcReader<D> {
     /// serve anonymous result tables over the Storage Read API).
     pub fn with_statement_opts(mut self, opts: Vec<(String, String)>) -> Self {
         self.statement_opts = opts;
+        self
+    }
+
+    /// Attach the registry's driver quirks for this backend, so error-text
+    /// conventions (DDL-without-result-set signaling, ingest schema
+    /// mismatches) are honored where the driver requires them.
+    fn with_adbc_info(mut self, info: crate::reader::registry::AdbcInfo) -> Self {
+        self.adbc_info = Some(info);
         self
     }
 
@@ -356,8 +369,15 @@ impl AdbcReader<ManagedDriver> {
 
         let dialect = crate::reader::registry::resolve_dialect(&conn)?;
 
-        Self::new_with_database_opts(driver, dialect, opts)
-            .map(|reader| reader.with_statement_opts(conn.ggsql.stmt_options.clone()))
+        let reader = Self::new_with_database_opts(driver, dialect, opts)?
+            .with_statement_opts(conn.ggsql.stmt_options.clone());
+        // adbc://<driver> with a recognized short name also gets quirks.
+        Ok(
+            match adbc_info_for_scheme(if scheme == "adbc" { body } else { scheme }) {
+                Some(info) => reader.with_adbc_info(info),
+                None => reader,
+            },
+        )
     }
 }
 
@@ -510,24 +530,29 @@ where
                 Ok(reader) => reader,
                 Err(e) => {
                     let msg = e.to_string();
-                    // BigQuery DDL/DML jobs without a result set execute to
-                    // completion but fail at read time with "job has no
-                    // destination table to read". The statement has already
-                    // run — report an empty frame. Retrying via
-                    // execute_update would re-execute the statement, which
-                    // breaks non-idempotent DDL (a second CREATE TABLE fails
-                    // with "already exists").
-                    if msg.contains("no destination table to read") {
+                    // Driver-declared quirks (registry `AdbcInfo`): some
+                    // drivers signal "DDL without a result set" only through
+                    // error text.
+                    // - `ddl_empty_result_error` (BigQuery): the statement
+                    //   already ran — report an empty frame. Retrying via
+                    //   execute_update would re-execute it, which breaks
+                    //   non-idempotent DDL ("already exists").
+                    // - `ddl_retry_error` (Databricks): the query path cannot
+                    //   run resultless statements at all; retry via
+                    //   execute_update, the path meant for them.
+                    let info = self.adbc_info;
+                    if info
+                        .and_then(|i| i.ddl_empty_result_error)
+                        .is_some_and(|needle| msg.contains(needle))
+                    {
                         return Ok(DataFrame::from_record_batch(RecordBatch::new_empty(
                             std::sync::Arc::new(arrow::datatypes::Schema::empty()),
                         )));
                     }
-                    // The Databricks driver's query path cannot build a result
-                    // reader for statements without a result set (DDL), failing
-                    // with "schema bytes are empty" before executing. Retry via
-                    // execute_update — the ADBC path meant for exactly those
-                    // statements — and report an empty frame.
-                    if msg.contains("schema bytes are empty") {
+                    if info
+                        .and_then(|i| i.ddl_retry_error)
+                        .is_some_and(|needle| msg.contains(needle))
+                    {
                         drop(stmt);
                         let mut update_stmt = self.new_query_statement(&mut conn, sql)?;
                         update_stmt.execute_update().map_err(|e| {
@@ -663,7 +688,11 @@ where
                 match stmt.execute_update() {
                     Ok(_) => break,
                     Err(e) => {
-                        if attempts == 0 && e.to_string().contains("different schema") {
+                        let schema_mismatch = self
+                            .adbc_info
+                            .and_then(|i| i.ingest_schema_align_error)
+                            .is_some_and(|needle| e.to_string().contains(needle));
+                        if attempts == 0 && schema_mismatch {
                             attempts += 1;
                             match conn.get_table_schema(None, None, name) {
                                 Ok(target) => {
