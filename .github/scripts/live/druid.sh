@@ -39,7 +39,12 @@ wait_for druid-router curl -sf http://localhost:8888/status/health
 # names the columns, but the planner still requires an explicit signature
 # as EXTERN's third argument ("EXTERN requires either a [signature] value
 # or an EXTEND clause"). All extern columns are strings, so CAST the
-# numerics in the SELECT.
+# numerics in the SELECT. `day` deliberately stays a string: Druid's DATE
+# is a LONG milliseconds internally and the Foundry driver surfaces it as
+# plain Int64, which downstream is indistinguishable from any integer
+# (a date transform on those values overflows chrono::Duration::days).
+# As ISO text it round-trips through the sqlite cache's read-back parse
+# into Date32 — the same text-day shape the SQLite leg runs with.
 payload=$(FIXTURE_CSV="$repo_root/.github/scripts/live/ggsql_live_test.csv" python3 - <<'EOF'
 import json, os, pathlib
 csv_text = pathlib.Path(os.environ["FIXTURE_CSV"]).read_text().strip()
@@ -58,7 +63,7 @@ SELECT TIMESTAMP '2020-01-01 00:00:00' AS __time,
        CAST(id AS BIGINT) AS id,
        CAST(val AS DOUBLE) AS val,
        grp,
-       CAST("day" AS DATE) AS "day",
+       "day",
        CAST("mixed Case" AS DOUBLE) AS "mixed Case"
 FROM TABLE(EXTERN('{inline}', '{csv_fmt}', '{sig}'))
 PARTITIONED BY ALL
