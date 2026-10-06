@@ -931,8 +931,7 @@ pub fn default_sql_aggregate(
     Some(s)
 }
 
-pub struct AnsiDialect;
-impl SqlDialect for AnsiDialect {}
+pub use dialects::AnsiDialect;
 
 /// Fail fast when a spatial feature is used on a backend whose dialect
 /// reports `supports_spatial() == false`, rather than emitting spatial SQL
@@ -1076,7 +1075,7 @@ pub(crate) fn register_column_type(
 
 /// Build a `CREATE TABLE <name> (col TYPE, …)` statement from an Arrow
 /// schema, with column types from [`register_column_type`].
-#[cfg(any(feature = "adbc", feature = "odbc"))]
+#[cfg(feature = "adbc")]
 pub(crate) fn create_table_sql(
     name: &str,
     schema: &arrow::datatypes::Schema,
@@ -1169,6 +1168,7 @@ pub(crate) fn normalize_result_batch(
 /// datetimes (`YYYY-MM-DD` + `T`/space + time) it becomes Timestamp(µs).
 /// Anything else is left untouched. Columns with no non-null values are
 /// left alone — there is nothing to infer from.
+#[cfg(feature = "adbc")]
 pub(crate) fn sniff_temporal_strings_in_batch(
     batch: arrow::record_batch::RecordBatch,
 ) -> Result<arrow::record_batch::RecordBatch> {
