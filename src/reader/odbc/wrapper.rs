@@ -44,7 +44,10 @@ pub(crate) fn extract_diagnostic(handle_type: SqlSmallInt, handle: SqlHandle) ->
         }
 
         if text_len as usize >= buf.len() {
-            buf.resize(text_len as usize + 1, 0);
+            // Clamp to what fits a SqlSmallInt length argument — a longer
+            // diagnostic would wrap the `as SqlSmallInt` cast negative.
+            let new_len = (text_len as usize + 1).min(SqlSmallInt::MAX as usize);
+            buf.resize(new_len, 0);
             let mut text_len2: SqlSmallInt = 0;
             let rc2 = unsafe {
                 (f.SQLGetDiagRec)(
@@ -211,8 +214,9 @@ unsafe fn free_stmt(handle: SqlHStmt) {
 /// so failures are asserted in debug builds and otherwise ignored.
 fn drop_stmt_handle(handle: SqlHStmt) {
     let rc = unsafe { (fns().SQLFreeHandle)(SQL_HANDLE_STMT, handle) };
+    // Skip the assert while unwinding: a second panic here would abort.
     debug_assert!(
-        succeeded(rc),
+        succeeded(rc) || std::thread::panicking(),
         "SQLFreeHandle(STMT) failed: {}",
         extract_diagnostic(SQL_HANDLE_STMT, handle)
     );

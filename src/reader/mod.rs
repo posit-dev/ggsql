@@ -411,10 +411,8 @@ pub trait SqlDialect {
     /// The default implements `percentile_cont` semantics with window
     /// functions only (no native quantile aggregate required): with
     /// `x = fraction * (cnt - 1)`, the result interpolates linearly between
-    /// the rows ranked `floor(x) + 1` and `ceil(x) + 1`. This is exact for
-    /// every fraction — the earlier NTILE(4) construction was only exact at
-    /// the quartiles and returned boundary averages (or NULL past p75)
-    /// elsewhere.
+    /// the rows ranked `floor(x) + 1` and `ceil(x) + 1`, which is exact for
+    /// every fraction.
     fn sql_quantile(&self, column: &str, fraction: f64, from: &str, groups: &[String]) -> String {
         // The correlation predicate references the enclosing query's alias
         // and this scalar subquery's own alias, so both are needed quoted.
@@ -500,16 +498,30 @@ pub trait SqlDialect {
     /// (`INTERVAL n DAY`) is not portable.
     fn sql_date_literal(&self, days_since_epoch: i32) -> String {
         // 719163 is the proleptic Gregorian day number of the Unix epoch.
-        let date = chrono::NaiveDate::from_num_days_from_ce_opt(719163 + days_since_epoch)
-            .expect("date literal out of range");
+        // Clamp out-of-range input rather than panicking in library code.
+        let day = (days_since_epoch as i64)
+            .saturating_add(719163)
+            .clamp(i32::MIN as i64, i32::MAX as i64) as i32;
+        let date = chrono::NaiveDate::from_num_days_from_ce_opt(day).unwrap_or({
+            if day < 0 {
+                chrono::NaiveDate::MIN
+            } else {
+                chrono::NaiveDate::MAX
+            }
+        });
         format!("DATE '{}'", date.format("%Y-%m-%d"))
     }
 
     /// SQL literal for a datetime value (microseconds since Unix epoch).
     fn sql_datetime_literal(&self, microseconds_since_epoch: i64) -> String {
+        // Clamp out-of-range input rather than panicking in library code.
         let dt = chrono::DateTime::from_timestamp_micros(microseconds_since_epoch)
-            .expect("datetime literal out of range")
-            .naive_utc();
+            .map(|d| d.naive_utc())
+            .unwrap_or(if microseconds_since_epoch < 0 {
+                chrono::NaiveDateTime::MIN
+            } else {
+                chrono::NaiveDateTime::MAX
+            });
         let base = dt.format("%Y-%m-%d %H:%M:%S");
         let micros = microseconds_since_epoch.rem_euclid(1_000_000);
         if micros == 0 {
@@ -521,11 +533,14 @@ pub trait SqlDialect {
 
     /// SQL literal for a time value (nanoseconds since midnight).
     fn sql_time_literal(&self, nanoseconds_since_midnight: i64) -> String {
-        let seconds = nanoseconds_since_midnight.div_euclid(1_000_000_000);
-        let nanos = nanoseconds_since_midnight.rem_euclid(1_000_000_000);
+        // Clamp into a representable time-of-day rather than letting
+        // negative or ≥ 24h input wrap the `as u32` cast and panic.
+        let clamped = nanoseconds_since_midnight.clamp(0, 86_399_999_999_999);
+        let seconds = clamped.div_euclid(1_000_000_000);
+        let nanos = clamped.rem_euclid(1_000_000_000);
         let time =
             chrono::NaiveTime::from_num_seconds_from_midnight_opt(seconds as u32, nanos as u32)
-                .expect("time literal out of range");
+                .expect("time literal is in range after clamping");
         let base = time.format("%H:%M:%S");
         if nanos == 0 {
             format!("TIME '{base}'")

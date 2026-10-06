@@ -90,10 +90,14 @@ pub fn dialect_for_scheme(scheme: &str) -> Option<Box<dyn SqlDialect + Send>> {
 
 /// CASE-based scalar greatest/least for backends without `GREATEST`/`LEAST`
 /// (SQL Server, SQLite, Druid, Drill, MonetDB). Builds a left-folded chain of
-/// two-way comparisons, matching the old trait default.
+/// two-way comparisons.
 pub(crate) fn case_greatest(exprs: &[&str]) -> String {
-    let mut result = exprs[0].to_string();
-    for expr in &exprs[1..] {
+    let Some((first, rest)) = exprs.split_first() else {
+        debug_assert!(false, "case_greatest called with no expressions");
+        return String::new();
+    };
+    let mut result = first.to_string();
+    for expr in rest {
         result = format!("(CASE WHEN ({result}) >= ({expr}) THEN ({result}) ELSE ({expr}) END)");
     }
     result
@@ -101,8 +105,12 @@ pub(crate) fn case_greatest(exprs: &[&str]) -> String {
 
 /// See [`case_greatest`].
 pub(crate) fn case_least(exprs: &[&str]) -> String {
-    let mut result = exprs[0].to_string();
-    for expr in &exprs[1..] {
+    let Some((first, rest)) = exprs.split_first() else {
+        debug_assert!(false, "case_least called with no expressions");
+        return String::new();
+    };
+    let mut result = first.to_string();
+    for expr in rest {
         result = format!("(CASE WHEN ({result}) <= ({expr}) THEN ({result}) ELSE ({expr}) END)");
     }
     result
