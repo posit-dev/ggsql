@@ -488,8 +488,10 @@ impl Reader for CachingReader {
     ) -> Result<()> {
         // Read the body via the source surface, then register the result
         // into the cache.
+        // The body executes against the primary, so aliases must be quoted
+        // with the primary's dialect, not the cache's.
         let body = super::wrap_with_column_aliases(
-            &|c: &str| self.cache.dialect().quote_ident(c),
+            &|c: &str| self.primary.dialect().quote_ident(c),
             body_sql,
             column_aliases,
         );
@@ -1408,6 +1410,42 @@ mod behavior_tests {
             spec.is_ok(),
             "file layer source via cache should succeed: {:?}",
             spec.err()
+        );
+    }
+
+    #[test]
+    fn test_materialize_table_quotes_aliases_with_primary_dialect() {
+        // The materialized body executes against the primary, so its column
+        // aliases must be quoted with the primary's dialect (backticks for
+        // MySQL), not the cache's (double quotes for DuckDB).
+        use crate::reader::dialects::{DuckDbDialect, MySqlDialect};
+        use crate::reader::test_support::StubReader;
+
+        let (primary, primary_sql) = StubReader::new(Box::new(MySqlDialect));
+        let (cache, _cache_sql) = StubReader::new(Box::new(DuckDbDialect));
+        // Memoization disabled: the stub fabricates Float64 results that the
+        // memo metadata path cannot store, which is beside the point here.
+        let reader = CachingReader::with_config(
+            Box::new(primary),
+            Box::new(cache),
+            "mysql://localhost/db",
+            "duckdb",
+            CacheConfig {
+                enabled: false,
+                ..CacheConfig::default()
+            },
+        );
+        reader
+            .materialize_table("__ggsql_test__", &["a b".to_string()], "SELECT 1 AS x")
+            .unwrap();
+        let log = primary_sql.lock().unwrap();
+        assert!(
+            log.iter().any(|s| s.contains("`a b`")),
+            "primary should receive a backtick-quoted alias, got: {log:?}"
+        );
+        assert!(
+            !log.iter().any(|s| s.contains("\"a b\"")),
+            "primary must not receive cache-dialect quoting, got: {log:?}"
         );
     }
 }
