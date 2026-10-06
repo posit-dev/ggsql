@@ -7,7 +7,7 @@
 
 use crate::reader::SqlDialect;
 
-/// MonetDB dialect (requested in #509).
+/// MonetDB dialect.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct MonetDbDialect;
 
@@ -28,8 +28,6 @@ impl SqlDialect for MonetDbDialect {
     }
 
     fn sql_quantile(&self, column: &str, fraction: f64, _from: &str, _groups: &[String]) -> String {
-        // Native aggregate; computes within the caller's GROUP BY, so `from`
-        // and `groups` are unused.
         format!(
             "QUANTILE({column}, {fraction})",
             column = self.quote_ident(column)

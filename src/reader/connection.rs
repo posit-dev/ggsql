@@ -191,8 +191,6 @@ fn cache_uri(scheme: &str) -> Result<&'static str> {
     match scheme {
         "duckdb" => Ok("duckdb://memory"),
         "sqlite" => Ok("sqlite://memory"),
-        // In-process via the Foundry ADBC driver; its in-memory catalog
-        // matches the ephemerality of the other two defaults.
         "datafusion" => Ok("datafusion://"),
         _ => Err(GgsqlError::ReaderError(format!(
             "Unsupported cache backend '{}'. Supported: duckdb, sqlite, datafusion",
@@ -303,12 +301,8 @@ fn build_backend_reader(
         }
     }
 
-    // 2. ADBC driver, when loadable.
     #[cfg(feature = "adbc")]
     if wants_adbc && (scheme == "adbc" || crate::reader::adbc::adbc_driver_available(scheme)) {
-        // The driver library loaded (probe); a failure here is a genuine
-        // connection/config error, surfaced with an ODBC hint rather
-        // than silently masking it.
         return crate::reader::adbc::AdbcReader::from_connection_string(uri)
             .map(|r| Box::new(r) as Box<dyn Reader + Send>)
             .map_err(|e| {
@@ -327,7 +321,6 @@ fn build_backend_reader(
         )));
     }
 
-    // 3. ODBC fallback.
     #[cfg(feature = "odbc")]
     if let Some(entry) = entry {
         if let Some(conn_str) = synthesize_odbc_conn_str(entry, conn) {
@@ -435,7 +428,6 @@ fn synthesize_odbc_conn_str(
             .and_then(|(_, v)| v.as_deref())
     };
 
-    // Query params may already be a (partial) ODBC connection string.
     let dsn = param("dsn");
     let driver = param("driver").map(|d| d.trim_matches(|c| c == '{' || c == '}'));
     let env_driver = std::env::var(odbc_driver_env_var(entry.scheme)).ok();
@@ -472,7 +464,6 @@ fn synthesize_odbc_conn_str(
     if let Some(password) = parsed.password {
         parts.push(format!("PWD={}", password));
     }
-    // Pass through remaining query params verbatim.
     for (key, value) in &conn.params {
         if skip_keys.contains(&key.to_ascii_lowercase().as_str()) {
             continue;
@@ -555,7 +546,6 @@ fn auto_cache_if_needed(
     if conn.cache_disabled_off() {
         return Ok(reader);
     }
-    // The cache backends themselves never need a cache.
     if conn.scheme == "duckdb" || conn.scheme == "sqlite" {
         return Ok(reader);
     }
@@ -711,15 +701,12 @@ mod tests {
         use crate::reader::duckdb::DuckDBReader;
         use crate::reader::test_support::ReadOnlyReader;
 
-        // A read-only primary (temp-table probe fails) gets wrapped.
         let primary = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
         let conn = ConnUri::parse("postgres://u@h/db").unwrap();
         let reader =
             auto_cache_if_needed(Box::new(ReadOnlyReader::new(Box::new(primary))), &conn).unwrap();
         assert!(reader.caches_sources(), "expected a caching reader");
 
-        // The wrapped reader runs the full pipeline: temp tables and stat
-        // transforms land in the cache.
         let spec = reader
             .execute("SELECT 1.0 AS x, 2.0 AS y VISUALISE x, y DRAW point")
             .unwrap();
@@ -732,20 +719,17 @@ mod tests {
         use crate::reader::duckdb::DuckDBReader;
         use crate::reader::test_support::ReadOnlyReader;
 
-        // A writable primary passes the probe and is used directly.
         let primary = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
         let conn = ConnUri::parse("postgres://u@h/db").unwrap();
         let reader = auto_cache_if_needed(Box::new(primary), &conn).unwrap();
         assert!(!reader.caches_sources(), "no cache expected");
 
-        // cache=off wins even when the probe would fail.
         let primary = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
         let conn = ConnUri::parse("postgres://u@h/db?cache=off").unwrap();
         let reader =
             auto_cache_if_needed(Box::new(ReadOnlyReader::new(Box::new(primary))), &conn).unwrap();
         assert!(!reader.caches_sources(), "cache=off must be honored");
 
-        // The cache backends themselves are never wrapped.
         let primary = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
         let conn = ConnUri::parse("duckdb://memory").unwrap();
         let reader = auto_cache_if_needed(Box::new(primary), &conn).unwrap();
@@ -798,8 +782,6 @@ mod tests {
     #[cfg(feature = "duckdb")]
     #[test]
     fn test_native_reader_still_preferred_for_duckdb() {
-        // duckdb:// goes through the native in-process reader even though
-        // the registry also lists an ADBC driver for it.
         assert!(build_reader("duckdb://memory").is_ok());
         assert!(build_reader("duckdb://memory?reader=native").is_ok());
     }
@@ -822,8 +804,6 @@ mod tests {
 
     #[test]
     fn test_build_reader_postgres_errors_informatively_without_drivers() {
-        // With no ADBC driver installed and no ODBC hints, the error must
-        // explain both paths rather than saying "not yet implemented".
         let err = build_reader("postgres://user@localhost:5432/db")
             .err()
             .unwrap()
@@ -851,7 +831,6 @@ mod tests {
         assert!(conn.contains("UID=user"), "got: {conn}");
         assert!(conn.contains("PWD=pw"), "got: {conn}");
         assert!(conn.contains("sslmode=require"), "got: {conn}");
-        // DSN form does not inject Server/Database (the DSN defines them).
         assert!(!conn.contains("Server="), "got: {conn}");
     }
 
@@ -869,9 +848,6 @@ mod tests {
     #[cfg(feature = "odbc")]
     #[test]
     fn test_synthesize_odbc_conn_str_dbq_suppresses_server_synthesis() {
-        // Oracle ODBC wants Driver + DBQ and nothing else: the URI's
-        // host/port/database parts must not become Server/Port/Database
-        // keywords alongside DBQ.
         let conn = synthesize(
             "oracle",
             "ggsql:pw@localhost:1521/XEPDB1?Driver={Oracle}&DBQ=(DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)(HOST=localhost)(PORT=1521))(CONNECT_DATA=(SERVICE_NAME=XEPDB1)))",
@@ -994,7 +970,6 @@ mod tests {
         assert_eq!(over.max_bytes, Some(256 * 1024 * 1024));
         assert_eq!(over.enabled, Some(false));
 
-        // Non-cache params contribute no overrides and are left in place.
         let conn =
             ConnUri::parse("odbc://DSN=foo?ttl=99&cache_ttl=10&cache_max_bytes=8mb").unwrap();
         let over = conn.cache_config_override();

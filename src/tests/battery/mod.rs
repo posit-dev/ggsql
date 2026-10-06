@@ -174,14 +174,11 @@ const fn shared(name: &'static str, query: &'static str, expect: Expect) -> Case
 /// only live, SQL-shape pinning only in goldens.
 pub fn cases() -> Vec<Case> {
     vec![
-        // Grouped scatter: identifier quoting, qualified projections, and
-        // both discrete (color) and continuous (x/y) channels.
         shared(
             "scatter_color",
             "VISUALISE DRAW point MAPPING id AS x, val AS y, grp AS color FROM {table}",
             Expect::ExactRows(8),
         ),
-        // Histogram: two-stage binning with GROUP BY-safe derived columns.
         shared(
             "histogram",
             "VISUALISE DRAW histogram MAPPING val AS x FROM {table}",
@@ -217,8 +214,6 @@ pub fn cases() -> Vec<Case> {
             "VISUALISE DRAW density MAPPING val AS x, grp AS color FROM {table}",
             Expect::MinRows(1),
         ),
-        // Temporal x column: date handling in scale training and axis
-        // projection.
         shared(
             "line_temporal",
             "SELECT * FROM {table} VISUALISE day AS x, val AS y DRAW line",
@@ -229,44 +224,36 @@ pub fn cases() -> Vec<Case> {
             "VISUALISE DRAW bar MAPPING grp AS x FROM {table}",
             Expect::ExactRows(2),
         ),
-        // Smooth (OLS): aggregate coefficient CTE with a derived table.
         shared(
             "smooth_lm",
             "VISUALISE DRAW smooth MAPPING id AS x, val AS y FROM {table} SETTING method => 'ols'",
             Expect::Runs,
         ),
-        // Ribbon: window-function densify into a closed polygon outline.
         shared(
             "ribbon",
             "VISUALISE DRAW ribbon MAPPING id AS x, id AS ymin, val AS ymax FROM {table}",
             Expect::Runs,
         ),
-        // Segment: ROW_NUMBER densify plus a cross join against a vertex
-        // table.
         shared(
             "segment",
             "VISUALISE DRAW segment MAPPING id AS x, val AS y, id AS xend, val AS yend FROM {table}",
             Expect::Runs,
         ),
-        // Tile: two-dimensional binning with post-aggregation.
         shared(
             "tile",
             "VISUALISE DRAW tile MAPPING val AS x, id AS y FROM {table}",
             Expect::MinRows(1),
         ),
-        // Area: ribbon variant with a synthesized zero baseline.
         shared(
             "area",
             "VISUALISE DRAW area MAPPING id AS x, val AS y FROM {table}",
             Expect::Runs,
         ),
-        // Violin: per-group density with mirrored outline.
         shared(
             "violin",
             "VISUALISE DRAW violin MAPPING grp AS x, val AS y FROM {table}",
             Expect::MinRows(1),
         ),
-        // SELECT-wrapped query with a row filter.
         shared(
             "filter_layer",
             "SELECT * FROM {table} VISUALISE DRAW point MAPPING id AS x, val AS y FILTER grp = 'a'",
@@ -282,15 +269,11 @@ pub fn cases() -> Vec<Case> {
             "VISUALISE DRAW point MAPPING day AS x, val AS y FROM {table} SCALE BINNED x VIA identity",
             Expect::MinRows(1),
         ),
-        // Binned scale keeping the temporal transform: the CASE branches
-        // compare against temporal literals, exercising
-        // sql_date_literal/sql_datetime_literal per dialect.
         shared(
             "binned_temporal_date",
             "VISUALISE DRAW point MAPPING day AS x, val AS y FROM {table} SCALE BINNED x VIA date",
             Expect::MinRows(1),
         ),
-        // Simple (non-quantile) aggregate through the stat path.
         shared(
             "sum_aggregate",
             "VISUALISE DRAW bar MAPPING grp AS x, val AS y FROM {table} SETTING aggregate => 'y:sum'",

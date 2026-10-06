@@ -151,8 +151,6 @@ impl Reader for OdbcReader {
         };
 
         cursor_to_dataframe(cursor, self.batch_size).map_err(|e| {
-            // Identify which pipeline statement failed — fetch errors from
-            // the driver (e.g. Oracle HY090) otherwise carry no query context.
             let snippet: String = sql.chars().take(200).collect();
             GgsqlError::ReaderError(format!("{e} [statement: {snippet}]"))
         })
@@ -171,8 +169,6 @@ impl Reader for OdbcReader {
             .fields()
             .iter()
             .map(|field| {
-                // Types without a DDL mapping fall back to TEXT, matching
-                // this reader's historical behavior for exotic Arrow types.
                 let ty = super::register_column_type(&*self.dialect, field.data_type())
                     .unwrap_or_else(|_| "TEXT".to_string());
                 format!("{} {}", self.dialect.quote_ident(field.name()), ty)
@@ -823,7 +819,6 @@ mod tests {
         let d = detect_dialect(None, "Driver=Snowflake;Server=foo").unwrap();
         assert!(!d.sql_greatest(&["a", "b"]).is_empty());
 
-        // Unknown backends error rather than silently using ANSI.
         let err = detect_dialect(None, "Driver=SomeOther;Server=localhost")
             .err()
             .unwrap()

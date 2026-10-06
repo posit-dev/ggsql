@@ -396,7 +396,6 @@ fn simple_stat_sql_inline(name: &str, qcol: &str, dialect: &dyn SqlDialect) -> O
 /// percentile fallback). Used to surface a clear error before SQL is built.
 fn dialect_supports(name: &str, dialect: &dyn SqlDialect) -> bool {
     if percentile_fraction(name).is_some() || name == "iqr" {
-        // Always supported: `sql_quantile` has a portable default.
         return true;
     }
     dialect.sql_aggregate(name, "x").is_some()
@@ -461,7 +460,6 @@ fn simple_stat_sql_quantile(
     if let Some(frac) = percentile_fraction(name) {
         return dialect.sql_quantile(raw_col, frac, src_alias, group_cols);
     }
-    // iqr
     let p75 = dialect.sql_quantile(raw_col, 0.75, src_alias, group_cols);
     let p25 = dialect.sql_quantile(raw_col, 0.25, src_alias, group_cols);
     format!("({} - {})", p75, p25)
@@ -2284,7 +2282,6 @@ mod tests {
         .unwrap();
         match result {
             StatResult::Transformed { query, .. } => {
-                // The fallback dialect's sql_quantile uses ROW_NUMBER.
                 assert!(query.contains("ROW_NUMBER()"));
                 // No explosion any more — single SELECT, no UNION ALL.
                 assert!(!query.contains("UNION ALL"));

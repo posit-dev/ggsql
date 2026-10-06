@@ -127,7 +127,6 @@ pub fn split_cte_prefix(query: &str) -> Option<(&str, &str)> {
         i += 9;
     }
     loop {
-        // CTE name: quoted or bare identifier
         skip_ws(bytes, &mut i);
         if i >= bytes.len() {
             return None;
@@ -147,23 +146,19 @@ pub fn split_cte_prefix(query: &str) -> Option<(&str, &str)> {
             return None;
         }
         skip_ws(bytes, &mut i);
-        // Optional column list
         if i < bytes.len() && bytes[i] == b'(' {
             skip_balanced_parens(bytes, &mut i)?;
             skip_ws(bytes, &mut i);
         }
-        // AS keyword
         if s.len() - i < 2 || !s[i..i + 2].eq_ignore_ascii_case("as") {
             return None;
         }
         i += 2;
         skip_ws(bytes, &mut i);
-        // CTE body: parenthesised subquery
         if i >= bytes.len() || bytes[i] != b'(' {
             return None;
         }
         skip_balanced_parens(bytes, &mut i)?;
-        // Keep whitespace out of the returned CTE slice.
         let cte_end = i;
         let mut j = i;
         skip_ws(bytes, &mut j);
@@ -232,7 +227,6 @@ mod tests {
 
     #[test]
     fn detects_from_dbms_name() {
-        // Probe with number_type_name, which differs across these dialects.
         assert_type_name(
             &*detect_dialect(Some("PostgreSQL"), None).unwrap(),
             Some("DOUBLE PRECISION"),
@@ -287,7 +281,6 @@ mod tests {
 
     #[test]
     fn mssql_wins_over_generic_sql() {
-        // "SQL" appears in many names; make sure MSSQL patterns win.
         let d = detect_dialect(Some("Microsoft SQL Server"), None).unwrap();
         assert_eq!(d.boolean_type_name(), Some("BIT"));
     }

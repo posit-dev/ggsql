@@ -230,8 +230,6 @@ fn load_driver_for_scheme(scheme: &str) -> Result<ManagedDriver> {
         GgsqlError::ReaderError(format!("No known ADBC driver for scheme '{}://'", scheme))
     })?;
     let (lib_name, dbc_id) = (info.lib_name, info.dbc_id);
-    // Probe the canonical library name first, then the dbc manifest ID;
-    // collect both errors so the message shows everything that was tried.
     let mut errors = Vec::new();
     for name in [lib_name, dbc_id] {
         match ManagedDriver::load_from_name(name, None, AdbcVersion::V110, DEFAULT_LOAD_FLAGS, None)
@@ -282,11 +280,6 @@ impl AdbcReader<ManagedDriver> {
         let query = query.as_str();
 
         let (driver, opts) = if scheme == "adbc" {
-            // body is the driver name or path (may be a short scheme alias).
-            // Known aliases go through the same dual-probe as scheme URIs
-            // (canonical library name, then dbc manifest ID) plus the
-            // per-scheme env override; anything else is a name or path for
-            // the driver manager to resolve directly.
             let driver = if adbc_info_for_scheme(body).is_some() {
                 load_driver_for_scheme(body)?
             } else {
@@ -356,8 +349,6 @@ fn resolve_dialect(
             .expect("checked by caller")
             .dialect());
     }
-    // `adbc://<driver>`: the body may be a scheme alias (postgres) or a
-    // canonical driver name (adbc_driver_postgresql) — try both.
     let body = conn.body.as_str();
     if let Some(entry) = crate::reader::registry::by_scheme(body) {
         return Ok(entry.dialect());
@@ -796,7 +787,6 @@ mod tests {
             ),
             "http://localhost:8123"
         );
-        // Other schemes keep the full URI, query included.
         assert_eq!(
             driver_uri_for(
                 DriverUri::Passthrough,
@@ -818,7 +808,6 @@ mod tests {
             ),
             "root:pw@tcp(localhost:3306)/ggsql"
         );
-        // No userinfo.
         assert_eq!(
             driver_uri_for(
                 DriverUri::MySqlGoDsn,
@@ -840,13 +829,10 @@ mod tests {
                 "bigquery.auth_type=anonymous".to_string()
             )
         );
-        // Project only, no params.
         assert_eq!(
             bigquery_driver_uri("my-proj", ""),
             ("bigquery:///my-proj".to_string(), String::new())
         );
-        // Host-like first segment: Simba form passes through, Simba params
-        // stay in the URI, everything else goes standalone.
         assert_eq!(
             bigquery_driver_uri(
                 "localhost:9050/ggsql-test",
@@ -857,7 +843,6 @@ mod tests {
                 "bigquery.endpoint=http://localhost:9050".to_string()
             )
         );
-        // An explicit dataset param wins over the path dataset.
         assert_eq!(
             bigquery_driver_uri("proj/ds1", "bigquery.dataset_id=ds2"),
             (

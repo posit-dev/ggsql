@@ -422,8 +422,6 @@ pub trait SqlDialect {
         let __ggsql_tile__ = self.quote_ident("__ggsql_tile__");
         let quoted_column = self.quote_ident(column);
 
-        // x = fraction * (cnt - 1) is the zero-based fractional rank of the
-        // percentile; interpolate between the rows bracketing it.
         let x = format!("{fraction} * (cnt - 1)");
         let lo = format!("1 + FLOOR({x})");
         let hi = format!("1 + {}", self.sql_ceil(&x));
@@ -563,8 +561,8 @@ pub trait SqlDialect {
     /// ggsql needs to stage internal tables (CTEs, stat transforms), so a
     /// connection through it must always be wrapped in a caching reader.
     ///
-    /// Set this for query engines with no DDL at all (Druid, Drill,
-    /// DataFusion) or where `CREATE TEMP TABLE` is broadly unsupported
+    /// Set this for query engines with no DDL at all (Druid, Drill)
+    /// or where `CREATE TEMP TABLE` is broadly unsupported
     /// (Trino). Backends whose support is merely *uncertain* — e.g. the
     /// account may be read-only — should keep the default: connections are
     /// probed once on connect and wrapped only when the probe fails.
@@ -1151,7 +1149,6 @@ mod helper_tests {
         let out = normalize_result_batch(batch).unwrap();
         assert_eq!(out.column(0).data_type(), &DataType::Float64);
         assert_eq!(out.column(1).data_type(), &DataType::Utf8);
-        // 12345 with scale 2 → 123.45
         let col = out
             .column(0)
             .as_any()

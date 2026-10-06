@@ -204,7 +204,6 @@ fn stat_ols(
         x = x_col,
         y = y_col,
         data = query,
-        // Explicit alias: MySQL/MariaDB reject unaliased derived tables.
         data_alias = dialect.quote_ident("__ggsql_smooth__"),
         x_out = dialect.quote_ident(&naming::stat_column("pos1")),
         y_out = dialect.quote_ident(&naming::stat_column("intensity")), // We name this 'intensity' to be consistent with the nadaraya-watson kernel
@@ -301,7 +300,6 @@ fn stat_tls(
         x = x_col,
         y = y_col,
         data = query,
-        // Explicit alias: MySQL/MariaDB reject unaliased derived tables.
         data_alias = dialect.quote_ident("__ggsql_smooth__"),
         x_out = dialect.quote_ident(&naming::stat_column("pos1")),
         y_out = dialect.quote_ident(&naming::stat_column("intensity")),

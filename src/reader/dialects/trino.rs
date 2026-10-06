@@ -4,9 +4,9 @@
 //! `approx_percentile`, quoted interval literals, and per-row-envelope
 //! bounding boxes (Trino has no `ST_Extent`).
 //!
-//! Temp tables: most Trino connectors don't support `CREATE TEMP TABLE`;
-//! for real workloads pair the Trino reader with the caching reader
-//! (e.g. `duckdb+trino://...`) so internal tables land in the cache.
+//! Temp tables: most Trino connectors don't support `CREATE TEMP TABLE`,
+//! so connections through Trino are always wrapped in a caching reader
+//! (`requires_cache`) and internal tables land in the cache.
 
 use crate::reader::SqlDialect;
 
@@ -34,8 +34,6 @@ impl SqlDialect for TrinoDialect {
     }
 
     fn sql_quantile(&self, column: &str, fraction: f64, _from: &str, _groups: &[String]) -> String {
-        // Native aggregate; computes within the caller's GROUP BY, so `from`
-        // and `groups` are unused.
         format!(
             "approx_percentile({column}, {fraction})",
             column = self.quote_ident(column)

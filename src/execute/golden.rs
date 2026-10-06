@@ -202,7 +202,6 @@ fn check_dialect(name: &str) {
 fn unified_diff(old: &str, new: &str) -> String {
     let a: Vec<&str> = old.lines().collect();
     let b: Vec<&str> = new.lines().collect();
-    // LCS lengths over suffixes.
     let mut lcs = vec![vec![0usize; b.len() + 1]; a.len() + 1];
     for i in (0..a.len()).rev() {
         for j in (0..b.len()).rev() {
@@ -213,7 +212,6 @@ fn unified_diff(old: &str, new: &str) -> String {
             };
         }
     }
-    // Walk the table, coalescing changes into hunks with context.
     let mut ops: Vec<(char, &str)> = Vec::new();
     let (mut i, mut j) = (0, 0);
     while i < a.len() && j < b.len() {
@@ -237,7 +235,6 @@ fn unified_diff(old: &str, new: &str) -> String {
         ops.push(('+', b[j]));
         j += 1;
     }
-    // Emit with 3 lines of context around changes, hunks merged when close.
     const CTX: usize = 3;
     let changed: Vec<usize> = ops
         .iter()

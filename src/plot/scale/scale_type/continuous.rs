@@ -298,7 +298,6 @@ mod tests {
 
         assert!(sql.is_some());
         let sql = sql.unwrap();
-        // Should generate scalar MAX/MIN for squish (ANSI default: GREATEST/LEAST)
         assert!(sql.contains("GREATEST("));
         assert!(sql.contains("LEAST("));
     }

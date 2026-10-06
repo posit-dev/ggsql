@@ -2,13 +2,14 @@
 //!
 //! Druid SQL (Calcite-based) is restrictive: no correlated scalar subqueries
 //! (so the default `sql_percentile` fallback will fail), no DATE/TIME types
-//! (time is always a TIMESTAMP), no temp tables, and no spatial. For real
-//! use, pair with the caching reader (`duckdb+...`) so internal
-//! materialization happens off-Druid.
+//! (time is always a TIMESTAMP), no temp tables, and no spatial. With no
+//! DDL at all, connections through Druid are always wrapped in a caching
+//! reader (`requires_cache`), so internal materialization happens
+//! off-Druid.
 
 use crate::reader::SqlDialect;
 
-/// Apache Druid dialect (requested in #341).
+/// Apache Druid dialect.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct DruidDialect;
 

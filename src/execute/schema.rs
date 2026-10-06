@@ -447,7 +447,6 @@ mod tests {
             ("id".to_string(), DataType::Int32, false),
             ("val".to_string(), DataType::Float64, false),
         ];
-        // Reversed arrival: row 0 holds the MAXes, row 1 the MINs.
         let reversed = crate::df! {
             "id" => vec![8i32, 1],
             "val" => vec![8.5f64, 1.5],

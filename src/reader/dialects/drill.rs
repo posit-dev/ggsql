@@ -2,12 +2,13 @@
 //!
 //! Drill is close to ANSI for types but uses backtick quoting and has no
 //! recursive CTEs (so the default `sql_generate_series` will fail) and no
-//! spatial support. As with Druid, the caching reader is the practical
-//! execution mode.
+//! spatial support. With no DDL, connections through Drill are always
+//! wrapped in a caching reader (`requires_cache`), which hosts the staged
+//! tables.
 
 use crate::reader::SqlDialect;
 
-/// Apache Drill dialect (requested in #341).
+/// Apache Drill dialect.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct DrillDialect;
 

@@ -43,7 +43,6 @@ pub(crate) fn extract_diagnostic(handle_type: SqlSmallInt, handle: SqlHandle) ->
             break;
         }
 
-        // Retry with a larger buffer if the message was truncated
         if text_len as usize >= buf.len() {
             buf.resize(text_len as usize + 1, 0);
             let mut text_len2: SqlSmallInt = 0;

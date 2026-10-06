@@ -262,11 +262,9 @@ impl<'d, D: SqlDialect + ?Sized> Select<'d, D> {
     fn prepare_from(&mut self, from: &str) -> String {
         let trimmed = from.trim();
         if trimmed.starts_with('(') {
-            // Already a parenthesized subquery or table reference.
             return trimmed.to_string();
         }
         if !trimmed.contains(char::is_whitespace) {
-            // Bare table or CTE name.
             return trimmed.to_string();
         }
         if !self.dialect.allows_cte_in_derived_table() {

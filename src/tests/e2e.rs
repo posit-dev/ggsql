@@ -50,8 +50,6 @@ fn test_execute_metadata() {
 
     let metadata = spec.metadata();
     assert_eq!(metadata.rows, 3);
-    // Columns now includes both user mappings (pos1, pos2) and resolved defaults (size, stroke, fill, opacity, shape, linewidth)
-    // Aesthetics are transformed to internal names (x -> pos1, y -> pos2)
     assert!(metadata.columns.contains(&"pos1".to_string()));
     assert!(metadata.columns.contains(&"pos2".to_string()));
     assert_eq!(metadata.layer_count, 1);
@@ -107,21 +105,16 @@ fn test_polar_project_with_start() {
     let writer = VegaLiteWriter::new();
     let result = writer.render(&spec).unwrap();
 
-    // Parse the JSON to verify the theta scale range is set correctly
     let json: serde_json::Value = serde_json::from_str(&result).unwrap();
 
-    // The encoding should have a theta channel with a scale range offset by 90 degrees
-    // 90 degrees = π/2 radians
     let layer = data_layer(&json, 0);
     let theta = &layer["encoding"]["theta"];
     assert!(theta.is_object(), "theta encoding should exist");
 
-    // Check that the scale has a range with the start offset
     let scale = &theta["scale"];
     let range = scale["range"].as_array().unwrap();
     assert_eq!(range.len(), 2);
 
-    // π/2 ≈ 1.5707963
     let start = range[0].as_f64().unwrap();
     assert!(
         (start - std::f64::consts::FRAC_PI_2).abs() < 0.001,
@@ -129,7 +122,6 @@ fn test_polar_project_with_start() {
         start
     );
 
-    // π/2 + 2π ≈ 7.8539816
     let end = range[1].as_f64().unwrap();
     let expected_end = std::f64::consts::FRAC_PI_2 + 2.0 * std::f64::consts::PI;
     assert!(
@@ -153,15 +145,12 @@ fn test_polar_project_default_start() {
     let writer = VegaLiteWriter::new();
     let result = writer.render(&spec).unwrap();
 
-    // Parse the JSON
     let json: serde_json::Value = serde_json::from_str(&result).unwrap();
 
-    // The theta encoding should NOT have a scale with range when start is 0 (default)
     let layer = data_layer(&json, 0);
     let theta = &layer["encoding"]["theta"];
     assert!(theta.is_object(), "theta encoding should exist");
 
-    // Either no scale, or no range in scale (since default is 0)
     if let Some(scale) = theta.get("scale") {
         assert!(
             scale.get("range").is_none(),
@@ -189,7 +178,6 @@ fn test_polar_project_with_end() {
     let theta = &layer["encoding"]["theta"];
     let range = theta["scale"]["range"].as_array().unwrap();
 
-    // -90° = -π/2 ≈ -1.5708, 90° = π/2 ≈ 1.5708
     let start = range[0].as_f64().unwrap();
     let end = range[1].as_f64().unwrap();
     assert!(
@@ -206,7 +194,6 @@ fn test_polar_project_with_end() {
 
 #[test]
 fn test_polar_project_with_end_only() {
-    // Test using end without explicit start (start defaults to 0)
     let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
     let query = r#"
         SELECT * FROM (VALUES ('A', 10), ('B', 20)) AS t(category, value)
@@ -224,7 +211,6 @@ fn test_polar_project_with_end_only() {
     let theta = &layer["encoding"]["theta"];
     let range = theta["scale"]["range"].as_array().unwrap();
 
-    // start=0 (default), end=180° = π
     let start = range[0].as_f64().unwrap();
     let end = range[1].as_f64().unwrap();
     assert!(
@@ -246,7 +232,6 @@ fn test_polar_encoding_keys_independent_of_user_names() {
     // This is critical because Vega-Lite expects specific channel names for polar marks.
     let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
 
-    // Helper to check encoding keys
     fn check_encoding_keys(json: &serde_json::Value, test_name: &str) {
         let layer = data_layer(json, 0);
         assert!(
@@ -257,7 +242,6 @@ fn test_polar_encoding_keys_independent_of_user_names() {
                 .as_object()
                 .map(|o| o.keys().collect::<Vec<_>>())
         );
-        // Also verify no x or y keys exist (they should be mapped to theta/radius)
         assert!(
             layer["encoding"].get("x").is_none(),
             "{} should NOT have x encoding in polar mode",
@@ -270,7 +254,6 @@ fn test_polar_encoding_keys_independent_of_user_names() {
         );
     }
 
-    // Test case 1: PROJECT y, x TO polar (y as pos1→radius, x as pos2→theta)
     let query1 = r#"
         SELECT * FROM (VALUES ('A', 10), ('B', 20)) AS t(category, value)
         VISUALISE value AS y, category AS fill
@@ -283,7 +266,6 @@ fn test_polar_encoding_keys_independent_of_user_names() {
     let json1: serde_json::Value = serde_json::from_str(&result1).unwrap();
     check_encoding_keys(&json1, "PROJECT y, x TO polar");
 
-    // Test case 2: PROJECT x, y TO polar (x as pos1→radius, y as pos2→theta)
     let query2 = r#"
         SELECT * FROM (VALUES ('A', 10), ('B', 20)) AS t(category, value)
         VISUALISE value AS x, category AS fill
@@ -295,7 +277,6 @@ fn test_polar_encoding_keys_independent_of_user_names() {
     let json2: serde_json::Value = serde_json::from_str(&result2).unwrap();
     check_encoding_keys(&json2, "PROJECT x, y TO polar");
 
-    // Test case 3: PROJECT TO polar (default radius/angle names)
     let query3 = r#"
         SELECT * FROM (VALUES ('A', 10), ('B', 20)) AS t(category, value)
         VISUALISE value AS angle, category AS fill
@@ -307,7 +288,6 @@ fn test_polar_encoding_keys_independent_of_user_names() {
     let json3: serde_json::Value = serde_json::from_str(&result3).unwrap();
     check_encoding_keys(&json3, "PROJECT TO polar");
 
-    // Test case 4: PROJECT a, b TO polar (custom aesthetic names)
     let query4 = r#"
         SELECT * FROM (VALUES ('A', 10), ('B', 20)) AS t(category, value)
         VISUALISE value AS a, category AS fill
@@ -322,8 +302,6 @@ fn test_polar_encoding_keys_independent_of_user_names() {
 
 #[test]
 fn test_cartesian_encoding_keys_with_custom_names() {
-    // This test verifies that cartesian projections produce x/y encoding keys
-    // even when custom position names are used in PROJECT.
     let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
 
     fn check_cartesian_keys(json: &serde_json::Value, test_name: &str) {
@@ -336,7 +314,6 @@ fn test_cartesian_encoding_keys_with_custom_names() {
                 .as_object()
                 .map(|o| o.keys().collect::<Vec<_>>())
         );
-        // Verify no theta/radius keys exist
         assert!(
             layer["encoding"].get("theta").is_none(),
             "{} should NOT have theta encoding in cartesian mode",
@@ -344,7 +321,6 @@ fn test_cartesian_encoding_keys_with_custom_names() {
         );
     }
 
-    // Test case: PROJECT a, b TO cartesian (custom aesthetic names)
     let query = r#"
         SELECT * FROM (VALUES ('A', 10), ('B', 20)) AS t(category, value)
         VISUALISE category AS a, value AS b
@@ -374,7 +350,6 @@ fn test_register_and_query() {
     let spec = reader.execute(query).unwrap();
 
     assert_eq!(spec.metadata().rows, 3);
-    // Aesthetics are transformed to internal names (x -> pos1)
     assert!(spec.metadata().columns.contains(&"pos1".to_string()));
 
     let writer = VegaLiteWriter::new();
@@ -425,12 +400,8 @@ fn test_execute_no_viz_fails() {
 
 #[test]
 fn test_binned_fill_legend_renders_threshold_scale() {
-    // End-to-end test for binned fill scale rendering to Vega-Lite
-    // Verifies that binned material aesthetics use threshold scale type
     let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
 
-    // Create data with values that span the binned range
-    // Binned scales use FROM [min, max] for range and SETTING breaks => [...] for explicit breaks
     let query = r#"
         SELECT * FROM (VALUES
             (1, 10, 15.0),
@@ -445,20 +416,16 @@ fn test_binned_fill_legend_renders_threshold_scale() {
 
     let spec = reader.execute(query).unwrap();
 
-    // Verify spec structure
     assert_eq!(spec.plot().layers.len(), 1);
-    // Note: scales may include auto-generated x/y scales plus the explicit fill scale
     assert!(
         spec.plot().find_scale("fill").is_some(),
         "Should have a fill scale"
     );
 
-    // Render to Vega-Lite
     let writer = VegaLiteWriter::new();
     let result = writer.render(&spec).unwrap();
     let vl: serde_json::Value = serde_json::from_str(&result).unwrap();
 
-    // Verify threshold scale type for fill
     let fill_scale = &vl["layer"][0]["encoding"]["fill"]["scale"];
     assert_eq!(
         fill_scale["type"],
@@ -467,8 +434,6 @@ fn test_binned_fill_legend_renders_threshold_scale() {
         serde_json::to_string_pretty(&vl["layer"][0]["encoding"]["fill"]).unwrap()
     );
 
-    // Verify internal breaks as domain (excludes first and last terminals)
-    // breaks = [0, 25, 50, 75, 100] → domain = [25, 50, 75]
     let domain = fill_scale["domain"].as_array().unwrap();
     assert_eq!(
         domain.len(),
@@ -480,17 +445,12 @@ fn test_binned_fill_legend_renders_threshold_scale() {
     assert_eq!(domain[1], 50.0);
     assert_eq!(domain[2], 75.0);
 
-    // Verify color output - viridis palette gets expanded to an explicit range array
-    // for threshold scales (Vega-Lite needs explicit colors for threshold domain)
     assert!(
         fill_scale["range"].is_array() || fill_scale["scheme"] == "viridis",
         "Should have color range or scheme. Got scale: {}",
         serde_json::to_string_pretty(fill_scale).unwrap()
     );
 
-    // Verify legend values
-    // For `fill` alone (single binned legend scale), uses gradient legend with all 5 break values
-    // For symbol legends (multiple binned scales or non-gradient aesthetics), would have N-1 values
     let legend_values = &vl["layer"][0]["encoding"]["fill"]["legend"]["values"];
     assert!(
         legend_values.is_array(),
@@ -508,7 +468,6 @@ fn test_binned_fill_legend_renders_threshold_scale() {
 
 #[test]
 fn test_binned_color_legend_with_label_mapping() {
-    // Test binned color scale with custom labels renders correctly
     let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
 
     let query = r#"
@@ -529,14 +488,11 @@ fn test_binned_color_legend_with_label_mapping() {
     let result = writer.render(&spec).unwrap();
     let vl: serde_json::Value = serde_json::from_str(&result).unwrap();
 
-    // Verify threshold scale
-    // Note: "color" aesthetic is mapped to "stroke" for point geom (not fill)
     let encoding = if vl["layer"].is_array() {
         &vl["layer"][0]["encoding"]
     } else {
         &vl["encoding"]
     };
-    // Find the stroke or fill encoding (color maps to one of these)
     let color_encoding = if encoding["stroke"].is_object() {
         &encoding["stroke"]
     } else {
@@ -549,7 +505,6 @@ fn test_binned_color_legend_with_label_mapping() {
         serde_json::to_string_pretty(color_encoding).unwrap()
     );
 
-    // Verify labelExpr exists for custom labels
     let legend = &color_encoding["legend"];
     assert!(
         legend["labelExpr"].is_string(),
@@ -558,8 +513,6 @@ fn test_binned_color_legend_with_label_mapping() {
     );
 
     let label_expr = legend["labelExpr"].as_str().unwrap_or("");
-    // For symbol legends, VL generates range-style labels like "0 – 50"
-    // Our labelExpr should map these to custom range formats
     assert!(
         label_expr.contains("Low") || label_expr.contains("High"),
         "labelExpr should contain custom labels, got: {}",
@@ -584,19 +537,16 @@ fn test_polar_project_with_inner() {
     let json: serde_json::Value = serde_json::from_str(&result).unwrap();
     let layer = data_layer(&json, 0);
 
-    // Check radius scale has range with expressions
     let radius = &layer["encoding"]["radius"];
     assert!(radius["scale"]["range"].is_array());
     let range = radius["scale"]["range"].as_array().unwrap();
 
-    // First element should be inner proportion expression
     assert!(
         range[0]["expr"].as_str().unwrap().contains("0.5"),
         "Inner radius expression should contain 0.5, got: {:?}",
         range[0]
     );
 
-    // Second element should be the outer radius expression
     assert!(
         range[1]["expr"]
             .as_str()
@@ -609,7 +559,6 @@ fn test_polar_project_with_inner() {
 
 #[test]
 fn test_stacked_bar_chart() {
-    // Test stacked bar chart via position => 'stack'
     let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
     let query = r#"
         SELECT * FROM (VALUES
@@ -630,7 +579,6 @@ fn test_stacked_bar_chart() {
     let json: serde_json::Value = serde_json::from_str(&result).unwrap();
     let layer = data_layer(&json, 0);
 
-    // Verify y and y2 encodings exist (stacked bars use y/y2 for range)
     let encoding = &layer["encoding"];
     assert!(encoding["y"].is_object(), "Should have y encoding");
     assert!(
@@ -638,7 +586,6 @@ fn test_stacked_bar_chart() {
         "Should have y2 encoding for stacked bars"
     );
 
-    // Verify Vega-Lite stacking is disabled (we handle it ourselves)
     assert!(
         encoding["y"]["stack"].is_null(),
         "y encoding should have stack: null to disable VL stacking. Got: {}",
@@ -649,8 +596,6 @@ fn test_stacked_bar_chart() {
 #[cfg(feature = "builtin-data")]
 #[test]
 fn test_stacked_bar_chart_dummy_x() {
-    // Test stacked bar chart with no x mapping (dummy x column)
-    // This is the case where only fill is mapped: all bars at same x position should stack
     let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
     let query = r#"
         VISUALISE FROM ggsql:penguins
@@ -664,7 +609,6 @@ fn test_stacked_bar_chart_dummy_x() {
     let json: serde_json::Value = serde_json::from_str(&result).unwrap();
     let layer = data_layer(&json, 0);
 
-    // Verify y and y2 encodings exist (stacked bars use y/y2 for range)
     let encoding = &layer["encoding"];
     assert!(encoding["y"].is_object(), "Should have y encoding");
     assert!(
@@ -673,7 +617,6 @@ fn test_stacked_bar_chart_dummy_x() {
         serde_json::to_string_pretty(encoding).unwrap()
     );
 
-    // Verify Vega-Lite stacking is disabled (we handle it ourselves)
     assert!(
         encoding["y"]["stack"].is_null(),
         "y encoding should have stack: null to disable VL stacking. Got: {}",
@@ -684,8 +627,6 @@ fn test_stacked_bar_chart_dummy_x() {
 #[cfg(feature = "builtin-data")]
 #[test]
 fn test_boxplot_dummy_x() {
-    // Boxplot with only y mapped: should render a single boxplot of the
-    // whole distribution and suppress the categorical x axis.
     let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
     let query = r#"
         VISUALISE FROM ggsql:penguins
@@ -697,8 +638,6 @@ fn test_boxplot_dummy_x() {
     let result = writer.render(&spec).unwrap();
 
     let json: serde_json::Value = serde_json::from_str(&result).unwrap();
-    // Boxplot is a composite renderer (multiple sub-layers). Check that
-    // the first layer's x encoding suppresses its axis.
     let layer = data_layer(&json, 0);
     let encoding = &layer["encoding"];
     assert!(
@@ -711,7 +650,6 @@ fn test_boxplot_dummy_x() {
 #[cfg(feature = "builtin-data")]
 #[test]
 fn test_violin_dummy_x() {
-    // Violin with only y mapped: single violin spanning the whole dataset.
     let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
     let query = r#"
         VISUALISE FROM ggsql:penguins
@@ -735,7 +673,6 @@ fn test_violin_dummy_x() {
 #[cfg(feature = "builtin-data")]
 #[test]
 fn test_point_dummy_x() {
-    // Point with only y mapped: strip plot at a single dummy x position.
     let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
     let query = r#"
         VISUALISE FROM ggsql:penguins
@@ -758,7 +695,6 @@ fn test_point_dummy_x() {
 
 #[test]
 fn test_range_dummy_x() {
-    // Range with only ymin/ymax mapped: a single vertical interval.
     let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
     let query = r#"
         SELECT 10.0 AS lo, 20.0 AS hi
@@ -783,7 +719,6 @@ fn test_range_dummy_x() {
 #[cfg(feature = "builtin-data")]
 #[test]
 fn test_point_dummy_y() {
-    // Symmetric to test_point_dummy_x: only x mapped means dummy y.
     let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
     let query = r#"
         VISUALISE FROM ggsql:penguins
@@ -807,8 +742,6 @@ fn test_point_dummy_y() {
 #[cfg(feature = "builtin-data")]
 #[test]
 fn test_point_dummy_both_with_aggregate() {
-    // Both axes omitted, but aggregate gives the single point meaning:
-    // a count of all rows at the dummy x/y intersection.
     let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
     let query = r#"
         VISUALISE FROM ggsql:penguins
@@ -838,8 +771,6 @@ fn test_point_dummy_both_with_aggregate() {
 #[cfg(feature = "builtin-data")]
 #[test]
 fn test_point_dummy_x_with_aggregate() {
-    // Point with aggregate SETTING and no x mapping: should aggregate the
-    // whole dataset to a single point and suppress the dummy x axis.
     let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
     let query = r#"
         VISUALISE FROM ggsql:penguins
@@ -864,10 +795,6 @@ fn test_point_dummy_x_with_aggregate() {
 #[cfg(feature = "builtin-data")]
 #[test]
 fn test_bar_chart_with_expand_setting() {
-    // Test bar chart with SCALE y SETTING expand - should work even when y is stat-derived
-    // This tests that:
-    // 1. Scale type inference works for stat-generated count columns
-    // 2. Stacking still works (y2 encoding exists) when SCALE y is specified
     let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
     let query = r#"
         VISUALISE FROM ggsql:penguins
@@ -879,11 +806,9 @@ fn test_bar_chart_with_expand_setting() {
     let writer = VegaLiteWriter::new();
     let result = writer.render(&spec).unwrap();
 
-    // Should succeed without "discrete scale does not support SETTING 'expand'" error
     let json: serde_json::Value = serde_json::from_str(&result).unwrap();
     let layer = data_layer(&json, 0);
 
-    // Verify stacking works (y2 encoding exists for stacked bars)
     let encoding = &layer["encoding"];
     assert!(
         encoding["y2"].is_object(),
@@ -894,7 +819,6 @@ fn test_bar_chart_with_expand_setting() {
 
 #[test]
 fn test_dodged_bar_chart() {
-    // Test dodged bar chart via position => 'dodge'
     let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
     let query = r#"
         SELECT * FROM (VALUES
@@ -915,7 +839,6 @@ fn test_dodged_bar_chart() {
     let json: serde_json::Value = serde_json::from_str(&result).unwrap();
     let layer = data_layer(&json, 0);
 
-    // Verify xOffset encoding exists (dodged bars use xOffset for displacement)
     let encoding = &layer["encoding"];
     assert!(
         encoding["xOffset"].is_object(),
@@ -923,8 +846,6 @@ fn test_dodged_bar_chart() {
         serde_json::to_string_pretty(encoding).unwrap()
     );
 
-    // Verify bar width uses bandwidth expression with adjusted_width for dodged bars
-    // For 2 groups with default width 0.9: adjusted_width = 0.9 / 2 = 0.45
     let mark = &layer["mark"];
     let width_expr = mark["width"]["expr"].as_str();
     assert!(
@@ -942,7 +863,6 @@ fn test_dodged_bar_chart() {
 
 #[test]
 fn test_position_identity_default() {
-    // Test that identity position (default) doesn't modify data
     let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
     let query = r#"
         SELECT * FROM (VALUES
@@ -960,7 +880,6 @@ fn test_position_identity_default() {
     let json: serde_json::Value = serde_json::from_str(&result).unwrap();
     let layer = data_layer(&json, 0);
 
-    // Verify no xOffset encoding (identity position)
     let encoding = &layer["encoding"];
     assert!(
         encoding.get("xOffset").is_none(),
@@ -970,8 +889,6 @@ fn test_position_identity_default() {
 
 #[test]
 fn test_label_with_flipped_project() {
-    // End-to-end test: LABEL x/y with PROJECT y, x TO cartesian
-    // Labels should be correctly applied to the flipped axes
     let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
     let query = r#"
         SELECT * FROM (VALUES (1, 10), (2, 20)) AS t(x, y)
@@ -989,10 +906,6 @@ fn test_label_with_flipped_project() {
     let layer = data_layer(&json, 0);
     let encoding = &layer["encoding"];
 
-    // With PROJECT y, x TO cartesian:
-    // - y is pos1 (first position), renders to VL x-axis in cartesian
-    // - x is pos2 (second position), renders to VL y-axis in cartesian
-    // So LABEL y => 'Category' should appear on VL x-axis, LABEL x => 'Value' on VL y-axis
     let x_title = encoding["x"]["title"].as_str();
     let y_title = encoding["y"]["title"].as_str();
 
@@ -1012,7 +925,6 @@ fn test_label_with_flipped_project() {
 
 #[test]
 fn test_label_with_polar_project() {
-    // End-to-end test: LABEL angle/radius with PROJECT TO polar
     let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
     let query = r#"
         SELECT * FROM (VALUES ('A', 10), ('B', 20)) AS t(category, value)
@@ -1030,7 +942,6 @@ fn test_label_with_polar_project() {
     let layer = data_layer(&json, 0);
     let encoding = &layer["encoding"];
 
-    // Verify theta encoding has the label
     let theta_title = encoding["theta"]["title"].as_str();
     assert_eq!(
         theta_title,

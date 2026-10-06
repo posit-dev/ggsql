@@ -20,7 +20,6 @@ impl SqlDialect for RedshiftDialect {
         expr: &str,
         kind: crate::plot::types::CastTargetType,
     ) -> String {
-        // Same date arithmetic as Postgres.
         use crate::plot::types::CastTargetType as C;
         match kind {
             C::Date => format!("({expr} - DATE '1970-01-01')"),

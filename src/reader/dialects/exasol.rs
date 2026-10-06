@@ -18,11 +18,11 @@
 //! silently zeroed by the database and cannot be worked around at the
 //! dialect layer.
 //!
-//! Override SQL verified against `exasol/docker-db:2025.2.0` in PR #386.
+//! Override SQL verified against `exasol/docker-db:2025.2.0`.
 
 use crate::reader::SqlDialect;
 
-/// Exasol dialect (requested in #330, native OGC spatial).
+/// Exasol dialect.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct ExasolDialect;
 

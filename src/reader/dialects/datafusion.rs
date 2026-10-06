@@ -8,7 +8,7 @@
 
 use crate::reader::SqlDialect;
 
-/// DataFusion dialect (requested in #341).
+/// DataFusion dialect.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct DataFusionDialect;
 
@@ -24,17 +24,16 @@ impl SqlDialect for DataFusionDialect {
     /// DataFusion rejects the TEMP keyword ("Temporary tables not
     /// supported") but supports in-memory CTAS, and its per-connection
     /// catalog already provides the session scoping TEMP would give — so
-    /// stage internal tables as plain CREATE TABLE. Verified against the
-    /// Foundry 0.27 driver; the connect-time probe re-checks this and falls
-    /// back to the cache wrap if a future build regresses it.
+    /// stage internal tables as plain CREATE TABLE. The connect-time probe
+    /// re-checks this and falls back to the cache wrap if a future driver
+    /// build regresses it.
     fn temp_table_style(&self) -> crate::reader::TempTableStyle {
         crate::reader::TempTableStyle::DropThenCreate
     }
 
     fn sql_generate_series(&self, n: usize) -> String {
         // DataFusion's generate_series is a table function whose single
-        // output column is named `value` in current releases (it was
-        // `generate_series` in the DataFusion bundled with the 0.23 crate).
+        // output column is named `value`.
         let __ggsql_seq__ = self.quote_ident("__ggsql_seq__");
         format!(
             "{__ggsql_seq__}(n) AS (\

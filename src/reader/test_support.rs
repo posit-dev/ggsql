@@ -562,18 +562,6 @@ fn sample_array(dtype: &DataType) -> arrow::array::ArrayRef {
         DataType::Float64 => Arc::new(Float64Array::from(vec![1.0, 2.0, 3.0])),
         DataType::Int32 => Arc::new(Int32Array::from(vec![1, 2, 3])),
         DataType::Int64 => Arc::new(Int64Array::from(vec![1i64, 2, 3])),
-        // ISO-date strings rather than "a"/"b"/"c": fabricated values flow
-        // through scale training, which coerces text to the scale's target
-        // type — for temporal scales an unparseable string makes the golden
-        // output depend on resolution order (error vs. no error). Date-like
-        // strings coerce successfully on every path, keeping the stub
-        // deterministic; they are equally valid as plain strings.
-        // ISO-date strings rather than "a"/"b"/"c": fabricated values flow
-        // through scale training, which coerces text to the scale's target
-        // type — for temporal scales an unparseable string makes the golden
-        // output depend on resolution order (error vs. no error). Date-like
-        // strings coerce successfully on every path, keeping the stub
-        // deterministic; they are equally valid as plain strings.
         // ISO-date strings: fabricated values flow through scale training,
         // which coerces text to the scale's target type. A real backend
         // holding a text-typed date column returns parseable strings (that

@@ -12,8 +12,7 @@
 //! distances, not the OGC `ST_` surface the defaults assume.
 //!
 //! Assumes ClickHouse 26.8 or newer (correlated subqueries, `IS NOT DISTINCT
-//! FROM` in any clause). Override SQL verified against a live server in
-//! PR #535.
+//! FROM` in any clause).
 
 use crate::reader::{default_sql_aggregate, SqlDialect};
 
@@ -70,7 +69,6 @@ impl SqlDialect for ClickHouseDialect {
     ) -> String {
         let __ggsql_sr__ = self.quote_ident("__ggsql_sr__");
         if expr == col {
-            // Explicit alias: MySQL/MariaDB reject unaliased derived tables.
             return format!("SELECT * FROM ({from}) {__ggsql_sr__}");
         }
         format!("SELECT * REPLACE ({expr} AS {col}) FROM ({from}) {__ggsql_sr__}")

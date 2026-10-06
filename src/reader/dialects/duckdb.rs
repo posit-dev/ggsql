@@ -70,8 +70,6 @@ impl SqlDialect for DuckDbDialect {
     }
 
     fn sql_quantile(&self, column: &str, fraction: f64, _from: &str, _groups: &[String]) -> String {
-        // Native aggregate; computes within the caller's GROUP BY, so `from`
-        // and `groups` are unused.
         format!("QUANTILE_CONT({}, {})", self.quote_ident(column), fraction)
     }
 
@@ -134,8 +132,6 @@ mod tests {
     #[test]
     fn temporal_as_number_uses_subtraction_and_epoch() {
         use crate::plot::types::CastTargetType as C;
-        // DuckDB rejects temporal → numeric casts; date subtraction yields
-        // integer days and EPOCH_US covers datetimes.
         assert_eq!(
             DuckDbDialect.sql_temporal_as_number("\"d\"", C::Date),
             "(\"d\" - DATE '1970-01-01')"
@@ -192,7 +188,6 @@ mod tests {
             DuckDbDialect.sql_aggregate("diff", "\"v\""),
             Some("(LAST(\"v\") - FIRST(\"v\"))".to_string())
         );
-        // Unknown names fall through to the shared default.
         assert_eq!(
             DuckDbDialect.sql_aggregate("mean", "\"v\""),
             Some("AVG(\"v\")".to_string())

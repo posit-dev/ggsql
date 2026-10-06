@@ -266,7 +266,6 @@ pub static REGISTRY: &[DatabaseEntry] = &[
         || Box::new(MonetDbDialect),
         None
     ),
-    // Preview driver from the Foundry as of late 2026.
     entry!(
         "druid",
         &[],
@@ -283,8 +282,6 @@ pub static REGISTRY: &[DatabaseEntry] = &[
         || Box::new(DrillDialect),
         None
     ),
-    // In-process DataFusion; the driver moved from the in-tree Rust crate
-    // (stalled at 0.23) to the ADBC Driver Foundry.
     entry!(
         "datafusion",
         &[],
@@ -355,8 +352,6 @@ pub fn detect(
 
 /// `k=v` pairs for error messages: every supported URI scheme.
 pub fn supported_schemes() -> String {
-    // Transports first (odbc://, adbc:// are not databases), then every
-    // registered database scheme.
     let mut schemes: Vec<String> = vec!["odbc".into(), "adbc".into()];
     schemes.extend(REGISTRY.iter().map(|e| e.scheme.into()));
     schemes

@@ -41,8 +41,6 @@ impl SqlDialect for PostgresDialect {
     }
 
     fn sql_quantile(&self, column: &str, fraction: f64, _from: &str, _groups: &[String]) -> String {
-        // Native aggregate; computes within the caller's GROUP BY, so `from`
-        // and `groups` are unused.
         format!(
             "PERCENTILE_CONT({fraction}) WITHIN GROUP (ORDER BY {column})",
             column = self.quote_ident(column)

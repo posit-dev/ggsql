@@ -386,7 +386,6 @@ fn build_data_cte(
     }
 
     let quoted_groups: Vec<String> = group_by.iter().map(|g| dialect.quote_ident(g)).collect();
-    // Explicit alias: MySQL/MariaDB reject unaliased derived tables.
     let __ggsql_data__ = dialect.quote_ident("__ggsql_data__");
     format!(
         "data AS (
@@ -450,7 +449,6 @@ fn build_grid_cte(
         let quoted_groups: Vec<String> = groups.iter().map(|g| dialect.quote_ident(g)).collect();
         let groups_str = quoted_groups.join(", ");
         let groups_alias = dialect.quote_ident("__ggsql_groups__");
-        // When tails is specified, create full_grid; otherwise create grid directly
         let cte_name = if tails.is_some() { "full_grid" } else { "grid" };
         format!(
             "{cte_name} AS (
@@ -581,8 +579,6 @@ fn compute_density(
         .iter()
         .map(|g| format!("grid.{}", dialect.quote_ident(g)))
         .collect();
-    // Projected with an explicit alias: some engines (ClickHouse) otherwise
-    // name an unaliased `grid.col` projection `grid.col`.
     let grid_groups_select: Vec<String> = group_by
         .iter()
         .map(|g| {
@@ -604,10 +600,8 @@ fn compute_density(
     let intensity_column = dialect.quote_ident(&naming::stat_column("intensity"));
     let density_column = dialect.quote_ident(&naming::stat_column("density"));
     let __norm = dialect.quote_ident("__norm");
-    // Explicit alias: MySQL/MariaDB reject unaliased derived tables.
     let __ggsql_kde__ = dialect.quote_ident("__ggsql_kde__");
 
-    // Generate the density computation query
     format!(
         "{bandwidth_cte},
         {data_cte},
@@ -805,7 +799,6 @@ mod tests {
           GROUP BY grid.x, grid."region", grid."category"
         ) AS "__ggsql_kde__""#;
 
-        // Normalize whitespace for comparison
         let normalize = |s: &str| s.split_whitespace().collect::<Vec<_>>().join(" ");
         assert_eq!(normalize(&sql), normalize(expected));
 
@@ -875,7 +868,6 @@ mod tests {
         let normalize = |s: &str| s.split_whitespace().collect::<Vec<_>>().join(" ");
         assert!(bw_cte.contains("ROW_NUMBER()"));
         assert!(bw_cte.contains("bandwidth AS"));
-        // Verify the generated rule matches silverman_rule output
         let expected_rule = silverman_rule(1.0, "x", query, &groups, &AnsiDialect);
         assert!(normalize(&bw_cte).contains(&normalize(&expected_rule)));
 
@@ -946,7 +938,6 @@ mod tests {
             &AnsiDialect,
         );
 
-        // Execute query
         let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
         let df = reader.execute_sql(&sql).expect("SQL should execute");
 
@@ -1129,7 +1120,6 @@ mod tests {
 
         assert_eq!(unweighted_values.len(), weighted_values.len());
 
-        // Check that all values are very close
         for (i, (u, w)) in unweighted_values
             .iter()
             .zip(weighted_values.iter())
@@ -1246,7 +1236,6 @@ mod tests {
             &AnsiDialect,
         );
 
-        // Warm-up run
         reader.execute_sql(&sql).expect("Warm-up failed");
 
         // Benchmark runs

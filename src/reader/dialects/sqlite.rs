@@ -152,8 +152,6 @@ mod tests {
 
     #[test]
     fn type_names_map_to_storage_classes() {
-        // SQLite has no real date/time/boolean types: temporal values are
-        // ISO TEXT, booleans INTEGER, floats REAL.
         let d = SqliteDialect;
         assert_eq!(d.number_type_name(), Some("REAL"));
         assert_eq!(d.date_type_name(), Some("TEXT"));
@@ -163,7 +161,6 @@ mod tests {
 
     #[test]
     fn greatest_least_are_case_expressions() {
-        // No GREATEST/LEAST functions; nested CASE stand-ins.
         assert_eq!(
             SqliteDialect.sql_greatest(&["a", "b"]),
             "(CASE WHEN (a) >= (b) THEN (a) ELSE (b) END)"
@@ -195,7 +192,6 @@ mod tests {
     #[test]
     fn temporal_as_number_uses_julianday() {
         use crate::plot::types::CastTargetType as C;
-        // Temporal values are ISO text; julianday converts them.
         assert_eq!(
             SqliteDialect.sql_temporal_as_number("\"d\"", C::Date),
             "(JULIANDAY(\"d\") - 2440587.5)"
@@ -208,7 +204,6 @@ mod tests {
 
     #[test]
     fn variance_aggregates_are_portable_arithmetic() {
-        // No STDDEV_POP/VAR_POP in stock SQLite.
         assert_eq!(
             SqliteDialect.sql_aggregate("var", "\"v\""),
             Some("MAX(0.0, AVG(\"v\" * \"v\") - AVG(\"v\") * AVG(\"v\"))".to_string())

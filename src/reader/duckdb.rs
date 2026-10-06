@@ -151,7 +151,6 @@ impl DuckDBReader {
                 ))
             })?;
 
-        // Register Arrow virtual table function for DataFrame registration
         conn.register_table_function::<ArrowVTab>("arrow")
             .map_err(|e| {
                 GgsqlError::ReaderError(format!("Failed to register arrow function: {}", e))
@@ -192,11 +191,9 @@ fn dataframe_to_arrow_params(df: &DataFrame) -> Result<[usize; 2]> {
 
 impl Reader for DuckDBReader {
     fn execute_sql(&self, sql: &str) -> Result<DataFrame> {
-        // Register builtin datasets if referenced
         #[cfg(feature = "builtin-data")]
         register_builtin_datasets_duckdb(sql, &self.conn)?;
 
-        // Rewrite ggsql:name → __ggsql_data_name__ in SQL
         let sql = crate::parser::rewrite_namespaced_sql(sql)?;
 
         if !super::returns_rows(&sql) {
@@ -234,10 +231,8 @@ impl Reader for DuckDBReader {
     }
 
     fn register(&self, name: &str, df: DataFrame, replace: bool) -> Result<()> {
-        // Validate table name
         validate_table_name(name)?;
 
-        // Check for duplicates
         if !replace && self.table_exists(name)? {
             return Err(GgsqlError::ReaderError(format!(
                 "Table '{}' already exists",
