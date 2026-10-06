@@ -34,8 +34,9 @@ impl SqlDialect for DatabricksDialect {
         // ("generator is not supported: nested in expressions"), so the
         // explode must stand alone in an inner SELECT and the CAST moves
         // outside it.
+        let seq = self.quote_ident("__ggsql_seq__");
         format!(
-            "`__ggsql_seq__`(n) AS (\
+            "{seq}(n) AS (\
                SELECT CAST(n AS DOUBLE) AS n FROM (\
                  SELECT explode(sequence(0, {n} - 1)) AS n\
                )\

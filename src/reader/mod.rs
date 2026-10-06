@@ -45,6 +45,17 @@ use crate::{naming, DataFrame, GgsqlError, Result};
 /// SQL type names and functionality in the syntax supported by that backend.
 ///
 /// Default implementations produce portable ANSI SQL.
+///
+/// # Quoting convention
+///
+/// Identifier parameters are **raw** (unquoted) unless the parameter name
+/// says otherwise: parameters called `qcol`/`qname` or documented as
+/// "already-quoted" arrive quoted by the caller. Methods receiving a raw
+/// identifier must quote it with [`SqlDialect::quote_ident`] before
+/// interpolating. SQL *fragments* (expressions, `from` arguments) arrive
+/// fully composed; `from` arguments follow the
+/// [`crate::sql::FromItem::Fragment`] contract — a bare (possibly quoted)
+/// table/CTE name or an already-parenthesized relation, never a raw query.
 pub trait SqlDialect {
     /// SQL type names for table creation and casts. Dialects override this
     /// one method with a [`TypeNames`] literal rather than the individual

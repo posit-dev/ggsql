@@ -79,8 +79,9 @@ impl SqlDialect for ClickHouseDialect {
     }
 
     fn sql_generate_series(&self, n: usize) -> String {
+        let seq = self.quote_ident("__ggsql_seq__");
         format!(
-            "`__ggsql_seq__`(n) AS (\
+            "{seq}(n) AS (\
                SELECT toFloat64(number) AS n FROM numbers({n})\
              )"
         )
@@ -188,7 +189,12 @@ mod tests {
             "quantileExactInclusive(0.9)(`v`)"
         );
         assert_eq!(
-            ClickHouseDialect.sql_quantile("v", 0.5, crate::sql::FromItem::Query("SELECT * FROM t"), &[]),
+            ClickHouseDialect.sql_quantile(
+                "v",
+                0.5,
+                crate::sql::FromItem::Query("SELECT * FROM t"),
+                &[]
+            ),
             "quantileExactInclusive(0.5)(`v`)"
         );
     }

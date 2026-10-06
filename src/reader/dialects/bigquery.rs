@@ -35,8 +35,9 @@ impl SqlDialect for BigQueryDialect {
     }
 
     fn sql_generate_series(&self, n: usize) -> String {
+        let seq = self.quote_ident("__ggsql_seq__");
         format!(
-            "`__ggsql_seq__`(n) AS (\
+            "{seq}(n) AS (\
                SELECT CAST(g AS FLOAT64) AS n \
                FROM UNNEST(GENERATE_ARRAY(0, {n} - 1)) AS g\
              )"
@@ -115,7 +116,12 @@ mod tests {
         // sql_quantile must not emit a correlated subquery — BigQuery
         // rejects those. It uses the APPROX_QUANTILES aggregate, valid
         // inside the GROUP BY queries that boxplot and density build.
-        let sql = BigQueryDialect.sql_quantile("v", 0.75, crate::sql::FromItem::Query("SELECT * FROM t"), &["g".to_string()]);
+        let sql = BigQueryDialect.sql_quantile(
+            "v",
+            0.75,
+            crate::sql::FromItem::Query("SELECT * FROM t"),
+            &["g".to_string()],
+        );
         assert_eq!(sql, "APPROX_QUANTILES(`v`, 100)[SAFE_OFFSET(75)]");
         assert!(!sql.contains("SELECT"), "must not be a subquery: {sql}");
     }
