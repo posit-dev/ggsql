@@ -44,6 +44,31 @@ impl SqlDialect for MonetDbDialect {
         )]
     }
 
+    fn create_or_replace_temp_table_sql(
+        &self,
+        name: &str,
+        column_aliases: &[String],
+        body_sql: &str,
+    ) -> Vec<String> {
+        // MonetDB temp tables default to ON COMMIT DELETE ROWS: with ODBC
+        // autocommit the CTAS statement's own commit wipes the rows it just
+        // staged, leaving every materialized table empty. The ON COMMIT
+        // clause goes at the end of the CTAS form.
+        let body = crate::reader::wrap_with_column_aliases(
+            &|c: &str| self.quote_ident(c),
+            body_sql,
+            column_aliases,
+        );
+        vec![
+            format!("DROP TABLE IF EXISTS {}", self.quote_ident(name)),
+            format!(
+                "CREATE TEMP TABLE {} AS {} ON COMMIT PRESERVE ROWS",
+                self.quote_ident(name),
+                body
+            ),
+        ]
+    }
+
     fn sql_temporal_as_number(
         &self,
         expr: &str,

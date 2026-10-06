@@ -320,6 +320,21 @@ impl ScaleTypeTrait for Binned {
         let resolved_transform = common_result.transform;
         let (mult, add) = common_result.expand_factors;
 
+        // The context range arrives in the column's natural temporal unit
+        // (days for Date32, microseconds for Timestamp); break math runs in
+        // the resolved transform's unit, so a forced mismatch (`VIA date` on
+        // a Timestamp column) must convert. resolve_common_steps already
+        // converted scale.input_range; this is the same conversion for the
+        // direct context.range reads below.
+        let context_range_continuous: Option<Vec<ArrayElement>> = match &context.range {
+            Some(InputRange::Continuous(r)) => Some(super::convert_range_to_transform_unit(
+                r,
+                context.dtype.as_ref(),
+                &resolved_transform,
+            )),
+            _ => None,
+        };
+
         // 5. Calculate breaks for binned scale
         // Track whether breaks were explicit to determine alignment strategy:
         // - Implicit (count, no explicit range): keep extended breaks (they extend past data)
@@ -335,9 +350,9 @@ impl ScaleTypeTrait for Binned {
                 // Scalar count → calculate actual breaks and store as Array
                 // Use raw data range (not expanded input_range) so breaks align
                 // to actual data extent; expansion happens later in step 5b.
-                let break_range = match &context.range {
-                    Some(InputRange::Continuous(r)) => Some(r.as_slice()),
-                    _ => scale.input_range.as_deref(),
+                let break_range = match &context_range_continuous {
+                    Some(r) => Some(r.as_slice()),
+                    None => scale.input_range.as_deref(),
                 };
                 if let Some(breaks) =
                     self.resolve_breaks(break_range, &scale.properties, scale.transform.as_ref())
@@ -347,7 +362,7 @@ impl ScaleTypeTrait for Binned {
                     let filtered = if binned_implicit {
                         let mut result = breaks;
                         // Prune breaks that create completely empty edge bins
-                        if let Some(InputRange::Continuous(data_range)) = &context.range {
+                        if let Some(data_range) = &context_range_continuous {
                             prune_empty_edge_bins(&mut result, data_range);
                         }
                         result
@@ -394,9 +409,9 @@ impl ScaleTypeTrait for Binned {
                 if let Some(interval) = TemporalInterval::create_from_str(interval_str) {
                     // Use raw data range (not expanded input_range) so breaks align
                     // to actual data extent; expansion happens later in step 5b.
-                    let break_range: Option<&[ArrayElement]> = match &context.range {
-                        Some(InputRange::Continuous(r)) => Some(r.as_slice()),
-                        _ => scale.input_range.as_deref(),
+                    let break_range: Option<&[ArrayElement]> = match &context_range_continuous {
+                        Some(r) => Some(r.as_slice()),
+                        None => scale.input_range.as_deref(),
                     };
                     if let Some(range) = break_range {
                         let breaks: Vec<ArrayElement> = match resolved_transform.transform_kind() {
@@ -666,11 +681,20 @@ impl ScaleTypeTrait for Binned {
                             // a numeric comparison, converting the column to
                             // its epoch number so the break values compare
                             // against a number rather than a temporal value.
-                            let kind = match column_dtype {
-                                DataType::Date32 => CastTargetType::Date,
-                                DataType::Timestamp(..) => CastTargetType::DateTime,
-                                DataType::Time64(_) => CastTargetType::Time,
-                                _ => CastTargetType::Number,
+                            // The conversion must yield the unit the break
+                            // values are in: the transform's unit for a
+                            // temporal transform, otherwise the column's
+                            // natural unit.
+                            let kind = match t.transform_kind() {
+                                TransformKind::Date => CastTargetType::Date,
+                                TransformKind::DateTime => CastTargetType::DateTime,
+                                TransformKind::Time => CastTargetType::Time,
+                                _ => match column_dtype {
+                                    DataType::Date32 => CastTargetType::Date,
+                                    DataType::Timestamp(..) => CastTargetType::DateTime,
+                                    DataType::Time64(_) => CastTargetType::Time,
+                                    _ => CastTargetType::Number,
+                                },
                             };
                             return Some(build_case_expression_numeric(
                                 column_name,

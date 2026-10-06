@@ -1899,6 +1899,57 @@ pub(crate) struct ResolveCommonResult {
     pub expand_factors: (f64, f64),
 }
 
+/// The natural epoch unit of a temporal Arrow type, in microseconds: a
+/// Date32 value counts days, a Timestamp value counts microseconds, a
+/// Time64 value counts nanoseconds.
+fn temporal_unit_micros(dtype: &DataType) -> Option<f64> {
+    match dtype {
+        DataType::Date32 => Some(86_400_000_000.0),
+        DataType::Timestamp(_, _) => Some(1.0),
+        DataType::Time64(_) => Some(0.001),
+        _ => None,
+    }
+}
+
+/// Convert continuous range values (epoch numbers) from the column's
+/// natural temporal unit into the resolved transform's unit. A date
+/// transform trains in days, a datetime transform in microseconds, a time
+/// transform in nanoseconds — so a forced mismatch (`VIA date` on a
+/// Timestamp column, whose extents arrive in microseconds) must convert,
+/// or the day-based break math receives microseconds and overflows
+/// chrono::Duration::days. A no-op unless both sides are temporal with
+/// different units.
+pub(crate) fn convert_range_to_transform_unit(
+    range: &[ArrayElement],
+    dtype: Option<&DataType>,
+    transform: &Transform,
+) -> Vec<ArrayElement> {
+    let transform_unit = match transform.transform_kind() {
+        TransformKind::Date => temporal_unit_micros(&DataType::Date32),
+        TransformKind::DateTime => temporal_unit_micros(&DataType::Timestamp(
+            arrow::datatypes::TimeUnit::Microsecond,
+            None,
+        )),
+        TransformKind::Time => {
+            temporal_unit_micros(&DataType::Time64(arrow::datatypes::TimeUnit::Nanosecond))
+        }
+        _ => None,
+    };
+    let (Some(tu), Some(cu)) = (transform_unit, dtype.and_then(temporal_unit_micros)) else {
+        return range.to_vec();
+    };
+    if tu == cu {
+        return range.to_vec();
+    }
+    range
+        .iter()
+        .map(|elem| match elem {
+            ArrayElement::Number(v) => ArrayElement::Number(v * cu / tu),
+            other => other.clone(),
+        })
+        .collect()
+}
+
 /// Perform the common scale resolution steps (1-4).
 ///
 /// This handles:
@@ -1973,7 +2024,14 @@ pub(crate) fn resolve_common_steps<T: ScaleTypeTrait + ?Sized>(
                 // User provided partial range with Nulls - merge with context (not expanded yet)
                 if let Some(ref range) = context.range {
                     let (context_values, is_discrete) = match range {
-                        InputRange::Continuous(r) => (r.clone(), false),
+                        InputRange::Continuous(r) => (
+                            convert_range_to_transform_unit(
+                                r,
+                                context.dtype.as_ref(),
+                                &resolved_transform,
+                            ),
+                            false,
+                        ),
                         InputRange::Discrete(r) => (r.clone(), true),
                     };
                     (
@@ -1991,7 +2049,14 @@ pub(crate) fn resolve_common_steps<T: ScaleTypeTrait + ?Sized>(
             }
         } else {
             match &context.range {
-                Some(InputRange::Continuous(r)) => (Some(r.clone()), false),
+                Some(InputRange::Continuous(r)) => (
+                    Some(convert_range_to_transform_unit(
+                        r,
+                        context.dtype.as_ref(),
+                        &resolved_transform,
+                    )),
+                    false,
+                ),
                 Some(InputRange::Discrete(r)) => (Some(r.clone()), true),
                 None => (None, false),
             }

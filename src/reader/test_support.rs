@@ -187,7 +187,20 @@ impl StubReader {
         let arrays: Vec<arrow::array::ArrayRef> = schema
             .fields()
             .iter()
-            .map(|f| sample_array(f.data_type()))
+            .map(|f| {
+                let arr = sample_array(f.data_type());
+                // The single-row minmax query reads each column's MAX from
+                // a paired `__ggsql_max_*` column. Rotating the sample
+                // gives it the larger values the old two-row shape supplied
+                // via its second row — an equal min/max would collapse the
+                // trained range and silently empty the binned cases' SQL.
+                if f.name().starts_with("__ggsql_max_") {
+                    let idx = arrow::array::UInt32Array::from(vec![1u32, 2, 0]);
+                    arrow::compute::take(arr.as_ref(), &idx, None).expect("sample rotate")
+                } else {
+                    arr
+                }
+            })
             .collect();
         let batch =
             RecordBatch::try_new(schema, arrays).expect("stub arrays must match fabricated schema");

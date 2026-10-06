@@ -12,7 +12,7 @@
 set -euo pipefail
 source "$(dirname "$0")/_lib.sh"
 
-repo_root="$(cd "$(dirname "$0")/../.." && pwd)"
+repo_root="$(cd "$(dirname "$0")/../../.." && pwd)"
 
 druid_dir=$(mktemp -d)
 curl -sSL -o "$druid_dir/docker-compose.yml" \
