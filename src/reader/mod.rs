@@ -697,6 +697,14 @@ pub trait SqlDialect {
     /// Build the DDL statement(s) needed to (re)create a temporary table
     /// that holds the result of `body_sql`.
     ///
+    /// Drop a table ggsql created (materialized internal table or registered
+    /// data), best effort: the statement must not fail when the table is
+    /// absent. Default is `DROP TABLE IF EXISTS`; Oracle overrides with a
+    /// PL/SQL-guarded drop (it has no `IF EXISTS`).
+    fn drop_table_sql(&self, name: &str) -> String {
+        format!("DROP TABLE IF EXISTS {}", self.quote_ident(name))
+    }
+
     /// Column aliases from `WITH t(a, b) AS (...)` are preserved portably by
     /// wrapping the body in a named CTE with a column alias list, so the
     /// backend never needs to support `CREATE TABLE t(a, b) AS ...` syntax.
@@ -723,7 +731,10 @@ pub trait SqlDialect {
                 format!("CREATE TEMP TABLE {} AS {}", qname, body),
             ],
             TempTableStyle::CreateOrReplaceTemp => {
-                vec![format!("CREATE OR REPLACE TEMP TABLE {} AS {}", qname, body)]
+                vec![format!(
+                    "CREATE OR REPLACE TEMP TABLE {} AS {}",
+                    qname, body
+                )]
             }
             TempTableStyle::DropTemporaryThenCreateTemp => vec![
                 format!("DROP TEMPORARY TABLE IF EXISTS {}", qname),
@@ -737,14 +748,7 @@ pub trait SqlDialect {
                 format!("CREATE TABLE {} AS {}", qname, body),
             ],
             TempTableStyle::GuardedDropThenCreate => vec![
-                // The drop must spell the name exactly like the CREATE below:
-                // an unquoted name would be folded to uppercase by Oracle and
-                // never match the quoted (case-preserved) table, silently
-                // leaving stale tables behind under the WHEN OTHERS guard.
-                format!(
-                    "BEGIN EXECUTE IMMEDIATE 'DROP TABLE {}'; EXCEPTION WHEN OTHERS THEN NULL; END;",
-                    qname.replace('\'', "''")
-                ),
+                self.drop_table_sql(name),
                 format!("CREATE TABLE {} AS {}", qname, body),
             ],
             TempTableStyle::SelectInto => {

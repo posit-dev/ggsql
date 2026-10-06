@@ -79,6 +79,18 @@ impl SqlDialect for OracleDialect {
         format!("TIMESTAMP '1970-01-01 00:00:00' + NUMTODSINTERVAL({secs}, 'SECOND')")
     }
 
+    fn drop_table_sql(&self, name: &str) -> String {
+        // Oracle has no DROP TABLE IF EXISTS. The drop must spell the name
+        // exactly like the CREATE: an unquoted name would be folded to
+        // uppercase and never match the quoted (case-preserved) table,
+        // silently leaving stale tables behind under the WHEN OTHERS guard.
+        let qname = self.quote_ident(name);
+        format!(
+            "BEGIN EXECUTE IMMEDIATE 'DROP TABLE {}'; EXCEPTION WHEN OTHERS THEN NULL; END;",
+            qname.replace('\'', "''")
+        )
+    }
+
     fn temp_table_style(&self) -> crate::reader::TempTableStyle {
         // Oracle has no DROP TABLE IF EXISTS; guard the drop with PL/SQL.
         crate::reader::TempTableStyle::GuardedDropThenCreate

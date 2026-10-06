@@ -598,7 +598,7 @@ where
         // silently tolerated below.
         let schema = batch.schema();
         if replace {
-            let drop_sql = format!("DROP TABLE IF EXISTS {}", self.dialect.quote_ident(name));
+            let drop_sql = self.dialect.drop_table_sql(name);
             self.new_query_statement(&mut conn, &drop_sql)?
                 .execute_update()
                 .map_err(|e| GgsqlError::ReaderError(format!("ADBC execute_update DROP: {}", e)))?;
@@ -699,7 +699,7 @@ where
                 name
             )));
         }
-        let sql = format!("DROP TABLE IF EXISTS {}", self.dialect.quote_ident(name));
+        let sql = self.dialect.drop_table_sql(name);
         // Ignore the returned DataFrame — DROP TABLE has no result rows.
         self.execute_sql(&sql)?;
         self.registered_tables.note_unregistered(name);

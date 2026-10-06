@@ -155,7 +155,7 @@ impl Reader for OdbcReader {
         super::validate_table_name(name)?;
 
         if replace {
-            let drop_sql = format!("DROP TABLE IF EXISTS {}", self.dialect.quote_ident(name));
+            let drop_sql = self.dialect.drop_table_sql(name);
             let _ = self.connection.execute(&drop_sql);
         }
 
@@ -257,7 +257,7 @@ impl Reader for OdbcReader {
             )));
         }
 
-        let sql = format!("DROP TABLE IF EXISTS {}", self.dialect.quote_ident(name));
+        let sql = self.dialect.drop_table_sql(name);
         self.connection.execute(&sql).map_err(|e| {
             GgsqlError::ReaderError(format!("Failed to unregister table '{}': {}", name, e))
         })?;

@@ -533,15 +533,18 @@ pub fn reader_from_uri(uri: &str) -> Result<Box<dyn Reader + Send>> {
 /// ggsql stages internal results in, using the dialect's own temp-table DDL
 /// (the same mechanism the executor relies on). Best effort: the probe table
 /// is dropped afterwards, and any failure means "cannot".
+///
+/// Note this runs DDL (CREATE + DROP of a `__ggsql_probe_<sid>__` table)
+/// against the user's database on every connection; on backends without
+/// temp tables (e.g. Oracle) that is a permanent table for the duration of
+/// the probe. The drop goes through the dialect so backends without
+/// `DROP TABLE IF EXISTS` (Oracle) get their guarded form.
 fn probe_temp_tables(reader: &dyn Reader) -> bool {
     let probe = format!("__ggsql_probe_{}__", crate::naming::session_id());
     let dialect = reader.dialect();
     let stmts = dialect.create_or_replace_temp_table_sql(&probe, &[], "SELECT 1 AS x");
     let ok = stmts.iter().all(|s| reader.execute_sql(s).is_ok());
-    let _ = reader.execute_sql(&format!(
-        "DROP TABLE IF EXISTS {}",
-        dialect.quote_ident(&probe)
-    ));
+    let _ = reader.execute_sql(&dialect.drop_table_sql(&probe));
     ok
 }
 
