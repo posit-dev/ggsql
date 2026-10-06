@@ -25,19 +25,41 @@ pub fn ident<D: SqlDialect + ?Sized>(dialect: &D, name: &str) -> String {
     dialect.quote_ident(name)
 }
 
+/// What a FROM item is, decided by the caller — never guessed from text.
+///
+/// The one judged case is [`FromItem::Fragment`], the contract for `from`
+/// arguments passed across the [`SqlDialect`] trait: generated SQL only ever
+/// passes a bare (possibly quoted) table/CTE name or an already-parenthesized
+/// relation, so a leading `(` unambiguously means "already a relation".
+#[derive(Debug, Clone, Copy)]
+pub enum FromItem<'a> {
+    /// A bare table or CTE name; emitted verbatim, never parenthesized
+    /// (MySQL/MariaDB/T-SQL reject `FROM (name)`).
+    Table(&'a str),
+    /// A full query; parenthesized as a derived table, with a leading `WITH`
+    /// hoisted out when the dialect forbids CTEs in that position.
+    Query(&'a str),
+    /// An already-composed relation (e.g. [`Select::build_derived`] output);
+    /// emitted verbatim.
+    Raw(&'a str),
+    /// A trait-level FROM fragment: [`FromItem::Raw`] when it starts with
+    /// `(`, otherwise [`FromItem::Table`].
+    Fragment(&'a str),
+}
+
 /// `SELECT * FROM (<query>) AS "alias"` — the canonical derived-table wrap.
 pub fn wrap_all<D: SqlDialect + ?Sized>(dialect: &D, query: &str, alias: &str) -> String {
     Select::new(dialect)
         .select_star()
-        .from_aliased(query, alias)
+        .from_aliased(FromItem::Query(query), alias)
         .build()
 }
 
-/// `SELECT <list> FROM (<from>) AS "alias"`.
+/// `SELECT <list> FROM <from> AS "alias"`.
 pub fn select_from<D: SqlDialect + ?Sized>(
     dialect: &D,
     list: &str,
-    from: &str,
+    from: FromItem<'_>,
     alias: &str,
 ) -> String {
     Select::new(dialect)
@@ -141,17 +163,16 @@ impl<'d, D: SqlDialect + ?Sized> Select<'d, D> {
         self
     }
 
-    /// FROM a table name or subquery, without an alias. Parenthesized only
-    /// when `from` is a query (bare table/CTE names must not be
-    /// parenthesized: MySQL/MariaDB/T-SQL reject `FROM (name)`).
-    pub fn from(mut self, from: &str) -> Self {
+    /// FROM a table, query, or composed relation (see [`FromItem`]), without
+    /// an alias.
+    pub fn from(mut self, from: FromItem<'_>) -> Self {
         self.from = self.prepare_from(from);
         self
     }
 
     /// FROM with a table alias. The alias clause is emitted by the dialect
     /// (`AS "alias"` on most backends, bare `"alias"` on Oracle).
-    pub fn from_aliased(mut self, from: &str, alias: &str) -> Self {
+    pub fn from_aliased(mut self, from: FromItem<'_>, alias: &str) -> Self {
         let fragment = self.prepare_from(from);
         self.from = format!("{} {}", fragment, self.dialect.sql_table_alias(alias));
         self
@@ -242,8 +263,24 @@ impl<'d, D: SqlDialect + ?Sized> Select<'d, D> {
 
     /// Build and apply the dialect's row-limit wrapper (`LIMIT n`,
     /// `SELECT TOP n * FROM (...)`, `WHERE ROWNUM <= n`, ...).
+    ///
+    /// When the dialect wraps the query in a derived table
+    /// ([`SqlDialect::sql_limit_wraps_query`], e.g. T-SQL's TOP), an ORDER BY
+    /// is moved outside the wrap — ordering inside a derived table is T-SQL
+    /// error 1033. Clause-style limits (`LIMIT n`) keep the ordering inside,
+    /// where `ORDER BY … LIMIT n` is valid.
     pub fn build_limited(self, n: usize) -> String {
-        self.dialect.sql_limit(&self.build(), n)
+        if self.ordering.is_some() && self.dialect.sql_limit_wraps_query() {
+            let ordering = self.ordering.clone().expect("checked above");
+            let body = Select {
+                ordering: None,
+                ..self
+            }
+            .build();
+            format!("{} ORDER BY {}", self.dialect.sql_limit(&body, n), ordering)
+        } else {
+            self.dialect.sql_limit(&self.build(), n)
+        }
     }
 
     /// Build as a parenthesized, aliased derived-table fragment:
@@ -256,17 +293,19 @@ impl<'d, D: SqlDialect + ?Sized> Select<'d, D> {
         format!("({}) {}", self.build(), alias_clause)
     }
 
-    /// The FROM fragment for `from`: parenthesized when it is a query, with
-    /// a leading `WITH` hoisted into `self.ctes` when the dialect forbids
-    /// CTEs inside derived tables.
-    fn prepare_from(&mut self, from: &str) -> String {
-        let trimmed = from.trim();
-        if trimmed.starts_with('(') {
-            return trimmed.to_string();
-        }
-        if !trimmed.contains(char::is_whitespace) {
-            return trimmed.to_string();
-        }
+    /// The FROM fragment for `from` (see [`FromItem`]): queries are
+    /// parenthesized, with a leading `WITH` hoisted into `self.ctes` when
+    /// the dialect forbids CTEs inside derived tables.
+    fn prepare_from(&mut self, from: FromItem<'_>) -> String {
+        let trimmed = match from {
+            FromItem::Table(t) => return t.trim().to_string(),
+            FromItem::Raw(r) => return r.trim().to_string(),
+            FromItem::Fragment(f) => {
+                let f = f.trim();
+                return f.to_string();
+            }
+            FromItem::Query(q) => q.trim(),
+        };
         if !self.dialect.allows_cte_in_derived_table() {
             if let Some((cte, body)) = split_cte_prefix(trimmed) {
                 self.push_hoisted_cte(cte);
@@ -306,16 +345,38 @@ mod tests {
     #[test]
     fn bare_table_is_not_parenthesized() {
         assert_eq!(
-            select_from(&AnsiDialect, "a, b", "mytable", "s"),
+            select_from(&AnsiDialect, "a, b", FromItem::Table("mytable"), "s"),
             "SELECT a, b FROM mytable AS \"s\""
         );
     }
 
     #[test]
-    fn already_parenthesized_from_is_kept() {
+    fn raw_relation_is_emitted_verbatim() {
+        // A pre-composed relation keeps its own alias; the FROM alias is not
+        // stacked on top (that would be invalid SQL).
+        let rel = Select::new(&AnsiDialect)
+            .select("1 AS a")
+            .build_derived("u");
         assert_eq!(
-            select_from(&AnsiDialect, "a", "(SELECT 1 AS a) AS u", "s"),
-            "SELECT a FROM (SELECT 1 AS a) AS u AS \"s\""
+            select_from(&AnsiDialect, "a", FromItem::Raw(&rel), "s"),
+            "SELECT a FROM (SELECT 1 AS a) AS \"u\" AS \"s\""
+        );
+    }
+
+    #[test]
+    fn fragment_distinguishes_relation_from_table() {
+        assert_eq!(
+            select_from(&AnsiDialect, "a", FromItem::Fragment("\"my table\""), "s"),
+            "SELECT a FROM \"my table\" AS \"s\""
+        );
+        assert_eq!(
+            select_from(
+                &AnsiDialect,
+                "a",
+                FromItem::Fragment("(SELECT 1 AS a) AS \"u\""),
+                "s"
+            ),
+            "SELECT a FROM (SELECT 1 AS a) AS \"u\" AS \"s\""
         );
     }
 
@@ -360,14 +421,14 @@ mod tests {
         assert_eq!(
             Select::new(&OracleDialect)
                 .select_star_plus(&["1 AS one".to_string()], "s")
-                .from_aliased("SELECT a FROM t", "s")
+                .from_aliased(FromItem::Query("SELECT a FROM t"), "s")
                 .build(),
             "SELECT \"s\".*, 1 AS one FROM (SELECT a FROM t) \"s\""
         );
         assert_eq!(
             Select::new(&AnsiDialect)
                 .select_star_plus(&["1 AS one".to_string()], "s")
-                .from_aliased("SELECT a FROM t", "s")
+                .from_aliased(FromItem::Query("SELECT a FROM t"), "s")
                 .build(),
             "SELECT *, 1 AS one FROM (SELECT a FROM t) AS \"s\""
         );
@@ -378,7 +439,7 @@ mod tests {
         assert_eq!(
             Select::new(&AnsiDialect)
                 .select("a")
-                .from("t")
+                .from(FromItem::Table("t"))
                 .and_where("a > 1")
                 .and_where("b < 2")
                 .order_by("a")
@@ -408,14 +469,14 @@ mod tests {
         assert_eq!(
             Select::new(&AnsiDialect)
                 .select("a")
-                .from("t")
+                .from(FromItem::Table("t"))
                 .build_limited(3),
             "SELECT a FROM t LIMIT 3"
         );
         assert_eq!(
             Select::new(&MssqlDialect)
                 .select("a")
-                .from("t")
+                .from(FromItem::Table("t"))
                 .build_limited(3),
             "SELECT TOP 3 * FROM (SELECT a FROM t) AS \"__ggsql_lim__\""
         );

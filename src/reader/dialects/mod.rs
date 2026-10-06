@@ -346,7 +346,7 @@ mod tests {
         for scheme in ALL_SCHEMES {
             let d = dialect_for_scheme(scheme).unwrap();
             let quoted = d.quote_ident("mixed Case");
-            let sql = d.sql_quantile("mixed Case", 0.5, "t", &[]);
+            let sql = d.sql_quantile("mixed Case", 0.5, crate::sql::FromItem::Table("t"), &[]);
             assert!(
                 sql.contains(&quoted),
                 "{scheme}: sql_quantile does not quote its column: {sql}"

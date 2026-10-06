@@ -73,8 +73,12 @@ impl SqlDialect for MssqlDialect {
     fn sql_limit(&self, query: &str, n: usize) -> String {
         crate::sql::Select::new(self)
             .select(format!("TOP {n} *"))
-            .from_aliased(query, "__ggsql_lim__")
+            .from_aliased(crate::sql::FromItem::Query(query), "__ggsql_lim__")
             .build()
+    }
+
+    fn sql_limit_wraps_query(&self) -> bool {
+        true
     }
 
     fn allows_cte_in_derived_table(&self) -> bool {

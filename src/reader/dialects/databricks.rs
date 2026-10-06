@@ -43,7 +43,13 @@ impl SqlDialect for DatabricksDialect {
         )
     }
 
-    fn sql_quantile(&self, column: &str, fraction: f64, _from: &str, _groups: &[String]) -> String {
+    fn sql_quantile(
+        &self,
+        column: &str,
+        fraction: f64,
+        _from: crate::sql::FromItem<'_>,
+        _groups: &[String],
+    ) -> String {
         // Spark forbids correlated scalar subqueries in the SELECT list of a
         // GROUP BY query ("is neither present in GROUP BY, nor in an
         // aggregate function"), so the correlated-subquery default fails

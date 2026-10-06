@@ -43,7 +43,13 @@ impl SqlDialect for BigQueryDialect {
         )
     }
 
-    fn sql_quantile(&self, column: &str, fraction: f64, _from: &str, _groups: &[String]) -> String {
+    fn sql_quantile(
+        &self,
+        column: &str,
+        fraction: f64,
+        _from: crate::sql::FromItem<'_>,
+        _groups: &[String],
+    ) -> String {
         // APPROX_QUANTILES(x, 100) returns an array of 101 boundaries.
         // BigQuery rejects the correlated scalar subquery of the default; the
         // native aggregate computes within the caller's GROUP BY, so `from`
@@ -100,7 +106,7 @@ mod tests {
 
     #[test]
     fn quantile_uses_approx_quantiles() {
-        let sql = BigQueryDialect.sql_quantile("v", 0.25, "t", &[]);
+        let sql = BigQueryDialect.sql_quantile("v", 0.25, crate::sql::FromItem::Table("t"), &[]);
         assert_eq!(sql, "APPROX_QUANTILES(`v`, 100)[SAFE_OFFSET(25)]");
     }
 
@@ -109,7 +115,7 @@ mod tests {
         // sql_quantile must not emit a correlated subquery — BigQuery
         // rejects those. It uses the APPROX_QUANTILES aggregate, valid
         // inside the GROUP BY queries that boxplot and density build.
-        let sql = BigQueryDialect.sql_quantile("v", 0.75, "SELECT * FROM t", &["g".to_string()]);
+        let sql = BigQueryDialect.sql_quantile("v", 0.75, crate::sql::FromItem::Query("SELECT * FROM t"), &["g".to_string()]);
         assert_eq!(sql, "APPROX_QUANTILES(`v`, 100)[SAFE_OFFSET(75)]");
         assert!(!sql.contains("SELECT"), "must not be a subquery: {sql}");
     }

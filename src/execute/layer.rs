@@ -379,7 +379,7 @@ pub fn apply_pre_stat_transform(
         })
         .collect();
 
-    crate::sql::select_from(dialect, &select_exprs.join(", "), query, "__ggsql_pre__")
+    crate::sql::select_from(dialect, &select_exprs.join(", "), crate::sql::FromItem::Query(query), "__ggsql_pre__")
 }
 
 /// Part 1: Build the initial layer query with SELECT, casts, filters, and aesthetic renames.
@@ -428,7 +428,7 @@ pub fn build_layer_base_query(
     // Build query with optional WHERE clause
     let mut query = crate::sql::Select::new(dialect)
         .select(select_clause)
-        .from_aliased(source_query, "__ggsql_src__");
+        .from_aliased(crate::sql::FromItem::Query(source_query), "__ggsql_src__");
     if let Some(ref f) = layer.filter {
         query = query.and_where(f.as_str());
     }
@@ -696,7 +696,7 @@ where
             } else {
                 crate::sql::Select::new(dialect)
                     .select_star_plus(&stat_rename_exprs, "__ggsql_stat__")
-                    .from_aliased(&transformed_query, "__ggsql_stat__")
+                    .from_aliased(crate::sql::FromItem::Query(&transformed_query), "__ggsql_stat__")
                     .build()
             }
         }

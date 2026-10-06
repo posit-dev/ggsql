@@ -57,7 +57,7 @@ pub fn build_minmax_query(
     crate::sql::Select::new(dialect)
         .with_cte(&__ggsql_source__, source_query)
         .select(exprs.join(", "))
-        .from(&__ggsql_source__)
+        .from(crate::sql::FromItem::Table(&__ggsql_source__))
         .build()
 }
 
@@ -163,7 +163,7 @@ where
 {
     let schema_query = crate::sql::Select::new(dialect)
         .select_star()
-        .from_aliased(query, naming::SCHEMA_ALIAS)
+        .from_aliased(crate::sql::FromItem::Query(query), naming::SCHEMA_ALIAS)
         .build_limited(1);
     let schema_df = execute_query(&schema_query)?;
 

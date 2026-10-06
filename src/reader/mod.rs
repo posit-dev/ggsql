@@ -126,6 +126,15 @@ pub trait SqlDialect {
         format!("{} LIMIT {}", query, n)
     }
 
+    /// Whether [`sql_limit`](SqlDialect::sql_limit) wraps the query in a
+    /// derived table (T-SQL's `SELECT TOP n * FROM (…)`, Oracle's ROWNUM
+    /// wrap) rather than appending a clause (`LIMIT n`). Callers use this
+    /// to keep ORDER BY out of the derived table, where T-SQL rejects it
+    /// (error 1033). Default `false`; wrapper-style dialects must override.
+    fn sql_limit_wraps_query(&self) -> bool {
+        false
+    }
+
     /// Cast an expression to a SQL type name.
     ///
     /// Default uses `CAST(expr AS type)`. Override for backends that prefer a
@@ -228,7 +237,7 @@ pub trait SqlDialect {
             // duplicated column wins over the star's.
             return crate::sql::Select::new(self)
                 .select_plus_star(&[format!("{expr} AS {col}")], "__ggsql_sr__")
-                .from_aliased(from, "__ggsql_sr__")
+                .from_aliased(crate::sql::FromItem::Query(from), "__ggsql_sr__")
                 .build();
         }
         let select_list: Vec<String> = all_columns
@@ -242,7 +251,12 @@ pub trait SqlDialect {
                 }
             })
             .collect();
-        crate::sql::select_from(self, &select_list.join(", "), from, "__ggsql_sr__")
+        crate::sql::select_from(
+            self,
+            &select_list.join(", "),
+            crate::sql::FromItem::Query(from),
+            "__ggsql_sr__",
+        )
     }
 
     /// SQL expression constructing a point geometry from x/y expressions.
@@ -323,13 +337,13 @@ pub trait SqlDialect {
     fn sql_geometry_bbox(&self, column: &str, from: &str) -> String {
         let extent = crate::sql::Select::new(self)
             .select(format!("ST_Extent({column}) AS ext"))
-            .from(from)
+            .from(crate::sql::FromItem::Fragment(from))
             .build();
         crate::sql::select_from(
             self,
             "ST_XMin(ext) AS xmin, ST_YMin(ext) AS ymin, \
              ST_XMax(ext) AS xmax, ST_YMax(ext) AS ymax",
-            &extent,
+            crate::sql::FromItem::Query(&extent),
             "__ggsql_ext__",
         )
     }
@@ -425,7 +439,13 @@ pub trait SqlDialect {
     /// `x = fraction * (cnt - 1)`, the result interpolates linearly between
     /// the rows ranked `floor(x) + 1` and `ceil(x) + 1`, which is exact for
     /// every fraction.
-    fn sql_quantile(&self, column: &str, fraction: f64, from: &str, groups: &[String]) -> String {
+    fn sql_quantile(
+        &self,
+        column: &str,
+        fraction: f64,
+        from: crate::sql::FromItem<'_>,
+        groups: &[String],
+    ) -> String {
         // The correlation predicate references the enclosing query's alias
         // and this scalar subquery's own alias, so both are needed quoted.
         let __ggsql_qt__ = self.quote_ident("__ggsql_qt__");
@@ -480,7 +500,7 @@ pub trait SqlDialect {
                  (MAX(CASE WHEN rn = {hi} THEN __val END) - \
                   MAX(CASE WHEN rn = {lo} THEN __val END)) * MAX({frac})"
             ))
-            .from_aliased(&inner, "__ggsql_tile__");
+            .from_aliased(crate::sql::FromItem::Query(&inner), "__ggsql_tile__");
         if let Some(filter) = group_filter {
             outer = outer.and_where(filter);
         }

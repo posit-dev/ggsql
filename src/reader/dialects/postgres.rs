@@ -40,7 +40,13 @@ impl SqlDialect for PostgresDialect {
         }
     }
 
-    fn sql_quantile(&self, column: &str, fraction: f64, _from: &str, _groups: &[String]) -> String {
+    fn sql_quantile(
+        &self,
+        column: &str,
+        fraction: f64,
+        _from: crate::sql::FromItem<'_>,
+        _groups: &[String],
+    ) -> String {
         format!(
             "PERCENTILE_CONT({fraction}) WITHIN GROUP (ORDER BY {column})",
             column = self.quote_ident(column)
@@ -67,7 +73,7 @@ mod tests {
 
     #[test]
     fn quantile_uses_ordered_set() {
-        let sql = PostgresDialect.sql_quantile("v", 0.5, "t", &[]);
+        let sql = PostgresDialect.sql_quantile("v", 0.5, crate::sql::FromItem::Table("t"), &[]);
         assert_eq!(sql, "PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY \"v\")");
     }
 

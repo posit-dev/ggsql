@@ -35,7 +35,15 @@ impl SqlDialect for OracleDialect {
     }
 
     fn sql_limit(&self, query: &str, n: usize) -> String {
-        format!("SELECT * FROM ({query}) WHERE ROWNUM <= {n}")
+        crate::sql::Select::new(self)
+            .select_star()
+            .from_aliased(crate::sql::FromItem::Query(query), "__ggsql_lim__")
+            .and_where(format!("ROWNUM <= {n}"))
+            .build()
+    }
+
+    fn sql_limit_wraps_query(&self) -> bool {
+        true
     }
 
     fn sql_generate_series(&self, n: usize) -> String {
@@ -48,7 +56,13 @@ impl SqlDialect for OracleDialect {
         )
     }
 
-    fn sql_quantile(&self, column: &str, fraction: f64, _from: &str, _groups: &[String]) -> String {
+    fn sql_quantile(
+        &self,
+        column: &str,
+        fraction: f64,
+        _from: crate::sql::FromItem<'_>,
+        _groups: &[String],
+    ) -> String {
         format!(
             "PERCENTILE_CONT({fraction}) WITHIN GROUP (ORDER BY {column})",
             column = self.quote_ident(column)
@@ -104,7 +118,7 @@ mod tests {
     fn limit_uses_rownum() {
         assert_eq!(
             OracleDialect.sql_limit("SELECT a FROM t", 5),
-            "SELECT * FROM (SELECT a FROM t) WHERE ROWNUM <= 5"
+            "SELECT * FROM (SELECT a FROM t) \"__ggsql_lim__\" WHERE ROWNUM <= 5"
         );
     }
 

@@ -28,7 +28,13 @@ impl SqlDialect for MonetDbDialect {
         super::case_least(exprs)
     }
 
-    fn sql_quantile(&self, column: &str, fraction: f64, _from: &str, _groups: &[String]) -> String {
+    fn sql_quantile(
+        &self,
+        column: &str,
+        fraction: f64,
+        _from: crate::sql::FromItem<'_>,
+        _groups: &[String],
+    ) -> String {
         format!(
             "QUANTILE({column}, {fraction})",
             column = self.quote_ident(column)
@@ -113,7 +119,7 @@ mod tests {
     #[test]
     fn quantile_is_native() {
         assert_eq!(
-            MonetDbDialect.sql_quantile("v", 0.75, "t", &[]),
+            MonetDbDialect.sql_quantile("v", 0.75, crate::sql::FromItem::Table("t"), &[]),
             "QUANTILE(\"v\", 0.75)"
         );
     }
