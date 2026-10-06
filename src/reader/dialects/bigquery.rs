@@ -4,10 +4,10 @@
 //! names (`INT64`, `FLOAT64`, `STRING`), `GENERATE_ARRAY` series,
 //! `APPROX_QUANTILES`, and `DATE_ADD`/`TIMESTAMP_ADD` literals.
 //!
-//! Spatial note: BigQuery `GEOGRAPHY` is WGS84-only and cannot reproject.
-//! Basic ingestion (`ST_AsBinary`) and envelopes work, but any CRS
-//! transformation will fail server-side; there is no way to express that in
-//! the `SqlDialect` surface today, so it is documented rather than guarded.
+//! Spatial note: spatial is not enabled here — `supports_spatial()` keeps
+//! the `false` default. BigQuery `GEOGRAPHY` is WGS84-only and cannot
+//! reproject, so enabling it would need CRS handling the `SqlDialect`
+//! surface cannot express today.
 
 use crate::reader::SqlDialect;
 

@@ -1,7 +1,9 @@
 //! Exasol dialect.
 //!
-//! Exasol is close to ANSI (it implements the OGC `ST_` spatial surface
-//! natively). Main deviations: `VARCHAR` requires a length, there is no SQL
+//! Exasol is close to ANSI. Although the database implements the OGC `ST_`
+//! spatial surface natively, spatial is not enabled here —
+//! `supports_spatial()` keeps the `false` default. Main deviations:
+//! `VARCHAR` requires a length, there is no SQL
 //! `TIME` type (time values are stored as `VARCHAR(32)`, mirroring the
 //! `SqliteDialect` precedent), date/timestamp literals use `ADD_DAYS` /
 //! `ADD_SECONDS` rather than `INTERVAL`, and Exasol has no recursive CTEs —

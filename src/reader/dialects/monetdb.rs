@@ -2,8 +2,9 @@
 //!
 //! MonetDB is strongly SQL-standard (like its CWI sibling DuckDB), so the
 //! ANSI defaults mostly apply. Overrides: native `quantile` aggregate and
-//! DOUBLE type naming. Spatial goes through the optional `geom` module,
-//! which exposes a PostGIS-like `ST_` surface compatible with the defaults.
+//! DOUBLE type naming. MonetDB's optional `geom` module exposes a
+//! PostGIS-like `ST_` surface, but spatial is not enabled here —
+//! `supports_spatial()` keeps the `false` default.
 
 use crate::reader::SqlDialect;
 

@@ -350,7 +350,8 @@ pub fn detect(
     None
 }
 
-/// `k=v` pairs for error messages: every supported URI scheme.
+/// `scheme://` list for error messages: every supported URI scheme
+/// (canonical names; registry aliases omitted).
 pub fn supported_schemes() -> String {
     let mut schemes: Vec<String> = vec!["odbc".into(), "adbc".into()];
     schemes.extend(REGISTRY.iter().map(|e| e.scheme.into()));

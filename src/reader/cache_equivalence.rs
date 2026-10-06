@@ -17,7 +17,7 @@ struct Case {
 }
 
 /// A stat-heavy corpus — these generate the most cache-dialect SQL
-/// (`sql_percentile`, `sql_greatest`/`sql_least`, `sql_generate_series`,
+/// (`sql_quantile`, `sql_greatest`/`sql_least`, `sql_generate_series`,
 /// casts), where caching is most likely to diverge.
 const CORPUS: &[Case] = &[
     // boxplot: quantiles / IQR

@@ -1,7 +1,7 @@
 //! Apache Druid dialect.
 //!
 //! Druid SQL (Calcite-based) is restrictive: no correlated scalar subqueries
-//! (so the default `sql_percentile` fallback will fail), no DATE/TIME types
+//! (so the default `sql_quantile` fallback will fail), no DATE/TIME types
 //! (time is always a TIMESTAMP), no temp tables, and no spatial. With no
 //! DDL at all, connections through Druid are always wrapped in a caching
 //! reader (`requires_cache`), so internal materialization happens
