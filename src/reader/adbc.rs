@@ -557,9 +557,11 @@ where
             arrow::compute::concat_batches(&schema, &batches)
                 .map_err(|e| GgsqlError::ReaderError(format!("concat_batches: {}", e)))?
         };
-        Ok(DataFrame::from_record_batch(
-            crate::reader::normalize_result_batch(merged)?,
-        ))
+        let mut batch = crate::reader::normalize_result_batch(merged)?;
+        if self.dialect.sniff_temporal_strings() {
+            batch = crate::reader::sniff_temporal_strings_in_batch(batch)?;
+        }
+        Ok(DataFrame::from_record_batch(batch))
     }
 
     fn register(&self, name: &str, df: DataFrame, replace: bool) -> Result<()> {

@@ -570,6 +570,21 @@ pub trait SqlDialect {
         false
     }
 
+    /// Whether result batches should have ISO-8601 date/datetime strings
+    /// sniffed into temporal Arrow types at the reader boundary.
+    ///
+    /// Default `false`: a backend's VARCHAR is a real string type and must
+    /// not be reinterpreted. Opt in only for drivers that lose temporal type
+    /// information entirely — e.g. the prerelease Druid Foundry driver
+    /// surfaces Druid's LONG-based timestamps as plain strings/epoch
+    /// integers — where an ISO-looking string is almost certainly a date
+    /// the driver failed to type. Mirrors the sqlite reader's value
+    /// sniffing, which exists for the same reason (sqlite has no temporal
+    /// storage types).
+    fn sniff_temporal_strings(&self) -> bool {
+        false
+    }
+
     /// SQL listing catalogs, with a single `catalog_name` output column.
     ///
     /// Default queries `information_schema`; override for backends without it
@@ -1084,6 +1099,120 @@ pub(crate) fn normalize_result_batch(
     .map_err(|e| GgsqlError::ReaderError(format!("Failed to normalize result batch: {e}")))
 }
 
+/// Recover temporal columns from ISO-8601 strings for drivers that lose
+/// temporal type information (see [`SqlDialect::sniff_temporal_strings`]).
+///
+/// Every Utf8 column is probed: if all non-null values parse as ISO dates
+/// (`YYYY-MM-DD`) it becomes Date32; otherwise if all parse as ISO
+/// datetimes (`YYYY-MM-DD` + `T`/space + time) it becomes Timestamp(µs).
+/// Anything else is left untouched. Columns with no non-null values are
+/// left alone — there is nothing to infer from.
+pub(crate) fn sniff_temporal_strings_in_batch(
+    batch: arrow::record_batch::RecordBatch,
+) -> Result<arrow::record_batch::RecordBatch> {
+    use arrow::array::{Array, ArrayRef, Date32Array, StringArray, TimestampMicrosecondArray};
+    use arrow::datatypes::{DataType, Field, Schema, TimeUnit};
+    use arrow::record_batch::RecordBatch;
+    use chrono::Datelike;
+    use std::sync::Arc;
+
+    const EPOCH_DAYS_FROM_CE: i32 = 719_163;
+
+    let schema = batch.schema();
+    if !schema
+        .fields()
+        .iter()
+        .any(|f| matches!(f.data_type(), DataType::Utf8))
+    {
+        return Ok(batch);
+    }
+
+    let parse_column = |array: &StringArray| -> Option<(ArrayRef, DataType)> {
+        let mut saw_value = false;
+        let mut dates: Vec<Option<i32>> = Vec::with_capacity(array.len());
+        let mut datetimes: Vec<Option<i64>> = Vec::with_capacity(array.len());
+        let mut date_ok = true;
+        let mut datetime_ok = true;
+        for value in array.iter() {
+            let Some(s) = value else {
+                dates.push(None);
+                datetimes.push(None);
+                continue;
+            };
+            saw_value = true;
+            if date_ok {
+                match chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d") {
+                    Ok(d) => dates.push(Some(d.num_days_from_ce() - EPOCH_DAYS_FROM_CE)),
+                    Err(_) => date_ok = false,
+                }
+            }
+            if datetime_ok {
+                // Accept a 'T' or space separator, fractional seconds, and a
+                // trailing 'Z' — the shapes ISO-8601 serializations take.
+                let stripped = s.strip_suffix('Z').unwrap_or(s);
+                let parsed = ["%Y-%m-%dT%H:%M:%S%.f", "%Y-%m-%d %H:%M:%S%.f"]
+                    .iter()
+                    .find_map(|fmt| chrono::NaiveDateTime::parse_from_str(stripped, fmt).ok());
+                match parsed {
+                    Some(dt) => datetimes.push(Some(dt.and_utc().timestamp_micros())),
+                    None => datetime_ok = false,
+                }
+            }
+            if !date_ok && !datetime_ok {
+                return None;
+            }
+        }
+        if !saw_value {
+            return None;
+        }
+        if date_ok {
+            return Some((
+                Arc::new(Date32Array::from(dates)) as ArrayRef,
+                DataType::Date32,
+            ));
+        }
+        if datetime_ok {
+            return Some((
+                Arc::new(TimestampMicrosecondArray::from(datetimes)) as ArrayRef,
+                DataType::Timestamp(TimeUnit::Microsecond, None),
+            ));
+        }
+        None
+    };
+
+    let mut fields = Vec::with_capacity(schema.fields().len());
+    let mut columns = Vec::with_capacity(batch.num_columns());
+    for (i, field) in schema.fields().iter().enumerate() {
+        let sniffed = match field.data_type() {
+            DataType::Utf8 => batch
+                .column(i)
+                .as_any()
+                .downcast_ref::<StringArray>()
+                .and_then(parse_column),
+            _ => None,
+        };
+        match sniffed {
+            Some((array, dtype)) => {
+                fields.push(Arc::new(Field::new(
+                    field.name(),
+                    dtype,
+                    field.is_nullable(),
+                )));
+                columns.push(array);
+            }
+            None => {
+                fields.push(field.clone());
+                columns.push(batch.column(i).clone());
+            }
+        }
+    }
+    RecordBatch::try_new(
+        Arc::new(Schema::new_with_metadata(fields, schema.metadata().clone())),
+        columns,
+    )
+    .map_err(|e| GgsqlError::ReaderError(format!("Failed to sniff temporal strings: {e}")))
+}
+
 /// Registered-table bookkeeping shared by the concrete readers: a set of
 /// names registered through this reader, so `unregister` can reject tables
 /// it doesn't own and readers can answer `is_registered`.
@@ -1192,6 +1321,81 @@ mod helper_tests {
         .unwrap();
         let out = normalize_result_batch(batch).unwrap();
         assert_eq!(out.column(0).data_type(), &DataType::Int64);
+    }
+
+    #[test]
+    fn sniff_temporal_strings_recovers_dates_and_datetimes() {
+        let schema = Arc::new(Schema::new(vec![
+            Field::new("d", DataType::Utf8, true),
+            Field::new("ts", DataType::Utf8, true),
+            Field::new("s", DataType::Utf8, true),
+        ]));
+        let batch = RecordBatch::try_new(
+            schema,
+            vec![
+                Arc::new(arrow::array::StringArray::from(vec![
+                    Some("2021-01-01"),
+                    None,
+                    Some("2021-01-03"),
+                ])),
+                Arc::new(arrow::array::StringArray::from(vec![
+                    Some("2021-01-01T00:00:00.000Z"),
+                    Some("2021-01-02 12:30:00"),
+                    None,
+                ])),
+                Arc::new(arrow::array::StringArray::from(vec![
+                    Some("a"),
+                    Some("b"),
+                    Some("c"),
+                ])),
+            ],
+        )
+        .unwrap();
+
+        let out = sniff_temporal_strings_in_batch(batch).unwrap();
+        let dates = out
+            .column(0)
+            .as_any()
+            .downcast_ref::<arrow::array::Date32Array>()
+            .expect("ISO date strings should sniff to Date32");
+        assert_eq!(dates.value(0), 18628); // 2021-01-01
+        assert!(dates.is_null(1));
+        assert_eq!(dates.value(2), 18630);
+        let micros = out
+            .column(1)
+            .as_any()
+            .downcast_ref::<arrow::array::TimestampMicrosecondArray>()
+            .expect("ISO datetime strings should sniff to Timestamp(µs)");
+        assert_eq!(micros.value(0), 1_609_459_200_000_000);
+        assert_eq!(micros.value(1), 1_609_590_600_000_000);
+        assert!(micros.is_null(2));
+        assert_eq!(out.column(2).data_type(), &DataType::Utf8);
+    }
+
+    #[test]
+    fn sniff_temporal_strings_leaves_partial_and_empty_columns_alone() {
+        let schema = Arc::new(Schema::new(vec![
+            Field::new("mixed", DataType::Utf8, true),
+            Field::new("nulls", DataType::Utf8, true),
+        ]));
+        let batch = RecordBatch::try_new(
+            schema,
+            vec![
+                Arc::new(arrow::array::StringArray::from(vec![
+                    Some("2021-01-01"),
+                    Some("not a date"),
+                ])),
+                Arc::new(arrow::array::StringArray::from(vec![
+                    None::<&str>,
+                    None::<&str>,
+                ])),
+            ],
+        )
+        .unwrap();
+
+        let out = sniff_temporal_strings_in_batch(batch).unwrap();
+        assert_eq!(out.column(0).data_type(), &DataType::Utf8);
+        assert_eq!(out.column(1).data_type(), &DataType::Utf8);
     }
 
     #[test]

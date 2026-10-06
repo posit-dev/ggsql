@@ -37,6 +37,15 @@ impl SqlDialect for DruidDialect {
     fn requires_cache(&self) -> bool {
         true
     }
+
+    /// The prerelease Foundry ADBC driver loses Druid's temporal types:
+    /// timestamps surface as epoch-millisecond integers and dates as plain
+    /// strings. The integers are indistinguishable from real LONGs, but an
+    /// ISO-8601 string column can be recovered — sniff it back to a
+    /// temporal type at the reader boundary.
+    fn sniff_temporal_strings(&self) -> bool {
+        true
+    }
 }
 
 #[cfg(test)]

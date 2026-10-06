@@ -334,6 +334,9 @@ impl ScaleTypeTrait for Binned {
             )),
             _ => None,
         };
+        if let Some(ref r) = context_range_continuous {
+            super::check_temporal_domain(r, &resolved_transform)?;
+        }
 
         // 5. Calculate breaks for binned scale
         // Track whether breaks were explicit to determine alignment strategy:

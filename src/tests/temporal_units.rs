@@ -72,3 +72,46 @@ fn binned_temporal_identity_timestamp() {
         .unwrap();
     assert!(spec.layer_data(0).unwrap().height() > 0);
 }
+
+/// A numeric epoch-milliseconds column under `VIA date` must error, not
+/// panic: the date transform's break math overflows chrono::Duration::days
+/// on values that large. This is the shape a driver produces when it
+/// surfaces a LONG-based date with no temporal type (the Druid leg's
+/// original failure).
+#[test]
+fn binned_temporal_date_millis_column_errors() {
+    use arrow::array::Int64Array;
+
+    let reader = reader_from_uri("duckdb://memory").unwrap();
+    let days = [18993i64, 18994, 18995, 18996, 18997, 18998, 18999, 19000];
+    let millis: Vec<i64> = days.iter().map(|d| *d * 86_400_000).collect();
+    let batch = arrow::record_batch::RecordBatch::try_new(
+        Arc::new(arrow::datatypes::Schema::new(vec![
+            arrow::datatypes::Field::new("day", arrow::datatypes::DataType::Int64, false),
+            arrow::datatypes::Field::new("val", arrow::datatypes::DataType::Float64, false),
+        ])),
+        vec![
+            Arc::new(Int64Array::from(millis)),
+            Arc::new(arrow::array::Float64Array::from(vec![
+                1.5, 2.5, 3.5, 4.5, 5.5, 6.5, 7.5, 8.5,
+            ])),
+        ],
+    )
+    .unwrap();
+    reader
+        .register("ms_test", DataFrame::from_record_batch(batch), true)
+        .unwrap();
+
+    let result = reader.execute(
+        "VISUALISE DRAW point MAPPING day AS x, val AS y FROM ms_test SCALE BINNED x VIA date",
+    );
+    let err = match result {
+        Ok(_) => panic!("millis-as-days must be a proper error, not a panic"),
+        Err(e) => e,
+    };
+    let msg = format!("{err}");
+    assert!(
+        msg.contains("outside the representable range"),
+        "unexpected error: {msg}"
+    );
+}
