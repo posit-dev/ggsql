@@ -7,16 +7,14 @@
 #[allow(dead_code)]
 pub(crate) mod ffi;
 mod snowflake;
-#[allow(dead_code)]
 mod wrapper;
 
 use crate::reader::Reader;
 use crate::{DataFrame, GgsqlError, Result};
 use arrow::array::*;
+#[cfg(test)]
 use arrow::datatypes::DataType;
 use ffi::*;
-use std::cell::RefCell;
-use std::collections::HashSet;
 use std::sync::Arc;
 use wrapper::{Connection, Statement};
 
@@ -42,7 +40,7 @@ fn take_dialect_override(conn_str: &str) -> (String, Option<String>) {
 pub struct OdbcReader {
     connection: Connection,
     dialect: Box<dyn super::SqlDialect>,
-    registered_tables: RefCell<HashSet<String>>,
+    registered_tables: crate::reader::RegisteredTables,
     batch_size: usize,
 }
 
@@ -138,7 +136,7 @@ impl OdbcReader {
         Ok(Self {
             connection,
             dialect,
-            registered_tables: RefCell::new(HashSet::new()),
+            registered_tables: crate::reader::RegisteredTables::new(),
             batch_size,
         })
     }
@@ -173,11 +171,11 @@ impl Reader for OdbcReader {
             .fields()
             .iter()
             .map(|field| {
-                format!(
-                    "{} {}",
-                    self.dialect.quote_ident(field.name()),
-                    dialect_col_type(&*self.dialect, field.data_type())
-                )
+                // Types without a DDL mapping fall back to TEXT, matching
+                // this reader's historical behavior for exotic Arrow types.
+                let ty = super::register_column_type(&*self.dialect, field.data_type())
+                    .unwrap_or_else(|_| "TEXT".to_string());
+                format!("{} {}", self.dialect.quote_ident(field.name()), ty)
             })
             .collect();
         for create_sql in self.dialect.sql_create_empty_temp_table(name, &col_defs) {
@@ -256,12 +254,12 @@ impl Reader for OdbcReader {
             }
         }
 
-        self.registered_tables.borrow_mut().insert(name.to_string());
+        self.registered_tables.note_registered(name);
         Ok(())
     }
 
     fn unregister(&self, name: &str) -> Result<()> {
-        if !self.registered_tables.borrow().contains(name) {
+        if !self.registered_tables.is_registered(name) {
             return Err(GgsqlError::ReaderError(format!(
                 "Table '{}' was not registered via this reader",
                 name
@@ -273,7 +271,7 @@ impl Reader for OdbcReader {
             GgsqlError::ReaderError(format!("Failed to unregister table '{}': {}", name, e))
         })?;
 
-        self.registered_tables.borrow_mut().remove(name);
+        self.registered_tables.note_unregistered(name);
         Ok(())
     }
 
@@ -404,50 +402,6 @@ fn extract_column_infos_ci(df: &DataFrame) -> Result<Vec<super::ColumnInfo>> {
         }
     }
     Ok(results)
-}
-
-// ============================================================================
-// SQL type mapping
-// ============================================================================
-
-fn arrow_dtype_to_sql(dtype: &DataType) -> &'static str {
-    match dtype {
-        DataType::Boolean => "BOOLEAN",
-        DataType::Int8 | DataType::Int16 | DataType::Int32 | DataType::Int64 => "BIGINT",
-        DataType::UInt8 | DataType::UInt16 | DataType::UInt32 | DataType::UInt64 => "BIGINT",
-        DataType::Float32 | DataType::Float64 => "DOUBLE PRECISION",
-        DataType::Date32 => "DATE",
-        DataType::Timestamp(_, _) => "TIMESTAMP",
-        DataType::Time64(_) => "TIME",
-        _ => "TEXT",
-    }
-}
-
-/// Column type for `register` DDL: the dialect's own type names where the
-/// Arrow type maps to a cast target (so e.g. Oracle gets `VARCHAR2` rather
-/// than the nonexistent `TEXT`), falling back to [`arrow_dtype_to_sql`].
-fn dialect_col_type(dialect: &dyn crate::reader::SqlDialect, dtype: &DataType) -> String {
-    use crate::reader::CastTargetType as C;
-    let target = match dtype {
-        DataType::Boolean => Some(C::Boolean),
-        DataType::Int8
-        | DataType::Int16
-        | DataType::Int32
-        | DataType::Int64
-        | DataType::UInt8
-        | DataType::UInt16
-        | DataType::UInt32
-        | DataType::UInt64 => Some(C::Integer),
-        DataType::Float16 | DataType::Float32 | DataType::Float64 => Some(C::Number),
-        DataType::Utf8 | DataType::LargeUtf8 | DataType::Utf8View => Some(C::String),
-        DataType::Date32 | DataType::Date64 => Some(C::Date),
-        DataType::Timestamp(_, _) => Some(C::DateTime),
-        DataType::Time32(_) | DataType::Time64(_) => Some(C::Time),
-        _ => None,
-    };
-    target
-        .and_then(|t| dialect.type_name_for(t).map(str::to_string))
-        .unwrap_or_else(|| arrow_dtype_to_sql(dtype).to_string())
 }
 
 // ============================================================================
@@ -583,7 +537,11 @@ fn odbc_timestamp_to_micros(ts: &SqlTimestampStruct) -> Option<i64> {
 // ============================================================================
 
 const BATCH_SIZE: usize = 1000;
-const DEFAULT_TEXT_BUF_SIZE: usize = 65536;
+/// Per-cell text fetch buffer. Values longer than this are an explicit
+/// error (see the `ColumnBuilder::Text` arm of `extract_batch`) rather than
+/// silently truncated; 16 KiB keeps a 1000-row batch of one text column at
+/// 16 MiB.
+const DEFAULT_TEXT_BUF_SIZE: usize = 16384;
 
 struct ColumnBuffer {
     data: Vec<u8>,
@@ -687,7 +645,7 @@ fn cursor_to_dataframe(stmt: Statement, batch_size: usize) -> Result<DataFrame> 
 
         // Extract data from buffers into builders
         for (col_idx, (builder, buf)) in builders.iter_mut().zip(buffers.iter()).enumerate() {
-            extract_batch(builder, buf, n, col_idx)?;
+            extract_batch(builder, buf, n, &col_names[col_idx])?;
         }
     }
 
@@ -705,7 +663,7 @@ fn extract_batch(
     builder: &mut ColumnBuilder,
     buf: &ColumnBuffer,
     num_rows: usize,
-    _col_idx: usize,
+    col_name: &str,
 ) -> Result<()> {
     for row in 0..num_rows {
         let indicator = buf.indicators[row];
@@ -818,13 +776,30 @@ fn extract_batch(
                     // SQL_NO_TOTAL (-4) if the driver can't determine length.
                     // In that case, scan for null terminator in the buffer.
                     let actual_len = if indicator >= 0 {
-                        (indicator as usize).min(buf.text_buf_size)
+                        if indicator as usize > buf.text_buf_size {
+                            return Err(GgsqlError::ReaderError(format!(
+                                "ODBC text value in column '{}' is {} bytes, exceeding the \
+                                 {}-byte fetch buffer; refusing to return a truncated value",
+                                col_name, indicator, buf.text_buf_size,
+                            )));
+                        }
+                        indicator as usize
                     } else {
                         let slice = &buf.data[offset..offset + buf.text_buf_size];
-                        slice
-                            .iter()
-                            .position(|&b| b == 0)
-                            .unwrap_or(buf.text_buf_size)
+                        match slice.iter().position(|&b| b == 0) {
+                            Some(pos) => pos,
+                            // No terminator: the value filled the buffer and
+                            // the driver can't tell us its true length —
+                            // almost certainly truncated.
+                            None => {
+                                return Err(GgsqlError::ReaderError(format!(
+                                    "ODBC text value in column '{}' exceeds the {}-byte fetch \
+                                     buffer (driver reports SQL_NO_TOTAL); refusing to return \
+                                     a truncated value",
+                                    col_name, buf.text_buf_size,
+                                )))
+                            }
+                        }
                     };
                     let bytes = &buf.data[offset..offset + actual_len];
                     let s = String::from_utf8_lossy(bytes).into_owned();
@@ -857,12 +832,14 @@ mod tests {
     }
 
     #[test]
-    fn test_arrow_dtype_to_sql() {
-        assert_eq!(arrow_dtype_to_sql(&DataType::Int64), "BIGINT");
-        assert_eq!(arrow_dtype_to_sql(&DataType::Float64), "DOUBLE PRECISION");
-        assert_eq!(arrow_dtype_to_sql(&DataType::Boolean), "BOOLEAN");
-        assert_eq!(arrow_dtype_to_sql(&DataType::Date32), "DATE");
-        assert_eq!(arrow_dtype_to_sql(&DataType::Utf8), "TEXT");
+    fn test_register_column_type_via_shared_mapping() {
+        use crate::reader::AnsiDialect;
+        let ty = |d: &DataType| crate::reader::register_column_type(&AnsiDialect, d).unwrap();
+        assert_eq!(ty(&DataType::Int64), "BIGINT");
+        assert_eq!(ty(&DataType::Float64), "DOUBLE PRECISION");
+        assert_eq!(ty(&DataType::Boolean), "BOOLEAN");
+        assert_eq!(ty(&DataType::Date32), "DATE");
+        assert_eq!(ty(&DataType::Utf8), "VARCHAR");
     }
 
     #[test]

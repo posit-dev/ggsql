@@ -16,7 +16,6 @@ use crate::reader::{AnsiDialect, Reader, SqlDialect};
 use crate::{DataFrame, GgsqlError, Result};
 use adbc_core::sync::{Connection, Database, Driver};
 use std::cell::RefCell;
-use std::collections::HashSet;
 
 pub struct AdbcReader<D: Driver> {
     // Driver must stay alive as long as the Database does (per ADBC contract).
@@ -28,7 +27,7 @@ pub struct AdbcReader<D: Driver> {
     // takes &self.
     connection: RefCell<<D::DatabaseType as Database>::ConnectionType>,
     dialect: Box<dyn SqlDialect + Send>,
-    registered_tables: RefCell<HashSet<String>>,
+    registered_tables: crate::reader::RegisteredTables,
     // Driver-specific statement options (from `stmt.`-prefixed URI params)
     // applied to every statement created in execute_sql.
     statement_opts: Vec<(String, String)>,
@@ -60,7 +59,7 @@ impl<D: Driver> AdbcReader<D> {
             _database: database,
             connection: RefCell::new(connection),
             dialect,
-            registered_tables: RefCell::new(HashSet::new()),
+            registered_tables: crate::reader::RegisteredTables::new(),
             statement_opts: Vec::new(),
         })
     }
@@ -90,7 +89,7 @@ impl<D: Driver> AdbcReader<D> {
             _database: database,
             connection: RefCell::new(connection),
             dialect,
-            registered_tables: RefCell::new(HashSet::new()),
+            registered_tables: crate::reader::RegisteredTables::new(),
             statement_opts: Vec::new(),
         })
     }
@@ -106,6 +105,24 @@ impl<D: Driver> AdbcReader<D> {
     pub fn with_statement_opts(mut self, opts: Vec<(String, String)>) -> Self {
         self.statement_opts = opts;
         self
+    }
+
+    /// Create a statement for `sql` with [`Self::statement_opts`] applied —
+    /// the shared constructor behind every `set_sql_query` call site.
+    fn new_query_statement(
+        &self,
+        conn: &mut <<D as Driver>::DatabaseType as Database>::ConnectionType,
+        sql: &str,
+    ) -> Result<
+        <<<D as Driver>::DatabaseType as Database>::ConnectionType as Connection>::StatementType,
+    > {
+        let mut stmt = conn
+            .new_statement()
+            .map_err(|e| GgsqlError::ReaderError(format!("ADBC new_statement: {}", e)))?;
+        self.apply_statement_opts(&mut stmt)?;
+        stmt.set_sql_query(sql)
+            .map_err(|e| GgsqlError::ReaderError(format!("ADBC set_sql_query: {}", e)))?;
+        Ok(stmt)
     }
 
     /// Apply [`Self::statement_opts`] to a freshly created statement.
@@ -492,12 +509,7 @@ where
                         .into(),
                 )
             })?;
-            let mut stmt = conn
-                .new_statement()
-                .map_err(|e| GgsqlError::ReaderError(format!("ADBC new_statement: {}", e)))?;
-            self.apply_statement_opts(&mut stmt)?;
-            stmt.set_sql_query(sql)
-                .map_err(|e| GgsqlError::ReaderError(format!("ADBC set_sql_query: {}", e)))?;
+            let mut stmt = self.new_query_statement(&mut conn, sql)?;
             let reader = match stmt.execute() {
                 Ok(reader) => reader,
                 Err(e) => {
@@ -521,13 +533,7 @@ where
                     // statements — and report an empty frame.
                     if msg.contains("schema bytes are empty") {
                         drop(stmt);
-                        let mut update_stmt = conn.new_statement().map_err(|e| {
-                            GgsqlError::ReaderError(format!("ADBC new_statement: {}", e))
-                        })?;
-                        self.apply_statement_opts(&mut update_stmt)?;
-                        update_stmt.set_sql_query(sql).map_err(|e| {
-                            GgsqlError::ReaderError(format!("ADBC set_sql_query: {}", e))
-                        })?;
+                        let mut update_stmt = self.new_query_statement(&mut conn, sql)?;
                         update_stmt.execute_update().map_err(|e| {
                             GgsqlError::ReaderError(format!("ADBC execute_update: {}", e))
                         })?;
@@ -560,9 +566,9 @@ where
             arrow::compute::concat_batches(&schema, &batches)
                 .map_err(|e| GgsqlError::ReaderError(format!("concat_batches: {}", e)))?
         };
-        Ok(DataFrame::from_record_batch(normalize_result_strings(
-            merged,
-        )?))
+        Ok(DataFrame::from_record_batch(
+            crate::reader::normalize_result_batch(merged)?,
+        ))
     }
 
     fn register(&self, name: &str, df: DataFrame, replace: bool) -> Result<()> {
@@ -595,27 +601,13 @@ where
         let schema = batch.schema();
         if replace {
             let drop_sql = format!("DROP TABLE IF EXISTS {}", self.dialect.quote_ident(name));
-            let mut drop_stmt = conn
-                .new_statement()
-                .map_err(|e| GgsqlError::ReaderError(format!("ADBC new_statement: {}", e)))?;
-            self.apply_statement_opts(&mut drop_stmt)?;
-            drop_stmt
-                .set_sql_query(&drop_sql)
-                .map_err(|e| GgsqlError::ReaderError(format!("ADBC set_sql_query DROP: {}", e)))?;
-            drop_stmt
+            self.new_query_statement(&mut conn, &drop_sql)?
                 .execute_update()
                 .map_err(|e| GgsqlError::ReaderError(format!("ADBC execute_update DROP: {}", e)))?;
         }
 
-        let create_sql = create_table_sql(name, &schema, &*self.dialect)?;
-        let mut create_stmt = conn
-            .new_statement()
-            .map_err(|e| GgsqlError::ReaderError(format!("ADBC new_statement: {}", e)))?;
-        self.apply_statement_opts(&mut create_stmt)?;
-        create_stmt
-            .set_sql_query(&create_sql)
-            .map_err(|e| GgsqlError::ReaderError(format!("ADBC set_sql_query CREATE: {}", e)))?;
-        create_stmt
+        let create_sql = crate::reader::create_table_sql(name, &schema, &*self.dialect)?;
+        self.new_query_statement(&mut conn, &create_sql)?
             .execute_update()
             .map_err(|e| GgsqlError::ReaderError(format!("ADBC execute_update CREATE: {}", e)))?;
 
@@ -626,7 +618,7 @@ where
         // up, and a subsequent `register(name, ..., replace=true)` will
         // drop-and-recreate. Without this, a mid-ingest failure would leave
         // an orphan table the reader can't reach.
-        self.registered_tables.borrow_mut().insert(name.to_string());
+        self.registered_tables.note_registered(name);
 
         if batch.num_rows() > 0 {
             // Ingest, with one schema-alignment retry: drivers that validate
@@ -703,7 +695,7 @@ where
     }
 
     fn unregister(&self, name: &str) -> Result<()> {
-        if !self.registered_tables.borrow().contains(name) {
+        if !self.registered_tables.is_registered(name) {
             return Err(GgsqlError::ReaderError(format!(
                 "Table '{}' was not registered via this reader",
                 name
@@ -712,7 +704,7 @@ where
         let sql = format!("DROP TABLE IF EXISTS {}", self.dialect.quote_ident(name));
         // Ignore the returned DataFrame — DROP TABLE has no result rows.
         self.execute_sql(&sql)?;
-        self.registered_tables.borrow_mut().remove(name);
+        self.registered_tables.note_unregistered(name);
         Ok(())
     }
 
@@ -723,106 +715,6 @@ where
     fn dialect(&self) -> &dyn SqlDialect {
         &*self.dialect
     }
-}
-
-/// Build a `CREATE TABLE <name> (col1 TYPE, col2 TYPE, ...)` statement from
-/// an Arrow schema, using the reader's `SqlDialect` for type names.
-///
-/// Used by `register()` to create the destination table before binding
-/// batches with `IngestMode::Append`; see the `register` impl for context.
-fn create_table_sql(
-    name: &str,
-    schema: &arrow::datatypes::Schema,
-    dialect: &dyn SqlDialect,
-) -> Result<String> {
-    use arrow::datatypes::DataType;
-
-    let mut cols: Vec<String> = Vec::with_capacity(schema.fields().len());
-    for field in schema.fields() {
-        let ty_name: &str = match field.data_type() {
-            DataType::Boolean => dialect.boolean_type_name().unwrap_or("BOOLEAN"),
-            DataType::Int8
-            | DataType::Int16
-            | DataType::Int32
-            | DataType::Int64
-            | DataType::UInt8
-            | DataType::UInt16
-            | DataType::UInt32
-            | DataType::UInt64 => dialect.integer_type_name().unwrap_or("BIGINT"),
-            DataType::Float16 | DataType::Float32 | DataType::Float64 => {
-                dialect.number_type_name().unwrap_or("DOUBLE PRECISION")
-            }
-            DataType::Utf8 | DataType::LargeUtf8 | DataType::Utf8View => {
-                dialect.string_type_name().unwrap_or("VARCHAR")
-            }
-            DataType::Date32 | DataType::Date64 => dialect.date_type_name().unwrap_or("DATE"),
-            DataType::Timestamp(_, _) => dialect.datetime_type_name().unwrap_or("TIMESTAMP"),
-            DataType::Time32(_) | DataType::Time64(_) => dialect.time_type_name().unwrap_or("TIME"),
-            other => {
-                return Err(GgsqlError::ReaderError(format!(
-                    "AdbcReader::register: unsupported Arrow type for column '{}': {:?}",
-                    field.name(),
-                    other
-                )));
-            }
-        };
-        cols.push(format!("{} {}", dialect.quote_ident(field.name()), ty_name));
-    }
-
-    Ok(format!(
-        "CREATE TABLE {} ({})",
-        dialect.quote_ident(name),
-        cols.join(", ")
-    ))
-}
-
-/// Normalize string columns in a query result to plain Utf8. ADBC drivers
-/// legitimately return Utf8View (DataFusion surfaces VARCHAR that way) or
-/// LargeUtf8, but ggsql's typed accessors standardize on StringArray — so
-/// convert once, here at the reader boundary, instead of teaching every
-/// downstream consumer about the string family.
-fn normalize_result_strings(
-    batch: arrow::record_batch::RecordBatch,
-) -> Result<arrow::record_batch::RecordBatch> {
-    use arrow::datatypes::{DataType, Field, Schema};
-    use std::sync::Arc;
-
-    let schema = batch.schema();
-    let needs = schema
-        .fields()
-        .iter()
-        .any(|f| matches!(f.data_type(), DataType::LargeUtf8 | DataType::Utf8View));
-    if !needs {
-        return Ok(batch);
-    }
-    let mut fields = Vec::with_capacity(schema.fields().len());
-    let mut columns = Vec::with_capacity(batch.num_columns());
-    for (i, field) in schema.fields().iter().enumerate() {
-        let col = batch.column(i);
-        if matches!(field.data_type(), DataType::LargeUtf8 | DataType::Utf8View) {
-            columns.push(arrow::compute::cast(col, &DataType::Utf8).map_err(|e| {
-                GgsqlError::ReaderError(format!(
-                    "ADBC result: cannot normalize string column '{}' ({:?}): {}",
-                    field.name(),
-                    col.data_type(),
-                    e
-                ))
-            })?);
-            fields.push(Arc::new(Field::new(
-                field.name(),
-                DataType::Utf8,
-                field.is_nullable(),
-            )));
-        } else {
-            columns.push(col.clone());
-            fields.push(field.clone());
-        }
-    }
-    RecordBatch::try_new(
-        Arc::new(Schema::new_with_metadata(fields, schema.metadata().clone())),
-        columns,
-    )
-    .map_err(|e| GgsqlError::ReaderError(format!("ADBC result normalization failed: {e}")))
 }
 
 /// Cast `batch` columns to `target`'s field types (matched by position) so

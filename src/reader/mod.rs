@@ -953,680 +953,234 @@ pub(crate) fn returns_rows(sql: &str) -> bool {
     )
 }
 
+// ============================================================================
+// Shared reader helpers
+// ============================================================================
+
+/// Column type for `register` DDL: the dialect's own type names for each
+/// Arrow type (so e.g. Oracle gets `VARCHAR2` rather than the nonexistent
+/// `TEXT`), with portable fallbacks when a dialect doesn't name one.
+///
+/// Errors on Arrow types with no sensible column type rather than silently
+/// mapping them to TEXT. SQLite does not use this — its storage classes and
+/// parameter binding need their own mapping (`arrow_type_to_sqlite`).
+#[cfg(any(feature = "adbc", feature = "odbc"))]
+pub(crate) fn register_column_type(
+    dialect: &dyn SqlDialect,
+    dtype: &arrow::datatypes::DataType,
+) -> Result<String> {
+    use arrow::datatypes::DataType;
+
+    let name = match dtype {
+        DataType::Boolean => dialect.boolean_type_name().unwrap_or("BOOLEAN"),
+        DataType::Int8
+        | DataType::Int16
+        | DataType::Int32
+        | DataType::Int64
+        | DataType::UInt8
+        | DataType::UInt16
+        | DataType::UInt32
+        | DataType::UInt64 => dialect.integer_type_name().unwrap_or("BIGINT"),
+        DataType::Float16 | DataType::Float32 | DataType::Float64 => {
+            dialect.number_type_name().unwrap_or("DOUBLE PRECISION")
+        }
+        DataType::Utf8 | DataType::LargeUtf8 | DataType::Utf8View => {
+            dialect.string_type_name().unwrap_or("VARCHAR")
+        }
+        DataType::Date32 | DataType::Date64 => dialect.date_type_name().unwrap_or("DATE"),
+        DataType::Timestamp(_, _) => dialect.datetime_type_name().unwrap_or("TIMESTAMP"),
+        DataType::Time32(_) | DataType::Time64(_) => dialect.time_type_name().unwrap_or("TIME"),
+        other => {
+            return Err(GgsqlError::ReaderError(format!(
+                "register: unsupported Arrow type for table DDL: {other:?}"
+            )))
+        }
+    };
+    Ok(name.to_string())
+}
+
+/// Build a `CREATE TABLE <name> (col TYPE, …)` statement from an Arrow
+/// schema, with column types from [`register_column_type`].
+#[cfg(any(feature = "adbc", feature = "odbc"))]
+pub(crate) fn create_table_sql(
+    name: &str,
+    schema: &arrow::datatypes::Schema,
+    dialect: &dyn SqlDialect,
+) -> Result<String> {
+    let mut cols: Vec<String> = Vec::with_capacity(schema.fields().len());
+    for field in schema.fields() {
+        let ty = register_column_type(dialect, field.data_type())
+            .map_err(|e| GgsqlError::ReaderError(format!("column '{}': {}", field.name(), e)))?;
+        cols.push(format!("{} {}", dialect.quote_ident(field.name()), ty));
+    }
+    Ok(format!(
+        "CREATE TABLE {} ({})",
+        dialect.quote_ident(name),
+        cols.join(", ")
+    ))
+}
+
+/// Normalize a query-result batch to the types downstream ggsql code
+/// standardizes on: Decimal128 columns become Float64 (typed accessors are
+/// numeric) and the string family (LargeUtf8, Utf8View) becomes plain Utf8
+/// (typed accessors standardize on `StringArray`). One conversion point at
+/// the reader boundary beats teaching every consumer about these types.
+///
+/// Zero-cost when no column needs conversion.
+#[cfg(any(feature = "adbc", feature = "duckdb"))]
+pub(crate) fn normalize_result_batch(
+    batch: arrow::record_batch::RecordBatch,
+) -> Result<arrow::record_batch::RecordBatch> {
+    use arrow::datatypes::{DataType, Field, Schema};
+    use arrow::record_batch::RecordBatch;
+    use std::sync::Arc;
+
+    let schema = batch.schema();
+    let target_for = |dtype: &DataType| match dtype {
+        DataType::Decimal128(_, _) => Some(DataType::Float64),
+        DataType::LargeUtf8 | DataType::Utf8View => Some(DataType::Utf8),
+        _ => None,
+    };
+    if !schema
+        .fields()
+        .iter()
+        .any(|f| target_for(f.data_type()).is_some())
+    {
+        return Ok(batch);
+    }
+
+    let mut fields = Vec::with_capacity(schema.fields().len());
+    let mut columns = Vec::with_capacity(batch.num_columns());
+    for (i, field) in schema.fields().iter().enumerate() {
+        match target_for(field.data_type()) {
+            Some(target) => {
+                let casted = arrow::compute::cast(batch.column(i), &target).map_err(|e| {
+                    GgsqlError::ReaderError(format!(
+                        "Failed to normalize column '{}' from {:?} to {:?}: {}",
+                        field.name(),
+                        field.data_type(),
+                        target,
+                        e
+                    ))
+                })?;
+                fields.push(Arc::new(Field::new(
+                    field.name(),
+                    target,
+                    field.is_nullable(),
+                )));
+                columns.push(casted);
+            }
+            None => {
+                fields.push(field.clone());
+                columns.push(batch.column(i).clone());
+            }
+        }
+    }
+    RecordBatch::try_new(
+        Arc::new(Schema::new_with_metadata(fields, schema.metadata().clone())),
+        columns,
+    )
+    .map_err(|e| GgsqlError::ReaderError(format!("Failed to normalize result batch: {e}")))
+}
+
+/// Registered-table bookkeeping shared by the concrete readers: a set of
+/// names registered through this reader, so `unregister` can reject tables
+/// it doesn't own and readers can answer `is_registered`.
+pub(crate) struct RegisteredTables(std::cell::RefCell<std::collections::HashSet<String>>);
+
+impl RegisteredTables {
+    pub(crate) fn new() -> Self {
+        Self(std::cell::RefCell::new(std::collections::HashSet::new()))
+    }
+
+    pub(crate) fn note_registered(&self, name: &str) {
+        self.0.borrow_mut().insert(name.to_string());
+    }
+
+    pub(crate) fn note_unregistered(&self, name: &str) {
+        self.0.borrow_mut().remove(name);
+    }
+
+    pub(crate) fn is_registered(&self, name: &str) -> bool {
+        self.0.borrow().contains(name)
+    }
+
+    /// Snapshot of all registered names.
+    pub(crate) fn names(&self) -> Vec<String> {
+        self.0.borrow().iter().cloned().collect()
+    }
+}
+
+impl Default for RegisteredTables {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// Shared test helpers for reader equivalence suites.
 #[cfg(test)]
-pub(crate) mod test_support {
-    use super::{
-        execute_with_reader, returns_rows, ColumnInfo, Reader, Spec, SqlDialect, TableInfo,
-    };
-    use crate::{DataFrame, GgsqlError, Result};
-    use arrow::array::RecordBatch;
+pub(crate) mod test_support;
+
+#[cfg(all(test, feature = "duckdb"))]
+mod helper_tests {
+    use super::*;
+    use arrow::array::{Decimal128Array, StringViewArray};
     use arrow::datatypes::{DataType, Field, Schema};
-    use std::collections::HashMap;
-    use std::sync::{Arc, Mutex};
+    use arrow::record_batch::RecordBatch;
+    use std::sync::Arc;
 
-    /// A `Reader` that records every `execute_sql` it receives, delegating
-    /// everything to an inner reader.
-    pub(crate) struct SpyReader {
-        inner: Box<dyn Reader + Send>,
-        log: Arc<Mutex<Vec<String>>>,
+    #[test]
+    fn normalize_result_batch_casts_decimal_and_stringview() {
+        let schema = Arc::new(Schema::new(vec![
+            Field::new("d", DataType::Decimal128(10, 2), true),
+            Field::new("s", DataType::Utf8View, true),
+        ]));
+        let batch = RecordBatch::try_new(
+            schema,
+            vec![
+                Arc::new(
+                    Decimal128Array::from(vec![Some(12345)])
+                        .with_precision_and_scale(10, 2)
+                        .unwrap(),
+                ),
+                Arc::new(StringViewArray::from(vec!["x"])),
+            ],
+        )
+        .unwrap();
+
+        let out = normalize_result_batch(batch).unwrap();
+        assert_eq!(out.column(0).data_type(), &DataType::Float64);
+        assert_eq!(out.column(1).data_type(), &DataType::Utf8);
+        // 12345 with scale 2 → 123.45
+        let col = out
+            .column(0)
+            .as_any()
+            .downcast_ref::<arrow::array::Float64Array>()
+            .unwrap();
+        assert!((col.value(0) - 123.45).abs() < 1e-9);
     }
 
-    impl SpyReader {
-        /// Wrap `inner`, returning the boxed spy and a handle to its call log.
-        pub(crate) fn wrap(
-            inner: Box<dyn Reader + Send>,
-        ) -> (Box<dyn Reader + Send>, Arc<Mutex<Vec<String>>>) {
-            let log = Arc::new(Mutex::new(Vec::new()));
-            (
-                Box::new(SpyReader {
-                    inner,
-                    log: log.clone(),
-                }),
-                log,
-            )
-        }
+    #[test]
+    fn normalize_result_batch_passthrough_when_nothing_to_do() {
+        let schema = Arc::new(Schema::new(vec![Field::new("x", DataType::Int64, false)]));
+        let batch = RecordBatch::try_new(
+            schema,
+            vec![Arc::new(arrow::array::Int64Array::from(vec![1, 2]))],
+        )
+        .unwrap();
+        let out = normalize_result_batch(batch).unwrap();
+        assert_eq!(out.column(0).data_type(), &DataType::Int64);
     }
 
-    impl Reader for SpyReader {
-        fn execute_sql(&self, sql: &str) -> Result<DataFrame> {
-            self.log.lock().unwrap().push(sql.to_string());
-            self.inner.execute_sql(sql)
-        }
-        fn register(&self, name: &str, df: DataFrame, replace: bool) -> Result<()> {
-            self.inner.register(name, df, replace)
-        }
-        fn unregister(&self, name: &str) -> Result<()> {
-            self.inner.unregister(name)
-        }
-        fn execute(&self, query: &str) -> Result<Spec> {
-            execute_with_reader(self, query)
-        }
-        fn dialect(&self) -> &dyn SqlDialect {
-            self.inner.dialect()
-        }
-        fn list_catalogs(&self) -> Result<Vec<String>> {
-            self.inner.list_catalogs()
-        }
-        fn list_schemas(&self, c: &str) -> Result<Vec<String>> {
-            self.inner.list_schemas(c)
-        }
-        fn list_tables(&self, c: &str, s: &str) -> Result<Vec<TableInfo>> {
-            self.inner.list_tables(c, s)
-        }
-        fn list_columns(&self, c: &str, s: &str, t: &str) -> Result<Vec<ColumnInfo>> {
-            self.inner.list_columns(c, s, t)
-        }
-    }
-
-    /// A `Reader` that wraps an inner reader and **refuses every write**: any
-    /// `register`/`unregister` and any non-row-returning `execute_sql`
-    /// (CREATE/INSERT/DROP/…) returns an error.
-    pub(crate) struct ReadOnlyReader {
-        inner: Box<dyn Reader + Send>,
-    }
-
-    impl ReadOnlyReader {
-        pub(crate) fn new(inner: Box<dyn Reader + Send>) -> Self {
-            Self { inner }
-        }
-
-        fn refuse(op: &str) -> GgsqlError {
-            GgsqlError::ReaderError(format!("read-only primary: refused {op}"))
-        }
-    }
-
-    impl Reader for ReadOnlyReader {
-        fn execute_sql(&self, sql: &str) -> Result<DataFrame> {
-            if !returns_rows(sql) {
-                return Err(Self::refuse(&format!("write statement: {sql}")));
-            }
-            self.inner.execute_sql(sql)
-        }
-        fn register(&self, _name: &str, _df: DataFrame, _replace: bool) -> Result<()> {
-            Err(Self::refuse("register"))
-        }
-        fn unregister(&self, _name: &str) -> Result<()> {
-            Err(Self::refuse("unregister"))
-        }
-        fn execute(&self, query: &str) -> Result<Spec> {
-            execute_with_reader(self, query)
-        }
-        fn dialect(&self) -> &dyn SqlDialect {
-            self.inner.dialect()
-        }
-        fn list_catalogs(&self) -> Result<Vec<String>> {
-            self.inner.list_catalogs()
-        }
-        fn list_schemas(&self, c: &str) -> Result<Vec<String>> {
-            self.inner.list_schemas(c)
-        }
-        fn list_tables(&self, c: &str, s: &str) -> Result<Vec<TableInfo>> {
-            self.inner.list_tables(c, s)
-        }
-        fn list_columns(&self, c: &str, s: &str, t: &str) -> Result<Vec<ColumnInfo>> {
-            self.inner.list_columns(c, s, t)
-        }
-    }
-
-    /// A `Reader` that never connects anywhere: it records every SQL
-    /// statement it is asked to run and fabricates an empty result whose
-    /// schema is inferred from the statement's top-level SELECT list.
-    ///
-    /// Combined with a per-test dialect this lets the golden SQL tests
-    /// capture exactly what the plot pipeline emits for each backend
-    /// without needing a live server. Column types are recovered from
-    /// registered tables by name; anything unrecognized defaults to
-    /// `Float64`, which is the right shape for the derived columns
-    /// (bins, densities, quantiles) the pipeline produces.
-    pub(crate) struct StubReader {
-        dialect: Box<dyn SqlDialect>,
-        tables: Mutex<HashMap<String, Arc<Schema>>>,
-        log: Arc<Mutex<Vec<String>>>,
-    }
-
-    impl StubReader {
-        /// Create a stub for `dialect`, returning it together with a
-        /// handle to the shared SQL log.
-        pub(crate) fn new(dialect: Box<dyn SqlDialect>) -> (Self, Arc<Mutex<Vec<String>>>) {
-            let log = Arc::new(Mutex::new(Vec::new()));
-            (
-                Self {
-                    dialect,
-                    tables: Mutex::new(HashMap::new()),
-                    log: log.clone(),
-                },
-                log,
-            )
-        }
-
-        /// Fabricate a three-row result for a row-returning statement.
-        ///
-        /// Three rows (rather than zero) so that data-dependent stages —
-        /// scale training, histogram statistics — have values to work
-        /// with, and min/max ranges are non-degenerate.
-        fn fake_result(&self, sql: &str) -> DataFrame {
-            let cols = self.projected_columns(sql);
-            if cols.is_empty() {
-                return DataFrame::empty();
-            }
-            let fields: Vec<Field> = cols
-                .iter()
-                .map(|(name, ty)| Field::new(name, ty.clone(), true))
-                .collect();
-            let schema = Arc::new(Schema::new(fields));
-            let arrays: Vec<arrow::array::ArrayRef> = schema
-                .fields()
-                .iter()
-                .map(|f| sample_array(f.data_type()))
-                .collect();
-            let batch = RecordBatch::try_new(schema, arrays)
-                .expect("stub arrays must match fabricated schema");
-            DataFrame::from_record_batch(batch)
-        }
-
-        /// Names and types of the columns a row-returning statement would
-        /// produce, inferred well enough for the pipeline's generated SQL:
-        ///
-        /// - `AS` aliases and plain identifiers in the outermost SELECT
-        ///   list (after stripping `DISTINCT` / `TOP n`),
-        /// - bare `*`, expanded from every registered table the statement
-        ///   references (the pipeline's subqueries carry base columns
-        ///   through, so this matches even when the FROM is a subquery),
-        /// - internal `"__ggsql_*"` identifiers mentioned anywhere in the
-        ///   statement (aesthetic/stat channel columns), typed via the
-        ///   expression that defines them.
-        ///
-        /// Column types come from the registered table whose column appears
-        /// in the defining expression; anything unrecognized defaults to
-        /// `Float64`, the right shape for derived numeric columns (bins,
-        /// densities, counts, quantiles).
-        fn projected_columns(&self, sql: &str) -> Vec<(String, DataType)> {
-            let mut cols: Vec<(String, DataType)> = Vec::new();
-            let push = |name: String, ty: DataType, cols: &mut Vec<(String, DataType)>| {
-                if !cols.iter().any(|(n, _)| n == &name) {
-                    cols.push((name, ty));
-                }
-            };
-
-            let mut has_star = false;
-            if let Some((list, _)) = select_list_span(sql) {
-                for item in split_top_level_commas(&list) {
-                    let item = item.trim();
-                    if item == "*" {
-                        has_star = true;
-                    } else if let Some(name) = output_name(item) {
-                        let ty = self
-                            .registered_type(&name)
-                            .or_else(|| self.type_from_expr(item))
-                            .unwrap_or(DataType::Float64);
-                        push(name, ty, &mut cols);
-                    }
-                }
-            }
-
-            if has_star {
-                let tables = self.tables.lock().unwrap();
-                for (table, schema) in tables.iter() {
-                    if contains_word(sql, table) {
-                        for field in schema.fields() {
-                            push(field.name().clone(), field.data_type().clone(), &mut cols);
-                        }
-                    }
-                }
-            }
-
-            for name in scan_internal_idents(sql) {
-                // Temp-table names are internal identifiers too, but they
-                // name tables, not columns: without this filter a probe
-                // against a temp table would invent a column named after
-                // the table itself.
-                if self.tables.lock().unwrap().contains_key(&name) {
-                    continue;
-                }
-                let ty = self
-                    .type_from_alias_definition(sql, &name)
-                    .unwrap_or(DataType::Float64);
-                push(name, ty, &mut cols);
-            }
-
-            cols
-        }
-
-        /// Type of a registered table column with this exact
-        /// (case-insensitive) name.
-        fn registered_type(&self, name: &str) -> Option<DataType> {
-            let tables = self.tables.lock().unwrap();
-            tables.values().find_map(|schema| {
-                schema.fields().iter().find_map(|f| {
-                    if f.name().eq_ignore_ascii_case(name) {
-                        Some(f.data_type().clone())
-                    } else {
-                        None
-                    }
-                })
-            })
-        }
-
-        /// Type of the longest registered column name appearing as a word
-        /// in `expr` (e.g. `CAST("day" AS DATE)` → the type of `day`).
-        fn type_from_expr(&self, expr: &str) -> Option<DataType> {
-            let tables = self.tables.lock().unwrap();
-            let mut best: Option<DataType> = None;
-            let mut best_len = 0;
-            for schema in tables.values() {
-                for field in schema.fields() {
-                    if field.name().len() > best_len && contains_word(expr, field.name()) {
-                        best = Some(field.data_type().clone());
-                        best_len = field.name().len();
-                    }
-                }
-            }
-            best
-        }
-
-        /// Track temp-table lineage for non-row-returning statements:
-        /// a statement that mentions an internal `"__ggsql_*"` name and a
-        /// registered source table (`CREATE ... AS SELECT * FROM t`,
-        /// `SELECT * INTO ... FROM t`) aliases the temp name to the
-        /// source schema; `DROP` removes it. Later probes against the
-        /// temp copy then see the source columns.
-        fn track_ddl(&self, sql: &str) {
-            let idents = scan_internal_idents(sql);
-            if idents.is_empty() {
-                return;
-            }
-            let mut tables = self.tables.lock().unwrap();
-            if sql
-                .split_whitespace()
-                .next()
-                .unwrap_or("")
-                .eq_ignore_ascii_case("drop")
-            {
-                for name in idents {
-                    tables.remove(&name);
-                }
-                return;
-            }
-            // Prefer real source tables over stale internal aliases when
-            // resolving lineage (the statement names the temp table it
-            // creates too, and HashMap iteration order is arbitrary).
-            let source = tables
-                .iter()
-                .filter(|(name, _)| !name.starts_with("__ggsql_"))
-                .find(|(name, _)| contains_word(sql, name))
-                .or_else(|| tables.iter().find(|(name, _)| contains_word(sql, name)))
-                .map(|(_, schema)| schema.clone());
-            if let Some(schema) = source {
-                for name in idents {
-                    tables.insert(name, schema.clone());
-                }
-            }
-        }
-
-        /// Find `<expr> AS <name>` in the statement and infer the type
-        /// from `expr`. Used for internal channel columns whose defining
-        /// expression wraps a registered column (`"category" AS
-        /// "__ggsql_aes_pos1__"`, `toDate32("day") AS ...`).
-        fn type_from_alias_definition(&self, sql: &str, name: &str) -> Option<DataType> {
-            let quoted = format!("\"{name}\"");
-            let mut search_from = 0;
-            while let Some(rel) = sql[search_from..].find(&quoted) {
-                let pos = search_from + rel;
-                let before = sql[..pos].trim_end();
-                if before.len() >= 2 && before[before.len() - 2..].eq_ignore_ascii_case("as") {
-                    let expr_start = before[..before.len() - 2]
-                        .rfind(['(', ','])
-                        .map(|i| i + 1)
-                        .unwrap_or(0);
-                    let expr = &before[expr_start..before.len() - 2];
-                    if let Some(ty) = self.type_from_expr(expr) {
-                        return Some(ty);
-                    }
-                }
-                search_from = pos + quoted.len();
-            }
-            None
-        }
-    }
-
-    impl Reader for StubReader {
-        fn execute_sql(&self, sql: &str) -> Result<DataFrame> {
-            self.log.lock().unwrap().push(sql.to_string());
-            // MSSQL's `SELECT ... INTO <temp> FROM ...` starts with SELECT
-            // but is DDL — treat it as a write so lineage is tracked.
-            let mut is_select_into = false;
-            for_each_top_level_keyword(sql, "into", |_| is_select_into = true);
-            if returns_rows(sql) && !is_select_into {
-                Ok(self.fake_result(sql))
-            } else {
-                self.track_ddl(sql);
-                Ok(DataFrame::empty())
-            }
-        }
-        fn register(&self, name: &str, df: DataFrame, replace: bool) -> Result<()> {
-            let mut tables = self.tables.lock().unwrap();
-            if replace || !tables.contains_key(name) {
-                tables.insert(name.to_string(), df.schema());
-            }
-            Ok(())
-        }
-        fn unregister(&self, name: &str) -> Result<()> {
-            self.tables.lock().unwrap().remove(name);
-            Ok(())
-        }
-        fn execute(&self, query: &str) -> Result<Spec> {
-            execute_with_reader(self, query)
-        }
-        fn dialect(&self) -> &dyn SqlDialect {
-            &*self.dialect
-        }
-    }
-
-    // ------------------------------------------------------------------------
-    // Minimal top-level SQL scanning helpers for `StubReader`
-    // ------------------------------------------------------------------------
-
-    /// Strip one layer of identifier quoting: `"x"`, `` `x` ``, or `[x]`.
-    fn unquote_ident(s: &str) -> String {
-        let t = s.trim();
-        for (open, close) in [('"', '"'), ('`', '`'), ('[', ']')] {
-            if t.len() >= 2 && t.starts_with(open) && t.ends_with(close) {
-                return t[1..t.len() - 1].to_string();
-            }
-        }
-        t.to_string()
-    }
-
-    /// Scan `sql`, calling `f` for each top-level keyword occurrence.
-    ///
-    /// Tracks parenthesis depth and single/double/backtick quoting, so
-    /// keywords inside subqueries, string literals, and quoted identifiers
-    /// are skipped. `f` receives the keyword's byte start.
-    fn for_each_top_level_keyword(sql: &str, keyword: &str, mut f: impl FnMut(usize)) {
-        let bytes = sql.as_bytes();
-        let kw = keyword.as_bytes();
-        let mut depth = 0i32;
-        let mut quote: Option<u8> = None;
-        let mut i = 0;
-        while i < bytes.len() {
-            let c = bytes[i];
-            if let Some(q) = quote {
-                if c == q {
-                    // SQL escapes a quote by doubling it; skip the pair.
-                    if i + 1 < bytes.len() && bytes[i + 1] == q {
-                        i += 2;
-                        continue;
-                    }
-                    quote = None;
-                }
-                i += 1;
-                continue;
-            }
-            match c {
-                b'\'' | b'"' | b'`' => quote = Some(c),
-                b'(' => depth += 1,
-                b')' => depth -= 1,
-                _ => {
-                    if depth == 0
-                        && i + kw.len() <= bytes.len()
-                        && bytes[i..i + kw.len()].eq_ignore_ascii_case(kw)
-                        && (i == 0 || !is_ident_byte(bytes[i - 1]))
-                        && (i + kw.len() >= bytes.len() || !is_ident_byte(bytes[i + kw.len()]))
-                    {
-                        f(i);
-                    }
-                }
-            }
-            i += 1;
-        }
-    }
-
-    fn is_ident_byte(b: u8) -> bool {
-        b.is_ascii_alphanumeric() || b == b'_' || b == b'$'
-    }
-
-    /// Locate the outermost SELECT list, returning the list text and the
-    /// bare table name following the top-level FROM, if any.
-    fn select_list_span(sql: &str) -> Option<(String, Option<String>)> {
-        let mut sel = None;
-        for_each_top_level_keyword(sql, "select", |pos| {
-            if sel.is_none() {
-                sel = Some(pos);
-            }
-        });
-        let sel = sel?;
-        let mut from = None;
-        for_each_top_level_keyword(sql, "from", |pos| {
-            if pos > sel && from.is_none() {
-                from = Some(pos);
-            }
-        });
-        let list_start = sel + "select".len();
-        let list = match from {
-            Some(f) => sql[list_start..f].trim().to_string(),
-            None => sql[list_start..].trim().to_string(),
-        };
-        let list = strip_select_modifiers(list);
-        let table = from.and_then(|f| {
-            let rest = sql[f + "from".len()..].trim_start();
-            let end = rest
-                .find(|c: char| c.is_whitespace() || c == '(' || c == ',')
-                .unwrap_or(rest.len());
-            let name = rest[..end].trim();
-            if name.is_empty() {
-                None
-            } else {
-                Some(name.to_string())
-            }
-        });
-        Some((list, table))
-    }
-
-    /// Does `needle` appear in `haystack` bounded by non-identifier bytes
-    /// (so `cat` doesn't match `category`)? Case-insensitive.
-    fn contains_word(haystack: &str, needle: &str) -> bool {
-        let hay = haystack.as_bytes();
-        let nee = needle.as_bytes();
-        if nee.is_empty() || hay.len() < nee.len() {
-            return false;
-        }
-        (0..=hay.len() - nee.len()).any(|i| {
-            hay[i..i + nee.len()].eq_ignore_ascii_case(nee)
-                && (i == 0 || !is_ident_byte(hay[i - 1]))
-                && (i + nee.len() >= hay.len() || !is_ident_byte(hay[i + nee.len()]))
-        })
-    }
-
-    /// All internal `"__ggsql_*"` identifiers mentioned in the statement,
-    /// in either double-quote or backtick quoting. These name channel
-    /// columns (`__ggsql_aes_pos1__`, `__ggsql_stat_count`, …) that the
-    /// pipeline carries through subqueries and later looks up by name.
-    fn scan_internal_idents(sql: &str) -> Vec<String> {
-        let mut out = Vec::new();
-        let bytes = sql.as_bytes();
-        let mut i = 0;
-        while i < bytes.len() {
-            if (bytes[i] == b'"' || bytes[i] == b'`') && sql[i + 1..].starts_with("__ggsql_") {
-                let quote = bytes[i];
-                let start = i + 1;
-                if let Some(end) = sql[start..].find(quote as char) {
-                    let name = &sql[start..start + end];
-                    if name.bytes().all(is_ident_byte) && !out.iter().any(|n| n == name) {
-                        out.push(name.to_string());
-                    }
-                    i = start + end + 1;
-                    continue;
-                }
-            }
-            i += 1;
-        }
-        out
-    }
-
-    /// A deterministic three-row array for a fabricated column. Types the
-    /// pipeline doesn't map to a registered table column fall back to
-    /// all-null via `new_null_array`.
-    fn sample_array(dtype: &DataType) -> arrow::array::ArrayRef {
-        use arrow::array::{
-            BooleanArray, Date32Array, Float64Array, Int32Array, Int64Array, StringArray,
-        };
-        match dtype {
-            DataType::Float64 => Arc::new(Float64Array::from(vec![1.0, 2.0, 3.0])),
-            DataType::Int32 => Arc::new(Int32Array::from(vec![1, 2, 3])),
-            DataType::Int64 => Arc::new(Int64Array::from(vec![1i64, 2, 3])),
-            DataType::Utf8 => Arc::new(StringArray::from(vec!["a", "b", "c"])),
-            DataType::Boolean => Arc::new(BooleanArray::from(vec![true, false, true])),
-            DataType::Date32 => Arc::new(Date32Array::from(vec![19000, 19001, 19002])),
-            other => arrow::array::new_null_array(other, 3),
-        }
-    }
-
-    /// Drop leading SELECT-list modifiers the schema probe may add:
-    /// `DISTINCT` and MSSQL's `TOP n`.
-    fn strip_select_modifiers(list: String) -> String {
-        let mut rest = list.trim_start().to_string();
-        loop {
-            let lower = rest.to_ascii_lowercase();
-            if let Some(after) = lower.strip_prefix("distinct") {
-                if after.starts_with(|c: char| c.is_whitespace()) {
-                    rest = rest["distinct".len()..].trim_start().to_string();
-                    continue;
-                }
-            }
-            if let Some(after) = lower.strip_prefix("top") {
-                let after = after.trim_start();
-                let digits: usize = after.chars().take_while(|c| c.is_ascii_digit()).count();
-                if digits > 0 {
-                    let ws: usize = rest.len() - rest.trim_start().len();
-                    rest = rest[ws + 3..]
-                        .trim_start()
-                        .chars()
-                        .skip(digits)
-                        .collect::<String>()
-                        .trim_start()
-                        .to_string();
-                    continue;
-                }
-            }
-            return rest;
-        }
-    }
-
-    /// Split a SELECT list on top-level commas.
-    fn split_top_level_commas(list: &str) -> Vec<String> {
-        let mut parts = Vec::new();
-        let mut depth = 0i32;
-        let mut quote: Option<u8> = None;
-        let mut start = 0;
-        let bytes = list.as_bytes();
-        let mut i = 0;
-        while i < bytes.len() {
-            let c = bytes[i];
-            if let Some(q) = quote {
-                if c == q {
-                    if i + 1 < bytes.len() && bytes[i + 1] == q {
-                        i += 2;
-                        continue;
-                    }
-                    quote = None;
-                }
-            } else {
-                match c {
-                    b'\'' | b'"' | b'`' => quote = Some(c),
-                    b'(' => depth += 1,
-                    b')' => depth -= 1,
-                    b',' if depth == 0 => {
-                        parts.push(list[start..i].to_string());
-                        start = i + 1;
-                    }
-                    _ => {}
-                }
-            }
-            i += 1;
-        }
-        parts.push(list[start..].to_string());
-        parts
-    }
-
-    /// Output column name for one SELECT-list item: the `AS` alias if
-    /// present, else the final segment of a plain (possibly qualified)
-    /// identifier, else `None` for unaliased expressions.
-    fn output_name(item: &str) -> Option<String> {
-        let mut alias = None;
-        for_each_top_level_keyword(item, "as", |pos| alias = Some(pos));
-        if let Some(pos) = alias {
-            let name = item[pos + 2..].trim();
-            if !name.is_empty() {
-                return Some(unquote_ident(name));
-            }
-        }
-        let t = item.trim();
-        if !t.is_empty()
-            && t.bytes()
-                .all(|b| is_ident_byte(b) || b == b'.' || b == b'"' || b == b'`')
-        {
-            let last = t.rsplit('.').next().unwrap_or(t);
-            return Some(unquote_ident(last));
-        }
-        None
-    }
-
-    /// Compare two DataFrames by schema (field names + types) and by
-    /// per-column Arrow array contents. We don't use a blanket
-    /// `assert_eq!(df, df)` because `DataFrame` doesn't implement `PartialEq`;
-    /// going through schema + per-column equality is also more diagnostic
-    /// when one of them diverges.
-    #[cfg(feature = "adbc")]
-    pub(crate) fn assert_dataframes_equal(a: &DataFrame, b: &DataFrame, ctx: &str) {
-        let a_schema = a.schema();
-        let b_schema = b.schema();
-        assert_eq!(
-            a_schema.fields().len(),
-            b_schema.fields().len(),
-            "{ctx}: column count mismatch (a={}, b={})",
-            a_schema.fields().len(),
-            b_schema.fields().len(),
-        );
-        for (i, (af, bf)) in a_schema
-            .fields()
-            .iter()
-            .zip(b_schema.fields().iter())
-            .enumerate()
-        {
-            assert_eq!(
-                af.name(),
-                bf.name(),
-                "{ctx}: column {i} name mismatch (a='{}', b='{}')",
-                af.name(),
-                bf.name(),
-            );
-            assert_eq!(
-                af.data_type(),
-                bf.data_type(),
-                "{ctx}: column '{}' type mismatch (a={:?}, b={:?})",
-                af.name(),
-                af.data_type(),
-                bf.data_type(),
-            );
-        }
-        assert_eq!(
-            a.height(),
-            b.height(),
-            "{ctx}: row count mismatch (a={}, b={})",
-            a.height(),
-            b.height(),
-        );
-        for field in a_schema.fields() {
-            let ac = a.column(field.name()).unwrap();
-            let bc = b.column(field.name()).unwrap();
-            assert_eq!(
-                ac.as_ref(),
-                bc.as_ref(),
-                "{ctx}: column '{}' data mismatch",
-                field.name(),
-            );
-        }
+    #[test]
+    fn registered_tables_tracks_names() {
+        let t = RegisteredTables::new();
+        assert!(!t.is_registered("a"));
+        t.note_registered("a");
+        assert!(t.is_registered("a"));
+        assert_eq!(t.names(), vec!["a".to_string()]);
+        t.note_unregistered("a");
+        assert!(!t.is_registered("a"));
     }
 }
 
@@ -1646,10 +1200,6 @@ pub struct Spec {
     pub(crate) sql: String,
     /// The raw VISUALISE portion text
     pub(crate) visual: String,
-    /// Per-layer filter/source queries (None = uses global data directly)
-    pub(crate) layer_sql: Vec<Option<String>>,
-    /// Per-layer stat transform queries (None = no stat transform)
-    pub(crate) stat_sql: Vec<Option<String>>,
     /// Validation warnings from preparation
     pub(crate) warnings: Vec<ValidationWarning>,
 }
@@ -1887,16 +1437,6 @@ pub trait Reader {
     }
 }
 
-/// A reader that can serve as an in-memory, writable caching backend.
-///
-/// Cache backends take no options: they are always a fresh in-memory, writable
-/// database scoped to the process; consumed by [`CachingReader`].
-pub trait CacheBackend: Reader {
-    fn new_in_memory() -> Result<Self>
-    where
-        Self: Sized;
-}
-
 /// A table or view in the schema.
 pub struct TableInfo {
     pub name: String,
@@ -1925,1056 +1465,11 @@ pub fn execute_with_reader(reader: &dyn Reader, query: &str) -> Result<Spec> {
             GgsqlError::ValidationError("No visualization spec found".to_string())
         })?;
 
-    let layer_sql = vec![None; plot.layers.len()];
-    let stat_sql = vec![None; plot.layers.len()];
-
     Ok(Spec::new(
         plot,
         prepared_data.data,
         prepared_data.sql,
         prepared_data.visual,
-        layer_sql,
-        stat_sql,
         warnings,
     ))
-}
-
-#[cfg(test)]
-#[cfg(all(feature = "duckdb", feature = "vegalite"))]
-mod tests {
-    use super::*;
-    use crate::df;
-    use crate::writer::{VegaLiteWriter, Writer};
-
-    fn data_layer(json: &serde_json::Value, index: usize) -> &serde_json::Value {
-        json["layer"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .filter(|l| {
-                !matches!(
-                    l.get("description").and_then(|d| d.as_str()),
-                    Some("background" | "foreground")
-                )
-            })
-            .nth(index)
-            .expect("data layer not found at index")
-    }
-
-    #[test]
-    fn test_execute_and_render() {
-        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
-        let spec = reader
-            .execute("SELECT 1 as x, 2 as y VISUALISE x, y DRAW point")
-            .unwrap();
-
-        assert_eq!(spec.plot().layers.len(), 1);
-        assert_eq!(spec.metadata().layer_count, 1);
-        assert!(spec.layer_data(0).is_some());
-
-        let writer = VegaLiteWriter::new();
-        let result = writer.render(&spec).unwrap();
-        assert!(result.contains("point"));
-    }
-
-    #[test]
-    fn test_execute_metadata() {
-        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
-        let spec = reader
-            .execute(
-                "SELECT * FROM (VALUES (1, 10), (2, 20), (3, 30)) AS t(x, y) VISUALISE x, y DRAW point",
-            )
-            .unwrap();
-
-        let metadata = spec.metadata();
-        assert_eq!(metadata.rows, 3);
-        // Columns now includes both user mappings (pos1, pos2) and resolved defaults (size, stroke, fill, opacity, shape, linewidth)
-        // Aesthetics are transformed to internal names (x -> pos1, y -> pos2)
-        assert!(metadata.columns.contains(&"pos1".to_string()));
-        assert!(metadata.columns.contains(&"pos2".to_string()));
-        assert_eq!(metadata.layer_count, 1);
-    }
-
-    #[test]
-    fn test_execute_with_cte() {
-        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
-        let query = r#"
-            WITH data AS (
-                SELECT * FROM (VALUES (1, 10), (2, 20)) AS t(x, y)
-            )
-            SELECT * FROM data
-            VISUALISE x, y DRAW point
-        "#;
-
-        let spec = reader.execute(query).unwrap();
-
-        assert_eq!(spec.plot().layers.len(), 1);
-        assert!(spec.layer_data(0).is_some());
-        let df = spec.layer_data(0).unwrap();
-        assert_eq!(df.height(), 2);
-    }
-
-    #[test]
-    fn test_render_multi_layer() {
-        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
-        let query = r#"
-            SELECT * FROM (VALUES (1, 10), (2, 20), (3, 30)) AS t(x, y)
-            VISUALISE
-            DRAW point MAPPING x AS x, y AS y
-            DRAW line MAPPING x AS x, y AS y
-        "#;
-
-        let spec = reader.execute(query).unwrap();
-        let writer = VegaLiteWriter::new();
-        let result = writer.render(&spec).unwrap();
-
-        assert!(result.contains("layer"));
-    }
-
-    #[test]
-    fn test_polar_project_with_start() {
-        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
-        let query = r#"
-            SELECT * FROM (VALUES ('A', 10), ('B', 20), ('C', 30)) AS t(category, value)
-            VISUALISE value AS y, category AS fill
-            DRAW bar
-            PROJECT y, x TO polar SETTING start => 90
-        "#;
-
-        let spec = reader.execute(query).unwrap();
-        let writer = VegaLiteWriter::new();
-        let result = writer.render(&spec).unwrap();
-
-        // Parse the JSON to verify the theta scale range is set correctly
-        let json: serde_json::Value = serde_json::from_str(&result).unwrap();
-
-        // The encoding should have a theta channel with a scale range offset by 90 degrees
-        // 90 degrees = π/2 radians
-        let layer = data_layer(&json, 0);
-        let theta = &layer["encoding"]["theta"];
-        assert!(theta.is_object(), "theta encoding should exist");
-
-        // Check that the scale has a range with the start offset
-        let scale = &theta["scale"];
-        let range = scale["range"].as_array().unwrap();
-        assert_eq!(range.len(), 2);
-
-        // π/2 ≈ 1.5707963
-        let start = range[0].as_f64().unwrap();
-        assert!(
-            (start - std::f64::consts::FRAC_PI_2).abs() < 0.001,
-            "start should be π/2 (90 degrees), got {}",
-            start
-        );
-
-        // π/2 + 2π ≈ 7.8539816
-        let end = range[1].as_f64().unwrap();
-        let expected_end = std::f64::consts::FRAC_PI_2 + 2.0 * std::f64::consts::PI;
-        assert!(
-            (end - expected_end).abs() < 0.001,
-            "end should be π/2 + 2π, got {}",
-            end
-        );
-    }
-
-    #[test]
-    fn test_polar_project_default_start() {
-        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
-        let query = r#"
-            SELECT * FROM (VALUES ('A', 10), ('B', 20), ('C', 30)) AS t(category, value)
-            VISUALISE value AS y, category AS fill
-            DRAW bar
-            PROJECT y, x TO polar
-        "#;
-
-        let spec = reader.execute(query).unwrap();
-        let writer = VegaLiteWriter::new();
-        let result = writer.render(&spec).unwrap();
-
-        // Parse the JSON
-        let json: serde_json::Value = serde_json::from_str(&result).unwrap();
-
-        // The theta encoding should NOT have a scale with range when start is 0 (default)
-        let layer = data_layer(&json, 0);
-        let theta = &layer["encoding"]["theta"];
-        assert!(theta.is_object(), "theta encoding should exist");
-
-        // Either no scale, or no range in scale (since default is 0)
-        if let Some(scale) = theta.get("scale") {
-            assert!(
-                scale.get("range").is_none(),
-                "theta scale should not have range when start is 0"
-            );
-        }
-    }
-
-    #[test]
-    fn test_polar_project_with_end() {
-        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
-        let query = r#"
-            SELECT * FROM (VALUES ('A', 10), ('B', 20)) AS t(category, value)
-            VISUALISE value AS y, category AS fill
-            DRAW bar
-            PROJECT y, x TO polar SETTING start => -90, end => 90
-        "#;
-
-        let spec = reader.execute(query).unwrap();
-        let writer = VegaLiteWriter::new();
-        let result = writer.render(&spec).unwrap();
-
-        let json: serde_json::Value = serde_json::from_str(&result).unwrap();
-        let layer = data_layer(&json, 0);
-        let theta = &layer["encoding"]["theta"];
-        let range = theta["scale"]["range"].as_array().unwrap();
-
-        // -90° = -π/2 ≈ -1.5708, 90° = π/2 ≈ 1.5708
-        let start = range[0].as_f64().unwrap();
-        let end = range[1].as_f64().unwrap();
-        assert!(
-            (start - (-std::f64::consts::FRAC_PI_2)).abs() < 0.001,
-            "start should be -π/2 (-90 degrees), got {}",
-            start
-        );
-        assert!(
-            (end - std::f64::consts::FRAC_PI_2).abs() < 0.001,
-            "end should be π/2 (90 degrees), got {}",
-            end
-        );
-    }
-
-    #[test]
-    fn test_polar_project_with_end_only() {
-        // Test using end without explicit start (start defaults to 0)
-        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
-        let query = r#"
-            SELECT * FROM (VALUES ('A', 10), ('B', 20)) AS t(category, value)
-            VISUALISE value AS y, category AS fill
-            DRAW bar
-            PROJECT y, x TO polar SETTING end => 180
-        "#;
-
-        let spec = reader.execute(query).unwrap();
-        let writer = VegaLiteWriter::new();
-        let result = writer.render(&spec).unwrap();
-
-        let json: serde_json::Value = serde_json::from_str(&result).unwrap();
-        let layer = data_layer(&json, 0);
-        let theta = &layer["encoding"]["theta"];
-        let range = theta["scale"]["range"].as_array().unwrap();
-
-        // start=0 (default), end=180° = π
-        let start = range[0].as_f64().unwrap();
-        let end = range[1].as_f64().unwrap();
-        assert!(
-            start.abs() < 0.001,
-            "start should be 0 (default), got {}",
-            start
-        );
-        assert!(
-            (end - std::f64::consts::PI).abs() < 0.001,
-            "end should be π (180 degrees), got {}",
-            end
-        );
-    }
-
-    #[test]
-    fn test_polar_encoding_keys_independent_of_user_names() {
-        // This test verifies that polar projections always produce theta/radius encoding keys
-        // in Vega-Lite output, regardless of what position names the user specified in PROJECT.
-        // This is critical because Vega-Lite expects specific channel names for polar marks.
-        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
-
-        // Helper to check encoding keys
-        fn check_encoding_keys(json: &serde_json::Value, test_name: &str) {
-            let layer = data_layer(json, 0);
-            assert!(
-                layer["encoding"].get("theta").is_some(),
-                "{} should produce theta encoding, got keys: {:?}",
-                test_name,
-                layer["encoding"]
-                    .as_object()
-                    .map(|o| o.keys().collect::<Vec<_>>())
-            );
-            // Also verify no x or y keys exist (they should be mapped to theta/radius)
-            assert!(
-                layer["encoding"].get("x").is_none(),
-                "{} should NOT have x encoding in polar mode",
-                test_name
-            );
-            assert!(
-                layer["encoding"].get("y").is_none(),
-                "{} should NOT have y encoding in polar mode",
-                test_name
-            );
-        }
-
-        // Test case 1: PROJECT y, x TO polar (y as pos1→radius, x as pos2→theta)
-        let query1 = r#"
-            SELECT * FROM (VALUES ('A', 10), ('B', 20)) AS t(category, value)
-            VISUALISE value AS y, category AS fill
-            DRAW bar
-            PROJECT y, x TO polar
-        "#;
-        let spec1 = reader.execute(query1).unwrap();
-        let writer = VegaLiteWriter::new();
-        let result1 = writer.render(&spec1).unwrap();
-        let json1: serde_json::Value = serde_json::from_str(&result1).unwrap();
-        check_encoding_keys(&json1, "PROJECT y, x TO polar");
-
-        // Test case 2: PROJECT x, y TO polar (x as pos1→radius, y as pos2→theta)
-        let query2 = r#"
-            SELECT * FROM (VALUES ('A', 10), ('B', 20)) AS t(category, value)
-            VISUALISE value AS x, category AS fill
-            DRAW bar
-            PROJECT x, y TO polar
-        "#;
-        let spec2 = reader.execute(query2).unwrap();
-        let result2 = writer.render(&spec2).unwrap();
-        let json2: serde_json::Value = serde_json::from_str(&result2).unwrap();
-        check_encoding_keys(&json2, "PROJECT x, y TO polar");
-
-        // Test case 3: PROJECT TO polar (default radius/angle names)
-        let query3 = r#"
-            SELECT * FROM (VALUES ('A', 10), ('B', 20)) AS t(category, value)
-            VISUALISE value AS angle, category AS fill
-            DRAW bar
-            PROJECT TO polar
-        "#;
-        let spec3 = reader.execute(query3).unwrap();
-        let result3 = writer.render(&spec3).unwrap();
-        let json3: serde_json::Value = serde_json::from_str(&result3).unwrap();
-        check_encoding_keys(&json3, "PROJECT TO polar");
-
-        // Test case 4: PROJECT a, b TO polar (custom aesthetic names)
-        let query4 = r#"
-            SELECT * FROM (VALUES ('A', 10), ('B', 20)) AS t(category, value)
-            VISUALISE value AS a, category AS fill
-            DRAW bar
-            PROJECT a, b TO polar
-        "#;
-        let spec4 = reader.execute(query4).unwrap();
-        let result4 = writer.render(&spec4).unwrap();
-        let json4: serde_json::Value = serde_json::from_str(&result4).unwrap();
-        check_encoding_keys(&json4, "PROJECT a, b TO polar (custom names)");
-    }
-
-    #[test]
-    fn test_cartesian_encoding_keys_with_custom_names() {
-        // This test verifies that cartesian projections produce x/y encoding keys
-        // even when custom position names are used in PROJECT.
-        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
-
-        fn check_cartesian_keys(json: &serde_json::Value, test_name: &str) {
-            let layer = data_layer(json, 0);
-            assert!(
-                layer["encoding"].get("x").is_some(),
-                "{} should produce x encoding, got keys: {:?}",
-                test_name,
-                layer["encoding"]
-                    .as_object()
-                    .map(|o| o.keys().collect::<Vec<_>>())
-            );
-            // Verify no theta/radius keys exist
-            assert!(
-                layer["encoding"].get("theta").is_none(),
-                "{} should NOT have theta encoding in cartesian mode",
-                test_name
-            );
-        }
-
-        // Test case: PROJECT a, b TO cartesian (custom aesthetic names)
-        let query = r#"
-            SELECT * FROM (VALUES ('A', 10), ('B', 20)) AS t(category, value)
-            VISUALISE category AS a, value AS b
-            DRAW bar
-            PROJECT a, b TO cartesian
-        "#;
-        let spec = reader.execute(query).unwrap();
-        let writer = VegaLiteWriter::new();
-        let result = writer.render(&spec).unwrap();
-        let json: serde_json::Value = serde_json::from_str(&result).unwrap();
-        check_cartesian_keys(&json, "PROJECT a, b TO cartesian (custom names)");
-    }
-
-    #[test]
-    fn test_register_and_query() {
-        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
-
-        let df = df! {
-            "x" => vec![1i32, 2, 3],
-            "y" => vec![10i32, 20, 30],
-        }
-        .unwrap();
-
-        reader.register("my_data", df, false).unwrap();
-
-        let query = "SELECT * FROM my_data VISUALISE x, y DRAW point";
-        let spec = reader.execute(query).unwrap();
-
-        assert_eq!(spec.metadata().rows, 3);
-        // Aesthetics are transformed to internal names (x -> pos1)
-        assert!(spec.metadata().columns.contains(&"pos1".to_string()));
-
-        let writer = VegaLiteWriter::new();
-        let result = writer.render(&spec).unwrap();
-        assert!(result.contains("point"));
-    }
-
-    #[test]
-    fn test_register_and_join() {
-        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
-
-        let sales = df! {
-            "id" => vec![1i32, 2, 3],
-            "amount" => vec![100i32, 200, 300],
-            "product_id" => vec![1i32, 1, 2],
-        }
-        .unwrap();
-
-        let products = df! {
-            "id" => vec![1i32, 2],
-            "name" => vec!["Widget", "Gadget"],
-        }
-        .unwrap();
-
-        reader.register("sales", sales, false).unwrap();
-        reader.register("products", products, false).unwrap();
-
-        let query = r#"
-            SELECT s.id, s.amount, p.name
-            FROM sales s
-            JOIN products p ON s.product_id = p.id
-            VISUALISE id AS x, amount AS y
-            DRAW bar
-        "#;
-
-        let spec = reader.execute(query).unwrap();
-        assert_eq!(spec.metadata().rows, 3);
-    }
-
-    #[test]
-    fn test_execute_no_viz_fails() {
-        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
-        let query = "SELECT 1 as x, 2 as y";
-
-        let result = reader.execute(query);
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_binned_fill_legend_renders_threshold_scale() {
-        // End-to-end test for binned fill scale rendering to Vega-Lite
-        // Verifies that binned material aesthetics use threshold scale type
-        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
-
-        // Create data with values that span the binned range
-        // Binned scales use FROM [min, max] for range and SETTING breaks => [...] for explicit breaks
-        let query = r#"
-            SELECT * FROM (VALUES
-                (1, 10, 15.0),
-                (2, 20, 35.0),
-                (3, 30, 55.0),
-                (4, 40, 85.0)
-            ) AS t(x, y, value)
-            VISUALISE
-            DRAW point MAPPING x AS x, y AS y, value AS fill
-            SCALE BINNED fill FROM [0, 100] TO viridis SETTING breaks => [0, 25, 50, 75, 100]
-        "#;
-
-        let spec = reader.execute(query).unwrap();
-
-        // Verify spec structure
-        assert_eq!(spec.plot().layers.len(), 1);
-        // Note: scales may include auto-generated x/y scales plus the explicit fill scale
-        assert!(
-            spec.plot().find_scale("fill").is_some(),
-            "Should have a fill scale"
-        );
-
-        // Render to Vega-Lite
-        let writer = VegaLiteWriter::new();
-        let result = writer.render(&spec).unwrap();
-        let vl: serde_json::Value = serde_json::from_str(&result).unwrap();
-
-        // Verify threshold scale type for fill
-        let fill_scale = &vl["layer"][0]["encoding"]["fill"]["scale"];
-        assert_eq!(
-            fill_scale["type"],
-            "threshold",
-            "Binned fill should use threshold scale type. Got: {}",
-            serde_json::to_string_pretty(&vl["layer"][0]["encoding"]["fill"]).unwrap()
-        );
-
-        // Verify internal breaks as domain (excludes first and last terminals)
-        // breaks = [0, 25, 50, 75, 100] → domain = [25, 50, 75]
-        let domain = fill_scale["domain"].as_array().unwrap();
-        assert_eq!(
-            domain.len(),
-            3,
-            "Threshold domain should have internal breaks only. Got: {:?}",
-            domain
-        );
-        assert_eq!(domain[0], 25.0);
-        assert_eq!(domain[1], 50.0);
-        assert_eq!(domain[2], 75.0);
-
-        // Verify color output - viridis palette gets expanded to an explicit range array
-        // for threshold scales (Vega-Lite needs explicit colors for threshold domain)
-        assert!(
-            fill_scale["range"].is_array() || fill_scale["scheme"] == "viridis",
-            "Should have color range or scheme. Got scale: {}",
-            serde_json::to_string_pretty(fill_scale).unwrap()
-        );
-
-        // Verify legend values
-        // For `fill` alone (single binned legend scale), uses gradient legend with all 5 break values
-        // For symbol legends (multiple binned scales or non-gradient aesthetics), would have N-1 values
-        let legend_values = &vl["layer"][0]["encoding"]["fill"]["legend"]["values"];
-        assert!(
-            legend_values.is_array(),
-            "Legend should have values array. Got: {}",
-            serde_json::to_string_pretty(&vl["layer"][0]["encoding"]["fill"]["legend"]).unwrap()
-        );
-        let values = legend_values.as_array().unwrap();
-        assert_eq!(
-            values.len(),
-            5,
-            "Gradient legend should have all 5 break values. Got: {:?}",
-            values
-        );
-    }
-
-    #[test]
-    fn test_binned_color_legend_with_label_mapping() {
-        // Test binned color scale with custom labels renders correctly
-        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
-
-        let query = r#"
-            SELECT * FROM (VALUES
-                (1, 10, 20.0),
-                (2, 20, 60.0),
-                (3, 30, 90.0)
-            ) AS t(x, y, score)
-            VISUALISE
-            DRAW point MAPPING x AS x, y AS y, score AS color
-            SCALE BINNED color FROM [0, 100] TO ['blue', 'yellow', 'red'] SETTING breaks => [0, 50, 100]
-                RENAMING 0 => 'Low', 50 => 'High'
-        "#;
-
-        let spec = reader.execute(query).unwrap();
-
-        let writer = VegaLiteWriter::new();
-        let result = writer.render(&spec).unwrap();
-        let vl: serde_json::Value = serde_json::from_str(&result).unwrap();
-
-        // Verify threshold scale
-        // Note: "color" aesthetic is mapped to "stroke" for point geom (not fill)
-        let encoding = if vl["layer"].is_array() {
-            &vl["layer"][0]["encoding"]
-        } else {
-            &vl["encoding"]
-        };
-        // Find the stroke or fill encoding (color maps to one of these)
-        let color_encoding = if encoding["stroke"].is_object() {
-            &encoding["stroke"]
-        } else {
-            &encoding["fill"]
-        };
-        assert_eq!(
-            color_encoding["scale"]["type"],
-            "threshold",
-            "Binned color should use threshold scale. Got encoding: {}",
-            serde_json::to_string_pretty(color_encoding).unwrap()
-        );
-
-        // Verify labelExpr exists for custom labels
-        let legend = &color_encoding["legend"];
-        assert!(
-            legend["labelExpr"].is_string(),
-            "Legend should have labelExpr for custom labels. Got legend: {}",
-            serde_json::to_string_pretty(legend).unwrap()
-        );
-
-        let label_expr = legend["labelExpr"].as_str().unwrap_or("");
-        // For symbol legends, VL generates range-style labels like "0 – 50"
-        // Our labelExpr should map these to custom range formats
-        assert!(
-            label_expr.contains("Low") || label_expr.contains("High"),
-            "labelExpr should contain custom labels, got: {}",
-            label_expr
-        );
-    }
-
-    #[test]
-    fn test_polar_project_with_inner() {
-        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
-        let query = r#"
-            SELECT * FROM (VALUES ('A', 10), ('B', 20)) AS t(category, value)
-            VISUALISE value AS y, category AS fill
-            DRAW bar
-            PROJECT y, x TO polar SETTING inner => 0.5
-        "#;
-
-        let spec = reader.execute(query).unwrap();
-        let writer = VegaLiteWriter::new();
-        let result = writer.render(&spec).unwrap();
-
-        let json: serde_json::Value = serde_json::from_str(&result).unwrap();
-        let layer = data_layer(&json, 0);
-
-        // Check radius scale has range with expressions
-        let radius = &layer["encoding"]["radius"];
-        assert!(radius["scale"]["range"].is_array());
-        let range = radius["scale"]["range"].as_array().unwrap();
-
-        // First element should be inner proportion expression
-        assert!(
-            range[0]["expr"].as_str().unwrap().contains("0.5"),
-            "Inner radius expression should contain 0.5, got: {:?}",
-            range[0]
-        );
-
-        // Second element should be the outer radius expression
-        assert!(
-            range[1]["expr"]
-                .as_str()
-                .unwrap()
-                .contains("min(width, height) / 2"),
-            "Outer radius expression should contain min(width, height) / 2, got: {:?}",
-            range[1]
-        );
-    }
-
-    #[test]
-    fn test_stacked_bar_chart() {
-        // Test stacked bar chart via position => 'stack'
-        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
-        let query = r#"
-            SELECT * FROM (VALUES
-                ('A', 'X', 10),
-                ('A', 'Y', 20),
-                ('B', 'X', 15),
-                ('B', 'Y', 25)
-            ) AS t(cat, grp, val)
-            VISUALISE
-            DRAW bar MAPPING cat AS x, val AS y, grp AS fill
-            SETTING position => 'stack'
-        "#;
-
-        let spec = reader.execute(query).unwrap();
-        let writer = VegaLiteWriter::new();
-        let result = writer.render(&spec).unwrap();
-
-        let json: serde_json::Value = serde_json::from_str(&result).unwrap();
-        let layer = data_layer(&json, 0);
-
-        // Verify y and y2 encodings exist (stacked bars use y/y2 for range)
-        let encoding = &layer["encoding"];
-        assert!(encoding["y"].is_object(), "Should have y encoding");
-        assert!(
-            encoding["y2"].is_object(),
-            "Should have y2 encoding for stacked bars"
-        );
-
-        // Verify Vega-Lite stacking is disabled (we handle it ourselves)
-        assert!(
-            encoding["y"]["stack"].is_null(),
-            "y encoding should have stack: null to disable VL stacking. Got: {}",
-            serde_json::to_string_pretty(&encoding["y"]).unwrap()
-        );
-    }
-
-    #[cfg(feature = "builtin-data")]
-    #[test]
-    fn test_stacked_bar_chart_dummy_x() {
-        // Test stacked bar chart with no x mapping (dummy x column)
-        // This is the case where only fill is mapped: all bars at same x position should stack
-        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
-        let query = r#"
-            VISUALISE FROM ggsql:penguins
-            DRAW bar MAPPING species AS fill
-        "#;
-
-        let spec = reader.execute(query).unwrap();
-        let writer = VegaLiteWriter::new();
-        let result = writer.render(&spec).unwrap();
-
-        let json: serde_json::Value = serde_json::from_str(&result).unwrap();
-        let layer = data_layer(&json, 0);
-
-        // Verify y and y2 encodings exist (stacked bars use y/y2 for range)
-        let encoding = &layer["encoding"];
-        assert!(encoding["y"].is_object(), "Should have y encoding");
-        assert!(
-            encoding["y2"].is_object(),
-            "Should have y2 encoding for stacked bars with dummy x. Encoding: {}",
-            serde_json::to_string_pretty(encoding).unwrap()
-        );
-
-        // Verify Vega-Lite stacking is disabled (we handle it ourselves)
-        assert!(
-            encoding["y"]["stack"].is_null(),
-            "y encoding should have stack: null to disable VL stacking. Got: {}",
-            serde_json::to_string_pretty(&encoding["y"]).unwrap()
-        );
-    }
-
-    #[cfg(feature = "builtin-data")]
-    #[test]
-    fn test_boxplot_dummy_x() {
-        // Boxplot with only y mapped: should render a single boxplot of the
-        // whole distribution and suppress the categorical x axis.
-        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
-        let query = r#"
-            VISUALISE FROM ggsql:penguins
-            DRAW boxplot MAPPING bill_len AS y
-        "#;
-
-        let spec = reader.execute(query).unwrap();
-        let writer = VegaLiteWriter::new();
-        let result = writer.render(&spec).unwrap();
-
-        let json: serde_json::Value = serde_json::from_str(&result).unwrap();
-        // Boxplot is a composite renderer (multiple sub-layers). Check that
-        // the first layer's x encoding suppresses its axis.
-        let layer = data_layer(&json, 0);
-        let encoding = &layer["encoding"];
-        assert!(
-            encoding["x"]["axis"].is_null(),
-            "Boxplot dummy x should have axis: null. Encoding: {}",
-            serde_json::to_string_pretty(encoding).unwrap()
-        );
-    }
-
-    #[cfg(feature = "builtin-data")]
-    #[test]
-    fn test_violin_dummy_x() {
-        // Violin with only y mapped: single violin spanning the whole dataset.
-        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
-        let query = r#"
-            VISUALISE FROM ggsql:penguins
-            DRAW violin MAPPING bill_len AS y
-        "#;
-
-        let spec = reader.execute(query).unwrap();
-        let writer = VegaLiteWriter::new();
-        let result = writer.render(&spec).unwrap();
-
-        let json: serde_json::Value = serde_json::from_str(&result).unwrap();
-        let layer = data_layer(&json, 0);
-        let encoding = &layer["encoding"];
-        assert!(
-            encoding["x"]["axis"].is_null(),
-            "Violin dummy x should have axis: null. Encoding: {}",
-            serde_json::to_string_pretty(encoding).unwrap()
-        );
-    }
-
-    #[cfg(feature = "builtin-data")]
-    #[test]
-    fn test_point_dummy_x() {
-        // Point with only y mapped: strip plot at a single dummy x position.
-        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
-        let query = r#"
-            VISUALISE FROM ggsql:penguins
-            DRAW point MAPPING bill_len AS y
-        "#;
-
-        let spec = reader.execute(query).unwrap();
-        let writer = VegaLiteWriter::new();
-        let result = writer.render(&spec).unwrap();
-
-        let json: serde_json::Value = serde_json::from_str(&result).unwrap();
-        let layer = data_layer(&json, 0);
-        let encoding = &layer["encoding"];
-        assert!(
-            encoding["x"]["axis"].is_null(),
-            "Point dummy x should have axis: null. Encoding: {}",
-            serde_json::to_string_pretty(encoding).unwrap()
-        );
-    }
-
-    #[test]
-    fn test_range_dummy_x() {
-        // Range with only ymin/ymax mapped: a single vertical interval.
-        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
-        let query = r#"
-            SELECT 10.0 AS lo, 20.0 AS hi
-            VISUALISE
-            DRAW range MAPPING lo AS ymin, hi AS ymax
-        "#;
-
-        let spec = reader.execute(query).unwrap();
-        let writer = VegaLiteWriter::new();
-        let result = writer.render(&spec).unwrap();
-
-        let json: serde_json::Value = serde_json::from_str(&result).unwrap();
-        let layer = data_layer(&json, 0);
-        let encoding = &layer["encoding"];
-        assert!(
-            encoding["x"]["axis"].is_null(),
-            "Range dummy x should have axis: null. Encoding: {}",
-            serde_json::to_string_pretty(encoding).unwrap()
-        );
-    }
-
-    #[cfg(feature = "builtin-data")]
-    #[test]
-    fn test_point_dummy_y() {
-        // Symmetric to test_point_dummy_x: only x mapped means dummy y.
-        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
-        let query = r#"
-            VISUALISE FROM ggsql:penguins
-            DRAW point MAPPING bill_len AS x
-        "#;
-
-        let spec = reader.execute(query).unwrap();
-        let writer = VegaLiteWriter::new();
-        let result = writer.render(&spec).unwrap();
-
-        let json: serde_json::Value = serde_json::from_str(&result).unwrap();
-        let layer = data_layer(&json, 0);
-        let encoding = &layer["encoding"];
-        assert!(
-            encoding["y"]["axis"].is_null(),
-            "Point dummy y should have axis: null. Encoding: {}",
-            serde_json::to_string_pretty(encoding).unwrap()
-        );
-    }
-
-    #[cfg(feature = "builtin-data")]
-    #[test]
-    fn test_point_dummy_both_with_aggregate() {
-        // Both axes omitted, but aggregate gives the single point meaning:
-        // a count of all rows at the dummy x/y intersection.
-        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
-        let query = r#"
-            VISUALISE FROM ggsql:penguins
-            DRAW point MAPPING bill_len AS size
-            SETTING aggregate => 'size:count'
-        "#;
-
-        let spec = reader.execute(query).unwrap();
-        let writer = VegaLiteWriter::new();
-        let result = writer.render(&spec).unwrap();
-
-        let json: serde_json::Value = serde_json::from_str(&result).unwrap();
-        let layer = data_layer(&json, 0);
-        let encoding = &layer["encoding"];
-        assert!(
-            encoding["x"]["axis"].is_null(),
-            "Both-dummy point should hide x axis. Encoding: {}",
-            serde_json::to_string_pretty(encoding).unwrap()
-        );
-        assert!(
-            encoding["y"]["axis"].is_null(),
-            "Both-dummy point should hide y axis. Encoding: {}",
-            serde_json::to_string_pretty(encoding).unwrap()
-        );
-    }
-
-    #[cfg(feature = "builtin-data")]
-    #[test]
-    fn test_point_dummy_x_with_aggregate() {
-        // Point with aggregate SETTING and no x mapping: should aggregate the
-        // whole dataset to a single point and suppress the dummy x axis.
-        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
-        let query = r#"
-            VISUALISE FROM ggsql:penguins
-            DRAW point MAPPING bill_len AS y
-            SETTING aggregate => 'mean'
-        "#;
-
-        let spec = reader.execute(query).unwrap();
-        let writer = VegaLiteWriter::new();
-        let result = writer.render(&spec).unwrap();
-
-        let json: serde_json::Value = serde_json::from_str(&result).unwrap();
-        let layer = data_layer(&json, 0);
-        let encoding = &layer["encoding"];
-        assert!(
-            encoding["x"]["axis"].is_null(),
-            "Aggregated point with dummy x should have axis: null. Encoding: {}",
-            serde_json::to_string_pretty(encoding).unwrap()
-        );
-    }
-
-    #[cfg(feature = "builtin-data")]
-    #[test]
-    fn test_bar_chart_with_expand_setting() {
-        // Test bar chart with SCALE y SETTING expand - should work even when y is stat-derived
-        // This tests that:
-        // 1. Scale type inference works for stat-generated count columns
-        // 2. Stacking still works (y2 encoding exists) when SCALE y is specified
-        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
-        let query = r#"
-            VISUALISE FROM ggsql:penguins
-            DRAW bar MAPPING species AS fill
-            SCALE y SETTING expand => [0.05, 0.05]
-        "#;
-
-        let spec = reader.execute(query).unwrap();
-        let writer = VegaLiteWriter::new();
-        let result = writer.render(&spec).unwrap();
-
-        // Should succeed without "discrete scale does not support SETTING 'expand'" error
-        let json: serde_json::Value = serde_json::from_str(&result).unwrap();
-        let layer = data_layer(&json, 0);
-
-        // Verify stacking works (y2 encoding exists for stacked bars)
-        let encoding = &layer["encoding"];
-        assert!(
-            encoding["y2"].is_object(),
-            "Should have y2 encoding for stacked bars. Encoding: {}",
-            serde_json::to_string_pretty(encoding).unwrap()
-        );
-    }
-
-    #[test]
-    fn test_dodged_bar_chart() {
-        // Test dodged bar chart via position => 'dodge'
-        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
-        let query = r#"
-            SELECT * FROM (VALUES
-                ('A', 'X', 10),
-                ('A', 'Y', 20),
-                ('B', 'X', 15),
-                ('B', 'Y', 25)
-            ) AS t(cat, grp, val)
-            VISUALISE
-            DRAW bar MAPPING cat AS x, val AS y, grp AS fill
-            SETTING position => 'dodge'
-        "#;
-
-        let spec = reader.execute(query).unwrap();
-        let writer = VegaLiteWriter::new();
-        let result = writer.render(&spec).unwrap();
-
-        let json: serde_json::Value = serde_json::from_str(&result).unwrap();
-        let layer = data_layer(&json, 0);
-
-        // Verify xOffset encoding exists (dodged bars use xOffset for displacement)
-        let encoding = &layer["encoding"];
-        assert!(
-            encoding["xOffset"].is_object(),
-            "Should have xOffset encoding for dodged bars. Encoding: {}",
-            serde_json::to_string_pretty(encoding).unwrap()
-        );
-
-        // Verify bar width uses bandwidth expression with adjusted_width for dodged bars
-        // For 2 groups with default width 0.9: adjusted_width = 0.9 / 2 = 0.45
-        let mark = &layer["mark"];
-        let width_expr = mark["width"]["expr"].as_str();
-        assert!(
-            width_expr.is_some(),
-            "Dodged bars should have expression-based width. Mark: {}",
-            serde_json::to_string_pretty(mark).unwrap()
-        );
-        let expr = width_expr.unwrap();
-        assert!(
-            expr.contains("bandwidth('x')") && expr.contains("0.45"),
-            "Width expression should use bandwidth('x') * adjusted_width, got: {}",
-            expr
-        );
-    }
-
-    #[test]
-    fn test_position_identity_default() {
-        // Test that identity position (default) doesn't modify data
-        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
-        let query = r#"
-            SELECT * FROM (VALUES
-                ('A', 10),
-                ('B', 20)
-            ) AS t(cat, val)
-            VISUALISE
-            DRAW bar MAPPING cat AS x, val AS y
-        "#;
-
-        let spec = reader.execute(query).unwrap();
-        let writer = VegaLiteWriter::new();
-        let result = writer.render(&spec).unwrap();
-
-        let json: serde_json::Value = serde_json::from_str(&result).unwrap();
-        let layer = data_layer(&json, 0);
-
-        // Verify no xOffset encoding (identity position)
-        let encoding = &layer["encoding"];
-        assert!(
-            encoding.get("xOffset").is_none(),
-            "Identity position should not have xOffset encoding"
-        );
-    }
-
-    #[test]
-    fn test_label_with_flipped_project() {
-        // End-to-end test: LABEL x/y with PROJECT y, x TO cartesian
-        // Labels should be correctly applied to the flipped axes
-        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
-        let query = r#"
-            SELECT * FROM (VALUES (1, 10), (2, 20)) AS t(x, y)
-            VISUALISE
-            DRAW bar MAPPING x AS y, y AS x
-            PROJECT y, x TO cartesian
-            LABEL x => 'Value', y => 'Category'
-        "#;
-
-        let spec = reader.execute(query).unwrap();
-        let writer = VegaLiteWriter::new();
-        let result = writer.render(&spec).unwrap();
-
-        let json: serde_json::Value = serde_json::from_str(&result).unwrap();
-        let layer = data_layer(&json, 0);
-        let encoding = &layer["encoding"];
-
-        // With PROJECT y, x TO cartesian:
-        // - y is pos1 (first position), renders to VL x-axis in cartesian
-        // - x is pos2 (second position), renders to VL y-axis in cartesian
-        // So LABEL y => 'Category' should appear on VL x-axis, LABEL x => 'Value' on VL y-axis
-        let x_title = encoding["x"]["title"].as_str();
-        let y_title = encoding["y"]["title"].as_str();
-
-        assert_eq!(
-            x_title,
-            Some("Category"),
-            "x-axis should have 'Category' title (from LABEL y). Got encoding: {}",
-            serde_json::to_string_pretty(encoding).unwrap()
-        );
-        assert_eq!(
-            y_title,
-            Some("Value"),
-            "y-axis should have 'Value' title (from LABEL x). Got encoding: {}",
-            serde_json::to_string_pretty(encoding).unwrap()
-        );
-    }
-
-    #[test]
-    fn test_label_with_polar_project() {
-        // End-to-end test: LABEL angle/radius with PROJECT TO polar
-        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
-        let query = r#"
-            SELECT * FROM (VALUES ('A', 10), ('B', 20)) AS t(category, value)
-            VISUALISE value AS angle, category AS fill
-            DRAW bar
-            PROJECT TO polar
-            LABEL angle => 'Angle', radius => 'Distance'
-        "#;
-
-        let spec = reader.execute(query).unwrap();
-        let writer = VegaLiteWriter::new();
-        let result = writer.render(&spec).unwrap();
-
-        let json: serde_json::Value = serde_json::from_str(&result).unwrap();
-        let layer = data_layer(&json, 0);
-        let encoding = &layer["encoding"];
-
-        // Verify theta encoding has the label
-        let theta_title = encoding["theta"]["title"].as_str();
-        assert_eq!(
-            theta_title,
-            Some("Angle"),
-            "theta encoding should have 'Angle' title. Got encoding: {}",
-            serde_json::to_string_pretty(encoding).unwrap()
-        );
-    }
 }

@@ -4,8 +4,9 @@
 //! cache, builtin routing, layer-source staging, dialect selection).
 
 use super::CachingReader;
+use crate::reader::test_support::CacheBackend;
 use crate::reader::test_support::{ReadOnlyReader, SpyReader};
-use crate::reader::{CacheBackend, DuckDBReader, Reader, SqliteReader};
+use crate::reader::{DuckDBReader, Reader, SqliteReader};
 use crate::DataFrame;
 
 /// One corpus entry. `builtin_only` queries read only `ggsql:` datasets (which

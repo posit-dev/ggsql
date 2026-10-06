@@ -152,6 +152,11 @@ impl CachingReader {
     /// backend, the primary's connection URI and the cache backend's scheme,
     /// using environment-derived cache configuration. The cache is owned by the
     /// `CachingReader` and dropped with it.
+    ///
+    /// Test-only convenience; production construction goes through
+    /// [`connection`](crate::reader::connection), which always supplies an
+    /// explicit [`CacheConfig`] via [`with_config`](Self::with_config).
+    #[cfg(test)]
     pub fn new(
         primary: Box<dyn Reader + Send>,
         cache: Box<dyn Reader + Send>,
@@ -524,8 +529,9 @@ mod behavior_tests {
     use super::*;
     use crate::array_util::as_i64;
     use crate::df;
+    use crate::reader::test_support::CacheBackend;
     use crate::reader::test_support::{ReadOnlyReader, SpyReader};
-    use crate::reader::{CacheBackend, DuckDBReader};
+    use crate::reader::DuckDBReader;
 
     #[test]
     fn test_register_writes_to_cache_and_query_routes_there() {

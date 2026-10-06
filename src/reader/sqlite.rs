@@ -3,14 +3,12 @@
 //! Provides a reader for SQLite databases with Arrow DataFrame integration.
 //! Works on both native targets and wasm32-unknown-unknown (via sqlite-wasm-rs).
 
-use crate::reader::{CacheBackend, Reader};
+use crate::reader::Reader;
 use crate::{naming, DataFrame, GgsqlError, Result};
 use arrow::array::*;
 use arrow::datatypes::{DataType, TimeUnit};
 use chrono::Datelike;
 use rusqlite::Connection;
-use std::cell::RefCell;
-use std::collections::HashSet;
 use std::sync::Arc;
 
 // The SQLite dialect lives in `super::dialects::sqlite` alongside every other
@@ -24,7 +22,7 @@ pub use super::dialects::SqliteDialect;
 /// and returns results as DataFrames.
 pub struct SqliteReader {
     conn: Connection,
-    registered_tables: RefCell<HashSet<String>>,
+    registered_tables: crate::reader::RegisteredTables,
 }
 
 impl SqliteReader {
@@ -39,7 +37,7 @@ impl SqliteReader {
         }
         Ok(Self {
             conn,
-            registered_tables: RefCell::new(HashSet::new()),
+            registered_tables: crate::reader::RegisteredTables::new(),
         })
     }
 
@@ -77,7 +75,7 @@ impl SqliteReader {
         }
         Ok(Self {
             conn,
-            registered_tables: RefCell::new(HashSet::new()),
+            registered_tables: crate::reader::RegisteredTables::new(),
         })
     }
 
@@ -91,10 +89,9 @@ impl SqliteReader {
     /// When `internal` is false, filters out internal tables (prefixed with `__ggsql_`).
     pub fn list_tables(&self, internal: bool) -> Vec<String> {
         self.registered_tables
-            .borrow()
-            .iter()
+            .names()
+            .into_iter()
             .filter(|name| internal || !name.starts_with("__ggsql_"))
-            .cloned()
             .collect()
     }
 
@@ -259,12 +256,6 @@ fn to_sql_value(v: &dyn rusqlite::types::ToSql) -> Option<rusqlite::types::Value
     }
 }
 
-impl CacheBackend for SqliteReader {
-    fn new_in_memory() -> Result<Self> {
-        Self::new()
-    }
-}
-
 impl Reader for SqliteReader {
     fn execute_sql(&self, sql: &str) -> Result<DataFrame> {
         // Handle ggsql:name namespaced identifiers (builtin datasets)
@@ -349,7 +340,7 @@ impl Reader for SqliteReader {
                 self.conn.execute(&sql, []).map_err(|e| {
                     GgsqlError::ReaderError(format!("Failed to drop table '{}': {}", name, e))
                 })?;
-                self.registered_tables.borrow_mut().remove(name);
+                self.registered_tables.note_unregistered(name);
             } else {
                 return Err(GgsqlError::ReaderError(format!(
                     "Table '{}' already exists",
@@ -430,12 +421,12 @@ impl Reader for SqliteReader {
             }
         }
 
-        self.registered_tables.borrow_mut().insert(name.to_string());
+        self.registered_tables.note_registered(name);
         Ok(())
     }
 
     fn unregister(&self, name: &str) -> Result<()> {
-        if !self.registered_tables.borrow().contains(name) {
+        if !self.registered_tables.is_registered(name) {
             return Err(GgsqlError::ReaderError(format!(
                 "Table '{}' was not registered via this reader",
                 name
@@ -447,7 +438,7 @@ impl Reader for SqliteReader {
             GgsqlError::ReaderError(format!("Failed to unregister table '{}': {}", name, e))
         })?;
 
-        self.registered_tables.borrow_mut().remove(name);
+        self.registered_tables.note_unregistered(name);
         Ok(())
     }
 

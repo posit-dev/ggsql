@@ -1166,12 +1166,6 @@ mod tests {
 
         let spec = reader.execute(query).expect("Query should execute");
 
-        // Debug: print what SQL was generated and what data we have
-        println!("Generated stat SQL:");
-        if let Some(sql) = spec.stat_sql(0) {
-            println!("{}", sql);
-        }
-
         // Get the stat-transformed data for layer 0
         let df = spec.stat_data(0).expect("Layer 0 should have stat data");
         println!("\nActual columns in stat_data: {:?}", df.get_column_names());

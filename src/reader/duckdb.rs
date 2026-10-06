@@ -2,16 +2,11 @@
 //!
 //! Provides a reader for DuckDB databases with Arrow DataFrame integration.
 
-use crate::reader::{CacheBackend, Reader};
+use crate::reader::Reader;
 use crate::{naming, DataFrame, GgsqlError, Result};
-use arrow::compute::{cast, concat_batches};
-use arrow::datatypes::{DataType, Field, Schema};
-use arrow::record_batch::RecordBatch;
+use arrow::compute::concat_batches;
 use duckdb::vtab::arrow::{arrow_recordbatch_to_query_params, ArrowVTab};
 use duckdb::{params, Connection};
-use std::cell::RefCell;
-use std::collections::HashSet;
-use std::sync::Arc;
 
 // =============================================================================
 // DuckDB builtin data registration
@@ -104,7 +99,7 @@ pub use super::dialects::DuckDbDialect;
 /// ```
 pub struct DuckDBReader {
     conn: Connection,
-    registered_tables: RefCell<HashSet<String>>,
+    registered_tables: crate::reader::RegisteredTables,
 }
 
 impl DuckDBReader {
@@ -164,7 +159,7 @@ impl DuckDBReader {
 
         Ok(Self {
             conn,
-            registered_tables: RefCell::new(HashSet::new()),
+            registered_tables: crate::reader::RegisteredTables::new(),
         })
     }
 
@@ -193,52 +188,6 @@ use super::validate_table_name;
 /// Since our DataFrame is already an Arrow RecordBatch, this is a simple passthrough.
 fn dataframe_to_arrow_params(df: &DataFrame) -> Result<[usize; 2]> {
     Ok(arrow_recordbatch_to_query_params(df.inner().clone()))
-}
-
-/// Cast Decimal128 columns to Float64 so downstream code sees standard numeric types.
-fn normalize_arrow_types(batch: RecordBatch) -> Result<RecordBatch> {
-    let schema = batch.schema();
-    let needs_cast = schema
-        .fields()
-        .iter()
-        .any(|f| matches!(f.data_type(), DataType::Decimal128(_, _)));
-
-    if !needs_cast {
-        return Ok(batch);
-    }
-
-    let mut new_fields = Vec::with_capacity(schema.fields().len());
-    let mut new_columns = Vec::with_capacity(batch.num_columns());
-
-    for (i, field) in schema.fields().iter().enumerate() {
-        if matches!(field.data_type(), DataType::Decimal128(_, _)) {
-            let casted = cast(batch.column(i), &DataType::Float64).map_err(|e| {
-                GgsqlError::ReaderError(format!(
-                    "Failed to cast column '{}' from Decimal to Float64: {}",
-                    field.name(),
-                    e
-                ))
-            })?;
-            new_fields.push(Field::new(
-                field.name(),
-                DataType::Float64,
-                field.is_nullable(),
-            ));
-            new_columns.push(casted);
-        } else {
-            new_fields.push(field.as_ref().clone());
-            new_columns.push(batch.column(i).clone());
-        }
-    }
-
-    RecordBatch::try_new(Arc::new(Schema::new(new_fields)), new_columns)
-        .map_err(|e| GgsqlError::ReaderError(format!("Failed to normalize types: {}", e)))
-}
-
-impl CacheBackend for DuckDBReader {
-    fn new_in_memory() -> Result<Self> {
-        Self::from_connection_string("duckdb://memory")
-    }
 }
 
 impl Reader for DuckDBReader {
@@ -280,7 +229,7 @@ impl Reader for DuckDBReader {
             GgsqlError::ReaderError(format!("Failed to combine result batches: {}", e))
         })?;
 
-        let normalized = normalize_arrow_types(combined)?;
+        let normalized = super::normalize_result_batch(combined)?;
         Ok(DataFrame::from_record_batch(normalized))
     }
 
@@ -360,13 +309,13 @@ impl Reader for DuckDBReader {
         }
 
         // Track the table so we can unregister it later
-        self.registered_tables.borrow_mut().insert(name.to_string());
+        self.registered_tables.note_registered(name);
         Ok(())
     }
 
     fn unregister(&self, name: &str) -> Result<()> {
         // Only allow unregistering tables we created via register()
-        if !self.registered_tables.borrow().contains(name) {
+        if !self.registered_tables.is_registered(name) {
             return Err(GgsqlError::ReaderError(format!(
                 "Table '{}' was not registered via this reader",
                 name
@@ -380,7 +329,7 @@ impl Reader for DuckDBReader {
         })?;
 
         // Remove from tracking
-        self.registered_tables.borrow_mut().remove(name);
+        self.registered_tables.note_unregistered(name);
 
         Ok(())
     }
