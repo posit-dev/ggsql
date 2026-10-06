@@ -6,6 +6,26 @@
 //! patterns, dialect constructor, ADBC driver details, and ODBC synthesis
 //! hints. Dispatch (`connection.rs`), the ADBC reader, and the Jupyter
 //! kernel all consult this table rather than keeping their own lookups.
+//!
+//! # Adding a dialect
+//!
+//! 1. Create `src/reader/dialects/<scheme>.rs` with a unit struct
+//!    implementing [`SqlDialect`](super::SqlDialect), and register the
+//!    module in `dialects/mod.rs`.
+//! 2. Add a [`DatabaseEntry`] below (schemes, detection patterns, ADBC
+//!    info, ODBC quirks). Detection tests live in this file.
+//! 3. Add the golden file: `GGSQL_BLESS=1 cargo test -p ggsql --lib
+//!    golden::<scheme>` (see `src/execute/golden.rs`); the
+//!    `goldens_cover_registry` test enforces this.
+//! 4. Live tests (`src/tests/dialect_live.rs`): a `live_<scheme>` test, a
+//!    `GGSQL_TEST_URI_<SCHEME>` doc entry, DDL branches in
+//!    `create_table_sql`/`date_literal`/`ddl_quote`/`insert_sql`, and a
+//!    startup script under `.github/scripts/live/` plus a leg in
+//!    `.github/workflows/dialect-live.yml`. Cases that cannot run live get
+//!    a `live_skip` with a reason in `src/tests/battery/mod.rs`.
+//! 5. If the backend cannot host ggsql's internal tables, set
+//!    `requires_cache`/`temp_table_style` on the dialect instead of
+//!    special-casing readers.
 
 use super::dialects::*;
 use super::AnsiDialect;

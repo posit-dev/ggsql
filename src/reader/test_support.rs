@@ -683,6 +683,69 @@ fn output_name(item: &str) -> Option<String> {
     None
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn select_list_span_basic() {
+        let (list, table) = select_list_span("SELECT a, b AS c FROM t WHERE x").unwrap();
+        assert_eq!(list, "a, b AS c");
+        assert_eq!(table.as_deref(), Some("t"));
+    }
+
+    #[test]
+    fn select_list_span_skips_nested_select_and_keywords_in_literals() {
+        // The inner SELECT/FROM (parenthesized) and the 'from' inside the
+        // string literal must not be seen as top-level keywords.
+        let (list, table) =
+            select_list_span("SELECT x, 'from nowhere' AS s FROM (SELECT y FROM inner_t) AS sub")
+                .unwrap();
+        assert_eq!(list, "x, 'from nowhere' AS s");
+        assert_eq!(table.as_deref(), None);
+    }
+
+    #[test]
+    fn select_list_span_strips_distinct_and_top() {
+        let (list, _) = select_list_span("SELECT DISTINCT a FROM t").unwrap();
+        assert_eq!(list, "a");
+    }
+
+    #[test]
+    fn split_commas_respects_parens_and_quotes() {
+        // Items are not trimmed; callers trim.
+        assert_eq!(
+            split_top_level_commas("a, f(1, (2)), 'x,y', \"z,w\""),
+            vec!["a", " f(1, (2))", " 'x,y'", " \"z,w\""]
+        );
+    }
+
+    #[test]
+    fn output_name_alias_and_plain_identifiers() {
+        assert_eq!(output_name("expr + 1 AS total"), Some("total".into()));
+        assert_eq!(
+            output_name("COUNT(*) AS \"my Count\""),
+            Some("my Count".into())
+        );
+        assert_eq!(output_name("t.col"), Some("col".into()));
+        assert_eq!(output_name("`bt`"), Some("bt".into()));
+        // Unaliased expressions have no name.
+        assert_eq!(output_name("a + b"), None);
+    }
+
+    #[test]
+    fn stub_fabricates_columns_for_generated_sql() {
+        let (stub, _log) = StubReader::new(&crate::reader::AnsiDialect);
+        let df = stub
+            .execute_sql("SELECT a AS one, COUNT(*) AS n FROM anything")
+            .unwrap();
+        let schema = df.schema();
+        assert_eq!(schema.fields().len(), 2);
+        assert_eq!(schema.field(0).name(), "one");
+        assert_eq!(schema.field(1).name(), "n");
+    }
+}
+
 /// Compare two DataFrames by schema (field names + types) and by
 /// per-column Arrow array contents. We don't use a blanket
 /// `assert_eq!(df, df)` because `DataFrame` doesn't implement `PartialEq`;

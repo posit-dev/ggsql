@@ -59,6 +59,9 @@
 //! The DataFusion case runs in-process via the Foundry ADBC driver and
 //! needs no container, so one non-DuckDB engine always runs in CI.
 //!
+//! Drill has no live leg at all: it is covered by golden SQL-shape tests
+//! only (there is no GGSQL_TEST_URI_DRILL).
+//!
 //! The battery itself — case list, per-case assertions, and the dataset —
 //! lives in `src/tests/battery/mod.rs`, shared with the Tier 1 golden
 //! tests (`src/execute/golden.rs`) so the two tiers cannot drift. This
@@ -459,6 +462,7 @@ fn live_backend(scheme: &str) {
                 )),
             ],
         )
+        // Not battery::fixture_df: BigQuery's ADBC register path needs Int64 ids.
         .expect("build bigquery test batch");
         reader
             .register(table, ggsql::DataFrame::from_record_batch(batch), true)
@@ -633,42 +637,7 @@ fn live_datafusion() {
 
     let reader = AdbcReader::from_connection_string("datafusion://").expect("datafusion init");
 
-    let df = ggsql::DataFrame::new(vec![
-        (
-            "id",
-            Arc::new(arrow::array::Int32Array::from(
-                battery::ROWS.iter().map(|r| r.id).collect::<Vec<_>>(),
-            )) as arrow::array::ArrayRef,
-        ),
-        (
-            "val",
-            Arc::new(arrow::array::Float64Array::from(
-                battery::ROWS.iter().map(|r| r.val).collect::<Vec<_>>(),
-            )) as arrow::array::ArrayRef,
-        ),
-        (
-            "grp",
-            Arc::new(arrow::array::StringArray::from(
-                battery::ROWS.iter().map(|r| r.grp).collect::<Vec<_>>(),
-            )) as arrow::array::ArrayRef,
-        ),
-        (
-            "day",
-            Arc::new(arrow::array::Date32Array::from(
-                battery::ROWS
-                    .iter()
-                    .map(|r| r.day_epoch)
-                    .collect::<Vec<_>>(),
-            )) as arrow::array::ArrayRef,
-        ),
-        (
-            "mixed Case",
-            Arc::new(arrow::array::Float64Array::from(
-                battery::ROWS.iter().map(|r| r.mixed).collect::<Vec<_>>(),
-            )) as arrow::array::ArrayRef,
-        ),
-    ])
-    .expect("test dataframe");
+    let df = battery::fixture_df(&battery::Fixture::Shared);
     reader.register(TABLE, df, true).expect("register table");
 
     run_battery(&reader, "datafusion", TABLE);

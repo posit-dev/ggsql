@@ -4,8 +4,9 @@
 //! the case list and dataset exist exactly once; it lives in a
 //! subdirectory so cargo does not treat it as its own test target.
 //!
-//! Pure data and std-only helpers — no crate imports — so the file compiles
-//! in both including contexts (lib unit tests and the integration test).
+//! Data plus helpers over `arrow`/`crate::DataFrame` (`fixture_df`); both
+//! including contexts are targets of this crate, so those deps resolve in
+//! either one.
 
 // Each including tier reads only its own subset: the golden tests ignore
 // the live assertions (Expect, live_skip, live, runs_live_on), and the
@@ -140,6 +141,55 @@ pub enum Fixture {
     /// The shared table with `day` as ISO text instead of a date — forces
     /// the text→temporal CAST path (SAFE_CAST/TRY_CAST per dialect).
     TextDay,
+}
+
+/// The fixture as a DataFrame, matching the live table's schema:
+/// id/val/grp/day(a real date)/"mixed Case". `TextDay` swaps the date for
+/// ISO text. Used by the golden tier's stub registrations and by live
+/// backends whose setup goes through `register()` rather than DDL
+/// (DataFusion). BigQuery is the exception: its ADBC register path needs
+/// Int64 ids, so `dialect_live.rs` builds that batch by hand.
+pub fn fixture_df(fixture: &Fixture) -> crate::DataFrame {
+    use arrow::array::{ArrayRef, Date32Array, Float64Array, Int32Array, StringArray};
+    use std::sync::Arc;
+    let day: ArrayRef = match fixture {
+        Fixture::Shared => Arc::new(Date32Array::from(
+            ROWS.iter().map(|r| r.day_epoch).collect::<Vec<_>>(),
+        )),
+        Fixture::TextDay => Arc::new(StringArray::from(
+            ROWS.iter()
+                .map(|r| day_iso(r.day_epoch))
+                .collect::<Vec<_>>(),
+        )),
+    };
+    crate::DataFrame::new(vec![
+        (
+            "id",
+            Arc::new(Int32Array::from(
+                ROWS.iter().map(|r| r.id).collect::<Vec<_>>(),
+            )) as ArrayRef,
+        ),
+        (
+            "val",
+            Arc::new(Float64Array::from(
+                ROWS.iter().map(|r| r.val).collect::<Vec<_>>(),
+            )) as ArrayRef,
+        ),
+        (
+            "grp",
+            Arc::new(StringArray::from(
+                ROWS.iter().map(|r| r.grp).collect::<Vec<_>>(),
+            )) as ArrayRef,
+        ),
+        ("day", day),
+        (
+            "mixed Case",
+            Arc::new(Float64Array::from(
+                ROWS.iter().map(|r| r.mixed).collect::<Vec<_>>(),
+            )) as ArrayRef,
+        ),
+    ])
+    .unwrap()
 }
 
 pub struct Case {
