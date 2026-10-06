@@ -751,6 +751,13 @@ pub trait SqlDialect {
                 format!("DROP TEMPORARY TABLE IF EXISTS {}", qname),
                 format!("CREATE TEMPORARY TABLE {} AS {}", qname, body),
             ],
+            TempTableStyle::DropThenCreateTempPreserveRows => vec![
+                format!("DROP TABLE IF EXISTS {}", qname),
+                format!(
+                    "CREATE TEMP TABLE {} AS {} ON COMMIT PRESERVE ROWS",
+                    qname, body
+                ),
+            ],
             TempTableStyle::CreateOrReplaceTempView => {
                 vec![format!("CREATE OR REPLACE TEMP VIEW {} AS {}", qname, body)]
             }
@@ -822,6 +829,11 @@ pub enum TempTableStyle {
     /// `DROP TEMPORARY TABLE IF EXISTS` then `CREATE TEMPORARY TABLE AS`
     /// (MySQL/MariaDB, ClickHouse).
     DropTemporaryThenCreateTemp,
+    /// `DROP TABLE IF EXISTS` then `CREATE TEMP TABLE AS … ON COMMIT
+    /// PRESERVE ROWS` (MonetDB temp tables default to ON COMMIT DELETE
+    /// ROWS: with ODBC autocommit the CTAS statement's own commit would
+    /// wipe the rows it just staged).
+    DropThenCreateTempPreserveRows,
     /// Single `CREATE OR REPLACE TEMP VIEW AS` (Databricks/Spark).
     CreateOrReplaceTempView,
     /// `DROP TABLE IF EXISTS` then plain `CREATE TABLE AS` — no temp-table
