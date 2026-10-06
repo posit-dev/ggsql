@@ -39,13 +39,12 @@ pub fn split_cache_uri(uri: &str) -> Option<(String, String)> {
 /// URI parsing or option map — drivers reject unknown keys.
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct GgsqlParams {
-    /// Whether the connection opts out of the *automatic* caching layer
-    /// (`cache=off`): no `CachingReader` wrap when the backend cannot host
-    /// ggsql's internal tables. An explicit `<cache>+<primary>://` URI is
-    /// unaffected.
+    /// `cache=off`: opt out of the automatic caching layer entirely —
+    /// different from `cache_disabled`, which keeps the caching reader but
+    /// turns its result memo off.
     pub cache_off: bool,
-    /// Forced reader kind (`reader=native|adbc|odbc`); `None` lets dispatch
-    /// pick in its default preference order.
+    /// `reader=native|adbc|odbc`: force one reader kind over the default
+    /// preference order (native → ADBC → ODBC).
     pub reader: Option<String>,
     /// Explicit SQL-dialect pin (`dialect=<scheme|ansi>`), bypassing backend
     /// detection — the escape hatch for backends ggsql doesn't recognise.
@@ -160,7 +159,10 @@ impl ConnUri {
     }
 
     /// True when the URI opts out of the automatic caching layer
-    /// (`cache=off`).
+    /// (`cache=off`). This is one of two distinct "disable cache" knobs:
+    /// `cache=off` never wraps the reader at all, while `cache_disabled=1`
+    /// keeps the caching reader but disables its result memo
+    /// ([`GgsqlParams::cache_disabled`]).
     pub fn cache_disabled_off(&self) -> bool {
         self.ggsql.cache_off
     }
@@ -577,12 +579,12 @@ fn auto_cache_if_needed(
     {
         use crate::reader::cache::CacheConfig;
 
-        let (cache_uri, cache_scheme) = if cfg!(feature = "duckdb") {
-            ("duckdb://memory", "duckdb")
+        let cache_scheme = if cfg!(feature = "duckdb") {
+            "duckdb"
         } else {
-            ("sqlite://:memory:", "sqlite")
+            "sqlite"
         };
-        let cache = build_reader(cache_uri)?;
+        let cache = build_reader(cache_uri(cache_scheme)?)?;
         Ok(Box::new(crate::reader::CachingReader::with_config(
             reader,
             cache,

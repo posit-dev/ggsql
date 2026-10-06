@@ -493,6 +493,12 @@ fn bigquery_driver_uri(body: &str, query: &str) -> (String, String) {
 
 /// Probe whether an ADBC driver for `scheme` can be loaded, without opening
 /// a connection. Used by reader dispatch to decide between ADBC and ODBC.
+///
+/// Note this loads (dlopens) the driver library and drops it;
+/// `from_connection_string` loads it again when the probe succeeds. That
+/// double-load is accepted connect-time cost: threading the preloaded
+/// driver through dispatch would complicate the probe-then-build flow for
+/// no per-query benefit.
 pub fn adbc_driver_available(scheme: &str) -> bool {
     load_driver_for_scheme(scheme).is_ok()
 }
