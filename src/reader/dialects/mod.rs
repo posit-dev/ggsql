@@ -1,13 +1,8 @@
-//! Backend-specific SQL dialects and dialect detection.
+//! Backend-specific SQL dialects.
 //!
-//! One unit struct per backend implementing [`SqlDialect`], plus:
-//!
-//! - [`detect_dialect`]: pick a dialect from an ODBC DBMS name or driver
-//!   string (substring matching, most specific patterns first).
-//! - [`dialect_for_scheme`]: pick a dialect from a ggsql URI scheme
-//!   (`postgres://`, `mysql://`, …), used by ADBC/ODBC reader dispatch.
-//!
-//! Both return boxed trait objects so readers can store them uniformly.
+//! One unit struct per backend implementing [`SqlDialect`. Dialect lookup
+//! — by URI scheme, by `dialect=` override, or by ODBC DBMS name/driver
+//! detection — lives in the [`registry`](crate::reader::registry).
 
 pub mod bigquery;
 pub mod clickhouse;
@@ -45,48 +40,8 @@ pub use snowflake::SnowflakeDialect;
 pub use sqlite::SqliteDialect;
 pub use trino::TrinoDialect;
 
+#[cfg(test)]
 use crate::reader::SqlDialect;
-
-/// Detect the backend SQL dialect from a DBMS name and/or a driver hint
-/// (ODBC driver name, ADBC driver name).
-///
-/// The DBMS name is checked first; the driver hint is a fallback. Matching
-/// is case-insensitive substring matching against the [`registry`], most
-/// specific entries first (e.g. SQL Server before anything containing
-/// "sql").
-///
-/// Unknown backends are an **error** naming what was seen — silently
-/// falling back to ANSI produced broken SQL too often. The escape hatch is
-/// a `dialect=ansi` (or `dialect=<scheme>`) parameter on the connection
-/// URI; see [`crate::reader::registry::dialect_override`].
-///
-/// [`registry`]: crate::reader::registry
-pub fn detect_dialect(
-    dbms_name: Option<&str>,
-    driver_hint: Option<&str>,
-) -> crate::Result<Box<dyn SqlDialect + Send>> {
-    crate::reader::registry::detect(dbms_name, driver_hint)
-        .map(|e| e.dialect())
-        .ok_or_else(|| {
-            crate::GgsqlError::ReaderError(format!(
-                "Unrecognized database backend (DBMS name: {}, driver: {}). \
-                 ggsql does not know which SQL dialect to use. If the backend \
-                 is close to a supported one, pin the dialect explicitly with \
-                 a `dialect=<scheme>` parameter (e.g. dialect=postgres), or use \
-                 dialect=ansi for generic ANSI SQL.",
-                dbms_name.unwrap_or("<none>"),
-                driver_hint.unwrap_or("<none>"),
-            ))
-        })
-}
-
-/// Pick a dialect from a ggsql URI scheme (`postgres`, `mysql`, …).
-///
-/// Returns `None` for unknown schemes so dispatch can report the scheme
-/// itself as unsupported.
-pub fn dialect_for_scheme(scheme: &str) -> Option<Box<dyn SqlDialect + Send>> {
-    crate::reader::registry::by_scheme(scheme).map(|e| e.dialect())
-}
 
 /// CASE-based scalar greatest/least for backends without `GREATEST`/`LEAST`
 /// (SQL Server, SQLite, Druid, Drill, MonetDB). Builds a left-folded chain of
@@ -228,6 +183,11 @@ fn skip_balanced_parens(bytes: &[u8], i: &mut usize) -> Option<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::reader::registry::{by_scheme, detect_or_err as detect_dialect};
+
+    fn dialect_for_scheme(scheme: &str) -> Option<Box<dyn SqlDialect + Send>> {
+        by_scheme(scheme).map(|e| e.dialect())
+    }
 
     fn assert_type_name(d: &dyn SqlDialect, expected: Option<&str>) {
         assert_eq!(d.number_type_name(), expected);
@@ -355,7 +315,7 @@ mod tests {
         );
     }
 
-    /// All schemes `dialect_for_scheme` knows, for conformance sweeps.
+    /// All schemes the registry knows, for conformance sweeps.
     const ALL_SCHEMES: &[&str] = &[
         "postgres",
         "redshift",

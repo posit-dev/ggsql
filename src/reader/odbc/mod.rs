@@ -24,7 +24,7 @@ use wrapper::{Connection, Statement};
 /// `Driver=` value from the ODBC connection string serves as the driver hint.
 fn detect_dialect(dbms_name: Option<&str>, conn_str: &str) -> Result<Box<dyn super::SqlDialect>> {
     let driver = super::connection::extract_odbc_value(conn_str, "driver");
-    super::dialects::detect_dialect(dbms_name, driver.as_deref())
+    super::registry::detect_or_err(dbms_name, driver.as_deref())
         .map(|d| d as Box<dyn super::SqlDialect>)
 }
 
@@ -81,12 +81,7 @@ impl OdbcReader {
             (None, Some(name)) => Some(
                 crate::reader::registry::dialect_override(&name)
                     .map(|d| d as Box<dyn super::SqlDialect>)
-                    .ok_or_else(|| {
-                        GgsqlError::ReaderError(format!(
-                            "Unknown dialect '{name}' in ODBC connection string. Use \
-                             Dialect=ansi or any supported scheme (postgres, mysql, …)."
-                        ))
-                    })?,
+                    .ok_or_else(|| crate::reader::registry::unknown_dialect_error(&name))?,
             ),
             (None, None) => None,
         };

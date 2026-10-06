@@ -397,6 +397,66 @@ pub fn dialect_override(name: &str) -> Option<Box<dyn SqlDialect + Send>> {
     by_scheme(name).map(|e| e.dialect())
 }
 
+/// Error for an unrecognized `dialect=` override value, naming the escape
+/// hatches. Shared so every dispatch path reports the same message.
+pub fn unknown_dialect_error(name: &str) -> crate::GgsqlError {
+    crate::GgsqlError::ReaderError(format!(
+        "Unknown dialect '{name}'. Use dialect=ansi or any supported scheme \
+         (postgres, mysql, …)."
+    ))
+}
+
+/// Resolve the SQL dialect for a parsed connection URI: an explicit
+/// `dialect=` override wins; otherwise the scheme (or, for
+/// `adbc://<driver>`, the driver name) resolves through the registry.
+/// Unknown backends are an error pointing at the override — never a silent
+/// ANSI fallback.
+pub fn resolve_dialect(
+    conn: &crate::reader::connection::ConnUri,
+) -> crate::Result<Box<dyn SqlDialect + Send>> {
+    if let Some(name) = &conn.ggsql.dialect {
+        return dialect_override(name).ok_or_else(|| unknown_dialect_error(name));
+    }
+    if conn.scheme != "adbc" {
+        return by_scheme(&conn.scheme).map(|e| e.dialect()).ok_or_else(|| {
+            crate::GgsqlError::ReaderError(format!(
+                "Unsupported connection scheme '{}://'. Supported: {}",
+                conn.scheme,
+                supported_schemes()
+            ))
+        });
+    }
+    let body = conn.body.as_str();
+    if let Some(entry) = by_scheme(body) {
+        return Ok(entry.dialect());
+    }
+    detect_or_err(None, Some(body))
+}
+
+/// Detect a dialect from an ODBC DBMS name and/or driver string, or error
+/// naming what was seen. Unknown backends are an **error** — silently
+/// falling back to ANSI produced broken SQL too often. The escape hatch is
+/// a `dialect=ansi` (or `dialect=<scheme>`) parameter; see
+/// [`dialect_override`].
+pub fn detect_or_err(
+    dbms_name: Option<&str>,
+    driver_hint: Option<&str>,
+) -> crate::Result<Box<dyn SqlDialect + Send>> {
+    detect(dbms_name, driver_hint)
+        .map(|e| e.dialect())
+        .ok_or_else(|| {
+            crate::GgsqlError::ReaderError(format!(
+                "Unrecognized database backend (DBMS name: {}, driver: {}). \
+                 ggsql does not know which SQL dialect to use. If the backend \
+                 is close to a supported one, pin the dialect explicitly with \
+                 a `dialect=<scheme>` parameter (e.g. dialect=postgres), or use \
+                 dialect=ansi for generic ANSI SQL.",
+                dbms_name.unwrap_or("<none>"),
+                driver_hint.unwrap_or("<none>"),
+            ))
+        })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

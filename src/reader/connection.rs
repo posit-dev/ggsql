@@ -354,12 +354,7 @@ fn build_backend_reader(
                 Some(
                     crate::reader::registry::dialect_override(name)
                         .map(|d| d as Box<dyn crate::reader::SqlDialect>)
-                        .ok_or_else(|| {
-                            GgsqlError::ReaderError(format!(
-                                "Unknown dialect '{name}' in connection URI. Use dialect=ansi \
-                                 or any supported scheme (postgres, mysql, …)."
-                            ))
-                        })?,
+                        .ok_or_else(|| crate::reader::registry::unknown_dialect_error(name))?,
                 )
             } else if entry.scheme == "flightsql" {
                 None
@@ -760,13 +755,22 @@ mod tests {
 
     #[test]
     fn test_requires_cache_dialects() {
+        let dialect_for = |scheme: &str| {
+            crate::reader::registry::by_scheme(scheme)
+                .map(|e| e.dialect())
+                .unwrap()
+        };
         for scheme in ["trino", "druid", "drill"] {
-            let d = crate::reader::dialects::dialect_for_scheme(scheme).unwrap();
-            assert!(d.requires_cache(), "scheme {scheme} should require a cache");
+            assert!(
+                dialect_for(scheme).requires_cache(),
+                "scheme {scheme} should require a cache"
+            );
         }
         for scheme in ["postgres", "duckdb", "sqlite", "clickhouse", "datafusion"] {
-            let d = crate::reader::dialects::dialect_for_scheme(scheme).unwrap();
-            assert!(!d.requires_cache(), "scheme {scheme} should be probed");
+            assert!(
+                !dialect_for(scheme).requires_cache(),
+                "scheme {scheme} should be probed"
+            );
         }
     }
 

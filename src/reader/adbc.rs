@@ -183,9 +183,32 @@ pub fn driver_env_var(scheme: &str) -> String {
     crate::reader::registry::adbc_driver_env_var(scheme)
 }
 
-/// Parse a `k=v&…` query string into ADBC database options. The keys `uri`,
-/// `username`, and `password` map to their dedicated ADBC options; everything
-/// else passes through as a driver-specific option.
+/// Convert the parsed driver-bound params of a
+/// [`ConnUri`](crate::reader::connection::ConnUri) into ADBC database
+/// options, without re-splitting the query string. The keys `uri`,
+/// `username`, and `password` map to their dedicated ADBC options;
+/// everything else passes through as a driver-specific option. Bare flags
+/// (no value) have no option equivalent and are skipped.
+fn conn_params_to_opts(params: &[(String, Option<String>)]) -> Vec<(OptionDatabase, OptionValue)> {
+    params
+        .iter()
+        .filter_map(|(key, value)| {
+            let value = value.as_ref()?;
+            let opt_key = match key.as_str() {
+                "uri" => OptionDatabase::Uri,
+                "username" => OptionDatabase::Username,
+                "password" => OptionDatabase::Password,
+                other => OptionDatabase::Other(other.to_string()),
+            };
+            Some((opt_key, OptionValue::String(value.clone())))
+        })
+        .collect()
+}
+
+/// Parse a `k=v&…` query string into ADBC database options. Used for
+/// driver-rewritten query strings (BigQuery's Simba grammar) that no longer
+/// correspond to the parsed [`ConnUri`](crate::reader::connection::ConnUri);
+/// the parsed-params form is [`conn_params_to_opts`].
 fn query_params_to_opts(query: &str) -> Vec<(OptionDatabase, OptionValue)> {
     let mut opts = Vec::new();
     for segment in query.split('&') {
@@ -268,8 +291,8 @@ impl AdbcReader<ManagedDriver> {
     ///   see [`driver_uri_for`] and [`bigquery_driver_uri`].
     ///
     /// The dialect is chosen from the scheme through the registry (see
-    /// [`resolve_dialect`]); unknown backends are an error, never a silent
-    /// ANSI fallback.
+    /// [`crate::reader::registry::resolve_dialect`]); unknown backends are
+    /// an error, never a silent ANSI fallback.
     pub fn from_connection_string(uri: &str) -> Result<Self> {
         let conn = crate::reader::connection::ConnUri::parse(uri)?;
         let scheme = conn.scheme.as_str();
@@ -295,7 +318,7 @@ impl AdbcReader<ManagedDriver> {
                     GgsqlError::ReaderError(format!("ADBC driver '{}' failed to load: {}", body, e))
                 })?
             };
-            (driver, query_params_to_opts(query))
+            (driver, conn_params_to_opts(&conn.params))
         } else {
             let entry = crate::reader::registry::by_scheme(scheme).ok_or_else(|| {
                 GgsqlError::ReaderError(format!("No known ADBC driver for scheme '{}://'", scheme))
@@ -331,38 +354,11 @@ impl AdbcReader<ManagedDriver> {
             (driver, opts)
         };
 
-        let dialect = resolve_dialect(&conn)?;
+        let dialect = crate::reader::registry::resolve_dialect(&conn)?;
 
         Self::new_with_database_opts(driver, dialect, opts)
             .map(|reader| reader.with_statement_opts(conn.ggsql.stmt_options.clone()))
     }
-}
-
-/// Pick the dialect for an ADBC connection: an explicit `dialect=` override
-/// wins; otherwise the scheme (or, for `adbc://<driver>`, the driver name)
-/// resolves through the registry. Unknown backends are an error pointing at
-/// the override — never a silent ANSI fallback.
-fn resolve_dialect(
-    conn: &crate::reader::connection::ConnUri,
-) -> Result<Box<dyn SqlDialect + Send>> {
-    if let Some(name) = &conn.ggsql.dialect {
-        return crate::reader::registry::dialect_override(name).ok_or_else(|| {
-            GgsqlError::ReaderError(format!(
-                "Unknown dialect '{name}' in connection URI. Use dialect=ansi or any \
-                 supported scheme (postgres, mysql, …)."
-            ))
-        });
-    }
-    if conn.scheme != "adbc" {
-        return Ok(crate::reader::registry::by_scheme(&conn.scheme)
-            .expect("checked by caller")
-            .dialect());
-    }
-    let body = conn.body.as_str();
-    if let Some(entry) = crate::reader::registry::by_scheme(body) {
-        return Ok(entry.dialect());
-    }
-    crate::reader::dialects::detect_dialect(None, Some(body))
 }
 
 /// Compute the URI handed to the driver as the `uri` database option,
