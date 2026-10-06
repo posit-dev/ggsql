@@ -148,6 +148,11 @@ pub struct DatabaseEntry {
     /// (SQL_ATTR_ROW_ARRAY_SIZE > 1) with HY090 at SQLFetch time, and the
     /// failed fetch leaves the cursor unusable — fetch row-by-row (1).
     pub odbc_row_array_size: Option<usize>,
+    /// Bind NUMERIC/DECIMAL as double even when scale is 0 and the value
+    /// fits an integer: Oracle ODBC fails with HY090 converting SQL_DECIMAL
+    /// to SQL_C_SLONG/SBIGINT. Elsewhere integer-scale numerics keep their
+    /// Int64 type (and precision past 2^53).
+    pub odbc_numeric_as_double: bool,
     /// In-process reader to prefer when its cargo feature is compiled in
     /// (duckdb, sqlite). `None` for backends reached only through external
     /// ADBC/ODBC drivers.
@@ -177,6 +182,7 @@ macro_rules! entry {
             adbc: $adbc,
             odbc_dbq_style: false,
             odbc_row_array_size: None,
+            odbc_numeric_as_double: false,
             native_reader: None,
         }
     };
@@ -302,6 +308,7 @@ pub static REGISTRY: &[DatabaseEntry] = &[
     DatabaseEntry {
         odbc_dbq_style: true,
         odbc_row_array_size: Some(1),
+        odbc_numeric_as_double: true,
         ..entry!(
             "oracle",
             &[],
