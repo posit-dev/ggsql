@@ -16,6 +16,12 @@ use arrow::datatypes::{DataType, TimeUnit};
 /// Simple type info tuple: (name, dtype, is_discrete)
 pub type TypeInfo = (String, DataType, bool);
 
+/// Alias of the MIN column paired with `name` in [`build_minmax_query`]'s
+/// single result row.
+fn min_column_name(name: &str) -> String {
+    format!("__ggsql_min_{name}")
+}
+
 /// Alias of the MAX column paired with `name` in [`build_minmax_query`]'s
 /// single result row.
 fn max_column_name(name: &str) -> String {
@@ -24,11 +30,14 @@ fn max_column_name(name: &str) -> String {
 
 /// Build SQL query to compute min and max for all columns.
 ///
-/// Generates a single-row, single-scan query: every column's MIN under its
-/// own name and its MAX under [`max_column_name`]. The source is referenced
-/// exactly once — a twice-referenced CTE over a temporary table fails on
-/// MySQL (error 1137, "Can't reopen table"), and MIN+MAX in one pass avoids
-/// the second scan a UNION ALL of MIN/MAX branches would cost.
+/// Generates a single-row, single-scan query: every column's MIN under
+/// [`min_column_name`] and its MAX under [`max_column_name`]. The source is
+/// referenced exactly once — a twice-referenced CTE over a temporary table
+/// fails on MySQL (error 1137, "Can't reopen table"), and MIN+MAX in one
+/// pass avoids the second scan a UNION ALL of MIN/MAX branches would cost.
+/// The aliases must NOT reuse the bare column name: ClickHouse lets sibling
+/// SELECT items reference aliases, so `MIN(id) AS id` turns the MAX branch
+/// into `MAX(MIN(id))` (error 184, ILLEGAL_AGGREGATION).
 pub fn build_minmax_query(
     source_query: &str,
     column_names: &[&str],
@@ -38,8 +47,9 @@ pub fn build_minmax_query(
         .iter()
         .map(|name| {
             let q = dialect.quote_ident(name);
+            let min_alias = dialect.quote_ident(&min_column_name(name));
             let max_alias = dialect.quote_ident(&max_column_name(name));
-            format!("MIN({q}) AS {q}, MAX({q}) AS {max_alias}")
+            format!("MIN({q}) AS {min_alias}, MAX({q}) AS {max_alias}")
         })
         .collect();
 
@@ -188,12 +198,12 @@ where
     let minmax_query = build_minmax_query(query, &column_names, dialect);
     let range_df = execute_query(&minmax_query)?;
 
-    // The single result row holds every column's MIN under its own name and
-    // its MAX under max_column_name.
+    // The single result row holds every column's MIN under min_column_name
+    // and its MAX under max_column_name.
     let schema = type_info
         .iter()
         .map(|(name, dtype, is_discrete)| {
-            let first = extract_series_value(&range_df, name, 0);
+            let first = extract_series_value(&range_df, &min_column_name(name), 0);
             let second = extract_series_value(&range_df, &max_column_name(name), 0);
             let (min, max) = merge_extent_rows(first, second);
             ColumnInfo {
@@ -429,8 +439,8 @@ mod tests {
     use super::*;
     use crate::reader::AnsiDialect;
 
-    /// The single minmax row carries MIN under the column's own name and
-    /// MAX under max_column_name.
+    /// The single minmax row carries MIN under min_column_name and MAX
+    /// under max_column_name.
     #[test]
     fn minmax_reads_min_and_max_columns() {
         let type_info: Vec<TypeInfo> = vec![
@@ -438,9 +448,9 @@ mod tests {
             ("val".to_string(), DataType::Float64, false),
         ];
         let row = crate::df! {
-            "id" => vec![1i32],
+            "__ggsql_min_id" => vec![1i32],
             "__ggsql_max_id" => vec![8i32],
-            "val" => vec![1.5f64],
+            "__ggsql_min_val" => vec![1.5f64],
             "__ggsql_max_val" => vec![8.5f64],
         }
         .unwrap();
@@ -460,7 +470,7 @@ mod tests {
     fn minmax_missing_value_mirrors() {
         let type_info: Vec<TypeInfo> = vec![("id".to_string(), DataType::Int32, false)];
         let row = crate::df! {
-            "id" => vec![Some(5i32)],
+            "__ggsql_min_id" => vec![Some(5i32)],
             "__ggsql_max_id" => vec![None::<i32>],
         }
         .unwrap();
