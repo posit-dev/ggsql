@@ -27,7 +27,7 @@ mod battery;
 
 use crate::reader::registry;
 use crate::reader::test_support::StubReader;
-use crate::reader::{AnsiDialect, Reader, SqlDialect};
+use crate::reader::{AnsiDialect, Reader};
 use crate::DataFrame;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -37,9 +37,9 @@ use std::sync::{Arc, Mutex};
 /// predates and outlives any single scheme); everything else resolves
 /// through the registry, so a dialect constructor can only live in one
 /// place. The `goldens_cover_registry` test keeps the file set in step.
-fn dialect_for(name: &str) -> Box<dyn SqlDialect + Send> {
+fn dialect_for(name: &str) -> crate::reader::DialectRef {
     if name == "ansi" {
-        return Box::new(AnsiDialect);
+        return &AnsiDialect;
     }
     registry::by_scheme(name)
         .unwrap_or_else(|| panic!("no registry entry for golden dialect '{name}'"))
@@ -130,7 +130,7 @@ fn golden_dir() -> PathBuf {
 
 /// Render every battery case's SQL for one dialect. Re-registers the
 /// fixture only when its variant changes.
-fn render_dialect(dialect: Box<dyn SqlDialect + Send>) -> String {
+fn render_dialect(dialect: crate::reader::DialectRef) -> String {
     let (reader, log) = StubReader::new(dialect);
     let mut out = String::new();
     let mut registered: Option<u8> = None;

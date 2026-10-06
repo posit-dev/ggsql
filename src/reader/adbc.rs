@@ -26,7 +26,7 @@ pub struct AdbcReader<D: Driver> {
     // new_statement / set_sql_query / execute all take &mut, but Reader::execute_sql
     // takes &self.
     connection: RefCell<<D::DatabaseType as Database>::ConnectionType>,
-    dialect: Box<dyn SqlDialect + Send>,
+    dialect: crate::reader::DialectRef,
     /// Registry-declared driver quirks (error-text conventions), when the
     /// reader was built for a registered backend. `None` for ad-hoc drivers.
     adbc_info: Option<crate::reader::registry::AdbcInfo>,
@@ -40,7 +40,7 @@ impl<D: Driver> AdbcReader<D> {
     /// Construct an `AdbcReader` with an explicit `SqlDialect`. Use this to
     /// plug in backend-specific dialects (e.g. a TrinoDialect, SnowflakeDialect)
     /// when the reader is pointed at that backend.
-    pub fn with_dialect(driver: D, dialect: Box<dyn SqlDialect + Send>) -> Result<Self> {
+    pub fn with_dialect(driver: D, dialect: crate::reader::DialectRef) -> Result<Self> {
         Self::new(driver, dialect)
     }
 
@@ -50,7 +50,7 @@ impl<D: Driver> AdbcReader<D> {
     /// options. For convenience, use `from_driver` for the common case
     /// with the ANSI dialect, or pass a custom `SqlDialect`
     /// (e.g. a Trino / Snowflake dialect) here directly.
-    pub fn new(mut driver: D, dialect: Box<dyn SqlDialect + Send>) -> Result<Self> {
+    pub fn new(mut driver: D, dialect: crate::reader::DialectRef) -> Result<Self> {
         let database = driver
             .new_database()
             .map_err(|e| GgsqlError::ReaderError(format!("ADBC new_database failed: {}", e)))?;
@@ -74,7 +74,7 @@ impl<D: Driver> AdbcReader<D> {
     /// or other auth-required backends).
     pub fn new_with_database_opts(
         mut driver: D,
-        dialect: Box<dyn SqlDialect + Send>,
+        dialect: crate::reader::DialectRef,
         opts: impl IntoIterator<
             Item = (
                 adbc_core::options::OptionDatabase,
@@ -156,7 +156,7 @@ impl<D: Driver> AdbcReader<D> {
     /// standards-compliant backends; use `new` directly to plug in a
     /// backend-specific dialect.
     pub fn from_driver(driver: D) -> Result<Self> {
-        Self::new(driver, Box::new(AnsiDialect))
+        Self::new(driver, &AnsiDialect)
     }
 }
 
@@ -1018,10 +1018,9 @@ mod equivalence_tests {
             None,
         )
         .expect("`dbc install sqlite` first; see module docs");
-        let dialect: Box<dyn crate::reader::SqlDialect + Send> = Box::new(SqliteDialect);
         AdbcReader::new_with_database_opts(
             driver,
-            dialect,
+            &SqliteDialect,
             std::iter::once((
                 OptionDatabase::Uri,
                 OptionValue::String(format!("file:{}", db_path)),

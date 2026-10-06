@@ -8,7 +8,7 @@
 //! kernel all consult this table rather than keeping their own lookups.
 
 use super::dialects::*;
-use super::{AnsiDialect, SqlDialect};
+use super::AnsiDialect;
 
 /// How the URI handed to an ADBC driver is derived from the ggsql URI.
 ///
@@ -132,8 +132,10 @@ pub struct DatabaseEntry {
     /// order, most specific first (SQL Server before anything containing
     /// "sql", Redshift before Postgres).
     pub detect: &'static [DetectPattern],
-    /// Construct the backend's SQL dialect.
-    dialect: fn() -> Box<dyn SqlDialect + Send>,
+    /// The backend's SQL dialect. Dialects are stateless unit structs, so
+    /// the registry shares one static instance rather than boxing per
+    /// lookup.
+    dialect: crate::reader::DialectRef,
     /// ADBC driver details; `None` when no usable dedicated driver exists
     /// (Drill, MonetDB) — dispatch falls through to ODBC.
     pub adbc: Option<AdbcInfo>,
@@ -153,9 +155,9 @@ pub struct DatabaseEntry {
 }
 
 impl DatabaseEntry {
-    /// The backend's SQL dialect, freshly boxed.
-    pub fn dialect(&self) -> Box<dyn SqlDialect + Send> {
-        (self.dialect)()
+    /// The backend's SQL dialect (shared static instance).
+    pub fn dialect(&self) -> crate::reader::DialectRef {
+        self.dialect
     }
 
     /// All URI schemes naming this backend, canonical first.
@@ -221,7 +223,7 @@ pub static REGISTRY: &[DatabaseEntry] = &[
             Has("sqlserver"),
             Has("mssql"),
         ],
-        || Box::new(MssqlDialect),
+        &MssqlDialect,
         adbc!("adbc_driver_mssql", "mssql", Passthrough, false)
     ),
     entry!(
@@ -229,7 +231,7 @@ pub static REGISTRY: &[DatabaseEntry] = &[
         &[],
         "Redshift",
         &[Has("redshift")],
-        || Box::new(RedshiftDialect),
+        &RedshiftDialect,
         adbc!(
             "adbc_driver_postgresql",
             "postgresql",
@@ -242,7 +244,7 @@ pub static REGISTRY: &[DatabaseEntry] = &[
         &["postgresql"],
         "PostgreSQL",
         &[Has("postgres"), Has("psql")],
-        || Box::new(PostgresDialect),
+        &PostgresDialect,
         adbc!("adbc_driver_postgresql", "postgresql", Passthrough, true)
     ),
     entry!(
@@ -250,7 +252,7 @@ pub static REGISTRY: &[DatabaseEntry] = &[
         &["mariadb"],
         "MySQL",
         &[Has("mariadb"), Has("mysql")],
-        || Box::new(MySqlDialect),
+        &MySqlDialect,
         adbc!("adbc_driver_mysql", "mysql", MySqlGoDsn, true)
     ),
     entry!(
@@ -258,7 +260,7 @@ pub static REGISTRY: &[DatabaseEntry] = &[
         &[],
         "Snowflake",
         &[Has("snowflake")],
-        || Box::new(SnowflakeDialect),
+        &SnowflakeDialect,
         adbc!("adbc_driver_snowflake", "snowflake", Passthrough, true)
     ),
     entry!(
@@ -266,7 +268,7 @@ pub static REGISTRY: &[DatabaseEntry] = &[
         &[],
         "BigQuery",
         &[Has("bigquery")],
-        || Box::new(BigQueryDialect),
+        &BigQueryDialect,
         adbc!(
             "adbc_driver_bigquery",
             "bigquery",
@@ -280,7 +282,7 @@ pub static REGISTRY: &[DatabaseEntry] = &[
         &["spark"],
         "Databricks",
         &[Has("databricks"), Has("spark")],
-        || Box::new(DatabricksDialect),
+        &DatabricksDialect,
         adbc!(
             "adbc_driver_databricks",
             "databricks",
@@ -294,7 +296,7 @@ pub static REGISTRY: &[DatabaseEntry] = &[
         &[],
         "ClickHouse",
         &[Has("clickhouse")],
-        || Box::new(ClickHouseDialect),
+        &ClickHouseDialect,
         adbc!("adbc_driver_clickhouse", "clickhouse", ClickHouseHttp, true)
     ),
     DatabaseEntry {
@@ -305,7 +307,7 @@ pub static REGISTRY: &[DatabaseEntry] = &[
             &[],
             "Oracle",
             &[Has("oracle"), DetectPattern::All(&["ora", "driver"])],
-            || Box::new(OracleDialect),
+            &OracleDialect,
             adbc!("adbc_driver_oracle", "oracle", Passthrough, true)
         )
     },
@@ -314,7 +316,7 @@ pub static REGISTRY: &[DatabaseEntry] = &[
         &[],
         "Trino",
         &[Has("trino")],
-        || Box::new(TrinoDialect),
+        &TrinoDialect,
         adbc!("adbc_driver_trino", "trino", Passthrough, true)
     ),
     entry!(
@@ -322,7 +324,7 @@ pub static REGISTRY: &[DatabaseEntry] = &[
         &[],
         "Exasol",
         &[Has("exasol"), Has("exaodbc")],
-        || Box::new(ExasolDialect),
+        &ExasolDialect,
         adbc!("adbc_driver_exasol", "exasol", Passthrough, true)
     ),
     entry!(
@@ -330,7 +332,7 @@ pub static REGISTRY: &[DatabaseEntry] = &[
         &[],
         "MonetDB",
         &[Has("monet")],
-        || Box::new(MonetDbDialect),
+        &MonetDbDialect,
         None
     ),
     entry!(
@@ -338,7 +340,7 @@ pub static REGISTRY: &[DatabaseEntry] = &[
         &[],
         "Apache Druid",
         &[Has("druid")],
-        || Box::new(DruidDialect),
+        &DruidDialect,
         adbc!("adbc_driver_druid", "druid", Passthrough, false)
     ),
     entry!(
@@ -346,7 +348,7 @@ pub static REGISTRY: &[DatabaseEntry] = &[
         &[],
         "Apache Drill",
         &[Has("drill")],
-        || Box::new(DrillDialect),
+        &DrillDialect,
         None
     ),
     entry!(
@@ -354,7 +356,7 @@ pub static REGISTRY: &[DatabaseEntry] = &[
         &[],
         "DataFusion",
         &[Has("datafusion")],
-        || Box::new(DataFusionDialect),
+        &DataFusionDialect,
         adbc!(
             "adbc_driver_datafusion",
             "datafusion",
@@ -370,7 +372,7 @@ pub static REGISTRY: &[DatabaseEntry] = &[
             &[],
             "DuckDB",
             &[Has("duckdb")],
-            || Box::new(DuckDbDialect),
+            &DuckDbDialect,
             adbc!("adbc_driver_duckdb", "duckdb", Passthrough, true)
         )
     },
@@ -381,7 +383,7 @@ pub static REGISTRY: &[DatabaseEntry] = &[
             &[],
             "SQLite",
             &[Has("sqlite")],
-            || Box::new(SqliteDialect),
+            &SqliteDialect,
             adbc!("adbc_driver_sqlite", "sqlite", Passthrough, true)
         )
     },
@@ -393,7 +395,7 @@ pub static REGISTRY: &[DatabaseEntry] = &[
         &[],
         "Flight SQL",
         &[Has("flightsql"), DetectPattern::All(&["flight", "sql"])],
-        || Box::new(AnsiDialect),
+        &AnsiDialect,
         adbc!("adbc_driver_flightsql", "flightsql", Passthrough, true)
     ),
 ];
@@ -463,9 +465,9 @@ pub fn odbc_driver_env_var(scheme: &str) -> String {
 /// Resolve a `dialect=` override value (`ansi` or any registry scheme) to a
 /// dialect. This is the explicit escape hatch for backends ggsql doesn't
 /// know: unknown backends are an error unless the user pins a dialect.
-pub fn dialect_override(name: &str) -> Option<Box<dyn SqlDialect + Send>> {
+pub fn dialect_override(name: &str) -> Option<crate::reader::DialectRef> {
     if name.eq_ignore_ascii_case("ansi") {
-        return Some(Box::new(AnsiDialect));
+        return Some(&AnsiDialect);
     }
     by_scheme(name).map(|e| e.dialect())
 }
@@ -486,7 +488,7 @@ pub fn unknown_dialect_error(name: &str) -> crate::GgsqlError {
 /// ANSI fallback.
 pub fn resolve_dialect(
     conn: &crate::reader::connection::ConnUri,
-) -> crate::Result<Box<dyn SqlDialect + Send>> {
+) -> crate::Result<crate::reader::DialectRef> {
     if let Some(name) = &conn.ggsql.dialect {
         return dialect_override(name).ok_or_else(|| unknown_dialect_error(name));
     }
@@ -514,7 +516,7 @@ pub fn resolve_dialect(
 pub fn detect_or_err(
     dbms_name: Option<&str>,
     driver_hint: Option<&str>,
-) -> crate::Result<Box<dyn SqlDialect + Send>> {
+) -> crate::Result<crate::reader::DialectRef> {
     detect(dbms_name, driver_hint)
         .map(|e| e.dialect())
         .ok_or_else(|| {

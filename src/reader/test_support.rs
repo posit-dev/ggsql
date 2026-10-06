@@ -149,7 +149,7 @@ impl Reader for ReadOnlyReader {
 /// `Float64`, which is the right shape for the derived columns
 /// (bins, densities, quantiles) the pipeline produces.
 pub(crate) struct StubReader {
-    dialect: Box<dyn SqlDialect + Send>,
+    dialect: crate::reader::DialectRef,
     tables: Mutex<HashMap<String, Arc<Schema>>>,
     log: Arc<Mutex<Vec<String>>>,
 }
@@ -157,7 +157,7 @@ pub(crate) struct StubReader {
 impl StubReader {
     /// Create a stub for `dialect`, returning it together with a
     /// handle to the shared SQL log.
-    pub(crate) fn new(dialect: Box<dyn SqlDialect + Send>) -> (Self, Arc<Mutex<Vec<String>>>) {
+    pub(crate) fn new(dialect: crate::reader::DialectRef) -> (Self, Arc<Mutex<Vec<String>>>) {
         let log = Arc::new(Mutex::new(Vec::new()));
         (
             Self {

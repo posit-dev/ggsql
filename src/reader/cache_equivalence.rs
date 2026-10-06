@@ -291,10 +291,9 @@ mod adbc_mode {
             None,
         )
         .expect("`dbc install sqlite` first; see adbc.rs::equivalence_tests docs");
-        let dialect: Box<dyn SqlDialect + Send> = Box::new(SqliteDialect);
         AdbcReader::new_with_database_opts(
             driver,
-            dialect,
+            &SqliteDialect,
             std::iter::once((
                 OptionDatabase::Uri,
                 OptionValue::String(format!("file:{}", db_path)),

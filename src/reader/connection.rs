@@ -353,13 +353,12 @@ fn build_backend_reader(
             let dialect = if let Some(name) = &conn.ggsql.dialect {
                 Some(
                     crate::reader::registry::dialect_override(name)
-                        .map(|d| d as Box<dyn crate::reader::SqlDialect>)
                         .ok_or_else(|| crate::reader::registry::unknown_dialect_error(name))?,
                 )
             } else if entry.scheme == "flightsql" {
                 None
             } else {
-                Some(entry.dialect() as Box<dyn crate::reader::SqlDialect>)
+                Some(entry.dialect())
             };
             let reader = crate::reader::OdbcReader::from_odbc_conn_str(&conn_str, dialect)?;
             return Ok(Box::new(reader));

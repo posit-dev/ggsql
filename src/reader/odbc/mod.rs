@@ -22,10 +22,9 @@ use wrapper::{Connection, Statement};
 ///
 /// Delegates to the shared matcher in [`crate::reader::dialects`]; the
 /// `Driver=` value from the ODBC connection string serves as the driver hint.
-fn detect_dialect(dbms_name: Option<&str>, conn_str: &str) -> Result<Box<dyn super::SqlDialect>> {
+fn detect_dialect(dbms_name: Option<&str>, conn_str: &str) -> Result<super::DialectRef> {
     let driver = super::connection::extract_odbc_value(conn_str, "driver");
     super::registry::detect_or_err(dbms_name, driver.as_deref())
-        .map(|d| d as Box<dyn super::SqlDialect>)
 }
 
 /// Pull ggsql-owned keys (`Dialect=<name>`) out of an ODBC connection
@@ -39,7 +38,7 @@ fn take_dialect_override(conn_str: &str) -> (String, Option<String>) {
 /// Generic ODBC reader implementing the `Reader` trait.
 pub struct OdbcReader {
     connection: Connection,
-    dialect: Box<dyn super::SqlDialect>,
+    dialect: super::DialectRef,
     registered_tables: crate::reader::RegisteredTables,
     batch_size: usize,
 }
@@ -63,10 +62,7 @@ impl OdbcReader {
     /// by the connection, falling back to the `Driver=` value in the
     /// connection string, then ANSI. Pass `Some(...)` to pin the dialect
     /// (e.g. from a backend-specific ggsql URI scheme).
-    pub fn from_odbc_conn_str(
-        conn_str: &str,
-        dialect: Option<Box<dyn super::SqlDialect>>,
-    ) -> Result<Self> {
+    pub fn from_odbc_conn_str(conn_str: &str, dialect: Option<super::DialectRef>) -> Result<Self> {
         ffi::try_load()
             .map_err(|e| GgsqlError::ReaderError(format!("ODBC is not available: {}", e)))?;
 
@@ -80,7 +76,6 @@ impl OdbcReader {
             (d @ Some(_), _) => d,
             (None, Some(name)) => Some(
                 crate::reader::registry::dialect_override(&name)
-                    .map(|d| d as Box<dyn super::SqlDialect>)
                     .ok_or_else(|| crate::reader::registry::unknown_dialect_error(&name))?,
             ),
             (None, None) => None,

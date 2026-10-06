@@ -945,6 +945,11 @@ pub fn default_sql_aggregate(
 
 pub use dialects::AnsiDialect;
 
+/// A shared dialect instance. Dialects are stateless unit structs, so
+/// registry lookups hand out `'static` references rather than boxing a
+/// fresh trait object per call.
+pub type DialectRef = &'static (dyn SqlDialect + Send + Sync);
+
 /// Fail fast when a spatial feature is used on a backend whose dialect
 /// reports `supports_spatial() == false`, rather than emitting spatial SQL
 /// the backend cannot run.

@@ -135,7 +135,7 @@ mod tests {
     use super::*;
     use crate::reader::registry::{by_scheme, detect_or_err as detect_dialect};
 
-    fn dialect_for_scheme(scheme: &str) -> Option<Box<dyn SqlDialect + Send>> {
+    fn dialect_for_scheme(scheme: &str) -> Option<crate::reader::DialectRef> {
         by_scheme(scheme).map(|e| e.dialect())
     }
 
@@ -235,42 +235,24 @@ mod tests {
         );
     }
 
-    /// All schemes the registry knows, for conformance sweeps.
-    const ALL_SCHEMES: &[&str] = &[
-        "postgres",
-        "redshift",
-        "mysql",
-        "mariadb",
-        "snowflake",
-        "mssql",
-        "bigquery",
-        "databricks",
-        "clickhouse",
-        "oracle",
-        "trino",
-        "exasol",
-        "monetdb",
-        "druid",
-        "drill",
-        "datafusion",
-        "duckdb",
-        "sqlite",
-    ];
-
     /// Contract for the quantile hook: callers pass the raw (unquoted)
     /// column name and the dialect quotes it. A name needing quoting must
     /// appear quoted — interpolating it raw breaks on any real column whose
     /// name is not a bare lowercase identifier.
     #[test]
     fn quantile_hook_quotes_raw_column_names() {
-        for scheme in ALL_SCHEMES {
-            let d = dialect_for_scheme(scheme).unwrap();
-            let quoted = d.quote_ident("mixed Case");
-            let sql = d.sql_quantile("mixed Case", 0.5, crate::sql::FromItem::Table("t"), &[]);
-            assert!(
-                sql.contains(&quoted),
-                "{scheme}: sql_quantile does not quote its column: {sql}"
-            );
+        // Sweeps the registry directly so new backends are covered
+        // automatically; canonical schemes and aliases alike.
+        for entry in crate::reader::registry::REGISTRY {
+            for scheme in entry.schemes() {
+                let d = dialect_for_scheme(scheme).unwrap();
+                let quoted = d.quote_ident("mixed Case");
+                let sql = d.sql_quantile("mixed Case", 0.5, crate::sql::FromItem::Table("t"), &[]);
+                assert!(
+                    sql.contains(&quoted),
+                    "{scheme}: sql_quantile does not quote its column: {sql}"
+                );
+            }
         }
     }
 

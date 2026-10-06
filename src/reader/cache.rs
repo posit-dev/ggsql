@@ -1424,8 +1424,8 @@ mod behavior_tests {
         use crate::reader::dialects::{DuckDbDialect, MySqlDialect};
         use crate::reader::test_support::StubReader;
 
-        let (primary, primary_sql) = StubReader::new(Box::new(MySqlDialect));
-        let (cache, _cache_sql) = StubReader::new(Box::new(DuckDbDialect));
+        let (primary, primary_sql) = StubReader::new(&MySqlDialect);
+        let (cache, _cache_sql) = StubReader::new(&DuckDbDialect);
         // Memoization disabled: the stub fabricates Float64 results that the
         // memo metadata path cannot store, which is beside the point here.
         let reader = CachingReader::with_config(
