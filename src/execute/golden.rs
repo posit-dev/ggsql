@@ -45,7 +45,6 @@ fn dialect_for(name: &str) -> crate::reader::DialectRef {
         .dialect()
 }
 
-
 /// Collapse all whitespace runs so goldens don't churn on formatting, and
 /// replace the random per-session hex in generated temp-table names
 /// (`__ggsql_global_<32 hex>__`) with a stable placeholder.
