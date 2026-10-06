@@ -217,8 +217,11 @@ fn build_reader_parsed(conn: &ConnUri, uri: &str) -> Result<Box<dyn Reader + Sen
     if conn.scheme == "odbc" {
         #[cfg(feature = "odbc")]
         {
+            // Hand over the URI with ggsql's own keys stripped — a raw
+            // `odbc://DSN=x?cache=off` would otherwise leak `?cache=off`
+            // into the driver's connection string.
             return Ok(Box::new(crate::reader::OdbcReader::from_connection_string(
-                uri,
+                &conn.to_uri(),
             )?));
         }
         #[cfg(not(feature = "odbc"))]
@@ -299,6 +302,18 @@ fn build_backend_reader(
             }
             None => {}
         }
+    }
+    // A forced native reader must not silently fall through to ADBC/ODBC.
+    if forced.as_deref() == Some("native") {
+        let note = match entry.and_then(|e| e.native_reader) {
+            Some(_) => {
+                "its native reader is not compiled in (rebuild with the matching cargo feature)"
+            }
+            None => "no native in-process reader exists for it (only duckdb and sqlite have one)",
+        };
+        return Err(GgsqlError::ReaderError(format!(
+            "reader=native was requested for '{scheme}://' but {note}."
+        )));
     }
 
     #[cfg(feature = "adbc")]
@@ -976,6 +991,19 @@ mod tests {
         assert_eq!(conn.to_uri(), "odbc://DSN=foo?ttl=99");
         assert_eq!(over.ttl_secs, Some(10));
         assert_eq!(over.max_bytes, Some(8 * 1024 * 1024));
+    }
+
+    #[test]
+    fn test_forced_native_reader_errors_when_unavailable() {
+        // postgres has no native in-process reader; reader=native must error
+        // explicitly rather than silently falling through to ADBC/ODBC.
+        let err = build_reader("postgres://u:p@localhost/db?reader=native")
+            .err()
+            .expect("reader=native without a native reader must fail");
+        assert!(
+            err.to_string().contains("reader=native"),
+            "unexpected error: {err}"
+        );
     }
 
     #[cfg(all(feature = "duckdb", feature = "sqlite"))]

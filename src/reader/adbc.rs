@@ -267,8 +267,9 @@ impl AdbcReader<ManagedDriver> {
     ///   go-sql-driver DSN, `bigquery://project/dataset` → Simba grammar);
     ///   see [`driver_uri_for`] and [`bigquery_driver_uri`].
     ///
-    /// The dialect is chosen from the scheme via
-    /// [`crate::reader::dialects::dialect_for_scheme`], falling back to ANSI.
+    /// The dialect is chosen from the scheme through the registry (see
+    /// [`resolve_dialect`]); unknown backends are an error, never a silent
+    /// ANSI fallback.
     pub fn from_connection_string(uri: &str) -> Result<Self> {
         let conn = crate::reader::connection::ConnUri::parse(uri)?;
         let scheme = conn.scheme.as_str();
@@ -299,13 +300,21 @@ impl AdbcReader<ManagedDriver> {
             let entry = crate::reader::registry::by_scheme(scheme).ok_or_else(|| {
                 GgsqlError::ReaderError(format!("No known ADBC driver for scheme '{}://'", scheme))
             })?;
+            // Check ADBC support before loading: the env-var override in
+            // load_driver_for_scheme can otherwise succeed for schemes with
+            // no registry ADBC info (drill, monetdb) and panic here.
+            let info = entry.adbc.ok_or_else(|| {
+                GgsqlError::ReaderError(format!(
+                    "No known ADBC driver for scheme '{scheme}://'. \
+                     Use an odbc:// connection string instead."
+                ))
+            })?;
             let driver = load_driver_for_scheme(scheme)?;
             // The URI handed to the driver must not carry stmt.* or ggsql
             // params — drivers parse their own URI query string and reject
             // unknown keys. BigQuery additionally needs its URI in the
             // driver's Simba grammar, with non-Simba params arriving only as
             // standalone options.
-            let info = entry.adbc.expect("registry entry implies ADBC info");
             let (driver_uri, opts_query) =
                 if info.driver_uri == crate::reader::registry::DriverUri::BigQuerySimba {
                     bigquery_driver_uri(body, query)
@@ -753,6 +762,21 @@ fn align_batch_to_schema(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn scheme_without_adbc_info_errors_instead_of_panicking() {
+        // MonetDB/Drill have no registry ADBC info; even an env override
+        // must produce an error, not a panic on the missing entry.
+        for uri in ["monetdb://localhost:50000/db", "drill://localhost:8047"] {
+            let err = AdbcReader::from_connection_string(uri)
+                .err()
+                .expect("schemes without ADBC info must fail");
+            assert!(
+                err.to_string().contains("No known ADBC driver"),
+                "{uri}: unexpected error: {err}"
+            );
+        }
+    }
 
     #[test]
     fn driver_name_mapping() {
