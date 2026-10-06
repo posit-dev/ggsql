@@ -1,16 +1,18 @@
 name: Live Dialect Tests
 
-# Tier 2 dialect conformance: run the canonical pipeline battery in
-# src/tests/dialect_live.rs against real backends — one matrix leg per
-# backend, each starting its database as a plain docker container via
-# .github/scripts/dialect-live-start.sh (which also exports the matching
-# GGSQL_TEST_URI_* variable). ADBC drivers come from the ADBC Driver Foundry
-# via dbc — the same drivers `driver_names_for_scheme` resolves in
-# production, so the matrix also tests the driver-loading path.
+# Tier 2 dialect conformance: run the canonical pipeline battery
+# (src/tests/battery/mod.rs, driven by src/tests/dialect_live.rs) against
+# real backends — one matrix leg per backend, each starting its database
+# as a plain docker container via its per-backend script in
+# .github/scripts/live/ (dispatched by .github/scripts/dialect-live-start.sh,
+# which also exports the matching GGSQL_TEST_URI_* variable). ADBC drivers
+# come from the ADBC Driver Foundry via dbc — the same drivers the
+# registry (src/reader/registry.rs) resolves in production, so the matrix
+# also tests the driver-loading path.
 #
-# Adding a backend is a matrix row, a case in the start script, and (if
-# needed) a DDL template in create_table_sql() — see the file header of
-# src/tests/dialect_live.rs.
+# Adding a backend is a matrix row, a script in .github/scripts/live/,
+# and (if needed) a DDL template in create_table_sql() — see the file
+# header of src/tests/dialect_live.rs.
 
 on:
   push:
@@ -18,13 +20,13 @@ on:
     paths:
       - "src/**"
       - ".github/workflows/dialect-live.yml"
-      - ".github/scripts/dialect-live-start.sh"
+      - ".github/scripts/**"
   pull_request:
     branches: [main]
     paths:
       - "src/**"
       - ".github/workflows/dialect-live.yml"
-      - ".github/scripts/dialect-live-start.sh"
+      - ".github/scripts/**"
   workflow_dispatch:
 
 jobs:
@@ -129,7 +131,7 @@ jobs:
           # TEMPORARILY ENABLED to validate the leg on CI before the Oracle
           # Free Use Terms and Conditions license review completes — if the
           # review comes back unfavorable, remove this row, the install step
-          # below, the oracle case in dialect-live-start.sh, and the
+          # below, .github/scripts/live/oracle.sh, and the
           # live_oracle test.
           - { backend: oracle, driver: "" }
 

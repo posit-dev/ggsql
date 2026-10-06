@@ -47,29 +47,32 @@
 //! - `GGSQL_TEST_URI_DRUID`      e.g. `druid://localhost:8082?tls=false`
 //!   (tls=false is required against a plaintext broker: the Foundry driver
 //!   defaults to https)
-//!   (CI runs it against a nano-quickstart Druid container through the
-//!   Foundry `druid` ADBC driver (prerelease). Druid has no DDL, so the
-//!   start script creates and populates the datasource via an MSQ INSERT
-//!   job, and DruidDialect's `requires_cache` wraps the reader in a sqlite
+//!   (CI runs it against the vendor-supported docker-compose cluster
+//!   (zookeeper + metadata postgres + one container per Druid service;
+//!   the 37.x image is distroless, so the classic all-in-one quickstart
+//!   cannot run) through the Foundry `druid` ADBC driver (prerelease).
+//!   Druid has no DDL, so the start script creates and populates the
+//!   datasource via an MSQ INSERT job seeded from the shared fixture CSV,
+//!   and DruidDialect's `requires_cache` wraps the reader in a sqlite
 //!   cache that hosts the battery's derived tables)
 //!
 //! The DataFusion case runs in-process via the Foundry ADBC driver and
 //! needs no container, so one non-DuckDB engine always runs in CI.
 //!
-//! All cases run the same battery through the public reader pipeline: a
-//! grouped scatter (quoting, projections, discrete + continuous channels),
-//! a histogram (two-stage binning), a grouped boxplot (quantiles, qualified
-//! projections), a grouped density (cross-group grid join), and the complex
-//! derived-table geoms: smooth (aggregate CTE), ribbon and segment
-//! (window-function densify), tile (2-D binning), area, and violin
-//! (per-group density). The battery is validated implicitly because
-//! DuckDB-backed unit tests exercise the same code paths.
+//! The battery itself — case list, per-case assertions, and the dataset —
+//! lives in `src/tests/battery/mod.rs`, shared with the Tier 1 golden
+//! tests (`src/execute/golden.rs`) so the two tiers cannot drift. This
+//! file only adds the live-specific plumbing: per-scheme DDL templates,
+//! connection setup, and value-level assertions on real results.
+
+#[path = "battery/mod.rs"]
+mod battery;
 
 use ggsql::reader::connection::reader_from_uri;
 use ggsql::reader::{ColumnInfo, Reader, Spec, SqlDialect, TableInfo};
 use ggsql::{DataFrame, Result};
 
-const TABLE: &str = "ggsql_live_test";
+const TABLE: &str = battery::TABLE;
 
 /// A `Reader` wrapper that records every statement the pipeline issues, so
 /// a failing battery case can dump the exact SQL and re-run individual
@@ -146,28 +149,25 @@ impl Reader for SqlSpy<'_> {
     }
 }
 
-// Eight rows, four per group: density/violin compute a Silverman bandwidth
-// from NTILE(4) tiles, which is degenerate (NULL) with fewer than four
-// values per group — their grids would come back empty and the battery
-// would pass vacuously.
-//
-// Beyond id/val/grp the table carries:
-// - `day` (a real date column): temporal literal/cast paths, exercised by
-//   the binned-scale and temporal-filter cases,
+// The dataset (ids, values, groups, days) is battery::ROWS; the functions
+// here only spell it per backend. Beyond id/val/grp the table carries:
+// - `day` (a real date column, except on SQLite where it stays TEXT):
+//   temporal literal/cast paths, exercised by the binned-scale cases,
 // - `mixed Case` (float): a column whose name requires quoting, exercising
 //   the dialects' quote_ident handling through stats that pass raw column
 //   names (quantiles) and PARTITION BY.
 fn insert_sql(scheme: &str, table: &str) -> String {
-    let row = |i: i32| {
-        let day = date_literal(scheme, i);
+    let row = |r: &battery::Row| {
         format!(
-            "({i}, {v}, '{g}', {day}, {m})",
-            v = i as f64 + 0.5,
-            g = if i % 2 == 1 { 'a' } else { 'b' },
-            m = i as f64 + 9.5,
+            "({}, {}, '{}', {}, {})",
+            r.id,
+            r.val,
+            r.grp,
+            date_literal(scheme, r.day_epoch),
+            r.mixed
         )
     };
-    let rows: Vec<String> = (1..=8).map(row).collect();
+    let rows: Vec<String> = battery::ROWS.iter().map(row).collect();
     if scheme == "oracle" {
         // Oracle has no multi-row VALUES; INSERT ALL ... SELECT * FROM dual
         // is the single-statement equivalent.
@@ -180,15 +180,16 @@ fn insert_sql(scheme: &str, table: &str) -> String {
     format!("INSERT INTO {table} VALUES {}", rows.join(", "))
 }
 
-/// A date literal for 2022-01-0`i` in the spelling the backend accepts.
+/// A date literal for a fixture day in the spelling the backend accepts.
 /// Most take the ANSI `DATE 'YYYY-MM-DD'`; T-SQL wants the unambiguous
 /// `YYYYMMDD` string form; ClickHouse and SQLite (TEXT column) take the
 /// ISO string.
-fn date_literal(scheme: &str, i: i32) -> String {
+fn date_literal(scheme: &str, day_epoch: i32) -> String {
+    let iso = battery::day_iso(day_epoch);
     match scheme {
-        "mssql" => format!("'2022010{i}'"),
-        "clickhouse" | "sqlite" => format!("'2022-01-0{i}'"),
-        _ => format!("DATE '2022-01-0{i}'"),
+        "mssql" => format!("'{}'", iso.replace('-', "")),
+        "clickhouse" | "sqlite" => format!("'{iso}'"),
+        _ => format!("DATE '{iso}'"),
     }
 }
 
@@ -266,262 +267,81 @@ fn setup_sql(scheme: &str) -> Vec<String> {
     }
 }
 
-/// The canonical battery, run against any live reader.
+/// The canonical battery, run against any live reader. Every case runs
+/// through the SqlSpy so a failure can dump the exact pipeline SQL.
 fn run_battery(reader: &dyn Reader, ctx: &str, table: &str) {
-    // Grouped scatter: identifier quoting, qualified projections, and both
-    // discrete (color) and continuous (x/y) channels.
-    let spec = reader
-        .execute(&format!(
-            "VISUALISE DRAW point MAPPING id AS x, val AS y, grp AS color FROM {table}"
-        ))
-        .unwrap_or_else(|e| panic!("{ctx}: scatter pipeline failed: {e}"));
-    let layer = spec
-        .layer_data(0)
-        .unwrap_or_else(|| panic!("{ctx}: scatter produced no layer data"));
-    assert_eq!(layer.height(), 8, "{ctx}: scatter row count");
-
-    // Histogram: two-stage binning with GROUP BY-safe derived columns.
-    // Row assertion: a broken binning stage could return zero rows and the
-    // pipeline would pass vacuously without it.
-    let spec = reader
-        .execute(&format!(
-            "VISUALISE DRAW histogram MAPPING val AS x FROM {table}"
-        ))
-        .unwrap_or_else(|e| panic!("{ctx}: histogram pipeline failed: {e}"));
-    let layer = spec
-        .layer_data(0)
-        .unwrap_or_else(|| panic!("{ctx}: histogram produced no layer data"));
-    assert!(layer.height() > 0, "{ctx}: histogram returned zero rows");
-
-    // Grouped boxplot: dialect quantile overrides and qualified
-    // projections (`raw."g" AS "g"`). Row assertion against vacuous passes —
-    // two groups always yield whisker/box/median rows.
-    let spec = reader
-        .execute(&format!(
-            "VISUALISE DRAW boxplot MAPPING grp AS x, val AS y FROM {table}"
-        ))
-        .unwrap_or_else(|e| panic!("{ctx}: boxplot pipeline failed: {e}"));
-    let layer = spec
-        .layer_data(0)
-        .unwrap_or_else(|| panic!("{ctx}: boxplot produced no layer data"));
-    assert!(layer.height() > 0, "{ctx}: boxplot returned zero rows");
-
-    // Grouped density: cross-group grid join with qualified projections.
-    // Row assertion: a degenerate (NULL) bandwidth would silently produce an
-    // empty result, and the pipeline would pass without it.
-    let spec = reader
-        .execute(&format!(
-            "VISUALISE DRAW density MAPPING val AS x, grp AS color FROM {table}"
-        ))
-        .unwrap_or_else(|e| panic!("{ctx}: density pipeline failed: {e}"));
-    let layer = spec
-        .layer_data(0)
-        .unwrap_or_else(|| panic!("{ctx}: density produced no layer data"));
-    assert!(layer.height() > 0, "{ctx}: density returned zero rows");
-
-    // Smooth (OLS): aggregate coefficient CTE with a derived table.
-    reader
-        .execute(&format!(
-            "VISUALISE DRAW smooth MAPPING id AS x, val AS y FROM {table} SETTING method => 'ols'"
-        ))
-        .unwrap_or_else(|e| panic!("{ctx}: smooth pipeline failed: {e}"));
-
-    // Ribbon: window-function densify into a closed polygon outline.
-    reader
-        .execute(&format!(
-            "VISUALISE DRAW ribbon MAPPING id AS x, id AS ymin, val AS ymax FROM {table}"
-        ))
-        .unwrap_or_else(|e| panic!("{ctx}: ribbon pipeline failed: {e}"));
-
-    // Segment: ROW_NUMBER densify plus a cross join against a vertex table.
-    reader
-        .execute(&format!(
-            "VISUALISE DRAW segment MAPPING id AS x, val AS y, id AS xend, val AS yend FROM {table}"
-        ))
-        .unwrap_or_else(|e| panic!("{ctx}: segment pipeline failed: {e}"));
-
-    // Tile: two-dimensional binning with post-aggregation. Row assertion
-    // against vacuous passes, as with the other cases.
-    let spec = reader
-        .execute(&format!(
-            "VISUALISE DRAW tile MAPPING val AS x, id AS y FROM {table}"
-        ))
-        .unwrap_or_else(|e| panic!("{ctx}: tile pipeline failed: {e}"));
-    let layer = spec
-        .layer_data(0)
-        .unwrap_or_else(|| panic!("{ctx}: tile produced no layer data"));
-    assert!(layer.height() > 0, "{ctx}: tile returned zero rows");
-
-    // Area: ribbon variant with a synthesized zero baseline.
-    reader
-        .execute(&format!(
-            "VISUALISE DRAW area MAPPING id AS x, val AS y FROM {table}"
-        ))
-        .unwrap_or_else(|e| panic!("{ctx}: area pipeline failed: {e}"));
-
-    // Violin: per-group density with mirrored outline. Same row assertion
-    // as density — an empty grid would otherwise pass silently.
-    let spec = reader
-        .execute(&format!(
-            "VISUALISE DRAW violin MAPPING grp AS x, val AS y FROM {table}"
-        ))
-        .unwrap_or_else(|e| panic!("{ctx}: violin pipeline failed: {e}"));
-    let layer = spec
-        .layer_data(0)
-        .unwrap_or_else(|| panic!("{ctx}: violin produced no layer data"));
-    assert!(layer.height() > 0, "{ctx}: violin returned zero rows");
-
-    // ------------------------------------------------------------------
-    // Dialect conformance regression cases (2026-10 review)
-    // ------------------------------------------------------------------
-
-    // Grouped variants of the derived-table geoms: the group columns join
-    // the partition columns into stat queries, exercising grouped window
-    // and derived-table paths the ungrouped cases miss (unaliased derived
-    // tables break MySQL/MariaDB).
-    reader
-        .execute(&format!(
-            "VISUALISE DRAW bar MAPPING grp AS x, grp AS fill FROM {table}"
-        ))
-        .unwrap_or_else(|e| panic!("{ctx}: grouped bar pipeline failed: {e}"));
-
-    let spec = reader
-        .execute(&format!(
-            "VISUALISE DRAW histogram MAPPING val AS x, grp AS fill FROM {table}"
-        ))
-        .unwrap_or_else(|e| panic!("{ctx}: grouped histogram pipeline failed: {e}"));
-    let layer = spec
-        .layer_data(0)
-        .unwrap_or_else(|| panic!("{ctx}: grouped histogram produced no layer data"));
-    assert!(
-        layer.height() > 0,
-        "{ctx}: grouped histogram returned zero rows"
-    );
-
-    reader
-        .execute(&format!(
-            "VISUALISE DRAW smooth MAPPING id AS x, val AS y, grp AS color FROM {table} SETTING method => 'ols'"
-        ))
-        .unwrap_or_else(|e| panic!("{ctx}: grouped smooth pipeline failed: {e}"));
-
-    // Line with an aggregating stat: the geom appends ORDER BY after the
-    // stat transform, and the layer's stat-rename wrap then nests that
-    // ORDER BY inside a derived table. T-SQL rejects ORDER BY in derived
-    // tables without TOP/OFFSET (error 1033), so MSSQL is skipped until
-    // the pipeline applies ordering to final queries only; the broken
-    // shape is pinned in golden/mssql.sql under "line_aggregate". On all
-    // other backends the nested ORDER BY is valid, and the row assertion
-    // pins the composed line+aggregate path (one row per group).
-    if ctx != "mssql" {
-        let spec = reader
-            .execute(&format!(
-                "VISUALISE DRAW line MAPPING grp AS x, val AS y FROM {table} \
-                 SETTING aggregate => 'y:mean'"
-            ))
-            .unwrap_or_else(|e| panic!("{ctx}: line aggregate pipeline failed: {e}"));
-        let layer = spec
-            .layer_data(0)
-            .unwrap_or_else(|| panic!("{ctx}: line aggregate produced no layer data"));
-        assert_eq!(layer.height(), 2, "{ctx}: line aggregate row count");
-    }
-
-    // A column whose name needs quoting, through the quantile path:
-    // stat_aggregate passes the raw name to sql_quantile_inline /
-    // sql_percentile, so dialects must quote it themselves. A name with a
-    // space and mixed case breaks any dialect that interpolates it raw.
-    let spec = reader
-        .execute(&format!(
-            "VISUALISE DRAW boxplot MAPPING grp AS x, \"mixed Case\" AS y FROM {table}"
-        ))
-        .unwrap_or_else(|e| panic!("{ctx}: quoted-column boxplot pipeline failed: {e}"));
-    let layer = spec
-        .layer_data(0)
-        .unwrap_or_else(|| panic!("{ctx}: quoted-column boxplot produced no layer data"));
-    assert!(
-        layer.height() > 0,
-        "{ctx}: quoted-column boxplot returned zero rows"
-    );
-
-    // Percentile aggregates off the quartiles, with real value assertions:
-    // the generic sql_percentile fallback uses NTILE(4), which is exact
-    // only for p25/p50/p75. Group a is {1.5, 3.5, 5.5, 7.5}, so the correct
-    // p10 is ~2.1 (the fallback returns the tile-boundary average 2.5) and
-    // the correct p90 is ~6.9 (the fallback returns NULL: hi_tile = 5 does
-    // not exist). Bounds are wide enough for approximate-quantile engines.
-    for (func, lo, hi) in [("p10", 1.5, 2.35), ("p90", 6.5, 7.5)] {
-        let spec = reader
-            .execute(&format!(
-                "VISUALISE DRAW point MAPPING grp AS x, val AS y FROM {table} \
-                 SETTING aggregate => 'y:{func}' FILTER grp = 'a'"
-            ))
-            .unwrap_or_else(|e| panic!("{ctx}: {func} aggregate pipeline failed: {e}"));
-        let layer = spec
-            .layer_data(0)
-            .unwrap_or_else(|| panic!("{ctx}: {func} aggregate produced no layer data"));
-        let y = first_f64(layer, "__ggsql_aes_pos2__", ctx, func);
-        assert!(
-            (lo..=hi).contains(&y),
-            "{ctx}: {func} of group a (vals 1.5, 3.5, 5.5, 7.5) should be in \
-             [{lo}, {hi}], got {y}"
-        );
-    }
-
-    // Binned scale over a temporal column with a non-temporal transform:
-    // the numeric-CASE fallback (build_case_expression_numeric) must quote
-    // the column with the active dialect, not hard-coded ANSI.
     let spy = SqlSpy::new(reader);
-    let spec = spy
-        .execute(&format!(
-            "VISUALISE DRAW point MAPPING day AS x, val AS y FROM {table} SCALE BINNED x VIA identity"
-        ))
-        .unwrap_or_else(|e| {
+    for case in battery::cases() {
+        if !case.runs_live_on(ctx) {
+            continue;
+        }
+        let query = case.query.replace("{table}", table);
+        let spec = spy.execute(&query).unwrap_or_else(|e| {
             panic!(
-                "{ctx}: binned temporal pipeline failed: {e}\npipeline SQL:\n{}",
+                "{ctx}: case '{}' failed: {e}\npipeline SQL:\n{}",
+                case.name,
                 spy.take_log().join("\n")
             )
         });
-    let layer = spec
-        .layer_data(0)
-        .unwrap_or_else(|| panic!("{ctx}: binned temporal produced no layer data"));
-    if layer.height() == 0 {
-        // Zero rows means every bin comparison came back false — almost
-        // always a units/type mismatch between the trained breaks and the
-        // dialect's temporal-to-number conversion. Dump the exact pipeline
-        // SQL and re-run its extent and CASE statements so CI output shows
-        // what the driver actually returned at each stage.
-        let log = spy.take_log();
+        check_expect(&spec, &case, ctx, &spy);
+    }
+}
+
+/// Apply a case's live assertion to its spec.
+fn check_expect(spec: &Spec, case: &battery::Case, ctx: &str, spy: &SqlSpy) {
+    let layer = || {
+        spec.layer_data(0)
+            .unwrap_or_else(|| panic!("{ctx}: case '{}' produced no layer data", case.name))
+    };
+    match case.expect {
+        battery::Expect::Runs => {}
+        battery::Expect::MinRows(n) => {
+            let height = layer().height();
+            if height < n {
+                fail_empty(case, ctx, spy, height);
+            }
+        }
+        battery::Expect::ExactRows(n) => {
+            assert_eq!(layer().height(), n, "{ctx}: case '{}' row count", case.name);
+        }
+        battery::Expect::F64In(col, lo, hi) => {
+            let y = first_f64(layer(), col, ctx, case.name);
+            assert!(
+                (lo..=hi).contains(&y),
+                "{ctx}: case '{}' value should be in [{lo}, {hi}], got {y}",
+                case.name
+            );
+        }
+    }
+}
+
+/// A row-count assertion failed. For the binned-temporal case — the one
+/// whose failure mode is a units/type mismatch between the trained breaks
+/// and the dialect's temporal-to-number conversion — re-run the pipeline's
+/// extent and CASE statements so CI output shows what the driver actually
+/// returned at each stage; otherwise dump the pipeline SQL.
+fn fail_empty(case: &battery::Case, ctx: &str, spy: &SqlSpy, height: usize) -> ! {
+    let log = spy.take_log();
+    if case.name == "binned_temporal" {
         let extent = log
             .iter()
             .find(|s| s.contains("MIN("))
-            .map(|sql| reader.execute_sql(sql));
-        let case = log
+            .map(|sql| spy.inner.execute_sql(sql));
+        let case_stmt = log
             .iter()
             .rev()
             .find(|s| s.contains("CASE"))
-            .map(|sql| reader.execute_sql(sql));
+            .map(|sql| spy.inner.execute_sql(sql));
         panic!(
-            "{ctx}: binned temporal returned zero rows\n\
-             pipeline SQL:\n{}\nextent result: {extent:?}\ncase result: {case:?}",
+            "{ctx}: binned temporal returned {height} rows\n\
+             pipeline SQL:\n{}\nextent result: {extent:?}\ncase result: {case_stmt:?}",
             log.join("\n")
         );
     }
-
-    // PARTITION BY follows the same identifier rules as MAPPING: the name
-    // is stored unquoted and re-quoted via the dialect. With a float column
-    // every row is its own group, so the mean is the value itself.
-    let spec = reader
-        .execute(&format!(
-            "VISUALISE DRAW point MAPPING id AS x, \"mixed Case\" AS y FROM {table} \
-             SETTING aggregate => 'y:mean' PARTITION BY \"mixed Case\""
-        ))
-        .unwrap_or_else(|e| panic!("{ctx}: quoted PARTITION BY pipeline failed: {e}"));
-    let layer = spec
-        .layer_data(0)
-        .unwrap_or_else(|| panic!("{ctx}: quoted PARTITION BY produced no layer data"));
-    assert_eq!(
-        layer.height(),
-        8,
-        "{ctx}: quoted PARTITION BY should yield one group per row"
+    panic!(
+        "{ctx}: case '{}' returned {height} rows\npipeline SQL:\n{}",
+        case.name,
+        log.join("\n")
     );
 }
 
@@ -599,20 +419,27 @@ fn live_backend(scheme: &str) {
                 Field::new("mixed Case", DataType::Float64, false),
             ])),
             vec![
-                Arc::new(Int64Array::from(vec![1, 2, 3, 4, 5, 6, 7, 8])),
-                Arc::new(Float64Array::from(vec![
-                    1.5, 2.5, 3.5, 4.5, 5.5, 6.5, 7.5, 8.5,
-                ])),
-                Arc::new(StringArray::from(vec![
-                    "a", "b", "a", "b", "a", "b", "a", "b",
-                ])),
-                // 2022-01-01 .. 2022-01-08 as days since the epoch
-                Arc::new(Date32Array::from(vec![
-                    18993, 18994, 18995, 18996, 18997, 18998, 18999, 19000,
-                ])),
-                Arc::new(Float64Array::from(vec![
-                    10.5, 11.5, 12.5, 13.5, 14.5, 15.5, 16.5, 17.5,
-                ])),
+                Arc::new(Int64Array::from(
+                    battery::ROWS
+                        .iter()
+                        .map(|r| r.id as i64)
+                        .collect::<Vec<_>>(),
+                )),
+                Arc::new(Float64Array::from(
+                    battery::ROWS.iter().map(|r| r.val).collect::<Vec<_>>(),
+                )),
+                Arc::new(StringArray::from(
+                    battery::ROWS.iter().map(|r| r.grp).collect::<Vec<_>>(),
+                )),
+                Arc::new(Date32Array::from(
+                    battery::ROWS
+                        .iter()
+                        .map(|r| r.day_epoch)
+                        .collect::<Vec<_>>(),
+                )),
+                Arc::new(Float64Array::from(
+                    battery::ROWS.iter().map(|r| r.mixed).collect::<Vec<_>>(),
+                )),
             ],
         )
         .expect("build bigquery test batch");
@@ -792,32 +619,36 @@ fn live_datafusion() {
     let df = ggsql::DataFrame::new(vec![
         (
             "id",
-            Arc::new(arrow::array::Int32Array::from(vec![1, 2, 3, 4, 5, 6, 7, 8]))
-                as arrow::array::ArrayRef,
+            Arc::new(arrow::array::Int32Array::from(
+                battery::ROWS.iter().map(|r| r.id).collect::<Vec<_>>(),
+            )) as arrow::array::ArrayRef,
         ),
         (
             "val",
-            Arc::new(arrow::array::Float64Array::from(vec![
-                1.5, 2.5, 3.5, 4.5, 5.5, 6.5, 7.5, 8.5,
-            ])) as arrow::array::ArrayRef,
+            Arc::new(arrow::array::Float64Array::from(
+                battery::ROWS.iter().map(|r| r.val).collect::<Vec<_>>(),
+            )) as arrow::array::ArrayRef,
         ),
         (
             "grp",
-            Arc::new(arrow::array::StringArray::from(vec![
-                "a", "b", "a", "b", "a", "b", "a", "b",
-            ])) as arrow::array::ArrayRef,
+            Arc::new(arrow::array::StringArray::from(
+                battery::ROWS.iter().map(|r| r.grp).collect::<Vec<_>>(),
+            )) as arrow::array::ArrayRef,
         ),
         (
             "day",
-            Arc::new(arrow::array::Date32Array::from(vec![
-                18993, 18994, 18995, 18996, 18997, 18998, 18999, 19000,
-            ])) as arrow::array::ArrayRef,
+            Arc::new(arrow::array::Date32Array::from(
+                battery::ROWS
+                    .iter()
+                    .map(|r| r.day_epoch)
+                    .collect::<Vec<_>>(),
+            )) as arrow::array::ArrayRef,
         ),
         (
             "mixed Case",
-            Arc::new(arrow::array::Float64Array::from(vec![
-                10.5, 11.5, 12.5, 13.5, 14.5, 15.5, 16.5, 17.5,
-            ])) as arrow::array::ArrayRef,
+            Arc::new(arrow::array::Float64Array::from(
+                battery::ROWS.iter().map(|r| r.mixed).collect::<Vec<_>>(),
+            )) as arrow::array::ArrayRef,
         ),
     ])
     .expect("test dataframe");

@@ -145,3 +145,98 @@ impl SqlDialect for SqliteDialect {
         Some(s)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn type_names_map_to_storage_classes() {
+        // SQLite has no real date/time/boolean types: temporal values are
+        // ISO TEXT, booleans INTEGER, floats REAL.
+        let d = SqliteDialect;
+        assert_eq!(d.number_type_name(), Some("REAL"));
+        assert_eq!(d.date_type_name(), Some("TEXT"));
+        assert_eq!(d.datetime_type_name(), Some("TEXT"));
+        assert_eq!(d.boolean_type_name(), Some("INTEGER"));
+    }
+
+    #[test]
+    fn greatest_least_are_case_expressions() {
+        // No GREATEST/LEAST functions; nested CASE stand-ins.
+        assert_eq!(
+            SqliteDialect.sql_greatest(&["a", "b"]),
+            "(CASE WHEN (a) >= (b) THEN (a) ELSE (b) END)"
+        );
+        assert_eq!(
+            SqliteDialect.sql_least(&["a", "b", "c"]),
+            "(CASE WHEN ((CASE WHEN (a) <= (b) THEN (a) ELSE (b) END)) <= (c) THEN ((CASE WHEN (a) <= (b) THEN (a) ELSE (b) END)) ELSE (c) END)"
+        );
+    }
+
+    #[test]
+    fn temporal_literals_are_sqlite_functions() {
+        assert_eq!(
+            SqliteDialect.sql_date_literal(1),
+            "date('1970-01-01', '+1 days')"
+        );
+        assert_eq!(
+            SqliteDialect.sql_datetime_literal(1_500_000),
+            "datetime('1970-01-01 00:00:00', '+1.5 seconds')"
+        );
+        assert_eq!(
+            SqliteDialect.sql_time_literal(2_000_000_000),
+            "time('00:00:00', '+2 seconds')"
+        );
+        assert_eq!(SqliteDialect.sql_boolean_literal(true), "1");
+        assert_eq!(SqliteDialect.sql_boolean_literal(false), "0");
+    }
+
+    #[test]
+    fn temporal_as_number_uses_julianday() {
+        use crate::plot::types::CastTargetType as C;
+        // Temporal values are ISO text; julianday converts them.
+        assert_eq!(
+            SqliteDialect.sql_temporal_as_number("\"d\"", C::Date),
+            "(JULIANDAY(\"d\") - 2440587.5)"
+        );
+        assert_eq!(
+            SqliteDialect.sql_temporal_as_number("\"d\"", C::DateTime),
+            "((JULIANDAY(\"d\") - 2440587.5) * 86400000000.0)"
+        );
+    }
+
+    #[test]
+    fn variance_aggregates_are_portable_arithmetic() {
+        // No STDDEV_POP/VAR_POP in stock SQLite.
+        assert_eq!(
+            SqliteDialect.sql_aggregate("var", "\"v\""),
+            Some("MAX(0.0, AVG(\"v\" * \"v\") - AVG(\"v\") * AVG(\"v\"))".to_string())
+        );
+        assert_eq!(
+            SqliteDialect.sql_aggregate("mean", "\"v\""),
+            Some("AVG(\"v\")".to_string())
+        );
+    }
+
+    #[test]
+    fn spatial_setup_loads_spatialite() {
+        assert!(SqliteDialect.supports_spatial());
+        let setup = SqliteDialect.sql_spatial_setup();
+        assert_eq!(setup.len(), 2);
+        assert!(setup[0].contains("mod_spatialite"));
+        assert!(setup[1].contains("InitSpatialMetaData"));
+    }
+
+    #[test]
+    fn st_transform_uses_srid_when_extractable() {
+        assert_eq!(
+            SqliteDialect.sql_st_transform("geom", "EPSG:4326", "EPSG:3857"),
+            "ST_Transform(SetSRID(geom, 4326), 3857)"
+        );
+        assert_eq!(
+            SqliteDialect.sql_make_envelope(0.0, 1.0, 2.0, 3.0),
+            "BuildMbr(0, 1, 2, 3)"
+        );
+    }
+}

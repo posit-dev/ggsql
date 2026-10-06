@@ -149,7 +149,7 @@ impl Reader for ReadOnlyReader {
 /// `Float64`, which is the right shape for the derived columns
 /// (bins, densities, quantiles) the pipeline produces.
 pub(crate) struct StubReader {
-    dialect: Box<dyn SqlDialect>,
+    dialect: Box<dyn SqlDialect + Send>,
     tables: Mutex<HashMap<String, Arc<Schema>>>,
     log: Arc<Mutex<Vec<String>>>,
 }
@@ -157,7 +157,7 @@ pub(crate) struct StubReader {
 impl StubReader {
     /// Create a stub for `dialect`, returning it together with a
     /// handle to the shared SQL log.
-    pub(crate) fn new(dialect: Box<dyn SqlDialect>) -> (Self, Arc<Mutex<Vec<String>>>) {
+    pub(crate) fn new(dialect: Box<dyn SqlDialect + Send>) -> (Self, Arc<Mutex<Vec<String>>>) {
         let log = Arc::new(Mutex::new(Vec::new()));
         (
             Self {
@@ -266,7 +266,7 @@ impl StubReader {
     /// (case-insensitive) name.
     fn registered_type(&self, name: &str) -> Option<DataType> {
         let tables = self.tables.lock().unwrap();
-        tables.values().find_map(|schema| {
+        let find = |schema: &Arc<Schema>| {
             schema.fields().iter().find_map(|f| {
                 if f.name().eq_ignore_ascii_case(name) {
                     Some(f.data_type().clone())
@@ -274,7 +274,17 @@ impl StubReader {
                     None
                 }
             })
-        })
+        };
+        // Prefer real source tables over internal temp aliases: an alias
+        // registered under a "__ggsql_" name may carry a *stale* schema
+        // (e.g. from an earlier fixture), and HashMap iteration order
+        // would otherwise decide which schema wins — the same
+        // determinism fix as track_ddl's source preference.
+        tables
+            .iter()
+            .filter(|(n, _)| !n.starts_with("__ggsql_"))
+            .find_map(|(_, s)| find(s))
+            .or_else(|| tables.values().find_map(find))
     }
 
     /// Type of the longest registered column name appearing as a word
@@ -283,11 +293,19 @@ impl StubReader {
         let tables = self.tables.lock().unwrap();
         let mut best: Option<DataType> = None;
         let mut best_len = 0;
-        for schema in tables.values() {
+        let mut best_is_source = false;
+        for (table, schema) in tables.iter() {
+            // See registered_type: real source tables beat internal
+            // aliases on ties (equal-length column names), which is what
+            // keeps the result independent of HashMap iteration order.
+            let is_source = !table.starts_with("__ggsql_");
             for field in schema.fields() {
-                if field.name().len() > best_len && contains_word(expr, field.name()) {
+                let better = field.name().len() > best_len
+                    || (field.name().len() == best_len && is_source && !best_is_source);
+                if better && contains_word(expr, field.name()) {
                     best = Some(field.data_type().clone());
                     best_len = field.name().len();
+                    best_is_source = is_source;
                 }
             }
         }
@@ -544,7 +562,30 @@ fn sample_array(dtype: &DataType) -> arrow::array::ArrayRef {
         DataType::Float64 => Arc::new(Float64Array::from(vec![1.0, 2.0, 3.0])),
         DataType::Int32 => Arc::new(Int32Array::from(vec![1, 2, 3])),
         DataType::Int64 => Arc::new(Int64Array::from(vec![1i64, 2, 3])),
-        DataType::Utf8 => Arc::new(StringArray::from(vec!["a", "b", "c"])),
+        // ISO-date strings rather than "a"/"b"/"c": fabricated values flow
+        // through scale training, which coerces text to the scale's target
+        // type — for temporal scales an unparseable string makes the golden
+        // output depend on resolution order (error vs. no error). Date-like
+        // strings coerce successfully on every path, keeping the stub
+        // deterministic; they are equally valid as plain strings.
+        // ISO-date strings rather than "a"/"b"/"c": fabricated values flow
+        // through scale training, which coerces text to the scale's target
+        // type — for temporal scales an unparseable string makes the golden
+        // output depend on resolution order (error vs. no error). Date-like
+        // strings coerce successfully on every path, keeping the stub
+        // deterministic; they are equally valid as plain strings.
+        // ISO-date strings: fabricated values flow through scale training,
+        // which coerces text to the scale's target type. A real backend
+        // holding a text-typed date column returns parseable strings (that
+        // is exactly the text_date_cast battery case's premise), so the
+        // stub does too — an unparseable value would pin a coercion error
+        // instead of the SQL the case exists to pin. Equally valid as
+        // plain strings for non-temporal columns.
+        DataType::Utf8 => Arc::new(StringArray::from(vec![
+            "2022-01-01",
+            "2022-01-02",
+            "2022-01-03",
+        ])),
         DataType::Boolean => Arc::new(BooleanArray::from(vec![true, false, true])),
         DataType::Date32 => Arc::new(Date32Array::from(vec![19000, 19001, 19002])),
         other => arrow::array::new_null_array(other, 3),

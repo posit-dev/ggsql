@@ -1,9 +1,10 @@
 name: Nightly Cloud Dialect Tests
 
 # Tier 3 dialect conformance: the same battery as dialect-live.yml (see
-# src/tests/dialect_live.rs) against proprietary cloud backends that need
-# credentials — snowflake, bigquery, databricks. Runs nightly and on
-# demand, never on PRs: cost and flake stay off the PR path.
+# src/tests/battery/mod.rs and src/tests/dialect_live.rs) against
+# proprietary cloud backends that need credentials — snowflake, bigquery,
+# databricks. Runs nightly and on demand, never on PRs: cost and flake
+# stay off the PR path.
 #
 # Each leg's connection URI comes from a repository secret named exactly
 # like the harness env var (GGSQL_TEST_URI_<BACKEND>); when the secret is
@@ -36,22 +37,11 @@ on:
   workflow_dispatch:
 
 jobs:
-  live:
+  # Build the dialect_live test binary once, exactly as dialect-live.yml
+  # does, so the per-backend legs download it instead of each recompiling
+  # the same crate against the same feature set.
+  compile:
     runs-on: ubuntu-latest
-    strategy:
-      # One backend's failure must not cancel the other legs.
-      fail-fast: false
-      matrix:
-        include:
-          - { backend: snowflake, driver: snowflake }
-          - { backend: bigquery, driver: bigquery }
-          - { backend: databricks, driver: databricks }
-
-    env:
-      GGSQL_TEST_URI_SNOWFLAKE: ${{ secrets.GGSQL_TEST_URI_SNOWFLAKE }}
-      GGSQL_TEST_URI_BIGQUERY: ${{ secrets.GGSQL_TEST_URI_BIGQUERY }}
-      GGSQL_TEST_URI_DATABRICKS: ${{ secrets.GGSQL_TEST_URI_DATABRICKS }}
-
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -77,6 +67,55 @@ jobs:
           # feature deltas.
           shared-key: ${{ runner.os }}-build
           cache-on-failure: true
+
+      - name: Compile the dialect_live test binary
+        # Same feature set as dialect-live.yml so the restored crate
+        # fingerprints hit; see the long comment there. --no-run plus
+        # --message-format=json yields the binary path; the binary is
+        # self-contained (deps statically linked, ADBC drivers dlopened at
+        # runtime), so the legs can run it directly.
+        run: |
+          bin=$(cargo test -p ggsql --features "adbc sqlite" --test dialect_live \
+                --no-run --message-format=json-render-diagnostics \
+                | jq -rs '[.[] | select(.target.name == "dialect_live" and .executable != null) | .executable][-1]')
+          test -n "$bin" -a -f "$bin"
+          cp "$bin" dialect-live-bin
+
+      - name: Upload the test binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: dialect-live-bin
+          path: dialect-live-bin
+          retention-days: 1
+
+  live:
+    needs: compile
+    runs-on: ubuntu-latest
+    strategy:
+      # One backend's failure must not cancel the other legs.
+      fail-fast: false
+      matrix:
+        include:
+          - { backend: snowflake, driver: snowflake }
+          - { backend: bigquery, driver: bigquery }
+          - { backend: databricks, driver: databricks }
+
+    env:
+      GGSQL_TEST_URI_SNOWFLAKE: ${{ secrets.GGSQL_TEST_URI_SNOWFLAKE }}
+      GGSQL_TEST_URI_BIGQUERY: ${{ secrets.GGSQL_TEST_URI_BIGQUERY }}
+      GGSQL_TEST_URI_DATABRICKS: ${{ secrets.GGSQL_TEST_URI_DATABRICKS }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Download the test binary
+        uses: actions/download-artifact@v4
+        with:
+          name: dialect-live-bin
+
+      - name: Make the test binary executable
+        run: chmod +x dialect-live-bin
 
       - name: Install dbc and the ${{ matrix.backend }} ADBC driver
         run: |
@@ -106,12 +145,10 @@ jobs:
         run: printf '%s' "$GGSQL_BIGQUERY_KEY_JSON" > /tmp/bq-ci-key.json
 
       - name: Run the ${{ matrix.backend }} live test
-        # Same feature set as dialect-live.yml so the restored crate
-        # fingerprints hit; see the long comment there.
+        # The binary comes prebuilt from the compile job; invoked directly
+        # as a libtest executable (no cargo, no `--` separator).
         # GGSQL_TEST_REQUIRE=1: with the credential check above failing on
         # missing secrets, the URI is always present here, so require it.
         env:
           GGSQL_TEST_REQUIRE: "1"
-        run: >-
-          cargo test -p ggsql --features "adbc sqlite" --test dialect_live
-          live_${{ matrix.backend }} -- --exact --nocapture
+        run: ./dialect-live-bin live_${{ matrix.backend }} --exact --nocapture

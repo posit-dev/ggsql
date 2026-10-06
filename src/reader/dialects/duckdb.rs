@@ -121,4 +121,81 @@ mod tests {
             "\"__ggsql_seq__\"(n) AS (SELECT generate_series FROM GENERATE_SERIES(0, 5 - 1))"
         );
     }
+
+    #[test]
+    fn quantile_is_native_and_quotes_raw_names() {
+        // stat_aggregate passes the raw column name; the dialect must quote.
+        assert_eq!(
+            DuckDbDialect.sql_quantile("mixed Case", 0.25, "src", &[]),
+            "QUANTILE_CONT(\"mixed Case\", 0.25)"
+        );
+    }
+
+    #[test]
+    fn temporal_as_number_uses_subtraction_and_epoch() {
+        use crate::plot::types::CastTargetType as C;
+        // DuckDB rejects temporal → numeric casts; date subtraction yields
+        // integer days and EPOCH_US covers datetimes.
+        assert_eq!(
+            DuckDbDialect.sql_temporal_as_number("\"d\"", C::Date),
+            "(\"d\" - DATE '1970-01-01')"
+        );
+        assert_eq!(
+            DuckDbDialect.sql_temporal_as_number("\"d\"", C::DateTime),
+            "EPOCH_US(\"d\")"
+        );
+    }
+
+    #[test]
+    fn temp_table_is_create_or_replace() {
+        let stmts = DuckDbDialect.create_or_replace_temp_table_sql("t", &[], "SELECT 1");
+        assert_eq!(
+            stmts,
+            vec!["CREATE OR REPLACE TEMP TABLE \"t\" AS SELECT 1".to_string()]
+        );
+    }
+
+    #[test]
+    fn spatial_setup_loads_extension() {
+        assert!(DuckDbDialect.supports_spatial());
+        assert_eq!(DuckDbDialect.sql_spatial_setup(), vec!["LOAD spatial"]);
+    }
+
+    #[test]
+    fn st_transform_pins_always_xy_and_escapes_quotes() {
+        assert_eq!(
+            DuckDbDialect.sql_st_transform("geom", "EPSG:4326", "+proj=merc +lon_0=0"),
+            "ST_Transform(geom, 'EPSG:4326', '+proj=merc +lon_0=0', always_xy := true)"
+        );
+        assert_eq!(
+            DuckDbDialect.sql_st_transform("geom", "x'y", "z"),
+            "ST_Transform(geom, 'x''y', 'z', always_xy := true)"
+        );
+    }
+
+    #[test]
+    fn geometry_arrives_as_wkb_blob() {
+        // WORKAROUND(duckdb-rs#714): geometry columns arrive as WKB BLOB.
+        assert_eq!(
+            DuckDbDialect.sql_ensure_geometry("g"),
+            "ST_GeomFromWKB(CAST(g AS BLOB))"
+        );
+    }
+
+    #[test]
+    fn first_last_diff_aggregates() {
+        assert_eq!(
+            DuckDbDialect.sql_aggregate("first", "\"v\""),
+            Some("FIRST(\"v\")".to_string())
+        );
+        assert_eq!(
+            DuckDbDialect.sql_aggregate("diff", "\"v\""),
+            Some("(LAST(\"v\") - FIRST(\"v\"))".to_string())
+        );
+        // Unknown names fall through to the shared default.
+        assert_eq!(
+            DuckDbDialect.sql_aggregate("mean", "\"v\""),
+            Some("AVG(\"v\")".to_string())
+        );
+    }
 }
