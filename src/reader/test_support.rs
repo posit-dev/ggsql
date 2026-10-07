@@ -419,7 +419,7 @@ impl Reader for StubReader {
         execute_with_reader(self, query)
     }
     fn dialect(&self) -> &dyn SqlDialect {
-        &*self.dialect
+        self.dialect
     }
 }
 
@@ -683,6 +683,63 @@ fn output_name(item: &str) -> Option<String> {
     None
 }
 
+/// Compare two DataFrames by schema (field names + types) and by
+/// per-column Arrow array contents. We don't use a blanket
+/// `assert_eq!(df, df)` because `DataFrame` doesn't implement `PartialEq`;
+/// going through schema + per-column equality is also more diagnostic
+/// when one of them diverges.
+#[cfg(feature = "adbc")]
+pub(crate) fn assert_dataframes_equal(a: &DataFrame, b: &DataFrame, ctx: &str) {
+    let a_schema = a.schema();
+    let b_schema = b.schema();
+    assert_eq!(
+        a_schema.fields().len(),
+        b_schema.fields().len(),
+        "{ctx}: column count mismatch (a={}, b={})",
+        a_schema.fields().len(),
+        b_schema.fields().len(),
+    );
+    for (i, (af, bf)) in a_schema
+        .fields()
+        .iter()
+        .zip(b_schema.fields().iter())
+        .enumerate()
+    {
+        assert_eq!(
+            af.name(),
+            bf.name(),
+            "{ctx}: column {i} name mismatch (a='{}', b='{}')",
+            af.name(),
+            bf.name(),
+        );
+        assert_eq!(
+            af.data_type(),
+            bf.data_type(),
+            "{ctx}: column '{}' type mismatch (a={:?}, b={:?})",
+            af.name(),
+            af.data_type(),
+            bf.data_type(),
+        );
+    }
+    assert_eq!(
+        a.height(),
+        b.height(),
+        "{ctx}: row count mismatch (a={}, b={})",
+        a.height(),
+        b.height(),
+    );
+    for field in a_schema.fields() {
+        let ac = a.column(field.name()).unwrap();
+        let bc = b.column(field.name()).unwrap();
+        assert_eq!(
+            ac.as_ref(),
+            bc.as_ref(),
+            "{ctx}: column '{}' data mismatch",
+            field.name(),
+        );
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -743,62 +800,5 @@ mod tests {
         assert_eq!(schema.fields().len(), 2);
         assert_eq!(schema.field(0).name(), "one");
         assert_eq!(schema.field(1).name(), "n");
-    }
-}
-
-/// Compare two DataFrames by schema (field names + types) and by
-/// per-column Arrow array contents. We don't use a blanket
-/// `assert_eq!(df, df)` because `DataFrame` doesn't implement `PartialEq`;
-/// going through schema + per-column equality is also more diagnostic
-/// when one of them diverges.
-#[cfg(feature = "adbc")]
-pub(crate) fn assert_dataframes_equal(a: &DataFrame, b: &DataFrame, ctx: &str) {
-    let a_schema = a.schema();
-    let b_schema = b.schema();
-    assert_eq!(
-        a_schema.fields().len(),
-        b_schema.fields().len(),
-        "{ctx}: column count mismatch (a={}, b={})",
-        a_schema.fields().len(),
-        b_schema.fields().len(),
-    );
-    for (i, (af, bf)) in a_schema
-        .fields()
-        .iter()
-        .zip(b_schema.fields().iter())
-        .enumerate()
-    {
-        assert_eq!(
-            af.name(),
-            bf.name(),
-            "{ctx}: column {i} name mismatch (a='{}', b='{}')",
-            af.name(),
-            bf.name(),
-        );
-        assert_eq!(
-            af.data_type(),
-            bf.data_type(),
-            "{ctx}: column '{}' type mismatch (a={:?}, b={:?})",
-            af.name(),
-            af.data_type(),
-            bf.data_type(),
-        );
-    }
-    assert_eq!(
-        a.height(),
-        b.height(),
-        "{ctx}: row count mismatch (a={}, b={})",
-        a.height(),
-        b.height(),
-    );
-    for field in a_schema.fields() {
-        let ac = a.column(field.name()).unwrap();
-        let bc = b.column(field.name()).unwrap();
-        assert_eq!(
-            ac.as_ref(),
-            bc.as_ref(),
-            "{ctx}: column '{}' data mismatch",
-            field.name(),
-        );
     }
 }

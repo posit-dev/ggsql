@@ -633,7 +633,6 @@ fn live_datafusion() {
         return;
     }
     use ggsql::reader::adbc::AdbcReader;
-    use std::sync::Arc;
 
     let reader = AdbcReader::from_connection_string("datafusion://").expect("datafusion init");
 

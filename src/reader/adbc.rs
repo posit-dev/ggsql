@@ -635,7 +635,7 @@ where
                 .map_err(|e| GgsqlError::ReaderError(format!("ADBC execute_update DROP: {}", e)))?;
         }
 
-        let create_sql = crate::reader::create_table_sql(name, &schema, &*self.dialect)?;
+        let create_sql = crate::reader::create_table_sql(name, &schema, self.dialect)?;
         self.new_query_statement(&mut conn, &create_sql)?
             .execute_update()
             .map_err(|e| GgsqlError::ReaderError(format!("ADBC execute_update CREATE: {}", e)))?;
@@ -746,7 +746,7 @@ where
     }
 
     fn dialect(&self) -> &dyn SqlDialect {
-        &*self.dialect
+        self.dialect
     }
 }
 

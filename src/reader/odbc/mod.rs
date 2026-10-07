@@ -273,7 +273,7 @@ impl Reader for OdbcReader {
     }
 
     fn dialect(&self) -> &dyn super::SqlDialect {
-        &*self.dialect
+        self.dialect
     }
 
     fn list_catalogs(&self) -> Result<Vec<String>> {
@@ -600,7 +600,7 @@ fn cursor_to_dataframe(
                 // length even — some Unicode drivers (Oracle) reject odd
                 // buffer lengths with HY090.
                 let size = if col_sizes[i] > 0 {
-                    (col_sizes[i] as usize)
+                    col_sizes[i]
                         .saturating_mul(4)
                         .clamp(DEFAULT_TEXT_BUF_SIZE, MAX_TEXT_BUF_SIZE)
                 } else {

@@ -146,31 +146,28 @@ mod tests {
     #[test]
     fn detects_from_dbms_name() {
         assert_type_name(
-            &*detect_dialect(Some("PostgreSQL"), None).unwrap(),
+            detect_dialect(Some("PostgreSQL"), None).unwrap(),
             Some("DOUBLE PRECISION"),
         );
+        assert_type_name(detect_dialect(Some("MySQL"), None).unwrap(), Some("DOUBLE"));
         assert_type_name(
-            &*detect_dialect(Some("MySQL"), None).unwrap(),
-            Some("DOUBLE"),
-        );
-        assert_type_name(
-            &*detect_dialect(Some("Microsoft SQL Server"), None).unwrap(),
+            detect_dialect(Some("Microsoft SQL Server"), None).unwrap(),
             Some("FLOAT"),
         );
         assert_type_name(
-            &*detect_dialect(Some("Snowflake"), None).unwrap(),
+            detect_dialect(Some("Snowflake"), None).unwrap(),
             Some("DOUBLE"),
         );
         assert_type_name(
-            &*detect_dialect(Some("Oracle"), None).unwrap(),
+            detect_dialect(Some("Oracle"), None).unwrap(),
             Some("BINARY_DOUBLE"),
         );
         assert_type_name(
-            &*detect_dialect(Some("ClickHouse"), None).unwrap(),
+            detect_dialect(Some("ClickHouse"), None).unwrap(),
             Some("Nullable(Float64)"),
         );
         assert_type_name(
-            &*detect_dialect(Some("Amazon Redshift"), None).unwrap(),
+            detect_dialect(Some("Amazon Redshift"), None).unwrap(),
             Some("DOUBLE PRECISION"),
         );
     }
@@ -178,11 +175,11 @@ mod tests {
     #[test]
     fn falls_through_to_driver_hint() {
         assert_type_name(
-            &*detect_dialect(Some("Unknown DBMS"), Some("PostgreSQL Unicode")).unwrap(),
+            detect_dialect(Some("Unknown DBMS"), Some("PostgreSQL Unicode")).unwrap(),
             Some("DOUBLE PRECISION"),
         );
         assert_type_name(
-            &*detect_dialect(None, Some("msodbcsql18")).unwrap(),
+            detect_dialect(None, Some("msodbcsql18")).unwrap(),
             Some("FLOAT"),
         );
     }
