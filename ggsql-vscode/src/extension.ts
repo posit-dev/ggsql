@@ -15,6 +15,8 @@ import { activateContextKeys } from './context';
 import { parseCells } from './cellParser';
 import { CELL_LANGUAGE_IDS, isGgsqlDocument } from './languages';
 import { activateSqlAssociationPrompt } from './sqlAssociation';
+import { ggsqlDataImporter } from './dataImporter';
+import * as path from 'path';
 
 // Output channel for logging
 const outputChannel = vscode.window.createOutputChannel('ggsql');
@@ -74,6 +76,28 @@ export function activate(context: vscode.ExtensionContext): void {
     }
 
     log(`Registered ${drivers.length} connection drivers`);
+
+    // Register the ggsql data importer for the Data Explorer import dialog.
+    // Requires positron API >= 0.2.9; skip on older Positron builds.
+    if (typeof positronApi.dataExplorer?.registerDataImporter === 'function') {
+        context.subscriptions.push(
+            positronApi.dataExplorer.registerDataImporter(ggsqlDataImporter)
+        );
+        log('Registered ggsql data importer');
+    } else {
+        log('positron.dataExplorer.registerDataImporter not available - skipping data importer');
+    }
+
+    // Register the bundled agent skill root so agents discover the ggsql skill.
+    // Requires positron API >= 0.2.9; skip on older Positron builds.
+    if (typeof positronApi.ai?.registerAgentSkillRoot === 'function') {
+        context.subscriptions.push(
+            positronApi.ai.registerAgentSkillRoot(path.join(context.extensionPath, 'skills'))
+        );
+        log('Registered ggsql agent skill root');
+    } else {
+        log('positron.ai.registerAgentSkillRoot not available - skipping agent skill root');
+    }
 
     // Register "Source Current File" command for the editor run button
     context.subscriptions.push(

@@ -1,5 +1,14 @@
 ## [Unreleased]
 
+### Added
+
+- The Positron extension now registers a ggsql data importer, so dragging a
+  csv/tsv/parquet/json file into Positron offers to generate the ggsql code
+  that loads it into a table, including any filters and sorts shown in the
+  Data Explorer (#536).
+- The Positron extension now registers a bundled agent skill, so agents
+  automatically discover how to write and run ggsql queries (#536).
+
 ### Fixed
 
 - Fixed a parser bug that interpreted comment characters inside string literals
