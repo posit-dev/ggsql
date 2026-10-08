@@ -9,9 +9,9 @@ use std::collections::{HashMap, HashSet};
 use super::format::resolve_column_properties;
 use super::spanner::{create_spanners, reorder_table_columns};
 use super::stub::{create_row_labels, create_stubhead, move_stub_columns};
-use super::{TableCell, TableCellKind, TableClass};
 use crate::array_util::value_to_string;
 use crate::plot::{Labels, Parameters};
+use crate::table::{count_cell_cols, count_cell_rows, TableCell, TableCellKind, TableClass};
 use crate::{ColumnSection, DataFrame, Format, GgsqlError, Result, Spanner};
 
 /// Pop the reserved `title`/`subtitle`/`caption` keys out of a `TABULATE`
@@ -142,26 +142,6 @@ fn rowbind(top: Section, mut bottom: Section) -> Section {
     cells.extend(bottom.cells);
 
     Section::new(rows, cells)
-}
-
-/// The row extent a set of cells implies — the highest `bottom` plus one,
-/// or `0` for no cells.
-pub(crate) fn count_cell_rows(cells: &[TableCell]) -> usize {
-    cells
-        .iter()
-        .map(|cell| cell.bottom)
-        .max()
-        .map_or(0, |r| r + 1)
-}
-
-/// The column extent a set of cells implies — the highest `right` plus one,
-/// or `0` for no cells.
-pub(crate) fn count_cell_cols(cells: &[TableCell]) -> usize {
-    cells
-        .iter()
-        .map(|cell| cell.right)
-        .max()
-        .map_or(0, |r| r + 1)
 }
 
 /// Build the title/subtitle heading rows (gt's `title_row`/`subtitle_row`),

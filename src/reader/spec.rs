@@ -2,9 +2,9 @@
 
 use std::collections::HashMap;
 
-use crate::execute::{count_cell_cols, count_cell_rows};
 use crate::naming;
 use crate::plot::Plot;
+use crate::table::{count_cell_cols, count_cell_rows};
 use crate::validate::ValidationWarning;
 use crate::{DataFrame, TableCell, TableColumn, TableRow};
 

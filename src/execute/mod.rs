@@ -24,13 +24,7 @@ mod table;
 pub use casting::TypeRequirement;
 pub use cte::CteDefinition;
 pub use schema::TypeInfo;
-pub use table::{
-    resolve_table_with_reader, TableCell, TableCellKind, TableClass, TableColumn, TableRow,
-};
-// Crate-internal only (not part of the public API): the row/column-extent-
-// from-cells helpers, needed by `writer::html` and
-// `reader::spec` as well as `table` itself.
-pub(crate) use table::{count_cell_cols, count_cell_rows};
+pub use table::{resolve_table_with_reader, TableColumn, TableRow};
 
 use crate::naming;
 use crate::parser;

@@ -2,8 +2,8 @@
 //! building their `StubHead`/`StubRowLabel` cells.
 
 use super::layout::TableColumn;
-use super::{TableCell, TableCellKind, TableClass};
 use crate::array_util::value_to_string;
+use crate::table::{TableCell, TableCellKind, TableClass};
 use crate::DataFrame;
 
 /// Move every STUB-targeted column to the front, preserving each group's

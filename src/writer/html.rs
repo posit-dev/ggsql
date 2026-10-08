@@ -24,8 +24,8 @@
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 
-use crate::execute::{count_cell_cols, count_cell_rows};
 use crate::plot::{ParameterValue, Parameters};
+use crate::table::{count_cell_cols, count_cell_rows};
 use crate::util::escape_html;
 use crate::writer::{Writer, WriterOptions};
 use crate::{
