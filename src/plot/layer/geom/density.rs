@@ -242,7 +242,7 @@ fn density_sql_bandwidth(
     };
 
     let quoted_value = dialect.quote_ident(value);
-    let __ggsql_qt__ = dialect.quote_ident("__ggsql_qt__");
+    let qt_alias = dialect.sql_table_alias("__ggsql_qt__");
     format!(
         "{with_recursive}
           bandwidth AS (
@@ -250,7 +250,7 @@ fn density_sql_bandwidth(
               {bw_expr} AS bw,{groups_select}
               MIN({value}) AS x_min,
               MAX({value}) AS x_max
-            FROM ({from}) AS {__ggsql_qt__}
+            FROM ({from}) {qt_alias}
             WHERE {value} IS NOT NULL{group_by}
           )",
         with_recursive = dialect.sql_with_recursive(),
@@ -386,11 +386,11 @@ fn build_data_cte(
     }
 
     let quoted_groups: Vec<String> = group_by.iter().map(|g| dialect.quote_ident(g)).collect();
-    let __ggsql_data__ = dialect.quote_ident("__ggsql_data__");
+    let data_alias = dialect.sql_table_alias("__ggsql_data__");
     format!(
         "data AS (
           SELECT {groups}{value} AS val{weight_col}{smooth_col}
-          FROM ({from}) AS {__ggsql_data__}
+          FROM ({from}) {data_alias}
           WHERE {filter_valid}
         )",
         groups = with_trailing_comma(&quoted_groups.join(", ")),
@@ -425,11 +425,17 @@ fn build_grid_cte(
 
     // Shared: x-coordinate formula. The `global_range` alias is a quoted
     // internal name: bare `global`/`groups` collide with reserved words
-    // (GLOBAL in T-SQL, GROUPS in MySQL 8.0.2+).
+    // (GLOBAL in T-SQL, GROUPS in MySQL 8.0.2+). The `seq` reference is quoted
+    // to match the quoted alias clause (quoted aliases are case-sensitive on
+    // Oracle, so a bare `seq.n` would not resolve).
     let global_alias = dialect.quote_ident("__ggsql_global__");
+    let global_alias_clause = dialect.sql_table_alias("__ggsql_global__");
+    let seq_ref = dialect.quote_ident("seq");
+    let seq_alias_clause = dialect.sql_table_alias("seq");
     let x_formula = format!(
-        "({g}.min - {g}.expansion) + (seq.n * (({g}.max - {g}.min) + 2 * {g}.expansion) / {n_points})",
+        "({g}.min - {g}.expansion) + ({seq}.n * (({g}.max - {g}.min) + 2 * {g}.expansion) / {n_points})",
         g = global_alias,
+        seq = seq_ref,
         n_points = n_points_minus_1
     );
 
@@ -440,24 +446,24 @@ fn build_grid_cte(
         format!(
             "grid AS (
           SELECT {x_formula} AS x
-          FROM global_range AS {global_alias}
-          CROSS JOIN {__ggsql_seq__} AS seq
+          FROM global_range {global_alias_clause}
+          CROSS JOIN {__ggsql_seq__} {seq_alias_clause}
         )",
             x_formula = x_formula
         )
     } else {
         let quoted_groups: Vec<String> = groups.iter().map(|g| dialect.quote_ident(g)).collect();
         let groups_str = quoted_groups.join(", ");
-        let groups_alias = dialect.quote_ident("__ggsql_groups__");
+        let groups_alias_clause = dialect.sql_table_alias("__ggsql_groups__");
         let cte_name = if tails.is_some() { "full_grid" } else { "grid" };
         format!(
             "{cte_name} AS (
           SELECT
             {groups},
             {x_formula} AS x
-          FROM global_range AS {global_alias}
-          CROSS JOIN {__ggsql_seq__} AS seq
-          CROSS JOIN (SELECT DISTINCT {groups} FROM bandwidth) AS {groups_alias}
+          FROM global_range {global_alias_clause}
+          CROSS JOIN {__ggsql_seq__} {seq_alias_clause}
+          CROSS JOIN (SELECT DISTINCT {groups} FROM bandwidth) {groups_alias_clause}
         )",
             cte_name = cte_name,
             groups = groups_str,
@@ -600,7 +606,7 @@ fn compute_density(
     let intensity_column = dialect.quote_ident(&naming::stat_column("intensity"));
     let density_column = dialect.quote_ident(&naming::stat_column("density"));
     let __norm = dialect.quote_ident("__norm");
-    let __ggsql_kde__ = dialect.quote_ident("__ggsql_kde__");
+    let kde_alias = dialect.sql_table_alias("__ggsql_kde__");
 
     format!(
         "{bandwidth_cte},
@@ -619,7 +625,7 @@ fn compute_density(
             SUM(data.weight) AS {__norm}
           {join_logic}
           {aggregation}
-        ) AS {__ggsql_kde__}",
+        ) {kde_alias}",
         bandwidth_cte = bandwidth_cte,
         data_cte = data_cte,
         grid_cte = grid_cte,
@@ -689,9 +695,9 @@ mod tests {
           FROM bandwidth
         ),
         grid AS (
-          SELECT ("__ggsql_global__".min - "__ggsql_global__".expansion) + (seq.n * (("__ggsql_global__".max - "__ggsql_global__".min) + 2 * "__ggsql_global__".expansion) / 511) AS x
+          SELECT ("__ggsql_global__".min - "__ggsql_global__".expansion) + ("seq".n * (("__ggsql_global__".max - "__ggsql_global__".min) + 2 * "__ggsql_global__".expansion) / 511) AS x
           FROM global_range AS "__ggsql_global__"
-          CROSS JOIN "__ggsql_seq__" AS seq
+          CROSS JOIN "__ggsql_seq__" AS "seq"
         )
         SELECT
           "__ggsql_stat_x",
@@ -777,9 +783,9 @@ mod tests {
         grid AS (
           SELECT
             "region", "category",
-            ("__ggsql_global__".min - "__ggsql_global__".expansion) + (seq.n * (("__ggsql_global__".max - "__ggsql_global__".min) + 2 * "__ggsql_global__".expansion) / 511) AS x
+            ("__ggsql_global__".min - "__ggsql_global__".expansion) + ("seq".n * (("__ggsql_global__".max - "__ggsql_global__".min) + 2 * "__ggsql_global__".expansion) / 511) AS x
           FROM global_range AS "__ggsql_global__"
-          CROSS JOIN "__ggsql_seq__" AS seq
+          CROSS JOIN "__ggsql_seq__" AS "seq"
           CROSS JOIN (SELECT DISTINCT "region", "category" FROM bandwidth) AS "__ggsql_groups__"
         )
         SELECT

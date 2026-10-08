@@ -165,7 +165,6 @@ impl ConnUri {
     }
 
     /// Cache-config overrides from the URI's `cache_*` keys.
-    #[cfg(any(feature = "duckdb", feature = "sqlite"))]
     pub fn cache_config_override(&self) -> crate::reader::cache::CacheConfigOverride {
         use crate::reader::cache::{parse_human_bytes, CacheConfigOverride};
 
@@ -186,11 +185,10 @@ impl ConnUri {
 }
 
 /// Map a cache-backend scheme to its in-memory connection URI.
-#[cfg(any(feature = "duckdb", feature = "sqlite"))]
 fn cache_uri(scheme: &str) -> Result<&'static str> {
     match scheme {
         "duckdb" => Ok("duckdb://memory"),
-        "sqlite" => Ok("sqlite://memory"),
+        "sqlite" => Ok("sqlite://:memory:"),
         "datafusion" => Ok("datafusion://"),
         _ => Err(GgsqlError::ReaderError(format!(
             "Unsupported cache backend '{}'. Supported: duckdb, sqlite, datafusion",
@@ -497,30 +495,30 @@ fn synthesize_odbc_conn_str(
 /// [`CachingReader`]: crate::reader::CachingReader
 pub fn reader_from_uri(uri: &str) -> Result<Box<dyn Reader + Send>> {
     if let Some((primary_uri, cache_scheme)) = split_cache_uri(uri) {
-        #[cfg(any(feature = "duckdb", feature = "sqlite"))]
-        {
-            use crate::reader::cache::CacheConfig;
-
-            let conn = ConnUri::parse(&primary_uri)?;
-            let config = CacheConfig::from_env().merge(conn.cache_config_override());
-            let primary_uri = conn.to_uri();
-            let primary = build_reader_parsed(&conn, &primary_uri)?;
-            let cache = build_reader(cache_uri(&cache_scheme)?)?;
-            return Ok(Box::new(crate::reader::CachingReader::with_config(
-                primary,
-                cache,
-                primary_uri,
-                cache_scheme,
-                config,
-            )));
-        }
+        // DuckDB/SQLite caches need their cargo feature; the datafusion cache
+        // comes through ADBC and works without either.
         #[cfg(not(any(feature = "duckdb", feature = "sqlite")))]
-        {
-            let _ = (&primary_uri, &cache_scheme);
+        if cache_scheme != "datafusion" {
+            let _ = &primary_uri;
             return Err(GgsqlError::ReaderError(
                 "Caching layer requires the duckdb or sqlite feature".to_string(),
             ));
         }
+
+        use crate::reader::cache::CacheConfig;
+
+        let conn = ConnUri::parse(&primary_uri)?;
+        let config = CacheConfig::from_env().merge(conn.cache_config_override());
+        let primary_uri = conn.to_uri();
+        let primary = build_reader_parsed(&conn, &primary_uri)?;
+        let cache = build_reader(cache_uri(&cache_scheme)?)?;
+        return Ok(Box::new(crate::reader::CachingReader::with_config(
+            primary,
+            cache,
+            primary_uri,
+            cache_scheme,
+            config,
+        )));
     }
     let conn = ConnUri::parse(uri)?;
     let reader = build_reader_parsed(&conn, uri)?;

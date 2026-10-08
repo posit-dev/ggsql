@@ -935,7 +935,8 @@ fn needs_row_position(
 }
 
 /// Build the single-row `WITH src AS (<query>) SELECT <group cols>, <agg exprs>
-/// FROM src AS "__ggsql_qt__" GROUP BY <group cols>` query. Each aggregated
+/// FROM src <alias> GROUP BY <group cols>` query (the alias clause is the
+/// dialect's). Each aggregated
 /// aesthetic's function list is length 1 here.
 ///
 /// Percentile/iqr aggregates go through `dialect.sql_quantile()`.
@@ -945,7 +946,7 @@ fn build_group_by_query(
     group_cols: &[String],
     dialect: &dyn SqlDialect,
 ) -> String {
-    let outer_alias = dialect.quote_ident("__ggsql_qt__");
+    let outer_alias = dialect.sql_table_alias("__ggsql_qt__");
     let (with_clause, src_alias) = source_cte_chain(query, aggregated, group_cols, dialect);
 
     let group_select: Vec<String> = group_cols.iter().map(|c| dialect.quote_ident(c)).collect();
@@ -971,7 +972,7 @@ fn build_group_by_query(
     }
 
     format!(
-        "{with_clause} SELECT {sel} FROM {src} AS {outer}{gb}",
+        "{with_clause} SELECT {sel} FROM {src} {outer}{gb}",
         sel = select_parts.join(", "),
         src = src_alias,
         outer = outer_alias,
@@ -990,7 +991,7 @@ fn build_aggregate_query(
     labels: &[String],
     dialect: &dyn SqlDialect,
 ) -> String {
-    let outer_alias = dialect.quote_ident("__ggsql_qt__");
+    let outer_alias = dialect.sql_table_alias("__ggsql_qt__");
     let (with_clause, src_alias) = source_cte_chain(query, aggregated, group_cols, dialect);
 
     let group_select: Vec<String> = group_cols.iter().map(|c| dialect.quote_ident(c)).collect();
@@ -1028,7 +1029,7 @@ fn build_aggregate_query(
             ));
 
             format!(
-                "SELECT {} FROM {} AS {}{}",
+                "SELECT {} FROM {} {}{}",
                 select_parts.join(", "),
                 src_alias,
                 outer_alias,

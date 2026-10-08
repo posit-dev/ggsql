@@ -910,7 +910,6 @@ pub mod odbc;
 #[cfg(feature = "adbc")]
 pub mod adbc;
 
-#[cfg(any(feature = "duckdb", feature = "sqlite"))]
 pub mod cache;
 
 #[cfg(all(test, feature = "duckdb", feature = "sqlite"))]
@@ -934,7 +933,6 @@ pub use odbc::OdbcReader;
 #[cfg(feature = "adbc")]
 pub use adbc::AdbcReader;
 
-#[cfg(any(feature = "duckdb", feature = "sqlite"))]
 pub use cache::CachingReader;
 
 // ============================================================================

@@ -348,7 +348,7 @@ fn expand_rect_to_polygon(
     ));
 
     let sql = crate::sql::Select::new(dialect)
-        .select(select_parts.join(", "))
+        .select_items(&select_parts)
         .from_aliased(&numbered, "__ggsql_rect__")
         .join_raw(&format!("CROSS JOIN {corners_table} {__ggsql_corners__}"))
         .build();

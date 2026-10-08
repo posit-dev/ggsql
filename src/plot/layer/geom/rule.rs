@@ -304,7 +304,7 @@ fn expand_rule_to_segment(
 
     let __ggsql_vertices__ = dialect.quote_ident("__ggsql_vertices__");
     let sql = crate::sql::Select::new(dialect)
-        .select(select_parts.join(", "))
+        .select_items(&select_parts)
         .from_aliased(&numbered, "__ggsql_rule__")
         .join_raw(&format!("CROSS JOIN {vertices_table} {__ggsql_vertices__}"))
         .build();
