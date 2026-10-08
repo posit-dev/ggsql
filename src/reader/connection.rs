@@ -39,22 +39,31 @@ pub fn split_cache_uri(uri: &str) -> Option<(String, String)> {
 /// URI parsing or option map — drivers reject unknown keys.
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct GgsqlParams {
-    /// `cache=off`: opt out of the automatic caching layer.
+    /// Whether the connection opts out of the *automatic* caching layer
+    /// (`cache=off`): no `CachingReader` wrap when the backend cannot host
+    /// ggsql's internal tables. An explicit `<cache>+<primary>://` URI is
+    /// unaffected.
     pub cache_off: bool,
-    /// `reader=odbc`: force the ODBC path over ADBC.
+    /// Forced reader kind (`reader=native|adbc|odbc`); `None` lets dispatch
+    /// pick in its default preference order.
     pub reader: Option<String>,
-    /// `dialect=<scheme|ansi>`: pin the SQL dialect explicitly — the escape
-    /// hatch for backends ggsql doesn't recognise.
+    /// Explicit SQL-dialect pin (`dialect=<scheme|ansi>`), bypassing backend
+    /// detection — the escape hatch for backends ggsql doesn't recognise.
     pub dialect: Option<String>,
-    /// `cache_ttl=<secs>`: raw value; parsed by
+    /// Maximum age of a cache entry in seconds before it counts as a miss
+    /// (`cache_ttl=<secs>`). Raw string; parsed by
     /// [`ConnUri::cache_config_override`].
     pub cache_ttl: Option<String>,
-    /// `cache_max_bytes=<n|1MB|…>`: raw value.
+    /// Maximum total bytes of cached results before least-recently-used
+    /// entries are evicted (`cache_max_bytes=<n|512mb|1gb|…>`). Raw string;
+    /// parsed by [`ConnUri::cache_config_override`].
     pub cache_max_bytes: Option<String>,
-    /// `cache_disabled=1|true|yes`.
+    /// Whether the cache is disabled through the cache config
+    /// (`cache_disabled=1|true|yes`) — the cache reader still wraps the
+    /// connection but never serves from memory, unlike `cache_off`.
     pub cache_disabled: Option<bool>,
-    /// `stmt.<key>=<value>` params (prefix stripped): driver *statement*
-    /// options, applied to every statement the reader creates.
+    /// Driver *statement* options from `stmt.<key>=<value>` params (prefix
+    /// stripped), applied to every statement the reader creates.
     pub stmt_options: Vec<(String, String)>,
 }
 

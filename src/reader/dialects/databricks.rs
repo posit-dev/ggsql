@@ -24,11 +24,10 @@ impl SqlDialect for DatabricksDialect {
         format!("`{}`", name.replace('`', "``"))
     }
 
-    // Note: Spark treats double quotes as string literals, and SQL warehouses
+    // Spark treats double quotes as string literals, and SQL warehouses
     // reject `SET spark.sql.ansi.doubleQuotedIdentifiers` ("Configuration ...
-    // is not available"), so the MySQL-style session-init fix was never
-    // available here — ggsql-internal identifiers reach this dialect through
-    // `quote_ident` at every emission site instead.
+    // is not available"), so ggsql-internal identifiers reach this dialect
+    // through `quote_ident` at every emission site.
 
     fn sql_generate_series(&self, n: usize) -> String {
         // Spark rejects a generator nested inside another expression

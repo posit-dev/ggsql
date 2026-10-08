@@ -144,6 +144,18 @@ pub trait SqlDialect {
     /// opt-in means an unsupported backend fails fast with a clear "spatial
     /// not supported on this backend" error rather than emitting spatial SQL
     /// it cannot run. Dialects opt in by returning `true`.
+    ///
+    /// Opting in commits the dialect to the whole `sql_st_*` surface below —
+    /// predicates, validity repair, collection extraction, SRID handling —
+    /// plus [`sql_spatial_setup`] when an extension must be loaded first.
+    /// The demanding requirement is reprojection ([`sql_st_transform`]):
+    /// several backends ship geometry types and predicates but no CRS
+    /// transforms, and rendering a map in the wrong CRS is worse than
+    /// refusing to render one, so those backends keep returning `false`
+    /// even though basic spatial SQL would run.
+    ///
+    /// [`sql_spatial_setup`]: SqlDialect::sql_spatial_setup
+    /// [`sql_st_transform`]: SqlDialect::sql_st_transform
     fn supports_spatial(&self) -> bool {
         false
     }
@@ -788,6 +800,8 @@ pub enum TempTableStyle {
     SelectInto,
 }
 
+/// Emulate `GENERATE_SERIES(0, n - 1)` for backends that lack it.
+///
 /// Cube-root-decomposed recursive series CTE: recurses only ~cbrt(n) times,
 /// then cross-joins three copies to cover the full range. Shared by the
 /// default [`SqlDialect::sql_generate_series`] and dialects that differ only

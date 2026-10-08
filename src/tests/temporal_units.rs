@@ -1,8 +1,8 @@
 //! Temporal columns typed Timestamp (not Date32) through the battery's
 //! temporal cases. Oracle's ODBC driver surfaces DATE as SQL_TYPE_TIMESTAMP,
-//! so this is the shape the Oracle live leg trains scales on; a binned scale
-//! with `VIA date` used to feed microseconds to day-based break math and
-//! panic in chrono::Duration::days.
+//! so this is the shape the Oracle live leg trains scales on. The pinned
+//! failure mode: a binned scale with `VIA date` feeding microseconds to
+//! day-based break math panics in chrono::Duration::days.
 #![cfg(feature = "duckdb")]
 
 use ggsql::reader::connection::reader_from_uri;

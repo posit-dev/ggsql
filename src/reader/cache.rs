@@ -24,11 +24,14 @@ use std::time::{SystemTime, UNIX_EPOCH};
 /// Runtime configuration for the result memo: TTL and LRU byte-budget.
 #[derive(Debug, Clone)]
 pub struct CacheConfig {
-    /// When `false`, reads always hit the primary.
+    /// Master switch: when `false`, reads always hit the primary and nothing
+    /// is served from or stored in the cache.
     pub enabled: bool,
-    /// Entries older than this are treated as misses and re-fetched.
+    /// Maximum age of a cached entry in seconds; older entries count as
+    /// misses and are re-fetched from the primary.
     pub ttl_secs: u64,
-    /// Cumulative byte budget across all memo entries before LRU eviction.
+    /// Maximum total bytes of cached results across all entries; exceeding
+    /// the budget evicts least-recently-used entries.
     pub max_bytes: u64,
 }
 

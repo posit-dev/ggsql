@@ -44,10 +44,10 @@ impl SqlDialect for DataFusionDialect {
     }
 
     /// DataFusion's physical planner rejects a correlated scalar subquery in
-    /// projection outright ("Physical plan does not support logical
-    /// expression ScalarSubquery"), so the default construction fails. Every
-    /// caller embeds this in a `GROUP BY {groups}` query over `from`, so the
-    /// native approximate aggregate is equivalent — and far cheaper.
+    /// projection ("Physical plan does not support logical expression
+    /// ScalarSubquery"). Every caller embeds this in a `GROUP BY {groups}`
+    /// query over `from`, where the native approximate aggregate is
+    /// equivalent.
     fn sql_quantile(&self, column: &str, fraction: f64, _from: &str, _groups: &[String]) -> String {
         format!(
             "approx_percentile_cont({}, {fraction})",

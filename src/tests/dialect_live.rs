@@ -706,7 +706,7 @@ fn live_datafusion_as_cache() {
         .unwrap_or(false));
 
     // Empty results must round-trip through the cache too: the fill pass
-    // registers a zero-row frame, which ADBC readers used to reject.
+    // registers a zero-row frame, exercising the readers' empty-batch path.
     let empty_query = "VISUALISE DRAW point MAPPING id AS x, val AS y FROM t FILTER id > 100";
     let first = reader
         .execute(empty_query)
