@@ -656,9 +656,9 @@ impl ScaleTypeTrait for Binned {
                 // For temporal columns, format break values as ISO strings with CAST
                 if let Some(t) = transform {
                     let type_name = match t.transform_kind() {
-                        TransformKind::Date => dialect.date_type_name(),
-                        TransformKind::DateTime => dialect.datetime_type_name(),
-                        TransformKind::Time => dialect.time_type_name(),
+                        TransformKind::Date => dialect.type_names().date,
+                        TransformKind::DateTime => dialect.type_names().datetime,
+                        TransformKind::Time => dialect.type_names().time,
                         _ => None,
                     };
 

@@ -149,10 +149,10 @@ mod tests {
     #[test]
     fn type_names_map_to_storage_classes() {
         let d = SqliteDialect;
-        assert_eq!(d.number_type_name(), Some("REAL"));
-        assert_eq!(d.date_type_name(), Some("TEXT"));
-        assert_eq!(d.datetime_type_name(), Some("TEXT"));
-        assert_eq!(d.boolean_type_name(), Some("INTEGER"));
+        assert_eq!(d.type_names().number, Some("REAL"));
+        assert_eq!(d.type_names().date, Some("TEXT"));
+        assert_eq!(d.type_names().datetime, Some("TEXT"));
+        assert_eq!(d.type_names().boolean, Some("INTEGER"));
     }
 
     #[test]

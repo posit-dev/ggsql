@@ -54,9 +54,9 @@ mod tests {
 
     #[test]
     fn unsupported_types_are_none() {
-        assert_eq!(DruidDialect.date_type_name(), None);
-        assert_eq!(DruidDialect.time_type_name(), None);
-        assert_eq!(DruidDialect.boolean_type_name(), None);
+        assert_eq!(DruidDialect.type_names().date, None);
+        assert_eq!(DruidDialect.type_names().time, None);
+        assert_eq!(DruidDialect.type_names().boolean, None);
         assert!(!DruidDialect.supports_spatial());
     }
 }

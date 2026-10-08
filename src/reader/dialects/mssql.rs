@@ -165,7 +165,7 @@ mod tests {
 
     #[test]
     fn booleans_are_bit_literals() {
-        assert_eq!(MssqlDialect.boolean_type_name(), Some("BIT"));
+        assert_eq!(MssqlDialect.type_names().boolean, Some("BIT"));
         assert_eq!(MssqlDialect.sql_boolean_literal(true), "1");
     }
 

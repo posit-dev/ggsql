@@ -100,7 +100,7 @@ impl SqlDialect for DuckDbDialect {
             C::Date => format!("({expr} - DATE '1970-01-01')"),
             C::DateTime => format!("EPOCH_US({expr})"),
             _ => {
-                let ty = self.number_type_name().unwrap_or("DOUBLE");
+                let ty = self.type_names().number.unwrap_or("DOUBLE");
                 self.sql_cast(expr, ty)
             }
         }

@@ -95,7 +95,7 @@ mod tests {
 
     #[test]
     fn varchar_has_length() {
-        assert_eq!(ExasolDialect.string_type_name(), Some("VARCHAR(2000000)"));
+        assert_eq!(ExasolDialect.type_names().string, Some("VARCHAR(2000000)"));
     }
 
     #[test]
@@ -115,7 +115,7 @@ mod tests {
 
     #[test]
     fn time_is_stored_as_varchar() {
-        assert_eq!(ExasolDialect.time_type_name(), Some("VARCHAR(32)"));
+        assert_eq!(ExasolDialect.type_names().time, Some("VARCHAR(32)"));
         let ns = 3723 * 1_000_000_000_i64 + 456_789_000;
         assert_eq!(ExasolDialect.sql_time_literal(ns), "'01:02:03.456789'");
     }
