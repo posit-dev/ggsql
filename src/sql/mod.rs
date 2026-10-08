@@ -402,10 +402,7 @@ impl<'d, D: SqlDialect + ?Sized> Select<'d, D> {
         let trimmed = match from {
             FromItem::Table(t) => return t.trim().to_string(),
             FromItem::Raw(r) => return r.trim().to_string(),
-            FromItem::Fragment(f) => {
-                let f = f.trim();
-                return f.to_string();
-            }
+            FromItem::Fragment(f) => return f.trim().to_string(),
             FromItem::Query(q) => q.trim(),
         };
         if !self.dialect.allows_cte_in_derived_table() {
