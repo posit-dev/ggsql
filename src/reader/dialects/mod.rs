@@ -143,6 +143,40 @@ mod tests {
         assert_eq!(d.type_names().number, expected);
     }
 
+    /// Evaluate the CASE emulations against DuckDB's native
+    /// `GREATEST`/`LEAST` so the left-folded chain is checked as executed
+    /// SQL, not just as a string.
+    #[cfg(feature = "duckdb")]
+    #[test]
+    fn case_greatest_least_evaluate_like_native() {
+        use crate::array_util::as_f64;
+        use crate::reader::Reader;
+
+        let reader =
+            crate::reader::DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        let cases: &[&[&str]] = &[
+            &["1.0", "2.0", "3.0"],
+            &["3.5", "-2.0", "0.25"],
+            &["10.0", "10.0", "10.0"],
+            &["-1.5", "-20.0", "-3.25"],
+            &["0.0", "-0.0"],
+        ];
+        for exprs in cases {
+            let list = exprs.join(", ");
+            for (emulated, native) in [
+                (case_greatest(exprs), format!("GREATEST({list})")),
+                (case_least(exprs), format!("LEAST({list})")),
+            ] {
+                let df = reader
+                    .execute_sql(&format!("SELECT {emulated} AS emu, {native} AS nat"))
+                    .unwrap();
+                let emu = as_f64(df.column("emu").unwrap()).unwrap().value(0);
+                let nat = as_f64(df.column("nat").unwrap()).unwrap().value(0);
+                assert_eq!(emu, nat, "emulated {emulated} != native {native}");
+            }
+        }
+    }
+
     #[test]
     fn detects_from_dbms_name() {
         assert_type_name(

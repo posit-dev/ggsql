@@ -186,7 +186,10 @@ mod tests {
     #[test]
     fn test_rewrite_namespaced_sql_no_change() {
         let sql = "SELECT * FROM regular_table WHERE x > 5";
-        assert_eq!(rewrite_namespaced_sql(sql, &crate::reader::AnsiDialect).unwrap(), sql);
+        assert_eq!(
+            rewrite_namespaced_sql(sql, &crate::reader::AnsiDialect).unwrap(),
+            sql
+        );
     }
 
     #[test]

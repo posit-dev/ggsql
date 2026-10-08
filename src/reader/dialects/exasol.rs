@@ -1,8 +1,12 @@
 //! Exasol dialect.
 //!
-//! Exasol is close to ANSI. Although the database implements the OGC `ST_`
-//! spatial surface natively, spatial is not enabled here —
-//! `supports_spatial()` keeps the `false` default. Main deviations:
+//! Exasol is close to ANSI. Spatial stays disabled (`supports_spatial()`
+//! keeps the `false` default) even though the database implements the OGC
+//! `ST_` surface natively: enabling it requires verifying the whole
+//! `sql_st_*` contract against a live instance — above all reprojection
+//! (`ST_Transform` availability and CRS handling), which the spatial tests
+//! have not covered here. Enabling it is a follow-up once that verification
+//! happens. Main deviations:
 //! `VARCHAR` requires a length, there is no SQL
 //! `TIME` type (time values are stored as `VARCHAR(32)`, mirroring the
 //! `SqliteDialect` precedent), date/timestamp literals use `ADD_DAYS` /

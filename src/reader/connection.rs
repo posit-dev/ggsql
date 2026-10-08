@@ -101,30 +101,30 @@ impl ConnUri {
                 continue;
             }
             let (key, value) = match segment.split_once('=') {
-                Some((k, v)) => (k, Some(v)),
+                Some((k, v)) => (k, Some(v.to_string())),
                 None => (segment, None),
             };
             match key.to_ascii_lowercase().as_str() {
                 "cache" => {
                     ggsql.cache_off = value.is_some_and(|v| v.trim().eq_ignore_ascii_case("off"))
                 }
-                "cache_ttl" => ggsql.cache_ttl = value.map(|v| v.to_string()),
-                "cache_max_bytes" => ggsql.cache_max_bytes = value.map(|v| v.to_string()),
+                "cache_ttl" => ggsql.cache_ttl = value,
+                "cache_max_bytes" => ggsql.cache_max_bytes = value,
                 "cache_disabled" => {
                     ggsql.cache_disabled = value.map(|v| {
                         matches!(v.trim().to_ascii_lowercase().as_str(), "1" | "true" | "yes")
                     })
                 }
-                "reader" => ggsql.reader = value.map(|v| v.to_string()),
-                "dialect" => ggsql.dialect = value.map(|v| v.to_string()),
+                "reader" => ggsql.reader = value,
+                "dialect" => ggsql.dialect = value,
                 _ if key.starts_with("stmt.") => {
                     if let Some(v) = value {
                         ggsql
                             .stmt_options
-                            .push((key["stmt.".len()..].to_string(), v.to_string()));
+                            .push((key["stmt.".len()..].to_string(), v));
                     }
                 }
-                _ => params.push((key.to_string(), value.map(|v| v.to_string()))),
+                _ => params.push((key.to_string(), value)),
             }
         }
 
