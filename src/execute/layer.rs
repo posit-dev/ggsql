@@ -379,7 +379,12 @@ pub fn apply_pre_stat_transform(
         })
         .collect();
 
-    crate::sql::select_from(dialect, &select_exprs.join(", "), crate::sql::FromItem::Query(query), "__ggsql_pre__")
+    crate::sql::select_from(
+        dialect,
+        &select_exprs.join(", "),
+        crate::sql::FromItem::Query(query),
+        "__ggsql_pre__",
+    )
 }
 
 /// Part 1: Build the initial layer query with SELECT, casts, filters, and aesthetic renames.
@@ -696,7 +701,10 @@ where
             } else {
                 crate::sql::Select::new(dialect)
                     .select_star_plus(&stat_rename_exprs, "__ggsql_stat__")
-                    .from_aliased(crate::sql::FromItem::Query(&transformed_query), "__ggsql_stat__")
+                    .from_aliased(
+                        crate::sql::FromItem::Query(&transformed_query),
+                        "__ggsql_stat__",
+                    )
                     .build()
             }
         }

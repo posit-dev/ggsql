@@ -250,7 +250,12 @@ fn expand_rule_to_segment(
     let scalar_bbox = |col: &str| {
         format!(
             "({})",
-            crate::sql::select_from(dialect, col, crate::sql::FromItem::Query(bbox_expr), "__ggsql_bbox__")
+            crate::sql::select_from(
+                dialect,
+                col,
+                crate::sql::FromItem::Query(bbox_expr),
+                "__ggsql_bbox__"
+            )
         )
     };
     let (fixed_expr, span_expr) = if has_pos1 {
@@ -305,7 +310,8 @@ fn expand_rule_to_segment(
     let __ggsql_vertices__ = dialect.quote_ident("__ggsql_vertices__");
     let sql = crate::sql::Select::new(dialect)
         .select_items(&select_parts)
-        .from_aliased(crate::sql::FromItem::Query(&numbered), "__ggsql_rule__")        .join_raw(&format!("CROSS JOIN {vertices_table} {__ggsql_vertices__}"))
+        .from_aliased(crate::sql::FromItem::Query(&numbered), "__ggsql_rule__")
+        .join_raw(&format!("CROSS JOIN {vertices_table} {__ggsql_vertices__}"))
         .build();
 
     let mut out_columns: Vec<String> = passthrough_cols.into_iter().cloned().collect();

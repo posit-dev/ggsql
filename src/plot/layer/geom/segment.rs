@@ -148,7 +148,8 @@ fn expand_segment_to_vertices(
     let __ggsql_vertices__ = dialect.quote_ident("__ggsql_vertices__");
     let sql = crate::sql::Select::new(dialect)
         .select_items(&select_parts)
-        .from_aliased(crate::sql::FromItem::Query(&numbered), "__ggsql_seg__")        .join_raw(&format!("CROSS JOIN {vertices_table} {__ggsql_vertices__}"))
+        .from_aliased(crate::sql::FromItem::Query(&numbered), "__ggsql_seg__")
+        .join_raw(&format!("CROSS JOIN {vertices_table} {__ggsql_vertices__}"))
         .build();
 
     let mut out_columns: Vec<String> = passthrough_cols.into_iter().cloned().collect();

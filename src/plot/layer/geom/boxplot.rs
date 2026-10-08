@@ -432,9 +432,24 @@ mod tests {
             &AnsiDialect,
         );
 
-        let q1 = AnsiDialect.sql_quantile("price", 0.25, crate::sql::FromItem::Query("SELECT * FROM sales"), &groups);
-        let median = AnsiDialect.sql_quantile("price", 0.50, crate::sql::FromItem::Query("SELECT * FROM sales"), &groups);
-        let q3 = AnsiDialect.sql_quantile("price", 0.75, crate::sql::FromItem::Query("SELECT * FROM sales"), &groups);
+        let q1 = AnsiDialect.sql_quantile(
+            "price",
+            0.25,
+            crate::sql::FromItem::Query("SELECT * FROM sales"),
+            &groups,
+        );
+        let median = AnsiDialect.sql_quantile(
+            "price",
+            0.50,
+            crate::sql::FromItem::Query("SELECT * FROM sales"),
+            &groups,
+        );
+        let q3 = AnsiDialect.sql_quantile(
+            "price",
+            0.75,
+            crate::sql::FromItem::Query("SELECT * FROM sales"),
+            &groups,
+        );
         let expected = format!(
             r#"SELECT *,
                  GREATEST(q1 - 1.5 * (q3 - q1), min) AS lower,
@@ -466,9 +481,24 @@ mod tests {
             &AnsiDialect,
         );
 
-        let q1 = AnsiDialect.sql_quantile("revenue", 0.25, crate::sql::FromItem::Query("SELECT * FROM data"), &groups);
-        let median = AnsiDialect.sql_quantile("revenue", 0.50, crate::sql::FromItem::Query("SELECT * FROM data"), &groups);
-        let q3 = AnsiDialect.sql_quantile("revenue", 0.75, crate::sql::FromItem::Query("SELECT * FROM data"), &groups);
+        let q1 = AnsiDialect.sql_quantile(
+            "revenue",
+            0.25,
+            crate::sql::FromItem::Query("SELECT * FROM data"),
+            &groups,
+        );
+        let median = AnsiDialect.sql_quantile(
+            "revenue",
+            0.50,
+            crate::sql::FromItem::Query("SELECT * FROM data"),
+            &groups,
+        );
+        let q3 = AnsiDialect.sql_quantile(
+            "revenue",
+            0.75,
+            crate::sql::FromItem::Query("SELECT * FROM data"),
+            &groups,
+        );
         let expected = format!(
             r#"SELECT *,
                  GREATEST(q1 - 1.5 * (q3 - q1), min) AS lower,

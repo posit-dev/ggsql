@@ -458,10 +458,25 @@ fn simple_stat_sql_quantile(
     group_cols: &[String],
 ) -> String {
     if let Some(frac) = percentile_fraction(name) {
-        return dialect.sql_quantile(raw_col, frac, crate::sql::FromItem::Table(src_alias), group_cols);
+        return dialect.sql_quantile(
+            raw_col,
+            frac,
+            crate::sql::FromItem::Table(src_alias),
+            group_cols,
+        );
     }
-    let p75 = dialect.sql_quantile(raw_col, 0.75, crate::sql::FromItem::Table(src_alias), group_cols);
-    let p25 = dialect.sql_quantile(raw_col, 0.25, crate::sql::FromItem::Table(src_alias), group_cols);
+    let p75 = dialect.sql_quantile(
+        raw_col,
+        0.75,
+        crate::sql::FromItem::Table(src_alias),
+        group_cols,
+    );
+    let p25 = dialect.sql_quantile(
+        raw_col,
+        0.25,
+        crate::sql::FromItem::Table(src_alias),
+        group_cols,
+    );
     format!("({} - {})", p75, p25)
 }
 
