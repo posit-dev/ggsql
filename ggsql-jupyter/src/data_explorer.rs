@@ -417,7 +417,7 @@ impl DataExplorerState {
         if wants_summary {
             match display {
                 "integer" | "floating" => {
-                    let float_type = dialect.number_type_name().unwrap_or("DOUBLE PRECISION");
+                    let float_type = dialect.type_names().number.unwrap_or("DOUBLE PRECISION");
                     select_parts.push(format!("MIN({}) AS \"min_val\"", quoted_col));
                     select_parts.push(format!("MAX({}) AS \"max_val\"", quoted_col));
                     select_parts.push(format!(
@@ -660,7 +660,7 @@ impl DataExplorerState {
         }
 
         let dialect = reader.dialect();
-        let float_type = dialect.number_type_name().unwrap_or("DOUBLE PRECISION");
+        let float_type = dialect.type_names().number.unwrap_or("DOUBLE PRECISION");
         let quoted_col = ggsql::naming::quote_ident(&col.name);
         let is_integer = col.type_display == "integer";
 
