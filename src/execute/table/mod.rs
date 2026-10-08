@@ -11,8 +11,6 @@ mod layout;
 mod spanner;
 mod stub;
 
-pub use layout::{TableColumn, TableRow};
-
 use format::{apply_formats, setup_formats};
 use layout::{build_cells, extract_heading_labels, setup_columns};
 

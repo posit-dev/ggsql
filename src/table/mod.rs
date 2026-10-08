@@ -10,7 +10,7 @@
 mod layout;
 
 pub(crate) use layout::{count_cell_cols, count_cell_rows, standardise_hjust};
-pub use layout::{TableCell, TableCellKind, TableClass};
+pub use layout::{TableCell, TableCellKind, TableClass, TableColumn, TableRow};
 
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};

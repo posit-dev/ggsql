@@ -1,6 +1,7 @@
 //! Resolved table layout vocabulary: the positioned `TableCell`, its
 //! `TableCellKind`, and the writer-neutral `TableClass` style classes.
 
+use super::ColumnSection;
 use crate::params::Parameters;
 use crate::plot::ParameterValue;
 
@@ -289,6 +290,59 @@ impl TableCell {
     /// are inclusive.
     pub fn height(&self) -> usize {
         self.bottom - self.top + 1
+    }
+}
+
+/// One column's identity within a table layout: its source name and
+/// resolved display label/properties, as resolved by
+/// `create_table_columns`.
+#[derive(Debug, Clone)]
+pub struct TableColumn {
+    /// The column's name in the resolved `DataFrame` — used to look its
+    /// values up in `create_body`, independent of display order.
+    pub name: String,
+    /// The resolved `ColumnLabel` cell content for this column.
+    pub label: String,
+    /// Resolved `SETTING` properties for this column's cells (e.g. `hjust`),
+    /// carried onto every `ColumnLabel`/`Body` cell in this column. A
+    /// writer wanting a whole-column property (e.g. `width`) reads it here
+    /// instead of the same value repeated across the column's cells.
+    pub properties: Parameters,
+    /// Which section of the table this column belongs to (`FORMAT`'s
+    /// `BODY`/`STUB` target, `Body` if no `FORMAT` clause named it).
+    pub target: ColumnSection,
+}
+
+impl TableColumn {
+    /// Whether this column is a `TABULATE FORMAT STUB` column.
+    pub fn is_stub(&self) -> bool {
+        self.target.is_stub()
+    }
+}
+
+/// One row's resolved properties within a table layout. `classes` carries
+/// row-scoped classes (e.g. `Heading`, `ColHeadingRow`) that belong on the
+/// enclosing `<tr>` rather than on any cell.
+#[derive(Debug, Clone, Default)]
+pub struct TableRow {
+    /// Resolved properties for this row's cells.
+    pub properties: Parameters,
+    /// Style classes recorded at build time (see `TableClass`) — row-scoped
+    /// ones, e.g. `Heading`. Ordered, like `TableCell::classes`.
+    pub classes: Vec<TableClass>,
+    /// Whether this row belongs in a table's header rather than its body.
+    /// `false` by default; set `true` for a spanner, column-label, title or
+    /// subtitle row.
+    pub is_header: bool,
+}
+
+impl TableRow {
+    /// A header row — everything else at its default.
+    pub fn header() -> Self {
+        Self {
+            is_header: true,
+            ..Self::default()
+        }
     }
 }
 

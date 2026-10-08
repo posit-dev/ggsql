@@ -24,7 +24,7 @@ mod table;
 pub use casting::TypeRequirement;
 pub use cte::CteDefinition;
 pub use schema::TypeInfo;
-pub use table::{resolve_table_with_reader, TableColumn, TableRow};
+pub use table::resolve_table_with_reader;
 
 use crate::naming;
 use crate::parser;
