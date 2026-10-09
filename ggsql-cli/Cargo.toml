@@ -39,6 +39,7 @@ serde_json.workspace = true
 
 # Regex (used by `docs` markdown post-processing)
 regex.workspace = true
+rustyline = "18.0.1"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 # Terminal markdown rendering for `ggsql docs` (native targets only;
