@@ -13,6 +13,11 @@ use std::io::{IsTerminal, Write};
 use std::path::{Path, PathBuf};
 use writers::{Output, WriterInfo};
 
+// The REPL only runs with the plot window, so it is compiled only there —
+// and under `cfg(test)`, so its statement-logic tests run in every build.
+#[cfg(any(feature = "window", test))]
+mod repl;
+mod table;
 mod writers;
 
 mod docs {
@@ -204,6 +209,19 @@ pub enum Commands {
         view: ViewArgs,
     },
 
+    /// Start an interactive session (a REPL)
+    ///
+    /// SQL statements print as tables; queries with a VISUALISE clause draw
+    /// their plot in a window that updates with each new plot. Statements end
+    /// with `;`. The reader stays open for the whole session, so tables
+    /// created in one statement are visible to the next.
+    ///
+    /// Requires the `window` feature and a working GPU adapter.
+    Repl {
+        #[command(flatten)]
+        view: ViewArgs,
+    },
+
     /// Parse a query and show the AST (for debugging)
     Parse {
         /// The ggsql query to parse
@@ -296,6 +314,10 @@ fn main() -> anyhow::Result<()> {
                 eprintln!("Showing query: {}", query);
             }
             cmd_view(query, &view);
+        }
+
+        Commands::Repl { view } => {
+            cmd_repl(&view);
         }
 
         Commands::Parse { query, format } => {
@@ -545,6 +567,87 @@ fn cmd_view(query: String, args: &ViewArgs) {
     }
 }
 
+/// Run an interactive session.
+///
+/// The reader is opened once and lives for the whole session, which is what
+/// makes one statement's tables visible to the next. The plot window's event
+/// loop owns the main thread (the platform requires it) and the REPL loop
+/// runs on a worker thread; finished `Spec`s cross to the window through its
+/// message channel.
+///
+/// The subcommand exists whether or not the feature does, so a build without
+/// it says what would bring it back rather than dropping the command.
+fn cmd_repl(args: &ViewArgs) {
+    #[cfg(feature = "window")]
+    {
+        use ggsql::writer::{PlotViewer, PlotWindowHandle};
+
+        let reader =
+            open_reader(&args.source.reader, args.source.cache.as_deref()).unwrap_or_else(|e| {
+                eprintln!("{}", e);
+                std::process::exit(1);
+            });
+
+        if args.verbose {
+            eprintln!("Reader: {}", args.source.reader);
+            if let Some(ref cache) = args.source.cache {
+                eprintln!("Cache: {}", cache);
+            }
+        }
+
+        let options = WriterOptions::parse(args.viewer_options.clone()).unwrap_or_else(|e| {
+            eprintln!("{}", e);
+            std::process::exit(1);
+        });
+        let viewer = PlotViewer::from_options(&options).unwrap_or_else(|e| {
+            eprintln!("{}", e);
+            std::process::exit(1);
+        });
+        let window = viewer.launch().unwrap_or_else(|e| {
+            eprintln!("{}", e);
+            std::process::exit(1);
+        });
+
+        struct WindowDisplay(PlotWindowHandle);
+        impl repl::PlotDisplay for WindowDisplay {
+            fn show(&self, spec: Spec) -> Result<(), String> {
+                self.0.show(spec).map_err(|e| e.to_string())
+            }
+            fn is_closed(&self) -> bool {
+                self.0.is_closed()
+            }
+            fn shutdown(&self) {
+                self.0.shutdown();
+            }
+        }
+
+        let display = WindowDisplay(window.plot_handle());
+        let verbose = args.verbose;
+        // The REPL thread is not joined: when the window closes, `run`
+        // returns below and the process exits, taking the thread blocked in
+        // readline with it.
+        std::thread::spawn(move || {
+            if let Err(e) = repl::run(reader.as_ref(), &display, verbose) {
+                eprintln!("REPL failed: {}", e);
+                repl::PlotDisplay::shutdown(&display);
+            }
+        });
+
+        // Blocks on the main thread until the window closes.
+        if let Err(e) = window.run() {
+            eprintln!("{}", e);
+            std::process::exit(1);
+        }
+    }
+
+    #[cfg(not(feature = "window"))]
+    {
+        let _ = args;
+        eprintln!("The plot viewer is not compiled in. Rebuild with --features window");
+        std::process::exit(1);
+    }
+}
+
 fn cmd_parse(query: String, format: String) {
     println!("Parsing query: {}", query);
     println!("Format: {}", format);
@@ -620,63 +723,10 @@ fn print_table_fallback(
     max_rows: usize,
     output: Option<&std::path::Path>,
 ) {
-    let source_tree = match parser::SourceTree::new(query) {
-        Ok(st) => st,
-        Err(e) => {
-            eprintln!("Failed to parse query: {}", e);
-            std::process::exit(1);
-        }
-    };
-
-    let sql_part = source_tree.extract_sql().unwrap_or_default();
-
-    let data = reader.execute_sql(&sql_part);
-    if let Err(e) = data {
-        eprintln!("Failed to execute SQL query: {}", e);
-        std::process::exit(1)
-    }
-    let data = data.unwrap();
-
-    let nrow = data.height().min(max_rows);
-    let ncol = data.width();
-    let colnames = data.get_column_names();
-
-    // We add an extra 'row' for the column names
-    let mut rows: Vec<String> = vec![String::from(""); nrow + 1];
-
-    let columns = data.get_columns();
-    for (col_id, (col_name, column_data)) in colnames.iter().zip(columns.iter()).enumerate() {
-        let mut width = col_name.chars().count();
-
-        // End last column without comma
-        let suffix = if col_id == ncol - 1 { "" } else { ", " };
-
-        // Prepopulate formatted column with column name
-        let mut col_fmt: Vec<String> = vec![format!("{}{}", col_name, suffix)];
-
-        // Format every cell in column, tracking width
-        for row_idx in 0..nrow {
-            let cell = ggsql::array_util::value_to_string(column_data, row_idx);
-            let cell_fmt = format!("{}{}", cell, suffix);
-            let nchar = cell_fmt.chars().count();
-            if nchar > width {
-                width = nchar;
-            }
-            col_fmt.push(cell_fmt);
-        }
-        // Pad strings with spaces
-        let col_fmt: Vec<String> = col_fmt
-            .into_iter()
-            .map(|s| format!("{:width$}", s, width = width))
-            .collect();
-
-        // Push columns to row string
-        for (row, fmt) in rows.iter_mut().zip(col_fmt.iter()) {
-            row.push_str(fmt.as_str());
-        }
-    }
-
-    let table = rows.join("\n");
+    let table = table::format(query, reader, max_rows).unwrap_or_else(|e| {
+        eprintln!("{}", e);
+        std::process::exit(1);
+    });
     match output {
         None => println!("{}", table),
         Some(path) => {

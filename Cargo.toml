@@ -95,3 +95,7 @@ panic = "abort"
 
 [patch.crates-io]
 sqlite-wasm-rs = { git = "https://github.com/ggsql-dev/sqlite-wasm-rs.git", branch = "loadable-extensions" }
+# Temporary, for the REPL plot window: builds against the local hephaestus
+# checkout carrying the cross-thread window message API (posit-dev/hephaestus#49).
+# Remove once a hephaestus release containing it is published.
+hephaestus = { path = "../hephaestus" }
