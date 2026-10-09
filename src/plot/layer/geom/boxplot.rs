@@ -202,6 +202,7 @@ fn stat_boxplot(
         stat_columns,
         dummy_columns,
         consumed_aesthetics: vec!["pos2".to_string()],
+        order_by: vec![],
     })
 }
 
@@ -734,6 +735,7 @@ mod tests {
                 stat_columns,
                 dummy_columns,
                 consumed_aesthetics,
+                ..
             } => {
                 // The wrapped input introduces a synthetic pos1 column that the
                 // GROUP BY then collapses to a single boxplot.

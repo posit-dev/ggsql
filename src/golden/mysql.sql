@@ -17,7 +17,7 @@ SELECT *, `__ggsql_stat_type` AS `__ggsql_aes_type__`, `__ggsql_stat_value` AS `
 -- case: line_aggregate
 SELECT * FROM (SELECT * FROM ggsql_live_test) AS `__schema__` LIMIT 1;
 WITH `__ggsql_source__` AS (SELECT *, `grp` AS `__ggsql_aes_pos1__`, `val` AS `__ggsql_aes_pos2__` FROM (SELECT * FROM ggsql_live_test) AS `__ggsql_src__`) SELECT MIN(`id`) AS `__ggsql_min_id`, MAX(`id`) AS `__ggsql_max_id`, MIN(`val`) AS `__ggsql_min_val`, MAX(`val`) AS `__ggsql_max_val`, MIN(`grp`) AS `__ggsql_min_grp`, MAX(`grp`) AS `__ggsql_max_grp`, MIN(`day`) AS `__ggsql_min_day`, MAX(`day`) AS `__ggsql_max_day`, MIN(`mixed Case`) AS `__ggsql_min_mixed Case`, MAX(`mixed Case`) AS `__ggsql_max_mixed Case` FROM `__ggsql_source__`;
-SELECT *, `__ggsql_stat_pos2` AS `__ggsql_aes_pos2__` FROM (SELECT * FROM (WITH `__ggsql_stat_src__` AS (SELECT *, `grp` AS `__ggsql_aes_pos1__`, `val` AS `__ggsql_aes_pos2__` FROM (SELECT * FROM ggsql_live_test) AS `__ggsql_src__`) SELECT `__ggsql_aes_pos1__`, AVG(`__ggsql_aes_pos2__`) AS `__ggsql_stat_pos2` FROM `__ggsql_stat_src__` AS `__ggsql_qt__` GROUP BY `__ggsql_aes_pos1__`) AS `__ggsql_ord__` ORDER BY `__ggsql_aes_pos1__`) AS `__ggsql_stat__`;
+SELECT *, `__ggsql_stat_pos2` AS `__ggsql_aes_pos2__` FROM (WITH `__ggsql_stat_src__` AS (SELECT *, `grp` AS `__ggsql_aes_pos1__`, `val` AS `__ggsql_aes_pos2__` FROM (SELECT * FROM ggsql_live_test) AS `__ggsql_src__`) SELECT `__ggsql_aes_pos1__`, AVG(`__ggsql_aes_pos2__`) AS `__ggsql_stat_pos2` FROM `__ggsql_stat_src__` AS `__ggsql_qt__` GROUP BY `__ggsql_aes_pos1__`) AS `__ggsql_stat__` ORDER BY `__ggsql_aes_pos1__`;
 
 -- case: density_grouped
 SELECT * FROM (SELECT * FROM ggsql_live_test) AS `__schema__` LIMIT 1;

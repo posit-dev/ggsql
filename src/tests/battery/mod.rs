@@ -241,21 +241,16 @@ pub fn cases() -> Vec<Case> {
             "VISUALISE DRAW boxplot MAPPING grp AS x, val AS y FROM {table}",
             Expect::MinRows(1),
         ),
-        // Line with an aggregating stat: the geom appends ORDER BY after
-        // the stat transform, and the layer's stat-rename wrap then nests
-        // that ORDER BY inside a derived table. T-SQL rejects ORDER BY in
-        // derived tables without TOP/OFFSET (error 1033), so MSSQL is
-        // skipped until the pipeline applies ordering to final queries
-        // only; the broken shape is pinned in golden/mssql.sql.
-        Case {
-            live_skip: &[("mssql", "T-SQL 1033: ORDER BY nested in derived table")],
-            ..shared(
-                "line_aggregate",
-                "VISUALISE DRAW line MAPPING grp AS x, val AS y FROM {table} \
-                 SETTING aggregate => 'y:mean'",
-                Expect::ExactRows(2),
-            )
-        },
+        // Line with an aggregating stat: the geom's required ordering is
+        // carried as data on the stat result and applied on the final,
+        // outermost query only, so no ORDER BY is nested inside a derived
+        // table (which T-SQL rejects with error 1033).
+        shared(
+            "line_aggregate",
+            "VISUALISE DRAW line MAPPING grp AS x, val AS y FROM {table} \
+             SETTING aggregate => 'y:mean'",
+            Expect::ExactRows(2),
+        ),
         // Grouped density: cross-group grid join with qualified
         // projections. A degenerate (NULL) bandwidth would silently
         // produce an empty result.
