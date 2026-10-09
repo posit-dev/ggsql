@@ -1628,6 +1628,25 @@ pub fn prepare_data_with_reader(query: &str, reader: &dyn Reader) -> Result<Prep
     // Extract VISUALISE text for PreparedData (SQL already extracted earlier)
     let visual_part = source_tree.extract_visualise().unwrap_or_default();
 
+    // Best-effort cleanup of internal tables that outlive the session
+    // (regular-table dialects — MySQL, MSSQL, Oracle; see
+    // SqlDialect::internal_tables_need_cleanup). Temp tables are reclaimed
+    // by the backend at disconnect and cache-staged tables live in-process,
+    // so neither needs this. Failures are ignored: a lost connection must
+    // not mask a successful execution.
+    if dialect.internal_tables_need_cleanup() {
+        let mut tables: Vec<String> = materialized_ctes
+            .iter()
+            .map(|name| naming::cte_table(name))
+            .collect();
+        if has_global_table {
+            tables.push(naming::global_table());
+        }
+        for table in tables {
+            let _ = reader.execute_sql(&dialect.drop_table_sql(&table));
+        }
+    }
+
     Ok(PreparedData {
         data: data_map,
         specs,

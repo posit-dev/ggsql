@@ -300,6 +300,7 @@ fn stat_histogram(
         ],
         dummy_columns: vec![],
         consumed_aesthetics: vec!["pos1".to_string(), "weight".to_string()],
+        order_by: vec![],
     })
 }
 
