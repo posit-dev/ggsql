@@ -1,8 +1,114 @@
-//! `TABULATE SPAN` resolution: column reordering (`gather`) and header-row
-//! (level) assignment for spanners.
+//! `TABULATE SPAN`: the `Spanner` spec type (one `SPAN` clause) and its
+//! resolution — column reordering (`gather`) and header-row (level)
+//! assignment.
 
-use crate::table::{Section, TableCell, TableCellKind, TableClass, TableColumn, TableRow};
-use crate::Spanner;
+use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
+
+use super::layout::{Section, TableCell, TableCellKind, TableClass, TableColumn, TableRow};
+use crate::labels::Labels;
+use crate::params::{
+    validate_parameter, DefaultParamValue, ParamConstraint, ParamDefinition, Parameters,
+};
+
+/// One `SPAN` clause: a named group of columns rendered as one spanner cell
+/// above them.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Spanner {
+    /// This spanner's identifier, unparsed (quotes included, if quoted).
+    /// Referenced by a later `SPAN`'s `OVER` list or a `LABEL <id> =>
+    /// ...` override. `SPAN NULL` still gets a real, internally generated
+    /// id here — nothing else can reasonably reference it.
+    pub id: String,
+    /// Dequoted default display text. `None` for `SPAN NULL` — blank cell,
+    /// columns still group. `LABEL <id> => ...` overrides either way.
+    pub label: Option<String>,
+    /// The columns this spanner covers, in the order written.
+    pub columns: Vec<String>,
+    /// `SETTING` parameters for this spanner (e.g. `width => '40%'`).
+    pub settings: Parameters,
+}
+
+/// `SETTING` parameters `SPAN` accepts — one static name/default/constraint
+/// list, mirroring how a `GeomTrait` declares `default_params()`, so
+/// `Spanner::validate_settings` doesn't hand-roll its own type checks per key.
+const SPAN_PARAMS: &[ParamDefinition] = &[
+    ParamDefinition {
+        name: "gather",
+        default: DefaultParamValue::Boolean(true),
+        constraint: ParamConstraint::boolean(),
+    },
+    ParamDefinition {
+        name: "level",
+        // No default: absence means "assign automatically" (see
+        // assign_spanner_levels), not "assume some fixed level".
+        default: DefaultParamValue::Null,
+        constraint: ParamConstraint::count(1.0),
+    },
+];
+
+impl Spanner {
+    /// Validate `settings` against `SPAN_PARAMS`, mirroring
+    /// `Layer::validate_settings`.
+    pub fn validate_settings(&self) -> Result<(), String> {
+        let valid: Vec<&str> = SPAN_PARAMS.iter().map(|p| p.name).collect();
+
+        for (name, value) in &self.settings {
+            // Key isn't in SPAN_PARAMS at all.
+            let Some(param) = SPAN_PARAMS.iter().find(|p| p.name == name.as_str()) else {
+                return Err(format!(
+                    "SPAN setting should be {}, not '{}'",
+                    crate::or_list_quoted(&valid, '\''),
+                    name
+                ));
+            };
+            // Known key, but wrong shape (e.g. `gather` not a boolean).
+            validate_parameter(name, value, &param.constraint)?;
+        }
+
+        Ok(())
+    }
+
+    /// Check this spanner's columns against the table's STUB columns.
+    pub fn validate_stub_boundary(&self, stub_columns: &HashSet<&str>) -> Result<(), String> {
+        if let Some(name) = self
+            .columns
+            .iter()
+            .find(|name| stub_columns.contains(name.as_str()))
+        {
+            return Err(format!("cannot include stub column '{name}'."));
+        }
+
+        Ok(())
+    }
+
+    /// Check this spanner's columns and `id` against the real query
+    /// result's column names.
+    pub fn validate_columns(&self, column_names: &[String]) -> Result<(), String> {
+        for name in &self.columns {
+            if !column_names.contains(name) {
+                return Err(format!("SPAN references unknown column '{name}'"));
+            }
+        }
+
+        if column_names.contains(&self.id) {
+            return Err(format!(
+                "SPAN id '{}' collides with an existing column name",
+                self.id
+            ));
+        }
+
+        Ok(())
+    }
+
+    /// Overlay a `LABEL <id> => ...` entry onto `label`, if the query has
+    /// one for this spanner's id; otherwise leaves `label` as-is.
+    pub fn apply_labels(&mut self, labels: &Labels) {
+        if let Some(override_label) = labels.lookup(&self.id) {
+            self.label = override_label.map(|s| s.to_string());
+        }
+    }
+}
 
 /// Reorder `columns` so every `gather`-enabled spanner's members become
 /// contiguous, folding spanners in declaration order. `SETTING gather =>
@@ -570,5 +676,61 @@ mod tests {
         let resolved = table.resolve_spanner_ids().unwrap();
 
         assert_eq!(resolved[2].columns, vec!["a", "b", "c", "d"]);
+    }
+    fn spanner_with_settings(settings: Parameters) -> Spanner {
+        Spanner {
+            id: "S".to_string(),
+            label: Some("S".to_string()),
+            columns: vec!["a".to_string()],
+            settings,
+        }
+    }
+
+    #[test]
+    fn validate_settings_accepts_valid_gather_and_level() {
+        let mut settings = Parameters::new();
+        settings.insert("gather".to_string(), ParameterValue::Boolean(false));
+        settings.insert("level".to_string(), ParameterValue::Number(2.0));
+
+        assert!(spanner_with_settings(settings).validate_settings().is_ok());
+    }
+
+    #[test]
+    fn validate_settings_rejects_an_unknown_key() {
+        let mut settings = Parameters::new();
+        settings.insert(
+            "width".to_string(),
+            ParameterValue::String("40%".to_string()),
+        );
+
+        assert!(spanner_with_settings(settings).validate_settings().is_err());
+    }
+
+    #[test]
+    fn validate_columns_rejects_an_unknown_column() {
+        let span = Spanner {
+            id: "S".to_string(),
+            label: Some("S".to_string()),
+            columns: vec!["nope".to_string()],
+            settings: Parameters::new(),
+        };
+
+        let error = span.validate_columns(&["a".to_string()]).unwrap_err();
+        assert!(error.contains("SPAN references unknown column 'nope'"));
+    }
+
+    #[test]
+    fn validate_columns_rejects_an_id_matching_a_real_column() {
+        let span = Spanner {
+            id: "a".to_string(),
+            label: Some("a".to_string()),
+            columns: vec!["b".to_string()],
+            settings: Parameters::new(),
+        };
+
+        let error = span
+            .validate_columns(&["a".to_string(), "b".to_string()])
+            .unwrap_err();
+        assert!(error.contains("SPAN id 'a' collides with an existing column name"));
     }
 }

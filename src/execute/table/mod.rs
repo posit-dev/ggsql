@@ -2,14 +2,13 @@
 //!
 //! A Table has no layers, so there's no per-layer CTE materialization, scale
 //! resolution, or facet handling here — just the one data query, plus
-//! resolving that data into positioned `TableCell`s. `SPAN`-specific
-//! resolution lives in `spanner`, `FORMAT STUB` in `stub`, `FORMAT` values
-//! and settings in `format`, and cell/row grid construction in `layout`;
-//! the `Section` assembly `layout` composes lives in `crate::table`.
+//! resolving that data into positioned `TableCell`s. `FORMAT STUB` lives in
+//! `stub`, `FORMAT` values and settings in `format`, and cell/row grid
+//! construction in `layout`; the `Section` assembly and `SPAN` resolution
+//! it composes live in `crate::table`.
 
 mod format;
 mod layout;
-mod spanner;
 mod stub;
 
 use format::{apply_formats, setup_formats};

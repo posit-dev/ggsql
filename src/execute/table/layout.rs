@@ -6,13 +6,13 @@
 use std::collections::HashMap;
 
 use super::format::resolve_column_properties;
-use super::spanner::{create_spanners, reorder_table_columns};
 use super::stub::{create_row_labels, create_stubhead, move_stub_columns};
 use crate::array_util::value_to_string;
 use crate::plot::Labels;
 use crate::table::{
-    compose_header, create_caption, create_column_labels, create_heading, rowbind,
-    validate_overlaps, Section, TableCell, TableCellKind, TableClass, TableColumn, TableRow,
+    compose_header, create_caption, create_column_labels, create_heading, create_spanners,
+    reorder_table_columns, rowbind, validate_overlaps, Section, TableCell, TableCellKind,
+    TableClass, TableColumn, TableRow,
 };
 use crate::{DataFrame, Format, Result, Spanner};
 
