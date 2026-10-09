@@ -68,6 +68,21 @@ impl SqlDialect for MySqlDialect {
         format!("CAST('00:00:00' + INTERVAL {micros} MICROSECOND AS TIME)")
     }
 
+    fn sql_quantiles_single_scan(
+        &self,
+        column: &str,
+        fractions: &[(f64, &str)],
+        from: crate::sql::FromItem<'_>,
+        groups: &[String],
+    ) -> Option<crate::reader::SingleScanQuantiles> {
+        // MySQL/MariaDB refuse to open a temporary table twice in one
+        // statement (error 1137), so stats queries must scan the source
+        // exactly once. The single-scan shape does that: the source appears
+        // only inside the windowed-pass CTE, which both backends materialize
+        // when it is referenced more than once.
+        Some(self.build_single_scan_quantiles("__ggsql_bp_w__", column, fractions, from, groups))
+    }
+
     fn temp_table_style(&self) -> crate::reader::TempTableStyle {
         crate::reader::TempTableStyle::DropTemporaryThenCreateTemp
     }
@@ -76,6 +91,34 @@ impl SqlDialect for MySqlDialect {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn single_scan_quantiles_reference_source_once() {
+        // Error 1137 ("Can't reopen table") forbids naming a temporary table
+        // twice per statement, so the source query must appear exactly once
+        // across both returned parts.
+        let parts = MySqlDialect
+            .sql_quantiles_single_scan(
+                "val",
+                &[(0.25, "q1"), (0.5, "median"), (0.75, "q3")],
+                crate::sql::FromItem::Table("tmp_src"),
+                &["grp".to_string()],
+            )
+            .expect("MySQL provides a single-scan summary");
+        let combined = format!("{}{}", parts.pass, parts.summary);
+        assert_eq!(combined.matches("tmp_src").count(), 1);
+        assert!(parts
+            .pass
+            .contains("ROW_NUMBER() OVER (PARTITION BY `grp` ORDER BY `val`)"));
+        assert!(parts.pass.contains("COUNT(*) OVER (PARTITION BY `grp` )"));
+        assert!(parts.summary.contains("FROM `__ggsql_bp_w__`"));
+        assert!(parts.summary.contains("MIN(__val) AS min"));
+        assert!(parts.summary.contains("MAX(__val) AS max"));
+        assert!(parts.summary.contains("AS q1"));
+        assert!(parts.summary.contains("AS median"));
+        assert!(parts.summary.contains("AS q3"));
+        assert!(parts.summary.contains("GROUP BY `grp`"));
+    }
 
     #[test]
     fn null_safe_eq_uses_spaceship() {

@@ -175,16 +175,31 @@ fn stat_boxplot(
         ));
     }
 
-    // Query for boxplot summary statistics
-    let summary = boxplot_sql_compute_summary(&working_query, &groups, &value_col, coef, dialect);
-    let stats_query = boxplot_sql_append_outliers(
-        &summary,
-        &groups,
+    // Query for boxplot summary statistics. Dialects that forbid
+    // re-opening a temporary table in one statement (MySQL/MariaDB) provide
+    // a single-scan summary composed around a shared windowed pass; the
+    // fallback scans the source once per quantile.
+    let fractions = [(0.25, "q1"), (0.5, "median"), (0.75, "q3")];
+    let stats_query = match dialect.sql_quantiles_single_scan(
         &value_col,
-        &working_query,
-        outliers,
-        dialect,
-    );
+        &fractions,
+        crate::sql::FromItem::Query(&working_query),
+        &groups,
+    ) {
+        Some(parts) => boxplot_sql_single_scan(&parts, &groups, coef, outliers, dialect),
+        None => {
+            let summary =
+                boxplot_sql_compute_summary(&working_query, &groups, &value_col, coef, dialect);
+            boxplot_sql_append_outliers(
+                &summary,
+                &groups,
+                &value_col,
+                &working_query,
+                outliers,
+                dialect,
+            )
+        }
+    };
 
     let mut stat_columns = vec![
         "type".to_string(),
@@ -286,6 +301,102 @@ fn boxplot_sql_filter_outliers(
         .build()
 }
 
+/// Build the visual-element rows (`lower_whisker`/`upper_whisker`/`box`/
+/// `median`) from a summary relation exposing `q1`, `q3`, `median`,
+/// `lower`, `upper`, and the group columns.
+fn boxplot_summary_rows_select(table: &str, groups: &[String], dialect: &dyn SqlDialect) -> String {
+    let value_name = dialect.quote_ident(&naming::stat_column("value"));
+    let value2_name = dialect.quote_ident(&naming::stat_column("value2"));
+    let type_name = dialect.quote_ident(&naming::stat_column("type"));
+    let quoted_groups: Vec<String> = groups.iter().map(|g| dialect.quote_ident(g)).collect();
+    let groups_str = quoted_groups.join(", ");
+    format!(
+        "SELECT {groups}, 'lower_whisker' AS {type_name}, q1 AS {value_name}, lower AS {value2_name} FROM {table}
+        UNION ALL
+        SELECT {groups}, 'upper_whisker' AS {type_name}, q3 AS {value_name}, upper AS {value2_name} FROM {table}
+        UNION ALL
+        SELECT {groups}, 'box' AS {type_name}, q1 AS {value_name}, q3 AS {value2_name} FROM {table}
+        UNION ALL
+        SELECT {groups}, 'median' AS {type_name}, median AS {value_name}, NULL AS {value2_name} FROM {table}",
+        groups = groups_str,
+        type_name = type_name,
+        value_name = value_name,
+        value2_name = value2_name,
+        table = table
+    )
+}
+
+/// Compose the full boxplot stats statement around a single-scan quantile
+/// summary (see `SqlDialect::sql_quantiles_single_scan`). The source is
+/// referenced exactly once — inside the windowed-pass CTE — which backends
+/// that forbid re-opening a temporary table per statement (MySQL/MariaDB
+/// error 1137) require. The outlier filter joins against the same pass, so
+/// it adds no further scans of the source.
+fn boxplot_sql_single_scan(
+    parts: &crate::reader::SingleScanQuantiles,
+    groups: &[String],
+    coef: &f64,
+    draw_outliers: &bool,
+    dialect: &dyn SqlDialect,
+) -> String {
+    let quoted_groups: Vec<String> = groups.iter().map(|g| dialect.quote_ident(g)).collect();
+    let groups_str = quoted_groups.join(", ");
+    let lower_expr = dialect.sql_greatest(&[&format!("q1 - {coef} * (q3 - q1)"), "min"]);
+    let upper_expr = dialect.sql_least(&[&format!("q3 + {coef} * (q3 - q1)"), "max"]);
+
+    let summary_with_bounds = crate::sql::Select::new(dialect)
+        .select_star_plus(
+            &[
+                format!("{lower_expr} AS lower"),
+                format!("{upper_expr} AS upper"),
+            ],
+            "__ggsql_fn__",
+        )
+        .from_aliased(crate::sql::FromItem::Query(&parts.summary), "__ggsql_fn__")
+        .build();
+
+    let summary_select = boxplot_summary_rows_select("summary", groups, dialect);
+    let quoted_pass = dialect.quote_ident(&parts.pass_name);
+    let pass_cte = format!("{quoted_pass} AS (\n  {}\n)", parts.pass);
+    let summary_cte = format!("summary AS (\n  {summary_with_bounds}\n)");
+
+    if !*draw_outliers {
+        return format!("WITH {pass_cte},\n{summary_cte}\n{summary_select}");
+    }
+
+    // Outlier rows come from the same windowed pass, joined to the summary
+    // for the whisker bounds, so the source is still scanned only once.
+    let mut join_pairs = Vec::new();
+    let mut keep_columns = Vec::new();
+    for column in groups {
+        let quoted = dialect.quote_ident(column);
+        join_pairs.push(format!("raw.{quoted} = summary.{quoted}"));
+        keep_columns.push(format!("raw.{quoted} AS {quoted}"));
+    }
+    let mut items = vec![
+        "raw.__val AS value".to_string(),
+        "'outlier' AS type".to_string(),
+    ];
+    items.extend(keep_columns);
+    let outliers = crate::sql::Select::new(dialect)
+        .select_items(&items)
+        .from_aliased(crate::sql::FromItem::Table(&quoted_pass), "raw")
+        .join_raw(&format!("JOIN summary ON {}", join_pairs.join(" AND ")))
+        .and_where("raw.__val NOT BETWEEN summary.lower AND summary.upper")
+        .build();
+
+    let value_name = dialect.quote_ident(&naming::stat_column("value"));
+    let value2_name = dialect.quote_ident(&naming::stat_column("value2"));
+    let type_name = dialect.quote_ident(&naming::stat_column("type"));
+    format!(
+        "WITH {pass_cte},\n{summary_cte},\noutliers AS (\n  {outliers}\n)
+        {summary_select}
+        UNION ALL
+        SELECT {groups_str}, type AS {type_name}, value AS {value_name}, NULL AS {value2_name}
+        FROM outliers"
+    )
+}
+
 fn boxplot_sql_append_outliers(
     from: &str,
     groups: &[String],
@@ -301,35 +412,16 @@ fn boxplot_sql_append_outliers(
     let quoted_groups: Vec<String> = groups.iter().map(|g| dialect.quote_ident(g)).collect();
     let groups_str = quoted_groups.join(", ");
 
-    // Helper to build visual-element rows from summary table
-    // Each row type maps to one visual element with y and yend where needed
-    let build_summary_select = |table: &str| {
-        format!(
-            "SELECT {groups}, 'lower_whisker' AS {type_name}, q1 AS {value_name}, lower AS {value2_name} FROM {table}
-            UNION ALL
-            SELECT {groups}, 'upper_whisker' AS {type_name}, q3 AS {value_name}, upper AS {value2_name} FROM {table}
-            UNION ALL
-            SELECT {groups}, 'box' AS {type_name}, q1 AS {value_name}, q3 AS {value2_name} FROM {table}
-            UNION ALL
-            SELECT {groups}, 'median' AS {type_name}, median AS {value_name}, NULL AS {value2_name} FROM {table}",
-            groups = groups_str,
-            type_name = type_name,
-            value_name = value_name,
-            value2_name = value2_name,
-            table = table
-        )
-    };
-
     if !*draw_outliers {
         // Build from subquery when no CTEs needed
-        return build_summary_select(&format!("({})", from));
+        return boxplot_summary_rows_select(&format!("({})", from), groups, dialect);
     }
 
     // Grab query for outliers
     let outliers = boxplot_sql_filter_outliers(groups, value, raw_query, dialect);
 
     // Build summary select using CTE reference
-    let summary_select = build_summary_select("summary");
+    let summary_select = boxplot_summary_rows_select("summary", groups, dialect);
 
     // Combine summary visual-elements with outliers
     format!(
@@ -414,6 +506,53 @@ mod tests {
     /// Whitespace-insensitive SQL comparison: collapses whitespace runs and
     /// drops spaces adjacent to parens, so expectations can wrap and indent
     /// freely without depending on where line breaks fall.
+    #[test]
+    fn test_single_scan_statement_scans_source_once_with_outliers() {
+        // The whole stats statement (summary + outlier filter) must name the
+        // source query exactly once so MySQL/MariaDB error 1137 is avoided
+        // when the source is a temporary table.
+        use crate::reader::SqlDialect;
+        let dialect = crate::reader::dialects::MySqlDialect;
+        let groups = vec!["grp".to_string()];
+        let fractions = [(0.25, "q1"), (0.5, "median"), (0.75, "q3")];
+        let parts = dialect
+            .sql_quantiles_single_scan(
+                "val",
+                &fractions,
+                crate::sql::FromItem::Query("SELECT * FROM tmp_src"),
+                &groups,
+            )
+            .unwrap();
+        let sql = boxplot_sql_single_scan(&parts, &groups, &1.5, &true, &dialect);
+        assert_eq!(sql.matches("tmp_src").count(), 1);
+        assert!(sql.contains("WITH `__ggsql_bp_w__` AS ("));
+        assert!(sql.contains("outliers AS ("));
+        assert!(sql.contains("JOIN summary ON"));
+        assert!(sql.contains("NOT BETWEEN summary.lower AND summary.upper"));
+        assert!(sql.contains("'lower_whisker'"));
+        assert!(sql.contains("'outlier' AS type"));
+    }
+
+    #[test]
+    fn test_single_scan_statement_without_outliers() {
+        use crate::reader::SqlDialect;
+        let dialect = crate::reader::dialects::MySqlDialect;
+        let groups = vec!["grp".to_string()];
+        let fractions = [(0.25, "q1"), (0.5, "median"), (0.75, "q3")];
+        let parts = dialect
+            .sql_quantiles_single_scan(
+                "val",
+                &fractions,
+                crate::sql::FromItem::Query("SELECT * FROM tmp_src"),
+                &groups,
+            )
+            .unwrap();
+        let sql = boxplot_sql_single_scan(&parts, &groups, &1.5, &false, &dialect);
+        assert_eq!(sql.matches("tmp_src").count(), 1);
+        assert!(!sql.contains("outliers"));
+        assert!(sql.contains("'median'"));
+    }
+
     fn normalize_sql(s: &str) -> String {
         s.split_whitespace()
             .collect::<Vec<_>>()
