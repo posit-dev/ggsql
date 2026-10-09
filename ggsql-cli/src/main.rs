@@ -13,6 +13,9 @@ use std::io::{IsTerminal, Write};
 use std::path::{Path, PathBuf};
 use writers::{Output, WriterInfo};
 
+// The REPL only runs with the plot window, so it is compiled only there —
+// and under `cfg(test)`, so its statement-logic tests run in every build.
+#[cfg(any(feature = "window", test))]
 mod repl;
 mod table;
 mod writers;
@@ -209,9 +212,11 @@ pub enum Commands {
     /// Start an interactive session (a REPL)
     ///
     /// SQL statements print as tables; queries with a VISUALISE clause draw
-    /// their plot in a window. Statements end with `;`. The reader stays open
-    /// for the whole session, so tables created in one statement are visible
-    /// to the next.
+    /// their plot in a window that updates with each new plot. Statements end
+    /// with `;`. The reader stays open for the whole session, so tables
+    /// created in one statement are visible to the next.
+    ///
+    /// Requires the `window` feature and a working GPU adapter.
     Repl {
         #[command(flatten)]
         view: ViewArgs,
@@ -565,28 +570,30 @@ fn cmd_view(query: String, args: &ViewArgs) {
 /// Run an interactive session.
 ///
 /// The reader is opened once and lives for the whole session, which is what
-/// makes one statement's tables visible to the next.
+/// makes one statement's tables visible to the next. The plot window's event
+/// loop owns the main thread (the platform requires it) and the REPL loop
+/// runs on a worker thread; finished `Spec`s cross to the window through its
+/// message channel.
 ///
-/// With the `window` feature, the plot window's event loop owns the main
-/// thread (the platform requires it) and the REPL loop runs on a worker
-/// thread; finished `Spec`s cross to the window through its message channel.
+/// The subcommand exists whether or not the feature does, so a build without
+/// it says what would bring it back rather than dropping the command.
 fn cmd_repl(args: &ViewArgs) {
-    let reader =
-        open_reader(&args.source.reader, args.source.cache.as_deref()).unwrap_or_else(|e| {
-            eprintln!("{}", e);
-            std::process::exit(1);
-        });
-
-    if args.verbose {
-        eprintln!("Reader: {}", args.source.reader);
-        if let Some(ref cache) = args.source.cache {
-            eprintln!("Cache: {}", cache);
-        }
-    }
-
     #[cfg(feature = "window")]
     {
         use ggsql::writer::{PlotViewer, PlotWindowHandle};
+
+        let reader =
+            open_reader(&args.source.reader, args.source.cache.as_deref()).unwrap_or_else(|e| {
+                eprintln!("{}", e);
+                std::process::exit(1);
+            });
+
+        if args.verbose {
+            eprintln!("Reader: {}", args.source.reader);
+            if let Some(ref cache) = args.source.cache {
+                eprintln!("Cache: {}", cache);
+            }
+        }
 
         let options = WriterOptions::parse(args.viewer_options.clone()).unwrap_or_else(|e| {
             eprintln!("{}", e);
@@ -635,20 +642,9 @@ fn cmd_repl(args: &ViewArgs) {
 
     #[cfg(not(feature = "window"))]
     {
-        struct NoPlotWindow;
-        impl repl::PlotDisplay for NoPlotWindow {
-            fn show(&self, _spec: Spec) -> Result<(), String> {
-                Err(
-                    "The plot window is not compiled in. Rebuild with --features window"
-                        .to_string(),
-                )
-            }
-        }
-
-        if let Err(e) = repl::run(reader.as_ref(), &NoPlotWindow, args.verbose) {
-            eprintln!("REPL failed: {}", e);
-            std::process::exit(1);
-        }
+        let _ = args;
+        eprintln!("The plot viewer is not compiled in. Rebuild with --features window");
+        std::process::exit(1);
     }
 }
 

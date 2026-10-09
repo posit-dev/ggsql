@@ -206,7 +206,7 @@ ggsql> SELECT species, COUNT(*) AS n FROM penguins GROUP BY species;
 ggsql> SELECT * FROM penguins VISUALISE species AS fill DRAW bar;
 ```
 
-History is kept across sessions, Ctrl-C abandons the statement being typed rather than the session, and `:quit` (or Ctrl-D) leaves — closing the window ends the session too. `:help` lists the commands. The session takes the same flags as `ggsql view`: `--reader` and `--cache` for the data source, and `-D` for the window's `width`, `height`, `background` and `title`. Like the viewer, the plot window renders through the GPU; a build without the `window` feature still runs the session and prints tables, and says so when a query asks for a plot.
+History is kept across sessions, Ctrl-C abandons the statement being typed rather than the session, and `:quit` (or Ctrl-D) leaves — closing the window ends the session too. `:help` lists the commands. The session takes the same flags as `ggsql view`: `--reader` and `--cache` for the data source, and `-D` for the window's `width`, `height`, `background` and `title`. Like the viewer, the plot window renders through the GPU and is not in every build; the subcommand exists either way and says what would enable it.
 
 ## Documentation
 
