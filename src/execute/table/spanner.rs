@@ -1,8 +1,7 @@
 //! `TABULATE SPAN` resolution: column reordering (`gather`) and header-row
 //! (level) assignment for spanners.
 
-use super::layout::Section;
-use crate::table::{TableCell, TableCellKind, TableClass, TableColumn, TableRow};
+use crate::table::{Section, TableCell, TableCellKind, TableClass, TableColumn, TableRow};
 use crate::Spanner;
 
 /// Reorder `columns` so every `gather`-enabled spanner's members become

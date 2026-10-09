@@ -9,7 +9,10 @@
 
 mod layout;
 
-pub(crate) use layout::{count_cell_cols, count_cell_rows, standardise_hjust};
+pub(crate) use layout::{
+    compose_header, count_cell_cols, count_cell_rows, create_caption, create_column_labels,
+    create_heading, rowbind, standardise_hjust, validate_overlaps, Section,
+};
 pub use layout::{TableCell, TableCellKind, TableClass, TableColumn, TableRow};
 
 use serde::{Deserialize, Serialize};

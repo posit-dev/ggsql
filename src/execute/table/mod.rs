@@ -4,7 +4,8 @@
 //! resolution, or facet handling here — just the one data query, plus
 //! resolving that data into positioned `TableCell`s. `SPAN`-specific
 //! resolution lives in `spanner`, `FORMAT STUB` in `stub`, `FORMAT` values
-//! and settings in `format`, and cell/row grid construction in `layout`.
+//! and settings in `format`, and cell/row grid construction in `layout`;
+//! the `Section` assembly `layout` composes lives in `crate::table`.
 
 mod format;
 mod layout;

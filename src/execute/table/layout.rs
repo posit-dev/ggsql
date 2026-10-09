@@ -1,10 +1,9 @@
-//! Cell-layout construction: turns already-resolved columns, spans and a
+//! Table-cell resolution: turns already-resolved columns, spans and a
 //! `FORMAT`-applied `DataFrame` into the positioned `TableCell`/`TableRow`
-//! grid `ResolvedTable` holds, via the `Section` building block that
-//! `build_cells` and `spanner::create_spanners` produce and `rowbind`
-//! combines.
+//! grid `ResolvedTable` holds, assembling the `Section` building blocks
+//! from `crate::table::layout`.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use super::format::resolve_column_properties;
 use super::spanner::{create_spanners, reorder_table_columns};
@@ -12,9 +11,10 @@ use super::stub::{create_row_labels, create_stubhead, move_stub_columns};
 use crate::array_util::value_to_string;
 use crate::plot::Labels;
 use crate::table::{
-    count_cell_cols, count_cell_rows, TableCell, TableCellKind, TableClass, TableColumn, TableRow,
+    compose_header, create_caption, create_column_labels, create_heading, rowbind,
+    validate_overlaps, Section, TableCell, TableCellKind, TableClass, TableColumn, TableRow,
 };
-use crate::{DataFrame, Format, GgsqlError, Result, Spanner};
+use crate::{DataFrame, Format, Result, Spanner};
 
 /// Pop the reserved `title`/`subtitle`/`caption` keys out of a `TABULATE`
 /// `LABEL` clause's resolved map, leaving only genuine column-name
@@ -88,123 +88,6 @@ pub(super) fn build_cells(
     Ok((section.cells, section.rows))
 }
 
-/// One layout part's cells alongside one `TableRow` **per row index it
-/// occupies** — not one per cell, since several cells can share a row (a
-/// column-label row has one cell per column, but is still a single row).
-/// Every `create_*` helper below builds both together, so `rows` is never
-/// derived from `cells` and a row's classification (`is_header`, `Heading`)
-/// is decided where its cells are built.
-///
-/// `pub(super)` so the sibling `spanner` module can build one; the fields
-/// stay private so `new` is the only constructor.
-pub(super) struct Section {
-    rows: Vec<TableRow>,
-    cells: Vec<TableCell>,
-}
-
-impl Section {
-    /// Build a `Section`, `debug_assert`ing that `rows.len()` matches the
-    /// row extent `cells` implies.
-    pub(super) fn new(rows: Vec<TableRow>, cells: Vec<TableCell>) -> Section {
-        debug_assert_eq!(
-            rows.len(),
-            count_cell_rows(&cells),
-            "Section's row count doesn't match its own cells' row extent"
-        );
-        Section { rows, cells }
-    }
-
-    /// Consume `self` into just its cells.
-    #[cfg(test)]
-    pub(super) fn into_cells(self) -> Vec<TableCell> {
-        self.cells
-    }
-}
-
-/// Stack `bottom` below `top`, offsetting `bottom`'s cells down by `top`'s
-/// row extent and concatenating both sides' `rows` — no offsetting needed
-/// there, since a `TableRow`'s position *is* its index, unlike a
-/// `TableCell`'s rectangle.
-fn rowbind(top: Section, mut bottom: Section) -> Section {
-    if top.cells.is_empty() {
-        return bottom;
-    }
-    if bottom.cells.is_empty() {
-        return top;
-    }
-
-    let row_offset = top.rows.len();
-    for cell in &mut bottom.cells {
-        cell.offset_rows(row_offset);
-    }
-
-    let mut rows = top.rows;
-    rows.extend(bottom.rows);
-    let mut cells = top.cells;
-    cells.extend(bottom.cells);
-
-    Section::new(rows, cells)
-}
-
-/// Build the title/subtitle heading rows (gt's `title_row`/`subtitle_row`),
-/// each spanning the table's full width and numbered locally from
-/// `top == 0`. Each row carries `TableClass::Heading` (gt's `gt_heading`).
-fn create_heading(title: Option<&str>, subtitle: Option<&str>, ncol: usize) -> Section {
-    let right = ncol.saturating_sub(1);
-    let mut cells = Vec::new();
-    if let Some(title) = title {
-        cells.push(
-            TableCell::new(TableCellKind::Title, 0, 0, 0, right, title.to_string())
-                .with_classes(vec![TableClass::Title]),
-        );
-    }
-    if let Some(subtitle) = subtitle {
-        let row = cells.len();
-        cells.push(
-            TableCell::new(
-                TableCellKind::Subtitle,
-                row,
-                row,
-                0,
-                right,
-                subtitle.to_string(),
-            )
-            .with_classes(vec![TableClass::Subtitle]),
-        );
-    }
-    let rows = vec![
-        TableRow {
-            classes: vec![TableClass::Heading],
-            ..TableRow::header()
-        };
-        cells.len()
-    ];
-    Section::new(rows, cells)
-}
-
-/// Build the caption cell (gt's `tab_caption()`), spanning the table's full
-/// width at local row 0; `rowbind` places it at the very end of the layout.
-/// `HtmlWriter` pulls this cell out of the grid before rendering, since HTML
-/// requires `<caption>` outside `<thead>`/`<tbody>`. Its row carries no
-/// class — a caption never lands in a rendered `<tr>`.
-fn create_caption(caption: Option<&str>, ncol: usize) -> Section {
-    match caption {
-        Some(caption) => Section::new(
-            vec![TableRow::default()],
-            vec![TableCell::new(
-                TableCellKind::Caption,
-                0,
-                0,
-                0,
-                ncol.saturating_sub(1),
-                caption.to_string(),
-            )
-            .with_classes(vec![TableClass::Caption])],
-        ),
-        None => Section::new(Vec::new(), Vec::new()),
-    }
-}
-
 /// Build one `TableColumn` per `DataFrame` column, in the `DataFrame`'s own
 /// order — `reorder_table_columns` is what may reorder this list
 /// afterward, not this function. `labels` is the one authority for an
@@ -242,28 +125,6 @@ fn create_table_columns(
         });
     }
     columns
-}
-
-/// Build one `ColumnLabel` cell per non-stub column, numbered locally from
-/// `top == 0`. Skips every stub column; `create_stubhead` builds those.
-fn create_column_labels(columns: &[TableColumn]) -> Vec<TableCell> {
-    columns
-        .iter()
-        .enumerate()
-        .filter(|(_, column)| !column.is_stub())
-        .map(|(index, column)| {
-            TableCell::new(
-                TableCellKind::ColumnLabel,
-                0,
-                0,
-                index,
-                index,
-                column.label.clone(),
-            )
-            .with_properties(column.properties.clone())
-            .with_classes(vec![TableClass::ColHeading])
-        })
-        .collect()
 }
 
 /// Build one `Body` cell per `DataFrame` value, numbered from `top == 0`, in
@@ -304,124 +165,13 @@ fn create_body(df: &DataFrame, columns: &[TableColumn]) -> Vec<TableCell> {
     cells
 }
 
-/// Stack spanner rows above column labels, letting a column with no spanner
-/// covering it stretch its own label upward over the gap, then fill the
-/// remaining gaps.
-fn compose_header(spanners: Section, column_labels: Section) -> Section {
-    let num_spanner_rows = spanners.rows.len();
-    let header = rowbind(spanners, column_labels);
-    let header = stretch_unspanned_column_labels(header, num_spanner_rows);
-    fill_spanner_gaps(header, num_spanner_rows)
-}
-
-/// Grow a column's label cell upward into every consecutive spanner row
-/// above it (starting from the row closest to the labels) that has no
-/// spanner covering that column, stopping at the first one that does —
-/// turning those rows into a `rowspan` on the label instead of separate
-/// blank filler cells. gt only stretches into the single row immediately
-/// above the labels, even when rows further up are also empty. Only touches
-/// cells — row count/order is unaffected.
-fn stretch_unspanned_column_labels(mut header: Section, num_spanner_rows: usize) -> Section {
-    if num_spanner_rows == 0 {
-        return header;
-    }
-
-    let ncol = count_cell_cols(&header.cells);
-    let mut stretch_depth = vec![0usize; ncol];
-    for (column, depth) in stretch_depth.iter_mut().enumerate() {
-        for row in (0..num_spanner_rows).rev() {
-            let covered = header.cells.iter().any(|c| {
-                c.kind == TableCellKind::Spanner
-                    && c.top == row
-                    && c.left <= column
-                    && column <= c.right
-            });
-            if covered {
-                break;
-            }
-            *depth += 1;
-        }
-    }
-
-    for label in header
-        .cells
-        .iter_mut()
-        // A stub column can never be spanned (`Table::validate_span_stub_boundary`),
-        // so its stretch always reaches the full spanner height.
-        .filter(|c| matches!(c.kind, TableCellKind::ColumnLabel | TableCellKind::StubHead))
-    {
-        // Assumes every label cell is exactly one column wide (true of
-        // everything create_column_labels/create_stubhead produce) — a wider
-        // one would need its own stretch depth reconciled across its whole
-        // span, not just `left`.
-        label.top -= stretch_depth[label.left];
-    }
-
-    header
-}
-
-/// Fill every spanner-row position the stretch above couldn't reach with a
-/// real, empty `Filler` cell.
-fn fill_spanner_gaps(mut header: Section, num_spanner_rows: usize) -> Section {
-    let ncol = count_cell_cols(&header.cells);
-
-    // Coverage set, O(area) like `validate_overlaps`.
-    let mut occupied: HashSet<(usize, usize)> = HashSet::new();
-    for cell in &header.cells {
-        for row in cell.top..=cell.bottom {
-            for col in cell.left..=cell.right {
-                occupied.insert((row, col));
-            }
-        }
-    }
-
-    for row in 0..num_spanner_rows {
-        for col in 0..ncol {
-            if occupied.contains(&(row, col)) {
-                continue;
-            }
-            header.cells.push(
-                TableCell::new(TableCellKind::Filler, row, row, col, col, String::new())
-                    .with_classes(vec![TableClass::Spanner]),
-            );
-        }
-    }
-
-    header
-}
-
-/// Check that no two cells in a resolved layout claim the same grid position.
-///
-/// Walks every cell's full footprint into a map of occupied positions to the
-/// `TableCellKind` that claimed each one, erroring — naming both kinds — on
-/// the first double claim. `O(total cell area)`.
-fn validate_overlaps(cells: &[TableCell]) -> Result<()> {
-    let mut occupied: std::collections::HashMap<(usize, usize), TableCellKind> =
-        std::collections::HashMap::new();
-
-    for cell in cells {
-        for row in cell.top..=cell.bottom {
-            for col in cell.left..=cell.right {
-                if let Some(existing_kind) = occupied.insert((row, col), cell.kind) {
-                    return Err(GgsqlError::ValidationError(format!(
-                        "Table layout has a {existing_kind} cell and a {} cell clashing at row {row}, column {col}",
-                        cell.kind
-                    )));
-                }
-            }
-        }
-    }
-
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
     use super::super::format::{apply_formats, setup_formats};
     use super::*;
     use crate::df;
     use crate::plot::{ParameterValue, Parameters};
-    use crate::{ColumnSection, Spanner, Table};
+    use crate::{ColumnSection, GgsqlError, Spanner, Table};
 
     /// Runs the same steps `resolve_table_with_reader` does, minus the
     /// `Reader`/SQL execution — lets a test build a `Table`'s resolved cells
@@ -544,36 +294,6 @@ mod tests {
     }
 
     #[test]
-    fn create_column_labels_builds_one_cell_per_column_at_row_zero() {
-        let columns = vec![column("id", "id"), column("name", "name")];
-
-        let labels = create_column_labels(&columns);
-
-        assert_eq!(labels.len(), 2);
-        assert_eq!(labels[0].kind, TableCellKind::ColumnLabel);
-        assert_eq!(labels[0].top, 0);
-        assert_eq!(labels[0].bottom, 0);
-        assert_eq!(labels[0].left, 0);
-        assert_eq!(labels[0].right, 0);
-        assert_eq!(labels[0].content, "id");
-        assert_eq!(labels[1].left, 1);
-        assert_eq!(labels[1].right, 1);
-        assert_eq!(labels[1].content, "name");
-    }
-
-    #[test]
-    fn create_column_labels_skips_a_stub_column() {
-        let columns = vec![stub_column("region"), column("sales", "sales")];
-
-        let labels = create_column_labels(&columns);
-
-        assert_eq!(labels.len(), 1);
-        assert_eq!(labels[0].kind, TableCellKind::ColumnLabel);
-        assert_eq!(labels[0].left, 1);
-        assert_eq!(labels[0].content, "sales");
-    }
-
-    #[test]
     fn create_body_numbers_rows_from_zero() {
         let frame = df! {
             "id" => vec![1i32, 2],
@@ -638,248 +358,6 @@ mod tests {
         assert_eq!(body.len(), 1);
         assert_eq!(body[0].content, "1");
         assert_eq!(body[0].left, 1);
-    }
-
-    fn cell(kind: TableCellKind, top: usize, bottom: usize, content: &str) -> TableCell {
-        TableCell::new(kind, top, bottom, 0, 0, content.to_string())
-    }
-
-    /// Wrap a hand-built `Vec<TableCell>` into a `Section` for a test, with
-    /// exactly as many default rows as `cells` implies (via
-    /// `count_cell_rows`) — satisfies `Section::new`'s row-count invariant
-    /// without every test having to spell out a `rows` vec of its own.
-    fn section(cells: Vec<TableCell>) -> Section {
-        let rows = vec![TableRow::default(); count_cell_rows(&cells)];
-        Section::new(rows, cells)
-    }
-
-    #[test]
-    fn rowbind_shifts_the_bottom_below_a_single_top_row() {
-        let column_labels = vec![cell(TableCellKind::ColumnLabel, 0, 0, "id")];
-        let body = vec![
-            cell(TableCellKind::Body, 0, 0, "1"),
-            cell(TableCellKind::Body, 1, 1, "2"),
-        ];
-
-        let cells = rowbind(section(column_labels), section(body)).cells;
-
-        assert_eq!(cells.len(), 3);
-        assert_eq!(cells[0].kind, TableCellKind::ColumnLabel);
-        assert_eq!(cells[0].top, 0);
-        assert_eq!(cells[1].kind, TableCellKind::Body);
-        assert_eq!(cells[1].top, 1);
-        assert_eq!(cells[1].bottom, 1);
-        assert_eq!(cells[2].top, 2);
-        assert_eq!(cells[2].bottom, 2);
-    }
-
-    #[test]
-    fn rowbind_offsets_by_the_top_rows_actual_extent_not_a_hardcoded_one() {
-        // `rowbind` offsets by `top.rows.len()` rather than assuming exactly
-        // one row — pin that down directly, independent of whichever caller
-        // happens to produce a multi-row `top`.
-        let column_labels = vec![cell(TableCellKind::ColumnLabel, 0, 1, "id")];
-        let body = vec![cell(TableCellKind::Body, 0, 0, "1")];
-
-        let cells = rowbind(section(column_labels), section(body)).cells;
-
-        assert_eq!(cells[1].top, 2);
-        assert_eq!(cells[1].bottom, 2);
-    }
-
-    #[test]
-    fn rowbind_returns_bottom_unchanged_when_top_is_empty() {
-        let body = vec![cell(TableCellKind::Body, 0, 0, "1")];
-
-        let cells = rowbind(section(Vec::new()), section(body)).cells;
-
-        assert_eq!(cells.len(), 1);
-        assert_eq!(cells[0].top, 0);
-    }
-
-    #[test]
-    fn rowbind_returns_top_unchanged_when_bottom_is_empty() {
-        let column_labels = vec![cell(TableCellKind::ColumnLabel, 0, 0, "id")];
-
-        let cells = rowbind(section(column_labels), section(Vec::new())).cells;
-
-        assert_eq!(cells.len(), 1);
-        assert_eq!(cells[0].top, 0);
-    }
-
-    #[test]
-    fn compose_header_stretches_an_unspanned_columns_label_over_the_gap() {
-        // "G" covers a, b (columns 0, 1) at the one spanner row; c has no
-        // spanner at all. c is a StubHead: a stub column is never spanned,
-        // so it stretches the same way an unspanned ColumnLabel does.
-        let spanners = vec![cell_at(TableCellKind::Spanner, 0, 0, 0, 1)];
-        let column_labels = vec![
-            cell_at(TableCellKind::ColumnLabel, 0, 0, 0, 0),
-            cell_at(TableCellKind::ColumnLabel, 0, 0, 1, 1),
-            cell_at(TableCellKind::StubHead, 0, 0, 2, 2),
-        ];
-
-        let header = compose_header(section(spanners), section(column_labels)).cells;
-
-        let a = header
-            .iter()
-            .find(|c| c.kind == TableCellKind::ColumnLabel && c.left == 0)
-            .unwrap();
-        let c = header
-            .iter()
-            .find(|c| c.kind == TableCellKind::StubHead && c.left == 2)
-            .unwrap();
-        assert_eq!((a.top, a.bottom), (1, 1));
-        assert_eq!((c.top, c.bottom), (0, 1));
-    }
-
-    #[test]
-    fn compose_header_stops_stretching_at_the_first_row_that_covers_the_column() {
-        // "Outer" (row 0, the far level) covers both a and b; "Inner" (row
-        // 1, next to the labels) covers only a. b's row-1 gap is contiguous
-        // with the labels, so it stretches by one row — but row 0 already
-        // covers b, so the stretch must stop there, not skip past it.
-        let spanners = vec![
-            cell_at(TableCellKind::Spanner, 0, 0, 0, 1),
-            cell_at(TableCellKind::Spanner, 1, 1, 0, 0),
-        ];
-        let column_labels = vec![
-            cell_at(TableCellKind::ColumnLabel, 0, 0, 0, 0),
-            cell_at(TableCellKind::ColumnLabel, 0, 0, 1, 1),
-        ];
-
-        let header = compose_header(section(spanners), section(column_labels)).cells;
-
-        let a = header
-            .iter()
-            .find(|c| c.kind == TableCellKind::ColumnLabel && c.left == 0)
-            .unwrap();
-        let b = header
-            .iter()
-            .find(|c| c.kind == TableCellKind::ColumnLabel && c.left == 1)
-            .unwrap();
-        assert_eq!((a.top, a.bottom), (2, 2));
-        assert_eq!((b.top, b.bottom), (1, 2));
-    }
-
-    #[test]
-    fn compose_header_stretches_across_every_row_when_none_of_them_cover_the_column() {
-        // "G" (row 1) covers only a; "H" (row 0) covers only b; c has no
-        // spanner at either level, so its label absorbs both rows.
-        let spanners = vec![
-            cell_at(TableCellKind::Spanner, 0, 0, 1, 1),
-            cell_at(TableCellKind::Spanner, 1, 1, 0, 0),
-        ];
-        let column_labels = vec![
-            cell_at(TableCellKind::ColumnLabel, 0, 0, 0, 0),
-            cell_at(TableCellKind::ColumnLabel, 0, 0, 1, 1),
-            cell_at(TableCellKind::ColumnLabel, 0, 0, 2, 2),
-        ];
-
-        let header = compose_header(section(spanners), section(column_labels)).cells;
-
-        let c = header
-            .iter()
-            .find(|cell| cell.kind == TableCellKind::ColumnLabel && cell.left == 2)
-            .unwrap();
-        assert_eq!((c.top, c.bottom), (0, 2));
-    }
-
-    #[test]
-    fn compose_header_fills_a_spanner_gap_a_stretch_cant_reach() {
-        // Stub column a, plus X(b,c) level 1, Y(c,d) level 2, Z(b,c) level 3:
-        // d at Z's row (topmost) and b at Y's row (middle) are gaps neither
-        // the stub head nor d's own label stretch reaches.
-        let spanners = vec![
-            cell_at(TableCellKind::Spanner, 0, 0, 1, 2), // Z, topmost
-            cell_at(TableCellKind::Spanner, 1, 1, 2, 3), // Y, middle
-            cell_at(TableCellKind::Spanner, 2, 2, 1, 2), // X, bottom-most
-        ];
-        let column_labels = vec![
-            cell_at(TableCellKind::StubHead, 0, 0, 0, 0),
-            cell_at(TableCellKind::ColumnLabel, 0, 0, 1, 1),
-            cell_at(TableCellKind::ColumnLabel, 0, 0, 2, 2),
-            cell_at(TableCellKind::ColumnLabel, 0, 0, 3, 3),
-        ];
-
-        let header = compose_header(section(spanners), section(column_labels)).cells;
-
-        let fillers: Vec<_> = header
-            .iter()
-            .filter(|c| c.kind == TableCellKind::Filler)
-            .collect();
-        assert_eq!(fillers.len(), 2);
-        let d3 = fillers.iter().find(|c| c.top == 0 && c.left == 3).unwrap();
-        assert_eq!(d3.classes, vec![TableClass::Spanner]);
-        let b2 = fillers.iter().find(|c| c.top == 1 && c.left == 1).unwrap();
-        assert_eq!(b2.classes, vec![TableClass::Spanner]);
-
-        // d's own label absorbs the third gap (row 2, X's row) via the
-        // stretch — no filler there.
-        let d_label = header
-            .iter()
-            .find(|c| c.kind == TableCellKind::ColumnLabel && c.left == 3)
-            .unwrap();
-        assert_eq!((d_label.top, d_label.bottom), (2, 3));
-    }
-
-    #[test]
-    fn compose_header_does_nothing_when_there_are_no_spanners() {
-        let column_labels = vec![cell_at(TableCellKind::ColumnLabel, 0, 0, 0, 0)];
-
-        let header = compose_header(section(Vec::new()), section(column_labels)).cells;
-
-        assert_eq!((header[0].top, header[0].bottom), (0, 0));
-    }
-
-    fn cell_at(
-        kind: TableCellKind,
-        top: usize,
-        bottom: usize,
-        left: usize,
-        right: usize,
-    ) -> TableCell {
-        TableCell::new(kind, top, bottom, left, right, String::new())
-    }
-
-    #[test]
-    fn validate_overlaps_accepts_a_disjoint_layout() {
-        let cells = vec![
-            cell_at(TableCellKind::ColumnLabel, 0, 0, 0, 0),
-            cell_at(TableCellKind::ColumnLabel, 0, 0, 1, 1),
-            cell_at(TableCellKind::Body, 1, 1, 0, 0),
-            cell_at(TableCellKind::Body, 1, 1, 1, 1),
-        ];
-
-        assert!(validate_overlaps(&cells).is_ok());
-    }
-
-    #[test]
-    fn validate_overlaps_rejects_two_cells_at_the_same_position() {
-        let cells = vec![
-            cell_at(TableCellKind::Body, 0, 0, 0, 0),
-            cell_at(TableCellKind::Body, 0, 0, 0, 0),
-        ];
-
-        let error = validate_overlaps(&cells).unwrap_err();
-        assert!(matches!(error, GgsqlError::ValidationError(msg)
-            if msg.contains("row 0, column 0") && msg.contains("body cell and a body cell")));
-    }
-
-    #[test]
-    fn validate_overlaps_rejects_a_spanning_cell_overlapping_a_later_one() {
-        // A cell spanning columns 0..=1 on row 0 overlapping a second cell
-        // that only touches column 1 on the same row — the shape a spanner
-        // bug or a bad spanner declaration would produce, not something
-        // disjoint labels/body can create on their own.
-        let cells = vec![
-            cell_at(TableCellKind::ColumnLabel, 0, 0, 0, 1),
-            cell_at(TableCellKind::Spanner, 0, 0, 1, 1),
-        ];
-
-        let error = validate_overlaps(&cells).unwrap_err();
-        assert!(matches!(error, GgsqlError::ValidationError(msg)
-            if msg.contains("column label cell and a spanner cell")));
     }
 
     #[test]
