@@ -265,12 +265,12 @@ pub fn cases() -> Vec<Case> {
             Expect::ExactRows(8),
         ),
         // Global-SQL source + multi-reference stat: the source is
-        // materialized as a temp table and the boxplot stats query needs it
-        // for the summary and the outlier filter. MySQL/MariaDB refuse to
-        // open a temporary table twice in one statement (error 1137, "Can't
-        // reopen table"), so their dialects compose the stats query around a
-        // single-scan windowed pass (see SqlDialect::sql_quantiles_single_scan)
-        // that names the source exactly once.
+        // materialized as an internal table and the boxplot stats query
+        // references it several times in one statement. MySQL/MariaDB refuse
+        // to open a *temporary* table twice in one statement (error 1137,
+        // "Can't reopen table"), so their dialect materializes internal
+        // tables as regular tables (TempTableStyle::DropThenCreate), which
+        // have no such restriction.
         shared(
             "boxplot_global_source",
             "SELECT * FROM {table} VISUALISE DRAW boxplot MAPPING grp AS x, val AS y",

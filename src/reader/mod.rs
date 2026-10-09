@@ -277,7 +277,10 @@ pub trait SqlDialect {
         let __ggsql_tile__ = self.quote_ident("__ggsql_tile__");
         let quoted_column = self.quote_ident(column);
 
-        let interpolation = self.sql_percentile_cont_expr(fraction);
+        let x = format!("{fraction} * (cnt - 1)");
+        let lo = format!("1 + FLOOR({x})");
+        let hi = format!("1 + {}", self.sql_ceil(&x));
+        let frac = format!("{x} - FLOOR({x})");
 
         // Group correlation belongs in the scalar subquery's own WHERE, not
         // the windowed derived table's: MariaDB cannot resolve outer-query
@@ -317,126 +320,16 @@ pub trait SqlDialect {
             .build();
 
         let mut outer = crate::sql::Select::new(self)
-            .select(interpolation)
+            .select(format!(
+                "MAX(CASE WHEN rn = {lo} THEN __val END) + \
+                 (MAX(CASE WHEN rn = {hi} THEN __val END) - \
+                  MAX(CASE WHEN rn = {lo} THEN __val END)) * MAX({frac})"
+            ))
             .from_aliased(crate::sql::FromItem::Query(&inner), "__ggsql_tile__");
         if let Some(filter) = group_filter {
             outer = outer.and_where(filter);
         }
         format!("({})", outer.build())
-    }
-
-    /// The `percentile_cont` interpolation expression over a row set that
-    /// carries `__val` (value), `rn` (1-based rank), and `cnt` (group size)
-    /// columns, as produced by the windowed passes in [`sql_quantile`] and
-    /// [`build_single_scan_quantiles`]. Usable both as a scalar SELECT item
-    /// over the whole pass and as an aggregate in a `GROUP BY` over it.
-    ///
-    /// With `x = fraction * (cnt - 1)`, the result interpolates linearly
-    /// between the rows ranked `floor(x) + 1` and `ceil(x) + 1`, which is
-    /// exact for every fraction.
-    ///
-    /// [`sql_quantile`]: SqlDialect::sql_quantile
-    /// [`build_single_scan_quantiles`]: SqlDialect::build_single_scan_quantiles
-    fn sql_percentile_cont_expr(&self, fraction: f64) -> String {
-        let x = format!("{fraction} * (cnt - 1)");
-        let lo = format!("1 + FLOOR({x})");
-        let hi = format!("1 + {}", self.sql_ceil(&x));
-        let frac = format!("{x} - FLOOR({x})");
-        format!(
-            "MAX(CASE WHEN rn = {lo} THEN __val END) + \
-             (MAX(CASE WHEN rn = {hi} THEN __val END) - \
-              MAX(CASE WHEN rn = {lo} THEN __val END)) * MAX({frac})"
-        )
-    }
-
-    /// Single-scan alternative to embedding [`sql_quantile`] per fraction.
-    ///
-    /// Returns the parts of a grouped summary that computes `min`, `max`,
-    /// and all requested quantiles while referencing `from` exactly once (in
-    /// the windowed pass). Callers expose [`SingleScanQuantiles::pass`] as a
-    /// CTE named [`SingleScanQuantiles::pass_name`] and compose the rest of
-    /// their statement around it, so backends that forbid referencing a
-    /// temporary table more than once per statement (MySQL/MariaDB error
-    /// 1137, "Can't reopen table") still work when the source is a temp
-    /// table. Both MySQL and MariaDB materialize a multiply-referenced CTE,
-    /// so the summary and any additional scans reading the CTE do not
-    /// re-open the underlying temp table.
-    ///
-    /// The default returns `None`; callers then fall back to one scalar
-    /// subquery per fraction via [`sql_quantile`], which is fine on backends
-    /// without the temp-table restriction.
-    ///
-    /// [`sql_quantile`]: SqlDialect::sql_quantile
-    fn sql_quantiles_single_scan(
-        &self,
-        _column: &str,
-        _fractions: &[(f64, &str)],
-        _from: crate::sql::FromItem<'_>,
-        _groups: &[String],
-    ) -> Option<SingleScanQuantiles> {
-        None
-    }
-
-    /// Shared builder for [`sql_quantiles_single_scan`] implementations.
-    /// Shares the interpolation math with the default [`sql_quantile`] via
-    /// [`sql_percentile_cont_expr`], restructured so a grouped aggregate
-    /// over one windowed pass yields every fraction at once.
-    ///
-    /// [`sql_percentile_cont_expr`]: SqlDialect::sql_percentile_cont_expr
-    ///
-    /// [`sql_quantiles_single_scan`]: SqlDialect::sql_quantiles_single_scan
-    /// [`sql_quantile`]: SqlDialect::sql_quantile
-    fn build_single_scan_quantiles(
-        &self,
-        pass_name: &str,
-        column: &str,
-        fractions: &[(f64, &str)],
-        from: crate::sql::FromItem<'_>,
-        groups: &[String],
-    ) -> SingleScanQuantiles {
-        let quoted_groups: Vec<String> = groups.iter().map(|g| self.quote_ident(g)).collect();
-        let groups_str = quoted_groups.join(", ");
-        let quoted_column = self.quote_ident(column);
-        let partition_by = if quoted_groups.is_empty() {
-            String::new()
-        } else {
-            format!("PARTITION BY {} ", groups_str)
-        };
-
-        let mut pass_items = quoted_groups.clone();
-        pass_items.extend([
-            format!("{quoted_column} AS __val"),
-            format!("ROW_NUMBER() OVER ({partition_by}ORDER BY {quoted_column}) AS rn"),
-            format!("COUNT(*) OVER ({partition_by}) AS cnt"),
-        ]);
-        let pass = crate::sql::Select::new(self)
-            .select_items(&pass_items)
-            .from_aliased(from, "__ggsql_pct__")
-            .and_where(format!("{quoted_column} IS NOT NULL"))
-            .build();
-
-        let mut summary_items = quoted_groups.clone();
-        summary_items.push("MIN(__val) AS min".to_string());
-        summary_items.push("MAX(__val) AS max".to_string());
-        for (fraction, alias) in fractions {
-            summary_items.push(format!(
-                "{} AS {alias}",
-                self.sql_percentile_cont_expr(*fraction)
-            ));
-        }
-        let quoted_pass = self.quote_ident(pass_name);
-        let mut summary = crate::sql::Select::new(self)
-            .select_items(&summary_items)
-            .from_aliased(crate::sql::FromItem::Table(&quoted_pass), "__ggsql_w__");
-        if !groups_str.is_empty() {
-            summary = summary.group_by(&groups_str);
-        }
-
-        SingleScanQuantiles {
-            pass_name: pass_name.to_string(),
-            pass,
-            summary: summary.build(),
-        }
     }
 
     /// SQL fragment for a simple aggregate function applied to an
@@ -900,23 +793,6 @@ impl TypeNames {
         string: Some("VARCHAR"),
         boolean: Some("BOOLEAN"),
     };
-}
-
-/// Components of a single-scan grouped quantile summary; see
-/// [`SqlDialect::sql_quantiles_single_scan`].
-#[derive(Debug, Clone)]
-pub struct SingleScanQuantiles {
-    /// Name under which the caller should expose `pass` as a CTE; `summary`
-    /// reads from it, and callers may join further scans (e.g. outlier
-    /// filters) against it without touching the original source again.
-    pub pass_name: String,
-    /// Windowed pass over the source, computing per-row group columns, the
-    /// value (`__val`), its rank (`rn`), and the group size (`cnt`). The
-    /// source query is referenced exactly once, here.
-    pub pass: String,
-    /// Grouped aggregate over `pass_name` producing the group columns,
-    /// `min`, `max`, and one aliased quantile column per requested fraction.
-    pub summary: String,
 }
 
 /// How a backend (re)creates a temporary table holding a query result; see
