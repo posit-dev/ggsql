@@ -53,7 +53,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { backend: snowflake, driver: snowflake }
+          # Disabled until Snowflake credentials are provisioned: without
+          # the GGSQL_TEST_URI_SNOWFLAKE secret the leg fails the
+          # missing-secret check on the origin repo.
+          # - { backend: snowflake, driver: snowflake }
           - { backend: bigquery, driver: bigquery }
           - { backend: databricks, driver: databricks }
 
