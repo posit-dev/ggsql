@@ -271,8 +271,6 @@ if let Some(df) = spec.stat_data(1) {
 | ----------- | ----------------------------------------------- | -------------------------------- |
 | `sql`       | `fn sql(&self) -> &str`                         | Main SQL query that was executed |
 | `visual`    | `fn visual(&self) -> &str`                      | Raw VISUALISE text               |
-| `layer_sql` | `fn layer_sql(&self, i: usize) -> Option<&str>` | Layer filter/source query        |
-| `stat_sql`  | `fn stat_sql(&self, i: usize) -> Option<&str>`  | Stat transform query             |
 
 **Example:**
 
@@ -280,16 +278,6 @@ if let Some(df) = spec.stat_data(1) {
 // Main query
 println!("SQL: {}", spec.sql());
 println!("Visual: {}", spec.visual());
-
-// Per-layer queries
-for i in 0..spec.layer_count() {
-    if let Some(sql) = spec.layer_sql(i) {
-        println!("Layer {} filter: {}", i, sql);
-    }
-    if let Some(sql) = spec.stat_sql(i) {
-        println!("Layer {} stat: {}", i, sql);
-    }
-}
 ```
 
 #### Warnings Method

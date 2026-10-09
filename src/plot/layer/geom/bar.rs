@@ -106,7 +106,7 @@ impl GeomTrait for Bar {
                 self.aggregate_domain_aesthetics().unwrap_or(&[]),
             )?
         } else {
-            stat_bar_count(query, schema, aesthetics, group_by)?
+            stat_bar_count(query, schema, aesthetics, group_by, dialect)?
         };
         // When the user omits the categorical axis, post-wrap with the dummy
         // pos1 column so the writer suppresses the one-tick axis. Composes
@@ -114,7 +114,7 @@ impl GeomTrait for Bar {
         // branch of stat_bar_count already injects its own dummy column —
         // wrap_stat_with_dummy_pos1's idempotency keeps that path correct).
         if get_column_name(aesthetics, "pos1").is_none() {
-            Ok(wrap_stat_with_dummy_pos1(query, inner))
+            Ok(wrap_stat_with_dummy_pos1(query, inner, dialect))
         } else {
             Ok(inner)
         }
@@ -152,6 +152,7 @@ fn stat_bar_count(
     schema: &Schema,
     aesthetics: &Mappings,
     group_by: &[String],
+    dialect: &dyn SqlDialect,
 ) -> Result<StatResult> {
     // x is now optional - if not mapped, we'll use a dummy constant
     let x_col = get_column_name(aesthetics, "pos1");
@@ -204,30 +205,30 @@ fn stat_bar_count(
                 // weight column exists - use SUM (but still call it "count")
                 format!(
                     "SUM({}) AS {}",
-                    naming::quote_ident(weight_col),
-                    naming::quote_ident(&stat_count)
+                    dialect.quote_ident(weight_col),
+                    dialect.quote_ident(&stat_count)
                 )
             } else {
                 // weight mapped but column doesn't exist - fall back to COUNT
                 // (this shouldn't happen with upfront validation, but handle gracefully)
-                format!("COUNT(*) AS {}", naming::quote_ident(&stat_count))
+                format!("COUNT(*) AS {}", dialect.quote_ident(&stat_count))
             }
         } else {
             // Shouldn't happen (not literal, not column), fall back to COUNT
-            format!("COUNT(*) AS {}", naming::quote_ident(&stat_count))
+            format!("COUNT(*) AS {}", dialect.quote_ident(&stat_count))
         }
     } else {
         // weight not mapped - use COUNT
-        format!("COUNT(*) AS {}", naming::quote_ident(&stat_count))
+        format!("COUNT(*) AS {}", dialect.quote_ident(&stat_count))
     };
 
     // Build the query based on whether x is mapped or not
     // Use two-stage query: first GROUP BY, then calculate proportion with window function
     let (transformed_query, stat_columns, dummy_columns, consumed_aesthetics) = if use_dummy_x {
         // x is not mapped - use dummy constant, no GROUP BY on x
-        let q_x = naming::quote_ident(&stat_x);
-        let q_count = naming::quote_ident(&stat_count);
-        let q_prop = naming::quote_ident(&stat_proportion);
+        let q_x = dialect.quote_ident(&stat_x);
+        let q_count = dialect.quote_ident(&stat_count);
+        let q_prop = dialect.quote_ident(&stat_proportion);
         let (grouped_select, final_select) = if group_by.is_empty() {
             (
                 format!(
@@ -243,7 +244,11 @@ fn stat_bar_count(
                 ),
             )
         } else {
-            let grp_cols = group_by.join(", ");
+            let grp_cols = group_by
+                .iter()
+                .map(|c| dialect.quote_ident(c))
+                .collect::<Vec<_>>()
+                .join(", ");
             (
                 format!(
                     "{g}, '{dummy}' AS {x}, {agg}",
@@ -261,19 +266,25 @@ fn stat_bar_count(
             )
         };
 
+        let __stat_src__ = dialect.quote_ident("__stat_src__");
+        let __grouped__ = dialect.quote_ident("__grouped__");
         let query_str = if group_by.is_empty() {
             // No grouping at all - single aggregate
             format!(
-                "WITH \"__stat_src__\" AS ({query}), \"__grouped__\" AS (SELECT {grouped} FROM \"__stat_src__\") SELECT {final} FROM \"__grouped__\"",
+                "WITH {__stat_src__} AS ({query}), {__grouped__} AS (SELECT {grouped} FROM {__stat_src__}) SELECT {final} FROM {__grouped__}",
                 query = query,
                 grouped = grouped_select,
                 final = final_select
             )
         } else {
             // Group by partition/facet variables only
-            let group_cols = group_by.join(", ");
+            let group_cols = group_by
+                .iter()
+                .map(|c| dialect.quote_ident(c))
+                .collect::<Vec<_>>()
+                .join(", ");
             format!(
-                "WITH \"__stat_src__\" AS ({query}), \"__grouped__\" AS (SELECT {grouped} FROM \"__stat_src__\" GROUP BY {group}) SELECT {final} FROM \"__grouped__\"",
+                "WITH {__stat_src__} AS ({query}), {__grouped__} AS (SELECT {grouped} FROM {__stat_src__} GROUP BY {group}) SELECT {final} FROM {__grouped__}",
                 query = query,
                 grouped = grouped_select,
                 group = group_cols,
@@ -295,7 +306,7 @@ fn stat_bar_count(
         )
     } else {
         // x is mapped - use existing logic with two-stage query
-        let x_col = naming::quote_ident(&x_col.unwrap());
+        let x_col = dialect.quote_ident(&x_col.unwrap());
 
         // Build grouped columns (group_by includes partition_by + facet variables + x)
         let group_cols = if group_by.is_empty() {
@@ -307,8 +318,8 @@ fn stat_bar_count(
         };
 
         // Keep original x column name, only add the aggregated stat column
-        let q_count = naming::quote_ident(&stat_count);
-        let q_prop = naming::quote_ident(&stat_proportion);
+        let q_count = dialect.quote_ident(&stat_count);
+        let q_prop = dialect.quote_ident(&stat_proportion);
         let (grouped_select, final_select) = if group_by.is_empty() {
             (
                 format!("{x}, {agg}", x = x_col, agg = agg_expr),
@@ -319,7 +330,11 @@ fn stat_bar_count(
                 ),
             )
         } else {
-            let grp_cols = group_by.join(", ");
+            let grp_cols = group_by
+                .iter()
+                .map(|c| dialect.quote_ident(c))
+                .collect::<Vec<_>>()
+                .join(", ");
             (
                 format!("{g}, {x}, {agg}", g = grp_cols, x = x_col, agg = agg_expr),
                 format!(
@@ -331,8 +346,10 @@ fn stat_bar_count(
             )
         };
 
+        let __stat_src__ = dialect.quote_ident("__stat_src__");
+        let __grouped__ = dialect.quote_ident("__grouped__");
         let query_str = format!(
-            "WITH \"__stat_src__\" AS ({query}), \"__grouped__\" AS (SELECT {grouped} FROM \"__stat_src__\" GROUP BY {group}) SELECT {final} FROM \"__grouped__\"",
+            "WITH {__stat_src__} AS ({query}), {__grouped__} AS (SELECT {grouped} FROM {__stat_src__} GROUP BY {group}) SELECT {final} FROM {__grouped__}",
             query = query,
             grouped = grouped_select,
             group = group_cols,

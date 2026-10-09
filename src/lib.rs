@@ -45,6 +45,7 @@ pub mod params;
 pub mod parser;
 pub mod plot;
 pub mod spec;
+pub mod sql;
 pub mod table;
 pub mod util;
 

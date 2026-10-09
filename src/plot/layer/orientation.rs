@@ -257,7 +257,7 @@ fn is_discrete_scale(scale: &Scale) -> bool {
 ///
 /// Used for both mappings and remappings when handling transposed orientation.
 pub fn flip_position_aesthetics(
-    aesthetics: &mut std::collections::HashMap<String, AestheticValue>,
+    aesthetics: &mut std::collections::BTreeMap<String, AestheticValue>,
 ) {
     const PAIRS: [(&str, &str); 5] = [
         ("pos1", "pos2"),

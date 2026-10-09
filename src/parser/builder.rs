@@ -462,12 +462,11 @@ fn build_span_clause(node: &Node, source: &SourceTree) -> Result<Spanner> {
     let id_node = node
         .child_by_field_name("id")
         .ok_or_else(|| GgsqlError::ParseError("Missing 'id' field in SPAN clause".to_string()))?;
-    // `id` stays unparsed (quotes included), matching parse_column_list's
-    // own convention, so it compares equal to a later OVER/LABEL
-    // reference. `label` is the dequoted form, used only for display.
+    // `id` is unquoted like every other column reference, so it compares
+    // equal to a later OVER/LABEL reference. `label` is used only for display.
     let (id, label) = match id_node.kind() {
         "identifier" => (
-            source.get_text(&id_node),
+            naming::unquote_ident(&source.get_text(&id_node)),
             Some(parse_identifier_node(&id_node, source)),
         ),
         "null_literal" => (naming::anonymous_span_id(), None),
@@ -815,6 +814,9 @@ fn parse_parameter_assignment(
 }
 
 /// Parse a partition_clause: PARTITION BY col1, col2, ...
+///
+/// Identifiers follow the same convention as MAPPING columns: stored
+/// unquoted, re-quoted per dialect at SQL emission.
 fn parse_partition_clause(node: &Node, source: &SourceTree) -> Result<Vec<String>> {
     let columns_node = source
         .find_node(node, "(column_list) @cols")
@@ -1179,7 +1181,11 @@ fn build_facet(node: &Node, source: &SourceTree) -> Result<Facet> {
 /// Parse identifier texts out of a column_list node
 fn parse_column_list(node: &Node, source: &SourceTree) -> Result<Vec<String>> {
     let query = "(identifier) @col";
-    Ok(source.find_texts(node, query))
+    Ok(source
+        .find_texts(node, query)
+        .iter()
+        .map(|c| naming::unquote_ident(c))
+        .collect())
 }
 
 // ============================================================================
@@ -1357,7 +1363,7 @@ fn build_labels(node: &Node, source: &SourceTree) -> Result<Labels> {
         let (name_node, value_node) = extract_name_value_nodes(&label_node, "label assignment")?;
 
         // Parse label type (name)
-        let label_type = source.get_text(&name_node);
+        let label_type = naming::unquote_ident(&source.get_text(&name_node));
 
         // Parse label value (string or null)
         let label_value = match value_node.kind() {
@@ -1514,7 +1520,7 @@ mod tests {
         let table = specs[0].as_table().expect("expected a Table spec");
 
         assert_eq!(table.spans.len(), 1);
-        assert_eq!(table.spans[0].id, "`Pretty Name`");
+        assert_eq!(table.spans[0].id, "Pretty Name");
         assert_eq!(table.spans[0].label, Some("Pretty Name".to_string()));
         assert_eq!(table.spans[0].columns, vec!["foo", "bar", "baz"]);
         assert!(table.spans[0].settings.is_empty());

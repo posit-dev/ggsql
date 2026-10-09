@@ -8,7 +8,7 @@ pub use crate::params::*;
 
 use arrow::datatypes::DataType;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 // =============================================================================
 // Schema Types (derived from input data)
@@ -47,7 +47,7 @@ pub struct Mappings {
     /// Whether a wildcard (*) was specified
     pub wildcard: bool,
     /// Explicit aesthetic mappings (aesthetic → value)
-    pub aesthetics: HashMap<String, AestheticValue>,
+    pub aesthetics: BTreeMap<String, AestheticValue>,
 }
 
 impl Mappings {
@@ -55,7 +55,7 @@ impl Mappings {
     pub fn new() -> Self {
         Self {
             wildcard: false,
-            aesthetics: HashMap::new(),
+            aesthetics: BTreeMap::new(),
         }
     }
 
@@ -63,7 +63,7 @@ impl Mappings {
     pub fn with_wildcard() -> Self {
         Self {
             wildcard: true,
-            aesthetics: HashMap::new(),
+            aesthetics: BTreeMap::new(),
         }
     }
 
