@@ -67,7 +67,7 @@ pub(super) fn build_cells(
     body_cells.extend(create_body(df, &columns));
     let table_body = TableLayout::new(
         columns.clone(),
-        vec![TableRow::default(); df.height()],
+        vec![TableRow::body(); df.height()],
         body_cells,
     );
     let layout = header.rowbind(table_body);

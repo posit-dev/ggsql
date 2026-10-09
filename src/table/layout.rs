@@ -340,6 +340,9 @@ pub struct TableRow {
     /// `false` by default; set `true` for a spanner, column-label, title or
     /// subtitle row.
     pub is_header: bool,
+    /// Whether this row is the caption's — always the layout's last row and
+    /// never also a header (`TableLayout::validate` enforces both).
+    pub is_caption: bool,
 }
 
 impl TableRow {
@@ -349,6 +352,19 @@ impl TableRow {
             is_header: true,
             ..Self::default()
         }
+    }
+
+    /// The caption's row — everything else at its default.
+    pub fn caption() -> Self {
+        Self {
+            is_caption: true,
+            ..Self::default()
+        }
+    }
+
+    /// A body row — the default; named for symmetry with `header()`/`caption()`.
+    pub fn body() -> Self {
+        Self::default()
     }
 }
 
@@ -514,6 +530,26 @@ impl TableLayout {
         &self.rows
     }
 
+    /// Row indices partitioned into header and body (each ascending), per
+    /// `TableRow::is_header`. A caption's row (`TableRow::is_caption`)
+    /// belongs to neither, so the two vecs' combined length is the
+    /// caption-free row count.
+    pub fn header_and_body_rows(&self) -> (Vec<usize>, Vec<usize>) {
+        let mut header_rows = Vec::new();
+        let mut body_rows = Vec::new();
+        for (idx, row) in self.rows.iter().enumerate() {
+            if row.is_caption {
+                continue;
+            }
+            if row.is_header {
+                header_rows.push(idx);
+            } else {
+                body_rows.push(idx);
+            }
+        }
+        (header_rows, body_rows)
+    }
+
     /// Stack `bottom` below `self`, offsetting `bottom`'s cells down by
     /// `self`'s row extent and concatenating both sides' `rows` — no
     /// offsetting needed there, since a `TableRow`'s position *is* its
@@ -543,14 +579,18 @@ impl TableLayout {
         TableLayout::new(self.columns, rows, cells)
     }
 
-    /// Check a fully composed layout: `rows` and `columns` match the extents
-    /// `cells` implies, and no two cells claim the same grid position.
-    ///
-    /// The overlap check walks every cell's full footprint into a map of
-    /// occupied positions to the `TableCellKind` that claimed each one,
-    /// erroring — naming both kinds — on the first double claim.
-    /// `O(total cell area)`.
+    /// Check a fully composed layout: shape extents, caption placement,
+    /// header-before-body ordering, and cell overlaps — one `validate_*`
+    /// helper per invariant.
     pub fn validate(&self) -> Result<()> {
+        self.validate_shape()?;
+        self.validate_caption()?;
+        self.validate_row_order()?;
+        self.validate_overlaps()
+    }
+
+    /// `rows` and `columns` must match the extents `cells` implies.
+    fn validate_shape(&self) -> Result<()> {
         let row_extent = count_cell_rows(&self.cells);
         if self.rows.len() != row_extent {
             return Err(GgsqlError::ValidationError(format!(
@@ -567,7 +607,77 @@ impl TableLayout {
                 )));
             }
         }
+        Ok(())
+    }
 
+    /// The caption row is the one row a `Caption` cell may occupy: at most
+    /// one, always the layout's last, never a header.
+    fn validate_caption(&self) -> Result<()> {
+        let caption_rows: Vec<usize> = self
+            .rows
+            .iter()
+            .enumerate()
+            .filter_map(|(idx, row)| row.is_caption.then_some(idx))
+            .collect();
+        if caption_rows.len() > 1 {
+            return Err(GgsqlError::ValidationError(format!(
+                "Table layout has {} caption rows; at most one is allowed",
+                caption_rows.len()
+            )));
+        }
+        let caption_cells: Vec<&TableCell> = self
+            .cells
+            .iter()
+            .filter(|cell| cell.kind == TableCellKind::Caption)
+            .collect();
+        if let Some(&caption_row) = caption_rows.first() {
+            if self.rows[caption_row].is_header {
+                return Err(GgsqlError::ValidationError(
+                    "Table layout's caption row is also marked as a header row".to_string(),
+                ));
+            }
+            if caption_row != self.nrow() - 1 {
+                return Err(GgsqlError::ValidationError(format!(
+                    "Table layout's caption row is row {caption_row}, not its last row"
+                )));
+            }
+            if caption_cells.len() != 1 || caption_cells[0].top != caption_row {
+                return Err(GgsqlError::ValidationError(format!(
+                    "Table layout's caption row (row {caption_row}) must be occupied by exactly one Caption cell"
+                )));
+            }
+        } else if !caption_cells.is_empty() {
+            return Err(GgsqlError::ValidationError(
+                "Table layout has a Caption cell but no caption row".to_string(),
+            ));
+        }
+        Ok(())
+    }
+
+    /// Every header row must sit above every body row — writers render the
+    /// two as separate blocks (HTML's `<thead>`/`<tbody>`).
+    fn validate_row_order(&self) -> Result<()> {
+        let (header_rows, body_rows) = self.header_and_body_rows();
+        if let (Some(&max_header_row), Some(&min_body_row)) =
+            (header_rows.last(), body_rows.first())
+        {
+            if max_header_row >= min_body_row {
+                return Err(GgsqlError::ValidationError(format!(
+                    "Table layout renders headers and body as separate blocks, so every header \
+                     row must sit above every body row; found a header row at {max_header_row} \
+                     at or below a body row at {min_body_row}"
+                )));
+            }
+        }
+        Ok(())
+    }
+
+    /// No two cells may claim the same grid position.
+    ///
+    /// Walks every cell's full footprint into a map of occupied positions to
+    /// the `TableCellKind` that claimed each one, erroring — naming both
+    /// kinds — on the first double claim. `O(total cell area)`.
+    fn validate_overlaps(&self) -> Result<()> {
         let mut occupied: std::collections::HashMap<(usize, usize), TableCellKind> =
             std::collections::HashMap::new();
 
@@ -641,7 +751,7 @@ pub(crate) fn create_caption(caption: Option<&str>, columns: &[TableColumn]) -> 
     match caption {
         Some(caption) => TableLayout::new(
             columns.to_vec(),
-            vec![TableRow::default()],
+            vec![TableRow::caption()],
             vec![TableCell::new(
                 TableCellKind::Caption,
                 0,
@@ -1078,6 +1188,39 @@ mod assembly_tests {
         right: usize,
     ) -> TableCell {
         TableCell::new(kind, top, bottom, left, right, String::new())
+    }
+
+    #[test]
+    fn header_and_body_rows_partitions_and_excludes_the_caption_row() {
+        let cells = vec![
+            cell_at(TableCellKind::ColumnLabel, 0, 0, 0, 0),
+            cell_at(TableCellKind::Body, 1, 1, 0, 0),
+            cell_at(TableCellKind::Caption, 2, 2, 0, 0),
+        ];
+        let rows = vec![
+            TableRow::header(),
+            TableRow::body(),
+            // The caption's own row: flagged, so excluded from both vecs.
+            TableRow::caption(),
+        ];
+        let layout = TableLayout::new(vec![column("a", "a")], rows, cells);
+
+        let (header_rows, body_rows) = layout.header_and_body_rows();
+
+        assert_eq!(header_rows, [0]);
+        assert_eq!(body_rows, [1]);
+    }
+
+    #[test]
+    fn validate_rejects_a_header_row_below_a_body_row() {
+        let cells = vec![
+            cell_at(TableCellKind::Body, 0, 0, 0, 0),
+            cell_at(TableCellKind::ColumnLabel, 1, 1, 0, 0),
+        ];
+        let rows = vec![TableRow::body(), TableRow::header()];
+        let layout = TableLayout::new(vec![column("a", "a")], rows, cells);
+
+        assert!(layout.validate().is_err());
     }
 
     #[test]

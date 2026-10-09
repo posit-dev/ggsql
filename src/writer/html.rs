@@ -25,7 +25,6 @@ use std::collections::BTreeMap;
 use std::collections::HashMap;
 
 use crate::plot::{ParameterValue, Parameters};
-use crate::table::{count_cell_cols, count_cell_rows};
 use crate::util::escape_html;
 use crate::writer::{Writer, WriterOptions};
 use crate::{
@@ -109,26 +108,12 @@ impl Writer for HtmlWriter {
             .into_iter()
             .partition(|cell| cell.kind == TableCellKind::Caption);
 
-        // The caption's row still counts in `layout.nrow()`, so size the
-        // grid from the partitioned cells instead.
-        let ncol = count_cell_cols(&cells);
-        let nrow = count_cell_rows(&cells);
-
-        let (header_rows, body_rows) = split_rows(rows, nrow);
-
-        // Not a general TableRow invariant — just what this writer's split
-        // into two blocks requires.
-        if let (Some(&max_header_row), Some(&min_body_row)) =
-            (header_rows.last(), body_rows.first())
-        {
-            if max_header_row >= min_body_row {
-                return Err(GgsqlError::WriterError(format!(
-                    "HtmlWriter renders headers and body as separate <thead>/<tbody> blocks, so \
-                     every header cell must sit above every body cell; found a header row at \
-                     {max_header_row} at or below a body row at {min_body_row}"
-                )));
-            }
-        }
+        // The caption-free row count comes from the row partition (a
+        // caption's row is in neither vec); the caption cell spans full
+        // width, so `ncol` is unaffected by the split.
+        let (header_rows, body_rows) = layout.header_and_body_rows();
+        let nrow = header_rows.len() + body_rows.len();
+        let ncol = layout.ncol();
 
         let mut all_slots = build_all_slots(&cells, ncol, nrow);
 
@@ -561,26 +546,6 @@ enum Slot<'a> {
     Skip,
 }
 
-/// Split every row index in `0..nrow` into header or body, per
-/// `TableRow::is_header` — `rows` may carry one trailing entry for a
-/// caption's own row (see `write_table`'s own caption split); bounding by
-/// `nrow` is what keeps that entry out of either set. Each returned `Vec` is
-/// already ascending, since `idx` only ever increases as `rows` is walked.
-fn split_rows(rows: &[TableRow], nrow: usize) -> (Vec<usize>, Vec<usize>) {
-    let mut header_rows = Vec::new();
-    let mut body_rows = Vec::new();
-
-    for (idx, row) in rows.iter().take(nrow).enumerate() {
-        if row.is_header {
-            header_rows.push(idx);
-        } else {
-            body_rows.push(idx);
-        }
-    }
-
-    (header_rows, body_rows)
-}
-
 /// Decide what belongs at every column of every row, for the whole table, in
 /// one pass over `cells` — a cell's rowspan/colspan footprint is marked as
 /// the cell itself is placed. `ncol`/`nrow` size the grid; `write_table`
@@ -665,7 +630,12 @@ mod render_tests {
     /// Wrap hand-built `cells`/`rows` into a `TableLayout` for `write_table`
     /// tests, with as many default columns as `cells` implies.
     fn layout(cells: Vec<TableCell>, rows: Vec<TableRow>) -> TableLayout {
-        let columns = (0..count_cell_cols(&cells))
+        let ncol = cells
+            .iter()
+            .map(|cell| cell.right)
+            .max()
+            .map_or(0, |r| r + 1);
+        let columns = (0..ncol)
             .map(|i| TableColumn {
                 name: i.to_string(),
                 label: String::new(),
@@ -713,7 +683,7 @@ mod render_tests {
 
     #[test]
     fn render_row_returns_empty_string_for_no_slots() {
-        assert_eq!(render_row(&[], &TableRow::default(), CssMode::Inline), "");
+        assert_eq!(render_row(&[], &TableRow::body(), CssMode::Inline), "");
     }
 
     #[test]
@@ -721,10 +691,7 @@ mod render_tests {
         // A row entirely swallowed by rowspans from earlier rows gets no
         // `<tr>` of its own either.
         let slots = vec![Slot::Skip, Slot::Skip];
-        assert_eq!(
-            render_row(&slots, &TableRow::default(), CssMode::Inline),
-            ""
-        );
+        assert_eq!(render_row(&slots, &TableRow::body(), CssMode::Inline), "");
     }
 
     #[test]
@@ -905,7 +872,7 @@ mod render_tests {
             cell(TableCellKind::Body, 0, 0, 0, 0),
             cell(TableCellKind::ColumnLabel, 1, 1, 0, 0),
         ];
-        let rows = vec![TableRow::default(), TableRow::header()];
+        let rows = vec![TableRow::body(), TableRow::header()];
 
         assert!(HtmlWriter::new().write_table(&layout(cells, rows)).is_err());
     }
@@ -921,7 +888,7 @@ mod render_tests {
             cell(TableCellKind::Body, 2, 2, 0, 0),
             cell(TableCellKind::Body, 2, 2, 1, 1),
         ];
-        let rows = vec![TableRow::header(), TableRow::header(), TableRow::default()];
+        let rows = vec![TableRow::header(), TableRow::header(), TableRow::body()];
 
         let html = HtmlWriter {
             css_mode: CssMode::Inline,
@@ -967,7 +934,7 @@ mod render_tests {
                 "<b>Source</b>".to_string(),
             ),
         ];
-        let rows = vec![TableRow::header(), TableRow::default(), TableRow::default()];
+        let rows = vec![TableRow::header(), TableRow::body(), TableRow::caption()];
 
         let html = HtmlWriter {
             css_mode: CssMode::Inline,
@@ -1001,7 +968,7 @@ mod render_tests {
                 ..TableRow::header()
             },
             TableRow::header(),
-            TableRow::default(),
+            TableRow::body(),
         ];
 
         let html = HtmlWriter::new().write_table(&layout(cells, rows)).unwrap();
@@ -1025,7 +992,7 @@ mod render_tests {
                 classes: vec![TableClass::Heading],
                 ..TableRow::header()
             },
-            TableRow::default(),
+            TableRow::body(),
         ];
 
         let html = HtmlWriter {
