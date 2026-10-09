@@ -1,9 +1,19 @@
 //! Snowflake Workbench credential detection and connection resolution.
 
-pub(super) fn is_snowflake(conn_str: &str) -> bool {
-    crate::reader::connection::extract_odbc_value(conn_str, "driver")
-        .map(|d| d.to_lowercase().contains("snowflake"))
-        .unwrap_or(false)
+/// Registry `odbc_credential_provider` hook for Snowflake: rewrite the
+/// connection string to supply credentials before connecting. Resolves a
+/// `ConnectionName=` reference from `~/.snowflake/connections.toml`, then
+/// injects a Posit Workbench OAuth token when one is available and the
+/// string doesn't carry a token already.
+pub(crate) fn apply_workbench_credentials(conn_str: &mut String) {
+    if let Some(resolved) = resolve_connection_name(conn_str) {
+        *conn_str = resolved;
+    }
+    if !has_token(conn_str) {
+        if let Some(token) = detect_workbench_token() {
+            *conn_str = inject_snowflake_token(conn_str, &token);
+        }
+    }
 }
 
 pub(super) fn has_token(conn_str: &str) -> bool {
@@ -169,11 +179,22 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_is_snowflake() {
-        assert!(is_snowflake(
-            "Driver=Snowflake;Server=foo.snowflakecomputing.com"
-        ));
-        assert!(!is_snowflake("Driver={PostgreSQL};Server=localhost"));
+    fn test_credential_hook_dispatches_on_driver() {
+        // The registry dispatches the credential hook on the Driver= value.
+        let driver = crate::reader::connection::extract_odbc_value(
+            "Driver=Snowflake;Server=foo.snowflakecomputing.com",
+            "driver",
+        );
+        let entry = crate::reader::registry::detect(None, driver.as_deref()).unwrap();
+        assert_eq!(entry.scheme, "snowflake");
+        assert!(entry.odbc_credential_provider.is_some());
+
+        let driver = crate::reader::connection::extract_odbc_value(
+            "Driver={PostgreSQL};Server=localhost",
+            "driver",
+        );
+        let entry = crate::reader::registry::detect(None, driver.as_deref()).unwrap();
+        assert!(entry.odbc_credential_provider.is_none());
     }
 
     #[test]
