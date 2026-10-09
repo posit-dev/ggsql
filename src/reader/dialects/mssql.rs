@@ -1,5 +1,8 @@
 //! SQL Server (T-SQL) dialect.
 //!
+//! Requires **SQL Server 2022 or later** (Azure SQL included): generated
+//! queries use `GREATEST`/`LEAST`, which earlier versions lack.
+//!
 //! Main deviations from ANSI: `TOP`-style limiting (expressed as an outer
 //! `SELECT TOP n *`), `BIT` booleans with 1/0 literals, `DATEADD` literals,
 //! and `SELECT ... INTO` instead of `CREATE TABLE AS`.
@@ -23,15 +26,6 @@ impl SqlDialect for MssqlDialect {
             boolean: Some("BIT"),
             ..crate::reader::TypeNames::ANSI
         }
-    }
-
-    // SQL Server only gained GREATEST/LEAST in 2022; stay portable.
-    fn sql_greatest(&self, exprs: &[&str]) -> String {
-        super::case_greatest(exprs)
-    }
-
-    fn sql_least(&self, exprs: &[&str]) -> String {
-        super::case_least(exprs)
     }
 
     fn sql_boolean_literal(&self, value: bool) -> String {
@@ -165,7 +159,7 @@ mod tests {
 
     #[test]
     fn booleans_are_bit_literals() {
-        assert_eq!(MssqlDialect.boolean_type_name(), Some("BIT"));
+        assert_eq!(MssqlDialect.type_names().boolean, Some("BIT"));
         assert_eq!(MssqlDialect.sql_boolean_literal(true), "1");
     }
 

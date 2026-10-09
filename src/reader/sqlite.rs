@@ -272,7 +272,7 @@ impl Reader for SqliteReader {
         }
 
         // Rewrite ggsql:name → __ggsql_data_name__ in SQL
-        let sql = crate::parser::rewrite_namespaced_sql(sql)?;
+        let sql = crate::parser::rewrite_namespaced_sql(sql, self.dialect())?;
 
         if !super::returns_rows(&sql) {
             self.conn

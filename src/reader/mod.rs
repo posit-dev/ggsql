@@ -57,106 +57,9 @@ use crate::{naming, DataFrame, GgsqlError, Result};
 /// [`crate::sql::FromItem::Fragment`] contract — a bare (possibly quoted)
 /// table/CTE name or an already-parenthesized relation, never a raw query.
 pub trait SqlDialect {
-    /// SQL type names for table creation and casts. Dialects override this
-    /// one method with a [`TypeNames`] literal rather than the individual
-    /// `*_type_name` accessors below.
-    fn type_names(&self) -> TypeNames {
-        TypeNames::ANSI
-    }
-
-    /// SQL type name for numeric columns (e.g., "DOUBLE PRECISION").
-    /// Derived from [`type_names`]; override that, not this.
-    ///
-    /// [`type_names`]: SqlDialect::type_names
-    fn number_type_name(&self) -> Option<&str> {
-        self.type_names().number
-    }
-
-    /// SQL type name for integer columns (e.g., "BIGINT"); see
-    /// [`number_type_name`](SqlDialect::number_type_name).
-    fn integer_type_name(&self) -> Option<&str> {
-        self.type_names().integer
-    }
-
-    /// SQL type name for DATE columns (e.g., "DATE"); see
-    /// [`number_type_name`](SqlDialect::number_type_name).
-    fn date_type_name(&self) -> Option<&str> {
-        self.type_names().date
-    }
-
-    /// SQL type name for DATETIME/TIMESTAMP columns; see
-    /// [`number_type_name`](SqlDialect::number_type_name).
-    fn datetime_type_name(&self) -> Option<&str> {
-        self.type_names().datetime
-    }
-
-    /// SQL type name for TIME columns; see
-    /// [`number_type_name`](SqlDialect::number_type_name).
-    fn time_type_name(&self) -> Option<&str> {
-        self.type_names().time
-    }
-
-    /// SQL type name for STRING/VARCHAR columns; see
-    /// [`number_type_name`](SqlDialect::number_type_name).
-    fn string_type_name(&self) -> Option<&str> {
-        self.type_names().string
-    }
-
-    /// SQL type name for BOOLEAN columns; see
-    /// [`number_type_name`](SqlDialect::number_type_name).
-    fn boolean_type_name(&self) -> Option<&str> {
-        self.type_names().boolean
-    }
-
-    /// Get the SQL type name for a cast target type.
-    fn type_name_for(&self, target: CastTargetType) -> Option<&str> {
-        match target {
-            CastTargetType::Number => self.number_type_name(),
-            CastTargetType::Integer => self.integer_type_name(),
-            CastTargetType::Date => self.date_type_name(),
-            CastTargetType::DateTime => self.datetime_type_name(),
-            CastTargetType::Time => self.time_type_name(),
-            CastTargetType::String => self.string_type_name(),
-            CastTargetType::Boolean => self.boolean_type_name(),
-        }
-    }
-
-    /// Quote an identifier using this backend's convention.
-    ///
-    /// Default is SQL-standard double quotes. Override for backends with a
-    /// different quoting convention (e.g. backticks for MySQL/ClickHouse).
-    fn quote_ident(&self, name: &str) -> String {
-        naming::quote_ident(name)
-    }
-
-    /// Append a row limit to a query.
-    ///
-    /// Default uses `LIMIT n`. Override for backends with different limit
-    /// syntax (e.g. SQL Server's `TOP`, Oracle's `FETCH FIRST`).
-    fn sql_limit(&self, query: &str, n: usize) -> String {
-        format!("{} LIMIT {}", query, n)
-    }
-
-    /// Whether [`sql_limit`](SqlDialect::sql_limit) wraps the query in a
-    /// derived table (T-SQL's `SELECT TOP n * FROM (…)`, Oracle's ROWNUM
-    /// wrap) rather than appending a clause (`LIMIT n`). Callers use this
-    /// to keep ORDER BY out of the derived table, where T-SQL rejects it
-    /// (error 1033). Default `false`; wrapper-style dialects must override.
-    fn sql_limit_wraps_query(&self) -> bool {
-        false
-    }
-
-    /// Cast an expression to a SQL type name.
-    ///
-    /// Default uses `CAST(expr AS type)`. Override for backends that prefer a
-    /// non-throwing cast (e.g. BigQuery's `SAFE_CAST`, Snowflake/Trino's
-    /// `TRY_CAST`). `type_name` should come from [`type_name_for`] so it is
-    /// already backend-appropriate.
-    ///
-    /// [`type_name_for`]: SqlDialect::type_name_for
-    fn sql_cast(&self, expr: &str, type_name: &str) -> String {
-        format!("CAST({} AS {})", expr, type_name)
-    }
+    // =====================================================================
+    // Capabilities and self-knowledge
+    // =====================================================================
 
     /// Whether this backend supports spatial (geometry) operations.
     ///
@@ -179,6 +82,128 @@ pub trait SqlDialect {
     fn supports_spatial(&self) -> bool {
         false
     }
+
+    /// Whether [`sql_limit`](SqlDialect::sql_limit) wraps the query in a
+    /// derived table (T-SQL's `SELECT TOP n * FROM (…)`, Oracle's ROWNUM
+    /// wrap) rather than appending a clause (`LIMIT n`). Callers use this
+    /// to keep ORDER BY out of the derived table, where T-SQL rejects it
+    /// (error 1033). Default `false`; wrapper-style dialects must override.
+    fn sql_limit_wraps_query(&self) -> bool {
+        false
+    }
+
+    /// Whether a `WITH` clause may appear inside a parenthesized derived
+    /// table. T-SQL forbids it ("Incorrect syntax near the keyword
+    /// 'WITH'"), so [`crate::sql`] hoists leading CTEs out of the derived
+    /// table for dialects returning `false`.
+    fn allows_cte_in_derived_table(&self) -> bool {
+        true
+    }
+
+    /// Whether this backend fundamentally lacks the temporary-table support
+    /// ggsql needs to stage internal tables (CTEs, stat transforms), so a
+    /// connection through it must always be wrapped in a caching reader.
+    ///
+    /// Set this for query engines with no DDL at all (Druid, Drill)
+    /// or where `CREATE TEMP TABLE` is broadly unsupported
+    /// (Trino). Backends whose support is merely *uncertain* — e.g. the
+    /// account may be read-only — should keep the default: connections are
+    /// probed once on connect and wrapped only when the probe fails.
+    fn requires_cache(&self) -> bool {
+        false
+    }
+
+    /// Whether result batches should have ISO-8601 date/datetime strings
+    /// sniffed into temporal Arrow types at the reader boundary.
+    ///
+    /// Default `false`: a backend's VARCHAR is a real string type and must
+    /// not be reinterpreted. Opt in only for drivers that lose temporal type
+    /// information entirely — e.g. the prerelease Druid Foundry driver
+    /// surfaces Druid's LONG-based timestamps as plain strings/epoch
+    /// integers — where an ISO-looking string is almost certainly a date
+    /// the driver failed to type. Mirrors the sqlite reader's value
+    /// sniffing, which exists for the same reason (sqlite has no temporal
+    /// storage types).
+    fn sniff_temporal_strings(&self) -> bool {
+        false
+    }
+
+    /// How this backend (re)creates a temporary table holding a query
+    /// result. Drives the default [`create_or_replace_temp_table_sql`];
+    /// dialects pick a variant instead of overriding that method.
+    ///
+    /// [`create_or_replace_temp_table_sql`]: SqlDialect::create_or_replace_temp_table_sql
+    fn temp_table_style(&self) -> TempTableStyle {
+        TempTableStyle::DropThenCreateTemp
+    }
+
+    // =====================================================================
+    // Types and identifiers
+    // =====================================================================
+
+    /// SQL type names for table creation and casts. Dialects override this
+    /// one method with a [`TypeNames`] literal; call sites read individual
+    /// fields off it (`dialect.type_names().number`, …).
+    fn type_names(&self) -> TypeNames {
+        TypeNames::ANSI
+    }
+
+    /// Get the SQL type name for a cast target type.
+    fn type_name_for(&self, target: CastTargetType) -> Option<&str> {
+        let names = self.type_names();
+        match target {
+            CastTargetType::Number => names.number,
+            CastTargetType::Integer => names.integer,
+            CastTargetType::Date => names.date,
+            CastTargetType::DateTime => names.datetime,
+            CastTargetType::Time => names.time,
+            CastTargetType::String => names.string,
+            CastTargetType::Boolean => names.boolean,
+        }
+    }
+
+    /// Quote an identifier using this backend's convention.
+    ///
+    /// Default is SQL-standard double quotes. Override for backends with a
+    /// different quoting convention (e.g. backticks for MySQL/ClickHouse).
+    fn quote_ident(&self, name: &str) -> String {
+        naming::quote_ident(name)
+    }
+
+    /// Cast an expression to a SQL type name.
+    ///
+    /// Default uses `CAST(expr AS type)`. Override for backends that prefer a
+    /// non-throwing cast (e.g. BigQuery's `SAFE_CAST`, Snowflake/Trino's
+    /// `TRY_CAST`). `type_name` should come from [`type_name_for`] so it is
+    /// already backend-appropriate.
+    ///
+    /// [`type_name_for`]: SqlDialect::type_name_for
+    fn sql_cast(&self, expr: &str, type_name: &str) -> String {
+        format!("CAST({} AS {})", expr, type_name)
+    }
+
+    /// Table-alias clause for a FROM item.
+    ///
+    /// Default is the ANSI `AS "alias"`. Oracle rejects `AS` before table
+    /// aliases and emits just the quoted alias.
+    fn sql_table_alias(&self, alias: &str) -> String {
+        format!("AS {}", self.quote_ident(alias))
+    }
+
+    /// How `*` is emitted in a select list that also contains other items,
+    /// when selecting from a derived table with this alias.
+    ///
+    /// Default is a bare `*`. Oracle rejects an unqualified `*` alongside
+    /// other items and requires `alias.*`. (A select list consisting only
+    /// of `*` is valid everywhere and does not go through this hook.)
+    fn sql_select_star(&self, table_alias: &str) -> String {
+        let _ = table_alias;
+        "*".to_string()
+    }
+
+    // =====================================================================
+    // Scalar SQL translations
+    // =====================================================================
 
     /// Scalar MAX across any number of SQL expressions.
     ///
@@ -204,188 +229,11 @@ pub trait SqlDialect {
         format!("LEAST({})", exprs.join(", "))
     }
 
-    /// SQL expression to convert a geometry column to WKB.
+    /// Ceiling of a numeric expression.
     ///
-    /// Default uses `ST_AsBinary` (OGC standard). Override for backends
-    /// with different function names (e.g. DuckDB uses `ST_AsWKB`).
-    fn sql_geometry_to_wkb(&self, column: &str) -> String {
-        format!("ST_AsBinary({column})")
-    }
-
-    /// WORKAROUND(duckdb-rs#714): Ensures a column is native GEOMETRY type.
-    ///
-    /// Geometry columns may arrive as WKB BLOB (because Arrow export crashes on
-    /// native GEOMETRY, forcing pre-conversion). This normalizes both GEOMETRY
-    /// and BLOB to GEOMETRY so spatial functions work uniformly.
-    ///
-    /// Default is identity (column is already geometry). Override for backends
-    /// where geometry arrives as a different type.
-    fn sql_ensure_geometry(&self, column: &str) -> String {
-        column.to_string()
-    }
-
-    /// Produce a SELECT that replaces a single column with a new expression.
-    ///
-    /// When `all_columns` is provided, enumerates them explicitly (substituting
-    /// `expr` for `col`), avoiding duplicate-column issues on PostgreSQL.
-    /// When `all_columns` is empty, falls back to `SELECT expr AS col, *` which
-    /// works for direct-to-DataFrame execution (first occurrence wins) but NOT
-    /// for `CREATE TABLE AS` on PostgreSQL.
-    ///
-    /// Override for backends with native REPLACE syntax (DuckDB).
-    fn sql_select_replace(
-        &self,
-        expr: &str,
-        col: &str,
-        from: &str,
-        all_columns: &[String],
-    ) -> String {
-        if expr == col {
-            return crate::sql::wrap_all(self, from, "__ggsql_sr__");
-        }
-        if all_columns.is_empty() {
-            // The replacement expression comes first so its occurrence of a
-            // duplicated column wins over the star's.
-            return crate::sql::Select::new(self)
-                .select_plus_star(&[format!("{expr} AS {col}")], "__ggsql_sr__")
-                .from_aliased(crate::sql::FromItem::Query(from), "__ggsql_sr__")
-                .build();
-        }
-        let select_list: Vec<String> = all_columns
-            .iter()
-            .map(|c| {
-                let qc = self.quote_ident(c);
-                if qc == col {
-                    format!("{expr} AS {col}")
-                } else {
-                    qc
-                }
-            })
-            .collect();
-        crate::sql::select_from(
-            self,
-            &select_list.join(", "),
-            crate::sql::FromItem::Query(from),
-            "__ggsql_sr__",
-        )
-    }
-
-    /// SQL expression constructing a point geometry from x/y expressions.
-    ///
-    /// Default is the PostGIS-style `ST_Point`. Override for backends with
-    /// different constructors (e.g. SpatiaLite's `MakePoint`).
-    fn sql_st_point(&self, x: &str, y: &str) -> String {
-        format!("ST_Point({x}, {y})")
-    }
-
-    /// SQL predicate: whether geometry `a` contains geometry `b`.
-    fn sql_st_contains(&self, a: &str, b: &str) -> String {
-        format!("ST_Contains({a}, {b})")
-    }
-
-    /// SQL predicate: whether geometries `a` and `b` intersect.
-    fn sql_st_intersects(&self, a: &str, b: &str) -> String {
-        format!("ST_Intersects({a}, {b})")
-    }
-
-    /// SQL expression constructing a geometry from WKT. `wkt` is the raw
-    /// WKT content; the hook adds the string-literal quoting.
-    fn sql_geom_from_text(&self, wkt: &str) -> String {
-        format!("ST_GeomFromText('{wkt}')")
-    }
-
-    /// SQL expression returning the SRID of a geometry.
-    fn sql_st_srid(&self, geom: &str) -> String {
-        format!("ST_SRID({geom})")
-    }
-
-    /// SQL expression converting a geometry to WKT text.
-    fn sql_st_as_text(&self, geom: &str) -> String {
-        format!("ST_AsText({geom})")
-    }
-
-    /// SQL expression for the difference of two geometries (`a` minus `b`).
-    fn sql_st_difference(&self, a: &str, b: &str) -> String {
-        format!("ST_Difference({a}, {b})")
-    }
-
-    /// SQL expression for the intersection of two geometries.
-    fn sql_st_intersection(&self, a: &str, b: &str) -> String {
-        format!("ST_Intersection({a}, {b})")
-    }
-
-    /// SQL expression repairing an invalid geometry.
-    fn sql_st_make_valid(&self, geom: &str) -> String {
-        format!("ST_MakeValid({geom})")
-    }
-
-    /// SQL expression extracting geometries of one type from a collection
-    /// (`type_index`: 1 = points, 2 = linestrings, 3 = polygons).
-    fn sql_st_collection_extract(&self, geom: &str, type_index: u32) -> String {
-        format!("ST_CollectionExtract({geom}, {type_index})")
-    }
-
-    /// SQL expression to transform a geometry from one CRS to another.
-    ///
-    /// Default uses the PostGIS-compatible pattern: set the source SRID on the
-    /// geometry, then transform to either a numeric SRID or a PROJ string.
-    fn sql_st_transform(&self, column: &str, source_crs: &str, target_crs: &str) -> String {
-        let source_srid = extract_epsg_srid(source_crs).unwrap_or(4326);
-        let target = match extract_epsg_srid(target_crs) {
-            Some(srid) => format!("{}", srid),
-            None => format!("'{}'", target_crs.replace('\'', "''")),
-        };
-        format!(
-            "ST_Transform(ST_SetSRID({}, {}), {})",
-            column, source_srid, target
-        )
-    }
-
-    /// SQL query that computes the bounding box of a geometry column.
-    ///
-    /// Must return a single row with columns `xmin`, `ymin`, `xmax`, `ymax` (DOUBLE).
-    /// `from` is the table or subquery to aggregate over.
-    fn sql_geometry_bbox(&self, column: &str, from: &str) -> String {
-        let extent = crate::sql::Select::new(self)
-            .select(format!("ST_Extent({column}) AS ext"))
-            .from(crate::sql::FromItem::Fragment(from))
-            .build();
-        crate::sql::select_from(
-            self,
-            "ST_XMin(ext) AS xmin, ST_YMin(ext) AS ymin, \
-             ST_XMax(ext) AS xmax, ST_YMax(ext) AS ymax",
-            crate::sql::FromItem::Query(&extent),
-            "__ggsql_ext__",
-        )
-    }
-
-    /// SQL expression building a rectangular polygon from corner coordinates.
-    ///
-    /// Default uses the PostGIS-style `ST_MakeEnvelope`. Override for backends
-    /// with different function names (e.g. SpatiaLite uses `BuildMbr`).
-    fn sql_make_envelope(&self, xmin: f64, ymin: f64, xmax: f64, ymax: f64) -> String {
-        format!("ST_MakeEnvelope({xmin}, {ymin}, {xmax}, {ymax})")
-    }
-
-    /// SQL statements to run before spatial operations.
-    ///
-    /// Override for backends that need an extension loaded (e.g. DuckDB spatial).
-    fn sql_spatial_setup(&self) -> Vec<String> {
-        vec![]
-    }
-
-    /// Returns CTE fragment(s) producing table `__ggsql_seq__` with column `n`,
-    /// holding the integers 0..n-1.
-    fn sql_generate_series(&self, n: usize) -> String {
-        recursive_series_cte(self, n, "REAL")
-    }
-
-    /// Keyword introducing a CTE block that contains recursive CTEs.
-    ///
-    /// ANSI/Postgres/MySQL accept `WITH RECURSIVE`; T-SQL and Oracle use
-    /// plain `WITH`, where recursion is implied by self-reference.
-    fn sql_with_recursive(&self) -> &'static str {
-        "WITH RECURSIVE"
+    /// ANSI `CEIL`; SQL Server only has `CEILING`.
+    fn sql_ceil(&self, expr: &str) -> String {
+        format!("CEIL({expr})")
     }
 
     /// Null-safe equality comparison between two expressions.
@@ -399,40 +247,6 @@ pub trait SqlDialect {
     /// Boolean").
     fn sql_null_safe_eq(&self, left: &str, right: &str) -> String {
         format!("({left} IS NOT DISTINCT FROM {right})")
-    }
-
-    /// Ceiling of a numeric expression.
-    ///
-    /// ANSI `CEIL`; SQL Server only has `CEILING`.
-    fn sql_ceil(&self, expr: &str) -> String {
-        format!("CEIL({expr})")
-    }
-
-    /// Table-alias clause for a FROM item.
-    ///
-    /// Default is the ANSI `AS "alias"`. Oracle rejects `AS` before table
-    /// aliases and emits just the quoted alias.
-    fn sql_table_alias(&self, alias: &str) -> String {
-        format!("AS {}", self.quote_ident(alias))
-    }
-
-    /// How `*` is emitted in a select list that also contains other items,
-    /// when selecting from a derived table with this alias.
-    ///
-    /// Default is a bare `*`. Oracle rejects an unqualified `*` alongside
-    /// other items and requires `alias.*`. (A select list consisting only
-    /// of `*` is valid everywhere and does not go through this hook.)
-    fn sql_select_star(&self, table_alias: &str) -> String {
-        let _ = table_alias;
-        "*".to_string()
-    }
-
-    /// Whether a `WITH` clause may appear inside a parenthesized derived
-    /// table. T-SQL forbids it ("Incorrect syntax near the keyword
-    /// 'WITH'"), so [`crate::sql`] hoists leading CTEs out of the derived
-    /// table for dialects returning `false`.
-    fn allows_cte_in_derived_table(&self) -> bool {
-        true
     }
 
     /// Compute a quantile of a column, as a SELECT-list item.
@@ -602,7 +416,7 @@ pub trait SqlDialect {
     /// numeric casts are allowed (T-SQL, ClickHouse). Dialects with
     /// stricter casts (DuckDB, Postgres, MySQL, …) override.
     fn sql_temporal_as_number(&self, expr: &str, _kind: CastTargetType) -> String {
-        let ty = self.number_type_name().unwrap_or("DOUBLE PRECISION");
+        let ty = self.type_names().number.unwrap_or("DOUBLE PRECISION");
         self.sql_cast(expr, ty)
     }
 
@@ -615,32 +429,76 @@ pub trait SqlDialect {
         }
     }
 
-    /// Whether this backend fundamentally lacks the temporary-table support
-    /// ggsql needs to stage internal tables (CTEs, stat transforms), so a
-    /// connection through it must always be wrapped in a caching reader.
+    // =====================================================================
+    // Statement generators and DDL
+    // =====================================================================
+
+    /// Append a row limit to a query.
     ///
-    /// Set this for query engines with no DDL at all (Druid, Drill)
-    /// or where `CREATE TEMP TABLE` is broadly unsupported
-    /// (Trino). Backends whose support is merely *uncertain* — e.g. the
-    /// account may be read-only — should keep the default: connections are
-    /// probed once on connect and wrapped only when the probe fails.
-    fn requires_cache(&self) -> bool {
-        false
+    /// Default uses `LIMIT n`. Override for backends with different limit
+    /// syntax (e.g. SQL Server's `TOP`, Oracle's `FETCH FIRST`).
+    fn sql_limit(&self, query: &str, n: usize) -> String {
+        format!("{} LIMIT {}", query, n)
     }
 
-    /// Whether result batches should have ISO-8601 date/datetime strings
-    /// sniffed into temporal Arrow types at the reader boundary.
+    /// Produce a SELECT that replaces a single column with a new expression.
     ///
-    /// Default `false`: a backend's VARCHAR is a real string type and must
-    /// not be reinterpreted. Opt in only for drivers that lose temporal type
-    /// information entirely — e.g. the prerelease Druid Foundry driver
-    /// surfaces Druid's LONG-based timestamps as plain strings/epoch
-    /// integers — where an ISO-looking string is almost certainly a date
-    /// the driver failed to type. Mirrors the sqlite reader's value
-    /// sniffing, which exists for the same reason (sqlite has no temporal
-    /// storage types).
-    fn sniff_temporal_strings(&self) -> bool {
-        false
+    /// When `all_columns` is provided, enumerates them explicitly (substituting
+    /// `expr` for `col`), avoiding duplicate-column issues on PostgreSQL.
+    /// When `all_columns` is empty, falls back to `SELECT expr AS col, *` which
+    /// works for direct-to-DataFrame execution (first occurrence wins) but NOT
+    /// for `CREATE TABLE AS` on PostgreSQL.
+    ///
+    /// Override for backends with native REPLACE syntax (DuckDB).
+    fn sql_select_replace(
+        &self,
+        expr: &str,
+        col: &str,
+        from: &str,
+        all_columns: &[String],
+    ) -> String {
+        if expr == col {
+            return crate::sql::wrap_all(self, from, "__ggsql_sr__");
+        }
+        if all_columns.is_empty() {
+            // The replacement expression comes first so its occurrence of a
+            // duplicated column wins over the star's.
+            return crate::sql::Select::new(self)
+                .select_plus_star(&[format!("{expr} AS {col}")], "__ggsql_sr__")
+                .from_aliased(crate::sql::FromItem::Query(from), "__ggsql_sr__")
+                .build();
+        }
+        let select_list: Vec<String> = all_columns
+            .iter()
+            .map(|c| {
+                let qc = self.quote_ident(c);
+                if qc == col {
+                    format!("{expr} AS {col}")
+                } else {
+                    qc
+                }
+            })
+            .collect();
+        crate::sql::select_from(
+            self,
+            &select_list.join(", "),
+            crate::sql::FromItem::Query(from),
+            "__ggsql_sr__",
+        )
+    }
+
+    /// Keyword introducing a CTE block that contains recursive CTEs.
+    ///
+    /// ANSI/Postgres/MySQL accept `WITH RECURSIVE`; T-SQL and Oracle use
+    /// plain `WITH`, where recursion is implied by self-reference.
+    fn sql_with_recursive(&self) -> &'static str {
+        "WITH RECURSIVE"
+    }
+
+    /// Returns CTE fragment(s) producing table `__ggsql_seq__` with column `n`,
+    /// holding the integers 0..n-1.
+    fn sql_generate_series(&self, n: usize) -> String {
+        recursive_series_cte(self, n, "REAL")
     }
 
     /// SQL listing catalogs, with a single `catalog_name` output column.
@@ -694,15 +552,6 @@ pub trait SqlDialect {
             self.quote_ident(name),
             column_defs.join(", ")
         )]
-    }
-
-    /// How this backend (re)creates a temporary table holding a query
-    /// result. Drives the default [`create_or_replace_temp_table_sql`];
-    /// dialects pick a variant instead of overriding that method.
-    ///
-    /// [`create_or_replace_temp_table_sql`]: SqlDialect::create_or_replace_temp_table_sql
-    fn temp_table_style(&self) -> TempTableStyle {
-        TempTableStyle::DropThenCreateTemp
     }
 
     /// Build the DDL statement(s) needed to (re)create a temporary table
@@ -781,6 +630,134 @@ pub trait SqlDialect {
                 ]
             }
         }
+    }
+
+    // =====================================================================
+    // Spatial SQL
+    // =====================================================================
+
+    /// SQL expression to convert a geometry column to WKB.
+    ///
+    /// Default uses `ST_AsBinary` (OGC standard). Override for backends
+    /// with different function names (e.g. DuckDB uses `ST_AsWKB`).
+    fn sql_geometry_to_wkb(&self, column: &str) -> String {
+        format!("ST_AsBinary({column})")
+    }
+
+    /// WORKAROUND(duckdb-rs#714): Ensures a column is native GEOMETRY type.
+    ///
+    /// Geometry columns may arrive as WKB BLOB (because Arrow export crashes on
+    /// native GEOMETRY, forcing pre-conversion). This normalizes both GEOMETRY
+    /// and BLOB to GEOMETRY so spatial functions work uniformly.
+    ///
+    /// Default is identity (column is already geometry). Override for backends
+    /// where geometry arrives as a different type.
+    fn sql_ensure_geometry(&self, column: &str) -> String {
+        column.to_string()
+    }
+
+    /// SQL expression constructing a point geometry from x/y expressions.
+    ///
+    /// Default is the PostGIS-style `ST_Point`. Override for backends with
+    /// different constructors (e.g. SpatiaLite's `MakePoint`).
+    fn sql_st_point(&self, x: &str, y: &str) -> String {
+        format!("ST_Point({x}, {y})")
+    }
+
+    /// SQL predicate: whether geometry `a` contains geometry `b`.
+    fn sql_st_contains(&self, a: &str, b: &str) -> String {
+        format!("ST_Contains({a}, {b})")
+    }
+
+    /// SQL predicate: whether geometries `a` and `b` intersect.
+    fn sql_st_intersects(&self, a: &str, b: &str) -> String {
+        format!("ST_Intersects({a}, {b})")
+    }
+
+    /// SQL expression constructing a geometry from WKT. `wkt` is the raw
+    /// WKT content; the hook adds the string-literal quoting.
+    fn sql_geom_from_text(&self, wkt: &str) -> String {
+        format!("ST_GeomFromText('{wkt}')")
+    }
+
+    /// SQL expression returning the SRID of a geometry.
+    fn sql_st_srid(&self, geom: &str) -> String {
+        format!("ST_SRID({geom})")
+    }
+
+    /// SQL expression converting a geometry to WKT text.
+    fn sql_st_as_text(&self, geom: &str) -> String {
+        format!("ST_AsText({geom})")
+    }
+
+    /// SQL expression for the difference of two geometries (`a` minus `b`).
+    fn sql_st_difference(&self, a: &str, b: &str) -> String {
+        format!("ST_Difference({a}, {b})")
+    }
+
+    /// SQL expression for the intersection of two geometries.
+    fn sql_st_intersection(&self, a: &str, b: &str) -> String {
+        format!("ST_Intersection({a}, {b})")
+    }
+
+    /// SQL expression repairing an invalid geometry.
+    fn sql_st_make_valid(&self, geom: &str) -> String {
+        format!("ST_MakeValid({geom})")
+    }
+
+    /// SQL expression extracting geometries of one type from a collection
+    /// (`type_index`: 1 = points, 2 = linestrings, 3 = polygons).
+    fn sql_st_collection_extract(&self, geom: &str, type_index: u32) -> String {
+        format!("ST_CollectionExtract({geom}, {type_index})")
+    }
+
+    /// SQL expression to transform a geometry from one CRS to another.
+    ///
+    /// Default uses the PostGIS-compatible pattern: set the source SRID on the
+    /// geometry, then transform to either a numeric SRID or a PROJ string.
+    fn sql_st_transform(&self, column: &str, source_crs: &str, target_crs: &str) -> String {
+        let source_srid = extract_epsg_srid(source_crs).unwrap_or(4326);
+        let target = match extract_epsg_srid(target_crs) {
+            Some(srid) => format!("{}", srid),
+            None => format!("'{}'", target_crs.replace('\'', "''")),
+        };
+        format!(
+            "ST_Transform(ST_SetSRID({}, {}), {})",
+            column, source_srid, target
+        )
+    }
+
+    /// SQL query that computes the bounding box of a geometry column.
+    ///
+    /// Must return a single row with columns `xmin`, `ymin`, `xmax`, `ymax` (DOUBLE).
+    /// `from` is the table or subquery to aggregate over.
+    fn sql_geometry_bbox(&self, column: &str, from: &str) -> String {
+        let extent = crate::sql::Select::new(self)
+            .select(format!("ST_Extent({column}) AS ext"))
+            .from(crate::sql::FromItem::Fragment(from))
+            .build();
+        crate::sql::select_from(
+            self,
+            "ST_XMin(ext) AS xmin, ST_YMin(ext) AS ymin, \
+             ST_XMax(ext) AS xmax, ST_YMax(ext) AS ymax",
+            crate::sql::FromItem::Query(&extent),
+            "__ggsql_ext__",
+        )
+    }
+
+    /// SQL expression building a rectangular polygon from corner coordinates.
+    ///
+    /// Default uses the PostGIS-style `ST_MakeEnvelope`. Override for backends
+    /// with different function names (e.g. SpatiaLite uses `BuildMbr`).
+    fn sql_make_envelope(&self, xmin: f64, ymin: f64, xmax: f64, ymax: f64) -> String {
+        format!("ST_MakeEnvelope({xmin}, {ymin}, {xmax}, {ymax})")
+    }
+
+    /// SQL statements to run before spatial operations.
+    ///
+    /// Override for backends that need an extension loaded (e.g. DuckDB spatial).
+    fn sql_spatial_setup(&self) -> Vec<String> {
+        vec![]
     }
 }
 
@@ -1063,7 +1040,7 @@ pub(crate) fn register_column_type(
     use arrow::datatypes::DataType;
 
     let name = match dtype {
-        DataType::Boolean => dialect.boolean_type_name().unwrap_or("BOOLEAN"),
+        DataType::Boolean => dialect.type_names().boolean.unwrap_or("BOOLEAN"),
         DataType::Int8
         | DataType::Int16
         | DataType::Int32
@@ -1071,16 +1048,16 @@ pub(crate) fn register_column_type(
         | DataType::UInt8
         | DataType::UInt16
         | DataType::UInt32
-        | DataType::UInt64 => dialect.integer_type_name().unwrap_or("BIGINT"),
+        | DataType::UInt64 => dialect.type_names().integer.unwrap_or("BIGINT"),
         DataType::Float16 | DataType::Float32 | DataType::Float64 => {
-            dialect.number_type_name().unwrap_or("DOUBLE PRECISION")
+            dialect.type_names().number.unwrap_or("DOUBLE PRECISION")
         }
         DataType::Utf8 | DataType::LargeUtf8 | DataType::Utf8View => {
-            dialect.string_type_name().unwrap_or("VARCHAR")
+            dialect.type_names().string.unwrap_or("VARCHAR")
         }
-        DataType::Date32 | DataType::Date64 => dialect.date_type_name().unwrap_or("DATE"),
-        DataType::Timestamp(_, _) => dialect.datetime_type_name().unwrap_or("TIMESTAMP"),
-        DataType::Time32(_) | DataType::Time64(_) => dialect.time_type_name().unwrap_or("TIME"),
+        DataType::Date32 | DataType::Date64 => dialect.type_names().date.unwrap_or("DATE"),
+        DataType::Timestamp(_, _) => dialect.type_names().datetime.unwrap_or("TIMESTAMP"),
+        DataType::Time32(_) | DataType::Time64(_) => dialect.type_names().time.unwrap_or("TIME"),
         other => {
             return Err(GgsqlError::ReaderError(format!(
                 "register: unsupported Arrow type for table DDL: {other:?}"

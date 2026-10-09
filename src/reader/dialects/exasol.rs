@@ -1,8 +1,12 @@
 //! Exasol dialect.
 //!
-//! Exasol is close to ANSI. Although the database implements the OGC `ST_`
-//! spatial surface natively, spatial is not enabled here —
-//! `supports_spatial()` keeps the `false` default. Main deviations:
+//! Exasol is close to ANSI. Spatial stays disabled (`supports_spatial()`
+//! keeps the `false` default) even though the database implements the OGC
+//! `ST_` surface natively: enabling it requires verifying the whole
+//! `sql_st_*` contract against a live instance — above all reprojection
+//! (`ST_Transform` availability and CRS handling), which the spatial tests
+//! have not covered here. Enabling it is a follow-up once that verification
+//! happens. Main deviations:
 //! `VARCHAR` requires a length, there is no SQL
 //! `TIME` type (time values are stored as `VARCHAR(32)`, mirroring the
 //! `SqliteDialect` precedent), date/timestamp literals use `ADD_DAYS` /
@@ -95,7 +99,7 @@ mod tests {
 
     #[test]
     fn varchar_has_length() {
-        assert_eq!(ExasolDialect.string_type_name(), Some("VARCHAR(2000000)"));
+        assert_eq!(ExasolDialect.type_names().string, Some("VARCHAR(2000000)"));
     }
 
     #[test]
@@ -115,7 +119,7 @@ mod tests {
 
     #[test]
     fn time_is_stored_as_varchar() {
-        assert_eq!(ExasolDialect.time_type_name(), Some("VARCHAR(32)"));
+        assert_eq!(ExasolDialect.type_names().time, Some("VARCHAR(32)"));
         let ns = 3723 * 1_000_000_000_i64 + 456_789_000;
         assert_eq!(ExasolDialect.sql_time_literal(ns), "'01:02:03.456789'");
     }

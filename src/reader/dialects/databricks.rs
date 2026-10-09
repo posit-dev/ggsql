@@ -91,7 +91,7 @@ mod tests {
 
     #[test]
     fn no_time_type() {
-        assert_eq!(DatabricksDialect.time_type_name(), None);
+        assert_eq!(DatabricksDialect.type_names().time, None);
     }
 
     #[test]

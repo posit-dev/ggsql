@@ -76,7 +76,7 @@ pub(crate) fn epoch_via_subtract_extract<D: SqlDialect + ?Sized>(
         C::Date => format!("({expr} - DATE '1970-01-01')"),
         C::DateTime => format!("(EXTRACT(EPOCH FROM {expr}) * 1000000)"),
         _ => {
-            let ty = dialect.number_type_name().unwrap_or("DOUBLE PRECISION");
+            let ty = dialect.type_names().number.unwrap_or("DOUBLE PRECISION");
             dialect.sql_cast(expr, ty)
         }
     }
@@ -96,7 +96,7 @@ pub(crate) fn epoch_via_extract_seconds<D: SqlDialect + ?Sized>(
         C::Date => format!("(EXTRACT(EPOCH FROM {expr}) / 86400)"),
         C::DateTime => format!("(EXTRACT(EPOCH FROM {expr}) * 1000000)"),
         _ => {
-            let ty = dialect.number_type_name().unwrap_or("DOUBLE");
+            let ty = dialect.type_names().number.unwrap_or("DOUBLE");
             dialect.sql_cast(expr, ty)
         }
     }
@@ -140,7 +140,41 @@ mod tests {
     }
 
     fn assert_type_name(d: &dyn SqlDialect, expected: Option<&str>) {
-        assert_eq!(d.number_type_name(), expected);
+        assert_eq!(d.type_names().number, expected);
+    }
+
+    /// Evaluate the CASE emulations against DuckDB's native
+    /// `GREATEST`/`LEAST` so the left-folded chain is checked as executed
+    /// SQL, not just as a string.
+    #[cfg(feature = "duckdb")]
+    #[test]
+    fn case_greatest_least_evaluate_like_native() {
+        use crate::array_util::as_f64;
+        use crate::reader::Reader;
+
+        let reader =
+            crate::reader::DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        let cases: &[&[&str]] = &[
+            &["1.0", "2.0", "3.0"],
+            &["3.5", "-2.0", "0.25"],
+            &["10.0", "10.0", "10.0"],
+            &["-1.5", "-20.0", "-3.25"],
+            &["0.0", "-0.0"],
+        ];
+        for exprs in cases {
+            let list = exprs.join(", ");
+            for (emulated, native) in [
+                (case_greatest(exprs), format!("GREATEST({list})")),
+                (case_least(exprs), format!("LEAST({list})")),
+            ] {
+                let df = reader
+                    .execute_sql(&format!("SELECT {emulated} AS emu, {native} AS nat"))
+                    .unwrap();
+                let emu = as_f64(df.column("emu").unwrap()).unwrap().value(0);
+                let nat = as_f64(df.column("nat").unwrap()).unwrap().value(0);
+                assert_eq!(emu, nat, "emulated {emulated} != native {native}");
+            }
+        }
     }
 
     #[test]
@@ -197,7 +231,7 @@ mod tests {
     #[test]
     fn mssql_wins_over_generic_sql() {
         let d = detect_dialect(Some("Microsoft SQL Server"), None).unwrap();
-        assert_eq!(d.boolean_type_name(), Some("BIT"));
+        assert_eq!(d.type_names().boolean, Some("BIT"));
     }
 
     #[test]
@@ -214,7 +248,7 @@ mod tests {
             ("oracle", Some("BINARY_DOUBLE")),
         ] {
             let d = dialect_for_scheme(scheme).unwrap_or_else(|| panic!("scheme {scheme}"));
-            assert_eq!(d.number_type_name(), probe, "scheme {scheme}");
+            assert_eq!(d.type_names().number, probe, "scheme {scheme}");
         }
         assert!(dialect_for_scheme("nosuchdb").is_none());
     }

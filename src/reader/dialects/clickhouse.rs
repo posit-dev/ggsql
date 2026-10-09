@@ -158,10 +158,10 @@ mod tests {
     #[test]
     fn type_names_are_nullable() {
         let d = ClickHouseDialect;
-        assert_eq!(d.number_type_name(), Some("Nullable(Float64)"));
-        assert_eq!(d.integer_type_name(), Some("Nullable(Int64)"));
-        assert_eq!(d.string_type_name(), Some("Nullable(String)"));
-        assert_eq!(d.datetime_type_name(), Some("Nullable(DateTime64(6))"));
+        assert_eq!(d.type_names().number, Some("Nullable(Float64)"));
+        assert_eq!(d.type_names().integer, Some("Nullable(Int64)"));
+        assert_eq!(d.type_names().string, Some("Nullable(String)"));
+        assert_eq!(d.type_names().datetime, Some("Nullable(DateTime64(6))"));
     }
 
     #[test]
