@@ -251,7 +251,12 @@ fn create_table_sql(scheme: &str, table: &str) -> String {
         // default dataset (stmt.bigquery.query.default_dataset_id in the
         // URI — the driver only sends defaultDataset as a statement option).
         "bigquery" => ddl("INT64", "FLOAT64", "STRING", "DATE"),
-        "databricks" => ddl("INT", "DOUBLE", "STRING", "DATE"),
+        // Delta rejects the space in `mixed Case` unless column mapping is
+        // enabled on the table (name mode rewrites physical file columns).
+        "databricks" => format!(
+            "{ddl} TBLPROPERTIES ('delta.columnMapping.mode' = 'name')",
+            ddl = ddl("INT", "DOUBLE", "STRING", "DATE")
+        ),
         other => panic!("no DDL template for scheme '{other}'"),
     }
 }
