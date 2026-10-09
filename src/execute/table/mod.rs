@@ -12,7 +12,9 @@ mod layout;
 mod stub;
 
 use format::{apply_formats, setup_formats};
-use layout::{build_cells, extract_heading_labels, setup_columns};
+use layout::{build_cells, setup_columns};
+
+use crate::table::extract_heading_labels;
 
 use super::cte::split_with_query;
 use crate::parser::{self, SourceTree};

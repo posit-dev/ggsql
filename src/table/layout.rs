@@ -6,6 +6,7 @@
 use std::collections::HashSet;
 
 use super::ColumnSection;
+use crate::labels::Labels;
 use crate::params::Parameters;
 use crate::plot::ParameterValue;
 use crate::{GgsqlError, Result};
@@ -575,6 +576,29 @@ pub(crate) fn create_column_labels(columns: &[TableColumn]) -> Vec<TableCell> {
         })
         .collect()
 }
+
+/// Pop the reserved `title`/`subtitle`/`caption` keys out of a `TABULATE`
+/// `LABEL` clause's resolved map, leaving only genuine column-name
+/// overrides behind. `.flatten()` treats "key absent" and "key present but
+/// NULL" the same: neither produces a title/subtitle/caption.
+pub(crate) fn extract_heading_labels(
+    labels: &mut Labels,
+) -> (Option<String>, Option<String>, Option<String>) {
+    let title = labels.labels.remove("title").flatten();
+    let subtitle = labels.labels.remove("subtitle").flatten();
+    let caption = labels.labels.remove("caption").flatten();
+    (title, subtitle, caption)
+}
+
+/// Move every STUB-targeted column to the front, preserving each group's
+/// relative order. Runs after `reorder_table_columns`, as the final word on
+/// column position — a SPAN can never cover a stub column
+/// (`Table::validate_span_stub_boundary`).
+pub(crate) fn move_stub_columns(columns: Vec<TableColumn>) -> Vec<TableColumn> {
+    let (mut stub, body): (Vec<_>, Vec<_>) = columns.into_iter().partition(TableColumn::is_stub);
+    stub.extend(body);
+    stub
+}
 /// Stack spanner rows above column labels, letting a column with no spanner
 /// covering it stretch its own label upward over the gap, then fill the
 /// remaining gaps.
@@ -735,6 +759,35 @@ mod assembly_tests {
         assert_eq!(labels[0].kind, TableCellKind::ColumnLabel);
         assert_eq!(labels[0].left, 1);
         assert_eq!(labels[0].content, "sales");
+    }
+
+    #[test]
+    fn move_stub_columns_moves_stub_columns_to_the_front_preserving_relative_order() {
+        let columns = vec![
+            column("a", "a"),
+            stub_column("b"),
+            column("c", "c"),
+            stub_column("d"),
+        ];
+
+        let result = move_stub_columns(columns);
+
+        assert_eq!(
+            result.iter().map(|c| c.name.as_str()).collect::<Vec<_>>(),
+            vec!["b", "d", "a", "c"]
+        );
+    }
+
+    #[test]
+    fn move_stub_columns_is_a_no_op_with_no_stub_columns() {
+        let columns = vec![column("a", "a"), column("b", "b")];
+
+        let result = move_stub_columns(columns);
+
+        assert_eq!(
+            result.iter().map(|c| c.name.as_str()).collect::<Vec<_>>(),
+            vec!["a", "b"]
+        );
     }
     fn cell(kind: TableCellKind, top: usize, bottom: usize, content: &str) -> TableCell {
         TableCell::new(kind, top, bottom, 0, 0, content.to_string())

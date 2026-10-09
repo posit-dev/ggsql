@@ -6,28 +6,15 @@
 use std::collections::HashMap;
 
 use super::format::resolve_column_properties;
-use super::stub::{create_row_labels, create_stubhead, move_stub_columns};
+use super::stub::{create_row_labels, create_stubhead};
 use crate::array_util::value_to_string;
 use crate::plot::Labels;
 use crate::table::{
     compose_header, create_caption, create_column_labels, create_heading, create_spanners,
-    reorder_table_columns, rowbind, validate_overlaps, Section, TableCell, TableCellKind,
-    TableClass, TableColumn, TableRow,
+    move_stub_columns, reorder_table_columns, rowbind, validate_overlaps, Section, TableCell,
+    TableCellKind, TableClass, TableColumn, TableRow,
 };
 use crate::{DataFrame, Format, Result, Spanner};
-
-/// Pop the reserved `title`/`subtitle`/`caption` keys out of a `TABULATE`
-/// `LABEL` clause's resolved map, leaving only genuine column-name
-/// overrides behind. `.flatten()` treats "key absent" and "key present but
-/// NULL" the same: neither produces a title/subtitle/caption.
-pub(super) fn extract_heading_labels(
-    labels: &mut Labels,
-) -> (Option<String>, Option<String>, Option<String>) {
-    let title = labels.labels.remove("title").flatten();
-    let subtitle = labels.labels.remove("subtitle").flatten();
-    let caption = labels.labels.remove("caption").flatten();
-    (title, subtitle, caption)
-}
 
 /// Resolve a table's columns: one `TableColumn` per `DataFrame` column
 /// (labelled, with `formats`' resolved `SETTING` properties), reordered for
@@ -171,6 +158,7 @@ mod tests {
     use super::*;
     use crate::df;
     use crate::plot::{ParameterValue, Parameters};
+    use crate::table::extract_heading_labels;
     use crate::{ColumnSection, GgsqlError, Spanner, Table};
 
     /// Runs the same steps `resolve_table_with_reader` does, minus the
