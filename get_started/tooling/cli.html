@@ -455,6 +455,141 @@ gradient teal.
 <span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a>  <span class="st">"SELECT * FROM test_table LIMIT 3"</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <p>The two forms cannot be combined — there would be no saying which cache was meant.</p>
 </section>
+<section id="supported-databases" class="level3">
+<h3 class="anchored" data-anchor-id="supported-databases">Supported databases</h3>
+<p>Beyond <code>duckdb://</code> and <code>sqlite://</code>, ggsql speaks directly to the databases below through backend-specific schemes. Each scheme carries a SQL dialect so generated queries use the backend’s own type names, functions, and quoting.</p>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 33%">
+<col style="width: 33%">
+<col style="width: 33%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Scheme</th>
+<th>Aliases</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>postgres://</code></td>
+<td><code>postgresql://</code></td>
+<td>PostGIS used for spatial features</td>
+</tr>
+<tr class="even">
+<td><code>mysql://</code></td>
+<td><code>mariadb://</code></td>
+<td></td>
+</tr>
+<tr class="odd">
+<td><code>snowflake://</code></td>
+<td></td>
+<td></td>
+</tr>
+<tr class="even">
+<td><code>mssql://</code></td>
+<td><code>sqlserver://</code></td>
+<td>Spatial not supported</td>
+</tr>
+<tr class="odd">
+<td><code>bigquery://</code></td>
+<td></td>
+<td>Geography is WGS84-only; reprojection fails server-side</td>
+</tr>
+<tr class="even">
+<td><code>databricks://</code></td>
+<td><code>spark://</code></td>
+<td></td>
+</tr>
+<tr class="odd">
+<td><code>redshift://</code></td>
+<td></td>
+<td></td>
+</tr>
+<tr class="even">
+<td><code>clickhouse://</code></td>
+<td></td>
+<td>Spatial not supported</td>
+</tr>
+<tr class="odd">
+<td><code>trino://</code></td>
+<td></td>
+<td>In-memory cache added automatically (no temp tables)</td>
+</tr>
+<tr class="even">
+<td><code>oracle://</code></td>
+<td></td>
+<td>Spatial not supported</td>
+</tr>
+<tr class="odd">
+<td><code>exasol://</code></td>
+<td></td>
+<td></td>
+</tr>
+<tr class="even">
+<td><code>monetdb://</code></td>
+<td></td>
+<td></td>
+</tr>
+<tr class="odd">
+<td><code>druid://</code></td>
+<td></td>
+<td>No date/time/boolean types; in-memory cache added automatically</td>
+</tr>
+<tr class="even">
+<td><code>drill://</code></td>
+<td></td>
+<td>Spatial not supported; in-memory cache added automatically</td>
+</tr>
+<tr class="odd">
+<td><code>datafusion://</code></td>
+<td></td>
+<td>Spatial not supported; in-memory cache added automatically</td>
+</tr>
+<tr class="even">
+<td><code>flightsql://</code></td>
+<td></td>
+<td>ADBC Flight SQL endpoint</td>
+</tr>
+<tr class="odd">
+<td><code>adbc://</code></td>
+<td></td>
+<td><code>adbc://&lt;driver-name-or-path&gt;?uri=…</code> for any ADBC driver</td>
+</tr>
+<tr class="even">
+<td><code>odbc://</code></td>
+<td></td>
+<td>Raw ODBC connection string, e.g.&nbsp;<code>odbc://Driver=…;Server=…</code>; the dialect is detected from the driver or DBMS name</td>
+</tr>
+</tbody>
+</table>
+<section id="reader-selection-adbc-first-odbc-fallback" class="level4">
+<h4 class="anchored" data-anchor-id="reader-selection-adbc-first-odbc-fallback">Reader selection: ADBC first, ODBC fallback</h4>
+<p>For the schemes above, ggsql first tries to load an ADBC driver library. If none is found, it falls back to ODBC automatically when the connection can be described — no flag required:</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb9"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="co"># ADBC: loads libadbc_driver_postgresql from the ADBC driver paths</span></span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a><span class="ex">$</span> ggsql exec <span class="at">--reader</span> postgres://user:secret@db.internal:5432/sales <span class="st">"..."</span></span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a><span class="co"># ODBC fallback, DSN-based</span></span>
+<span id="cb9-5"><a href="#cb9-5" aria-hidden="true" tabindex="-1"></a><span class="ex">$</span> ggsql exec <span class="at">--reader</span> <span class="st">"postgres://db.internal/sales?DSN=pg-warehouse"</span> <span class="st">"..."</span></span>
+<span id="cb9-6"><a href="#cb9-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb9-7"><a href="#cb9-7" aria-hidden="true" tabindex="-1"></a><span class="co"># ODBC fallback, explicit driver</span></span>
+<span id="cb9-8"><a href="#cb9-8" aria-hidden="true" tabindex="-1"></a><span class="ex">$</span> ggsql exec <span class="at">--reader</span> <span class="st">"mysql://u@db.internal/shop?Driver={MySQL ODBC 9.0}"</span> <span class="st">"..."</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>ADBC drivers are never bundled. The easiest way to install them is <a href="https://docs.columnar.tech/dbc/">dbc</a>, the ADBC driver manager CLI — e.g.&nbsp;<code>dbc install postgresql</code> installs the PostgreSQL driver into the standard user driver directory where ggsql will find it. Otherwise ggsql discovers drivers via the <code>ADBC_DRIVER_PATH</code> environment variable and the usual system/user ADBC driver directories. To point at a specific driver build, set a per-scheme override, e.g.&nbsp;<code>GGSQL_POSTGRES_ADBC_DRIVER=/opt/drivers/libadbc_driver_postgresql.so</code>. The ODBC driver can likewise be named with <code>GGSQL_POSTGRES_ODBC_DRIVER=PostgreSQL Unicode</code>.</p>
+<p>To force the ODBC path even when an ADBC driver is installed, add <code>reader=odbc</code> to the URI’s query string:</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb10"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="ex">$</span> ggsql exec <span class="at">--reader</span> <span class="st">"postgres://user@db.internal/sales?Driver={PostgreSQL Unicode}&amp;reader=odbc"</span> <span class="st">"..."</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>If the ADBC driver loads but the connection itself fails (bad credentials, unreachable host), ggsql reports that error rather than silently falling back — use <code>reader=odbc</code> to bypass ADBC in that situation.</p>
+</section>
+<section id="automatic-caching" class="level4">
+<h4 class="anchored" data-anchor-id="automatic-caching">Automatic caching</h4>
+<p>ggsql stages intermediate results (materialized CTEs, stat transforms) in temporary tables. When a backend cannot host them, the connection is wrapped in an in-memory DuckDB (or SQLite) caching reader automatically — you do not need <code>--cache</code> or the <code>&lt;cache&gt;+&lt;primary&gt;://</code> form:</p>
+<ul>
+<li>Some backends never support temp tables (Trino, Druid, Drill, DataFusion); their dialects say so and the cache is always added.</li>
+<li>Every other backend is probed once on connect with a <code>CREATE TEMP TABLE</code> roundtrip. A failure — typically a read-only account — wraps the connection in a cache, and only your own queries hit the server.</li>
+</ul>
+<p>To opt out (for example while debugging), add <code>cache=off</code> to the URI’s query string; queries that need temp tables will then fail with the backend’s own error.</p>
+</section>
+</section>
 </section>
 <section id="output-format" class="level2">
 <h2 class="anchored" data-anchor-id="output-format">Output format</h2>
@@ -516,7 +651,7 @@ gradient teal.
 </tbody>
 </table>
 <p><strong><code>--output</code> picks the writer for you.</strong> If you name an output file and leave <code>--writer</code> off, the extension decides — so <code>-o chart.svg</code> writes SVG and <code>-o chart.pdf</code> writes a PDF, with no <code>-w</code> needed:</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb9"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="ex">ggsql</span> exec <span class="at">-o</span> chart.pdf <span class="st">"VISUALISE species AS fill FROM ggsql:penguins DRAW bar"</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb11"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a><span class="ex">ggsql</span> exec <span class="at">-o</span> chart.pdf <span class="st">"VISUALISE species AS fill FROM ggsql:penguins DRAW bar"</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <p><code>json</code> and <code>vl.json</code> mean Vega-Lite; <code>svg</code>, <code>pdf</code>, <code>hep</code>, <code>png</code>, <code>jpg</code>/<code>jpeg</code>, <code>tif</code>/<code>tiff</code> and <code>webp</code> indicate file extensions. An extension <code>ggsql</code> doesn’t recognise, or no <code>--output</code> at all, falls back to Vega-Lite. An explicit <code>--writer</code> always wins: if it disagrees with the extension, the file holds the format <code>--writer</code> named — a <code>.png</code> written by <code>-w svg</code> is an SVG — and the mismatch is noted on <code>stderr</code>.</p>
 <p><strong>A binary format needs somewhere to go.</strong> <code>ggsql</code> will not print the bytes of a <code>pdf</code>, <code>hep</code> or raster format to a terminal: it says so on <code>stderr</code> and exits non-zero. Give the bytes a destination with <code>--output</code>, or pipe them somewhere; to just look at the plot, <a href="#viewing-a-plot"><code>ggsql view</code></a> draws it in a window and writes no file at all. A query with no <code>VISUALISE</code> prints its table, and honours <code>--output</code> the same way.</p>
 <p>The four raster formats render through the GPU, so they need a graphics adapter — hardware or software — available where <code>ggsql</code> runs, and they are not compiled into every build. <code>svg</code> and <code>pdf</code> need neither, which makes them the ones to reach for on a server, in a container or in CI. Run <code>ggsql exec --help</code> to see which writers your build has; asking for one it doesn’t says so, and names the feature that would add it.</p>
@@ -524,16 +659,16 @@ gradient teal.
 <section id="writer-settings" class="level3">
 <h3 class="anchored" data-anchor-id="writer-settings">Writer settings</h3>
 <p>A writer is configured with <code>--writer-option key=value</code>, repeated once per setting:</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb10"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="ex">ggsql</span> exec <span class="at">--writer</span> png <span class="dt">\</span></span>
-<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a>  <span class="at">--writer-option</span> width=6 <span class="dt">\</span></span>
-<span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a>  <span class="at">--writer-option</span> height=4 <span class="dt">\</span></span>
-<span id="cb10-4"><a href="#cb10-4" aria-hidden="true" tabindex="-1"></a>  <span class="at">--writer-option</span> units=in <span class="dt">\</span></span>
-<span id="cb10-5"><a href="#cb10-5" aria-hidden="true" tabindex="-1"></a>  <span class="at">--writer-option</span> dpi=150 <span class="dt">\</span></span>
-<span id="cb10-6"><a href="#cb10-6" aria-hidden="true" tabindex="-1"></a>  <span class="at">--output</span> chart.png <span class="dt">\</span></span>
-<span id="cb10-7"><a href="#cb10-7" aria-hidden="true" tabindex="-1"></a>  <span class="st">"VISUALISE species AS fill FROM ggsql:penguins DRAW bar"</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb12"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a><span class="ex">ggsql</span> exec <span class="at">--writer</span> png <span class="dt">\</span></span>
+<span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a>  <span class="at">--writer-option</span> width=6 <span class="dt">\</span></span>
+<span id="cb12-3"><a href="#cb12-3" aria-hidden="true" tabindex="-1"></a>  <span class="at">--writer-option</span> height=4 <span class="dt">\</span></span>
+<span id="cb12-4"><a href="#cb12-4" aria-hidden="true" tabindex="-1"></a>  <span class="at">--writer-option</span> units=in <span class="dt">\</span></span>
+<span id="cb12-5"><a href="#cb12-5" aria-hidden="true" tabindex="-1"></a>  <span class="at">--writer-option</span> dpi=150 <span class="dt">\</span></span>
+<span id="cb12-6"><a href="#cb12-6" aria-hidden="true" tabindex="-1"></a>  <span class="at">--output</span> chart.png <span class="dt">\</span></span>
+<span id="cb12-7"><a href="#cb12-7" aria-hidden="true" tabindex="-1"></a>  <span class="st">"VISUALISE species AS fill FROM ggsql:penguins DRAW bar"</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <p>Several settings can also be collapsed into one flag, separated by <code>;</code>. With <code>-D</code> short for <code>--writer-option</code> (and <code>--writer-options</code> accepted as well), plus <code>-w</code> for <code>--writer</code> and <code>-o</code> for <code>--output</code>, the same call reads:</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb11"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a><span class="ex">ggsql</span> exec <span class="at">-w</span> png <span class="at">-D</span> <span class="st">'width=6;height=4;units=in;dpi=150'</span> <span class="at">-o</span> chart.png <span class="dt">\</span></span>
-<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a>  <span class="st">"VISUALISE species AS fill FROM ggsql:penguins DRAW bar"</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb13"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a><span class="ex">ggsql</span> exec <span class="at">-w</span> png <span class="at">-D</span> <span class="st">'width=6;height=4;units=in;dpi=150'</span> <span class="at">-o</span> chart.png <span class="dt">\</span></span>
+<span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a>  <span class="st">"VISUALISE species AS fill FROM ggsql:penguins DRAW bar"</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <p><strong>Quote the collapsed form.</strong> Most shells — bash, zsh, PowerShell — read <code>;</code> as a command separator, so unquoted it silently runs something else rather than failing. Single quotes, double quotes and <code>\;</code> all work. The two forms mix freely, and a repeated key takes its last value.</p>
 <p><code>;</code> is the only separator; <code>,</code> is not, because values contain commas — <code>background='rgb(255, 0, 0)'</code> has to survive intact.</p>
 <section id="the-canvas" class="level4">
@@ -673,23 +808,23 @@ gradient teal.
 <section id="viewing-a-plot" class="level2">
 <h2 class="anchored" data-anchor-id="viewing-a-plot">Viewing a plot</h2>
 <p><code>ggsql view</code> shows a query’s plot in a native window instead of writing a file, and blocks until the window is closed:</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb12"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a><span class="ex">ggsql</span> view <span class="st">"VISUALISE species AS fill FROM ggsql:penguins DRAW bar"</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb14"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a><span class="ex">ggsql</span> view <span class="st">"VISUALISE species AS fill FROM ggsql:penguins DRAW bar"</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <p>Resizing the window re-lays-out the plot rather than stretching it, so labels and gridlines stay correct at any size. <code>-D</code> (<code>--viewer-option</code>) takes <code>width</code>, <code>height</code>, <code>background</code> and <code>title</code>; <code>units</code> and <code>dpi</code> are refused, since a window is sized in logical pixels and its resolution belongs to the display it is on.</p>
 <p>Like the raster writers, the viewer renders through the GPU and is not in every build. The subcommand exists either way and says what would enable it.</p>
 </section>
 <section id="documentation" class="level2">
 <h2 class="anchored" data-anchor-id="documentation">Documentation</h2>
 <p>The ggsql CLI has built-in documentation for ggsql syntax and usage. Run <code>ggsql docs</code> for an overview of available documentation topics, and <code>ggsql docs [topic]</code> to read about a specific topic.</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb13"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a><span class="ex">$</span> ggsql docs draw</span>
-<span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a><span class="ex">DRAW</span> is perhaps the most important clause in ggsql as it defines a layer in your </span>
-<span id="cb13-3"><a href="#cb13-3" aria-hidden="true" tabindex="-1"></a><span class="ex">visualisation.</span> A layer is a single instance of a visual representation of a dataset.</span>
-<span id="cb13-4"><a href="#cb13-4" aria-hidden="true" tabindex="-1"></a><span class="ex">[...]</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb15"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a><span class="ex">$</span> ggsql docs draw</span>
+<span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a><span class="ex">DRAW</span> is perhaps the most important clause in ggsql as it defines a layer in your </span>
+<span id="cb15-3"><a href="#cb15-3" aria-hidden="true" tabindex="-1"></a><span class="ex">visualisation.</span> A layer is a single instance of a visual representation of a dataset.</span>
+<span id="cb15-4"><a href="#cb15-4" aria-hidden="true" tabindex="-1"></a><span class="ex">[...]</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <p>A ggsql <a href="../../syntax/skill.html">skill</a>, a usage guide intended for AI assistants and humans, can also be output using the <code>ggsql skill</code> command (also available as <code>ggsql agent-info</code>).</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb14"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a><span class="ex">$</span> ggsql skill</span>
-<span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a>                          <span class="ex">ggsql</span> Query Writer</span>
-<span id="cb14-3"><a href="#cb14-3" aria-hidden="true" tabindex="-1"></a><span class="ex">ggsql</span> is a SQL extension for declarative data visualization based on</span>
-<span id="cb14-4"><a href="#cb14-4" aria-hidden="true" tabindex="-1"></a><span class="ex">Grammar</span> of Graphics principles.</span>
-<span id="cb14-5"><a href="#cb14-5" aria-hidden="true" tabindex="-1"></a><span class="ex">[...]</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb16"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a><span class="ex">$</span> ggsql skill</span>
+<span id="cb16-2"><a href="#cb16-2" aria-hidden="true" tabindex="-1"></a>                          <span class="ex">ggsql</span> Query Writer</span>
+<span id="cb16-3"><a href="#cb16-3" aria-hidden="true" tabindex="-1"></a><span class="ex">ggsql</span> is a SQL extension for declarative data visualization based on</span>
+<span id="cb16-4"><a href="#cb16-4" aria-hidden="true" tabindex="-1"></a><span class="ex">Grammar</span> of Graphics principles.</span>
+<span id="cb16-5"><a href="#cb16-5" aria-hidden="true" tabindex="-1"></a><span class="ex">[...]</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 
 
 </section>

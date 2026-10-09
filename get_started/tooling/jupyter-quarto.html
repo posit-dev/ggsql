@@ -442,7 +442,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="database-connections" class="level2">
 <h2 class="anchored" data-anchor-id="database-connections">Database connections</h2>
 <p>By default, the ggsql kernel starts with an empty in-memory duckdb database connection. A “magic” comment can be used to initiate a different database connection after the session has launched, which can be either a comment in your Quarto code block or invoked directly in a Jupyter notebook cell.</p>
-<p>The connection syntax is <code>-- @connect: [connection_uri]</code>, where <code>[connection_uri]</code> is a ggsql database connection string in the same format as accepted by the <a href="cli.html">ggsql CLI</a>.</p>
+<p>The connection syntax is <code>-- @connect: [connection_uri]</code>, where <code>[connection_uri]</code> is a ggsql database connection string in the same format as accepted by the <a href="cli.html">ggsql CLI</a>. See the CLI page for the full list of <a href="cli.html#supported-databases">supported databases</a>, the connection-string parameters they accept, and how to wrap a remote database in an <a href="cli.html#caching-reads">in-memory cache</a> (e.g.&nbsp;<code>-- @connect: duckdb+postgres://host/db</code>).</p>
 <p><a href="./screenshots/jupyter-connections.png" class="lightbox" data-gallery="quarto-lightbox-gallery-3"><img src="./screenshots/jupyter-connections.png" class="img-fluid"></a></p>
 
 

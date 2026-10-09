@@ -59,6 +59,6 @@ As with Quarto, each cell in the notebook uses the same session, so tables creat
 
 By default, the ggsql kernel starts with an empty in-memory duckdb database connection. A “magic” comment can be used to initiate a different database connection after the session has launched, which can be either a comment in your Quarto code block or invoked directly in a Jupyter notebook cell.
 
-The connection syntax is `-- @connect: [connection_uri]`, where `[connection_uri]` is a ggsql database connection string in the same format as accepted by the [ggsql CLI](cli.llms.md).
+The connection syntax is `-- @connect: [connection_uri]`, where `[connection_uri]` is a ggsql database connection string in the same format as accepted by the [ggsql CLI](cli.llms.md). See the CLI page for the full list of [supported databases](cli.llms.md#supported-databases), the connection-string parameters they accept, and how to wrap a remote database in an [in-memory cache](cli.llms.md#caching-reads) (e.g. `-- @connect: duckdb+postgres://host/db`).
 
 [![](./screenshots/jupyter-connections.png)](./screenshots/jupyter-connections.png)

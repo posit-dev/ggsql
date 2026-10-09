@@ -83,6 +83,65 @@ $ ggsql exec --reader duckdb+odbc://DSN=ggsql-pg-test \
 
 The two forms cannot be combined — there would be no saying which cache was meant.
 
+### Supported databases
+
+Beyond `duckdb://` and `sqlite://`, ggsql speaks directly to the databases below through backend-specific schemes. Each scheme carries a SQL dialect so generated queries use the backend’s own type names, functions, and quoting.
+
+| Scheme | Aliases | Notes |
+|----|----|----|
+| `postgres://` | `postgresql://` | PostGIS used for spatial features |
+| `mysql://` | `mariadb://` |  |
+| `snowflake://` |  |  |
+| `mssql://` | `sqlserver://` | Spatial not supported |
+| `bigquery://` |  | Geography is WGS84-only; reprojection fails server-side |
+| `databricks://` | `spark://` |  |
+| `redshift://` |  |  |
+| `clickhouse://` |  | Spatial not supported |
+| `trino://` |  | In-memory cache added automatically (no temp tables) |
+| `oracle://` |  | Spatial not supported |
+| `exasol://` |  |  |
+| `monetdb://` |  |  |
+| `druid://` |  | No date/time/boolean types; in-memory cache added automatically |
+| `drill://` |  | Spatial not supported; in-memory cache added automatically |
+| `datafusion://` |  | Spatial not supported; in-memory cache added automatically |
+| `flightsql://` |  | ADBC Flight SQL endpoint |
+| `adbc://` |  | `adbc://<driver-name-or-path>?uri=…` for any ADBC driver |
+| `odbc://` |  | Raw ODBC connection string, e.g. `odbc://Driver=…;Server=…`; the dialect is detected from the driver or DBMS name |
+
+#### Reader selection: ADBC first, ODBC fallback
+
+For the schemes above, ggsql first tries to load an ADBC driver library. If none is found, it falls back to ODBC automatically when the connection can be described — no flag required:
+
+``` bash
+# ADBC: loads libadbc_driver_postgresql from the ADBC driver paths
+$ ggsql exec --reader postgres://user:secret@db.internal:5432/sales "..."
+
+# ODBC fallback, DSN-based
+$ ggsql exec --reader "postgres://db.internal/sales?DSN=pg-warehouse" "..."
+
+# ODBC fallback, explicit driver
+$ ggsql exec --reader "mysql://u@db.internal/shop?Driver={MySQL ODBC 9.0}" "..."
+```
+
+ADBC drivers are never bundled. The easiest way to install them is [dbc](https://docs.columnar.tech/dbc/), the ADBC driver manager CLI — e.g. `dbc install postgresql` installs the PostgreSQL driver into the standard user driver directory where ggsql will find it. Otherwise ggsql discovers drivers via the `ADBC_DRIVER_PATH` environment variable and the usual system/user ADBC driver directories. To point at a specific driver build, set a per-scheme override, e.g. `GGSQL_POSTGRES_ADBC_DRIVER=/opt/drivers/libadbc_driver_postgresql.so`. The ODBC driver can likewise be named with `GGSQL_POSTGRES_ODBC_DRIVER=PostgreSQL Unicode`.
+
+To force the ODBC path even when an ADBC driver is installed, add `reader=odbc` to the URI’s query string:
+
+``` bash
+$ ggsql exec --reader "postgres://user@db.internal/sales?Driver={PostgreSQL Unicode}&reader=odbc" "..."
+```
+
+If the ADBC driver loads but the connection itself fails (bad credentials, unreachable host), ggsql reports that error rather than silently falling back — use `reader=odbc` to bypass ADBC in that situation.
+
+#### Automatic caching
+
+ggsql stages intermediate results (materialized CTEs, stat transforms) in temporary tables. When a backend cannot host them, the connection is wrapped in an in-memory DuckDB (or SQLite) caching reader automatically — you do not need `--cache` or the `<cache>+<primary>://` form:
+
+- Some backends never support temp tables (Trino, Druid, Drill, DataFusion); their dialects say so and the cache is always added.
+- Every other backend is probed once on connect with a `CREATE TEMP TABLE` roundtrip. A failure — typically a read-only account — wraps the connection in a cache, and only your own queries hit the server.
+
+To opt out (for example while debugging), add `cache=off` to the URI’s query string; queries that need temp tables will then fail with the backend’s own error.
+
 ## Output format
 
 `ggsql exec` and `ggsql run` render with the writer named by `--writer` (short `-w`), defaulting to `--writer vegalite` — the Vega-Lite JSON above. A standard build also writes three other formats directly, with nothing to enable:
