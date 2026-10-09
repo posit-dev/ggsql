@@ -29,7 +29,7 @@
 //! without knowing which writer they picked.
 
 use crate::reader::ResolvedSpec;
-use crate::{DataFrame, GgsqlError, Plot, Result, TableCell, TableColumn, TableRow};
+use crate::{DataFrame, GgsqlError, Plot, Result, TableLayout};
 use std::collections::HashMap;
 
 pub mod options;
@@ -164,7 +164,7 @@ pub trait Writer {
     /// Ok(()) if the spec is compatible, otherwise an error
     fn validate_plot(&self, spec: &Plot) -> Result<()>;
 
-    /// Generate output from a resolved table's cells
+    /// Generate output from a resolved table layout
     ///
     /// The table-side counterpart to `write_plot()`. Defaults to rejecting
     /// every table, so a writer that only supports Plot output (every writer,
@@ -172,29 +172,22 @@ pub trait Writer {
     /// tables overrides this instead.
     ///
     /// Unlike `write_plot`, there is no AST parameter: `Table` (the parsed
-    /// `TABULATE` spec) has nothing left that a writer needs by the time
-    /// `cells` exists — its only field (`source`) is already consumed
-    /// building `cells`. `columns`/`rows` cover a whole-column or whole-row
-    /// property (e.g. `width`) that can't be expressed as a per-cell value.
+    /// `TABULATE` spec) has nothing left that a writer needs by the time the
+    /// layout exists — its only field (`source`) is already consumed building
+    /// it.
     ///
     /// # Arguments
     ///
-    /// * `cells` - The resolved table layout — see `TableCell` for the
-    ///   position/kind conventions
-    /// * `columns` - Resolved per-column properties
-    /// * `rows` - Resolved per-row properties
+    /// * `layout` - The resolved table layout: cells, columns, and rows,
+    ///   kept in sync by `TableLayout`'s invariants. Writers should call
+    ///   `layout.validate()?` before rendering.
     ///
     /// # Errors
     ///
     /// Returns `GgsqlError::WriterError` if this writer doesn't support
     /// tables, or output generation fails.
-    fn write_table(
-        &self,
-        cells: &[TableCell],
-        columns: &[TableColumn],
-        rows: &[TableRow],
-    ) -> Result<Self::Output> {
-        let _ = (cells, columns, rows);
+    fn write_table(&self, layout: &TableLayout) -> Result<Self::Output> {
+        let _ = layout;
         Err(GgsqlError::WriterError(
             "this writer does not support tables".to_string(),
         ))
@@ -231,9 +224,7 @@ pub trait Writer {
     fn render(&self, spec: &ResolvedSpec) -> Result<Self::Output> {
         match spec {
             ResolvedSpec::Plot(plot) => self.write_plot(plot.plot(), plot.data()),
-            ResolvedSpec::Table(table) => {
-                self.write_table(table.cells(), table.columns(), table.rows())
-            }
+            ResolvedSpec::Table(table) => self.write_table(table.layout()),
         }
     }
 }

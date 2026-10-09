@@ -451,9 +451,9 @@ mod tests {
 /// row's classification (`is_header`, `Heading`) is decided where its cells
 /// are built.
 ///
-/// `pub(crate)` so `execute::table` (`build_cells`) and the sibling
-/// `spanner` module can build one.
-pub(crate) struct TableLayout {
+/// The type is public because `Writer::write_table` takes one; construction
+/// and composition stay crate-internal.
+pub struct TableLayout {
     pub(crate) columns: Vec<TableColumn>,
     pub(crate) rows: Vec<TableRow>,
     pub(crate) cells: Vec<TableCell>,
@@ -488,13 +488,30 @@ impl TableLayout {
 
     /// Number of rows in the layout — heading, spanner, and column-label
     /// rows included, not just data rows.
-    pub(crate) fn nrow(&self) -> usize {
+    pub fn nrow(&self) -> usize {
         self.rows.len()
     }
 
     /// Number of columns in the layout.
-    pub(crate) fn ncol(&self) -> usize {
+    pub fn ncol(&self) -> usize {
         self.columns.len()
+    }
+
+    /// The layout's cells: one per column label and per data value.
+    pub fn cells(&self) -> &[TableCell] {
+        &self.cells
+    }
+
+    /// Resolved per-column properties — a writer wanting a whole-column
+    /// value (e.g. `width`) reads it here instead of the same value repeated
+    /// across the column's cells.
+    pub fn columns(&self) -> &[TableColumn] {
+        &self.columns
+    }
+
+    /// Resolved per-row properties, symmetric with `columns`.
+    pub fn rows(&self) -> &[TableRow] {
+        &self.rows
     }
 
     /// Stack `bottom` below `self`, offsetting `bottom`'s cells down by
@@ -533,7 +550,7 @@ impl TableLayout {
     /// occupied positions to the `TableCellKind` that claimed each one,
     /// erroring — naming both kinds — on the first double claim.
     /// `O(total cell area)`.
-    pub(crate) fn validate(&self) -> Result<()> {
+    pub fn validate(&self) -> Result<()> {
         let row_extent = count_cell_rows(&self.cells);
         if self.rows.len() != row_extent {
             return Err(GgsqlError::ValidationError(format!(

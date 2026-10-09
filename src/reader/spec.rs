@@ -4,7 +4,7 @@ use std::collections::HashMap;
 
 use crate::naming;
 use crate::plot::Plot;
-use crate::table::{count_cell_cols, count_cell_rows};
+use crate::table::TableLayout;
 use crate::validate::ValidationWarning;
 use crate::{DataFrame, TableCell, TableColumn, TableRow};
 
@@ -114,32 +114,31 @@ impl ResolvedPlot {
 
 impl ResolvedTable {
     /// Create a new ResolvedTable.
-    pub(crate) fn new(
-        cells: Vec<TableCell>,
-        columns: Vec<TableColumn>,
-        rows: Vec<TableRow>,
-        sql: String,
-        warnings: Vec<ValidationWarning>,
-    ) -> Self {
+    pub(crate) fn new(layout: TableLayout, sql: String, warnings: Vec<ValidationWarning>) -> Self {
         Self {
-            cells,
-            columns,
-            rows,
+            layout,
             sql,
             warnings,
         }
     }
 
-    /// Get the resolved layout: one cell per column label and per data value.
+    /// The resolved layout: cells, columns, and rows, kept in sync by
+    /// `TableLayout`'s invariants.
+    pub fn layout(&self) -> &TableLayout {
+        &self.layout
+    }
+
+    /// Get the resolved layout's cells: one per column label and per data
+    /// value.
     pub fn cells(&self) -> &[TableCell] {
-        &self.cells
+        &self.layout.cells
     }
 
     /// Resolved per-column properties — a writer wanting a whole-column
     /// value (e.g. `width`) reads it here instead of the same value
     /// repeated across the column's cells.
     pub fn columns(&self) -> &[TableColumn] {
-        &self.columns
+        &self.layout.columns
     }
 
     /// Resolved per-row properties, symmetric with `columns`. `properties`
@@ -147,18 +146,18 @@ impl ResolvedTable {
     /// does — a `Title`/`Subtitle` cell's row carries `TableClass::Heading`
     /// here, for a writer to put on the enclosing `<tr>`.
     pub fn rows(&self) -> &[TableRow] {
-        &self.rows
+        &self.layout.rows
     }
 
     /// Total number of rows in the table's rendered grid — heading, spanner,
     /// and column-label rows included, not just data rows.
     pub fn nrow(&self) -> usize {
-        count_cell_rows(&self.cells)
+        self.layout.nrow()
     }
 
-    /// Number of columns, computed from `cells`.
+    /// Number of columns.
     pub fn ncol(&self) -> usize {
-        count_cell_cols(&self.cells)
+        self.layout.ncol()
     }
 
     /// The SQL query that was executed to produce `cells`.

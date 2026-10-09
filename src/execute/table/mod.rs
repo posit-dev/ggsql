@@ -77,13 +77,7 @@ pub fn resolve_table_with_reader(query: &str, reader: &dyn Reader) -> Result<Res
         caption.as_deref(),
     )?;
 
-    Ok(ResolvedTable::new(
-        layout.cells,
-        layout.columns,
-        layout.rows,
-        sql,
-        warnings,
-    ))
+    Ok(ResolvedTable::new(layout, sql, warnings))
 }
 
 /// Resolves a mixed selection like `TABULATE foo, bar AS Baz, *`: named

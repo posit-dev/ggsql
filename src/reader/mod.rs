@@ -36,8 +36,9 @@ use std::collections::HashMap;
 use crate::execute::{prepare_data_with_reader, resolve_table_with_reader};
 use crate::parser::{self, SourceTree};
 use crate::plot::{CastTargetType, Plot};
+use crate::table::TableLayout;
 use crate::validate::{validate, ValidationWarning};
-use crate::{naming, DataFrame, GgsqlError, Result, Spec, TableCell, TableColumn, TableRow};
+use crate::{naming, DataFrame, GgsqlError, Result, Spec};
 
 // =============================================================================
 // SQL Dialect
@@ -708,20 +709,12 @@ pub struct Metadata {
 
 /// Result of executing a ggsql TABULATE query, ready for rendering.
 pub struct ResolvedTable {
-    /// The resolved layout: one cell per column label and per data value,
-    /// resolved from `table.source` (or the main SQL if there was no
-    /// TABULATE FROM). See `TableCell` for the position/kind conventions.
-    /// `nrow()`/`ncol()` are computed from this rather than stored
-    /// separately, so there's one source of truth for the table's shape.
-    pub(crate) cells: Vec<TableCell>,
-    /// Resolved per-column properties, for a writer wanting a whole-column
-    /// value (e.g. `width`) rather than the same value repeated across a
-    /// column's cells. Always built alongside `cells` — see
-    /// `resolve_table_with_reader`.
-    pub(crate) columns: Vec<TableColumn>,
-    /// Resolved per-row properties, symmetric with `columns`.
-    pub(crate) rows: Vec<TableRow>,
-    /// The SQL query that was executed to produce `cells`
+    /// The resolved layout (cells, columns, rows), built from
+    /// `table.source` (or the main SQL if there was no TABULATE FROM) and
+    /// validated before handoff. See `TableLayout` for the shape invariants
+    /// it maintains.
+    pub(crate) layout: TableLayout,
+    /// The SQL query that was executed to produce the layout's cells
     pub(crate) sql: String,
     /// Validation warnings from preparation
     pub(crate) warnings: Vec<ValidationWarning>,

@@ -12,9 +12,9 @@ mod spanner;
 
 pub(crate) use layout::{
     compose_header, count_cell_cols, count_cell_rows, create_caption, create_column_labels,
-    create_heading, extract_heading_labels, move_stub_columns, standardise_hjust, TableLayout,
+    create_heading, extract_heading_labels, move_stub_columns, standardise_hjust,
 };
-pub use layout::{TableCell, TableCellKind, TableClass, TableColumn, TableRow};
+pub use layout::{TableCell, TableCellKind, TableClass, TableColumn, TableLayout, TableRow};
 pub use spanner::Spanner;
 pub(crate) use spanner::{create_spanners, reorder_table_columns};
 

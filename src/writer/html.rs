@@ -1,6 +1,6 @@
 //! A minimal HTML table writer.
 //!
-//! Maps `ResolvedTable`'s three parts onto pieces of the `<table>`:
+//! Maps a `TableLayout`'s three parts onto pieces of the `<table>`:
 //! - `cells` → `<thead>`/`<tbody>` rows. A `Caption`-kind cell is pulled out
 //!   of the grid before row rendering and emitted as a `<caption>` (HTML
 //!   requires it as `<table>`'s first child) — see `write_table`. Styling is
@@ -30,7 +30,7 @@ use crate::util::escape_html;
 use crate::writer::{Writer, WriterOptions};
 use crate::{
     DataFrame, GgsqlError, Plot, Result, TableCell, TableCellKind, TableClass, TableColumn,
-    TableRow,
+    TableLayout, TableRow,
 };
 
 /// Renders a resolved table as a bare HTML `<table>`. Does not support plots.
@@ -86,15 +86,16 @@ impl Writer for HtmlWriter {
         ))
     }
 
-    fn write_table(
-        &self,
-        cells: &[TableCell],
-        columns: &[TableColumn],
-        rows: &[TableRow],
-    ) -> Result<String> {
+    fn write_table(&self, layout: &TableLayout) -> Result<String> {
+        layout.validate()?;
+
+        let columns = layout.columns();
+        let rows = layout.rows();
+
         // Fold `hjust` into alignment classes up front, so rendering reads
         // `classes` alone.
-        let cells: Vec<TableCell> = cells
+        let cells: Vec<TableCell> = layout
+            .cells()
             .iter()
             .cloned()
             .map(TableCell::discretise_hjust)
@@ -108,6 +109,8 @@ impl Writer for HtmlWriter {
             .into_iter()
             .partition(|cell| cell.kind == TableCellKind::Caption);
 
+        // The caption's row still counts in `layout.nrow()`, so size the
+        // grid from the partitioned cells instead.
         let ncol = count_cell_cols(&cells);
         let nrow = count_cell_rows(&cells);
 
@@ -659,6 +662,20 @@ mod render_tests {
         TableCell::new(kind, top, bottom, left, right, String::new())
     }
 
+    /// Wrap hand-built `cells`/`rows` into a `TableLayout` for `write_table`
+    /// tests, with as many default columns as `cells` implies.
+    fn layout(cells: Vec<TableCell>, rows: Vec<TableRow>) -> TableLayout {
+        let columns = (0..count_cell_cols(&cells))
+            .map(|i| TableColumn {
+                name: i.to_string(),
+                label: String::new(),
+                properties: Parameters::new(),
+                target: ColumnSection::Body,
+            })
+            .collect();
+        TableLayout::new(columns, rows, cells)
+    }
+
     #[test]
     fn from_options_defaults_to_class_mode() {
         assert_eq!(HtmlWriter::new().css_mode, CssMode::Class);
@@ -890,7 +907,7 @@ mod render_tests {
         ];
         let rows = vec![TableRow::default(), TableRow::header()];
 
-        assert!(HtmlWriter::new().write_table(&cells, &[], &rows).is_err());
+        assert!(HtmlWriter::new().write_table(&layout(cells, rows)).is_err());
     }
 
     #[test]
@@ -909,7 +926,7 @@ mod render_tests {
         let html = HtmlWriter {
             css_mode: CssMode::Inline,
         }
-        .write_table(&cells, &[], &rows)
+        .write_table(&layout(cells, rows))
         .unwrap();
 
         // The <table>/<tbody> tags' own attributes are `TableClass::Table`/
@@ -955,7 +972,7 @@ mod render_tests {
         let html = HtmlWriter {
             css_mode: CssMode::Inline,
         }
-        .write_table(&cells, &[], &rows)
+        .write_table(&layout(cells, rows))
         .unwrap();
 
         // <caption> is table's first child, before <thead>/<tbody>, and its
@@ -987,7 +1004,7 @@ mod render_tests {
             TableRow::default(),
         ];
 
-        let html = HtmlWriter::new().write_table(&cells, &[], &rows).unwrap();
+        let html = HtmlWriter::new().write_table(&layout(cells, rows)).unwrap();
 
         assert!(html.contains("<tr class=\"ggsql_heading\"><th class=\"ggsql_title\">"));
         // The column-label row has no recorded row classes, so its <tr> is
@@ -1014,7 +1031,7 @@ mod render_tests {
         let html = HtmlWriter {
             css_mode: CssMode::Inline,
         }
-        .write_table(&cells, &[], &rows)
+        .write_table(&layout(cells, rows))
         .unwrap();
 
         assert!(html.contains("<tr style=\"background-color: #FFFFFF"));
