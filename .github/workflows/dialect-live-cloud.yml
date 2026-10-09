@@ -114,12 +114,24 @@ jobs:
           host=$(printf '%s' "$uri" | sed -E 's|^databricks://[^@]+@([^/]+)/.*|\1|')
           wh=$(printf '%s' "$uri" | sed -E 's|.*/warehouses/([^/?]+).*|\1|')
           api() { curl -sf -H "Authorization: Bearer $token" "$@"; }
-          api -X POST "https://$host/api/2.0/sql/warehouses/$wh/start" || true
+          # Surface a failed start (e.g. 403 when the token's principal has
+          # Can Use but not Can Manage on the warehouse) instead of polling
+          # a warehouse that will never leave STOPPED.
+          if ! start_resp=$(api -X POST "https://$host/api/2.0/sql/warehouses/$wh/start" 2>&1); then
+            echo "::error title=Warehouse start failed::start POST failed: $start_resp"
+            echo "The CI token's principal likely lacks Can Manage on warehouse $wh."
+            exit 1
+          fi
           state=""
           for i in $(seq 1 60); do
             state=$(api "https://$host/api/2.0/sql/warehouses/$wh" | jq -r .state)
             echo "warehouse $wh state: $state"
-            [ "$state" = "RUNNING" ] && break
+            case "$state" in
+              RUNNING) break ;;
+              DELETED|DELETING)
+                echo "::error::warehouse $wh is $state — the ID in GGSQL_TEST_URI_DATABRICKS is stale"
+                exit 1 ;;
+            esac
             sleep 10
           done
           [ "$state" = "RUNNING" ]
