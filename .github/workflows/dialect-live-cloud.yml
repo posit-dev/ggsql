@@ -101,6 +101,29 @@ jobs:
         # Path must match bigquery.auth.credentials in the URI secret.
         run: printf '%s' "$GGSQL_BIGQUERY_KEY_JSON" > /tmp/bq-ci-key.json
 
+      - name: Start the Databricks SQL warehouse and wait until RUNNING
+        # A stopped warehouse makes the ADBC driver's open-session call fail
+        # with 400 "Cannot create the resource, please try again later" —
+        # the driver does not wait for startup, so ensure RUNNING first.
+        # Token, host, and warehouse id are parsed out of the URI secret
+        # (databricks://token:<pat>@<host>/sql/1.0/warehouses/<id>?...).
+        if: matrix.backend == 'databricks' && env.GGSQL_TEST_URI_DATABRICKS != ''
+        run: |
+          uri="$GGSQL_TEST_URI_DATABRICKS"
+          token=$(printf '%s' "$uri" | sed -E 's|^databricks://token:([^@]+)@.*|\1|')
+          host=$(printf '%s' "$uri" | sed -E 's|^databricks://[^@]+@([^/]+)/.*|\1|')
+          wh=$(printf '%s' "$uri" | sed -E 's|.*/warehouses/([^/?]+).*|\1|')
+          api() { curl -sf -H "Authorization: Bearer $token" "$@"; }
+          api -X POST "https://$host/api/2.0/sql/warehouses/$wh/start" || true
+          state=""
+          for i in $(seq 1 60); do
+            state=$(api "https://$host/api/2.0/sql/warehouses/$wh" | jq -r .state)
+            echo "warehouse $wh state: $state"
+            [ "$state" = "RUNNING" ] && break
+            sleep 10
+          done
+          [ "$state" = "RUNNING" ]
+
       - name: Run the ${{ matrix.backend }} live test
         # The binary comes prebuilt from the compile job; invoked directly
         # as a libtest executable (no cargo, no `--` separator).
