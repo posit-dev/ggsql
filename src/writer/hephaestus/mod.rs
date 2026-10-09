@@ -84,7 +84,7 @@ pub use tiff::{TiffCompression, TiffWriter};
 #[cfg(feature = "webp")]
 pub use webp::WebpWriter;
 #[cfg(feature = "window")]
-pub use window::PlotViewer;
+pub use window::{ClosingFrame, PlotViewer, VIEWER_OPTIONS};
 
 // Re-exported so a caller can name the setting without depending on the
 // renderer crate; the variants are the format's own vocabulary.

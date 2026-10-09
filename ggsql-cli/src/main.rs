@@ -85,12 +85,14 @@ pub struct RenderArgs {
     pub verbose: bool,
 }
 
-/// The flags `view` takes: where the data comes from and how the window looks.
+/// The flags `view` takes: where the data comes from, how the window looks,
+/// and — optionally — where the plot goes once the window closes.
 ///
-/// Deliberately not [`RenderArgs`]: there is no `--writer` to choose and no
-/// `--output` to write, and `-D` carries the viewer's own settings rather than
-/// a writer's. The reader flags are the same ones, so they come from the same
-/// [`ReaderArgs`].
+/// Shares the reader flags with [`RenderArgs`] through [`ReaderArgs`], and its
+/// `--writer`/`--output` mean the same thing they do there, but `-D` is the
+/// viewer's own: the window's settings (`width`, `height`, `background`,
+/// `title`) are taken from it, and any other key is forwarded to the writer
+/// for the after-close render.
 #[derive(Args)]
 pub struct ViewArgs {
     #[command(flatten)]
@@ -104,10 +106,27 @@ pub struct ViewArgs {
         value_name = "KEY=VALUE[;...]",
         long_help = "Settings for the viewer window, as `key=value`. Repeatable, and one flag \
                      may carry several settings separated by `;` (quote it, as most shells read \
-                     `;` themselves): `-D 'width=1280;title=My plot'`.\n\nSettings:\n  \
-                     width, height, background, title"
+                     `;` themselves): `-D 'width=1280;title=My plot'`.\n\nViewer settings:\n  \
+                     width, height, background, title\n\nAny other key (e.g. `compression`) is \
+                     forwarded to the writer when `--output` or `--writer` is given, except `dpi` \
+                     and `units`, which are refused: the render's size and resolution always come \
+                     from the window when it closed, so what you see is what you get."
     )]
     pub viewer_options: Vec<String>,
+
+    /// Output format for a render after the window closes
+    ///
+    /// With `--output` or on its own (writing to stdout), renders the plot
+    /// once the window closes, sized to the window as the user left it.
+    #[arg(short, long, long_help = writers::writer_help())]
+    pub writer: Option<String>,
+
+    /// Render the plot to this file after the window closes
+    ///
+    /// The render uses the window's dimensions at close, so the file matches
+    /// what was last on screen.
+    #[arg(short, long)]
+    pub output: Option<PathBuf>,
 
     /// Show verbose output (execution details, statistics)
     #[arg(short, long)]
@@ -193,7 +212,9 @@ pub enum Commands {
     /// Show a ggsql query's plot in a window
     ///
     /// Blocks until the window is closed. Resizing the window re-lays-out the
-    /// plot rather than stretching it.
+    /// plot rather than stretching it. With `--output` (and optionally
+    /// `--writer`), the plot is rendered to file when the window closes, at
+    /// the window's final dimensions, which are also logged to the terminal.
     ///
     /// Requires the `window` feature and a working GPU adapter.
     View {
@@ -486,9 +507,42 @@ fn render_spec(spec: Spec, args: &RenderArgs, writer: &WriterSpec) {
 fn cmd_view(query: String, args: &ViewArgs) {
     #[cfg(feature = "window")]
     {
-        use ggsql::writer::PlotViewer;
+        use ggsql::writer::{PlotViewer, VIEWER_OPTIONS};
 
-        let options = WriterOptions::parse(args.viewer_options.clone()).unwrap_or_else(|e| {
+        // `-D` serves two masters: the viewer's own keys configure the window,
+        // everything else is meant for the writer of the after-close render.
+        // `dpi` and `units` belong to neither: the render must match what was
+        // on screen, and both would reinterpret the window's size.
+        let mut viewer_pairs: Vec<String> = Vec::new();
+        let mut writer_pairs: Vec<String> = Vec::new();
+        for raw in &args.viewer_options {
+            for setting in raw.split(';').map(str::trim).filter(|s| !s.is_empty()) {
+                let key = setting.split('=').next().unwrap_or("").trim();
+                if matches!(key, "dpi" | "units") {
+                    eprintln!(
+                        "view takes no '{key}' setting: the render uses the window's own size and \
+                         resolution, so what you see is what you get"
+                    );
+                    std::process::exit(1);
+                }
+                if VIEWER_OPTIONS.contains(&key) {
+                    viewer_pairs.push(setting.to_string());
+                } else {
+                    writer_pairs.push(setting.to_string());
+                }
+            }
+        }
+
+        let render_requested = args.writer.is_some() || args.output.is_some();
+        if !writer_pairs.is_empty() && !render_requested {
+            eprintln!(
+                "Settings like '{}' are writer settings; pass --output or --writer to use them",
+                writer_pairs[0]
+            );
+            std::process::exit(1);
+        }
+
+        let options = WriterOptions::parse(viewer_pairs).unwrap_or_else(|e| {
             eprintln!("{}", e);
             std::process::exit(1);
         });
@@ -531,10 +585,35 @@ fn cmd_view(query: String, args: &ViewArgs) {
             eprintln!("Close the window to exit.");
         }
 
-        // Blocks on the main thread until the window closes.
-        if let Err(e) = viewer.show(&spec) {
+        // Blocks on the main thread until the window closes, returning the
+        // frame (size and dpi) the user left the window at.
+        let frame = viewer.show(&spec).unwrap_or_else(|e| {
             eprintln!("{}", e);
             std::process::exit(1);
+        });
+        eprintln!(
+            "Window closed at {}x{} (dpi: {})",
+            frame.width, frame.height, frame.dpi
+        );
+
+        if render_requested {
+            // The window's closing frame wins over the writer's defaults: the
+            // file should match what was on screen, chrome included.
+            writer_pairs.push(format!("width={}", frame.width));
+            writer_pairs.push(format!("height={}", frame.height));
+            writer_pairs.push(format!("dpi={}", frame.dpi));
+            let render_args = RenderArgs {
+                source: ReaderArgs {
+                    reader: args.source.reader.clone(),
+                    cache: args.source.cache.clone(),
+                },
+                writer: args.writer.clone(),
+                writer_options: writer_pairs,
+                output: args.output.clone(),
+                verbose: args.verbose,
+            };
+            let writer = render_args.writer();
+            render_spec(spec, &render_args, &writer);
         }
     }
     #[cfg(not(feature = "window"))]
