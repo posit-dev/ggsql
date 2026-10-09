@@ -21,10 +21,10 @@
 //! labels; a column label no spanner covers renders as a `rowspan` cell
 //! reaching up into the spanner rows.
 
-use std::collections::BTreeMap;
 use std::collections::HashMap;
 
 use crate::plot::{ParameterValue, Parameters};
+use crate::table::Slot;
 use crate::util::escape_html;
 use crate::writer::{Writer, WriterOptions};
 use crate::{
@@ -91,31 +91,20 @@ impl Writer for HtmlWriter {
         let columns = layout.columns();
         let rows = layout.rows();
 
-        // Fold `hjust` into alignment classes up front, so rendering reads
-        // `classes` alone.
-        let cells: Vec<TableCell> = layout
+        // HTML requires `<caption>` outside `<thead>`/`<tbody>`, as
+        // `<table>`'s first child — rendered separately via
+        // `render_caption`; `slots_by_row` keeps caption cells out of the
+        // grid below.
+        let caption_cells: Vec<TableCell> = layout
             .cells()
             .iter()
+            .filter(|cell| cell.kind == TableCellKind::Caption)
             .cloned()
             .map(TableCell::discretise_hjust)
             .collect();
 
-        // HTML requires `<caption>` outside `<thead>`/`<tbody>`, as
-        // `<table>`'s first child — rendered separately via
-        // `render_caption`. Split it out here, before `ncol`/`nrow`, so the
-        // grid below only ever sees genuine header/body rows.
-        let (caption_cells, cells): (Vec<TableCell>, Vec<TableCell>) = cells
-            .into_iter()
-            .partition(|cell| cell.kind == TableCellKind::Caption);
-
-        // The caption-free row count comes from the row partition (a
-        // caption's row is in neither vec); the caption cell spans full
-        // width, so `ncol` is unaffected by the split.
         let (header_rows, body_rows) = layout.header_and_body_rows();
-        let nrow = header_rows.len() + body_rows.len();
-        let ncol = layout.ncol();
-
-        let mut all_slots = build_all_slots(&cells, ncol, nrow);
+        let mut all_slots = layout.slots_by_row();
 
         let mut html = String::new();
         if self.css_mode == CssMode::Class {
@@ -144,7 +133,7 @@ impl Writer for HtmlWriter {
             for row in &header_rows {
                 let slots = all_slots
                     .remove(row)
-                    .expect("a header row's own cell always puts it in build_all_slots' result");
+                    .expect("a header row's own cell always puts it in slots_by_row's result");
                 html.push_str(&render_row(&slots, &rows[*row], self.css_mode));
             }
             html.push_str("</thead>\n");
@@ -156,7 +145,7 @@ impl Writer for HtmlWriter {
             for row in &body_rows {
                 let slots = all_slots
                     .remove(row)
-                    .expect("a body row's own cell always puts it in build_all_slots' result");
+                    .expect("a body row's own cell always puts it in slots_by_row's result");
                 html.push_str(&render_row(&slots, &rows[*row], self.css_mode));
             }
             html.push_str("</tbody>\n");
@@ -454,10 +443,13 @@ fn render_cell(cell: &TableCell, mode: CssMode) -> String {
     if let Some(scope) = header_scope(cell.kind, colspan) {
         attrs.push_str(&format!(" scope=\"{scope}\""));
     }
+    // `slots_by_row`'s slots borrow the layout's cells, so `hjust` can't be
+    // folded into `classes` up front — its class joins the fold here.
     let (inner, outer): (Vec<TableClass>, Vec<TableClass>) = cell
         .classes
         .iter()
         .copied()
+        .chain(cell.hjust_class())
         .partition(|class| INNER_CLASSES.contains(class));
     attrs.push_str(&styling_attr(&outer, mode));
     if inner.is_empty() {
@@ -532,60 +524,6 @@ fn column_style(properties: &Parameters) -> Option<String> {
         Some(ParameterValue::String(width)) => Some(format!("width: {width}")),
         _ => None,
     }
-}
-
-/// What belongs at one column of a rendered row, decided once for the whole
-/// table by `build_all_slots` rather than worked out inline while
-/// `render_row` walks columns.
-enum Slot<'a> {
-    /// A real cell starting at this column, `Filler` included — same
-    /// render path as any other kind.
-    Cell(&'a TableCell),
-    /// A column a rowspan from an earlier row already claims — nothing
-    /// rendered here at all.
-    Skip,
-}
-
-/// Decide what belongs at every column of every row, for the whole table, in
-/// one pass over `cells` — a cell's rowspan/colspan footprint is marked as
-/// the cell itself is placed. `ncol`/`nrow` size the grid; `write_table`
-/// already has them, computed from `cells` itself, which by this point is
-/// caption-free (see `write_table`'s own caption split).
-///
-/// Every grid position is expected to already be a real `Cell` or a `Skip`
-/// by the time this runs; see the `expect` below.
-fn build_all_slots(
-    cells: &[TableCell],
-    ncol: usize,
-    nrow: usize,
-) -> BTreeMap<usize, Vec<Slot<'_>>> {
-    let mut grid: Vec<Vec<Option<Slot<'_>>>> = (0..nrow)
-        .map(|_| (0..ncol).map(|_| None).collect())
-        .collect();
-    for cell in cells {
-        for row in &mut grid[cell.top..=cell.bottom] {
-            for col in &mut row[cell.left..=cell.right] {
-                *col = Some(Slot::Skip);
-            }
-        }
-        grid[cell.top][cell.left] = Some(Slot::Cell(cell));
-    }
-
-    grid.into_iter()
-        .enumerate()
-        .map(|(row, row_slots)| {
-            let slots = row_slots
-                .into_iter()
-                .map(|slot| {
-                    slot.expect(
-                        "a resolved table's cells cover every grid position; a gap here is an \
-                         execute bug",
-                    )
-                })
-                .collect();
-            (row, slots)
-        })
-        .collect()
 }
 
 /// Render one row's already-decided `Slot`s as `<tr>...</tr>`. A `Skip`
@@ -677,11 +615,6 @@ mod render_tests {
     }
 
     #[test]
-    fn build_all_slots_returns_empty_for_no_cells() {
-        assert!(build_all_slots(&[], 0, 0).is_empty());
-    }
-
-    #[test]
     fn render_row_returns_empty_string_for_no_slots() {
         assert_eq!(render_row(&[], &TableRow::body(), CssMode::Inline), "");
     }
@@ -710,7 +643,7 @@ mod render_tests {
         let mut c = cell(TableCellKind::Body, 0, 0, 0, 0);
         c.properties
             .insert("hjust".to_string(), ParameterValue::Number(1.0));
-        let html = render_cell(&c.discretise_hjust(), CssMode::Inline);
+        let html = render_cell(&c, CssMode::Inline);
         assert!(html.starts_with("<td style=\"text-align: right;"));
         assert!(html.ends_with("\"></td>"));
     }
@@ -720,7 +653,6 @@ mod render_tests {
         let mut body = cell(TableCellKind::Body, 0, 0, 0, 0).with_classes(vec![TableClass::Row]);
         body.properties
             .insert("hjust".to_string(), ParameterValue::Number(1.0));
-        let body = body.discretise_hjust();
         assert_eq!(
             render_cell(&body, CssMode::Class),
             "<td class=\"ggsql_row ggsql_right\"></td>"
@@ -821,28 +753,6 @@ mod render_tests {
     }
 
     #[test]
-    fn build_all_slots_marks_a_rowspans_continuation_row_as_skip() {
-        // Column 1 spans rows 0-1 — row 1's column 1 is a continuation, not
-        // a gap. Columns 0 and 2 are filled at every row too, since every
-        // grid position needs a real cell.
-        let cells = [
-            cell(TableCellKind::ColumnLabel, 0, 1, 1, 1),
-            cell(TableCellKind::ColumnLabel, 0, 0, 0, 0),
-            cell(TableCellKind::ColumnLabel, 0, 0, 2, 2),
-            cell(TableCellKind::ColumnLabel, 1, 1, 0, 0),
-            cell(TableCellKind::ColumnLabel, 1, 1, 2, 2),
-        ];
-
-        let slots = build_all_slots(&cells, 3, 2);
-
-        let row1 = &slots[&1];
-        assert_eq!(row1.len(), 3);
-        assert!(matches!(&row1[0], Slot::Cell(cell) if cell.left == 0));
-        assert!(matches!(&row1[1], Slot::Skip));
-        assert!(matches!(&row1[2], Slot::Cell(cell) if cell.left == 2));
-    }
-
-    #[test]
     fn render_row_renders_nothing_for_a_skip_slot() {
         let a = cell(TableCellKind::ColumnLabel, 1, 1, 0, 0);
         let c = cell(TableCellKind::ColumnLabel, 1, 1, 2, 2);
@@ -854,16 +764,6 @@ mod render_tests {
             row,
             "<tr><th scope=\"col\"></th><th scope=\"col\"></th></tr>\n"
         );
-    }
-
-    #[test]
-    #[should_panic(expected = "a resolved table's cells cover every grid position")]
-    fn build_all_slots_panics_on_a_genuine_gap() {
-        // execute is expected to have already filled this with a real
-        // Filler cell — reaching the writer at all means a bug upstream.
-        let cells = [cell(TableCellKind::Spanner, 0, 0, 0, 0)];
-
-        build_all_slots(&cells, 2, 1);
     }
 
     #[test]

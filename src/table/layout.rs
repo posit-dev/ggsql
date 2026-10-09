@@ -1,8 +1,9 @@
 //! Resolved table layout vocabulary: the positioned `TableCell`, its
 //! `TableCellKind`, and the writer-neutral `TableClass` style classes —
-//! plus the `Section` assembly that composes cells, column labels,
+//! plus the `TableLayout` assembly that composes cells, column labels,
 //! headings and captions into a grid (`rowbind`, `compose_header`, ...).
 
+use std::collections::BTreeMap;
 use std::collections::HashSet;
 
 use super::ColumnSection;
@@ -241,27 +242,30 @@ impl TableCell {
         self
     }
 
-    /// Fold this cell's resolved `hjust` into an alignment class appended to
-    /// `classes`, removing `hjust` from `properties` so no writer renders it
-    /// twice. Numbers and keyword spellings standardise via
-    /// `standardise_hjust`; the number is bucketed with the same
-    /// `0.25`/`0.75` thresholds `VegaLiteWriter`'s `convert_hjust` uses.
-    pub fn discretise_hjust(mut self) -> Self {
-        let Some(hjust) = self.properties.remove("hjust") else {
-            return self;
-        };
-        let Some(n) = standardise_hjust(&hjust) else {
-            // Unrecognized value — don't silently drop it.
-            self.properties.insert("hjust".to_string(), hjust);
-            return self;
-        };
-        let class = if n <= 0.25 {
+    /// The alignment class this cell's `hjust` property implies, or `None`
+    /// if it's absent or unrecognized. Numbers and keyword spellings
+    /// standardise via `standardise_hjust`; the number is bucketed with the
+    /// same `0.25`/`0.75` thresholds `VegaLiteWriter`'s `convert_hjust`
+    /// uses.
+    pub(crate) fn hjust_class(&self) -> Option<TableClass> {
+        let n = standardise_hjust(self.properties.get("hjust")?)?;
+        Some(if n <= 0.25 {
             TableClass::AlignLeft
         } else if n >= 0.75 {
             TableClass::AlignRight
         } else {
             TableClass::AlignCenter
+        })
+    }
+
+    /// Fold this cell's resolved `hjust` into its alignment class appended
+    /// to `classes`, removing `hjust` from `properties` so no writer renders
+    /// it twice. An unrecognized value stays in `properties`.
+    pub fn discretise_hjust(mut self) -> Self {
+        let Some(class) = self.hjust_class() else {
+            return self;
         };
+        self.properties.remove("hjust");
         self.classes.push(class);
         self
     }
@@ -458,6 +462,19 @@ mod tests {
     }
 }
 
+/// What belongs at one column of a rendered row, decided once for the whole
+/// table by `TableLayout::slots_by_row` rather than worked out inline while
+/// a writer walks columns. (The HTML spec's table model uses the same term:
+/// it assigns cells to slots.)
+pub(crate) enum Slot<'a> {
+    /// A real cell starting at this column, `Filler` included — same render
+    /// path as any other kind.
+    Cell(&'a TableCell),
+    /// A column a rowspan from an earlier row already claims — nothing
+    /// rendered here at all.
+    Skip,
+}
+
 /// A table's layout: its cells alongside one `TableRow` **per row index they
 /// occupy** — not one per cell, since several cells can share a row (a
 /// column-label row has one cell per column, but is still a single row) —
@@ -548,6 +565,53 @@ impl TableLayout {
             }
         }
         (header_rows, body_rows)
+    }
+
+    /// What belongs at every column of every header/body row, decided once
+    /// for the whole table in one pass over the cells — a cell's
+    /// rowspan/colspan footprint is marked as the cell itself is placed.
+    /// Keyed by row index, each value one `Slot` per column. Caption cells
+    /// stay out: the caption's row is the layout's last (`validate`
+    /// enforces), outside this grid, and a writer renders the caption
+    /// outside the row flow anyway.
+    ///
+    /// Every grid position is expected to already be a real `Cell` or a
+    /// `Skip` by the time this runs; see the `expect` below.
+    pub(crate) fn slots_by_row(&self) -> BTreeMap<usize, Vec<Slot<'_>>> {
+        let (header_rows, body_rows) = self.header_and_body_rows();
+        let nrow = header_rows.len() + body_rows.len();
+        let ncol = self.ncol();
+        let mut grid: Vec<Vec<Option<Slot<'_>>>> = (0..nrow)
+            .map(|_| (0..ncol).map(|_| None).collect())
+            .collect();
+        for cell in self
+            .cells
+            .iter()
+            .filter(|cell| cell.kind != TableCellKind::Caption)
+        {
+            for row in &mut grid[cell.top..=cell.bottom] {
+                for col in &mut row[cell.left..=cell.right] {
+                    *col = Some(Slot::Skip);
+                }
+            }
+            grid[cell.top][cell.left] = Some(Slot::Cell(cell));
+        }
+
+        grid.into_iter()
+            .enumerate()
+            .map(|(row, row_slots)| {
+                let slots = row_slots
+                    .into_iter()
+                    .map(|slot| {
+                        slot.expect(
+                            "a resolved table's cells cover every grid position; a gap here is an \
+                             execute bug",
+                        )
+                    })
+                    .collect();
+                (row, slots)
+            })
+            .collect()
     }
 
     /// Stack `bottom` below `self`, offsetting `bottom`'s cells down by
@@ -1221,6 +1285,62 @@ mod assembly_tests {
         let layout = TableLayout::new(vec![column("a", "a")], rows, cells);
 
         assert!(layout.validate().is_err());
+    }
+
+    #[test]
+    fn slots_by_row_returns_empty_for_no_cells() {
+        assert!(layout(vec![]).slots_by_row().is_empty());
+    }
+
+    #[test]
+    fn slots_by_row_marks_a_rowspans_continuation_row_as_skip() {
+        // Column 1 spans rows 0-1 — row 1's column 1 is a continuation, not
+        // a gap. Columns 0 and 2 are filled at every row too, since every
+        // grid position needs a real cell.
+        let cells = vec![
+            cell_at(TableCellKind::ColumnLabel, 0, 1, 1, 1),
+            cell_at(TableCellKind::ColumnLabel, 0, 0, 0, 0),
+            cell_at(TableCellKind::ColumnLabel, 0, 0, 2, 2),
+            cell_at(TableCellKind::ColumnLabel, 1, 1, 0, 0),
+            cell_at(TableCellKind::ColumnLabel, 1, 1, 2, 2),
+        ];
+
+        let layout = layout(cells);
+        let slots = layout.slots_by_row();
+
+        let row1 = &slots[&1];
+        assert_eq!(row1.len(), 3);
+        assert!(matches!(&row1[0], Slot::Cell(cell) if cell.left == 0));
+        assert!(matches!(&row1[1], Slot::Skip));
+        assert!(matches!(&row1[2], Slot::Cell(cell) if cell.left == 2));
+    }
+
+    #[test]
+    fn slots_by_row_excludes_the_caption() {
+        let cells = vec![
+            cell_at(TableCellKind::Body, 0, 0, 0, 0),
+            cell_at(TableCellKind::Caption, 1, 1, 0, 0),
+        ];
+        let layout = TableLayout::new(
+            vec![column("a", "a")],
+            vec![TableRow::body(), TableRow::caption()],
+            cells,
+        );
+
+        let slots = layout.slots_by_row();
+
+        assert_eq!(slots.len(), 1);
+        assert!(slots.contains_key(&0));
+    }
+
+    #[test]
+    #[should_panic(expected = "a resolved table's cells cover every grid position")]
+    fn slots_by_row_panics_on_a_genuine_gap() {
+        // execute is expected to have already filled this with a real
+        // Filler cell — reaching a writer at all means a bug upstream.
+        let cells = vec![cell_at(TableCellKind::Spanner, 0, 0, 0, 0)];
+
+        layout_wide(cells, 2).slots_by_row();
     }
 
     #[test]
