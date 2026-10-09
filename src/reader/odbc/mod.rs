@@ -18,15 +18,6 @@ use ffi::*;
 use std::sync::Arc;
 use wrapper::{Connection, Statement};
 
-/// Detect the backend SQL dialect from the DBMS name and connection string.
-///
-/// Delegates to the shared matcher in [`crate::reader::dialects`]; the
-/// `Driver=` value from the ODBC connection string serves as the driver hint.
-fn detect_dialect(dbms_name: Option<&str>, conn_str: &str) -> Result<super::DialectRef> {
-    let driver = super::connection::extract_odbc_value(conn_str, "driver");
-    super::registry::detect_or_err(dbms_name, driver.as_deref())
-}
-
 /// Pull ggsql-owned keys (`Dialect=<name>`) out of an ODBC connection
 /// string before connecting. `Dialect=` is ggsql's escape hatch for unknown
 /// backends, not a driver option — drivers reject unknown keys.
@@ -110,20 +101,28 @@ impl OdbcReader {
         };
 
         let dbms_name = connection.dbms_name();
+        let driver = super::connection::extract_odbc_value(&conn_str, "driver");
 
-        let dialect = match dialect {
-            Some(d) => d,
-            None => detect_dialect(dbms_name.as_deref(), &conn_str)?,
+        // One registry resolution per connection: dialect and fetch behavior
+        // both derive from the same entry. With a pinned dialect the entry
+        // is best-effort (fetch quirks only); without one the entry must
+        // resolve so the dialect can come from it.
+        let (entry, dialect) = match dialect {
+            Some(d) => (
+                super::registry::detect(dbms_name.as_deref(), driver.as_deref()),
+                d,
+            ),
+            None => {
+                let entry =
+                    super::registry::detect_entry_or_err(dbms_name.as_deref(), driver.as_deref())?;
+                (Some(entry), entry.dialect())
+            }
         };
 
         // Fetch behavior is a per-backend capability: Oracle ODBC rejects
         // block cursors (`odbc_row_array_size`; HY090 at SQLFetch time, and
         // the failed fetch leaves the cursor unusable) and cannot convert
         // DECIMAL to integer C types (`odbc_numeric_as_double`).
-        let entry = super::registry::detect(
-            dbms_name.as_deref(),
-            super::connection::extract_odbc_value(&conn_str, "driver").as_deref(),
-        );
         let batch_size = entry
             .and_then(|e| e.odbc_row_array_size)
             .unwrap_or(BATCH_SIZE);
@@ -841,13 +840,13 @@ mod tests {
 
     #[test]
     fn test_detect_dialect_from_dbms_name() {
-        let d = detect_dialect(Some("Snowflake"), "anything").unwrap();
+        let d = crate::reader::registry::detect_or_err(Some("Snowflake"), None).unwrap();
         assert!(!d.sql_greatest(&["a", "b"]).is_empty());
 
-        let d = detect_dialect(None, "Driver=Snowflake;Server=foo").unwrap();
+        let d = crate::reader::registry::detect_or_err(None, Some("Snowflake ODBC Driver")).unwrap();
         assert!(!d.sql_greatest(&["a", "b"]).is_empty());
 
-        let err = detect_dialect(None, "Driver=SomeOther;Server=localhost")
+        let err = crate::reader::registry::detect_or_err(None, Some("SomeOther"))
             .err()
             .unwrap()
             .to_string();
