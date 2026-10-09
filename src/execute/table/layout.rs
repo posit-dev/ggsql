@@ -11,8 +11,8 @@ use crate::array_util::value_to_string;
 use crate::plot::Labels;
 use crate::table::{
     compose_header, create_caption, create_column_labels, create_heading, create_spanners,
-    move_stub_columns, reorder_table_columns, TableCell, TableCellKind, TableClass, TableColumn,
-    TableLayout, TableRow,
+    move_stub_columns, reorder_table_columns, TableCell, TableClass, TableColumn, TableLayout,
+    TableRow,
 };
 use crate::{DataFrame, Format, Result, Spanner};
 
@@ -139,16 +139,8 @@ fn create_body(df: &DataFrame, columns: &[TableColumn]) -> Vec<TableCell> {
 
         for row in 0..df.height() {
             cells.push(
-                TableCell::new(
-                    TableCellKind::Body,
-                    row,
-                    row,
-                    index,
-                    index,
-                    value_to_string(array, row),
-                )
-                .with_properties(column.properties.clone())
-                .with_classes(vec![TableClass::Row]),
+                TableCell::new_body(row, index, value_to_string(array, row))
+                    .with_properties(column.properties.clone()),
             );
         }
     }
@@ -162,7 +154,7 @@ mod tests {
     use super::*;
     use crate::df;
     use crate::plot::{ParameterValue, Parameters};
-    use crate::table::extract_heading_labels;
+    use crate::table::{extract_heading_labels, TableCellKind};
     use crate::{ColumnSection, GgsqlError, Spanner, Table};
 
     /// Runs the same steps `resolve_table_with_reader` does, minus the

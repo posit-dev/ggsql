@@ -5,7 +5,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 
-use super::layout::{TableCell, TableCellKind, TableClass, TableColumn, TableLayout, TableRow};
+use super::layout::{TableCell, TableClass, TableColumn, TableLayout, TableRow};
 use crate::labels::Labels;
 use crate::params::{
     validate_parameter, DefaultParamValue, ParamConstraint, ParamDefinition, Parameters,
@@ -250,11 +250,6 @@ pub(crate) fn create_spanners(columns: &[TableColumn], spans: &[Spanner]) -> Tab
             .expect("spans is filtered to only Some(label) spanners");
         // Row 0 is topmost. Level 1 is bottom-most.
         let row = max_level - level;
-        let classes = vec![
-            TableClass::Spanner,
-            TableClass::SpannerLabel,
-            TableClass::AlignCenter,
-        ];
 
         // Run-length encode the span's columns; disjoint columns give
         // multiple runs.
@@ -267,17 +262,7 @@ pub(crate) fn create_spanners(columns: &[TableColumn], spans: &[Spanner]) -> Tab
                 (true, None) => run_start = Some(index),
                 // Column not in span, end run and push cell
                 (false, Some(start)) => {
-                    cells.push(
-                        TableCell::new(
-                            TableCellKind::Spanner,
-                            row,
-                            row,
-                            start,
-                            index - 1,
-                            label.clone(),
-                        )
-                        .with_classes(classes.clone()),
-                    );
+                    cells.push(TableCell::new_spanner(row, start, index - 1, label.clone()));
                     run_start = None;
                 }
                 _ => {}
@@ -285,17 +270,12 @@ pub(crate) fn create_spanners(columns: &[TableColumn], spans: &[Spanner]) -> Tab
         }
         // Close a run still open at the last column.
         if let Some(start) = run_start {
-            cells.push(
-                TableCell::new(
-                    TableCellKind::Spanner,
-                    row,
-                    row,
-                    start,
-                    columns.len() - 1,
-                    label.clone(),
-                )
-                .with_classes(classes),
-            );
+            cells.push(TableCell::new_spanner(
+                row,
+                start,
+                columns.len() - 1,
+                label.clone(),
+            ));
         }
     }
 
@@ -314,6 +294,7 @@ pub(crate) fn create_spanners(columns: &[TableColumn], spans: &[Spanner]) -> Tab
 
 #[cfg(test)]
 mod tests {
+    use super::super::layout::TableCellKind;
     use super::*;
     use crate::plot::{ParameterValue, Parameters};
     use crate::ColumnSection;

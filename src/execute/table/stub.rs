@@ -2,7 +2,7 @@
 //! cells.
 
 use crate::array_util::value_to_string;
-use crate::table::{TableCell, TableCellKind, TableClass, TableColumn};
+use crate::table::{TableCell, TableColumn};
 use crate::DataFrame;
 
 /// Build one `StubHead` cell per stub column, numbered from `top == 0`.
@@ -13,16 +13,8 @@ pub(crate) fn create_stubhead(columns: &[TableColumn]) -> Vec<TableCell> {
         .enumerate()
         .filter(|(_, column)| column.is_stub())
         .map(|(index, column)| {
-            TableCell::new(
-                TableCellKind::StubHead,
-                0,
-                0,
-                index,
-                index,
-                column.label.clone(),
-            )
-            .with_properties(column.properties.clone())
-            .with_classes(vec![TableClass::StubHead])
+            TableCell::new_stub_head(index, column.label.clone())
+                .with_properties(column.properties.clone())
         })
         .collect()
 }
@@ -43,16 +35,8 @@ pub(crate) fn create_row_labels(df: &DataFrame, columns: &[TableColumn]) -> Vec<
 
         for row in 0..df.height() {
             cells.push(
-                TableCell::new(
-                    TableCellKind::StubRowLabel,
-                    row,
-                    row,
-                    index,
-                    index,
-                    value_to_string(array, row),
-                )
-                .with_properties(column.properties.clone())
-                .with_classes(vec![TableClass::Stub]),
+                TableCell::new_stub_row_label(row, index, value_to_string(array, row))
+                    .with_properties(column.properties.clone()),
             );
         }
     }
@@ -65,6 +49,7 @@ mod tests {
     use super::*;
     use crate::df;
     use crate::plot::Parameters;
+    use crate::table::TableCellKind;
     use crate::ColumnSection;
 
     fn column(name: &str, label: &str) -> TableColumn {

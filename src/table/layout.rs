@@ -228,6 +228,58 @@ impl TableCell {
         }
     }
 
+    /// A body cell (`TableClass::Row`).
+    pub(crate) fn new_body(row: usize, col: usize, content: String) -> Self {
+        Self::new(TableCellKind::Body, row, row, col, col, content)
+            .with_classes(vec![TableClass::Row])
+    }
+
+    /// A column-label cell (`TableClass::ColHeading`).
+    pub(crate) fn new_column_label(index: usize, content: String) -> Self {
+        Self::new(TableCellKind::ColumnLabel, 0, 0, index, index, content)
+            .with_classes(vec![TableClass::ColHeading])
+    }
+
+    /// The stub's header cell (`TableClass::StubHead`).
+    pub(crate) fn new_stub_head(index: usize, content: String) -> Self {
+        Self::new(TableCellKind::StubHead, 0, 0, index, index, content)
+            .with_classes(vec![TableClass::StubHead])
+    }
+
+    /// A stub row-label cell (`TableClass::Stub`).
+    pub(crate) fn new_stub_row_label(row: usize, index: usize, content: String) -> Self {
+        Self::new(TableCellKind::StubRowLabel, row, row, index, index, content)
+            .with_classes(vec![TableClass::Stub])
+    }
+
+    /// A spanner cell (`TableClass::Spanner`, `SpannerLabel`, centered).
+    pub(crate) fn new_spanner(row: usize, left: usize, right: usize, content: String) -> Self {
+        Self::new(TableCellKind::Spanner, row, row, left, right, content).with_classes(vec![
+            TableClass::Spanner,
+            TableClass::SpannerLabel,
+            TableClass::AlignCenter,
+        ])
+    }
+
+    /// The title cell (`TableClass::Title`), spanning all `ncol` columns.
+    pub(crate) fn new_title(ncol: usize, content: String) -> Self {
+        Self::new(TableCellKind::Title, 0, 0, 0, ncol - 1, content)
+            .with_classes(vec![TableClass::Title])
+    }
+
+    /// The subtitle cell (`TableClass::Subtitle`), spanning all `ncol`
+    /// columns.
+    pub(crate) fn new_subtitle(row: usize, ncol: usize, content: String) -> Self {
+        Self::new(TableCellKind::Subtitle, row, row, 0, ncol - 1, content)
+            .with_classes(vec![TableClass::Subtitle])
+    }
+
+    /// The caption cell (`TableClass::Caption`), spanning all `ncol` columns.
+    pub(crate) fn new_caption(ncol: usize, content: String) -> Self {
+        Self::new(TableCellKind::Caption, 0, 0, 0, ncol - 1, content)
+            .with_classes(vec![TableClass::Caption])
+    }
+
     /// Set this cell's display properties, e.g. to a column's resolved
     /// `FORMAT` `SETTING`.
     pub(crate) fn with_properties(mut self, properties: Parameters) -> Self {
@@ -775,27 +827,14 @@ pub(crate) fn create_heading(
     subtitle: Option<&str>,
     columns: &[TableColumn],
 ) -> TableLayout {
-    let right = columns.len().saturating_sub(1);
+    let ncol = columns.len().max(1);
     let mut cells = Vec::new();
     if let Some(title) = title {
-        cells.push(
-            TableCell::new(TableCellKind::Title, 0, 0, 0, right, title.to_string())
-                .with_classes(vec![TableClass::Title]),
-        );
+        cells.push(TableCell::new_title(ncol, title.to_string()));
     }
     if let Some(subtitle) = subtitle {
         let row = cells.len();
-        cells.push(
-            TableCell::new(
-                TableCellKind::Subtitle,
-                row,
-                row,
-                0,
-                right,
-                subtitle.to_string(),
-            )
-            .with_classes(vec![TableClass::Subtitle]),
-        );
+        cells.push(TableCell::new_subtitle(row, ncol, subtitle.to_string()));
     }
     let rows = vec![
         TableRow {
@@ -816,15 +855,10 @@ pub(crate) fn create_caption(caption: Option<&str>, columns: &[TableColumn]) -> 
         Some(caption) => TableLayout::new(
             columns.to_vec(),
             vec![TableRow::caption()],
-            vec![TableCell::new(
-                TableCellKind::Caption,
-                0,
-                0,
-                0,
-                columns.len().saturating_sub(1),
+            vec![TableCell::new_caption(
+                columns.len().max(1),
                 caption.to_string(),
-            )
-            .with_classes(vec![TableClass::Caption])],
+            )],
         ),
         None => TableLayout::new(columns.to_vec(), Vec::new(), Vec::new()),
     }
@@ -837,16 +871,8 @@ pub(crate) fn create_column_labels(columns: &[TableColumn]) -> Vec<TableCell> {
         .enumerate()
         .filter(|(_, column)| !column.is_stub())
         .map(|(index, column)| {
-            TableCell::new(
-                TableCellKind::ColumnLabel,
-                0,
-                0,
-                index,
-                index,
-                column.label.clone(),
-            )
-            .with_properties(column.properties.clone())
-            .with_classes(vec![TableClass::ColHeading])
+            TableCell::new_column_label(index, column.label.clone())
+                .with_properties(column.properties.clone())
         })
         .collect()
 }
