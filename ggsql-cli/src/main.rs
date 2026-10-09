@@ -107,9 +107,10 @@ pub struct ViewArgs {
         long_help = "Settings for the viewer window, as `key=value`. Repeatable, and one flag \
                      may carry several settings separated by `;` (quote it, as most shells read \
                      `;` themselves): `-D 'width=1280;title=My plot'`.\n\nViewer settings:\n  \
-                     width, height, background, title\n\nAny other key (e.g. `dpi`) is forwarded \
-                     to the writer when `--output` or `--writer` is given. The render's width and \
-                     height always come from the window's size when it closed."
+                     width, height, background, title\n\nAny other key (e.g. `compression`) is \
+                     forwarded to the writer when `--output` or `--writer` is given, except `dpi` \
+                     and `units`, which are refused: the render's size and resolution always come \
+                     from the window when it closed, so what you see is what you get."
     )]
     pub viewer_options: Vec<String>,
 
@@ -510,11 +511,20 @@ fn cmd_view(query: String, args: &ViewArgs) {
 
         // `-D` serves two masters: the viewer's own keys configure the window,
         // everything else is meant for the writer of the after-close render.
+        // `dpi` and `units` belong to neither: the render must match what was
+        // on screen, and both would reinterpret the window's size.
         let mut viewer_pairs: Vec<String> = Vec::new();
         let mut writer_pairs: Vec<String> = Vec::new();
         for raw in &args.viewer_options {
             for setting in raw.split(';').map(str::trim).filter(|s| !s.is_empty()) {
                 let key = setting.split('=').next().unwrap_or("").trim();
+                if matches!(key, "dpi" | "units") {
+                    eprintln!(
+                        "view takes no '{key}' setting: the render uses the window's own size and \
+                         resolution, so what you see is what you get"
+                    );
+                    std::process::exit(1);
+                }
                 if VIEWER_OPTIONS.contains(&key) {
                     viewer_pairs.push(setting.to_string());
                 } else {
@@ -576,18 +586,22 @@ fn cmd_view(query: String, args: &ViewArgs) {
         }
 
         // Blocks on the main thread until the window closes, returning the
-        // size the user left the window at.
-        let (width, height) = viewer.show(&spec).unwrap_or_else(|e| {
+        // frame (size and dpi) the user left the window at.
+        let frame = viewer.show(&spec).unwrap_or_else(|e| {
             eprintln!("{}", e);
             std::process::exit(1);
         });
-        eprintln!("Window closed at {}x{}", width, height);
+        eprintln!(
+            "Window closed at {}x{} (dpi: {})",
+            frame.width, frame.height, frame.dpi
+        );
 
         if render_requested {
-            // The window's closing size wins over any width/height the writer
-            // would default to: the file should match what was on screen.
-            writer_pairs.push(format!("width={width}"));
-            writer_pairs.push(format!("height={height}"));
+            // The window's closing frame wins over the writer's defaults: the
+            // file should match what was on screen, chrome included.
+            writer_pairs.push(format!("width={}", frame.width));
+            writer_pairs.push(format!("height={}", frame.height));
+            writer_pairs.push(format!("dpi={}", frame.dpi));
             let render_args = RenderArgs {
                 source: ReaderArgs {
                     reader: args.source.reader.clone(),
