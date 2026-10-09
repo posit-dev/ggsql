@@ -74,6 +74,25 @@ impl SqlDialect for DatabricksDialect {
         )
     }
 
+    fn sql_temporal_as_number(
+        &self,
+        expr: &str,
+        kind: crate::plot::types::CastTargetType,
+    ) -> String {
+        // Spark rejects temporal → numeric casts outright
+        // ([DATATYPE_MISMATCH.CAST_WITH_FUNC_SUGGESTION] and suggests the
+        // unix_* extractors instead).
+        use crate::plot::types::CastTargetType as C;
+        match kind {
+            C::Date => format!("UNIX_DATE({expr})"),
+            C::DateTime => format!("unix_micros({expr})"),
+            _ => {
+                let ty = self.type_names().number.unwrap_or("DOUBLE");
+                self.sql_cast(expr, ty)
+            }
+        }
+    }
+
     fn temp_table_style(&self) -> crate::reader::TempTableStyle {
         crate::reader::TempTableStyle::CreateOrReplaceTempView
     }
