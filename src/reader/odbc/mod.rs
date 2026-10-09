@@ -6,7 +6,7 @@
 
 #[allow(dead_code)]
 pub(crate) mod ffi;
-mod snowflake;
+pub(crate) mod snowflake;
 mod wrapper;
 
 use crate::reader::Reader;
@@ -73,16 +73,15 @@ impl OdbcReader {
             (None, None) => None,
         };
 
-        if snowflake::is_snowflake(&conn_str) {
-            if let Some(resolved) = snowflake::resolve_connection_name(&conn_str) {
-                conn_str = resolved;
-            }
-        }
-
-        if snowflake::is_snowflake(&conn_str) && !snowflake::has_token(&conn_str) {
-            if let Some(token) = snowflake::detect_workbench_token() {
-                conn_str = snowflake::inject_snowflake_token(&conn_str, &token);
-            }
+        // Backend-specific credential resolution (Snowflake Workbench OAuth
+        // tokens, `ConnectionName=` lookup), dispatched through the registry
+        // on the `Driver=` value — the DBMS name isn't known until after
+        // connecting, which is too late to supply credentials.
+        let driver = super::connection::extract_odbc_value(&conn_str, "driver");
+        if let Some(apply) = super::registry::detect(None, driver.as_deref())
+            .and_then(|e| e.odbc_credential_provider)
+        {
+            apply(&mut conn_str);
         }
 
         let connection = match Connection::connect(wrapper::odbc_env()?, &conn_str) {
@@ -843,7 +842,8 @@ mod tests {
         let d = crate::reader::registry::detect_or_err(Some("Snowflake"), None).unwrap();
         assert!(!d.sql_greatest(&["a", "b"]).is_empty());
 
-        let d = crate::reader::registry::detect_or_err(None, Some("Snowflake ODBC Driver")).unwrap();
+        let d =
+            crate::reader::registry::detect_or_err(None, Some("Snowflake ODBC Driver")).unwrap();
         assert!(!d.sql_greatest(&["a", "b"]).is_empty());
 
         let err = crate::reader::registry::detect_or_err(None, Some("SomeOther"))

@@ -173,6 +173,12 @@ pub struct DatabaseEntry {
     /// to SQL_C_SLONG/SBIGINT. Elsewhere integer-scale numerics keep their
     /// Int64 type (and precision past 2^53).
     pub odbc_numeric_as_double: bool,
+    /// Pre-connect hook rewriting the ODBC connection string to supply
+    /// credentials the driver cannot obtain itself (Snowflake: resolve
+    /// `ConnectionName=` from `~/.snowflake/connections.toml`, inject a
+    /// Posit Workbench OAuth token). Dispatched on the `Driver=` value, so
+    /// it fires before the DBMS name is known.
+    pub odbc_credential_provider: Option<fn(&mut String)>,
     /// In-process reader to prefer when its cargo feature is compiled in
     /// (duckdb, sqlite). `None` for backends reached only through external
     /// ADBC/ODBC drivers.
@@ -203,6 +209,7 @@ macro_rules! entry {
             odbc_dbq_style: false,
             odbc_row_array_size: None,
             odbc_numeric_as_double: false,
+            odbc_credential_provider: None,
             native_reader: None,
         }
     };
@@ -281,14 +288,17 @@ pub static REGISTRY: &[DatabaseEntry] = &[
         &MySqlDialect,
         adbc!("adbc_driver_mysql", "mysql", MySqlGoDsn, true)
     ),
-    entry!(
-        "snowflake",
-        &[],
-        "Snowflake",
-        &[Has("snowflake")],
-        &SnowflakeDialect,
-        adbc!("adbc_driver_snowflake", "snowflake", Passthrough, true)
-    ),
+    DatabaseEntry {
+        odbc_credential_provider: Some(crate::reader::odbc::snowflake::apply_workbench_credentials),
+        ..entry!(
+            "snowflake",
+            &[],
+            "Snowflake",
+            &[Has("snowflake")],
+            &SnowflakeDialect,
+            adbc!("adbc_driver_snowflake", "snowflake", Passthrough, true)
+        )
+    },
     entry!(
         "bigquery",
         &[],
