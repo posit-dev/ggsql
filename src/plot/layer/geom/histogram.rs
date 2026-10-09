@@ -122,7 +122,7 @@ fn stat_histogram(
     aesthetic_ctx: &crate::plot::aesthetic::AestheticContext,
 ) -> Result<StatResult> {
     // Get x column name from aesthetics
-    let x_col = get_quoted_column_name(aesthetics, "pos1").ok_or_else(|| {
+    let x_col = get_quoted_column_name(aesthetics, "pos1", dialect).ok_or_else(|| {
         let name = aesthetic_ctx.map_internal_to_user("pos1");
         GgsqlError::ValidationError(format!("Histogram requires '{}' aesthetic mapping", name))
     })?;
@@ -146,10 +146,11 @@ fn stat_histogram(
     });
 
     // Query min/max to compute bin width
-    let stats_query = format!(
-        "SELECT MIN({x}) as min_val, MAX({x}) as max_val FROM ({query}) AS \"__ggsql_stats__\"",
-        x = x_col,
-        query = query
+    let stats_query = crate::sql::select_from(
+        dialect,
+        &format!("MIN({x_col}) as min_val, MAX({x_col}) as max_val"),
+        query,
+        "__ggsql_stats__",
     );
     let stats_df = execute_query(&stats_query)?;
 
@@ -178,10 +179,13 @@ fn stat_histogram(
     } else {
         // Right-closed (a, b]: use CEIL - 1, clamped to 0 minimum
         let ceil_expr = format!(
-            "CEIL(({x} - {min} + {w} * 0.5) / {w}) - 1",
-            x = x_col,
-            min = min_val,
-            w = bin_width
+            "{} - 1",
+            dialect.sql_ceil(&format!(
+                "({x} - {min} + {w} * 0.5) / {w}",
+                x = x_col,
+                min = min_val,
+                w = bin_width
+            ))
         );
         let clamped = dialect.sql_greatest(&["0", &ceil_expr]);
         format!(
@@ -191,15 +195,18 @@ fn stat_histogram(
             min = min_val
         )
     };
-    // Build the bin end expression (bin start + bin width)
-    let bin_end_expr = format!("{expr} + {w}", expr = bin_expr, w = bin_width);
-
-    // Build grouped columns (group_by includes partition_by + facet variables)
+    // Group by a plain column, not the bin expression itself: MonetDB does
+    // not match a complex GROUP BY expression structurally against the
+    // SELECT list ("cannot use non GROUP BY column ... without an aggregate
+    // function"), and alias references in GROUP BY are not portable either
+    // (Oracle). Computing the expression in an inner CTE and grouping by
+    // the resulting column works in every dialect.
+    let bin_key = dialect.quote_ident("__ggsql_bin_key__");
     let group_cols = if group_by.is_empty() {
-        bin_expr.clone()
+        bin_key.clone()
     } else {
         let mut cols: Vec<String> = group_by.to_vec();
-        cols.push(bin_expr.clone());
+        cols.push(bin_key.clone());
         cols.join(", ")
     };
 
@@ -211,7 +218,7 @@ fn stat_histogram(
             ));
         }
         if let Some(weight_col) = weight_value.column_name() {
-            format!("SUM({})", naming::quote_ident(weight_col))
+            format!("SUM({})", dialect.quote_ident(weight_col))
         } else {
             "COUNT(*)".to_string()
         }
@@ -219,52 +226,66 @@ fn stat_histogram(
         "COUNT(*)".to_string()
     };
 
-    // Use semantically meaningful column names with prefix to avoid conflicts
-    // Include bin (start), bin_end (end), count/sum, and density
-    // Use a two-stage query: first GROUP BY, then calculate density with window function
+    // Stat output columns, prefixed to avoid clashing with user columns:
+    // bin (start), bin_end (end), count/sum, density.
     let stat_bin = naming::stat_column("bin");
     let stat_bin_end = naming::stat_column("bin_end");
     let stat_count = naming::stat_column("count");
     let stat_density = naming::stat_column("density");
 
-    let q_bin = naming::quote_ident(&stat_bin);
-    let q_bin_end = naming::quote_ident(&stat_bin_end);
-    let q_count = naming::quote_ident(&stat_count);
-    let q_density = naming::quote_ident(&stat_density);
-    let (binned_select, final_select) = if group_by.is_empty() {
+    let q_bin = dialect.quote_ident(&stat_bin);
+    let q_bin_end = dialect.quote_ident(&stat_bin_end);
+    let q_count = dialect.quote_ident(&stat_count);
+    let q_density = dialect.quote_ident(&stat_density);
+
+    // Three-stage query. `__bin_src__` materializes the bin expression as a
+    // plain column (see above); `__binned__` groups by it and counts; the
+    // outer SELECT then derives bin_end (bin + width) and density from the
+    // already-grouped `bin` and `count` columns. Computing the derived
+    // columns outside the GROUP BY query keeps every grouped SELECT
+    // expression equal to a grouping key, which strict dialects (e.g.
+    // BigQuery) require.
+    let (binned_select, density_window) = if group_by.is_empty() {
         (
-            format!(
-                "{} AS {}, {} AS {}, {} AS {}",
-                bin_expr, q_bin, bin_end_expr, q_bin_end, agg_expr, q_count
-            ),
-            format!(
-                "*, {count} * 1.0 / SUM({count}) OVER () AS {density}",
-                count = q_count,
-                density = q_density
-            ),
+            format!("{} AS {}, {} AS {}", bin_key, q_bin, agg_expr, q_count),
+            "OVER ()".to_string(),
         )
     } else {
-        let grp_cols = group_by.join(", ");
+        let grp_cols = group_by
+            .iter()
+            .map(|c| dialect.quote_ident(c))
+            .collect::<Vec<_>>()
+            .join(", ");
         (
             format!(
-                "{}, {} AS {}, {} AS {}, {} AS {}",
-                grp_cols, bin_expr, q_bin, bin_end_expr, q_bin_end, agg_expr, q_count
+                "{}, {} AS {}, {} AS {}",
+                grp_cols, bin_key, q_bin, agg_expr, q_count
             ),
-            format!(
-                "*, {count} * 1.0 / SUM({count}) OVER (PARTITION BY {grp}) AS {density}",
-                count = q_count,
-                grp = grp_cols,
-                density = q_density
-            ),
+            format!("OVER (PARTITION BY {})", grp_cols),
         )
     };
 
+    let __stat_src__ = dialect.quote_ident("__stat_src__");
+    let __bin_src__ = dialect.quote_ident("__bin_src__");
+    let __binned__ = dialect.quote_ident("__binned__");
     let transformed_query = format!(
-        "WITH \"__stat_src__\" AS ({query}), \"__binned__\" AS (SELECT {binned} FROM \"__stat_src__\" GROUP BY {group}) SELECT {final} FROM \"__binned__\"",
+        "WITH {__stat_src__} AS ({query}), \
+         {__bin_src__} AS (SELECT *, {bin_expr} AS {bin_key} FROM {__stat_src__}), \
+         {__binned__} AS (SELECT {binned} FROM {__bin_src__} GROUP BY {group}) \
+         SELECT *, {bin} + {width} AS {bin_end}, \
+         {count} * 1.0 / SUM({count}) {density_window} AS {density} \
+         FROM {__binned__}",
         query = query,
+        bin_expr = bin_expr,
+        bin_key = bin_key,
         binned = binned_select,
         group = group_cols,
-        final = final_select
+        bin = q_bin,
+        width = bin_width,
+        bin_end = q_bin_end,
+        count = q_count,
+        density_window = density_window,
+        density = q_density,
     );
 
     // Histogram always transforms - produces bin, bin_end, count, and density columns

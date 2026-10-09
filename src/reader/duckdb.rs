@@ -2,16 +2,11 @@
 //!
 //! Provides a reader for DuckDB databases with Arrow DataFrame integration.
 
-use crate::reader::{CacheBackend, Reader};
+use crate::reader::Reader;
 use crate::{naming, DataFrame, GgsqlError, Result};
-use arrow::compute::{cast, concat_batches};
-use arrow::datatypes::{DataType, Field, Schema};
-use arrow::record_batch::RecordBatch;
+use arrow::compute::concat_batches;
 use duckdb::vtab::arrow::{arrow_recordbatch_to_query_params, ArrowVTab};
 use duckdb::{params, Connection};
-use std::cell::RefCell;
-use std::collections::HashSet;
-use std::sync::Arc;
 
 // =============================================================================
 // DuckDB builtin data registration
@@ -79,128 +74,10 @@ fn register_builtin_datasets_duckdb(sql: &str, conn: &Connection) -> Result<()> 
     Ok(())
 }
 
-/// DuckDB SQL dialect with native function support.
-///
-/// Overrides SQL generation methods to use DuckDB-native functions
-/// (LEAST, GREATEST, GENERATE_SERIES, QUANTILE_CONT).
-pub struct DuckDbDialect;
-
-impl super::SqlDialect for DuckDbDialect {
-    fn sql_greatest(&self, exprs: &[&str]) -> String {
-        if exprs.len() == 1 {
-            return exprs[0].to_string();
-        }
-        format!("GREATEST({})", exprs.join(", "))
-    }
-
-    fn sql_least(&self, exprs: &[&str]) -> String {
-        if exprs.len() == 1 {
-            return exprs[0].to_string();
-        }
-        format!("LEAST({})", exprs.join(", "))
-    }
-
-    fn sql_st_transform(&self, column: &str, source_crs: &str, target_crs: &str) -> String {
-        format!(
-            "ST_Transform({}, '{}', '{}', always_xy := true)",
-            column,
-            source_crs.replace('\'', "''"),
-            target_crs.replace('\'', "''")
-        )
-    }
-
-    /// WORKAROUND(duckdb-rs#714): geometry columns arrive as WKB BLOB via Arrow.
-    fn sql_ensure_geometry(&self, column: &str) -> String {
-        format!("ST_GeomFromWKB(CAST({column} AS BLOB))")
-    }
-
-    fn sql_select_replace(
-        &self,
-        expr: &str,
-        col: &str,
-        from: &str,
-        _all_columns: &[String],
-    ) -> String {
-        format!("SELECT * REPLACE ({expr} AS {col}) FROM ({from})")
-    }
-
-    fn sql_geometry_to_wkb(&self, column: &str) -> String {
-        format!("ST_AsWKB({column})")
-    }
-
-    fn sql_geometry_bbox(&self, column: &str, from: &str) -> String {
-        format!(
-            "SELECT ST_XMin(ext) AS xmin, ST_YMin(ext) AS ymin, \
-                    ST_XMax(ext) AS xmax, ST_YMax(ext) AS ymax \
-             FROM (SELECT ST_Extent_Agg({column}) AS ext FROM {from})"
-        )
-    }
-
-    fn sql_spatial_setup(&self) -> Vec<String> {
-        vec!["LOAD spatial".into()]
-    }
-
-    fn create_or_replace_temp_table_sql(
-        &self,
-        name: &str,
-        column_aliases: &[String],
-        body_sql: &str,
-    ) -> Vec<String> {
-        let body = super::wrap_with_column_aliases(body_sql, column_aliases);
-        vec![format!(
-            "CREATE OR REPLACE TEMP TABLE {} AS {}",
-            naming::quote_ident(name),
-            body
-        )]
-    }
-
-    fn sql_generate_series(&self, n: usize) -> String {
-        format!(
-            "\"__ggsql_seq__\"(n) AS (SELECT generate_series FROM GENERATE_SERIES(0, {}))",
-            n - 1
-        )
-    }
-
-    fn sql_quantile_inline(&self, column: &str, fraction: f64) -> Option<String> {
-        Some(format!(
-            "QUANTILE_CONT({}, {})",
-            naming::quote_ident(column),
-            fraction
-        ))
-    }
-
-    fn sql_aggregate(&self, name: &str, qcol: &str) -> Option<String> {
-        match name {
-            "first" => Some(format!("FIRST({})", qcol)),
-            "last" => Some(format!("LAST({})", qcol)),
-            "diff" => Some(format!("(LAST({c}) - FIRST({c}))", c = qcol)),
-            _ => super::default_sql_aggregate(name, qcol),
-        }
-    }
-
-    fn sql_percentile(&self, column: &str, fraction: f64, from: &str, groups: &[String]) -> String {
-        let group_filter = groups
-            .iter()
-            .map(|g| {
-                let q = naming::quote_ident(g);
-                format!(
-                    "AND {pct}.{q} IS NOT DISTINCT FROM {qt}.{q}",
-                    pct = naming::quote_ident("__ggsql_pct__"),
-                    qt = naming::quote_ident("__ggsql_qt__")
-                )
-            })
-            .collect::<Vec<_>>()
-            .join(" ");
-
-        let quoted_column = naming::quote_ident(column);
-        format!(
-            "(SELECT QUANTILE_CONT({column}, {fraction}) \
-            FROM ({from}) AS \"__ggsql_pct__\" \
-            WHERE {column} IS NOT NULL {group_filter})",
-            column = quoted_column
-        )
-    }
-}
+// The DuckDB dialect lives in `super::dialects::duckdb` alongside every other
+// backend dialect; re-exported here so `reader::duckdb::DuckDbDialect` keeps
+// working for existing callers.
+pub use super::dialects::DuckDbDialect;
 
 /// DuckDB database reader
 ///
@@ -222,7 +99,7 @@ impl super::SqlDialect for DuckDbDialect {
 /// ```
 pub struct DuckDBReader {
     conn: Connection,
-    registered_tables: RefCell<HashSet<String>>,
+    registered_tables: crate::reader::RegisteredTables,
 }
 
 impl DuckDBReader {
@@ -274,7 +151,6 @@ impl DuckDBReader {
                 ))
             })?;
 
-        // Register Arrow virtual table function for DataFrame registration
         conn.register_table_function::<ArrowVTab>("arrow")
             .map_err(|e| {
                 GgsqlError::ReaderError(format!("Failed to register arrow function: {}", e))
@@ -282,7 +158,7 @@ impl DuckDBReader {
 
         Ok(Self {
             conn,
-            registered_tables: RefCell::new(HashSet::new()),
+            registered_tables: crate::reader::RegisteredTables::new(),
         })
     }
 
@@ -313,59 +189,11 @@ fn dataframe_to_arrow_params(df: &DataFrame) -> Result<[usize; 2]> {
     Ok(arrow_recordbatch_to_query_params(df.inner().clone()))
 }
 
-/// Cast Decimal128 columns to Float64 so downstream code sees standard numeric types.
-fn normalize_arrow_types(batch: RecordBatch) -> Result<RecordBatch> {
-    let schema = batch.schema();
-    let needs_cast = schema
-        .fields()
-        .iter()
-        .any(|f| matches!(f.data_type(), DataType::Decimal128(_, _)));
-
-    if !needs_cast {
-        return Ok(batch);
-    }
-
-    let mut new_fields = Vec::with_capacity(schema.fields().len());
-    let mut new_columns = Vec::with_capacity(batch.num_columns());
-
-    for (i, field) in schema.fields().iter().enumerate() {
-        if matches!(field.data_type(), DataType::Decimal128(_, _)) {
-            let casted = cast(batch.column(i), &DataType::Float64).map_err(|e| {
-                GgsqlError::ReaderError(format!(
-                    "Failed to cast column '{}' from Decimal to Float64: {}",
-                    field.name(),
-                    e
-                ))
-            })?;
-            new_fields.push(Field::new(
-                field.name(),
-                DataType::Float64,
-                field.is_nullable(),
-            ));
-            new_columns.push(casted);
-        } else {
-            new_fields.push(field.as_ref().clone());
-            new_columns.push(batch.column(i).clone());
-        }
-    }
-
-    RecordBatch::try_new(Arc::new(Schema::new(new_fields)), new_columns)
-        .map_err(|e| GgsqlError::ReaderError(format!("Failed to normalize types: {}", e)))
-}
-
-impl CacheBackend for DuckDBReader {
-    fn new_in_memory() -> Result<Self> {
-        Self::from_connection_string("duckdb://memory")
-    }
-}
-
 impl Reader for DuckDBReader {
     fn execute_sql(&self, sql: &str) -> Result<DataFrame> {
-        // Register builtin datasets if referenced
         #[cfg(feature = "builtin-data")]
         register_builtin_datasets_duckdb(sql, &self.conn)?;
 
-        // Rewrite ggsql:name → __ggsql_data_name__ in SQL
         let sql = crate::parser::rewrite_namespaced_sql(sql)?;
 
         if !super::returns_rows(&sql) {
@@ -398,15 +226,13 @@ impl Reader for DuckDBReader {
             GgsqlError::ReaderError(format!("Failed to combine result batches: {}", e))
         })?;
 
-        let normalized = normalize_arrow_types(combined)?;
+        let normalized = super::normalize_result_batch(combined)?;
         Ok(DataFrame::from_record_batch(normalized))
     }
 
     fn register(&self, name: &str, df: DataFrame, replace: bool) -> Result<()> {
-        // Validate table name
         validate_table_name(name)?;
 
-        // Check for duplicates
         if !replace && self.table_exists(name)? {
             return Err(GgsqlError::ReaderError(format!(
                 "Table '{}' already exists",
@@ -478,13 +304,13 @@ impl Reader for DuckDBReader {
         }
 
         // Track the table so we can unregister it later
-        self.registered_tables.borrow_mut().insert(name.to_string());
+        self.registered_tables.note_registered(name);
         Ok(())
     }
 
     fn unregister(&self, name: &str) -> Result<()> {
         // Only allow unregistering tables we created via register()
-        if !self.registered_tables.borrow().contains(name) {
+        if !self.registered_tables.is_registered(name) {
             return Err(GgsqlError::ReaderError(format!(
                 "Table '{}' was not registered via this reader",
                 name
@@ -498,7 +324,7 @@ impl Reader for DuckDBReader {
         })?;
 
         // Remove from tracking
-        self.registered_tables.borrow_mut().remove(name);
+        self.registered_tables.note_unregistered(name);
 
         Ok(())
     }

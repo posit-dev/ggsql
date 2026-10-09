@@ -1,0 +1,297 @@
+name: Live Dialect Tests
+
+# Tier 2 dialect conformance: run the canonical pipeline battery
+# (src/tests/battery/mod.rs, driven by src/tests/dialect_live.rs) against
+# real backends — one matrix leg per backend, each starting its database
+# as a plain docker container via its per-backend script in
+# .github/scripts/live/ (dispatched by .github/scripts/dialect-live-start.sh,
+# which also exports the matching GGSQL_TEST_URI_* variable). ADBC drivers
+# come from the ADBC Driver Foundry via dbc — the same drivers the
+# registry (src/reader/registry.rs) resolves in production, so the matrix
+# also tests the driver-loading path.
+#
+# Adding a backend is a matrix row, a script in .github/scripts/live/,
+# and (if needed) a DDL template in create_table_sql() — see the file
+# header of src/tests/dialect_live.rs.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "src/**"
+      - ".github/workflows/dialect-live.yml"
+      - ".github/scripts/**"
+  pull_request:
+    branches: [main]
+    paths:
+      - "src/**"
+      - ".github/workflows/dialect-live.yml"
+      - ".github/scripts/**"
+  workflow_dispatch:
+
+jobs:
+  # Build the dialect_live test binary once. rust-cache (same shared-key as
+  # build.yaml) restores build.yaml's warmed target/, so this compiles only
+  # the workspace crates and the feature deltas; the binary is then handed
+  # to every backend leg as an artifact, so the legs compile nothing.
+  compile:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install tree-sitter-cli
+        # parser.c is gitignored and generated from grammar.js by the
+        # tree-sitter-ggsql build script on every fresh checkout.
+        run: npm install -g tree-sitter-cli
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Caching
+        uses: Swatinem/rust-cache@v2
+        with:
+          # Deliberately the same shared-key as build.yaml: rust-cache's
+          # prefix fallback restores the build job's target/, so this job
+          # only rebuilds the feature deltas instead of every dependency,
+          # and on main it saves the warmed variant back for build.yaml
+          # and PR runs to reuse.
+          shared-key: ${{ runner.os }}-build
+          cache-on-failure: true
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - name: Compile the dialect_live test binary
+        # --no-run plus --message-format=json yields the binary path; the
+        # binary is self-contained (deps statically linked, ODBC/ADBC
+        # drivers dlopened at runtime), so the legs can run it directly.
+        # Feature set is load-bearing: `adbc` compiles in the ADBC reader
+        # path and `sqlite` provides the cache backend Druid wraps in. The
+        # datafusion leg uses the Foundry driver through the driver manager,
+        # so the DataFusion graph never enters the test build.
+        run: |
+          bin=$(cargo test -p ggsql --features "adbc sqlite" --test dialect_live \
+                --no-run --message-format=json-render-diagnostics \
+                | jq -rs '[.[] | select(.target.name == "dialect_live" and .executable != null) | .executable][-1]')
+          test -n "$bin" -a -f "$bin"
+          cp "$bin" dialect-live-bin
+
+      - name: Upload the test binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: dialect-live-bin
+          path: dialect-live-bin
+          retention-days: 1
+
+  live:
+    needs: compile
+    runs-on: ubuntu-latest
+    strategy:
+      # One backend's failure must not cancel the other legs.
+      fail-fast: false
+      matrix:
+        include:
+          - { backend: postgres, driver: postgresql }
+          - { backend: clickhouse, driver: clickhouse }
+          - { backend: trino, driver: trino }
+          - { backend: mysql, driver: mysql }
+          - { backend: mariadb, driver: mysql }
+          - { backend: mssql, driver: mssql }
+          - { backend: exasol, driver: exasol }
+          # Pseudo-leg: redshift driver is the postgresql driver; the start
+          # script runs a stock postgres container with a redshift:// URI.
+          - { backend: redshift, driver: postgresql }
+          # Generic-ODBC leg: the start script runs the same postgres
+          # container but exports a ?reader=odbc URI, so ggsql connects
+          # through psqlODBC (installed below) instead of an ADBC driver.
+          - { backend: odbc, driver: "" }
+          # MonetDB-over-ODBC leg: no ADBC driver exists, so the MonetDB
+          # ODBC driver is installed from MonetDB's apt repo (below) and
+          # forced by ?reader=odbc with a ggsql-monetdb DSN.
+          - { backend: monetdb, driver: "" }
+          # Druid leg via the Foundry druid driver (prerelease-only, so the
+          # dbc install step below passes --pre for it). The start script
+          # creates the datasource via an MSQ ingest job.
+          - { backend: druid, driver: druid }
+          # Embedded readers: no container, no ADBC driver (empty driver
+          # skips the dbc install step).
+          - { backend: sqlite, driver: "" }
+          - { backend: duckdb, driver: "" }
+          # DataFusion leg: in-process via the Foundry driver — no container;
+          # the start script just exports GGSQL_TEST_DATAFUSION=1.
+          - { backend: datafusion, driver: datafusion }
+          # Oracle-over-ODBC leg: the Foundry oracle ADBC driver is
+          # Columnar-commercial and private, so this leg uses Oracle Instant
+          # Client ODBC (installed below) with ?reader=odbc and a
+          # ggsql-oracle DSN against a gvenzl/oracle-xe container.
+          # TEMPORARILY ENABLED to validate the leg on CI before the Oracle
+          # Free Use Terms and Conditions license review completes — if the
+          # review comes back unfavorable, remove this row, the install step
+          # below, .github/scripts/live/oracle.sh, and the
+          # live_oracle test.
+          - { backend: oracle, driver: "" }
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Increase disk space
+        # A database image per leg — same cleanup as build.yaml.
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          sudo docker image prune --all --force
+          sudo docker builder prune -a
+
+      - name: Download the test binary
+        uses: actions/download-artifact@v4
+        with:
+          name: dialect-live-bin
+
+      - name: Make the test binary executable
+        run: chmod +x dialect-live-bin
+
+      - name: Install dbc and the ${{ matrix.backend }} ADBC driver
+        # Embedded backends (sqlite, duckdb) use ggsql's built-in readers
+        # and need no ADBC driver at all.
+        if: ${{ matrix.driver }}
+        run: |
+          curl -LsSf https://dbc.columnar.tech/install.sh | sh
+          # dbc install takes exactly one DRIVER per invocation. The druid
+          # driver is prerelease-only, so it needs the explicit --pre flag.
+          if [ "${{ matrix.backend }}" = "druid" ]; then
+            "$HOME/.local/bin/dbc" install --pre druid
+          else
+            "$HOME/.local/bin/dbc" install ${{ matrix.driver }}
+          fi
+
+      - name: Install unixODBC and psqlODBC
+        # Only the odbc leg needs them: ggsql loads libodbc at runtime via
+        # libloading, and psqlODBC self-registers "PostgreSQL Unicode" in
+        # /etc/odbcinst.ini.
+        if: ${{ matrix.backend == 'odbc' }}
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y unixodbc odbc-postgresql
+
+      - name: Install unixODBC and the MonetDB ODBC driver
+        # The ODBC driver (libMonetODBC.so) lives in the dedicated
+        # libmonetdb-client-odbc package — NOT in monetdb5-sql or
+        # monetdb-client, despite what the MonetDB docs imply — so the
+        # server packages are not installed at all. The driver does not
+        # self-register, so this step hand-writes the driver entry and a
+        # ggsql-monetdb system DSN into unixODBC's ini files.
+        if: ${{ matrix.backend == 'monetdb' }}
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y unixodbc wget
+          sudo wget -q -O /etc/apt/trusted.gpg.d/monetdb.gpg \
+            https://dev.monetdb.org/downloads/MonetDB-GPG-KEY.gpg
+          echo "deb https://dev.monetdb.org/downloads/deb/ $(lsb_release -cs) monetdb" \
+            | sudo tee /etc/apt/sources.list.d/monetdb.list
+          sudo apt-get update
+          sudo apt-get install -y libmonetdb-client-odbc
+          driver_so="$(find /usr/lib -name libMonetODBC.so | head -1)"
+          if [ -z "$driver_so" ]; then
+            echo "libMonetODBC.so not found; package contents:"
+            dpkg -L libmonetdb-client-odbc
+            exit 1
+          fi
+          printf '[MonetDB]\nDescription=MonetDB ODBC Driver\nDriver=%s\n' "$driver_so" \
+            | sudo tee -a /etc/odbcinst.ini
+          printf '[ggsql-monetdb]\nDriver=MonetDB\nHost=localhost\nPort=50000\nDatabase=ggsql\n' \
+            | sudo tee -a /etc/odbc.ini
+          # Diagnostics: unixODBC's IM005 ("Driver's SQLAllocHandle on
+          # SQL_HANDLE_DBC failed") usually means the driver .so failed to
+          # dlopen. ldd prints "not found" for any unresolvable dependency.
+          sudo ldconfig
+          echo '--- /etc/odbcinst.ini:'; cat /etc/odbcinst.ini
+          echo '--- /etc/odbc.ini:'; cat /etc/odbc.ini
+          echo '--- ldd:'; ldd "$driver_so"
+
+      - name: Install unixODBC and Oracle Instant Client ODBC
+        # No usable ADBC avenue: the Foundry "oracle" driver is
+        # Columnar-commercial and private. Oracle's Instant Client (basic +
+        # odbc zips) is free under the Free Use Terms and Conditions and
+        # downloads from download.oracle.com without authentication. The
+        # driver does not self-register, so this step hand-writes the driver
+        # entry and a ggsql-oracle system DSN into unixODBC's ini files.
+        # DBQ=//host:port/service is the EZCONNECT spelling; XEPDB1 is the
+        # XE pluggable database.
+        if: ${{ matrix.backend == 'oracle' }}
+        run: |
+          IC_VER=23.8.0.25.04
+          IC_DIR_URL=https://download.oracle.com/otn_software/linux/instantclient/2380000
+          sudo apt-get update
+          sudo apt-get install -y unixodbc unzip libaio1t64
+          # libsqora needs libaio.so.1 by exact SONAME; the noble t64 build
+          # does not always provide that name, so verify and symlink.
+          if ! ldconfig -p | grep -q 'libaio\.so\.1 '; then
+            aio_real=$(find /usr/lib/x86_64-linux-gnu /lib/x86_64-linux-gnu \
+              -name 'libaio.so*' | head -1)
+            if [ -z "$aio_real" ]; then
+              echo "no libaio file at all; libaio1t64 contents:"
+              dpkg -L libaio1t64
+              exit 1
+            fi
+            echo "libaio.so.1 missing from ldconfig; symlinking to $aio_real"
+            sudo ln -sf "$aio_real" /usr/lib/x86_64-linux-gnu/libaio.so.1
+            sudo ldconfig
+          fi
+          curl -sSLO "$IC_DIR_URL/instantclient-basic-linux.x64-$IC_VER.zip"
+          curl -sSLO "$IC_DIR_URL/instantclient-odbc-linux.x64-$IC_VER.zip"
+          sudo mkdir -p /opt/oracle
+          sudo unzip -o -d /opt/oracle "instantclient-basic-linux.x64-$IC_VER.zip"
+          sudo unzip -o -d /opt/oracle "instantclient-odbc-linux.x64-$IC_VER.zip"
+          ic_dir=$(echo /opt/oracle/instantclient_*)
+          driver_so=$(ls "$ic_dir"/libsqora.so* | head -1)
+          if [ -z "$driver_so" ]; then
+            echo "libsqora.so not found; instant client contents:"
+            ls "$ic_dir"
+            exit 1
+          fi
+          # libsqora needs libclntsh from the basic zip on the loader path.
+          echo "$ic_dir" | sudo tee /etc/ld.so.conf.d/oracle-instantclient.conf
+          printf '[Oracle]\nDescription=Oracle Instant Client ODBC\nDriver=%s\n' "$driver_so" \
+            | sudo tee -a /etc/odbcinst.ini
+          # No DSN is registered in /etc/odbc.ini: unixODBC's DSN attribute
+          # mapping never delivers DBQ to this driver (every DBQ spelling
+          # fails with ORA-12162 via DSN while the identical values connect
+          # DSN-less). The leg's preflight and ggsql URI both carry
+          # Driver=Oracle + a full TNS descriptor in the connection string.
+          # Diagnostics: same IM005-hunting ldd as the monetdb leg.
+          sudo ldconfig
+          echo '--- /etc/odbcinst.ini:'; cat /etc/odbcinst.ini
+          echo '--- /etc/odbc.ini:'; cat /etc/odbc.ini
+          echo '--- ldd:'; ldd "$driver_so"
+
+      - name: Start ${{ matrix.backend }}
+        # Exports GGSQL_TEST_URI_<BACKEND> for the test step.
+        run: bash .github/scripts/dialect-live-start.sh ${{ matrix.backend }}
+
+      - name: Run the ${{ matrix.backend }} live test
+        # The binary comes prebuilt from the compile job; invoked directly
+        # as a libtest executable (no cargo, no `--` separator).
+        # GGSQL_TEST_REQUIRE=1 turns a missing backend URI into a failure,
+        # so a broken start script or missing driver can't pass silently.
+        env:
+          GGSQL_TEST_REQUIRE: "1"
+        run: ./dialect-live-bin live_${{ matrix.backend }} --exact --nocapture
+
+      - name: Run the DataFusion cache live test
+        # datafusion+sqlite:// memoization path; only the datafusion leg has
+        # the Foundry driver installed, so it hosts this extra test.
+        if: ${{ matrix.backend == 'datafusion' }}
+        env:
+          GGSQL_TEST_REQUIRE: "1"
+        run: ./dialect-live-bin live_datafusion_as_cache --exact --nocapture
+
+      - name: Run the ggsql-owned URI params test
+        # cache=off & friends must not leak into the ADBC driver's URI.
+        if: ${{ matrix.backend == 'postgres' }}
+        env:
+          GGSQL_TEST_REQUIRE: "1"
+        run: ./dialect-live-bin live_postgres_ggsql_params --exact --nocapture

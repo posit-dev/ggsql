@@ -24,11 +24,14 @@ use std::time::{SystemTime, UNIX_EPOCH};
 /// Runtime configuration for the result memo: TTL and LRU byte-budget.
 #[derive(Debug, Clone)]
 pub struct CacheConfig {
-    /// When `false`, reads always hit the primary.
+    /// Master switch: when `false`, reads always hit the primary and nothing
+    /// is served from or stored in the cache.
     pub enabled: bool,
-    /// Entries older than this are treated as misses and re-fetched.
+    /// Maximum age of a cached entry in seconds; older entries count as
+    /// misses and are re-fetched from the primary.
     pub ttl_secs: u64,
-    /// Cumulative byte budget across all memo entries before LRU eviction.
+    /// Maximum total bytes of cached results across all entries; exceeding
+    /// the budget evicts least-recently-used entries.
     pub max_bytes: u64,
 }
 
@@ -152,6 +155,11 @@ impl CachingReader {
     /// backend, the primary's connection URI and the cache backend's scheme,
     /// using environment-derived cache configuration. The cache is owned by the
     /// `CachingReader` and dropped with it.
+    ///
+    /// Test-only convenience; production construction goes through
+    /// [`connection`](crate::reader::connection), which always supplies an
+    /// explicit [`CacheConfig`] via [`with_config`](Self::with_config).
+    #[cfg(test)]
     pub fn new(
         primary: Box<dyn Reader + Send>,
         cache: Box<dyn Reader + Send>,
@@ -246,8 +254,18 @@ impl CachingReader {
         row_count: i64,
     ) -> Result<()> {
         let now = now_ms();
+        // Upsert as DELETE + INSERT rather than INSERT OR REPLACE: the cache
+        // is a local single-connection store, so the non-transactional pair
+        // is safe, and the SQLite-specific OR REPLACE form is the one upsert
+        // syntax DataFusion (a supported cache backend) does not implement.
+        let del = format!(
+            "DELETE FROM {} WHERE cache_key = {}",
+            naming::quote_ident(naming::CACHE_META_TABLE),
+            naming::quote_literal(key),
+        );
+        self.cache.execute_sql(&del)?;
         let stmt = format!(
-            "INSERT OR REPLACE INTO {} \
+            "INSERT INTO {} \
              (cache_key, sql, table_name, fetched_at_epoch_ms, last_accessed_epoch_ms, \
               byte_estimate, row_count) \
              VALUES ({}, {}, {}, {}, {}, {}, {})",
@@ -473,7 +491,13 @@ impl Reader for CachingReader {
     ) -> Result<()> {
         // Read the body via the source surface, then register the result
         // into the cache.
-        let body = super::wrap_with_column_aliases(body_sql, column_aliases);
+        // The body executes against the primary, so aliases must be quoted
+        // with the primary's dialect, not the cache's.
+        let body = super::wrap_with_column_aliases(
+            &|c: &str| self.primary.dialect().quote_ident(c),
+            body_sql,
+            column_aliases,
+        );
         let df = self.execute_sql(&body)?;
         self.register(name, df, true)
     }
@@ -510,8 +534,9 @@ mod behavior_tests {
     use super::*;
     use crate::array_util::as_i64;
     use crate::df;
+    use crate::reader::test_support::CacheBackend;
     use crate::reader::test_support::{ReadOnlyReader, SpyReader};
-    use crate::reader::{CacheBackend, DuckDBReader};
+    use crate::reader::DuckDBReader;
 
     #[test]
     fn test_register_writes_to_cache_and_query_routes_there() {
@@ -1388,6 +1413,42 @@ mod behavior_tests {
             spec.is_ok(),
             "file layer source via cache should succeed: {:?}",
             spec.err()
+        );
+    }
+
+    #[test]
+    fn test_materialize_table_quotes_aliases_with_primary_dialect() {
+        // The materialized body executes against the primary, so its column
+        // aliases must be quoted with the primary's dialect (backticks for
+        // MySQL), not the cache's (double quotes for DuckDB).
+        use crate::reader::dialects::{DuckDbDialect, MySqlDialect};
+        use crate::reader::test_support::StubReader;
+
+        let (primary, primary_sql) = StubReader::new(Box::new(MySqlDialect));
+        let (cache, _cache_sql) = StubReader::new(Box::new(DuckDbDialect));
+        // Memoization disabled: the stub fabricates Float64 results that the
+        // memo metadata path cannot store, which is beside the point here.
+        let reader = CachingReader::with_config(
+            Box::new(primary),
+            Box::new(cache),
+            "mysql://localhost/db",
+            "duckdb",
+            CacheConfig {
+                enabled: false,
+                ..CacheConfig::default()
+            },
+        );
+        reader
+            .materialize_table("__ggsql_test__", &["a b".to_string()], "SELECT 1 AS x")
+            .unwrap();
+        let log = primary_sql.lock().unwrap();
+        assert!(
+            log.iter().any(|s| s.contains("`a b`")),
+            "primary should receive a backtick-quoted alias, got: {log:?}"
+        );
+        assert!(
+            !log.iter().any(|s| s.contains("\"a b\"")),
+            "primary must not receive cache-dialect quoting, got: {log:?}"
         );
     }
 }

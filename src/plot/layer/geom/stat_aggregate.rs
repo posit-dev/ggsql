@@ -377,23 +377,18 @@ fn percentile_fraction(func: &str) -> Option<f64> {
     }
 }
 
+/// Whether `name` is in the percentile/iqr family, which goes through
+/// [`SqlDialect::sql_quantile`] rather than [`SqlDialect::sql_aggregate`].
+fn is_quantile_agg(name: &str) -> bool {
+    percentile_fraction(name).is_some() || name == "iqr"
+}
+
 /// Build the inline SQL fragment for a *simple* stat (no band) applied to a
-/// quoted column. Returns `None` when the dialect cannot express this
-/// aggregate inline — for the percentile/iqr family that means the caller
-/// switches to the correlated `sql_percentile` fallback; for other names it
-/// means the dialect doesn't support that function and the stat layer raises
-/// a clear error before SQL is built (see `validate_supported`).
+/// quoted column. Only called for names outside the percentile/iqr family
+/// (see [`is_quantile_agg`]). Returns `None` when the dialect doesn't support
+/// the function; the stat layer raises a clear error before SQL is built
+/// (see `validate_supported`).
 fn simple_stat_sql_inline(name: &str, qcol: &str, dialect: &dyn SqlDialect) -> Option<String> {
-    if let Some(frac) = percentile_fraction(name) {
-        let unquoted = unquote(qcol);
-        return dialect.sql_quantile_inline(&unquoted, frac);
-    }
-    if name == "iqr" {
-        let unquoted = unquote(qcol);
-        let p75 = dialect.sql_quantile_inline(&unquoted, 0.75)?;
-        let p25 = dialect.sql_quantile_inline(&unquoted, 0.25)?;
-        return Some(format!("({} - {})", p75, p25));
-    }
     dialect.sql_aggregate(name, qcol)
 }
 
@@ -401,8 +396,6 @@ fn simple_stat_sql_inline(name: &str, qcol: &str, dialect: &dyn SqlDialect) -> O
 /// percentile fallback). Used to surface a clear error before SQL is built.
 fn dialect_supports(name: &str, dialect: &dyn SqlDialect) -> bool {
     if percentile_fraction(name).is_some() || name == "iqr" {
-        // Always supported: percentile path falls back to a correlated subquery
-        // built from `sql_percentile`, which has a portable default.
         return true;
     }
     dialect.sql_aggregate(name, "x").is_some()
@@ -455,10 +448,9 @@ fn format_band(offset: &str, mod_value: f64, exp: &str) -> String {
     }
 }
 
-/// Fallback SQL for a simple stat — used when a percentile component lacks
-/// inline support. Emits a correlated `sql_percentile` subquery; falls
-/// through to the inline form for everything else.
-fn simple_stat_sql_fallback(
+/// SQL for a simple stat in the percentile/iqr family — a `sql_quantile`
+/// call per component. Only called for names where [`is_quantile_agg`] holds.
+fn simple_stat_sql_quantile(
     name: &str,
     raw_col: &str,
     dialect: &dyn SqlDialect,
@@ -466,59 +458,38 @@ fn simple_stat_sql_fallback(
     group_cols: &[String],
 ) -> String {
     if let Some(frac) = percentile_fraction(name) {
-        return dialect.sql_percentile(raw_col, frac, src_alias, group_cols);
+        return dialect.sql_quantile(raw_col, frac, src_alias, group_cols);
     }
-    if name == "iqr" {
-        let p75 = dialect.sql_percentile(raw_col, 0.75, src_alias, group_cols);
-        let p25 = dialect.sql_percentile(raw_col, 0.25, src_alias, group_cols);
-        return format!("({} - {})", p75, p25);
-    }
-    let qcol = naming::quote_ident(raw_col);
-    simple_stat_sql_inline(name, &qcol, dialect).unwrap_or_else(|| "NULL".to_string())
+    let p75 = dialect.sql_quantile(raw_col, 0.75, src_alias, group_cols);
+    let p25 = dialect.sql_quantile(raw_col, 0.25, src_alias, group_cols);
+    format!("({} - {})", p75, p25)
 }
 
-fn agg_sql_fallback(
+fn agg_sql_quantile(
     spec: &AggSpec,
     raw_col: &str,
     dialect: &dyn SqlDialect,
     src_alias: &str,
     group_cols: &[String],
 ) -> String {
-    let offset_sql = simple_stat_sql_fallback(spec.offset, raw_col, dialect, src_alias, group_cols);
+    let offset_sql = simple_stat_sql_quantile(spec.offset, raw_col, dialect, src_alias, group_cols);
     match &spec.band {
         None => offset_sql,
         Some(band) => {
             let exp_sql =
-                simple_stat_sql_fallback(band.expansion, raw_col, dialect, src_alias, group_cols);
+                simple_stat_sql_quantile(band.expansion, raw_col, dialect, src_alias, group_cols);
             format_band(&offset_sql, band.mod_value, &exp_sql)
         }
     }
 }
 
-fn needs_quantile_fallback(spec: &AggSpec, probe_col: &str, dialect: &dyn SqlDialect) -> bool {
-    if simple_needs_fallback(spec.offset, probe_col, dialect) {
-        return true;
-    }
-    if let Some(band) = &spec.band {
-        if simple_needs_fallback(band.expansion, probe_col, dialect) {
-            return true;
-        }
-    }
-    false
-}
-
-fn simple_needs_fallback(name: &str, probe_col: &str, dialect: &dyn SqlDialect) -> bool {
-    if let Some(frac) = percentile_fraction(name) {
-        return dialect.sql_quantile_inline(probe_col, frac).is_none();
-    }
-    if name == "iqr" {
-        return dialect.sql_quantile_inline(probe_col, 0.5).is_none();
-    }
-    false
-}
-
-fn unquote(qcol: &str) -> String {
-    naming::unquote_ident(qcol)
+/// Whether any component of `spec` is in the percentile/iqr family.
+fn spec_is_quantile(spec: &AggSpec) -> bool {
+    is_quantile_agg(spec.offset)
+        || spec
+            .band
+            .as_ref()
+            .is_some_and(|b| is_quantile_agg(b.expansion))
 }
 
 // =============================================================================
@@ -908,13 +879,15 @@ fn source_cte_chain(
     aggregated: &[(String, String, Vec<AggSpec>)],
     group_cols: &[String],
     dialect: &dyn SqlDialect,
-) -> (String, &'static str) {
-    let raw_src = "\"__ggsql_stat_src__\"";
+) -> (String, String) {
+    let raw_src = dialect.quote_ident("__ggsql_stat_src__");
     if !needs_row_position(aggregated, dialect) {
         return (format!("WITH {raw_src} AS ({query})"), raw_src);
     }
-    let rn_src = "\"__ggsql_stat_src_rn__\"";
-    let group_select: Vec<String> = group_cols.iter().map(|c| naming::quote_ident(c)).collect();
+    let rn_src = dialect.quote_ident("__ggsql_stat_src_rn__");
+    let __ggsql_rn__ = dialect.quote_ident("__ggsql_rn__");
+    let __ggsql_max_rn__ = dialect.quote_ident("__ggsql_max_rn__");
+    let group_select: Vec<String> = group_cols.iter().map(|c| dialect.quote_ident(c)).collect();
     // ORDER BY (SELECT 1) is the canonical "no real ordering" stand-in: it
     // satisfies the standard's required ORDER BY for window functions while
     // letting the engine pick the row order — same indeterminacy as DuckDB's
@@ -927,8 +900,8 @@ fn source_cte_chain(
     let cte = format!(
         "WITH {raw_src} AS ({query}), {rn_src} AS (\
            SELECT *, \
-             ROW_NUMBER() OVER ({partition}ORDER BY (SELECT 1)) AS \"__ggsql_rn__\", \
-             COUNT(*) OVER ({partition_no_order}) AS \"__ggsql_max_rn__\" \
+             ROW_NUMBER() OVER ({partition}ORDER BY (SELECT 1)) AS {__ggsql_rn__}, \
+             COUNT(*) OVER ({partition_no_order}) AS {__ggsql_max_rn__} \
            FROM {raw_src}\
          )",
         partition_no_order = partition.trim_end(),
@@ -962,21 +935,21 @@ fn needs_row_position(
 }
 
 /// Build the single-row `WITH src AS (<query>) SELECT <group cols>, <agg exprs>
-/// FROM src AS "__ggsql_qt__" GROUP BY <group cols>` query. Each aggregated
+/// FROM src <alias> GROUP BY <group cols>` query (the alias clause is the
+/// dialect's). Each aggregated
 /// aesthetic's function list is length 1 here.
 ///
-/// Falls back to `dialect.sql_percentile()` per-column when an aggregate's
-/// percentile component lacks inline support.
+/// Percentile/iqr aggregates go through `dialect.sql_quantile()`.
 fn build_group_by_query(
     query: &str,
     aggregated: &[(String, String, Vec<AggSpec>)],
     group_cols: &[String],
     dialect: &dyn SqlDialect,
 ) -> String {
-    let outer_alias = "\"__ggsql_qt__\"";
+    let outer_alias = dialect.sql_table_alias("__ggsql_qt__");
     let (with_clause, src_alias) = source_cte_chain(query, aggregated, group_cols, dialect);
 
-    let group_select: Vec<String> = group_cols.iter().map(|c| naming::quote_ident(c)).collect();
+    let group_select: Vec<String> = group_cols.iter().map(|c| dialect.quote_ident(c)).collect();
     let group_by_clause = if group_cols.is_empty() {
         String::new()
     } else {
@@ -988,18 +961,18 @@ fn build_group_by_query(
     for (aes, raw_col, fns) in aggregated {
         let agg = &fns[0];
         let stat_col = naming::stat_column(aes);
-        let qcol = naming::quote_ident(raw_col);
-        let expr = if needs_quantile_fallback(agg, raw_col, dialect) {
-            agg_sql_fallback(agg, raw_col, dialect, src_alias, group_cols)
+        let qcol = dialect.quote_ident(raw_col);
+        let expr = if spec_is_quantile(agg) {
+            agg_sql_quantile(agg, raw_col, dialect, &src_alias, group_cols)
         } else {
             agg_sql_inline(agg, &qcol, dialect)
-                .expect("agg_sql_inline must succeed when needs_quantile_fallback is false")
+                .expect("agg_sql_inline must succeed for validated aggregates")
         };
-        select_parts.push(format!("{} AS {}", expr, naming::quote_ident(&stat_col)));
+        select_parts.push(format!("{} AS {}", expr, dialect.quote_ident(&stat_col)));
     }
 
     format!(
-        "{with_clause} SELECT {sel} FROM {src} AS {outer}{gb}",
+        "{with_clause} SELECT {sel} FROM {src} {outer}{gb}",
         sel = select_parts.join(", "),
         src = src_alias,
         outer = outer_alias,
@@ -1018,10 +991,10 @@ fn build_aggregate_query(
     labels: &[String],
     dialect: &dyn SqlDialect,
 ) -> String {
-    let outer_alias = "\"__ggsql_qt__\"";
+    let outer_alias = dialect.sql_table_alias("__ggsql_qt__");
     let (with_clause, src_alias) = source_cte_chain(query, aggregated, group_cols, dialect);
 
-    let group_select: Vec<String> = group_cols.iter().map(|c| naming::quote_ident(c)).collect();
+    let group_select: Vec<String> = group_cols.iter().map(|c| dialect.quote_ident(c)).collect();
     let group_by_clause = if group_cols.is_empty() {
         String::new()
     } else {
@@ -1039,24 +1012,24 @@ fn build_aggregate_query(
             for (aes, raw_col, fns) in aggregated {
                 let agg = &fns[row_idx];
                 let stat_col = naming::stat_column(aes);
-                let qcol = naming::quote_ident(raw_col);
-                let expr = if needs_quantile_fallback(agg, raw_col, dialect) {
-                    agg_sql_fallback(agg, raw_col, dialect, src_alias, group_cols)
+                let qcol = dialect.quote_ident(raw_col);
+                let expr = if spec_is_quantile(agg) {
+                    agg_sql_quantile(agg, raw_col, dialect, &src_alias, group_cols)
                 } else {
                     agg_sql_inline(agg, &qcol, dialect)
-                        .expect("agg_sql_inline must succeed when needs_quantile_fallback is false")
+                        .expect("agg_sql_inline must succeed for validated aggregates")
                 };
-                select_parts.push(format!("{} AS {}", expr, naming::quote_ident(&stat_col)));
+                select_parts.push(format!("{} AS {}", expr, dialect.quote_ident(&stat_col)));
             }
 
             select_parts.push(format!(
                 "{} AS {}",
                 naming::quote_literal(label),
-                naming::quote_ident(&stat_aggregate_col)
+                dialect.quote_ident(&stat_aggregate_col)
             ));
 
             format!(
-                "SELECT {} FROM {} AS {}{}",
+                "SELECT {} FROM {} {}{}",
                 select_parts.join(", "),
                 src_alias,
                 outer_alias,
@@ -1080,12 +1053,14 @@ mod tests {
     /// row-positional FIRST / LAST aggregates.
     struct InlineQuantileDialect;
     impl SqlDialect for InlineQuantileDialect {
-        fn sql_quantile_inline(&self, column: &str, fraction: f64) -> Option<String> {
-            Some(format!(
-                "QUANTILE_CONT({}, {})",
-                naming::quote_ident(column),
-                fraction
-            ))
+        fn sql_quantile(
+            &self,
+            column: &str,
+            fraction: f64,
+            _from: &str,
+            _groups: &[String],
+        ) -> String {
+            format!("QUANTILE_CONT({}, {})", self.quote_ident(column), fraction)
         }
 
         fn sql_aggregate(&self, name: &str, qcol: &str) -> Option<String> {
@@ -1093,13 +1068,15 @@ mod tests {
                 "first" => Some(format!("FIRST({})", qcol)),
                 "last" => Some(format!("LAST({})", qcol)),
                 "diff" => Some(format!("(LAST({c}) - FIRST({c}))", c = qcol)),
-                _ => crate::reader::default_sql_aggregate(name, qcol),
+                _ => {
+                    crate::reader::default_sql_aggregate(&|c: &str| self.quote_ident(c), name, qcol)
+                }
             }
         }
     }
 
-    /// A test dialect with no inline quantile support, exercising the
-    /// per-column `sql_percentile` fallback.
+    /// A test dialect with no native quantile, exercising the correlated
+    /// `sql_quantile` default.
     struct NoInlineQuantileDialect;
     impl SqlDialect for NoInlineQuantileDialect {}
 
@@ -1580,7 +1557,7 @@ mod tests {
                 if name == "first" {
                     return None;
                 }
-                crate::reader::default_sql_aggregate(name, qcol)
+                crate::reader::default_sql_aggregate(&|c: &str| self.quote_ident(c), name, qcol)
             }
         }
 
@@ -2306,8 +2283,7 @@ mod tests {
         .unwrap();
         match result {
             StatResult::Transformed { query, .. } => {
-                // The fallback dialect's sql_percentile uses NTILE.
-                assert!(query.contains("NTILE(4)"));
+                assert!(query.contains("ROW_NUMBER()"));
                 // No explosion any more — single SELECT, no UNION ALL.
                 assert!(!query.contains("UNION ALL"));
             }

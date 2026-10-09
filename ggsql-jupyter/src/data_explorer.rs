@@ -534,11 +534,16 @@ impl DataExplorerState {
                             number_stats["stdev"] = json!(format!("{}", stdev));
                         }
                     }
-                    // Median via dialect's sql_percentile
-                    let col_name = col.name.replace('"', "\"\"");
+                    // Median via the dialect's quantile hook. The expression
+                    // must sit in a query over `from` (native dialects return
+                    // a bare aggregate, which without a FROM would compute
+                    // over an empty input and yield NULL).
                     let from_query = format!("SELECT * FROM {}", self.table_path);
-                    let median_expr = dialect.sql_percentile(&col_name, 0.5, &from_query, &[]);
-                    let median_sql = format!("SELECT {} AS \"median_val\"", median_expr);
+                    let median_expr = dialect.sql_quantile(&col.name, 0.5, &from_query, &[]);
+                    let median_sql = format!(
+                        "SELECT {} AS \"median_val\" FROM ({}) AS \"__ggsql_qt__\"",
+                        median_expr, from_query
+                    );
                     if let Ok(median_df) = reader.execute_sql(&median_sql) {
                         use arrow::array::Array;
                         if let Some(v) = median_df.column("median_val").ok().and_then(|c| {
@@ -769,11 +774,14 @@ impl DataExplorerState {
 
         let mut quantile_results = Vec::new();
         let from_query = format!("SELECT * FROM {}", self.table_path);
-        let col_name = col.name.replace('"', "\"\"");
         for q in &quantiles_param {
             if let Some(q_val) = q.as_f64() {
-                let expr = dialect.sql_percentile(&col_name, q_val, &from_query, &[]);
-                let q_sql = format!("SELECT {} AS \"q_val\"", expr);
+                let expr = dialect.sql_quantile(&col.name, q_val, &from_query, &[]);
+                // See the median path above: the expression needs the FROM.
+                let q_sql = format!(
+                    "SELECT {} AS \"q_val\" FROM ({}) AS \"__ggsql_qt__\"",
+                    expr, from_query
+                );
                 if let Ok(q_df) = reader.execute_sql(&q_sql) {
                     use arrow::array::Array;
                     if let Some(v) = q_df.column("q_val").ok().and_then(|c| {

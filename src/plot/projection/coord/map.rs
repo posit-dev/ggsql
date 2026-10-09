@@ -21,6 +21,7 @@ pub(crate) fn apply_map_transforms(
     dialect: &dyn SqlDialect,
     execute_query: &dyn Fn(&str) -> crate::Result<DataFrame>,
 ) -> crate::Result<()> {
+    crate::reader::ensure_spatial_supported(dialect)?;
     for stmt in dialect.sql_spatial_setup() {
         execute_query(&stmt)?;
     }
@@ -99,7 +100,7 @@ pub(crate) fn apply_map_transforms(
         layer_queries[idx] = if is_spatial {
             let columns =
                 crate::util::set_union(layer.mappings.column_names(), &layer.partition_by);
-            let geom_col_quoted = naming::quote_ident(&naming::aesthetic_column("geometry"));
+            let geom_col_quoted = dialect.quote_ident(&naming::aesthetic_column("geometry"));
             let wkb_expr = dialect.sql_geometry_to_wkb(&geom_col_quoted);
             dialect.sql_select_replace(
                 &wkb_expr,
@@ -351,10 +352,10 @@ impl BBox {
     ) -> Option<Self> {
         let envelope = dialect.sql_make_envelope(self.xmin, self.ymin, self.xmax, self.ymax);
         let transformed = dialect.sql_st_transform(&envelope, &self.crs, target_crs);
-        let sql = dialect.sql_geometry_bbox(
-            "g",
-            &format!("(SELECT {transformed} AS g) AS \"__ggsql_bbox__\""),
-        );
+        let geom_rel = crate::sql::Select::new(dialect)
+            .select(format!("{transformed} AS g"))
+            .build_derived("__ggsql_bbox__");
+        let sql = dialect.sql_geometry_bbox("g", &geom_rel);
         execute_query(&sql)
             .ok()
             .and_then(|df| Self::from_df(&df, target_crs))
@@ -475,10 +476,10 @@ fn graticule_bbox(
     // degenerate or incomplete values. Use the clip boundary extent which
     // correctly represents the visible hemisphere.
     if let Some(wkt) = clip_boundary_wkt {
-        let sql = dialect.sql_geometry_bbox(
-            "g",
-            &format!("(SELECT ST_GeomFromText('{wkt}') AS g) AS \"__ggsql_bbox__\""),
-        );
+        let geom_rel = crate::sql::Select::new(dialect)
+            .select(format!("{} AS g", dialect.sql_geom_from_text(wkt)))
+            .build_derived("__ggsql_bbox__");
+        let sql = dialect.sql_geometry_bbox("g", &geom_rel);
         if let Ok(df) = execute_query(&sql) {
             if let Some(clip_bbox) = BBox::from_df(&df, "EPSG:4326") {
                 geo_bbox = clip_bbox;
@@ -570,7 +571,11 @@ fn materialize_clip_boundary(
 
     let boundary_lonlat = if let Some(slit) = &slit_wkt {
         let sql = format!(
-            "SELECT ST_AsText(ST_Difference(ST_GeomFromText('{wkt}'), ST_GeomFromText('{slit}'))) AS wkt"
+            "SELECT {} AS wkt",
+            dialect.sql_st_as_text(&dialect.sql_st_difference(
+                &dialect.sql_geom_from_text(&wkt),
+                &dialect.sql_geom_from_text(slit),
+            ))
         );
         query_scalar_string(&sql, execute_query).unwrap_or(wkt)
     } else {
@@ -578,7 +583,7 @@ fn materialize_clip_boundary(
     };
 
     let source_geom = dialect.sql_st_transform(
-        &format!("ST_GeomFromText('{boundary_lonlat}')"),
+        &dialect.sql_geom_from_text(&boundary_lonlat),
         "EPSG:4326",
         source,
     );
@@ -598,11 +603,11 @@ fn boundary_to_target_crs(
     execute_query: &dyn Fn(&str) -> crate::Result<DataFrame>,
 ) -> Option<String> {
     let panel_geom = dialect.sql_st_transform(
-        &format!("ST_GeomFromText('{boundary_lonlat}')"),
+        &dialect.sql_geom_from_text(boundary_lonlat),
         "EPSG:4326",
         crs,
     );
-    let sql = format!("SELECT ST_AsText({panel_geom}) AS wkt");
+    let sql = format!("SELECT {} AS wkt", dialect.sql_st_as_text(&panel_geom));
     query_scalar_string(&sql, execute_query)
 }
 
@@ -617,7 +622,7 @@ fn materialize_layer(
     for stmt in dialect.create_or_replace_temp_table_sql(&table_name, &[], query) {
         execute_query(&stmt)?;
     }
-    Ok(naming::quote_ident(&table_name))
+    Ok(dialect.quote_ident(&table_name))
 }
 
 /// Compute the bounding box of a single materialized layer table.
@@ -629,11 +634,11 @@ fn compute_layer_bbox(
     execute_query: &dyn Fn(&str) -> crate::Result<DataFrame>,
 ) -> Option<BBox> {
     let sql = if is_spatial {
-        let geom_col = naming::quote_ident(&naming::aesthetic_column("geometry"));
+        let geom_col = dialect.quote_ident(&naming::aesthetic_column("geometry"));
         dialect.sql_geometry_bbox(&geom_col, table)
     } else {
-        let pos1_col = naming::quote_ident(&naming::aesthetic_column("pos1"));
-        let pos2_col = naming::quote_ident(&naming::aesthetic_column("pos2"));
+        let pos1_col = dialect.quote_ident(&naming::aesthetic_column("pos1"));
+        let pos2_col = dialect.quote_ident(&naming::aesthetic_column("pos2"));
         format!(
             "SELECT MIN({pos1_col}), MIN({pos2_col}), \
              MAX({pos1_col}), MAX({pos2_col}) FROM {table}"
@@ -672,19 +677,20 @@ fn project_graticule_wkt(
     execute_query: &dyn Fn(&str) -> crate::Result<DataFrame>,
 ) -> crate::Result<Option<String>> {
     let Some(wkt) = wkt else { return Ok(None) };
-    let geom_expr = format!("ST_GeomFromText('{wkt}')");
+    let geom_expr = dialect.sql_geom_from_text(&wkt);
     let clipped = if let Some(boundary) = clip_boundary_wkt {
-        // ST_CollectionExtract(..., 2) keeps only linestring components,
-        // discarding stray points from vertex-on-boundary intersections.
-        format!(
-            "ST_CollectionExtract(ST_Intersection({geom_expr}, \
-             ST_GeomFromText('{boundary}')), 2)"
+        // The collection extract keeps only linestring components (type
+        // index 2), discarding stray points from vertex-on-boundary
+        // intersections.
+        dialect.sql_st_collection_extract(
+            &dialect.sql_st_intersection(&geom_expr, &dialect.sql_geom_from_text(boundary)),
+            2,
         )
     } else {
         geom_expr
     };
     let projected = dialect.sql_st_transform(&clipped, "EPSG:4326", crs);
-    let sql = format!("SELECT ST_AsText({projected}) AS wkt");
+    let sql = format!("SELECT {} AS wkt", dialect.sql_st_as_text(&projected));
     Ok(query_scalar_string(&sql, execute_query))
 }
 
@@ -742,7 +748,7 @@ fn detect_source_srid(
     dialect: &dyn SqlDialect,
     execute_query: &dyn Fn(&str) -> crate::Result<DataFrame>,
 ) -> crate::Result<Option<String>> {
-    let geom_col = naming::quote_ident(&naming::aesthetic_column("geometry"));
+    let geom_col = dialect.quote_ident(&naming::aesthetic_column("geometry"));
     let ensure_geom = dialect.sql_ensure_geometry(&geom_col);
     let mut detected: Option<String> = None;
 
@@ -750,10 +756,11 @@ fn detect_source_srid(
         if layer.geom.geom_type() != GeomType::Spatial {
             continue;
         }
-        let sql = format!(
-            "SELECT ST_SRID({ensure_geom}) AS srid FROM ({}) WHERE {geom_col} IS NOT NULL LIMIT 1",
-            layer_queries[idx]
-        );
+        let sql = crate::sql::Select::new(dialect)
+            .select(format!("{} AS srid", dialect.sql_st_srid(&ensure_geom)))
+            .from_aliased(&layer_queries[idx], "__ggsql_srid__")
+            .and_where(format!("{geom_col} IS NOT NULL"))
+            .build_limited(1);
         if let Ok(df) = execute_query(&sql) {
             let batch = df.inner();
             if batch.num_rows() == 0 {
@@ -841,8 +848,8 @@ pub(crate) fn resolve_map_projection(
     }
 
     // Step 2: Resolve source and target from numeric EPSG to PROJ strings
-    let source = resolve_epsg_property("source", properties, "EPSG:4326", execute_query);
-    let target = resolve_epsg_property("target", properties, &source, execute_query);
+    let source = resolve_epsg_property("source", properties, "EPSG:4326", dialect, execute_query);
+    let target = resolve_epsg_property("target", properties, &source, dialect, execute_query);
 
     properties.insert("source".to_string(), ParameterValue::String(source.clone()));
     properties.insert("target".to_string(), ParameterValue::String(target.clone()));
@@ -857,7 +864,7 @@ pub(crate) fn resolve_map_projection(
     }
 
     // Step 4: Validate CRS by attempting a single point transform
-    let probe = dialect.sql_st_transform("ST_Point(0, 0)", &source, &target);
+    let probe = dialect.sql_st_transform(&dialect.sql_st_point("0", "0"), &source, &target);
     let probe_sql = format!("SELECT {probe} AS g");
     match execute_query(&probe_sql) {
         Err(e) => {
@@ -893,6 +900,7 @@ fn resolve_epsg_property(
     key: &str,
     properties: &Parameters,
     fallback: &str,
+    dialect: &dyn SqlDialect,
     execute_query: &dyn Fn(&str) -> crate::Result<DataFrame>,
 ) -> String {
     let code: u32 = match properties.get(key) {
@@ -909,19 +917,21 @@ fn resolve_epsg_property(
             None => return fallback.to_string(),
         },
     };
-    query_spatial_ref_sys(code, execute_query)
+    query_spatial_ref_sys(code, dialect, execute_query)
         .or_else(|| builtin_epsg_lookup(code))
         .unwrap_or_else(|| format!("EPSG:{code}"))
 }
 
 fn query_spatial_ref_sys(
     code: u32,
+    dialect: &dyn SqlDialect,
     execute_query: &dyn Fn(&str) -> crate::Result<DataFrame>,
 ) -> Option<String> {
-    let sql = format!(
-        "SELECT proj4text FROM spatial_ref_sys WHERE srid = {} LIMIT 1",
-        code
-    );
+    let sql = crate::sql::Select::new(dialect)
+        .select("proj4text")
+        .from("spatial_ref_sys")
+        .and_where(format!("srid = {code}"))
+        .build_limited(1);
     let df = execute_query(&sql).ok()?;
     let batch = df.inner();
     if batch.num_rows() == 0 {
@@ -998,6 +1008,7 @@ mod tests {
     use super::*;
     use crate::plot::projection::coord::{Coord, CoordKind};
     use crate::plot::{ParameterValue, Parameters};
+    use crate::reader::AnsiDialect;
 
     #[test]
     fn test_map_properties() {
@@ -1445,14 +1456,16 @@ mod tests {
             "source".to_string(),
             ParameterValue::String("EPSG:4326".to_string()),
         );
-        let result = resolve_epsg_property("source", &props, "EPSG:4326", &noop_execute);
+        let result =
+            resolve_epsg_property("source", &props, "EPSG:4326", &AnsiDialect, &noop_execute);
         assert!(result.contains("+proj=longlat"), "got: {result}");
     }
 
     #[test]
     fn resolve_epsg_property_uses_fallback_when_absent() {
         let props = Parameters::new();
-        let result = resolve_epsg_property("source", &props, "EPSG:4326", &noop_execute);
+        let result =
+            resolve_epsg_property("source", &props, "EPSG:4326", &AnsiDialect, &noop_execute);
         assert!(
             result.contains("+proj=longlat"),
             "fallback should resolve EPSG:4326 to PROJ string, got: {result}"
@@ -1466,6 +1479,7 @@ mod tests {
             "target",
             &props,
             "+proj=merc +lon_0=0 +k=1 +x_0=0 +y_0=0",
+            &AnsiDialect,
             &noop_execute,
         );
         assert_eq!(result, "+proj=merc +lon_0=0 +k=1 +x_0=0 +y_0=0");

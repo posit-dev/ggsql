@@ -87,7 +87,7 @@ impl GeomTrait for Area {
         };
         // Area needs ordering by pos1 (domain axis) for proper rendering, in both
         // the Identity and Aggregate paths.
-        Ok(wrap_with_order_by(query, result, "pos1"))
+        Ok(wrap_with_order_by(query, result, "pos1", dialect))
     }
 }
 

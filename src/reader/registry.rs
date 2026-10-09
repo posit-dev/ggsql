@@ -1,0 +1,449 @@
+//! The supported-database registry: ggsql's single source of per-backend
+//! connection knowledge.
+//!
+//! Every backend ggsql knows how to connect to has one [`DatabaseEntry`]
+//! here carrying its URI schemes, display name, DBMS/driver detection
+//! patterns, dialect constructor, ADBC driver details, and ODBC synthesis
+//! hints. Dispatch (`connection.rs`), the ADBC reader, and the Jupyter
+//! kernel all consult this table rather than keeping their own lookups.
+
+use super::dialects::*;
+use super::{AnsiDialect, SqlDialect};
+
+/// How the URI handed to an ADBC driver is derived from the ggsql URI.
+///
+/// ggsql's scheme selects the driver, but the URI must use the scheme and
+/// grammar the driver itself speaks.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum DriverUri {
+    /// The full ggsql URI passes through unchanged.
+    Passthrough,
+    /// Rebuilt as `http://<body>`, dropping userinfo and query params: the
+    /// ClickHouse driver connects over the HTTP interface, ignores userinfo
+    /// (credentials arrive as dedicated options), and forwards URL query
+    /// parameters to the server as ClickHouse *settings*.
+    ClickHouseHttp,
+    /// Translated to a go-sql-driver DSN, `user[:pass]@tcp(host:port)/db`;
+    /// query params reach the driver as options, not in the DSN.
+    MySqlGoDsn,
+    /// `redshift://` rewritten to `postgres://`: the Redshift driver is the
+    /// PostgreSQL driver, whose pgx-based URI parsing rejects redshift://.
+    /// The full URI is rewritten so query params (pgx settings) survive.
+    RedshiftAsPostgres,
+    /// ggsql's `bigquery://<project>[/<dataset>]` translated to the Simba
+    /// grammar the Foundry BigQuery driver parses. Complex enough to live
+    /// in `adbc.rs` (`bigquery_driver_uri`).
+    BigQuerySimba,
+}
+
+/// ADBC driver details for a backend.
+#[derive(Clone, Copy)]
+pub struct AdbcInfo {
+    /// Canonical driver library name (`adbc_driver_postgresql`).
+    pub lib_name: &'static str,
+    /// dbc manifest ID (`postgresql`): `dbc install <id>` writes a manifest
+    /// named after this short ID, while a from-source install is typically
+    /// found under `lib_name`. Loading probes both.
+    pub dbc_id: &'static str,
+    /// How to rewrite the ggsql URI for the driver.
+    pub driver_uri: DriverUri,
+    /// Whether `?k=v` query params are *also* passed as standalone database
+    /// options. (They always remain in the `uri` option except where the
+    /// rewrite strips them.) Some drivers reject params arriving a second
+    /// way: MSSQL fails with "Unknown database option
+    /// 'TrustServerCertificate'", Databricks with "cannot specify both URI
+    /// and individual connection options", and Druid with "Unsupported
+    /// option: Other(\"tls\")" — their params stay in the URI only.
+    pub params_as_options: bool,
+}
+
+/// A DBMS-name/driver-string detection pattern.
+pub enum DetectPattern {
+    /// Matches when the lowercased text contains this substring.
+    Contains(&'static str),
+    /// Matches when the lowercased text contains *all* these substrings.
+    All(&'static [&'static str]),
+}
+
+impl DetectPattern {
+    fn matches(&self, lower: &str) -> bool {
+        match self {
+            DetectPattern::Contains(s) => lower.contains(s),
+            DetectPattern::All(ss) => ss.iter().all(|s| lower.contains(s)),
+        }
+    }
+}
+
+/// An in-process reader ggsql ships for a backend, preferred over external
+/// drivers when its cargo feature is compiled in.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum NativeReader {
+    DuckDb,
+    Sqlite,
+}
+
+/// One supported database backend.
+pub struct DatabaseEntry {
+    /// Canonical URI scheme (`postgres`).
+    pub scheme: &'static str,
+    /// Additional accepted schemes (`postgresql`).
+    pub aliases: &'static [&'static str],
+    /// Human-readable name for UIs (`PostgreSQL`).
+    pub display_name: &'static str,
+    /// DBMS/driver detection patterns. Entries are scanned in registry
+    /// order, most specific first (SQL Server before anything containing
+    /// "sql", Redshift before Postgres).
+    pub detect: &'static [DetectPattern],
+    /// Construct the backend's SQL dialect.
+    dialect: fn() -> Box<dyn SqlDialect + Send>,
+    /// ADBC driver details; `None` when no usable dedicated driver exists
+    /// (Drill, MonetDB) — dispatch falls through to ODBC.
+    pub adbc: Option<AdbcInfo>,
+    /// ODBC synthesis: a `DBQ=` query param (Oracle/DB2-style server
+    /// address) fully specifies where to connect, suppressing
+    /// Server/Port/Database synthesis — Oracle ODBC rejects a connection
+    /// string that mixes the two vocabularies.
+    pub odbc_dbq_style: bool,
+    /// In-process reader to prefer when its cargo feature is compiled in
+    /// (duckdb, sqlite). `None` for backends reached only through external
+    /// ADBC/ODBC drivers.
+    pub native_reader: Option<NativeReader>,
+}
+
+impl DatabaseEntry {
+    /// The backend's SQL dialect, freshly boxed.
+    pub fn dialect(&self) -> Box<dyn SqlDialect + Send> {
+        (self.dialect)()
+    }
+
+    /// All URI schemes naming this backend, canonical first.
+    pub fn schemes(&self) -> impl Iterator<Item = &'static str> {
+        std::iter::once(self.scheme).chain(self.aliases.iter().copied())
+    }
+}
+
+macro_rules! entry {
+    ($scheme:literal, $aliases:expr, $display:literal, $detect:expr, $dialect:expr, $adbc:expr) => {
+        DatabaseEntry {
+            scheme: $scheme,
+            aliases: $aliases,
+            display_name: $display,
+            detect: $detect,
+            dialect: $dialect,
+            adbc: $adbc,
+            odbc_dbq_style: false,
+            native_reader: None,
+        }
+    };
+}
+
+macro_rules! adbc {
+    ($lib:literal, $id:literal, $uri:expr, $opts:expr) => {
+        Some(AdbcInfo {
+            lib_name: $lib,
+            dbc_id: $id,
+            driver_uri: $uri,
+            params_as_options: $opts,
+        })
+    };
+}
+
+use DetectPattern::Contains as Has;
+use DriverUri::*;
+
+/// All supported backends. **Order matters for detection**: entries are
+/// scanned top to bottom, so more specific patterns must precede generic
+/// ones (`microsoft sql server` before anything matching `sql`, Redshift
+/// before Postgres).
+pub static REGISTRY: &[DatabaseEntry] = &[
+    entry!(
+        "mssql",
+        &["sqlserver"],
+        "SQL Server",
+        &[
+            Has("microsoft sql server"),
+            Has("msodbcsql"),
+            Has("sql server"),
+            Has("sqlserver"),
+            Has("mssql"),
+        ],
+        || Box::new(MssqlDialect),
+        adbc!("adbc_driver_mssql", "mssql", Passthrough, false)
+    ),
+    entry!(
+        "redshift",
+        &[],
+        "Redshift",
+        &[Has("redshift")],
+        || Box::new(RedshiftDialect),
+        adbc!(
+            "adbc_driver_postgresql",
+            "postgresql",
+            RedshiftAsPostgres,
+            true
+        )
+    ),
+    entry!(
+        "postgres",
+        &["postgresql"],
+        "PostgreSQL",
+        &[Has("postgres"), Has("psql")],
+        || Box::new(PostgresDialect),
+        adbc!("adbc_driver_postgresql", "postgresql", Passthrough, true)
+    ),
+    entry!(
+        "mysql",
+        &["mariadb"],
+        "MySQL",
+        &[Has("mariadb"), Has("mysql")],
+        || Box::new(MySqlDialect),
+        adbc!("adbc_driver_mysql", "mysql", MySqlGoDsn, true)
+    ),
+    entry!(
+        "snowflake",
+        &[],
+        "Snowflake",
+        &[Has("snowflake")],
+        || Box::new(SnowflakeDialect),
+        adbc!("adbc_driver_snowflake", "snowflake", Passthrough, true)
+    ),
+    entry!(
+        "bigquery",
+        &[],
+        "BigQuery",
+        &[Has("bigquery")],
+        || Box::new(BigQueryDialect),
+        adbc!("adbc_driver_bigquery", "bigquery", BigQuerySimba, true)
+    ),
+    entry!(
+        "databricks",
+        &["spark"],
+        "Databricks",
+        &[Has("databricks"), Has("spark")],
+        || Box::new(DatabricksDialect),
+        adbc!("adbc_driver_databricks", "databricks", Passthrough, false)
+    ),
+    entry!(
+        "clickhouse",
+        &[],
+        "ClickHouse",
+        &[Has("clickhouse")],
+        || Box::new(ClickHouseDialect),
+        adbc!("adbc_driver_clickhouse", "clickhouse", ClickHouseHttp, true)
+    ),
+    DatabaseEntry {
+        odbc_dbq_style: true,
+        ..entry!(
+            "oracle",
+            &[],
+            "Oracle",
+            &[Has("oracle"), DetectPattern::All(&["ora", "driver"])],
+            || Box::new(OracleDialect),
+            adbc!("adbc_driver_oracle", "oracle", Passthrough, true)
+        )
+    },
+    entry!(
+        "trino",
+        &[],
+        "Trino",
+        &[Has("trino")],
+        || Box::new(TrinoDialect),
+        adbc!("adbc_driver_trino", "trino", Passthrough, true)
+    ),
+    entry!(
+        "exasol",
+        &[],
+        "Exasol",
+        &[Has("exasol"), DetectPattern::All(&["exa", "odbc"])],
+        || Box::new(ExasolDialect),
+        adbc!("adbc_driver_exasol", "exasol", Passthrough, true)
+    ),
+    entry!(
+        "monetdb",
+        &[],
+        "MonetDB",
+        &[Has("monet")],
+        || Box::new(MonetDbDialect),
+        None
+    ),
+    entry!(
+        "druid",
+        &[],
+        "Apache Druid",
+        &[Has("druid")],
+        || Box::new(DruidDialect),
+        adbc!("adbc_driver_druid", "druid", Passthrough, false)
+    ),
+    entry!(
+        "drill",
+        &[],
+        "Apache Drill",
+        &[Has("drill")],
+        || Box::new(DrillDialect),
+        None
+    ),
+    entry!(
+        "datafusion",
+        &[],
+        "DataFusion",
+        &[Has("datafusion")],
+        || Box::new(DataFusionDialect),
+        adbc!("adbc_driver_datafusion", "datafusion", Passthrough, true)
+    ),
+    DatabaseEntry {
+        native_reader: Some(NativeReader::DuckDb),
+        ..entry!(
+            "duckdb",
+            &[],
+            "DuckDB",
+            &[Has("duckdb")],
+            || Box::new(DuckDbDialect),
+            adbc!("adbc_driver_duckdb", "duckdb", Passthrough, true)
+        )
+    },
+    DatabaseEntry {
+        native_reader: Some(NativeReader::Sqlite),
+        ..entry!(
+            "sqlite",
+            &[],
+            "SQLite",
+            &[Has("sqlite")],
+            || Box::new(SqliteDialect),
+            adbc!("adbc_driver_sqlite", "sqlite", Passthrough, true)
+        )
+    },
+    // Flight SQL is a wire protocol, not a database: any dialect choice is
+    // a guess, so the ANSI dialect is assigned explicitly here (the one
+    // place ANSI is the right answer rather than a silent fallback).
+    entry!(
+        "flightsql",
+        &[],
+        "Flight SQL",
+        &[Has("flightsql"), DetectPattern::All(&["flight", "sql"])],
+        || Box::new(AnsiDialect),
+        adbc!("adbc_driver_flightsql", "flightsql", Passthrough, true)
+    ),
+];
+
+/// Look up a backend by URI scheme (canonical or alias), case-insensitively.
+pub fn by_scheme(scheme: &str) -> Option<&'static DatabaseEntry> {
+    let lower = scheme.to_ascii_lowercase();
+    REGISTRY.iter().find(|e| e.schemes().any(|s| s == lower))
+}
+
+/// Detect the backend from a DBMS name and/or driver hint (ODBC driver
+/// name, ADBC driver name). The DBMS name is checked first; matching is
+/// case-insensitive substring matching in registry order.
+pub fn detect(
+    dbms_name: Option<&str>,
+    driver_hint: Option<&str>,
+) -> Option<&'static DatabaseEntry> {
+    for text in [dbms_name, driver_hint].into_iter().flatten() {
+        let lower = text.to_lowercase();
+        if let Some(e) = REGISTRY
+            .iter()
+            .find(|e| e.detect.iter().any(|p| p.matches(&lower)))
+        {
+            return Some(e);
+        }
+    }
+    None
+}
+
+/// `scheme://` list for error messages: every supported URI scheme
+/// (canonical names; registry aliases omitted).
+pub fn supported_schemes() -> String {
+    let mut schemes: Vec<String> = vec!["odbc".into(), "adbc".into()];
+    schemes.extend(REGISTRY.iter().map(|e| e.scheme.into()));
+    schemes
+        .into_iter()
+        .map(|s| format!("{s}://"))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+/// Uppercased, identifier-safe form of a scheme for env var names.
+fn env_var_scheme(scheme: &str) -> String {
+    scheme
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() {
+                c.to_ascii_uppercase()
+            } else {
+                '_'
+            }
+        })
+        .collect()
+}
+
+/// Environment variable overriding the ADBC driver for a URI scheme, e.g.
+/// `GGSQL_POSTGRES_ADBC_DRIVER=/opt/drivers/libadbc_driver_postgresql.so`.
+pub fn adbc_driver_env_var(scheme: &str) -> String {
+    format!("GGSQL_{}_ADBC_DRIVER", env_var_scheme(scheme))
+}
+
+/// Environment variable specifying the ODBC driver for a URI scheme.
+pub fn odbc_driver_env_var(scheme: &str) -> String {
+    format!("GGSQL_{}_ODBC_DRIVER", env_var_scheme(scheme))
+}
+
+/// Resolve a `dialect=` override value (`ansi` or any registry scheme) to a
+/// dialect. This is the explicit escape hatch for backends ggsql doesn't
+/// know: unknown backends are an error unless the user pins a dialect.
+pub fn dialect_override(name: &str) -> Option<Box<dyn SqlDialect + Send>> {
+    if name.eq_ignore_ascii_case("ansi") {
+        return Some(Box::new(AnsiDialect));
+    }
+    by_scheme(name).map(|e| e.dialect())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn every_entry_resolves_both_ways() {
+        for e in REGISTRY {
+            assert!(by_scheme(e.scheme).is_some(), "scheme {}", e.scheme);
+            for alias in e.aliases {
+                let found = by_scheme(alias).unwrap();
+                assert!(
+                    std::ptr::eq(found, e),
+                    "alias {alias} should resolve to {}",
+                    e.scheme
+                );
+            }
+        }
+        assert!(by_scheme("PostgreSQL").is_some(), "case-insensitive");
+        assert!(by_scheme("nosuchdb").is_none());
+    }
+
+    #[test]
+    fn detect_ordering_is_most_specific_first() {
+        assert_eq!(
+            detect(Some("Microsoft SQL Server"), None).unwrap().scheme,
+            "mssql"
+        );
+        assert_eq!(detect(None, Some("msodbcsql18")).unwrap().scheme, "mssql");
+        assert_eq!(
+            detect(Some("Amazon Redshift"), None).unwrap().scheme,
+            "redshift"
+        );
+        assert_eq!(detect(Some("PostgreSQL"), None).unwrap().scheme, "postgres");
+        assert_eq!(
+            detect(Some("Unknown DBMS"), Some("PostgreSQL Unicode"))
+                .unwrap()
+                .scheme,
+            "postgres"
+        );
+        assert!(detect(Some("mystery-db"), None).is_none());
+    }
+
+    #[test]
+    fn dialect_override_accepts_ansi_and_schemes() {
+        assert!(dialect_override("ansi").is_some());
+        assert!(dialect_override("ANSI").is_some());
+        assert!(dialect_override("postgres").is_some());
+        assert!(dialect_override("nosuch").is_none());
+    }
+}

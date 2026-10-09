@@ -1,14 +1,12 @@
 //! ADBC (Arrow Database Connectivity) reader.
 //!
-//! Generic over any concrete ADBC `Driver` implementation. Verified against
-//! two drivers in this crate's tests:
+//! Generic over any concrete ADBC `Driver` implementation. Verified against:
 //!
-//! - `adbc_datafusion` — pure-Rust, in-process. Used for routing and
-//!   conversion unit tests where loading a native driver isn't worth the
-//!   build complexity.
-//! - `adbc_driver_duckdb` (loaded via `adbc_driver_manager::ManagedDriver`)
+//! - `adbc_driver_sqlite` (loaded via `adbc_driver_manager::ManagedDriver`)
 //!   — a real ADBC C driver, used for an equivalence suite that compares
-//!   `AdbcReader<DuckDB>` output against ggsql's existing `DuckDBReader`.
+//!   `AdbcReader<SQLite>` output against ggsql's existing `SqliteReader`.
+//! - the Foundry `datafusion` driver (also via `ManagedDriver`) — exercised
+//!   end-to-end by the `live_datafusion` case in `tests/dialect_live.rs`.
 //!
 //! The `Reader` trait takes `&self`, but ADBC's `Statement` API takes
 //! `&mut self`. We bridge this with `RefCell` around the `Connection`,
@@ -18,7 +16,6 @@ use crate::reader::{AnsiDialect, Reader, SqlDialect};
 use crate::{DataFrame, GgsqlError, Result};
 use adbc_core::sync::{Connection, Database, Driver};
 use std::cell::RefCell;
-use std::collections::HashSet;
 
 pub struct AdbcReader<D: Driver> {
     // Driver must stay alive as long as the Database does (per ADBC contract).
@@ -30,7 +27,10 @@ pub struct AdbcReader<D: Driver> {
     // takes &self.
     connection: RefCell<<D::DatabaseType as Database>::ConnectionType>,
     dialect: Box<dyn SqlDialect + Send>,
-    registered_tables: RefCell<HashSet<String>>,
+    registered_tables: crate::reader::RegisteredTables,
+    // Driver-specific statement options (from `stmt.`-prefixed URI params)
+    // applied to every statement created in execute_sql.
+    statement_opts: Vec<(String, String)>,
 }
 
 impl<D: Driver> AdbcReader<D> {
@@ -59,7 +59,8 @@ impl<D: Driver> AdbcReader<D> {
             _database: database,
             connection: RefCell::new(connection),
             dialect,
-            registered_tables: RefCell::new(HashSet::new()),
+            registered_tables: crate::reader::RegisteredTables::new(),
+            statement_opts: Vec::new(),
         })
     }
 
@@ -88,8 +89,54 @@ impl<D: Driver> AdbcReader<D> {
             _database: database,
             connection: RefCell::new(connection),
             dialect,
-            registered_tables: RefCell::new(HashSet::new()),
+            registered_tables: crate::reader::RegisteredTables::new(),
+            statement_opts: Vec::new(),
         })
+    }
+
+    /// Attach driver-specific *statement* options, applied to every statement
+    /// the reader creates in `execute_sql`. These come from `stmt.`-prefixed
+    /// URI params (lifted out by [`crate::reader::connection::ConnUri`]) and
+    /// exist because some
+    /// drivers expose per-query settings only at the statement level — e.g.
+    /// BigQuery's `bigquery.query.destination_table`, which is needed to
+    /// read query results from the goccy BigQuery emulator (it does not
+    /// serve anonymous result tables over the Storage Read API).
+    pub fn with_statement_opts(mut self, opts: Vec<(String, String)>) -> Self {
+        self.statement_opts = opts;
+        self
+    }
+
+    /// Create a statement for `sql` with [`Self::statement_opts`] applied —
+    /// the shared constructor behind every `set_sql_query` call site.
+    fn new_query_statement(
+        &self,
+        conn: &mut <<D as Driver>::DatabaseType as Database>::ConnectionType,
+        sql: &str,
+    ) -> Result<
+        <<<D as Driver>::DatabaseType as Database>::ConnectionType as Connection>::StatementType,
+    > {
+        let mut stmt = conn
+            .new_statement()
+            .map_err(|e| GgsqlError::ReaderError(format!("ADBC new_statement: {}", e)))?;
+        self.apply_statement_opts(&mut stmt)?;
+        stmt.set_sql_query(sql)
+            .map_err(|e| GgsqlError::ReaderError(format!("ADBC set_sql_query: {}", e)))?;
+        Ok(stmt)
+    }
+
+    /// Apply [`Self::statement_opts`] to a freshly created statement.
+    fn apply_statement_opts<S: adbc_core::Statement + ?Sized>(&self, stmt: &mut S) -> Result<()> {
+        for (key, value) in &self.statement_opts {
+            stmt.set_option(
+                OptionStatement::Other(key.clone()),
+                OptionValue::String(value.clone()),
+            )
+            .map_err(|e| {
+                GgsqlError::ReaderError(format!("ADBC set statement option '{key}': {e}"))
+            })?;
+        }
+        Ok(())
     }
 
     /// Convenience: construct with the ANSI dialect. Good default for
@@ -98,6 +145,340 @@ impl<D: Driver> AdbcReader<D> {
     pub fn from_driver(driver: D) -> Result<Self> {
         Self::new(driver, Box::new(AnsiDialect))
     }
+}
+
+// =============================================================================
+// Runtime driver loading (adbc_driver_manager)
+// =============================================================================
+
+use adbc_core::options::{AdbcVersion, OptionDatabase, OptionStatement, OptionValue};
+use adbc_driver_manager::ManagedDriver;
+
+/// Default load flags: search `ADBC_DRIVER_PATH`, then system, then user
+/// driver directories; allow relative paths so `adbc://./libfoo.so` works.
+const DEFAULT_LOAD_FLAGS: adbc_core::LoadFlags =
+    adbc_core::LOAD_FLAG_DEFAULT | adbc_core::LOAD_FLAG_ALLOW_RELATIVE_PATHS;
+
+/// ADBC driver details for a URI scheme, from the
+/// [registry](crate::reader::registry): the canonical driver library name
+/// and the dbc manifest ID.
+///
+/// Both names are needed because they are spelled differently on disk:
+/// `dbc install postgresql` writes a manifest named after its short driver
+/// ID (`postgresql.toml`), while a from-source or system-wide install is
+/// typically found under the library name (`adbc_driver_postgresql`).
+/// [`load_driver_for_scheme`] probes both.
+fn adbc_info_for_scheme(scheme: &str) -> Option<crate::reader::registry::AdbcInfo> {
+    crate::reader::registry::by_scheme(scheme).and_then(|e| e.adbc)
+}
+
+/// Map a ggsql URI scheme to the canonical ADBC driver library name.
+pub fn driver_name_for_scheme(scheme: &str) -> Option<&'static str> {
+    adbc_info_for_scheme(scheme).map(|info| info.lib_name)
+}
+
+/// Environment variable that overrides the ADBC driver for a URI scheme,
+/// e.g. `GGSQL_POSTGRES_ADBC_DRIVER=/opt/drivers/libadbc_driver_postgresql.so`.
+pub fn driver_env_var(scheme: &str) -> String {
+    crate::reader::registry::adbc_driver_env_var(scheme)
+}
+
+/// Parse a `k=v&…` query string into ADBC database options. The keys `uri`,
+/// `username`, and `password` map to their dedicated ADBC options; everything
+/// else passes through as a driver-specific option.
+fn query_params_to_opts(query: &str) -> Vec<(OptionDatabase, OptionValue)> {
+    let mut opts = Vec::new();
+    for segment in query.split('&') {
+        let Some((key, value)) = segment.split_once('=') else {
+            continue;
+        };
+        if key.is_empty() {
+            continue;
+        }
+        let opt_key = match key {
+            "uri" => OptionDatabase::Uri,
+            "username" => OptionDatabase::Username,
+            "password" => OptionDatabase::Password,
+            other => OptionDatabase::Other(other.to_string()),
+        };
+        opts.push((opt_key, OptionValue::String(value.to_string())));
+    }
+    opts
+}
+
+/// Load an ADBC driver for a scheme, honoring the per-scheme env override
+/// first, then the canonical driver name. The error message lists what was
+/// probed so users know where ggsql looked.
+fn load_driver_for_scheme(scheme: &str) -> Result<ManagedDriver> {
+    let env_var = driver_env_var(scheme);
+    if let Ok(path) = std::env::var(&env_var) {
+        return ManagedDriver::load_from_name(
+            &path,
+            None,
+            AdbcVersion::V110,
+            DEFAULT_LOAD_FLAGS,
+            None,
+        )
+        .map_err(|e| {
+            GgsqlError::ReaderError(format!(
+                "ADBC driver load failed for {}={}: {}",
+                env_var, path, e
+            ))
+        });
+    }
+    let info = adbc_info_for_scheme(scheme).ok_or_else(|| {
+        GgsqlError::ReaderError(format!("No known ADBC driver for scheme '{}://'", scheme))
+    })?;
+    let (lib_name, dbc_id) = (info.lib_name, info.dbc_id);
+    let mut errors = Vec::new();
+    for name in [lib_name, dbc_id] {
+        match ManagedDriver::load_from_name(name, None, AdbcVersion::V110, DEFAULT_LOAD_FLAGS, None)
+        {
+            Ok(driver) => return Ok(driver),
+            Err(e) => errors.push(format!("'{name}': {e}")),
+        }
+    }
+    Err(GgsqlError::ReaderError(format!(
+        "ADBC driver for '{scheme}://' not found or failed to load ({}). \
+         Searched ${env_var}, the ADBC driver paths, and system library paths. \
+         Set it explicitly with {env_var}=/path/to/driver, or use an odbc:// \
+         connection string instead.",
+        errors.join("; ")
+    )))
+}
+
+impl AdbcReader<ManagedDriver> {
+    /// Construct an `AdbcReader` from a connection URI, loading the driver
+    /// shared library at runtime.
+    ///
+    /// Two URI forms are accepted:
+    ///
+    /// - `adbc://<driver>?k=v&…` — `driver` is a canonical driver name
+    ///   (`adbc_driver_postgresql`), a known short name (`postgres`), or a
+    ///   path to a driver library/manifest; query params become ADBC
+    ///   database options (`uri=`, `username=`, `password=`, or
+    ///   driver-specific keys).
+    /// - `<scheme>://<rest>` (e.g. `postgres://user:pass@host/db`) — the
+    ///   scheme selects the driver via [`driver_name_for_scheme`]; the full
+    ///   URI is passed to the driver as the `uri` database option, with any
+    ///   `?k=v` query params passed through as additional options. Where a
+    ///   driver speaks a different wire scheme than ggsql's, the URI is
+    ///   rewritten (`clickhouse://…` → `http://…`, `mysql://…` → a
+    ///   go-sql-driver DSN, `bigquery://project/dataset` → Simba grammar);
+    ///   see [`driver_uri_for`] and [`bigquery_driver_uri`].
+    ///
+    /// The dialect is chosen from the scheme through the registry (see
+    /// [`resolve_dialect`]); unknown backends are an error, never a silent
+    /// ANSI fallback.
+    pub fn from_connection_string(uri: &str) -> Result<Self> {
+        let conn = crate::reader::connection::ConnUri::parse(uri)?;
+        let scheme = conn.scheme.as_str();
+        let body = conn.body.as_str();
+        // ggsql's own keys (`cache`, `reader`, `dialect`, cache tuning) and
+        // `stmt.`-prefixed keys were lifted out by the parse, so what remains
+        // is safe to hand to the driver's own URI/option parsing.
+        let query = conn.query_string();
+        let query = query.as_str();
+
+        let (driver, opts) = if scheme == "adbc" {
+            let driver = if adbc_info_for_scheme(body).is_some() {
+                load_driver_for_scheme(body)?
+            } else {
+                ManagedDriver::load_from_name(
+                    body,
+                    None,
+                    AdbcVersion::V110,
+                    DEFAULT_LOAD_FLAGS,
+                    None,
+                )
+                .map_err(|e| {
+                    GgsqlError::ReaderError(format!("ADBC driver '{}' failed to load: {}", body, e))
+                })?
+            };
+            (driver, query_params_to_opts(query))
+        } else {
+            let entry = crate::reader::registry::by_scheme(scheme).ok_or_else(|| {
+                GgsqlError::ReaderError(format!("No known ADBC driver for scheme '{}://'", scheme))
+            })?;
+            // Check ADBC support before loading: the env-var override in
+            // load_driver_for_scheme can otherwise succeed for schemes with
+            // no registry ADBC info (drill, monetdb) and panic here.
+            let info = entry.adbc.ok_or_else(|| {
+                GgsqlError::ReaderError(format!(
+                    "No known ADBC driver for scheme '{scheme}://'. \
+                     Use an odbc:// connection string instead."
+                ))
+            })?;
+            let driver = load_driver_for_scheme(scheme)?;
+            // The URI handed to the driver must not carry stmt.* or ggsql
+            // params — drivers parse their own URI query string and reject
+            // unknown keys. BigQuery additionally needs its URI in the
+            // driver's Simba grammar, with non-Simba params arriving only as
+            // standalone options.
+            let (driver_uri, opts_query) =
+                if info.driver_uri == crate::reader::registry::DriverUri::BigQuerySimba {
+                    bigquery_driver_uri(body, query)
+                } else {
+                    (
+                        driver_uri_for(info.driver_uri, body, &conn.to_uri()),
+                        query.to_string(),
+                    )
+                };
+            let mut opts = vec![(OptionDatabase::Uri, OptionValue::String(driver_uri))];
+            if info.params_as_options {
+                opts.extend(query_params_to_opts(&opts_query));
+            }
+            (driver, opts)
+        };
+
+        let dialect = resolve_dialect(&conn)?;
+
+        Self::new_with_database_opts(driver, dialect, opts)
+            .map(|reader| reader.with_statement_opts(conn.ggsql.stmt_options.clone()))
+    }
+}
+
+/// Pick the dialect for an ADBC connection: an explicit `dialect=` override
+/// wins; otherwise the scheme (or, for `adbc://<driver>`, the driver name)
+/// resolves through the registry. Unknown backends are an error pointing at
+/// the override — never a silent ANSI fallback.
+fn resolve_dialect(
+    conn: &crate::reader::connection::ConnUri,
+) -> Result<Box<dyn SqlDialect + Send>> {
+    if let Some(name) = &conn.ggsql.dialect {
+        return crate::reader::registry::dialect_override(name).ok_or_else(|| {
+            GgsqlError::ReaderError(format!(
+                "Unknown dialect '{name}' in connection URI. Use dialect=ansi or any \
+                 supported scheme (postgres, mysql, …)."
+            ))
+        });
+    }
+    if conn.scheme != "adbc" {
+        return Ok(crate::reader::registry::by_scheme(&conn.scheme)
+            .expect("checked by caller")
+            .dialect());
+    }
+    let body = conn.body.as_str();
+    if let Some(entry) = crate::reader::registry::by_scheme(body) {
+        return Ok(entry.dialect());
+    }
+    crate::reader::dialects::detect_dialect(None, Some(body))
+}
+
+/// Compute the URI handed to the driver as the `uri` database option,
+/// applying the registry's rewrite rule for the backend.
+fn driver_uri_for(kind: crate::reader::registry::DriverUri, body: &str, full_uri: &str) -> String {
+    use crate::reader::registry::DriverUri;
+    match kind {
+        DriverUri::Passthrough => full_uri.to_string(),
+        DriverUri::ClickHouseHttp => format!("http://{body}"),
+        DriverUri::MySqlGoDsn => {
+            let (userinfo, host_db) = match body.rsplit_once('@') {
+                Some((u, h)) => (format!("{u}@"), h),
+                None => (String::new(), body),
+            };
+            match host_db.split_once('/') {
+                Some((addr, db)) => format!("{userinfo}tcp({addr})/{db}"),
+                None => format!("{userinfo}tcp({host_db})"),
+            }
+        }
+        DriverUri::RedshiftAsPostgres => full_uri.replacen("redshift://", "postgres://", 1),
+        DriverUri::BigQuerySimba => unreachable!("handled by bigquery_driver_uri"),
+    }
+}
+
+/// Query parameters the Foundry BigQuery driver recognises in its own URI
+/// parsing — the Simba JDBC vocabulary, case-sensitive (see the driver
+/// docs). Any other key in a bigquery:// URI is handed over as a standalone
+/// database option instead: the driver rejects unknown URI params
+/// ("unknown parameter 'bigquery.auth_type' in URI"), and the canonical
+/// `bigquery.*` option names only exist as standalone options.
+const SIMBA_BIGQUERY_URI_PARAMS: &[&str] = &[
+    "OAuthType",
+    "AuthCredentials",
+    "AuthClientId",
+    "AuthClientSecret",
+    "AuthRefreshToken",
+    "DatasetId",
+    "Location",
+    "QuotaProject",
+    "ImpersonateDelegates",
+    "ImpersonateLifetime",
+    "ImpersonateScopes",
+    "ImpersonateTargetPrincipal",
+];
+
+/// Translate ggsql's `bigquery://<project>[/<dataset>]` convention into the
+/// Simba-style URI the Foundry BigQuery driver parses,
+/// `bigquery://[host[:port]]/<project>?DatasetId=<dataset>&<Simba params>`.
+///
+/// A first path segment containing '.' or ':' is treated as a host and the
+/// second as the project (Simba form, passed through) — GCP project IDs
+/// contain only lowercase letters, digits, and dashes, so they never look
+/// host-like. Otherwise the segments are ggsql's project[/dataset] and the
+/// URI is rewritten hostless (the driver defaults to
+/// bigquery.googleapis.com; endpoint overrides arrive via the
+/// `bigquery.endpoint` option, which has no URI form).
+///
+/// Returns the driver URI plus the query string to pass as standalone
+/// database options: every param outside the Simba vocabulary. Simba params
+/// stay in the URI only — passing them standalone as well would risk
+/// duplicate-arrival errors of the kind the MSSQL and Databricks drivers
+/// raise. An explicit `DatasetId` or `bigquery.dataset_id` param wins over
+/// the path dataset.
+fn bigquery_driver_uri(body: &str, query: &str) -> (String, String) {
+    let (first, second) = match body.split_once('/') {
+        Some((a, b)) => (a, Some(b)),
+        None => (body, None),
+    };
+    let host_like = first.contains('.') || first.contains(':');
+
+    let mut simba_params: Vec<&str> = Vec::new();
+    let mut standalone: Vec<&str> = Vec::new();
+    let mut dataset_param = false;
+    for segment in query.split('&') {
+        if segment.is_empty() {
+            continue;
+        }
+        let key = segment.split('=').next().unwrap_or_default();
+        if key == "DatasetId" || key == "bigquery.dataset_id" {
+            dataset_param = true;
+        }
+        if SIMBA_BIGQUERY_URI_PARAMS.contains(&key) {
+            simba_params.push(segment);
+        } else {
+            standalone.push(segment);
+        }
+    }
+
+    let mut uri = String::from("bigquery://");
+    let mut query_started = false;
+    if host_like {
+        uri.push_str(first);
+        uri.push('/');
+        if let Some(project) = second {
+            uri.push_str(project);
+        }
+    } else {
+        uri.push('/');
+        uri.push_str(first);
+        if let (Some(dataset), false) = (second, dataset_param) {
+            uri.push_str("?DatasetId=");
+            uri.push_str(dataset);
+            query_started = true;
+        }
+    }
+    if !simba_params.is_empty() {
+        uri.push(if query_started { '&' } else { '?' });
+        uri.push_str(&simba_params.join("&"));
+    }
+    (uri, standalone.join("&"))
+}
+
+/// Probe whether an ADBC driver for `scheme` can be loaded, without opening
+/// a connection. Used by reader dispatch to decide between ADBC and ODBC.
+pub fn adbc_driver_available(scheme: &str) -> bool {
+    load_driver_for_scheme(scheme).is_ok()
 }
 
 use adbc_core::sync::Statement;
@@ -128,14 +509,41 @@ where
                         .into(),
                 )
             })?;
-            let mut stmt = conn
-                .new_statement()
-                .map_err(|e| GgsqlError::ReaderError(format!("ADBC new_statement: {}", e)))?;
-            stmt.set_sql_query(sql)
-                .map_err(|e| GgsqlError::ReaderError(format!("ADBC set_sql_query: {}", e)))?;
-            let reader = stmt
-                .execute()
-                .map_err(|e| GgsqlError::ReaderError(format!("ADBC execute: {}", e)))?;
+            let mut stmt = self.new_query_statement(&mut conn, sql)?;
+            let reader = match stmt.execute() {
+                Ok(reader) => reader,
+                Err(e) => {
+                    let msg = e.to_string();
+                    // BigQuery DDL/DML jobs without a result set execute to
+                    // completion but fail at read time with "job has no
+                    // destination table to read". The statement has already
+                    // run — report an empty frame. Retrying via
+                    // execute_update would re-execute the statement, which
+                    // breaks non-idempotent DDL (a second CREATE TABLE fails
+                    // with "already exists").
+                    if msg.contains("no destination table to read") {
+                        return Ok(DataFrame::from_record_batch(RecordBatch::new_empty(
+                            std::sync::Arc::new(arrow::datatypes::Schema::empty()),
+                        )));
+                    }
+                    // The Databricks driver's query path cannot build a result
+                    // reader for statements without a result set (DDL), failing
+                    // with "schema bytes are empty" before executing. Retry via
+                    // execute_update — the ADBC path meant for exactly those
+                    // statements — and report an empty frame.
+                    if msg.contains("schema bytes are empty") {
+                        drop(stmt);
+                        let mut update_stmt = self.new_query_statement(&mut conn, sql)?;
+                        update_stmt.execute_update().map_err(|e| {
+                            GgsqlError::ReaderError(format!("ADBC execute_update: {}", e))
+                        })?;
+                        return Ok(DataFrame::from_record_batch(RecordBatch::new_empty(
+                            std::sync::Arc::new(arrow::datatypes::Schema::empty()),
+                        )));
+                    }
+                    return Err(GgsqlError::ReaderError(format!("ADBC execute: {}", e)));
+                }
+            };
 
             // Capture the declared result schema before draining batches —
             // the reader carries it even when zero batches are produced, and
@@ -158,7 +566,11 @@ where
             arrow::compute::concat_batches(&schema, &batches)
                 .map_err(|e| GgsqlError::ReaderError(format!("concat_batches: {}", e)))?
         };
-        Ok(DataFrame::from_record_batch(merged))
+        let mut batch = crate::reader::normalize_result_batch(merged)?;
+        if self.dialect.sniff_temporal_strings() {
+            batch = crate::reader::sniff_temporal_strings_in_batch(batch)?;
+        }
+        Ok(DataFrame::from_record_batch(batch))
     }
 
     fn register(&self, name: &str, df: DataFrame, replace: bool) -> Result<()> {
@@ -167,11 +579,9 @@ where
         use adbc_core::options::{IngestMode, OptionStatement, OptionValue};
         use adbc_core::Optionable;
 
-        if df.height() == 0 {
-            return Err(GgsqlError::ReaderError(
-                "AdbcReader::register: empty DataFrame not supported".into(),
-            ));
-        }
+        // Zero-row frames are fine: the CREATE below still runs, leaving an
+        // empty table — the caching reader relies on this to memoize empty
+        // query results.
         let batch = df.into_inner();
 
         let mut conn = self.connection.try_borrow_mut().map_err(|_| {
@@ -187,32 +597,19 @@ where
         // `execute_update()`. We do the CREATE ourselves (rather than relying
         // on `IngestMode::Create`) so we control the column types via the
         // `SqlDialect` and so registers behave identically across drivers
-        // with varying ingest-option support — in particular,
-        // `adbc_datafusion` 0.23 has `bind_stream` as `todo!()` and rejects
-        // the `IngestMode` option key (`set_option` returns `NotFound`),
-        // which is silently tolerated below.
+        // with varying ingest-option support — drivers that reject the
+        // `IngestMode` option key (`set_option` returns `NotFound`) are
+        // silently tolerated below.
         let schema = batch.schema();
         if replace {
-            let drop_sql = format!("DROP TABLE IF EXISTS {}", crate::naming::quote_ident(name));
-            let mut drop_stmt = conn
-                .new_statement()
-                .map_err(|e| GgsqlError::ReaderError(format!("ADBC new_statement: {}", e)))?;
-            drop_stmt
-                .set_sql_query(&drop_sql)
-                .map_err(|e| GgsqlError::ReaderError(format!("ADBC set_sql_query DROP: {}", e)))?;
-            drop_stmt
+            let drop_sql = format!("DROP TABLE IF EXISTS {}", self.dialect.quote_ident(name));
+            self.new_query_statement(&mut conn, &drop_sql)?
                 .execute_update()
                 .map_err(|e| GgsqlError::ReaderError(format!("ADBC execute_update DROP: {}", e)))?;
         }
 
-        let create_sql = create_table_sql(name, &schema, &*self.dialect)?;
-        let mut create_stmt = conn
-            .new_statement()
-            .map_err(|e| GgsqlError::ReaderError(format!("ADBC new_statement: {}", e)))?;
-        create_stmt
-            .set_sql_query(&create_sql)
-            .map_err(|e| GgsqlError::ReaderError(format!("ADBC set_sql_query CREATE: {}", e)))?;
-        create_stmt
+        let create_sql = crate::reader::create_table_sql(name, &schema, &*self.dialect)?;
+        self.new_query_statement(&mut conn, &create_sql)?
             .execute_update()
             .map_err(|e| GgsqlError::ReaderError(format!("ADBC execute_update CREATE: {}", e)))?;
 
@@ -223,62 +620,93 @@ where
         // up, and a subsequent `register(name, ..., replace=true)` will
         // drop-and-recreate. Without this, a mid-ingest failure would leave
         // an orphan table the reader can't reach.
-        self.registered_tables.borrow_mut().insert(name.to_string());
+        self.registered_tables.note_registered(name);
 
-        {
-            let mut stmt = conn
-                .new_statement()
-                .map_err(|e| GgsqlError::ReaderError(format!("ADBC new_statement: {}", e)))?;
-            stmt.set_option(
-                OptionStatement::TargetTable,
-                OptionValue::String(name.to_string()),
-            )
-            .map_err(|e| GgsqlError::ReaderError(format!("ADBC set TargetTable: {}", e)))?;
-            // Tell the driver this is an append into the table we just
-            // CREATEd above. Compliant ADBC drivers (e.g. the Apache SQLite
-            // driver) default `IngestMode` to `Create` when only `TargetTable`
-            // is set, which would then fail because the table already exists.
-            // DataFusion 0.23 doesn't expose this option key and returns
-            // `Status::NotFound` from `set_option`; that's expected for
-            // DataFusion's bind path (it appends by default), so swallow it
-            // and continue rather than failing register().
-            if let Err(e) = stmt.set_option(
-                OptionStatement::IngestMode,
-                OptionValue::from(IngestMode::Append),
-            ) {
-                if e.status != adbc_core::error::Status::NotFound {
-                    return Err(GgsqlError::ReaderError(format!(
-                        "ADBC set IngestMode=Append: {}",
-                        e
-                    )));
+        if batch.num_rows() > 0 {
+            // Ingest, with one schema-alignment retry: drivers that validate
+            // the batch against the table schema (e.g. the Foundry datafusion
+            // driver >=0.27) reject mismatches — DataFusion surfaces VARCHAR
+            // as Utf8View while our batches are Utf8. On that specific
+            // failure, align the batch to the driver-reported table schema
+            // and retry. Drivers without ingest-time validation succeed on
+            // the first attempt and never touch the schema path.
+            let mut aligned: Option<arrow::record_batch::RecordBatch> = None;
+            let mut attempts = 0;
+            loop {
+                let attempt_batch = aligned.as_ref().unwrap_or(&batch).clone();
+                let mut stmt = conn
+                    .new_statement()
+                    .map_err(|e| GgsqlError::ReaderError(format!("ADBC new_statement: {}", e)))?;
+                stmt.set_option(
+                    OptionStatement::TargetTable,
+                    OptionValue::String(name.to_string()),
+                )
+                .map_err(|e| GgsqlError::ReaderError(format!("ADBC set TargetTable: {}", e)))?;
+                // Tell the driver this is an append into the table we just
+                // CREATEd above. Compliant ADBC drivers (e.g. the Apache
+                // SQLite driver) default `IngestMode` to `Create` when only
+                // `TargetTable` is set, which would then fail because the
+                // table already exists. DataFusion drivers don't expose this
+                // option key and return `Status::NotFound` from `set_option`;
+                // that's expected for DataFusion's bind path (it appends by
+                // default), so swallow it and continue rather than failing
+                // register().
+                if let Err(e) = stmt.set_option(
+                    OptionStatement::IngestMode,
+                    OptionValue::from(IngestMode::Append),
+                ) {
+                    if e.status != adbc_core::error::Status::NotFound {
+                        return Err(GgsqlError::ReaderError(format!(
+                            "ADBC set IngestMode=Append: {}",
+                            e
+                        )));
+                    }
+                }
+                stmt.bind(attempt_batch)
+                    .map_err(|e| GgsqlError::ReaderError(format!("ADBC bind: {}", e)))?;
+                match stmt.execute_update() {
+                    Ok(_) => break,
+                    Err(e) => {
+                        if attempts == 0 && e.to_string().contains("different schema") {
+                            attempts += 1;
+                            match conn.get_table_schema(None, None, name) {
+                                Ok(target) => {
+                                    aligned = Some(align_batch_to_schema(&batch, &target)?);
+                                    continue;
+                                }
+                                Err(schema_err) => {
+                                    return Err(GgsqlError::ReaderError(format!(
+                                        "ADBC execute_update: {e} — and the \
+                                         schema-alignment fallback failed: {schema_err}"
+                                    )));
+                                }
+                            }
+                        }
+                        return Err(GgsqlError::ReaderError(format!(
+                            "ADBC execute_update: {} — \
+                             table left on server; call unregister() to drop it \
+                             or register() with replace=true to retry",
+                            e
+                        )));
+                    }
                 }
             }
-            stmt.bind(batch)
-                .map_err(|e| GgsqlError::ReaderError(format!("ADBC bind: {}", e)))?;
-            stmt.execute_update().map_err(|e| {
-                GgsqlError::ReaderError(format!(
-                    "ADBC execute_update: {} — \
-                     table left on server; call unregister() to drop it \
-                     or register() with replace=true to retry",
-                    e
-                ))
-            })?;
         }
 
         Ok(())
     }
 
     fn unregister(&self, name: &str) -> Result<()> {
-        if !self.registered_tables.borrow().contains(name) {
+        if !self.registered_tables.is_registered(name) {
             return Err(GgsqlError::ReaderError(format!(
                 "Table '{}' was not registered via this reader",
                 name
             )));
         }
-        let sql = format!("DROP TABLE IF EXISTS {}", crate::naming::quote_ident(name));
+        let sql = format!("DROP TABLE IF EXISTS {}", self.dialect.quote_ident(name));
         // Ignore the returned DataFrame — DROP TABLE has no result rows.
         self.execute_sql(&sql)?;
-        self.registered_tables.borrow_mut().remove(name);
+        self.registered_tables.note_unregistered(name);
         Ok(())
     }
 
@@ -291,340 +719,235 @@ where
     }
 }
 
-/// Build a `CREATE TABLE <name> (col1 TYPE, col2 TYPE, ...)` statement from
-/// an Arrow schema, using the reader's `SqlDialect` for type names.
-///
-/// Used by `register()` to create the destination table before binding
-/// batches with `IngestMode::Append`; see the `register` impl for context.
-fn create_table_sql(
-    name: &str,
-    schema: &arrow::datatypes::Schema,
-    dialect: &dyn SqlDialect,
-) -> Result<String> {
-    use arrow::datatypes::DataType;
+/// Cast `batch` columns to `target`'s field types (matched by position) so
+/// drivers that validate the ingest schema accept the append — e.g. the
+/// Foundry datafusion driver creates VARCHAR as Utf8View while our batches
+/// are Utf8. Columns whose types already agree pass through untouched; a
+/// column-count mismatch returns the batch unchanged and lets the driver's
+/// own validation report the problem.
+fn align_batch_to_schema(
+    batch: &arrow::record_batch::RecordBatch,
+    target: &arrow::datatypes::Schema,
+) -> Result<arrow::record_batch::RecordBatch> {
+    use std::sync::Arc;
 
-    let mut cols: Vec<String> = Vec::with_capacity(schema.fields().len());
-    for field in schema.fields() {
-        let ty_name: &str = match field.data_type() {
-            DataType::Boolean => dialect.boolean_type_name().unwrap_or("BOOLEAN"),
-            DataType::Int8
-            | DataType::Int16
-            | DataType::Int32
-            | DataType::Int64
-            | DataType::UInt8
-            | DataType::UInt16
-            | DataType::UInt32
-            | DataType::UInt64 => dialect.integer_type_name().unwrap_or("BIGINT"),
-            DataType::Float16 | DataType::Float32 | DataType::Float64 => {
-                dialect.number_type_name().unwrap_or("DOUBLE PRECISION")
-            }
-            DataType::Utf8 | DataType::LargeUtf8 | DataType::Utf8View => {
-                dialect.string_type_name().unwrap_or("VARCHAR")
-            }
-            DataType::Date32 | DataType::Date64 => dialect.date_type_name().unwrap_or("DATE"),
-            DataType::Timestamp(_, _) => dialect.datetime_type_name().unwrap_or("TIMESTAMP"),
-            DataType::Time32(_) | DataType::Time64(_) => dialect.time_type_name().unwrap_or("TIME"),
-            other => {
-                return Err(GgsqlError::ReaderError(format!(
-                    "AdbcReader::register: unsupported Arrow type for column '{}': {:?}",
-                    field.name(),
-                    other
-                )));
-            }
-        };
-        cols.push(format!(
-            "{} {}",
-            crate::naming::quote_ident(field.name()),
-            ty_name
-        ));
+    if target.fields().len() != batch.num_columns() {
+        return Ok(batch.clone());
     }
-
-    Ok(format!(
-        "CREATE TABLE {} ({})",
-        crate::naming::quote_ident(name),
-        cols.join(", ")
-    ))
+    let mut columns = Vec::with_capacity(batch.num_columns());
+    for (i, field) in target.fields().iter().enumerate() {
+        let col = batch.column(i);
+        if col.data_type() == field.data_type() {
+            columns.push(col.clone());
+        } else {
+            columns.push(arrow::compute::cast(col, field.data_type()).map_err(|e| {
+                GgsqlError::ReaderError(format!(
+                    "AdbcReader::register: cannot align column '{}' ({:?}) to \
+                     the table's {:?}: {}",
+                    field.name(),
+                    col.data_type(),
+                    field.data_type(),
+                    e
+                ))
+            })?);
+        }
+    }
+    arrow::record_batch::RecordBatch::try_new(Arc::new(target.clone()), columns).map_err(|e| {
+        GgsqlError::ReaderError(format!(
+            "AdbcReader::register: schema alignment failed: {e}"
+        ))
+    })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use adbc_datafusion::DataFusionDriver;
-
-    /// Construct a reader over an in-process DataFusion ADBC driver.
-    /// DataFusion starts empty; callers register tables via the reader's
-    /// `register()` method (added in Task 4) or via raw SQL DDL.
-    fn fixture_reader() -> AdbcReader<DataFusionDriver> {
-        AdbcReader::from_driver(DataFusionDriver::new(None)).expect("datafusion init")
-    }
 
     #[test]
-    fn execute_sql_returns_scalar_result() {
-        use crate::array_util::as_i64;
-        let reader = fixture_reader();
-        let df = reader
-            .execute_sql("SELECT 1 AS one, 'hello' AS greeting")
-            .expect("query ok");
-        assert_eq!(df.height(), 1);
-        assert_eq!(df.width(), 2);
-        let one = as_i64(df.column("one").unwrap()).unwrap().value(0);
-        assert_eq!(one, 1);
-    }
-
-    #[test]
-    fn register_then_query_roundtrip() {
-        use crate::array_util::as_i64;
-        use crate::df;
-
-        let reader = fixture_reader();
-        let df = df! {
-            "x" => vec![1i64, 2, 3],
-            "y" => vec!["a", "b", "c"],
+    fn scheme_without_adbc_info_errors_instead_of_panicking() {
+        // MonetDB/Drill have no registry ADBC info; even an env override
+        // must produce an error, not a panic on the missing entry.
+        for uri in ["monetdb://localhost:50000/db", "drill://localhost:8047"] {
+            let err = AdbcReader::from_connection_string(uri)
+                .err()
+                .expect("schemes without ADBC info must fail");
+            assert!(
+                err.to_string().contains("No known ADBC driver"),
+                "{uri}: unexpected error: {err}"
+            );
         }
-        .unwrap();
-        reader.register("t", df, false).expect("register ok");
-
-        let out = reader
-            .execute_sql("SELECT COUNT(*) AS n FROM t")
-            .expect("count ok");
-        let n = as_i64(out.column("n").unwrap()).unwrap().value(0);
-        assert_eq!(n, 3);
     }
 
     #[test]
-    fn unregister_removes_table() {
-        use crate::df;
-
-        let reader = fixture_reader();
-        let df = df! { "x" => vec![1i64] }.unwrap();
-        reader.register("tmp", df, false).unwrap();
-
-        // First unregister should succeed: table was registered via this reader.
-        reader.unregister("tmp").expect("unregister ok");
-
-        // Second unregister must fail: the name was removed from
-        // registered_tables, so the guard in unregister() triggers.
-        // This verifies the bookkeeping without triggering the
-        // adbc_datafusion 0.23 Statement::execute panic that happens on
-        // `SELECT * FROM <dropped-table>` (the driver .unwrap()s a DataFusion
-        // planning error at lib.rs:913 instead of returning a proper ADBC
-        // error — captured in Task 9 findings).
-        let err = reader.unregister("tmp").unwrap_err();
-        assert!(matches!(err, GgsqlError::ReaderError(_)));
-    }
-
-    #[test]
-    fn with_dialect_plumbs_custom_dialect_through() {
-        // Dummy dialect that overrides a recognizable method so we can verify
-        // the reader actually stored and exposes our dialect rather than the
-        // default AnsiDialect.
-        struct ShoutyDialect;
-        impl super::SqlDialect for ShoutyDialect {
-            fn integer_type_name(&self) -> Option<&str> {
-                Some("SHOUTY_BIGINT")
-            }
-        }
-
-        let reader = AdbcReader::with_dialect(DataFusionDriver::new(None), Box::new(ShoutyDialect))
-            .expect("reader");
-
-        // The Reader trait's dialect() accessor should return our ShoutyDialect.
-        assert_eq!(reader.dialect().integer_type_name(), Some("SHOUTY_BIGINT"));
-    }
-
-    #[test]
-    #[ignore = "ggsql's execute pipeline issues `CREATE OR REPLACE TEMP TABLE` for layer/stat \
-                materialization, which adbc_datafusion 0.23 rejects with `NotImplemented(\"Temporary \
-                tables not supported\")`. The full pipeline works against any driver that supports \
-                TEMP TABLE (DuckDB, Trino, etc.) — see the equivalence tests for that path."]
-    fn reader_executes_full_ggsql_visualise_query() {
-        use crate::df;
-
-        let reader = fixture_reader();
-        let data = df! {
-            "date"   => vec!["2024-01-01", "2024-01-02", "2024-01-03"],
-            "value"  => vec![10i64, 20, 30],
-            "region" => vec!["N", "S", "N"],
-        }
-        .unwrap();
-        reader.register("sales", data, false).unwrap();
-
-        let query = r#"
-            SELECT date, value, region FROM sales WHERE value > 5
-            VISUALISE date AS x, value AS y, region AS color
-            DRAW line
-        "#;
-        let spec = reader.execute(query).expect("ggsql execute ok");
-        let meta = spec.metadata();
-        // Full pipeline verification: SQL executed (3 rows after WHERE),
-        // VISUALISE parsed, plot resolved with 1 layer.
-        assert_eq!(meta.rows, 3);
-        assert_eq!(meta.layer_count, 1);
-        // The `columns` list reports the *transformed aesthetic* column names
-        // (e.g. x -> pos1, y -> pos2, color -> stroke on a line layer) not the
-        // raw SQL column names. See `test_execute_metadata` in reader/mod.rs
-        // for the same convention.
-        assert!(
-            meta.columns.iter().any(|c| c == "pos1"),
-            "expected pos1 (x aesthetic) in columns: {:?}",
-            meta.columns
+    fn driver_name_mapping() {
+        assert_eq!(
+            driver_name_for_scheme("postgres"),
+            Some("adbc_driver_postgresql")
         );
-        assert!(
-            meta.columns.iter().any(|c| c == "pos2"),
-            "expected pos2 (y aesthetic) in columns: {:?}",
-            meta.columns
+        assert_eq!(
+            driver_name_for_scheme("snowflake"),
+            Some("adbc_driver_snowflake")
         );
-        assert!(
-            meta.columns.iter().any(|c| c == "stroke"),
-            "expected stroke (color aesthetic on line) in columns: {:?}",
-            meta.columns
+        assert_eq!(driver_name_for_scheme("mysql"), Some("adbc_driver_mysql"));
+        assert_eq!(driver_name_for_scheme("trino"), Some("adbc_driver_trino"));
+        assert_eq!(
+            driver_name_for_scheme("clickhouse"),
+            Some("adbc_driver_clickhouse")
+        );
+        assert_eq!(driver_name_for_scheme("mssql"), Some("adbc_driver_mssql"));
+        assert_eq!(driver_name_for_scheme("oracle"), Some("adbc_driver_oracle"));
+        assert_eq!(driver_name_for_scheme("exasol"), Some("adbc_driver_exasol"));
+        assert_eq!(driver_name_for_scheme("druid"), Some("adbc_driver_druid"));
+        assert_eq!(driver_name_for_scheme("nosuch"), None);
+    }
+
+    #[test]
+    fn driver_uri_rewrites_clickhouse_and_strips_query() {
+        use crate::reader::registry::DriverUri;
+        // Credentials must travel as dedicated options, not in the URL.
+        assert_eq!(
+            driver_uri_for(
+                DriverUri::ClickHouseHttp,
+                "localhost:8123",
+                "clickhouse://localhost:8123?username=default&password=secret"
+            ),
+            "http://localhost:8123"
+        );
+        assert_eq!(
+            driver_uri_for(
+                DriverUri::Passthrough,
+                "u:p@h/db",
+                "postgres://u:p@h/db?sslmode=disable"
+            ),
+            "postgres://u:p@h/db?sslmode=disable"
         );
     }
 
     #[test]
-    fn execute_sql_handles_multi_batch_result() {
-        use crate::array_util::as_i64;
-        use crate::df;
-
-        // Register a 50k-row frame. DataFusion's default batch size is typically
-        // around 8k rows, so the result read-side should produce >1 RecordBatch
-        // and exercise the `for batch in reader` loop.
-        let reader = fixture_reader();
-        let xs: Vec<i64> = (0..50_000i64).collect();
-        let df = df! { "x" => xs }.unwrap();
-        reader.register("big", df, false).expect("register ok");
-
-        let out = reader
-            .execute_sql("SELECT x FROM big ORDER BY x")
-            .expect("query ok");
-        assert_eq!(out.height(), 50_000);
-
-        // Spot-check: first + last rows should round-trip correctly.
-        let col = out.column("x").unwrap();
-        let arr = as_i64(col).unwrap();
-        assert_eq!(arr.value(0), 0);
-        assert_eq!(arr.value(49_999), 49_999);
+    fn driver_uri_translates_mysql_to_go_dsn() {
+        use crate::reader::registry::DriverUri;
+        assert_eq!(
+            driver_uri_for(
+                DriverUri::MySqlGoDsn,
+                "root:pw@localhost:3306/ggsql",
+                "mysql://root:pw@localhost:3306/ggsql"
+            ),
+            "root:pw@tcp(localhost:3306)/ggsql"
+        );
+        assert_eq!(
+            driver_uri_for(
+                DriverUri::MySqlGoDsn,
+                "localhost:3306/ggsql",
+                "mariadb://localhost:3306/ggsql"
+            ),
+            "tcp(localhost:3306)/ggsql"
+        );
     }
 
     #[test]
-    fn execute_sql_handles_nulls() {
-        use crate::array_util::as_i64;
-        use arrow::array::Array;
-
-        let reader = fixture_reader();
-        // Use DataFusion DDL to create a table with a NULL.
-        reader
-            .execute_sql("CREATE TABLE nulltest (x BIGINT) AS VALUES (1), (NULL), (3)")
-            .expect("ddl ok");
-
-        let out = reader
-            .execute_sql("SELECT x FROM nulltest ORDER BY x NULLS LAST")
-            .expect("query ok");
-        assert_eq!(out.height(), 3);
-
-        let col = out.column("x").unwrap();
-        let arr = as_i64(col).unwrap();
-        // Row 2 should be NULL in the returned DataFrame.
-        assert!(arr.is_null(2));
-        // Rows 0 and 1 are the non-null values.
-        assert_eq!(arr.value(0), 1);
-        assert_eq!(arr.value(1), 3);
+    fn driver_uri_translates_bigquery_to_simba_grammar() {
+        // ggsql's project/dataset form becomes a hostless Simba URI;
+        // canonical bigquery.* params travel as standalone options only.
+        assert_eq!(
+            bigquery_driver_uri("my-proj/my_ds", "bigquery.auth_type=anonymous"),
+            (
+                "bigquery:///my-proj?DatasetId=my_ds".to_string(),
+                "bigquery.auth_type=anonymous".to_string()
+            )
+        );
+        assert_eq!(
+            bigquery_driver_uri("my-proj", ""),
+            ("bigquery:///my-proj".to_string(), String::new())
+        );
+        assert_eq!(
+            bigquery_driver_uri(
+                "localhost:9050/ggsql-test",
+                "DatasetId=x&bigquery.endpoint=http://localhost:9050"
+            ),
+            (
+                "bigquery://localhost:9050/ggsql-test?DatasetId=x".to_string(),
+                "bigquery.endpoint=http://localhost:9050".to_string()
+            )
+        );
+        assert_eq!(
+            bigquery_driver_uri("proj/ds1", "bigquery.dataset_id=ds2"),
+            (
+                "bigquery:///proj".to_string(),
+                "bigquery.dataset_id=ds2".to_string()
+            )
+        );
     }
 
     #[test]
-    #[ignore]
-    fn bench_register_and_query_100k_rows() {
-        use crate::array_util::as_i64;
-        use crate::df;
-        use std::time::Instant;
-
-        let reader = fixture_reader();
-        let n = 100_000i64;
-        let xs: Vec<i64> = (0..n).collect();
-        let df = df! { "x" => xs }.unwrap();
-
-        let t0 = Instant::now();
-        reader.register("big", df, false).unwrap();
-        let reg_ms = t0.elapsed().as_millis();
-
-        let t1 = Instant::now();
-        let out = reader.execute_sql("SELECT COUNT(*) AS n FROM big").unwrap();
-        let q_ms = t1.elapsed().as_millis();
-
-        let n_out = as_i64(out.column("n").unwrap()).unwrap().value(0);
-        assert_eq!(n_out, n);
-        eprintln!("register 100k rows: {} ms | query: {} ms", reg_ms, q_ms);
+    fn driver_uri_rewrites_redshift_scheme() {
+        // pgx rejects redshift://; the driver is the PostgreSQL one.
+        assert_eq!(
+            driver_uri_for(
+                crate::reader::registry::DriverUri::RedshiftAsPostgres,
+                "u:p@h:5439/db",
+                "redshift://u:p@h:5439/db?sslmode=disable"
+            ),
+            "postgres://u:p@h:5439/db?sslmode=disable"
+        );
     }
 
-    /// Issue #12: `execute_sql` must hold `conn.borrow_mut()` only long enough
-    /// to build + execute the Statement — the returned `RecordBatchReader` is
-    /// `Box<dyn ... + 'static>`, so iteration must not require the statement
-    /// or the connection borrow to stay alive.
-    ///
-    /// This mirrors the exact borrow pattern `execute_sql` uses post-fix:
-    /// borrow, build+execute, drop the borrow, then iterate. It also kicks
-    /// off a second `execute_sql` while the first stream is still alive —
-    /// only possible if the first borrow was released.
     #[test]
-    fn record_batch_reader_outlives_statement_and_allows_second_query() {
-        use arrow::array::RecordBatchReader as _;
-
-        let reader = fixture_reader();
-
-        let stream = {
-            // Use `try_borrow_mut` here to mirror `execute_sql`'s production
-            // path — if this ever panics in the test, the fix in `execute_sql`
-            // has regressed and the borrow scope has crept wider again.
-            let mut conn = reader
-                .connection
-                .try_borrow_mut()
-                .expect("fresh reader should allow a mutable borrow");
-            let mut stmt = conn.new_statement().expect("new_statement");
-            stmt.set_sql_query("SELECT 1 AS v UNION ALL SELECT 2 UNION ALL SELECT 3")
-                .expect("set_sql_query");
-            stmt.execute().expect("execute")
-            // `stmt` and the `RefMut<Connection>` both drop here.
+    fn uri_parsing_drivers_reject_standalone_options() {
+        let params_as_options = |scheme: &str| {
+            crate::reader::registry::by_scheme(scheme)
+                .and_then(|e| e.adbc)
+                .map(|i| i.params_as_options)
         };
-
-        // With the borrow released, another query on the same reader must
-        // work while `stream` is still live.
-        let df2 = reader
-            .execute_sql("SELECT 42 AS answer")
-            .expect("second query");
-        assert_eq!(df2.height(), 1);
-
-        // `stream` must still iterate — it does not depend on `stmt` or the
-        // original borrow. `schema()` is called before `collect()` consumes
-        // the reader.
-        let schema = stream.schema();
-        let batches = stream
-            .collect::<std::result::Result<Vec<_>, _>>()
-            .expect("drain");
-        let total: usize = batches.iter().map(|b| b.num_rows()).sum();
-        assert_eq!(total, 3);
-        assert_eq!(schema.fields().len(), 1);
-        assert_eq!(schema.field(0).name(), "v");
+        assert_eq!(params_as_options("mssql"), Some(false));
+        assert_eq!(params_as_options("databricks"), Some(false));
+        assert_eq!(params_as_options("spark"), Some(false));
+        assert_eq!(params_as_options("druid"), Some(false));
+        assert_eq!(params_as_options("postgres"), Some(true));
+        assert_eq!(params_as_options("clickhouse"), Some(true));
+        assert_eq!(params_as_options("exasol"), Some(true));
     }
 
     #[test]
-    fn execute_sql_handles_empty_result_with_schema() {
-        let reader = fixture_reader();
-        let df = reader
-            .execute_sql("SELECT 1 AS a, 'x' AS b WHERE false")
-            .expect("query ok");
-        // The schema is preserved on zero-batch results: we now pull the
-        // declared schema off the `RecordBatchReader` *before* draining
-        // batches and hand it to the IPC bridge so an empty result still
-        // produces a 0-row DataFrame with the correct columns.
-        assert_eq!(df.height(), 0);
-        assert_eq!(df.width(), 2);
-        let names: Vec<String> = df
-            .get_column_names()
-            .iter()
-            .map(|s| s.to_string())
-            .collect();
-        assert!(names.contains(&"a".to_string()));
-        assert!(names.contains(&"b".to_string()));
+    fn driver_names_include_dbc_manifest_id() {
+        // dbc names manifests by short ID (`postgresql.toml`), which differs
+        // from the library name — both must be available for probing, or a
+        // `dbc install`-based setup is never found (first seen as a CI
+        // failure where dbc-installed drivers were not discovered).
+        let names = |scheme: &str| adbc_info_for_scheme(scheme).map(|i| (i.lib_name, i.dbc_id));
+        assert_eq!(
+            names("postgres"),
+            Some(("adbc_driver_postgresql", "postgresql"))
+        );
+        assert_eq!(
+            names("redshift"),
+            Some(("adbc_driver_postgresql", "postgresql"))
+        );
+        assert_eq!(names("trino"), Some(("adbc_driver_trino", "trino")));
+        assert_eq!(names("mariadb"), Some(("adbc_driver_mysql", "mysql")));
+        assert_eq!(names("nosuch"), None);
+    }
+
+    #[test]
+    fn from_connection_string_unknown_driver_errors() {
+        let err = AdbcReader::<ManagedDriver>::from_connection_string("adbc://nosuchdriver?uri=x")
+            .err()
+            .expect("load must fail");
+        assert!(err.to_string().contains("nosuchdriver"), "got: {err}");
+    }
+
+    #[test]
+    fn from_connection_string_rejects_malformed_uri() {
+        assert!(AdbcReader::<ManagedDriver>::from_connection_string("no-scheme").is_err());
+    }
+
+    #[test]
+    fn query_params_map_to_adbc_options() {
+        let opts =
+            query_params_to_opts("uri=postgresql://h/db&username=u&password=p&sslmode=require");
+        assert!(matches!(opts[0].0, OptionDatabase::Uri));
+        assert!(matches!(opts[1].0, OptionDatabase::Username));
+        assert!(matches!(opts[2].0, OptionDatabase::Password));
+        assert!(matches!(&opts[3].0, OptionDatabase::Other(k) if k == "sslmode"));
     }
 }
 

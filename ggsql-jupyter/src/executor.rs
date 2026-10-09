@@ -64,6 +64,13 @@ impl std::fmt::Debug for ExecutionResult {
     }
 }
 
+/// The host portion of a `user:pass@host:port/db` URI body.
+fn host_of(body: &str) -> &str {
+    let after_auth = body.rsplit_once('@').map(|(_, h)| h).unwrap_or(body);
+    let hostport = after_auth.split('/').next().unwrap_or("");
+    hostport.split(':').next().unwrap_or("")
+}
+
 /// Generate a human-readable display name for a connection URI.
 pub fn display_name_for_uri(uri: &str) -> String {
     if uri == "duckdb://memory" {
@@ -87,28 +94,32 @@ pub fn display_name_for_uri(uri: &str) -> String {
         }
         return "ODBC".to_string();
     }
+    // Backend schemes: registry display name plus the parsed host.
+    if let Ok(conn) = ggsql::reader::connection::ConnUri::parse(uri) {
+        if let Some(entry) = ggsql::reader::registry::by_scheme(&conn.scheme) {
+            let host = host_of(&conn.body);
+            if !host.is_empty() {
+                return format!("{} ({})", entry.display_name, host);
+            }
+            return entry.display_name.to_string();
+        }
+    }
     uri.to_string()
 }
 
 /// Detect the database type name from a connection URI (e.g. "DuckDB", "Snowflake").
 pub fn type_name_for_uri(uri: &str) -> String {
-    if uri.starts_with("duckdb://") {
-        return "DuckDB".to_string();
-    }
-    if uri.starts_with("sqlite://") {
-        return "SQLite".to_string();
-    }
     if let Some(odbc) = uri.strip_prefix("odbc://") {
-        if let Some(driver) = extract_odbc_value(odbc, "driver") {
-            let lower = driver.to_lowercase();
-            if lower.contains("snowflake") {
-                return "Snowflake".to_string();
-            }
-            if lower.contains("postgresql") {
-                return "PostgreSQL".to_string();
-            }
+        let driver = extract_odbc_value(odbc, "driver");
+        if let Some(entry) = ggsql::reader::registry::detect(None, driver.as_deref()) {
+            return entry.display_name.to_string();
         }
         return "ODBC".to_string();
+    }
+    if let Ok(conn) = ggsql::reader::connection::ConnUri::parse(uri) {
+        if let Some(entry) = ggsql::reader::registry::by_scheme(&conn.scheme) {
+            return entry.display_name.to_string();
+        }
     }
     "Unknown".to_string()
 }
@@ -130,6 +141,12 @@ pub fn host_for_uri(uri: &str) -> String {
     if let Some(odbc) = uri.strip_prefix("odbc://") {
         if let Some(server) = extract_odbc_value(odbc, "server") {
             return server;
+        }
+    }
+    if let Ok(conn) = ggsql::reader::connection::ConnUri::parse(uri) {
+        let host = host_of(&conn.body);
+        if !host.is_empty() {
+            return host.to_string();
         }
     }
     uri.to_string()
@@ -428,5 +445,14 @@ mod tests {
             "pg-test (ODBC)"
         );
         assert_eq!(display_name_for_uri("odbc://"), "ODBC");
+        // Registry-backed schemes get display name + parsed host.
+        assert_eq!(
+            display_name_for_uri("postgres://user:pw@db.example.com:5432/sales"),
+            "PostgreSQL (db.example.com)"
+        );
+        assert_eq!(
+            display_name_for_uri("snowflake://acct.snowflakecomputing.com/wh"),
+            "Snowflake (acct.snowflakecomputing.com)"
+        );
     }
 }

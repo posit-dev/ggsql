@@ -35,11 +35,6 @@ jobs:
       - name: Install LLVM
         run: sudo apt-get install -y llvm
 
-      - name: Install protobuf compiler
-        # adbc_datafusion (dev-dep) → datafusion → substrait → prost-build,
-        # which invokes `protoc` at build time. Required for the ADBC test path.
-        run: sudo apt-get install -y protobuf-compiler
-
       - name: Install renderer system libraries
         # Two separate needs, conflated easily:
         #
@@ -101,9 +96,9 @@ jobs:
       - name: Check the library builds on CRAN's toolchain (MSRV 1.86)
         # The one step that actually proves the 1.86 floor — delete it and the
         # MSRV silently rots. Keep the two flags: `--ignore-rust-version`
-        # bypasses `parley`'s *declared* 1.88, and library-only avoids the
-        # `adbc` dev-dependency path, which needs 1.88 for real. Background:
-        # /CLAUDE.md, "Rust version (MSRV)".
+        # bypasses `parley`'s *declared* 1.88, and library-only keeps the
+        # dev-dependency graph out of the check.
+        # Background: /CLAUDE.md, "Rust version (MSRV)".
         run: cargo +1.86 check --ignore-rust-version -p ggsql
 
       - name: Run tree-sitter tests
@@ -123,6 +118,15 @@ jobs:
 
       - name: Run ADBC SQLite equivalence tests
         run: cargo test --features "adbc sqlite" --lib -- --ignored equivalence
+
+      - name: Warm the dialect-live test variant
+        # dialect-live.yml's compile job builds exactly this variant
+        # ("adbc sqlite", the dialect_live integration-test target) and
+        # restores this workflow's cache via the same shared-key. Building
+        # it here on main keeps the feature-delta fingerprints in the saved
+        # cache, so the compile job only ever rebuilds the workspace crates.
+        # --no-run: warming only, the legs run the binary.
+        run: cargo test -p ggsql --features "adbc sqlite" --test dialect_live --no-run
 
       - name: Run GPU-free writer tests
         # svg, pdf and hep are default features and need no adapter, so these

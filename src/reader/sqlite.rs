@@ -3,137 +3,18 @@
 //! Provides a reader for SQLite databases with Arrow DataFrame integration.
 //! Works on both native targets and wasm32-unknown-unknown (via sqlite-wasm-rs).
 
-use crate::reader::{CacheBackend, Reader};
+use crate::reader::Reader;
 use crate::{naming, DataFrame, GgsqlError, Result};
 use arrow::array::*;
 use arrow::datatypes::{DataType, TimeUnit};
 use chrono::Datelike;
 use rusqlite::Connection;
-use std::cell::RefCell;
-use std::collections::HashSet;
 use std::sync::Arc;
 
-/// SQLite SQL dialect.
-///
-/// Overrides type name methods for SQLite's limited type system
-/// (TEXT for dates, REAL for numbers, INTEGER for booleans).
-pub struct SqliteDialect;
-
-impl super::SqlDialect for SqliteDialect {
-    fn string_type_name(&self) -> Option<&str> {
-        Some("TEXT")
-    }
-
-    fn number_type_name(&self) -> Option<&str> {
-        Some("REAL")
-    }
-
-    fn integer_type_name(&self) -> Option<&str> {
-        Some("INTEGER")
-    }
-
-    fn boolean_type_name(&self) -> Option<&str> {
-        Some("INTEGER")
-    }
-
-    fn date_type_name(&self) -> Option<&str> {
-        Some("TEXT")
-    }
-
-    fn datetime_type_name(&self) -> Option<&str> {
-        Some("TEXT")
-    }
-
-    fn time_type_name(&self) -> Option<&str> {
-        Some("TEXT")
-    }
-
-    fn sql_date_literal(&self, days_since_epoch: i32) -> String {
-        format!("date('1970-01-01', '+{} days')", days_since_epoch)
-    }
-
-    fn sql_datetime_literal(&self, microseconds_since_epoch: i64) -> String {
-        let seconds = microseconds_since_epoch as f64 / 1_000_000.0;
-        format!("datetime('1970-01-01 00:00:00', '+{} seconds')", seconds)
-    }
-
-    fn sql_time_literal(&self, nanoseconds_since_midnight: i64) -> String {
-        let seconds = nanoseconds_since_midnight as f64 / 1_000_000_000.0;
-        format!("time('00:00:00', '+{} seconds')", seconds)
-    }
-
-    fn sql_boolean_literal(&self, value: bool) -> String {
-        if value {
-            "1".to_string()
-        } else {
-            "0".to_string()
-        }
-    }
-
-    fn sql_spatial_setup(&self) -> Vec<String> {
-        vec![
-            "SELECT load_extension('mod_spatialite')".into(),
-            "SELECT CASE WHEN NOT EXISTS(SELECT 1 FROM sqlite_master WHERE name='spatial_ref_sys') \
-             THEN InitSpatialMetaData(1) END"
-                .into(),
-        ]
-    }
-
-    fn sql_st_transform(&self, column: &str, source_crs: &str, target_crs: &str) -> String {
-        let source_srid = super::extract_epsg_srid(source_crs);
-        let target_srid = super::extract_epsg_srid(target_crs);
-        match (source_srid, target_srid) {
-            (Some(src), Some(tgt)) => {
-                format!("ST_Transform(SetSRID({}, {}), {})", column, src, tgt)
-            }
-            _ => {
-                let source_proj = source_crs.replace('\'', "''");
-                let target_proj = target_crs.replace('\'', "''");
-                let input = match source_srid {
-                    Some(srid) => format!("SetSRID({}, {})", column, srid),
-                    None => column.to_string(),
-                };
-                format!(
-                    "ST_Transform({}, 0, NULL, '{}', '{}')",
-                    input, source_proj, target_proj
-                )
-            }
-        }
-    }
-
-    fn sql_make_envelope(&self, xmin: f64, ymin: f64, xmax: f64, ymax: f64) -> String {
-        format!("BuildMbr({xmin}, {ymin}, {xmax}, {ymax})")
-    }
-
-    fn sql_ensure_geometry(&self, column: &str) -> String {
-        format!("COALESCE(GeomFromWKB({column}, 4326), {column})")
-    }
-
-    fn sql_geometry_bbox(&self, column: &str, from: &str) -> String {
-        format!(
-            "SELECT MIN(MbrMinX({column})) AS xmin, MIN(MbrMinY({column})) AS ymin, \
-                    MAX(MbrMaxX({column})) AS xmax, MAX(MbrMaxY({column})) AS ymax \
-             FROM {from}"
-        )
-    }
-
-    /// Stock SQLite has no `STDDEV_POP` / `VAR_POP`, so express variance,
-    /// standard deviation, and standard error in portable arithmetic. Every
-    /// other aggregate falls through to the shared default.
-    fn sql_aggregate(&self, name: &str, qcol: &str) -> Option<String> {
-        // Population variance with a `MAX(0, …)` floor against tiny negative
-        // floats from catastrophic cancellation. Both `MAX(a, b)` and `SQRT`
-        // are scalar functions in modern bundled SQLite (math-functions build).
-        let var_pop = || format!("MAX(0.0, AVG({c} * {c}) - AVG({c}) * AVG({c}))", c = qcol);
-        let s = match name {
-            "var" => var_pop(),
-            "sdev" => format!("SQRT({})", var_pop()),
-            "se" => format!("(SQRT({}) / SQRT(COUNT({c})))", var_pop(), c = qcol),
-            _ => return super::default_sql_aggregate(name, qcol),
-        };
-        Some(s)
-    }
-}
+// The SQLite dialect lives in `super::dialects::sqlite` alongside every other
+// backend dialect; re-exported here so `reader::sqlite::SqliteDialect` keeps
+// working for existing callers.
+pub use super::dialects::SqliteDialect;
 
 /// SQLite database reader
 ///
@@ -141,7 +22,7 @@ impl super::SqlDialect for SqliteDialect {
 /// and returns results as DataFrames.
 pub struct SqliteReader {
     conn: Connection,
-    registered_tables: RefCell<HashSet<String>>,
+    registered_tables: crate::reader::RegisteredTables,
 }
 
 impl SqliteReader {
@@ -156,7 +37,7 @@ impl SqliteReader {
         }
         Ok(Self {
             conn,
-            registered_tables: RefCell::new(HashSet::new()),
+            registered_tables: crate::reader::RegisteredTables::new(),
         })
     }
 
@@ -194,7 +75,7 @@ impl SqliteReader {
         }
         Ok(Self {
             conn,
-            registered_tables: RefCell::new(HashSet::new()),
+            registered_tables: crate::reader::RegisteredTables::new(),
         })
     }
 
@@ -208,10 +89,9 @@ impl SqliteReader {
     /// When `internal` is false, filters out internal tables (prefixed with `__ggsql_`).
     pub fn list_tables(&self, internal: bool) -> Vec<String> {
         self.registered_tables
-            .borrow()
-            .iter()
+            .names()
+            .into_iter()
             .filter(|name| internal || !name.starts_with("__ggsql_"))
-            .cloned()
             .collect()
     }
 
@@ -376,12 +256,6 @@ fn to_sql_value(v: &dyn rusqlite::types::ToSql) -> Option<rusqlite::types::Value
     }
 }
 
-impl CacheBackend for SqliteReader {
-    fn new_in_memory() -> Result<Self> {
-        Self::new()
-    }
-}
-
 impl Reader for SqliteReader {
     fn execute_sql(&self, sql: &str) -> Result<DataFrame> {
         // Handle ggsql:name namespaced identifiers (builtin datasets)
@@ -466,7 +340,7 @@ impl Reader for SqliteReader {
                 self.conn.execute(&sql, []).map_err(|e| {
                     GgsqlError::ReaderError(format!("Failed to drop table '{}': {}", name, e))
                 })?;
-                self.registered_tables.borrow_mut().remove(name);
+                self.registered_tables.note_unregistered(name);
             } else {
                 return Err(GgsqlError::ReaderError(format!(
                     "Table '{}' already exists",
@@ -547,12 +421,12 @@ impl Reader for SqliteReader {
             }
         }
 
-        self.registered_tables.borrow_mut().insert(name.to_string());
+        self.registered_tables.note_registered(name);
         Ok(())
     }
 
     fn unregister(&self, name: &str) -> Result<()> {
-        if !self.registered_tables.borrow().contains(name) {
+        if !self.registered_tables.is_registered(name) {
             return Err(GgsqlError::ReaderError(format!(
                 "Table '{}' was not registered via this reader",
                 name
@@ -564,7 +438,7 @@ impl Reader for SqliteReader {
             GgsqlError::ReaderError(format!("Failed to unregister table '{}': {}", name, e))
         })?;
 
-        self.registered_tables.borrow_mut().remove(name);
+        self.registered_tables.note_unregistered(name);
         Ok(())
     }
 

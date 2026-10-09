@@ -269,7 +269,7 @@ pub trait GeomTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
         let aes = self.aesthetics();
         for axis in aes.dummy_axes() {
             if !types::axis_family_has_mapping(aesthetics, axis) {
-                result = types::wrap_stat_with_dummy_axis(query, result, axis);
+                result = types::wrap_stat_with_dummy_axis(query, result, axis, dialect);
             }
         }
 
@@ -373,28 +373,34 @@ pub(crate) fn project_position_columns(
         return Ok(query.to_string());
     }
 
-    let pos1 = naming::quote_ident(&naming::aesthetic_column("pos1"));
-    let pos2 = naming::quote_ident(&naming::aesthetic_column("pos2"));
-    let point_expr = format!("ST_Point({pos1}, {pos2})");
+    let pos1 = dialect.quote_ident(&naming::aesthetic_column("pos1"));
+    let pos2 = dialect.quote_ident(&naming::aesthetic_column("pos2"));
+    let point_expr = dialect.sql_st_point(&pos1, &pos2);
     let transformed = dialect.sql_st_transform(&point_expr, source, target);
-    let proj_col = naming::quote_ident("__ggsql_proj_pt__");
+    let proj_col = dialect.quote_ident("__ggsql_proj_pt__");
 
-    let inner = format!("SELECT *, {transformed} AS {proj_col} FROM ({query})");
+    let inner = crate::sql::Select::new(dialect)
+        .select_star_plus(&[format!("{transformed} AS {proj_col}")], "__ggsql_proj__")
+        .from_aliased(query, "__ggsql_proj__")
+        .build();
     let x_expr = format!("ST_X({proj_col})");
     let y_expr = format!("ST_Y({proj_col})");
 
     // Build a column list that replaces pos1 and pos2 with projected values
     // and drops the temporary projected-point column.
     if columns.is_empty() {
-        return Ok(format!(
-            "SELECT {x_expr} AS {pos1}, {y_expr} AS {pos2}, * \
-             FROM ({inner}) \"__ggsql_pp__\""
-        ));
+        return Ok(crate::sql::Select::new(dialect)
+            .select_plus_star(
+                &[format!("{x_expr} AS {pos1}"), format!("{y_expr} AS {pos2}")],
+                "__ggsql_pp__",
+            )
+            .from_aliased(&inner, "__ggsql_pp__")
+            .build());
     }
     let select_list: Vec<String> = columns
         .iter()
         .map(|c| {
-            let qc = naming::quote_ident(c);
+            let qc = dialect.quote_ident(c);
             if qc == pos1 {
                 format!("{x_expr} AS {pos1}")
             } else if qc == pos2 {
@@ -404,9 +410,11 @@ pub(crate) fn project_position_columns(
             }
         })
         .collect();
-    Ok(format!(
-        "SELECT {} FROM ({inner}) \"__ggsql_pp__\"",
-        select_list.join(", ")
+    Ok(crate::sql::select_from(
+        dialect,
+        &select_list.join(", "),
+        &inner,
+        "__ggsql_pp__",
     ))
 }
 
@@ -457,8 +465,15 @@ pub(crate) fn densify_edges(
     segment_length: f64,
     n_segments: usize,
 ) -> String {
-    let pos1 = naming::quote_ident(&naming::aesthetic_column("pos1"));
-    let pos2 = naming::quote_ident(&naming::aesthetic_column("pos2"));
+    let pos1 = dialect.quote_ident(&naming::aesthetic_column("pos1"));
+    let pos2 = dialect.quote_ident(&naming::aesthetic_column("pos2"));
+    let __ggsql_edge_idx__ = dialect.quote_ident("__ggsql_edge_idx__");
+    let __ggsql_next_pos1__ = dialect.quote_ident("__ggsql_next_pos1__");
+    let __ggsql_next_pos2__ = dialect.quote_ident("__ggsql_next_pos2__");
+    let __ggsql_seg_len__ = dialect.quote_ident("__ggsql_seg_len__");
+    let __ggsql_src__ = dialect.quote_ident("__ggsql_src__");
+    let __ggsql_seq__ = dialect.quote_ident("__ggsql_seq__");
+    let __ggsql_edges__ = dialect.quote_ident("__ggsql_edges__");
 
     // Continuous aesthetics to interpolate: columns - partition_by - positions
     let pos1_col = naming::aesthetic_column("pos1");
@@ -470,8 +485,8 @@ pub(crate) fn densify_edges(
 
     // Ordering column (raw column name, already unquoted)
     let order_col = match domain_order {
-        Some(col) => naming::quote_ident(col),
-        None => "\"__ggsql_edge_idx__\"".to_string(),
+        Some(col) => dialect.quote_ident(col),
+        None => __ggsql_edge_idx__.clone(),
     };
 
     // PARTITION BY clause for window functions
@@ -480,7 +495,7 @@ pub(crate) fn densify_edges(
     } else {
         let parts: Vec<String> = partition_by
             .iter()
-            .map(|c| naming::quote_ident(c))
+            .map(|c| dialect.quote_ident(c))
             .collect();
         format!("PARTITION BY {}", parts.join(", "))
     };
@@ -495,10 +510,16 @@ pub(crate) fn densify_edges(
 
     // Synthesize row ordering for path/polygon
     let indexed_query = if domain_order.is_none() {
-        format!(
-            "SELECT *, ROW_NUMBER() OVER ({partition_clause} ORDER BY (SELECT NULL)) \
-             AS \"__ggsql_edge_idx__\" FROM ({query})"
-        )
+        crate::sql::Select::new(dialect)
+            .select_star_plus(
+                &[format!(
+                    "ROW_NUMBER() OVER ({partition_clause} ORDER BY (SELECT NULL)) \
+                     AS {__ggsql_edge_idx__}"
+                )],
+                "__ggsql_indexed__",
+            )
+            .from_aliased(query, "__ggsql_indexed__")
+            .build()
     } else {
         query.to_string()
     };
@@ -506,24 +527,24 @@ pub(crate) fn densify_edges(
     // LEAD expressions for positions — polygon closes the ring via FIRST_VALUE fallback
     let pos1_lead = if close_ring {
         format!(
-            "COALESCE(LEAD({pos1}) OVER w, FIRST_VALUE({pos1}) OVER w) AS \"__ggsql_next_pos1__\""
+            "COALESCE(LEAD({pos1}) OVER w, FIRST_VALUE({pos1}) OVER w) AS {__ggsql_next_pos1__}"
         )
     } else {
-        format!("LEAD({pos1}) OVER w AS \"__ggsql_next_pos1__\"")
+        format!("LEAD({pos1}) OVER w AS {__ggsql_next_pos1__}")
     };
     let pos2_lead = if close_ring {
         format!(
-            "COALESCE(LEAD({pos2}) OVER w, FIRST_VALUE({pos2}) OVER w) AS \"__ggsql_next_pos2__\""
+            "COALESCE(LEAD({pos2}) OVER w, FIRST_VALUE({pos2}) OVER w) AS {__ggsql_next_pos2__}"
         )
     } else {
-        format!("LEAD({pos2}) OVER w AS \"__ggsql_next_pos2__\"")
+        format!("LEAD({pos2}) OVER w AS {__ggsql_next_pos2__}")
     };
 
     // LEAD expressions for continuous aesthetics
     let mut cont_leads = String::new();
     for c in &continuous_cols {
-        let qc = naming::quote_ident(c);
-        let alias = format!("\"__ggsql_next_{}\"", c.replace('"', ""));
+        let qc = dialect.quote_ident(c);
+        let alias = dialect.quote_ident(&format!("__ggsql_next_{}", c.replace('"', "")));
         if close_ring {
             cont_leads.push_str(&format!(
                 ", COALESCE(LEAD({qc}) OVER w, FIRST_VALUE({qc}) OVER w) AS {alias}"
@@ -535,45 +556,49 @@ pub(crate) fn densify_edges(
 
     // Segment length (Euclidean in source CRS units)
     let seg_len = format!(
-        "SQRT(POWER(\"__ggsql_next_pos1__\" - {pos1}, 2) + \
-         POWER(\"__ggsql_next_pos2__\" - {pos2}, 2))"
+        "SQRT(POWER({__ggsql_next_pos1__} - {pos1}, 2) + \
+         POWER({__ggsql_next_pos2__} - {pos2}, 2))"
     );
 
     // Edges CTE: original rows + LEAD columns + segment length
-    let edges_query = format!(
-        "SELECT *, {pos1_lead}, {pos2_lead}{cont_leads}, \
-         {seg_len} AS \"__ggsql_seg_len__\" \
-         FROM ({indexed_query}) \"__ggsql_src__\" \
-         WINDOW w AS ({window_def})"
-    );
+    let mut edge_extras = vec![pos1_lead, pos2_lead];
+    if !cont_leads.is_empty() {
+        edge_extras.push(cont_leads.trim_start_matches(", ").to_string());
+    }
+    edge_extras.push(format!("{seg_len} AS {__ggsql_seg_len__}"));
+    let edges_query = crate::sql::Select::new(dialect)
+        .select_star_plus(&edge_extras, "__ggsql_src__")
+        .from_aliased(&indexed_query, "__ggsql_src__")
+        .window(format!("w AS ({window_def})"))
+        .build();
 
     // Interpolation: n / CEIL(seg_len / threshold) gives fraction [0, 1)
     let threshold_lit = format!("{:.6}", segment_length);
-    let n_subdivs = format!("CEIL(\"__ggsql_seg_len__\" / {threshold_lit})");
+    let n_subdivs = dialect.sql_ceil(&format!("{__ggsql_seg_len__} / {threshold_lit}"));
 
     // SELECT list
     let mut select_parts: Vec<String> = Vec::new();
 
     // Discrete columns — unchanged
     for c in partition_by {
-        select_parts.push(naming::quote_ident(c));
+        select_parts.push(dialect.quote_ident(c));
     }
 
     // Interpolation fraction
-    let frac = format!("CAST(\"__ggsql_seq__\".n AS REAL) / {n_subdivs}");
+    let frac = format!("CAST({__ggsql_seq__}.n AS REAL) / {n_subdivs}");
 
     // Position columns — interpolated; COALESCE handles the last vertex (NULL next)
     select_parts.push(format!(
-        "{pos1} + COALESCE((\"__ggsql_next_pos1__\" - {pos1}) * ({frac}), 0.0) AS {pos1}"
+        "{pos1} + COALESCE(({__ggsql_next_pos1__} - {pos1}) * ({frac}), 0.0) AS {pos1}"
     ));
     select_parts.push(format!(
-        "{pos2} + COALESCE((\"__ggsql_next_pos2__\" - {pos2}) * ({frac}), 0.0) AS {pos2}"
+        "{pos2} + COALESCE(({__ggsql_next_pos2__} - {pos2}) * ({frac}), 0.0) AS {pos2}"
     ));
 
     // Continuous aesthetics — interpolated
     for c in &continuous_cols {
-        let qc = naming::quote_ident(c);
-        let next = format!("\"__ggsql_next_{}\"", c.replace('"', ""));
+        let qc = dialect.quote_ident(c);
+        let next = dialect.quote_ident(&format!("__ggsql_next_{}", c.replace('"', "")));
         select_parts.push(format!(
             "{qc} + COALESCE(({next} - {qc}) * ({frac}), 0.0) AS {qc}"
         ));
@@ -581,31 +606,31 @@ pub(crate) fn densify_edges(
 
     // WHERE: emit n < subdivisions per segment; for open geoms, keep last vertex
     let where_clause = if close_ring {
-        format!("\"__ggsql_seq__\".n < {n_subdivs}")
+        format!("{__ggsql_seq__}.n < {n_subdivs}")
     } else {
         format!(
-            "(\"__ggsql_next_pos1__\" IS NOT NULL AND \"__ggsql_seq__\".n < {n_subdivs}) \
-             OR (\"__ggsql_next_pos1__\" IS NULL AND \"__ggsql_seq__\".n = 0)"
+            "({__ggsql_next_pos1__} IS NOT NULL AND {__ggsql_seq__}.n < {n_subdivs}) \
+             OR ({__ggsql_next_pos1__} IS NULL AND {__ggsql_seq__}.n = 0)"
         )
     };
 
     // ORDER BY
     let order_parts = if partition_by.is_empty() {
-        format!("{order_col}, \"__ggsql_seq__\".n")
+        format!("{order_col}, {__ggsql_seq__}.n")
     } else {
         let parts: Vec<String> = partition_by
             .iter()
-            .map(|c| naming::quote_ident(c))
+            .map(|c| dialect.quote_ident(c))
             .collect();
-        format!("{}, {order_col}, \"__ggsql_seq__\".n", parts.join(", "))
+        format!("{}, {order_col}, {__ggsql_seq__}.n", parts.join(", "))
     };
 
     format!(
         "WITH {seq_cte}, \
-         \"__ggsql_edges__\" AS ({edges_query}) \
+         {__ggsql_edges__} AS ({edges_query}) \
          SELECT {select} \
-         FROM \"__ggsql_edges__\" \
-         CROSS JOIN \"__ggsql_seq__\" \
+         FROM {__ggsql_edges__} \
+         CROSS JOIN {__ggsql_seq__} \
          WHERE {where_clause} \
          ORDER BY {order_parts}",
         select = select_parts.join(", "),

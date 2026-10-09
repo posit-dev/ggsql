@@ -164,6 +164,15 @@ cargo test --package ggsql --no-default-features --features "duckdb,vegalite"
 
 Unit tests live alongside the code (`#[cfg(test)] mod tests`). Integration tests at the bottom of `lib.rs` exercise the end-to-end pipeline against DuckDB and Vega-Lite (gated on both features).
 
+### Dialect conformance tests
+
+Generated SQL is checked per dialect in two tiers that share one canonical case battery, [`tests/battery/mod.rs`](tests/battery/mod.rs) — included by both tiers via `#[path]` so the case list and dataset exist exactly once:
+
+- **Tier 1 — golden SQL tests**, [`execute/golden.rs`](execute/golden.rs). Runs the battery once per dialect against a `StubReader` that records every statement, and compares the emitted SQL against checked-in baselines under [`golden/<dialect>.sql`](golden/). It lives in `src/execute/` (not `src/reader/`) because it drives full query execution — these tests catch *composition* errors that per-function dialect unit tests cannot. Regenerate after an intentional SQL change with `GGSQL_BLESS=1 cargo test -p ggsql --lib golden` and review the diff like any other code change.
+- **Tier 2 — live-backend tests**, [`tests/dialect_live.rs`](tests/dialect_live.rs). Runs the same battery against real database servers. Each backend is enabled by a `GGSQL_TEST_URI_<BACKEND>` env var holding a connection URI; unset means skip-and-pass, so the suite is safe to run unconditionally.
+
+The caching layer has its own equivalence suite, [`reader/cache_equivalence.rs`](reader/cache_equivalence.rs), which checks that reads through a `CachingReader` return the same results as reads against the primary directly.
+
 ## See also
 
 - [`/CLAUDE.md`](../CLAUDE.md) — workspace overview, build/test for everything.

@@ -8,6 +8,7 @@
 
 use crate::array_util::*;
 use crate::plot::{AestheticValue, ArrayElement, ColumnInfo, Layer, ParameterValue, Schema};
+use crate::reader::SqlDialect;
 use crate::{naming, DataFrame, Result};
 use arrow::array::Array;
 use arrow::datatypes::{DataType, TimeUnit};
@@ -15,34 +16,49 @@ use arrow::datatypes::{DataType, TimeUnit};
 /// Simple type info tuple: (name, dtype, is_discrete)
 pub type TypeInfo = (String, DataType, bool);
 
-/// Build SQL query to compute min and max for all columns
+/// Alias of the MIN column paired with `name` in [`build_minmax_query`]'s
+/// single result row.
+fn min_column_name(name: &str) -> String {
+    format!("__ggsql_min_{name}")
+}
+
+/// Alias of the MAX column paired with `name` in [`build_minmax_query`]'s
+/// single result row.
+fn max_column_name(name: &str) -> String {
+    format!("__ggsql_max_{name}")
+}
+
+/// Build SQL query to compute min and max for all columns.
 ///
-/// Generates a query that returns two rows:
-/// - Row 0: MIN of each column
-/// - Row 1: MAX of each column
-pub fn build_minmax_query(source_query: &str, column_names: &[&str]) -> String {
-    let min_exprs: Vec<String> = column_names
+/// Generates a single-row, single-scan query: every column's MIN under
+/// [`min_column_name`] and its MAX under [`max_column_name`]. The source is
+/// referenced exactly once — a twice-referenced CTE over a temporary table
+/// fails on MySQL (error 1137, "Can't reopen table"), and MIN+MAX in one
+/// pass avoids the second scan a UNION ALL of MIN/MAX branches would cost.
+/// The aliases must NOT reuse the bare column name: ClickHouse lets sibling
+/// SELECT items reference aliases, so `MIN(id) AS id` turns the MAX branch
+/// into `MAX(MIN(id))` (error 184, ILLEGAL_AGGREGATION).
+pub fn build_minmax_query(
+    source_query: &str,
+    column_names: &[&str],
+    dialect: &dyn SqlDialect,
+) -> String {
+    let exprs: Vec<String> = column_names
         .iter()
         .map(|name| {
-            let q = naming::quote_ident(name);
-            format!("MIN({q}) AS {q}")
+            let q = dialect.quote_ident(name);
+            let min_alias = dialect.quote_ident(&min_column_name(name));
+            let max_alias = dialect.quote_ident(&max_column_name(name));
+            format!("MIN({q}) AS {min_alias}, MAX({q}) AS {max_alias}")
         })
         .collect();
 
-    let max_exprs: Vec<String> = column_names
-        .iter()
-        .map(|name| {
-            let q = naming::quote_ident(name);
-            format!("MAX({q}) AS {q}")
-        })
-        .collect();
-
-    format!(
-        "WITH \"__ggsql_source__\" AS ({}) SELECT {} FROM \"__ggsql_source__\" UNION ALL SELECT {} FROM \"__ggsql_source__\"",
-        source_query,
-        min_exprs.join(", "),
-        max_exprs.join(", ")
-    )
+    let __ggsql_source__ = dialect.quote_ident("__ggsql_source__");
+    crate::sql::Select::new(dialect)
+        .with_cte(&__ggsql_source__, source_query)
+        .select(exprs.join(", "))
+        .from(&__ggsql_source__)
+        .build()
 }
 
 /// Extract a value from a DataFrame at a given column and row index
@@ -106,6 +122,12 @@ pub fn extract_series_value(
                 .ok()
                 .map(|a| ArrayElement::Number(a.value(row) as f64))
         }
+        DataType::Date64 => {
+            // Millisecond-precision days: convert to days since epoch
+            as_date64(col)
+                .ok()
+                .map(|a| ArrayElement::Number(a.value(row) as f64 / 86_400_000.0))
+        }
         DataType::Timestamp(_, _) => {
             // Return numeric microseconds since epoch (for range computation)
             as_timestamp_us(col)
@@ -131,15 +153,18 @@ pub fn extract_series_value(
 /// 1. fetch_schema_types() - get dtypes only (before casting)
 /// 2. Apply casting to queries
 /// 3. complete_schema_ranges() - get min/max from cast queries
-pub fn fetch_schema_types<F>(query: &str, execute_query: &F) -> Result<Vec<TypeInfo>>
+pub fn fetch_schema_types<F>(
+    query: &str,
+    execute_query: &F,
+    dialect: &dyn crate::reader::SqlDialect,
+) -> Result<Vec<TypeInfo>>
 where
     F: Fn(&str) -> Result<DataFrame>,
 {
-    let schema_query = format!(
-        "SELECT * FROM ({}) AS {} LIMIT 1",
-        query,
-        naming::SCHEMA_ALIAS
-    );
+    let schema_query = crate::sql::Select::new(dialect)
+        .select_star()
+        .from_aliased(query, naming::SCHEMA_ALIAS)
+        .build_limited(1);
     let schema_df = execute_query(&schema_query)?;
 
     let schema = schema_df.schema();
@@ -165,6 +190,7 @@ pub fn complete_schema_ranges<F>(
     query: &str,
     type_info: &[TypeInfo],
     execute_query: &F,
+    dialect: &dyn SqlDialect,
 ) -> Result<Schema>
 where
     F: Fn(&str) -> Result<DataFrame>,
@@ -175,15 +201,17 @@ where
 
     // Build and execute min/max query
     let column_names: Vec<&str> = type_info.iter().map(|(n, _, _)| n.as_str()).collect();
-    let minmax_query = build_minmax_query(query, &column_names);
+    let minmax_query = build_minmax_query(query, &column_names, dialect);
     let range_df = execute_query(&minmax_query)?;
 
-    // Extract min (row 0) and max (row 1) for each column
+    // The single result row holds every column's MIN under min_column_name
+    // and its MAX under max_column_name.
     let schema = type_info
         .iter()
         .map(|(name, dtype, is_discrete)| {
-            let min = extract_series_value(&range_df, name, 0);
-            let max = extract_series_value(&range_df, name, 1);
+            let first = extract_series_value(&range_df, &min_column_name(name), 0);
+            let second = extract_series_value(&range_df, &max_column_name(name), 0);
+            let (min, max) = merge_extent_rows(first, second);
             ColumnInfo {
                 name: name.clone(),
                 dtype: dtype.clone(),
@@ -195,6 +223,50 @@ where
         .collect();
 
     Ok(schema)
+}
+
+/// Merge the MIN and MAX extent values into a (min, max) pair. A missing
+/// value (all-NULL column or empty source) is mirrored from the other,
+/// matching the degenerate single-value case where MIN and MAX coincide.
+fn merge_extent_rows(
+    first: Option<ArrayElement>,
+    second: Option<ArrayElement>,
+) -> (Option<ArrayElement>, Option<ArrayElement>) {
+    match (first, second) {
+        (Some(a), Some(b)) => {
+            if array_element_le(&a, &b) {
+                (Some(a), Some(b))
+            } else {
+                (Some(b), Some(a))
+            }
+        }
+        (Some(a), None) => {
+            let b = a.clone();
+            (Some(a), Some(b))
+        }
+        (None, Some(b)) => {
+            let a = b.clone();
+            (Some(a), Some(b))
+        }
+        (None, None) => (None, None),
+    }
+}
+
+/// Natural ordering for extent merging. Same-variant pairs compare by
+/// their inner value; anything else (mismatched variants, Null) keeps the
+/// original row order, which is no worse than the positional read this
+/// replaces.
+fn array_element_le(a: &ArrayElement, b: &ArrayElement) -> bool {
+    use ArrayElement as E;
+    match (a, b) {
+        (E::Number(x), E::Number(y)) => x <= y,
+        (E::String(x), E::String(y)) => x <= y,
+        (E::Boolean(x), E::Boolean(y)) => !x | y,
+        (E::Date(x), E::Date(y)) => x <= y,
+        (E::DateTime(x), E::DateTime(y)) => x <= y,
+        (E::Time(x), E::Time(y)) => x <= y,
+        _ => true,
+    }
 }
 
 /// Convert type info to schema (without min/max).
@@ -366,4 +438,52 @@ pub fn build_aesthetic_schema(layer: &Layer, schema: &Schema) -> Schema {
     }
 
     aesthetic_schema
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::reader::AnsiDialect;
+
+    /// The single minmax row carries MIN under min_column_name and MAX
+    /// under max_column_name.
+    #[test]
+    fn minmax_reads_min_and_max_columns() {
+        let type_info: Vec<TypeInfo> = vec![
+            ("id".to_string(), DataType::Int32, false),
+            ("val".to_string(), DataType::Float64, false),
+        ];
+        let row = crate::df! {
+            "__ggsql_min_id" => vec![1i32],
+            "__ggsql_max_id" => vec![8i32],
+            "__ggsql_min_val" => vec![1.5f64],
+            "__ggsql_max_val" => vec![8.5f64],
+        }
+        .unwrap();
+        let execute = |_sql: &str| Ok(row.clone());
+        let schema =
+            complete_schema_ranges("SELECT id, val FROM t", &type_info, &execute, &AnsiDialect)
+                .unwrap();
+        assert_eq!(schema[0].min, Some(ArrayElement::Number(1.0)));
+        assert_eq!(schema[0].max, Some(ArrayElement::Number(8.0)));
+        assert_eq!(schema[1].min, Some(ArrayElement::Number(1.5)));
+        assert_eq!(schema[1].max, Some(ArrayElement::Number(8.5)));
+    }
+
+    /// A NULL MAX (all-NULL column) mirrors the MIN, matching the degenerate
+    /// single-value case.
+    #[test]
+    fn minmax_missing_value_mirrors() {
+        let type_info: Vec<TypeInfo> = vec![("id".to_string(), DataType::Int32, false)];
+        let row = crate::df! {
+            "__ggsql_min_id" => vec![Some(5i32)],
+            "__ggsql_max_id" => vec![None::<i32>],
+        }
+        .unwrap();
+        let execute = |_sql: &str| Ok(row.clone());
+        let schema =
+            complete_schema_ranges("SELECT id FROM t", &type_info, &execute, &AnsiDialect).unwrap();
+        assert_eq!(schema[0].min, Some(ArrayElement::Number(5.0)));
+        assert_eq!(schema[0].max, Some(ArrayElement::Number(5.0)));
+    }
 }
