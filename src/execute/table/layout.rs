@@ -1,7 +1,7 @@
 //! Table-cell resolution: turns already-resolved columns, spans and a
-//! `FORMAT`-applied `DataFrame` into the positioned `TableCell`/`TableRow`
-//! grid `ResolvedTable` holds, assembling the `Section` building blocks
-//! from `crate::table::layout`.
+//! `FORMAT`-applied `DataFrame` into the `TableLayout` `ResolvedTable`
+//! holds, assembling parts with the `create_*` helpers from
+//! `crate::table::layout`.
 
 use std::collections::HashMap;
 
@@ -11,8 +11,8 @@ use crate::array_util::value_to_string;
 use crate::plot::Labels;
 use crate::table::{
     compose_header, create_caption, create_column_labels, create_heading, create_spanners,
-    move_stub_columns, reorder_table_columns, rowbind, validate_overlaps, Section, TableCell,
-    TableCellKind, TableClass, TableColumn, TableRow,
+    move_stub_columns, reorder_table_columns, TableCell, TableCellKind, TableClass, TableColumn,
+    TableLayout, TableRow,
 };
 use crate::{DataFrame, Format, Result, Spanner};
 
@@ -31,28 +31,28 @@ pub(super) fn setup_columns(
     move_stub_columns(columns)
 }
 
-/// Build the resolved cell layout for a table from its already-resolved
+/// Build the resolved `TableLayout` for a table from its already-resolved
 /// `columns` and already-`FORMAT`-applied `df` — spanner rows, column
-/// labels, and body, composed together and checked for overlaps.
+/// labels, and body, composed together and validated.
 pub(super) fn build_cells(
     df: &DataFrame,
-    columns: &[TableColumn],
+    columns: Vec<TableColumn>,
     spans: &[Spanner],
     title: Option<&str>,
     subtitle: Option<&str>,
     caption: Option<&str>,
-) -> Result<(Vec<TableCell>, Vec<TableRow>)> {
-    let ncol = columns.len();
-    let spanners = create_spanners(columns, spans);
+) -> Result<TableLayout> {
+    let spanners = create_spanners(&columns, spans);
     // Every label empty means `LABEL col => NULL` (or `=> ''`) on every
     // column, since an unlabeled column keeps its (non-empty) name — omit
     // the row rather than render blank header cells.
     let column_labels = if columns.iter().all(|c| c.label.is_empty()) {
-        Section::new(Vec::new(), Vec::new())
+        TableLayout::new(columns.clone(), Vec::new(), Vec::new())
     } else {
-        let mut label_cells = create_stubhead(columns);
-        label_cells.extend(create_column_labels(columns));
-        Section::new(
+        let mut label_cells = create_stubhead(&columns);
+        label_cells.extend(create_column_labels(&columns));
+        TableLayout::new(
+            columns.clone(),
             vec![TableRow {
                 classes: vec![TableClass::ColHeadingRow],
                 ..TableRow::header()
@@ -61,18 +61,22 @@ pub(super) fn build_cells(
         )
     };
     let header = compose_header(spanners, column_labels);
-    let heading = create_heading(title, subtitle, ncol);
-    let header = rowbind(heading, header);
-    let mut body_cells = create_row_labels(df, columns);
-    body_cells.extend(create_body(df, columns));
-    let table_body = Section::new(vec![TableRow::default(); df.height()], body_cells);
-    let section = rowbind(header, table_body);
-    let caption_section = create_caption(caption, ncol);
-    let section = rowbind(section, caption_section);
+    let heading = create_heading(title, subtitle, &columns);
+    let header = heading.rowbind(header);
+    let mut body_cells = create_row_labels(df, &columns);
+    body_cells.extend(create_body(df, &columns));
+    let table_body = TableLayout::new(
+        columns.clone(),
+        vec![TableRow::default(); df.height()],
+        body_cells,
+    );
+    let layout = header.rowbind(table_body);
+    let caption_layout = create_caption(caption, &columns);
+    let layout = layout.rowbind(caption_layout);
 
-    validate_overlaps(&section.cells)?;
+    layout.validate()?;
 
-    Ok((section.cells, section.rows))
+    Ok(layout)
 }
 
 /// Build one `TableColumn` per `DataFrame` column, in the `DataFrame`'s own
@@ -164,7 +168,7 @@ mod tests {
     /// Runs the same steps `resolve_table_with_reader` does, minus the
     /// `Reader`/SQL execution — lets a test build a `Table`'s resolved cells
     /// directly against a `df!()`-built `DataFrame`.
-    fn resolve_section(df: &DataFrame, table: &Table) -> Result<Section> {
+    fn resolve_layout(df: &DataFrame, table: &Table) -> Result<TableLayout> {
         let mut labels = table.labels.clone();
         let (title, subtitle, caption) = extract_heading_labels(&mut labels);
         let column_names = df.get_column_names();
@@ -174,20 +178,19 @@ mod tests {
         let formats = setup_formats(df, &table.formats, &spans)?;
         let columns = setup_columns(df, &spans, &labels, &formats);
         let df = apply_formats(df, &formats)?;
-        let (cells, rows) = build_cells(
+        build_cells(
             &df,
-            &columns,
+            columns,
             &spans,
             title.as_deref(),
             subtitle.as_deref(),
             caption.as_deref(),
-        )?;
-        Ok(Section::new(rows, cells))
+        )
     }
 
-    /// `resolve_section`, for the (common) tests that only care about cells.
+    /// `resolve_layout`, for the (common) tests that only care about cells.
     fn resolve_cells(df: &DataFrame, table: &Table) -> Result<Vec<TableCell>> {
-        resolve_section(df, table).map(|section| section.cells)
+        resolve_layout(df, table).map(|layout| layout.cells)
     }
 
     fn column(name: &str, label: &str) -> TableColumn {
@@ -547,7 +550,7 @@ mod tests {
     fn build_cells_surfaces_a_genuine_spanner_overlap_as_an_error() {
         // (a,b) auto-assigns level 1; (b,c) is explicitly pinned to level 1
         // too, and neither reordering nor level assignment resolves that —
-        // build_cells should surface this via validate_overlaps, not
+        // build_cells should surface this via TableLayout::validate, not
         // silently produce a broken layout.
         let frame = df! {
             "a" => vec![1i32],
@@ -684,7 +687,7 @@ mod tests {
     }
 
     #[test]
-    fn resolve_section_marks_heading_and_col_heading_rows() {
+    fn resolve_layout_marks_heading_and_col_heading_rows() {
         let frame = df! {
             "id" => vec![1i32],
         }
@@ -699,20 +702,20 @@ mod tests {
             .labels
             .insert("subtitle".to_string(), Some("Subtitle".to_string()));
 
-        let section = resolve_section(&frame, &table).unwrap();
+        let layout = resolve_layout(&frame, &table).unwrap();
 
         // Title (row 0), Subtitle (row 1), ColumnLabel (row 2), Body (row 3).
-        assert_eq!(section.rows.len(), 4);
-        assert_eq!(section.rows[0].classes, vec![TableClass::Heading]);
-        assert_eq!(section.rows[1].classes, vec![TableClass::Heading]);
-        assert_eq!(section.rows[2].classes, vec![TableClass::ColHeadingRow]);
-        assert!(section.rows[3].classes.is_empty());
+        assert_eq!(layout.rows.len(), 4);
+        assert_eq!(layout.rows[0].classes, vec![TableClass::Heading]);
+        assert_eq!(layout.rows[1].classes, vec![TableClass::Heading]);
+        assert_eq!(layout.rows[2].classes, vec![TableClass::ColHeadingRow]);
+        assert!(layout.rows[3].classes.is_empty());
         // Title/Subtitle/ColumnLabel are all header rows; only the body row
         // isn't.
-        assert!(section.rows[0].is_header);
-        assert!(section.rows[1].is_header);
-        assert!(section.rows[2].is_header);
-        assert!(!section.rows[3].is_header);
+        assert!(layout.rows[0].is_header);
+        assert!(layout.rows[1].is_header);
+        assert!(layout.rows[2].is_header);
+        assert!(!layout.rows[3].is_header);
     }
 
     #[test]

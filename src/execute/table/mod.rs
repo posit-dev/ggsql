@@ -4,7 +4,7 @@
 //! resolution, or facet handling here — just the one data query, plus
 //! resolving that data into positioned `TableCell`s. `FORMAT STUB` lives in
 //! `stub`, `FORMAT` values and settings in `format`, and cell/row grid
-//! construction in `layout`; the `Section` assembly and `SPAN` resolution
+//! construction in `layout`; the `TableLayout` assembly and `SPAN` resolution
 //! it composes live in `crate::table`.
 
 mod format;
@@ -68,16 +68,22 @@ pub fn resolve_table_with_reader(query: &str, reader: &dyn Reader) -> Result<Res
     let formats = setup_formats(&df, &table.formats, &spans)?;
     let columns = setup_columns(&df, &spans, &labels, &formats);
     let df = apply_formats(&df, &formats)?;
-    let (cells, rows) = build_cells(
+    let layout = build_cells(
         &df,
-        &columns,
+        columns,
         &spans,
         title.as_deref(),
         subtitle.as_deref(),
         caption.as_deref(),
     )?;
 
-    Ok(ResolvedTable::new(cells, columns, rows, sql, warnings))
+    Ok(ResolvedTable::new(
+        layout.cells,
+        layout.columns,
+        layout.rows,
+        sql,
+        warnings,
+    ))
 }
 
 /// Resolves a mixed selection like `TABULATE foo, bar AS Baz, *`: named

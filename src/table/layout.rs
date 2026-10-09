@@ -302,7 +302,7 @@ impl TableCell {
 /// One column's identity within a table layout: its source name and
 /// resolved display label/properties, as resolved by
 /// `create_table_columns`.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TableColumn {
     /// The column's name in the resolved `DataFrame` — used to look its
     /// values up in `create_body`, independent of display order.
@@ -442,30 +442,132 @@ mod tests {
     }
 }
 
-/// One layout part's cells alongside one `TableRow` **per row index it
-/// occupies** — not one per cell, since several cells can share a row (a
-/// column-label row has one cell per column, but is still a single row).
-/// Every `create_*` helper below builds both together, so `rows` is never
-/// derived from `cells` and a row's classification (`is_header`, `Heading`)
-/// is decided where its cells are built.
+/// A table's layout: its cells alongside one `TableRow` **per row index they
+/// occupy** — not one per cell, since several cells can share a row (a
+/// column-label row has one cell per column, but is still a single row) —
+/// and one `TableColumn` per column index. Both the build-time composition
+/// unit and the resolved handoff to a writer: every `create_*` helper below
+/// builds all three together, so `rows` is never derived from `cells` and a
+/// row's classification (`is_header`, `Heading`) is decided where its cells
+/// are built.
 ///
 /// `pub(crate)` so `execute::table` (`build_cells`) and the sibling
 /// `spanner` module can build one.
-pub(crate) struct Section {
+pub(crate) struct TableLayout {
+    pub(crate) columns: Vec<TableColumn>,
     pub(crate) rows: Vec<TableRow>,
     pub(crate) cells: Vec<TableCell>,
 }
 
-impl Section {
-    /// Build a `Section`, `debug_assert`ing that `rows.len()` matches the
-    /// row extent `cells` implies.
-    pub(crate) fn new(rows: Vec<TableRow>, cells: Vec<TableCell>) -> Section {
+impl TableLayout {
+    /// Build a `TableLayout`, `debug_assert`ing that `rows.len()` matches
+    /// the row extent `cells` implies and that `cells` stays within
+    /// `columns`' width — a part-way layout (e.g. spanners covering only
+    /// some columns) may be narrower; `validate` requires the full width
+    /// once composed.
+    pub(crate) fn new(
+        columns: Vec<TableColumn>,
+        rows: Vec<TableRow>,
+        cells: Vec<TableCell>,
+    ) -> TableLayout {
         debug_assert_eq!(
             rows.len(),
             count_cell_rows(&cells),
-            "Section's row count doesn't match its own cells' row extent"
+            "TableLayout's row count doesn't match its own cells' row extent"
         );
-        Section { rows, cells }
+        debug_assert!(
+            columns.len() >= count_cell_cols(&cells),
+            "TableLayout's cells exceed its columns' width"
+        );
+        TableLayout {
+            columns,
+            rows,
+            cells,
+        }
+    }
+
+    /// Number of rows in the layout — heading, spanner, and column-label
+    /// rows included, not just data rows.
+    pub(crate) fn nrow(&self) -> usize {
+        self.rows.len()
+    }
+
+    /// Number of columns in the layout.
+    pub(crate) fn ncol(&self) -> usize {
+        self.columns.len()
+    }
+
+    /// Stack `bottom` below `self`, offsetting `bottom`'s cells down by
+    /// `self`'s row extent and concatenating both sides' `rows` — no
+    /// offsetting needed there, since a `TableRow`'s position *is* its
+    /// index, unlike a `TableCell`'s rectangle.
+    pub(crate) fn rowbind(self, mut bottom: TableLayout) -> TableLayout {
+        debug_assert_eq!(
+            self.columns, bottom.columns,
+            "rowbind both sides to have identical columns"
+        );
+        if self.cells.is_empty() {
+            return bottom;
+        }
+        if bottom.cells.is_empty() {
+            return self;
+        }
+
+        let row_offset = self.nrow();
+        for cell in &mut bottom.cells {
+            cell.offset_rows(row_offset);
+        }
+
+        let mut rows = self.rows;
+        rows.extend(bottom.rows);
+        let mut cells = self.cells;
+        cells.extend(bottom.cells);
+
+        TableLayout::new(self.columns, rows, cells)
+    }
+
+    /// Check a fully composed layout: `rows` and `columns` match the extents
+    /// `cells` implies, and no two cells claim the same grid position.
+    ///
+    /// The overlap check walks every cell's full footprint into a map of
+    /// occupied positions to the `TableCellKind` that claimed each one,
+    /// erroring — naming both kinds — on the first double claim.
+    /// `O(total cell area)`.
+    pub(crate) fn validate(&self) -> Result<()> {
+        let row_extent = count_cell_rows(&self.cells);
+        if self.rows.len() != row_extent {
+            return Err(GgsqlError::ValidationError(format!(
+                "Table layout has {} rows but its cells span {row_extent}",
+                self.rows.len()
+            )));
+        }
+        if !self.cells.is_empty() {
+            let col_extent = count_cell_cols(&self.cells);
+            if self.columns.len() != col_extent {
+                return Err(GgsqlError::ValidationError(format!(
+                    "Table layout has {} columns but its cells span {col_extent}",
+                    self.columns.len()
+                )));
+            }
+        }
+
+        let mut occupied: std::collections::HashMap<(usize, usize), TableCellKind> =
+            std::collections::HashMap::new();
+
+        for cell in &self.cells {
+            for row in cell.top..=cell.bottom {
+                for col in cell.left..=cell.right {
+                    if let Some(existing_kind) = occupied.insert((row, col), cell.kind) {
+                        return Err(GgsqlError::ValidationError(format!(
+                            "Table layout has a {existing_kind} cell and a {} cell clashing at row {row}, column {col}",
+                            cell.kind
+                        )));
+                    }
+                }
+            }
+        }
+
+        Ok(())
     }
 
     /// Consume `self` into just its cells.
@@ -474,35 +576,15 @@ impl Section {
         self.cells
     }
 }
-/// Stack `bottom` below `top`, offsetting `bottom`'s cells down by `top`'s
-/// row extent and concatenating both sides' `rows` — no offsetting needed
-/// there, since a `TableRow`'s position *is* its index, unlike a
-/// `TableCell`'s rectangle.
-pub(crate) fn rowbind(top: Section, mut bottom: Section) -> Section {
-    if top.cells.is_empty() {
-        return bottom;
-    }
-    if bottom.cells.is_empty() {
-        return top;
-    }
-
-    let row_offset = top.rows.len();
-    for cell in &mut bottom.cells {
-        cell.offset_rows(row_offset);
-    }
-
-    let mut rows = top.rows;
-    rows.extend(bottom.rows);
-    let mut cells = top.cells;
-    cells.extend(bottom.cells);
-
-    Section::new(rows, cells)
-}
 /// Build the title/subtitle heading rows (gt's `title_row`/`subtitle_row`),
 /// each spanning the table's full width and numbered locally from
 /// `top == 0`. Each row carries `TableClass::Heading` (gt's `gt_heading`).
-pub(crate) fn create_heading(title: Option<&str>, subtitle: Option<&str>, ncol: usize) -> Section {
-    let right = ncol.saturating_sub(1);
+pub(crate) fn create_heading(
+    title: Option<&str>,
+    subtitle: Option<&str>,
+    columns: &[TableColumn],
+) -> TableLayout {
+    let right = columns.len().saturating_sub(1);
     let mut cells = Vec::new();
     if let Some(title) = title {
         cells.push(
@@ -531,28 +613,29 @@ pub(crate) fn create_heading(title: Option<&str>, subtitle: Option<&str>, ncol: 
         };
         cells.len()
     ];
-    Section::new(rows, cells)
+    TableLayout::new(columns.to_vec(), rows, cells)
 }
 /// Build the caption cell (gt's `tab_caption()`), spanning the table's full
 /// width at local row 0; `rowbind` places it at the very end of the layout.
 /// `HtmlWriter` pulls this cell out of the grid before rendering, since HTML
 /// requires `<caption>` outside `<thead>`/`<tbody>`. Its row carries no
 /// class — a caption never lands in a rendered `<tr>`.
-pub(crate) fn create_caption(caption: Option<&str>, ncol: usize) -> Section {
+pub(crate) fn create_caption(caption: Option<&str>, columns: &[TableColumn]) -> TableLayout {
     match caption {
-        Some(caption) => Section::new(
+        Some(caption) => TableLayout::new(
+            columns.to_vec(),
             vec![TableRow::default()],
             vec![TableCell::new(
                 TableCellKind::Caption,
                 0,
                 0,
                 0,
-                ncol.saturating_sub(1),
+                columns.len().saturating_sub(1),
                 caption.to_string(),
             )
             .with_classes(vec![TableClass::Caption])],
         ),
-        None => Section::new(Vec::new(), Vec::new()),
+        None => TableLayout::new(columns.to_vec(), Vec::new(), Vec::new()),
     }
 }
 /// Build one `ColumnLabel` cell per non-stub column, numbered locally from
@@ -602,9 +685,9 @@ pub(crate) fn move_stub_columns(columns: Vec<TableColumn>) -> Vec<TableColumn> {
 /// Stack spanner rows above column labels, letting a column with no spanner
 /// covering it stretch its own label upward over the gap, then fill the
 /// remaining gaps.
-pub(crate) fn compose_header(spanners: Section, column_labels: Section) -> Section {
-    let num_spanner_rows = spanners.rows.len();
-    let header = rowbind(spanners, column_labels);
+pub(crate) fn compose_header(spanners: TableLayout, column_labels: TableLayout) -> TableLayout {
+    let num_spanner_rows = spanners.nrow();
+    let header = spanners.rowbind(column_labels);
     let header = stretch_unspanned_column_labels(header, num_spanner_rows);
     fill_spanner_gaps(header, num_spanner_rows)
 }
@@ -616,12 +699,15 @@ pub(crate) fn compose_header(spanners: Section, column_labels: Section) -> Secti
 /// blank filler cells. gt only stretches into the single row immediately
 /// above the labels, even when rows further up are also empty. Only touches
 /// cells — row count/order is unaffected.
-fn stretch_unspanned_column_labels(mut header: Section, num_spanner_rows: usize) -> Section {
+fn stretch_unspanned_column_labels(
+    mut header: TableLayout,
+    num_spanner_rows: usize,
+) -> TableLayout {
     if num_spanner_rows == 0 {
         return header;
     }
 
-    let ncol = count_cell_cols(&header.cells);
+    let ncol = header.ncol();
     let mut stretch_depth = vec![0usize; ncol];
     for (column, depth) in stretch_depth.iter_mut().enumerate() {
         for row in (0..num_spanner_rows).rev() {
@@ -657,10 +743,10 @@ fn stretch_unspanned_column_labels(mut header: Section, num_spanner_rows: usize)
 
 /// Fill every spanner-row position the stretch above couldn't reach with a
 /// real, empty `Filler` cell.
-fn fill_spanner_gaps(mut header: Section, num_spanner_rows: usize) -> Section {
-    let ncol = count_cell_cols(&header.cells);
+fn fill_spanner_gaps(mut header: TableLayout, num_spanner_rows: usize) -> TableLayout {
+    let ncol = header.ncol();
 
-    // Coverage set, O(area) like `validate_overlaps`.
+    // Coverage set, O(area) like `TableLayout::validate`.
     let mut occupied: HashSet<(usize, usize)> = HashSet::new();
     for cell in &header.cells {
         for row in cell.top..=cell.bottom {
@@ -683,31 +769,6 @@ fn fill_spanner_gaps(mut header: Section, num_spanner_rows: usize) -> Section {
     }
 
     header
-}
-
-/// Check that no two cells in a resolved layout claim the same grid position.
-///
-/// Walks every cell's full footprint into a map of occupied positions to the
-/// `TableCellKind` that claimed each one, erroring — naming both kinds — on
-/// the first double claim. `O(total cell area)`.
-pub(crate) fn validate_overlaps(cells: &[TableCell]) -> Result<()> {
-    let mut occupied: std::collections::HashMap<(usize, usize), TableCellKind> =
-        std::collections::HashMap::new();
-
-    for cell in cells {
-        for row in cell.top..=cell.bottom {
-            for col in cell.left..=cell.right {
-                if let Some(existing_kind) = occupied.insert((row, col), cell.kind) {
-                    return Err(GgsqlError::ValidationError(format!(
-                        "Table layout has a {existing_kind} cell and a {} cell clashing at row {row}, column {col}",
-                        cell.kind
-                    )));
-                }
-            }
-        }
-    }
-
-    Ok(())
 }
 
 #[cfg(test)]
@@ -793,13 +854,22 @@ mod assembly_tests {
         TableCell::new(kind, top, bottom, 0, 0, content.to_string())
     }
 
-    /// Wrap a hand-built `Vec<TableCell>` into a `Section` for a test, with
-    /// exactly as many default rows as `cells` implies (via
-    /// `count_cell_rows`) — satisfies `Section::new`'s row-count invariant
-    /// without every test having to spell out a `rows` vec of its own.
-    fn section(cells: Vec<TableCell>) -> Section {
+    /// Wrap a hand-built `Vec<TableCell>` into a `TableLayout` for a test,
+    /// with exactly as many default rows and columns as `cells` implies —
+    /// satisfies `TableLayout::new`'s invariants without every test having
+    /// to spell out `rows`/`columns` vecs of its own.
+    fn layout(cells: Vec<TableCell>) -> TableLayout {
+        let ncol = count_cell_cols(&cells);
+        layout_wide(cells, ncol)
+    }
+
+    /// `layout`, with an explicit column count — for a part that doesn't
+    /// itself touch every column of the table it belongs to (a spanner row
+    /// covering only some columns, or an empty part).
+    fn layout_wide(cells: Vec<TableCell>, ncol: usize) -> TableLayout {
+        let columns = (0..ncol).map(|i| column(&i.to_string(), "")).collect();
         let rows = vec![TableRow::default(); count_cell_rows(&cells)];
-        Section::new(rows, cells)
+        TableLayout::new(columns, rows, cells)
     }
 
     #[test]
@@ -810,7 +880,7 @@ mod assembly_tests {
             cell(TableCellKind::Body, 1, 1, "2"),
         ];
 
-        let cells = rowbind(section(column_labels), section(body)).cells;
+        let cells = layout(column_labels).rowbind(layout(body)).cells;
 
         assert_eq!(cells.len(), 3);
         assert_eq!(cells[0].kind, TableCellKind::ColumnLabel);
@@ -830,7 +900,7 @@ mod assembly_tests {
         let column_labels = vec![cell(TableCellKind::ColumnLabel, 0, 1, "id")];
         let body = vec![cell(TableCellKind::Body, 0, 0, "1")];
 
-        let cells = rowbind(section(column_labels), section(body)).cells;
+        let cells = layout(column_labels).rowbind(layout(body)).cells;
 
         assert_eq!(cells[1].top, 2);
         assert_eq!(cells[1].bottom, 2);
@@ -840,7 +910,7 @@ mod assembly_tests {
     fn rowbind_returns_bottom_unchanged_when_top_is_empty() {
         let body = vec![cell(TableCellKind::Body, 0, 0, "1")];
 
-        let cells = rowbind(section(Vec::new()), section(body)).cells;
+        let cells = layout_wide(Vec::new(), 1).rowbind(layout(body)).cells;
 
         assert_eq!(cells.len(), 1);
         assert_eq!(cells[0].top, 0);
@@ -850,7 +920,9 @@ mod assembly_tests {
     fn rowbind_returns_top_unchanged_when_bottom_is_empty() {
         let column_labels = vec![cell(TableCellKind::ColumnLabel, 0, 0, "id")];
 
-        let cells = rowbind(section(column_labels), section(Vec::new())).cells;
+        let cells = layout(column_labels)
+            .rowbind(layout_wide(Vec::new(), 1))
+            .cells;
 
         assert_eq!(cells.len(), 1);
         assert_eq!(cells[0].top, 0);
@@ -868,7 +940,7 @@ mod assembly_tests {
             cell_at(TableCellKind::StubHead, 0, 0, 2, 2),
         ];
 
-        let header = compose_header(section(spanners), section(column_labels)).cells;
+        let header = compose_header(layout_wide(spanners, 3), layout(column_labels)).cells;
 
         let a = header
             .iter()
@@ -897,7 +969,7 @@ mod assembly_tests {
             cell_at(TableCellKind::ColumnLabel, 0, 0, 1, 1),
         ];
 
-        let header = compose_header(section(spanners), section(column_labels)).cells;
+        let header = compose_header(layout(spanners), layout(column_labels)).cells;
 
         let a = header
             .iter()
@@ -925,7 +997,7 @@ mod assembly_tests {
             cell_at(TableCellKind::ColumnLabel, 0, 0, 2, 2),
         ];
 
-        let header = compose_header(section(spanners), section(column_labels)).cells;
+        let header = compose_header(layout_wide(spanners, 3), layout(column_labels)).cells;
 
         let c = header
             .iter()
@@ -951,7 +1023,7 @@ mod assembly_tests {
             cell_at(TableCellKind::ColumnLabel, 0, 0, 3, 3),
         ];
 
-        let header = compose_header(section(spanners), section(column_labels)).cells;
+        let header = compose_header(layout(spanners), layout(column_labels)).cells;
 
         let fillers: Vec<_> = header
             .iter()
@@ -976,7 +1048,7 @@ mod assembly_tests {
     fn compose_header_does_nothing_when_there_are_no_spanners() {
         let column_labels = vec![cell_at(TableCellKind::ColumnLabel, 0, 0, 0, 0)];
 
-        let header = compose_header(section(Vec::new()), section(column_labels)).cells;
+        let header = compose_header(layout_wide(Vec::new(), 1), layout(column_labels)).cells;
 
         assert_eq!((header[0].top, header[0].bottom), (0, 0));
     }
@@ -1000,7 +1072,7 @@ mod assembly_tests {
             cell_at(TableCellKind::Body, 1, 1, 1, 1),
         ];
 
-        assert!(validate_overlaps(&cells).is_ok());
+        assert!(layout(cells).validate().is_ok());
     }
 
     #[test]
@@ -1010,7 +1082,7 @@ mod assembly_tests {
             cell_at(TableCellKind::Body, 0, 0, 0, 0),
         ];
 
-        let error = validate_overlaps(&cells).unwrap_err();
+        let error = layout(cells).validate().unwrap_err();
         assert!(matches!(error, GgsqlError::ValidationError(msg)
             if msg.contains("row 0, column 0") && msg.contains("body cell and a body cell")));
     }
@@ -1026,7 +1098,7 @@ mod assembly_tests {
             cell_at(TableCellKind::Spanner, 0, 0, 1, 1),
         ];
 
-        let error = validate_overlaps(&cells).unwrap_err();
+        let error = layout(cells).validate().unwrap_err();
         assert!(matches!(error, GgsqlError::ValidationError(msg)
             if msg.contains("column label cell and a spanner cell")));
     }

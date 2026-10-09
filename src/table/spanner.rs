@@ -5,7 +5,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 
-use super::layout::{Section, TableCell, TableCellKind, TableClass, TableColumn, TableRow};
+use super::layout::{TableCell, TableCellKind, TableClass, TableColumn, TableLayout, TableRow};
 use crate::labels::Labels;
 use crate::params::{
     validate_parameter, DefaultParamValue, ParamConstraint, ParamDefinition, Parameters,
@@ -175,7 +175,7 @@ fn gather_columns(columns: Vec<TableColumn>, members: &[String]) -> Vec<TableCol
 
 /// Assign each spanner a 1-indexed level (header row). An explicit `SETTING
 /// level => N` pins a spanner there with no conflict check —
-/// `validate_overlaps` catches a genuine clash once real cells exist. A
+/// `TableLayout::validate` catches a genuine clash once real cells exist. A
 /// spanner with no explicit level is assigned greedily (see the `None`
 /// arm). Levels are then compacted to remove gaps explicit levels can leave
 /// (e.g. 1, 3, 4 → 1, 2, 3).
@@ -223,11 +223,11 @@ fn assign_spanner_levels(spans: &[Spanner]) -> Vec<usize> {
 
 /// Build one `TableCell` per contiguous run of a spanner's columns, calling
 /// `assign_spanner_levels` itself. Rows are numbered locally from
-/// `top == 0`. `Section::rows` gets exactly `max_level` entries, each
+/// `top == 0`. The layout's `rows` gets exactly `max_level` entries, each
 /// carrying `TableClass::ColHeadingRow`, like the column-label row does.
-pub(crate) fn create_spanners(columns: &[TableColumn], spans: &[Spanner]) -> Section {
+pub(crate) fn create_spanners(columns: &[TableColumn], spans: &[Spanner]) -> TableLayout {
     if spans.is_empty() {
-        return Section::new(Vec::new(), Vec::new());
+        return TableLayout::new(columns.to_vec(), Vec::new(), Vec::new());
     }
 
     // Spanners with no display text (`SPAN NULL`, or `LABEL <id> => NULL`)
@@ -299,7 +299,8 @@ pub(crate) fn create_spanners(columns: &[TableColumn], spans: &[Spanner]) -> Sec
         }
     }
 
-    Section::new(
+    TableLayout::new(
+        columns.to_vec(),
         vec![
             TableRow {
                 classes: vec![TableClass::ColHeadingRow, TableClass::SpannerRow],
@@ -499,7 +500,7 @@ mod tests {
     fn assign_spanner_levels_pins_explicit_level_without_a_conflict_check() {
         // (a,b) auto-assigns to level 1; (b,c) is explicitly pinned to level
         // 1 too, despite conflicting with (a,b) — this function doesn't
-        // error on that, validate_overlaps does once real cells exist.
+        // error on that, TableLayout::validate does once real cells exist.
         let spans = vec![
             spanner(&["a", "b"]),
             spanner_with_setting(&["b", "c"], "level", ParameterValue::Number(1.0)),
