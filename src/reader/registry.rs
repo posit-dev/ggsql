@@ -240,6 +240,14 @@ macro_rules! adbc {
 use DetectPattern::Contains as Has;
 use DriverUri::*;
 
+/// Snowflake's ODBC credential hook, present only when the `odbc` feature
+/// (and with it the `odbc::snowflake` module) is compiled in.
+#[cfg(feature = "odbc")]
+const SNOWFLAKE_CREDENTIAL_PROVIDER: Option<fn(&mut String)> =
+    Some(crate::reader::odbc::snowflake::apply_workbench_credentials);
+#[cfg(not(feature = "odbc"))]
+const SNOWFLAKE_CREDENTIAL_PROVIDER: Option<fn(&mut String)> = None;
+
 /// All supported backends. **Order matters for detection**: entries are
 /// scanned top to bottom, so more specific patterns must precede generic
 /// ones (`microsoft sql server` before anything matching `sql`, Redshift
@@ -289,7 +297,7 @@ pub static REGISTRY: &[DatabaseEntry] = &[
         adbc!("adbc_driver_mysql", "mysql", MySqlGoDsn, true)
     ),
     DatabaseEntry {
-        odbc_credential_provider: Some(crate::reader::odbc::snowflake::apply_workbench_credentials),
+        odbc_credential_provider: SNOWFLAKE_CREDENTIAL_PROVIDER,
         ..entry!(
             "snowflake",
             &[],
