@@ -277,10 +277,7 @@ pub trait SqlDialect {
         let __ggsql_tile__ = self.quote_ident("__ggsql_tile__");
         let quoted_column = self.quote_ident(column);
 
-        let x = format!("{fraction} * (cnt - 1)");
-        let lo = format!("1 + FLOOR({x})");
-        let hi = format!("1 + {}", self.sql_ceil(&x));
-        let frac = format!("{x} - FLOOR({x})");
+        let interpolation = self.sql_percentile_cont_expr(fraction);
 
         // Group correlation belongs in the scalar subquery's own WHERE, not
         // the windowed derived table's: MariaDB cannot resolve outer-query
@@ -320,16 +317,36 @@ pub trait SqlDialect {
             .build();
 
         let mut outer = crate::sql::Select::new(self)
-            .select(format!(
-                "MAX(CASE WHEN rn = {lo} THEN __val END) + \
-                 (MAX(CASE WHEN rn = {hi} THEN __val END) - \
-                  MAX(CASE WHEN rn = {lo} THEN __val END)) * MAX({frac})"
-            ))
+            .select(interpolation)
             .from_aliased(crate::sql::FromItem::Query(&inner), "__ggsql_tile__");
         if let Some(filter) = group_filter {
             outer = outer.and_where(filter);
         }
         format!("({})", outer.build())
+    }
+
+    /// The `percentile_cont` interpolation expression over a row set that
+    /// carries `__val` (value), `rn` (1-based rank), and `cnt` (group size)
+    /// columns, as produced by the windowed passes in [`sql_quantile`] and
+    /// [`build_single_scan_quantiles`]. Usable both as a scalar SELECT item
+    /// over the whole pass and as an aggregate in a `GROUP BY` over it.
+    ///
+    /// With `x = fraction * (cnt - 1)`, the result interpolates linearly
+    /// between the rows ranked `floor(x) + 1` and `ceil(x) + 1`, which is
+    /// exact for every fraction.
+    ///
+    /// [`sql_quantile`]: SqlDialect::sql_quantile
+    /// [`build_single_scan_quantiles`]: SqlDialect::build_single_scan_quantiles
+    fn sql_percentile_cont_expr(&self, fraction: f64) -> String {
+        let x = format!("{fraction} * (cnt - 1)");
+        let lo = format!("1 + FLOOR({x})");
+        let hi = format!("1 + {}", self.sql_ceil(&x));
+        let frac = format!("{x} - FLOOR({x})");
+        format!(
+            "MAX(CASE WHEN rn = {lo} THEN __val END) + \
+             (MAX(CASE WHEN rn = {hi} THEN __val END) - \
+              MAX(CASE WHEN rn = {lo} THEN __val END)) * MAX({frac})"
+        )
     }
 
     /// Single-scan alternative to embedding [`sql_quantile`] per fraction.
@@ -361,9 +378,11 @@ pub trait SqlDialect {
     }
 
     /// Shared builder for [`sql_quantiles_single_scan`] implementations.
-    /// Uses the same window-function interpolation math as the default
-    /// [`sql_quantile`], restructured so a grouped aggregate over one
-    /// windowed pass yields every fraction at once.
+    /// Shares the interpolation math with the default [`sql_quantile`] via
+    /// [`sql_percentile_cont_expr`], restructured so a grouped aggregate
+    /// over one windowed pass yields every fraction at once.
+    ///
+    /// [`sql_percentile_cont_expr`]: SqlDialect::sql_percentile_cont_expr
     ///
     /// [`sql_quantiles_single_scan`]: SqlDialect::sql_quantiles_single_scan
     /// [`sql_quantile`]: SqlDialect::sql_quantile
@@ -396,23 +415,14 @@ pub trait SqlDialect {
             .and_where(format!("{quoted_column} IS NOT NULL"))
             .build();
 
-        let quantile_expr = |fraction: f64| {
-            let x = format!("{fraction} * (cnt - 1)");
-            let lo = format!("1 + FLOOR({x})");
-            let hi = format!("1 + {}", self.sql_ceil(&x));
-            let frac = format!("{x} - FLOOR({x})");
-            format!(
-                "MAX(CASE WHEN rn = {lo} THEN __val END) + \
-                 (MAX(CASE WHEN rn = {hi} THEN __val END) - \
-                  MAX(CASE WHEN rn = {lo} THEN __val END)) * MAX({frac})"
-            )
-        };
-
         let mut summary_items = quoted_groups.clone();
         summary_items.push("MIN(__val) AS min".to_string());
         summary_items.push("MAX(__val) AS max".to_string());
         for (fraction, alias) in fractions {
-            summary_items.push(format!("{} AS {alias}", quantile_expr(*fraction)));
+            summary_items.push(format!(
+                "{} AS {alias}",
+                self.sql_percentile_cont_expr(*fraction)
+            ));
         }
         let quoted_pass = self.quote_ident(pass_name);
         let mut summary = crate::sql::Select::new(self)
