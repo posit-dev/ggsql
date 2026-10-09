@@ -6,7 +6,7 @@ For ggsql language semantics, see [`/doc/syntax/`](../doc/syntax/). For Vega-Lit
 
 ## Entry points
 
-- **`lib.rs`** — library root. Declares modules, re-exports the headline types (`Plot`, `Layer`, `Geom`, `Scale`, `Mappings`, `AestheticValue`, `DataSource`, `Facet`, `FacetLayout`, `SqlExpression`, `DataFrame`, plus the table types `Table`, `SelectionItem`, `Spanner`, `ColumnSection`, `Format` and the rendered-row types `TableRow`/`TableColumn`/`TableCell`), and defines `GgsqlError` + `Result`.
+- **`lib.rs`** — library root. Declares modules, re-exports the headline types (`Plot`, `Layer`, `Geom`, `Scale`, `Mappings`, `AestheticValue`, `DataSource`, `Facet`, `FacetLayout`, `SqlExpression`, `DataFrame`, plus the table types `Table`, `SelectionItem`, `Spanner`, `ColumnSection`, `Format` and the resolved-layout types `TableLayout`, `TableRow`, `TableColumn`, `TableCell`, `TableCellKind`, `TableClass`), and defines `GgsqlError` + `Result`.
 
 ## Module map
 

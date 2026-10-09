@@ -9,6 +9,9 @@
     labels.
   - `SPAN` groups columns under a shared header cell (spanner).
   - `FORMAT` configures how a column's cells are displayed.
+- `Writer::write_table` renders a resolved table, taking the new public
+  `TableLayout` — the table's cells bundled with their column and row
+  metadata.
 
 ### Fixed
 

@@ -408,9 +408,10 @@ pub trait Writer {
     /// Check whether a plot can be rendered by this writer, without rendering it
     fn validate_plot(&self, spec: &Plot) -> Result<()>;
 
-    /// Render a resolved table's cells. Defaults to an "unsupported" error;
+    /// Render a resolved table's layout — its cells bundled with their
+    /// column and row metadata. Defaults to an "unsupported" error;
     /// only `HtmlWriter` overrides it as of this writing.
-    fn write_table(&self, cells: &[TableCell]) -> Result<Self::Output> { .. }
+    fn write_table(&self, layout: &TableLayout) -> Result<Self::Output> { .. }
 
     /// Render a `ResolvedSpec` from `reader.execute()` — the usual entry point.
     /// Dispatches to `write_plot`/`write_table` depending on the variant.
