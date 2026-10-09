@@ -55,6 +55,33 @@ pub struct AdbcInfo {
     /// and individual connection options", and Druid with "Unsupported
     /// option: Other(\"tls\")" — their params stay in the URI only.
     pub params_as_options: bool,
+    /// Error substring meaning "a DDL/DML statement without a result set
+    /// ran fine but the read failed" — report an empty frame instead of an
+    /// error (BigQuery: "job has no destination table to read"). Matching
+    /// on driver error text is fragile, so it is declared here per driver
+    /// rather than hard-coded in the reader.
+    pub ddl_empty_result_error: Option<&'static str>,
+    /// Error substring meaning the driver's query path cannot execute
+    /// statements without a result set; retry those via `execute_update`
+    /// (Databricks: "schema bytes are empty").
+    pub ddl_retry_error: Option<&'static str>,
+    /// Error substring on ingest meaning the target table's schema differs
+    /// from the batch; retry once with the batch aligned to the target
+    /// schema (DataFusion: "different schema").
+    pub ingest_schema_align_error: Option<&'static str>,
+}
+
+impl AdbcInfo {
+    /// No driver-specific error-text quirks; the `adbc!` macro spreads this.
+    const NO_QUIRKS: Self = Self {
+        lib_name: "",
+        dbc_id: "",
+        driver_uri: DriverUri::Passthrough,
+        params_as_options: false,
+        ddl_empty_result_error: None,
+        ddl_retry_error: None,
+        ingest_schema_align_error: None,
+    };
 }
 
 /// A DBMS-name/driver-string detection pattern.
@@ -69,9 +96,20 @@ impl DetectPattern {
     fn matches(&self, lower: &str) -> bool {
         match self {
             DetectPattern::Contains(s) => lower.contains(s),
-            DetectPattern::All(ss) => ss.iter().all(|s| lower.contains(s)),
+            // Each needle must appear at a word boundary (start of the
+            // string or right after a non-alphanumeric character), so
+            // "ora" matches "Oracle ODBC Driver" but the "ora" in
+            // "Teradata Corporation ODBC Driver" does not.
+            DetectPattern::All(ss) => ss.iter().all(|s| contains_word_prefix(lower, s)),
         }
     }
+}
+
+/// `haystack` contains `needle` starting at a word boundary.
+fn contains_word_prefix(haystack: &str, needle: &str) -> bool {
+    haystack
+        .match_indices(needle)
+        .any(|(i, _)| i == 0 || !haystack.as_bytes()[i - 1].is_ascii_alphanumeric())
 }
 
 /// An in-process reader ggsql ships for a backend, preferred over external
@@ -104,6 +142,10 @@ pub struct DatabaseEntry {
     /// Server/Port/Database synthesis — Oracle ODBC rejects a connection
     /// string that mixes the two vocabularies.
     pub odbc_dbq_style: bool,
+    /// ODBC fetch batch size override. Oracle ODBC rejects block cursors
+    /// (SQL_ATTR_ROW_ARRAY_SIZE > 1) with HY090 at SQLFetch time, and the
+    /// failed fetch leaves the cursor unusable — fetch row-by-row (1).
+    pub odbc_row_array_size: Option<usize>,
     /// In-process reader to prefer when its cargo feature is compiled in
     /// (duckdb, sqlite). `None` for backends reached only through external
     /// ADBC/ODBC drivers.
@@ -132,6 +174,7 @@ macro_rules! entry {
             dialect: $dialect,
             adbc: $adbc,
             odbc_dbq_style: false,
+            odbc_row_array_size: None,
             native_reader: None,
         }
     };
@@ -144,6 +187,17 @@ macro_rules! adbc {
             dbc_id: $id,
             driver_uri: $uri,
             params_as_options: $opts,
+            ..AdbcInfo::NO_QUIRKS
+        })
+    };
+    ($lib:literal, $id:literal, $uri:expr, $opts:expr, $($k:ident: $v:expr),+ $(,)?) => {
+        Some(AdbcInfo {
+            lib_name: $lib,
+            dbc_id: $id,
+            driver_uri: $uri,
+            params_as_options: $opts,
+            $($k: $v),+,
+            ..AdbcInfo::NO_QUIRKS
         })
     };
 }
@@ -213,7 +267,13 @@ pub static REGISTRY: &[DatabaseEntry] = &[
         "BigQuery",
         &[Has("bigquery")],
         || Box::new(BigQueryDialect),
-        adbc!("adbc_driver_bigquery", "bigquery", BigQuerySimba, true)
+        adbc!(
+            "adbc_driver_bigquery",
+            "bigquery",
+            BigQuerySimba,
+            true,
+            ddl_empty_result_error: Some("no destination table to read")
+        )
     ),
     entry!(
         "databricks",
@@ -221,7 +281,13 @@ pub static REGISTRY: &[DatabaseEntry] = &[
         "Databricks",
         &[Has("databricks"), Has("spark")],
         || Box::new(DatabricksDialect),
-        adbc!("adbc_driver_databricks", "databricks", Passthrough, false)
+        adbc!(
+            "adbc_driver_databricks",
+            "databricks",
+            Passthrough,
+            false,
+            ddl_retry_error: Some("schema bytes are empty")
+        )
     ),
     entry!(
         "clickhouse",
@@ -233,6 +299,7 @@ pub static REGISTRY: &[DatabaseEntry] = &[
     ),
     DatabaseEntry {
         odbc_dbq_style: true,
+        odbc_row_array_size: Some(1),
         ..entry!(
             "oracle",
             &[],
@@ -254,7 +321,7 @@ pub static REGISTRY: &[DatabaseEntry] = &[
         "exasol",
         &[],
         "Exasol",
-        &[Has("exasol"), DetectPattern::All(&["exa", "odbc"])],
+        &[Has("exasol"), Has("exaodbc")],
         || Box::new(ExasolDialect),
         adbc!("adbc_driver_exasol", "exasol", Passthrough, true)
     ),
@@ -288,7 +355,13 @@ pub static REGISTRY: &[DatabaseEntry] = &[
         "DataFusion",
         &[Has("datafusion")],
         || Box::new(DataFusionDialect),
-        adbc!("adbc_driver_datafusion", "datafusion", Passthrough, true)
+        adbc!(
+            "adbc_driver_datafusion",
+            "datafusion",
+            Passthrough,
+            true,
+            ingest_schema_align_error: Some("different schema")
+        )
     ),
     DatabaseEntry {
         native_reader: Some(NativeReader::DuckDb),
@@ -395,6 +468,66 @@ pub fn dialect_override(name: &str) -> Option<Box<dyn SqlDialect + Send>> {
         return Some(Box::new(AnsiDialect));
     }
     by_scheme(name).map(|e| e.dialect())
+}
+
+/// Error for an unrecognized `dialect=` override value, naming the escape
+/// hatches. Shared so every dispatch path reports the same message.
+pub fn unknown_dialect_error(name: &str) -> crate::GgsqlError {
+    crate::GgsqlError::ReaderError(format!(
+        "Unknown dialect '{name}'. Use dialect=ansi or any supported scheme \
+         (postgres, mysql, …)."
+    ))
+}
+
+/// Resolve the SQL dialect for a parsed connection URI: an explicit
+/// `dialect=` override wins; otherwise the scheme (or, for
+/// `adbc://<driver>`, the driver name) resolves through the registry.
+/// Unknown backends are an error pointing at the override — never a silent
+/// ANSI fallback.
+pub fn resolve_dialect(
+    conn: &crate::reader::connection::ConnUri,
+) -> crate::Result<Box<dyn SqlDialect + Send>> {
+    if let Some(name) = &conn.ggsql.dialect {
+        return dialect_override(name).ok_or_else(|| unknown_dialect_error(name));
+    }
+    if conn.scheme != "adbc" {
+        return by_scheme(&conn.scheme).map(|e| e.dialect()).ok_or_else(|| {
+            crate::GgsqlError::ReaderError(format!(
+                "Unsupported connection scheme '{}://'. Supported: {}",
+                conn.scheme,
+                supported_schemes()
+            ))
+        });
+    }
+    let body = conn.body.as_str();
+    if let Some(entry) = by_scheme(body) {
+        return Ok(entry.dialect());
+    }
+    detect_or_err(None, Some(body))
+}
+
+/// Detect a dialect from an ODBC DBMS name and/or driver string, or error
+/// naming what was seen. Unknown backends are an **error** — silently
+/// falling back to ANSI produced broken SQL too often. The escape hatch is
+/// a `dialect=ansi` (or `dialect=<scheme>`) parameter; see
+/// [`dialect_override`].
+pub fn detect_or_err(
+    dbms_name: Option<&str>,
+    driver_hint: Option<&str>,
+) -> crate::Result<Box<dyn SqlDialect + Send>> {
+    detect(dbms_name, driver_hint)
+        .map(|e| e.dialect())
+        .ok_or_else(|| {
+            crate::GgsqlError::ReaderError(format!(
+                "Unrecognized database backend (DBMS name: {}, driver: {}). \
+                 ggsql does not know which SQL dialect to use. If the backend \
+                 is close to a supported one, pin the dialect explicitly with \
+                 a `dialect=<scheme>` parameter (e.g. dialect=postgres), or use \
+                 dialect=ansi for generic ANSI SQL.",
+                dbms_name.unwrap_or("<none>"),
+                driver_hint.unwrap_or("<none>"),
+            ))
+        })
 }
 
 #[cfg(test)]

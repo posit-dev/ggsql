@@ -242,7 +242,7 @@ pub fn wrap_with_order_by(
         } => StatResult::Transformed {
             query: crate::sql::Select::new(dialect)
                 .select_star()
-                .from_aliased(&query, "__ggsql_ord__")
+                .from_aliased(crate::sql::FromItem::Query(&query), "__ggsql_ord__")
                 .order_by(order_quoted)
                 .build(),
             stat_columns,
@@ -275,7 +275,7 @@ pub fn wrap_with_dummy_axis(query: &str, axis: &str, dialect: &dyn SqlDialect) -
             &[format!("'{dummy_v}' AS {}", dialect.quote_ident(&stat_col))],
             "__ggsql_dummy_src__",
         )
-        .from_aliased(query, "__ggsql_dummy_src__")
+        .from_aliased(crate::sql::FromItem::Query(query), "__ggsql_dummy_src__")
         .build()
 }
 

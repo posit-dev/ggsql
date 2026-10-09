@@ -758,7 +758,10 @@ fn detect_source_srid(
         }
         let sql = crate::sql::Select::new(dialect)
             .select(format!("{} AS srid", dialect.sql_st_srid(&ensure_geom)))
-            .from_aliased(&layer_queries[idx], "__ggsql_srid__")
+            .from_aliased(
+                crate::sql::FromItem::Query(&layer_queries[idx]),
+                "__ggsql_srid__",
+            )
             .and_where(format!("{geom_col} IS NOT NULL"))
             .build_limited(1);
         if let Ok(df) = execute_query(&sql) {
@@ -929,7 +932,7 @@ fn query_spatial_ref_sys(
 ) -> Option<String> {
     let sql = crate::sql::Select::new(dialect)
         .select("proj4text")
-        .from("spatial_ref_sys")
+        .from(crate::sql::FromItem::Table("spatial_ref_sys"))
         .and_where(format!("srid = {code}"))
         .build_limited(1);
     let df = execute_query(&sql).ok()?;

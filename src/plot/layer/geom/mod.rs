@@ -381,7 +381,7 @@ pub(crate) fn project_position_columns(
 
     let inner = crate::sql::Select::new(dialect)
         .select_star_plus(&[format!("{transformed} AS {proj_col}")], "__ggsql_proj__")
-        .from_aliased(query, "__ggsql_proj__")
+        .from_aliased(crate::sql::FromItem::Query(query), "__ggsql_proj__")
         .build();
     let x_expr = format!("ST_X({proj_col})");
     let y_expr = format!("ST_Y({proj_col})");
@@ -394,7 +394,7 @@ pub(crate) fn project_position_columns(
                 &[format!("{x_expr} AS {pos1}"), format!("{y_expr} AS {pos2}")],
                 "__ggsql_pp__",
             )
-            .from_aliased(&inner, "__ggsql_pp__")
+            .from_aliased(crate::sql::FromItem::Query(&inner), "__ggsql_pp__")
             .build());
     }
     let select_list: Vec<String> = columns
@@ -413,7 +413,7 @@ pub(crate) fn project_position_columns(
     Ok(crate::sql::select_from(
         dialect,
         &select_list.join(", "),
-        &inner,
+        crate::sql::FromItem::Query(&inner),
         "__ggsql_pp__",
     ))
 }
@@ -518,7 +518,7 @@ pub(crate) fn densify_edges(
                 )],
                 "__ggsql_indexed__",
             )
-            .from_aliased(query, "__ggsql_indexed__")
+            .from_aliased(crate::sql::FromItem::Query(query), "__ggsql_indexed__")
             .build()
     } else {
         query.to_string()
@@ -568,7 +568,7 @@ pub(crate) fn densify_edges(
     edge_extras.push(format!("{seg_len} AS {__ggsql_seg_len__}"));
     let edges_query = crate::sql::Select::new(dialect)
         .select_star_plus(&edge_extras, "__ggsql_src__")
-        .from_aliased(&indexed_query, "__ggsql_src__")
+        .from_aliased(crate::sql::FromItem::Query(&indexed_query), "__ggsql_src__")
         .window(format!("w AS ({window_def})"))
         .build();
 

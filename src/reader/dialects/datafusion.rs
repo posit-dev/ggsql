@@ -48,7 +48,13 @@ impl SqlDialect for DataFusionDialect {
     /// ScalarSubquery"). Every caller embeds this in a `GROUP BY {groups}`
     /// query over `from`, where the native approximate aggregate is
     /// equivalent.
-    fn sql_quantile(&self, column: &str, fraction: f64, _from: &str, _groups: &[String]) -> String {
+    fn sql_quantile(
+        &self,
+        column: &str,
+        fraction: f64,
+        _from: crate::sql::FromItem<'_>,
+        _groups: &[String],
+    ) -> String {
         format!(
             "approx_percentile_cont({}, {fraction})",
             self.quote_ident(column)

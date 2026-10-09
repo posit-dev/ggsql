@@ -38,7 +38,10 @@ impl SqlDialect for DuckDbDialect {
         from: &str,
         _all_columns: &[String],
     ) -> String {
-        format!("SELECT * REPLACE ({expr} AS {col}) FROM ({from})")
+        crate::sql::Select::new(self)
+            .select(format!("* REPLACE ({expr} AS {col})"))
+            .from_aliased(crate::sql::FromItem::Query(from), "__ggsql_sr__")
+            .build()
     }
 
     fn sql_geometry_to_wkb(&self, column: &str) -> String {
@@ -46,11 +49,17 @@ impl SqlDialect for DuckDbDialect {
     }
 
     fn sql_geometry_bbox(&self, column: &str, from: &str) -> String {
-        format!(
-            "SELECT ST_XMin(ext) AS xmin, ST_YMin(ext) AS ymin, \
-                    ST_XMax(ext) AS xmax, ST_YMax(ext) AS ymax \
-             FROM (SELECT ST_Extent_Agg({column}) AS ext FROM {from})"
-        )
+        let inner = crate::sql::Select::new(self)
+            .select(format!("ST_Extent_Agg({column}) AS ext"))
+            .from(crate::sql::FromItem::Fragment(from))
+            .build();
+        crate::sql::Select::new(self)
+            .select(
+                "ST_XMin(ext) AS xmin, ST_YMin(ext) AS ymin, \
+                 ST_XMax(ext) AS xmax, ST_YMax(ext) AS ymax",
+            )
+            .from_aliased(crate::sql::FromItem::Query(&inner), "__ggsql_ext__")
+            .build()
     }
 
     fn sql_spatial_setup(&self) -> Vec<String> {
@@ -69,7 +78,13 @@ impl SqlDialect for DuckDbDialect {
         format!("{__ggsql_seq__}(n) AS (SELECT generate_series FROM GENERATE_SERIES(0, {n} - 1))")
     }
 
-    fn sql_quantile(&self, column: &str, fraction: f64, _from: &str, _groups: &[String]) -> String {
+    fn sql_quantile(
+        &self,
+        column: &str,
+        fraction: f64,
+        _from: crate::sql::FromItem<'_>,
+        _groups: &[String],
+    ) -> String {
         format!("QUANTILE_CONT({}, {})", self.quote_ident(column), fraction)
     }
 
@@ -124,7 +139,7 @@ mod tests {
     fn quantile_is_native_and_quotes_raw_names() {
         // stat_aggregate passes the raw column name; the dialect must quote.
         assert_eq!(
-            DuckDbDialect.sql_quantile("mixed Case", 0.25, "src", &[]),
+            DuckDbDialect.sql_quantile("mixed Case", 0.25, crate::sql::FromItem::Table("src"), &[]),
             "QUANTILE_CONT(\"mixed Case\", 0.25)"
         );
     }

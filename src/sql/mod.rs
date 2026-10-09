@@ -16,28 +16,152 @@
 //!
 //! Dialects supply only those primitives; the composition logic is shared.
 
-use crate::reader::dialects::split_cte_prefix;
 use crate::reader::SqlDialect;
 
-/// Quote an identifier for this dialect. Thin wrapper over
-/// [`SqlDialect::quote_ident`] for call-site uniformity with the builders.
-pub fn ident<D: SqlDialect + ?Sized>(dialect: &D, name: &str) -> String {
-    dialect.quote_ident(name)
+/// Split a query into its leading `WITH` clause and the remaining main
+/// query. Returns `None` when the query does not start with `WITH`.
+///
+/// Used by dialects that forbid CTEs inside derived tables (SQL Server) to
+/// hoist the CTE definitions out of a subquery wrap. The scanner is aware
+/// of string literals and quoted identifiers, and handles optional CTE
+/// column lists (`cte(c1, c2) AS (...)`) and `WITH RECURSIVE`.
+pub fn split_cte_prefix(query: &str) -> Option<(&str, &str)> {
+    let s = query.trim_start();
+    let bytes = s.as_bytes();
+    if bytes.len() < 5 || !s[..4].eq_ignore_ascii_case("with") || !bytes[4].is_ascii_whitespace() {
+        return None;
+    }
+    let mut i = 4;
+    skip_ws(bytes, &mut i);
+    if s.len() - i >= 9 && s[i..i + 9].eq_ignore_ascii_case("recursive") {
+        i += 9;
+    }
+    loop {
+        skip_ws(bytes, &mut i);
+        if i >= bytes.len() {
+            return None;
+        }
+        let name_start = i;
+        match bytes[i] {
+            q @ (b'"' | b'`') => skip_quoted(bytes, &mut i, q),
+            _ => {
+                while i < bytes.len()
+                    && (bytes[i].is_ascii_alphanumeric() || matches!(bytes[i], b'_' | b'$'))
+                {
+                    i += 1;
+                }
+            }
+        }
+        if i == name_start {
+            return None;
+        }
+        skip_ws(bytes, &mut i);
+        if i < bytes.len() && bytes[i] == b'(' {
+            skip_balanced_parens(bytes, &mut i)?;
+            skip_ws(bytes, &mut i);
+        }
+        if s.len() - i < 2 || !s[i..i + 2].eq_ignore_ascii_case("as") {
+            return None;
+        }
+        i += 2;
+        skip_ws(bytes, &mut i);
+        if i >= bytes.len() || bytes[i] != b'(' {
+            return None;
+        }
+        skip_balanced_parens(bytes, &mut i)?;
+        let cte_end = i;
+        let mut j = i;
+        skip_ws(bytes, &mut j);
+        if j < bytes.len() && bytes[j] == b',' {
+            i = j + 1;
+            continue;
+        }
+        return Some((&s[..cte_end], s[j..].trim_start()));
+    }
+}
+
+fn skip_ws(bytes: &[u8], i: &mut usize) {
+    while *i < bytes.len() && bytes[*i].is_ascii_whitespace() {
+        *i += 1;
+    }
+}
+
+/// Skip past a quoted region; `*i` is at the opening quote. A doubled quote
+/// is treated as an escape (SQL string/identifier convention).
+fn skip_quoted(bytes: &[u8], i: &mut usize, quote: u8) {
+    *i += 1;
+    while *i < bytes.len() {
+        if bytes[*i] == quote {
+            if *i + 1 < bytes.len() && bytes[*i + 1] == quote {
+                *i += 2;
+                continue;
+            }
+            *i += 1;
+            return;
+        }
+        *i += 1;
+    }
+}
+
+/// Skip a balanced parenthesised region; `*i` is at the opening `(`.
+/// Returns `None` when the parens never balance.
+fn skip_balanced_parens(bytes: &[u8], i: &mut usize) -> Option<()> {
+    let mut depth = 0usize;
+    while *i < bytes.len() {
+        match bytes[*i] {
+            b'(' => {
+                depth += 1;
+                *i += 1;
+            }
+            b')' => {
+                depth -= 1;
+                *i += 1;
+                if depth == 0 {
+                    return Some(());
+                }
+            }
+            q @ (b'\'' | b'"' | b'`') => skip_quoted(bytes, i, q),
+            _ => *i += 1,
+        }
+    }
+    None
+}
+
+/// What a FROM item is, decided by the caller — never guessed from text.
+///
+/// The one judged case is [`FromItem::Fragment`], the contract for `from`
+/// arguments passed across the [`SqlDialect`] trait: generated SQL only ever
+/// passes a bare (possibly quoted) table/CTE name or an already-parenthesized
+/// relation, so a leading `(` unambiguously means "already a relation".
+#[derive(Debug, Clone, Copy)]
+pub enum FromItem<'a> {
+    /// A bare table or CTE name; emitted verbatim, never parenthesized
+    /// (MySQL/MariaDB/T-SQL reject `FROM (name)`).
+    Table(&'a str),
+    /// A full query; parenthesized as a derived table, with a leading `WITH`
+    /// hoisted out when the dialect forbids CTEs in that position.
+    Query(&'a str),
+    /// An already-composed relation (e.g. [`Select::build_derived`] output);
+    /// emitted verbatim.
+    Raw(&'a str),
+    /// A trait-level FROM fragment: [`FromItem::Raw`] when it starts with
+    /// `(`, otherwise [`FromItem::Table`].
+    Fragment(&'a str),
 }
 
 /// `SELECT * FROM (<query>) AS "alias"` — the canonical derived-table wrap.
 pub fn wrap_all<D: SqlDialect + ?Sized>(dialect: &D, query: &str, alias: &str) -> String {
     Select::new(dialect)
         .select_star()
-        .from_aliased(query, alias)
+        .from_aliased(FromItem::Query(query), alias)
         .build()
 }
 
-/// `SELECT <list> FROM (<from>) AS "alias"`.
+/// `SELECT <list> FROM <from> AS "alias"`.
 pub fn select_from<D: SqlDialect + ?Sized>(
     dialect: &D,
     list: &str,
-    from: &str,
+    from: FromItem<'_>,
     alias: &str,
 ) -> String {
     Select::new(dialect)
@@ -141,17 +265,16 @@ impl<'d, D: SqlDialect + ?Sized> Select<'d, D> {
         self
     }
 
-    /// FROM a table name or subquery, without an alias. Parenthesized only
-    /// when `from` is a query (bare table/CTE names must not be
-    /// parenthesized: MySQL/MariaDB/T-SQL reject `FROM (name)`).
-    pub fn from(mut self, from: &str) -> Self {
+    /// FROM a table, query, or composed relation (see [`FromItem`]), without
+    /// an alias.
+    pub fn from(mut self, from: FromItem<'_>) -> Self {
         self.from = self.prepare_from(from);
         self
     }
 
     /// FROM with a table alias. The alias clause is emitted by the dialect
     /// (`AS "alias"` on most backends, bare `"alias"` on Oracle).
-    pub fn from_aliased(mut self, from: &str, alias: &str) -> Self {
+    pub fn from_aliased(mut self, from: FromItem<'_>, alias: &str) -> Self {
         let fragment = self.prepare_from(from);
         self.from = format!("{} {}", fragment, self.dialect.sql_table_alias(alias));
         self
@@ -242,8 +365,24 @@ impl<'d, D: SqlDialect + ?Sized> Select<'d, D> {
 
     /// Build and apply the dialect's row-limit wrapper (`LIMIT n`,
     /// `SELECT TOP n * FROM (...)`, `WHERE ROWNUM <= n`, ...).
+    ///
+    /// When the dialect wraps the query in a derived table
+    /// ([`SqlDialect::sql_limit_wraps_query`], e.g. T-SQL's TOP), an ORDER BY
+    /// is moved outside the wrap — ordering inside a derived table is T-SQL
+    /// error 1033. Clause-style limits (`LIMIT n`) keep the ordering inside,
+    /// where `ORDER BY … LIMIT n` is valid.
     pub fn build_limited(self, n: usize) -> String {
-        self.dialect.sql_limit(&self.build(), n)
+        if self.ordering.is_some() && self.dialect.sql_limit_wraps_query() {
+            let ordering = self.ordering.clone().expect("checked above");
+            let body = Select {
+                ordering: None,
+                ..self
+            }
+            .build();
+            format!("{} ORDER BY {}", self.dialect.sql_limit(&body, n), ordering)
+        } else {
+            self.dialect.sql_limit(&self.build(), n)
+        }
     }
 
     /// Build as a parenthesized, aliased derived-table fragment:
@@ -256,17 +395,16 @@ impl<'d, D: SqlDialect + ?Sized> Select<'d, D> {
         format!("({}) {}", self.build(), alias_clause)
     }
 
-    /// The FROM fragment for `from`: parenthesized when it is a query, with
-    /// a leading `WITH` hoisted into `self.ctes` when the dialect forbids
-    /// CTEs inside derived tables.
-    fn prepare_from(&mut self, from: &str) -> String {
-        let trimmed = from.trim();
-        if trimmed.starts_with('(') {
-            return trimmed.to_string();
-        }
-        if !trimmed.contains(char::is_whitespace) {
-            return trimmed.to_string();
-        }
+    /// The FROM fragment for `from` (see [`FromItem`]): queries are
+    /// parenthesized, with a leading `WITH` hoisted into `self.ctes` when
+    /// the dialect forbids CTEs inside derived tables.
+    fn prepare_from(&mut self, from: FromItem<'_>) -> String {
+        let trimmed = match from {
+            FromItem::Table(t) => return t.trim().to_string(),
+            FromItem::Raw(r) => return r.trim().to_string(),
+            FromItem::Fragment(f) => return f.trim().to_string(),
+            FromItem::Query(q) => q.trim(),
+        };
         if !self.dialect.allows_cte_in_derived_table() {
             if let Some((cte, body)) = split_cte_prefix(trimmed) {
                 self.push_hoisted_cte(cte);
@@ -296,6 +434,36 @@ mod tests {
     use crate::reader::AnsiDialect;
 
     #[test]
+    fn splits_cte_prefix() {
+        let (cte, body) = split_cte_prefix(
+            "WITH a AS (SELECT 1 AS x), b(n) AS (SELECT 2) SELECT * FROM a JOIN b ON a.x = b.n",
+        )
+        .unwrap();
+        assert_eq!(cte, "WITH a AS (SELECT 1 AS x), b(n) AS (SELECT 2)");
+        assert_eq!(body, "SELECT * FROM a JOIN b ON a.x = b.n");
+    }
+
+    #[test]
+    fn splits_cte_with_parens_and_strings() {
+        let (cte, body) = split_cte_prefix(
+            "WITH RECURSIVE \"__ggsql_t__\" AS (SELECT '(' AS s, f(1, (2)) AS v) SELECT v FROM \"__ggsql_t__\"",
+        )
+        .unwrap();
+        assert_eq!(
+            cte,
+            "WITH RECURSIVE \"__ggsql_t__\" AS (SELECT '(' AS s, f(1, (2)) AS v)"
+        );
+        assert_eq!(body, "SELECT v FROM \"__ggsql_t__\"");
+    }
+
+    #[test]
+    fn no_cte_returns_none() {
+        assert!(split_cte_prefix("SELECT 1").is_none());
+        assert!(split_cte_prefix("WITHHELD AS x").is_none());
+        assert!(split_cte_prefix("WITH a AS (SELECT 1").is_none());
+    }
+
+    #[test]
     fn basic_wrap() {
         assert_eq!(
             wrap_all(&AnsiDialect, "SELECT a FROM t", "__ggsql_x__"),
@@ -306,16 +474,38 @@ mod tests {
     #[test]
     fn bare_table_is_not_parenthesized() {
         assert_eq!(
-            select_from(&AnsiDialect, "a, b", "mytable", "s"),
+            select_from(&AnsiDialect, "a, b", FromItem::Table("mytable"), "s"),
             "SELECT a, b FROM mytable AS \"s\""
         );
     }
 
     #[test]
-    fn already_parenthesized_from_is_kept() {
+    fn raw_relation_is_emitted_verbatim() {
+        // A pre-composed relation keeps its own alias; the FROM alias is not
+        // stacked on top (that would be invalid SQL).
+        let rel = Select::new(&AnsiDialect)
+            .select("1 AS a")
+            .build_derived("u");
         assert_eq!(
-            select_from(&AnsiDialect, "a", "(SELECT 1 AS a) AS u", "s"),
-            "SELECT a FROM (SELECT 1 AS a) AS u AS \"s\""
+            select_from(&AnsiDialect, "a", FromItem::Raw(&rel), "s"),
+            "SELECT a FROM (SELECT 1 AS a) AS \"u\" AS \"s\""
+        );
+    }
+
+    #[test]
+    fn fragment_distinguishes_relation_from_table() {
+        assert_eq!(
+            select_from(&AnsiDialect, "a", FromItem::Fragment("\"my table\""), "s"),
+            "SELECT a FROM \"my table\" AS \"s\""
+        );
+        assert_eq!(
+            select_from(
+                &AnsiDialect,
+                "a",
+                FromItem::Fragment("(SELECT 1 AS a) AS \"u\""),
+                "s"
+            ),
+            "SELECT a FROM (SELECT 1 AS a) AS \"u\" AS \"s\""
         );
     }
 
@@ -360,14 +550,14 @@ mod tests {
         assert_eq!(
             Select::new(&OracleDialect)
                 .select_star_plus(&["1 AS one".to_string()], "s")
-                .from_aliased("SELECT a FROM t", "s")
+                .from_aliased(FromItem::Query("SELECT a FROM t"), "s")
                 .build(),
             "SELECT \"s\".*, 1 AS one FROM (SELECT a FROM t) \"s\""
         );
         assert_eq!(
             Select::new(&AnsiDialect)
                 .select_star_plus(&["1 AS one".to_string()], "s")
-                .from_aliased("SELECT a FROM t", "s")
+                .from_aliased(FromItem::Query("SELECT a FROM t"), "s")
                 .build(),
             "SELECT *, 1 AS one FROM (SELECT a FROM t) AS \"s\""
         );
@@ -378,7 +568,7 @@ mod tests {
         assert_eq!(
             Select::new(&AnsiDialect)
                 .select("a")
-                .from("t")
+                .from(FromItem::Table("t"))
                 .and_where("a > 1")
                 .and_where("b < 2")
                 .order_by("a")
@@ -408,14 +598,14 @@ mod tests {
         assert_eq!(
             Select::new(&AnsiDialect)
                 .select("a")
-                .from("t")
+                .from(FromItem::Table("t"))
                 .build_limited(3),
             "SELECT a FROM t LIMIT 3"
         );
         assert_eq!(
             Select::new(&MssqlDialect)
                 .select("a")
-                .from("t")
+                .from(FromItem::Table("t"))
                 .build_limited(3),
             "SELECT TOP 3 * FROM (SELECT a FROM t) AS \"__ggsql_lim__\""
         );

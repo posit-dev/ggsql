@@ -149,7 +149,7 @@ fn stat_histogram(
     let stats_query = crate::sql::select_from(
         dialect,
         &format!("MIN({x_col}) as min_val, MAX({x_col}) as max_val"),
-        query,
+        crate::sql::FromItem::Query(query),
         "__ggsql_stats__",
     );
     let stats_df = execute_query(&stats_query)?;

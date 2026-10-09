@@ -216,9 +216,9 @@ fn boxplot_sql_compute_summary(
     let groups_str = quoted_groups.join(", ");
     let lower_expr = dialect.sql_greatest(&[&format!("q1 - {coef} * (q3 - q1)"), "min"]);
     let upper_expr = dialect.sql_least(&[&format!("q3 + {coef} * (q3 - q1)"), "max"]);
-    let q1 = dialect.sql_quantile(value, 0.25, from, groups);
-    let median = dialect.sql_quantile(value, 0.50, from, groups);
-    let q3 = dialect.sql_quantile(value, 0.75, from, groups);
+    let q1 = dialect.sql_quantile(value, 0.25, crate::sql::FromItem::Query(from), groups);
+    let median = dialect.sql_quantile(value, 0.50, crate::sql::FromItem::Query(from), groups);
+    let q3 = dialect.sql_quantile(value, 0.75, crate::sql::FromItem::Query(from), groups);
     let quoted_value = dialect.quote_ident(value);
     let mut items: Vec<String> = Vec::new();
     if !groups_str.is_empty() {
@@ -233,7 +233,7 @@ fn boxplot_sql_compute_summary(
     ]);
     let mut inner = crate::sql::Select::new(dialect)
         .select_items(&items)
-        .from_aliased(from, "__ggsql_qt__")
+        .from_aliased(crate::sql::FromItem::Query(from), "__ggsql_qt__")
         .and_where(format!("{quoted_value} IS NOT NULL"));
     if !groups_str.is_empty() {
         inner = inner.group_by(&groups_str);
@@ -247,7 +247,7 @@ fn boxplot_sql_compute_summary(
             ],
             "__ggsql_fn__",
         )
-        .from_aliased(&inner, "__ggsql_fn__")
+        .from_aliased(crate::sql::FromItem::Query(&inner), "__ggsql_fn__")
         .build()
 }
 
@@ -277,7 +277,7 @@ fn boxplot_sql_filter_outliers(
     items.extend(keep_columns);
     crate::sql::Select::new(dialect)
         .select_items(&items)
-        .from_aliased(from, "raw")
+        .from_aliased(crate::sql::FromItem::Query(from), "raw")
         .join_raw(&format!("JOIN summary ON {}", join_pairs.join(" AND ")))
         .and_where(format!(
             "raw.{quoted_value} NOT BETWEEN summary.lower AND summary.upper"
@@ -432,9 +432,24 @@ mod tests {
             &AnsiDialect,
         );
 
-        let q1 = AnsiDialect.sql_quantile("price", 0.25, "SELECT * FROM sales", &groups);
-        let median = AnsiDialect.sql_quantile("price", 0.50, "SELECT * FROM sales", &groups);
-        let q3 = AnsiDialect.sql_quantile("price", 0.75, "SELECT * FROM sales", &groups);
+        let q1 = AnsiDialect.sql_quantile(
+            "price",
+            0.25,
+            crate::sql::FromItem::Query("SELECT * FROM sales"),
+            &groups,
+        );
+        let median = AnsiDialect.sql_quantile(
+            "price",
+            0.50,
+            crate::sql::FromItem::Query("SELECT * FROM sales"),
+            &groups,
+        );
+        let q3 = AnsiDialect.sql_quantile(
+            "price",
+            0.75,
+            crate::sql::FromItem::Query("SELECT * FROM sales"),
+            &groups,
+        );
         let expected = format!(
             r#"SELECT *,
                  GREATEST(q1 - 1.5 * (q3 - q1), min) AS lower,
@@ -466,9 +481,24 @@ mod tests {
             &AnsiDialect,
         );
 
-        let q1 = AnsiDialect.sql_quantile("revenue", 0.25, "SELECT * FROM data", &groups);
-        let median = AnsiDialect.sql_quantile("revenue", 0.50, "SELECT * FROM data", &groups);
-        let q3 = AnsiDialect.sql_quantile("revenue", 0.75, "SELECT * FROM data", &groups);
+        let q1 = AnsiDialect.sql_quantile(
+            "revenue",
+            0.25,
+            crate::sql::FromItem::Query("SELECT * FROM data"),
+            &groups,
+        );
+        let median = AnsiDialect.sql_quantile(
+            "revenue",
+            0.50,
+            crate::sql::FromItem::Query("SELECT * FROM data"),
+            &groups,
+        );
+        let q3 = AnsiDialect.sql_quantile(
+            "revenue",
+            0.75,
+            crate::sql::FromItem::Query("SELECT * FROM data"),
+            &groups,
+        );
         let expected = format!(
             r#"SELECT *,
                  GREATEST(q1 - 1.5 * (q3 - q1), min) AS lower,

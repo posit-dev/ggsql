@@ -274,8 +274,18 @@ fn silverman_rule(
     let adjust = 0.9 * adjust;
     let v = dialect.quote_ident(value_column);
     let stddev = format!("SQRT(AVG({v}*{v}) - AVG({v})*AVG({v}))", v = v);
-    let q75 = dialect.sql_quantile(value_column, 0.75, from, groups);
-    let q25 = dialect.sql_quantile(value_column, 0.25, from, groups);
+    let q75 = dialect.sql_quantile(
+        value_column,
+        0.75,
+        crate::sql::FromItem::Query(from),
+        groups,
+    );
+    let q25 = dialect.sql_quantile(
+        value_column,
+        0.25,
+        crate::sql::FromItem::Query(from),
+        groups,
+    );
     let iqr = format!("({q75} - {q25}) / 1.34");
     let min_expr = dialect.sql_least(&[&stddev, &iqr]);
     // POWER, not POW: T-SQL has no POW function. And the base must not be an

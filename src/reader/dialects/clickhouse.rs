@@ -67,16 +67,21 @@ impl SqlDialect for ClickHouseDialect {
         from: &str,
         _all_columns: &[String],
     ) -> String {
-        let __ggsql_sr__ = self.quote_ident("__ggsql_sr__");
-        if expr == col {
-            return format!("SELECT * FROM ({from}) {__ggsql_sr__}");
-        }
-        format!("SELECT * REPLACE ({expr} AS {col}) FROM ({from}) {__ggsql_sr__}")
+        let list = if expr == col {
+            "*".to_string()
+        } else {
+            format!("* REPLACE ({expr} AS {col})")
+        };
+        crate::sql::Select::new(self)
+            .select(list)
+            .from_aliased(crate::sql::FromItem::Query(from), "__ggsql_sr__")
+            .build()
     }
 
     fn sql_generate_series(&self, n: usize) -> String {
+        let seq = self.quote_ident("__ggsql_seq__");
         format!(
-            "`__ggsql_seq__`(n) AS (\
+            "{seq}(n) AS (\
                SELECT toFloat64(number) AS n FROM numbers({n})\
              )"
         )
@@ -100,7 +105,13 @@ impl SqlDialect for ClickHouseDialect {
     /// Every caller embeds this in a `GROUP BY {groups}` query over `from`, so
     /// the native aggregate is equivalent to the correlated scalar subquery
     /// other dialects produce, and far cheaper.
-    fn sql_quantile(&self, column: &str, fraction: f64, _from: &str, _groups: &[String]) -> String {
+    fn sql_quantile(
+        &self,
+        column: &str,
+        fraction: f64,
+        _from: crate::sql::FromItem<'_>,
+        _groups: &[String],
+    ) -> String {
         format!(
             "quantileExactInclusive({fraction})({column})",
             column = self.quote_ident(column)
@@ -174,11 +185,16 @@ mod tests {
     #[test]
     fn quantile_uses_exact_inclusive() {
         assert_eq!(
-            ClickHouseDialect.sql_quantile("v", 0.9, "t", &[]),
+            ClickHouseDialect.sql_quantile("v", 0.9, crate::sql::FromItem::Table("t"), &[]),
             "quantileExactInclusive(0.9)(`v`)"
         );
         assert_eq!(
-            ClickHouseDialect.sql_quantile("v", 0.5, "SELECT * FROM t", &[]),
+            ClickHouseDialect.sql_quantile(
+                "v",
+                0.5,
+                crate::sql::FromItem::Query("SELECT * FROM t"),
+                &[]
+            ),
             "quantileExactInclusive(0.5)(`v`)"
         );
     }

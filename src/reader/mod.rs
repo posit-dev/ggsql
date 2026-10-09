@@ -45,6 +45,17 @@ use crate::{naming, DataFrame, GgsqlError, Result};
 /// SQL type names and functionality in the syntax supported by that backend.
 ///
 /// Default implementations produce portable ANSI SQL.
+///
+/// # Quoting convention
+///
+/// Identifier parameters are **raw** (unquoted) unless the parameter name
+/// says otherwise: parameters called `qcol`/`qname` or documented as
+/// "already-quoted" arrive quoted by the caller. Methods receiving a raw
+/// identifier must quote it with [`SqlDialect::quote_ident`] before
+/// interpolating. SQL *fragments* (expressions, `from` arguments) arrive
+/// fully composed; `from` arguments follow the
+/// [`crate::sql::FromItem::Fragment`] contract — a bare (possibly quoted)
+/// table/CTE name or an already-parenthesized relation, never a raw query.
 pub trait SqlDialect {
     /// SQL type names for table creation and casts. Dialects override this
     /// one method with a [`TypeNames`] literal rather than the individual
@@ -124,6 +135,15 @@ pub trait SqlDialect {
     /// syntax (e.g. SQL Server's `TOP`, Oracle's `FETCH FIRST`).
     fn sql_limit(&self, query: &str, n: usize) -> String {
         format!("{} LIMIT {}", query, n)
+    }
+
+    /// Whether [`sql_limit`](SqlDialect::sql_limit) wraps the query in a
+    /// derived table (T-SQL's `SELECT TOP n * FROM (…)`, Oracle's ROWNUM
+    /// wrap) rather than appending a clause (`LIMIT n`). Callers use this
+    /// to keep ORDER BY out of the derived table, where T-SQL rejects it
+    /// (error 1033). Default `false`; wrapper-style dialects must override.
+    fn sql_limit_wraps_query(&self) -> bool {
+        false
     }
 
     /// Cast an expression to a SQL type name.
@@ -228,7 +248,7 @@ pub trait SqlDialect {
             // duplicated column wins over the star's.
             return crate::sql::Select::new(self)
                 .select_plus_star(&[format!("{expr} AS {col}")], "__ggsql_sr__")
-                .from_aliased(from, "__ggsql_sr__")
+                .from_aliased(crate::sql::FromItem::Query(from), "__ggsql_sr__")
                 .build();
         }
         let select_list: Vec<String> = all_columns
@@ -242,7 +262,12 @@ pub trait SqlDialect {
                 }
             })
             .collect();
-        crate::sql::select_from(self, &select_list.join(", "), from, "__ggsql_sr__")
+        crate::sql::select_from(
+            self,
+            &select_list.join(", "),
+            crate::sql::FromItem::Query(from),
+            "__ggsql_sr__",
+        )
     }
 
     /// SQL expression constructing a point geometry from x/y expressions.
@@ -323,13 +348,13 @@ pub trait SqlDialect {
     fn sql_geometry_bbox(&self, column: &str, from: &str) -> String {
         let extent = crate::sql::Select::new(self)
             .select(format!("ST_Extent({column}) AS ext"))
-            .from(from)
+            .from(crate::sql::FromItem::Fragment(from))
             .build();
         crate::sql::select_from(
             self,
             "ST_XMin(ext) AS xmin, ST_YMin(ext) AS ymin, \
              ST_XMax(ext) AS xmax, ST_YMax(ext) AS ymax",
-            &extent,
+            crate::sql::FromItem::Query(&extent),
             "__ggsql_ext__",
         )
     }
@@ -425,7 +450,13 @@ pub trait SqlDialect {
     /// `x = fraction * (cnt - 1)`, the result interpolates linearly between
     /// the rows ranked `floor(x) + 1` and `ceil(x) + 1`, which is exact for
     /// every fraction.
-    fn sql_quantile(&self, column: &str, fraction: f64, from: &str, groups: &[String]) -> String {
+    fn sql_quantile(
+        &self,
+        column: &str,
+        fraction: f64,
+        from: crate::sql::FromItem<'_>,
+        groups: &[String],
+    ) -> String {
         // The correlation predicate references the enclosing query's alias
         // and this scalar subquery's own alias, so both are needed quoted.
         let __ggsql_qt__ = self.quote_ident("__ggsql_qt__");
@@ -480,7 +511,7 @@ pub trait SqlDialect {
                  (MAX(CASE WHEN rn = {hi} THEN __val END) - \
                   MAX(CASE WHEN rn = {lo} THEN __val END)) * MAX({frac})"
             ))
-            .from_aliased(&inner, "__ggsql_tile__");
+            .from_aliased(crate::sql::FromItem::Query(&inner), "__ggsql_tile__");
         if let Some(filter) = group_filter {
             outer = outer.and_where(filter);
         }
@@ -677,6 +708,14 @@ pub trait SqlDialect {
     /// Build the DDL statement(s) needed to (re)create a temporary table
     /// that holds the result of `body_sql`.
     ///
+    /// Drop a table ggsql created (materialized internal table or registered
+    /// data), best effort: the statement must not fail when the table is
+    /// absent. Default is `DROP TABLE IF EXISTS`; Oracle overrides with a
+    /// PL/SQL-guarded drop (it has no `IF EXISTS`).
+    fn drop_table_sql(&self, name: &str) -> String {
+        format!("DROP TABLE IF EXISTS {}", self.quote_ident(name))
+    }
+
     /// Column aliases from `WITH t(a, b) AS (...)` are preserved portably by
     /// wrapping the body in a named CTE with a column alias list, so the
     /// backend never needs to support `CREATE TABLE t(a, b) AS ...` syntax.
@@ -703,11 +742,21 @@ pub trait SqlDialect {
                 format!("CREATE TEMP TABLE {} AS {}", qname, body),
             ],
             TempTableStyle::CreateOrReplaceTemp => {
-                vec![format!("CREATE OR REPLACE TEMP TABLE {} AS {}", qname, body)]
+                vec![format!(
+                    "CREATE OR REPLACE TEMP TABLE {} AS {}",
+                    qname, body
+                )]
             }
             TempTableStyle::DropTemporaryThenCreateTemp => vec![
                 format!("DROP TEMPORARY TABLE IF EXISTS {}", qname),
                 format!("CREATE TEMPORARY TABLE {} AS {}", qname, body),
+            ],
+            TempTableStyle::DropThenCreateTempPreserveRows => vec![
+                format!("DROP TABLE IF EXISTS {}", qname),
+                format!(
+                    "CREATE TEMP TABLE {} AS {} ON COMMIT PRESERVE ROWS",
+                    qname, body
+                ),
             ],
             TempTableStyle::CreateOrReplaceTempView => {
                 vec![format!("CREATE OR REPLACE TEMP VIEW {} AS {}", qname, body)]
@@ -717,14 +766,7 @@ pub trait SqlDialect {
                 format!("CREATE TABLE {} AS {}", qname, body),
             ],
             TempTableStyle::GuardedDropThenCreate => vec![
-                // The drop must spell the name exactly like the CREATE below:
-                // an unquoted name would be folded to uppercase by Oracle and
-                // never match the quoted (case-preserved) table, silently
-                // leaving stale tables behind under the WHEN OTHERS guard.
-                format!(
-                    "BEGIN EXECUTE IMMEDIATE 'DROP TABLE {}'; EXCEPTION WHEN OTHERS THEN NULL; END;",
-                    qname.replace('\'', "''")
-                ),
+                self.drop_table_sql(name),
                 format!("CREATE TABLE {} AS {}", qname, body),
             ],
             TempTableStyle::SelectInto => {
@@ -787,6 +829,11 @@ pub enum TempTableStyle {
     /// `DROP TEMPORARY TABLE IF EXISTS` then `CREATE TEMPORARY TABLE AS`
     /// (MySQL/MariaDB, ClickHouse).
     DropTemporaryThenCreateTemp,
+    /// `DROP TABLE IF EXISTS` then `CREATE TEMP TABLE AS … ON COMMIT
+    /// PRESERVE ROWS` (MonetDB temp tables default to ON COMMIT DELETE
+    /// ROWS: with ODBC autocommit the CTAS statement's own commit would
+    /// wipe the rows it just staged).
+    DropThenCreateTempPreserveRows,
     /// Single `CREATE OR REPLACE TEMP VIEW AS` (Databricks/Spark).
     CreateOrReplaceTempView,
     /// `DROP TABLE IF EXISTS` then plain `CREATE TABLE AS` — no temp-table
@@ -896,8 +943,7 @@ pub fn default_sql_aggregate(
     Some(s)
 }
 
-pub struct AnsiDialect;
-impl SqlDialect for AnsiDialect {}
+pub use dialects::AnsiDialect;
 
 /// Fail fast when a spatial feature is used on a backend whose dialect
 /// reports `supports_spatial() == false`, rather than emitting spatial SQL
@@ -1041,7 +1087,7 @@ pub(crate) fn register_column_type(
 
 /// Build a `CREATE TABLE <name> (col TYPE, …)` statement from an Arrow
 /// schema, with column types from [`register_column_type`].
-#[cfg(any(feature = "adbc", feature = "odbc"))]
+#[cfg(feature = "adbc")]
 pub(crate) fn create_table_sql(
     name: &str,
     schema: &arrow::datatypes::Schema,
@@ -1134,6 +1180,7 @@ pub(crate) fn normalize_result_batch(
 /// datetimes (`YYYY-MM-DD` + `T`/space + time) it becomes Timestamp(µs).
 /// Anything else is left untouched. Columns with no non-null values are
 /// left alone — there is nothing to infer from.
+#[cfg(feature = "adbc")]
 pub(crate) fn sniff_temporal_strings_in_batch(
     batch: arrow::record_batch::RecordBatch,
 ) -> Result<arrow::record_batch::RecordBatch> {

@@ -33,7 +33,13 @@ impl SqlDialect for TrinoDialect {
         )
     }
 
-    fn sql_quantile(&self, column: &str, fraction: f64, _from: &str, _groups: &[String]) -> String {
+    fn sql_quantile(
+        &self,
+        column: &str,
+        fraction: f64,
+        _from: crate::sql::FromItem<'_>,
+        _groups: &[String],
+    ) -> String {
         format!(
             "approx_percentile({column}, {fraction})",
             column = self.quote_ident(column)
@@ -58,11 +64,17 @@ impl SqlDialect for TrinoDialect {
     }
 
     fn sql_geometry_bbox(&self, column: &str, from: &str) -> String {
-        format!(
-            "SELECT MIN(ST_XMin(g)) AS xmin, MIN(ST_YMin(g)) AS ymin, \
-                    MAX(ST_XMax(g)) AS xmax, MAX(ST_YMax(g)) AS ymax \
-             FROM (SELECT ST_Envelope({column}) AS g FROM {from})"
-        )
+        let inner = crate::sql::Select::new(self)
+            .select(format!("ST_Envelope({column}) AS g"))
+            .from(crate::sql::FromItem::Fragment(from))
+            .build();
+        crate::sql::Select::new(self)
+            .select(
+                "MIN(ST_XMin(g)) AS xmin, MIN(ST_YMin(g)) AS ymin, \
+                 MAX(ST_XMax(g)) AS xmax, MAX(ST_YMax(g)) AS ymax",
+            )
+            .from_aliased(crate::sql::FromItem::Query(&inner), "__ggsql_env__")
+            .build()
     }
 }
 

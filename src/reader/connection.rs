@@ -354,12 +354,7 @@ fn build_backend_reader(
                 Some(
                     crate::reader::registry::dialect_override(name)
                         .map(|d| d as Box<dyn crate::reader::SqlDialect>)
-                        .ok_or_else(|| {
-                            GgsqlError::ReaderError(format!(
-                                "Unknown dialect '{name}' in connection URI. Use dialect=ansi \
-                                 or any supported scheme (postgres, mysql, …)."
-                            ))
-                        })?,
+                        .ok_or_else(|| crate::reader::registry::unknown_dialect_error(name))?,
                 )
             } else if entry.scheme == "flightsql" {
                 None
@@ -538,15 +533,18 @@ pub fn reader_from_uri(uri: &str) -> Result<Box<dyn Reader + Send>> {
 /// ggsql stages internal results in, using the dialect's own temp-table DDL
 /// (the same mechanism the executor relies on). Best effort: the probe table
 /// is dropped afterwards, and any failure means "cannot".
+///
+/// Note this runs DDL (CREATE + DROP of a `__ggsql_probe_<sid>__` table)
+/// against the user's database on every connection; on backends without
+/// temp tables (e.g. Oracle) that is a permanent table for the duration of
+/// the probe. The drop goes through the dialect so backends without
+/// `DROP TABLE IF EXISTS` (Oracle) get their guarded form.
 fn probe_temp_tables(reader: &dyn Reader) -> bool {
     let probe = format!("__ggsql_probe_{}__", crate::naming::session_id());
     let dialect = reader.dialect();
     let stmts = dialect.create_or_replace_temp_table_sql(&probe, &[], "SELECT 1 AS x");
     let ok = stmts.iter().all(|s| reader.execute_sql(s).is_ok());
-    let _ = reader.execute_sql(&format!(
-        "DROP TABLE IF EXISTS {}",
-        dialect.quote_ident(&probe)
-    ));
+    let _ = reader.execute_sql(&dialect.drop_table_sql(&probe));
     ok
 }
 
@@ -760,13 +758,22 @@ mod tests {
 
     #[test]
     fn test_requires_cache_dialects() {
+        let dialect_for = |scheme: &str| {
+            crate::reader::registry::by_scheme(scheme)
+                .map(|e| e.dialect())
+                .unwrap()
+        };
         for scheme in ["trino", "druid", "drill"] {
-            let d = crate::reader::dialects::dialect_for_scheme(scheme).unwrap();
-            assert!(d.requires_cache(), "scheme {scheme} should require a cache");
+            assert!(
+                dialect_for(scheme).requires_cache(),
+                "scheme {scheme} should require a cache"
+            );
         }
         for scheme in ["postgres", "duckdb", "sqlite", "clickhouse", "datafusion"] {
-            let d = crate::reader::dialects::dialect_for_scheme(scheme).unwrap();
-            assert!(!d.requires_cache(), "scheme {scheme} should be probed");
+            assert!(
+                !dialect_for(scheme).requires_cache(),
+                "scheme {scheme} should be probed"
+            );
         }
     }
 

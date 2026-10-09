@@ -37,7 +37,13 @@ impl SqlDialect for SnowflakeDialect {
         )
     }
 
-    fn sql_quantile(&self, column: &str, fraction: f64, _from: &str, _groups: &[String]) -> String {
+    fn sql_quantile(
+        &self,
+        column: &str,
+        fraction: f64,
+        _from: crate::sql::FromItem<'_>,
+        _groups: &[String],
+    ) -> String {
         format!(
             "APPROX_PERCENTILE({column}, {fraction})",
             column = self.quote_ident(column)
@@ -62,11 +68,17 @@ impl SqlDialect for SnowflakeDialect {
 
     fn sql_geometry_bbox(&self, column: &str, from: &str) -> String {
         // Snowflake has no ST_Extent aggregate; aggregate per-row envelopes.
-        format!(
-            "SELECT MIN(ST_XMIN(g)) AS xmin, MIN(ST_YMIN(g)) AS ymin, \
-                    MAX(ST_XMAX(g)) AS xmax, MAX(ST_YMAX(g)) AS ymax \
-             FROM (SELECT ST_ENVELOPE({column}) AS g FROM {from})"
-        )
+        let inner = crate::sql::Select::new(self)
+            .select(format!("ST_ENVELOPE({column}) AS g"))
+            .from(crate::sql::FromItem::Fragment(from))
+            .build();
+        crate::sql::Select::new(self)
+            .select(
+                "MIN(ST_XMIN(g)) AS xmin, MIN(ST_YMIN(g)) AS ymin, \
+                 MAX(ST_XMAX(g)) AS xmax, MAX(ST_YMAX(g)) AS ymax",
+            )
+            .from_aliased(crate::sql::FromItem::Query(&inner), "__ggsql_env__")
+            .build()
     }
 }
 

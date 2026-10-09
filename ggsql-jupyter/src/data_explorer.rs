@@ -4,6 +4,7 @@
 //! paginated data access.
 
 use ggsql::reader::Reader;
+use ggsql::sql::FromItem;
 use serde_json::{json, Value};
 
 /// Result of handling an RPC call.
@@ -539,7 +540,8 @@ impl DataExplorerState {
                     // a bare aggregate, which without a FROM would compute
                     // over an empty input and yield NULL).
                     let from_query = format!("SELECT * FROM {}", self.table_path);
-                    let median_expr = dialect.sql_quantile(&col.name, 0.5, &from_query, &[]);
+                    let median_expr =
+                        dialect.sql_quantile(&col.name, 0.5, FromItem::Query(&from_query), &[]);
                     let median_sql = format!(
                         "SELECT {} AS \"median_val\" FROM ({}) AS \"__ggsql_qt__\"",
                         median_expr, from_query
@@ -776,7 +778,8 @@ impl DataExplorerState {
         let from_query = format!("SELECT * FROM {}", self.table_path);
         for q in &quantiles_param {
             if let Some(q_val) = q.as_f64() {
-                let expr = dialect.sql_quantile(&col.name, q_val, &from_query, &[]);
+                let expr =
+                    dialect.sql_quantile(&col.name, q_val, FromItem::Query(&from_query), &[]);
                 // See the median path above: the expression needs the FROM.
                 let q_sql = format!(
                     "SELECT {} AS \"q_val\" FROM ({}) AS \"__ggsql_qt__\"",

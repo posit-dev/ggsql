@@ -24,7 +24,7 @@ use wrapper::{Connection, Statement};
 /// `Driver=` value from the ODBC connection string serves as the driver hint.
 fn detect_dialect(dbms_name: Option<&str>, conn_str: &str) -> Result<Box<dyn super::SqlDialect>> {
     let driver = super::connection::extract_odbc_value(conn_str, "driver");
-    super::dialects::detect_dialect(dbms_name, driver.as_deref())
+    super::registry::detect_or_err(dbms_name, driver.as_deref())
         .map(|d| d as Box<dyn super::SqlDialect>)
 }
 
@@ -81,12 +81,7 @@ impl OdbcReader {
             (None, Some(name)) => Some(
                 crate::reader::registry::dialect_override(&name)
                     .map(|d| d as Box<dyn super::SqlDialect>)
-                    .ok_or_else(|| {
-                        GgsqlError::ReaderError(format!(
-                            "Unknown dialect '{name}' in ODBC connection string. Use \
-                             Dialect=ansi or any supported scheme (postgres, mysql, …)."
-                        ))
-                    })?,
+                    .ok_or_else(|| crate::reader::registry::unknown_dialect_error(&name))?,
             ),
             (None, None) => None,
         };
@@ -125,13 +120,16 @@ impl OdbcReader {
             None => detect_dialect(dbms_name.as_deref(), &conn_str)?,
         };
 
-        // Oracle ODBC rejects block cursors (SQL_ATTR_ROW_ARRAY_SIZE > 1)
-        // with HY090 at SQLFetch time, and the failed fetch leaves the
-        // cursor unusable — fetch row-by-row instead.
-        let batch_size = match &dbms_name {
-            Some(name) if name.to_lowercase().contains("oracle") => 1,
-            _ => BATCH_SIZE,
-        };
+        // Fetch batch size is a per-backend capability (registry
+        // `odbc_row_array_size`): Oracle ODBC rejects block cursors
+        // (SQL_ATTR_ROW_ARRAY_SIZE > 1) with HY090 at SQLFetch time, and the
+        // failed fetch leaves the cursor unusable.
+        let batch_size = super::registry::detect(
+            dbms_name.as_deref(),
+            super::connection::extract_odbc_value(&conn_str, "driver").as_deref(),
+        )
+        .and_then(|e| e.odbc_row_array_size)
+        .unwrap_or(BATCH_SIZE);
 
         Ok(Self {
             connection,
@@ -160,7 +158,7 @@ impl Reader for OdbcReader {
         super::validate_table_name(name)?;
 
         if replace {
-            let drop_sql = format!("DROP TABLE IF EXISTS {}", self.dialect.quote_ident(name));
+            let drop_sql = self.dialect.drop_table_sql(name);
             let _ = self.connection.execute(&drop_sql);
         }
 
@@ -262,7 +260,7 @@ impl Reader for OdbcReader {
             )));
         }
 
-        let sql = format!("DROP TABLE IF EXISTS {}", self.dialect.quote_ident(name));
+        let sql = self.dialect.drop_table_sql(name);
         self.connection.execute(&sql).map_err(|e| {
             GgsqlError::ReaderError(format!("Failed to unregister table '{}': {}", name, e))
         })?;

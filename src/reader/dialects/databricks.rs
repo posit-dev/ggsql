@@ -34,8 +34,9 @@ impl SqlDialect for DatabricksDialect {
         // ("generator is not supported: nested in expressions"), so the
         // explode must stand alone in an inner SELECT and the CAST moves
         // outside it.
+        let seq = self.quote_ident("__ggsql_seq__");
         format!(
-            "`__ggsql_seq__`(n) AS (\
+            "{seq}(n) AS (\
                SELECT CAST(n AS DOUBLE) AS n FROM (\
                  SELECT explode(sequence(0, {n} - 1)) AS n\
                )\
@@ -43,7 +44,13 @@ impl SqlDialect for DatabricksDialect {
         )
     }
 
-    fn sql_quantile(&self, column: &str, fraction: f64, _from: &str, _groups: &[String]) -> String {
+    fn sql_quantile(
+        &self,
+        column: &str,
+        fraction: f64,
+        _from: crate::sql::FromItem<'_>,
+        _groups: &[String],
+    ) -> String {
         // Spark forbids correlated scalar subqueries in the SELECT list of a
         // GROUP BY query ("is neither present in GROUP BY, nor in an
         // aggregate function"), so the correlated-subquery default fails

@@ -196,7 +196,7 @@ fn expand_ribbon_to_polygon(
             ],
             "__ggsql_ribbon__",
         )
-        .from_aliased(query, "__ggsql_ribbon__")
+        .from_aliased(crate::sql::FromItem::Query(query), "__ggsql_ribbon__")
         .build();
 
     // Build select list for each half

@@ -25,7 +25,7 @@ fn apply_clip_boundary(
 
     let filtered = crate::sql::Select::new(dialect)
         .select_star()
-        .from_aliased(query, "__ggsql_clip__")
+        .from_aliased(crate::sql::FromItem::Query(query), "__ggsql_clip__")
         .and_where(dialect.sql_st_intersects(col, &clip_geom))
         .build();
     dialect.sql_select_replace(&geom_expr, col, &filtered, columns)

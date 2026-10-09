@@ -124,7 +124,7 @@ fn expand_segment_to_vertices(
             )],
             "__ggsql_numbered__",
         )
-        .from_aliased(query, "__ggsql_numbered__")
+        .from_aliased(crate::sql::FromItem::Query(query), "__ggsql_numbered__")
         .build();
 
     let __ggsql_vertex__ = dialect.quote_ident("__ggsql_vertex__");
@@ -148,7 +148,7 @@ fn expand_segment_to_vertices(
     let __ggsql_vertices__ = dialect.quote_ident("__ggsql_vertices__");
     let sql = crate::sql::Select::new(dialect)
         .select_items(&select_parts)
-        .from_aliased(&numbered, "__ggsql_seg__")
+        .from_aliased(crate::sql::FromItem::Query(&numbered), "__ggsql_seg__")
         .join_raw(&format!("CROSS JOIN {vertices_table} {__ggsql_vertices__}"))
         .build();
 

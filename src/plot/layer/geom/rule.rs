@@ -99,7 +99,7 @@ impl GeomTrait for Rule {
                 let clip_table = clip_boundary_table();
                 crate::sql::Select::new(dialect)
                     .select_star()
-                    .from_aliased(&densified, "__ggsql_dens__")
+                    .from_aliased(crate::sql::FromItem::Query(&densified), "__ggsql_dens__")
                     .and_where(dialect.sql_st_contains(
                         &format!("(SELECT geom FROM {clip_table})"),
                         &dialect.sql_st_point(&pos1_q, &pos2_q),
@@ -250,7 +250,12 @@ fn expand_rule_to_segment(
     let scalar_bbox = |col: &str| {
         format!(
             "({})",
-            crate::sql::select_from(dialect, col, bbox_expr, "__ggsql_bbox__")
+            crate::sql::select_from(
+                dialect,
+                col,
+                crate::sql::FromItem::Query(bbox_expr),
+                "__ggsql_bbox__"
+            )
         )
     };
     let (fixed_expr, span_expr) = if has_pos1 {
@@ -291,7 +296,7 @@ fn expand_rule_to_segment(
             )],
             "__ggsql_rule_src__",
         )
-        .from_aliased(query, "__ggsql_rule_src__")
+        .from_aliased(crate::sql::FromItem::Query(query), "__ggsql_rule_src__")
         .build();
 
     let vertices_table = format!("(SELECT 0 AS {__ggsql_vertex__} UNION ALL SELECT 1)");
@@ -305,7 +310,7 @@ fn expand_rule_to_segment(
     let __ggsql_vertices__ = dialect.quote_ident("__ggsql_vertices__");
     let sql = crate::sql::Select::new(dialect)
         .select_items(&select_parts)
-        .from_aliased(&numbered, "__ggsql_rule__")
+        .from_aliased(crate::sql::FromItem::Query(&numbered), "__ggsql_rule__")
         .join_raw(&format!("CROSS JOIN {vertices_table} {__ggsql_vertices__}"))
         .build();
 
