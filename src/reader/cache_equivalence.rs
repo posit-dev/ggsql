@@ -4,8 +4,9 @@
 //! cache, builtin routing, layer-source staging, dialect selection).
 
 use super::CachingReader;
+use crate::reader::test_support::CacheBackend;
 use crate::reader::test_support::{ReadOnlyReader, SpyReader};
-use crate::reader::{CacheBackend, DuckDBReader, Reader, SqliteReader};
+use crate::reader::{DuckDBReader, Reader, SqliteReader};
 use crate::DataFrame;
 
 /// One corpus entry. `builtin_only` queries read only `ggsql:` datasets (which
@@ -16,7 +17,7 @@ struct Case {
 }
 
 /// A stat-heavy corpus — these generate the most cache-dialect SQL
-/// (`sql_percentile`, `sql_greatest`/`sql_least`, `sql_generate_series`,
+/// (`sql_quantile`, `sql_greatest`/`sql_least`, `sql_generate_series`,
 /// casts), where caching is most likely to diverge.
 const CORPUS: &[Case] = &[
     // boxplot: quantiles / IQR
@@ -290,10 +291,9 @@ mod adbc_mode {
             None,
         )
         .expect("`dbc install sqlite` first; see adbc.rs::equivalence_tests docs");
-        let dialect: Box<dyn SqlDialect + Send> = Box::new(SqliteDialect);
         AdbcReader::new_with_database_opts(
             driver,
-            dialect,
+            &SqliteDialect,
             std::iter::once((
                 OptionDatabase::Uri,
                 OptionValue::String(format!("file:{}", db_path)),

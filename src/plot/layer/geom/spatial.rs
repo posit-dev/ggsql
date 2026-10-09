@@ -19,11 +19,15 @@ fn apply_clip_boundary(
     let clip_table = clip_boundary_table();
     let clip_geom = format!("(SELECT geom FROM {clip_table})");
 
-    let clipped = format!("ST_Intersection({col}, {clip_geom})");
+    let clipped = dialect.sql_st_intersection(col, &clip_geom);
     let transformed = dialect.sql_st_transform(&clipped, source, crs);
-    let geom_expr = format!("ST_MakeValid({transformed})");
+    let geom_expr = dialect.sql_st_make_valid(&transformed);
 
-    let filtered = format!("SELECT * FROM ({query}) WHERE ST_Intersects({col}, {clip_geom})");
+    let filtered = crate::sql::Select::new(dialect)
+        .select_star()
+        .from_aliased(crate::sql::FromItem::Query(query), "__ggsql_clip__")
+        .and_where(dialect.sql_st_intersects(col, &clip_geom))
+        .build();
     dialect.sql_select_replace(&geom_expr, col, &filtered, columns)
 }
 
@@ -59,6 +63,7 @@ impl GeomTrait for Spatial {
         dialect: &dyn crate::reader::SqlDialect,
         _aesthetic_ctx: &crate::plot::aesthetic::AestheticContext,
     ) -> crate::Result<StatResult> {
+        crate::reader::ensure_spatial_supported(dialect)?;
         for stmt in dialect.sql_spatial_setup() {
             execute_query(&stmt)?;
         }
@@ -81,7 +86,7 @@ impl GeomTrait for Spatial {
         _parameters: &mut std::collections::HashMap<String, crate::plot::types::ParameterValue>,
     ) -> crate::Result<String> {
         let columns = mappings.column_names();
-        let col = naming::quote_ident(&naming::aesthetic_column("geometry"));
+        let col = dialect.quote_ident(&naming::aesthetic_column("geometry"));
         let is_map = projection.coord.coord_kind() == CoordKind::Map;
         let clip = matches!(
             projection.properties.get("clip"),

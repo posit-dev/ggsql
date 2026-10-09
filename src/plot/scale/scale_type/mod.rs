@@ -1899,6 +1899,93 @@ pub(crate) struct ResolveCommonResult {
     pub expand_factors: (f64, f64),
 }
 
+/// The natural epoch unit of a temporal Arrow type, in microseconds: a
+/// Date32 value counts days, a Timestamp value counts microseconds, a
+/// Time64 value counts nanoseconds.
+fn temporal_unit_micros(dtype: &DataType) -> Option<f64> {
+    match dtype {
+        DataType::Date32 | DataType::Date64 => Some(86_400_000_000.0),
+        DataType::Timestamp(_, _) => Some(1.0),
+        DataType::Time64(_) => Some(0.001),
+        _ => None,
+    }
+}
+
+/// Convert continuous range values (epoch numbers) from the column's
+/// natural temporal unit into the resolved transform's unit. A date
+/// transform trains in days, a datetime transform in microseconds, a time
+/// transform in nanoseconds — so a forced mismatch (`VIA date` on a
+/// Timestamp column, whose extents arrive in microseconds) must convert,
+/// or the day-based break math receives microseconds and overflows
+/// chrono::Duration::days. A no-op unless both sides are temporal with
+/// different units.
+pub(crate) fn convert_range_to_transform_unit(
+    range: &[ArrayElement],
+    dtype: Option<&DataType>,
+    transform: &Transform,
+) -> Vec<ArrayElement> {
+    let transform_unit = match transform.transform_kind() {
+        TransformKind::Date => temporal_unit_micros(&DataType::Date32),
+        TransformKind::DateTime => temporal_unit_micros(&DataType::Timestamp(
+            arrow::datatypes::TimeUnit::Microsecond,
+            None,
+        )),
+        TransformKind::Time => {
+            temporal_unit_micros(&DataType::Time64(arrow::datatypes::TimeUnit::Nanosecond))
+        }
+        _ => None,
+    };
+    let (Some(tu), Some(cu)) = (transform_unit, dtype.and_then(temporal_unit_micros)) else {
+        return range.to_vec();
+    };
+    if tu == cu {
+        return range.to_vec();
+    }
+    range
+        .iter()
+        .map(|elem| match elem {
+            ArrayElement::Number(v) => ArrayElement::Number(v * cu / tu),
+            other => other.clone(),
+        })
+        .collect()
+}
+
+/// Reject temporal scale values outside the representable range of the
+/// transform's unit. Break math converts values through chrono
+/// (`Duration::days` and friends), which *panics* on out-of-range input;
+/// a numeric column of epoch milliseconds under `VIA date` would otherwise
+/// abort the process. The check is representability only — values within
+/// range but in the wrong unit (millis read as micros) cannot be told
+/// apart from small valid ones.
+pub(crate) fn check_temporal_domain(
+    values: &[ArrayElement],
+    transform: &Transform,
+) -> Result<(), String> {
+    // NaiveDate spans roughly ±262k years (±9.6e7 days); NaiveDateTime is
+    // capped by its microsecond representation. Margins stay below both
+    // chrono's Duration bounds and the date types' own ranges.
+    let (limit, unit) = match transform.transform_kind() {
+        TransformKind::Date => (95_000_000.0, "days"),
+        TransformKind::DateTime => (8.0e18, "microseconds"),
+        TransformKind::Time => (1.0e15, "nanoseconds"),
+        _ => return Ok(()),
+    };
+    for elem in values {
+        if let Some(v) = elem.to_f64() {
+            if v.abs() > limit {
+                return Err(format!(
+                    "temporal scale value {v} ({unit} since epoch) is outside the representable \
+                     range for the {:?} transform — the column likely holds epoch values in a \
+                     different unit than the transform expects; cast the column or use a \
+                     transform matching its unit",
+                    transform.transform_kind()
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
 /// Perform the common scale resolution steps (1-4).
 ///
 /// This handles:
@@ -1973,7 +2060,14 @@ pub(crate) fn resolve_common_steps<T: ScaleTypeTrait + ?Sized>(
                 // User provided partial range with Nulls - merge with context (not expanded yet)
                 if let Some(ref range) = context.range {
                     let (context_values, is_discrete) = match range {
-                        InputRange::Continuous(r) => (r.clone(), false),
+                        InputRange::Continuous(r) => (
+                            convert_range_to_transform_unit(
+                                r,
+                                context.dtype.as_ref(),
+                                &resolved_transform,
+                            ),
+                            false,
+                        ),
                         InputRange::Discrete(r) => (r.clone(), true),
                     };
                     (
@@ -1991,7 +2085,14 @@ pub(crate) fn resolve_common_steps<T: ScaleTypeTrait + ?Sized>(
             }
         } else {
             match &context.range {
-                Some(InputRange::Continuous(r)) => (Some(r.clone()), false),
+                Some(InputRange::Continuous(r)) => (
+                    Some(convert_range_to_transform_unit(
+                        r,
+                        context.dtype.as_ref(),
+                        &resolved_transform,
+                    )),
+                    false,
+                ),
                 Some(InputRange::Discrete(r)) => (Some(r.clone()), true),
                 None => (None, false),
             }
@@ -2052,6 +2153,13 @@ pub(crate) fn resolve_common_steps<T: ScaleTypeTrait + ?Sized>(
             .map(|elem| resolved_transform.parse_value(elem))
             .collect();
         scale.input_range = Some(converted);
+    }
+
+    // Temporal break math panics (chrono) on out-of-range values; surface a
+    // proper error instead. Checked here for the input range and at the
+    // binned scale's direct context.range reads.
+    if let Some(ref input_range) = scale.input_range {
+        check_temporal_domain(input_range, &resolved_transform)?;
     }
 
     Ok(ResolveCommonResult {
@@ -2284,6 +2392,34 @@ pub fn needs_cast(column_dtype: &DataType, target_dtype: &DataType) -> Option<Ca
 mod tests {
     use super::*;
     use arrow::datatypes::TimeUnit;
+
+    #[test]
+    fn check_temporal_domain_rejects_millis_as_days() {
+        let transform = Transform::date();
+        let values = vec![
+            ArrayElement::Number(1_640_900_000_000.0),
+            ArrayElement::Number(1_641_600_000_000.0),
+        ];
+        let err = check_temporal_domain(&values, &transform).unwrap_err();
+        assert!(
+            err.contains("outside the representable range"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn check_temporal_domain_accepts_plausible_dates() {
+        let transform = Transform::date();
+        let values = vec![
+            ArrayElement::Number(18_993.0),
+            ArrayElement::Number(19_000.0),
+        ];
+        check_temporal_domain(&values, &transform).unwrap();
+        // Non-temporal transforms are never checked.
+        let identity = Transform::identity();
+        let huge = vec![ArrayElement::Number(1.0e300)];
+        check_temporal_domain(&huge, &identity).unwrap();
+    }
 
     #[test]
     fn test_scale_type_creation() {

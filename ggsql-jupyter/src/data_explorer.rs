@@ -4,6 +4,7 @@
 //! paginated data access.
 
 use ggsql::reader::Reader;
+use ggsql::sql::FromItem;
 use serde_json::{json, Value};
 
 /// Result of handling an RPC call.
@@ -416,7 +417,7 @@ impl DataExplorerState {
         if wants_summary {
             match display {
                 "integer" | "floating" => {
-                    let float_type = dialect.number_type_name().unwrap_or("DOUBLE PRECISION");
+                    let float_type = dialect.type_names().number.unwrap_or("DOUBLE PRECISION");
                     select_parts.push(format!("MIN({}) AS \"min_val\"", quoted_col));
                     select_parts.push(format!("MAX({}) AS \"max_val\"", quoted_col));
                     select_parts.push(format!(
@@ -534,11 +535,17 @@ impl DataExplorerState {
                             number_stats["stdev"] = json!(format!("{}", stdev));
                         }
                     }
-                    // Median via dialect's sql_percentile
-                    let col_name = col.name.replace('"', "\"\"");
+                    // Median via the dialect's quantile hook. The expression
+                    // must sit in a query over `from` (native dialects return
+                    // a bare aggregate, which without a FROM would compute
+                    // over an empty input and yield NULL).
                     let from_query = format!("SELECT * FROM {}", self.table_path);
-                    let median_expr = dialect.sql_percentile(&col_name, 0.5, &from_query, &[]);
-                    let median_sql = format!("SELECT {} AS \"median_val\"", median_expr);
+                    let median_expr =
+                        dialect.sql_quantile(&col.name, 0.5, FromItem::Query(&from_query), &[]);
+                    let median_sql = format!(
+                        "SELECT {} AS \"median_val\" FROM ({}) AS \"__ggsql_qt__\"",
+                        median_expr, from_query
+                    );
                     if let Ok(median_df) = reader.execute_sql(&median_sql) {
                         use arrow::array::Array;
                         if let Some(v) = median_df.column("median_val").ok().and_then(|c| {
@@ -653,7 +660,7 @@ impl DataExplorerState {
         }
 
         let dialect = reader.dialect();
-        let float_type = dialect.number_type_name().unwrap_or("DOUBLE PRECISION");
+        let float_type = dialect.type_names().number.unwrap_or("DOUBLE PRECISION");
         let quoted_col = ggsql::naming::quote_ident(&col.name);
         let is_integer = col.type_display == "integer";
 
@@ -769,11 +776,15 @@ impl DataExplorerState {
 
         let mut quantile_results = Vec::new();
         let from_query = format!("SELECT * FROM {}", self.table_path);
-        let col_name = col.name.replace('"', "\"\"");
         for q in &quantiles_param {
             if let Some(q_val) = q.as_f64() {
-                let expr = dialect.sql_percentile(&col_name, q_val, &from_query, &[]);
-                let q_sql = format!("SELECT {} AS \"q_val\"", expr);
+                let expr =
+                    dialect.sql_quantile(&col.name, q_val, FromItem::Query(&from_query), &[]);
+                // See the median path above: the expression needs the FROM.
+                let q_sql = format!(
+                    "SELECT {} AS \"q_val\" FROM ({}) AS \"__ggsql_qt__\"",
+                    expr, from_query
+                );
                 if let Ok(q_df) = reader.execute_sql(&q_sql) {
                     use arrow::array::Array;
                     if let Some(v) = q_df.column("q_val").ok().and_then(|c| {

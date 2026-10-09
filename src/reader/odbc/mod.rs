@@ -7,50 +7,41 @@
 #[allow(dead_code)]
 pub(crate) mod ffi;
 mod snowflake;
-#[allow(dead_code)]
 mod wrapper;
 
 use crate::reader::Reader;
-use crate::{naming, DataFrame, GgsqlError, Result};
+use crate::{DataFrame, GgsqlError, Result};
 use arrow::array::*;
+#[cfg(test)]
 use arrow::datatypes::DataType;
 use ffi::*;
-use std::cell::RefCell;
-use std::collections::HashSet;
 use std::sync::Arc;
 use wrapper::{Connection, Statement};
 
 /// Detect the backend SQL dialect from the DBMS name and connection string.
-fn detect_dialect(dbms_name: Option<&str>, conn_str: &str) -> Box<dyn super::SqlDialect> {
-    if let Some(name) = dbms_name {
-        let lower = name.to_lowercase();
-        #[cfg(feature = "sqlite")]
-        if lower.contains("sqlite") {
-            return Box::new(super::sqlite::SqliteDialect);
-        }
-        #[cfg(feature = "duckdb")]
-        if lower.contains("duckdb") {
-            return Box::new(super::duckdb::DuckDbDialect);
-        }
-    }
+///
+/// Delegates to the shared matcher in [`crate::reader::dialects`]; the
+/// `Driver=` value from the ODBC connection string serves as the driver hint.
+fn detect_dialect(dbms_name: Option<&str>, conn_str: &str) -> Result<super::DialectRef> {
+    let driver = super::connection::extract_odbc_value(conn_str, "driver");
+    super::registry::detect_or_err(dbms_name, driver.as_deref())
+}
 
-    // Fall back to connection string matching
-    let driver =
-        super::connection::extract_odbc_value(conn_str, "driver").map(|s| s.to_lowercase());
-    match driver.as_deref() {
-        #[cfg(feature = "sqlite")]
-        Some(d) if d.contains("sqlite") => Box::new(super::sqlite::SqliteDialect),
-        #[cfg(feature = "duckdb")]
-        Some(d) if d.contains("duckdb") => Box::new(super::duckdb::DuckDbDialect),
-        _ => Box::new(super::AnsiDialect),
-    }
+/// Pull ggsql-owned keys (`Dialect=<name>`) out of an ODBC connection
+/// string before connecting. `Dialect=` is ggsql's escape hatch for unknown
+/// backends, not a driver option — drivers reject unknown keys.
+fn take_dialect_override(conn_str: &str) -> (String, Option<String>) {
+    let (conn_str, ggsql) = super::connection::take_odbc_ggsql_params(conn_str);
+    (conn_str, ggsql.dialect)
 }
 
 /// Generic ODBC reader implementing the `Reader` trait.
 pub struct OdbcReader {
     connection: Connection,
-    dialect: Box<dyn super::SqlDialect>,
-    registered_tables: RefCell<HashSet<String>>,
+    dialect: super::DialectRef,
+    registered_tables: crate::reader::RegisteredTables,
+    batch_size: usize,
+    numeric_as_double: bool,
 }
 
 // Safety: ODBC connections are safe to use from one thread at a time.
@@ -60,14 +51,36 @@ unsafe impl Send for OdbcReader {}
 impl OdbcReader {
     /// Create a new ODBC reader from a `odbc://` connection URI.
     pub fn from_connection_string(uri: &str) -> Result<Self> {
-        ffi::try_load()
-            .map_err(|e| GgsqlError::ReaderError(format!("ODBC is not available: {}", e)))?;
-
         let conn_str = uri
             .strip_prefix("odbc://")
             .ok_or_else(|| GgsqlError::ReaderError("ODBC URI must start with odbc://".into()))?;
+        Self::from_odbc_conn_str(conn_str, None)
+    }
+
+    /// Create a new ODBC reader from a bare ODBC connection string.
+    ///
+    /// When `dialect` is `None`, it is detected from the DBMS name reported
+    /// by the connection, falling back to the `Driver=` value in the
+    /// connection string, then ANSI. Pass `Some(...)` to pin the dialect
+    /// (e.g. from a backend-specific ggsql URI scheme).
+    pub fn from_odbc_conn_str(conn_str: &str, dialect: Option<super::DialectRef>) -> Result<Self> {
+        ffi::try_load()
+            .map_err(|e| GgsqlError::ReaderError(format!("ODBC is not available: {}", e)))?;
 
         let mut conn_str = conn_str.to_string();
+
+        // ggsql's `Dialect=` escape hatch: resolved here, stripped from the
+        // connection string before the driver ever sees it.
+        let (stripped, dialect_override) = take_dialect_override(&conn_str);
+        conn_str = stripped;
+        let dialect = match (dialect, dialect_override) {
+            (d @ Some(_), _) => d,
+            (None, Some(name)) => Some(
+                crate::reader::registry::dialect_override(&name)
+                    .ok_or_else(|| crate::reader::registry::unknown_dialect_error(&name))?,
+            ),
+            (None, None) => None,
+        };
 
         if snowflake::is_snowflake(&conn_str) {
             if let Some(resolved) = snowflake::resolve_connection_name(&conn_str) {
@@ -81,16 +94,47 @@ impl OdbcReader {
             }
         }
 
-        let env = wrapper::odbc_env()?;
-        let connection = Connection::connect(env, &conn_str)?;
+        let connection = match Connection::connect(wrapper::odbc_env()?, &conn_str) {
+            Ok(c) => c,
+            Err(e) => {
+                // unixODBC IM005 ("Driver's SQLAllocHandle on
+                // SQL_HANDLE_DBC failed"): some drivers (MonetDB) refuse
+                // DBC allocation under an ODBC 3.80 environment. Retry once
+                // under 3.0 semantics before giving up.
+                if e.to_string().contains("IM005") {
+                    Connection::connect(wrapper::odbc_env_legacy()?, &conn_str)?
+                } else {
+                    return Err(e);
+                }
+            }
+        };
 
         let dbms_name = connection.dbms_name();
-        let dialect = detect_dialect(dbms_name.as_deref(), &conn_str);
+
+        let dialect = match dialect {
+            Some(d) => d,
+            None => detect_dialect(dbms_name.as_deref(), &conn_str)?,
+        };
+
+        // Fetch behavior is a per-backend capability: Oracle ODBC rejects
+        // block cursors (`odbc_row_array_size`; HY090 at SQLFetch time, and
+        // the failed fetch leaves the cursor unusable) and cannot convert
+        // DECIMAL to integer C types (`odbc_numeric_as_double`).
+        let entry = super::registry::detect(
+            dbms_name.as_deref(),
+            super::connection::extract_odbc_value(&conn_str, "driver").as_deref(),
+        );
+        let batch_size = entry
+            .and_then(|e| e.odbc_row_array_size)
+            .unwrap_or(BATCH_SIZE);
+        let numeric_as_double = entry.is_some_and(|e| e.odbc_numeric_as_double);
 
         Ok(Self {
             connection,
             dialect,
-            registered_tables: RefCell::new(HashSet::new()),
+            registered_tables: crate::reader::RegisteredTables::new(),
+            batch_size,
+            numeric_as_double,
         })
     }
 }
@@ -103,14 +147,17 @@ impl Reader for OdbcReader {
             return Ok(DataFrame::empty());
         };
 
-        cursor_to_dataframe(cursor)
+        cursor_to_dataframe(cursor, self.batch_size, self.numeric_as_double).map_err(|e| {
+            let snippet: String = sql.chars().take(200).collect();
+            GgsqlError::ReaderError(format!("{e} [statement: {snippet}]"))
+        })
     }
 
     fn register(&self, name: &str, df: DataFrame, replace: bool) -> Result<()> {
         super::validate_table_name(name)?;
 
         if replace {
-            let drop_sql = format!("DROP TABLE IF EXISTS {}", naming::quote_ident(name));
+            let drop_sql = self.dialect.drop_table_sql(name);
             let _ = self.connection.execute(&drop_sql);
         }
 
@@ -119,21 +166,16 @@ impl Reader for OdbcReader {
             .fields()
             .iter()
             .map(|field| {
-                format!(
-                    "{} {}",
-                    naming::quote_ident(field.name()),
-                    arrow_dtype_to_sql(field.data_type())
-                )
+                let ty = super::register_column_type(&*self.dialect, field.data_type())
+                    .unwrap_or_else(|_| "TEXT".to_string());
+                format!("{} {}", self.dialect.quote_ident(field.name()), ty)
             })
             .collect();
-        let create_sql = format!(
-            "CREATE TEMPORARY TABLE {} ({})",
-            naming::quote_ident(name),
-            col_defs.join(", ")
-        );
-        self.connection.execute(&create_sql).map_err(|e| {
-            GgsqlError::ReaderError(format!("Failed to create temp table '{}': {}", name, e))
-        })?;
+        for create_sql in self.dialect.sql_create_empty_temp_table(name, &col_defs) {
+            self.connection.execute(&create_sql).map_err(|e| {
+                GgsqlError::ReaderError(format!("Failed to create temp table '{}': {}", name, e))
+            })?;
+        }
 
         let num_rows = df.height();
         if num_rows > 0 {
@@ -141,7 +183,7 @@ impl Reader for OdbcReader {
             let placeholders: Vec<&str> = vec!["?"; num_cols];
             let insert_sql = format!(
                 "INSERT INTO {} VALUES ({})",
-                naming::quote_ident(name),
+                self.dialect.quote_ident(name),
                 placeholders.join(", ")
             );
 
@@ -205,24 +247,24 @@ impl Reader for OdbcReader {
             }
         }
 
-        self.registered_tables.borrow_mut().insert(name.to_string());
+        self.registered_tables.note_registered(name);
         Ok(())
     }
 
     fn unregister(&self, name: &str) -> Result<()> {
-        if !self.registered_tables.borrow().contains(name) {
+        if !self.registered_tables.is_registered(name) {
             return Err(GgsqlError::ReaderError(format!(
                 "Table '{}' was not registered via this reader",
                 name
             )));
         }
 
-        let sql = format!("DROP TABLE IF EXISTS {}", naming::quote_ident(name));
+        let sql = self.dialect.drop_table_sql(name);
         self.connection.execute(&sql).map_err(|e| {
             GgsqlError::ReaderError(format!("Failed to unregister table '{}': {}", name, e))
         })?;
 
-        self.registered_tables.borrow_mut().remove(name);
+        self.registered_tables.note_unregistered(name);
         Ok(())
     }
 
@@ -231,13 +273,13 @@ impl Reader for OdbcReader {
     }
 
     fn dialect(&self) -> &dyn super::SqlDialect {
-        &*self.dialect
+        self.dialect
     }
 
     fn list_catalogs(&self) -> Result<Vec<String>> {
         // ODBC spec: CatalogName="%", SchemaName="", TableName=""
         let stmt = wrapper::sql_tables(&self.connection, Some("%"), Some(""), Some(""), None)?;
-        let df = cursor_to_dataframe(stmt)?;
+        let df = cursor_to_dataframe(stmt, self.batch_size, self.numeric_as_double)?;
         let mut catalogs = extract_string_column_ci(&df, "TABLE_CAT")?;
         catalogs.sort();
         catalogs.dedup();
@@ -247,7 +289,7 @@ impl Reader for OdbcReader {
     fn list_schemas(&self, _catalog: &str) -> Result<Vec<String>> {
         // ODBC spec: CatalogName="", SchemaName="%", TableName=""
         let stmt = wrapper::sql_tables(&self.connection, Some(""), Some("%"), Some(""), None)?;
-        let df = cursor_to_dataframe(stmt)?;
+        let df = cursor_to_dataframe(stmt, self.batch_size, self.numeric_as_double)?;
         let mut schemas = extract_string_column_ci(&df, "TABLE_SCHEM")?;
         schemas.sort();
         schemas.dedup();
@@ -266,7 +308,7 @@ impl Reader for OdbcReader {
             Some(schema)
         };
         let stmt = wrapper::sql_tables(&self.connection, cat, sch, Some("%"), Some("TABLE,VIEW"))?;
-        let df = cursor_to_dataframe(stmt)?;
+        let df = cursor_to_dataframe(stmt, self.batch_size, self.numeric_as_double)?;
         extract_table_infos_ci(&df)
     }
 
@@ -287,7 +329,7 @@ impl Reader for OdbcReader {
             Some(schema)
         };
         let stmt = wrapper::sql_columns(&self.connection, cat, sch, Some(table), None)?;
-        let df = cursor_to_dataframe(stmt)?;
+        let df = cursor_to_dataframe(stmt, self.batch_size, self.numeric_as_double)?;
         extract_column_infos_ci(&df)
     }
 }
@@ -356,23 +398,6 @@ fn extract_column_infos_ci(df: &DataFrame) -> Result<Vec<super::ColumnInfo>> {
 }
 
 // ============================================================================
-// SQL type mapping
-// ============================================================================
-
-fn arrow_dtype_to_sql(dtype: &DataType) -> &'static str {
-    match dtype {
-        DataType::Boolean => "BOOLEAN",
-        DataType::Int8 | DataType::Int16 | DataType::Int32 | DataType::Int64 => "BIGINT",
-        DataType::UInt8 | DataType::UInt16 | DataType::UInt32 | DataType::UInt64 => "BIGINT",
-        DataType::Float32 | DataType::Float64 => "DOUBLE PRECISION",
-        DataType::Date32 => "DATE",
-        DataType::Timestamp(_, _) => "TIMESTAMP",
-        DataType::Time64(_) => "TIME",
-        _ => "TEXT",
-    }
-}
-
-// ============================================================================
 // Column builder (accumulates typed values across batches)
 // ============================================================================
 
@@ -395,6 +420,7 @@ impl ColumnBuilder {
         sql_type: SqlSmallInt,
         col_size: SqlULen,
         decimal_digits: SqlSmallInt,
+        numeric_as_double: bool,
     ) -> Self {
         match sql_type {
             SQL_TINYINT => Self::Int8(Vec::new()),
@@ -403,19 +429,17 @@ impl ColumnBuilder {
             SQL_BIGINT => Self::Int64(Vec::new()),
             SQL_REAL => Self::Float32(Vec::new()),
             SQL_DOUBLE | SQL_FLOAT => Self::Float64(Vec::new()),
-            SQL_NUMERIC | SQL_DECIMAL => {
-                if decimal_digits == 0 {
-                    if col_size < 10 {
-                        Self::Int32(Vec::new())
-                    } else if col_size < 19 {
-                        Self::Int64(Vec::new())
-                    } else {
-                        Self::Float64(Vec::new())
-                    }
-                } else {
-                    Self::Float64(Vec::new())
-                }
+            // Integer-scale numerics keep an integer type (and their
+            // precision past 2^53) — except where the driver cannot convert
+            // DECIMAL to an integer C type (Oracle fails with HY090; see the
+            // registry's `odbc_numeric_as_double`). >15 digits cannot be
+            // trusted to Int64, so those bind as double too.
+            SQL_NUMERIC | SQL_DECIMAL
+                if !numeric_as_double && decimal_digits == 0 && (1..=15).contains(&col_size) =>
+            {
+                Self::Int64(Vec::new())
             }
+            SQL_NUMERIC | SQL_DECIMAL => Self::Float64(Vec::new()),
             SQL_BIT => Self::Boolean(Vec::new()),
             SQL_TYPE_DATE => Self::Date(Vec::new()),
             SQL_TYPE_TIME => Self::Time(Vec::new()),
@@ -513,7 +537,15 @@ fn odbc_timestamp_to_micros(ts: &SqlTimestampStruct) -> Option<i64> {
 // ============================================================================
 
 const BATCH_SIZE: usize = 1000;
-const DEFAULT_TEXT_BUF_SIZE: usize = 65536;
+/// Per-cell text fetch buffer. Values longer than this are an explicit
+/// error (see the `ColumnBuilder::Text` arm of `extract_batch`) rather than
+/// silently truncated; 16 KiB keeps a 1000-row batch of one text column at
+/// 16 MiB.
+const DEFAULT_TEXT_BUF_SIZE: usize = 16384;
+/// Cap on the per-cell text buffer sized from the driver-reported column
+/// size, bounding batch memory (a 1000-row batch of one text column at the
+/// cap is ~1 GiB; values beyond the buffer size are an explicit error).
+const MAX_TEXT_BUF_SIZE: usize = 1024 * 1024;
 
 struct ColumnBuffer {
     data: Vec<u8>,
@@ -521,7 +553,11 @@ struct ColumnBuffer {
     text_buf_size: usize,
 }
 
-fn cursor_to_dataframe(stmt: Statement) -> Result<DataFrame> {
+fn cursor_to_dataframe(
+    stmt: Statement,
+    batch_size: usize,
+    numeric_as_double: bool,
+) -> Result<DataFrame> {
     let col_count = stmt.num_result_cols()?;
     if col_count == 0 {
         return Ok(DataFrame::empty());
@@ -529,20 +565,23 @@ fn cursor_to_dataframe(stmt: Statement) -> Result<DataFrame> {
 
     // Describe all columns
     let mut col_names = Vec::with_capacity(col_count);
+    let mut col_sizes = Vec::with_capacity(col_count);
     let mut builders = Vec::with_capacity(col_count);
 
     for i in 1..=col_count as u16 {
         let (name, data_type, col_size, decimal_digits, _nullable) = stmt.describe_col(i)?;
         col_names.push(name);
+        col_sizes.push(col_size);
         builders.push(ColumnBuilder::from_sql_type(
             data_type,
             col_size,
             decimal_digits,
+            numeric_as_double,
         ));
     }
 
     // Set up batch fetching
-    stmt.setup_batch_fetch(BATCH_SIZE)?;
+    stmt.setup_batch_fetch(batch_size)?;
     let mut rows_fetched: SqlULen = 0;
     unsafe { stmt.set_rows_fetched_ptr(&mut rows_fetched)? };
 
@@ -552,13 +591,28 @@ fn cursor_to_dataframe(stmt: Statement) -> Result<DataFrame> {
         .enumerate()
         .map(|(i, builder)| {
             let (elem_size, text_buf_size) = if matches!(builder, ColumnBuilder::Text(_)) {
-                (DEFAULT_TEXT_BUF_SIZE + 1, DEFAULT_TEXT_BUF_SIZE) // +1 for null terminator
+                // Size the per-cell buffer from the driver-reported column
+                // size when available (×4 for UTF-8 expansion), so a
+                // VARCHAR(4000) doesn't pay the default and long values in
+                // sized columns fit. Unsized columns (LONG/CLOB) get the
+                // default; anything longer is an explicit error, never a
+                // silent truncation. +2: null terminator, and keep the bind
+                // length even — some Unicode drivers (Oracle) reject odd
+                // buffer lengths with HY090.
+                let size = if col_sizes[i] > 0 {
+                    col_sizes[i]
+                        .saturating_mul(4)
+                        .clamp(DEFAULT_TEXT_BUF_SIZE, MAX_TEXT_BUF_SIZE)
+                } else {
+                    DEFAULT_TEXT_BUF_SIZE
+                };
+                (size + 2, size)
             } else {
                 (builder.element_size(), 0)
             };
 
-            let data = vec![0u8; elem_size * BATCH_SIZE];
-            let indicators = vec![0isize; BATCH_SIZE];
+            let data = vec![0u8; elem_size * batch_size];
+            let indicators = vec![0isize; batch_size];
 
             let col_num = (i + 1) as u16;
             let c_type = builder.c_type();
@@ -578,7 +632,7 @@ fn cursor_to_dataframe(stmt: Statement) -> Result<DataFrame> {
         let col_num = (i + 1) as u16;
         let c_type = builder.c_type();
         let elem_size = if matches!(builder, ColumnBuilder::Text(_)) {
-            (buf.text_buf_size + 1) as SqlLen
+            (buf.text_buf_size + 2) as SqlLen
         } else {
             builder.element_size() as SqlLen
         };
@@ -601,7 +655,10 @@ fn cursor_to_dataframe(stmt: Statement) -> Result<DataFrame> {
             SQL_NO_DATA => break,
             SQL_SUCCESS | SQL_SUCCESS_WITH_INFO => {}
             _ => {
-                return Err(GgsqlError::ReaderError("Failed to fetch batch".to_string()));
+                let diag = wrapper::extract_diagnostic(SQL_HANDLE_STMT, stmt.handle() as SqlHandle);
+                return Err(GgsqlError::ReaderError(format!(
+                    "Failed to fetch batch: {diag}"
+                )));
             }
         }
 
@@ -612,7 +669,7 @@ fn cursor_to_dataframe(stmt: Statement) -> Result<DataFrame> {
 
         // Extract data from buffers into builders
         for (col_idx, (builder, buf)) in builders.iter_mut().zip(buffers.iter()).enumerate() {
-            extract_batch(builder, buf, n, col_idx)?;
+            extract_batch(builder, buf, n, &col_names[col_idx])?;
         }
     }
 
@@ -630,7 +687,7 @@ fn extract_batch(
     builder: &mut ColumnBuilder,
     buf: &ColumnBuffer,
     num_rows: usize,
-    _col_idx: usize,
+    col_name: &str,
 ) -> Result<()> {
     for row in 0..num_rows {
         let indicator = buf.indicators[row];
@@ -737,19 +794,36 @@ fn extract_batch(
                 if is_null {
                     v.push(None);
                 } else {
-                    let elem_size = buf.text_buf_size + 1;
+                    let elem_size = buf.text_buf_size + 2;
                     let offset = row * elem_size;
                     // indicator is the actual byte length, but may be
                     // SQL_NO_TOTAL (-4) if the driver can't determine length.
                     // In that case, scan for null terminator in the buffer.
                     let actual_len = if indicator >= 0 {
-                        (indicator as usize).min(buf.text_buf_size)
+                        if indicator as usize > buf.text_buf_size {
+                            return Err(GgsqlError::ReaderError(format!(
+                                "ODBC text value in column '{}' is {} bytes, exceeding the \
+                                 {}-byte fetch buffer; refusing to return a truncated value",
+                                col_name, indicator, buf.text_buf_size,
+                            )));
+                        }
+                        indicator as usize
                     } else {
                         let slice = &buf.data[offset..offset + buf.text_buf_size];
-                        slice
-                            .iter()
-                            .position(|&b| b == 0)
-                            .unwrap_or(buf.text_buf_size)
+                        match slice.iter().position(|&b| b == 0) {
+                            Some(pos) => pos,
+                            // No terminator: the value filled the buffer and
+                            // the driver can't tell us its true length —
+                            // almost certainly truncated.
+                            None => {
+                                return Err(GgsqlError::ReaderError(format!(
+                                    "ODBC text value in column '{}' exceeds the {}-byte fetch \
+                                     buffer (driver reports SQL_NO_TOTAL); refusing to return \
+                                     a truncated value",
+                                    col_name, buf.text_buf_size,
+                                )))
+                            }
+                        }
                     };
                     let bytes = &buf.data[offset..offset + actual_len];
                     let s = String::from_utf8_lossy(bytes).into_owned();
@@ -767,99 +841,119 @@ mod tests {
 
     #[test]
     fn test_detect_dialect_from_dbms_name() {
-        let d = detect_dialect(Some("Snowflake"), "anything");
+        let d = detect_dialect(Some("Snowflake"), "anything").unwrap();
         assert!(!d.sql_greatest(&["a", "b"]).is_empty());
 
-        let d = detect_dialect(None, "Driver=Snowflake;Server=foo");
+        let d = detect_dialect(None, "Driver=Snowflake;Server=foo").unwrap();
         assert!(!d.sql_greatest(&["a", "b"]).is_empty());
 
-        let d = detect_dialect(None, "Driver=SomeOther;Server=localhost");
-        assert!(!d.sql_greatest(&["a", "b"]).is_empty());
+        let err = detect_dialect(None, "Driver=SomeOther;Server=localhost")
+            .err()
+            .unwrap()
+            .to_string();
+        assert!(err.contains("dialect=ansi"), "got: {err}");
     }
 
     #[test]
-    fn test_arrow_dtype_to_sql() {
-        assert_eq!(arrow_dtype_to_sql(&DataType::Int64), "BIGINT");
-        assert_eq!(arrow_dtype_to_sql(&DataType::Float64), "DOUBLE PRECISION");
-        assert_eq!(arrow_dtype_to_sql(&DataType::Boolean), "BOOLEAN");
-        assert_eq!(arrow_dtype_to_sql(&DataType::Date32), "DATE");
-        assert_eq!(arrow_dtype_to_sql(&DataType::Utf8), "TEXT");
+    fn test_register_column_type_via_shared_mapping() {
+        use crate::reader::AnsiDialect;
+        let ty = |d: &DataType| crate::reader::register_column_type(&AnsiDialect, d).unwrap();
+        assert_eq!(ty(&DataType::Int64), "BIGINT");
+        assert_eq!(ty(&DataType::Float64), "DOUBLE PRECISION");
+        assert_eq!(ty(&DataType::Boolean), "BOOLEAN");
+        assert_eq!(ty(&DataType::Date32), "DATE");
+        assert_eq!(ty(&DataType::Utf8), "VARCHAR");
     }
 
     #[test]
     fn test_column_builder_from_sql_type() {
         assert!(matches!(
-            ColumnBuilder::from_sql_type(SQL_TINYINT, 0, 0),
+            ColumnBuilder::from_sql_type(SQL_TINYINT, 0, 0, false),
             ColumnBuilder::Int8(_)
         ));
         assert!(matches!(
-            ColumnBuilder::from_sql_type(SQL_SMALLINT, 0, 0),
+            ColumnBuilder::from_sql_type(SQL_SMALLINT, 0, 0, false),
             ColumnBuilder::Int16(_)
         ));
         assert!(matches!(
-            ColumnBuilder::from_sql_type(SQL_INTEGER, 0, 0),
+            ColumnBuilder::from_sql_type(SQL_INTEGER, 0, 0, false),
             ColumnBuilder::Int32(_)
         ));
         assert!(matches!(
-            ColumnBuilder::from_sql_type(SQL_BIGINT, 0, 0),
+            ColumnBuilder::from_sql_type(SQL_BIGINT, 0, 0, false),
             ColumnBuilder::Int64(_)
         ));
         assert!(matches!(
-            ColumnBuilder::from_sql_type(SQL_REAL, 0, 0),
+            ColumnBuilder::from_sql_type(SQL_REAL, 0, 0, false),
             ColumnBuilder::Float32(_)
         ));
         assert!(matches!(
-            ColumnBuilder::from_sql_type(SQL_DOUBLE, 0, 0),
+            ColumnBuilder::from_sql_type(SQL_DOUBLE, 0, 0, false),
             ColumnBuilder::Float64(_)
         ));
         assert!(matches!(
-            ColumnBuilder::from_sql_type(SQL_FLOAT, 0, 0),
+            ColumnBuilder::from_sql_type(SQL_FLOAT, 0, 0, false),
             ColumnBuilder::Float64(_)
         ));
         assert!(matches!(
-            ColumnBuilder::from_sql_type(SQL_BIT, 0, 0),
+            ColumnBuilder::from_sql_type(SQL_BIT, 0, 0, false),
             ColumnBuilder::Boolean(_)
         ));
         assert!(matches!(
-            ColumnBuilder::from_sql_type(SQL_TYPE_DATE, 0, 0),
+            ColumnBuilder::from_sql_type(SQL_TYPE_DATE, 0, 0, false),
             ColumnBuilder::Date(_)
         ));
         assert!(matches!(
-            ColumnBuilder::from_sql_type(SQL_TYPE_TIME, 0, 0),
+            ColumnBuilder::from_sql_type(SQL_TYPE_TIME, 0, 0, false),
             ColumnBuilder::Time(_)
         ));
         assert!(matches!(
-            ColumnBuilder::from_sql_type(SQL_TYPE_TIMESTAMP, 0, 0),
+            ColumnBuilder::from_sql_type(SQL_TYPE_TIMESTAMP, 0, 0, false),
             ColumnBuilder::Timestamp(_)
         ));
         assert!(matches!(
-            ColumnBuilder::from_sql_type(SQL_VARCHAR, 0, 0),
+            ColumnBuilder::from_sql_type(SQL_VARCHAR, 0, 0, false),
             ColumnBuilder::Text(_)
         ));
         assert!(matches!(
-            ColumnBuilder::from_sql_type(SQL_WVARCHAR, 0, 0),
+            ColumnBuilder::from_sql_type(SQL_WVARCHAR, 0, 0, false),
             ColumnBuilder::Text(_)
         ));
         assert!(matches!(
-            ColumnBuilder::from_sql_type(SQL_LONGVARCHAR, 0, 0),
+            ColumnBuilder::from_sql_type(SQL_LONGVARCHAR, 0, 0, false),
             ColumnBuilder::Text(_)
         ));
-        // Decimal with scale=0 maps to integer types based on precision
+        // Integer-scale numerics bind as Int64 where the driver supports
+        // it; past 15 digits, with a fractional scale, or with
+        // numeric_as_double (Oracle rejects SQL_DECIMAL → SQL_C_SBIGINT
+        // with HY090), they bind as double.
         assert!(matches!(
-            ColumnBuilder::from_sql_type(SQL_NUMERIC, 5, 0),
-            ColumnBuilder::Int32(_)
-        ));
-        assert!(matches!(
-            ColumnBuilder::from_sql_type(SQL_NUMERIC, 15, 0),
+            ColumnBuilder::from_sql_type(SQL_NUMERIC, 5, 0, false),
             ColumnBuilder::Int64(_)
         ));
         assert!(matches!(
-            ColumnBuilder::from_sql_type(SQL_NUMERIC, 25, 0),
+            ColumnBuilder::from_sql_type(SQL_NUMERIC, 15, 0, false),
+            ColumnBuilder::Int64(_)
+        ));
+        assert!(matches!(
+            ColumnBuilder::from_sql_type(SQL_NUMERIC, 20, 0, false),
+            ColumnBuilder::Float64(_)
+        ));
+        assert!(matches!(
+            ColumnBuilder::from_sql_type(SQL_NUMERIC, 10, 2, false),
+            ColumnBuilder::Float64(_)
+        ));
+        assert!(matches!(
+            ColumnBuilder::from_sql_type(SQL_NUMERIC, 5, 0, true),
+            ColumnBuilder::Float64(_)
+        ));
+        assert!(matches!(
+            ColumnBuilder::from_sql_type(SQL_NUMERIC, 25, 0, false),
             ColumnBuilder::Float64(_)
         ));
         // Decimal with scale>0 maps to Float64
         assert!(matches!(
-            ColumnBuilder::from_sql_type(SQL_DECIMAL, 10, 2),
+            ColumnBuilder::from_sql_type(SQL_DECIMAL, 10, 2, false),
             ColumnBuilder::Float64(_)
         ));
     }
