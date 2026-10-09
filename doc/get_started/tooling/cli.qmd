@@ -190,6 +190,24 @@ Resizing the window re-lays-out the plot rather than stretching it, so labels an
 
 Like the raster writers, the viewer renders through the GPU and is not in every build. The subcommand exists either way and says what would enable it.
 
+## Interactive sessions
+
+`ggsql repl` starts an interactive session in the terminal:
+
+```bash
+ggsql repl
+```
+
+Statements end with `;`. A plain SQL statement prints its table; a query with a `VISUALISE` clause draws its plot in a native window that opens when the session starts and updates in place with each new plot. The database connection stays open for the whole session, so a table created by one statement is visible to the next:
+
+```
+ggsql> CREATE TABLE penguins AS SELECT * FROM 'penguins.csv';
+ggsql> SELECT species, COUNT(*) AS n FROM penguins GROUP BY species;
+ggsql> SELECT * FROM penguins VISUALISE species AS fill DRAW bar;
+```
+
+History is kept across sessions, Ctrl-C abandons the statement being typed rather than the session, and `:quit` (or Ctrl-D) leaves — closing the window ends the session too. `:help` lists the commands. The session takes the same flags as `ggsql view`: `--reader` and `--cache` for the data source, and `-D` for the window's `width`, `height`, `background` and `title`. Like the viewer, the plot window renders through the GPU; a build without the `window` feature still runs the session and prints tables, and says so when a query asks for a plot.
+
 ## Documentation
 
 The ggsql CLI has built-in documentation for ggsql syntax and usage. Run `ggsql docs` for an overview of available documentation topics, and `ggsql docs [topic]` to read about a specific topic.

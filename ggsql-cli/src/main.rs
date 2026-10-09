@@ -565,9 +565,11 @@ fn cmd_view(query: String, args: &ViewArgs) {
 /// Run an interactive session.
 ///
 /// The reader is opened once and lives for the whole session, which is what
-/// makes one statement's tables visible to the next. Plots need the plot
-/// window wired up (the `window` feature plus a live window integration);
-/// until then they get a notice instead of a drawing.
+/// makes one statement's tables visible to the next.
+///
+/// With the `window` feature, the plot window's event loop owns the main
+/// thread (the platform requires it) and the REPL loop runs on a worker
+/// thread; finished `Spec`s cross to the window through its message channel.
 fn cmd_repl(args: &ViewArgs) {
     let reader =
         open_reader(&args.source.reader, args.source.cache.as_deref()).unwrap_or_else(|e| {
@@ -582,21 +584,71 @@ fn cmd_repl(args: &ViewArgs) {
         }
     }
 
-    struct NoPlotWindow;
-    impl repl::PlotDisplay for NoPlotWindow {
-        fn show(&self, _spec: Spec) -> Result<(), String> {
-            #[cfg(feature = "window")]
-            return Err(
-                "The plot window is not wired up to the REPL yet; nothing was drawn.".to_string(),
-            );
-            #[cfg(not(feature = "window"))]
-            Err("The plot window is not compiled in. Rebuild with --features window".to_string())
+    #[cfg(feature = "window")]
+    {
+        use ggsql::writer::{PlotViewer, PlotWindowHandle};
+
+        let options = WriterOptions::parse(args.viewer_options.clone()).unwrap_or_else(|e| {
+            eprintln!("{}", e);
+            std::process::exit(1);
+        });
+        let viewer = PlotViewer::from_options(&options).unwrap_or_else(|e| {
+            eprintln!("{}", e);
+            std::process::exit(1);
+        });
+        let window = viewer.launch().unwrap_or_else(|e| {
+            eprintln!("{}", e);
+            std::process::exit(1);
+        });
+
+        struct WindowDisplay(PlotWindowHandle);
+        impl repl::PlotDisplay for WindowDisplay {
+            fn show(&self, spec: Spec) -> Result<(), String> {
+                self.0.show(spec).map_err(|e| e.to_string())
+            }
+            fn is_closed(&self) -> bool {
+                self.0.is_closed()
+            }
+            fn shutdown(&self) {
+                self.0.shutdown();
+            }
+        }
+
+        let display = WindowDisplay(window.plot_handle());
+        let verbose = args.verbose;
+        // The REPL thread is not joined: when the window closes, `run`
+        // returns below and the process exits, taking the thread blocked in
+        // readline with it.
+        std::thread::spawn(move || {
+            if let Err(e) = repl::run(reader.as_ref(), &display, verbose) {
+                eprintln!("REPL failed: {}", e);
+                repl::PlotDisplay::shutdown(&display);
+            }
+        });
+
+        // Blocks on the main thread until the window closes.
+        if let Err(e) = window.run() {
+            eprintln!("{}", e);
+            std::process::exit(1);
         }
     }
 
-    if let Err(e) = repl::run(reader.as_ref(), &NoPlotWindow, args.verbose) {
-        eprintln!("REPL failed: {}", e);
-        std::process::exit(1);
+    #[cfg(not(feature = "window"))]
+    {
+        struct NoPlotWindow;
+        impl repl::PlotDisplay for NoPlotWindow {
+            fn show(&self, _spec: Spec) -> Result<(), String> {
+                Err(
+                    "The plot window is not compiled in. Rebuild with --features window"
+                        .to_string(),
+                )
+            }
+        }
+
+        if let Err(e) = repl::run(reader.as_ref(), &NoPlotWindow, args.verbose) {
+            eprintln!("REPL failed: {}", e);
+            std::process::exit(1);
+        }
     }
 }
 

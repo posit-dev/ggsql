@@ -2832,8 +2832,6 @@ checksum = "2304e00983f87ffb38b55b444b5e3b60a884b5d30c0fca7d82fe33449bbe55ea"
 [[package]]
 name = "hephaestus"
 version = "0.4.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "755ec8c5f3f62917c498d1fdbc6704dad9432c5f523696337895601342aa8c43"
 dependencies = [
  "bytemuck",
  "clipper2-rust",

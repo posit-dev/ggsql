@@ -1,5 +1,13 @@
 ## [Unreleased]
 
+### Added
+
+- `ggsql repl`, an interactive session: SQL statements print as tables and,
+  with the `window` feature, queries with a `VISUALISE` clause draw in a
+  persistent native window that updates with each new plot. Statements end
+  with `;`; the reader stays open for the whole session, so tables created by
+  one statement are visible to the next.
+
 ### Fixed
 
 - Fixed a parser bug that interpreted comment characters inside string literals

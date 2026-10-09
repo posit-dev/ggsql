@@ -34,6 +34,15 @@ pub enum Statement {
 /// implementation; without it, and in tests, a stub explains the situation.
 pub trait PlotDisplay {
     fn show(&self, spec: Spec) -> Result<(), String>;
+
+    /// Whether the user has closed the plot window. Always `false` for
+    /// displays that can't close.
+    fn is_closed(&self) -> bool {
+        false
+    }
+
+    /// Tell the display the session is over, so it can close too.
+    fn shutdown(&self) {}
 }
 
 /// Whether the accumulated input is ready to run.
@@ -203,6 +212,13 @@ pub fn run(reader: &dyn Reader, plots: &dyn PlotDisplay, verbose: bool) -> rusty
                     }
                     Statement::Query(query) => execute_query(&query, reader, plots, verbose),
                 }
+                // The window closing is noticed here rather than instantly:
+                // rustyline is blocked on input, so the session ends after
+                // the next submitted line.
+                if plots.is_closed() {
+                    println!("Plot window closed; ending the session.");
+                    break;
+                }
             }
             // Ctrl-C abandons the current statement, not the session.
             Err(ReadlineError::Interrupted) => {
@@ -213,6 +229,9 @@ pub fn run(reader: &dyn Reader, plots: &dyn PlotDisplay, verbose: bool) -> rusty
             Err(e) => return Err(e),
         }
     }
+
+    // The session is over; close the window if there is one.
+    plots.shutdown();
 
     if let Some(path) = &history {
         let _ = editor.save_history(path);
