@@ -27,8 +27,7 @@ mod battery;
 
 use crate::reader::registry;
 use crate::reader::test_support::StubReader;
-use crate::reader::{AnsiDialect, Reader, SqlDialect};
-use crate::DataFrame;
+use crate::reader::{AnsiDialect, Reader};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
@@ -37,62 +36,13 @@ use std::sync::{Arc, Mutex};
 /// predates and outlives any single scheme); everything else resolves
 /// through the registry, so a dialect constructor can only live in one
 /// place. The `goldens_cover_registry` test keeps the file set in step.
-fn dialect_for(name: &str) -> Box<dyn SqlDialect + Send> {
+fn dialect_for(name: &str) -> crate::reader::DialectRef {
     if name == "ansi" {
-        return Box::new(AnsiDialect);
+        return &AnsiDialect;
     }
     registry::by_scheme(name)
         .unwrap_or_else(|| panic!("no registry entry for golden dialect '{name}'"))
         .dialect()
-}
-
-/// The shared fixture as a DataFrame, matching the live table's schema:
-/// id/val/grp/day(a real date)/"mixed Case". `TextDay` swaps the date for
-/// ISO text to force the text→temporal cast path.
-fn fixture_df(fixture: &battery::Fixture) -> DataFrame {
-    use arrow::array::{ArrayRef, Date32Array, Float64Array, Int32Array, StringArray};
-    let day: ArrayRef = match fixture {
-        battery::Fixture::Shared => Arc::new(Date32Array::from(
-            battery::ROWS
-                .iter()
-                .map(|r| r.day_epoch)
-                .collect::<Vec<_>>(),
-        )),
-        battery::Fixture::TextDay => Arc::new(StringArray::from(
-            battery::ROWS
-                .iter()
-                .map(|r| battery::day_iso(r.day_epoch))
-                .collect::<Vec<_>>(),
-        )),
-    };
-    DataFrame::new(vec![
-        (
-            "id",
-            Arc::new(Int32Array::from(
-                battery::ROWS.iter().map(|r| r.id).collect::<Vec<_>>(),
-            )) as ArrayRef,
-        ),
-        (
-            "val",
-            Arc::new(Float64Array::from(
-                battery::ROWS.iter().map(|r| r.val).collect::<Vec<_>>(),
-            )) as ArrayRef,
-        ),
-        (
-            "grp",
-            Arc::new(StringArray::from(
-                battery::ROWS.iter().map(|r| r.grp).collect::<Vec<_>>(),
-            )) as ArrayRef,
-        ),
-        ("day", day),
-        (
-            "mixed Case",
-            Arc::new(Float64Array::from(
-                battery::ROWS.iter().map(|r| r.mixed).collect::<Vec<_>>(),
-            )) as ArrayRef,
-        ),
-    ])
-    .unwrap()
 }
 
 /// Collapse all whitespace runs so goldens don't churn on formatting, and
@@ -130,7 +80,7 @@ fn golden_dir() -> PathBuf {
 
 /// Render every battery case's SQL for one dialect. Re-registers the
 /// fixture only when its variant changes.
-fn render_dialect(dialect: Box<dyn SqlDialect + Send>) -> String {
+fn render_dialect(dialect: crate::reader::DialectRef) -> String {
     let (reader, log) = StubReader::new(dialect);
     let mut out = String::new();
     let mut registered: Option<u8> = None;
@@ -145,7 +95,7 @@ fn render_dialect(dialect: Box<dyn SqlDialect + Send>) -> String {
                 reader.unregister(battery::TABLE).unwrap();
             }
             reader
-                .register(battery::TABLE, fixture_df(&case.fixture), true)
+                .register(battery::TABLE, battery::fixture_df(&case.fixture), true)
                 .unwrap();
             registered = Some(variant);
         }

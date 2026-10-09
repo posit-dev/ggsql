@@ -22,10 +22,9 @@ use wrapper::{Connection, Statement};
 ///
 /// Delegates to the shared matcher in [`crate::reader::dialects`]; the
 /// `Driver=` value from the ODBC connection string serves as the driver hint.
-fn detect_dialect(dbms_name: Option<&str>, conn_str: &str) -> Result<Box<dyn super::SqlDialect>> {
+fn detect_dialect(dbms_name: Option<&str>, conn_str: &str) -> Result<super::DialectRef> {
     let driver = super::connection::extract_odbc_value(conn_str, "driver");
     super::registry::detect_or_err(dbms_name, driver.as_deref())
-        .map(|d| d as Box<dyn super::SqlDialect>)
 }
 
 /// Pull ggsql-owned keys (`Dialect=<name>`) out of an ODBC connection
@@ -39,9 +38,10 @@ fn take_dialect_override(conn_str: &str) -> (String, Option<String>) {
 /// Generic ODBC reader implementing the `Reader` trait.
 pub struct OdbcReader {
     connection: Connection,
-    dialect: Box<dyn super::SqlDialect>,
+    dialect: super::DialectRef,
     registered_tables: crate::reader::RegisteredTables,
     batch_size: usize,
+    numeric_as_double: bool,
 }
 
 // Safety: ODBC connections are safe to use from one thread at a time.
@@ -63,10 +63,7 @@ impl OdbcReader {
     /// by the connection, falling back to the `Driver=` value in the
     /// connection string, then ANSI. Pass `Some(...)` to pin the dialect
     /// (e.g. from a backend-specific ggsql URI scheme).
-    pub fn from_odbc_conn_str(
-        conn_str: &str,
-        dialect: Option<Box<dyn super::SqlDialect>>,
-    ) -> Result<Self> {
+    pub fn from_odbc_conn_str(conn_str: &str, dialect: Option<super::DialectRef>) -> Result<Self> {
         ffi::try_load()
             .map_err(|e| GgsqlError::ReaderError(format!("ODBC is not available: {}", e)))?;
 
@@ -80,7 +77,6 @@ impl OdbcReader {
             (d @ Some(_), _) => d,
             (None, Some(name)) => Some(
                 crate::reader::registry::dialect_override(&name)
-                    .map(|d| d as Box<dyn super::SqlDialect>)
                     .ok_or_else(|| crate::reader::registry::unknown_dialect_error(&name))?,
             ),
             (None, None) => None,
@@ -120,22 +116,25 @@ impl OdbcReader {
             None => detect_dialect(dbms_name.as_deref(), &conn_str)?,
         };
 
-        // Fetch batch size is a per-backend capability (registry
-        // `odbc_row_array_size`): Oracle ODBC rejects block cursors
-        // (SQL_ATTR_ROW_ARRAY_SIZE > 1) with HY090 at SQLFetch time, and the
-        // failed fetch leaves the cursor unusable.
-        let batch_size = super::registry::detect(
+        // Fetch behavior is a per-backend capability: Oracle ODBC rejects
+        // block cursors (`odbc_row_array_size`; HY090 at SQLFetch time, and
+        // the failed fetch leaves the cursor unusable) and cannot convert
+        // DECIMAL to integer C types (`odbc_numeric_as_double`).
+        let entry = super::registry::detect(
             dbms_name.as_deref(),
             super::connection::extract_odbc_value(&conn_str, "driver").as_deref(),
-        )
-        .and_then(|e| e.odbc_row_array_size)
-        .unwrap_or(BATCH_SIZE);
+        );
+        let batch_size = entry
+            .and_then(|e| e.odbc_row_array_size)
+            .unwrap_or(BATCH_SIZE);
+        let numeric_as_double = entry.is_some_and(|e| e.odbc_numeric_as_double);
 
         Ok(Self {
             connection,
             dialect,
             registered_tables: crate::reader::RegisteredTables::new(),
             batch_size,
+            numeric_as_double,
         })
     }
 }
@@ -148,7 +147,7 @@ impl Reader for OdbcReader {
             return Ok(DataFrame::empty());
         };
 
-        cursor_to_dataframe(cursor, self.batch_size).map_err(|e| {
+        cursor_to_dataframe(cursor, self.batch_size, self.numeric_as_double).map_err(|e| {
             let snippet: String = sql.chars().take(200).collect();
             GgsqlError::ReaderError(format!("{e} [statement: {snippet}]"))
         })
@@ -274,13 +273,13 @@ impl Reader for OdbcReader {
     }
 
     fn dialect(&self) -> &dyn super::SqlDialect {
-        &*self.dialect
+        self.dialect
     }
 
     fn list_catalogs(&self) -> Result<Vec<String>> {
         // ODBC spec: CatalogName="%", SchemaName="", TableName=""
         let stmt = wrapper::sql_tables(&self.connection, Some("%"), Some(""), Some(""), None)?;
-        let df = cursor_to_dataframe(stmt, self.batch_size)?;
+        let df = cursor_to_dataframe(stmt, self.batch_size, self.numeric_as_double)?;
         let mut catalogs = extract_string_column_ci(&df, "TABLE_CAT")?;
         catalogs.sort();
         catalogs.dedup();
@@ -290,7 +289,7 @@ impl Reader for OdbcReader {
     fn list_schemas(&self, _catalog: &str) -> Result<Vec<String>> {
         // ODBC spec: CatalogName="", SchemaName="%", TableName=""
         let stmt = wrapper::sql_tables(&self.connection, Some(""), Some("%"), Some(""), None)?;
-        let df = cursor_to_dataframe(stmt, self.batch_size)?;
+        let df = cursor_to_dataframe(stmt, self.batch_size, self.numeric_as_double)?;
         let mut schemas = extract_string_column_ci(&df, "TABLE_SCHEM")?;
         schemas.sort();
         schemas.dedup();
@@ -309,7 +308,7 @@ impl Reader for OdbcReader {
             Some(schema)
         };
         let stmt = wrapper::sql_tables(&self.connection, cat, sch, Some("%"), Some("TABLE,VIEW"))?;
-        let df = cursor_to_dataframe(stmt, self.batch_size)?;
+        let df = cursor_to_dataframe(stmt, self.batch_size, self.numeric_as_double)?;
         extract_table_infos_ci(&df)
     }
 
@@ -330,7 +329,7 @@ impl Reader for OdbcReader {
             Some(schema)
         };
         let stmt = wrapper::sql_columns(&self.connection, cat, sch, Some(table), None)?;
-        let df = cursor_to_dataframe(stmt, self.batch_size)?;
+        let df = cursor_to_dataframe(stmt, self.batch_size, self.numeric_as_double)?;
         extract_column_infos_ci(&df)
     }
 }
@@ -419,8 +418,9 @@ enum ColumnBuilder {
 impl ColumnBuilder {
     fn from_sql_type(
         sql_type: SqlSmallInt,
-        _col_size: SqlULen,
-        _decimal_digits: SqlSmallInt,
+        col_size: SqlULen,
+        decimal_digits: SqlSmallInt,
+        numeric_as_double: bool,
     ) -> Self {
         match sql_type {
             SQL_TINYINT => Self::Int8(Vec::new()),
@@ -429,10 +429,16 @@ impl ColumnBuilder {
             SQL_BIGINT => Self::Int64(Vec::new()),
             SQL_REAL => Self::Float32(Vec::new()),
             SQL_DOUBLE | SQL_FLOAT => Self::Float64(Vec::new()),
-            // Bind as double rather than a sized integer: Oracle ODBC fails
-            // with HY090 when converting SQL_DECIMAL to SQL_C_SLONG/SBIGINT,
-            // and numeric→double conversion is supported by every driver.
-            // Values are bound for plot coordinates (f64) anyway.
+            // Integer-scale numerics keep an integer type (and their
+            // precision past 2^53) — except where the driver cannot convert
+            // DECIMAL to an integer C type (Oracle fails with HY090; see the
+            // registry's `odbc_numeric_as_double`). >15 digits cannot be
+            // trusted to Int64, so those bind as double too.
+            SQL_NUMERIC | SQL_DECIMAL
+                if !numeric_as_double && decimal_digits == 0 && (1..=15).contains(&col_size) =>
+            {
+                Self::Int64(Vec::new())
+            }
             SQL_NUMERIC | SQL_DECIMAL => Self::Float64(Vec::new()),
             SQL_BIT => Self::Boolean(Vec::new()),
             SQL_TYPE_DATE => Self::Date(Vec::new()),
@@ -536,6 +542,10 @@ const BATCH_SIZE: usize = 1000;
 /// silently truncated; 16 KiB keeps a 1000-row batch of one text column at
 /// 16 MiB.
 const DEFAULT_TEXT_BUF_SIZE: usize = 16384;
+/// Cap on the per-cell text buffer sized from the driver-reported column
+/// size, bounding batch memory (a 1000-row batch of one text column at the
+/// cap is ~1 GiB; values beyond the buffer size are an explicit error).
+const MAX_TEXT_BUF_SIZE: usize = 1024 * 1024;
 
 struct ColumnBuffer {
     data: Vec<u8>,
@@ -543,7 +553,11 @@ struct ColumnBuffer {
     text_buf_size: usize,
 }
 
-fn cursor_to_dataframe(stmt: Statement, batch_size: usize) -> Result<DataFrame> {
+fn cursor_to_dataframe(
+    stmt: Statement,
+    batch_size: usize,
+    numeric_as_double: bool,
+) -> Result<DataFrame> {
     let col_count = stmt.num_result_cols()?;
     if col_count == 0 {
         return Ok(DataFrame::empty());
@@ -551,15 +565,18 @@ fn cursor_to_dataframe(stmt: Statement, batch_size: usize) -> Result<DataFrame> 
 
     // Describe all columns
     let mut col_names = Vec::with_capacity(col_count);
+    let mut col_sizes = Vec::with_capacity(col_count);
     let mut builders = Vec::with_capacity(col_count);
 
     for i in 1..=col_count as u16 {
         let (name, data_type, col_size, decimal_digits, _nullable) = stmt.describe_col(i)?;
         col_names.push(name);
+        col_sizes.push(col_size);
         builders.push(ColumnBuilder::from_sql_type(
             data_type,
             col_size,
             decimal_digits,
+            numeric_as_double,
         ));
     }
 
@@ -574,9 +591,22 @@ fn cursor_to_dataframe(stmt: Statement, batch_size: usize) -> Result<DataFrame> 
         .enumerate()
         .map(|(i, builder)| {
             let (elem_size, text_buf_size) = if matches!(builder, ColumnBuilder::Text(_)) {
-                // +2: null terminator, and keep the bind length even — some
-                // Unicode drivers (Oracle) reject odd buffer lengths with HY090
-                (DEFAULT_TEXT_BUF_SIZE + 2, DEFAULT_TEXT_BUF_SIZE)
+                // Size the per-cell buffer from the driver-reported column
+                // size when available (×4 for UTF-8 expansion), so a
+                // VARCHAR(4000) doesn't pay the default and long values in
+                // sized columns fit. Unsized columns (LONG/CLOB) get the
+                // default; anything longer is an explicit error, never a
+                // silent truncation. +2: null terminator, and keep the bind
+                // length even — some Unicode drivers (Oracle) reject odd
+                // buffer lengths with HY090.
+                let size = if col_sizes[i] > 0 {
+                    col_sizes[i]
+                        .saturating_mul(4)
+                        .clamp(DEFAULT_TEXT_BUF_SIZE, MAX_TEXT_BUF_SIZE)
+                } else {
+                    DEFAULT_TEXT_BUF_SIZE
+                };
+                (size + 2, size)
             } else {
                 (builder.element_size(), 0)
             };
@@ -838,78 +868,92 @@ mod tests {
     #[test]
     fn test_column_builder_from_sql_type() {
         assert!(matches!(
-            ColumnBuilder::from_sql_type(SQL_TINYINT, 0, 0),
+            ColumnBuilder::from_sql_type(SQL_TINYINT, 0, 0, false),
             ColumnBuilder::Int8(_)
         ));
         assert!(matches!(
-            ColumnBuilder::from_sql_type(SQL_SMALLINT, 0, 0),
+            ColumnBuilder::from_sql_type(SQL_SMALLINT, 0, 0, false),
             ColumnBuilder::Int16(_)
         ));
         assert!(matches!(
-            ColumnBuilder::from_sql_type(SQL_INTEGER, 0, 0),
+            ColumnBuilder::from_sql_type(SQL_INTEGER, 0, 0, false),
             ColumnBuilder::Int32(_)
         ));
         assert!(matches!(
-            ColumnBuilder::from_sql_type(SQL_BIGINT, 0, 0),
+            ColumnBuilder::from_sql_type(SQL_BIGINT, 0, 0, false),
             ColumnBuilder::Int64(_)
         ));
         assert!(matches!(
-            ColumnBuilder::from_sql_type(SQL_REAL, 0, 0),
+            ColumnBuilder::from_sql_type(SQL_REAL, 0, 0, false),
             ColumnBuilder::Float32(_)
         ));
         assert!(matches!(
-            ColumnBuilder::from_sql_type(SQL_DOUBLE, 0, 0),
+            ColumnBuilder::from_sql_type(SQL_DOUBLE, 0, 0, false),
             ColumnBuilder::Float64(_)
         ));
         assert!(matches!(
-            ColumnBuilder::from_sql_type(SQL_FLOAT, 0, 0),
+            ColumnBuilder::from_sql_type(SQL_FLOAT, 0, 0, false),
             ColumnBuilder::Float64(_)
         ));
         assert!(matches!(
-            ColumnBuilder::from_sql_type(SQL_BIT, 0, 0),
+            ColumnBuilder::from_sql_type(SQL_BIT, 0, 0, false),
             ColumnBuilder::Boolean(_)
         ));
         assert!(matches!(
-            ColumnBuilder::from_sql_type(SQL_TYPE_DATE, 0, 0),
+            ColumnBuilder::from_sql_type(SQL_TYPE_DATE, 0, 0, false),
             ColumnBuilder::Date(_)
         ));
         assert!(matches!(
-            ColumnBuilder::from_sql_type(SQL_TYPE_TIME, 0, 0),
+            ColumnBuilder::from_sql_type(SQL_TYPE_TIME, 0, 0, false),
             ColumnBuilder::Time(_)
         ));
         assert!(matches!(
-            ColumnBuilder::from_sql_type(SQL_TYPE_TIMESTAMP, 0, 0),
+            ColumnBuilder::from_sql_type(SQL_TYPE_TIMESTAMP, 0, 0, false),
             ColumnBuilder::Timestamp(_)
         ));
         assert!(matches!(
-            ColumnBuilder::from_sql_type(SQL_VARCHAR, 0, 0),
+            ColumnBuilder::from_sql_type(SQL_VARCHAR, 0, 0, false),
             ColumnBuilder::Text(_)
         ));
         assert!(matches!(
-            ColumnBuilder::from_sql_type(SQL_WVARCHAR, 0, 0),
+            ColumnBuilder::from_sql_type(SQL_WVARCHAR, 0, 0, false),
             ColumnBuilder::Text(_)
         ));
         assert!(matches!(
-            ColumnBuilder::from_sql_type(SQL_LONGVARCHAR, 0, 0),
+            ColumnBuilder::from_sql_type(SQL_LONGVARCHAR, 0, 0, false),
             ColumnBuilder::Text(_)
         ));
-        // Decimals bind as double regardless of precision/scale: Oracle ODBC
-        // rejects SQL_DECIMAL → SQL_C_SBIGINT conversion with HY090
+        // Integer-scale numerics bind as Int64 where the driver supports
+        // it; past 15 digits, with a fractional scale, or with
+        // numeric_as_double (Oracle rejects SQL_DECIMAL → SQL_C_SBIGINT
+        // with HY090), they bind as double.
         assert!(matches!(
-            ColumnBuilder::from_sql_type(SQL_NUMERIC, 5, 0),
+            ColumnBuilder::from_sql_type(SQL_NUMERIC, 5, 0, false),
+            ColumnBuilder::Int64(_)
+        ));
+        assert!(matches!(
+            ColumnBuilder::from_sql_type(SQL_NUMERIC, 15, 0, false),
+            ColumnBuilder::Int64(_)
+        ));
+        assert!(matches!(
+            ColumnBuilder::from_sql_type(SQL_NUMERIC, 20, 0, false),
             ColumnBuilder::Float64(_)
         ));
         assert!(matches!(
-            ColumnBuilder::from_sql_type(SQL_NUMERIC, 15, 0),
+            ColumnBuilder::from_sql_type(SQL_NUMERIC, 10, 2, false),
             ColumnBuilder::Float64(_)
         ));
         assert!(matches!(
-            ColumnBuilder::from_sql_type(SQL_NUMERIC, 25, 0),
+            ColumnBuilder::from_sql_type(SQL_NUMERIC, 5, 0, true),
+            ColumnBuilder::Float64(_)
+        ));
+        assert!(matches!(
+            ColumnBuilder::from_sql_type(SQL_NUMERIC, 25, 0, false),
             ColumnBuilder::Float64(_)
         ));
         // Decimal with scale>0 maps to Float64
         assert!(matches!(
-            ColumnBuilder::from_sql_type(SQL_DECIMAL, 10, 2),
+            ColumnBuilder::from_sql_type(SQL_DECIMAL, 10, 2, false),
             ColumnBuilder::Float64(_)
         ));
     }

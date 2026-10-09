@@ -20,7 +20,7 @@ impl SqlDialect for MySqlDialect {
     }
 
     fn quote_ident(&self, name: &str) -> String {
-        format!("`{}`", name.replace('`', "``"))
+        super::backtick_quote_ident(name)
     }
 
     fn sql_null_safe_eq(&self, left: &str, right: &str) -> String {

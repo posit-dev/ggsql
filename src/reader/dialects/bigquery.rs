@@ -27,7 +27,7 @@ impl SqlDialect for BigQueryDialect {
     }
 
     fn quote_ident(&self, name: &str) -> String {
-        format!("`{}`", name.replace('`', "``"))
+        super::backtick_quote_ident(name)
     }
 
     fn sql_cast(&self, expr: &str, type_name: &str) -> String {

@@ -50,6 +50,58 @@ pub struct AnsiDialect;
 
 impl SqlDialect for AnsiDialect {}
 
+/// Backtick identifier quoting (MySQL/MariaDB, ClickHouse, BigQuery,
+/// Databricks, Drill); embedded backticks are doubled.
+pub(crate) fn backtick_quote_ident(name: &str) -> String {
+    format!("`{}`", name.replace('`', "``"))
+}
+
+/// `1`/`0` boolean literal for backends without a real BOOLEAN literal
+/// (SQL Server, Oracle, SQLite).
+pub(crate) fn one_zero_boolean_literal(value: bool) -> String {
+    if value { "1" } else { "0" }.to_string()
+}
+
+/// Postgres-style epoch conversion for backends that reject temporal →
+/// numeric casts: date subtraction yields integer days, EXTRACT EPOCH
+/// yields seconds scaled to microseconds. Shared by the Postgres and
+/// Redshift dialects.
+pub(crate) fn epoch_via_subtract_extract<D: SqlDialect + ?Sized>(
+    dialect: &D,
+    expr: &str,
+    kind: crate::plot::types::CastTargetType,
+) -> String {
+    use crate::plot::types::CastTargetType as C;
+    match kind {
+        C::Date => format!("({expr} - DATE '1970-01-01')"),
+        C::DateTime => format!("(EXTRACT(EPOCH FROM {expr}) * 1000000)"),
+        _ => {
+            let ty = dialect.number_type_name().unwrap_or("DOUBLE PRECISION");
+            dialect.sql_cast(expr, ty)
+        }
+    }
+}
+
+/// Epoch conversion for backends where EXTRACT EPOCH yields seconds for
+/// both dates and timestamps (DataFusion, MonetDB): dates scale to days,
+/// datetimes to microseconds; anything else falls through to a numeric
+/// cast in the dialect's number type.
+pub(crate) fn epoch_via_extract_seconds<D: SqlDialect + ?Sized>(
+    dialect: &D,
+    expr: &str,
+    kind: crate::plot::types::CastTargetType,
+) -> String {
+    use crate::plot::types::CastTargetType as C;
+    match kind {
+        C::Date => format!("(EXTRACT(EPOCH FROM {expr}) / 86400)"),
+        C::DateTime => format!("(EXTRACT(EPOCH FROM {expr}) * 1000000)"),
+        _ => {
+            let ty = dialect.number_type_name().unwrap_or("DOUBLE");
+            dialect.sql_cast(expr, ty)
+        }
+    }
+}
+
 /// CASE-based scalar greatest/least for backends without `GREATEST`/`LEAST`
 /// (SQL Server, SQLite, Druid, Drill, MonetDB). Builds a left-folded chain of
 /// two-way comparisons.
@@ -83,7 +135,7 @@ mod tests {
     use super::*;
     use crate::reader::registry::{by_scheme, detect_or_err as detect_dialect};
 
-    fn dialect_for_scheme(scheme: &str) -> Option<Box<dyn SqlDialect + Send>> {
+    fn dialect_for_scheme(scheme: &str) -> Option<crate::reader::DialectRef> {
         by_scheme(scheme).map(|e| e.dialect())
     }
 
@@ -94,31 +146,28 @@ mod tests {
     #[test]
     fn detects_from_dbms_name() {
         assert_type_name(
-            &*detect_dialect(Some("PostgreSQL"), None).unwrap(),
+            detect_dialect(Some("PostgreSQL"), None).unwrap(),
             Some("DOUBLE PRECISION"),
         );
+        assert_type_name(detect_dialect(Some("MySQL"), None).unwrap(), Some("DOUBLE"));
         assert_type_name(
-            &*detect_dialect(Some("MySQL"), None).unwrap(),
-            Some("DOUBLE"),
-        );
-        assert_type_name(
-            &*detect_dialect(Some("Microsoft SQL Server"), None).unwrap(),
+            detect_dialect(Some("Microsoft SQL Server"), None).unwrap(),
             Some("FLOAT"),
         );
         assert_type_name(
-            &*detect_dialect(Some("Snowflake"), None).unwrap(),
+            detect_dialect(Some("Snowflake"), None).unwrap(),
             Some("DOUBLE"),
         );
         assert_type_name(
-            &*detect_dialect(Some("Oracle"), None).unwrap(),
+            detect_dialect(Some("Oracle"), None).unwrap(),
             Some("BINARY_DOUBLE"),
         );
         assert_type_name(
-            &*detect_dialect(Some("ClickHouse"), None).unwrap(),
+            detect_dialect(Some("ClickHouse"), None).unwrap(),
             Some("Nullable(Float64)"),
         );
         assert_type_name(
-            &*detect_dialect(Some("Amazon Redshift"), None).unwrap(),
+            detect_dialect(Some("Amazon Redshift"), None).unwrap(),
             Some("DOUBLE PRECISION"),
         );
     }
@@ -126,11 +175,11 @@ mod tests {
     #[test]
     fn falls_through_to_driver_hint() {
         assert_type_name(
-            &*detect_dialect(Some("Unknown DBMS"), Some("PostgreSQL Unicode")).unwrap(),
+            detect_dialect(Some("Unknown DBMS"), Some("PostgreSQL Unicode")).unwrap(),
             Some("DOUBLE PRECISION"),
         );
         assert_type_name(
-            &*detect_dialect(None, Some("msodbcsql18")).unwrap(),
+            detect_dialect(None, Some("msodbcsql18")).unwrap(),
             Some("FLOAT"),
         );
     }
@@ -183,42 +232,24 @@ mod tests {
         );
     }
 
-    /// All schemes the registry knows, for conformance sweeps.
-    const ALL_SCHEMES: &[&str] = &[
-        "postgres",
-        "redshift",
-        "mysql",
-        "mariadb",
-        "snowflake",
-        "mssql",
-        "bigquery",
-        "databricks",
-        "clickhouse",
-        "oracle",
-        "trino",
-        "exasol",
-        "monetdb",
-        "druid",
-        "drill",
-        "datafusion",
-        "duckdb",
-        "sqlite",
-    ];
-
     /// Contract for the quantile hook: callers pass the raw (unquoted)
     /// column name and the dialect quotes it. A name needing quoting must
     /// appear quoted — interpolating it raw breaks on any real column whose
     /// name is not a bare lowercase identifier.
     #[test]
     fn quantile_hook_quotes_raw_column_names() {
-        for scheme in ALL_SCHEMES {
-            let d = dialect_for_scheme(scheme).unwrap();
-            let quoted = d.quote_ident("mixed Case");
-            let sql = d.sql_quantile("mixed Case", 0.5, crate::sql::FromItem::Table("t"), &[]);
-            assert!(
-                sql.contains(&quoted),
-                "{scheme}: sql_quantile does not quote its column: {sql}"
-            );
+        // Sweeps the registry directly so new backends are covered
+        // automatically; canonical schemes and aliases alike.
+        for entry in crate::reader::registry::REGISTRY {
+            for scheme in entry.schemes() {
+                let d = dialect_for_scheme(scheme).unwrap();
+                let quoted = d.quote_ident("mixed Case");
+                let sql = d.sql_quantile("mixed Case", 0.5, crate::sql::FromItem::Table("t"), &[]);
+                assert!(
+                    sql.contains(&quoted),
+                    "{scheme}: sql_quantile does not quote its column: {sql}"
+                );
+            }
         }
     }
 

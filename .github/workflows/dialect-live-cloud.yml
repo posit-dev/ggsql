@@ -37,56 +37,13 @@ on:
   workflow_dispatch:
 
 jobs:
-  # Build the dialect_live test binary once, exactly as dialect-live.yml
-  # does, so the per-backend legs download it instead of each recompiling
-  # the same crate against the same feature set.
+  # Build the dialect_live test binary once (reusable workflow shared with
+  # dialect-live.yml), so the per-backend legs download it instead of each
+  # recompiling the same crate against the same feature set. save-cache
+  # stays false: a nightly run must not fight over the shared cache key
+  # owned by build.yaml/main.
   compile:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-
-      - name: Install tree-sitter-cli
-        # parser.c is gitignored and generated from grammar.js by the
-        # tree-sitter-ggsql build script on every fresh checkout.
-        run: npm install -g tree-sitter-cli
-
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Caching
-        uses: Swatinem/rust-cache@v2
-        with:
-          # Same shared-key as build.yaml and dialect-live.yml: the prefix
-          # fallback restores their target/ and this job only rebuilds the
-          # feature deltas.
-          shared-key: ${{ runner.os }}-build
-          cache-on-failure: true
-
-      - name: Compile the dialect_live test binary
-        # Same feature set as dialect-live.yml so the restored crate
-        # fingerprints hit; see the long comment there. --no-run plus
-        # --message-format=json yields the binary path; the binary is
-        # self-contained (deps statically linked, ADBC drivers dlopened at
-        # runtime), so the legs can run it directly.
-        run: |
-          bin=$(cargo test -p ggsql --features "adbc sqlite" --test dialect_live \
-                --no-run --message-format=json-render-diagnostics \
-                | jq -rs '[.[] | select(.target.name == "dialect_live" and .executable != null) | .executable][-1]')
-          test -n "$bin" -a -f "$bin"
-          cp "$bin" dialect-live-bin
-
-      - name: Upload the test binary
-        uses: actions/upload-artifact@v4
-        with:
-          name: dialect-live-bin
-          path: dialect-live-bin
-          retention-days: 1
+    uses: ./.github/workflows/dialect-live-compile.yml
 
   live:
     needs: compile
