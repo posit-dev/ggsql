@@ -1,20 +1,9 @@
-//! `TABULATE FORMAT STUB` resolution: moving stub columns to the front and
-//! building their `StubHead`/`StubRowLabel` cells.
+//! `TABULATE FORMAT STUB` resolution: building the `StubHead`/`StubRowLabel`
+//! cells.
 
-use super::layout::TableColumn;
-use super::{TableCell, TableCellKind, TableClass};
 use crate::array_util::value_to_string;
+use crate::table::{TableCell, TableColumn};
 use crate::DataFrame;
-
-/// Move every STUB-targeted column to the front, preserving each group's
-/// relative order. Runs after `reorder_table_columns`, as the final word on
-/// column position — a SPAN can never cover a stub column
-/// (`Table::validate_span_stub_boundary`).
-pub(crate) fn move_stub_columns(columns: Vec<TableColumn>) -> Vec<TableColumn> {
-    let (mut stub, body): (Vec<_>, Vec<_>) = columns.into_iter().partition(TableColumn::is_stub);
-    stub.extend(body);
-    stub
-}
 
 /// Build one `StubHead` cell per stub column, numbered from `top == 0`.
 /// Skips every non-stub column.
@@ -24,16 +13,8 @@ pub(crate) fn create_stubhead(columns: &[TableColumn]) -> Vec<TableCell> {
         .enumerate()
         .filter(|(_, column)| column.is_stub())
         .map(|(index, column)| {
-            TableCell::new(
-                TableCellKind::StubHead,
-                0,
-                0,
-                index,
-                index,
-                column.label.clone(),
-            )
-            .with_properties(column.properties.clone())
-            .with_classes(vec![TableClass::StubHead])
+            TableCell::new_stub_head(index, column.label.clone())
+                .with_properties(column.properties.clone())
         })
         .collect()
 }
@@ -54,16 +35,8 @@ pub(crate) fn create_row_labels(df: &DataFrame, columns: &[TableColumn]) -> Vec<
 
         for row in 0..df.height() {
             cells.push(
-                TableCell::new(
-                    TableCellKind::StubRowLabel,
-                    row,
-                    row,
-                    index,
-                    index,
-                    value_to_string(array, row),
-                )
-                .with_properties(column.properties.clone())
-                .with_classes(vec![TableClass::Stub]),
+                TableCell::new_stub_row_label(row, index, value_to_string(array, row))
+                    .with_properties(column.properties.clone()),
             );
         }
     }
@@ -76,6 +49,7 @@ mod tests {
     use super::*;
     use crate::df;
     use crate::plot::Parameters;
+    use crate::table::TableCellKind;
     use crate::ColumnSection;
 
     fn column(name: &str, label: &str) -> TableColumn {
@@ -92,35 +66,6 @@ mod tests {
             target: ColumnSection::Stub,
             ..column(name, name)
         }
-    }
-
-    #[test]
-    fn move_stub_columns_moves_stub_columns_to_the_front_preserving_relative_order() {
-        let columns = vec![
-            column("a", "a"),
-            stub_column("b"),
-            column("c", "c"),
-            stub_column("d"),
-        ];
-
-        let result = move_stub_columns(columns);
-
-        assert_eq!(
-            result.iter().map(|c| c.name.as_str()).collect::<Vec<_>>(),
-            vec!["b", "d", "a", "c"]
-        );
-    }
-
-    #[test]
-    fn move_stub_columns_is_a_no_op_with_no_stub_columns() {
-        let columns = vec![column("a", "a"), column("b", "b")];
-
-        let result = move_stub_columns(columns);
-
-        assert_eq!(
-            result.iter().map(|c| c.name.as_str()).collect::<Vec<_>>(),
-            vec!["a", "b"]
-        );
     }
 
     #[test]

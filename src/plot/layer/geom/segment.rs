@@ -64,7 +64,7 @@ impl GeomTrait for Segment {
         }
 
         let columns = mappings.column_names();
-        let (expanded, expanded_columns) = expand_segment_to_vertices(query, &columns);
+        let (expanded, expanded_columns) = expand_segment_to_vertices(query, &columns, dialect);
 
         partition_by.push(naming::DENSIFY_ID_COLUMN.to_string());
         parameters.insert("densified".to_string(), ParameterValue::Boolean(true));
@@ -96,7 +96,11 @@ impl GeomTrait for Segment {
 /// Input: one row per segment with pos1/pos2 (start) and pos1end/pos2end (end).
 /// Output: two rows per segment with pos1/pos2 vertex positions and a
 /// `DENSIFY_ID_COLUMN` grouping column. Material aesthetics pass through unchanged.
-fn expand_segment_to_vertices(query: &str, columns: &[String]) -> (String, Vec<String>) {
+fn expand_segment_to_vertices(
+    query: &str,
+    columns: &[String],
+    dialect: &dyn SqlDialect,
+) -> (String, Vec<String>) {
     let pos1_col = naming::aesthetic_column("pos1");
     let pos2_col = naming::aesthetic_column("pos2");
     let pos1end_col = naming::aesthetic_column("pos1end");
@@ -108,38 +112,45 @@ fn expand_segment_to_vertices(query: &str, columns: &[String]) -> (String, Vec<S
         .collect();
     let passthrough: Vec<String> = passthrough_cols
         .iter()
-        .map(|c| naming::quote_ident(c))
+        .map(|c| dialect.quote_ident(c))
         .collect();
 
-    let densify_id_q = naming::quote_ident(naming::DENSIFY_ID_COLUMN);
+    let densify_id_q = dialect.quote_ident(naming::DENSIFY_ID_COLUMN);
 
-    let numbered = format!(
-        "SELECT *, ROW_NUMBER() OVER (ORDER BY (SELECT NULL)) \
-         AS {densify_id_q} FROM ({query})"
-    );
+    let numbered = crate::sql::Select::new(dialect)
+        .select_star_plus(
+            &[format!(
+                "ROW_NUMBER() OVER (ORDER BY (SELECT NULL)) AS {densify_id_q}"
+            )],
+            "__ggsql_numbered__",
+        )
+        .from_aliased(crate::sql::FromItem::Query(query), "__ggsql_numbered__")
+        .build();
 
-    let vertices_table = "(SELECT 0 AS \"__ggsql_vertex__\" UNION ALL SELECT 1)";
+    let __ggsql_vertex__ = dialect.quote_ident("__ggsql_vertex__");
+    let vertices_table = format!("(SELECT 0 AS {__ggsql_vertex__} UNION ALL SELECT 1)");
 
-    let pos1_q = naming::quote_ident(&pos1_col);
-    let pos2_q = naming::quote_ident(&pos2_col);
-    let pos1end_q = naming::quote_ident(&pos1end_col);
-    let pos2end_q = naming::quote_ident(&pos2end_col);
+    let pos1_q = dialect.quote_ident(&pos1_col);
+    let pos2_q = dialect.quote_ident(&pos2_col);
+    let pos1end_q = dialect.quote_ident(&pos1end_col);
+    let pos2end_q = dialect.quote_ident(&pos2end_col);
 
     let mut select_parts: Vec<String> = passthrough;
     select_parts.push(densify_id_q.to_string());
-    select_parts.push("\"__ggsql_vertex__\"".to_string());
+    select_parts.push(__ggsql_vertex__.to_string());
     select_parts.push(format!(
-        "CASE \"__ggsql_vertex__\" WHEN 0 THEN {pos1_q} WHEN 1 THEN {pos1end_q} END AS {pos1_q}"
+        "CASE {__ggsql_vertex__} WHEN 0 THEN {pos1_q} WHEN 1 THEN {pos1end_q} END AS {pos1_q}"
     ));
     select_parts.push(format!(
-        "CASE \"__ggsql_vertex__\" WHEN 0 THEN {pos2_q} WHEN 1 THEN {pos2end_q} END AS {pos2_q}"
+        "CASE {__ggsql_vertex__} WHEN 0 THEN {pos2_q} WHEN 1 THEN {pos2end_q} END AS {pos2_q}"
     ));
 
-    let sql = format!(
-        "SELECT {} FROM ({numbered}) \"__ggsql_seg__\" \
-         CROSS JOIN {vertices_table} \"__ggsql_vertices__\"",
-        select_parts.join(", ")
-    );
+    let __ggsql_vertices__ = dialect.quote_ident("__ggsql_vertices__");
+    let sql = crate::sql::Select::new(dialect)
+        .select_items(&select_parts)
+        .from_aliased(crate::sql::FromItem::Query(&numbered), "__ggsql_seg__")
+        .join_raw(&format!("CROSS JOIN {vertices_table} {__ggsql_vertices__}"))
+        .build();
 
     let mut out_columns: Vec<String> = passthrough_cols.into_iter().cloned().collect();
     out_columns.push(naming::DENSIFY_ID_COLUMN.to_string());

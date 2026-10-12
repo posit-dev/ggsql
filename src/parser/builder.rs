@@ -442,9 +442,7 @@ fn process_tab_clause(node: &Node, source: &SourceTree, table: &mut Table) -> Re
         match child.kind() {
             "label_clause" => {
                 let new_labels = build_labels(&child, source)?;
-                for (key, value) in new_labels.labels {
-                    table.labels.labels.insert(key, value);
-                }
+                table.labels.merge(new_labels);
             }
             "span_clause" => {
                 table.spans.push(build_span_clause(&child, source)?);
@@ -464,12 +462,11 @@ fn build_span_clause(node: &Node, source: &SourceTree) -> Result<Spanner> {
     let id_node = node
         .child_by_field_name("id")
         .ok_or_else(|| GgsqlError::ParseError("Missing 'id' field in SPAN clause".to_string()))?;
-    // `id` stays unparsed (quotes included), matching parse_column_list's
-    // own convention, so it compares equal to a later OVER/LABEL
-    // reference. `label` is the dequoted form, used only for display.
+    // `id` is unquoted like every other column reference, so it compares
+    // equal to a later OVER/LABEL reference. `label` is used only for display.
     let (id, label) = match id_node.kind() {
         "identifier" => (
-            source.get_text(&id_node),
+            naming::unquote_ident(&source.get_text(&id_node)),
             Some(parse_identifier_node(&id_node, source)),
         ),
         "null_literal" => (naming::anonymous_span_id(), None),
@@ -574,14 +571,9 @@ fn process_viz_clause(node: &Node, source: &SourceTree, spec: &mut Plot) -> Resu
             }
             "label_clause" => {
                 let new_labels = build_labels(&child, source)?;
-                // Merge with existing labels if any
-                if let Some(ref mut existing_labels) = spec.labels {
-                    for (key, value) in new_labels.labels {
-                        existing_labels.labels.insert(key, value);
-                    }
-                } else {
-                    spec.labels = Some(new_labels);
-                }
+                spec.labels
+                    .get_or_insert_with(Labels::default)
+                    .merge(new_labels);
             }
             _ => {
                 // Unknown clause type
@@ -822,6 +814,9 @@ fn parse_parameter_assignment(
 }
 
 /// Parse a partition_clause: PARTITION BY col1, col2, ...
+///
+/// Identifiers follow the same convention as MAPPING columns: stored
+/// unquoted, re-quoted per dialect at SQL emission.
 fn parse_partition_clause(node: &Node, source: &SourceTree) -> Result<Vec<String>> {
     let columns_node = source
         .find_node(node, "(column_list) @cols")
@@ -1186,7 +1181,11 @@ fn build_facet(node: &Node, source: &SourceTree) -> Result<Facet> {
 /// Parse identifier texts out of a column_list node
 fn parse_column_list(node: &Node, source: &SourceTree) -> Result<Vec<String>> {
     let query = "(identifier) @col";
-    Ok(source.find_texts(node, query))
+    Ok(source
+        .find_texts(node, query)
+        .iter()
+        .map(|c| naming::unquote_ident(c))
+        .collect())
 }
 
 // ============================================================================
@@ -1364,7 +1363,7 @@ fn build_labels(node: &Node, source: &SourceTree) -> Result<Labels> {
         let (name_node, value_node) = extract_name_value_nodes(&label_node, "label assignment")?;
 
         // Parse label type (name)
-        let label_type = source.get_text(&name_node);
+        let label_type = naming::unquote_ident(&source.get_text(&name_node));
 
         // Parse label value (string or null)
         let label_value = match value_node.kind() {
@@ -1521,10 +1520,23 @@ mod tests {
         let table = specs[0].as_table().expect("expected a Table spec");
 
         assert_eq!(table.spans.len(), 1);
-        assert_eq!(table.spans[0].id, "`Pretty Name`");
+        assert_eq!(table.spans[0].id, "Pretty Name");
         assert_eq!(table.spans[0].label, Some("Pretty Name".to_string()));
         assert_eq!(table.spans[0].columns, vec!["foo", "bar", "baz"]);
         assert!(table.spans[0].settings.is_empty());
+    }
+
+    #[test]
+    fn test_tabulate_span_quoted_identifiers_are_unquoted() {
+        let specs = parse_test_specs(
+            "TABULATE * FROM sales SPAN \"Total Sales\" OVER `gross amount`, \"net amount\"",
+        )
+        .unwrap();
+        let table = specs[0].as_table().expect("expected a Table spec");
+
+        assert_eq!(table.spans[0].id, "Total Sales");
+        assert_eq!(table.spans[0].label, Some("Total Sales".to_string()));
+        assert_eq!(table.spans[0].columns, vec!["gross amount", "net amount"]);
     }
 
     #[test]

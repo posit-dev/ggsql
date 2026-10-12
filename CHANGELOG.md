@@ -9,9 +9,26 @@
     labels.
   - `SPAN` groups columns under a shared header cell (spanner).
   - `FORMAT` configures how a column's cells are displayed.
+- `Writer::write_table` renders a resolved table, taking the new public
+  `TableLayout` — the table's cells bundled with their column and row
+  metadata.
+
+### Changed
+
+- The reader/dialect layer was refactored around a central dialect registry with
+  per-database dialect implementations (#569). As part of this, some
+  previously-public items changed: the `CacheBackend` trait moved to a
+  test-support module, `CachingReader::new` is now test-only, and
+  `Spec::layer_sql`/`Spec::stat_sql` were removed.
+- Scale resolution now detects and converts temporal-unit mismatches and errors
+  on unrepresentable ranges instead of producing silently wrong scales (#569).
 
 ### Fixed
 
+- Fixed a bug in the Vega-Lite writer that could rescale timestamps twice when
+  the data carried microsecond timestamps (#569).
+- Extent queries are now merged and ordered portably, fixing schema resolution
+  on MySQL and ClickHouse (#569).
 - Fixed a parser bug that interpreted comment characters inside string literals
   as initializing a comment (#555).
 - Fixed a bug in stat_aggregate prevented transposed layers from properly

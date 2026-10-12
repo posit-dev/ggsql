@@ -10,6 +10,7 @@ use arrow::datatypes::DataType;
 
 use crate::array_util::{new_str_array, value_to_string};
 use crate::plot::{ParameterValue, Parameters};
+use crate::table::standardise_hjust;
 use crate::{DataFrame, Format, GgsqlError, Result, Spanner};
 
 /// Validate every FORMAT's `SETTING` parameters, then reshape `formats`
@@ -117,19 +118,6 @@ pub(super) fn resolve_column_properties(dtype: &DataType, format: Option<&Format
     properties.insert("hjust".to_string(), ParameterValue::Number(hjust));
 
     properties
-}
-
-/// Standardise an `hjust` value to a number: `"left"`,
-/// `"center"`/`"centre"`, `"right"` become `0.0`, `0.5`, `1.0` (any other
-/// string is `0.5`); a number passes through; anything else is `None`.
-pub(super) fn standardise_hjust(value: &ParameterValue) -> Option<f64> {
-    match value {
-        ParameterValue::String(s) if s == "left" => Some(0.0),
-        ParameterValue::String(s) if s == "right" => Some(1.0),
-        ParameterValue::String(_) => Some(0.5),
-        ParameterValue::Number(n) => Some(*n),
-        _ => None,
-    }
 }
 
 #[cfg(test)]

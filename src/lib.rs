@@ -39,10 +39,13 @@ pub mod array_util;
 pub mod compute;
 pub mod dataframe;
 pub mod format;
+pub mod labels;
 pub mod naming;
+pub mod params;
 pub mod parser;
 pub mod plot;
 pub mod spec;
+pub mod sql;
 pub mod table;
 pub mod util;
 
@@ -92,7 +95,7 @@ pub use dataframe::DataFrame;
 // Re-export the resolved table layout Writer::write_table needs — the
 // Table-side counterpart to DataFrame, not to the plot:: AST vocabulary
 // above, since Table has no specification vocabulary of its own yet.
-pub use execute::{TableCell, TableCellKind, TableClass, TableColumn, TableRow};
+pub use table::{TableCell, TableCellKind, TableClass, TableColumn, TableLayout, TableRow};
 
 /// Main library error type
 #[derive(thiserror::Error, Debug)]

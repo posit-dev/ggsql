@@ -271,8 +271,6 @@ if let Some(df) = spec.stat_data(1) {
 | ----------- | ----------------------------------------------- | -------------------------------- |
 | `sql`       | `fn sql(&self) -> &str`                         | Main SQL query that was executed |
 | `visual`    | `fn visual(&self) -> &str`                      | Raw VISUALISE text               |
-| `layer_sql` | `fn layer_sql(&self, i: usize) -> Option<&str>` | Layer filter/source query        |
-| `stat_sql`  | `fn stat_sql(&self, i: usize) -> Option<&str>`  | Stat transform query             |
 
 **Example:**
 
@@ -280,16 +278,6 @@ if let Some(df) = spec.stat_data(1) {
 // Main query
 println!("SQL: {}", spec.sql());
 println!("Visual: {}", spec.visual());
-
-// Per-layer queries
-for i in 0..spec.layer_count() {
-    if let Some(sql) = spec.layer_sql(i) {
-        println!("Layer {} filter: {}", i, sql);
-    }
-    if let Some(sql) = spec.stat_sql(i) {
-        println!("Layer {} stat: {}", i, sql);
-    }
-}
 ```
 
 #### Warnings Method
@@ -408,9 +396,10 @@ pub trait Writer {
     /// Check whether a plot can be rendered by this writer, without rendering it
     fn validate_plot(&self, spec: &Plot) -> Result<()>;
 
-    /// Render a resolved table's cells. Defaults to an "unsupported" error;
+    /// Render a resolved table's layout — its cells bundled with their
+    /// column and row metadata. Defaults to an "unsupported" error;
     /// only `HtmlWriter` overrides it as of this writing.
-    fn write_table(&self, cells: &[TableCell]) -> Result<Self::Output> { .. }
+    fn write_table(&self, layout: &TableLayout) -> Result<Self::Output> { .. }
 
     /// Render a `ResolvedSpec` from `reader.execute()` — the usual entry point.
     /// Dispatches to `write_plot`/`write_table` depending on the variant.

@@ -92,8 +92,12 @@ pub fn extract_builtin_dataset_names(sql: &str) -> Result<Vec<String>> {
 /// e.g. `SELECT * FROM ggsql:penguins` → `SELECT * FROM __ggsql_data_penguins__`.
 ///
 /// Uses the parse tree to find the positions of namespaced identifiers, then
-/// replaces them.
-pub fn rewrite_namespaced_sql(sql: &str) -> Result<String> {
+/// replaces them. The internal name is quoted through `dialect` so the
+/// rewrite stays valid on backends with non-ANSI quoting.
+pub fn rewrite_namespaced_sql(
+    sql: &str,
+    dialect: &dyn crate::reader::SqlDialect,
+) -> Result<String> {
     let source_tree = SourceTree::new(sql)?;
     let root = source_tree.root();
 
@@ -105,7 +109,7 @@ pub fn rewrite_namespaced_sql(sql: &str) -> Result<String> {
             replacements.push((
                 node.start_byte(),
                 node.end_byte(),
-                naming::quote_ident(&naming::builtin_data_table(name)),
+                dialect.quote_ident(&naming::builtin_data_table(name)),
             ));
         }
     }
@@ -165,7 +169,7 @@ mod tests {
     fn test_rewrite_namespaced_sql_simple() {
         let sql = "SELECT * FROM ggsql:penguins";
         assert_eq!(
-            rewrite_namespaced_sql(sql).unwrap(),
+            rewrite_namespaced_sql(sql, &crate::reader::AnsiDialect).unwrap(),
             "SELECT * FROM \"__ggsql_data_penguins__\""
         );
     }
@@ -174,7 +178,7 @@ mod tests {
     fn test_rewrite_namespaced_sql_multiple() {
         let sql = "SELECT * FROM ggsql:penguins p, ggsql:airquality a WHERE p.id = a.id";
         assert_eq!(
-            rewrite_namespaced_sql(sql).unwrap(),
+            rewrite_namespaced_sql(sql, &crate::reader::AnsiDialect).unwrap(),
             "SELECT * FROM \"__ggsql_data_penguins__\" p, \"__ggsql_data_airquality__\" a WHERE p.id = a.id"
         );
     }
@@ -182,15 +186,33 @@ mod tests {
     #[test]
     fn test_rewrite_namespaced_sql_no_change() {
         let sql = "SELECT * FROM regular_table WHERE x > 5";
-        assert_eq!(rewrite_namespaced_sql(sql).unwrap(), sql);
+        assert_eq!(
+            rewrite_namespaced_sql(sql, &crate::reader::AnsiDialect).unwrap(),
+            sql
+        );
     }
 
     #[test]
     fn test_rewrite_namespaced_sql_with_visualise() {
         let sql = "SELECT * FROM ggsql:penguins VISUALISE DRAW point MAPPING bill_len AS x, bill_dep AS y";
-        let rewritten = rewrite_namespaced_sql(sql).unwrap();
+        let rewritten = rewrite_namespaced_sql(sql, &crate::reader::AnsiDialect).unwrap();
         assert!(rewritten.starts_with("SELECT * FROM \"__ggsql_data_penguins__\""));
         assert!(!rewritten.contains("ggsql:"));
+    }
+
+    #[test]
+    fn test_rewrite_namespaced_sql_backtick_dialect() {
+        struct Backtick;
+        impl crate::reader::SqlDialect for Backtick {
+            fn quote_ident(&self, name: &str) -> String {
+                format!("`{}`", name.replace('`', "``"))
+            }
+        }
+        let sql = "SELECT * FROM ggsql:penguins";
+        assert_eq!(
+            rewrite_namespaced_sql(sql, &Backtick).unwrap(),
+            "SELECT * FROM `__ggsql_data_penguins__`"
+        );
     }
 
     #[test]

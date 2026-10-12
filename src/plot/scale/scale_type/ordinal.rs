@@ -275,7 +275,7 @@ impl ScaleTypeTrait for Ordinal {
         column_name: &str,
         _column_dtype: &DataType,
         scale: &super::super::Scale,
-        _dialect: &dyn super::SqlDialect,
+        dialect: &dyn super::SqlDialect,
     ) -> Option<String> {
         // Only apply if input_range is explicitly specified by user
         // (not inferred from data)
@@ -304,7 +304,7 @@ impl ScaleTypeTrait for Ordinal {
         }
 
         // Always censor - ordinal scales have no other valid OOB behavior
-        let quoted = naming::quote_ident(column_name);
+        let quoted = dialect.quote_ident(column_name);
         Some(format!(
             "(CASE WHEN {} IN ({}) THEN {} ELSE NULL END)",
             quoted,

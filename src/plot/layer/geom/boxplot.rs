@@ -141,7 +141,11 @@ fn stat_boxplot(
         Some(col) => (query.to_string(), col, false),
         None => {
             let dummy_col = naming::stat_column("pos1");
-            (wrap_with_dummy_axis(query, "pos1"), dummy_col, true)
+            (
+                wrap_with_dummy_axis(query, "pos1", dialect),
+                dummy_col,
+                true,
+            )
         }
     };
 
@@ -173,8 +177,14 @@ fn stat_boxplot(
 
     // Query for boxplot summary statistics
     let summary = boxplot_sql_compute_summary(&working_query, &groups, &value_col, coef, dialect);
-    let stats_query =
-        boxplot_sql_append_outliers(&summary, &groups, &value_col, &working_query, outliers);
+    let stats_query = boxplot_sql_append_outliers(
+        &summary,
+        &groups,
+        &value_col,
+        &working_query,
+        outliers,
+        dialect,
+    );
 
     let mut stat_columns = vec![
         "type".to_string(),
@@ -202,69 +212,77 @@ fn boxplot_sql_compute_summary(
     coef: &f64,
     dialect: &dyn SqlDialect,
 ) -> String {
-    let quoted_groups: Vec<String> = groups.iter().map(|g| naming::quote_ident(g)).collect();
+    let quoted_groups: Vec<String> = groups.iter().map(|g| dialect.quote_ident(g)).collect();
     let groups_str = quoted_groups.join(", ");
     let lower_expr = dialect.sql_greatest(&[&format!("q1 - {coef} * (q3 - q1)"), "min"]);
     let upper_expr = dialect.sql_least(&[&format!("q3 + {coef} * (q3 - q1)"), "max"]);
-    let q1 = dialect.sql_percentile(value, 0.25, from, groups);
-    let median = dialect.sql_percentile(value, 0.50, from, groups);
-    let q3 = dialect.sql_percentile(value, 0.75, from, groups);
-    let qt = "\"__ggsql_qt__\"";
-    let fn_alias = "\"__ggsql_fn__\"";
-    let quoted_value = naming::quote_ident(value);
-    format!(
-        "SELECT
-          *,
-          {lower_expr} AS lower,
-          {upper_expr} AS upper
-        FROM (
-          SELECT
-            {groups},
-            MIN({value}) AS min,
-            MAX({value}) AS max,
-            {q1} AS q1,
-            {median} AS median,
-            {q3} AS q3
-          FROM ({from}) AS {qt}
-          WHERE {value} IS NOT NULL
-          GROUP BY {groups}
-        ) AS {fn_alias}",
-        lower_expr = lower_expr,
-        upper_expr = upper_expr,
-        groups = groups_str,
-        value = quoted_value,
-        from = from,
-        q1 = q1,
-        median = median,
-        q3 = q3,
-    )
+    let q1 = dialect.sql_quantile(value, 0.25, crate::sql::FromItem::Query(from), groups);
+    let median = dialect.sql_quantile(value, 0.50, crate::sql::FromItem::Query(from), groups);
+    let q3 = dialect.sql_quantile(value, 0.75, crate::sql::FromItem::Query(from), groups);
+    let quoted_value = dialect.quote_ident(value);
+    let mut items: Vec<String> = Vec::new();
+    if !groups_str.is_empty() {
+        items.push(groups_str.clone());
+    }
+    items.extend([
+        format!("MIN({quoted_value}) AS min"),
+        format!("MAX({quoted_value}) AS max"),
+        format!("{q1} AS q1"),
+        format!("{median} AS median"),
+        format!("{q3} AS q3"),
+    ]);
+    let mut inner = crate::sql::Select::new(dialect)
+        .select_items(&items)
+        .from_aliased(crate::sql::FromItem::Query(from), "__ggsql_qt__")
+        .and_where(format!("{quoted_value} IS NOT NULL"));
+    if !groups_str.is_empty() {
+        inner = inner.group_by(&groups_str);
+    }
+    let inner = inner.build();
+    crate::sql::Select::new(dialect)
+        .select_star_plus(
+            &[
+                format!("{lower_expr} AS lower"),
+                format!("{upper_expr} AS upper"),
+            ],
+            "__ggsql_fn__",
+        )
+        .from_aliased(crate::sql::FromItem::Query(&inner), "__ggsql_fn__")
+        .build()
 }
 
-fn boxplot_sql_filter_outliers(groups: &[String], value: &str, from: &str) -> String {
+fn boxplot_sql_filter_outliers(
+    groups: &[String],
+    value: &str,
+    from: &str,
+    dialect: &dyn SqlDialect,
+) -> String {
     let mut join_pairs = Vec::new();
     let mut keep_columns = Vec::new();
     for column in groups {
-        let quoted = naming::quote_ident(column);
+        let quoted = dialect.quote_ident(column);
         join_pairs.push(format!("raw.{} = summary.{}", quoted, quoted));
-        keep_columns.push(format!("raw.{}", quoted));
+        // Aliased explicitly: some engines (ClickHouse) otherwise name an
+        // unaliased `raw.col` projection `raw.col`.
+        keep_columns.push(format!("raw.{quoted} AS {quoted}"));
     }
 
-    let quoted_value = naming::quote_ident(value);
+    let quoted_value = dialect.quote_ident(value);
     // We're joining outliers with the summary to use the lower/upper whisker
     // values as a filter
-    format!(
-        "SELECT
-          raw.{value} AS value,
-          'outlier' AS type,
-          {groups}
-        FROM ({from}) raw
-        JOIN summary ON {pairs}
-        WHERE raw.{value} NOT BETWEEN summary.lower AND summary.upper",
-        value = quoted_value,
-        groups = keep_columns.join(", "),
-        pairs = join_pairs.join(" AND "),
-        from = from
-    )
+    let mut items = vec![
+        format!("raw.{quoted_value} AS value"),
+        "'outlier' AS type".to_string(),
+    ];
+    items.extend(keep_columns);
+    crate::sql::Select::new(dialect)
+        .select_items(&items)
+        .from_aliased(crate::sql::FromItem::Query(from), "raw")
+        .join_raw(&format!("JOIN summary ON {}", join_pairs.join(" AND ")))
+        .and_where(format!(
+            "raw.{quoted_value} NOT BETWEEN summary.lower AND summary.upper"
+        ))
+        .build()
 }
 
 fn boxplot_sql_append_outliers(
@@ -273,12 +291,13 @@ fn boxplot_sql_append_outliers(
     value: &str,
     raw_query: &str,
     draw_outliers: &bool,
+    dialect: &dyn SqlDialect,
 ) -> String {
-    let value_name = naming::quote_ident(&naming::stat_column("value"));
-    let value2_name = naming::quote_ident(&naming::stat_column("value2"));
-    let type_name = naming::quote_ident(&naming::stat_column("type"));
+    let value_name = dialect.quote_ident(&naming::stat_column("value"));
+    let value2_name = dialect.quote_ident(&naming::stat_column("value2"));
+    let type_name = dialect.quote_ident(&naming::stat_column("type"));
 
-    let quoted_groups: Vec<String> = groups.iter().map(|g| naming::quote_ident(g)).collect();
+    let quoted_groups: Vec<String> = groups.iter().map(|g| dialect.quote_ident(g)).collect();
     let groups_str = quoted_groups.join(", ");
 
     // Helper to build visual-element rows from summary table
@@ -306,7 +325,7 @@ fn boxplot_sql_append_outliers(
     }
 
     // Grab query for outliers
-    let outliers = boxplot_sql_filter_outliers(groups, value, raw_query);
+    let outliers = boxplot_sql_filter_outliers(groups, value, raw_query, dialect);
 
     // Build summary select using CTE reference
     let summary_select = build_summary_select("summary");
@@ -347,7 +366,7 @@ mod tests {
     fn test_sql_compute_summary_basic() {
         let groups = vec!["category".to_string()];
         let result = boxplot_sql_compute_summary("data", &groups, "value", &1.5, &AnsiDialect);
-        assert!(result.contains("NTILE(4) OVER (ORDER BY \"value\")"));
+        assert!(result.contains("ROW_NUMBER() OVER (PARTITION BY \"category\" ORDER BY \"value\")"));
         assert!(result.contains("AS q1"));
         assert!(result.contains("AS median"));
         assert!(result.contains("AS q3"));
@@ -355,8 +374,8 @@ mod tests {
         assert!(result.contains("MAX(\"value\") AS max"));
         assert!(result.contains("WHERE \"value\" IS NOT NULL"));
         assert!(result.contains("GROUP BY \"category\""));
-        assert!(result.contains("CASE WHEN (q1 - 1.5"));
-        assert!(result.contains("CASE WHEN (q3 + 1.5"));
+        assert!(result.contains("GREATEST(q1 - 1.5"));
+        assert!(result.contains("LEAST(q3 + 1.5"));
     }
 
     #[test]
@@ -364,7 +383,8 @@ mod tests {
         let groups = vec!["cat".to_string(), "region".to_string()];
         let result = boxplot_sql_compute_summary("tbl", &groups, "val", &1.5, &AnsiDialect);
         assert!(result.contains("GROUP BY \"cat\", \"region\""));
-        assert!(result.contains("NTILE(4) OVER (ORDER BY \"val\")"));
+        assert!(result
+            .contains("ROW_NUMBER() OVER (PARTITION BY \"cat\", \"region\" ORDER BY \"val\")"));
     }
 
     #[test]
@@ -372,18 +392,15 @@ mod tests {
         let groups = vec!["pos1".to_string()];
         let result = boxplot_sql_compute_summary("q", &groups, "pos2", &2.5, &AnsiDialect);
         assert!(result.contains("2.5"));
-        assert!(
-            result.contains("(CASE WHEN (q1 - 2.5 * (q3 - q1)) >= (min) THEN (q1 - 2.5 * (q3 - q1)) ELSE (min) END)")
-        );
-        assert!(
-            result.contains("(CASE WHEN (q3 + 2.5 * (q3 - q1)) <= (max) THEN (q3 + 2.5 * (q3 - q1)) ELSE (max) END)")
-        );
+        assert!(result.contains("GREATEST(q1 - 2.5 * (q3 - q1), min)"));
+        assert!(result.contains("LEAST(q3 + 2.5 * (q3 - q1), max)"));
     }
 
     #[test]
     fn test_sql_filter_outliers_join() {
         let groups = vec!["cat".to_string(), "region".to_string()];
-        let result = boxplot_sql_filter_outliers(&groups, "value", "raw_data");
+        let result =
+            boxplot_sql_filter_outliers(&groups, "value", "raw_data", &crate::reader::AnsiDialect);
         assert!(result.contains("JOIN summary ON"));
         assert!(result.contains("raw.\"cat\" = summary.\"cat\""));
         assert!(result.contains("raw.\"region\" = summary.\"region\""));
@@ -392,6 +409,17 @@ mod tests {
     }
 
     // ==================== SQL Snapshot Tests ====================
+
+    /// Whitespace-insensitive SQL comparison: collapses whitespace runs and
+    /// drops spaces adjacent to parens, so expectations can wrap and indent
+    /// freely without depending on where line breaks fall.
+    fn normalize_sql(s: &str) -> String {
+        s.split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ")
+            .replace("( ", "(")
+            .replace(" )", ")")
+    }
 
     #[test]
     fn test_boxplot_sql_compute_summary_single_group() {
@@ -404,29 +432,42 @@ mod tests {
             &AnsiDialect,
         );
 
-        let q1 = AnsiDialect.sql_percentile("price", 0.25, "SELECT * FROM sales", &groups);
-        let median = AnsiDialect.sql_percentile("price", 0.50, "SELECT * FROM sales", &groups);
-        let q3 = AnsiDialect.sql_percentile("price", 0.75, "SELECT * FROM sales", &groups);
+        let q1 = AnsiDialect.sql_quantile(
+            "price",
+            0.25,
+            crate::sql::FromItem::Query("SELECT * FROM sales"),
+            &groups,
+        );
+        let median = AnsiDialect.sql_quantile(
+            "price",
+            0.50,
+            crate::sql::FromItem::Query("SELECT * FROM sales"),
+            &groups,
+        );
+        let q3 = AnsiDialect.sql_quantile(
+            "price",
+            0.75,
+            crate::sql::FromItem::Query("SELECT * FROM sales"),
+            &groups,
+        );
         let expected = format!(
-            r#"SELECT
-          *,
-          (CASE WHEN (q1 - 1.5 * (q3 - q1)) >= (min) THEN (q1 - 1.5 * (q3 - q1)) ELSE (min) END) AS lower,
-          (CASE WHEN (q3 + 1.5 * (q3 - q1)) <= (max) THEN (q3 + 1.5 * (q3 - q1)) ELSE (max) END) AS upper
-        FROM (
-          SELECT
-            "category",
-            MIN("price") AS min,
-            MAX("price") AS max,
-            {q1} AS q1,
-            {median} AS median,
-            {q3} AS q3
-          FROM (SELECT * FROM sales) AS "__ggsql_qt__"
-          WHERE "price" IS NOT NULL
-          GROUP BY "category"
-        ) AS "__ggsql_fn__""#
+            r#"SELECT *,
+                 GREATEST(q1 - 1.5 * (q3 - q1), min) AS lower,
+                 LEAST(q3 + 1.5 * (q3 - q1), max) AS upper
+               FROM (
+                 SELECT "category",
+                   MIN("price") AS min,
+                   MAX("price") AS max,
+                   {q1} AS q1,
+                   {median} AS median,
+                   {q3} AS q3
+                 FROM (SELECT * FROM sales) AS "__ggsql_qt__"
+                 WHERE "price" IS NOT NULL
+                 GROUP BY "category"
+               ) AS "__ggsql_fn__""#
         );
 
-        assert_eq!(result, expected);
+        assert_eq!(normalize_sql(&result), normalize_sql(&expected));
     }
 
     #[test]
@@ -440,29 +481,42 @@ mod tests {
             &AnsiDialect,
         );
 
-        let q1 = AnsiDialect.sql_percentile("revenue", 0.25, "SELECT * FROM data", &groups);
-        let median = AnsiDialect.sql_percentile("revenue", 0.50, "SELECT * FROM data", &groups);
-        let q3 = AnsiDialect.sql_percentile("revenue", 0.75, "SELECT * FROM data", &groups);
+        let q1 = AnsiDialect.sql_quantile(
+            "revenue",
+            0.25,
+            crate::sql::FromItem::Query("SELECT * FROM data"),
+            &groups,
+        );
+        let median = AnsiDialect.sql_quantile(
+            "revenue",
+            0.50,
+            crate::sql::FromItem::Query("SELECT * FROM data"),
+            &groups,
+        );
+        let q3 = AnsiDialect.sql_quantile(
+            "revenue",
+            0.75,
+            crate::sql::FromItem::Query("SELECT * FROM data"),
+            &groups,
+        );
         let expected = format!(
-            r#"SELECT
-          *,
-          (CASE WHEN (q1 - 1.5 * (q3 - q1)) >= (min) THEN (q1 - 1.5 * (q3 - q1)) ELSE (min) END) AS lower,
-          (CASE WHEN (q3 + 1.5 * (q3 - q1)) <= (max) THEN (q3 + 1.5 * (q3 - q1)) ELSE (max) END) AS upper
-        FROM (
-          SELECT
-            "region", "product",
-            MIN("revenue") AS min,
-            MAX("revenue") AS max,
-            {q1} AS q1,
-            {median} AS median,
-            {q3} AS q3
-          FROM (SELECT * FROM data) AS "__ggsql_qt__"
-          WHERE "revenue" IS NOT NULL
-          GROUP BY "region", "product"
-        ) AS "__ggsql_fn__""#
+            r#"SELECT *,
+                 GREATEST(q1 - 1.5 * (q3 - q1), min) AS lower,
+                 LEAST(q3 + 1.5 * (q3 - q1), max) AS upper
+               FROM (
+                 SELECT "region", "product",
+                   MIN("revenue") AS min,
+                   MAX("revenue") AS max,
+                   {q1} AS q1,
+                   {median} AS median,
+                   {q3} AS q3
+                 FROM (SELECT * FROM data) AS "__ggsql_qt__"
+                 WHERE "revenue" IS NOT NULL
+                 GROUP BY "region", "product"
+               ) AS "__ggsql_fn__""#
         );
 
-        assert_eq!(result, expected);
+        assert_eq!(normalize_sql(&result), normalize_sql(&expected));
     }
 
     #[test]
@@ -470,7 +524,14 @@ mod tests {
         let groups = vec!["category".to_string()];
         let summary = "summary_query";
         let raw = "raw_query";
-        let result = boxplot_sql_append_outliers(summary, &groups, "value", raw, &true);
+        let result = boxplot_sql_append_outliers(
+            summary,
+            &groups,
+            "value",
+            raw,
+            &true,
+            &crate::reader::AnsiDialect,
+        );
 
         // Check key components for visual-element rows format
         assert!(result.contains("WITH"));
@@ -496,7 +557,14 @@ mod tests {
         let groups = vec!["pos1".to_string()];
         let summary = "sum_query";
         let raw = "raw_query";
-        let result = boxplot_sql_append_outliers(summary, &groups, "pos2", raw, &false);
+        let result = boxplot_sql_append_outliers(
+            summary,
+            &groups,
+            "pos2",
+            raw,
+            &false,
+            &crate::reader::AnsiDialect,
+        );
 
         // Should NOT include WITH or outliers CTE
         assert!(!result.contains("WITH"));
@@ -520,7 +588,14 @@ mod tests {
         let groups = vec!["cat".to_string(), "region".to_string(), "year".to_string()];
         let summary = "(SELECT * FROM stats)";
         let raw = "(SELECT * FROM raw_data)";
-        let result = boxplot_sql_append_outliers(summary, &groups, "val", raw, &true);
+        let result = boxplot_sql_append_outliers(
+            summary,
+            &groups,
+            "val",
+            raw,
+            &true,
+            &crate::reader::AnsiDialect,
+        );
 
         // Verify all groups are present (quoted)
         assert!(result.contains("\"cat\", \"region\", \"year\""));
