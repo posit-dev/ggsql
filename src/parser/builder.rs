@@ -766,6 +766,7 @@ fn build_scale(node: &Node, source: &SourceTree) -> Result<Scale> {
         resolved: false,
         label_mapping,
         label_template,
+        panels: None,
     })
 }
 

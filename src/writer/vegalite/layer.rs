@@ -4311,6 +4311,7 @@ mod tests {
             resolved: false,
             label_mapping: None,
             label_template: "{}".to_string(),
+            panels: None,
         }];
         let context = RenderContext::new(
             &scales,
@@ -4344,6 +4345,7 @@ mod tests {
             resolved: false,
             label_mapping: None,
             label_template: "{}".to_string(),
+            panels: None,
         }];
         let context = RenderContext::new(
             &scales,
@@ -4373,6 +4375,7 @@ mod tests {
             resolved: false,
             label_mapping: None,
             label_template: "{}".to_string(),
+            panels: None,
         }];
         let context = RenderContext::new(
             &scales,
