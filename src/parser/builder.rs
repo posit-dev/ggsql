@@ -511,7 +511,7 @@ fn build_format_clause(node: &Node, source: &SourceTree) -> Result<Format> {
     };
 
     let mut value_mapping = None;
-    let mut value_template = "{}".to_string();
+    let mut value_template = None;
     if let Some(renaming_node) = source.find_node(node, "(renaming_clause) @r") {
         let (mappings, template) = parse_renaming_clause(&renaming_node, source)?;
         if !mappings.is_empty() {
@@ -940,7 +940,7 @@ fn build_scale(node: &Node, source: &SourceTree) -> Result<Scale> {
                 if !mappings.is_empty() {
                     label_mapping = Some(mappings);
                 }
-                label_template = template;
+                label_template = template.unwrap_or_else(crate::format::default_template);
             }
             _ => {}
         }
@@ -1060,13 +1060,14 @@ fn parse_scale_via_clause(node: &Node, source: &SourceTree) -> Result<Transform>
 ///
 /// Returns a tuple of:
 /// - HashMap where: Key = original value, Value = Some(label) or None for suppressed labels
-/// - Template string for wildcard mappings (* => '...'), defaults to "{}"
+/// - Template string for wildcard mappings (* => '...'), None if no wildcard
+#[allow(clippy::type_complexity)]
 fn parse_renaming_clause(
     node: &Node,
     source: &SourceTree,
-) -> Result<(HashMap<String, Option<String>>, String)> {
+) -> Result<(HashMap<String, Option<String>>, Option<String>)> {
     let mut mappings = HashMap::new();
-    let mut template = "{}".to_string();
+    let mut template = None;
 
     // Find all renaming_assignment nodes
     let query = "(renaming_assignment) @assign";
@@ -1108,7 +1109,7 @@ fn parse_renaming_clause(
         if is_wildcard {
             // Wildcard: * => 'template'
             if let Some(tmpl) = to_value {
-                template = tmpl;
+                template = Some(tmpl);
             }
         } else {
             // Explicit mapping: 'A' => 'Alpha' or '10' => 'Ten'
@@ -1614,7 +1615,7 @@ mod tests {
         assert_eq!(table.formats[0].target, ColumnSection::Body);
         assert!(table.formats[0].settings.is_empty());
         assert_eq!(table.formats[0].value_mapping, None);
-        assert_eq!(table.formats[0].value_template, "{}");
+        assert_eq!(table.formats[0].value_template, None);
     }
 
     #[test]
@@ -1653,7 +1654,10 @@ mod tests {
             table.formats[0].value_mapping,
             Some(HashMap::from([("null".to_string(), Some("-".to_string()))]))
         );
-        assert_eq!(table.formats[0].value_template, "{:num %.2f}");
+        assert_eq!(
+            table.formats[0].value_template,
+            Some("{:num %.2f}".to_string())
+        );
     }
 
     #[test]
@@ -1666,7 +1670,10 @@ mod tests {
 
         assert_eq!(table.formats.len(), 2);
         assert_eq!(table.formats[0].columns, vec!["foo"]);
-        assert_eq!(table.formats[0].value_template, "{:num %.0f}");
+        assert_eq!(
+            table.formats[0].value_template,
+            Some("{:num %.0f}".to_string())
+        );
         assert_eq!(table.formats[1].columns, vec!["bar"]);
     }
 

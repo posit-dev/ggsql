@@ -244,10 +244,9 @@ pub struct Format {
     pub value_mapping: Option<HashMap<String, Option<String>>>,
     /// Template for generating display text from cell values (e.g.
     /// `"{:num %.2f}"`), applied to values with no specific `value_mapping`
-    /// entry. Default `"{}"` passes the value through unchanged. Same shape
-    /// as `Scale::label_template`.
-    #[serde(default = "crate::format::default_template")]
-    pub value_template: String,
+    /// entry. `None` passes values through unchanged (equivalent to `"{}"`).
+    #[serde(default)]
+    pub value_template: Option<String>,
 }
 
 /// `SETTING` parameters `FORMAT` accepts.
@@ -274,7 +273,7 @@ const FORMAT_PARAMS: &[ParamDefinition] = &[
 impl Format {
     /// Merge `other` into `self`: `other`'s settings and value mappings
     /// override per-key, and its target replaces `self`'s; its template
-    /// replaces `self`'s unless it is the default `"{}"`.
+    /// replaces `self`'s when set.
     pub fn merge(&mut self, other: &Format) {
         self.target = other.target;
         self.settings.extend(other.settings.clone());
@@ -283,7 +282,7 @@ impl Format {
             (slot @ None, Some(other)) => *slot = Some(other.clone()),
             _ => {}
         }
-        if other.value_template != "{}" {
+        if other.value_template.is_some() {
             self.value_template = other.value_template.clone();
         }
     }
@@ -318,8 +317,33 @@ mod tests {
             target: ColumnSection::Body,
             settings,
             value_mapping: None,
-            value_template: "{}".to_string(),
+            value_template: None,
         }
+    }
+
+    #[test]
+    fn format_merge_an_unset_template_leaves_the_existing_one() {
+        let mut format = Format {
+            value_template: Some("{:num %.2f}".to_string()),
+            ..format_with_settings(Parameters::new())
+        };
+        format.merge(&format_with_settings(Parameters::new()));
+
+        assert_eq!(format.value_template.as_deref(), Some("{:num %.2f}"));
+    }
+
+    #[test]
+    fn format_merge_an_explicit_default_template_overrides() {
+        let mut format = Format {
+            value_template: Some("{:num %.2f}".to_string()),
+            ..format_with_settings(Parameters::new())
+        };
+        format.merge(&Format {
+            value_template: Some("{}".to_string()),
+            ..format_with_settings(Parameters::new())
+        });
+
+        assert_eq!(format.value_template.as_deref(), Some("{}"));
     }
 
     #[test]

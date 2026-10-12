@@ -60,15 +60,14 @@ pub(super) fn setup_formats(
 
 /// Replace every column in `df` named in `formats` with its resolved
 /// display text. A column whose `Format` has no `RENAMING` at all
-/// (`value_template` is the default `"{}"` and `value_mapping` is empty) is
-/// left untouched.
+/// (`value_template` unset and `value_mapping` empty) is left untouched.
 pub(super) fn apply_formats(
     df: &DataFrame,
     formats: &HashMap<String, Format>,
 ) -> Result<DataFrame> {
     let mut df = df.clone();
     for (name, format) in formats {
-        let has_renaming = format.value_template != "{}"
+        let has_renaming = format.value_template.is_some()
             || format.value_mapping.as_ref().is_some_and(|m| !m.is_empty());
         if !has_renaming {
             // Skip the per-row formatting pass for a column nobody asked to
@@ -82,7 +81,7 @@ pub(super) fn apply_formats(
             .clone();
         let resolved = crate::format::resolve_column_values(
             &array,
-            &format.value_template,
+            format.value_template.as_deref().unwrap_or("{}"),
             &format.value_mapping,
         )
         .map_err(|e| GgsqlError::ValidationError(format!("FORMAT column '{name}': {e}")))?;
@@ -132,7 +131,7 @@ mod tests {
             target: crate::ColumnSection::Body,
             settings: Parameters::new(),
             value_mapping: mapping,
-            value_template: template.to_string(),
+            value_template: (template != "{}").then(|| template.to_string()),
         }
     }
 
@@ -160,7 +159,7 @@ mod tests {
         let resolved = setup_formats(&frame, &formats, &[]).unwrap();
 
         let price = resolved.get("price").unwrap();
-        assert_eq!(price.value_template, "{:num %.2f}");
+        assert_eq!(price.value_template.as_deref(), Some("{:num %.2f}"));
         assert!(price.columns.is_empty());
     }
 
@@ -185,21 +184,21 @@ mod tests {
 
         let resolved = setup_formats(&frame, &formats, &[]).unwrap();
 
-        // `price` merges both clauses: the later clause has the default "{}"
-        // template, so the earlier template survives; its settings are added.
+        // `price` merges both clauses: the later clause has no template, so
+        // the earlier template survives; its settings are added.
         let price = resolved.get("price").unwrap();
-        assert_eq!(price.value_template, "{:num %.2f}");
+        assert_eq!(price.value_template.as_deref(), Some("{:num %.2f}"));
         assert_eq!(
             price.settings.get("hjust"),
             Some(&ParameterValue::String("left".to_string()))
         );
 
         let amount = resolved.get("amount").unwrap();
-        assert_eq!(amount.value_template, "{:num %.2f}");
+        assert_eq!(amount.value_template.as_deref(), Some("{:num %.2f}"));
         assert!(!amount.settings.contains_key("hjust"));
 
         let currency = resolved.get("currency").unwrap();
-        assert_eq!(currency.value_template, "{}");
+        assert_eq!(currency.value_template, None);
         assert_eq!(
             currency.settings.get("hjust"),
             Some(&ParameterValue::String("left".to_string()))
@@ -222,8 +221,14 @@ mod tests {
 
         let resolved = setup_formats(&frame, &formats, &spans).unwrap();
 
-        assert_eq!(resolved.get("a").unwrap().value_template, "{:num %.2f}");
-        assert_eq!(resolved.get("b").unwrap().value_template, "{:num %.2f}");
+        assert_eq!(
+            resolved.get("a").unwrap().value_template.as_deref(),
+            Some("{:num %.2f}")
+        );
+        assert_eq!(
+            resolved.get("b").unwrap().value_template.as_deref(),
+            Some("{:num %.2f}")
+        );
     }
 
     #[test]
@@ -288,7 +293,7 @@ mod tests {
             target: crate::ColumnSection::Body,
             settings,
             value_mapping: None,
-            value_template: "{}".to_string(),
+            value_template: None,
         }
     }
 
@@ -311,7 +316,7 @@ mod tests {
             target: crate::ColumnSection::Stub,
             settings: Parameters::new(),
             value_mapping: None,
-            value_template: "{}".to_string(),
+            value_template: None,
         };
 
         assert_eq!(

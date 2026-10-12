@@ -238,7 +238,7 @@ mod tests {
                 target: ColumnSection::Stub,
                 settings: Parameters::new(),
                 value_mapping: None,
-                value_template: "{}".to_string(),
+                value_template: None,
             },
         )]);
 
@@ -460,7 +460,7 @@ mod tests {
                 "0".to_string(),
                 Some("-".to_string()),
             )])),
-            value_template: "${:num %.2f}".to_string(),
+            value_template: Some("${:num %.2f}".to_string()),
         }];
 
         let cells = resolve_cells(&frame, &table).unwrap();
