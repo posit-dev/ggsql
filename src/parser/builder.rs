@@ -1527,6 +1527,19 @@ mod tests {
     }
 
     #[test]
+    fn test_tabulate_span_quoted_identifiers_are_unquoted() {
+        let specs = parse_test_specs(
+            "TABULATE * FROM sales SPAN \"Total Sales\" OVER `gross amount`, \"net amount\"",
+        )
+        .unwrap();
+        let table = specs[0].as_table().expect("expected a Table spec");
+
+        assert_eq!(table.spans[0].id, "Total Sales");
+        assert_eq!(table.spans[0].label, Some("Total Sales".to_string()));
+        assert_eq!(table.spans[0].columns, vec!["gross amount", "net amount"]);
+    }
+
+    #[test]
     fn test_tabulate_span_columns_first_under_matches_id_first_over() {
         let over = parse_test_specs("TABULATE * FROM sales SPAN `Pretty Name` OVER foo, bar, baz")
             .unwrap();

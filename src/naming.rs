@@ -91,6 +91,9 @@ pub const CACHE_META_TABLE: &str = concatcp!(GGSQL_PREFIX, "cache_meta", GGSQL_S
 /// Alias for schema extraction queries
 pub const SCHEMA_ALIAS: &str = concatcp!(GGSQL_SUFFIX, "schema", GGSQL_SUFFIX);
 
+/// Alias for the derived table a TABULATE selection wraps its source in
+pub const TABLE_ALIAS: &str = concatcp!(GGSQL_SUFFIX, "table", GGSQL_SUFFIX);
+
 /// Column name for densification group ID.
 /// Used by geoms that expand geometry (tile, segment, ribbon, rule) to group
 /// densified vertices back into their original feature.

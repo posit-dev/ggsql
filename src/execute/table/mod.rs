@@ -17,8 +17,11 @@ use layout::{build_cells, setup_columns};
 use crate::table::extract_heading_labels;
 
 use super::cte::split_with_query;
+use crate::naming;
 use crate::parser::{self, SourceTree};
+use crate::reader::SqlDialect;
 use crate::reader::{Reader, ResolvedTable};
+use crate::sql;
 use crate::validate::{validate, ValidationWarning};
 use crate::{DataFrame, GgsqlError, Result, SelectionItem, Spec};
 
@@ -50,11 +53,12 @@ pub fn resolve_table_with_reader(query: &str, reader: &dyn Reader) -> Result<Res
         reader.execute_sql(&stmt)?;
     }
 
-    let sql = build_table_sql(&source_tree, &table.selection).ok_or_else(|| {
-        GgsqlError::ValidationError(
-            "TABULATE has no data source: add a FROM, or a SQL query before it".to_string(),
-        )
-    })?;
+    let sql =
+        build_table_sql(&source_tree, &table.selection, reader.dialect()).ok_or_else(|| {
+            GgsqlError::ValidationError(
+                "TABULATE has no data source: add a FROM, or a SQL query before it".to_string(),
+            )
+        })?;
 
     let df = resolve_selection(reader.execute_sql(&sql)?, &table.selection)?;
 
@@ -175,7 +179,11 @@ fn selection_sql(selection: &[SelectionItem]) -> String {
 /// the outer projection. Table-side counterpart to
 /// `execute::cte::transform_global_sql`, without CTE-rewriting or
 /// cache-staging.
-fn build_table_sql(source_tree: &SourceTree, selection: &[SelectionItem]) -> Option<String> {
+fn build_table_sql(
+    source_tree: &SourceTree,
+    selection: &[SelectionItem],
+    dialect: &dyn SqlDialect,
+) -> Option<String> {
     let wildcard_only = matches!(selection, [SelectionItem::Wildcard]);
     let root = source_tree.root();
 
@@ -188,7 +196,7 @@ fn build_table_sql(source_tree: &SourceTree, selection: &[SelectionItem]) -> Opt
         return Some(if wildcard_only {
             select_sql
         } else {
-            format!("SELECT {} FROM ({select_sql})", selection_sql(selection))
+            wrap_selection(dialect, selection, &select_sql)
         });
     }
 
@@ -210,8 +218,20 @@ fn build_table_sql(source_tree: &SourceTree, selection: &[SelectionItem]) -> Opt
     Some(if wildcard_only {
         fallback
     } else {
-        format!("SELECT {} FROM ({fallback})", selection_sql(selection))
+        wrap_selection(dialect, selection, &fallback)
     })
+}
+
+/// `SELECT <selection> FROM (<query>)`, aliased as the dialect requires and
+/// with a leading WITH hoisted out where the dialect forbids CTEs in a
+/// derived table.
+fn wrap_selection(dialect: &dyn SqlDialect, selection: &[SelectionItem], query: &str) -> String {
+    sql::select_from(
+        dialect,
+        &selection_sql(selection),
+        sql::FromItem::Query(query),
+        naming::TABLE_ALIAS,
+    )
 }
 
 #[cfg(test)]
@@ -321,14 +341,17 @@ mod integration_tests {
 
     #[test]
     fn test_tabulate_selection_with_no_tabulate_from() {
-        let reader = reader_with_sales();
+        // StubReader with the ANSI dialect pins the aliasing assertion to a
+        // known dialect rather than whatever DuckDB happens to use.
+        let (reader, _log) =
+            crate::reader::test_support::StubReader::new(&crate::reader::AnsiDialect);
 
         let no_from =
             resolve_table_with_reader("SELECT * FROM sales TABULATE name, id AS Number", &reader)
                 .unwrap();
         assert_eq!(
             no_from.sql(),
-            "SELECT name, id AS Number FROM (SELECT * FROM sales)"
+            "SELECT name, id AS Number FROM (SELECT * FROM sales) AS \"__table__\""
         );
         assert_eq!(no_from.ncol(), 2);
     }
