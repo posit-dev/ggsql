@@ -1173,7 +1173,11 @@ mod tests {
         let spec = reader.execute(query).expect("Query should execute");
 
         // Get the stat-transformed data for layer 0
-        let df = spec.stat_data(0).expect("Layer 0 should have stat data");
+        let df = spec
+            .as_plot()
+            .unwrap()
+            .stat_data(0)
+            .expect("Layer 0 should have stat data");
         println!("\nActual columns in stat_data: {:?}", df.get_column_names());
         println!("Number of rows: {}", df.height());
 

@@ -1,0 +1,102 @@
+---
+title: "Initialise a table with `TABULATE`"
+---
+
+The `TABULATE` clause marks the beginning of a ggsql table declaration, like `VISUALISE` does for ggsql plots. 
+As such it demarcates where the regular query ends and the table construction query starts. 
+Everything that comes before the `TABULATE` clause is considered a standard SQL query that is sent to the backend. 
+If that standard SQL ends with a `SELECT` query, this will automatically be added as the data for the table.
+
+Currently, the only writer supporting the `TABULATE` clause is the HTML writer.
+
+## Clause syntax
+The `TABULATE` clause requires a column selection and optionally a data source.
+
+```ggsql
+TABULATE <column>, ... | * FROM <data-source>
+```
+
+## Column selection
+
+```ggsql
+<column>, ... | *
+```
+
+After `TABULATE` you can list columns separated by commas to display in the table.
+The order in which you select columns affects the display-order in the output.
+The columns can be selected in (a mixture of) one of three forms:
+
+* `<column>` reuses the column name as header label
+* `<column> AS <identifier>` sets an alias for a column
+* `*` selects all (remaining) columns, in the source's order
+
+Without the `*` wildcard, only the listed columns are kept.
+The wildcard can be combined with explicit columns to partially order columns.
+When a column is renamed using the `AS` keyword, other table clauses --- like `LABEL`, `SPAN` and `FORMAT` --- use the *new* name.
+It is discouraged to name column `title`, `subtitle` or `captions` as these are keywords in the [`LABEL`](label-tabulate.qmd) clause.
+
+```ggsql
+-- Select all columns
+TABULATE *
+
+-- Select 3 specific columns
+TABULATE foo, bar, baz
+
+-- Renaming columns
+TABULATE foo AS bar, baz AS qux
+
+-- Fix position of first and last columns
+TABULATE foo, *, baz
+```
+
+## Data source
+
+```ggsql
+FROM <data-source>
+```
+
+The `TABULATE` clause can have a `FROM` clause that defines the source of the data.
+Alternatively data can be implied from any terminal `SELECT` clause in the preceding SQL query.
+Having both a terminal `SELECT` clause and using `FROM` is an error.
+The data received via `FROM` can take two forms:
+
+* Bare **Table** or **CTE** that is available in the backend, either as CTE defined in the preceding SQL query or as a proper table in the database.
+* A **File path** as (single quoted) string, that points to a file that can be read by the backend.
+
+```ggsql
+-- Use table as data source
+TABULATE * FROM my_table
+
+-- Use file as data source
+TABULATE * FROM 'my_dataset.csv'
+
+-- With preceding SQL
+SELECT foo, bar, baz FROM my_table
+TABULATE *
+```
+
+## Examples
+
+Plain table from data
+
+```{ggsql}
+CREATE TEMP TABLE my_data AS SELECT * FROM ggsql:penguins LIMIT 5
+
+TABULATE * FROM my_data
+```
+
+Reordering columns
+
+```{ggsql}
+TABULATE island, *, species FROM my_data
+```
+
+Renaming columns on the fly. For order-preserving renames, see [`LABEL`](label-tabulate.qmd) clause.
+
+```{ggsql}
+TABULATE 
+  bill_len AS length,  
+  bill_dep AS depth,
+  *
+  FROM my_data
+```

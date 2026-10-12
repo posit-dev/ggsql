@@ -890,7 +890,7 @@ DRAW point
                 (identifier
                   (bare_identifier))))
             name: (aesthetic_name)))))
-    (visualise_from
+    (single_source_from
       source: (qualified_name
         (identifier
           (bare_identifier))))
@@ -1138,7 +1138,7 @@ DRAW bar MAPPING category AS x, total AS y
 (query
   (visualise_statement
     (visualise_keyword)
-    (visualise_from
+    (single_source_from
       source: (qualified_name
         (identifier
           (bare_identifier))))
@@ -1281,7 +1281,7 @@ DRAW line PARTITION BY category
       (draw_clause
         (geom_type)
         (partition_clause
-          (partition_columns
+          (column_list
             (identifier
               (bare_identifier))))))))
 
@@ -1317,7 +1317,7 @@ DRAW line PARTITION BY category, region
       (draw_clause
         (geom_type)
         (partition_clause
-          (partition_columns
+          (column_list
             (identifier
               (bare_identifier))
             (identifier
@@ -1369,7 +1369,7 @@ DRAW line SETTING opacity => 0.5 FILTER year > 2020 PARTITION BY category
             (filter_token
               (number))))
         (partition_clause
-          (partition_columns
+          (column_list
             (identifier
               (bare_identifier))))))))
 
@@ -1664,7 +1664,7 @@ DRAW point MAPPING x AS x
                         (bare_identifier))))))))))))
   (visualise_statement
     (visualise_keyword)
-    (visualise_from
+    (single_source_from
       source: (qualified_name
         (identifier
           (bare_identifier))))
@@ -2013,7 +2013,7 @@ DRAW line PARTITION BY category ORDER BY date ASC
       (draw_clause
         (geom_type)
         (partition_clause
-          (partition_columns
+          (column_list
             (identifier
               (bare_identifier))))
         (order_clause
@@ -2069,7 +2069,7 @@ DRAW line SETTING opacity => 0.5 FILTER year > 2020 PARTITION BY region ORDER BY
             (filter_token
               (number))))
         (partition_clause
-          (partition_columns
+          (column_list
             (identifier
               (bare_identifier))))
         (order_clause
@@ -2593,7 +2593,7 @@ SCALE DISCRETE x RENAMING 'A' => 'Alpha', 'B' => 'Beta'
       (scale_clause
         (scale_type_identifier)
         (aesthetic_name)
-        (scale_renaming_clause
+        (renaming_clause
           (renaming_assignment
             name: (string)
             value: (string))
@@ -2631,7 +2631,7 @@ SCALE DISCRETE x RENAMING 'internal' => NULL
       (scale_clause
         (scale_type_identifier)
         (aesthetic_name)
-        (scale_renaming_clause
+        (renaming_clause
           (renaming_assignment
             name: (string)
             value: (null_literal)))))))
@@ -2666,7 +2666,7 @@ SCALE CONTINUOUS x RENAMING * => '{} units'
       (scale_clause
         (scale_type_identifier)
         (aesthetic_name)
-        (scale_renaming_clause
+        (renaming_clause
           (renaming_assignment
             value: (string)))))))
 
@@ -2700,7 +2700,7 @@ SCALE DISCRETE x RENAMING 'A' => 'Alpha', * => 'Category {}'
       (scale_clause
         (scale_type_identifier)
         (aesthetic_name)
-        (scale_renaming_clause
+        (renaming_clause
           (renaming_assignment
             name: (string)
             value: (string))
@@ -2911,7 +2911,7 @@ FACET region
         (geom_type)))
     (viz_clause
       (facet_clause
-        (facet_vars
+        (column_list
           (identifier
             (bare_identifier)))))))
 
@@ -2949,11 +2949,11 @@ FACET region BY category
         (geom_type)))
     (viz_clause
       (facet_clause
-        (facet_vars
+        (column_list
           (identifier
             (bare_identifier)))
         (facet_by)
-        (facet_vars
+        (column_list
           (identifier
             (bare_identifier)))))))
 
@@ -2991,7 +2991,7 @@ FACET region SETTING scales => 'free_y', ncol => 3
         (geom_type)))
     (viz_clause
       (facet_clause
-        (facet_vars
+        (column_list
           (identifier
             (bare_identifier)))
         (setting_clause
@@ -3110,7 +3110,7 @@ VISUALISE FROM data DRAW point
             (number))))))
   (visualise_statement
     (visualise_keyword)
-    (visualise_from
+    (single_source_from
       (qualified_name
         (identifier
           (bare_identifier))))
@@ -3133,7 +3133,7 @@ VISUALISE FROM data DRAW point
       (insert_statement)))
   (visualise_statement
     (visualise_keyword)
-    (visualise_from
+    (single_source_from
       (qualified_name
         (identifier
           (bare_identifier))))
@@ -3156,7 +3156,7 @@ VISUALISE FROM data DRAW point
       (update_statement)))
   (visualise_statement
     (visualise_keyword)
-    (visualise_from
+    (single_source_from
       (qualified_name
         (identifier
           (bare_identifier))))
@@ -3179,7 +3179,7 @@ VISUALISE FROM data DRAW point
       (delete_statement)))
   (visualise_statement
     (visualise_keyword)
-    (visualise_from
+    (single_source_from
       (qualified_name
         (identifier
           (bare_identifier))))
@@ -3205,7 +3205,7 @@ VISUALISE FROM data DRAW point
       (insert_statement)))
   (visualise_statement
     (visualise_keyword)
-    (visualise_from
+    (single_source_from
       (qualified_name
         (identifier
           (bare_identifier))))
@@ -4536,6 +4536,336 @@ DRAW point SETTING bounds => [null, 1, Inf, -Inf], limit => inf
                 (bare_identifier)))
             value: (parameter_value
               (infinity))))))))
+
+================================================================================
+TABULATE * after a preceding SELECT
+================================================================================
+
+SELECT 1 TABULATE *
+
+--------------------------------------------------------------------------------
+
+(query
+  (sql_portion
+    (sql_statement
+      (select_statement
+        (select_body
+          (number)))))
+  (tabulate_statement
+    (tabulate_keyword)
+    (column_selection
+      (mapping_list
+        (mapping_element
+          (wildcard_mapping))))))
+
+================================================================================
+TABULATE FROM single source
+================================================================================
+
+TABULATE * FROM sales
+
+--------------------------------------------------------------------------------
+
+(query
+  (tabulate_statement
+    (tabulate_keyword)
+    (column_selection
+      (mapping_list
+        (mapping_element
+          (wildcard_mapping))))
+    (single_source_from
+      source: (qualified_name
+        (identifier
+          (bare_identifier))))))
+
+================================================================================
+TABULATE LABEL clause
+================================================================================
+
+TABULATE * FROM sales LABEL id => 'ID'
+
+--------------------------------------------------------------------------------
+
+(query
+  (tabulate_statement
+    (tabulate_keyword)
+    (column_selection
+      (mapping_list
+        (mapping_element
+          (wildcard_mapping))))
+    (single_source_from
+      source: (qualified_name
+        (identifier
+          (bare_identifier))))
+    (tab_clause
+      (label_clause
+        (label_assignment
+          name: (label_type
+            (identifier
+              (bare_identifier)))
+          value: (string))))))
+
+================================================================================
+TABULATE SPAN clause
+================================================================================
+
+TABULATE * FROM sales SPAN `Pretty Name` OVER foo, bar, baz
+
+--------------------------------------------------------------------------------
+
+(query
+  (tabulate_statement
+    (tabulate_keyword)
+    (column_selection
+      (mapping_list
+        (mapping_element
+          (wildcard_mapping))))
+    (single_source_from
+      source: (qualified_name
+        (identifier
+          (bare_identifier))))
+    (tab_clause
+      (span_clause
+        id: (identifier
+          (quoted_identifier))
+        (column_list
+          (identifier
+            (bare_identifier))
+          (identifier
+            (bare_identifier))
+          (identifier
+            (bare_identifier)))))))
+
+================================================================================
+TABULATE SPAN clause with a single column
+================================================================================
+
+TABULATE * FROM sales SPAN A OVER foo
+
+--------------------------------------------------------------------------------
+
+(query
+  (tabulate_statement
+    (tabulate_keyword)
+    (column_selection
+      (mapping_list
+        (mapping_element
+          (wildcard_mapping))))
+    (single_source_from
+      source: (qualified_name
+        (identifier
+          (bare_identifier))))
+    (tab_clause
+      (span_clause
+        id: (identifier
+          (bare_identifier))
+        (column_list
+          (identifier
+            (bare_identifier)))))))
+
+================================================================================
+TABULATE SPAN clause with a NULL id
+================================================================================
+
+TABULATE * FROM sales SPAN NULL OVER foo, bar
+
+--------------------------------------------------------------------------------
+
+(query
+  (tabulate_statement
+    (tabulate_keyword)
+    (column_selection
+      (mapping_list
+        (mapping_element
+          (wildcard_mapping))))
+    (single_source_from
+      source: (qualified_name
+        (identifier
+          (bare_identifier))))
+    (tab_clause
+      (span_clause
+        id: (null_literal)
+        (column_list
+          (identifier
+            (bare_identifier))
+          (identifier
+            (bare_identifier)))))))
+
+================================================================================
+TABULATE SPAN clause with a SETTING
+================================================================================
+
+TABULATE * FROM sales SPAN W OVER foo SETTING width => '40%'
+
+--------------------------------------------------------------------------------
+
+(query
+  (tabulate_statement
+    (tabulate_keyword)
+    (column_selection
+      (mapping_list
+        (mapping_element
+          (wildcard_mapping))))
+    (single_source_from
+      source: (qualified_name
+        (identifier
+          (bare_identifier))))
+    (tab_clause
+      (span_clause
+        id: (identifier
+          (bare_identifier))
+        (column_list
+          (identifier
+            (bare_identifier)))
+        (setting_clause
+          (parameter_assignment
+            name: (parameter_name
+              (identifier
+                (bare_identifier)))
+            value: (parameter_value
+              (string))))))))
+
+================================================================================
+TABULATE SPAN clause, columns-first (UNDER)
+================================================================================
+
+TABULATE * FROM sales SPAN foo, bar UNDER baz
+
+--------------------------------------------------------------------------------
+
+(query
+  (tabulate_statement
+    (tabulate_keyword)
+    (column_selection
+      (mapping_list
+        (mapping_element
+          (wildcard_mapping))))
+    (single_source_from
+      source: (qualified_name
+        (identifier
+          (bare_identifier))))
+    (tab_clause
+      (span_clause
+        (column_list
+          (identifier
+            (bare_identifier))
+          (identifier
+            (bare_identifier)))
+        id: (identifier
+          (bare_identifier))))))
+
+================================================================================
+TABULATE LABEL then SPAN clause, any order
+================================================================================
+
+TABULATE * FROM sales LABEL id => 'ID' SPAN A OVER foo, bar
+
+--------------------------------------------------------------------------------
+
+(query
+  (tabulate_statement
+    (tabulate_keyword)
+    (column_selection
+      (mapping_list
+        (mapping_element
+          (wildcard_mapping))))
+    (single_source_from
+      source: (qualified_name
+        (identifier
+          (bare_identifier))))
+    (tab_clause
+      (label_clause
+        (label_assignment
+          name: (label_type
+            (identifier
+              (bare_identifier)))
+          value: (string))))
+    (tab_clause
+      (span_clause
+        id: (identifier
+          (bare_identifier))
+        (column_list
+          (identifier
+            (bare_identifier))
+          (identifier
+            (bare_identifier)))))))
+
+================================================================================
+TABULATE FORMAT clause
+================================================================================
+
+TABULATE * FROM sales FORMAT foo, bar SETTING width => '20%' RENAMING null => '-' FORMAT STUB baz
+
+--------------------------------------------------------------------------------
+
+(query
+  (tabulate_statement
+    (tabulate_keyword)
+    (column_selection
+      (mapping_list
+        (mapping_element
+          (wildcard_mapping))))
+    (single_source_from
+      source: (qualified_name
+        (identifier
+          (bare_identifier))))
+    (tab_clause
+      (format_clause
+        (column_list
+          (identifier
+            (bare_identifier))
+          (identifier
+            (bare_identifier)))
+        (setting_clause
+          (parameter_assignment
+            name: (parameter_name
+              (identifier
+                (bare_identifier)))
+            value: (parameter_value
+              (string))))
+        (renaming_clause
+          (renaming_assignment
+            name: (null_literal)
+            value: (string)))))
+    (tab_clause
+      (format_clause
+        (format_target_identifier)
+        (column_list
+          (identifier
+            (bare_identifier)))))))
+
+================================================================================
+TABULATE column selection: wildcard, bare column, and a rename
+================================================================================
+
+TABULATE *, bill_dep, bill_len AS Length FROM sales
+
+--------------------------------------------------------------------------------
+
+(query
+  (tabulate_statement
+    (tabulate_keyword)
+    (column_selection
+      (mapping_list
+        (mapping_element
+          (wildcard_mapping))
+        (mapping_element
+          (implicit_mapping
+            (identifier
+              (bare_identifier))))
+        (mapping_element
+          (explicit_mapping
+            value: (mapping_value
+              (column_reference
+                (identifier
+                  (bare_identifier))))
+            name: (aesthetic_name
+              (identifier
+                (bare_identifier)))))))
+    (single_source_from
+      source: (qualified_name
+        (identifier
+          (bare_identifier))))))
 
 ================================================================================
 Label string containing URL with comment-like sequences

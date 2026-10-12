@@ -28,7 +28,7 @@ use std::collections::HashMap;
 use std::sync::mpsc::{self, Receiver, Sender};
 
 use anyhow::{anyhow, Result};
-use ggsql::reader::Spec;
+use ggsql::reader::ResolvedPlot;
 
 use super::{Format, RenderRequest, RenderTicket};
 
@@ -56,7 +56,10 @@ pub struct RenderOutcome {
 enum Job {
     /// Keep `spec` so the plot can be re-drawn at a new size without re-running
     /// the query. Its `DataFrame`s stay here rather than on the async task.
-    Store { comm_id: String, spec: Box<Spec> },
+    Store {
+        comm_id: String,
+        spec: Box<ResolvedPlot>,
+    },
     /// Forget a stored plot, because its comm closed or it was evicted.
     Forget { comm_id: String },
     /// Re-render a stored plot and answer `reply` directly.
@@ -79,7 +82,7 @@ enum Job {
     /// Render a plot we were handed and will not keep, answering `reply`
     /// directly. The one-shot path, for a static output bundle.
     RenderOnce {
-        spec: Box<Spec>,
+        spec: Box<ResolvedPlot>,
         request: RenderRequest,
         reply: Sender<Result<Vec<u8>>>,
     },
@@ -181,7 +184,7 @@ impl PlotBackend {
     ///
     /// Returns an error if the render thread has stopped, or if the render
     /// itself failed.
-    pub fn render_once(&self, spec: Box<Spec>, request: RenderRequest) -> Result<Vec<u8>> {
+    pub fn render_once(&self, spec: Box<ResolvedPlot>, request: RenderRequest) -> Result<Vec<u8>> {
         let (reply, answer) = mpsc::channel();
         self.jobs
             .send(Job::RenderOnce {
@@ -196,7 +199,7 @@ impl PlotBackend {
     }
 
     /// Keep a plot so its comm can re-render it at any size.
-    pub fn store(&self, comm_id: String, spec: Box<Spec>) {
+    pub fn store(&self, comm_id: String, spec: Box<ResolvedPlot>) {
         let _ = self.jobs.send(Job::Store { comm_id, spec });
     }
 
@@ -291,7 +294,7 @@ fn render_loop(
 
     // The retained plots. They live here rather than beside the comm state so
     // the post-stat `DataFrame`s stay off the async task entirely.
-    let mut stored: HashMap<String, Box<Spec>> = HashMap::new();
+    let mut stored: HashMap<String, Box<ResolvedPlot>> = HashMap::new();
 
     while let Ok(job) = inbox.recv() {
         match job {
@@ -359,7 +362,13 @@ fn warm_up(renderer: Option<&mut Renderer>) {
     let spec = match ggsql::reader::connection::reader_from_uri("duckdb://memory")
         .and_then(|reader| reader.execute(QUERY))
     {
-        Ok(spec) => spec,
+        Ok(spec) => match spec.into_plot() {
+            Some(plot) => plot,
+            None => {
+                tracing::debug!("renderer warm-up skipped: not a plot");
+                return;
+            }
+        },
         Err(e) => {
             tracing::debug!("renderer warm-up skipped: {e}");
             return;
@@ -438,7 +447,7 @@ fn comm_namespace(comm_id: &str) -> String {
 /// `id_namespace` prefixes the ids the SVG writer generates; the other formats
 /// have no such thing and ignore it.
 fn render_one(
-    spec: &Spec,
+    spec: &ResolvedPlot,
     request: &RenderRequest,
     renderer: Option<&mut Renderer>,
     id_namespace: &str,
@@ -514,7 +523,7 @@ mod tests {
 
     /// A plot with a colour scale, so the SVG carries a gradient — the ids that
     /// collide are the ones a legend gradient defines and references.
-    fn a_spec() -> Box<Spec> {
+    fn a_spec() -> Box<ResolvedPlot> {
         use ggsql::reader::{DuckDBReader, Reader};
         let query = "SELECT * FROM (VALUES (1,2,10),(2,3,50),(3,1,90)) t(x,y,c) \
                      VISUALISE x AS x, y AS y, c AS color DRAW point";
@@ -522,6 +531,8 @@ mod tests {
             DuckDBReader::from_connection_string("duckdb://memory")
                 .unwrap()
                 .execute(query)
+                .unwrap()
+                .into_plot()
                 .unwrap(),
         )
     }

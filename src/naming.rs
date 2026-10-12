@@ -91,6 +91,9 @@ pub const CACHE_META_TABLE: &str = concatcp!(GGSQL_PREFIX, "cache_meta", GGSQL_S
 /// Alias for schema extraction queries
 pub const SCHEMA_ALIAS: &str = concatcp!(GGSQL_SUFFIX, "schema", GGSQL_SUFFIX);
 
+/// Alias for the derived table a TABULATE selection wraps its source in
+pub const TABLE_ALIAS: &str = concatcp!(GGSQL_SUFFIX, "table", GGSQL_SUFFIX);
+
 /// Column name for densification group ID.
 /// Used by geoms that expand geometry (tile, segment, ribbon, rule) to group
 /// densified vertices back into their original feature.
@@ -294,6 +297,27 @@ pub fn layer_key(layer_idx: usize) -> String {
 /// ```
 pub fn aesthetic_column(aesthetic: &str) -> String {
     format!("{}{}{}", AES_PREFIX, aesthetic, GGSQL_SUFFIX)
+}
+
+/// Generate an id for an anonymous `TABULATE SPAN` (`SPAN NULL OVER
+/// ...`). Nothing in the query can reference this text, so any fresh value
+/// works; the `__ggsql_*` convention just keeps it out of the way of a real
+/// column name, the same guarantee every other name here gives SQL.
+///
+/// # Example
+/// ```
+/// use ggsql::naming;
+/// let id = naming::anonymous_span_id();
+/// assert!(id.starts_with("__ggsql_span_"));
+/// assert!(id.ends_with("__"));
+/// ```
+pub fn anonymous_span_id() -> String {
+    format!(
+        "{}span_{}{}",
+        GGSQL_PREFIX,
+        Uuid::new_v4().simple(),
+        GGSQL_SUFFIX
+    )
 }
 
 // ============================================================================

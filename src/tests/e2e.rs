@@ -30,9 +30,9 @@ fn test_execute_and_render() {
         .execute("SELECT 1 as x, 2 as y VISUALISE x, y DRAW point")
         .unwrap();
 
-    assert_eq!(spec.plot().layers.len(), 1);
-    assert_eq!(spec.metadata().layer_count, 1);
-    assert!(spec.layer_data(0).is_some());
+    assert_eq!(spec.as_plot().unwrap().plot().layers.len(), 1);
+    assert_eq!(spec.as_plot().unwrap().metadata().layer_count, 1);
+    assert!(spec.as_plot().unwrap().layer_data(0).is_some());
 
     let writer = VegaLiteWriter::new();
     let result = writer.render(&spec).unwrap();
@@ -48,7 +48,7 @@ fn test_execute_metadata() {
         )
         .unwrap();
 
-    let metadata = spec.metadata();
+    let metadata = spec.as_plot().unwrap().metadata();
     assert_eq!(metadata.rows, 3);
     assert!(metadata.columns.contains(&"pos1".to_string()));
     assert!(metadata.columns.contains(&"pos2".to_string()));
@@ -68,9 +68,9 @@ fn test_execute_with_cte() {
 
     let spec = reader.execute(query).unwrap();
 
-    assert_eq!(spec.plot().layers.len(), 1);
-    assert!(spec.layer_data(0).is_some());
-    let df = spec.layer_data(0).unwrap();
+    assert_eq!(spec.as_plot().unwrap().plot().layers.len(), 1);
+    assert!(spec.as_plot().unwrap().layer_data(0).is_some());
+    let df = spec.as_plot().unwrap().layer_data(0).unwrap();
     assert_eq!(df.height(), 2);
 }
 
@@ -349,8 +349,13 @@ fn test_register_and_query() {
     let query = "SELECT * FROM my_data VISUALISE x, y DRAW point";
     let spec = reader.execute(query).unwrap();
 
-    assert_eq!(spec.metadata().rows, 3);
-    assert!(spec.metadata().columns.contains(&"pos1".to_string()));
+    assert_eq!(spec.as_plot().unwrap().metadata().rows, 3);
+    assert!(spec
+        .as_plot()
+        .unwrap()
+        .metadata()
+        .columns
+        .contains(&"pos1".to_string()));
 
     let writer = VegaLiteWriter::new();
     let result = writer.render(&spec).unwrap();
@@ -386,7 +391,7 @@ fn test_register_and_join() {
     "#;
 
     let spec = reader.execute(query).unwrap();
-    assert_eq!(spec.metadata().rows, 3);
+    assert_eq!(spec.as_plot().unwrap().metadata().rows, 3);
 }
 
 #[test]
@@ -416,9 +421,9 @@ fn test_binned_fill_legend_renders_threshold_scale() {
 
     let spec = reader.execute(query).unwrap();
 
-    assert_eq!(spec.plot().layers.len(), 1);
+    assert_eq!(spec.as_plot().unwrap().plot().layers.len(), 1);
     assert!(
-        spec.plot().find_scale("fill").is_some(),
+        spec.as_plot().unwrap().plot().find_scale("fill").is_some(),
         "Should have a fill scale"
     );
 

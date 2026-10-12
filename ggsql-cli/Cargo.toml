@@ -50,7 +50,7 @@ regex.workspace = true
 ureq = "3"
 
 [features]
-default = ["duckdb", "sqlite", "vegalite", "parquet", "builtin-data", "odbc", "svg", "pdf", "hep"]
+default = ["duckdb", "sqlite", "vegalite", "html", "parquet", "builtin-data", "odbc", "svg", "pdf", "hep"]
 duckdb = ["ggsql/duckdb"]
 parquet = ["ggsql/parquet"]
 sqlite = ["ggsql/sqlite"]
@@ -62,6 +62,7 @@ odbc = ["ggsql/odbc"]
 any-writer = []
 
 vegalite = ["ggsql/vegalite", "any-writer"]
+html = ["ggsql/html", "any-writer"]
 png = ["ggsql/png", "any-writer"]
 jpeg = ["ggsql/jpeg", "any-writer"]
 tiff = ["ggsql/tiff", "any-writer"]
@@ -75,7 +76,7 @@ hep = ["ggsql/hep", "any-writer"]
 window = ["ggsql/window"]
 builtin-data = ["ggsql/builtin-data"]
 all-readers = ["duckdb", "sqlite", "odbc"]
-all-writers = ["vegalite", "png", "jpeg", "tiff", "webp", "svg", "pdf", "hep"]
+all-writers = ["vegalite", "html", "png", "jpeg", "tiff", "webp", "svg", "pdf", "hep"]
 
 # cargo-packager configuration for cross-platform installers
 [package.metadata.packager]
