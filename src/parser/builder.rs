@@ -529,18 +529,22 @@ fn build_format_clause(node: &Node, source: &SourceTree) -> Result<Format> {
     })
 }
 
-/// Parse a FORMAT clause's optional target identifier (BODY, STUB), missing
-/// meaning BODY by default.
-fn parse_format_target_identifier(node: &Node, source: &SourceTree) -> Result<ColumnSection> {
+/// Parse a FORMAT clause's optional target identifier: `BODY`/`STUB` make a
+/// section claim, while `ANY` or a missing identifier makes none (`None`).
+fn parse_format_target_identifier(
+    node: &Node,
+    source: &SourceTree,
+) -> Result<Option<ColumnSection>> {
     let Some(target_node) = source.find_node(node, "(format_target_identifier) @t") else {
-        return Ok(ColumnSection::Body);
+        return Ok(None);
     };
 
     match source.get_text(&target_node).to_lowercase().as_str() {
-        "body" => Ok(ColumnSection::Body),
-        "stub" => Ok(ColumnSection::Stub),
+        "any" => Ok(None),
+        "body" => Ok(Some(ColumnSection::Body)),
+        "stub" => Ok(Some(ColumnSection::Stub)),
         text => Err(GgsqlError::ParseError(format!(
-            "Unknown FORMAT target: '{}'. Valid targets: body, stub",
+            "Unknown FORMAT target: '{}'. Valid targets: any, body, stub",
             text
         ))),
     }
@@ -1612,7 +1616,7 @@ mod tests {
 
         assert_eq!(table.formats.len(), 1);
         assert_eq!(table.formats[0].columns, vec!["foo", "bar"]);
-        assert_eq!(table.formats[0].target, ColumnSection::Body);
+        assert_eq!(table.formats[0].target, None);
         assert!(table.formats[0].settings.is_empty());
         assert_eq!(table.formats[0].value_mapping, None);
         assert_eq!(table.formats[0].value_template, None);
@@ -1624,7 +1628,7 @@ mod tests {
         let table = specs[0].as_table().expect("expected a Table spec");
 
         assert_eq!(table.formats[0].columns, vec!["region"]);
-        assert_eq!(table.formats[0].target, ColumnSection::Stub);
+        assert_eq!(table.formats[0].target, Some(ColumnSection::Stub));
     }
 
     #[test]
@@ -1633,7 +1637,16 @@ mod tests {
         let table = specs[0].as_table().expect("expected a Table spec");
 
         assert_eq!(table.formats[0].columns, vec!["region"]);
-        assert_eq!(table.formats[0].target, ColumnSection::Body);
+        assert_eq!(table.formats[0].target, Some(ColumnSection::Body));
+    }
+
+    #[test]
+    fn test_tabulate_format_explicit_any_target() {
+        let specs = parse_test_specs("TABULATE * FROM sales FORMAT ANY region").unwrap();
+        let table = specs[0].as_table().expect("expected a Table spec");
+
+        assert_eq!(table.formats[0].columns, vec!["region"]);
+        assert_eq!(table.formats[0].target, None);
     }
 
     #[test]

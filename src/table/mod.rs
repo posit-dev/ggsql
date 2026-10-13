@@ -150,7 +150,7 @@ impl Table {
         let stub_columns: HashSet<&str> = self
             .formats
             .iter()
-            .filter(|format| format.target.is_stub())
+            .filter(|format| format.target == Some(ColumnSection::Stub))
             .flat_map(|format| &format.columns)
             .flat_map(
                 |name| match resolved_spans.iter().find(|span| &span.id == name) {
@@ -204,8 +204,8 @@ impl Table {
 /// Which section of the table a `FORMAT` clause's columns belong to.
 ///
 /// `FORMAT STUB` is the only thing that assigns a column to the table's
-/// stub; `FORMAT BODY`, or no target identifier at all, leaves columns in
-/// the regular body — `Body` is this enum's default for that reason.
+/// stub; `FORMAT BODY`, or no claim at all, leaves columns in the regular
+/// body — `Body` is this enum's default for that reason.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ColumnSection {
@@ -229,10 +229,12 @@ impl ColumnSection {
 pub struct Format {
     /// The columns this FORMAT applies to, in the order written.
     pub columns: Vec<String>,
-    /// Which section of the table these columns belong to (`BODY`, the
-    /// default, or `STUB`).
+    /// Which section of the table these columns belong to (`BODY` or
+    /// `STUB`). `None` — from `FORMAT ANY` or no target identifier — makes
+    /// no section claim: it never overrides another target when FORMAT
+    /// clauses merge, and resolves to `BODY` in `setup_formats`.
     #[serde(default)]
-    pub target: ColumnSection,
+    pub target: Option<ColumnSection>,
     /// `SETTING` parameters for this FORMAT (e.g. `hjust => 'right'`).
     pub settings: Parameters,
     /// Value mappings for custom cell display (`RENAMING` clause). Maps a raw
@@ -272,10 +274,12 @@ const FORMAT_PARAMS: &[ParamDefinition] = &[
 
 impl Format {
     /// Merge `other` into `self`: `other`'s settings and value mappings
-    /// override per-key, and its target replaces `self`'s; its template
-    /// replaces `self`'s when set.
+    /// override per-key, and its target and template replace `self`'s when
+    /// set.
     pub fn merge(&mut self, other: &Format) {
-        self.target = other.target;
+        if other.target.is_some() {
+            self.target = other.target;
+        }
         self.settings.extend(other.settings.clone());
         match (&mut self.value_mapping, &other.value_mapping) {
             (Some(mapping), Some(other)) => mapping.extend(other.clone()),
@@ -314,7 +318,7 @@ mod tests {
     fn format_with_settings(settings: Parameters) -> Format {
         Format {
             columns: vec!["a".to_string()],
-            target: ColumnSection::Body,
+            target: None,
             settings,
             value_mapping: None,
             value_template: None,
@@ -344,6 +348,28 @@ mod tests {
         });
 
         assert_eq!(format.value_template.as_deref(), Some("{}"));
+    }
+
+    #[test]
+    fn format_merge_an_unset_target_never_overrides() {
+        let mut format = Format {
+            target: Some(ColumnSection::Stub),
+            ..format_with_settings(Parameters::new())
+        };
+        format.merge(&format_with_settings(Parameters::new()));
+
+        assert_eq!(format.target, Some(ColumnSection::Stub));
+    }
+
+    #[test]
+    fn format_merge_a_set_target_overrides() {
+        let mut format = format_with_settings(Parameters::new());
+        format.merge(&Format {
+            target: Some(ColumnSection::Stub),
+            ..format_with_settings(Parameters::new())
+        });
+
+        assert_eq!(format.target, Some(ColumnSection::Stub));
     }
 
     #[test]
@@ -398,7 +424,7 @@ mod tests {
         let table = Table {
             formats: vec![Format {
                 columns: vec!["a".to_string()],
-                target: ColumnSection::Stub,
+                target: Some(ColumnSection::Stub),
                 ..format_with_settings(Parameters::new())
             }],
             spans: vec![Spanner {
@@ -423,7 +449,7 @@ mod tests {
         let table = Table {
             formats: vec![Format {
                 columns: vec!["G".to_string()],
-                target: ColumnSection::Stub,
+                target: Some(ColumnSection::Stub),
                 ..format_with_settings(Parameters::new())
             }],
             spans: vec![Spanner {

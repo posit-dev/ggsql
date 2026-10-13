@@ -99,7 +99,7 @@ fn create_table_columns(
             .data_type();
         let format = formats.get(&name);
         let properties = resolve_column_properties(dtype, format);
-        let target = format.map(|f| f.target).unwrap_or_default();
+        let target = format.and_then(|f| f.target).unwrap_or_default();
         let label = match labels.labels.get(&name) {
             // A stub head is a row-label header, not a data column header —
             // default it blank rather than to the column's own name.
@@ -235,7 +235,7 @@ mod tests {
             "region".to_string(),
             Format {
                 columns: vec!["region".to_string()],
-                target: ColumnSection::Stub,
+                target: Some(ColumnSection::Stub),
                 settings: Parameters::new(),
                 value_mapping: None,
                 value_template: None,
@@ -454,7 +454,7 @@ mod tests {
         let mut table = Table::new();
         table.formats = vec![crate::Format {
             columns: vec!["price".to_string()],
-            target: crate::ColumnSection::Body,
+            target: None,
             settings: Parameters::new(),
             value_mapping: Some(std::collections::HashMap::from([(
                 "0".to_string(),

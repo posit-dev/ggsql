@@ -698,7 +698,7 @@ module.exports = grammar({
     // FORMAT — configures cell formatting for a group of columns. Multiple
     // FORMAT clauses repeat (FORMAT ... FORMAT ...) for different column
     // groups, the same model SPAN uses. Optional target identifier before
-    // the column list, defaulting to BODY.
+    // the column list, defaulting to ANY.
     format_clause: $ => seq(
       caseInsensitive('FORMAT'),
       optional($.format_target_identifier),  // optional target before columns
@@ -709,7 +709,8 @@ module.exports = grammar({
 
     // FORMAT targets - which section of the table the columns belong to
     format_target_identifier: $ => choice(
-      caseInsensitive('BODY'),  // regular table body (default)
+      caseInsensitive('ANY'),   // wherever the columns are (default)
+      caseInsensitive('BODY'),  // regular table body
       caseInsensitive('STUB')   // row-label column(s)
     ),
 

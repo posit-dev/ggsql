@@ -11,7 +11,7 @@ use arrow::datatypes::DataType;
 use crate::array_util::{new_str_array, value_to_string};
 use crate::plot::{ParameterValue, Parameters};
 use crate::table::standardise_hjust;
-use crate::{DataFrame, Format, GgsqlError, Result, Spanner};
+use crate::{ColumnSection, DataFrame, Format, GgsqlError, Result, Spanner};
 
 /// Validate every FORMAT's `SETTING` parameters, then reshape `formats`
 /// into one `Format` per column it covers. `spans` must already be resolved
@@ -54,6 +54,11 @@ pub(super) fn setup_formats(
                     .or_insert(format);
             }
         }
+    }
+
+    // A column no clause claimed a section for resolves to the body.
+    for format in resolved.values_mut() {
+        format.target.get_or_insert(ColumnSection::Body);
     }
     Ok(resolved)
 }
@@ -106,7 +111,7 @@ pub(super) fn apply_formats(
 pub(super) fn resolve_column_properties(dtype: &DataType, format: Option<&Format>) -> Parameters {
     let mut properties = format.map(|f| f.settings.clone()).unwrap_or_default();
 
-    let is_stub = format.is_some_and(|f| f.target.is_stub());
+    let is_stub = format.is_some_and(|f| f.target == Some(ColumnSection::Stub));
     let hjust = if let Some(value) = properties.get("hjust").and_then(standardise_hjust) {
         value
     } else if is_stub || dtype.is_numeric() {
@@ -128,7 +133,7 @@ mod tests {
     fn format_with(template: &str, mapping: Option<HashMap<String, Option<String>>>) -> Format {
         Format {
             columns: Vec::new(),
-            target: crate::ColumnSection::Body,
+            target: None,
             settings: Parameters::new(),
             value_mapping: mapping,
             value_template: (template != "{}").then(|| template.to_string()),
@@ -290,7 +295,7 @@ mod tests {
         settings.insert("hjust".to_string(), hjust);
         Format {
             columns: Vec::new(),
-            target: crate::ColumnSection::Body,
+            target: None,
             settings,
             value_mapping: None,
             value_template: None,
@@ -313,7 +318,7 @@ mod tests {
     fn resolve_column_properties_defaults_a_stub_column_to_right_regardless_of_dtype() {
         let format = Format {
             columns: Vec::new(),
-            target: crate::ColumnSection::Stub,
+            target: Some(crate::ColumnSection::Stub),
             settings: Parameters::new(),
             value_mapping: None,
             value_template: None,
