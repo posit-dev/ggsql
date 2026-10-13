@@ -399,6 +399,10 @@ pub struct TableRow {
     /// Whether this row is the caption's — always the layout's last row and
     /// never also a header (`TableLayout::validate` enforces both).
     pub is_caption: bool,
+    /// Group this body row belongs to (from `TABULATE FACET`), `None` for
+    /// header rows and tables without a facet. Group labels live only in
+    /// cells, so this is just an id.
+    pub group: Option<usize>,
 }
 
 impl TableRow {

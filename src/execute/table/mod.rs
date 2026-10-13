@@ -7,10 +7,12 @@
 //! construction in `layout`; the `TableLayout` assembly and `SPAN` resolution
 //! it composes live in `crate::table`.
 
+mod facet;
 mod format;
 mod layout;
 mod stub;
 
+use facet::{reorder_rows, setup_groups};
 use format::{apply_formats, setup_formats};
 use layout::{build_cells, setup_columns};
 
@@ -43,7 +45,7 @@ pub fn resolve_table_with_reader(query: &str, reader: &dyn Reader) -> Result<Res
         .find_map(Spec::into_table)
         .ok_or_else(|| GgsqlError::ValidationError("No table specification found".to_string()))?;
 
-    let _facet = crate::table::setup_facet(&table.facet).map_err(GgsqlError::ValidationError)?;
+    let facet = crate::table::setup_facet(&table.facet).map_err(GgsqlError::ValidationError)?;
     let mut labels = table.labels.clone();
     let (title, subtitle, caption) = extract_heading_labels(&mut labels);
 
@@ -64,6 +66,17 @@ pub fn resolve_table_with_reader(query: &str, reader: &dyn Reader) -> Result<Res
 
     let df = resolve_selection(reader.execute_sql(&sql)?, &table.selection)?;
 
+    // Group on the raw query values, before FORMAT's RENAMING rewrites them.
+    let (df, groups) = match &facet {
+        Some(facet) => {
+            let ids =
+                setup_groups(&facet.get_variables(), &df).map_err(GgsqlError::ValidationError)?;
+            let (df, ids) = reorder_rows(&df, ids).map_err(GgsqlError::ValidationError)?;
+            (df, Some(ids))
+        }
+        None => (df, None),
+    };
+
     let column_names = df.get_column_names();
     let spans = table
         .resolve_spanners(&labels, Some(&column_names))
@@ -81,6 +94,7 @@ pub fn resolve_table_with_reader(query: &str, reader: &dyn Reader) -> Result<Res
         title.as_deref(),
         subtitle.as_deref(),
         caption.as_deref(),
+        groups.as_deref(),
     )?;
 
     Ok(ResolvedTable::new(layout, sql, warnings))
