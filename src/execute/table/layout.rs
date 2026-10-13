@@ -41,6 +41,7 @@ pub(super) fn build_cells(
     title: Option<&str>,
     subtitle: Option<&str>,
     caption: Option<&str>,
+    groups: Option<&[usize]>,
 ) -> Result<TableLayout> {
     let spanners = create_spanners(&columns, spans);
     // Every label empty means `LABEL col => NULL` (or `=> ''`) on every
@@ -65,11 +66,13 @@ pub(super) fn build_cells(
     let header = heading.rowbind(header);
     let mut body_cells = create_row_labels(df, &columns);
     body_cells.extend(create_body(df, &columns));
-    let table_body = TableLayout::new(
-        columns.clone(),
-        vec![TableRow::body(); df.height()],
-        body_cells,
-    );
+    let body_rows = (0..df.height())
+        .map(|row| TableRow {
+            group: groups.map(|ids| ids[row]),
+            ..TableRow::body()
+        })
+        .collect();
+    let table_body = TableLayout::new(columns.clone(), body_rows, body_cells);
     let layout = header.rowbind(table_body);
     let caption_layout = create_caption(caption, &columns);
     let layout = layout.rowbind(caption_layout);
@@ -177,6 +180,7 @@ mod tests {
             title.as_deref(),
             subtitle.as_deref(),
             caption.as_deref(),
+            None,
         )
     }
 
