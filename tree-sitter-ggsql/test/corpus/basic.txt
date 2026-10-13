@@ -4859,6 +4859,31 @@ TABULATE * FROM sales FORMAT ANY *
         (wildcard_mapping)))))
 
 ================================================================================
+TABULATE FACET clause
+================================================================================
+
+TABULATE * FROM sales FACET region
+
+--------------------------------------------------------------------------------
+
+(query
+  (tabulate_statement
+    (tabulate_keyword)
+    (column_selection
+      (mapping_list
+        (mapping_element
+          (wildcard_mapping))))
+    (single_source_from
+      source: (qualified_name
+        (identifier
+          (bare_identifier))))
+    (tab_clause
+      (facet_clause
+        (column_list
+          (identifier
+            (bare_identifier)))))))
+
+================================================================================
 TABULATE column selection: wildcard, bare column, and a rename
 ================================================================================
 
