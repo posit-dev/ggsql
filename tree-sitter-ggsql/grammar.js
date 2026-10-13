@@ -702,7 +702,10 @@ module.exports = grammar({
     format_clause: $ => seq(
       caseInsensitive('FORMAT'),
       optional($.format_target_identifier),  // optional target before columns
-      $.column_list,
+      choice(
+        $.wildcard_mapping,  // * formats every column
+        $.column_list
+      ),
       optional($.setting_clause),
       optional($.renaming_clause)
     ),

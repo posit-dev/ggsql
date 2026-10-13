@@ -227,8 +227,13 @@ impl ColumnSection {
 /// covered column's `TableCell` properties.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Format {
-    /// The columns this FORMAT applies to, in the order written.
+    /// The columns this FORMAT applies to, in the order written. Empty when
+    /// `wildcard` is set.
     pub columns: Vec<String>,
+    /// Whether this FORMAT targets every column (`FORMAT *`). Expanded to
+    /// concrete column names in `setup_formats`, where the data is known.
+    #[serde(default)]
+    pub wildcard: bool,
     /// Which section of the table these columns belong to (`BODY` or
     /// `STUB`). `None` — from `FORMAT ANY` or no target identifier — makes
     /// no section claim: it never overrides another target when FORMAT
@@ -318,6 +323,7 @@ mod tests {
     fn format_with_settings(settings: Parameters) -> Format {
         Format {
             columns: vec!["a".to_string()],
+            wildcard: false,
             target: None,
             settings,
             value_mapping: None,
@@ -424,6 +430,7 @@ mod tests {
         let table = Table {
             formats: vec![Format {
                 columns: vec!["a".to_string()],
+                wildcard: false,
                 target: Some(ColumnSection::Stub),
                 ..format_with_settings(Parameters::new())
             }],
@@ -449,6 +456,7 @@ mod tests {
         let table = Table {
             formats: vec![Format {
                 columns: vec!["G".to_string()],
+                wildcard: false,
                 target: Some(ColumnSection::Stub),
                 ..format_with_settings(Parameters::new())
             }],

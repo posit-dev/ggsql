@@ -235,6 +235,7 @@ mod tests {
             "region".to_string(),
             Format {
                 columns: vec!["region".to_string()],
+                wildcard: false,
                 target: Some(ColumnSection::Stub),
                 settings: Parameters::new(),
                 value_mapping: None,
@@ -454,6 +455,7 @@ mod tests {
         let mut table = Table::new();
         table.formats = vec![crate::Format {
             columns: vec!["price".to_string()],
+            wildcard: false,
             target: None,
             settings: Parameters::new(),
             value_mapping: Some(std::collections::HashMap::from([(

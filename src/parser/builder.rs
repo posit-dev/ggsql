@@ -496,14 +496,22 @@ fn build_span_clause(node: &Node, source: &SourceTree) -> Result<Spanner> {
     })
 }
 
-/// Build a Format from a format_clause node: FORMAT [BODY|STUB] col, ... [SETTING ...] [RENAMING ...]
+/// Build a Format from a format_clause node: FORMAT [ANY|BODY|STUB] (*|col, ...) [SETTING ...] [RENAMING ...]
 fn build_format_clause(node: &Node, source: &SourceTree) -> Result<Format> {
     let target = parse_format_target_identifier(node, source)?;
 
-    let columns_node = source
-        .find_node(node, "(column_list) @cols")
-        .ok_or_else(|| GgsqlError::ParseError("Missing columns in FORMAT clause".to_string()))?;
-    let columns = parse_column_list(&columns_node, source)?;
+    let wildcard = source.find_node(node, "(wildcard_mapping) @w").is_some();
+    let columns = match source.find_node(node, "(column_list) @cols") {
+        Some(columns_node) => parse_column_list(&columns_node, source)?,
+        // Grammar guarantees a wildcard when there is no column list;
+        // setup_formats expands it to the data's columns.
+        None if wildcard => Vec::new(),
+        None => {
+            return Err(GgsqlError::ParseError(
+                "Missing columns in FORMAT clause".to_string(),
+            ))
+        }
+    };
 
     let settings = match source.find_node(node, "(setting_clause) @s") {
         Some(setting_node) => parse_setting_clause(&setting_node, source)?,
@@ -522,6 +530,7 @@ fn build_format_clause(node: &Node, source: &SourceTree) -> Result<Format> {
 
     Ok(Format {
         columns,
+        wildcard,
         target,
         settings,
         value_mapping,
@@ -1647,6 +1656,20 @@ mod tests {
 
         assert_eq!(table.formats[0].columns, vec!["region"]);
         assert_eq!(table.formats[0].target, None);
+    }
+
+    #[test]
+    fn test_tabulate_format_wildcard_columns() {
+        let specs =
+            parse_test_specs("TABULATE * FROM sales FORMAT * RENAMING * => '{:num %.2f}'").unwrap();
+        let table = specs[0].as_table().expect("expected a Table spec");
+
+        assert!(table.formats[0].wildcard);
+        assert!(table.formats[0].columns.is_empty());
+        assert_eq!(
+            table.formats[0].value_template,
+            Some("{:num %.2f}".to_string())
+        );
     }
 
     #[test]
