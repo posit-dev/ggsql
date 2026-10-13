@@ -450,6 +450,15 @@ fn process_tab_clause(node: &Node, source: &SourceTree, table: &mut Table) -> Re
             "format_clause" => {
                 table.formats.push(build_format_clause(&child, source)?);
             }
+            "facet_clause" => {
+                let facet = build_facet(&child, source)?;
+                if facet.is_grid() {
+                    return Err(GgsqlError::ParseError(
+                        "TABULATE FACET does not support BY".to_string(),
+                    ));
+                }
+                table.facet = Some(facet);
+            }
             _ => {}
         }
     }
@@ -1573,6 +1582,29 @@ mod tests {
             table.spans[0].settings.get("width"),
             Some(&ParameterValue::String("40%".to_string()))
         );
+    }
+
+    #[test]
+    fn test_tabulate_facet_wrap_layout() {
+        let specs = parse_test_specs("TABULATE * FROM sales FACET region").unwrap();
+        let table = specs[0].as_table().expect("expected a Table spec");
+
+        let facet = table.facet.as_ref().expect("expected a facet");
+        assert!(facet.is_wrap());
+        match &facet.layout {
+            FacetLayout::Wrap { variables } => {
+                assert_eq!(variables, &vec!["region".to_string()])
+            }
+            _ => unreachable!(),
+        }
+        assert!(!facet.resolved);
+    }
+
+    #[test]
+    fn test_tabulate_facet_by_is_rejected() {
+        let result = parse_test_specs("TABULATE * FROM sales FACET region BY category");
+
+        assert!(result.is_err());
     }
 
     #[test]

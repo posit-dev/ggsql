@@ -4,8 +4,8 @@
 //! statements, parallel to how `plot` defines `Plot` for `VISUALISE`
 //! statements: `source` (from `TABULATE FROM`), `selection` (from
 //! `TABULATE`'s own column list), `labels` (from `TABULATE LABEL`), `spans`
-//! (from `TABULATE SPAN`), and `formats` (from `TABULATE FORMAT`) are
-//! populated so far.
+//! (from `TABULATE SPAN`), `formats` (from `TABULATE FORMAT`), and `facet`
+//! (from `TABULATE FACET`) are populated so far.
 
 mod layout;
 mod spanner;
@@ -26,6 +26,7 @@ use crate::params::{
     validate_parameter, DefaultParamValue, NumberConstraint, ParamConstraint, ParamDefinition,
     Parameters,
 };
+use crate::plot::facet::Facet;
 use crate::DataSource;
 
 /// Complete ggsql table specification.
@@ -54,6 +55,9 @@ pub struct Table {
     /// Cell formatting (from `TABULATE FORMAT`), one per `FORMAT` clause
     /// written — same one-clause-per-group model as `spans`.
     pub formats: Vec<Format>,
+    /// Row grouping (from `TABULATE FACET`). Only the wrap form is
+    /// meaningful for tables; the builder rejects `BY`.
+    pub facet: Option<Facet>,
 }
 
 /// One item in a TABULATE column selection.
@@ -79,6 +83,7 @@ impl Table {
             labels: Labels::default(),
             spans: Vec::new(),
             formats: Vec::new(),
+            facet: None,
         }
     }
 }
