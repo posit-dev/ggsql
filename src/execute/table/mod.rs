@@ -42,6 +42,8 @@ pub fn resolve_table_with_reader(query: &str, reader: &dyn Reader) -> Result<Res
         .into_iter()
         .find_map(Spec::into_table)
         .ok_or_else(|| GgsqlError::ValidationError("No table specification found".to_string()))?;
+
+    let _facet = crate::table::setup_facet(&table.facet).map_err(GgsqlError::ValidationError)?;
     let mut labels = table.labels.clone();
     let (title, subtitle, caption) = extract_heading_labels(&mut labels);
 

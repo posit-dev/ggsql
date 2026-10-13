@@ -7,9 +7,11 @@
 //! (from `TABULATE SPAN`), `formats` (from `TABULATE FORMAT`), and `facet`
 //! (from `TABULATE FACET`) are populated so far.
 
+mod facet;
 mod layout;
 mod spanner;
 
+pub(crate) use facet::setup_facet;
 pub(crate) use layout::{
     compose_header, create_caption, create_column_labels, create_heading, extract_heading_labels,
     move_stub_columns, standardise_hjust, Slot,
