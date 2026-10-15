@@ -8,40 +8,80 @@ use std::collections::HashMap;
 use super::format::resolve_column_properties;
 use super::stub::{create_row_labels, create_stubhead};
 use crate::array_util::value_to_string;
+use crate::plot::facet::Facet;
 use crate::plot::Labels;
 use crate::table::{
     compose_header, create_caption, create_column_labels, create_heading, create_spanners,
     move_stub_columns, reorder_table_columns, TableCell, TableClass, TableColumn, TableLayout,
     TableRow,
 };
-use crate::{DataFrame, Format, Result, Spanner};
+use crate::{DataFrame, Format, GgsqlError, Result, Spanner};
 
 /// Resolve a table's columns: one `TableColumn` per `DataFrame` column
 /// (labelled, with `formats`' resolved `SETTING` properties), reordered for
-/// any `gather`-ing spanner and then for STUB columns. `spans` must already
-/// be resolved (`Table::resolve_spanners`).
+/// any `gather`-ing spanner and then for STUB columns. A `place => 'top'`
+/// facet consumes its columns as group labels; `place => 'left'` keeps
+/// them. `spans` must already be resolved (`Table::resolve_spanners`).
 pub(super) fn setup_columns(
     df: &DataFrame,
     spans: &[Spanner],
     labels: &Labels,
     formats: &HashMap<String, Format>,
+    facet: Option<&crate::plot::facet::Facet>,
 ) -> Vec<TableColumn> {
     let columns = create_table_columns(df, labels, formats);
     let columns = reorder_table_columns(columns, spans);
-    move_stub_columns(columns)
+    let mut columns = move_stub_columns(columns);
+    let Some(facet) = facet else {
+        return columns;
+    };
+    if facet.properties.get("place")
+        != Some(&crate::plot::ParameterValue::String("top".to_string()))
+    {
+        return columns;
+    }
+    columns.retain(|c| !facet.get_variables().contains(&c.name));
+    columns
+}
+
+/// Resolve a table's body rows: one `TableRow` per `df` row, stamped with
+/// its facet group. A facet groups on the raw query values (before
+/// `FORMAT`'s RENAMING rewrites them) and reorders `df` so groups are
+/// contiguous. Group-label rows are not part of the result — `build_cells`
+/// interleaves those once labels can be read from the formatted frame.
+pub(super) fn setup_rows(
+    df: DataFrame,
+    facet: Option<&Facet>,
+) -> Result<(DataFrame, Vec<TableRow>)> {
+    let Some(facet) = facet else {
+        let rows = vec![TableRow::body(); df.height()];
+        return Ok((df, rows));
+    };
+    let ids = super::facet::setup_groups(&facet.get_variables(), &df)
+        .map_err(GgsqlError::ValidationError)?;
+    let (df, ids) = super::facet::reorder_rows(&df, ids).map_err(GgsqlError::ValidationError)?;
+    let rows = ids
+        .into_iter()
+        .map(|id| TableRow {
+            group: Some(id),
+            ..TableRow::body()
+        })
+        .collect();
+    Ok((df, rows))
 }
 
 /// Build the resolved `TableLayout` for a table from its already-resolved
-/// `columns` and already-`FORMAT`-applied `df` — spanner rows, column
-/// labels, and body, composed together and validated.
+/// `columns`, already-`FORMAT`-applied `df`, and `setup_rows` body rows —
+/// spanner rows, column labels, and body, composed together and validated.
 pub(super) fn build_cells(
     df: &DataFrame,
     columns: Vec<TableColumn>,
+    rows: Vec<TableRow>,
     spans: &[Spanner],
     title: Option<&str>,
     subtitle: Option<&str>,
     caption: Option<&str>,
-    groups: Option<&[usize]>,
+    facet: Option<&Facet>,
 ) -> Result<TableLayout> {
     let spanners = create_spanners(&columns, spans);
     // Every label empty means `LABEL col => NULL` (or `=> ''`) on every
@@ -66,12 +106,10 @@ pub(super) fn build_cells(
     let header = heading.rowbind(header);
     let mut body_cells = create_row_labels(df, &columns);
     body_cells.extend(create_body(df, &columns));
-    let body_rows = (0..df.height())
-        .map(|row| TableRow {
-            group: groups.map(|ids| ids[row]),
-            ..TableRow::body()
-        })
-        .collect();
+    let (body_rows, body_cells) = match facet {
+        None => (rows, body_cells),
+        Some(facet) => weave_group_labels(df, &columns, &rows, body_cells, facet)?,
+    };
     let table_body = TableLayout::new(columns.clone(), body_rows, body_cells);
     let layout = header.rowbind(table_body);
     let caption_layout = create_caption(caption, &columns);
@@ -151,6 +189,89 @@ fn create_body(df: &DataFrame, columns: &[TableColumn]) -> Vec<TableCell> {
     cells
 }
 
+/// Interleave group-label rows into the body. At each group boundary, emit
+/// one `GroupHeading` row per facet-variable level that changed, labels read
+/// from the group's first row (so an unchanged outer variable isn't
+/// restated). Body cells keep their data-row numbering, shifted down by the
+/// label rows before them.
+fn weave_group_labels(
+    df: &DataFrame,
+    columns: &[TableColumn],
+    rows: &[TableRow],
+    body_cells: Vec<TableCell>,
+    facet: &Facet,
+) -> Result<(Vec<TableRow>, Vec<TableCell>)> {
+    let facet_arrays: Vec<_> = facet
+        .get_variables()
+        .iter()
+        .map(|name| {
+            df.column(name).map_err(|_| {
+                GgsqlError::ValidationError(format!(
+                    "TABULATE FACET: no column '{name}' in the query result"
+                ))
+            })
+        })
+        .collect::<Result<_>>()?;
+
+    let mut out_rows = Vec::new();
+    let mut label_cells = Vec::new();
+    // body_offset[data row] = how many label rows precede it in the grid.
+    let mut body_offset = vec![0usize; df.height()];
+    // None until the first group's labels are read: it emits every level.
+    let mut previous_labels: Option<Vec<String>> = None;
+    let mut row = 0usize;
+
+    for group_rows in rows.chunk_by(|a, b| a.group == b.group) {
+        let id = group_rows[0]
+            .group
+            .expect("setup_rows stamps every body row");
+        let labels: Vec<String> = facet_arrays
+            .iter()
+            .map(|array| value_to_string(array, row))
+            .collect();
+        // When multiple labels exist, we have a nesting pattern.
+        // We don't need to repeat every level label at every group,
+        // just from the level(s) that changed onward.
+        let first_changed = match &previous_labels {
+            None => 0,
+            Some(previous) => previous
+                .iter()
+                .zip(&labels)
+                .position(|(old, new)| old != new)
+                .unwrap_or(labels.len()),
+        };
+        for label in &labels[first_changed..] {
+            label_cells.push(TableCell::new_group_heading(
+                out_rows.len(),
+                columns.len(),
+                label.clone(),
+            ));
+            out_rows.push(TableRow::group_heading(id));
+        }
+        previous_labels = Some(labels);
+
+        for (index, table_row) in group_rows.iter().enumerate() {
+            let mut table_row = table_row.clone();
+            // First row in group needs special class. Index is within chunk
+            // of groups, so first row in group has index 0.
+            if index == 0 {
+                table_row.classes.push(TableClass::RowGroupFirst);
+            }
+            body_offset[row] = out_rows.len() - row;
+            out_rows.push(table_row);
+            row += 1;
+        }
+    }
+
+    let mut body_cells = body_cells;
+    for cell in &mut body_cells {
+        cell.offset_rows(body_offset[cell.top]);
+    }
+    label_cells.extend(body_cells);
+
+    Ok((out_rows, label_cells))
+}
+
 #[cfg(test)]
 mod tests {
     use super::super::format::{apply_formats, setup_formats};
@@ -171,11 +292,13 @@ mod tests {
             .resolve_spanners(&labels, Some(&column_names))
             .map_err(GgsqlError::ValidationError)?;
         let formats = setup_formats(df, &table.formats, &spans)?;
-        let columns = setup_columns(df, &spans, &labels, &formats);
+        let columns = setup_columns(df, &spans, &labels, &formats, None);
         let df = apply_formats(df, &formats)?;
+        let rows = vec![TableRow::body(); df.height()];
         build_cells(
             &df,
             columns,
+            rows,
             &spans,
             title.as_deref(),
             subtitle.as_deref(),
