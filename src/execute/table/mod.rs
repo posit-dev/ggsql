@@ -252,7 +252,7 @@ fn wrap_selection(dialect: &dyn SqlDialect, selection: &[SelectionItem], query: 
 mod integration_tests {
     use super::*;
     use crate::reader::DuckDBReader;
-    use crate::table::TableCellKind;
+    use crate::table::{TableCellKind, TableClass};
 
     fn reader_with_sales() -> DuckDBReader {
         let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
@@ -572,7 +572,7 @@ mod integration_tests {
         let mut labels: Vec<_> = resolved
             .cells()
             .iter()
-            .filter(|c| c.kind == TableCellKind::StubRowLabel)
+            .filter(|c| c.kind == TableCellKind::GroupHeading)
             .collect();
         labels.sort_by_key(|c| c.top);
         let extents: Vec<(&str, usize, usize)> = labels
@@ -603,7 +603,8 @@ mod integration_tests {
         reader
             .execute_sql(
                 "CREATE TABLE t AS SELECT * FROM (VALUES \
-                 ('north', 'q1', 1), ('north', 'q2', 2), ('south', 'q2', 3)) \
+                 ('north', 'q1', 1), ('north', 'q2', 2), ('south', 'q2', 3), \
+                 ('south', 'q2', 4)) \
                  AS t(region, quarter, sales)",
             )
             .unwrap();
@@ -623,26 +624,36 @@ mod integration_tests {
         let mut labels: Vec<_> = resolved
             .cells()
             .iter()
-            .filter(|c| c.kind == TableCellKind::StubRowLabel)
+            .filter(|c| c.kind == TableCellKind::GroupHeading)
             .collect();
         labels.sort_by_key(|c| (c.left, c.top));
         let extents: Vec<(&str, usize, usize, usize)> = labels
             .iter()
             .map(|c| (c.content.as_str(), c.left, c.top, c.bottom))
             .collect();
-        // Row 0 is the column-label row. region spans both north rows;
-        // quarter's q2 splits at the region boundary even though the label
-        // repeats.
+        // Row 0 is the column-label row. region spans both north rows and
+        // both south rows; quarter's q2 splits at the region boundary even
+        // though the label repeats, and merges within south's group.
         assert_eq!(
             extents,
             [
                 ("north", 0, 1, 2),
-                ("south", 0, 3, 3),
+                ("south", 0, 3, 4),
                 ("q1", 1, 1, 1),
                 ("q2", 1, 2, 2),
-                ("q2", 1, 3, 3),
+                ("q2", 1, 3, 4),
             ]
         );
+
+        // The first body row of each group carries the group separator.
+        let firsts: Vec<usize> = resolved
+            .rows()
+            .iter()
+            .enumerate()
+            .filter(|(_, row)| row.classes.contains(&TableClass::RowGroupFirst))
+            .map(|(index, _)| index)
+            .collect();
+        assert_eq!(firsts, [1, 2, 3]);
     }
 
     #[test]
