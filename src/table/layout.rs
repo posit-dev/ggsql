@@ -134,6 +134,9 @@ pub enum TableClass {
     Row,
     /// A row-label cell in the stub (`TableCellKind::StubRowLabel`).
     Stub,
+    /// A group-label cell in a group stub column (`TableCellKind::
+    /// GroupHeading`, gt's `gt_stub_row_group`).
+    StubRowGroup,
     /// The stub's own header cell (`TableCellKind::StubHead`). No gt
     /// equivalent.
     StubHead,
@@ -170,6 +173,7 @@ impl std::fmt::Display for TableClass {
             TableClass::TableBody => "table_body",
             TableClass::Row => "row",
             TableClass::Stub => "stub",
+            TableClass::StubRowGroup => "stub_row_group",
             TableClass::ColHeading => "col_heading",
             TableClass::ColHeadingRow => "col_heading_row",
             TableClass::SpannerRow => "spanner_row",
@@ -266,6 +270,12 @@ impl TableCell {
     pub(crate) fn new_stub_row_label(row: usize, index: usize, content: String) -> Self {
         Self::new(TableCellKind::StubRowLabel, row, row, index, index, content)
             .with_classes(vec![TableClass::Stub])
+    }
+
+    /// A group-stub group-label cell (`TableClass::StubRowGroup`).
+    pub(crate) fn new_stub_row_group(row: usize, index: usize, content: String) -> Self {
+        Self::new(TableCellKind::GroupHeading, row, row, index, index, content)
+            .with_classes(vec![TableClass::StubRowGroup, TableClass::Row])
     }
 
     /// A spanner cell (`TableClass::Spanner`, `SpannerLabel`, centered).

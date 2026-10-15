@@ -60,13 +60,18 @@ pub(super) fn setup_rows(
     let keys = super::facet::setup_groups(&facet.get_variables(), &df)
         .map_err(GgsqlError::ValidationError)?;
     let (df, keys) = super::facet::reorder_rows(&df, keys).map_err(GgsqlError::ValidationError)?;
-    let rows = keys
-        .into_iter()
-        .map(|key| TableRow {
+    let mut rows = Vec::with_capacity(keys.len());
+    for key in keys {
+        let first_in_group = rows.last().is_none_or(|row: &TableRow| row.group != key);
+        let mut row = TableRow {
             group: key,
             ..TableRow::body()
-        })
-        .collect();
+        };
+        if first_in_group {
+            row.classes.push(TableClass::RowGroupFirst);
+        }
+        rows.push(row);
+    }
     Ok((df, rows))
 }
 
@@ -266,15 +271,9 @@ fn weave_group_labels(
         }
         previous_key = Some(key);
 
-        for (index, table_row) in group_rows.iter().enumerate() {
-            let mut table_row = table_row.clone();
-            // First row in group needs special class. Index is within chunk
-            // of groups, so first row in group has index 0.
-            if index == 0 {
-                table_row.classes.push(TableClass::RowGroupFirst);
-            }
+        for table_row in group_rows.iter() {
             body_offset[row] = out_rows.len() - row;
-            out_rows.push(table_row);
+            out_rows.push(table_row.clone());
             row += 1;
         }
     }
