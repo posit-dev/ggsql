@@ -259,7 +259,11 @@ pub fn build_ast(source: &SourceTree) -> Result<Vec<Spec>> {
             }
             "tabulate_statement" => {
                 let table = build_tabulate_statement(&stmt_node, source)?;
-                (table.source.is_some(), "TABULATE", Spec::Table(table))
+                (
+                    table.source.is_some(),
+                    "TABULATE",
+                    Spec::Table(Box::new(table)),
+                )
             }
             other => {
                 return Err(GgsqlError::InternalError(format!(

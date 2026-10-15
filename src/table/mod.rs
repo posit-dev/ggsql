@@ -13,8 +13,8 @@ mod spanner;
 
 pub(crate) use facet::{groups_are_woven, setup_facet};
 pub(crate) use layout::{
-    compose_header, create_caption, create_column_labels, create_heading, extract_heading_labels,
-    move_stub_columns, standardise_hjust, Slot,
+    compose_header, create_caption, create_column_labels, create_heading, extract_table_titles,
+    move_stub_columns, standardise_hjust, Slot, TableTitles,
 };
 pub use layout::{TableCell, TableCellKind, TableClass, TableColumn, TableLayout, TableRow};
 pub use spanner::Spanner;
