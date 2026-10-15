@@ -45,7 +45,7 @@ pub(super) fn setup_columns(
 }
 
 /// Resolve a table's body rows: one `TableRow` per `df` row, stamped with
-/// its facet group. A facet groups on the raw query values (before
+/// its facet group key. A facet groups on the raw query values (before
 /// `FORMAT`'s RENAMING rewrites them) and reorders `df` so groups are
 /// contiguous. Group-label rows are not part of the result — `build_cells`
 /// interleaves those once labels can be read from the formatted frame.
@@ -57,13 +57,13 @@ pub(super) fn setup_rows(
         let rows = vec![TableRow::body(); df.height()];
         return Ok((df, rows));
     };
-    let ids = super::facet::setup_groups(&facet.get_variables(), &df)
+    let keys = super::facet::setup_groups(&facet.get_variables(), &df)
         .map_err(GgsqlError::ValidationError)?;
-    let (df, ids) = super::facet::reorder_rows(&df, ids).map_err(GgsqlError::ValidationError)?;
-    let rows = ids
+    let (df, keys) = super::facet::reorder_rows(&df, keys).map_err(GgsqlError::ValidationError)?;
+    let rows = keys
         .into_iter()
-        .map(|id| TableRow {
-            group: Some(id),
+        .map(|key| TableRow {
+            group: key,
             ..TableRow::body()
         })
         .collect();
@@ -112,7 +112,8 @@ pub(super) fn build_cells(
             if groups_are_woven(facet) {
                 weave_group_labels(df, &columns, &rows, body_cells, facet)?
             } else {
-                (rows, merge_group_stub_cells(body_cells, &columns, df))
+                let body_cells = merge_group_stub_cells(body_cells, &columns, &rows);
+                (rows, body_cells)
             }
         }
     };
@@ -234,14 +235,12 @@ fn weave_group_labels(
     let mut label_cells = Vec::new();
     // body_offset[data row] = how many label rows precede it in the grid.
     let mut body_offset = vec![0usize; df.height()];
-    // None until the first group's labels are read: it emits every level.
-    let mut previous_labels: Option<Vec<String>> = None;
+    // None until the first group's key is read: it emits every level.
+    let mut previous_key: Option<&[usize]> = None;
     let mut row = 0usize;
 
     for group_rows in rows.chunk_by(|a, b| a.group == b.group) {
-        let id = group_rows[0]
-            .group
-            .expect("setup_rows stamps every body row");
+        let key = group_rows[0].group.as_slice();
         let labels: Vec<String> = facet_arrays
             .iter()
             .map(|array| value_to_string(array, row))
@@ -249,13 +248,13 @@ fn weave_group_labels(
         // When multiple labels exist, we have a nesting pattern.
         // We don't need to repeat every level label at every group,
         // just from the level(s) that changed onward.
-        let first_changed = match &previous_labels {
+        let first_changed = match previous_key {
             None => 0,
             Some(previous) => previous
                 .iter()
-                .zip(&labels)
+                .zip(key)
                 .position(|(old, new)| old != new)
-                .unwrap_or(labels.len()),
+                .unwrap_or(key.len()),
         };
         for label in &labels[first_changed..] {
             label_cells.push(TableCell::new_group_heading(
@@ -263,9 +262,9 @@ fn weave_group_labels(
                 columns.len(),
                 label.clone(),
             ));
-            out_rows.push(TableRow::group_heading(id));
+            out_rows.push(TableRow::group_heading(key.to_vec()));
         }
-        previous_labels = Some(labels);
+        previous_key = Some(key);
 
         for (index, table_row) in group_rows.iter().enumerate() {
             let mut table_row = table_row.clone();
@@ -290,42 +289,19 @@ fn weave_group_labels(
 }
 
 /// Merge each group stub column's row labels into rowspanned cells. A cell
-/// at depth `d` spans rows while the labels of every variable from the
-/// outermost through `d` stay unchanged, so a group never merges into a
-/// cell opened under a different outer level even when its own label
-/// repeats.
+/// at depth `d` spans rows while the `d + 1` outermost ranks of the rows'
+/// group keys are equal, so a group never merges into a cell opened under
+/// a different outer level even when its label repeats.
 fn merge_group_stub_cells(
     cells: Vec<TableCell>,
     columns: &[TableColumn],
-    df: &DataFrame,
+    rows: &[TableRow],
 ) -> Vec<TableCell> {
-    let mut group_stub_columns: Vec<&TableColumn> = columns
+    if !columns
         .iter()
-        .filter(|c| matches!(c.target, ColumnSection::GroupStub(_)))
-        .collect();
-    if group_stub_columns.is_empty() {
+        .any(|c| matches!(c.target, ColumnSection::GroupStub(_)))
+    {
         return cells;
-    }
-    group_stub_columns.sort_by_key(|c| c.target.sort_order());
-
-    // Prefix keys: keys[d][row] joins the labels of the outermost `d + 1`
-    // facet variables; equal keys on adjacent rows mean the cell may span
-    // the boundary.
-    let mut keys: Vec<Vec<String>> = Vec::new();
-    for column in &group_stub_columns {
-        let array = df
-            .column(&column.name)
-            .expect("TableColumn.name always names a column of df");
-        let values = (0..df.height()).map(|row| value_to_string(array, row));
-        let key = match keys.last() {
-            None => values.collect(),
-            Some(prefix) => prefix
-                .iter()
-                .zip(values)
-                .map(|(prefix, value)| format!("{prefix}\u{1f}{value}"))
-                .collect(),
-        };
-        keys.push(key);
     }
 
     // Column index of a group stub column -> position of its open cell in
@@ -335,7 +311,9 @@ fn merge_group_stub_cells(
     for cell in cells {
         if let ColumnSection::GroupStub(depth) = columns[cell.left].target {
             if let Some(&index) = open.get(&cell.left) {
-                if keys[depth][cell.top] == keys[depth][cell.top - 1] {
+                let current_key = &rows[cell.top].group[..=depth];
+                let previous_key = &rows[cell.top - 1].group[..=depth];
+                if current_key == previous_key {
                     out[index].bottom = cell.bottom;
                     continue;
                 }
