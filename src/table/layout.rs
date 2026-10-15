@@ -422,10 +422,11 @@ pub struct TableRow {
     /// Whether this row is the caption's — always the layout's last row and
     /// never also a header (`TableLayout::validate` enforces both).
     pub is_caption: bool,
-    /// Group this body row belongs to (from `TABULATE FACET`), `None` for
-    /// header rows and tables without a facet. Group labels live only in
-    /// cells, so this is just an id.
-    pub group: Option<usize>,
+    /// This body row's group key (from `TABULATE FACET`): one rank per
+    /// facet variable, outermost first; a prefix identifies the row's group
+    /// at that nesting depth. Empty for header rows and tables without a
+    /// facet. Group labels live only in cells, so this is just a key.
+    pub group: Vec<usize>,
 }
 
 impl TableRow {
@@ -450,12 +451,12 @@ impl TableRow {
         Self::default()
     }
 
-    /// A group-label row (`TableClass::GroupHeadingRow`) belonging to
-    /// `group` — a body row, like the rows it labels.
-    pub fn group_heading(group: usize) -> Self {
+    /// A group-label row (`TableClass::GroupHeadingRow`) keyed by `group` —
+    /// a body row, like the rows it labels.
+    pub fn group_heading(group: Vec<usize>) -> Self {
         Self {
             classes: vec![TableClass::GroupHeadingRow],
-            group: Some(group),
+            group,
             ..Self::body()
         }
     }

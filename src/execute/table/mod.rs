@@ -552,6 +552,37 @@ mod integration_tests {
     }
 
     #[test]
+    fn test_tabulate_facet_place_left_splits_groups_with_equal_labels() {
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        reader
+            .execute_sql(
+                "CREATE TABLE t AS SELECT * FROM (VALUES ('null', 1), (NULL, 2)) \
+                 AS t(name, sales)",
+            )
+            .unwrap();
+
+        // NULL and the string 'null' render identically but are distinct
+        // groups; their cells must not merge into one rowspan.
+        let resolved = resolve_table_with_reader(
+            "TABULATE * FROM t FACET name SETTING place => 'left'",
+            &reader,
+        )
+        .unwrap();
+
+        let mut labels: Vec<_> = resolved
+            .cells()
+            .iter()
+            .filter(|c| c.kind == TableCellKind::StubRowLabel)
+            .collect();
+        labels.sort_by_key(|c| c.top);
+        let extents: Vec<(&str, usize, usize)> = labels
+            .iter()
+            .map(|c| (c.content.as_str(), c.top, c.bottom))
+            .collect();
+        assert_eq!(extents, [("null", 1, 1), ("null", 2, 2)]);
+    }
+
+    #[test]
     fn test_tabulate_facet_covering_every_column_errors() {
         let reader = reader_with_sales();
         let result = resolve_table_with_reader("TABULATE name FROM sales FACET name", &reader);
