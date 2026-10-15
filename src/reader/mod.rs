@@ -656,6 +656,22 @@ pub trait SqlDialect {
         column.to_string()
     }
 
+    /// SQL predicate: whether a numeric expression is finite.
+    ///
+    /// Used to cull positions that project to non-finite coordinates (e.g.
+    /// points behind the horizon of an azimuthal map projection, which PROJ
+    /// returns as ±Infinity).
+    ///
+    /// Default relies on three-valued logic: the comparison is false for
+    /// ±Infinity, NULL for NULL input, and false for NaN on backends that
+    /// order NaN above all numbers (DuckDB, Postgres, Trino, Snowflake;
+    /// SQLite converts NaN to NULL) — every non-finite case is filtered by
+    /// the enclosing WHERE. Override for backends with a native finite
+    /// predicate (e.g. DuckDB's `isfinite`).
+    fn sql_is_finite(&self, expr: &str) -> String {
+        format!("ABS({expr}) < 1e308")
+    }
+
     /// SQL expression constructing a point geometry from x/y expressions.
     ///
     /// Default is the PostGIS-style `ST_Point`. Override for backends with

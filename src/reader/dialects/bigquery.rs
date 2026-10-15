@@ -30,6 +30,11 @@ impl SqlDialect for BigQueryDialect {
         super::backtick_quote_ident(name)
     }
 
+    // BigQuery has IS_INF and IS_NAN but no single is-finite function
+    fn sql_is_finite(&self, expr: &str) -> String {
+        format!("(NOT IS_INF({expr}) AND NOT IS_NAN({expr}))")
+    }
+
     fn sql_cast(&self, expr: &str, type_name: &str) -> String {
         format!("SAFE_CAST({} AS {})", expr, type_name)
     }

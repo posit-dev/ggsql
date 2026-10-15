@@ -17,6 +17,10 @@ impl SqlDialect for DuckDbDialect {
         true
     }
 
+    fn sql_is_finite(&self, expr: &str) -> String {
+        format!("isfinite({expr})")
+    }
+
     fn sql_st_transform(&self, column: &str, source_crs: &str, target_crs: &str) -> String {
         format!(
             "ST_Transform({}, '{}', '{}', always_xy := true)",

@@ -515,6 +515,12 @@ fn thin_breaks(breaks: Vec<f64>, n: usize) -> Vec<f64> {
 /// values (-180/180 for longitude, -90/90 for latitude) when the range spans
 /// the full extent.
 pub fn graticule_breaks(min: f64, max: f64, n: usize) -> Vec<f64> {
+    // Graticules never span more than the globe. max/min also tame non-finite
+    // inputs (e.g. infinite coordinates from degenerate projections), which
+    // otherwise make the step loop below iterate ~i64::MAX times.
+    let min = min.max(-180.0);
+    let max = max.min(180.0);
+
     let range = max - min;
     if range <= 0.0 || n == 0 {
         return vec![];
@@ -535,9 +541,10 @@ pub fn graticule_breaks(min: f64, max: f64, n: usize) -> Vec<f64> {
         .filter(|&v| v > min && v < max)
         .collect();
 
-    if min <= -180.0 && !breaks.contains(&-180.0) {
+    // min/max are clamped to ±180 above, so these boundaries are equality checks
+    if min == -180.0 && !breaks.contains(&-180.0) {
         breaks.insert(0, -180.0);
-    } else if max >= 180.0 && !breaks.contains(&180.0) {
+    } else if max == 180.0 && !breaks.contains(&180.0) {
         breaks.push(180.0);
     }
     if min <= -90.0 && !breaks.contains(&-90.0) {
@@ -2434,5 +2441,33 @@ mod tests {
     fn test_graticule_breaks_empty_for_zero_range() {
         let breaks = graticule_breaks(50.0, 50.0, 7);
         assert!(breaks.is_empty());
+    }
+
+    #[test]
+    fn test_graticule_breaks_infinite_range_falls_back_to_globe() {
+        let breaks = graticule_breaks(f64::NEG_INFINITY, f64::INFINITY, 7);
+        assert_eq!(
+            breaks,
+            vec![-180.0, -135.0, -90.0, -45.0, 0.0, 45.0, 90.0, 135.0]
+        );
+    }
+
+    #[test]
+    fn test_graticule_breaks_nan_range_falls_back_to_globe() {
+        let breaks = graticule_breaks(f64::NAN, f64::NAN, 7);
+        assert_eq!(breaks, graticule_breaks(-180.0, 180.0, 7));
+    }
+
+    #[test]
+    fn test_graticule_breaks_one_sided_infinity() {
+        let breaks = graticule_breaks(0.0, f64::INFINITY, 7);
+        assert!(breaks.iter().all(|&b| b > 0.0 && b <= 180.0));
+        assert!(!breaks.is_empty());
+    }
+
+    #[test]
+    fn test_graticule_breaks_huge_finite_range_is_clamped() {
+        let breaks = graticule_breaks(-1e15, 1e15, 7);
+        assert!(breaks.iter().all(|&b| (-180.0..=180.0).contains(&b)));
     }
 }

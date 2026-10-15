@@ -3407,6 +3407,64 @@ mod tests {
         );
     }
 
+    /// Regression test: a point behind the orthographic horizon projects to
+    /// (inf, inf), which used to flow into the scale domain and send
+    /// graticule break generation into an unbounded Vec::collect (OOM).
+    /// Non-finite projected positions must be culled instead.
+    #[cfg(all(feature = "duckdb", feature = "spatial"))]
+    #[test]
+    fn test_orthographic_culls_points_behind_horizon() {
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        reader
+            .connection()
+            .execute_batch("INSTALL spatial; LOAD spatial")
+            .unwrap();
+
+        // (0, 0) is on the visible hemisphere of the default origin;
+        // (38.7, 141.9) is behind the horizon.
+        let query = r#"
+            SELECT * FROM (VALUES (0.0, 0.0), (38.6954, 141.9302)) AS t(latitude, longitude)
+            VISUALISE
+            DRAW point MAPPING longitude AS lon, latitude AS lat
+            PROJECT TO orthographic
+        "#;
+
+        let result = prepare_data_with_reader(query, &reader);
+        assert!(
+            result.is_ok(),
+            "mixed-visibility point set should execute: {:?}",
+            result.err()
+        );
+
+        let prepared = result.unwrap();
+        let layer_key = prepared.specs[0].layers[0].data_key.as_ref().unwrap();
+        let df = prepared.data.get(layer_key).unwrap();
+        assert_eq!(
+            df.height(),
+            1,
+            "only the visible point should survive projection"
+        );
+
+        // Both points behind the horizon: an empty (not OOMing) layer.
+        let query = r#"
+            SELECT * FROM (VALUES (36.0, 140.0), (38.6954, 141.9302)) AS t(latitude, longitude)
+            VISUALISE
+            DRAW point MAPPING longitude AS lon, latitude AS lat
+            PROJECT TO orthographic
+        "#;
+
+        let result = prepare_data_with_reader(query, &reader);
+        assert!(
+            result.is_ok(),
+            "all-behind-horizon point set should execute: {:?}",
+            result.err()
+        );
+        let prepared = result.unwrap();
+        let layer_key = prepared.specs[0].layers[0].data_key.as_ref().unwrap();
+        let df = prepared.data.get(layer_key).unwrap();
+        assert_eq!(df.height(), 0, "no points should survive projection");
+    }
+
     #[cfg(feature = "duckdb")]
     #[test]
     fn test_case_insensitive_facet() {

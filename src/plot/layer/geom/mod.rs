@@ -386,6 +386,17 @@ pub(crate) fn project_position_columns(
     let x_expr = format!("ST_X({proj_col})");
     let y_expr = format!("ST_Y({proj_col})");
 
+    // Cull rows whose projected coordinates are non-finite. Azimuthal
+    // projections (orthographic, stereographic, gnomonic) yield ±Infinity
+    // for positions outside the projectable region (e.g. behind the
+    // horizon); such rows cannot be drawn and would poison downstream
+    // extent computations (scale domains, graticule breaks) with infinities.
+    let finite = format!(
+        "{} AND {}",
+        dialect.sql_is_finite(&x_expr),
+        dialect.sql_is_finite(&y_expr)
+    );
+
     // Build a column list that replaces pos1 and pos2 with projected values
     // and drops the temporary projected-point column.
     if columns.is_empty() {
@@ -395,6 +406,7 @@ pub(crate) fn project_position_columns(
                 "__ggsql_pp__",
             )
             .from_aliased(crate::sql::FromItem::Query(&inner), "__ggsql_pp__")
+            .and_where(finite)
             .build());
     }
     let select_list: Vec<String> = columns
@@ -410,12 +422,11 @@ pub(crate) fn project_position_columns(
             }
         })
         .collect();
-    Ok(crate::sql::select_from(
-        dialect,
-        &select_list.join(", "),
-        crate::sql::FromItem::Query(&inner),
-        "__ggsql_pp__",
-    ))
+    Ok(crate::sql::Select::new(dialect)
+        .select_items(&select_list)
+        .from_aliased(crate::sql::FromItem::Query(&inner), "__ggsql_pp__")
+        .and_where(finite)
+        .build())
 }
 
 /// Returns true when the projection requires position transformation (Map coord

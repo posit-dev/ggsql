@@ -46,6 +46,10 @@ impl SqlDialect for ClickHouseDialect {
         super::backtick_quote_ident(name)
     }
 
+    fn sql_is_finite(&self, expr: &str) -> String {
+        format!("isFinite({expr})")
+    }
+
     fn sql_greatest(&self, exprs: &[&str]) -> String {
         if exprs.len() == 1 {
             return exprs[0].to_string();
