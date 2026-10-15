@@ -11,7 +11,7 @@ mod facet;
 mod layout;
 mod spanner;
 
-pub(crate) use facet::setup_facet;
+pub(crate) use facet::{groups_are_woven, setup_facet};
 pub(crate) use layout::{
     compose_header, create_caption, create_column_labels, create_heading, extract_heading_labels,
     move_stub_columns, standardise_hjust, Slot,
@@ -210,23 +210,38 @@ impl Table {
     }
 }
 
-/// Which section of the table a `FORMAT` clause's columns belong to.
+/// Which section of the table a column belongs to.
 ///
-/// `FORMAT STUB` is the only thing that assigns a column to the table's
-/// stub; `FORMAT BODY`, or no target identifier at all, leaves columns in
-/// the regular body — `Body` is this enum's default for that reason.
+/// `FORMAT STUB` assigns a column to the table's stub and a `TABULATE
+/// FACET` with `place => 'left'` assigns its variables to group stubs;
+/// `FORMAT BODY`, or no target identifier at all, leaves columns in the
+/// regular body — `Body` is this enum's default for that reason.
+/// `GroupStub` is never reachable from a `FORMAT` target.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ColumnSection {
     #[default]
     Body,
     Stub,
+    /// A `TABULATE FACET` variable's column with `place => 'left'`; the
+    /// payload is the variable's nesting depth (0 is outermost).
+    GroupStub(usize),
 }
 
 impl ColumnSection {
-    /// Whether this is the `STUB` section.
+    /// Whether this is a stub section (`STUB` or a facet group stub).
     pub fn is_stub(self) -> bool {
-        self == ColumnSection::Stub
+        matches!(self, ColumnSection::Stub | ColumnSection::GroupStub(_))
+    }
+
+    /// Section ordering for column placement: group stub columns first (by
+    /// nesting depth), then STUB, then body.
+    pub(crate) fn sort_order(self) -> (usize, usize) {
+        match self {
+            ColumnSection::GroupStub(depth) => (0, depth),
+            ColumnSection::Stub => (1, 0),
+            ColumnSection::Body => (2, 0),
+        }
     }
 }
 

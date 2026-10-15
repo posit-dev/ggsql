@@ -928,14 +928,14 @@ pub(crate) fn extract_heading_labels(
     (title, subtitle, caption)
 }
 
-/// Move every STUB-targeted column to the front, preserving each group's
+/// Move every stub column to the front — group stub columns first, in
+/// nesting-depth order, then STUB columns — preserving each section's
 /// relative order. Runs after `reorder_table_columns`, as the final word on
 /// column position — a SPAN can never cover a stub column
 /// (`Table::validate_boundaries`).
-pub(crate) fn move_stub_columns(columns: Vec<TableColumn>) -> Vec<TableColumn> {
-    let (mut stub, body): (Vec<_>, Vec<_>) = columns.into_iter().partition(TableColumn::is_stub);
-    stub.extend(body);
-    stub
+pub(crate) fn move_stub_columns(mut columns: Vec<TableColumn>) -> Vec<TableColumn> {
+    columns.sort_by_key(|c| c.target.sort_order());
+    columns
 }
 /// Stack spanner rows above column labels, letting a column with no spanner
 /// covering it stretch its own label upward over the gap, then fill the
@@ -1091,6 +1091,27 @@ mod assembly_tests {
         assert_eq!(
             result.iter().map(|c| c.name.as_str()).collect::<Vec<_>>(),
             vec!["b", "d", "a", "c"]
+        );
+    }
+
+    #[test]
+    fn move_stub_columns_puts_group_stubs_first_in_depth_order() {
+        let group_stub = |name: &str, depth: usize| TableColumn {
+            target: ColumnSection::GroupStub(depth),
+            ..column(name, name)
+        };
+        let columns = vec![
+            column("a", "a"),
+            stub_column("b"),
+            group_stub("c", 1),
+            group_stub("d", 0),
+        ];
+
+        let result = move_stub_columns(columns);
+
+        assert_eq!(
+            result.iter().map(|c| c.name.as_str()).collect::<Vec<_>>(),
+            vec!["d", "c", "b", "a"]
         );
     }
 

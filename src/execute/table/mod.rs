@@ -567,13 +567,51 @@ mod integration_tests {
     }
 
     #[test]
-    fn test_tabulate_facet_place_left_is_not_supported_yet() {
-        let reader = reader_with_sales();
-        let result = resolve_table_with_reader(
-            "TABULATE * FROM sales FACET name SETTING place => 'left'",
+    fn test_tabulate_facet_place_left_merges_group_labels_into_rowspans() {
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        reader
+            .execute_sql(
+                "CREATE TABLE t AS SELECT * FROM (VALUES \
+                 ('north', 'q1', 1), ('north', 'q2', 2), ('south', 'q2', 3)) \
+                 AS t(region, quarter, sales)",
+            )
+            .unwrap();
+
+        let resolved = resolve_table_with_reader(
+            "TABULATE * FROM t FACET region, quarter SETTING place => 'left'",
             &reader,
+        )
+        .unwrap();
+
+        // Facet columns lead as group stubs, in nesting order.
+        let names: Vec<&str> = resolved.columns().iter().map(|c| c.name.as_str()).collect();
+        assert_eq!(names, ["region", "quarter", "sales"]);
+        assert!(resolved.columns()[0].is_stub());
+        assert!(resolved.columns()[1].is_stub());
+
+        let mut labels: Vec<_> = resolved
+            .cells()
+            .iter()
+            .filter(|c| c.kind == TableCellKind::StubRowLabel)
+            .collect();
+        labels.sort_by_key(|c| (c.left, c.top));
+        let extents: Vec<(&str, usize, usize, usize)> = labels
+            .iter()
+            .map(|c| (c.content.as_str(), c.left, c.top, c.bottom))
+            .collect();
+        // Row 0 is the column-label row. region spans both north rows;
+        // quarter's q2 splits at the region boundary even though the label
+        // repeats.
+        assert_eq!(
+            extents,
+            [
+                ("north", 0, 1, 2),
+                ("south", 0, 3, 3),
+                ("q1", 1, 1, 1),
+                ("q2", 1, 2, 2),
+                ("q2", 1, 3, 3),
+            ]
         );
-        assert!(result.is_err());
     }
 
     #[test]
