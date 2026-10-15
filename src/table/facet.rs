@@ -49,6 +49,9 @@ pub(crate) fn setup_facet(facet: &Option<Facet>) -> Result<Option<Facet>, String
             "place".to_string(),
             ParameterValue::String("top".to_string()),
         );
+    } else if resolved.properties.get("place") == Some(&ParameterValue::String("left".to_string()))
+    {
+        return Err("TABULATE FACET SETTING place => 'left' is not supported yet".to_string());
     }
     resolved.resolved = true;
     Ok(Some(resolved))
@@ -84,7 +87,7 @@ mod tests {
     }
 
     #[test]
-    fn setup_accepts_place_left() {
+    fn setup_rejects_place_left_until_group_stub_columns_land() {
         let mut settings = Parameters::new();
         settings.insert(
             "place".to_string(),
@@ -92,12 +95,7 @@ mod tests {
         );
         let facet = table_facet(settings);
 
-        let resolved = setup_facet(&Some(facet)).unwrap().unwrap();
-
-        assert_eq!(
-            resolved.properties.get("place"),
-            Some(&ParameterValue::String("left".to_string()))
-        );
+        assert!(setup_facet(&Some(facet)).is_err());
     }
 
     #[test]

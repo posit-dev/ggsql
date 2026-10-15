@@ -12,9 +12,8 @@ mod format;
 mod layout;
 mod stub;
 
-use facet::{reorder_rows, setup_groups};
 use format::{apply_formats, setup_formats};
-use layout::{build_cells, setup_columns};
+use layout::{build_cells, setup_columns, setup_rows};
 
 use crate::table::extract_heading_labels;
 
@@ -66,16 +65,7 @@ pub fn resolve_table_with_reader(query: &str, reader: &dyn Reader) -> Result<Res
 
     let df = resolve_selection(reader.execute_sql(&sql)?, &table.selection)?;
 
-    // Group on the raw query values, before FORMAT's RENAMING rewrites them.
-    let (df, groups) = match &facet {
-        Some(facet) => {
-            let ids =
-                setup_groups(&facet.get_variables(), &df).map_err(GgsqlError::ValidationError)?;
-            let (df, ids) = reorder_rows(&df, ids).map_err(GgsqlError::ValidationError)?;
-            (df, Some(ids))
-        }
-        None => (df, None),
-    };
+    let (df, rows) = setup_rows(df, facet.as_ref())?;
 
     let column_names = df.get_column_names();
     let spans = table
@@ -85,16 +75,23 @@ pub fn resolve_table_with_reader(query: &str, reader: &dyn Reader) -> Result<Res
     // (RENAMING) read from. Resolved after spans so a FORMAT column entry
     // can name a SPAN id in place of the columns it covers.
     let formats = setup_formats(&df, &table.formats, &spans)?;
-    let columns = setup_columns(&df, &spans, &labels, &formats);
+    let columns = setup_columns(&df, &spans, &labels, &formats, facet.as_ref());
+    // Only FACET removes columns today; if that changes, revisit this error.
+    if columns.is_empty() {
+        return Err(GgsqlError::ValidationError(
+            "TABULATE FACET covers every column: no body columns left to show".to_string(),
+        ));
+    }
     let df = apply_formats(&df, &formats)?;
     let layout = build_cells(
         &df,
         columns,
+        rows,
         &spans,
         title.as_deref(),
         subtitle.as_deref(),
         caption.as_deref(),
-        groups.as_deref(),
+        facet.as_ref(),
     )?;
 
     Ok(ResolvedTable::new(layout, sql, warnings))
@@ -478,6 +475,104 @@ mod integration_tests {
             &reader,
         );
 
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_tabulate_facet_interleaves_group_heading_rows() {
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        reader
+            .execute_sql(
+                "CREATE TABLE t AS SELECT * FROM (VALUES \
+                 ('north', 'q1', 1), ('north', 'q2', 2), ('south', 'q1', 3)) \
+                 AS t(region, quarter, sales)",
+            )
+            .unwrap();
+
+        let resolved =
+            resolve_table_with_reader("TABULATE * FROM t FACET region", &reader).unwrap();
+
+        // FACET consumes its column: only quarter and sales remain.
+        let names: Vec<&str> = resolved.columns().iter().map(|c| c.name.as_str()).collect();
+        assert_eq!(names, ["quarter", "sales"]);
+
+        let mut headings: Vec<_> = resolved
+            .cells()
+            .iter()
+            .filter(|c| c.kind == TableCellKind::GroupHeading)
+            .collect();
+        headings.sort_by_key(|c| c.top);
+        assert_eq!(headings.len(), 2);
+        // Row 0 is the column-label row; each heading spans both columns.
+        assert_eq!(
+            (headings[0].top, headings[0].left, headings[0].right),
+            (1, 0, 1)
+        );
+        assert_eq!(headings[0].content, "north");
+        // north has two data rows, so south's heading sits at row 4.
+        assert_eq!(headings[1].top, 4);
+        assert_eq!(headings[1].content, "south");
+
+        assert_eq!(
+            resolved
+                .cells()
+                .iter()
+                .filter(|c| c.kind == TableCellKind::Body)
+                .count(),
+            6
+        );
+    }
+
+    #[test]
+    fn test_tabulate_facet_nests_label_rows_for_multiple_variables() {
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        reader
+            .execute_sql(
+                "CREATE TABLE t AS SELECT * FROM (VALUES \
+                 ('north', 'q1', 1), ('north', 'q2', 2), ('south', 'q1', 3)) \
+                 AS t(region, quarter, sales)",
+            )
+            .unwrap();
+
+        let resolved =
+            resolve_table_with_reader("TABULATE * FROM t FACET region, quarter", &reader).unwrap();
+
+        let mut headings: Vec<_> = resolved
+            .cells()
+            .iter()
+            .filter(|c| c.kind == TableCellKind::GroupHeading)
+            .collect();
+        headings.sort_by_key(|c| c.top);
+        let texts: Vec<&str> = headings.iter().map(|c| c.content.as_str()).collect();
+        // q1 is not restated while region stays north; south restates q1
+        // under it. One data row per group: headings interleave singly.
+        assert_eq!(texts, ["north", "q1", "q2", "south", "q1"]);
+        let tops: Vec<usize> = headings.iter().map(|c| c.top).collect();
+        assert_eq!(tops, [1, 2, 4, 6, 7]);
+    }
+
+    #[test]
+    fn test_tabulate_facet_covering_every_column_errors() {
+        let reader = reader_with_sales();
+        let result = resolve_table_with_reader("TABULATE name FROM sales FACET name", &reader);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_tabulate_facet_rejects_a_spanner_over_a_facet_column() {
+        let reader = reader_with_sales();
+        let result =
+            resolve_table_with_reader("TABULATE * FROM sales FACET name SPAN G OVER name", &reader);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_tabulate_facet_place_left_is_not_supported_yet() {
+        let reader = reader_with_sales();
+        let result = resolve_table_with_reader(
+            "TABULATE * FROM sales FACET name SETTING place => 'left'",
+            &reader,
+        );
         assert!(result.is_err());
     }
 

@@ -316,6 +316,36 @@ fn class_declarations(class: TableClass) -> &'static [(&'static str, &'static st
             ("border-right-width", "1px"),
             ("border-right-color", "#D3D3D3"),
         ],
+        TableClass::GroupHeading => &[
+            ("padding-top", "8px"),
+            ("padding-bottom", "8px"),
+            ("padding-left", "5px"),
+            ("padding-right", "5px"),
+            ("color", "#333333"),
+            ("background-color", "#FFFFFF"),
+            ("font-size", "100%"),
+            ("font-weight", "initial"),
+            ("border-top-style", "solid"),
+            ("border-top-width", "2px"),
+            ("border-top-color", "#D3D3D3"),
+            ("border-bottom-style", "solid"),
+            ("border-bottom-width", "2px"),
+            ("border-bottom-color", "#D3D3D3"),
+            ("border-left-style", "none"),
+            ("border-left-width", "1px"),
+            ("border-left-color", "#D3D3D3"),
+            ("border-right-style", "none"),
+            ("border-right-width", "1px"),
+            ("border-right-color", "#D3D3D3"),
+            ("vertical-align", "middle"),
+            ("text-align", "left"),
+        ],
+        TableClass::GroupHeadingRow => &[],
+        TableClass::RowGroupFirst => &[
+            ("border-top-style", "solid"),
+            ("border-top-width", "2px"),
+            ("border-top-color", "#D3D3D3"),
+        ],
         TableClass::AlignLeft => &[("text-align", "left")],
         TableClass::AlignCenter => &[("text-align", "center")],
         TableClass::AlignRight => &[
@@ -345,6 +375,9 @@ const STYLED_CLASSES: &[TableClass] = &[
     TableClass::Subtitle,
     TableClass::Caption,
     TableClass::Heading,
+    TableClass::GroupHeading,
+    TableClass::GroupHeadingRow,
+    TableClass::RowGroupFirst,
     TableClass::AlignLeft,
     TableClass::AlignCenter,
     TableClass::AlignRight,
@@ -477,7 +510,8 @@ fn header_scope(kind: TableCellKind, colspan: usize) -> Option<&'static str> {
         | TableCellKind::Title
         | TableCellKind::Subtitle
         | TableCellKind::Caption
-        | TableCellKind::Filler => None,
+        | TableCellKind::Filler
+        | TableCellKind::GroupHeading => None,
     }
 }
 

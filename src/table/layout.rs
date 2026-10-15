@@ -44,6 +44,9 @@ pub enum TableCellKind {
     /// real cell reaches. Distinct from whatever kind it visually stands in
     /// for, so kind-based filtering can't mistake it for real structure.
     Filler,
+    /// A group label row above a group of body rows (`TABULATE FACET`,
+    /// gt's `gt_group_heading`). Spans all columns; a body row, not a header.
+    GroupHeading,
 }
 
 impl TableCellKind {
@@ -76,6 +79,7 @@ impl std::fmt::Display for TableCellKind {
             TableCellKind::Subtitle => "subtitle",
             TableCellKind::Caption => "caption",
             TableCellKind::Filler => "filler",
+            TableCellKind::GroupHeading => "group heading",
         };
         write!(f, "{text}")
     }
@@ -117,6 +121,12 @@ pub enum TableClass {
     ColHeadingRow,
     /// The `<tr>` wrapping a spanner row (gt's `gt_spanner_row`).
     SpannerRow,
+    /// The `<tr>` wrapping a `GroupHeading` cell (gt's
+    /// `gt_group_heading_row`).
+    GroupHeadingRow,
+    /// The first body row of a facet group (gt's `gt_row_group_first`) —
+    /// carries the thick border separating a group from what precedes it.
+    RowGroupFirst,
 
     // -------------------------- Cell-scoped -------------------------
     // Recorded on `TableCell::classes`, rendered on the `<th>`/`<td>`.
@@ -141,6 +151,9 @@ pub enum TableClass {
     Subtitle,
     /// The caption cell (gt's `gt_caption`).
     Caption,
+    /// A group-label cell (`TableCellKind::GroupHeading`, gt's
+    /// `gt_group_heading`).
+    GroupHeading,
     /// Left/center/right-aligned cell content (gt's
     /// `gt_left`/`gt_center`/`gt_right`).
     AlignLeft,
@@ -170,6 +183,9 @@ impl std::fmt::Display for TableClass {
             TableClass::Subtitle => "subtitle",
             TableClass::Caption => "caption",
             TableClass::Heading => "heading",
+            TableClass::GroupHeading => "group_heading",
+            TableClass::GroupHeadingRow => "group_heading_row",
+            TableClass::RowGroupFirst => "row_group_first",
         };
         write!(f, "{text}")
     }
@@ -278,6 +294,13 @@ impl TableCell {
     pub(crate) fn new_caption(ncol: usize, content: String) -> Self {
         Self::new(TableCellKind::Caption, 0, 0, 0, ncol - 1, content)
             .with_classes(vec![TableClass::Caption])
+    }
+
+    /// A group-label cell (`TableClass::GroupHeading`), spanning all `ncol`
+    /// columns on its `row`.
+    pub(crate) fn new_group_heading(row: usize, ncol: usize, content: String) -> Self {
+        Self::new(TableCellKind::GroupHeading, row, row, 0, ncol - 1, content)
+            .with_classes(vec![TableClass::GroupHeading])
     }
 
     /// Set this cell's display properties, e.g. to a column's resolved
@@ -426,6 +449,16 @@ impl TableRow {
     pub fn body() -> Self {
         Self::default()
     }
+
+    /// A group-label row (`TableClass::GroupHeadingRow`) belonging to
+    /// `group` — a body row, like the rows it labels.
+    pub fn group_heading(group: usize) -> Self {
+        Self {
+            classes: vec![TableClass::GroupHeadingRow],
+            group: Some(group),
+            ..Self::body()
+        }
+    }
 }
 
 /// The row extent a set of cells implies — the highest `bottom` plus one,
@@ -477,6 +510,7 @@ mod tests {
         assert_eq!(TableCellKind::Subtitle.to_string(), "subtitle");
         assert_eq!(TableCellKind::Caption.to_string(), "caption");
         assert_eq!(TableCellKind::Filler.to_string(), "filler");
+        assert_eq!(TableCellKind::GroupHeading.to_string(), "group heading");
     }
 
     #[test]
@@ -897,7 +931,7 @@ pub(crate) fn extract_heading_labels(
 /// Move every STUB-targeted column to the front, preserving each group's
 /// relative order. Runs after `reorder_table_columns`, as the final word on
 /// column position — a SPAN can never cover a stub column
-/// (`Table::validate_span_stub_boundary`).
+/// (`Table::validate_boundaries`).
 pub(crate) fn move_stub_columns(columns: Vec<TableColumn>) -> Vec<TableColumn> {
     let (mut stub, body): (Vec<_>, Vec<_>) = columns.into_iter().partition(TableColumn::is_stub);
     stub.extend(body);
@@ -948,7 +982,7 @@ fn stretch_unspanned_column_labels(
     for label in header
         .cells
         .iter_mut()
-        // A stub column can never be spanned (`Table::validate_span_stub_boundary`),
+        // A stub column can never be spanned (`Table::validate_boundaries`),
         // so its stretch always reaches the full spanner height.
         .filter(|c| matches!(c.kind, TableCellKind::ColumnLabel | TableCellKind::StubHead))
     {
