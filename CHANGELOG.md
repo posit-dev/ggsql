@@ -23,6 +23,9 @@
   as initializing a comment (#555).
 - Fixed a bug in stat_aggregate prevented transposed layers from properly
   aggregating in certain situations (#561)
+- Fixed schema-less `validate()` rejecting spatial layers that omit an explicit
+  `geometry` mapping, even though execution auto-detects the geometry column
+  (#587)
 
 ## 0.5.2 - 2026-09-11
 

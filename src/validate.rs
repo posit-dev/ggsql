@@ -235,6 +235,19 @@ pub fn validate(query: &str) -> Result<Validated> {
                             .or_insert(value.clone());
                     }
                 }
+                // Geoms with a `geometry` aesthetic (e.g. spatial) auto-detect
+                // the geometry column from the result schema at execution time
+                // (see detect_geometry_column in execute/mod.rs), so don't
+                // require an explicit mapping in schema-less validation.
+                if merged.geom.aesthetics().is_required("geometry") {
+                    merged
+                        .mappings
+                        .aesthetics
+                        .entry("geometry".to_string())
+                        .or_insert(crate::plot::AestheticValue::standard_column(
+                            "geometry".to_string(),
+                        ));
+                }
                 if let Err(e) = merged.validate_mapping(&plot.aesthetic_context, false) {
                     errors.push(ValidationError {
                         message: format!("{}: {}", context, e),
@@ -492,5 +505,63 @@ mod tests {
             validated.errors()
         );
         assert!(!validated.has_visual());
+    }
+
+    #[test]
+    #[cfg(feature = "spatial")]
+    fn test_validate_spatial_geometry_mapping_optional() {
+        // The spatial geom auto-detects its geometry column from the result
+        // schema at execution time, so schema-less validation must not
+        // require an explicit `geometry` mapping.
+        let query = "SELECT name, geom, gdp FROM world VISUALISE DRAW spatial MAPPING gdp AS fill";
+        let validated = validate(query).unwrap();
+        assert!(
+            validated.valid(),
+            "spatial layer without explicit geometry mapping should be valid: {:?}",
+            validated.errors()
+        );
+
+        // An explicit geometry mapping remains valid too.
+        let query = "SELECT name, geom, gdp FROM world VISUALISE DRAW spatial MAPPING geom AS geometry, gdp AS fill";
+        let validated = validate(query).unwrap();
+        assert!(
+            validated.valid(),
+            "spatial layer with explicit geometry mapping should be valid: {:?}",
+            validated.errors()
+        );
+    }
+
+    #[test]
+    #[cfg(feature = "spatial")]
+    fn test_validate_spatial_map_patterns() {
+        // The canonical map patterns: all rely on geometry auto-detection and
+        // must pass schema-less validation.
+
+        // Choropleth: user data joined to ggsql:world, fill mapping only.
+        let choropleth = "SELECT w.name, w.geom, s.revenue FROM ggsql:world w JOIN sales_by_country s ON w.iso_a3 = s.country_code VISUALISE DRAW spatial MAPPING revenue AS fill";
+        let validated = validate(choropleth).unwrap();
+        assert!(
+            validated.valid(),
+            "choropleth should be valid: {:?}",
+            validated.errors()
+        );
+
+        // Point map: null-sentinel fill, layer-level FROM, named projection.
+        let point_map = "SELECT city, lon, lat, passengers FROM airports VISUALISE DRAW spatial MAPPING null AS fill FROM ggsql:world DRAW point MAPPING lon, lat, passengers AS size PROJECT TO natural";
+        let validated = validate(point_map).unwrap();
+        assert!(
+            validated.valid(),
+            "point map should be valid: {:?}",
+            validated.errors()
+        );
+
+        // Orthographic globe with an explicit origin.
+        let globe = "SELECT longitude, latitude, mag FROM quakes VISUALISE DRAW spatial MAPPING null AS fill FROM ggsql:world DRAW point MAPPING longitude AS lon, latitude AS lat, mag AS size PROJECT TO orthographic SETTING origin => (-165, 25)";
+        let validated = validate(globe).unwrap();
+        assert!(
+            validated.valid(),
+            "orthographic globe should be valid: {:?}",
+            validated.errors()
+        );
     }
 }
