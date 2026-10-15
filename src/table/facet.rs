@@ -49,12 +49,16 @@ pub(crate) fn setup_facet(facet: &Option<Facet>) -> Result<Option<Facet>, String
             "place".to_string(),
             ParameterValue::String("top".to_string()),
         );
-    } else if resolved.properties.get("place") == Some(&ParameterValue::String("left".to_string()))
-    {
-        return Err("TABULATE FACET SETTING place => 'left' is not supported yet".to_string());
     }
     resolved.resolved = true;
     Ok(Some(resolved))
+}
+
+/// Whether a resolved table facet weaves its group labels in as interleaved
+/// rows (`place => 'top'`) rather than group stub columns (`place =>
+/// 'left'`).
+pub(crate) fn groups_are_woven(facet: &Facet) -> bool {
+    facet.properties.get("place") == Some(&ParameterValue::String("top".to_string()))
 }
 
 #[cfg(test)]
@@ -87,7 +91,7 @@ mod tests {
     }
 
     #[test]
-    fn setup_rejects_place_left_until_group_stub_columns_land() {
+    fn setup_accepts_place_left() {
         let mut settings = Parameters::new();
         settings.insert(
             "place".to_string(),
@@ -95,7 +99,12 @@ mod tests {
         );
         let facet = table_facet(settings);
 
-        assert!(setup_facet(&Some(facet)).is_err());
+        let resolved = setup_facet(&Some(facet)).unwrap().unwrap();
+
+        assert_eq!(
+            resolved.properties.get("place"),
+            Some(&ParameterValue::String("left".to_string()))
+        );
     }
 
     #[test]
