@@ -36,28 +36,28 @@ The following aesthetics are recognised by the density layer.
 
 ## Data transformation
 
-The density layer will compute a 1-dimensional grid using the range of the data. The distances between the grid locations and observations are computed (\\x - x_i\\) and serve as input for a kernel function. The contributions of each observation is then averaged across the grid.
+The density layer will compute a 1-dimensional grid using the range of the data. The distances between the grid locations and observations are computed ($x - x_i$) and serve as input for a kernel function. The contributions of each observation is then averaged across the grid.
 
-\\ \frac{1}{(\sum\_{i=1}^{n}w_i)h}\sum\_{i=1}^{n}w_iK \left(\frac{x - x_i}{h}\right) \\
+$$\frac{1}{(\sum_{i=1}^{n}w_i)h}\sum_{i=1}^{n}w_iK \left(\frac{x - x_i}{h}\right)$$
 
 Where:
 
-- \\K\\ is the kernel function
-- \\h\\ is the bandwidth
-- \\w_i\\ is the weight of observation \\i\\
+- $K$ is the kernel function
+- $h$ is the bandwidth
+- $w_i$ is the weight of observation $i$
 
-By default \\w_i = 1\\, so the procedure simplifies thus:
+By default $w_i = 1$, so the procedure simplifies thus:
 
-\\ \frac{1}{nh}\sum\_{i=1}^{n}K \left(\frac{x - x_i}{h}\right) \\
+$$\frac{1}{nh}\sum_{i=1}^{n}K \left(\frac{x - x_i}{h}\right)$$
 
 ### Properties
 
-- `weight`: If mapped, it sets the relative contribution of an observation \\w_i\\ to the density estimate.
+- `weight`: If mapped, it sets the relative contribution of an observation $w_i$ to the density estimate.
 
 ### Calculated statistics
 
 - `density`: The estimated probability density per point on the grid. The total area of a single density curve adds up to 1.
-- `intensity`: Also termed ‘probability intensity estimation’, it is the precursor of the `density` variable. Specifically it is the same as the density without normalisation, i.e. it omits the \\\frac{1}{nh}\\ part of the computation. You can use `REMAPPING intensity AS y` if you want to reflect differences in group sizes.
+- `intensity`: Also termed ‘probability intensity estimation’, it is the precursor of the `density` variable. Specifically it is the same as the density without normalisation, i.e. it omits the $\frac{1}{nh}$ part of the computation. You can use `REMAPPING intensity AS y` if you want to reflect differences in group sizes.
 
 ### Default remappings
 

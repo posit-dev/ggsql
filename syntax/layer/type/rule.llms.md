@@ -18,7 +18,7 @@ The following aesthetics are recognised by the rule layer.
 
 ### Optional
 
-- `slope` The \\\beta\\ in the equations described below. Defaults to 0.
+- `slope` The $\beta$ in the equations described below. Defaults to 0.
 - `colour`/`stroke`: The colour of the line
 - `opacity`: The opacity of the line
 - `linewidth`: The width of the line
@@ -37,10 +37,10 @@ This layer supports aggregation through the `aggregate` setting. Aggregation gro
 
 For diagonal lines, the position aesthetic determines the intercept:
 
-- `y = a, slope = β` creates the line: \\y = a + \beta x\\ (line passes through \\(0, a)\\)
-- `x = a, slope = β` creates the line: \\x = a + \beta y\\ (line passes through \\(a, 0)\\)
+- `y = a, slope = β` creates the line: $y = a + \beta x$ (line passes through $(0, a)$)
+- `x = a, slope = β` creates the line: $x = a + \beta y$ (line passes through $(a, 0)$)
 
-Note that `slope` represents \\\Delta x/\Delta y\\ (change in x per unit change in y) when using `x` mapping, not the traditional \\\Delta y/\Delta x\\. The default slope is 0, creating horizontal lines when `y` is given and vertical lines when `x` is given.
+Note that `slope` represents $\Delta x/\Delta y$ (change in x per unit change in y) when using `x` mapping, not the traditional $\Delta y/\Delta x$. The default slope is 0, creating horizontal lines when `y` is given and vertical lines when `x` is given.
 
 ## Orientation
 

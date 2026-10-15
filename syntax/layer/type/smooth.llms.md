@@ -31,58 +31,58 @@ The settings below only apply when `method => 'nw'` and are ignored when using o
 
 ### Nadaraya-Watson kernel regression
 
-The default `method => 'nw'` computes a locally weighted average of \\y\\.
+The default `method => 'nw'` computes a locally weighted average of $y$.
 
-\\ y(x) = \frac{\sum\_{i=1}^nW(x)y_i}{\sum\_{i=1}^nW(x)} \\
+$$y(x) = \frac{\sum_{i=1}^nW(x)y_i}{\sum_{i=1}^nW(x)}$$
 
 Where:
 
-- \\W(x)\\ is kernel intensity \\w_iK(\frac{x - x_i}{h})\\ where
-  - \\K\\ is the kernel function
-  - \\h\\ is the bandwidth
-  - \\w_i\\ is the weight of observation \\i\\
+- $W(x)$ is kernel intensity $w_iK(\frac{x - x_i}{h})$ where
+  - $K$ is the kernel function
+  - $h$ is the bandwidth
+  - $w_i$ is the weight of observation $i$
 
-Please note the similarity of \\W(x)\\ to the [kernel density estimation formula](../../../syntax/layer/type/density.llms.md#data-transformation).
+Please note the similarity of $W(x)$ to the [kernel density estimation formula](../../../syntax/layer/type/density.llms.md#data-transformation).
 
 ### Ordinary least squares
 
-The `method => 'ols'` setting uses ordinary least squares to compute the intercept \\a\\ and slope \\b\\ of a straight line. The method minimizes the 1-dimensional distance between a point and the vertical projection of that point on the line. Only considering the vertical distances implies having measurement error in \\y\\, but not \\x\\.
+The `method => 'ols'` setting uses ordinary least squares to compute the intercept $a$ and slope $b$ of a straight line. The method minimizes the 1-dimensional distance between a point and the vertical projection of that point on the line. Only considering the vertical distances implies having measurement error in $y$, but not $x$.
 
-\\ y = a + bx \\
+$$y = a + bx$$
 
 Wherein:
 
-\\ a = E\[Y\] - bE\[X\] \\
+$$a = E[Y] - bE[X]$$
 
 and
 
-\\ b = \frac{\text{cov}(X, Y)}{\text{var}(X)} = \frac{E\[XY\] - E\[X\]E\[Y\]}{E\[X^2\]-(E\[X\])^2} \\
+$$b = \frac{\text{cov}(X, Y)}{\text{var}(X)} = \frac{E[XY] - E[X]E[Y]}{E[X^2]-(E[X])^2}$$
 
 ### Total least squares
 
-The `method => 'tls'` setting uses total least squares to compute the intercept \\a\\ and slope \\b\\ of a straight line. The method minimizes the 2-dimensional distance between a point and the perpendicular projection of that point on the line. Minimising the perpendicular distances (rather than just the vertical distances) makes sense if there is uncertainty or measurement error in not just \\y\\, but in \\x\\ as well. In such case, it is a more accurate depiction of the relationship between \\x\\ and \\y\\, but it isn’t the best predictor of \\y\\ given \\x\\.
+The `method => 'tls'` setting uses total least squares to compute the intercept $a$ and slope $b$ of a straight line. The method minimizes the 2-dimensional distance between a point and the perpendicular projection of that point on the line. Minimising the perpendicular distances (rather than just the vertical distances) makes sense if there is uncertainty or measurement error in not just $y$, but in $x$ as well. In such case, it is a more accurate depiction of the relationship between $x$ and $y$, but it isn’t the best predictor of $y$ given $x$.
 
-\\ y = a + bx \\
+$$y = a + bx$$
 
 Wherein:
 
-\\ a = E\[Y\] - bE\[X\] \\
+$$a = E[Y] - bE[X]$$
 
 and
 
-\\ b = \frac{\text{var}(Y) - \text{var}(X) + \sqrt{(\text{var}(Y) - \text{var}(X))^2 + 4\text{cov}(X, Y)^2}}{2\text{cov}(X, Y)} \\
+$$b = \frac{\text{var}(Y) - \text{var}(X) + \sqrt{(\text{var}(Y) - \text{var}(X))^2 + 4\text{cov}(X, Y)^2}}{2\text{cov}(X, Y)}$$
 
 ### Properties
 
-- `weight` is available when using `method => 'nw'`, where when mapped, it sets the relative contribution of an observation \\w_i\\ to the average.
+- `weight` is available when using `method => 'nw'`, where when mapped, it sets the relative contribution of an observation $w_i$ to the average.
 
 ### Calculated statistics
 
-- `intensity` corresponds to \\y\\ in the formulas described in the [data transformation](#data-transformation) section.
+- `intensity` corresponds to $y$ in the formulas described in the [data transformation](#data-transformation) section.
 
 ### Default remappings
 
-- `intensity AS y`: By default the smooth layer will display the \\y\\ in the formulas along the y-axis.
+- `intensity AS y`: By default the smooth layer will display the $y$ in the formulas along the y-axis.
 
 ## Examples
 
