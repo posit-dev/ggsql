@@ -926,17 +926,24 @@ pub(crate) fn create_column_labels(columns: &[TableColumn]) -> Vec<TableCell> {
         .collect()
 }
 
+/// A table's resolved `LABEL title`/`subtitle`/`caption` texts.
+#[derive(Debug, Clone, Default)]
+pub(crate) struct TableTitles {
+    pub title: Option<String>,
+    pub subtitle: Option<String>,
+    pub caption: Option<String>,
+}
+
 /// Pop the reserved `title`/`subtitle`/`caption` keys out of a `TABULATE`
-/// `LABEL` clause's resolved map, leaving only genuine column-name
-/// overrides behind. `.flatten()` treats "key absent" and "key present but
-/// NULL" the same: neither produces a title/subtitle/caption.
-pub(crate) fn extract_heading_labels(
-    labels: &mut Labels,
-) -> (Option<String>, Option<String>, Option<String>) {
-    let title = labels.labels.remove("title").flatten();
-    let subtitle = labels.labels.remove("subtitle").flatten();
-    let caption = labels.labels.remove("caption").flatten();
-    (title, subtitle, caption)
+/// `LABEL` clause's resolved map into `TableTitles`, leaving only genuine
+/// column-name overrides behind. `.flatten()` treats "key absent" and "key
+/// present but NULL" the same: neither produces a title/subtitle/caption.
+pub(crate) fn extract_table_titles(labels: &mut Labels) -> TableTitles {
+    TableTitles {
+        title: labels.labels.remove("title").flatten(),
+        subtitle: labels.labels.remove("subtitle").flatten(),
+        caption: labels.labels.remove("caption").flatten(),
+    }
 }
 
 /// Move every stub column to the front — group stub columns first, in

@@ -13,7 +13,7 @@ use crate::plot::Labels;
 use crate::table::{
     compose_header, create_caption, create_column_labels, create_heading, create_spanners,
     groups_are_woven, move_stub_columns, reorder_table_columns, TableCell, TableClass, TableColumn,
-    TableLayout, TableRow,
+    TableLayout, TableRow, TableTitles,
 };
 use crate::{ColumnSection, DataFrame, Format, GgsqlError, Result, Spanner};
 
@@ -83,9 +83,7 @@ pub(super) fn build_cells(
     columns: Vec<TableColumn>,
     rows: Vec<TableRow>,
     spans: &[Spanner],
-    title: Option<&str>,
-    subtitle: Option<&str>,
-    caption: Option<&str>,
+    titles: &TableTitles,
     facet: Option<&Facet>,
 ) -> Result<TableLayout> {
     let spanners = create_spanners(&columns, spans);
@@ -107,7 +105,11 @@ pub(super) fn build_cells(
         )
     };
     let header = compose_header(spanners, column_labels);
-    let heading = create_heading(title, subtitle, &columns);
+    let heading = create_heading(
+        titles.title.as_deref(),
+        titles.subtitle.as_deref(),
+        &columns,
+    );
     let header = heading.rowbind(header);
     let mut body_cells = create_row_labels(df, &columns);
     body_cells.extend(create_body(df, &columns));
@@ -124,7 +126,7 @@ pub(super) fn build_cells(
     };
     let table_body = TableLayout::new(columns.clone(), body_rows, body_cells);
     let layout = header.rowbind(table_body);
-    let caption_layout = create_caption(caption, &columns);
+    let caption_layout = create_caption(titles.caption.as_deref(), &columns);
     let layout = layout.rowbind(caption_layout);
 
     layout.validate()?;
@@ -330,7 +332,7 @@ mod tests {
     use super::*;
     use crate::df;
     use crate::plot::{ParameterValue, Parameters};
-    use crate::table::{extract_heading_labels, TableCellKind};
+    use crate::table::{extract_table_titles, TableCellKind};
     use crate::{ColumnSection, GgsqlError, Spanner, Table};
 
     /// Runs the same steps `resolve_table_with_reader` does, minus the
@@ -338,7 +340,7 @@ mod tests {
     /// directly against a `df!()`-built `DataFrame`.
     fn resolve_layout(df: &DataFrame, table: &Table) -> Result<TableLayout> {
         let mut labels = table.labels.clone();
-        let (title, subtitle, caption) = extract_heading_labels(&mut labels);
+        let titles = extract_table_titles(&mut labels);
         let column_names = df.get_column_names();
         let spans = table
             .resolve_spanners(&labels, Some(&column_names))
@@ -347,16 +349,7 @@ mod tests {
         let columns = setup_columns(df, &spans, &labels, &formats, None);
         let df = apply_formats(df, &formats)?;
         let rows = vec![TableRow::body(); df.height()];
-        build_cells(
-            &df,
-            columns,
-            rows,
-            &spans,
-            title.as_deref(),
-            subtitle.as_deref(),
-            caption.as_deref(),
-            None,
-        )
+        build_cells(&df, columns, rows, &spans, &titles, None)
     }
 
     /// `resolve_layout`, for the (common) tests that only care about cells.

@@ -10,10 +10,10 @@ use crate::{Plot, Table};
 /// (`parser::parse_query` returns one `Spec` per statement, in source order).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Spec {
-    // Boxed: `Plot` is far larger than `Table`, and clippy flags the
-    // resulting size gap (`large_enum_variant`) otherwise.
+    // Both boxed: whichever of `Plot`/`Table` is larger, an unboxed size gap
+    // between them trips clippy's `large_enum_variant` lint.
     Plot(Box<Plot>),
-    Table(Table),
+    Table(Box<Table>),
 }
 
 impl Spec {
@@ -45,7 +45,7 @@ impl Spec {
     pub fn into_table(self) -> Option<Table> {
         match self {
             Spec::Plot(_) => None,
-            Spec::Table(table) => Some(table),
+            Spec::Table(table) => Some(*table),
         }
     }
 }
@@ -60,7 +60,7 @@ mod tests {
         assert!(plot.as_plot().is_some());
         assert!(plot.as_table().is_none());
 
-        let table = Spec::Table(Table::default());
+        let table = Spec::Table(Box::default());
         assert!(table.as_plot().is_none());
         assert!(table.as_table().is_some());
     }
@@ -70,10 +70,10 @@ mod tests {
         let plot = Spec::Plot(Box::default());
         assert!(plot.into_plot().is_some());
 
-        let table = Spec::Table(Table::default());
+        let table = Spec::Table(Box::default());
         assert!(table.into_table().is_some());
 
         assert!(Spec::Plot(Box::default()).into_table().is_none());
-        assert!(Spec::Table(Table::default()).into_plot().is_none());
+        assert!(Spec::Table(Box::default()).into_plot().is_none());
     }
 }

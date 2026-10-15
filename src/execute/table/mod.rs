@@ -15,7 +15,7 @@ mod stub;
 use format::{apply_formats, setup_formats};
 use layout::{build_cells, setup_columns, setup_rows};
 
-use crate::table::extract_heading_labels;
+use crate::table::extract_table_titles;
 
 use super::cte::split_with_query;
 use crate::naming;
@@ -46,7 +46,7 @@ pub fn resolve_table_with_reader(query: &str, reader: &dyn Reader) -> Result<Res
 
     let facet = crate::table::setup_facet(&table.facet).map_err(GgsqlError::ValidationError)?;
     let mut labels = table.labels.clone();
-    let (title, subtitle, caption) = extract_heading_labels(&mut labels);
+    let titles = extract_table_titles(&mut labels);
 
     super::execute_setup_statements(&source_tree, reader)?;
 
@@ -83,16 +83,7 @@ pub fn resolve_table_with_reader(query: &str, reader: &dyn Reader) -> Result<Res
         ));
     }
     let df = apply_formats(&df, &formats)?;
-    let layout = build_cells(
-        &df,
-        columns,
-        rows,
-        &spans,
-        title.as_deref(),
-        subtitle.as_deref(),
-        caption.as_deref(),
-        facet.as_ref(),
-    )?;
+    let layout = build_cells(&df, columns, rows, &spans, &titles, facet.as_ref())?;
 
     Ok(ResolvedTable::new(layout, sql, warnings))
 }
