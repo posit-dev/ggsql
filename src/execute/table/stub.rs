@@ -1,7 +1,7 @@
 //! `TABULATE FORMAT STUB` resolution: building the `StubHead`/`StubRowLabel`
 //! cells.
 
-use crate::array_util::value_to_string;
+use crate::array_util::column_to_strings;
 use crate::table::{TableCell, TableColumn};
 use crate::DataFrame;
 
@@ -31,15 +31,16 @@ pub(crate) fn create_row_labels(df: &DataFrame, columns: &[TableColumn]) -> Vec<
             continue;
         }
 
-        let array = df
-            .column(&column.name)
-            .expect("TableColumn.name always names a column of df");
+        let values = column_to_strings(
+            df.column(&column.name)
+                .expect("TableColumn.name always names a column of df"),
+        );
 
-        for row in 0..df.height() {
+        for (row, value) in values.into_iter().enumerate() {
             let cell = if column.is_group_stub() {
-                TableCell::new_stub_row_group(row, index, value_to_string(array, row))
+                TableCell::new_stub_row_group(row, index, value)
             } else {
-                TableCell::new_stub_row_label(row, index, value_to_string(array, row))
+                TableCell::new_stub_row_label(row, index, value)
             };
             cells.push(cell.with_properties(column.properties.clone()));
         }
