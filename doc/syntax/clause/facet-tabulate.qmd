@@ -42,9 +42,11 @@ It currently takes the following parameters:
     * `'last'` (default) Keep the rows with missing group values and display these underneath regular groups.
     * `'drop'` Removes the rows with missing group values from the output table.
 * `place`: Placement options of the group labels. One of the following:
-   * `'top'` (default) Interleaves table body rows with group label rows. Group labels are placed above its member rows spanning all columns.
+   * `'top'` (default) Interleaves table body rows with group label rows. 
+   Group labels are placed above its member rows spanning all columns.
    * `'left'` Places group labels in the stub on the left. Group labels are vertically merged across member rows.
-
+* `separator`: Optional join string to collapse group labels across nesting levels. 
+The default (`null`) keeps levels in separate label rows or stub columns.
 
 ## Examples
 
@@ -88,7 +90,17 @@ TABULATE * FROM my_data
   FACET species, island
 ```
 
+The labels from multiple groups can be collapsed to single rows (or single stub column) by using the `separator` setting to join the labels.
+Labels are joined after `FORMAT RENAMING` is applied.
+
+```{ggsql}
+TABULATE * FROM my_data
+  FACET species, island
+    SETTING separator => ' - '
+```
+
 When group labels are placed in the stub, the labels can be controlled by `LABEL`.
+In case of `separator`-joined labels, the first variable (`species` in the example) displays the label.
 
 ```{ggsql}
 TABULATE * FROM my_data
