@@ -19,6 +19,7 @@ ggsql augments the standard SQL syntax with a number of new clauses to describe 
 - [`LABEL`](clause/label-tabulate.qmd) is used to manually change column labels and titles
 - [`SPAN`](clause/span.qmd) can be used to group columns and display a label across them
 - [`FORMAT`](clause/format.qmd) declares formatting for columns
+- [`FACET`](clause/facet-tabulate.qmd) enables row-grouping operations on tables
 
 ## Layers
 There are many different layers to choose from when visualising your data. Some are straightforward translations of your data into visual marks such as a point layer, while others perform more or less complicated calculations like e.g. the histogram layer. A layer is selected by providing the layer name after the `DRAW` clause

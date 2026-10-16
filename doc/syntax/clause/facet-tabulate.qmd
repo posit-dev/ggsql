@@ -1,0 +1,97 @@
+---
+title: "Row-grouping using `FACET`"
+---
+
+The `FACET` clause allows you to split your data and display each group alongside a group label.
+This technique is great for making structure in the data explicit.
+
+::: {.callout-note}
+This page is about the `TABULATE` usage of the `FACET` clause.
+For the `VISUALISE` usage, see [this page](facet.qmd).
+:::
+
+## Clause syntax
+The `FACET` syntax contains a number of subclauses.
+
+```ggsql
+FACET <column>, ...
+  SETTING <parameter> => <value>, ...
+```
+
+## Column selection
+
+```ggsql
+<column>, ...
+```
+
+In `FACET`, one or more comma separated columns can be used to split the data.
+The first `column` is mandatory, and subsequent columns add nesting levels.
+If the columns contain missing `null` values, these are handled by the `missing` setting.
+
+## Settings
+
+```ggsql
+SETTING <parameter> => <value>, ...
+```
+
+Facets take a typical `SETTING` clause with key-value pairs.
+It currently takes the following parameters:
+
+* `missing`: Determines what happens with `null` values in the grouping columns. Can be one of:
+    * `'first'` Keep the rows with missing group values and display these on top of regular groups.
+    * `'last'` (default) Keep the rows with missing group values and display these underneath regular groups.
+    * `'drop'` Removes the rows with missing group values from the output table.
+* `place`: Placement options of the group labels. One of the following:
+   * `'top'` (default) Interleaves table body rows with group label rows. Group labels are placed above its member rows spanning all columns.
+   * `'left'` Places group labels in the stub on the left. Group labels are vertically merged across member rows.
+
+
+## Examples
+
+Declare a facet column.
+
+```{ggsql}
+CREATE TEMP TABLE my_data AS 
+SELECT DISTINCT ON (species, island, sex) * FROM ggsql:penguins
+
+TABULATE * FROM my_data
+  FACET sex
+```
+
+Omit missing group variables from the table.
+
+```{ggsql}
+TABULATE * FROM my_data
+  FACET sex SETTING missing => 'drop'
+```
+
+Alternatively, missing group variables can be given a proper label using `FORMAT`.
+Note that `missing => 'drop'` has priority over any relabeling in `FORMAT`.
+
+```{ggsql}
+TABULATE * FROM my_data
+  FACET sex
+  FORMAT sex RENAMING null => 'unknown'
+```
+
+Place grouping labels in the stub.
+
+```{ggsql}
+TABULATE * FROM my_data
+  FACET sex SETTING place => 'left'
+```
+
+Using multiple group columns to group gives nested labels.
+
+```{ggsql}
+TABULATE * FROM my_data
+  FACET species, island
+```
+
+When group labels are placed in the stub, the labels can be controlled by `LABEL`.
+
+```{ggsql}
+TABULATE * FROM my_data
+  FACET species, island SETTING place => 'left'
+  LABEL island => 'Place', species => 'Type'
+```
