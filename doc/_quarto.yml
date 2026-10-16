@@ -62,6 +62,8 @@ website:
             href: syntax/clause/span.qmd
           - text: "`FORMAT`"
             href: syntax/clause/format.qmd
+          - text: "`FACET`"
+            href: syntax/clause/facet-tabulate.qmd
       - text: Gallery
         href: gallery/index.qmd
       - href: faq.qmd
@@ -127,6 +129,8 @@ website:
               href: syntax/clause/span.qmd
             - text: "`FORMAT`"
               href: syntax/clause/format.qmd
+            - text: "`FACET`"
+              href: syntax/clause/facet-tabulate.qmd
         - section: Layers
           contents:
             - section: Types
