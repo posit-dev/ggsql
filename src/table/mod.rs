@@ -234,6 +234,11 @@ impl ColumnSection {
         matches!(self, ColumnSection::Stub | ColumnSection::GroupStub(_))
     }
 
+    /// Whether this is a facet group stub section.
+    pub fn is_group_stub(self) -> bool {
+        matches!(self, ColumnSection::GroupStub(_))
+    }
+
     /// Section ordering for column placement: group stub columns first (by
     /// nesting depth), then STUB, then body.
     pub(crate) fn sort_order(self) -> (usize, usize) {

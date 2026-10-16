@@ -23,6 +23,13 @@ const TABLE_FACET_PARAMS: &[ParamDefinition] = &[
         default: DefaultParamValue::String("last"),
         constraint: ParamConstraint::string_option(&["first", "last", "drop"]),
     },
+    ParamDefinition {
+        // Joins nested group labels into one, e.g. 'north - q1'. Unset
+        // keeps one label row/column per nesting level.
+        name: "separator",
+        default: DefaultParamValue::Null,
+        constraint: ParamConstraint::string(),
+    },
 ];
 
 /// Validate a table facet's settings, apply defaults, and return the

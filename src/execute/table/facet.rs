@@ -6,8 +6,10 @@ use std::collections::HashMap;
 use arrow::array::{ArrayRef, UInt32Array};
 
 use crate::array_util::value_to_string;
-use crate::plot::facet::Facet;
-use crate::DataFrame;
+use crate::dataframe::into_array_ref;
+use crate::plot::facet::{Facet, FacetLayout};
+use crate::table::{TableColumn, TableRow};
+use crate::{ColumnSection, DataFrame};
 
 /// Assign each `df` row its group key: one rank per facet variable (see
 /// `rank_column`). Lexicographic comparison of keys gives the nested group
@@ -54,6 +56,88 @@ fn facet_columns<'a>(facet: &Facet, df: &'a DataFrame) -> Result<Vec<&'a ArrayRe
                 .map_err(|_| format!("TABULATE FACET: no column '{}' in the query result", name))
         })
         .collect()
+}
+
+/// Collapse a separated facet into one variable: join the facet variables'
+/// (formatted) values per row into a column named for the first variable,
+/// drop the originals, renumber the rows' group keys to single ids, and
+/// reduce the facet to that variable. Group stub columns in `columns` are
+/// replaced by one, keeping the first's label and properties. Passes
+/// everything through unchanged when the facet sets no `separator` or has a
+/// single variable.
+/// The table pieces `collapse_group_columns` rewrites for a separated facet.
+type Collapsed = (DataFrame, Vec<TableColumn>, Vec<TableRow>, Option<Facet>);
+
+pub(super) fn collapse_group_columns(
+    df: DataFrame,
+    mut columns: Vec<TableColumn>,
+    mut rows: Vec<TableRow>,
+    facet: Option<&Facet>,
+) -> Result<Collapsed, String> {
+    let Some(facet) = facet else {
+        return Ok((df, columns, rows, None));
+    };
+    let separator = match facet.properties.get("separator") {
+        Some(crate::plot::ParameterValue::String(separator)) => separator.clone(),
+        _ => return Ok((df, columns, rows, Some(facet.clone()))),
+    };
+
+    // One variable has nothing to join.
+    let variables = facet.get_variables();
+    if variables.len() == 1 {
+        return Ok((df, columns, rows, Some(facet.clone())));
+    }
+    // The joined column takes the first variable's name.
+    let name = variables[0].clone();
+
+    let arrays: Vec<&ArrayRef> = variables
+        .iter()
+        .map(|v| df.column(v).map_err(|e| e.to_string()))
+        .collect::<Result<_, _>>()?;
+    let joined: Vec<String> = (0..df.height())
+        .map(|row| {
+            arrays
+                .iter()
+                .map(|array| value_to_string(array, row))
+                .collect::<Vec<_>>()
+                .join(&separator)
+        })
+        .collect();
+    let df = df
+        .drop_many(&variables)
+        .and_then(|df| df.with_column(&name, into_array_ref(joined)))
+        .map_err(|e| e.to_string())?;
+
+    // Single-id keys: rows are group-sorted, so the id is the chunk index.
+    let mut id = 0;
+    let mut previous: Option<Vec<usize>> = None;
+    for row in &mut rows {
+        if previous.as_ref().is_some_and(|key| *key != row.group) {
+            id += 1;
+        }
+        previous = Some(std::mem::take(&mut row.group));
+        row.group = vec![id];
+    }
+
+    // Replace the group stub columns with one, at the first's position.
+    if let Some(position) = columns.iter().position(|c| c.is_group_stub()) {
+        let mut joined_column = columns[position].clone();
+        joined_column.target = ColumnSection::GroupStub(0);
+        columns.retain(|c| !c.is_group_stub());
+        columns.insert(position, joined_column);
+    }
+
+    let mut properties = facet.properties.clone();
+    properties.remove("separator");
+    let facet = Facet {
+        layout: FacetLayout::Wrap {
+            variables: vec![name],
+        },
+        properties,
+        resolved: facet.resolved,
+    };
+
+    Ok((df, columns, rows, Some(facet)))
 }
 
 /// Rank one facet variable's rows: non-null levels by first appearance,

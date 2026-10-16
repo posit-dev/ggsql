@@ -217,8 +217,8 @@ fn create_body(df: &DataFrame, columns: &[TableColumn]) -> Vec<TableCell> {
 /// Interleave group-label rows into the body. At each group boundary, emit
 /// one `GroupHeading` row per facet-variable level that changed, labels read
 /// from the group's first row (so an unchanged outer variable isn't
-/// restated). Body cells keep their data-row numbering, shifted down by the
-/// label rows before them.
+/// restated). Body cells keep their data-row numbering, shifted down by
+/// the label rows before them.
 fn weave_group_labels(
     df: &DataFrame,
     columns: &[TableColumn],
@@ -298,10 +298,7 @@ fn merge_group_stub_cells(
     columns: &[TableColumn],
     rows: &[TableRow],
 ) -> Vec<TableCell> {
-    if !columns
-        .iter()
-        .any(|c| matches!(c.target, ColumnSection::GroupStub(_)))
-    {
+    if !columns.iter().any(|c| c.is_group_stub()) {
         return cells;
     }
 

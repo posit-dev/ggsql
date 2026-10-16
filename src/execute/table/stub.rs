@@ -3,7 +3,7 @@
 
 use crate::array_util::value_to_string;
 use crate::table::{TableCell, TableColumn};
-use crate::{ColumnSection, DataFrame};
+use crate::DataFrame;
 
 /// Build one `StubHead` cell per stub column, numbered from `top == 0`.
 /// Skips every non-stub column.
@@ -36,7 +36,7 @@ pub(crate) fn create_row_labels(df: &DataFrame, columns: &[TableColumn]) -> Vec<
             .expect("TableColumn.name always names a column of df");
 
         for row in 0..df.height() {
-            let cell = if matches!(column.target, ColumnSection::GroupStub(_)) {
+            let cell = if column.is_group_stub() {
                 TableCell::new_stub_row_group(row, index, value_to_string(array, row))
             } else {
                 TableCell::new_stub_row_label(row, index, value_to_string(array, row))
