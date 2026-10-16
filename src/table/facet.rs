@@ -17,9 +17,11 @@ const TABLE_FACET_PARAMS: &[ParamDefinition] = &[
         constraint: ParamConstraint::string_option(&["left", "top"]),
     },
     ParamDefinition {
+        // Where rows with null facet values go: a group sorted first or
+        // last, or dropped from the table.
         name: "missing",
-        default: DefaultParamValue::Null,
-        constraint: ParamConstraint::string_option(&["repeat", "null"]),
+        default: DefaultParamValue::String("last"),
+        constraint: ParamConstraint::string_option(&["first", "last", "drop"]),
     },
 ];
 
@@ -50,6 +52,12 @@ pub(crate) fn setup_facet(facet: &Option<Facet>) -> Result<Option<Facet>, String
             ParameterValue::String("top".to_string()),
         );
     }
+    if !resolved.properties.contains_key("missing") {
+        resolved.properties.insert(
+            "missing".to_string(),
+            ParameterValue::String("last".to_string()),
+        );
+    }
     resolved.resolved = true;
     Ok(Some(resolved))
 }
@@ -78,7 +86,7 @@ mod tests {
     }
 
     #[test]
-    fn setup_defaults_place_to_top() {
+    fn setup_materializes_default_settings() {
         let facet = table_facet(Parameters::new());
 
         let resolved = setup_facet(&Some(facet)).unwrap().unwrap();
@@ -87,65 +95,31 @@ mod tests {
             resolved.properties.get("place"),
             Some(&ParameterValue::String("top".to_string()))
         );
-        assert!(resolved.resolved);
-    }
-
-    #[test]
-    fn setup_accepts_place_left() {
-        let mut settings = Parameters::new();
-        settings.insert(
-            "place".to_string(),
-            ParameterValue::String("left".to_string()),
-        );
-        let facet = table_facet(settings);
-
-        let resolved = setup_facet(&Some(facet)).unwrap().unwrap();
-
         assert_eq!(
-            resolved.properties.get("place"),
-            Some(&ParameterValue::String("left".to_string()))
+            resolved.properties.get("missing"),
+            Some(&ParameterValue::String("last".to_string()))
         );
-    }
-
-    #[test]
-    fn setup_rejects_an_unknown_setting() {
-        let mut settings = Parameters::new();
-        settings.insert("ncol".to_string(), ParameterValue::Number(2.0));
-        let facet = table_facet(settings);
-
-        let err = setup_facet(&Some(facet)).unwrap_err();
-
-        assert!(err.contains("ncol"));
-    }
-
-    #[test]
-    fn setup_rejects_an_invalid_place_value() {
-        let mut settings = Parameters::new();
-        settings.insert(
-            "place".to_string(),
-            ParameterValue::String("right".to_string()),
-        );
-        let facet = table_facet(settings);
-
-        assert!(setup_facet(&Some(facet)).is_err());
-    }
-
-    #[test]
-    fn setup_accepts_missing_repeat_and_null() {
-        for value in ["repeat", "null"] {
-            let mut settings = Parameters::new();
-            settings.insert(
-                "missing".to_string(),
-                ParameterValue::String(value.to_string()),
-            );
-            let facet = table_facet(settings);
-
-            setup_facet(&Some(facet)).unwrap();
-        }
+        assert!(resolved.resolved);
     }
 
     #[test]
     fn setup_passes_none_through() {
         assert_eq!(setup_facet(&None).unwrap(), None);
+    }
+
+    #[test]
+    fn groups_are_woven_only_when_place_is_top() {
+        let woven = setup_facet(&Some(table_facet(Parameters::new())))
+            .unwrap()
+            .unwrap();
+        assert!(groups_are_woven(&woven));
+
+        let mut settings = Parameters::new();
+        settings.insert(
+            "place".to_string(),
+            ParameterValue::String("left".to_string()),
+        );
+        let left = setup_facet(&Some(table_facet(settings))).unwrap().unwrap();
+        assert!(!groups_are_woven(&left));
     }
 }

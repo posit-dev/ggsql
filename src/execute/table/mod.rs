@@ -574,6 +574,33 @@ mod integration_tests {
     }
 
     #[test]
+    fn test_tabulate_facet_missing_drop_removes_null_rows() {
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        reader
+            .execute_sql(
+                "CREATE TABLE t AS SELECT * FROM (VALUES ('a', 1), (NULL, 2), ('b', 3)) \
+                 AS t(name, sales)",
+            )
+            .unwrap();
+
+        let resolved = resolve_table_with_reader(
+            "TABULATE * FROM t FACET name SETTING missing => 'drop'",
+            &reader,
+        )
+        .unwrap();
+
+        // Header row, and per surviving group a heading row plus one body row.
+        assert_eq!(resolved.rows().len(), 5);
+        let headings: Vec<_> = resolved
+            .cells()
+            .iter()
+            .filter(|c| c.kind == TableCellKind::GroupHeading)
+            .map(|c| c.content.as_str())
+            .collect();
+        assert_eq!(headings, ["a", "b"]);
+    }
+
+    #[test]
     fn test_tabulate_facet_covering_every_column_errors() {
         let reader = reader_with_sales();
         let result = resolve_table_with_reader("TABULATE name FROM sales FACET name", &reader);
