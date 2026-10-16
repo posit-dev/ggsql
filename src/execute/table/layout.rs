@@ -7,7 +7,7 @@ use std::collections::HashMap;
 
 use super::format::resolve_column_properties;
 use super::stub::{create_row_labels, create_stubhead};
-use crate::array_util::value_to_string;
+use crate::array_util::{column_to_strings, value_to_string};
 use crate::plot::facet::Facet;
 use crate::plot::Labels;
 use crate::table::{
@@ -199,14 +199,14 @@ fn create_body(df: &DataFrame, columns: &[TableColumn]) -> Vec<TableCell> {
         // Looked up once per column, outside the row loop: `DataFrame::column`
         // is an `O(ncol)` scan over the schema, so doing this per row instead
         // would cost `O(nrow * ncol)` lookups rather than `O(ncol)`.
-        let array = df
-            .column(&column.name)
-            .expect("TableColumn.name always names a column of df");
+        let values = column_to_strings(
+            df.column(&column.name)
+                .expect("TableColumn.name always names a column of df"),
+        );
 
-        for row in 0..df.height() {
+        for (row, value) in values.into_iter().enumerate() {
             cells.push(
-                TableCell::new_body(row, index, value_to_string(array, row))
-                    .with_properties(column.properties.clone()),
+                TableCell::new_body(row, index, value).with_properties(column.properties.clone()),
             );
         }
     }
