@@ -207,6 +207,7 @@ pub(crate) fn stat_density(
         stat_columns: stats,
         dummy_columns: vec![],
         consumed_aesthetics: consumed,
+        order_by: vec![],
     })
 }
 

@@ -202,6 +202,7 @@ fn stat_boxplot(
         stat_columns,
         dummy_columns,
         consumed_aesthetics: vec!["pos2".to_string()],
+        order_by: vec![],
     })
 }
 
@@ -285,6 +286,31 @@ fn boxplot_sql_filter_outliers(
         .build()
 }
 
+/// Build the visual-element rows (`lower_whisker`/`upper_whisker`/`box`/
+/// `median`) from a summary relation exposing `q1`, `q3`, `median`,
+/// `lower`, `upper`, and the group columns.
+fn boxplot_summary_rows_select(table: &str, groups: &[String], dialect: &dyn SqlDialect) -> String {
+    let value_name = dialect.quote_ident(&naming::stat_column("value"));
+    let value2_name = dialect.quote_ident(&naming::stat_column("value2"));
+    let type_name = dialect.quote_ident(&naming::stat_column("type"));
+    let quoted_groups: Vec<String> = groups.iter().map(|g| dialect.quote_ident(g)).collect();
+    let groups_str = quoted_groups.join(", ");
+    format!(
+        "SELECT {groups}, 'lower_whisker' AS {type_name}, q1 AS {value_name}, lower AS {value2_name} FROM {table}
+        UNION ALL
+        SELECT {groups}, 'upper_whisker' AS {type_name}, q3 AS {value_name}, upper AS {value2_name} FROM {table}
+        UNION ALL
+        SELECT {groups}, 'box' AS {type_name}, q1 AS {value_name}, q3 AS {value2_name} FROM {table}
+        UNION ALL
+        SELECT {groups}, 'median' AS {type_name}, median AS {value_name}, NULL AS {value2_name} FROM {table}",
+        groups = groups_str,
+        type_name = type_name,
+        value_name = value_name,
+        value2_name = value2_name,
+        table = table
+    )
+}
+
 fn boxplot_sql_append_outliers(
     from: &str,
     groups: &[String],
@@ -300,35 +326,16 @@ fn boxplot_sql_append_outliers(
     let quoted_groups: Vec<String> = groups.iter().map(|g| dialect.quote_ident(g)).collect();
     let groups_str = quoted_groups.join(", ");
 
-    // Helper to build visual-element rows from summary table
-    // Each row type maps to one visual element with y and yend where needed
-    let build_summary_select = |table: &str| {
-        format!(
-            "SELECT {groups}, 'lower_whisker' AS {type_name}, q1 AS {value_name}, lower AS {value2_name} FROM {table}
-            UNION ALL
-            SELECT {groups}, 'upper_whisker' AS {type_name}, q3 AS {value_name}, upper AS {value2_name} FROM {table}
-            UNION ALL
-            SELECT {groups}, 'box' AS {type_name}, q1 AS {value_name}, q3 AS {value2_name} FROM {table}
-            UNION ALL
-            SELECT {groups}, 'median' AS {type_name}, median AS {value_name}, NULL AS {value2_name} FROM {table}",
-            groups = groups_str,
-            type_name = type_name,
-            value_name = value_name,
-            value2_name = value2_name,
-            table = table
-        )
-    };
-
     if !*draw_outliers {
         // Build from subquery when no CTEs needed
-        return build_summary_select(&format!("({})", from));
+        return boxplot_summary_rows_select(&format!("({})", from), groups, dialect);
     }
 
     // Grab query for outliers
     let outliers = boxplot_sql_filter_outliers(groups, value, raw_query, dialect);
 
     // Build summary select using CTE reference
-    let summary_select = build_summary_select("summary");
+    let summary_select = boxplot_summary_rows_select("summary", groups, dialect);
 
     // Combine summary visual-elements with outliers
     format!(
@@ -734,6 +741,7 @@ mod tests {
                 stat_columns,
                 dummy_columns,
                 consumed_aesthetics,
+                ..
             } => {
                 // The wrapped input introduces a synthetic pos1 column that the
                 // GROUP BY then collapses to a single boxplot.

@@ -882,6 +882,7 @@ pub fn apply(
         stat_columns,
         dummy_columns: vec![],
         consumed_aesthetics,
+        order_by: vec![],
     })
 }
 

@@ -73,6 +73,7 @@ impl GeomTrait for Spatial {
             stat_columns: vec![],
             dummy_columns: vec![],
             consumed_aesthetics: vec![],
+            order_by: vec![],
         })
     }
 

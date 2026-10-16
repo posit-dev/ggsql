@@ -372,5 +372,6 @@ fn stat_bar_count(
         stat_columns,
         dummy_columns,
         consumed_aesthetics,
+        order_by: vec![],
     })
 }

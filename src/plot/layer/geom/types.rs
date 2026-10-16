@@ -202,6 +202,13 @@ pub enum StatResult {
         /// These aesthetics were used as input to the stat and should be removed
         /// from the layer mappings after the transform completes
         consumed_aesthetics: Vec<String>,
+        /// ORDER BY expressions (already quoted) required for correct
+        /// rendering, e.g. line ordering along the domain axis. Carried as
+        /// data rather than embedded in `query` so the pipeline can apply
+        /// ordering on the final, outermost query only — nested ORDER BY is
+        /// rejected by some backends (T-SQL error 1033) and is semantically
+        /// meaningless in derived tables elsewhere.
+        order_by: Vec<String>,
     },
 }
 
@@ -209,16 +216,19 @@ pub use crate::plot::types::ColumnInfo;
 /// Schema of a data source - list of columns with type info
 pub use crate::plot::types::Schema;
 
-/// Wrap a stat result with `ORDER BY <aesthetic>`.
+/// Attach `ORDER BY <aesthetic>` to a stat result.
 ///
 /// Used by line/area/ribbon to ensure the rendered output is sorted along the
 /// domain axis whether or not the layer also goes through the Aggregate stat.
+/// The ordering is recorded in [`StatResult::Transformed::order_by`] and left
+/// for the pipeline to apply on the final, outermost query — embedding it in
+/// the query text here would nest it inside derived tables, which T-SQL
+/// rejects (error 1033).
 ///
-/// - `Identity` → becomes `Transformed` with `<input_query> ORDER BY <aes>`,
+/// - `Identity` → becomes `Transformed` over the unchanged input query with
 ///   empty `stat_columns`/`dummy_columns`/`consumed_aesthetics`.
-/// - `Transformed` → wraps the existing query in
-///   `SELECT * FROM (<query>) AS "__ggsql_ord__" ORDER BY <aes>` and preserves
-///   the stat metadata.
+/// - `Transformed` → appends to the existing `order_by` and preserves the
+///   query and stat metadata.
 pub fn wrap_with_order_by(
     input_query: &str,
     result: StatResult,
@@ -229,26 +239,28 @@ pub fn wrap_with_order_by(
     let order_quoted = dialect.quote_ident(&order_col);
     match result {
         StatResult::Identity => StatResult::Transformed {
-            query: format!("{} ORDER BY {}", input_query, order_quoted),
+            query: input_query.to_string(),
             stat_columns: vec![],
             dummy_columns: vec![],
             consumed_aesthetics: vec![],
+            order_by: vec![order_quoted],
         },
         StatResult::Transformed {
             query,
             stat_columns,
             dummy_columns,
             consumed_aesthetics,
-        } => StatResult::Transformed {
-            query: crate::sql::Select::new(dialect)
-                .select_star()
-                .from_aliased(crate::sql::FromItem::Query(&query), "__ggsql_ord__")
-                .order_by(order_quoted)
-                .build(),
-            stat_columns,
-            dummy_columns,
-            consumed_aesthetics,
-        },
+            mut order_by,
+        } => {
+            order_by.push(order_quoted);
+            StatResult::Transformed {
+                query,
+                stat_columns,
+                dummy_columns,
+                consumed_aesthetics,
+                order_by,
+            }
+        }
     }
 }
 
@@ -298,12 +310,14 @@ pub fn wrap_stat_with_dummy_axis(
             stat_columns: vec![axis.to_string()],
             dummy_columns: vec![axis.to_string()],
             consumed_aesthetics: vec![],
+            order_by: vec![],
         },
         StatResult::Transformed {
             query,
             mut stat_columns,
             mut dummy_columns,
             consumed_aesthetics,
+            order_by,
         } => {
             // Idempotent: a stat that already produced a dummy for this axis
             // must not be re-wrapped — the SQL would gain a duplicate column.
@@ -324,6 +338,7 @@ pub fn wrap_stat_with_dummy_axis(
                 stat_columns,
                 dummy_columns,
                 consumed_aesthetics,
+                order_by,
             }
         }
     }
@@ -448,7 +463,7 @@ mod tests {
     }
 
     #[test]
-    fn wrap_with_order_by_identity_appends_order() {
+    fn wrap_with_order_by_identity_records_ordering() {
         let result = wrap_with_order_by(
             "SELECT * FROM t",
             StatResult::Identity,
@@ -461,8 +476,12 @@ mod tests {
                 stat_columns,
                 dummy_columns,
                 consumed_aesthetics,
+                order_by,
             } => {
-                assert_eq!(query, "SELECT * FROM t ORDER BY \"__ggsql_aes_pos1__\"");
+                // Query text is left alone; ordering is carried as data and
+                // applied on the final outermost query by execute/layer.rs.
+                assert_eq!(query, "SELECT * FROM t");
+                assert_eq!(order_by, vec!["\"__ggsql_aes_pos1__\"".to_string()]);
                 assert!(stat_columns.is_empty());
                 assert!(dummy_columns.is_empty());
                 assert!(consumed_aesthetics.is_empty());
@@ -472,12 +491,13 @@ mod tests {
     }
 
     #[test]
-    fn wrap_with_order_by_transformed_wraps_query_and_preserves_metadata() {
+    fn wrap_with_order_by_transformed_records_ordering_and_preserves_metadata() {
         let inner = StatResult::Transformed {
             query: "SELECT * FROM grouped".to_string(),
             stat_columns: vec!["pos2".to_string(), "aggregate".to_string()],
             dummy_columns: vec!["pos1".to_string()],
             consumed_aesthetics: vec!["pos2".to_string()],
+            order_by: vec![],
         };
         let result = wrap_with_order_by(
             "SELECT * FROM raw",
@@ -491,11 +511,10 @@ mod tests {
                 stat_columns,
                 dummy_columns,
                 consumed_aesthetics,
+                order_by,
             } => {
-                assert_eq!(
-                    query,
-                    "SELECT * FROM (SELECT * FROM grouped) AS \"__ggsql_ord__\" ORDER BY \"__ggsql_aes_pos1__\""
-                );
+                assert_eq!(query, "SELECT * FROM grouped");
+                assert_eq!(order_by, vec!["\"__ggsql_aes_pos1__\"".to_string()]);
                 assert_eq!(
                     stat_columns,
                     vec!["pos2".to_string(), "aggregate".to_string()]
@@ -529,6 +548,7 @@ mod tests {
                 stat_columns,
                 dummy_columns,
                 consumed_aesthetics,
+                ..
             } => {
                 assert!(query.contains("__ggsql_stat_dummy"));
                 assert!(query.contains("__ggsql_stat_pos1"));
@@ -548,6 +568,7 @@ mod tests {
             stat_columns: vec!["count".to_string()],
             dummy_columns: vec![],
             consumed_aesthetics: vec!["weight".to_string()],
+            order_by: vec![],
         };
         let result =
             wrap_stat_with_dummy_pos1("SELECT * FROM raw", inner, &crate::reader::AnsiDialect);
@@ -557,6 +578,7 @@ mod tests {
                 stat_columns,
                 dummy_columns,
                 consumed_aesthetics,
+                ..
             } => {
                 assert!(query.contains("__ggsql_stat_dummy"));
                 assert!(query.contains("__ggsql_stat_pos1"));
@@ -578,6 +600,7 @@ mod tests {
             stat_columns: vec!["pos1".to_string()],
             dummy_columns: vec!["pos1".to_string()],
             consumed_aesthetics: vec![],
+            order_by: vec![],
         };
         let result = wrap_stat_with_dummy_pos1("SELECT *", inner, &crate::reader::AnsiDialect);
         match result {

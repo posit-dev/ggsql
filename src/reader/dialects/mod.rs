@@ -253,6 +253,36 @@ mod tests {
         assert!(dialect_for_scheme("nosuchdb").is_none());
     }
 
+    /// Persistent internal tables (regular CREATE TABLE materialization)
+    /// need explicit cleanup; genuine temp tables and in-process engines do
+    /// not.
+    #[test]
+    fn internal_tables_need_cleanup_only_for_persistent_dialects() {
+        for scheme in ["mysql", "mariadb", "mssql", "oracle"] {
+            assert!(
+                dialect_for_scheme(scheme)
+                    .unwrap()
+                    .internal_tables_need_cleanup(),
+                "scheme {scheme} should need cleanup"
+            );
+        }
+        for scheme in [
+            "postgres",
+            "duckdb",
+            "sqlite",
+            "datafusion",
+            "clickhouse",
+            "bigquery",
+        ] {
+            assert!(
+                !dialect_for_scheme(scheme)
+                    .unwrap()
+                    .internal_tables_need_cleanup(),
+                "scheme {scheme} should not need cleanup"
+            );
+        }
+    }
+
     #[test]
     fn per_dialect_quoting() {
         assert_eq!(dialect_for_scheme("mysql").unwrap().quote_ident("c"), "`c`");

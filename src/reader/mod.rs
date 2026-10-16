@@ -137,6 +137,25 @@ pub trait SqlDialect {
         TempTableStyle::DropThenCreateTemp
     }
 
+    /// Whether internal materialized tables (global source, CTEs) persist
+    /// beyond the session and must be dropped explicitly once execution
+    /// finishes with them. Defaults from [`temp_table_style`]: genuine
+    /// temporary tables are reclaimed by the backend at disconnect, while
+    /// regular tables linger. In-process engines (DataFusion) override to
+    /// `false` — their tables die with the reader. Caching readers report
+    /// the cache dialect here, so staged tables in the in-memory cache never
+    /// require cleanup either.
+    ///
+    /// [`temp_table_style`]: SqlDialect::temp_table_style
+    fn internal_tables_need_cleanup(&self) -> bool {
+        matches!(
+            self.temp_table_style(),
+            TempTableStyle::DropThenCreate
+                | TempTableStyle::GuardedDropThenCreate
+                | TempTableStyle::SelectInto
+        )
+    }
+
     // =====================================================================
     // Types and identifiers
     // =====================================================================
