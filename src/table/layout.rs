@@ -413,6 +413,11 @@ impl TableColumn {
     pub fn is_stub(&self) -> bool {
         self.target.is_stub()
     }
+
+    /// Whether this column is a `TABULATE FACET` group stub column.
+    pub fn is_group_stub(&self) -> bool {
+        self.target.is_group_stub()
+    }
 }
 
 /// One row's resolved properties within a table layout. `classes` carries
