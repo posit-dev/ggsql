@@ -3,49 +3,85 @@
 
 use std::collections::HashMap;
 
-use arrow::array::UInt32Array;
+use arrow::array::{ArrayRef, UInt32Array};
 
 use crate::array_util::value_to_string;
+use crate::plot::facet::Facet;
 use crate::DataFrame;
 
-/// Assign each `df` row its group key: one rank per facet variable, levels
-/// ranked by first appearance. Lexicographic comparison of keys gives the
-/// nested group order (first variable outermost); a key's prefix identifies
-/// the row's group at that nesting depth. Rows that are null in a variable
-/// share one rank for it.
-pub(super) fn setup_groups(
-    variables: &[String],
-    df: &DataFrame,
-) -> Result<Vec<Vec<usize>>, String> {
-    let columns: Vec<_> = variables
+/// Assign each `df` row its group key: one rank per facet variable (see
+/// `rank_column`). Lexicographic comparison of keys gives the nested group
+/// order (first variable outermost); a key's prefix identifies the row's
+/// group at that nesting depth.
+pub(super) fn setup_groups(facet: &Facet, df: &DataFrame) -> Result<Vec<Vec<usize>>, String> {
+    let columns = facet_columns(facet, df)?;
+
+    let nulls_first = facet.properties.get("missing")
+        == Some(&crate::plot::ParameterValue::String("first".to_string()));
+    let mut keys = vec![Vec::with_capacity(columns.len()); df.height()];
+    for column in &columns {
+        let ranks = rank_column(column, nulls_first);
+        for (key, rank) in keys.iter_mut().zip(ranks) {
+            key.push(rank);
+        }
+    }
+
+    Ok(keys)
+}
+
+/// Remove rows that are null in any of `facet`'s variables. Returns `df`
+/// unchanged unless the facet drops nulls (`missing => 'drop'`).
+pub(super) fn drop_null_rows(facet: &Facet, df: &DataFrame) -> Result<DataFrame, String> {
+    if facet.properties.get("missing")
+        != Some(&crate::plot::ParameterValue::String("drop".to_string()))
+    {
+        return Ok(df.clone());
+    }
+    let columns = facet_columns(facet, df)?;
+    let keep: Vec<u32> = (0..df.height() as u32)
+        .filter(|&row| columns.iter().all(|c| !c.is_null(row as usize)))
+        .collect();
+    df.take(&UInt32Array::from(keep)).map_err(|e| e.to_string())
+}
+
+/// Resolve `facet`'s variables to `df` columns.
+fn facet_columns<'a>(facet: &Facet, df: &'a DataFrame) -> Result<Vec<&'a ArrayRef>, String> {
+    facet
+        .get_variables()
         .iter()
         .map(|name| {
             df.column(name)
                 .map_err(|_| format!("TABULATE FACET: no column '{}' in the query result", name))
         })
-        .collect::<Result<_, _>>()?;
+        .collect()
+}
 
-    // Rank each variable's values by first appearance.
-    let mut levels: Vec<HashMap<Option<String>, usize>> = vec![HashMap::new(); columns.len()];
-    let mut keys = Vec::with_capacity(df.height());
-    for row in 0..df.height() {
-        let key: Vec<usize> = columns
-            .iter()
-            .zip(&mut levels)
-            .map(|(column, ranks)| {
-                let value = if column.is_null(row) {
-                    None
-                } else {
-                    Some(value_to_string(column, row))
-                };
-                let next = ranks.len();
-                *ranks.entry(value).or_insert(next)
-            })
-            .collect();
-        keys.push(key);
+/// Rank one facet variable's rows: non-null levels by first appearance,
+/// nulls at a fixed rank (0 with `nulls_first`, otherwise past the non-null
+/// levels) so their placement doesn't depend on where they occur.
+fn rank_column(column: &ArrayRef, nulls_first: bool) -> Vec<usize> {
+    let mut levels: HashMap<String, usize> = HashMap::new();
+    let mut values: Vec<Option<String>> = Vec::with_capacity(column.len());
+    for row in 0..column.len() {
+        if column.is_null(row) {
+            values.push(None);
+            continue;
+        }
+        let value = value_to_string(column, row);
+        let next = levels.len();
+        levels.entry(value.clone()).or_insert(next);
+        values.push(Some(value));
     }
 
-    Ok(keys)
+    let null_rank = if nulls_first { 0 } else { levels.len() };
+    let offset = usize::from(nulls_first);
+    values
+        .into_iter()
+        .map(|value| match value {
+            Some(value) => levels[&value] + offset,
+            None => null_rank,
+        })
+        .collect()
 }
 
 /// Reorder `df` so rows with equal group keys are contiguous in
@@ -74,9 +110,22 @@ pub(super) fn reorder_rows(
 mod tests {
     use super::*;
     use crate::df;
+    use crate::plot::facet::FacetLayout;
+    use crate::plot::{ParameterValue, Parameters};
 
-    fn variables(names: &[&str]) -> Vec<String> {
-        names.iter().map(|n| n.to_string()).collect()
+    fn facet(names: &[&str], missing: &str) -> Facet {
+        let mut properties = Parameters::new();
+        properties.insert(
+            "missing".to_string(),
+            ParameterValue::String(missing.to_string()),
+        );
+        Facet {
+            layout: FacetLayout::Wrap {
+                variables: names.iter().map(|n| n.to_string()).collect(),
+            },
+            properties,
+            resolved: true,
+        }
     }
 
     #[test]
@@ -87,7 +136,7 @@ mod tests {
         }
         .unwrap();
 
-        let keys = setup_groups(&variables(&["region"]), &frame).unwrap();
+        let keys = setup_groups(&facet(&["region"], "last"), &frame).unwrap();
 
         assert_eq!(keys, vec![vec![0], vec![1], vec![0]]);
     }
@@ -100,7 +149,7 @@ mod tests {
         }
         .unwrap();
 
-        let keys = setup_groups(&variables(&["region", "quarter"]), &frame).unwrap();
+        let keys = setup_groups(&facet(&["region", "quarter"], "last"), &frame).unwrap();
 
         assert_eq!(keys, vec![vec![0, 0], vec![0, 1]]);
     }
@@ -115,7 +164,7 @@ mod tests {
         }
         .unwrap();
 
-        let keys = setup_groups(&variables(&["a", "b"]), &frame).unwrap();
+        let keys = setup_groups(&facet(&["a", "b"], "last"), &frame).unwrap();
 
         assert_eq!(keys, vec![vec![0, 0], vec![1, 0], vec![0, 1], vec![1, 1]]);
     }
@@ -124,7 +173,7 @@ mod tests {
     fn setup_groups_errors_on_an_unknown_column() {
         let frame = df! { "sales" => vec![1i32] }.unwrap();
 
-        let err = setup_groups(&variables(&["region"]), &frame).unwrap_err();
+        let err = setup_groups(&facet(&["region"], "last"), &frame).unwrap_err();
 
         assert!(err.contains("region"));
     }
@@ -136,7 +185,7 @@ mod tests {
             "sales" => vec![1i32, 2, 3],
         }
         .unwrap();
-        let keys = setup_groups(&variables(&["region"]), &frame).unwrap();
+        let keys = setup_groups(&facet(&["region"], "last"), &frame).unwrap();
 
         let (frame, keys) = reorder_rows(&frame, keys).unwrap();
 
@@ -161,8 +210,53 @@ mod tests {
         )])
         .unwrap();
 
-        let keys = setup_groups(&variables(&["region"]), &frame).unwrap();
+        let keys = setup_groups(&facet(&["region"], "last"), &frame).unwrap();
 
         assert_eq!(keys, vec![vec![0], vec![1], vec![1]]);
+    }
+
+    #[test]
+    fn setup_groups_ranks_nulls_first_when_asked() {
+        let frame = DataFrame::new(vec![(
+            "region",
+            crate::dataframe::into_array_ref(vec![Some("north"), None, Some("south")]),
+        )])
+        .unwrap();
+
+        let keys = setup_groups(&facet(&["region"], "first"), &frame).unwrap();
+
+        assert_eq!(keys, vec![vec![1], vec![0], vec![2]]);
+    }
+
+    #[test]
+    fn setup_groups_ranks_nulls_last_regardless_of_where_they_occur() {
+        let frame = DataFrame::new(vec![(
+            "region",
+            crate::dataframe::into_array_ref(vec![Some("north"), None, Some("south")]),
+        )])
+        .unwrap();
+
+        let keys = setup_groups(&facet(&["region"], "last"), &frame).unwrap();
+
+        assert_eq!(keys, vec![vec![0], vec![2], vec![1]]);
+    }
+
+    #[test]
+    fn drop_null_rows_removes_rows_null_in_any_variable() {
+        let frame = DataFrame::new(vec![
+            (
+                "region",
+                crate::dataframe::into_array_ref(vec![Some("north"), None, Some("south")]),
+            ),
+            (
+                "quarter",
+                crate::dataframe::into_array_ref(vec![Some("q1"), Some("q2"), None]),
+            ),
+        ])
+        .unwrap();
+
+        let frame = drop_null_rows(&facet(&["region", "quarter"], "drop"), &frame).unwrap();
+
+        assert_eq!(frame.height(), 1);
     }
 }

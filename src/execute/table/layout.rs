@@ -57,8 +57,8 @@ pub(super) fn setup_rows(
         let rows = vec![TableRow::body(); df.height()];
         return Ok((df, rows));
     };
-    let keys = super::facet::setup_groups(&facet.get_variables(), &df)
-        .map_err(GgsqlError::ValidationError)?;
+    let df = super::facet::drop_null_rows(facet, &df).map_err(GgsqlError::ValidationError)?;
+    let keys = super::facet::setup_groups(facet, &df).map_err(GgsqlError::ValidationError)?;
     let (df, keys) = super::facet::reorder_rows(&df, keys).map_err(GgsqlError::ValidationError)?;
     let mut rows = Vec::with_capacity(keys.len());
     for key in keys {
