@@ -7,14 +7,16 @@
 //! construction in `layout`; the `TableLayout` assembly and `SPAN` resolution
 //! it composes live in `crate::table`.
 
+mod facet;
 mod format;
 mod layout;
 mod stub;
 
+use facet::collapse_group_columns;
 use format::{apply_formats, setup_formats};
-use layout::{build_cells, setup_columns};
+use layout::{build_cells, setup_columns, setup_rows};
 
-use crate::table::extract_heading_labels;
+use crate::table::extract_table_titles;
 
 use super::cte::split_with_query;
 use crate::naming;
@@ -42,8 +44,10 @@ pub fn resolve_table_with_reader(query: &str, reader: &dyn Reader) -> Result<Res
         .into_iter()
         .find_map(Spec::into_table)
         .ok_or_else(|| GgsqlError::ValidationError("No table specification found".to_string()))?;
+
+    let facet = crate::table::setup_facet(&table.facet).map_err(GgsqlError::ValidationError)?;
     let mut labels = table.labels.clone();
-    let (title, subtitle, caption) = extract_heading_labels(&mut labels);
+    let titles = extract_table_titles(&mut labels);
 
     super::execute_setup_statements(&source_tree, reader)?;
 
@@ -62,6 +66,8 @@ pub fn resolve_table_with_reader(query: &str, reader: &dyn Reader) -> Result<Res
 
     let df = resolve_selection(reader.execute_sql(&sql)?, &table.selection)?;
 
+    let (df, rows) = setup_rows(df, facet.as_ref())?;
+
     let column_names = df.get_column_names();
     let spans = table
         .resolve_spanners(&labels, Some(&column_names))
@@ -70,16 +76,19 @@ pub fn resolve_table_with_reader(query: &str, reader: &dyn Reader) -> Result<Res
     // (RENAMING) read from. Resolved after spans so a FORMAT column entry
     // can name a SPAN id in place of the columns it covers.
     let formats = setup_formats(&df, &table.formats, &spans)?;
-    let columns = setup_columns(&df, &spans, &labels, &formats);
+    let columns = setup_columns(&df, &spans, &labels, &formats, facet.as_ref());
+    // Only FACET removes columns today; if that changes, revisit this error.
+    if columns.is_empty() {
+        return Err(GgsqlError::ValidationError(
+            "TABULATE FACET covers every column: no body columns left to show".to_string(),
+        ));
+    }
     let df = apply_formats(&df, &formats)?;
-    let layout = build_cells(
-        &df,
-        columns,
-        &spans,
-        title.as_deref(),
-        subtitle.as_deref(),
-        caption.as_deref(),
-    )?;
+    // A separated facet collapses to one variable once its labels are
+    // formatted; everything downstream sees a single-level facet.
+    let (df, columns, rows, facet) = collapse_group_columns(df, columns, rows, facet.as_ref())
+        .map_err(GgsqlError::ValidationError)?;
+    let layout = build_cells(&df, columns, rows, &spans, &titles, facet.as_ref())?;
 
     Ok(ResolvedTable::new(layout, sql, warnings))
 }
@@ -239,7 +248,7 @@ fn wrap_selection(dialect: &dyn SqlDialect, selection: &[SelectionItem], query: 
 mod integration_tests {
     use super::*;
     use crate::reader::DuckDBReader;
-    use crate::table::TableCellKind;
+    use crate::table::{TableCellKind, TableClass};
 
     fn reader_with_sales() -> DuckDBReader {
         let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
@@ -463,6 +472,282 @@ mod integration_tests {
         );
 
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_tabulate_facet_interleaves_group_heading_rows() {
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        reader
+            .execute_sql(
+                "CREATE TABLE t AS SELECT * FROM (VALUES \
+                 ('north', 'q1', 1), ('north', 'q2', 2), ('south', 'q1', 3)) \
+                 AS t(region, quarter, sales)",
+            )
+            .unwrap();
+
+        let resolved =
+            resolve_table_with_reader("TABULATE * FROM t FACET region", &reader).unwrap();
+
+        // FACET consumes its column: only quarter and sales remain.
+        let names: Vec<&str> = resolved.columns().iter().map(|c| c.name.as_str()).collect();
+        assert_eq!(names, ["quarter", "sales"]);
+
+        let mut headings: Vec<_> = resolved
+            .cells()
+            .iter()
+            .filter(|c| c.kind == TableCellKind::GroupHeading)
+            .collect();
+        headings.sort_by_key(|c| c.top);
+        assert_eq!(headings.len(), 2);
+        // Row 0 is the column-label row; each heading spans both columns.
+        assert_eq!(
+            (headings[0].top, headings[0].left, headings[0].right),
+            (1, 0, 1)
+        );
+        assert_eq!(headings[0].content, "north");
+        // north has two data rows, so south's heading sits at row 4.
+        assert_eq!(headings[1].top, 4);
+        assert_eq!(headings[1].content, "south");
+
+        assert_eq!(
+            resolved
+                .cells()
+                .iter()
+                .filter(|c| c.kind == TableCellKind::Body)
+                .count(),
+            6
+        );
+    }
+
+    #[test]
+    fn test_tabulate_facet_nests_label_rows_for_multiple_variables() {
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        reader
+            .execute_sql(
+                "CREATE TABLE t AS SELECT * FROM (VALUES \
+                 ('north', 'q1', 1), ('north', 'q2', 2), ('south', 'q1', 3)) \
+                 AS t(region, quarter, sales)",
+            )
+            .unwrap();
+
+        let resolved =
+            resolve_table_with_reader("TABULATE * FROM t FACET region, quarter", &reader).unwrap();
+
+        let mut headings: Vec<_> = resolved
+            .cells()
+            .iter()
+            .filter(|c| c.kind == TableCellKind::GroupHeading)
+            .collect();
+        headings.sort_by_key(|c| c.top);
+        let texts: Vec<&str> = headings.iter().map(|c| c.content.as_str()).collect();
+        // q1 is not restated while region stays north; south restates q1
+        // under it. One data row per group: headings interleave singly.
+        assert_eq!(texts, ["north", "q1", "q2", "south", "q1"]);
+        let tops: Vec<usize> = headings.iter().map(|c| c.top).collect();
+        assert_eq!(tops, [1, 2, 4, 6, 7]);
+    }
+
+    #[test]
+    fn test_tabulate_facet_separator_joins_label_rows() {
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        reader
+            .execute_sql(
+                "CREATE TABLE t AS SELECT * FROM (VALUES \
+                 ('north', 'q1', 1), ('north', 'q2', 2), ('south', 'q1', 3)) \
+                 AS t(region, quarter, sales)",
+            )
+            .unwrap();
+
+        let resolved = resolve_table_with_reader(
+            "TABULATE * FROM t FACET region, quarter SETTING separator => ' - '",
+            &reader,
+        )
+        .unwrap();
+
+        let mut headings: Vec<_> = resolved
+            .cells()
+            .iter()
+            .filter(|c| c.kind == TableCellKind::GroupHeading)
+            .collect();
+        headings.sort_by_key(|c| c.top);
+        let texts: Vec<&str> = headings.iter().map(|c| c.content.as_str()).collect();
+        // One joined heading per group, full key every time.
+        assert_eq!(texts, ["north - q1", "north - q2", "south - q1"]);
+    }
+
+    #[test]
+    fn test_tabulate_facet_place_left_separator_collapses_group_columns() {
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        reader
+            .execute_sql(
+                "CREATE TABLE t AS SELECT * FROM (VALUES \
+                 ('north', 'q1', 1), ('north', 'q1', 2), ('north', 'q2', 3), ('south', 'q1', 4)) \
+                 AS t(region, quarter, sales)",
+            )
+            .unwrap();
+
+        let resolved = resolve_table_with_reader(
+            "TABULATE * FROM t FACET region, quarter SETTING place => 'left', separator => ' - '",
+            &reader,
+        )
+        .unwrap();
+
+        // The facet collapses to one stub column; quarter is consumed.
+        let names: Vec<&str> = resolved.columns().iter().map(|c| c.name.as_str()).collect();
+        assert_eq!(names, ["region", "sales"]);
+
+        let mut headings: Vec<_> = resolved
+            .cells()
+            .iter()
+            .filter(|c| c.kind == TableCellKind::GroupHeading)
+            .collect();
+        headings.sort_by_key(|c| c.top);
+        let extents: Vec<(&str, usize, usize)> = headings
+            .iter()
+            .map(|c| (c.content.as_str(), c.top, c.bottom))
+            .collect();
+        // Cells merge on the full key: north's two rows share one cell, but
+        // north - q2 and south - q1 stand alone.
+        assert_eq!(
+            extents,
+            [
+                ("north - q1", 1, 2),
+                ("north - q2", 3, 3),
+                ("south - q1", 4, 4)
+            ]
+        );
+    }
+
+    #[test]
+    fn test_tabulate_facet_place_left_splits_groups_with_equal_labels() {
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        reader
+            .execute_sql(
+                "CREATE TABLE t AS SELECT * FROM (VALUES ('null', 1), (NULL, 2)) \
+                 AS t(name, sales)",
+            )
+            .unwrap();
+
+        // NULL and the string 'null' render identically but are distinct
+        // groups; their cells must not merge into one rowspan.
+        let resolved = resolve_table_with_reader(
+            "TABULATE * FROM t FACET name SETTING place => 'left'",
+            &reader,
+        )
+        .unwrap();
+
+        let mut labels: Vec<_> = resolved
+            .cells()
+            .iter()
+            .filter(|c| c.kind == TableCellKind::GroupHeading)
+            .collect();
+        labels.sort_by_key(|c| c.top);
+        let extents: Vec<(&str, usize, usize)> = labels
+            .iter()
+            .map(|c| (c.content.as_str(), c.top, c.bottom))
+            .collect();
+        assert_eq!(extents, [("null", 1, 1), ("null", 2, 2)]);
+    }
+
+    #[test]
+    fn test_tabulate_facet_missing_drop_removes_null_rows() {
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        reader
+            .execute_sql(
+                "CREATE TABLE t AS SELECT * FROM (VALUES ('a', 1), (NULL, 2), ('b', 3)) \
+                 AS t(name, sales)",
+            )
+            .unwrap();
+
+        let resolved = resolve_table_with_reader(
+            "TABULATE * FROM t FACET name SETTING missing => 'drop'",
+            &reader,
+        )
+        .unwrap();
+
+        // Header row, and per surviving group a heading row plus one body row.
+        assert_eq!(resolved.rows().len(), 5);
+        let headings: Vec<_> = resolved
+            .cells()
+            .iter()
+            .filter(|c| c.kind == TableCellKind::GroupHeading)
+            .map(|c| c.content.as_str())
+            .collect();
+        assert_eq!(headings, ["a", "b"]);
+    }
+
+    #[test]
+    fn test_tabulate_facet_covering_every_column_errors() {
+        let reader = reader_with_sales();
+        let result = resolve_table_with_reader("TABULATE name FROM sales FACET name", &reader);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_tabulate_facet_rejects_a_spanner_over_a_facet_column() {
+        let reader = reader_with_sales();
+        let result =
+            resolve_table_with_reader("TABULATE * FROM sales FACET name SPAN G OVER name", &reader);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_tabulate_facet_place_left_merges_group_labels_into_rowspans() {
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        reader
+            .execute_sql(
+                "CREATE TABLE t AS SELECT * FROM (VALUES \
+                 ('north', 'q1', 1), ('north', 'q2', 2), ('south', 'q2', 3), \
+                 ('south', 'q2', 4)) \
+                 AS t(region, quarter, sales)",
+            )
+            .unwrap();
+
+        let resolved = resolve_table_with_reader(
+            "TABULATE * FROM t FACET region, quarter SETTING place => 'left'",
+            &reader,
+        )
+        .unwrap();
+
+        // Facet columns lead as group stubs, in nesting order.
+        let names: Vec<&str> = resolved.columns().iter().map(|c| c.name.as_str()).collect();
+        assert_eq!(names, ["region", "quarter", "sales"]);
+        assert!(resolved.columns()[0].is_stub());
+        assert!(resolved.columns()[1].is_stub());
+
+        let mut labels: Vec<_> = resolved
+            .cells()
+            .iter()
+            .filter(|c| c.kind == TableCellKind::GroupHeading)
+            .collect();
+        labels.sort_by_key(|c| (c.left, c.top));
+        let extents: Vec<(&str, usize, usize, usize)> = labels
+            .iter()
+            .map(|c| (c.content.as_str(), c.left, c.top, c.bottom))
+            .collect();
+        // Row 0 is the column-label row. region spans both north rows and
+        // both south rows; quarter's q2 splits at the region boundary even
+        // though the label repeats, and merges within south's group.
+        assert_eq!(
+            extents,
+            [
+                ("north", 0, 1, 2),
+                ("south", 0, 3, 4),
+                ("q1", 1, 1, 1),
+                ("q2", 1, 2, 2),
+                ("q2", 1, 3, 4),
+            ]
+        );
+
+        // The first body row of each group carries the group separator.
+        let firsts: Vec<usize> = resolved
+            .rows()
+            .iter()
+            .enumerate()
+            .filter(|(_, row)| row.classes.contains(&TableClass::RowGroupFirst))
+            .map(|(index, _)| index)
+            .collect();
+        assert_eq!(firsts, [1, 2, 3]);
     }
 
     #[test]

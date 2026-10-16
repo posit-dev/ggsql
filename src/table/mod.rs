@@ -4,28 +4,31 @@
 //! statements, parallel to how `plot` defines `Plot` for `VISUALISE`
 //! statements: `source` (from `TABULATE FROM`), `selection` (from
 //! `TABULATE`'s own column list), `labels` (from `TABULATE LABEL`), `spans`
-//! (from `TABULATE SPAN`), and `formats` (from `TABULATE FORMAT`) are
-//! populated so far.
+//! (from `TABULATE SPAN`), `formats` (from `TABULATE FORMAT`), and `facet`
+//! (from `TABULATE FACET`) are populated so far.
 
+mod facet;
 mod layout;
 mod spanner;
 
+pub(crate) use facet::{groups_are_woven, setup_facet};
 pub(crate) use layout::{
-    compose_header, create_caption, create_column_labels, create_heading, extract_heading_labels,
-    move_stub_columns, standardise_hjust, Slot,
+    compose_header, create_caption, create_column_labels, create_heading, extract_table_titles,
+    move_stub_columns, standardise_hjust, Slot, TableTitles,
 };
 pub use layout::{TableCell, TableCellKind, TableClass, TableColumn, TableLayout, TableRow};
 pub use spanner::Spanner;
 pub(crate) use spanner::{create_spanners, reorder_table_columns};
 
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use crate::labels::Labels;
 use crate::params::{
     validate_parameter, DefaultParamValue, NumberConstraint, ParamConstraint, ParamDefinition,
     Parameters,
 };
+use crate::plot::facet::Facet;
 use crate::DataSource;
 
 /// Complete ggsql table specification.
@@ -54,6 +57,9 @@ pub struct Table {
     /// Cell formatting (from `TABULATE FORMAT`), one per `FORMAT` clause
     /// written — same one-clause-per-group model as `spans`.
     pub formats: Vec<Format>,
+    /// Row grouping (from `TABULATE FACET`). Only the wrap form is
+    /// meaningful for tables; the builder rejects `BY`.
+    pub facet: Option<Facet>,
 }
 
 /// One item in a TABULATE column selection.
@@ -79,6 +85,7 @@ impl Table {
             labels: Labels::default(),
             spans: Vec::new(),
             formats: Vec::new(),
+            facet: None,
         }
     }
 }
@@ -131,45 +138,47 @@ impl Table {
         Ok(resolved)
     }
 
-    /// Reject any SPAN naming a column that any FORMAT clause ever targeted
-    /// at STUB — spanners over the stub aren't supported yet. No
-    /// last-clause-wins resolution needed: a column that was ever declared
-    /// STUB is off-limits to SPAN, regardless of whether a later FORMAT
-    /// clause retargeted it to BODY. Takes already-`resolve_spanner_ids`-
-    /// resolved spans, so a SPAN's `OVER` id reference is checked against
-    /// the real columns it expands to, not the literal id text — and a
-    /// STUB format's own column list gets the same treatment, expanding any
-    /// entry that names a SPAN id into the columns it covers, so `FORMAT
-    /// STUB <span_id>` is checked against real columns too rather than the
-    /// literal id, which would never appear in a span's own `columns`.
-    ///
-    /// Needs no DataFrame: FORMAT/SPAN are both plain AST, so this runs from
-    /// both `validate()` and real execution (`resolve_spanners`), mirroring
-    /// `resolve_spanner_ids`.
-    pub fn validate_span_stub_boundary(&self, resolved_spans: &[Spanner]) -> Result<(), String> {
-        let stub_columns: HashSet<&str> = self
+    /// Reject columns claimed by two table features at once: a SPAN over a
+    /// STUB or FACET column, or a FORMAT STUB over a FACET column. Takes
+    /// already-`resolve_spanner_ids`-resolved spans, so every check compares
+    /// real column names, never a SPAN id. Needs no DataFrame, so this runs
+    /// from both `validate()` and real execution (`resolve_spanners`).
+    pub fn validate_boundaries(&self, resolved_spans: &[Spanner]) -> Result<(), String> {
+        let stub_columns: Vec<String> = self
             .formats
             .iter()
             .filter(|format| format.target.is_stub())
             .flat_map(|format| &format.columns)
             .flat_map(
                 |name| match resolved_spans.iter().find(|span| &span.id == name) {
-                    Some(span) => span.columns.iter().map(String::as_str).collect::<Vec<_>>(),
-                    None => vec![name.as_str()],
+                    Some(span) => span.columns.clone(),
+                    None => vec![name.clone()],
                 },
             )
             .collect();
 
         for (idx, span) in resolved_spans.iter().enumerate() {
-            span.validate_stub_boundary(&stub_columns)
+            span.validate_boundary(&stub_columns, "stub")
                 .map_err(|e| format!("SPAN {}: {}", idx + 1, e))?;
+        }
+
+        let Some(facet) = &self.facet else {
+            return Ok(());
+        };
+        let facet_variables = facet.get_variables();
+        for (idx, span) in resolved_spans.iter().enumerate() {
+            span.validate_boundary(&facet_variables, "facet")
+                .map_err(|e| format!("SPAN {}: {}", idx + 1, e))?;
+        }
+        if let Some(name) = facet_variables.iter().find(|v| stub_columns.contains(v)) {
+            return Err(format!("FORMAT STUB cannot target FACET group '{name}'"));
         }
 
         Ok(())
     }
 
     /// Fully resolve this table's spanners for execution: settings
-    /// validated, `OVER` ids folded, STUB boundary checked, columns
+    /// validated, `OVER` ids folded, feature boundaries checked, columns
     /// checked against the real schema, and each `label` overlaid with any
     /// `LABEL <id> => ...` entry.
     pub fn resolve_spanners(
@@ -183,7 +192,7 @@ impl Table {
                 .map_err(|e| format!("SPAN {}: {}", idx + 1, e))?;
         }
         let spans = self.resolve_spanner_ids()?;
-        self.validate_span_stub_boundary(&spans)?;
+        self.validate_boundaries(&spans)?;
         // None (validate()'s case) skips this: no real schema to check.
         if let Some(names) = column_names {
             for span in &spans {
@@ -201,23 +210,43 @@ impl Table {
     }
 }
 
-/// Which section of the table a `FORMAT` clause's columns belong to.
+/// Which section of the table a column belongs to.
 ///
-/// `FORMAT STUB` is the only thing that assigns a column to the table's
-/// stub; `FORMAT BODY`, or no target identifier at all, leaves columns in
-/// the regular body — `Body` is this enum's default for that reason.
+/// `FORMAT STUB` assigns a column to the table's stub and a `TABULATE
+/// FACET` with `place => 'left'` assigns its variables to group stubs;
+/// `FORMAT BODY`, or no target identifier at all, leaves columns in the
+/// regular body — `Body` is this enum's default for that reason.
+/// `GroupStub` is never reachable from a `FORMAT` target.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ColumnSection {
     #[default]
     Body,
     Stub,
+    /// A `TABULATE FACET` variable's column with `place => 'left'`; the
+    /// payload is the variable's nesting depth (0 is outermost).
+    GroupStub(usize),
 }
 
 impl ColumnSection {
-    /// Whether this is the `STUB` section.
+    /// Whether this is a stub section (`STUB` or a facet group stub).
     pub fn is_stub(self) -> bool {
-        self == ColumnSection::Stub
+        matches!(self, ColumnSection::Stub | ColumnSection::GroupStub(_))
+    }
+
+    /// Whether this is a facet group stub section.
+    pub fn is_group_stub(self) -> bool {
+        matches!(self, ColumnSection::GroupStub(_))
+    }
+
+    /// Section ordering for column placement: group stub columns first (by
+    /// nesting depth), then STUB, then body.
+    pub(crate) fn sort_order(self) -> (usize, usize) {
+        match self {
+            ColumnSection::GroupStub(depth) => (0, depth),
+            ColumnSection::Stub => (1, 0),
+            ColumnSection::Body => (2, 0),
+        }
     }
 }
 
@@ -354,7 +383,7 @@ mod tests {
     }
 
     #[test]
-    fn validate_span_stub_boundary_rejects_a_span_over_a_stub_column() {
+    fn validate_boundaries_rejects_a_span_over_a_stub_column() {
         let table = Table {
             formats: vec![Format {
                 columns: vec!["a".to_string()],
@@ -371,12 +400,12 @@ mod tests {
         };
 
         let resolved = table.resolve_spanner_ids().unwrap();
-        let error = table.validate_span_stub_boundary(&resolved).unwrap_err();
+        let error = table.validate_boundaries(&resolved).unwrap_err();
         assert!(error.contains("cannot include stub column 'a'"));
     }
 
     #[test]
-    fn validate_span_stub_boundary_rejects_a_format_stub_naming_a_span_id() {
+    fn validate_boundaries_rejects_a_format_stub_naming_a_span_id() {
         // FORMAT STUB naming a SPAN id rather than its columns directly must
         // still be caught: `stub_columns` has to expand "G" into "a"/"b"
         // before comparing, or this collision goes undetected.
@@ -396,7 +425,52 @@ mod tests {
         };
 
         let resolved = table.resolve_spanner_ids().unwrap();
-        let error = table.validate_span_stub_boundary(&resolved).unwrap_err();
+        let error = table.validate_boundaries(&resolved).unwrap_err();
         assert!(error.contains("cannot include stub column"));
+    }
+
+    fn table_facet(variables: &[&str]) -> crate::plot::facet::Facet {
+        crate::plot::facet::Facet {
+            layout: crate::plot::facet::FacetLayout::Wrap {
+                variables: variables.iter().map(|v| v.to_string()).collect(),
+            },
+            properties: Parameters::new(),
+            resolved: false,
+        }
+    }
+
+    #[test]
+    fn validate_boundaries_rejects_a_span_over_a_facet_column() {
+        let table = Table {
+            facet: Some(table_facet(&["a"])),
+            spans: vec![Spanner {
+                id: "S".to_string(),
+                label: Some("S".to_string()),
+                columns: vec!["a".to_string(), "sales".to_string()],
+                settings: Parameters::new(),
+            }],
+            ..Table::new()
+        };
+
+        let resolved = table.resolve_spanner_ids().unwrap();
+        let error = table.validate_boundaries(&resolved).unwrap_err();
+        assert!(error.contains("cannot include facet column 'a'"));
+    }
+
+    #[test]
+    fn validate_boundaries_rejects_a_format_stub_targeting_a_facet_column() {
+        let table = Table {
+            facet: Some(table_facet(&["a"])),
+            formats: vec![Format {
+                columns: vec!["a".to_string()],
+                target: ColumnSection::Stub,
+                ..format_with_settings(Parameters::new())
+            }],
+            ..Table::new()
+        };
+
+        let resolved = table.resolve_spanner_ids().unwrap();
+        let error = table.validate_boundaries(&resolved).unwrap_err();
+        assert!(error.contains("FORMAT STUB cannot target FACET group 'a'"));
     }
 }

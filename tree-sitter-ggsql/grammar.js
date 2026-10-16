@@ -693,6 +693,7 @@ module.exports = grammar({
       $.label_clause,
       $.span_clause,
       $.format_clause,
+      $.facet_clause,
     ),
 
     // FORMAT — configures cell formatting for a group of columns. Multiple

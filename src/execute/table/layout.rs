@@ -7,40 +7,84 @@ use std::collections::HashMap;
 
 use super::format::resolve_column_properties;
 use super::stub::{create_row_labels, create_stubhead};
-use crate::array_util::value_to_string;
+use crate::array_util::{column_to_strings, value_to_string};
+use crate::plot::facet::Facet;
 use crate::plot::Labels;
 use crate::table::{
     compose_header, create_caption, create_column_labels, create_heading, create_spanners,
-    move_stub_columns, reorder_table_columns, TableCell, TableClass, TableColumn, TableLayout,
-    TableRow,
+    groups_are_woven, move_stub_columns, reorder_table_columns, TableCell, TableClass, TableColumn,
+    TableLayout, TableRow, TableTitles,
 };
-use crate::{DataFrame, Format, Result, Spanner};
+use crate::{ColumnSection, DataFrame, Format, GgsqlError, Result, Spanner};
 
 /// Resolve a table's columns: one `TableColumn` per `DataFrame` column
 /// (labelled, with `formats`' resolved `SETTING` properties), reordered for
-/// any `gather`-ing spanner and then for STUB columns. `spans` must already
-/// be resolved (`Table::resolve_spanners`).
+/// any `gather`-ing spanner and then for stub columns. A `place => 'top'`
+/// facet consumes its columns as group labels; a `place => 'left'` facet
+/// keeps them as group stub columns. `spans` must already be resolved
+/// (`Table::resolve_spanners`).
 pub(super) fn setup_columns(
     df: &DataFrame,
     spans: &[Spanner],
     labels: &Labels,
     formats: &HashMap<String, Format>,
+    facet: Option<&Facet>,
 ) -> Vec<TableColumn> {
-    let columns = create_table_columns(df, labels, formats);
+    let columns = create_table_columns(df, labels, formats, facet);
     let columns = reorder_table_columns(columns, spans);
-    move_stub_columns(columns)
+    let mut columns = move_stub_columns(columns);
+    let Some(facet) = facet else {
+        return columns;
+    };
+    if groups_are_woven(facet) {
+        // If we weave groups as rows, we omit the group columns
+        let variables = facet.get_variables();
+        columns.retain(|c| !variables.contains(&c.name));
+    }
+    columns
+}
+
+/// Resolve a table's body rows: one `TableRow` per `df` row, stamped with
+/// its facet group key. A facet groups on the raw query values (before
+/// `FORMAT`'s RENAMING rewrites them) and reorders `df` so groups are
+/// contiguous. Group-label rows are not part of the result — `build_cells`
+/// interleaves those once labels can be read from the formatted frame.
+pub(super) fn setup_rows(
+    df: DataFrame,
+    facet: Option<&Facet>,
+) -> Result<(DataFrame, Vec<TableRow>)> {
+    let Some(facet) = facet else {
+        let rows = vec![TableRow::body(); df.height()];
+        return Ok((df, rows));
+    };
+    let df = super::facet::drop_null_rows(facet, &df).map_err(GgsqlError::ValidationError)?;
+    let keys = super::facet::setup_groups(facet, &df).map_err(GgsqlError::ValidationError)?;
+    let (df, keys) = super::facet::reorder_rows(&df, keys).map_err(GgsqlError::ValidationError)?;
+    let mut rows = Vec::with_capacity(keys.len());
+    for key in keys {
+        let first_in_group = rows.last().is_none_or(|row: &TableRow| row.group != key);
+        let mut row = TableRow {
+            group: key,
+            ..TableRow::body()
+        };
+        if first_in_group {
+            row.classes.push(TableClass::RowGroupFirst);
+        }
+        rows.push(row);
+    }
+    Ok((df, rows))
 }
 
 /// Build the resolved `TableLayout` for a table from its already-resolved
-/// `columns` and already-`FORMAT`-applied `df` — spanner rows, column
-/// labels, and body, composed together and validated.
+/// `columns`, already-`FORMAT`-applied `df`, and `setup_rows` body rows —
+/// spanner rows, column labels, and body, composed together and validated.
 pub(super) fn build_cells(
     df: &DataFrame,
     columns: Vec<TableColumn>,
+    rows: Vec<TableRow>,
     spans: &[Spanner],
-    title: Option<&str>,
-    subtitle: Option<&str>,
-    caption: Option<&str>,
+    titles: &TableTitles,
+    facet: Option<&Facet>,
 ) -> Result<TableLayout> {
     let spanners = create_spanners(&columns, spans);
     // Every label empty means `LABEL col => NULL` (or `=> ''`) on every
@@ -61,17 +105,28 @@ pub(super) fn build_cells(
         )
     };
     let header = compose_header(spanners, column_labels);
-    let heading = create_heading(title, subtitle, &columns);
+    let heading = create_heading(
+        titles.title.as_deref(),
+        titles.subtitle.as_deref(),
+        &columns,
+    );
     let header = heading.rowbind(header);
     let mut body_cells = create_row_labels(df, &columns);
     body_cells.extend(create_body(df, &columns));
-    let table_body = TableLayout::new(
-        columns.clone(),
-        vec![TableRow::body(); df.height()],
-        body_cells,
-    );
+    let (body_rows, body_cells) = match facet {
+        None => (rows, body_cells),
+        Some(facet) => {
+            if groups_are_woven(facet) {
+                weave_group_labels(df, &columns, &rows, body_cells, facet)?
+            } else {
+                let body_cells = merge_group_stub_cells(body_cells, &columns, &rows);
+                (rows, body_cells)
+            }
+        }
+    };
+    let table_body = TableLayout::new(columns.clone(), body_rows, body_cells);
     let layout = header.rowbind(table_body);
-    let caption_layout = create_caption(caption, &columns);
+    let caption_layout = create_caption(titles.caption.as_deref(), &columns);
     let layout = layout.rowbind(caption_layout);
 
     layout.validate()?;
@@ -83,12 +138,18 @@ pub(super) fn build_cells(
 /// order — `reorder_table_columns` is what may reorder this list
 /// afterward, not this function. `labels` is the one authority for an
 /// explicit column label; `formats` (already reshaped to one `Format` per
-/// column by `setup_formats`) is the one authority for its properties.
+/// column by `setup_formats`) is the one authority for its properties. A
+/// `place => 'left'` facet marks its variables `GroupStub`.
 fn create_table_columns(
     df: &DataFrame,
     labels: &Labels,
     formats: &HashMap<String, Format>,
+    facet: Option<&Facet>,
 ) -> Vec<TableColumn> {
+    let group_stub_variables = match facet {
+        Some(facet) if !groups_are_woven(facet) => facet.get_variables(),
+        _ => Vec::new(),
+    };
     let mut columns = Vec::new();
     for name in df.get_column_names() {
         // Not stored on TableColumn: nothing needs it once `properties`
@@ -99,7 +160,12 @@ fn create_table_columns(
             .data_type();
         let format = formats.get(&name);
         let properties = resolve_column_properties(dtype, format);
-        let target = format.map(|f| f.target).unwrap_or_default();
+        // Group stubs record nesting order
+        let target = group_stub_variables
+            .iter()
+            .position(|v| *v == name)
+            .map(ColumnSection::GroupStub)
+            .unwrap_or_else(|| format.map(|f| f.target).unwrap_or_default());
         let label = match labels.labels.get(&name) {
             // A stub head is a row-label header, not a data column header —
             // default it blank rather than to the column's own name.
@@ -133,19 +199,128 @@ fn create_body(df: &DataFrame, columns: &[TableColumn]) -> Vec<TableCell> {
         // Looked up once per column, outside the row loop: `DataFrame::column`
         // is an `O(ncol)` scan over the schema, so doing this per row instead
         // would cost `O(nrow * ncol)` lookups rather than `O(ncol)`.
-        let array = df
-            .column(&column.name)
-            .expect("TableColumn.name always names a column of df");
+        let values = column_to_strings(
+            df.column(&column.name)
+                .expect("TableColumn.name always names a column of df"),
+        );
 
-        for row in 0..df.height() {
+        for (row, value) in values.into_iter().enumerate() {
             cells.push(
-                TableCell::new_body(row, index, value_to_string(array, row))
-                    .with_properties(column.properties.clone()),
+                TableCell::new_body(row, index, value).with_properties(column.properties.clone()),
             );
         }
     }
 
     cells
+}
+
+/// Interleave group-label rows into the body. At each group boundary, emit
+/// one `GroupHeading` row per facet-variable level that changed, labels read
+/// from the group's first row (so an unchanged outer variable isn't
+/// restated). Body cells keep their data-row numbering, shifted down by
+/// the label rows before them.
+fn weave_group_labels(
+    df: &DataFrame,
+    columns: &[TableColumn],
+    rows: &[TableRow],
+    body_cells: Vec<TableCell>,
+    facet: &Facet,
+) -> Result<(Vec<TableRow>, Vec<TableCell>)> {
+    let facet_arrays: Vec<_> = facet
+        .get_variables()
+        .iter()
+        .map(|name| {
+            df.column(name).map_err(|_| {
+                GgsqlError::ValidationError(format!(
+                    "TABULATE FACET: no column '{name}' in the query result"
+                ))
+            })
+        })
+        .collect::<Result<_>>()?;
+
+    let mut out_rows = Vec::new();
+    let mut label_cells = Vec::new();
+    // body_offset[data row] = how many label rows precede it in the grid.
+    let mut body_offset = vec![0usize; df.height()];
+    // None until the first group's key is read: it emits every level.
+    let mut previous_key: Option<&[usize]> = None;
+    let mut row = 0usize;
+
+    for group_rows in rows.chunk_by(|a, b| a.group == b.group) {
+        let key = group_rows[0].group.as_slice();
+        let labels: Vec<String> = facet_arrays
+            .iter()
+            .map(|array| value_to_string(array, row))
+            .collect();
+        // When multiple labels exist, we have a nesting pattern.
+        // We don't need to repeat every level label at every group,
+        // just from the level(s) that changed onward.
+        let first_changed = match previous_key {
+            None => 0,
+            Some(previous) => previous
+                .iter()
+                .zip(key)
+                .position(|(old, new)| old != new)
+                .unwrap_or(key.len()),
+        };
+        for label in &labels[first_changed..] {
+            label_cells.push(TableCell::new_group_heading(
+                out_rows.len(),
+                columns.len(),
+                label.clone(),
+            ));
+            out_rows.push(TableRow::group_heading(key.to_vec()));
+        }
+        previous_key = Some(key);
+
+        for table_row in group_rows.iter() {
+            body_offset[row] = out_rows.len() - row;
+            out_rows.push(table_row.clone());
+            row += 1;
+        }
+    }
+
+    let mut body_cells = body_cells;
+    for cell in &mut body_cells {
+        cell.offset_rows(body_offset[cell.top]);
+    }
+    label_cells.extend(body_cells);
+
+    Ok((out_rows, label_cells))
+}
+
+/// Merge each group stub column's row labels into rowspanned cells. A cell
+/// at depth `d` spans rows while the `d + 1` outermost ranks of the rows'
+/// group keys are equal, so a group never merges into a cell opened under
+/// a different outer level even when its label repeats.
+fn merge_group_stub_cells(
+    cells: Vec<TableCell>,
+    columns: &[TableColumn],
+    rows: &[TableRow],
+) -> Vec<TableCell> {
+    if !columns.iter().any(|c| c.is_group_stub()) {
+        return cells;
+    }
+
+    // Column index of a group stub column -> position of its open cell in
+    // `out`, for the column whose cells are currently being walked.
+    let mut open: HashMap<usize, usize> = HashMap::new();
+    let mut out: Vec<TableCell> = Vec::with_capacity(cells.len());
+    for cell in cells {
+        if let ColumnSection::GroupStub(depth) = columns[cell.left].target {
+            if let Some(&index) = open.get(&cell.left) {
+                let current_key = &rows[cell.top].group[..=depth];
+                let previous_key = &rows[cell.top - 1].group[..=depth];
+                if current_key == previous_key {
+                    out[index].bottom = cell.bottom;
+                    continue;
+                }
+            }
+            open.insert(cell.left, out.len());
+        }
+        out.push(cell);
+    }
+    out
 }
 
 #[cfg(test)]
@@ -154,7 +329,7 @@ mod tests {
     use super::*;
     use crate::df;
     use crate::plot::{ParameterValue, Parameters};
-    use crate::table::{extract_heading_labels, TableCellKind};
+    use crate::table::{extract_table_titles, TableCellKind};
     use crate::{ColumnSection, GgsqlError, Spanner, Table};
 
     /// Runs the same steps `resolve_table_with_reader` does, minus the
@@ -162,22 +337,16 @@ mod tests {
     /// directly against a `df!()`-built `DataFrame`.
     fn resolve_layout(df: &DataFrame, table: &Table) -> Result<TableLayout> {
         let mut labels = table.labels.clone();
-        let (title, subtitle, caption) = extract_heading_labels(&mut labels);
+        let titles = extract_table_titles(&mut labels);
         let column_names = df.get_column_names();
         let spans = table
             .resolve_spanners(&labels, Some(&column_names))
             .map_err(GgsqlError::ValidationError)?;
         let formats = setup_formats(df, &table.formats, &spans)?;
-        let columns = setup_columns(df, &spans, &labels, &formats);
+        let columns = setup_columns(df, &spans, &labels, &formats, None);
         let df = apply_formats(df, &formats)?;
-        build_cells(
-            &df,
-            columns,
-            &spans,
-            title.as_deref(),
-            subtitle.as_deref(),
-            caption.as_deref(),
-        )
+        let rows = vec![TableRow::body(); df.height()];
+        build_cells(&df, columns, rows, &spans, &titles, None)
     }
 
     /// `resolve_layout`, for the (common) tests that only care about cells.
@@ -217,7 +386,7 @@ mod tests {
         labels.labels.insert("name".to_string(), None);
         // "extra" has no entry at all: no LABEL clause mentioned it.
 
-        let columns = create_table_columns(&frame, &labels, &HashMap::new());
+        let columns = create_table_columns(&frame, &labels, &HashMap::new(), None);
 
         assert_eq!(columns[0].name, "id");
         assert_eq!(columns[0].label, "ID"); // overridden
@@ -242,14 +411,14 @@ mod tests {
             },
         )]);
 
-        let columns = create_table_columns(&frame, &Labels::default(), &formats);
+        let columns = create_table_columns(&frame, &Labels::default(), &formats, None);
         assert_eq!(columns[0].label, "");
 
         let mut labels = Labels::default();
         labels
             .labels
             .insert("region".to_string(), Some("Region".to_string()));
-        let columns = create_table_columns(&frame, &labels, &formats);
+        let columns = create_table_columns(&frame, &labels, &formats, None);
         assert_eq!(columns[0].label, "Region");
     }
 
@@ -276,6 +445,46 @@ mod tests {
         spanner_with(columns, Some(label), Parameters::new())
     }
 
+    fn left_facet(variables: &[&str]) -> Facet {
+        let mut properties = Parameters::new();
+        properties.insert(
+            "place".to_string(),
+            ParameterValue::String("left".to_string()),
+        );
+        Facet {
+            layout: crate::plot::facet::FacetLayout::Wrap {
+                variables: variables.iter().map(|s| s.to_string()).collect(),
+            },
+            properties,
+            resolved: true,
+        }
+    }
+
+    #[test]
+    fn setup_columns_left_facet_leads_with_group_stubs_in_variable_order() {
+        let frame = df! {
+            "region" => vec!["north".to_string()],
+            "quarter" => vec!["q1".to_string()],
+            "sales" => vec![1i32],
+        }
+        .unwrap();
+        let facet = left_facet(&["quarter", "region"]);
+
+        let columns = setup_columns(
+            &frame,
+            &[],
+            &Labels::default(),
+            &HashMap::new(),
+            Some(&facet),
+        );
+
+        let names: Vec<&str> = columns.iter().map(|c| c.name.as_str()).collect();
+        assert_eq!(names, ["quarter", "region", "sales"]);
+        assert_eq!(columns[0].target, ColumnSection::GroupStub(0));
+        assert_eq!(columns[1].target, ColumnSection::GroupStub(1));
+        assert_eq!(columns[2].target, ColumnSection::Body);
+    }
+
     #[test]
     fn create_body_numbers_rows_from_zero() {
         let frame = df! {
@@ -283,7 +492,7 @@ mod tests {
             "name" => vec!["a".to_string(), "b".to_string()],
         }
         .unwrap();
-        let columns = create_table_columns(&frame, &Labels::default(), &HashMap::new());
+        let columns = create_table_columns(&frame, &Labels::default(), &HashMap::new(), None);
 
         let body = create_body(&frame, &columns);
 

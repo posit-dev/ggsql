@@ -311,7 +311,7 @@ pub fn validate(query: &str) -> Result<Validated> {
 
         match table.resolve_spanner_ids() {
             Ok(resolved_spans) => {
-                if let Err(e) = table.validate_span_stub_boundary(&resolved_spans) {
+                if let Err(e) = table.validate_boundaries(&resolved_spans) {
                     errors.push(ValidationError {
                         message: e,
                         location: None,
