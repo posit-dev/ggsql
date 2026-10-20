@@ -164,6 +164,12 @@
           "default": "",
           "markdownDescription": "Path to a `ggsql-jupyter` executable to offer alongside the kernels found automatically, listed ahead of them. A bare name is looked up on `PATH`. Leave this empty unless you have a kernel in a place the extension does not look: it ships one, and it finds the ones installed on this machine."
         },
+        "ggsql.consoleRows": {
+          "type": "integer",
+          "default": 10,
+          "minimum": 1,
+          "markdownDescription": "How many rows of a query result the ggsql console shows. A result with up to twice this many rows is shown in full; a longer one shows this many, then a count of the rest and a link to open the whole result in the Data Explorer. Notebooks are unaffected. Takes effect in consoles started after the change."
+        },
         "ggsql.enableSqlFiles": {
           "type": "boolean",
           "default": true,

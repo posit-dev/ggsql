@@ -19,6 +19,7 @@ ggsql-vscode/
 │   ├── manager.ts            Kernel discovery + Positron language-runtime registration
 │   ├── positronApi.ts        Acquires the Positron API so Positron can attribute it to this extension
 │   ├── connections.ts        Connection-string handling for the Connections pane
+│   ├── resultLinks.ts        Session wrapper handling "Open in Data Explorer" links
 │   ├── cellParser.ts         Splits .ggsql files into cells for Run-Cell commands
 │   ├── codelens.ts           "▶ Run cell" lens above each cell
 │   ├── decorations.ts        Cell separator decorations
@@ -99,7 +100,11 @@ The extension declares `contributes.languageRuntimes` for `ggsql` (see `package.
 - **`createKernelSpec` appends `--session-mode <console|notebook|background>`** from `sessionMetadata.sessionMode`. The kernel keys every output decision off that: a console session gets the comm, a notebook session gets a static image in its cell, and background gets the standalone path. Without the flag the kernel falls back to guessing from its session id, which works but is a heuristic. `restoreSession` deliberately does *not* rebuild the spec — the supervisor replays the argv the session was created with, and a session's mode never changes.
 - **`uiSubscriptions: ['did_change_plots_render_settings']`** on the runtime metadata. Without it the frontend never tells the kernel how large the Plots pane is, and the kernel needs that for exactly one thing: rendering a *new* plot at the right size so its `comm_open` can carry it, and the pane shows it immediately instead of blank. Every other render carries its own size on the request.
 
-Both live in `manager.ts`. The kernel side of the contract — why the comm alone creates the pane entry, and why an output bundle alongside it would show the plot twice — is in [`/ggsql-jupyter/CLAUDE.md`](../ggsql-jupyter/CLAUDE.md).
+Both live in `manager.ts`, as does one piece of user configuration: **`ggsql.consoleRows` reaches the kernel as `GGSQL_CONSOLE_ROWS` in the spec's `env`, not as `--console-rows`.** A kernel found on the machine may predate the option, and it ignores an unknown variable where it would refuse to start on an unknown flag. `consoleRowsEnv` leaves out a value the kernel would reject, for the same reason. Like the session mode, it is fixed when a session starts.
+
+The kernel side of the contract — why the comm alone creates the pane entry, and why an output bundle alongside it would show the plot twice — is in [`/ggsql-jupyter/CLAUDE.md`](../ggsql-jupyter/CLAUDE.md).
+
+**Sessions are wrapped to add `openResource`.** `createSession` and `restoreSession` return the supervisor's session through `withResultLinks` (`src/resultLinks.ts`), a `Proxy` that adds `openResource` for the `x-ggsql-view:` links the kernel prints under console results, and binds everything else to the underlying session. Positron offers a clicked console hyperlink only to the *last active* console of each language, so the handler routes by the session id in the link rather than assuming it is the session it wraps. The kernel side is in [`/ggsql-jupyter/CLAUDE.md`](../ggsql-jupyter/CLAUDE.md#opening-a-console-result-in-the-data-explorer).
 
 Outside Positron there is no way to execute a query: `activate()` returns early, so every command that runs code stays unregistered. To avoid offering actions that cannot work, everything execution-related gates on Positron's built-in **`isPositron`** context key ([extension development docs](https://positron.posit.co/extension-development.html#option-1-context-keys)):
 
@@ -151,7 +156,8 @@ The one case that interrupts the user is the dead end: nothing runnable anywhere
 
 ```json
 {
-  "ggsql.kernelPath": "string"   // an extra kernel to offer, listed first
+  "ggsql.kernelPath": "string",  // an extra kernel to offer, listed first
+  "ggsql.consoleRows": 10        // rows of a long result a console shows
 }
 ```
 

@@ -8,6 +8,7 @@ pub mod display;
 pub mod executor;
 pub mod message;
 pub mod plot;
+pub mod results;
 // Re-export commonly used types
 pub use display::format_display_data;
 pub use executor::{ExecutionResult, QueryExecutor};

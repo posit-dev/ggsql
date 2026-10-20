@@ -1,16 +1,24 @@
 //! Data explorer backend for the Positron data viewer.
 //!
-//! Implements the `positron.dataExplorer` comm protocol, providing SQL-backed
-//! paginated data access.
+//! Implements the `positron.dataExplorer` comm protocol over SQL: every page,
+//! filter, sort and profile is a query against the explorer's table, which is
+//! never loaded into memory.
 
+mod export;
+mod filter;
+
+pub use filter::Capabilities;
+
+use crate::results::{self, StoredResult};
 use ggsql::reader::Reader;
 use ggsql::sql::FromItem;
+use ggsql::DataFrame;
 use serde_json::{json, Value};
 
 /// Result of handling an RPC call.
 pub struct RpcResponse {
-    /// The JSON-RPC result to send as the reply.
-    pub result: Value,
+    /// The JSON-RPC result to send as the reply, or the message of an error.
+    pub result: Result<Value, String>,
     /// An optional event to send on iopub (e.g. `return_column_profiles`).
     pub event: Option<RpcEvent>,
 }
@@ -24,11 +32,23 @@ pub struct RpcEvent {
 impl RpcResponse {
     /// Create a simple reply with no async event.
     pub fn reply(result: Value) -> Self {
+        Self::answer(Ok(result))
+    }
+
+    /// Reply with a result or an error, and no async event.
+    pub fn answer(result: Result<Value, String>) -> Self {
         Self {
             result,
             event: None,
         }
     }
+}
+
+/// The session's database, which Convert to Code writes SQL for. For a
+/// retained result that is not the database the explorer queries.
+pub struct Session<'a> {
+    pub reader: &'a dyn Reader,
+    pub caps: Capabilities,
 }
 
 /// Cached column metadata for a table.
@@ -41,24 +61,49 @@ pub struct ColumnInfo {
     pub type_display: String,
 }
 
+/// Which database an explorer's table lives in.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Source {
+    /// A table in the session's own database, opened from the Connections pane.
+    Session,
+    /// A retained query result in the private results database, by key.
+    Result(String),
+}
+
+/// Which rows of the filtered, sorted view to read.
+enum Rows {
+    All,
+    /// `first..=last`.
+    Range(usize, usize),
+}
+
 /// State for one open data explorer comm.
 pub struct DataExplorerState {
+    source: Source,
     /// Fully qualified and quoted table path, e.g. `"memory"."main"."users"`.
     table_path: String,
     /// Display title shown in the data viewer tab.
     title: String,
+    /// The query a retained result came from, which Convert to Code wraps.
+    query: Option<String>,
+    /// What the database holding the table can do.
+    caps: Capabilities,
     /// Cached column schemas.
     columns: Vec<ColumnInfo>,
     /// Cached total row count.
     num_rows: usize,
+    /// The row filters as last set, each marked valid or not, for `get_state`.
+    row_filters: Vec<Value>,
+    sort_keys: Vec<Value>,
+    /// The valid row filters ANDed together; `None` when unfiltered.
+    predicate: Option<String>,
+    /// Rows passing the filters.
+    selected_num_rows: usize,
 }
 
 impl DataExplorerState {
     /// Open a data explorer for a table at the given connection path.
-    ///
-    /// Runs `SELECT COUNT(*)` and a column metadata query to cache schema
-    /// information. Does **not** load the full table into memory.
-    pub fn open(reader: &dyn Reader, path: &[String]) -> Result<Self, String> {
+    pub fn open(reader: &dyn Reader, path: &[String], caps: Capabilities) -> Result<Self, String> {
         let full = crate::connection::resolve_path(reader, path);
         if full.len() < 3 {
             return Err(format!(
@@ -66,11 +111,43 @@ impl DataExplorerState {
                 full.len()
             ));
         }
+        let (catalog, schema, table) = (&full[0], &full[1], &full[2]);
+        let mut state = Self::open_table(reader, catalog, schema, table, table)?;
+        state.caps = caps;
+        Ok(state)
+    }
 
-        let catalog = &full[0];
-        let schema = &full[1];
-        let table = &full[2];
+    /// Open a data explorer for a retained query result. `reader` is the
+    /// private results database.
+    pub fn open_result(reader: &dyn Reader, result: &StoredResult) -> Result<Self, String> {
+        let mut state = Self::open_table(
+            reader,
+            results::CATALOG,
+            results::SCHEMA,
+            &result.table,
+            &result.title,
+        )?;
+        state.source = Source::Result(result.key.clone());
+        state.query = Some(result.query.clone());
+        // The results database is DuckDB.
+        state.caps = Capabilities { regex: true };
+        Ok(state)
+    }
 
+    /// Which database this explorer's table lives in.
+    pub fn source(&self) -> &Source {
+        &self.source
+    }
+
+    /// Runs `SELECT COUNT(*)` and a column metadata query to cache schema
+    /// information. Does **not** load the full table into memory.
+    fn open_table(
+        reader: &dyn Reader,
+        catalog: &str,
+        schema: &str,
+        table: &str,
+        title: &str,
+    ) -> Result<Self, String> {
         let table_path = [catalog, schema, table]
             .iter()
             .filter(|s| !s.is_empty())
@@ -78,23 +155,8 @@ impl DataExplorerState {
             .collect::<Vec<_>>()
             .join(".");
 
-        // Get row count
-        let count_sql = format!("SELECT COUNT(*) AS \"n\" FROM {}", table_path);
-        let count_df = reader
-            .execute_sql(&count_sql)
+        let num_rows = count_rows(reader, &table_path, None)
             .map_err(|e| format!("Failed to count rows: {}", e))?;
-        let num_rows = count_df
-            .column("n")
-            .ok()
-            .and_then(|col| {
-                if col.is_empty() {
-                    None
-                } else {
-                    let s = ggsql::array_util::value_to_string(col, 0);
-                    s.parse::<usize>().ok()
-                }
-            })
-            .unwrap_or(0);
 
         let column_infos = reader
             .list_columns(catalog, schema, table)
@@ -112,47 +174,79 @@ impl DataExplorerState {
         }
 
         Ok(Self {
+            source: Source::Session,
             table_path,
-            title: table.to_string(),
+            title: title.to_string(),
+            query: None,
+            caps: Capabilities { regex: false },
             columns,
             num_rows,
+            row_filters: Vec::new(),
+            sort_keys: Vec::new(),
+            predicate: None,
+            selected_num_rows: num_rows,
         })
     }
 
     /// Dispatch a JSON-RPC method call.
     ///
-    /// Returns the RPC result and an optional async event to send on iopub
-    /// (used by `get_column_profiles` to deliver results asynchronously).
-    pub fn handle_rpc(&self, method: &str, params: &Value, reader: &dyn Reader) -> RpcResponse {
+    /// `reader` holds the explorer's table. Returns the RPC result and an
+    /// optional async event to send on iopub (used by `get_column_profiles` to
+    /// deliver results asynchronously).
+    pub fn handle_rpc(
+        &mut self,
+        method: &str,
+        params: &Value,
+        reader: &dyn Reader,
+        session: Session,
+    ) -> RpcResponse {
         match method {
             "get_state" => RpcResponse::reply(self.get_state()),
             "get_schema" => RpcResponse::reply(self.get_schema(params)),
-            "get_data_values" => RpcResponse::reply(self.get_data_values(params, reader)),
+            "get_data_values" => RpcResponse::answer(self.get_data_values(params, reader)),
             "get_column_profiles" => self.get_column_profiles(params, reader),
-            // TODO: Implement filters, sorting, and searching.
-            "set_row_filters" => {
-                // Stub: accept but ignore filters, return current shape
-                RpcResponse::reply(json!({
-                    "selected_num_rows": self.num_rows,
-                    "had_errors": false
-                }))
+            "set_row_filters" => RpcResponse::answer(self.set_row_filters(params, reader)),
+            "set_sort_columns" => RpcResponse::answer(self.set_sort_columns(params)),
+            "search_schema" => RpcResponse::reply(json!({
+                "matches": filter::search_schema(params, &self.columns)
+            })),
+            "export_data_selection" => {
+                RpcResponse::answer(self.export_data_selection(params, reader))
             }
-            "set_sort_columns" | "set_column_filters" | "search_schema" => {
-                RpcResponse::reply(json!(null))
-            }
+            "suggest_code_syntax" => RpcResponse::reply(json!({"code_syntax_name": "SQL"})),
+            "convert_to_code" => RpcResponse::reply(self.convert_to_code(params, &session)),
+            // Unsupported, and advertised as such in `get_state`.
+            "set_column_filters" => RpcResponse::reply(json!(null)),
             _ => {
                 tracing::warn!("Unhandled data explorer method: {}", method);
-                RpcResponse::reply(json!(null))
+                RpcResponse::answer(Err(format!("Unknown method {method:?}")))
             }
         }
     }
 
     fn get_state(&self) -> Value {
         let num_columns = self.columns.len();
+        let row_filter_types: Vec<Value> = [
+            "between",
+            "compare",
+            "is_empty",
+            "is_false",
+            "is_null",
+            "is_true",
+            "not_between",
+            "not_empty",
+            "not_null",
+            "search",
+            "set_membership",
+        ]
+        .iter()
+        .map(|t| json!({"row_filter_type": t, "support_status": "supported"}))
+        .collect();
+
         json!({
             "display_name": self.title,
             "table_shape": {
-                "num_rows": self.num_rows,
+                "num_rows": self.selected_num_rows,
                 "num_columns": num_columns
             },
             "table_unfiltered_shape": {
@@ -161,21 +255,25 @@ impl DataExplorerState {
             },
             "has_row_labels": false,
             "column_filters": [],
-            "row_filters": [],
-            "sort_keys": [],
+            "row_filters": self.row_filters,
+            "sort_keys": self.sort_keys,
             "supported_features": {
                 "search_schema": {
-                    "support_status": "unsupported",
-                    "supported_types": []
+                    "support_status": "supported",
+                    "supported_types": [
+                        {"column_filter_type": "text_search", "support_status": "supported"},
+                        {"column_filter_type": "match_data_types", "support_status": "supported"}
+                    ]
                 },
                 "set_column_filters": {
                     "support_status": "unsupported",
                     "supported_types": []
                 },
                 "set_row_filters": {
-                    "support_status": "unsupported",
+                    "support_status": "supported",
+                    // Filters are always ANDed.
                     "supports_conditions": "unsupported",
-                    "supported_types": []
+                    "supported_types": row_filter_types
                 },
                 "get_column_profiles": {
                     "support_status": "supported",
@@ -187,14 +285,15 @@ impl DataExplorerState {
                     ]
                 },
                 "set_sort_columns": {
-                    "support_status": "unsupported"
+                    "support_status": "supported"
                 },
                 "export_data_selection": {
-                    "support_status": "unsupported",
-                    "supported_formats": []
+                    "support_status": "supported",
+                    "supported_formats": ["csv", "tsv", "html"]
                 },
                 "convert_to_code": {
-                    "support_status": "unsupported"
+                    "support_status": "supported",
+                    "code_syntaxes": [{"code_syntax_name": "SQL"}]
                 }
             }
         })
@@ -228,94 +327,266 @@ impl DataExplorerState {
         json!({ "columns": columns })
     }
 
-    fn get_data_values(&self, params: &Value, reader: &dyn Reader) -> Value {
-        let selections = match params.get("columns").and_then(|v| v.as_array()) {
-            Some(arr) => arr,
-            None => return json!({ "columns": [] }),
-        };
+    /// The filtered table as a `FROM` item, for the queries that aggregate it.
+    fn relation(&self) -> String {
+        match &self.predicate {
+            None => self.table_path.clone(),
+            Some(p) => format!(
+                "(SELECT * FROM {} WHERE {}) AS \"__ggsql_filtered__\"",
+                self.table_path, p
+            ),
+        }
+    }
 
-        // Determine the row range from the first selection's spec
-        let (first_index, last_index) = selections
-            .first()
-            .and_then(|sel| sel.get("spec"))
-            .map(|spec| {
-                let first = spec
-                    .get("first_index")
-                    .and_then(|v| v.as_u64())
-                    .unwrap_or(0) as usize;
-                let last = spec.get("last_index").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
-                (first, last)
-            })
-            .unwrap_or((0, 0));
-
-        let limit = last_index.saturating_sub(first_index) + 1;
-
-        // Collect requested column indices
-        let col_indices: Vec<usize> = selections
+    /// Read `rows` of the filtered, sorted view, for the columns `cols`.
+    fn fetch(&self, reader: &dyn Reader, cols: &[usize], rows: Rows) -> Result<DataFrame, String> {
+        let names = cols
             .iter()
-            .filter_map(|sel| {
-                sel.get("column_index")
-                    .and_then(|v| v.as_u64())
-                    .map(|n| n as usize)
-            })
-            .collect();
-
-        // Build column list for SELECT
-        let col_names: Vec<String> = col_indices
-            .iter()
-            .filter_map(|&idx| {
+            .map(|&i| {
                 self.columns
-                    .get(idx)
-                    .map(|col| ggsql::naming::quote_ident(&col.name))
+                    .get(i)
+                    .map(|c| ggsql::naming::quote_ident(&c.name))
+                    .ok_or_else(|| format!("There is no column {i}"))
             })
-            .collect();
-
-        if col_names.is_empty() {
-            return json!({ "columns": [] });
+            .collect::<Result<Vec<_>, _>>()?;
+        if names.is_empty() {
+            return Ok(DataFrame::empty());
         }
 
-        let sql = format!(
-            "SELECT {} FROM {} LIMIT {} OFFSET {}",
-            col_names.join(", "),
-            self.table_path,
-            limit,
-            first_index,
-        );
-
-        let df = match reader.execute_sql(&sql) {
-            Ok(df) => df,
-            Err(e) => {
-                tracing::error!("get_data_values query failed: {}", e);
-                let empty: Vec<Vec<String>> = col_indices.iter().map(|_| vec![]).collect();
-                return json!({ "columns": empty });
+        let filter = self
+            .predicate
+            .as_ref()
+            .map(|p| format!(" WHERE {p}"))
+            .unwrap_or_default();
+        // A retained result is a DuckDB table, whose `rowid` is its original
+        // row order; that keeps paging through equal sort keys stable.
+        let tiebreak = matches!(self.source, Source::Result(_)).then_some("rowid");
+        let order = filter::order_by(&self.sort_keys, &self.columns, tiebreak)?;
+        let limit = match rows {
+            Rows::All => String::new(),
+            Rows::Range(first, last) => {
+                format!(" LIMIT {} OFFSET {}", last.saturating_sub(first) + 1, first)
             }
         };
 
-        // Format each column's values as strings.
-        // Positron's ColumnValue is `number | string`: numbers are special
-        // value codes (0 = NULL, 1 = NA, 2 = NaN), strings are formatted data.
-        const SPECIAL_VALUE_NULL: i64 = 0;
+        let sql = format!(
+            "SELECT {} FROM {}{filter}{order}{limit}",
+            names.join(", "),
+            self.table_path,
+        );
+        reader.execute_sql(&sql).map_err(|e| e.to_string())
+    }
 
-        let columns: Vec<Vec<Value>> = (0..df.width())
-            .map(|col_idx| {
-                let col = df.get_columns()[col_idx].clone();
-                use arrow::array::Array;
-                (0..df.height())
-                    .map(|row_idx| {
-                        if col.is_null(row_idx) {
-                            json!(SPECIAL_VALUE_NULL)
-                        } else {
-                            let s = ggsql::array_util::value_to_string(&col, row_idx);
-                            // Strip surrounding quotes from string values
-                            let s = s.trim_matches('"');
-                            Value::String(s.to_string())
-                        }
-                    })
+    fn get_data_values(&self, params: &Value, reader: &dyn Reader) -> Result<Value, String> {
+        let selections = params["columns"].as_array().cloned().unwrap_or_default();
+        if selections.is_empty() {
+            return Ok(json!({ "columns": [] }));
+        }
+
+        // Each column asks for a range or a list of rows. One query covers the
+        // span of them all, and each column then takes the rows it asked for.
+        let wanted: Vec<Vec<usize>> = selections
+            .iter()
+            .map(|sel| {
+                let spec = &sel["spec"];
+                match spec["indices"].as_array() {
+                    Some(indices) => indices
+                        .iter()
+                        .filter_map(|v| v.as_u64().map(|n| n as usize))
+                        .collect(),
+                    None => {
+                        let first = spec["first_index"].as_u64().unwrap_or(0) as usize;
+                        let last = spec["last_index"].as_u64().unwrap_or(0) as usize;
+                        (first..=last).collect()
+                    }
+                }
+            })
+            .collect();
+        let first = wanted.iter().flatten().min().copied().unwrap_or(0);
+        let last = wanted.iter().flatten().max().copied().unwrap_or(0);
+
+        let cols: Vec<usize> = selections
+            .iter()
+            .map(|sel| sel["column_index"].as_u64().unwrap_or(0) as usize)
+            .collect();
+        let df = self.fetch(reader, &cols, Rows::Range(first, last))?;
+
+        let columns: Vec<Vec<Value>> = wanted
+            .iter()
+            .enumerate()
+            .map(|(i, rows)| {
+                let col = &df.get_columns()[i];
+                rows.iter()
+                    .map(|&r| r - first)
+                    .filter(|&r| r < df.height())
+                    .map(|r| cell_value(col, r))
                     .collect()
             })
             .collect();
 
-        json!({ "columns": columns })
+        Ok(json!({ "columns": columns }))
+    }
+
+    /// Apply row filters, returning how many rows pass.
+    ///
+    /// A filter that cannot be built, or that the database rejects, is marked
+    /// invalid with the reason and left out rather than failing the rest.
+    fn set_row_filters(&mut self, params: &Value, reader: &dyn Reader) -> Result<Value, String> {
+        let mut filters = params["filters"].as_array().cloned().unwrap_or_default();
+        let mut had_errors = false;
+        let mut invalidate = |filter: &mut Value, message: String| {
+            filter["is_valid"] = json!(false);
+            filter["error_message"] = json!(message);
+            had_errors = true;
+        };
+
+        let mut built = Vec::new();
+        for (i, f) in filters.iter_mut().enumerate() {
+            match filter::predicate(f, &self.columns, reader.dialect(), self.caps) {
+                Ok(p) => built.push((i, p)),
+                Err(e) => invalidate(f, e),
+            }
+        }
+
+        let combine = |built: &[(usize, String)]| {
+            (!built.is_empty()).then(|| {
+                built
+                    .iter()
+                    .map(|(_, p)| format!("({p})"))
+                    .collect::<Vec<_>>()
+                    .join(" AND ")
+            })
+        };
+
+        let mut count = count_rows(reader, &self.table_path, combine(&built).as_deref());
+        if count.is_err() {
+            // Find the filters the database rejects, and count without them.
+            built.retain(
+                |(i, p)| match count_rows(reader, &self.table_path, Some(p)) {
+                    Ok(_) => true,
+                    Err(e) => {
+                        invalidate(&mut filters[*i], e);
+                        false
+                    }
+                },
+            );
+            count = count_rows(reader, &self.table_path, combine(&built).as_deref());
+        }
+        let selected = count?;
+
+        for (i, _) in &built {
+            filters[*i]["is_valid"] = json!(true);
+        }
+        self.row_filters = filters;
+        self.predicate = combine(&built);
+        self.selected_num_rows = selected;
+
+        Ok(json!({
+            "selected_num_rows": selected,
+            "had_errors": had_errors
+        }))
+    }
+
+    fn set_sort_columns(&mut self, params: &Value) -> Result<Value, String> {
+        let keys = params["sort_keys"].as_array().cloned().unwrap_or_default();
+        // Checked here so a bad key fails the request, not every page after it.
+        filter::order_by(&keys, &self.columns, None)?;
+        self.sort_keys = keys;
+        Ok(json!({}))
+    }
+
+    /// The selected cells as CSV, TSV or HTML.
+    fn export_data_selection(&self, params: &Value, reader: &dyn Reader) -> Result<Value, String> {
+        let format = params["format"].as_str().unwrap_or("csv");
+        let kind = params["selection"]["kind"].as_str().unwrap_or("");
+        let sel = &params["selection"]["selection"];
+
+        let index = |v: &Value| v.as_u64().map(|n| n as usize).ok_or("Bad selection index");
+        let span = |first: &Value, last: &Value| -> Result<Vec<usize>, String> {
+            Ok((index(first)?..=index(last)?).collect())
+        };
+        let list = |v: &Value| -> Result<Vec<usize>, String> {
+            v.as_array()
+                .ok_or("Bad selection indices")?
+                .iter()
+                .map(|i| index(i).map_err(str::to_string))
+                .collect()
+        };
+        let all_columns: Vec<usize> = (0..self.columns.len()).collect();
+
+        // `None` rows means every row of the view.
+        let (rows, cols): (Option<Vec<usize>>, Vec<usize>) = match kind {
+            "single_cell" => (
+                Some(vec![index(&sel["row_index"])?]),
+                vec![index(&sel["column_index"])?],
+            ),
+            "cell_range" => (
+                Some(span(&sel["first_row_index"], &sel["last_row_index"])?),
+                span(&sel["first_column_index"], &sel["last_column_index"])?,
+            ),
+            "column_range" => (None, span(&sel["first_index"], &sel["last_index"])?),
+            "row_range" => (
+                Some(span(&sel["first_index"], &sel["last_index"])?),
+                all_columns,
+            ),
+            "column_indices" => (None, list(&sel["indices"])?),
+            "row_indices" => (Some(list(&sel["indices"])?), all_columns),
+            "cell_indices" => (
+                Some(list(&sel["row_indices"])?),
+                list(&sel["column_indices"])?,
+            ),
+            other => return Err(format!("Unknown selection kind {other:?}")),
+        };
+
+        let (df, offset) = match &rows {
+            None => (self.fetch(reader, &cols, Rows::All)?, 0),
+            Some(rows) => {
+                let first = rows.iter().min().copied().unwrap_or(0);
+                let last = rows.iter().max().copied().unwrap_or(0);
+                (self.fetch(reader, &cols, Rows::Range(first, last))?, first)
+            }
+        };
+        let picked: Vec<usize> = match &rows {
+            None => (0..df.height()).collect(),
+            Some(rows) => rows
+                .iter()
+                .map(|r| r - offset)
+                .filter(|&r| r < df.height())
+                .collect(),
+        };
+        let cells: Vec<Vec<String>> = picked
+            .iter()
+            .map(|&r| df.get_columns().iter().map(|c| cell_string(c, r)).collect())
+            .collect();
+
+        // A single cell is copied as its bare value.
+        let data = if kind == "single_cell" {
+            cells
+                .first()
+                .and_then(|r| r.first())
+                .cloned()
+                .unwrap_or_default()
+        } else {
+            let header: Vec<String> = cols.iter().map(|&i| self.columns[i].name.clone()).collect();
+            export::format(Some(&header), &cells, format)?
+        };
+        Ok(json!({ "data": data, "format": format }))
+    }
+
+    /// SQL for the session's database reproducing the explorer's view.
+    fn convert_to_code(&self, params: &Value, session: &Session) -> Value {
+        let from = match &self.query {
+            Some(query) => filter::subquery(query),
+            None => self.table_path.clone(),
+        };
+        let lines = filter::convert_to_code(
+            params,
+            &from,
+            &self.columns,
+            session.reader.dialect(),
+            session.caps,
+        );
+        json!({ "converted_code": lines })
     }
 
     /// Handle `get_column_profiles` — returns `{}` as the RPC result and sends
@@ -331,7 +602,7 @@ impl DataExplorerState {
             Some(arr) => arr,
             None => {
                 return RpcResponse {
-                    result: json!({}),
+                    result: Ok(json!({})),
                     event: Some(RpcEvent {
                         method: "return_column_profiles".into(),
                         params: json!({
@@ -361,7 +632,7 @@ impl DataExplorerState {
         }
 
         RpcResponse {
-            result: json!({}),
+            result: Ok(json!({})),
             event: Some(RpcEvent {
                 method: "return_column_profiles".into(),
                 params: json!({
@@ -471,7 +742,7 @@ impl DataExplorerState {
         let sql = format!(
             "SELECT {} FROM {}",
             select_parts.join(", "),
-            self.table_path
+            self.relation()
         );
 
         let df = match reader.execute_sql(&sql) {
@@ -539,7 +810,7 @@ impl DataExplorerState {
                     // must sit in a query over `from` (native dialects return
                     // a bare aggregate, which without a FROM would compute
                     // over an empty input and yield NULL).
-                    let from_query = format!("SELECT * FROM {}", self.table_path);
+                    let from_query = format!("SELECT * FROM {}", self.relation());
                     let median_expr =
                         dialect.sql_quantile(&col.name, 0.5, FromItem::Query(&from_query), &[]);
                     let median_sql = format!(
@@ -673,7 +944,7 @@ impl DataExplorerState {
              FROM {table} WHERE {c} IS NOT NULL",
             c = quoted_col,
             t = float_type,
-            table = self.table_path,
+            table = self.relation(),
         );
 
         let bounds_df = reader.execute_sql(&bounds_sql).ok()?;
@@ -737,7 +1008,7 @@ impl DataExplorerState {
              ORDER BY \"clamped_bin\"",
             c = quoted_col,
             t = float_type,
-            table = self.table_path,
+            table = self.relation(),
             min = min_val,
             width = bin_width,
             num_bins = num_bins,
@@ -775,7 +1046,7 @@ impl DataExplorerState {
             .unwrap_or_default();
 
         let mut quantile_results = Vec::new();
-        let from_query = format!("SELECT * FROM {}", self.table_path);
+        let from_query = format!("SELECT * FROM {}", self.relation());
         for q in &quantiles_param {
             if let Some(q_val) = q.as_f64() {
                 let expr =
@@ -830,7 +1101,7 @@ impl DataExplorerState {
              ORDER BY COUNT(*) DESC \
              LIMIT {limit}",
             c = quoted_col,
-            table = self.table_path,
+            table = self.relation(),
             limit = limit,
         );
 
@@ -859,7 +1130,7 @@ impl DataExplorerState {
         let count_sql = format!(
             "SELECT COUNT({c}) AS \"total\" FROM {table}",
             c = quoted_col,
-            table = self.table_path,
+            table = self.relation(),
         );
         let other_count = reader
             .execute_sql(&count_sql)
@@ -883,6 +1154,50 @@ impl DataExplorerState {
             "other_count": other_count
         }))
     }
+}
+
+/// `SELECT COUNT(*)` over `table`, filtered by `predicate` when given.
+fn count_rows(reader: &dyn Reader, table: &str, predicate: Option<&str>) -> Result<usize, String> {
+    let filter = predicate.map(|p| format!(" WHERE {p}")).unwrap_or_default();
+    let sql = format!("SELECT COUNT(*) AS \"n\" FROM {table}{filter}");
+    let df = reader.execute_sql(&sql).map_err(|e| e.to_string())?;
+    let col = df.column("n").map_err(|e| e.to_string())?;
+    if col.is_empty() {
+        return Ok(0);
+    }
+    ggsql::array_util::value_to_string(col, 0)
+        .parse::<usize>()
+        .map_err(|e| e.to_string())
+}
+
+/// A cell as text, with string values unquoted and a null as empty.
+fn cell_string(col: &arrow::array::ArrayRef, row: usize) -> String {
+    use arrow::array::Array;
+    if col.is_null(row) {
+        return String::new();
+    }
+    ggsql::array_util::value_to_string(col, row)
+        .trim_matches('"')
+        .to_string()
+}
+
+/// A cell as Positron's `ColumnValue`: formatted text, or a number coding a
+/// special value — 0 null, 2 NaN, 10 infinity, 11 negative infinity.
+fn cell_value(col: &arrow::array::ArrayRef, row: usize) -> Value {
+    use arrow::array::Array;
+    if col.is_null(row) {
+        return json!(0);
+    }
+    let s = cell_string(col, row);
+    if col.data_type().is_floating() {
+        match s.to_ascii_lowercase().as_str() {
+            "nan" => return json!(2),
+            "inf" | "infinity" => return json!(10),
+            "-inf" | "-infinity" => return json!(11),
+            _ => {}
+        }
+    }
+    Value::String(s)
 }
 
 /// Map a SQL type name (from information_schema or SHOW COLUMNS) to a Positron display type.
@@ -991,6 +1306,270 @@ fn clean_type_name(type_name: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const QUERY: &str = "SELECT i AS n, 'r' || i AS label FROM range(10) t(i)";
+
+    /// An explorer on QUERY's result, with the store that keeps its table.
+    fn explorer() -> (crate::results::ResultStore, DataExplorerState) {
+        let df = ggsql::reader::connection::reader_from_uri("duckdb://memory")
+            .unwrap()
+            .execute_sql(QUERY)
+            .unwrap();
+        let mut store = crate::results::ResultStore::new(4).unwrap();
+        let key = store
+            .insert(df, "Query [3]".into(), QUERY.to_string(), |_| false)
+            .unwrap();
+        let state =
+            DataExplorerState::open_result(store.reader(), store.get(&key).unwrap()).unwrap();
+        assert_eq!(*state.source(), Source::Result(key));
+        (store, state)
+    }
+
+    fn rpc(
+        state: &mut DataExplorerState,
+        store: &crate::results::ResultStore,
+        method: &str,
+        params: Value,
+    ) -> Result<Value, String> {
+        let session = Session {
+            reader: store.reader(),
+            caps: Capabilities { regex: true },
+        };
+        state
+            .handle_rpc(method, &params, store.reader(), session)
+            .result
+    }
+
+    /// The first `n` values of a column, as the grid would ask for them.
+    fn page(
+        state: &mut DataExplorerState,
+        store: &crate::results::ResultStore,
+        column: usize,
+        n: usize,
+    ) -> Value {
+        let params = json!({"columns": [
+            {"column_index": column, "spec": {"first_index": 0, "last_index": n - 1}}
+        ]});
+        rpc(state, store, "get_data_values", params).unwrap()["columns"][0].clone()
+    }
+
+    fn compare(column: usize, op: &str, value: &str) -> Value {
+        json!({
+            "filter_id": format!("{column}{op}{value}"),
+            "filter_type": "compare",
+            "column_schema": {"column_index": column},
+            "condition": "and",
+            "params": {"op": op, "value": value}
+        })
+    }
+
+    #[test]
+    fn test_a_retained_result_opens_and_pages() {
+        let (store, mut state) = explorer();
+
+        let st = rpc(&mut state, &store, "get_state", json!({})).unwrap();
+        assert_eq!(st["display_name"], "Query [3]");
+        assert_eq!(st["table_shape"]["num_rows"], 10);
+        assert_eq!(st["table_shape"]["num_columns"], 2);
+
+        let values = rpc(
+            &mut state,
+            &store,
+            "get_data_values",
+            json!({"columns": [
+                {"column_index": 0, "spec": {"first_index": 1, "last_index": 2}},
+                {"column_index": 1, "spec": {"indices": [4, 2]}}
+            ]}),
+        )
+        .unwrap();
+        assert_eq!(values["columns"], json!([["1", "2"], ["r4", "r2"]]));
+    }
+
+    #[test]
+    fn test_filters_narrow_the_view() {
+        let (store, mut state) = explorer();
+        let reply = rpc(
+            &mut state,
+            &store,
+            "set_row_filters",
+            json!({"filters": [compare(0, ">=", "5"), compare(0, "!=", "7")]}),
+        )
+        .unwrap();
+        assert_eq!(reply, json!({"selected_num_rows": 4, "had_errors": false}));
+
+        let st = rpc(&mut state, &store, "get_state", json!({})).unwrap();
+        assert_eq!(st["table_shape"]["num_rows"], 4);
+        assert_eq!(st["table_unfiltered_shape"]["num_rows"], 10);
+        assert_eq!(st["row_filters"][0]["is_valid"], true);
+        assert_eq!(page(&mut state, &store, 0, 4), json!(["5", "6", "8", "9"]));
+    }
+
+    #[test]
+    fn test_a_bad_filter_is_left_out_and_says_why() {
+        let (store, mut state) = explorer();
+        // One the kernel rejects, and one only the database can: `(` is not a
+        // valid regular expression.
+        let bad_regex = json!({
+            "filter_id": "re",
+            "filter_type": "search",
+            "column_schema": {"column_index": 1},
+            "condition": "and",
+            "params": {"search_type": "regex_match", "term": "(", "case_sensitive": true}
+        });
+        let reply = rpc(
+            &mut state,
+            &store,
+            "set_row_filters",
+            json!({"filters": [compare(0, "=", "abc"), bad_regex, compare(0, "<", "3")]}),
+        )
+        .unwrap();
+        assert_eq!(reply, json!({"selected_num_rows": 3, "had_errors": true}));
+
+        let st = rpc(&mut state, &store, "get_state", json!({})).unwrap();
+        let filters = st["row_filters"].as_array().unwrap();
+        assert_eq!(filters[0]["is_valid"], false);
+        assert!(filters[0]["error_message"]
+            .as_str()
+            .unwrap()
+            .contains("not a number"));
+        assert_eq!(filters[1]["is_valid"], false);
+        assert_eq!(filters[2]["is_valid"], true);
+    }
+
+    #[test]
+    fn test_sorting_applies_on_top_of_filters() {
+        let (store, mut state) = explorer();
+        rpc(
+            &mut state,
+            &store,
+            "set_row_filters",
+            json!({"filters": [compare(0, "<", "4")]}),
+        )
+        .unwrap();
+        rpc(
+            &mut state,
+            &store,
+            "set_sort_columns",
+            json!({"sort_keys": [{"column_index": 0, "ascending": false}]}),
+        )
+        .unwrap();
+        assert_eq!(
+            page(&mut state, &store, 1, 4),
+            json!(["r3", "r2", "r1", "r0"])
+        );
+
+        // Clearing the sort restores the query's own order.
+        rpc(
+            &mut state,
+            &store,
+            "set_sort_columns",
+            json!({"sort_keys": []}),
+        )
+        .unwrap();
+        assert_eq!(page(&mut state, &store, 1, 2), json!(["r0", "r1"]));
+    }
+
+    #[test]
+    fn test_profiles_see_only_the_filtered_rows() {
+        let (store, mut state) = explorer();
+        rpc(
+            &mut state,
+            &store,
+            "set_row_filters",
+            json!({"filters": [compare(0, ">=", "6")]}),
+        )
+        .unwrap();
+        let response = state.handle_rpc(
+            "get_column_profiles",
+            &json!({"callback_id": "cb", "profiles": [{
+                "column_index": 0,
+                "profiles": [{"profile_type": "summary_stats"}]
+            }]}),
+            store.reader(),
+            Session {
+                reader: store.reader(),
+                caps: Capabilities { regex: true },
+            },
+        );
+        let event = response.event.unwrap();
+        let stats = &event.params["profiles"][0]["summary_stats"]["number_stats"];
+        assert_eq!(stats["min_value"], "6");
+        assert_eq!(stats["max_value"], "9");
+    }
+
+    #[test]
+    fn test_export_follows_the_view() {
+        let (store, mut state) = explorer();
+        rpc(
+            &mut state,
+            &store,
+            "set_sort_columns",
+            json!({"sort_keys": [{"column_index": 0, "ascending": false}]}),
+        )
+        .unwrap();
+
+        let csv = rpc(
+            &mut state,
+            &store,
+            "export_data_selection",
+            json!({"format": "csv", "selection": {"kind": "cell_range", "selection": {
+                "first_row_index": 0, "last_row_index": 1,
+                "first_column_index": 0, "last_column_index": 1
+            }}}),
+        )
+        .unwrap();
+        assert_eq!(csv["data"], "n,label\n9,r9\n8,r8");
+
+        let cell = rpc(
+            &mut state,
+            &store,
+            "export_data_selection",
+            json!({"format": "tsv", "selection": {"kind": "single_cell", "selection": {
+                "row_index": 2, "column_index": 1
+            }}}),
+        )
+        .unwrap();
+        assert_eq!(cell["data"], "r7");
+
+        let rows = rpc(
+            &mut state,
+            &store,
+            "export_data_selection",
+            json!({"format": "tsv", "selection": {"kind": "row_indices", "selection": {
+                "indices": [3, 0]
+            }}}),
+        )
+        .unwrap();
+        assert_eq!(rows["data"], "n\tlabel\n6\tr6\n9\tr9");
+    }
+
+    #[test]
+    fn test_convert_to_code_wraps_the_original_query() {
+        let (store, mut state) = explorer();
+        let code = rpc(
+            &mut state,
+            &store,
+            "convert_to_code",
+            json!({
+                "column_filters": [],
+                "row_filters": [compare(0, ">", "2")],
+                "sort_keys": [{"column_index": 1, "ascending": true}],
+                "code_syntax_name": {"code_syntax_name": "SQL"}
+            }),
+        )
+        .unwrap();
+        assert_eq!(
+            code["converted_code"],
+            json!([
+                "SELECT *",
+                "FROM (",
+                format!("    {QUERY}"),
+                ") AS \"result\"",
+                "WHERE \"n\" > 2",
+                "ORDER BY \"label\" ASC"
+            ])
+        );
+    }
 
     #[test]
     fn test_sql_type_to_display() {

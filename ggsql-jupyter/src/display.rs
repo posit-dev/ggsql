@@ -71,14 +71,30 @@ impl SessionKind {
     }
 }
 
+/// How many rows of a long result a console shows, unless configured.
+pub const DEFAULT_CONSOLE_ROWS: usize = 10;
+
 /// Frontend-supplied hints about the output rendering slot.
-#[derive(Default, Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub struct RenderHints {
     pub kind: SessionKind,
     /// Width of the output slot in CSS pixels, when the frontend says.
     pub output_width_px: Option<u32>,
     /// Device pixel ratio of the display, when the frontend says.
     pub pixel_ratio: Option<f64>,
+    /// How many rows of a long result a console shows (`--console-rows`).
+    pub console_rows: usize,
+}
+
+impl Default for RenderHints {
+    fn default() -> Self {
+        Self {
+            kind: SessionKind::default(),
+            output_width_px: None,
+            pixel_ratio: None,
+            console_rows: DEFAULT_CONSOLE_ROWS,
+        }
+    }
 }
 
 impl RenderHints {
@@ -102,6 +118,7 @@ impl RenderHints {
             kind: SessionKind::resolve(header.session.as_str(), mode),
             output_width_px,
             pixel_ratio,
+            ..Self::default()
         }
     }
 
@@ -172,17 +189,21 @@ pub fn format_display_data(
                 }
             }
         }
-        ExecutionResult::DataFrame(df) => {
+        // A `-- @view` table shows in the cell too; the kernel opens the
+        // explorer alongside it.
+        ExecutionResult::DataFrame(df) | ExecutionResult::View { df, .. } => {
             // DDL statements return DataFrames with 0 columns - don't display anything
             if df.width() == 0 {
                 Ok(Formatted::Nothing)
             } else {
-                Ok(Formatted::Bundle(format_dataframe(df)))
+                Ok(Formatted::Bundle(format_dataframe(df, hints)))
             }
         }
         ExecutionResult::ConnectionChanged { display_name, .. } => {
             Ok(Formatted::Bundle(format_connection_changed(&display_name)))
         }
+        // Opening the explorer is the whole of the output.
+        ExecutionResult::ViewResult { .. } => Ok(Formatted::Nothing),
     }
 }
 
@@ -239,8 +260,8 @@ fn format_static(spec: Box<Spec>, request: RenderRequest, backend: &PlotBackend)
 }
 
 /// Format DataFrame as HTML table
-fn format_dataframe(df: DataFrame) -> Value {
-    let html = dataframe_to_html(&df);
+fn format_dataframe(df: DataFrame, hints: &RenderHints) -> Value {
+    let html = dataframe_to_html(&df, html_rows_shown(df.height(), hints));
     let text = dataframe_to_text(&df);
 
     json!({
@@ -253,8 +274,23 @@ fn format_dataframe(df: DataFrame) -> Value {
     })
 }
 
-/// Convert DataFrame to HTML table
-fn dataframe_to_html(df: &DataFrame) -> String {
+/// How many of a result's `height` rows its HTML table shows.
+///
+/// A console result is followed by a link to the whole of it in the data
+/// explorer, so it shows what R's tibble does: every row up to twice
+/// `console_rows`, else the first `console_rows`, which keeps the link in
+/// view. Anywhere else the table is all there is, so it shows up to 100.
+fn html_rows_shown(height: usize, hints: &RenderHints) -> usize {
+    let n = hints.console_rows;
+    match hints.kind {
+        SessionKind::PositronConsole if height > n.saturating_mul(2) => n,
+        SessionKind::PositronConsole => height,
+        _ => height.min(100),
+    }
+}
+
+/// Convert DataFrame to an HTML table of its first `row_limit` rows
+fn dataframe_to_html(df: &DataFrame, row_limit: usize) -> String {
     use ggsql::array_util::value_to_string;
 
     let mut html = String::from("<table border=\"1\" class=\"dataframe\">\n<thead><tr>");
@@ -265,8 +301,6 @@ fn dataframe_to_html(df: &DataFrame) -> String {
     }
     html.push_str("</tr></thead>\n<tbody>\n");
 
-    // Data rows (limit to first 100 for performance)
-    let row_limit = df.height().min(100);
     for i in 0..row_limit {
         html.push_str("<tr>");
         for col in df.get_columns() {
@@ -310,7 +344,7 @@ fn dataframe_to_text(df: &ggsql::DataFrame) -> String {
 }
 
 /// Escape HTML special characters
-fn escape_html(s: &str) -> String {
+pub(crate) fn escape_html(s: &str) -> String {
     s.replace('&', "&amp;")
         .replace('<', "&lt;")
         .replace('>', "&gt;")
@@ -482,6 +516,47 @@ mod tests {
     }
 
     #[test]
+    fn test_html_rows_shown() {
+        let console = positron_console();
+        // The console shows a short result whole, and a long one's first 10.
+        assert_eq!(html_rows_shown(20, &console), 20);
+        assert_eq!(html_rows_shown(21, &console), 10);
+        assert_eq!(html_rows_shown(5000, &console), 10);
+        // Anywhere else, up to 100.
+        assert_eq!(html_rows_shown(50, &positron_notebook()), 50);
+        assert_eq!(html_rows_shown(5000, &positron_notebook()), 100);
+        assert_eq!(html_rows_shown(5000, &RenderHints::default()), 100);
+    }
+
+    #[test]
+    fn test_console_rows_is_configurable() {
+        let console = RenderHints {
+            console_rows: 3,
+            ..positron_console()
+        };
+        assert_eq!(html_rows_shown(6, &console), 6);
+        assert_eq!(html_rows_shown(7, &console), 3);
+        // Only the console's table follows it.
+        let notebook = RenderHints {
+            console_rows: 3,
+            ..positron_notebook()
+        };
+        assert_eq!(html_rows_shown(50, &notebook), 50);
+    }
+
+    #[test]
+    fn test_console_table_counts_the_rows_it_leaves_out() {
+        let df = ggsql::reader::connection::reader_from_uri("duckdb://memory")
+            .unwrap()
+            .execute_sql("SELECT i FROM range(5000) t(i)")
+            .unwrap();
+        let bundle = format_dataframe(df, &positron_console());
+        let html = bundle["data"]["text/html"].as_str().unwrap();
+        assert_eq!(html.matches("<tr>").count(), 1 + 10 + 1, "{html}");
+        assert!(html.contains("... 4990 more rows"), "{html}");
+    }
+
+    #[test]
     fn test_html_escape() {
         assert_eq!(
             escape_html("<script>alert('xss')</script>"),
@@ -498,8 +573,7 @@ mod tests {
     fn positron_console() -> RenderHints {
         RenderHints {
             kind: SessionKind::PositronConsole,
-            output_width_px: None,
-            pixel_ratio: None,
+            ..RenderHints::default()
         }
     }
 
@@ -507,7 +581,7 @@ mod tests {
         RenderHints {
             kind: SessionKind::PositronNotebook,
             output_width_px: Some(589),
-            pixel_ratio: None,
+            ..RenderHints::default()
         }
     }
 
