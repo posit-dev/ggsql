@@ -17,7 +17,7 @@ from jupyter_client import KernelManager
 # the kernel is built once rather than once per test file.
 
 
-def _launch(kernel_binary, extra_args=()):
+def _launch(kernel_binary, extra_args=(), env=None):
     """Start a kernel and yield its manager. Shared by the fixtures below."""
     kernel_process = None
     km = None
@@ -37,6 +37,7 @@ def _launch(kernel_binary, extra_args=()):
         # Start our kernel process directly
         kernel_process = subprocess.Popen(
             [kernel_binary, "-f", connection_file, *extra_args],
+            env={**os.environ, **(env or {})},
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
         )
@@ -505,6 +506,325 @@ class TestPlotComm:
         data = reply["content"]["data"]
         assert "error" in data, data
         assert "result" not in data
+
+
+class TestResultExplorer:
+    """A console query result, its link, and `-- @view-result` opening it."""
+
+    QUERY = "SELECT i AS n, 'r' || i AS label FROM range(5) t(i)"
+
+    def _run_query(self, client):
+        """Run QUERY and return the iopub messages it produced."""
+        client.execute(self.QUERY, silent=False, store_history=True)
+        messages = drain_iopub(client)
+        reply = client.get_shell_msg(timeout=5)
+        assert reply["content"]["status"] == "ok"
+        return messages
+
+    def _link_key(self, client):
+        """Run QUERY in a console session and return the key its link names."""
+        messages = self._run_query(client)
+        order = [m["msg_type"] for m in messages]
+        assert "execute_result" in order, order
+
+        # Its own output after the table: the console renders the HTML and
+        # ignores the bundle's text/plain, so a link there would never show.
+        streams = [m for m in messages if m["msg_type"] == "stream"]
+        assert len(streams) == 1, order
+        assert order.index("execute_result") < order.index("stream")
+
+        text = streams[0]["content"]["text"]
+        prefix = f"\x1b]8;;x-ggsql-view:{client.session.session}/"
+        assert text.startswith(prefix), repr(text)
+        assert "Open in Data Explorer" in text
+        return text[len(prefix):].split("\x1b", 1)[0]
+
+    def _rpc(self, client, comm_id, method, params=None):
+        client.session.send(
+            client.shell_channel.socket,
+            "comm_msg",
+            {
+                "comm_id": comm_id,
+                "data": {
+                    "jsonrpc": "2.0",
+                    "id": f"{method}-1",
+                    "method": method,
+                    "params": params or {},
+                },
+            },
+        )
+        reply = client.get_shell_msg(timeout=5)
+        drain_iopub(client)
+        return reply["content"]["data"]["result"]
+
+    def test_view_opens_the_result_in_an_explorer_tab(self, console_client):
+        key = self._link_key(console_client)
+
+        # How the extension runs it when the link is clicked.
+        msg_id = console_client.execute(f"-- @view-result {key}", silent=True)
+        messages = drain_iopub(console_client)
+        reply = console_client.get_shell_msg(timeout=5)
+        assert reply["content"]["status"] == "ok", reply["content"]
+
+        opens = [m for m in messages if m["msg_type"] == "comm_open"]
+        assert len(opens) == 1, [m["msg_type"] for m in messages]
+        content = opens[0]["content"]
+        assert content["target_name"] == "positron.dataExplorer"
+        # Not inline: Positron opens a tab for it straight away.
+        assert content["data"]["inline_only"] is False
+        assert opens[0]["parent_header"]["msg_id"] == msg_id
+
+        comm_id = content["comm_id"]
+        state = self._rpc(console_client, comm_id, "get_state")
+        assert state["display_name"].startswith("Query [")
+        assert state["table_shape"] == {"num_rows": 5, "num_columns": 2}
+
+        values = self._rpc(
+            console_client,
+            comm_id,
+            "get_data_values",
+            {
+                "columns": [
+                    {"column_index": 1, "spec": {"first_index": 3, "last_index": 4}}
+                ]
+            },
+        )
+        assert values["columns"] == [["r3", "r4"]]
+
+    def _open(self, client):
+        """Open QUERY's result in an explorer and return the comm id."""
+        key = self._link_key(client)
+        client.execute(f"-- @view-result {key}", silent=True)
+        messages = drain_iopub(client)
+        client.get_shell_msg(timeout=5)
+        return next(
+            m["content"]["comm_id"] for m in messages if m["msg_type"] == "comm_open"
+        )
+
+    def test_filter_sort_and_convert_to_code(self, console_client):
+        comm_id = self._open(console_client)
+
+        state = self._rpc(console_client, comm_id, "get_state")
+        features = state["supported_features"]
+        for feature in ("set_row_filters", "set_sort_columns", "convert_to_code"):
+            assert features[feature]["support_status"] == "supported", feature
+
+        n_column = {"column_index": 0}
+        reply = self._rpc(
+            console_client,
+            comm_id,
+            "set_row_filters",
+            {
+                "filters": [
+                    {
+                        "filter_id": "f1",
+                        "filter_type": "compare",
+                        "column_schema": n_column,
+                        "condition": "and",
+                        "params": {"op": ">=", "value": "2"},
+                    }
+                ]
+            },
+        )
+        assert reply == {"selected_num_rows": 3, "had_errors": False}
+
+        self._rpc(
+            console_client,
+            comm_id,
+            "set_sort_columns",
+            {"sort_keys": [{"column_index": 0, "ascending": False}]},
+        )
+        values = self._rpc(
+            console_client,
+            comm_id,
+            "get_data_values",
+            {
+                "columns": [
+                    {"column_index": 1, "spec": {"first_index": 0, "last_index": 2}}
+                ]
+            },
+        )
+        assert values["columns"] == [["r4", "r3", "r2"]]
+
+        code = self._rpc(
+            console_client,
+            comm_id,
+            "convert_to_code",
+            {
+                "column_filters": [],
+                "row_filters": state["row_filters"],
+                "sort_keys": [{"column_index": 0, "ascending": False}],
+                "code_syntax_name": {"code_syntax_name": "SQL"},
+            },
+        )
+        assert f"    {self.QUERY}" in code["converted_code"]
+        assert 'ORDER BY "n" DESC' in code["converted_code"]
+
+    def test_a_bad_request_is_a_json_rpc_error(self, console_client):
+        comm_id = self._open(console_client)
+        console_client.session.send(
+            console_client.shell_channel.socket,
+            "comm_msg",
+            {
+                "comm_id": comm_id,
+                "data": {
+                    "jsonrpc": "2.0",
+                    "id": "export-1",
+                    "method": "export_data_selection",
+                    "params": {
+                        "format": "csv",
+                        "selection": {"kind": "nonsense", "selection": {}},
+                    },
+                },
+            },
+        )
+        reply = console_client.get_shell_msg(timeout=5)
+        drain_iopub(console_client)
+        data = reply["content"]["data"]
+        assert "error" in data and "result" not in data, data
+
+    def test_a_second_click_focuses_the_open_explorer(self, console_client):
+        # Positron opens a UI comm on every console session; focusing an
+        # editor is an event on it.
+        ui = "test-ui-comm"
+        console_client.session.send(
+            console_client.shell_channel.socket,
+            "comm_open",
+            {"comm_id": ui, "target_name": "positron.ui", "data": {}},
+        )
+        drain_iopub(console_client)
+        try:
+            key = self._link_key(console_client)
+            console_client.execute(f"-- @view-result {key}", silent=True)
+            first = drain_iopub(console_client)
+            console_client.get_shell_msg(timeout=5)
+            comm_id = next(
+                m["content"]["comm_id"] for m in first if m["msg_type"] == "comm_open"
+            )
+
+            console_client.execute(f"-- @view-result {key}", silent=True)
+            second = drain_iopub(console_client)
+            reply = console_client.get_shell_msg(timeout=5)
+            assert reply["content"]["status"] == "ok", reply["content"]
+
+            types = [m["msg_type"] for m in second]
+            assert "comm_open" not in types, types
+            events = [
+                m["content"]
+                for m in second
+                if m["msg_type"] == "comm_msg" and m["content"]["comm_id"] == ui
+            ]
+            assert len(events) == 1, types
+            assert events[0]["data"]["method"] == "open_editor"
+            params = events[0]["data"]["params"]
+            assert params["kind"] == "uri"
+            assert params["file"] == f"positron-data-explorer:positron-data-explorer-{comm_id}"
+        finally:
+            console_client.session.send(
+                console_client.shell_channel.socket,
+                "comm_close",
+                {"comm_id": ui, "data": {}},
+            )
+            drain_iopub(console_client)
+
+    def test_a_result_that_is_gone_is_an_error(self, console_client):
+        console_client.execute("-- @view-result deadbeef", silent=True)
+        drain_iopub(console_client)
+        reply = console_client.get_shell_msg(timeout=5)
+        assert reply["content"]["status"] == "error"
+        assert "no longer available" in reply["content"]["evalue"]
+
+    def test_only_a_console_gets_a_link(self, client):
+        messages = self._run_query(client)
+        assert not [m for m in messages if m["msg_type"] == "stream"]
+
+
+class TestViewDirective:
+    """`-- @view` sending a query's result to the data explorer."""
+
+    CODE = "-- @view: Small numbers\nSELECT i AS n FROM range(4) t(i)"
+
+    def _run(self, client, code, silent=False):
+        client.execute(code, silent=silent, store_history=not silent)
+        messages = drain_iopub(client)
+        reply = client.get_shell_msg(timeout=5)
+        return messages, reply["content"]
+
+    def test_the_result_opens_in_an_explorer_tab(self, console_client):
+        messages, reply = self._run(console_client, self.CODE)
+        assert reply["status"] == "ok", reply
+        types = [m["msg_type"] for m in messages]
+
+        # The explorer, and the table in the console as for any query.
+        opens = [m for m in messages if m["msg_type"] == "comm_open"]
+        assert len(opens) == 1, types
+        data = opens[0]["content"]["data"]
+        assert data == {"title": "Small numbers", "inline_only": False}
+        assert types.count("execute_result") == 1, types
+
+        # And the link under the table, to reopen the tab once it is closed.
+        streams = [m for m in messages if m["msg_type"] == "stream"]
+        assert len(streams) == 1, types
+        assert "x-ggsql-view:" in streams[0]["content"]["text"]
+        assert types.index("execute_result") < types.index("stream"), types
+
+    def test_a_silent_execution_opens_it_without_output(self, console_client):
+        messages, reply = self._run(console_client, self.CODE, silent=True)
+        assert reply["status"] == "ok", reply
+        types = [m["msg_type"] for m in messages]
+        assert types.count("comm_open") == 1, types
+        assert "stream" not in types and "execute_result" not in types, types
+
+    def test_a_plot_query_is_an_error(self, console_client):
+        messages, reply = self._run(
+            console_client,
+            "-- @view\nSELECT 1 AS x, 2 AS y VISUALISE x, y DRAW point",
+        )
+        assert reply["status"] == "error"
+        assert "not a plot" in reply["evalue"]
+        assert "comm_open" not in [m["msg_type"] for m in messages]
+
+    def test_outside_positron_the_table_shows_inline(self, client):
+        messages, reply = self._run(client, self.CODE)
+        assert reply["status"] == "ok", reply
+        types = [m["msg_type"] for m in messages]
+        assert "execute_result" in types and "comm_open" not in types, types
+        notes = [
+            m["content"]["text"]
+            for m in messages
+            if m["msg_type"] == "stream" and m["content"]["name"] == "stderr"
+        ]
+        assert notes and "needs Positron" in notes[0], types
+
+
+class TestConsoleRows:
+    """`GGSQL_CONSOLE_ROWS`, which the extension sets from `ggsql.consoleRows`."""
+
+    def _table(self, client, n):
+        client.execute(f"SELECT i FROM range({n}) t(i)")
+        messages = drain_iopub(client)
+        client.get_shell_msg(timeout=5)
+        result = next(m for m in messages if m["msg_type"] == "execute_result")
+        return result["content"]["data"]["text/html"]
+
+    def test_the_environment_sets_the_rows_a_console_shows(self, kernel_binary):
+        with _launch_kernel(
+            kernel_binary,
+            ["--session-mode", "console"],
+            env={"GGSQL_CONSOLE_ROWS": "3"},
+        ) as km:
+            kc = km.client()
+            kc.start_channels()
+            try:
+                kc.wait_for_ready(timeout=10)
+                # Up to twice the setting, the whole result.
+                assert self._table(kc, 6).count("<tr>") == 1 + 6
+                # Past it, the first 3 and a count of the rest.
+                html = self._table(kc, 7)
+                assert html.count("<tr>") == 1 + 3 + 1, html
+                assert "... 4 more rows" in html
+            finally:
+                kc.stop_channels()
 
 
 class TestStatus:

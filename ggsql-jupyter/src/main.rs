@@ -10,6 +10,7 @@ mod executor;
 mod kernel;
 mod message;
 mod plot;
+mod results;
 use anyhow::{Context, Result};
 use clap::Parser;
 use display::SessionMode;
@@ -47,6 +48,28 @@ struct Args {
     /// bounded. The oldest plots are closed once the limit is passed.
     #[arg(long, default_value_t = 32, value_parser = clap::value_parser!(u32).range(1..))]
     max_plots: u32,
+
+    /// How many query results to keep available for the data explorer.
+    ///
+    /// In a Positron console each tabular result is retained so a link under
+    /// it can open it in the data explorer later. Once the limit is passed the
+    /// oldest results no explorer has open are dropped.
+    #[arg(long, default_value_t = 16, value_parser = clap::value_parser!(u32).range(1..))]
+    max_results: u32,
+
+    /// How many rows of a query result a Positron console shows.
+    ///
+    /// A result of up to twice this many rows is shown whole; a longer one
+    /// shows this many, then a count of the rest. Also read from the
+    /// environment, which is how the ggsql extension sets it: a kernel that
+    /// predates the option ignores a variable but would refuse a flag.
+    #[arg(
+        long,
+        env = "GGSQL_CONSOLE_ROWS",
+        default_value_t = 10,
+        value_parser = clap::value_parser!(u32).range(1..)
+    )]
+    console_rows: u32,
 
     /// Install the kernel spec
     #[arg(long)]
@@ -100,6 +123,8 @@ async fn main() -> Result<()> {
         &args.reader,
         args.session_mode,
         args.max_plots as usize,
+        args.max_results as usize,
+        args.console_rows as usize,
     )
     .await?;
 

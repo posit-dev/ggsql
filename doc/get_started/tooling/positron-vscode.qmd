@@ -30,6 +30,20 @@ Executing ggsql statements containing [`VISUALISE`](../../syntax/clause/visualis
 
 ![](./screenshots/positron-plots-pane.png)
 
+## Data Explorer
+
+A query without `VISUALISE` shows its result as a table in the console, followed by an "Open in Data Explorer" link. A result of more than 20 rows shows only its first 10, with a count of the rest. To show more or fewer, change the `ggsql.consoleRows` setting: a result of up to twice that many rows is shown in full. The change applies to consoles started afterwards. Clicking the link opens the result in Positron's Data Explorer, where you can sort, filter, and profile it, and use "Convert to Code" to turn your sorts and filters back into SQL.
+
+To open a result in the Data Explorer as soon as it runs, start the query with a `-- @view` comment. You can also give the tab a title:
+
+```ggsql
+-- @view: Revenue by region
+SELECT region, sum(revenue) AS revenue FROM sales GROUP BY region
+```
+
+The result opens in a Data Explorer tab, and is also shown in the console as usual. Because it is an ordinary comment, `-- @view` works the same way in a source file, in a cell, and in code sent to the console by other tools. It applies to the query that follows it, and that query cannot have a `VISUALISE` clause. Outside Positron, where there is no Data Explorer, the result is shown as a table as usual.
+
+The Data Explorer works on a snapshot of the result, so it doesn't change when the underlying tables do. Run the query again to see new data.
 
 ## Editor and cells
 

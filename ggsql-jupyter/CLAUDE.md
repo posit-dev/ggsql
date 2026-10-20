@@ -17,7 +17,11 @@ ggsql-jupyter/
 │   ├── kernel.rs       Jupyter messaging loop (ZMQ, message dispatch)
 │   ├── executor.rs     Runs queries via ggsql::Reader, returns rendered output
 │   ├── connection.rs   Reader lifecycle, connection-string parsing
-│   ├── data_explorer.rs Positron data-explorer comm channel
+│   ├── data_explorer/  Positron data-explorer comm channel
+│   │   ├── mod.rs      State, RPC dispatch, paging and profiles
+│   │   ├── filter.rs   Row filters, sort keys, schema search, Convert to Code → SQL
+│   │   └── export.rs   Copying a selection as CSV / TSV / HTML
+│   ├── results.rs      Query results retained for the data explorer
 │   ├── display.rs      Output formatting (image bundles, SQL → HTML table)
 │   ├── message.rs      Jupyter message structs (ZMQ frames, HMAC signing)
 │   └── util.rs
@@ -173,7 +177,32 @@ So `RenderHints::canvas` picks a height (golden ratio, close to ggplot2's defaul
 
 ## Positron-specific bits
 
-- `data_explorer.rs` implements Positron's data-explorer comm channel (registered query results become explorable tables).
+- `data_explorer/` implements Positron's data-explorer comm channel. An explorer's `Source` says which database its table is in: the session's own, for a table opened from the Connections pane, or the private results database below.
+
+### The data explorer as SQL
+
+Every page, filter, sort, profile and export is a query; the table is never loaded whole. A few things are deliberate:
+
+- **Filter values arrive as strings and are checked against the column's type** before they reach the SQL: a number must parse as a finite number, a boolean as true/false, and everything else becomes a quoted literal. Filters are always ANDed (`supports_conditions: unsupported`).
+- **A bad filter is left out, not fatal.** One the kernel cannot build, or one the database rejects (counted on its own to find out which), comes back with `is_valid: false` and an `error_message`; the rest still apply.
+- **Profiles and exports see the filtered rows**, through `relation()`; pages and exports also follow the sort.
+- **Sorting a retained result breaks ties on DuckDB's `rowid`**, its original row order, so paging is stable and clearing the sort restores the query's own `ORDER BY`. A Connections-pane table has no portable equivalent and gets no tiebreak.
+- **Regular-expression search needs `Capabilities::regex`** (`regexp_matches`, DuckDB only). The results database always has it; the session's database has it when its URI is `duckdb://`.
+- **Convert to Code writes SQL for the session's database**, not the private one, wrapping a retained result's original query as a derived table. A filter it cannot express there is left out with a `--` comment saying so.
+- **A failed request is a JSON-RPC error**, with `plot::comm::RpcError`'s encoding, not a `null` result.
+
+### Opening a console result in the data explorer
+
+The console renders a tabular result as an HTML table and has no output toolbar to hang a button on, so the affordance is a link, and it needs no change to Positron:
+
+1. **A console result is retained.** `results.rs` copies it into a private in-memory DuckDB under an unguessable key, bounded by `--max-results` (default 16). Only results no explorer has open count against the bound or are evicted, so an open tab never loses its table. Querying a copy rather than the source means one SQL dialect for everything the explorer asks, no remote query re-run per page, and nothing visible in the user's session.
+2. **A `stream` follows the `execute_result`**, carrying an OSC 8 hyperlink to `x-ggsql-view:<session-id>/<key>`. It cannot go in the bundle's `text/plain`: the console shows the HTML and ignores it. So that the link stays in view under a long result, a console table shows rows the way R's tibble does — all of them up to twice `--console-rows` (default 10), else the first `--console-rows` — where elsewhere it shows up to 100 (`display.rs`'s `html_rows_shown`). The option is also read from `GGSQL_CONSOLE_ROWS`, which is how the extension sets it.
+3. **Positron offers a clicked hyperlink to `openResource`** on the last active console session of each language. The extension's session wrapper (`ggsql-vscode/src/resultLinks.ts`) handles the scheme and runs `-- @view-result <key>` silently, in the session the link names.
+4. **`-- @view-result` opens a `positron.dataExplorer` comm with `inline_only: false`**, which Positron opens as an editor tab immediately. A result that already has an explorer open is not opened again: the kernel sends `open_editor` on the UI comm with that explorer's editor URI (`positron-data-explorer:positron-data-explorer-<comm id>`), which focuses the tab — what Positron's Variables pane does for a variable already in view. A key that is no longer retained is a cell error, which surfaces as a warning from the extension.
+
+Only `SessionKind::PositronConsole` gets this: anywhere else the escape sequence would be stray text. Notebooks have a better route — the inline data explorer — that this does not yet use.
+
+A query under the user-facing `-- @view` directive (see [the Positron docs](../doc/get_started/tooling/positron-vscode.qmd)) takes the same path from step 1, minus the click: it is retained in any Positron session, silent executions included, and opened at once. The table still shows in the cell, and a console still gets the link under it, to reopen a closed tab; a silent execution shows nothing but the tab. A `Standalone` session has no data explorer to open, so it gets the inline table and a `stderr` note instead.
 - The companion VS Code extension (`ggsql-vscode/`) ships a copy of this binary and also discovers installed ones via the `ggsql.kernelPath` setting, the Jupyter kernelspec directories, the native install locations, or `PATH`. It runs each one with `--version` to name the runtime it registers, so **keep `--version` working**: a kernel that does not answer it is still offered, but without a version in the picker. See [Finding the kernel](../ggsql-vscode/CLAUDE.md#finding-the-kernel).
 
 ## Build & install

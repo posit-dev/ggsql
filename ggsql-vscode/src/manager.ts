@@ -13,6 +13,7 @@ import * as crypto from 'crypto';
 import type * as positron from '@posit-dev/positron';
 import type { JupyterKernelSpec, PositronSupervisorApi } from './types';
 import { log, showLog } from './extension';
+import { withResultLinks } from './resultLinks';
 
 /** Where a kernel candidate was discovered */
 type KernelSource = 'Bundled' | 'Setting' | 'Jupyter' | 'System' | 'Path';
@@ -535,6 +536,19 @@ export function generateMetadata(
 }
 
 /**
+ * The kernel environment for the `ggsql.consoleRows` setting.
+ *
+ * An environment variable rather than a flag: a kernel that predates
+ * `--console-rows` ignores the variable, where it would refuse to start on the
+ * flag. A value the kernel would reject is left out, so it uses its default.
+ */
+export function consoleRowsEnv(rows: unknown): Record<string, string> {
+    return Number.isInteger(rows) && (rows as number) >= 1
+        ? { GGSQL_CONSOLE_ROWS: String(rows) }
+        : {};
+}
+
+/**
  * Create a Jupyter kernel spec for ggsql-jupyter
  *
  * `--session-mode` tells the kernel where its output goes, which it cannot work
@@ -566,7 +580,10 @@ function createKernelSpec(
         display_name: 'ggsql',
         language: 'ggsql',
         interrupt_mode: 'signal',
-        env: { RUST_LOG: 'error' },
+        env: {
+            RUST_LOG: 'error',
+            ...consoleRowsEnv(vscode.workspace.getConfiguration('ggsql').get('consoleRows')),
+        },
         kernel_protocol_version: '5.3',
     };
 }
@@ -858,7 +875,7 @@ export class GgsqlRuntimeManager implements positron.LanguageRuntimeManager {
             dynState
         );
 
-        return session;
+        return withResultLinks(session);
     }
 
     /**
@@ -885,7 +902,7 @@ export class GgsqlRuntimeManager implements positron.LanguageRuntimeManager {
             dynState
         );
 
-        return session;
+        return withResultLinks(session);
     }
 
     /**

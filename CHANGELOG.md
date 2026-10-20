@@ -1,5 +1,14 @@
 ## [Unreleased]
 
+### Added
+
+- In a Positron console, a query result can be opened in the Data Explorer
+  from an "Open in Data Explorer" link under its table, with sorting,
+  filtering, profiles, export and Convert to Code. A `-- @view` comment opens
+  a query's result in the Data Explorer as soon as it runs. Long results show
+  their first 10 rows in the console, configurable with `ggsql.consoleRows`
+  (posit-dev/positron#16137).
+
 ### Changed
 
 - The reader/dialect layer was refactored around a central dialect registry with

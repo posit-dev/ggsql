@@ -4,12 +4,13 @@
 //! handling kernel_info, execute, and shutdown requests.
 
 use crate::connection;
-use crate::data_explorer::{DataExplorerState, RpcResponse};
-use crate::display::{format_display_data, Formatted, RenderHints, SessionMode};
+use crate::data_explorer::{Capabilities, DataExplorerState, RpcResponse, Session, Source};
+use crate::display::{format_display_data, Formatted, RenderHints, SessionKind, SessionMode};
 use crate::executor::{self, ExecutionResult, QueryExecutor};
 use crate::message::{ConnectionInfo, JupyterMessage, MessageHeader};
 use crate::plot::comm::{PlotMetadata, RenderParams, RpcError};
 use crate::plot::{PlotBackend, RenderOutcome, RenderTicket};
+use crate::results::ResultStore;
 use anyhow::Result;
 use ggsql::reader::Spec;
 use hmac::{Hmac, Mac};
@@ -65,6 +66,10 @@ pub struct KernelServer {
     ui_comm_id: Option<String>,
     connection_comm_id: Option<String>,
     data_explorer_comms: HashMap<String, DataExplorerState>,
+    /// Console query results kept for the data explorer, in a private database.
+    results: ResultStore,
+    /// `--console-rows`: how many rows of a long result a console shows.
+    console_rows: usize,
 }
 
 impl KernelServer {
@@ -74,6 +79,8 @@ impl KernelServer {
         reader_uri: &str,
         session_mode: Option<SessionMode>,
         max_plots: usize,
+        max_results: usize,
+        console_rows: usize,
     ) -> Result<Self> {
         tracing::info!("Initializing kernel server");
 
@@ -141,6 +148,8 @@ impl KernelServer {
             ui_comm_id: None,
             connection_comm_id: None,
             data_explorer_comms: HashMap::new(),
+            results: ResultStore::new(max_results)?,
+            console_rows,
         };
 
         // Send initial "starting" status on IOPub
@@ -358,7 +367,10 @@ impl KernelServer {
         let content = &parent.content;
         let code = content["code"].as_str().unwrap_or("");
         let silent = content["silent"].as_bool().unwrap_or(false);
-        let hints = RenderHints::from_request(&parent.header, content, self.session_mode);
+        let hints = RenderHints {
+            console_rows: self.console_rows,
+            ..RenderHints::from_request(&parent.header, content, self.session_mode)
+        };
 
         // `kind` decides where a plot goes, so log its two inputs: the declared
         // mode and the session id the heuristic falls back to. A plot in the
@@ -408,7 +420,64 @@ impl KernelServer {
         // the user's. Both stages feed one `Result` and share the error path
         // below; propagating out of the loop would end the process and take
         // the session's database with it.
+        // Outside Positron there is no data explorer, so `-- @view` shows its
+        // table in the cell, with a note saying why.
+        let mut note = None;
+        let executed = match executed {
+            Ok(ExecutionResult::View { df, .. }) if hints.kind == SessionKind::Standalone => {
+                note = Some("`-- @view` opens the Data Explorer, which needs Positron.\n");
+                Ok(ExecutionResult::DataFrame(df))
+            }
+            other => other,
+        };
+
+        // A console result is kept so the link under it can open it in the
+        // data explorer. Silent cells have no link to click, and DDL no table.
+        let linked = !silent && hints.kind == SessionKind::PositronConsole;
+        let mut retained = None;
+        if let Ok(ExecutionResult::DataFrame(df)) = &executed {
+            if linked && df.width() > 0 {
+                let title = format!("Query [{}]", self.execution_count);
+                match self.retain_result(df.clone(), title, query_of(code)) {
+                    Ok(key) => retained = Some(key),
+                    // Costs only the link, never the cell's output.
+                    Err(e) => tracing::warn!("Failed to retain query result: {}", e),
+                }
+            }
+        }
+
         let result = match executed {
+            Ok(ExecutionResult::ViewResult { key }) => self
+                .open_result_explorer(&key, parent)
+                .await
+                .map(|()| Formatted::Nothing),
+            Ok(ExecutionResult::View { df, title }) => {
+                // A silent cell has no count of its own to name it by.
+                let title = title.unwrap_or_else(|| match silent {
+                    true => "Query".to_string(),
+                    false => format!("Query [{}]", self.execution_count),
+                });
+                // The table shows in the cell as for any query, and the
+                // explorer opens as well.
+                let shown = (!silent).then(|| ExecutionResult::DataFrame(df.clone()));
+                match self.retain_result(df, title, query_of(code)) {
+                    Ok(key) => {
+                        let opened = self.open_result_explorer(&key, parent).await;
+                        // The link reopens the tab once it has been closed.
+                        if linked {
+                            retained = Some(key);
+                        }
+                        match (opened, shown) {
+                            (Err(e), _) => Err(e),
+                            (Ok(()), None) => Ok(Formatted::Nothing),
+                            (Ok(()), Some(shown)) => {
+                                format_display_data(shown, &hints, &self.plots)
+                            }
+                        }
+                    }
+                    Err(e) => Err(e),
+                }
+            }
             Ok(exec_result) => {
                 // A bare connection change renders nothing.
                 let is_connection_changed =
@@ -446,6 +515,18 @@ impl KernelServer {
                         self.open_plot_comm(spec, code, parent).await?;
                     }
                     Formatted::Nothing => {}
+                }
+
+                // Its own output, because the console renders the HTML table
+                // and ignores the bundle's `text/plain`.
+                if let Some(key) = &retained {
+                    let link = explorer_link(&parent.header.session, key);
+                    self.send_iopub("stream", json!({ "name": "stdout", "text": link }), parent)
+                        .await?;
+                }
+                if let Some(note) = note.filter(|_| !silent) {
+                    self.send_iopub("stream", json!({ "name": "stderr", "text": note }), parent)
+                        .await?;
                 }
 
                 // Send execute_reply
@@ -928,6 +1009,95 @@ impl KernelServer {
         Ok(())
     }
 
+    /// What the session's database can do, for the SQL the data explorer
+    /// writes against it. Only DuckDB has `regexp_matches`.
+    fn session_caps(&self) -> Capabilities {
+        Capabilities {
+            regex: self.executor.reader_uri().starts_with("duckdb://"),
+        }
+    }
+
+    /// Keep a query result for the data explorer, returning its key.
+    ///
+    /// Results a data explorer has open are kept whatever the limit.
+    fn retain_result(
+        &mut self,
+        df: ggsql::DataFrame,
+        title: String,
+        query: String,
+    ) -> Result<String> {
+        let comms = &self.data_explorer_comms;
+        let in_use = |key: &str| {
+            comms
+                .values()
+                .any(|state| matches!(state.source(), Source::Result(k) if k == key))
+        };
+        self.results.insert(df, title, query, in_use)
+    }
+
+    /// Open a retained query result in the data explorer, for `-- @view` and
+    /// `-- @view-result`.
+    ///
+    /// Not `inline_only`, so Positron opens the explorer in an editor tab as
+    /// soon as the comm arrives.
+    async fn open_result_explorer(&mut self, key: &str, parent: &JupyterMessage) -> Result<()> {
+        let stored = self.results.get(key)?;
+
+        // A result already open in an explorer is brought to the front rather
+        // than opened again, as Positron's Variables pane does for a variable.
+        let source = Source::Result(key.to_string());
+        let open = self
+            .data_explorer_comms
+            .iter()
+            .find(|(_, state)| *state.source() == source)
+            .map(|(id, _)| id.clone());
+        if let (Some(explorer), Some(ui)) = (open, self.ui_comm_id.clone()) {
+            tracing::info!("Focusing data explorer comm {} on result {}", explorer, key);
+            return self
+                .send_iopub(
+                    "comm_msg",
+                    json!({
+                        "comm_id": ui,
+                        "data": {
+                            "jsonrpc": "2.0",
+                            "method": "open_editor",
+                            "params": {
+                                "file": explorer_uri(&explorer),
+                                "line": 1,
+                                "column": 1,
+                                "kind": "uri"
+                            }
+                        }
+                    }),
+                    parent,
+                )
+                .await;
+        }
+
+        let state = DataExplorerState::open_result(self.results.reader(), stored)
+            .map_err(|e| anyhow::anyhow!(e))?;
+
+        let comm_id = uuid::Uuid::new_v4().to_string();
+        let msg = self.create_message(
+            "comm_open",
+            json!({
+                "comm_id": comm_id,
+                "target_name": "positron.dataExplorer",
+                "data": {
+                    "title": stored.title,
+                    "inline_only": false
+                }
+            }),
+            Some(parent),
+        );
+        let zmq_msg = self.serialize_message_with_topic(&msg, "comm_open")?;
+        self.iopub.send(zmq_msg).await?;
+
+        tracing::info!("Opened data explorer comm {} on result {}", comm_id, key);
+        self.data_explorer_comms.insert(comm_id, state);
+        Ok(())
+    }
+
     /// Open a `positron.plot` comm for a freshly executed plot.
     ///
     /// Backend-initiated, one comm per plot like `positron.dataExplorer`, since
@@ -1301,7 +1471,7 @@ impl KernelServer {
                     })
                     .unwrap_or_default();
 
-                match DataExplorerState::open(self.executor.reader(), &path) {
+                match DataExplorerState::open(self.executor.reader(), &path, self.session_caps()) {
                     Ok(state) => {
                         let de_comm_id = uuid::Uuid::new_v4().to_string();
                         let title = path.last().cloned().unwrap_or_default();
@@ -1377,23 +1547,40 @@ impl KernelServer {
 
         let params = &parent.content["data"]["params"];
 
+        let caps = self.session_caps();
         let RpcResponse { result, event } =
-            if let Some(state) = self.data_explorer_comms.get(comm_id) {
-                state.handle_rpc(method, params, self.executor.reader())
+            if let Some(state) = self.data_explorer_comms.get_mut(comm_id) {
+                let session = Session {
+                    reader: self.executor.reader(),
+                    caps,
+                };
+                let reader = match state.source() {
+                    Source::Session => self.executor.reader(),
+                    Source::Result(_) => self.results.reader(),
+                };
+                state.handle_rpc(method, params, reader, session)
             } else {
                 RpcResponse::reply(json!(null))
             };
+
+        let data = match result {
+            Ok(result) => json!({ "jsonrpc": "2.0", "id": rpc_id, "result": result }),
+            Err(message) => {
+                tracing::warn!("Data explorer {} failed: {}", method, message);
+                json!({
+                    "jsonrpc": "2.0",
+                    "id": rpc_id,
+                    "error": RpcError::Internal(message).to_json()
+                })
+            }
+        };
 
         // Send the RPC reply
         self.send_shell_reply(
             "comm_msg",
             json!({
                 "comm_id": comm_id,
-                "data": {
-                    "jsonrpc": "2.0",
-                    "id": rpc_id,
-                    "result": result
-                }
+                "data": data
             }),
             parent,
             identities,
@@ -1625,6 +1812,31 @@ impl KernelServer {
     }
 }
 
+/// A cell's SQL without its leading meta-commands, which are not SQL.
+fn query_of(code: &str) -> String {
+    let mut rest = code;
+    while let Some((_, after)) = executor::take_leading_meta(rest) {
+        rest = after;
+    }
+    rest.trim().to_string()
+}
+
+/// The console line that opens a retained result in the data explorer.
+///
+/// An OSC 8 hyperlink: a click goes to Positron's opener, which offers it to
+/// the ggsql session's `openResource`, which runs `-- @view-result <key>`
+/// silently.
+/// The session id lets the extension refuse a link meant for another session.
+fn explorer_link(session: &str, key: &str) -> String {
+    format!("\x1b]8;;x-ggsql-view:{session}/{key}\x1b\\Open in Data Explorer\x1b]8;;\x1b\\\n")
+}
+
+/// The URI of the editor Positron shows a data explorer comm in, which opening
+/// again focuses (`PositronDataExplorerUri.generate`).
+fn explorer_uri(comm_id: &str) -> String {
+    format!("positron-data-explorer:positron-data-explorer-{comm_id}")
+}
+
 /// Check if ggsql code is complete (balanced brackets, not in a string)
 /// If the code contains VISUALISE, it must also contain at least one DRAW layer
 fn is_code_complete(code: &str) -> bool {
@@ -1676,4 +1888,17 @@ fn is_code_complete(code: &str) -> bool {
     }
 
     true
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_explorer_link_is_an_osc8_hyperlink() {
+        assert_eq!(
+            explorer_link("ggsql-1", "abc"),
+            "\x1b]8;;x-ggsql-view:ggsql-1/abc\x1b\\Open in Data Explorer\x1b]8;;\x1b\\\n"
+        );
+    }
 }
