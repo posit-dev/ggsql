@@ -7,6 +7,9 @@ use crate::reader::SqlDialect;
 use crate::{naming, plot::types::DefaultAestheticValue, Mappings};
 
 // Re-export shared types from the central location
+use crate::plot::types::{
+    ArrayConstraint, ArrayElementConstraint, StringConstraint, TypeConstraint,
+};
 pub use crate::plot::types::{DefaultParamValue, ParamConstraint, ParamDefinition};
 
 // =============================================================================
@@ -43,6 +46,33 @@ pub const AGGREGATE_PARAM: ParamDefinition = ParamDefinition {
     name: "aggregate",
     default: DefaultParamValue::Null,
     constraint: ParamConstraint::string_or_string_array_unconstrained(),
+};
+
+/// Marker shape vocabulary for the `arrow` parameter. Names map to
+/// hephaestus's built-in `arrow-*` shapes in the writer.
+pub const ARROW_VALUES: &[&str] = &[
+    "open", "closed", "stealth", "latex", "thin", "wedge", "fishtail", "fork", "feather", "bar",
+    "bracket", "cross", "dot", "square", "diamond",
+];
+
+/// Shared `arrow` parameter definition for geoms that draw lines or
+/// segments. A single string sets the end marker only; an array
+/// `[start, end]` sets both, with null skipping an end.
+pub const ARROW_PARAM: ParamDefinition = ParamDefinition {
+    name: "arrow",
+    default: DefaultParamValue::Null,
+    constraint: ParamConstraint {
+        number: TypeConstraint::Forbidden,
+        string: TypeConstraint::Constrained(StringConstraint::one_of(ARROW_VALUES)),
+        boolean: TypeConstraint::Forbidden,
+        array: TypeConstraint::Constrained(ArrayConstraint {
+            element: ArrayElementConstraint::String(StringConstraint::one_of(ARROW_VALUES)),
+            min_len: Some(1),
+            max_len: Some(2),
+            allow_null_elements: true,
+        }),
+        allow_null: true,
+    },
 };
 
 /// Default aesthetic values for a geom type

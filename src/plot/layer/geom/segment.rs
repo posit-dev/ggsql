@@ -42,6 +42,7 @@ impl GeomTrait for Segment {
                 constraint: ParamConstraint::string_option(POSITION_VALUES),
             },
             super::types::AGGREGATE_PARAM,
+            super::types::ARROW_PARAM,
         ];
         PARAMS
     }
