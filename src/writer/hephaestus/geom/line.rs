@@ -51,6 +51,7 @@ pub fn spec(ctx: &Ctx) -> GeomSpec {
             ),
         ],
         raw_strings: &[],
+        constant_strings: Vec::new(),
         raw_numbers: vec![],
         data_channels: vec![],
         legend_key: LegendKind::Line,

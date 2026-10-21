@@ -169,6 +169,9 @@ pub struct GeomSpec {
     /// Unscaled string channels set from a mapped aesthetic (e.g. text labels):
     /// (hephaestus channel, ggsql aesthetic).
     pub raw_strings: &'static [(&'static str, &'static str)],
+    /// Constant string channels from layer parameters, scale-bypassing
+    /// (e.g. `start_marker`/`end_marker` from the `arrow` SETTING).
+    pub constant_strings: Vec<(&'static str, String)>,
     /// Constant panel-space channel values, scale-bypassing (e.g. a rule's
     /// 0..1 span, discrete-tile band edges): (hephaestus channel, value).
     ///
@@ -207,6 +210,9 @@ where
         if let Some(col) = aesthetic_column_name(ctx.layer, aesthetic) {
             builder.set(*channel, Raw(column_to_strings(ctx.df, col)?));
         }
+    }
+    for (channel, value) in spec.constant_strings {
+        builder.set(channel, Raw(value));
     }
     for (channel, value) in &spec.raw_numbers {
         builder.set(*channel, Raw(vec![*value; ctx.df.height()]));
@@ -612,6 +618,26 @@ pub fn side_sign(layer: &Layer) -> Option<f64> {
             _ => None,
         },
         _ => None,
+    }
+}
+
+/// The layer's `arrow` SETTING as endpoint marker channels: a bare string sets
+/// the end marker, an array `[start, end]` sets each end with null skipping
+/// it. Vocabulary names map to hephaestus's built-in `arrow-*` shapes.
+pub fn arrow_markers(layer: &Layer) -> Vec<(&'static str, String)> {
+    let marker = |name: &String| format!("arrow-{name}");
+    match layer.parameters.get("arrow") {
+        Some(ParameterValue::String(name)) => vec![("end_marker", marker(name))],
+        Some(ParameterValue::Array(a)) => {
+            let mut channels = Vec::new();
+            for (channel, elem) in ["start_marker", "end_marker"].into_iter().zip(a) {
+                if let crate::plot::types::ArrayElement::String(s) = elem {
+                    channels.push((channel, marker(s)));
+                }
+            }
+            channels
+        }
+        _ => Vec::new(),
     }
 }
 

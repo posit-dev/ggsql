@@ -57,6 +57,7 @@ pub fn spec(ctx: &Ctx) -> GeomSpec {
         positions,
         material: material(),
         raw_strings: &[],
+        constant_strings: super::super::wiring::arrow_markers(ctx.layer),
         raw_numbers,
         data_channels: vec![],
         legend_key: LegendKind::Line,
