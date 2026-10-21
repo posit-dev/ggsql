@@ -33,11 +33,14 @@ impl GeomTrait for Path {
     }
 
     fn default_params(&self) -> &'static [ParamDefinition] {
-        const PARAMS: &[ParamDefinition] = &[ParamDefinition {
-            name: "position",
-            default: DefaultParamValue::String("identity"),
-            constraint: ParamConstraint::string_option(POSITION_VALUES),
-        }];
+        const PARAMS: &[ParamDefinition] = &[
+            ParamDefinition {
+                name: "position",
+                default: DefaultParamValue::String("identity"),
+                constraint: ParamConstraint::string_option(POSITION_VALUES),
+            },
+            super::types::ARROW_PARAM,
+        ];
         PARAMS
     }
 

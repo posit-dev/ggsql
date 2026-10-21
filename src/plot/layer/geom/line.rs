@@ -43,6 +43,7 @@ impl GeomTrait for Line {
                 constraint: ParamConstraint::string_option(ORIENTATION_VALUES),
             },
             super::types::AGGREGATE_PARAM,
+            super::types::ARROW_PARAM,
         ];
         PARAMS
     }
