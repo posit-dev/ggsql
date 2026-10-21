@@ -1115,3 +1115,72 @@ fn pin_constants(
     }
     key
 }
+
+#[cfg(test)]
+mod tests {
+    use super::arrow_markers;
+    use crate::plot::layer::geom::Geom;
+    use crate::plot::types::{ArrayElement, ParameterValue};
+    use crate::Layer;
+
+    fn layer_with_arrow(value: Option<ParameterValue>) -> Layer {
+        let mut layer = Layer::new(Geom::segment());
+        if let Some(value) = value {
+            layer.parameters.insert("arrow".into(), value);
+        }
+        layer
+    }
+
+    fn strings(elems: &[Option<&str>]) -> ParameterValue {
+        ParameterValue::Array(
+            elems
+                .iter()
+                .map(|e| match e {
+                    Some(s) => ArrayElement::String(s.to_string()),
+                    None => ArrayElement::Null,
+                })
+                .collect(),
+        )
+    }
+
+    #[test]
+    fn a_bare_string_sets_the_end_marker_only() {
+        let layer = layer_with_arrow(Some(ParameterValue::String("closed".into())));
+        assert_eq!(
+            arrow_markers(&layer),
+            vec![("end_marker", "arrow-closed".to_string())]
+        );
+    }
+
+    #[test]
+    fn an_array_sets_start_then_end() {
+        let layer = layer_with_arrow(Some(strings(&[Some("open"), Some("closed")])));
+        assert_eq!(
+            arrow_markers(&layer),
+            vec![
+                ("start_marker", "arrow-open".to_string()),
+                ("end_marker", "arrow-closed".to_string())
+            ]
+        );
+    }
+
+    #[test]
+    fn null_elements_skip_an_end() {
+        let start_only = layer_with_arrow(Some(strings(&[Some("open"), None])));
+        assert_eq!(
+            arrow_markers(&start_only),
+            vec![("start_marker", "arrow-open".to_string())]
+        );
+        let end_only = layer_with_arrow(Some(strings(&[None, Some("closed")])));
+        assert_eq!(
+            arrow_markers(&end_only),
+            vec![("end_marker", "arrow-closed".to_string())]
+        );
+    }
+
+    #[test]
+    fn no_param_or_null_draws_no_markers() {
+        assert!(arrow_markers(&layer_with_arrow(None)).is_empty());
+        assert!(arrow_markers(&layer_with_arrow(Some(ParameterValue::Null))).is_empty());
+    }
+}

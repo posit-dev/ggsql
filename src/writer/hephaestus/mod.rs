@@ -217,6 +217,24 @@ mod tests {
     }
 
     #[test]
+    fn renders_segment_arrows() {
+        assert_renders(
+            "SELECT 1 AS x, 2 AS y, 3 AS x2, 4 AS y2 \
+             VISUALISE x AS pos1, y AS pos2 \
+             DRAW segment MAPPING x2 AS pos1end, y2 AS pos2end \
+             SETTING arrow => ['open', 'closed']",
+        );
+    }
+
+    #[test]
+    fn renders_line_arrow() {
+        assert_renders(
+            "SELECT x, y FROM (VALUES (1,2),(2,3),(3,1)) t(x,y) \
+             VISUALISE x AS x, y AS y DRAW line SETTING arrow => 'closed'",
+        );
+    }
+
+    #[test]
     fn renders_categorical_color_with_legend() {
         assert_renders(
             "SELECT 1 AS x, 2 AS y, 'a' AS grp UNION ALL SELECT 2, 3, 'b' \
