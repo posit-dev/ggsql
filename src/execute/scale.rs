@@ -983,6 +983,17 @@ pub fn resolve_scales(spec: &mut Plot, data_map: &mut HashMap<String, DataFrame>
         })
         .unwrap_or((false, false));
 
+    let free_aesthetics: HashSet<String> = match &spec.facet {
+        Some(facet) => spec
+            .scales
+            .iter()
+            .filter(|s| facet.is_free(&s.aesthetic))
+            .map(|s| s.aesthetic.clone())
+            .collect(),
+        None => HashSet::new(),
+    };
+    let mut panel_templates: HashMap<String, Scale> = HashMap::new();
+
     for idx in 0..spec.scales.len() {
         // Clone aesthetic to avoid borrow issues with find_columns_for_aesthetic
         let aesthetic = spec.scales[idx].aesthetic.clone();
@@ -991,6 +1002,10 @@ pub fn resolve_scales(spec: &mut Plot, data_map: &mut HashMap<String, DataFrame>
         // (resolve_output_range is now handled inside the unified resolve() method)
         if spec.scales[idx].resolved {
             continue;
+        }
+
+        if free_aesthetics.contains(&aesthetic) {
+            panel_templates.insert(aesthetic.clone(), spec.scales[idx].clone());
         }
 
         // Infer target type and coerce columns if needed
@@ -1046,7 +1061,245 @@ pub fn resolve_scales(spec: &mut Plot, data_map: &mut HashMap<String, DataFrame>
         }
     }
 
+    // Per-panel resolution for positional scales on a free facet dimension.
+    if !free_aesthetics.is_empty() {
+        resolve_panel_scales(
+            spec,
+            data_map,
+            &free_aesthetics,
+            panel_templates,
+            is_polar && polar_is_full_circle,
+        )?;
+    }
+
     Ok(())
+}
+
+/// Resolve per-panel domains, breaks, and labels for every positional scale on
+/// a `free` facet dimension, storing them in [`Scale::panels`] (indexed by the
+/// canonical panel order, see [`crate::plot::facet::panels`]).
+///
+/// Writers consume these verbatim: they must not derive per-panel positional
+/// extents themselves. Each panel is resolved with the *same* machinery as the
+/// global scale (`ScaleType::resolve`) run over the panel's own rows, so a free
+/// panel gets exactly the domain, expansion, breaks, and labels a fixed axis
+/// over the same data would get. Two exceptions:
+///
+/// - **Discrete/ordinal** domains are the global domain narrowed to the
+///   categories present in the panel, kept in the global order (rather than the
+///   panel's first-seen order), so panels agree on level placement.
+/// - **Binned** scales keep the globally resolved bin edges — bins are
+///   resolved pre-stat and must not be recomputed per panel — narrowed to the
+///   window of bins the panel's data occupies.
+///
+/// A scale with an explicit user `FROM` domain resolves to that same domain in
+/// every panel (explicit settings apply uniformly; only computed values are
+/// per-panel). An empty panel gets a `None` entry; consumers fall back to the
+/// shared scale there.
+fn resolve_panel_scales(
+    spec: &mut Plot,
+    data_map: &HashMap<String, DataFrame>,
+    free_aesthetics: &HashSet<String>,
+    templates: HashMap<String, Scale>,
+    polar_zero_expand: bool,
+) -> Result<()> {
+    use crate::plot::facet::panels;
+    use crate::plot::scale::ScaleDataContext;
+
+    let layer0 = data_map.get(&naming::layer_key(0)).ok_or_else(|| {
+        GgsqlError::InternalError("Missing layer 0 data for panel scale resolution".to_string())
+    })?;
+    let panel_keys = panels::panel_keys(spec, layer0)?;
+    if panel_keys.is_empty() {
+        return Ok(());
+    }
+    let aesthetic_ctx = spec.get_aesthetic_context();
+
+    for aesthetic in free_aesthetics {
+        let Some(idx) = spec.scales.iter().position(|s| &s.aesthetic == aesthetic) else {
+            continue;
+        };
+        let Some(st) = spec.scales[idx].scale_type.clone() else {
+            continue;
+        };
+        let kind = st.scale_type_kind();
+        // An identity scale passes values through; there is no domain to free.
+        if kind == ScaleTypeKind::Identity {
+            continue;
+        }
+
+        let locations =
+            find_column_locations_for_aesthetic(&spec.layers, aesthetic, data_map, &aesthetic_ctx);
+        if locations.is_empty() {
+            continue;
+        }
+
+        let mut entries: Vec<Option<crate::plot::PanelScale>> =
+            Vec::with_capacity(panel_keys.len());
+        for pk in &panel_keys {
+            // Slice every training column to this panel's rows. A layer with no
+            // facet column belongs to every panel whole.
+            let mut owned: Vec<ArrayRef> = Vec::with_capacity(locations.len());
+            let mut total_rows = 0usize;
+            for (layer_key, column) in &locations {
+                let df = data_map.get(layer_key).ok_or_else(|| {
+                    GgsqlError::InternalError(format!(
+                        "Missing data for layer '{}' during panel scale resolution",
+                        layer_key
+                    ))
+                })?;
+                let array = df.column(column).map_err(|e| {
+                    GgsqlError::InternalError(format!(
+                        "Missing column '{}' during panel scale resolution: {}",
+                        column, e
+                    ))
+                })?;
+                match panels::rows_in_panel(df, pk)? {
+                    Some(row_idx) => {
+                        total_rows += row_idx.len();
+                        owned.push(panels::take_rows(array, &row_idx)?);
+                    }
+                    None => {
+                        total_rows += array.len();
+                        owned.push(array.clone());
+                    }
+                }
+            }
+            if total_rows == 0 {
+                entries.push(None);
+                continue;
+            }
+
+            let entry = if kind == ScaleTypeKind::Binned {
+                resolve_binned_panel(&spec.scales[idx], &owned)
+            } else {
+                let column_refs: Vec<&ArrayRef> = owned.iter().collect();
+                let mut context =
+                    ScaleDataContext::from_columns(&column_refs, st.uses_discrete_input_range());
+                if polar_zero_expand && aesthetic == "pos2" {
+                    context.default_expand = Some((0.0, 0.0));
+                }
+                let mut panel_scale = templates.get(aesthetic).cloned().ok_or_else(|| {
+                    GgsqlError::InternalError(format!(
+                        "Missing pre-resolution template for free scale '{}'",
+                        aesthetic
+                    ))
+                })?;
+                let display_aes = aesthetic_ctx.map_internal_to_user(aesthetic);
+                st.resolve(&mut panel_scale, &context, aesthetic)
+                    .map_err(|e| {
+                        GgsqlError::ValidationError(format!("Scale '{}': {}", display_aes, e))
+                    })?;
+
+                // Keep the panel's categories in the *global* domain order, so
+                // every panel places a given level at the same position.
+                if matches!(kind, ScaleTypeKind::Discrete | ScaleTypeKind::Ordinal) {
+                    narrow_discrete_domain(&mut panel_scale, &spec.scales[idx]);
+                }
+
+                Some(crate::plot::PanelScale {
+                    input_range: panel_scale.input_range.clone().unwrap_or_default(),
+                    breaks: panel_scale.labelled_breaks(),
+                    minor_breaks: panel_scale.numeric_minor_breaks(),
+                })
+            };
+            entries.push(entry);
+        }
+        spec.scales[idx].panels = Some(entries);
+    }
+
+    Ok(())
+}
+
+/// Narrow a per-panel resolved discrete/ordinal domain to the categories that
+/// also exist in the global domain, in the global domain's order.
+fn narrow_discrete_domain(panel_scale: &mut Scale, global_scale: &Scale) {
+    let (Some(global_range), Some(panel_range)) = (
+        global_scale.input_range.as_ref(),
+        panel_scale.input_range.as_ref(),
+    ) else {
+        return;
+    };
+    let present: HashSet<String> = panel_range.iter().map(|e| e.to_key_string()).collect();
+    panel_scale.input_range = Some(
+        global_range
+            .iter()
+            .filter(|e| present.contains(&e.to_key_string()))
+            .cloned()
+            .collect(),
+    );
+}
+
+/// Per-panel resolution for a **binned** free dimension: the globally resolved
+/// bin edges, narrowed to the window of bins the panel's data occupies. Core
+/// never invents bin boundaries — it only selects from the edges the global
+/// scale resolved. Edges and domain narrow together because a binned axis
+/// derives band width from its edge count.
+///
+/// `None` when the scale has no usable bins or the panel has no finite extent.
+fn resolve_binned_panel(scale: &Scale, columns: &[ArrayRef]) -> Option<crate::plot::PanelScale> {
+    use crate::array_util::cast_array;
+
+    let Some(ParameterValue::Array(edge_elements)) = scale.properties.get("breaks") else {
+        return None;
+    };
+    if edge_elements.len() < 2 {
+        return None;
+    }
+    let edges: Vec<f64> = edge_elements.iter().filter_map(|e| e.to_f64()).collect();
+    if edges.len() != edge_elements.len() {
+        return None;
+    }
+
+    // The panel's finite numeric extent across all training columns.
+    let (mut lo, mut hi) = (f64::INFINITY, f64::NEG_INFINITY);
+    for array in columns {
+        let casted = cast_array(array, &arrow::datatypes::DataType::Float64).ok()?;
+        let values = crate::array_util::as_f64(&casted).ok()?;
+        for v in values.iter().flatten() {
+            if v.is_finite() {
+                lo = lo.min(v);
+                hi = hi.max(v);
+            }
+        }
+    }
+    if !(lo.is_finite() && hi.is_finite()) {
+        return None;
+    }
+
+    // The inclusive window of bins covering the panel's extent: the bin whose
+    // lower edge starts at or below `lo` through the bin whose upper edge
+    // reaches `hi`.
+    let n = edges.len();
+    let first = (0..n - 1).rev().find(|&i| edges[i] <= lo).unwrap_or(0);
+    let last = (1..n)
+        .find(|&j| edges[j] >= hi)
+        .unwrap_or(n - 1)
+        .max(first + 1)
+        .min(n - 1);
+
+    let window_elements: Vec<ArrayElement> = edge_elements[first..=last].to_vec();
+    let (lo_edge, hi_edge) = (edges[first], edges[last]);
+    let breaks = scale
+        .labelled_breaks()
+        .into_iter()
+        .filter(|(pos, _)| *pos >= lo_edge && *pos <= hi_edge)
+        .collect();
+
+    Some(crate::plot::PanelScale {
+        input_range: vec![
+            window_elements
+                .first()
+                .cloned()
+                .unwrap_or(ArrayElement::Null),
+            window_elements
+                .last()
+                .cloned()
+                .unwrap_or(ArrayElement::Null),
+        ],
+        breaks,
+        minor_breaks: None,
+    })
 }
 
 /// Find all columns for an aesthetic (including family members like xmin/xmax for "x").
@@ -1060,7 +1313,22 @@ pub fn find_columns_for_aesthetic<'a>(
     data_map: &'a HashMap<String, DataFrame>,
     aesthetic_ctx: &AestheticContext,
 ) -> Vec<&'a ArrayRef> {
-    let mut column_refs = Vec::new();
+    find_column_locations_for_aesthetic(layers, aesthetic, data_map, aesthetic_ctx)
+        .into_iter()
+        .filter_map(|(layer_key, name)| data_map.get(&layer_key)?.column(&name).ok())
+        .collect()
+}
+
+/// Like [`find_columns_for_aesthetic`], but returns `(layer_key, column_name)`
+/// locations instead of column references, so callers can slice the columns
+/// (e.g., to a facet panel's rows) before reading them.
+fn find_column_locations_for_aesthetic(
+    layers: &[Layer],
+    aesthetic: &str,
+    data_map: &HashMap<String, DataFrame>,
+    aesthetic_ctx: &AestheticContext,
+) -> Vec<(String, String)> {
+    let mut locations = Vec::new();
     let aesthetics_to_check = aesthetic_ctx
         .internal_position_family(aesthetic)
         .map(|f| f.to_vec())
@@ -1068,12 +1336,13 @@ pub fn find_columns_for_aesthetic<'a>(
 
     // Check each layer's mapping - every layer has its own data
     for (i, layer) in layers.iter().enumerate() {
-        if let Some(df) = data_map.get(&naming::layer_key(i)) {
+        let layer_key = naming::layer_key(i);
+        if let Some(df) = data_map.get(&layer_key) {
             for aes_name in &aesthetics_to_check {
                 if let Some(AestheticValue::Column { name, .. }) = layer.mappings.get(aes_name) {
                     // Regular columns (data and position annotations) participate in scale training
-                    if let Ok(column) = df.column(name) {
-                        column_refs.push(column);
+                    if df.column(name).is_ok() {
+                        locations.push((layer_key.clone(), name.clone()));
                     }
                 }
                 // AnnotationColumn and Literal don't participate in scale training
@@ -1081,7 +1350,7 @@ pub fn find_columns_for_aesthetic<'a>(
         }
     }
 
-    column_refs
+    locations
 }
 
 // =============================================================================

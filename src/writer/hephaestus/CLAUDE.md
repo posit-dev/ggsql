@@ -78,13 +78,17 @@ missing *pass-through*, not a better computation here. The same shape held
 upstream — every hephaestus gap this writer hit was a missing setter, not a
 missing algorithm.
 
-There are exactly **two scoped exceptions**, both flagged in the code and both
-debt that would disappear if ggsql resolved more:
+There is exactly **one scoped exception**, flagged in the code:
 
 | Exception | Where | Why |
 | --- | --- | --- |
-| Free facet dimensions | `scales::{free_position_scale, free_binned_scale}` | ggsql resolves one global domain; a `free` panel needs its own. Only the *extent* is computed — the padding around it is still ggsql's, via `Scale::expand_range`. |
 | Spatial `pos1`/`pos2` | `compose.rs::map_bbox` | A map's frame is `Projection.computed["bbox"]`, in the target CRS, with `SCALE lon`/`lat` limits already folded in. A resolved `pos1`/`pos2` is *not* the alternative: for a map, ggsql resolves those against the graticule extent in EPSG:4326, so their domain is degrees and their breaks are graticule positions, not the frame. Only a bare `spatial` geom with no `PROJECT` falls back to the geometry extent. |
+
+Free facet dimensions are **not** an exception: ggsql resolves the per-panel
+domain, breaks, labels, and minor breaks in core (`Scale::panels`, indexed by
+the canonical panel order in `plot::facet::panels`), and
+`scales::free_position_scale` only translates that entry into a hephaestus
+scale. The writer never derives a positional extent.
 
 ## Configuration
 
