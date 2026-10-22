@@ -21,6 +21,16 @@ The following aesthetics are recognised by the path layer.
 
 ## Settings
 * `position`: Position adjustment. One of `'identity'` (default), `'stack'`, `'dodge'`, or `'jitter'`
+* `arrow` Arrow names to display at line ends. Broadly, these come in the following variants:
+  * Arrow heads: `'open'`, `'closed'`, `'stealth'`, `'latex'`, `'thin'` and `'wedge'`.
+  * Arrow tails: `'fishtail'`, `'fork'`, and `'feather'`.
+  * Symmetric: `'bar'`, `'bracket'`, `'cross'`, `'dot'`, `'square'` and `'diamond'`.
+
+  Arrows can be declared in the following ways:
+    * `null` (default) do not display an arrow.
+    * A single string giving an arrow name to use at the end of the line.
+    * A `[start, end]` array of names or `null` to specify arrows for the start and end of the line.
+    To only set an arrow at the start, you could use `['open', null]`.  
 
 ## Data transformation
 The path layer does not transform its data but passes it through unchanged.
@@ -88,6 +98,15 @@ DRAW polygon
   MAPPING 'Polygon' AS stroke
 DRAW path 
   MAPPING 'Path' AS stroke
+```
+
+Setting an arrow.
+
+```{ggsql}
+VISUALISE x, y FROM df
+DRAW path SETTING 
+  arrow => 'closed',
+  linewidth => 5
 ```
 
 When `stroke` or `opacity` varies, the properties of the preceding datapoint carry over. In the case below, we don't see the blue of the last datapoint.

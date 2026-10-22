@@ -1,5 +1,10 @@
 ## [Unreleased]
 
+### Added
+
+- The line, path and segment layers now have an `arrow` setting, which
+  can be used to display arrowheads at the ends of the lines.
+
 ### Changed
 
 - The reader/dialect layer was refactored around a central dialect registry with
