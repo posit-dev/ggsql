@@ -4,6 +4,9 @@
 //! composition every writer builds, and because `ggsql-cli` uses only public
 //! `ggsql::*` API and has no renderer dependency of its own.
 
+use std::cell::Cell;
+use std::rc::Rc;
+
 use hephaestus::plot::PlotComposition;
 use hephaestus::window::{self, Event, EventCtx, Frame, WindowApp, WindowConfig};
 
@@ -16,7 +19,7 @@ use crate::{GgsqlError, Result};
 ///
 /// Notably not `units` or `dpi`: a window's size is logical pixels and its
 /// resolution belongs to the display it opens on.
-const VIEWER_OPTIONS: &[&str] = &["width", "height", "background", "title"];
+pub const VIEWER_OPTIONS: &[&str] = &["width", "height", "background", "title"];
 
 /// Default window size, matching the renderer's own.
 const DEFAULT_WIDTH: u32 = 800;
@@ -113,21 +116,38 @@ impl PlotViewer {
 
     /// Show the plot and **block until the window closes.**
     ///
-    /// Must be called from the main thread, as the platform event loops require.
+    /// Returns the frame the plot was last drawn in — logical size and dpi —
+    /// as it was when the window closed, so a caller rendering the same plot
+    /// to a file can match what the user last saw. Must be called from the
+    /// main thread, as the platform event loops require.
     ///
     /// # Errors
     ///
     /// Returns `GgsqlError::WriterError` if the plot cannot be composed, if no
     /// GPU adapter can drive a window, or if the event loop fails.
-    pub fn show(&self, spec: &Spec) -> Result<()> {
+    pub fn show(&self, spec: &Spec) -> Result<ClosingFrame> {
         let view = super::compose::prepare(spec.plot(), spec.data())?;
 
         let config = WindowConfig::new(self.title.clone())
             .size(self.width, self.height)
             .background(self.background);
 
-        window::run(config, SpecApp { view })
-            .map_err(|e| GgsqlError::WriterError(format!("the plot viewer failed: {e}")))
+        // The last frame the plot was drawn at, tracked across resizes so it
+        // survives `window::run` consuming the app.
+        let closing = Rc::new(Cell::new(ClosingFrame {
+            width: self.width,
+            height: self.height,
+            dpi: 96.0,
+        }));
+        let app = SpecApp {
+            view,
+            closing: Rc::clone(&closing),
+        };
+
+        window::run(config, app)
+            .map_err(|e| GgsqlError::WriterError(format!("the plot viewer failed: {e}")))?;
+
+        Ok(closing.get())
     }
 }
 
@@ -142,9 +162,21 @@ impl Default for PlotViewer {
     }
 }
 
+/// The frame the plot was last drawn in when the window closed.
+///
+/// `dpi` is the display's (`96 × scale factor` — 192 on a Retina display),
+/// which a file render needs to reproduce the window's text and line sizes.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ClosingFrame {
+    pub width: u32,
+    pub height: u32,
+    pub dpi: f64,
+}
+
 /// One composition, redrawn at whatever size the window currently is.
 struct SpecApp {
     view: PlotComposition,
+    closing: Rc<Cell<ClosingFrame>>,
 }
 
 impl WindowApp for SpecApp {
@@ -152,6 +184,11 @@ impl WindowApp for SpecApp {
         // The frame reports its own size and dpi, which is what makes a resize
         // a re-layout rather than a rescale.
         let (scene, size, dpi) = frame.parts();
+        self.closing.set(ClosingFrame {
+            width: size.width.round() as u32,
+            height: size.height.round() as u32,
+            dpi,
+        });
         self.view.render(scene, size, dpi);
     }
 
