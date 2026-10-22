@@ -15,3 +15,5 @@ Now that we understand some of the most important parts of the syntax let's spen
 - **[R](r.qmd)** --- Use ggsql from R.
 
 - **[WebAssembly](webassembly.qmd)** --- Run ggsql entirely in the browser with no installation.
+
+- **[DuckDB](duckdb.qmd)** — Use ggsql directly from the DuckDB shell or any DuckDB client via the community extension, no separate install needed.
