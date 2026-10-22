@@ -32,6 +32,8 @@ The following aesthetics are recognised by the line layer.
   * Arrow tails: `'fishtail'`, `'fork'`, and `'feather'`.
   * Symmetric: `'bar'`, `'bracket'`, `'cross'`, `'dot'`, `'square'` and `'diamond'`.
 
+  Arrow names can optionally be followed by a `:`-separated numeric suffix to set their size in points, e.g. `'open:10'`. 
+  By default, arrows are sized by tripling the `linewidth` value.
   Arrows can be declared in the following ways:
     * `null` (default) do not display an arrow.
     * A single string giving an arrow name to use at the end of the line.
@@ -106,8 +108,7 @@ Arrows applied to the start and end of the line.
 ```{ggsql}
 VISUALISE x, y FROM data
 DRAW line SETTING 
-  arrow => ['closed', 'dot'],
-  linewidth => 5
+  arrow => ['dot:20', 'closed:15']
 ```
 
 Use aggregation to draw min and max lines from a set of observations on a single layer. Targeting `y` twice produces one summary row per function within the same group. A synthetic `aggregate` column tags each row with the different function names, that you can remap to colour the lines distinctly:
