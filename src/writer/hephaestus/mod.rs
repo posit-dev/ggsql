@@ -22,8 +22,7 @@
 //! reinterpret.
 //!
 //! **Scope**: multi-layer plots under Cartesian, Polar, and Map projections,
-//! with `FACET` faceting (Wrap/Grid, fixed + free scales); every geom except
-//! `arrow`, which is a stub no writer implements; all scale types and
+//! with `FACET` faceting (Wrap/Grid, fixed + free scales); all scale types and
 //! transforms, material aesthetics, plot and axis titles, and legends.
 //!
 //! Architecture — the abstractions and the invariants they keep — and the
@@ -1304,19 +1303,6 @@ mod tests {
         let r = compose::map_range(10.0, 0.0);
         assert_eq!(*r.start(), -0.5);
         assert_eq!(*r.end(), 10.5);
-    }
-
-    /// `arrow` is a stub in both writers, so the rejection lives in the shared
-    /// composition layer rather than in any one of them.
-    #[test]
-    fn rejects_unsupported_geom() {
-        let spec = spec_for(
-            "SELECT 0 AS x, 0 AS y, 1 AS xend, 1 AS yend \
-             VISUALISE x AS x, y AS y, xend AS xend, yend AS yend DRAW arrow",
-        );
-        let err = compose::validate_plot(spec.plot()).unwrap_err();
-        assert!(matches!(err, GgsqlError::WriterError(_)));
-        assert!(err.to_string().contains("'arrow' geom"), "{err}");
     }
 }
 

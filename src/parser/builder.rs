@@ -648,7 +648,6 @@ fn parse_geom_type(text: &str) -> Result<Geom> {
         "violin" => Ok(Geom::violin()),
         "text" => Ok(Geom::text()),
         "segment" => Ok(Geom::segment()),
-        "arrow" => Ok(Geom::arrow()),
         "rule" => Ok(Geom::rule()),
         "range" => Ok(Geom::range()),
         "spatial" => Ok(Geom::spatial()),
