@@ -87,7 +87,7 @@ pub use hephaestus::SvgWriter;
 // Not a writer — it produces no output — but it needs the same composition, so
 // it lives beside them. See its own docs for why it is not a `Writer` impl.
 #[cfg(feature = "window")]
-pub use hephaestus::PlotViewer;
+pub use hephaestus::{PlotViewer, PlotWindowHandle, ReplWindow};
 #[cfg(feature = "png")]
 pub use hephaestus::{PngCompression, PngWriter};
 #[cfg(feature = "tiff")]
