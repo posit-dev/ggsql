@@ -8,7 +8,8 @@ use crate::{naming, plot::types::DefaultAestheticValue, Mappings};
 
 // Re-export shared types from the central location
 use crate::plot::types::{
-    ArrayConstraint, ArrayElementConstraint, StringConstraint, TypeConstraint,
+    ArrayConstraint, ArrayElement, ArrayElementConstraint, ParameterValue, Parameters,
+    StringConstraint, TypeConstraint,
 };
 pub use crate::plot::types::{DefaultParamValue, ParamConstraint, ParamDefinition};
 
@@ -57,16 +58,19 @@ pub const ARROW_VALUES: &[&str] = &[
 
 /// Shared `arrow` parameter definition for geoms that draw lines or
 /// segments. A single string sets the end marker only; an array
-/// `[start, end]` sets both, with null skipping an end.
+/// `[start, end]` sets both, with null skipping an end. Each entry is
+/// `name` or `name:size` (size in points); the constraint checks the
+/// structural shape only, per-entry vocabulary is validated by
+/// [`validate_arrow_param`] (the `aggregate` pattern).
 pub const ARROW_PARAM: ParamDefinition = ParamDefinition {
     name: "arrow",
     default: DefaultParamValue::Null,
     constraint: ParamConstraint {
         number: TypeConstraint::Forbidden,
-        string: TypeConstraint::Constrained(StringConstraint::one_of(ARROW_VALUES)),
+        string: TypeConstraint::Any,
         boolean: TypeConstraint::Forbidden,
         array: TypeConstraint::Constrained(ArrayConstraint {
-            element: ArrayElementConstraint::String(StringConstraint::one_of(ARROW_VALUES)),
+            element: ArrayElementConstraint::String(StringConstraint::unconstrained()),
             min_len: Some(1),
             max_len: Some(2),
             allow_null_elements: true,
@@ -74,6 +78,48 @@ pub const ARROW_PARAM: ParamDefinition = ParamDefinition {
         allow_null: true,
     },
 };
+
+/// Parse one `arrow` entry of the form `name` or `name:size` (size in points).
+pub fn parse_arrow_entry(entry: &str) -> std::result::Result<(&str, Option<f64>), String> {
+    let (name, size) = match entry.split_once(':') {
+        Some((name, size)) => {
+            let size: f64 = size.parse().map_err(|_| {
+                format!("invalid arrow '{entry}'; expected 'name' or 'name:size', e.g. 'closed:6'")
+            })?;
+            (name, Some(size))
+        }
+        None => (entry, None),
+    };
+    if !ARROW_VALUES.contains(&name) {
+        return Err(format!(
+            "unknown arrow '{name}'; expected one of {}",
+            crate::util::or_list_quoted(ARROW_VALUES, '\'')
+        ));
+    }
+    if size.is_some_and(|s| !(s > 0.0 && s.is_finite())) {
+        return Err(format!(
+            "invalid arrow size in '{entry}'; size must be a positive number of points"
+        ));
+    }
+    Ok((name, size))
+}
+
+/// Per-entry `name[:size]` vocabulary for the `arrow` setting, which
+/// [`ARROW_PARAM`]'s structural constraint can't express.
+pub fn validate_arrow_param(parameters: &Parameters) -> std::result::Result<(), String> {
+    match parameters.get("arrow") {
+        Some(ParameterValue::String(entry)) => parse_arrow_entry(entry).map(|_| ()),
+        Some(ParameterValue::Array(elems)) => {
+            for elem in elems {
+                if let ArrayElement::String(entry) = elem {
+                    parse_arrow_entry(entry)?;
+                }
+            }
+            Ok(())
+        }
+        _ => Ok(()),
+    }
+}
 
 /// Default aesthetic values for a geom type
 ///
@@ -659,5 +705,57 @@ mod tests {
 
         assert!(aes_fill.is_supported("color"));
         assert!(aes_fill.supported().contains(&"color"));
+    }
+}
+
+#[cfg(test)]
+mod arrow_tests {
+    use super::{parse_arrow_entry, validate_arrow_param};
+    use crate::plot::types::{ArrayElement, ParameterValue, Parameters};
+
+    fn params(value: ParameterValue) -> Parameters {
+        Parameters::from([("arrow".to_string(), value)])
+    }
+
+    #[test]
+    fn parses_a_bare_name() {
+        assert_eq!(parse_arrow_entry("closed"), Ok(("closed", None)));
+    }
+
+    #[test]
+    fn parses_a_name_with_size() {
+        assert_eq!(parse_arrow_entry("closed:6"), Ok(("closed", Some(6.0))));
+    }
+
+    #[test]
+    fn rejects_an_unknown_name() {
+        assert!(parse_arrow_entry("closde").unwrap_err().contains("unknown arrow 'closde'"));
+    }
+
+    #[test]
+    fn rejects_a_non_numeric_or_non_positive_size() {
+        assert!(parse_arrow_entry("closed:big").is_err());
+        assert!(parse_arrow_entry("closed:-1").is_err());
+        assert!(parse_arrow_entry("closed:0").is_err());
+    }
+
+    #[test]
+    fn validate_checks_every_array_entry() {
+        let good = params(ParameterValue::Array(vec![
+            ArrayElement::Null,
+            ArrayElement::String("open:3".to_string()),
+        ]));
+        assert!(validate_arrow_param(&good).is_ok());
+        let bad = params(ParameterValue::Array(vec![
+            ArrayElement::String("open".to_string()),
+            ArrayElement::String("nope".to_string()),
+        ]));
+        assert!(validate_arrow_param(&bad).is_err());
+    }
+
+    #[test]
+    fn validate_passes_without_the_param() {
+        assert!(validate_arrow_param(&Parameters::new()).is_ok());
+        assert!(validate_arrow_param(&params(ParameterValue::Null)).is_ok());
     }
 }

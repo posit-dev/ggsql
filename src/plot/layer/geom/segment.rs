@@ -6,7 +6,7 @@ use super::{
     DefaultParamValue, GeomTrait, GeomType, ParamConstraint, ParamDefinition,
 };
 use crate::plot::projection::Projection;
-use crate::plot::types::{DefaultAestheticValue, ParameterValue};
+use crate::plot::types::{DefaultAestheticValue, ParameterValue, Parameters};
 use crate::reader::SqlDialect;
 use crate::{naming, Mappings, Result};
 
@@ -45,6 +45,10 @@ impl GeomTrait for Segment {
             super::types::ARROW_PARAM,
         ];
         PARAMS
+    }
+
+    fn setup_layer(&self, _mappings: &mut Mappings, parameters: &mut Parameters) -> Result<()> {
+        super::types::validate_arrow_param(parameters).map_err(crate::GgsqlError::ValidationError)
     }
 
     fn aggregate_domain_aesthetics(&self) -> Option<&'static [&'static str]> {

@@ -275,6 +275,15 @@ pub fn validate(query: &str) -> Result<Validated> {
                     location: None,
                 });
             }
+            // Same rationale as the aggregate check above: surface `arrow`
+            // vocabulary errors without executing.
+            if let Err(e) = crate::plot::layer::geom::types::validate_arrow_param(&layer.parameters)
+            {
+                errors.push(ValidationError {
+                    message: format!("{}: {}", context, e),
+                    location: None,
+                });
+            }
         }
     }
 

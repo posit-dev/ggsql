@@ -17,6 +17,7 @@ use super::channels::{
     column_to_f64, column_to_strings, ChannelData,
 };
 use super::scales::{map_linetype, parse_color, parse_font_weight, RangeKind};
+use crate::plot::layer::geom::types::parse_arrow_entry;
 use crate::plot::{ParameterValue, ScaleTypeKind};
 use crate::{AestheticValue, DataFrame, GgsqlError, Layer, Plot, Result};
 
@@ -630,9 +631,20 @@ const INVERTED_ARROWS: &[&str] = &["fishtail", "fork", "feather"];
 /// it. Vocabulary names map to hephaestus's built-in `arrow-*` shapes.
 pub fn arrow_markers(layer: &Layer) -> Vec<(&'static str, HValue)> {
     let mut channels = Vec::new();
-    let mut push = |marker: &'static str, invert: &'static str, name: &String| {
+    let mut push = |marker: &'static str, invert: &'static str, entry: &String| {
+        // Invalid entries were rejected at execute/validate time; skip defensively.
+        let Ok((name, size)) = parse_arrow_entry(entry) else {
+            return;
+        };
         channels.push((marker, HValue::String(format!("arrow-{name}").into())));
-        if INVERTED_ARROWS.contains(&name.as_str()) {
+        if let Some(size) = size {
+            let size_channel = match marker {
+                "start_marker" => "start_marker_size",
+                _ => "end_marker_size",
+            };
+            channels.push((size_channel, HValue::Number(size)));
+        }
+        if INVERTED_ARROWS.contains(&name) {
             channels.push((invert, HValue::Bool(true)));
         }
     };
@@ -1202,6 +1214,18 @@ mod tests {
     fn no_param_or_null_draws_no_markers() {
         assert!(markers(&layer_with_arrow(None)).is_empty());
         assert!(markers(&layer_with_arrow(Some(ParameterValue::Null))).is_empty());
+    }
+
+    #[test]
+    fn a_name_with_size_sets_the_size_channel() {
+        let layer = layer_with_arrow(Some(ParameterValue::String("closed:6".into())));
+        assert_eq!(
+            markers(&layer),
+            vec![
+                ("end_marker", "String(\"arrow-closed\")".to_string()),
+                ("end_marker_size", "Number(6.0)".to_string())
+            ]
+        );
     }
 
     #[test]

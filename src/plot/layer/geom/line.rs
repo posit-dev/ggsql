@@ -48,6 +48,10 @@ impl GeomTrait for Line {
         PARAMS
     }
 
+    fn setup_layer(&self, _mappings: &mut Mappings, parameters: &mut Parameters) -> Result<()> {
+        super::types::validate_arrow_param(parameters).map_err(crate::GgsqlError::ValidationError)
+    }
+
     fn aggregate_domain_aesthetics(&self) -> Option<&'static [&'static str]> {
         Some(&["pos1"])
     }
