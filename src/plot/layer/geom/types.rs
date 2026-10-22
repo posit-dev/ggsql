@@ -729,7 +729,9 @@ mod arrow_tests {
 
     #[test]
     fn rejects_an_unknown_name() {
-        assert!(parse_arrow_entry("closde").unwrap_err().contains("unknown arrow 'closde'"));
+        assert!(parse_arrow_entry("closde")
+            .unwrap_err()
+            .contains("unknown arrow 'closde'"));
     }
 
     #[test]
