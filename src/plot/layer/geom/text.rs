@@ -85,11 +85,8 @@ impl GeomTrait for Text {
                 default: DefaultParamValue::Number(1.0),
                 constraint: ParamConstraint::number(NumberConstraint::min(0.0)),
             },
-            ParamDefinition {
-                name: "linetype",
-                default: DefaultParamValue::String("solid"),
-                constraint: ParamConstraint::string_option(crate::plot::scale::palettes::LINETYPES),
-            },
+            // No `linetype` setting yet: hephaestus has no dash channel for
+            // background-rect strokes, so a setting would silently no-op.
             super::types::AGGREGATE_PARAM,
         ];
         PARAMS
