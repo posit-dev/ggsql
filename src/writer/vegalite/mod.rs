@@ -1120,8 +1120,8 @@ impl Writer for VegaLiteWriter {
         }
 
         {
-            let title = spec.labels.labels.get("title").and_then(|v| v.as_ref());
-            let subtitle = spec.labels.labels.get("subtitle").and_then(|v| v.as_ref());
+            let title = spec.labels.get("title");
+            let subtitle = spec.labels.get("subtitle");
             match (title, subtitle) {
                 (Some(t), Some(st)) => {
                     // Vega-Lite uses an object for title + subtitle

@@ -944,12 +944,7 @@ impl KernelServer {
         let comm_id = uuid::Uuid::new_v4().to_string();
         self.plot_seq = self.plot_seq.saturating_add(1);
 
-        let title = spec
-            .plot()
-            .labels
-            .labels
-            .get("title")
-            .and_then(|title| title.as_deref());
+        let title = spec.plot().labels.get("title");
         let metadata = PlotMetadata {
             name: crate::plot::comm::plot_name(title, self.plot_seq),
             execution_id: parent.header.msg_id.clone(),
