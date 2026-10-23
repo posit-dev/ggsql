@@ -9,6 +9,7 @@
   `Spec::layer_sql`/`Spec::stat_sql` were removed.
 - Scale resolution now detects and converts temporal-unit mismatches and errors
   on unrepresentable ranges instead of producing silently wrong scales (#569).
+- Replaced `CLAUDE.md` files with `AGENTS.md` files.
 
 ### Fixed
 
