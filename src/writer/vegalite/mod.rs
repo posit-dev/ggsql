@@ -1119,9 +1119,9 @@ impl Writer for VegaLiteWriter {
             vl_spec["height"] = h;
         }
 
-        if let Some(labels) = &spec.labels {
-            let title = labels.labels.get("title").and_then(|v| v.as_ref());
-            let subtitle = labels.labels.get("subtitle").and_then(|v| v.as_ref());
+        {
+            let title = spec.labels.get("title");
+            let subtitle = spec.labels.get("subtitle");
             match (title, subtitle) {
                 (Some(t), Some(st)) => {
                     // Vega-Lite uses an object for title + subtitle
@@ -1218,7 +1218,7 @@ impl Writer for VegaLiteWriter {
 mod tests {
     use super::*;
     use crate::df;
-    use crate::plot::{Labels, Layer, ParameterValue};
+    use crate::plot::{Layer, ParameterValue};
     use crate::Geom;
     use serde_json::Value;
     use std::collections::HashMap;
@@ -1538,13 +1538,9 @@ mod tests {
             );
         spec.layers.push(layer);
 
-        let mut labels = Labels {
-            labels: HashMap::new(),
-        };
-        labels
+        spec.labels
             .labels
             .insert("title".to_string(), Some("My Chart".to_string()));
-        spec.labels = Some(labels);
 
         let df = df! {
             "date" => vec!["2024-01-01", "2024-01-02"],
