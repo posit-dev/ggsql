@@ -28,7 +28,7 @@
 //!
 //! Architecture — the abstractions and the invariants they keep — and the
 //! inventory of deferred work are documented in
-//! `src/writer/hephaestus/CLAUDE.md`.
+//! `src/writer/hephaestus/AGENTS.md`.
 
 mod canvas;
 mod channels;

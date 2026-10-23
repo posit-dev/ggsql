@@ -99,7 +99,7 @@ binaries = [
 ]
 
 # The default `svg`/`pdf`/`hep` writers lay text out through fontconfig, loaded
-# at run time (see /CLAUDE.md). Nothing is needed to *build* against it, but
+# at run time (see /AGENTS.md). Nothing is needed to *build* against it, but
 # without the runtime library and a font a plot renders with no labels at all
 # and no error, so the package declares both rather than degrading silently.
 [package.metadata.packager.deb]

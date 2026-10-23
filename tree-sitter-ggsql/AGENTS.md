@@ -71,6 +71,6 @@ In editors with tree-sitter support: `npx tree-sitter playground` to interactive
 
 ## See also
 
-- [`/CLAUDE.md`](../CLAUDE.md) — workspace overview.
-- [`/src/parser/`](../src/parser/) (covered in [`/src/CLAUDE.md`](../src/CLAUDE.md)) — the consumer that turns the CST into typed `Plot` values.
+- [`/AGENTS.md`](../AGENTS.md) — workspace overview.
+- [`/src/parser/`](../src/parser/) (covered in [`/src/AGENTS.md`](../src/AGENTS.md)) — the consumer that turns the CST into typed `Plot` values.
 - [`/doc/syntax/`](../doc/syntax/) — authoritative ggsql syntax reference.

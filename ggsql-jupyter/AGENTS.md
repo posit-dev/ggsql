@@ -174,7 +174,7 @@ So `RenderHints::canvas` picks a height (golden ratio, close to ggplot2's defaul
 ## Positron-specific bits
 
 - `data_explorer.rs` implements Positron's data-explorer comm channel (registered query results become explorable tables).
-- The companion VS Code extension (`ggsql-vscode/`) ships a copy of this binary and also discovers installed ones via the `ggsql.kernelPath` setting, the Jupyter kernelspec directories, the native install locations, or `PATH`. It runs each one with `--version` to name the runtime it registers, so **keep `--version` working**: a kernel that does not answer it is still offered, but without a version in the picker. See [Finding the kernel](../ggsql-vscode/CLAUDE.md#finding-the-kernel).
+- The companion VS Code extension (`ggsql-vscode/`) ships a copy of this binary and also discovers installed ones via the `ggsql.kernelPath` setting, the Jupyter kernelspec directories, the native install locations, or `PATH`. It runs each one with `--version` to name the runtime it registers, so **keep `--version` working**: a kernel that does not answer it is still offered, but without a version in the picker. See [Finding the kernel](../ggsql-vscode/AGENTS.md#finding-the-kernel).
 
 ## Build & install
 
@@ -219,7 +219,7 @@ pytest
 
 ## See also
 
-- [`/CLAUDE.md`](../CLAUDE.md) — workspace overview.
-- [`/ggsql-vscode/CLAUDE.md`](../ggsql-vscode/CLAUDE.md) — the VS Code / Positron extension that drives this kernel.
-- [`/src/CLAUDE.md`](../src/CLAUDE.md) — the underlying `ggsql` library.
+- [`/AGENTS.md`](../AGENTS.md) — workspace overview.
+- [`/ggsql-vscode/AGENTS.md`](../ggsql-vscode/AGENTS.md) — the VS Code / Positron extension that drives this kernel.
+- [`/src/AGENTS.md`](../src/AGENTS.md) — the underlying `ggsql` library.
 - [`/doc/get_started/tooling.qmd`](../doc/get_started/tooling.qmd) — user-facing notebook docs.

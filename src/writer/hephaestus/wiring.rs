@@ -41,7 +41,7 @@ use crate::{AestheticValue, DataFrame, GgsqlError, Layer, Plot, Result};
 ///   titles and break labels cascade the flag too but shape through
 ///   `TextRun::new` regardless, so they still draw their markers; they start
 ///   parsing with no change here once hephaestus reads the flag at those sites
-///   (see [Known gaps](CLAUDE.md)).
+///   (see [Known gaps](AGENTS.md)).
 pub fn ggsql_theme() -> Theme {
     let mut theme = Theme::default();
     theme.legend.bar.frame = Element::Set(RectElement {

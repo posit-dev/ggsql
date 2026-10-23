@@ -527,7 +527,7 @@ jobs:
         run: npm install -g tree-sitter-cli
 
       - name: Install Rust toolchain
-        # Stable. wasm is exempt from the MSRV (see /CLAUDE.md, "Rust version
+        # Stable. wasm is exempt from the MSRV (see /AGENTS.md, "Rust version
         # (MSRV)"), and ggsql-wasm/rust-toolchain.toml selects stable anyway.
         uses: dtolnay/rust-toolchain@stable
 
