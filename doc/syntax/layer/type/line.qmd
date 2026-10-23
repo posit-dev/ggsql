@@ -27,6 +27,19 @@ The following aesthetics are recognised by the line layer.
 * `aggregate` Aggregation functions to apply per group: 
     * `null` apply no group aggregation (default).
     * A single string or an array of strings. See an overview of aggregation function in [the `DRAW` documentation](../../clause/draw.qmd#aggregate) and more information in the *Data transformation* section below.
+* `arrow` Arrow names to display at line ends. Broadly, these come in the following variants:
+  * Arrow heads: `'open'`, `'closed'`, `'stealth'`, `'latex'`, `'thin'` and `'wedge'`.
+  * Arrow tails: `'fishtail'`, `'fork'`, and `'feather'`.
+  * Symmetric: `'bar'`, `'bracket'`, `'cross'`, `'dot'`, `'square'` and `'diamond'`.
+
+  Arrow names can optionally be followed by a `:`-separated numeric suffix to set their size in points, e.g. `'open:10'`. 
+  By default, arrows are sized by tripling the `linewidth` value.
+  Arrows can be declared in the following ways:
+    * `null` (default) do not display an arrow.
+    * A single string giving an arrow name to use at the end of the line.
+    * A `[start, end]` array of names or `null` to specify arrows for the start and end of the line.
+    To only set an arrow at the start, you could use `['open', null]`.  
+  
 
 ## Data transformation
 This layer supports aggregation through the `aggregate` setting. Aggregation groups are defined by `PARTITION BY`, all discrete mappings, but also the primary axis. Within each group, every numeric mapping is replaced in place by its aggregated value. Use a default like `'mean'` or target individual aesthetics with `'<aes>:<func>'`. See [the `DRAW` documentation](../../clause/draw.qmd#aggregate) for the full setting shape.
@@ -71,11 +84,10 @@ DRAW line
 When `stroke` or `opacity` varies, the properties of the preceding datapoint carry over. In the case below, we don't see the blue of the last datapoint.
 
 ```{ggsql}
-WITH data(x, y, z) AS (VALUES
-  (1, 2, 1),
-  (2, 5, 3),
-  (3, 3, 5),
-)
+-- Small example dataset
+CREATE TEMP TABLE data AS
+SELECT * FROM (VALUES (1,2,1), (2,5,3), (3,3,5)) t(x,y,z)
+
 VISUALISE x, y FROM data
 DRAW line
   MAPPING z AS stroke
@@ -85,16 +97,18 @@ SCALE stroke TO ('red', 'green', 'blue')
 The `linewidth` aesthetic can vary point to point.
 
 ```{ggsql}
-WITH data(x, y, z) AS (VALUES
-  (1, 2, 1),
-  (2, 5, 3),
-  (3, 3, 5),
-)
-
 VISUALISE x, y FROM data
 DRAW line
   MAPPING z AS linewidth
 SCALE linewidth TO (0, 30)
+```
+
+Arrows applied to the start and end of the line.
+
+```{ggsql}
+VISUALISE x, y FROM data
+DRAW line SETTING 
+  arrow => ['dot:20', 'closed:15']
 ```
 
 Use aggregation to draw min and max lines from a set of observations on a single layer. Targeting `y` twice produces one summary row per function within the same group. A synthetic `aggregate` column tags each row with the different function names, that you can remap to colour the lines distinctly:

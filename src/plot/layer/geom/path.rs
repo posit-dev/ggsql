@@ -6,7 +6,7 @@ use super::{
     DefaultParamValue, GeomTrait, GeomType, ParamConstraint, ParamDefinition,
 };
 use crate::plot::projection::Projection;
-use crate::plot::types::DefaultAestheticValue;
+use crate::plot::types::{DefaultAestheticValue, Parameters};
 use crate::reader::SqlDialect;
 use crate::{Mappings, Result};
 
@@ -33,12 +33,19 @@ impl GeomTrait for Path {
     }
 
     fn default_params(&self) -> &'static [ParamDefinition] {
-        const PARAMS: &[ParamDefinition] = &[ParamDefinition {
-            name: "position",
-            default: DefaultParamValue::String("identity"),
-            constraint: ParamConstraint::string_option(POSITION_VALUES),
-        }];
+        const PARAMS: &[ParamDefinition] = &[
+            ParamDefinition {
+                name: "position",
+                default: DefaultParamValue::String("identity"),
+                constraint: ParamConstraint::string_option(POSITION_VALUES),
+            },
+            super::types::ARROW_PARAM,
+        ];
         PARAMS
+    }
+
+    fn setup_layer(&self, _mappings: &mut Mappings, parameters: &mut Parameters) -> Result<()> {
+        super::types::validate_arrow_param(parameters).map_err(crate::GgsqlError::ValidationError)
     }
 
     fn apply_projection(

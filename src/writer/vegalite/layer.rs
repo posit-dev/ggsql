@@ -47,7 +47,6 @@ pub fn geom_to_mark(geom: &Geom) -> Value {
         GeomType::Rule => "rule",
         GeomType::Range => "rule",
         GeomType::Spatial => "geoshape",
-        _ => "point", // Default fallback
     };
     json!({
         "type": mark_type,

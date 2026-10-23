@@ -23,7 +23,6 @@
   "text"
   "label"
   "segment"
-  "arrow"
   "rule"
   "range"
   "spatial"

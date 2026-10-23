@@ -95,6 +95,7 @@ pub fn spec(ctx: &Ctx) -> GeomSpec {
             ),
         ],
         raw_strings: &[],
+        constants: Vec::new(),
         raw_numbers: vec![],
         // A ribbon's two edges are both data, so both are outlined unconditionally.
         data_channels: if ribbon {

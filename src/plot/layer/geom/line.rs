@@ -43,8 +43,13 @@ impl GeomTrait for Line {
                 constraint: ParamConstraint::string_option(ORIENTATION_VALUES),
             },
             super::types::AGGREGATE_PARAM,
+            super::types::ARROW_PARAM,
         ];
         PARAMS
+    }
+
+    fn setup_layer(&self, _mappings: &mut Mappings, parameters: &mut Parameters) -> Result<()> {
+        super::types::validate_arrow_param(parameters).map_err(crate::GgsqlError::ValidationError)
     }
 
     fn aggregate_domain_aesthetics(&self) -> Option<&'static [&'static str]> {

@@ -738,7 +738,7 @@ module.exports = grammar({
     geom_type: $ => choice(
       'point', 'line', 'path', 'bar', 'area', 'tile', 'polygon', 'ribbon',
       'histogram', 'density', 'smooth', 'boxplot', 'violin',
-      'text', 'label', 'segment', 'arrow', 'rule', 'range',
+      'text', 'label', 'segment', 'rule', 'range',
       'spatial'
     ),
 

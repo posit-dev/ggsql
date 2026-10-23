@@ -22,8 +22,7 @@
 //! reinterpret.
 //!
 //! **Scope**: multi-layer plots under Cartesian, Polar, and Map projections,
-//! with `FACET` faceting (Wrap/Grid, fixed + free scales); every geom except
-//! `arrow`, which is a stub no writer implements; all scale types and
+//! with `FACET` faceting (Wrap/Grid, fixed + free scales); all scale types and
 //! transforms, material aesthetics, plot and axis titles, and legends.
 //!
 //! Architecture — the abstractions and the invariants they keep — and the
@@ -213,6 +212,24 @@ mod tests {
         assert_renders(
             "SELECT 1 AS x, 2 AS y UNION ALL SELECT 2, 3 UNION ALL SELECT 3, 1 \
              VISUALISE x AS x, y AS y DRAW point",
+        );
+    }
+
+    #[test]
+    fn renders_segment_arrows() {
+        assert_renders(
+            "SELECT 1 AS x, 2 AS y, 3 AS x2, 4 AS y2 \
+             VISUALISE x AS pos1, y AS pos2 \
+             DRAW segment MAPPING x2 AS pos1end, y2 AS pos2end \
+             SETTING arrow => ['open', 'closed']",
+        );
+    }
+
+    #[test]
+    fn renders_line_arrow() {
+        assert_renders(
+            "SELECT x, y FROM (VALUES (1,2),(2,3),(3,1)) t(x,y) \
+             VISUALISE x AS x, y AS y DRAW line SETTING arrow => 'closed'",
         );
     }
 
@@ -1286,19 +1303,6 @@ mod tests {
         let r = compose::map_range(10.0, 0.0);
         assert_eq!(*r.start(), -0.5);
         assert_eq!(*r.end(), 10.5);
-    }
-
-    /// `arrow` is a stub in both writers, so the rejection lives in the shared
-    /// composition layer rather than in any one of them.
-    #[test]
-    fn rejects_unsupported_geom() {
-        let spec = spec_for(
-            "SELECT 0 AS x, 0 AS y, 1 AS xend, 1 AS yend \
-             VISUALISE x AS x, y AS y, xend AS xend, yend AS yend DRAW arrow",
-        );
-        let err = compose::validate_plot(spec.plot()).unwrap_err();
-        assert!(matches!(err, GgsqlError::WriterError(_)));
-        assert!(err.to_string().contains("'arrow' geom"), "{err}");
     }
 }
 

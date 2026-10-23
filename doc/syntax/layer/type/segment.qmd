@@ -24,7 +24,19 @@ For axis-aligned intervals where one coordinate is shared between the start and 
 * `linetype`: The type of the line, i.e. the dashing pattern.
 
 ## Settings
-* `position`: Position adjustment. One of `'identity'` (default), `'stack'`, `'dodge'`, or `'jitter'`
+* `position`: Position adjustment. One of `'identity'` (default), `'stack'`, `'dodge'`, or `'jitter'`.
+* `arrow` Arrow names to display at line ends. Broadly, these come in the following variants:
+  * Arrow heads: `'open'`, `'closed'`, `'stealth'`, `'latex'`, `'thin'` and `'wedge'`.
+  * Arrow tails: `'fishtail'`, `'fork'`, and `'feather'`.
+  * Symmetric: `'bar'`, `'bracket'`, `'cross'`, `'dot'`, `'square'` and `'diamond'`.
+
+  Arrow names can optionally be followed by a `:`-separated numeric suffix to set their size in points, e.g. `'open:10'`. 
+  By default, arrows are sized by tripling the `linewidth` value.
+  Arrows can be declared in the following ways:
+    * `null` (default) do not display an arrow.
+    * A single string giving an arrow name to use at the end of the line.
+    * A `[start, end]` array of names or `null` to specify arrows for the start and end of the line.
+    To only set an arrow at the start, you could use `['open', null]`.  
 * `aggregate` Aggregation functions to apply per group: 
     * `null` apply no group aggregation (default).
     * A single string or an array of strings. See an overview of aggregation function in [the `DRAW` documentation](../../clause/draw.qmd#aggregate) and more information in the *Data transformation* section below.
@@ -40,7 +52,8 @@ The segment layer has no orientations. The axes are treated symmetrically.
 Segments are useful when you have known start and end points of the data. For example in a graph
 
 ```{ggsql}
-WITH edges(x, y, xend, yend, type) AS (VALUES
+CREATE TEMP TABLE edges AS
+SELECT * FROM (VALUES
     (0, 0, 1, 1, 'A'),
     (1, 1, 2, 1, 'A'),
     (2, 1, 3, 0, 'A'),
@@ -49,10 +62,20 @@ WITH edges(x, y, xend, yend, type) AS (VALUES
     (2, 2, 3, 3, 'B'),
     (1, 1, 1, 2, 'C'),
     (2, 2, 2, 1, 'C')
-)
+) t(x, y, xend, yend, type);
+
 VISUALISE x, y, xend, yend FROM edges
 DRAW segment 
   MAPPING type AS stroke
+```
+
+For directional graphs, it makes sense to use arrows to indicate the direction.
+
+```{ggsql}
+VISUALISE x, y, xend, yend FROM edges
+DRAW segment
+  MAPPING type AS stroke
+  SETTING arrow => ['fishtail:10', 'open:10']
 ```
 
 Segments can also draw arbitrary diagonal connections between points. For example, marking a delta between two measurements:

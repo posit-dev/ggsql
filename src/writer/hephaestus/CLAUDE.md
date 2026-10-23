@@ -150,8 +150,7 @@ compose::build_composition(&Plot, &HashMap<String, DataFrame>)
  └─ view.validate()
 
 raster::pixels(spec, data, canvas, renderer)
- ├─ compose::validate_plot                    ← rejects a zero-layer plot, and
- │                                               the `arrow` stub no writer draws
+ ├─ compose::validate_plot                    ← rejects a zero-layer plot
  ├─ compose::build_composition                ← the diagram above
  └─ raster::render_rgba8: HybridRenderer → straight-alpha RGBA8 buffer
 

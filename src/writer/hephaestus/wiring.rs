@@ -17,6 +17,7 @@ use super::channels::{
     column_to_f64, column_to_strings, ChannelData,
 };
 use super::scales::{map_linetype, parse_color, parse_font_weight, RangeKind};
+use crate::plot::layer::geom::types::parse_arrow_entry;
 use crate::plot::{ParameterValue, ScaleTypeKind};
 use crate::{AestheticValue, DataFrame, GgsqlError, Layer, Plot, Result};
 
@@ -169,6 +170,9 @@ pub struct GeomSpec {
     /// Unscaled string channels set from a mapped aesthetic (e.g. text labels):
     /// (hephaestus channel, ggsql aesthetic).
     pub raw_strings: &'static [(&'static str, &'static str)],
+    /// Constant channels from layer parameters, scale-bypassing (e.g.
+    /// `start_marker`/`end_marker` from the `arrow` SETTING).
+    pub constants: Vec<(&'static str, HValue)>,
     /// Constant panel-space channel values, scale-bypassing (e.g. a rule's
     /// 0..1 span, discrete-tile band edges): (hephaestus channel, value).
     ///
@@ -207,6 +211,9 @@ where
         if let Some(col) = aesthetic_column_name(ctx.layer, aesthetic) {
             builder.set(*channel, Raw(column_to_strings(ctx.df, col)?));
         }
+    }
+    for (channel, value) in spec.constants {
+        builder.set(channel, Raw(value));
     }
     for (channel, value) in &spec.raw_numbers {
         builder.set(*channel, Raw(vec![*value; ctx.df.height()]));
@@ -613,6 +620,50 @@ pub fn side_sign(layer: &Layer) -> Option<f64> {
         },
         _ => None,
     }
+}
+
+/// Tail-style shapes are built opening away from the line; inverting turns
+/// them to trail it.
+const INVERTED_ARROWS: &[&str] = &["fishtail", "fork", "feather"];
+
+/// The layer's `arrow` SETTING as endpoint marker channels: a bare string sets
+/// the end marker, an array `[start, end]` sets each end with null skipping
+/// it. Vocabulary names map to hephaestus's built-in `arrow-*` shapes.
+pub fn arrow_markers(layer: &Layer) -> Vec<(&'static str, HValue)> {
+    let mut channels = Vec::new();
+    let mut push = |marker: &'static str, invert: &'static str, entry: &String| {
+        // Invalid entries were rejected at execute/validate time; skip defensively.
+        let Ok((name, size)) = parse_arrow_entry(entry) else {
+            return;
+        };
+        channels.push((marker, HValue::String(format!("arrow-{name}").into())));
+        if let Some(size) = size {
+            let size_channel = match marker {
+                "start_marker" => "start_marker_size",
+                _ => "end_marker_size",
+            };
+            channels.push((size_channel, HValue::Number(size)));
+        }
+        if INVERTED_ARROWS.contains(&name) {
+            channels.push((invert, HValue::Bool(true)));
+        }
+    };
+    match layer.parameters.get("arrow") {
+        Some(ParameterValue::String(name)) => push("end_marker", "end_marker_invert", name),
+        Some(ParameterValue::Array(a)) => {
+            let ends = [
+                ("start_marker", "start_marker_invert"),
+                ("end_marker", "end_marker_invert"),
+            ];
+            for ((marker, invert), elem) in ends.into_iter().zip(a) {
+                if let crate::plot::types::ArrayElement::String(s) = elem {
+                    push(marker, invert, s);
+                }
+            }
+        }
+        _ => {}
+    }
+    channels
 }
 
 /// The two edges of a banded mark, as offsets from the band centre: the full
@@ -1088,4 +1139,105 @@ fn pin_constants(
         }
     }
     key
+}
+
+#[cfg(test)]
+mod tests {
+    use super::arrow_markers;
+    use crate::plot::layer::geom::Geom;
+    use crate::plot::types::{ArrayElement, ParameterValue};
+    use crate::Layer;
+
+    fn layer_with_arrow(value: Option<ParameterValue>) -> Layer {
+        let mut layer = Layer::new(Geom::segment());
+        if let Some(value) = value {
+            layer.parameters.insert("arrow".into(), value);
+        }
+        layer
+    }
+
+    fn strings(elems: &[Option<&str>]) -> ParameterValue {
+        ParameterValue::Array(
+            elems
+                .iter()
+                .map(|e| match e {
+                    Some(s) => ArrayElement::String(s.to_string()),
+                    None => ArrayElement::Null,
+                })
+                .collect(),
+        )
+    }
+
+    fn markers(layer: &Layer) -> Vec<(&'static str, String)> {
+        arrow_markers(layer)
+            .into_iter()
+            .map(|(ch, v)| (ch, format!("{v:?}")))
+            .collect()
+    }
+
+    #[test]
+    fn a_bare_string_sets_the_end_marker_only() {
+        let layer = layer_with_arrow(Some(ParameterValue::String("closed".into())));
+        assert_eq!(
+            markers(&layer),
+            vec![("end_marker", "String(\"arrow-closed\")".to_string())]
+        );
+    }
+
+    #[test]
+    fn an_array_sets_start_then_end() {
+        let layer = layer_with_arrow(Some(strings(&[Some("open"), Some("closed")])));
+        assert_eq!(
+            markers(&layer),
+            vec![
+                ("start_marker", "String(\"arrow-open\")".to_string()),
+                ("end_marker", "String(\"arrow-closed\")".to_string())
+            ]
+        );
+    }
+
+    #[test]
+    fn null_elements_skip_an_end() {
+        let start_only = layer_with_arrow(Some(strings(&[Some("open"), None])));
+        assert_eq!(
+            markers(&start_only),
+            vec![("start_marker", "String(\"arrow-open\")".to_string())]
+        );
+        let end_only = layer_with_arrow(Some(strings(&[None, Some("closed")])));
+        assert_eq!(
+            markers(&end_only),
+            vec![("end_marker", "String(\"arrow-closed\")".to_string())]
+        );
+    }
+
+    #[test]
+    fn no_param_or_null_draws_no_markers() {
+        assert!(markers(&layer_with_arrow(None)).is_empty());
+        assert!(markers(&layer_with_arrow(Some(ParameterValue::Null))).is_empty());
+    }
+
+    #[test]
+    fn a_name_with_size_sets_the_size_channel() {
+        let layer = layer_with_arrow(Some(ParameterValue::String("closed:6".into())));
+        assert_eq!(
+            markers(&layer),
+            vec![
+                ("end_marker", "String(\"arrow-closed\")".to_string()),
+                ("end_marker_size", "Number(6.0)".to_string())
+            ]
+        );
+    }
+
+    #[test]
+    fn tail_style_shapes_are_inverted() {
+        let layer = layer_with_arrow(Some(strings(&[Some("feather"), Some("closed")])));
+        assert_eq!(
+            markers(&layer),
+            vec![
+                ("start_marker", "String(\"arrow-feather\")".to_string()),
+                ("start_marker_invert", "Bool(true)".to_string()),
+                ("end_marker", "String(\"arrow-closed\")".to_string())
+            ]
+        );
+    }
 }
