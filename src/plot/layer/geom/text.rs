@@ -28,6 +28,7 @@ impl GeomTrait for Text {
                 ("label", DefaultAestheticValue::Required),
                 ("stroke", DefaultAestheticValue::Null),
                 ("fill", DefaultAestheticValue::String("black")),
+                ("box", DefaultAestheticValue::Null),
                 ("opacity", DefaultAestheticValue::Number(1.0)),
                 ("typeface", DefaultAestheticValue::Null),
                 ("fontsize", DefaultAestheticValue::Number(11.0)),
@@ -64,6 +65,30 @@ impl GeomTrait for Text {
                 name: "parse",
                 default: DefaultParamValue::Boolean(true),
                 constraint: ParamConstraint::boolean(),
+            },
+            // Box geometry settings, in points; only relevant in box-mode
+            // (see `box` aesthetic).
+            ParamDefinition {
+                name: "radius",
+                default: DefaultParamValue::Number(0.0),
+                constraint: ParamConstraint::number(NumberConstraint::min(0.0)),
+            },
+            // Hephaestus only supports uniform padding, so this is a single
+            // number rather than an array.
+            ParamDefinition {
+                name: "padding",
+                default: DefaultParamValue::Number(4.0),
+                constraint: ParamConstraint::number(NumberConstraint::min(0.0)),
+            },
+            ParamDefinition {
+                name: "linewidth",
+                default: DefaultParamValue::Number(1.0),
+                constraint: ParamConstraint::number(NumberConstraint::min(0.0)),
+            },
+            ParamDefinition {
+                name: "linetype",
+                default: DefaultParamValue::String("solid"),
+                constraint: ParamConstraint::string_option(crate::plot::scale::palettes::LINETYPES),
             },
             super::types::AGGREGATE_PARAM,
         ];
