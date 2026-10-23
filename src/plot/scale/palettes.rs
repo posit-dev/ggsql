@@ -2126,7 +2126,7 @@ pub fn lookup_palette(aesthetic: &str, name: &str) -> Result<Vec<ArrayElement>, 
     let palette = match aesthetic {
         "shape" => get_shape_palette(name),
         "linetype" => get_linetype_palette(name),
-        "color" | "fill" | "stroke" => get_color_palette(name),
+        "color" | "fill" | "stroke" | "box" => get_color_palette(name),
         _ => {
             return Err(
                 "Palettes are only valid for color, fill, stroke, shape, and linetype aesthetics"

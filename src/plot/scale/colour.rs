@@ -18,7 +18,10 @@ pub fn color_to_hex(value: &str) -> Result<String, String> {
 
 /// Check if an aesthetic name is color-related.
 pub fn is_color_aesthetic(aesthetic: &str) -> bool {
-    matches!(aesthetic, "color" | "col" | "colour" | "fill" | "stroke")
+    matches!(
+        aesthetic,
+        "color" | "col" | "colour" | "fill" | "stroke" | "box"
+    )
 }
 
 // =============================================================================

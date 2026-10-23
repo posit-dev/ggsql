@@ -15,9 +15,10 @@ The following aesthetics are recognised by the text layer.
 * `label` The text to display.
 
 ### Optional
-* `stroke` The colour of the contour lines of glyphs. Typically kept blank.
+* `stroke` The colour of the contour lines of glyphs or text box borders. Typically kept blank.
 * `fill` The colour of the glyphs.
 * `colour` Shorthand for setting `stroke` and `fill` simultaneously.
+* `box` The colour of the text box. Setting this aesthetic switches on text boxes. Setting `null` (the default) does not draw text boxes.
 * `opacity` The opacity of the fill colour.
 * `typeface` The typeface to style the lettering.
 * `fontsize` The size of the text in points.
@@ -39,6 +40,9 @@ The following aesthetics are recognised by the text layer.
 * `aggregate` Aggregation functions to apply per group: 
     * `null` apply no group aggregation (default).
     * A single string or an array of strings. See an overview of aggregation function in [the `DRAW` documentation](../../clause/draw.qmd#aggregate) and more information in the *Data transformation* section below.
+* `padding` In text boxes, space around the text inside box borders in points. Defaults to `4`.
+* `radius` In text boxes, rounded corner radius in points. Defaults to `0`.
+* `linewidth` In text boxes, size of border stroke in points. Defaults to `1`.
 
 ### Format
 The `format` setting can take a string that will be used in formatting the `label` aesthetic. 
@@ -130,13 +134,31 @@ DRAW text
   SETTING format => '{:Title} *island*'
 ```
 
-The 'stroke' aesthetic is applied to the outline of the text.
+When the `box` aesthetic is used, we're drawing text boxes.
+
+```{ggsql}
+VISUALISE bill_len AS x, bill_dep AS y FROM ggsql:penguins
+DRAW text
+  MAPPING island AS label, species AS box
+  SETTING colour => 'white'
+```
+
+Without text boxes, the 'stroke' aesthetic is applied to the outline of the text.
 
 ```{ggsql}
 SELECT 1 as x, 1 as y
 VISUALISE x, y, 'My Label' AS label
 DRAW text
   SETTING fontsize => 30, stroke => 'red'
+```
+
+Text boxes solve a similar problem as using outlines, so 'stroke' is applied to text boxes when appropriate.
+
+```{ggsql}
+SELECT 1 as x, 1 as y
+VISUALISE x, y, 'My Label' AS label
+DRAW text
+  SETTING fontsize => 30, stroke => 'red', box => 'white'
 ```
 
 Labelling precomputed bars with the data value.

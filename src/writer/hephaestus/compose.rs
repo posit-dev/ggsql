@@ -111,7 +111,7 @@ pub fn build_composition(
     // its position channels to these names, giving fixed-scale faceting.
     for scale in &spec.scales {
         let kind = match scale.aesthetic.as_str() {
-            "fill" | "stroke" => scales::RangeKind::Color,
+            "fill" | "stroke" | "box" => scales::RangeKind::Color,
             "shape" => scales::RangeKind::Shape,
             "linetype" => scales::RangeKind::Linetype,
             // The text geom's font aesthetics: a scale over them resolves a

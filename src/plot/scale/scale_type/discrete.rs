@@ -148,7 +148,7 @@ impl ScaleTypeTrait for Discrete {
         // Return full palette - sizing is done in resolve_output_range()
         match aesthetic {
             // Note: "color"/"colour" already split to fill/stroke before scale resolution
-            "fill" | "stroke" => {
+            "fill" | "stroke" | "box" => {
                 let palette = palettes::get_color_palette("ggsql")
                     .ok_or_else(|| "Default color palette 'ggsql' not found".to_string())?;
                 Ok(Some(

@@ -1227,6 +1227,39 @@ mod tests {
     }
 
     #[test]
+    fn renders_text_boxed() {
+        // Box-mode via a constant: white background, border from stroke,
+        // geometry settings applied.
+        assert_renders(
+            "SELECT 1 AS x, 2 AS y, 'a' AS lbl UNION ALL SELECT 2, 3, 'b' \
+             VISUALISE x AS x, y AS y, lbl AS label DRAW text \
+             SETTING box => 'white', stroke => 'black', radius => 3, padding => 5, linewidth => 2",
+        );
+    }
+
+    #[test]
+    fn renders_text_boxed_by_group() {
+        // Box-mode via a mapped column: the box fill flows through a colour
+        // scale with a legend.
+        assert_renders(
+            "SELECT 1 AS x, 2 AS y, 'a' AS lbl, 'one' AS g \
+             UNION ALL SELECT 2, 3, 'b', 'two' \
+             VISUALISE x AS x, y AS y, lbl AS label, g AS box DRAW text",
+        );
+    }
+
+    #[test]
+    fn renders_text_box_opt_out() {
+        // `box => null` is the explicit opt-out: bare text, and stroke falls
+        // back to outlining glyphs rather than a box border.
+        assert_renders(
+            "SELECT 1 AS x, 2 AS y, 'a' AS lbl UNION ALL SELECT 2, 3, 'b' \
+             VISUALISE x AS x, y AS y, lbl AS label DRAW text \
+             SETTING box => null, stroke => 'white'",
+        );
+    }
+
+    #[test]
     fn renders_titled_plot() {
         // Title, subtitle and caption all sit on the composition, above/below the
         // single panel.
@@ -1356,6 +1389,19 @@ mod svg_text {
 
     fn contains(svg: &str, label: &str) -> bool {
         texts(svg).iter().any(|t| t == label)
+    }
+
+    #[test]
+    fn boxed_text_draws_a_padded_box_behind_the_label() {
+        // The box is one rounded rect per label (radius curves in the path),
+        // filled and bordered as declared, drawn before the glyph path.
+        let s = svg("SELECT 1 AS x, 2 AS y, 'hi' AS lbl \
+             VISUALISE x AS x, y AS y, lbl AS label DRAW text \
+             SETTING box => 'red', stroke => 'blue', radius => 3");
+        let fill_at = s.find("fill=\"#ff0000\"").expect("box fill missing");
+        assert!(s.contains("stroke=\"#0000ff\""), "box border missing");
+        let label_at = s.find(">hi<").expect("label missing");
+        assert!(fill_at < label_at, "box should draw before the label");
     }
 
     #[test]
