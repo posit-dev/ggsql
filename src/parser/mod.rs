@@ -207,11 +207,11 @@ mod tests {
 
         // First viz should have layers and labels
         assert_eq!(specs[0].layers.len(), 1);
-        assert!(specs[0].labels.is_some());
+        assert!(!specs[0].labels.labels.is_empty());
 
         // Second viz should have layer but no labels
         assert_eq!(specs[1].layers.len(), 1);
-        assert!(specs[1].labels.is_none());
+        assert!(specs[1].labels.labels.is_empty());
     }
 
     #[test]
@@ -255,7 +255,7 @@ mod tests {
         // Plot with 2 layers, scale, labels
         assert_eq!(specs[0].layers.len(), 2);
         assert_eq!(specs[0].scales.len(), 1);
-        assert!(specs[0].labels.is_some());
+        assert!(!specs[0].labels.labels.is_empty());
 
         // Second viz with 1 layer
         assert_eq!(specs[1].layers.len(), 1);

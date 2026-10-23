@@ -947,8 +947,8 @@ impl KernelServer {
         let title = spec
             .plot()
             .labels
-            .as_ref()
-            .and_then(|labels| labels.labels.get("title"))
+            .labels
+            .get("title")
             .and_then(|title| title.as_deref());
         let metadata = PlotMetadata {
             name: crate::plot::comm::plot_name(title, self.plot_seq),

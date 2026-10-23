@@ -386,10 +386,7 @@ fn apply_title_to_encoding(
 
     if is_primary && !titled_families.contains(primary) {
         // Primary aesthetic: set title from explicit label or original_name
-        let explicit_label = spec
-            .labels
-            .as_ref()
-            .and_then(|labels| labels.labels.get(primary));
+        let explicit_label = spec.labels.labels.get(primary);
 
         if let Some(label_opt) = explicit_label {
             match label_opt {
@@ -411,18 +408,16 @@ fn apply_title_to_encoding(
         encoding["title"] = Value::Null;
     } else if !is_primary && !primary_exists && !titled_families.contains(primary) {
         // Variant without primary: allow first variant to claim title (for explicit labels)
-        if let Some(ref labels) = spec.labels {
-            if let Some(label_opt) = labels.labels.get(primary) {
-                match label_opt {
-                    Some(label) => {
-                        encoding["title"] = super::split_label_on_newlines(label);
-                    }
-                    None => {
-                        encoding["title"] = Value::Null;
-                    }
+        if let Some(label_opt) = spec.labels.labels.get(primary) {
+            match label_opt {
+                Some(label) => {
+                    encoding["title"] = super::split_label_on_newlines(label);
                 }
-                titled_families.insert(primary.to_string());
+                None => {
+                    encoding["title"] = Value::Null;
+                }
             }
+            titled_families.insert(primary.to_string());
         }
     }
 }
