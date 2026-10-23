@@ -1,5 +1,11 @@
 ## [Unreleased]
 
+### Added
+
+- Text layers now have text boxes. The presence of the `box` aesthetic 
+determines whether text boxes get drawn and additional settings `padding`, 
+`radius` and `linewidth` style the box.
+
 ### Changed
 
 - The reader/dialect layer was refactored around a central dialect registry with
