@@ -18,7 +18,7 @@ check wants; `svg` needs **no GPU adapter**, so it is the mode that runs on a
 headless box, and its `--baseline` comparison reads coordinates rather than
 pixels. The SVG writer also reports what it could not express, which is the
 regression signal
-[`writer/hephaestus/CLAUDE.md`](../../src/writer/hephaestus/CLAUDE.md) says
+[`writer/hephaestus/AGENTS.md`](../../src/writer/hephaestus/AGENTS.md) says
 should be empty for everything in this corpus.
 
 ```sh
@@ -31,7 +31,7 @@ report shows every problem in the corpus at once.
 
 Pass `--compare` to render each query with the Vega-Lite writer as well and show
 the two side by side — the comparison
-[`writer/hephaestus/CLAUDE.md`](../../src/writer/hephaestus/CLAUDE.md) calls for
+[`writer/hephaestus/AGENTS.md`](../../src/writer/hephaestus/AGENTS.md) calls for
 when checking visual correctness.
 */
 
