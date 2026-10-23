@@ -1620,7 +1620,7 @@ pub(crate) fn size_output_range(
     }
 
     if let Some(OutputRange::Array(ref arr)) = scale.output_range.clone() {
-        if matches!(aesthetic, "fill" | "stroke") && arr.len() >= 2 {
+        if matches!(aesthetic, "fill" | "stroke" | "box") && arr.len() >= 2 {
             // Color interpolation using Oklab
             let hex_strs: Vec<&str> = arr
                 .iter()

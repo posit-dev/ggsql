@@ -59,7 +59,7 @@ pub fn gets_default_scale(aesthetic: &str) -> bool {
     matches!(
         aesthetic,
         // Color aesthetics (color/colour/col already split to fill/stroke)
-        "fill" | "stroke"
+        "fill" | "stroke" | "box"
         // Size aesthetics
         | "size" | "linewidth"
         // Dimension aesthetics
