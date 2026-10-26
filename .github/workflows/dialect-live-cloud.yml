@@ -43,9 +43,13 @@ jobs:
   # stays false: a nightly run must not fight over the shared cache key
   # owned by build.yaml/main.
   compile:
+    # Skip the whole workflow on forks: the cloud-backend secrets only
+    # exist on the origin repo.
+    if: github.repository == 'posit-dev/ggsql'
     uses: ./.github/workflows/dialect-live-compile.yml
 
   live:
+    if: github.repository == 'posit-dev/ggsql'
     needs: compile
     runs-on: ubuntu-latest
     strategy:
