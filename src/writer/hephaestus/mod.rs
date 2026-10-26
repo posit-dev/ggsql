@@ -339,6 +339,32 @@ mod tests {
     }
 
     #[test]
+    fn renders_linecap_and_linejoin() {
+        assert_renders(
+            "SELECT 1 AS x, 1 AS y UNION ALL SELECT 2, 3 UNION ALL SELECT 3, 1 \
+             VISUALISE x AS x, y AS y DRAW line \
+             SETTING linecap => 'round', linejoin => 'bevel'",
+        );
+        // `mitre` is accepted as a spelling variant of `miter`.
+        assert_renders(
+            "SELECT 1 AS x, 1 AS y UNION ALL SELECT 2, 3 UNION ALL SELECT 3, 1 \
+             VISUALISE x AS x, y AS y DRAW polygon SETTING linejoin => 'mitre'",
+        );
+        // A segment takes `linecap` only.
+        assert_renders(
+            "SELECT 0 AS x, 0 AS y, 1 AS xend, 2 AS yend \
+             VISUALISE x AS x, y AS y, xend AS xend, yend AS yend \
+             DRAW segment SETTING linecap => 'square'",
+        );
+        // Composite geoms route the settings to their stroked components.
+        assert_renders(
+            "SELECT g AS g, v AS v FROM (VALUES ('a', 1), ('a', 2), ('a', 3), ('b', 2), ('b', 4)) t(g, v) \
+             VISUALISE g AS x, v AS y DRAW boxplot \
+             SETTING linecap => 'round', linejoin => 'round'",
+        );
+    }
+
+    #[test]
     fn renders_text() {
         assert_renders(
             "SELECT 1 AS x, 2 AS y, 'hi' AS lab UNION ALL SELECT 2, 3, 'there' \
@@ -1356,6 +1382,15 @@ mod svg_text {
 
     fn contains(svg: &str, label: &str) -> bool {
         texts(svg).iter().any(|t| t == label)
+    }
+
+    #[test]
+    fn linecap_and_linejoin_reach_the_svg() {
+        let styled = svg("SELECT x, y FROM (VALUES (1,2),(2,3),(3,1)) t(x,y) \
+             VISUALISE x AS x, y AS y DRAW line \
+             SETTING linecap => 'round', linejoin => 'bevel'");
+        assert!(styled.contains("stroke-linecap=\"round\""), "{styled}");
+        assert!(styled.contains("stroke-linejoin=\"bevel\""), "{styled}");
     }
 
     #[test]

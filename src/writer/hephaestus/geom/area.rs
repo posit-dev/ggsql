@@ -10,7 +10,8 @@ use hephaestus::color::rgb8;
 use super::super::channels::{aesthetic_column_name, build_group_keys, column_to_f64};
 use super::super::scales::RangeKind;
 use super::super::wiring::{
-    Ctx, GeomSpec, LegendKind, MatDefault, MaterialSpec, PanelAxis, PositionSpec,
+    stroke_style_constants, Ctx, GeomSpec, LegendKind, MatDefault, MaterialSpec, PanelAxis,
+    PositionSpec,
 };
 use crate::plot::layer::geom::GeomType;
 
@@ -95,6 +96,15 @@ pub fn spec(ctx: &Ctx) -> GeomSpec {
             ),
         ],
         raw_strings: &[],
+        // A ribbon's two edge curves are stroked independently (see `stroke`/
+        // `stroke2` above), so each style goes to both edges' channels.
+        constants: stroke_style_constants(ctx.layer)
+            .into_iter()
+            .flat_map(|(channel, value)| {
+                let second = if channel == "cap" { "cap2" } else { "join2" };
+                [(channel, value.clone()), (second, value)]
+            })
+            .collect(),
         raw_numbers: vec![],
         // A ribbon's two edges are both data, so both are outlined unconditionally.
         data_channels: if ribbon {

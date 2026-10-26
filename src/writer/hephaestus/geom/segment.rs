@@ -7,13 +7,14 @@
 //!   (horizontal); the free axis uses scale-bypassing 0..1 panel fractions.
 
 use hephaestus::color::rgb8;
+use hephaestus::plot::geom::Raw;
 use hephaestus::plot::{Plot as HPlot, SegmentGeom};
 
 use super::super::channels::{aesthetic_column_name, column_to_channel, column_to_f64};
 use super::super::scales::RangeKind;
 use super::super::wiring::{
-    constant_number, dodge_offsets, wire_material, BandAxes, Ctx, GeomSpec, LegendKind, MatDefault,
-    MaterialSpec, PanelAxis, PositionSpec,
+    constant_number, dodge_offsets, stroke_style_constants, wire_material, BandAxes, Ctx, GeomSpec,
+    LegendKind, MatDefault, MaterialSpec, PanelAxis, PositionSpec,
 };
 use super::hinge::{caps, hinge_points};
 use crate::plot::layer::geom::GeomType;
@@ -57,6 +58,7 @@ pub fn spec(ctx: &Ctx) -> GeomSpec {
         positions,
         material: material(),
         raw_strings: &[],
+        constants: stroke_style_constants(ctx.layer),
         raw_numbers,
         data_channels: vec![],
         legend_key: LegendKind::Line,
@@ -129,6 +131,9 @@ pub fn build_hinges(plot: &mut HPlot, ctx: &Ctx) -> Result<()> {
         let values = column_to_f64(ctx.df, col)?;
         let mut b = caps(ctx, axes, band.clone(), values, offsets.clone(), hinge);
         wire_material(&mut b, &material(), plot, ctx, LegendKind::Line)?;
+        for (channel, value) in stroke_style_constants(ctx.layer) {
+            b.set(channel, Raw(value));
+        }
         plot.add_geom(b.build());
     }
     Ok(())
@@ -200,6 +205,9 @@ pub fn build_diagonal(plot: &mut HPlot, ctx: &Ctx) -> Result<()> {
     b.set("y", y);
     b.set("y2", y2);
     wire_material(&mut b, &material(), plot, ctx, LegendKind::Line)?;
+    for (channel, value) in stroke_style_constants(ctx.layer) {
+        b.set(channel, Raw(value));
+    }
     plot.add_geom(b.build());
     Ok(())
 }
