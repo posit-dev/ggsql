@@ -74,6 +74,8 @@ impl GeomTrait for Density {
                 default: DefaultParamValue::String("gaussian"),
                 constraint: ParamConstraint::string_option(KERNEL_VALUES),
             },
+            super::types::LINECAP_PARAM,
+            super::types::LINEJOIN_PARAM,
         ];
         PARAMS
     }

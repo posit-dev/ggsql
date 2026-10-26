@@ -79,6 +79,8 @@ impl GeomTrait for Boxplot {
                 default: DefaultParamValue::String("both"),
                 constraint: ParamConstraint::string_option(SIDE_VALUES),
             },
+            super::types::LINECAP_PARAM,
+            super::types::LINEJOIN_PARAM,
         ];
         PARAMS
     }
@@ -648,7 +650,7 @@ mod tests {
         let boxplot = Boxplot;
         let params = boxplot.default_params();
 
-        assert_eq!(params.len(), 6);
+        assert_eq!(params.len(), 8);
 
         // Find and verify outliers param
         let outliers_param = params.iter().find(|p| p.name == "outliers").unwrap();
