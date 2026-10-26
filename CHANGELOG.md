@@ -1,5 +1,9 @@
 ## [Unreleased]
 
+### Added
+
+- Many layers now support `linecap` and `linejoin` settings for styling lines.
+
 ### Changed
 
 - The reader/dialect layer was refactored around a central dialect registry with

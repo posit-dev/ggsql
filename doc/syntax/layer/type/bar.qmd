@@ -23,6 +23,8 @@ The bar layer has no required aesthetics
 * `linetype`: The type of stroke, i.e. the dashing pattern
 
 ## Settings
+* `linecap`: The style of line endings, including the ends of dashes in dashed lines. One of `'butt'` (default), `'round'`, or `'square'`.
+* `linejoin`: The style of corners where line segments meet. One of `'miter'`/`'mitre'` (default), `'round'`, or `'bevel'`.
 * `position`: Position adjustment. One of `'identity'`, `'stack'` (default), `'dodge'`, or `'jitter'`
 * `width`: The width of the bars as a proportion of the available width (0 to 1)
 * `aggregate` Aggregation functions to apply per group: 

@@ -25,6 +25,8 @@ The following aesthetics are recognised by the violin layer.
 * `linetype` The dash pattern of the contour line.
 
 ## Settings
+* `linecap`: The style of line endings, including the ends of dashes in dashed lines. One of `'butt'` (default), `'round'`, or `'square'`.
+* `linejoin`: The style of corners where line segments meet. One of `'miter'`/`'mitre'` (default), `'round'`, or `'bevel'`.
 * `position`: Position adjustment. One of `'identity'`, `'stack'`, `'dodge'` (default), or `'jitter'`
 * `bandwidth`: Smoothing bandwidth (must be > 0). If absent (default), the bandwidth will be computed using Silverman's rule of thumb.
 * `adjust`: Multiplier for the `bandwidth` setting (must be > 0). Defaults to 1.
