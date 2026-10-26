@@ -21,6 +21,8 @@ The following aesthetics are recognised by the area layer.
 * `linewidth`: The width of the contour lines.
 
 ## Settings
+* `linecap`: The style of line endings, including the ends of dashes in dashed lines. One of `'butt'` (default), `'round'`, or `'square'`.
+* `linejoin`: The style of corners where line segments meet. One of `'miter'`/`'mitre'` (default), `'round'`, or `'bevel'`.
 * `position`: Position adjustment. One of `'identity'`, `'stack'` (default), `'dodge'`, or `'jitter'`
 * `orientation`: The orientation of the layer, see the [Orientation section](#orientation). One of the following:
     * `'aligned'` to align the layer's primary axis with the coordinate system's first axis.
