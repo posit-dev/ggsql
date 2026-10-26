@@ -34,7 +34,8 @@ impl GeomTrait for Rule {
     }
 
     fn default_params(&self) -> &'static [ParamDefinition] {
-        const PARAMS: &[ParamDefinition] = &[super::types::AGGREGATE_PARAM];
+        const PARAMS: &[ParamDefinition] =
+            &[super::types::LINECAP_PARAM, super::types::AGGREGATE_PARAM];
         PARAMS
     }
 
