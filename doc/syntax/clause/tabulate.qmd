@@ -31,8 +31,9 @@ The columns can be selected in (a mixture of) one of three forms:
 * `*` selects all (remaining) columns, in the source's order
 
 Without the `*` wildcard, only the listed columns are kept.
-The wildcard can be combined with explicit columns to partially order columns.
+The wildcard can be combined with explicit columns to partially order columns, where the wildcard becomes all implicit columns.
 When a column is renamed using the `AS` keyword, other table clauses --- like `LABEL`, `SPAN` and `FORMAT` --- use the *new* name.
+Please note that renaming a column consumes the original, to avoid unintentional duplication.
 It is discouraged to name column `title`, `subtitle` or `captions` as these are keywords in the [`LABEL`](label-tabulate.qmd) clause.
 
 ```ggsql
