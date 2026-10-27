@@ -29,6 +29,8 @@ impl GeomTrait for Histogram {
                 ("fill", DefaultAestheticValue::String("black")),
                 ("stroke", DefaultAestheticValue::String("black")),
                 ("opacity", DefaultAestheticValue::Number(0.8)),
+                ("linewidth", DefaultAestheticValue::Number(1.0)),
+                ("linetype", DefaultAestheticValue::String("solid")),
                 // pos2 and pos1end are produced by stat_histogram but not valid for manual MAPPING
                 ("pos2", DefaultAestheticValue::Delayed),
                 ("pos1end", DefaultAestheticValue::Delayed),
