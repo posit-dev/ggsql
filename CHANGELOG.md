@@ -1,5 +1,10 @@
 ## [Unreleased]
 
+### Added
+
+- Bar and histogram layers now support the `linewidth` and `linetype`
+  aesthetics.
+
 ### Changed
 
 - The reader/dialect layer was refactored around a central dialect registry with

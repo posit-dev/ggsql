@@ -506,7 +506,14 @@ mod tests {
         assert!(bar.is_supported("fill"));
         assert!(bar.is_supported("pos2")); // Bar accepts optional pos2
         assert!(bar.is_supported("pos1")); // Bar accepts optional pos1
+        assert!(bar.is_supported("linewidth"));
+        assert!(bar.is_supported("linetype"));
         assert_eq!(bar.required(), &[] as &[&str]); // No required aesthetics
+
+        // Histogram geom
+        let histogram = Geom::histogram().aesthetics();
+        assert!(histogram.is_supported("linewidth"));
+        assert!(histogram.is_supported("linetype"));
 
         // Text geom - requires label
         let text = Geom::text().aesthetics();
