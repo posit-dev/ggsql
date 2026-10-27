@@ -1,5 +1,18 @@
 ## [Unreleased]
 
+### Added
+
+- New `TABULATE` clause renders a query result as a table instead of a 
+  plot. Tables are rendered via new `html` writer. `TABULATE` supports the 
+  following clauses:
+  - `LABEL` sets (sub)titles, captions and overrides the display of column
+    labels.
+  - `SPAN` groups columns under a shared header cell (spanner).
+  - `FORMAT` configures how a column's cells are displayed.
+- `Writer::write_table` renders a resolved table, taking the new public
+  `TableLayout` — the table's cells bundled with their column and row
+  metadata.
+
 ### Changed
 
 - The reader/dialect layer was refactored around a central dialect registry with
@@ -16,9 +29,6 @@
   the data carried microsecond timestamps (#569).
 - Extent queries are now merged and ordered portably, fixing schema resolution
   on MySQL and ClickHouse (#569).
-
-### Fixed
-
 - Fixed a parser bug that interpreted comment characters inside string literals
   as initializing a comment (#555).
 - Fixed a bug in stat_aggregate prevented transposed layers from properly

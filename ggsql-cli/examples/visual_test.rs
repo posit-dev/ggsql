@@ -5,8 +5,8 @@ Every executable ```` ```{ggsql} ```` cell in the Quarto docs is a query the
 project already vouches for, which makes them a ready-made corpus for
 exercising a writer. This example runs them — in document order, against one
 reader per source file so `CREATE TABLE` setup cells still apply — renders each
-visualisation, and emits a single HTML report pairing every query with its
-rendered output.
+visualisation or table, and emits a single HTML report pairing every query
+with its rendered output.
 
 ```sh
 cargo run -p ggsql-cli --features png --example visual_test
@@ -37,8 +37,9 @@ when checking visual correctness.
 
 use clap::{Parser, ValueEnum};
 use ggsql::reader::{DuckDBReader, Reader};
+use ggsql::util::escape_html;
 use ggsql::validate::validate;
-use ggsql::writer::{PngWriter, SvgWriter, VegaLiteWriter, Writer};
+use ggsql::writer::{HtmlWriter, PngWriter, SvgWriter, VegaLiteWriter, Writer};
 use std::fmt::Write as _;
 use std::fs;
 use std::panic::{catch_unwind, AssertUnwindSafe};
@@ -119,12 +120,12 @@ impl Renderer {
     /// beside the execution warnings rather than into the render error.
     fn render(
         self,
-        spec: &ggsql::reader::Spec,
+        spec: &ggsql::reader::ResolvedPlot,
         args: &Args,
     ) -> ggsql::Result<(Vec<u8>, Vec<String>)> {
         match self {
             Renderer::Png => PngWriter::new(args.width, args.height, args.dpi)
-                .render(spec)
+                .write_plot(spec.plot(), spec.data())
                 .map(|bytes| (bytes, Vec::new())),
             Renderer::Svg => SvgWriter::new(args.width, args.height, args.dpi)
                 .render_reporting(spec)
@@ -492,6 +493,11 @@ enum Outcome {
         vegalite: Option<String>,
         vegalite_error: Option<String>,
     },
+    /// A query with a `TABULATE` clause: the HtmlWriter's rendered markup.
+    Table {
+        html: Option<String>,
+        html_error: Option<String>,
+    },
     /// A cell with no visualisation — data setup, or a bare table query.
     Setup { rows: usize, columns: usize },
     /// The cell never produced a spec.
@@ -515,6 +521,7 @@ impl CellResult {
                 vegalite_error,
                 ..
             } => image_error.is_some() || vegalite_error.is_some(),
+            Outcome::Table { html_error, .. } => html_error.is_some(),
             Outcome::Setup { .. } => false,
         }
     }
@@ -575,24 +582,39 @@ fn run_cells(source: Source, args: &Args, assets: &Path) -> SourceResult {
     };
 
     let vegalite = VegaLiteWriter::new();
+    let html_writer = HtmlWriter::new();
 
     let mut results = Vec::new();
     for cell in cells {
         let start = Instant::now();
         let mut warnings = Vec::new();
 
-        let has_visual = validate(&cell.query)
-            .map(|v| v.has_visual())
-            .unwrap_or(true);
+        let has_spec = validate(&cell.query).map(|v| v.has_spec()).unwrap_or(true);
 
-        let outcome = if has_visual {
+        let outcome = if has_spec {
             match capture(|| reader.execute(&cell.query)) {
                 Err(e) => Outcome::Failed(e),
+                Ok(spec) if spec.as_plot().is_none() => {
+                    let table = spec.as_table().unwrap();
+                    warnings.extend(table.warnings().iter().map(|w| w.message.clone()));
+
+                    match capture(|| html_writer.render(&spec)) {
+                        Ok(html) => Outcome::Table {
+                            html: Some(html),
+                            html_error: None,
+                        },
+                        Err(e) => Outcome::Table {
+                            html: None,
+                            html_error: Some(e),
+                        },
+                    }
+                }
                 Ok(spec) => {
-                    warnings.extend(spec.warnings().iter().map(|w| w.message.clone()));
+                    let plot = spec.as_plot().unwrap();
+                    warnings.extend(plot.warnings().iter().map(|w| w.message.clone()));
 
                     let mut delta = None;
-                    let (image, image_error) = match capture(|| args.writer.render(&spec, args)) {
+                    let (image, image_error) = match capture(|| args.writer.render(plot, args)) {
                         Ok((bytes, degraded)) => {
                             // Beside the execution warnings, not folded into the
                             // render error: the render succeeded.
@@ -681,6 +703,11 @@ fn status_word(outcome: &Outcome) -> &'static str {
             ..
         } => "vega-lite failed",
         Outcome::Plot { .. } => "ok",
+        Outcome::Table {
+            html_error: Some(_),
+            ..
+        } => "RENDER FAILED",
+        Outcome::Table { .. } => "ok",
     }
 }
 
@@ -712,12 +739,6 @@ fn slug(text: &str) -> String {
         .collect::<String>()
         .trim_matches('-')
         .to_string()
-}
-
-fn escape(text: &str) -> String {
-    text.replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
 }
 
 /// Prepare a Vega-Lite spec for inlining in a `<script>` block.
@@ -778,7 +799,7 @@ fn write_report(results: &[SourceResult], args: &Args, out: &Path) -> std::io::R
             html,
             "<a href=\"#{}\">{}{}</a>",
             slug(&result.label),
-            escape(&result.label),
+            escape_html(&result.label),
             marker
         );
     }
@@ -789,8 +810,8 @@ fn write_report(results: &[SourceResult], args: &Args, out: &Path) -> std::io::R
             html,
             "<h2 id=\"{}\" class=\"source\">{}<small>{}</small></h2>",
             slug(&result.label),
-            escape(&result.title),
-            escape(&result.label)
+            escape_html(&result.title),
+            escape_html(&result.label)
         );
         for cell in &result.cells {
             html.push_str(&render_cell(cell, &result.label, &aspect));
@@ -821,6 +842,11 @@ fn render_cell(cell: &CellResult, label: &str, aspect: &str) -> String {
             ..
         } => ("vega-lite failed", "warn"),
         Outcome::Plot { .. } => ("ok", "good"),
+        Outcome::Table {
+            html_error: Some(_),
+            ..
+        } => ("render failed", "bad"),
+        Outcome::Table { .. } => ("ok", "good"),
     };
 
     let problem = if cell.is_problem() { " problem" } else { "" };
@@ -839,23 +865,38 @@ fn render_cell(cell: &CellResult, label: &str, aspect: &str) -> String {
          <span class=\"time\">{} ms</span></header>\n",
         slug(label),
         cell.cell.index,
-        escape(label),
+        escape_html(label),
         cell.cell.line,
         cell.cell.index,
-        escape(&cell.cell.heading),
+        escape_html(&cell.cell.heading),
         cell.millis
     );
 
     let _ = write!(
         html,
         "<div class=\"body\"><pre class=\"query\"><code>{}</code></pre>\n<div class=\"renders\">",
-        escape(&cell.cell.query)
+        escape_html(&cell.cell.query)
     );
 
     match &cell.outcome {
         Outcome::Failed(message) => {
-            let _ = write!(html, "<pre class=\"error\">{}</pre>", escape(message));
+            let _ = write!(html, "<pre class=\"error\">{}</pre>", escape_html(message));
         }
+        Outcome::Table {
+            html: table_html,
+            html_error,
+        } => match (table_html, html_error) {
+            (Some(markup), _) => {
+                let _ = write!(
+                    html,
+                    "<figure><figcaption>table</figcaption>{markup}</figure>"
+                );
+            }
+            (None, Some(message)) => {
+                let _ = write!(html, "<pre class=\"error\">{}</pre>", escape_html(message));
+            }
+            (None, None) => html.push_str("<p class=\"note\">no output</p>"),
+        },
         Outcome::Setup { rows, columns } => {
             let _ = write!(
                 html,
@@ -891,7 +932,7 @@ fn render_cell(cell: &CellResult, label: &str, aspect: &str) -> String {
                     );
                 }
                 (None, Some(message)) => {
-                    let _ = write!(html, "<pre class=\"error\">{}</pre>", escape(message));
+                    let _ = write!(html, "<pre class=\"error\">{}</pre>", escape_html(message));
                 }
                 (None, None) => html.push_str("<p class=\"note\">no output</p>"),
             }
@@ -914,7 +955,7 @@ fn render_cell(cell: &CellResult, label: &str, aspect: &str) -> String {
                     html,
                     "<figure><figcaption>vega-lite</figcaption>\
                      <pre class=\"error\">{}</pre></figure>",
-                    escape(message)
+                    escape_html(message)
                 );
             }
         }
@@ -925,7 +966,7 @@ fn render_cell(cell: &CellResult, label: &str, aspect: &str) -> String {
     if !cell.warnings.is_empty() {
         html.push_str("<ul class=\"warnings\">");
         for warning in &cell.warnings {
-            let _ = write!(html, "<li>{}</li>", escape(warning));
+            let _ = write!(html, "<li>{}</li>", escape_html(warning));
         }
         html.push_str("</ul>");
     }

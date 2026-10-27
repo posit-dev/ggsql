@@ -48,7 +48,7 @@ fn line_temporal_timestamp() {
     let spec = reader
         .execute("SELECT * FROM ts_test VISUALISE day AS x, val AS y DRAW line")
         .unwrap();
-    assert_eq!(spec.layer_data(0).unwrap().height(), 8);
+    assert_eq!(spec.as_plot().unwrap().layer_data(0).unwrap().height(), 8);
 }
 
 #[test]
@@ -59,7 +59,7 @@ fn binned_temporal_date_timestamp() {
             "VISUALISE DRAW point MAPPING day AS x, val AS y FROM ts_test SCALE BINNED x VIA date",
         )
         .unwrap();
-    assert!(spec.layer_data(0).unwrap().height() > 0);
+    assert!(spec.as_plot().unwrap().layer_data(0).unwrap().height() > 0);
 }
 
 #[test]
@@ -70,7 +70,7 @@ fn binned_temporal_identity_timestamp() {
             "VISUALISE DRAW point MAPPING day AS x, val AS y FROM ts_test SCALE BINNED x VIA identity",
         )
         .unwrap();
-    assert!(spec.layer_data(0).unwrap().height() > 0);
+    assert!(spec.as_plot().unwrap().layer_data(0).unwrap().height() > 0);
 }
 
 /// A numeric epoch-milliseconds column under `VIA date` must error, not

@@ -6,18 +6,21 @@ For ggsql language semantics, see [`/doc/syntax/`](../../doc/syntax/). This file
 
 ## Top-level types
 
-Defined in `main.rs` (the `Plot` struct + `Labels`) and `types.rs` (input/value types). All are re-exported through `mod.rs`.
+Defined in `main.rs` (the `Plot` struct) and `types.rs` (input/value types). All are re-exported through `mod.rs`.
+The `SETTING`-parameter machinery (`ParameterValue`, `Parameters`, `ArrayElement`, the constraint types, `validate_parameter`) lives one level up in [`../params.rs`](../params.rs), shared with `table/`; `types.rs` re-exports it, so `plot::` paths keep working.
+`Labels` lives in [`../labels.rs`](../labels.rs), likewise shared with `table/` and re-exported from `main.rs`.
 
 | Type | Where | Role |
 | --- | --- | --- |
 | `Plot` | `main.rs` | Root spec: `global_mappings`, optional `source`, `layers`, `scales`, optional `facet`, `project`, `labels`, plus a derived `aesthetic_context`. |
-| `Labels` | `main.rs` | Title/subtitle/axis/aesthetic labels merged from all `LABEL` clauses. |
+| `Labels` | `../labels.rs` | Title/subtitle/axis/aesthetic labels merged from all `LABEL` clauses. Shared with `table/`. |
 | `Mappings` | `types.rs` | Unified aesthetic mapping (`wildcard: bool` + `aesthetics: HashMap<String, AestheticValue>`); used for both global and per-layer mappings. |
 | `AestheticValue` | `types.rs` | One side of a mapping: column reference, literal, annotation literal, or null. |
-| `ParameterValue` | `types.rs` | Value used in `SETTING` clauses: string / number / boolean / array. |
+| `ParameterValue` | `../params.rs` | Value used in `SETTING` clauses: string / number / boolean / array. |
 | `DataSource` | `types.rs` | `Identifier`, `FilePath`, or `Annotation` (PLACE) — the right-hand side of `FROM`. |
 | `SqlExpression` | `types.rs` | Captured raw SQL fragment (e.g. for `FILTER`). |
-| `Schema` / `ColumnInfo` / `ArrayElement` | `types.rs` | Schema info computed from data; carries dtype, discreteness, min/max. |
+| `Schema` / `ColumnInfo` | `types.rs` | Schema info computed from data; carries dtype, discreteness, min/max. |
+| `ArrayElement` | `../params.rs` | Element of an array-valued parameter or range; date/time-aware. |
 | `AestheticContext` | `aesthetic.rs` | Coord-aware mapping of user aesthetic names (`x`, `y`) to internal names (`pos1`, `pos2`). Computed once and stored on `Plot` so executor and writers agree. |
 
 `aesthetic.rs` also exports the position-aesthetic predicates (`is_position_aesthetic`, `MATERIAL_AESTHETICS`, `POSITION_SUFFIXES`) that the rest of the pipeline reaches for.
@@ -27,8 +30,8 @@ Defined in `main.rs` (the `Plot` struct + `Labels`) and `types.rs` (input/value 
 ```
 plot/
 ├── aesthetic.rs       Aesthetic naming + classification (position/facet/material)
-├── main.rs            Plot, Labels
-├── types.rs           Mappings, AestheticValue, DataSource, Schema, ArrayElement, …
+├── main.rs            Plot
+├── types.rs           Mappings, AestheticValue, DataSource, Schema, …
 ├── facet/             FACET clause
 ├── layer/             DRAW clause (layers)
 │   ├── geom/          one file per layer type (point, line, bar, …)

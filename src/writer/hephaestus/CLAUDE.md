@@ -1,6 +1,6 @@
 # `writer/hephaestus/` — renderer-backed writer internals
 
-The writers here render a resolved ggsql `Spec` through
+The writers here render a resolved ggsql `ResolvedPlot` through
 [hephaestus](https://github.com/posit-dev/hephaestus), a 2D scene renderer with a
 grammar-of-graphics plot API. Seven of them exist, each behind its own cargo
 feature — the three GPU-free ones on by default, the four raster ones not:
@@ -66,7 +66,7 @@ sibling writer's internals, [`../vegalite/CLAUDE.md`](../vegalite/CLAUDE.md).
 ## The governing principle
 
 **ggsql owns every scale domain; the writer never computes its own extents.**
-The `Spec` arrives with each `Scale` fully resolved — type, domain (already
+The `ResolvedPlot` arrives with each `Scale` fully resolved — type, domain (already
 expanded, transform-aware, trained globally over all layers and the whole
 position family), transform, breaks, formatted labels, and a concrete output
 range for material aesthetics. The writer's job is to *pass those through* to
@@ -634,7 +634,7 @@ small omission that only shows up across the whole feature surface — use the
 visual-test harness instead of one-off queries. It renders every executable
 ```` ```{ggsql} ```` cell in [`/doc/`](../../../doc/) (≈190 in `doc/syntax/`
 alone) and writes one HTML report pairing each query with its render, optionally
-beside the Vega-Lite render of the same `Spec`:
+beside the Vega-Lite render of the same `ResolvedPlot`:
 
 ```sh
 cargo run -p ggsql-cli --features png --example visual_test -- --compare
