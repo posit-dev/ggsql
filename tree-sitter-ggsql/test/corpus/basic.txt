@@ -4835,6 +4835,30 @@ TABULATE * FROM sales FORMAT foo, bar SETTING width => '20%' RENAMING null => '-
             (bare_identifier)))))))
 
 ================================================================================
+TABULATE FORMAT clause with wildcard columns
+================================================================================
+
+TABULATE * FROM sales FORMAT ANY *
+
+--------------------------------------------------------------------------------
+
+(query
+  (tabulate_statement
+    (tabulate_keyword)
+    (column_selection
+      (mapping_list
+        (mapping_element
+          (wildcard_mapping))))
+    (single_source_from
+      source: (qualified_name
+        (identifier
+          (bare_identifier))))
+    (tab_clause
+      (format_clause
+        (format_target_identifier)
+        (wildcard_mapping)))))
+
+================================================================================
 TABULATE column selection: wildcard, bare column, and a rename
 ================================================================================
 

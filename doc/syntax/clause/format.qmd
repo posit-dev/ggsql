@@ -8,23 +8,27 @@ It is the workhorse for column-focussed changes: value formatting, display prope
 ## Clause syntax
 
 ```ggsql
-FORMAT [BODY | STUB] <column>, ...
+FORMAT [ANY | BODY | STUB] 
+  (* | <column>, ...)
   SETTING <parameter> => <value>, ...
   RENAMING <value> => <string>, ...
 ```
 ## Target
 
 ```
-[BODY | STUB]
+[ANY | BODY | STUB]
 ```
 
 The target directly following the `FORMAT` clause determines what kind of column is being formatted.
-The optional target defaults to `BODY` which targets cells in the table body.
-`FORMAT` can be used without spelling out a target, in which case it is interpreted as a `BODY` target.
+Setting the target to `BODY` affects the cells in the body part of the table.
 The target can be set to `STUB`, which will move the column to the left of the table to serve as row labels.
+Without spelling out a target, the default will be `ANY`.
+The `ANY` target is relevant when the same column is formatted by multiple `FORMAT` statements.
+`ANY` will give priority to `BODY` and `STUB` targets in other statements. 
+Unless instructed otherwise, `ANY` will resolve to `BODY`.
 
 ```ggsql
--- Same as `FORMAT BODY foo, bar`
+-- Same as `FORMAT ANY foo, bar`
 FORMAT foo, bar
 
 -- Designate column as stub
@@ -34,15 +38,19 @@ FORMAT STUB foo
 ## Column selection
 
 ```ggsql
-<column>, ...
+(* | <column>, ...)
 ```
 
 The `FORMAT` clause requires a comma-separated list of columns to format.
 In addition to column names, it can use [`SPAN`](span.qmd) identifiers as well to target the spanner's columns.
+It can also take *, meaning to format all columns.
 
 ```ggsql
 -- Targeting regular columns
 FORMAT foo, bar
+
+-- Targeting every column
+FORMAT *
 
 -- Targeting spanner id: bar, baz and qux become targeted
 SPAN foo OVER bar, baz
@@ -116,8 +124,9 @@ TABULATE * FROM my_data
   SPAN "My label" OVER island, species
 ```
 
-When a column is targeted by multiple `FORMAT` clauses, the last one wins.
-Note that the `island` column is not in the stub.
+When a column is targeted by multiple `FORMAT` clauses, the clauses are combined; in case of conflicts the last `FORMAT` wins.
+Without target, `ANY` target is assumed which will not override targets.
+Note that the `island` column is not in the stub, because `BODY` overrides `STUB`.
 
 ```{ggsql}
 TABULATE * FROM my_data
@@ -139,6 +148,13 @@ Set the width of columns.
 TABULATE * FROM my_data
   FORMAT species, island
     SETTING width => '150px'
+```
+
+Replace null values everywhere by selecting all columns.
+
+```{ggsql}
+TABULATE * FROM my_data
+  FORMAT * RENAMING null => '---'
 ```
 
 Replacing specific pieces of content.
