@@ -57,7 +57,7 @@ jobs:
       - name: Install Rust
         # Stable, not the MSRV — clippy reads `rust-version` from /Cargo.toml,
         # so running it here still guards the 1.86 floor. Why the default
-        # cannot be 1.86 itself: /CLAUDE.md, "Rust version (MSRV)".
+        # cannot be 1.86 itself: /AGENTS.md, "Rust version (MSRV)".
         uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
@@ -98,7 +98,7 @@ jobs:
         # MSRV silently rots. Keep the two flags: `--ignore-rust-version`
         # bypasses `parley`'s *declared* 1.88, and library-only keeps the
         # dev-dependency graph out of the check.
-        # Background: /CLAUDE.md, "Rust version (MSRV)".
+        # Background: /AGENTS.md, "Rust version (MSRV)".
         run: cargo +1.86 check --ignore-rust-version -p ggsql
 
       - name: Run tree-sitter tests
@@ -156,7 +156,7 @@ jobs:
     # The Python suite under ggsql-jupyter/tests/ that drives the kernel over
     # a real ZMQ connection — the one thing the Rust unit tests above cannot
     # reach (wire framing, HMAC signing, busy/idle ordering). See
-    # ggsql-jupyter/CLAUDE.md, "Testing".
+    # ggsql-jupyter/AGENTS.md, "Testing".
     runs-on: ubuntu-latest
     # continue-on-error until posit-dev/ggsql#556 (a heartbeat-socket panic
     # in the vendored zeromq crate, unrelated to this suite) is fixed: that
@@ -177,7 +177,7 @@ jobs:
       - name: Install tree-sitter-cli
         # parser.c is generated from grammar.js by the tree-sitter-ggsql
         # build script and is not committed, so this is needed on every
-        # fresh checkout — see /CLAUDE.md, "Building".
+        # fresh checkout — see /AGENTS.md, "Building".
         run: npm install -g tree-sitter-cli
 
       - name: Install Rust
