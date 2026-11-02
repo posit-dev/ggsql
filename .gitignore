@@ -52,6 +52,8 @@ venv/
 
 # Data files (examples/testing)
 *.csv
+# The Druid live leg's MSQ seed; guarded by fixture_csv_is_current.
+!.github/scripts/live/ggsql_live_test.csv
 *.parquet
 *.db
 *.sqlite

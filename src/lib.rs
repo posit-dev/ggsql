@@ -42,6 +42,7 @@ pub mod format;
 pub mod naming;
 pub mod parser;
 pub mod plot;
+pub mod sql;
 pub mod util;
 
 pub mod reader;

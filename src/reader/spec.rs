@@ -16,8 +16,6 @@ impl Spec {
         data: HashMap<String, DataFrame>,
         sql: String,
         visual: String,
-        layer_sql: Vec<Option<String>>,
-        stat_sql: Vec<Option<String>>,
         warnings: Vec<ValidationWarning>,
     ) -> Self {
         // Compute metadata from data
@@ -49,8 +47,6 @@ impl Spec {
             metadata,
             sql,
             visual,
-            layer_sql,
-            stat_sql,
             warnings,
         }
     }
@@ -93,16 +89,6 @@ impl Spec {
     /// The VISUALISE portion (raw text).
     pub fn visual(&self) -> &str {
         &self.visual
-    }
-
-    /// Layer filter/source query, or `None` if using global data.
-    pub fn layer_sql(&self, layer_index: usize) -> Option<&str> {
-        self.layer_sql.get(layer_index).and_then(|s| s.as_deref())
-    }
-
-    /// Stat transform query, or `None` if no stat transform.
-    pub fn stat_sql(&self, layer_index: usize) -> Option<&str> {
-        self.stat_sql.get(layer_index).and_then(|s| s.as_deref())
     }
 
     /// Validation warnings from preparation.

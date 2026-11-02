@@ -215,7 +215,7 @@ pip install -r requirements.txt
 pytest
 ```
 
-`test_compliance.py` verifies handler coverage (`execute_request`, `kernel_info_request`, `is_complete_request`, `shutdown_request`); `test_integration.py` drives a real kernel via `jupyter_client`.
+`test_compliance.py` verifies handler coverage (`execute_request`, `kernel_info_request`, `is_complete_request`, `shutdown_request`); `test_integration.py` drives a real kernel via `jupyter_client`. Both run in CI (`jupyter-protocol-tests` job in `/.github/workflows/build.yaml`).
 
 ## See also
 

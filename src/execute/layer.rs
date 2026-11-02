@@ -56,7 +56,7 @@ pub fn layer_source_query(
             debug_assert!(has_global, "Layer has no source and no global data");
             Ok(format!(
                 "SELECT * FROM {}",
-                naming::quote_ident(&naming::global_table())
+                dialect.quote_ident(&naming::global_table())
             ))
         }
     }
@@ -112,17 +112,16 @@ pub fn build_layer_select_list(
                 if let Some(req) = cast_map.get(name.as_str()) {
                     // Cast and rename to prefixed aesthetic name
                     format!(
-                        "CAST({} AS {}) AS {}",
-                        naming::quote_ident(name),
-                        req.sql_type_name,
-                        naming::quote_ident(&aes_col_name)
+                        "{} AS {}",
+                        dialect.sql_cast(&dialect.quote_ident(name), &req.sql_type_name),
+                        dialect.quote_ident(&aes_col_name)
                     )
                 } else {
                     // Just rename to prefixed aesthetic name
                     format!(
                         "{} AS {}",
-                        naming::quote_ident(name),
-                        naming::quote_ident(&aes_col_name)
+                        dialect.quote_ident(name),
+                        dialect.quote_ident(&aes_col_name)
                     )
                 }
             }
@@ -131,7 +130,7 @@ pub fn build_layer_select_list(
                 format!(
                     "{} AS {}",
                     lit.to_sql(dialect),
-                    naming::quote_ident(&aes_col_name)
+                    dialect.quote_ident(&aes_col_name)
                 )
             }
         };
@@ -247,7 +246,9 @@ pub fn literal_to_array(lit: &ParameterValue, len: usize) -> arrow::array::Array
         }
         ParameterValue::Boolean(b) => new_constant_bool(*b, len),
         ParameterValue::Array(_) | ParameterValue::Null => {
-            unreachable!("Arrays are never moved to mappings; NULL is filtered in process_annotation_layers()")
+            unreachable!(
+                "Arrays are never moved to mappings; NULL is filtered in process_annotation_layers()"
+            )
         }
     }
 }
@@ -371,17 +372,18 @@ pub fn apply_pre_stat_transform(
         .filter(|col| seen.insert(&col.name))
         .map(|col| {
             if let Some((_, sql)) = transform_exprs.iter().find(|(c, _)| c == &col.name) {
-                format!("{} AS {}", sql, naming::quote_ident(&col.name))
+                format!("{} AS {}", sql, dialect.quote_ident(&col.name))
             } else {
-                naming::quote_ident(&col.name)
+                dialect.quote_ident(&col.name)
             }
         })
         .collect();
 
-    format!(
-        "SELECT {} FROM ({}) AS \"__ggsql_pre__\"",
-        select_exprs.join(", "),
-        query
+    crate::sql::select_from(
+        dialect,
+        &select_exprs.join(", "),
+        crate::sql::FromItem::Query(query),
+        "__ggsql_pre__",
     )
 }
 
@@ -429,19 +431,13 @@ pub fn build_layer_base_query(
     };
 
     // Build query with optional WHERE clause
+    let mut query = crate::sql::Select::new(dialect)
+        .select(select_clause)
+        .from_aliased(crate::sql::FromItem::Query(source_query), "__ggsql_src__");
     if let Some(ref f) = layer.filter {
-        format!(
-            "SELECT {} FROM ({}) AS \"__ggsql_src__\" WHERE {}",
-            select_clause,
-            source_query,
-            f.as_str()
-        )
-    } else {
-        format!(
-            "SELECT {} FROM ({}) AS \"__ggsql_src__\"",
-            select_clause, source_query
-        )
+        query = query.and_where(f.as_str());
     }
+    query.build()
 }
 
 /// Part 2: Apply stat transforms and ORDER BY to a base query.
@@ -693,8 +689,8 @@ where
                         let prefixed_aes = naming::aesthetic_column(aes);
                         format!(
                             "{} AS {}",
-                            naming::quote_ident(&stat_col),
-                            naming::quote_ident(&prefixed_aes)
+                            dialect.quote_ident(&stat_col),
+                            dialect.quote_ident(&prefixed_aes)
                         )
                     })
                 })
@@ -703,11 +699,13 @@ where
             if stat_rename_exprs.is_empty() {
                 transformed_query
             } else {
-                format!(
-                    "SELECT *, {} FROM ({}) AS \"__ggsql_stat__\"",
-                    stat_rename_exprs.join(", "),
-                    transformed_query
-                )
+                crate::sql::Select::new(dialect)
+                    .select_star_plus(&stat_rename_exprs, "__ggsql_stat__")
+                    .from_aliased(
+                        crate::sql::FromItem::Query(&transformed_query),
+                        "__ggsql_stat__",
+                    )
+                    .build()
             }
         }
         StatResult::Identity => query,
@@ -895,7 +893,7 @@ fn process_annotation_layer(layer: &mut Layer, dialect: &dyn SqlDialect) -> Resu
     // Step 6: Build complete SQL query
     let column_list = column_names
         .iter()
-        .map(|c| naming::quote_ident(c))
+        .map(|c| dialect.quote_ident(c))
         .collect::<Vec<_>>()
         .join(", ");
 
