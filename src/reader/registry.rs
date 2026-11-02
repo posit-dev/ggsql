@@ -453,21 +453,33 @@ pub fn by_scheme(scheme: &str) -> Option<&'static DatabaseEntry> {
 
 /// Detect the backend from a DBMS name and/or driver hint (ODBC driver
 /// name, ADBC driver name). The DBMS name is checked first; matching is
-/// case-insensitive substring matching in registry order.
+/// case-insensitive substring matching in registry order. Unknown backends
+/// are an error naming what was seen — silently falling back to ANSI
+/// produced broken SQL too often; the escape hatch is a `dialect=ansi`
+/// (or `dialect=<scheme>`) parameter. Callers wanting best-effort
+/// detection can use `.ok()`.
 pub fn detect(
     dbms_name: Option<&str>,
     driver_hint: Option<&str>,
-) -> Option<&'static DatabaseEntry> {
+) -> crate::Result<&'static DatabaseEntry> {
     for text in [dbms_name, driver_hint].into_iter().flatten() {
         let lower = text.to_lowercase();
         if let Some(e) = REGISTRY
             .iter()
             .find(|e| e.detect.iter().any(|p| p.matches(&lower)))
         {
-            return Some(e);
+            return Ok(e);
         }
     }
-    None
+    Err(crate::GgsqlError::ReaderError(format!(
+        "Unrecognized database backend (DBMS name: {}, driver: {}). \
+         ggsql does not know which SQL dialect to use. If the backend \
+         is close to a supported one, pin the dialect explicitly with \
+         a `dialect=<scheme>` parameter (e.g. dialect=postgres), or use \
+         dialect=ansi for generic ANSI SQL.",
+        dbms_name.unwrap_or("<none>"),
+        driver_hint.unwrap_or("<none>"),
+    )))
 }
 
 /// `scheme://` list for error messages: every supported URI scheme
@@ -550,43 +562,7 @@ pub fn resolve_dialect(
     if let Some(entry) = by_scheme(body) {
         return Ok(entry.dialect());
     }
-    detect_or_err(None, Some(body))
-}
-
-/// Error for an unrecognized backend, naming what was seen. Shared by
-/// [`detect_or_err`] and [`detect_entry_or_err`].
-fn unknown_backend_error(dbms_name: Option<&str>, driver_hint: Option<&str>) -> crate::GgsqlError {
-    crate::GgsqlError::ReaderError(format!(
-        "Unrecognized database backend (DBMS name: {}, driver: {}). \
-         ggsql does not know which SQL dialect to use. If the backend \
-         is close to a supported one, pin the dialect explicitly with \
-         a `dialect=<scheme>` parameter (e.g. dialect=postgres), or use \
-         dialect=ansi for generic ANSI SQL.",
-        dbms_name.unwrap_or("<none>"),
-        driver_hint.unwrap_or("<none>"),
-    ))
-}
-
-/// Like [`detect`], but errors on unknown backends with a message naming
-/// what was seen — silently falling back to ANSI produced broken SQL too
-/// often. Returns the full entry so callers can derive dialect, ODBC
-/// quirks, and more from a single resolution.
-pub fn detect_entry_or_err(
-    dbms_name: Option<&str>,
-    driver_hint: Option<&str>,
-) -> crate::Result<&'static DatabaseEntry> {
-    detect(dbms_name, driver_hint).ok_or_else(|| unknown_backend_error(dbms_name, driver_hint))
-}
-
-/// Detect a dialect from an ODBC DBMS name and/or driver string, or error
-/// naming what was seen. Unknown backends are an **error** — the escape
-/// hatch is a `dialect=ansi` (or `dialect=<scheme>`) parameter; see
-/// [`dialect_override`].
-pub fn detect_or_err(
-    dbms_name: Option<&str>,
-    driver_hint: Option<&str>,
-) -> crate::Result<crate::reader::DialectRef> {
-    detect_entry_or_err(dbms_name, driver_hint).map(|e| e.dialect())
+    detect(None, Some(body)).map(|e| e.dialect())
 }
 
 #[cfg(test)]
@@ -628,7 +604,7 @@ mod tests {
                 .scheme,
             "postgres"
         );
-        assert!(detect(Some("mystery-db"), None).is_none());
+        assert!(detect(Some("mystery-db"), None).is_err());
     }
 
     #[test]

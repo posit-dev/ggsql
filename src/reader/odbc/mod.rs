@@ -79,6 +79,7 @@ impl OdbcReader {
         // connecting, which is too late to supply credentials.
         let driver = super::connection::extract_odbc_value(&conn_str, "driver");
         if let Some(apply) = super::registry::detect(None, driver.as_deref())
+            .ok()
             .and_then(|e| e.odbc_credential_provider)
         {
             apply(&mut conn_str);
@@ -108,12 +109,11 @@ impl OdbcReader {
         // resolve so the dialect can come from it.
         let (entry, dialect) = match dialect {
             Some(d) => (
-                super::registry::detect(dbms_name.as_deref(), driver.as_deref()),
+                super::registry::detect(dbms_name.as_deref(), driver.as_deref()).ok(),
                 d,
             ),
             None => {
-                let entry =
-                    super::registry::detect_entry_or_err(dbms_name.as_deref(), driver.as_deref())?;
+                let entry = super::registry::detect(dbms_name.as_deref(), driver.as_deref())?;
                 (Some(entry), entry.dialect())
             }
         };
@@ -839,14 +839,17 @@ mod tests {
 
     #[test]
     fn test_detect_dialect_from_dbms_name() {
-        let d = crate::reader::registry::detect_or_err(Some("Snowflake"), None).unwrap();
+        let d = crate::reader::registry::detect(Some("Snowflake"), None)
+            .unwrap()
+            .dialect();
         assert!(!d.sql_greatest(&["a", "b"]).is_empty());
 
-        let d =
-            crate::reader::registry::detect_or_err(None, Some("Snowflake ODBC Driver")).unwrap();
+        let d = crate::reader::registry::detect(None, Some("Snowflake ODBC Driver"))
+            .unwrap()
+            .dialect();
         assert!(!d.sql_greatest(&["a", "b"]).is_empty());
 
-        let err = crate::reader::registry::detect_or_err(None, Some("SomeOther"))
+        let err = crate::reader::registry::detect(None, Some("SomeOther"))
             .err()
             .unwrap()
             .to_string();
