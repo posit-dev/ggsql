@@ -179,6 +179,22 @@ impl Plot {
                     .map_user_to_internal(&param_name)
                     .map(|s| s.to_string())
                     .unwrap_or(param_name);
+
+                // Facet aesthetics in SETTING (e.g., `SETTING panel => 'Adelie'`)
+                // become literal mappings, just like `MAPPING 'Adelie' AS panel`.
+                // This must happen here (before query execution) so the literal
+                // is materialized as a constant column that panel computation
+                // and scale training can use. MAPPING takes precedence.
+                if (internal_name == "facet1" || internal_name == "facet2")
+                    && !layer.mappings.aesthetics.contains_key(&internal_name)
+                {
+                    layer
+                        .mappings
+                        .aesthetics
+                        .insert(internal_name, AestheticValue::Literal(value));
+                    continue;
+                }
+
                 layer.parameters.insert(internal_name, value);
             }
         }

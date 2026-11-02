@@ -2531,6 +2531,43 @@ mod tests {
 
     #[cfg(feature = "duckdb")]
     #[test]
+    fn test_facet_setting_literal_panel() {
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        reader
+            .connection()
+            .execute(
+                "CREATE TABLE facet_setting_test AS SELECT * FROM (VALUES
+                    (1, 10), (2, 20), (3, 30), (4, 40)
+                ) AS t(x, y)",
+                duckdb::params![],
+            )
+            .unwrap();
+
+        // SETTING panel => literal should behave like MAPPING 'literal' AS panel
+        let query = r#"
+            SELECT * FROM facet_setting_test
+            VISUALISE
+            DRAW point MAPPING x AS x, y AS y SETTING panel => 'Adelie'
+        "#;
+
+        let result = prepare_data_with_reader(query, &reader).unwrap();
+
+        // Facet should be inferred (wrap layout) from the layer-declared aesthetic
+        assert!(result.specs[0].facet.is_some());
+        assert!(result.specs[0].facet.as_ref().unwrap().is_wrap());
+
+        // Data should have a constant facet1 column with the literal value
+        let layer_df = result.data.get(&naming::layer_key(0)).unwrap();
+        let facet_col = naming::aesthetic_column("facet1");
+        let col = layer_df
+            .column(&facet_col)
+            .unwrap_or_else(|_| panic!("Should have '{}' column", facet_col));
+        assert_eq!(col.len(), 4);
+    }
+
+    #[cfg(feature = "duckdb")]
+    #[test]
     fn test_facet_aesthetic_mapping_grid() {
         let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
 

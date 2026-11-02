@@ -396,6 +396,17 @@ impl Layer {
         valid.extend(self.position.valid_settings());
 
         for (param_name, value) in self.parameters.iter() {
+            // Facet aesthetics (panel/row/column, or internal facet1/facet2)
+            // are valid constant settings regardless of geom: they become
+            // literal facet mappings during aesthetic transformation, mirroring
+            // MAPPING 'value' AS panel.
+            if matches!(
+                param_name.as_str(),
+                "panel" | "row" | "column" | "facet1" | "facet2"
+            ) {
+                continue;
+            }
+
             // Check if this is a valid setting at all
             if !valid.contains(&param_name.as_str()) {
                 return Err(format!(
