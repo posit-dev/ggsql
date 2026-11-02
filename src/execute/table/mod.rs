@@ -404,6 +404,25 @@ mod integration_tests {
     }
 
     #[test]
+    fn test_tabulate_format_wildcard_formats_every_column() {
+        let reader = reader_with_sales();
+        let resolved = resolve_table_with_reader(
+            "TABULATE * FROM sales FORMAT * RENAMING * => '[{}]'",
+            &reader,
+        )
+        .unwrap();
+
+        let mut body: Vec<_> = resolved
+            .cells()
+            .iter()
+            .filter(|c| c.kind == TableCellKind::Body)
+            .map(|c| c.content.as_str())
+            .collect();
+        body.sort_unstable();
+        assert_eq!(body, ["[1]", "[2]", "[3]", "[a]", "[b]", "[c]"]);
+    }
+
+    #[test]
     fn test_tabulate_format_stub_moves_the_column_to_the_front() {
         let reader = reader_with_sales();
         let resolved =

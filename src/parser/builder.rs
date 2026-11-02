@@ -496,14 +496,22 @@ fn build_span_clause(node: &Node, source: &SourceTree) -> Result<Spanner> {
     })
 }
 
-/// Build a Format from a format_clause node: FORMAT [BODY|STUB] col, ... [SETTING ...] [RENAMING ...]
+/// Build a Format from a format_clause node: FORMAT [ANY|BODY|STUB] (*|col, ...) [SETTING ...] [RENAMING ...]
 fn build_format_clause(node: &Node, source: &SourceTree) -> Result<Format> {
     let target = parse_format_target_identifier(node, source)?;
 
-    let columns_node = source
-        .find_node(node, "(column_list) @cols")
-        .ok_or_else(|| GgsqlError::ParseError("Missing columns in FORMAT clause".to_string()))?;
-    let columns = parse_column_list(&columns_node, source)?;
+    let wildcard = source.find_node(node, "(wildcard_mapping) @w").is_some();
+    let columns = match source.find_node(node, "(column_list) @cols") {
+        Some(columns_node) => parse_column_list(&columns_node, source)?,
+        // Grammar guarantees a wildcard when there is no column list;
+        // setup_formats expands it to the data's columns.
+        None if wildcard => Vec::new(),
+        None => {
+            return Err(GgsqlError::ParseError(
+                "Missing columns in FORMAT clause".to_string(),
+            ))
+        }
+    };
 
     let settings = match source.find_node(node, "(setting_clause) @s") {
         Some(setting_node) => parse_setting_clause(&setting_node, source)?,
@@ -511,7 +519,7 @@ fn build_format_clause(node: &Node, source: &SourceTree) -> Result<Format> {
     };
 
     let mut value_mapping = None;
-    let mut value_template = "{}".to_string();
+    let mut value_template = None;
     if let Some(renaming_node) = source.find_node(node, "(renaming_clause) @r") {
         let (mappings, template) = parse_renaming_clause(&renaming_node, source)?;
         if !mappings.is_empty() {
@@ -522,6 +530,7 @@ fn build_format_clause(node: &Node, source: &SourceTree) -> Result<Format> {
 
     Ok(Format {
         columns,
+        wildcard,
         target,
         settings,
         value_mapping,
@@ -529,18 +538,22 @@ fn build_format_clause(node: &Node, source: &SourceTree) -> Result<Format> {
     })
 }
 
-/// Parse a FORMAT clause's optional target identifier (BODY, STUB), missing
-/// meaning BODY by default.
-fn parse_format_target_identifier(node: &Node, source: &SourceTree) -> Result<ColumnSection> {
+/// Parse a FORMAT clause's optional target identifier: `BODY`/`STUB` make a
+/// section claim, while `ANY` or a missing identifier makes none (`None`).
+fn parse_format_target_identifier(
+    node: &Node,
+    source: &SourceTree,
+) -> Result<Option<ColumnSection>> {
     let Some(target_node) = source.find_node(node, "(format_target_identifier) @t") else {
-        return Ok(ColumnSection::Body);
+        return Ok(None);
     };
 
     match source.get_text(&target_node).to_lowercase().as_str() {
-        "body" => Ok(ColumnSection::Body),
-        "stub" => Ok(ColumnSection::Stub),
+        "any" => Ok(None),
+        "body" => Ok(Some(ColumnSection::Body)),
+        "stub" => Ok(Some(ColumnSection::Stub)),
         text => Err(GgsqlError::ParseError(format!(
-            "Unknown FORMAT target: '{}'. Valid targets: body, stub",
+            "Unknown FORMAT target: '{}'. Valid targets: any, body, stub",
             text
         ))),
     }
@@ -940,7 +953,7 @@ fn build_scale(node: &Node, source: &SourceTree) -> Result<Scale> {
                 if !mappings.is_empty() {
                     label_mapping = Some(mappings);
                 }
-                label_template = template;
+                label_template = template.unwrap_or_else(crate::format::default_template);
             }
             _ => {}
         }
@@ -1060,13 +1073,14 @@ fn parse_scale_via_clause(node: &Node, source: &SourceTree) -> Result<Transform>
 ///
 /// Returns a tuple of:
 /// - HashMap where: Key = original value, Value = Some(label) or None for suppressed labels
-/// - Template string for wildcard mappings (* => '...'), defaults to "{}"
+/// - Template string for wildcard mappings (* => '...'), None if no wildcard
+#[allow(clippy::type_complexity)]
 fn parse_renaming_clause(
     node: &Node,
     source: &SourceTree,
-) -> Result<(HashMap<String, Option<String>>, String)> {
+) -> Result<(HashMap<String, Option<String>>, Option<String>)> {
     let mut mappings = HashMap::new();
-    let mut template = "{}".to_string();
+    let mut template = None;
 
     // Find all renaming_assignment nodes
     let query = "(renaming_assignment) @assign";
@@ -1108,7 +1122,7 @@ fn parse_renaming_clause(
         if is_wildcard {
             // Wildcard: * => 'template'
             if let Some(tmpl) = to_value {
-                template = tmpl;
+                template = Some(tmpl);
             }
         } else {
             // Explicit mapping: 'A' => 'Alpha' or '10' => 'Ten'
@@ -1611,10 +1625,10 @@ mod tests {
 
         assert_eq!(table.formats.len(), 1);
         assert_eq!(table.formats[0].columns, vec!["foo", "bar"]);
-        assert_eq!(table.formats[0].target, ColumnSection::Body);
+        assert_eq!(table.formats[0].target, None);
         assert!(table.formats[0].settings.is_empty());
         assert_eq!(table.formats[0].value_mapping, None);
-        assert_eq!(table.formats[0].value_template, "{}");
+        assert_eq!(table.formats[0].value_template, None);
     }
 
     #[test]
@@ -1623,7 +1637,7 @@ mod tests {
         let table = specs[0].as_table().expect("expected a Table spec");
 
         assert_eq!(table.formats[0].columns, vec!["region"]);
-        assert_eq!(table.formats[0].target, ColumnSection::Stub);
+        assert_eq!(table.formats[0].target, Some(ColumnSection::Stub));
     }
 
     #[test]
@@ -1632,7 +1646,30 @@ mod tests {
         let table = specs[0].as_table().expect("expected a Table spec");
 
         assert_eq!(table.formats[0].columns, vec!["region"]);
-        assert_eq!(table.formats[0].target, ColumnSection::Body);
+        assert_eq!(table.formats[0].target, Some(ColumnSection::Body));
+    }
+
+    #[test]
+    fn test_tabulate_format_explicit_any_target() {
+        let specs = parse_test_specs("TABULATE * FROM sales FORMAT ANY region").unwrap();
+        let table = specs[0].as_table().expect("expected a Table spec");
+
+        assert_eq!(table.formats[0].columns, vec!["region"]);
+        assert_eq!(table.formats[0].target, None);
+    }
+
+    #[test]
+    fn test_tabulate_format_wildcard_columns() {
+        let specs =
+            parse_test_specs("TABULATE * FROM sales FORMAT * RENAMING * => '{:num %.2f}'").unwrap();
+        let table = specs[0].as_table().expect("expected a Table spec");
+
+        assert!(table.formats[0].wildcard);
+        assert!(table.formats[0].columns.is_empty());
+        assert_eq!(
+            table.formats[0].value_template,
+            Some("{:num %.2f}".to_string())
+        );
     }
 
     #[test]
@@ -1653,7 +1690,10 @@ mod tests {
             table.formats[0].value_mapping,
             Some(HashMap::from([("null".to_string(), Some("-".to_string()))]))
         );
-        assert_eq!(table.formats[0].value_template, "{:num %.2f}");
+        assert_eq!(
+            table.formats[0].value_template,
+            Some("{:num %.2f}".to_string())
+        );
     }
 
     #[test]
@@ -1666,7 +1706,10 @@ mod tests {
 
         assert_eq!(table.formats.len(), 2);
         assert_eq!(table.formats[0].columns, vec!["foo"]);
-        assert_eq!(table.formats[0].value_template, "{:num %.0f}");
+        assert_eq!(
+            table.formats[0].value_template,
+            Some("{:num %.0f}".to_string())
+        );
         assert_eq!(table.formats[1].columns, vec!["bar"]);
     }
 

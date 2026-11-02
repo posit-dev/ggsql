@@ -11,7 +11,7 @@ use arrow::datatypes::DataType;
 use crate::array_util::{new_str_array, value_to_string};
 use crate::plot::{ParameterValue, Parameters};
 use crate::table::standardise_hjust;
-use crate::{DataFrame, Format, GgsqlError, Result, Spanner};
+use crate::{ColumnSection, DataFrame, Format, GgsqlError, Result, Spanner};
 
 /// Validate every FORMAT's `SETTING` parameters, then reshape `formats`
 /// into one `Format` per column it covers. `spans` must already be resolved
@@ -28,44 +28,72 @@ pub(super) fn setup_formats(
             .map_err(|e| GgsqlError::ValidationError(format!("FORMAT {}: {}", idx + 1, e)))?;
     }
 
-    // One `Format` per column; a later clause wins over an earlier one
-    // naming the same column.
+    // One `Format` per column; clauses naming the same column merge
+    // (`Format::merge`), with the later clause winning per field.
+    let colnames = df.get_column_names();
     let mut resolved = HashMap::new();
     for format in formats {
-        for name in &format.columns {
-            // A SPAN id never collides with a real column name
-            // (`Spanner::validate_columns`), so this lookup is unambiguous.
-            let columns: Vec<&String> = match spans.iter().find(|span| &span.id == name) {
-                Some(span) => span.columns.iter().collect(),
-                None => vec![name],
-            };
-            for column in columns {
-                if df.column(column).is_err() {
-                    return Err(GgsqlError::ValidationError(format!(
-                        "FORMAT references unknown column '{column}'"
-                    )));
-                }
-                let mut format = format.clone();
-                // The map key names the column instead.
-                format.columns = Vec::new();
-                resolved.insert(column.clone(), format);
-            }
+        for column in expand_format_columns(format, &colnames, spans)? {
+            let mut format = format.clone();
+            // Resolve the selection to the single column this entry is keyed
+            // under, so re-resolving a resolved map is a fixed point.
+            format.columns = vec![column.clone()];
+            format.wildcard = false;
+            resolved
+                .entry(column)
+                .and_modify(|existing: &mut Format| existing.merge(&format))
+                .or_insert(format);
         }
+    }
+
+    // A column no clause claimed a section for resolves to the body.
+    for format in resolved.values_mut() {
+        format.target.get_or_insert(ColumnSection::Body);
     }
     Ok(resolved)
 }
 
+/// Expand a FORMAT's column selection to concrete column names: `*` to every
+/// column, a SPAN id to its columns, anything else to itself. Errors on a
+/// name that is neither a SPAN id nor a column.
+fn expand_format_columns(
+    format: &Format,
+    colnames: &[String],
+    spans: &[Spanner],
+) -> Result<Vec<String>> {
+    if format.wildcard {
+        return Ok(colnames.to_vec());
+    }
+
+    let mut columns = Vec::new();
+    for name in &format.columns {
+        // A SPAN id never collides with a real column name
+        // (`Spanner::validate_columns`), so this lookup is unambiguous.
+        match spans.iter().find(|span| &span.id == name) {
+            Some(span) => columns.extend(span.columns.iter().cloned()),
+            None => columns.push(name.clone()),
+        }
+    }
+    for column in &columns {
+        if !colnames.contains(column) {
+            return Err(GgsqlError::ValidationError(format!(
+                "FORMAT references unknown column '{column}'"
+            )));
+        }
+    }
+    Ok(columns)
+}
+
 /// Replace every column in `df` named in `formats` with its resolved
 /// display text. A column whose `Format` has no `RENAMING` at all
-/// (`value_template` is the default `"{}"` and `value_mapping` is empty) is
-/// left untouched.
+/// (`value_template` unset and `value_mapping` empty) is left untouched.
 pub(super) fn apply_formats(
     df: &DataFrame,
     formats: &HashMap<String, Format>,
 ) -> Result<DataFrame> {
     let mut df = df.clone();
     for (name, format) in formats {
-        let has_renaming = format.value_template != "{}"
+        let has_renaming = format.value_template.is_some()
             || format.value_mapping.as_ref().is_some_and(|m| !m.is_empty());
         if !has_renaming {
             // Skip the per-row formatting pass for a column nobody asked to
@@ -79,7 +107,7 @@ pub(super) fn apply_formats(
             .clone();
         let resolved = crate::format::resolve_column_values(
             &array,
-            &format.value_template,
+            format.value_template.as_deref().unwrap_or("{}"),
             &format.value_mapping,
         )
         .map_err(|e| GgsqlError::ValidationError(format!("FORMAT column '{name}': {e}")))?;
@@ -104,7 +132,7 @@ pub(super) fn apply_formats(
 pub(super) fn resolve_column_properties(dtype: &DataType, format: Option<&Format>) -> Parameters {
     let mut properties = format.map(|f| f.settings.clone()).unwrap_or_default();
 
-    let is_stub = format.is_some_and(|f| f.target.is_stub());
+    let is_stub = format.is_some_and(|f| f.target == Some(ColumnSection::Stub));
     let hjust = if let Some(value) = properties.get("hjust").and_then(standardise_hjust) {
         value
     } else if is_stub || dtype.is_numeric() {
@@ -126,10 +154,11 @@ mod tests {
     fn format_with(template: &str, mapping: Option<HashMap<String, Option<String>>>) -> Format {
         Format {
             columns: Vec::new(),
-            target: crate::ColumnSection::Body,
+            wildcard: false,
+            target: None,
             settings: Parameters::new(),
             value_mapping: mapping,
-            value_template: template.to_string(),
+            value_template: (template != "{}").then(|| template.to_string()),
         }
     }
 
@@ -141,24 +170,47 @@ mod tests {
     }
 
     #[test]
-    fn setup_formats_lets_a_later_clause_win_and_clears_columns() {
-        let frame = df! { "price" => vec![1.0f64] }.unwrap();
+    fn setup_formats_merges_clauses_on_the_same_column() {
+        let frame = df! {
+            "amount" => vec![1.0f64],
+            "price" => vec![2.0f64],
+            "currency" => vec![3.0f64]
+        }
+        .unwrap();
         let formats = vec![
             Format {
-                columns: vec!["price".to_string()],
-                ..format_with("{:num %.0f}", None)
+                columns: vec!["amount".to_string(), "price".to_string()],
+                wildcard: false,
+                ..format_with("{:num %.2f}", None)
             },
             Format {
-                columns: vec!["price".to_string()],
-                ..format_with("{:num %.2f}", None)
+                columns: vec!["price".to_string(), "currency".to_string()],
+                wildcard: false,
+                ..format_with_hjust(ParameterValue::String("left".to_string()))
             },
         ];
 
         let resolved = setup_formats(&frame, &formats, &[]).unwrap();
 
+        // `price` merges both clauses: the later clause has no template, so
+        // the earlier template survives; its settings are added.
         let price = resolved.get("price").unwrap();
-        assert_eq!(price.value_template, "{:num %.2f}");
-        assert!(price.columns.is_empty());
+        assert_eq!(price.value_template.as_deref(), Some("{:num %.2f}"));
+        assert_eq!(
+            price.settings.get("hjust"),
+            Some(&ParameterValue::String("left".to_string()))
+        );
+
+        let amount = resolved.get("amount").unwrap();
+        assert_eq!(amount.value_template.as_deref(), Some("{:num %.2f}"));
+        assert!(!amount.settings.contains_key("hjust"));
+
+        let currency = resolved.get("currency").unwrap();
+        assert_eq!(currency.value_template, None);
+        assert_eq!(
+            currency.settings.get("hjust"),
+            Some(&ParameterValue::String("left".to_string()))
+        );
     }
 
     #[test]
@@ -166,6 +218,7 @@ mod tests {
         let frame = df! { "a" => vec![1.0f64], "b" => vec![2.0f64] }.unwrap();
         let formats = vec![Format {
             columns: vec!["G".to_string()],
+            wildcard: false,
             ..format_with("{:num %.2f}", None)
         }];
         let spans = vec![Spanner {
@@ -177,8 +230,35 @@ mod tests {
 
         let resolved = setup_formats(&frame, &formats, &spans).unwrap();
 
-        assert_eq!(resolved.get("a").unwrap().value_template, "{:num %.2f}");
-        assert_eq!(resolved.get("b").unwrap().value_template, "{:num %.2f}");
+        assert_eq!(
+            resolved.get("a").unwrap().value_template.as_deref(),
+            Some("{:num %.2f}")
+        );
+        assert_eq!(
+            resolved.get("b").unwrap().value_template.as_deref(),
+            Some("{:num %.2f}")
+        );
+    }
+
+    #[test]
+    fn setup_formats_expands_a_wildcard_to_all_columns() {
+        let frame = df! { "a" => vec![1.0f64], "b" => vec![2.0f64] }.unwrap();
+        let formats = vec![Format {
+            wildcard: true,
+            ..format_with("{:num %.2f}", None)
+        }];
+
+        let resolved = setup_formats(&frame, &formats, &[]).unwrap();
+
+        assert_eq!(resolved.len(), 2);
+        assert_eq!(
+            resolved.get("a").unwrap().value_template.as_deref(),
+            Some("{:num %.2f}")
+        );
+        assert_eq!(
+            resolved.get("b").unwrap().value_template.as_deref(),
+            Some("{:num %.2f}")
+        );
     }
 
     #[test]
@@ -186,6 +266,7 @@ mod tests {
         let frame = df! { "price" => vec![1.0f64] }.unwrap();
         let formats = vec![Format {
             columns: vec!["typo".to_string()],
+            wildcard: false,
             ..format_with("{}", None)
         }];
 
@@ -240,10 +321,11 @@ mod tests {
         settings.insert("hjust".to_string(), hjust);
         Format {
             columns: Vec::new(),
-            target: crate::ColumnSection::Body,
+            wildcard: false,
+            target: None,
             settings,
             value_mapping: None,
-            value_template: "{}".to_string(),
+            value_template: None,
         }
     }
 
@@ -263,10 +345,11 @@ mod tests {
     fn resolve_column_properties_defaults_a_stub_column_to_right_regardless_of_dtype() {
         let format = Format {
             columns: Vec::new(),
-            target: crate::ColumnSection::Stub,
+            wildcard: false,
+            target: Some(crate::ColumnSection::Stub),
             settings: Parameters::new(),
             value_mapping: None,
-            value_template: "{}".to_string(),
+            value_template: None,
         };
 
         assert_eq!(
