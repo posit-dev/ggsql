@@ -1,5 +1,10 @@
 ## \[Unreleased\]
 
+### Added
+
+- The Positron extension now registers a ggsql data importer, so dragging a csv/tsv/parquet/json file into Positron offers to generate the ggsql code that loads it into a table, including any filters and sorts shown in the Data Explorer (#536).
+- The Positron extension now registers a bundled agent skill, so agents automatically discover how to write and run ggsql queries (#536).
+
 ### Changed
 
 - The reader/dialect layer was refactored around a central dialect registry with per-database dialect implementations (#569). As part of this, some previously-public items changed: the `CacheBackend` trait moved to a test-support module, `CachingReader::new` is now test-only, and `Spec::layer_sql`/`Spec::stat_sql` were removed.
@@ -9,9 +14,6 @@
 
 - Fixed a bug in the Vega-Lite writer that could rescale timestamps twice when the data carried microsecond timestamps (#569).
 - Extent queries are now merged and ordered portably, fixing schema resolution on MySQL and ClickHouse (#569).
-
-### Fixed
-
 - Fixed a parser bug that interpreted comment characters inside string literals as initializing a comment (#555).
 - Fixed a bug in stat_aggregate prevented transposed layers from properly aggregating in certain situations (#561)
 - Fixed schema-less `validate()` rejecting spatial layers that omit an explicit `geometry` mapping, even though execution auto-detects the geometry column (#587)
