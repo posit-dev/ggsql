@@ -61,6 +61,12 @@ If you use `.sql` files with other database tooling and would prefer the extensi
 "ggsql.enableSqlFiles": false
 ```
 
+## Importing data files
+
+Dragging a `.csv`, `.tsv`, `.parquet`, or `.json` file into Positron offers to generate the code that loads it, and ggsql is one of the importers on offer. The generated code is a `CREATE TABLE … AS SELECT …` statement that reads the file into a table, and if you open the import dialog from a Data Explorer view it can also reproduce the filters and sorts you have applied there as `WHERE` and `ORDER BY` clauses.
+
+The generated code targets a duckdb session — the default, empty in-memory connection ggsql starts with. Reading files with `FROM 'file.csv'` is duckdb functionality, so the import will not run in a session attached to another database backend with `-- @connect:`. For the same reason, filter expressions use duckdb syntax such as `ILIKE` and `regexp_matches()`; anything the importer cannot translate is listed as a warning next to the generated code rather than dropped silently.
+
 ## Database connections
 
 By default, ggsql starts in the Positron console with an empty in-memory duckdb database connection. A "magic" comment can be used to initiate a different database connection after the session has launched, which can be either a comment in your source file or invoked directly in the console.

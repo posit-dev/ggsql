@@ -1,0 +1,179 @@
+//! SQL Server (T-SQL) dialect.
+//!
+//! Requires **SQL Server 2022 or later** (Azure SQL included): generated
+//! queries use `GREATEST`/`LEAST`, which earlier versions lack.
+//!
+//! Main deviations from ANSI: `TOP`-style limiting (expressed as an outer
+//! `SELECT TOP n *`), `BIT` booleans with 1/0 literals, `DATEADD` literals,
+//! and `SELECT ... INTO` instead of `CREATE TABLE AS`.
+//!
+//! Spatial is disabled: SQL Server's geometry API is method-based
+//! (`geom.STAsBinary()`) rather than the PostGIS-style function calls the
+//! ANSI defaults emit, so we fail fast rather than produce broken SQL.
+
+use crate::reader::SqlDialect;
+
+/// SQL Server dialect.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct MssqlDialect;
+
+impl SqlDialect for MssqlDialect {
+    fn type_names(&self) -> crate::reader::TypeNames {
+        crate::reader::TypeNames {
+            number: Some("FLOAT"),
+            datetime: Some("DATETIME2"),
+            string: Some("NVARCHAR(MAX)"),
+            boolean: Some("BIT"),
+            ..crate::reader::TypeNames::ANSI
+        }
+    }
+
+    fn sql_boolean_literal(&self, value: bool) -> String {
+        super::one_zero_boolean_literal(value)
+    }
+
+    fn sql_ceil(&self, expr: &str) -> String {
+        // T-SQL has no CEIL function.
+        format!("CEILING({expr})")
+    }
+
+    fn sql_temporal_as_number(
+        &self,
+        expr: &str,
+        kind: crate::plot::types::CastTargetType,
+    ) -> String {
+        // T-SQL rejects explicit temporal -> float casts (error 529);
+        // DATEDIFF against the epoch is the idiomatic conversion.
+        use crate::plot::types::CastTargetType as C;
+        match kind {
+            C::Date => format!("DATEDIFF(DAY, '1970-01-01', {expr})"),
+            C::DateTime => {
+                format!("DATEDIFF_BIG(MICROSECOND, '1970-01-01T00:00:00', {expr})")
+            }
+            _ => format!("CAST({expr} AS FLOAT)"),
+        }
+    }
+
+    fn sql_with_recursive(&self) -> &'static str {
+        // T-SQL CTEs are recursive by self-reference alone; the RECURSIVE
+        // keyword is a syntax error.
+        "WITH"
+    }
+
+    fn sql_limit(&self, query: &str, n: usize) -> String {
+        crate::sql::Select::new(self)
+            .select(format!("TOP {n} *"))
+            .from_aliased(crate::sql::FromItem::Query(query), "__ggsql_lim__")
+            .build()
+    }
+
+    fn sql_limit_wraps_query(&self) -> bool {
+        true
+    }
+
+    fn allows_cte_in_derived_table(&self) -> bool {
+        // T-SQL forbids CTEs inside a derived table ("Incorrect syntax near
+        // the keyword 'WITH'"); the query builder hoists them out.
+        false
+    }
+
+    fn sql_date_literal(&self, days_since_epoch: i32) -> String {
+        format!("DATEADD(day, {days_since_epoch}, CAST('1970-01-01' AS DATE))")
+    }
+
+    fn sql_datetime_literal(&self, microseconds_since_epoch: i64) -> String {
+        // DATEADD's return type caps int arithmetic at ~68 years in
+        // microseconds, so split into seconds + remainder microseconds.
+        let secs = microseconds_since_epoch / 1_000_000;
+        let micros = microseconds_since_epoch % 1_000_000;
+        format!(
+            "DATEADD(microsecond, {micros}, \
+             DATEADD(second, {secs}, CAST('1970-01-01T00:00:00' AS DATETIME2)))"
+        )
+    }
+
+    fn sql_time_literal(&self, nanoseconds_since_midnight: i64) -> String {
+        let secs = nanoseconds_since_midnight / 1_000_000_000;
+        let nanos = nanoseconds_since_midnight % 1_000_000_000;
+        format!(
+            "DATEADD(nanosecond, {nanos}, \
+             DATEADD(second, {secs}, CAST('00:00:00' AS TIME)))"
+        )
+    }
+
+    fn temp_table_style(&self) -> crate::reader::TempTableStyle {
+        // SQL Server has no CREATE TABLE AS; SELECT INTO is the idiom.
+        crate::reader::TempTableStyle::SelectInto
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn limit_uses_top() {
+        assert_eq!(
+            MssqlDialect.sql_limit("SELECT a FROM t", 10),
+            "SELECT TOP 10 * FROM (SELECT a FROM t) AS \"__ggsql_lim__\""
+        );
+    }
+
+    #[test]
+    fn temporal_as_number_uses_datediff() {
+        use crate::plot::types::CastTargetType as C;
+        assert_eq!(
+            MssqlDialect.sql_temporal_as_number("[d]", C::Date),
+            "DATEDIFF(DAY, '1970-01-01', [d])"
+        );
+        assert_eq!(
+            MssqlDialect.sql_temporal_as_number("[d]", C::DateTime),
+            "DATEDIFF_BIG(MICROSECOND, '1970-01-01T00:00:00', [d])"
+        );
+    }
+
+    #[test]
+    fn limit_hoists_cte_out_of_derived_table() {
+        assert_eq!(
+            MssqlDialect.sql_limit("WITH c AS (SELECT 1 AS a) SELECT a FROM c", 10),
+            "WITH c AS (SELECT 1 AS a) SELECT TOP 10 * FROM (SELECT a FROM c) AS \"__ggsql_lim__\""
+        );
+    }
+
+    #[test]
+    fn subquery_wrap_hoists_cte() {
+        assert_eq!(
+            crate::sql::wrap_all(
+                &MssqlDialect,
+                "WITH c AS (SELECT 1 AS a) SELECT a FROM c",
+                "s"
+            ),
+            "WITH c AS (SELECT 1 AS a) SELECT * FROM (SELECT a FROM c) AS \"s\""
+        );
+    }
+
+    #[test]
+    fn ceil_is_ceiling() {
+        assert_eq!(MssqlDialect.sql_ceil("x / 2.0"), "CEILING(x / 2.0)");
+    }
+
+    #[test]
+    fn booleans_are_bit_literals() {
+        assert_eq!(MssqlDialect.type_names().boolean, Some("BIT"));
+        assert_eq!(MssqlDialect.sql_boolean_literal(true), "1");
+    }
+
+    #[test]
+    fn temp_table_uses_select_into() {
+        let stmts = MssqlDialect.create_or_replace_temp_table_sql("t", &[], "SELECT 1 AS a");
+        assert_eq!(
+            stmts[1],
+            "SELECT * INTO \"t\" FROM (SELECT 1 AS a) AS \"__ggsql_src__\""
+        );
+    }
+
+    #[test]
+    fn spatial_disabled() {
+        assert!(!MssqlDialect.supports_spatial());
+    }
+}

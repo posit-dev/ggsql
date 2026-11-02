@@ -66,7 +66,8 @@ impl GeomTrait for Ribbon {
         }
 
         let columns = mappings.column_names();
-        let (expanded, expanded_columns) = expand_ribbon_to_polygon(query, &columns, partition_by);
+        let (expanded, expanded_columns) =
+            expand_ribbon_to_polygon(query, &columns, partition_by, dialect);
 
         partition_by.push(naming::DENSIFY_ID_COLUMN.to_string());
         parameters.insert("densified".to_string(), ParameterValue::Boolean(true));
@@ -120,7 +121,7 @@ impl GeomTrait for Ribbon {
         };
         // Ribbon needs ordering by pos1 (domain axis) for proper rendering, in both
         // the Identity and Aggregate paths.
-        Ok(wrap_with_order_by(query, result, "pos1"))
+        Ok(wrap_with_order_by(query, result, "pos1", dialect))
     }
 }
 
@@ -134,6 +135,7 @@ fn expand_ribbon_to_polygon(
     query: &str,
     columns: &[String],
     partition_by: &[String],
+    dialect: &dyn SqlDialect,
 ) -> (String, Vec<String>) {
     let pos1_col = naming::aesthetic_column("pos1");
     let pos2min_col = naming::aesthetic_column("pos2min");
@@ -146,13 +148,13 @@ fn expand_ribbon_to_polygon(
         .collect();
     let passthrough_quoted: Vec<String> = passthrough_cols
         .iter()
-        .map(|c| naming::quote_ident(c))
+        .map(|c| dialect.quote_ident(c))
         .collect();
 
-    let pos1_q = naming::quote_ident(&pos1_col);
-    let pos2min_q = naming::quote_ident(&pos2min_col);
-    let pos2max_q = naming::quote_ident(&pos2max_col);
-    let pos2_q = naming::quote_ident(&pos2_col);
+    let pos1_q = dialect.quote_ident(&pos1_col);
+    let pos2min_q = dialect.quote_ident(&pos2min_col);
+    let pos2max_q = dialect.quote_ident(&pos2max_col);
+    let pos2_q = dialect.quote_ident(&pos2_col);
 
     // Number rows within each group by pos1 order and compute the group size.
     let partition_clause = if partition_by.is_empty() {
@@ -160,7 +162,7 @@ fn expand_ribbon_to_polygon(
     } else {
         let parts: Vec<String> = partition_by
             .iter()
-            .map(|c| naming::quote_ident(c))
+            .map(|c| dialect.quote_ident(c))
             .collect();
         format!("PARTITION BY {} ", parts.join(", "))
     };
@@ -172,20 +174,30 @@ fn expand_ribbon_to_polygon(
     } else {
         let parts: Vec<String> = partition_by
             .iter()
-            .map(|c| naming::quote_ident(c))
+            .map(|c| dialect.quote_ident(c))
             .collect();
         format!("DENSE_RANK() OVER (ORDER BY {})", parts.join(", "))
     };
 
-    let densify_id_q = naming::quote_ident(naming::DENSIFY_ID_COLUMN);
+    let densify_id_q = dialect.quote_ident(naming::DENSIFY_ID_COLUMN);
+    let __ggsql_row_idx__ = dialect.quote_ident("__ggsql_row_idx__");
+    let __ggsql_n_rows__ = dialect.quote_ident("__ggsql_n_rows__");
+    let __ggsql_vertex__ = dialect.quote_ident("__ggsql_vertex__");
+    let __ggsql_r__ = dialect.quote_ident("__ggsql_r__");
 
-    let numbered = format!(
-        "SELECT *, \
-         ROW_NUMBER() OVER ({partition_clause}ORDER BY {pos1_q}) AS \"__ggsql_row_idx__\", \
-         COUNT(*) OVER ({partition_clause}) AS \"__ggsql_n_rows__\", \
-         {ribbon_id_expr} AS {densify_id_q} \
-         FROM ({query})"
-    );
+    let numbered = crate::sql::Select::new(dialect)
+        .select_star_plus(
+            &[
+                format!(
+                    "ROW_NUMBER() OVER ({partition_clause}ORDER BY {pos1_q}) AS {__ggsql_row_idx__}"
+                ),
+                format!("COUNT(*) OVER ({partition_clause}) AS {__ggsql_n_rows__}"),
+                format!("{ribbon_id_expr} AS {densify_id_q}"),
+            ],
+            "__ggsql_ribbon__",
+        )
+        .from_aliased(crate::sql::FromItem::Query(query), "__ggsql_ribbon__")
+        .build();
 
     // Build select list for each half
     let mut common_select: Vec<String> = passthrough_quoted.clone();
@@ -193,24 +205,23 @@ fn expand_ribbon_to_polygon(
 
     // Upper edge: vertex index = row_idx (1..n), pos2 = pos2max
     let mut upper_parts = common_select.clone();
-    upper_parts.push("\"__ggsql_row_idx__\" AS \"__ggsql_vertex__\"".to_string());
+    upper_parts.push(format!("{__ggsql_row_idx__} AS {__ggsql_vertex__}"));
     upper_parts.push(pos1_q.to_string());
     upper_parts.push(format!("{pos2max_q} AS {pos2_q}"));
 
     // Lower edge: vertex index = 2*n - row_idx + 1 (n+1..2n), pos2 = pos2min
     let mut lower_parts = common_select;
-    lower_parts.push(
-        "(2 * \"__ggsql_n_rows__\" - \"__ggsql_row_idx__\" + 1) AS \"__ggsql_vertex__\""
-            .to_string(),
-    );
+    lower_parts.push(format!(
+        "(2 * {__ggsql_n_rows__} - {__ggsql_row_idx__} + 1) AS {__ggsql_vertex__}"
+    ));
     lower_parts.push(pos1_q.to_string());
     lower_parts.push(format!("{pos2min_q} AS {pos2_q}"));
 
     let sql = format!(
-        "WITH \"__ggsql_r__\" AS ({numbered}) \
-         SELECT {} FROM \"__ggsql_r__\" \
+        "WITH {__ggsql_r__} AS ({numbered}) \
+         SELECT {} FROM {__ggsql_r__} \
          UNION ALL \
-         SELECT {} FROM \"__ggsql_r__\"",
+         SELECT {} FROM {__ggsql_r__}",
         upper_parts.join(", "),
         lower_parts.join(", "),
     );

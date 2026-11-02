@@ -11,50 +11,72 @@ use std::sync::OnceLock;
 // Diagnostic helpers
 // ============================================================================
 
-fn extract_diagnostic(handle_type: SqlSmallInt, handle: SqlHandle) -> String {
+pub(crate) fn extract_diagnostic(handle_type: SqlSmallInt, handle: SqlHandle) -> String {
     let f = fns();
-    let mut state = [0u8; 6];
-    let mut native_error: SqlInteger = 0;
-    let mut buf = vec![0u8; 512];
-    let mut text_len: SqlSmallInt = 0;
+    let mut parts = Vec::new();
 
-    let rc = unsafe {
-        (f.SQLGetDiagRec)(
-            handle_type,
-            handle,
-            1,
-            state.as_mut_ptr(),
-            &mut native_error,
-            buf.as_mut_ptr(),
-            buf.len() as SqlSmallInt,
-            &mut text_len,
-        )
-    };
+    // Drivers may stack several records; the first is not always the most
+    // specific (unixODBC translation errors can shadow the driver's record).
+    for rec in 1..=8u16 {
+        let mut state = [0u8; 6];
+        let mut native_error: SqlInteger = 0;
+        let mut buf = vec![0u8; 1024];
+        let mut text_len: SqlSmallInt = 0;
 
-    if !succeeded(rc) {
-        return "Unknown ODBC error (no diagnostic record)".to_string();
-    }
-
-    // Retry with larger buffer if truncated
-    if text_len as usize >= buf.len() {
-        buf.resize(text_len as usize + 1, 0);
-        unsafe {
+        let rc = unsafe {
             (f.SQLGetDiagRec)(
                 handle_type,
                 handle,
-                1,
+                rec as SqlSmallInt,
                 state.as_mut_ptr(),
                 &mut native_error,
                 buf.as_mut_ptr(),
                 buf.len() as SqlSmallInt,
                 &mut text_len,
-            );
+            )
+        };
+
+        if rc == SQL_NO_DATA {
+            break;
         }
+        if !succeeded(rc) {
+            break;
+        }
+
+        if text_len as usize >= buf.len() {
+            // Clamp to what fits a SqlSmallInt length argument — a longer
+            // diagnostic would wrap the `as SqlSmallInt` cast negative.
+            let new_len = (text_len as usize + 1).min(SqlSmallInt::MAX as usize);
+            buf.resize(new_len, 0);
+            let mut text_len2: SqlSmallInt = 0;
+            let rc2 = unsafe {
+                (f.SQLGetDiagRec)(
+                    handle_type,
+                    handle,
+                    rec as SqlSmallInt,
+                    state.as_mut_ptr(),
+                    &mut native_error,
+                    buf.as_mut_ptr(),
+                    buf.len() as SqlSmallInt,
+                    &mut text_len2,
+                )
+            };
+            if succeeded(rc2) {
+                text_len = text_len2;
+            }
+        }
+
+        let n = (text_len.max(0) as usize).min(buf.len());
+        let state_str = std::str::from_utf8(&state[..5]).unwrap_or("?????");
+        let msg = std::str::from_utf8(&buf[..n]).unwrap_or("(invalid UTF-8)");
+        parts.push(format!("[{state_str}] (native {native_error}) {msg}"));
     }
 
-    let state_str = std::str::from_utf8(&state[..5]).unwrap_or("?????");
-    let msg = std::str::from_utf8(&buf[..text_len as usize]).unwrap_or("(invalid UTF-8)");
-    format!("[{}] {}", state_str, msg)
+    if parts.is_empty() {
+        "Unknown ODBC error (no diagnostic record)".to_string()
+    } else {
+        parts.join(" | ")
+    }
 }
 
 fn check(rc: SqlReturn, handle_type: SqlSmallInt, handle: SqlHandle, context: &str) -> Result<()> {
@@ -101,7 +123,7 @@ unsafe impl Send for Environment {}
 unsafe impl Sync for Environment {}
 
 impl Environment {
-    fn new() -> Result<Self> {
+    fn new(version: SqlInteger) -> Result<Self> {
         let f = fns();
         let mut handle = SQL_NULL_HANDLE;
         let rc = unsafe { (f.SQLAllocHandle)(SQL_HANDLE_ENV, SQL_NULL_HANDLE, &mut handle) };
@@ -111,14 +133,8 @@ impl Environment {
             ));
         }
 
-        let rc = unsafe {
-            (f.SQLSetEnvAttr)(
-                handle,
-                SQL_ATTR_ODBC_VERSION,
-                SQL_OV_ODBC3_80 as SqlPointer,
-                0,
-            )
-        };
+        let rc =
+            unsafe { (f.SQLSetEnvAttr)(handle, SQL_ATTR_ODBC_VERSION, version as SqlPointer, 0) };
         check(rc, SQL_HANDLE_ENV, handle, "Failed to set ODBC version")?;
 
         Ok(Environment { handle })
@@ -136,14 +152,31 @@ impl Drop for Environment {
     }
 }
 
-/// Global ODBC environment (singleton per process).
-pub fn odbc_env() -> Result<&'static Environment> {
-    static ENV: OnceLock<std::result::Result<Environment, String>> = OnceLock::new();
-    let result = ENV.get_or_init(|| Environment::new().map_err(|e| e.to_string()));
+/// Lazily initialized per-process ODBC environment at the given version.
+fn env_singleton(
+    slot: &'static OnceLock<std::result::Result<Environment, String>>,
+    version: SqlInteger,
+) -> Result<&'static Environment> {
+    let result = slot.get_or_init(|| Environment::new(version).map_err(|e| e.to_string()));
     match result {
         Ok(env) => Ok(env),
         Err(e) => Err(GgsqlError::ReaderError(e.clone())),
     }
+}
+
+/// Global ODBC environment (singleton per process).
+pub fn odbc_env() -> Result<&'static Environment> {
+    static ENV: OnceLock<std::result::Result<Environment, String>> = OnceLock::new();
+    env_singleton(&ENV, SQL_OV_ODBC3_80)
+}
+
+/// Environment with ODBC 3.0 (rather than 3.80) semantics. Some drivers
+/// (MonetDB) fail `SQLAllocHandle` on SQL_HANDLE_DBC under a 3.80
+/// environment — unixODBC's IM005 — but connect fine under 3.0; used as a
+/// fallback after an IM005 from [`odbc_env`].
+pub fn odbc_env_legacy() -> Result<&'static Environment> {
+    static ENV: OnceLock<std::result::Result<Environment, String>> = OnceLock::new();
+    env_singleton(&ENV, SQL_OV_ODBC3)
 }
 
 // ============================================================================
@@ -155,6 +188,39 @@ pub struct Connection {
 }
 
 unsafe impl Send for Connection {}
+
+/// Allocate a statement handle on `conn`, or report `context` with the
+/// connection's diagnostics.
+fn alloc_stmt(conn: &Connection, context: &str) -> Result<SqlHStmt> {
+    let f = fns();
+    let mut stmt_handle = SQL_NULL_HANDLE;
+    let rc = unsafe { (f.SQLAllocHandle)(SQL_HANDLE_STMT, conn.handle(), &mut stmt_handle) };
+    check(rc, SQL_HANDLE_DBC, conn.handle(), context)?;
+    Ok(stmt_handle)
+}
+
+/// Free a statement handle on an error path (best effort — the error being
+/// handled takes precedence over cleanup failures).
+///
+/// # Safety
+/// `handle` must be a live statement handle.
+unsafe fn free_stmt(handle: SqlHStmt) {
+    let f = fns();
+    unsafe { (f.SQLFreeHandle)(SQL_HANDLE_STMT, handle) };
+}
+
+/// Drop a statement handle. Freeing has no meaningful recovery path — a
+/// failure leaves the handle for the driver manager to reap at disconnect —
+/// so failures are asserted in debug builds and otherwise ignored.
+fn drop_stmt_handle(handle: SqlHStmt) {
+    let rc = unsafe { (fns().SQLFreeHandle)(SQL_HANDLE_STMT, handle) };
+    // Skip the assert while unwinding: a second panic here would abort.
+    debug_assert!(
+        succeeded(rc) || std::thread::panicking(),
+        "SQLFreeHandle(STMT) failed: {}",
+        extract_diagnostic(SQL_HANDLE_STMT, handle)
+    );
+}
 
 impl Connection {
     pub fn connect(env: &Environment, conn_str: &str) -> Result<Self> {
@@ -200,14 +266,7 @@ impl Connection {
     /// Execute a SQL statement, returning a Statement if it produces a result set.
     pub fn execute(&self, sql: &str) -> Result<Option<Statement>> {
         let f = fns();
-        let mut stmt_handle = SQL_NULL_HANDLE;
-        let rc = unsafe { (f.SQLAllocHandle)(SQL_HANDLE_STMT, self.handle, &mut stmt_handle) };
-        check(
-            rc,
-            SQL_HANDLE_DBC,
-            self.handle,
-            "Failed to allocate statement",
-        )?;
+        let stmt_handle = alloc_stmt(self, "Failed to allocate statement")?;
 
         let sql_cstr = std::ffi::CString::new(sql)
             .map_err(|_| GgsqlError::ReaderError("SQL string contains null byte".into()))?;
@@ -223,12 +282,12 @@ impl Connection {
             SQL_SUCCESS | SQL_SUCCESS_WITH_INFO => {}
             SQL_NO_DATA => {
                 // DDL or statement with no result set
-                unsafe { (f.SQLFreeHandle)(SQL_HANDLE_STMT, stmt_handle) };
+                unsafe { free_stmt(stmt_handle) };
                 return Ok(None);
             }
             _ => {
                 let diag = extract_diagnostic(SQL_HANDLE_STMT, stmt_handle);
-                unsafe { (f.SQLFreeHandle)(SQL_HANDLE_STMT, stmt_handle) };
+                unsafe { free_stmt(stmt_handle) };
                 return Err(GgsqlError::ReaderError(format!(
                     "ODBC execute failed: {}",
                     diag
@@ -247,7 +306,7 @@ impl Connection {
         )?;
 
         if col_count == 0 {
-            unsafe { (f.SQLFreeHandle)(SQL_HANDLE_STMT, stmt_handle) };
+            unsafe { free_stmt(stmt_handle) };
             return Ok(None);
         }
 
@@ -259,14 +318,7 @@ impl Connection {
     /// Prepare a SQL statement for repeated execution with parameters.
     pub fn prepare(&self, sql: &str) -> Result<PreparedStatement> {
         let f = fns();
-        let mut stmt_handle = SQL_NULL_HANDLE;
-        let rc = unsafe { (f.SQLAllocHandle)(SQL_HANDLE_STMT, self.handle, &mut stmt_handle) };
-        check(
-            rc,
-            SQL_HANDLE_DBC,
-            self.handle,
-            "Failed to allocate statement",
-        )?;
+        let stmt_handle = alloc_stmt(self, "Failed to allocate statement")?;
 
         let sql_cstr = std::ffi::CString::new(sql)
             .map_err(|_| GgsqlError::ReaderError("SQL string contains null byte".into()))?;
@@ -279,7 +331,7 @@ impl Connection {
         };
         if !succeeded(rc) {
             let diag = extract_diagnostic(SQL_HANDLE_STMT, stmt_handle);
-            unsafe { (f.SQLFreeHandle)(SQL_HANDLE_STMT, stmt_handle) };
+            unsafe { free_stmt(stmt_handle) };
             return Err(GgsqlError::ReaderError(format!(
                 "ODBC prepare failed: {}",
                 diag
@@ -456,25 +508,11 @@ impl Statement {
         let f = fns();
         unsafe { (f.SQLFetch)(self.handle) }
     }
-
-    /// Unbind all columns.
-    pub fn unbind_cols(&self) -> Result<()> {
-        let f = fns();
-        let rc = unsafe { (f.SQLFreeStmt)(self.handle, SQL_UNBIND) };
-        check(rc, SQL_HANDLE_STMT, self.handle, "Failed to unbind columns")
-    }
 }
 
 impl Drop for Statement {
     fn drop(&mut self) {
-        let f = fns();
-        let rc = unsafe { (f.SQLFreeHandle)(SQL_HANDLE_STMT, self.handle) };
-        if !succeeded(rc) && !std::thread::panicking() {
-            panic!(
-                "SQLFreeHandle(STMT) failed: {}",
-                extract_diagnostic(SQL_HANDLE_STMT, self.handle)
-            );
-        }
+        drop_stmt_handle(self.handle);
     }
 }
 
@@ -541,14 +579,7 @@ impl PreparedStatement {
 
 impl Drop for PreparedStatement {
     fn drop(&mut self) {
-        let f = fns();
-        let rc = unsafe { (f.SQLFreeHandle)(SQL_HANDLE_STMT, self.handle) };
-        if !succeeded(rc) && !std::thread::panicking() {
-            panic!(
-                "SQLFreeHandle(STMT) failed: {}",
-                extract_diagnostic(SQL_HANDLE_STMT, self.handle)
-            );
-        }
+        drop_stmt_handle(self.handle);
     }
 }
 
@@ -565,14 +596,7 @@ pub fn sql_tables(
     table_type: Option<&str>,
 ) -> Result<Statement> {
     let f = fns();
-    let mut stmt_handle = SQL_NULL_HANDLE;
-    let rc = unsafe { (f.SQLAllocHandle)(SQL_HANDLE_STMT, conn.handle(), &mut stmt_handle) };
-    check(
-        rc,
-        SQL_HANDLE_DBC,
-        conn.handle(),
-        "Failed to allocate statement for SQLTables",
-    )?;
+    let stmt_handle = alloc_stmt(conn, "Failed to allocate statement for SQLTables")?;
 
     let (cat_cs, cat_len) = str_to_odbc_cstring(catalog)?;
     let (sch_cs, sch_len) = str_to_odbc_cstring(schema)?;
@@ -594,7 +618,7 @@ pub fn sql_tables(
     };
     if !succeeded(rc) {
         let diag = extract_diagnostic(SQL_HANDLE_STMT, stmt_handle);
-        unsafe { (f.SQLFreeHandle)(SQL_HANDLE_STMT, stmt_handle) };
+        unsafe { free_stmt(stmt_handle) };
         return Err(GgsqlError::ReaderError(format!(
             "SQLTables failed: {}",
             diag
@@ -615,14 +639,7 @@ pub fn sql_columns(
     column: Option<&str>,
 ) -> Result<Statement> {
     let f = fns();
-    let mut stmt_handle = SQL_NULL_HANDLE;
-    let rc = unsafe { (f.SQLAllocHandle)(SQL_HANDLE_STMT, conn.handle(), &mut stmt_handle) };
-    check(
-        rc,
-        SQL_HANDLE_DBC,
-        conn.handle(),
-        "Failed to allocate statement for SQLColumns",
-    )?;
+    let stmt_handle = alloc_stmt(conn, "Failed to allocate statement for SQLColumns")?;
 
     let (cat_cs, cat_len) = str_to_odbc_cstring(catalog)?;
     let (sch_cs, sch_len) = str_to_odbc_cstring(schema)?;
@@ -644,7 +661,7 @@ pub fn sql_columns(
     };
     if !succeeded(rc) {
         let diag = extract_diagnostic(SQL_HANDLE_STMT, stmt_handle);
-        unsafe { (f.SQLFreeHandle)(SQL_HANDLE_STMT, stmt_handle) };
+        unsafe { free_stmt(stmt_handle) };
         return Err(GgsqlError::ReaderError(format!(
             "SQLColumns failed: {}",
             diag

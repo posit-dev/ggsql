@@ -312,21 +312,32 @@ pub fn quote_ident(name: &str) -> String {
     format!("\"{}\"", name.replace('"', "\"\""))
 }
 
-/// Strip surrounding double-quotes from a SQL quoted identifier and unescape
-/// doubled quotes (`""` → `"`). Returns the input unchanged if it isn't quoted.
+/// Strip surrounding quoting from a SQL quoted identifier, unescaping
+/// doubled quote characters. Handles the three quoting styles ggsql's
+/// dialects emit: standard double quotes (`""` → `"`), MySQL-family
+/// backticks (`` `` `` → `` ` ``), and T-SQL brackets (`]]` → `]`).
+/// Returns the input unchanged if it isn't quoted.
 ///
 /// # Example
 /// ```
 /// use ggsql::naming;
 /// assert_eq!(naming::unquote_ident("\"variable.dotted\""), "variable.dotted");
 /// assert_eq!(naming::unquote_ident("\"has\"\"quote\""), "has\"quote");
+/// assert_eq!(naming::unquote_ident("`back`ticked`"), "back`ticked");
+/// assert_eq!(naming::unquote_ident("[bracketed]"), "bracketed");
 /// assert_eq!(naming::unquote_ident("plain"), "plain");
 /// ```
 pub fn unquote_ident(name: &str) -> String {
-    match name.strip_prefix('"').and_then(|s| s.strip_suffix('"')) {
-        Some(inner) => inner.replace("\"\"", "\""),
-        None => name.to_string(),
+    if let Some(inner) = name.strip_prefix('"').and_then(|s| s.strip_suffix('"')) {
+        return inner.replace("\"\"", "\"");
     }
+    if let Some(inner) = name.strip_prefix('`').and_then(|s| s.strip_suffix('`')) {
+        return inner.replace("``", "`");
+    }
+    if let Some(inner) = name.strip_prefix('[').and_then(|s| s.strip_suffix(']')) {
+        return inner.replace("]]", "]");
+    }
+    name.to_string()
 }
 
 /// Quote a SQL string literal: wraps in single quotes and escapes embedded

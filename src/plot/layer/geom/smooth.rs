@@ -120,8 +120,8 @@ impl GeomTrait for Smooth {
                     aesthetic_ctx,
                 )
             }
-            "ols" => stat_ols(query, aesthetics, group_by, aesthetic_ctx),
-            "tls" => stat_tls(query, aesthetics, group_by, aesthetic_ctx),
+            "ols" => stat_ols(query, aesthetics, group_by, aesthetic_ctx, dialect),
+            "tls" => stat_tls(query, aesthetics, group_by, aesthetic_ctx, dialect),
             _ => unreachable!("method validated by ParamConstraint::string_option"),
         }
     }
@@ -138,12 +138,13 @@ fn stat_ols(
     aesthetics: &Mappings,
     group_by: &[String],
     aesthetic_ctx: &crate::plot::aesthetic::AestheticContext,
+    dialect: &dyn SqlDialect,
 ) -> Result<StatResult> {
-    let x_col = get_quoted_column_name(aesthetics, "pos1").ok_or_else(|| {
+    let x_col = get_quoted_column_name(aesthetics, "pos1", dialect).ok_or_else(|| {
         let name = aesthetic_ctx.map_internal_to_user("pos1");
         GgsqlError::ValidationError(format!("Smooth requires '{}' aesthetic mapping", name))
     })?;
-    let y_col = get_quoted_column_name(aesthetics, "pos2").ok_or_else(|| {
+    let y_col = get_quoted_column_name(aesthetics, "pos2", dialect).ok_or_else(|| {
         let name = aesthetic_ctx.map_internal_to_user("pos2");
         GgsqlError::ValidationError(format!("Smooth requires '{}' aesthetic mapping", name))
     })?;
@@ -153,8 +154,22 @@ fn stat_ols(
         (String::new(), String::new())
     } else {
         (
-            format!("{}, ", group_by.join(", ")),
-            format!("GROUP BY {}", group_by.join(", ")),
+            format!(
+                "{}, ",
+                group_by
+                    .iter()
+                    .map(|c| dialect.quote_ident(c))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
+            format!(
+                "GROUP BY {}",
+                group_by
+                    .iter()
+                    .map(|c| dialect.quote_ident(c))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
         )
     };
 
@@ -172,7 +187,7 @@ fn stat_ols(
             AVG({x} * {x}) AS xx_mean,
             MIN({x}) AS x_min,
             MAX({x}) AS x_max
-          FROM ({data})
+          FROM ({data}) AS {data_alias}
           WHERE {x} IS NOT NULL AND {y} IS NOT NULL
           {group_by}
         )
@@ -189,8 +204,9 @@ fn stat_ols(
         x = x_col,
         y = y_col,
         data = query,
-        x_out = naming::quote_ident(&naming::stat_column("pos1")),
-        y_out = naming::quote_ident(&naming::stat_column("intensity")), // We name this 'intensity' to be consistent with the nadaraya-watson kernel
+        data_alias = dialect.quote_ident("__ggsql_smooth__"),
+        x_out = dialect.quote_ident(&naming::stat_column("pos1")),
+        y_out = dialect.quote_ident(&naming::stat_column("intensity")), // We name this 'intensity' to be consistent with the nadaraya-watson kernel
         group_by = group_by_clause
     );
 
@@ -207,12 +223,13 @@ fn stat_tls(
     aesthetics: &Mappings,
     group_by: &[String],
     aesthetic_ctx: &crate::plot::aesthetic::AestheticContext,
+    dialect: &dyn SqlDialect,
 ) -> Result<StatResult> {
-    let x_col = get_quoted_column_name(aesthetics, "pos1").ok_or_else(|| {
+    let x_col = get_quoted_column_name(aesthetics, "pos1", dialect).ok_or_else(|| {
         let name = aesthetic_ctx.map_internal_to_user("pos1");
         GgsqlError::ValidationError(format!("Smooth requires '{}' aesthetic mapping", name))
     })?;
-    let y_col = get_quoted_column_name(aesthetics, "pos2").ok_or_else(|| {
+    let y_col = get_quoted_column_name(aesthetics, "pos2", dialect).ok_or_else(|| {
         let name = aesthetic_ctx.map_internal_to_user("pos2");
         GgsqlError::ValidationError(format!("Smooth requires '{}' aesthetic mapping", name))
     })?;
@@ -222,8 +239,22 @@ fn stat_tls(
         (String::new(), String::new())
     } else {
         (
-            format!("{}, ", group_by.join(", ")),
-            format!("GROUP BY {}", group_by.join(", ")),
+            format!(
+                "{}, ",
+                group_by
+                    .iter()
+                    .map(|c| dialect.quote_ident(c))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
+            format!(
+                "GROUP BY {}",
+                group_by
+                    .iter()
+                    .map(|c| dialect.quote_ident(c))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
         )
     };
 
@@ -242,7 +273,7 @@ fn stat_tls(
             AVG({y} * {y}) AS yy_mean,
             MIN({x}) AS x_min,
             MAX({x}) AS x_max
-          FROM ({data})
+          FROM ({data}) AS {data_alias}
           WHERE {x} IS NOT NULL AND {y} IS NOT NULL
           {group_by}
         ),
@@ -269,8 +300,9 @@ fn stat_tls(
         x = x_col,
         y = y_col,
         data = query,
-        x_out = naming::quote_ident(&naming::stat_column("pos1")),
-        y_out = naming::quote_ident(&naming::stat_column("intensity")),
+        data_alias = dialect.quote_ident("__ggsql_smooth__"),
+        x_out = dialect.quote_ident(&naming::stat_column("pos1")),
+        y_out = dialect.quote_ident(&naming::stat_column("intensity")),
         group_by = group_by_clause
     );
 
@@ -318,7 +350,8 @@ mod tests {
         );
 
         let ctx = crate::plot::aesthetic::AestheticContext::from_static(&["x", "y"], &[]);
-        let result = stat_ols(query, &mapping, &groups, &ctx).expect("stat_ols should succeed");
+        let result = stat_ols(query, &mapping, &groups, &ctx, &crate::reader::AnsiDialect)
+            .expect("stat_ols should succeed");
 
         if let StatResult::Transformed {
             query: sql,
@@ -371,7 +404,8 @@ mod tests {
         );
 
         let ctx = crate::plot::aesthetic::AestheticContext::from_static(&["x", "y"], &[]);
-        let result = stat_ols(query, &mapping, &groups, &ctx).expect("stat_ols should succeed");
+        let result = stat_ols(query, &mapping, &groups, &ctx, &crate::reader::AnsiDialect)
+            .expect("stat_ols should succeed");
 
         if let StatResult::Transformed {
             query: sql,
@@ -421,7 +455,8 @@ mod tests {
         );
 
         let ctx = crate::plot::aesthetic::AestheticContext::from_static(&["x", "y"], &[]);
-        let result = stat_tls(query, &mapping, &groups, &ctx).expect("stat_tls should succeed");
+        let result = stat_tls(query, &mapping, &groups, &ctx, &crate::reader::AnsiDialect)
+            .expect("stat_tls should succeed");
 
         if let StatResult::Transformed {
             query: sql,
@@ -474,7 +509,8 @@ mod tests {
         );
 
         let ctx = crate::plot::aesthetic::AestheticContext::from_static(&["x", "y"], &[]);
-        let result = stat_tls(query, &mapping, &groups, &ctx).expect("stat_tls should succeed");
+        let result = stat_tls(query, &mapping, &groups, &ctx, &crate::reader::AnsiDialect)
+            .expect("stat_tls should succeed");
 
         if let StatResult::Transformed {
             query: sql,
@@ -505,7 +541,7 @@ mod tests {
     fn stat_ols_missing_pos_aesthetics_emits_user_facing_name() {
         let mapping = crate::Mappings::new();
         let ctx = crate::plot::aesthetic::AestheticContext::from_static(&["x", "y"], &[]);
-        let err = stat_ols("SELECT 1", &mapping, &[], &ctx)
+        let err = stat_ols("SELECT 1", &mapping, &[], &ctx, &crate::reader::AnsiDialect)
             .unwrap_err()
             .to_string();
         assert_eq!(
@@ -518,7 +554,7 @@ mod tests {
     fn stat_tls_missing_pos_aesthetics_emits_user_facing_name() {
         let mapping = crate::Mappings::new();
         let ctx = crate::plot::aesthetic::AestheticContext::from_static(&["x", "y"], &[]);
-        let err = stat_tls("SELECT 1", &mapping, &[], &ctx)
+        let err = stat_tls("SELECT 1", &mapping, &[], &ctx, &crate::reader::AnsiDialect)
             .unwrap_err()
             .to_string();
         assert_eq!(
