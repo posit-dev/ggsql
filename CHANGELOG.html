@@ -329,6 +329,7 @@ gradient teal.
 <section id="fixed" class="level3">
 <h3 class="anchored" data-anchor-id="fixed">Fixed</h3>
 <ul>
+<li>Free facet dimensions now resolve their domain, breaks, labels, and minor breaks per panel in core (<code>Scale::panels</code>, indexed by the canonical panel order shared by both writers). The Vega-Lite writer no longer pins the globally resolved break set as <code>axis.values</code> on a free dimension — which had left most panels showing a single tick — and the hephaestus writer consumes the core-resolved per-panel scales instead of deriving panel extents itself (#516).</li>
 <li>Fixed a bug in the Vega-Lite writer that could rescale timestamps twice when the data carried microsecond timestamps (#569).</li>
 <li>Extent queries are now merged and ordered portably, fixing schema resolution on MySQL and ClickHouse (#569).</li>
 <li>Fixed a parser bug that interpreted comment characters inside string literals as initializing a comment (#555).</li>
