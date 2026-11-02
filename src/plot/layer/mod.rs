@@ -28,7 +28,7 @@ pub use position::{Position, PositionTrait, PositionType};
 
 use crate::{
     plot::{
-        is_facet_aesthetic, parse_position,
+        is_facet_aesthetic, is_user_facet_aesthetic, parse_position,
         types::{
             validate_parameter, AestheticValue, DataSource, Mappings, ParameterValue, Parameters,
             SqlExpression,
@@ -400,10 +400,7 @@ impl Layer {
             // are valid constant settings regardless of geom: they become
             // literal facet mappings during aesthetic transformation, mirroring
             // MAPPING 'value' AS panel.
-            if matches!(
-                param_name.as_str(),
-                "panel" | "row" | "column" | "facet1" | "facet2"
-            ) {
+            if is_user_facet_aesthetic(param_name) || is_facet_aesthetic(param_name) {
                 continue;
             }
 

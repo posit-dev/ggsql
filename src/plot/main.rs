@@ -21,7 +21,7 @@ use crate::naming;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-use super::aesthetic::AestheticContext;
+use super::aesthetic::{is_facet_aesthetic, AestheticContext};
 
 // Re-export input types
 pub use super::types::{
@@ -185,7 +185,7 @@ impl Plot {
                 // This must happen here (before query execution) so the literal
                 // is materialized as a constant column that panel computation
                 // and scale training can use. MAPPING takes precedence.
-                if (internal_name == "facet1" || internal_name == "facet2")
+                if is_facet_aesthetic(&internal_name)
                     && !layer.mappings.aesthetics.contains_key(&internal_name)
                 {
                     layer
