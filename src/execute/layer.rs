@@ -566,13 +566,19 @@ where
         }
     }
 
+    // Geom-required ordering carried by the stat transform (e.g. line
+    // ordering along the domain axis). Applied on the final query below.
+    let mut stat_order_by: Vec<String> = Vec::new();
+
     let final_query = match stat_result {
         StatResult::Transformed {
             query: transformed_query,
             stat_columns,
             dummy_columns,
             consumed_aesthetics,
+            layer_order: stat_order,
         } => {
+            stat_order_by = stat_order;
             // Build stat column -> aesthetic mappings from geom defaults for renaming
             let mut final_remappings: HashMap<String, String> = HashMap::new();
 
@@ -726,11 +732,21 @@ where
         normalize_mapping_column_names(layer);
     }
 
-    // Apply explicit ORDER BY if provided
-    let final_query = if let Some(ref o) = order_by {
-        format!("{} ORDER BY {}", final_query, o.as_str())
-    } else {
+    // Apply ORDER BY. An explicit clause ORDER BY takes precedence, so it
+    // comes first; geom-required ordering carried by the stat transform is
+    // appended as a tiebreaker so e.g. lines stay connected along the domain
+    // axis within each group. Ordering is only ever applied here, on the
+    // final outermost query — nested ORDER BY is rejected by some backends
+    // (T-SQL error 1033).
+    let mut ordering: Vec<String> = Vec::new();
+    if let Some(ref o) = order_by {
+        ordering.push(o.as_str().to_string());
+    }
+    ordering.extend(stat_order_by.iter().cloned());
+    let final_query = if ordering.is_empty() {
         final_query
+    } else {
+        format!("{} ORDER BY {}", final_query, ordering.join(", "))
     };
 
     Ok(final_query)

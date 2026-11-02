@@ -29,6 +29,6 @@ pub fn draw(
     scene: &mut dyn SceneBuilder,
 ) -> Result<()> {
     let mut view = compose::prepare(spec, data)?;
-    view.render(scene, canvas.size(), canvas.dpi);
+    view.render(scene, canvas.size(), canvas.dims.dpi);
     Ok(())
 }

@@ -65,12 +65,12 @@ pub const MAX_RASTER_DIMENSION: u32 = MAX_TEXTURE_DIMENSION;
 ///
 /// Returns `GgsqlError::WriterError` naming the limit and the alternatives.
 fn check_size(canvas: &Canvas) -> Result<()> {
-    if canvas.width > MAX_RASTER_DIMENSION || canvas.height > MAX_RASTER_DIMENSION {
+    if canvas.dims.width > MAX_RASTER_DIMENSION || canvas.dims.height > MAX_RASTER_DIMENSION {
         return Err(GgsqlError::WriterError(format!(
             "{}x{} is too large to rasterise: no dimension may exceed {} px, and a \
              given GPU may allow less. The svg and pdf writers have no such limit \
              and are resolution independent, so they are the better choice at this size",
-            canvas.width, canvas.height, MAX_RASTER_DIMENSION
+            canvas.dims.width, canvas.dims.height, MAX_RASTER_DIMENSION
         )));
     }
     Ok(())
@@ -89,12 +89,17 @@ pub fn render_rgba8(
     {
         let scene = renderer.0.scene();
         scene.clear();
-        view.render(scene, canvas.size(), canvas.dpi);
+        view.render(scene, canvas.size(), canvas.dims.dpi);
     }
-    let mut pixels = vec![0u8; (canvas.width as usize) * (canvas.height as usize) * 4];
+    let mut pixels = vec![0u8; (canvas.dims.width as usize) * (canvas.dims.height as usize) * 4];
     renderer
         .0
-        .render_to_buffer(canvas.width, canvas.height, canvas.background, &mut pixels)
+        .render_to_buffer(
+            canvas.dims.width,
+            canvas.dims.height,
+            canvas.background,
+            &mut pixels,
+        )
         .map_err(|e| GgsqlError::WriterError(format!("render failed: {e}")))?;
     Ok(pixels)
 }

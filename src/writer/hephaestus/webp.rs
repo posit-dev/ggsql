@@ -67,8 +67,8 @@ impl WebpWriter {
         // Straight alpha in, straight alpha out — VP8L stores exactly the
         // buffer the renderer read back.
         encode_webp(
-            self.canvas.width,
-            self.canvas.height,
+            self.canvas.dims.width,
+            self.canvas.dims.height,
             &pixels,
             self.canvas.dpi_hint(),
         )
