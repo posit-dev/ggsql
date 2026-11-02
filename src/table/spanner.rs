@@ -101,8 +101,8 @@ impl Spanner {
     /// Overlay a `LABEL <id> => ...` entry onto `label`, if the query has
     /// one for this spanner's id; otherwise leaves `label` as-is.
     pub fn apply_labels(&mut self, labels: &Labels) {
-        if let Some(override_label) = labels.lookup(&self.id) {
-            self.label = override_label.map(|s| s.to_string());
+        if let Some(override_label) = labels.entry(&self.id) {
+            self.label = override_label.clone();
         }
     }
 }

@@ -19,6 +19,10 @@ impl SqlDialect for TrinoDialect {
         true
     }
 
+    fn sql_is_finite(&self, expr: &str) -> String {
+        format!("is_finite({expr})")
+    }
+
     fn sql_cast(&self, expr: &str, type_name: &str) -> String {
         format!("TRY_CAST({} AS {})", expr, type_name)
     }

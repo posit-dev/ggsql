@@ -762,6 +762,12 @@ pub trait ScaleTypeTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
             return None;
         }
 
+        // Break generators iterate the domain in step-sized increments; a
+        // non-finite bound would make that iteration (effectively) unbounded.
+        if !min.is_finite() || !max.is_finite() {
+            return None;
+        }
+
         // Get break count from properties
         let count = match properties.get("breaks") {
             Some(ParameterValue::Number(n)) => *n as usize,
@@ -3305,6 +3311,34 @@ mod tests {
         let breaks = breaks.unwrap();
         // Pretty breaks should produce nice numbers
         assert!(!breaks.is_empty());
+    }
+
+    #[test]
+    fn test_resolve_breaks_non_finite_domain() {
+        // Break generators iterate the domain in step-sized increments; a
+        // non-finite bound would make that iteration effectively unbounded
+        // (observed as an OOM when a map projection produced inf coordinates).
+        let mut props = Parameters::new();
+        props.insert("breaks".to_string(), ParameterValue::Number(7.0));
+
+        let geographic = Transform::geographic();
+        for (min, max) in [
+            (0.0, f64::INFINITY),
+            (f64::NEG_INFINITY, 10.0),
+            (f64::NAN, 10.0),
+            (f64::NEG_INFINITY, f64::INFINITY),
+        ] {
+            let input_range = Some(vec![ArrayElement::Number(min), ArrayElement::Number(max)]);
+            let breaks = ScaleType::continuous().resolve_breaks(
+                input_range.as_deref(),
+                &props,
+                Some(&geographic),
+            );
+            assert!(
+                breaks.is_none(),
+                "expected no breaks for non-finite domain ({min}, {max})"
+            );
+        }
     }
 
     #[test]

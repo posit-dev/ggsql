@@ -14,7 +14,7 @@
 //! ├─ scales: Vec<Scale>             (0+ ScaleNode, one per SCALE clause)
 //! ├─ facet: Option<Facet>           (optional, from FACET clause)
 //! ├─ project: Option<Projection>    (optional, from PROJECT clause)
-//! └─ labels: Option<Labels>         (optional, merged from LABEL clauses)
+//! └─ labels: Labels                 (merged from LABEL clauses)
 //! ```
 
 pub use crate::labels::Labels;
@@ -23,7 +23,7 @@ use crate::naming;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-use super::aesthetic::AestheticContext;
+use super::aesthetic::{is_facet_aesthetic, AestheticContext};
 
 // Re-export input types
 pub use super::types::{
@@ -68,7 +68,8 @@ pub struct Plot {
     /// Projection (from PROJECT clause)
     pub project: Option<Projection>,
     /// Text labels (merged from all LABEL clauses)
-    pub labels: Option<Labels>,
+    #[serde(default)]
+    pub labels: Labels,
     /// Aesthetic context for coordinate-specific aesthetic names
     /// Computed from the coord type and facet, used for transformations
     #[serde(skip)]
@@ -98,7 +99,7 @@ impl Plot {
             scales: Vec::new(),
             facet: None,
             project: None,
-            labels: None,
+            labels: Labels::default(),
             aesthetic_context: None,
         }
     }
@@ -112,7 +113,7 @@ impl Plot {
             scales: Vec::new(),
             facet: None,
             project: None,
-            labels: None,
+            labels: Labels::default(),
             aesthetic_context: None,
         }
     }
@@ -174,6 +175,22 @@ impl Plot {
                     .map_user_to_internal(&param_name)
                     .map(|s| s.to_string())
                     .unwrap_or(param_name);
+
+                // Facet aesthetics in SETTING (e.g., `SETTING panel => 'Adelie'`)
+                // become literal mappings, just like `MAPPING 'Adelie' AS panel`.
+                // This must happen here (before query execution) so the literal
+                // is materialized as a constant column that panel computation
+                // and scale training can use. MAPPING takes precedence.
+                if is_facet_aesthetic(&internal_name)
+                    && !layer.mappings.aesthetics.contains_key(&internal_name)
+                {
+                    layer
+                        .mappings
+                        .aesthetics
+                        .insert(internal_name, AestheticValue::Literal(value));
+                    continue;
+                }
+
                 layer.parameters.insert(internal_name, value);
             }
         }
@@ -186,17 +203,15 @@ impl Plot {
         }
 
         // Transform label keys
-        if let Some(labels) = &mut self.labels {
-            let mut transformed = HashMap::new();
-            for (key, value) in labels.labels.drain() {
-                let internal_key = ctx
-                    .map_user_to_internal(&key)
-                    .map(|s| s.to_string())
-                    .unwrap_or(key);
-                transformed.insert(internal_key, value);
-            }
-            labels.labels = transformed;
+        let mut transformed = HashMap::new();
+        for (key, value) in self.labels.labels.drain() {
+            let internal_key = ctx
+                .map_user_to_internal(&key)
+                .map(|s| s.to_string())
+                .unwrap_or(key);
+            transformed.insert(internal_key, value);
         }
+        self.labels.labels = transformed;
     }
 
     /// Check if the spec has any layers
@@ -232,8 +247,7 @@ impl Plot {
         // Get aesthetic context before borrowing labels mutably
         let aesthetic_ctx = self.get_aesthetic_context();
 
-        // Ensure Labels struct exists
-        let labels = self.labels.get_or_insert_with(Labels::default);
+        let labels = &mut self.labels;
 
         // Two passes: first primaries, then variants
         // This ensures primaries always get priority regardless of HashMap iteration order
@@ -578,7 +592,7 @@ mod tests {
 
         spec.compute_aesthetic_labels();
 
-        let labels = spec.labels.as_ref().unwrap();
+        let labels = &spec.labels;
         // First variant encountered sets the label for the primary aesthetic
         // Note: HashMap iteration order may vary, so we just check both pos1 and pos2 have labels
         assert!(
@@ -615,17 +629,13 @@ mod tests {
         spec.layers.push(layer);
 
         // Pre-set a user label for pos1
-        let mut labels = Labels {
-            labels: HashMap::new(),
-        };
-        labels
+        spec.labels
             .labels
             .insert("pos1".to_string(), Some("Custom X Label".to_string()));
-        spec.labels = Some(labels);
 
         spec.compute_aesthetic_labels();
 
-        let labels = spec.labels.as_ref().unwrap();
+        let labels = &spec.labels;
         // User-specified label should be preserved
         assert_eq!(
             labels.labels.get("pos1"),
@@ -667,7 +677,7 @@ mod tests {
 
         spec.compute_aesthetic_labels();
 
-        let labels = spec.labels.as_ref().unwrap();
+        let labels = &spec.labels;
         // First layer's pos1 mapping should win
         assert_eq!(labels.labels.get("pos1"), Some(&Some("date".to_string())));
     }
@@ -692,7 +702,7 @@ mod tests {
 
         spec.compute_aesthetic_labels();
 
-        let labels = spec.labels.as_ref().unwrap();
+        let labels = &spec.labels;
         // The stroke label should be "stroke" (extracted from __ggsql_aes_stroke__)
         assert_eq!(
             labels.labels.get("stroke"),
@@ -717,7 +727,7 @@ mod tests {
 
         spec.compute_aesthetic_labels();
 
-        let labels = spec.labels.as_ref().unwrap();
+        let labels = &spec.labels;
         // The size label should be "size", not "color"
         assert_eq!(
             labels.labels.get("size"),
@@ -737,17 +747,17 @@ mod tests {
 
         let mut spec = Plot::new();
         spec.project = Some(Projection::cartesian());
-        spec.labels = Some(Labels {
+        spec.labels = Labels {
             labels: HashMap::from([
                 ("x".to_string(), Some("X Axis".to_string())),
                 ("y".to_string(), Some("Y Axis".to_string())),
             ]),
-        });
+        };
 
         spec.initialize_aesthetic_context();
         spec.transform_aesthetics_to_internal();
 
-        let labels = spec.labels.as_ref().unwrap();
+        let labels = &spec.labels;
         assert_eq!(labels.labels.get("pos1"), Some(&Some("X Axis".to_string())));
         assert_eq!(labels.labels.get("pos2"), Some(&Some("Y Axis".to_string())));
         assert!(!labels.labels.contains_key("x"));
@@ -767,17 +777,17 @@ mod tests {
             properties: Parameters::new(),
             computed: Parameters::new(),
         });
-        spec.labels = Some(Labels {
+        spec.labels = Labels {
             labels: HashMap::from([
                 ("x".to_string(), Some("Category".to_string())),
                 ("y".to_string(), Some("Value".to_string())),
             ]),
-        });
+        };
 
         spec.initialize_aesthetic_context();
         spec.transform_aesthetics_to_internal();
 
-        let labels = spec.labels.as_ref().unwrap();
+        let labels = &spec.labels;
         // x maps to pos2 (second position), y maps to pos1 (first position)
         assert_eq!(labels.labels.get("pos1"), Some(&Some("Value".to_string())));
         assert_eq!(
@@ -798,17 +808,17 @@ mod tests {
             properties: Parameters::new(),
             computed: Parameters::new(),
         });
-        spec.labels = Some(Labels {
+        spec.labels = Labels {
             labels: HashMap::from([
                 ("angle".to_string(), Some("Angle".to_string())),
                 ("radius".to_string(), Some("Distance".to_string())),
             ]),
-        });
+        };
 
         spec.initialize_aesthetic_context();
         spec.transform_aesthetics_to_internal();
 
-        let labels = spec.labels.as_ref().unwrap();
+        let labels = &spec.labels;
         assert_eq!(labels.labels.get("pos1"), Some(&Some("Angle".to_string())));
         assert_eq!(
             labels.labels.get("pos2"),
@@ -823,18 +833,18 @@ mod tests {
 
         let mut spec = Plot::new();
         spec.project = Some(Projection::cartesian());
-        spec.labels = Some(Labels {
+        spec.labels = Labels {
             labels: HashMap::from([
                 ("title".to_string(), Some("My Chart".to_string())),
                 ("color".to_string(), Some("Category".to_string())),
                 ("x".to_string(), Some("X Axis".to_string())),
             ]),
-        });
+        };
 
         spec.initialize_aesthetic_context();
         spec.transform_aesthetics_to_internal();
 
-        let labels = spec.labels.as_ref().unwrap();
+        let labels = &spec.labels;
         // Material labels should remain unchanged
         assert_eq!(
             labels.labels.get("title"),

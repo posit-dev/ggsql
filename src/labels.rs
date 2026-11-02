@@ -19,14 +19,22 @@ impl Labels {
         self.labels.extend(other.labels);
     }
 
-    /// Look up a name: `None` if there is no entry, `Some(None)` if the
-    /// label is suppressed, `Some(Some(text))` for an explicit label.
-    pub fn lookup(&self, name: &str) -> Option<Option<&str>> {
-        self.labels.get(name).map(|v| v.as_deref())
-    }
-
     /// Whether a name has an entry (set or suppressed).
     pub fn contains(&self, name: &str) -> bool {
         self.labels.contains_key(name)
+    }
+
+    /// Look up a label's text.
+    /// Both "not set" and suppressed (`LABEL <name> => NULL`) return `None`.
+    pub fn get(&self, name: &str) -> Option<&str> {
+        self.labels.get(name)?.as_deref()
+    }
+
+    /// Look up a label entry:
+    /// * `None` means not set,
+    /// * `Some(None)` means explicitly suppressed (`LABEL <name> => NULL`).
+    /// * `Some(Some(String))` means typical label
+    pub fn entry(&self, name: &str) -> Option<&Option<String>> {
+        self.labels.get(name)
     }
 }

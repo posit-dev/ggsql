@@ -90,8 +90,8 @@ impl JpegWriter {
     ) -> Result<Vec<u8>> {
         let pixels = raster::pixels(spec, data, &self.canvas, renderer)?;
         encode_jpeg(
-            self.canvas.width,
-            self.canvas.height,
+            self.canvas.dims.width,
+            self.canvas.dims.height,
             &pixels,
             self.quality,
             self.canvas.background,

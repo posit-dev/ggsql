@@ -27,7 +27,7 @@
 //!
 //! Architecture — the abstractions and the invariants they keep — and the
 //! inventory of deferred work are documented in
-//! `src/writer/hephaestus/CLAUDE.md`.
+//! `src/writer/hephaestus/AGENTS.md`.
 
 mod canvas;
 mod channels;
@@ -62,6 +62,8 @@ mod window;
 pub use hephaestus::color::{rgba, Color};
 
 pub use canvas::Canvas;
+#[cfg(feature = "window")]
+pub use canvas::Dimensions;
 #[cfg(feature = "hep")]
 use canvas::CANVAS_SIZE_OPTIONS;
 
@@ -83,7 +85,7 @@ pub use tiff::{TiffCompression, TiffWriter};
 #[cfg(feature = "webp")]
 pub use webp::WebpWriter;
 #[cfg(feature = "window")]
-pub use window::PlotViewer;
+pub use window::{PlotViewer, VIEWER_OPTIONS};
 
 // Re-exported so a caller can name the setting without depending on the
 // renderer crate; the variants are the format's own vocabulary.

@@ -1119,9 +1119,9 @@ impl Writer for VegaLiteWriter {
             vl_spec["height"] = h;
         }
 
-        if let Some(labels) = &spec.labels {
-            let title = labels.labels.get("title").and_then(|v| v.as_ref());
-            let subtitle = labels.labels.get("subtitle").and_then(|v| v.as_ref());
+        {
+            let title = spec.labels.get("title");
+            let subtitle = spec.labels.get("subtitle");
             match (title, subtitle) {
                 (Some(t), Some(st)) => {
                     // Vega-Lite uses an object for title + subtitle
@@ -1218,7 +1218,7 @@ impl Writer for VegaLiteWriter {
 mod tests {
     use super::*;
     use crate::df;
-    use crate::plot::{Labels, Layer, ParameterValue};
+    use crate::plot::{Layer, ParameterValue};
     use crate::Geom;
     use serde_json::Value;
     use std::collections::HashMap;
@@ -1538,13 +1538,9 @@ mod tests {
             );
         spec.layers.push(layer);
 
-        let mut labels = Labels {
-            labels: HashMap::new(),
-        };
-        labels
+        spec.labels
             .labels
             .insert("title".to_string(), Some("My Chart".to_string()));
-        spec.labels = Some(labels);
 
         let df = df! {
             "date" => vec!["2024-01-01", "2024-01-02"],
@@ -2870,6 +2866,104 @@ mod tests {
             !has_domain,
             "x encoding should NOT have explicit domain when using free scales, got: {}",
             serde_json::to_string_pretty(&x_encoding).unwrap()
+        );
+    }
+
+    #[test]
+    fn test_facet_free_scales_omits_axis_values() {
+        // A free facet dimension delegates its domain to Vega-Lite per panel,
+        // so pinning the globally resolved breaks as axis.values would leave
+        // each panel showing only the global breaks that happen to fall inside
+        // it (issue #516). Ticks must be left to Vega's per-panel computation.
+        use crate::plot::scale::Scale;
+        use crate::plot::{ArrayElement, Facet, FacetLayout, ParameterValue};
+
+        let writer = VegaLiteWriter::new();
+
+        let mut spec = Plot::new();
+        let layer = Layer::new(Geom::point())
+            .with_aesthetic(
+                "x".to_string(),
+                AestheticValue::standard_column("x".to_string()),
+            )
+            .with_aesthetic(
+                "y".to_string(),
+                AestheticValue::standard_column("y".to_string()),
+            );
+        spec.layers.push(layer);
+
+        // free => [true, false]: only x is free
+        let mut facet_properties = Parameters::new();
+        facet_properties.insert(
+            "free".to_string(),
+            ParameterValue::Array(vec![
+                ArrayElement::Boolean(true),
+                ArrayElement::Boolean(false),
+            ]),
+        );
+        spec.facet = Some(Facet {
+            layout: FacetLayout::Wrap {
+                variables: vec!["category".to_string()],
+            },
+            properties: facet_properties,
+            resolved: true,
+        });
+
+        // Resolved breaks on both positional scales.
+        let mut x_scale = Scale::new("x");
+        x_scale.input_range = Some(vec![ArrayElement::Number(0.0), ArrayElement::Number(100.0)]);
+        x_scale.properties.insert(
+            "breaks".to_string(),
+            ParameterValue::Array(vec![
+                ArrayElement::Number(0.0),
+                ArrayElement::Number(50.0),
+                ArrayElement::Number(100.0),
+            ]),
+        );
+        spec.scales.push(x_scale);
+        let mut y_scale = Scale::new("y");
+        y_scale.input_range = Some(vec![ArrayElement::Number(0.0), ArrayElement::Number(10.0)]);
+        y_scale.properties.insert(
+            "breaks".to_string(),
+            ParameterValue::Array(vec![
+                ArrayElement::Number(0.0),
+                ArrayElement::Number(5.0),
+                ArrayElement::Number(10.0),
+            ]),
+        );
+        spec.scales.push(y_scale);
+
+        let df = df! {
+            "x" => vec![1, 2, 3],
+            "y" => vec![4, 5, 6],
+            "category" => vec!["A", "A", "B"],
+            "__ggsql_aes_facet1__" => vec!["A", "A", "B"],
+        }
+        .unwrap();
+
+        transform_spec(&mut spec);
+        let json_str = writer.write_plot(&spec, &wrap_data(df)).unwrap();
+        assert_valid_vegalite(&json_str);
+        let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
+
+        // The free dimension must NOT pin axis.values; the fixed one must.
+        let x_encoding = &vl_spec["spec"]["layer"][0]["encoding"]["x"];
+        assert!(
+            x_encoding
+                .get("axis")
+                .and_then(|a| a.get("values"))
+                .is_none(),
+            "free x should NOT pin axis.values, got: {}",
+            serde_json::to_string_pretty(&x_encoding).unwrap()
+        );
+        let y_encoding = &vl_spec["spec"]["layer"][0]["encoding"]["y"];
+        assert!(
+            y_encoding
+                .get("axis")
+                .and_then(|a| a.get("values"))
+                .is_some(),
+            "fixed y should still pin axis.values, got: {}",
+            serde_json::to_string_pretty(&y_encoding).unwrap()
         );
     }
 

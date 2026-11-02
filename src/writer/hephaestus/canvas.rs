@@ -44,12 +44,34 @@ pub const CANVAS_SIZE_OPTIONS: &[&str] = &["width", "height", "units"];
 /// Units a `width` / `height` option may be given in.
 const UNITS: &[&str] = &["px", "in", "cm", "mm", "pt"];
 
-/// Size, resolution and background for one rendered figure.
+/// Pixel dimensions and resolution for one rendered figure.
+///
+/// The one place width/height/dpi are collected: a [`Canvas`] carries them for
+/// a file render, and the plot viewer reports them as the frame a plot was last
+/// drawn in, so a file render can match what was on screen.
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct Canvas {
+pub struct Dimensions {
     pub width: u32,
     pub height: u32,
     pub dpi: f64,
+}
+
+impl Dimensions {
+    /// Pixel dimensions at the given resolution.
+    pub fn new(width: u32, height: u32, dpi: f64) -> Self {
+        Self { width, height, dpi }
+    }
+
+    /// The dimensions as a hephaestus size, for `PlotComposition::render`.
+    pub fn size(&self) -> Size {
+        Size::new(self.width as f64, self.height as f64)
+    }
+}
+
+/// Size, resolution and background for one rendered figure.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Canvas {
+    pub dims: Dimensions,
     pub background: Color,
     /// Whether the dimensions were given in a physical unit rather than pixels.
     ///
@@ -62,9 +84,7 @@ impl Canvas {
     /// A canvas of the given pixel dimensions and DPI, on white.
     pub fn new(width: u32, height: u32, dpi: f64) -> Self {
         Self {
-            width,
-            height,
-            dpi,
+            dims: Dimensions::new(width, height, dpi),
             background: rgba(1.0, 1.0, 1.0, 1.0),
             physical: false,
         }
@@ -121,7 +141,7 @@ impl Canvas {
 
     /// The canvas as a hephaestus size, for `PlotComposition::render`.
     pub fn size(&self) -> Size {
-        Size::new(self.width as f64, self.height as f64)
+        self.dims.size()
     }
 
     /// The resolution to record in an output that can carry one.
@@ -130,7 +150,7 @@ impl Canvas {
     /// an image rendered at a higher resolution would claim the wrong physical
     /// size.
     pub fn dpi_hint(&self) -> Option<f64> {
-        Some(self.dpi)
+        Some(self.dims.dpi)
     }
 
     /// The background as a vector backend wants it: `None` when fully
@@ -245,7 +265,7 @@ pub(super) fn assert_canvas_semantics<W: crate::writer::Writer + Canvased + std:
     let dims = |pairs: &[&str]| -> (u32, u32, f64) {
         let writer = build(pairs).unwrap();
         let c = writer.canvas();
-        (c.width, c.height, c.dpi)
+        (c.dims.width, c.dims.height, c.dims.dpi)
     };
 
     // No options: the documented defaults, on an opaque white canvas.

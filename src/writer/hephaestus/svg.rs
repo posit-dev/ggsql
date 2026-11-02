@@ -109,7 +109,8 @@ impl SvgWriter {
         spec: &Plot,
         data: &HashMap<String, DataFrame>,
     ) -> Result<(String, Vec<String>)> {
-        let mut scene = SvgScene::with_config(self.canvas.size(), self.canvas.dpi, self.config());
+        let mut scene =
+            SvgScene::with_config(self.canvas.size(), self.canvas.dims.dpi, self.config());
         vector::draw(spec, data, &self.canvas, &mut scene)?;
         Ok((encode_svg(&scene), describe(scene.warnings())))
     }

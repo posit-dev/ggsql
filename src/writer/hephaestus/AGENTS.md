@@ -61,7 +61,7 @@ extend them. For how the writer's behaviour got here, read
 deliberately not done yet is in [Known gaps](#known-gaps) below.
 
 For ggsql language semantics see [`/doc/syntax/`](../../../doc/syntax/); for the
-sibling writer's internals, [`../vegalite/CLAUDE.md`](../vegalite/CLAUDE.md).
+sibling writer's internals, [`../vegalite/AGENTS.md`](../vegalite/AGENTS.md).
 
 ## The governing principle
 
@@ -78,13 +78,17 @@ missing *pass-through*, not a better computation here. The same shape held
 upstream — every hephaestus gap this writer hit was a missing setter, not a
 missing algorithm.
 
-There are exactly **two scoped exceptions**, both flagged in the code and both
-debt that would disappear if ggsql resolved more:
+There is exactly **one scoped exception**, flagged in the code:
 
 | Exception | Where | Why |
 | --- | --- | --- |
-| Free facet dimensions | `scales::{free_position_scale, free_binned_scale}` | ggsql resolves one global domain; a `free` panel needs its own. Only the *extent* is computed — the padding around it is still ggsql's, via `Scale::expand_range`. |
 | Spatial `pos1`/`pos2` | `compose.rs::map_bbox` | A map's frame is `Projection.computed["bbox"]`, in the target CRS, with `SCALE lon`/`lat` limits already folded in. A resolved `pos1`/`pos2` is *not* the alternative: for a map, ggsql resolves those against the graticule extent in EPSG:4326, so their domain is degrees and their breaks are graticule positions, not the frame. Only a bare `spatial` geom with no `PROJECT` falls back to the geometry extent. |
+
+Free facet dimensions are **not** an exception: ggsql resolves the per-panel
+domain, breaks, labels, and minor breaks in core (`Scale::panels`, indexed by
+the canonical panel order in `plot::facet::panels`), and
+`scales::free_position_scale` only translates that entry into a hephaestus
+scale. The writer never derives a positional extent.
 
 ## Configuration
 
@@ -507,7 +511,7 @@ claiming it writes anything.
 
 It lives in this crate rather than in `ggsql-cli` because the CLI uses only
 public `ggsql::*` API and has no renderer dependency — see
-[`/ggsql-cli/CLAUDE.md`](../../../ggsql-cli/CLAUDE.md). So the *behaviour* goes
+[`/ggsql-cli/AGENTS.md`](../../../ggsql-cli/AGENTS.md). So the *behaviour* goes
 public as a type instead of `build_composition` going public.
 
 Two things follow from what a window is:
@@ -643,7 +647,7 @@ open target/visual-test/index.html
 
 It never stops on a failure — an error or a panic is captured against its cell —
 so one run inventories every gap at once. Implementation notes:
-[`/ggsql-cli/CLAUDE.md`](../../../ggsql-cli/CLAUDE.md).
+[`/ggsql-cli/AGENTS.md`](../../../ggsql-cli/AGENTS.md).
 
 ## Operational constraints
 
@@ -734,8 +738,8 @@ Deliberately not done, in rough order of how likely they are to bite:
 
 ## See also
 
-- [`../vegalite/CLAUDE.md`](../vegalite/CLAUDE.md) — the sibling writer to mirror.
-- [`../../CLAUDE.md`](../../CLAUDE.md) — the core crate: feature flags, pipeline.
-- [`../../plot/CLAUDE.md`](../../plot/CLAUDE.md) — the AST and scale types this
+- [`../vegalite/AGENTS.md`](../vegalite/AGENTS.md) — the sibling writer to mirror.
+- [`../../AGENTS.md`](../../AGENTS.md) — the core crate: feature flags, pipeline.
+- [`../../plot/AGENTS.md`](../../plot/AGENTS.md) — the AST and scale types this
   writer consumes.
 - [`/doc/syntax/`](../../../doc/syntax/) — authoritative ggsql syntax reference.

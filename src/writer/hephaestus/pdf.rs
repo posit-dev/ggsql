@@ -88,7 +88,8 @@ impl PdfWriter {
         spec: &Plot,
         data: &HashMap<String, DataFrame>,
     ) -> Result<(Vec<u8>, Vec<String>)> {
-        let mut scene = PdfScene::with_config(self.canvas.size(), self.canvas.dpi, self.config());
+        let mut scene =
+            PdfScene::with_config(self.canvas.size(), self.canvas.dims.dpi, self.config());
         vector::draw(spec, data, &self.canvas, &mut scene)?;
         Ok((encode_pdf(&scene), describe(scene.warnings())))
     }

@@ -2,8 +2,8 @@
 
 ### Added
 
-- New `TABULATE` clause renders a query result as a table instead of a 
-  plot. Tables are rendered via new `html` writer. `TABULATE` supports the 
+- New `TABULATE` clause renders a query result as a table instead of a
+  plot. Tables are rendered via new `html` writer. `TABULATE` supports the
   following clauses:
   - `LABEL` sets (sub)titles, captions and overrides the display of column
     labels.
@@ -13,6 +13,12 @@
 - `Writer::write_table` renders a resolved table, taking the new public
   `TableLayout` — the table's cells bundled with their column and row
   metadata.
+- The Positron extension now registers a ggsql data importer, so dragging a
+  csv/tsv/parquet/json file into Positron offers to generate the ggsql code
+  that loads it into a table, including any filters and sorts shown in the
+  Data Explorer (#536).
+- The Positron extension now registers a bundled agent skill, so agents
+  automatically discover how to write and run ggsql queries (#536).
 
 ### Changed
 
@@ -23,9 +29,18 @@
   `Spec::layer_sql`/`Spec::stat_sql` were removed.
 - Scale resolution now detects and converts temporal-unit mismatches and errors
   on unrepresentable ranges instead of producing silently wrong scales (#569).
+- `Plot.labels` field is no longer `Option<Labels>` but plain `Labels`.
+- Replaced `CLAUDE.md` files with `AGENTS.md` files.
 
 ### Fixed
 
+- Free facet dimensions now resolve their domain, breaks, labels, and minor
+  breaks per panel in core (`Scale::panels`, indexed by the canonical panel
+  order shared by both writers). The Vega-Lite writer no longer pins the
+  globally resolved break set as `axis.values` on a free dimension — which had
+  left most panels showing a single tick — and the hephaestus writer consumes
+  the core-resolved per-panel scales instead of deriving panel extents itself
+  (#516).
 - Fixed a bug in the Vega-Lite writer that could rescale timestamps twice when
   the data carried microsecond timestamps (#569).
 - Extent queries are now merged and ordered portably, fixing schema resolution
@@ -34,6 +49,9 @@
   as initializing a comment (#555).
 - Fixed a bug in stat_aggregate prevented transposed layers from properly
   aggregating in certain situations (#561)
+- Fixed schema-less `validate()` rejecting spatial layers that omit an explicit
+  `geometry` mapping, even though execution auto-detects the geometry column
+  (#587)
 
 ## 0.5.2 - 2026-09-11
 
