@@ -27,9 +27,11 @@ pub struct AdbcReader<D: Driver> {
     // takes &self.
     connection: RefCell<<D::DatabaseType as Database>::ConnectionType>,
     dialect: crate::reader::DialectRef,
-    /// Registry-declared driver quirks (error-text conventions), when the
-    /// reader was built for a registered backend. `None` for ad-hoc drivers.
-    adbc_info: Option<crate::reader::registry::AdbcInfo>,
+    /// The registry entry for this backend, when the reader was built from
+    /// a connection string for a registered backend — source of the
+    /// driver quirks (error-text conventions) honored in `execute_sql` and
+    /// `register`. `None` for ad-hoc drivers (`new`, `with_dialect`).
+    entry: Option<&'static crate::reader::registry::DatabaseEntry>,
     registered_tables: crate::reader::RegisteredTables,
     // Driver-specific statement options (from `stmt.`-prefixed URI params)
     // applied to every statement created in execute_sql.
@@ -62,7 +64,7 @@ impl<D: Driver> AdbcReader<D> {
             _database: database,
             connection: RefCell::new(connection),
             dialect,
-            adbc_info: None,
+            entry: None,
             registered_tables: crate::reader::RegisteredTables::new(),
             statement_opts: Vec::new(),
         })
@@ -93,7 +95,7 @@ impl<D: Driver> AdbcReader<D> {
             _database: database,
             connection: RefCell::new(connection),
             dialect,
-            adbc_info: None,
+            entry: None,
             registered_tables: crate::reader::RegisteredTables::new(),
             statement_opts: Vec::new(),
         })
@@ -112,11 +114,11 @@ impl<D: Driver> AdbcReader<D> {
         self
     }
 
-    /// Attach the registry's driver quirks for this backend, so error-text
-    /// conventions (DDL-without-result-set signaling, ingest schema
-    /// mismatches) are honored where the driver requires them.
-    fn with_adbc_info(mut self, info: crate::reader::registry::AdbcInfo) -> Self {
-        self.adbc_info = Some(info);
+    /// Attach the registry entry for this backend, so its driver quirks
+    /// (DDL-without-result-set signaling, ingest schema mismatches) are
+    /// honored where the driver requires them.
+    fn with_entry(mut self, entry: &'static crate::reader::registry::DatabaseEntry) -> Self {
+        self.entry = Some(entry);
         self
     }
 
@@ -371,10 +373,10 @@ impl AdbcReader<ManagedDriver> {
 
         let reader = Self::new_with_database_opts(driver, dialect, opts)?
             .with_statement_opts(conn.ggsql.stmt_options.clone());
-        // adbc://<driver> with a recognized short name also gets quirks.
+        // adbc://<driver> with a recognized short name also resolves an entry.
         Ok(
-            match adbc_info_for_scheme(if scheme == "adbc" { body } else { scheme }) {
-                Some(info) => reader.with_adbc_info(info),
+            match crate::reader::registry::by_scheme(if scheme == "adbc" { body } else { scheme }) {
+                Some(entry) => reader.with_entry(entry),
                 None => reader,
             },
         )
@@ -546,7 +548,7 @@ where
                     // - `ddl_retry_error` (Databricks): the query path cannot
                     //   run resultless statements at all; retry via
                     //   execute_update, the path meant for them.
-                    let info = self.adbc_info;
+                    let info = self.entry.and_then(|e| e.adbc);
                     if info
                         .and_then(|i| i.ddl_empty_result_error)
                         .is_some_and(|needle| msg.contains(needle))
@@ -695,7 +697,8 @@ where
                     Ok(_) => break,
                     Err(e) => {
                         let schema_mismatch = self
-                            .adbc_info
+                            .entry
+                            .and_then(|e| e.adbc)
                             .and_then(|i| i.ingest_schema_align_error)
                             .is_some_and(|needle| e.to_string().contains(needle));
                         if attempts == 0 && schema_mismatch {

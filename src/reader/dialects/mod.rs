@@ -133,7 +133,14 @@ pub(crate) fn case_least(exprs: &[&str]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::reader::registry::{by_scheme, detect_or_err as detect_dialect};
+    use crate::reader::registry::{by_scheme, detect};
+
+    fn detect_dialect(
+        dbms_name: Option<&str>,
+        driver_hint: Option<&str>,
+    ) -> crate::Result<crate::reader::DialectRef> {
+        detect(dbms_name, driver_hint).map(|e| e.dialect())
+    }
 
     fn dialect_for_scheme(scheme: &str) -> Option<crate::reader::DialectRef> {
         by_scheme(scheme).map(|e| e.dialect())
