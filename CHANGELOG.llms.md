@@ -9,6 +9,7 @@
 
 - The reader/dialect layer was refactored around a central dialect registry with per-database dialect implementations (#569). As part of this, some previously-public items changed: the `CacheBackend` trait moved to a test-support module, `CachingReader::new` is now test-only, and `Spec::layer_sql`/`Spec::stat_sql` were removed.
 - Scale resolution now detects and converts temporal-unit mismatches and errors on unrepresentable ranges instead of producing silently wrong scales (#569).
+- `Plot.labels` field is no longer `Option<Labels>` but plain `Labels`.
 - Replaced `CLAUDE.md` files with `AGENTS.md` files.
 
 ### Fixed
