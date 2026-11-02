@@ -217,6 +217,7 @@ fn stat_ols(
         stat_columns: vec!["pos1".to_string(), "intensity".to_string()],
         dummy_columns: vec![],
         consumed_aesthetics: vec!["pos1".to_string(), "pos2".to_string()],
+        layer_order: vec![],
     })
 }
 
@@ -313,6 +314,7 @@ fn stat_tls(
         stat_columns: vec!["pos1".to_string(), "intensity".to_string()],
         dummy_columns: vec![],
         consumed_aesthetics: vec!["pos1".to_string(), "pos2".to_string()],
+        layer_order: vec![],
     })
 }
 

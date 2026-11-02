@@ -41,7 +41,7 @@ use crate::{AestheticValue, DataFrame, GgsqlError, Layer, Plot, Result};
 ///   titles and break labels cascade the flag too but shape through
 ///   `TextRun::new` regardless, so they still draw their markers; they start
 ///   parsing with no change here once hephaestus reads the flag at those sites
-///   (see [Known gaps](CLAUDE.md)).
+///   (see [Known gaps](AGENTS.md)).
 pub fn ggsql_theme() -> Theme {
     let mut theme = Theme::default();
     theme.legend.bar.frame = Element::Set(RectElement {
@@ -704,10 +704,8 @@ fn offset_column(df: &DataFrame, aesthetic: &str) -> Option<Vec<f64>> {
 /// Resolve a label for an aesthetic: explicit `LABEL` wins (`None` suppresses),
 /// else the original mapped column name is the default.
 pub fn aesthetic_label(spec: &Plot, layer: &Layer, aesthetic: &str) -> Option<String> {
-    if let Some(labels) = &spec.labels {
-        if let Some(entry) = labels.labels.get(aesthetic) {
-            return entry.clone();
-        }
+    if let Some(entry) = spec.labels.entry(aesthetic) {
+        return entry.clone();
     }
     match layer.mappings.get(aesthetic) {
         Some(AestheticValue::Column {
@@ -724,7 +722,7 @@ pub fn aesthetic_label(spec: &Plot, layer: &Layer, aesthetic: &str) -> Option<St
 /// Literal `\n` in the SQL string literal becomes a real newline, matching the
 /// Vega-Lite writer's `split_label_on_newlines`.
 pub fn plot_label(spec: &Plot, key: &str) -> Option<String> {
-    let text = spec.labels.as_ref()?.labels.get(key)?.as_ref()?;
+    let text = spec.labels.get(key)?;
     Some(text.replace("\\n", "\n"))
 }
 

@@ -2,7 +2,7 @@
 
 The core library. Crate name: `ggsql`. Workspace member, declared in `/Cargo.toml`. The `ggsql` CLI binary lives separately in [`/ggsql-cli/`](../ggsql-cli/) and depends on this crate.
 
-For ggsql language semantics, see [`/doc/syntax/`](../doc/syntax/). For Vega-Lite renderer internals, see [`writer/vegalite/CLAUDE.md`](writer/vegalite/CLAUDE.md). For AST types, see [`plot/CLAUDE.md`](plot/CLAUDE.md).
+For ggsql language semantics, see [`/doc/syntax/`](../doc/syntax/). For Vega-Lite renderer internals, see [`writer/vegalite/AGENTS.md`](writer/vegalite/AGENTS.md). For AST types, see [`plot/AGENTS.md`](plot/AGENTS.md).
 
 ## Entry points
 
@@ -22,10 +22,10 @@ src/
 ├── fonts.rs                     Font registration, for hosts with no font database
 │
 ├── parser/      Tree-sitter integration → typed AST (Plot)
-├── plot/        AST: Plot, Layer, Geom, Scale, Facet, Projection, Mappings  (see plot/CLAUDE.md)
+├── plot/        AST: Plot, Layer, Geom, Scale, Facet, Projection, Mappings  (see plot/AGENTS.md)
 ├── reader/      Reader trait + drivers (DuckDB, SQLite, ODBC, Snowflake, …)
 ├── execute/     Pipeline that turns Plot + Reader → executed Spec
-├── writer/      Writer trait + Vega-Lite implementation  (see writer/vegalite/CLAUDE.md)
+├── writer/      Writer trait + Vega-Lite implementation  (see writer/vegalite/AGENTS.md)
 ├── data/        Bundled sample datasets (penguins, airquality)
 └── doc/         API.md — public Rust API reference
 ```
@@ -73,8 +73,8 @@ The pipeline that takes a parsed `Plot` plus a `Reader` and produces a fully-res
 
 `Writer` trait in `mod.rs` (associated `Output` type so writers can return text or bytes, and `from_options` for configuration a frontend collects as key–value pairs — `options.rs`'s `WriterOptions`, parsed from the CLI's `--writer-option`). Two families:
 
-- **Vega-Lite** (`vegalite` feature, default) — emits Vega-Lite JSON. Deep-dive: [`writer/vegalite/CLAUDE.md`](writer/vegalite/CLAUDE.md).
-- **The renderer-backed writers** (seven of them; `svg`, `pdf` and `hep` default, the four raster ones not) — all live in `writer/hephaestus/`, named after the renderer they wrap; that name is internal, and the module is private so only the writers, `Canvas` and `RasterRenderer` are public. They share their whole pipeline — `Canvas` for configuration, `compose` for the plot composition, then either `raster` for pixels or `vector` for drawing commands — and differ only in what they do with the result. Deep-dive (architecture + known gaps): [`writer/hephaestus/CLAUDE.md`](writer/hephaestus/CLAUDE.md).
+- **Vega-Lite** (`vegalite` feature, default) — emits Vega-Lite JSON. Deep-dive: [`writer/vegalite/AGENTS.md`](writer/vegalite/AGENTS.md).
+- **The renderer-backed writers** (seven of them; `svg`, `pdf` and `hep` default, the four raster ones not) — all live in `writer/hephaestus/`, named after the renderer they wrap; that name is internal, and the module is private so only the writers, `Canvas` and `RasterRenderer` are public. They share their whole pipeline — `Canvas` for configuration, `compose` for the plot composition, then either `raster` for pixels or `vector` for drawing commands — and differ only in what they do with the result. Deep-dive (architecture + known gaps): [`writer/hephaestus/AGENTS.md`](writer/hephaestus/AGENTS.md).
 
   | Feature | Default | Writer | Output | GPU |
   | --- | --- | --- | --- | --- |
@@ -84,7 +84,7 @@ The pipeline that takes a parsed `Plot` plus a `Reader` and produces a fully-res
 
   Plus `PlotViewer` behind the `window` feature — not a writer, since it returns no output, blocks, and must run on the main thread. It shows the same composition in a native window, re-laying-out on resize.
 
-  The three GPU-free writers go through the same composition and the same `render` call (which takes `&mut dyn SceneBuilder`), so they need no adapter and pull in no wgpu. **That is why they are default**: nothing about them has to be opted into, including on Linux, where `fontconfig-dlopen` removes the build-time `libfontconfig1-dev` requirement (see [`writer/hephaestus/CLAUDE.md`](writer/hephaestus/CLAUDE.md)). They also still compile on the CRAN MSRV — `cargo +1.86 check --ignore-rust-version -p ggsql`, where the flag is needed only because `parley` *declares* 1.88 while compiling fine on 1.86. Only the raster writers need an adapter and are genuinely 1.88+, and a raster dimension is capped at what the GPU grants, up to 16384 px.
+  The three GPU-free writers go through the same composition and the same `render` call (which takes `&mut dyn SceneBuilder`), so they need no adapter and pull in no wgpu. **That is why they are default**: nothing about them has to be opted into, including on Linux, where `fontconfig-dlopen` removes the build-time `libfontconfig1-dev` requirement (see [`writer/hephaestus/AGENTS.md`](writer/hephaestus/AGENTS.md)). They also still compile on the CRAN MSRV — `cargo +1.86 check --ignore-rust-version -p ggsql`, where the flag is needed only because `parley` *declares* 1.88 while compiling fine on 1.86. Only the raster writers need an adapter and are genuinely 1.88+, and a raster dimension is capped at what the GPU grants, up to 16384 px.
 
 Three **internal** features carry the split, enabled by the writer features rather than named directly: `graphics` is the shared composition layer, and `raster = graphics + hephaestus/vello-hybrid` adds the GPU rasteriser. Only `raster` pulls in wgpu, vello_hybrid and pollster, which is what lets a vector-only build skip them — `cargo tree --features graphics` shows none of the three, `--features png` shows 19. `raster-writer` then narrows `raster` once more, to "some writer actually reads pixels back" — the viewer needs the rasteriser without ever doing that. `graphics` is the single module gate for `writer/hephaestus/`, so adding a format needs no change there.
 
@@ -102,7 +102,7 @@ registering nothing is a silent failure.
 
 ### `plot/`
 
-Sufficiently large to have its own [`plot/CLAUDE.md`](plot/CLAUDE.md). It holds the AST types and the registries for geoms, scale types, transforms, positions, and coords.
+Sufficiently large to have its own [`plot/AGENTS.md`](plot/AGENTS.md). It holds the AST types and the registries for geoms, scale types, transforms, positions, and coords.
 
 ### `doc/`
 
@@ -175,10 +175,10 @@ The caching layer has its own equivalence suite, [`reader/cache_equivalence.rs`]
 
 ## See also
 
-- [`/CLAUDE.md`](../CLAUDE.md) — workspace overview, build/test for everything.
-- [`plot/CLAUDE.md`](plot/CLAUDE.md) — AST types.
-- [`writer/vegalite/CLAUDE.md`](writer/vegalite/CLAUDE.md) — Vega-Lite renderer internals.
+- [`/AGENTS.md`](../AGENTS.md) — workspace overview, build/test for everything.
+- [`plot/AGENTS.md`](plot/AGENTS.md) — AST types.
+- [`writer/vegalite/AGENTS.md`](writer/vegalite/AGENTS.md) — Vega-Lite renderer internals.
 - [`/doc/syntax/`](../doc/syntax/) — authoritative ggsql syntax reference.
 - [`doc/API.md`](doc/API.md) — Rust public API reference.
-- [`/ggsql-cli/CLAUDE.md`](../ggsql-cli/CLAUDE.md) — the `ggsql` CLI binary that wraps this library.
+- [`/ggsql-cli/AGENTS.md`](../ggsql-cli/AGENTS.md) — the `ggsql` CLI binary that wraps this library.
 - [`/INSTALLERS.md`](../INSTALLERS.md) — cross-platform installer build (driven from `ggsql-cli`).

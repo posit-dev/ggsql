@@ -145,10 +145,11 @@ impl HepWriter {
         // rather than transparent, so a transparent canvas has to travel as a
         // colour with zero alpha or a consumer paints white behind the plot.
         options.background = Some(self.canvas.background);
-        options.size_hint = self
-            .size_asked
-            .then_some((self.canvas.width as f64, self.canvas.height as f64));
-        options.dpi_hint = self.dpi_asked.then_some(self.canvas.dpi);
+        options.size_hint = self.size_asked.then_some((
+            self.canvas.dims.width as f64,
+            self.canvas.dims.height as f64,
+        ));
+        options.dpi_hint = self.dpi_asked.then_some(self.canvas.dims.dpi);
         options.embed_fonts = self.embed_fonts;
         options.embed_images = false;
         options

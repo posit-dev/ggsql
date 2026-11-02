@@ -302,6 +302,7 @@ fn stat_histogram(
         ],
         dummy_columns: vec![],
         consumed_aesthetics: vec!["pos1".to_string(), "weight".to_string()],
+        layer_order: vec![],
     })
 }
 

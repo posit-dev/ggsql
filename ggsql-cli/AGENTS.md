@@ -133,8 +133,8 @@ The report itself is plain HTML with a client-side filter and an *only problems*
 
 ## See also
 
-- [`/CLAUDE.md`](../CLAUDE.md) — workspace overview.
-- [`/src/writer/hephaestus/CLAUDE.md`](../src/writer/hephaestus/CLAUDE.md) — the PNG writer this harness is mostly used to check.
-- [`/src/CLAUDE.md`](../src/CLAUDE.md) — the underlying `ggsql` library.
+- [`/AGENTS.md`](../AGENTS.md) — workspace overview.
+- [`/src/writer/hephaestus/AGENTS.md`](../src/writer/hephaestus/AGENTS.md) — the PNG writer this harness is mostly used to check.
+- [`/src/AGENTS.md`](../src/AGENTS.md) — the underlying `ggsql` library.
 - [`/INSTALLERS.md`](../INSTALLERS.md) — cross-platform installer build (Windows/Linux from this crate's packager metadata; macOS via `pkgbuild`).
 - [`/doc/get_started/tooling.qmd`](../doc/get_started/tooling.qmd) — user-facing CLI docs.

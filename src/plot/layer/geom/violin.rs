@@ -267,6 +267,7 @@ fn stat_violin(
             mut stat_columns,
             mut dummy_columns,
             consumed_aesthetics,
+            layer_order,
         } => {
             if !stat_columns.iter().any(|s| s == "pos1") {
                 stat_columns.push("pos1".to_string());
@@ -279,6 +280,7 @@ fn stat_violin(
                 stat_columns,
                 dummy_columns,
                 consumed_aesthetics,
+                layer_order,
             })
         }
     }

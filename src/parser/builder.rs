@@ -338,13 +338,8 @@ fn process_viz_clause(node: &Node, source: &SourceTree, spec: &mut Plot) -> Resu
             }
             "label_clause" => {
                 let new_labels = build_labels(&child, source)?;
-                // Merge with existing labels if any
-                if let Some(ref mut existing_labels) = spec.labels {
-                    for (key, value) in new_labels.labels {
-                        existing_labels.labels.insert(key, value);
-                    }
-                } else {
-                    spec.labels = Some(new_labels);
+                for (key, value) in new_labels.labels {
+                    spec.labels.labels.insert(key, value);
                 }
             }
             _ => {
@@ -1432,7 +1427,7 @@ mod tests {
         assert!(specs[0].global_mappings.is_empty());
         assert_eq!(specs[0].layers.len(), 1);
         assert!(specs[0].project.is_some());
-        assert!(specs[0].labels.is_some());
+        assert!(!specs[0].labels.labels.is_empty());
     }
 
     #[test]
