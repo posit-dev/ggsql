@@ -2,7 +2,7 @@
 <html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
 
 <meta charset="utf-8">
-<meta name="generator" content="quarto-1.11.9">
+<meta name="generator" content="quarto-1.12.0">
 
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
@@ -79,9 +79,9 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <script src="../../../site_libs/quarto-html/tippy.umd.min.js"></script>
 <script src="../../../site_libs/quarto-html/anchor.min.js"></script>
 <link href="../../../site_libs/quarto-html/tippy.css" rel="stylesheet">
-<link href="../../../site_libs/quarto-html/quarto-syntax-highlighting-6213b034b01f486d2e6aae13635e2104.css" rel="stylesheet" class="quarto-color-scheme" id="quarto-text-highlighting-styles">
-<link href="../../../site_libs/quarto-html/quarto-syntax-highlighting-dark-6213b034b01f486d2e6aae13635e2104.css" rel="stylesheet" class="quarto-color-scheme quarto-color-alternate" id="quarto-text-highlighting-styles">
-<link href="../../../site_libs/quarto-html/quarto-syntax-highlighting-6213b034b01f486d2e6aae13635e2104.css" rel="stylesheet" class="quarto-color-scheme-extra" id="quarto-text-highlighting-styles">
+<link href="../../../site_libs/quarto-html/quarto-syntax-highlighting-1023ea2c48c3b3951983269a69164eb5.css" rel="stylesheet" class="quarto-color-scheme" id="quarto-text-highlighting-styles">
+<link href="../../../site_libs/quarto-html/quarto-syntax-highlighting-dark-1023ea2c48c3b3951983269a69164eb5.css" rel="stylesheet" class="quarto-color-scheme quarto-color-alternate" id="quarto-text-highlighting-styles">
+<link href="../../../site_libs/quarto-html/quarto-syntax-highlighting-1023ea2c48c3b3951983269a69164eb5.css" rel="stylesheet" class="quarto-color-scheme-extra" id="quarto-text-highlighting-styles">
 <script src="../../../site_libs/bootstrap/bootstrap.min.js"></script>
 <link href="../../../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
 <link href="../../../site_libs/bootstrap/bootstrap-dff546f03f5674f34efe3b680e8eb459.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme" id="quarto-bootstrap" data-mode="light">
@@ -773,7 +773,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="examples" class="level2">
 <h2 class="anchored" data-anchor-id="examples">Examples</h2>
 <p>A typical violin plot.</p>
-<div id="cf64f841" class="cell" data-execution_count="1">
+<div id="cbf9fd4a" class="cell" data-execution_count="1">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb1"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> species <span class="kw">AS</span> <span class="at">x</span>, bill_dep <span class="kw">AS</span> <span class="at">y</span> <span class="kw">FROM</span> ggsql:penguins</span>
 <span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">violin</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="1">
@@ -785,7 +785,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </div>
 </div>
 <p>The <code>adjust</code> setting controls the smoothing.</p>
-<div id="44b38953" class="cell" data-execution_count="2">
+<div id="8c39b6a2" class="cell" data-execution_count="2">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb2"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> species <span class="kw">AS</span> <span class="at">x</span>, bill_dep <span class="kw">AS</span> <span class="at">y</span> <span class="kw">FROM</span> ggsql:penguins</span>
 <span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">violin</span> </span>
 <span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>  <span class="kw">SETTING</span> adjust <span class="op">=&gt;</span> <span class="dv">0.1</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
@@ -798,7 +798,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </div>
 </div>
 <p>The <code>tails</code> setting controls the display beyond the data range. You can set it to <code>0</code> to use the exact group’s data range.</p>
-<div id="f96a7a9e" class="cell" data-execution_count="3">
+<div id="29a577b3" class="cell" data-execution_count="3">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb3"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> species <span class="kw">AS</span> <span class="at">x</span>, bill_dep <span class="kw">AS</span> <span class="at">y</span> <span class="kw">FROM</span> ggsql:penguins</span>
 <span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">violin</span> </span>
 <span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>  <span class="kw">SETTING</span> tails <span class="op">=&gt;</span> <span class="dv">0</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
@@ -811,7 +811,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </div>
 </div>
 <p>To more clearly indicate differences in group sizes, you can use the <code>intensity</code> computed variable. Note that we have fewer (n=68) Chinstrap penguins than Adelie (n=152) or Gentoo (n=124) penguins.</p>
-<div id="8d79e921" class="cell" data-execution_count="4">
+<div id="fd46e77a" class="cell" data-execution_count="4">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb4"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> species <span class="kw">AS</span> <span class="at">x</span>, bill_dep <span class="kw">AS</span> <span class="at">y</span> <span class="kw">FROM</span> ggsql:penguins</span>
 <span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">violin</span> </span>
 <span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>  <span class="kw">REMAPPING</span> <span class="at">intensity</span> AS <span class="at">offset</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
@@ -824,7 +824,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </div>
 </div>
 <p>If you have multiple groups within a category they are dodged by default:</p>
-<div id="43294990" class="cell" data-execution_count="5">
+<div id="c4de105d" class="cell" data-execution_count="5">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb5"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> species <span class="kw">AS</span> <span class="at">x</span>, bill_dep <span class="kw">AS</span> <span class="at">y</span>, island <span class="kw">AS</span> <span class="at">fill</span> <span class="kw">FROM</span> ggsql:penguins</span>
 <span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">violin</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="5">
@@ -836,7 +836,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </div>
 </div>
 <p>Create horizontal violins by swapping <code>x</code> and <code>y</code>:</p>
-<div id="6295d3cd" class="cell" data-execution_count="6">
+<div id="507cfea3" class="cell" data-execution_count="6">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb6"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> species <span class="kw">AS</span> <span class="at">y</span>, bill_dep <span class="kw">AS</span> <span class="at">x</span> <span class="kw">FROM</span> ggsql:penguins</span>
 <span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">violin</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="6">
@@ -848,7 +848,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </div>
 </div>
 <p>A ridgeline plot (or joy plot) can be seen as a horizontal half-violin plot, or like a density plot with vertical offsets for every category. To achieve this outcome, you can set the <code>side</code> setting and adjust <code>width</code> to taste.</p>
-<div id="f7ae7418" class="cell" data-execution_count="7">
+<div id="bf067ea1" class="cell" data-execution_count="7">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb7"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> Temp <span class="kw">AS</span> <span class="at">x</span>, Month <span class="kw">AS</span> <span class="at">y</span> <span class="kw">FROM</span> ggsql:airquality</span>
 <span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">violin</span> <span class="kw">SETTING</span> <span class="at">width</span> <span class="op">=&gt;</span> <span class="dv">4</span>, side <span class="op">=&gt;</span> <span class="st">'top'</span></span>
 <span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a><span class="kw">SCALE</span> <span class="kw">ORDINAL</span> <span class="at">y</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
@@ -861,7 +861,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </div>
 </div>
 <p>The same facilities can be used to create violins where each side encode different subsets</p>
-<div id="120b4bb9" class="cell" data-execution_count="8">
+<div id="64c5a937" class="cell" data-execution_count="8">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb8"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> body_mass <span class="kw">AS</span> <span class="at">y</span>, species <span class="kw">AS</span> <span class="at">x</span>, sex <span class="kw">AS</span> <span class="at">fill</span> <span class="kw">FROM</span> ggsql:penguins</span>
 <span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">violin</span></span>
 <span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a>  <span class="kw">SETTING</span> side <span class="op">=&gt;</span> <span class="st">'left'</span></span>
