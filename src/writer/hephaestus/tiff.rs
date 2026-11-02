@@ -81,8 +81,8 @@ impl TiffWriter {
     ) -> Result<Vec<u8>> {
         let pixels = raster::pixels(spec, data, &self.canvas, renderer)?;
         encode_tiff(
-            self.canvas.width,
-            self.canvas.height,
+            self.canvas.dims.width,
+            self.canvas.dims.height,
             &pixels,
             self.compression,
             self.canvas.dpi_hint(),

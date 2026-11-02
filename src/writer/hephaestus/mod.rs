@@ -62,9 +62,9 @@ mod window;
 
 pub use hephaestus::color::{rgba, Color};
 
-pub use canvas::Canvas;
 #[cfg(feature = "hep")]
 use canvas::CANVAS_SIZE_OPTIONS;
+pub use canvas::{Canvas, Dimensions};
 
 #[cfg(feature = "raster-writer")]
 pub use raster::{RasterRenderer, MAX_RASTER_DIMENSION};
@@ -84,7 +84,7 @@ pub use tiff::{TiffCompression, TiffWriter};
 #[cfg(feature = "webp")]
 pub use webp::WebpWriter;
 #[cfg(feature = "window")]
-pub use window::{ClosingFrame, PlotViewer, VIEWER_OPTIONS};
+pub use window::{PlotViewer, VIEWER_OPTIONS};
 
 // Re-exported so a caller can name the setting without depending on the
 // renderer crate; the variants are the format's own vocabulary.

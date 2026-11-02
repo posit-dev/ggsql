@@ -10,7 +10,7 @@ use std::rc::Rc;
 use hephaestus::plot::PlotComposition;
 use hephaestus::window::{self, Event, EventCtx, Frame, WindowApp, WindowConfig};
 
-use super::canvas::{parse_background, whole_pixels};
+use super::canvas::{parse_background, whole_pixels, Dimensions};
 use crate::reader::Spec;
 use crate::writer::WriterOptions;
 use crate::{GgsqlError, Result};
@@ -118,14 +118,16 @@ impl PlotViewer {
     ///
     /// Returns the frame the plot was last drawn in — logical size and dpi —
     /// as it was when the window closed, so a caller rendering the same plot
-    /// to a file can match what the user last saw. Must be called from the
+    /// to a file can match what the user last saw. The `dpi` is the display's
+    /// (`96 × scale factor` — 192 on a Retina display), which a file render
+    /// needs to reproduce the window's text and line sizes. Must be called from the
     /// main thread, as the platform event loops require.
     ///
     /// # Errors
     ///
     /// Returns `GgsqlError::WriterError` if the plot cannot be composed, if no
     /// GPU adapter can drive a window, or if the event loop fails.
-    pub fn show(&self, spec: &Spec) -> Result<ClosingFrame> {
+    pub fn show(&self, spec: &Spec) -> Result<Dimensions> {
         let view = super::compose::prepare(spec.plot(), spec.data())?;
 
         let config = WindowConfig::new(self.title.clone())
@@ -134,7 +136,7 @@ impl PlotViewer {
 
         // The last frame the plot was drawn at, tracked across resizes so it
         // survives `window::run` consuming the app.
-        let closing = Rc::new(Cell::new(ClosingFrame {
+        let closing = Rc::new(Cell::new(Dimensions {
             width: self.width,
             height: self.height,
             dpi: 96.0,
@@ -162,21 +164,10 @@ impl Default for PlotViewer {
     }
 }
 
-/// The frame the plot was last drawn in when the window closed.
-///
-/// `dpi` is the display's (`96 × scale factor` — 192 on a Retina display),
-/// which a file render needs to reproduce the window's text and line sizes.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct ClosingFrame {
-    pub width: u32,
-    pub height: u32,
-    pub dpi: f64,
-}
-
 /// One composition, redrawn at whatever size the window currently is.
 struct SpecApp {
     view: PlotComposition,
-    closing: Rc<Cell<ClosingFrame>>,
+    closing: Rc<Cell<Dimensions>>,
 }
 
 impl WindowApp for SpecApp {
@@ -184,7 +175,7 @@ impl WindowApp for SpecApp {
         // The frame reports its own size and dpi, which is what makes a resize
         // a re-layout rather than a rescale.
         let (scene, size, dpi) = frame.parts();
-        self.closing.set(ClosingFrame {
+        self.closing.set(Dimensions {
             width: size.width.round() as u32,
             height: size.height.round() as u32,
             dpi,
