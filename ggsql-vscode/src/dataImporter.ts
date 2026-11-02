@@ -7,6 +7,7 @@
  * and sorts from the current Data Explorer view.
  */
 
+import * as path from 'path';
 import * as positron from '@posit-dev/positron';
 
 /** File extensions ggsql can read through its duckdb backend. */
@@ -25,6 +26,15 @@ const RESERVED_NAMES = [
 /** Quote a string value for SQL, escaping embedded quotes by doubling. */
 function quoteString(value: string): string {
     return `'${value.replace(/'/g, "''")}'`;
+}
+
+/**
+ * Escape a literal search term for use inside a LIKE/ILIKE pattern, so that
+ * embedded `%` and `_` are matched literally rather than as wildcards.
+ * Must be paired with `ESCAPE '\\'` in the LIKE expression.
+ */
+function escapeLike(term: string): string {
+    return term.replace(/[\\%_]/g, (ch) => `\\${ch}`);
 }
 
 /** Quote an identifier (column or table name) for SQL. */
@@ -58,16 +68,17 @@ function renderFilter(filter: positron.DataImportRowFilter): string | undefined 
         case 'compare':
             return `${column} ${filter.op} ${renderValue(filter.value, filter.columnType)}`;
         case 'search': {
+            // LIKE patterns use ESCAPE '\' so literal %/_ in the term match literally
             const like = filter.caseSensitive ? 'LIKE' : 'ILIKE';
             switch (filter.searchType) {
                 case 'contains':
-                    return `${column} ${like} ${quoteString(`%${filter.term}%`)}`;
+                    return `${column} ${like} ${quoteString(`%${escapeLike(filter.term)}%`)} ESCAPE '\\\\'`;
                 case 'not_contains':
-                    return `${column} NOT ${like} ${quoteString(`%${filter.term}%`)}`;
+                    return `${column} NOT ${filter.caseSensitive ? 'LIKE' : 'ILIKE'} ${quoteString(`%${escapeLike(filter.term)}%`)} ESCAPE '\\\\'`;
                 case 'starts_with':
-                    return `${column} ${like} ${quoteString(`${filter.term}%`)}`;
+                    return `${column} ${filter.caseSensitive ? 'LIKE' : 'ILIKE'} ${quoteString(`${escapeLike(filter.term)}%`)} ESCAPE '\\\\'`;
                 case 'ends_with':
-                    return `${column} ${like} ${quoteString(`%${filter.term}`)}`;
+                    return `${column} ${filter.caseSensitive ? 'LIKE' : 'ILIKE'} ${quoteString(`%${escapeLike(filter.term)}`)} ESCAPE '\\\\'`;
                 case 'regex_match':
                     return filter.caseSensitive
                         ? `regexp_matches(${column}, ${quoteString(filter.term)})`
@@ -115,8 +126,15 @@ export const ggsqlDataImporter: positron.DataImporter = {
 
     generateCode(request: positron.DataImportRequest): positron.DataImportResult {
         const filePath = request.fileUri.fsPath;
-        const extension = filePath.split('.').pop()?.toLowerCase() ?? '';
+        // path.extname handles dotted directories and extensionless files correctly
+        const extension = path.extname(filePath).replace(/^\./, '').toLowerCase();
         const unsupported: string[] = [];
+
+        // The generated SQL is DuckDB-specific (file reads in FROM, ILIKE,
+        // regexp_matches). If the active ggsql session was repointed to another
+        // backend via "Connect With", the code will fail at runtime; the importer
+        // has no way to detect the session's backend, so always note this.
+        unsupported.push('Generated code requires a ggsql session using the default DuckDB backend');
 
         if (request.options.sheetName !== undefined) {
             unsupported.push(`Worksheet selection ('${request.options.sheetName}')`);
@@ -144,6 +162,9 @@ export const ggsqlDataImporter: positron.DataImporter = {
                     unsupported.push(`Row filter on ${filter.columnName} (${filter.filterType})`);
                     continue;
                 }
+                // Predicates are joined flatly, mirroring Data Explorer's
+                // left-to-right filter semantics. Note that `A AND B OR C` is
+                // parsed by SQL as `(A AND B) OR C` due to precedence rules.
                 predicates.push(predicates.length === 0 ? predicate : `${filter.condition.toUpperCase()} ${predicate}`);
             }
             if (predicates.length > 0) {

@@ -22,6 +22,17 @@ function gen(req: positron.DataImportRequest): positron.DataImportResult {
     return result as positron.DataImportResult;
 }
 
+/**
+ * Assert that `unsupported` contains only the standing DuckDB-backend note,
+ * i.e. nothing the user explicitly chose was flagged as unsupported.
+ */
+function assertNoUnsupported(result: positron.DataImportResult): void {
+    assert.deepStrictEqual(
+        result.unsupported,
+        ['Generated code requires a ggsql session using the default DuckDB backend'],
+    );
+}
+
 suite('ggsqlDataImporter.generateCode', () => {
     test('generates a plain import for a csv file', () => {
         const result = gen(request('/data/penguins.csv'));
@@ -29,7 +40,7 @@ suite('ggsqlDataImporter.generateCode', () => {
             result?.code,
             'CREATE TABLE "my_table" AS\nSELECT *\nFROM \'/data/penguins.csv\';',
         );
-        assert.strictEqual(result?.unsupported, undefined);
+        assertNoUnsupported(result);
     });
 
     test('escapes single quotes in file paths', () => {
@@ -42,7 +53,16 @@ suite('ggsqlDataImporter.generateCode', () => {
             request('/data/p.csv', { options: { hasHeaderRow: false } }),
         );
         assert.ok(result?.code.includes("read_csv('/data/p.csv', header = false)"));
-        assert.strictEqual(result?.unsupported, undefined);
+        assertNoUnsupported(result);
+    });
+
+    test('treats an extensionless file in a dotted directory as unknown type', () => {
+        const result = gen(
+            request('/data.v2/penguins', { options: { hasHeaderRow: false } }),
+        );
+        assert.ok(result?.code.includes("FROM '/data.v2/penguins'"));
+        assert.ok(!result?.code.includes('read_csv'));
+        assert.ok(result?.unsupported?.some((u) => u.includes('Header row')));
     });
 
     test('flags header option as unsupported for non-csv files', () => {
@@ -103,10 +123,44 @@ suite('ggsqlDataImporter.generateCode', () => {
                 "FROM '/data/p.csv'\n" +
                 'WHERE "bill_length_mm" > 40\n' +
                 '  AND "species" IN (\'Adelie\', \'Chinstrap\')\n' +
-                '  OR "island" ILIKE \'%Tor%\'\n' +
+                '  OR "island" ILIKE \'%Tor%\' ESCAPE \'\\\\\'\n' +
                 'ORDER BY "bill_length_mm" DESC;',
         );
-        assert.strictEqual(result?.unsupported, undefined);
+        assertNoUnsupported(result);
+    });
+
+    test('escapes LIKE wildcards in search terms', () => {
+        const result = gen(
+            request('/data/p.csv', {
+                view: {
+                    rowFilters: [
+                        { filterType: 'search', columnName: 'name', columnType: 'string', condition: 'and', searchType: 'contains', term: '50%_off', caseSensitive: true },
+                    ],
+                    sortKeys: [],
+                },
+            }),
+        );
+        assert.ok(result?.code.includes(`LIKE '%50\\%\\_off%' ESCAPE '\\\\'`));
+    });
+
+    test('renders mixed conditions flatly when OR precedes AND', () => {
+        // Mirrors Data Explorer's left-to-right semantics: SQL parses this as
+        // `A OR (B AND C)` due to precedence, which is the intended behaviour.
+        const result = gen(
+            request('/data/p.csv', {
+                view: {
+                    rowFilters: [
+                        { filterType: 'compare', columnName: 'a', columnType: 'integer', condition: 'and', op: '=', value: '1' },
+                        { filterType: 'compare', columnName: 'b', columnType: 'integer', condition: 'or', op: '=', value: '2' },
+                        { filterType: 'compare', columnName: 'c', columnType: 'integer', condition: 'and', op: '=', value: '3' },
+                    ],
+                    sortKeys: [],
+                },
+            }),
+        );
+        assert.ok(result?.code.includes(
+            'WHERE "a" = 1\n  OR "b" = 2\n  AND "c" = 3;',
+        ));
     });
 
     test('translates remaining filter kinds', () => {
