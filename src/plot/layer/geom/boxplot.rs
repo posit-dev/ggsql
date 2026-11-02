@@ -202,7 +202,7 @@ fn stat_boxplot(
         stat_columns,
         dummy_columns,
         consumed_aesthetics: vec!["pos2".to_string()],
-        order_by: vec![],
+        layer_order: vec![],
     })
 }
 
