@@ -93,7 +93,8 @@ impl Table {
     /// Expand a SPAN's `OVER` entry that names an earlier spanner's `id`
     /// into that spanner's own columns — `SPAN y OVER x_id, c` (after
     /// `SPAN x_id OVER a, b`) resolves to columns a, b, c for `y`. Only
-    /// ids from earlier spans are recognised; an id declared later, or a
+    /// Duplicates within the expanded columns are dropped, keeping the
+    /// first occurrence. Only
     /// genuine typo, is left as a literal string and caught downstream as
     /// an unknown column, the same as any other bad reference.
     ///
@@ -106,13 +107,17 @@ impl Table {
         let mut ids: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
 
         for span in &self.spans {
-            let columns = span
+            // Dedup after id expansion: a repeated column or an id naming
+            // already-listed columns would otherwise trip gather_columns.
+            let mut seen = std::collections::HashSet::new();
+            let columns: Vec<String> = span
                 .columns
                 .iter()
                 .flat_map(|entry| match ids.get(entry) {
                     Some(&idx) => resolved[idx].columns.clone(),
                     None => vec![entry.clone()],
                 })
+                .filter(|column| seen.insert(column.clone()))
                 .collect();
 
             let mut resolved_span = span.clone();
@@ -124,7 +129,6 @@ impl Table {
             {
                 return Err(format!("Duplicate SPAN id '{}'", resolved_span.id));
             }
-
             resolved.push(resolved_span);
         }
 

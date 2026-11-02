@@ -646,6 +646,20 @@ mod tests {
     }
 
     #[test]
+    fn resolve_spanner_ids_deduplicates_repeated_columns() {
+        let table = table_with_spans(vec![
+            spanner_with_id(&["a", "b"], "x"),
+            spanner_with_id(&["a", "a"], "y"),
+            spanner(&["x", "b", "c"]),
+        ]);
+
+        let resolved = table.resolve_spanner_ids().unwrap();
+
+        assert_eq!(resolved[1].columns, vec!["a"]);
+        assert_eq!(resolved[2].columns, vec!["a", "b", "c"]);
+    }
+
+    #[test]
     fn resolve_spanner_ids_resolves_transitively() {
         // z -> y -> x: z references y, which already expanded its own
         // reference to x by the time z is processed.
