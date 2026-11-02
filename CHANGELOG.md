@@ -21,6 +21,9 @@
 
 ### Changed
 
+- **Breaking**: `TABULATE` is now a reserved word after `VISUALISE`/`TABULATE`,
+  like `VISUALISE`. Reference a column named `tabulate` there quoted
+  (`'tabulate'`); the SQL part of a query is unaffected.
 - The reader/dialect layer was refactored around a central dialect registry with
   per-database dialect implementations (#569). As part of this, some
   previously-public items changed: the `CacheBackend` trait moved to a
