@@ -84,8 +84,8 @@ impl PngWriter {
         // `render_to_buffer` hands out straight (un-premultiplied) alpha, which
         // is exactly what PNG stores, so the buffer encodes as-is.
         encode_png(
-            self.canvas.width,
-            self.canvas.height,
+            self.canvas.dims.width,
+            self.canvas.dims.height,
             &pixels,
             self.compression,
             self.canvas.dpi_hint(),

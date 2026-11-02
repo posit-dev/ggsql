@@ -41,7 +41,7 @@ jobs:
 
       - name: Install Rust
         # Stable. The 1.86 MSRV is checked by its own step in build.yaml
-        # rather than by pinning here; see /CLAUDE.md, "Rust version (MSRV)".
+        # rather than by pinning here; see /AGENTS.md, "Rust version (MSRV)".
         uses: dtolnay/rust-toolchain@stable
 
       - name: Caching

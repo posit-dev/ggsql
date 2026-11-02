@@ -241,21 +241,16 @@ pub fn cases() -> Vec<Case> {
             "VISUALISE DRAW boxplot MAPPING grp AS x, val AS y FROM {table}",
             Expect::MinRows(1),
         ),
-        // Line with an aggregating stat: the geom appends ORDER BY after
-        // the stat transform, and the layer's stat-rename wrap then nests
-        // that ORDER BY inside a derived table. T-SQL rejects ORDER BY in
-        // derived tables without TOP/OFFSET (error 1033), so MSSQL is
-        // skipped until the pipeline applies ordering to final queries
-        // only; the broken shape is pinned in golden/mssql.sql.
-        Case {
-            live_skip: &[("mssql", "T-SQL 1033: ORDER BY nested in derived table")],
-            ..shared(
-                "line_aggregate",
-                "VISUALISE DRAW line MAPPING grp AS x, val AS y FROM {table} \
-                 SETTING aggregate => 'y:mean'",
-                Expect::ExactRows(2),
-            )
-        },
+        // Line with an aggregating stat: the geom's required ordering is
+        // carried as data on the stat result and applied on the final,
+        // outermost query only, so no ORDER BY is nested inside a derived
+        // table (which T-SQL rejects with error 1033).
+        shared(
+            "line_aggregate",
+            "VISUALISE DRAW line MAPPING grp AS x, val AS y FROM {table} \
+             SETTING aggregate => 'y:mean'",
+            Expect::ExactRows(2),
+        ),
         // Grouped density: cross-group grid join with qualified
         // projections. A degenerate (NULL) bandwidth would silently
         // produce an empty result.
@@ -270,29 +265,17 @@ pub fn cases() -> Vec<Case> {
             Expect::ExactRows(8),
         ),
         // Global-SQL source + multi-reference stat: the source is
-        // materialized as a temp table and the boxplot stats query
-        // references it many times in one statement. MySQL refuses to
-        // open a temporary table twice in one query (error 1137, "Can't
-        // reopen table") — the single-scan minmax query avoids it, but a
-        // stats query cannot. Skipped on MySQL until the pipeline stops
-        // materializing global sources into temporary tables there.
-        Case {
-            live_skip: &[
-                (
-                    "mysql",
-                    "error 1137: stats query references a temporary table multiple times",
-                ),
-                (
-                    "mariadb",
-                    "error 1137: stats query references a temporary table multiple times",
-                ),
-            ],
-            ..shared(
-                "boxplot_global_source",
-                "SELECT * FROM {table} VISUALISE DRAW boxplot MAPPING grp AS x, val AS y",
-                Expect::MinRows(1),
-            )
-        },
+        // materialized as an internal table and the boxplot stats query
+        // references it several times in one statement. MySQL/MariaDB refuse
+        // to open a *temporary* table twice in one statement (error 1137,
+        // "Can't reopen table"), so their dialect materializes internal
+        // tables as regular tables (TempTableStyle::DropThenCreate), which
+        // have no such restriction.
+        shared(
+            "boxplot_global_source",
+            "SELECT * FROM {table} VISUALISE DRAW boxplot MAPPING grp AS x, val AS y",
+            Expect::MinRows(1),
+        ),
         shared(
             "bar_count",
             "VISUALISE DRAW bar MAPPING grp AS x FROM {table}",

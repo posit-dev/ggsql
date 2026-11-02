@@ -269,6 +269,10 @@ impl BBox {
                 .downcast_ref::<arrow::array::Float64Array>()
                 .filter(|a| !a.is_null(0))
                 .map(|a| a.value(0))
+                // Degenerate projections (e.g. points behind an orthographic
+                // horizon) yield infinite extents; reject them so the frame
+                // falls back to the world/clip bbox.
+                .filter(|v| v.is_finite())
         };
         match (get_f64(0), get_f64(1), get_f64(2), get_f64(3)) {
             (Some(xmin), Some(ymin), Some(xmax), Some(ymax)) => Some(Self {
@@ -1103,6 +1107,43 @@ mod tests {
 
     fn bbox(xmin: f64, ymin: f64, xmax: f64, ymax: f64) -> BBox {
         BBox::from_array([xmin, ymin, xmax, ymax], "EPSG:4326")
+    }
+
+    fn bbox_df(values: [f64; 4]) -> DataFrame {
+        use arrow::array::{ArrayRef, Float64Array};
+        use std::sync::Arc;
+        let columns: Vec<(&str, ArrayRef)> = values
+            .iter()
+            .enumerate()
+            .map(|(i, v)| {
+                (
+                    ["xmin", "ymin", "xmax", "ymax"][i],
+                    Arc::new(Float64Array::from(vec![*v])) as ArrayRef,
+                )
+            })
+            .collect();
+        DataFrame::new(columns).unwrap()
+    }
+
+    #[test]
+    fn test_bbox_from_df_rejects_infinite_extent() {
+        let df = bbox_df([0.0, 0.0, f64::INFINITY, 1.0]);
+        assert!(BBox::from_df(&df, "EPSG:4326").is_none());
+    }
+
+    #[test]
+    fn test_bbox_from_df_rejects_nan_extent() {
+        let df = bbox_df([f64::NAN, 0.0, 1.0, 1.0]);
+        assert!(BBox::from_df(&df, "EPSG:4326").is_none());
+    }
+
+    #[test]
+    fn test_bbox_from_df_accepts_finite_extent() {
+        let df = bbox_df([0.0, 1.0, 2.0, 3.0]);
+        assert_eq!(
+            BBox::from_df(&df, "EPSG:4326"),
+            Some(bbox(0.0, 1.0, 2.0, 3.0))
+        );
     }
 
     #[test]

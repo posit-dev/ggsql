@@ -139,6 +139,25 @@ pub trait SqlDialect {
         TempTableStyle::DropThenCreateTemp
     }
 
+    /// Whether internal materialized tables (global source, CTEs) persist
+    /// beyond the session and must be dropped explicitly once execution
+    /// finishes with them. Defaults from [`temp_table_style`]: genuine
+    /// temporary tables are reclaimed by the backend at disconnect, while
+    /// regular tables linger. In-process engines (DataFusion) override to
+    /// `false` — their tables die with the reader. Caching readers report
+    /// the cache dialect here, so staged tables in the in-memory cache never
+    /// require cleanup either.
+    ///
+    /// [`temp_table_style`]: SqlDialect::temp_table_style
+    fn internal_tables_need_cleanup(&self) -> bool {
+        matches!(
+            self.temp_table_style(),
+            TempTableStyle::DropThenCreate
+                | TempTableStyle::GuardedDropThenCreate
+                | TempTableStyle::SelectInto
+        )
+    }
+
     // =====================================================================
     // Types and identifiers
     // =====================================================================
@@ -656,6 +675,22 @@ pub trait SqlDialect {
     /// where geometry arrives as a different type.
     fn sql_ensure_geometry(&self, column: &str) -> String {
         column.to_string()
+    }
+
+    /// SQL predicate: whether a numeric expression is finite.
+    ///
+    /// Used to cull positions that project to non-finite coordinates (e.g.
+    /// points behind the horizon of an azimuthal map projection, which PROJ
+    /// returns as ±Infinity).
+    ///
+    /// Default relies on three-valued logic: the comparison is false for
+    /// ±Infinity, NULL for NULL input, and false for NaN on backends that
+    /// order NaN above all numbers (DuckDB, Postgres, Trino, Snowflake;
+    /// SQLite converts NaN to NULL) — every non-finite case is filtered by
+    /// the enclosing WHERE. Override for backends with a native finite
+    /// predicate (e.g. DuckDB's `isfinite`).
+    fn sql_is_finite(&self, expr: &str) -> String {
+        format!("ABS({expr}) < 1e308")
     }
 
     /// SQL expression constructing a point geometry from x/y expressions.

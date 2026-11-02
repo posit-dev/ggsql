@@ -29,4 +29,18 @@ impl Labels {
     pub fn contains(&self, name: &str) -> bool {
         self.labels.contains_key(name)
     }
+
+    /// Look up a label's text.
+    /// Both "not set" and suppressed (`LABEL <name> => NULL`) return `None`.
+    pub fn get(&self, name: &str) -> Option<&str> {
+        self.labels.get(name)?.as_deref()
+    }
+
+    /// Look up a label entry:
+    /// * `None` means not set,
+    /// * `Some(None)` means explicitly suppressed (`LABEL <name> => NULL`).
+    /// * `Some(Some(String))` means typical label
+    pub fn entry(&self, name: &str) -> Option<&Option<String>> {
+        self.labels.get(name)
+    }
 }

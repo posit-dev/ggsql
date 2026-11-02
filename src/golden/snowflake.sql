@@ -17,7 +17,7 @@ SELECT *, "__ggsql_stat_type" AS "__ggsql_aes_type__", "__ggsql_stat_value" AS "
 -- case: line_aggregate
 SELECT * FROM (SELECT * FROM ggsql_live_test) AS "__schema__" LIMIT 1;
 WITH "__ggsql_source__" AS (SELECT *, "grp" AS "__ggsql_aes_pos1__", "val" AS "__ggsql_aes_pos2__" FROM (SELECT * FROM ggsql_live_test) AS "__ggsql_src__") SELECT MIN("id") AS "__ggsql_min_id", MAX("id") AS "__ggsql_max_id", MIN("val") AS "__ggsql_min_val", MAX("val") AS "__ggsql_max_val", MIN("grp") AS "__ggsql_min_grp", MAX("grp") AS "__ggsql_max_grp", MIN("day") AS "__ggsql_min_day", MAX("day") AS "__ggsql_max_day", MIN("mixed Case") AS "__ggsql_min_mixed Case", MAX("mixed Case") AS "__ggsql_max_mixed Case" FROM "__ggsql_source__";
-SELECT *, "__ggsql_stat_pos2" AS "__ggsql_aes_pos2__" FROM (SELECT * FROM (WITH "__ggsql_stat_src__" AS (SELECT *, "grp" AS "__ggsql_aes_pos1__", "val" AS "__ggsql_aes_pos2__" FROM (SELECT * FROM ggsql_live_test) AS "__ggsql_src__") SELECT "__ggsql_aes_pos1__", AVG("__ggsql_aes_pos2__") AS "__ggsql_stat_pos2" FROM "__ggsql_stat_src__" AS "__ggsql_qt__" GROUP BY "__ggsql_aes_pos1__") AS "__ggsql_ord__" ORDER BY "__ggsql_aes_pos1__") AS "__ggsql_stat__";
+SELECT *, "__ggsql_stat_pos2" AS "__ggsql_aes_pos2__" FROM (WITH "__ggsql_stat_src__" AS (SELECT *, "grp" AS "__ggsql_aes_pos1__", "val" AS "__ggsql_aes_pos2__" FROM (SELECT * FROM ggsql_live_test) AS "__ggsql_src__") SELECT "__ggsql_aes_pos1__", AVG("__ggsql_aes_pos2__") AS "__ggsql_stat_pos2" FROM "__ggsql_stat_src__" AS "__ggsql_qt__" GROUP BY "__ggsql_aes_pos1__") AS "__ggsql_stat__" ORDER BY "__ggsql_aes_pos1__";
 
 -- case: density_grouped
 SELECT * FROM (SELECT * FROM ggsql_live_test) AS "__schema__" LIMIT 1;
@@ -141,7 +141,7 @@ CREATE TEMP TABLE "__ggsql_clip_boundary_<session>__" AS SELECT ST_Transform(ST_
 SELECT ST_AsText(ST_Transform(ST_SetSRID(ST_GeomFromText('POLYGON((-180.000000 85.000000, 180.000000 85.000000, 180.000000 -85.000000, -180.000000 -85.000000, -180.000000 85.000000))'), 4326), '+proj=merc +lon_0=0')) AS wkt;
 SELECT MIN(ST_XMIN(g)) AS xmin, MIN(ST_YMIN(g)) AS ymin, MAX(ST_XMAX(g)) AS xmax, MAX(ST_YMAX(g)) AS ymax FROM (SELECT ST_ENVELOPE(ST_Transform(ST_SetSRID(geom, 4326), '+proj=merc +lon_0=0')) AS g FROM __ggsql_clip_boundary_<session>__) AS "__ggsql_env__";
 DROP TABLE IF EXISTS "__ggsql_layer_0___proj";
-CREATE TEMP TABLE "__ggsql_layer_0___proj" AS SELECT ST_X("__ggsql_proj_pt__") AS "__ggsql_aes_pos1__", ST_Y("__ggsql_proj_pt__") AS "__ggsql_aes_pos2__" FROM (SELECT *, ST_Transform(ST_SetSRID(ST_Point("__ggsql_aes_pos1__", "__ggsql_aes_pos2__"), 4326), '+proj=merc +lon_0=0') AS "__ggsql_proj_pt__" FROM (SELECT *, "id" AS "__ggsql_aes_pos1__", "val" AS "__ggsql_aes_pos2__" FROM (SELECT * FROM ggsql_live_test) AS "__ggsql_src__") AS "__ggsql_proj__") AS "__ggsql_pp__";
+CREATE TEMP TABLE "__ggsql_layer_0___proj" AS SELECT ST_X("__ggsql_proj_pt__") AS "__ggsql_aes_pos1__", ST_Y("__ggsql_proj_pt__") AS "__ggsql_aes_pos2__" FROM (SELECT *, ST_Transform(ST_SetSRID(ST_Point("__ggsql_aes_pos1__", "__ggsql_aes_pos2__"), 4326), '+proj=merc +lon_0=0') AS "__ggsql_proj_pt__" FROM (SELECT *, "id" AS "__ggsql_aes_pos1__", "val" AS "__ggsql_aes_pos2__" FROM (SELECT * FROM ggsql_live_test) AS "__ggsql_src__") AS "__ggsql_proj__") AS "__ggsql_pp__" WHERE ABS(ST_X("__ggsql_proj_pt__")) < 1e308 AND ABS(ST_Y("__ggsql_proj_pt__")) < 1e308;
 SELECT MIN("__ggsql_aes_pos1__"), MIN("__ggsql_aes_pos2__"), MAX("__ggsql_aes_pos1__"), MAX("__ggsql_aes_pos2__") FROM "__ggsql_layer_0___proj";
 SELECT * FROM "__ggsql_layer_0___proj";
 
