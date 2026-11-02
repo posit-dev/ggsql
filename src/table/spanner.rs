@@ -3,7 +3,6 @@
 //! assignment.
 
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
 
 use super::layout::{TableCell, TableClass, TableColumn, TableLayout, TableRow};
 use crate::labels::Labels;
@@ -69,14 +68,12 @@ impl Spanner {
         Ok(())
     }
 
-    /// Check this spanner's columns against the table's STUB columns.
-    pub fn validate_stub_boundary(&self, stub_columns: &HashSet<&str>) -> Result<(), String> {
-        if let Some(name) = self
-            .columns
-            .iter()
-            .find(|name| stub_columns.contains(name.as_str()))
-        {
-            return Err(format!("cannot include stub column '{name}'."));
+    /// Check this spanner's columns against `off_limits`, columns claimed
+    /// by another feature — `context` names that feature in the error
+    /// (e.g. `"stub"`, `"facet"`).
+    pub fn validate_boundary(&self, off_limits: &[String], context: &str) -> Result<(), String> {
+        if let Some(name) = self.columns.iter().find(|name| off_limits.contains(name)) {
+            return Err(format!("cannot include {context} column '{name}'."));
         }
 
         Ok(())

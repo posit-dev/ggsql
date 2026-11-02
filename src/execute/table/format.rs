@@ -120,7 +120,7 @@ pub(super) fn resolve_column_properties(dtype: &DataType, format: Option<&Format
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::array_util::value_to_string;
+    use crate::array_util::column_to_strings;
     use crate::df;
 
     fn format_with(template: &str, mapping: Option<HashMap<String, Option<String>>>) -> Format {
@@ -134,10 +134,7 @@ mod tests {
     }
 
     fn column_content(df: &DataFrame, name: &str) -> Vec<String> {
-        let array = df.column(name).unwrap();
-        (0..df.height())
-            .map(|row| value_to_string(array, row))
-            .collect()
+        column_to_strings(df.column(name).unwrap())
     }
 
     #[test]

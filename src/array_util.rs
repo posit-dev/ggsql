@@ -211,6 +211,13 @@ pub fn value_to_string(array: &ArrayRef, idx: usize) -> String {
     }
 }
 
+/// Get a string representation of every value in an array.
+pub fn column_to_strings(array: &ArrayRef) -> Vec<String> {
+    (0..array.len())
+        .map(|idx| value_to_string(array, idx))
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
