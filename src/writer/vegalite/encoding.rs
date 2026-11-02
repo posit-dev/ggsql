@@ -657,6 +657,16 @@ fn apply_breaks_to_encoding(
 ) {
     use crate::plot::ParameterValue;
 
+    // A free facet dimension delegates its domain to Vega-Lite per panel
+    // (`resolve.scale: independent`, no `domain` emitted), so pinning the
+    // globally resolved break set would leave each panel showing only
+    // whichever global breaks happen to fall inside it — frequently one or
+    // none. Vega-Lite cannot consume per-panel axis values, so ticks are left
+    // to Vega's own computation over each panel's independent domain.
+    if is_position_aesthetic(aesthetic) && is_free(aesthetic, spec.facet.as_ref()) {
+        return;
+    }
+
     let Some(ParameterValue::Array(breaks)) = scale.properties.get("breaks") else {
         return;
     };
@@ -1369,6 +1379,7 @@ mod tests {
                 resolved: false,
                 label_mapping: None,
                 label_template: "{}".to_string(),
+                panels: None,
             }
         }
 

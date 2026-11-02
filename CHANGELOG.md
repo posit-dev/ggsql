@@ -23,6 +23,13 @@
 
 ### Fixed
 
+- Free facet dimensions now resolve their domain, breaks, labels, and minor
+  breaks per panel in core (`Scale::panels`, indexed by the canonical panel
+  order shared by both writers). The Vega-Lite writer no longer pins the
+  globally resolved break set as `axis.values` on a free dimension — which had
+  left most panels showing a single tick — and the hephaestus writer consumes
+  the core-resolved per-panel scales instead of deriving panel extents itself
+  (#516).
 - Fixed a bug in the Vega-Lite writer that could rescale timestamps twice when
   the data carried microsecond timestamps (#569).
 - Extent queries are now merged and ordered portably, fixing schema resolution
