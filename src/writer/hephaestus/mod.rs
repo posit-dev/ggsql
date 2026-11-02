@@ -62,9 +62,11 @@ mod window;
 
 pub use hephaestus::color::{rgba, Color};
 
+pub use canvas::Canvas;
+#[cfg(feature = "window")]
+pub use canvas::Dimensions;
 #[cfg(feature = "hep")]
 use canvas::CANVAS_SIZE_OPTIONS;
-pub use canvas::{Canvas, Dimensions};
 
 #[cfg(feature = "raster-writer")]
 pub use raster::{RasterRenderer, MAX_RASTER_DIMENSION};
