@@ -61,7 +61,7 @@ extend them. For how the writer's behaviour got here, read
 deliberately not done yet is in [Known gaps](#known-gaps) below.
 
 For ggsql language semantics see [`/doc/syntax/`](../../../doc/syntax/); for the
-sibling writer's internals, [`../vegalite/CLAUDE.md`](../vegalite/CLAUDE.md).
+sibling writer's internals, [`../vegalite/AGENTS.md`](../vegalite/AGENTS.md).
 
 ## The governing principle
 
@@ -507,7 +507,7 @@ claiming it writes anything.
 
 It lives in this crate rather than in `ggsql-cli` because the CLI uses only
 public `ggsql::*` API and has no renderer dependency — see
-[`/ggsql-cli/CLAUDE.md`](../../../ggsql-cli/CLAUDE.md). So the *behaviour* goes
+[`/ggsql-cli/AGENTS.md`](../../../ggsql-cli/AGENTS.md). So the *behaviour* goes
 public as a type instead of `build_composition` going public.
 
 Two things follow from what a window is:
@@ -643,7 +643,7 @@ open target/visual-test/index.html
 
 It never stops on a failure — an error or a panic is captured against its cell —
 so one run inventories every gap at once. Implementation notes:
-[`/ggsql-cli/CLAUDE.md`](../../../ggsql-cli/CLAUDE.md).
+[`/ggsql-cli/AGENTS.md`](../../../ggsql-cli/AGENTS.md).
 
 ## Operational constraints
 
@@ -734,8 +734,8 @@ Deliberately not done, in rough order of how likely they are to bite:
 
 ## See also
 
-- [`../vegalite/CLAUDE.md`](../vegalite/CLAUDE.md) — the sibling writer to mirror.
-- [`../../CLAUDE.md`](../../CLAUDE.md) — the core crate: feature flags, pipeline.
-- [`../../plot/CLAUDE.md`](../../plot/CLAUDE.md) — the AST and scale types this
+- [`../vegalite/AGENTS.md`](../vegalite/AGENTS.md) — the sibling writer to mirror.
+- [`../../AGENTS.md`](../../AGENTS.md) — the core crate: feature flags, pipeline.
+- [`../../plot/AGENTS.md`](../../plot/AGENTS.md) — the AST and scale types this
   writer consumes.
 - [`/doc/syntax/`](../../../doc/syntax/) — authoritative ggsql syntax reference.
