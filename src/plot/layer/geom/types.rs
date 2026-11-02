@@ -468,11 +468,8 @@ mod tests {
 
     #[test]
     fn with_order_identity_records_ordering() {
-        let result = StatResult::Identity.with_order(
-            "SELECT * FROM t",
-            "pos1",
-            &crate::reader::AnsiDialect,
-        );
+        let result =
+            StatResult::Identity.with_order("SELECT * FROM t", "pos1", &crate::reader::AnsiDialect);
         match result {
             StatResult::Transformed {
                 query,
@@ -502,11 +499,7 @@ mod tests {
             consumed_aesthetics: vec!["pos2".to_string()],
             layer_order: vec![],
         };
-        let result = inner.with_order(
-            "SELECT * FROM raw",
-            "pos1",
-            &crate::reader::AnsiDialect,
-        );
+        let result = inner.with_order("SELECT * FROM raw", "pos1", &crate::reader::AnsiDialect);
         match result {
             StatResult::Transformed {
                 query,
