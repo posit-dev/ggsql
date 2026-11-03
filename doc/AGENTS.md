@@ -1,6 +1,6 @@
 # `doc/` — Quarto documentation site
 
-Source for the public ggsql documentation at <https://ggsql.org>. **This directory is the authoritative reference for ggsql syntax and semantics.** Other CLAUDE.md files in the repo link here rather than restate.
+Source for the public ggsql documentation at <https://ggsql.org>. **This directory is the authoritative reference for ggsql syntax and semantics.** Other AGENTS.md files in the repo link here rather than restate.
 
 If you are about to document a clause, layer type, scale, or aesthetic anywhere else: stop and put it here instead.
 
@@ -67,14 +67,14 @@ quarto render      # full site build → _site/
 
 The site is published from the `gh-pages` branch (see `_quarto.yml`'s `repo-branch`). Quarto extensions live in `_extensions/`.
 
-## What goes here vs. CLAUDE.md
+## What goes here vs. AGENTS.md
 
 - **Here**: anything a ggsql user might want to read — clause syntax, layer types, scales, aesthetics, examples, CLI usage, installation.
-- **In CLAUDE.md files**: implementation details for contributors — module layouts, build pipelines, where to add a new geom, internal types.
+- **In AGENTS.md files**: implementation details for contributors — module layouts, build pipelines, where to add a new geom, internal types.
 
-If you find clause/layer/scale syntax described in any CLAUDE.md file, that is a duplication bug — move it here and link from there.
+If you find clause/layer/scale syntax described in any AGENTS.md file, that is a duplication bug — move it here and link from there.
 
 ## See also
 
-- [`/CLAUDE.md`](../CLAUDE.md) — workspace overview.
-- [`/ggsql-wasm/CLAUDE.md`](../ggsql-wasm/CLAUDE.md) — how the embedded playground at `wasm/` is built.
+- [`/AGENTS.md`](../AGENTS.md) — workspace overview.
+- [`/ggsql-wasm/AGENTS.md`](../ggsql-wasm/AGENTS.md) — how the embedded playground at `wasm/` is built.

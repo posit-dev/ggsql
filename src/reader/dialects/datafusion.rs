@@ -31,6 +31,11 @@ impl SqlDialect for DataFusionDialect {
         crate::reader::TempTableStyle::DropThenCreate
     }
 
+    fn internal_tables_need_cleanup(&self) -> bool {
+        // DataFusion runs in-process; its tables vanish with the reader.
+        false
+    }
+
     fn sql_generate_series(&self, n: usize) -> String {
         // DataFusion's generate_series is a table function whose single
         // output column is named `value`.

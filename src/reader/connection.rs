@@ -545,7 +545,19 @@ fn probe_temp_tables(reader: &dyn Reader) -> bool {
     let probe = format!("__ggsql_probe_{}__", crate::naming::session_id());
     let dialect = reader.dialect();
     let stmts = dialect.create_or_replace_temp_table_sql(&probe, &[], "SELECT 1 AS x");
-    let ok = stmts.iter().all(|s| reader.execute_sql(s).is_ok());
+    let created = stmts.iter().all(|s| reader.execute_sql(s).is_ok());
+    // Creating a temp table is not enough: ggsql's stats queries reference
+    // internal tables more than once per statement, which some backends
+    // forbid for temporary tables (MySQL/MariaDB error 1137, "Can't reopen
+    // table"). Probe a double reference as well so those backends fall back
+    // to the in-memory cache.
+    let quoted = dialect.quote_ident(&probe);
+    let ok = created
+        && reader
+            .execute_sql(&format!(
+                "SELECT a.x FROM {quoted} AS a JOIN {quoted} AS b ON a.x = b.x"
+            ))
+            .is_ok();
     let _ = reader.execute_sql(&dialect.drop_table_sql(&probe));
     ok
 }
@@ -733,6 +745,78 @@ mod tests {
             .execute("SELECT 1.0 AS x, 2.0 AS y VISUALISE x, y DRAW point")
             .unwrap();
         assert_eq!(spec.metadata().rows, 1);
+    }
+
+    #[cfg(feature = "duckdb")]
+    use crate::reader::{execute_with_reader, ColumnInfo, Spec, SqlDialect, TableInfo};
+    #[cfg(feature = "duckdb")]
+    use crate::DataFrame;
+
+    /// Simulates backends (MySQL/MariaDB, error 1137) that create temporary
+    /// tables fine but refuse to open one twice in a single statement. Any
+    /// SQL naming the probe table more than once fails.
+    #[cfg(feature = "duckdb")]
+    struct SingleOpenReader {
+        inner: Box<dyn Reader + Send>,
+    }
+
+    #[cfg(feature = "duckdb")]
+    impl SingleOpenReader {
+        fn new(inner: Box<dyn Reader + Send>) -> Self {
+            Self { inner }
+        }
+    }
+
+    #[cfg(feature = "duckdb")]
+    impl Reader for SingleOpenReader {
+        fn execute_sql(&self, sql: &str) -> Result<DataFrame> {
+            if sql.matches("__ggsql_probe_").count() > 1 {
+                return Err(GgsqlError::ReaderError(
+                    "error 1137: Can't reopen table".to_string(),
+                ));
+            }
+            self.inner.execute_sql(sql)
+        }
+        fn register(&self, name: &str, df: DataFrame, replace: bool) -> Result<()> {
+            self.inner.register(name, df, replace)
+        }
+        fn unregister(&self, name: &str) -> Result<()> {
+            self.inner.unregister(name)
+        }
+        fn execute(&self, query: &str) -> Result<Spec> {
+            execute_with_reader(self, query)
+        }
+        fn dialect(&self) -> &dyn SqlDialect {
+            self.inner.dialect()
+        }
+        fn list_catalogs(&self) -> Result<Vec<String>> {
+            self.inner.list_catalogs()
+        }
+        fn list_schemas(&self, c: &str) -> Result<Vec<String>> {
+            self.inner.list_schemas(c)
+        }
+        fn list_tables(&self, c: &str, s: &str) -> Result<Vec<TableInfo>> {
+            self.inner.list_tables(c, s)
+        }
+        fn list_columns(&self, c: &str, s: &str, t: &str) -> Result<Vec<ColumnInfo>> {
+            self.inner.list_columns(c, s, t)
+        }
+    }
+
+    #[cfg(feature = "duckdb")]
+    #[test]
+    fn test_auto_cache_wraps_when_temp_table_cannot_reopen() {
+        use crate::reader::duckdb::DuckDBReader;
+
+        let primary = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        let conn = ConnUri::parse("mysql://u@h/db").unwrap();
+        let reader =
+            auto_cache_if_needed(Box::new(SingleOpenReader::new(Box::new(primary))), &conn)
+                .unwrap();
+        assert!(
+            reader.caches_sources(),
+            "expected a caching reader when temp tables cannot be re-opened"
+        );
     }
 
     #[cfg(feature = "duckdb")]
