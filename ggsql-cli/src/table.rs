@@ -1,10 +1,12 @@
 //! Aligned, CSV-like table formatting for query results with nothing to draw.
 //!
 //! Shared by `exec`/`run` (the no-VISUALISE fallback) and the REPL, so a plain
-//! SQL statement looks the same however it was submitted.
+//! SQL statement looks the same however it was submitted. A result truncated
+//! at `max_rows` says how many rows were left out.
 
 use ggsql::parser;
 use ggsql::reader::Reader;
+use ggsql::DataFrame;
 
 /// Run `query`'s SQL part and format up to `max_rows` rows as an aligned,
 /// CSV-like table.
@@ -18,6 +20,11 @@ pub fn format(query: &str, reader: &dyn Reader, max_rows: usize) -> Result<Strin
         .execute_sql(&sql_part)
         .map_err(|e| format!("Failed to execute SQL query: {e}"))?;
 
+    Ok(format_frame(&data, max_rows))
+}
+
+/// Format up to `max_rows` of `data` as an aligned, CSV-like table.
+fn format_frame(data: &DataFrame, max_rows: usize) -> String {
     let nrow = data.height().min(max_rows);
     let ncol = data.width();
     let colnames = data.get_column_names();
@@ -57,5 +64,56 @@ pub fn format(query: &str, reader: &dyn Reader, max_rows: usize) -> Result<Strin
         }
     }
 
-    Ok(rows.join("\n"))
+    let hidden = data.height() - nrow;
+    if hidden > 0 {
+        rows.push(format!(
+            "… {hidden} more row{} not shown",
+            if hidden == 1 { "" } else { "s" }
+        ));
+    }
+
+    rows.join("\n")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ggsql::array_util::{new_i64_array, new_str_array};
+    use ggsql::DataFrame;
+
+    fn frame() -> DataFrame {
+        DataFrame::new(vec![
+            (
+                "name",
+                new_str_array(vec![Some("alpha"), Some("b"), Some("gamma")]),
+            ),
+            ("count", new_i64_array(vec![Some(10), Some(2), Some(300)])),
+        ])
+        .unwrap()
+    }
+
+    #[test]
+    fn rows_and_header_are_aligned() {
+        let out = format_frame(&frame(), 100);
+        assert_eq!(
+            out,
+            "name,  count\n\
+             alpha, 10   \n\
+             b,     2    \n\
+             gamma, 300  "
+        );
+    }
+
+    #[test]
+    fn truncated_results_have_a_footer() {
+        let out = format_frame(&frame(), 2);
+        assert_eq!(out.lines().last().unwrap(), "… 1 more row not shown");
+
+        let out = format_frame(&frame(), 1);
+        assert_eq!(out.lines().last().unwrap(), "… 2 more rows not shown");
+
+        // Nothing truncated, no footer.
+        let out = format_frame(&frame(), 100);
+        assert!(!out.contains("not shown"));
+    }
 }
