@@ -484,17 +484,26 @@ fn render_spec(spec: ResolvedSpec, args: &RenderArgs, writer: &WriterSpec) {
         (Output::Text(txt), None) => {
             println!("{}", txt);
         }
-        (Output::Text(txt), Some(path)) => match std::fs::write(path, txt) {
-            Ok(_) => {
-                if args.verbose {
-                    eprintln!("\n{} written to: {}", info.label, path.display());
+        (Output::Text(txt), Some(path)) => {
+            // The html writer emits a fragment; a standalone file needs the
+            // document wrapper (charset meta) around it.
+            let txt = if info.name == "html" {
+                writers::html_document(&txt)
+            } else {
+                txt
+            };
+            match std::fs::write(path, txt) {
+                Ok(_) => {
+                    if args.verbose {
+                        eprintln!("\n{} written to: {}", info.label, path.display());
+                    }
+                }
+                Err(e) => {
+                    eprintln!("Failed to write to output file: {}", e);
+                    std::process::exit(1);
                 }
             }
-            Err(e) => {
-                eprintln!("Failed to write to output file: {}", e);
-                std::process::exit(1);
-            }
-        },
+        }
         (Output::Bin(buf), None) => {
             if std::io::stdout().is_terminal() {
                 // Non-zero, since nothing was produced: `… && publish` must

@@ -151,7 +151,7 @@ pub const WRITERS: &[WriterInfo] = &[
         feature: "html",
         label: "HTML table",
         blurb: "HTML <table> — the only writer that renders a TABULATE query",
-        options: "none",
+        options: "css_mode",
         compiled: cfg!(feature = "html"),
         check: check_html,
         render: render_html,
@@ -365,9 +365,7 @@ fn render_vegalite(spec: &ResolvedSpec, options: &WriterOptions) -> Rendered {
     {
         let writer = VegaLiteWriter::from_options(options).map_err(|e| e.to_string())?;
         let plot = require_plot(spec)?;
-        let json = writer
-            .write_plot(plot.plot(), plot.data())
-            .map_err(|e| e.to_string())?;
+        let json = writer.render_plot(plot).map_err(|e| e.to_string())?;
         Ok((Output::Text(json), Vec::new()))
     }
     #[cfg(not(feature = "vegalite"))]
@@ -375,6 +373,14 @@ fn render_vegalite(spec: &ResolvedSpec, options: &WriterOptions) -> Rendered {
         let _ = (spec, options);
         Err(not_compiled("Vega-Lite JSON", "vegalite"))
     }
+}
+
+/// Wrap an html-writer fragment in a minimal document, for writing to a
+/// standalone `.html` file — the fragment alone carries no charset meta.
+pub fn html_document(fragment: &str) -> String {
+    format!(
+        "<!DOCTYPE html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n</head>\n<body>\n{fragment}\n</body>\n</html>\n"
+    )
 }
 
 fn check_html(options: &WriterOptions) -> Result<(), String> {
@@ -390,6 +396,11 @@ fn check_html(options: &WriterOptions) -> Result<(), String> {
 fn render_html(spec: &ResolvedSpec, options: &WriterOptions) -> Rendered {
     #[cfg(feature = "html")]
     {
+        if spec.as_table().is_none() {
+            return Err(
+                "this writer does not support VISUALISE queries; use --writer svg".to_string(),
+            );
+        }
         let writer = HtmlWriter::from_options(options).map_err(|e| e.to_string())?;
         let html = writer.render(spec).map_err(|e| e.to_string())?;
         Ok((Output::Text(html), Vec::new()))
@@ -416,9 +427,7 @@ fn render_png(spec: &ResolvedSpec, options: &WriterOptions) -> Rendered {
     {
         let writer = PngWriter::from_options(options).map_err(|e| e.to_string())?;
         let plot = require_plot(spec)?;
-        let png = writer
-            .write_plot(plot.plot(), plot.data())
-            .map_err(|e| e.to_string())?;
+        let png = writer.render_plot(plot).map_err(|e| e.to_string())?;
         Ok((Output::Bin(png), Vec::new()))
     }
     #[cfg(not(feature = "png"))]
@@ -443,9 +452,7 @@ fn render_jpeg(spec: &ResolvedSpec, options: &WriterOptions) -> Rendered {
     {
         let writer = JpegWriter::from_options(options).map_err(|e| e.to_string())?;
         let plot = require_plot(spec)?;
-        let jpeg = writer
-            .write_plot(plot.plot(), plot.data())
-            .map_err(|e| e.to_string())?;
+        let jpeg = writer.render_plot(plot).map_err(|e| e.to_string())?;
         Ok((Output::Bin(jpeg), Vec::new()))
     }
     #[cfg(not(feature = "jpeg"))]
@@ -470,9 +477,7 @@ fn render_tiff(spec: &ResolvedSpec, options: &WriterOptions) -> Rendered {
     {
         let writer = TiffWriter::from_options(options).map_err(|e| e.to_string())?;
         let plot = require_plot(spec)?;
-        let tiff = writer
-            .write_plot(plot.plot(), plot.data())
-            .map_err(|e| e.to_string())?;
+        let tiff = writer.render_plot(plot).map_err(|e| e.to_string())?;
         Ok((Output::Bin(tiff), Vec::new()))
     }
     #[cfg(not(feature = "tiff"))]
@@ -497,9 +502,7 @@ fn render_webp(spec: &ResolvedSpec, options: &WriterOptions) -> Rendered {
     {
         let writer = WebpWriter::from_options(options).map_err(|e| e.to_string())?;
         let plot = require_plot(spec)?;
-        let webp = writer
-            .write_plot(plot.plot(), plot.data())
-            .map_err(|e| e.to_string())?;
+        let webp = writer.render_plot(plot).map_err(|e| e.to_string())?;
         Ok((Output::Bin(webp), Vec::new()))
     }
     #[cfg(not(feature = "webp"))]

@@ -125,7 +125,7 @@ impl Renderer {
     ) -> ggsql::Result<(Vec<u8>, Vec<String>)> {
         match self {
             Renderer::Png => PngWriter::new(args.width, args.height, args.dpi)
-                .write_plot(spec.plot(), spec.data())
+                .render_plot(spec)
                 .map(|bytes| (bytes, Vec::new())),
             Renderer::Svg => SvgWriter::new(args.width, args.height, args.dpi)
                 .render_reporting(spec)
