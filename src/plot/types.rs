@@ -428,8 +428,17 @@ fn date_to_iso_string(days: i32) -> String {
 
 /// Convert microseconds-since-epoch to ISO datetime string
 fn datetime_to_iso_string(micros: i64) -> String {
+    const MICROS_PER_DAY: i64 = 86_400_000_000;
     DateTime::from_timestamp_micros(micros)
-        .map(|dt| dt.format("%Y-%m-%dT%H:%M:%S").to_string())
+        .map(|dt| {
+            // Exact midnights label as bare dates: a `T00:00:00` suffix
+            // carries no information and clutters date-flavoured axes.
+            if micros.rem_euclid(MICROS_PER_DAY) == 0 {
+                dt.format("%Y-%m-%d").to_string()
+            } else {
+                dt.format("%Y-%m-%dT%H:%M:%S").to_string()
+            }
+        })
         .unwrap_or_else(|| micros.to_string())
 }
 

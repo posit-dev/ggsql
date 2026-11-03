@@ -24,4 +24,27 @@ impl SqlDialect for RedshiftDialect {
     ) -> String {
         super::epoch_via_subtract_extract(self, expr, kind)
     }
+
+    fn sql_number_as_temporal(
+        &self,
+        expr: &str,
+        kind: crate::plot::types::CastTargetType,
+    ) -> String {
+        use crate::plot::types::CastTargetType as C;
+        match kind {
+            // DATEADD's count is an int, so split whole seconds from the
+            // microsecond remainder; epoch microseconds overflow int on
+            // their own.
+            C::DateTime => format!(
+                "DATEADD(microsecond, CAST({expr} AS BIGINT) % 1000000, \
+                 DATEADD(second, CAST(FLOOR({expr} / 1000000.0) AS BIGINT), \
+                 TIMESTAMP '1970-01-01 00:00:00'))"
+            ),
+            C::Date => format!("DATEADD(day, CAST({expr} AS INT), DATE '1970-01-01')"),
+            _ => {
+                let ty = self.type_names().datetime.unwrap_or("TIMESTAMP");
+                self.sql_cast(expr, ty)
+            }
+        }
+    }
 }

@@ -249,6 +249,7 @@ fn stat_violin(
         parameters,
         dialect,
         aesthetic_ctx,
+        None,
     )?;
 
     if !use_dummy {

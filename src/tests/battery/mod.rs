@@ -287,6 +287,16 @@ pub fn cases() -> Vec<Case> {
             Expect::Runs,
         ),
         shared(
+            "smooth_lm_date_x",
+            "VISUALISE DRAW smooth MAPPING day AS x, val AS y FROM {table} SETTING method => 'ols'",
+            Expect::Runs,
+        ),
+        shared(
+            "smooth_nw_date_x",
+            "VISUALISE DRAW smooth MAPPING day AS x, val AS y FROM {table}",
+            Expect::Runs,
+        ),
+        shared(
             "ribbon",
             "VISUALISE DRAW ribbon MAPPING id AS x, id AS ymin, val AS ymax FROM {table}",
             Expect::Runs,

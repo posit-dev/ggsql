@@ -64,6 +64,23 @@ impl SqlDialect for MonetDbDialect {
         // double are not equal").
         super::epoch_via_extract_seconds(self, expr, kind)
     }
+
+    fn sql_number_as_temporal(
+        &self,
+        expr: &str,
+        kind: crate::plot::types::CastTargetType,
+    ) -> String {
+        use crate::plot::types::CastTargetType as C;
+        match kind {
+            C::DateTime => format!(
+                "(TIMESTAMP '1970-01-01 00:00:00' + CAST({expr} AS BIGINT) * INTERVAL '1' MICROSECOND)"
+            ),
+            _ => {
+                let ty = self.type_names().datetime.unwrap_or("TIMESTAMP");
+                self.sql_cast(expr, ty)
+            }
+        }
+    }
 }
 
 #[cfg(test)]

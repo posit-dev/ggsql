@@ -439,6 +439,29 @@ pub trait SqlDialect {
         self.sql_cast(expr, ty)
     }
 
+    /// Expression converting an epoch number back to a temporal value: the
+    /// inverse of [`sql_temporal_as_number`]. Input units match that method —
+    /// days since epoch for dates, microseconds for datetimes, nanoseconds
+    /// for times. Fractional input is truncated to the representable value
+    /// (e.g. fractional microseconds are dropped for datetimes).
+    ///
+    /// Used by stats that compute over temporal columns numerically
+    /// (e.g. smooth) and must return their result on the original temporal
+    /// axis. Date-typed axes are returned as datetimes, since the computed
+    /// values generally don't fall on whole days.
+    ///
+    /// Default: a plain cast from the number, mirroring the default of
+    /// `sql_temporal_as_number`. Dialects that override that method should
+    /// override this one too.
+    ///
+    /// [`sql_temporal_as_number`]: SqlDialect::sql_temporal_as_number
+    fn sql_number_as_temporal(&self, expr: &str, kind: CastTargetType) -> String {
+        let ty = self
+            .type_name_for(kind)
+            .unwrap_or(self.type_names().datetime.unwrap_or("TIMESTAMP"));
+        self.sql_cast(expr, ty)
+    }
+
     /// SQL literal for a boolean value.
     fn sql_boolean_literal(&self, value: bool) -> String {
         if value {

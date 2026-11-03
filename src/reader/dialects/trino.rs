@@ -61,6 +61,25 @@ impl SqlDialect for TrinoDialect {
         format!("FROM_UNIXTIME({secs})")
     }
 
+    fn sql_number_as_temporal(
+        &self,
+        expr: &str,
+        kind: crate::plot::types::CastTargetType,
+    ) -> String {
+        use crate::plot::types::CastTargetType as C;
+        match kind {
+            // from_unixtime accepts fractional seconds.
+            C::DateTime => format!("FROM_UNIXTIME({expr} / 1000000.0)"),
+            C::Date => {
+                format!("DATE_ADD('day', CAST({expr} AS BIGINT), DATE '1970-01-01')")
+            }
+            _ => {
+                let ty = self.type_names().datetime.unwrap_or("TIMESTAMP");
+                self.sql_cast(expr, ty)
+            }
+        }
+    }
+
     /// Most Trino connectors don't support `CREATE TEMP TABLE`; connections
     /// are always wrapped in a caching reader rather than probed.
     fn requires_cache(&self) -> bool {

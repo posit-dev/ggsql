@@ -110,6 +110,23 @@ impl SqlDialect for DuckDbDialect {
         }
     }
 
+    fn sql_number_as_temporal(
+        &self,
+        expr: &str,
+        kind: crate::plot::types::CastTargetType,
+    ) -> String {
+        use crate::plot::types::CastTargetType as C;
+        match kind {
+            // MAKE_TIMESTAMP takes integer microseconds since epoch.
+            C::DateTime => format!("MAKE_TIMESTAMP(CAST({expr} AS BIGINT))"),
+            C::Date => format!("(DATE '1970-01-01' + CAST({expr} AS INTEGER))"),
+            _ => {
+                let ty = self.type_names().datetime.unwrap_or("TIMESTAMP");
+                self.sql_cast(expr, ty)
+            }
+        }
+    }
+
     fn sql_aggregate(&self, name: &str, qcol: &str) -> Option<String> {
         match name {
             "first" => Some(format!("FIRST({})", qcol)),
@@ -158,6 +175,19 @@ mod tests {
         assert_eq!(
             DuckDbDialect.sql_temporal_as_number("\"d\"", C::DateTime),
             "EPOCH_US(\"d\")"
+        );
+    }
+
+    #[test]
+    fn number_as_temporal_inverts_temporal_as_number() {
+        use crate::plot::types::CastTargetType as C;
+        assert_eq!(
+            DuckDbDialect.sql_number_as_temporal("x", C::DateTime),
+            "MAKE_TIMESTAMP(CAST(x AS BIGINT))"
+        );
+        assert_eq!(
+            DuckDbDialect.sql_number_as_temporal("x", C::Date),
+            "(DATE '1970-01-01' + CAST(x AS INTEGER))"
         );
     }
 

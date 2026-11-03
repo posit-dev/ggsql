@@ -5,8 +5,9 @@ use super::{DefaultAesthetics, GeomTrait, GeomType};
 use crate::{
     naming,
     plot::{
-        geom::types::get_column_name, DefaultAestheticValue, DefaultParamValue, ParamConstraint,
-        ParamDefinition, ParameterValue, Parameters, StatResult,
+        geom::types::{get_column_name, temporal_as_epoch_micros},
+        DefaultAestheticValue, DefaultParamValue, ParamConstraint, ParamDefinition, ParameterValue,
+        Parameters, StatResult,
     },
     reader::SqlDialect,
     GgsqlError, Mappings, Result,
@@ -117,6 +118,7 @@ impl GeomTrait for Density {
             parameters,
             dialect,
             aesthetic_ctx,
+            None,
         )
     }
 }
@@ -155,6 +157,7 @@ pub(crate) fn stat_density(
     parameters: &Parameters,
     dialect: &dyn SqlDialect,
     aesthetic_ctx: &crate::plot::aesthetic::AestheticContext,
+    value_temporal: Option<crate::plot::types::CastTargetType>,
 ) -> Result<StatResult> {
     let value = get_column_name(aesthetics, value_aesthetic).ok_or_else(|| {
         let name = aesthetic_ctx.map_internal_to_user(value_aesthetic);
@@ -169,12 +172,31 @@ pub(crate) fn stat_density(
         _ => None,
     };
 
-    let bw_cte = density_sql_bandwidth(query, group_by, &value, parameters, dialect);
+    // For temporal value columns the computation runs on epoch-microsecond
+    // numbers, materialized as a synthetic column in a wrapping subquery so
+    // downstream SQL (quantiles, MIN/MAX) stays column-name based; the grid
+    // converts back to a timestamp on output.
+    let (from, value_col) = match value_temporal {
+        Some(kind) => {
+            let expr = temporal_as_epoch_micros(dialect, &dialect.quote_ident(&value), kind);
+            (
+                format!(
+                    "SELECT *, {expr} AS {val_alias} FROM ({query}) AS {src_alias}",
+                    val_alias = dialect.quote_ident("__ggsql_value__"),
+                    src_alias = dialect.quote_ident("__ggsql_src__"),
+                ),
+                "__ggsql_value__".to_string(),
+            )
+        }
+        None => (query.to_string(), value.clone()),
+    };
+
+    let bw_cte = density_sql_bandwidth(&from, group_by, &value_col, parameters, dialect);
     let data_cte = build_data_cte(
-        &value,
+        &value_col,
         smooth.as_deref(),
         weight.as_deref(),
-        query,
+        &from,
         group_by,
         dialect,
     );
@@ -189,6 +211,7 @@ pub(crate) fn stat_density(
         &data_cte,
         &grid_cte,
         dialect,
+        value_temporal,
     );
 
     let mut consumed = vec![value_aesthetic.to_string()];
@@ -263,6 +286,9 @@ fn density_sql_bandwidth(
     )
 }
 
+/// `value_expr` is a ready-to-embed SQL expression (see
+/// [`density_sql_bandwidth`]); quantile calls receive it verbatim, so
+/// dialects that quote inside `sql_quantile` must not re-quote.
 fn silverman_rule(
     adjust: f64,
     value_column: &str,
@@ -543,6 +569,7 @@ fn build_grid_cte(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn compute_density(
     value_aesthetic: &str,
     group_by: &[String],
@@ -551,6 +578,7 @@ fn compute_density(
     data_cte: &str,
     grid_cte: &str,
     dialect: &dyn SqlDialect,
+    value_temporal: Option<crate::plot::types::CastTargetType>,
 ) -> String {
     // Build bandwidth join condition (NULL-safe)
     let bandwidth_conditions = if group_by.is_empty() {
@@ -613,6 +641,15 @@ fn compute_density(
         format!("{},", quoted.join(", "))
     };
 
+    // Temporal value columns were computed in epoch microseconds; convert
+    // the grid back to a timestamp so the axis stays temporal.
+    let grid_x = match value_temporal {
+        Some(_) => {
+            dialect.sql_number_as_temporal("grid.x", crate::plot::types::CastTargetType::DateTime)
+        }
+        None => "grid.x".to_string(),
+    };
+
     let x_column = dialect.quote_ident(&naming::stat_column(value_aesthetic));
     let intensity_column = dialect.quote_ident(&naming::stat_column("intensity"));
     let density_column = dialect.quote_ident(&naming::stat_column("density"));
@@ -630,7 +667,7 @@ fn compute_density(
           {intensity_column} / {__norm} AS {density_column}
         FROM (
           SELECT
-            grid.x AS {x_column},
+            {grid_x} AS {x_column},
             {grid_groups_select}
             {kernel} AS {intensity_column},
             SUM(data.weight) AS {__norm}
@@ -641,6 +678,7 @@ fn compute_density(
         data_cte = data_cte,
         grid_cte = grid_cte,
         x_column = x_column,
+        grid_x = grid_x,
         groups = groups,
         intensity_column = intensity_column,
         density_column = density_column,
@@ -684,6 +722,7 @@ mod tests {
             &data_cte,
             &grid_cte,
             &AnsiDialect,
+            None,
         );
 
         let expected = r#"WITH RECURSIVE
@@ -768,6 +807,7 @@ mod tests {
             &data_cte,
             &grid_cte,
             &AnsiDialect,
+            None,
         );
 
         let expected = r#"WITH RECURSIVE
@@ -953,6 +993,7 @@ mod tests {
             &data_cte,
             &grid_cte,
             &AnsiDialect,
+            None,
         );
 
         let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
@@ -1082,6 +1123,7 @@ mod tests {
             &data_cte_unweighted,
             &grid_cte,
             &AnsiDialect,
+            None,
         );
 
         let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
@@ -1107,6 +1149,7 @@ mod tests {
             &data_cte_weighted,
             &grid_cte,
             &AnsiDialect,
+            None,
         );
         let df_weighted = reader
             .execute_sql(&sql_weighted)
@@ -1251,6 +1294,7 @@ mod tests {
             &data_cte,
             &grid_cte,
             &AnsiDialect,
+            None,
         );
 
         reader.execute_sql(&sql).expect("Warm-up failed");
@@ -1281,6 +1325,74 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "duckdb")]
+    #[test]
+    fn test_stat_density_temporal_value_returns_timestamps() {
+        use crate::plot::types::CastTargetType;
+        use crate::plot::AestheticValue;
+        use crate::reader::duckdb::DuckDbDialect;
+
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        let query = "SELECT d, y FROM (VALUES
+            (DATE '2024-01-01', 1.0), (DATE '2024-06-01', 2.0), (DATE '2024-12-31', 3.0)
+        ) AS t(d, y)";
+        let groups: Vec<String> = vec![];
+        let mut parameters = Parameters::new();
+        parameters.insert(
+            "kernel".to_string(),
+            ParameterValue::String("gaussian".to_string()),
+        );
+
+        let mut mapping = crate::Mappings::new();
+        mapping.aesthetics.insert(
+            "pos1".to_string(),
+            AestheticValue::Column {
+                name: "d".to_string(),
+                original_name: None,
+                is_dummy: false,
+            },
+        );
+        mapping.aesthetics.insert(
+            "pos2".to_string(),
+            AestheticValue::Column {
+                name: "y".to_string(),
+                original_name: None,
+                is_dummy: false,
+            },
+        );
+
+        let ctx = crate::plot::aesthetic::AestheticContext::from_static(&["d", "y"], &[]);
+        let result = stat_density(
+            query,
+            &mapping,
+            "pos1",
+            Some("pos2"),
+            &groups,
+            &parameters,
+            &DuckDbDialect,
+            &ctx,
+            Some(CastTargetType::Date),
+        )
+        .expect("stat_density should succeed");
+
+        if let StatResult::Transformed { query: sql, .. } = result {
+            // The default (Silverman) bandwidth path exercises quantiles over
+            // the converted value column.
+            let df = reader.execute_sql(&sql).expect("SQL should execute");
+            assert_eq!(df.height(), 512);
+            // The grid converts back to timestamps so the axis stays temporal.
+            assert_eq!(
+                df.column_dtype("__ggsql_stat_pos1").unwrap(),
+                arrow::datatypes::DataType::Timestamp(
+                    arrow::datatypes::TimeUnit::Microsecond,
+                    None
+                )
+            );
+        } else {
+            panic!("Expected Transformed result");
+        }
+    }
+
     // =========================================================================
     // Internal aesthetic names must not appear in stat error messages
     // =========================================================================
@@ -1301,6 +1413,7 @@ mod tests {
             &parameters,
             &dialect,
             &ctx,
+            None,
         )
         .unwrap_err()
         .to_string();

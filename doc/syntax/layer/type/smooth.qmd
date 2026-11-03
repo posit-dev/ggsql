@@ -116,11 +116,9 @@ $$
 
 The default `method => 'nw'` might be too coarse for timeseries.
 
-<!-- Ideally, we would just use the date here directly but we currently require numeric data -->
-
 ```{ggsql}
 SELECT * FROM ggsql:airquality
-VISUALISE Epoch AS x, Temp AS y
+VISUALISE Date AS x, Temp AS y
 DRAW point
 DRAW smooth
 ```

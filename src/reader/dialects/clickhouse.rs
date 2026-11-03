@@ -106,6 +106,19 @@ impl SqlDialect for ClickHouseDialect {
         }
     }
 
+    fn sql_number_as_temporal(
+        &self,
+        expr: &str,
+        kind: crate::plot::types::CastTargetType,
+    ) -> String {
+        use crate::plot::types::CastTargetType as C;
+        match kind {
+            C::DateTime => format!("fromUnixTimestamp64Micro(CAST({expr} AS Int64))"),
+            C::Date => format!("toDate(CAST({expr} AS Int32))"),
+            _ => format!("toDateTime(CAST({expr} AS Int64))"),
+        }
+    }
+
     /// Every caller embeds this in a `GROUP BY {groups}` query over `from`, so
     /// the native aggregate is equivalent to the correlated scalar subquery
     /// other dialects produce, and far cheaper.
