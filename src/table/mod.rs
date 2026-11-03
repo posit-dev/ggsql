@@ -275,7 +275,10 @@ pub struct Format {
 const FORMAT_PARAMS: &[ParamDefinition] = &[
     ParamDefinition {
         name: "hjust",
-        default: DefaultParamValue::Number(0.5),
+        // No default: an unset hjust resolves per column in
+        // resolve_column_properties — right for a STUB or numeric column,
+        // left otherwise.
+        default: DefaultParamValue::Null,
         // Both spellings accepted here; resolve_column_properties standardises
         // "centre" to "center" when it builds a column's TableCell properties.
         constraint: ParamConstraint::string_option_or_number(

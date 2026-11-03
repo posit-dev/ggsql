@@ -5042,3 +5042,30 @@ LABEL caption => 'see https://example.com -- details' // trailing comment
               (bare_identifier)))
           (string)))))
   (comment))
+
+================================================================================
+TABULATE FORMAT clause with a quoted target-keyword column name
+================================================================================
+
+TABULATE * FROM sales FORMAT `body`, x
+
+--------------------------------------------------------------------------------
+
+(query
+  (tabulate_statement
+    (tabulate_keyword)
+    (column_selection
+      (mapping_list
+        (mapping_element
+          (wildcard_mapping))))
+    (single_source_from
+      source: (qualified_name
+        (identifier
+          (bare_identifier))))
+    (tab_clause
+      (format_clause
+        (column_list
+          (identifier
+            (quoted_identifier))
+          (identifier
+            (bare_identifier)))))))
