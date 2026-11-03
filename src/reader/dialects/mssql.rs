@@ -54,6 +54,28 @@ impl SqlDialect for MssqlDialect {
         }
     }
 
+    fn sql_number_as_temporal(
+        &self,
+        expr: &str,
+        kind: crate::plot::types::CastTargetType,
+    ) -> String {
+        // DATEADD's count is an int, so split whole seconds from the
+        // microsecond remainder; epoch microseconds overflow int on
+        // their own.
+        use crate::plot::types::CastTargetType as C;
+        match kind {
+            C::DateTime => format!(
+                "DATEADD(microsecond, CAST({expr} AS BIGINT) % 1000000, \
+                 DATEADD(second, CAST(FLOOR({expr} / 1000000.0) AS INT), \
+                 CAST('1970-01-01T00:00:00' AS DATETIME2)))"
+            ),
+            C::Date => {
+                format!("DATEADD(day, CAST({expr} AS INT), CAST('1970-01-01' AS DATE))")
+            }
+            _ => format!("CAST({expr} AS DATETIME2)"),
+        }
+    }
+
     fn sql_with_recursive(&self) -> &'static str {
         // T-SQL CTEs are recursive by self-reference alone; the RECURSIVE
         // keyword is a syntax error.

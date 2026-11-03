@@ -2286,6 +2286,26 @@ pub fn coerce_dtypes(dtypes: &[DataType]) -> Result<DataType, String> {
 
     // All temporal - check they're all the same type
     if has_temporal && !has_numeric {
+        // Date + Datetime upcasts to Datetime: a date is midnight on that
+        // day, so the upcast is lossless. Stats that compute over temporal
+        // columns numerically (e.g. smooth) return timestamps even for
+        // date axes, producing this mix across layers.
+        let has_date = dtypes
+            .iter()
+            .any(|d| matches!(d, DataType::Date32 | DataType::Date64));
+        let has_datetime = dtypes
+            .iter()
+            .any(|d| matches!(d, DataType::Timestamp(_, _)));
+        let has_time = dtypes
+            .iter()
+            .any(|d| matches!(d, DataType::Time32(_) | DataType::Time64(_)));
+        if has_date && has_datetime && !has_time {
+            return Ok(DataType::Timestamp(
+                arrow::datatypes::TimeUnit::Microsecond,
+                None,
+            ));
+        }
+
         let first = &dtypes[0];
         let all_same = dtypes.iter().all(|d| {
             matches!(
@@ -3890,11 +3910,27 @@ mod tests {
     }
 
     #[test]
-    fn test_coerce_dtypes_temporal_mixed_error() {
+    fn test_coerce_dtypes_date_and_datetime_upcast() {
         use arrow::datatypes::TimeUnit;
-        // Mixed temporal types error
+        // Date + Datetime upcasts to Datetime (a date is midnight on that
+        // day). Smooth over a date axis returns timestamps, producing this
+        // mix across layers.
         let result = coerce_dtypes(&[
             DataType::Date32,
+            DataType::Timestamp(TimeUnit::Microsecond, None),
+        ]);
+        assert_eq!(
+            result.unwrap(),
+            DataType::Timestamp(TimeUnit::Microsecond, None)
+        );
+    }
+
+    #[test]
+    fn test_coerce_dtypes_temporal_mixed_error() {
+        use arrow::datatypes::TimeUnit;
+        // Time mixed with another temporal type still errors
+        let result = coerce_dtypes(&[
+            DataType::Time64(TimeUnit::Nanosecond),
             DataType::Timestamp(TimeUnit::Microsecond, None),
         ]);
         assert!(result.is_err());

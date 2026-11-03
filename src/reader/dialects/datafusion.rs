@@ -75,6 +75,21 @@ impl SqlDialect for DataFusionDialect {
         // from Date32 to Float64").
         super::epoch_via_extract_seconds(self, expr, kind)
     }
+
+    fn sql_number_as_temporal(
+        &self,
+        expr: &str,
+        kind: crate::plot::types::CastTargetType,
+    ) -> String {
+        use crate::plot::types::CastTargetType as C;
+        match kind {
+            C::DateTime => format!("to_timestamp_micros(CAST({expr} AS BIGINT))"),
+            _ => {
+                let ty = self.type_names().datetime.unwrap_or("TIMESTAMP");
+                self.sql_cast(expr, ty)
+            }
+        }
+    }
 }
 
 #[cfg(test)]

@@ -2,6 +2,12 @@
 
 ### Added
 
+- The smooth layer now accepts date, datetime and time x-axes (#250). The
+  smoothing computation runs on epoch-microsecond numbers and the result is
+  converted back to timestamps, so a date axis stays a temporal axis (rendered
+  as datetimes, with labels falling back to plain dates at midnight).
+  Datetime labels at exact midnight now render as plain dates everywhere.
+
 - The Positron extension now registers a ggsql data importer, so dragging a
   csv/tsv/parquet/json file into Positron offers to generate the ggsql code
   that loads it into a table, including any filters and sorts shown in the

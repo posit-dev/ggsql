@@ -395,6 +395,51 @@ pub fn get_quoted_column_name(
     get_column_name(aesthetics, aesthetic).map(|n| dialect.quote_ident(&n))
 }
 
+/// Epoch-microsecond SQL expression for a temporal column.
+///
+/// `sql_temporal_as_number` uses per-kind units (days for dates,
+/// microseconds for datetimes, nanoseconds for times); stats that compute
+/// numerically over temporal values normalize to microseconds so the
+/// result converts back through `sql_number_as_temporal(DateTime)`
+/// regardless of the column's flavour.
+pub(crate) fn temporal_as_epoch_micros(
+    dialect: &dyn SqlDialect,
+    quoted_col: &str,
+    kind: crate::plot::types::CastTargetType,
+) -> String {
+    use crate::plot::types::CastTargetType as C;
+    let raw = dialect.sql_temporal_as_number(quoted_col, kind);
+    match kind {
+        C::Date => format!("({raw} * 86400000000.0)"),
+        C::Time => format!("({raw} / 1000.0)"),
+        // Epoch conversions return integers on several backends; force a
+        // float so downstream squares (bandwidth, regression) can't overflow.
+        _ => format!("({raw} * 1.0)"),
+    }
+}
+
+/// Detect the temporal flavour of a column from a data source schema.
+/// Returns None for non-temporal columns.
+pub(crate) fn temporal_kind_of(
+    schema: &crate::plot::Schema,
+    column: &str,
+) -> Option<crate::plot::types::CastTargetType> {
+    use crate::plot::types::CastTargetType as C;
+    schema
+        .iter()
+        .find(|c| c.name == column)
+        .and_then(|c| match &c.dtype {
+            arrow::datatypes::DataType::Date32 | arrow::datatypes::DataType::Date64 => {
+                Some(C::Date)
+            }
+            arrow::datatypes::DataType::Timestamp(..) => Some(C::DateTime),
+            arrow::datatypes::DataType::Time32(..) | arrow::datatypes::DataType::Time64(..) => {
+                Some(C::Time)
+            }
+            _ => None,
+        })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

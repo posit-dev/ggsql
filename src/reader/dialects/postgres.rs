@@ -34,6 +34,23 @@ impl SqlDialect for PostgresDialect {
         super::epoch_via_subtract_extract(self, expr, kind)
     }
 
+    fn sql_number_as_temporal(
+        &self,
+        expr: &str,
+        kind: crate::plot::types::CastTargetType,
+    ) -> String {
+        use crate::plot::types::CastTargetType as C;
+        match kind {
+            // to_timestamp takes (fractional) seconds since epoch.
+            C::DateTime => format!("TO_TIMESTAMP({expr} / 1000000.0)"),
+            C::Date => format!("(DATE '1970-01-01' + CAST({expr} AS INTEGER))"),
+            _ => {
+                let ty = self.type_names().datetime.unwrap_or("TIMESTAMP");
+                self.sql_cast(expr, ty)
+            }
+        }
+    }
+
     fn sql_quantile(
         &self,
         column: &str,
