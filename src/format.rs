@@ -15,7 +15,7 @@ use regex::Regex;
 use std::collections::HashMap;
 use std::sync::OnceLock;
 
-use crate::array_util::{as_f64, as_str, cast_array};
+use crate::array_util::{as_f64, cast_array};
 use crate::plot::ArrayElement;
 
 /// Placeholder types supported in label templates
@@ -249,7 +249,7 @@ fn compute_numeric_precision(numbers: &[f64]) -> Option<usize> {
         return None;
     }
 
-    numbers.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    numbers.sort_by(|a, b| a.total_cmp(b));
 
     let smallest_diff = numbers
         .windows(2)
@@ -307,9 +307,8 @@ pub fn format_dataframe_column(
         .column(column_name)
         .map_err(|e| format!("Column '{}' not found: {}", column_name, e))?;
 
-    let string_values = column_to_strings(column).map_err(|e| {
-        format!("{e} in column '{column_name}'. Try string or numeric types instead.")
-    })?;
+    let string_values =
+        column_to_strings(column).map_err(|e| format!("{e} in column '{column_name}'"))?;
 
     // Step 2: Apply formatting template to all string values
     let placeholders = parse_placeholders(template);
@@ -327,27 +326,19 @@ pub fn format_dataframe_column(
         .map_err(|e| format!("Failed to replace column: {}", e))
 }
 
-/// Convert an Arrow column to one `String` per row (`None` for a null),
-/// supporting string and numeric columns.
+/// Convert an Arrow column to one `String` per row (`None` for a null).
+/// Floats go through `format_number` (3.0 -> "3"); every other type uses
+/// Arrow's display formatting, which renders temporal values as ISO text,
+/// booleans as true/false, and integers without precision loss.
 fn column_to_strings(column: &ArrayRef) -> Result<Vec<Option<String>>, String> {
-    if let Ok(str_col) = as_str(column) {
-        // String column (includes temporal data auto-converted to ISO format)
-        Ok((0..str_col.len())
-            .map(|i| {
-                if str_col.is_null(i) {
-                    None
-                } else {
-                    Some(str_col.value(i).to_string())
-                }
-            })
-            .collect())
-    } else if let Ok(cast) = cast_array(column, &DataType::Float64) {
-        // Numeric column - use shared format_number helper for clean integer formatting
+    if matches!(column.data_type(), DataType::Float32 | DataType::Float64) {
         use crate::plot::format_number;
 
-        let f64_col = as_f64(&cast).map_err(|e| format!("Failed to cast column to f64: {}", e))?;
+        let cast = cast_array(column, &DataType::Float64)
+            .map_err(|e| format!("Failed to cast column to f64: {}", e))?;
+        let f64_col = as_f64(&cast).map_err(|e| e.to_string())?;
 
-        Ok((0..f64_col.len())
+        return Ok((0..f64_col.len())
             .map(|i| {
                 if f64_col.is_null(i) {
                     None
@@ -355,13 +346,27 @@ fn column_to_strings(column: &ArrayRef) -> Result<Vec<Option<String>>, String> {
                     Some(format_number(f64_col.value(i)))
                 }
             })
-            .collect())
-    } else {
-        Err(format!(
-            "Formatting doesn't support type {:?}",
-            column.data_type()
-        ))
+            .collect());
     }
+
+    let formatter =
+        arrow::util::display::ArrayFormatter::try_new(column.as_ref(), &Default::default())
+            .map_err(|e| {
+                format!(
+                    "Formatting doesn't support type {:?}: {}",
+                    column.data_type(),
+                    e
+                )
+            })?;
+    Ok((0..column.len())
+        .map(|i| {
+            if column.is_null(i) {
+                None
+            } else {
+                Some(formatter.value(i).to_string())
+            }
+        })
+        .collect())
 }
 
 /// Look up `key` in `mapping`. `Some(_)` (possibly empty, for an explicit
@@ -393,34 +398,14 @@ pub fn resolve_column_values(
     mapping: &Option<HashMap<String, Option<String>>>,
 ) -> Result<Vec<Option<String>>, String> {
     let string_values = column_to_strings(column)?;
-
     let placeholders = parse_placeholders(template);
-    let has_plain = placeholders
-        .iter()
-        .any(|p| matches!(p.placeholder, Placeholder::Plain))
-        || placeholders.is_empty();
-    let numeric_precision = if has_plain {
-        let numbers: Vec<f64> = string_values
-            .iter()
-            .filter_map(|v| v.as_deref().and_then(|s| s.parse::<f64>().ok()))
-            .collect();
-        compute_numeric_precision(&numbers)
-    } else {
-        None
-    };
 
     Ok(string_values
         .into_iter()
         .map(|value| match value {
             None => resolve_override(mapping, "null"),
-            Some(raw) => resolve_override(mapping, &raw).or_else(|| {
-                Some(format_value(
-                    &raw,
-                    template,
-                    &placeholders,
-                    numeric_precision,
-                ))
-            }),
+            Some(raw) => resolve_override(mapping, &raw)
+                .or_else(|| Some(format_value(&raw, template, &placeholders, None))),
         })
         .collect())
 }
@@ -746,6 +731,90 @@ mod tests {
 
         assert_eq!(result[0], Some(String::new())); // suppressed, not templated
         assert_eq!(result[1], Some("1".to_string()));
+    }
+
+    #[test]
+    fn resolve_column_values_formats_temporal_columns_as_iso_text() {
+        use arrow::array::Date32Array;
+        use std::sync::Arc;
+
+        // 19737 days after the epoch
+        let column: ArrayRef = Arc::new(Date32Array::from(vec![Some(19737)]));
+        let result = resolve_column_values(&column, "{:time %b %Y}", &None).unwrap();
+        assert_eq!(result, vec![Some("Jan 2024".to_string())]);
+
+        let result = resolve_column_values(&column, "{}", &None).unwrap();
+        assert_eq!(result, vec![Some("2024-01-15".to_string())]);
+    }
+
+    #[test]
+    fn resolve_column_values_formats_timestamps_for_time_placeholders() {
+        use arrow::array::TimestampMicrosecondArray;
+        use std::sync::Arc;
+
+        // 2024-01-15 10:30:00 UTC, in microseconds
+        let column: ArrayRef = Arc::new(TimestampMicrosecondArray::from(vec![Some(
+            1_705_315_800_000_000,
+        )]));
+        let result = resolve_column_values(&column, "{:time %b %Y}", &None).unwrap();
+        assert_eq!(result, vec![Some("Jan 2024".to_string())]);
+    }
+
+    #[test]
+    fn resolve_column_values_keeps_large_integers_exact() {
+        use arrow::array::Int64Array;
+        use std::sync::Arc;
+
+        // Beyond 2^53: not representable as f64
+        let column: ArrayRef = Arc::new(Int64Array::from(vec![9007199254740993]));
+        let result = resolve_column_values(&column, "{}", &None).unwrap();
+        assert_eq!(result, vec![Some("9007199254740993".to_string())]);
+    }
+
+    #[test]
+    fn resolve_column_values_renders_booleans_as_true_and_false() {
+        use arrow::array::BooleanArray;
+        use std::sync::Arc;
+
+        let column: ArrayRef = Arc::new(BooleanArray::from(vec![true, false]));
+        let result = resolve_column_values(&column, "{}", &None).unwrap();
+        assert_eq!(
+            result,
+            vec![Some("true".to_string()), Some("false".to_string())]
+        );
+    }
+
+    #[test]
+    fn resolve_column_values_does_not_align_precision_across_cells() {
+        use crate::array_util::new_f64_array;
+
+        let column = new_f64_array(vec![Some(1.5), Some(3.0), Some(3.0001)]);
+        let result = resolve_column_values(&column, "{}", &None).unwrap();
+        assert_eq!(
+            result,
+            vec![
+                Some("1.5".to_string()),
+                Some("3".to_string()),
+                Some("3.0001".to_string())
+            ]
+        );
+    }
+
+    #[test]
+    fn resolve_column_values_leaves_numeric_looking_strings_alone() {
+        use crate::array_util::new_str_array;
+
+        let column = new_str_array(vec![Some("007"), Some("3.0001")]);
+        let result = resolve_column_values(&column, "{}", &None).unwrap();
+        assert_eq!(
+            result,
+            vec![Some("007".to_string()), Some("3.0001".to_string())]
+        );
+    }
+
+    #[test]
+    fn compute_numeric_precision_tolerates_nan() {
+        assert_eq!(compute_numeric_precision(&[1.5, f64::NAN, 3.0]), Some(1));
     }
 
     #[test]
