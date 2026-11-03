@@ -1847,9 +1847,12 @@ pub fn execute_with_reader(reader: &dyn Reader, query: &str) -> Result<ResolvedS
             let resolved = resolve_table_with_reader(query, reader)?;
             Ok(ResolvedSpec::Table(Box::new(resolved)))
         }
-        _ => {
+        Some(Spec::Plot(_)) => {
             let resolved = resolve_plot_with_reader(reader, query)?;
             Ok(ResolvedSpec::Plot(Box::new(resolved)))
         }
+        None => Err(GgsqlError::ValidationError(
+            "No VISUALISE or TABULATE statement found in query".to_string(),
+        )),
     }
 }

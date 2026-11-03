@@ -4,7 +4,7 @@
 //! any SQL. Use this for IDE integration, syntax checking, and query inspection.
 
 use crate::parser;
-use crate::{Plot, Result, Spec, Table};
+use crate::{Result, Spec};
 
 // ============================================================================
 // Core Types
@@ -206,8 +206,11 @@ pub fn validate(query: &str) -> Result<Validated> {
             });
         }
     };
-    let plots: Vec<&Plot> = specs.iter().filter_map(Spec::as_plot).collect();
-    let tables: Vec<&Table> = specs.iter().filter_map(Spec::as_table).collect();
+    // Reader::execute() resolves only specs[0], so validate that same spec —
+    // checking the first of each kind would flag errors in statements
+    // execution ignores.
+    let first_plot = specs.first().and_then(Spec::as_plot);
+    let first_table = specs.first().and_then(Spec::as_table);
 
     // Reader::execute() resolves only the first VISUALISE/TABULATE statement
     // and silently drops the rest — a query with more than one gets no
@@ -223,8 +226,8 @@ pub fn validate(query: &str) -> Result<Validated> {
         });
     }
 
-    // Validate the single plot (we only support one VISUALISE statement)
-    if let Some(plot) = plots.first() {
+    // Validate the plot, when the resolved spec is one.
+    if let Some(plot) = first_plot {
         // Validate each layer
         for (layer_idx, layer) in plot.layers.iter().enumerate() {
             let context = format!("Layer {}", layer_idx + 1);
@@ -295,13 +298,13 @@ pub fn validate(query: &str) -> Result<Validated> {
         }
     }
 
-    // Validate the single table (we only support one TABULATE statement).
+    // Validate the table, when the resolved spec is one.
     // `sql_part` already reflects `Table.source`: `extract_sql` synthesizes
     // "SELECT * FROM <source>" for a `TABULATE FROM`, so `sql_part` is only
     // empty when there is neither a `FROM` nor preceding SQL — the same
     // condition `resolve_table_with_reader` rejects at execution time,
     // caught here before any SQL runs.
-    if !tables.is_empty() && sql_part.trim().is_empty() {
+    if first_table.is_some() && sql_part.trim().is_empty() {
         errors.push(ValidationError {
             message: "TABULATE has no data source: add a FROM, or a SQL query before it"
                 .to_string(),
@@ -312,7 +315,7 @@ pub fn validate(query: &str) -> Result<Validated> {
     // Validate each SPAN's SETTING parameters (unknown key, or wrong shape
     // for a recognized one) — mirrors the per-layer settings validation
     // above.
-    if let Some(table) = tables.first() {
+    if let Some(table) = first_table {
         for (idx, spanner) in table.spans.iter().enumerate() {
             if let Err(e) = spanner.validate_settings() {
                 errors.push(ValidationError {
@@ -395,6 +398,31 @@ mod tests {
         assert!(validated.warnings()[0]
             .message
             .contains("only the first is resolved"));
+    }
+
+    #[test]
+    fn test_validate_ignores_specs_beyond_the_first() {
+        // Execution resolves only specs[0], so a bad setting in an ignored
+        // later statement must not flip valid — the multi-spec warning is the
+        // only signal for it.
+        let validated =
+            validate("SELECT 1 AS x VISUALISE x DRAW point TABULATE * FORMAT x SETTING bogus => 1")
+                .unwrap();
+        assert!(validated.valid());
+        assert!(validated.warnings()[0]
+            .message
+            .contains("only the first is resolved"));
+
+        // And the other way around: an ignored plot's bad setting, table first.
+        let validated =
+            validate("SELECT 1 AS x TABULATE * VISUALISE x DRAW point SETTING bogus => 1").unwrap();
+        assert!(validated.valid());
+
+        // The same bad setting in the resolved first spec still fails.
+        let validated =
+            validate("SELECT 1 AS x TABULATE * FORMAT x SETTING bogus => 1 VISUALISE x DRAW point")
+                .unwrap();
+        assert!(!validated.valid());
     }
 
     #[test]

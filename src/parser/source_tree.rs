@@ -65,12 +65,28 @@ impl<'a> SourceTree<'a> {
 
     /// Validate that the parse tree has no errors
     pub fn validate(&self) -> Result<()> {
-        if self.tree.root_node().has_error() {
+        let root = self.tree.root_node();
+        if !root.has_error() {
+            return Ok(());
+        }
+        // `TABULATE FROM t`: the grammar lexes FROM as a column name (the
+        // column selection precedes the optional single_source_from), so the
+        // real source lands in an error node.
+        if self
+            .find_node(
+                &root,
+                "(tabulate_statement (column_selection (mapping_list . (mapping_element (implicit_mapping (identifier (bare_identifier) @col))))))",
+            )
+            .is_some_and(|n| self.get_text(&n).eq_ignore_ascii_case("from"))
+        {
             return Err(GgsqlError::ParseError(
-                "Parse tree contains errors".to_string(),
+                "TABULATE needs a column selection before FROM — did you mean `TABULATE * FROM ...`?"
+                    .to_string(),
             ));
         }
-        Ok(())
+        Err(GgsqlError::ParseError(
+            "Parse tree contains errors".to_string(),
+        ))
     }
 
     /// Get the root node
@@ -541,6 +557,28 @@ mod tests {
             "expected double-FROM rejection, got: {}",
             msg
         );
+    }
+
+    #[test]
+    fn test_tabulate_from_without_column_selection_names_the_mistake() {
+        // FROM is lexed as a column name, stranding the source in an error
+        // node — validate() should point at the missing column selection.
+        let tree = SourceTree::new("TABULATE FROM t").unwrap();
+        let msg = format!("{}", tree.validate().unwrap_err());
+        assert!(
+            msg.contains("TABULATE * FROM"),
+            "expected a TABULATE-specific hint, got: {msg}"
+        );
+
+        // A bare column named `from` is unusual but parses without errors,
+        // so it must not trip the hint.
+        let tree = SourceTree::new("TABULATE from, x FROM t").unwrap();
+        assert!(tree.validate().is_ok());
+
+        // Other malformed queries keep the generic message.
+        let tree = SourceTree::new("TABULATE * DRAW").unwrap();
+        let msg = format!("{}", tree.validate().unwrap_err());
+        assert!(msg.contains("Parse tree contains errors"));
     }
 
     #[test]

@@ -976,3 +976,18 @@ fn test_execute_dispatches_plot_and_table() {
     let writer = VegaLiteWriter::new();
     assert!(writer.render(&table_spec).is_err());
 }
+
+#[test]
+fn test_execute_without_a_spec_names_both_statement_kinds() {
+    let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+    let err = match reader.execute("SELECT 1") {
+        Ok(_) => panic!("expected a no-spec error"),
+        Err(err) => err,
+    };
+    assert!(
+        err.to_string()
+            .contains("No VISUALISE or TABULATE statement"),
+        "unexpected error: {err}"
+    );
+}
