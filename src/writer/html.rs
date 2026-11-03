@@ -520,9 +520,9 @@ fn render_colgroup(columns: &[TableColumn]) -> Option<String> {
 
 /// Translate a column's resolved `FORMAT` properties into a `<col>`'s
 /// `style` attribute value, or `None` if it has no `width`. `width`'s value
-/// is already validated (by `ParamConstraint::string_numeric_with_unit`) to
-/// be a number immediately followed by `px` or `%`, which is exactly CSS's
-/// own `width` syntax, so it's used as-is.
+/// is already validated (by `ParamConstraint::number_with_unit`) to be a
+/// number immediately followed by `px` or `%`, which is exactly CSS's own
+/// `width` syntax, so it's used as-is.
 fn column_style(properties: &Parameters) -> Option<String> {
     match properties.get("width") {
         Some(ParameterValue::String(width)) => Some(format!("width: {width}")),

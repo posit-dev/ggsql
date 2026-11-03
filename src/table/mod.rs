@@ -288,7 +288,7 @@ const FORMAT_PARAMS: &[ParamDefinition] = &[
         // No default: an unset width leaves column sizing to the writer,
         // not to a value resolved here.
         default: DefaultParamValue::Null,
-        constraint: ParamConstraint::string_numeric_with_unit(&["px", "%"]),
+        constraint: ParamConstraint::number_with_unit(NumberConstraint::min(0.0), &["px", "%"]),
     },
 ];
 
