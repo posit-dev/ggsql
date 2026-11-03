@@ -61,13 +61,24 @@ pub struct Table {
 pub enum SelectionItem {
     /// `*`.
     Wildcard,
-    /// A column or a constant. `sql` is the verbatim source text (e.g.
-    /// `bill_dep AS Depth`); `name` is the output column name (`Depth`).
-    Column {
-        sql: String,
-        name: String,
-        source: Option<String>,
-    },
+    /// A source column. `id` is the dequoted column name; `alias` is the
+    /// dequoted `AS` name, if any.
+    Column { id: String, alias: Option<String> },
+    /// A constant. `value` is the literal verbatim as written (e.g. `'x'`);
+    /// `alias` is its dequoted `AS` name, which the grammar requires.
+    Constant { value: String, alias: String },
+}
+
+impl SelectionItem {
+    /// The output column name: the alias when written, else the column's
+    /// own name, dequoted. `None` for a wildcard.
+    pub fn name(&self) -> Option<&str> {
+        match self {
+            SelectionItem::Wildcard => None,
+            SelectionItem::Column { id, alias } => Some(alias.as_deref().unwrap_or(id)),
+            SelectionItem::Constant { alias, .. } => Some(alias),
+        }
+    }
 }
 
 impl Table {

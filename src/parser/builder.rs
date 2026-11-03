@@ -365,14 +365,10 @@ fn build_selection_items(node: &Node, source: &SourceTree) -> Result<Vec<Selecti
         })?;
         let item = match child.kind() {
             "wildcard_mapping" => SelectionItem::Wildcard,
-            "implicit_mapping" | "identifier" => {
-                let name = naming::unquote_ident(&source.get_text(&child));
-                SelectionItem::Column {
-                    sql: source.get_text(&elem),
-                    source: Some(name.clone()),
-                    name,
-                }
-            }
+            "implicit_mapping" | "identifier" => SelectionItem::Column {
+                id: naming::unquote_ident(&source.get_text(&child)),
+                alias: None,
+            },
             "explicit_mapping" => {
                 let (name_node, value_node) = extract_name_value_nodes(&child, "column selection")?;
                 let value_child = value_node.child(0).ok_or_else(|| {
@@ -380,22 +376,22 @@ fn build_selection_items(node: &Node, source: &SourceTree) -> Result<Vec<Selecti
                         "Invalid column selection item: missing value".to_string(),
                     )
                 })?;
-                let source_column = match value_child.kind() {
-                    "column_reference" => {
-                        Some(naming::unquote_ident(&source.get_text(&value_child)))
-                    }
-                    "literal_value" => None,
+                let alias = naming::unquote_ident(&source.get_text(&name_node));
+                match value_child.kind() {
+                    "column_reference" => SelectionItem::Column {
+                        id: naming::unquote_ident(&source.get_text(&value_child)),
+                        alias: Some(alias),
+                    },
+                    "literal_value" => SelectionItem::Constant {
+                        value: source.get_text(&value_child),
+                        alias,
+                    },
                     _ => {
                         return Err(GgsqlError::ParseError(format!(
                             "Invalid column selection value type: {}",
                             value_child.kind()
                         )))
                     }
-                };
-                SelectionItem::Column {
-                    sql: source.get_text(&elem),
-                    name: naming::unquote_ident(&source.get_text(&name_node)),
-                    source: source_column,
                 }
             }
             _ => {

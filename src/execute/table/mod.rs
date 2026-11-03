@@ -92,7 +92,7 @@ pub fn resolve_table_with_reader(query: &str, reader: &dyn Reader) -> Result<Res
 fn resolve_selection(df: DataFrame, selection: &[SelectionItem]) -> Result<DataFrame> {
     let n_named_items = selection
         .iter()
-        .filter(|item| matches!(item, SelectionItem::Column { .. }))
+        .filter(|item| !matches!(item, SelectionItem::Wildcard))
         .count();
     let n_wildcards = selection.len() - n_named_items;
 
@@ -115,13 +115,10 @@ fn resolve_selection(df: DataFrame, selection: &[SelectionItem]) -> Result<DataF
         // column once, at its written position; drop the wildcard's copy of
         // that same source column so a rename doesn't show it twice. A
         // constant column (`'x' AS label`, no source) has nothing to drop.
-        let claimed_sources: std::collections::HashSet<&str> = selection
+        let claimed_sources: std::collections::HashSet<String> = selection
             .iter()
             .filter_map(|item| match item {
-                SelectionItem::Column {
-                    source: Some(source),
-                    ..
-                } => Some(source.as_str()),
+                SelectionItem::Column { id, .. } => Some(id.clone()),
                 _ => None,
             })
             .collect();
@@ -130,17 +127,20 @@ fn resolve_selection(df: DataFrame, selection: &[SelectionItem]) -> Result<DataF
         let mut cursor = 0usize;
         for item in selection {
             match item {
-                SelectionItem::Column { name, .. } => {
-                    columns.push((name.clone(), df.inner().column(cursor).clone()));
-                    cursor += 1;
-                }
                 SelectionItem::Wildcard => {
                     for (idx, name) in names.iter().enumerate().skip(cursor).take(wildcard_width) {
-                        if !claimed_sources.contains(name.as_str()) {
+                        if !claimed_sources.contains(name) {
                             columns.push((name.clone(), df.inner().column(idx).clone()));
                         }
                     }
                     cursor += wildcard_width;
+                }
+                _ => {
+                    columns.push((
+                        item.name().unwrap().to_string(),
+                        df.inner().column(cursor).clone(),
+                    ));
+                    cursor += 1;
                 }
             }
         }
@@ -163,13 +163,26 @@ fn resolve_selection(df: DataFrame, selection: &[SelectionItem]) -> Result<DataF
     Ok(df)
 }
 
-/// The selection as a SQL select list (e.g. `foo, bar AS Baz, *`).
-fn selection_sql(selection: &[SelectionItem]) -> String {
+/// The selection as a SQL select list (e.g. `"foo", "bar" AS "Baz", *`).
+/// Identifiers are quoted per dialect; constant literals pass through
+/// verbatim.
+fn selection_sql(dialect: &dyn SqlDialect, selection: &[SelectionItem]) -> String {
     selection
         .iter()
         .map(|item| match item {
-            SelectionItem::Wildcard => "*",
-            SelectionItem::Column { sql, .. } => sql,
+            SelectionItem::Wildcard => "*".to_string(),
+            SelectionItem::Column { id, alias: None } => dialect.quote_ident(id),
+            SelectionItem::Column {
+                id,
+                alias: Some(alias),
+            } => format!(
+                "{} AS {}",
+                dialect.quote_ident(id),
+                dialect.quote_ident(alias)
+            ),
+            SelectionItem::Constant { value, alias } => {
+                format!("{} AS {}", value, dialect.quote_ident(alias))
+            }
         })
         .collect::<Vec<_>>()
         .join(", ")
@@ -208,7 +221,10 @@ fn build_table_sql(
     );
 
     if let Some(source) = from_source {
-        return Some(format!("SELECT {} FROM {source}", selection_sql(selection)));
+        return Some(format!(
+            "SELECT {} FROM {source}",
+            selection_sql(dialect, selection)
+        ));
     }
 
     // Neither: e.g. a bare DuckDB-style `FROM t`. The text may carry a
@@ -228,7 +244,7 @@ fn build_table_sql(
 fn wrap_selection(dialect: &dyn SqlDialect, selection: &[SelectionItem], query: &str) -> String {
     sql::select_from(
         dialect,
-        &selection_sql(selection),
+        &selection_sql(dialect, selection),
         sql::FromItem::Query(query),
         naming::TABLE_ALIAS,
     )
@@ -267,7 +283,10 @@ mod integration_tests {
 
         let picked =
             resolve_table_with_reader("TABULATE name, id AS Number FROM sales", &reader).unwrap();
-        assert_eq!(picked.sql(), "SELECT name, id AS Number FROM sales");
+        assert_eq!(
+            picked.sql(),
+            "SELECT \"name\", \"id\" AS \"Number\" FROM sales"
+        );
         assert_eq!(picked.ncol(), 2);
     }
 
@@ -279,7 +298,7 @@ mod integration_tests {
         // wildcard's own copy of `id` is dropped rather than shown twice.
         let trailing =
             resolve_table_with_reader("TABULATE *, id AS Number FROM sales", &reader).unwrap();
-        assert_eq!(trailing.sql(), "SELECT *, id AS Number FROM sales");
+        assert_eq!(trailing.sql(), "SELECT *, \"id\" AS \"Number\" FROM sales");
         assert_eq!(trailing.ncol(), 2);
         let order: Vec<_> = trailing.columns().iter().map(|c| c.name.as_str()).collect();
         assert_eq!(order, ["name", "Number"]);
@@ -296,7 +315,7 @@ mod integration_tests {
         let reader = reader_with_sales();
 
         let resolved = resolve_table_with_reader("TABULATE name, * FROM sales", &reader).unwrap();
-        assert_eq!(resolved.sql(), "SELECT name, * FROM sales");
+        assert_eq!(resolved.sql(), "SELECT \"name\", * FROM sales");
         // sales is (id, name): the wildcard's second `name` is dropped.
         assert_eq!(resolved.ncol(), 2);
 
@@ -351,7 +370,7 @@ mod integration_tests {
                 .unwrap();
         assert_eq!(
             no_from.sql(),
-            "SELECT name, id AS Number FROM (SELECT * FROM sales) AS \"__table__\""
+            "SELECT \"name\", \"id\" AS \"Number\" FROM (SELECT * FROM sales) AS \"__table__\""
         );
         assert_eq!(no_from.ncol(), 2);
     }
