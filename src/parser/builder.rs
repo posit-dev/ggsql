@@ -441,7 +441,9 @@ fn process_tab_clause(node: &Node, source: &SourceTree, table: &mut Table) -> Re
                 table.labels.merge(new_labels);
             }
             "span_clause" => {
-                table.spans.push(build_span_clause(&child, source)?);
+                table
+                    .spans
+                    .push(build_span_clause(&child, source, table.spans.len())?);
             }
             "format_clause" => {
                 table.formats.push(build_format_clause(&child, source)?);
@@ -454,7 +456,10 @@ fn process_tab_clause(node: &Node, source: &SourceTree, table: &mut Table) -> Re
 }
 
 /// Build a Spanner from a span_clause node: SPAN id OVER col, ... [SETTING ...]
-fn build_span_clause(node: &Node, source: &SourceTree) -> Result<Spanner> {
+///
+/// `span_idx` is the span's position in the table, used to name anonymous
+/// (`SPAN NULL`) spanners.
+fn build_span_clause(node: &Node, source: &SourceTree, span_idx: usize) -> Result<Spanner> {
     let id_node = node
         .child_by_field_name("id")
         .ok_or_else(|| GgsqlError::ParseError("Missing 'id' field in SPAN clause".to_string()))?;
@@ -465,7 +470,7 @@ fn build_span_clause(node: &Node, source: &SourceTree) -> Result<Spanner> {
             naming::unquote_ident(&source.get_text(&id_node)),
             Some(parse_identifier_node(&id_node, source)),
         ),
-        "null_literal" => (naming::anonymous_span_id(), None),
+        "null_literal" => (naming::anonymous_span_id(span_idx), None),
         _ => {
             return Err(GgsqlError::ParseError(format!(
                 "SPAN id must be an identifier or null, got: {}",
