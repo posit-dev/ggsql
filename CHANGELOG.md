@@ -2,6 +2,12 @@
 
 ### Added
 
+- `ggsql repl`, an interactive session: SQL statements print as tables and,
+  with the `window` feature, queries with a `VISUALISE` clause draw in a
+  persistent native window that updates with each new plot. Statements end
+  with `;`; the reader stays open for the whole session, so tables created by
+  one statement are visible to the next. `:tables` lists the session's
+  tables and `:schema <table>` lists a table's columns and their types.
 - The Positron extension now registers a ggsql data importer, so dragging a
   csv/tsv/parquet/json file into Positron offers to generate the ggsql code
   that loads it into a table, including any filters and sorts shown in the
