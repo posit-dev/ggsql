@@ -1,5 +1,5 @@
 import "./styles.css";
-import { PlotView, type GgsqlPlot } from "ggsql-wasm";
+import { GgsqlPlot, PlotView, type GgsqlTable } from "ggsql-wasm";
 import { WasmContextManager } from "../context";
 import { WASM_BASE } from "../wasmBase";
 import { createEditor, type EditorInstance } from "./editor";
@@ -21,6 +21,7 @@ interface CellInfo {
   visContainer: HTMLElement | null;
   view: PlotView | null;
   plot: GgsqlPlot | null;
+  table: GgsqlTable | null;
   succeeded: boolean;
   error: string | null;
   editor: EditorInstance | null;
@@ -136,6 +137,7 @@ function gatherCells(): CellInfo[] {
       visContainer,
       view: null,
       plot: null,
+      table: null,
       succeeded: false,
       error: null,
       editor: null,
@@ -195,7 +197,12 @@ async function initAndExecute(
     await installRequestedExtensions(ctx, cell.query);
     try {
       if (ctx.hasVisual(cell.rewrittenQuery)) {
-        cell.plot = ctx.execute(cell.rewrittenQuery);
+        const result = ctx.execute(cell.rewrittenQuery);
+        if (result instanceof GgsqlPlot) {
+          cell.plot = result;
+        } else {
+          cell.table = result;
+        }
       } else {
         ctx.executeSql(cell.rewrittenQuery);
         cell.plot = null;
@@ -261,6 +268,26 @@ function showPlot(cell: CellInfo): void {
   cell.plot = null;
 }
 
+/**
+ * Draw a cell's rendered table into its output box.
+ *
+ * Unlike a plot a table never redraws, so the markup is copied into the page
+ * and the wasm object freed on the spot.
+ */
+function showTable(cell: CellInfo): void {
+  if (!cell.table) return;
+  const table = cell.table;
+  cell.table = null;
+  // An earlier plot's view still owns the box; clearing it empties the box.
+  if (cell.view) cell.view.setPlot(null);
+  if (!cell.visContainer) {
+    table.free();
+    return;
+  }
+  cell.visContainer.innerHTML = table.html;
+  table.free();
+}
+
 let cellCounter = 0;
 
 async function applyEditors(
@@ -300,6 +327,7 @@ async function applyEditors(
     // one bad plot must not stop the page wiring up the rest.
     try {
       showPlot(cell);
+      showTable(cell);
     } catch (e) {
       showError(cell, String(ctx.noteError(e)));
     }
@@ -365,8 +393,14 @@ async function executeCell(
 
   try {
     if (ctx.hasVisual(currentQuery)) {
-      cell.plot = ctx.execute(currentQuery);
-      showPlot(cell);
+      const result = ctx.execute(currentQuery);
+      if (result instanceof GgsqlPlot) {
+        cell.plot = result;
+        showPlot(cell);
+      } else {
+        cell.table = result;
+        showTable(cell);
+      }
     } else {
       ctx.executeSql(currentQuery);
     }
