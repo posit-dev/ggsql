@@ -4,8 +4,10 @@
 //! statement completeness, classification, dispatch — is a free function so it
 //! can be tested without a terminal.
 
+use ggsql::array_util::new_str_array;
 use ggsql::reader::{Reader, Spec};
 use ggsql::validate::validate;
+use ggsql::DataFrame;
 use rustyline::error::ReadlineError;
 use rustyline::DefaultEditor;
 
@@ -24,6 +26,10 @@ pub enum Statement {
     Quit,
     /// List the available commands.
     Help,
+    /// List the tables in the session's catalog and schema.
+    Tables,
+    /// List the columns of the named table.
+    Schema(String),
     /// A `:` command the REPL doesn't know.
     Unknown(String),
     /// A ggsql query, with the terminating `;` stripped.
@@ -100,10 +106,14 @@ pub fn classify(input: &str) -> Statement {
         return Statement::Empty;
     }
     if let Some(command) = trimmed.strip_prefix(':') {
-        return match command {
+        let name = command.split_whitespace().next().unwrap_or("");
+        let argument = command[name.len()..].trim();
+        return match name {
             "quit" | "exit" | "q" => Statement::Quit,
             "help" | "h" | "?" => Statement::Help,
-            other => Statement::Unknown(other.to_string()),
+            "tables" | "t" => Statement::Tables,
+            "schema" | "describe" | "d" => Statement::Schema(argument.to_string()),
+            _ => Statement::Unknown(command.to_string()),
         };
     }
     // `is_complete` guarantees the trailing `;`; all that remains is to strip
@@ -162,11 +172,99 @@ pub fn execute_query(query: &str, reader: &dyn Reader, plots: &dyn PlotDisplay, 
 
 fn print_help() {
     println!("Commands:");
-    println!("  :quit, :exit   Leave the session (Ctrl-D works too)");
-    println!("  :help          Show this text");
+    println!("  :quit, :exit      Leave the session (Ctrl-D works too)");
+    println!("  :help             Show this text");
+    println!("  :tables           List the tables in the session's schema");
+    println!("  :schema <table>   List a table's columns and their types");
     println!();
     println!("Statements end with ';'. A plain SQL statement prints as a table;");
     println!("a query with a VISUALISE clause draws in the plot window.");
+}
+
+/// The catalog/schema pair the introspection commands look at, resolved once
+/// when the session starts: the reader's first catalog, and its `main` (or
+/// `public`) schema when it has one.
+pub struct Scope {
+    catalog: String,
+    schema: String,
+}
+
+pub fn resolve_scope(reader: &dyn Reader) -> Scope {
+    let catalog = reader
+        .list_catalogs()
+        .ok()
+        .and_then(|catalogs| catalogs.into_iter().next())
+        .unwrap_or_default();
+    let schema = reader
+        .list_schemas(&catalog)
+        .ok()
+        .and_then(|schemas| {
+            schemas
+                .iter()
+                .find(|name| *name == "main" || *name == "public")
+                .cloned()
+                .or_else(|| schemas.into_iter().next())
+        })
+        .unwrap_or_default();
+    Scope { catalog, schema }
+}
+
+/// The `:tables` output: the schema's tables and views as a formatted table.
+pub fn tables_listing(reader: &dyn Reader, scope: &Scope) -> Result<String, String> {
+    let tables = reader
+        .list_tables(&scope.catalog, &scope.schema)
+        .map_err(|e| format!("Failed to list tables: {e}"))?;
+    // Internal `__ggsql_*` tables (builtin datasets, cache memos) are an
+    // implementation detail, not part of the user's schema.
+    let tables: Vec<_> = tables
+        .into_iter()
+        .filter(|table| !table.name.starts_with("__ggsql_"))
+        .collect();
+    if tables.is_empty() {
+        return Ok("No tables.".to_string());
+    }
+    let names: Vec<Option<&str>> = tables
+        .iter()
+        .map(|table| Some(table.name.as_str()))
+        .collect();
+    let types: Vec<Option<&str>> = tables
+        .iter()
+        .map(|table| Some(table.table_type.as_str()))
+        .collect();
+    let frame = DataFrame::new(vec![
+        ("table_name", new_str_array(names)),
+        ("table_type", new_str_array(types)),
+    ])
+    .map_err(|e| e.to_string())?;
+    Ok(table::format_frame(&frame, usize::MAX))
+}
+
+/// The `:schema <table>` output: the table's columns and their types.
+pub fn schema_listing(
+    reader: &dyn Reader,
+    scope: &Scope,
+    table_name: &str,
+) -> Result<String, String> {
+    let columns = reader
+        .list_columns(&scope.catalog, &scope.schema, table_name)
+        .map_err(|e| format!("Failed to describe '{table_name}': {e}"))?;
+    if columns.is_empty() {
+        return Err(format!("No table named '{table_name}'."));
+    }
+    let names: Vec<Option<&str>> = columns
+        .iter()
+        .map(|column| Some(column.name.as_str()))
+        .collect();
+    let types: Vec<Option<&str>> = columns
+        .iter()
+        .map(|column| Some(column.data_type.as_str()))
+        .collect();
+    let frame = DataFrame::new(vec![
+        ("column_name", new_str_array(names)),
+        ("data_type", new_str_array(types)),
+    ])
+    .map_err(|e| e.to_string())?;
+    Ok(table::format_frame(&frame, usize::MAX))
 }
 
 fn history_path() -> Option<std::path::PathBuf> {
@@ -183,6 +281,8 @@ pub fn run(reader: &dyn Reader, plots: &dyn PlotDisplay, verbose: bool) -> rusty
     }
 
     println!("ggsql REPL — end statements with ';'. :help for help, :quit to leave.");
+
+    let scope = resolve_scope(reader);
 
     let mut buffer = String::new();
     loop {
@@ -207,6 +307,19 @@ pub fn run(reader: &dyn Reader, plots: &dyn PlotDisplay, verbose: bool) -> rusty
                     Statement::Empty => {}
                     Statement::Quit => break,
                     Statement::Help => print_help(),
+                    Statement::Tables => match tables_listing(reader, &scope) {
+                        Ok(listing) => println!("{listing}"),
+                        Err(e) => eprintln!("{e}"),
+                    },
+                    Statement::Schema(table_name) if table_name.is_empty() => {
+                        eprintln!("usage: :schema <table>")
+                    }
+                    Statement::Schema(table_name) => {
+                        match schema_listing(reader, &scope, &table_name) {
+                            Ok(listing) => println!("{listing}"),
+                            Err(e) => eprintln!("{e}"),
+                        }
+                    }
                     Statement::Unknown(command) => {
                         eprintln!("Unknown command ':{command}'. :help lists the commands.")
                     }
@@ -284,6 +397,51 @@ mod tests {
         assert_eq!(classify(":help"), Statement::Help);
         assert_eq!(classify(":h"), Statement::Help);
         assert_eq!(classify(":bogus"), Statement::Unknown("bogus".to_string()));
+    }
+
+    #[test]
+    fn introspection_commands_parse_with_aliases() {
+        assert_eq!(classify(":tables"), Statement::Tables);
+        assert_eq!(classify(":t"), Statement::Tables);
+        assert_eq!(
+            classify(":schema my_table"),
+            Statement::Schema("my_table".to_string())
+        );
+        assert_eq!(
+            classify(":describe my_table"),
+            Statement::Schema("my_table".to_string())
+        );
+        assert_eq!(
+            classify(":d my_table"),
+            Statement::Schema("my_table".to_string())
+        );
+        // No argument is still the command; the REPL prints a usage hint.
+        assert_eq!(classify(":schema"), Statement::Schema(String::new()));
+        // Extra whitespace around the argument is fine.
+        assert_eq!(
+            classify(":schema   spaced  "),
+            Statement::Schema("spaced".to_string())
+        );
+    }
+
+    #[test]
+    fn listings_come_from_the_reader() {
+        let reader =
+            ggsql::reader::DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        reader
+            .execute_sql("CREATE TABLE animals (name VARCHAR, legs INTEGER)")
+            .unwrap();
+        let scope = resolve_scope(&reader);
+
+        let tables = tables_listing(&reader, &scope).unwrap();
+        assert!(tables.contains("animals"));
+
+        let schema = schema_listing(&reader, &scope, "animals").unwrap();
+        assert!(schema.contains("name"));
+        assert!(schema.contains("VARCHAR"));
+        assert!(schema.contains("legs"));
+
+        assert!(schema_listing(&reader, &scope, "nope").is_err());
     }
 
     #[test]

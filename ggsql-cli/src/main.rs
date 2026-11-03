@@ -235,7 +235,8 @@ pub enum Commands {
     /// SQL statements print as tables; queries with a VISUALISE clause draw
     /// their plot in a window that updates with each new plot. Statements end
     /// with `;`. The reader stays open for the whole session, so tables
-    /// created in one statement are visible to the next.
+    /// created in one statement are visible to the next. `:tables` lists the
+    /// session's tables and `:schema <table>` describes one.
     ///
     /// Requires the `window` feature and a working GPU adapter.
     Repl {

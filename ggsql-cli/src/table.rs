@@ -24,7 +24,7 @@ pub fn format(query: &str, reader: &dyn Reader, max_rows: usize) -> Result<Strin
 }
 
 /// Format up to `max_rows` of `data` as an aligned, CSV-like table.
-fn format_frame(data: &DataFrame, max_rows: usize) -> String {
+pub(crate) fn format_frame(data: &DataFrame, max_rows: usize) -> String {
     let nrow = data.height().min(max_rows);
     let ncol = data.width();
     let colnames = data.get_column_names();
