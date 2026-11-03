@@ -304,7 +304,11 @@ fn class_declarations(class: TableClass) -> &'static [(&'static str, &'static st
             ("border-top-color", "#FFFFFF"),
             ("border-top-width", "0"),
         ],
-        TableClass::Caption => &[("padding-top", "4px"), ("padding-bottom", "4px")],
+        TableClass::Caption => &[
+            ("caption-side", "bottom"),
+            ("padding-top", "4px"),
+            ("padding-bottom", "4px"),
+        ],
         TableClass::Heading => &[
             ("background-color", "#FFFFFF"),
             ("text-align", "center"),
