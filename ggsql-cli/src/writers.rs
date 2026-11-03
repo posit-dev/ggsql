@@ -767,10 +767,11 @@ mod tests {
         let Output::Text(html) = output else {
             panic!("expected Output::Text from the html writer");
         };
-        // Default css_mode is `class`, which prepends a `<style>` block
-        // ahead of `<table>` — so this checks presence, not position.
+        // Default css_mode is `inline` — no `<style>` block, declarations in
+        // each element's `style` attribute.
+        assert!(!html.contains("<style>"), "{html}");
         assert!(
-            html.contains("data-quarto-bootstrap=\"false\" class=\"ggsql_table\">"),
+            html.contains("data-quarto-bootstrap=\"false\" style=\"display: table;"),
             "{html}"
         );
         assert!(html.contains(">id</th>"), "{html}");

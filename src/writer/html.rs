@@ -4,10 +4,10 @@
 //! - `cells` → `<thead>`/`<tbody>` rows. A `Caption`-kind cell is pulled out
 //!   of the grid before row rendering and emitted as a `<caption>` (HTML
 //!   requires it as `<table>`'s first child) — see `write_table`. Styling is
-//!   expressed per the `css_mode` option: `class` (the default) puts
-//!   `ggsql_*` classes on the elements, backed by a `<style>` block; `inline`
-//!   renders the same declarations into each element's `style` attribute
-//!   (the two gt `as_raw_html()` modes).
+//!   expressed per the `css_mode` option: `inline` (the default) renders
+//!   declarations into each element's `style` attribute; `class` puts
+//!   `ggsql_*` classes on the elements, backed by a `<style>` block (the two
+//!   gt `as_raw_html()` modes).
 //! - `columns` → a `<colgroup>`, one `<col>` per column, with a `style`
 //!   attribute from that column's resolved `width` (a bare `<col>` for a
 //!   column with none) in both modes — targeted column styling stays inline,
@@ -42,17 +42,17 @@ pub struct HtmlWriter {
 /// `as_raw_html()` modes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 enum CssMode {
-    /// `ggsql_*` classes on the elements, backed by a `<style>` block
-    /// carrying the style classes' rules (gt's `inline_css = FALSE`).
-    #[default]
-    Class,
     /// Declarations rendered into each element's `style` attribute; no
     /// classes, no `<style>` block (gt's `inline_css = TRUE`).
+    #[default]
     Inline,
+    /// `ggsql_*` classes on the elements, backed by a `<style>` block
+    /// carrying the style classes' rules (gt's `inline_css = FALSE`).
+    Class,
 }
 
 impl HtmlWriter {
-    /// Create a new HtmlWriter (class mode; see `css_mode`).
+    /// Create a new HtmlWriter (inline mode; see `css_mode`).
     pub fn new() -> Self {
         Self::default()
     }
@@ -61,14 +61,14 @@ impl HtmlWriter {
 impl Writer for HtmlWriter {
     type Output = String;
 
-    /// Takes one option: `css_mode` — `class` (default) renders `ggsql_*`
-    /// classes backed by a `<style>` block; `inline` renders the same
-    /// declarations into each element's `style` attribute.
+    /// Takes one option: `css_mode` — `inline` (default) renders declarations
+    /// into each element's `style` attribute; `class` renders `ggsql_*`
+    /// classes backed by a `<style>` block.
     fn from_options(options: &WriterOptions) -> Result<Self> {
         options.reject_unknown(&["css_mode"])?;
         let css_mode = match options.one_of("css_mode", &["inline", "class"])? {
-            Some("inline") => CssMode::Inline,
-            _ => CssMode::Class,
+            Some("class") => CssMode::Class,
+            _ => CssMode::Inline,
         };
         Ok(Self { css_mode })
     }
@@ -585,10 +585,10 @@ mod render_tests {
     }
 
     #[test]
-    fn from_options_defaults_to_class_mode() {
-        assert_eq!(HtmlWriter::new().css_mode, CssMode::Class);
+    fn from_options_defaults_to_inline_mode() {
+        assert_eq!(HtmlWriter::new().css_mode, CssMode::Inline);
         let writer = HtmlWriter::from_options(&WriterOptions::new()).unwrap();
-        assert_eq!(writer.css_mode, CssMode::Class);
+        assert_eq!(writer.css_mode, CssMode::Inline);
     }
 
     #[test]
@@ -871,7 +871,9 @@ mod render_tests {
             TableRow::body(),
         ];
 
-        let html = HtmlWriter::new().write_table(&layout(cells, rows)).unwrap();
+        let writer =
+            HtmlWriter::from_options(&WriterOptions::parse(["css_mode=class"]).unwrap()).unwrap();
+        let html = writer.write_table(&layout(cells, rows)).unwrap();
 
         assert!(html.contains("<tr class=\"ggsql_heading\"><th class=\"ggsql_title\">"));
         // The column-label row has no recorded row classes, so its <tr> is
@@ -923,7 +925,8 @@ mod tests {
             .unwrap();
         let spec = reader.execute("TABULATE * FROM sales").unwrap();
 
-        let writer = HtmlWriter::new();
+        let writer =
+            HtmlWriter::from_options(&WriterOptions::parse(["css_mode=class"]).unwrap()).unwrap();
         let html = writer.render(&spec).unwrap();
 
         // Precise per-dtype alignment is covered directly by
@@ -978,7 +981,8 @@ mod tests {
             .execute("TABULATE * FROM sales SPAN Info OVER id, name")
             .unwrap();
 
-        let writer = HtmlWriter::new();
+        let writer =
+            HtmlWriter::from_options(&WriterOptions::parse(["css_mode=class"]).unwrap()).unwrap();
         let html = writer.render(&spec).unwrap();
 
         // "amount" has no spanner, so its label stretches up into the
@@ -1031,7 +1035,8 @@ mod tests {
             .execute("TABULATE * FROM sales FORMAT STUB region")
             .unwrap();
 
-        let writer = HtmlWriter::new();
+        let writer =
+            HtmlWriter::from_options(&WriterOptions::parse(["css_mode=class"]).unwrap()).unwrap();
         let html = writer.render(&spec).unwrap();
 
         // The stub head renders as a <th scope="col">, blank by default (no
