@@ -66,6 +66,8 @@ pub fn gets_default_scale(aesthetic: &str) -> bool {
         | "width" | "height"
         // Other material aesthetics
         | "opacity" | "shape" | "linetype"
+        // Line-end markers
+        | "arrowstart" | "arrowend"
     )
 }
 
