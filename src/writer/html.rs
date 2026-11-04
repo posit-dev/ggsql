@@ -427,14 +427,19 @@ fn styling_attr(classes: &[TableClass], mode: CssMode) -> String {
 }
 
 /// Render one `TableCell` as an HTML `<th>`/`<td>`, picked from
-/// `cell.is_header()`, with a `colspan`/`rowspan` attribute only when the
-/// cell actually spans more than one column/row, and a `scope` attribute per
-/// `header_scope`. Styling per `mode` via `styling_attr` — classes in
-/// `INNER_CLASSES` go on a `<div>` around the content rather than on the
-/// `<th>`/`<td>` itself. Not used for a `Caption`-kind cell — see
-/// `render_caption`.
+/// `cell.is_header()` — except a `Filler`, which renders as a `<td>` even in
+/// the header since it labels nothing. A `colspan`/`rowspan` attribute goes
+/// on only when the cell actually spans more than one column/row, and a
+/// `scope` attribute per `header_scope`. Styling per `mode` via
+/// `styling_attr` — classes in `INNER_CLASSES` go on a `<div>` around the
+/// content rather than on the `<th>`/`<td>` itself. Not used for a
+/// `Caption`-kind cell — see `render_caption`.
 fn render_cell(cell: &TableCell, mode: CssMode) -> String {
-    let tag = if cell.is_header() { "th" } else { "td" };
+    let tag = if cell.is_header() && cell.kind != TableCellKind::Filler {
+        "th"
+    } else {
+        "td"
+    };
     let colspan = cell.width();
     let rowspan = cell.height();
     let mut attrs = String::new();
@@ -444,7 +449,7 @@ fn render_cell(cell: &TableCell, mode: CssMode) -> String {
     if rowspan > 1 {
         attrs.push_str(&format!(" rowspan=\"{rowspan}\""));
     }
-    if let Some(scope) = header_scope(cell.kind, colspan) {
+    if let Some(scope) = header_scope(cell.kind) {
         attrs.push_str(&format!(" scope=\"{scope}\""));
     }
     // `slots_by_row`'s slots borrow the layout's cells, so `hjust` can't be
@@ -467,15 +472,15 @@ fn render_cell(cell: &TableCell, mode: CssMode) -> String {
     }
 }
 
-/// `scope` value for a header cell of `kind` spanning `colspan` columns, or
-/// `None` if `scope` doesn't apply. `ColumnLabel`/`StubHead` are always
-/// single-column (`"col"`); `Spanner` can span several (`"colgroup"` if
-/// `colspan > 1`); `StubRowLabel` heads its row (`"row"`); everything else
+/// `scope` value for a header cell of `kind`, or `None` if `scope` doesn't
+/// apply. `ColumnLabel`/`StubHead` are always single-column (`"col"`); a
+/// `Spanner` is a column-group header even when its group has one column
+/// (`"colgroup"`); `StubRowLabel` heads its row (`"row"`); everything else
 /// gets none.
-fn header_scope(kind: TableCellKind, colspan: usize) -> Option<&'static str> {
+fn header_scope(kind: TableCellKind) -> Option<&'static str> {
     match kind {
         TableCellKind::ColumnLabel | TableCellKind::StubHead => Some("col"),
-        TableCellKind::Spanner => Some(if colspan > 1 { "colgroup" } else { "col" }),
+        TableCellKind::Spanner => Some("colgroup"),
         TableCellKind::StubRowLabel => Some("row"),
         TableCellKind::Body
         | TableCellKind::Title
@@ -637,6 +642,24 @@ mod render_tests {
         assert_eq!(
             render_cell(&c, CssMode::Inline),
             "<th rowspan=\"2\" scope=\"col\"></th>"
+        );
+    }
+
+    #[test]
+    fn render_cell_emits_a_filler_as_td_even_in_the_header() {
+        // A filler labels nothing, so it must not announce as a header cell.
+        let c = cell(TableCellKind::Filler, 0, 1, 0, 0);
+        assert_eq!(render_cell(&c, CssMode::Inline), "<td rowspan=\"2\"></td>");
+    }
+
+    #[test]
+    fn render_cell_emits_a_single_column_spanner_with_colgroup_scope() {
+        // A spanner is a column-group header even when the group has one
+        // column.
+        let c = cell(TableCellKind::Spanner, 0, 0, 0, 0);
+        assert_eq!(
+            render_cell(&c, CssMode::Inline),
+            "<th scope=\"colgroup\"></th>"
         );
     }
 
@@ -812,7 +835,7 @@ mod render_tests {
         assert_eq!(
             before_tbody,
             "<thead>\n\
-             <tr><th scope=\"col\"></th><th rowspan=\"2\" scope=\"col\"></th></tr>\n\
+             <tr><th scope=\"colgroup\"></th><th rowspan=\"2\" scope=\"col\"></th></tr>\n\
              <tr><th scope=\"col\"></th></tr>\n\
              </thead>\n"
         );
