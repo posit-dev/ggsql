@@ -25,6 +25,8 @@ The following aesthetics are recognised by the boxplot layer.
 * `shape` The shape of outlier points.
 
 ## Settings
+* `linecap`: The style of line endings, including the ends of dashes in dashed lines. One of `'butt'` (default), `'round'`, or `'square'`.
+* `linejoin`: The style of corners where line segments meet. One of `'miter'`/`'mitre'` (default), `'round'`, or `'bevel'`.
 * `position`: Position adjustment. One of `'identity'`, `'stack'`, `'dodge'` (default), or `'jitter'`
 * `outliers`: Whether to display outliers as points. Defaults to `true`.
 * `coef`: Length of the whiskers as a multiple of the IQR (must be >= 0). Defaults to `1.5`.

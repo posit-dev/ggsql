@@ -5,6 +5,7 @@
 - Text layers now have text boxes. The presence of the `background` aesthetic 
 determines whether text boxes get drawn and additional settings `padding`, 
 `radius` and `linewidth` style the box.
+- Many layers now support `linecap` and `linejoin` settings for styling lines.
 - The Positron extension now registers a ggsql data importer, so dragging a
   csv/tsv/parquet/json file into Positron offers to generate the ggsql code
   that loads it into a table, including any filters and sorts shown in the
@@ -25,6 +26,16 @@ determines whether text boxes get drawn and additional settings `padding`,
 - Replaced `CLAUDE.md` files with `AGENTS.md` files.
 
 ### Fixed
+
+- `SCALE DISCRETE` now accepts integer columns, matching the documented ability
+  to force numeric data into a discrete scale. Integer columns mapped to
+  grouping aesthetics (e.g. `fill` in `DRAW bar`) can now be declared discrete
+  instead of being rejected with a validation error (#239).
+- Mapped columns dropped by a stat transform (e.g. a non-discrete `fill` on
+  `DRAW bar`) now produce a validation error naming the mapping, explaining
+  the drop, and suggesting `SCALE DISCRETE` — in both the Vega-Lite writer and
+  the renderer-backed writers, which previously failed with a generic
+  "column does not exist" message or an internal error (#239).
 
 - Free facet dimensions now resolve their domain, breaks, labels, and minor
   breaks per panel in core (`Scale::panels`, indexed by the canonical panel

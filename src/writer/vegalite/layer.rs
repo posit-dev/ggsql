@@ -72,57 +72,7 @@ pub fn validate_layer_columns(
     layer_idx: usize,
     ctx: &AestheticContext,
 ) -> Result<()> {
-    let available_columns: Vec<String> = data
-        .get_column_names()
-        .iter()
-        .map(|s| s.to_string())
-        .collect();
-
-    for (aesthetic, value) in &layer.mappings.aesthetics {
-        if let AestheticValue::Column { name: col, .. } = value {
-            if !available_columns.contains(col) {
-                let source_desc = if let Some(src) = &layer.source {
-                    format!(" (source: {})", src.as_str())
-                } else {
-                    " (global data)".to_string()
-                };
-                // Translate both the column name (which may be wrapped, e.g.
-                // `__ggsql_aes_pos1__`) and the aesthetic key (which is in
-                // internal form, e.g. `pos1`) to the user-facing form.
-                let stripped = naming::extract_aesthetic_name(col).unwrap_or(col.as_str());
-                let display_col = ctx.map_internal_to_user(stripped);
-                let display_aes = ctx.map_internal_to_user(aesthetic);
-                return Err(GgsqlError::ValidationError(format!(
-                    "Column '{}' referenced in aesthetic '{}' (layer {}{}) does not exist.\nAvailable columns: {}",
-                    display_col,
-                    display_aes,
-                    layer_idx + 1,
-                    source_desc,
-                    crate::and_list(&available_columns)
-                )));
-            }
-        }
-    }
-
-    // Check partition_by columns
-    for col in &layer.partition_by {
-        if !available_columns.contains(col) {
-            let source_desc = if let Some(src) = &layer.source {
-                format!(" (source: {})", src.as_str())
-            } else {
-                " (global data)".to_string()
-            };
-            return Err(GgsqlError::ValidationError(format!(
-                "Column '{}' referenced in PARTITION BY (layer {}{}) does not exist.\nAvailable columns: {}",
-                col,
-                layer_idx + 1,
-                source_desc,
-                crate::and_list(&available_columns)
-            )));
-        }
-    }
-
-    Ok(())
+    crate::writer::validate_layer_columns(layer, data, layer_idx, ctx)
 }
 
 // =============================================================================

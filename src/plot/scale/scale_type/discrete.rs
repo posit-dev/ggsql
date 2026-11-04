@@ -25,7 +25,7 @@ impl ScaleTypeTrait for Discrete {
         match dtype {
             // Accept discrete types
             DataType::Utf8 | DataType::Boolean | DataType::Dictionary(_, _) => Ok(()),
-            // Reject numeric types
+            // Accept integer types (integers commonly encode categories: flags, codes, years)
             DataType::Int8
             | DataType::Int16
             | DataType::Int32
@@ -33,10 +33,13 @@ impl ScaleTypeTrait for Discrete {
             | DataType::UInt8
             | DataType::UInt16
             | DataType::UInt32
-            | DataType::UInt64
-            | DataType::Float32
-            | DataType::Float64 => Err("Discrete scale cannot be used with numeric data. \
-                 Use CONTINUOUS or BINNED scale type instead, or ensure the column contains categorical data.".to_string()),
+            | DataType::UInt64 => Ok(()),
+            // Reject float types (use CONTINUOUS or BINNED instead)
+            DataType::Float32 | DataType::Float64 => Err(
+                "Discrete scale cannot be used with floating-point data. \
+                 Use CONTINUOUS or BINNED scale type instead."
+                    .to_string(),
+            ),
             // Reject temporal types
             DataType::Date32 => Err("Discrete scale cannot be used with Date data. \
                  Use CONTINUOUS scale type instead (dates are treated as continuous temporal data).".to_string()),
@@ -596,17 +599,26 @@ mod tests {
     }
 
     #[test]
-    fn test_validate_dtype_rejects_numeric() {
+    fn test_validate_dtype_accepts_integer() {
         use super::ScaleTypeTrait;
 
         let discrete = Discrete;
-        let result = discrete.validate_dtype(&DataType::Int64);
+        assert!(discrete.validate_dtype(&DataType::Int64).is_ok());
+        assert!(discrete.validate_dtype(&DataType::UInt8).is_ok());
+    }
+
+    #[test]
+    fn test_validate_dtype_rejects_float() {
+        use super::ScaleTypeTrait;
+
+        let discrete = Discrete;
+        let result = discrete.validate_dtype(&DataType::Float64);
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert!(err.contains("numeric"));
+        assert!(err.contains("floating-point"));
         assert!(err.contains("CONTINUOUS") || err.contains("BINNED"));
 
-        let result = discrete.validate_dtype(&DataType::Float64);
+        let result = discrete.validate_dtype(&DataType::Float32);
         assert!(result.is_err());
     }
 
