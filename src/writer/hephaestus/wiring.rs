@@ -418,6 +418,29 @@ pub fn wire_material<G: BuildableGeom>(
                         .collect();
                     builder.set(m.channel, Raw(radians));
                 }
+                // An identity arrow column holds ggsql arrow names; each row
+                // resolves to a shape (unknown → no marker) and, for tail
+                // shapes, its invert flag. A `name:size` entry's size is not
+                // honoured here — only literals carry sizes.
+                RangeKind::Arrow => {
+                    let entries = column_to_strings(ctx.df, col)?;
+                    let mut shapes = Vec::with_capacity(entries.len());
+                    let mut inverts = Vec::with_capacity(entries.len());
+                    let mut any_invert = false;
+                    for entry in &entries {
+                        let (shape, invert) = match map_arrow_entry(entry) {
+                            Some((shape, _, invert)) => (shape, invert),
+                            None => (String::new(), false),
+                        };
+                        any_invert |= invert;
+                        inverts.push(invert);
+                        shapes.push(shape);
+                    }
+                    builder.set(m.channel, Raw(shapes));
+                    if any_invert {
+                        builder.set(format!("{}_invert", m.channel), Raw(inverts));
+                    }
+                }
                 _ => {
                     builder.set(m.channel, Raw(column_to_f64(ctx.df, col)?));
                 }
@@ -503,6 +526,19 @@ fn set_literal_channel<G: BuildableGeom>(
         }
         (RangeKind::Linetype, ParameterValue::String(s)) => {
             builder.set(channel, Raw(HValue::Linetype(map_linetype(s))));
+            true
+        }
+        (RangeKind::Arrow, ParameterValue::String(s)) => {
+            let Some((shape, size, invert)) = map_arrow_entry(s) else {
+                return false;
+            };
+            builder.set(channel, Raw(shape));
+            if let Some(size) = size {
+                builder.set(format!("{channel}_size"), Raw(size));
+            }
+            if invert {
+                builder.set(format!("{channel}_invert"), Raw(true));
+            }
             true
         }
         (RangeKind::Number, ParameterValue::Number(n)) if n.is_finite() => {
@@ -626,43 +662,17 @@ pub fn side_sign(layer: &Layer) -> Option<f64> {
 /// them to trail it.
 const INVERTED_ARROWS: &[&str] = &["fishtail", "fork", "feather"];
 
-/// The layer's arrow aesthetics as endpoint marker channels: `arrowstart`
-/// and `arrowend` literal values of the form `name` or `name:size` (the
-/// `arrow` alias has already been split onto both by execution). Vocabulary
-/// names map to hephaestus's built-in `arrow-*` shapes.
-pub fn arrow_markers(layer: &Layer) -> Vec<(&'static str, HValue)> {
-    let mut channels = Vec::new();
-    for (aesthetic, marker, size_channel, invert) in [
-        (
-            "arrowstart",
-            "start_marker",
-            "start_marker_size",
-            "start_marker_invert",
-        ),
-        (
-            "arrowend",
-            "end_marker",
-            "end_marker_size",
-            "end_marker_invert",
-        ),
-    ] {
-        let Some(ParameterValue::String(entry)) = layer.get_literal(aesthetic) else {
-            continue;
-        };
-        // Unknown names resolve to no marker, same as hephaestus treats
-        // unknown shape names.
-        let Ok((name, size)) = parse_arrow_entry(entry) else {
-            continue;
-        };
-        channels.push((marker, HValue::String(format!("arrow-{name}").into())));
-        if let Some(size) = size {
-            channels.push((size_channel, HValue::Number(size)));
-        }
-        if INVERTED_ARROWS.contains(&name) {
-            channels.push((invert, HValue::Bool(true)));
-        }
-    }
-    channels
+/// Resolve an arrow entry (`name` or `name:size`) to hephaestus terms: the
+/// `arrow-*` shape name, an explicit size in points, and whether the shape
+/// needs inverting. Unknown names resolve to `None` — hephaestus draws no
+/// marker for a shape it doesn't know, same as an unknown shape name.
+fn map_arrow_entry(entry: &str) -> Option<(String, Option<f64>, bool)> {
+    let (name, size) = parse_arrow_entry(entry).ok()?;
+    Some((
+        format!("arrow-{name}"),
+        size,
+        INVERTED_ARROWS.contains(&name),
+    ))
 }
 /// The layer's `linecap`/`linejoin` SETTINGs as constant `cap`/`join` channels.
 /// Validation has already rejected settings the geom doesn't declare, and the
@@ -975,6 +985,17 @@ fn constant_material(ctx: &Ctx, aesthetic: &str, kind: RangeKind) -> Option<HVal
                 .filter(|s| !s.is_empty())?;
             Some(HValue::String(name.into()))
         }
+        RangeKind::Arrow => {
+            let entry = col
+                .and_then(|c| column_to_strings(ctx.df, c).ok())
+                .and_then(|v| v.first().cloned())
+                .or_else(|| match literal {
+                    Some(ParameterValue::String(s)) => Some(s.clone()),
+                    _ => None,
+                })?;
+            let (shape, _, _) = map_arrow_entry(&entry)?;
+            Some(HValue::String(shape.into()))
+        }
         RangeKind::Bool => {
             if let Some(b) = col
                 .and_then(|c| column_to_bool(ctx.df, c).ok())
@@ -1159,82 +1180,34 @@ fn pin_constants(
 
 #[cfg(test)]
 mod tests {
-    use super::arrow_markers;
-    use crate::plot::layer::geom::Geom;
-    use crate::plot::types::ParameterValue;
-    use crate::{AestheticValue, Layer};
-
-    fn layer_with_arrows(start: Option<&str>, end: Option<&str>) -> Layer {
-        let mut layer = Layer::new(Geom::segment());
-        for (aesthetic, value) in [("arrowstart", start), ("arrowend", end)] {
-            if let Some(entry) = value {
-                layer.mappings.insert(
-                    aesthetic,
-                    AestheticValue::Literal(ParameterValue::String(entry.into())),
-                );
-            }
-        }
-        layer
-    }
-
-    fn markers(layer: &Layer) -> Vec<(&'static str, String)> {
-        arrow_markers(layer)
-            .into_iter()
-            .map(|(ch, v)| (ch, format!("{v:?}")))
-            .collect()
-    }
+    use super::map_arrow_entry;
 
     #[test]
-    fn each_end_gets_its_own_marker() {
-        let layer = layer_with_arrows(Some("open"), Some("closed"));
+    fn a_bare_name_maps_to_the_prefixed_shape() {
         assert_eq!(
-            markers(&layer),
-            vec![
-                ("start_marker", "String(\"arrow-open\")".to_string()),
-                ("end_marker", "String(\"arrow-closed\")".to_string())
-            ]
+            map_arrow_entry("closed"),
+            Some(("arrow-closed".into(), None, false))
         );
     }
 
     #[test]
-    fn a_single_end_can_be_set_on_its_own() {
+    fn a_name_with_size_keeps_the_size() {
         assert_eq!(
-            markers(&layer_with_arrows(Some("open"), None)),
-            vec![("start_marker", "String(\"arrow-open\")".to_string())]
-        );
-        assert_eq!(
-            markers(&layer_with_arrows(None, Some("closed"))),
-            vec![("end_marker", "String(\"arrow-closed\")".to_string())]
+            map_arrow_entry("closed:6"),
+            Some(("arrow-closed".into(), Some(6.0), false))
         );
     }
 
     #[test]
-    fn no_mapping_draws_no_markers() {
-        assert!(markers(&layer_with_arrows(None, None)).is_empty());
-    }
-
-    #[test]
-    fn a_name_with_size_sets_the_size_channel() {
-        let layer = layer_with_arrows(None, Some("closed:6"));
+    fn tail_style_shapes_need_inverting() {
         assert_eq!(
-            markers(&layer),
-            vec![
-                ("end_marker", "String(\"arrow-closed\")".to_string()),
-                ("end_marker_size", "Number(6.0)".to_string())
-            ]
+            map_arrow_entry("feather"),
+            Some(("arrow-feather".into(), None, true))
         );
     }
 
     #[test]
-    fn tail_style_shapes_are_inverted() {
-        let layer = layer_with_arrows(Some("feather"), Some("closed"));
-        assert_eq!(
-            markers(&layer),
-            vec![
-                ("start_marker", "String(\"arrow-feather\")".to_string()),
-                ("start_marker_invert", "Bool(true)".to_string()),
-                ("end_marker", "String(\"arrow-closed\")".to_string())
-            ]
-        );
+    fn unknown_names_resolve_to_no_marker() {
+        assert_eq!(map_arrow_entry("closde"), None);
     }
 }

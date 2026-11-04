@@ -236,6 +236,27 @@ mod tests {
     }
 
     #[test]
+    fn renders_mapped_segment_arrows() {
+        assert_renders(
+            "SELECT x, y, x2, y2, kind FROM (VALUES \
+                 (1, 2, 3, 4, 'a'), (2, 1, 4, 3, 'b')) t(x, y, x2, y2, kind) \
+             VISUALISE x AS pos1, y AS pos2 \
+             DRAW segment MAPPING x2 AS pos1end, y2 AS pos2end, kind AS arrowend",
+        );
+    }
+
+    #[test]
+    fn renders_mapped_line_arrows_with_legend() {
+        assert_renders(
+            "SELECT x, y, kind FROM (VALUES \
+                 (1, 2, 'a'), (2, 3, 'a'), (3, 1, 'a'), \
+                 (1, 1, 'b'), (2, 2, 'b'), (3, 3, 'b')) t(x, y, kind) \
+             VISUALISE x AS x, y AS y \
+             DRAW line MAPPING kind AS arrow",
+        );
+    }
+
+    #[test]
     fn renders_categorical_color_with_legend() {
         assert_renders(
             "SELECT 1 AS x, 2 AS y, 'a' AS grp UNION ALL SELECT 2, 3, 'b' \

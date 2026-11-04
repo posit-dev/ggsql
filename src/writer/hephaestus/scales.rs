@@ -17,6 +17,7 @@ use hephaestus::scales::value::{
 use hephaestus::scales::Direction;
 
 use super::channels::NULL_CATEGORY;
+use crate::plot::layer::geom::types::parse_arrow_entry;
 use crate::plot::scale::{linetype_to_stroke_dash, TransformKind as GTransform};
 use crate::plot::{ArrayElement, OutputRange, ParameterValue, Scale as GScale, ScaleTypeKind};
 
@@ -46,6 +47,10 @@ pub enum RangeKind {
     FontWeight,
     /// Rotation in degrees, as ggsql resolves it → radians, hephaestus's unit.
     Angle,
+    /// Line-end marker: ggsql arrow names → hephaestus's `arrow-*` shapes.
+    /// A `name:size` entry's size does not survive scaling: the marker-size
+    /// channel is not part of the scale, so only the shape name is ranged.
+    Arrow,
 }
 
 /// Build a hephaestus scale from a resolved ggsql scale. `None` when ggsql
@@ -353,6 +358,15 @@ fn apply_output_range(hs: HScale, kind: RangeKind, values: &[ArrayElement]) -> H
                 .filter_map(|e| e.to_f64())
                 .map(f64::to_radians),
         ),
+        RangeKind::Arrow => hs.range_strings(values.into_iter().map(|e| {
+            let entry = e.to_key_string();
+            match parse_arrow_entry(&entry) {
+                Ok((name, _)) => Arc::from(format!("arrow-{name}").as_str()),
+                // Unknown names pass through; hephaestus draws no marker for
+                // a shape it doesn't know, same as an unknown shape name.
+                Err(_) => Arc::from(entry.as_str()),
+            }
+        })),
         // Neither a position nor a boolean has an output range: the former maps to
         // a panel fraction, the latter is only ever a literal or identity value.
         RangeKind::Position | RangeKind::Bool => hs,

@@ -13,8 +13,8 @@ use hephaestus::plot::{Plot as HPlot, SegmentGeom};
 use super::super::channels::{aesthetic_column_name, column_to_channel, column_to_f64};
 use super::super::scales::RangeKind;
 use super::super::wiring::{
-    arrow_markers, constant_number, dodge_offsets, stroke_style_constants, wire_material, BandAxes,
-    Ctx, GeomSpec, LegendKind, MatDefault, MaterialSpec, PanelAxis, PositionSpec,
+    constant_number, dodge_offsets, stroke_style_constants, wire_material, BandAxes, Ctx, GeomSpec,
+    LegendKind, MatDefault, MaterialSpec, PanelAxis, PositionSpec,
 };
 use super::hinge::{caps, hinge_points};
 use crate::plot::layer::geom::GeomType;
@@ -58,10 +58,7 @@ pub fn spec(ctx: &Ctx) -> GeomSpec {
         positions,
         material: material(),
         raw_strings: &[],
-        constants: stroke_style_constants(ctx.layer)
-            .into_iter()
-            .chain(arrow_markers(ctx.layer))
-            .collect(),
+        constants: stroke_style_constants(ctx.layer),
         raw_numbers,
         data_channels: vec![],
         legend_key: LegendKind::Line,
@@ -97,6 +94,13 @@ fn material() -> Vec<MaterialSpec> {
             RangeKind::Linetype,
             MatDefault::None,
         ),
+        MaterialSpec::new(
+            "arrowstart",
+            "start_marker",
+            RangeKind::Arrow,
+            MatDefault::None,
+        ),
+        MaterialSpec::new("arrowend", "end_marker", RangeKind::Arrow, MatDefault::None),
     ]
 }
 

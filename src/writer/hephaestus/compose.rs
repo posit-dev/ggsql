@@ -120,6 +120,7 @@ pub fn build_composition(
             "fill" | "stroke" => scales::RangeKind::Color,
             "shape" => scales::RangeKind::Shape,
             "linetype" => scales::RangeKind::Linetype,
+            "arrowstart" | "arrowend" => scales::RangeKind::Arrow,
             // The text geom's font aesthetics: a scale over them resolves a
             // range of family names / weights, not numbers.
             "typeface" => scales::RangeKind::Text,
