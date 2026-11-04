@@ -74,6 +74,8 @@ impl GeomTrait for Histogram {
                 default: DefaultParamValue::String("stack"),
                 constraint: ParamConstraint::string_option(POSITION_VALUES),
             },
+            super::types::LINECAP_PARAM,
+            super::types::LINEJOIN_PARAM,
         ];
         PARAMS
     }
@@ -300,6 +302,7 @@ fn stat_histogram(
         ],
         dummy_columns: vec![],
         consumed_aesthetics: vec!["pos1".to_string(), "weight".to_string()],
+        layer_order: vec![],
     })
 }
 

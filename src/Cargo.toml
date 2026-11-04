@@ -131,7 +131,7 @@ svg = ["graphics", "hephaestus/svg"]
 pdf = ["graphics", "hephaestus/pdf"]
 
 # The plot-document writer. Named after the format, which ggsql does not own —
-# see `src/writer/hephaestus/CLAUDE.md` on why that is accurate rather than a
+# see `src/writer/hephaestus/AGENTS.md` on why that is accurate rather than a
 # leak. `hep-read` is test-only: it is what lets the round trip be asserted.
 hep = ["graphics", "hephaestus/document-write"]
 hep-read = ["hep", "hephaestus/document-read"]

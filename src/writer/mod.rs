@@ -87,7 +87,7 @@ pub use hephaestus::SvgWriter;
 // Not a writer — it produces no output — but it needs the same composition, so
 // it lives beside them. See its own docs for why it is not a `Writer` impl.
 #[cfg(feature = "window")]
-pub use hephaestus::PlotViewer;
+pub use hephaestus::{Dimensions, PlotViewer, VIEWER_OPTIONS};
 #[cfg(feature = "png")]
 pub use hephaestus::{PngCompression, PngWriter};
 #[cfg(feature = "tiff")]
@@ -184,4 +184,93 @@ pub trait Writer {
     fn render(&self, spec: &Spec) -> Result<Self::Output> {
         self.write(spec.plot(), spec.data())
     }
+}
+
+/// Validate column references for a single layer against its DataFrame.
+///
+/// Shared by all writers so every format reports a missing column the same
+/// way. When the layer's geom applies a stat transform, a missing mapped
+/// column almost always means the stat dropped it — only grouping columns
+/// survive a stat — so the message says that and points at `SCALE DISCRETE`
+/// rather than listing available columns.
+pub(crate) fn validate_layer_columns(
+    layer: &crate::Layer,
+    data: &DataFrame,
+    layer_idx: usize,
+    ctx: &crate::plot::aesthetic::AestheticContext,
+) -> Result<()> {
+    use crate::plot::AestheticValue;
+    use crate::{naming, GgsqlError};
+
+    let available_columns: Vec<String> = data
+        .get_column_names()
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+
+    let source_desc = || {
+        if let Some(src) = &layer.source {
+            format!(" (source: {})", src.as_str())
+        } else {
+            " (global data)".to_string()
+        }
+    };
+
+    for (aesthetic, value) in &layer.mappings.aesthetics {
+        if let AestheticValue::Column {
+            name: col,
+            original_name,
+            ..
+        } = value
+        {
+            if !available_columns.contains(col) {
+                // Translate both the column name (which may be wrapped, e.g.
+                // `__ggsql_aes_pos1__`) and the aesthetic key (which is in
+                // internal form, e.g. `pos1`) to the user-facing form.
+                let stripped = naming::extract_aesthetic_name(col).unwrap_or(col.as_str());
+                let display_col = original_name
+                    .clone()
+                    .unwrap_or_else(|| ctx.map_internal_to_user(stripped).to_string());
+                let display_aes = ctx.map_internal_to_user(aesthetic);
+                if !layer.geom.stat_consumed_aesthetics().is_empty() {
+                    return Err(GgsqlError::ValidationError(format!(
+                        "Layer {} ({}): aesthetic '{}' mapped to column '{}' was dropped by the \
+                         stat transformation. Only grouping columns survive the stat, and '{}' \
+                         is not discrete.\n\
+                         To group by it, declare the aesthetic discrete: SCALE DISCRETE {}.\n\
+                         Alternatively, convert the column to text in the SQL query.",
+                        layer_idx + 1,
+                        layer.geom,
+                        display_aes,
+                        display_col,
+                        display_col,
+                        display_aes,
+                    )));
+                }
+                return Err(GgsqlError::ValidationError(format!(
+                    "Column '{}' referenced in aesthetic '{}' (layer {}{}) does not exist.\nAvailable columns: {}",
+                    display_col,
+                    display_aes,
+                    layer_idx + 1,
+                    source_desc(),
+                    crate::and_list(&available_columns)
+                )));
+            }
+        }
+    }
+
+    // Check partition_by columns
+    for col in &layer.partition_by {
+        if !available_columns.contains(col) {
+            return Err(GgsqlError::ValidationError(format!(
+                "Column '{}' referenced in PARTITION BY (layer {}{}) does not exist.\nAvailable columns: {}",
+                col,
+                layer_idx + 1,
+                source_desc(),
+                crate::and_list(&available_columns)
+            )));
+        }
+    }
+
+    Ok(())
 }

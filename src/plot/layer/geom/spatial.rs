@@ -1,4 +1,4 @@
-use super::{DefaultAesthetics, GeomTrait, GeomType, StatResult};
+use super::{DefaultAesthetics, GeomTrait, GeomType, ParamDefinition, StatResult};
 use crate::naming;
 use crate::plot::projection::coord::map::clip_boundary_table;
 use crate::plot::projection::coord::CoordKind;
@@ -39,6 +39,12 @@ impl GeomTrait for Spatial {
         GeomType::Spatial
     }
 
+    fn default_params(&self) -> &'static [ParamDefinition] {
+        const PARAMS: &[ParamDefinition] =
+            &[super::types::LINECAP_PARAM, super::types::LINEJOIN_PARAM];
+        PARAMS
+    }
+
     fn aesthetics(&self) -> DefaultAesthetics {
         DefaultAesthetics {
             defaults: &[
@@ -73,6 +79,7 @@ impl GeomTrait for Spatial {
             stat_columns: vec![],
             dummy_columns: vec![],
             consumed_aesthetics: vec![],
+            layer_order: vec![],
         })
     }
 

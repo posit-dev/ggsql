@@ -80,6 +80,8 @@ impl GeomTrait for Tile {
                 default: DefaultParamValue::String("identity"),
                 constraint: ParamConstraint::string_option(POSITION_VALUES),
             },
+            super::types::LINECAP_PARAM,
+            super::types::LINEJOIN_PARAM,
             super::types::AGGREGATE_PARAM,
         ];
         PARAMS
@@ -192,6 +194,7 @@ impl GeomTrait for Tile {
                 mut stat_columns,
                 dummy_columns,
                 consumed_aesthetics,
+                layer_order,
             } = tile_result
             {
                 if !stat_columns.iter().any(|s| s == "aggregate") {
@@ -202,6 +205,7 @@ impl GeomTrait for Tile {
                     stat_columns,
                     dummy_columns,
                     consumed_aesthetics,
+                    layer_order,
                 });
             }
         }
@@ -547,6 +551,7 @@ fn stat_tile(
             .iter()
             .map(|s| s.to_string())
             .collect(),
+        layer_order: vec![],
     })
 }
 

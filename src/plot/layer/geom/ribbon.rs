@@ -1,7 +1,7 @@
 //! Ribbon geom implementation
 
 use super::stat_aggregate;
-use super::types::{wrap_with_order_by, POSITION_VALUES};
+use super::types::POSITION_VALUES;
 use super::{
     densify_edges, has_aggregate_param, needs_projection, project_position_columns,
     DefaultAesthetics, GeomTrait, GeomType, StatResult,
@@ -43,6 +43,8 @@ impl GeomTrait for Ribbon {
                 default: DefaultParamValue::String("identity"),
                 constraint: ParamConstraint::string_option(POSITION_VALUES),
             },
+            super::types::LINECAP_PARAM,
+            super::types::LINEJOIN_PARAM,
             super::types::AGGREGATE_PARAM,
         ];
         PARAMS
@@ -121,7 +123,7 @@ impl GeomTrait for Ribbon {
         };
         // Ribbon needs ordering by pos1 (domain axis) for proper rendering, in both
         // the Identity and Aggregate paths.
-        Ok(wrap_with_order_by(query, result, "pos1", dialect))
+        Ok(result.with_order(query, "pos1", dialect))
     }
 }
 

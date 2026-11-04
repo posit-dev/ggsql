@@ -74,6 +74,8 @@ impl GeomTrait for Density {
                 default: DefaultParamValue::String("gaussian"),
                 constraint: ParamConstraint::string_option(KERNEL_VALUES),
             },
+            super::types::LINECAP_PARAM,
+            super::types::LINEJOIN_PARAM,
         ];
         PARAMS
     }
@@ -207,6 +209,7 @@ pub(crate) fn stat_density(
         stat_columns: stats,
         dummy_columns: vec![],
         consumed_aesthetics: consumed,
+        layer_order: vec![],
     })
 }
 

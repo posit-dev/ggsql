@@ -27,7 +27,7 @@
 //!
 //! Architecture — the abstractions and the invariants they keep — and the
 //! inventory of deferred work are documented in
-//! `src/writer/hephaestus/CLAUDE.md`.
+//! `src/writer/hephaestus/AGENTS.md`.
 
 mod canvas;
 mod channels;
@@ -62,6 +62,8 @@ mod window;
 pub use hephaestus::color::{rgba, Color};
 
 pub use canvas::Canvas;
+#[cfg(feature = "window")]
+pub use canvas::Dimensions;
 #[cfg(feature = "hep")]
 use canvas::CANVAS_SIZE_OPTIONS;
 
@@ -83,7 +85,7 @@ pub use tiff::{TiffCompression, TiffWriter};
 #[cfg(feature = "webp")]
 pub use webp::WebpWriter;
 #[cfg(feature = "window")]
-pub use window::PlotViewer;
+pub use window::{PlotViewer, VIEWER_OPTIONS};
 
 // Re-exported so a caller can name the setting without depending on the
 // renderer crate; the variants are the format's own vocabulary.
@@ -352,6 +354,32 @@ mod tests {
         assert_renders(
             "SELECT 0 AS x, 0 AS y, 1 AS xend, 2 AS yend UNION ALL SELECT 1, 1, 2, 0 \
              VISUALISE x AS x, y AS y, xend AS xend, yend AS yend DRAW segment",
+        );
+    }
+
+    #[test]
+    fn renders_linecap_and_linejoin() {
+        assert_renders(
+            "SELECT 1 AS x, 1 AS y UNION ALL SELECT 2, 3 UNION ALL SELECT 3, 1 \
+             VISUALISE x AS x, y AS y DRAW line \
+             SETTING linecap => 'round', linejoin => 'bevel'",
+        );
+        // `mitre` is accepted as a spelling variant of `miter`.
+        assert_renders(
+            "SELECT 1 AS x, 1 AS y UNION ALL SELECT 2, 3 UNION ALL SELECT 3, 1 \
+             VISUALISE x AS x, y AS y DRAW polygon SETTING linejoin => 'mitre'",
+        );
+        // A segment takes `linecap` only.
+        assert_renders(
+            "SELECT 0 AS x, 0 AS y, 1 AS xend, 2 AS yend \
+             VISUALISE x AS x, y AS y, xend AS xend, yend AS yend \
+             DRAW segment SETTING linecap => 'square'",
+        );
+        // Composite geoms route the settings to their stroked components.
+        assert_renders(
+            "SELECT g AS g, v AS v FROM (VALUES ('a', 1), ('a', 2), ('a', 3), ('b', 2), ('b', 4)) t(g, v) \
+             VISUALISE g AS x, v AS y DRAW boxplot \
+             SETTING linecap => 'round', linejoin => 'round'",
         );
     }
 
@@ -1360,6 +1388,15 @@ mod svg_text {
 
     fn contains(svg: &str, label: &str) -> bool {
         texts(svg).iter().any(|t| t == label)
+    }
+
+    #[test]
+    fn linecap_and_linejoin_reach_the_svg() {
+        let styled = svg("SELECT x, y FROM (VALUES (1,2),(2,3),(3,1)) t(x,y) \
+             VISUALISE x AS x, y AS y DRAW line \
+             SETTING linecap => 'round', linejoin => 'bevel'");
+        assert!(styled.contains("stroke-linecap=\"round\""), "{styled}");
+        assert!(styled.contains("stroke-linejoin=\"bevel\""), "{styled}");
     }
 
     #[test]

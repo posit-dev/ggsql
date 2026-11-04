@@ -81,10 +81,10 @@ Docs: [`/doc/syntax/clause/facet.qmd`](../../doc/syntax/clause/facet.qmd), [`/do
 3. **Transform**: add `scale/transform/<name>.rs` implementing `TransformTrait`; register in `scale/transform/mod.rs` and `ALL_TRANSFORM_NAMES`.
 4. **Coord**: add `projection/coord/<name>.rs` implementing `CoordTrait`; register in `projection/coord/mod.rs` (`CoordKind`). Doc page under `/doc/syntax/coord/`.
 
-In every case the writer (`src/writer/vegalite/`) needs corresponding rendering support — see [`src/writer/vegalite/CLAUDE.md`](../writer/vegalite/CLAUDE.md).
+In every case the writer (`src/writer/vegalite/`) needs corresponding rendering support — see [`src/writer/vegalite/AGENTS.md`](../writer/vegalite/AGENTS.md).
 
 ## See also
 
-- [`src/CLAUDE.md`](../CLAUDE.md) — module overview for the whole crate.
-- [`src/writer/vegalite/CLAUDE.md`](../writer/vegalite/CLAUDE.md) — how the AST is rendered.
+- [`src/AGENTS.md`](../AGENTS.md) — module overview for the whole crate.
+- [`src/writer/vegalite/AGENTS.md`](../writer/vegalite/AGENTS.md) — how the AST is rendered.
 - [`/doc/syntax/`](../../doc/syntax/) — authoritative ggsql syntax reference.

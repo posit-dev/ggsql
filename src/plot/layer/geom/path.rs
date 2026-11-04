@@ -40,6 +40,8 @@ impl GeomTrait for Path {
                 constraint: ParamConstraint::string_option(POSITION_VALUES),
             },
             super::types::ARROW_PARAM,
+            super::types::LINECAP_PARAM,
+            super::types::LINEJOIN_PARAM,
         ];
         PARAMS
     }

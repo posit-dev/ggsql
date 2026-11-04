@@ -8,7 +8,8 @@ use hephaestus::color::rgb8;
 
 use super::super::scales::RangeKind;
 use super::super::wiring::{
-    Ctx, GeomSpec, LegendKind, MatDefault, MaterialSpec, PanelAxis, PositionSpec,
+    arrow_markers, stroke_style_constants, Ctx, GeomSpec, LegendKind, MatDefault, MaterialSpec,
+    PanelAxis, PositionSpec,
 };
 use crate::plot::layer::geom::GeomType;
 
@@ -51,7 +52,10 @@ pub fn spec(ctx: &Ctx) -> GeomSpec {
             ),
         ],
         raw_strings: &[],
-        constants: super::super::wiring::arrow_markers(ctx.layer),
+        constants: stroke_style_constants(ctx.layer)
+            .into_iter()
+            .chain(arrow_markers(ctx.layer))
+            .collect(),
         raw_numbers: vec![],
         data_channels: vec![],
         legend_key: LegendKind::Line,

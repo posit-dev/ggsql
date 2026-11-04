@@ -24,7 +24,6 @@ For axis-aligned intervals where one coordinate is shared between the start and 
 * `linetype`: The type of the line, i.e. the dashing pattern.
 
 ## Settings
-* `position`: Position adjustment. One of `'identity'` (default), `'stack'`, `'dodge'`, or `'jitter'`.
 * `arrow` Arrow names to display at line ends. Broadly, these come in the following variants:
   * Arrow heads: `'open'`, `'closed'`, `'stealth'`, `'latex'`, `'thin'` and `'wedge'`.
   * Arrow tails: `'fishtail'`, `'fork'`, and `'feather'`.
@@ -37,6 +36,8 @@ For axis-aligned intervals where one coordinate is shared between the start and 
     * A single string giving an arrow name to use at the end of the line.
     * A `[start, end]` array of names or `null` to specify arrows for the start and end of the line.
     To only set an arrow at the start, you could use `['open', null]`.  
+* `linecap`: The style of line endings, including the ends of dashes in dashed lines. One of `'butt'` (default), `'round'`, or `'square'`.
+* `position`: Position adjustment. One of `'identity'` (default), `'stack'`, `'dodge'`, or `'jitter'`
 * `aggregate` Aggregation functions to apply per group: 
     * `null` apply no group aggregation (default).
     * A single string or an array of strings. See an overview of aggregation function in [the `DRAW` documentation](../../clause/draw.qmd#aggregate) and more information in the *Data transformation* section below.
