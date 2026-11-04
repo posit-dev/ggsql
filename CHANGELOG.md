@@ -27,6 +27,11 @@
   to force numeric data into a discrete scale. Integer columns mapped to
   grouping aesthetics (e.g. `fill` in `DRAW bar`) can now be declared discrete
   instead of being rejected with a validation error (#239).
+- Mapped columns dropped by a stat transform (e.g. a non-discrete `fill` on
+  `DRAW bar`) now produce a validation error naming the mapping, explaining
+  the drop, and suggesting `SCALE DISCRETE` — in both the Vega-Lite writer and
+  the renderer-backed writers, which previously failed with a generic
+  "column does not exist" message or an internal error (#239).
 
 - Free facet dimensions now resolve their domain, breaks, labels, and minor
   breaks per panel in core (`Scale::panels`, indexed by the canonical panel

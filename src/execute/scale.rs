@@ -2274,6 +2274,42 @@ mod tests {
             assert_eq!(distinct.len(), 2);
         }
 
+        /// Without a discrete declaration, an integer fill dropped by the bar
+        /// stat fails with an actionable message instead of the writer's
+        /// generic "column does not exist" error.
+        #[cfg(feature = "duckdb")]
+        #[test]
+        fn dropped_integer_fill_reports_stat_drop_and_hint() {
+            let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+            let query = r#"
+                SELECT 'a' AS sex, 1 AS survived
+                VISUALISE sex AS x, survived AS fill
+                DRAW bar
+            "#;
+
+            let spec = reader
+                .execute(query)
+                .expect("execution succeeds; the drop is reported at write time");
+            use crate::writer::Writer;
+            let writer = crate::writer::vegalite::VegaLiteWriter::new();
+            let msg = match writer.write(&spec.plot, &spec.data) {
+                Err(crate::GgsqlError::ValidationError(s)) => s,
+                Err(other) => panic!("expected ValidationError, got: {}", other),
+                Ok(_) => panic!("expected error, got success"),
+            };
+            assert!(
+                msg.contains("aesthetic 'fill' mapped to column 'survived' was dropped by the stat transformation"),
+                "expected stat-drop message, got: {}",
+                msg
+            );
+            assert!(
+                msg.contains("SCALE DISCRETE fill"),
+                "expected discrete-scale hint, got: {}",
+                msg
+            );
+        }
+
         /// Float columns are still rejected with a helpful message.
         #[cfg(feature = "duckdb")]
         #[test]
