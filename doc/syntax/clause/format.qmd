@@ -75,7 +75,7 @@ It currently takes the following parameters:
 
 * `hjust`: numeric value between 0-1 or string, for horizontal justification of cell content.
 Unset, the default depends on the column: right-aligned for numbers and stub columns, left-aligned otherwise.
-  Strings can be `'left'`, `'right'`', `'centre'`, or `'center'`.
+  Strings can be `'left'`, `'right'`, `'centre'`, or `'center'`.
   By default content is left-aligned for strings, and right-aligned for numbers or stub columns.
 * `width`: a unit as a string giving the number of pixels (e.g. `'100px'`) or a percentage (`'20%'`).
   Sets the display width of the column.
