@@ -2222,4 +2222,81 @@ mod tests {
             );
         }
     }
+
+    // =========================================================================
+    // Discrete scale over integer columns (#239)
+    // =========================================================================
+
+    mod discrete_integer_tests {
+        #[cfg(feature = "duckdb")]
+        use crate::reader::DuckDBReader;
+        #[cfg(feature = "duckdb")]
+        use crate::reader::Reader;
+
+        /// An integer column mapped to fill survives the bar stat transform
+        /// when declared discrete.
+        #[cfg(feature = "duckdb")]
+        #[test]
+        fn discrete_scale_accepts_integer_fill_in_bar() {
+            let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+            let query = r#"
+                SELECT 'a' AS sex, 1 AS survived UNION ALL
+                SELECT 'a' AS sex, 0 AS survived UNION ALL
+                SELECT 'b' AS sex, 1 AS survived
+                VISUALISE sex AS x, survived AS fill
+                DRAW bar
+                SCALE DISCRETE fill
+            "#;
+
+            let spec = reader
+                .execute(query)
+                .expect("integer fill with SCALE DISCRETE should execute");
+            let layer_key = spec.plot.layers[0]
+                .data_key
+                .as_ref()
+                .expect("layer should have a data key");
+            let df = spec.data.get(layer_key).expect("layer data should exist");
+            assert!(
+                df.column("__ggsql_aes_fill__").is_ok(),
+                "fill column must survive the stat transform, got: {:?}",
+                df.schema()
+            );
+            // One row per observed x × fill combination
+            assert_eq!(df.height(), 3);
+            let fill = df.column("__ggsql_aes_fill__").unwrap();
+            let fill = arrow::compute::cast(fill, &arrow::datatypes::DataType::Utf8).unwrap();
+            let fill = fill
+                .as_any()
+                .downcast_ref::<arrow::array::StringArray>()
+                .unwrap();
+            let distinct: std::collections::HashSet<&str> = fill.iter().flatten().collect();
+            assert_eq!(distinct.len(), 2);
+        }
+
+        /// Float columns are still rejected with a helpful message.
+        #[cfg(feature = "duckdb")]
+        #[test]
+        fn discrete_scale_rejects_float_fill() {
+            let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+            let query = r#"
+                SELECT 'a' AS sex, 1.5 AS score
+                VISUALISE sex AS x, score AS fill
+                DRAW bar
+                SCALE DISCRETE fill
+            "#;
+
+            let msg = match reader.execute(query) {
+                Err(crate::GgsqlError::ValidationError(s)) => s,
+                Err(other) => panic!("expected ValidationError, got: {}", other),
+                Ok(_) => panic!("expected error, got success"),
+            };
+            assert!(
+                msg.contains("floating-point"),
+                "expected floating-point message, got: {}",
+                msg
+            );
+        }
+    }
 }
