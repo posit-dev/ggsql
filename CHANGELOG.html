@@ -330,12 +330,14 @@ gradient teal.
 <section id="fixed" class="level3">
 <h3 class="anchored" data-anchor-id="fixed">Fixed</h3>
 <ul>
-<li>Free facet dimensions now resolve their domain, breaks, labels, and minor breaks per panel in core (<code>Scale::panels</code>, indexed by the canonical panel order shared by both writers). The Vega-Lite writer no longer pins the globally resolved break set as <code>axis.values</code> on a free dimension — which had left most panels showing a single tick — and the hephaestus writer consumes the core-resolved per-panel scales instead of deriving panel extents itself (#516).</li>
-<li>Fixed a bug in the Vega-Lite writer that could rescale timestamps twice when the data carried microsecond timestamps (#569).</li>
-<li>Extent queries are now merged and ordered portably, fixing schema resolution on MySQL and ClickHouse (#569).</li>
-<li>Fixed a parser bug that interpreted comment characters inside string literals as initializing a comment (#555).</li>
-<li>Fixed a bug in stat_aggregate prevented transposed layers from properly aggregating in certain situations (#561)</li>
-<li>Fixed schema-less <code>validate()</code> rejecting spatial layers that omit an explicit <code>geometry</code> mapping, even though execution auto-detects the geometry column (#587)</li>
+<li><p><code>SCALE DISCRETE</code> now accepts integer columns, matching the documented ability to force numeric data into a discrete scale. Integer columns mapped to grouping aesthetics (e.g.&nbsp;<code>fill</code> in <code>DRAW bar</code>) can now be declared discrete instead of being rejected with a validation error (#239).</p></li>
+<li><p>Mapped columns dropped by a stat transform (e.g.&nbsp;a non-discrete <code>fill</code> on <code>DRAW bar</code>) now produce a validation error naming the mapping, explaining the drop, and suggesting <code>SCALE DISCRETE</code> — in both the Vega-Lite writer and the renderer-backed writers, which previously failed with a generic “column does not exist” message or an internal error (#239).</p></li>
+<li><p>Free facet dimensions now resolve their domain, breaks, labels, and minor breaks per panel in core (<code>Scale::panels</code>, indexed by the canonical panel order shared by both writers). The Vega-Lite writer no longer pins the globally resolved break set as <code>axis.values</code> on a free dimension — which had left most panels showing a single tick — and the hephaestus writer consumes the core-resolved per-panel scales instead of deriving panel extents itself (#516).</p></li>
+<li><p>Fixed a bug in the Vega-Lite writer that could rescale timestamps twice when the data carried microsecond timestamps (#569).</p></li>
+<li><p>Extent queries are now merged and ordered portably, fixing schema resolution on MySQL and ClickHouse (#569).</p></li>
+<li><p>Fixed a parser bug that interpreted comment characters inside string literals as initializing a comment (#555).</p></li>
+<li><p>Fixed a bug in stat_aggregate prevented transposed layers from properly aggregating in certain situations (#561)</p></li>
+<li><p>Fixed schema-less <code>validate()</code> rejecting spatial layers that omit an explicit <code>geometry</code> mapping, even though execution auto-detects the geometry column (#587)</p></li>
 </ul>
 </section>
 </section>
