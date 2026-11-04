@@ -23,6 +23,7 @@ The following aesthetics are recognised by the range layer.
 * `linetype`: The dash pattern of the lines in the range.
 
 ## Settings
+* `linecap`: The style of line endings, including the ends of dashes in dashed lines. One of `'butt'` (default), `'round'`, or `'square'`.
 * `hinge`: The width of the hinges in points (must be >= 0). Defaults to 10. Can be set to `null` to not display hinges.
 * `aggregate` Aggregation functions to apply per group: 
     * `null` apply no group aggregation (default).

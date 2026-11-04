@@ -10,15 +10,15 @@
 //! `pos2` and its values in the `pos1` family.
 
 use hephaestus::color::rgb8;
-use hephaestus::plot::geom::{BuildableGeom, GeomBuilder};
+use hephaestus::plot::geom::{BuildableGeom, GeomBuilder, Raw};
 use hephaestus::plot::{Plot as HPlot, PointGeom, RectGeom, SegmentGeom};
 
 use super::super::channels::{column_to_channel, column_to_f64, column_to_strings};
 use super::super::scales::RangeKind;
 use super::super::wiring::{
     apply_material, band_edges, band_half_width, dodge_offsets, require_column, resolve_color,
-    resolve_material, side_sign, BandAxes, Ctx, LegendKind, MatDefault, MaterialSource,
-    MaterialSpec,
+    resolve_material, side_sign, stroke_style_constants, BandAxes, Ctx, LegendKind, MatDefault,
+    MaterialSource, MaterialSpec,
 };
 use super::hinge::{caps, hinge_points};
 use crate::Result;
@@ -203,6 +203,9 @@ pub fn build(plot: &mut HPlot, ctx: &Ctx) -> Result<()> {
         stroke.apply(&mut b, "stroke", &box_i);
         outline(&mut b, linewidth.as_ref(), linetype.as_ref(), &box_i);
         apply_material(&mut b, alpha.as_ref(), "fill_opacity", &box_i);
+        for (channel, value) in stroke_style_constants(layer) {
+            b.set(channel, Raw(value));
+        }
         plot.add_geom(b.build());
     }
 
@@ -218,6 +221,9 @@ pub fn build(plot: &mut HPlot, ctx: &Ctx) -> Result<()> {
         b.set(frac_ch2, shift(&offsets, &whisk_i, 0.0));
         stroke.apply(&mut b, "stroke", &whisk_i);
         outline(&mut b, linewidth.as_ref(), linetype.as_ref(), &whisk_i);
+        for (channel, value) in stroke_style_constants(layer) {
+            b.set(channel, Raw(value));
+        }
         plot.add_geom(b.build());
     }
 
@@ -232,6 +238,9 @@ pub fn build(plot: &mut HPlot, ctx: &Ctx) -> Result<()> {
         b.set(frac_ch2, shift(&offsets, &med_i, far));
         stroke.apply(&mut b, "stroke", &med_i);
         outline(&mut b, linewidth.as_ref(), linetype.as_ref(), &med_i);
+        for (channel, value) in stroke_style_constants(layer) {
+            b.set(channel, Raw(value));
+        }
         plot.add_geom(b.build());
     }
 
@@ -247,6 +256,9 @@ pub fn build(plot: &mut HPlot, ctx: &Ctx) -> Result<()> {
         );
         stroke.apply(&mut b, "stroke", &whisk_i);
         outline(&mut b, linewidth.as_ref(), linetype.as_ref(), &whisk_i);
+        for (channel, value) in stroke_style_constants(layer) {
+            b.set(channel, Raw(value));
+        }
         plot.add_geom(b.build());
     }
 

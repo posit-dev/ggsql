@@ -12,8 +12,8 @@ use hephaestus::color::rgb8;
 use super::super::channels::{aesthetic_column_name, column_to_f64};
 use super::super::scales::RangeKind;
 use super::super::wiring::{
-    band_half_width, dodge_offsets, Ctx, GeomSpec, LegendKind, MatDefault, MaterialSpec, PanelAxis,
-    PositionSpec,
+    band_half_width, dodge_offsets, stroke_style_constants, Ctx, GeomSpec, LegendKind, MatDefault,
+    MaterialSpec, PanelAxis, PositionSpec,
 };
 use crate::plot::layer::geom::GeomType;
 
@@ -61,6 +61,7 @@ pub fn spec(ctx: &Ctx) -> GeomSpec {
             ),
         ],
         raw_strings: &[],
+        constants: stroke_style_constants(ctx.layer),
         raw_numbers,
         data_channels,
         legend_key: LegendKind::Rect,

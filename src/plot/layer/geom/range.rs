@@ -44,6 +44,7 @@ impl GeomTrait for Range {
                 default: DefaultParamValue::Number(10.0),
                 constraint: ParamConstraint::number_min(0.0),
             },
+            super::types::LINECAP_PARAM,
             super::types::AGGREGATE_PARAM,
         ];
         PARAMS

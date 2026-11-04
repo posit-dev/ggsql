@@ -6,11 +6,14 @@
 //! with no `PROJECT` the geometry draws in raw data space under Cartesian.
 
 use hephaestus::color::rgb8;
+use hephaestus::plot::geom::Raw;
 use hephaestus::plot::{GeometryGeom, Plot as HPlot};
 
 use super::super::channels::column_to_geometry;
 use super::super::scales::RangeKind;
-use super::super::wiring::{wire_material, Ctx, LegendKind, MatDefault, MaterialSpec};
+use super::super::wiring::{
+    stroke_style_constants, wire_material, Ctx, LegendKind, MatDefault, MaterialSpec,
+};
 use crate::naming;
 use crate::Result;
 
@@ -69,6 +72,9 @@ pub fn build(plot: &mut HPlot, ctx: &Ctx) -> Result<()> {
     ];
     wire_material(&mut b, &material, plot, ctx, LegendKind::Rect)?;
 
+    for (channel, value) in stroke_style_constants(ctx.layer) {
+        b.set(channel, Raw(value));
+    }
     plot.add_geom(b.build());
     Ok(())
 }
