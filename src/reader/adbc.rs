@@ -744,7 +744,7 @@ where
         Ok(())
     }
 
-    fn execute(&self, query: &str) -> Result<crate::reader::Spec> {
+    fn execute(&self, query: &str) -> Result<crate::reader::ResolvedSpec> {
         crate::reader::execute_with_reader(self, query)
     }
 

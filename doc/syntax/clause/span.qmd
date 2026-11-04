@@ -1,0 +1,132 @@
+---
+title: "Group columns with a spanner label using `SPAN`"
+---
+
+Columns can be grouped and will display a group label using spanners.
+These are helpful in controlling the visual layout of a table.
+Spanners are extra table cells in the heading that stretch on top of the column labels.
+`SPAN` can be repeated to stack multiple spanners.
+
+## Clause syntax
+There are two equivalent forms for convenience:
+
+```ggsql
+SPAN <identifier> OVER <column>, ...
+  SETTING <parameter> => <value>, ...
+```
+
+or alternatively
+
+```ggsql
+SPAN <column>, ... UNDER <identifier>
+  SETTING <parameter> => <value>, ...
+```
+
+## Identifier
+
+```ggsql
+<identifier> OVER
+-- or
+UNDER <identifier>
+```
+
+The span identifier is mandatory and will be used as the spanner label by default.
+The identifier can be these values:
+
+* An unquoted identifier
+* An identifier with double-quotes or backtick-quotes, depending on the backend
+* `null`
+
+A spanner can also be labelled using the [`LABEL`](label-tabulate.qmd) clause, using the span identifier as key.
+This is the preferred method if the label contains exotic symbols that are not allowed in identifiers.
+
+A spanner identifier can **not** be the same as a column name.
+If you want to display the same label as a column name, you can use the [`LABEL`](label-tabulate.qmd) clause too.
+
+Giving `null` as identifier makes an anonymous spanner for the side-effect of ordering columns.
+Anonymous spanners do not render labels.
+
+## Column selection
+
+```ggsql
+<column>, ...
+```
+
+The list of comma-separated columns to be grouped can be declared after `OVER` or before `UNDER`.
+In addition, the span identifiers of previously declared spans can be used as shorthand.
+By default, columns will be relocated in the table to next to other group members.
+
+## Settings
+
+```ggsql
+SETTING <parameter> => <value>, ...
+```
+
+The `SETTING` sub-clause currently understands two parameters.
+
+* `gather` (default: `true`) is a boolean and will move columns to sit next to other group members. 
+  Columns will move to the first-listed group member, preserving the rest of the relative column order.
+  This can be set to `false` to leave columns in place.
+* `level` is an integer that can be used to pin a spanner to a particular row, where `1` is closest to column labels.
+  The default is to automatically assign a level to avoid a clash with other spanners that share columns.
+
+## Examples
+
+Simple spanner across two columns.
+
+```{ggsql}
+CREATE TEMP TABLE my_data AS SELECT * FROM ggsql:penguins LIMIT 5
+
+TABULATE * FROM my_data
+  SPAN Bill OVER bill_len, bill_dep
+```
+
+By default, disjoint spanners are displayed on the same level.
+
+```{ggsql}
+TABULATE * FROM my_data
+  SPAN Bill OVER bill_len, bill_dep
+  SPAN "My label" OVER sex, year
+```
+
+Setting a custom row level for a span using `SETTING`.
+
+```{ggsql}
+TABULATE * FROM my_data
+  SPAN Bill OVER bill_len, bill_dep
+  SPAN "My label" OVER sex, year
+    SETTING level => 2
+```
+
+Creating a stacked spanner. 
+Note the use of the `Bill` span identifier in the second spanner to include `bill_len` and `bill_dep`.
+
+```{ggsql}
+TABULATE * FROM my_data
+  SPAN Bill OVER bill_len, bill_dep
+  SPAN Lengths OVER Bill, flipper_len
+```
+
+The `LABEL` clause can be used for complex labels.
+
+```{ggsql}
+TABULATE * FROM my_data
+  SPAN Bill OVER bill_len, bill_dep
+  LABEL Bill => '🐧 bills'
+```
+
+Anonymous spanners can be used to reorder columns.
+
+```{ggsql}
+TABULATE * FROM my_data
+  SPAN null OVER species, island, sex, year
+```
+
+Automatic grouping can be turned off using the `gather` setting.
+Note that spanners may become fragmented if columns don't form a contiguous block.
+
+```{ggsql}
+TABULATE * FROM my_data
+  SPAN "My label" OVER species, sex
+    SETTING gather => false
+```

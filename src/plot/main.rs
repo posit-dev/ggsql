@@ -17,6 +17,8 @@
 //! └─ labels: Labels                 (merged from LABEL clauses)
 //! ```
 
+pub use crate::labels::Labels;
+
 use crate::naming;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -72,29 +74,6 @@ pub struct Plot {
     /// Computed from the coord type and facet, used for transformations
     #[serde(skip)]
     pub aesthetic_context: Option<AestheticContext>,
-}
-
-/// Text labels (from LABELS clause)
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-pub struct Labels {
-    /// Label assignments (label type → text, None = suppress)
-    pub labels: HashMap<String, Option<String>>,
-}
-
-impl Labels {
-    /// Look up a label's text.
-    /// Both "not set" and suppressed (`LABEL <key> => NULL`) return `None`.
-    pub fn get(&self, key: &str) -> Option<&str> {
-        self.labels.get(key)?.as_deref()
-    }
-
-    /// Look up a label entry:
-    /// * `None` means not set,
-    /// * `Some(None)` means explicitly suppressed (`LABEL <key> => NULL`).
-    /// * `Some(Some(String))` means typical label
-    pub fn entry(&self, key: &str) -> Option<&Option<String>> {
-        self.labels.get(key)
-    }
 }
 
 // Manual PartialEq implementation (aesthetic_context is derived, not compared)
@@ -286,7 +265,7 @@ impl Plot {
                     }
 
                     // Skip if label already set (user-specified or from earlier)
-                    if labels.labels.contains_key(primary) {
+                    if labels.contains(primary) {
                         continue;
                     }
 

@@ -28,6 +28,7 @@ import { initExtensionLoader } from "./extensions";
 export {
   GgsqlContext,
   GgsqlPlot,
+  GgsqlTable,
   SvgRender,
   hasFonts,
   registerFont,

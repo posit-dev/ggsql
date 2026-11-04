@@ -3,7 +3,9 @@
 //! Extracted from `reader/mod.rs` in the Phase 5 cleanup; module path is
 //! unchanged (`crate::reader::test_support`).
 
-use super::{execute_with_reader, returns_rows, ColumnInfo, Reader, Spec, SqlDialect, TableInfo};
+use super::{
+    execute_with_reader, returns_rows, ColumnInfo, Reader, ResolvedSpec, SqlDialect, TableInfo,
+};
 use crate::{DataFrame, GgsqlError, Result};
 
 /// A reader that can serve as an in-memory, writable caching backend.
@@ -68,7 +70,7 @@ impl Reader for SpyReader {
     fn unregister(&self, name: &str) -> Result<()> {
         self.inner.unregister(name)
     }
-    fn execute(&self, query: &str) -> Result<Spec> {
+    fn execute(&self, query: &str) -> Result<ResolvedSpec> {
         execute_with_reader(self, query)
     }
     fn dialect(&self) -> &dyn SqlDialect {
@@ -118,7 +120,7 @@ impl Reader for ReadOnlyReader {
     fn unregister(&self, _name: &str) -> Result<()> {
         Err(Self::refuse("unregister"))
     }
-    fn execute(&self, query: &str) -> Result<Spec> {
+    fn execute(&self, query: &str) -> Result<ResolvedSpec> {
         execute_with_reader(self, query)
     }
     fn dialect(&self) -> &dyn SqlDialect {
@@ -415,7 +417,7 @@ impl Reader for StubReader {
         self.tables.lock().unwrap().remove(name);
         Ok(())
     }
-    fn execute(&self, query: &str) -> Result<Spec> {
+    fn execute(&self, query: &str) -> Result<ResolvedSpec> {
         execute_with_reader(self, query)
     }
     fn dialect(&self) -> &dyn SqlDialect {

@@ -5,7 +5,7 @@ Provides commands for executing ggsql queries with various data sources and outp
 */
 
 use clap::{Args, Parser, Subcommand, ValueEnum};
-use ggsql::reader::{connection, Reader, Spec};
+use ggsql::reader::{connection, Reader, ResolvedSpec};
 use ggsql::validate::validate;
 use ggsql::writer::WriterOptions;
 use ggsql::{parser, VERSION};
@@ -412,7 +412,7 @@ fn exec_with_reader(query: &str, reader: &dyn Reader, args: &RenderArgs, writer:
         }
     };
 
-    if !validated.has_visual() {
+    if !validated.has_spec() {
         if args.verbose {
             eprintln!("Visualisation is empty. Printing table instead.");
         }
@@ -432,18 +432,40 @@ fn exec_with_reader(query: &str, reader: &dyn Reader, args: &RenderArgs, writer:
     render_spec(spec, args, writer);
 }
 
-fn render_spec(spec: Spec, args: &RenderArgs, writer: &WriterSpec) {
-    if args.verbose {
-        let metadata = spec.metadata();
-        eprintln!("\nQuery executed:");
-        eprintln!("  Rows: {}", metadata.rows);
-        eprintln!("  Columns: {}", metadata.columns.join(", "));
-        eprintln!("  Layers: {}", metadata.layer_count);
+fn render_spec(spec: ResolvedSpec, args: &RenderArgs, writer: &WriterSpec) {
+    match &spec {
+        ResolvedSpec::Plot(plot) => {
+            if args.verbose {
+                let metadata = plot.metadata();
+                eprintln!("\nQuery executed:");
+                eprintln!("  Rows: {}", metadata.rows);
+                eprintln!("  Columns: {}", metadata.columns.join(", "));
+                eprintln!("  Layers: {}", metadata.layer_count);
+            }
+
+            if plot.plot().layers.is_empty() {
+                eprintln!("No visualization specifications found");
+                std::process::exit(1);
+            }
+        }
+        ResolvedSpec::Table(table) => {
+            if args.verbose {
+                eprintln!("\nQuery executed:");
+                eprintln!("  Rows: {}", table.nrow());
+                eprintln!("  Columns: {}", table.ncol());
+            }
+        }
     }
 
-    if spec.plot().layers.is_empty() {
-        eprintln!("No visualization specifications found");
-        std::process::exit(1);
+    // Not behind -v: a query that silently dropped a statement (e.g. a mix of
+    // VISUALISE and TABULATE, only the first of which is resolved) is a
+    // correctness-relevant fact, not a verbose-only detail.
+    let query_warnings = match &spec {
+        ResolvedSpec::Plot(plot) => plot.warnings(),
+        ResolvedSpec::Table(table) => table.warnings(),
+    };
+    for warning in query_warnings {
+        eprintln!("warning: {}", warning.message);
     }
 
     let info = writer.info;
@@ -462,17 +484,26 @@ fn render_spec(spec: Spec, args: &RenderArgs, writer: &WriterSpec) {
         (Output::Text(txt), None) => {
             println!("{}", txt);
         }
-        (Output::Text(txt), Some(path)) => match std::fs::write(path, txt) {
-            Ok(_) => {
-                if args.verbose {
-                    eprintln!("\n{} written to: {}", info.label, path.display());
+        (Output::Text(txt), Some(path)) => {
+            // The html writer emits a fragment; a standalone file needs the
+            // document wrapper (charset meta) around it.
+            let txt = if info.name == "html" {
+                writers::html_document(&txt)
+            } else {
+                txt
+            };
+            match std::fs::write(path, txt) {
+                Ok(_) => {
+                    if args.verbose {
+                        eprintln!("\n{} written to: {}", info.label, path.display());
+                    }
+                }
+                Err(e) => {
+                    eprintln!("Failed to write to output file: {}", e);
+                    std::process::exit(1);
                 }
             }
-            Err(e) => {
-                eprintln!("Failed to write to output file: {}", e);
-                std::process::exit(1);
-            }
-        },
+        }
         (Output::Bin(buf), None) => {
             if std::io::stdout().is_terminal() {
                 // Non-zero, since nothing was produced: `… && publish` must
@@ -568,7 +599,7 @@ fn cmd_view(query: String, args: &ViewArgs) {
             eprintln!("Failed to validate query: {}", e);
             std::process::exit(1);
         });
-        if !validated.has_visual() {
+        if !validated.has_spec() {
             eprintln!("This query has no VISUALISE clause, so there is no plot to show.");
             std::process::exit(1);
         }
@@ -577,9 +608,13 @@ fn cmd_view(query: String, args: &ViewArgs) {
             eprintln!("Failed to execute query: {}", e);
             std::process::exit(1);
         });
+        let plot = spec.as_plot().unwrap_or_else(|| {
+            eprintln!("This is a TABULATE query; there is no plot to show.");
+            std::process::exit(1);
+        });
 
         if args.verbose {
-            let metadata = spec.metadata();
+            let metadata = plot.metadata();
             eprintln!("  Rows: {}", metadata.rows);
             eprintln!("  Layers: {}", metadata.layer_count);
             eprintln!("Close the window to exit.");
@@ -587,7 +622,7 @@ fn cmd_view(query: String, args: &ViewArgs) {
 
         // Blocks on the main thread until the window closes, returning the
         // frame (size and dpi) the user left the window at.
-        let frame = viewer.show(&spec).unwrap_or_else(|e| {
+        let frame = viewer.show(plot).unwrap_or_else(|e| {
             eprintln!("{}", e);
             std::process::exit(1);
         });
@@ -646,12 +681,19 @@ fn cmd_parse(query: String, format: String) {
         "pretty" => {
             println!("ggsql Specifications: {} total", specs.len());
             for (i, spec) in specs.iter().enumerate() {
-                println!("\nVisualization #{}:", i + 1);
-                println!("  Global Mappings: {:?}", spec.global_mappings);
-                println!("  Layers: {}", spec.layers.len());
-                println!("  Scales: {}", spec.scales.len());
-                if spec.facet.is_some() {
-                    println!("  Faceting: Yes");
+                match spec {
+                    ggsql::Spec::Plot(plot) => {
+                        println!("\nVisualization #{}:", i + 1);
+                        println!("  Global Mappings: {:?}", plot.global_mappings);
+                        println!("  Layers: {}", plot.layers.len());
+                        println!("  Scales: {}", plot.scales.len());
+                        if plot.facet.is_some() {
+                            println!("  Faceting: Yes");
+                        }
+                    }
+                    ggsql::Spec::Table(_) => {
+                        println!("\nTable #{}:", i + 1);
+                    }
                 }
             }
         }

@@ -6,9 +6,9 @@ use ggsql::array_util::value_to_string;
 use ggsql::naming::DATA_PREFIX;
 use ggsql::reader::sqlite::SqliteReader;
 use ggsql::reader::Reader;
-use ggsql::reader::Spec;
+use ggsql::reader::{ResolvedPlot, ResolvedSpec};
 use ggsql::validate::validate;
-use ggsql::writer::SvgWriter;
+use ggsql::writer::{HtmlWriter, SvgWriter, Writer};
 use ggsql::DataFrame;
 use serde_json::json;
 use std::cell::RefCell;
@@ -244,22 +244,40 @@ impl GgsqlContext {
         })
     }
 
-    /// Run a ggsql query and keep the resolved plot, ready to draw.
+    /// Run a ggsql query and keep the result, ready to show.
     ///
-    /// Drawing is separate because a resize re-solves the layout, and doing
-    /// that through the query would put SQL behind every frame of a drag.
-    pub fn execute(&self, query: &str) -> Result<GgsqlPlot, JsValue> {
+    /// A VISUALISE query resolves to a `GgsqlPlot`, kept because drawing is
+    /// separate: a resize re-solves the layout, and doing that through the
+    /// query would put SQL behind every frame of a drag. A TABULATE query
+    /// renders straight to a `GgsqlTable` — a static HTML table has no size
+    /// to re-solve.
+    pub fn execute(&self, query: &str) -> Result<JsValue, JsValue> {
         let reader = self.reader.borrow();
         let spec = reader
             .execute(query)
             .map_err(|e| JsValue::from_str(&format!("Execute error: {:?}", e)))?;
-        Ok(GgsqlPlot { spec })
+        match spec {
+            ResolvedSpec::Plot(spec) => Ok(GgsqlPlot { spec: *spec }.into()),
+            ResolvedSpec::Table(table) => {
+                let warnings = table
+                    .warnings()
+                    .iter()
+                    .map(|warning| warning.message.clone())
+                    .collect();
+                // Inline CSS: the markup lands in a page whose own styles
+                // should neither reach into the table nor be reached by it.
+                let html = HtmlWriter::new()
+                    .write_table(table.layout())
+                    .map_err(|e| JsValue::from_str(&format!("Render error: {:?}", e)))?;
+                Ok(GgsqlTable { html, warnings }.into())
+            }
+        }
     }
 
-    /// Check whether a query contains a VISUALISE clause
+    /// Check whether a query contains a VISUALISE or TABULATE clause
     pub fn has_visual(&self, query: &str) -> bool {
         match validate(query) {
-            Ok(v) => v.has_visual(),
+            Ok(v) => v.has_spec(),
             Err(_) => false,
         }
     }
@@ -398,7 +416,7 @@ impl GgsqlContext {
 /// query — see [`GgsqlContext::execute`].
 #[wasm_bindgen]
 pub struct GgsqlPlot {
-    spec: Spec,
+    spec: ResolvedPlot,
 }
 
 #[wasm_bindgen]
@@ -425,6 +443,29 @@ impl GgsqlPlot {
             .render_reporting(&self.spec)
             .map_err(|e| JsValue::from_str(&format!("Render error: {:?}", e)))?;
         Ok(SvgRender { svg, warnings })
+    }
+}
+
+/// A rendered TABULATE result: static HTML, plus whatever the table could
+/// not express.
+#[wasm_bindgen]
+pub struct GgsqlTable {
+    html: String,
+    warnings: Vec<String>,
+}
+
+#[wasm_bindgen]
+impl GgsqlTable {
+    /// The table markup.
+    #[wasm_bindgen(getter)]
+    pub fn html(&self) -> String {
+        self.html.clone()
+    }
+
+    /// What the table had to degrade or drop, if anything.
+    #[wasm_bindgen(getter)]
+    pub fn warnings(&self) -> Vec<String> {
+        self.warnings.clone()
     }
 }
 

@@ -2,6 +2,16 @@
 
 ### Added
 
+- New `TABULATE` clause renders a query result as a table instead of a
+  plot. Tables are rendered via new `html` writer. `TABULATE` supports the
+  following clauses:
+  - `LABEL` sets (sub)titles, captions and overrides the display of column
+    labels.
+  - `SPAN` groups columns under a shared header cell (spanner).
+  - `FORMAT` configures how a column's cells are displayed.
+- `Writer::write_table` renders a resolved table, taking the new public
+  `TableLayout` — the table's cells bundled with their column and row
+  metadata.
 - The Positron extension now registers a ggsql data importer, so dragging a
   csv/tsv/parquet/json file into Positron offers to generate the ggsql code
   that loads it into a table, including any filters and sorts shown in the
@@ -11,6 +21,9 @@
 
 ### Changed
 
+- **Breaking**: `TABULATE` is now a reserved word after `VISUALISE`/`TABULATE`,
+  like `VISUALISE`. Reference a column named `tabulate` there quoted
+  (`'tabulate'`); the SQL part of a query is unaffected.
 - The reader/dialect layer was refactored around a central dialect registry with
   per-database dialect implementations (#569). As part of this, some
   previously-public items changed: the `CacheBackend` trait moved to a
@@ -19,6 +32,8 @@
 - Scale resolution now detects and converts temporal-unit mismatches and errors
   on unrepresentable ranges instead of producing silently wrong scales (#569).
 - `Plot.labels` field is no longer `Option<Labels>` but plain `Labels`.
+- The CLI now always prints query warnings (e.g. extra `VISUALISE`/`TABULATE`
+  statements being ignored) to stderr, not only with `-v`.
 - Replaced `CLAUDE.md` files with `AGENTS.md` files.
 
 ### Fixed

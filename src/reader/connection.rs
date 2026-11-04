@@ -744,11 +744,11 @@ mod tests {
         let spec = reader
             .execute("SELECT 1.0 AS x, 2.0 AS y VISUALISE x, y DRAW point")
             .unwrap();
-        assert_eq!(spec.metadata().rows, 1);
+        assert_eq!(spec.as_plot().unwrap().metadata().rows, 1);
     }
 
     #[cfg(feature = "duckdb")]
-    use crate::reader::{execute_with_reader, ColumnInfo, Spec, SqlDialect, TableInfo};
+    use crate::reader::{execute_with_reader, ColumnInfo, ResolvedSpec, SqlDialect, TableInfo};
     #[cfg(feature = "duckdb")]
     use crate::DataFrame;
 
@@ -783,7 +783,7 @@ mod tests {
         fn unregister(&self, name: &str) -> Result<()> {
             self.inner.unregister(name)
         }
-        fn execute(&self, query: &str) -> Result<Spec> {
+        fn execute(&self, query: &str) -> Result<ResolvedSpec> {
             execute_with_reader(self, query)
         }
         fn dialect(&self) -> &dyn SqlDialect {

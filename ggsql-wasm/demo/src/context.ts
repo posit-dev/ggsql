@@ -1,6 +1,7 @@
 import init, {
   GgsqlContext,
   GgsqlPlot,
+  GgsqlTable,
   installExtension,
   registerDefaultFonts,
 } from "ggsql-wasm";
@@ -85,7 +86,7 @@ export class WasmContextManager {
     return err;
   }
 
-  execute(query: string): GgsqlPlot {
+  execute(query: string): GgsqlPlot | GgsqlTable {
     return this.guard(() => this.getContext().execute(query));
   }
 

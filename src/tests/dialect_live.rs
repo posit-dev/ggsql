@@ -72,7 +72,7 @@
 mod battery;
 
 use ggsql::reader::connection::reader_from_uri;
-use ggsql::reader::{ColumnInfo, Reader, Spec, SqlDialect, TableInfo};
+use ggsql::reader::{ColumnInfo, Reader, ResolvedSpec, SqlDialect, TableInfo};
 use ggsql::{DataFrame, Result};
 
 const TABLE: &str = battery::TABLE;
@@ -132,7 +132,7 @@ impl Reader for SqlSpy<'_> {
     fn unregister(&self, name: &str) -> Result<()> {
         self.inner.unregister(name)
     }
-    fn execute(&self, query: &str) -> Result<Spec> {
+    fn execute(&self, query: &str) -> Result<ResolvedSpec> {
         ggsql::reader::execute_with_reader(self, query)
     }
     fn dialect(&self) -> &dyn SqlDialect {
@@ -313,9 +313,11 @@ fn run_battery(reader: &dyn Reader, ctx: &str, table: &str) {
 }
 
 /// Apply a case's live assertion to its spec.
-fn check_expect(spec: &Spec, case: &battery::Case, ctx: &str, spy: &SqlSpy) {
+fn check_expect(spec: &ResolvedSpec, case: &battery::Case, ctx: &str, spy: &SqlSpy) {
     let layer = || {
-        spec.layer_data(0)
+        spec.as_plot()
+            .unwrap()
+            .layer_data(0)
             .unwrap_or_else(|| panic!("{ctx}: case '{}' produced no layer data", case.name))
     };
     match case.expect {
@@ -504,7 +506,7 @@ fn live_backend(scheme: &str) {
             .execute("VISUALISE DRAW point MAPPING id AS x, val AS y FROM ggsql_live_register")
             .unwrap_or_else(|e| panic!("{scheme}: plot from registered table failed: {e}"));
         assert_eq!(
-            spec.layer_data(0).map(|l| l.height()),
+            spec.as_plot().unwrap().layer_data(0).map(|l| l.height()),
             Some(4),
             "{scheme}: registered table row count"
         );
@@ -532,7 +534,12 @@ fn live_postgres_ggsql_params() {
     let spec = reader
         .execute("SELECT 1 AS x, 2 AS y VISUALISE DRAW point")
         .unwrap_or_else(|e| panic!("postgres+params: query failed: {e}"));
-    assert!(spec.layer_data(0).map(|l| l.height() > 0).unwrap_or(false));
+    assert!(spec
+        .as_plot()
+        .unwrap()
+        .layer_data(0)
+        .map(|l| l.height() > 0)
+        .unwrap_or(false));
 }
 
 #[test]
@@ -672,8 +679,15 @@ fn live_datafusion_as_cache() {
     let query = "VISUALISE DRAW point MAPPING id AS x, val AS y FROM t";
     let first = reader.execute(query).expect("first run (cache fill)");
     let second = reader.execute(query).expect("second run (cache hit)");
-    assert!(first.layer_data(0).map(|l| l.height() > 0).unwrap_or(false));
+    assert!(first
+        .as_plot()
+        .unwrap()
+        .layer_data(0)
+        .map(|l| l.height() > 0)
+        .unwrap_or(false));
     assert!(second
+        .as_plot()
+        .unwrap()
         .layer_data(0)
         .map(|l| l.height() > 0)
         .unwrap_or(false));
@@ -687,6 +701,12 @@ fn live_datafusion_as_cache() {
     let second = reader
         .execute(empty_query)
         .expect("empty second run (cache hit)");
-    assert_eq!(first.layer_data(0).map(|l| l.height()), Some(0));
-    assert_eq!(second.layer_data(0).map(|l| l.height()), Some(0));
+    assert_eq!(
+        first.as_plot().unwrap().layer_data(0).map(|l| l.height()),
+        Some(0)
+    );
+    assert_eq!(
+        second.as_plot().unwrap().layer_data(0).map(|l| l.height()),
+        Some(0)
+    );
 }

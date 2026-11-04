@@ -1,8 +1,7 @@
-//! Renderer-backed writers.
-//!
-//! Every writer here renders a resolved ggsql `Spec` through the [`hephaestus`]
-//! 2D scene renderer. Only the writers themselves are public; the renderer
-//! behind them is an implementation detail, and this module is private.
+//! Every writer here renders a resolved ggsql `ResolvedPlot` through the
+//! [`hephaestus`] 2D scene renderer. Only the writers themselves are public;
+//! the renderer behind them is an implementation detail, and this module is
+//! private.
 //!
 //! The work splits three ways, which is what keeps one writer per format small:
 //!
@@ -117,9 +116,9 @@ mod tests {
     /// look at the picture — only that the whole pipeline ran.
     const CORPUS_SIZE: (u32, u32, f64) = (640, 480, 96.0);
 
-    fn spec_for(query: &str) -> crate::reader::Spec {
+    fn spec_for(query: &str) -> crate::reader::ResolvedPlot {
         let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
-        reader.execute(query).unwrap()
+        reader.execute(query).unwrap().into_plot().unwrap()
     }
 
     /// Render `query` through every compiled writer, asserting each output
@@ -165,7 +164,7 @@ mod tests {
 
         // Last, and the only one that tolerates a headless box.
         #[cfg(feature = "png")]
-        assert_png_or_skip(PngWriter::new(w, h, dpi).render(&spec));
+        assert_png_or_skip(PngWriter::new(w, h, dpi).render_plot(&spec));
     }
 
     /// The panels' `(top, right)` strip labels, in panel order. Exercises the
@@ -173,7 +172,8 @@ mod tests {
     fn strips(query: &str) -> Vec<(Option<String>, Option<String>)> {
         let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
         let spec = reader.execute(query).unwrap();
-        let (_, panels) = facet::build_panels(spec.plot(), spec.data()).unwrap();
+        let plot = spec.as_plot().unwrap();
+        let (_, panels) = facet::build_panels(plot.plot(), plot.data()).unwrap();
         panels
             .iter()
             .map(|p| (p.strip_top.clone(), p.strip_right.clone()))
@@ -184,7 +184,7 @@ mod tests {
     fn axis_titles(query: &str) -> Vec<(AxisSide, String)> {
         let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
         let spec = reader.execute(query).unwrap();
-        projection::composition_axis_titles(spec.plot())
+        projection::composition_axis_titles(spec.as_plot().unwrap().plot())
     }
 
     /// Just the top strip labels, in panel order.
@@ -1318,7 +1318,7 @@ mod svg_text {
 
     fn svg(query: &str) -> String {
         let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
-        let spec = reader.execute(query).unwrap();
+        let spec = reader.execute(query).unwrap().into_plot().unwrap();
         let (svg, warnings) = SvgWriter::new(640, 480, 96.0)
             .render_reporting(&spec)
             .unwrap_or_else(|e| panic!("svg render failed: {e}"));
@@ -1503,12 +1503,12 @@ mod svg_text {
         let query = "SELECT x, y FROM (VALUES (1,2),(2,3)) t(x,y) \
                      VISUALISE x AS x, y AS y DRAW point LABEL title => 'Outlined'";
         let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
-        let spec = reader.execute(query).unwrap();
+        let spec = reader.execute(query).unwrap().into_plot().unwrap();
 
-        let as_text = SvgWriter::new(640, 480, 96.0).render(&spec).unwrap();
+        let as_text = SvgWriter::new(640, 480, 96.0).render_plot(&spec).unwrap();
         let as_paths = SvgWriter::new(640, 480, 96.0)
             .outline_text(true)
-            .render(&spec)
+            .render_plot(&spec)
             .unwrap();
 
         assert!(as_text.contains("<text"), "text mode should emit <text>");
@@ -1527,13 +1527,13 @@ mod svg_text {
         let query = "SELECT x, y FROM (VALUES (1,2),(2,3)) t(x,y) \
                      VISUALISE x AS x, y AS y DRAW point";
         let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
-        let spec = reader.execute(query).unwrap();
+        let spec = reader.execute(query).unwrap().into_plot().unwrap();
 
         let build = |pairs: &[&str]| {
             let options = WriterOptions::parse(pairs).unwrap();
             SvgWriter::from_options(&options)
                 .unwrap()
-                .render(&spec)
+                .render_plot(&spec)
                 .unwrap()
         };
 
@@ -1562,12 +1562,12 @@ mod svg_text {
         let query = "SELECT x, y, c FROM (VALUES (1,2,10),(2,3,50),(3,1,90)) t(x,y,c) \
                      VISUALISE x AS x, y AS y, c AS color DRAW point";
         let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
-        let spec = reader.execute(query).unwrap();
+        let spec = reader.execute(query).unwrap().into_plot().unwrap();
 
-        let bare = SvgWriter::new(640, 480, 96.0).render(&spec).unwrap();
+        let bare = SvgWriter::new(640, 480, 96.0).render_plot(&spec).unwrap();
         let prefixed = SvgWriter::new(640, 480, 96.0)
             .id_prefix("fig1-")
-            .render(&spec)
+            .render_plot(&spec)
             .unwrap();
 
         assert!(bare.contains("id=\"c0\""), "expected an unprefixed id");
@@ -1588,13 +1588,15 @@ mod pdf_structure {
     use crate::reader::{DuckDBReader, Reader};
     use crate::writer::Writer;
 
-    fn spec() -> crate::reader::Spec {
+    fn spec() -> crate::reader::ResolvedPlot {
         let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
         reader
             .execute(
                 "SELECT x, y FROM (VALUES (1,2),(2,3),(3,1)) t(x,y) \
                  VISUALISE x AS x, y AS y DRAW point LABEL title => 'A page'",
             )
+            .unwrap()
+            .into_plot()
             .unwrap()
     }
 
@@ -1603,7 +1605,7 @@ mod pdf_structure {
         // 640 px at 96 dpi is 6⅔ in, which is 480 pt; 480 px is 360 pt.
         let pdf = PdfWriter::new(640, 480, 96.0)
             .compress(false)
-            .render(&spec())
+            .render_plot(&spec())
             .unwrap();
         let text = String::from_utf8_lossy(&pdf);
         assert!(
@@ -1616,9 +1618,9 @@ mod pdf_structure {
     fn an_uncompressed_page_is_readable_and_a_compressed_one_is_smaller() {
         let readable = PdfWriter::new(640, 480, 96.0)
             .compress(false)
-            .render(&spec())
+            .render_plot(&spec())
             .unwrap();
-        let compressed = PdfWriter::new(640, 480, 96.0).render(&spec()).unwrap();
+        let compressed = PdfWriter::new(640, 480, 96.0).render_plot(&spec()).unwrap();
 
         assert!(readable.starts_with(b"%PDF-"));
         assert!(compressed.starts_with(b"%PDF-"));
@@ -1634,7 +1636,7 @@ mod pdf_structure {
         // in whatever the reader substitutes.
         let pdf = PdfWriter::new(640, 480, 96.0)
             .compress(false)
-            .render(&spec())
+            .render_plot(&spec())
             .unwrap();
         let text = String::from_utf8_lossy(&pdf);
         assert!(text.contains("/FontFile2"), "no embedded font programme");
@@ -1688,7 +1690,7 @@ mod hep_roundtrip {
 
     fn compose_for(query: &str) -> hephaestus::plot::PlotComposition {
         let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
-        let spec = reader.execute(query).unwrap();
+        let spec = reader.execute(query).unwrap().into_plot().unwrap();
         compose::validate_plot(spec.plot()).unwrap();
         compose::build_composition(spec.plot(), spec.data()).unwrap()
     }
@@ -1750,7 +1752,7 @@ mod hep_roundtrip {
     fn the_writers_hints_travel_with_the_document() {
         let spec = {
             let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
-            reader.execute(QUERIES[0].1).unwrap()
+            reader.execute(QUERIES[0].1).unwrap().into_plot().unwrap()
         };
         let (bytes, warnings) = HepWriter::new(1600, 900, 150.0)
             .background(rgba(0.0, 0.0, 0.0, 1.0))
