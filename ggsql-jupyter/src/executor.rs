@@ -111,7 +111,7 @@ pub fn display_name_for_uri(uri: &str) -> String {
 pub fn type_name_for_uri(uri: &str) -> String {
     if let Some(odbc) = uri.strip_prefix("odbc://") {
         let driver = extract_odbc_value(odbc, "driver");
-        if let Some(entry) = ggsql::reader::registry::detect(None, driver.as_deref()) {
+        if let Ok(entry) = ggsql::reader::registry::detect(None, driver.as_deref()) {
             return entry.display_name.to_string();
         }
         return "ODBC".to_string();

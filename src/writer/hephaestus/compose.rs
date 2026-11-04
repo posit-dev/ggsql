@@ -171,13 +171,11 @@ pub fn build_composition(
             .collect::<Result<_>>()?;
         let empty = slices.iter().all(|(_, df)| df.height() == 0);
 
-        // Fixed dimensions bind the shared `pos1`/`pos2`; free ones get a
-        // per-panel scale over this panel's slices — the one place the writer
-        // computes an extent of its own.
+        // Fixed dimensions bind the shared `pos1`/`pos2`; free ones get the
+        // per-panel scale core resolved for this panel (`Scale::panels`).
         let mut ps = facet::PanelScales::new(spec, panel);
-        let layer_dfs: Vec<&DataFrame> = slices.iter().map(|(_, df)| df).collect();
         if ps.free_x {
-            match scales::free_position_scale(spec.find_scale("pos1"), &layer_dfs, "pos1") {
+            match scales::free_position_scale(spec.find_scale("pos1"), panel.index) {
                 Some(hs) => view.insert_scale(ps.pos1.clone(), hs),
                 // An empty cell has no extent to free the dimension over, so
                 // fall back to the shared scale rather than leave the axis and
@@ -186,7 +184,7 @@ pub fn build_composition(
             }
         }
         if ps.free_y {
-            match scales::free_position_scale(spec.find_scale("pos2"), &layer_dfs, "pos2") {
+            match scales::free_position_scale(spec.find_scale("pos2"), panel.index) {
                 Some(hs) => view.insert_scale(ps.pos2.clone(), hs),
                 None => ps.use_shared("pos2"),
             }

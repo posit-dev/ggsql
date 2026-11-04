@@ -192,6 +192,7 @@ impl GeomTrait for Tile {
                 mut stat_columns,
                 dummy_columns,
                 consumed_aesthetics,
+                layer_order,
             } = tile_result
             {
                 if !stat_columns.iter().any(|s| s == "aggregate") {
@@ -202,6 +203,7 @@ impl GeomTrait for Tile {
                     stat_columns,
                     dummy_columns,
                     consumed_aesthetics,
+                    layer_order,
                 });
             }
         }
@@ -547,6 +549,7 @@ fn stat_tile(
             .iter()
             .map(|s| s.to_string())
             .collect(),
+        layer_order: vec![],
     })
 }
 

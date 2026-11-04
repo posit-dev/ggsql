@@ -1566,19 +1566,10 @@ pub fn prepare_data_with_reader(query: &str, reader: &dyn Reader) -> Result<Prep
         spec.compute_aesthetic_labels();
     }
 
-    // Resolve scale types from data for scales without explicit types
-    for spec in &mut specs {
-        scale::resolve_scales(spec, &mut data_map)?;
-    }
-
-    // Resolve projection properties that depend on scale types (e.g., radar)
-    for spec in &mut specs {
-        if let Some(ref mut project) = spec.project {
-            resolve_projection_properties(project, &spec.scales)?;
-        }
-    }
-
-    // Resolve facet properties (after data is available)
+    // Resolve facet properties (after data is available). This must run BEFORE
+    // scale resolution: `resolve_scales` resolves per-panel domains and breaks
+    // for positional scales on a `free` facet dimension, which needs the
+    // normalized `free` vector.
     for spec in &mut specs {
         // Get position aesthetic names from the aesthetic context (coord-specific)
         // This must be done before mutably borrowing facet
@@ -1605,6 +1596,18 @@ pub fn prepare_data_with_reader(query: &str, reader: &dyn Reader) -> Result<Prep
         }
     }
 
+    // Resolve scale types from data for scales without explicit types
+    for spec in &mut specs {
+        scale::resolve_scales(spec, &mut data_map)?;
+    }
+
+    // Resolve projection properties that depend on scale types (e.g., radar)
+    for spec in &mut specs {
+        if let Some(ref mut project) = spec.project {
+            resolve_projection_properties(project, &spec.scales)?;
+        }
+    }
+
     // Apply post-stat binning for Binned scales on remapped aesthetics
     // This handles cases like SCALE BINNED fill when fill is remapped from count
     for spec in &specs {
@@ -1627,6 +1630,25 @@ pub fn prepare_data_with_reader(query: &str, reader: &dyn Reader) -> Result<Prep
 
     // Extract VISUALISE text for PreparedData (SQL already extracted earlier)
     let visual_part = source_tree.extract_visualise().unwrap_or_default();
+
+    // Best-effort cleanup of internal tables that outlive the session
+    // (regular-table dialects — MySQL, MSSQL, Oracle; see
+    // SqlDialect::internal_tables_need_cleanup). Temp tables are reclaimed
+    // by the backend at disconnect and cache-staged tables live in-process,
+    // so neither needs this. Failures are ignored: a lost connection must
+    // not mask a successful execution.
+    if dialect.internal_tables_need_cleanup() {
+        let mut tables: Vec<String> = materialized_ctes
+            .iter()
+            .map(|name| naming::cte_table(name))
+            .collect();
+        if has_global_table {
+            tables.push(naming::global_table());
+        }
+        for table in tables {
+            let _ = reader.execute_sql(&dialect.drop_table_sql(&table));
+        }
+    }
 
     Ok(PreparedData {
         data: data_map,
@@ -1651,6 +1673,165 @@ mod tests {
         // With the new approach, every layer has its own data (no GLOBAL_DATA_KEY)
         assert!(result.data.contains_key(&naming::layer_key(0)));
         assert_eq!(result.specs.len(), 1);
+    }
+
+    #[cfg(feature = "duckdb")]
+    #[test]
+    fn test_free_facet_resolves_per_panel_scales() {
+        // Issue #516: a free facet dimension must resolve its domain and breaks
+        // per panel in core, not leave the writer to pin the global break set.
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        reader
+            .connection()
+            .execute(
+                "CREATE TABLE panel_test AS SELECT * FROM (VALUES
+                (1.0, 10.0, 'A'),
+                (2.0, 20.0, 'A'),
+                (3.0, 30.0, 'A'),
+                (100.0, 40.0, 'B'),
+                (101.0, 50.0, 'B'),
+                (102.0, 60.0, 'B')
+            ) AS t(x, y, g)",
+                duckdb::params![],
+            )
+            .unwrap();
+
+        let query =
+            "SELECT * FROM panel_test VISUALISE x, y DRAW point FACET g SETTING free => 'x'";
+        let result = prepare_data_with_reader(query, &reader).unwrap();
+        let spec = &result.specs[0];
+
+        let scale = spec.find_scale("pos1").expect("pos1 scale");
+        let panels = scale.panels.as_ref().expect("free x should resolve panels");
+        assert_eq!(panels.len(), 2, "one entry per panel");
+
+        let domain = |p: &Option<crate::plot::PanelScale>| {
+            let p = p.as_ref().expect("non-empty panel");
+            (
+                p.input_range.first().unwrap().to_f64().unwrap(),
+                p.input_range.last().unwrap().to_f64().unwrap(),
+            )
+        };
+        let (lo_a, hi_a) = domain(&panels[0]);
+        let (lo_b, hi_b) = domain(&panels[1]);
+
+        // Each panel's domain covers only its own data (with expansion), and
+        // the two panels resolve to disjoint domains.
+        assert!(
+            lo_a <= 1.0 && hi_a >= 3.0 && hi_a < 50.0,
+            "panel A: {lo_a}..{hi_a}"
+        );
+        assert!(
+            lo_b > 50.0 && lo_b <= 100.0 && hi_b >= 102.0,
+            "panel B: {lo_b}..{hi_b}"
+        );
+
+        // Breaks are resolved per panel and land inside the panel's domain.
+        for (p, (lo, hi)) in panels.iter().zip([(lo_a, hi_a), (lo_b, hi_b)]) {
+            let p = p.as_ref().unwrap();
+            assert!(!p.breaks.is_empty(), "panel should have its own breaks");
+            for (pos, _) in &p.breaks {
+                assert!(
+                    *pos >= lo && *pos <= hi,
+                    "break {pos} outside panel domain {lo}..{hi}"
+                );
+            }
+        }
+
+        // A fixed dimension stays shared: pos2 gets no per-panel resolution.
+        let y_scale = spec.find_scale("pos2").expect("pos2 scale");
+        assert!(y_scale.panels.is_none());
+    }
+
+    #[cfg(feature = "duckdb")]
+    #[test]
+    fn test_free_facet_explicit_domain_applies_to_all_panels() {
+        // An explicit user FROM domain is not per-panel: it applies uniformly,
+        // even on a free dimension.
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        reader
+            .connection()
+            .execute(
+                "CREATE TABLE panel_explicit AS SELECT * FROM (VALUES
+                (1.0, 10.0, 'A'),
+                (100.0, 40.0, 'B')
+            ) AS t(x, y, g)",
+                duckdb::params![],
+            )
+            .unwrap();
+
+        let query = "SELECT * FROM panel_explicit
+            VISUALISE x, y DRAW point FACET g SETTING free => 'x'
+            SCALE x FROM (0, 200)";
+        let result = prepare_data_with_reader(query, &reader).unwrap();
+        let scale = result.specs[0].find_scale("pos1").expect("pos1 scale");
+        let panels = scale.panels.as_ref().expect("panels");
+        assert_eq!(panels.len(), 2);
+        for p in panels {
+            let p = p.as_ref().unwrap();
+            let lo = p.input_range.first().unwrap().to_f64().unwrap();
+            let hi = p.input_range.last().unwrap().to_f64().unwrap();
+            assert_eq!((lo, hi), (0.0, 200.0));
+        }
+    }
+
+    #[cfg(feature = "duckdb")]
+    #[test]
+    fn test_free_facet_discrete_domain_narrowed_per_panel() {
+        // A free discrete dimension narrows the global domain to the
+        // categories present in each panel, in the global order.
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        reader
+            .connection()
+            .execute(
+                "CREATE TABLE panel_discrete AS SELECT * FROM (VALUES
+                ('b', 10.0, 'A'),
+                ('a', 20.0, 'A'),
+                ('c', 40.0, 'B')
+            ) AS t(x, y, g)",
+                duckdb::params![],
+            )
+            .unwrap();
+
+        let query =
+            "SELECT * FROM panel_discrete VISUALISE x, y DRAW point FACET g SETTING free => 'x'";
+        let result = prepare_data_with_reader(query, &reader).unwrap();
+        let scale = result.specs[0].find_scale("pos1").expect("pos1 scale");
+        let panels = scale.panels.as_ref().expect("panels");
+        assert_eq!(panels.len(), 2);
+
+        let categories = |p: &Option<crate::plot::PanelScale>| {
+            p.as_ref()
+                .unwrap()
+                .input_range
+                .iter()
+                .map(|e| e.to_key_string())
+                .collect::<Vec<_>>()
+        };
+        // Global order is alphabetical; panel A holds a and b, panel B only c.
+        assert_eq!(categories(&panels[0]), vec!["a", "b"]);
+        assert_eq!(categories(&panels[1]), vec!["c"]);
+    }
+
+    #[cfg(feature = "duckdb")]
+    #[test]
+    fn test_fixed_facet_resolves_no_panels() {
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        reader
+            .connection()
+            .execute(
+                "CREATE TABLE panel_fixed AS SELECT * FROM (VALUES
+                (1.0, 10.0, 'A'),
+                (100.0, 40.0, 'B')
+            ) AS t(x, y, g)",
+                duckdb::params![],
+            )
+            .unwrap();
+
+        let query = "SELECT * FROM panel_fixed VISUALISE x, y DRAW point FACET g";
+        let result = prepare_data_with_reader(query, &reader).unwrap();
+        let scale = result.specs[0].find_scale("pos1").expect("pos1 scale");
+        assert!(scale.panels.is_none(), "fixed facet keeps a shared scale");
     }
 
     #[cfg(feature = "duckdb")]
@@ -2370,6 +2551,43 @@ mod tests {
             facet_col,
             layer_df.get_column_names()
         );
+    }
+
+    #[cfg(feature = "duckdb")]
+    #[test]
+    fn test_facet_setting_literal_panel() {
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        reader
+            .connection()
+            .execute(
+                "CREATE TABLE facet_setting_test AS SELECT * FROM (VALUES
+                    (1, 10), (2, 20), (3, 30), (4, 40)
+                ) AS t(x, y)",
+                duckdb::params![],
+            )
+            .unwrap();
+
+        // SETTING panel => literal should behave like MAPPING 'literal' AS panel
+        let query = r#"
+            SELECT * FROM facet_setting_test
+            VISUALISE
+            DRAW point MAPPING x AS x, y AS y SETTING panel => 'Adelie'
+        "#;
+
+        let result = prepare_data_with_reader(query, &reader).unwrap();
+
+        // Facet should be inferred (wrap layout) from the layer-declared aesthetic
+        assert!(result.specs[0].facet.is_some());
+        assert!(result.specs[0].facet.as_ref().unwrap().is_wrap());
+
+        // Data should have a constant facet1 column with the literal value
+        let layer_df = result.data.get(&naming::layer_key(0)).unwrap();
+        let facet_col = naming::aesthetic_column("facet1");
+        let col = layer_df
+            .column(&facet_col)
+            .unwrap_or_else(|_| panic!("Should have '{}' column", facet_col));
+        assert_eq!(col.len(), 4);
     }
 
     #[cfg(feature = "duckdb")]

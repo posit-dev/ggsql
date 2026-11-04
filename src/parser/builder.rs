@@ -338,13 +338,8 @@ fn process_viz_clause(node: &Node, source: &SourceTree, spec: &mut Plot) -> Resu
             }
             "label_clause" => {
                 let new_labels = build_labels(&child, source)?;
-                // Merge with existing labels if any
-                if let Some(ref mut existing_labels) = spec.labels {
-                    for (key, value) in new_labels.labels {
-                        existing_labels.labels.insert(key, value);
-                    }
-                } else {
-                    spec.labels = Some(new_labels);
+                for (key, value) in new_labels.labels {
+                    spec.labels.labels.insert(key, value);
                 }
             }
             _ => {
@@ -766,6 +761,7 @@ fn build_scale(node: &Node, source: &SourceTree) -> Result<Scale> {
         resolved: false,
         label_mapping,
         label_template,
+        panels: None,
     })
 }
 
@@ -932,6 +928,17 @@ fn build_facet(node: &Node, source: &SourceTree) -> Result<Facet> {
             }
             _ => {}
         }
+    }
+
+    // Only a single variable per dimension is currently supported: every
+    // variable maps to the same internal aesthetic (facet1/facet2), so extra
+    // variables would be silently dropped. Error instead of mis-faceting.
+    if row_vars.len() > 1 || column_vars.len() > 1 {
+        return Err(GgsqlError::ParseError(
+            "FACET currently supports a single variable per dimension; \
+             multiple facet variables are not yet supported"
+                .to_string(),
+        ));
     }
 
     // Determine layout variant: if column_vars is empty, it's a wrap layout
@@ -1432,7 +1439,7 @@ mod tests {
         assert!(specs[0].global_mappings.is_empty());
         assert_eq!(specs[0].layers.len(), 1);
         assert!(specs[0].project.is_some());
-        assert!(specs[0].labels.is_some());
+        assert!(!specs[0].labels.labels.is_empty());
     }
 
     #[test]
@@ -3821,5 +3828,58 @@ mod tests {
             specs[0].layers[0].parameters.get("opacity"),
             Some(&ParameterValue::Number(0.5))
         );
+    }
+
+    // ========================================
+    // FACET Variable Count Tests
+    // ========================================
+
+    #[test]
+    fn test_facet_wrap_multiple_variables_error() {
+        let query = r#"
+            VISUALISE
+            DRAW point MAPPING x AS x, y AS y
+            FACET region, category
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_err());
+        let msg = result.unwrap_err().to_string();
+        assert!(
+            msg.contains("single variable per dimension"),
+            "Unexpected error: {}",
+            msg
+        );
+    }
+
+    #[test]
+    fn test_facet_grid_multiple_variables_error() {
+        let query = r#"
+            VISUALISE
+            DRAW point MAPPING x AS x, y AS y
+            FACET region, category BY grp
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_err());
+
+        let query_cols = r#"
+            VISUALISE
+            DRAW point MAPPING x AS x, y AS y
+            FACET region BY grp, category
+        "#;
+        assert!(parse_test_query(query_cols).is_err());
+    }
+
+    #[test]
+    fn test_facet_single_variables_ok() {
+        let query = r#"
+            VISUALISE
+            DRAW point MAPPING x AS x, y AS y
+            FACET region BY category
+        "#;
+
+        let result = parse_test_query(query);
+        assert!(result.is_ok());
     }
 }
