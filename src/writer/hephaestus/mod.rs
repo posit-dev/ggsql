@@ -223,7 +223,7 @@ mod tests {
             "SELECT 1 AS x, 2 AS y, 3 AS x2, 4 AS y2 \
              VISUALISE x AS pos1, y AS pos2 \
              DRAW segment MAPPING x2 AS pos1end, y2 AS pos2end \
-             SETTING arrow => ['open', 'closed']",
+             SETTING arrowstart => 'open', arrowend => 'closed'",
         );
     }
 

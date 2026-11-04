@@ -63,6 +63,10 @@
   "linewidth"
   "width"
   "height"
+  ; Line-end markers
+  "arrow"
+  "arrowstart"
+  "arrowend"
   ; Text aesthetics
   "label"
   "typeface"

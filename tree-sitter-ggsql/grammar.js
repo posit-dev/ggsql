@@ -919,6 +919,8 @@ module.exports = grammar({
       'color', 'colour', 'fill', 'stroke', 'opacity',
       // Size and shape
       'size', 'shape', 'linetype', 'linewidth', 'width', 'height',
+      // Line-end markers
+      'arrow', 'arrowstart', 'arrowend',
       // Text aesthetics
       'label', 'typeface', 'fontweight', 'italic', 'fontsize', 'hjust', 'vjust', 'rotation',
       // Specialty aesthetics,

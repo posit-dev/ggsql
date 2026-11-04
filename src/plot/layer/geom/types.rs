@@ -6,11 +6,6 @@ use crate::plot::aesthetic::parse_position;
 use crate::reader::SqlDialect;
 use crate::{naming, plot::types::DefaultAestheticValue, Mappings};
 
-// Re-export shared types from the central location
-use crate::plot::types::{
-    ArrayConstraint, ArrayElement, ArrayElementConstraint, ParameterValue, Parameters,
-    StringConstraint, TypeConstraint,
-};
 pub use crate::plot::types::{DefaultParamValue, ParamConstraint, ParamDefinition};
 
 // =============================================================================
@@ -36,7 +31,10 @@ pub const SIDE_VALUES: &[&str] = &["both", "left", "top", "right", "bottom"];
 ///
 /// Note: Spelling variants (`colour`/`col` → `color`) are handled separately at parse
 /// time by `normalise_aes_name()` in `parser/builder.rs`.
-pub const AESTHETIC_ALIASES: &[(&str, &[&str])] = &[("color", &["stroke", "fill"])];
+pub const AESTHETIC_ALIASES: &[(&str, &[&str])] = &[
+    ("color", &["stroke", "fill"]),
+    ("arrow", &["arrowstart", "arrowend"]),
+];
 
 /// Shared `aggregate` parameter definition. Every geom that opts into the
 /// Aggregate stat (i.e. `aggregate_domain_aesthetics()` returns `Some(_)`)
@@ -49,35 +47,13 @@ pub const AGGREGATE_PARAM: ParamDefinition = ParamDefinition {
     constraint: ParamConstraint::string_or_string_array_unconstrained(),
 };
 
-/// Marker shape vocabulary for the `arrow` parameter. Names map to
-/// hephaestus's built-in `arrow-*` shapes in the writer.
+/// Marker shape vocabulary for the `arrowstart`/`arrowend` aesthetics and
+/// their `arrow` alias. Names map to hephaestus's built-in `arrow-*` shapes
+/// in the writer.
 pub const ARROW_VALUES: &[&str] = &[
     "open", "closed", "stealth", "latex", "thin", "wedge", "fishtail", "fork", "feather", "bar",
     "bracket", "cross", "dot", "square", "diamond",
 ];
-
-/// Shared `arrow` parameter definition for geoms that draw lines or
-/// segments. A single string sets the end marker only; an array
-/// `[start, end]` sets both, with null skipping an end. Each entry is
-/// `name` or `name:size` (size in points); the constraint checks the
-/// structural shape only, per-entry vocabulary is validated by
-/// [`validate_arrow_param`] (the `aggregate` pattern).
-pub const ARROW_PARAM: ParamDefinition = ParamDefinition {
-    name: "arrow",
-    default: DefaultParamValue::Null,
-    constraint: ParamConstraint {
-        number: TypeConstraint::Forbidden,
-        string: TypeConstraint::Any,
-        boolean: TypeConstraint::Forbidden,
-        array: TypeConstraint::Constrained(ArrayConstraint {
-            element: ArrayElementConstraint::String(StringConstraint::unconstrained()),
-            min_len: Some(1),
-            max_len: Some(2),
-            allow_null_elements: true,
-        }),
-        allow_null: true,
-    },
-};
 
 /// Parse one `arrow` entry of the form `name` or `name:size` (size in points).
 pub fn parse_arrow_entry(entry: &str) -> std::result::Result<(&str, Option<f64>), String> {
@@ -104,22 +80,6 @@ pub fn parse_arrow_entry(entry: &str) -> std::result::Result<(&str, Option<f64>)
     Ok((name, size))
 }
 
-/// Per-entry `name[:size]` vocabulary for the `arrow` setting, which
-/// [`ARROW_PARAM`]'s structural constraint can't express.
-pub fn validate_arrow_param(parameters: &Parameters) -> std::result::Result<(), String> {
-    match parameters.get("arrow") {
-        Some(ParameterValue::String(entry)) => parse_arrow_entry(entry).map(|_| ()),
-        Some(ParameterValue::Array(elems)) => {
-            for elem in elems {
-                if let ArrayElement::String(entry) = elem {
-                    parse_arrow_entry(entry)?;
-                }
-            }
-            Ok(())
-        }
-        _ => Ok(()),
-    }
-}
 /// Stroke cap style values for the `linecap` parameter.
 pub const LINECAP_VALUES: &[&str] = &["butt", "round", "square"];
 
@@ -750,12 +710,7 @@ mod tests {
 
 #[cfg(test)]
 mod arrow_tests {
-    use super::{parse_arrow_entry, validate_arrow_param};
-    use crate::plot::types::{ArrayElement, ParameterValue, Parameters};
-
-    fn params(value: ParameterValue) -> Parameters {
-        Parameters::from([("arrow".to_string(), value)])
-    }
+    use super::parse_arrow_entry;
 
     #[test]
     fn parses_a_bare_name() {
@@ -779,25 +734,5 @@ mod arrow_tests {
         assert!(parse_arrow_entry("closed:big").is_err());
         assert!(parse_arrow_entry("closed:-1").is_err());
         assert!(parse_arrow_entry("closed:0").is_err());
-    }
-
-    #[test]
-    fn validate_checks_every_array_entry() {
-        let good = params(ParameterValue::Array(vec![
-            ArrayElement::Null,
-            ArrayElement::String("open:3".to_string()),
-        ]));
-        assert!(validate_arrow_param(&good).is_ok());
-        let bad = params(ParameterValue::Array(vec![
-            ArrayElement::String("open".to_string()),
-            ArrayElement::String("nope".to_string()),
-        ]));
-        assert!(validate_arrow_param(&bad).is_err());
-    }
-
-    #[test]
-    fn validate_passes_without_the_param() {
-        assert!(validate_arrow_param(&Parameters::new()).is_ok());
-        assert!(validate_arrow_param(&params(ParameterValue::Null)).is_ok());
     }
 }

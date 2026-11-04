@@ -57,6 +57,7 @@ pub const USER_FACET_AESTHETICS: &[&str] = &["panel", "row", "column"];
 /// These include:
 /// - Color aesthetics: color, colour, fill, stroke, opacity
 /// - Size/shape aesthetics: size, shape, linetype, linewidth
+/// - Line-end marker aesthetics: arrow (alias), arrowstart, arrowend
 /// - Dimension aesthetics: width, height
 /// - Text aesthetics: label, typeface, fontweight, italic, hjust, vjust
 pub const MATERIAL_AESTHETICS: &[&str] = &[
@@ -69,6 +70,9 @@ pub const MATERIAL_AESTHETICS: &[&str] = &[
     "shape",
     "linetype",
     "linewidth",
+    "arrow",
+    "arrowstart",
+    "arrowend",
     "width",
     "height",
     "label",

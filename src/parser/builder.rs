@@ -2754,6 +2754,28 @@ mod tests {
     }
 
     #[test]
+    fn test_arrow_aesthetic_mapping_parsing() {
+        let query = r#"
+            VISUALISE date AS x, revenue AS y
+            DRAW line MAPPING kind AS arrowstart
+            DRAW segment MAPPING kind AS arrow, x2 AS xend, y2 AS yend
+        "#;
+
+        let specs = parse_test_query(query).unwrap();
+
+        // Arrow aesthetic names parse and pass through untransformed; the
+        // `arrow` alias split happens during execution, not parsing.
+        assert_eq!(
+            specs[0].layers[0].mappings.aesthetics["arrowstart"].column_name(),
+            Some("kind")
+        );
+        assert_eq!(
+            specs[0].layers[1].mappings.aesthetics["arrow"].column_name(),
+            Some("kind")
+        );
+    }
+
+    #[test]
     fn test_implicit_global_mapping_parsing() {
         let query = r#"
             VISUALISE x, y
