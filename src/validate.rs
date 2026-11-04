@@ -394,17 +394,17 @@ mod tests {
     }
 
     #[test]
-    fn test_validate_box_aesthetic_on_text() {
-        // box is the text geom's box-background channel; it should validate
+    fn test_validate_background_aesthetic_on_text() {
+        // background is the text geom's box-background channel; it should validate
         // both mapped and as a constant
         for query in [
-            "SELECT 1 as x, 2 as y, 'a' as lbl, 'c' as cat VISUALISE DRAW text MAPPING x AS x, y AS y, lbl AS label, cat AS box",
-            "SELECT 1 as x, 2 as y, 'a' as lbl VISUALISE DRAW text MAPPING x AS x, y AS y, lbl AS label SETTING box => 'white'",
+            "SELECT 1 as x, 2 as y, 'a' as lbl, 'c' as cat VISUALISE DRAW text MAPPING x AS x, y AS y, lbl AS label, cat AS background",
+            "SELECT 1 as x, 2 as y, 'a' as lbl VISUALISE DRAW text MAPPING x AS x, y AS y, lbl AS label SETTING background => 'white'",
         ] {
             let validated = validate(query).unwrap();
             assert!(
                 validated.valid(),
-                "box should be accepted on text geom: {:?}",
+                "background should be accepted on text geom: {:?}",
                 validated.errors()
             );
         }

@@ -18,7 +18,7 @@ The following aesthetics are recognised by the text layer.
 * `stroke` The colour of the contour lines of glyphs or text box borders. Typically kept blank.
 * `fill` The colour of the glyphs.
 * `colour` Shorthand for setting `stroke` and `fill` simultaneously.
-* `box` The colour of the text box. Setting this aesthetic switches on text boxes. Setting `null` (the default) does not draw text boxes.
+* `background` The colour of the text box. Setting this aesthetic switches on text boxes. Setting `null` (the default) does not draw text boxes.
 * `opacity` The opacity of the fill colour.
 * `typeface` The typeface to style the lettering.
 * `fontsize` The size of the text in points.
@@ -134,12 +134,12 @@ DRAW text
   SETTING format => '{:Title} *island*'
 ```
 
-When the `box` aesthetic is used, we're drawing text boxes.
+When the `background` aesthetic is used, we're drawing text boxes.
 
 ```{ggsql}
 VISUALISE bill_len AS x, bill_dep AS y FROM ggsql:penguins
 DRAW text
-  MAPPING island AS label, species AS box
+  MAPPING island AS label, species AS background
   SETTING colour => 'white'
 ```
 
@@ -158,7 +158,7 @@ Text boxes solve a similar problem as using outlines, so 'stroke' is applied to 
 SELECT 1 as x, 1 as y
 VISUALISE x, y, 'My Label' AS label
 DRAW text
-  SETTING fontsize => 30, stroke => 'red', box => 'white'
+  SETTING fontsize => 30, stroke => 'red', background => 'white'
 ```
 
 Labelling precomputed bars with the data value.

@@ -1235,7 +1235,7 @@ mod tests {
         assert_renders(
             "SELECT 1 AS x, 2 AS y, 'a' AS lbl UNION ALL SELECT 2, 3, 'b' \
              VISUALISE x AS x, y AS y, lbl AS label DRAW text \
-             SETTING box => 'white', stroke => 'black', radius => 3, padding => 5, linewidth => 2",
+             SETTING background => 'white', stroke => 'black', radius => 3, padding => 5, linewidth => 2",
         );
     }
 
@@ -1246,18 +1246,18 @@ mod tests {
         assert_renders(
             "SELECT 1 AS x, 2 AS y, 'a' AS lbl, 'one' AS g \
              UNION ALL SELECT 2, 3, 'b', 'two' \
-             VISUALISE x AS x, y AS y, lbl AS label, g AS box DRAW text",
+             VISUALISE x AS x, y AS y, lbl AS label, g AS background DRAW text",
         );
     }
 
     #[test]
     fn renders_text_box_opt_out() {
-        // `box => null` is the explicit opt-out: bare text, and stroke falls
-        // back to outlining glyphs rather than a box border.
+        // `background => null` is the explicit opt-out: bare text, and stroke
+        // falls back to outlining glyphs rather than a box border.
         assert_renders(
             "SELECT 1 AS x, 2 AS y, 'a' AS lbl UNION ALL SELECT 2, 3, 'b' \
              VISUALISE x AS x, y AS y, lbl AS label DRAW text \
-             SETTING box => null, stroke => 'white'",
+             SETTING background => null, stroke => 'white'",
         );
     }
 
@@ -1399,7 +1399,7 @@ mod svg_text {
         // filled and bordered as declared, drawn before the glyph path.
         let s = svg("SELECT 1 AS x, 2 AS y, 'hi' AS lbl \
              VISUALISE x AS x, y AS y, lbl AS label DRAW text \
-             SETTING box => 'red', stroke => 'blue', radius => 3");
+             SETTING background => 'red', stroke => 'blue', radius => 3");
         let fill_at = s.find("fill=\"#ff0000\"").expect("box fill missing");
         assert!(s.contains("stroke=\"#0000ff\""), "box border missing");
         let label_at = s.find(">hi<").expect("label missing");

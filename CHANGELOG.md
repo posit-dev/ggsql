@@ -2,7 +2,7 @@
 
 ### Added
 
-- Text layers now have text boxes. The presence of the `box` aesthetic 
+- Text layers now have text boxes. The presence of the `background` aesthetic 
 determines whether text boxes get drawn and additional settings `padding`, 
 `radius` and `linewidth` style the box.
 - The Positron extension now registers a ggsql data importer, so dragging a

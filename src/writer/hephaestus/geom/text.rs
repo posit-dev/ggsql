@@ -58,10 +58,11 @@ pub fn build(plot: &mut HPlot, ctx: &Ctx) -> Result<()> {
     // outline's width is hephaestus's theme default, as ggsql's text geom has no
     // `linewidth` aesthetic.
     let boxed = is_textbox(layer);
-    // `SETTING box => true` declares a box without naming a colour; the
+    // `SETTING background => true` declares a box without naming a colour; the
     // material path cannot read a boolean literal as a colour, so the white
     // default is bound directly here.
-    if let Some(AestheticValue::Literal(ParameterValue::Boolean(true))) = layer.mappings.get("box")
+    if let Some(AestheticValue::Literal(ParameterValue::Boolean(true))) =
+        layer.mappings.get("background")
     {
         b.set("bg_fill", Raw(vec![rgb8(255, 255, 255); n]));
     }
@@ -114,8 +115,8 @@ pub fn build(plot: &mut HPlot, ctx: &Ctx) -> Result<()> {
 /// Only justification is left out: the key centres its glyph in the cell.
 ///
 /// `stroke`'s channel depends on box-mode: bare text outlines glyphs
-/// (`text_stroke`), boxed text outlines the box (`bg_stroke`). `box` itself
-/// defaults to `None` — unset means hephaestus draws no background rect.
+/// (`text_stroke`), boxed text outlines the box (`bg_stroke`). `background`
+/// itself defaults to `None` — unset means hephaestus draws no background rect.
 fn material(boxed: bool) -> [MaterialSpec; 9] {
     [
         MaterialSpec::new(
@@ -130,7 +131,7 @@ fn material(boxed: bool) -> [MaterialSpec; 9] {
             RangeKind::Color,
             MatDefault::None,
         ),
-        MaterialSpec::new("box", "bg_fill", RangeKind::Color, MatDefault::None),
+        MaterialSpec::new("background", "bg_fill", RangeKind::Color, MatDefault::None),
         MaterialSpec::new(
             "fontsize",
             "size",
@@ -159,11 +160,11 @@ fn material(boxed: bool) -> [MaterialSpec; 9] {
     ]
 }
 
-/// Box-mode: the layer draws boxes when `box` is declared with a non-null
-/// value, mapped or set. An explicit null (`box => null`) is the opt-out and
-/// counts as undeclared, matching the null-sentinel convention.
+/// Box-mode: the layer draws boxes when `background` is declared with a
+/// non-null value, mapped or set. An explicit null (`background => null`) is
+/// the opt-out and counts as undeclared, matching the null-sentinel convention.
 fn is_textbox(layer: &crate::Layer) -> bool {
-    match layer.mappings.get("box") {
+    match layer.mappings.get("background") {
         None => false,
         Some(AestheticValue::Literal(ParameterValue::Null)) => false,
         Some(AestheticValue::Literal(ParameterValue::Boolean(false))) => false,

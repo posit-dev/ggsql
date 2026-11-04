@@ -20,7 +20,7 @@ pub fn color_to_hex(value: &str) -> Result<String, String> {
 pub fn is_color_aesthetic(aesthetic: &str) -> bool {
     matches!(
         aesthetic,
-        "color" | "col" | "colour" | "fill" | "stroke" | "box"
+        "color" | "col" | "colour" | "fill" | "stroke" | "background"
     )
 }
 

@@ -28,7 +28,7 @@ impl GeomTrait for Text {
                 ("label", DefaultAestheticValue::Required),
                 ("stroke", DefaultAestheticValue::Null),
                 ("fill", DefaultAestheticValue::String("black")),
-                ("box", DefaultAestheticValue::Null),
+                ("background", DefaultAestheticValue::Null),
                 ("opacity", DefaultAestheticValue::Number(1.0)),
                 ("typeface", DefaultAestheticValue::Null),
                 ("fontsize", DefaultAestheticValue::Number(11.0)),
@@ -67,7 +67,7 @@ impl GeomTrait for Text {
                 constraint: ParamConstraint::boolean(),
             },
             // Box geometry settings, in points; only relevant in box-mode
-            // (see `box` aesthetic).
+            // (see `background` aesthetic).
             ParamDefinition {
                 name: "radius",
                 default: DefaultParamValue::Number(0.0),
