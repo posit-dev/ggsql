@@ -23,6 +23,8 @@ The following aesthetics are recognised by the histogram layer.
 
 ## Settings
 
+- `linecap`: The style of line endings, including the ends of dashes in dashed lines. One of `'butt'` (default), `'round'`, or `'square'`.
+- `linejoin`: The style of corners where line segments meet. One of `'miter'`/`'mitre'` (default), `'round'`, or `'bevel'`.
 - `position`: Position adjustment. One of `'identity'`, `'stack'` (default), `'dodge'`, or `'jitter'`
 - `bins`: The number of bins to calculate. Whole number \>= 1. Defaults to `30`
 - `binwidth`: The width of each bin (must be \> 0). If provided it will override the binwidth calculated from `bins`

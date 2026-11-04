@@ -25,7 +25,8 @@ Note that the `geometry` column is required, but an attempt is made to detect su
 
 ## Settings
 
-The spatial layer has no additional settings.
+- `linecap`: The style of line endings, including the ends of dashes in dashed lines. One of `'butt'` (default), `'round'`, or `'square'`.
+- `linejoin`: The style of corners where line segments meet. One of `'miter'`/`'mitre'` (default), `'round'`, or `'bevel'`.
 
 ## Data transformation
 

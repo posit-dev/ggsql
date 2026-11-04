@@ -22,6 +22,8 @@ The following aesthetics are recognised by the path layer.
 
 ## Settings
 
+- `linecap`: The style of line endings, including the ends of dashes in dashed lines. One of `'butt'` (default), `'round'`, or `'square'`.
+- `linejoin`: The style of corners where line segments meet. One of `'miter'`/`'mitre'` (default), `'round'`, or `'bevel'`.
 - `position`: Position adjustment. One of `'identity'` (default), `'stack'`, `'dodge'`, or `'jitter'`
 
 ## Data transformation
@@ -102,6 +104,20 @@ DRAW path
 
 [![](path_files/figure-html/cell-7-output-1.svg)](path_files/figure-html/cell-7-output-1.svg)
 
+Lines have various styling mechanics, inlcuding layer-level settings for joining and capping lines.
+
+``` ggsql
+VISUALISE x, y FROM df
+DRAW path
+  SETTING 
+    linetype => '46',
+    linewidth => 5,
+    linejoin => 'round',
+    linecap => 'round'
+```
+
+[![](path_files/figure-html/cell-8-output-1.svg)](path_files/figure-html/cell-8-output-1.svg)
+
 When `stroke` or `opacity` varies, the properties of the preceding datapoint carry over. In the case below, we don’t see the blue of the last datapoint.
 
 ``` ggsql
@@ -117,7 +133,7 @@ DRAW path
 SCALE stroke TO ('red', 'green', 'blue')
 ```
 
-[![](path_files/figure-html/cell-8-output-1.svg)](path_files/figure-html/cell-8-output-1.svg)
+[![](path_files/figure-html/cell-9-output-1.svg)](path_files/figure-html/cell-9-output-1.svg)
 
 The `linewidth` aesthetic can vary point to point.
 
@@ -134,4 +150,4 @@ DRAW path
 SCALE linewidth TO (0, 30)
 ```
 
-[![](path_files/figure-html/cell-9-output-1.svg)](path_files/figure-html/cell-9-output-1.svg)
+[![](path_files/figure-html/cell-10-output-1.svg)](path_files/figure-html/cell-10-output-1.svg)

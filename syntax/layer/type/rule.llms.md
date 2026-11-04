@@ -26,6 +26,7 @@ The following aesthetics are recognised by the rule layer.
 
 ## Settings
 
+- `linecap`: The style of line endings, including the ends of dashes in dashed lines. One of `'butt'` (default), `'round'`, or `'square'`.
 - `position`: Position adjustment. One of `'identity'` (default), `'stack'`, `'dodge'`, or `'jitter'`
 - `aggregate` Aggregation functions to apply per group:
   - `null` apply no group aggregation (default).
