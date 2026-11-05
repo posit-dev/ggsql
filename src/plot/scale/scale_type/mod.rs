@@ -790,7 +790,7 @@ pub trait ScaleTypeTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
             _ => {
                 // Identity transform or no transform - use default pretty/linear breaks
                 let raw_breaks = if pretty {
-                    super::breaks::pretty_breaks(min, max, count)
+                    super::breaks::extended_breaks(min, max, count)
                 } else {
                     super::breaks::linear_breaks(min, max, count)
                 };
@@ -895,7 +895,17 @@ pub trait ScaleTypeTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
         // If breaks is a scalar Number (count), calculate actual break positions and store as Array
         // If breaks is already an Array, user provided explicit breaks - convert using transform
         // Then filter breaks to the input range (break algorithms may produce "nice" values outside range)
+        //
+        // The calendar interval temporal majors step by, kept for step 5b so
+        // the automatic minors subdivide that same interval.
+        let mut major_interval = None;
         if self.supports_breaks() {
+            major_interval = calendar_major_interval(
+                scale.properties.get("breaks"),
+                scale.input_range.as_deref(),
+                &scale.properties,
+                &resolved_transform,
+            );
             match scale.properties.get("breaks") {
                 Some(ParameterValue::Number(_)) => {
                     // Scalar count → calculate actual breaks and store as Array
@@ -956,7 +966,9 @@ pub trait ScaleTypeTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
         // interval string — except that its count is *per major interval* rather than a
         // target for the whole axis, because that is the unit a minor break is defined
         // in. Absent, the transform's own density applies (one midpoint for linear, the
-        // 2-9 ladder for the log family, three per interval for temporal).
+        // whole-number multiples between powers for the log family), and temporal majors
+        // stepping by a calendar interval take minors on that interval's sub-interval
+        // grid (quarters under years, weeks under months, …).
         //
         // `Some(vec![])` and `None` mean different things downstream: the first is
         // "resolved to no minors" (`minor_breaks => 0`, which a writer must honour by
@@ -997,7 +1009,17 @@ pub trait ScaleTypeTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
                         temporal_interval_breaks(interval, range, &resolved_transform)
                             .unwrap_or_default()
                     }
-                    _ => derive(resolved_transform.default_minor_break_count()),
+                    _ => match (major_interval, resolved_transform.temporal_unit(), extent) {
+                        (Some(interval), Some(unit), Some((min, max))) => {
+                            zygos::breaks::temporal_minor_breaks_from_f64_with_interval(
+                                min, max, unit, interval,
+                            )
+                            .into_iter()
+                            .map(|v| resolved_transform.wrap_numeric(v))
+                            .collect()
+                        }
+                        _ => derive(resolved_transform.default_minor_break_count()),
+                    },
                 };
                 // Drop anything outside the domain, the same way the majors are
                 // filtered.
@@ -1683,19 +1705,22 @@ pub(super) fn parse_expand_value(expand: &ParameterValue) -> Option<(f64, f64)> 
     }
 }
 
-/// Apply expansion to a numeric [min, max] range.
+/// Apply expansion to a numeric [min, max] range, in the transform's space.
 /// Returns expanded [min, max] as ArrayElements.
 ///
-/// Formula: [min - range*mult - add, max + range*mult + add]
+/// Each end moves outward by `span × mult + add`, with the span and `add`
+/// measured in transformed units (see [`Transform::expand_range`]).
 pub(crate) fn expand_numeric_range(
     range: &[ArrayElement],
     mult: f64,
     add: f64,
+    transform: &Transform,
 ) -> Vec<ArrayElement> {
-    expand_numeric_range_selective(range, mult, add, None)
+    expand_numeric_range_selective(range, mult, add, None, transform)
 }
 
-/// Apply expansion selectively to a numeric [min, max] range.
+/// Apply expansion selectively to a numeric [min, max] range, in the
+/// transform's space.
 ///
 /// If `original_user_range` is provided, only expand values that were originally Null
 /// in the user range. This preserves explicit user limits while expanding inferred values.
@@ -1704,12 +1729,14 @@ pub(crate) fn expand_numeric_range(
 /// - min=0 is explicit, so it's preserved as 0
 /// - max was null (inferred from data), so it gets expanded
 ///
-/// Formula for expanded values: [min - range*mult - add, max + range*mult + add]
+/// The span is that of the whole range in transformed space, so an inferred
+/// end is padded by the same amount whether or not the other end is explicit.
 pub(crate) fn expand_numeric_range_selective(
     range: &[ArrayElement],
     mult: f64,
     add: f64,
     original_user_range: Option<&[ArrayElement]>,
+    transform: &Transform,
 ) -> Vec<ArrayElement> {
     if range.len() < 2 {
         return range.to_vec();
@@ -1725,44 +1752,29 @@ pub(crate) fn expand_numeric_range_selective(
         None => return range.to_vec(),
     };
 
-    let span = max - min;
-
-    // For singular ranges (min == max), use the absolute value to compute expansion
-    // This prevents zero expansion when all data values are identical
-    // If the value itself is 0, use a small default expansion (1.0)
-    let effective_span = if span.abs() < 1e-10 {
-        if min.abs() < 1e-10 {
-            1.0 // If the value is 0, expand by ±1
+    // An end the user set explicitly (non-null in the original range) stays put.
+    let is_explicit = |i: usize| {
+        original_user_range
+            .and_then(|ur| ur.get(i))
+            .is_some_and(|e| !matches!(e, ArrayElement::Null))
+    };
+    let factors = |i: usize| {
+        if is_explicit(i) {
+            (0.0, 0.0)
         } else {
-            min.abs() // Use the absolute value for expansion
+            (mult, add)
         }
-    } else {
-        span
     };
-    let expansion = effective_span * mult + add;
+    let (min_mult, min_add) = factors(0);
+    let (max_mult, max_add) = factors(1);
 
-    // Check if min was explicitly set by user (non-null in original range)
-    let min_is_explicit = original_user_range
-        .and_then(|ur| ur.first())
-        .map(|e| !matches!(e, ArrayElement::Null))
-        .unwrap_or(false);
-
-    // Check if max was explicitly set by user (non-null in original range)
-    let max_is_explicit = original_user_range
-        .and_then(|ur| ur.get(1))
-        .map(|e| !matches!(e, ArrayElement::Null))
-        .unwrap_or(false);
-
-    // Only expand values that were inferred (originally null)
-    let expanded_min = if min_is_explicit {
-        min
+    // The transform expands an ascending range; a descending one is expanded
+    // with its ends swapped and handed back in its original order.
+    let (expanded_min, expanded_max) = if min <= max {
+        transform.expand_range(min, max, (min_mult, max_mult), (min_add, max_add))
     } else {
-        min - expansion
-    };
-    let expanded_max = if max_is_explicit {
-        max
-    } else {
-        max + expansion
+        let (lo, hi) = transform.expand_range(max, min, (max_mult, min_mult), (max_add, min_add));
+        (hi, lo)
     };
 
     vec![
@@ -1823,46 +1835,69 @@ pub(crate) fn temporal_interval_breaks(
     range: &[ArrayElement],
     transform: &Transform,
 ) -> Option<Vec<ArrayElement>> {
-    use super::breaks::{
-        filter_breaks_to_range, temporal_breaks_date, temporal_breaks_datetime,
-        temporal_breaks_time, TemporalInterval,
-    };
+    use super::breaks::parse_temporal_interval;
 
-    let interval = TemporalInterval::create_from_str(interval_str)?;
+    // Non-temporal transforms have no calendar to step through.
+    let unit = transform.temporal_unit()?;
+    let interval = parse_temporal_interval(interval_str)?;
     let min = range.first()?.to_f64()?;
     let max = range.last()?.to_f64()?;
-    let breaks: Vec<ArrayElement> = match transform.transform_kind() {
-        TransformKind::Date => temporal_breaks_date(min as i32, max as i32, interval)
-            .into_iter()
-            .map(ArrayElement::String)
-            .collect(),
-        TransformKind::DateTime => temporal_breaks_datetime(min as i64, max as i64, interval)
-            .into_iter()
-            .map(ArrayElement::String)
-            .collect(),
-        TransformKind::Time => temporal_breaks_time(min as i64, max as i64, interval)
-            .into_iter()
-            .map(ArrayElement::String)
-            .collect(),
-        // Non-temporal transforms have no calendar to step through.
-        _ => return None,
-    };
+    // zygos steps the interval's calendar grid and keeps only what falls
+    // inside the domain. (Binned scales can't use this — they need the
+    // terminal break past `max`, so they call `interval_breaks` directly.)
+    let breaks: Vec<ArrayElement> = zygos::temporal_breaks_with_interval(
+        Some(&zygos::InputRange::Continuous { min, max }),
+        unit,
+        interval,
+    )
+    .iter()
+    .filter_map(|v| v.as_number())
+    .map(|v| transform.wrap_numeric(v))
+    .collect();
     if breaks.is_empty() {
         return None;
     }
-    // Convert the ISO strings to the transform's temporal variant, then drop any
-    // that fell outside the domain.
-    let converted: Vec<ArrayElement> = breaks
-        .iter()
-        .map(|elem| transform.parse_value(elem))
-        .collect();
-    Some(filter_breaks_to_range(&converted, range))
+    Some(breaks)
+}
+
+/// The calendar interval a temporal scale's majors step by: the interval a
+/// `breaks` string names, or the one automatic breaks pick for a `breaks`
+/// count (with `pretty`, the default). `None` for non-temporal transforms and
+/// for majors that don't follow a calendar interval (explicit positions,
+/// `pretty => false`).
+fn calendar_major_interval(
+    breaks: Option<&ParameterValue>,
+    input_range: Option<&[ArrayElement]>,
+    properties: &Parameters,
+    transform: &Transform,
+) -> Option<zygos::breaks::TemporalInterval> {
+    let unit = transform.temporal_unit()?;
+    match breaks? {
+        ParameterValue::String(interval) => super::breaks::parse_temporal_interval(interval),
+        ParameterValue::Number(count) => {
+            if let Some(ParameterValue::Boolean(false)) = properties.get("pretty") {
+                return None;
+            }
+            let range = input_range?;
+            let min = range.first()?.to_f64()?;
+            let max = range.last()?.to_f64()?;
+            Some(super::breaks::auto_temporal_interval(
+                min,
+                max,
+                *count as usize,
+                unit,
+            ))
+        }
+        _ => None,
+    }
 }
 
 /// Clip an input range to a transform's valid domain.
 ///
-/// This prevents expansion from producing invalid values for transforms
-/// with restricted domains (e.g., log scales which exclude 0 and negatives).
+/// Expansion happens in transformed space and cannot leave the domain on its
+/// own; this catches the limits it leaves untouched — a user-explicit limit
+/// outside the domain (`FROM (-5, 100)` on a log scale), or data that reaches
+/// a value the transform has no finite image for (a zero on a log scale).
 pub(crate) fn clip_to_transform_domain(
     range: &[ArrayElement],
     transform: &Transform,
@@ -2110,8 +2145,10 @@ pub(crate) fn resolve_common_steps<T: ScaleTypeTrait + ?Sized>(
     // 2. Aesthetic is position (x, y, xmin, xmax, etc.)
     // 3. Input range was at least partially deduced (not fully explicit)
     //
-    // Then clip to the transform's valid domain to prevent invalid values
-    // (e.g., expansion producing negative values for log scales)
+    // Expansion runs in transformed space, so padding never leaves the
+    // transform's domain. Clipping then catches what expansion leaves alone: an
+    // explicit limit, or a data extreme, outside that domain (e.g. a
+    // non-positive limit on a log scale).
     let mut applied_expand = (0.0, 0.0);
     if let Some(range) = base_range {
         let is_position = is_position_aesthetic(aesthetic);
@@ -2120,8 +2157,13 @@ pub(crate) fn resolve_common_steps<T: ScaleTypeTrait + ?Sized>(
 
         if !is_discrete_range && is_position && is_deduced {
             applied_expand = (mult, add);
-            let expanded =
-                expand_numeric_range_selective(&range, mult, add, original_user_range.as_deref());
+            let expanded = expand_numeric_range_selective(
+                &range,
+                mult,
+                add,
+                original_user_range.as_deref(),
+                &resolved_transform,
+            );
             scale.input_range = Some(clip_to_transform_domain(&expanded, &resolved_transform));
         } else {
             // No expansion for discrete scales, material aesthetics, or fully explicit ranges
@@ -2558,7 +2600,7 @@ mod tests {
     #[test]
     fn test_expand_numeric_range_mult_only() {
         let range = vec![ArrayElement::Number(0.0), ArrayElement::Number(100.0)];
-        let expanded = expand_numeric_range(&range, 0.05, 0.0);
+        let expanded = expand_numeric_range(&range, 0.05, 0.0, &Transform::identity());
         // span = 100, expanded = [-5, 105]
         assert_eq!(expanded[0], ArrayElement::Number(-5.0));
         assert_eq!(expanded[1], ArrayElement::Number(105.0));
@@ -2567,7 +2609,7 @@ mod tests {
     #[test]
     fn test_expand_numeric_range_with_add() {
         let range = vec![ArrayElement::Number(0.0), ArrayElement::Number(100.0)];
-        let expanded = expand_numeric_range(&range, 0.05, 10.0);
+        let expanded = expand_numeric_range(&range, 0.05, 10.0, &Transform::identity());
         // span = 100, mult_expansion = 5, add_expansion = 10
         // expanded = [0 - 5 - 10, 100 + 5 + 10] = [-15, 115]
         assert_eq!(expanded[0], ArrayElement::Number(-15.0));
@@ -2577,7 +2619,7 @@ mod tests {
     #[test]
     fn test_expand_numeric_range_zero_disables() {
         let range = vec![ArrayElement::Number(0.0), ArrayElement::Number(100.0)];
-        let expanded = expand_numeric_range(&range, 0.0, 0.0);
+        let expanded = expand_numeric_range(&range, 0.0, 0.0, &Transform::identity());
         // No expansion
         assert_eq!(expanded[0], ArrayElement::Number(0.0));
         assert_eq!(expanded[1], ArrayElement::Number(100.0));
@@ -2589,7 +2631,13 @@ mod tests {
         let range = vec![ArrayElement::Number(0.0), ArrayElement::Number(100.0)];
         let user_range = vec![ArrayElement::Number(0.0), ArrayElement::Null];
 
-        let expanded = expand_numeric_range_selective(&range, 0.05, 0.0, Some(&user_range));
+        let expanded = expand_numeric_range_selective(
+            &range,
+            0.05,
+            0.0,
+            Some(&user_range),
+            &Transform::identity(),
+        );
 
         // Min should stay at 0 (explicit), max should be expanded
         // span = 100, expansion = 5
@@ -2603,7 +2651,13 @@ mod tests {
         let range = vec![ArrayElement::Number(0.0), ArrayElement::Number(100.0)];
         let user_range = vec![ArrayElement::Null, ArrayElement::Number(100.0)];
 
-        let expanded = expand_numeric_range_selective(&range, 0.05, 0.0, Some(&user_range));
+        let expanded = expand_numeric_range_selective(
+            &range,
+            0.05,
+            0.0,
+            Some(&user_range),
+            &Transform::identity(),
+        );
 
         // Min should be expanded, max should stay at 100 (explicit)
         // span = 100, expansion = 5
@@ -2617,7 +2671,13 @@ mod tests {
         let range = vec![ArrayElement::Number(0.0), ArrayElement::Number(100.0)];
         let user_range = vec![ArrayElement::Number(0.0), ArrayElement::Number(100.0)];
 
-        let expanded = expand_numeric_range_selective(&range, 0.05, 0.0, Some(&user_range));
+        let expanded = expand_numeric_range_selective(
+            &range,
+            0.05,
+            0.0,
+            Some(&user_range),
+            &Transform::identity(),
+        );
 
         // Both should stay as-is (no expansion)
         assert_eq!(expanded[0], ArrayElement::Number(0.0));
@@ -2629,7 +2689,8 @@ mod tests {
         // No user range (all inferred) → expand both
         let range = vec![ArrayElement::Number(0.0), ArrayElement::Number(100.0)];
 
-        let expanded = expand_numeric_range_selective(&range, 0.05, 0.0, None);
+        let expanded =
+            expand_numeric_range_selective(&range, 0.05, 0.0, None, &Transform::identity());
 
         // Both should be expanded
         assert_eq!(expanded[0], ArrayElement::Number(-5.0));
@@ -2639,27 +2700,85 @@ mod tests {
     #[test]
     fn test_expand_singular_range_nonzero() {
         // Singular range: all values are the same (e.g., count=12 for all bars)
-        // Should expand based on the value itself to create visible range
+        // A zero-width range pads as if it spanned one transformed unit.
         let range = vec![ArrayElement::Number(12.0), ArrayElement::Number(12.0)];
-        let expanded = expand_numeric_range(&range, 0.05, 0.0);
+        let expanded = expand_numeric_range(&range, 0.05, 0.0, &Transform::identity());
 
-        // span = 0, effective_span = |12| = 12, expansion = 12 * 0.05 = 0.6
-        // expanded = [12 - 0.6, 12 + 0.6] = [11.4, 12.6]
-        assert_eq!(expanded[0], ArrayElement::Number(11.4));
-        assert_eq!(expanded[1], ArrayElement::Number(12.6));
+        // span = 0 → unit span, expansion = 1 * 0.05 = 0.05
+        assert_eq!(expanded[0], ArrayElement::Number(12.0 - 0.05));
+        assert_eq!(expanded[1], ArrayElement::Number(12.0 + 0.05));
     }
 
     #[test]
     fn test_expand_singular_range_zero() {
         // Singular range at zero (e.g., all counts are 0)
-        // Should use default expansion of 1.0
         let range = vec![ArrayElement::Number(0.0), ArrayElement::Number(0.0)];
-        let expanded = expand_numeric_range(&range, 0.05, 0.0);
+        let expanded = expand_numeric_range(&range, 0.05, 0.0, &Transform::identity());
 
-        // span = 0, value = 0, effective_span = 1.0, expansion = 1.0 * 0.05 = 0.05
-        // expanded = [0 - 0.05, 0 + 0.05] = [-0.05, 0.05]
+        // span = 0 → unit span, expansion = 1 * 0.05 = 0.05
         assert_eq!(expanded[0], ArrayElement::Number(-0.05));
         assert_eq!(expanded[1], ArrayElement::Number(0.05));
+    }
+
+    #[test]
+    fn test_expand_descending_range_keeps_its_order() {
+        let range = vec![ArrayElement::Number(100.0), ArrayElement::Number(0.0)];
+        let user_range = vec![ArrayElement::Number(100.0), ArrayElement::Null];
+        let expanded = expand_numeric_range_selective(
+            &range,
+            0.05,
+            0.0,
+            Some(&user_range),
+            &Transform::identity(),
+        );
+        // The explicit first end stays; the inferred second end moves outward.
+        assert_eq!(expanded[0], ArrayElement::Number(100.0));
+        assert_eq!(expanded[1], ArrayElement::Number(-5.0));
+    }
+
+    fn as_f64(elem: &ArrayElement) -> f64 {
+        elem.to_f64().unwrap()
+    }
+
+    #[test]
+    fn test_expand_log10_pads_in_decades() {
+        // 1..100 is two decades; a 5% pad is a tenth of a decade per end, so
+        // the lower bound stays positive rather than collapsing to the domain
+        // minimum.
+        let range = vec![ArrayElement::Number(1.0), ArrayElement::Number(100.0)];
+        let expanded = expand_numeric_range(&range, 0.05, 0.0, &Transform::log());
+        assert!((as_f64(&expanded[0]) - 10f64.powf(-0.1)).abs() < 1e-12);
+        assert!((as_f64(&expanded[1]) - 10f64.powf(2.1)).abs() < 1e-9);
+    }
+
+    #[test]
+    fn test_expand_log10_add_is_in_decades() {
+        let range = vec![ArrayElement::Number(1.0), ArrayElement::Number(100.0)];
+        let expanded = expand_numeric_range(&range, 0.0, 1.0, &Transform::log());
+        assert!((as_f64(&expanded[0]) - 0.1).abs() < 1e-12);
+        assert!((as_f64(&expanded[1]) - 1000.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn test_expand_selective_log10_keeps_explicit_end() {
+        let range = vec![ArrayElement::Number(1.0), ArrayElement::Number(100.0)];
+        let user_range = vec![ArrayElement::Number(1.0), ArrayElement::Null];
+        let expanded =
+            expand_numeric_range_selective(&range, 0.05, 0.0, Some(&user_range), &Transform::log());
+        assert_eq!(expanded[0], ArrayElement::Number(1.0));
+        assert!((as_f64(&expanded[1]) - 10f64.powf(2.1)).abs() < 1e-9);
+    }
+
+    #[test]
+    fn test_expand_sqrt_from_zero_does_not_fold() {
+        // sqrt of 0..100 spans 0..10; the lower pad would land at -0.5, which
+        // squares back to 0.25 and cuts the data at zero off. That end is left
+        // unpadded; the upper end pads in transformed space as usual.
+        let range = vec![ArrayElement::Number(0.0), ArrayElement::Number(100.0)];
+        let sqrt = Transform::sqrt();
+        let expanded = expand_numeric_range(&range, 0.05, 0.0, &sqrt);
+        assert_eq!(expanded[0], ArrayElement::Number(0.0));
+        assert!((as_f64(&expanded[1]) - 110.25).abs() < 1e-9);
     }
 
     // =========================================================================
@@ -3188,12 +3307,12 @@ mod tests {
     // =========================================================================
 
     #[test]
-    fn test_breaks_property_default_is_7() {
+    fn test_breaks_property_default_is_5() {
         let props = Parameters::new();
         let resolved = ScaleType::continuous()
             .resolve_properties("x", &props)
             .unwrap();
-        assert_eq!(resolved.get("breaks"), Some(&ParameterValue::Number(7.0)));
+        assert_eq!(resolved.get("breaks"), Some(&ParameterValue::Number(5.0)));
     }
 
     #[test]
@@ -3583,6 +3702,45 @@ mod tests {
             }
             other => panic!("minors should be a resolved Array, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn test_resolve_temporal_minor_breaks_follow_the_calendar() {
+        use crate::plot::scale::Scale;
+        use chrono::Datelike;
+
+        let mut scale = Scale::new("x");
+        scale.scale_type = Some(ScaleType::continuous());
+        scale.transform = Some(Transform::date());
+        scale.input_range = Some(vec![
+            ArrayElement::Date(19738), // 2024-01-15
+            ArrayElement::Date(19889), // 2024-06-15
+        ]);
+        scale.properties.insert(
+            "breaks".to_string(),
+            ParameterValue::String("2 months".to_string()),
+        );
+
+        let context = ScaleDataContext::new();
+        ScaleType::continuous()
+            .resolve(&mut scale, &context, "x")
+            .unwrap();
+
+        // Two-month majors divide into single months: every minor is the first
+        // of a month the majors skip, rather than a fixed fraction of a gap.
+        let majors = scale.numeric_breaks();
+        let minors = scale.numeric_minor_breaks().expect("minors resolved");
+        let epoch = chrono::NaiveDate::from_ymd_opt(1970, 1, 1).unwrap();
+        let month_starts: Vec<u32> = minors
+            .iter()
+            .map(|m| {
+                let date = epoch + chrono::Duration::days(*m as i64);
+                assert_eq!(date.day(), 1, "minor {date} is not a month start");
+                date.month()
+            })
+            .collect();
+        assert_eq!(month_starts, vec![2, 4, 6]);
+        assert!(minors.iter().all(|m| !majors.contains(m)));
     }
 
     #[test]
@@ -4070,22 +4228,18 @@ mod tests {
     }
 
     #[test]
-    fn test_expansion_clipped_to_log_domain() {
-        // Simulate what happens when expansion produces invalid values for log scale
-        // Data: [0.001, 0.01], with 50% expansion produces negative min
+    fn test_log_expansion_never_needs_clipping() {
+        // Data [0.001, 0.01] with 50% expansion: in data space this would pad
+        // the lower end below zero. In log10 space the range is one decade, so
+        // each end moves half a decade and stays positive; clipping is a no-op.
         let range = vec![ArrayElement::Number(0.001), ArrayElement::Number(0.01)];
-        // span = 0.009, expansion = 0.0045
-        // expanded_min = 0.001 - 0.0045 = -0.0035
-        // expanded_max = 0.01 + 0.0045 = 0.0145
-        let expanded = expand_numeric_range(&range, 0.5, 0.0);
-        assert!(expanded[0].to_f64().unwrap() < 0.0);
-
-        // Now clip to log domain
         let transform = Transform::from_kind(TransformKind::Log10);
-        let clipped = clip_to_transform_domain(&expanded, &transform);
-        // Min should be clipped to f64::MIN_POSITIVE
-        assert_eq!(clipped[0], ArrayElement::Number(f64::MIN_POSITIVE));
-        assert_eq!(clipped[1].to_f64().unwrap(), 0.0145);
+        let expanded = expand_numeric_range(&range, 0.5, 0.0, &transform);
+        let lo = expanded[0].to_f64().unwrap();
+        let hi = expanded[1].to_f64().unwrap();
+        assert!((lo - 10f64.powf(-3.5)).abs() < 1e-15, "lower end: {lo}");
+        assert!((hi - 10f64.powf(-1.5)).abs() < 1e-12, "upper end: {hi}");
+        assert_eq!(clip_to_transform_domain(&expanded, &transform), expanded);
     }
 
     // =========================================================================

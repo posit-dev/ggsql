@@ -1,7 +1,7 @@
 //! Identity transform implementation (no transformation)
 
-use super::{TransformKind, TransformTrait};
-use crate::plot::scale::breaks::{linear_breaks, minor_breaks_linear, pretty_breaks};
+use super::{TransformKind, TransformTrait, ZygosMath};
+use crate::plot::scale::breaks::{extended_breaks, linear_breaks, minor_breaks_linear};
 
 /// Identity transform - no transformation (linear scale)
 #[derive(Debug, Clone, Copy)]
@@ -17,12 +17,12 @@ impl TransformTrait for Identity {
     }
 
     fn allowed_domain(&self) -> (f64, f64) {
-        (f64::NEG_INFINITY, f64::INFINITY)
+        ZygosMath::of(TransformKind::Identity).allowed_domain()
     }
 
     fn calculate_breaks(&self, min: f64, max: f64, n: usize, pretty: bool) -> Vec<f64> {
         if pretty {
-            pretty_breaks(min, max, n)
+            extended_breaks(min, max, n)
         } else {
             linear_breaks(min, max, n)
         }
@@ -38,11 +38,11 @@ impl TransformTrait for Identity {
     }
 
     fn transform(&self, value: f64) -> f64 {
-        value
+        ZygosMath::of(TransformKind::Identity).forward(value)
     }
 
     fn inverse(&self, value: f64) -> f64 {
-        value
+        ZygosMath::of(TransformKind::Identity).inverse(value)
     }
 }
 
@@ -94,8 +94,7 @@ mod tests {
     fn test_identity_breaks_pretty() {
         let t = Identity;
         let breaks = t.calculate_breaks(0.0, 100.0, 5, true);
-        assert!(!breaks.is_empty());
-        // Pretty breaks should produce nice numbers
+        assert_eq!(breaks, vec![0.0, 20.0, 40.0, 60.0, 80.0, 100.0]);
     }
 
     #[test]

@@ -19,6 +19,41 @@
 - Scale resolution now detects and converts temporal-unit mismatches and errors
   on unrepresentable ranges instead of producing silently wrong scales (#569).
 - `Plot.labels` field is no longer `Option<Labels>` but plain `Labels`.
+- Scale internals now build on the `zygos` crate: numeric transform math,
+  break/tick selection, color ramps, the named palette tables,
+  shape/linetype lookups, and out-of-bounds policies live there and are
+  delegated to. Break and tick selection comes from zygos wholesale, so tick
+  positions and counts may differ from previous releases:
+  - the default `breaks` count is 5 (was 7), which also changes the default
+    number of bins on binned scales;
+  - pretty breaks use zygos's Wilkinson Extended weights, favouring steps of 2
+    and ticks that stay within the data (e.g. 0–100 gives 0, 20, …, 100);
+    `square` and `exp*` scales use them too, in data space;
+  - log breaks follow the 1-2-5 pattern on every decade rather than being
+    thinned to the requested count (3 and 7 join it over narrow spans when
+    more breaks are asked for; very wide spans keep only powers);
+    `pretty => false` no longer switches log scales to powers only;
+  - `asinh`/`pseudo_log*` breaks reach closer to zero on each side, and
+    `pseudo_log2`/`pseudo_ln` place them at powers of their own base;
+  - log-family minor breaks are the whole-number multiples between powers
+    (2, 3, …, 9 for base 10) rather than even steps in log space; a
+    `minor_breaks` count only switches them on or off;
+  - temporal breaks, automatic or from an interval, start from a calendar grid
+    sized to the interval (e.g. "3 months" from Feb 15 → Jan, Apr, Jul), and
+    `TIME` interval breaks step across minute/hour boundaries; automatic
+    temporal minor breaks fall on the calendar sub-interval (quarters under
+    years, weeks under months, …) instead of three evenly spaced per interval.
+- **Breaking (library API):** the scale module's public surface shrank with
+  the move to `zygos`. Removed: the `plot::scale::shape` module including
+  `shape_to_svg_path`; the ~85 named palette table constants in
+  `plot::scale::palettes` (`GGSQL10`, `VIRIDIS`, … — the `get_*_palette`
+  lookups remain); the hand-rolled break functions `wilkinson_extended`,
+  `pretty_breaks`, `log_breaks`, `exp_pretty_breaks`, `minor_breaks_log`,
+  `minor_breaks_sqrt`, `minor_breaks_symlog`, `trim_breaks`,
+  `trim_temporal_breaks` and `derive_minor_interval` (their zygos
+  counterparts are re-exported where ggsql still uses them);
+  `colour::ColorSpace` is now a re-export of zygos's, whose linear-RGB
+  variant is named `Srgb` rather than `LinearRgb`.
 - Replaced `CLAUDE.md` files with `AGENTS.md` files.
 
 ### Fixed
@@ -41,6 +76,19 @@
 - Fixed schema-less `validate()` rejecting spatial layers that omit an explicit
   `geometry` mapping, even though execution auto-detects the geometry column
   (#587)
+- Log axes carry decade ticks again (#512). Position scales now expand their
+  domain in transformed space (via zygos) rather than in data space, so the
+  pad can no longer push a log or sqrt scale's lower bound below zero and
+  get clipped to the smallest positive float — a 1–100 `log` axis now spans
+  roughly 0.79–126 instead of 5e-308–105. As a consequence the `expand`
+  setting is measured in transformed units on transformed scales: the
+  multiplier is a share of the transformed span, and the additive part is in
+  transformed units too (`add = 0.1` on a `log` scale is a tenth of a decade).
+  A zero-width range pads as if it spanned one transformed unit (previously
+  its own absolute value). Where a pad would land outside a transform's image
+  (the lower end of a `sqrt`, `square` or `exp*` scale near zero), that end is
+  left unpadded rather than folding back inside the data range. Identity
+  scales are unaffected.
 
 ## 0.5.2 - 2026-09-11
 

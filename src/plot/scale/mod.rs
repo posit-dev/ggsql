@@ -7,7 +7,6 @@ pub mod colour;
 pub mod linetype;
 pub mod palettes;
 mod scale_type;
-pub mod shape;
 pub mod transform;
 mod types;
 
@@ -25,7 +24,6 @@ pub use scale_type::{
     ScaleTypeTrait, TypeFamily, OOB_CENSOR, OOB_KEEP, OOB_SQUISH,
 };
 
-pub use shape::shape_to_svg_path;
 pub use transform::{Transform, TransformKind, TransformTrait, ALL_TRANSFORM_NAMES};
 pub use types::{OutputRange, PanelScale, Scale};
 

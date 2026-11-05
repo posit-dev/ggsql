@@ -24,6 +24,7 @@ mod data;
 mod encoding;
 mod layer;
 mod projection;
+mod shape;
 
 use crate::plot::ArrayElement;
 use crate::plot::{ParameterValue, Parameters, Scale, ScaleTypeKind};
@@ -1782,7 +1783,8 @@ mod tests {
     /// symbol name it cannot parse, and `'dashed'` as a dash array it cannot read.
     #[test]
     fn test_identity_names_convert_like_literals() {
-        use crate::plot::scale::{linetype_to_stroke_dash, shape_to_svg_path};
+        use super::shape::shape_to_svg_path;
+        use crate::plot::scale::linetype_to_stroke_dash;
         use crate::plot::{ArrayElement, Scale, ScaleType};
 
         let writer = VegaLiteWriter::new();

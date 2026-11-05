@@ -1,7 +1,7 @@
 //! Square transform implementation (x²) - inverse of sqrt
 
-use super::{TransformKind, TransformTrait};
-use crate::plot::scale::breaks::{linear_breaks, minor_breaks_linear};
+use super::{TransformKind, TransformTrait, ZygosMath};
+use crate::plot::scale::breaks::{extended_breaks, linear_breaks, minor_breaks_linear};
 
 /// Square transform (x²) - inverse of sqrt
 ///
@@ -20,13 +20,17 @@ impl TransformTrait for Square {
     }
 
     fn allowed_domain(&self) -> (f64, f64) {
-        (f64::NEG_INFINITY, f64::INFINITY)
+        ZygosMath::of(TransformKind::Square).allowed_domain()
     }
 
-    fn calculate_breaks(&self, min: f64, max: f64, n: usize, _pretty: bool) -> Vec<f64> {
-        // Data-space even breaks (simple linear breaks in input space)
-        // These won't be visually evenly spaced after squaring, but that's expected
-        linear_breaks(min, max, n)
+    fn calculate_breaks(&self, min: f64, max: f64, n: usize, pretty: bool) -> Vec<f64> {
+        // Breaks in data space: they won't be visually evenly spaced after
+        // squaring, but their labels stay round.
+        if pretty {
+            extended_breaks(min, max, n)
+        } else {
+            linear_breaks(min, max, n)
+        }
     }
 
     fn calculate_minor_breaks(
@@ -39,10 +43,13 @@ impl TransformTrait for Square {
     }
 
     fn transform(&self, value: f64) -> f64 {
-        value * value
+        ZygosMath::of(TransformKind::Square).forward(value)
     }
 
     fn inverse(&self, value: f64) -> f64 {
+        // Sign-preserving, unlike zygos's non-negative branch, so a domain padded
+        // below zero in transformed space maps back below zero rather than
+        // folding onto its mirror image.
         if value >= 0.0 {
             value.sqrt()
         } else {
@@ -140,6 +147,15 @@ mod tests {
                 val
             );
         }
+    }
+
+    #[test]
+    fn test_square_breaks_pretty() {
+        let t = Square;
+        assert_eq!(
+            t.calculate_breaks(0.0, 10.0, 5, true),
+            vec![0.0, 2.0, 4.0, 6.0, 8.0, 10.0]
+        );
     }
 
     #[test]

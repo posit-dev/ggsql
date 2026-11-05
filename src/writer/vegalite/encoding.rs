@@ -3,9 +3,10 @@
 //! This module handles building Vega-Lite encoding channels from ggsql aesthetic mappings,
 //! including type inference, scale properties, and title handling.
 
+use super::shape::shape_to_svg_path;
 use crate::array_util::as_str;
 use crate::plot::aesthetic::{is_position_aesthetic, AestheticContext};
-use crate::plot::scale::{linetype_to_stroke_dash, shape_to_svg_path, ScaleTypeKind};
+use crate::plot::scale::{linetype_to_stroke_dash, ScaleTypeKind};
 use crate::plot::{ParameterValue, Scale};
 use crate::{AestheticValue, DataFrame, GgsqlError, Plot, Result};
 use arrow::array::Array;

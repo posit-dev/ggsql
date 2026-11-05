@@ -369,8 +369,8 @@ fn apply_output_range(hs: HScale, kind: RangeKind, values: &[ArrayElement]) -> H
 /// hephaestus's own builtins would silently render every hex pattern solid and
 /// alias `longdash`/`twodash` onto the wrong ones.
 ///
-/// The resulting on/off lengths are points, which is what hephaestus's linetype
-/// steps take.
+/// The resulting on/off lengths are multiples of the line width, the
+/// convention ggsql, zygos and hephaestus share.
 pub fn map_linetype(name: &str) -> Arc<[LinetypeStep]> {
     let Some(lengths) = linetype_to_stroke_dash(name) else {
         return solid();
@@ -574,26 +574,26 @@ fn temporal_value(transform: Option<GTransform>, pos: f64) -> HValue {
 /// the breaks it picks, which arrive resolved through `apply_breaks`. All of them
 /// map to identity (`None` — hephaestus defaults to identity).
 fn map_transform(kind: GTransform) -> Option<HTransform> {
-    match kind {
-        GTransform::Log10 => Some(HTransform::Log10),
-        GTransform::Log2 => Some(HTransform::Log2),
-        GTransform::Log => Some(HTransform::Log),
-        GTransform::Sqrt => Some(HTransform::Sqrt),
-        GTransform::Square => Some(HTransform::Square),
-        GTransform::Exp10 => Some(HTransform::Exp10),
-        GTransform::Exp2 => Some(HTransform::Exp2),
-        GTransform::Exp => Some(HTransform::Exp),
-        GTransform::Asinh => Some(HTransform::Asinh),
-        GTransform::PseudoLog => Some(HTransform::PseudoLog),
-        GTransform::Identity
-        | GTransform::Date
-        | GTransform::DateTime
-        | GTransform::Time
-        | GTransform::String
-        | GTransform::Bool
-        | GTransform::Integer
-        | GTransform::Geographic => None,
-    }
+    // Match on the zygos kind so this stays in sync with the executor's
+    // delegation; convert by name until hephaestus's published scale types
+    // are the zygos ones (then this becomes `kind.zygos_kind()`).
+    let zygos_kind = kind.zygos_kind()?;
+    Some(match zygos_kind {
+        // None — hephaestus defaults to identity
+        zygos::transform::TransformKind::Identity => return None,
+        zygos::transform::TransformKind::Log10 => HTransform::Log10,
+        zygos::transform::TransformKind::Log2 => HTransform::Log2,
+        zygos::transform::TransformKind::Log => HTransform::Log,
+        zygos::transform::TransformKind::Sqrt => HTransform::Sqrt,
+        zygos::transform::TransformKind::Square => HTransform::Square,
+        zygos::transform::TransformKind::Exp10 => HTransform::Exp10,
+        zygos::transform::TransformKind::Exp2 => HTransform::Exp2,
+        zygos::transform::TransformKind::Exp => HTransform::Exp,
+        zygos::transform::TransformKind::Asinh => HTransform::Asinh,
+        zygos::transform::TransformKind::PseudoLog
+        | zygos::transform::TransformKind::PseudoLog2
+        | zygos::transform::TransformKind::PseudoLog10 => HTransform::PseudoLog,
+    })
 }
 
 /// Convert a ggsql array element to a hephaestus domain value.

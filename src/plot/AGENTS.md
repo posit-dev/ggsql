@@ -55,10 +55,12 @@ plot/
 
 `Scale` in `types.rs`, the kind enum + traits in `scale_type/`, the transformation logic in `transform/`. Other top-level files in `scale/`:
 
-- `breaks.rs` — break/tick computation for axes.
-- `colour.rs` — colour aesthetic helpers, gradient interpolation.
-- `linetype.rs`, `shape.rs` — categorical aesthetic mappings.
-- `palettes.rs` — built-in colour palettes (large file, mostly data tables).
+- `breaks.rs` — break/tick computation for axes. Every tick algorithm comes from the `zygos` crate (Wilkinson Extended, linear, log/sqrt/symlog majors and minors, calendar-aware temporal breaks and their interval picker), re-exported here and called directly from each transform's `calculate_breaks`/`calculate_minor_breaks`. ggsql keeps only what zygos lacks: `integer_breaks`, `graticule_breaks` (map projections), `minor_breaks_linear` (zygos's between-majors subdivision, continued past the outermost majors), `extent_minor_breaks` (runs zygos's extent-driven log/symlog minors and drops positions the majors hold), `filter_breaks_to_range` (typed `ArrayElement` breaks against a domain), and the temporal glue — `parse_temporal_interval` (`'2 months'` → zygos `TemporalInterval`), `interval_breaks` (dispatch to zygos's per-type calendar breaks), `auto_temporal_interval` (the interval automatic temporal majors use, so default minors in `ScaleTypeTrait::resolve` can subdivide it).
+- `colour.rs` — colour aesthetic helpers; interpolation delegates to `zygos::color`.
+- `linetype.rs` — stroke-dash conversion over `zygos::patterns::linetype`.
+- `palettes.rs` — adapts `zygos::palettes` (the tables live there) to ggsql's string vocabulary (hex colors, hex linetype patterns), plus the `ArrayElement`-typed `lookup_palette`. Shape-name → SVG-path conversion is not in `scale/` at all: it's a Vega-Lite concern and lives in `writer/vegalite/shape.rs` over `zygos::patterns::shape`.
+
+OOB (out-of-bounds) policies use `zygos::OobPolicy`; the `OOB_*` string constants are the user-facing vocabulary in the SCALE clause.
 
 Scale type / transform docs: [`/doc/syntax/scale/type/`](../../doc/syntax/scale/type/) and [`/doc/syntax/scale/aesthetic/`](../../doc/syntax/scale/aesthetic/).
 

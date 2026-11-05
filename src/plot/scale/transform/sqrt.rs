@@ -1,7 +1,7 @@
 //! Sqrt transform implementation (square root)
 
-use super::{TransformKind, TransformTrait};
-use crate::plot::scale::breaks::{minor_breaks_sqrt, sqrt_breaks};
+use super::{TransformKind, TransformTrait, ZygosMath};
+use crate::plot::scale::breaks::{linear_breaks, minor_breaks_linear, sqrt_breaks};
 
 /// Sqrt transform - square root
 ///
@@ -19,11 +19,23 @@ impl TransformTrait for Sqrt {
     }
 
     fn allowed_domain(&self) -> (f64, f64) {
-        (0.0, f64::INFINITY)
+        ZygosMath::of(TransformKind::Sqrt).allowed_domain()
     }
 
     fn calculate_breaks(&self, min: f64, max: f64, n: usize, pretty: bool) -> Vec<f64> {
-        sqrt_breaks(min, max, n, pretty)
+        if pretty {
+            sqrt_breaks(min, max, n)
+        } else {
+            // Evenly spaced in sqrt space, squared back.
+            let min = min.max(0.0);
+            if min >= max {
+                return vec![];
+            }
+            linear_breaks(min.sqrt(), max.sqrt(), n)
+                .into_iter()
+                .map(|v| v * v)
+                .collect()
+        }
     }
 
     fn calculate_minor_breaks(
@@ -32,15 +44,15 @@ impl TransformTrait for Sqrt {
         n: usize,
         range: Option<(f64, f64)>,
     ) -> Vec<f64> {
-        minor_breaks_sqrt(major_breaks, n, range)
+        minor_breaks_linear(major_breaks, n, range)
     }
 
     fn transform(&self, value: f64) -> f64 {
-        value.sqrt()
+        ZygosMath::of(TransformKind::Sqrt).forward(value)
     }
 
     fn inverse(&self, value: f64) -> f64 {
-        value * value
+        ZygosMath::of(TransformKind::Sqrt).inverse(value)
     }
 }
 
@@ -103,17 +115,15 @@ mod tests {
     #[test]
     fn test_sqrt_breaks() {
         let t = Sqrt;
-        let breaks = t.calculate_breaks(0.0, 100.0, 5, false);
-        // linear_breaks now extends one step before and after
-        // Negative values in sqrt space get clipped
-        assert!(
-            breaks.len() >= 5,
-            "Should have at least 5 breaks, got {}",
-            breaks.len()
+        // Nice numbers in sqrt space, squared back.
+        assert_eq!(
+            t.calculate_breaks(0.0, 100.0, 5, true),
+            vec![0.0, 4.0, 16.0, 36.0, 64.0, 100.0]
         );
-        // First break should be >= 0 (sqrt clips negatives)
-        assert!(breaks.first().unwrap() >= &0.0);
-        // Last break should be >= 100
-        assert!(breaks.last().unwrap() >= &100.0);
+        // Evenly spaced in sqrt space, squared back.
+        assert_eq!(
+            t.calculate_breaks(0.0, 100.0, 5, false),
+            vec![0.0, 6.25, 25.0, 56.25, 100.0]
+        );
     }
 }

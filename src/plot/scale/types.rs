@@ -318,19 +318,27 @@ impl Scale {
     /// `SETTING expand`, and picks up context-dependent factors the caller can't
     /// see (a polar full-circle theta resolves to zero expansion).
     ///
-    /// Mirrors resolution: expand, then clip to the transform's allowed domain.
-    /// On an unresolved scale the factors fall back to the continuous defaults.
+    /// Mirrors resolution: expand in the transform's space, then clip to the
+    /// transform's allowed domain. On an unresolved scale the factors fall back
+    /// to the continuous defaults, and a scale without a transform expands as
+    /// identity.
     pub fn expand_range(&self, min: f64, max: f64) -> (f64, f64) {
         let (mult, add) = super::scale_type::get_expand_factors(&self.properties);
+        let identity;
+        let transform = match &self.transform {
+            Some(t) => t,
+            None => {
+                identity = Transform::identity();
+                &identity
+            }
+        };
         let expanded = super::scale_type::expand_numeric_range(
             &[ArrayElement::Number(min), ArrayElement::Number(max)],
             mult,
             add,
+            transform,
         );
-        let clipped = match &self.transform {
-            Some(t) => super::scale_type::clip_to_transform_domain(&expanded, t),
-            None => expanded,
-        };
+        let clipped = super::scale_type::clip_to_transform_domain(&expanded, transform);
         match (
             clipped.first().and_then(|e| e.to_f64()),
             clipped.last().and_then(|e| e.to_f64()),
@@ -659,16 +667,24 @@ mod tests {
     }
 
     #[test]
-    fn test_expand_range_clips_to_the_transform_domain() {
-        // Mirrors resolution: expanding below zero on a log scale clips to the
-        // transform's allowed minimum rather than producing an invalid domain.
+    fn test_expand_range_pads_in_transformed_space() {
+        // Mirrors resolution: a log scale pads in decades, so the lower end of
+        // a 1..1000 domain stays positive instead of collapsing to the domain
+        // minimum. Three decades, 5% each end = 0.15 of a decade.
         let mut s = continuous_scale((1.0, 1000.0), vec![]);
         s.transform = Some(Transform::log());
         let (lo, hi) = s.expand_range(1.0, 1000.0);
-        assert_eq!(lo, f64::MIN_POSITIVE);
-        assert!(
-            (hi - 1049.95).abs() < 1e-9,
-            "upper end expands normally: {hi}"
-        );
+        assert!((lo - 10f64.powf(-0.15)).abs() < 1e-12, "lower end: {lo}");
+        assert!((hi - 10f64.powf(3.15)).abs() < 1e-9, "upper end: {hi}");
+    }
+
+    #[test]
+    fn test_expand_range_clips_out_of_domain_input() {
+        // A data extreme with no logarithm is left alone by expansion and then
+        // clipped to the transform's allowed minimum.
+        let mut s = continuous_scale((0.0, 1000.0), vec![]);
+        s.transform = Some(Transform::log());
+        let (lo, hi) = s.expand_range(0.0, 1000.0);
+        assert_eq!((lo, hi), (f64::MIN_POSITIVE, 1000.0));
     }
 }

@@ -10,7 +10,6 @@ use crate::plot::projection::CoordKind;
 use crate::plot::scale::{
     default_oob, gets_default_scale, infer_scale_target_type, infer_scale_type_from_input_range,
     infer_transform_from_input_range, is_facet_aesthetic, transform::Transform, TransformKind,
-    OOB_CENSOR, OOB_KEEP, OOB_SQUISH,
 };
 use crate::plot::{
     AestheticValue, ArrayElement, ArrayElementType, ColumnInfo, Layer, ParameterValue, Plot, Scale,
@@ -1376,15 +1375,13 @@ pub fn apply_scale_oob(spec: &Plot, data_map: &mut HashMap<String, DataFrame>) -
         // - If not set but has explicit input range, use default for aesthetic
         // - Otherwise skip
         let oob_mode = match scale.properties.get("oob") {
-            Some(ParameterValue::String(s)) if s != OOB_KEEP => s.as_str(),
-            Some(ParameterValue::String(_)) => continue, // explicit "keep"
-            None if scale.explicit_input_range => {
-                let default = default_oob(&scale.aesthetic);
-                if default == OOB_KEEP {
-                    continue;
-                }
-                default
-            }
+            Some(ParameterValue::String(s)) => s.as_str(),
+            None if scale.explicit_input_range => default_oob(&scale.aesthetic),
+            _ => continue,
+        };
+        // Validated upstream against OOB_VALUES_*; "keep" means no OOB pass.
+        let oob_policy = match zygos::OobPolicy::from_name(oob_mode) {
+            Some(p) if p != zygos::OobPolicy::Keep => p,
             _ => continue,
         };
 
@@ -1445,7 +1442,7 @@ pub fn apply_scale_oob(spec: &Plot, data_map: &mut HashMap<String, DataFrame>) -
                         (Some(lo), Some(hi)) => (lo, hi),
                         _ => continue,
                     };
-                    apply_oob_to_column_numeric(df, &col_name, range_min, range_max, oob_mode)?
+                    apply_oob_to_column_numeric(df, &col_name, range_min, range_max, oob_policy)?
                 } else {
                     // Discrete range - collect allowed values as strings using to_key_string
                     let allowed_values: HashSet<String> = input_range
@@ -1453,7 +1450,7 @@ pub fn apply_scale_oob(spec: &Plot, data_map: &mut HashMap<String, DataFrame>) -
                         .filter(|elem| !matches!(elem, ArrayElement::Null))
                         .map(|elem| elem.to_key_string())
                         .collect();
-                    apply_oob_to_column_discrete(df, &col_name, &allowed_values, oob_mode)?
+                    apply_oob_to_column_discrete(df, &col_name, &allowed_values, oob_policy)?
                 };
                 data_map.insert(data_key, transformed);
             }
@@ -1550,7 +1547,7 @@ pub fn apply_oob_to_column_numeric(
     col_name: &str,
     range_min: f64,
     range_max: f64,
-    oob_mode: &str,
+    oob_policy: zygos::OobPolicy,
 ) -> Result<DataFrame> {
     use crate::array_util::*;
     use arrow::array::Array;
@@ -1568,17 +1565,18 @@ pub fn apply_oob_to_column_numeric(
 
     let f64_arr = as_f64(&f64_col)?;
 
-    match oob_mode {
-        OOB_CENSOR => {
-            // Filter out rows where values are outside [range_min, range_max]
-            // Build a boolean mask
+    match oob_policy {
+        zygos::OobPolicy::Censor => {
+            // Filter out rows where values are outside [range_min, range_max].
+            // NaN is censored too; zygos's `apply` currently passes NaN through
+            // under every policy, so it is dropped explicitly here.
             let mask_values: Vec<bool> = (0..f64_arr.len())
                 .map(|i| {
                     if f64_arr.is_null(i) {
                         true // Keep nulls
                     } else {
                         let v = f64_arr.value(i);
-                        v >= range_min && v <= range_max
+                        !v.is_nan() && oob_policy.apply(v, range_min, range_max).is_some()
                     }
                 })
                 .collect();
@@ -1595,14 +1593,14 @@ pub fn apply_oob_to_column_numeric(
             }
             DataFrame::new(new_columns)
         }
-        OOB_SQUISH => {
+        zygos::OobPolicy::Squish => {
             // Clamp values to [range_min, range_max]
             let clamped: Vec<Option<f64>> = (0..f64_arr.len())
                 .map(|i| {
                     if f64_arr.is_null(i) {
                         None
                     } else {
-                        Some(f64_arr.value(i).clamp(range_min, range_max))
+                        oob_policy.apply(f64_arr.value(i), range_min, range_max)
                     }
                 })
                 .collect();
@@ -1626,7 +1624,7 @@ pub fn apply_oob_to_column_numeric(
             df.with_column(col_name, restored_array)
                 .map_err(|e| GgsqlError::InternalError(format!("Failed to replace column: {}", e)))
         }
-        _ => Ok(df.clone()),
+        zygos::OobPolicy::Keep => Ok(df.clone()),
     }
 }
 
@@ -1661,13 +1659,13 @@ pub fn apply_oob_to_column_discrete(
     df: &DataFrame,
     col_name: &str,
     allowed_values: &HashSet<String>,
-    oob_mode: &str,
+    oob_policy: zygos::OobPolicy,
 ) -> Result<DataFrame> {
     use crate::array_util::*;
     use arrow::array::Array;
 
     // For discrete columns, only censor makes sense (squish is validated out earlier)
-    if oob_mode != OOB_CENSOR {
+    if oob_policy != zygos::OobPolicy::Censor {
         return Ok(df.clone());
     }
 
@@ -2067,8 +2065,9 @@ mod tests {
         let df = DataFrame::new(vec![("date", dates)]).unwrap();
 
         // Censor to [2024-03-01, 2024-09-01] ≈ [19783, 19967] → keeps only row 1
-        let result = apply_oob_to_column_numeric(&df, "date", 19783.0, 19967.0, OOB_CENSOR)
-            .expect("oob censor should handle Date32");
+        let result =
+            apply_oob_to_column_numeric(&df, "date", 19783.0, 19967.0, zygos::OobPolicy::Censor)
+                .expect("oob censor should handle Date32");
         assert_eq!(result.height(), 1);
     }
 
@@ -2080,8 +2079,9 @@ mod tests {
         let dates: ArrayRef = Arc::new(Date32Array::from(vec![19000, 19875, 21000]));
         let df = DataFrame::new(vec![("date", dates)]).unwrap();
 
-        let result = apply_oob_to_column_numeric(&df, "date", 19723.0, 20089.0, OOB_SQUISH)
-            .expect("oob squish should handle Date32");
+        let result =
+            apply_oob_to_column_numeric(&df, "date", 19723.0, 20089.0, zygos::OobPolicy::Squish)
+                .expect("oob squish should handle Date32");
         assert_eq!(
             result.column("date").unwrap().data_type(),
             &DataType::Date32

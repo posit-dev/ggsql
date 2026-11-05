@@ -404,12 +404,13 @@ impl ScaleTypeTrait for Binned {
             Some(ParameterValue::String(interval_str)) => {
                 // Temporal interval string like "2 months", "week"
                 // Only valid for temporal transforms (Date, DateTime, Time)
-                use super::super::super::breaks::{
-                    temporal_breaks_date, temporal_breaks_datetime, temporal_breaks_time,
-                    TemporalInterval,
-                };
+                use super::super::super::breaks::{interval_breaks, parse_temporal_interval};
 
-                if let Some(interval) = TemporalInterval::create_from_str(interval_str) {
+                // Non-temporal transforms don't support interval strings.
+                if let (Some(interval), Some(unit)) = (
+                    parse_temporal_interval(interval_str),
+                    resolved_transform.temporal_unit(),
+                ) {
                     // Use raw data range (not expanded input_range) so breaks align
                     // to actual data extent; expansion happens later in step 5b.
                     let break_range: Option<&[ArrayElement]> = match &context_range_continuous {
@@ -417,51 +418,23 @@ impl ScaleTypeTrait for Binned {
                         None => scale.input_range.as_deref(),
                     };
                     if let Some(range) = break_range {
-                        let breaks: Vec<ArrayElement> = match resolved_transform.transform_kind() {
-                            TransformKind::Date => {
-                                let min = range[0].to_f64().unwrap_or(0.0) as i32;
-                                let max = range[range.len() - 1].to_f64().unwrap_or(0.0) as i32;
-                                temporal_breaks_date(min, max, interval)
-                                    .into_iter()
-                                    .map(ArrayElement::String)
-                                    .collect()
-                            }
-                            TransformKind::DateTime => {
-                                let min = range[0].to_f64().unwrap_or(0.0) as i64;
-                                let max = range[range.len() - 1].to_f64().unwrap_or(0.0) as i64;
-                                temporal_breaks_datetime(min, max, interval)
-                                    .into_iter()
-                                    .map(ArrayElement::String)
-                                    .collect()
-                            }
-                            TransformKind::Time => {
-                                let min = range[0].to_f64().unwrap_or(0.0) as i64;
-                                let max = range[range.len() - 1].to_f64().unwrap_or(0.0) as i64;
-                                temporal_breaks_time(min, max, interval)
-                                    .into_iter()
-                                    .map(ArrayElement::String)
-                                    .collect()
-                            }
-                            _ => vec![], // Non-temporal transforms don't support interval strings
-                        };
+                        let min = range[0].to_f64().unwrap_or(0.0);
+                        let max = range[range.len() - 1].to_f64().unwrap_or(0.0);
+                        let breaks: Vec<ArrayElement> = interval_breaks(interval, min, max, unit)
+                            .into_iter()
+                            .map(|v| resolved_transform.wrap_numeric(v))
+                            .collect();
 
                         if !breaks.is_empty() {
-                            // Convert string breaks to appropriate temporal ArrayElement types
-                            let converted: Vec<ArrayElement> = breaks
-                                .iter()
-                                .map(|elem| resolved_transform.parse_value(elem))
-                                .collect();
                             // Only filter to input range when user provided explicit FROM clause
                             let filtered = if scale.explicit_input_range {
                                 if let Some(ref ir) = scale.input_range {
-                                    super::super::super::breaks::filter_breaks_to_range(
-                                        &converted, ir,
-                                    )
+                                    super::super::super::breaks::filter_breaks_to_range(&breaks, ir)
                                 } else {
-                                    converted
+                                    breaks
                                 }
                             } else {
-                                converted
+                                breaks
                             };
                             scale
                                 .properties
@@ -500,7 +473,7 @@ impl ScaleTypeTrait for Binned {
                 // Only expand for position aesthetics (x, y, etc.)
                 // Material aesthetics (color, fill, size) don't get expansion
                 let final_range = if super::is_position_aesthetic(aesthetic) {
-                    expand_numeric_range(&terminal_range, mult, add)
+                    expand_numeric_range(&terminal_range, mult, add, &resolved_transform)
                 } else {
                     terminal_range
                 };

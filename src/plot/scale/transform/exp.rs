@@ -1,7 +1,7 @@
 //! Exponential transform implementation (base^x) - inverse of log
 
-use super::{TransformKind, TransformTrait};
-use crate::plot::scale::breaks::{exp_pretty_breaks, linear_breaks, minor_breaks_linear};
+use super::{TransformKind, TransformTrait, ZygosMath};
+use crate::plot::scale::breaks::{extended_breaks, linear_breaks, minor_breaks_linear};
 
 /// Exponential transform (base^x) - inverse of log
 ///
@@ -53,6 +53,17 @@ impl Exp {
     fn is_base2(&self) -> bool {
         (self.base - 2.0).abs() < 1e-10
     }
+
+    /// zygos's exponential for this base: its own member for bases 10, 2 and e,
+    /// and the natural exponential of `x · ln(base)` for any other.
+    fn math(&self) -> ZygosMath {
+        match self.transform_kind() {
+            TransformKind::Exp if (self.base - std::f64::consts::E).abs() >= 1e-10 => {
+                ZygosMath::with_scale(TransformKind::Exp, self.base.ln())
+            }
+            kind => ZygosMath::of(kind),
+        }
+    }
 }
 
 impl TransformTrait for Exp {
@@ -78,15 +89,15 @@ impl TransformTrait for Exp {
     }
 
     fn allowed_domain(&self) -> (f64, f64) {
-        (f64::NEG_INFINITY, f64::INFINITY)
+        self.math().allowed_domain()
     }
 
     fn calculate_breaks(&self, min: f64, max: f64, n: usize, pretty: bool) -> Vec<f64> {
-        // Breaks are in data space (exponents), not output space
-        if pretty && (self.is_base10() || self.is_base2()) {
-            exp_pretty_breaks(min, max, n, self.base)
+        // Breaks in data space (the exponents), so the labels stay round
+        // numbers; the axis spaces them out exponentially.
+        if pretty {
+            extended_breaks(min, max, n)
         } else {
-            // Default: nice linear breaks (0, 1, 2, 3, ...)
             linear_breaks(min, max, n)
         }
     }
@@ -101,11 +112,15 @@ impl TransformTrait for Exp {
     }
 
     fn transform(&self, value: f64) -> f64 {
-        self.base.powf(value)
+        self.math().forward_exp(value)
     }
 
     fn inverse(&self, value: f64) -> f64 {
-        value.log(self.base)
+        self.math().inverse_exp(value)
+    }
+
+    fn expand_range(&self, min: f64, max: f64, mult: (f64, f64), add: (f64, f64)) -> (f64, f64) {
+        self.math().expand_range_exp(min, max, mult, add)
     }
 }
 
@@ -269,6 +284,19 @@ mod tests {
     }
 
     #[test]
+    fn test_expand_range_pads_in_own_transformed_units() {
+        // Whatever zygos member carries the math, each end moves outward by
+        // `mult × span + add` measured in this transform's own output.
+        for t in [Exp::base10(), Exp::base2(), Exp::natural(), Exp::new(5.0)] {
+            let (min, max) = (1.5, 2.0);
+            let (lo, hi) = t.expand_range(min, max, (0.05, 0.1), (0.5, 0.25));
+            let span = t.transform(max) - t.transform(min);
+            assert!((t.transform(min) - t.transform(lo) - (0.05 * span + 0.5)).abs() < 1e-9);
+            assert!((t.transform(hi) - t.transform(max) - (0.1 * span + 0.25)).abs() < 1e-9);
+        }
+    }
+
+    #[test]
     fn test_custom_base() {
         let t = Exp::new(5.0);
         // 5^2 = 25
@@ -297,7 +325,14 @@ mod tests {
     #[test]
     fn test_exp_breaks() {
         let t = Exp::base10();
-        let breaks = t.calculate_breaks(0.0, 3.0, 5, false);
-        assert!(!breaks.is_empty());
+        // Round exponents; the axis spaces them out exponentially.
+        assert_eq!(
+            t.calculate_breaks(0.0, 3.0, 5, true),
+            vec![0.0, 1.0, 2.0, 3.0]
+        );
+        assert_eq!(
+            t.calculate_breaks(0.0, 3.0, 5, false),
+            vec![0.0, 0.75, 1.5, 2.25, 3.0]
+        );
     }
 }

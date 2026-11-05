@@ -19,9 +19,6 @@ tree-sitter.workspace = true
 tree-sitter-ggsql = { workspace = true }
 csscolorparser.workspace = true
 
-# Color interpolation
-palette.workspace = true
-
 # Arrow (core data container)
 arrow = { workspace = true }
 
@@ -46,6 +43,11 @@ geozero = { workspace = true, optional = true, features = ["with-wkb", "with-wkt
 # MSRV 1.86 build). The GPU rasteriser is *not* requested here: it arrives with
 # the `raster` feature, so a build wanting only vector output pulls no wgpu.
 hephaestus = { version = "0.4.1", optional = true, default-features = false, features = ["geom-wkb", "geom-wkt"] }
+
+# Scale primitives (transforms, breaks, palettes, OOB policies). Unlike
+# hephaestus this is a core dependency: the executor resolves scales through
+# it, so it must build on the MSRV toolchain.
+zygos = { version = "0.2.0", default-features = false, features = ["palettes"] }
 
 # WOFF / WOFF2 decoding for `fonts::register_font`, behind `webfonts`. Pure
 # Rust and no build script; `brotli` here is `brotli-decompressor`, the

@@ -4,8 +4,8 @@
 //! negative values. The base parameter controls which logarithm is approximated
 //! for large values.
 
-use super::{TransformKind, TransformTrait};
-use crate::plot::scale::breaks::{minor_breaks_symlog, symlog_breaks};
+use super::{TransformKind, TransformTrait, ZygosMath};
+use crate::plot::scale::breaks::{extent_minor_breaks, symlog_breaks, symlog_minor_breaks};
 
 /// PseudoLog transform - symmetric logarithm with configurable base
 ///
@@ -84,6 +84,11 @@ impl PseudoLog {
     fn is_base2(&self) -> bool {
         (self.base - 2.0).abs() < 1e-10
     }
+
+    /// zygos's natural pseudo-log, `asinh(x / 2)`, divided by `ln(base)`.
+    fn math(&self) -> ZygosMath {
+        ZygosMath::with_scale(TransformKind::PseudoLog, self.ln_base)
+    }
 }
 
 impl TransformTrait for PseudoLog {
@@ -102,11 +107,11 @@ impl TransformTrait for PseudoLog {
     }
 
     fn allowed_domain(&self) -> (f64, f64) {
-        (f64::NEG_INFINITY, f64::INFINITY)
+        self.math().allowed_domain()
     }
 
-    fn calculate_breaks(&self, min: f64, max: f64, n: usize, pretty: bool) -> Vec<f64> {
-        symlog_breaks(min, max, n, pretty)
+    fn calculate_breaks(&self, min: f64, max: f64, n: usize, _pretty: bool) -> Vec<f64> {
+        symlog_breaks(min, max, n, self.base)
     }
 
     fn calculate_minor_breaks(
@@ -115,19 +120,27 @@ impl TransformTrait for PseudoLog {
         n: usize,
         range: Option<(f64, f64)>,
     ) -> Vec<f64> {
-        minor_breaks_symlog(major_breaks, n, range)
+        extent_minor_breaks(major_breaks, n, range, |min, max| {
+            symlog_minor_breaks(min, max, self.base)
+        })
     }
 
     fn default_minor_break_count(&self) -> usize {
-        8 // Similar density to traditional 2-9 pattern on log axes
+        // The whole-number multiples between powers fix the density; any
+        // non-zero count asks for them.
+        8
     }
 
     fn transform(&self, value: f64) -> f64 {
-        (value * 0.5).asinh() / self.ln_base
+        self.math().forward(value)
     }
 
     fn inverse(&self, value: f64) -> f64 {
-        (value * self.ln_base).sinh() * 2.0
+        self.math().inverse(value)
+    }
+
+    fn expand_range(&self, min: f64, max: f64, mult: (f64, f64), add: (f64, f64)) -> (f64, f64) {
+        self.math().expand_range(min, max, mult, add)
     }
 }
 
@@ -281,6 +294,24 @@ mod tests {
     }
 
     #[test]
+    fn test_expand_range_pads_in_own_transformed_units() {
+        // Whatever zygos member carries the math, each end moves outward by
+        // `mult × span + add` measured in this transform's own output.
+        for t in [
+            PseudoLog::base10(),
+            PseudoLog::base2(),
+            PseudoLog::natural(),
+            PseudoLog::new(5.0),
+        ] {
+            let (min, max) = (-50.0, 1000.0);
+            let (lo, hi) = t.expand_range(min, max, (0.05, 0.1), (0.5, 0.25));
+            let span = t.transform(max) - t.transform(min);
+            assert!((t.transform(min) - t.transform(lo) - (0.05 * span + 0.5)).abs() < 1e-9);
+            assert!((t.transform(hi) - t.transform(max) - (0.1 * span + 0.25)).abs() < 1e-9);
+        }
+    }
+
+    #[test]
     fn test_custom_base() {
         let t = PseudoLog::new(5.0);
         // f(0) = 0
@@ -333,8 +364,14 @@ mod tests {
     #[test]
     fn test_pseudo_log_breaks() {
         let t = PseudoLog::base10();
-        let breaks = t.calculate_breaks(-100.0, 100.0, 7, false);
-        assert!(breaks.contains(&0.0));
+        let breaks = t.calculate_breaks(-100.0, 100.0, 7, true);
+        assert_eq!(
+            breaks,
+            vec![
+                -100.0, -50.0, -20.0, -10.0, -5.0, -2.0, -1.0, 0.0, 1.0, 2.0, 5.0, 10.0, 20.0,
+                50.0, 100.0
+            ]
+        );
     }
 
     #[test]
