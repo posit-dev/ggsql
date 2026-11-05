@@ -1884,8 +1884,8 @@ fn calendar_major_interval(
             Some(super::breaks::auto_temporal_interval(
                 min,
                 max,
-                *count as usize,
                 unit,
+                *count as usize,
             ))
         }
         _ => None,

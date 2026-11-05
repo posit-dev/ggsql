@@ -1,103 +1,22 @@
 //! Break calculation for scales.
 //!
 //! Tick selection itself lives in zygos — Wilkinson Extended
-//! ([`extended_breaks`]), [`linear_breaks`], the log / sqrt / symlog
-//! families and the calendar-aware temporal breaks — and transforms call it
-//! directly. This module re-exports those and keeps only what zygos has no
-//! counterpart for: integer-constrained breaks, graticules for map
-//! projections, minor breaks that continue past the outermost majors,
-//! filtering typed breaks to a domain, and parsing ggsql's interval strings
+//! ([`extended_breaks`]), [`linear_breaks`], [`integer_breaks`],
+//! [`graticule_breaks`], the log / sqrt / symlog families and the
+//! calendar-aware temporal breaks — and transforms call it directly. This
+//! module re-exports those and keeps only what zygos has no counterpart
+//! for: minor breaks that continue past the outermost majors, filtering
+//! typed breaks to a domain, and parsing ggsql's interval strings
 //! (`'2 months'`) into a zygos [`TemporalInterval`].
 
 pub use zygos::breaks::{
-    extended_breaks, linear_breaks, linear_minor_breaks_between, log_minor_breaks,
-    log_pretty_breaks, sqrt_breaks, symlog_breaks, symlog_minor_breaks, CalendarUnit,
-    TemporalInterval, DEFAULT_BREAK_COUNT,
+    auto_temporal_interval, extended_breaks, graticule_breaks, integer_breaks, linear_breaks,
+    linear_minor_breaks_between, log_minor_breaks, log_pretty_breaks, sqrt_breaks, symlog_breaks,
+    symlog_minor_breaks, CalendarUnit, TemporalInterval, DEFAULT_BREAK_COUNT,
 };
 use zygos::TemporalUnit;
 
 use crate::plot::ArrayElement;
-
-/// Calculate breaks for integer scales with even spacing.
-///
-/// Unlike simply rounding the output of [`extended_breaks`], this function
-/// ensures that breaks are evenly spaced integers. For small ranges where
-/// the natural step would be < 1, it uses step = 1 and generates consecutive
-/// integers.
-///
-/// # Arguments
-/// - `min`: Minimum data value
-/// - `max`: Maximum data value
-/// - `n`: Target number of breaks
-/// - `pretty`: If true, use "nice" integer step sizes (1, 2, 5, 10, 20, ...).
-///   If false, use exact linear spacing rounded to integers.
-pub fn integer_breaks(min: f64, max: f64, n: usize, pretty: bool) -> Vec<f64> {
-    if n == 0 || min >= max || !min.is_finite() || !max.is_finite() {
-        return vec![];
-    }
-
-    let range = max - min;
-    let int_min = min.floor() as i64;
-    let int_max = max.ceil() as i64;
-    let int_range = int_max - int_min;
-
-    // For very small ranges, just return consecutive integers
-    if int_range <= n as i64 {
-        return (int_min..=int_max).map(|i| i as f64).collect();
-    }
-
-    if pretty {
-        // Use "nice" integer step sizes: 1, 2, 5, 10, 20, 25, 50, 100, ...
-        let rough_step = range / (n as f64);
-
-        // Find nice integer step (must be >= 1)
-        let nice_step = if rough_step < 1.0 {
-            1
-        } else {
-            let magnitude = 10f64.powf(rough_step.log10().floor()) as i64;
-            let residual = rough_step / magnitude as f64;
-
-            let multiplier = if residual <= 1.0 {
-                1
-            } else if residual <= 2.0 {
-                2
-            } else if residual <= 5.0 {
-                5
-            } else {
-                10
-            };
-
-            (magnitude * multiplier).max(1)
-        };
-
-        // Find starting point (nice_min <= min, aligned to step)
-        let nice_min = (int_min / nice_step) * nice_step;
-
-        // Generate breaks
-        let mut breaks = vec![];
-        let mut value = nice_min;
-        while value <= int_max {
-            breaks.push(value as f64);
-            value += nice_step;
-        }
-        breaks
-    } else {
-        // Linear spacing with integer step (at least 1)
-        // Extend one step before min and one step after max for binned scales
-        let step = ((int_range as f64) / (n as f64 - 1.0)).ceil() as i64;
-        let step = step.max(1);
-
-        let mut breaks = vec![];
-        // Start one step before int_min
-        let mut value = int_min - step;
-        // Generate until one step past int_max
-        while value <= int_max + step {
-            breaks.push(value as f64);
-            value += step;
-        }
-        breaks
-    }
-}
 
 /// Filter breaks to only those within the given range.
 ///
@@ -122,58 +41,6 @@ pub fn filter_breaks_to_range(
         .filter(|b| b.to_f64().is_none_or(|v| v >= min && v <= max))
         .cloned()
         .collect()
-}
-
-// =============================================================================
-// Graticule breaks (for map projections)
-// =============================================================================
-
-/// Calculate graticule break positions for a geographic range.
-///
-/// Picks the smallest step from a predefined set that produces at most `n` lines,
-/// then returns values within (min, max) at that interval. Includes boundary
-/// values (-180/180 for longitude, -90/90 for latitude) when the range spans
-/// the full extent.
-pub fn graticule_breaks(min: f64, max: f64, n: usize) -> Vec<f64> {
-    // Graticules never span more than the globe. max/min also tame non-finite
-    // inputs (e.g. infinite coordinates from degenerate projections), which
-    // otherwise make the step loop below iterate ~i64::MAX times.
-    let min = min.max(-180.0);
-    let max = max.min(180.0);
-
-    let range = max - min;
-    if range <= 0.0 || n == 0 {
-        return vec![];
-    }
-
-    const STEPS: &[f64] = &[1.0, 2.0, 5.0, 10.0, 15.0, 20.0, 30.0, 45.0, 60.0, 90.0];
-
-    let step = STEPS
-        .iter()
-        .copied()
-        .find(|&s| range / s <= n as f64 + 1.0)
-        .unwrap_or(90.0);
-
-    let start = (min / step).ceil() as i64;
-    let end = (max / step).floor() as i64;
-    let mut breaks: Vec<f64> = (start..=end)
-        .map(|i| i as f64 * step)
-        .filter(|&v| v > min && v < max)
-        .collect();
-
-    // min/max are clamped to ±180 above, so these boundaries are equality checks
-    if min == -180.0 && !breaks.contains(&-180.0) {
-        breaks.insert(0, -180.0);
-    } else if max == 180.0 && !breaks.contains(&180.0) {
-        breaks.push(180.0);
-    }
-    if min <= -90.0 && !breaks.contains(&-90.0) {
-        breaks.insert(0, -90.0);
-    } else if max >= 90.0 && !breaks.contains(&90.0) {
-        breaks.push(90.0);
-    }
-
-    breaks
 }
 
 // =============================================================================
@@ -315,19 +182,6 @@ pub fn interval_breaks(
     }
 }
 
-/// The calendar interval automatic temporal breaks step by over `[min, max]`
-/// when about `n` breaks are asked for — the interval
-/// [`zygos::breaks::temporal_breaks_from_f64`] picks, exposed so the minor
-/// breaks can subdivide the same interval the majors use.
-pub fn auto_temporal_interval(
-    min: f64,
-    max: f64,
-    n: usize,
-    unit: TemporalUnit,
-) -> TemporalInterval {
-    zygos::breaks::pick_temporal_interval(max - min, n.max(2) as f64, unit)
-}
-
 /// Minor breaks for a transform whose zygos minor algorithm works from the
 /// scale's extent rather than by subdividing between majors — the log
 /// family's whole-number multiples and the symlog branches built on them.
@@ -366,85 +220,6 @@ mod tests {
     use super::*;
 
     // =========================================================================
-    // Integer Breaks Tests (Consolidated)
-    // =========================================================================
-
-    #[test]
-    fn test_integer_breaks_variations() {
-        // Test various ranges - all should produce integer, evenly-spaced breaks
-        let test_cases = vec![
-            (0.0, 100.0, 5, true),
-            (0.0, 1_000_000.0, 5, true),
-            (-50.0, 50.0, 5, true),
-            (0.0, 5.0, 5, false),
-        ];
-        for (min, max, n, pretty) in test_cases {
-            let breaks = integer_breaks(min, max, n, pretty);
-            assert!(
-                !breaks.is_empty(),
-                "integer_breaks({}, {}, {}, {}) should not be empty",
-                min,
-                max,
-                n,
-                pretty
-            );
-            // All breaks should be integers
-            for b in &breaks {
-                assert_eq!(
-                    *b,
-                    b.round(),
-                    "Break {} should be integer for ({}, {}, {}, {})",
-                    b,
-                    min,
-                    max,
-                    n,
-                    pretty
-                );
-            }
-            // All gaps should be equal (evenly spaced)
-            if breaks.len() >= 2 {
-                let step = breaks[1] - breaks[0];
-                for i in 1..breaks.len() {
-                    let gap = breaks[i] - breaks[i - 1];
-                    assert!(
-                        (gap - step).abs() < 0.01,
-                        "Uneven spacing for ({}, {}, {}, {}): {:?}",
-                        min,
-                        max,
-                        n,
-                        pretty,
-                        breaks
-                    );
-                }
-            }
-        }
-    }
-
-    #[test]
-    fn test_integer_breaks_small_range() {
-        // For range 0-5, should get consecutive integers
-        let breaks = integer_breaks(0.0, 5.0, 10, true);
-        assert_eq!(breaks, vec![0.0, 1.0, 2.0, 3.0, 4.0, 5.0]);
-    }
-
-    #[test]
-    fn test_integer_breaks_edge_cases() {
-        let edge_cases = vec![
-            (0.0, 100.0, 0, "zero count"),
-            (100.0, 0.0, 5, "min > max"),
-            (50.0, 50.0, 5, "min == max"),
-            (f64::NAN, 100.0, 5, "NaN min"),
-            (0.0, f64::INFINITY, 5, "infinite max"),
-        ];
-        for (min, max, n, desc) in edge_cases {
-            assert!(
-                integer_breaks(min, max, n, true).is_empty(),
-                "integer_breaks with {} should be empty",
-                desc
-            );
-        }
-    }
-
     // =========================================================================
     // Filter Breaks Tests
     // =========================================================================
@@ -650,67 +425,5 @@ mod tests {
             TemporalUnit::Time,
         );
         assert_eq!(breaks, vec![22.0 * HOUR_NS, 23.0 * HOUR_NS]);
-    }
-
-    // =========================================================================
-    // Graticule Breaks Tests
-    // =========================================================================
-
-    #[test]
-    fn test_graticule_breaks_world() {
-        let breaks = graticule_breaks(-180.0, 180.0, 7);
-        assert_eq!(
-            breaks,
-            vec![-180.0, -135.0, -90.0, -45.0, 0.0, 45.0, 90.0, 135.0]
-        );
-    }
-
-    #[test]
-    fn test_graticule_breaks_hemisphere() {
-        let breaks = graticule_breaks(-88.0, 88.0, 7);
-        assert_eq!(breaks, vec![-60.0, -30.0, 0.0, 30.0, 60.0]);
-    }
-
-    #[test]
-    fn test_graticule_breaks_small_range() {
-        let breaks = graticule_breaks(10.0, 20.0, 7);
-        assert!(!breaks.is_empty());
-        for &b in &breaks {
-            assert!(b > 10.0 && b < 20.0);
-        }
-    }
-
-    #[test]
-    fn test_graticule_breaks_empty_for_zero_range() {
-        let breaks = graticule_breaks(50.0, 50.0, 7);
-        assert!(breaks.is_empty());
-    }
-
-    #[test]
-    fn test_graticule_breaks_infinite_range_falls_back_to_globe() {
-        let breaks = graticule_breaks(f64::NEG_INFINITY, f64::INFINITY, 7);
-        assert_eq!(
-            breaks,
-            vec![-180.0, -135.0, -90.0, -45.0, 0.0, 45.0, 90.0, 135.0]
-        );
-    }
-
-    #[test]
-    fn test_graticule_breaks_nan_range_falls_back_to_globe() {
-        let breaks = graticule_breaks(f64::NAN, f64::NAN, 7);
-        assert_eq!(breaks, graticule_breaks(-180.0, 180.0, 7));
-    }
-
-    #[test]
-    fn test_graticule_breaks_one_sided_infinity() {
-        let breaks = graticule_breaks(0.0, f64::INFINITY, 7);
-        assert!(breaks.iter().all(|&b| b > 0.0 && b <= 180.0));
-        assert!(!breaks.is_empty());
-    }
-
-    #[test]
-    fn test_graticule_breaks_huge_finite_range_is_clamped() {
-        let breaks = graticule_breaks(-1e15, 1e15, 7);
-        assert!(breaks.iter().all(|&b| (-180.0..=180.0).contains(&b)));
     }
 }

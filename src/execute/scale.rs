@@ -1568,15 +1568,14 @@ pub fn apply_oob_to_column_numeric(
     match oob_policy {
         zygos::OobPolicy::Censor => {
             // Filter out rows where values are outside [range_min, range_max].
-            // NaN is censored too; zygos's `apply` currently passes NaN through
-            // under every policy, so it is dropped explicitly here.
             let mask_values: Vec<bool> = (0..f64_arr.len())
                 .map(|i| {
                     if f64_arr.is_null(i) {
                         true // Keep nulls
                     } else {
-                        let v = f64_arr.value(i);
-                        !v.is_nan() && oob_policy.apply(v, range_min, range_max).is_some()
+                        oob_policy
+                            .apply(f64_arr.value(i), range_min, range_max)
+                            .is_some()
                     }
                 })
                 .collect();

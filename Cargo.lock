@@ -6713,9 +6713,9 @@ dependencies = [
 
 [[package]]
 name = "zygos"
-version = "0.2.0"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "46c52e3a9047311f9bcd2d4850c025f13726bca44df8c0c172b2967c2327c559"
+checksum = "ca3ede22c9a8d1cbc904b185ab02abe5ba24044c66c34906b1d7c9f8300af9b0"
 dependencies = [
  "peniko",
 ]
