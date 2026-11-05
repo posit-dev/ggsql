@@ -67,6 +67,9 @@
   "arrow"
   "arrowstart"
   "arrowend"
+  "arrowsize"
+  "arrowstartsize"
+  "arrowendsize"
   ; Text aesthetics
   "label"
   "typeface"

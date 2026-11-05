@@ -57,6 +57,18 @@ pub fn spec(ctx: &Ctx) -> GeomSpec {
                 MatDefault::None,
             ),
             MaterialSpec::new("arrowend", "end_marker", RangeKind::Arrow, MatDefault::None),
+            MaterialSpec::new(
+                "arrowstartsize",
+                "start_marker_size",
+                RangeKind::Number,
+                MatDefault::None,
+            ),
+            MaterialSpec::new(
+                "arrowendsize",
+                "end_marker_size",
+                RangeKind::Number,
+                MatDefault::None,
+            ),
         ],
         raw_strings: &[],
         constants: stroke_style_constants(ctx.layer),

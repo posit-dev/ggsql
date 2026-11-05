@@ -313,7 +313,10 @@ fn build_layer_encoding(
 
         // Skip arrow aesthetics: Vega-Lite has no line-end marker channel, so
         // a mapped arrow resolves a scale but produces no encoding.
-        if aesthetic == "arrowstart" || aesthetic == "arrowend" {
+        if matches!(
+            aesthetic.as_str(),
+            "arrowstart" | "arrowend" | "arrowstartsize" | "arrowendsize"
+        ) {
             continue;
         }
 

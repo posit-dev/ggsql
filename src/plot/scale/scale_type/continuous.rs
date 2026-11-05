@@ -173,6 +173,12 @@ impl ScaleTypeTrait for Continuous {
                 ArrayElement::Number(1.0),
                 ArrayElement::Number(6.0),
             ])),
+            // An arrowhead reads at a multiple of the linewidth, so its size
+            // range sits above the stroke's.
+            "arrowstartsize" | "arrowendsize" => Ok(Some(vec![
+                ArrayElement::Number(2.0),
+                ArrayElement::Number(8.0),
+            ])),
             "fontsize" => Ok(Some(vec![
                 ArrayElement::Number(8.0),
                 ArrayElement::Number(20.0),

@@ -257,6 +257,26 @@ mod tests {
     }
 
     #[test]
+    fn renders_mapped_line_arrows_with_mapped_sizes() {
+        assert_renders(
+            "SELECT x, y, kind, w FROM (VALUES \
+                 (1, 2, 'a', 3), (2, 3, 'a', 3), (3, 1, 'a', 3), \
+                 (1, 1, 'b', 8), (2, 2, 'b', 8), (3, 3, 'b', 8)) t(x, y, kind, w) \
+             VISUALISE x AS x, y AS y \
+             DRAW line MAPPING kind AS arrowend, w AS arrowendsize",
+        );
+    }
+
+    #[test]
+    fn renders_line_arrow_with_literal_size() {
+        assert_renders(
+            "SELECT x, y FROM (VALUES (1,2),(2,3),(3,1)) t(x,y) \
+             VISUALISE x AS x, y AS y \
+             DRAW line SETTING arrowend => 'closed', arrowendsize => 6",
+        );
+    }
+
+    #[test]
     fn renders_categorical_color_with_legend() {
         assert_renders(
             "SELECT 1 AS x, 2 AS y, 'a' AS grp UNION ALL SELECT 2, 3, 'b' \

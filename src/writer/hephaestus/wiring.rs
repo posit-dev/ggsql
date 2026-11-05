@@ -17,7 +17,7 @@ use super::channels::{
     column_to_f64, column_to_strings, ChannelData,
 };
 use super::scales::{map_linetype, parse_color, parse_font_weight, RangeKind};
-use crate::plot::layer::geom::types::parse_arrow_entry;
+use crate::plot::layer::geom::types::parse_arrow_name;
 use crate::plot::{ParameterValue, ScaleTypeKind};
 use crate::{AestheticValue, DataFrame, GgsqlError, Layer, Plot, Result};
 
@@ -171,7 +171,7 @@ pub struct GeomSpec {
     /// (hephaestus channel, ggsql aesthetic).
     pub raw_strings: &'static [(&'static str, &'static str)],
     /// Constant channels from layer parameters, scale-bypassing (e.g.
-    /// `start_marker`/`end_marker` from the `arrow` SETTING).
+    /// `cap`/`join` from the `linecap`/`linejoin` SETTINGs).
     pub constants: Vec<(&'static str, HValue)>,
     /// Constant panel-space channel values, scale-bypassing (e.g. a rule's
     /// 0..1 span, discrete-tile band edges): (hephaestus channel, value).
@@ -420,16 +420,15 @@ pub fn wire_material<G: BuildableGeom>(
                 }
                 // An identity arrow column holds ggsql arrow names; each row
                 // resolves to a shape (unknown → no marker) and, for tail
-                // shapes, its invert flag. A `name:size` entry's size is not
-                // honoured here — only literals carry sizes.
+                // shapes, its invert flag.
                 RangeKind::Arrow => {
                     let entries = column_to_strings(ctx.df, col)?;
                     let mut shapes = Vec::with_capacity(entries.len());
                     let mut inverts = Vec::with_capacity(entries.len());
                     let mut any_invert = false;
                     for entry in &entries {
-                        let (shape, invert) = match map_arrow_entry(entry) {
-                            Some((shape, _, invert)) => (shape, invert),
+                        let (shape, invert) = match map_arrow_name(entry) {
+                            Some((shape, invert)) => (shape, invert),
                             None => (String::new(), false),
                         };
                         any_invert |= invert;
@@ -529,13 +528,10 @@ fn set_literal_channel<G: BuildableGeom>(
             true
         }
         (RangeKind::Arrow, ParameterValue::String(s)) => {
-            let Some((shape, size, invert)) = map_arrow_entry(s) else {
+            let Some((shape, invert)) = map_arrow_name(s) else {
                 return false;
             };
             builder.set(channel, Raw(shape));
-            if let Some(size) = size {
-                builder.set(format!("{channel}_size"), Raw(size));
-            }
             if invert {
                 builder.set(format!("{channel}_invert"), Raw(true));
             }
@@ -662,18 +658,15 @@ pub fn side_sign(layer: &Layer) -> Option<f64> {
 /// them to trail it.
 const INVERTED_ARROWS: &[&str] = &["fishtail", "fork", "feather"];
 
-/// Resolve an arrow entry (`name` or `name:size`) to hephaestus terms: the
-/// `arrow-*` shape name, an explicit size in points, and whether the shape
-/// needs inverting. Unknown names resolve to `None` — hephaestus draws no
-/// marker for a shape it doesn't know, same as an unknown shape name.
-fn map_arrow_entry(entry: &str) -> Option<(String, Option<f64>, bool)> {
-    let (name, size) = parse_arrow_entry(entry).ok()?;
-    Some((
-        format!("arrow-{name}"),
-        size,
-        INVERTED_ARROWS.contains(&name),
-    ))
+/// Resolve an arrow name to hephaestus terms: the `arrow-*` shape name and
+/// whether the shape needs inverting. Unknown names resolve to `None` —
+/// hephaestus draws no marker for a shape it doesn't know, same as an
+/// unknown shape name.
+fn map_arrow_name(name: &str) -> Option<(String, bool)> {
+    let name = parse_arrow_name(name).ok()?;
+    Some((format!("arrow-{name}"), INVERTED_ARROWS.contains(&name)))
 }
+
 /// The layer's `linecap`/`linejoin` SETTINGs as constant `cap`/`join` channels.
 /// Validation has already rejected settings the geom doesn't declare, and the
 /// `Null` default doesn't match the `String` arm, so a set value alone decides.
@@ -993,7 +986,7 @@ fn constant_material(ctx: &Ctx, aesthetic: &str, kind: RangeKind) -> Option<HVal
                     Some(ParameterValue::String(s)) => Some(s.clone()),
                     _ => None,
                 })?;
-            let (shape, _, _) = map_arrow_entry(&entry)?;
+            let (shape, _) = map_arrow_name(&entry)?;
             Some(HValue::String(shape.into()))
         }
         RangeKind::Bool => {
@@ -1180,34 +1173,27 @@ fn pin_constants(
 
 #[cfg(test)]
 mod tests {
-    use super::map_arrow_entry;
+    use super::map_arrow_name;
 
     #[test]
     fn a_bare_name_maps_to_the_prefixed_shape() {
         assert_eq!(
-            map_arrow_entry("closed"),
-            Some(("arrow-closed".into(), None, false))
-        );
-    }
-
-    #[test]
-    fn a_name_with_size_keeps_the_size() {
-        assert_eq!(
-            map_arrow_entry("closed:6"),
-            Some(("arrow-closed".into(), Some(6.0), false))
+            map_arrow_name("closed"),
+            Some(("arrow-closed".into(), false))
         );
     }
 
     #[test]
     fn tail_style_shapes_need_inverting() {
         assert_eq!(
-            map_arrow_entry("feather"),
-            Some(("arrow-feather".into(), None, true))
+            map_arrow_name("feather"),
+            Some(("arrow-feather".into(), true))
         );
     }
 
     #[test]
     fn unknown_names_resolve_to_no_marker() {
-        assert_eq!(map_arrow_entry("closde"), None);
+        assert_eq!(map_arrow_name("closde"), None);
+        assert_eq!(map_arrow_name("closed:6"), None);
     }
 }

@@ -34,6 +34,7 @@ pub const SIDE_VALUES: &[&str] = &["both", "left", "top", "right", "bottom"];
 pub const AESTHETIC_ALIASES: &[(&str, &[&str])] = &[
     ("color", &["stroke", "fill"]),
     ("arrow", &["arrowstart", "arrowend"]),
+    ("arrowsize", &["arrowstartsize", "arrowendsize"]),
 ];
 
 /// Shared `aggregate` parameter definition. Every geom that opts into the
@@ -55,29 +56,24 @@ pub const ARROW_VALUES: &[&str] = &[
     "bracket", "cross", "dot", "square", "diamond",
 ];
 
-/// Parse one `arrow` entry of the form `name` or `name:size` (size in points).
-pub fn parse_arrow_entry(entry: &str) -> std::result::Result<(&str, Option<f64>), String> {
-    let (name, size) = match entry.split_once(':') {
-        Some((name, size)) => {
-            let size: f64 = size.parse().map_err(|_| {
-                format!("invalid arrow '{entry}'; expected 'name' or 'name:size', e.g. 'closed:6'")
-            })?;
-            (name, Some(size))
+/// Parse one `arrow` entry into its shape name. Sizes are a separate
+/// aesthetic (`arrowstartsize`/`arrowendsize`), so a `name:size` entry is
+/// rejected with a pointer at them.
+pub fn parse_arrow_name(entry: &str) -> std::result::Result<&str, String> {
+    if ARROW_VALUES.contains(&entry) {
+        return Ok(entry);
+    }
+    if let Some((name, _)) = entry.split_once(':') {
+        if ARROW_VALUES.contains(&name) {
+            return Err(format!(
+                "invalid arrow '{entry}'; set the size with the arrowstartsize/arrowendsize aesthetic instead"
+            ));
         }
-        None => (entry, None),
-    };
-    if !ARROW_VALUES.contains(&name) {
-        return Err(format!(
-            "unknown arrow '{name}'; expected one of {}",
-            crate::util::or_list_quoted(ARROW_VALUES, '\'')
-        ));
     }
-    if size.is_some_and(|s| !(s > 0.0 && s.is_finite())) {
-        return Err(format!(
-            "invalid arrow size in '{entry}'; size must be a positive number of points"
-        ));
-    }
-    Ok((name, size))
+    Err(format!(
+        "unknown arrow '{entry}'; expected one of {}",
+        crate::util::or_list_quoted(ARROW_VALUES, '\'')
+    ))
 }
 
 /// Stroke cap style values for the `linecap` parameter.
@@ -710,29 +706,24 @@ mod tests {
 
 #[cfg(test)]
 mod arrow_tests {
-    use super::parse_arrow_entry;
+    use super::parse_arrow_name;
 
     #[test]
     fn parses_a_bare_name() {
-        assert_eq!(parse_arrow_entry("closed"), Ok(("closed", None)));
-    }
-
-    #[test]
-    fn parses_a_name_with_size() {
-        assert_eq!(parse_arrow_entry("closed:6"), Ok(("closed", Some(6.0))));
+        assert_eq!(parse_arrow_name("closed"), Ok("closed"));
     }
 
     #[test]
     fn rejects_an_unknown_name() {
-        assert!(parse_arrow_entry("closde")
+        assert!(parse_arrow_name("closde")
             .unwrap_err()
             .contains("unknown arrow 'closde'"));
     }
 
     #[test]
-    fn rejects_a_non_numeric_or_non_positive_size() {
-        assert!(parse_arrow_entry("closed:big").is_err());
-        assert!(parse_arrow_entry("closed:-1").is_err());
-        assert!(parse_arrow_entry("closed:0").is_err());
+    fn rejects_a_name_with_size() {
+        assert!(parse_arrow_name("closed:6")
+            .unwrap_err()
+            .contains("arrowstartsize/arrowendsize"));
     }
 }

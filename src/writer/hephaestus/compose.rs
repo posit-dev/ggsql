@@ -11,7 +11,6 @@ use hephaestus::scales::chrome::AxisSide;
 use hephaestus::shape::ShapeRegistry;
 
 use super::projection::apply_projection;
-use super::scales::build_scale;
 use super::wiring::Ctx;
 use super::{channels, facet, geom, projection, scales, wiring};
 use crate::naming;
@@ -116,27 +115,7 @@ pub fn build_composition(
     // Register the fixed (shared) scales once, globally. Every panel binds
     // its position channels to these names, giving fixed-scale faceting.
     for scale in &spec.scales {
-        let kind = match scale.aesthetic.as_str() {
-            "fill" | "stroke" => scales::RangeKind::Color,
-            "shape" => scales::RangeKind::Shape,
-            "linetype" => scales::RangeKind::Linetype,
-            "arrowstart" | "arrowend" => scales::RangeKind::Arrow,
-            // The text geom's font aesthetics: a scale over them resolves a
-            // range of family names / weights, not numbers.
-            "typeface" => scales::RangeKind::Text,
-            "fontweight" => scales::RangeKind::FontWeight,
-            "italic" => scales::RangeKind::Bool,
-            _ => {
-                if scale.aesthetic.starts_with("pos") {
-                    scales::RangeKind::Position
-                } else {
-                    scales::RangeKind::Number
-                }
-            }
-        };
-        if let Some(hs) = build_scale(scale, kind) {
-            view.insert_scale(scale.aesthetic.clone(), hs);
-        }
+        scales::insert_scale(&mut view, scale);
     }
 
     // Frame a map to its bounding box. Marks, clip boundary and graticules

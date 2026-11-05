@@ -30,6 +30,8 @@ impl GeomTrait for Path {
                 ("linetype", DefaultAestheticValue::String("solid")),
                 ("arrowstart", DefaultAestheticValue::Null),
                 ("arrowend", DefaultAestheticValue::Null),
+                ("arrowstartsize", DefaultAestheticValue::Null),
+                ("arrowendsize", DefaultAestheticValue::Null),
             ],
         }
     }

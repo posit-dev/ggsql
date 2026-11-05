@@ -61,7 +61,7 @@ pub fn gets_default_scale(aesthetic: &str) -> bool {
         // Color aesthetics (color/colour/col already split to fill/stroke)
         "fill" | "stroke"
         // Size aesthetics
-        | "size" | "linewidth"
+        | "size" | "linewidth" | "arrowstartsize" | "arrowendsize"
         // Dimension aesthetics
         | "width" | "height"
         // Other material aesthetics

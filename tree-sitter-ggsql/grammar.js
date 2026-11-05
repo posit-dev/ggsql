@@ -921,6 +921,7 @@ module.exports = grammar({
       'size', 'shape', 'linetype', 'linewidth', 'width', 'height',
       // Line-end markers
       'arrow', 'arrowstart', 'arrowend',
+      'arrowsize', 'arrowstartsize', 'arrowendsize',
       // Text aesthetics
       'label', 'typeface', 'fontweight', 'italic', 'fontsize', 'hjust', 'vjust', 'rotation',
       // Specialty aesthetics,
