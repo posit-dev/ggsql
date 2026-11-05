@@ -11,6 +11,8 @@ use hephaestus::plot::theme::{Element, Length, RectElement, Theme};
 use hephaestus::plot::Plot as HPlot;
 use hephaestus::scales::chrome::LegendSide;
 use hephaestus::scales::value::{DataColumn, Value as HValue};
+use hephaestus::shape::{Shape, ShapeRegistry, ShapeStyle};
+use hephaestus::{primitives, Point};
 
 use super::channels::{
     aesthetic_column_name, build_group_keys, column_to_bool, column_to_channel, column_to_colors,
@@ -419,26 +421,14 @@ pub fn wire_material<G: BuildableGeom>(
                     builder.set(m.channel, Raw(radians));
                 }
                 // An identity arrow column holds ggsql arrow names; each row
-                // resolves to a shape (unknown → no marker) and, for tail
-                // shapes, its invert flag.
+                // resolves to a shape (unknown → no marker).
                 RangeKind::Arrow => {
                     let entries = column_to_strings(ctx.df, col)?;
-                    let mut shapes = Vec::with_capacity(entries.len());
-                    let mut inverts = Vec::with_capacity(entries.len());
-                    let mut any_invert = false;
-                    for entry in &entries {
-                        let (shape, invert) = match map_arrow_name(entry) {
-                            Some((shape, invert)) => (shape, invert),
-                            None => (String::new(), false),
-                        };
-                        any_invert |= invert;
-                        inverts.push(invert);
-                        shapes.push(shape);
-                    }
+                    let shapes: Vec<String> = entries
+                        .iter()
+                        .map(|entry| map_arrow_name(entry).unwrap_or_default())
+                        .collect();
                     builder.set(m.channel, Raw(shapes));
-                    if any_invert {
-                        builder.set(format!("{}_invert", m.channel), Raw(inverts));
-                    }
                 }
                 _ => {
                     builder.set(m.channel, Raw(column_to_f64(ctx.df, col)?));
@@ -528,13 +518,10 @@ fn set_literal_channel<G: BuildableGeom>(
             true
         }
         (RangeKind::Arrow, ParameterValue::String(s)) => {
-            let Some((shape, invert)) = map_arrow_name(s) else {
+            let Some(shape) = map_arrow_name(s) else {
                 return false;
             };
             builder.set(channel, Raw(shape));
-            if invert {
-                builder.set(format!("{channel}_invert"), Raw(true));
-            }
             true
         }
         (RangeKind::Number, ParameterValue::Number(n)) if n.is_finite() => {
@@ -654,17 +641,55 @@ pub fn side_sign(layer: &Layer) -> Option<f64> {
     }
 }
 
-/// Tail-style shapes are built opening away from the line; inverting turns
-/// them to trail it.
-const INVERTED_ARROWS: &[&str] = &["fishtail", "fork", "feather"];
+/// The shape registry every ggsql plot renders against: hephaestus's
+/// built-ins, with the tail-style arrows (`fishtail`, `fork`, `feather`)
+/// re-registered x-mirrored. ggsql draws tails flaring outward from the
+/// line end where the built-ins trail back along the line. Baking the
+/// orientation into the registry means every path that resolves a name —
+/// scale range, identity column, literal — agrees, with no invert flag to
+/// keep in sync.
+pub fn shape_registry() -> ShapeRegistry {
+    let stroke = |segments: &[(f64, f64, f64, f64)]| {
+        Shape::new(
+            segments
+                .iter()
+                .map(|&(x1, y1, x2, y2)| {
+                    primitives::segment(Point::new(x1, y1), Point::new(x2, y2))
+                })
+                .collect(),
+            ShapeStyle::Stroke,
+            Point::ORIGIN,
+        )
+    };
+    let mut registry = ShapeRegistry::with_builtins();
+    registry.insert(
+        "arrow-fishtail",
+        stroke(&[(0.0, 0.0, 1.0, 0.5), (0.0, 0.0, 1.0, -0.5)]),
+    );
+    registry.insert(
+        "arrow-fork",
+        stroke(&[(0.0, 0.0, 0.7, 0.7), (0.0, 0.0, 0.7, -0.7)]),
+    );
+    registry.insert(
+        "arrow-feather",
+        stroke(&[
+            (0.0, 0.0, 0.4, 0.5),
+            (0.0, 0.0, 0.4, -0.5),
+            (0.3, 0.0, 0.7, 0.5),
+            (0.3, 0.0, 0.7, -0.5),
+            (0.6, 0.0, 1.0, 0.5),
+            (0.6, 0.0, 1.0, -0.5),
+        ]),
+    );
+    registry
+}
 
-/// Resolve an arrow name to hephaestus terms: the `arrow-*` shape name and
-/// whether the shape needs inverting. Unknown names resolve to `None` —
-/// hephaestus draws no marker for a shape it doesn't know, same as an
-/// unknown shape name.
-fn map_arrow_name(name: &str) -> Option<(String, bool)> {
+/// Resolve an arrow name to hephaestus's `arrow-*` shape name. Unknown
+/// names resolve to `None` — hephaestus draws no marker for a shape it
+/// doesn't know, same as an unknown shape name.
+fn map_arrow_name(name: &str) -> Option<String> {
     let name = parse_arrow_name(name).ok()?;
-    Some((format!("arrow-{name}"), INVERTED_ARROWS.contains(&name)))
+    Some(format!("arrow-{name}"))
 }
 
 /// The layer's `linecap`/`linejoin` SETTINGs as constant `cap`/`join` channels.
@@ -986,7 +1011,7 @@ fn constant_material(ctx: &Ctx, aesthetic: &str, kind: RangeKind) -> Option<HVal
                     Some(ParameterValue::String(s)) => Some(s.clone()),
                     _ => None,
                 })?;
-            let (shape, _) = map_arrow_name(&entry)?;
+            let shape = map_arrow_name(&entry)?;
             Some(HValue::String(shape.into()))
         }
         RangeKind::Bool => {
@@ -1173,27 +1198,14 @@ fn pin_constants(
 
 #[cfg(test)]
 mod tests {
-    use super::map_arrow_name;
+    use super::shape_registry;
 
     #[test]
-    fn a_bare_name_maps_to_the_prefixed_shape() {
-        assert_eq!(
-            map_arrow_name("closed"),
-            Some(("arrow-closed".into(), false))
-        );
-    }
-
-    #[test]
-    fn tail_style_shapes_need_inverting() {
-        assert_eq!(
-            map_arrow_name("feather"),
-            Some(("arrow-feather".into(), true))
-        );
-    }
-
-    #[test]
-    fn unknown_names_resolve_to_no_marker() {
-        assert_eq!(map_arrow_name("closde"), None);
-        assert_eq!(map_arrow_name("closed:6"), None);
+    fn tail_style_shapes_are_mirrored_in_the_registry() {
+        let registry = shape_registry();
+        for name in ["arrow-fishtail", "arrow-fork", "arrow-feather"] {
+            let bbox = registry.get(name).unwrap().bounding_box();
+            assert_eq!(bbox.x0, 0.0, "{name} should flare outward from the anchor");
+        }
     }
 }

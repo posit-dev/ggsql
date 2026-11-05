@@ -8,7 +8,6 @@ use std::collections::HashMap;
 
 use hephaestus::plot::{scale, AspectMode, Plot as HPlot, PlotComposition};
 use hephaestus::scales::chrome::AxisSide;
-use hephaestus::shape::ShapeRegistry;
 
 use super::projection::apply_projection;
 use super::wiring::Ctx;
@@ -90,7 +89,7 @@ pub fn build_composition(
     // The composition owns the shape registry backing composition-level legend
     // glyphs (point markers, line dashes).
     let mut view = PlotComposition::new(&composition)
-        .shape_registry(ShapeRegistry::with_builtins())
+        .shape_registry(wiring::shape_registry())
         .theme(wiring::ggsql_theme());
 
     // LABEL title/subtitle/caption live on the composition rather than the
@@ -180,8 +179,8 @@ pub fn build_composition(
         // bind channels and record legends into `legend_sink`. An empty panel
         // builds no geoms, so it cannot be the legend-capturing one.
         let panel_legends = (!legends_captured).then_some(&legend_sink);
-        let mut plot = HPlot::new(&composition, panel.id.as_str())
-            .shape_registry(ShapeRegistry::with_builtins());
+        let mut plot =
+            HPlot::new(&composition, panel.id.as_str()).shape_registry(wiring::shape_registry());
         if !empty {
             for (layer, df) in &slices {
                 let ctx = Ctx {
