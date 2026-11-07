@@ -45,6 +45,29 @@ pub const AGGREGATE_PARAM: ParamDefinition = ParamDefinition {
     constraint: ParamConstraint::string_or_string_array_unconstrained(),
 };
 
+/// Stroke cap style values for the `linecap` parameter.
+pub const LINECAP_VALUES: &[&str] = &["butt", "round", "square"];
+
+/// Stroke join style values for the `linejoin` parameter. `mitre` is accepted
+/// as a spelling variant of `miter`; consumers normalise to `miter`.
+pub const LINEJOIN_VALUES: &[&str] = &["miter", "mitre", "round", "bevel"];
+
+/// Shared `linecap` parameter definition: shape of open stroke ends. A Null
+/// default defers to the renderer's theme (butt).
+pub const LINECAP_PARAM: ParamDefinition = ParamDefinition {
+    name: "linecap",
+    default: DefaultParamValue::Null,
+    constraint: ParamConstraint::string_option(LINECAP_VALUES),
+};
+
+/// Shared `linejoin` parameter definition: shape of corners where stroke
+/// segments meet. A Null default defers to the renderer's theme (miter).
+pub const LINEJOIN_PARAM: ParamDefinition = ParamDefinition {
+    name: "linejoin",
+    default: DefaultParamValue::Null,
+    constraint: ParamConstraint::string_option(LINEJOIN_VALUES),
+};
+
 /// Default aesthetic values for a geom type
 ///
 /// This struct describes which aesthetics a geom supports, requires, and their default values.
