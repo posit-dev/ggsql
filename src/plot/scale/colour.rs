@@ -150,6 +150,8 @@ mod tests {
         assert!(is_color_aesthetic("fill"));
         assert!(is_color_aesthetic("stroke"));
         assert!(!is_color_aesthetic("x"));
+        assert!(!is_color_aesthetic("y"));
+        assert!(!is_color_aesthetic("size"));
         assert!(!is_color_aesthetic("shape"));
     }
 

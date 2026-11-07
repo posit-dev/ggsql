@@ -82,7 +82,7 @@ Since breaks are not just presentational as it is with continuous scales the cho
 * `linear`:
   - `pretty => true`: Will use Wilkinsons Extended algorithm to attempt to find nice breaks in the given interval close to the number of breaks requested
   - `pretty => false`: Will produce the requested number of evenly spaced breaks within the scale range
-* `log`/`log2`/`ln`: Uses the 1-2-5 pattern on every power of the base (e.g. 1, 2, 5, 10, 20, 50 for log10), adding 3 and 7 on narrow ranges when many breaks are requested and keeping only the powers on very wide ranges, where powers are skipped to stay near the requested number of breaks. Multipliers at or above the base are dropped, so `log2` breaks are powers of 2. The `pretty` setting has no effect
+* `log`/`log2`/`ln`: Uses the 1-2-5 pattern on every power of the base (e.g. 1, 2, 5, 10, 20, 50 for log10), adding 3 and 7 on narrow ranges when many breaks are requested and keeping only the powers on very wide ranges, where powers are skipped to stay near the requested number of breaks. Multipliers above the base are dropped, so `log2` breaks are powers of 2. The `pretty` setting has no effect
 * `exp10`/`exp2`/`exp`: Like `linear`, on the exponents
 * `sqrt`: Like `linear` but the range is first converted to sqrt space and the breaks are then converted back
 * `square`: Like `linear`

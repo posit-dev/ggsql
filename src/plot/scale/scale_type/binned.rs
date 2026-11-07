@@ -402,7 +402,9 @@ impl ScaleTypeTrait for Binned {
             Some(ParameterValue::String(interval_str)) => {
                 // Temporal interval string like "2 months", "week"
                 // Only valid for temporal transforms (Date, DateTime, Time)
-                use super::super::super::breaks::{interval_breaks, parse_temporal_interval};
+                use super::super::super::breaks::{
+                    calendar_interval_breaks, parse_temporal_interval,
+                };
 
                 // Non-temporal transforms don't support interval strings.
                 if let (Some(interval), Some(unit)) = (
@@ -418,10 +420,11 @@ impl ScaleTypeTrait for Binned {
                     if let Some(range) = break_range {
                         let min = range[0].to_f64().unwrap_or(0.0);
                         let max = range[range.len() - 1].to_f64().unwrap_or(0.0);
-                        let breaks: Vec<ArrayElement> = interval_breaks(interval, min, max, unit)
-                            .into_iter()
-                            .map(|v| resolved_transform.wrap_numeric(v))
-                            .collect();
+                        let breaks: Vec<ArrayElement> =
+                            calendar_interval_breaks(interval, min, max, unit)
+                                .into_iter()
+                                .map(|v| resolved_transform.wrap_numeric(v))
+                                .collect();
 
                         if !breaks.is_empty() {
                             // Only filter to input range when user provided explicit FROM clause
@@ -471,7 +474,7 @@ impl ScaleTypeTrait for Binned {
                 // Only expand for position aesthetics (x, y, etc.)
                 // Material aesthetics (color, fill, size) don't get expansion
                 let final_range = if super::is_position_aesthetic(aesthetic) {
-                    expand_numeric_range(&terminal_range, mult, add, &resolved_transform)
+                    expand_numeric_range(&terminal_range, mult, add, None, &resolved_transform)
                 } else {
                     terminal_range
                 };

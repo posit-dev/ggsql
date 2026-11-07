@@ -177,6 +177,21 @@ impl ScaleDataContext {
         }
     }
 
+    /// Recompute a continuous range over in-domain values only.
+    ///
+    /// No-op for discrete ranges or an unrestricted domain. When every value
+    /// is out of domain the range becomes `None`, and resolution proceeds as
+    /// if no data range were available.
+    pub fn restrict_to_domain(&mut self, columns: &[&ArrayRef], domain: (f64, f64)) {
+        if domain == (f64::NEG_INFINITY, f64::INFINITY) {
+            return;
+        }
+        if matches!(self.range, Some(InputRange::Continuous(_))) {
+            self.range =
+                compute_column_range_multi_in_domain(columns, domain).map(InputRange::Continuous);
+        }
+    }
+
     /// Get the discrete range as unique values if available.
     pub fn discrete_range(&self) -> Option<&[ArrayElement]> {
         match &self.range {
@@ -207,6 +222,42 @@ fn compute_column_range_multi(columns: &[&ArrayRef]) -> Option<Vec<ArrayElement>
                 }
                 if let Some(max) = arrow::compute::max(f64_arr) {
                     global_max = Some(global_max.map_or(max, |m| m.max(max)));
+                }
+            }
+        }
+    }
+
+    match (global_min, global_max) {
+        (Some(min), Some(max)) => Some(vec![ArrayElement::Number(min), ArrayElement::Number(max)]),
+        _ => None,
+    }
+}
+
+/// Min/max across all columns over values inside `domain` only.
+///
+/// Used when a scale's transform has a restricted domain (e.g. log excludes
+/// non-positive values): an out-of-domain data extreme would otherwise become
+/// an end of the inferred range that the transform cannot map, which domain
+/// clipping then replaces with a meaningless bound (f64::MIN_POSITIVE for
+/// log). NaN never satisfies the comparisons and is excluded too.
+fn compute_column_range_multi_in_domain(
+    columns: &[&ArrayRef],
+    domain: (f64, f64),
+) -> Option<Vec<ArrayElement>> {
+    use crate::array_util::cast_array;
+
+    let (lo, hi) = domain;
+    let mut global_min: Option<f64> = None;
+    let mut global_max: Option<f64> = None;
+
+    for column in columns {
+        if let Ok(cast) = cast_array(column, &DataType::Float64) {
+            if let Ok(f64_arr) = crate::array_util::as_f64(&cast) {
+                for value in f64_arr.iter().flatten() {
+                    if value >= lo && value <= hi {
+                        global_min = Some(global_min.map_or(value, |m| m.min(value)));
+                        global_max = Some(global_max.map_or(value, |m| m.max(value)));
+                    }
                 }
             }
         }
@@ -1690,17 +1741,6 @@ pub(super) fn parse_expand_value(expand: &ParameterValue) -> Option<(f64, f64)> 
 ///
 /// Each end moves outward by `span × mult + add`, with the span and `add`
 /// measured in transformed units (see [`Transform::expand_range`]).
-pub(crate) fn expand_numeric_range(
-    range: &[ArrayElement],
-    mult: f64,
-    add: f64,
-    transform: &Transform,
-) -> Vec<ArrayElement> {
-    expand_numeric_range_selective(range, mult, add, None, transform)
-}
-
-/// Apply expansion selectively to a numeric [min, max] range, in the
-/// transform's space.
 ///
 /// If `original_user_range` is provided, only expand values that were originally Null
 /// in the user range. This preserves explicit user limits while expanding inferred values.
@@ -1711,7 +1751,7 @@ pub(crate) fn expand_numeric_range(
 ///
 /// The span is that of the whole range in transformed space, so an inferred
 /// end is padded by the same amount whether or not the other end is explicit.
-pub(crate) fn expand_numeric_range_selective(
+pub(crate) fn expand_numeric_range(
     range: &[ArrayElement],
     mult: f64,
     add: f64,
@@ -1824,7 +1864,7 @@ pub(crate) fn temporal_interval_breaks(
     let max = range.last()?.to_f64()?;
     // zygos steps the interval's calendar grid and keeps only what falls
     // inside the domain. (Binned scales can't use this — they need the
-    // terminal break past `max`, so they call `interval_breaks` directly.)
+    // terminal break past `max`, so they call `calendar_interval_breaks` directly.)
     let breaks: Vec<ArrayElement> = zygos::temporal_breaks_with_interval(
         Some(&zygos::InputRange::Continuous { min, max }),
         unit,
@@ -2137,7 +2177,7 @@ pub(crate) fn resolve_common_steps<T: ScaleTypeTrait + ?Sized>(
 
         if !is_discrete_range && is_position && is_deduced {
             applied_expand = (mult, add);
-            let expanded = expand_numeric_range_selective(
+            let expanded = expand_numeric_range(
                 &range,
                 mult,
                 add,
@@ -2580,7 +2620,7 @@ mod tests {
     #[test]
     fn test_expand_numeric_range_mult_only() {
         let range = vec![ArrayElement::Number(0.0), ArrayElement::Number(100.0)];
-        let expanded = expand_numeric_range(&range, 0.05, 0.0, &Transform::identity());
+        let expanded = expand_numeric_range(&range, 0.05, 0.0, None, &Transform::identity());
         // span = 100, expanded = [-5, 105]
         assert_eq!(expanded[0], ArrayElement::Number(-5.0));
         assert_eq!(expanded[1], ArrayElement::Number(105.0));
@@ -2589,7 +2629,7 @@ mod tests {
     #[test]
     fn test_expand_numeric_range_with_add() {
         let range = vec![ArrayElement::Number(0.0), ArrayElement::Number(100.0)];
-        let expanded = expand_numeric_range(&range, 0.05, 10.0, &Transform::identity());
+        let expanded = expand_numeric_range(&range, 0.05, 10.0, None, &Transform::identity());
         // span = 100, mult_expansion = 5, add_expansion = 10
         // expanded = [0 - 5 - 10, 100 + 5 + 10] = [-15, 115]
         assert_eq!(expanded[0], ArrayElement::Number(-15.0));
@@ -2599,7 +2639,7 @@ mod tests {
     #[test]
     fn test_expand_numeric_range_zero_disables() {
         let range = vec![ArrayElement::Number(0.0), ArrayElement::Number(100.0)];
-        let expanded = expand_numeric_range(&range, 0.0, 0.0, &Transform::identity());
+        let expanded = expand_numeric_range(&range, 0.0, 0.0, None, &Transform::identity());
         // No expansion
         assert_eq!(expanded[0], ArrayElement::Number(0.0));
         assert_eq!(expanded[1], ArrayElement::Number(100.0));
@@ -2611,13 +2651,8 @@ mod tests {
         let range = vec![ArrayElement::Number(0.0), ArrayElement::Number(100.0)];
         let user_range = vec![ArrayElement::Number(0.0), ArrayElement::Null];
 
-        let expanded = expand_numeric_range_selective(
-            &range,
-            0.05,
-            0.0,
-            Some(&user_range),
-            &Transform::identity(),
-        );
+        let expanded =
+            expand_numeric_range(&range, 0.05, 0.0, Some(&user_range), &Transform::identity());
 
         // Min should stay at 0 (explicit), max should be expanded
         // span = 100, expansion = 5
@@ -2631,13 +2666,8 @@ mod tests {
         let range = vec![ArrayElement::Number(0.0), ArrayElement::Number(100.0)];
         let user_range = vec![ArrayElement::Null, ArrayElement::Number(100.0)];
 
-        let expanded = expand_numeric_range_selective(
-            &range,
-            0.05,
-            0.0,
-            Some(&user_range),
-            &Transform::identity(),
-        );
+        let expanded =
+            expand_numeric_range(&range, 0.05, 0.0, Some(&user_range), &Transform::identity());
 
         // Min should be expanded, max should stay at 100 (explicit)
         // span = 100, expansion = 5
@@ -2651,13 +2681,8 @@ mod tests {
         let range = vec![ArrayElement::Number(0.0), ArrayElement::Number(100.0)];
         let user_range = vec![ArrayElement::Number(0.0), ArrayElement::Number(100.0)];
 
-        let expanded = expand_numeric_range_selective(
-            &range,
-            0.05,
-            0.0,
-            Some(&user_range),
-            &Transform::identity(),
-        );
+        let expanded =
+            expand_numeric_range(&range, 0.05, 0.0, Some(&user_range), &Transform::identity());
 
         // Both should stay as-is (no expansion)
         assert_eq!(expanded[0], ArrayElement::Number(0.0));
@@ -2669,8 +2694,7 @@ mod tests {
         // No user range (all inferred) → expand both
         let range = vec![ArrayElement::Number(0.0), ArrayElement::Number(100.0)];
 
-        let expanded =
-            expand_numeric_range_selective(&range, 0.05, 0.0, None, &Transform::identity());
+        let expanded = expand_numeric_range(&range, 0.05, 0.0, None, &Transform::identity());
 
         // Both should be expanded
         assert_eq!(expanded[0], ArrayElement::Number(-5.0));
@@ -2682,7 +2706,7 @@ mod tests {
         // Singular range: all values are the same (e.g., count=12 for all bars)
         // A zero-width range pads as if it spanned one transformed unit.
         let range = vec![ArrayElement::Number(12.0), ArrayElement::Number(12.0)];
-        let expanded = expand_numeric_range(&range, 0.05, 0.0, &Transform::identity());
+        let expanded = expand_numeric_range(&range, 0.05, 0.0, None, &Transform::identity());
 
         // span = 0 → unit span, expansion = 1 * 0.05 = 0.05
         assert_eq!(expanded[0], ArrayElement::Number(12.0 - 0.05));
@@ -2693,7 +2717,7 @@ mod tests {
     fn test_expand_singular_range_zero() {
         // Singular range at zero (e.g., all counts are 0)
         let range = vec![ArrayElement::Number(0.0), ArrayElement::Number(0.0)];
-        let expanded = expand_numeric_range(&range, 0.05, 0.0, &Transform::identity());
+        let expanded = expand_numeric_range(&range, 0.05, 0.0, None, &Transform::identity());
 
         // span = 0 → unit span, expansion = 1 * 0.05 = 0.05
         assert_eq!(expanded[0], ArrayElement::Number(-0.05));
@@ -2704,13 +2728,8 @@ mod tests {
     fn test_expand_descending_range_keeps_its_order() {
         let range = vec![ArrayElement::Number(100.0), ArrayElement::Number(0.0)];
         let user_range = vec![ArrayElement::Number(100.0), ArrayElement::Null];
-        let expanded = expand_numeric_range_selective(
-            &range,
-            0.05,
-            0.0,
-            Some(&user_range),
-            &Transform::identity(),
-        );
+        let expanded =
+            expand_numeric_range(&range, 0.05, 0.0, Some(&user_range), &Transform::identity());
         // The explicit first end stays; the inferred second end moves outward.
         assert_eq!(expanded[0], ArrayElement::Number(100.0));
         assert_eq!(expanded[1], ArrayElement::Number(-5.0));
@@ -2726,7 +2745,7 @@ mod tests {
         // the lower bound stays positive rather than collapsing to the domain
         // minimum.
         let range = vec![ArrayElement::Number(1.0), ArrayElement::Number(100.0)];
-        let expanded = expand_numeric_range(&range, 0.05, 0.0, &Transform::log());
+        let expanded = expand_numeric_range(&range, 0.05, 0.0, None, &Transform::log());
         assert!((as_f64(&expanded[0]) - 10f64.powf(-0.1)).abs() < 1e-12);
         assert!((as_f64(&expanded[1]) - 10f64.powf(2.1)).abs() < 1e-9);
     }
@@ -2734,7 +2753,7 @@ mod tests {
     #[test]
     fn test_expand_log10_add_is_in_decades() {
         let range = vec![ArrayElement::Number(1.0), ArrayElement::Number(100.0)];
-        let expanded = expand_numeric_range(&range, 0.0, 1.0, &Transform::log());
+        let expanded = expand_numeric_range(&range, 0.0, 1.0, None, &Transform::log());
         assert!((as_f64(&expanded[0]) - 0.1).abs() < 1e-12);
         assert!((as_f64(&expanded[1]) - 1000.0).abs() < 1e-9);
     }
@@ -2744,7 +2763,7 @@ mod tests {
         let range = vec![ArrayElement::Number(1.0), ArrayElement::Number(100.0)];
         let user_range = vec![ArrayElement::Number(1.0), ArrayElement::Null];
         let expanded =
-            expand_numeric_range_selective(&range, 0.05, 0.0, Some(&user_range), &Transform::log());
+            expand_numeric_range(&range, 0.05, 0.0, Some(&user_range), &Transform::log());
         assert_eq!(expanded[0], ArrayElement::Number(1.0));
         assert!((as_f64(&expanded[1]) - 10f64.powf(2.1)).abs() < 1e-9);
     }
@@ -2756,7 +2775,7 @@ mod tests {
         // unpadded; the upper end pads in transformed space as usual.
         let range = vec![ArrayElement::Number(0.0), ArrayElement::Number(100.0)];
         let sqrt = Transform::sqrt();
-        let expanded = expand_numeric_range(&range, 0.05, 0.0, &sqrt);
+        let expanded = expand_numeric_range(&range, 0.05, 0.0, None, &sqrt);
         assert_eq!(expanded[0], ArrayElement::Number(0.0));
         assert!((as_f64(&expanded[1]) - 110.25).abs() < 1e-9);
     }
@@ -4148,6 +4167,66 @@ mod tests {
     }
 
     // =========================================================================
+    // Domain-restricted range computation Tests
+    // =========================================================================
+
+    #[test]
+    fn test_restrict_to_domain_log() {
+        use arrow::array::Float64Array;
+        use std::sync::Arc;
+
+        let array: ArrayRef = Arc::new(Float64Array::from(vec![
+            Some(-100.0),
+            Some(0.0),
+            Some(10.0),
+            Some(100.0),
+            None,
+        ]));
+        let columns: Vec<&ArrayRef> = vec![&array];
+
+        let mut context = ScaleDataContext::from_columns(&columns, false);
+        assert_eq!(
+            context.continuous_range().unwrap(),
+            &[ArrayElement::Number(-100.0), ArrayElement::Number(100.0)]
+        );
+
+        context.restrict_to_domain(&columns, Transform::log().allowed_domain());
+        assert_eq!(
+            context.continuous_range().unwrap(),
+            &[ArrayElement::Number(10.0), ArrayElement::Number(100.0)]
+        );
+    }
+
+    #[test]
+    fn test_restrict_to_domain_all_out_of_domain() {
+        use arrow::array::Float64Array;
+        use std::sync::Arc;
+
+        let array: ArrayRef = Arc::new(Float64Array::from(vec![Some(-5.0), Some(-1.0)]));
+        let columns: Vec<&ArrayRef> = vec![&array];
+
+        let mut context = ScaleDataContext::from_columns(&columns, false);
+        context.restrict_to_domain(&columns, Transform::log().allowed_domain());
+        assert!(context.continuous_range().is_none());
+    }
+
+    #[test]
+    fn test_restrict_to_domain_unrestricted_is_noop() {
+        use arrow::array::Float64Array;
+        use std::sync::Arc;
+
+        let array: ArrayRef = Arc::new(Float64Array::from(vec![Some(-5.0), Some(1.0)]));
+        let columns: Vec<&ArrayRef> = vec![&array];
+
+        let mut context = ScaleDataContext::from_columns(&columns, false);
+        context.restrict_to_domain(&columns, Transform::identity().allowed_domain());
+        assert_eq!(
+            context.continuous_range().unwrap(),
+            &[ArrayElement::Number(-5.0), ArrayElement::Number(1.0)]
+        );
+    }
+
+    // =========================================================================
     // clip_to_transform_domain Tests
     // =========================================================================
 
@@ -4214,7 +4293,7 @@ mod tests {
         // each end moves half a decade and stays positive; clipping is a no-op.
         let range = vec![ArrayElement::Number(0.001), ArrayElement::Number(0.01)];
         let transform = Transform::from_kind(TransformKind::Log10);
-        let expanded = expand_numeric_range(&range, 0.5, 0.0, &transform);
+        let expanded = expand_numeric_range(&range, 0.5, 0.0, None, &transform);
         let lo = expanded[0].to_f64().unwrap();
         let hi = expanded[1].to_f64().unwrap();
         assert!((lo - 10f64.powf(-3.5)).abs() < 1e-15, "lower end: {lo}");

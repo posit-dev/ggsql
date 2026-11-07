@@ -1046,6 +1046,13 @@ pub fn resolve_scales(spec: &mut Plot, data_map: &mut HashMap<String, DataFrame>
             // Build context from actual data columns
             let mut context = ScaleDataContext::from_columns(&column_refs, use_discrete_range);
 
+            // A user-requested transform with a restricted domain (e.g. log
+            // excludes non-positive values) can't map out-of-domain data, so
+            // infer the range from in-domain values only.
+            if let Some(transform) = &spec.scales[idx].transform {
+                context.restrict_to_domain(&column_refs, transform.allowed_domain());
+            }
+
             // For polar full-circle theta (pos2), use zero expansion
             if is_polar && polar_is_full_circle && aesthetic == "pos2" {
                 context.default_expand = Some((0.0, 0.0));
@@ -1175,6 +1182,10 @@ fn resolve_panel_scales(
                 let column_refs: Vec<&ArrayRef> = owned.iter().collect();
                 let mut context =
                     ScaleDataContext::from_columns(&column_refs, st.uses_discrete_input_range());
+                // Same in-domain restriction as the global resolution above.
+                if let Some(transform) = &spec.scales[idx].transform {
+                    context.restrict_to_domain(&column_refs, transform.allowed_domain());
+                }
                 if polar_zero_expand && aesthetic == "pos2" {
                     context.default_expand = Some((0.0, 0.0));
                 }

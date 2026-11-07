@@ -81,6 +81,10 @@
 
 ### Fixed
 
+- A scale whose transform has a restricted domain (e.g. `log`, `sqrt`) now
+  infers its data range from in-domain values only, so non-positive data on a
+  log scale no longer drags the lower limit to the transform's minimum bound
+  and produces an unreadable axis.
 - Free facet dimensions now resolve their domain, breaks, labels, and minor
   breaks per panel in core (`Scale::panels`, indexed by the canonical panel
   order shared by both writers). The Vega-Lite writer no longer pins the

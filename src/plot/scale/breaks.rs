@@ -157,7 +157,7 @@ fn parse_calendar_unit(s: &str) -> Option<CalendarUnit> {
 /// bin of a binned scale closes over the data. Positions are in `unit`'s raw
 /// encoding: days for a date, microseconds for a datetime, nanoseconds since
 /// midnight for a time (which stops at midnight rather than wrapping).
-pub fn interval_breaks(
+pub fn calendar_interval_breaks(
     interval: TemporalInterval,
     min: f64,
     max: f64,
@@ -361,7 +361,7 @@ mod tests {
 
     #[test]
     fn test_temporal_breaks_date_includes_terminal_break() {
-        // Test that interval_breaks includes a terminal break AFTER max_date
+        // Test that calendar_interval_breaks includes a terminal break AFTER max_date
         // to ensure all data falls within a bin.
         //
         // Data spanning Jan 15 to Mar 15 with monthly breaks should produce:
@@ -372,10 +372,11 @@ mod tests {
         // Jan 15, 2024 = 19738 days since epoch
         // Mar 15, 2024 = 19798 days since epoch
         let monthly = parse_temporal_interval("month").unwrap();
-        let breaks: Vec<i32> = interval_breaks(monthly, 19738.0, 19798.0, TemporalUnit::Date)
-            .into_iter()
-            .map(|d| d as i32)
-            .collect();
+        let breaks: Vec<i32> =
+            calendar_interval_breaks(monthly, 19738.0, 19798.0, TemporalUnit::Date)
+                .into_iter()
+                .map(|d| d as i32)
+                .collect();
 
         // Should include terminal break (Apr-01) after max_date (Mar-15)
         assert!(
@@ -394,11 +395,11 @@ mod tests {
     }
 
     #[test]
-    fn test_interval_breaks_align_to_count_sized_grid() {
+    fn test_calendar_interval_breaks_align_to_count_sized_grid() {
         // "3 months" from Feb 15 steps along the quarter grid (Jan / Apr / Jul),
         // not from February.
         let quarterly = parse_temporal_interval("3 months").unwrap();
-        let breaks: Vec<i32> = interval_breaks(
+        let breaks: Vec<i32> = calendar_interval_breaks(
             quarterly,
             days("2024-02-15") as f64,
             days("2024-06-30") as f64,
@@ -414,11 +415,11 @@ mod tests {
     }
 
     #[test]
-    fn test_interval_breaks_time_stops_at_midnight() {
+    fn test_calendar_interval_breaks_time_stops_at_midnight() {
         // A terminal break would land past 24:00, so there is none.
         const HOUR_NS: f64 = 3_600_000_000_000.0;
         let hourly = parse_temporal_interval("hour").unwrap();
-        let breaks = interval_breaks(
+        let breaks = calendar_interval_breaks(
             hourly,
             22.0 * HOUR_NS,
             23.0 * HOUR_NS + 1.0,

@@ -425,6 +425,7 @@ impl Scale {
             &[ArrayElement::Number(min), ArrayElement::Number(max)],
             mult,
             add,
+            None,
             transform,
         );
         let clipped = super::scale_type::clip_to_transform_domain(&expanded, transform);

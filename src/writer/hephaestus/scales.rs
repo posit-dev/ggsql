@@ -578,21 +578,20 @@ fn map_transform(kind: GTransform) -> Option<HTransform> {
     // delegation; convert by name until hephaestus's published scale types
     // are the zygos ones (then this becomes `kind.zygos_kind()`).
     let zygos_kind = kind.zygos_kind()?;
+    use zygos::transform::TransformKind as Z;
     Some(match zygos_kind {
         // None — hephaestus defaults to identity
-        zygos::transform::TransformKind::Identity => return None,
-        zygos::transform::TransformKind::Log10 => HTransform::Log10,
-        zygos::transform::TransformKind::Log2 => HTransform::Log2,
-        zygos::transform::TransformKind::Log => HTransform::Log,
-        zygos::transform::TransformKind::Sqrt => HTransform::Sqrt,
-        zygos::transform::TransformKind::Square => HTransform::Square,
-        zygos::transform::TransformKind::Exp10 => HTransform::Exp10,
-        zygos::transform::TransformKind::Exp2 => HTransform::Exp2,
-        zygos::transform::TransformKind::Exp => HTransform::Exp,
-        zygos::transform::TransformKind::Asinh => HTransform::Asinh,
-        zygos::transform::TransformKind::PseudoLog
-        | zygos::transform::TransformKind::PseudoLog2
-        | zygos::transform::TransformKind::PseudoLog10 => HTransform::PseudoLog,
+        Z::Identity => return None,
+        Z::Log10 => HTransform::Log10,
+        Z::Log2 => HTransform::Log2,
+        Z::Log => HTransform::Log,
+        Z::Sqrt => HTransform::Sqrt,
+        Z::Square => HTransform::Square,
+        Z::Exp10 => HTransform::Exp10,
+        Z::Exp2 => HTransform::Exp2,
+        Z::Exp => HTransform::Exp,
+        Z::Asinh => HTransform::Asinh,
+        Z::PseudoLog | Z::PseudoLog2 | Z::PseudoLog10 => HTransform::PseudoLog,
     })
 }
 
