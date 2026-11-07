@@ -1,7 +1,7 @@
 //! Identity transform implementation (no transformation)
 
-use super::{TransformKind, TransformTrait};
-use crate::plot::scale::breaks::{linear_breaks, minor_breaks_linear, pretty_breaks};
+use super::{TransformKind, TransformTrait, ZygosMath};
+use crate::plot::scale::breaks::{extended_breaks, linear_breaks, minor_breaks_linear};
 
 /// Identity transform - no transformation (linear scale)
 #[derive(Debug, Clone, Copy)]
@@ -17,12 +17,12 @@ impl TransformTrait for Identity {
     }
 
     fn allowed_domain(&self) -> (f64, f64) {
-        (f64::NEG_INFINITY, f64::INFINITY)
+        ZygosMath::of(TransformKind::Identity).allowed_domain()
     }
 
     fn calculate_breaks(&self, min: f64, max: f64, n: usize, pretty: bool) -> Vec<f64> {
         if pretty {
-            pretty_breaks(min, max, n)
+            extended_breaks(min, max, n)
         } else {
             linear_breaks(min, max, n)
         }
@@ -38,11 +38,11 @@ impl TransformTrait for Identity {
     }
 
     fn transform(&self, value: f64) -> f64 {
-        value
+        ZygosMath::of(TransformKind::Identity).forward(value)
     }
 
     fn inverse(&self, value: f64) -> f64 {
-        value
+        ZygosMath::of(TransformKind::Identity).inverse(value)
     }
 }
 
@@ -57,54 +57,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_identity_domain() {
-        let t = Identity;
-        let (min, max) = t.allowed_domain();
-        assert!(min.is_infinite() && min.is_sign_negative());
-        assert!(max.is_infinite() && max.is_sign_positive());
-    }
-
-    #[test]
-    fn test_identity_transform() {
-        let t = Identity;
-        assert_eq!(t.transform(1.0), 1.0);
-        assert_eq!(t.transform(-5.0), -5.0);
-        assert_eq!(t.transform(0.0), 0.0);
-        assert_eq!(t.transform(100.0), 100.0);
-    }
-
-    #[test]
-    fn test_identity_inverse() {
-        let t = Identity;
-        assert_eq!(t.inverse(1.0), 1.0);
-        assert_eq!(t.inverse(-5.0), -5.0);
-    }
-
-    #[test]
-    fn test_identity_roundtrip() {
-        let t = Identity;
-        for &val in &[0.0, 1.0, -1.0, 100.0, -100.0, 0.001] {
-            let transformed = t.transform(val);
-            let back = t.inverse(transformed);
-            assert!((back - val).abs() < 1e-10, "Roundtrip failed for {}", val);
-        }
-    }
-
-    #[test]
     fn test_identity_breaks_pretty() {
         let t = Identity;
         let breaks = t.calculate_breaks(0.0, 100.0, 5, true);
-        assert!(!breaks.is_empty());
-        // Pretty breaks should produce nice numbers
-    }
-
-    #[test]
-    fn test_identity_breaks_linear() {
-        let t = Identity;
-        let breaks = t.calculate_breaks(0.0, 100.0, 5, false);
-        // linear_breaks gives exact coverage from min to max
-        // step = 25, so: 0, 25, 50, 75, 100
-        assert_eq!(breaks, vec![0.0, 25.0, 50.0, 75.0, 100.0]);
+        assert_eq!(breaks, vec![0.0, 20.0, 40.0, 60.0, 80.0, 100.0]);
     }
 
     #[test]

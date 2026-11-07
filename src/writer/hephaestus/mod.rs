@@ -1400,8 +1400,8 @@ mod svg_text {
         // ggsql's own break spacing and number formatting: the trailing `.0`
         // shows these are pass-throughs, not the renderer's idea of a nice tick.
         let linear = svg("SELECT x, y FROM (VALUES (1,2),(2,3),(3,1)) t(x,y) \
-             VISUALISE x AS x, y AS y DRAW point");
-        for label in ["1.0", "1.5", "2.0", "2.5", "3.0"] {
+             VISUALISE x AS x, y AS y DRAW point SCALE x SETTING breaks => 9");
+        for label in ["1.0", "1.2", "1.4", "2.0", "2.6", "3.0"] {
             assert!(contains(&linear, label), "missing tick '{label}'");
         }
 
@@ -1413,12 +1413,9 @@ mod svg_text {
         assert!(contains(&renamed, "b"));
     }
 
-    /// A log axis should carry decade ticks, but `Scale::numeric_breaks()`
-    /// resolves `[5e-308, 2e-256, …, 100]` for a 1–100 log10 domain and both
-    /// writers pass that through. Kept as a failing expectation so it turns
-    /// green on its own once the scale is fixed.
+    /// A log axis carries decade ticks: the 1–100 log10 domain is padded in
+    /// decades, so its breaks resolve to powers of ten that reach the rail.
     #[test]
-    #[ignore = "ggsql resolves log-scale breaks to denormals; not a writer bug"]
     fn log_tick_labels_should_be_decades() {
         let log = svg("SELECT x, y FROM (VALUES (1,2),(10,3),(100,1)) t(x,y) \
              VISUALISE x AS x, y AS y DRAW point SCALE x VIA log");

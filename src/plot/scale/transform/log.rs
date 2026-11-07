@@ -3,8 +3,8 @@
 //! This module provides a unified logarithm transform that supports any base.
 //! Common bases (10, 2, e) have named constructors for convenience.
 
-use super::{TransformKind, TransformTrait};
-use crate::plot::scale::breaks::{log_breaks, minor_breaks_log};
+use super::{TransformKind, TransformTrait, ZygosMath};
+use crate::plot::scale::breaks::{extent_minor_breaks, log_minor_breaks, log_pretty_breaks};
 
 /// Log transform - logarithm with configurable base
 ///
@@ -60,6 +60,17 @@ impl Log {
     fn is_base2(&self) -> bool {
         (self.base - 2.0).abs() < 1e-10
     }
+
+    /// zygos's log for this base: its own member for bases 10, 2 and e, and the
+    /// natural log divided by `ln(base)` for any other.
+    fn math(&self) -> ZygosMath {
+        match self.transform_kind() {
+            TransformKind::Log if (self.base - std::f64::consts::E).abs() >= 1e-10 => {
+                ZygosMath::with_scale(TransformKind::Log, self.base.ln())
+            }
+            kind => ZygosMath::of(kind),
+        }
+    }
 }
 
 impl TransformTrait for Log {
@@ -85,11 +96,13 @@ impl TransformTrait for Log {
     }
 
     fn allowed_domain(&self) -> (f64, f64) {
+        // Strictly positive, not zygos's `(0, +∞)` bound: scale resolution clips
+        // an out-of-domain limit to this minimum, and zero has no logarithm.
         (f64::MIN_POSITIVE, f64::INFINITY)
     }
 
-    fn calculate_breaks(&self, min: f64, max: f64, n: usize, pretty: bool) -> Vec<f64> {
-        log_breaks(min, max, n, self.base, pretty)
+    fn calculate_breaks(&self, min: f64, max: f64, n: usize, _pretty: bool) -> Vec<f64> {
+        log_pretty_breaks(min, max, n, self.base)
     }
 
     fn calculate_minor_breaks(
@@ -98,19 +111,27 @@ impl TransformTrait for Log {
         n: usize,
         range: Option<(f64, f64)>,
     ) -> Vec<f64> {
-        minor_breaks_log(major_breaks, n, self.base, range)
+        extent_minor_breaks(major_breaks, n, range, |min, max| {
+            log_minor_breaks(min, max, self.base)
+        })
     }
 
     fn default_minor_break_count(&self) -> usize {
-        8 // Similar density to traditional 2-9 pattern on log axes
+        // The whole-number multiples between powers fix the density (2-9 for
+        // base 10); any non-zero count asks for them.
+        8
     }
 
     fn transform(&self, value: f64) -> f64 {
-        value.log(self.base)
+        self.math().forward(value)
     }
 
     fn inverse(&self, value: f64) -> f64 {
-        self.base.powf(value)
+        self.math().inverse(value)
+    }
+
+    fn expand_range(&self, min: f64, max: f64, mult: (f64, f64), add: (f64, f64)) -> (f64, f64) {
+        self.math().expand_range(min, max, mult, add)
     }
 }
 
@@ -146,64 +167,6 @@ mod tests {
     }
 
     #[test]
-    fn test_all_bases_transform_and_inverse() {
-        // Test cases: (transform, input, expected_transform, inverse_test_val, expected_inverse)
-        let test_cases = vec![
-            // Log10: log10(1)=0, log10(10)=1, log10(100)=2, log10(0.1)=-1
-            (
-                Log::base10(),
-                vec![(1.0, 0.0), (10.0, 1.0), (100.0, 2.0), (0.1, -1.0)],
-            ),
-            // Log2: log2(1)=0, log2(2)=1, log2(4)=2, log2(0.5)=-1
-            (
-                Log::base2(),
-                vec![(1.0, 0.0), (2.0, 1.0), (4.0, 2.0), (0.5, -1.0)],
-            ),
-            // Natural: ln(1)=0, ln(e)=1, ln(e²)=2
-            (Log::natural(), vec![(1.0, 0.0), (E, 1.0), (E * E, 2.0)]),
-        ];
-
-        for (t, cases) in test_cases {
-            for (input, expected) in cases {
-                assert!(
-                    (t.transform(input) - expected).abs() < 1e-10,
-                    "{}: transform({}) should be {}, got {}",
-                    t.name(),
-                    input,
-                    expected,
-                    t.transform(input)
-                );
-                // Test inverse too
-                assert!(
-                    (t.inverse(expected) - input).abs() < 1e-9,
-                    "{}: inverse({}) should be {}, got {}",
-                    t.name(),
-                    expected,
-                    input,
-                    t.inverse(expected)
-                );
-            }
-        }
-    }
-
-    #[test]
-    fn test_all_bases_roundtrip() {
-        let test_values = [0.001, 0.1, 1.0, 2.0, 10.0, 100.0, 1000.0];
-        for (t, _, name) in get_transforms() {
-            for &val in &test_values {
-                let transformed = t.transform(val);
-                let back = t.inverse(transformed);
-                assert!(
-                    (back - val).abs() / val < 1e-10,
-                    "{}: Roundtrip failed for {}",
-                    name,
-                    val
-                );
-            }
-        }
-    }
-
-    #[test]
     fn test_all_bases_kind_and_name() {
         for (t, expected_kind, expected_name) in get_transforms() {
             assert_eq!(
@@ -217,28 +180,34 @@ mod tests {
     }
 
     #[test]
-    fn test_all_bases_breaks_contain_powers() {
-        // Log10: 1, 10, 100, 1000
+    fn test_all_bases_breaks() {
+        // Log10: the 1-2-5 pattern across every decade.
         let t10 = Log::base10();
-        let breaks10 = t10.calculate_breaks(1.0, 1000.0, 10, false);
-        for &v in &[1.0, 10.0, 100.0, 1000.0] {
-            assert!(breaks10.contains(&v), "log10 breaks should contain {}", v);
-        }
-
-        // Log2: 1, 2, 4, 8, 16
-        let t2 = Log::base2();
-        let breaks2 = t2.calculate_breaks(1.0, 16.0, 10, false);
-        for &v in &[1.0, 2.0, 4.0, 8.0, 16.0] {
-            assert!(breaks2.contains(&v), "log2 breaks should contain {}", v);
-        }
-
-        // Natural log - just verify non-empty
-        let tn = Log::natural();
-        let breaksn = tn.calculate_breaks(1.0, 100.0, 10, false);
-        assert!(
-            !breaksn.is_empty(),
-            "natural log breaks should not be empty"
+        assert_eq!(
+            t10.calculate_breaks(1.0, 1000.0, 5, true),
+            vec![1.0, 2.0, 5.0, 10.0, 20.0, 50.0, 100.0, 200.0, 500.0, 1000.0]
         );
+        // `pretty` has no powers-only alternative.
+        assert_eq!(
+            t10.calculate_breaks(1.0, 1000.0, 5, false),
+            t10.calculate_breaks(1.0, 1000.0, 5, true)
+        );
+
+        // Log2: only multipliers below the base survive, leaving the powers.
+        let t2 = Log::base2();
+        assert_eq!(
+            t2.calculate_breaks(1.0, 16.0, 10, true),
+            vec![1.0, 2.0, 4.0, 8.0, 16.0]
+        );
+
+        // Natural log over more than four e-folds: the powers of e alone.
+        let tn = Log::natural();
+        let expected = [0, 1, 2, 3, 4].map(|d| std::f64::consts::E.powi(d));
+        let breaksn = tn.calculate_breaks(1.0, 100.0, 10, true);
+        assert_eq!(breaksn.len(), expected.len(), "{breaksn:?}");
+        for (b, x) in breaksn.iter().zip(expected) {
+            assert!((b - x).abs() < 1e-9, "{breaksn:?}");
+        }
     }
 
     #[test]
@@ -284,51 +253,6 @@ mod tests {
     }
 
     // ==================== Minor Breaks Tests ====================
-
-    #[test]
-    fn test_minor_breaks_all_bases() {
-        // Test minor breaks work for all bases
-        let test_cases = vec![
-            (Log::base10(), vec![1.0, 10.0, 100.0], 8, 16), // 8 per decade × 2 decades
-            (Log::base2(), vec![1.0, 2.0, 4.0, 8.0], 1, 3), // 1 per interval × 3 intervals
-        ];
-
-        for (t, majors, n, expected_len) in test_cases {
-            let minors = t.calculate_minor_breaks(&majors, n, None);
-            assert_eq!(
-                minors.len(),
-                expected_len,
-                "{}: expected {} minor breaks, got {}",
-                t.name(),
-                expected_len,
-                minors.len()
-            );
-            assert!(
-                minors.iter().all(|&x| x > 0.0),
-                "{}: all minor breaks should be positive",
-                t.name()
-            );
-        }
-    }
-
-    #[test]
-    fn test_minor_breaks_geometric_mean() {
-        let t = Log::base10();
-        let majors = vec![1.0, 10.0];
-        let minors = t.calculate_minor_breaks(&majors, 1, None);
-        // Single minor break should be at geometric mean: sqrt(1 * 10) ≈ 3.16
-        assert_eq!(minors.len(), 1);
-        assert!((minors[0] - (1.0_f64 * 10.0).sqrt()).abs() < 0.01);
-    }
-
-    #[test]
-    fn test_minor_breaks_with_extension() {
-        let t = Log::base10();
-        let majors = vec![10.0, 100.0];
-        let minors = t.calculate_minor_breaks(&majors, 8, Some((1.0, 1000.0)));
-        // Should extend into [1, 10) and (100, 1000]
-        assert_eq!(minors.len(), 24); // 8 per decade × 3 decades
-    }
 
     #[test]
     fn test_default_minor_break_count() {

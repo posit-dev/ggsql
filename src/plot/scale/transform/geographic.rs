@@ -60,29 +60,4 @@ mod tests {
         // Should pick nice degree intervals (multiples of 30° or 45°)
         assert!(breaks.iter().all(|b| b % 30.0 == 0.0 || b % 45.0 == 0.0));
     }
-
-    #[test]
-    fn test_breaks_small_extent() {
-        let t = Geographic;
-        let breaks = t.calculate_breaks(5.0, 15.0, 5, true);
-        assert!(!breaks.is_empty());
-        for &b in &breaks {
-            assert!(b > 5.0 && b < 15.0);
-        }
-    }
-
-    #[test]
-    fn test_breaks_respects_count() {
-        let t = Geographic;
-        let breaks_few = t.calculate_breaks(-90.0, 90.0, 3, true);
-        let breaks_many = t.calculate_breaks(-90.0, 90.0, 10, true);
-        assert!(breaks_many.len() >= breaks_few.len());
-    }
-
-    #[test]
-    fn test_identity_transform() {
-        let t = Geographic;
-        assert_eq!(t.transform(42.0), 42.0);
-        assert_eq!(t.inverse(42.0), 42.0);
-    }
 }

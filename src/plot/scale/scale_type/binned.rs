@@ -1,7 +1,5 @@
 //! Binned scale type implementation
 
-use std::collections::HashMap;
-
 use arrow::datatypes::DataType;
 
 use super::{
@@ -405,11 +403,14 @@ impl ScaleTypeTrait for Binned {
                 // Temporal interval string like "2 months", "week"
                 // Only valid for temporal transforms (Date, DateTime, Time)
                 use super::super::super::breaks::{
-                    temporal_breaks_date, temporal_breaks_datetime, temporal_breaks_time,
-                    TemporalInterval,
+                    calendar_interval_breaks, parse_temporal_interval,
                 };
 
-                if let Some(interval) = TemporalInterval::create_from_str(interval_str) {
+                // Non-temporal transforms don't support interval strings.
+                if let (Some(interval), Some(unit)) = (
+                    parse_temporal_interval(interval_str),
+                    resolved_transform.temporal_unit(),
+                ) {
                     // Use raw data range (not expanded input_range) so breaks align
                     // to actual data extent; expansion happens later in step 5b.
                     let break_range: Option<&[ArrayElement]> = match &context_range_continuous {
@@ -417,51 +418,24 @@ impl ScaleTypeTrait for Binned {
                         None => scale.input_range.as_deref(),
                     };
                     if let Some(range) = break_range {
-                        let breaks: Vec<ArrayElement> = match resolved_transform.transform_kind() {
-                            TransformKind::Date => {
-                                let min = range[0].to_f64().unwrap_or(0.0) as i32;
-                                let max = range[range.len() - 1].to_f64().unwrap_or(0.0) as i32;
-                                temporal_breaks_date(min, max, interval)
-                                    .into_iter()
-                                    .map(ArrayElement::String)
-                                    .collect()
-                            }
-                            TransformKind::DateTime => {
-                                let min = range[0].to_f64().unwrap_or(0.0) as i64;
-                                let max = range[range.len() - 1].to_f64().unwrap_or(0.0) as i64;
-                                temporal_breaks_datetime(min, max, interval)
-                                    .into_iter()
-                                    .map(ArrayElement::String)
-                                    .collect()
-                            }
-                            TransformKind::Time => {
-                                let min = range[0].to_f64().unwrap_or(0.0) as i64;
-                                let max = range[range.len() - 1].to_f64().unwrap_or(0.0) as i64;
-                                temporal_breaks_time(min, max, interval)
-                                    .into_iter()
-                                    .map(ArrayElement::String)
-                                    .collect()
-                            }
-                            _ => vec![], // Non-temporal transforms don't support interval strings
-                        };
+                        let min = range[0].to_f64().unwrap_or(0.0);
+                        let max = range[range.len() - 1].to_f64().unwrap_or(0.0);
+                        let breaks: Vec<ArrayElement> =
+                            calendar_interval_breaks(interval, min, max, unit)
+                                .into_iter()
+                                .map(|v| resolved_transform.wrap_numeric(v))
+                                .collect();
 
                         if !breaks.is_empty() {
-                            // Convert string breaks to appropriate temporal ArrayElement types
-                            let converted: Vec<ArrayElement> = breaks
-                                .iter()
-                                .map(|elem| resolved_transform.parse_value(elem))
-                                .collect();
                             // Only filter to input range when user provided explicit FROM clause
                             let filtered = if scale.explicit_input_range {
                                 if let Some(ref ir) = scale.input_range {
-                                    super::super::super::breaks::filter_breaks_to_range(
-                                        &converted, ir,
-                                    )
+                                    super::super::super::breaks::filter_breaks_to_range(&breaks, ir)
                                 } else {
-                                    converted
+                                    breaks
                                 }
                             } else {
-                                converted
+                                breaks
                             };
                             scale
                                 .properties
@@ -500,7 +474,7 @@ impl ScaleTypeTrait for Binned {
                 // Only expand for position aesthetics (x, y, etc.)
                 // Material aesthetics (color, fill, size) don't get expansion
                 let final_range = if super::is_position_aesthetic(aesthetic) {
-                    expand_numeric_range(&terminal_range, mult, add)
+                    expand_numeric_range(&terminal_range, mult, add, None, &resolved_transform)
                 } else {
                     terminal_range
                 };
@@ -523,39 +497,11 @@ impl ScaleTypeTrait for Binned {
             }
         }
 
-        // 6. Apply label template (RENAMING * => '...')
-        // Default is '{}' to ensure we control formatting instead of Vega-Lite
-        // For binned scales, apply to breaks array
-        let template = &scale.label_template;
-
-        let values_to_label = match scale.properties.get("breaks") {
-            Some(ParameterValue::Array(breaks)) => Some(breaks.clone()),
-            _ => None,
-        };
-
-        if let Some(values) = values_to_label {
-            let generated_labels =
-                crate::format::apply_label_template(&values, template, &scale.label_mapping);
-            scale.label_mapping = Some(generated_labels);
-        }
-
-        // 6b. Binned-specific: suppress terminal break labels for oob='squish'
-        // since those bins extend to infinity (-∞ to first internal break, last internal break to +∞)
-        if let Some(ParameterValue::String(oob)) = scale.properties.get("oob") {
-            if oob == OOB_SQUISH {
-                if let Some(ParameterValue::Array(breaks)) = scale.properties.get("breaks") {
-                    if breaks.len() > 2 {
-                        // Suppress first and last break labels
-                        let first_key = breaks[0].to_key_string();
-                        let last_key = breaks[breaks.len() - 1].to_key_string();
-
-                        let label_mapping = scale.label_mapping.get_or_insert_with(HashMap::new);
-                        label_mapping.insert(first_key, None);
-                        label_mapping.insert(last_key, None);
-                    }
-                }
-            }
-        }
+        // 6. Labelling needs no resolution step: `Scale::labelled_breaks`
+        // renders `label_spec` against the current breaks on every read,
+        // including the terminal-edge suppression for oob='squish' (the
+        // outermost bins extend to infinity, so those edges are not real
+        // boundaries).
 
         // 7. Resolve output range (TO clause)
         self.resolve_output_range(scale, aesthetic)?;

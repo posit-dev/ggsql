@@ -722,11 +722,6 @@ Deliberately not done, in rough order of how likely they are to bite:
   doing it at scale. The SVG corpus is the natural fixture surface, being
   deterministic text where a 2 px panel shift reads as a hunk rather than as a
   changed hash; whether to commit it is still open.
-- **Log-scale tick labels are wrong, and not because of this writer.** ggsql
-  resolves a 1–100 `log10` domain to breaks of
-  `[5e-308, 2e-256, …, 100]`, and both writers faithfully print those. The fix
-  is in scale resolution; nothing changes here. Recorded as an ignored test
-  (`svg_text::log_tick_labels_should_be_decades`).
 - **No axis label thinning.** ggsql's resolved breaks are drawn as-is, so a
   narrow facet panel can crowd or overlap long labels — which is why
   `free_continuous_scale` narrows the *global* breaks to a panel rather than

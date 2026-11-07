@@ -5,8 +5,9 @@
 //! break calculation produces nice time intervals.
 
 use super::{TransformKind, TransformTrait};
-use crate::plot::scale::breaks::minor_breaks_linear;
+use crate::plot::scale::breaks::{linear_breaks, minor_breaks_linear};
 use crate::plot::ArrayElement;
+use zygos::breaks::temporal_breaks_from_f64;
 
 /// Time transform - for time data (nanoseconds since midnight)
 ///
@@ -23,87 +24,6 @@ const NANOS_PER_HOUR: f64 = 60.0 * NANOS_PER_MINUTE;
 
 // Maximum time value (24 hours in nanoseconds)
 const MAX_TIME_NANOS: f64 = 24.0 * NANOS_PER_HOUR;
-
-// Time interval types for break calculation
-#[derive(Debug, Clone, Copy, PartialEq)]
-enum TimeInterval {
-    Hour,
-    Minute,
-    Second,
-    Millisecond,
-}
-
-impl TimeInterval {
-    /// Nanoseconds in each interval
-    fn nanos(&self) -> f64 {
-        match self {
-            TimeInterval::Hour => NANOS_PER_HOUR,
-            TimeInterval::Minute => NANOS_PER_MINUTE,
-            TimeInterval::Second => NANOS_PER_SECOND,
-            TimeInterval::Millisecond => 1_000_000.0,
-        }
-    }
-
-    /// Calculate expected number of breaks for this interval over the given span
-    fn expected_breaks(&self, span_nanos: f64) -> f64 {
-        span_nanos / self.nanos()
-    }
-
-    /// Select appropriate interval and step based on span and desired break count.
-    /// Uses tolerance-based search: tries each interval from largest to smallest,
-    /// stops when within ~20% of requested n, then calculates a nice step multiplier.
-    fn select(span_nanos: f64, n: usize) -> (Self, usize) {
-        let n_f64 = n as f64;
-        let tolerance = 0.2; // 20% tolerance
-        let min_breaks = n_f64 * (1.0 - tolerance);
-        let max_breaks = n_f64 * (1.0 + tolerance);
-
-        // Intervals from largest to smallest
-        let intervals = [
-            TimeInterval::Hour,
-            TimeInterval::Minute,
-            TimeInterval::Second,
-            TimeInterval::Millisecond,
-        ];
-
-        for &interval in &intervals {
-            let expected = interval.expected_breaks(span_nanos);
-
-            // Skip if this interval produces too few breaks
-            if expected < 1.0 {
-                continue;
-            }
-
-            // If within tolerance, use step=1
-            if expected >= min_breaks && expected <= max_breaks {
-                return (interval, 1);
-            }
-
-            // If too many breaks, calculate a nice step
-            if expected > max_breaks {
-                let raw_step = expected / n_f64;
-                let nice = match interval {
-                    TimeInterval::Hour => nice_hour_step(raw_step) as usize,
-                    TimeInterval::Minute => nice_minute_step(raw_step) as usize,
-                    TimeInterval::Second => nice_second_step(raw_step) as usize,
-                    TimeInterval::Millisecond => nice_step(raw_step) as usize,
-                };
-                let step = nice.max(1);
-
-                // Verify the stepped interval is reasonable
-                let stepped_breaks = expected / step as f64;
-                if stepped_breaks >= 1.0 {
-                    return (interval, step);
-                }
-            }
-        }
-
-        // Fallback: use Millisecond with step calculation
-        let expected = TimeInterval::Millisecond.expected_breaks(span_nanos);
-        let step = (nice_step(expected / n_f64) as usize).max(1);
-        (TimeInterval::Millisecond, step)
-    }
-}
 
 impl TransformTrait for Time {
     fn transform_kind(&self) -> TransformKind {
@@ -138,13 +58,12 @@ impl TransformTrait for Time {
         let min = min.max(0.0);
         let max = max.min(MAX_TIME_NANOS);
 
-        let span = max - min;
-        let (interval, step) = TimeInterval::select(span, n);
-
         if pretty {
-            calculate_pretty_time_breaks(min, max, interval, step)
+            // A clock interval (hours, minutes, seconds) sized to about `n`
+            // breaks, stepped from midnight.
+            temporal_breaks_from_f64(min, max, zygos::TemporalUnit::Time, n)
         } else {
-            calculate_linear_time_breaks(min, max, n)
+            linear_breaks(min, max, n)
         }
     }
 
@@ -154,6 +73,9 @@ impl TransformTrait for Time {
         n: usize,
         range: Option<(f64, f64)>,
     ) -> Vec<f64> {
+        // Evenly spaced minors for an explicit count, or for majors that don't
+        // step by a calendar interval; calendar-stepped majors get calendar
+        // minors during scale resolution instead.
         minor_breaks_linear(major_breaks, n, range)
     }
 
@@ -175,167 +97,6 @@ impl TransformTrait for Time {
             ArrayElement::Time(_) => elem.clone(),
             other => other.clone(),
         }
-    }
-}
-
-/// Calculate pretty time breaks aligned to interval boundaries
-fn calculate_pretty_time_breaks(
-    min: f64,
-    max: f64,
-    interval: TimeInterval,
-    step: usize,
-) -> Vec<f64> {
-    let mut breaks = Vec::new();
-
-    match interval {
-        TimeInterval::Hour => {
-            let step_nanos = (step as i64) * NANOS_PER_HOUR as i64;
-
-            let start_nanos = (min / NANOS_PER_HOUR).floor() as i64 * NANOS_PER_HOUR as i64;
-
-            let mut nanos = start_nanos;
-            while (nanos as f64) <= max {
-                let ns = nanos as f64;
-                if ns >= min && ns <= max {
-                    breaks.push(ns);
-                }
-                nanos += step_nanos;
-            }
-        }
-        TimeInterval::Minute => {
-            let step_nanos = (step as i64) * NANOS_PER_MINUTE as i64;
-
-            let start_nanos = (min / NANOS_PER_MINUTE).floor() as i64 * NANOS_PER_MINUTE as i64;
-
-            let mut nanos = start_nanos;
-            while (nanos as f64) <= max {
-                let ns = nanos as f64;
-                if ns >= min && ns <= max {
-                    breaks.push(ns);
-                }
-                nanos += step_nanos;
-            }
-        }
-        TimeInterval::Second => {
-            let step_nanos = (step as i64) * NANOS_PER_SECOND as i64;
-
-            let start_nanos = (min / NANOS_PER_SECOND).floor() as i64 * NANOS_PER_SECOND as i64;
-
-            let mut nanos = start_nanos;
-            while (nanos as f64) <= max {
-                let ns = nanos as f64;
-                if ns >= min && ns <= max {
-                    breaks.push(ns);
-                }
-                nanos += step_nanos;
-            }
-        }
-        TimeInterval::Millisecond => {
-            let step_nanos = (step as i64) * 1_000_000;
-
-            let start_nanos = (min / 1_000_000.0).floor() as i64 * 1_000_000;
-
-            let mut nanos = start_nanos;
-            while (nanos as f64) <= max {
-                let ns = nanos as f64;
-                if ns >= min && ns <= max {
-                    breaks.push(ns);
-                }
-                nanos += step_nanos;
-            }
-        }
-    }
-
-    if breaks.is_empty() {
-        breaks.push(min);
-        if max > min {
-            breaks.push(max);
-        }
-    }
-
-    breaks
-}
-
-/// Calculate linear breaks in nanosecond-space
-fn calculate_linear_time_breaks(min: f64, max: f64, n: usize) -> Vec<f64> {
-    if n <= 1 {
-        return vec![min];
-    }
-
-    let step = (max - min) / (n - 1) as f64;
-    (0..n).map(|i| min + i as f64 * step).collect()
-}
-
-/// Round to a "nice" step value
-fn nice_step(step: f64) -> f64 {
-    if step <= 0.0 {
-        return 1.0;
-    }
-
-    let magnitude = 10_f64.powf(step.log10().floor());
-    let residual = step / magnitude;
-
-    let nice = if residual <= 1.5 {
-        1.0
-    } else if residual <= 3.0 {
-        2.0
-    } else if residual <= 7.0 {
-        5.0
-    } else {
-        10.0
-    };
-
-    nice * magnitude
-}
-
-/// Nice step values for hours (1, 2, 3, 4, 6, 12)
-fn nice_hour_step(step: f64) -> f64 {
-    if step <= 1.0 {
-        1.0
-    } else if step <= 2.0 {
-        2.0
-    } else if step <= 3.0 {
-        3.0
-    } else if step <= 4.0 {
-        4.0
-    } else if step <= 6.0 {
-        6.0
-    } else {
-        12.0
-    }
-}
-
-/// Nice step values for minutes (1, 2, 5, 10, 15, 30)
-fn nice_minute_step(step: f64) -> f64 {
-    if step <= 1.0 {
-        1.0
-    } else if step <= 2.0 {
-        2.0
-    } else if step <= 5.0 {
-        5.0
-    } else if step <= 10.0 {
-        10.0
-    } else if step <= 15.0 {
-        15.0
-    } else {
-        30.0
-    }
-}
-
-/// Nice step values for seconds (1, 2, 5, 10, 15, 30)
-fn nice_second_step(step: f64) -> f64 {
-    if step <= 1.0 {
-        1.0
-    } else if step <= 2.0 {
-        2.0
-    } else if step <= 5.0 {
-        5.0
-    } else if step <= 10.0 {
-        10.0
-    } else if step <= 15.0 {
-        15.0
-    } else {
-        30.0
     }
 }
 
@@ -378,91 +139,14 @@ mod tests {
     }
 
     #[test]
-    fn test_time_breaks_hour_span() {
+    fn test_time_breaks_follow_the_clock() {
         let t = Time;
-        // Full day
-        let min = 0.0;
-        let max = 24.0 * NANOS_PER_HOUR;
-        let breaks = t.calculate_breaks(min, max, 8, true);
-        assert!(!breaks.is_empty());
-        for &b in &breaks {
-            assert!(b >= min && b <= max);
-        }
-    }
-
-    #[test]
-    fn test_time_breaks_minute_span() {
-        let t = Time;
-        // 2 hours
-        let min = 0.0;
-        let max = 2.0 * NANOS_PER_HOUR;
-        let breaks = t.calculate_breaks(min, max, 8, true);
-        assert!(!breaks.is_empty());
-    }
-
-    #[test]
-    fn test_time_breaks_second_span() {
-        let t = Time;
-        // 5 minutes
-        let min = 0.0;
-        let max = 5.0 * NANOS_PER_MINUTE;
-        let breaks = t.calculate_breaks(min, max, 5, true);
-        assert!(!breaks.is_empty());
-    }
-
-    #[test]
-    fn test_time_breaks_linear() {
-        let t = Time;
-        let breaks = t.calculate_breaks(0.0, NANOS_PER_HOUR, 5, false);
-        assert_eq!(breaks.len(), 5);
-        assert_eq!(breaks[0], 0.0);
-        assert_eq!(breaks[4], NANOS_PER_HOUR);
-    }
-
-    #[test]
-    fn test_time_interval_selection() {
-        // Full day (24 hours, n=8) -> hour with step
-        let (interval, step) = TimeInterval::select(24.0 * NANOS_PER_HOUR, 8);
-        assert_eq!(interval, TimeInterval::Hour);
-        assert!(step >= 1);
-
-        // Hour span (1 hour, n=6) -> minute with step
-        let (interval, step) = TimeInterval::select(NANOS_PER_HOUR, 6);
-        assert_eq!(interval, TimeInterval::Minute);
-        assert!(step >= 1);
-
-        // Minute span (1 minute, n=6) -> second with step
-        let (interval, step) = TimeInterval::select(NANOS_PER_MINUTE, 6);
-        assert_eq!(interval, TimeInterval::Second);
-        assert!(step >= 1);
-
-        // Second span (1 second, n=10) -> millisecond with step
-        let (interval, step) = TimeInterval::select(NANOS_PER_SECOND, 10);
-        assert_eq!(interval, TimeInterval::Millisecond);
-        assert!(step >= 1);
-    }
-
-    #[test]
-    fn test_nice_hour_step() {
-        assert_eq!(nice_hour_step(1.0), 1.0);
-        assert_eq!(nice_hour_step(2.5), 3.0);
-        assert_eq!(nice_hour_step(5.0), 6.0);
-        assert_eq!(nice_hour_step(10.0), 12.0);
-    }
-
-    #[test]
-    fn test_nice_minute_step() {
-        assert_eq!(nice_minute_step(1.0), 1.0);
-        assert_eq!(nice_minute_step(3.0), 5.0);
-        assert_eq!(nice_minute_step(12.0), 15.0);
-        assert_eq!(nice_minute_step(25.0), 30.0);
-    }
-
-    #[test]
-    fn test_nice_second_step() {
-        assert_eq!(nice_second_step(1.0), 1.0);
-        assert_eq!(nice_second_step(3.0), 5.0);
-        assert_eq!(nice_second_step(12.0), 15.0);
-        assert_eq!(nice_second_step(25.0), 30.0);
+        // Two hours with about eight breaks → every fifteen minutes.
+        let breaks = t.calculate_breaks(0.0, 2.0 * NANOS_PER_HOUR, 8, true);
+        let minutes: Vec<f64> = breaks.iter().map(|b| b / NANOS_PER_MINUTE).collect();
+        assert_eq!(
+            minutes,
+            vec![0.0, 15.0, 30.0, 45.0, 60.0, 75.0, 90.0, 105.0, 120.0]
+        );
     }
 }

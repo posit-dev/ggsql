@@ -1,269 +1,142 @@
-//! Template-based label generation for scale RENAMING wildcards
+//! Break-label generation, delegated to [`zygos::LabelSpec`]
 //!
-//! Supports placeholder syntax in templates:
-//! - `{}` - Insert value as-is
-//! - `{:UPPER}` - Convert to UPPERCASE
-//! - `{:lower}` - Convert to lowercase
-//! - `{:Title}` - Convert to Title Case
-//! - `{:time %fmt}` - DateTime strftime format (e.g., `{:time %b %Y}` -> "Jan 2024")
-//! - `{:num %fmt}` - Number printf format (e.g., `{:num %.2f}` -> "25.50")
+//! ggsql's RENAMING clause maps to zygos's label spec: explicit
+//! `'value' => 'label'` entries become renames/suppressions and the
+//! wildcard `* => '...'` becomes the fallback template. Labels are
+//! rendered against the *current* break set on every call, so
+//! re-breaking re-expands templates and re-derives shared numeric
+//! precision.
+//!
+//! Rename matching reproduces ggsql's historical string-key behaviour
+//! on top of zygos's typed [`Value::key_eq`]: user rename keys come
+//! from SQL literals (`'25'`, `'2024-01-01'`) while breaks are typed,
+//! so a break matches a key either by `key_eq` or by comparing the
+//! break's `to_key_string()` against the key's own string form.
 
-use chrono::{NaiveDate, NaiveDateTime, NaiveTime};
-use regex::Regex;
-use std::collections::HashMap;
-use std::sync::OnceLock;
+use zygos::{LabelSpec, Value};
 
-use crate::plot::ArrayElement;
+use crate::plot::{format_number, ArrayElement};
 
-/// Placeholder types supported in label templates
-#[derive(Debug, Clone)]
-enum Placeholder {
-    /// `{}` - Insert value as-is
-    Plain,
-    /// `{:UPPER}` - Convert to UPPERCASE
-    Upper,
-    /// `{:lower}` - Convert to lowercase
-    Lower,
-    /// `{:Title}` - Convert to Title Case
-    Title,
-    /// `{:time %Y-%m-%d}` or similar strftime format
-    DateTime(String),
-    /// `{:num %.2f}` or similar printf format
-    Number(String),
-}
-
-/// Parsed placeholder with its full match text
-#[derive(Debug, Clone)]
-struct ParsedPlaceholder {
-    placeholder: Placeholder,
-    match_text: String,
-}
-
-/// Regex for matching placeholders in templates
-fn placeholder_regex() -> &'static Regex {
-    static RE: OnceLock<Regex> = OnceLock::new();
-    RE.get_or_init(|| Regex::new(r"\{([^}]*)\}").expect("Invalid placeholder regex"))
-}
-
-/// Parse all placeholders from a template string
-fn parse_placeholders(template: &str) -> Vec<ParsedPlaceholder> {
-    placeholder_regex()
-        .find_iter(template)
-        .map(|cap| {
-            let inner = &template[cap.start() + 1..cap.end() - 1];
-            let placeholder = match inner {
-                "" => Placeholder::Plain,
-                ":UPPER" => Placeholder::Upper,
-                ":lower" => Placeholder::Lower,
-                ":Title" => Placeholder::Title,
-                s if s.starts_with(":time ") => {
-                    Placeholder::DateTime(s.strip_prefix(":time ").unwrap().to_string())
-                }
-                s if s.starts_with(":num ") => {
-                    Placeholder::Number(s.strip_prefix(":num ").unwrap().to_string())
-                }
-                _ => Placeholder::Plain, // Unknown, treat as plain
-            };
-            ParsedPlaceholder {
-                placeholder,
-                match_text: cap.as_str().to_string(),
-            }
-        })
-        .collect()
-}
-
-/// Apply transformation based on placeholder type.
-/// `precision` controls decimal places for `Plain` placeholders on numeric values.
-fn apply_transformation(
-    value: &str,
-    placeholder: &Placeholder,
-    precision: Option<usize>,
-) -> String {
-    match placeholder {
-        Placeholder::Plain => match precision {
-            Some(prec) => match value.parse::<f64>() {
-                Ok(n) => format!("{n:.prec$}"),
-                Err(_) => value.to_string(),
-            },
-            None => value.to_string(),
-        },
-        Placeholder::Upper => value.to_uppercase(),
-        Placeholder::Lower => value.to_lowercase(),
-        Placeholder::Title => to_title_case(value),
-        Placeholder::DateTime(fmt) => format_datetime(value, fmt),
-        Placeholder::Number(fmt) => format_number_with_spec(value, fmt),
-    }
-}
-
-/// Convert string to Title Case
-fn to_title_case(s: &str) -> String {
-    s.split_whitespace()
-        .map(|word| {
-            let mut chars = word.chars();
-            match chars.next() {
-                None => String::new(),
-                Some(first) => first
-                    .to_uppercase()
-                    .chain(chars.flat_map(|c| c.to_lowercase()))
-                    .collect(),
-            }
-        })
-        .collect::<Vec<_>>()
-        .join(" ")
-}
-
-/// Format datetime string using strftime format
-fn format_datetime(value: &str, fmt: &str) -> String {
-    // Try parsing as NaiveDateTime first (various formats)
-    if let Ok(dt) = NaiveDateTime::parse_from_str(value, "%Y-%m-%dT%H:%M:%S") {
-        return dt.format(fmt).to_string();
-    }
-    if let Ok(dt) = NaiveDateTime::parse_from_str(value, "%Y-%m-%dT%H:%M:%S%.f") {
-        return dt.format(fmt).to_string();
-    }
-    if let Ok(dt) = NaiveDateTime::parse_from_str(value, "%Y-%m-%d %H:%M:%S") {
-        return dt.format(fmt).to_string();
-    }
-    if let Ok(dt) = NaiveDateTime::parse_from_str(value, "%Y-%m-%d %H:%M:%S%.f") {
-        return dt.format(fmt).to_string();
-    }
-    // Try parsing as NaiveDate
-    if let Ok(d) = NaiveDate::parse_from_str(value, "%Y-%m-%d") {
-        return d.format(fmt).to_string();
-    }
-    // Try parsing as NaiveTime
-    if let Ok(d) = NaiveTime::parse_from_str(value, "%H:%M:%S") {
-        return d.format(fmt).to_string();
-    }
-    if let Ok(d) = NaiveTime::parse_from_str(value, "%H:%M:%S%.f") {
-        return d.format(fmt).to_string();
-    }
-    // Fallback: return original value if parsing fails
-    value.to_string()
-}
-
-/// Format number using printf-style format specifier (e.g., "%.2f", "%d", "%e")
-fn format_number_with_spec(value: &str, fmt: &str) -> String {
-    // Try to parse as f64
-    if let Ok(n) = value.parse::<f64>() {
-        // Use sprintf crate for full printf compatibility
-        // Supports: %d, %i, %f, %e, %E, %g, %G, %o, %x, %X, width, precision, flags
-        return sprintf::sprintf!(fmt, n).unwrap_or_else(|_| value.to_string());
-    }
-    // Fallback: return original value if parsing fails
-    value.to_string()
-}
-
-/// Apply a label template to an array of break values.
+/// Convert a break element to the [`Value`] it is labelled as.
 ///
-/// Each break value is formatted using the template string.
-/// Explicit mappings (from existing label_mapping) take priority over template-generated ones.
-///
-/// # Arguments
-/// * `breaks` - Array elements to apply template to
-/// * `template` - Template string with placeholders (e.g., "{} units", "{:UPPER}")
-/// * `existing` - Optional existing label mappings (explicit mappings take priority)
-///
-/// # Returns
-/// HashMap of original value -> formatted label
-///
-/// # Example
-/// ```ignore
-/// let breaks = vec![ArrayElement::Number(0.0), ArrayElement::Number(25.0)];
-/// let result = apply_label_template(&breaks, "{} units", &None);
-/// // result: {"0" => Some("0 units"), "25" => Some("25 units")}
-/// ```
-pub fn apply_label_template(
-    breaks: &[ArrayElement],
-    template: &str,
-    existing: &Option<HashMap<String, Option<String>>>,
-) -> HashMap<String, Option<String>> {
-    let mut result = existing.clone().unwrap_or_default();
+/// Numeric breaks stay numeric so `{}` shared precision and `{:num}`
+/// work; temporal breaks go as their ISO key string, which zygos's
+/// `{:time}` parses (and which rename keys written as ISO string
+/// literals match by `key_eq`).
+pub(crate) fn break_value(elem: &ArrayElement) -> Value {
+    match elem {
+        ArrayElement::String(s) => Value::String(s.as_str().into()),
+        ArrayElement::Number(n) => Value::Number(*n),
+        ArrayElement::Boolean(b) => Value::Bool(*b),
+        ArrayElement::Null => Value::Null,
+        ArrayElement::Date(_) | ArrayElement::DateTime(_) | ArrayElement::Time(_) => {
+            Value::String(elem.to_key_string().into())
+        }
+    }
+}
 
-    // Parse all placeholders once
-    let placeholders = parse_placeholders(template);
+/// Convert a rename *key* element to a [`Value`], keeping the
+/// literal's type: `'A'` stays a string, `25` a number, `NULL` null.
+/// The typed rule lets an unquoted `10` match the string category
+/// `"10"`; quoted keys still match through the text rule in
+/// [`label_elements`].
+pub(crate) fn key_value(elem: &ArrayElement) -> Value {
+    match elem {
+        ArrayElement::String(s) => Value::String(s.as_str().into()),
+        ArrayElement::Number(n) => Value::Number(*n),
+        ArrayElement::Boolean(b) => Value::Bool(*b),
+        ArrayElement::Null => Value::Null,
+        ArrayElement::Date(d) => Value::Date(*d),
+        ArrayElement::DateTime(dt) => Value::DateTime(*dt),
+        ArrayElement::Time(t) => Value::Time(*t),
+    }
+}
 
-    // For numeric breaks with a plain placeholder, determine consistent decimal
-    // precision so that e.g. [54.5, 55, 55.5] formats as ["54.5", "55.0", "55.5"]
-    // rather than stripping the ".0" from the integer-valued break.
-    let has_plain = placeholders
+/// The string form of a rename key, for the text matching rule:
+/// `'25'` renames numeric break 25 because the break's
+/// `to_key_string()` equals the key's string.
+fn key_string(value: &Value) -> String {
+    match value {
+        Value::String(s) => s.to_string(),
+        Value::Number(n) => format_number(*n),
+        Value::Bool(b) => b.to_string(),
+        Value::Null => "null".to_string(),
+        // Temporal and other keys never arise from RENAMING literals;
+        // give them their default rendering so the rule stays total.
+        other => zygos::default_label(other, None).unwrap_or_default(),
+    }
+}
+
+/// Render the labels for a break set against a [`LabelSpec`], one
+/// entry per break, aligned by index. `None` means the label is
+/// suppressed.
+///
+/// Resolution order per break (ggplot2's `labels` semantics, extended
+/// with ggsql's historical string-key matching):
+///
+/// 1. **Typed rename** — the break's [`break_value`] `key_eq`-matches
+///    a rename key.
+/// 2. **Text rename** — the break's `to_key_string()` equals a rename
+///    key's string form.
+/// 3. **Template** — the spec's template (default `{}`), with shared
+///    numeric precision derived from the un-renamed breaks.
+///
+/// A bare null break with no rename renders `"null"`, as it always
+/// has (zygos suppresses [`Value::Null`] by default).
+pub fn label_elements(spec: &LabelSpec, breaks: &[ArrayElement]) -> Vec<Option<String>> {
+    let values: Vec<Value> = breaks.iter().map(break_value).collect();
+
+    // Resolve renames first: typed match, then the historical text rule.
+    let renames: Vec<(&Value, Option<&str>)> = spec.renames().collect();
+    let matched: Vec<Option<Option<String>>> = values
         .iter()
-        .any(|p| matches!(p.placeholder, Placeholder::Plain))
-        || placeholders.is_empty();
-    let numeric_precision = if has_plain {
-        compute_numeric_precision(breaks)
+        .zip(breaks)
+        .map(|(value, elem)| {
+            if let Some(entry) = spec.lookup(value) {
+                return Some(entry.map(str::to_string));
+            }
+            let key = elem.to_key_string();
+            renames
+                .iter()
+                .find(|(k, _)| key_string(k) == key)
+                .map(|(_, r)| r.map(str::to_string))
+        })
+        .collect();
+
+    // Shared precision over the un-renamed breaks, for plain `{}`.
+    let has_plain = spec.template().is_none_or(zygos::Template::has_plain);
+    let precision = if has_plain {
+        let unrenamed: Vec<Value> = values
+            .iter()
+            .zip(&matched)
+            .filter(|(_, m)| m.is_none())
+            .map(|(v, _)| v.clone())
+            .collect();
+        zygos::shared_precision(&unrenamed)
     } else {
         None
     };
 
-    for elem in breaks {
-        // Skip null values
-        if matches!(elem, ArrayElement::Null) {
-            continue;
-        }
-        let key = elem.to_key_string();
-
-        // Only apply template if no explicit mapping exists
-        result.entry(key.clone()).or_insert_with(|| {
-            Some(format_value(
-                &key,
-                template,
-                &placeholders,
-                numeric_precision,
-            ))
-        });
-    }
-
-    result
-}
-
-/// Determine the number of decimal places needed to display numeric breaks
-/// consistently. Based on the algorithm from R's `scales::precision()`:
-/// uses the smallest inter-break difference to derive display precision.
-/// Returns `None` if there are fewer than 2 numeric breaks or all are integers.
-fn compute_numeric_precision(breaks: &[ArrayElement]) -> Option<usize> {
-    let tol = f64::EPSILON.sqrt();
-
-    let mut numbers: Vec<f64> = breaks
+    values
         .iter()
-        .filter_map(|e| match e {
-            ArrayElement::Number(n) => Some(*n),
-            _ => None,
+        .zip(breaks)
+        .zip(&matched)
+        .map(|((value, elem), m)| match m {
+            Some(entry) => entry.clone(),
+            None => {
+                let rendered = match spec.template() {
+                    Some(t) => t.format(value, precision),
+                    None => zygos::default_label(value, precision),
+                };
+                match (rendered, elem) {
+                    // zygos suppresses nulls; ggsql's bare null break
+                    // has always rendered the text "null".
+                    (None, ArrayElement::Null) => Some("null".to_string()),
+                    (rendered, _) => rendered,
+                }
+            }
         })
-        .collect();
-
-    if numbers.len() < 2 {
-        return None;
-    }
-
-    numbers.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-
-    let smallest_diff = numbers
-        .windows(2)
-        .map(|w| (w[1] - w[0]).abs())
-        .filter(|d| *d > 0.0)
-        .fold(f64::INFINITY, f64::min);
-
-    if smallest_diff == f64::INFINITY || smallest_diff < tol {
-        return None;
-    }
-
-    let mut precision = 10f64.powf(smallest_diff.log10().floor() - 1.0);
-
-    // If all values are multiples of 10*precision, coarsen by one level
-    if numbers
-        .iter()
-        .all(|&x| ((x / precision).round() % 10.0).abs() < tol)
-    {
-        precision *= 10.0;
-    }
-
-    let n_decimals = (-precision.log10().floor()) as isize;
-    if n_decimals > 0 {
-        Some(n_decimals.min(20) as usize)
-    } else {
-        None
-    }
+        .collect()
 }
 
 /// Apply label formatting template to a DataFrame column.
@@ -296,22 +169,20 @@ pub fn format_dataframe_column(
         .column(column_name)
         .map_err(|e| format!("Column '{}' not found: {}", column_name, e))?;
 
-    // Step 1: Convert entire column to strings
-    let string_values: Vec<Option<String>> = if let Ok(str_col) = as_str(column) {
+    // Convert the column to label values: strings stay strings,
+    // numerics stay numeric so `{:num}` and `{}` work.
+    let values: Vec<Option<Value>> = if let Ok(str_col) = as_str(column) {
         // String column (includes temporal data auto-converted to ISO format)
         (0..str_col.len())
             .map(|i| {
                 if str_col.is_null(i) {
                     None
                 } else {
-                    Some(str_col.value(i).to_string())
+                    Some(Value::String(str_col.value(i).into()))
                 }
             })
             .collect()
     } else if let Ok(cast) = cast_array(column, &DataType::Float64) {
-        // Numeric column - use shared format_number helper for clean integer formatting
-        use crate::plot::format_number;
-
         let f64_col = as_f64(&cast).map_err(|e| format!("Failed to cast column to f64: {}", e))?;
 
         (0..f64_col.len())
@@ -319,7 +190,7 @@ pub fn format_dataframe_column(
                 if f64_col.is_null(i) {
                     None
                 } else {
-                    Some(format_number(f64_col.value(i)))
+                    Some(Value::Number(f64_col.value(i)))
                 }
             })
             .collect()
@@ -331,11 +202,10 @@ pub fn format_dataframe_column(
         ));
     };
 
-    // Step 2: Apply formatting template to all string values
-    let placeholders = parse_placeholders(template);
-    let formatted_owned: Vec<Option<String>> = string_values
-        .into_iter()
-        .map(|opt| opt.map(|s| format_value(&s, template, &placeholders, None)))
+    let template = zygos::Template::parse(template);
+    let formatted_owned: Vec<Option<String>> = values
+        .iter()
+        .map(|opt| opt.as_ref().and_then(|v| template.format(v, None)))
         .collect();
 
     let formatted_refs: Vec<Option<&str>> =
@@ -347,286 +217,281 @@ pub fn format_dataframe_column(
         .map_err(|e| format!("Failed to replace column: {}", e))
 }
 
-/// Format a single value using template and parsed placeholders
-fn format_value(
-    value: &str,
-    template: &str,
-    placeholders: &[ParsedPlaceholder],
-    precision: Option<usize>,
-) -> String {
-    if placeholders.is_empty() {
-        // No placeholders - use template as literal string
-        template.to_string()
-    } else {
-        // Replace each placeholder with its transformed value
-        let mut result = template.to_string();
-        for parsed in placeholders.iter().rev() {
-            let transformed = apply_transformation(value, &parsed.placeholder, precision);
-            result = result.replace(&parsed.match_text, &transformed);
-        }
-        result
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    fn spec_with_template(template: &str) -> LabelSpec {
+        let mut spec = LabelSpec::new();
+        spec.set_template(template);
+        spec
+    }
+
+    fn numbers(breaks: &[f64]) -> Vec<ArrayElement> {
+        breaks.iter().map(|n| ArrayElement::Number(*n)).collect()
+    }
+
+    fn strings(breaks: &[&str]) -> Vec<ArrayElement> {
+        breaks
+            .iter()
+            .map(|s| ArrayElement::String(s.to_string()))
+            .collect()
+    }
+
+    fn labels(spec: &LabelSpec, breaks: &[ArrayElement]) -> Vec<Option<String>> {
+        label_elements(spec, breaks)
+    }
+
     #[test]
     fn test_plain_placeholder() {
-        let breaks = vec![
-            ArrayElement::Number(0.0),
-            ArrayElement::Number(25.0),
-            ArrayElement::Number(50.0),
-        ];
-        let result = apply_label_template(&breaks, "{} units", &None);
-
-        assert_eq!(result.get("0"), Some(&Some("0 units".to_string())));
-        assert_eq!(result.get("25"), Some(&Some("25 units".to_string())));
-        assert_eq!(result.get("50"), Some(&Some("50 units".to_string())));
+        let result = labels(&LabelSpec::new(), &numbers(&[0.0, 25.0, 50.0]));
+        assert_eq!(
+            result,
+            vec![
+                Some("0".to_string()),
+                Some("25".to_string()),
+                Some("50".to_string())
+            ]
+        );
     }
 
     #[test]
     fn test_upper_placeholder() {
-        let breaks = vec![
-            ArrayElement::String("north".to_string()),
-            ArrayElement::String("south".to_string()),
-        ];
-        let result = apply_label_template(&breaks, "{:UPPER}", &None);
-
-        assert_eq!(result.get("north"), Some(&Some("NORTH".to_string())));
-        assert_eq!(result.get("south"), Some(&Some("SOUTH".to_string())));
+        let result = labels(
+            &spec_with_template("{:UPPER}"),
+            &strings(&["north", "south"]),
+        );
+        assert_eq!(
+            result,
+            vec![Some("NORTH".to_string()), Some("SOUTH".to_string())]
+        );
     }
 
     #[test]
     fn test_lower_placeholder() {
-        let breaks = vec![
-            ArrayElement::String("HELLO".to_string()),
-            ArrayElement::String("WORLD".to_string()),
-        ];
-        let result = apply_label_template(&breaks, "{:lower}", &None);
-
-        assert_eq!(result.get("HELLO"), Some(&Some("hello".to_string())));
-        assert_eq!(result.get("WORLD"), Some(&Some("world".to_string())));
+        let result = labels(
+            &spec_with_template("{:lower}"),
+            &strings(&["HELLO", "WORLD"]),
+        );
+        assert_eq!(
+            result,
+            vec![Some("hello".to_string()), Some("world".to_string())]
+        );
     }
 
     #[test]
     fn test_title_placeholder() {
-        let breaks = vec![
-            ArrayElement::String("us east".to_string()),
-            ArrayElement::String("eu west".to_string()),
-        ];
-        let result = apply_label_template(&breaks, "Region: {:Title}", &None);
-
-        assert_eq!(
-            result.get("us east"),
-            Some(&Some("Region: Us East".to_string()))
+        let result = labels(
+            &spec_with_template("Region: {:Title}"),
+            &strings(&["us east", "eu west"]),
         );
         assert_eq!(
-            result.get("eu west"),
-            Some(&Some("Region: Eu West".to_string()))
+            result,
+            vec![
+                Some("Region: Us East".to_string()),
+                Some("Region: Eu West".to_string())
+            ]
         );
     }
 
     #[test]
     fn test_datetime_placeholder() {
-        let breaks = vec![
-            ArrayElement::String("2024-01-15".to_string()),
-            ArrayElement::String("2024-02-15".to_string()),
-        ];
-        let result = apply_label_template(&breaks, "{:time %b %Y}", &None);
-
-        assert_eq!(
-            result.get("2024-01-15"),
-            Some(&Some("Jan 2024".to_string()))
+        let result = labels(
+            &spec_with_template("{:time %b %Y}"),
+            &strings(&["2024-01-15", "2024-02-15"]),
         );
         assert_eq!(
-            result.get("2024-02-15"),
-            Some(&Some("Feb 2024".to_string()))
+            result,
+            vec![Some("Jan 2024".to_string()), Some("Feb 2024".to_string())]
         );
     }
 
     #[test]
-    fn test_explicit_takes_priority() {
-        let breaks = vec![
-            ArrayElement::String("A".to_string()),
-            ArrayElement::String("B".to_string()),
-            ArrayElement::String("C".to_string()),
-        ];
-        let mut existing = HashMap::new();
-        existing.insert("A".to_string(), Some("Alpha".to_string()));
+    fn test_rename_takes_priority() {
+        let mut spec = spec_with_template("Category {}");
+        spec.rename(Value::String("A".into()), "Alpha");
+        let result = labels(&spec, &strings(&["A", "B", "C"]));
+        assert_eq!(
+            result,
+            vec![
+                Some("Alpha".to_string()),
+                Some("Category B".to_string()),
+                Some("Category C".to_string())
+            ]
+        );
+    }
 
-        let result = apply_label_template(&breaks, "Category {}", &Some(existing));
+    #[test]
+    fn test_quoted_number_key_matches_numeric_break() {
+        // The historical text rule: '25' renames numeric break 25.
+        let mut spec = LabelSpec::new();
+        spec.rename(Value::String("25".into()), "twenty-five");
+        let result = labels(&spec, &numbers(&[25.0, 50.0]));
+        assert_eq!(
+            result,
+            vec![Some("twenty-five".to_string()), Some("50".to_string())]
+        );
+    }
 
-        // A should keep explicit mapping
-        assert_eq!(result.get("A"), Some(&Some("Alpha".to_string())));
-        // B and C should get template
-        assert_eq!(result.get("B"), Some(&Some("Category B".to_string())));
-        assert_eq!(result.get("C"), Some(&Some("Category C".to_string())));
+    #[test]
+    fn test_unquoted_number_key_matches_string_category() {
+        // The typed rule: 10 renames the string category "10".
+        let mut spec = LabelSpec::new();
+        spec.rename(Value::Number(10.0), "ten");
+        let result = labels(&spec, &strings(&["10", "20"]));
+        assert_eq!(
+            result,
+            vec![Some("ten".to_string()), Some("20".to_string())]
+        );
     }
 
     #[test]
     fn test_multiple_placeholders() {
-        let breaks = vec![ArrayElement::String("hello".to_string())];
-        let result = apply_label_template(&breaks, "{} - {:UPPER}", &None);
-
-        assert_eq!(
-            result.get("hello"),
-            Some(&Some("hello - HELLO".to_string()))
-        );
+        let result = labels(&spec_with_template("{} - {:UPPER}"), &strings(&["hello"]));
+        assert_eq!(result, vec![Some("hello - HELLO".to_string())]);
     }
 
     #[test]
     fn test_no_placeholder_literal() {
-        let breaks = vec![
-            ArrayElement::String("A".to_string()),
-            ArrayElement::String("B".to_string()),
-        ];
-        let result = apply_label_template(&breaks, "Constant Label", &None);
-
-        assert_eq!(result.get("A"), Some(&Some("Constant Label".to_string())));
-        assert_eq!(result.get("B"), Some(&Some("Constant Label".to_string())));
-    }
-
-    #[test]
-    fn test_to_key_string_number_integer() {
-        assert_eq!(ArrayElement::Number(0.0).to_key_string(), "0");
-        assert_eq!(ArrayElement::Number(25.0).to_key_string(), "25");
-        assert_eq!(ArrayElement::Number(-100.0).to_key_string(), "-100");
-    }
-
-    #[test]
-    fn test_to_key_string_number_decimal() {
-        assert_eq!(ArrayElement::Number(25.5).to_key_string(), "25.5");
-        assert_eq!(ArrayElement::Number(0.123).to_key_string(), "0.123");
-    }
-
-    #[test]
-    fn test_to_title_case() {
-        assert_eq!(to_title_case("hello world"), "Hello World");
-        assert_eq!(to_title_case("HELLO WORLD"), "Hello World");
-        assert_eq!(to_title_case("hello"), "Hello");
-        assert_eq!(to_title_case(""), "");
+        let result = labels(&spec_with_template("Constant Label"), &strings(&["A", "B"]));
+        assert_eq!(
+            result,
+            vec![
+                Some("Constant Label".to_string()),
+                Some("Constant Label".to_string())
+            ]
+        );
     }
 
     #[test]
     fn test_datetime_with_time() {
-        let breaks = vec![ArrayElement::String("2024-01-15T10:30:00".to_string())];
-        let result = apply_label_template(&breaks, "{:time %Y-%m-%d %H:%M}", &None);
-
-        assert_eq!(
-            result.get("2024-01-15T10:30:00"),
-            Some(&Some("2024-01-15 10:30".to_string()))
+        let result = labels(
+            &spec_with_template("{:time %Y-%m-%d %H:%M}"),
+            &strings(&["2024-01-15T10:30:00"]),
         );
+        assert_eq!(result, vec![Some("2024-01-15 10:30".to_string())]);
     }
 
     #[test]
     fn test_invalid_datetime_fallback() {
-        let breaks = vec![ArrayElement::String("not-a-date".to_string())];
-        let result = apply_label_template(&breaks, "{:time %Y-%m-%d}", &None);
+        let result = labels(
+            &spec_with_template("{:time %Y-%m-%d}"),
+            &strings(&["not-a-date"]),
+        );
+        assert_eq!(result, vec![Some("not-a-date".to_string())]);
+    }
 
-        // Should fall back to original value
+    #[test]
+    fn test_null_renders_null_text() {
+        let result = labels(
+            &LabelSpec::new(),
+            &[
+                ArrayElement::String("A".to_string()),
+                ArrayElement::Null,
+                ArrayElement::String("B".to_string()),
+            ],
+        );
         assert_eq!(
-            result.get("not-a-date"),
-            Some(&Some("not-a-date".to_string()))
+            result,
+            vec![
+                Some("A".to_string()),
+                Some("null".to_string()),
+                Some("B".to_string())
+            ]
         );
     }
 
     #[test]
-    fn test_null_skipped() {
-        let breaks = vec![
-            ArrayElement::String("A".to_string()),
-            ArrayElement::Null,
-            ArrayElement::String("B".to_string()),
-        ];
-        let result = apply_label_template(&breaks, "{}", &None);
-
-        assert_eq!(result.len(), 2);
-        assert!(result.contains_key("A"));
-        assert!(result.contains_key("B"));
+    fn test_null_rename_by_null_literal_key() {
+        let mut spec = LabelSpec::new();
+        spec.rename(Value::Null, "The rest");
+        let result = labels(&spec, &[ArrayElement::Null]);
+        assert_eq!(result, vec![Some("The rest".to_string())]);
     }
 
     #[test]
     fn test_number_format_decimal_places() {
-        let breaks = vec![ArrayElement::Number(25.5), ArrayElement::Number(100.0)];
-        let result = apply_label_template(&breaks, "${:num %.2f}", &None);
-
-        assert_eq!(result.get("25.5"), Some(&Some("$25.50".to_string())));
-        assert_eq!(result.get("100"), Some(&Some("$100.00".to_string())));
+        let result = labels(
+            &spec_with_template("${:num %.2f}"),
+            &numbers(&[25.5, 100.0]),
+        );
+        assert_eq!(
+            result,
+            vec![Some("$25.50".to_string()), Some("$100.00".to_string())]
+        );
     }
 
     #[test]
     fn test_number_format_no_decimals() {
-        let breaks = vec![ArrayElement::Number(25.7)];
-        let result = apply_label_template(&breaks, "{:num %.0f} items", &None);
-
-        assert_eq!(result.get("25.7"), Some(&Some("26 items".to_string())));
+        let result = labels(&spec_with_template("{:num %.0f} items"), &numbers(&[25.7]));
+        assert_eq!(result, vec![Some("26 items".to_string())]);
     }
 
     #[test]
     fn test_number_format_scientific() {
-        let breaks = vec![ArrayElement::Number(1234.5)];
-        let result = apply_label_template(&breaks, "{:num %.2e}", &None);
-
-        assert_eq!(result.get("1234.5"), Some(&Some("1.23e+03".to_string())));
+        let result = labels(&spec_with_template("{:num %.2e}"), &numbers(&[1234.5]));
+        assert_eq!(result, vec![Some("1.23e+03".to_string())]);
     }
 
     #[test]
     fn test_number_format_non_numeric_fallback() {
-        let breaks = vec![ArrayElement::String("hello".to_string())];
-        let result = apply_label_template(&breaks, "{:num %.2f}", &None);
-
-        // Non-numeric should fall back to original value
-        assert_eq!(result.get("hello"), Some(&Some("hello".to_string())));
+        let result = labels(&spec_with_template("{:num %.2f}"), &strings(&["hello"]));
+        assert_eq!(result, vec![Some("hello".to_string())]);
     }
 
     #[test]
     fn test_number_format_integer() {
-        let breaks = vec![ArrayElement::Number(42.0)];
-        let result = apply_label_template(&breaks, "{:num %d}", &None);
-
-        assert_eq!(result.get("42"), Some(&Some("42".to_string())));
+        let result = labels(&spec_with_template("{:num %d}"), &numbers(&[42.0]));
+        assert_eq!(result, vec![Some("42".to_string())]);
     }
 
     #[test]
     fn test_plain_placeholder_consistent_decimal_precision() {
-        let breaks = vec![
-            ArrayElement::Number(54.5),
-            ArrayElement::Number(55.0),
-            ArrayElement::Number(55.5),
-        ];
-        let result = apply_label_template(&breaks, "{}", &None);
-
-        assert_eq!(result.get("54.5"), Some(&Some("54.5".to_string())));
-        assert_eq!(result.get("55"), Some(&Some("55.0".to_string())));
-        assert_eq!(result.get("55.5"), Some(&Some("55.5".to_string())));
+        let result = labels(&LabelSpec::new(), &numbers(&[54.5, 55.0, 55.5]));
+        assert_eq!(
+            result,
+            vec![
+                Some("54.5".to_string()),
+                Some("55.0".to_string()),
+                Some("55.5".to_string())
+            ]
+        );
     }
 
     #[test]
     fn test_plain_placeholder_all_integers_no_decimals() {
-        let breaks = vec![
-            ArrayElement::Number(10.0),
-            ArrayElement::Number(20.0),
-            ArrayElement::Number(30.0),
-        ];
-        let result = apply_label_template(&breaks, "{}", &None);
-
-        assert_eq!(result.get("10"), Some(&Some("10".to_string())));
-        assert_eq!(result.get("20"), Some(&Some("20".to_string())));
-        assert_eq!(result.get("30"), Some(&Some("30".to_string())));
+        let result = labels(&LabelSpec::new(), &numbers(&[10.0, 20.0, 30.0]));
+        assert_eq!(
+            result,
+            vec![
+                Some("10".to_string()),
+                Some("20".to_string()),
+                Some("30".to_string())
+            ]
+        );
     }
 
     #[test]
     fn test_plain_placeholder_small_fractional_steps() {
-        let breaks = vec![
-            ArrayElement::Number(0.0),
-            ArrayElement::Number(0.05),
-            ArrayElement::Number(0.1),
-        ];
-        let result = apply_label_template(&breaks, "{}", &None);
+        let result = labels(&LabelSpec::new(), &numbers(&[0.0, 0.05, 0.1]));
+        assert_eq!(
+            result,
+            vec![
+                Some("0.00".to_string()),
+                Some("0.05".to_string()),
+                Some("0.10".to_string())
+            ]
+        );
+    }
 
-        assert_eq!(result.get("0"), Some(&Some("0.00".to_string())));
-        assert_eq!(result.get("0.05"), Some(&Some("0.05".to_string())));
-        assert_eq!(result.get("0.1"), Some(&Some("0.10".to_string())));
+    #[test]
+    fn test_suppression() {
+        let mut spec = LabelSpec::new();
+        spec.suppress(Value::String("B".into()));
+        let result = labels(&spec, &strings(&["A", "B", "C"]));
+        assert_eq!(
+            result,
+            vec![Some("A".to_string()), None, Some("C".to_string())]
+        );
     }
 }

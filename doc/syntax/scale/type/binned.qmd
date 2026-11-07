@@ -82,15 +82,14 @@ Since breaks are not just presentational as it is with continuous scales the cho
 * `linear`:
   - `pretty => true`: Will use Wilkinsons Extended algorithm to attempt to find nice breaks in the given interval close to the number of breaks requested
   - `pretty => false`: Will produce the requested number of evenly spaced breaks within the scale range
-* `log`/`log2`/`ln`:
-  - `pretty => true`: Will use the 1-2-5 pattern and thin down to approximately the requested number of breaks
-  - `pretty => false`: Breaks will be exclusively at the power of the base (e.g. 1, 10, 100, 1000 for log10)
-* `exp10`/`exp2`/`exp`: Same logic as the log breaks but in the inverse direction
-* `sqrt`/`square`: Like `linear` but the range is first converted to sqrt space and the breaks are then converted back
-* `asinh`/`pseudo_log`/`pseudo_log2`/`pseudo_ln`: Like `log` but includes zero and negates the breaks for the negative part
+* `log`/`log2`/`ln`: Uses the 1-2-5 pattern on every power of the base (e.g. 1, 2, 5, 10, 20, 50 for log10), adding 3 and 7 on narrow ranges when many breaks are requested and keeping only the powers on very wide ranges, where powers are skipped to stay near the requested number of breaks. Multipliers above the base are dropped, so `log2` breaks are powers of 2. The `pretty` setting has no effect
+* `exp10`/`exp2`/`exp`: Like `linear`, on the exponents
+* `sqrt`: Like `linear` but the range is first converted to sqrt space and the breaks are then converted back
+* `square`: Like `linear`
+* `asinh`/`pseudo_log`/`pseudo_log2`/`pseudo_ln`: Like `log` (in base 10 for `asinh`, in their own base for the others) but includes zero and negates the breaks for the negative part
 * `integer`: Like `linear` except disallowing breaks at fractional parts
 * `date`/`datetime`/`time`:
-  - `breaks => <interval>`: If breaks are given as an interval (e.g. `week`, `30 seconds` or `5 years`) then the breaks will get that spacing aligned at the interval boundary (Jan 1 for years, etc). This ignores the `pretty` setting
+  - `breaks => <interval>`: If breaks are given as an interval (e.g. `week`, `30 seconds` or `5 years`) then the breaks will get that spacing aligned to a calendar grid of that size (Jan 1 for years, Mondays for weeks, and e.g. January/April/July/October for `3 months` or years divisible by 5 for `5 years`). This ignores the `pretty` setting
   - `pretty => true`: An appropriate interval is chosen that approximates the requested number of breaks and then used as above
   - `pretty => false`: Linear spacing in integer space as close to the requested number of breaks
 
@@ -125,7 +124,7 @@ SCALE BINNED x VIA date
 ## Settings
 The following settings are recognised by binned scales:
 
-* `expand` (only for `x`/`y`): Either a scalar number or 2-element array of numbers (values must be >= 0). Sets the expansion of the scale to either side of the range. If a scalar it gives the multiplicative expansion. If an array the first element is a multiplication factor and the second element is an additive constant. Defaults to `0.05` (5 %). Expansion is only applied to values that are not explicitly given by the user, i.e. if setting the range as `SCALE x FROM (0, null)` expansion will only be applied to the upper range.
+* `expand` (only for `x`/`y`): Either a scalar number or 2-element array of numbers (values must be >= 0). Sets the expansion of the scale to either side of the range. If a scalar it gives the multiplicative expansion. If an array the first element is a multiplication factor and the second element is an additive constant. Defaults to `0.05` (5 %). Expansion is only applied to values that are not explicitly given by the user, i.e. if setting the range as `SCALE x FROM (0, null)` expansion will only be applied to the upper range. Expansion is applied in the transformed space of the scale, so on a transformed scale both parts are measured in transformed units: on a `log` scale a factor of `0.05` pads by 5 % of the visible decades and an additive `1` pads by one decade.
 * `oob`: How should values outside of the scale input range be treated. One of `'censor'` (set to `null`), or `'squish'` (set to the nearest bin). Default is `'censor'`. When set to `'squish'` the terminal bin labels will be removed to reflect that they extend to -Inf and Inf.
 * `breaks`: Either a scalar (whole number >= 1) as described in [the section on breaks](#breaks), or an array of values to place breaks at. Defaults to `5`.
 * `pretty`: A boolean indicating which algorithm to use for automatic calculation of breaks as described in [the section on breaks](#breaks). Defaults to `true`.

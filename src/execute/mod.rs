@@ -1718,7 +1718,7 @@ mod tests {
         // Each panel's domain covers only its own data (with expansion), and
         // the two panels resolve to disjoint domains.
         assert!(
-            lo_a <= 1.0 && hi_a >= 3.0 && hi_a < 50.0,
+            lo_a <= 1.0 && (3.0..50.0).contains(&hi_a),
             "panel A: {lo_a}..{hi_a}"
         );
         assert!(

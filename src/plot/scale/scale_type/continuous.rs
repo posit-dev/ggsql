@@ -165,7 +165,7 @@ impl ScaleTypeTrait for Continuous {
                 Ok(Some(
                     palette
                         .iter()
-                        .map(|col: &&str| ArrayElement::String(col.to_string()))
+                        .map(|col: &String| ArrayElement::String(col.clone()))
                         .collect(),
                 ))
             }
