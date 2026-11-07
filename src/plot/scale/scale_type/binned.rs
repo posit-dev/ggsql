@@ -1,7 +1,5 @@
 //! Binned scale type implementation
 
-use std::collections::HashMap;
-
 use arrow::datatypes::DataType;
 
 use super::{
@@ -496,39 +494,11 @@ impl ScaleTypeTrait for Binned {
             }
         }
 
-        // 6. Apply label template (RENAMING * => '...')
-        // Default is '{}' to ensure we control formatting instead of Vega-Lite
-        // For binned scales, apply to breaks array
-        let template = &scale.label_template;
-
-        let values_to_label = match scale.properties.get("breaks") {
-            Some(ParameterValue::Array(breaks)) => Some(breaks.clone()),
-            _ => None,
-        };
-
-        if let Some(values) = values_to_label {
-            let generated_labels =
-                crate::format::apply_label_template(&values, template, &scale.label_mapping);
-            scale.label_mapping = Some(generated_labels);
-        }
-
-        // 6b. Binned-specific: suppress terminal break labels for oob='squish'
-        // since those bins extend to infinity (-∞ to first internal break, last internal break to +∞)
-        if let Some(ParameterValue::String(oob)) = scale.properties.get("oob") {
-            if oob == OOB_SQUISH {
-                if let Some(ParameterValue::Array(breaks)) = scale.properties.get("breaks") {
-                    if breaks.len() > 2 {
-                        // Suppress first and last break labels
-                        let first_key = breaks[0].to_key_string();
-                        let last_key = breaks[breaks.len() - 1].to_key_string();
-
-                        let label_mapping = scale.label_mapping.get_or_insert_with(HashMap::new);
-                        label_mapping.insert(first_key, None);
-                        label_mapping.insert(last_key, None);
-                    }
-                }
-            }
-        }
+        // 6. Labelling needs no resolution step: `Scale::labelled_breaks`
+        // renders `label_spec` against the current breaks on every read,
+        // including the terminal-edge suppression for oob='squish' (the
+        // outermost bins extend to infinity, so those edges are not real
+        // boundaries).
 
         // 7. Resolve output range (TO clause)
         self.resolve_output_range(scale, aesthetic)?;

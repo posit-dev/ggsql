@@ -676,18 +676,15 @@ fn apply_breaks_to_encoding(
 
     if is_position_aesthetic(aesthetic) {
         // For position aesthetics (axes), filter out suppressed terminal breaks
-        let axis_values: Vec<Value> = if let Some(ref label_mapping) = scale.label_mapping {
-            breaks
-                .iter()
-                .filter(|e| {
-                    let key = e.to_key_string();
-                    !matches!(label_mapping.get(&key), Some(None))
-                })
-                .map(|e| e.to_json())
-                .collect()
-        } else {
-            all_values
-        };
+        let label_mapping = scale.label_mapping();
+        let axis_values: Vec<Value> = breaks
+            .iter()
+            .filter(|e| {
+                let key = e.to_key_string();
+                !matches!(label_mapping.get(&key), Some(None))
+            })
+            .map(|e| e.to_json())
+            .collect();
 
         insert_axis_property(encoding, "values", json!(axis_values));
     } else {
@@ -720,9 +717,7 @@ fn apply_label_mapping_to_encoding(
     use crate::plot::scale::TransformKind;
     use crate::plot::ParameterValue;
 
-    let Some(ref label_mapping) = scale.label_mapping else {
-        return;
-    };
+    let label_mapping = scale.label_mapping();
     if label_mapping.is_empty() {
         return;
     }
@@ -751,7 +746,7 @@ fn apply_label_mapping_to_encoding(
     let filtered_mapping = if is_symbol {
         build_symbol_legend_label_mapping(scale)
     } else {
-        label_mapping.clone()
+        label_mapping
     };
 
     // Gradient legends use null for the first terminal's label
@@ -1320,7 +1315,14 @@ mod tests {
         scale
             .properties
             .insert("breaks".to_string(), ParameterValue::Array(breaks));
-        scale.label_mapping = Some(label_mapping);
+        let mut spec = zygos::LabelSpec::new();
+        for (k, v) in label_mapping {
+            match v {
+                Some(label) => spec.rename(zygos::Value::String(k.into()), label),
+                None => spec.suppress(zygos::Value::String(k.into())),
+            };
+        }
+        scale.label_spec = spec;
         let symbol_mapping = build_symbol_legend_label_mapping(&scale);
 
         // The resulting mapping uses VL's range-style label strings as keys
@@ -1378,8 +1380,7 @@ mod tests {
                 explicit_transform: false,
                 properties: Parameters::new(),
                 resolved: false,
-                label_mapping: None,
-                label_template: "{}".to_string(),
+                label_spec: zygos::LabelSpec::new(),
                 panels: None,
             }
         }

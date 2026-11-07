@@ -47,7 +47,7 @@ hephaestus = { version = "0.4.1", optional = true, default-features = false, fea
 # Scale primitives (transforms, breaks, palettes, OOB policies). Unlike
 # hephaestus this is a core dependency: the executor resolves scales through
 # it, so it must build on the MSRV toolchain.
-zygos = { version = "0.3.0", default-features = false, features = ["palettes"] }
+zygos = { version = "0.4.0", default-features = false, features = ["palettes"] }
 
 # WOFF / WOFF2 decoding for `fonts::register_font`, behind `webfonts`. Pure
 # Rust and no build script; `brotli` here is `brotli-decompressor`, the
@@ -65,7 +65,6 @@ thiserror.workspace = true
 regex.workspace = true
 chrono.workspace = true
 rand.workspace = true
-sprintf = "0.4"
 const_format.workspace = true
 uuid.workspace = true
 

@@ -1740,7 +1740,6 @@ dependencies = [
  "rusqlite",
  "serde",
  "serde_json",
- "sprintf",
  "tempfile",
  "thiserror 1.0.69",
  "toml_edit 0.22.27",
@@ -4607,15 +4606,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "sprintf"
-version = "0.4.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b0e59842c3aac5c7901ea11bbb02e60e5d67263b43d4361dec9303cca8e764eb"
-dependencies = [
- "thiserror 2.0.18",
-]
-
-[[package]]
 name = "sqlite-wasm-rs"
 version = "0.5.5"
 source = "git+https://github.com/ggsql-dev/sqlite-wasm-rs.git?branch=loadable-extensions#119e2c7e5b0d0c136dc931a8df089c2914113817"
@@ -6713,9 +6703,9 @@ dependencies = [
 
 [[package]]
 name = "zygos"
-version = "0.3.0"
+version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ca3ede22c9a8d1cbc904b185ab02abe5ba24044c66c34906b1d7c9f8300af9b0"
+checksum = "3a80aeb3167e942468b1b74c62c67572380f4057ce8861e1b3a01308a0655ad1"
 dependencies = [
  "peniko",
 ]

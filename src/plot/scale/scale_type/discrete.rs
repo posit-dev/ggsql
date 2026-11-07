@@ -65,7 +65,7 @@ impl ScaleTypeTrait for Discrete {
         super::categorical_numeric_domain(scale)
     }
 
-    fn break_labels(&self, scale: &super::super::Scale) -> Vec<(f64, String)> {
+    fn break_labels(&self, scale: &super::super::Scale) -> Vec<(f64, crate::plot::ArrayElement)> {
         super::categorical_break_labels(scale)
     }
 

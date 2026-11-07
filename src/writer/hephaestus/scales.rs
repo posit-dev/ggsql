@@ -640,7 +640,6 @@ fn pad_degenerate(min: f64, max: f64) -> (f64, f64) {
 mod tests {
     use super::*;
     use crate::writer::hephaestus::channels::{column_to_channel, ChannelData};
-    use std::collections::HashMap;
 
     /// A binned scale with the given edges, plus optional per-edge label overrides
     /// and properties, as ggsql's resolution would leave it.
@@ -654,14 +653,6 @@ mod tests {
         for (key, value) in props {
             scale.properties.insert(key.to_string(), value.clone());
         }
-        // ggsql always populates `label_mapping` for a resolved scale (the default
-        // `{}` template applied to every edge).
-        let mut mapping: HashMap<String, Option<String>> = HashMap::new();
-        for edge in edges {
-            let key = ArrayElement::Number(*edge).to_key_string();
-            mapping.insert(key.clone(), Some(key));
-        }
-        scale.label_mapping = Some(mapping);
         scale
     }
 
@@ -681,21 +672,21 @@ mod tests {
     fn binned_bins_honors_edge_renaming() {
         let mut scale = binned_scale(&[0.0, 10.0, 20.0], &[]);
         scale
-            .label_mapping
-            .as_mut()
-            .unwrap()
-            .insert("10".to_string(), Some("ten".to_string()));
+            .label_spec
+            .rename(zygos::Value::String("10".into()), "ten");
         assert_eq!(labels(&binned_bins(&scale)), vec!["0 – ten", "ten – 20"]);
     }
 
     #[test]
     fn binned_bins_opens_suppressed_terminals() {
         // `oob => 'squish'` suppresses the terminal edge labels.
-        let mut scale = binned_scale(&[0.0, 10.0, 20.0], &[]);
-        let mapping = scale.label_mapping.as_mut().unwrap();
-        mapping.insert("0".to_string(), None);
-        mapping.insert("20".to_string(), None);
+        let scale = binned_scale(
+            &[0.0, 10.0, 20.0],
+            &[("oob", ParameterValue::String("squish".to_string()))],
+        );
         assert_eq!(labels(&binned_bins(&scale)), vec!["< 10", "≥ 10"]);
+
+        let mut scale = scale;
 
         scale.properties.insert(
             "closed".to_string(),

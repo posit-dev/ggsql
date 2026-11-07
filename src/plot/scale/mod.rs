@@ -10,7 +10,6 @@ mod scale_type;
 pub mod transform;
 mod types;
 
-pub use crate::format::apply_label_template;
 pub use crate::plot::aesthetic::{
     is_facet_aesthetic, is_position_aesthetic, is_user_facet_aesthetic,
 };

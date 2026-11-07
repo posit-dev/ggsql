@@ -27,9 +27,7 @@ use std::sync::Arc;
 
 use super::transform::{Transform, TransformKind};
 use crate::plot::aesthetic::{is_facet_aesthetic, is_position_aesthetic};
-use crate::plot::types::{
-    format_number, validate_parameter, DefaultParamValue, ParamDefinition, Parameters,
-};
+use crate::plot::types::{validate_parameter, DefaultParamValue, ParamDefinition, Parameters};
 use crate::plot::{ArrayElement, ColumnInfo, ParameterValue};
 
 // Scale type implementations
@@ -829,25 +827,25 @@ pub trait ScaleTypeTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
         }
     }
 
-    /// Labelled breaks: `(numeric_position, display_label)` pairs.
+    /// Labelled breaks: `(numeric_position, break_element)` pairs.
     ///
-    /// Default: labels each break from its own typed `ArrayElement`, so a
-    /// temporal break reads as its ISO string rather than as the epoch number
-    /// its position projects to. The label is the element's `to_key_string()`,
-    /// which is also how `label_mapping` is keyed — so the `RENAMING` and
-    /// label-template overrides the caller applies actually match.
-    /// Discrete/ordinal override to pair position indices with input-range
-    /// category names.
-    fn break_labels(&self, scale: &super::Scale) -> Vec<(f64, String)> {
+    /// Default: each break is its own typed `ArrayElement`, so a temporal
+    /// break labels as its ISO string rather than as the epoch number its
+    /// position projects to. Labelling (RENAMING, templates) happens in
+    /// [`Scale::labelled_breaks`](crate::plot::Scale), which matches rename
+    /// keys against the element — so the element must be in the same form
+    /// `RENAMING` keys are written in. Discrete/ordinal override to pair
+    /// position indices with input-range category elements.
+    fn break_labels(&self, scale: &super::Scale) -> Vec<(f64, ArrayElement)> {
         if let Some(ParameterValue::Array(breaks)) = scale.properties.get("breaks") {
             return breaks
                 .iter()
-                .filter_map(|b| b.to_f64().map(|v| (v, b.to_key_string())))
+                .filter_map(|b| b.to_f64().map(|v| (v, b.clone())))
                 .collect();
         }
         self.numeric_breaks(scale)
             .into_iter()
-            .map(|v| (v, format_number(v)))
+            .map(|v| (v, ArrayElement::Number(v)))
             .collect()
     }
 
@@ -876,11 +874,11 @@ pub trait ScaleTypeTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
     /// 3. Resolves input_range from context (or merges with existing partial range)
     /// 4. Converts input_range values using transform (e.g., ISO strings → Date/DateTime/Time)
     /// 5. If breaks is a scalar Number, calculates break positions and stores as Array
-    /// 6. Applies label template
+    /// 6. (Labelling is not a resolution step — see `Scale::labelled_breaks`)
     /// 7. Resolves output range
     ///
     /// Note: Binned scale overrides this method to add Binned-specific logic
-    /// (implicit break handling, break/range alignment, terminal label suppression).
+    /// (implicit break handling, break/range alignment).
     fn resolve(
         &self,
         scale: &mut super::Scale,
@@ -974,8 +972,8 @@ pub trait ScaleTypeTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
         // "resolved to no minors" (`minor_breaks => 0`, which a writer must honour by
         // drawing none) and the second is "not resolved", which leaves a writer free to
         // fall back on its own. Binned overrides `resolve` and so never reaches this: a
-        // binned axis's ticks are its bin edges, with nothing to subdivide. Runs before
-        // the label template because minor breaks carry no labels.
+        // binned axis's ticks are its bin edges, with nothing to subdivide. Minor breaks carry no
+        // labels, so labelling never looks at them.
         if self.supports_breaks() {
             if let (Some(ParameterValue::Array(majors)), Some(range)) =
                 (scale.properties.get("breaks"), scale.input_range.as_deref())
@@ -1033,28 +1031,9 @@ pub trait ScaleTypeTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
             }
         }
 
-        // 6. Apply label template (RENAMING * => '...')
-        // Default is '{}' to ensure we control formatting instead of Vega-Lite
-        // For continuous scales, apply to breaks array
-        // For discrete scales, apply to input_range (domain values)
-        let template = &scale.label_template;
-
-        let values_to_label = if self.supports_breaks() {
-            // Continuous: use breaks
-            match scale.properties.get("breaks") {
-                Some(ParameterValue::Array(breaks)) => Some(breaks.clone()),
-                _ => None,
-            }
-        } else {
-            // Discrete: use input_range
-            scale.input_range.clone()
-        };
-
-        if let Some(values) = values_to_label {
-            let generated_labels =
-                crate::format::apply_label_template(&values, template, &scale.label_mapping);
-            scale.label_mapping = Some(generated_labels);
-        }
+        // 6. Labelling needs no resolution step: `Scale::labelled_breaks`
+        // renders `label_spec` (RENAMING renames plus the wildcard template)
+        // against the current breaks on every read.
 
         // 7. Resolve output range (TO clause)
         self.resolve_output_range(scale, aesthetic)?;
@@ -1190,19 +1169,20 @@ pub(super) fn categorical_numeric_domain(scale: &super::Scale) -> Option<(f64, f
     }
 }
 
-/// Labelled breaks for categorical scales: pairs position indices with category names.
+/// Break elements for categorical scales: pairs position indices with the
+/// category elements themselves.
 ///
-/// The label doubles as the lookup key into `label_mapping`, so it must be the
-/// element's `to_key_string()` — the same form `RENAMING` writes its keys in.
-/// Formatting a number through `to_json()` instead yields `"6.0"` against a key
-/// of `"6"`, which silently drops every rename on a non-string domain.
-pub(super) fn categorical_break_labels(scale: &super::Scale) -> Vec<(f64, String)> {
+/// The element doubles as the rename-match key, so it must stay the typed
+/// `ArrayElement` — the same form `RENAMING` keys are written in. Formatting
+/// a number through `to_json()` instead would yield `"6.0"` against a key of
+/// `"6"`, silently dropping every rename on a non-string domain.
+pub(super) fn categorical_break_labels(scale: &super::Scale) -> Vec<(f64, ArrayElement)> {
     let Some(range) = scale.input_range.as_ref() else {
         return Vec::new();
     };
     let mut out = Vec::with_capacity(range.len());
     for (i, elem) in range.iter().enumerate() {
-        out.push(((i + 1) as f64, elem.to_key_string()));
+        out.push(((i + 1) as f64, elem.clone()));
     }
     out
 }
@@ -1400,7 +1380,7 @@ impl ScaleType {
     }
 
     /// Labelled breaks: `(numeric_position, display_label)` pairs.
-    pub fn break_labels(&self, scale: &super::Scale) -> Vec<(f64, String)> {
+    pub fn break_labels(&self, scale: &super::Scale) -> Vec<(f64, ArrayElement)> {
         self.0.break_labels(scale)
     }
 

@@ -9,9 +9,61 @@ use super::super::types::{ArrayElement, ParameterValue, Parameters};
 use super::scale_type::ScaleType;
 use super::transform::Transform;
 
-/// Default label template - passes through values unchanged
-fn default_label_template() -> String {
-    "{}".to_string()
+/// Serde mirror for [`zygos::LabelSpec`], which is dependency-free and has no
+/// serde impls of its own. Rename keys round-trip as [`ArrayElement`]s under
+/// the same key-typing rule the parser uses (`'A'` → string, `25` → number,
+/// `NULL` → null); the template round-trips as its source text.
+mod label_spec_serde {
+    use super::super::super::types::ArrayElement;
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+    use zygos::{LabelSpec, Value};
+
+    #[derive(Serialize, Deserialize, Default)]
+    struct LabelSpecSerde {
+        #[serde(default)]
+        renames: Vec<(ArrayElement, Option<String>)>,
+        #[serde(default)]
+        template: Option<String>,
+    }
+
+    fn value_to_element(value: &Value) -> ArrayElement {
+        match value {
+            Value::String(s) => ArrayElement::String(s.to_string()),
+            Value::Number(n) => ArrayElement::Number(*n),
+            Value::Bool(b) => ArrayElement::Boolean(*b),
+            Value::Null => ArrayElement::Null,
+            // Only RENAMING literals reach a LabelSpec — string, number,
+            // boolean, null. Anything else stringifies.
+            other => ArrayElement::String(zygos::default_label(other, None).unwrap_or_default()),
+        }
+    }
+
+    pub fn serialize<S: Serializer>(spec: &LabelSpec, serializer: S) -> Result<S::Ok, S::Error> {
+        let mirror = LabelSpecSerde {
+            renames: spec
+                .renames()
+                .map(|(k, r)| (value_to_element(k), r.map(str::to_string)))
+                .collect(),
+            template: spec.template().map(|t| t.source().to_string()),
+        };
+        mirror.serialize(serializer)
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> Result<LabelSpec, D::Error> {
+        let mirror = LabelSpecSerde::deserialize(deserializer)?;
+        let mut spec = LabelSpec::new();
+        for (key, rename) in mirror.renames {
+            let value = crate::format::key_value(&key);
+            match rename {
+                Some(label) => spec.rename(value, label),
+                None => spec.suppress(value),
+            };
+        }
+        if let Some(template) = mirror.template {
+            spec.set_template(&template);
+        }
+        Ok(spec)
+    }
 }
 
 /// One bin of a resolved binned scale: the edges bounding it and the text that
@@ -69,17 +121,12 @@ pub struct Scale {
     /// Used to skip re-resolution of pre-resolved scales (e.g., Binned scales)
     #[serde(default)]
     pub resolved: bool,
-    /// Label mappings for custom axis/legend labels (RENAMING clause)
-    /// Maps raw data values to display labels. `None` value suppresses the label.
-    /// Example: `RENAMING 'A' => 'Alpha', 'internal' => NULL`
-    #[serde(default)]
-    pub label_mapping: Option<HashMap<String, Option<String>>>,
-    /// Template for generating labels from scale values (e.g., "{} units")
-    /// Default is "{}" which passes through the value unchanged.
-    /// The `{}` placeholder is replaced with each value at resolution time.
-    /// Example: "{} units" -> {"0": "0 units", "25": "25 units", ...}
-    #[serde(default = "default_label_template")]
-    pub label_template: String,
+    /// Break labelling (RENAMING clause): value-keyed renames and
+    /// suppressions plus the wildcard template, rendered against the
+    /// current break set on every read. Example:
+    /// `RENAMING 'A' => 'Alpha', 'internal' => NULL, * => '{} units'`
+    #[serde(default, with = "label_spec_serde")]
+    pub label_spec: zygos::LabelSpec,
     /// Per-panel resolution for a positional scale whose facet dimension is
     /// `free`, indexed by panel index in the canonical order (see
     /// [`facet::panels`](crate::plot::facet::panels)). `None` when the scale is
@@ -123,8 +170,7 @@ impl Scale {
             explicit_transform: false,
             properties: Parameters::new(),
             resolved: false,
-            label_mapping: None,
-            label_template: "{}".to_string(),
+            label_spec: zygos::LabelSpec::new(),
             panels: None,
         }
     }
@@ -182,7 +228,7 @@ impl Scale {
 
     /// Labelled breaks: `(numeric_position, display_label)` pairs.
     ///
-    /// Delegates to the scale type, then applies `label_mapping` overrides.
+    /// Delegates to the scale type, then applies `label_spec` overrides.
     /// Suppressed labels (`None` in the mapping) become empty strings — the
     /// break is kept, but goes unlabelled. Use [`Self::visible_break_labels`]
     /// when a suppressed break should disappear entirely.
@@ -210,25 +256,68 @@ impl Scale {
     /// Breaks paired with their resolved label, where `None` means the label was
     /// explicitly suppressed (as opposed to merely empty). The two public break
     /// accessors differ only in what they do with that `None`.
+    ///
+    /// Labels render from [`Self::label_spec`] against the *current* breaks on
+    /// every call, so re-breaking re-expands templates and re-derives shared
+    /// numeric precision.
     pub(crate) fn labelled_breaks(&self) -> Vec<(f64, Option<String>)> {
-        let raw = match &self.scale_type {
+        self.labelled_break_elements()
+            .into_iter()
+            .map(|(pos, _, label)| (pos, label))
+            .collect()
+    }
+
+    /// The breaks behind [`Self::labelled_breaks`], keeping each break's
+    /// typed element alongside its position and label.
+    fn labelled_break_elements(&self) -> Vec<(f64, ArrayElement, Option<String>)> {
+        let raw: Vec<(f64, ArrayElement)> = match &self.scale_type {
             Some(st) => st.break_labels(self),
             None => self
                 .numeric_breaks()
                 .into_iter()
-                .map(|v| (v, format!("{v}")))
+                .map(|v| (v, ArrayElement::Number(v)))
                 .collect(),
         };
-        let mappings = self.label_mapping.as_ref();
-        let mut out = Vec::with_capacity(raw.len());
-        for (pos, label) in raw {
-            match mappings.and_then(|m| m.get(&label)) {
-                Some(Some(renamed)) => out.push((pos, Some(renamed.clone()))),
-                Some(None) => out.push((pos, None)),
-                None => out.push((pos, Some(label))),
-            }
+        let elements: Vec<ArrayElement> = raw.iter().map(|(_, e)| e.clone()).collect();
+        let mut labels = crate::format::label_elements(&self.label_spec, &elements);
+        self.suppress_binned_terminals(&mut labels);
+        raw.into_iter()
+            .zip(labels)
+            .map(|((pos, elem), label)| (pos, elem, label))
+            .collect()
+    }
+
+    /// A binned scale under `oob => 'squish'` suppresses its two terminal
+    /// break labels: the outermost bins reach past the edge values, so those
+    /// edges are not real boundaries. Applied at label time, overriding even
+    /// an explicit rename of the edge.
+    fn suppress_binned_terminals(&self, labels: &mut [Option<String>]) {
+        if self.scale_type.as_ref().map(|st| st.scale_type_kind())
+            != Some(super::ScaleTypeKind::Binned)
+        {
+            return;
         }
-        out
+        let squish = matches!(
+            self.properties.get("oob"),
+            Some(ParameterValue::String(s)) if s == super::scale_type::OOB_SQUISH
+        );
+        if squish && labels.len() > 2 {
+            let last = labels.len() - 1;
+            labels[0] = None;
+            labels[last] = None;
+        }
+    }
+
+    /// The break labels as a lookup map keyed by each break's
+    /// `to_key_string()`: `Some(label)` renames, `None` suppresses. This is
+    /// the same map resolution used to fold eagerly into the scale, now
+    /// materialized on demand — keys are the breaks for continuous/binned
+    /// scales and the input range (domain values) otherwise.
+    pub fn label_mapping(&self) -> HashMap<String, Option<String>> {
+        self.labelled_break_elements()
+            .into_iter()
+            .map(|(_, elem, label)| (elem.to_key_string(), label))
+            .collect()
     }
 
     /// The bins of a binned scale, each with its edges and display label.
@@ -258,29 +347,29 @@ impl Scale {
             self.properties.get("closed"),
             Some(ParameterValue::String(s)) if s == "right"
         );
-        let mapping = self.label_mapping.as_ref();
+        let mut edge_labels = crate::format::label_elements(&self.label_spec, breaks);
+        self.suppress_binned_terminals(&mut edge_labels);
         let last = breaks.len() - 2;
 
         (0..=last)
             .map(|i| {
                 let (lower, upper) = (breaks[i].clone(), breaks[i + 1].clone());
-                let (lo_key, hi_key) = (lower.to_key_string(), upper.to_key_string());
-                let suppressed = |key: &str| matches!(mapping.and_then(|m| m.get(key)), Some(None));
-                let label_of = |key: &str| {
-                    mapping
-                        .and_then(|m| m.get(key))
-                        .cloned()
-                        .flatten()
-                        .unwrap_or_else(|| key.to_string())
+                let suppressed = |i: usize| edge_labels[i].is_none();
+                // A suppressed non-terminal edge (RENAMING => NULL) falls
+                // back to its key text, as it always has in bin ranges.
+                let label_of = |i: usize| {
+                    edge_labels[i]
+                        .clone()
+                        .unwrap_or_else(|| breaks[i].to_key_string())
                 };
-                let label = if i == 0 && suppressed(&lo_key) {
+                let label = if i == 0 && suppressed(i) {
                     let symbol = if closed_right { "≤" } else { "<" };
-                    format!("{symbol} {}", label_of(&hi_key))
-                } else if i == last && suppressed(&hi_key) {
+                    format!("{symbol} {}", label_of(i + 1))
+                } else if i == last && suppressed(i + 1) {
                     let symbol = if closed_right { ">" } else { "≥" };
-                    format!("{symbol} {}", label_of(&lo_key))
+                    format!("{symbol} {}", label_of(i))
                 } else {
-                    format!("{} – {}", label_of(&lo_key), label_of(&hi_key))
+                    format!("{} – {}", label_of(i), label_of(i + 1))
                 };
                 BinLabel {
                     lower,
@@ -565,17 +654,17 @@ mod tests {
 
     #[test]
     fn test_temporal_break_labels_honour_mapping() {
-        // `label_mapping` is keyed by `to_key_string()`, so a RENAMING override on
-        // a temporal break has to be found under the ISO key.
+        // A RENAMING override on a temporal break is found under the ISO
+        // string key, matching how the literal would be written in a query.
         let mut s = continuous_scale((1208.0, 1236.0), vec![]);
         s.properties.insert(
             "breaks".to_string(),
             ParameterValue::Array(vec![ArrayElement::Date(1208), ArrayElement::Date(1236)]),
         );
-        let mut mapping = HashMap::new();
-        mapping.insert("1973-04-23".to_string(), Some("Apr 23".to_string()));
-        mapping.insert("1973-05-21".to_string(), None);
-        s.label_mapping = Some(mapping);
+        s.label_spec
+            .rename(zygos::Value::String("1973-04-23".into()), "Apr 23");
+        s.label_spec
+            .suppress(zygos::Value::String("1973-05-21".into()));
         assert_eq!(
             s.break_labels(),
             vec![(1208.0, "Apr 23".to_string()), (1236.0, String::new())]
@@ -585,10 +674,9 @@ mod tests {
     #[test]
     fn test_break_labels_with_mapping() {
         let mut s = discrete_scale(&["A", "B", "C"]);
-        let mut mapping = HashMap::new();
-        mapping.insert("A".to_string(), Some("Alpha".to_string()));
-        mapping.insert("C".to_string(), None);
-        s.label_mapping = Some(mapping);
+        s.label_spec
+            .rename(zygos::Value::String("A".into()), "Alpha");
+        s.label_spec.suppress(zygos::Value::String("C".into()));
         assert_eq!(
             s.break_labels(),
             vec![

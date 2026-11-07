@@ -43,6 +43,29 @@
     `TIME` interval breaks step across minute/hour boundaries; automatic
     temporal minor breaks fall on the calendar sub-interval (quarters under
     years, weeks under months, …) instead of three evenly spaced per interval.
+- Break labels are rendered by `zygos`'s label engine: the `RENAMING` clause
+  (explicit renames, `NULL` suppressions, and the `* => '...'` template) is
+  kept as a value-keyed `zygos::LabelSpec` on `Scale` and re-rendered against
+  the current breaks on every read instead of being folded into a static
+  string map at resolution time. Consequences:
+  - shared `{}` decimal precision is derived from the un-renamed breaks only;
+  - negative numbers render with U+2212 MINUS SIGN everywhere;
+  - `{:time}` and `{:num}` use zygos's hand-rolled strftime/printf subsets
+    (the `sprintf` dependency is gone); `%c %x %X %v` and the timezone tokens
+    `%z %Z` are unsupported, as before;
+  - new template extensions: `{:num %S}` for SI-prefixed notation
+    (`{:num %.2S}` → `1.2M`), the `!` flag for Unicode scientific notation
+    (`{:num %!.2e}` → `1.23 × 10³`), and further placeholders (`{:abbr N}`,
+    `{:bytes}`, `{:duration}`, `{:ordinal}`); placeholder keywords are now
+    ASCII-case-insensitive;
+  - unquoted numeric RENAMING keys are typed (`RENAMING 10 => 'ten'` matches
+    the string category `"10"`); quoted keys keep matching breaks by their
+    text form as before.
+- **Breaking (library API):** `Scale::label_mapping` and `Scale::label_template`
+  are replaced by a single `label_spec: zygos::LabelSpec` field; the folded
+  string map is available on demand via the `Scale::label_mapping()` method,
+  and `format::apply_label_template` is gone (`format::label_elements` takes
+  its place).
 - **Breaking (library API):** the scale module's public surface shrank with
   the move to `zygos`. Removed: the `plot::scale::shape` module including
   `shape_to_svg_path`; the ~85 named palette table constants in
