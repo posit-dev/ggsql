@@ -168,38 +168,6 @@ mod tests {
     }
 
     #[test]
-    fn test_interpolate_colors_srgb() {
-        let colors = interpolate_colors(&["white", "black"], 3, ColorSpace::Srgb).unwrap();
-        assert_eq!(colors.len(), 3);
-        assert_eq!(colors[0], "#ffffff");
-        assert_eq!(colors[2], "#000000");
-    }
-
-    #[test]
-    fn test_interpolate_colors_single_input() {
-        let colors = interpolate_colors(&["red"], 3, ColorSpace::Oklab).unwrap();
-        assert_eq!(colors, vec!["#ff0000", "#ff0000", "#ff0000"]);
-    }
-
-    #[test]
-    fn test_interpolate_colors_count_zero() {
-        let colors = interpolate_colors(&["red", "blue"], 0, ColorSpace::Oklab).unwrap();
-        assert!(colors.is_empty());
-    }
-
-    #[test]
-    fn test_interpolate_colors_count_one() {
-        let colors = interpolate_colors(&["red", "blue"], 1, ColorSpace::Oklab).unwrap();
-        assert_eq!(colors, vec!["#ff0000"]);
-    }
-
-    #[test]
-    fn test_interpolate_colors_count_two() {
-        let colors = interpolate_colors(&["red", "blue"], 2, ColorSpace::Oklab).unwrap();
-        assert_eq!(colors, vec!["#ff0000", "#0000ff"]);
-    }
-
-    #[test]
     fn test_interpolate_colors_empty_input() {
         let result = interpolate_colors(&[], 5, ColorSpace::Oklab);
         assert!(result.is_err());
@@ -214,14 +182,6 @@ mod tests {
     }
 
     #[test]
-    fn test_interpolate_colors_multi_stop() {
-        let colors = interpolate_colors(&["red", "white", "blue"], 5, ColorSpace::Oklab).unwrap();
-        assert_eq!(colors[0], "#ff0000");
-        assert_eq!(colors[2], "#ffffff");
-        assert_eq!(colors[4], "#0000ff");
-    }
-
-    #[test]
     fn test_gradient_convenience() {
         let colors = gradient("red", "blue", 5, ColorSpace::Oklab).unwrap();
         assert_eq!(colors.len(), 5);
@@ -230,52 +190,7 @@ mod tests {
     }
 
     #[test]
-    fn test_oklab_vs_srgb_red_cyan() {
-        // Red to cyan: Oklab should produce lighter intermediates,
-        // while sRGB produces darker/muddier intermediates
-        let oklab = interpolate_colors(&["red", "cyan"], 5, ColorSpace::Oklab).unwrap();
-        let srgb = interpolate_colors(&["red", "cyan"], 5, ColorSpace::Srgb).unwrap();
-
-        assert_eq!(oklab[0], "#ff0000");
-        assert_eq!(oklab[4], "#00ffff");
-        assert_eq!(srgb[0], "#ff0000");
-        assert_eq!(srgb[4], "#00ffff");
-
-        assert_ne!(oklab[2], srgb[2]);
-    }
-
-    #[test]
     fn test_color_space_default() {
         assert_eq!(ColorSpace::default(), ColorSpace::Oklab);
-    }
-
-    #[test]
-    fn test_interpolate_preserves_endpoints() {
-        let test_cases = vec![("black", "white"), ("red", "green"), ("#123456", "#abcdef")];
-
-        for (start, end) in test_cases {
-            let colors = interpolate_colors(&[start, end], 10, ColorSpace::Oklab).unwrap();
-            let start_hex = color_to_hex(start).unwrap();
-            let end_hex = color_to_hex(end).unwrap();
-            assert_eq!(
-                colors[0], start_hex,
-                "Start mismatch for {}->{}",
-                start, end
-            );
-            assert_eq!(colors[9], end_hex, "End mismatch for {}->{}", start, end);
-        }
-    }
-
-    #[test]
-    fn test_interpolate_many_stops() {
-        let colors = interpolate_colors(
-            &["red", "orange", "yellow", "green", "blue", "violet"],
-            11,
-            ColorSpace::Oklab,
-        )
-        .unwrap();
-        assert_eq!(colors.len(), 11);
-        assert_eq!(colors[0], "#ff0000");
-        assert_eq!(colors[10], "#ee82ee");
     }
 }

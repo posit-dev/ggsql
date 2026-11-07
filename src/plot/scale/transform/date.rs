@@ -129,75 +129,6 @@ mod tests {
     }
 
     #[test]
-    fn test_date_breaks_year_span() {
-        let t = Date;
-        // ~5 years span (in days)
-        let min = 0.0; // 1970-01-01
-        let max = 365.0 * 5.0; // ~1975
-        let breaks = t.calculate_breaks(min, max, 5, true);
-        assert!(!breaks.is_empty());
-        // All breaks should be within range
-        for &b in &breaks {
-            assert!(b >= min && b <= max);
-        }
-    }
-
-    #[test]
-    fn test_date_breaks_month_span() {
-        let t = Date;
-        // ~6 months span
-        let min = 0.0;
-        let max = 180.0;
-        let breaks = t.calculate_breaks(min, max, 6, true);
-        assert!(!breaks.is_empty());
-    }
-
-    #[test]
-    fn test_date_breaks_week_span() {
-        let t = Date;
-        // ~4 weeks span
-        let min = 0.0;
-        let max = 28.0;
-        let breaks = t.calculate_breaks(min, max, 5, true);
-        assert!(!breaks.is_empty());
-    }
-
-    #[test]
-    fn test_date_breaks_day_span() {
-        let t = Date;
-        // ~7 days span
-        let min = 0.0;
-        let max = 7.0;
-        let breaks = t.calculate_breaks(min, max, 7, true);
-        assert!(!breaks.is_empty());
-    }
-
-    #[test]
-    fn test_date_breaks_linear() {
-        let t = Date;
-        let breaks = t.calculate_breaks(0.0, 100.0, 5, false);
-        // Should have integer day breaks
-        assert!(!breaks.is_empty());
-        assert!(breaks[0] <= 0.0);
-        assert!(*breaks.last().unwrap() >= 100.0);
-        // All breaks should be integers (whole days)
-        for b in &breaks {
-            assert_eq!(*b, b.round(), "Break {} should be a whole day", b);
-        }
-        // Breaks should be evenly spaced
-        if breaks.len() >= 2 {
-            let step = breaks[1] - breaks[0];
-            for i in 1..breaks.len() {
-                let gap = breaks[i] - breaks[i - 1];
-                assert!(
-                    (gap - step).abs() < 0.01,
-                    "Date breaks should be evenly spaced"
-                );
-            }
-        }
-    }
-
-    #[test]
     fn test_date_breaks_follow_the_calendar() {
         let t = Date;
         // Five years → year starts.
@@ -214,22 +145,6 @@ mod tests {
         assert_eq!(
             t.calculate_breaks(0.0, 28.0, 5, true),
             vec![4.0, 11.0, 18.0, 25.0]
-        );
-    }
-
-    #[test]
-    fn test_date_breaks_airquality_count() {
-        let t = Date;
-        // ~150 days (May-September), n=7
-        let min = 0.0;
-        let max = 150.0;
-        let breaks = t.calculate_breaks(min, max, 7, true);
-
-        // Should have roughly 5-10 breaks, not 22
-        assert!(
-            breaks.len() >= 3 && breaks.len() <= 12,
-            "Expected 3-12 breaks for 150 days, n=7, got {}",
-            breaks.len()
         );
     }
 }

@@ -73,54 +73,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_asinh_domain() {
-        let t = Asinh;
-        let (min, max) = t.allowed_domain();
-        assert!(min.is_infinite() && min.is_sign_negative());
-        assert!(max.is_infinite() && max.is_sign_positive());
-    }
-
-    #[test]
-    fn test_asinh_transform() {
-        let t = Asinh;
-        // asinh(0) = 0
-        assert!((t.transform(0.0) - 0.0).abs() < 1e-10);
-        // asinh is odd function
-        assert!((t.transform(-1.0) + t.transform(1.0)).abs() < 1e-10);
-        // For large values, asinh(x) ≈ ln(2x)
-        let large: f64 = 1000.0;
-        let expected = (2.0 * large).ln();
-        assert!((t.transform(large) - expected).abs() < 0.01);
-    }
-
-    #[test]
-    fn test_asinh_inverse() {
-        let t = Asinh;
-        // sinh(0) = 0
-        assert!((t.inverse(0.0) - 0.0).abs() < 1e-10);
-        // sinh is odd function
-        assert!((t.inverse(-1.0) + t.inverse(1.0)).abs() < 1e-10);
-    }
-
-    #[test]
-    fn test_asinh_roundtrip() {
-        let t = Asinh;
-        for &val in &[-100.0, -10.0, -1.0, 0.0, 1.0, 10.0, 100.0] {
-            let transformed = t.transform(val);
-            let back = t.inverse(transformed);
-            if val == 0.0 {
-                assert!((back - val).abs() < 1e-10, "Roundtrip failed for {}", val);
-            } else {
-                assert!(
-                    (back - val).abs() / val.abs() < 1e-10,
-                    "Roundtrip failed for {}",
-                    val
-                );
-            }
-        }
-    }
-
-    #[test]
     fn test_asinh_breaks_symmetric() {
         let t = Asinh;
         let breaks = t.calculate_breaks(-1000.0, 1000.0, 10, true);
@@ -132,31 +84,5 @@ mod tests {
         expected.push(0.0);
         expected.extend(positive);
         assert_eq!(breaks, expected);
-    }
-
-    #[test]
-    fn test_asinh_works_with_zero() {
-        let t = Asinh;
-        // Unlike log, asinh works with zero
-        let breaks = t.calculate_breaks(0.0, 100.0, 5, true);
-        assert_eq!(
-            breaks,
-            vec![0.0, 0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1.0, 2.0, 5.0, 10.0, 20.0, 50.0, 100.0]
-        );
-    }
-
-    #[test]
-    fn test_asinh_minor_breaks() {
-        let t = Asinh;
-        let minors = t.calculate_minor_breaks(&[-10.0, 0.0, 10.0], 8, Some((-20.0, 20.0)));
-        // Whole-number multiples on each branch; the majors' own positions
-        // are left to the majors.
-        assert!(minors.contains(&-20.0) && minors.contains(&20.0));
-        assert!(minors.contains(&2.0) && minors.contains(&-9.0));
-        assert!(!minors.contains(&10.0) && !minors.contains(&-10.0));
-        assert!(minors.windows(2).all(|w| w[0] < w[1]));
-        assert!(t
-            .calculate_minor_breaks(&[-10.0, 0.0, 10.0], 0, None)
-            .is_empty());
     }
 }

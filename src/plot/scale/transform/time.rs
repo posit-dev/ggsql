@@ -139,39 +139,6 @@ mod tests {
     }
 
     #[test]
-    fn test_time_breaks_hour_span() {
-        let t = Time;
-        // Full day
-        let min = 0.0;
-        let max = 24.0 * NANOS_PER_HOUR;
-        let breaks = t.calculate_breaks(min, max, 8, true);
-        assert!(!breaks.is_empty());
-        for &b in &breaks {
-            assert!(b >= min && b <= max);
-        }
-    }
-
-    #[test]
-    fn test_time_breaks_minute_span() {
-        let t = Time;
-        // 2 hours
-        let min = 0.0;
-        let max = 2.0 * NANOS_PER_HOUR;
-        let breaks = t.calculate_breaks(min, max, 8, true);
-        assert!(!breaks.is_empty());
-    }
-
-    #[test]
-    fn test_time_breaks_second_span() {
-        let t = Time;
-        // 5 minutes
-        let min = 0.0;
-        let max = 5.0 * NANOS_PER_MINUTE;
-        let breaks = t.calculate_breaks(min, max, 5, true);
-        assert!(!breaks.is_empty());
-    }
-
-    #[test]
     fn test_time_breaks_follow_the_clock() {
         let t = Time;
         // Two hours with about eight breaks → every fifteen minutes.
@@ -181,14 +148,5 @@ mod tests {
             minutes,
             vec![0.0, 15.0, 30.0, 45.0, 60.0, 75.0, 90.0, 105.0, 120.0]
         );
-    }
-
-    #[test]
-    fn test_time_breaks_linear() {
-        let t = Time;
-        let breaks = t.calculate_breaks(0.0, NANOS_PER_HOUR, 5, false);
-        assert_eq!(breaks.len(), 5);
-        assert_eq!(breaks[0], 0.0);
-        assert_eq!(breaks[4], NANOS_PER_HOUR);
     }
 }

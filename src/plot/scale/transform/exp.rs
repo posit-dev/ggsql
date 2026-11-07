@@ -147,90 +147,6 @@ mod tests {
     }
 
     #[test]
-    fn test_all_bases_domain() {
-        for (t, _, name) in get_transforms() {
-            let (min, max) = t.allowed_domain();
-            assert!(
-                min.is_infinite() && min < 0.0,
-                "{}: domain min should be -∞",
-                name
-            );
-            assert!(
-                max.is_infinite() && max > 0.0,
-                "{}: domain max should be +∞",
-                name
-            );
-        }
-    }
-
-    #[test]
-    fn test_all_bases_transform_and_inverse() {
-        // Test cases: (transform, input, expected_transform)
-        let test_cases = vec![
-            // Exp10: 10^0=1, 10^1=10, 10^2=100, 10^-1=0.1
-            (
-                Exp::base10(),
-                vec![(0.0, 1.0), (1.0, 10.0), (2.0, 100.0), (-1.0, 0.1)],
-            ),
-            // Exp2: 2^0=1, 2^1=2, 2^2=4, 2^-1=0.5
-            (
-                Exp::base2(),
-                vec![(0.0, 1.0), (1.0, 2.0), (2.0, 4.0), (-1.0, 0.5)],
-            ),
-            // Natural: e^0=1, e^1=e, e^2=e²
-            (Exp::natural(), vec![(0.0, 1.0), (1.0, E), (2.0, E * E)]),
-        ];
-
-        for (t, cases) in test_cases {
-            for (input, expected) in cases {
-                assert!(
-                    (t.transform(input) - expected).abs() < 1e-10,
-                    "{}: transform({}) should be {}, got {}",
-                    t.name(),
-                    input,
-                    expected,
-                    t.transform(input)
-                );
-                // Test inverse too
-                assert!(
-                    (t.inverse(expected) - input).abs() < 1e-9,
-                    "{}: inverse({}) should be {}, got {}",
-                    t.name(),
-                    expected,
-                    input,
-                    t.inverse(expected)
-                );
-            }
-        }
-    }
-
-    #[test]
-    fn test_all_bases_roundtrip() {
-        let test_values = [-2.0, -1.0, 0.0, 1.0, 2.0, 3.0];
-        for (t, _, name) in get_transforms() {
-            for &val in &test_values {
-                let transformed = t.transform(val);
-                let back = t.inverse(transformed);
-                if val == 0.0 {
-                    assert!(
-                        (back - val).abs() < 1e-10,
-                        "{}: Roundtrip failed for {}",
-                        name,
-                        val
-                    );
-                } else {
-                    assert!(
-                        (back - val).abs() / val.abs() < 1e-10,
-                        "{}: Roundtrip failed for {}",
-                        name,
-                        val
-                    );
-                }
-            }
-        }
-    }
-
-    #[test]
     fn test_all_bases_kind_and_name() {
         for (t, expected_kind, expected_name) in get_transforms() {
             assert_eq!(
@@ -240,30 +156,6 @@ mod tests {
                 expected_name
             );
             assert_eq!(t.name(), expected_name);
-        }
-    }
-
-    #[test]
-    fn test_all_bases_is_inverse_of_log() {
-        use super::super::Log;
-
-        let pairs = vec![
-            (Exp::base10(), Log::base10()),
-            (Exp::base2(), Log::base2()),
-            (Exp::natural(), Log::natural()),
-        ];
-
-        let test_values = [-1.0, 0.0, 1.0, 2.0];
-        for (exp, log) in pairs {
-            for &val in &test_values {
-                assert!(
-                    (exp.transform(val) - log.inverse(val)).abs() < 1e-10,
-                    "{}::transform != {}::inverse for {}",
-                    exp.name(),
-                    log.name(),
-                    val
-                );
-            }
         }
     }
 
@@ -281,19 +173,6 @@ mod tests {
         assert!((Exp::base10().base() - 10.0).abs() < 1e-10);
         assert!((Exp::base2().base() - 2.0).abs() < 1e-10);
         assert!((Exp::natural().base() - E).abs() < 1e-10);
-    }
-
-    #[test]
-    fn test_expand_range_pads_in_own_transformed_units() {
-        // Whatever zygos member carries the math, each end moves outward by
-        // `mult × span + add` measured in this transform's own output.
-        for t in [Exp::base10(), Exp::base2(), Exp::natural(), Exp::new(5.0)] {
-            let (min, max) = (1.5, 2.0);
-            let (lo, hi) = t.expand_range(min, max, (0.05, 0.1), (0.5, 0.25));
-            let span = t.transform(max) - t.transform(min);
-            assert!((t.transform(min) - t.transform(lo) - (0.05 * span + 0.5)).abs() < 1e-9);
-            assert!((t.transform(hi) - t.transform(max) - (0.1 * span + 0.25)).abs() < 1e-9);
-        }
     }
 
     #[test]

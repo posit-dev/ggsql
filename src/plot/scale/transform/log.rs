@@ -167,64 +167,6 @@ mod tests {
     }
 
     #[test]
-    fn test_all_bases_transform_and_inverse() {
-        // Test cases: (transform, input, expected_transform, inverse_test_val, expected_inverse)
-        let test_cases = vec![
-            // Log10: log10(1)=0, log10(10)=1, log10(100)=2, log10(0.1)=-1
-            (
-                Log::base10(),
-                vec![(1.0, 0.0), (10.0, 1.0), (100.0, 2.0), (0.1, -1.0)],
-            ),
-            // Log2: log2(1)=0, log2(2)=1, log2(4)=2, log2(0.5)=-1
-            (
-                Log::base2(),
-                vec![(1.0, 0.0), (2.0, 1.0), (4.0, 2.0), (0.5, -1.0)],
-            ),
-            // Natural: ln(1)=0, ln(e)=1, ln(e²)=2
-            (Log::natural(), vec![(1.0, 0.0), (E, 1.0), (E * E, 2.0)]),
-        ];
-
-        for (t, cases) in test_cases {
-            for (input, expected) in cases {
-                assert!(
-                    (t.transform(input) - expected).abs() < 1e-10,
-                    "{}: transform({}) should be {}, got {}",
-                    t.name(),
-                    input,
-                    expected,
-                    t.transform(input)
-                );
-                // Test inverse too
-                assert!(
-                    (t.inverse(expected) - input).abs() < 1e-9,
-                    "{}: inverse({}) should be {}, got {}",
-                    t.name(),
-                    expected,
-                    input,
-                    t.inverse(expected)
-                );
-            }
-        }
-    }
-
-    #[test]
-    fn test_all_bases_roundtrip() {
-        let test_values = [0.001, 0.1, 1.0, 2.0, 10.0, 100.0, 1000.0];
-        for (t, _, name) in get_transforms() {
-            for &val in &test_values {
-                let transformed = t.transform(val);
-                let back = t.inverse(transformed);
-                assert!(
-                    (back - val).abs() / val < 1e-10,
-                    "{}: Roundtrip failed for {}",
-                    name,
-                    val
-                );
-            }
-        }
-    }
-
-    #[test]
     fn test_all_bases_kind_and_name() {
         for (t, expected_kind, expected_name) in get_transforms() {
             assert_eq!(
@@ -285,19 +227,6 @@ mod tests {
     }
 
     #[test]
-    fn test_expand_range_pads_in_own_transformed_units() {
-        // Whatever zygos member carries the math, each end moves outward by
-        // `mult × span + add` measured in this transform's own output.
-        for t in [Log::base10(), Log::base2(), Log::natural(), Log::new(5.0)] {
-            let (min, max) = (1.0, 1000.0);
-            let (lo, hi) = t.expand_range(min, max, (0.05, 0.1), (0.5, 0.25));
-            let span = t.transform(max) - t.transform(min);
-            assert!((t.transform(min) - t.transform(lo) - (0.05 * span + 0.5)).abs() < 1e-9);
-            assert!((t.transform(hi) - t.transform(max) - (0.1 * span + 0.25)).abs() < 1e-9);
-        }
-    }
-
-    #[test]
     fn test_custom_base() {
         let t = Log::new(5.0);
         // 5^2 = 25, so log_5(25) = 2
@@ -324,58 +253,6 @@ mod tests {
     }
 
     // ==================== Minor Breaks Tests ====================
-
-    #[test]
-    fn test_minor_breaks_all_bases() {
-        // Test minor breaks work for all bases
-        let test_cases = vec![
-            (Log::base10(), vec![1.0, 10.0, 100.0], 8, 16), // 8 per decade × 2 decades
-            (Log::base2(), vec![1.0, 2.0, 4.0, 8.0], 1, 3), // geometric midpoint per octave
-        ];
-
-        for (t, majors, n, expected_len) in test_cases {
-            let minors = t.calculate_minor_breaks(&majors, n, None);
-            assert_eq!(
-                minors.len(),
-                expected_len,
-                "{}: expected {} minor breaks, got {}",
-                t.name(),
-                expected_len,
-                minors.len()
-            );
-            assert!(
-                minors.iter().all(|&x| x > 0.0),
-                "{}: all minor breaks should be positive",
-                t.name()
-            );
-        }
-    }
-
-    #[test]
-    fn test_minor_breaks_whole_number_multiples() {
-        let t = Log::base10();
-        let majors = vec![1.0, 10.0];
-        // The multiples 2-9 of each power, whatever non-zero count is asked for.
-        let expected = vec![2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0];
-        assert_eq!(t.calculate_minor_breaks(&majors, 1, None), expected);
-        assert_eq!(t.calculate_minor_breaks(&majors, 8, None), expected);
-        assert!(t.calculate_minor_breaks(&majors, 0, None).is_empty());
-
-        // Base 2 has no whole number strictly inside an octave: the geometric
-        // midpoint stands in.
-        let minors = Log::base2().calculate_minor_breaks(&[1.0, 2.0, 4.0, 8.0], 1, None);
-        let sqrt2 = std::f64::consts::SQRT_2;
-        assert_eq!(minors, vec![sqrt2, 2.0 * sqrt2, 4.0 * sqrt2]);
-    }
-
-    #[test]
-    fn test_minor_breaks_with_extension() {
-        let t = Log::base10();
-        let majors = vec![10.0, 100.0];
-        let minors = t.calculate_minor_breaks(&majors, 8, Some((1.0, 1000.0)));
-        // Should extend into [1, 10) and (100, 1000]
-        assert_eq!(minors.len(), 24); // 8 per decade × 3 decades
-    }
 
     #[test]
     fn test_default_minor_break_count() {

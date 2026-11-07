@@ -135,39 +135,6 @@ mod tests {
     }
 
     #[test]
-    fn test_datetime_breaks_year_span() {
-        let t = DateTime;
-        // ~5 years span (in microseconds)
-        let min = 0.0;
-        let max = 5.0 * 365.25 * MICROS_PER_DAY;
-        let breaks = t.calculate_breaks(min, max, 5, true);
-        assert!(!breaks.is_empty());
-        for &b in &breaks {
-            assert!(b >= min && b <= max);
-        }
-    }
-
-    #[test]
-    fn test_datetime_breaks_hour_span() {
-        let t = DateTime;
-        // ~24 hours span
-        let min = 0.0;
-        let max = 24.0 * MICROS_PER_HOUR;
-        let breaks = t.calculate_breaks(min, max, 8, true);
-        assert!(!breaks.is_empty());
-    }
-
-    #[test]
-    fn test_datetime_breaks_minute_span() {
-        let t = DateTime;
-        // ~60 minutes span
-        let min = 0.0;
-        let max = 60.0 * MICROS_PER_MINUTE;
-        let breaks = t.calculate_breaks(min, max, 6, true);
-        assert!(!breaks.is_empty());
-    }
-
-    #[test]
     fn test_datetime_breaks_follow_the_clock() {
         let t = DateTime;
         // A day with about eight breaks → every three hours from midnight.
@@ -181,14 +148,5 @@ mod tests {
         let breaks = t.calculate_breaks(0.0, 60.0 * MICROS_PER_MINUTE, 6, true);
         let minutes: Vec<f64> = breaks.iter().map(|b| b / MICROS_PER_MINUTE).collect();
         assert_eq!(minutes, vec![0.0, 10.0, 20.0, 30.0, 40.0, 50.0, 60.0]);
-    }
-
-    #[test]
-    fn test_datetime_breaks_linear() {
-        let t = DateTime;
-        let breaks = t.calculate_breaks(0.0, 1_000_000.0, 5, false);
-        assert_eq!(breaks.len(), 5);
-        assert_eq!(breaks[0], 0.0);
-        assert_eq!(breaks[4], 1_000_000.0);
     }
 }

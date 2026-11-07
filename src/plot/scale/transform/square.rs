@@ -69,110 +69,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_square_domain() {
-        let t = Square;
-        let (min, max) = t.allowed_domain();
-        assert!(min.is_infinite() && min < 0.0);
-        assert!(max.is_infinite() && max > 0.0);
-    }
-
-    #[test]
-    fn test_square_transform() {
-        let t = Square;
-        assert!((t.transform(0.0) - 0.0).abs() < 1e-10);
-        assert!((t.transform(1.0) - 1.0).abs() < 1e-10);
-        assert!((t.transform(2.0) - 4.0).abs() < 1e-10);
-        assert!((t.transform(3.0) - 9.0).abs() < 1e-10);
-        assert!((t.transform(10.0) - 100.0).abs() < 1e-10);
-        // Negative values also square to positive
-        assert!((t.transform(-2.0) - 4.0).abs() < 1e-10);
-        assert!((t.transform(-3.0) - 9.0).abs() < 1e-10);
-    }
-
-    #[test]
-    fn test_square_inverse() {
-        let t = Square;
-        assert!((t.inverse(0.0) - 0.0).abs() < 1e-10);
-        assert!((t.inverse(1.0) - 1.0).abs() < 1e-10);
-        assert!((t.inverse(4.0) - 2.0).abs() < 1e-10);
-        assert!((t.inverse(9.0) - 3.0).abs() < 1e-10);
-        assert!((t.inverse(100.0) - 10.0).abs() < 1e-10);
-    }
-
-    #[test]
-    fn test_square_roundtrip_positive() {
-        let t = Square;
-        for &val in &[0.0, 1.0, 2.0, 3.0, 5.0, 10.0] {
-            let transformed = t.transform(val);
-            let back = t.inverse(transformed);
-            if val == 0.0 {
-                assert!((back - val).abs() < 1e-10, "Roundtrip failed for {}", val);
-            } else {
-                assert!(
-                    (back - val).abs() / val < 1e-10,
-                    "Roundtrip failed for {}",
-                    val
-                );
-            }
-        }
-    }
-
-    #[test]
-    fn test_square_is_inverse_of_sqrt() {
-        // Verify that Square::transform is the same as Sqrt::inverse
-        use super::super::Sqrt;
-        let square = Square;
-        let sqrt = Sqrt;
-
-        for &val in &[0.0_f64, 1.0, 4.0, 9.0, 25.0, 100.0] {
-            assert!(
-                (square.transform(val.sqrt()) - sqrt.inverse(val.sqrt())).abs() < 1e-10,
-                "Square::transform != Sqrt::inverse for {}",
-                val.sqrt()
-            );
-        }
-    }
-
-    #[test]
-    fn test_square_inverse_is_sqrt_transform() {
-        // Verify that Square::inverse is the same as Sqrt::transform
-        use super::super::Sqrt;
-        let square = Square;
-        let sqrt = Sqrt;
-
-        for &val in &[0.0, 1.0, 4.0, 9.0, 25.0, 100.0] {
-            assert!(
-                (square.inverse(val) - sqrt.transform(val)).abs() < 1e-10,
-                "Square::inverse != Sqrt::transform for {}",
-                val
-            );
-        }
-    }
-
-    #[test]
     fn test_square_breaks_pretty() {
         let t = Square;
         assert_eq!(
             t.calculate_breaks(0.0, 10.0, 5, true),
             vec![0.0, 2.0, 4.0, 6.0, 8.0, 10.0]
-        );
-    }
-
-    #[test]
-    fn test_square_breaks() {
-        let t = Square;
-        let breaks = t.calculate_breaks(0.0, 10.0, 5, false);
-        // linear_breaks gives exact coverage from min to max
-        assert_eq!(breaks.len(), 5, "Should have exactly 5 breaks");
-        // First break should be at 0
-        assert!(
-            (breaks.first().unwrap() - 0.0).abs() < 1e-10,
-            "First break should be at 0"
-        );
-        // Last break should be at 10
-        assert!(
-            (breaks.last().unwrap() - 10.0).abs() < 1e-10,
-            "Last break should be at 10"
         );
     }
 

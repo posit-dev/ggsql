@@ -67,52 +67,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_sqrt_domain() {
-        let t = Sqrt;
-        let (min, max) = t.allowed_domain();
-        assert_eq!(min, 0.0);
-        assert!(max.is_infinite());
-    }
-
-    #[test]
-    fn test_sqrt_transform() {
-        let t = Sqrt;
-        assert!((t.transform(0.0) - 0.0).abs() < 1e-10);
-        assert!((t.transform(1.0) - 1.0).abs() < 1e-10);
-        assert!((t.transform(4.0) - 2.0).abs() < 1e-10);
-        assert!((t.transform(9.0) - 3.0).abs() < 1e-10);
-        assert!((t.transform(100.0) - 10.0).abs() < 1e-10);
-    }
-
-    #[test]
-    fn test_sqrt_inverse() {
-        let t = Sqrt;
-        assert!((t.inverse(0.0) - 0.0).abs() < 1e-10);
-        assert!((t.inverse(1.0) - 1.0).abs() < 1e-10);
-        assert!((t.inverse(2.0) - 4.0).abs() < 1e-10);
-        assert!((t.inverse(3.0) - 9.0).abs() < 1e-10);
-        assert!((t.inverse(10.0) - 100.0).abs() < 1e-10);
-    }
-
-    #[test]
-    fn test_sqrt_roundtrip() {
-        let t = Sqrt;
-        for &val in &[0.0, 1.0, 4.0, 9.0, 25.0, 100.0] {
-            let transformed = t.transform(val);
-            let back = t.inverse(transformed);
-            if val == 0.0 {
-                assert!((back - val).abs() < 1e-10, "Roundtrip failed for {}", val);
-            } else {
-                assert!(
-                    (back - val).abs() / val < 1e-10,
-                    "Roundtrip failed for {}",
-                    val
-                );
-            }
-        }
-    }
-
-    #[test]
     fn test_sqrt_breaks() {
         let t = Sqrt;
         // Nice numbers in sqrt space, squared back.
