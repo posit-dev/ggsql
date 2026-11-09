@@ -757,6 +757,165 @@ generate_shape_svg <- function(name, size = 40, is_closed = TRUE) {
   svg
 }
 
+# Arrow shapes for the arrowstart/arrowend aesthetics.
+# Geometry mirrors hephaestus's arrow-* shapes (src/shape_builtin.rs):
+# unit-length marker, tip at the origin, body extending into -x. `anchor`
+# is the shape's anchor x: hephaestus trims the line back by the shape's
+# extent beyond the anchor, lands the anchor on the trimmed endpoint, and
+# the marker's rightmost point ends flush with the original line end.
+# kind "stroke": list of segments c(x1, y1, x2, y2) or polylines (2-col matrix).
+# kind "fill": a polygon (2-col matrix) or a circle.
+ARROWS <- list(
+  open = list(anchor = 0, kind = "stroke", segments = list(
+    c(-1, 0.5, 0, 0), c(0, 0, -1, -0.5)
+  )),
+  closed = list(anchor = -1, kind = "fill", polygon = rbind(
+    c(0, 0), c(-1, 0.5), c(-1, -0.5)
+  )),
+  stealth = list(anchor = -0.4, kind = "fill", polygon = rbind(
+    c(0, 0), c(-1, 0.5), c(-0.4, 0), c(-1, -0.5)
+  )),
+  latex = list(anchor = -0.6, kind = "fill", polygon = rbind(
+    c(0, 0), c(-1, 0.35), c(-0.6, 0), c(-1, -0.35)
+  )),
+  thin = list(anchor = -1, kind = "fill", polygon = rbind(
+    c(0, 0), c(-1, 0.2), c(-1, -0.2)
+  )),
+  wedge = list(anchor = -1, kind = "fill", polygon = rbind(
+    c(0, 0), c(-1, 0.5), c(-1, 0)
+  )),
+  fishtail = list(anchor = 0, kind = "stroke", segments = list(
+    c(0, 0, -1, 0.5), c(0, 0, -1, -0.5)
+  )),
+  fork = list(anchor = 0, kind = "stroke", segments = list(
+    c(0, 0, -0.7, 0.7), c(0, 0, -0.7, -0.7)
+  )),
+  feather = list(anchor = 0, kind = "stroke", segments = unlist(lapply(
+    c(0, -0.3, -0.6),
+    function(ox) list(c(ox, 0, ox - 0.4, 0.5), c(ox, 0, ox - 0.4, -0.5))
+  ), recursive = FALSE)),
+  bar = list(anchor = 0, kind = "stroke", segments = list(
+    c(0, -0.5, 0, 0.5)
+  )),
+  bracket = list(anchor = 0, kind = "stroke", polylines = list(
+    rbind(c(0.2, -0.5), c(0, -0.5), c(0, 0.5), c(0.2, 0.5))
+  )),
+  cross = list(anchor = 0, kind = "stroke", segments = list(
+    c(-0.5, -0.5, 0.5, 0.5), c(-0.5, 0.5, 0.5, -0.5)
+  )),
+  dot = list(anchor = 0, kind = "fill", circle = list(cx = 0, cy = 0, r = 0.3)),
+  square = list(anchor = 0, kind = "fill", polygon = rbind(
+    c(-0.3, -0.3), c(0.3, -0.3), c(0.3, 0.3), c(-0.3, 0.3)
+  )),
+  diamond = list(anchor = 0, kind = "fill", polygon = rbind(
+    c(0, -0.4), c(0.4, 0), c(0, 0.4), c(-0.4, 0)
+  ))
+)
+
+#' Generate an SVG showing a single arrow shape at the end of a line
+#' @param name Arrow shape name (one of ARROWS)
+#' @param width SVG width in pixels
+#' @param height SVG height in pixels
+#' @param size Marker length in pixels (unit scale of the shape geometry)
+#' @param stroke_width Width of the line and stroke markers
+#' @return SVG content as string
+generate_arrow_svg <- function(
+  name,
+  width = 200,
+  height = 40,
+  size = 24,
+  stroke_width = 2.5
+) {
+  shape <- ARROWS[[name]]
+  y_mid <- height / 2
+  x_end <- width - 30
+
+  # x-extent of the shape geometry, for the trim computation
+  xs <- c(
+    unlist(lapply(shape$segments, function(s) s[c(1, 3)])),
+    unlist(lapply(shape$polylines, function(p) p[, 1])),
+    if (!is.null(shape$polygon)) shape$polygon[, 1],
+    if (!is.null(shape$circle)) {
+      shape$circle$cx + c(-1, 1) * shape$circle$r
+    }
+  )
+  x0 <- min(xs)
+  x1 <- max(xs)
+
+  # hephaestus placement: the line is trimmed by the shape's extent beyond
+  # the anchor and the anchor lands on the trimmed endpoint, so the marker's
+  # rightmost point sits at the original line end. ggsql renders
+  # fishtail/fork/feather with hephaestus's invert flag (local x mirrored
+  # around the anchor), so the examples do the same.
+  inverted <- name %in% c("fishtail", "fork", "feather")
+  clip <- if (inverted) (shape$anchor - x0) * size else (x1 - shape$anchor) * size
+  x_anchor <- x_end - clip
+
+  flip <- if (inverted) -1 else 1
+  tx <- function(x) x_anchor + flip * (x - shape$anchor) * size
+  ty <- function(y) y_mid - y * size
+
+  path_from_points <- function(pts, close) {
+    cmds <- paste0("M", tx(pts[1, 1]), ",", ty(pts[1, 2]))
+    if (nrow(pts) > 1) {
+      cmds <- paste0(
+        cmds,
+        " L",
+        paste(tx(pts[-1, 1]), ty(pts[-1, 2]), sep = ",", collapse = " L")
+      )
+    }
+    if (close) paste0(cmds, " Z") else cmds
+  }
+
+  if (shape$kind == "fill") {
+    if (!is.null(shape$circle)) {
+      marker <- sprintf(
+        '<circle cx="%.1f" cy="%.1f" r="%.1f" fill="#333333"/>',
+        tx(shape$circle$cx),
+        ty(shape$circle$cy),
+        shape$circle$r * size
+      )
+    } else {
+      marker <- sprintf(
+        '<path d="%s" fill="#333333"/>',
+        path_from_points(shape$polygon, close = TRUE)
+      )
+    }
+  } else {
+    parts <- character(0)
+    for (seg in shape$segments) {
+      parts <- c(
+        parts,
+        sprintf("M%.1f,%.1f L%.1f,%.1f", tx(seg[1]), ty(seg[2]), tx(seg[3]), ty(seg[4]))
+      )
+    }
+    for (pl in shape$polylines) {
+      parts <- c(parts, path_from_points(pl, close = FALSE))
+    }
+    marker <- sprintf(
+      '<path d="%s" fill="none" stroke="#333333" stroke-width="%.1f" stroke-linecap="round" stroke-linejoin="round"/>',
+      paste(parts, collapse = " "),
+      stroke_width
+    )
+  }
+
+  svg <- sprintf(
+    '<svg xmlns="http://www.w3.org/2000/svg" width="%d" height="%d">
+  <line x1="10" y1="%.1f" x2="%.1f" y2="%.1f" stroke="#333333" stroke-width="%.1f"/>
+  %s
+</svg>',
+    width,
+    height,
+    y_mid,
+    x_anchor,
+    y_mid,
+    stroke_width,
+    marker
+  )
+
+  svg
+}
+
 #' Generate sequential linetypes with evenly-spaced ink densities
 #' @param count Number of linetypes to generate
 #' @return List with names and dasharray values
@@ -952,6 +1111,16 @@ main <- function() {
       generated <- generated + 1
       message(sprintf("Generated: shape_%s.svg", gsub("-", "_", name)))
     }
+  }
+
+  # Generate arrow SVGs
+  message("\n=== Arrow Shapes ===")
+  for (name in names(ARROWS)) {
+    svg_content <- generate_arrow_svg(name)
+    output_file <- file.path(output_dir, sprintf("arrow_%s.svg", name))
+    writeLines(svg_content, output_file)
+    generated <- generated + 1
+    message(sprintf("Generated: arrow_%s.svg", name))
   }
 
   message(sprintf("\nGenerated %d SVG files total", generated))
