@@ -114,7 +114,7 @@ jobs:
           "$HOME/.local/bin/dbc" install sqlite
 
       - name: Run ADBC unit tests
-        run: cargo test --features "adbc sqlite" --lib
+        run: cargo test --features "adbc sqlite" --lib -- --test-threads=1
 
       - name: Run ADBC SQLite equivalence tests
         run: cargo test --features "adbc sqlite" --lib -- --ignored equivalence
