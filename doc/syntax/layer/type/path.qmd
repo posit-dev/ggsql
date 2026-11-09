@@ -109,7 +109,7 @@ Setting an arrow.
 ```{ggsql}
 VISUALISE x, y FROM df
 DRAW path SETTING 
-  arrow => 'closed:15'
+  arrow => 'stealth'
 ```
 
 Lines have various styling mechanics, inlcuding layer-level settings for joining and capping lines.

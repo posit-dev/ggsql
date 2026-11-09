@@ -110,7 +110,7 @@ Arrows applied to the start and end of the line.
 ```{ggsql}
 VISUALISE x, y FROM data
 DRAW line SETTING 
-  arrow => ['dot:20', 'closed:15']
+  arrow => 'wedge'
 ```
 
 Use aggregation to draw min and max lines from a set of observations on a single layer. Targeting `y` twice produces one summary row per function within the same group. A synthetic `aggregate` column tags each row with the different function names, that you can remap to colour the lines distinctly:

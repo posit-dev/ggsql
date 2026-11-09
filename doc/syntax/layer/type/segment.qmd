@@ -76,7 +76,7 @@ For directional graphs, it makes sense to use arrows to indicate the direction.
 VISUALISE x, y, xend, yend FROM edges
 DRAW segment
   MAPPING type AS stroke
-  SETTING arrow => ['fishtail:10', 'open:10']
+  SETTING arrow => 'open'
 ```
 
 Segments can also draw arbitrary diagonal connections between points. For example, marking a delta between two measurements:
