@@ -106,7 +106,7 @@ jobs:
         run: tree-sitter test
 
       - name: Run Rust tests
-        run: cargo test --lib --bins
+        run: cargo test --lib --bins -- --test-threads=1
 
       - name: Install dbc CLI and SQLite ADBC driver
         run: |
