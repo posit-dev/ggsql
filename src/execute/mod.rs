@@ -2199,6 +2199,66 @@ mod tests {
 
     #[cfg(feature = "duckdb")]
     #[test]
+    fn test_arrow_mapping_resolves_to_discrete_palette() {
+        use crate::plot::scale::OutputRange;
+        use crate::plot::types::ArrayElement;
+        use crate::plot::ScaleType;
+
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        let query = r#"
+            SELECT 1 AS x, 1 AS y, 'a' AS kind
+            UNION ALL SELECT 2, 2, 'b'
+            VISUALISE x AS x, y AS y
+            DRAW line MAPPING kind AS arrowend
+        "#;
+
+        let result = prepare_data_with_reader(query, &reader).unwrap();
+        let scale = result.specs[0]
+            .find_scale("arrowend")
+            .expect("arrowend scale should exist");
+
+        assert_eq!(scale.scale_type, Some(ScaleType::discrete()));
+        let Some(OutputRange::Array(range)) = &scale.output_range else {
+            panic!("arrowend scale should resolve to the default arrow palette");
+        };
+        assert_eq!(
+            range.first(),
+            Some(&ArrayElement::String("closed".to_string()))
+        );
+    }
+
+    #[cfg(feature = "duckdb")]
+    #[test]
+    fn test_arrow_alias_groups_lines_by_arrow_value() {
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        let query = r#"
+            SELECT 1 AS x, 1 AS y, 'a' AS kind
+            UNION ALL SELECT 2, 2, 'a'
+            UNION ALL SELECT 1, 2, 'b'
+            UNION ALL SELECT 2, 3, 'b'
+            VISUALISE x AS x, y AS y
+            DRAW line MAPPING kind AS arrow
+        "#;
+
+        let result = prepare_data_with_reader(query, &reader).unwrap();
+        let layer = &result.specs[0].layers[0];
+
+        // The alias split runs before the grouping pass, so the split
+        // mappings exist and the discrete arrow column lands in partition_by
+        // (stored under the aesthetic-prefixed names).
+        assert!(layer.mappings.contains_key("arrowstart"));
+        assert!(layer.mappings.contains_key("arrowend"));
+        assert!(!layer.mappings.contains_key("arrow"));
+        assert!(layer
+            .partition_by
+            .contains(&crate::naming::aesthetic_column("arrowstart")));
+        assert!(layer
+            .partition_by
+            .contains(&crate::naming::aesthetic_column("arrowend")));
+    }
+
+    #[cfg(feature = "duckdb")]
+    #[test]
     fn test_visualise_from_cte() {
         let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
 

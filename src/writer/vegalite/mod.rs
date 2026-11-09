@@ -311,6 +311,15 @@ fn build_layer_encoding(
             continue;
         }
 
+        // Skip arrow aesthetics: Vega-Lite has no line-end marker channel, so
+        // a mapped arrow resolves a scale but produces no encoding.
+        if matches!(
+            aesthetic.as_str(),
+            "arrowstart" | "arrowend" | "arrowstartsize" | "arrowendsize"
+        ) {
+            continue;
+        }
+
         let mut channel_name = map_aesthetic_name(aesthetic, &aesthetic_ctx, projection);
         // Opacity is retargeted to the fill when fill is supported
         if channel_name == "opacity" && layer.mappings.contains_key("fill") {

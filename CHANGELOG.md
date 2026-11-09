@@ -2,6 +2,8 @@
 
 ### Added
 
+- The line, path and segment layers now have an `arrow` setting, which
+  can be used to display arrowheads at the ends of the lines.
 - Many layers now support `linecap` and `linejoin` settings for styling lines.
 - The Positron extension now registers a ggsql data importer, so dragging a
   csv/tsv/parquet/json file into Positron offers to generate the ggsql code

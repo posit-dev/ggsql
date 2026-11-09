@@ -30,7 +30,6 @@ pub mod types;
 
 // Geom implementations
 mod area;
-mod arrow;
 mod bar;
 mod boxplot;
 mod density;
@@ -57,7 +56,6 @@ pub use types::{
 
 // Re-export geom structs for direct access if needed
 pub use area::Area;
-pub use arrow::Arrow;
 pub use bar::Bar;
 pub use boxplot::Boxplot;
 pub use density::Density;
@@ -100,7 +98,6 @@ pub enum GeomType {
     Violin,
     Text,
     Segment,
-    Arrow,
     Rule,
     Range,
     Spatial,
@@ -124,7 +121,6 @@ impl std::fmt::Display for GeomType {
             GeomType::Violin => "violin",
             GeomType::Text => "text",
             GeomType::Segment => "segment",
-            GeomType::Arrow => "arrow",
             GeomType::Rule => "rule",
             GeomType::Range => "range",
             GeomType::Spatial => "spatial",
@@ -739,11 +735,6 @@ impl Geom {
         Self(Arc::new(Segment))
     }
 
-    /// Create an Arrow geom
-    pub fn arrow() -> Self {
-        Self(Arc::new(Arrow))
-    }
-
     /// Create an Rule geom
     pub fn rule() -> Self {
         Self(Arc::new(Rule))
@@ -777,7 +768,6 @@ impl Geom {
             GeomType::Violin => Self::violin(),
             GeomType::Text => Self::text(),
             GeomType::Segment => Self::segment(),
-            GeomType::Arrow => Self::arrow(),
             GeomType::Rule => Self::rule(),
             GeomType::Range => Self::range(),
             GeomType::Spatial => Self::spatial(),
@@ -1050,7 +1040,6 @@ mod tests {
             GeomType::Violin,
             GeomType::Text,
             GeomType::Segment,
-            GeomType::Arrow,
             GeomType::Rule,
             GeomType::Range,
             GeomType::Spatial,
@@ -1074,7 +1063,6 @@ mod tests {
             | GeomType::Violin
             | GeomType::Text
             | GeomType::Segment
-            | GeomType::Arrow
             | GeomType::Rule
             | GeomType::Range
             | GeomType::Spatial => {}

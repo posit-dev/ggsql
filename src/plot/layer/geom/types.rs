@@ -6,7 +6,6 @@ use crate::plot::aesthetic::parse_position;
 use crate::reader::SqlDialect;
 use crate::{naming, plot::types::DefaultAestheticValue, Mappings};
 
-// Re-export shared types from the central location
 pub use crate::plot::types::{DefaultParamValue, ParamConstraint, ParamDefinition};
 
 // =============================================================================
@@ -32,7 +31,11 @@ pub const SIDE_VALUES: &[&str] = &["both", "left", "top", "right", "bottom"];
 ///
 /// Note: Spelling variants (`colour`/`col` → `color`) are handled separately at parse
 /// time by `normalise_aes_name()` in `parser/builder.rs`.
-pub const AESTHETIC_ALIASES: &[(&str, &[&str])] = &[("color", &["stroke", "fill"])];
+pub const AESTHETIC_ALIASES: &[(&str, &[&str])] = &[
+    ("color", &["stroke", "fill"]),
+    ("arrow", &["arrowstart", "arrowend"]),
+    ("arrowsize", &["arrowstartsize", "arrowendsize"]),
+];
 
 /// Shared `aggregate` parameter definition. Every geom that opts into the
 /// Aggregate stat (i.e. `aggregate_domain_aesthetics()` returns `Some(_)`)
@@ -44,6 +47,34 @@ pub const AGGREGATE_PARAM: ParamDefinition = ParamDefinition {
     default: DefaultParamValue::Null,
     constraint: ParamConstraint::string_or_string_array_unconstrained(),
 };
+
+/// Marker shape vocabulary for the `arrowstart`/`arrowend` aesthetics and
+/// their `arrow` alias. Names map to hephaestus's built-in `arrow-*` shapes
+/// in the writer.
+pub const ARROW_VALUES: &[&str] = &[
+    "open", "closed", "stealth", "latex", "thin", "wedge", "fishtail", "fork", "feather", "bar",
+    "bracket", "cross", "dot", "square", "diamond",
+];
+
+/// Parse one `arrow` entry into its shape name. Sizes are a separate
+/// aesthetic (`arrowstartsize`/`arrowendsize`), so a `name:size` entry is
+/// rejected with a pointer at them.
+pub fn parse_arrow_name(entry: &str) -> std::result::Result<&str, String> {
+    if ARROW_VALUES.contains(&entry) {
+        return Ok(entry);
+    }
+    if let Some((name, _)) = entry.split_once(':') {
+        if ARROW_VALUES.contains(&name) {
+            return Err(format!(
+                "invalid arrow '{entry}'; set the size with the arrowstartsize/arrowendsize aesthetic instead"
+            ));
+        }
+    }
+    Err(format!(
+        "unknown arrow '{entry}'; expected one of {}",
+        crate::util::or_list_quoted(ARROW_VALUES, '\'')
+    ))
+}
 
 /// Stroke cap style values for the `linecap` parameter.
 pub const LINECAP_VALUES: &[&str] = &["butt", "round", "square"];
@@ -670,5 +701,29 @@ mod tests {
 
         assert!(aes_fill.is_supported("color"));
         assert!(aes_fill.supported().contains(&"color"));
+    }
+}
+
+#[cfg(test)]
+mod arrow_tests {
+    use super::parse_arrow_name;
+
+    #[test]
+    fn parses_a_bare_name() {
+        assert_eq!(parse_arrow_name("closed"), Ok("closed"));
+    }
+
+    #[test]
+    fn rejects_an_unknown_name() {
+        assert!(parse_arrow_name("closde")
+            .unwrap_err()
+            .contains("unknown arrow 'closde'"));
+    }
+
+    #[test]
+    fn rejects_a_name_with_size() {
+        assert!(parse_arrow_name("closed:6")
+            .unwrap_err()
+            .contains("arrowstartsize/arrowendsize"));
     }
 }

@@ -23,7 +23,6 @@
   "text"
   "label"
   "segment"
-  "arrow"
   "rule"
   "range"
   "spatial"
@@ -64,6 +63,13 @@
   "linewidth"
   "width"
   "height"
+  ; Line-end markers
+  "arrow"
+  "arrowstart"
+  "arrowend"
+  "arrowsize"
+  "arrowstartsize"
+  "arrowendsize"
   ; Text aesthetics
   "label"
   "typeface"

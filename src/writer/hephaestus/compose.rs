@@ -8,10 +8,8 @@ use std::collections::HashMap;
 
 use hephaestus::plot::{scale, AspectMode, Plot as HPlot, PlotComposition};
 use hephaestus::scales::chrome::AxisSide;
-use hephaestus::shape::ShapeRegistry;
 
 use super::projection::apply_projection;
-use super::scales::build_scale;
 use super::wiring::Ctx;
 use super::{channels, facet, geom, projection, scales, wiring};
 use crate::naming;
@@ -91,7 +89,7 @@ pub fn build_composition(
     // The composition owns the shape registry backing composition-level legend
     // glyphs (point markers, line dashes).
     let mut view = PlotComposition::new(&composition)
-        .shape_registry(ShapeRegistry::with_builtins())
+        .shape_registry(wiring::shape_registry())
         .theme(wiring::ggsql_theme());
 
     // LABEL title/subtitle/caption live on the composition rather than the
@@ -116,26 +114,7 @@ pub fn build_composition(
     // Register the fixed (shared) scales once, globally. Every panel binds
     // its position channels to these names, giving fixed-scale faceting.
     for scale in &spec.scales {
-        let kind = match scale.aesthetic.as_str() {
-            "fill" | "stroke" => scales::RangeKind::Color,
-            "shape" => scales::RangeKind::Shape,
-            "linetype" => scales::RangeKind::Linetype,
-            // The text geom's font aesthetics: a scale over them resolves a
-            // range of family names / weights, not numbers.
-            "typeface" => scales::RangeKind::Text,
-            "fontweight" => scales::RangeKind::FontWeight,
-            "italic" => scales::RangeKind::Bool,
-            _ => {
-                if scale.aesthetic.starts_with("pos") {
-                    scales::RangeKind::Position
-                } else {
-                    scales::RangeKind::Number
-                }
-            }
-        };
-        if let Some(hs) = build_scale(scale, kind) {
-            view.insert_scale(scale.aesthetic.clone(), hs);
-        }
+        scales::insert_scale(&mut view, scale);
     }
 
     // Frame a map to its bounding box. Marks, clip boundary and graticules
@@ -200,8 +179,8 @@ pub fn build_composition(
         // bind channels and record legends into `legend_sink`. An empty panel
         // builds no geoms, so it cannot be the legend-capturing one.
         let panel_legends = (!legends_captured).then_some(&legend_sink);
-        let mut plot = HPlot::new(&composition, panel.id.as_str())
-            .shape_registry(ShapeRegistry::with_builtins());
+        let mut plot =
+            HPlot::new(&composition, panel.id.as_str()).shape_registry(wiring::shape_registry());
         if !empty {
             for (layer, df) in &slices {
                 let ctx = Ctx {

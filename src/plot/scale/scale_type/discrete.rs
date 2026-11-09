@@ -181,6 +181,16 @@ impl ScaleTypeTrait for Discrete {
                         .collect(),
                 ))
             }
+            "arrowstart" | "arrowend" => {
+                let palette = palettes::get_arrow_palette("default")
+                    .ok_or_else(|| "Default arrow palette not found".to_string())?;
+                Ok(Some(
+                    palette
+                        .iter()
+                        .map(|s| ArrayElement::String(s.to_string()))
+                        .collect(),
+                ))
+            }
             _ => Ok(None),
         }
     }

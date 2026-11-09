@@ -1978,6 +1978,12 @@ pub const LINETYPES: &[&str] = &[
     "solid", "dashed", "dotted", "dotdash", "longdash", "twodash",
 ];
 
+/// Default arrow palette for the `arrowstart`/`arrowend` aesthetics:
+/// visually distinct line-end markers, cycled over categories.
+pub const ARROWS: &[&str] = &[
+    "closed", "open", "stealth", "latex", "wedge", "dot", "diamond", "bar",
+];
+
 // =============================================================================
 // Lookup Functions
 // =============================================================================
@@ -2100,6 +2106,14 @@ pub fn get_linetype_palette(name: &str) -> Option<&'static [&'static str]> {
     }
 }
 
+/// Look up an arrow palette by name.
+pub fn get_arrow_palette(name: &str) -> Option<&'static [&'static str]> {
+    match name.to_lowercase().as_str() {
+        "categorical" | "default" => Some(ARROWS),
+        _ => None,
+    }
+}
+
 /// Look up a palette by aesthetic and name, returning as ArrayElements.
 ///
 /// This helper consolidates the aesthetic-based palette lookup with proper error handling,
@@ -2107,7 +2121,7 @@ pub fn get_linetype_palette(name: &str) -> Option<&'static [&'static str]> {
 ///
 /// # Arguments
 ///
-/// * `aesthetic` - The aesthetic type ("shape", "linetype", "color", "fill", "stroke")
+/// * `aesthetic` - The aesthetic type ("shape", "linetype", "arrow", "color", "fill", "stroke")
 /// * `name` - The palette name to look up
 ///
 /// # Returns
@@ -2126,10 +2140,11 @@ pub fn lookup_palette(aesthetic: &str, name: &str) -> Result<Vec<ArrayElement>, 
     let palette = match aesthetic {
         "shape" => get_shape_palette(name),
         "linetype" => get_linetype_palette(name),
+        "arrow" | "arrowstart" | "arrowend" => get_arrow_palette(name),
         "color" | "fill" | "stroke" => get_color_palette(name),
         _ => {
             return Err(
-                "Palettes are only valid for color, fill, stroke, shape, and linetype aesthetics"
+                "Palettes are only valid for color, fill, stroke, shape, linetype, and arrow aesthetics"
                     .to_string(),
             );
         }
@@ -2425,7 +2440,7 @@ mod tests {
         let err = result.unwrap_err();
         assert_eq!(
             err,
-            "Palettes are only valid for color, fill, stroke, shape, and linetype aesthetics"
+            "Palettes are only valid for color, fill, stroke, shape, linetype, and arrow aesthetics"
         );
         // Must not leak the internal aesthetic name or the palette name.
         assert!(!err.contains("pos1"));

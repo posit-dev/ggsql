@@ -11,12 +11,14 @@ use std::sync::Arc;
 use hephaestus::color::{rgba, Color};
 use hephaestus::plot::geom::linetype::{dash, gap, pattern, solid};
 use hephaestus::plot::scale::{self, Scale as HScale, TransformKind as HTransform};
+use hephaestus::plot::PlotComposition;
 use hephaestus::scales::value::{
     Date as HDate, DateTime as HDateTime, LinetypeStep, Time as HTime, Value as HValue,
 };
 use hephaestus::scales::Direction;
 
 use super::channels::NULL_CATEGORY;
+use crate::plot::layer::geom::types::parse_arrow_name;
 use crate::plot::scale::{linetype_to_stroke_dash, TransformKind as GTransform};
 use crate::plot::{ArrayElement, OutputRange, ParameterValue, Scale as GScale, ScaleTypeKind};
 
@@ -46,6 +48,34 @@ pub enum RangeKind {
     FontWeight,
     /// Rotation in degrees, as ggsql resolves it → radians, hephaestus's unit.
     Angle,
+    /// Line-end marker: ggsql arrow names → hephaestus's `arrow-*` shapes.
+    Arrow,
+}
+
+/// Register a resolved ggsql scale on the composition under its aesthetic
+/// name.
+pub fn insert_scale(view: &mut PlotComposition, scale: &GScale) {
+    let kind = match scale.aesthetic.as_str() {
+        "fill" | "stroke" => RangeKind::Color,
+        "shape" => RangeKind::Shape,
+        "linetype" => RangeKind::Linetype,
+        "arrowstart" | "arrowend" => RangeKind::Arrow,
+        // The text geom's font aesthetics: a scale over them resolves a
+        // range of family names / weights, not numbers.
+        "typeface" => RangeKind::Text,
+        "fontweight" => RangeKind::FontWeight,
+        "italic" => RangeKind::Bool,
+        _ => {
+            if scale.aesthetic.starts_with("pos") {
+                RangeKind::Position
+            } else {
+                RangeKind::Number
+            }
+        }
+    };
+    if let Some(hs) = build_scale(scale, kind) {
+        view.insert_scale(scale.aesthetic.clone(), hs);
+    }
 }
 
 /// Build a hephaestus scale from a resolved ggsql scale. `None` when ggsql
@@ -353,6 +383,15 @@ fn apply_output_range(hs: HScale, kind: RangeKind, values: &[ArrayElement]) -> H
                 .filter_map(|e| e.to_f64())
                 .map(f64::to_radians),
         ),
+        RangeKind::Arrow => hs.range_strings(values.into_iter().map(|e| {
+            let entry = e.to_key_string();
+            match parse_arrow_name(&entry) {
+                Ok(name) => Arc::from(format!("arrow-{name}").as_str()),
+                // Unknown names pass through; hephaestus draws no marker for
+                // a shape it doesn't know, same as an unknown shape name.
+                Err(_) => Arc::from(entry.as_str()),
+            }
+        })),
         // Neither a position nor a boolean has an output range: the former maps to
         // a panel fraction, the latter is only ever a literal or identity value.
         RangeKind::Position | RangeKind::Bool => hs,
@@ -814,5 +853,29 @@ mod tests {
         // Anything unrecognised is regular, never a missing glyph.
         assert_eq!(parse_font_weight("normal"), 400.0);
         assert_eq!(parse_font_weight("wingdings"), 400.0);
+    }
+
+    #[test]
+    fn a_reversed_arrow_scale_walks_its_palette_backwards() {
+        let mut scale = GScale::new("arrowend");
+        scale.scale_type = Some(crate::plot::ScaleType::discrete());
+        scale.input_range = Some(vec![
+            ArrayElement::String("a".to_string()),
+            ArrayElement::String("b".to_string()),
+        ]);
+        scale.output_range = Some(OutputRange::Array(vec![
+            ArrayElement::String("closed".to_string()),
+            ArrayElement::String("open".to_string()),
+        ]));
+        scale
+            .properties
+            .insert("reverse".to_string(), ParameterValue::Boolean(true));
+        let shapes = build_scale(&scale, RangeKind::Arrow).expect("shape scale");
+        let shape_of = |key: &str| match shapes.map(&HValue::String(Arc::from(key))) {
+            HValue::String(s) => s.to_string(),
+            other => panic!("expected a shape name, got {other:?}"),
+        };
+        assert_eq!(shape_of("a"), "arrow-open");
+        assert_eq!(shape_of("b"), "arrow-closed");
     }
 }

@@ -1,0 +1,109 @@
+---
+title: "Arrow"
+---
+
+Arrow aesthetics control the shape and size of arrows at the terminal vertices of lines, and apply to layers that draw lines: [line](../../layer/type/line.qmd), [path](../../layer/type/path.qmd) and [segment](../../layer/type/segment.qmd).
+These can be useful if lines represent relations and can be mapped if different types of relations need to be reflected.
+
+There are separate aesthetics for arrows at the start and end of lines.
+The `arrow` aesthetic is an alias to control `arrowstart` and `arrowend` shapes simultaneously.
+The `arrowsize` aesthethic is ditto an alias to control `arrowstartsize` and `arrowendsize` sizes together.
+The start and ends of lines are declared directly in segment layers, whereas line and path layers count the first and last observation in a group.
+
+## Literal values
+Arrow shapes are specified using named patterns.
+
+| Name | Pattern | Description |
+|------|---------|-------------|
+| `open` | ![](examples/arrow_open.svg) | V-shape: two strokes converging on the tip |
+| `closed` | ![](examples/arrow_closed.svg) | Fatter filled isosceles triangle |
+| `stealth` | ![](examples/arrow_stealth.svg) | Dart/chevron as filled concave quadrilateral, thinner in the style of TikZ graphics |
+| `latex` | ![](examples/arrow_latex.svg) | Dart/chevron as filled concave quadrilateral, fatter in the style of LaTeX |
+| `thin` | ![](examples/arrow_thin.svg) | Thinner filled isosceles triangle |
+| `wedge` | ![](examples/arrow_wedge.svg) | Asymmetric triangle |
+| `fishtail` | ![](examples/arrow_fishtail.svg) | Inverted V-shape: two strokes diverging as tail |
+| `fork` | ![](examples/arrow_fork.svg) | Wider inverted V-shape as tail |
+| `feather` | ![](examples/arrow_feather.svg) | Stylised arrow fletching |
+| `bar` | ![](examples/arrow_bar.svg) | Orthogonal line at tip |
+| `bracket` | ![](examples/arrow_bracket.svg) | Bar with two right-angle protrusions at its ends |
+| `cross` | ![](examples/arrow_cross.svg) | Square (Greek) cross angled at 45&deg; from the line |
+| `dot` | ![](examples/arrow_dot.svg) | Filled circle |
+| `square` | ![](examples/arrow_square.svg) | Filled square |
+| `diamond` | ![](examples/arrow_diamond.svg) | Filled diamond |
+
+You can use these names directly when setting the arrow of a line.
+Note that the `arrow` setting is an aesthetic alias to set both the `arrowstart` and `arrowend` aesthetics.
+You can separate the arrow shapes by using the more specific aesthetics.
+
+```ggsql
+DRAW segment
+  SETTING arrowstart => 'open', arrowend => 'closed'
+```
+
+The `arrowsize` and `arrowstartsize`/`arrowendsize` aesthetics are given in bare numbers.
+While individual shapes might deviate, the sizes are roughly in points.
+Note that the `arrowsize` aesthetics are irrelevant when `arrow` has not been declared.
+The following code sets the size of arrows to 20pt.
+
+```ggsql
+DRAW segment
+  SETTING arrow => 'open', arrowsize => 20
+```
+
+## Palettes
+
+```{ggsql}
+#| code-fold: true
+#| code-summary: "Create example data"
+CREATE TEMP TABLE edges AS
+SELECT * FROM (VALUES
+    (0, 0, 1, 1, 'Bottom'),
+    (1, 1, 2, 1, 'Bottom'),
+    (2, 1, 3, 0, 'Bottom'),
+    (0, 3, 1, 2, 'Top'),
+    (1, 2, 2, 2, 'Top'),
+    (2, 2, 3, 3, 'Top'),
+    (1, 1, 1, 2, 'Cross'),
+    (2, 2, 2, 1, 'Cross')
+) t(x, y, xend, yend, type);
+```
+
+The default palette for arrows picks the 15 arrows listed above.
+
+```{ggsql}
+VISUALISE x, y, xend, yend FROM edges
+DRAW segment 
+  MAPPING type AS arrowend
+  SETTING arrowsize => 10
+```
+
+You can change the arrows by providing a manual palette with shape names as the `TO` clause in scales.
+
+```{ggsql}
+VISUALISE x, y, xend, yend FROM edges
+DRAW segment 
+  MAPPING type AS arrowstart
+  SETTING arrowsize => 10
+SCALE arrow TO ['latex', 'cross', 'open']
+```
+
+You can use different arrows for the start and end by using the specific `arrowstart` and `arrowend` scales for the aesthetics.
+
+```{ggsql}
+VISUALISE x, y, xend, yend FROM edges
+DRAW segment 
+  MAPPING type AS arrow
+  SETTING arrowsize => 10
+SCALE arrowstart TO ['latex', 'cross', 'open']
+SCALE arrowend TO ['wedge', 'dot', 'feather']
+```
+
+The `arrowsize` aesthetic takes numeric values and re-scales these to match the `TO` clause.
+
+```{ggsql}
+VISUALISE x, y, xend, yend FROM edges
+DRAW segment 
+  MAPPING x AS arrowsize
+  SETTING arrow => 'closed'
+SCALE arrowsize TO (5, 20)
+```

@@ -22,7 +22,7 @@ use hephaestus::plot::{
 
 use super::wiring::{build_and_add, Ctx};
 use crate::plot::layer::geom::GeomType;
-use crate::{GgsqlError, Result};
+use crate::Result;
 
 /// Build the layer's geom into `plot`: set its channels, bind them to the scales
 /// named in `ctx`, and record any legends on `ctx`.
@@ -59,13 +59,12 @@ pub fn build_into_plot(plot: &mut HPlot, ctx: &Ctx) -> Result<()> {
         GeomType::Spatial => spatial::build(plot, ctx),
         GeomType::Boxplot => boxplot::build(plot, ctx),
         GeomType::Violin => violin::build(plot, ctx),
-        other => Err(GgsqlError::WriterError(format!(
-            "the plot renderer does not support the '{other}' geom yet"
-        ))),
     }
 }
 
 /// Geoms this writer can render (used by `validate`).
+/// Accepts all currently existing `GeomType` variants.
+/// New `GeomType` variants are unsupported until explicitly opted in here.
 pub fn is_supported(geom: GeomType) -> bool {
     matches!(
         geom,

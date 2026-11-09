@@ -94,6 +94,25 @@ fn material() -> Vec<MaterialSpec> {
             RangeKind::Linetype,
             MatDefault::None,
         ),
+        MaterialSpec::new(
+            "arrowstart",
+            "start_marker",
+            RangeKind::Arrow,
+            MatDefault::None,
+        ),
+        MaterialSpec::new("arrowend", "end_marker", RangeKind::Arrow, MatDefault::None),
+        MaterialSpec::new(
+            "arrowstartsize",
+            "start_marker_size",
+            RangeKind::Number,
+            MatDefault::None,
+        ),
+        MaterialSpec::new(
+            "arrowendsize",
+            "end_marker_size",
+            RangeKind::Number,
+            MatDefault::None,
+        ),
     ]
 }
 

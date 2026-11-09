@@ -30,6 +30,10 @@ impl GeomTrait for Segment {
                 ("linewidth", DefaultAestheticValue::Number(1.0)),
                 ("opacity", DefaultAestheticValue::Number(1.0)),
                 ("linetype", DefaultAestheticValue::String("solid")),
+                ("arrowstart", DefaultAestheticValue::Null),
+                ("arrowend", DefaultAestheticValue::Null),
+                ("arrowstartsize", DefaultAestheticValue::Null),
+                ("arrowendsize", DefaultAestheticValue::Null),
             ],
         }
     }

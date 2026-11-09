@@ -643,7 +643,6 @@ fn parse_geom_type(text: &str) -> Result<Geom> {
         "violin" => Ok(Geom::violin()),
         "text" => Ok(Geom::text()),
         "segment" => Ok(Geom::segment()),
-        "arrow" => Ok(Geom::arrow()),
         "rule" => Ok(Geom::rule()),
         "range" => Ok(Geom::range()),
         "spatial" => Ok(Geom::spatial()),
@@ -2752,6 +2751,28 @@ mod tests {
         // color should expand into stroke and fill
         assert_eq!(specs[0].layers[1].mappings.len(), 1);
         assert!(specs[0].layers[1].mappings.contains_key("color"));
+    }
+
+    #[test]
+    fn test_arrow_aesthetic_mapping_parsing() {
+        let query = r#"
+            VISUALISE date AS x, revenue AS y
+            DRAW line MAPPING kind AS arrowstart
+            DRAW segment MAPPING kind AS arrow, x2 AS xend, y2 AS yend
+        "#;
+
+        let specs = parse_test_query(query).unwrap();
+
+        // Arrow aesthetic names parse and pass through untransformed; the
+        // `arrow` alias split happens during execution, not parsing.
+        assert_eq!(
+            specs[0].layers[0].mappings.aesthetics["arrowstart"].column_name(),
+            Some("kind")
+        );
+        assert_eq!(
+            specs[0].layers[1].mappings.aesthetics["arrow"].column_name(),
+            Some("kind")
+        );
     }
 
     #[test]

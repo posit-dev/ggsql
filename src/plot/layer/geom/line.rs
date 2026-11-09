@@ -31,6 +31,10 @@ impl GeomTrait for Line {
                 ("linewidth", DefaultAestheticValue::Number(1.5)),
                 ("opacity", DefaultAestheticValue::Number(1.0)),
                 ("linetype", DefaultAestheticValue::String("solid")),
+                ("arrowstart", DefaultAestheticValue::Null),
+                ("arrowend", DefaultAestheticValue::Null),
+                ("arrowstartsize", DefaultAestheticValue::Null),
+                ("arrowendsize", DefaultAestheticValue::Null),
             ],
         }
     }

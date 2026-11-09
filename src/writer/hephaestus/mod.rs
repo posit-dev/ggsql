@@ -22,8 +22,7 @@
 //! reinterpret.
 //!
 //! **Scope**: multi-layer plots under Cartesian, Polar, and Map projections,
-//! with `FACET` faceting (Wrap/Grid, fixed + free scales); every geom except
-//! `arrow`, which is a stub no writer implements; all scale types and
+//! with `FACET` faceting (Wrap/Grid, fixed + free scales); all scale types and
 //! transforms, material aesthetics, plot and axis titles, and legends.
 //!
 //! Architecture — the abstractions and the invariants they keep — and the
@@ -215,6 +214,65 @@ mod tests {
         assert_renders(
             "SELECT 1 AS x, 2 AS y UNION ALL SELECT 2, 3 UNION ALL SELECT 3, 1 \
              VISUALISE x AS x, y AS y DRAW point",
+        );
+    }
+
+    #[test]
+    fn renders_segment_arrows() {
+        assert_renders(
+            "SELECT 1 AS x, 2 AS y, 3 AS x2, 4 AS y2 \
+             VISUALISE x AS pos1, y AS pos2 \
+             DRAW segment MAPPING x2 AS pos1end, y2 AS pos2end \
+             SETTING arrowstart => 'open', arrowend => 'closed'",
+        );
+    }
+
+    #[test]
+    fn renders_line_arrow() {
+        assert_renders(
+            "SELECT x, y FROM (VALUES (1,2),(2,3),(3,1)) t(x,y) \
+             VISUALISE x AS x, y AS y DRAW line SETTING arrow => 'closed'",
+        );
+    }
+
+    #[test]
+    fn renders_mapped_segment_arrows() {
+        assert_renders(
+            "SELECT x, y, x2, y2, kind FROM (VALUES \
+                 (1, 2, 3, 4, 'a'), (2, 1, 4, 3, 'b')) t(x, y, x2, y2, kind) \
+             VISUALISE x AS pos1, y AS pos2 \
+             DRAW segment MAPPING x2 AS pos1end, y2 AS pos2end, kind AS arrowend",
+        );
+    }
+
+    #[test]
+    fn renders_mapped_line_arrows_with_legend() {
+        assert_renders(
+            "SELECT x, y, kind FROM (VALUES \
+                 (1, 2, 'a'), (2, 3, 'a'), (3, 1, 'a'), \
+                 (1, 1, 'b'), (2, 2, 'b'), (3, 3, 'b')) t(x, y, kind) \
+             VISUALISE x AS x, y AS y \
+             DRAW line MAPPING kind AS arrow",
+        );
+    }
+
+    #[test]
+    fn renders_mapped_line_arrows_with_mapped_sizes() {
+        assert_renders(
+            "SELECT x, y, kind, w FROM (VALUES \
+                 (1, 2, 'a', 3), (2, 3, 'a', 3), (3, 1, 'a', 3), \
+                 (1, 1, 'b', 8), (2, 2, 'b', 8), (3, 3, 'b', 8)) t(x, y, kind, w) \
+             VISUALISE x AS x, y AS y \
+             DRAW line MAPPING kind AS arrowend, w AS arrowendsize",
+        );
+    }
+
+    #[test]
+    fn renders_line_arrow_with_literal_size() {
+        assert_renders(
+            "SELECT x, y FROM (VALUES (1,2),(2,3),(3,1)) t(x,y) \
+             VISUALISE x AS x, y AS y \
+             DRAW line SETTING arrowend => 'closed', arrowendsize => 6",
         );
     }
 
@@ -1314,19 +1372,6 @@ mod tests {
         let r = compose::map_range(10.0, 0.0);
         assert_eq!(*r.start(), -0.5);
         assert_eq!(*r.end(), 10.5);
-    }
-
-    /// `arrow` is a stub in both writers, so the rejection lives in the shared
-    /// composition layer rather than in any one of them.
-    #[test]
-    fn rejects_unsupported_geom() {
-        let spec = spec_for(
-            "SELECT 0 AS x, 0 AS y, 1 AS xend, 1 AS yend \
-             VISUALISE x AS x, y AS y, xend AS xend, yend AS yend DRAW arrow",
-        );
-        let err = compose::validate_plot(spec.plot()).unwrap_err();
-        assert!(matches!(err, GgsqlError::WriterError(_)));
-        assert!(err.to_string().contains("'arrow' geom"), "{err}");
     }
 }
 

@@ -40,6 +40,26 @@ fn test_execute_and_render() {
 }
 
 #[test]
+fn test_vegalite_ignores_mapped_arrow_aesthetics() {
+    let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+    let spec = reader
+        .execute(
+            "SELECT * FROM (VALUES (1, 2, 'a'), (2, 3, 'a'), (1, 1, 'b'), (2, 2, 'b')) \
+             AS t(x, y, kind) \
+             VISUALISE x, y DRAW line MAPPING kind AS arrowend",
+        )
+        .unwrap();
+
+    // The Vega-Lite writer has no arrow support: the aesthetic resolves a
+    // scale but must produce no encoding channel. (The prefixed data column
+    // and the `detail` grouping entry are fine — they split the lines.)
+    let writer = VegaLiteWriter::new();
+    let result = writer.render(&spec).unwrap();
+    assert!(result.contains("line"));
+    assert!(!result.contains("\"arrowend\":"));
+}
+
+#[test]
 fn test_execute_metadata() {
     let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
     let spec = reader

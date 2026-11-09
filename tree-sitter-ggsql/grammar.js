@@ -738,7 +738,7 @@ module.exports = grammar({
     geom_type: $ => choice(
       'point', 'line', 'path', 'bar', 'area', 'tile', 'polygon', 'ribbon',
       'histogram', 'density', 'smooth', 'boxplot', 'violin',
-      'text', 'label', 'segment', 'arrow', 'rule', 'range',
+      'text', 'label', 'segment', 'rule', 'range',
       'spatial'
     ),
 
@@ -919,6 +919,9 @@ module.exports = grammar({
       'color', 'colour', 'fill', 'stroke', 'opacity',
       // Size and shape
       'size', 'shape', 'linetype', 'linewidth', 'width', 'height',
+      // Line-end markers
+      'arrow', 'arrowstart', 'arrowend',
+      'arrowsize', 'arrowstartsize', 'arrowendsize',
       // Text aesthetics
       'label', 'typeface', 'fontweight', 'italic', 'fontsize', 'hjust', 'vjust', 'rotation',
       // Specialty aesthetics,

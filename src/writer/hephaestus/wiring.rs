@@ -11,12 +11,15 @@ use hephaestus::plot::theme::{Element, Length, RectElement, Theme};
 use hephaestus::plot::Plot as HPlot;
 use hephaestus::scales::chrome::LegendSide;
 use hephaestus::scales::value::{DataColumn, Value as HValue};
+use hephaestus::shape::{Shape, ShapeRegistry, ShapeStyle};
+use hephaestus::{primitives, Point};
 
 use super::channels::{
     aesthetic_column_name, build_group_keys, column_to_bool, column_to_channel, column_to_colors,
     column_to_f64, column_to_strings, ChannelData,
 };
 use super::scales::{map_linetype, parse_color, parse_font_weight, RangeKind};
+use crate::plot::layer::geom::types::parse_arrow_name;
 use crate::plot::{ParameterValue, ScaleTypeKind};
 use crate::{AestheticValue, DataFrame, GgsqlError, Layer, Plot, Result};
 
@@ -417,6 +420,16 @@ pub fn wire_material<G: BuildableGeom>(
                         .collect();
                     builder.set(m.channel, Raw(radians));
                 }
+                // An identity arrow column holds ggsql arrow names; each row
+                // resolves to a shape (unknown → no marker).
+                RangeKind::Arrow => {
+                    let entries = column_to_strings(ctx.df, col)?;
+                    let shapes: Vec<String> = entries
+                        .iter()
+                        .map(|entry| map_arrow_name(entry).unwrap_or_default())
+                        .collect();
+                    builder.set(m.channel, Raw(shapes));
+                }
                 _ => {
                     builder.set(m.channel, Raw(column_to_f64(ctx.df, col)?));
                 }
@@ -502,6 +515,13 @@ fn set_literal_channel<G: BuildableGeom>(
         }
         (RangeKind::Linetype, ParameterValue::String(s)) => {
             builder.set(channel, Raw(HValue::Linetype(map_linetype(s))));
+            true
+        }
+        (RangeKind::Arrow, ParameterValue::String(s)) => {
+            let Some(shape) = map_arrow_name(s) else {
+                return false;
+            };
+            builder.set(channel, Raw(shape));
             true
         }
         (RangeKind::Number, ParameterValue::Number(n)) if n.is_finite() => {
@@ -619,6 +639,57 @@ pub fn side_sign(layer: &Layer) -> Option<f64> {
         },
         _ => None,
     }
+}
+
+/// The shape registry every ggsql plot renders against: hephaestus's
+/// built-ins, with the tail-style arrows (`fishtail`, `fork`, `feather`)
+/// re-registered x-mirrored. ggsql draws tails flaring outward from the
+/// line end where the built-ins trail back along the line. Baking the
+/// orientation into the registry means every path that resolves a name —
+/// scale range, identity column, literal — agrees, with no invert flag to
+/// keep in sync.
+pub fn shape_registry() -> ShapeRegistry {
+    let stroke = |segments: &[(f64, f64, f64, f64)]| {
+        Shape::new(
+            segments
+                .iter()
+                .map(|&(x1, y1, x2, y2)| {
+                    primitives::segment(Point::new(x1, y1), Point::new(x2, y2))
+                })
+                .collect(),
+            ShapeStyle::Stroke,
+            Point::ORIGIN,
+        )
+    };
+    let mut registry = ShapeRegistry::with_builtins();
+    registry.insert(
+        "arrow-fishtail",
+        stroke(&[(0.0, 0.0, 1.0, 0.5), (0.0, 0.0, 1.0, -0.5)]),
+    );
+    registry.insert(
+        "arrow-fork",
+        stroke(&[(0.0, 0.0, 0.7, 0.7), (0.0, 0.0, 0.7, -0.7)]),
+    );
+    registry.insert(
+        "arrow-feather",
+        stroke(&[
+            (0.0, 0.0, 0.4, 0.5),
+            (0.0, 0.0, 0.4, -0.5),
+            (0.3, 0.0, 0.7, 0.5),
+            (0.3, 0.0, 0.7, -0.5),
+            (0.6, 0.0, 1.0, 0.5),
+            (0.6, 0.0, 1.0, -0.5),
+        ]),
+    );
+    registry
+}
+
+/// Resolve an arrow name to hephaestus's `arrow-*` shape name. Unknown
+/// names resolve to `None` — hephaestus draws no marker for a shape it
+/// doesn't know, same as an unknown shape name.
+fn map_arrow_name(name: &str) -> Option<String> {
+    let name = parse_arrow_name(name).ok()?;
+    Some(format!("arrow-{name}"))
 }
 
 /// The layer's `linecap`/`linejoin` SETTINGs as constant `cap`/`join` channels.
@@ -932,6 +1003,17 @@ fn constant_material(ctx: &Ctx, aesthetic: &str, kind: RangeKind) -> Option<HVal
                 .filter(|s| !s.is_empty())?;
             Some(HValue::String(name.into()))
         }
+        RangeKind::Arrow => {
+            let entry = col
+                .and_then(|c| column_to_strings(ctx.df, c).ok())
+                .and_then(|v| v.first().cloned())
+                .or_else(|| match literal {
+                    Some(ParameterValue::String(s)) => Some(s.clone()),
+                    _ => None,
+                })?;
+            let shape = map_arrow_name(&entry)?;
+            Some(HValue::String(shape.into()))
+        }
         RangeKind::Bool => {
             if let Some(b) = col
                 .and_then(|c| column_to_bool(ctx.df, c).ok())
@@ -1112,4 +1194,18 @@ fn pin_constants(
         }
     }
     key
+}
+
+#[cfg(test)]
+mod tests {
+    use super::shape_registry;
+
+    #[test]
+    fn tail_style_shapes_are_mirrored_in_the_registry() {
+        let registry = shape_registry();
+        for name in ["arrow-fishtail", "arrow-fork", "arrow-feather"] {
+            let bbox = registry.get(name).unwrap().bounding_box();
+            assert_eq!(bbox.x0, 0.0, "{name} should flare outward from the anchor");
+        }
+    }
 }
