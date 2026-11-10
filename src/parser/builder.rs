@@ -459,6 +459,11 @@ fn process_tab_clause(node: &Node, source: &SourceTree, table: &mut Table) -> Re
                         "TABULATE FACET does not support BY".to_string(),
                     ));
                 }
+                if table.facet.is_some() {
+                    return Err(GgsqlError::ParseError(
+                        "TABULATE supports a single FACET clause".to_string(),
+                    ));
+                }
                 table.facet = Some(facet);
             }
             _ => {}
@@ -606,6 +611,11 @@ fn process_viz_clause(node: &Node, source: &SourceTree, spec: &mut Plot) -> Resu
                         "FACET currently supports a single variable per dimension; \
                          multiple facet variables are not yet supported"
                             .to_string(),
+                    ));
+                }
+                if spec.facet.is_some() {
+                    return Err(GgsqlError::ParseError(
+                        "VISUALISE supports a single FACET clause".to_string(),
                     ));
                 }
                 spec.facet = Some(facet);
@@ -1643,6 +1653,13 @@ mod tests {
     }
 
     #[test]
+    fn test_tabulate_a_second_facet_clause_is_rejected() {
+        let result = parse_test_specs("TABULATE * FROM sales FACET region FACET category");
+
+        assert!(result.is_err());
+    }
+
+    #[test]
     fn test_tabulate_repeated_label_clauses_merge_rather_than_overwrite() {
         let specs = parse_test_specs("TABULATE * FROM sales LABEL id => 'ID' LABEL name => 'Name'")
             .unwrap();
@@ -1789,6 +1806,18 @@ mod tests {
             project.properties.get("start"),
             Some(&ParameterValue::Number(90.0))
         );
+    }
+
+    #[test]
+    fn test_visualise_a_second_facet_clause_is_rejected() {
+        let query = r#"
+            VISUALISE
+            DRAW point MAPPING x AS x, y AS y
+            FACET region
+            FACET category
+        "#;
+
+        assert!(parse_test_query(query).is_err());
     }
 
     #[test]
