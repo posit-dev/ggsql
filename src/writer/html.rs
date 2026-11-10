@@ -374,33 +374,6 @@ fn class_declarations(class: TableClass) -> &'static [(&'static str, &'static st
     }
 }
 
-/// The styled classes (those carrying declarations), in `<style>`-block rule
-/// order. With equal specificity the later rule wins, so this decides
-/// precedence in class mode; `inline_style`'s own precedence instead follows
-/// the order of the cell's `classes` field (see its doc comment).
-const STYLED_CLASSES: &[TableClass] = &[
-    TableClass::Table,
-    TableClass::TableBody,
-    TableClass::Row,
-    TableClass::Stub,
-    TableClass::StubRowGroup,
-    TableClass::ColHeading,
-    TableClass::ColHeadingRow,
-    TableClass::Spanner,
-    TableClass::SpannerLabel,
-    TableClass::SpannerRow,
-    TableClass::Title,
-    TableClass::Subtitle,
-    TableClass::Caption,
-    TableClass::Heading,
-    TableClass::GroupHeading,
-    TableClass::GroupHeadingRow,
-    TableClass::RowGroupFirst,
-    TableClass::AlignLeft,
-    TableClass::AlignCenter,
-    TableClass::AlignRight,
-];
-
 /// Classes rendered on a `<div>` around the cell's content instead of on the
 /// `<th>`/`<td>` itself (gt's `gt_column_spanner` pattern).
 const INNER_CLASSES: &[TableClass] = &[TableClass::SpannerLabel];
@@ -411,7 +384,7 @@ const INNER_CLASSES: &[TableClass] = &[TableClass::SpannerLabel];
 /// which classes the table actually uses.
 fn render_style_block() -> String {
     let mut block = String::from("<style>\n");
-    for &class in STYLED_CLASSES {
+    for &class in TableClass::PRECEDENCE {
         let name = format!("ggsql_{class}");
         let declarations = class_declarations(class)
             .iter()
@@ -427,10 +400,22 @@ fn render_style_block() -> String {
 /// Fold classes' declarations into a `style` attribute value, each CSS
 /// property appearing at most once — a later class's declaration overrides
 /// an earlier one's (CSS's last-wins rule, made explicit so the output
-/// doesn't rely on browsers' duplicate-declaration handling).
+/// doesn't rely on browsers' duplicate-declaration handling). Folding
+/// happens in `TableClass::PRECEDENCE` order, not class-list order, so a
+/// conflict resolves the same way it would in class mode and the modes
+/// can't drift.
 fn inline_style(classes: &[TableClass]) -> Option<String> {
+    let mut ordered: Vec<&TableClass> = classes.iter().collect();
+    // Unstyled classes declare nothing, so their fallback position is
+    // irrelevant.
+    ordered.sort_by_key(|c| {
+        TableClass::PRECEDENCE
+            .iter()
+            .position(|s| s == *c)
+            .unwrap_or(0)
+    });
     let mut folded: Vec<(&str, &str)> = Vec::new();
-    for class in classes {
+    for class in ordered {
         for &(property, value) in class_declarations(*class) {
             match folded.iter_mut().find(|(p, _)| *p == property) {
                 Some(entry) => entry.1 = value,
@@ -772,12 +757,40 @@ mod render_tests {
     }
 
     #[test]
-    fn inline_style_lets_a_later_class_override_an_earlier_ones_property() {
-        // AlignLeft and AlignRight both declare text-align — last wins.
+    fn inline_style_resolves_conflicts_by_precedence_regardless_of_class_order() {
+        // AlignLeft and AlignRight both declare text-align; AlignRight comes
+        // later in TableClass::PRECEDENCE, whichever order the classes
+        // arrive in.
+        let expected = Some("text-align: right; font-variant-numeric: tabular-nums".to_string());
         assert_eq!(
             inline_style(&[TableClass::AlignLeft, TableClass::AlignRight]),
-            Some("text-align: right; font-variant-numeric: tabular-nums".to_string())
+            expected
         );
+        assert_eq!(
+            inline_style(&[TableClass::AlignRight, TableClass::AlignLeft]),
+            expected
+        );
+    }
+
+    #[test]
+    fn inline_style_is_order_independent_for_every_class_pair() {
+        // Class mode resolves conflicts by stylesheet (PRECEDENCE) order, so
+        // inline folding must give the same result for any permutation of a
+        // cell's classes — otherwise the modes drift.
+        let all: Vec<TableClass> = TableClass::PRECEDENCE
+            .iter()
+            .copied()
+            .chain([TableClass::StubHead])
+            .collect();
+        for &a in &all {
+            for &b in &all {
+                assert_eq!(
+                    inline_style(&[a, b]),
+                    inline_style(&[b, a]),
+                    "{a} vs {b} folds differently under permutation"
+                );
+            }
+        }
     }
 
     #[test]

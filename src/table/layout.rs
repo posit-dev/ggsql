@@ -164,6 +164,38 @@ pub enum TableClass {
     AlignRight,
 }
 
+impl TableClass {
+    /// The canonical style-conflict order for every writer: when two classes
+    /// on the same element declare the same property, the one listed later
+    /// wins. This is the CSS cascade's source-order rule made
+    /// writer-neutral: a writer emitting a stylesheet uses this as rule
+    /// order; a writer folding classes into inline styles sorts by this
+    /// before folding. Classes not listed carry no declarations, so their
+    /// position is irrelevant.
+    pub(crate) const PRECEDENCE: &[TableClass] = &[
+        TableClass::Table,
+        TableClass::TableBody,
+        TableClass::Row,
+        TableClass::Stub,
+        TableClass::StubRowGroup,
+        TableClass::ColHeading,
+        TableClass::ColHeadingRow,
+        TableClass::Spanner,
+        TableClass::SpannerLabel,
+        TableClass::SpannerRow,
+        TableClass::Title,
+        TableClass::Subtitle,
+        TableClass::Caption,
+        TableClass::Heading,
+        TableClass::GroupHeading,
+        TableClass::GroupHeadingRow,
+        TableClass::RowGroupFirst,
+        TableClass::AlignLeft,
+        TableClass::AlignCenter,
+        TableClass::AlignRight,
+    ];
+}
+
 impl std::fmt::Display for TableClass {
     /// The class-name suffix a writer hangs its own prefix on, e.g.
     /// `ggsql_row` for `Row` in the HTML writer.
@@ -219,8 +251,9 @@ pub struct TableCell {
     /// their column's properties; a `Spanner` cell covers several columns
     /// at once, so it has none of its own.
     pub properties: Parameters,
-    /// Style classes recorded at build time (see `TableClass`). Ordered;
-    /// a writer renders them in order.
+    /// Style classes recorded at build time (see `TableClass`). A set, not
+    /// a sequence: conflicts resolve by `TableClass::PRECEDENCE`,
+    /// never by position in this list.
     pub classes: Vec<TableClass>,
 }
 
@@ -272,8 +305,7 @@ impl TableCell {
             .with_classes(vec![TableClass::Stub])
     }
 
-    /// A group-stub group-label cell (`TableClass::StubRowGroup`). StubRowGroup
-    /// comes last so its `vertical-align: top` overrides Row's `middle`.
+    /// A group-stub group-label cell (`TableClass::StubRowGroup`).
     pub(crate) fn new_stub_row_group(row: usize, index: usize, content: String) -> Self {
         Self::new(TableCellKind::GroupHeading, row, row, index, index, content)
             .with_classes(vec![TableClass::Row, TableClass::StubRowGroup])
@@ -436,7 +468,7 @@ pub struct TableRow {
     /// Resolved properties for this row's cells.
     pub properties: Parameters,
     /// Style classes recorded at build time (see `TableClass`) — row-scoped
-    /// ones, e.g. `Heading`. Ordered, like `TableCell::classes`.
+    /// ones, e.g. `Heading`. A set, like `TableCell::classes`.
     pub classes: Vec<TableClass>,
     /// Whether this row belongs in a table's header rather than its body.
     /// `false` by default; set `true` for a spanner, column-label, title or
