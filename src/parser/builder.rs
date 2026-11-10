@@ -1213,6 +1213,19 @@ fn build_facet(node: &Node, source: &SourceTree) -> Result<Facet> {
         }
     }
 
+    for (i, var) in row_vars.iter().chain(&column_vars).enumerate() {
+        if row_vars
+            .iter()
+            .chain(&column_vars)
+            .skip(i + 1)
+            .any(|v| v == var)
+        {
+            return Err(GgsqlError::ParseError(format!(
+                "FACET lists '{var}' more than once"
+            )));
+        }
+    }
+
     // Determine layout variant: if column_vars is empty, it's a wrap layout
     let layout = if column_vars.is_empty() {
         FacetLayout::Wrap {
@@ -1815,6 +1828,17 @@ mod tests {
             DRAW point MAPPING x AS x, y AS y
             FACET region
             FACET category
+        "#;
+
+        assert!(parse_test_query(query).is_err());
+    }
+
+    #[test]
+    fn test_visualise_facet_rejects_a_variable_repeated_across_by() {
+        let query = r#"
+            VISUALISE
+            DRAW point MAPPING x AS x, y AS y
+            FACET region BY region
         "#;
 
         assert!(parse_test_query(query).is_err());
