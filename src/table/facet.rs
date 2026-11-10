@@ -10,10 +10,10 @@ use crate::plot::ParameterValue;
 /// `SETTING` parameters a `TABULATE FACET` accepts.
 const TABLE_FACET_PARAMS: &[ParamDefinition] = &[
     ParamDefinition {
-        // Where group labels go: interleaved rows above each group, or a
-        // stub column on the left.
+        // Where group labels go: a stub column on the left, or interleaved
+        // rows above each group.
         name: "place",
-        default: DefaultParamValue::String("top"),
+        default: DefaultParamValue::String("left"),
         constraint: ParamConstraint::string_option(&["left", "top"]),
     },
     ParamDefinition {
@@ -56,7 +56,7 @@ pub(crate) fn setup_facet(facet: &Option<Facet>) -> Result<Option<Facet>, String
     if !resolved.properties.contains_key("place") {
         resolved.properties.insert(
             "place".to_string(),
-            ParameterValue::String("top".to_string()),
+            ParameterValue::String("left".to_string()),
         );
     }
     if !resolved.properties.contains_key("missing") {
@@ -71,9 +71,12 @@ pub(crate) fn setup_facet(facet: &Option<Facet>) -> Result<Option<Facet>, String
 
 /// Whether a resolved table facet weaves its group labels in as interleaved
 /// rows (`place => 'top'`) rather than group stub columns (`place =>
-/// 'left'`).
+/// 'left'`, the default).
 pub(crate) fn groups_are_woven(facet: &Facet) -> bool {
-    facet.properties.get("place") == Some(&ParameterValue::String("top".to_string()))
+    match facet.properties.get("place") {
+        Some(ParameterValue::String(place)) => place == "top",
+        _ => false, // unresolved facet: 'left' is the default
+    }
 }
 
 #[cfg(test)]
@@ -100,7 +103,7 @@ mod tests {
 
         assert_eq!(
             resolved.properties.get("place"),
-            Some(&ParameterValue::String("top".to_string()))
+            Some(&ParameterValue::String("left".to_string()))
         );
         assert_eq!(
             resolved.properties.get("missing"),
@@ -116,17 +119,22 @@ mod tests {
 
     #[test]
     fn groups_are_woven_only_when_place_is_top() {
-        let woven = setup_facet(&Some(table_facet(Parameters::new())))
-            .unwrap()
-            .unwrap();
-        assert!(groups_are_woven(&woven));
-
         let mut settings = Parameters::new();
         settings.insert(
             "place".to_string(),
-            ParameterValue::String("left".to_string()),
+            ParameterValue::String("top".to_string()),
         );
-        let left = setup_facet(&Some(table_facet(settings))).unwrap().unwrap();
+        let woven = setup_facet(&Some(table_facet(settings))).unwrap().unwrap();
+        assert!(groups_are_woven(&woven));
+
+        let left = setup_facet(&Some(table_facet(Parameters::new())))
+            .unwrap()
+            .unwrap();
         assert!(!groups_are_woven(&left));
+    }
+
+    #[test]
+    fn groups_are_woven_defaults_to_left_before_resolution() {
+        assert!(!groups_are_woven(&table_facet(Parameters::new())));
     }
 }

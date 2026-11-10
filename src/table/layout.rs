@@ -272,10 +272,11 @@ impl TableCell {
             .with_classes(vec![TableClass::Stub])
     }
 
-    /// A group-stub group-label cell (`TableClass::StubRowGroup`).
+    /// A group-stub group-label cell (`TableClass::StubRowGroup`). StubRowGroup
+    /// comes last so its `vertical-align: top` overrides Row's `middle`.
     pub(crate) fn new_stub_row_group(row: usize, index: usize, content: String) -> Self {
         Self::new(TableCellKind::GroupHeading, row, row, index, index, content)
-            .with_classes(vec![TableClass::StubRowGroup, TableClass::Row])
+            .with_classes(vec![TableClass::Row, TableClass::StubRowGroup])
     }
 
     /// A spanner cell (`TableClass::Spanner`, `SpannerLabel`, centered).

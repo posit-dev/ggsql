@@ -77,8 +77,9 @@ pub fn resolve_table_with_reader(query: &str, reader: &dyn Reader) -> Result<Res
     // can name a SPAN id in place of the columns it covers.
     let formats = setup_formats(&df, &table.formats, &spans)?;
     let columns = setup_columns(&df, &spans, &labels, &formats, facet.as_ref());
-    // Only FACET removes columns today; if that changes, revisit this error.
-    if columns.is_empty() {
+    // A `place => 'left'` facet keeps its columns as group stubs, so check
+    // for body columns rather than emptiness.
+    if columns.iter().all(|c| c.is_group_stub()) {
         return Err(GgsqlError::ValidationError(
             "TABULATE FACET covers every column: no body columns left to show".to_string(),
         ));
@@ -523,8 +524,11 @@ mod integration_tests {
             )
             .unwrap();
 
-        let resolved =
-            resolve_table_with_reader("TABULATE * FROM t FACET region", &reader).unwrap();
+        let resolved = resolve_table_with_reader(
+            "TABULATE * FROM t FACET region SETTING place => 'top'",
+            &reader,
+        )
+        .unwrap();
 
         // FACET consumes its column: only quarter and sales remain.
         let names: Vec<&str> = resolved.columns().iter().map(|c| c.name.as_str()).collect();
@@ -568,8 +572,11 @@ mod integration_tests {
             )
             .unwrap();
 
-        let resolved =
-            resolve_table_with_reader("TABULATE * FROM t FACET region, quarter", &reader).unwrap();
+        let resolved = resolve_table_with_reader(
+            "TABULATE * FROM t FACET region, quarter SETTING place => 'top'",
+            &reader,
+        )
+        .unwrap();
 
         let mut headings: Vec<_> = resolved
             .cells()
@@ -597,7 +604,7 @@ mod integration_tests {
             .unwrap();
 
         let resolved = resolve_table_with_reader(
-            "TABULATE * FROM t FACET region, quarter SETTING separator => ' - '",
+            "TABULATE * FROM t FACET region, quarter SETTING place => 'top', separator => ' - '",
             &reader,
         )
         .unwrap();
@@ -698,7 +705,7 @@ mod integration_tests {
             .unwrap();
 
         let resolved = resolve_table_with_reader(
-            "TABULATE * FROM t FACET name SETTING missing => 'drop'",
+            "TABULATE * FROM t FACET name SETTING place => 'top', missing => 'drop'",
             &reader,
         )
         .unwrap();
