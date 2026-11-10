@@ -118,6 +118,16 @@ mod tests {
     }
 
     #[test]
+    fn setup_rejects_an_invalid_place_value() {
+        let mut settings = Parameters::new();
+        settings.insert(
+            "place".to_string(),
+            ParameterValue::String("bottom".to_string()),
+        );
+        assert!(setup_facet(&Some(table_facet(settings))).is_err());
+    }
+
+    #[test]
     fn groups_are_woven_only_when_place_is_top() {
         let mut settings = Parameters::new();
         settings.insert(
