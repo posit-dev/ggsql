@@ -57,14 +57,14 @@ CREATE TEMP TABLE my_data AS
 SELECT DISTINCT ON (species, island, sex) * FROM ggsql:penguins
 
 TABULATE * FROM my_data
-  FACET sex
+FACET sex
 ```
 
 Omit missing group variables from the table.
 
 ```{ggsql}
 TABULATE * FROM my_data
-  FACET sex SETTING missing => 'drop'
+FACET sex SETTING missing => 'drop'
 ```
 
 Alternatively, missing group variables can be given a proper label using `FORMAT`.
@@ -72,22 +72,22 @@ Note that `missing => 'drop'` has priority over any relabeling in `FORMAT`.
 
 ```{ggsql}
 TABULATE * FROM my_data
-  FACET sex
-  FORMAT sex RENAMING null => 'unknown'
+FACET sex
+FORMAT sex RENAMING null => 'unknown'
 ```
 
 Place grouping labels in rows above their members.
 
 ```{ggsql}
 TABULATE * FROM my_data
-  FACET sex SETTING place => 'top'
+FACET sex SETTING place => 'top'
 ```
 
 Using multiple group columns to group gives nested labels.
 
 ```{ggsql}
 TABULATE * FROM my_data
-  FACET species, island
+FACET species, island
 ```
 
 The labels from multiple groups can be collapsed to a single stub column (or single rows) by using the `separator` setting to join the labels.
@@ -95,8 +95,8 @@ Labels are joined after `FORMAT RENAMING` is applied.
 
 ```{ggsql}
 TABULATE * FROM my_data
-  FACET species, island
-    SETTING separator => ' - '
+FACET species, island
+  SETTING separator => ' - '
 ```
 
 When group labels are placed in the stub, the labels can be controlled by `LABEL`.
@@ -104,6 +104,6 @@ In case of `separator`-joined labels, the first variable (`species` in the examp
 
 ```{ggsql}
 TABULATE * FROM my_data
-  FACET species, island
-  LABEL island => 'Place', species => 'Type'
+FACET species, island
+LABEL island => 'Place', species => 'Type'
 ```
