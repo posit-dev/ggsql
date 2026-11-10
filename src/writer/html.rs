@@ -4,10 +4,10 @@
 //! - `cells` → `<thead>`/`<tbody>` rows. A `Caption`-kind cell is pulled out
 //!   of the grid before row rendering and emitted as a `<caption>` (HTML
 //!   requires it as `<table>`'s first child) — see `write_table`. Styling is
-//!   expressed per the `css_mode` option: `class` (the default) puts
-//!   `ggsql_*` classes on the elements, backed by a `<style>` block; `inline`
-//!   renders the same declarations into each element's `style` attribute
-//!   (the two gt `as_raw_html()` modes).
+//!   expressed per the `css_mode` option: `inline` (the default) renders
+//!   declarations into each element's `style` attribute; `class` puts
+//!   `ggsql_*` classes on the elements, backed by a `<style>` block (the two
+//!   gt `as_raw_html()` modes).
 //! - `columns` → a `<colgroup>`, one `<col>` per column, with a `style`
 //!   attribute from that column's resolved `width` (a bare `<col>` for a
 //!   column with none) in both modes — targeted column styling stays inline,
@@ -42,17 +42,17 @@ pub struct HtmlWriter {
 /// `as_raw_html()` modes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 enum CssMode {
-    /// `ggsql_*` classes on the elements, backed by a `<style>` block
-    /// carrying the style classes' rules (gt's `inline_css = FALSE`).
-    #[default]
-    Class,
     /// Declarations rendered into each element's `style` attribute; no
     /// classes, no `<style>` block (gt's `inline_css = TRUE`).
+    #[default]
     Inline,
+    /// `ggsql_*` classes on the elements, backed by a `<style>` block
+    /// carrying the style classes' rules (gt's `inline_css = FALSE`).
+    Class,
 }
 
 impl HtmlWriter {
-    /// Create a new HtmlWriter (class mode; see `css_mode`).
+    /// Create a new HtmlWriter (inline mode; see `css_mode`).
     pub fn new() -> Self {
         Self::default()
     }
@@ -61,14 +61,14 @@ impl HtmlWriter {
 impl Writer for HtmlWriter {
     type Output = String;
 
-    /// Takes one option: `css_mode` — `class` (default) renders `ggsql_*`
-    /// classes backed by a `<style>` block; `inline` renders the same
-    /// declarations into each element's `style` attribute.
+    /// Takes one option: `css_mode` — `inline` (default) renders declarations
+    /// into each element's `style` attribute; `class` renders `ggsql_*`
+    /// classes backed by a `<style>` block.
     fn from_options(options: &WriterOptions) -> Result<Self> {
         options.reject_unknown(&["css_mode"])?;
         let css_mode = match options.one_of("css_mode", &["inline", "class"])? {
-            Some("inline") => CssMode::Inline,
-            _ => CssMode::Class,
+            Some("class") => CssMode::Class,
+            _ => CssMode::Inline,
         };
         Ok(Self { css_mode })
     }
@@ -317,7 +317,11 @@ fn class_declarations(class: TableClass) -> &'static [(&'static str, &'static st
             ("border-top-color", "#FFFFFF"),
             ("border-top-width", "0"),
         ],
-        TableClass::Caption => &[("padding-top", "4px"), ("padding-bottom", "4px")],
+        TableClass::Caption => &[
+            ("caption-side", "bottom"),
+            ("padding-top", "4px"),
+            ("padding-bottom", "4px"),
+        ],
         TableClass::Heading => &[
             ("background-color", "#FFFFFF"),
             ("text-align", "center"),
@@ -470,14 +474,19 @@ fn styling_attr(classes: &[TableClass], mode: CssMode) -> String {
 }
 
 /// Render one `TableCell` as an HTML `<th>`/`<td>`, picked from
-/// `cell.is_header()`, with a `colspan`/`rowspan` attribute only when the
-/// cell actually spans more than one column/row, and a `scope` attribute per
-/// `header_scope`. Styling per `mode` via `styling_attr` — classes in
-/// `INNER_CLASSES` go on a `<div>` around the content rather than on the
-/// `<th>`/`<td>` itself. Not used for a `Caption`-kind cell — see
-/// `render_caption`.
+/// `cell.is_header()` — except a `Filler`, which renders as a `<td>` even in
+/// the header since it labels nothing. A `colspan`/`rowspan` attribute goes
+/// on only when the cell actually spans more than one column/row, and a
+/// `scope` attribute per `header_scope`. Styling per `mode` via
+/// `styling_attr` — classes in `INNER_CLASSES` go on a `<div>` around the
+/// content rather than on the `<th>`/`<td>` itself. Not used for a
+/// `Caption`-kind cell — see `render_caption`.
 fn render_cell(cell: &TableCell, mode: CssMode) -> String {
-    let tag = if cell.is_header() { "th" } else { "td" };
+    let tag = if cell.is_header() && cell.kind != TableCellKind::Filler {
+        "th"
+    } else {
+        "td"
+    };
     let colspan = cell.width();
     let rowspan = cell.height();
     let mut attrs = String::new();
@@ -487,7 +496,7 @@ fn render_cell(cell: &TableCell, mode: CssMode) -> String {
     if rowspan > 1 {
         attrs.push_str(&format!(" rowspan=\"{rowspan}\""));
     }
-    if let Some(scope) = header_scope(cell.kind, colspan) {
+    if let Some(scope) = header_scope(cell.kind) {
         attrs.push_str(&format!(" scope=\"{scope}\""));
     }
     // `slots_by_row`'s slots borrow the layout's cells, so `hjust` can't be
@@ -510,15 +519,15 @@ fn render_cell(cell: &TableCell, mode: CssMode) -> String {
     }
 }
 
-/// `scope` value for a header cell of `kind` spanning `colspan` columns, or
-/// `None` if `scope` doesn't apply. `ColumnLabel`/`StubHead` are always
-/// single-column (`"col"`); `Spanner` can span several (`"colgroup"` if
-/// `colspan > 1`); `StubRowLabel` heads its row (`"row"`); everything else
+/// `scope` value for a header cell of `kind`, or `None` if `scope` doesn't
+/// apply. `ColumnLabel`/`StubHead` are always single-column (`"col"`); a
+/// `Spanner` is a column-group header even when its group has one column
+/// (`"colgroup"`); `StubRowLabel` heads its row (`"row"`); everything else
 /// gets none.
-fn header_scope(kind: TableCellKind, colspan: usize) -> Option<&'static str> {
+fn header_scope(kind: TableCellKind) -> Option<&'static str> {
     match kind {
         TableCellKind::ColumnLabel | TableCellKind::StubHead => Some("col"),
-        TableCellKind::Spanner => Some(if colspan > 1 { "colgroup" } else { "col" }),
+        TableCellKind::Spanner => Some("colgroup"),
         TableCellKind::StubRowLabel => Some("row"),
         TableCellKind::Body
         | TableCellKind::Title
@@ -564,9 +573,9 @@ fn render_colgroup(columns: &[TableColumn]) -> Option<String> {
 
 /// Translate a column's resolved `FORMAT` properties into a `<col>`'s
 /// `style` attribute value, or `None` if it has no `width`. `width`'s value
-/// is already validated (by `ParamConstraint::string_numeric_with_unit`) to
-/// be a number immediately followed by `px` or `%`, which is exactly CSS's
-/// own `width` syntax, so it's used as-is.
+/// is already validated (by `ParamConstraint::number_with_unit`) to be a
+/// number immediately followed by `px` or `%`, which is exactly CSS's own
+/// `width` syntax, so it's used as-is.
 fn column_style(properties: &Parameters) -> Option<String> {
     match properties.get("width") {
         Some(ParameterValue::String(width)) => Some(format!("width: {width}")),
@@ -633,10 +642,10 @@ mod render_tests {
     }
 
     #[test]
-    fn from_options_defaults_to_class_mode() {
-        assert_eq!(HtmlWriter::new().css_mode, CssMode::Class);
+    fn from_options_defaults_to_inline_mode() {
+        assert_eq!(HtmlWriter::new().css_mode, CssMode::Inline);
         let writer = HtmlWriter::from_options(&WriterOptions::new()).unwrap();
-        assert_eq!(writer.css_mode, CssMode::Class);
+        assert_eq!(writer.css_mode, CssMode::Inline);
     }
 
     #[test]
@@ -681,6 +690,24 @@ mod render_tests {
         assert_eq!(
             render_cell(&c, CssMode::Inline),
             "<th rowspan=\"2\" scope=\"col\"></th>"
+        );
+    }
+
+    #[test]
+    fn render_cell_emits_a_filler_as_td_even_in_the_header() {
+        // A filler labels nothing, so it must not announce as a header cell.
+        let c = cell(TableCellKind::Filler, 0, 1, 0, 0);
+        assert_eq!(render_cell(&c, CssMode::Inline), "<td rowspan=\"2\"></td>");
+    }
+
+    #[test]
+    fn render_cell_emits_a_single_column_spanner_with_colgroup_scope() {
+        // A spanner is a column-group header even when the group has one
+        // column.
+        let c = cell(TableCellKind::Spanner, 0, 0, 0, 0);
+        assert_eq!(
+            render_cell(&c, CssMode::Inline),
+            "<th scope=\"colgroup\"></th>"
         );
     }
 
@@ -856,7 +883,7 @@ mod render_tests {
         assert_eq!(
             before_tbody,
             "<thead>\n\
-             <tr><th scope=\"col\"></th><th rowspan=\"2\" scope=\"col\"></th></tr>\n\
+             <tr><th scope=\"colgroup\"></th><th rowspan=\"2\" scope=\"col\"></th></tr>\n\
              <tr><th scope=\"col\"></th></tr>\n\
              </thead>\n"
         );
@@ -919,7 +946,9 @@ mod render_tests {
             TableRow::body(),
         ];
 
-        let html = HtmlWriter::new().write_table(&layout(cells, rows)).unwrap();
+        let writer =
+            HtmlWriter::from_options(&WriterOptions::parse(["css_mode=class"]).unwrap()).unwrap();
+        let html = writer.write_table(&layout(cells, rows)).unwrap();
 
         assert!(html.contains("<tr class=\"ggsql_heading\"><th class=\"ggsql_title\">"));
         // The column-label row has no recorded row classes, so its <tr> is
@@ -971,7 +1000,8 @@ mod tests {
             .unwrap();
         let spec = reader.execute("TABULATE * FROM sales").unwrap();
 
-        let writer = HtmlWriter::new();
+        let writer =
+            HtmlWriter::from_options(&WriterOptions::parse(["css_mode=class"]).unwrap()).unwrap();
         let html = writer.render(&spec).unwrap();
 
         // Precise per-dtype alignment is covered directly by
@@ -1026,7 +1056,8 @@ mod tests {
             .execute("TABULATE * FROM sales SPAN Info OVER id, name")
             .unwrap();
 
-        let writer = HtmlWriter::new();
+        let writer =
+            HtmlWriter::from_options(&WriterOptions::parse(["css_mode=class"]).unwrap()).unwrap();
         let html = writer.render(&spec).unwrap();
 
         // "amount" has no spanner, so its label stretches up into the
@@ -1079,7 +1110,8 @@ mod tests {
             .execute("TABULATE * FROM sales FORMAT STUB region")
             .unwrap();
 
-        let writer = HtmlWriter::new();
+        let writer =
+            HtmlWriter::from_options(&WriterOptions::parse(["css_mode=class"]).unwrap()).unwrap();
         let html = writer.render(&spec).unwrap();
 
         // The stub head renders as a <th scope="col">, blank by default (no

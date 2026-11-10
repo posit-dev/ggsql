@@ -28,7 +28,7 @@
 //! key–value [`WriterOptions`] when a frontend collects settings from a user
 //! without knowing which writer they picked.
 
-use crate::reader::ResolvedSpec;
+use crate::reader::{ResolvedPlot, ResolvedSpec};
 use crate::{DataFrame, GgsqlError, Plot, Result, TableLayout};
 use std::collections::HashMap;
 
@@ -193,6 +193,19 @@ pub trait Writer {
         ))
     }
 
+    /// Render a resolved plot to output format
+    ///
+    /// Unpacks the `ResolvedPlot` and delegates to `write_plot()` — the
+    /// entry point for callers holding a resolved plot rather than its
+    /// parts.
+    ///
+    /// # Errors
+    ///
+    /// Returns whatever `write_plot()` returns.
+    fn render_plot(&self, plot: &ResolvedPlot) -> Result<Self::Output> {
+        self.write_plot(plot.plot(), plot.data())
+    }
+
     /// Render a ResolvedSpec (a resolved plot or table) to output format
     ///
     /// This is the main entry point for generating visualization output.
@@ -223,7 +236,7 @@ pub trait Writer {
     /// ```
     fn render(&self, spec: &ResolvedSpec) -> Result<Self::Output> {
         match spec {
-            ResolvedSpec::Plot(plot) => self.write_plot(plot.plot(), plot.data()),
+            ResolvedSpec::Plot(plot) => self.render_plot(plot),
             ResolvedSpec::Table(table) => self.write_table(table.layout()),
         }
     }

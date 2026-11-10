@@ -7,7 +7,8 @@ use serde::{Deserialize, Serialize};
 use super::layout::{TableCell, TableClass, TableColumn, TableLayout, TableRow};
 use crate::labels::Labels;
 use crate::params::{
-    validate_parameter, DefaultParamValue, ParamConstraint, ParamDefinition, Parameters,
+    validate_parameter, DefaultParamValue, ParamConstraint, ParamDefinition, ParameterValue,
+    Parameters,
 };
 
 /// One `SPAN` clause: a named group of columns rendered as one spanner cell
@@ -182,12 +183,11 @@ fn assign_spanner_levels(spans: &[Spanner]) -> Vec<usize> {
     let mut levels: Vec<usize> = Vec::with_capacity(spans.len());
 
     for span in spans {
+        // An explicit `level => null` falls into `_` with an absent setting:
+        // auto-assign either way.
         let level = match span.settings.get("level") {
-            Some(value) => value
-                .as_number()
-                .expect("Spanner::validate_settings already checked 'level' is a number")
-                as usize,
-            None => {
+            Some(ParameterValue::Number(value)) => *value as usize,
+            _ => {
                 // One more than the highest level of any already-assigned
                 // spanner whose columns intersect this one's. Never revisits
                 // a lower level, so a chain of pairwise-but-not-all
@@ -490,6 +490,18 @@ mod tests {
     }
 
     #[test]
+    fn assign_spanner_levels_treats_an_explicit_null_level_as_unset() {
+        let spans = vec![
+            spanner(&["a"]),
+            spanner_with_setting(&["b"], "level", ParameterValue::Null),
+        ];
+
+        let levels = assign_spanner_levels(&spans);
+
+        assert_eq!(levels, vec![1, 1]);
+    }
+
+    #[test]
     fn assign_spanner_levels_compacts_gaps_left_by_explicit_levels() {
         let spans = vec![
             spanner_with_setting(&["a"], "level", ParameterValue::Number(1.0)),
@@ -640,6 +652,20 @@ mod tests {
         ]);
 
         assert!(table.resolve_spanner_ids().is_err());
+    }
+
+    #[test]
+    fn resolve_spanner_ids_deduplicates_repeated_columns() {
+        let table = table_with_spans(vec![
+            spanner_with_id(&["a", "b"], "x"),
+            spanner_with_id(&["a", "a"], "y"),
+            spanner(&["x", "b", "c"]),
+        ]);
+
+        let resolved = table.resolve_spanner_ids().unwrap();
+
+        assert_eq!(resolved[1].columns, vec!["a"]);
+        assert_eq!(resolved[2].columns, vec!["a", "b", "c"]);
     }
 
     #[test]

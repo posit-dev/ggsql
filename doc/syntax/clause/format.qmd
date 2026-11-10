@@ -35,6 +35,13 @@ FORMAT foo, bar
 FORMAT STUB foo
 ```
 
+A column named `any`, `body` or `stub` is read as a target when it comes first in the column list, so quote it to format the column itself:
+
+```ggsql
+-- Format the column named `body`, not the BODY target
+FORMAT `body`, foo
+```
+
 ## Column selection
 
 ```ggsql
@@ -66,8 +73,9 @@ SETTING <parameter> => <value>, ...
 It takes a typical `SETTING` clause with key-value pairs.
 It currently takes the following parameters:
 
-* `hjust`: numeric value between 0-1 or string, for horizontal justification of cell content. 
-  Strings can be `'left'`, `'right'`', `'centre'`, or `'center'`.
+* `hjust`: numeric value between 0-1 or string, for horizontal justification of cell content.
+Unset, the default depends on the column: right-aligned for numbers and stub columns, left-aligned otherwise.
+  Strings can be `'left'`, `'right'`, `'centre'`, or `'center'`.
   By default content is left-aligned for strings, and right-aligned for numbers or stub columns.
 * `width`: a unit as a string giving the number of pixels (e.g. `'100px'`) or a percentage (`'20%'`).
   Sets the display width of the column.

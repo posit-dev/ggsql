@@ -33,7 +33,7 @@ The support of rich text in tables is planned but not yet implemented.
 
 ## Examples
 
-Unlike using aliases in `TABULATE`, the `LABEL` clause let's you change column labels without changing column order
+Unlike using aliases in `TABULATE`, the `LABEL` clause lets you change column labels without changing column order
 
 ```{ggsql}
 CREATE TEMP TABLE my_data AS SELECT * FROM ggsql:penguins LIMIT 5

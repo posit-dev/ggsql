@@ -22,6 +22,9 @@
 
 ### Changed
 
+- **Breaking**: `TABULATE` is now a reserved word after `VISUALISE`/`TABULATE`,
+  like `VISUALISE`. Reference a column named `tabulate` there quoted
+  (`'tabulate'`); the SQL part of a query is unaffected.
 - The reader/dialect layer was refactored around a central dialect registry with
   per-database dialect implementations (#569). As part of this, some
   previously-public items changed: the `CacheBackend` trait moved to a
@@ -30,6 +33,8 @@
 - Scale resolution now detects and converts temporal-unit mismatches and errors
   on unrepresentable ranges instead of producing silently wrong scales (#569).
 - `Plot.labels` field is no longer `Option<Labels>` but plain `Labels`.
+- The CLI now always prints query warnings (e.g. extra `VISUALISE`/`TABULATE`
+  statements being ignored) to stderr, not only with `-v`.
 - Replaced `CLAUDE.md` files with `AGENTS.md` files.
 
 ### Fixed

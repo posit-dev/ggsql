@@ -164,7 +164,7 @@ mod tests {
 
         // Last, and the only one that tolerates a headless box.
         #[cfg(feature = "png")]
-        assert_png_or_skip(PngWriter::new(w, h, dpi).write_plot(spec.plot(), spec.data()));
+        assert_png_or_skip(PngWriter::new(w, h, dpi).render_plot(&spec));
     }
 
     /// The panels' `(top, right)` strip labels, in panel order. Exercises the
@@ -1505,12 +1505,10 @@ mod svg_text {
         let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
         let spec = reader.execute(query).unwrap().into_plot().unwrap();
 
-        let as_text = SvgWriter::new(640, 480, 96.0)
-            .write_plot(spec.plot(), spec.data())
-            .unwrap();
+        let as_text = SvgWriter::new(640, 480, 96.0).render_plot(&spec).unwrap();
         let as_paths = SvgWriter::new(640, 480, 96.0)
             .outline_text(true)
-            .write_plot(spec.plot(), spec.data())
+            .render_plot(&spec)
             .unwrap();
 
         assert!(as_text.contains("<text"), "text mode should emit <text>");
@@ -1535,7 +1533,7 @@ mod svg_text {
             let options = WriterOptions::parse(pairs).unwrap();
             SvgWriter::from_options(&options)
                 .unwrap()
-                .write_plot(spec.plot(), spec.data())
+                .render_plot(&spec)
                 .unwrap()
         };
 
@@ -1566,12 +1564,10 @@ mod svg_text {
         let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
         let spec = reader.execute(query).unwrap().into_plot().unwrap();
 
-        let bare = SvgWriter::new(640, 480, 96.0)
-            .write_plot(spec.plot(), spec.data())
-            .unwrap();
+        let bare = SvgWriter::new(640, 480, 96.0).render_plot(&spec).unwrap();
         let prefixed = SvgWriter::new(640, 480, 96.0)
             .id_prefix("fig1-")
-            .write_plot(spec.plot(), spec.data())
+            .render_plot(&spec)
             .unwrap();
 
         assert!(bare.contains("id=\"c0\""), "expected an unprefixed id");
@@ -1609,7 +1605,7 @@ mod pdf_structure {
         // 640 px at 96 dpi is 6⅔ in, which is 480 pt; 480 px is 360 pt.
         let pdf = PdfWriter::new(640, 480, 96.0)
             .compress(false)
-            .write_plot(spec().plot(), spec().data())
+            .render_plot(&spec())
             .unwrap();
         let text = String::from_utf8_lossy(&pdf);
         assert!(
@@ -1622,11 +1618,9 @@ mod pdf_structure {
     fn an_uncompressed_page_is_readable_and_a_compressed_one_is_smaller() {
         let readable = PdfWriter::new(640, 480, 96.0)
             .compress(false)
-            .write_plot(spec().plot(), spec().data())
+            .render_plot(&spec())
             .unwrap();
-        let compressed = PdfWriter::new(640, 480, 96.0)
-            .write_plot(spec().plot(), spec().data())
-            .unwrap();
+        let compressed = PdfWriter::new(640, 480, 96.0).render_plot(&spec()).unwrap();
 
         assert!(readable.starts_with(b"%PDF-"));
         assert!(compressed.starts_with(b"%PDF-"));
@@ -1642,7 +1636,7 @@ mod pdf_structure {
         // in whatever the reader substitutes.
         let pdf = PdfWriter::new(640, 480, 96.0)
             .compress(false)
-            .write_plot(spec().plot(), spec().data())
+            .render_plot(&spec())
             .unwrap();
         let text = String::from_utf8_lossy(&pdf);
         assert!(text.contains("/FontFile2"), "no embedded font programme");

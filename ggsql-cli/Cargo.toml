@@ -19,7 +19,7 @@ path = "src/main.rs"
 [[example]]
 name = "visual_test"
 path = "examples/visual_test.rs"
-required-features = ["png", "duckdb", "vegalite", "builtin-data"]
+required-features = ["png", "duckdb", "vegalite", "builtin-data", "html"]
 
 [dev-dependencies]
 # Decoding renders back to pixels, so `visual_test --baseline` can compare

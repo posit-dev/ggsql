@@ -67,13 +67,24 @@ pub struct Table {
 pub enum SelectionItem {
     /// `*`.
     Wildcard,
-    /// A column or a constant. `sql` is the verbatim source text (e.g.
-    /// `bill_dep AS Depth`); `name` is the output column name (`Depth`).
-    Column {
-        sql: String,
-        name: String,
-        source: Option<String>,
-    },
+    /// A source column. `id` is the dequoted column name; `alias` is the
+    /// dequoted `AS` name, if any.
+    Column { id: String, alias: Option<String> },
+    /// A constant. `value` is the literal verbatim as written (e.g. `'x'`);
+    /// `alias` is its dequoted `AS` name, which the grammar requires.
+    Constant { value: String, alias: String },
+}
+
+impl SelectionItem {
+    /// The output column name: the alias when written, else the column's
+    /// own name, dequoted. `None` for a wildcard.
+    pub fn name(&self) -> Option<&str> {
+        match self {
+            SelectionItem::Wildcard => None,
+            SelectionItem::Column { id, alias } => Some(alias.as_deref().unwrap_or(id)),
+            SelectionItem::Constant { alias, .. } => Some(alias),
+        }
+    }
 }
 
 impl Table {
@@ -100,7 +111,8 @@ impl Table {
     /// Expand a SPAN's `OVER` entry that names an earlier spanner's `id`
     /// into that spanner's own columns — `SPAN y OVER x_id, c` (after
     /// `SPAN x_id OVER a, b`) resolves to columns a, b, c for `y`. Only
-    /// ids from earlier spans are recognised; an id declared later, or a
+    /// Duplicates within the expanded columns are dropped, keeping the
+    /// first occurrence. Only
     /// genuine typo, is left as a literal string and caught downstream as
     /// an unknown column, the same as any other bad reference.
     ///
@@ -113,13 +125,17 @@ impl Table {
         let mut ids: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
 
         for span in &self.spans {
-            let columns = span
+            // Dedup after id expansion: a repeated column or an id naming
+            // already-listed columns would otherwise trip gather_columns.
+            let mut seen = std::collections::HashSet::new();
+            let columns: Vec<String> = span
                 .columns
                 .iter()
                 .flat_map(|entry| match ids.get(entry) {
                     Some(&idx) => resolved[idx].columns.clone(),
                     None => vec![entry.clone()],
                 })
+                .filter(|column| seen.insert(column.clone()))
                 .collect();
 
             let mut resolved_span = span.clone();
@@ -131,7 +147,6 @@ impl Table {
             {
                 return Err(format!("Duplicate SPAN id '{}'", resolved_span.id));
             }
-
             resolved.push(resolved_span);
         }
 
@@ -289,7 +304,10 @@ pub struct Format {
 const FORMAT_PARAMS: &[ParamDefinition] = &[
     ParamDefinition {
         name: "hjust",
-        default: DefaultParamValue::Number(0.5),
+        // No default: an unset hjust resolves per column in
+        // resolve_column_properties — right for a STUB or numeric column,
+        // left otherwise.
+        default: DefaultParamValue::Null,
         // Both spellings accepted here; resolve_column_properties standardises
         // "centre" to "center" when it builds a column's TableCell properties.
         constraint: ParamConstraint::string_option_or_number(
@@ -302,7 +320,7 @@ const FORMAT_PARAMS: &[ParamDefinition] = &[
         // No default: an unset width leaves column sizing to the writer,
         // not to a value resolved here.
         default: DefaultParamValue::Null,
-        constraint: ParamConstraint::string_numeric_with_unit(&["px", "%"]),
+        constraint: ParamConstraint::number_with_unit(NumberConstraint::min(0.0), &["px", "%"]),
     },
 ];
 

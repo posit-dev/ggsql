@@ -193,18 +193,6 @@ pub fn value_to_string(array: &ArrayRef, idx: usize) -> String {
             .value(idx)
             .to_string(),
         DataType::Boolean => as_bool(array).unwrap().value(idx).to_string(),
-        DataType::Date32 => {
-            let days = as_date32(array).unwrap().value(idx);
-            format!("{}", days)
-        }
-        DataType::Date64 => {
-            let ms = array
-                .as_any()
-                .downcast_ref::<arrow::array::Date64Array>()
-                .unwrap()
-                .value(idx);
-            format!("{}", ms)
-        }
         _ => arrow::util::display::ArrayFormatter::try_new(array.as_ref(), &Default::default())
             .map(|f| f.value(idx).to_string())
             .unwrap_or_else(|_| format!("{:?}", array.data_type())),
@@ -303,5 +291,8 @@ mod tests {
 
         let arr: ArrayRef = Arc::new(Float64Array::from(vec![3.24]));
         assert_eq!(value_to_string(&arr, 0), "3.24");
+
+        let arr: ArrayRef = Arc::new(Date32Array::from(vec![19737]));
+        assert_eq!(value_to_string(&arr, 0), "2024-01-15");
     }
 }

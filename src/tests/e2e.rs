@@ -955,3 +955,39 @@ fn test_label_with_polar_project() {
         serde_json::to_string_pretty(encoding).unwrap()
     );
 }
+
+#[test]
+fn test_execute_dispatches_plot_and_table() {
+    let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+    reader
+        .execute_sql("CREATE TABLE sales AS SELECT 1 AS id")
+        .unwrap();
+
+    let plot_spec = reader
+        .execute("SELECT 1 as x, 2 as y VISUALISE x, y DRAW point")
+        .unwrap();
+    assert!(plot_spec.as_plot().is_some());
+    assert!(plot_spec.as_table().is_none());
+
+    let table_spec = reader.execute("TABULATE * FROM sales").unwrap();
+    assert!(table_spec.as_table().is_some());
+    assert!(table_spec.as_plot().is_none());
+
+    let writer = VegaLiteWriter::new();
+    assert!(writer.render(&table_spec).is_err());
+}
+
+#[test]
+fn test_execute_without_a_spec_names_both_statement_kinds() {
+    let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+    let err = match reader.execute("SELECT 1") {
+        Ok(_) => panic!("expected a no-spec error"),
+        Err(err) => err,
+    };
+    assert!(
+        err.to_string()
+            .contains("No VISUALISE or TABULATE statement"),
+        "unexpected error: {err}"
+    );
+}

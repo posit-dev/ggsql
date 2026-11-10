@@ -1,5 +1,5 @@
 import "./styles.css";
-import { PlotView } from "ggsql-wasm";
+import { GgsqlPlot, PlotView } from "ggsql-wasm";
 import { WasmContextManager } from "./context";
 import { EditorManager } from "./editor";
 import { TableManager } from "./tableManager";
@@ -133,10 +133,20 @@ async function executeQuery(query: string) {
     setStatus("Executing query...", "loading");
 
     if (contextManager.hasVisual(query)) {
-      // The view is kept across queries: it owns the ResizeObserver, and
-      // re-solving the layout on resize is the point of drawing at all.
-      plotView.setPlot(contextManager.execute(query));
-      showProblems([], plotView.warnings);
+      const result = contextManager.execute(query);
+      if (result instanceof GgsqlPlot) {
+        // The view is kept across queries: it owns the ResizeObserver, and
+        // re-solving the layout on resize is the point of drawing at all.
+        plotView.setPlot(result);
+        showProblems([], plotView.warnings);
+      } else {
+        // A table never redraws, so the markup is copied out and the wasm
+        // object freed on the spot.
+        clearPlot();
+        vizOutput.innerHTML = result.html;
+        showProblems([], result.warnings);
+        result.free();
+      }
     } else {
       clearPlot();
       const result = JSON.parse(contextManager.executeSql(query));

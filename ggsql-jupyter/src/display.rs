@@ -188,10 +188,11 @@ pub fn format_display_data(
 /// display_data. No `RenderHints` involved — a plain `<table>` needs no
 /// container sizing or Positron-specific wrapping.
 fn format_table(html: String) -> Value {
+    // No text/plain fallback: there is no plain-text table writer yet — add
+    // one here once there is.
     json!({
         "data": {
             "text/html": html,
-            "text/plain": "ggsql table".to_string()
         },
         "metadata": {},
         "transient": {}
@@ -472,7 +473,6 @@ mod tests {
             panic!("expected a bundle");
         };
         assert_eq!(display["data"]["text/html"], html);
-        assert!(display["data"]["text/plain"].is_string());
     }
 
     #[test]

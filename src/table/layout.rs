@@ -289,20 +289,27 @@ impl TableCell {
 
     /// The title cell (`TableClass::Title`), spanning all `ncol` columns.
     pub(crate) fn new_title(ncol: usize, content: String) -> Self {
-        Self::new(TableCellKind::Title, 0, 0, 0, ncol - 1, content)
+        Self::new(TableCellKind::Title, 0, 0, 0, ncol.max(1) - 1, content)
             .with_classes(vec![TableClass::Title])
     }
 
     /// The subtitle cell (`TableClass::Subtitle`), spanning all `ncol`
     /// columns.
     pub(crate) fn new_subtitle(row: usize, ncol: usize, content: String) -> Self {
-        Self::new(TableCellKind::Subtitle, row, row, 0, ncol - 1, content)
-            .with_classes(vec![TableClass::Subtitle])
+        Self::new(
+            TableCellKind::Subtitle,
+            row,
+            row,
+            0,
+            ncol.max(1) - 1,
+            content,
+        )
+        .with_classes(vec![TableClass::Subtitle])
     }
 
     /// The caption cell (`TableClass::Caption`), spanning all `ncol` columns.
     pub(crate) fn new_caption(ncol: usize, content: String) -> Self {
-        Self::new(TableCellKind::Caption, 0, 0, 0, ncol - 1, content)
+        Self::new(TableCellKind::Caption, 0, 0, 0, ncol.max(1) - 1, content)
             .with_classes(vec![TableClass::Caption])
     }
 
@@ -729,10 +736,10 @@ impl TableLayout {
             self.columns, bottom.columns,
             "rowbind both sides to have identical columns"
         );
-        if self.cells.is_empty() {
+        if self.rows.is_empty() {
             return bottom;
         }
-        if bottom.cells.is_empty() {
+        if bottom.rows.is_empty() {
             return self;
         }
 
@@ -881,7 +888,7 @@ pub(crate) fn create_heading(
     subtitle: Option<&str>,
     columns: &[TableColumn],
 ) -> TableLayout {
-    let ncol = columns.len().max(1);
+    let ncol = columns.len();
     let mut cells = Vec::new();
     if let Some(title) = title {
         cells.push(TableCell::new_title(ncol, title.to_string()));
@@ -909,10 +916,7 @@ pub(crate) fn create_caption(caption: Option<&str>, columns: &[TableColumn]) -> 
         Some(caption) => TableLayout::new(
             columns.to_vec(),
             vec![TableRow::caption()],
-            vec![TableCell::new_caption(
-                columns.len().max(1),
-                caption.to_string(),
-            )],
+            vec![TableCell::new_caption(columns.len(), caption.to_string())],
         ),
         None => TableLayout::new(columns.to_vec(), Vec::new(), Vec::new()),
     }
@@ -1213,6 +1217,18 @@ mod assembly_tests {
 
         assert_eq!(cells.len(), 1);
         assert_eq!(cells[0].top, 0);
+    }
+
+    #[test]
+    fn rowbind_offsets_by_rows_even_when_the_top_has_no_cells() {
+        let mut top = layout_wide(Vec::new(), 1);
+        top.rows = vec![TableRow::default(); 2];
+        let body = vec![cell(TableCellKind::Body, 0, 0, "1")];
+
+        let cells = top.rowbind(layout(body)).cells;
+
+        assert_eq!(cells[0].top, 2);
+        assert_eq!(cells[0].bottom, 2);
     }
 
     #[test]
