@@ -42,15 +42,15 @@ It currently takes the following parameters:
     * `'last'` (default) Keep the rows with missing group values and display these underneath regular groups.
     * `'drop'` Removes the rows with missing group values from the output table.
 * `place`: Placement options of the group labels. One of the following:
-   * `'top'` (default) Interleaves table body rows with group label rows. 
+   * `'left'` (default) Places group labels in the stub on the left. Group labels are vertically merged across member rows.
+   * `'top'` Interleaves table body rows with group label rows. 
    Group labels are placed above its member rows spanning all columns.
-   * `'left'` Places group labels in the stub on the left. Group labels are vertically merged across member rows.
 * `separator`: Optional join string to collapse group labels across nesting levels. 
 The default (`null`) keeps levels in separate label rows or stub columns.
 
 ## Examples
 
-Declare a facet column.
+Declare a facet column. By default, these are placed on the left as a stub.
 
 ```{ggsql}
 CREATE TEMP TABLE my_data AS 
@@ -76,11 +76,11 @@ TABULATE * FROM my_data
   FORMAT sex RENAMING null => 'unknown'
 ```
 
-Place grouping labels in the stub.
+Place grouping labels in rows above their members.
 
 ```{ggsql}
 TABULATE * FROM my_data
-  FACET sex SETTING place => 'left'
+  FACET sex SETTING place => 'top'
 ```
 
 Using multiple group columns to group gives nested labels.
@@ -90,7 +90,7 @@ TABULATE * FROM my_data
   FACET species, island
 ```
 
-The labels from multiple groups can be collapsed to single rows (or single stub column) by using the `separator` setting to join the labels.
+The labels from multiple groups can be collapsed to a single stub column (or single rows) by using the `separator` setting to join the labels.
 Labels are joined after `FORMAT RENAMING` is applied.
 
 ```{ggsql}
@@ -104,6 +104,6 @@ In case of `separator`-joined labels, the first variable (`species` in the examp
 
 ```{ggsql}
 TABULATE * FROM my_data
-  FACET species, island SETTING place => 'left'
+  FACET species, island
   LABEL island => 'Place', species => 'Type'
 ```
