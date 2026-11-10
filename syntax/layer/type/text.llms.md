@@ -16,9 +16,10 @@ The following aesthetics are recognised by the text layer.
 
 ### Optional
 
-- `stroke` The colour of the contour lines of glyphs. Typically kept blank.
+- `stroke` The colour of the contour lines of glyphs or text box borders. Typically kept blank.
 - `fill` The colour of the glyphs.
 - `colour` Shorthand for setting `stroke` and `fill` simultaneously.
+- `background` The colour of the text box. Setting this aesthetic switches on text boxes. Setting `null` (the default) does not draw text boxes.
 - `opacity` The opacity of the fill colour.
 - `typeface` The typeface to style the lettering.
 - `fontsize` The size of the text in points.
@@ -41,6 +42,9 @@ The following aesthetics are recognised by the text layer.
 - `aggregate` Aggregation functions to apply per group:
   - `null` apply no group aggregation (default).
   - A single string or an array of strings. See an overview of aggregation function in [the `DRAW` documentation](../../../syntax/clause/draw.llms.md#aggregate) and more information in the *Data transformation* section below.
+- `padding` In text boxes, space around the text inside box borders in points. Defaults to `4`.
+- `radius` In text boxes, rounded corner radius in points. Defaults to `0`.
+- `linewidth` In text boxes, size of border stroke in points. Defaults to `1`.
 
 ### Format
 
@@ -138,7 +142,18 @@ DRAW text
 
 [![](text_files/figure-html/cell-5-output-1.svg)](text_files/figure-html/cell-5-output-1.svg)
 
-The ‘stroke’ aesthetic is applied to the outline of the text.
+When the `background` aesthetic is used, we’re drawing text boxes.
+
+``` ggsql
+VISUALISE bill_len AS x, bill_dep AS y FROM ggsql:penguins
+DRAW text
+  MAPPING island AS label, species AS background
+  SETTING colour => 'white'
+```
+
+[![](text_files/figure-html/cell-6-output-1.svg)](text_files/figure-html/cell-6-output-1.svg)
+
+Without text boxes, the ‘stroke’ aesthetic is applied to the outline of the text.
 
 ``` ggsql
 SELECT 1 as x, 1 as y
@@ -147,7 +162,18 @@ DRAW text
   SETTING fontsize => 30, stroke => 'red'
 ```
 
-[![](text_files/figure-html/cell-6-output-1.svg)](text_files/figure-html/cell-6-output-1.svg)
+[![](text_files/figure-html/cell-7-output-1.svg)](text_files/figure-html/cell-7-output-1.svg)
+
+Text boxes solve a similar problem as using outlines, so ‘stroke’ is applied to text boxes when appropriate.
+
+``` ggsql
+SELECT 1 as x, 1 as y
+VISUALISE x, y, 'My Label' AS label
+DRAW text
+  SETTING fontsize => 30, stroke => 'red', background => 'white'
+```
+
+[![](text_files/figure-html/cell-8-output-1.svg)](text_files/figure-html/cell-8-output-1.svg)
 
 Labelling precomputed bars with the data value.
 
@@ -160,7 +186,7 @@ DRAW text
   SETTING vjust => 'top', offset => (0, -11), fill => 'white'
 ```
 
-[![](text_files/figure-html/cell-7-output-1.svg)](text_files/figure-html/cell-7-output-1.svg)
+[![](text_files/figure-html/cell-9-output-1.svg)](text_files/figure-html/cell-9-output-1.svg)
 
 If you label bars at the extreme end, you may need to expand the scale to accommodate the labels.
 
@@ -174,7 +200,7 @@ DRAW text
 SCALE y FROM (0, 200)
 ```
 
-[![](text_files/figure-html/cell-8-output-1.svg)](text_files/figure-html/cell-8-output-1.svg)
+[![](text_files/figure-html/cell-10-output-1.svg)](text_files/figure-html/cell-10-output-1.svg)
 
 You can use `PLACE` to annotate a plot directly without needing to map data.
 
@@ -188,7 +214,7 @@ PLACE text
     y => (19, 19, 15)
 ```
 
-[![](text_files/figure-html/cell-9-output-1.svg)](text_files/figure-html/cell-9-output-1.svg)
+[![](text_files/figure-html/cell-11-output-1.svg)](text_files/figure-html/cell-11-output-1.svg)
 
 Use aggregation to place labels at their centroid.
 
@@ -201,4 +227,4 @@ DRAW text
   SETTING aggregate => 'mean', stroke => 'white', fontweight => 'bold', fontsize => 20
 ```
 
-[![](text_files/figure-html/cell-10-output-1.svg)](text_files/figure-html/cell-10-output-1.svg)
+[![](text_files/figure-html/cell-12-output-1.svg)](text_files/figure-html/cell-12-output-1.svg)

@@ -44,13 +44,13 @@ LABEL
 
 ##### Napoleon’s march to Moscow
 
-![](./gallery/examples/thumbnails/violin-plot.svg)
-
-##### Violin plots
-
 ![](./gallery/examples/thumbnails/boxplot.svg)
 
 ##### Box plots
+
+![](./gallery/examples/thumbnails/bar-chart.svg)
+
+##### Bar chart
 
 [See all examples →](gallery/index.llms.md)
 

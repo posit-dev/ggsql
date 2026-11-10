@@ -2,6 +2,7 @@
 
 ### Added
 
+- Text layers now have text boxes. The presence of the `background` aesthetic determines whether text boxes get drawn and additional settings `padding`, `radius` and `linewidth` style the box.
 - Many layers now support `linecap` and `linejoin` settings for styling lines.
 - The Positron extension now registers a ggsql data importer, so dragging a csv/tsv/parquet/json file into Positron offers to generate the ggsql code that loads it into a table, including any filters and sorts shown in the Data Explorer (#536).
 - The Positron extension now registers a bundled agent skill, so agents automatically discover how to write and run ggsql queries (#536).

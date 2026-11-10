@@ -2,7 +2,7 @@
 <html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
 
 <meta charset="utf-8">
-<meta name="generator" content="quarto-1.12.0">
+<meta name="generator" content="quarto-1.12.1">
 
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
@@ -79,14 +79,14 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <script src="../../../site_libs/quarto-html/tippy.umd.min.js"></script>
 <script src="../../../site_libs/quarto-html/anchor.min.js"></script>
 <link href="../../../site_libs/quarto-html/tippy.css" rel="stylesheet">
-<link href="../../../site_libs/quarto-html/quarto-syntax-highlighting-1023ea2c48c3b3951983269a69164eb5.css" rel="stylesheet" class="quarto-color-scheme" id="quarto-text-highlighting-styles">
-<link href="../../../site_libs/quarto-html/quarto-syntax-highlighting-dark-1023ea2c48c3b3951983269a69164eb5.css" rel="stylesheet" class="quarto-color-scheme quarto-color-alternate" id="quarto-text-highlighting-styles">
-<link href="../../../site_libs/quarto-html/quarto-syntax-highlighting-1023ea2c48c3b3951983269a69164eb5.css" rel="stylesheet" class="quarto-color-scheme-extra" id="quarto-text-highlighting-styles">
+<link href="../../../site_libs/quarto-html/quarto-syntax-highlighting-ba38d682ef0eb2b9e84133c48a211adf.css" rel="stylesheet" class="quarto-color-scheme" id="quarto-text-highlighting-styles">
+<link href="../../../site_libs/quarto-html/quarto-syntax-highlighting-dark-ba38d682ef0eb2b9e84133c48a211adf.css" rel="stylesheet" class="quarto-color-scheme quarto-color-alternate" id="quarto-text-highlighting-styles">
+<link href="../../../site_libs/quarto-html/quarto-syntax-highlighting-ba38d682ef0eb2b9e84133c48a211adf.css" rel="stylesheet" class="quarto-color-scheme-extra" id="quarto-text-highlighting-styles">
 <script src="../../../site_libs/bootstrap/bootstrap.min.js"></script>
 <link href="../../../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
-<link href="../../../site_libs/bootstrap/bootstrap-dff546f03f5674f34efe3b680e8eb459.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme" id="quarto-bootstrap" data-mode="light">
-<link href="../../../site_libs/bootstrap/bootstrap-dark-8c471a2f0362695a8c476dd29e3f20a9.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme quarto-color-alternate" id="quarto-bootstrap" data-mode="light">
-<link href="../../../site_libs/bootstrap/bootstrap-dff546f03f5674f34efe3b680e8eb459.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme-extra" id="quarto-bootstrap" data-mode="light">
+<link href="../../../site_libs/bootstrap/bootstrap-0b0c8915fbd2cb21b8e60ef76089170f.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme" id="quarto-bootstrap" data-mode="light">
+<link href="../../../site_libs/bootstrap/bootstrap-dark-8e368a6d26ea46bf6f9c8ce46eabbabc.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme quarto-color-alternate" id="quarto-bootstrap" data-mode="light">
+<link href="../../../site_libs/bootstrap/bootstrap-0b0c8915fbd2cb21b8e60ef76089170f.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme-extra" id="quarto-bootstrap" data-mode="light">
 <script src="../../../site_libs/quarto-contrib/iconify-3.0.0/iconify-icon.min.js"></script>
 <script src="../../../site_libs/quarto-contrib/glightbox/glightbox.min.js"></script>
 <link href="../../../site_libs/quarto-contrib/glightbox/glightbox.min.css" rel="stylesheet">
@@ -309,7 +309,7 @@ window.Quarto = {
   </nav>
   <div id="quarto-announcement" data-announcement-id="a07d721f4daf6744c526414badd102c7" class="alert alert-primary hidden"><i class="bi bi-info-circle quarto-announcement-icon"></i><div class="quarto-announcement-content">
 <p>ggsql is still in beta and many parts are being worked out. Read the <a href="https://opensource.posit.co/blog/2026-09-24_ggsql_0_5_0/">beta-release announcement</a></p>
-</div><i class="bi bi-x-lg quarto-announcement-action"></i></div>
+</div><button type="button" class="quarto-announcement-action" aria-label="Dismiss announcement"><i class="bi bi-x-lg" aria-hidden="true"></i></button></div>
 </header>
 <!-- content -->
 <div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article page-navbar">
@@ -804,7 +804,7 @@ window.Quarto = {
 <section id="examples" class="level2">
 <h2 class="anchored" data-anchor-id="examples">Examples</h2>
 <p>A typical KDE computation with different groups:</p>
-<div id="55fd5d17" class="cell" data-execution_count="1">
+<div id="b97017b5" class="cell" data-execution_count="1">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb1"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> bill_dep <span class="kw">AS</span> <span class="at">x</span>, species <span class="kw">AS</span> <span class="at">colour</span> <span class="kw">FROM</span> ggsql:penguins</span>
 <span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">density</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="1">
@@ -816,7 +816,7 @@ window.Quarto = {
 </div>
 </div>
 <p>Changing the relative bandwidth through the <code>adjust</code> setting.</p>
-<div id="df834847" class="cell" data-execution_count="2">
+<div id="229efe61" class="cell" data-execution_count="2">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb2"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> bill_dep <span class="kw">AS</span> <span class="at">x</span>, species <span class="kw">AS</span> <span class="at">colour</span> <span class="kw">FROM</span> ggsql:penguins</span>
 <span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">density</span> </span>
 <span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>  <span class="kw">SETTING</span> adjust <span class="op">=&gt;</span> <span class="dv">0.1</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
@@ -829,7 +829,7 @@ window.Quarto = {
 </div>
 </div>
 <p>Stacking the different groups instead of overlaying them.</p>
-<div id="31bed3d3" class="cell" data-execution_count="3">
+<div id="459f321e" class="cell" data-execution_count="3">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb3"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> bill_dep <span class="kw">AS</span> <span class="at">x</span>, species <span class="kw">AS</span> <span class="at">colour</span> <span class="kw">FROM</span> ggsql:penguins</span>
 <span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">density</span> </span>
 <span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>  <span class="kw">SETTING</span> position <span class="op">=&gt;</span> <span class="st">'stack'</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
@@ -842,7 +842,7 @@ window.Quarto = {
 </div>
 </div>
 <p>Using weighted estimates by mapping a column to the optional weight aesthetic. Note that the difference in output is subtle.</p>
-<div id="8fa68ff6" class="cell" data-execution_count="4">
+<div id="4dc96972" class="cell" data-execution_count="4">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb4"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> bill_dep <span class="kw">AS</span> <span class="at">x</span>, species <span class="kw">AS</span> <span class="at">colour</span> <span class="kw">FROM</span> ggsql:penguins</span>
 <span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">density</span> </span>
 <span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>  <span class="kw">MAPPING</span> body_mass AS <span class="at">weight</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
@@ -855,7 +855,7 @@ window.Quarto = {
 </div>
 </div>
 <p>If you want to compare a histogram and a density layer, you can use the <code>intensity</code> computed variable to match the histogram scale.</p>
-<div id="e92d72b4" class="cell" data-execution_count="5">
+<div id="c7ff41c3" class="cell" data-execution_count="5">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb5"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> bill_len <span class="kw">AS</span> <span class="at">x</span> <span class="kw">FROM</span> ggsql:penguins</span>
 <span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">histogram</span> </span>
 <span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>  <span class="kw">SETTING</span> <span class="at">opacity</span> <span class="op">=&gt;</span> <span class="dv">0.5</span></span>
@@ -871,7 +871,7 @@ window.Quarto = {
 </div>
 </div>
 <p>Using the intensity rather than the density also portrays differences in group sizes better. Note the relative height of the groups.</p>
-<div id="2c25a1b4" class="cell" data-execution_count="6">
+<div id="9383b1b4" class="cell" data-execution_count="6">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb6"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> bill_dep <span class="kw">AS</span> <span class="at">x</span>, species <span class="kw">AS</span> <span class="at">colour</span> <span class="kw">FROM</span> ggsql:penguins</span>
 <span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">density</span> </span>
 <span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>  <span class="kw">REMAPPING</span> <span class="at">intensity</span> AS <span class="at">y</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
@@ -962,6 +962,28 @@ window.Quarto = {
       var localhostRegex = new RegExp(/^(?:http|https):\/\/localhost\:?[0-9]*\//);
       var mailtoRegex = new RegExp(/^mailto:/);
         var filterRegex = new RegExp("https:\/\/ggsql\.org");
+      const newWindowLabel = "(opens in a new tab)";
+      const newWindowNoteId = "quarto-ext-newwindow-label";
+      // Links reference one hidden label through aria-describedby, so the
+      // announcement never changes their accessible name.
+      var describeNewWindow = (link) => {
+        if (!window.document.getElementById(newWindowNoteId)) {
+          var newWindowNote = window.document.createElement("span");
+          newWindowNote.id = newWindowNoteId;
+          newWindowNote.hidden = true;
+          newWindowNote.textContent = newWindowLabel;
+          window.document.body.appendChild(newWindowNote);
+        }
+        var describedBy = (link.getAttribute("aria-describedby") || "").split(/\s+/).filter(Boolean);
+        if (!describedBy.includes(newWindowNoteId)) {
+          describedBy.push(newWindowNoteId);
+          link.setAttribute("aria-describedby", describedBy.join(" "));
+        }
+      }
+      var opensNewContext = (link) => {
+        var target = (link.getAttribute("target") || "").toLowerCase();
+        return target !== "" && !["_self", "_parent", "_top"].includes(target);
+      }
       var isInternal = (href) => {
           return filterRegex.test(href) || localhostRegex.test(href) || mailtoRegex.test(href);
       }
@@ -978,6 +1000,9 @@ window.Quarto = {
           }
           if (!link.classList.contains('no-external-icon')) {
           }
+        }
+        if (opensNewContext(link)) {
+          describeNewWindow(link);
         }
       }
       };

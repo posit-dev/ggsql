@@ -26,12 +26,6 @@ Visualisation of proportions
 
 Re-creating the famous visualisation from Minard.
 
-![](../gallery/examples/thumbnails/violin-plot.svg)
-
-##### Violin plots
-
-Showing groups of distributions of single numeric variables
-
 ![](../gallery/examples/thumbnails/boxplot.svg)
 
 ##### Box plots
@@ -44,17 +38,23 @@ Showing groups of distributions of single numeric variables
 
 Categorical comparisons using bars
 
-![](../gallery/examples/thumbnails/heatmap.svg)
-
-##### Heatmap
-
-Arranging tiles on a grid
-
 ![](../gallery/examples/thumbnails/density-plot.svg)
 
 ##### Density plots
 
 Showing smooth distributions of single numeric variables
+
+![](../gallery/examples/thumbnails/violin-plot.svg)
+
+##### Violin plots
+
+Showing groups of distributions of single numeric variables
+
+![](../gallery/examples/thumbnails/heatmap.svg)
+
+##### Heatmap
+
+Arranging tiles on a grid
 
 ![](../gallery/examples/thumbnails/histogram.svg)
 

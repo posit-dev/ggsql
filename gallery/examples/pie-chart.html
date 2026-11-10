@@ -2,7 +2,7 @@
 <html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
 
 <meta charset="utf-8">
-<meta name="generator" content="quarto-1.12.0">
+<meta name="generator" content="quarto-1.12.1">
 
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
@@ -80,14 +80,14 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <script src="../../site_libs/quarto-html/tippy.umd.min.js"></script>
 <script src="../../site_libs/quarto-html/anchor.min.js"></script>
 <link href="../../site_libs/quarto-html/tippy.css" rel="stylesheet">
-<link href="../../site_libs/quarto-html/quarto-syntax-highlighting-1023ea2c48c3b3951983269a69164eb5.css" rel="stylesheet" class="quarto-color-scheme" id="quarto-text-highlighting-styles">
-<link href="../../site_libs/quarto-html/quarto-syntax-highlighting-dark-1023ea2c48c3b3951983269a69164eb5.css" rel="stylesheet" class="quarto-color-scheme quarto-color-alternate" id="quarto-text-highlighting-styles">
-<link href="../../site_libs/quarto-html/quarto-syntax-highlighting-1023ea2c48c3b3951983269a69164eb5.css" rel="stylesheet" class="quarto-color-scheme-extra" id="quarto-text-highlighting-styles">
+<link href="../../site_libs/quarto-html/quarto-syntax-highlighting-ba38d682ef0eb2b9e84133c48a211adf.css" rel="stylesheet" class="quarto-color-scheme" id="quarto-text-highlighting-styles">
+<link href="../../site_libs/quarto-html/quarto-syntax-highlighting-dark-ba38d682ef0eb2b9e84133c48a211adf.css" rel="stylesheet" class="quarto-color-scheme quarto-color-alternate" id="quarto-text-highlighting-styles">
+<link href="../../site_libs/quarto-html/quarto-syntax-highlighting-ba38d682ef0eb2b9e84133c48a211adf.css" rel="stylesheet" class="quarto-color-scheme-extra" id="quarto-text-highlighting-styles">
 <script src="../../site_libs/bootstrap/bootstrap.min.js"></script>
 <link href="../../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
-<link href="../../site_libs/bootstrap/bootstrap-dff546f03f5674f34efe3b680e8eb459.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme" id="quarto-bootstrap" data-mode="light">
-<link href="../../site_libs/bootstrap/bootstrap-dark-8c471a2f0362695a8c476dd29e3f20a9.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme quarto-color-alternate" id="quarto-bootstrap" data-mode="light">
-<link href="../../site_libs/bootstrap/bootstrap-dff546f03f5674f34efe3b680e8eb459.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme-extra" id="quarto-bootstrap" data-mode="light">
+<link href="../../site_libs/bootstrap/bootstrap-0b0c8915fbd2cb21b8e60ef76089170f.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme" id="quarto-bootstrap" data-mode="light">
+<link href="../../site_libs/bootstrap/bootstrap-dark-8e368a6d26ea46bf6f9c8ce46eabbabc.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme quarto-color-alternate" id="quarto-bootstrap" data-mode="light">
+<link href="../../site_libs/bootstrap/bootstrap-0b0c8915fbd2cb21b8e60ef76089170f.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme-extra" id="quarto-bootstrap" data-mode="light">
 <script src="../../site_libs/quarto-contrib/iconify-3.0.0/iconify-icon.min.js"></script>
 <script src="../../site_libs/quarto-contrib/glightbox/glightbox.min.js"></script>
 <link href="../../site_libs/quarto-contrib/glightbox/glightbox.min.css" rel="stylesheet">
@@ -268,7 +268,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
     </nav>
   <div id="quarto-announcement" data-announcement-id="a07d721f4daf6744c526414badd102c7" class="alert alert-primary hidden"><i class="bi bi-info-circle quarto-announcement-icon"></i><div class="quarto-announcement-content">
 <p>ggsql is still in beta and many parts are being worked out. Read the <a href="https://opensource.posit.co/blog/2026-09-24_ggsql_0_5_0/">beta-release announcement</a></p>
-</div><i class="bi bi-x-lg quarto-announcement-action"></i></div>
+</div><button type="button" class="quarto-announcement-action" aria-label="Dismiss announcement"><i class="bi bi-x-lg" aria-hidden="true"></i></button></div>
 </header>
 <!-- content -->
 <div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article page-navbar">
@@ -327,7 +327,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="code" class="level2">
 <h2 class="anchored" data-anchor-id="code">Code</h2>
 <p>It makes sense to construct pie charts first in a Cartesian coordinate system, which makes it easier to diagnose any potential problems. We start out with a stacked bar chart. The <code>bar</code> layer does not need <code>x</code> or <code>y</code> because if absent, it will count the number of observations per group. Stacking is the default position adjustment for the <code>bar</code> layer.</p>
-<div id="35c38e50" class="cell" data-execution_count="1">
+<div id="c904fb71" class="cell" data-execution_count="1">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb1"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> island <span class="kw">AS</span> <span class="at">fill</span> <span class="kw">FROM</span> ggsql:penguins</span>
 <span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>  <span class="kw">DRAW</span> <span class="dt">bar</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="1">
@@ -339,7 +339,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </div>
 </div>
 <p>Now we need to add the polar coordinate system to make a pie chart.</p>
-<div id="612b32fd" class="cell" data-execution_count="2">
+<div id="7fe73cdf" class="cell" data-execution_count="2">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb2"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> island <span class="kw">AS</span> <span class="at">fill</span> <span class="kw">FROM</span> ggsql:penguins</span>
 <span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>  <span class="kw">DRAW</span> <span class="dt">bar</span></span>
 <span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>  <span class="kw">PROJECT</span> <span class="kw">TO</span> <span class="dt">polar</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
@@ -371,7 +371,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="precomputed-summary" class="level3">
 <h3 class="anchored" data-anchor-id="precomputed-summary">Precomputed summary</h3>
 <p>If we’ve pre-computed proportions or counts, we can build a pie chart by mapping to the <code>angle</code> and <code>radius</code> aesthetics. Going for a classic pie chart, you may have to define a dummy <code>radius</code> aesthetic, because the default behaviour would otherwise be to count the number of every <code>n</code>.</p>
-<div id="4cbe8693" class="cell" data-execution_count="3">
+<div id="d0126b9e" class="cell" data-execution_count="3">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb3"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="kw">WITH</span> count_data <span class="kw">AS</span> (</span>
 <span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>  <span class="kw">SELECT</span> </span>
 <span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>    <span class="fu">COUNT</span>(<span class="op">*</span>) <span class="kw">AS</span> n,</span>
@@ -395,7 +395,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="dont-use-radius-for-pie-charts" class="level3">
 <h3 class="anchored" data-anchor-id="dont-use-radius-for-pie-charts">Don’t use <code>radius</code> for pie charts</h3>
 <p>You could in theory also use a non-dummy variable for <code>radius</code>, but you may need to use <code>SETTING total</code> to fill in each ring. We must warn sternly that this is a bad idea though. We tend to judge pie charts by area, and the more central rings are allocated less area than the outer rings. This could mislead one into thinking that the ‘Adelie’ species makes up the vast majority of the observations by eyeballing the cart below. In reality, the ‘Adelie’ species makes up ~44% of the dataset: a narrow plurality.</p>
-<div id="cb4e5d77" class="cell" data-execution_count="4">
+<div id="0f0f2f61" class="cell" data-execution_count="4">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb4"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> island <span class="kw">AS</span> <span class="at">radius</span>, species <span class="kw">AS</span> <span class="at">fill</span> <span class="kw">FROM</span> ggsql:penguins</span>
 <span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>  <span class="kw">DRAW</span> <span class="dt">bar</span> <span class="kw">SETTING</span> total <span class="op">=&gt;</span> <span class="dv">100</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="4">
@@ -410,7 +410,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="donut-charts" class="level3">
 <h3 class="anchored" data-anchor-id="donut-charts">Donut charts</h3>
 <p>Donut charts are a variation of the pie chart that shows a ring instead of a full circle. You can create a donut chart by setting the <code>inner</code> of the polar coordinate system.</p>
-<div id="0ccbf07d" class="cell" data-execution_count="5">
+<div id="32e9c131" class="cell" data-execution_count="5">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb5"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> island <span class="kw">AS</span> <span class="at">fill</span> <span class="kw">FROM</span> ggsql:penguins</span>
 <span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>  <span class="kw">DRAW</span> <span class="dt">bar</span></span>
 <span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>  <span class="kw">PROJECT</span> <span class="kw">TO</span> <span class="dt">polar</span> <span class="kw">SETTING</span> inner <span class="op">=&gt;</span> <span class="dv">0.5</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
@@ -426,7 +426,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="semicircular-pie-charts" class="level3">
 <h3 class="anchored" data-anchor-id="semicircular-pie-charts">Semicircular pie charts</h3>
 <p>These plots are a piece of cake. You can set their extent by tweaking the <code>start</code> and <code>end</code> setting in degrees. If you want the <code>angle</code> aesthetic to take up the full extent, you may turn off the <code>expand</code> setting in the angle scale.</p>
-<div id="a91b89ea" class="cell" data-execution_count="6">
+<div id="5ce0287d" class="cell" data-execution_count="6">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb6"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> island <span class="kw">AS</span> <span class="at">fill</span> <span class="kw">FROM</span> ggsql:penguins</span>
 <span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>  <span class="kw">DRAW</span> <span class="dt">bar</span></span>
 <span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>  <span class="kw">PROJECT</span> <span class="kw">TO</span> <span class="dt">polar</span> <span class="kw">SETTING</span> start <span class="op">=&gt;</span> <span class="dv">-90</span>, end <span class="op">=&gt;</span> <span class="dv">90</span></span>
@@ -443,7 +443,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="faceting-pie-charts" class="level3">
 <h3 class="anchored" data-anchor-id="faceting-pie-charts">Faceting pie charts</h3>
 <p>When faceting, you will typically want the pies to be whole, which requires the <code>SETTING free =&gt; 'angle'</code> specification.</p>
-<div id="398e80a7" class="cell" data-execution_count="7">
+<div id="5a000ada" class="cell" data-execution_count="7">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb7"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> island <span class="kw">AS</span> <span class="at">fill</span> <span class="kw">FROM</span> ggsql:penguins</span>
 <span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>  <span class="kw">DRAW</span> <span class="dt">bar</span></span>
 <span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a>  <span class="kw">PROJECT</span> <span class="kw">TO</span> <span class="dt">polar</span> </span>
@@ -536,6 +536,28 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
       var localhostRegex = new RegExp(/^(?:http|https):\/\/localhost\:?[0-9]*\//);
       var mailtoRegex = new RegExp(/^mailto:/);
         var filterRegex = new RegExp("https:\/\/ggsql\.org");
+      const newWindowLabel = "(opens in a new tab)";
+      const newWindowNoteId = "quarto-ext-newwindow-label";
+      // Links reference one hidden label through aria-describedby, so the
+      // announcement never changes their accessible name.
+      var describeNewWindow = (link) => {
+        if (!window.document.getElementById(newWindowNoteId)) {
+          var newWindowNote = window.document.createElement("span");
+          newWindowNote.id = newWindowNoteId;
+          newWindowNote.hidden = true;
+          newWindowNote.textContent = newWindowLabel;
+          window.document.body.appendChild(newWindowNote);
+        }
+        var describedBy = (link.getAttribute("aria-describedby") || "").split(/\s+/).filter(Boolean);
+        if (!describedBy.includes(newWindowNoteId)) {
+          describedBy.push(newWindowNoteId);
+          link.setAttribute("aria-describedby", describedBy.join(" "));
+        }
+      }
+      var opensNewContext = (link) => {
+        var target = (link.getAttribute("target") || "").toLowerCase();
+        return target !== "" && !["_self", "_parent", "_top"].includes(target);
+      }
       var isInternal = (href) => {
           return filterRegex.test(href) || localhostRegex.test(href) || mailtoRegex.test(href);
       }
@@ -552,6 +574,9 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
           }
           if (!link.classList.contains('no-external-icon')) {
           }
+        }
+        if (opensNewContext(link)) {
+          describeNewWindow(link);
         }
       }
       };

@@ -2,7 +2,7 @@
 <html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
 
 <meta charset="utf-8">
-<meta name="generator" content="quarto-1.12.0">
+<meta name="generator" content="quarto-1.12.1">
 
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
@@ -80,14 +80,14 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <script src="../../site_libs/quarto-html/tippy.umd.min.js"></script>
 <script src="../../site_libs/quarto-html/anchor.min.js"></script>
 <link href="../../site_libs/quarto-html/tippy.css" rel="stylesheet">
-<link href="../../site_libs/quarto-html/quarto-syntax-highlighting-1023ea2c48c3b3951983269a69164eb5.css" rel="stylesheet" class="quarto-color-scheme" id="quarto-text-highlighting-styles">
-<link href="../../site_libs/quarto-html/quarto-syntax-highlighting-dark-1023ea2c48c3b3951983269a69164eb5.css" rel="stylesheet" class="quarto-color-scheme quarto-color-alternate" id="quarto-text-highlighting-styles">
-<link href="../../site_libs/quarto-html/quarto-syntax-highlighting-1023ea2c48c3b3951983269a69164eb5.css" rel="stylesheet" class="quarto-color-scheme-extra" id="quarto-text-highlighting-styles">
+<link href="../../site_libs/quarto-html/quarto-syntax-highlighting-ba38d682ef0eb2b9e84133c48a211adf.css" rel="stylesheet" class="quarto-color-scheme" id="quarto-text-highlighting-styles">
+<link href="../../site_libs/quarto-html/quarto-syntax-highlighting-dark-ba38d682ef0eb2b9e84133c48a211adf.css" rel="stylesheet" class="quarto-color-scheme quarto-color-alternate" id="quarto-text-highlighting-styles">
+<link href="../../site_libs/quarto-html/quarto-syntax-highlighting-ba38d682ef0eb2b9e84133c48a211adf.css" rel="stylesheet" class="quarto-color-scheme-extra" id="quarto-text-highlighting-styles">
 <script src="../../site_libs/bootstrap/bootstrap.min.js"></script>
 <link href="../../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
-<link href="../../site_libs/bootstrap/bootstrap-dff546f03f5674f34efe3b680e8eb459.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme" id="quarto-bootstrap" data-mode="light">
-<link href="../../site_libs/bootstrap/bootstrap-dark-8c471a2f0362695a8c476dd29e3f20a9.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme quarto-color-alternate" id="quarto-bootstrap" data-mode="light">
-<link href="../../site_libs/bootstrap/bootstrap-dff546f03f5674f34efe3b680e8eb459.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme-extra" id="quarto-bootstrap" data-mode="light">
+<link href="../../site_libs/bootstrap/bootstrap-0b0c8915fbd2cb21b8e60ef76089170f.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme" id="quarto-bootstrap" data-mode="light">
+<link href="../../site_libs/bootstrap/bootstrap-dark-8e368a6d26ea46bf6f9c8ce46eabbabc.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme quarto-color-alternate" id="quarto-bootstrap" data-mode="light">
+<link href="../../site_libs/bootstrap/bootstrap-0b0c8915fbd2cb21b8e60ef76089170f.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme-extra" id="quarto-bootstrap" data-mode="light">
 <script src="../../site_libs/quarto-contrib/iconify-3.0.0/iconify-icon.min.js"></script>
 <script src="../../site_libs/quarto-contrib/glightbox/glightbox.min.js"></script>
 <link href="../../site_libs/quarto-contrib/glightbox/glightbox.min.css" rel="stylesheet">
@@ -268,7 +268,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
     </nav>
   <div id="quarto-announcement" data-announcement-id="a07d721f4daf6744c526414badd102c7" class="alert alert-primary hidden"><i class="bi bi-info-circle quarto-announcement-icon"></i><div class="quarto-announcement-content">
 <p>ggsql is still in beta and many parts are being worked out. Read the <a href="https://opensource.posit.co/blog/2026-09-24_ggsql_0_5_0/">beta-release announcement</a></p>
-</div><i class="bi bi-x-lg quarto-announcement-action"></i></div>
+</div><button type="button" class="quarto-announcement-action" aria-label="Dismiss announcement"><i class="bi bi-x-lg" aria-hidden="true"></i></button></div>
 </header>
 <!-- content -->
 <div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article page-navbar">
@@ -323,7 +323,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <p>Faceted plots (small multiples) split data into separate panels by one or more categorical variables. This makes it easy to compare patterns across groups.</p>
 <section id="code" class="level2">
 <h2 class="anchored" data-anchor-id="code">Code</h2>
-<div id="69083d4b" class="cell" data-execution_count="1">
+<div id="421795a5" class="cell" data-execution_count="1">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb1"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="kw">SELECT</span> bill_len, bill_dep, species <span class="kw">FROM</span> ggsql:penguins</span>
 <span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> bill_len <span class="kw">AS</span> <span class="at">x</span>, bill_dep <span class="kw">AS</span> <span class="at">y</span></span>
 <span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">point</span></span>
@@ -354,7 +354,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="grid-layout-with-two-variables" class="level3">
 <h3 class="anchored" data-anchor-id="grid-layout-with-two-variables">Grid layout with two variables</h3>
 <p>Use <code>FACET rows BY cols</code> to create a grid layout:</p>
-<div id="daf78e17" class="cell" data-execution_count="2">
+<div id="e1f62d07" class="cell" data-execution_count="2">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb2"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="kw">SELECT</span> bill_len, bill_dep, species, island <span class="kw">FROM</span> ggsql:penguins</span>
 <span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> bill_len <span class="kw">AS</span> <span class="at">x</span>, bill_dep <span class="kw">AS</span> <span class="at">y</span></span>
 <span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">point</span></span>
@@ -375,7 +375,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="free-scales" class="level3">
 <h3 class="anchored" data-anchor-id="free-scales">Free scales</h3>
 <p>Allow each facet to have independent axis scales with <code>SETTING free</code>:</p>
-<div id="5b79c061" class="cell" data-execution_count="3">
+<div id="21a10afb" class="cell" data-execution_count="3">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb3"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="kw">SELECT</span> bill_len, bill_dep, species <span class="kw">FROM</span> ggsql:penguins</span>
 <span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> bill_len <span class="kw">AS</span> <span class="at">x</span>, bill_dep <span class="kw">AS</span> <span class="at">y</span></span>
 <span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">point</span></span>
@@ -472,6 +472,28 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
       var localhostRegex = new RegExp(/^(?:http|https):\/\/localhost\:?[0-9]*\//);
       var mailtoRegex = new RegExp(/^mailto:/);
         var filterRegex = new RegExp("https:\/\/ggsql\.org");
+      const newWindowLabel = "(opens in a new tab)";
+      const newWindowNoteId = "quarto-ext-newwindow-label";
+      // Links reference one hidden label through aria-describedby, so the
+      // announcement never changes their accessible name.
+      var describeNewWindow = (link) => {
+        if (!window.document.getElementById(newWindowNoteId)) {
+          var newWindowNote = window.document.createElement("span");
+          newWindowNote.id = newWindowNoteId;
+          newWindowNote.hidden = true;
+          newWindowNote.textContent = newWindowLabel;
+          window.document.body.appendChild(newWindowNote);
+        }
+        var describedBy = (link.getAttribute("aria-describedby") || "").split(/\s+/).filter(Boolean);
+        if (!describedBy.includes(newWindowNoteId)) {
+          describedBy.push(newWindowNoteId);
+          link.setAttribute("aria-describedby", describedBy.join(" "));
+        }
+      }
+      var opensNewContext = (link) => {
+        var target = (link.getAttribute("target") || "").toLowerCase();
+        return target !== "" && !["_self", "_parent", "_top"].includes(target);
+      }
       var isInternal = (href) => {
           return filterRegex.test(href) || localhostRegex.test(href) || mailtoRegex.test(href);
       }
@@ -488,6 +510,9 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
           }
           if (!link.classList.contains('no-external-icon')) {
           }
+        }
+        if (opensNewContext(link)) {
+          describeNewWindow(link);
         }
       }
       };

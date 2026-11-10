@@ -2,7 +2,7 @@
 <html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
 
 <meta charset="utf-8">
-<meta name="generator" content="quarto-1.12.0">
+<meta name="generator" content="quarto-1.12.1">
 
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
@@ -79,14 +79,14 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <script src="../../../site_libs/quarto-html/tippy.umd.min.js"></script>
 <script src="../../../site_libs/quarto-html/anchor.min.js"></script>
 <link href="../../../site_libs/quarto-html/tippy.css" rel="stylesheet">
-<link href="../../../site_libs/quarto-html/quarto-syntax-highlighting-1023ea2c48c3b3951983269a69164eb5.css" rel="stylesheet" class="quarto-color-scheme" id="quarto-text-highlighting-styles">
-<link href="../../../site_libs/quarto-html/quarto-syntax-highlighting-dark-1023ea2c48c3b3951983269a69164eb5.css" rel="stylesheet" class="quarto-color-scheme quarto-color-alternate" id="quarto-text-highlighting-styles">
-<link href="../../../site_libs/quarto-html/quarto-syntax-highlighting-1023ea2c48c3b3951983269a69164eb5.css" rel="stylesheet" class="quarto-color-scheme-extra" id="quarto-text-highlighting-styles">
+<link href="../../../site_libs/quarto-html/quarto-syntax-highlighting-ba38d682ef0eb2b9e84133c48a211adf.css" rel="stylesheet" class="quarto-color-scheme" id="quarto-text-highlighting-styles">
+<link href="../../../site_libs/quarto-html/quarto-syntax-highlighting-dark-ba38d682ef0eb2b9e84133c48a211adf.css" rel="stylesheet" class="quarto-color-scheme quarto-color-alternate" id="quarto-text-highlighting-styles">
+<link href="../../../site_libs/quarto-html/quarto-syntax-highlighting-ba38d682ef0eb2b9e84133c48a211adf.css" rel="stylesheet" class="quarto-color-scheme-extra" id="quarto-text-highlighting-styles">
 <script src="../../../site_libs/bootstrap/bootstrap.min.js"></script>
 <link href="../../../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
-<link href="../../../site_libs/bootstrap/bootstrap-dff546f03f5674f34efe3b680e8eb459.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme" id="quarto-bootstrap" data-mode="light">
-<link href="../../../site_libs/bootstrap/bootstrap-dark-8c471a2f0362695a8c476dd29e3f20a9.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme quarto-color-alternate" id="quarto-bootstrap" data-mode="light">
-<link href="../../../site_libs/bootstrap/bootstrap-dff546f03f5674f34efe3b680e8eb459.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme-extra" id="quarto-bootstrap" data-mode="light">
+<link href="../../../site_libs/bootstrap/bootstrap-0b0c8915fbd2cb21b8e60ef76089170f.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme" id="quarto-bootstrap" data-mode="light">
+<link href="../../../site_libs/bootstrap/bootstrap-dark-8e368a6d26ea46bf6f9c8ce46eabbabc.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme quarto-color-alternate" id="quarto-bootstrap" data-mode="light">
+<link href="../../../site_libs/bootstrap/bootstrap-0b0c8915fbd2cb21b8e60ef76089170f.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme-extra" id="quarto-bootstrap" data-mode="light">
 <script src="../../../site_libs/quarto-contrib/iconify-3.0.0/iconify-icon.min.js"></script>
 <script src="../../../site_libs/quarto-contrib/glightbox/glightbox.min.js"></script>
 <link href="../../../site_libs/quarto-contrib/glightbox/glightbox.min.css" rel="stylesheet">
@@ -280,7 +280,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   </nav>
   <div id="quarto-announcement" data-announcement-id="a07d721f4daf6744c526414badd102c7" class="alert alert-primary hidden"><i class="bi bi-info-circle quarto-announcement-icon"></i><div class="quarto-announcement-content">
 <p>ggsql is still in beta and many parts are being worked out. Read the <a href="https://opensource.posit.co/blog/2026-09-24_ggsql_0_5_0/">beta-release announcement</a></p>
-</div><i class="bi bi-x-lg quarto-announcement-action"></i></div>
+</div><button type="button" class="quarto-announcement-action" aria-label="Dismiss announcement"><i class="bi bi-x-lg" aria-hidden="true"></i></button></div>
 </header>
 <!-- content -->
 <div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article page-navbar">
@@ -705,9 +705,10 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="optional" class="level3">
 <h3 class="anchored" data-anchor-id="optional">Optional</h3>
 <ul>
-<li><code>stroke</code> The colour of the contour lines of glyphs. Typically kept blank.</li>
+<li><code>stroke</code> The colour of the contour lines of glyphs or text box borders. Typically kept blank.</li>
 <li><code>fill</code> The colour of the glyphs.</li>
 <li><code>colour</code> Shorthand for setting <code>stroke</code> and <code>fill</code> simultaneously.</li>
+<li><code>background</code> The colour of the text box. Setting this aesthetic switches on text boxes. Setting <code>null</code> (the default) does not draw text boxes.</li>
 <li><code>opacity</code> The opacity of the fill colour.</li>
 <li><code>typeface</code> The typeface to style the lettering.</li>
 <li><code>fontsize</code> The size of the text in points.</li>
@@ -739,6 +740,9 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <li><code>null</code> apply no group aggregation (default).</li>
 <li>A single string or an array of strings. See an overview of aggregation function in <a href="../../../syntax/clause/draw.html#aggregate">the <code>DRAW</code> documentation</a> and more information in the <em>Data transformation</em> section below.</li>
 </ul></li>
+<li><code>padding</code> In text boxes, space around the text inside box borders in points. Defaults to <code>4</code>.</li>
+<li><code>radius</code> In text boxes, rounded corner radius in points. Defaults to <code>0</code>.</li>
+<li><code>linewidth</code> In text boxes, size of border stroke in points. Defaults to <code>1</code>.</li>
 </ul>
 <section id="format" class="level3">
 <h3 class="anchored" data-anchor-id="format">Format</h3>
@@ -797,7 +801,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="examples" class="level2">
 <h2 class="anchored" data-anchor-id="examples">Examples</h2>
 <p>Standard drawing data points as labels.</p>
-<div id="9551163c" class="cell" data-execution_count="1">
+<div id="02117c8b" class="cell" data-execution_count="1">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb1"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> bill_len <span class="kw">AS</span> <span class="at">x</span>, bill_dep <span class="kw">AS</span> <span class="at">y</span> <span class="kw">FROM</span> ggsql:penguins</span>
 <span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">text</span> </span>
 <span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>  <span class="kw">MAPPING</span> island AS <span class="kw">label</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
@@ -810,7 +814,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </div>
 </div>
 <p>You can use the <code>format</code> setting to tweak the display of the label.</p>
-<div id="9abd3eeb" class="cell" data-execution_count="2">
+<div id="9c698685" class="cell" data-execution_count="2">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb2"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> bill_len <span class="kw">AS</span> <span class="at">x</span>, bill_dep <span class="kw">AS</span> <span class="at">y</span> <span class="kw">FROM</span> ggsql:penguins</span>
 <span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">text</span> </span>
 <span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>  <span class="kw">MAPPING</span> island AS <span class="kw">label</span></span>
@@ -824,7 +828,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </div>
 </div>
 <p>Setting font properties. Colours are typically mapped to the fill.</p>
-<div id="fa090a69" class="cell" data-execution_count="3">
+<div id="a6f3f622" class="cell" data-execution_count="3">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb3"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> bill_len <span class="kw">AS</span> <span class="at">x</span>, bill_dep <span class="kw">AS</span> <span class="at">y</span> <span class="kw">FROM</span> ggsql:penguins</span>
 <span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">text</span> </span>
 <span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>  <span class="kw">MAPPING</span> island AS <span class="kw">label</span>, species AS <span class="at">fill</span>, flipper_len AS fontsize</span>
@@ -842,7 +846,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </div>
 </div>
 <p>Labels are read as markdown, so a <code>format</code> template can style part of the label. This does not show up in Vega-Lite output, which has no rich text.</p>
-<div id="f05a8008" class="cell" data-execution_count="4">
+<div id="d2c97f11" class="cell" data-execution_count="4">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb4"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> bill_len <span class="kw">AS</span> <span class="at">x</span>, bill_dep <span class="kw">AS</span> <span class="at">y</span> <span class="kw">FROM</span> ggsql:penguins</span>
 <span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">text</span></span>
 <span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>  <span class="kw">MAPPING</span> island AS <span class="kw">label</span></span>
@@ -855,12 +859,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </div>
 </div>
 </div>
-<p>The ‘stroke’ aesthetic is applied to the outline of the text.</p>
-<div id="0a9f4361" class="cell" data-execution_count="5">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb5"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="kw">SELECT</span> <span class="dv">1</span> <span class="kw">as</span> x, <span class="dv">1</span> <span class="kw">as</span> y</span>
-<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> <span class="at">x</span>, <span class="at">y</span>, <span class="st">'My Label'</span> <span class="kw">AS</span> <span class="kw">label</span></span>
-<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">text</span></span>
-<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a>  <span class="kw">SETTING</span> fontsize <span class="op">=&gt;</span> <span class="dv">30</span>, <span class="at">stroke</span> <span class="op">=&gt;</span> <span class="st">'red'</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>When the <code>background</code> aesthetic is used, we’re drawing text boxes.</p>
+<div id="3e60dd7d" class="cell" data-execution_count="5">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb5"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> bill_len <span class="kw">AS</span> <span class="at">x</span>, bill_dep <span class="kw">AS</span> <span class="at">y</span> <span class="kw">FROM</span> ggsql:penguins</span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">text</span></span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>  <span class="kw">MAPPING</span> island AS <span class="kw">label</span>, species AS background</span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a>  SETTING <span class="at">colour</span> <span class="op">=&gt;</span> <span class="st">'white'</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="5">
 <div>
 <figure class="figure">
@@ -869,14 +873,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </div>
 </div>
 </div>
-<p>Labelling precomputed bars with the data value.</p>
-<div id="8fa933a1" class="cell" data-execution_count="6">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb6"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="kw">SELECT</span> island, <span class="fu">COUNT</span>(<span class="op">*</span>) <span class="kw">AS</span> n <span class="kw">FROM</span> ggsql:penguins <span class="kw">GROUP</span> <span class="kw">BY</span> island</span>
-<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> island <span class="kw">AS</span> <span class="at">x</span>, n <span class="kw">AS</span> <span class="at">y</span></span>
-<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">bar</span></span>
-<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">text</span></span>
-<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a>  <span class="kw">MAPPING</span> n AS <span class="kw">label</span></span>
-<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a>  SETTING <span class="at">vjust</span> <span class="op">=&gt;</span> <span class="st">'top'</span>, <span class="at">offset</span> <span class="op">=&gt;</span> (<span class="dv">0</span>, <span class="dv">-11</span>), <span class="at">fill</span> <span class="op">=&gt;</span> <span class="st">'white'</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Without text boxes, the ‘stroke’ aesthetic is applied to the outline of the text.</p>
+<div id="61db0957" class="cell" data-execution_count="6">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb6"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="kw">SELECT</span> <span class="dv">1</span> <span class="kw">as</span> x, <span class="dv">1</span> <span class="kw">as</span> y</span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> <span class="at">x</span>, <span class="at">y</span>, <span class="st">'My Label'</span> <span class="kw">AS</span> <span class="kw">label</span></span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">text</span></span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a>  <span class="kw">SETTING</span> fontsize <span class="op">=&gt;</span> <span class="dv">30</span>, <span class="at">stroke</span> <span class="op">=&gt;</span> <span class="st">'red'</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="6">
 <div>
 <figure class="figure">
@@ -885,15 +887,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </div>
 </div>
 </div>
-<p>If you label bars at the extreme end, you may need to expand the scale to accommodate the labels.</p>
-<div id="53e9ae05" class="cell" data-execution_count="7">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb7"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="kw">SELECT</span> island, <span class="fu">COUNT</span>(<span class="op">*</span>) <span class="kw">AS</span> n <span class="kw">FROM</span> ggsql:penguins <span class="kw">GROUP</span> <span class="kw">BY</span> island</span>
-<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> island <span class="kw">AS</span> <span class="at">x</span>, n <span class="kw">AS</span> <span class="at">y</span></span>
-<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">bar</span></span>
-<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">text</span></span>
-<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a>  <span class="kw">MAPPING</span> n AS <span class="kw">label</span></span>
-<span id="cb7-6"><a href="#cb7-6" aria-hidden="true" tabindex="-1"></a>  SETTING <span class="at">vjust</span> <span class="op">=&gt;</span> <span class="st">'bottom'</span>, <span class="at">offset</span> <span class="op">=&gt;</span> (<span class="dv">0</span>, <span class="dv">11</span>)</span>
-<span id="cb7-7"><a href="#cb7-7" aria-hidden="true" tabindex="-1"></a><span class="kw">SCALE</span> <span class="at">y</span> <span class="kw">FROM</span> (<span class="dv">0</span>, <span class="dv">200</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Text boxes solve a similar problem as using outlines, so ‘stroke’ is applied to text boxes when appropriate.</p>
+<div id="1f170d3a" class="cell" data-execution_count="7">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb7"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="kw">SELECT</span> <span class="dv">1</span> <span class="kw">as</span> x, <span class="dv">1</span> <span class="kw">as</span> y</span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> <span class="at">x</span>, <span class="at">y</span>, <span class="st">'My Label'</span> <span class="kw">AS</span> <span class="kw">label</span></span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">text</span></span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a>  <span class="kw">SETTING</span> fontsize <span class="op">=&gt;</span> <span class="dv">30</span>, <span class="at">stroke</span> <span class="op">=&gt;</span> <span class="st">'red'</span>, background <span class="op">=&gt;</span> <span class="st">'white'</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="7">
 <div>
 <figure class="figure">
@@ -902,15 +901,14 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </div>
 </div>
 </div>
-<p>You can use <code>PLACE</code> to annotate a plot directly without needing to map data.</p>
-<div id="1f7d7d62" class="cell" data-execution_count="8">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb8"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> bill_len <span class="kw">AS</span> <span class="at">x</span>, bill_dep <span class="kw">AS</span> <span class="at">y</span> <span class="kw">FROM</span> ggsql:penguins</span>
-<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">point</span> <span class="kw">MAPPING</span> species AS <span class="at">colour</span></span>
-<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a><span class="kw">PLACE</span> <span class="dt">text</span> </span>
-<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a>  <span class="kw">SETTING</span></span>
-<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a>    <span class="kw">label</span> <span class="op">=&gt;</span> (<span class="st">'Adelie'</span>, <span class="st">'Chinstrap'</span>, <span class="st">'Gentoo'</span>),</span>
-<span id="cb8-6"><a href="#cb8-6" aria-hidden="true" tabindex="-1"></a>    <span class="at">x</span> <span class="op">=&gt;</span> (<span class="dv">40</span>, <span class="dv">50</span>, <span class="dv">50</span>),</span>
-<span id="cb8-7"><a href="#cb8-7" aria-hidden="true" tabindex="-1"></a>    <span class="at">y</span> <span class="op">=&gt;</span> (<span class="dv">19</span>, <span class="dv">19</span>, <span class="dv">15</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Labelling precomputed bars with the data value.</p>
+<div id="8a5ddef8" class="cell" data-execution_count="8">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb8"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="kw">SELECT</span> island, <span class="fu">COUNT</span>(<span class="op">*</span>) <span class="kw">AS</span> n <span class="kw">FROM</span> ggsql:penguins <span class="kw">GROUP</span> <span class="kw">BY</span> island</span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> island <span class="kw">AS</span> <span class="at">x</span>, n <span class="kw">AS</span> <span class="at">y</span></span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">bar</span></span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">text</span></span>
+<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a>  <span class="kw">MAPPING</span> n AS <span class="kw">label</span></span>
+<span id="cb8-6"><a href="#cb8-6" aria-hidden="true" tabindex="-1"></a>  SETTING <span class="at">vjust</span> <span class="op">=&gt;</span> <span class="st">'top'</span>, <span class="at">offset</span> <span class="op">=&gt;</span> (<span class="dv">0</span>, <span class="dv">-11</span>), <span class="at">fill</span> <span class="op">=&gt;</span> <span class="st">'white'</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="8">
 <div>
 <figure class="figure">
@@ -919,18 +917,52 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </div>
 </div>
 </div>
-<p>Use aggregation to place labels at their centroid.</p>
-<div id="21e1f079" class="cell" data-execution_count="9">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb9"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> bill_len <span class="kw">AS</span> <span class="at">x</span>, bill_dep <span class="kw">AS</span> <span class="at">y</span> <span class="kw">FROM</span> ggsql:penguins</span>
-<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">point</span></span>
-<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a>  <span class="kw">MAPPING</span> species AS <span class="at">fill</span></span>
+<p>If you label bars at the extreme end, you may need to expand the scale to accommodate the labels.</p>
+<div id="edc48f6e" class="cell" data-execution_count="9">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb9"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="kw">SELECT</span> island, <span class="fu">COUNT</span>(<span class="op">*</span>) <span class="kw">AS</span> n <span class="kw">FROM</span> ggsql:penguins <span class="kw">GROUP</span> <span class="kw">BY</span> island</span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> island <span class="kw">AS</span> <span class="at">x</span>, n <span class="kw">AS</span> <span class="at">y</span></span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">bar</span></span>
 <span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">text</span></span>
-<span id="cb9-5"><a href="#cb9-5" aria-hidden="true" tabindex="-1"></a>  <span class="kw">MAPPING</span> species AS <span class="kw">label</span></span>
-<span id="cb9-6"><a href="#cb9-6" aria-hidden="true" tabindex="-1"></a>  SETTING aggregate <span class="op">=&gt;</span> <span class="st">'mean'</span>, <span class="at">stroke</span> <span class="op">=&gt;</span> <span class="st">'white'</span>, fontweight <span class="op">=&gt;</span> <span class="st">'bold'</span>, fontsize <span class="op">=&gt;</span> <span class="dv">20</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<span id="cb9-5"><a href="#cb9-5" aria-hidden="true" tabindex="-1"></a>  <span class="kw">MAPPING</span> n AS <span class="kw">label</span></span>
+<span id="cb9-6"><a href="#cb9-6" aria-hidden="true" tabindex="-1"></a>  SETTING <span class="at">vjust</span> <span class="op">=&gt;</span> <span class="st">'bottom'</span>, <span class="at">offset</span> <span class="op">=&gt;</span> (<span class="dv">0</span>, <span class="dv">11</span>)</span>
+<span id="cb9-7"><a href="#cb9-7" aria-hidden="true" tabindex="-1"></a><span class="kw">SCALE</span> <span class="at">y</span> <span class="kw">FROM</span> (<span class="dv">0</span>, <span class="dv">200</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="9">
 <div>
 <figure class="figure">
 <p><a href="text_files/figure-html/cell-10-output-1.svg" class="lightbox" data-gallery="quarto-lightbox-gallery-9"><img src="text_files/figure-html/cell-10-output-1.svg" width="672" height="480" class="figure-img"></a></p>
+</figure>
+</div>
+</div>
+</div>
+<p>You can use <code>PLACE</code> to annotate a plot directly without needing to map data.</p>
+<div id="6a0ee8e4" class="cell" data-execution_count="10">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb10"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> bill_len <span class="kw">AS</span> <span class="at">x</span>, bill_dep <span class="kw">AS</span> <span class="at">y</span> <span class="kw">FROM</span> ggsql:penguins</span>
+<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">point</span> <span class="kw">MAPPING</span> species AS <span class="at">colour</span></span>
+<span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a><span class="kw">PLACE</span> <span class="dt">text</span> </span>
+<span id="cb10-4"><a href="#cb10-4" aria-hidden="true" tabindex="-1"></a>  <span class="kw">SETTING</span></span>
+<span id="cb10-5"><a href="#cb10-5" aria-hidden="true" tabindex="-1"></a>    <span class="kw">label</span> <span class="op">=&gt;</span> (<span class="st">'Adelie'</span>, <span class="st">'Chinstrap'</span>, <span class="st">'Gentoo'</span>),</span>
+<span id="cb10-6"><a href="#cb10-6" aria-hidden="true" tabindex="-1"></a>    <span class="at">x</span> <span class="op">=&gt;</span> (<span class="dv">40</span>, <span class="dv">50</span>, <span class="dv">50</span>),</span>
+<span id="cb10-7"><a href="#cb10-7" aria-hidden="true" tabindex="-1"></a>    <span class="at">y</span> <span class="op">=&gt;</span> (<span class="dv">19</span>, <span class="dv">19</span>, <span class="dv">15</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="10">
+<div>
+<figure class="figure">
+<p><a href="text_files/figure-html/cell-11-output-1.svg" class="lightbox" data-gallery="quarto-lightbox-gallery-10"><img src="text_files/figure-html/cell-11-output-1.svg" width="672" height="480" class="figure-img"></a></p>
+</figure>
+</div>
+</div>
+</div>
+<p>Use aggregation to place labels at their centroid.</p>
+<div id="743e6a50" class="cell" data-execution_count="11">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb11"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> bill_len <span class="kw">AS</span> <span class="at">x</span>, bill_dep <span class="kw">AS</span> <span class="at">y</span> <span class="kw">FROM</span> ggsql:penguins</span>
+<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">point</span></span>
+<span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a>  <span class="kw">MAPPING</span> species AS <span class="at">fill</span></span>
+<span id="cb11-4"><a href="#cb11-4" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">text</span></span>
+<span id="cb11-5"><a href="#cb11-5" aria-hidden="true" tabindex="-1"></a>  <span class="kw">MAPPING</span> species AS <span class="kw">label</span></span>
+<span id="cb11-6"><a href="#cb11-6" aria-hidden="true" tabindex="-1"></a>  SETTING aggregate <span class="op">=&gt;</span> <span class="st">'mean'</span>, <span class="at">stroke</span> <span class="op">=&gt;</span> <span class="st">'white'</span>, fontweight <span class="op">=&gt;</span> <span class="st">'bold'</span>, fontsize <span class="op">=&gt;</span> <span class="dv">20</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="11">
+<div>
+<figure class="figure">
+<p><a href="text_files/figure-html/cell-12-output-1.svg" class="lightbox" data-gallery="quarto-lightbox-gallery-11"><img src="text_files/figure-html/cell-12-output-1.svg" width="672" height="480" class="figure-img"></a></p>
 </figure>
 </div>
 </div>
@@ -1014,6 +1046,28 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
       var localhostRegex = new RegExp(/^(?:http|https):\/\/localhost\:?[0-9]*\//);
       var mailtoRegex = new RegExp(/^mailto:/);
         var filterRegex = new RegExp("https:\/\/ggsql\.org");
+      const newWindowLabel = "(opens in a new tab)";
+      const newWindowNoteId = "quarto-ext-newwindow-label";
+      // Links reference one hidden label through aria-describedby, so the
+      // announcement never changes their accessible name.
+      var describeNewWindow = (link) => {
+        if (!window.document.getElementById(newWindowNoteId)) {
+          var newWindowNote = window.document.createElement("span");
+          newWindowNote.id = newWindowNoteId;
+          newWindowNote.hidden = true;
+          newWindowNote.textContent = newWindowLabel;
+          window.document.body.appendChild(newWindowNote);
+        }
+        var describedBy = (link.getAttribute("aria-describedby") || "").split(/\s+/).filter(Boolean);
+        if (!describedBy.includes(newWindowNoteId)) {
+          describedBy.push(newWindowNoteId);
+          link.setAttribute("aria-describedby", describedBy.join(" "));
+        }
+      }
+      var opensNewContext = (link) => {
+        var target = (link.getAttribute("target") || "").toLowerCase();
+        return target !== "" && !["_self", "_parent", "_top"].includes(target);
+      }
       var isInternal = (href) => {
           return filterRegex.test(href) || localhostRegex.test(href) || mailtoRegex.test(href);
       }
@@ -1030,6 +1084,9 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
           }
           if (!link.classList.contains('no-external-icon')) {
           }
+        }
+        if (opensNewContext(link)) {
+          describeNewWindow(link);
         }
       }
       };
