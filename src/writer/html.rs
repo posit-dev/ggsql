@@ -141,19 +141,45 @@ impl Writer for HtmlWriter {
 
         if !body_rows.is_empty() {
             let tbody_attrs = styling_attr(&[TableClass::TableBody], self.css_mode);
-            html.push_str(&format!("<tbody{tbody_attrs}>\n"));
-            for row in &body_rows {
-                let slots = all_slots
-                    .remove(row)
-                    .expect("a body row's own cell always puts it in slots_by_row's result");
-                html.push_str(&render_row(&slots, &rows[*row], self.css_mode));
+            // One <tbody> per facet group, so a scope="rowgroup" heading
+            // covers exactly its group; group-less tables get a single tbody.
+            let woven = body_rows
+                .iter()
+                .any(|&row| rows[row].classes.contains(&TableClass::GroupHeadingRow));
+
+            for run in body_rows.chunk_by(|&a, &b| same_tbody(&rows[a], &rows[b], woven)) {
+                html.push_str(&format!("<tbody{tbody_attrs}>\n"));
+                for row in run {
+                    let slots = all_slots
+                        .remove(row)
+                        .expect("a body row's own cell always puts it in slots_by_row's result");
+                    html.push_str(&render_row(&slots, &rows[*row], self.css_mode));
+                }
+                html.push_str("</tbody>\n");
             }
-            html.push_str("</tbody>\n");
         }
 
         html.push_str("</table>");
 
         Ok(html)
+    }
+}
+
+/// Whether two consecutive body rows share a `<tbody>` — the `chunk_by`
+/// predicate behind the one-tbody-per-group split.
+/// * Woven groups (heading rows) split at leaf groups — a deeper heading keeps
+///   the tbody open, so an outer heading joins its first leaf.
+/// * Stub-column groups split at the outermost group: a rowspan may not cross
+///   a tbody boundary, and the outer stub cell spans the whole group.
+fn same_tbody(prev: &TableRow, row: &TableRow, woven: bool) -> bool {
+    if prev.group.is_empty() || row.group.is_empty() {
+        return true;
+    }
+    if woven {
+        let deeper = row.group.len() > prev.group.len() && row.group.starts_with(&prev.group);
+        row.group == prev.group || deeper
+    } else {
+        row.group.first() == prev.group.first()
     }
 }
 
@@ -914,6 +940,92 @@ mod render_tests {
              </tbody>\n\
              </table>"
         );
+    }
+
+    #[test]
+    fn write_table_splits_tbody_per_leaf_group_when_groups_are_woven() {
+        // Two leaf groups under one outer group: the outer heading joins its
+        // first leaf's tbody rather than sitting alone.
+        let cells = vec![
+            cell(TableCellKind::GroupHeading, 0, 0, 0, 0),
+            cell(TableCellKind::GroupHeading, 1, 1, 0, 0),
+            cell(TableCellKind::Body, 2, 2, 0, 0),
+            cell(TableCellKind::GroupHeading, 3, 3, 0, 0),
+            cell(TableCellKind::Body, 4, 4, 0, 0),
+        ];
+        let rows = vec![
+            TableRow::group_heading(vec![0]),
+            TableRow::group_heading(vec![0, 0]),
+            TableRow {
+                group: vec![0, 0],
+                ..TableRow::body()
+            },
+            TableRow::group_heading(vec![0, 1]),
+            TableRow {
+                group: vec![0, 1],
+                ..TableRow::body()
+            },
+        ];
+
+        let html = HtmlWriter {
+            css_mode: CssMode::Inline,
+        }
+        .write_table(&layout(cells, rows))
+        .unwrap();
+
+        assert_eq!(html.matches("<tbody").count(), 2);
+        let first_tbody = html
+            .split_once("<tbody")
+            .unwrap()
+            .1
+            .split_once("</tbody>")
+            .unwrap()
+            .0;
+        assert_eq!(first_tbody.matches("<tr>").count(), 3);
+    }
+
+    #[test]
+    fn write_table_splits_tbody_per_outermost_group_for_stub_columns() {
+        // No GroupHeadingRow rows: group labels live in stub columns. Split
+        // at the outermost group only, so a rowspanned stub cell never
+        // crosses a tbody boundary.
+        let cells = vec![
+            cell(TableCellKind::GroupHeading, 0, 1, 0, 0),
+            cell(TableCellKind::Body, 0, 0, 1, 1),
+            cell(TableCellKind::Body, 1, 1, 1, 1),
+            cell(TableCellKind::GroupHeading, 2, 2, 0, 0),
+            cell(TableCellKind::Body, 2, 2, 1, 1),
+        ];
+        let rows = vec![
+            TableRow {
+                group: vec![0, 0],
+                ..TableRow::body()
+            },
+            TableRow {
+                group: vec![0, 1],
+                ..TableRow::body()
+            },
+            TableRow {
+                group: vec![1, 0],
+                ..TableRow::body()
+            },
+        ];
+
+        let html = HtmlWriter {
+            css_mode: CssMode::Inline,
+        }
+        .write_table(&layout(cells, rows))
+        .unwrap();
+
+        assert_eq!(html.matches("<tbody").count(), 2);
+        let first_tbody = html
+            .split_once("<tbody")
+            .unwrap()
+            .1
+            .split_once("</tbody>")
+            .unwrap()
+            .0;
+        assert_eq!(first_tbody.matches("<tr>").count(), 2);
     }
 
     #[test]
