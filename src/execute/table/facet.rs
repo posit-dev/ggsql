@@ -1,13 +1,13 @@
 //! `TABULATE FACET` grouping: assigns each `DataFrame` row a group key from
 //! its facet values, then reorders rows so groups are contiguous.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use arrow::array::{ArrayRef, UInt32Array};
 
 use crate::array_util::value_to_string;
 use crate::dataframe::into_array_ref;
-use crate::plot::facet::{Facet, FacetLayout};
+use crate::plot::facet::{level_keys, order_levels, Facet, FacetLayout, FacetLevel, LevelKey};
 use crate::table::{TableColumn, TableRow};
 use crate::{ColumnSection, DataFrame};
 
@@ -22,7 +22,7 @@ pub(super) fn setup_groups(facet: &Facet, df: &DataFrame) -> Result<Vec<Vec<usiz
         == Some(&crate::plot::ParameterValue::String("first".to_string()));
     let mut keys = vec![Vec::with_capacity(columns.len()); df.height()];
     for column in &columns {
-        let ranks = rank_column(column, nulls_first);
+        let ranks = rank_column(column, nulls_first)?;
         for (key, rank) in keys.iter_mut().zip(ranks) {
             key.push(rank);
         }
@@ -140,32 +140,46 @@ pub(super) fn collapse_group_columns(
     Ok((df, columns, rows, Some(facet)))
 }
 
-/// Rank one facet variable's rows: non-null levels by first appearance,
-/// nulls at a fixed rank (0 with `nulls_first`, otherwise past the non-null
-/// levels) so their placement doesn't depend on where they occur.
-fn rank_column(column: &ArrayRef, nulls_first: bool) -> Vec<usize> {
-    let mut levels: HashMap<String, usize> = HashMap::new();
-    let mut values: Vec<Option<String>> = Vec::with_capacity(column.len());
-    for row in 0..column.len() {
-        if column.is_null(row) {
-            values.push(None);
-            continue;
+/// Rank one facet variable's rows: non-null levels in the scale-free facet
+/// order (numeric-aware ascending, see [`order_levels`]), nulls at a fixed
+/// rank (0 with `nulls_first`, otherwise past the non-null levels) so their
+/// placement doesn't depend on where they occur.
+fn rank_column(column: &ArrayRef, nulls_first: bool) -> Result<Vec<usize>, String> {
+    let keys = level_keys(column).map_err(|e| e.to_string())?;
+
+    let mut seen = HashSet::new();
+    let mut distinct: Vec<FacetLevel> = Vec::new();
+    for key in &keys {
+        if seen.insert(key.clone()) {
+            distinct.push(FacetLevel {
+                key: key.clone(),
+                value: f64::NAN,
+            });
         }
-        let value = value_to_string(column, row);
-        let next = levels.len();
-        levels.entry(value.clone()).or_insert(next);
-        values.push(Some(value));
     }
 
-    let null_rank = if nulls_first { 0 } else { levels.len() };
-    let offset = usize::from(nulls_first);
-    values
+    let null = distinct
+        .iter()
+        .position(|l| l.key.is_null)
+        .map(|i| distinct.remove(i));
+    let mut ordered: Vec<LevelKey> = order_levels(distinct, None)
         .into_iter()
-        .map(|value| match value {
-            Some(value) => levels[&value] + offset,
-            None => null_rank,
-        })
-        .collect()
+        .map(|l| l.key)
+        .collect();
+    if let Some(null) = null {
+        if nulls_first {
+            ordered.insert(0, null.key);
+        } else {
+            ordered.push(null.key);
+        }
+    }
+
+    let rank: HashMap<LevelKey, usize> = ordered
+        .into_iter()
+        .enumerate()
+        .map(|(i, key)| (key, i))
+        .collect();
+    Ok(keys.iter().map(|key| rank[key]).collect())
 }
 
 /// Reorder `df` so rows with equal group keys are contiguous in
@@ -213,7 +227,7 @@ mod tests {
     }
 
     #[test]
-    fn setup_groups_assigns_keys_in_first_appearance_order() {
+    fn setup_groups_assigns_keys_in_ascending_level_order() {
         let frame = df! {
             "region" => vec!["south".to_string(), "north".to_string(), "south".to_string()],
             "sales" => vec![1i32, 2, 3],
@@ -222,7 +236,20 @@ mod tests {
 
         let keys = setup_groups(&facet(&["region"], "last"), &frame).unwrap();
 
-        assert_eq!(keys, vec![vec![0], vec![1], vec![0]]);
+        assert_eq!(keys, vec![vec![1], vec![0], vec![1]]);
+    }
+
+    #[test]
+    fn setup_groups_sorts_numeric_levels_numerically() {
+        let frame = df! {
+            "quarter" => vec![10i32, 9, 10],
+            "sales" => vec![1i32, 2, 3],
+        }
+        .unwrap();
+
+        let keys = setup_groups(&facet(&["quarter"], "last"), &frame).unwrap();
+
+        assert_eq!(keys, vec![vec![1], vec![0], vec![1]]);
     }
 
     #[test]
@@ -273,7 +300,7 @@ mod tests {
 
         let (frame, keys) = reorder_rows(&frame, keys).unwrap();
 
-        assert_eq!(keys, vec![vec![0], vec![0], vec![1]]);
+        assert_eq!(keys, vec![vec![0], vec![1], vec![1]]);
         assert_eq!(
             frame
                 .column("sales")
@@ -282,7 +309,7 @@ mod tests {
                 .downcast_ref::<arrow::array::Int32Array>()
                 .unwrap()
                 .values(),
-            &[1, 3, 2]
+            &[2, 1, 3]
         );
     }
 
@@ -297,6 +324,19 @@ mod tests {
         let keys = setup_groups(&facet(&["region"], "last"), &frame).unwrap();
 
         assert_eq!(keys, vec![vec![0], vec![1], vec![1]]);
+    }
+
+    #[test]
+    fn setup_groups_distinguishes_null_from_the_string_null() {
+        let frame = DataFrame::new(vec![(
+            "region",
+            crate::dataframe::into_array_ref(vec![Some("null"), None]),
+        )])
+        .unwrap();
+
+        let keys = setup_groups(&facet(&["region"], "last"), &frame).unwrap();
+
+        assert_eq!(keys, vec![vec![0], vec![1]]);
     }
 
     #[test]

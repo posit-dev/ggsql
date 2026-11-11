@@ -206,6 +206,29 @@ pub fn column_to_strings(array: &ArrayRef) -> Vec<String> {
         .collect()
 }
 
+/// Read an array as strings, casting non-text columns to text and
+/// substituting `null_as` for null cells. Callers differ only in what a null
+/// should become: the empty string (raw labels, facet level identity) or the
+/// sentinel category a scale's domain knows about.
+pub fn column_to_strings_or(array: &ArrayRef, null_as: &str) -> Result<Vec<String>> {
+    let casted;
+    let str_array: &StringArray = if matches!(array.data_type(), DataType::Utf8) {
+        as_str(array)?
+    } else {
+        casted = cast_array(array, &DataType::Utf8)?;
+        as_str(&casted)?
+    };
+    Ok((0..str_array.len())
+        .map(|i| {
+            if str_array.is_null(i) {
+                null_as.to_string()
+            } else {
+                str_array.value(i).to_string()
+            }
+        })
+        .collect())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
