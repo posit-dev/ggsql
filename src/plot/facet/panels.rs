@@ -76,7 +76,7 @@ fn column_to_f64(df: &DataFrame, name: &str) -> Result<Vec<f64>> {
 /// null bitmap, so a NULL cell selects a different panel than an empty-string
 /// category — see [`LevelKey`].
 pub fn level_keys(array: &ArrayRef) -> Result<Vec<LevelKey>> {
-    Ok(crate::array_util::column_to_strings_or(array, "")?
+    Ok(crate::array_util::cast_to_strings(array, "")?
         .into_iter()
         .enumerate()
         .map(|(i, text)| LevelKey {

@@ -27,9 +27,7 @@ use std::sync::Arc;
 
 use super::transform::{Transform, TransformKind};
 use crate::plot::aesthetic::{is_facet_aesthetic, is_position_aesthetic};
-use crate::plot::types::{
-    format_number, validate_parameter, DefaultParamValue, ParamDefinition, Parameters,
-};
+use crate::plot::types::{validate_parameter, DefaultParamValue, ParamDefinition, Parameters};
 use crate::plot::{ArrayElement, ColumnInfo, ParameterValue};
 
 // Scale type implementations
@@ -847,7 +845,7 @@ pub trait ScaleTypeTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
         }
         self.numeric_breaks(scale)
             .into_iter()
-            .map(|v| (v, format_number(v)))
+            .map(|v| (v, v.to_string()))
             .collect()
     }
 

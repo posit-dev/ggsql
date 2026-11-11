@@ -71,15 +71,6 @@ impl std::fmt::Display for ParameterValue {
     }
 }
 
-/// Format number for display (remove trailing zeros for integers)
-pub fn format_number(n: f64) -> String {
-    if n.fract() == 0.0 {
-        format!("{:.0}", n)
-    } else {
-        n.to_string()
-    }
-}
-
 /// Elements in arrays (shared type for property values)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ArrayElement {
@@ -258,7 +249,7 @@ impl ArrayElement {
             (Self::Number(n), ArrayElementType::Boolean) => Ok(Self::Boolean(*n != 0.0)),
 
             // Number → String
-            (Self::Number(n), ArrayElementType::String) => Ok(Self::String(format_number(*n))),
+            (Self::Number(n), ArrayElementType::String) => Ok(Self::String(n.to_string())),
 
             // Number → Date (days since epoch)
             (Self::Number(n), ArrayElementType::Date) => Ok(Self::Date(*n as i32)),
@@ -508,7 +499,7 @@ impl ArrayElement {
     pub fn to_key_string(&self) -> String {
         match self {
             Self::String(s) => s.clone(),
-            Self::Number(n) => format_number(*n),
+            Self::Number(n) => n.to_string(),
             Self::Boolean(b) => b.to_string(),
             Self::Null => "null".to_string(),
             Self::Date(d) => date_to_iso_string(*d),
