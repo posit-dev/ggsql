@@ -10,7 +10,7 @@ use hephaestus::plot::geom::Raw;
 use hephaestus::plot::{Plot as HPlot, TextGeom};
 
 use super::super::channels::{
-    aesthetic_column_name, column_to_channel, column_to_f64, column_to_strings, is_text_column,
+    aesthetic_column_name, column_to_channel, column_to_f64, column_to_raw_strings, is_text_column,
 };
 use super::super::scales::RangeKind;
 use super::super::wiring::{
@@ -39,7 +39,7 @@ pub fn build(plot: &mut HPlot, ctx: &Ctx) -> Result<()> {
     p2.apply(&mut b, "y");
 
     // Label string.
-    b.set("text", Raw(column_to_strings(df, label)?));
+    b.set("text", Raw(column_to_raw_strings(df, label)?));
 
     // `parse` decides whether each label is read as markdown (hephaestus's
     // `markdown` channel, which routes the row through the rich-text shaper) or
@@ -163,7 +163,7 @@ fn justification(ctx: &Ctx, aesthetic: &str) -> Vec<f64> {
         // without erroring, so a numeric read cannot be tried first (see
         // `is_text_column`).
         if is_text_column(ctx.df, col) {
-            if let Ok(names) = column_to_strings(ctx.df, col) {
+            if let Ok(names) = column_to_raw_strings(ctx.df, col) {
                 return names.iter().map(|s| parse_justification(s)).collect();
             }
         } else if let Ok(values) = column_to_f64(ctx.df, col) {
