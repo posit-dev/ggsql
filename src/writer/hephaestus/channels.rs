@@ -9,7 +9,7 @@ use hephaestus::plot::geom::{BuildableGeom, GeomBuilder};
 use hephaestus::scales::geometry::{Coord, Geometry, Polygon as GeoPolygon};
 
 use super::scales::parse_color;
-use crate::array_util::{as_bool, as_f64, as_str, cast_array, value_to_string};
+use crate::array_util::{as_bool, as_f64, cast_array, value_to_string};
 use crate::{AestheticValue, DataFrame, GgsqlError, Layer, Result};
 
 /// A column extracted in the type hephaestus expects for a channel: numeric
@@ -85,7 +85,9 @@ pub const NULL_CATEGORY: &str = "__ggsql_null__";
 pub fn column_to_channel(df: &DataFrame, name: &str) -> Result<ChannelData> {
     let array = df.column(name)?;
     if is_text_column(df, name) || matches!(array.data_type(), DataType::Boolean) {
-        Ok(ChannelData::Strings(read_strings(df, name, NULL_CATEGORY)?))
+        Ok(ChannelData::Strings(
+            crate::array_util::column_to_strings_or(array, NULL_CATEGORY)?,
+        ))
     } else {
         Ok(ChannelData::Floats(column_to_f64(df, name)?))
     }
@@ -121,30 +123,7 @@ pub fn column_to_f64(df: &DataFrame, name: &str) -> Result<Vec<f64>> {
 /// empty strings — this is the raw, unscaled path (text labels, shape and
 /// linetype names), where an empty string is the right "nothing here".
 pub fn column_to_strings(df: &DataFrame, name: &str) -> Result<Vec<String>> {
-    read_strings(df, name, "")
-}
-
-/// Read a column as strings, substituting `null_as` for null cells. Callers
-/// differ only in what a null should become: nothing at all, or the sentinel
-/// category a scale's domain knows about.
-fn read_strings(df: &DataFrame, name: &str, null_as: &str) -> Result<Vec<String>> {
-    let array = df.column(name)?;
-    let casted;
-    let str_array: &StringArray = if matches!(array.data_type(), DataType::Utf8) {
-        as_str(array)?
-    } else {
-        casted = cast_array(array, &DataType::Utf8)?;
-        as_str(&casted)?
-    };
-    Ok((0..str_array.len())
-        .map(|i| {
-            if str_array.is_null(i) {
-                null_as.to_string()
-            } else {
-                str_array.value(i).to_string()
-            }
-        })
-        .collect())
+    crate::array_util::column_to_strings_or(df.column(name)?, "")
 }
 
 /// Build a per-row group key from the layer's partition columns (concatenated
