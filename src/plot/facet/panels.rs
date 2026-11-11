@@ -86,6 +86,23 @@ pub fn level_keys(array: &ArrayRef) -> Result<Vec<LevelKey>> {
         .collect())
 }
 
+/// Distinct levels of a key column, in first-appearance order. `values`, when
+/// given, holds the numeric form of the same cells (the bin-centre join key
+/// for a binned plot facet); without it levels get `NaN`.
+pub fn distinct_levels(keys: &[LevelKey], values: Option<&[f64]>) -> Vec<FacetLevel> {
+    let mut seen = HashSet::new();
+    let mut distinct = Vec::new();
+    for (i, key) in keys.iter().enumerate() {
+        if seen.insert(key.clone()) {
+            distinct.push(FacetLevel {
+                key: key.clone(),
+                value: values.map_or(f64::NAN, |v| v[i]),
+            });
+        }
+    }
+    distinct
+}
+
 /// Distinct facet levels present in the data, ordered per the facet scale.
 ///
 /// * `internal_aes` is the internal facet aesthetic name (`"facet1"` /
@@ -97,19 +114,8 @@ pub fn ordered_levels(spec: &Plot, df: &DataFrame, internal_aes: &str) -> Result
     // column can't cast; `value` is only read for binned scales.
     let values = column_to_f64(df, &col).unwrap_or_else(|_| vec![f64::NAN; keys.len()]);
 
-    let mut seen = HashSet::new();
-    let mut distinct: Vec<FacetLevel> = Vec::new();
-    for (i, key) in keys.iter().enumerate() {
-        if seen.insert(key.clone()) {
-            distinct.push(FacetLevel {
-                key: key.clone(),
-                value: values[i],
-            });
-        }
-    }
-
     let scale = spec.find_scale(internal_aes);
-    Ok(order_levels(distinct, scale))
+    Ok(order_levels(distinct_levels(&keys, Some(&values)), scale))
 }
 
 /// Order distinct facet levels: a binned facet sorts by its (numeric) bin

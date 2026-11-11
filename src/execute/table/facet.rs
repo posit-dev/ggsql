@@ -1,13 +1,13 @@
 //! `TABULATE FACET` grouping: assigns each `DataFrame` row a group key from
 //! its facet values, then reorders rows so groups are contiguous.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use arrow::array::{ArrayRef, UInt32Array};
 
 use crate::array_util::value_to_string;
 use crate::dataframe::into_array_ref;
-use crate::plot::facet::{level_keys, order_levels, Facet, FacetLayout, FacetLevel, LevelKey};
+use crate::plot::facet::{distinct_levels, level_keys, order_levels, Facet, FacetLayout, LevelKey};
 use crate::table::{TableColumn, TableRow};
 use crate::{ColumnSection, DataFrame};
 
@@ -146,38 +146,26 @@ pub(super) fn collapse_group_columns(
 /// placement doesn't depend on where they occur.
 fn rank_column(column: &ArrayRef, nulls_first: bool) -> Result<Vec<usize>, String> {
     let keys = level_keys(column).map_err(|e| e.to_string())?;
-
-    let mut seen = HashSet::new();
-    let mut distinct: Vec<FacetLevel> = Vec::new();
-    for key in &keys {
-        if seen.insert(key.clone()) {
-            distinct.push(FacetLevel {
-                key: key.clone(),
-                value: f64::NAN,
-            });
-        }
-    }
+    let mut distinct = distinct_levels(&keys, None);
 
     let null = distinct
         .iter()
         .position(|l| l.key.is_null)
         .map(|i| distinct.remove(i));
-    let mut ordered: Vec<LevelKey> = order_levels(distinct, None)
-        .into_iter()
-        .map(|l| l.key)
-        .collect();
+    let mut ordered = order_levels(distinct, None);
     if let Some(null) = null {
         if nulls_first {
-            ordered.insert(0, null.key);
+            ordered.insert(0, null);
         } else {
-            ordered.push(null.key);
+            ordered.push(null);
         }
     }
 
-    let rank: HashMap<LevelKey, usize> = ordered
-        .into_iter()
+    // A row's rank is its level's index in the ordered vec.
+    let rank: HashMap<&LevelKey, usize> = ordered
+        .iter()
         .enumerate()
-        .map(|(i, key)| (key, i))
+        .map(|(i, level)| (&level.key, i))
         .collect();
     Ok(keys.iter().map(|key| rank[key]).collect())
 }
