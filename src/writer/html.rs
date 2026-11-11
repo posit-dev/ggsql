@@ -458,16 +458,14 @@ fn styling_attr(classes: &[TableClass], mode: CssMode) -> String {
     }
 }
 
-/// Render one `TableCell` as an HTML `<th>`/`<td>`, picked from
-/// `cell.is_header()` — except a `Filler`, which renders as a `<td>` even in
-/// the header since it labels nothing. A `colspan`/`rowspan` attribute goes
-/// on only when the cell actually spans more than one column/row, and a
-/// `scope` attribute per `header_scope`. Styling per `mode` via
-/// `styling_attr` — classes in `INNER_CLASSES` go on a `<div>` around the
-/// content rather than on the `<th>`/`<td>` itself. Not used for a
-/// `Caption`-kind cell — see `render_caption`.
+/// Render one `TableCell` as an HTML `<th>`/`<td>`, styled per `mode` (see
+/// `styling_attr`). Not used for a `Caption`-kind cell — see `render_caption`.
 fn render_cell(cell: &TableCell, mode: CssMode) -> String {
-    let tag = if cell.is_header() && cell.kind != TableCellKind::Filler {
+    // A Filler labels nothing, so it renders as a <td> even in the header;
+    // a GroupHeading heads its rows even though it sits in the body.
+    let tag = if (cell.is_header() && cell.kind != TableCellKind::Filler)
+        || cell.kind == TableCellKind::GroupHeading
+    {
         "th"
     } else {
         "td"
@@ -486,6 +484,7 @@ fn render_cell(cell: &TableCell, mode: CssMode) -> String {
     }
     // `slots_by_row`'s slots borrow the layout's cells, so `hjust` can't be
     // folded into `classes` up front — its class joins the fold here.
+    // INNER_CLASSES go on a <div> around the content, not on the cell itself.
     let (inner, outer): (Vec<TableClass>, Vec<TableClass>) = cell
         .classes
         .iter()
@@ -507,19 +506,19 @@ fn render_cell(cell: &TableCell, mode: CssMode) -> String {
 /// `scope` value for a header cell of `kind`, or `None` if `scope` doesn't
 /// apply. `ColumnLabel`/`StubHead` are always single-column (`"col"`); a
 /// `Spanner` is a column-group header even when its group has one column
-/// (`"colgroup"`); `StubRowLabel` heads its row (`"row"`); everything else
-/// gets none.
+/// (`"colgroup"`); `StubRowLabel` heads its row (`"row"`); a `GroupHeading`
+/// heads its facet group (`"rowgroup"`); everything else gets none.
 fn header_scope(kind: TableCellKind) -> Option<&'static str> {
     match kind {
         TableCellKind::ColumnLabel | TableCellKind::StubHead => Some("col"),
         TableCellKind::Spanner => Some("colgroup"),
         TableCellKind::StubRowLabel => Some("row"),
+        TableCellKind::GroupHeading => Some("rowgroup"),
         TableCellKind::Body
         | TableCellKind::Title
         | TableCellKind::Subtitle
         | TableCellKind::Caption
-        | TableCellKind::Filler
-        | TableCellKind::GroupHeading => None,
+        | TableCellKind::Filler => None,
     }
 }
 
@@ -675,6 +674,15 @@ mod render_tests {
         assert_eq!(
             render_cell(&c, CssMode::Inline),
             "<th rowspan=\"2\" scope=\"col\"></th>"
+        );
+    }
+
+    #[test]
+    fn render_cell_emits_a_group_heading_as_a_rowgroup_th() {
+        let c = cell(TableCellKind::GroupHeading, 2, 3, 0, 0);
+        assert_eq!(
+            render_cell(&c, CssMode::Inline),
+            "<th rowspan=\"2\" scope=\"rowgroup\"></th>"
         );
     }
 
