@@ -410,7 +410,11 @@ impl TableCell {
     }
 
     /// Whether this cell belongs in a table's header rather than its body —
-    /// delegates to `TableCellKind::is_header`.
+    /// delegates to `TableCellKind::is_header`. This is a layout distinction
+    /// (which part of the table the cell sits in), not a rendering one: a
+    /// writer may still emit body cells as header elements — e.g. the HTML
+    /// writer renders a body `GroupHeading` as a `<th>`, while a header
+    /// `Filler` gets a `<td>`.
     pub fn is_header(&self) -> bool {
         self.kind.is_header()
     }
