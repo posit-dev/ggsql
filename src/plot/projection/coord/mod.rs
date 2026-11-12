@@ -97,28 +97,11 @@ pub trait CoordTrait: std::fmt::Debug + Send + Sync {
     ) -> Result<Parameters, String> {
         let defaults = self.default_properties();
 
-        // Validate values against constraints
-        for (key, value) in properties.iter() {
-            if let Some(param) = defaults.iter().find(|p| p.name == key) {
-                param.validate(value)?;
-            } else {
-                let allowed: Vec<&str> = defaults.iter().map(|p| p.name).collect();
-                return Err(if allowed.is_empty() {
-                    format!(
-                        "{} projection does not accept any properties, but got '{}'",
-                        self.name(),
-                        key
-                    )
-                } else {
-                    format!(
-                        "{} projection property should be {}, not '{}'",
-                        self.name(),
-                        crate::or_list_quoted(&allowed, '\''),
-                        key
-                    )
-                });
-            }
-        }
+        crate::params::reject_unknown_parameters(
+            properties,
+            defaults,
+            &format!("{} projection property", self.name()),
+        )?;
 
         // Start with user properties, add defaults for missing ones
         let mut resolved = properties.clone();

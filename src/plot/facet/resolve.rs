@@ -105,28 +105,19 @@ pub fn resolve_properties(
 
     let defaults = facet.layout.default_properties();
 
-    // Step 1: Validate all properties are allowed and validate their values
-    for (key, value) in facet.properties.iter() {
-        if let Some(param) = defaults.iter().find(|p| p.name == key) {
-            param.validate(value)?;
-        } else {
-            // Special error messages for ncol/nrow on grid facets
-            if key == "ncol" {
-                return Err(
-                    "Setting 'ncol' is only allowed for 1 dimensional facets, not 2 dimensional facets".to_string(),
-                );
-            }
-            if key == "nrow" {
-                return Err(
-                    "Setting 'nrow' is only allowed for 1 dimensional facets, not 2 dimensional facets".to_string(),
-                );
-            }
-            let allowed: Vec<&str> = defaults.iter().map(|p| p.name).collect();
+    // Step 1: Validate all properties are allowed and validate their values.
+    // ncol/nrow are wrap-only: on grid facets they get a targeted error.
+    for key in ["ncol", "nrow"] {
+        if facet.properties.contains_key(key) && !defaults.iter().any(|p| p.name == key) {
             return Err(format!(
-                "FACET setting should be {}, not '{}'",
-                crate::or_list_quoted(&allowed, '\''),
-                key
+                "Setting '{key}' is only allowed for 1 dimensional facets, not 2 dimensional facets"
             ));
+        }
+    }
+    crate::params::reject_unknown_parameters(&facet.properties, defaults, "FACET setting")?;
+    for param in defaults {
+        if let Some(value) = facet.properties.get(param.name) {
+            param.validate(value)?;
         }
     }
 
