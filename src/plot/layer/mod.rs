@@ -29,10 +29,7 @@ pub use position::{Position, PositionTrait, PositionType};
 use crate::{
     plot::{
         is_facet_aesthetic, is_user_facet_aesthetic, parse_position,
-        types::{
-            validate_parameter, AestheticValue, DataSource, Mappings, ParameterValue, Parameters,
-            SqlExpression,
-        },
+        types::{AestheticValue, DataSource, Mappings, ParameterValue, Parameters, SqlExpression},
     },
     AestheticContext,
 };
@@ -421,7 +418,7 @@ impl Layer {
                 .iter()
                 .find(|p| p.name == param_name)
             {
-                validate_parameter(param_name, value, &param.constraint)?;
+                param.validate(value)?;
             }
             // Or a position param
             else if let Some(param) = self
@@ -430,13 +427,13 @@ impl Layer {
                 .iter()
                 .find(|p| p.name == param_name)
             {
-                validate_parameter(param_name, value, &param.constraint)?;
+                param.validate(value)?;
             }
             // Otherwise it's a valid aesthetic setting (no constraint validation needed).
             //
             // `aggregate` is registered in each supporting geom's `default_params`
             // so its structural shape (string / array of strings / null) is
-            // checked through the standard `validate_parameter` path above. The
+            // checked through the standard `ParamDefinition::validate` path above. The
             // per-entry vocabulary check (function names exist in `AGG_NAMES`,
             // band syntax, recycling rules) lives in
             // `stat_aggregate::parse_aggregate_param` and runs at execute time

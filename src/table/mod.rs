@@ -23,8 +23,7 @@ use std::collections::{HashMap, HashSet};
 
 use crate::labels::Labels;
 use crate::params::{
-    validate_parameter, DefaultParamValue, NumberConstraint, ParamConstraint, ParamDefinition,
-    Parameters,
+    DefaultParamValue, NumberConstraint, ParamConstraint, ParamDefinition, Parameters,
 };
 use crate::DataSource;
 
@@ -326,7 +325,7 @@ impl Format {
                     name
                 ));
             };
-            validate_parameter(name, value, &param.constraint)?;
+            param.validate(value)?;
         }
 
         Ok(())

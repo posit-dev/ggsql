@@ -1095,67 +1095,6 @@ impl ParamConstraint {
     }
 }
 
-/// Validate a parameter value against a constraint.
-///
-/// Returns Ok(()) if the value passes validation, or Err with a descriptive
-/// error message if validation fails.
-pub fn validate_parameter(
-    param_name: &str,
-    value: &ParameterValue,
-    constraint: &ParamConstraint,
-) -> Result<(), String> {
-    match value {
-        ParameterValue::Number(n) => match &constraint.number {
-            TypeConstraint::Forbidden => {
-                Err(type_not_allowed_error(param_name, "Number", constraint))
-            }
-            TypeConstraint::Any => Ok(()),
-            TypeConstraint::Constrained(c) if !c.units.is_empty() => Err(format!(
-                "'{}' should be a number followed by {}, not {}",
-                param_name,
-                crate::or_list_quoted(c.units, '\''),
-                n
-            )),
-            TypeConstraint::Constrained(c) => validate_number(param_name, *n, c),
-        },
-        ParameterValue::String(s) => match &constraint.string {
-            TypeConstraint::Forbidden => match &constraint.number {
-                // A number with a unit arrives as a string ('240px'), so it
-                // lands here even though the constraint lives on `number`.
-                TypeConstraint::Constrained(c) if !c.units.is_empty() => {
-                    validate_number_with_unit(param_name, s, c)
-                }
-                _ => Err(type_not_allowed_error(param_name, "String", constraint)),
-            },
-            TypeConstraint::Any => Ok(()),
-            TypeConstraint::Constrained(c) => validate_string(param_name, s, c),
-        },
-        ParameterValue::Boolean(_) => match &constraint.boolean {
-            TypeConstraint::Forbidden => {
-                Err(type_not_allowed_error(param_name, "Boolean", constraint))
-            }
-            TypeConstraint::Any | TypeConstraint::Constrained(()) => Ok(()),
-        },
-        ParameterValue::Array(arr) => match &constraint.array {
-            TypeConstraint::Forbidden => {
-                Err(type_not_allowed_error(param_name, "Array", constraint))
-            }
-            TypeConstraint::Any => Ok(()),
-            TypeConstraint::Constrained(c) => validate_array(param_name, arr, c),
-        },
-        ParameterValue::Null => {
-            if constraint.allow_null {
-                Ok(())
-            } else {
-                Err(format!(
-                    "Parameter '{}' is required (cannot be null)",
-                    param_name
-                ))
-            }
-        }
-    }
-}
-
 fn validate_number(name: &str, n: f64, c: &NumberConstraint) -> Result<(), String> {
     // Check whole number constraint first
     if c.whole && n.fract() != 0.0 {
@@ -1327,6 +1266,65 @@ pub struct ParamDefinition {
 }
 
 impl ParamDefinition {
+    /// Validate a value against this definition's constraint.
+    ///
+    /// Returns Ok(()) if the value passes validation, or Err with a descriptive
+    /// error message if validation fails.
+    pub fn validate(&self, value: &ParameterValue) -> Result<(), String> {
+        let param_name = self.name;
+        let constraint = &self.constraint;
+        match value {
+            ParameterValue::Number(n) => match &constraint.number {
+                TypeConstraint::Forbidden => {
+                    Err(type_not_allowed_error(param_name, "Number", constraint))
+                }
+                TypeConstraint::Any => Ok(()),
+                TypeConstraint::Constrained(c) if !c.units.is_empty() => Err(format!(
+                    "'{}' should be a number followed by {}, not {}",
+                    param_name,
+                    crate::or_list_quoted(c.units, '\''),
+                    n
+                )),
+                TypeConstraint::Constrained(c) => validate_number(param_name, *n, c),
+            },
+            ParameterValue::String(s) => match &constraint.string {
+                TypeConstraint::Forbidden => match &constraint.number {
+                    // A number with a unit arrives as a string ('240px'), so it
+                    // lands here even though the constraint lives on `number`.
+                    TypeConstraint::Constrained(c) if !c.units.is_empty() => {
+                        validate_number_with_unit(param_name, s, c)
+                    }
+                    _ => Err(type_not_allowed_error(param_name, "String", constraint)),
+                },
+                TypeConstraint::Any => Ok(()),
+                TypeConstraint::Constrained(c) => validate_string(param_name, s, c),
+            },
+            ParameterValue::Boolean(_) => match &constraint.boolean {
+                TypeConstraint::Forbidden => {
+                    Err(type_not_allowed_error(param_name, "Boolean", constraint))
+                }
+                TypeConstraint::Any | TypeConstraint::Constrained(()) => Ok(()),
+            },
+            ParameterValue::Array(arr) => match &constraint.array {
+                TypeConstraint::Forbidden => {
+                    Err(type_not_allowed_error(param_name, "Array", constraint))
+                }
+                TypeConstraint::Any => Ok(()),
+                TypeConstraint::Constrained(c) => validate_array(param_name, arr, c),
+            },
+            ParameterValue::Null => {
+                if constraint.allow_null {
+                    Ok(())
+                } else {
+                    Err(format!(
+                        "Parameter '{}' is required (cannot be null)",
+                        param_name
+                    ))
+                }
+            }
+        }
+    }
+
     /// Convert the default value to a ParameterValue, if not Null
     pub fn to_parameter_value(&self) -> Option<ParameterValue> {
         match &self.default {
@@ -1341,6 +1339,19 @@ impl ParamDefinition {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn validate_parameter(
+        param_name: &'static str,
+        value: &ParameterValue,
+        constraint: &ParamConstraint,
+    ) -> Result<(), String> {
+        ParamDefinition {
+            name: param_name,
+            default: DefaultParamValue::Null,
+            constraint: *constraint,
+        }
+        .validate(value)
+    }
 
     #[test]
     fn test_date_from_string() {

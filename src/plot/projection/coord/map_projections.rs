@@ -4,8 +4,7 @@ use std::sync::Arc;
 use super::CoordKind;
 use crate::plot::scale::Scale;
 use crate::plot::types::{
-    validate_parameter, ArrayElement, DefaultParamValue, ParamConstraint, ParamDefinition,
-    Parameters, TypeConstraint,
+    ArrayElement, DefaultParamValue, ParamConstraint, ParamDefinition, Parameters, TypeConstraint,
 };
 use crate::plot::{Layer, ParameterValue};
 use crate::reader::SqlDialect;
@@ -205,7 +204,7 @@ impl<T: MapProjectionTrait + 'static> super::CoordTrait for T {
         let defaults = self.default_properties();
         for (key, value) in properties.iter() {
             if let Some(param) = defaults.iter().find(|p| p.name == key) {
-                validate_parameter(key, value, &param.constraint)?;
+                param.validate(value)?;
             } else {
                 let allowed: Vec<&str> = defaults.iter().map(|p| p.name).collect();
                 return Err(format!(

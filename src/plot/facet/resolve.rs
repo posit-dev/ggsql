@@ -2,7 +2,6 @@
 //!
 //! Validates facet properties and applies data-aware defaults.
 
-use crate::plot::types::validate_parameter;
 use crate::plot::ParameterValue;
 use crate::DataFrame;
 use std::collections::HashMap;
@@ -112,7 +111,7 @@ pub fn resolve_properties(
         if let Some(param) = defaults.iter().find(|p| p.name == key) {
             // Skip validation for 'free' - it has coord-dependent allowed values
             if key != "free" {
-                validate_parameter(key, value, &param.constraint)?;
+                param.validate(value)?;
             }
         } else {
             // Special error messages for ncol/nrow on grid facets

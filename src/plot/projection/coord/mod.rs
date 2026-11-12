@@ -24,7 +24,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 use crate::plot::scale::Scale;
-use crate::plot::types::{validate_parameter, ParamDefinition, Parameters};
+use crate::plot::types::{ParamDefinition, Parameters};
 use crate::plot::Layer;
 use crate::reader::SqlDialect;
 use crate::DataFrame;
@@ -100,7 +100,7 @@ pub trait CoordTrait: std::fmt::Debug + Send + Sync {
         // Validate values against constraints
         for (key, value) in properties.iter() {
             if let Some(param) = defaults.iter().find(|p| p.name == key) {
-                validate_parameter(key, value, &param.constraint)?;
+                param.validate(value)?;
             } else {
                 let allowed: Vec<&str> = defaults.iter().map(|p| p.name).collect();
                 return Err(if allowed.is_empty() {

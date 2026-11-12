@@ -7,7 +7,7 @@ For ggsql language semantics, see [`/doc/syntax/`](../../doc/syntax/). This file
 ## Top-level types
 
 Defined in `main.rs` (the `Plot` struct) and `types.rs` (input/value types). All are re-exported through `mod.rs`.
-The `SETTING`-parameter machinery (`ParameterValue`, `Parameters`, `ArrayElement`, the constraint types, `validate_parameter`) lives one level up in [`../params.rs`](../params.rs), shared with `table/`; `types.rs` re-exports it, so `plot::` paths keep working.
+The `SETTING`-parameter machinery (`ParameterValue`, `Parameters`, `ArrayElement`, the constraint types, `ParamDefinition::validate`) lives one level up in [`../params.rs`](../params.rs), shared with `table/`; `types.rs` re-exports it, so `plot::` paths keep working.
 `Labels` lives in [`../labels.rs`](../labels.rs), likewise shared with `table/` and re-exported from `main.rs`.
 
 | Type | Where | Role |

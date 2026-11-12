@@ -27,9 +27,7 @@ use std::sync::Arc;
 
 use super::transform::{Transform, TransformKind};
 use crate::plot::aesthetic::{is_facet_aesthetic, is_position_aesthetic};
-use crate::plot::types::{
-    format_number, validate_parameter, DefaultParamValue, ParamDefinition, Parameters,
-};
+use crate::plot::types::{format_number, DefaultParamValue, ParamDefinition, Parameters};
 use crate::plot::{ArrayElement, ColumnInfo, ParameterValue};
 
 // Scale type implementations
@@ -656,7 +654,7 @@ pub trait ScaleTypeTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
             let param = defaults.iter().find(|p| p.name == key);
             if let Some(param) = param {
                 if !is_expand_on_non_position {
-                    validate_parameter(key, value, &param.constraint)?;
+                    param.validate(value)?;
                     continue;
                 }
             }
