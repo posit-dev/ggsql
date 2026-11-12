@@ -1025,7 +1025,13 @@ impl ParamConstraint {
         }
     }
 
-    /// String enum or Array of strings from same enum - for `free` parameter
+    /// String enum or Array of strings from same enum - for `free` parameter.
+    ///
+    /// Not actually used for `free`: its accepted values are the coord's
+    /// position names, which arrive as runtime strings (custom position
+    /// names are allowed), while this constructor needs `&'static` values.
+    /// `free` uses [`Self::string_or_string_array_unconstrained`] plus a
+    /// separate membership check instead.
     #[allow(dead_code)]
     pub const fn string_or_string_array(values: &'static [&'static str]) -> Self {
         Self {

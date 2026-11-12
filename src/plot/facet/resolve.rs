@@ -82,12 +82,11 @@ fn compute_default_ncol(num_levels: usize) -> i64 {
 /// 1. Skips if already resolved
 /// 2. Validates all properties are allowed for this layout
 /// 3. Validates property values using constraints from `default_properties()`
-/// 4. Validates `free` property against position aesthetic names (coord-dependent)
+/// 4. Validates and normalizes `free` against position aesthetic names (coord-dependent)
 /// 5. Validates ncol/nrow mutual exclusivity
-/// 6. Normalizes the `free` property to a boolean vector (position-indexed)
-/// 7. Applies defaults for missing properties:
+/// 6. Applies defaults for missing properties:
 ///    - `ncol` (wrap only): computed from `context.num_levels`
-/// 8. Sets `resolved = true`
+/// 7. Sets `resolved = true`
 ///
 /// # Arguments
 ///
@@ -109,10 +108,7 @@ pub fn resolve_properties(
     // Step 1: Validate all properties are allowed and validate their values
     for (key, value) in facet.properties.iter() {
         if let Some(param) = defaults.iter().find(|p| p.name == key) {
-            // Skip validation for 'free' - it has coord-dependent allowed values
-            if key != "free" {
-                param.validate(value)?;
-            }
+            param.validate(value)?;
         } else {
             // Special error messages for ncol/nrow on grid facets
             if key == "ncol" {
@@ -134,16 +130,13 @@ pub fn resolve_properties(
         }
     }
 
-    // Step 2: Validate free property against coord-dependent position names
-    validate_free_property(facet, position_names)?;
+    // Step 2: Validate and normalize free against coord-dependent position names
+    resolve_free_property(facet, position_names)?;
 
     // Step 3: Validate ncol/nrow mutual exclusivity
     validate_layout_exclusivity(facet)?;
 
-    // Step 4: Normalize free property to boolean vector
-    normalize_free_property(facet, position_names);
-
-    // Step 5: Apply defaults for missing properties
+    // Step 4: Apply defaults for missing properties
     apply_defaults(facet, context);
 
     // Mark as resolved
@@ -152,125 +145,60 @@ pub fn resolve_properties(
     Ok(())
 }
 
-/// Validate free property value
+/// Validate and normalize the free property against the coord's position names.
 ///
-/// Accepts:
-/// - `null` (ParameterValue::Null) - shared scales (default when absent)
-/// - A valid position aesthetic name (string) - independent scale for that axis only
-/// - An array of valid position aesthetic names - independent scales for specified axes
-///
-/// # Arguments
-///
-/// * `facet` - The facet to validate
-/// * `position_names` - Valid position aesthetic names (e.g., ["x", "y"] or ["angle", "radius"])
-fn validate_free_property(facet: &Facet, position_names: &[&str]) -> Result<(), String> {
-    if let Some(value) = facet.properties.get("free") {
-        match value {
-            ParameterValue::Null => {
-                // Explicit null means shared scales (same as default)
-                Ok(())
-            }
-            ParameterValue::String(s) => {
-                if !position_names.contains(&s.as_str()) {
-                    return Err(format!(
-                        "invalid 'free' value '{}'. Expected one of: {} (or null)",
-                        s,
-                        crate::or_list_quoted(position_names, '\'')
-                    ));
-                }
-                Ok(())
-            }
-            ParameterValue::Array(arr) => {
-                // Validate each element is a valid position name
-                if arr.is_empty() {
-                    return Err("invalid 'free' array: cannot be empty".to_string());
-                }
-                if arr.len() > position_names.len() {
-                    return Err(format!(
-                        "invalid 'free' array: too many elements ({} given, max {})",
-                        arr.len(),
-                        position_names.len()
-                    ));
-                }
-
-                let mut seen = std::collections::HashSet::new();
-                for elem in arr {
-                    match elem {
-                        crate::plot::ArrayElement::String(s) => {
-                            if !position_names.contains(&s.as_str()) {
-                                return Err(format!(
-                                    "invalid 'free' array element '{}'. Expected one of: {}",
-                                    s,
-                                    crate::or_list_quoted(position_names, '\'')
-                                ));
-                            }
-                            if !seen.insert(s.clone()) {
-                                return Err(format!(
-                                    "invalid 'free' array: duplicate element '{}'",
-                                    s
-                                ));
-                            }
-                        }
-                        _ => {
-                            return Err(format!(
-                                "invalid 'free' array: elements must be strings. Expected: {}",
-                                crate::or_list_quoted(position_names, '\'')
-                            ));
-                        }
-                    }
-                }
-                Ok(())
-            }
-            _ => Err(format!(
-                "'free' must be null, a string ({}), or an array of position names",
-                crate::or_list_quoted(position_names, '\'')
-            )),
-        }
-    } else {
-        Ok(())
-    }
-}
-
-/// Normalize free property to a boolean vector
-///
-/// Transforms user-provided values to a boolean vector (position-indexed):
+/// The facet definitions' constraint has already pinned the shape (string /
+/// array of strings / null); this validates what the constraint system can't
+/// express statically — membership in `position_names`, element uniqueness,
+/// and array length bounds (both derived from `position_names`) — and
+/// normalizes the value to a position-indexed boolean vector:
 /// - User writes: `free => 'x'` → stored as: `free => [true, false]`
-/// - User writes: `free => 'angle'` → stored as: `free => [true, false]`
 /// - User writes: `free => ['x', 'y']` → stored as: `free => [true, true]`
 /// - User writes: `free => null` or absent → stored as: `free => [false, false]`
 ///
 /// This allows the writer to use the vector directly without any parsing.
-fn normalize_free_property(facet: &mut Facet, position_names: &[&str]) {
-    let mut free_vec = vec![false; position_names.len()];
-
-    if let Some(value) = facet.properties.get("free") {
-        match value {
-            ParameterValue::String(s) => {
-                // Single string -> set that position to true
-                if let Some(idx) = position_names.iter().position(|n| *n == s.as_str()) {
-                    free_vec[idx] = true;
-                }
+fn resolve_free_property(facet: &mut Facet, position_names: &[&str]) -> Result<(), String> {
+    // Collect the names the user freed, whatever the shape
+    let names: Vec<&str> = match facet.properties.get("free") {
+        Some(ParameterValue::String(s)) => vec![s.as_str()],
+        Some(ParameterValue::Array(arr)) => {
+            if arr.is_empty() || arr.len() > position_names.len() {
+                return Err(format!(
+                    "invalid 'free' array: expected between 1 and {} element(s), got {}",
+                    position_names.len(),
+                    arr.len()
+                ));
             }
-            ParameterValue::Array(arr) => {
-                // Array -> set each position to true
-                for elem in arr {
-                    if let crate::plot::ArrayElement::String(s) = elem {
-                        if let Some(idx) = position_names.iter().position(|n| *n == s.as_str()) {
-                            free_vec[idx] = true;
-                        }
-                    }
-                }
-            }
-            ParameterValue::Null => {
-                // Explicit null -> all false (already initialized)
-            }
-            _ => {
-                // Invalid type - should have been caught by validation
-            }
+            arr.iter()
+                .filter_map(|elem| match elem {
+                    crate::plot::ArrayElement::String(s) => Some(s.as_str()),
+                    // Non-strings rejected by the definition's constraint
+                    _ => None,
+                })
+                .collect()
         }
+        // Absent or null means shared scales
+        _ => vec![],
+    };
+
+    let mut free_vec = vec![false; position_names.len()];
+    for name in names {
+        let Some(idx) = position_names.iter().position(|&n| n == name) else {
+            return Err(format!(
+                "invalid 'free' value '{}'. Expected one of: {} (or null)",
+                name,
+                crate::or_list_quoted(position_names, '\'')
+            ));
+        };
+        if free_vec[idx] {
+            return Err(format!(
+                "invalid 'free' array: duplicate element '{}'",
+                name
+            ));
+        }
+        free_vec[idx] = true;
     }
 
-    // Store as boolean array
     let bool_array: Vec<crate::plot::ArrayElement> = free_vec
         .iter()
         .map(|&b| crate::plot::ArrayElement::Boolean(b))
@@ -278,6 +206,7 @@ fn normalize_free_property(facet: &mut Facet, position_names: &[&str]) {
     facet
         .properties
         .insert("free".to_string(), ParameterValue::Array(bool_array));
+    Ok(())
 }
 
 /// Validate ncol and nrow mutual exclusivity

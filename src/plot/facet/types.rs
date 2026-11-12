@@ -199,7 +199,7 @@ impl FacetLayout {
                     ParamDefinition {
                         name: "free",
                         default: DefaultParamValue::Null,
-                        constraint: ParamConstraint::unconstrained(), // Validated separately due to coord-dependent values
+                        constraint: ParamConstraint::string_or_string_array_unconstrained(), // Membership checked separately: accepted values are coord-dependent
                     },
                     ParamDefinition {
                         name: "ncol",
@@ -224,7 +224,7 @@ impl FacetLayout {
                     ParamDefinition {
                         name: "free",
                         default: DefaultParamValue::Null,
-                        constraint: ParamConstraint::unconstrained(), // Validated separately due to coord-dependent values
+                        constraint: ParamConstraint::string_or_string_array_unconstrained(), // Membership checked separately: accepted values are coord-dependent
                     },
                     ParamDefinition {
                         name: "missing",
