@@ -7,8 +7,7 @@ use serde::{Deserialize, Serialize};
 use super::layout::{TableCell, TableClass, TableColumn, TableLayout, TableRow};
 use crate::labels::Labels;
 use crate::params::{
-    validate_parameter, DefaultParamValue, ParamConstraint, ParamDefinition, ParameterValue,
-    Parameters,
+    DefaultParamValue, ParamConstraint, ParamDefinition, ParameterValue, Parameters,
 };
 
 /// One `SPAN` clause: a named group of columns rendered as one spanner cell
@@ -63,7 +62,7 @@ impl Spanner {
                 ));
             };
             // Known key, but wrong shape (e.g. `gather` not a boolean).
-            validate_parameter(name, value, &param.constraint)?;
+            param.validate(value)?;
         }
 
         Ok(())
