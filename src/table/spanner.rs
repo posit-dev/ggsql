@@ -51,21 +51,13 @@ impl Spanner {
     /// Validate `settings` against `SPAN_PARAMS`, mirroring
     /// `Layer::validate_settings`.
     pub fn validate_settings(&self) -> Result<(), String> {
-        let valid: Vec<&str> = SPAN_PARAMS.iter().map(|p| p.name).collect();
-
-        for (name, value) in &self.settings {
-            // Key isn't in SPAN_PARAMS at all.
-            let Some(param) = SPAN_PARAMS.iter().find(|p| p.name == name.as_str()) else {
-                return Err(format!(
-                    "SPAN setting should be {}, not '{}'",
-                    crate::or_list_quoted(&valid, '\''),
-                    name
-                ));
-            };
+        crate::params::reject_unknown_parameters(&self.settings, SPAN_PARAMS, "SPAN setting")?;
+        for param in SPAN_PARAMS {
             // Known key, but wrong shape (e.g. `gather` not a boolean).
-            param.validate(value)?;
+            if let Some(value) = self.settings.get(param.name) {
+                param.validate(value)?;
+            }
         }
-
         Ok(())
     }
 

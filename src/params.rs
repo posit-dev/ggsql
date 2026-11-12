@@ -1353,6 +1353,38 @@ impl ParamDefinition {
     }
 }
 
+/// Reject any `properties` key that doesn't name a definition.
+///
+/// `context` identifies the parameter set in the error, e.g. "FACET
+/// setting" or "cartesian projection property". With an empty definition
+/// list every key is rejected: "{context} should be absent, not '{key}'".
+pub fn reject_unknown_parameters(
+    properties: &Parameters,
+    definitions: &[ParamDefinition],
+    context: &str,
+) -> Result<(), String> {
+    let allowed: Vec<&str> = definitions.iter().map(|p| p.name).collect();
+    let unknown: Vec<&str> = properties
+        .keys()
+        .map(String::as_str)
+        .filter(|key| !allowed.contains(key))
+        .collect();
+    if unknown.is_empty() {
+        return Ok(());
+    }
+    if allowed.is_empty() {
+        return Err(format!(
+            "{context} should be absent, not {}",
+            crate::and_list_quoted(&unknown, '\'')
+        ));
+    }
+    Err(format!(
+        "{context} should be {}, not {}",
+        crate::or_list_quoted(&allowed, '\''),
+        crate::and_list_quoted(&unknown, '\'')
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1394,6 +1426,38 @@ mod tests {
             ..def
         };
         assert_eq!(no_default.resolve(&Parameters::new()).unwrap(), None);
+    }
+
+    #[test]
+    fn reject_unknown_parameters_lists_valid_names() {
+        let defs = [ParamDefinition {
+            name: "bins",
+            default: DefaultParamValue::Null,
+            constraint: ParamConstraint::count(1.0),
+        }];
+        let mut properties = Parameters::new();
+        properties.insert("bin".to_string(), ParameterValue::Number(10.0));
+        let err = crate::params::reject_unknown_parameters(&properties, &defs, "TEST setting")
+            .unwrap_err();
+        assert_eq!(err, "TEST setting should be 'bins', not 'bin'");
+
+        // Every key is unknown when the definition list is empty
+        let err =
+            crate::params::reject_unknown_parameters(&properties, &[], "TEST setting").unwrap_err();
+        assert_eq!(err, "TEST setting should be absent, not 'bin'");
+
+        // All offending keys are reported at once
+        properties.insert("beans".to_string(), ParameterValue::Number(10.0));
+        let err = crate::params::reject_unknown_parameters(&properties, &defs, "TEST setting")
+            .unwrap_err();
+        assert_eq!(err, "TEST setting should be 'bins', not 'bin' and 'beans'");
+        properties.remove("beans");
+
+        properties.insert("bins".to_string(), ParameterValue::Number(10.0));
+        properties.remove("bin");
+        assert!(
+            crate::params::reject_unknown_parameters(&properties, &defs, "TEST setting").is_ok()
+        );
     }
 
     #[test]

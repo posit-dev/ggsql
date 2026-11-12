@@ -325,19 +325,12 @@ impl Format {
 
     /// Validate `settings` against `FORMAT_PARAMS`.
     pub fn validate_settings(&self) -> Result<(), String> {
-        let valid: Vec<&str> = FORMAT_PARAMS.iter().map(|p| p.name).collect();
-
-        for (name, value) in &self.settings {
-            let Some(param) = FORMAT_PARAMS.iter().find(|p| p.name == name.as_str()) else {
-                return Err(format!(
-                    "FORMAT setting should be {}, not '{}'",
-                    crate::or_list_quoted(&valid, '\''),
-                    name
-                ));
-            };
-            param.validate(value)?;
+        crate::params::reject_unknown_parameters(&self.settings, FORMAT_PARAMS, "FORMAT setting")?;
+        for param in FORMAT_PARAMS {
+            if let Some(value) = self.settings.get(param.name) {
+                param.validate(value)?;
+            }
         }
-
         Ok(())
     }
 }

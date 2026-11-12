@@ -202,19 +202,11 @@ impl<T: MapProjectionTrait + 'static> super::CoordTrait for T {
             );
         }
         let defaults = self.default_properties();
-        for (key, value) in properties.iter() {
-            if let Some(param) = defaults.iter().find(|p| p.name == key) {
-                param.validate(value)?;
-            } else {
-                let allowed: Vec<&str> = defaults.iter().map(|p| p.name).collect();
-                return Err(format!(
-                    "{} projection property should be {}, not '{}'",
-                    self.name(),
-                    crate::or_list_quoted(&allowed, '\''),
-                    key
-                ));
-            }
-        }
+        crate::params::reject_unknown_parameters(
+            properties,
+            defaults,
+            &format!("{} projection property", self.name()),
+        )?;
         if let Some(ParameterValue::Array(arr)) = properties.get("origin") {
             if let Some(crate::plot::types::ArrayElement::Number(lat)) = arr.get(1) {
                 if *lat < -90.0 || *lat > 90.0 {

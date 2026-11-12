@@ -665,30 +665,11 @@ pub trait ScaleTypeTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
             ));
         }
 
-        // Validate values against constraints
-        for (key, value) in properties.iter() {
-            let param = defaults.iter().find(|p| p.name == key);
-            if let Some(param) = param {
-                param.validate(value)?;
-                continue;
-            }
-
-            let allowed: Vec<&str> = defaults.iter().map(|p| p.name).collect();
-            return Err(if allowed.is_empty() {
-                format!(
-                    "{} scale does not accept any properties, but got '{}'",
-                    self.name(),
-                    key
-                )
-            } else {
-                format!(
-                    "{} scale property should be {}, not '{}'",
-                    self.name(),
-                    crate::or_list_quoted(&allowed, '\''),
-                    key
-                )
-            });
-        }
+        crate::params::reject_unknown_parameters(
+            properties,
+            &defaults,
+            &format!("{} scale property", self.name()),
+        )?;
 
         // Start with user properties, add defaults for missing ones
         let mut resolved = properties.clone();
