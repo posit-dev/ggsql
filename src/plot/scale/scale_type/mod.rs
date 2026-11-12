@@ -642,29 +642,38 @@ pub trait ScaleTypeTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
         aesthetic: &str,
         properties: &Parameters,
     ) -> Result<Parameters, String> {
-        let defaults = self.default_properties();
         let is_position = is_position_aesthetic(aesthetic);
+
+        // expand only applies to position aesthetics
+        let mut defaults: Vec<ParamDefinition> = self
+            .default_properties()
+            .iter()
+            .filter(|p| is_position || p.name != "expand")
+            .cloned()
+            .collect();
+        // oob's real default is aesthetic-dependent; its Null definition
+        // default is a marker for that.
+        for p in &mut defaults {
+            if p.name == "oob" && matches!(p.default, DefaultParamValue::Null) {
+                p.default = DefaultParamValue::String(default_oob(aesthetic));
+            }
+        }
+        if !is_position && properties.contains_key("expand") {
+            return Err(format!(
+                "expand is only valid for position aesthetics, not '{}'",
+                aesthetic
+            ));
+        }
 
         // Validate values against constraints
         for (key, value) in properties.iter() {
-            // Check if property is allowed for this aesthetic type
-            let is_expand_on_non_position = key == "expand" && !is_position;
-
-            // Find the parameter definition and validate if allowed
             let param = defaults.iter().find(|p| p.name == key);
             if let Some(param) = param {
-                if !is_expand_on_non_position {
-                    param.validate(value)?;
-                    continue;
-                }
+                param.validate(value)?;
+                continue;
             }
 
-            // Property not found or not allowed for this aesthetic type
-            let allowed: Vec<&str> = defaults
-                .iter()
-                .filter(|p| p.name != "expand" || is_position)
-                .map(|p| p.name)
-                .collect();
+            let allowed: Vec<&str> = defaults.iter().map(|p| p.name).collect();
             return Err(if allowed.is_empty() {
                 format!(
                     "{} scale does not accept any properties, but got '{}'",
@@ -683,22 +692,9 @@ pub trait ScaleTypeTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
 
         // Start with user properties, add defaults for missing ones
         let mut resolved = properties.clone();
-        for param in defaults {
-            // Skip expand for material aesthetics
-            if param.name == "expand" && !is_position {
-                continue;
-            }
-
-            if !resolved.contains_key(param.name) {
-                // Special case: oob default varies by aesthetic when marked as Null
-                if param.name == "oob" && matches!(param.default, DefaultParamValue::Null) {
-                    resolved.insert(
-                        "oob".to_string(),
-                        ParameterValue::String(default_oob(aesthetic).to_string()),
-                    );
-                } else if let Some(default) = param.to_parameter_value() {
-                    resolved.insert(param.name.to_string(), default);
-                }
+        for param in &defaults {
+            if let Some(value) = param.resolve(properties)? {
+                resolved.entry(param.name.to_string()).or_insert(value);
             }
         }
 
@@ -2673,15 +2669,15 @@ mod tests {
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("unknown"));
 
-        // Discrete rejects expand
+        // expand on a non-position aesthetic rejected
         let mut expand_props = Parameters::new();
         expand_props.insert("expand".to_string(), ParameterValue::Number(0.1));
         let result = ScaleType::discrete().resolve_properties("color", &expand_props);
         assert!(result.is_err());
-        assert!(result.unwrap_err().contains("not 'expand'"));
+        assert!(result.unwrap_err().contains("position aesthetics"));
 
-        // Identity rejects any property
-        let result = ScaleType::identity().resolve_properties("x", &expand_props);
+        // Identity on a position aesthetic rejects any other property
+        let result = ScaleType::identity().resolve_properties("x", &props);
         assert!(result.is_err());
 
         // Binned rejects oob='keep'

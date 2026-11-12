@@ -69,6 +69,15 @@ impl Spanner {
         Ok(())
     }
 
+    /// Fill default values for any settings the user didn't specify.
+    pub fn apply_default_settings(&mut self) {
+        for param in SPAN_PARAMS {
+            if let Some(value) = param.to_parameter_value() {
+                self.settings.entry(param.name.to_string()).or_insert(value);
+            }
+        }
+    }
+
     /// Check this spanner's columns against the table's STUB columns.
     pub fn validate_stub_boundary(&self, stub_columns: &HashSet<&str>) -> Result<(), String> {
         if let Some(name) = self

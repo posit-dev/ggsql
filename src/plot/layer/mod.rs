@@ -316,29 +316,17 @@ impl Layer {
     /// precedence. For example, if a geom defines width => 0.8 and the position (dodge)
     /// defines width => 0.9, the geom's 0.8 is used.
     pub fn apply_default_params(&mut self) {
-        // Apply geom defaults first (higher priority)
-        for param in self.geom.default_params() {
-            if !self.parameters.contains_key(param.name) {
-                let value = match &param.default {
-                    DefaultParamValue::String(s) => ParameterValue::String(s.to_string()),
-                    DefaultParamValue::Number(n) => ParameterValue::Number(*n),
-                    DefaultParamValue::Boolean(b) => ParameterValue::Boolean(*b),
-                    DefaultParamValue::Null => continue, // Don't insert null defaults
-                };
-                self.parameters.insert(param.name.to_string(), value);
-            }
-        }
-
-        // Apply position defaults second (lower priority, won't override geom defaults)
-        for param in self.position.default_params() {
-            if !self.parameters.contains_key(param.name) {
-                let value = match &param.default {
-                    DefaultParamValue::String(s) => ParameterValue::String(s.to_string()),
-                    DefaultParamValue::Number(n) => ParameterValue::Number(*n),
-                    DefaultParamValue::Boolean(b) => ParameterValue::Boolean(*b),
-                    DefaultParamValue::Null => continue,
-                };
-                self.parameters.insert(param.name.to_string(), value);
+        // Geom defaults first: or_insert keeps them over position defaults
+        for param in self
+            .geom
+            .default_params()
+            .iter()
+            .chain(self.position.default_params())
+        {
+            if let Some(value) = param.to_parameter_value() {
+                self.parameters
+                    .entry(param.name.to_string())
+                    .or_insert(value);
             }
         }
     }

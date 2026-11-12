@@ -183,9 +183,9 @@ impl Table {
     }
 
     /// Fully resolve this table's spanners for execution: settings
-    /// validated, `OVER` ids folded, STUB boundary checked, columns
-    /// checked against the real schema, and each `label` overlaid with any
-    /// `LABEL <id> => ...` entry.
+    /// validated and defaults filled, `OVER` ids folded, STUB boundary
+    /// checked, columns checked against the real schema, and each `label`
+    /// overlaid with any `LABEL <id> => ...` entry.
     pub fn resolve_spanners(
         &self,
         labels: &Labels,
@@ -208,6 +208,7 @@ impl Table {
         Ok(spans
             .into_iter()
             .map(|mut span| {
+                span.apply_default_settings();
                 span.apply_labels(labels);
                 span
             })
@@ -310,6 +311,15 @@ impl Format {
         }
         if other.value_template.is_some() {
             self.value_template = other.value_template.clone();
+        }
+    }
+
+    /// Fill default values for any settings the user didn't specify.
+    pub fn apply_default_settings(&mut self) {
+        for param in FORMAT_PARAMS {
+            if let Some(value) = param.to_parameter_value() {
+                self.settings.entry(param.name.to_string()).or_insert(value);
+            }
         }
     }
 

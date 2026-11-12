@@ -48,6 +48,7 @@ pub(super) fn setup_formats(
 
     // A column no clause claimed a section for resolves to the body.
     for format in resolved.values_mut() {
+        format.apply_default_settings();
         format.target.get_or_insert(ColumnSection::Body);
     }
     Ok(resolved)

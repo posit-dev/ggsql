@@ -1325,6 +1325,17 @@ impl ParamDefinition {
         }
     }
 
+    /// The effective value for this parameter: the user's value if present
+    /// (validated against the constraint), otherwise the default.
+    ///
+    /// Returns Ok(None) when the parameter is absent and the default is Null.
+    pub fn resolve(&self, properties: &Parameters) -> Result<Option<ParameterValue>, String> {
+        match properties.get(self.name) {
+            Some(value) => self.validate(value).map(|_| Some(value.clone())),
+            None => Ok(self.to_parameter_value()),
+        }
+    }
+
     /// Convert the default value to a ParameterValue, if not Null
     pub fn to_parameter_value(&self) -> Option<ParameterValue> {
         match &self.default {
@@ -1351,6 +1362,32 @@ mod tests {
             constraint: *constraint,
         }
         .validate(value)
+    }
+
+    #[test]
+    fn param_definition_resolve_prefers_user_value_then_default() {
+        let def = ParamDefinition {
+            name: "bins",
+            default: DefaultParamValue::Number(30.0),
+            constraint: ParamConstraint::count(1.0),
+        };
+        let mut properties = Parameters::new();
+        properties.insert("bins".to_string(), ParameterValue::Number(10.0));
+        // User value wins over the default, absent falls back to the default,
+        // and a Null default means no value.
+        assert_eq!(
+            def.resolve(&properties).unwrap(),
+            Some(ParameterValue::Number(10.0))
+        );
+        assert_eq!(
+            def.resolve(&Parameters::new()).unwrap(),
+            Some(ParameterValue::Number(30.0))
+        );
+        let no_default = ParamDefinition {
+            default: DefaultParamValue::Null,
+            ..def
+        };
+        assert_eq!(no_default.resolve(&Parameters::new()).unwrap(), None);
     }
 
     #[test]
