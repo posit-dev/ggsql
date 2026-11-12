@@ -3,7 +3,7 @@
 //! resolved. Unlike plot facet resolution, no data context is involved —
 //! group extraction happens during table execution.
 
-use crate::params::{validate_parameter, DefaultParamValue, ParamConstraint, ParamDefinition};
+use crate::params::{DefaultParamValue, ParamConstraint, ParamDefinition};
 use crate::plot::facet::Facet;
 use crate::plot::ParameterValue;
 
@@ -49,7 +49,7 @@ pub(crate) fn setup_facet(facet: &Option<Facet>) -> Result<Option<Facet>, String
                 name
             ));
         };
-        validate_parameter(name, value, &param.constraint)?;
+        param.validate(value)?;
     }
 
     let mut resolved = facet.clone();

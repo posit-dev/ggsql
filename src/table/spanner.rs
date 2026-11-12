@@ -68,6 +68,15 @@ impl Spanner {
         Ok(())
     }
 
+    /// Fill default values for any settings the user didn't specify.
+    pub fn apply_default_settings(&mut self) {
+        for param in SPAN_PARAMS {
+            if let Some(value) = param.to_parameter_value() {
+                self.settings.entry(param.name.to_string()).or_insert(value);
+            }
+        }
+    }
+
     /// Check this spanner's columns against `off_limits`, columns claimed
     /// by another feature — `context` names that feature in the error
     /// (e.g. `"stub"`, `"facet"`).

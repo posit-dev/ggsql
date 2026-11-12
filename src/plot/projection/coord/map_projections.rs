@@ -227,10 +227,8 @@ impl<T: MapProjectionTrait + 'static> super::CoordTrait for T {
         }
         let mut resolved = properties.clone();
         for param in defaults {
-            if !resolved.contains_key(param.name) {
-                if let Some(default) = param.to_parameter_value() {
-                    resolved.insert(param.name.to_string(), default);
-                }
+            if let Some(value) = param.resolve(properties)? {
+                resolved.entry(param.name.to_string()).or_insert(value);
             }
         }
         Ok(resolved)
