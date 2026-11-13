@@ -759,4 +759,61 @@ mod tests {
         let result = layer.validate_mapping(&Some(ctx), false);
         assert!(result.is_ok());
     }
+
+    #[test]
+    fn test_validate_settings_accepts_geom_and_position_params() {
+        // "position" is a point geom param, "width" a jitter position param
+        let mut layer = Layer::new(Geom::point());
+        layer.position = Position::jitter();
+        layer.parameters.insert(
+            "position".to_string(),
+            ParameterValue::String("jitter".to_string()),
+        );
+        layer
+            .parameters
+            .insert("width".to_string(), ParameterValue::Number(0.5));
+
+        assert!(layer.validate_settings().is_ok());
+    }
+
+    #[test]
+    fn test_validate_settings_rejects_an_invalid_value() {
+        let mut layer = Layer::new(Geom::point());
+        layer.parameters.insert(
+            "position".to_string(),
+            ParameterValue::String("bogus".to_string()),
+        );
+
+        let err = layer.validate_settings().unwrap_err();
+        assert!(err.contains("position"));
+    }
+
+    #[test]
+    fn test_validate_settings_skips_aesthetics() {
+        // Aesthetic settings have no definition to validate against: any
+        // value passes, even one that would fail a parameter constraint
+        let mut layer = Layer::new(Geom::point());
+        layer.parameters.insert(
+            "size".to_string(),
+            ParameterValue::String("huge".to_string()),
+        );
+
+        assert!(layer.validate_settings().is_ok());
+    }
+
+    #[test]
+    fn test_validate_settings_reports_all_unknown_settings() {
+        let mut layer = Layer::new(Geom::point());
+        layer
+            .parameters
+            .insert("bogus1".to_string(), ParameterValue::Number(1.0));
+        layer
+            .parameters
+            .insert("bogus2".to_string(), ParameterValue::Number(2.0));
+
+        let err = layer.validate_settings().unwrap_err();
+        assert!(err.contains("layer setting should be"));
+        assert!(err.contains("'bogus1'"));
+        assert!(err.contains("'bogus2'"));
+    }
 }

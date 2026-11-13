@@ -1039,39 +1039,6 @@ mod tests {
     }
 
     #[test]
-    fn test_map_accepts_target_string() {
-        let mut props = Parameters::new();
-        props.insert(
-            "target".to_string(),
-            ParameterValue::String("+proj=merc".to_string()),
-        );
-        let coord = Coord::map("crs", &props);
-
-        let resolved = coord.resolve_properties(Some("crs"), &props);
-        assert!(resolved.is_ok());
-        let resolved = resolved.unwrap();
-        assert_eq!(
-            resolved.get("target").unwrap(),
-            &ParameterValue::String("+proj=merc".to_string())
-        );
-    }
-
-    #[test]
-    fn test_map_rejects_unknown_property() {
-        let coord = Coord::map("crs", &Parameters::new());
-        let mut props = Parameters::new();
-        props.insert(
-            "unknown".to_string(),
-            ParameterValue::String("value".to_string()),
-        );
-
-        let resolved = coord.resolve_properties(Some("crs"), &props);
-        assert!(resolved.is_err());
-        let err = resolved.unwrap_err();
-        assert!(err.contains("not 'unknown'"));
-    }
-
-    #[test]
     fn test_target_rejects_origin_and_parallel() {
         let mut props = Parameters::new();
         props.insert(

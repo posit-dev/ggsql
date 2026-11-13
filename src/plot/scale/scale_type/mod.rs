@@ -2635,13 +2635,6 @@ mod tests {
 
     #[test]
     fn test_resolve_properties_rejection_cases() {
-        // Unknown property rejected
-        let mut props = Parameters::new();
-        props.insert("unknown".to_string(), ParameterValue::Number(1.0));
-        let result = ScaleType::continuous().resolve_properties("x", &props);
-        assert!(result.is_err());
-        assert!(result.unwrap_err().contains("unknown"));
-
         // expand on a non-position aesthetic rejected
         let mut expand_props = Parameters::new();
         expand_props.insert("expand".to_string(), ParameterValue::Number(0.1));
@@ -2650,7 +2643,7 @@ mod tests {
         assert!(result.unwrap_err().contains("position aesthetics"));
 
         // Identity on a position aesthetic rejects any other property
-        let result = ScaleType::identity().resolve_properties("x", &props);
+        let result = ScaleType::identity().resolve_properties("x", &expand_props);
         assert!(result.is_err());
 
         // Binned rejects oob='keep'
@@ -2708,17 +2701,8 @@ mod tests {
 
     #[test]
     fn test_resolve_properties_user_values_preserved() {
-        let mut props = Parameters::new();
-        props.insert("expand".to_string(), ParameterValue::Number(0.1));
-        let resolved = ScaleType::continuous()
-            .resolve_properties("pos1", &props)
-            .unwrap();
-        match resolved.get("expand") {
-            Some(ParameterValue::Number(n)) => assert!((n - 0.1).abs() < 1e-10),
-            _ => panic!("Expected Number"),
-        }
-
         // Binned supports expand
+        let mut props = Parameters::new();
         props.insert("expand".to_string(), ParameterValue::Number(0.2));
         let resolved = ScaleType::binned()
             .resolve_properties("pos1", &props)

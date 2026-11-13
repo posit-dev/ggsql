@@ -341,22 +341,6 @@ mod tests {
     }
 
     #[test]
-    fn test_error_columns_is_unknown_property() {
-        // "columns" is Vega-Lite's name, we use "ncol"
-        let mut facet = make_wrap_facet();
-        facet
-            .properties
-            .insert("columns".to_string(), ParameterValue::Number(4.0));
-
-        let context = make_context(10);
-        let result = resolve_properties(&mut facet, &context, CARTESIAN);
-
-        assert!(result.is_err());
-        let err = result.unwrap_err();
-        assert!(err.contains("not 'columns'"));
-    }
-
-    #[test]
     fn test_error_ncol_on_grid() {
         let mut facet = make_grid_facet();
         facet
@@ -370,21 +354,6 @@ mod tests {
         let err = result.unwrap_err();
         assert!(err.contains("ncol"));
         assert!(err.contains("1 dimensional"));
-    }
-
-    #[test]
-    fn test_error_unknown_property() {
-        let mut facet = make_wrap_facet();
-        facet
-            .properties
-            .insert("unknown".to_string(), ParameterValue::Number(1.0));
-
-        let context = make_context(5);
-        let result = resolve_properties(&mut facet, &context, CARTESIAN);
-
-        assert!(result.is_err());
-        let err = result.unwrap_err();
-        assert!(err.contains("not 'unknown'"));
     }
 
     #[test]
@@ -815,6 +784,47 @@ mod tests {
         resolve_properties(&mut facet, &context, CARTESIAN).unwrap();
 
         // nrow should be removed and ncol computed
+        assert!(!facet.properties.contains_key("nrow"));
+        assert_eq!(
+            facet.properties.get("ncol"),
+            Some(&ParameterValue::Number(5.0))
+        );
+    }
+
+    #[test]
+    fn test_nrow_null_computes_default_ncol() {
+        // An explicit null counts as absent, so ncol falls back to the
+        // computed default rather than erroring
+        let mut facet = make_wrap_facet();
+        facet
+            .properties
+            .insert("nrow".to_string(), ParameterValue::Null);
+
+        let context = make_context(5);
+        resolve_properties(&mut facet, &context, CARTESIAN).unwrap();
+
+        assert!(!facet.properties.contains_key("nrow"));
+        assert_eq!(
+            facet.properties.get("ncol"),
+            Some(&ParameterValue::Number(3.0))
+        );
+    }
+
+    #[test]
+    fn test_ncol_null_with_nrow_converts() {
+        // ncol => null counts as absent, so nrow converts without a
+        // both-provided error
+        let mut facet = make_wrap_facet();
+        facet
+            .properties
+            .insert("ncol".to_string(), ParameterValue::Null);
+        facet
+            .properties
+            .insert("nrow".to_string(), ParameterValue::Number(2.0));
+
+        let context = make_context(10);
+        resolve_properties(&mut facet, &context, CARTESIAN).unwrap();
+
         assert!(!facet.properties.contains_key("nrow"));
         assert_eq!(
             facet.properties.get("ncol"),

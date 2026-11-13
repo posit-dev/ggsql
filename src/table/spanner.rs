@@ -680,23 +680,12 @@ mod tests {
     }
 
     #[test]
-    fn validate_settings_accepts_valid_gather_and_level() {
+    fn resolve_settings_accepts_valid_gather_and_level() {
         let mut settings = Parameters::new();
         settings.insert("gather".to_string(), ParameterValue::Boolean(false));
         settings.insert("level".to_string(), ParameterValue::Number(2.0));
 
         assert!(spanner_with_settings(settings).resolve_settings().is_ok());
-    }
-
-    #[test]
-    fn validate_settings_rejects_an_unknown_key() {
-        let mut settings = Parameters::new();
-        settings.insert(
-            "width".to_string(),
-            ParameterValue::String("40%".to_string()),
-        );
-
-        assert!(spanner_with_settings(settings).resolve_settings().is_err());
     }
 
     #[test]

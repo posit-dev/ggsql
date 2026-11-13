@@ -1489,6 +1489,82 @@ mod tests {
     }
 
     #[test]
+    fn resolve_parameters_fills_defaults_and_preserves_user_values() {
+        let defs = [
+            ParamDefinition {
+                name: "bins",
+                default: DefaultParamValue::Number(30.0),
+                constraint: ParamConstraint::count(1.0),
+            },
+            ParamDefinition {
+                name: "label",
+                default: DefaultParamValue::String("x"),
+                constraint: ParamConstraint::string(),
+            },
+            ParamDefinition {
+                name: "flag",
+                default: DefaultParamValue::Boolean(true),
+                constraint: ParamConstraint::boolean(),
+            },
+            ParamDefinition {
+                name: "optional",
+                default: DefaultParamValue::Null,
+                constraint: ParamConstraint::number_any(),
+            },
+        ];
+        let mut properties = Parameters::new();
+        properties.insert("bins".to_string(), ParameterValue::Number(10.0));
+
+        let resolved =
+            crate::params::resolve_parameters(&properties, &defs, "TEST setting").unwrap();
+
+        assert_eq!(resolved.get("bins"), Some(&ParameterValue::Number(10.0)));
+        assert_eq!(
+            resolved.get("label"),
+            Some(&ParameterValue::String("x".to_string()))
+        );
+        assert_eq!(resolved.get("flag"), Some(&ParameterValue::Boolean(true)));
+        // A Null default fills nothing
+        assert!(!resolved.contains_key("optional"));
+        // The input map is untouched
+        assert_eq!(properties.len(), 1);
+    }
+
+    #[test]
+    fn resolve_parameters_keeps_an_explicit_null() {
+        // Explicit null is a value, not "absent": the default doesn't replace it
+        let defs = [ParamDefinition {
+            name: "bins",
+            default: DefaultParamValue::Number(30.0),
+            constraint: ParamConstraint::count(1.0),
+        }];
+        let mut properties = Parameters::new();
+        properties.insert("bins".to_string(), ParameterValue::Null);
+
+        let resolved =
+            crate::params::resolve_parameters(&properties, &defs, "TEST setting").unwrap();
+        assert_eq!(resolved.get("bins"), Some(&ParameterValue::Null));
+    }
+
+    #[test]
+    fn resolve_parameters_rejects_unknown_keys_and_invalid_values() {
+        let defs = [ParamDefinition {
+            name: "bins",
+            default: DefaultParamValue::Number(30.0),
+            constraint: ParamConstraint::count(1.0),
+        }];
+        let mut properties = Parameters::new();
+        properties.insert("bin".to_string(), ParameterValue::Number(10.0));
+        let err =
+            crate::params::resolve_parameters(&properties, &defs, "TEST setting").unwrap_err();
+        assert!(err.starts_with("TEST setting should be"));
+
+        properties.remove("bin");
+        properties.insert("bins".to_string(), ParameterValue::Number(-5.0));
+        assert!(crate::params::resolve_parameters(&properties, &defs, "TEST setting").is_err());
+    }
+
+    #[test]
     fn test_date_from_string() {
         let elem = ArrayElement::from_date_string("2024-01-15").unwrap();
         assert!(matches!(elem, ArrayElement::Date(_)));
