@@ -28,7 +28,7 @@ pub use position::{Position, PositionTrait, PositionType};
 
 use crate::{
     plot::{
-        is_facet_aesthetic, is_user_facet_aesthetic, parse_position,
+        is_facet_aesthetic, parse_position,
         types::{AestheticValue, DataSource, Mappings, ParameterValue, Parameters, SqlExpression},
     },
     AestheticContext,
@@ -376,61 +376,46 @@ impl Layer {
 
     /// Validate that all SETTING parameters are valid for this layer's geom and position
     pub fn validate_settings(&self) -> std::result::Result<(), String> {
-        // Combine valid settings from both geom and position (includes aesthetics)
-        let mut valid = self.geom.valid_settings();
-        valid.extend(self.position.valid_settings());
+        // Valid settings are the geom's supported aesthetics plus the
+        // geom's and position's parameter definitions. `aggregate`'s shape
+        // is checked here but its vocabulary is checked in
+        // `stat_aggregate::parse_aggregate_param`.
+        let definitions: Vec<&ParamDefinition> = self
+            .geom
+            .default_params()
+            .iter()
+            .chain(self.position.default_params())
+            .collect();
+        let aesthetics = self.geom.aesthetics().supported();
+        let mut valid: Vec<&'static str> = aesthetics.clone();
+        valid.extend(definitions.iter().map(|p| p.name));
+        let mut unknown: Vec<&str> = Vec::new();
 
         for (param_name, value) in self.parameters.iter() {
-            // Facet aesthetics (panel/row/column, or internal facet1/facet2)
-            // are valid constant settings regardless of geom: they become
-            // literal facet mappings during aesthetic transformation, mirroring
-            // MAPPING 'value' AS panel.
-            if is_user_facet_aesthetic(param_name) || is_facet_aesthetic(param_name) {
+            // Aesthetic settings have no parameter definition to validate
+            // against. Facet SETTING keys have already been moved to
+            // mappings by `transform_aesthetics_to_internal`.
+            if aesthetics.contains(&param_name.as_str()) {
                 continue;
             }
 
-            // Check if this is a valid setting at all
-            if !valid.contains(&param_name.as_str()) {
-                return Err(format!(
-                    "{} layer setting should be {}, not '{}'",
-                    self.geom,
-                    crate::or_list_quoted(&valid, '\''),
-                    param_name
-                ));
-            }
-
-            // Validate against constraints if this is a geom param
-            if let Some(param) = self
-                .geom
-                .default_params()
-                .iter()
-                .find(|p| p.name == param_name)
-            {
-                param.validate(Some(value))?;
-            }
-            // Or a position param
-            else if let Some(param) = self
-                .position
-                .default_params()
-                .iter()
-                .find(|p| p.name == param_name)
-            {
-                param.validate(Some(value))?;
-            }
-            // Otherwise it's a valid aesthetic setting (no constraint validation needed).
-            //
-            // `aggregate` is registered in each supporting geom's `default_params`
-            // so its structural shape (string / array of strings / null) is
-            // checked through the standard `ParamDefinition::validate` path above. The
-            // per-entry vocabulary check (function names exist in `AGG_NAMES`,
-            // band syntax, recycling rules) lives in
-            // `stat_aggregate::parse_aggregate_param` and runs at execute time
-            // (`apply`) and at validate time via
-            // [`validate_aggregate_setting`] (called from `validate.rs::validate`
-            // so `ggsql validate` surfaces vocab errors without executing).
+            let Some(param) = definitions.iter().find(|p| p.name == param_name) else {
+                unknown.push(param_name.as_str());
+                continue;
+            };
+            param.validate(Some(value))?;
         }
 
-        Ok(())
+        if unknown.is_empty() {
+            Ok(())
+        } else {
+            Err(format!(
+                "{} layer setting should be {}, not {}",
+                self.geom,
+                crate::or_list_quoted(&valid, '\''),
+                crate::and_list_quoted(&unknown, '\'')
+            ))
+        }
     }
 
     /// Validate the `aggregate` SETTING in isolation: per-entry vocabulary

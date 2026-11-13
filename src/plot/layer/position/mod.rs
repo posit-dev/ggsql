@@ -233,11 +233,6 @@ pub trait PositionTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
         &[]
     }
 
-    /// Returns valid parameter names for SETTING validation
-    fn valid_settings(&self) -> Vec<&'static str> {
-        self.default_params().iter().map(|p| p.name).collect()
-    }
-
     /// Whether this position creates a pos1offset column
     fn creates_pos1offset(&self) -> bool {
         false
@@ -312,11 +307,6 @@ impl Position {
     /// Get default parameters
     pub fn default_params(&self) -> &'static [ParamDefinition] {
         self.0.default_params()
-    }
-
-    /// Get valid settings for SETTING validation
-    pub fn valid_settings(&self) -> Vec<&'static str> {
-        self.0.valid_settings()
     }
 
     /// Check if this position creates a pos1offset column
