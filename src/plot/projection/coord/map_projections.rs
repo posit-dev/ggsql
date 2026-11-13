@@ -4,8 +4,7 @@ use std::sync::Arc;
 use super::CoordKind;
 use crate::plot::scale::Scale;
 use crate::plot::types::{
-    validate_parameter, ArrayElement, DefaultParamValue, ParamConstraint, ParamDefinition,
-    Parameters, TypeConstraint,
+    ArrayElement, DefaultParamValue, ParamConstraint, ParamDefinition, Parameters, TypeConstraint,
 };
 use crate::plot::{Layer, ParameterValue};
 use crate::reader::SqlDialect;
@@ -202,20 +201,6 @@ impl<T: MapProjectionTrait + 'static> super::CoordTrait for T {
                     .to_string(),
             );
         }
-        let defaults = self.default_properties();
-        for (key, value) in properties.iter() {
-            if let Some(param) = defaults.iter().find(|p| p.name == key) {
-                validate_parameter(key, value, &param.constraint)?;
-            } else {
-                let allowed: Vec<&str> = defaults.iter().map(|p| p.name).collect();
-                return Err(format!(
-                    "{} projection property should be {}, not '{}'",
-                    self.name(),
-                    crate::or_list_quoted(&allowed, '\''),
-                    key
-                ));
-            }
-        }
         if let Some(ParameterValue::Array(arr)) = properties.get("origin") {
             if let Some(crate::plot::types::ArrayElement::Number(lat)) = arr.get(1) {
                 if *lat < -90.0 || *lat > 90.0 {
@@ -226,15 +211,11 @@ impl<T: MapProjectionTrait + 'static> super::CoordTrait for T {
                 }
             }
         }
-        let mut resolved = properties.clone();
-        for param in defaults {
-            if !resolved.contains_key(param.name) {
-                if let Some(default) = param.to_parameter_value() {
-                    resolved.insert(param.name.to_string(), default);
-                }
-            }
-        }
-        Ok(resolved)
+        crate::params::resolve_parameters(
+            properties,
+            self.default_properties(),
+            &format!("{} projection property", self.name()),
+        )
     }
 
     fn apply_projection_transforms(

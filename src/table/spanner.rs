@@ -8,8 +8,7 @@ use std::collections::HashSet;
 use super::layout::{TableCell, TableClass, TableColumn, TableLayout, TableRow};
 use crate::labels::Labels;
 use crate::params::{
-    validate_parameter, DefaultParamValue, ParamConstraint, ParamDefinition, ParameterValue,
-    Parameters,
+    DefaultParamValue, ParamConstraint, ParamDefinition, ParameterValue, Parameters,
 };
 
 /// One `SPAN` clause: a named group of columns rendered as one spanner cell
@@ -32,7 +31,7 @@ pub struct Spanner {
 
 /// `SETTING` parameters `SPAN` accepts — one static name/default/constraint
 /// list, mirroring how a `GeomTrait` declares `default_params()`, so
-/// `Spanner::validate_settings` doesn't hand-roll its own type checks per key.
+/// `Spanner::resolve_settings` doesn't hand-roll its own type checks per key.
 const SPAN_PARAMS: &[ParamDefinition] = &[
     ParamDefinition {
         name: "gather",
@@ -49,25 +48,11 @@ const SPAN_PARAMS: &[ParamDefinition] = &[
 ];
 
 impl Spanner {
-    /// Validate `settings` against `SPAN_PARAMS`, mirroring
-    /// `Layer::validate_settings`.
-    pub fn validate_settings(&self) -> Result<(), String> {
-        let valid: Vec<&str> = SPAN_PARAMS.iter().map(|p| p.name).collect();
-
-        for (name, value) in &self.settings {
-            // Key isn't in SPAN_PARAMS at all.
-            let Some(param) = SPAN_PARAMS.iter().find(|p| p.name == name.as_str()) else {
-                return Err(format!(
-                    "SPAN setting should be {}, not '{}'",
-                    crate::or_list_quoted(&valid, '\''),
-                    name
-                ));
-            };
-            // Known key, but wrong shape (e.g. `gather` not a boolean).
-            validate_parameter(name, value, &param.constraint)?;
-        }
-
-        Ok(())
+    /// Validate `settings` against `SPAN_PARAMS` and resolve each to its
+    /// effective value: the user's value if present, otherwise the
+    /// definition's default.
+    pub fn resolve_settings(&self) -> Result<Parameters, String> {
+        crate::params::resolve_parameters(&self.settings, SPAN_PARAMS, "SPAN setting")
     }
 
     /// Check this spanner's columns against the table's STUB columns.
@@ -181,7 +166,7 @@ fn gather_columns(columns: Vec<TableColumn>, members: &[String]) -> Vec<TableCol
 /// arm). Levels are then compacted to remove gaps explicit levels can leave
 /// (e.g. 1, 3, 4 → 1, 2, 3).
 ///
-/// Infallible: `level`'s type is checked by `Spanner::validate_settings`.
+/// Infallible: `level`'s type is checked by `Spanner::resolve_settings`.
 fn assign_spanner_levels(spans: &[Spanner]) -> Vec<usize> {
     let mut levels: Vec<usize> = Vec::with_capacity(spans.len());
 
@@ -695,23 +680,12 @@ mod tests {
     }
 
     #[test]
-    fn validate_settings_accepts_valid_gather_and_level() {
+    fn resolve_settings_accepts_valid_gather_and_level() {
         let mut settings = Parameters::new();
         settings.insert("gather".to_string(), ParameterValue::Boolean(false));
         settings.insert("level".to_string(), ParameterValue::Number(2.0));
 
-        assert!(spanner_with_settings(settings).validate_settings().is_ok());
-    }
-
-    #[test]
-    fn validate_settings_rejects_an_unknown_key() {
-        let mut settings = Parameters::new();
-        settings.insert(
-            "width".to_string(),
-            ParameterValue::String("40%".to_string()),
-        );
-
-        assert!(spanner_with_settings(settings).validate_settings().is_err());
+        assert!(spanner_with_settings(settings).resolve_settings().is_ok());
     }
 
     #[test]

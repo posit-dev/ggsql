@@ -28,11 +28,8 @@ pub use position::{Position, PositionTrait, PositionType};
 
 use crate::{
     plot::{
-        is_facet_aesthetic, is_user_facet_aesthetic, parse_position,
-        types::{
-            validate_parameter, AestheticValue, DataSource, Mappings, ParameterValue, Parameters,
-            SqlExpression,
-        },
+        is_facet_aesthetic, parse_position,
+        types::{AestheticValue, DataSource, Mappings, ParameterValue, Parameters, SqlExpression},
     },
     AestheticContext,
 };
@@ -319,29 +316,17 @@ impl Layer {
     /// precedence. For example, if a geom defines width => 0.8 and the position (dodge)
     /// defines width => 0.9, the geom's 0.8 is used.
     pub fn apply_default_params(&mut self) {
-        // Apply geom defaults first (higher priority)
-        for param in self.geom.default_params() {
-            if !self.parameters.contains_key(param.name) {
-                let value = match &param.default {
-                    DefaultParamValue::String(s) => ParameterValue::String(s.to_string()),
-                    DefaultParamValue::Number(n) => ParameterValue::Number(*n),
-                    DefaultParamValue::Boolean(b) => ParameterValue::Boolean(*b),
-                    DefaultParamValue::Null => continue, // Don't insert null defaults
-                };
-                self.parameters.insert(param.name.to_string(), value);
-            }
-        }
-
-        // Apply position defaults second (lower priority, won't override geom defaults)
-        for param in self.position.default_params() {
-            if !self.parameters.contains_key(param.name) {
-                let value = match &param.default {
-                    DefaultParamValue::String(s) => ParameterValue::String(s.to_string()),
-                    DefaultParamValue::Number(n) => ParameterValue::Number(*n),
-                    DefaultParamValue::Boolean(b) => ParameterValue::Boolean(*b),
-                    DefaultParamValue::Null => continue,
-                };
-                self.parameters.insert(param.name.to_string(), value);
+        // Geom defaults first: or_insert keeps them over position defaults
+        for param in self
+            .geom
+            .default_params()
+            .iter()
+            .chain(self.position.default_params())
+        {
+            if let Some(value) = param.to_parameter_value() {
+                self.parameters
+                    .entry(param.name.to_string())
+                    .or_insert(value);
             }
         }
     }
@@ -391,61 +376,46 @@ impl Layer {
 
     /// Validate that all SETTING parameters are valid for this layer's geom and position
     pub fn validate_settings(&self) -> std::result::Result<(), String> {
-        // Combine valid settings from both geom and position (includes aesthetics)
-        let mut valid = self.geom.valid_settings();
-        valid.extend(self.position.valid_settings());
+        // Valid settings are the geom's supported aesthetics plus the
+        // geom's and position's parameter definitions. `aggregate`'s shape
+        // is checked here but its vocabulary is checked in
+        // `stat_aggregate::parse_aggregate_param`.
+        let definitions: Vec<&ParamDefinition> = self
+            .geom
+            .default_params()
+            .iter()
+            .chain(self.position.default_params())
+            .collect();
+        let aesthetics = self.geom.aesthetics().supported();
+        let mut valid: Vec<&'static str> = aesthetics.clone();
+        valid.extend(definitions.iter().map(|p| p.name));
+        let mut unknown: Vec<&str> = Vec::new();
 
         for (param_name, value) in self.parameters.iter() {
-            // Facet aesthetics (panel/row/column, or internal facet1/facet2)
-            // are valid constant settings regardless of geom: they become
-            // literal facet mappings during aesthetic transformation, mirroring
-            // MAPPING 'value' AS panel.
-            if is_user_facet_aesthetic(param_name) || is_facet_aesthetic(param_name) {
+            // Aesthetic settings have no parameter definition to validate
+            // against. Facet SETTING keys have already been moved to
+            // mappings by `transform_aesthetics_to_internal`.
+            if aesthetics.contains(&param_name.as_str()) {
                 continue;
             }
 
-            // Check if this is a valid setting at all
-            if !valid.contains(&param_name.as_str()) {
-                return Err(format!(
-                    "{} layer setting should be {}, not '{}'",
-                    self.geom,
-                    crate::or_list_quoted(&valid, '\''),
-                    param_name
-                ));
-            }
-
-            // Validate against constraints if this is a geom param
-            if let Some(param) = self
-                .geom
-                .default_params()
-                .iter()
-                .find(|p| p.name == param_name)
-            {
-                validate_parameter(param_name, value, &param.constraint)?;
-            }
-            // Or a position param
-            else if let Some(param) = self
-                .position
-                .default_params()
-                .iter()
-                .find(|p| p.name == param_name)
-            {
-                validate_parameter(param_name, value, &param.constraint)?;
-            }
-            // Otherwise it's a valid aesthetic setting (no constraint validation needed).
-            //
-            // `aggregate` is registered in each supporting geom's `default_params`
-            // so its structural shape (string / array of strings / null) is
-            // checked through the standard `validate_parameter` path above. The
-            // per-entry vocabulary check (function names exist in `AGG_NAMES`,
-            // band syntax, recycling rules) lives in
-            // `stat_aggregate::parse_aggregate_param` and runs at execute time
-            // (`apply`) and at validate time via
-            // [`validate_aggregate_setting`] (called from `validate.rs::validate`
-            // so `ggsql validate` surfaces vocab errors without executing).
+            let Some(param) = definitions.iter().find(|p| p.name == param_name) else {
+                unknown.push(param_name.as_str());
+                continue;
+            };
+            param.validate(Some(value))?;
         }
 
-        Ok(())
+        if unknown.is_empty() {
+            Ok(())
+        } else {
+            Err(format!(
+                "{} layer setting should be {}, not {}",
+                self.geom,
+                crate::or_list_quoted(&valid, '\''),
+                crate::and_list_quoted(&unknown, '\'')
+            ))
+        }
     }
 
     /// Validate the `aggregate` SETTING in isolation: per-entry vocabulary
@@ -788,5 +758,62 @@ mod tests {
         let ctx = AestheticContext::from_static(&["x", "y"], &[]);
         let result = layer.validate_mapping(&Some(ctx), false);
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_validate_settings_accepts_geom_and_position_params() {
+        // "position" is a point geom param, "width" a jitter position param
+        let mut layer = Layer::new(Geom::point());
+        layer.position = Position::jitter();
+        layer.parameters.insert(
+            "position".to_string(),
+            ParameterValue::String("jitter".to_string()),
+        );
+        layer
+            .parameters
+            .insert("width".to_string(), ParameterValue::Number(0.5));
+
+        assert!(layer.validate_settings().is_ok());
+    }
+
+    #[test]
+    fn test_validate_settings_rejects_an_invalid_value() {
+        let mut layer = Layer::new(Geom::point());
+        layer.parameters.insert(
+            "position".to_string(),
+            ParameterValue::String("bogus".to_string()),
+        );
+
+        let err = layer.validate_settings().unwrap_err();
+        assert!(err.contains("position"));
+    }
+
+    #[test]
+    fn test_validate_settings_skips_aesthetics() {
+        // Aesthetic settings have no definition to validate against: any
+        // value passes, even one that would fail a parameter constraint
+        let mut layer = Layer::new(Geom::point());
+        layer.parameters.insert(
+            "size".to_string(),
+            ParameterValue::String("huge".to_string()),
+        );
+
+        assert!(layer.validate_settings().is_ok());
+    }
+
+    #[test]
+    fn test_validate_settings_reports_all_unknown_settings() {
+        let mut layer = Layer::new(Geom::point());
+        layer
+            .parameters
+            .insert("bogus1".to_string(), ParameterValue::Number(1.0));
+        layer
+            .parameters
+            .insert("bogus2".to_string(), ParameterValue::Number(2.0));
+
+        let err = layer.validate_settings().unwrap_err();
+        assert!(err.contains("layer setting should be"));
+        assert!(err.contains("'bogus1'"));
+        assert!(err.contains("'bogus2'"));
     }
 }

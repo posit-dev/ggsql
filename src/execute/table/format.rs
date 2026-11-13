@@ -24,7 +24,7 @@ pub(super) fn setup_formats(
 ) -> Result<HashMap<String, Format>> {
     for (idx, format) in formats.iter().enumerate() {
         format
-            .validate_settings()
+            .resolve_settings()
             .map_err(|e| GgsqlError::ValidationError(format!("FORMAT {}: {}", idx + 1, e)))?;
     }
 
@@ -47,7 +47,12 @@ pub(super) fn setup_formats(
     }
 
     // A column no clause claimed a section for resolves to the body.
+    // Settings were validated per clause above; resolving again post-merge
+    // only fills defaults.
     for format in resolved.values_mut() {
+        format.settings = format
+            .resolve_settings()
+            .map_err(GgsqlError::ValidationError)?;
         format.target.get_or_insert(ColumnSection::Body);
     }
     Ok(resolved)

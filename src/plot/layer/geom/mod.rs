@@ -332,17 +332,6 @@ pub trait GeomTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
     fn setup_layer(&self, _mappings: &mut Mappings, _parameters: &mut Parameters) -> Result<()> {
         Ok(())
     }
-
-    /// Returns valid parameter names for SETTING clause.
-    ///
-    /// Combines supported aesthetics with non-aesthetic parameters from default_params.
-    fn valid_settings(&self) -> Vec<&'static str> {
-        let mut valid: Vec<&'static str> = self.aesthetics().supported();
-        for param in self.default_params() {
-            valid.push(param.name);
-        }
-        valid
-    }
 }
 
 /// Project pos1/pos2 columns through the map CRS transform.
@@ -899,11 +888,6 @@ impl Geom {
     /// Adjust layer mappings and parameters based on geom-specific logic
     pub fn setup_layer(&self, mappings: &mut Mappings, parameters: &mut Parameters) -> Result<()> {
         self.0.setup_layer(mappings, parameters)
-    }
-
-    /// Get valid settings
-    pub fn valid_settings(&self) -> Vec<&'static str> {
-        self.0.valid_settings()
     }
 
     /// Whether this geom accepts the `aggregate` SETTING parameter.

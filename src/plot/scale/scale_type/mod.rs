@@ -27,9 +27,7 @@ use std::sync::Arc;
 
 use super::transform::{Transform, TransformKind};
 use crate::plot::aesthetic::{is_facet_aesthetic, is_position_aesthetic};
-use crate::plot::types::{
-    format_number, validate_parameter, DefaultParamValue, ParamDefinition, Parameters,
-};
+use crate::plot::types::{format_number, DefaultParamValue, ParamDefinition, Parameters};
 use crate::plot::{ArrayElement, ColumnInfo, ParameterValue};
 
 // Scale type implementations
@@ -644,65 +642,34 @@ pub trait ScaleTypeTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
         aesthetic: &str,
         properties: &Parameters,
     ) -> Result<Parameters, String> {
-        let defaults = self.default_properties();
         let is_position = is_position_aesthetic(aesthetic);
 
-        // Validate values against constraints
-        for (key, value) in properties.iter() {
-            // Check if property is allowed for this aesthetic type
-            let is_expand_on_non_position = key == "expand" && !is_position;
-
-            // Find the parameter definition and validate if allowed
-            let param = defaults.iter().find(|p| p.name == key);
-            if let Some(param) = param {
-                if !is_expand_on_non_position {
-                    validate_parameter(key, value, &param.constraint)?;
-                    continue;
-                }
-            }
-
-            // Property not found or not allowed for this aesthetic type
-            let allowed: Vec<&str> = defaults
-                .iter()
-                .filter(|p| p.name != "expand" || is_position)
-                .map(|p| p.name)
-                .collect();
-            return Err(if allowed.is_empty() {
-                format!(
-                    "{} scale does not accept any properties, but got '{}'",
-                    self.name(),
-                    key
-                )
-            } else {
-                format!(
-                    "{} scale property should be {}, not '{}'",
-                    self.name(),
-                    crate::or_list_quoted(&allowed, '\''),
-                    key
-                )
-            });
-        }
-
-        // Start with user properties, add defaults for missing ones
-        let mut resolved = properties.clone();
-        for param in defaults {
-            // Skip expand for material aesthetics
-            if param.name == "expand" && !is_position {
-                continue;
-            }
-
-            if !resolved.contains_key(param.name) {
-                // Special case: oob default varies by aesthetic when marked as Null
-                if param.name == "oob" && matches!(param.default, DefaultParamValue::Null) {
-                    resolved.insert(
-                        "oob".to_string(),
-                        ParameterValue::String(default_oob(aesthetic).to_string()),
-                    );
-                } else if let Some(default) = param.to_parameter_value() {
-                    resolved.insert(param.name.to_string(), default);
-                }
+        // expand only applies to position aesthetics
+        let mut defaults: Vec<ParamDefinition> = self
+            .default_properties()
+            .iter()
+            .filter(|p| is_position || p.name != "expand")
+            .cloned()
+            .collect();
+        // oob's real default is aesthetic-dependent; its Null definition
+        // default is a marker for that.
+        for p in &mut defaults {
+            if p.name == "oob" && matches!(p.default, DefaultParamValue::Null) {
+                p.default = DefaultParamValue::String(default_oob(aesthetic));
             }
         }
+        if !is_position && properties.contains_key("expand") {
+            return Err(format!(
+                "expand is only valid for position aesthetics, not '{}'",
+                aesthetic
+            ));
+        }
+
+        let resolved = crate::params::resolve_parameters(
+            properties,
+            &defaults,
+            &format!("{} scale property", self.name()),
+        )?;
 
         // Additional semantic validation for oob (scale-specific restrictions beyond the constraint)
         if let Some(ParameterValue::String(oob)) = resolved.get("oob") {
@@ -2668,21 +2635,14 @@ mod tests {
 
     #[test]
     fn test_resolve_properties_rejection_cases() {
-        // Unknown property rejected
-        let mut props = Parameters::new();
-        props.insert("unknown".to_string(), ParameterValue::Number(1.0));
-        let result = ScaleType::continuous().resolve_properties("x", &props);
-        assert!(result.is_err());
-        assert!(result.unwrap_err().contains("unknown"));
-
-        // Discrete rejects expand
+        // expand on a non-position aesthetic rejected
         let mut expand_props = Parameters::new();
         expand_props.insert("expand".to_string(), ParameterValue::Number(0.1));
         let result = ScaleType::discrete().resolve_properties("color", &expand_props);
         assert!(result.is_err());
-        assert!(result.unwrap_err().contains("not 'expand'"));
+        assert!(result.unwrap_err().contains("position aesthetics"));
 
-        // Identity rejects any property
+        // Identity on a position aesthetic rejects any other property
         let result = ScaleType::identity().resolve_properties("x", &expand_props);
         assert!(result.is_err());
 
@@ -2741,17 +2701,8 @@ mod tests {
 
     #[test]
     fn test_resolve_properties_user_values_preserved() {
-        let mut props = Parameters::new();
-        props.insert("expand".to_string(), ParameterValue::Number(0.1));
-        let resolved = ScaleType::continuous()
-            .resolve_properties("pos1", &props)
-            .unwrap();
-        match resolved.get("expand") {
-            Some(ParameterValue::Number(n)) => assert!((n - 0.1).abs() < 1e-10),
-            _ => panic!("Expected Number"),
-        }
-
         // Binned supports expand
+        let mut props = Parameters::new();
         props.insert("expand".to_string(), ParameterValue::Number(0.2));
         let resolved = ScaleType::binned()
             .resolve_properties("pos1", &props)
