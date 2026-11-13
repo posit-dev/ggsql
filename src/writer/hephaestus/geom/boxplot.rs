@@ -13,7 +13,7 @@ use hephaestus::color::rgb8;
 use hephaestus::plot::geom::{BuildableGeom, GeomBuilder};
 use hephaestus::plot::{Plot as HPlot, PointGeom, RectGeom, SegmentGeom};
 
-use super::super::channels::{column_to_channel, column_to_f64, column_to_strings};
+use super::super::channels::{column_to_channel, column_to_f64, column_to_raw_strings};
 use super::super::scales::RangeKind;
 use super::super::wiring::{
     apply_material, band_edges, band_half_width, dodge_offsets, require_column, resolve_color,
@@ -77,7 +77,7 @@ pub fn build(plot: &mut HPlot, ctx: &Ctx) -> Result<()> {
     let cat = column_to_channel(df, cat_col)?;
     let v1 = column_to_f64(df, value_col)?;
     let v2 = column_to_f64(df, value2_col)?;
-    let types = column_to_strings(df, type_col)?;
+    let types = column_to_raw_strings(df, type_col)?;
 
     let rows_of = |t: &str| -> Vec<usize> { (0..n).filter(|&i| types[i] == t).collect() };
     let box_i = rows_of("box");

@@ -1,7 +1,7 @@
 //! `TABULATE FORMAT STUB` resolution: building the `StubHead`/`StubRowLabel`
 //! cells.
 
-use crate::array_util::value_to_string;
+use crate::array_util::column_to_strings;
 use crate::table::{TableCell, TableColumn};
 use crate::DataFrame;
 
@@ -19,8 +19,10 @@ pub(crate) fn create_stubhead(columns: &[TableColumn]) -> Vec<TableCell> {
         .collect()
 }
 
-/// Build one `StubRowLabel` cell per `DataFrame` value in every stub
-/// column, numbered from `top == 0`. Skips every non-stub column.
+/// Build one row-label cell per `DataFrame` value in every stub column,
+/// numbered from `top == 0`: `StubRowLabel` cells for `STUB` columns,
+/// `GroupHeading` cells for group stub columns. Skips every non-stub
+/// column.
 pub(crate) fn create_row_labels(df: &DataFrame, columns: &[TableColumn]) -> Vec<TableCell> {
     let mut cells = Vec::new();
 
@@ -29,15 +31,18 @@ pub(crate) fn create_row_labels(df: &DataFrame, columns: &[TableColumn]) -> Vec<
             continue;
         }
 
-        let array = df
-            .column(&column.name)
-            .expect("TableColumn.name always names a column of df");
+        let values = column_to_strings(
+            df.column(&column.name)
+                .expect("TableColumn.name always names a column of df"),
+        );
 
-        for row in 0..df.height() {
-            cells.push(
-                TableCell::new_stub_row_label(row, index, value_to_string(array, row))
-                    .with_properties(column.properties.clone()),
-            );
+        for (row, value) in values.into_iter().enumerate() {
+            let cell = if column.is_group_stub() {
+                TableCell::new_stub_row_group(row, index, value)
+            } else {
+                TableCell::new_stub_row_label(row, index, value)
+            };
+            cells.push(cell.with_properties(column.properties.clone()));
         }
     }
 

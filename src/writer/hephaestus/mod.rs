@@ -961,7 +961,7 @@ mod tests {
 
     #[test]
     fn facet_strips_null_and_empty_are_separate_panels() {
-        // `column_to_strings` renders both a NULL and an empty category as "",
+        // `column_to_raw_strings` renders both a NULL and an empty category as "",
         // so the null flag is what keeps them in separate panels.
         let data = "SELECT g, v FROM (VALUES ('', 1), (NULL, 2), ('a', 3)) t(g, v)";
         assert_eq!(

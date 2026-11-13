@@ -168,13 +168,13 @@ pub fn fill_null_f64(array: &Float64Array, fill: f64) -> Float64Array {
 // Value extraction helpers
 // ============================================================================
 
-/// Get a string representation of a value at an index, for any array type.
-/// Used for building composite group keys (e.g., in dodge).
-pub fn value_to_string(array: &ArrayRef, idx: usize) -> String {
+/// Get the display text of the value at an index, for any array type; `None`
+/// for a null cell.
+pub fn value_to_display(array: &ArrayRef, idx: usize) -> Option<String> {
     if array.is_null(idx) {
-        return "null".to_string();
+        return None;
     }
-    match array.data_type() {
+    Some(match array.data_type() {
         DataType::Int8 => as_i8(array).unwrap().value(idx).to_string(),
         DataType::Int16 => as_i16(array).unwrap().value(idx).to_string(),
         DataType::Int32 => as_i32(array).unwrap().value(idx).to_string(),
@@ -196,7 +196,48 @@ pub fn value_to_string(array: &ArrayRef, idx: usize) -> String {
         _ => arrow::util::display::ArrayFormatter::try_new(array.as_ref(), &Default::default())
             .map(|f| f.value(idx).to_string())
             .unwrap_or_else(|_| format!("{:?}", array.data_type())),
-    }
+    })
+}
+
+/// Get a string representation of a value at an index, for any array type.
+/// Nulls render as the literal "null".
+pub fn value_to_string(array: &ArrayRef, idx: usize) -> String {
+    value_to_display(array, idx).unwrap_or_else(|| "null".to_string())
+}
+
+/// Map every row of an array to a value.
+pub fn map_column<T>(array: &ArrayRef, f: impl Fn(usize) -> T) -> Vec<T> {
+    (0..array.len()).map(f).collect()
+}
+
+/// Get a string representation of every value in an array.
+pub fn column_to_strings(array: &ArrayRef) -> Vec<String> {
+    map_column(array, |idx| value_to_string(array, idx))
+}
+
+/// Read an array as identity text: cast non-text columns to Utf8 with arrow's
+/// cast kernel and substitute `null_as` for null cells. Callers differ only in
+/// what a null should become: the empty string (raw labels, facet level
+/// identity) or the sentinel category a scale's domain knows about.
+///
+/// Not display text — the cast kernel renders floats differently than
+/// [`value_to_display`] (`"3.0"` vs `"3"`), so user-visible text goes through
+/// [`column_to_strings`] instead.
+pub fn cast_to_strings(array: &ArrayRef, null_as: &str) -> Result<Vec<String>> {
+    let casted;
+    let str_array: &StringArray = if matches!(array.data_type(), DataType::Utf8) {
+        as_str(array)?
+    } else {
+        casted = cast_array(array, &DataType::Utf8)?;
+        as_str(&casted)?
+    };
+    Ok(map_column(array, |i| {
+        if str_array.is_null(i) {
+            null_as.to_string()
+        } else {
+            str_array.value(i).to_string()
+        }
+    }))
 }
 
 #[cfg(test)]

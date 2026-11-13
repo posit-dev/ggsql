@@ -19,10 +19,10 @@
 use std::cmp::Ordering;
 use std::collections::HashSet;
 
-use arrow::array::{Array, ArrayRef, StringArray, UInt32Array};
+use arrow::array::{Array, ArrayRef, UInt32Array};
 use arrow::datatypes::DataType;
 
-use crate::array_util::{as_f64, as_str, cast_array};
+use crate::array_util::{as_f64, cast_array};
 use crate::plot::{ArrayElement, ParameterValue, Scale, ScaleTypeKind};
 use crate::{DataFrame, GgsqlError, Plot, Result};
 
@@ -58,29 +58,6 @@ pub struct PanelKey {
     pub facet2: Option<LevelKey>,
 }
 
-/// Read a column as strings, casting non-text columns to text. Nulls become
-/// empty strings; pair with the array's own null bitmap when the distinction
-/// matters (see [`level_keys`]).
-fn column_to_strings(df: &DataFrame, name: &str) -> Result<Vec<String>> {
-    let array = df.column(name)?;
-    let casted;
-    let str_array: &StringArray = if matches!(array.data_type(), DataType::Utf8) {
-        as_str(array)?
-    } else {
-        casted = cast_array(array, &DataType::Utf8)?;
-        as_str(&casted)?
-    };
-    Ok((0..str_array.len())
-        .map(|i| {
-            if str_array.is_null(i) {
-                String::new()
-            } else {
-                str_array.value(i).to_string()
-            }
-        })
-        .collect())
-}
-
 /// Read a column as `f64`, casting from any numeric/temporal source type and
 /// mapping nulls to `NaN`.
 fn column_to_f64(df: &DataFrame, name: &str) -> Result<Vec<f64>> {
@@ -98,9 +75,8 @@ fn column_to_f64(df: &DataFrame, name: &str) -> Result<Vec<f64>> {
 /// The per-row facet key of one facet column: its text form paired with the
 /// null bitmap, so a NULL cell selects a different panel than an empty-string
 /// category — see [`LevelKey`].
-pub fn level_keys(df: &DataFrame, column: &str) -> Result<Vec<LevelKey>> {
-    let array = df.column(column)?;
-    Ok(column_to_strings(df, column)?
+pub fn level_keys(array: &ArrayRef) -> Result<Vec<LevelKey>> {
+    Ok(crate::array_util::cast_to_strings(array, "")?
         .into_iter()
         .enumerate()
         .map(|(i, text)| LevelKey {
@@ -110,37 +86,44 @@ pub fn level_keys(df: &DataFrame, column: &str) -> Result<Vec<LevelKey>> {
         .collect())
 }
 
+/// Distinct levels of a key column, in first-appearance order. `values`, when
+/// given, holds the numeric form of the same cells (the bin-centre join key
+/// for a binned plot facet); without it levels get `NaN`.
+pub fn distinct_levels(keys: &[LevelKey], values: Option<&[f64]>) -> Vec<FacetLevel> {
+    let mut seen = HashSet::new();
+    let mut distinct = Vec::new();
+    for (i, key) in keys.iter().enumerate() {
+        if seen.insert(key.clone()) {
+            distinct.push(FacetLevel {
+                key: key.clone(),
+                value: values.map_or(f64::NAN, |v| v[i]),
+            });
+        }
+    }
+    distinct
+}
+
 /// Distinct facet levels present in the data, ordered per the facet scale.
 ///
 /// * `internal_aes` is the internal facet aesthetic name (`"facet1"` /
 ///   `"facet2"`); the column read is its aesthetic-renamed form.
 pub fn ordered_levels(spec: &Plot, df: &DataFrame, internal_aes: &str) -> Result<Vec<FacetLevel>> {
     let col = crate::naming::aesthetic_column(internal_aes);
-    let keys = level_keys(df, &col)?;
+    let keys = level_keys(df.column(&col)?)?;
     // The numeric form of the same column, for the binned join. A text facet
     // column can't cast; `value` is only read for binned scales.
     let values = column_to_f64(df, &col).unwrap_or_else(|_| vec![f64::NAN; keys.len()]);
 
-    let mut seen = HashSet::new();
-    let mut distinct: Vec<FacetLevel> = Vec::new();
-    for (i, key) in keys.iter().enumerate() {
-        if seen.insert(key.clone()) {
-            distinct.push(FacetLevel {
-                key: key.clone(),
-                value: values[i],
-            });
-        }
-    }
-
     let scale = spec.find_scale(internal_aes);
-    Ok(order_levels(distinct, scale))
+    Ok(order_levels(distinct_levels(&keys, Some(&values)), scale))
 }
 
 /// Order distinct facet levels: a binned facet sorts by its (numeric) bin
 /// centre; everything else follows the scale's `input_range`, then any
 /// present-but-unlisted values sorted numeric-aware ascending. Reversed when
-/// the scale sets `reverse => true`.
-fn order_levels(mut distinct: Vec<FacetLevel>, scale: Option<&Scale>) -> Vec<FacetLevel> {
+/// the scale sets `reverse => true`. With no scale, the numeric-aware
+/// ascending fallback applies to all levels — the ordering table groups use.
+pub fn order_levels(mut distinct: Vec<FacetLevel>, scale: Option<&Scale>) -> Vec<FacetLevel> {
     let reverse = matches!(
         scale.and_then(|s| s.properties.get("reverse")),
         Some(ParameterValue::Boolean(true))
@@ -279,9 +262,11 @@ pub fn rows_in_panel(df: &DataFrame, panel: &PanelKey) -> Result<Option<Vec<u32>
     if df.column(&f1).is_err() {
         return Ok(None);
     }
-    let c1 = level_keys(df, &f1)?;
+    let c1 = level_keys(df.column(&f1)?)?;
     let c2 = match &panel.facet2 {
-        Some(_) => Some(level_keys(df, &crate::naming::aesthetic_column("facet2"))?),
+        Some(_) => Some(level_keys(
+            df.column(&crate::naming::aesthetic_column("facet2"))?,
+        )?),
         None => None,
     };
 

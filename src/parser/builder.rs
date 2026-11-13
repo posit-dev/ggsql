@@ -259,7 +259,11 @@ pub fn build_ast(source: &SourceTree) -> Result<Vec<Spec>> {
             }
             "tabulate_statement" => {
                 let table = build_tabulate_statement(&stmt_node, source)?;
-                (table.source.is_some(), "TABULATE", Spec::Table(table))
+                (
+                    table.source.is_some(),
+                    "TABULATE",
+                    Spec::Table(Box::new(table)),
+                )
             }
             other => {
                 return Err(GgsqlError::InternalError(format!(
@@ -448,6 +452,20 @@ fn process_tab_clause(node: &Node, source: &SourceTree, table: &mut Table) -> Re
             "format_clause" => {
                 table.formats.push(build_format_clause(&child, source)?);
             }
+            "facet_clause" => {
+                let facet = build_facet(&child, source)?;
+                if facet.is_grid() {
+                    return Err(GgsqlError::ParseError(
+                        "TABULATE FACET does not support BY".to_string(),
+                    ));
+                }
+                if table.facet.is_some() {
+                    return Err(GgsqlError::ParseError(
+                        "TABULATE supports a single FACET clause".to_string(),
+                    ));
+                }
+                table.facet = Some(facet);
+            }
             _ => {}
         }
     }
@@ -578,7 +596,29 @@ fn process_viz_clause(node: &Node, source: &SourceTree, spec: &mut Plot) -> Resu
                 spec.scales.push(scale);
             }
             "facet_clause" => {
-                spec.facet = Some(build_facet(&child, source)?);
+                let facet = build_facet(&child, source)?;
+                // Plots support a single variable per dimension: every
+                // variable maps to the same internal aesthetic
+                // (facet1/facet2), so extra variables would be silently
+                // dropped. Error instead of mis-faceting. (TABULATE FACET
+                // supports multiple variables.)
+                let too_many = match &facet.layout {
+                    FacetLayout::Wrap { variables } => variables.len() > 1,
+                    FacetLayout::Grid { row, column } => row.len() > 1 || column.len() > 1,
+                };
+                if too_many {
+                    return Err(GgsqlError::ParseError(
+                        "FACET currently supports a single variable per dimension; \
+                         multiple facet variables are not yet supported"
+                            .to_string(),
+                    ));
+                }
+                if spec.facet.is_some() {
+                    return Err(GgsqlError::ParseError(
+                        "VISUALISE supports a single FACET clause".to_string(),
+                    ));
+                }
+                spec.facet = Some(facet);
             }
             "project_clause" => {
                 spec.project = Some(build_project(&child, source)?);
@@ -1173,15 +1213,17 @@ fn build_facet(node: &Node, source: &SourceTree) -> Result<Facet> {
         }
     }
 
-    // Only a single variable per dimension is currently supported: every
-    // variable maps to the same internal aesthetic (facet1/facet2), so extra
-    // variables would be silently dropped. Error instead of mis-faceting.
-    if row_vars.len() > 1 || column_vars.len() > 1 {
-        return Err(GgsqlError::ParseError(
-            "FACET currently supports a single variable per dimension; \
-             multiple facet variables are not yet supported"
-                .to_string(),
-        ));
+    for (i, var) in row_vars.iter().chain(&column_vars).enumerate() {
+        if row_vars
+            .iter()
+            .chain(&column_vars)
+            .skip(i + 1)
+            .any(|v| v == var)
+        {
+            return Err(GgsqlError::ParseError(format!(
+                "FACET lists '{var}' more than once"
+            )));
+        }
     }
 
     // Determine layout variant: if column_vars is empty, it's a wrap layout
@@ -1601,6 +1643,36 @@ mod tests {
     }
 
     #[test]
+    fn test_tabulate_facet_wrap_layout() {
+        let specs = parse_test_specs("TABULATE * FROM sales FACET region").unwrap();
+        let table = specs[0].as_table().expect("expected a Table spec");
+
+        let facet = table.facet.as_ref().expect("expected a facet");
+        assert!(facet.is_wrap());
+        match &facet.layout {
+            FacetLayout::Wrap { variables } => {
+                assert_eq!(variables, &vec!["region".to_string()])
+            }
+            _ => unreachable!(),
+        }
+        assert!(!facet.resolved);
+    }
+
+    #[test]
+    fn test_tabulate_facet_by_is_rejected() {
+        let result = parse_test_specs("TABULATE * FROM sales FACET region BY category");
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_tabulate_a_second_facet_clause_is_rejected() {
+        let result = parse_test_specs("TABULATE * FROM sales FACET region FACET category");
+
+        assert!(result.is_err());
+    }
+
+    #[test]
     fn test_tabulate_repeated_label_clauses_merge_rather_than_overwrite() {
         let specs = parse_test_specs("TABULATE * FROM sales LABEL id => 'ID' LABEL name => 'Name'")
             .unwrap();
@@ -1747,6 +1819,29 @@ mod tests {
             project.properties.get("start"),
             Some(&ParameterValue::Number(90.0))
         );
+    }
+
+    #[test]
+    fn test_visualise_a_second_facet_clause_is_rejected() {
+        let query = r#"
+            VISUALISE
+            DRAW point MAPPING x AS x, y AS y
+            FACET region
+            FACET category
+        "#;
+
+        assert!(parse_test_query(query).is_err());
+    }
+
+    #[test]
+    fn test_visualise_facet_rejects_a_variable_repeated_across_by() {
+        let query = r#"
+            VISUALISE
+            DRAW point MAPPING x AS x, y AS y
+            FACET region BY region
+        "#;
+
+        assert!(parse_test_query(query).is_err());
     }
 
     #[test]

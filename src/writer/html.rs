@@ -141,19 +141,45 @@ impl Writer for HtmlWriter {
 
         if !body_rows.is_empty() {
             let tbody_attrs = styling_attr(&[TableClass::TableBody], self.css_mode);
-            html.push_str(&format!("<tbody{tbody_attrs}>\n"));
-            for row in &body_rows {
-                let slots = all_slots
-                    .remove(row)
-                    .expect("a body row's own cell always puts it in slots_by_row's result");
-                html.push_str(&render_row(&slots, &rows[*row], self.css_mode));
+            // One <tbody> per facet group, so a scope="rowgroup" heading
+            // covers exactly its group; group-less tables get a single tbody.
+            let woven = body_rows
+                .iter()
+                .any(|&row| rows[row].classes.contains(&TableClass::GroupHeadingRow));
+
+            for run in body_rows.chunk_by(|&a, &b| same_tbody(&rows[a], &rows[b], woven)) {
+                html.push_str(&format!("<tbody{tbody_attrs}>\n"));
+                for row in run {
+                    let slots = all_slots
+                        .remove(row)
+                        .expect("a body row's own cell always puts it in slots_by_row's result");
+                    html.push_str(&render_row(&slots, &rows[*row], self.css_mode));
+                }
+                html.push_str("</tbody>\n");
             }
-            html.push_str("</tbody>\n");
         }
 
         html.push_str("</table>");
 
         Ok(html)
+    }
+}
+
+/// Whether two consecutive body rows share a `<tbody>` — the `chunk_by`
+/// predicate behind the one-tbody-per-group split.
+/// * Woven groups (heading rows) split at leaf groups — a deeper heading keeps
+///   the tbody open, so an outer heading joins its first leaf.
+/// * Stub-column groups split at the outermost group: a rowspan may not cross
+///   a tbody boundary, and the outer stub cell spans the whole group.
+fn same_tbody(prev: &TableRow, row: &TableRow, woven: bool) -> bool {
+    if prev.group.is_empty() || row.group.is_empty() {
+        return true;
+    }
+    if woven {
+        let deeper = row.group.len() > prev.group.len() && row.group.starts_with(&prev.group);
+        row.group == prev.group || deeper
+    } else {
+        row.group.first() == prev.group.first()
     }
 }
 
@@ -224,6 +250,19 @@ fn class_declarations(class: TableClass) -> &'static [(&'static str, &'static st
             ("border-right-color", "#D3D3D3"),
             ("padding-left", "5px"),
             ("padding-right", "5px"),
+        ],
+        TableClass::StubRowGroup => &[
+            ("color", "#333333"),
+            ("background-color", "#FFFFFF"),
+            ("font-size", "100%"),
+            ("font-weight", "initial"),
+            ("text-transform", "inherit"),
+            ("border-right-style", "solid"),
+            ("border-right-width", "2px"),
+            ("border-right-color", "#D3D3D3"),
+            ("padding-left", "5px"),
+            ("padding-right", "5px"),
+            ("vertical-align", "top"),
         ],
         TableClass::ColHeading => &[
             ("color", "#333333"),
@@ -320,6 +359,36 @@ fn class_declarations(class: TableClass) -> &'static [(&'static str, &'static st
             ("border-right-width", "1px"),
             ("border-right-color", "#D3D3D3"),
         ],
+        TableClass::GroupHeading => &[
+            ("padding-top", "8px"),
+            ("padding-bottom", "8px"),
+            ("padding-left", "5px"),
+            ("padding-right", "5px"),
+            ("color", "#333333"),
+            ("background-color", "#FFFFFF"),
+            ("font-size", "100%"),
+            ("font-weight", "initial"),
+            ("border-top-style", "solid"),
+            ("border-top-width", "2px"),
+            ("border-top-color", "#D3D3D3"),
+            ("border-bottom-style", "solid"),
+            ("border-bottom-width", "2px"),
+            ("border-bottom-color", "#D3D3D3"),
+            ("border-left-style", "none"),
+            ("border-left-width", "1px"),
+            ("border-left-color", "#D3D3D3"),
+            ("border-right-style", "none"),
+            ("border-right-width", "1px"),
+            ("border-right-color", "#D3D3D3"),
+            ("vertical-align", "middle"),
+            ("text-align", "left"),
+        ],
+        TableClass::GroupHeadingRow => &[],
+        TableClass::RowGroupFirst => &[
+            ("border-top-style", "solid"),
+            ("border-top-width", "2px"),
+            ("border-top-color", "#D3D3D3"),
+        ],
         TableClass::AlignLeft => &[("text-align", "left")],
         TableClass::AlignCenter => &[("text-align", "center")],
         TableClass::AlignRight => &[
@@ -331,29 +400,6 @@ fn class_declarations(class: TableClass) -> &'static [(&'static str, &'static st
     }
 }
 
-/// The styled classes (those carrying declarations), in `<style>`-block rule
-/// order. With equal specificity the later rule wins, so this decides
-/// precedence in class mode; `inline_style`'s own precedence instead follows
-/// the order of the cell's `classes` field (see its doc comment).
-const STYLED_CLASSES: &[TableClass] = &[
-    TableClass::Table,
-    TableClass::TableBody,
-    TableClass::Row,
-    TableClass::Stub,
-    TableClass::ColHeading,
-    TableClass::ColHeadingRow,
-    TableClass::Spanner,
-    TableClass::SpannerLabel,
-    TableClass::SpannerRow,
-    TableClass::Title,
-    TableClass::Subtitle,
-    TableClass::Caption,
-    TableClass::Heading,
-    TableClass::AlignLeft,
-    TableClass::AlignCenter,
-    TableClass::AlignRight,
-];
-
 /// Classes rendered on a `<div>` around the cell's content instead of on the
 /// `<th>`/`<td>` itself (gt's `gt_column_spanner` pattern).
 const INNER_CLASSES: &[TableClass] = &[TableClass::SpannerLabel];
@@ -364,7 +410,7 @@ const INNER_CLASSES: &[TableClass] = &[TableClass::SpannerLabel];
 /// which classes the table actually uses.
 fn render_style_block() -> String {
     let mut block = String::from("<style>\n");
-    for &class in STYLED_CLASSES {
+    for &class in TableClass::PRECEDENCE {
         let name = format!("ggsql_{class}");
         let declarations = class_declarations(class)
             .iter()
@@ -380,10 +426,22 @@ fn render_style_block() -> String {
 /// Fold classes' declarations into a `style` attribute value, each CSS
 /// property appearing at most once — a later class's declaration overrides
 /// an earlier one's (CSS's last-wins rule, made explicit so the output
-/// doesn't rely on browsers' duplicate-declaration handling).
+/// doesn't rely on browsers' duplicate-declaration handling). Folding
+/// happens in `TableClass::PRECEDENCE` order, not class-list order, so a
+/// conflict resolves the same way it would in class mode and the modes
+/// can't drift.
 fn inline_style(classes: &[TableClass]) -> Option<String> {
+    let mut ordered: Vec<&TableClass> = classes.iter().collect();
+    // Unstyled classes declare nothing, so their fallback position is
+    // irrelevant.
+    ordered.sort_by_key(|c| {
+        TableClass::PRECEDENCE
+            .iter()
+            .position(|s| s == *c)
+            .unwrap_or(0)
+    });
     let mut folded: Vec<(&str, &str)> = Vec::new();
-    for class in classes {
+    for class in ordered {
         for &(property, value) in class_declarations(*class) {
             match folded.iter_mut().find(|(p, _)| *p == property) {
                 Some(entry) => entry.1 = value,
@@ -426,16 +484,14 @@ fn styling_attr(classes: &[TableClass], mode: CssMode) -> String {
     }
 }
 
-/// Render one `TableCell` as an HTML `<th>`/`<td>`, picked from
-/// `cell.is_header()` — except a `Filler`, which renders as a `<td>` even in
-/// the header since it labels nothing. A `colspan`/`rowspan` attribute goes
-/// on only when the cell actually spans more than one column/row, and a
-/// `scope` attribute per `header_scope`. Styling per `mode` via
-/// `styling_attr` — classes in `INNER_CLASSES` go on a `<div>` around the
-/// content rather than on the `<th>`/`<td>` itself. Not used for a
-/// `Caption`-kind cell — see `render_caption`.
+/// Render one `TableCell` as an HTML `<th>`/`<td>`, styled per `mode` (see
+/// `styling_attr`). Not used for a `Caption`-kind cell — see `render_caption`.
 fn render_cell(cell: &TableCell, mode: CssMode) -> String {
-    let tag = if cell.is_header() && cell.kind != TableCellKind::Filler {
+    // A Filler labels nothing, so it renders as a <td> even in the header;
+    // a GroupHeading heads its rows even though it sits in the body.
+    let tag = if (cell.is_header() && cell.kind != TableCellKind::Filler)
+        || cell.kind == TableCellKind::GroupHeading
+    {
         "th"
     } else {
         "td"
@@ -454,6 +510,7 @@ fn render_cell(cell: &TableCell, mode: CssMode) -> String {
     }
     // `slots_by_row`'s slots borrow the layout's cells, so `hjust` can't be
     // folded into `classes` up front — its class joins the fold here.
+    // INNER_CLASSES go on a <div> around the content, not on the cell itself.
     let (inner, outer): (Vec<TableClass>, Vec<TableClass>) = cell
         .classes
         .iter()
@@ -475,13 +532,14 @@ fn render_cell(cell: &TableCell, mode: CssMode) -> String {
 /// `scope` value for a header cell of `kind`, or `None` if `scope` doesn't
 /// apply. `ColumnLabel`/`StubHead` are always single-column (`"col"`); a
 /// `Spanner` is a column-group header even when its group has one column
-/// (`"colgroup"`); `StubRowLabel` heads its row (`"row"`); everything else
-/// gets none.
+/// (`"colgroup"`); `StubRowLabel` heads its row (`"row"`); a `GroupHeading`
+/// heads its facet group (`"rowgroup"`); everything else gets none.
 fn header_scope(kind: TableCellKind) -> Option<&'static str> {
     match kind {
         TableCellKind::ColumnLabel | TableCellKind::StubHead => Some("col"),
         TableCellKind::Spanner => Some("colgroup"),
         TableCellKind::StubRowLabel => Some("row"),
+        TableCellKind::GroupHeading => Some("rowgroup"),
         TableCellKind::Body
         | TableCellKind::Title
         | TableCellKind::Subtitle
@@ -646,6 +704,15 @@ mod render_tests {
     }
 
     #[test]
+    fn render_cell_emits_a_group_heading_as_a_rowgroup_th() {
+        let c = cell(TableCellKind::GroupHeading, 2, 3, 0, 0);
+        assert_eq!(
+            render_cell(&c, CssMode::Inline),
+            "<th rowspan=\"2\" scope=\"rowgroup\"></th>"
+        );
+    }
+
+    #[test]
     fn render_cell_emits_a_filler_as_td_even_in_the_header() {
         // A filler labels nothing, so it must not announce as a header cell.
         let c = cell(TableCellKind::Filler, 0, 1, 0, 0);
@@ -724,12 +791,40 @@ mod render_tests {
     }
 
     #[test]
-    fn inline_style_lets_a_later_class_override_an_earlier_ones_property() {
-        // AlignLeft and AlignRight both declare text-align — last wins.
+    fn inline_style_resolves_conflicts_by_precedence_regardless_of_class_order() {
+        // AlignLeft and AlignRight both declare text-align; AlignRight comes
+        // later in TableClass::PRECEDENCE, whichever order the classes
+        // arrive in.
+        let expected = Some("text-align: right; font-variant-numeric: tabular-nums".to_string());
         assert_eq!(
             inline_style(&[TableClass::AlignLeft, TableClass::AlignRight]),
-            Some("text-align: right; font-variant-numeric: tabular-nums".to_string())
+            expected
         );
+        assert_eq!(
+            inline_style(&[TableClass::AlignRight, TableClass::AlignLeft]),
+            expected
+        );
+    }
+
+    #[test]
+    fn inline_style_is_order_independent_for_every_class_pair() {
+        // Class mode resolves conflicts by stylesheet (PRECEDENCE) order, so
+        // inline folding must give the same result for any permutation of a
+        // cell's classes — otherwise the modes drift.
+        let all: Vec<TableClass> = TableClass::PRECEDENCE
+            .iter()
+            .copied()
+            .chain([TableClass::StubHead])
+            .collect();
+        for &a in &all {
+            for &b in &all {
+                assert_eq!(
+                    inline_style(&[a, b]),
+                    inline_style(&[b, a]),
+                    "{a} vs {b} folds differently under permutation"
+                );
+            }
+        }
     }
 
     #[test]
@@ -845,6 +940,92 @@ mod render_tests {
              </tbody>\n\
              </table>"
         );
+    }
+
+    #[test]
+    fn write_table_splits_tbody_per_leaf_group_when_groups_are_woven() {
+        // Two leaf groups under one outer group: the outer heading joins its
+        // first leaf's tbody rather than sitting alone.
+        let cells = vec![
+            cell(TableCellKind::GroupHeading, 0, 0, 0, 0),
+            cell(TableCellKind::GroupHeading, 1, 1, 0, 0),
+            cell(TableCellKind::Body, 2, 2, 0, 0),
+            cell(TableCellKind::GroupHeading, 3, 3, 0, 0),
+            cell(TableCellKind::Body, 4, 4, 0, 0),
+        ];
+        let rows = vec![
+            TableRow::group_heading(vec![0]),
+            TableRow::group_heading(vec![0, 0]),
+            TableRow {
+                group: vec![0, 0],
+                ..TableRow::body()
+            },
+            TableRow::group_heading(vec![0, 1]),
+            TableRow {
+                group: vec![0, 1],
+                ..TableRow::body()
+            },
+        ];
+
+        let html = HtmlWriter {
+            css_mode: CssMode::Inline,
+        }
+        .write_table(&layout(cells, rows))
+        .unwrap();
+
+        assert_eq!(html.matches("<tbody").count(), 2);
+        let first_tbody = html
+            .split_once("<tbody")
+            .unwrap()
+            .1
+            .split_once("</tbody>")
+            .unwrap()
+            .0;
+        assert_eq!(first_tbody.matches("<tr>").count(), 3);
+    }
+
+    #[test]
+    fn write_table_splits_tbody_per_outermost_group_for_stub_columns() {
+        // No GroupHeadingRow rows: group labels live in stub columns. Split
+        // at the outermost group only, so a rowspanned stub cell never
+        // crosses a tbody boundary.
+        let cells = vec![
+            cell(TableCellKind::GroupHeading, 0, 1, 0, 0),
+            cell(TableCellKind::Body, 0, 0, 1, 1),
+            cell(TableCellKind::Body, 1, 1, 1, 1),
+            cell(TableCellKind::GroupHeading, 2, 2, 0, 0),
+            cell(TableCellKind::Body, 2, 2, 1, 1),
+        ];
+        let rows = vec![
+            TableRow {
+                group: vec![0, 0],
+                ..TableRow::body()
+            },
+            TableRow {
+                group: vec![0, 1],
+                ..TableRow::body()
+            },
+            TableRow {
+                group: vec![1, 0],
+                ..TableRow::body()
+            },
+        ];
+
+        let html = HtmlWriter {
+            css_mode: CssMode::Inline,
+        }
+        .write_table(&layout(cells, rows))
+        .unwrap();
+
+        assert_eq!(html.matches("<tbody").count(), 2);
+        let first_tbody = html
+            .split_once("<tbody")
+            .unwrap()
+            .1
+            .split_once("</tbody>")
+            .unwrap()
+            .0;
+        assert_eq!(first_tbody.matches("<tr>").count(), 2);
     }
 
     #[test]
