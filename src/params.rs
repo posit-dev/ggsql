@@ -1454,11 +1454,13 @@ mod tests {
             crate::params::reject_unknown_parameters(&properties, &[], "TEST setting").unwrap_err();
         assert_eq!(err, "TEST setting should be absent, not 'bin'");
 
-        // All offending keys are reported at once
+        // All offending keys are reported at once (in arbitrary HashMap order)
         properties.insert("beans".to_string(), ParameterValue::Number(10.0));
         let err = crate::params::reject_unknown_parameters(&properties, &defs, "TEST setting")
             .unwrap_err();
-        assert_eq!(err, "TEST setting should be 'bins', not 'bin' and 'beans'");
+        assert!(err.starts_with("TEST setting should be 'bins', not "));
+        assert!(err.contains("'bin'"));
+        assert!(err.contains("'beans'"));
         properties.remove("beans");
 
         properties.insert("bins".to_string(), ParameterValue::Number(10.0));
