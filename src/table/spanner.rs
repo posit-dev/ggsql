@@ -31,7 +31,7 @@ pub struct Spanner {
 
 /// `SETTING` parameters `SPAN` accepts — one static name/default/constraint
 /// list, mirroring how a `GeomTrait` declares `default_params()`, so
-/// `Spanner::validate_settings` doesn't hand-roll its own type checks per key.
+/// `Spanner::resolve_settings` doesn't hand-roll its own type checks per key.
 const SPAN_PARAMS: &[ParamDefinition] = &[
     ParamDefinition {
         name: "gather",
@@ -48,24 +48,11 @@ const SPAN_PARAMS: &[ParamDefinition] = &[
 ];
 
 impl Spanner {
-    /// Validate `settings` against `SPAN_PARAMS`, mirroring
-    /// `Layer::validate_settings`.
-    pub fn validate_settings(&self) -> Result<(), String> {
-        crate::params::reject_unknown_parameters(&self.settings, SPAN_PARAMS, "SPAN setting")?;
-        for param in SPAN_PARAMS {
-            // Known key, but wrong shape (e.g. `gather` not a boolean).
-            param.validate(self.settings.get(param.name))?;
-        }
-        Ok(())
-    }
-
-    /// Fill default values for any settings the user didn't specify.
-    pub fn apply_default_settings(&mut self) {
-        for param in SPAN_PARAMS {
-            if let Some(value) = param.to_parameter_value() {
-                self.settings.entry(param.name.to_string()).or_insert(value);
-            }
-        }
+    /// Validate `settings` against `SPAN_PARAMS` and resolve each to its
+    /// effective value: the user's value if present, otherwise the
+    /// definition's default.
+    pub fn resolve_settings(&self) -> Result<Parameters, String> {
+        crate::params::resolve_parameters(&self.settings, SPAN_PARAMS, "SPAN setting")
     }
 
     /// Check this spanner's columns against the table's STUB columns.
@@ -179,7 +166,7 @@ fn gather_columns(columns: Vec<TableColumn>, members: &[String]) -> Vec<TableCol
 /// arm). Levels are then compacted to remove gaps explicit levels can leave
 /// (e.g. 1, 3, 4 → 1, 2, 3).
 ///
-/// Infallible: `level`'s type is checked by `Spanner::validate_settings`.
+/// Infallible: `level`'s type is checked by `Spanner::resolve_settings`.
 fn assign_spanner_levels(spans: &[Spanner]) -> Vec<usize> {
     let mut levels: Vec<usize> = Vec::with_capacity(spans.len());
 
@@ -698,7 +685,7 @@ mod tests {
         settings.insert("gather".to_string(), ParameterValue::Boolean(false));
         settings.insert("level".to_string(), ParameterValue::Number(2.0));
 
-        assert!(spanner_with_settings(settings).validate_settings().is_ok());
+        assert!(spanner_with_settings(settings).resolve_settings().is_ok());
     }
 
     #[test]
@@ -709,7 +696,7 @@ mod tests {
             ParameterValue::String("40%".to_string()),
         );
 
-        assert!(spanner_with_settings(settings).validate_settings().is_err());
+        assert!(spanner_with_settings(settings).resolve_settings().is_err());
     }
 
     #[test]

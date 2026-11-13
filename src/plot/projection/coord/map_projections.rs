@@ -201,12 +201,6 @@ impl<T: MapProjectionTrait + 'static> super::CoordTrait for T {
                     .to_string(),
             );
         }
-        let defaults = self.default_properties();
-        crate::params::reject_unknown_parameters(
-            properties,
-            defaults,
-            &format!("{} projection property", self.name()),
-        )?;
         if let Some(ParameterValue::Array(arr)) = properties.get("origin") {
             if let Some(crate::plot::types::ArrayElement::Number(lat)) = arr.get(1) {
                 if *lat < -90.0 || *lat > 90.0 {
@@ -217,13 +211,11 @@ impl<T: MapProjectionTrait + 'static> super::CoordTrait for T {
                 }
             }
         }
-        let mut resolved = properties.clone();
-        for param in defaults {
-            if let Some(value) = param.resolve(properties.get(param.name))? {
-                resolved.entry(param.name.to_string()).or_insert(value);
-            }
-        }
-        Ok(resolved)
+        crate::params::resolve_parameters(
+            properties,
+            self.default_properties(),
+            &format!("{} projection property", self.name()),
+        )
     }
 
     fn apply_projection_transforms(

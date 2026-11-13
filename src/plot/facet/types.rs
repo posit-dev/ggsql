@@ -213,7 +213,7 @@ impl FacetLayout {
                     },
                     ParamDefinition {
                         name: "missing",
-                        default: DefaultParamValue::Null,
+                        default: DefaultParamValue::String("repeat"),
                         constraint: ParamConstraint::string_option(MISSING_VALUES),
                     },
                 ];
@@ -228,7 +228,7 @@ impl FacetLayout {
                     },
                     ParamDefinition {
                         name: "missing",
-                        default: DefaultParamValue::Null,
+                        default: DefaultParamValue::String("repeat"),
                         constraint: ParamConstraint::string_option(MISSING_VALUES),
                     },
                 ];

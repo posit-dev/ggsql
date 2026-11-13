@@ -1394,6 +1394,24 @@ pub fn reject_unknown_parameters(
     ))
 }
 
+/// Validate `properties` against `definitions` and resolve each parameter
+/// to its effective value: the user's value if present, otherwise the
+/// definition's default. Returns a new map with defaults filled.
+pub fn resolve_parameters(
+    properties: &Parameters,
+    definitions: &[ParamDefinition],
+    context: &str,
+) -> Result<Parameters, String> {
+    reject_unknown_parameters(properties, definitions, context)?;
+    let mut resolved = properties.clone();
+    for param in definitions {
+        if let Some(value) = param.resolve(properties.get(param.name))? {
+            resolved.entry(param.name.to_string()).or_insert(value);
+        }
+    }
+    Ok(resolved)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

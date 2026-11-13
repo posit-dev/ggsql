@@ -665,19 +665,11 @@ pub trait ScaleTypeTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
             ));
         }
 
-        crate::params::reject_unknown_parameters(
+        let resolved = crate::params::resolve_parameters(
             properties,
             &defaults,
             &format!("{} scale property", self.name()),
         )?;
-
-        // Start with user properties, add defaults for missing ones
-        let mut resolved = properties.clone();
-        for param in &defaults {
-            if let Some(value) = param.resolve(properties.get(param.name))? {
-                resolved.entry(param.name.to_string()).or_insert(value);
-            }
-        }
 
         // Additional semantic validation for oob (scale-specific restrictions beyond the constraint)
         if let Some(ParameterValue::String(oob)) = resolved.get("oob") {

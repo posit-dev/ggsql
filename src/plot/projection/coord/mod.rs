@@ -95,23 +95,11 @@ pub trait CoordTrait: std::fmt::Debug + Send + Sync {
         _coord_type_name: Option<&str>,
         properties: &Parameters,
     ) -> Result<Parameters, String> {
-        let defaults = self.default_properties();
-
-        crate::params::reject_unknown_parameters(
+        crate::params::resolve_parameters(
             properties,
-            defaults,
+            self.default_properties(),
             &format!("{} projection property", self.name()),
-        )?;
-
-        // Start with user properties, add defaults for missing ones
-        let mut resolved = properties.clone();
-        for param in defaults {
-            if let Some(value) = param.resolve(properties.get(param.name))? {
-                resolved.entry(param.name.to_string()).or_insert(value);
-            }
-        }
-
-        Ok(resolved)
+        )
     }
 
     /// Downcast to `MapProjectionTrait` if this coord is a map projection.
