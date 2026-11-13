@@ -106,7 +106,7 @@ pub trait CoordTrait: std::fmt::Debug + Send + Sync {
         // Start with user properties, add defaults for missing ones
         let mut resolved = properties.clone();
         for param in defaults {
-            if let Some(value) = param.resolve(properties)? {
+            if let Some(value) = param.resolve(properties.get(param.name))? {
                 resolved.entry(param.name.to_string()).or_insert(value);
             }
         }

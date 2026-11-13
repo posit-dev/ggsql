@@ -116,9 +116,7 @@ pub fn resolve_properties(
     }
     crate::params::reject_unknown_parameters(&facet.properties, defaults, "FACET setting")?;
     for param in defaults {
-        if let Some(value) = facet.properties.get(param.name) {
-            param.validate(value)?;
-        }
+        param.validate(facet.properties.get(param.name))?;
     }
 
     // Step 2: Validate and normalize free against coord-dependent position names

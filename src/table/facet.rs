@@ -49,7 +49,7 @@ pub(crate) fn setup_facet(facet: &Option<Facet>) -> Result<Option<Facet>, String
                 name
             ));
         };
-        param.validate(value)?;
+        param.validate(Some(value))?;
     }
 
     let mut resolved = facet.clone();
