@@ -83,10 +83,9 @@ fn compute_default_ncol(num_levels: usize) -> i64 {
 /// 2. Validates all properties are allowed for this layout
 /// 3. Validates property values using constraints from `default_properties()`
 /// 4. Validates and normalizes `free` against position aesthetic names (coord-dependent)
-/// 5. Validates ncol/nrow mutual exclusivity
-/// 6. Applies defaults for missing properties:
-///    - `ncol` (wrap only): computed from `context.num_levels`
-/// 7. Sets `resolved = true`
+/// 5. Resolves ncol/nrow into a concrete ncol (wrap only: converted from
+///    nrow or computed from `context.num_levels`)
+/// 6. Sets `resolved = true`
 ///
 /// # Arguments
 ///
@@ -122,11 +121,8 @@ pub fn resolve_properties(
     // Step 2: Validate and normalize free against coord-dependent position names
     resolve_free_property(facet, position_names)?;
 
-    // Step 3: Validate ncol/nrow mutual exclusivity
-    validate_layout_exclusivity(facet)?;
-
-    // Step 4: Apply defaults for missing properties
-    apply_defaults(facet, context);
+    // Step 3: Resolve ncol/nrow into a concrete ncol
+    resolve_layout(facet, context)?;
 
     // Mark as resolved
     facet.resolved = true;
@@ -198,52 +194,41 @@ fn resolve_free_property(facet: &mut Facet, position_names: &[&str]) -> Result<(
     Ok(())
 }
 
-/// Validate ncol and nrow mutual exclusivity
+/// Resolve ncol/nrow into a concrete ncol for wrap facets.
 ///
-/// They cannot both be specified at the same time.
-/// Type and range validation is handled by the constraint system.
-fn validate_layout_exclusivity(facet: &Facet) -> Result<(), String> {
-    let has_ncol = facet.properties.contains_key("ncol");
-    let has_nrow = facet.properties.contains_key("nrow");
-
-    if has_ncol && has_nrow {
-        return Err(
-            "'ncol' and 'nrow' cannot both be specified. Use one or the other.".to_string(),
-        );
+/// ncol and nrow are mutually exclusive (type and range validation is
+/// handled by the constraint system). A given nrow is converted to the
+/// ncol it implies; with neither, ncol is computed from the panel count.
+/// Grid facets take neither (rejected in step 1).
+fn resolve_layout(facet: &mut Facet, context: &FacetDataContext) -> Result<(), String> {
+    // ncol/nrow are wrap-only; grid facets have already been rejected in step 1.
+    if !facet.is_wrap() {
+        return Ok(());
     }
+
+    // Null is the "computed from data" marker, so an explicit null counts as absent.
+    let ncol = facet.properties.get("ncol").and_then(|v| v.as_number());
+    let nrow = facet.properties.get("nrow").and_then(|v| v.as_number());
+
+    let ncol: f64 = match (ncol, nrow) {
+        (Some(_), Some(_)) => {
+            return Err(
+                "'ncol' and 'nrow' cannot both be specified. Use one or the other.".to_string(),
+            )
+        }
+        (Some(ncol), None) => ncol,
+        // User provided nrow: compute ncol from it
+        (None, Some(nrow)) => (context.num_levels as f64 / nrow).ceil(),
+        // Neither provided: compute default ncol from the panel count
+        (None, None) => compute_default_ncol(context.num_levels) as f64,
+    };
+
+    facet
+        .properties
+        .insert("ncol".to_string(), ParameterValue::Number(ncol));
+    facet.properties.remove("nrow");
 
     Ok(())
-}
-
-/// Apply default values for missing properties
-fn apply_defaults(facet: &mut Facet, context: &FacetDataContext) {
-    // Note: absence of 'free' property means fixed/shared scales (default)
-    // No need to insert a default value
-
-    // Handle ncol/nrow for wrap facets
-    if facet.is_wrap() {
-        let has_ncol = facet.properties.contains_key("ncol");
-        let has_nrow = facet.properties.contains_key("nrow");
-
-        if has_nrow && !has_ncol {
-            // User provided nrow: compute ncol from it
-            if let Some(ParameterValue::Number(nrow)) = facet.properties.get("nrow") {
-                let nrow_val = *nrow as usize;
-                let ncol = ((context.num_levels as f64) / (nrow_val as f64)).ceil() as i64;
-                facet
-                    .properties
-                    .insert("ncol".to_string(), ParameterValue::Number(ncol as f64));
-                facet.properties.remove("nrow");
-            }
-        } else if !has_ncol && !has_nrow {
-            // Neither provided: apply default ncol
-            let default_cols = compute_default_ncol(context.num_levels);
-            facet.properties.insert(
-                "ncol".to_string(),
-                ParameterValue::Number(default_cols as f64),
-            );
-        }
-    }
 }
 
 #[cfg(test)]
