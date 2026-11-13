@@ -723,8 +723,8 @@ mod tests {
             AestheticValue::standard_column("value".to_string()),
         );
         let mut parameters = Parameters::new();
-        parameters.insert("coef".to_string(), ParameterValue::Number(1.5));
-        parameters.insert("outliers".to_string(), ParameterValue::Boolean(true));
+        parameters.insert("coef".to_string(), 1.5.into());
+        parameters.insert("outliers".to_string(), true.into());
 
         let ctx = crate::plot::aesthetic::AestheticContext::from_static(&["x", "y"], &[]);
         let result = stat_boxplot(

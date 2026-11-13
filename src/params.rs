@@ -42,6 +42,30 @@ pub enum ParameterValue {
 /// A collection of named parameter values, typically from `SET` clauses.
 pub type Parameters = HashMap<String, ParameterValue>;
 
+impl From<&str> for ParameterValue {
+    fn from(s: &str) -> Self {
+        ParameterValue::String(s.to_string())
+    }
+}
+
+impl From<String> for ParameterValue {
+    fn from(s: String) -> Self {
+        ParameterValue::String(s)
+    }
+}
+
+impl From<f64> for ParameterValue {
+    fn from(n: f64) -> Self {
+        ParameterValue::Number(n)
+    }
+}
+
+impl From<bool> for ParameterValue {
+    fn from(b: bool) -> Self {
+        ParameterValue::Boolean(b)
+    }
+}
+
 impl std::fmt::Display for ParameterValue {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -1427,17 +1451,11 @@ mod tests {
             default: DefaultParamValue::Number(30.0),
             constraint: ParamConstraint::count(1.0),
         };
-        let present = Some(ParameterValue::Number(10.0));
+        let present = Some(10.0.into());
         // User value wins over the default, absent falls back to the default,
         // and a Null default means no value.
-        assert_eq!(
-            def.resolve(present.as_ref()).unwrap(),
-            Some(ParameterValue::Number(10.0))
-        );
-        assert_eq!(
-            def.resolve(None).unwrap(),
-            Some(ParameterValue::Number(30.0))
-        );
+        assert_eq!(def.resolve(present.as_ref()).unwrap(), Some(10.0.into()));
+        assert_eq!(def.resolve(None).unwrap(), Some(30.0.into()));
         let no_default = ParamDefinition {
             default: DefaultParamValue::Null,
             ..def
@@ -1453,7 +1471,7 @@ mod tests {
             constraint: ParamConstraint::count(1.0),
         }];
         let mut properties = Parameters::new();
-        properties.insert("bin".to_string(), ParameterValue::Number(10.0));
+        properties.insert("bin".to_string(), 10.0.into());
         let err = crate::params::reject_unknown_parameters(&properties, &defs, "TEST setting")
             .unwrap_err();
         assert_eq!(err, "TEST setting should be 'bins', not 'bin'");
@@ -1464,7 +1482,7 @@ mod tests {
         assert_eq!(err, "TEST setting should be absent, not 'bin'");
 
         // All offending keys are reported at once (in arbitrary HashMap order)
-        properties.insert("beans".to_string(), ParameterValue::Number(10.0));
+        properties.insert("beans".to_string(), 10.0.into());
         let err = crate::params::reject_unknown_parameters(&properties, &defs, "TEST setting")
             .unwrap_err();
         assert!(err.starts_with("TEST setting should be 'bins', not "));
@@ -1472,7 +1490,7 @@ mod tests {
         assert!(err.contains("'beans'"));
         properties.remove("beans");
 
-        properties.insert("bins".to_string(), ParameterValue::Number(10.0));
+        properties.insert("bins".to_string(), 10.0.into());
         properties.remove("bin");
         assert!(
             crate::params::reject_unknown_parameters(&properties, &defs, "TEST setting").is_ok()
@@ -1504,17 +1522,14 @@ mod tests {
             },
         ];
         let mut properties = Parameters::new();
-        properties.insert("bins".to_string(), ParameterValue::Number(10.0));
+        properties.insert("bins".to_string(), 10.0.into());
 
         let resolved =
             crate::params::resolve_parameters(&properties, &defs, "TEST setting").unwrap();
 
-        assert_eq!(resolved.get("bins"), Some(&ParameterValue::Number(10.0)));
-        assert_eq!(
-            resolved.get("label"),
-            Some(&ParameterValue::String("x".to_string()))
-        );
-        assert_eq!(resolved.get("flag"), Some(&ParameterValue::Boolean(true)));
+        assert_eq!(resolved.get("bins"), Some(&10.0.into()));
+        assert_eq!(resolved.get("label"), Some(&"x".into()));
+        assert_eq!(resolved.get("flag"), Some(&true.into()));
         // A Null default fills nothing
         assert!(!resolved.contains_key("optional"));
         // The input map is untouched
@@ -1545,13 +1560,13 @@ mod tests {
             constraint: ParamConstraint::count(1.0),
         }];
         let mut properties = Parameters::new();
-        properties.insert("bin".to_string(), ParameterValue::Number(10.0));
+        properties.insert("bin".to_string(), 10.0.into());
         let err =
             crate::params::resolve_parameters(&properties, &defs, "TEST setting").unwrap_err();
         assert!(err.starts_with("TEST setting should be"));
 
         properties.remove("bin");
-        properties.insert("bins".to_string(), ParameterValue::Number(-5.0));
+        properties.insert("bins".to_string(), (-5.0).into());
         assert!(crate::params::resolve_parameters(&properties, &defs, "TEST setting").is_err());
     }
 
@@ -1995,14 +2010,14 @@ mod tests {
     #[test]
     fn test_number_constraint_accepts_valid() {
         let constraint = ParamConstraint::number_min(0.0);
-        assert!(validate_parameter("test", &ParameterValue::Number(5.0), &constraint).is_ok());
-        assert!(validate_parameter("test", &ParameterValue::Number(0.0), &constraint).is_ok());
+        assert!(validate_parameter("test", &5.0.into(), &constraint).is_ok());
+        assert!(validate_parameter("test", &0.0.into(), &constraint).is_ok());
     }
 
     #[test]
     fn test_number_constraint_rejects_invalid() {
         let constraint = ParamConstraint::number_min(0.0);
-        let result = validate_parameter("test", &ParameterValue::Number(-1.0), &constraint);
+        let result = validate_parameter("test", &(-1.0).into(), &constraint);
         assert!(result.is_err());
         assert!(result.unwrap_err().contains(">= 0"));
     }
@@ -2010,11 +2025,7 @@ mod tests {
     #[test]
     fn test_number_constraint_rejects_wrong_type() {
         let constraint = ParamConstraint::number_min(0.0);
-        let result = validate_parameter(
-            "test",
-            &ParameterValue::String("hello".to_string()),
-            &constraint,
-        );
+        let result = validate_parameter("test", &"hello".into(), &constraint);
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("should be Number"));
     }
@@ -2022,15 +2033,15 @@ mod tests {
     #[test]
     fn test_count_constraint_accepts_whole() {
         let constraint = ParamConstraint::count(1.0);
-        assert!(validate_parameter("bins", &ParameterValue::Number(5.0), &constraint).is_ok());
-        assert!(validate_parameter("bins", &ParameterValue::Number(1.0), &constraint).is_ok());
-        assert!(validate_parameter("bins", &ParameterValue::Number(100.0), &constraint).is_ok());
+        assert!(validate_parameter("bins", &5.0.into(), &constraint).is_ok());
+        assert!(validate_parameter("bins", &1.0.into(), &constraint).is_ok());
+        assert!(validate_parameter("bins", &100.0.into(), &constraint).is_ok());
     }
 
     #[test]
     fn test_count_constraint_rejects_fractional() {
         let constraint = ParamConstraint::count(1.0);
-        let result = validate_parameter("bins", &ParameterValue::Number(5.5), &constraint);
+        let result = validate_parameter("bins", &5.5.into(), &constraint);
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("whole number"));
     }
@@ -2038,7 +2049,7 @@ mod tests {
     #[test]
     fn test_count_constraint_rejects_below_min() {
         let constraint = ParamConstraint::count(1.0);
-        let result = validate_parameter("bins", &ParameterValue::Number(0.0), &constraint);
+        let result = validate_parameter("bins", &0.0.into(), &constraint);
         assert!(result.is_err());
         assert!(result.unwrap_err().contains(">= 1"));
     }
@@ -2046,22 +2057,13 @@ mod tests {
     #[test]
     fn test_string_option_accepts_valid() {
         let constraint = ParamConstraint::string_option(&["a", "b", "c"]);
-        assert!(validate_parameter(
-            "test",
-            &ParameterValue::String("a".to_string()),
-            &constraint
-        )
-        .is_ok());
+        assert!(validate_parameter("test", &"a".into(), &constraint).is_ok());
     }
 
     #[test]
     fn test_string_option_rejects_invalid() {
         let constraint = ParamConstraint::string_option(&["a", "b", "c"]);
-        let result = validate_parameter(
-            "test",
-            &ParameterValue::String("d".to_string()),
-            &constraint,
-        );
+        let result = validate_parameter("test", &"d".into(), &constraint);
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("not 'd'"));
     }
@@ -2069,7 +2071,7 @@ mod tests {
     #[test]
     fn test_string_option_rejects_wrong_type() {
         let constraint = ParamConstraint::string_option(&["a", "b", "c"]);
-        let result = validate_parameter("test", &ParameterValue::Number(1.0), &constraint);
+        let result = validate_parameter("test", &1.0.into(), &constraint);
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("should be String"));
     }
@@ -2078,29 +2080,15 @@ mod tests {
     fn test_number_with_unit_accepts_a_number_with_an_allowed_unit() {
         let constraint =
             ParamConstraint::number_with_unit(NumberConstraint::min(0.0), &["px", "%"]);
-        assert!(validate_parameter(
-            "width",
-            &ParameterValue::String("20%".to_string()),
-            &constraint
-        )
-        .is_ok());
-        assert!(validate_parameter(
-            "width",
-            &ParameterValue::String("240px".to_string()),
-            &constraint
-        )
-        .is_ok());
+        assert!(validate_parameter("width", &"20%".into(), &constraint).is_ok());
+        assert!(validate_parameter("width", &"240px".into(), &constraint).is_ok());
     }
 
     #[test]
     fn test_number_with_unit_applies_the_numeric_constraint() {
         let constraint =
             ParamConstraint::number_with_unit(NumberConstraint::min(0.0), &["px", "%"]);
-        let result = validate_parameter(
-            "width",
-            &ParameterValue::String("-20px".to_string()),
-            &constraint,
-        );
+        let result = validate_parameter("width", &"-20px".into(), &constraint);
         assert!(result.is_err());
         assert!(result.unwrap_err().contains(">= 0"));
     }
@@ -2120,7 +2108,7 @@ mod tests {
     fn test_number_with_unit_rejects_a_bare_number() {
         let constraint =
             ParamConstraint::number_with_unit(NumberConstraint::min(0.0), &["px", "%"]);
-        let result = validate_parameter("width", &ParameterValue::Number(20.0), &constraint);
+        let result = validate_parameter("width", &20.0.into(), &constraint);
         assert!(result.is_err());
     }
 
@@ -2128,11 +2116,7 @@ mod tests {
     fn test_number_with_unit_rejects_a_non_numeric_prefix() {
         let constraint =
             ParamConstraint::number_with_unit(NumberConstraint::min(0.0), &["px", "%"]);
-        let result = validate_parameter(
-            "width",
-            &ParameterValue::String("wide%".to_string()),
-            &constraint,
-        );
+        let result = validate_parameter("width", &"wide%".into(), &constraint);
         assert!(result.is_err());
     }
 
@@ -2140,11 +2124,7 @@ mod tests {
     fn test_number_with_unit_rejects_a_disallowed_unit() {
         let constraint =
             ParamConstraint::number_with_unit(NumberConstraint::min(0.0), &["px", "%"]);
-        let result = validate_parameter(
-            "width",
-            &ParameterValue::String("20em".to_string()),
-            &constraint,
-        );
+        let result = validate_parameter("width", &"20em".into(), &constraint);
         assert!(result.is_err());
     }
 
@@ -2152,31 +2132,21 @@ mod tests {
     fn test_number_with_unit_rejects_a_bare_unit() {
         let constraint =
             ParamConstraint::number_with_unit(NumberConstraint::min(0.0), &["px", "%"]);
-        let result = validate_parameter(
-            "width",
-            &ParameterValue::String("%".to_string()),
-            &constraint,
-        );
+        let result = validate_parameter("width", &"%".into(), &constraint);
         assert!(result.is_err());
     }
 
     #[test]
     fn test_boolean_accepts_valid() {
         let constraint = ParamConstraint::boolean();
-        assert!(validate_parameter("reverse", &ParameterValue::Boolean(true), &constraint).is_ok());
-        assert!(
-            validate_parameter("reverse", &ParameterValue::Boolean(false), &constraint).is_ok()
-        );
+        assert!(validate_parameter("reverse", &true.into(), &constraint).is_ok());
+        assert!(validate_parameter("reverse", &false.into(), &constraint).is_ok());
     }
 
     #[test]
     fn test_boolean_rejects_wrong_type() {
         let constraint = ParamConstraint::boolean();
-        let result = validate_parameter(
-            "reverse",
-            &ParameterValue::String("true".to_string()),
-            &constraint,
-        );
+        let result = validate_parameter("reverse", &"true".into(), &constraint);
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("should be Boolean"));
     }
@@ -2187,7 +2157,7 @@ mod tests {
             NumberConstraint::min(0.0),
             ArrayConstraint::of_numbers_len(NumberConstraint::unconstrained(), 2),
         );
-        assert!(validate_parameter("expand", &ParameterValue::Number(0.05), &constraint).is_ok());
+        assert!(validate_parameter("expand", &0.05.into(), &constraint).is_ok());
     }
 
     #[test]
@@ -2219,11 +2189,7 @@ mod tests {
             NumberConstraint::min(0.0),
             ArrayConstraint::of_numbers_len(NumberConstraint::min(0.0), 2),
         );
-        let result = validate_parameter(
-            "expand",
-            &ParameterValue::String("0.05".to_string()),
-            &constraint,
-        );
+        let result = validate_parameter("expand", &"0.05".into(), &constraint);
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("should be Number or Array"));
     }
@@ -2251,7 +2217,7 @@ mod tests {
             NumberConstraint::min(1.0),
             ArrayConstraint::of_numbers(NumberConstraint::unconstrained()),
         );
-        assert!(validate_parameter("breaks", &ParameterValue::Number(10.0), &constraint).is_ok());
+        assert!(validate_parameter("breaks", &10.0.into(), &constraint).is_ok());
     }
 
     #[test]
@@ -2274,12 +2240,7 @@ mod tests {
             NumberConstraint::min(1.0),
             ArrayConstraint::of_numbers(NumberConstraint::unconstrained()),
         );
-        assert!(validate_parameter(
-            "breaks",
-            &ParameterValue::String("1 month".to_string()),
-            &constraint
-        )
-        .is_ok());
+        assert!(validate_parameter("breaks", &"1 month".into(), &constraint).is_ok());
     }
 
     #[test]
@@ -2288,7 +2249,7 @@ mod tests {
             NumberConstraint::min(1.0),
             ArrayConstraint::of_numbers(NumberConstraint::unconstrained()),
         );
-        let result = validate_parameter("breaks", &ParameterValue::Boolean(true), &constraint);
+        let result = validate_parameter("breaks", &true.into(), &constraint);
         assert!(result.is_err());
         assert!(result
             .unwrap_err()
@@ -2301,7 +2262,7 @@ mod tests {
             NumberConstraint::min(1.0),
             ArrayConstraint::of_numbers(NumberConstraint::unconstrained()),
         );
-        let result = validate_parameter("breaks", &ParameterValue::Number(0.0), &constraint);
+        let result = validate_parameter("breaks", &0.0.into(), &constraint);
         assert!(result.is_err());
         assert!(result.unwrap_err().contains(">= 1"));
     }
@@ -2355,12 +2316,7 @@ mod tests {
     #[test]
     fn test_string_or_string_array_accepts_string() {
         let constraint = ParamConstraint::string_or_string_array(&["x", "y"]);
-        assert!(validate_parameter(
-            "free",
-            &ParameterValue::String("x".to_string()),
-            &constraint
-        )
-        .is_ok());
+        assert!(validate_parameter("free", &"x".into(), &constraint).is_ok());
     }
 
     #[test]

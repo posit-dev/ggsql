@@ -3917,10 +3917,9 @@ mod tests {
 
             // Set orientation parameter for horizontal case
             if is_horizontal {
-                layer.parameters.insert(
-                    "orientation".to_string(),
-                    ParameterValue::String("transposed".to_string()),
-                );
+                layer
+                    .parameters
+                    .insert("orientation".to_string(), "transposed".into());
             }
 
             let mut layer_spec = if is_horizontal {
@@ -4053,10 +4052,9 @@ mod tests {
                     .insert("side".to_string(), ParameterValue::String(s.to_string()));
             }
             if is_horizontal {
-                layer.parameters.insert(
-                    "orientation".to_string(),
-                    ParameterValue::String("transposed".to_string()),
-                );
+                layer
+                    .parameters
+                    .insert("orientation".to_string(), "transposed".into());
             }
 
             // Build a minimal prototype with encoding fields the renderer reads.

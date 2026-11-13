@@ -631,9 +631,7 @@ mod tests {
 
         let df = make_test_df();
         let mut layer = make_test_layer();
-        layer
-            .parameters
-            .insert("width".to_string(), ParameterValue::Number(0.6));
+        layer.parameters.insert("width".to_string(), 0.6.into());
 
         // Mark pos1 as discrete and pos2 as continuous so only pos1offset is created
         let mut spec = Plot::new();

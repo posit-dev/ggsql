@@ -352,7 +352,6 @@ impl Format {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::plot::ParameterValue;
 
     fn format_with_settings(settings: Parameters) -> Format {
         Format {
@@ -415,10 +414,7 @@ mod tests {
     #[test]
     fn format_validate_settings_accepts_a_string_hjust() {
         let mut settings = Parameters::new();
-        settings.insert(
-            "hjust".to_string(),
-            ParameterValue::String("right".to_string()),
-        );
+        settings.insert("hjust".to_string(), "right".into());
 
         assert!(format_with_settings(settings).resolve_settings().is_ok());
     }
@@ -426,7 +422,7 @@ mod tests {
     #[test]
     fn format_validate_settings_accepts_a_numeric_hjust() {
         let mut settings = Parameters::new();
-        settings.insert("hjust".to_string(), ParameterValue::Number(0.25));
+        settings.insert("hjust".to_string(), 0.25.into());
 
         assert!(format_with_settings(settings).resolve_settings().is_ok());
     }
@@ -434,10 +430,7 @@ mod tests {
     #[test]
     fn format_validate_settings_rejects_an_unrecognized_string() {
         let mut settings = Parameters::new();
-        settings.insert(
-            "hjust".to_string(),
-            ParameterValue::String("up".to_string()),
-        );
+        settings.insert("hjust".to_string(), "up".into());
 
         assert!(format_with_settings(settings).resolve_settings().is_err());
     }
@@ -445,17 +438,11 @@ mod tests {
     #[test]
     fn format_validate_settings_accepts_a_percent_or_pixel_width() {
         let mut settings = Parameters::new();
-        settings.insert(
-            "width".to_string(),
-            ParameterValue::String("20%".to_string()),
-        );
+        settings.insert("width".to_string(), "20%".into());
         assert!(format_with_settings(settings).resolve_settings().is_ok());
 
         let mut settings = Parameters::new();
-        settings.insert(
-            "width".to_string(),
-            ParameterValue::String("240px".to_string()),
-        );
+        settings.insert("width".to_string(), "240px".into());
         assert!(format_with_settings(settings).resolve_settings().is_ok());
     }
 

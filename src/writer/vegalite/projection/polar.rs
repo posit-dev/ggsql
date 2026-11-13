@@ -1336,8 +1336,7 @@ mod tests {
         });
 
         let mut proj = Projection::polar();
-        proj.properties
-            .insert("inner".to_string(), ParameterValue::Number(0.5));
+        proj.properties.insert("inner".to_string(), 0.5.into());
         let panel = PolarContext::new(Some(&proj), None, &[]);
         apply_polar_radius_range(&mut encoding, &panel).unwrap();
 
@@ -1364,10 +1363,8 @@ mod tests {
         });
 
         let mut proj = Projection::polar();
-        proj.properties
-            .insert("inner".to_string(), ParameterValue::Number(0.5));
-        proj.properties
-            .insert("size".to_string(), ParameterValue::Number(350.0));
+        proj.properties.insert("inner".to_string(), 0.5.into());
+        proj.properties.insert("size".to_string(), 350.0.into());
         let f = faceted();
         let panel = PolarContext::new(Some(&proj), Some(&f), &[]);
         apply_polar_radius_range(&mut encoding, &panel).unwrap();
@@ -1389,8 +1386,7 @@ mod tests {
         });
 
         let mut proj = Projection::polar();
-        proj.properties
-            .insert("size".to_string(), ParameterValue::Number(350.0));
+        proj.properties.insert("size".to_string(), 350.0.into());
         let f = faceted();
         let panel = PolarContext::new(Some(&proj), Some(&f), &[]);
         apply_polar_radius_range(&mut encoding, &panel).unwrap();
@@ -2295,8 +2291,7 @@ mod tests {
     #[test]
     fn test_faceted_polar_discrete_uses_pixel_size() {
         let mut proj = Projection::polar();
-        proj.properties
-            .insert("size".to_string(), ParameterValue::Number(300.0));
+        proj.properties.insert("size".to_string(), 300.0.into());
         let f = faceted();
         let panel = PolarContext::new(Some(&proj), Some(&f), &[]);
 
@@ -2311,7 +2306,7 @@ mod tests {
         let mut proj_spec = Projection::polar();
         proj_spec
             .properties
-            .insert("size".to_string(), ParameterValue::Number(300.0));
+            .insert("size".to_string(), 300.0.into());
         let f = faceted();
         let proj = PolarProjection {
             panel: PolarContext::new(Some(&proj_spec), Some(&f), &scales),
@@ -2380,10 +2375,8 @@ mod tests {
     #[test]
     fn test_polygon_ring_closed_for_partial_arc() {
         let mut proj = Projection::polar();
-        proj.properties
-            .insert("start".to_string(), ParameterValue::Number(0.0));
-        proj.properties
-            .insert("end".to_string(), ParameterValue::Number(180.0));
+        proj.properties.insert("start".to_string(), 0.0.into());
+        proj.properties.insert("end".to_string(), 180.0.into());
         let mut panel = PolarContext::new(Some(&proj), None, &[]);
         panel.angle_breaks_radians = vec![0.5, 1.0, 1.5];
         let layer = polygon_ring(&panel, POLAR_OUTER, None, Value::Null, json!("red"));
@@ -2397,10 +2390,8 @@ mod tests {
     fn test_polygon_ring_partial_arc_corrects_boundary_radii() {
         use std::f64::consts::PI;
         let mut proj = Projection::polar();
-        proj.properties
-            .insert("start".to_string(), ParameterValue::Number(0.0));
-        proj.properties
-            .insert("end".to_string(), ParameterValue::Number(180.0));
+        proj.properties.insert("start".to_string(), 0.0.into());
+        proj.properties.insert("end".to_string(), 180.0.into());
         let mut panel = PolarContext::new(Some(&proj), None, &[]);
         panel.angle_breaks_radians = vec![PI / 2.0];
         let layer = polygon_ring(&panel, POLAR_OUTER, None, Value::Null, json!("red"));
@@ -2452,7 +2443,7 @@ mod tests {
         let mut proj_spec = Projection::polar();
         proj_spec
             .properties
-            .insert("radar".to_string(), ParameterValue::Boolean(true));
+            .insert("radar".to_string(), true.into());
         let proj = PolarProjection {
             panel: PolarContext::new(Some(&proj_spec), None, &scales),
         };
@@ -2468,7 +2459,7 @@ mod tests {
         let mut proj_spec = Projection::polar();
         proj_spec
             .properties
-            .insert("radar".to_string(), ParameterValue::Boolean(true));
+            .insert("radar".to_string(), true.into());
         let proj = PolarProjection {
             panel: PolarContext::new(Some(&proj_spec), None, &scales),
         };
@@ -2485,7 +2476,7 @@ mod tests {
         let mut proj_spec = Projection::polar();
         proj_spec
             .properties
-            .insert("radar".to_string(), ParameterValue::Boolean(true));
+            .insert("radar".to_string(), true.into());
         let proj = PolarProjection {
             panel: PolarContext::new(Some(&proj_spec), None, &scales),
         };

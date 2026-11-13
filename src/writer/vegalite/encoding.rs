@@ -1337,7 +1337,7 @@ mod tests {
 
     #[test]
     fn test_literal_shape_converts_to_svg_path() {
-        let lit = ParameterValue::String("square".to_string());
+        let lit = "square".into();
         let result = build_literal_encoding("shape", &lit).unwrap();
         let val = &result["value"];
         assert!(val.is_string(), "expected SVG path string, got: {val}");
@@ -1350,7 +1350,7 @@ mod tests {
 
     #[test]
     fn test_literal_shape_unknown_passes_through() {
-        let lit = ParameterValue::String("nonexistent".to_string());
+        let lit = "nonexistent".into();
         let result = build_literal_encoding("shape", &lit).unwrap();
         assert_eq!(result, json!({"value": "nonexistent"}));
     }

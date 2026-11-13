@@ -668,11 +668,8 @@ mod tests {
         let query = "SELECT x FROM (VALUES (1.0), (2.0), (3.0)) AS t(x)";
         let groups: Vec<String> = vec![];
         let mut parameters = Parameters::new();
-        parameters.insert("bandwidth".to_string(), ParameterValue::Number(0.5));
-        parameters.insert(
-            "kernel".to_string(),
-            ParameterValue::String("gaussian".to_string()),
-        );
+        parameters.insert("bandwidth".to_string(), 0.5.into());
+        parameters.insert("kernel".to_string(), "gaussian".into());
 
         let bw_cte = density_sql_bandwidth(query, &groups, "x", &parameters, &AnsiDialect);
         let data_cte = build_data_cte("x", None, None, query, &groups, &AnsiDialect);
@@ -752,11 +749,8 @@ mod tests {
         let query = "SELECT x, region, category FROM (VALUES (1.0, 'A', 'X'), (2.0, 'B', 'Y')) AS t(x, region, category)";
         let groups = vec!["region".to_string(), "category".to_string()];
         let mut parameters = Parameters::new();
-        parameters.insert("bandwidth".to_string(), ParameterValue::Number(0.5));
-        parameters.insert(
-            "kernel".to_string(),
-            ParameterValue::String("gaussian".to_string()),
-        );
+        parameters.insert("bandwidth".to_string(), 0.5.into());
+        parameters.insert("kernel".to_string(), "gaussian".into());
 
         let bw_cte = density_sql_bandwidth(query, &groups, "x", &parameters, &AnsiDialect);
         let data_cte = build_data_cte("x", None, None, query, &groups, &AnsiDialect);
@@ -936,7 +930,7 @@ mod tests {
         let query = "SELECT x FROM (VALUES (1.0), (2.0), (3.0), (4.0), (5.0)) AS t(x)";
         let groups: Vec<String> = vec![];
         let mut parameters = Parameters::new();
-        parameters.insert("bandwidth".to_string(), ParameterValue::Number(1.0));
+        parameters.insert("bandwidth".to_string(), 1.0.into());
         parameters.insert(
             "kernel".to_string(),
             ParameterValue::String(kernel_name.to_string()),
@@ -1040,10 +1034,7 @@ mod tests {
     #[test]
     fn test_kernel_invalid() {
         let mut parameters = Parameters::new();
-        parameters.insert(
-            "kernel".to_string(),
-            ParameterValue::String("invalid_kernel".to_string()),
-        );
+        parameters.insert("kernel".to_string(), "invalid_kernel".into());
 
         let result = choose_kde_kernel(&parameters, None);
 
@@ -1064,11 +1055,8 @@ mod tests {
         let query = "SELECT x FROM (VALUES (1.0), (2.0), (3.0)) AS t(x)";
         let groups: Vec<String> = vec![];
         let mut parameters = Parameters::new();
-        parameters.insert("bandwidth".to_string(), ParameterValue::Number(0.5));
-        parameters.insert(
-            "kernel".to_string(),
-            ParameterValue::String("gaussian".to_string()),
-        );
+        parameters.insert("bandwidth".to_string(), 0.5.into());
+        parameters.insert("kernel".to_string(), "gaussian".into());
 
         let bw_cte = density_sql_bandwidth(query, &groups, "x", &parameters, &AnsiDialect);
         let grid_cte = build_grid_cte(&groups, 100, None, &AnsiDialect);
@@ -1239,11 +1227,8 @@ mod tests {
         let query = "SELECT x FROM bench_data";
         let groups: Vec<String> = vec![];
         let mut parameters = Parameters::new();
-        parameters.insert("bandwidth".to_string(), ParameterValue::Number(5.0));
-        parameters.insert(
-            "kernel".to_string(),
-            ParameterValue::String("gaussian".to_string()),
-        );
+        parameters.insert("bandwidth".to_string(), 5.0.into());
+        parameters.insert("kernel".to_string(), "gaussian".into());
 
         let bw_cte = density_sql_bandwidth(query, &groups, "x", &parameters, &AnsiDialect);
         let data_cte = build_data_cte("x", None, None, query, &groups, &AnsiDialect);

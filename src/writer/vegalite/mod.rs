@@ -1877,10 +1877,9 @@ mod tests {
                 "pos2".to_string(),
                 AestheticValue::standard_column("y".to_string()),
             );
-        layer.mappings.insert(
-            "size".to_string(),
-            AestheticValue::Literal(crate::plot::ParameterValue::Number(3.0)),
-        );
+        layer
+            .mappings
+            .insert("size".to_string(), AestheticValue::Literal(3.0.into()));
         spec.layers.push(layer);
 
         let df = df! {
@@ -1909,10 +1908,7 @@ mod tests {
                 "y".to_string(),
                 AestheticValue::standard_column("y".to_string()),
             )
-            .with_aesthetic(
-                "stroke".to_string(),
-                AestheticValue::Literal(ParameterValue::String("red".to_string())),
-            );
+            .with_aesthetic("stroke".to_string(), AestheticValue::Literal("red".into()));
         spec.layers.push(layer);
 
         let df = df! {
@@ -2287,8 +2283,8 @@ mod tests {
 
         // Point with SETTING opacity => 0.5 should override default (1.0)
         let mut spec = Plot::new();
-        let mut layer = build_layer(Geom::point())
-            .with_parameter("opacity".to_string(), ParameterValue::Number(0.5));
+        let mut layer =
+            build_layer(Geom::point()).with_parameter("opacity".to_string(), 0.5.into());
 
         // Resolve aesthetics (normally done in execution pipeline)
         layer.resolve_aesthetics();
@@ -2396,7 +2392,7 @@ mod tests {
         let mut spec = Plot::new();
         let mut layer = build_layer(Geom::line()).with_aesthetic(
             "linetype".to_string(),
-            AestheticValue::Literal(ParameterValue::String("dashed".to_string())),
+            AestheticValue::Literal("dashed".into()),
         );
 
         // Resolve aesthetics (normally done in execution pipeline)
@@ -2505,15 +2501,13 @@ mod tests {
     #[test]
     fn test_binned_facet_reverse_sets_descending_sort() {
         use crate::plot::scale::Scale;
-        use crate::plot::{ParameterValue, ScaleType};
+        use crate::plot::ScaleType;
 
         let mut facet_def = json!({"field": "__ggsql_aes_facet1__", "type": "nominal"});
 
         let mut scale = Scale::new("facet1");
         scale.scale_type = Some(ScaleType::binned());
-        scale
-            .properties
-            .insert("reverse".to_string(), ParameterValue::Boolean(true));
+        scale.properties.insert("reverse".to_string(), true.into());
 
         apply_binned_facet_reverse(&mut facet_def, Some(&scale));
 
@@ -2542,9 +2536,7 @@ mod tests {
         let mut facet_def = json!({"field": "__ggsql_aes_facet1__", "type": "nominal"});
 
         let mut scale = Scale::new("facet1");
-        scale
-            .properties
-            .insert("reverse".to_string(), ParameterValue::Boolean(true));
+        scale.properties.insert("reverse".to_string(), true.into());
 
         apply_binned_facet_reverse(&mut facet_def, Some(&scale));
 

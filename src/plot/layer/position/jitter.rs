@@ -795,9 +795,7 @@ mod tests {
         let jitter = Jitter;
         let df = make_test_df();
         let mut layer = make_test_layer();
-        layer
-            .parameters
-            .insert("dodge".to_string(), ParameterValue::Boolean(false));
+        layer.parameters.insert("dodge".to_string(), false.into());
 
         // Mark pos1 as discrete and pos2 as continuous via scales
         let mut spec = Plot::new();
@@ -915,9 +913,7 @@ mod tests {
 
         let df = make_test_df();
         let mut layer = make_test_layer();
-        layer
-            .parameters
-            .insert("width".to_string(), ParameterValue::Number(0.6));
+        layer.parameters.insert("width".to_string(), 0.6.into());
 
         // Mark pos1 as discrete and pos2 as continuous so only pos1offset is created
         let mut spec = Plot::new();
@@ -1067,10 +1063,9 @@ mod tests {
         let df = make_test_df();
         let mut layer = make_test_layer();
         layer.partition_by = vec![]; // No grouping for pure jitter
-        layer.parameters.insert(
-            "distribution".to_string(),
-            ParameterValue::String("normal".to_string()),
-        );
+        layer
+            .parameters
+            .insert("distribution".to_string(), "normal".into());
 
         // Mark pos1 as discrete and pos2 as continuous so only pos1offset is created
         let mut spec = Plot::new();
@@ -1143,10 +1138,9 @@ mod tests {
         let df = make_test_df();
         let mut layer = make_test_layer();
         layer.partition_by = vec![]; // No grouping
-        layer.parameters.insert(
-            "distribution".to_string(),
-            ParameterValue::String("density".to_string()),
-        );
+        layer
+            .parameters
+            .insert("distribution".to_string(), "density".into());
 
         // Test 1: Both axes discrete - should fail
         let mut spec = Plot::new();
@@ -1211,10 +1205,9 @@ mod tests {
             m
         };
         layer.partition_by = vec![];
-        layer.parameters.insert(
-            "distribution".to_string(),
-            ParameterValue::String("density".to_string()),
-        );
+        layer
+            .parameters
+            .insert("distribution".to_string(), "density".into());
 
         // Mark pos1 as discrete and pos2 as continuous (density computed along pos2)
         let mut spec = Plot::new();
@@ -1270,10 +1263,9 @@ mod tests {
             m
         };
         layer.partition_by = vec!["__ggsql_aes_fill__".to_string()];
-        layer.parameters.insert(
-            "distribution".to_string(),
-            ParameterValue::String("density".to_string()),
-        );
+        layer
+            .parameters
+            .insert("distribution".to_string(), "density".into());
 
         // Mark pos1 as discrete and pos2 as continuous
         let mut spec = Plot::new();
@@ -1386,10 +1378,9 @@ mod tests {
         let df = make_test_df();
         let mut layer = make_test_layer();
         layer.partition_by = vec![]; // No grouping
-        layer.parameters.insert(
-            "distribution".to_string(),
-            ParameterValue::String("intensity".to_string()),
-        );
+        layer
+            .parameters
+            .insert("distribution".to_string(), "intensity".into());
 
         // Both axes discrete - should fail
         let mut spec = Plot::new();
@@ -1440,10 +1431,9 @@ mod tests {
             m
         };
         layer.partition_by = vec![];
-        layer.parameters.insert(
-            "distribution".to_string(),
-            ParameterValue::String("intensity".to_string()),
-        );
+        layer
+            .parameters
+            .insert("distribution".to_string(), "intensity".into());
 
         // Mark pos1 as discrete and pos2 as continuous (density computed along pos2)
         let mut spec = Plot::new();
@@ -1493,14 +1483,11 @@ mod tests {
             m
         };
         layer.partition_by = vec![];
-        layer.parameters.insert(
-            "distribution".to_string(),
-            ParameterValue::String("intensity".to_string()),
-        );
-        // Use dodge=false to avoid group separation
         layer
             .parameters
-            .insert("dodge".to_string(), ParameterValue::Boolean(false));
+            .insert("distribution".to_string(), "intensity".into());
+        // Use dodge=false to avoid group separation
+        layer.parameters.insert("dodge".to_string(), false.into());
 
         let mut spec = Plot::new();
         spec.scales.push(make_discrete_scale("pos1"));
@@ -1545,14 +1532,11 @@ mod tests {
             m
         };
         layer.partition_by = vec![];
-        layer.parameters.insert(
-            "distribution".to_string(),
-            ParameterValue::String("density".to_string()),
-        );
-        // Set explicit bandwidth matching what violin might use
         layer
             .parameters
-            .insert("bandwidth".to_string(), ParameterValue::Number(0.5));
+            .insert("distribution".to_string(), "density".into());
+        // Set explicit bandwidth matching what violin might use
+        layer.parameters.insert("bandwidth".to_string(), 0.5.into());
 
         let mut spec = Plot::new();
         spec.scales.push(make_discrete_scale("pos1"));
@@ -1592,14 +1576,11 @@ mod tests {
             m
         };
         layer.partition_by = vec![];
-        layer.parameters.insert(
-            "distribution".to_string(),
-            ParameterValue::String("density".to_string()),
-        );
-        // Set adjust parameter (scales auto-computed bandwidth)
         layer
             .parameters
-            .insert("adjust".to_string(), ParameterValue::Number(2.0));
+            .insert("distribution".to_string(), "density".into());
+        // Set adjust parameter (scales auto-computed bandwidth)
+        layer.parameters.insert("adjust".to_string(), 2.0.into());
 
         let mut spec = Plot::new();
         spec.scales.push(make_discrete_scale("pos1"));
@@ -1669,9 +1650,7 @@ mod tests {
         ] {
             let mut layer = make_test_layer();
             layer.partition_by = vec![]; // disable groups so dodge is a no-op
-            layer
-                .parameters
-                .insert("dodge".to_string(), ParameterValue::Boolean(false));
+            layer.parameters.insert("dodge".to_string(), false.into());
             layer
                 .parameters
                 .insert("side".to_string(), ParameterValue::String(side.to_string()));
@@ -1723,9 +1702,7 @@ mod tests {
         ] {
             let mut layer = make_test_layer();
             layer.partition_by = vec![];
-            layer
-                .parameters
-                .insert("dodge".to_string(), ParameterValue::Boolean(false));
+            layer.parameters.insert("dodge".to_string(), false.into());
             layer
                 .parameters
                 .insert("side".to_string(), ParameterValue::String(side.to_string()));
@@ -1762,10 +1739,7 @@ mod tests {
         spec.scales.push(make_continuous_scale("pos2"));
 
         let mut layer = make_test_layer(); // partition_by = ["fill"] => 2 dodge groups
-        layer.parameters.insert(
-            "side".to_string(),
-            ParameterValue::String("right".to_string()),
-        );
+        layer.parameters.insert("side".to_string(), "right".into());
 
         let (result, _) = jitter.apply_adjustment(df, &layer, &spec).unwrap();
         let offsets = as_f64(result.column("__ggsql_aes_pos1offset__").unwrap()).unwrap();
@@ -1810,17 +1784,11 @@ mod tests {
 
         let mut layer = make_test_layer();
         layer.partition_by = vec![];
+        layer.parameters.insert("dodge".to_string(), false.into());
         layer
             .parameters
-            .insert("dodge".to_string(), ParameterValue::Boolean(false));
-        layer.parameters.insert(
-            "distribution".to_string(),
-            ParameterValue::String("normal".to_string()),
-        );
-        layer.parameters.insert(
-            "side".to_string(),
-            ParameterValue::String("right".to_string()),
-        );
+            .insert("distribution".to_string(), "normal".into());
+        layer.parameters.insert("side".to_string(), "right".into());
 
         let (result, _) = jitter
             .apply_adjustment(make_test_df(), &layer, &spec)

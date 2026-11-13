@@ -592,8 +592,7 @@ mod tests {
         // value that resolution hasn't converted yet reads the same way.
         let mut s = continuous_scale((0.0, 100.0), vec![0.0, 50.0, 100.0]);
         assert_eq!(s.numeric_minor_breaks(), None);
-        s.properties
-            .insert("minor_breaks".to_string(), ParameterValue::Number(3.0));
+        s.properties.insert("minor_breaks".to_string(), 3.0.into());
         assert_eq!(s.numeric_minor_breaks(), None);
     }
 
@@ -630,8 +629,7 @@ mod tests {
     fn test_expand_range_honours_the_setting() {
         // Multiplier only, then the [mult, add] pair resolution writes back.
         let mut s = continuous_scale((0.0, 100.0), vec![]);
-        s.properties
-            .insert("expand".to_string(), ParameterValue::Number(0.1));
+        s.properties.insert("expand".to_string(), 0.1.into());
         assert_eq!(s.expand_range(0.0, 100.0), (-10.0, 110.0));
 
         s.properties.insert(

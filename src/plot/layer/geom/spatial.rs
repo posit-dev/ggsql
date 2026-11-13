@@ -193,10 +193,9 @@ mod tests {
     fn test_apply_projection_map_with_crs_no_clip() {
         let spatial = Spatial;
         let mut projection = Projection::map();
-        projection.properties.insert(
-            "target".to_string(),
-            ParameterValue::String("+proj=merc".to_string()),
-        );
+        projection
+            .properties
+            .insert("target".to_string(), "+proj=merc".into());
         let result = spatial
             .apply_projection(
                 "SELECT * FROM t",
@@ -219,13 +218,12 @@ mod tests {
     fn test_apply_projection_mercator_with_clip() {
         let spatial = Spatial;
         let mut projection = Projection::map();
-        projection.properties.insert(
-            "target".to_string(),
-            ParameterValue::String("+proj=merc".to_string()),
-        );
         projection
             .properties
-            .insert("clip".to_string(), ParameterValue::Boolean(true));
+            .insert("target".to_string(), "+proj=merc".into());
+        projection
+            .properties
+            .insert("clip".to_string(), true.into());
         let result = spatial
             .apply_projection(
                 "SELECT * FROM t",
@@ -248,11 +246,11 @@ mod tests {
         let mut projection = Projection::map();
         projection.properties.insert(
             "target".to_string(),
-            ParameterValue::String("+proj=ortho +lat_0=45 +lon_0=10".to_string()),
+            "+proj=ortho +lat_0=45 +lon_0=10".into(),
         );
         projection
             .properties
-            .insert("clip".to_string(), ParameterValue::Boolean(true));
+            .insert("clip".to_string(), true.into());
         let result = spatial
             .apply_projection(
                 "SELECT * FROM t",
@@ -275,13 +273,12 @@ mod tests {
     fn test_gnomonic_with_clip() {
         let spatial = Spatial;
         let mut projection = Projection::map();
-        projection.properties.insert(
-            "target".to_string(),
-            ParameterValue::String("+proj=gnom +lat_0=90 +lon_0=0".to_string()),
-        );
         projection
             .properties
-            .insert("clip".to_string(), ParameterValue::Boolean(true));
+            .insert("target".to_string(), "+proj=gnom +lat_0=90 +lon_0=0".into());
+        projection
+            .properties
+            .insert("clip".to_string(), true.into());
         let result = spatial
             .apply_projection(
                 "SELECT * FROM t",

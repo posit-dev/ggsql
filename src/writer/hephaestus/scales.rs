@@ -697,10 +697,9 @@ mod tests {
         mapping.insert("20".to_string(), None);
         assert_eq!(labels(&binned_bins(&scale)), vec!["< 10", "≥ 10"]);
 
-        scale.properties.insert(
-            "closed".to_string(),
-            ParameterValue::String("right".to_string()),
-        );
+        scale
+            .properties
+            .insert("closed".to_string(), "right".into());
         assert_eq!(labels(&binned_bins(&scale)), vec!["≤ 10", "> 10"]);
     }
 

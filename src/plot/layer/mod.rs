@@ -573,12 +573,8 @@ mod tests {
     fn test_resolve_aesthetics_from_settings() {
         // Test that resolve_aesthetics() moves aesthetic values from parameters to mappings
         let mut layer = Layer::new(Geom::point());
-        layer
-            .parameters
-            .insert("size".to_string(), ParameterValue::Number(5.0));
-        layer
-            .parameters
-            .insert("opacity".to_string(), ParameterValue::Number(0.8));
+        layer.parameters.insert("size".to_string(), 5.0.into());
+        layer.parameters.insert("opacity".to_string(), 0.8.into());
 
         layer.resolve_aesthetics();
 
@@ -587,11 +583,11 @@ mod tests {
         assert!(!layer.parameters.contains_key("opacity"));
         assert_eq!(
             layer.mappings.get("size"),
-            Some(&AestheticValue::Literal(ParameterValue::Number(5.0)))
+            Some(&AestheticValue::Literal(5.0.into()))
         );
         assert_eq!(
             layer.mappings.get("opacity"),
-            Some(&AestheticValue::Literal(ParameterValue::Number(0.8)))
+            Some(&AestheticValue::Literal(0.8.into()))
         );
     }
 
@@ -619,9 +615,7 @@ mod tests {
             "size",
             AestheticValue::standard_column("my_size".to_string()),
         );
-        layer
-            .parameters
-            .insert("size".to_string(), ParameterValue::Number(5.0));
+        layer.parameters.insert("size".to_string(), 5.0.into());
 
         layer.resolve_aesthetics();
 
@@ -638,10 +632,9 @@ mod tests {
     fn test_resolve_aesthetics_precedence() {
         // Test that SETTING takes precedence over geom defaults
         let mut layer = Layer::new(Geom::point());
-        layer.parameters.insert(
-            "shape".to_string(),
-            ParameterValue::String("square".to_string()),
-        );
+        layer
+            .parameters
+            .insert("shape".to_string(), "square".into());
 
         layer.resolve_aesthetics();
 
@@ -765,13 +758,10 @@ mod tests {
         // "position" is a point geom param, "width" a jitter position param
         let mut layer = Layer::new(Geom::point());
         layer.position = Position::jitter();
-        layer.parameters.insert(
-            "position".to_string(),
-            ParameterValue::String("jitter".to_string()),
-        );
         layer
             .parameters
-            .insert("width".to_string(), ParameterValue::Number(0.5));
+            .insert("position".to_string(), "jitter".into());
+        layer.parameters.insert("width".to_string(), 0.5.into());
 
         assert!(layer.validate_settings().is_ok());
     }
@@ -779,10 +769,9 @@ mod tests {
     #[test]
     fn test_validate_settings_rejects_an_invalid_value() {
         let mut layer = Layer::new(Geom::point());
-        layer.parameters.insert(
-            "position".to_string(),
-            ParameterValue::String("bogus".to_string()),
-        );
+        layer
+            .parameters
+            .insert("position".to_string(), "bogus".into());
 
         let err = layer.validate_settings().unwrap_err();
         assert!(err.contains("position"));
@@ -793,10 +782,7 @@ mod tests {
         // Aesthetic settings have no definition to validate against: any
         // value passes, even one that would fail a parameter constraint
         let mut layer = Layer::new(Geom::point());
-        layer.parameters.insert(
-            "size".to_string(),
-            ParameterValue::String("huge".to_string()),
-        );
+        layer.parameters.insert("size".to_string(), "huge".into());
 
         assert!(layer.validate_settings().is_ok());
     }
@@ -804,12 +790,8 @@ mod tests {
     #[test]
     fn test_validate_settings_reports_all_unknown_settings() {
         let mut layer = Layer::new(Geom::point());
-        layer
-            .parameters
-            .insert("bogus1".to_string(), ParameterValue::Number(1.0));
-        layer
-            .parameters
-            .insert("bogus2".to_string(), ParameterValue::Number(2.0));
+        layer.parameters.insert("bogus1".to_string(), 1.0.into());
+        layer.parameters.insert("bogus2".to_string(), 2.0.into());
 
         let err = layer.validate_settings().unwrap_err();
         assert!(err.contains("layer setting should be"));

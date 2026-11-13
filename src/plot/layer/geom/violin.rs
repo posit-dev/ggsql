@@ -341,11 +341,8 @@ mod tests {
         let aesthetics = create_basic_aesthetics();
         let groups: Vec<String> = vec![];
         let mut parameters = Parameters::new();
-        parameters.insert("bandwidth".to_string(), ParameterValue::Number(5.0));
-        parameters.insert(
-            "kernel".to_string(),
-            ParameterValue::String("gaussian".to_string()),
-        );
+        parameters.insert("bandwidth".to_string(), 5.0.into());
+        parameters.insert("kernel".to_string(), "gaussian".into());
 
         let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
 
@@ -406,11 +403,8 @@ mod tests {
         let aesthetics = create_aesthetics_with_color();
         let groups = vec!["island".to_string()]; // Additional grouping via color aesthetic
         let mut parameters = Parameters::new();
-        parameters.insert("bandwidth".to_string(), ParameterValue::Number(5.0));
-        parameters.insert(
-            "kernel".to_string(),
-            ParameterValue::String("gaussian".to_string()),
-        );
+        parameters.insert("bandwidth".to_string(), 5.0.into());
+        parameters.insert("kernel".to_string(), "gaussian".into());
 
         let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
 
@@ -527,12 +521,9 @@ mod tests {
         let aesthetics = create_basic_aesthetics();
         let groups: Vec<String> = vec![];
         let mut parameters = Parameters::new();
-        parameters.insert("bandwidth".to_string(), ParameterValue::Number(5.0));
-        parameters.insert(
-            "kernel".to_string(),
-            ParameterValue::String("gaussian".to_string()),
-        );
-        parameters.insert("tails".to_string(), ParameterValue::Number(1.5)); // Custom tails
+        parameters.insert("bandwidth".to_string(), 5.0.into());
+        parameters.insert("kernel".to_string(), "gaussian".into());
+        parameters.insert("tails".to_string(), 1.5.into()); // Custom tails
 
         let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
 
@@ -621,7 +612,7 @@ mod tests {
 
         // With width 0.6, half_width = 0.3
         let mut parameters = Parameters::new();
-        parameters.insert("width".to_string(), ParameterValue::Number(0.6));
+        parameters.insert("width".to_string(), 0.6.into());
 
         let result = violin.post_process(df, &parameters).unwrap();
 
@@ -649,11 +640,8 @@ mod tests {
         );
         let groups: Vec<String> = vec![];
         let mut parameters = Parameters::new();
-        parameters.insert("bandwidth".to_string(), ParameterValue::Number(5.0));
-        parameters.insert(
-            "kernel".to_string(),
-            ParameterValue::String("gaussian".to_string()),
-        );
+        parameters.insert("bandwidth".to_string(), 5.0.into());
+        parameters.insert("kernel".to_string(), "gaussian".into());
 
         let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
         let setup_sql = "CREATE TABLE penguins AS SELECT * FROM (VALUES

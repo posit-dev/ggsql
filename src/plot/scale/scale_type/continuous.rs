@@ -262,10 +262,7 @@ mod tests {
         let mut scale = Scale::new("y");
         scale.input_range = Some(vec![ArrayElement::Number(0.0), ArrayElement::Number(100.0)]);
         scale.explicit_input_range = true;
-        scale.properties.insert(
-            "oob".to_string(),
-            ParameterValue::String("censor".to_string()),
-        );
+        scale.properties.insert("oob".to_string(), "censor".into());
 
         let sql =
             continuous.pre_stat_transform_sql("value", &DataType::Float64, &scale, &AnsiDialect);
@@ -285,10 +282,7 @@ mod tests {
         let mut scale = Scale::new("y");
         scale.input_range = Some(vec![ArrayElement::Number(0.0), ArrayElement::Number(100.0)]);
         scale.explicit_input_range = true;
-        scale.properties.insert(
-            "oob".to_string(),
-            ParameterValue::String("squish".to_string()),
-        );
+        scale.properties.insert("oob".to_string(), "squish".into());
 
         let sql =
             continuous.pre_stat_transform_sql("value", &DataType::Float64, &scale, &AnsiDialect);
@@ -305,10 +299,7 @@ mod tests {
         let mut scale = Scale::new("x"); // position aesthetic defaults to keep
         scale.input_range = Some(vec![ArrayElement::Number(0.0), ArrayElement::Number(100.0)]);
         scale.explicit_input_range = true;
-        scale.properties.insert(
-            "oob".to_string(),
-            ParameterValue::String("keep".to_string()),
-        );
+        scale.properties.insert("oob".to_string(), "keep".into());
 
         let sql =
             continuous.pre_stat_transform_sql("value", &DataType::Float64, &scale, &AnsiDialect);

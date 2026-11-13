@@ -402,11 +402,7 @@ mod tests {
             column("b", "b"),
             column("y", "y"),
         ];
-        let spans = vec![spanner_with_setting(
-            &["a", "b"],
-            "gather",
-            ParameterValue::Boolean(false),
-        )];
+        let spans = vec![spanner_with_setting(&["a", "b"], "gather", false.into())];
 
         let result = reorder_table_columns(columns, &spans);
 
@@ -466,7 +462,7 @@ mod tests {
         // error on that, TableLayout::validate does once real cells exist.
         let spans = vec![
             spanner(&["a", "b"]),
-            spanner_with_setting(&["b", "c"], "level", ParameterValue::Number(1.0)),
+            spanner_with_setting(&["b", "c"], "level", 1.0.into()),
         ];
 
         let levels = assign_spanner_levels(&spans);
@@ -489,9 +485,9 @@ mod tests {
     #[test]
     fn assign_spanner_levels_compacts_gaps_left_by_explicit_levels() {
         let spans = vec![
-            spanner_with_setting(&["a"], "level", ParameterValue::Number(1.0)),
-            spanner_with_setting(&["b"], "level", ParameterValue::Number(3.0)),
-            spanner_with_setting(&["c"], "level", ParameterValue::Number(4.0)),
+            spanner_with_setting(&["a"], "level", 1.0.into()),
+            spanner_with_setting(&["b"], "level", 3.0.into()),
+            spanner_with_setting(&["c"], "level", 4.0.into()),
         ];
 
         let levels = assign_spanner_levels(&spans);
@@ -679,8 +675,8 @@ mod tests {
     #[test]
     fn resolve_settings_accepts_valid_gather_and_level() {
         let mut settings = Parameters::new();
-        settings.insert("gather".to_string(), ParameterValue::Boolean(false));
-        settings.insert("level".to_string(), ParameterValue::Number(2.0));
+        settings.insert("gather".to_string(), false.into());
+        settings.insert("level".to_string(), 2.0.into());
 
         assert!(spanner_with_settings(settings).resolve_settings().is_ok());
     }

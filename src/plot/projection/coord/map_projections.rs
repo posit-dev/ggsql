@@ -1364,7 +1364,7 @@ mod tests {
         let mut props = Parameters::new();
         props.insert(
             "target".to_string(),
-            ParameterValue::String("+proj=aea +lon_0=5 +lat_0=10 +lat_1=30 +lat_2=50".to_string()),
+            "+proj=aea +lon_0=5 +lat_0=10 +lat_1=30 +lat_2=50".into(),
         );
         let proj = build_map_projection_trait(Some("crs"), &props).unwrap();
         assert_eq!(proj.proj_code(), "aea");
@@ -1454,7 +1454,7 @@ mod tests {
     #[test]
     fn equal_earth_from_name_and_proj_str() {
         let mut props = Parameters::new();
-        props.insert("origin".to_string(), ParameterValue::Number(11.0));
+        props.insert("origin".to_string(), 11.0.into());
         let proj = build_map_projection_trait(Some("equal_earth"), &props).unwrap();
         assert_eq!(proj.proj_code(), "eqearth");
         assert_eq!(proj.origin(), (11.0, 0.0));

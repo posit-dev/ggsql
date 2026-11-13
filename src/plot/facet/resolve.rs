@@ -297,10 +297,7 @@ mod tests {
         assert!(facet.resolved);
         // After resolution, free is normalized to boolean array (all false = fixed)
         assert_eq!(get_free_bools(&facet), Some(vec![false, false]));
-        assert_eq!(
-            facet.properties.get("ncol"),
-            Some(&ParameterValue::Number(3.0))
-        );
+        assert_eq!(facet.properties.get("ncol"), Some(&3.0.into()));
     }
 
     #[test]
@@ -313,19 +310,14 @@ mod tests {
                 crate::plot::ArrayElement::String("y".to_string()),
             ]),
         );
-        facet
-            .properties
-            .insert("ncol".to_string(), ParameterValue::Number(2.0));
+        facet.properties.insert("ncol".to_string(), 2.0.into());
 
         let context = make_context(10);
         resolve_properties(&mut facet, &context, CARTESIAN).unwrap();
 
         // free => ['x', 'y'] is normalized to [true, true]
         assert_eq!(get_free_bools(&facet), Some(vec![true, true]));
-        assert_eq!(
-            facet.properties.get("ncol"),
-            Some(&ParameterValue::Number(2.0))
-        );
+        assert_eq!(facet.properties.get("ncol"), Some(&2.0.into()));
     }
 
     #[test]
@@ -343,9 +335,7 @@ mod tests {
     #[test]
     fn test_error_ncol_on_grid() {
         let mut facet = make_grid_facet();
-        facet
-            .properties
-            .insert("ncol".to_string(), ParameterValue::Number(3.0));
+        facet.properties.insert("ncol".to_string(), 3.0.into());
 
         let context = make_context(10);
         let result = resolve_properties(&mut facet, &context, CARTESIAN);
@@ -359,10 +349,9 @@ mod tests {
     #[test]
     fn test_error_invalid_free_value() {
         let mut facet = make_wrap_facet();
-        facet.properties.insert(
-            "free".to_string(),
-            ParameterValue::String("invalid".to_string()),
-        );
+        facet
+            .properties
+            .insert("free".to_string(), "invalid".into());
 
         let context = make_context(5);
         let result = resolve_properties(&mut facet, &context, CARTESIAN);
@@ -376,9 +365,7 @@ mod tests {
     #[test]
     fn test_error_negative_ncol() {
         let mut facet = make_wrap_facet();
-        facet
-            .properties
-            .insert("ncol".to_string(), ParameterValue::Number(-1.0));
+        facet.properties.insert("ncol".to_string(), (-1.0).into());
 
         let context = make_context(5);
         let result = resolve_properties(&mut facet, &context, CARTESIAN);
@@ -392,9 +379,7 @@ mod tests {
     #[test]
     fn test_error_non_integer_ncol() {
         let mut facet = make_wrap_facet();
-        facet
-            .properties
-            .insert("ncol".to_string(), ParameterValue::Number(2.5));
+        facet.properties.insert("ncol".to_string(), 2.5.into());
 
         let context = make_context(5);
         let result = resolve_properties(&mut facet, &context, CARTESIAN);
@@ -460,10 +445,9 @@ mod tests {
     #[test]
     fn test_missing_property_repeat_valid() {
         let mut facet = make_wrap_facet();
-        facet.properties.insert(
-            "missing".to_string(),
-            ParameterValue::String("repeat".to_string()),
-        );
+        facet
+            .properties
+            .insert("missing".to_string(), "repeat".into());
 
         let context = make_context(5);
         let result = resolve_properties(&mut facet, &context, CARTESIAN);
@@ -473,10 +457,9 @@ mod tests {
     #[test]
     fn test_missing_property_null_valid() {
         let mut facet = make_wrap_facet();
-        facet.properties.insert(
-            "missing".to_string(),
-            ParameterValue::String("null".to_string()),
-        );
+        facet
+            .properties
+            .insert("missing".to_string(), "null".into());
 
         let context = make_context(5);
         let result = resolve_properties(&mut facet, &context, CARTESIAN);
@@ -486,10 +469,9 @@ mod tests {
     #[test]
     fn test_error_invalid_missing_value() {
         let mut facet = make_wrap_facet();
-        facet.properties.insert(
-            "missing".to_string(),
-            ParameterValue::String("invalid".to_string()),
-        );
+        facet
+            .properties
+            .insert("missing".to_string(), "invalid".into());
 
         let context = make_context(5);
         let result = resolve_properties(&mut facet, &context, CARTESIAN);
@@ -503,9 +485,7 @@ mod tests {
     #[test]
     fn test_error_missing_not_string() {
         let mut facet = make_wrap_facet();
-        facet
-            .properties
-            .insert("missing".to_string(), ParameterValue::Number(1.0));
+        facet.properties.insert("missing".to_string(), 1.0.into());
 
         let context = make_context(5);
         let result = resolve_properties(&mut facet, &context, CARTESIAN);
@@ -519,10 +499,9 @@ mod tests {
     #[test]
     fn test_missing_allowed_on_grid_facet() {
         let mut facet = make_grid_facet();
-        facet.properties.insert(
-            "missing".to_string(),
-            ParameterValue::String("repeat".to_string()),
-        );
+        facet
+            .properties
+            .insert("missing".to_string(), "repeat".into());
 
         let context = make_context(5);
         let result = resolve_properties(&mut facet, &context, CARTESIAN);
@@ -536,9 +515,7 @@ mod tests {
     #[test]
     fn test_free_property_x_valid() {
         let mut facet = make_wrap_facet();
-        facet
-            .properties
-            .insert("free".to_string(), ParameterValue::String("x".to_string()));
+        facet.properties.insert("free".to_string(), "x".into());
 
         let context = make_context(5);
         let result = resolve_properties(&mut facet, &context, CARTESIAN);
@@ -550,9 +527,7 @@ mod tests {
     #[test]
     fn test_free_property_y_valid() {
         let mut facet = make_wrap_facet();
-        facet
-            .properties
-            .insert("free".to_string(), ParameterValue::String("y".to_string()));
+        facet.properties.insert("free".to_string(), "y".into());
 
         let context = make_context(5);
         let result = resolve_properties(&mut facet, &context, CARTESIAN);
@@ -650,9 +625,7 @@ mod tests {
     #[test]
     fn test_error_free_wrong_type() {
         let mut facet = make_wrap_facet();
-        facet
-            .properties
-            .insert("free".to_string(), ParameterValue::Number(1.0));
+        facet.properties.insert("free".to_string(), 1.0.into());
 
         let context = make_context(5);
         let result = resolve_properties(&mut facet, &context, CARTESIAN);
@@ -688,10 +661,7 @@ mod tests {
     #[test]
     fn test_free_property_angle_valid() {
         let mut facet = make_wrap_facet();
-        facet.properties.insert(
-            "free".to_string(),
-            ParameterValue::String("angle".to_string()),
-        );
+        facet.properties.insert("free".to_string(), "angle".into());
 
         let context = make_context(5);
         let result = resolve_properties(&mut facet, &context, POLAR);
@@ -703,10 +673,7 @@ mod tests {
     #[test]
     fn test_free_property_radius_valid() {
         let mut facet = make_wrap_facet();
-        facet.properties.insert(
-            "free".to_string(),
-            ParameterValue::String("radius".to_string()),
-        );
+        facet.properties.insert("free".to_string(), "radius".into());
 
         let context = make_context(5);
         let result = resolve_properties(&mut facet, &context, POLAR);
@@ -737,9 +704,7 @@ mod tests {
     fn test_error_cartesian_names_in_polar() {
         // x/y should not be valid for polar coords
         let mut facet = make_wrap_facet();
-        facet
-            .properties
-            .insert("free".to_string(), ParameterValue::String("x".to_string()));
+        facet.properties.insert("free".to_string(), "x".into());
 
         let context = make_context(5);
         let result = resolve_properties(&mut facet, &context, POLAR);
@@ -754,10 +719,7 @@ mod tests {
     fn test_error_polar_names_in_cartesian() {
         // angle/radius should not be valid for cartesian coords
         let mut facet = make_wrap_facet();
-        facet.properties.insert(
-            "free".to_string(),
-            ParameterValue::String("angle".to_string()),
-        );
+        facet.properties.insert("free".to_string(), "angle".into());
 
         let context = make_context(5);
         let result = resolve_properties(&mut facet, &context, CARTESIAN);
@@ -776,19 +738,14 @@ mod tests {
     fn test_nrow_computes_ncol() {
         // 10 levels, nrow=2 -> ncol=5
         let mut facet = make_wrap_facet();
-        facet
-            .properties
-            .insert("nrow".to_string(), ParameterValue::Number(2.0));
+        facet.properties.insert("nrow".to_string(), 2.0.into());
 
         let context = make_context(10);
         resolve_properties(&mut facet, &context, CARTESIAN).unwrap();
 
         // nrow should be removed and ncol computed
         assert!(!facet.properties.contains_key("nrow"));
-        assert_eq!(
-            facet.properties.get("ncol"),
-            Some(&ParameterValue::Number(5.0))
-        );
+        assert_eq!(facet.properties.get("ncol"), Some(&5.0.into()));
     }
 
     #[test]
@@ -804,10 +761,7 @@ mod tests {
         resolve_properties(&mut facet, &context, CARTESIAN).unwrap();
 
         assert!(!facet.properties.contains_key("nrow"));
-        assert_eq!(
-            facet.properties.get("ncol"),
-            Some(&ParameterValue::Number(3.0))
-        );
+        assert_eq!(facet.properties.get("ncol"), Some(&3.0.into()));
     }
 
     #[test]
@@ -818,83 +772,59 @@ mod tests {
         facet
             .properties
             .insert("ncol".to_string(), ParameterValue::Null);
-        facet
-            .properties
-            .insert("nrow".to_string(), ParameterValue::Number(2.0));
+        facet.properties.insert("nrow".to_string(), 2.0.into());
 
         let context = make_context(10);
         resolve_properties(&mut facet, &context, CARTESIAN).unwrap();
 
         assert!(!facet.properties.contains_key("nrow"));
-        assert_eq!(
-            facet.properties.get("ncol"),
-            Some(&ParameterValue::Number(5.0))
-        );
+        assert_eq!(facet.properties.get("ncol"), Some(&5.0.into()));
     }
 
     #[test]
     fn test_nrow_with_remainder() {
         // 10 levels, nrow=3 -> ncol=ceil(10/3)=4
         let mut facet = make_wrap_facet();
-        facet
-            .properties
-            .insert("nrow".to_string(), ParameterValue::Number(3.0));
+        facet.properties.insert("nrow".to_string(), 3.0.into());
 
         let context = make_context(10);
         resolve_properties(&mut facet, &context, CARTESIAN).unwrap();
 
         assert!(!facet.properties.contains_key("nrow"));
-        assert_eq!(
-            facet.properties.get("ncol"),
-            Some(&ParameterValue::Number(4.0))
-        );
+        assert_eq!(facet.properties.get("ncol"), Some(&4.0.into()));
     }
 
     #[test]
     fn test_nrow_larger_than_num_levels() {
         // 3 levels, nrow=10 -> ncol=ceil(3/10)=1
         let mut facet = make_wrap_facet();
-        facet
-            .properties
-            .insert("nrow".to_string(), ParameterValue::Number(10.0));
+        facet.properties.insert("nrow".to_string(), 10.0.into());
 
         let context = make_context(3);
         resolve_properties(&mut facet, &context, CARTESIAN).unwrap();
 
         assert!(!facet.properties.contains_key("nrow"));
-        assert_eq!(
-            facet.properties.get("ncol"),
-            Some(&ParameterValue::Number(1.0))
-        );
+        assert_eq!(facet.properties.get("ncol"), Some(&1.0.into()));
     }
 
     #[test]
     fn test_nrow_equals_num_levels() {
         // 5 levels, nrow=5 -> ncol=ceil(5/5)=1
         let mut facet = make_wrap_facet();
-        facet
-            .properties
-            .insert("nrow".to_string(), ParameterValue::Number(5.0));
+        facet.properties.insert("nrow".to_string(), 5.0.into());
 
         let context = make_context(5);
         resolve_properties(&mut facet, &context, CARTESIAN).unwrap();
 
         assert!(!facet.properties.contains_key("nrow"));
-        assert_eq!(
-            facet.properties.get("ncol"),
-            Some(&ParameterValue::Number(1.0))
-        );
+        assert_eq!(facet.properties.get("ncol"), Some(&1.0.into()));
     }
 
     #[test]
     fn test_error_ncol_and_nrow_both_provided() {
         let mut facet = make_wrap_facet();
-        facet
-            .properties
-            .insert("ncol".to_string(), ParameterValue::Number(3.0));
-        facet
-            .properties
-            .insert("nrow".to_string(), ParameterValue::Number(2.0));
+        facet.properties.insert("ncol".to_string(), 3.0.into());
+        facet.properties.insert("nrow".to_string(), 2.0.into());
 
         let context = make_context(10);
         let result = resolve_properties(&mut facet, &context, CARTESIAN);
@@ -909,9 +839,7 @@ mod tests {
     #[test]
     fn test_error_negative_nrow() {
         let mut facet = make_wrap_facet();
-        facet
-            .properties
-            .insert("nrow".to_string(), ParameterValue::Number(-1.0));
+        facet.properties.insert("nrow".to_string(), (-1.0).into());
 
         let context = make_context(5);
         let result = resolve_properties(&mut facet, &context, CARTESIAN);
@@ -925,9 +853,7 @@ mod tests {
     #[test]
     fn test_error_non_integer_nrow() {
         let mut facet = make_wrap_facet();
-        facet
-            .properties
-            .insert("nrow".to_string(), ParameterValue::Number(2.5));
+        facet.properties.insert("nrow".to_string(), 2.5.into());
 
         let context = make_context(5);
         let result = resolve_properties(&mut facet, &context, CARTESIAN);
@@ -941,9 +867,7 @@ mod tests {
     #[test]
     fn test_error_nrow_on_grid() {
         let mut facet = make_grid_facet();
-        facet
-            .properties
-            .insert("nrow".to_string(), ParameterValue::Number(2.0));
+        facet.properties.insert("nrow".to_string(), 2.0.into());
 
         let context = make_context(10);
         let result = resolve_properties(&mut facet, &context, CARTESIAN);
@@ -957,9 +881,7 @@ mod tests {
     #[test]
     fn test_nrow_not_string() {
         let mut facet = make_wrap_facet();
-        facet
-            .properties
-            .insert("nrow".to_string(), ParameterValue::String("2".to_string()));
+        facet.properties.insert("nrow".to_string(), "2".into());
 
         let context = make_context(5);
         let result = resolve_properties(&mut facet, &context, CARTESIAN);
@@ -974,17 +896,12 @@ mod tests {
     fn test_user_ncol_preserved() {
         // Existing behavior: user-provided ncol should be preserved
         let mut facet = make_wrap_facet();
-        facet
-            .properties
-            .insert("ncol".to_string(), ParameterValue::Number(2.0));
+        facet.properties.insert("ncol".to_string(), 2.0.into());
 
         let context = make_context(10);
         resolve_properties(&mut facet, &context, CARTESIAN).unwrap();
 
         // User's ncol should be preserved, not overwritten
-        assert_eq!(
-            facet.properties.get("ncol"),
-            Some(&ParameterValue::Number(2.0))
-        );
+        assert_eq!(facet.properties.get("ncol"), Some(&2.0.into()));
     }
 }

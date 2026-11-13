@@ -1101,52 +1101,45 @@ mod tests {
     #[test]
     fn test_needs_projection_false_without_source() {
         let mut projection = Projection::map();
-        projection.properties.insert(
-            "target".to_string(),
-            ParameterValue::String("+proj=ortho".to_string()),
-        );
+        projection
+            .properties
+            .insert("target".to_string(), "+proj=ortho".into());
         assert!(!needs_projection(&projection));
     }
 
     #[test]
     fn test_needs_projection_false_when_same_crs() {
         let mut projection = Projection::map();
-        projection.properties.insert(
-            "source".to_string(),
-            ParameterValue::String("EPSG:4326".to_string()),
-        );
-        projection.properties.insert(
-            "target".to_string(),
-            ParameterValue::String("EPSG:4326".to_string()),
-        );
+        projection
+            .properties
+            .insert("source".to_string(), "EPSG:4326".into());
+        projection
+            .properties
+            .insert("target".to_string(), "EPSG:4326".into());
         assert!(!needs_projection(&projection));
     }
 
     #[test]
     fn test_needs_projection_true_when_different_crs() {
         let mut projection = Projection::map();
-        projection.properties.insert(
-            "source".to_string(),
-            ParameterValue::String("EPSG:4326".to_string()),
-        );
-        projection.properties.insert(
-            "target".to_string(),
-            ParameterValue::String("+proj=ortho".to_string()),
-        );
+        projection
+            .properties
+            .insert("source".to_string(), "EPSG:4326".into());
+        projection
+            .properties
+            .insert("target".to_string(), "+proj=ortho".into());
         assert!(needs_projection(&projection));
     }
 
     #[test]
     fn test_apply_projection_default_errors_for_unsupported_geom() {
         let mut projection = Projection::map();
-        projection.properties.insert(
-            "source".to_string(),
-            ParameterValue::String("EPSG:4326".to_string()),
-        );
-        projection.properties.insert(
-            "target".to_string(),
-            ParameterValue::String("+proj=ortho".to_string()),
-        );
+        projection
+            .properties
+            .insert("source".to_string(), "EPSG:4326".into());
+        projection
+            .properties
+            .insert("target".to_string(), "+proj=ortho".into());
 
         let geom = Geom::bar();
         let result = geom.apply_projection(

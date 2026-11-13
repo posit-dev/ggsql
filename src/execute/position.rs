@@ -62,7 +62,7 @@ mod tests {
     use crate::df;
     use crate::plot::facet::{Facet, FacetLayout};
     use crate::plot::layer::{Geom, Position};
-    use crate::plot::{AestheticValue, Mappings, ParameterValue, Scale, ScaleType};
+    use crate::plot::{AestheticValue, Mappings, Scale, ScaleType};
     use arrow::array::Array;
 
     fn make_continuous_scale(aesthetic: &str) -> Scale {
@@ -235,9 +235,7 @@ mod tests {
         let df = make_test_df();
         let mut layer = make_test_layer();
         layer.position = Position::dodge();
-        layer
-            .parameters
-            .insert("width".to_string(), ParameterValue::Number(0.6));
+        layer.parameters.insert("width".to_string(), 0.6.into());
 
         // Create spec with pos1 as discrete and pos2 as continuous
         let mut spec = Plot::new();
@@ -316,9 +314,7 @@ mod tests {
         let df = make_test_df();
         let mut layer = make_test_layer();
         layer.position = Position::jitter();
-        layer
-            .parameters
-            .insert("width".to_string(), ParameterValue::Number(0.6));
+        layer.parameters.insert("width".to_string(), 0.6.into());
 
         // Create spec with pos1 as discrete and pos2 as continuous
         let mut spec = Plot::new();
