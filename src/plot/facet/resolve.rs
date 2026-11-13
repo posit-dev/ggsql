@@ -80,12 +80,12 @@ fn compute_default_ncol(num_levels: usize) -> i64 {
 ///
 /// This function:
 /// 1. Skips if already resolved
-/// 2. Validates all properties are allowed for this layout
-/// 3. Validates property values using constraints from `default_properties()`
-/// 4. Validates and normalizes `free` against position aesthetic names (coord-dependent)
-/// 5. Resolves ncol/nrow into a concrete ncol (wrap only: converted from
+/// 2. Validates all properties are allowed for this layout, validates
+///    their values, and fills defaults (`resolve_parameters`)
+/// 3. Validates and normalizes `free` against position aesthetic names (coord-dependent)
+/// 4. Resolves ncol/nrow into a concrete ncol (wrap only: converted from
 ///    nrow or computed from `context.num_levels`)
-/// 6. Sets `resolved = true`
+/// 5. Sets `resolved = true`
 ///
 /// # Arguments
 ///
@@ -104,7 +104,6 @@ pub fn resolve_properties(
 
     let defaults = facet.layout.default_properties();
 
-    // Step 1: Validate all properties are allowed and validate their values.
     // ncol/nrow are wrap-only: on grid facets they get a targeted error.
     for key in ["ncol", "nrow"] {
         if facet.properties.contains_key(key) && !defaults.iter().any(|p| p.name == key) {
@@ -113,15 +112,13 @@ pub fn resolve_properties(
             ));
         }
     }
-    crate::params::reject_unknown_parameters(&facet.properties, defaults, "FACET setting")?;
-    for param in defaults {
-        param.validate(facet.properties.get(param.name))?;
-    }
+    facet.properties =
+        crate::params::resolve_parameters(&facet.properties, defaults, "FACET setting")?;
 
-    // Step 2: Validate and normalize free against coord-dependent position names
+    // Validate and normalize free against coord-dependent position names
     resolve_free_property(facet, position_names)?;
 
-    // Step 3: Resolve ncol/nrow into a concrete ncol
+    // Resolve ncol/nrow into a concrete ncol
     resolve_layout(facet, context)?;
 
     // Mark as resolved
