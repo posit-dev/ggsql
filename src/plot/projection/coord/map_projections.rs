@@ -1453,8 +1453,7 @@ mod tests {
 
     #[test]
     fn equal_earth_from_name_and_proj_str() {
-        let mut props = Parameters::new();
-        props.insert("origin".to_string(), 11.0.into());
+        let props = crate::params! { "origin" => 11.0 };
         let proj = build_map_projection_trait(Some("equal_earth"), &props).unwrap();
         assert_eq!(proj.proj_code(), "eqearth");
         assert_eq!(proj.origin(), (11.0, 0.0));

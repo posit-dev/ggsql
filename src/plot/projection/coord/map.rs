@@ -1040,9 +1040,7 @@ mod tests {
 
     #[test]
     fn test_target_rejects_origin_and_parallel() {
-        let mut props = Parameters::new();
-        props.insert("target".to_string(), "+proj=ortho".into());
-        props.insert("origin".to_string(), 30.0.into());
+        let props = crate::params! { "target" => "+proj=ortho", "origin" => 30.0 };
         let coord = Coord::map("crs", &props);
 
         let resolved = coord.resolve_properties(Some("crs"), &props);
@@ -1428,7 +1426,7 @@ mod tests {
             let mut s = Scale::new("pos1");
             s.scale_type = Some(ScaleType::continuous());
             s.transform = Some(Transform::geographic());
-            s.properties.insert("breaks".to_string(), 5.0.into());
+            s.properties = crate::params! { "breaks" => 5.0 };
 
             resolve_map_scale(&mut s, (-180.0, 180.0));
 
@@ -1458,8 +1456,7 @@ mod tests {
 
     #[test]
     fn resolve_epsg_property_from_existing() {
-        let mut props = Parameters::new();
-        props.insert("source".to_string(), "EPSG:4326".into());
+        let props = crate::params! { "source" => "EPSG:4326" };
         let result =
             resolve_epsg_property("source", &props, "EPSG:4326", &AnsiDialect, &noop_execute);
         assert!(result.contains("+proj=longlat"), "got: {result}");

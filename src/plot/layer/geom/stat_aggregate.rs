@@ -1142,8 +1142,7 @@ mod tests {
         dialect: &dyn SqlDialect,
         domain: &[&'static str],
     ) -> Result<StatResult> {
-        let mut p = Parameters::new();
-        p.insert("aggregate".to_string(), params);
+        let p = crate::params! { "aggregate" => params };
         let ctx = cartesian_ctx();
         apply(
             "SELECT * FROM t",
@@ -2202,8 +2201,7 @@ mod tests {
         group_by: &[String],
         dialect: &dyn SqlDialect,
     ) -> Result<StatResult> {
-        let mut p = Parameters::new();
-        p.insert("aggregate".to_string(), params);
+        let mut p = crate::params! { "aggregate" => params };
         p.insert(
             "orientation".to_string(),
             ParameterValue::String(crate::plot::layer::orientation::TRANSPOSED.to_string()),

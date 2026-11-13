@@ -674,9 +674,7 @@ mod tests {
 
     #[test]
     fn resolve_settings_accepts_valid_gather_and_level() {
-        let mut settings = Parameters::new();
-        settings.insert("gather".to_string(), false.into());
-        settings.insert("level".to_string(), 2.0.into());
+        let settings = crate::params! { "gather" => false, "level" => 2.0 };
 
         assert!(spanner_with_settings(settings).resolve_settings().is_ok());
     }

@@ -1259,8 +1259,7 @@ mod tests {
             max: None,
         });
         let ctx = AestheticContext::from_static(&["x", "y"], &[]);
-        let mut parameters = Parameters::new();
-        parameters.insert("aggregate".to_string(), "mean".into());
+        let parameters = crate::params! { "aggregate" => "mean" };
 
         let result = Tile
             .apply_stat_transform(
@@ -1379,9 +1378,7 @@ mod tests {
         let aesthetics = create_aesthetics(&["pos1", "pos2"]);
         let schema = create_schema(&["pos1", "pos2"]);
         let group_by = vec![];
-        let mut parameters = Parameters::new();
-        parameters.insert("width".to_string(), 0.7.into());
-        parameters.insert("height".to_string(), 0.9.into());
+        let parameters = crate::params! { "width" => 0.7, "height" => 0.9 };
 
         let ctx = crate::plot::aesthetic::AestheticContext::from_static(&["x", "y"], &[]);
         let result = stat_tile(

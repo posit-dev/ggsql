@@ -646,7 +646,7 @@ mod tests {
     #[test]
     fn test_radar_explicit_true_with_discrete_ok() {
         let mut proj = Projection::polar();
-        proj.properties.insert("radar".to_string(), true.into());
+        proj.properties = crate::params! { "radar" => true };
         let scales = vec![discrete_scale_with_n("pos2", 4)];
         resolve_projection_properties(&mut proj, &scales).unwrap();
         assert_eq!(proj.properties.get("radar"), Some(&true.into()));
@@ -655,7 +655,7 @@ mod tests {
     #[test]
     fn test_radar_explicit_true_with_2_categories_errors() {
         let mut proj = Projection::polar();
-        proj.properties.insert("radar".to_string(), true.into());
+        proj.properties = crate::params! { "radar" => true };
         let scales = vec![discrete_scale_with_n("pos2", 2)];
         let result = resolve_projection_properties(&mut proj, &scales);
         assert!(result.is_err());
@@ -669,7 +669,7 @@ mod tests {
     #[test]
     fn test_radar_explicit_true_with_continuous_errors() {
         let mut proj = Projection::polar();
-        proj.properties.insert("radar".to_string(), true.into());
+        proj.properties = crate::params! { "radar" => true };
         let scales = vec![scale_with_type("pos2", false)];
         let result = resolve_projection_properties(&mut proj, &scales);
         assert!(result.is_err());
@@ -683,7 +683,7 @@ mod tests {
     #[test]
     fn test_radar_explicit_false_with_discrete_preserved() {
         let mut proj = Projection::polar();
-        proj.properties.insert("radar".to_string(), false.into());
+        proj.properties = crate::params! { "radar" => false };
         let scales = vec![scale_with_type("pos2", true)];
         resolve_projection_properties(&mut proj, &scales).unwrap();
         assert_eq!(proj.properties.get("radar"), Some(&false.into()));

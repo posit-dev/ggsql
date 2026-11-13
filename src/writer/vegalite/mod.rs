@@ -2507,7 +2507,7 @@ mod tests {
 
         let mut scale = Scale::new("facet1");
         scale.scale_type = Some(ScaleType::binned());
-        scale.properties.insert("reverse".to_string(), true.into());
+        scale.properties = crate::params! { "reverse" => true };
 
         apply_binned_facet_reverse(&mut facet_def, Some(&scale));
 
@@ -2536,7 +2536,7 @@ mod tests {
         let mut facet_def = json!({"field": "__ggsql_aes_facet1__", "type": "nominal"});
 
         let mut scale = Scale::new("facet1");
-        scale.properties.insert("reverse".to_string(), true.into());
+        scale.properties = crate::params! { "reverse" => true };
 
         apply_binned_facet_reverse(&mut facet_def, Some(&scale));
 

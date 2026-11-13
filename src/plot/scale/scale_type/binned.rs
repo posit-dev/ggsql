@@ -1044,7 +1044,7 @@ mod tests {
         let binned = Binned;
         let mut scale = Scale::new("x");
         // breaks is still a Number (count), not resolved to Array yet
-        scale.properties.insert("breaks".to_string(), 5.0.into());
+        scale.properties = crate::params! { "breaks" => 5.0 };
 
         // Should return None because breaks hasn't been resolved to Array
         assert!(binned

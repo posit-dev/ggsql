@@ -2636,8 +2636,7 @@ mod tests {
     #[test]
     fn test_resolve_properties_rejection_cases() {
         // expand on a non-position aesthetic rejected
-        let mut expand_props = Parameters::new();
-        expand_props.insert("expand".to_string(), 0.1.into());
+        let expand_props = crate::params! { "expand" => 0.1 };
         let result = ScaleType::discrete().resolve_properties("color", &expand_props);
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("position aesthetics"));
@@ -2647,8 +2646,7 @@ mod tests {
         assert!(result.is_err());
 
         // Binned rejects oob='keep'
-        let mut keep_props = Parameters::new();
-        keep_props.insert("oob".to_string(), "keep".into());
+        let keep_props = crate::params! { "oob" => "keep" };
         let result = ScaleType::binned().resolve_properties("x", &keep_props);
         assert!(result.is_err());
         let err = result.unwrap_err();
@@ -2699,8 +2697,7 @@ mod tests {
     #[test]
     fn test_resolve_properties_user_values_preserved() {
         // Binned supports expand
-        let mut props = Parameters::new();
-        props.insert("expand".to_string(), 0.2.into());
+        let props = crate::params! { "expand" => 0.2 };
         let resolved = ScaleType::binned()
             .resolve_properties("pos1", &props)
             .unwrap();
@@ -2710,8 +2707,7 @@ mod tests {
         }
 
         // Binned allows squish oob
-        let mut oob_props = Parameters::new();
-        oob_props.insert("oob".to_string(), "squish".into());
+        let oob_props = crate::params! { "oob" => "squish" };
         assert!(ScaleType::binned()
             .resolve_properties("x", &oob_props)
             .is_ok());
@@ -2724,8 +2720,7 @@ mod tests {
             "pos1", "pos1min", "pos1max", "pos1end", "pos2", "pos2min", "pos2max", "pos2end",
         ];
 
-        let mut props = Parameters::new();
-        props.insert("expand".to_string(), 0.1.into());
+        let props = crate::params! { "expand" => 0.1 };
 
         // Position aesthetics should allow expand
         for aes in internal_position.iter() {
@@ -2804,8 +2799,7 @@ mod tests {
         }
 
         // Invalid value rejected with helpful message
-        let mut props = Parameters::new();
-        props.insert("oob".to_string(), ParameterValue::String("invalid".into()));
+        let props = crate::params! { "oob" => "invalid" };
         let result = ScaleType::continuous().resolve_properties("x", &props);
         assert!(result.is_err());
         let err = result.unwrap_err();
@@ -2818,8 +2812,7 @@ mod tests {
 
     #[test]
     fn test_oob_user_value_preserved() {
-        let mut props = Parameters::new();
-        props.insert("oob".to_string(), ParameterValue::String("squish".into()));
+        let props = crate::params! { "oob" => "squish" };
         let resolved = ScaleType::continuous()
             .resolve_properties("x", &props)
             .unwrap();
@@ -2844,8 +2837,7 @@ mod tests {
         }
 
         // Identity and discrete reject oob
-        let mut oob_props = Parameters::new();
-        oob_props.insert("oob".to_string(), ParameterValue::String("censor".into()));
+        let oob_props = crate::params! { "oob" => "censor" };
         assert!(ScaleType::identity()
             .resolve_properties("color", &oob_props)
             .is_err());
@@ -3073,8 +3065,7 @@ mod tests {
 
     #[test]
     fn test_reverse_property_accepts_true() {
-        let mut props = Parameters::new();
-        props.insert("reverse".to_string(), true.into());
+        let props = crate::params! { "reverse" => true };
 
         let resolved = ScaleType::continuous()
             .resolve_properties("x", &props)
@@ -3084,8 +3075,7 @@ mod tests {
 
     #[test]
     fn test_reverse_property_supported_by_all_scales() {
-        let mut props = Parameters::new();
-        props.insert("reverse".to_string(), true.into());
+        let props = crate::params! { "reverse" => true };
 
         // All scale types should support reverse property
         for scale_type in &[
@@ -3112,8 +3102,7 @@ mod tests {
     #[test]
     fn test_identity_scale_rejects_reverse_property() {
         // Identity scale should not support reverse (no properties at all)
-        let mut props = Parameters::new();
-        props.insert("reverse".to_string(), true.into());
+        let props = crate::params! { "reverse" => true };
 
         let result = ScaleType::identity().resolve_properties("x", &props);
         assert!(result.is_err());
@@ -3143,8 +3132,7 @@ mod tests {
 
     #[test]
     fn test_breaks_property_accepts_number() {
-        let mut props = Parameters::new();
-        props.insert("breaks".to_string(), 10.0.into());
+        let props = crate::params! { "breaks" => 10.0 };
 
         let result = ScaleType::continuous().resolve_properties("x", &props);
         assert!(result.is_ok());
@@ -3172,8 +3160,7 @@ mod tests {
 
     #[test]
     fn test_pretty_property_accepts_false() {
-        let mut props = Parameters::new();
-        props.insert("pretty".to_string(), false.into());
+        let props = crate::params! { "pretty" => false };
 
         let result = ScaleType::continuous().resolve_properties("x", &props);
         assert!(result.is_ok());
@@ -3183,8 +3170,7 @@ mod tests {
 
     #[test]
     fn test_breaks_supported_by_continuous_scales() {
-        let mut props = Parameters::new();
-        props.insert("breaks".to_string(), 5.0.into());
+        let props = crate::params! { "breaks" => 5.0 };
 
         for scale_type in &[ScaleType::continuous(), ScaleType::binned()] {
             let result = scale_type.resolve_properties("x", &props);
@@ -3198,8 +3184,7 @@ mod tests {
 
     #[test]
     fn test_discrete_does_not_support_breaks() {
-        let mut props = Parameters::new();
-        props.insert("breaks".to_string(), 5.0.into());
+        let props = crate::params! { "breaks" => 5.0 };
 
         let result = ScaleType::discrete().resolve_properties("x", &props);
         assert!(result.is_err());
@@ -3208,8 +3193,7 @@ mod tests {
 
     #[test]
     fn test_identity_does_not_support_breaks() {
-        let mut props = Parameters::new();
-        props.insert("breaks".to_string(), 5.0.into());
+        let props = crate::params! { "breaks" => 5.0 };
 
         let result = ScaleType::identity().resolve_properties("x", &props);
         assert!(result.is_err());
@@ -3218,8 +3202,7 @@ mod tests {
     #[test]
     fn test_breaks_available_for_material_aesthetics() {
         // breaks should work for color legends too
-        let mut props = Parameters::new();
-        props.insert("breaks".to_string(), 4.0.into());
+        let props = crate::params! { "breaks" => 4.0 };
 
         let result = ScaleType::continuous().resolve_properties("color", &props);
         assert!(result.is_ok());
@@ -3232,9 +3215,7 @@ mod tests {
     #[test]
     fn test_resolve_breaks_continuous_identity() {
         let input_range = Some(vec![ArrayElement::Number(0.0), ArrayElement::Number(100.0)]);
-        let mut props = Parameters::new();
-        props.insert("breaks".to_string(), 5.0.into());
-        props.insert("pretty".to_string(), true.into());
+        let props = crate::params! { "breaks" => 5.0, "pretty" => true };
 
         let identity = Transform::identity();
         let breaks =
@@ -3251,8 +3232,7 @@ mod tests {
         // Break generators iterate the domain in step-sized increments; a
         // non-finite bound would make that iteration effectively unbounded
         // (observed as an OOM when a map projection produced inf coordinates).
-        let mut props = Parameters::new();
-        props.insert("breaks".to_string(), 7.0.into());
+        let props = crate::params! { "breaks" => 7.0 };
 
         let geographic = Transform::geographic();
         for (min, max) in [
@@ -3280,9 +3260,7 @@ mod tests {
             ArrayElement::Number(1.0),
             ArrayElement::Number(1000.0),
         ]);
-        let mut props = Parameters::new();
-        props.insert("breaks".to_string(), 10.0.into());
-        props.insert("pretty".to_string(), false.into());
+        let props = crate::params! { "breaks" => 10.0, "pretty" => false };
 
         let log10 = Transform::log();
         let breaks =
@@ -3300,9 +3278,7 @@ mod tests {
     #[test]
     fn test_resolve_breaks_continuous_log10_pretty() {
         let input_range = Some(vec![ArrayElement::Number(1.0), ArrayElement::Number(100.0)]);
-        let mut props = Parameters::new();
-        props.insert("breaks".to_string(), 10.0.into());
-        props.insert("pretty".to_string(), true.into());
+        let props = crate::params! { "breaks" => 10.0, "pretty" => true };
 
         let log10 = Transform::log();
         let breaks =
@@ -3319,9 +3295,7 @@ mod tests {
     #[test]
     fn test_resolve_breaks_continuous_sqrt() {
         let input_range = Some(vec![ArrayElement::Number(0.0), ArrayElement::Number(100.0)]);
-        let mut props = Parameters::new();
-        props.insert("breaks".to_string(), 5.0.into());
-        props.insert("pretty".to_string(), false.into());
+        let props = crate::params! { "breaks" => 5.0, "pretty" => false };
 
         let sqrt = Transform::sqrt();
         let breaks =
@@ -3449,7 +3423,7 @@ mod tests {
         let mut scale = Scale::new("x");
         scale.scale_type = Some(ScaleType::continuous());
         scale.input_range = Some(vec![ArrayElement::Number(0.0), ArrayElement::Number(100.0)]);
-        scale.properties.insert("breaks".to_string(), 5.0.into());
+        scale.properties = crate::params! { "breaks" => 5.0 };
 
         let context = ScaleDataContext::new();
         ScaleType::continuous()

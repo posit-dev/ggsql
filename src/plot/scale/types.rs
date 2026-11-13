@@ -592,7 +592,7 @@ mod tests {
         // value that resolution hasn't converted yet reads the same way.
         let mut s = continuous_scale((0.0, 100.0), vec![0.0, 50.0, 100.0]);
         assert_eq!(s.numeric_minor_breaks(), None);
-        s.properties.insert("minor_breaks".to_string(), 3.0.into());
+        s.properties = crate::params! { "minor_breaks" => 3.0 };
         assert_eq!(s.numeric_minor_breaks(), None);
     }
 

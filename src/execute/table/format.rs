@@ -313,8 +313,7 @@ mod tests {
     }
 
     fn format_with_hjust(hjust: ParameterValue) -> Format {
-        let mut settings = Parameters::new();
-        settings.insert("hjust".to_string(), hjust);
+        let settings = crate::params! { "hjust" => hjust };
         Format {
             columns: Vec::new(),
             wildcard: false,

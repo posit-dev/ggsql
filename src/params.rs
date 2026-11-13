@@ -66,6 +66,23 @@ impl From<bool> for ParameterValue {
     }
 }
 
+/// Build a `Parameters` map from `key => value` pairs: keys and values are
+/// converted via `Into`, so literals need no construction noise.
+/// Test-only.
+///
+/// ```ignore
+/// let p = crate::params! { "free" => "x", "ncol" => 2.0, "clip" => true };
+/// ```
+#[cfg(test)]
+#[macro_export]
+macro_rules! params {
+    ($($k:expr => $v:expr),* $(,)?) => {
+        ::std::collections::HashMap::from([
+            $(($k.to_string(), $crate::params::ParameterValue::from($v))),*
+        ])
+    };
+}
+
 impl std::fmt::Display for ParameterValue {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -1470,8 +1487,7 @@ mod tests {
             default: DefaultParamValue::Null,
             constraint: ParamConstraint::count(1.0),
         }];
-        let mut properties = Parameters::new();
-        properties.insert("bin".to_string(), 10.0.into());
+        let mut properties = crate::params! { "bin" => 10.0 };
         let err = crate::params::reject_unknown_parameters(&properties, &defs, "TEST setting")
             .unwrap_err();
         assert_eq!(err, "TEST setting should be 'bins', not 'bin'");
@@ -1521,8 +1537,7 @@ mod tests {
                 constraint: ParamConstraint::number_any(),
             },
         ];
-        let mut properties = Parameters::new();
-        properties.insert("bins".to_string(), 10.0.into());
+        let properties = crate::params! { "bins" => 10.0 };
 
         let resolved =
             crate::params::resolve_parameters(&properties, &defs, "TEST setting").unwrap();
@@ -1544,8 +1559,7 @@ mod tests {
             default: DefaultParamValue::Number(30.0),
             constraint: ParamConstraint::count(1.0),
         }];
-        let mut properties = Parameters::new();
-        properties.insert("bins".to_string(), ParameterValue::Null);
+        let properties = crate::params! { "bins" => ParameterValue::Null };
 
         let resolved =
             crate::params::resolve_parameters(&properties, &defs, "TEST setting").unwrap();
@@ -1559,14 +1573,12 @@ mod tests {
             default: DefaultParamValue::Number(30.0),
             constraint: ParamConstraint::count(1.0),
         }];
-        let mut properties = Parameters::new();
-        properties.insert("bin".to_string(), 10.0.into());
+        let mut properties = crate::params! { "bin" => 10.0 };
         let err =
             crate::params::resolve_parameters(&properties, &defs, "TEST setting").unwrap_err();
         assert!(err.starts_with("TEST setting should be"));
 
-        properties.remove("bin");
-        properties.insert("bins".to_string(), (-5.0).into());
+        properties = crate::params! { "bins" => -5.0 };
         assert!(crate::params::resolve_parameters(&properties, &defs, "TEST setting").is_err());
     }
 

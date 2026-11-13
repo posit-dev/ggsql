@@ -1769,7 +1769,7 @@ mod tests {
 
         // Disable expansion for predictable test values
         let mut scale = crate::plot::Scale::new("pos1");
-        scale.properties.insert("expand".to_string(), (-0.0).into());
+        scale.properties = crate::params! { "expand" => -0.0 };
         spec.scales.push(scale);
         // Simulate post-merge state: mapping is in layer
         let layer = Layer::new(Geom::point())
@@ -1814,7 +1814,7 @@ mod tests {
         let mut scale = crate::plot::Scale::new("pos1");
         scale.input_range = Some(vec![ArrayElement::Number(0.0), ArrayElement::Number(100.0)]);
         // Disable expansion for predictable test values
-        scale.properties.insert("expand".to_string(), (-0.0).into());
+        scale.properties = crate::params! { "expand" => -0.0 };
         spec.scales.push(scale);
         // Simulate post-merge state: mapping is in layer
         let layer = Layer::new(Geom::point())
@@ -1905,7 +1905,7 @@ mod tests {
         let mut scale = crate::plot::Scale::new("pos1");
         scale.input_range = Some(vec![ArrayElement::Number(0.0), ArrayElement::Null]);
         // Disable expansion for predictable test values
-        scale.properties.insert("expand".to_string(), (-0.0).into());
+        scale.properties = crate::params! { "expand" => -0.0 };
         spec.scales.push(scale);
         // Simulate post-merge state: mapping is in layer
         let layer = Layer::new(Geom::point())
@@ -1946,7 +1946,7 @@ mod tests {
         let mut scale = crate::plot::Scale::new("pos1");
         scale.input_range = Some(vec![ArrayElement::Null, ArrayElement::Number(100.0)]);
         // Disable expansion for predictable test values
-        scale.properties.insert("expand".to_string(), (-0.0).into());
+        scale.properties = crate::params! { "expand" => -0.0 };
         spec.scales.push(scale);
         // Simulate post-merge state: mapping is in layer
         let layer = Layer::new(Geom::point())

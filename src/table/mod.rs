@@ -413,36 +413,31 @@ mod tests {
 
     #[test]
     fn format_validate_settings_accepts_a_string_hjust() {
-        let mut settings = Parameters::new();
-        settings.insert("hjust".to_string(), "right".into());
+        let settings = crate::params! { "hjust" => "right" };
 
         assert!(format_with_settings(settings).resolve_settings().is_ok());
     }
 
     #[test]
     fn format_validate_settings_accepts_a_numeric_hjust() {
-        let mut settings = Parameters::new();
-        settings.insert("hjust".to_string(), 0.25.into());
+        let settings = crate::params! { "hjust" => 0.25 };
 
         assert!(format_with_settings(settings).resolve_settings().is_ok());
     }
 
     #[test]
     fn format_validate_settings_rejects_an_unrecognized_string() {
-        let mut settings = Parameters::new();
-        settings.insert("hjust".to_string(), "up".into());
+        let settings = crate::params! { "hjust" => "up" };
 
         assert!(format_with_settings(settings).resolve_settings().is_err());
     }
 
     #[test]
     fn format_validate_settings_accepts_a_percent_or_pixel_width() {
-        let mut settings = Parameters::new();
-        settings.insert("width".to_string(), "20%".into());
+        let settings = crate::params! { "width" => "20%" };
         assert!(format_with_settings(settings).resolve_settings().is_ok());
 
-        let mut settings = Parameters::new();
-        settings.insert("width".to_string(), "240px".into());
+        let settings = crate::params! { "width" => "240px" };
         assert!(format_with_settings(settings).resolve_settings().is_ok());
     }
 
