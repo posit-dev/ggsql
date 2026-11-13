@@ -1274,9 +1274,17 @@ pub struct ParamDefinition {
 impl ParamDefinition {
     /// Validate a value against this definition's constraint.
     ///
+    /// Absence (`None`) is always valid: there is nothing to check, and no
+    /// parameter is required — every definition has a default or treats
+    /// absence as semantic. An explicit `ParameterValue::Null` is checked
+    /// against `allow_null`.
+    ///
     /// Returns Ok(()) if the value passes validation, or Err with a descriptive
     /// error message if validation fails.
-    pub fn validate(&self, value: &ParameterValue) -> Result<(), String> {
+    pub fn validate(&self, value: Option<&ParameterValue>) -> Result<(), String> {
+        let Some(value) = value else {
+            return Ok(());
+        };
         let param_name = self.name;
         let constraint = &self.constraint;
         match value {
@@ -1335,11 +1343,12 @@ impl ParamDefinition {
     /// (validated against the constraint), otherwise the default.
     ///
     /// Returns Ok(None) when the parameter is absent and the default is Null.
-    pub fn resolve(&self, properties: &Parameters) -> Result<Option<ParameterValue>, String> {
-        match properties.get(self.name) {
-            Some(value) => self.validate(value).map(|_| Some(value.clone())),
-            None => Ok(self.to_parameter_value()),
-        }
+    pub fn resolve(
+        &self,
+        value: Option<&ParameterValue>,
+    ) -> Result<Option<ParameterValue>, String> {
+        self.validate(value)?;
+        Ok(value.cloned().or_else(|| self.to_parameter_value()))
     }
 
     /// Convert the default value to a ParameterValue, if not Null
@@ -1399,7 +1408,7 @@ mod tests {
             default: DefaultParamValue::Null,
             constraint: *constraint,
         }
-        .validate(value)
+        .validate(Some(value))
     }
 
     #[test]
@@ -1409,23 +1418,22 @@ mod tests {
             default: DefaultParamValue::Number(30.0),
             constraint: ParamConstraint::count(1.0),
         };
-        let mut properties = Parameters::new();
-        properties.insert("bins".to_string(), ParameterValue::Number(10.0));
+        let present = Some(ParameterValue::Number(10.0));
         // User value wins over the default, absent falls back to the default,
         // and a Null default means no value.
         assert_eq!(
-            def.resolve(&properties).unwrap(),
+            def.resolve(present.as_ref()).unwrap(),
             Some(ParameterValue::Number(10.0))
         );
         assert_eq!(
-            def.resolve(&Parameters::new()).unwrap(),
+            def.resolve(None).unwrap(),
             Some(ParameterValue::Number(30.0))
         );
         let no_default = ParamDefinition {
             default: DefaultParamValue::Null,
             ..def
         };
-        assert_eq!(no_default.resolve(&Parameters::new()).unwrap(), None);
+        assert_eq!(no_default.resolve(None).unwrap(), None);
     }
 
     #[test]

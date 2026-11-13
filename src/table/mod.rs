@@ -327,9 +327,7 @@ impl Format {
     pub fn validate_settings(&self) -> Result<(), String> {
         crate::params::reject_unknown_parameters(&self.settings, FORMAT_PARAMS, "FORMAT setting")?;
         for param in FORMAT_PARAMS {
-            if let Some(value) = self.settings.get(param.name) {
-                param.validate(value)?;
-            }
+            param.validate(self.settings.get(param.name))?;
         }
         Ok(())
     }

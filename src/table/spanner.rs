@@ -54,9 +54,7 @@ impl Spanner {
         crate::params::reject_unknown_parameters(&self.settings, SPAN_PARAMS, "SPAN setting")?;
         for param in SPAN_PARAMS {
             // Known key, but wrong shape (e.g. `gather` not a boolean).
-            if let Some(value) = self.settings.get(param.name) {
-                param.validate(value)?;
-            }
+            param.validate(self.settings.get(param.name))?;
         }
         Ok(())
     }

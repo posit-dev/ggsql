@@ -406,7 +406,7 @@ impl Layer {
                 .iter()
                 .find(|p| p.name == param_name)
             {
-                param.validate(value)?;
+                param.validate(Some(value))?;
             }
             // Or a position param
             else if let Some(param) = self
@@ -415,7 +415,7 @@ impl Layer {
                 .iter()
                 .find(|p| p.name == param_name)
             {
-                param.validate(value)?;
+                param.validate(Some(value))?;
             }
             // Otherwise it's a valid aesthetic setting (no constraint validation needed).
             //
