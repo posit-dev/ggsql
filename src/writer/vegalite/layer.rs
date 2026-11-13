@@ -2132,10 +2132,7 @@ impl BoxplotRenderer {
         let side = layer
             .parameters
             .get("side")
-            .and_then(|v| match v {
-                ParameterValue::String(s) => Some(s.as_str()),
-                _ => None,
-            })
+            .and_then(ParameterValue::as_str)
             .unwrap_or("both");
         let half_side = side != "both";
         let side_positive = half_side && side_is_positive(side);

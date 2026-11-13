@@ -184,10 +184,7 @@ fn apply_dodge_with_width(
     let bar_width = layer
         .parameters
         .get("width")
-        .and_then(|v| match v {
-            ParameterValue::Number(n) => Some(*n),
-            _ => None,
-        })
+        .and_then(ParameterValue::as_number)
         .unwrap_or(0.9);
 
     // Check if layer has an existing offset column (e.g., violin density offset)

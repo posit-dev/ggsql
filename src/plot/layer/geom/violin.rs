@@ -144,10 +144,7 @@ impl GeomTrait for Violin {
         // Get width parameter (default 0.9)
         let width = parameters
             .get("width")
-            .and_then(|v| match v {
-                ParameterValue::Number(n) => Some(*n),
-                _ => None,
-            })
+            .and_then(ParameterValue::as_number)
             .unwrap_or(0.9);
         let half_width = 0.5 * width;
 

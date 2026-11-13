@@ -221,10 +221,7 @@ impl ScaleTypeTrait for Continuous {
         let oob = scale
             .properties
             .get("oob")
-            .and_then(|p| match p {
-                ParameterValue::String(s) => Some(s.as_str()),
-                _ => None,
-            })
+            .and_then(ParameterValue::as_str)
             .unwrap_or(super::default_oob(&scale.aesthetic));
 
         match oob {

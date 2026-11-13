@@ -14,7 +14,7 @@ mod identity;
 mod jitter;
 mod stack;
 
-use crate::plot::types::{DefaultParamValue, ParamDefinition, ParameterValue};
+use crate::plot::types::ParamDefinition;
 use crate::plot::ScaleTypeKind;
 use crate::{DataFrame, Plot, Result};
 use serde::{Deserialize, Serialize};
@@ -327,24 +327,6 @@ impl Position {
         spec: &Plot,
     ) -> Result<(DataFrame, Option<f64>)> {
         self.0.apply_adjustment(df, layer, spec)
-    }
-
-    /// Apply default position parameter values to a layer
-    ///
-    /// For each parameter defined in default_params(), if the layer doesn't
-    /// already have that parameter set, insert the default value.
-    pub fn apply_defaults_to_layer(&self, layer: &mut Layer) {
-        for param in self.default_params() {
-            if !layer.parameters.contains_key(param.name) {
-                let value = match &param.default {
-                    DefaultParamValue::String(s) => ParameterValue::String(s.to_string()),
-                    DefaultParamValue::Number(n) => ParameterValue::Number(*n),
-                    DefaultParamValue::Boolean(b) => ParameterValue::Boolean(*b),
-                    DefaultParamValue::Null => continue,
-                };
-                layer.parameters.insert(param.name.to_string(), value);
-            }
-        }
     }
 }
 

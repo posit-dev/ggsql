@@ -59,10 +59,7 @@ impl PolarContext {
         let prop = |name| {
             project
                 .and_then(|p| p.properties.get(name))
-                .and_then(|v| match v {
-                    ParameterValue::Number(n) => Some(*n),
-                    _ => None,
-                })
+                .and_then(ParameterValue::as_number)
         };
         let start_degrees = prop("start").unwrap_or(0.0);
         let end_degrees = prop("end").unwrap_or(start_degrees + 360.0);

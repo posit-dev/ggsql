@@ -25,10 +25,7 @@ impl MapProjection {
         let get_string = |key: &str| -> Option<String> {
             project
                 .and_then(|p| p.computed.get(key))
-                .and_then(|v| match v {
-                    ParameterValue::String(s) => Some(s.clone()),
-                    _ => None,
-                })
+                .and_then(|v| v.as_str().map(str::to_string))
         };
         let panel_boundary_wkt = get_string("panel_boundary");
         let graticule_lon_wkt = get_string("graticule_lon");

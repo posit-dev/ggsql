@@ -621,7 +621,7 @@ pub fn targeted_aesthetics(
     aesthetic_ctx: &AestheticContext,
 ) -> HashSet<String> {
     let raw = match parameters.get("aggregate") {
-        Some(v) if !matches!(v, ParameterValue::Null) => v,
+        Some(v) if !v.is_null() => v,
         _ => return HashSet::new(),
     };
     let spec = match parse_aggregate_param(raw).ok().flatten() {
@@ -659,7 +659,7 @@ pub fn aggregated_aesthetics(
     domain_aesthetics: &[&'static str],
 ) -> Option<(HashSet<String>, HashSet<String>)> {
     let raw = parameters.get("aggregate")?;
-    if matches!(raw, ParameterValue::Null) {
+    if raw.is_null() {
         return None;
     }
     let spec = parse_aggregate_param(raw).ok()??;

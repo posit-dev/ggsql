@@ -488,20 +488,14 @@ fn apply_jitter(df: DataFrame, layer: &Layer, spec: &Plot) -> Result<DataFrame> 
     let width = layer
         .parameters
         .get("width")
-        .and_then(|v| match v {
-            ParameterValue::Number(n) => Some(*n),
-            _ => None,
-        })
+        .and_then(ParameterValue::as_number)
         .unwrap_or(0.9);
 
     // Get dodge parameter (default true)
     let dodge = layer
         .parameters
         .get("dodge")
-        .and_then(|v| match v {
-            ParameterValue::Boolean(b) => Some(*b),
-            _ => None,
-        })
+        .and_then(ParameterValue::as_bool)
         .unwrap_or(true);
 
     // Get distribution parameter (default "uniform")
@@ -575,18 +569,15 @@ fn apply_jitter(df: DataFrame, layer: &Layer, spec: &Plot) -> Result<DataFrame> 
     };
 
     // Get density-specific parameters (match violin/density geoms)
-    let explicit_bandwidth = layer.parameters.get("bandwidth").and_then(|v| match v {
-        ParameterValue::Number(n) => Some(*n),
-        _ => None,
-    });
+    let explicit_bandwidth = layer
+        .parameters
+        .get("bandwidth")
+        .and_then(ParameterValue::as_number);
 
     let adjust = layer
         .parameters
         .get("adjust")
-        .and_then(|v| match v {
-            ParameterValue::Number(n) => Some(*n),
-            _ => None,
-        })
+        .and_then(ParameterValue::as_number)
         .unwrap_or(1.0);
 
     // Compute density scales if using density/intensity distribution

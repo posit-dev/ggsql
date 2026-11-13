@@ -658,10 +658,7 @@ pub fn band_half_width(layer: &Layer, default: f64) -> f64 {
     let width = layer
         .parameters
         .get("width")
-        .and_then(|v| match v {
-            ParameterValue::Number(n) => Some(*n),
-            _ => None,
-        })
+        .and_then(ParameterValue::as_number)
         .unwrap_or(default);
     layer.adjusted_width.unwrap_or(width).abs() / 2.0
 }

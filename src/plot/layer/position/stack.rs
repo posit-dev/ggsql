@@ -65,16 +65,13 @@ impl PositionTrait for Stack {
         let center = layer
             .parameters
             .get("center")
-            .and_then(|v| match v {
-                ParameterValue::Boolean(b) => Some(*b),
-                _ => None,
-            })
+            .and_then(ParameterValue::as_bool)
             .unwrap_or(false);
 
-        let total = layer.parameters.get("total").and_then(|v| match v {
-            ParameterValue::Number(n) => Some(*n),
-            _ => None,
-        });
+        let total = layer
+            .parameters
+            .get("total")
+            .and_then(ParameterValue::as_number);
 
         let mode = match (center, total) {
             (true, _) => StackMode::Center,
