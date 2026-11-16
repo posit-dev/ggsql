@@ -527,11 +527,7 @@ pub fn has_executable_sql(source_tree: &SourceTree) -> bool {
         (visualise_statement
           (single_source_from) @from)
     "#;
-    if source_tree.find_node(&root, visualise_from).is_some() {
-        return true;
-    }
-
-    false
+    source_tree.find_node(&root, visualise_from).is_some()
 }
 
 #[cfg(test)]
