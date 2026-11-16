@@ -67,13 +67,24 @@ pub struct Table {
 pub enum SelectionItem {
     /// `*`.
     Wildcard,
-    /// A column or a constant. `sql` is the verbatim source text (e.g.
-    /// `bill_dep AS Depth`); `name` is the output column name (`Depth`).
-    Column {
-        sql: String,
-        name: String,
-        source: Option<String>,
-    },
+    /// A source column. `id` is the dequoted column name; `alias` is the
+    /// dequoted `AS` name, if any.
+    Column { id: String, alias: Option<String> },
+    /// A constant. `value` is the literal verbatim as written (e.g. `'x'`);
+    /// `alias` is its dequoted `AS` name, which the grammar requires.
+    Constant { value: String, alias: String },
+}
+
+impl SelectionItem {
+    /// The output column name: the alias when written, else the column's
+    /// own name, dequoted. `None` for a wildcard.
+    pub fn name(&self) -> Option<&str> {
+        match self {
+            SelectionItem::Wildcard => None,
+            SelectionItem::Column { id, alias } => Some(alias.as_deref().unwrap_or(id)),
+            SelectionItem::Constant { alias, .. } => Some(alias),
+        }
+    }
 }
 
 impl Table {
@@ -100,7 +111,8 @@ impl Table {
     /// Expand a SPAN's `OVER` entry that names an earlier spanner's `id`
     /// into that spanner's own columns — `SPAN y OVER x_id, c` (after
     /// `SPAN x_id OVER a, b`) resolves to columns a, b, c for `y`. Only
-    /// ids from earlier spans are recognised; an id declared later, or a
+    /// Duplicates within the expanded columns are dropped, keeping the
+    /// first occurrence. Only
     /// genuine typo, is left as a literal string and caught downstream as
     /// an unknown column, the same as any other bad reference.
     ///
@@ -113,13 +125,17 @@ impl Table {
         let mut ids: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
 
         for span in &self.spans {
-            let columns = span
+            // Dedup after id expansion: a repeated column or an id naming
+            // already-listed columns would otherwise trip gather_columns.
+            let mut seen = std::collections::HashSet::new();
+            let columns: Vec<String> = span
                 .columns
                 .iter()
                 .flat_map(|entry| match ids.get(entry) {
                     Some(&idx) => resolved[idx].columns.clone(),
                     None => vec![entry.clone()],
                 })
+                .filter(|column| seen.insert(column.clone()))
                 .collect();
 
             let mut resolved_span = span.clone();
@@ -131,7 +147,6 @@ impl Table {
             {
                 return Err(format!("Duplicate SPAN id '{}'", resolved_span.id));
             }
-
             resolved.push(resolved_span);
         }
 
@@ -147,7 +162,7 @@ impl Table {
         let stub_columns: Vec<String> = self
             .formats
             .iter()
-            .filter(|format| format.target.is_stub())
+            .filter(|format| format.target == Some(ColumnSection::Stub))
             .flat_map(|format| &format.columns)
             .flat_map(
                 |name| match resolved_spans.iter().find(|span| &span.id == name) {
@@ -256,12 +271,19 @@ impl ColumnSection {
 /// covered column's `TableCell` properties.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Format {
-    /// The columns this FORMAT applies to, in the order written.
+    /// The columns this FORMAT applies to, in the order written. Empty when
+    /// `wildcard` is set.
     pub columns: Vec<String>,
-    /// Which section of the table these columns belong to (`BODY`, the
-    /// default, or `STUB`).
+    /// Whether this FORMAT targets every column (`FORMAT *`). Expanded to
+    /// concrete column names in `setup_formats`, where the data is known.
     #[serde(default)]
-    pub target: ColumnSection,
+    pub wildcard: bool,
+    /// Which section of the table these columns belong to (`BODY` or
+    /// `STUB`). `None` — from `FORMAT ANY` or no target identifier — makes
+    /// no section claim: it never overrides another target when FORMAT
+    /// clauses merge, and resolves to `BODY` in `setup_formats`.
+    #[serde(default)]
+    pub target: Option<ColumnSection>,
     /// `SETTING` parameters for this FORMAT (e.g. `hjust => 'right'`).
     pub settings: Parameters,
     /// Value mappings for custom cell display (`RENAMING` clause). Maps a raw
@@ -273,17 +295,19 @@ pub struct Format {
     pub value_mapping: Option<HashMap<String, Option<String>>>,
     /// Template for generating display text from cell values (e.g.
     /// `"{:num %.2f}"`), applied to values with no specific `value_mapping`
-    /// entry. Default `"{}"` passes the value through unchanged. Same shape
-    /// as `Scale::label_template`.
-    #[serde(default = "crate::format::default_template")]
-    pub value_template: String,
+    /// entry. `None` passes values through unchanged (equivalent to `"{}"`).
+    #[serde(default)]
+    pub value_template: Option<String>,
 }
 
 /// `SETTING` parameters `FORMAT` accepts.
 const FORMAT_PARAMS: &[ParamDefinition] = &[
     ParamDefinition {
         name: "hjust",
-        default: DefaultParamValue::Number(0.5),
+        // No default: an unset hjust resolves per column in
+        // resolve_column_properties — right for a STUB or numeric column,
+        // left otherwise.
+        default: DefaultParamValue::Null,
         // Both spellings accepted here; resolve_column_properties standardises
         // "centre" to "center" when it builds a column's TableCell properties.
         constraint: ParamConstraint::string_option_or_number(
@@ -296,11 +320,29 @@ const FORMAT_PARAMS: &[ParamDefinition] = &[
         // No default: an unset width leaves column sizing to the writer,
         // not to a value resolved here.
         default: DefaultParamValue::Null,
-        constraint: ParamConstraint::string_numeric_with_unit(&["px", "%"]),
+        constraint: ParamConstraint::number_with_unit(NumberConstraint::min(0.0), &["px", "%"]),
     },
 ];
 
 impl Format {
+    /// Merge `other` into `self`: `other`'s settings and value mappings
+    /// override per-key, and its target and template replace `self`'s when
+    /// set.
+    pub fn merge(&mut self, other: &Format) {
+        if other.target.is_some() {
+            self.target = other.target;
+        }
+        self.settings.extend(other.settings.clone());
+        match (&mut self.value_mapping, &other.value_mapping) {
+            (Some(mapping), Some(other)) => mapping.extend(other.clone()),
+            (slot @ None, Some(other)) => *slot = Some(other.clone()),
+            _ => {}
+        }
+        if other.value_template.is_some() {
+            self.value_template = other.value_template.clone();
+        }
+    }
+
     /// Validate `settings` against `FORMAT_PARAMS`.
     pub fn validate_settings(&self) -> Result<(), String> {
         let valid: Vec<&str> = FORMAT_PARAMS.iter().map(|p| p.name).collect();
@@ -328,11 +370,59 @@ mod tests {
     fn format_with_settings(settings: Parameters) -> Format {
         Format {
             columns: vec!["a".to_string()],
-            target: ColumnSection::Body,
+            wildcard: false,
+            target: None,
             settings,
             value_mapping: None,
-            value_template: "{}".to_string(),
+            value_template: None,
         }
+    }
+
+    #[test]
+    fn format_merge_an_unset_template_leaves_the_existing_one() {
+        let mut format = Format {
+            value_template: Some("{:num %.2f}".to_string()),
+            ..format_with_settings(Parameters::new())
+        };
+        format.merge(&format_with_settings(Parameters::new()));
+
+        assert_eq!(format.value_template.as_deref(), Some("{:num %.2f}"));
+    }
+
+    #[test]
+    fn format_merge_an_explicit_default_template_overrides() {
+        let mut format = Format {
+            value_template: Some("{:num %.2f}".to_string()),
+            ..format_with_settings(Parameters::new())
+        };
+        format.merge(&Format {
+            value_template: Some("{}".to_string()),
+            ..format_with_settings(Parameters::new())
+        });
+
+        assert_eq!(format.value_template.as_deref(), Some("{}"));
+    }
+
+    #[test]
+    fn format_merge_an_unset_target_never_overrides() {
+        let mut format = Format {
+            target: Some(ColumnSection::Stub),
+            ..format_with_settings(Parameters::new())
+        };
+        format.merge(&format_with_settings(Parameters::new()));
+
+        assert_eq!(format.target, Some(ColumnSection::Stub));
+    }
+
+    #[test]
+    fn format_merge_a_set_target_overrides() {
+        let mut format = format_with_settings(Parameters::new());
+        format.merge(&Format {
+            target: Some(ColumnSection::Stub),
+            ..format_with_settings(Parameters::new())
+        });
+
+        assert_eq!(format.target, Some(ColumnSection::Stub));
     }
 
     #[test]
@@ -387,7 +477,8 @@ mod tests {
         let table = Table {
             formats: vec![Format {
                 columns: vec!["a".to_string()],
-                target: ColumnSection::Stub,
+                wildcard: false,
+                target: Some(ColumnSection::Stub),
                 ..format_with_settings(Parameters::new())
             }],
             spans: vec![Spanner {
@@ -412,7 +503,8 @@ mod tests {
         let table = Table {
             formats: vec![Format {
                 columns: vec!["G".to_string()],
-                target: ColumnSection::Stub,
+                wildcard: false,
+                target: Some(ColumnSection::Stub),
                 ..format_with_settings(Parameters::new())
             }],
             spans: vec![Spanner {
@@ -463,7 +555,7 @@ mod tests {
             facet: Some(table_facet(&["a"])),
             formats: vec![Format {
                 columns: vec!["a".to_string()],
-                target: ColumnSection::Stub,
+                target: Some(ColumnSection::Stub),
                 ..format_with_settings(Parameters::new())
             }],
             ..Table::new()

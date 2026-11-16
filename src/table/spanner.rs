@@ -742,17 +742,17 @@ mod tests {
     #[test]
     fn validate_stub_boundary_rejects_a_stub_column() {
         let span = spanner(&["a", "b"]);
-        let stub_columns: HashSet<&str> = ["b"].into_iter().collect();
+        let stub_columns = vec!["b".to_string()];
 
-        let error = span.validate_stub_boundary(&stub_columns).unwrap_err();
+        let error = span.validate_boundary(&stub_columns, "stub").unwrap_err();
         assert!(error.contains("cannot include stub column 'b'"));
     }
 
     #[test]
     fn validate_stub_boundary_accepts_body_columns() {
         let span = spanner(&["a", "b"]);
-        let stub_columns: HashSet<&str> = ["c"].into_iter().collect();
+        let stub_columns = vec!["c".to_string()];
 
-        assert!(span.validate_stub_boundary(&stub_columns).is_ok());
+        assert!(span.validate_boundary(&stub_columns, "stub").is_ok());
     }
 }
