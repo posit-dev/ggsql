@@ -40,7 +40,7 @@ The polygon layer has no orientation. The axes are treated symmetrically.
 
 Create example data
 
-``` ggsql
+```ggsql
 CREATE TABLE df AS
 WITH t(x, y, id) AS (VALUES
   (1.0, 1.0, 'A'),
@@ -55,7 +55,7 @@ SELECT * FROM t
 
 Simple example polygon.
 
-``` ggsql
+```ggsql
 VISUALISE x, y FROM df
 DRAW polygon
 ```
@@ -64,7 +64,7 @@ DRAW polygon
 
 Groups of individual polygons can be declared via `PARTITION BY`.
 
-``` ggsql
+```ggsql
 VISUALISE x, y FROM df
 DRAW polygon 
   PARTITION BY id
@@ -74,7 +74,7 @@ DRAW polygon
 
 Invoking a group through discrete aesthetics works as well.
 
-``` ggsql
+```ggsql
 VISUALISE x, y FROM df
 DRAW polygon 
   MAPPING id AS colour

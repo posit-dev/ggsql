@@ -16,7 +16,7 @@ The input range is converted to the type defined by the transformation. This mea
 
 #### Explicit setting the full range
 
-``` ggsql
+```ggsql
 VISUALISE bill_len AS x, bill_dep AS y FROM ggsql:penguins
 DRAW point
 SCALE x FROM (40, 50)
@@ -26,7 +26,7 @@ SCALE x FROM (40, 50)
 
 #### Allow one end of the range to be imputed
 
-``` ggsql
+```ggsql
 VISUALISE bill_len AS x, bill_dep AS y FROM ggsql:penguins
 DRAW point
 SCALE x FROM (0, null)
@@ -51,7 +51,7 @@ The remaining aesthetics don’t have a meaningful continuous output domain and 
 
 #### Choose a different palette
 
-``` ggsql
+```ggsql
 VISUALISE bill_len AS x, bill_dep AS y, body_mass AS color FROM ggsql:penguins
 DRAW point
 SCALE color TO batlow
@@ -61,7 +61,7 @@ SCALE color TO batlow
 
 #### Define a palette manually
 
-``` ggsql
+```ggsql
 VISUALISE bill_len AS x, bill_dep AS y, body_mass AS color FROM ggsql:penguins
 DRAW point
 SCALE color TO ('black', 'red', 'white')
@@ -139,7 +139,7 @@ If you wish to scale by the radius (not advised) you should do so using the `squ
 
 #### Automatic use of date transformation for x axis
 
-``` ggsql
+```ggsql
 VISUALISE Date AS x, Temp AS y FROM ggsql:airquality
 DRAW line
 ```
@@ -148,7 +148,7 @@ DRAW line
 
 #### Applying a log transformation to the y axis
 
-``` ggsql
+```ggsql
 VISUALISE Date AS x, Temp AS y FROM ggsql:airquality
 DRAW line
 SCALE y VIA log
@@ -158,7 +158,7 @@ SCALE y VIA log
 
 #### Setting breaks to exactly dividing the input range
 
-``` ggsql
+```ggsql
 VISUALISE Date AS x, Temp AS y FROM ggsql:airquality
 DRAW line
 SCALE y
@@ -169,7 +169,7 @@ SCALE y
 
 #### Using an interval size for temporal breaks
 
-``` ggsql
+```ggsql
 VISUALISE Date AS x, Temp AS y FROM ggsql:airquality
 DRAW line
 SCALE x
@@ -193,7 +193,7 @@ The following settings are recognised by continuous scales:
 
 #### Change expansion of x axis to add a fixed value
 
-``` ggsql
+```ggsql
 VISUALISE bill_len AS x, bill_dep AS y FROM ggsql:penguins
 DRAW point
 SCALE x
@@ -204,7 +204,7 @@ SCALE x
 
 #### Squish all y values to show them in the margin of the plot
 
-``` ggsql
+```ggsql
 VISUALISE bill_len AS x, bill_dep AS y FROM ggsql:penguins
 DRAW point
 SCALE y FROM (15, 20)
@@ -215,7 +215,7 @@ SCALE y FROM (15, 20)
 
 #### Set breaks explicitly
 
-``` ggsql
+```ggsql
 VISUALISE bill_len AS x, bill_dep AS y FROM ggsql:penguins
 DRAW point
 SCALE x
@@ -226,7 +226,7 @@ SCALE x
 
 #### Reverse the x axis
 
-``` ggsql
+```ggsql
 VISUALISE bill_len AS x, bill_dep AS y FROM ggsql:penguins
 DRAW point
 SCALE x
@@ -253,7 +253,7 @@ You can combine formatting with direct renaming in which case the direct renamin
 
 #### Renaming a single value
 
-``` ggsql
+```ggsql
 VISUALISE bill_len AS x, bill_dep AS y FROM ggsql:penguins
 DRAW point
 SCALE x
@@ -264,7 +264,7 @@ SCALE x
 
 #### Adding suffix to break labels
 
-``` ggsql
+```ggsql
 VISUALISE bill_len AS x, bill_dep AS y FROM ggsql:penguins
 DRAW point
 SCALE x
@@ -275,7 +275,7 @@ SCALE x
 
 #### Using a formatter to control temporal formats
 
-``` ggsql
+```ggsql
 VISUALISE Date AS x, Temp AS y FROM ggsql:airquality
 DRAW line
 SCALE x
@@ -286,7 +286,7 @@ SCALE x
 
 #### Using a formatter to control number formats
 
-``` ggsql
+```ggsql
 VISUALISE bill_len AS x, bill_dep AS y FROM ggsql:penguins
 DRAW point
 SCALE x

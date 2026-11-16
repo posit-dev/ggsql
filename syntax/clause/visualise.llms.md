@@ -6,7 +6,7 @@ The `VISUALISE` (or `VISUALIZE`) clause marks the beginning of a ggsql visualisa
 
 The `VISUALISE` clause is quite simple and doesn’t take any additional required parameters. You can, however, use it to define global mappings and a global data source (if the earlier query didn’t end in a `SELECT`).
 
-``` ggsql
+```ggsql
 VISUALISE <mapping>, ... FROM <data-source>
 ```
 
@@ -37,7 +37,7 @@ Layers only inherit the aesthetics and properties they support from the global m
 
 ### `FROM`
 
-``` ggsql
+```ggsql
 FROM <data-source>
 ```
 

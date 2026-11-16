@@ -6,7 +6,7 @@ The `PLACE` clause is the little sibling of the [`DRAW` clause](../../syntax/cla
 
 The `PLACE` clause takes just a type and a setting clause, all of them required.
 
-``` ggsql
+```ggsql
 PLACE <layer-type>
   SETTING <parameter/aesthetic> => <value>, ...
 ```
@@ -17,7 +17,7 @@ Unlike the `DRAW` clause, the `PLACE` clause does not support `FILTER`, `PARTITI
 
 ### `SETTING`
 
-``` ggsql
+```ggsql
 SETTING <parameter/aesthetic> => <value>, ...
 ```
 

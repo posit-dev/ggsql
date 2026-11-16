@@ -19,7 +19,7 @@ Apart from the settings of the layer type, setting `position => 'stack'` will al
 
 Stack is the default for bar and area
 
-``` ggsql
+```ggsql
 VISUALISE Day AS x, Wind AS y FROM ggsql:airquality
 DRAW area
   MAPPING Month AS fill
@@ -31,7 +31,7 @@ SCALE ORDINAL fill
 
 Turn it off to see the effect (stacking is nonsensical for wind measurements)
 
-``` ggsql
+```ggsql
 VISUALISE Day AS x, Wind AS y FROM ggsql:airquality
 DRAW area
   MAPPING Month AS fill
@@ -44,7 +44,7 @@ SCALE ORDINAL fill
 
 Set `center => true` to create a steamgraph
 
-``` ggsql
+```ggsql
 VISUALISE Day AS x, Wind AS y FROM ggsql:airquality
 DRAW area
   MAPPING Month AS fill
@@ -57,7 +57,7 @@ SCALE ORDINAL fill
 
 Use `total` to see the percentage contribution from each group
 
-``` ggsql
+```ggsql
 VISUALISE Day AS x, Wind AS y FROM ggsql:airquality
 DRAW area
   MAPPING Month AS fill

@@ -12,7 +12,7 @@ Line charts are ideal for showing trends over time. The `SCALE x VIA date` claus
 
 ## Code
 
-``` ggsql
+```ggsql
 SELECT Date, Temp FROM ggsql:airquality
 VISUALISE Date AS x, Temp AS y
 DRAW line
@@ -39,7 +39,7 @@ LABEL
 
 Here we show the temperature by day instead, and split the lines by month. Since month is encoded as an integer it doesn’t automatically split the lines, and we have to use an explicit ordinal scale for it (see what happens if you remove that).
 
-``` ggsql
+```ggsql
 SELECT Day, Temp, Month FROM ggsql:airquality
 VISUALISE Day AS x, Temp AS y, Month AS color
 DRAW line

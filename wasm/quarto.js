@@ -236820,12 +236820,15 @@ var GgsqlContext = class {
     wasm.__wbg_ggsqlcontext_free(ptr, 0);
   }
   /**
-   * Run a ggsql query and keep the resolved plot, ready to draw.
+   * Run a ggsql query and keep the result, ready to show.
    *
-   * Drawing is separate because a resize re-solves the layout, and doing
-   * that through the query would put SQL behind every frame of a drag.
+   * A VISUALISE query resolves to a `GgsqlPlot`, kept because drawing is
+   * separate: a resize re-solves the layout, and doing that through the
+   * query would put SQL behind every frame of a drag. A TABULATE query
+   * renders straight to a `GgsqlTable` — a static HTML table has no size
+   * to re-solve.
    * @param {string} query
-   * @returns {GgsqlPlot}
+   * @returns {any}
    */
   execute(query) {
     try {
@@ -236839,7 +236842,7 @@ var GgsqlContext = class {
       if (r2) {
         throw takeObject(r1);
       }
-      return GgsqlPlot.__wrap(r0);
+      return takeObject(r0);
     } finally {
       wasm.__wbindgen_add_to_stack_pointer(16);
     }
@@ -236877,7 +236880,7 @@ var GgsqlContext = class {
     }
   }
   /**
-   * Check whether a query contains a VISUALISE clause
+   * Check whether a query contains a VISUALISE or TABULATE clause
    * @param {string} query
    * @returns {boolean}
    */
@@ -237060,6 +237063,62 @@ var GgsqlPlot = class _GgsqlPlot {
   }
 };
 if (Symbol.dispose) GgsqlPlot.prototype[Symbol.dispose] = GgsqlPlot.prototype.free;
+var GgsqlTable = class _GgsqlTable {
+  static __wrap(ptr) {
+    const obj = Object.create(_GgsqlTable.prototype);
+    obj.__wbg_ptr = ptr;
+    GgsqlTableFinalization.register(obj, obj.__wbg_ptr, obj);
+    return obj;
+  }
+  __destroy_into_raw() {
+    const ptr = this.__wbg_ptr;
+    this.__wbg_ptr = 0;
+    GgsqlTableFinalization.unregister(this);
+    return ptr;
+  }
+  free() {
+    const ptr = this.__destroy_into_raw();
+    wasm.__wbg_ggsqltable_free(ptr, 0);
+  }
+  /**
+   * The table markup.
+   * @returns {string}
+   */
+  get html() {
+    let deferred1_0;
+    let deferred1_1;
+    try {
+      const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+      wasm.ggsqltable_html(retptr, this.__wbg_ptr);
+      var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+      var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
+      deferred1_0 = r0;
+      deferred1_1 = r1;
+      return getStringFromWasm0(r0, r1);
+    } finally {
+      wasm.__wbindgen_add_to_stack_pointer(16);
+      wasm.__wbindgen_export4(deferred1_0, deferred1_1, 1);
+    }
+  }
+  /**
+   * What the table had to degrade or drop, if anything.
+   * @returns {string[]}
+   */
+  get warnings() {
+    try {
+      const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+      wasm.ggsqltable_warnings(retptr, this.__wbg_ptr);
+      var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+      var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
+      var v1 = getArrayJsValueFromWasm0(r0, r1).slice();
+      wasm.__wbindgen_export4(r0, r1 * 4, 4);
+      return v1;
+    } finally {
+      wasm.__wbindgen_add_to_stack_pointer(16);
+    }
+  }
+};
+if (Symbol.dispose) GgsqlTable.prototype[Symbol.dispose] = GgsqlTable.prototype.free;
 var SvgRender = class _SvgRender {
   static __wrap(ptr) {
     const obj = Object.create(_SvgRender.prototype);
@@ -237303,6 +237362,14 @@ function __wbg_get_imports() {
         return addHeapObject(ret);
       }, arguments);
     },
+    __wbg_ggsqlplot_new: function(arg0) {
+      const ret = GgsqlPlot.__wrap(arg0);
+      return addHeapObject(ret);
+    },
+    __wbg_ggsqltable_new: function(arg0) {
+      const ret = GgsqlTable.__wrap(arg0);
+      return addHeapObject(ret);
+    },
     __wbg_instanceof_Promise_09012cfa9708520a: function(arg0) {
       let result;
       try {
@@ -237364,7 +237431,7 @@ function __wbg_get_imports() {
           const a = state0.a;
           state0.a = 0;
           try {
-            return __wasm_bindgen_func_elem_11989(a, state0.b, arg02, arg12);
+            return __wasm_bindgen_func_elem_12179(a, state0.b, arg02, arg12);
           } finally {
             state0.a = a;
           }
@@ -237467,7 +237534,7 @@ function __wbg_get_imports() {
       return addHeapObject(ret);
     },
     __wbindgen_cast_0000000000000001: function(arg0, arg1) {
-      const ret = makeMutClosure(arg0, arg1, __wasm_bindgen_func_elem_11930);
+      const ret = makeMutClosure(arg0, arg1, __wasm_bindgen_func_elem_12120);
       return addHeapObject(ret);
     },
     __wbindgen_cast_0000000000000002: function(arg0) {
@@ -237495,10 +237562,10 @@ function __wbg_get_imports() {
     "./ggsql_wasm_bg.js": import0
   };
 }
-function __wasm_bindgen_func_elem_11930(arg0, arg1, arg2) {
+function __wasm_bindgen_func_elem_12120(arg0, arg1, arg2) {
   try {
     const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
-    wasm.__wasm_bindgen_func_elem_11930(retptr, arg0, arg1, addHeapObject(arg2));
+    wasm.__wasm_bindgen_func_elem_12120(retptr, arg0, arg1, addHeapObject(arg2));
     var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
     var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
     if (r1) {
@@ -237508,8 +237575,8 @@ function __wasm_bindgen_func_elem_11930(arg0, arg1, arg2) {
     wasm.__wbindgen_add_to_stack_pointer(16);
   }
 }
-function __wasm_bindgen_func_elem_11989(arg0, arg1, arg2, arg3) {
-  wasm.__wasm_bindgen_func_elem_11989(arg0, arg1, addHeapObject(arg2), addHeapObject(arg3));
+function __wasm_bindgen_func_elem_12179(arg0, arg1, arg2, arg3) {
+  wasm.__wasm_bindgen_func_elem_12179(arg0, arg1, addHeapObject(arg2), addHeapObject(arg3));
 }
 var GgsqlContextFinalization = typeof FinalizationRegistry === "undefined" ? { register: () => {
 }, unregister: () => {
@@ -237517,6 +237584,9 @@ var GgsqlContextFinalization = typeof FinalizationRegistry === "undefined" ? { r
 var GgsqlPlotFinalization = typeof FinalizationRegistry === "undefined" ? { register: () => {
 }, unregister: () => {
 } } : new FinalizationRegistry((ptr) => wasm.__wbg_ggsqlplot_free(ptr, 1));
+var GgsqlTableFinalization = typeof FinalizationRegistry === "undefined" ? { register: () => {
+}, unregister: () => {
+} } : new FinalizationRegistry((ptr) => wasm.__wbg_ggsqltable_free(ptr, 1));
 var SvgRenderFinalization = typeof FinalizationRegistry === "undefined" ? { register: () => {
 }, unregister: () => {
 } } : new FinalizationRegistry((ptr) => wasm.__wbg_svgrender_free(ptr, 1));
@@ -244272,6 +244342,7 @@ function gatherCells() {
       visContainer,
       view: null,
       plot: null,
+      table: null,
       succeeded: false,
       error: null,
       editor: null,
@@ -244319,7 +244390,12 @@ async function initAndExecute(cells) {
     await installRequestedExtensions(ctx, cell.query);
     try {
       if (ctx.hasVisual(cell.rewrittenQuery)) {
-        cell.plot = ctx.execute(cell.rewrittenQuery);
+        const result = ctx.execute(cell.rewrittenQuery);
+        if (result instanceof GgsqlPlot) {
+          cell.plot = result;
+        } else {
+          cell.table = result;
+        }
       } else {
         ctx.executeSql(cell.rewrittenQuery);
         cell.plot = null;
@@ -244359,6 +244435,18 @@ function showPlot(cell) {
   cell.view.setPlot(cell.plot);
   cell.plot = null;
 }
+function showTable(cell) {
+  if (!cell.table) return;
+  const table = cell.table;
+  cell.table = null;
+  if (cell.view) cell.view.setPlot(null);
+  if (!cell.visContainer) {
+    table.free();
+    return;
+  }
+  cell.visContainer.innerHTML = table.html;
+  table.free();
+}
 var cellCounter = 0;
 async function applyEditors(cells, ctx) {
   for (const cell of cells) {
@@ -244384,6 +244472,7 @@ async function applyEditors(cells, ctx) {
     cell.editor = editorInst;
     try {
       showPlot(cell);
+      showTable(cell);
     } catch (e) {
       showError(cell, String(ctx.noteError(e)));
     }
@@ -244433,8 +244522,14 @@ async function executeCell(cell, editorInst, ctx) {
   await installRequestedExtensions(ctx, currentQuery);
   try {
     if (ctx.hasVisual(currentQuery)) {
-      cell.plot = ctx.execute(currentQuery);
-      showPlot(cell);
+      const result = ctx.execute(currentQuery);
+      if (result instanceof GgsqlPlot) {
+        cell.plot = result;
+        showPlot(cell);
+      } else {
+        cell.table = result;
+        showTable(cell);
+      }
     } else {
       ctx.executeSql(currentQuery);
     }

@@ -10,7 +10,7 @@ A heatmap visusalised data values as colors in a grid layout. It makes it easy t
 
 ## Code
 
-``` ggsql
+```ggsql
 VISUALISE Day AS x, Month AS y, Temp AS fill FROM ggsql:airquality
   DRAW tile
 ```
@@ -28,7 +28,7 @@ VISUALISE Day AS x, Month AS y, Temp AS fill FROM ggsql:airquality
 
 As a stylistic choice, you can set the cells to be opaque without borders.
 
-``` ggsql
+```ggsql
 VISUALISE Month AS y, Day AS x, Temp AS fill FROM ggsql:airquality
   DRAW tile
     SETTING stroke => null, opacity => 1
@@ -38,7 +38,7 @@ VISUALISE Month AS y, Day AS x, Temp AS fill FROM ggsql:airquality
 
 You can change the color by adapting the scale.
 
-``` ggsql
+```ggsql
 VISUALISE Month AS y, Day AS x, Temp AS fill FROM ggsql:airquality
   DRAW tile
   SCALE fill TO magma 
@@ -49,7 +49,7 @@ VISUALISE Month AS y, Day AS x, Temp AS fill FROM ggsql:airquality
 
 If you have centered data, you may want to use a divergent colour scale. It is important to the two extremes in `FROM` symmetrically around the midpoint.
 
-``` ggsql
+```ggsql
 SELECT *, 
   Temp * 1.0 - AVG(Temp) OVER (PARTITION BY Month) AS centered 
 FROM ggsql:airquality

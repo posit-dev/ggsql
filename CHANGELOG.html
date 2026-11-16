@@ -2,7 +2,7 @@
 <html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
 
 <meta charset="utf-8">
-<meta name="generator" content="quarto-1.12.1">
+<meta name="generator" content="quarto-1.12.2">
 
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
@@ -26,7 +26,27 @@ ul.task-list li input[type="checkbox"] {
   margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
   vertical-align: middle;
 }
-</style>
+@media print {
+  html {
+    color-scheme: light only;
+  }
+  html, body, pre, code {
+    background-color: transparent;
+  }
+  body, a, a:visited, blockquote {
+    color: black;
+  }
+  pre, code {
+    padding: 0;
+  }
+  p, h2, h3 {
+    orphans: 3;
+    widows: 3;
+  }
+  h2, h3, h4 {
+    page-break-after: avoid;
+  }
+}</style>
 
 
 <script src="site_libs/quarto-nav/quarto-nav.js"></script>
@@ -44,9 +64,9 @@ ul.task-list li input[type="checkbox"] {
 <script src="site_libs/quarto-html/tippy.umd.min.js"></script>
 <script src="site_libs/quarto-html/anchor.min.js"></script>
 <link href="site_libs/quarto-html/tippy.css" rel="stylesheet">
-<link href="site_libs/quarto-html/quarto-syntax-highlighting-ba38d682ef0eb2b9e84133c48a211adf.css" rel="stylesheet" class="quarto-color-scheme" id="quarto-text-highlighting-styles">
-<link href="site_libs/quarto-html/quarto-syntax-highlighting-dark-ba38d682ef0eb2b9e84133c48a211adf.css" rel="stylesheet" class="quarto-color-scheme quarto-color-alternate" id="quarto-text-highlighting-styles">
-<link href="site_libs/quarto-html/quarto-syntax-highlighting-ba38d682ef0eb2b9e84133c48a211adf.css" rel="stylesheet" class="quarto-color-scheme-extra" id="quarto-text-highlighting-styles">
+<link href="site_libs/quarto-html/quarto-syntax-highlighting-391f73e9ed3e3552e24af4a231521fca.css" rel="stylesheet" class="quarto-color-scheme" id="quarto-text-highlighting-styles">
+<link href="site_libs/quarto-html/quarto-syntax-highlighting-dark-391f73e9ed3e3552e24af4a231521fca.css" rel="stylesheet" class="quarto-color-scheme quarto-color-alternate" id="quarto-text-highlighting-styles">
+<link href="site_libs/quarto-html/quarto-syntax-highlighting-391f73e9ed3e3552e24af4a231521fca.css" rel="stylesheet" class="quarto-color-scheme-extra" id="quarto-text-highlighting-styles">
 <script src="site_libs/bootstrap/bootstrap.min.js"></script>
 <link href="site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
 <link href="site_libs/bootstrap/bootstrap-0b0c8915fbd2cb21b8e60ef76089170f.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme" id="quarto-bootstrap" data-mode="light">
@@ -163,6 +183,23 @@ gradient teal.
         <li>
     <a class="dropdown-item" href="./syntax/clause/label.html">
  <span class="dropdown-text"><code>LABEL</code></span></a>
+  </li>  
+        <li><hr class="dropdown-divider"></li>
+        <li>
+    <a class="dropdown-item" href="./syntax/clause/tabulate.html">
+ <span class="dropdown-text"><code>TABULATE</code></span></a>
+  </li>  
+        <li>
+    <a class="dropdown-item" href="./syntax/clause/label-tabulate.html">
+ <span class="dropdown-text"><code>LABEL</code></span></a>
+  </li>  
+        <li>
+    <a class="dropdown-item" href="./syntax/clause/span.html">
+ <span class="dropdown-text"><code>SPAN</code></span></a>
+  </li>  
+        <li>
+    <a class="dropdown-item" href="./syntax/clause/format.html">
+ <span class="dropdown-text"><code>FORMAT</code></span></a>
   </li>  
     </ul>
   </li>
@@ -313,6 +350,13 @@ gradient teal.
 <section id="added" class="level3">
 <h3 class="anchored" data-anchor-id="added">Added</h3>
 <ul>
+<li>New <code>TABULATE</code> clause renders a query result as a table instead of a plot. Tables are rendered via new <code>html</code> writer. <code>TABULATE</code> supports the following clauses:
+<ul>
+<li><code>LABEL</code> sets (sub)titles, captions and overrides the display of column labels.</li>
+<li><code>SPAN</code> groups columns under a shared header cell (spanner).</li>
+<li><code>FORMAT</code> configures how a column’s cells are displayed.</li>
+</ul></li>
+<li><code>Writer::write_table</code> renders a resolved table, taking the new public <code>TableLayout</code> — the table’s cells bundled with their column and row metadata.</li>
 <li>Text layers now have text boxes. The presence of the <code>background</code> aesthetic determines whether text boxes get drawn and additional settings <code>padding</code>, <code>radius</code> and <code>linewidth</code> style the box.</li>
 <li>Many layers now support <code>linecap</code> and <code>linejoin</code> settings for styling lines.</li>
 <li>The Positron extension now registers a ggsql data importer, so dragging a csv/tsv/parquet/json file into Positron offers to generate the ggsql code that loads it into a table, including any filters and sorts shown in the Data Explorer (#536).</li>
@@ -322,9 +366,11 @@ gradient teal.
 <section id="changed" class="level3">
 <h3 class="anchored" data-anchor-id="changed">Changed</h3>
 <ul>
+<li><strong>Breaking</strong>: <code>TABULATE</code> is now a reserved word after <code>VISUALISE</code>/<code>TABULATE</code>, like <code>VISUALISE</code>. Reference a column named <code>tabulate</code> there quoted (<code>'tabulate'</code>); the SQL part of a query is unaffected.</li>
 <li>The reader/dialect layer was refactored around a central dialect registry with per-database dialect implementations (#569). As part of this, some previously-public items changed: the <code>CacheBackend</code> trait moved to a test-support module, <code>CachingReader::new</code> is now test-only, and <code>Spec::layer_sql</code>/<code>Spec::stat_sql</code> were removed.</li>
 <li>Scale resolution now detects and converts temporal-unit mismatches and errors on unrepresentable ranges instead of producing silently wrong scales (#569).</li>
 <li><code>Plot.labels</code> field is no longer <code>Option&lt;Labels&gt;</code> but plain <code>Labels</code>.</li>
+<li>The CLI now always prints query warnings (e.g.&nbsp;extra <code>VISUALISE</code>/<code>TABULATE</code> statements being ignored) to stderr, not only with <code>-v</code>.</li>
 <li>Replaced <code>CLAUDE.md</code> files with <code>AGENTS.md</code> files.</li>
 </ul>
 </section>

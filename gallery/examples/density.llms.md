@@ -14,7 +14,7 @@ Like histograms, density plots show the distribution of a numeric variable. Inst
 
 The x-axis gives the value of the numerical variable, whereas the y-axis gives the estimated probability density.
 
-``` ggsql
+```ggsql
 VISUALISE bill_len AS x, species AS colour FROM ggsql:penguins
   DRAW density
 ```
@@ -34,7 +34,7 @@ VISUALISE bill_len AS x, species AS colour FROM ggsql:penguins
 
 Using the density gives all groups equal area that integrates to 1. This masks differences between the sizes of groups. Instead of using density, one can use the `intensity` that also encompasses differences in group size.
 
-``` ggsql
+```ggsql
 VISUALISE bill_len AS x, species AS colour FROM ggsql:penguins
   DRAW density REMAPPING intensity AS y
 ```
@@ -45,7 +45,7 @@ VISUALISE bill_len AS x, species AS colour FROM ggsql:penguins
 
 Instead of having independent groups, the density can also be stacked. Note that stacking alone does not account for relative contributions per group. For that reason, you may want to show the intensity instead.
 
-``` ggsql
+```ggsql
 VISUALISE bill_len AS x, species AS colour FROM ggsql:penguins
   DRAW density 
     REMAPPING intensity AS y
@@ -58,7 +58,7 @@ VISUALISE bill_len AS x, species AS colour FROM ggsql:penguins
 
 You can use the [rule](../../syntax/layer/type/rule.llms.md) layer to display precomputed summaries, like the mean.
 
-``` ggsql
+```ggsql
 WITH mean_data AS (
   SELECT 
     AVG(bill_len) AS bill_len, 
@@ -77,7 +77,7 @@ VISUALISE bill_len AS x, species AS colour FROM ggsql:penguins
 
 Another way of comparing groups is by using facets to separate the groups into different panels.
 
-``` ggsql
+```ggsql
 VISUALISE bill_len AS x, species AS colour FROM ggsql:penguins
   DRAW density
   FACET species SETTING ncol => 1
@@ -89,7 +89,7 @@ VISUALISE bill_len AS x, species AS colour FROM ggsql:penguins
 
 Conceptually, violin plots also display densities. The similarity becomes clearer if you make a ridgeline plot by displaying the violin density on a single side. The plot below is essentially showing the same thing as the plot above, but gathered in a single panel.
 
-``` ggsql
+```ggsql
 VISUALISE bill_len AS x, species AS y, species AS colour FROM ggsql:penguins
   DRAW violin SETTING side => 'top', width => 2
 ```

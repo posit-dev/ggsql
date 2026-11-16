@@ -6,7 +6,7 @@ The `linewidth` aesthetic sets the width of strokes and lines. It is measured in
 
 Linewidth are given as bare numbers and measured in points. The following code sets the width of the lines to 3pt:
 
-``` ggsql
+```ggsql
 DRAW line
   SETTING linewidth => 3
 ```
@@ -15,6 +15,6 @@ DRAW line
 
 Linewidth can only be used for sequential data and has no named palettes. The default for continuous, binned, and ordinal scales is to use the range from 1pt to 6 pt and interpolate between them. This can be overwritten by providing a manual output range specification
 
-``` ggsql
+```ggsql
 SCALE linewidth TO (3, 9)
 ```

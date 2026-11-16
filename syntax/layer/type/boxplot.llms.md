@@ -59,7 +59,7 @@ The boxplot has its categorical groups along the primary axis and the continuous
 
 A basic boxplot showing the bill length per species.
 
-``` ggsql
+```ggsql
 VISUALISE FROM ggsql:penguins
 DRAW boxplot
   MAPPING species AS x, bill_len AS y
@@ -69,7 +69,7 @@ DRAW boxplot
 
 Additional groups will dodge the boxplots.
 
-``` ggsql
+```ggsql
 VISUALISE FROM ggsql:penguins
 DRAW boxplot
   MAPPING species AS x, bill_len AS y, island AS stroke
@@ -79,7 +79,7 @@ DRAW boxplot
 
 Narrow boxes by shrinking the `width` parameter.
 
-``` ggsql
+```ggsql
 VISUALISE FROM ggsql:penguins
 DRAW boxplot
   MAPPING species AS x, bill_len AS y
@@ -90,7 +90,7 @@ DRAW boxplot
 
 Consider more observations as outliers by setting a smaller `coef`:
 
-``` ggsql
+```ggsql
 VISUALISE FROM ggsql:penguins
 DRAW boxplot
   MAPPING species AS x, bill_len AS y
@@ -101,7 +101,7 @@ DRAW boxplot
 
 Create a horizontal boxplot by swapping `x` and `y`:
 
-``` ggsql
+```ggsql
 VISUALISE FROM ggsql:penguins
 DRAW boxplot
   MAPPING species AS y, bill_len AS x
@@ -111,7 +111,7 @@ DRAW boxplot
 
 Omit the categorical axis to summarise the whole distribution as a single boxplot:
 
-``` ggsql
+```ggsql
 VISUALISE FROM ggsql:penguins
 DRAW boxplot
   MAPPING bill_len AS y
@@ -121,7 +121,7 @@ DRAW boxplot
 
 Pair a half-violin with a half-boxplot on the same category by setting opposite `side` values:
 
-``` ggsql
+```ggsql
 VISUALISE bill_len AS x, species AS y FROM ggsql:penguins
 DRAW violin SETTING side => 'top'
 DRAW boxplot SETTING side => 'bottom', width => 0.3

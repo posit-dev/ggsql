@@ -8,7 +8,7 @@ Color values (fill or stroke aesthetics) may contain opacity information embedde
 
 Opacity has no unit and goes from 0 (fully transparent) to 1 (fully opaque). You can set the opacity of points to a low value to combat overplotting like so:
 
-``` ggsql
+```ggsql
 DRAW point
   SETTING opacity => 0.2
 ```

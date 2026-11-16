@@ -6,7 +6,7 @@
 >
 > ggsql is a SQL extension for declarative data visualization based on Grammar of Graphics principles. It allows you to combine SQL data queries with visualization specifications in a single, composable syntax.
 >
-> ``` ggsql
+> ```ggsql
 > SELECT date, revenue, region FROM sales
 > VISUALISE date AS x, revenue AS y, region AS color
 > DRAW line
@@ -34,7 +34,7 @@
 >
 > Add multiple `DRAW` clauses to your query. Each `DRAW` creates a new layer:
 >
-> ``` ggsql
+> ```ggsql
 > SELECT x, y FROM data
 > VISUALISE x, y
 > DRAW line 
@@ -47,7 +47,7 @@
 >
 > Use the `LABEL` clause:
 >
-> ``` ggsql
+> ```ggsql
 > SELECT date, revenue FROM sales
 > VISUALISE date AS x, revenue AS y
 > DRAW line
@@ -61,7 +61,7 @@
 >
 > Some parts of the syntax are passed on directly to the database, such as the `FILTER` and `ORDER BY` clauses in `DRAW`.
 >
-> ``` ggsql
+> ```ggsql
 > SELECT date, revenue FROM sales
 > VISUALISE date AS x, revenue AS y
 > DRAW line
@@ -99,7 +99,7 @@
 >
 > Add `SCALE x VIA date` to tell ggsql to treat the x-axis as temporal data:
 >
-> ``` ggsql
+> ```ggsql
 > SELECT date, value FROM data
 > VISUALISE date AS x, value AS y
 > DRAW line

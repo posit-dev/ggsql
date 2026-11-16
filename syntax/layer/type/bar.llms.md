@@ -60,7 +60,7 @@ Bar plots have categories along their primary axis. The orientation is deduced d
 
 Show the number of each species in the data
 
-``` ggsql
+```ggsql
 VISUALISE FROM ggsql:penguins
 DRAW bar
   MAPPING species AS x
@@ -70,7 +70,7 @@ DRAW bar
 
 Use `weight` to instead show the collective mass of each species
 
-``` ggsql
+```ggsql
 VISUALISE FROM ggsql:penguins
 DRAW bar
   MAPPING species AS x, body_mass AS weight
@@ -80,7 +80,7 @@ DRAW bar
 
 Map fill to a discrete value to create a stacked bar chart
 
-``` ggsql
+```ggsql
 VISUALISE FROM ggsql:penguins
 DRAW bar
   MAPPING species AS x, island AS fill
@@ -90,7 +90,7 @@ DRAW bar
 
 Or change the position setting to e.g. get a dodged bar chart
 
-``` ggsql
+```ggsql
 VISUALISE FROM ggsql:penguins
 DRAW bar
   MAPPING species AS x, sex AS fill
@@ -101,7 +101,7 @@ DRAW bar
 
 Map to y if the dataset already contains the value you want to show
 
-``` ggsql
+```ggsql
 SELECT species, MAX(body_mass) AS max_mass FROM ggsql:penguins
 GROUP BY species
 VISUALISE
@@ -113,7 +113,7 @@ DRAW bar
 
 Use together with a binned scale as an alternative to the [histogram layer](../../../syntax/layer/type/histogram.llms.md)
 
-``` ggsql
+```ggsql
 VISUALISE FROM ggsql:penguins
 DRAW bar
   MAPPING body_mass AS x
@@ -125,7 +125,7 @@ SCALE BINNED x
 
 Create a horizontal bar plot by changing the mapping
 
-``` ggsql
+```ggsql
 VISUALISE FROM ggsql:penguins
 DRAW bar
   MAPPING species AS y
@@ -135,7 +135,7 @@ DRAW bar
 
 And use with a polar coordinate system to create a pie chart
 
-``` ggsql
+```ggsql
 VISUALISE FROM ggsql:penguins
 DRAW bar
   MAPPING species AS fill
@@ -146,7 +146,7 @@ PROJECT TO polar
 
 Use a different type of aggregation for the bars through the `aggregate` setting. The `range` layer needs both `ymin` and `ymax` mapped; with two defaults, the first is applied to the lower bound and the second to the upper bound.
 
-``` ggsql
+```ggsql
 VISUALISE species AS x FROM ggsql:penguins
 DRAW bar
   MAPPING body_mass AS y

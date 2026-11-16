@@ -8,7 +8,7 @@ ggsql brings the elegance of the [Grammar of Graphics](get_started/grammar.llms.
 
 ### Try it out
 
-``` ggsql
+```ggsql
 -- Regular query
 SELECT * FROM ggsql:penguins
 WHERE island = 'Biscoe'
@@ -75,7 +75,7 @@ cargo install ggsql-cli
 
 Write standard SQL queries and seamlessly extend them with visualization clauses. Your existing SQL knowledge transfers directly.
 
-``` ggsql
+```ggsql
 SELECT date, revenue, region
 FROM sales
 WHERE year = 2024
@@ -87,7 +87,7 @@ DRAW line
 
 Compose visualizations from independent layers, scales, and coordinates. Mix and match components for powerful custom visuals. The [grammar of graphics](get_started/grammar.llms.md) provides you with a single mental model for every type of plot.
 
-``` ggsql
+```ggsql
 VISUALISE date AS x FROM sales
 DRAW bar 
 SCALE BINNED x 

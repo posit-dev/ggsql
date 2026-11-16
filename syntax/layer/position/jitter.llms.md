@@ -34,7 +34,7 @@ Apart from the settings of the layer type, setting `position => 'jitter'` will a
 
 When plotting points on a discrete axis they are all placed in the middle
 
-``` ggsql
+```ggsql
 VISUALISE species AS x, bill_dep AS y, sex AS fill FROM ggsql:penguins
 DRAW point
 ```
@@ -43,7 +43,7 @@ DRAW point
 
 Use jittering to better see the individual points
 
-``` ggsql
+```ggsql
 VISUALISE species AS x, bill_dep AS y, sex AS fill FROM ggsql:penguins
 DRAW point
   SETTING position => 'jitter'
@@ -53,7 +53,7 @@ DRAW point
 
 By default, dodging is applied to separate the groups. Turn this off if you want the jitter to occupy the same space regardless of grouping
 
-``` ggsql
+```ggsql
 VISUALISE species AS x, bill_dep AS y, sex AS fill FROM ggsql:penguins
 DRAW point
   SETTING position => 'jitter', dodge => false
@@ -63,7 +63,7 @@ DRAW point
 
 Use a `'density'` distribution to also indicate the distribution shape with the jitter
 
-``` ggsql
+```ggsql
 VISUALISE species AS x, bill_dep AS y FROM ggsql:penguins
 DRAW point
   SETTING position => 'jitter', distribution => 'density'
@@ -73,7 +73,7 @@ DRAW point
 
 When both axes are discrete the dodging follows a grid
 
-``` ggsql
+```ggsql
 VISUALISE species AS x, sex AS y, body_mass AS fill FROM ggsql:penguins
 DRAW point
   SETTING position => 'jitter'
@@ -85,7 +85,7 @@ SCALE BINNED fill
 
 Pair a half-violin with one-sided jittered points by setting opposite `side` values:
 
-``` ggsql
+```ggsql
 VISUALISE species AS x, bill_dep AS y FROM ggsql:penguins
 DRAW violin SETTING side => 'left'
 DRAW point SETTING position => 'jitter', side => 'right', width => 0.4

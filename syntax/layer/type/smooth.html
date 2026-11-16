@@ -2,7 +2,7 @@
 <html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
 
 <meta charset="utf-8">
-<meta name="generator" content="quarto-1.12.1">
+<meta name="generator" content="quarto-1.12.2">
 
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
@@ -61,7 +61,27 @@ div.sourceCode
 @media screen {
 pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
 }
-</style>
+@media print {
+  html {
+    color-scheme: light only;
+  }
+  html, body, pre, code {
+    background-color: transparent;
+  }
+  body, a, a:visited, blockquote {
+    color: black;
+  }
+  pre, code {
+    padding: 0;
+  }
+  p, h2, h3 {
+    orphans: 3;
+    widows: 3;
+  }
+  h2, h3, h4 {
+    page-break-after: avoid;
+  }
+}</style>
 
 
 <script src="../../../site_libs/quarto-nav/quarto-nav.js"></script>
@@ -79,9 +99,9 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <script src="../../../site_libs/quarto-html/tippy.umd.min.js"></script>
 <script src="../../../site_libs/quarto-html/anchor.min.js"></script>
 <link href="../../../site_libs/quarto-html/tippy.css" rel="stylesheet">
-<link href="../../../site_libs/quarto-html/quarto-syntax-highlighting-ba38d682ef0eb2b9e84133c48a211adf.css" rel="stylesheet" class="quarto-color-scheme" id="quarto-text-highlighting-styles">
-<link href="../../../site_libs/quarto-html/quarto-syntax-highlighting-dark-ba38d682ef0eb2b9e84133c48a211adf.css" rel="stylesheet" class="quarto-color-scheme quarto-color-alternate" id="quarto-text-highlighting-styles">
-<link href="../../../site_libs/quarto-html/quarto-syntax-highlighting-ba38d682ef0eb2b9e84133c48a211adf.css" rel="stylesheet" class="quarto-color-scheme-extra" id="quarto-text-highlighting-styles">
+<link href="../../../site_libs/quarto-html/quarto-syntax-highlighting-391f73e9ed3e3552e24af4a231521fca.css" rel="stylesheet" class="quarto-color-scheme" id="quarto-text-highlighting-styles">
+<link href="../../../site_libs/quarto-html/quarto-syntax-highlighting-dark-391f73e9ed3e3552e24af4a231521fca.css" rel="stylesheet" class="quarto-color-scheme quarto-color-alternate" id="quarto-text-highlighting-styles">
+<link href="../../../site_libs/quarto-html/quarto-syntax-highlighting-391f73e9ed3e3552e24af4a231521fca.css" rel="stylesheet" class="quarto-color-scheme-extra" id="quarto-text-highlighting-styles">
 <script src="../../../site_libs/bootstrap/bootstrap.min.js"></script>
 <link href="../../../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
 <link href="../../../site_libs/bootstrap/bootstrap-0b0c8915fbd2cb21b8e60ef76089170f.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme" id="quarto-bootstrap" data-mode="light">
@@ -223,6 +243,23 @@ window.Quarto = {
     <a class="dropdown-item" href="../../../syntax/clause/label.html">
  <span class="dropdown-text"><code>LABEL</code></span></a>
   </li>  
+        <li><hr class="dropdown-divider"></li>
+        <li>
+    <a class="dropdown-item" href="../../../syntax/clause/tabulate.html">
+ <span class="dropdown-text"><code>TABULATE</code></span></a>
+  </li>  
+        <li>
+    <a class="dropdown-item" href="../../../syntax/clause/label-tabulate.html">
+ <span class="dropdown-text"><code>LABEL</code></span></a>
+  </li>  
+        <li>
+    <a class="dropdown-item" href="../../../syntax/clause/span.html">
+ <span class="dropdown-text"><code>SPAN</code></span></a>
+  </li>  
+        <li>
+    <a class="dropdown-item" href="../../../syntax/clause/format.html">
+ <span class="dropdown-text"><code>FORMAT</code></span></a>
+  </li>  
     </ul>
   </li>
   <li class="nav-item">
@@ -331,7 +368,7 @@ window.Quarto = {
         <li class="sidebar-item sidebar-item-section">
       <div class="sidebar-item-container"> 
             <button type="button" class="sidebar-item-text sidebar-item-toggle sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-1" aria-controls="quarto-sidebar-section-1" aria-expanded="true">
- <span class="menu-text" id="quarto-sidebar-section-1-label">Main clauses</span><i class="bi bi-chevron-right" aria-hidden="true"></i></button>
+ <span class="menu-text" id="quarto-sidebar-section-1-label">Visualise clauses</span><i class="bi bi-chevron-right" aria-hidden="true"></i></button>
       </div>
       <ul id="quarto-sidebar-section-1" aria-labelledby="quarto-sidebar-section-1-label" class="collapse list-unstyled sidebar-section depth1 show">  
           <li class="sidebar-item">
@@ -381,15 +418,47 @@ window.Quarto = {
         <li class="sidebar-item sidebar-item-section">
       <div class="sidebar-item-container"> 
             <button type="button" class="sidebar-item-text sidebar-item-toggle sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-2" aria-controls="quarto-sidebar-section-2" aria-expanded="true">
- <span class="menu-text" id="quarto-sidebar-section-2-label">Layers</span><i class="bi bi-chevron-right" aria-hidden="true"></i></button>
+ <span class="menu-text" id="quarto-sidebar-section-2-label">Tabulate clauses</span><i class="bi bi-chevron-right" aria-hidden="true"></i></button>
       </div>
       <ul id="quarto-sidebar-section-2" aria-labelledby="quarto-sidebar-section-2-label" class="collapse list-unstyled sidebar-section depth1 show">  
-          <li class="sidebar-item sidebar-item-section">
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../../../syntax/clause/tabulate.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text"><code>TABULATE</code></span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../../../syntax/clause/label-tabulate.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text"><code>LABEL</code></span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../../../syntax/clause/span.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text"><code>SPAN</code></span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../../../syntax/clause/format.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text"><code>FORMAT</code></span></a>
+  </div>
+</li>
+      </ul>
+  </li>
+        <li class="sidebar-item sidebar-item-section">
       <div class="sidebar-item-container"> 
             <button type="button" class="sidebar-item-text sidebar-item-toggle sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-3" aria-controls="quarto-sidebar-section-3" aria-expanded="true">
- <span class="menu-text" id="quarto-sidebar-section-3-label">Types</span><i class="bi bi-chevron-right" aria-hidden="true"></i></button>
+ <span class="menu-text" id="quarto-sidebar-section-3-label">Layers</span><i class="bi bi-chevron-right" aria-hidden="true"></i></button>
       </div>
-      <ul id="quarto-sidebar-section-3" aria-labelledby="quarto-sidebar-section-3-label" class="collapse list-unstyled sidebar-section depth2 show">  
+      <ul id="quarto-sidebar-section-3" aria-labelledby="quarto-sidebar-section-3-label" class="collapse list-unstyled sidebar-section depth1 show">  
+          <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container"> 
+            <button type="button" class="sidebar-item-text sidebar-item-toggle sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-4" aria-controls="quarto-sidebar-section-4" aria-expanded="true">
+ <span class="menu-text" id="quarto-sidebar-section-4-label">Types</span><i class="bi bi-chevron-right" aria-hidden="true"></i></button>
+      </div>
+      <ul id="quarto-sidebar-section-4" aria-labelledby="quarto-sidebar-section-4-label" class="collapse list-unstyled sidebar-section depth2 show">  
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
   <a href="../../../syntax/layer/type/area.html" class="sidebar-item-text sidebar-link">
@@ -502,10 +571,10 @@ window.Quarto = {
   </li>
           <li class="sidebar-item sidebar-item-section">
       <div class="sidebar-item-container"> 
-            <button type="button" class="sidebar-item-text sidebar-item-toggle sidebar-link text-start collapsed" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-4" aria-controls="quarto-sidebar-section-4" aria-expanded="false">
- <span class="menu-text" id="quarto-sidebar-section-4-label">Position adjustment</span><i class="bi bi-chevron-right" aria-hidden="true"></i></button>
+            <button type="button" class="sidebar-item-text sidebar-item-toggle sidebar-link text-start collapsed" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-5" aria-controls="quarto-sidebar-section-5" aria-expanded="false">
+ <span class="menu-text" id="quarto-sidebar-section-5-label">Position adjustment</span><i class="bi bi-chevron-right" aria-hidden="true"></i></button>
       </div>
-      <ul id="quarto-sidebar-section-4" aria-labelledby="quarto-sidebar-section-4-label" class="collapse list-unstyled sidebar-section depth2 ">  
+      <ul id="quarto-sidebar-section-5" aria-labelledby="quarto-sidebar-section-5-label" class="collapse list-unstyled sidebar-section depth2 ">  
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
   <a href="../../../syntax/layer/position/dodge.html" class="sidebar-item-text sidebar-link">
@@ -536,16 +605,16 @@ window.Quarto = {
   </li>
         <li class="sidebar-item sidebar-item-section">
       <div class="sidebar-item-container"> 
-            <button type="button" class="sidebar-item-text sidebar-item-toggle sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-5" aria-controls="quarto-sidebar-section-5" aria-expanded="true">
- <span class="menu-text" id="quarto-sidebar-section-5-label">Scales</span><i class="bi bi-chevron-right" aria-hidden="true"></i></button>
+            <button type="button" class="sidebar-item-text sidebar-item-toggle sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-6" aria-controls="quarto-sidebar-section-6" aria-expanded="true">
+ <span class="menu-text" id="quarto-sidebar-section-6-label">Scales</span><i class="bi bi-chevron-right" aria-hidden="true"></i></button>
       </div>
-      <ul id="quarto-sidebar-section-5" aria-labelledby="quarto-sidebar-section-5-label" class="collapse list-unstyled sidebar-section depth1 show">  
+      <ul id="quarto-sidebar-section-6" aria-labelledby="quarto-sidebar-section-6-label" class="collapse list-unstyled sidebar-section depth1 show">  
           <li class="sidebar-item sidebar-item-section">
       <div class="sidebar-item-container"> 
-            <button type="button" class="sidebar-item-text sidebar-item-toggle sidebar-link text-start collapsed" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-6" aria-controls="quarto-sidebar-section-6" aria-expanded="false">
- <span class="menu-text" id="quarto-sidebar-section-6-label">Types</span><i class="bi bi-chevron-right" aria-hidden="true"></i></button>
+            <button type="button" class="sidebar-item-text sidebar-item-toggle sidebar-link text-start collapsed" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-7" aria-controls="quarto-sidebar-section-7" aria-expanded="false">
+ <span class="menu-text" id="quarto-sidebar-section-7-label">Types</span><i class="bi bi-chevron-right" aria-hidden="true"></i></button>
       </div>
-      <ul id="quarto-sidebar-section-6" aria-labelledby="quarto-sidebar-section-6-label" class="collapse list-unstyled sidebar-section depth2 ">  
+      <ul id="quarto-sidebar-section-7" aria-labelledby="quarto-sidebar-section-7-label" class="collapse list-unstyled sidebar-section depth2 ">  
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
   <a href="../../../syntax/scale/type/binned.html" class="sidebar-item-text sidebar-link">
@@ -580,10 +649,10 @@ window.Quarto = {
   </li>
           <li class="sidebar-item sidebar-item-section">
       <div class="sidebar-item-container"> 
-            <button type="button" class="sidebar-item-text sidebar-item-toggle sidebar-link text-start collapsed" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-7" aria-controls="quarto-sidebar-section-7" aria-expanded="false">
- <span class="menu-text" id="quarto-sidebar-section-7-label">Aesthetics</span><i class="bi bi-chevron-right" aria-hidden="true"></i></button>
+            <button type="button" class="sidebar-item-text sidebar-item-toggle sidebar-link text-start collapsed" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-8" aria-controls="quarto-sidebar-section-8" aria-expanded="false">
+ <span class="menu-text" id="quarto-sidebar-section-8-label">Aesthetics</span><i class="bi bi-chevron-right" aria-hidden="true"></i></button>
       </div>
-      <ul id="quarto-sidebar-section-7" aria-labelledby="quarto-sidebar-section-7-label" class="collapse list-unstyled sidebar-section depth2 ">  
+      <ul id="quarto-sidebar-section-8" aria-labelledby="quarto-sidebar-section-8-label" class="collapse list-unstyled sidebar-section depth2 ">  
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
   <a href="../../../syntax/scale/aesthetic/0_position.html" class="sidebar-item-text sidebar-link">
@@ -638,10 +707,10 @@ window.Quarto = {
   </li>
         <li class="sidebar-item sidebar-item-section">
       <div class="sidebar-item-container"> 
-            <button type="button" class="sidebar-item-text sidebar-item-toggle sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-8" aria-controls="quarto-sidebar-section-8" aria-expanded="true">
- <span class="menu-text" id="quarto-sidebar-section-8-label">Coordinate systems</span><i class="bi bi-chevron-right" aria-hidden="true"></i></button>
+            <button type="button" class="sidebar-item-text sidebar-item-toggle sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-9" aria-controls="quarto-sidebar-section-9" aria-expanded="true">
+ <span class="menu-text" id="quarto-sidebar-section-9-label">Coordinate systems</span><i class="bi bi-chevron-right" aria-hidden="true"></i></button>
       </div>
-      <ul id="quarto-sidebar-section-8" aria-labelledby="quarto-sidebar-section-8-label" class="collapse list-unstyled sidebar-section depth1 show">  
+      <ul id="quarto-sidebar-section-9" aria-labelledby="quarto-sidebar-section-9-label" class="collapse list-unstyled sidebar-section depth1 show">  
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
   <a href="../../../syntax/coord/cartesian.html" class="sidebar-item-text sidebar-link">
@@ -761,9 +830,7 @@ window.Quarto = {
 <section id="nadaraya-watson-kernel-regression" class="level3">
 <h3 class="anchored" data-anchor-id="nadaraya-watson-kernel-regression">Nadaraya-Watson kernel regression</h3>
 <p>The default <code>method =&gt; 'nw'</code> computes a locally weighted average of <span class="math inline">\(y\)</span>.</p>
-<p><span class="math display">\[
-y(x) = \frac{\sum_{i=1}^nW(x)y_i}{\sum_{i=1}^nW(x)}
-\]</span></p>
+<p><span class="math display">\[y(x) = \frac{\sum_{i=1}^nW(x)y_i}{\sum_{i=1}^nW(x)}\]</span></p>
 <p>Where:</p>
 <ul>
 <li><span class="math inline">\(W(x)\)</span> is kernel intensity <span class="math inline">\(w_iK(\frac{x - x_i}{h})\)</span> where
@@ -778,32 +845,20 @@ y(x) = \frac{\sum_{i=1}^nW(x)y_i}{\sum_{i=1}^nW(x)}
 <section id="ordinary-least-squares" class="level3">
 <h3 class="anchored" data-anchor-id="ordinary-least-squares">Ordinary least squares</h3>
 <p>The <code>method =&gt; 'ols'</code> setting uses ordinary least squares to compute the intercept <span class="math inline">\(a\)</span> and slope <span class="math inline">\(b\)</span> of a straight line. The method minimizes the 1-dimensional distance between a point and the vertical projection of that point on the line. Only considering the vertical distances implies having measurement error in <span class="math inline">\(y\)</span>, but not <span class="math inline">\(x\)</span>.</p>
-<p><span class="math display">\[
-y = a + bx
-\]</span></p>
+<p><span class="math display">\[y = a + bx\]</span></p>
 <p>Wherein:</p>
-<p><span class="math display">\[
-a = E[Y] - bE[X]
-\]</span></p>
+<p><span class="math display">\[a = E[Y] - bE[X]\]</span></p>
 <p>and</p>
-<p><span class="math display">\[
-b = \frac{\text{cov}(X, Y)}{\text{var}(X)} = \frac{E[XY] - E[X]E[Y]}{E[X^2]-(E[X])^2}
-\]</span></p>
+<p><span class="math display">\[b = \frac{\text{cov}(X, Y)}{\text{var}(X)} = \frac{E[XY] - E[X]E[Y]}{E[X^2]-(E[X])^2}\]</span></p>
 </section>
 <section id="total-least-squares" class="level3">
 <h3 class="anchored" data-anchor-id="total-least-squares">Total least squares</h3>
 <p>The <code>method =&gt; 'tls'</code> setting uses total least squares to compute the intercept <span class="math inline">\(a\)</span> and slope <span class="math inline">\(b\)</span> of a straight line. The method minimizes the 2-dimensional distance between a point and the perpendicular projection of that point on the line. Minimising the perpendicular distances (rather than just the vertical distances) makes sense if there is uncertainty or measurement error in not just <span class="math inline">\(y\)</span>, but in <span class="math inline">\(x\)</span> as well. In such case, it is a more accurate depiction of the relationship between <span class="math inline">\(x\)</span> and <span class="math inline">\(y\)</span>, but it isn’t the best predictor of <span class="math inline">\(y\)</span> given <span class="math inline">\(x\)</span>.</p>
-<p><span class="math display">\[
-y = a + bx
-\]</span></p>
+<p><span class="math display">\[y = a + bx\]</span></p>
 <p>Wherein:</p>
-<p><span class="math display">\[
-a = E[Y] - bE[X]
-\]</span></p>
+<p><span class="math display">\[a = E[Y] - bE[X]\]</span></p>
 <p>and</p>
-<p><span class="math display">\[
-b = \frac{\text{var}(Y) - \text{var}(X) + \sqrt{(\text{var}(Y) - \text{var}(X))^2 + 4\text{cov}(X, Y)^2}}{2\text{cov}(X, Y)}
-\]</span></p>
+<p><span class="math display">\[b = \frac{\text{var}(Y) - \text{var}(X) + \sqrt{(\text{var}(Y) - \text{var}(X))^2 + 4\text{cov}(X, Y)^2}}{2\text{cov}(X, Y)}\]</span></p>
 </section>
 <section id="properties" class="level3">
 <h3 class="anchored" data-anchor-id="properties">Properties</h3>
@@ -828,7 +883,7 @@ b = \frac{\text{var}(Y) - \text{var}(X) + \sqrt{(\text{var}(Y) - \text{var}(X))^
 <h2 class="anchored" data-anchor-id="examples">Examples</h2>
 <p>The default <code>method =&gt; 'nw'</code> might be too coarse for timeseries.</p>
 <!-- Ideally, we would just use the date here directly but we currently require numeric data -->
-<div id="15b55977" class="cell" data-execution_count="1">
+<div id="b4ca4cc6" class="cell" data-execution_count="1">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb1"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="kw">SELECT</span> <span class="op">*</span> <span class="kw">FROM</span> ggsql:airquality</span>
 <span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> Epoch <span class="kw">AS</span> <span class="at">x</span>, Temp <span class="kw">AS</span> <span class="at">y</span></span>
 <span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">point</span></span>
@@ -842,7 +897,7 @@ b = \frac{\text{var}(Y) - \text{var}(X) + \sqrt{(\text{var}(Y) - \text{var}(X))^
 </div>
 </div>
 <p>You can make the fit more granular by reducing the bandwidth, for example using <code>adjust</code>.</p>
-<div id="ea7edefa" class="cell" data-execution_count="2">
+<div id="fb08dfdd" class="cell" data-execution_count="2">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb2"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="kw">SELECT</span> <span class="op">*</span> <span class="kw">FROM</span> ggsql:airquality</span>
 <span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> Epoch <span class="kw">AS</span> <span class="at">x</span>, Temp <span class="kw">AS</span> <span class="at">y</span></span>
 <span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">point</span></span>
@@ -857,7 +912,7 @@ b = \frac{\text{var}(Y) - \text{var}(X) + \sqrt{(\text{var}(Y) - \text{var}(X))^
 </div>
 </div>
 <p>There is a subtle difference between the ordinary and total least squares method.</p>
-<div id="1265f907" class="cell" data-execution_count="3">
+<div id="fd74a9e1" class="cell" data-execution_count="3">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb3"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> bill_len <span class="kw">AS</span> <span class="at">x</span>, bill_dep <span class="kw">AS</span> <span class="at">y</span> <span class="kw">FROM</span> ggsql:penguins</span>
 <span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">point</span></span>
 <span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">smooth</span> </span>
@@ -875,7 +930,7 @@ b = \frac{\text{var}(Y) - \text{var}(X) + \sqrt{(\text{var}(Y) - \text{var}(X))^
 </div>
 </div>
 <p>Simpson’s Paradox is a case where a trend of combined groups is reversed when groups are considered separately.</p>
-<div id="a520038d" class="cell" data-execution_count="4">
+<div id="1e41ee06" class="cell" data-execution_count="4">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb4"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> bill_len <span class="kw">AS</span> <span class="at">x</span>, bill_dep <span class="kw">AS</span> <span class="at">y</span>, species <span class="kw">AS</span> <span class="at">stroke</span> <span class="kw">FROM</span> ggsql:penguins</span>
 <span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">point</span> </span>
 <span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>  <span class="kw">SETTING</span> <span class="at">opacity</span> <span class="op">=&gt;</span> <span class="dv">0</span></span>

@@ -6,7 +6,7 @@
 
 The `DRAW` clause takes a number of subclauses, all of them optional if the `VISUALISE` clause provides a global mapping and data source.
 
-``` ggsql
+```ggsql
 DRAW <layer-type>
   MAPPING <mapping>, ... FROM <data-source>
   REMAPPING <mapping>, ...
@@ -20,7 +20,7 @@ The only required part is the layer type immediately following the `DRAW` clause
 
 ### `MAPPING`
 
-``` ggsql
+```ggsql
 MAPPING <mapping>, ... FROM <data-source>
 ```
 
@@ -57,7 +57,7 @@ A layer may use a data source different than the global data by appending a `FRO
 
 ### `REMAPPING`
 
-``` ggsql
+```ggsql
 REMAPPING <mapping>, ...
 ```
 
@@ -67,7 +67,7 @@ Remappings have to be explicit since the property name never coincide with an ae
 
 ### `SETTING`
 
-``` ggsql
+```ggsql
 SETTING <parameter/aesthetic> => <value>, ...
 ```
 
@@ -127,7 +127,7 @@ In the single-row (reduction) case aggregation applies in place — no `REMAPPIN
 
 ### `FILTER`
 
-``` ggsql
+```ggsql
 FILTER <condition>
 ```
 
@@ -135,7 +135,7 @@ You may not want to use all data provided from the data source in the layer. You
 
 ### `PARTITION BY`
 
-``` ggsql
+```ggsql
 PARTITION BY <column>, ...
 ```
 
@@ -145,7 +145,7 @@ Often the implicit grouping from the aesthetic mapping is enough, e.g. mapping 
 
 ### `ORDER BY`
 
-``` ggsql
+```ggsql
 ORDER BY <column>, ...
 ```
 

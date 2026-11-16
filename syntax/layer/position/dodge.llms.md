@@ -20,7 +20,7 @@ Apart from the settings of the layer type, setting `position => 'dodge'` will al
 
 Dodging is default in boxplots (and violin plots)
 
-``` ggsql
+```ggsql
 VISUALISE species AS x, bill_dep AS y, sex AS fill FROM ggsql:penguins
 DRAW boxplot
 ```
@@ -29,7 +29,7 @@ DRAW boxplot
 
 Turning it off allows you to see the effect of it
 
-``` ggsql
+```ggsql
 VISUALISE species AS x, bill_dep AS y, sex AS fill FROM ggsql:penguins
 DRAW boxplot 
   SETTING position => 'identity'
@@ -39,7 +39,7 @@ DRAW boxplot
 
 Dodge can be used for bar plots as an alternative to the default stack
 
-``` ggsql
+```ggsql
 VISUALISE species AS x, island AS fill FROM ggsql:penguins
 DRAW bar 
   SETTING position => 'dodge'
@@ -49,7 +49,7 @@ DRAW bar
 
 Often `width` is part of the layer settings and gets used directly by the dodge position, but for layers with no inherent width setting dodge provides that setting as well
 
-``` ggsql
+```ggsql
 VISUALISE species AS x, bill_dep AS y, sex AS shape FROM ggsql:penguins
 DRAW point 
   SETTING position => 'dodge', width => 0.5

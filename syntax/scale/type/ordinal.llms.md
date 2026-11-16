@@ -14,7 +14,7 @@ The input range for ordinal scales consists of all the unique values that the sc
 
 #### Use input range to define an ordering
 
-``` ggsql
+```ggsql
 SELECT *,
 CASE
   WHEN Wind <= 3 THEN 'Light Air'
@@ -60,7 +60,7 @@ While it is possible to use an ordinal scale to map ordered discrete data to lin
 
 #### Use a continuous color palette with discrete
 
-``` ggsql
+```ggsql
 VISUALISE Ozone AS x, Temp AS y FROM ggsql:airquality
 DRAW point
   MAPPING Month AS color
@@ -71,7 +71,7 @@ SCALE ORDINAL color TO lapaz
 
 #### Use linetype for sequential data
 
-``` ggsql
+```ggsql
 VISUALISE Day AS x, Temp AS y FROM ggsql:airquality
 DRAW line
   MAPPING Month AS linetype
@@ -94,7 +94,7 @@ There is only one setting relevant for ordinal scales:
 
 #### Reverse the scale to swap the color mapping
 
-``` ggsql
+```ggsql
 VISUALISE Ozone AS x, Temp AS y FROM ggsql:airquality
 DRAW point
   MAPPING Month AS color
@@ -122,7 +122,7 @@ You can combine formatting with direct renaming in which case the direct renamin
 
 #### Selectively rename a label
 
-``` ggsql
+```ggsql
 VISUALISE Ozone AS x, Temp AS y FROM ggsql:airquality
 DRAW point
   MAPPING Month AS color
@@ -134,7 +134,7 @@ SCALE ORDINAL color
 
 #### Use string interpolation to add a suffix
 
-``` ggsql
+```ggsql
 VISUALISE Ozone AS x, Temp AS y FROM ggsql:airquality
 DRAW point
   MAPPING Month AS color
@@ -146,7 +146,7 @@ SCALE ORDINAL color
 
 #### Use a formatter to make labels shouty
 
-``` ggsql
+```ggsql
 SELECT *,
 CASE
   WHEN Wind <= 3 THEN 'Light Air'

@@ -19,7 +19,7 @@ Boxplots are a popular way to display a summary of a distribution of single cont
 
 ## Code
 
-``` ggsql
+```ggsql
 VISUALISE species AS x, bill_len AS y FROM ggsql:penguins
   DRAW boxplot
 ```
@@ -39,7 +39,7 @@ VISUALISE species AS x, bill_len AS y FROM ggsql:penguins
 
 You can refine groups beyond the axis categorical variable, and the boxplots will be displayed in a dodged way.
 
-``` ggsql
+```ggsql
 VISUALISE species AS x, bill_len AS y, island AS fill FROM ggsql:penguins
   DRAW boxplot
 ```
@@ -48,7 +48,7 @@ VISUALISE species AS x, bill_len AS y, island AS fill FROM ggsql:penguins
 
 However, dodging might be unproductive or counterintuitive in some cases. For example if we double-encode groups, like `species` as both `x` *and* `fill` in the plot below, dodging looks bad.
 
-``` ggsql
+```ggsql
 VISUALISE species AS x, bill_len AS y, species AS fill FROM ggsql:penguins
   DRAW boxplot
 ```
@@ -57,7 +57,7 @@ VISUALISE species AS x, bill_len AS y, species AS fill FROM ggsql:penguins
 
 We can disable the dodging by setting `position => 'identity'`.
 
-``` ggsql
+```ggsql
 VISUALISE species AS x, bill_len AS y, species AS fill FROM ggsql:penguins
   DRAW boxplot SETTING position => 'identity'
 ```
@@ -68,7 +68,7 @@ VISUALISE species AS x, bill_len AS y, species AS fill FROM ggsql:penguins
 
 To draw the boxplots horizontally, simply swap the `x` and `y` mapping. The orientation is detected automatically based on which variable is continuous and which is discrete.
 
-``` ggsql
+```ggsql
 VISUALISE bill_len AS x, species AS y, island AS fill FROM ggsql:penguins
   DRAW boxplot
 ```
@@ -79,7 +79,7 @@ VISUALISE bill_len AS x, species AS y, island AS fill FROM ggsql:penguins
 
 Because a boxplot is a summary, it may be a good idea to supplement them with individual datapoints so that you can’t be accused of ‘hiding’ the distribution. The datapoints can be jittered by setting `position => 'jitter'`. When you do this, make sure to turn `outliers => false` to not draw the outlier points twice across the two layers.
 
-``` ggsql
+```ggsql
 VISUALISE species AS x, bill_len AS y FROM ggsql:penguins
   DRAW point SETTING position => 'jitter'
   DRAW boxplot SETTING outliers => false

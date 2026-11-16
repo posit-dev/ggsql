@@ -8,7 +8,7 @@ The `size` aesthetic defines the size of points (of any shape). It is measured a
 
 Sizes are given as bare numbers and measured in points. The following code will e.g. set the radius of points to 3pt (~28pt²):
 
-``` ggsql
+```ggsql
 DRAW point
   SETTING size => 3
 ```
@@ -17,6 +17,6 @@ DRAW point
 
 Size can only be used for sequential data and has no named palettes. The default for continuous, binned, and ordinal scales is to use the range from 1pt to 6 pt and interpolate between them. This can be overwritten by providing a manual output range specification
 
-``` ggsql
+```ggsql
 SCALE size TO (3, 9)
 ```

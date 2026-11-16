@@ -1,12 +1,16 @@
 # Define different titles with `LABEL`
 
+> **NOTE:**
+>
+> This page is about the `VISUALISE` usage of the `LABEL` clause. For the `TABULATE` usage, see [this page](../../syntax/clause/label-tabulate.llms.md).
+
 The `LABEL` clause is one of the simpler clauses in ggsql and allows you to override the default naming of axes and legends, as well as adding titles to the plot.
 
 ## Clause syntax
 
 The `LABEL` clause takes one or more labeling settings.
 
-``` ggsql
+```ggsql
 LABEL <aesthetic/title> => <string>, ...
 ```
 
@@ -33,8 +37,8 @@ Axes and legends get an automatic label from the mapping. The logic is as follow
 1.  Start from the global mapping and then go through the layer mappings as they appear.
 2.  Collect mappings for each aesthetic in the order they appear
 3.  For each aesthetic determine the label based on the following priority:
-4.  An explicitly provided one with `LABEL`
-5.  The name of the first appearing column mapping
-6.  The name of the aesthetic
+    1.  An explicitly provided one with `LABEL`
+    2.  The name of the first appearing column mapping
+    3.  The name of the aesthetic
 
-This means that constants mapped to an aesthetic doesn’t contribute to the derived label, only data columns, and if all else fails the name of the aesthetic will be used.
+This means that constants mapped to an aesthetic don’t contribute to the derived label, only data columns, and if all else fails the name of the aesthetic will be used.

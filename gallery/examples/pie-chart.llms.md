@@ -12,7 +12,7 @@ Pie charts are a popular but less effective way to display proportions of groups
 
 It makes sense to construct pie charts first in a Cartesian coordinate system, which makes it easier to diagnose any potential problems. We start out with a stacked bar chart. The `bar` layer does not need `x` or `y` because if absent, it will count the number of observations per group. Stacking is the default position adjustment for the `bar` layer.
 
-``` ggsql
+```ggsql
 VISUALISE island AS fill FROM ggsql:penguins
   DRAW bar
 ```
@@ -21,7 +21,7 @@ VISUALISE island AS fill FROM ggsql:penguins
 
 Now we need to add the polar coordinate system to make a pie chart.
 
-``` ggsql
+```ggsql
 VISUALISE island AS fill FROM ggsql:penguins
   DRAW bar
   PROJECT TO polar
@@ -45,7 +45,7 @@ VISUALISE island AS fill FROM ggsql:penguins
 
 If we’ve pre-computed proportions or counts, we can build a pie chart by mapping to the `angle` and `radius` aesthetics. Going for a classic pie chart, you may have to define a dummy `radius` aesthetic, because the default behaviour would otherwise be to count the number of every `n`.
 
-``` ggsql
+```ggsql
 WITH count_data AS (
   SELECT 
     COUNT(*) AS n,
@@ -66,7 +66,7 @@ Note that because we’re using `angle` and `radius`, we no longer need to speci
 
 You could in theory also use a non-dummy variable for `radius`, but you may need to use `SETTING total` to fill in each ring. We must warn sternly that this is a bad idea though. We tend to judge pie charts by area, and the more central rings are allocated less area than the outer rings. This could mislead one into thinking that the ‘Adelie’ species makes up the vast majority of the observations by eyeballing the cart below. In reality, the ‘Adelie’ species makes up ~44% of the dataset: a narrow plurality.
 
-``` ggsql
+```ggsql
 VISUALISE island AS radius, species AS fill FROM ggsql:penguins
   DRAW bar SETTING total => 100
 ```
@@ -77,7 +77,7 @@ VISUALISE island AS radius, species AS fill FROM ggsql:penguins
 
 Donut charts are a variation of the pie chart that shows a ring instead of a full circle. You can create a donut chart by setting the `inner` of the polar coordinate system.
 
-``` ggsql
+```ggsql
 VISUALISE island AS fill FROM ggsql:penguins
   DRAW bar
   PROJECT TO polar SETTING inner => 0.5
@@ -89,7 +89,7 @@ VISUALISE island AS fill FROM ggsql:penguins
 
 These plots are a piece of cake. You can set their extent by tweaking the `start` and `end` setting in degrees. If you want the `angle` aesthetic to take up the full extent, you may turn off the `expand` setting in the angle scale.
 
-``` ggsql
+```ggsql
 VISUALISE island AS fill FROM ggsql:penguins
   DRAW bar
   PROJECT TO polar SETTING start => -90, end => 90
@@ -102,7 +102,7 @@ VISUALISE island AS fill FROM ggsql:penguins
 
 When faceting, you will typically want the pies to be whole, which requires the `SETTING free => 'angle'` specification.
 
-``` ggsql
+```ggsql
 VISUALISE island AS fill FROM ggsql:penguins
   DRAW bar
   PROJECT TO polar 

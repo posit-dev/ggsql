@@ -20,7 +20,7 @@ If your data is discrete in nature but does have ordering, consider using the [o
 
 #### Not providing input range will ensure even bin size
 
-``` ggsql
+```ggsql
 VISUALISE body_mass AS x FROM ggsql:penguins
 DRAW bar
 SCALE BINNED x
@@ -30,7 +30,7 @@ SCALE BINNED x
 
 #### Setting input range will force boundary of terminal bins
 
-``` ggsql
+```ggsql
 VISUALISE body_mass AS x FROM ggsql:penguins
 DRAW bar
 SCALE BINNED x FROM (2700, 6300)
@@ -57,7 +57,7 @@ While it is possible to use a binned scale to map continuous data to linetype an
 
 #### Select a continuous color palette
 
-``` ggsql
+```ggsql
 VISUALISE bill_len AS x, bill_dep AS y, body_mass AS color FROM ggsql:penguins
 DRAW point
 SCALE BINNED color TO viridis
@@ -115,7 +115,7 @@ If you wish to scale by the radius (not advised) you should do so using the `squ
 
 #### Turn off pretty to get exact bins between range
 
-``` ggsql
+```ggsql
 VISUALISE body_mass AS x FROM ggsql:penguins
 DRAW bar
 SCALE BINNED x
@@ -126,7 +126,7 @@ SCALE BINNED x
 
 #### Use a date transform to bin on months
 
-``` ggsql
+```ggsql
 VISUALISE Date AS x, Temp AS y FROM ggsql:airquality
 DRAW boxplot
 SCALE BINNED x VIA date
@@ -150,7 +150,7 @@ The following settings are recognised by binned scales:
 
 #### Use oob =\> ‘squish’ to add data outside range to terminal bins
 
-``` ggsql
+```ggsql
 VISUALISE body_mass AS x FROM ggsql:penguins
 DRAW bar
 SCALE BINNED x
@@ -185,7 +185,7 @@ If `oob => 'squish'` then the terminal labels are formatted as e.g. “≥ 10�
 
 #### Rename a select break
 
-``` ggsql
+```ggsql
 VISUALISE bill_dep AS x FROM ggsql:penguins
 DRAW bar
 SCALE BINNED x
@@ -196,7 +196,7 @@ SCALE BINNED x
 
 #### Adding suffix to break labels
 
-``` ggsql
+```ggsql
 VISUALISE bill_dep AS x FROM ggsql:penguins
 DRAW bar
 SCALE BINNED x
@@ -207,7 +207,7 @@ SCALE BINNED x
 
 #### Using a formatter to control number formats
 
-``` ggsql
+```ggsql
 VISUALISE bill_dep AS x FROM ggsql:penguins
 DRAW bar
 SCALE BINNED x

@@ -6,7 +6,7 @@ The `FACET` clause allows you to split your data, by one or two variables, and p
 
 The `FACET` syntax contains a number of subclauses that are all optional
 
-``` ggsql
+```ggsql
 FACET <column> BY <column>
   SETTING <parameter> => <value>, ...
 ```
@@ -15,7 +15,7 @@ The first `column` is mandatory. It names a column in the layer data that will b
 
 ### `BY`
 
-``` ggsql
+```ggsql
 BY <column>
 ```
 
@@ -23,7 +23,7 @@ The optional `BY` clause is used to define an additional column to split the dat
 
 ### `SETTING`
 
-``` ggsql
+```ggsql
 SETTING <parameter> => <value>, ...
 ```
 
@@ -45,7 +45,7 @@ When you apply faceting to a plot you are creating new aesthetics you can contro
 
 To customize facet strip labels (e.g., renaming categories), use the `RENAMING` clause on the facet scale:
 
-``` ggsql
+```ggsql
 FACET region
 SCALE panel 
   RENAMING 'N' => 'North', 'S' => 'South'

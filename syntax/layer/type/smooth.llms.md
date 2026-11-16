@@ -90,7 +90,7 @@ $$b = \frac{\text{var}(Y) - \text{var}(X) + \sqrt{(\text{var}(Y) - \text{var}(X)
 
 The default `method => 'nw'` might be too coarse for timeseries.
 
-``` ggsql
+```ggsql
 SELECT * FROM ggsql:airquality
 VISUALISE Epoch AS x, Temp AS y
 DRAW point
@@ -101,7 +101,7 @@ DRAW smooth
 
 You can make the fit more granular by reducing the bandwidth, for example using `adjust`.
 
-``` ggsql
+```ggsql
 SELECT * FROM ggsql:airquality
 VISUALISE Epoch AS x, Temp AS y
 DRAW point
@@ -113,7 +113,7 @@ DRAW smooth
 
 There is a subtle difference between the ordinary and total least squares method.
 
-``` ggsql
+```ggsql
 VISUALISE bill_len AS x, bill_dep AS y FROM ggsql:penguins
 DRAW point
 DRAW smooth 
@@ -128,7 +128,7 @@ DRAW smooth
 
 Simpson’s Paradox is a case where a trend of combined groups is reversed when groups are considered separately.
 
-``` ggsql
+```ggsql
 VISUALISE bill_len AS x, bill_dep AS y, species AS stroke FROM ggsql:penguins
 DRAW point 
   SETTING opacity => 0

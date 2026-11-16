@@ -22,7 +22,7 @@ You *must* specify an aesthetic so that the scale knows which mapping it belongs
 
 ### `FROM`
 
-``` ggsql
+```ggsql
 FROM <input-range>
 ```
 
@@ -30,7 +30,7 @@ The `FROM` clause defines the input range of the scale, i.e. the values the sca
 
 ### `TO`
 
-``` ggsql
+```ggsql
 TO <output-range>
 ```
 
@@ -38,7 +38,7 @@ The `TO` clause defines the output range of the scale, i.e. what the data is tr
 
 ### `VIA`
 
-``` ggsql
+```ggsql
 VIA <transform>
 ```
 
@@ -46,7 +46,7 @@ The `VIA` clause defines a transform which is applied to the data before mapping
 
 ### `SETTING`
 
-``` ggsql
+```ggsql
 SETTING <parameter> => <value>, ...
 ```
 
@@ -54,7 +54,7 @@ This clause behaves much like the `SETTINGS` clause in `DRAW`, in that it allows
 
 ### `RENAMING`
 
-``` ggsql
+```ggsql
 RENAMING <break-value> => <string>, ...
 ```
 

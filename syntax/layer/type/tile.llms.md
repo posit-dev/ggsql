@@ -58,7 +58,7 @@ The tile layer has no orientation. The axes are treated symmetrically.
 
 Just using `x` and `y`. Note that `width` and `height` are set to 1.
 
-``` ggsql
+```ggsql
 VISUALISE Day AS x, Month AS y, Temp AS colour FROM ggsql:airquality
 DRAW tile 
 ```
@@ -67,7 +67,7 @@ DRAW tile
 
 Customising `width` and `height` with either the `MAPPING` or `SETTING` clauses.
 
-``` ggsql
+```ggsql
 VISUALISE Day AS x, Month AS y, Temp AS colour FROM ggsql:airquality
 DRAW tile 
   MAPPING 0.5 AS width 
@@ -78,7 +78,7 @@ DRAW tile
 
 If `x` is continuous, then `width` can be variable. Likewise for `y` and `height`.
 
-``` ggsql
+```ggsql
 SELECT 
   *, 
   CAST(Temp AS REAL) / (SELECT MAX(Temp) FROM ggsql:airquality) AS norm_temp 
@@ -93,7 +93,7 @@ DRAW tile
 
 Using top, right, bottom, left parameterisation instead.
 
-``` ggsql
+```ggsql
 SELECT
   MIN(Date) AS start,
   MAX(Date) AS end,
@@ -110,7 +110,7 @@ DRAW tile
 
 Building a heatmap from raw rows by aggregating per cell.
 
-``` ggsql
+```ggsql
 VISUALISE FROM ggsql:penguins
 DRAW tile
   MAPPING species AS x, sex AS y, body_mass AS fill
@@ -121,7 +121,7 @@ DRAW tile
 
 Using a tile as an annotation. Note we’re using the `PLACE` clause here instead of `DRAW` because we’re not mapping from data.
 
-``` ggsql
+```ggsql
 VISUALISE FROM ggsql:airquality
 PLACE tile 
   SETTING

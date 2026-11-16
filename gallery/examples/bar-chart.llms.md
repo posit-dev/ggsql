@@ -10,7 +10,7 @@ Bar charts display categorical data with rectangular bars. The height of each ba
 
 ## Code
 
-``` ggsql
+```ggsql
 SELECT species, COUNT(*) as count FROM ggsql:penguins
 GROUP BY species
 VISUALISE species AS x, count AS y, species AS fill
@@ -37,7 +37,7 @@ LABEL
 
 Use `PROJECT y, x TO cartesian` to flip the axes for horizontal bars:
 
-``` ggsql
+```ggsql
 SELECT species, COUNT(*) as count FROM ggsql:penguins
 GROUP BY species
 VISUALISE species AS x, count AS y, species AS fill
@@ -55,7 +55,7 @@ LABEL
 
 When you don’t specify a y aesthetic, ggsql automatically counts occurrences:
 
-``` ggsql
+```ggsql
 SELECT species FROM ggsql:penguins
 VISUALISE species AS x
 DRAW bar

@@ -10,7 +10,7 @@ Multi-layer plots combine different geometric elements (geoms) to create richer 
 
 ## Code
 
-``` ggsql
+```ggsql
 SELECT Date, Temp FROM ggsql:airquality
 VISUALISE Date AS x, Temp AS y
 DRAW line
@@ -39,7 +39,7 @@ LABEL
 
 Each layer can have its own aesthetic mappings using `MAPPING`:
 
-``` ggsql
+```ggsql
 SELECT Date, Temp, Ozone FROM ggsql:airquality
 VISUALISE Date AS x
 DRAW line
@@ -59,7 +59,7 @@ LABEL
 
 Use `MAPPING ... FROM` to pull each layer from different CTEs:
 
-``` ggsql
+```ggsql
 WITH temps AS (
   SELECT Date, Temp as value FROM ggsql:airquality
 ),

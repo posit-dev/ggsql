@@ -97,7 +97,7 @@ The text layer has no orientation. The axes are treated symmetrically.
 
 Standard drawing data points as labels.
 
-``` ggsql
+```ggsql
 VISUALISE bill_len AS x, bill_dep AS y FROM ggsql:penguins
 DRAW text 
   MAPPING island AS label
@@ -107,7 +107,7 @@ DRAW text
 
 You can use the `format` setting to tweak the display of the label.
 
-``` ggsql
+```ggsql
 VISUALISE bill_len AS x, bill_dep AS y FROM ggsql:penguins
 DRAW text 
   MAPPING island AS label
@@ -118,7 +118,7 @@ DRAW text
 
 Setting font properties. Colours are typically mapped to the fill.
 
-``` ggsql
+```ggsql
 VISUALISE bill_len AS x, bill_dep AS y FROM ggsql:penguins
 DRAW text 
   MAPPING island AS label, species AS fill, flipper_len AS fontsize
@@ -133,7 +133,7 @@ SCALE fontsize TO (6, 20)
 
 Labels are read as markdown, so a `format` template can style part of the label. This does not show up in Vega-Lite output, which has no rich text.
 
-``` ggsql
+```ggsql
 VISUALISE bill_len AS x, bill_dep AS y FROM ggsql:penguins
 DRAW text
   MAPPING island AS label
@@ -144,7 +144,7 @@ DRAW text
 
 When the `background` aesthetic is used, we’re drawing text boxes.
 
-``` ggsql
+```ggsql
 VISUALISE bill_len AS x, bill_dep AS y FROM ggsql:penguins
 DRAW text
   MAPPING island AS label, species AS background
@@ -155,7 +155,7 @@ DRAW text
 
 Without text boxes, the ‘stroke’ aesthetic is applied to the outline of the text.
 
-``` ggsql
+```ggsql
 SELECT 1 as x, 1 as y
 VISUALISE x, y, 'My Label' AS label
 DRAW text
@@ -166,7 +166,7 @@ DRAW text
 
 Text boxes solve a similar problem as using outlines, so ‘stroke’ is applied to text boxes when appropriate.
 
-``` ggsql
+```ggsql
 SELECT 1 as x, 1 as y
 VISUALISE x, y, 'My Label' AS label
 DRAW text
@@ -177,7 +177,7 @@ DRAW text
 
 Labelling precomputed bars with the data value.
 
-``` ggsql
+```ggsql
 SELECT island, COUNT(*) AS n FROM ggsql:penguins GROUP BY island
 VISUALISE island AS x, n AS y
 DRAW bar
@@ -190,7 +190,7 @@ DRAW text
 
 If you label bars at the extreme end, you may need to expand the scale to accommodate the labels.
 
-``` ggsql
+```ggsql
 SELECT island, COUNT(*) AS n FROM ggsql:penguins GROUP BY island
 VISUALISE island AS x, n AS y
 DRAW bar
@@ -204,7 +204,7 @@ SCALE y FROM (0, 200)
 
 You can use `PLACE` to annotate a plot directly without needing to map data.
 
-``` ggsql
+```ggsql
 VISUALISE bill_len AS x, bill_dep AS y FROM ggsql:penguins
 DRAW point MAPPING species AS colour
 PLACE text 
@@ -218,7 +218,7 @@ PLACE text
 
 Use aggregation to place labels at their centroid.
 
-``` ggsql
+```ggsql
 VISUALISE bill_len AS x, bill_dep AS y FROM ggsql:penguins
 DRAW point
   MAPPING species AS fill

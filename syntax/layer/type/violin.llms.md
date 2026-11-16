@@ -70,7 +70,7 @@ The violin plot has its categorical groups along the primary axis and the contin
 
 A typical violin plot.
 
-``` ggsql
+```ggsql
 VISUALISE species AS x, bill_dep AS y FROM ggsql:penguins
 DRAW violin
 ```
@@ -79,7 +79,7 @@ DRAW violin
 
 The `adjust` setting controls the smoothing.
 
-``` ggsql
+```ggsql
 VISUALISE species AS x, bill_dep AS y FROM ggsql:penguins
 DRAW violin 
   SETTING adjust => 0.1
@@ -89,7 +89,7 @@ DRAW violin
 
 The `tails` setting controls the display beyond the data range. You can set it to `0` to use the exact group’s data range.
 
-``` ggsql
+```ggsql
 VISUALISE species AS x, bill_dep AS y FROM ggsql:penguins
 DRAW violin 
   SETTING tails => 0
@@ -99,7 +99,7 @@ DRAW violin
 
 To more clearly indicate differences in group sizes, you can use the `intensity` computed variable. Note that we have fewer (n=68) Chinstrap penguins than Adelie (n=152) or Gentoo (n=124) penguins.
 
-``` ggsql
+```ggsql
 VISUALISE species AS x, bill_dep AS y FROM ggsql:penguins
 DRAW violin 
   REMAPPING intensity AS offset
@@ -109,7 +109,7 @@ DRAW violin
 
 If you have multiple groups within a category they are dodged by default:
 
-``` ggsql
+```ggsql
 VISUALISE species AS x, bill_dep AS y, island AS fill FROM ggsql:penguins
 DRAW violin
 ```
@@ -118,7 +118,7 @@ DRAW violin
 
 Create horizontal violins by swapping `x` and `y`:
 
-``` ggsql
+```ggsql
 VISUALISE species AS y, bill_dep AS x FROM ggsql:penguins
 DRAW violin
 ```
@@ -127,7 +127,7 @@ DRAW violin
 
 A ridgeline plot (or joy plot) can be seen as a horizontal half-violin plot, or like a density plot with vertical offsets for every category. To achieve this outcome, you can set the `side` setting and adjust `width` to taste.
 
-``` ggsql
+```ggsql
 VISUALISE Temp AS x, Month AS y FROM ggsql:airquality
 DRAW violin SETTING width => 4, side => 'top'
 SCALE ORDINAL y
@@ -137,7 +137,7 @@ SCALE ORDINAL y
 
 The same facilities can be used to create violins where each side encode different subsets
 
-``` ggsql
+```ggsql
 VISUALISE body_mass AS y, species AS x, sex AS fill FROM ggsql:penguins
 DRAW violin
   SETTING side => 'left'

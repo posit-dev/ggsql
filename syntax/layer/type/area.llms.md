@@ -47,7 +47,7 @@ Area plots are sorted and connected along their primary axis. Since the primary 
 
 Create a typical area chart
 
-``` ggsql
+```ggsql
 VISUALISE FROM ggsql:airquality
 DRAW area 
   MAPPING Date AS x, Wind AS y
@@ -57,7 +57,7 @@ DRAW area
 
 We can reshape the data to ‘long format’ from our wide format.
 
-``` ggsql
+```ggsql
 CREATE TABLE long_airquality AS
 SELECT Date, 'Temp' AS Series, Temp AS Value FROM ggsql:airquality
 UNION ALL
@@ -66,7 +66,7 @@ SELECT Date, 'Wind' AS Series, Wind AS Value FROM ggsql:airquality;
 
 Which means we can display multiple series at once, by mapping the identifier to an aesthetic.
 
-``` ggsql
+```ggsql
 VISUALISE Date AS x, Value AS y FROM long_airquality
 DRAW area 
   MAPPING Series AS colour
@@ -76,7 +76,7 @@ DRAW area
 
 By default the areas are stacked on top of each other. If you’d rather see all with a 0 baseline set the position to identity
 
-``` ggsql
+```ggsql
 VISUALISE Date AS x, Value AS y, Series AS colour FROM long_airquality
 DRAW area 
   SETTING position => 'identity', opacity => 0.5
@@ -86,7 +86,7 @@ DRAW area
 
 With the default `position => 'stack'` we can normalise the total so that each stack totals to the same value. These only make sense if every series is measured in the same absolute unit. (Wind and temperature have different units and the temperature is not absolute.)
 
-``` ggsql
+```ggsql
 VISUALISE Date AS x, Value AS y, Series AS colour FROM long_airquality
 DRAW area 
   SETTING total => 100
@@ -96,7 +96,7 @@ DRAW area
 
 An alternative is to center the stacks to create a steamgraph
 
-``` ggsql
+```ggsql
 VISUALISE Date AS x, Value AS y, Series AS colour FROM long_airquality
 DRAW area 
   SETTING position => 'stack', center => true
@@ -106,7 +106,7 @@ DRAW area
 
 You can combine this with the `orientation` setting to make a vertical steamgraph
 
-``` ggsql
+```ggsql
 VISUALISE Date AS y, Value AS x, Series AS colour FROM long_airquality
 DRAW area 
   SETTING position => 'stack', center => true, orientation => 'transposed'

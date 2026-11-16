@@ -34,7 +34,7 @@ While `VISUALISE` can stand on its own as a demarcation line between the regular
 
 Bringing all of these things together, a `VISUALISE` clause could look like this:
 
-``` ggsql
+```ggsql
 --       |---------- mapping ----------|--- data source ---|
 VISUALISE body_mass AS x, bill_len AS y FROM ggsql:penguins
 ```
@@ -47,7 +47,7 @@ The input to the `MAPPING` clause looks exactly like what we saw above for the `
 
 Bringing all of this together a `DRAW` clause could look like this:
 
-``` ggsql
+```ggsql
 --  |- type --|
 DRAW histogram
 --       |-- mapping --|
@@ -58,7 +58,7 @@ DRAW histogram
 
 but, if mappings and data source have already been taken care of, it can be as simple as
 
-``` ggsql
+```ggsql
 DRAW point
 ```
 
@@ -68,14 +68,14 @@ As [described above](#scales), ggsql automatically creates a default for mapped 
 
 The clause allows you to set the type of scale, the input range, the output range, the transformation, and lets you control breaks and label formatting. So, the clause can end up with a lot of information but the syntax has been designed so it reads very natural. Further, every part is optional and can be left out if the default fits. An example of a rather complex `SCALE` clause could be:
 
-``` ggsql
+```ggsql
 SCALE ORDINAL fill FROM ('Low', 'Mid', 'High') TO viridis
   SETTING breaks => 6
 ```
 
 But, if you are only interested in changing e.g. the palette it can be as simple as:
 
-``` ggsql
+```ggsql
 SCALE fill TO viridis
 ```
 
@@ -83,7 +83,7 @@ SCALE fill TO viridis
 
 Using the things we have just learned we can combine it all to a complete query consisting of multiple layers and custom scales:
 
-``` ggsql
+```ggsql
 VISUALISE bill_len AS x, bill_dep AS y, species AS stroke FROM ggsql:penguins
 DRAW point 
   MAPPING body_mass AS size
@@ -101,7 +101,7 @@ In the above we create a global mapping of bill_len to the `x` aesthetic and bil
 
 While the query above may feel like a mouthful, remember that most visualizations are much simpler:
 
-``` ggsql
+```ggsql
 VISUALISE body_mass AS x FROM ggsql:penguins
 DRAW histogram
 ```

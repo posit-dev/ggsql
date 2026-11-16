@@ -38,7 +38,7 @@ The path layer has no orientation. The axes are treated symmetrically.
 
 Create example data
 
-``` ggsql
+```ggsql
 CREATE TABLE df AS
 WITH t(x, y, id) AS (VALUES
   (1.0, 1.0, 'A'),
@@ -53,7 +53,7 @@ SELECT * FROM t
 
 Simple example path.
 
-``` ggsql
+```ggsql
 VISUALISE x, y FROM df
 DRAW path
 ```
@@ -62,7 +62,7 @@ DRAW path
 
 Contrary to `line` drawings, `path` is not forced to follow the order along the axis.
 
-``` ggsql
+```ggsql
 VISUALISE x, y FROM df
 DRAW path 
   MAPPING 'Path' AS colour
@@ -74,7 +74,7 @@ DRAW line
 
 Groups of individual paths can be declared via `PARTITION BY`.
 
-``` ggsql
+```ggsql
 VISUALISE x, y FROM df
 DRAW path 
   PARTITION BY id
@@ -84,7 +84,7 @@ DRAW path
 
 Invoking a group through discrete aesthetics works as well.
 
-``` ggsql
+```ggsql
 VISUALISE x, y FROM df
 DRAW path 
   MAPPING id AS colour
@@ -94,7 +94,7 @@ DRAW path
 
 Compared to polygons, paths don’t close their shapes and fill their interiors.
 
-``` ggsql
+```ggsql
 VISUALISE x, y FROM df
 DRAW polygon 
   MAPPING 'Polygon' AS stroke
@@ -106,7 +106,7 @@ DRAW path
 
 Lines have various styling mechanics, inlcuding layer-level settings for joining and capping lines.
 
-``` ggsql
+```ggsql
 VISUALISE x, y FROM df
 DRAW path
   SETTING 
@@ -120,7 +120,7 @@ DRAW path
 
 When `stroke` or `opacity` varies, the properties of the preceding datapoint carry over. In the case below, we don’t see the blue of the last datapoint.
 
-``` ggsql
+```ggsql
 WITH data(x, y, z) AS (VALUES
   (1, 2, 1),
   (3, 3, 3),
@@ -137,7 +137,7 @@ SCALE stroke TO ('red', 'green', 'blue')
 
 The `linewidth` aesthetic can vary point to point.
 
-``` ggsql
+```ggsql
 WITH data(x, y, z) AS (VALUES
   (1, 2, 1),
   (3, 3, 3),

@@ -18,7 +18,7 @@ Optional SQL part + required `VISUALISE`/`VISUALIZE` part.
 
 - **SELECT → VISUALISE**: last statement is a SELECT (bare, `WITH...SELECT`, set ops); its result feeds VISUALISE, which has no `FROM`.
 
-  ``` ggsql
+  ```ggsql
   SELECT name, score_a, score_b FROM 'dataset.csv' WHERE value > 50
   VISUALISE score_a AS x, score_b AS y
   [DRAW / PLACE / SCALE / FACET / PROJECT / LABEL clauses]
@@ -26,11 +26,13 @@ Optional SQL part + required `VISUALISE`/`VISUALIZE` part.
 
 - **VISUALISE FROM**: VISUALISE supplies its own source (table/file/CTE/built-in), no trailing SELECT.
 
-  ``` ggsql
+  ```ggsql
   WITH summary AS (SELECT category, COUNT(*) AS n FROM 'dataset.csv' GROUP BY category)
   VISUALISE category AS x, n AS y FROM summary
   DRAW bar
   ```
+
+Use `TABULATE` instead of `VISUALISE` to render the result as a table (see below). A trailing SELECT combined with `VISUALISE FROM` / `TABULATE FROM` in the same query is a parse error — pick one pattern.
 
 **Data sources** (in `VISUALISE ... FROM` or `DRAW ... MAPPING ... FROM`): unquoted table/CTE (`FROM sales`), quoted file path (`FROM 'data.csv'`), built-in dataset (`FROM ggsql:penguins`, `FROM ggsql:airquality`).
 
@@ -42,7 +44,7 @@ Starts the viz; optional global mappings inherited by every layer.
 
 Mapping forms: explicit `column AS aesthetic` (e.g. `revenue AS y`); implicit `column` (name = aesthetic name); wildcard `*` (all matching columns); constant `'red' AS fill`.
 
-``` ggsql
+```ggsql
 VISUALISE bill_len AS x, bill_dep AS y, species AS fill FROM ggsql:penguins
 VISUALISE * FROM my_table
 ```
@@ -70,7 +72,7 @@ Defines a layer; multiple DRAW stack bottom→top. All subclauses optional given
 
 Collapses each group (`PARTITION BY` cols + discrete mappings) to one row, replacing numeric mappings with aggregated values. Layers: `point line path bar area ribbon range segment rule text tile` (not stat layers, which have their own).
 
-``` ggsql
+```ggsql
 SETTING aggregate => '<spec>'                -- single
 SETTING aggregate => ('<spec>', '<spec>', …) -- list
 ```
@@ -81,7 +83,7 @@ Functions — reductions: `count sum prod min max range mid mean median geomean 
 
 **Explosion**: targeting one aesthetic with multiple functions emits one row/function/group, tagged by a synthetic `aggregate` column — drive another aesthetic via `REMAPPING aggregate AS <aes>`. Equal-length exploded aesthetics run in lockstep; single-function targets repeat each row. Mixed lengths \>1 error.
 
-``` ggsql
+```ggsql
 -- min/max envelope as two lines per group, coloured by function
 DRAW line MAPPING Date AS x, Temp AS y
   REMAPPING aggregate AS color
@@ -95,7 +97,7 @@ DRAW line MAPPING Date AS x, Temp AS y
 
 Annotation layer, literal values only, no data mapping; tuples for multiple annotations.
 
-``` ggsql
+```ggsql
 PLACE point SETTING x => 5, y => 10, color => 'red'
 PLACE text SETTING x => (34, 44), y => (66, 49), label => ('Mean = 34', 'Mean = 44')
 ```
@@ -116,7 +118,7 @@ Maps data → aesthetic output; sensible defaults always apply. Only `aesthetic`
 - **SETTING** — continuous/binned: `expand` (factor or `(mult,add)`, default 0.05, x/y only), `oob` (`'keep'` default x/y, `'censor'` default others, `'squish'`), `breaks` (count/array/interval string e.g. `'2 months'`), `pretty` (bool, default true), `reverse` (bool). Continuous only: `minor_breaks` (count/array/interval string; ignored by Vega-Lite). Binned only: `closed` (`'left'`/`'right'`). Discrete/ordinal: `reverse`.
 - **RENAMING** — direct + wildcard formatting (direct wins): `RENAMING 'Adelie' => 'Pygoscelis adeliae', 'adelie' => null` or `RENAMING * => '{:Title}'` (formatters: `Title UPPER lower`, time `%B %Y`, num `%.1f`).
 
-``` ggsql
+```ggsql
 SCALE x VIA date SETTING breaks => '2 months'
 SCALE y FROM (0, 100) SETTING oob => 'squish'
 SCALE BINNED x SETTING breaks => 10, pretty => false
@@ -126,7 +128,7 @@ SCALE BINNED x SETTING breaks => 10, pretty => false
 
 Small multiples. 1D `FACET region` (wrap, aesthetic `panel`); 2D `FACET region BY category` (grid, aesthetics `row`/`column`). Settings: `free` (`null` default/fixed, `'x'`, `'y'`, `('x','y')`), `missing` (`'repeat'` default / `'null'`), `ncol`/`nrow` (1D only, pick one). Customize/filter via SCALE on the facet aesthetic:
 
-``` ggsql
+```ggsql
 FACET region
 SCALE panel RENAMING 'N' => 'North', 'S' => 'South'
 FACET island
@@ -141,7 +143,7 @@ Coordinate system.
 
 `cartesian` (default): aesthetics x/y; settings `clip` (bool, default true), `ratio` (number or null). `polar`: aesthetics `radius`(primary)/`angle`(secondary); settings `clip`, `start`/`end` (degrees, default 0/start+360), `inner` (0-1 donut hole, default 0). Swap order to flip axes (`PROJECT y, x TO cartesian`); without PROJECT, type is inferred from mappings.
 
-``` ggsql
+```ggsql
 PROJECT TO polar SETTING inner => 0.5   -- donut chart
 ```
 
@@ -149,8 +151,58 @@ PROJECT TO polar SETTING inner => 0.5   -- donut chart
 
 Overrides axis/legend labels & titles: `title`, `subtitle`, `caption`, or any aesthetic name; `null` suppresses.
 
-``` ggsql
+```ggsql
 LABEL title => 'Sales by Region', x => 'Date', y => 'Revenue (USD)', fill => null
+```
+
+------------------------------------------------------------------------
+
+## TABULATE clause
+
+Renders the query result as a table instead of a plot — the plain-table counterpart to VISUALISE. Only the HTML writer supports tables. Both data patterns from VISUALISE apply (`SELECT ... TABULATE *` or `TABULATE ... FROM <source>`).
+
+`LABEL`, `SPAN` and `FORMAT` may each appear multiple times, in any order.
+
+### Column selection
+
+- `<column>` — keep as-is; `<column> AS <name>` — rename; `*` — all columns in source order
+- Order controls display order; `*` can be mixed with named columns: `TABULATE foo, *, baz`
+- A rename changes the actual column name, so `LABEL`/`SPAN`/`FORMAT` refer to the new name
+
+### LABEL (table)
+
+Keyed by column name, not aesthetic. Reserved keys: `title`, `subtitle`, `caption`. `null` blanks a header; if all headers are blank the header row is omitted. Also labels spanners via their SPAN id: `LABEL q1 => 'Q1 Totals'`. No automatic labelling and no markdown — a column without a `LABEL` keeps its name.
+
+### SPAN
+
+Groups columns under one spanner cell in a header row above the column labels.
+
+```ggsql
+SPAN Q1 OVER jan, feb, mar
+SPAN apr, may, jun UNDER Q2        -- equivalent form
+```
+
+- Id is mandatory: identifier (quote for spaces) or `null` (anonymous, blank cell — useful to reorder columns)
+- A later SPAN’s OVER list may reference an earlier SPAN id to include its columns
+- Ids must be unique and cannot collide with column names; a SPAN cannot include a stub column
+- Settings: `gather` (boolean, default `true` — move columns next to the group), `level` (integer header row, `1` = closest to column labels; default auto-assigned to avoid clashes)
+
+### FORMAT
+
+Configures cell display and column placement.
+
+- Target: `BODY` (default) or `STUB` (move column to row-label position; stub headers are blank unless labelled). If two FORMAT clauses name the same column, the later one wins.
+- A SPAN id may stand in for its columns: `FORMAT Q1, price SETTING hjust => 'right'`
+- Settings: `hjust` (`'left'`/`'right'`/`'centre'`/`'center'` or 0–1; default right for numeric/stub, left otherwise), `width` (`'100px'` or `'20%'`)
+- `RENAMING` works like SCALE’s: direct replacement (`'adelie' => 'Pygoscelis adeliae'`), `null` on the right suppresses the cell, unquoted `null` on the left matches missing values, and `* => '...'` formats every value with a template (`{:lower}`, `{:num %.0f}`, etc.)
+
+```ggsql
+SELECT * FROM ggsql:penguins LIMIT 5
+TABULATE *
+  LABEL title => 'Penguins!', bill_len => 'Length', bill_dep => 'Depth'
+  SPAN Bill OVER bill_len, bill_dep
+  FORMAT STUB species
+  FORMAT body_mass SETTING hjust => 'right' RENAMING null => '-', * => '{:num %.0f}g'
 ```
 
 ------------------------------------------------------------------------
@@ -186,7 +238,7 @@ All layers accept colour/stroke, fill, opacity, linewidth, linetype, and `positi
 
 ## Common patterns
 
-``` ggsql
+```ggsql
 -- Pie chart: bar layer in polar coords
 VISUALISE species AS fill FROM ggsql:penguins
 DRAW bar

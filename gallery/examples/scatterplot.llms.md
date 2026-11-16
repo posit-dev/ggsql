@@ -10,7 +10,7 @@ A scatter plot displays the relationship between two numeric variables by mappin
 
 ## Code
 
-``` ggsql
+```ggsql
 VISUALISE bill_len AS x, bill_dep AS y FROM ggsql:penguins
 DRAW point
 LABEL
@@ -34,7 +34,7 @@ LABEL
 
 We’re adding `species AS color` to the mapping to colour the points by species.
 
-``` ggsql
+```ggsql
 VISUALISE bill_len AS x, bill_dep AS y, species AS color FROM ggsql:penguins
 DRAW point
 LABEL
@@ -47,7 +47,7 @@ LABEL
 
 The color palette can be changed by detailing the `SCALE color` clause.
 
-``` ggsql
+```ggsql
 VISUALISE bill_len AS x, bill_dep AS y, species AS color FROM ggsql:penguins
 DRAW point
 SCALE color TO ('DeepSkyBlue', 'Fuchsia', 'Lime')
@@ -63,7 +63,7 @@ LABEL
 
 We can also encode a second layer of information by displaying `island AS shape`.
 
-``` ggsql
+```ggsql
 VISUALISE 
   bill_len AS x, 
   bill_dep AS y, 
@@ -83,7 +83,7 @@ LABEL
 
 Using the layer’s `FILTER` clause we can split the data across layers. Using layer level `MAPPING` ensures we apply `species AS color` only to one layer and not the other. The `SETTING` is used here to directly set a property without mapping data.
 
-``` ggsql
+```ggsql
 VISUALISE
   bill_len AS x,
   bill_dep AS y

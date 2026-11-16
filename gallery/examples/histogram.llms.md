@@ -10,7 +10,7 @@ Histograms show the distribution of a numeric variable by grouping values into b
 
 ## Code
 
-``` ggsql
+```ggsql
 SELECT Temp FROM ggsql:airquality
 VISUALISE Temp AS x
 DRAW histogram
@@ -34,7 +34,7 @@ LABEL
 
 Control the number of bins with `SETTING bins`:
 
-``` ggsql
+```ggsql
 SELECT Temp FROM ggsql:airquality
 VISUALISE Temp AS x
 DRAW histogram
@@ -51,7 +51,7 @@ LABEL
 
 Set explicit bin width instead of count:
 
-``` ggsql
+```ggsql
 SELECT Temp FROM ggsql:airquality
 VISUALISE Temp AS x
 DRAW histogram
@@ -68,7 +68,7 @@ LABEL
 
 Use `REMAPPING` to show density (proportion) instead of count:
 
-``` ggsql
+```ggsql
 SELECT Temp FROM ggsql:airquality
 VISUALISE Temp AS x
 DRAW histogram

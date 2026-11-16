@@ -41,7 +41,7 @@ The orientation of range layers is deduced directly from the mapping, because th
 
 Create example data
 
-``` ggsql
+```ggsql
 CREATE TABLE penguin_summary AS
 WITH stats AS (
   SELECT species, AVG(bill_dep) AS mean
@@ -54,7 +54,7 @@ FROM stats
 
 A classic interval-with-point display.
 
-``` ggsql
+```ggsql
 VISUALISE species AS x FROM penguin_summary
 DRAW range
   MAPPING low AS ymax, high AS ymin
@@ -66,7 +66,7 @@ DRAW point
 
 Dynamite plot using bars instead of points, with extra wide hinges.
 
-``` ggsql
+```ggsql
 VISUALISE species AS x FROM penguin_summary
 DRAW range
   MAPPING low AS ymax, high AS ymin
@@ -79,7 +79,7 @@ DRAW bar
 
 The hinges can be omitted by setting `null` as hinge, leaving just the line segment between the endpoints.
 
-``` ggsql
+```ggsql
 VISUALISE species AS x FROM penguin_summary
 DRAW range
   MAPPING low AS ymax, high AS ymin
@@ -90,7 +90,7 @@ DRAW range
 
 A horizontal range can be rendered by swapping the `x` and `y` directions.
 
-``` ggsql
+```ggsql
 VISUALISE species AS y FROM penguin_summary
 DRAW range
   MAPPING low AS xmax, high AS xmin
@@ -102,7 +102,7 @@ DRAW point
 
 By overlaying a thick range over a thin one, you can build a candlestick chart. Both layers turn the hinges off so the marks read as clean vertical lines: the wick spans low-to-high and the body spans open-to-close.
 
-``` ggsql
+```ggsql
 SELECT
   FIRST(Date) AS date,
   FIRST(temp) AS open,
@@ -129,7 +129,7 @@ DRAW range
 
 Rather than precomputing the values and plotting them, you can use the aggregate functionality to calculate the relevant statistics dynamically:
 
-``` ggsql
+```ggsql
 VISUALISE Date AS x, Temp AS ymin, Temp AS ymax, Temp AS color 
   FROM ggsql:airquality
 DRAW range

@@ -73,7 +73,7 @@ The density has its primary axis along the variable for which density is compute
 
 A typical KDE computation with different groups:
 
-``` ggsql
+```ggsql
 VISUALISE bill_dep AS x, species AS colour FROM ggsql:penguins
 DRAW density
 ```
@@ -82,7 +82,7 @@ DRAW density
 
 Changing the relative bandwidth through the `adjust` setting.
 
-``` ggsql
+```ggsql
 VISUALISE bill_dep AS x, species AS colour FROM ggsql:penguins
 DRAW density 
   SETTING adjust => 0.1
@@ -92,7 +92,7 @@ DRAW density
 
 Stacking the different groups instead of overlaying them.
 
-``` ggsql
+```ggsql
 VISUALISE bill_dep AS x, species AS colour FROM ggsql:penguins
 DRAW density 
   SETTING position => 'stack'
@@ -102,7 +102,7 @@ DRAW density
 
 Using weighted estimates by mapping a column to the optional weight aesthetic. Note that the difference in output is subtle.
 
-``` ggsql
+```ggsql
 VISUALISE bill_dep AS x, species AS colour FROM ggsql:penguins
 DRAW density 
   MAPPING body_mass AS weight
@@ -112,7 +112,7 @@ DRAW density
 
 If you want to compare a histogram and a density layer, you can use the `intensity` computed variable to match the histogram scale.
 
-``` ggsql
+```ggsql
 VISUALISE bill_len AS x FROM ggsql:penguins
 DRAW histogram 
   SETTING opacity => 0.5
@@ -125,7 +125,7 @@ DRAW density
 
 Using the intensity rather than the density also portrays differences in group sizes better. Note the relative height of the groups.
 
-``` ggsql
+```ggsql
 VISUALISE bill_dep AS x, species AS colour FROM ggsql:penguins
 DRAW density 
   REMAPPING intensity AS y

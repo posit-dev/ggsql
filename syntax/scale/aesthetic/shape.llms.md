@@ -26,7 +26,7 @@ Shapes are given by name from the following list of 15 possible shapes
 
 You can use these names directly when setting the shape of a point:
 
-``` ggsql
+```ggsql
 DRAW point
   SETTING shape => 'star'
 ```
@@ -37,7 +37,7 @@ ggsql provides three built-in shape palettes, which is often all you need.
 
 Palettes are used by giving them as names in the `TO` clause:
 
-``` ggsql
+```ggsql
 VISUALISE FROM ggsql:penguins
 DRAW point
   MAPPING bill_dep AS x, body_mass AS y, species AS shape
@@ -49,7 +49,7 @@ SCALE shape TO open
 
 Instead of using a named palette you can create one on the fly using an array of shape names:
 
-``` ggsql
+```ggsql
 VISUALISE FROM ggsql:penguins
 DRAW point
   MAPPING bill_dep AS x, body_mass AS y, species AS shape

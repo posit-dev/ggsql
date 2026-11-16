@@ -19,13 +19,13 @@ Linetypes can be specified in two different ways. A couple of patterns are named
 
 You can e.g. use these names when defining a manual palette for the scale:
 
-``` ggsql
+```ggsql
 SCALE linetype TO ('dashed', 'dotted', 'twodash')
 ```
 
 You can alternatively specify a custom pattern using hex strings:
 
-``` ggsql
+```ggsql
 SCALE linetype TO ('44', '1343', '3c6c9c')
 ```
 

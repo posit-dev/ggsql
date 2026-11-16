@@ -1,6 +1,6 @@
 # Syntax
 
-## Main clauses
+## Visualisation clauses
 
 ggsql augments the standard SQL syntax with a number of new clauses to describe a visualisation. Apart from `VISUALISE` needing to be the first, the order of these clauses is arbitrary, though grouping e.g. all `DRAW` clauses will lead to queries that are easier to reason about:
 
@@ -11,6 +11,13 @@ ggsql augments the standard SQL syntax with a number of new clauses to describe 
 - [`FACET`](../syntax/clause/facet.llms.md) describes how data should be split into small multiples
 - [`PROJECT`](../syntax/clause/project.llms.md) is used for selecting the coordinate system to use
 - [`LABEL`](../syntax/clause/label.llms.md) is used to manually add titles to the plot or the various axes and legends
+
+## Table clauses
+
+- [`TABULATE`](../syntax/clause/tabulate.llms.md) initialises the table part of the query
+- [`LABEL`](../syntax/clause/label-tabulate.llms.md) is used to manually change column labels and titles
+- [`SPAN`](../syntax/clause/span.llms.md) can be used to group columns and display a label across them
+- [`FORMAT`](../syntax/clause/format.llms.md) declares formatting for columns
 
 ## Layers
 

@@ -9,7 +9,7 @@ The map coordinate system facilitates the display of geographical data. It can p
 
 Users can provide their own aesthetic names if needed. For example, if using `x` and `y` aesthetics:
 
-``` ggsql
+```ggsql
 PROJECT x, y TO map
 ```
 
@@ -34,13 +34,13 @@ This maps `x` to longitude and `y` to latitude. This is a convenience when conve
 
 There are two main ways to set the map projection. One is via a named projection, which allows for the `origin` and `parallel` settings.
 
-``` ggsql
+```ggsql
 PROJECT TO orthographic SETTING origin => (150, 52)
 ```
 
 The second option is to use the generic `PROJECT TO crs` together with the `target` setting. The code below is equivalent to the code above.
 
-``` ggsql
+```ggsql
 PROJECT TO crs SETTING target => '+proj=ortho +lon_0=150 +lat_0=52'
 ```
 
@@ -130,7 +130,7 @@ A second thing to keep in mind are the bounds of the area. It can be particularl
 
 Note that depending on your reader, you may need to activate modules for spatial analysis.
 
-``` ggsql
+```ggsql
 -- For example, for DuckDB, one could use:
 INSTALL spatial;
 LOAD spatial;
@@ -138,7 +138,7 @@ LOAD spatial;
 
 ### Via named projection
 
-``` ggsql
+```ggsql
 VISUALISE continent AS fill FROM ggsql:world
 DRAW spatial
 PROJECT TO robinson
@@ -148,7 +148,7 @@ PROJECT TO robinson
 
 ### Via proj string
 
-``` ggsql
+```ggsql
 VISUALISE continent AS fill FROM ggsql:world
 DRAW spatial
 PROJECT TO crs SETTING target => '+proj=robin'
@@ -158,7 +158,7 @@ PROJECT TO crs SETTING target => '+proj=robin'
 
 ### Setting the origin
 
-``` ggsql
+```ggsql
 VISUALISE continent AS fill FROM ggsql:world
 DRAW spatial
 PROJECT TO orthographic
@@ -171,7 +171,7 @@ PROJECT TO orthographic
 
 The default zoom behaviour is to zoom in where the data is.
 
-``` ggsql
+```ggsql
 VISUALISE continent AS fill FROM ggsql:world
 DRAW spatial 
   FILTER subregion == 'Western Africa'
@@ -182,7 +182,7 @@ PROJECT TO orthographic
 
 An alternative is to zoom using the `bounds` setting. Note that while `ggsql:world` is defined in degrees longitude/latitude, the `orthographic` projection uses metres as unit.
 
-``` ggsql
+```ggsql
 VISUALISE continent AS fill FROM ggsql:world
 DRAW spatial
 PROJECT TO orthographic
@@ -193,7 +193,7 @@ PROJECT TO orthographic
 
 The `bounds` arguments can take infinites to take the visible area’s extreme values, or `null` to take the data’s bounds.
 
-``` ggsql
+```ggsql
 VISUALISE continent AS fill FROM ggsql:world
 DRAW spatial 
   FILTER subregion == 'Western Africa'
@@ -207,7 +207,7 @@ PROJECT TO orthographic
 
 Default conic projections aren’t always kind to the southern hemisphere. This can be changed by tweaking the `parallel` setting.
 
-``` ggsql
+```ggsql
 VISUALISE continent AS fill FROM ggsql:world
 DRAW spatial 
 PROJECT TO albers SETTING parallel => (-29.5, -45.5)

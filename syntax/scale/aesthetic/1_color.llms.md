@@ -6,21 +6,21 @@ Color values are used in two places in ggsql: When setting stroke color and fill
 
 In addition to the `fill` and `stroke` aesthetics there is also a `color` meta-aesthetic. Setting this will set the fill *and* stroke at the same time unless they are set directly. For instance, the following will set the fill and stroke to red
 
-``` ggsql
+```ggsql
 DRAW bar
   SETTING color => 'red'
 ```
 
 whereas this will set the fill to red and stroke to black
 
-``` ggsql
+```ggsql
 DRAW bar
   SETTING color => 'red', stroke => 'black'
 ```
 
 The same logic applies when defining a scale. Defining a `color` scale creates two scales, one for `fill` and one for `stroke`, with the same settings (unless either are defined explicitly). For instance, the following
 
-``` ggsql
+```ggsql
 SCALE color TO viridis
 ```
 
@@ -38,14 +38,14 @@ Literal color values can be defined in any CSS compatible way [^1]. The gist of 
 
 Literal color values are used in three places in ggsql. Either when setting an aesthetic (as opposed to mapping), e.g.
 
-``` ggsql
+```ggsql
 DRAW line
   SETTING stroke => '#FF0000'
 ```
 
 when you define the output range of a fill or stroke scale manually, e.g.
 
-``` ggsql
+```ggsql
 SCALE fill TO ('rgb(100%, 0%, 0%)', 'lemonchiffon')
 ```
 
@@ -61,7 +61,7 @@ There are two different types of palettes for fill and stroke — those intended
 
 Palettes are used by giving them as names in the `TO` clause:
 
-``` ggsql
+```ggsql
 VISUALISE FROM ggsql:penguins
 DRAW point
   MAPPING bill_dep AS x, body_mass AS y, species AS fill
@@ -73,7 +73,7 @@ SCALE color TO category10
 
 Instead of using a named palette you can create one on the fly using an array of color values:
 
-``` ggsql
+```ggsql
 VISUALISE FROM ggsql:penguins
 DRAW point
   MAPPING bill_dep AS x, body_mass AS y, flipper_len AS fill

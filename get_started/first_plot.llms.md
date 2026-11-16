@@ -2,7 +2,7 @@
 
 The code below shows a simple ggsql example. But it is not just a static piece of text and an image. It is ggsql running right in your browser, using one of the built-in datasets. Try to change e.g. the title and see the plot update as you type. Even though this may be your first encounter with the ggsql syntax you might already get a sense of how some of the things fit together. See if you can change the code to instead show the different species as different shapes
 
-``` ggsql
+```ggsql
 VISUALISE bill_len AS x, bill_dep AS y, species AS fill FROM ggsql:penguins
 DRAW point
 SCALE x 

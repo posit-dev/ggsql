@@ -2,7 +2,7 @@
 <html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
 
 <meta charset="utf-8">
-<meta name="generator" content="quarto-1.12.1">
+<meta name="generator" content="quarto-1.12.2">
 
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
@@ -63,7 +63,27 @@ div.sourceCode
 @media screen {
 pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
 }
-</style>
+@media print {
+  html {
+    color-scheme: light only;
+  }
+  html, body, pre, code {
+    background-color: transparent;
+  }
+  body, a, a:visited, blockquote {
+    color: black;
+  }
+  pre, code {
+    padding: 0;
+  }
+  p, h2, h3 {
+    orphans: 3;
+    widows: 3;
+  }
+  h2, h3, h4 {
+    page-break-after: avoid;
+  }
+}</style>
 
 
 <script src="../site_libs/quarto-nav/quarto-nav.js"></script>
@@ -81,9 +101,9 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <script src="../site_libs/quarto-html/tippy.umd.min.js"></script>
 <script src="../site_libs/quarto-html/anchor.min.js"></script>
 <link href="../site_libs/quarto-html/tippy.css" rel="stylesheet">
-<link href="../site_libs/quarto-html/quarto-syntax-highlighting-ba38d682ef0eb2b9e84133c48a211adf.css" rel="stylesheet" class="quarto-color-scheme" id="quarto-text-highlighting-styles">
-<link href="../site_libs/quarto-html/quarto-syntax-highlighting-dark-ba38d682ef0eb2b9e84133c48a211adf.css" rel="stylesheet" class="quarto-color-scheme quarto-color-alternate" id="quarto-text-highlighting-styles">
-<link href="../site_libs/quarto-html/quarto-syntax-highlighting-ba38d682ef0eb2b9e84133c48a211adf.css" rel="stylesheet" class="quarto-color-scheme-extra" id="quarto-text-highlighting-styles">
+<link href="../site_libs/quarto-html/quarto-syntax-highlighting-391f73e9ed3e3552e24af4a231521fca.css" rel="stylesheet" class="quarto-color-scheme" id="quarto-text-highlighting-styles">
+<link href="../site_libs/quarto-html/quarto-syntax-highlighting-dark-391f73e9ed3e3552e24af4a231521fca.css" rel="stylesheet" class="quarto-color-scheme quarto-color-alternate" id="quarto-text-highlighting-styles">
+<link href="../site_libs/quarto-html/quarto-syntax-highlighting-391f73e9ed3e3552e24af4a231521fca.css" rel="stylesheet" class="quarto-color-scheme-extra" id="quarto-text-highlighting-styles">
 <script src="../site_libs/bootstrap/bootstrap.min.js"></script>
 <link href="../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
 <link href="../site_libs/bootstrap/bootstrap-0b0c8915fbd2cb21b8e60ef76089170f.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme" id="quarto-bootstrap" data-mode="light">
@@ -203,6 +223,23 @@ gradient teal.
     <a class="dropdown-item" href="../syntax/clause/label.html">
  <span class="dropdown-text"><code>LABEL</code></span></a>
   </li>  
+        <li><hr class="dropdown-divider"></li>
+        <li>
+    <a class="dropdown-item" href="../syntax/clause/tabulate.html">
+ <span class="dropdown-text"><code>TABULATE</code></span></a>
+  </li>  
+        <li>
+    <a class="dropdown-item" href="../syntax/clause/label-tabulate.html">
+ <span class="dropdown-text"><code>LABEL</code></span></a>
+  </li>  
+        <li>
+    <a class="dropdown-item" href="../syntax/clause/span.html">
+ <span class="dropdown-text"><code>SPAN</code></span></a>
+  </li>  
+        <li>
+    <a class="dropdown-item" href="../syntax/clause/format.html">
+ <span class="dropdown-text"><code>FORMAT</code></span></a>
+  </li>  
     </ul>
   </li>
   <li class="nav-item">
@@ -300,6 +337,13 @@ gradient teal.
   <li><a href="#facet-clause" id="toc-facet-clause" class="nav-link" data-scroll-target="#facet-clause">FACET clause</a></li>
   <li><a href="#project-clause" id="toc-project-clause" class="nav-link" data-scroll-target="#project-clause">PROJECT clause</a></li>
   <li><a href="#label-clause" id="toc-label-clause" class="nav-link" data-scroll-target="#label-clause">LABEL clause</a></li>
+  <li><a href="#tabulate-clause" id="toc-tabulate-clause" class="nav-link" data-scroll-target="#tabulate-clause">TABULATE clause</a>
+  <ul class="collapse">
+  <li><a href="#column-selection" id="toc-column-selection" class="nav-link" data-scroll-target="#column-selection">Column selection</a></li>
+  <li><a href="#label-table" id="toc-label-table" class="nav-link" data-scroll-target="#label-table">LABEL (table)</a></li>
+  <li><a href="#span" id="toc-span" class="nav-link" data-scroll-target="#span">SPAN</a></li>
+  <li><a href="#format" id="toc-format" class="nav-link" data-scroll-target="#format">FORMAT</a></li>
+  </ul></li>
   <li><a href="#layer-types" id="toc-layer-types" class="nav-link" data-scroll-target="#layer-types">Layer types</a></li>
   <li><a href="#named-color-palettes" id="toc-named-color-palettes" class="nav-link" data-scroll-target="#named-color-palettes">Named color palettes</a></li>
   <li><a href="#common-patterns" id="toc-common-patterns" class="nav-link" data-scroll-target="#common-patterns">Common patterns</a></li>
@@ -358,6 +402,7 @@ gradient teal.
 <span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> category <span class="kw">AS</span> <span class="at">x</span>, n <span class="kw">AS</span> <span class="at">y</span> <span class="kw">FROM</span> summary</span>
 <span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">bar</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div></li>
 </ul>
+<p>Use <code>TABULATE</code> instead of <code>VISUALISE</code> to render the result as a table (see below). A trailing SELECT combined with <code>VISUALISE FROM</code> / <code>TABULATE FROM</code> in the same query is a parse error — pick one pattern.</p>
 <p><strong>Data sources</strong> (in <code>VISUALISE ... FROM</code> or <code>DRAW ... MAPPING ... FROM</code>): unquoted table/CTE (<code>FROM sales</code>), quoted file path (<code>FROM 'data.csv'</code>), built-in dataset (<code>FROM ggsql:penguins</code>, <code>FROM ggsql:airquality</code>).</p>
 </section>
 <section id="visualise-clause" class="level2">
@@ -448,6 +493,52 @@ gradient teal.
 <div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb14"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a><span class="kw">LABEL</span> <span class="at">title</span> <span class="op">=&gt;</span> <span class="st">'Sales by Region'</span>, <span class="at">x</span> <span class="op">=&gt;</span> <span class="st">'Date'</span>, <span class="at">y</span> <span class="op">=&gt;</span> <span class="st">'Revenue (USD)'</span>, <span class="at">fill</span> <span class="op">=&gt;</span> null</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <hr>
 </section>
+<section id="tabulate-clause" class="level2">
+<h2 class="anchored" data-anchor-id="tabulate-clause">TABULATE clause</h2>
+<p>Renders the query result as a table instead of a plot — the plain-table counterpart to VISUALISE. Only the HTML writer supports tables. Both data patterns from VISUALISE apply (<code>SELECT ... TABULATE *</code> or <code>TABULATE ... FROM &lt;source&gt;</code>).</p>
+<p><code>LABEL</code>, <code>SPAN</code> and <code>FORMAT</code> may each appear multiple times, in any order.</p>
+<section id="column-selection" class="level3">
+<h3 class="anchored" data-anchor-id="column-selection">Column selection</h3>
+<ul>
+<li><code>&lt;column&gt;</code> — keep as-is; <code>&lt;column&gt; AS &lt;name&gt;</code> — rename; <code>*</code> — all columns in source order</li>
+<li>Order controls display order; <code>*</code> can be mixed with named columns: <code>TABULATE foo, *, baz</code></li>
+<li>A rename changes the actual column name, so <code>LABEL</code>/<code>SPAN</code>/<code>FORMAT</code> refer to the new name</li>
+</ul>
+</section>
+<section id="label-table" class="level3">
+<h3 class="anchored" data-anchor-id="label-table">LABEL (table)</h3>
+<p>Keyed by column name, not aesthetic. Reserved keys: <code>title</code>, <code>subtitle</code>, <code>caption</code>. <code>null</code> blanks a header; if all headers are blank the header row is omitted. Also labels spanners via their SPAN id: <code>LABEL q1 =&gt; 'Q1 Totals'</code>. No automatic labelling and no markdown — a column without a <code>LABEL</code> keeps its name.</p>
+</section>
+<section id="span" class="level3">
+<h3 class="anchored" data-anchor-id="span">SPAN</h3>
+<p>Groups columns under one spanner cell in a header row above the column labels.</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb15"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a>SPAN Q1 <span class="kw">OVER</span> jan, feb, mar</span>
+<span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a>SPAN apr, may, jun <span class="kw">UNDER</span> Q2        <span class="co">-- equivalent form</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<ul>
+<li>Id is mandatory: identifier (quote for spaces) or <code>null</code> (anonymous, blank cell — useful to reorder columns)</li>
+<li>A later SPAN’s OVER list may reference an earlier SPAN id to include its columns</li>
+<li>Ids must be unique and cannot collide with column names; a SPAN cannot include a stub column</li>
+<li>Settings: <code>gather</code> (boolean, default <code>true</code> — move columns next to the group), <code>level</code> (integer header row, <code>1</code> = closest to column labels; default auto-assigned to avoid clashes)</li>
+</ul>
+</section>
+<section id="format" class="level3">
+<h3 class="anchored" data-anchor-id="format">FORMAT</h3>
+<p>Configures cell display and column placement.</p>
+<ul>
+<li>Target: <code>BODY</code> (default) or <code>STUB</code> (move column to row-label position; stub headers are blank unless labelled). If two FORMAT clauses name the same column, the later one wins.</li>
+<li>A SPAN id may stand in for its columns: <code>FORMAT Q1, price SETTING hjust =&gt; 'right'</code></li>
+<li>Settings: <code>hjust</code> (<code>'left'</code>/<code>'right'</code>/<code>'centre'</code>/<code>'center'</code> or 0–1; default right for numeric/stub, left otherwise), <code>width</code> (<code>'100px'</code> or <code>'20%'</code>)</li>
+<li><code>RENAMING</code> works like SCALE’s: direct replacement (<code>'adelie' =&gt; 'Pygoscelis adeliae'</code>), <code>null</code> on the right suppresses the cell, unquoted <code>null</code> on the left matches missing values, and <code>* =&gt; '...'</code> formats every value with a template (<code>{:lower}</code>, <code>{:num %.0f}</code>, etc.)</li>
+</ul>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb16"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a><span class="kw">SELECT</span> <span class="op">*</span> <span class="kw">FROM</span> ggsql:penguins <span class="kw">LIMIT</span> <span class="dv">5</span></span>
+<span id="cb16-2"><a href="#cb16-2" aria-hidden="true" tabindex="-1"></a><span class="kw">TABULATE</span> <span class="op">*</span></span>
+<span id="cb16-3"><a href="#cb16-3" aria-hidden="true" tabindex="-1"></a>  <span class="kw">LABEL</span> <span class="at">title</span> <span class="op">=&gt;</span> <span class="st">'Penguins!'</span>, bill_len <span class="op">=&gt;</span> <span class="st">'Length'</span>, bill_dep <span class="op">=&gt;</span> <span class="st">'Depth'</span></span>
+<span id="cb16-4"><a href="#cb16-4" aria-hidden="true" tabindex="-1"></a>  <span class="kw">SPAN</span> Bill <span class="kw">OVER</span> bill_len, bill_dep</span>
+<span id="cb16-5"><a href="#cb16-5" aria-hidden="true" tabindex="-1"></a>  <span class="kw">FORMAT</span> <span class="kw">STUB</span> species</span>
+<span id="cb16-6"><a href="#cb16-6" aria-hidden="true" tabindex="-1"></a>  <span class="kw">FORMAT</span> body_mass <span class="kw">SETTING</span> <span class="at">hjust</span> <span class="op">=&gt;</span> <span class="st">'right'</span> <span class="kw">RENAMING</span> <span class="cn">null</span> <span class="op">=&gt;</span> <span class="st">'-'</span>, <span class="op">*</span> <span class="op">=&gt;</span> <span class="st">'{:num %.0f}g'</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<hr>
+</section>
+</section>
 <section id="layer-types" class="level2">
 <h2 class="anchored" data-anchor-id="layer-types">Layer types</h2>
 <ul>
@@ -482,38 +573,38 @@ gradient teal.
 </section>
 <section id="common-patterns" class="level2">
 <h2 class="anchored" data-anchor-id="common-patterns">Common patterns</h2>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb15"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a><span class="co">-- Pie chart: bar layer in polar coords</span></span>
-<span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> species <span class="kw">AS</span> <span class="at">fill</span> <span class="kw">FROM</span> ggsql:penguins</span>
-<span id="cb15-3"><a href="#cb15-3" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">bar</span></span>
-<span id="cb15-4"><a href="#cb15-4" aria-hidden="true" tabindex="-1"></a><span class="kw">PROJECT</span> <span class="kw">TO</span> <span class="dt">polar</span></span>
-<span id="cb15-5"><a href="#cb15-5" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb15-6"><a href="#cb15-6" aria-hidden="true" tabindex="-1"></a><span class="co">-- Multi-series line chart</span></span>
-<span id="cb15-7"><a href="#cb15-7" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> Date <span class="kw">AS</span> x</span>
-<span id="cb15-8"><a href="#cb15-8" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">line</span> <span class="kw">MAPPING</span> Temp AS <span class="at">y</span>, <span class="st">'Temperature'</span> AS <span class="at">color</span></span>
-<span id="cb15-9"><a href="#cb15-9" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">line</span> <span class="kw">MAPPING</span> Ozone AS <span class="at">y</span>, <span class="st">'Ozone'</span> AS <span class="at">color</span></span>
-<span id="cb15-10"><a href="#cb15-10" aria-hidden="true" tabindex="-1"></a><span class="kw">SCALE</span> <span class="at">x</span> <span class="kw">VIA</span> <span class="dt">date</span></span>
-<span id="cb15-11"><a href="#cb15-11" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb15-12"><a href="#cb15-12" aria-hidden="true" tabindex="-1"></a><span class="co">-- Lollipop chart</span></span>
-<span id="cb15-13"><a href="#cb15-13" aria-hidden="true" tabindex="-1"></a><span class="kw">SELECT</span> <span class="fu">ROUND</span>(bill_dep) <span class="kw">AS</span> bill_dep, <span class="fu">COUNT</span>(<span class="op">*</span>) <span class="kw">AS</span> n <span class="kw">FROM</span> ggsql:penguins <span class="kw">GROUP</span> <span class="kw">BY</span> <span class="dv">1</span></span>
-<span id="cb15-14"><a href="#cb15-14" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> bill_dep <span class="kw">AS</span> <span class="at">x</span></span>
-<span id="cb15-15"><a href="#cb15-15" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">range</span> <span class="kw">MAPPING</span> <span class="dv">0</span> AS <span class="at">ymin</span>, n AS <span class="at">ymax</span> <span class="kw">SETTING</span> hinge <span class="op">=&gt;</span> null</span>
-<span id="cb15-16"><a href="#cb15-16" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">point</span> <span class="kw">MAPPING</span> n AS <span class="at">y</span></span>
-<span id="cb15-17"><a href="#cb15-17" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb15-18"><a href="#cb15-18" aria-hidden="true" tabindex="-1"></a><span class="co">-- Ridgeline / joy plot</span></span>
-<span id="cb15-19"><a href="#cb15-19" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> <span class="kw">Temp</span> <span class="kw">AS</span> x, Month <span class="kw">AS</span> y <span class="kw">FROM</span> ggsql:airquality</span>
-<span id="cb15-20"><a href="#cb15-20" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">violin</span> <span class="kw">SETTING</span> <span class="at">width</span> <span class="op">=&gt;</span> <span class="dv">4</span>, side <span class="op">=&gt;</span> <span class="st">'top'</span></span>
-<span id="cb15-21"><a href="#cb15-21" aria-hidden="true" tabindex="-1"></a><span class="kw">SCALE</span> <span class="kw">ORDINAL</span> <span class="at">y</span></span>
-<span id="cb15-22"><a href="#cb15-22" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb15-23"><a href="#cb15-23" aria-hidden="true" tabindex="-1"></a><span class="co">-- Mean ± 1.96·sdev band per group, as a ribbon</span></span>
-<span id="cb15-24"><a href="#cb15-24" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> Day <span class="kw">AS</span> x, <span class="kw">Temp</span> <span class="kw">AS</span> ymin, <span class="kw">Temp</span> <span class="kw">AS</span> ymax <span class="kw">FROM</span> ggsql:airquality</span>
-<span id="cb15-25"><a href="#cb15-25" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">ribbon</span> <span class="kw">SETTING</span> aggregate <span class="op">=&gt;</span> (<span class="st">'mean-1.96sdev'</span>, <span class="st">'mean+1.96sdev'</span>) <span class="kw">PARTITION</span> BY Month</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb17"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a><span class="co">-- Pie chart: bar layer in polar coords</span></span>
+<span id="cb17-2"><a href="#cb17-2" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> species <span class="kw">AS</span> <span class="at">fill</span> <span class="kw">FROM</span> ggsql:penguins</span>
+<span id="cb17-3"><a href="#cb17-3" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">bar</span></span>
+<span id="cb17-4"><a href="#cb17-4" aria-hidden="true" tabindex="-1"></a><span class="kw">PROJECT</span> <span class="kw">TO</span> <span class="dt">polar</span></span>
+<span id="cb17-5"><a href="#cb17-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb17-6"><a href="#cb17-6" aria-hidden="true" tabindex="-1"></a><span class="co">-- Multi-series line chart</span></span>
+<span id="cb17-7"><a href="#cb17-7" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> Date <span class="kw">AS</span> x</span>
+<span id="cb17-8"><a href="#cb17-8" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">line</span> <span class="kw">MAPPING</span> Temp AS <span class="at">y</span>, <span class="st">'Temperature'</span> AS <span class="at">color</span></span>
+<span id="cb17-9"><a href="#cb17-9" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">line</span> <span class="kw">MAPPING</span> Ozone AS <span class="at">y</span>, <span class="st">'Ozone'</span> AS <span class="at">color</span></span>
+<span id="cb17-10"><a href="#cb17-10" aria-hidden="true" tabindex="-1"></a><span class="kw">SCALE</span> <span class="at">x</span> <span class="kw">VIA</span> <span class="dt">date</span></span>
+<span id="cb17-11"><a href="#cb17-11" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb17-12"><a href="#cb17-12" aria-hidden="true" tabindex="-1"></a><span class="co">-- Lollipop chart</span></span>
+<span id="cb17-13"><a href="#cb17-13" aria-hidden="true" tabindex="-1"></a><span class="kw">SELECT</span> <span class="fu">ROUND</span>(bill_dep) <span class="kw">AS</span> bill_dep, <span class="fu">COUNT</span>(<span class="op">*</span>) <span class="kw">AS</span> n <span class="kw">FROM</span> ggsql:penguins <span class="kw">GROUP</span> <span class="kw">BY</span> <span class="dv">1</span></span>
+<span id="cb17-14"><a href="#cb17-14" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> bill_dep <span class="kw">AS</span> <span class="at">x</span></span>
+<span id="cb17-15"><a href="#cb17-15" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">range</span> <span class="kw">MAPPING</span> <span class="dv">0</span> AS <span class="at">ymin</span>, n AS <span class="at">ymax</span> <span class="kw">SETTING</span> hinge <span class="op">=&gt;</span> null</span>
+<span id="cb17-16"><a href="#cb17-16" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">point</span> <span class="kw">MAPPING</span> n AS <span class="at">y</span></span>
+<span id="cb17-17"><a href="#cb17-17" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb17-18"><a href="#cb17-18" aria-hidden="true" tabindex="-1"></a><span class="co">-- Ridgeline / joy plot</span></span>
+<span id="cb17-19"><a href="#cb17-19" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> <span class="kw">Temp</span> <span class="kw">AS</span> x, Month <span class="kw">AS</span> y <span class="kw">FROM</span> ggsql:airquality</span>
+<span id="cb17-20"><a href="#cb17-20" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">violin</span> <span class="kw">SETTING</span> <span class="at">width</span> <span class="op">=&gt;</span> <span class="dv">4</span>, side <span class="op">=&gt;</span> <span class="st">'top'</span></span>
+<span id="cb17-21"><a href="#cb17-21" aria-hidden="true" tabindex="-1"></a><span class="kw">SCALE</span> <span class="kw">ORDINAL</span> <span class="at">y</span></span>
+<span id="cb17-22"><a href="#cb17-22" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb17-23"><a href="#cb17-23" aria-hidden="true" tabindex="-1"></a><span class="co">-- Mean ± 1.96·sdev band per group, as a ribbon</span></span>
+<span id="cb17-24"><a href="#cb17-24" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> Day <span class="kw">AS</span> x, <span class="kw">Temp</span> <span class="kw">AS</span> ymin, <span class="kw">Temp</span> <span class="kw">AS</span> ymax <span class="kw">FROM</span> ggsql:airquality</span>
+<span id="cb17-25"><a href="#cb17-25" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">ribbon</span> <span class="kw">SETTING</span> aggregate <span class="op">=&gt;</span> (<span class="st">'mean-1.96sdev'</span>, <span class="st">'mean+1.96sdev'</span>) <span class="kw">PARTITION</span> BY Month</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 </section>
 <section id="cli" class="level2">
 <h2 class="anchored" data-anchor-id="cli">CLI</h2>
 <p><code>ggsql</code> subcommands: <code>exec &lt;QUERY&gt;</code>, <code>run &lt;FILE&gt;</code>, <code>validate &lt;QUERY&gt;</code>, <code>parse &lt;QUERY&gt;</code>, <code>view &lt;QUERY&gt;</code> (window, blocks until closed). Options: <code>--reader &lt;URI&gt;</code> (default <code>duckdb://memory</code>), <code>--writer &lt;FORMAT&gt;</code> (default <code>vegalite</code>), <code>--output &lt;PATH&gt;</code> (extension picks writer), <code>-D key=value</code>, <code>-v</code>. Writers: <code>vegalite svg pdf hep</code> (no GPU) and <code>png jpeg tiff webp</code> (GPU, not every build).</p>
 <p><strong>Don’t run <code>ggsql view</code></strong> unless a window was requested — it blocks and you can’t close it; use <code>--output</code> instead. <strong>Prefer <code>svg</code>/<code>pdf</code></strong> for pictures (no GPU adapter needed); <code>ggsql exec --help</code> lists available writers.</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb16"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a><span class="ex">ggsql</span> exec <span class="st">"VISUALISE bill_len AS x, bill_dep AS y FROM ggsql:penguins DRAW point"</span> <span class="at">-v</span></span>
-<span id="cb16-2"><a href="#cb16-2" aria-hidden="true" tabindex="-1"></a><span class="ex">ggsql</span> exec <span class="st">"VISUALISE species AS fill FROM ggsql:penguins DRAW bar"</span> <span class="at">-o</span> chart.svg</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb18"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a><span class="ex">ggsql</span> exec <span class="st">"VISUALISE bill_len AS x, bill_dep AS y FROM ggsql:penguins DRAW point"</span> <span class="at">-v</span></span>
+<span id="cb18-2"><a href="#cb18-2" aria-hidden="true" tabindex="-1"></a><span class="ex">ggsql</span> exec <span class="st">"VISUALISE species AS fill FROM ggsql:penguins DRAW bar"</span> <span class="at">-o</span> chart.svg</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 </section>
 <section id="reference" class="level2">
 <h2 class="anchored" data-anchor-id="reference">Reference</h2>

@@ -51,7 +51,7 @@ The orientation is deduced directly from the mapping. See the [‘Data transform
 
 Add a horizontal threshold line to a time series plot:
 
-``` ggsql
+```ggsql
 SELECT Date AS date, temp AS temperature
 FROM ggsql:airquality
 WHERE Month = 5
@@ -67,7 +67,7 @@ PLACE rule
 
 Add a vertical line to mark a specific value:
 
-``` ggsql
+```ggsql
 VISUALISE FROM ggsql:penguins
 DRAW point 
   MAPPING bill_len AS x, bill_dep AS y
@@ -79,7 +79,7 @@ PLACE rule
 
 Add multiple threshold lines with different colors. Note that because we’re mapping data from data, we use the `DRAW` clause instead of the `PLACE` clause.
 
-``` ggsql
+```ggsql
 WITH thresholds(value, label) AS (VALUES
   (70, 'Target'),
   (80, 'Warning'),
@@ -100,7 +100,7 @@ DRAW rule
 
 Add a diagonal reference line to a scatterplot by using `slope`
 
-``` ggsql
+```ggsql
 VISUALISE FROM ggsql:penguins
   DRAW point MAPPING bill_len AS x, bill_dep AS y
   PLACE rule SETTING slope => 0.4, y => -1
@@ -110,7 +110,7 @@ VISUALISE FROM ggsql:penguins
 
 Add multiple reference lines with different colors from a separate dataset. Note we’re mapping from data here, so we use `DRAW` instead of `PLACE`.
 
-``` ggsql
+```ggsql
 WITH lines(slope, intercept, label) AS (VALUES
     (0.4, -1, 'Line A'),
     (0.2, 8, 'Line B'),
@@ -130,7 +130,7 @@ VISUALISE FROM ggsql:penguins
 
 Show a max rule for a timeseries
 
-``` ggsql
+```ggsql
 VISUALISE Temp AS y FROM ggsql:airquality
 DRAW line
   MAPPING Date AS x

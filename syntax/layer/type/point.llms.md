@@ -42,7 +42,7 @@ The point layer has no orientation. The axes are treated symmetrically.
 
 Create a classic scatterplot
 
-``` ggsql
+```ggsql
 VISUALISE FROM ggsql:penguins
 DRAW point
   MAPPING bill_len AS x, bill_dep AS y, species AS fill
@@ -52,7 +52,7 @@ DRAW point
 
 Map to size to create a bubble chart
 
-``` ggsql
+```ggsql
 VISUALISE FROM ggsql:penguins
 DRAW point
   MAPPING bill_len AS x, bill_dep AS y, body_mass AS size
@@ -62,7 +62,7 @@ DRAW point
 
 Use filter to only plot a subset of the data
 
-``` ggsql
+```ggsql
 VISUALISE FROM ggsql:penguins
 DRAW point
   MAPPING bill_len AS x, bill_dep AS y, species AS fill
@@ -73,7 +73,7 @@ DRAW point
 
 When points are plotted on a discrete scale you will likely see a lot of overplotting. Use jitter position to introduce a bit of random offset to counter that.
 
-``` ggsql
+```ggsql
 VISUALISE species AS x, sex AS y, island AS fill FROM ggsql:penguins
 DRAW point
   SETTING position => 'jitter', distribution => 'normal'
@@ -83,7 +83,7 @@ DRAW point
 
 Use density distribution for a violin-like jitter effect, where jitter width scales with local data density.
 
-``` ggsql
+```ggsql
 VISUALISE species AS x, bill_dep AS y FROM ggsql:penguins
 DRAW point 
   SETTING position => 'jitter', distribution => 'density'
@@ -93,7 +93,7 @@ DRAW point
 
 Use aggregation to show a single point per group
 
-``` ggsql
+```ggsql
 VISUALISE species AS x, island AS y, body_mass AS fill, body_mass AS size 
   FROM ggsql:penguins
 DRAW point 

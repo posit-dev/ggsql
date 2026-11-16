@@ -48,7 +48,7 @@ Line plots are sorted and connected along their primary axis. Since the primary 
 
 Standard lineplot
 
-``` ggsql
+```ggsql
 VISUALISE FROM ggsql:airquality
 DRAW line
   MAPPING Date AS x, Temp AS y
@@ -58,7 +58,7 @@ DRAW line
 
 Use `PARTITION BY` to create multiple lines
 
-``` ggsql
+```ggsql
 VISUALISE FROM ggsql:airquality
 DRAW line
   MAPPING Day AS x, Temp AS y
@@ -69,7 +69,7 @@ DRAW line
 
 or split them with a *discrete* aesthetic. We can make a continuous variable (`Month`) discrete by using an ordinal scale.
 
-``` ggsql
+```ggsql
 VISUALISE FROM ggsql:airquality
 DRAW line
   MAPPING Day AS x, Temp AS y, Month AS stroke
@@ -80,7 +80,7 @@ DRAW line
 
 When `stroke` or `opacity` varies, the properties of the preceding datapoint carry over. In the case below, we don’t see the blue of the last datapoint.
 
-``` ggsql
+```ggsql
 WITH data(x, y, z) AS (VALUES
   (1, 2, 1),
   (2, 5, 3),
@@ -96,7 +96,7 @@ SCALE stroke TO ('red', 'green', 'blue')
 
 The `linewidth` aesthetic can vary point to point.
 
-``` ggsql
+```ggsql
 WITH data(x, y, z) AS (VALUES
   (1, 2, 1),
   (2, 5, 3),
@@ -113,7 +113,7 @@ SCALE linewidth TO (0, 30)
 
 Use aggregation to draw min and max lines from a set of observations on a single layer. Targeting `y` twice produces one summary row per function within the same group. A synthetic `aggregate` column tags each row with the different function names, that you can remap to colour the lines distinctly:
 
-``` ggsql
+```ggsql
 VISUALISE Day AS x, Temp AS y FROM ggsql:airquality
 DRAW line
   REMAPPING aggregate AS stroke

@@ -40,7 +40,7 @@ The spatial layer has no orientations.
 
 Note that depending on your reader, you may need to activate modules for spatial analysis.
 
-``` ggsql
+```ggsql
 -- For example, for DuckDB, one could use:
 INSTALL spatial;
 LOAD spatial;
@@ -48,7 +48,7 @@ LOAD spatial;
 
 A basic map of the world using built-in data. Note that the geometry column is automatically detected.
 
-``` ggsql
+```ggsql
 VISUALISE FROM ggsql:world
 DRAW spatial
 ```
@@ -57,7 +57,7 @@ DRAW spatial
 
 If the geometry column isn’t automatically detected —for example because it has a non-standard name— you may need to declare the mapping explicitly.
 
-``` ggsql
+```ggsql
 SELECT geom AS foo FROM ggsql:world
 VISUALISE
 DRAW spatial 
@@ -68,7 +68,7 @@ DRAW spatial
 
 Filtering on other columns.
 
-``` ggsql
+```ggsql
 VISUALISE FROM ggsql:world
 DRAW spatial 
   FILTER continent == 'Asia'
@@ -78,7 +78,7 @@ DRAW spatial
 
 Filtering based on spatial operations.
 
-``` ggsql
+```ggsql
 VISUALISE FROM ggsql:world
 DRAW spatial 
   FILTER ST_Intersects(ST_GeomFromWKB(geom), ST_MakeEnvelope(-20.0, -35.0, 55.0, 38.0))
@@ -88,7 +88,7 @@ DRAW spatial
 
 Make a choropleth map by mapping a variable to a fill aesthetic.
 
-``` ggsql
+```ggsql
 VISUALISE FROM ggsql:world
 DRAW spatial 
   MAPPING population AS fill

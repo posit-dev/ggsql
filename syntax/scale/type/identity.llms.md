@@ -14,7 +14,7 @@ Since the identity scale doesn’t do any translation of data it doesn’t creat
 
 `flipper_len` is measured in millimetres, so it is scaled down in SQL to give radii of a few points before being handed to the aesthetic:
 
-``` ggsql
+```ggsql
 SELECT bill_len, bill_dep, flipper_len / 40.0 AS radius FROM ggsql:penguins
 VISUALISE bill_len AS x, bill_dep AS y, radius AS size
 DRAW point
@@ -25,7 +25,7 @@ SCALE IDENTITY size
 
 #### Use color values directly
 
-``` ggsql
+```ggsql
 WITH t(category, value, style) AS (VALUES
   ('A', 45, 'forestgreen'),
   ('B', 72, '#3401e3'),

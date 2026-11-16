@@ -12,7 +12,7 @@ Scales for facet aesthetics never use an output range and always relate to the i
 
 Since panels are discrete by nature it is not possible to have a continuous scale for a facet. If continuous data is mapped to a facet aesthetic, a binned scale will be applied by default.
 
-``` ggsql
+```ggsql
 VISUALISE Date AS x, Temp AS y FROM ggsql:airquality
 DRAW line
 FACET Date 
@@ -27,7 +27,7 @@ SCALE x
 
 In order to show data where the facet variable is null, it is necessary to explicitly include `null` in the input range of a facet aesthetic scale. Just like discrete position aesthetics. You can also use `RENAMING` on the scale to customize facet strip labels.
 
-``` ggsql
+```ggsql
 VISUALISE sex AS x FROM ggsql:penguins
 DRAW bar
 FACET species

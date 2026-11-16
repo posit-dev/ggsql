@@ -22,7 +22,7 @@ DuckDB showed us the way in terms of making SQL a bit more readable. One of thei
 
 In 0.3.0 we have adopted this for the `VISUALIZE` clause, so that you can now write:
 
-``` ggsql
+```ggsql
 FROM sales
 VISUALIZE date AS x, revenue AS y
 DRAW line

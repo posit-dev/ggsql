@@ -11,7 +11,7 @@ The Cartesian coordinate system has the following default position aesthetics wh
 
 Users can provide their own aesthetic names if needed, e.g.
 
-``` ggsql
+```ggsql
 PROJECT p, q TO cartesian
 ```
 
@@ -26,7 +26,7 @@ assuming they do not try to use a name that is already being used by any facet o
 
 ### Use custom position aesthetic names
 
-``` ggsql
+```ggsql
 VISUALISE bill_len AS p, bill_dep AS q FROM ggsql:penguins
 DRAW point
 PROJECT p, q TO cartesian
@@ -36,7 +36,7 @@ PROJECT p, q TO cartesian
 
 ### Flip the x and y axes
 
-``` ggsql
+```ggsql
 VISUALISE bill_len AS x, bill_dep AS y FROM ggsql:penguins
 DRAW point
 PROJECT y, x TO cartesian

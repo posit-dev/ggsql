@@ -11,7 +11,7 @@ The polar coordinate system has the following default position aesthetics which 
 
 Users can provide their own aesthetic names if needed. For example, if using `x` and `y` aesthetics:
 
-``` ggsql
+```ggsql
 PROJECT y, x TO polar
 ```
 
@@ -39,7 +39,7 @@ This maps `y` to radius and `x` to angle. This is useful when converting from a 
 
 ### Pie chart using angle/radius aesthetics
 
-``` ggsql
+```ggsql
 VISUALISE species AS fill FROM ggsql:penguins
 DRAW bar
 PROJECT TO polar
@@ -49,7 +49,7 @@ PROJECT TO polar
 
 ### Pie chart starting at 3 o’clock
 
-``` ggsql
+```ggsql
 VISUALISE species AS fill FROM ggsql:penguins
 DRAW bar
 PROJECT TO polar 
@@ -60,7 +60,7 @@ PROJECT TO polar
 
 ### Pie chart starting at 9 o’clock
 
-``` ggsql
+```ggsql
 VISUALISE species AS fill FROM ggsql:penguins
 DRAW bar
 PROJECT TO polar 
@@ -71,7 +71,7 @@ PROJECT TO polar
 
 ### Half-circle gauge chart
 
-``` ggsql
+```ggsql
 VISUALISE species AS fill FROM ggsql:penguins
 DRAW bar
 PROJECT TO polar 
@@ -84,7 +84,7 @@ This creates a gauge chart spanning from the 9 o’clock to 3 o’clock position
 
 ### Three-quarter pie chart
 
-``` ggsql
+```ggsql
 VISUALISE species AS fill FROM ggsql:penguins
 DRAW bar
 SCALE angle SETTING expand => 0
@@ -98,7 +98,7 @@ This creates a pie chart using only 270° (three-quarters of a circle), starting
 
 ### Donut chart with 50% hole
 
-``` ggsql
+```ggsql
 VISUALISE species AS fill FROM ggsql:penguins
 DRAW bar
 PROJECT TO polar 
@@ -111,7 +111,7 @@ This creates a donut chart where the inner 50% of the radius is empty, leaving a
 
 ### Donut chart with 30% hole
 
-``` ggsql
+```ggsql
 VISUALISE species AS fill FROM ggsql:penguins
 DRAW bar
 PROJECT TO polar 
@@ -124,7 +124,7 @@ This creates a donut chart with a smaller hole (30% of the radius).
 
 ### Half-circle donut chart
 
-``` ggsql
+```ggsql
 VISUALISE species AS fill FROM ggsql:penguins
 DRAW bar
 SCALE angle SETTING expand => 0
@@ -138,7 +138,7 @@ This combines the `start`, `end`, and `inner` settings to create a half-circle d
 
 ### Radar chart
 
-``` ggsql
+```ggsql
 WITH data(angle, radius) AS (VALUES
   ('A', 5),
   ('B', 2),

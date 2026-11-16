@@ -10,7 +10,7 @@ Faceted plots (small multiples) split data into separate panels by one or more c
 
 ## Code
 
-``` ggsql
+```ggsql
 SELECT bill_len, bill_dep, species FROM ggsql:penguins
 VISUALISE bill_len AS x, bill_dep AS y
 DRAW point
@@ -35,7 +35,7 @@ LABEL
 
 Use `FACET rows BY cols` to create a grid layout:
 
-``` ggsql
+```ggsql
 SELECT bill_len, bill_dep, species, island FROM ggsql:penguins
 VISUALISE bill_len AS x, bill_dep AS y
 DRAW point
@@ -52,7 +52,7 @@ LABEL
 
 Allow each facet to have independent axis scales with `SETTING free`:
 
-``` ggsql
+```ggsql
 SELECT bill_len, bill_dep, species FROM ggsql:penguins
 VISUALISE bill_len AS x, bill_dep AS y
 DRAW point

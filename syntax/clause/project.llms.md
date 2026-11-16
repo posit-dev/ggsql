@@ -6,7 +6,7 @@ The `PROJECT` clause defines the projection of the plot, that is, how abstract p
 
 The `PROJECT` syntax contains a number of subclauses
 
-``` ggsql
+```ggsql
 PROJECT <aesthetic>, ... TO <coordinate-system>
   SETTING <parameter> => <value>, ...
 ```
@@ -15,7 +15,7 @@ The comma-separated list of `aesthetic` names are optional but allows you to def
 
 ### `TO`
 
-``` ggsql
+```ggsql
 TO <coordinate-system>
 ```
 
@@ -23,7 +23,7 @@ The `TO` clause is required and is followed by the name of the [coordinate syste
 
 ### `SETTING`
 
-``` ggsql
+```ggsql
 SETTING <parameter> => <value>, ...
 ```
 

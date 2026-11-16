@@ -55,7 +55,7 @@ The histogram has its primary axis along the binned variable. The orientation is
 
 Show the number of each species in the data
 
-``` ggsql
+```ggsql
 VISUALISE FROM ggsql:penguins
 DRAW histogram
   MAPPING body_mass AS x
@@ -65,7 +65,7 @@ DRAW histogram
 
 Split the histogram in two by mapping sex to fill
 
-``` ggsql
+```ggsql
 VISUALISE FROM ggsql:penguins
 DRAW histogram
   MAPPING body_mass AS x, sex AS fill
@@ -75,7 +75,7 @@ DRAW histogram
 
 The default is to stack multiple histograms. To compare them from a baseline of 0 set position to identity
 
-``` ggsql
+```ggsql
 VISUALISE FROM ggsql:penguins
 DRAW histogram
   MAPPING body_mass AS x, sex AS fill
@@ -86,7 +86,7 @@ DRAW histogram
 
 Make the two histograms the same scale by remapping to density
 
-``` ggsql
+```ggsql
 VISUALISE FROM ggsql:penguins
 DRAW histogram
   MAPPING body_mass AS x, sex AS fill
@@ -97,7 +97,7 @@ DRAW histogram
 
 Specify an exact binwidth if needed
 
-``` ggsql
+```ggsql
 VISUALISE FROM ggsql:penguins
 DRAW histogram
   MAPPING body_mass AS x
@@ -108,7 +108,7 @@ DRAW histogram
 
 Create a histogram along the y axis by changing the mapping
 
-``` ggsql
+```ggsql
 VISUALISE FROM ggsql:penguins
 DRAW histogram
   MAPPING body_mass AS y

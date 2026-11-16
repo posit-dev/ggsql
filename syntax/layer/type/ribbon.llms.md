@@ -43,7 +43,7 @@ Ribbon layers are sorted and connected along their primary axis. The orientation
 
 A ribbon plot with arbitrary values as minima/maxima
 
-``` ggsql
+```ggsql
 VISUALISE FROM ggsql:airquality
 DRAW ribbon
   MAPPING Date AS x, Wind AS ymin, Temp AS ymax
@@ -53,7 +53,7 @@ DRAW ribbon
 
 Ribbon plots are great for showing the range of some aggregation.
 
-``` ggsql
+```ggsql
 // Weekly aggregation of temperature
 SELECT
   Week,
@@ -75,7 +75,7 @@ DRAW line
 
 Use aggregation to calculate bounds on the fly. The two untargeted aggregation functions target the `ymin` and `ymax` aesthetics automatically.
 
-``` ggsql
+```ggsql
 VISUALISE Day AS x, Temp AS ymin, Temp AS ymax FROM ggsql:airquality
 DRAW ribbon
   SETTING aggregate => ('min', 'max')

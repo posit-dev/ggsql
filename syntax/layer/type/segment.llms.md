@@ -44,7 +44,7 @@ The segment layer has no orientations. The axes are treated symmetrically.
 
 Segments are useful when you have known start and end points of the data. For example in a graph
 
-``` ggsql
+```ggsql
 WITH edges(x, y, xend, yend, type) AS (VALUES
     (0, 0, 1, 1, 'A'),
     (1, 1, 2, 1, 'A'),
@@ -64,7 +64,7 @@ DRAW segment
 
 Segments can also draw arbitrary diagonal connections between points. For example, marking a delta between two measurements:
 
-``` ggsql
+```ggsql
 WITH deltas(start_x, start_y, end_x, end_y, label) AS (VALUES
     (1, 1, 4, 3, 'A → B'),
     (2, 4, 5, 2, 'C → D'),

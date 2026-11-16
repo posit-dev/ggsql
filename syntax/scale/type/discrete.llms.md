@@ -12,7 +12,7 @@ The input range for discrete scales consists of all the unique values that the s
 
 #### Set order of bars using input range
 
-``` ggsql
+```ggsql
 VISUALISE species AS x FROM ggsql:penguins
 DRAW bar
 SCALE x FROM ('Chinstrap', 'Gentoo', 'Adelie')
@@ -23,7 +23,7 @@ SCALE y FROM (0, null)
 
 #### Remove a category by omitting it
 
-``` ggsql
+```ggsql
 VISUALISE species AS x FROM ggsql:penguins
 DRAW bar
 SCALE x FROM ('Adelie', 'Chinstrap')
@@ -34,7 +34,7 @@ SCALE y FROM (0, null)
 
 #### Explicitly include null in range to show removed data
 
-``` ggsql
+```ggsql
 VISUALISE island AS x FROM ggsql:penguins
 DRAW bar
 SCALE x FROM ('Torgersen', 'Biscoe', null)
@@ -60,7 +60,7 @@ The remaining aesthetics don’t have a meaningful discrete output domain and do
 
 #### Choose a different color palette
 
-``` ggsql
+```ggsql
 VISUALISE bill_len AS x, bill_dep AS y, island AS color FROM ggsql:penguins
 DRAW point
 SCALE color TO tableau
@@ -70,7 +70,7 @@ SCALE color TO tableau
 
 #### Construct a manual output range
 
-``` ggsql
+```ggsql
 VISUALISE bill_len AS x, bill_dep AS y, island AS shape FROM ggsql:penguins
 DRAW point
 SCALE shape TO ('star', 'circle', 'diamond')
@@ -92,7 +92,7 @@ There is only one setting relevant for discrete scales:
 
 #### Reverse the color legend
 
-``` ggsql
+```ggsql
 VISUALISE bill_len AS x, bill_dep AS y, species AS color FROM ggsql:penguins
 DRAW point
 SCALE color FROM ('Adelie', 'Chinstrap', 'Gentoo')
@@ -119,7 +119,7 @@ You can combine formatting with direct renaming in which case the direct renamin
 
 #### Rename null
 
-``` ggsql
+```ggsql
 VISUALISE sex AS x FROM ggsql:penguins
 DRAW bar
 SCALE x
@@ -131,7 +131,7 @@ SCALE y FROM (0, null)
 
 #### Add prefix
 
-``` ggsql
+```ggsql
 VISUALISE species AS x FROM ggsql:penguins
 DRAW bar
 SCALE x
@@ -143,7 +143,7 @@ SCALE y FROM (0, null)
 
 #### Apply formatting
 
-``` ggsql
+```ggsql
 VISUALISE bill_len AS x, bill_dep AS y, sex AS color FROM ggsql:penguins
 DRAW point
 SCALE color

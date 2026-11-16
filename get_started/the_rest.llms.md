@@ -34,7 +34,7 @@ The above alludes to the fact that coordinate systems have different position ae
 
 `PROJECT` also takes a `SETTING` clause which works much like the `SETTING` clause in `DRAW` and `SCALE`, allowing you to modify the behavior of the coordinate system. An example of a full `PROJECT` clause could be:
 
-``` ggsql
+```ggsql
 PROJECT r, a TO polar
   SETTING start => -90, end => 90
 ```
@@ -51,7 +51,7 @@ There is an alternative to using the `FACET` variable, which is to map the varia
 
 ggsql automatically labels the axes and legends in your plot by the column name of the data mapped to it. However, you often want to provide more descriptive names as well as a title to give context to the plot. All of this is accomplished with the [`LABEL`](../syntax/clause/label.llms.md) clause by setting the label text for both titles, subtitles, etc. as well as any aesthetic you have mapped. A `LABEL` clause may end up looking like this:
 
-``` ggsql
+```ggsql
 LABEL
   title => "Average wingspan of a cartoon owl"
   x => "Radius of first circle (cm)"
@@ -64,7 +64,7 @@ When we want to add graphical objects to the plot that do not directly relate to
 
 A standard `PLACE` query could look like this:
 
-``` ggsql
+```ggsql
 PLACE text
   SETTING x => 30, y => 45, label => "Very long wings, right!"
 ```
@@ -75,7 +75,7 @@ You may wonder why you wouldn’t just do this using `DRAW` since that would als
 
 Let’s apply what we have learned to a couple of plots. First, we will create a pie chart by projecting a stacked bar chart to a polar coordinate system:
 
-``` ggsql
+```ggsql
 VISUALISE species AS fill FROM ggsql:penguins
 DRAW bar
 PROJECT TO polar
@@ -85,7 +85,7 @@ PROJECT TO polar
 
 It may be easier to see how the bar chart turns into a pie by looking at it unstacked:
 
-``` ggsql
+```ggsql
 VISUALISE species AS radius, species AS fill FROM ggsql:penguins
 DRAW bar
 ```
@@ -96,7 +96,7 @@ See how we didn’t have to specify the polar coordinate system in the last exam
 
 If we instead map the species to angle we end up with a rose plot. We turn off the automatic conversion to radar plots for discrete angle categories here.
 
-``` ggsql
+```ggsql
 VISUALISE species AS angle, species AS fill FROM ggsql:penguins
 DRAW bar
 PROJECT TO polar SETTING radar => false
@@ -106,7 +106,7 @@ PROJECT TO polar SETTING radar => false
 
 Moving back to the regular pie chart, we might be interested in comparing how the species distribution varies by sex. We can do this with faceting:
 
-``` ggsql
+```ggsql
 VISUALISE species AS fill FROM ggsql:penguins
 DRAW bar
 PROJECT TO polar
@@ -121,7 +121,7 @@ Above, we use the `free` parameter of facet to allow each facet to have their ow
 
 We can use `LABEL` to add a bit more context to our final plot:
 
-``` ggsql
+```ggsql
 VISUALISE species AS fill FROM ggsql:penguins
 DRAW bar
 PROJECT TO polar
