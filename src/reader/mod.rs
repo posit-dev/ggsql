@@ -7,7 +7,7 @@
 //!
 //! All readers implement the `Reader` trait, which provides:
 //! - SQL query execution → DataFrame conversion
-//! - Visualization query execution → Spec
+//! - Visualization query execution → ResolvedPlot
 //! - Optional DataFrame registration for queryable tables
 //! - Connection management and error handling
 //!
@@ -33,10 +33,12 @@
 
 use std::collections::HashMap;
 
-use crate::execute::prepare_data_with_reader;
+use crate::execute::{prepare_data_with_reader, resolve_table_with_reader};
+use crate::parser::{self, SourceTree};
 use crate::plot::{CastTargetType, Plot};
+use crate::table::TableLayout;
 use crate::validate::{validate, ValidationWarning};
-use crate::{naming, DataFrame, GgsqlError, Result};
+use crate::{naming, DataFrame, GgsqlError, Result, Spec};
 
 // =============================================================================
 // SQL Dialect
@@ -1502,11 +1504,11 @@ mod helper_tests {
 }
 
 // ============================================================================
-// Spec - Result of reader.execute()
+// ResolvedPlot - Result of reader.execute()
 // ============================================================================
 
 /// Result of executing a ggsql query, ready for rendering.
-pub struct Spec {
+pub struct ResolvedPlot {
     /// Single resolved plot specification
     pub(crate) plot: Plot,
     /// Internal data map (global + layer-specific DataFrames)
@@ -1527,6 +1529,37 @@ pub struct Metadata {
     pub rows: usize,
     pub columns: Vec<String>,
     pub layer_count: usize,
+}
+
+// ============================================================================
+// ResolvedTable - Result of reader.execute() for a TABULATE statement
+// ============================================================================
+
+/// Result of executing a ggsql TABULATE query, ready for rendering.
+pub struct ResolvedTable {
+    /// The resolved layout (cells, columns, rows), built from
+    /// `table.source` (or the main SQL if there was no TABULATE FROM) and
+    /// validated before handoff. See `TableLayout` for the shape invariants
+    /// it maintains.
+    pub(crate) layout: TableLayout,
+    /// The SQL query that was executed to produce the layout's cells
+    pub(crate) sql: String,
+    /// Validation warnings from preparation
+    pub(crate) warnings: Vec<ValidationWarning>,
+}
+
+// ============================================================================
+// ResolvedSpec - Result of reader.execute()
+// ============================================================================
+
+/// Result of executing a ggsql query: either a resolved plot or a resolved
+/// table, mirroring the parse-time `Spec` (`Plot` or `Table`).
+pub enum ResolvedSpec {
+    // Both boxed, mirroring `Spec`'s own two variants: whichever of
+    // `ResolvedPlot`/`ResolvedTable` is larger, an unboxed size gap between
+    // them trips clippy's `large_enum_variant` lint.
+    Plot(Box<ResolvedPlot>),
+    Table(Box<ResolvedTable>),
 }
 
 // ============================================================================
@@ -1622,24 +1655,32 @@ pub trait Reader {
         )))
     }
 
-    /// Execute a ggsql query and return the visualization specification.
+    /// Execute a ggsql query and return the resolved specification.
     ///
-    /// This is the main entry point for creating visualizations. It parses the query,
-    /// executes the SQL portion, and returns a `Spec` ready for rendering.
+    /// This is the main entry point for creating visualizations or tables.
+    /// It parses the query, executes the SQL portion, and returns a
+    /// `ResolvedSpec` ready for rendering — either a `ResolvedPlot` (from a
+    /// `VISUALISE`) or a `ResolvedTable` (from a `TABULATE`).
+    ///
+    /// No default body: implementations delegate to `execute_with_reader`
+    /// (each with a concrete, `Sized` `self`) so the trait stays object-safe
+    /// — a default method here would need to unsize `&Self` into
+    /// `&dyn Reader` to call that same free function, which requires
+    /// `Self: Sized` and would remove `execute` from `dyn Reader`'s vtable.
     ///
     /// # Arguments
     ///
-    /// * `query` - The ggsql query (SQL + VISUALISE clause)
+    /// * `query` - The ggsql query (SQL + VISUALISE/TABULATE clause)
     ///
     /// # Returns
     ///
-    /// A `Spec` containing the resolved visualization specification and data.
+    /// A `ResolvedSpec` containing the resolved plot or table.
     ///
     /// # Errors
     ///
     /// Returns an error if:
     /// - The query syntax is invalid
-    /// - The query has no VISUALISE clause
+    /// - The query has no VISUALISE/TABULATE clause
     /// - The SQL execution fails
     ///
     /// # Example
@@ -1654,7 +1695,7 @@ pub trait Reader {
     /// let writer = VegaLiteWriter::new();
     /// let json = writer.render(&spec)?;
     /// ```
-    fn execute(&self, query: &str) -> Result<Spec>;
+    fn execute(&self, query: &str) -> Result<ResolvedSpec>;
 
     /// Get the SQL dialect for this reader.
     ///
@@ -1766,12 +1807,11 @@ pub struct ColumnInfo {
     pub data_type: String,
 }
 
-/// Execute a ggsql query using any reader
+/// Resolve a VISUALISE query into a `ResolvedPlot`.
 ///
-/// This is the shared implementation behind `Reader::execute()`. Concrete
-/// readers delegate to this so the trait stays object-safe (no `Self: Sized`
-/// bound on `execute`).
-pub fn execute_with_reader(reader: &dyn Reader, query: &str) -> Result<Spec> {
+/// This is the Plot-side counterpart to `execute::resolve_table_with_reader`
+/// — see that function's doc comment for how the two relate.
+pub fn resolve_plot_with_reader(reader: &dyn Reader, query: &str) -> Result<ResolvedPlot> {
     let validated = validate(query)?;
     let warnings: Vec<ValidationWarning> = validated.warnings().to_vec();
 
@@ -1782,11 +1822,37 @@ pub fn execute_with_reader(reader: &dyn Reader, query: &str) -> Result<Spec> {
             GgsqlError::ValidationError("No visualization spec found".to_string())
         })?;
 
-    Ok(Spec::new(
+    Ok(ResolvedPlot::new(
         plot,
         prepared_data.data,
         prepared_data.sql,
         prepared_data.visual,
         warnings,
     ))
+}
+
+/// Execute a ggsql query using any reader.
+///
+/// This is the shared implementation behind `Reader::execute()`. Concrete
+/// readers delegate to this so the trait stays object-safe (no `Self: Sized`
+/// bound on `execute`). Dispatches to the Plot or Table pipeline depending on
+/// which kind of `Spec` the query's first statement is.
+pub fn execute_with_reader(reader: &dyn Reader, query: &str) -> Result<ResolvedSpec> {
+    let source_tree = SourceTree::new(query)?;
+    source_tree.validate()?;
+    let specs = parser::build_ast(&source_tree)?;
+
+    match specs.into_iter().next() {
+        Some(Spec::Table(_)) => {
+            let resolved = resolve_table_with_reader(query, reader)?;
+            Ok(ResolvedSpec::Table(Box::new(resolved)))
+        }
+        Some(Spec::Plot(_)) => {
+            let resolved = resolve_plot_with_reader(reader, query)?;
+            Ok(ResolvedSpec::Plot(Box::new(resolved)))
+        }
+        None => Err(GgsqlError::ValidationError(
+            "No VISUALISE or TABULATE statement found in query".to_string(),
+        )),
+    }
 }

@@ -87,6 +87,16 @@ pub fn set_union(mut old: Vec<String>, new: &[String]) -> Vec<String> {
     old
 }
 
+/// Escape HTML special characters. `&` must be replaced first, or the
+/// entities inserted for the others would themselves get escaped.
+pub fn escape_html(s: &str) -> String {
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&#x27;")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -236,5 +246,16 @@ mod tests {
     fn test_with_numbers() {
         assert_eq!(and_list(&[1, 2, 3]), "1, 2, and 3");
         assert_eq!(or_list(&[42, 99]), "42 or 99");
+    }
+
+    #[test]
+    fn test_escape_html() {
+        assert_eq!(
+            escape_html("<script>alert('xss')</script>"),
+            "&lt;script&gt;alert(&#x27;xss&#x27;)&lt;/script&gt;"
+        );
+        assert_eq!(escape_html("a & b"), "a &amp; b");
+        assert_eq!(escape_html("say \"hi\""), "say &quot;hi&quot;");
+        assert_eq!(escape_html("plain text"), "plain text");
     }
 }
