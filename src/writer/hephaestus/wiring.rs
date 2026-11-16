@@ -169,6 +169,9 @@ pub struct GeomSpec {
     /// Unscaled string channels set from a mapped aesthetic (e.g. text labels):
     /// (hephaestus channel, ggsql aesthetic).
     pub raw_strings: &'static [(&'static str, &'static str)],
+    /// Constant channels from layer parameters, scale-bypassing (e.g.
+    /// `cap`/`join` from the `linecap`/`linejoin` SETTINGs).
+    pub constants: Vec<(&'static str, HValue)>,
     /// Constant panel-space channel values, scale-bypassing (e.g. a rule's
     /// 0..1 span, discrete-tile band edges): (hephaestus channel, value).
     ///
@@ -207,6 +210,9 @@ where
         if let Some(col) = aesthetic_column_name(ctx.layer, aesthetic) {
             builder.set(*channel, Raw(column_to_strings(ctx.df, col)?));
         }
+    }
+    for (channel, value) in spec.constants {
+        builder.set(channel, Raw(value));
     }
     for (channel, value) in &spec.raw_numbers {
         builder.set(*channel, Raw(vec![*value; ctx.df.height()]));
@@ -613,6 +619,26 @@ pub fn side_sign(layer: &Layer) -> Option<f64> {
         },
         _ => None,
     }
+}
+
+/// The layer's `linecap`/`linejoin` SETTINGs as constant `cap`/`join` channels.
+/// Validation has already rejected settings the geom doesn't declare, and the
+/// `Null` default doesn't match the `String` arm, so a set value alone decides.
+/// `mitre` normalises to `miter`. Callers drawing a ribbon's second edge map
+/// the channel names to `cap2`/`join2` themselves.
+pub fn stroke_style_constants(layer: &Layer) -> Vec<(&'static str, HValue)> {
+    let mut constants = Vec::new();
+    if let Some(ParameterValue::String(value)) = layer.parameters.get("linecap") {
+        constants.push(("cap", HValue::String(value.as_str().into())));
+    }
+    if let Some(ParameterValue::String(value)) = layer.parameters.get("linejoin") {
+        let value = match value.as_str() {
+            "mitre" => "miter",
+            v => v,
+        };
+        constants.push(("join", HValue::String(value.into())));
+    }
+    constants
 }
 
 /// The two edges of a banded mark, as offsets from the band centre: the full

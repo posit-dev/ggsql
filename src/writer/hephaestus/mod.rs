@@ -341,6 +341,32 @@ mod tests {
     }
 
     #[test]
+    fn renders_linecap_and_linejoin() {
+        assert_renders(
+            "SELECT 1 AS x, 1 AS y UNION ALL SELECT 2, 3 UNION ALL SELECT 3, 1 \
+             VISUALISE x AS x, y AS y DRAW line \
+             SETTING linecap => 'round', linejoin => 'bevel'",
+        );
+        // `mitre` is accepted as a spelling variant of `miter`.
+        assert_renders(
+            "SELECT 1 AS x, 1 AS y UNION ALL SELECT 2, 3 UNION ALL SELECT 3, 1 \
+             VISUALISE x AS x, y AS y DRAW polygon SETTING linejoin => 'mitre'",
+        );
+        // A segment takes `linecap` only.
+        assert_renders(
+            "SELECT 0 AS x, 0 AS y, 1 AS xend, 2 AS yend \
+             VISUALISE x AS x, y AS y, xend AS xend, yend AS yend \
+             DRAW segment SETTING linecap => 'square'",
+        );
+        // Composite geoms route the settings to their stroked components.
+        assert_renders(
+            "SELECT g AS g, v AS v FROM (VALUES ('a', 1), ('a', 2), ('a', 3), ('b', 2), ('b', 4)) t(g, v) \
+             VISUALISE g AS x, v AS y DRAW boxplot \
+             SETTING linecap => 'round', linejoin => 'round'",
+        );
+    }
+
+    #[test]
     fn renders_text() {
         assert_renders(
             "SELECT 1 AS x, 2 AS y, 'hi' AS lab UNION ALL SELECT 2, 3, 'there' \
@@ -1229,6 +1255,39 @@ mod tests {
     }
 
     #[test]
+    fn renders_text_boxed() {
+        // Box-mode via a constant: white background, border from stroke,
+        // geometry settings applied.
+        assert_renders(
+            "SELECT 1 AS x, 2 AS y, 'a' AS lbl UNION ALL SELECT 2, 3, 'b' \
+             VISUALISE x AS x, y AS y, lbl AS label DRAW text \
+             SETTING background => 'white', stroke => 'black', radius => 3, padding => 5, linewidth => 2",
+        );
+    }
+
+    #[test]
+    fn renders_text_boxed_by_group() {
+        // Box-mode via a mapped column: the box fill flows through a colour
+        // scale with a legend.
+        assert_renders(
+            "SELECT 1 AS x, 2 AS y, 'a' AS lbl, 'one' AS g \
+             UNION ALL SELECT 2, 3, 'b', 'two' \
+             VISUALISE x AS x, y AS y, lbl AS label, g AS background DRAW text",
+        );
+    }
+
+    #[test]
+    fn renders_text_box_opt_out() {
+        // `background => null` is the explicit opt-out: bare text, and stroke
+        // falls back to outlining glyphs rather than a box border.
+        assert_renders(
+            "SELECT 1 AS x, 2 AS y, 'a' AS lbl UNION ALL SELECT 2, 3, 'b' \
+             VISUALISE x AS x, y AS y, lbl AS label DRAW text \
+             SETTING background => null, stroke => 'white'",
+        );
+    }
+
+    #[test]
     fn renders_titled_plot() {
         // Title, subtitle and caption all sit on the composition, above/below the
         // single panel.
@@ -1358,6 +1417,28 @@ mod svg_text {
 
     fn contains(svg: &str, label: &str) -> bool {
         texts(svg).iter().any(|t| t == label)
+    }
+
+    #[test]
+    fn boxed_text_draws_a_padded_box_behind_the_label() {
+        // The box is one rounded rect per label (radius curves in the path),
+        // filled and bordered as declared, drawn before the glyph path.
+        let s = svg("SELECT 1 AS x, 2 AS y, 'hi' AS lbl \
+             VISUALISE x AS x, y AS y, lbl AS label DRAW text \
+             SETTING background => 'red', stroke => 'blue', radius => 3");
+        let fill_at = s.find("fill=\"#ff0000\"").expect("box fill missing");
+        assert!(s.contains("stroke=\"#0000ff\""), "box border missing");
+        let label_at = s.find(">hi<").expect("label missing");
+        assert!(fill_at < label_at, "box should draw before the label");
+    }
+
+    #[test]
+    fn linecap_and_linejoin_reach_the_svg() {
+        let styled = svg("SELECT x, y FROM (VALUES (1,2),(2,3),(3,1)) t(x,y) \
+             VISUALISE x AS x, y AS y DRAW line \
+             SETTING linecap => 'round', linejoin => 'bevel'");
+        assert!(styled.contains("stroke-linecap=\"round\""), "{styled}");
+        assert!(styled.contains("stroke-linejoin=\"bevel\""), "{styled}");
     }
 
     #[test]

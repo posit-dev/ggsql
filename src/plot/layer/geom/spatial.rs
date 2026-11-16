@@ -1,4 +1,4 @@
-use super::{DefaultAesthetics, GeomTrait, GeomType, StatResult};
+use super::{DefaultAesthetics, GeomTrait, GeomType, ParamDefinition, StatResult};
 use crate::naming;
 use crate::plot::projection::coord::map::clip_boundary_table;
 use crate::plot::projection::coord::CoordKind;
@@ -37,6 +37,12 @@ pub struct Spatial;
 impl GeomTrait for Spatial {
     fn geom_type(&self) -> GeomType {
         GeomType::Spatial
+    }
+
+    fn default_params(&self) -> &'static [ParamDefinition] {
+        const PARAMS: &[ParamDefinition] =
+            &[super::types::LINECAP_PARAM, super::types::LINEJOIN_PARAM];
+        PARAMS
     }
 
     fn aesthetics(&self) -> DefaultAesthetics {

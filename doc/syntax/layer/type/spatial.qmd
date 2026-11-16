@@ -25,7 +25,8 @@ In practise, this mapping does not often need to be declared.
 * `linetype` The dash pattern of the line.
 
 ## Settings
-The spatial layer has no additional settings.
+* `linecap`: The style of line endings, including the ends of dashes in dashed lines. One of `'butt'` (default), `'round'`, or `'square'`.
+* `linejoin`: The style of corners where line segments meet. One of `'miter'`/`'mitre'` (default), `'round'`, or `'bevel'`.
 
 ## Data transformation
 The spatial layer transforms the `geometry` column to [Well-Known Binary](https://libgeos.org/specifications/wkb/).

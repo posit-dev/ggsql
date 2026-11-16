@@ -62,6 +62,12 @@ pub fn validate_plot(spec: &Plot) -> Result<()> {
 /// As [`validate_plot`] and [`build_composition`].
 pub fn prepare(spec: &Plot, data: &HashMap<String, DataFrame>) -> Result<PlotComposition> {
     validate_plot(spec)?;
+    let ctx = spec.get_aesthetic_context();
+    for (idx, layer) in spec.layers.iter().enumerate() {
+        if let Some(df) = layer.data_key.as_ref().and_then(|key| data.get(key)) {
+            crate::writer::validate_layer_columns(layer, df, idx, &ctx)?;
+        }
+    }
     build_composition(spec, data)
 }
 
@@ -111,7 +117,7 @@ pub fn build_composition(
     // its position channels to these names, giving fixed-scale faceting.
     for scale in &spec.scales {
         let kind = match scale.aesthetic.as_str() {
-            "fill" | "stroke" => scales::RangeKind::Color,
+            "fill" | "stroke" | "background" => scales::RangeKind::Color,
             "shape" => scales::RangeKind::Shape,
             "linetype" => scales::RangeKind::Linetype,
             // The text geom's font aesthetics: a scale over them resolves a

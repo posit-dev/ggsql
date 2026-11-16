@@ -20,6 +20,8 @@ The following aesthetics are recognised by the path layer.
 * `linetype`: The type of path, i.e. the dashing pattern.
 
 ## Settings
+* `linecap`: The style of line endings, including the ends of dashes in dashed lines. One of `'butt'` (default), `'round'`, or `'square'`.
+* `linejoin`: The style of corners where line segments meet. One of `'miter'`/`'mitre'` (default), `'round'`, or `'bevel'`.
 * `position`: Position adjustment. One of `'identity'` (default), `'stack'`, `'dodge'`, or `'jitter'`
 
 ## Data transformation
@@ -88,6 +90,18 @@ DRAW polygon
   MAPPING 'Polygon' AS stroke
 DRAW path 
   MAPPING 'Path' AS stroke
+```
+
+Lines have various styling mechanics, inlcuding layer-level settings for joining and capping lines.
+
+```{ggsql}
+VISUALISE x, y FROM df
+DRAW path
+  SETTING 
+    linetype => '46',
+    linewidth => 5,
+    linejoin => 'round',
+    linecap => 'round'
 ```
 
 When `stroke` or `opacity` varies, the properties of the preceding datapoint carry over. In the case below, we don't see the blue of the last datapoint.

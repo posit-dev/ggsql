@@ -20,6 +20,8 @@ Smooth layers are used to display a trendline among a series of observations.
 
 ## Settings
 
+* `linecap`: The style of line endings, including the ends of dashes in dashed lines. One of `'butt'` (default), `'round'`, or `'square'`.
+* `linejoin`: The style of corners where line segments meet. One of `'miter'`/`'mitre'` (default), `'round'`, or `'bevel'`.
 * `method`: Choice of the method for generating the trendline. One of the following:
     * `'nw'` or `'nadaraya-watson'` estimates the trendline using the Nadaraya-Watson kernel regression method (default).
     * `'ols'` estimates a straight trendline using ordinary least squares method.

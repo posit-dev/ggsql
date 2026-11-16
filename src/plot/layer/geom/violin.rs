@@ -89,6 +89,8 @@ impl GeomTrait for Violin {
                 default: DefaultParamValue::Number(3.0),
                 constraint: ParamConstraint::number_min(0.0),
             },
+            super::types::LINECAP_PARAM,
+            super::types::LINEJOIN_PARAM,
         ];
         PARAMS
     }

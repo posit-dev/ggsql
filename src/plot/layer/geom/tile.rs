@@ -80,6 +80,8 @@ impl GeomTrait for Tile {
                 default: DefaultParamValue::String("identity"),
                 constraint: ParamConstraint::string_option(POSITION_VALUES),
             },
+            super::types::LINECAP_PARAM,
+            super::types::LINEJOIN_PARAM,
             super::types::AGGREGATE_PARAM,
         ];
         PARAMS
