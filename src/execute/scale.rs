@@ -2251,12 +2251,14 @@ mod tests {
 
             let spec = reader
                 .execute(query)
-                .expect("integer fill with SCALE DISCRETE should execute");
-            let layer_key = spec.plot.layers[0]
+                .expect("integer fill with SCALE DISCRETE should execute")
+                .into_plot()
+                .expect("query should resolve to a plot");
+            let layer_key = spec.plot().layers[0]
                 .data_key
                 .as_ref()
                 .expect("layer should have a data key");
-            let df = spec.data.get(layer_key).expect("layer data should exist");
+            let df = spec.data().get(layer_key).expect("layer data should exist");
             assert!(
                 df.column("__ggsql_aes_fill__").is_ok(),
                 "fill column must survive the stat transform, got: {:?}",
@@ -2293,7 +2295,7 @@ mod tests {
                 .expect("execution succeeds; the drop is reported at write time");
             use crate::writer::Writer;
             let writer = crate::writer::vegalite::VegaLiteWriter::new();
-            let msg = match writer.write(&spec.plot, &spec.data) {
+            let msg = match writer.render(&spec) {
                 Err(crate::GgsqlError::ValidationError(s)) => s,
                 Err(other) => panic!("expected ValidationError, got: {}", other),
                 Ok(_) => panic!("expected error, got success"),
