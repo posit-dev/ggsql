@@ -180,33 +180,20 @@ mod tests {
     }
 
     #[test]
-    fn test_all_bases_breaks() {
-        // Log10: the 1-2-5 pattern across every decade.
-        let t10 = Log::base10();
-        assert_eq!(
-            t10.calculate_breaks(1.0, 1000.0, 5, true),
-            vec![1.0, 2.0, 5.0, 10.0, 20.0, 50.0, 100.0, 200.0, 500.0, 1000.0]
-        );
-        // `pretty` has no powers-only alternative.
-        assert_eq!(
-            t10.calculate_breaks(1.0, 1000.0, 5, false),
-            t10.calculate_breaks(1.0, 1000.0, 5, true)
-        );
-
-        // Log2: only multipliers below the base survive, leaving the powers.
-        let t2 = Log::base2();
-        assert_eq!(
-            t2.calculate_breaks(1.0, 16.0, 10, true),
-            vec![1.0, 2.0, 4.0, 8.0, 16.0]
-        );
-
-        // Natural log: powers of e are never round numbers, so a non-integer
-        // base breaks on the base-10 1-2-5 pattern (zygos's break_label_base).
-        let tn = Log::natural();
-        assert_eq!(
-            tn.calculate_breaks(1.0, 100.0, 10, true),
-            vec![1.0, 2.0, 5.0, 10.0, 20.0, 50.0, 100.0]
-        );
+    fn test_all_bases_breaks_delegate_to_zygos() {
+        // Break placement is zygos's contract and tested there; ggsql only
+        // owns the delegation, including that `pretty` has no powers-only
+        // alternative for log scales.
+        for (t, _, _) in get_transforms() {
+            let pretty = t.calculate_breaks(1.0, 100.0, 5, true);
+            assert!(!pretty.is_empty(), "{}: no breaks", t.name());
+            assert_eq!(
+                t.calculate_breaks(1.0, 100.0, 5, false),
+                pretty,
+                "{}: pretty flag should be ignored",
+                t.name()
+            );
+        }
     }
 
     #[test]

@@ -73,16 +73,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_asinh_breaks_symmetric() {
+    fn test_asinh_breaks_delegate_to_zygos() {
+        // Break placement is zygos's contract and tested there; ggsql only
+        // owns the delegation.
         let t = Asinh;
-        let breaks = t.calculate_breaks(-1000.0, 1000.0, 10, true);
-        // Decade 1-2-5 breaks on each branch, mirrored around zero.
-        let positive = [
-            0.1, 0.2, 0.5, 1.0, 2.0, 5.0, 10.0, 20.0, 50.0, 100.0, 200.0, 500.0, 1000.0,
-        ];
-        let mut expected: Vec<f64> = positive.iter().rev().map(|v| -v).collect();
-        expected.push(0.0);
-        expected.extend(positive);
-        assert_eq!(breaks, expected);
+        assert!(!t.calculate_breaks(-1000.0, 1000.0, 10, true).is_empty());
     }
 }
