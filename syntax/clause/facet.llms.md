@@ -2,6 +2,10 @@
 
 The `FACET` clause allows you to split your data, by one or two variables, and plot each group as a small version of the plot: a technique called ‘small multiples’. The technique is great for preventing overplotting. Because each small plot shares the same position scales by default, visual comparisons between groups become easy.
 
+> **NOTE:**
+>
+> This page is about the `VISUALISE` usage of the `FACET` clause. For the `TABULATE` usage, see [this page](../../syntax/clause/facet-tabulate.llms.md).
+
 ## Clause syntax
 
 The `FACET` syntax contains a number of subclauses that are all optional

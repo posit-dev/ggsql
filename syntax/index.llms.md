@@ -18,6 +18,7 @@ ggsql augments the standard SQL syntax with a number of new clauses to describe 
 - [`LABEL`](../syntax/clause/label-tabulate.llms.md) is used to manually change column labels and titles
 - [`SPAN`](../syntax/clause/span.llms.md) can be used to group columns and display a label across them
 - [`FORMAT`](../syntax/clause/format.llms.md) declares formatting for columns
+- [`FACET`](../syntax/clause/facet-tabulate.llms.md) enables row-grouping operations on tables
 
 ## Layers
 

@@ -6,6 +6,7 @@
   - `LABEL` sets (sub)titles, captions and overrides the display of column labels.
   - `SPAN` groups columns under a shared header cell (spanner).
   - `FORMAT` configures how a column’s cells are displayed.
+  - `FACET` sets row groups.
 - `Writer::write_table` renders a resolved table, taking the new public `TableLayout` — the table’s cells bundled with their column and row metadata.
 - Text layers now have text boxes. The presence of the `background` aesthetic determines whether text boxes get drawn and additional settings `padding`, `radius` and `linewidth` style the box.
 - Many layers now support `linecap` and `linejoin` settings for styling lines.

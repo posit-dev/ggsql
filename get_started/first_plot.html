@@ -233,6 +233,10 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
     <a class="dropdown-item" href="../syntax/clause/format.html">
  <span class="dropdown-text"><code>FORMAT</code></span></a>
   </li>  
+        <li>
+    <a class="dropdown-item" href="../syntax/clause/facet-tabulate.html">
+ <span class="dropdown-text"><code>FACET</code></span></a>
+  </li>  
     </ul>
   </li>
   <li class="nav-item">
@@ -439,7 +443,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 
 
 <p>The code below shows a simple ggsql example. But it is not just a static piece of text and an image. It is ggsql running right in your browser, using one of the built-in datasets. Try to change e.g.&nbsp;the title and see the plot update as you type. Even though this may be your first encounter with the ggsql syntax you might already get a sense of how some of the things fit together. See if you can change the code to instead show the different species as different shapes</p>
-<div id="d0c3002d" class="cell" data-execution_count="1">
+<div id="89b3c915" class="cell" data-execution_count="1">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb1"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> bill_len <span class="kw">AS</span> <span class="at">x</span>, bill_dep <span class="kw">AS</span> <span class="at">y</span>, species <span class="kw">AS</span> <span class="at">fill</span> <span class="kw">FROM</span> ggsql:penguins</span>
 <span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">point</span></span>
 <span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="kw">SCALE</span> <span class="at">x</span> </span>

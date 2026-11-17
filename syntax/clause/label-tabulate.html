@@ -241,6 +241,10 @@ gradient teal.
     <a class="dropdown-item" href="../../syntax/clause/format.html">
  <span class="dropdown-text"><code>FORMAT</code></span></a>
   </li>  
+        <li>
+    <a class="dropdown-item" href="../../syntax/clause/facet-tabulate.html">
+ <span class="dropdown-text"><code>FACET</code></span></a>
+  </li>  
     </ul>
   </li>
   <li class="nav-item">
@@ -424,6 +428,12 @@ gradient teal.
   <div class="sidebar-item-container"> 
   <a href="../../syntax/clause/format.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text"><code>FORMAT</code></span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../../syntax/clause/facet-tabulate.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text"><code>FACET</code></span></a>
   </div>
 </li>
       </ul>
@@ -794,7 +804,7 @@ Note
 <section id="examples" class="level2">
 <h2 class="anchored" data-anchor-id="examples">Examples</h2>
 <p>Unlike using aliases in <code>TABULATE</code>, the <code>LABEL</code> clause lets you change column labels without changing column order</p>
-<div id="839606e9" class="cell" data-execution_count="1">
+<div id="f5bcc8d0" class="cell" data-execution_count="1">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb2"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="kw">CREATE</span> <span class="kw">TEMP</span> <span class="kw">TABLE</span> my_data <span class="kw">AS</span> <span class="kw">SELECT</span> <span class="op">*</span> <span class="kw">FROM</span> ggsql:penguins <span class="kw">LIMIT</span> <span class="dv">5</span></span>
 <span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a><span class="kw">TABULATE</span> <span class="op">*</span> <span class="kw">FROM</span> my_data</span>
@@ -815,7 +825,7 @@ Note
 </div>
 </div>
 <p>Hiding labels.</p>
-<div id="e4bf4fd1" class="cell" data-execution_count="2">
+<div id="e754a5bf" class="cell" data-execution_count="2">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb3"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="kw">TABULATE</span> <span class="op">*</span> <span class="kw">FROM</span> my_data</span>
 <span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>  <span class="kw">LABEL</span> island <span class="op">=&gt;</span> null, species <span class="op">=&gt;</span> null</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="2">
@@ -834,7 +844,7 @@ Note
 </div>
 </div>
 <p>Adding titles to a table.</p>
-<div id="a26af9f5" class="cell" data-execution_count="3">
+<div id="fa1a7dbf" class="cell" data-execution_count="3">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb4"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="kw">TABULATE</span> <span class="op">*</span> <span class="kw">FROM</span> my_data</span>
 <span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>  <span class="kw">LABEL</span></span>
 <span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>    <span class="at">title</span> <span class="op">=&gt;</span> <span class="st">'Penguins!'</span>,</span>
@@ -859,7 +869,7 @@ Note
 </div>
 </div>
 <p>When column names and reserved keywords compete for a label, the reserved keyword wins.</p>
-<div id="4fd8362f" class="cell" data-execution_count="4">
+<div id="af89cf8e" class="cell" data-execution_count="4">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb5"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="co">-- data has column named 'title'</span></span>
 <span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a><span class="kw">CREATE</span> <span class="kw">TEMP</span> <span class="kw">TABLE</span> title_data <span class="kw">AS</span> </span>
 <span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a><span class="kw">SELECT</span> <span class="op">*</span> <span class="kw">FROM</span> (<span class="kw">VALUES</span> (<span class="dv">1</span>, <span class="st">'a'</span>), (<span class="dv">2</span>, <span class="st">'b'</span>), (<span class="dv">3</span>, <span class="st">'c'</span>)) <span class="kw">AS</span> t(id, title)</span>
@@ -882,7 +892,7 @@ Note
 </div>
 </div>
 <p>You can target an aliased column instead.</p>
-<div id="176ae3fb" class="cell" data-execution_count="5">
+<div id="14116235" class="cell" data-execution_count="5">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb6"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="kw">TABULATE</span> <span class="op">*</span>, title <span class="kw">AS</span> title_col <span class="kw">FROM</span> title_data</span>
 <span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>  <span class="kw">LABEL</span></span>
 <span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>    <span class="at">title</span> <span class="op">=&gt;</span> <span class="st">'Main title'</span>,</span>
