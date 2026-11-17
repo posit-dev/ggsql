@@ -11,6 +11,7 @@
 mod facet;
 mod layout;
 mod spanner;
+mod summary;
 
 pub(crate) use facet::{groups_are_woven, setup_facet};
 pub(crate) use layout::{
@@ -20,6 +21,7 @@ pub(crate) use layout::{
 pub use layout::{TableCell, TableCellKind, TableClass, TableColumn, TableLayout, TableRow};
 pub use spanner::Spanner;
 pub(crate) use spanner::{create_spanners, reorder_table_columns};
+pub use summary::{Summary, SummaryScope, SUMMARY_OPERATIONS};
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -270,71 +272,6 @@ impl ColumnSection {
     }
 }
 
-/// One `SUMMARISE` clause: an aggregate operation producing one summary row
-/// per group — or a single row over all rows for `GRAND`.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Summary {
-    /// The aggregate operation (e.g. `mean`), verbatim as written — it doubles
-    /// as the default row label. Matching against the operation vocabulary is
-    /// case-insensitive at execution time.
-    pub operation: String,
-    /// Which rows the operation aggregates over.
-    pub scope: SummaryScope,
-    /// The columns to summarise, in the order written.
-    pub columns: Vec<String>,
-    /// `SETTING` parameters for this SUMMARISE (e.g. `place => 'top'`,
-    /// `rowlabel => 'Average'`).
-    pub settings: Parameters,
-}
-
-/// Which rows a `SUMMARISE` clause aggregates over.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum SummaryScope {
-    /// One summary row per facet group. Without a `FACET`, all rows form a
-    /// single group.
-    #[default]
-    Group,
-    /// A single summary row over all rows.
-    Grand,
-}
-
-/// `SETTING` parameters `SUMMARISE` accepts.
-const SUMMARY_PARAMS: &[ParamDefinition] = &[
-    ParamDefinition {
-        name: "place",
-        // No default: an unset place resolves at execution time.
-        default: DefaultParamValue::Null,
-        constraint: ParamConstraint::string_option(&["top", "bottom"]),
-    },
-    ParamDefinition {
-        name: "rowlabel",
-        // No default: an unset rowlabel falls back to the operation verbatim.
-        default: DefaultParamValue::Null,
-        constraint: ParamConstraint::string(),
-    },
-];
-
-impl Summary {
-    /// Validate `settings` against `SUMMARY_PARAMS`.
-    pub fn validate_settings(&self) -> Result<(), String> {
-        let valid: Vec<&str> = SUMMARY_PARAMS.iter().map(|p| p.name).collect();
-
-        for (name, value) in &self.settings {
-            let Some(param) = SUMMARY_PARAMS.iter().find(|p| p.name == name.as_str()) else {
-                return Err(format!(
-                    "SUMMARISE setting should be {}, not '{}'",
-                    crate::or_list_quoted(&valid, '\''),
-                    name
-                ));
-            };
-            validate_parameter(name, value, &param.constraint)?;
-        }
-
-        Ok(())
-    }
-}
-
 /// One `FORMAT` clause: cell formatting for a group of columns.
 ///
 /// `settings` is validated against `FORMAT_PARAMS` and resolved into each
@@ -540,49 +477,6 @@ mod tests {
             ParameterValue::String("240px".to_string()),
         );
         assert!(format_with_settings(settings).validate_settings().is_ok());
-    }
-
-    fn summary_with_settings(settings: Parameters) -> Summary {
-        Summary {
-            operation: "mean".to_string(),
-            scope: SummaryScope::Group,
-            columns: vec!["a".to_string()],
-            settings,
-        }
-    }
-
-    #[test]
-    fn summary_validate_settings_accepts_place_and_rowlabel() {
-        let mut settings = Parameters::new();
-        settings.insert(
-            "place".to_string(),
-            ParameterValue::String("top".to_string()),
-        );
-        settings.insert(
-            "rowlabel".to_string(),
-            ParameterValue::String("Average".to_string()),
-        );
-
-        assert!(summary_with_settings(settings).validate_settings().is_ok());
-    }
-
-    #[test]
-    fn summary_validate_settings_rejects_a_non_string_rowlabel() {
-        let mut settings = Parameters::new();
-        settings.insert("rowlabel".to_string(), ParameterValue::Number(1.0));
-
-        assert!(summary_with_settings(settings).validate_settings().is_err());
-    }
-
-    #[test]
-    fn summary_validate_settings_rejects_an_unknown_setting() {
-        let mut settings = Parameters::new();
-        settings.insert(
-            "colour".to_string(),
-            ParameterValue::String("red".to_string()),
-        );
-
-        assert!(summary_with_settings(settings).validate_settings().is_err());
     }
 
     #[test]
