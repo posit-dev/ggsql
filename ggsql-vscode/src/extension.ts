@@ -17,6 +17,7 @@ import { CELL_LANGUAGE_IDS, isGgsqlDocument } from './languages';
 import { activateSqlAssociationPrompt } from './sqlAssociation';
 import { ggsqlDataImporter } from './dataImporter';
 import * as path from 'path';
+import { registerResultExplorer } from './dataExplorer/handler';
 
 // Output channel for logging
 const outputChannel = vscode.window.createOutputChannel('ggsql');
@@ -61,8 +62,15 @@ export function activate(context: vscode.ExtensionContext): void {
 
     log('Positron API acquired - registering runtime manager');
 
+    // Serve console results to the Data Explorer, where this Positron has
+    // extension-hosted Data Explorer backends.
+    const resultExplorer = registerResultExplorer(positronApi, context.subscriptions, log);
+    log(resultExplorer
+        ? 'Data Explorer backend registered'
+        : 'positron.dataExplorer not available - console results will not link to the Data Explorer');
+
     // Running in Positron - register the ggsql runtime manager
-    const manager = new GgsqlRuntimeManager(context);
+    const manager = new GgsqlRuntimeManager(context, { resultExplorer });
     const disposable = positronApi.runtime.registerLanguageRuntimeManager('ggsql', manager);
     context.subscriptions.push(disposable);
 

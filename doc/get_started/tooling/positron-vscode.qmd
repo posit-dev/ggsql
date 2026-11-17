@@ -30,6 +30,11 @@ Executing ggsql statements containing [`VISUALISE`](../../syntax/clause/visualis
 
 ![](./screenshots/positron-plots-pane.png)
 
+## Data Explorer
+
+A query without `VISUALISE` shows its result as a table in the console, followed by an "Open in Data Explorer" link. A result of more than 20 rows shows only its first 10, with a count of the rest. To show more or fewer, change the `ggsql.consoleRows` setting: a result of up to twice that many rows is shown in full. The change applies to consoles started afterwards. Clicking the link opens the result in Positron's Data Explorer, where you can sort, filter, and profile it, and use "Convert to Code" to turn your sorts and filters back into SQL.
+
+The Data Explorer works on a snapshot of the result, so it doesn't change when the underlying tables do. Run the query again to see new data. The console keeps the last 16 results available this way; the link under an older one reports that it is no longer available.
 
 ## Editor and cells
 

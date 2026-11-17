@@ -23,6 +23,14 @@ determines whether text boxes get drawn and additional settings `padding`,
   Data Explorer (#536).
 - The Positron extension now registers a bundled agent skill, so agents
   automatically discover how to write and run ggsql queries (#536).
+- In a Positron console, a query result can be opened in the Data Explorer
+  from an "Open in Data Explorer" link under its table, with sorting,
+  filtering, profiles, export and Convert to Code. Long results show their
+  first 10 rows in the console, configurable with `ggsql.consoleRows`. The
+  kernel serves this through a frontend-neutral results API, reached with
+  `call_method` on the UI comm, which keeps opened results in an in-memory
+  cache of its own and never changes the session's reader or dialect
+  (posit-dev/positron#16137).
 
 ### Changed
 

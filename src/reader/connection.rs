@@ -197,7 +197,7 @@ impl ConnUri {
 }
 
 /// Map a cache-backend scheme to its in-memory connection URI.
-fn cache_uri(scheme: &str) -> Result<&'static str> {
+pub(crate) fn cache_uri(scheme: &str) -> Result<&'static str> {
     match scheme {
         "duckdb" => Ok("duckdb://memory"),
         "sqlite" => Ok("sqlite://:memory:"),
@@ -206,6 +206,17 @@ fn cache_uri(scheme: &str) -> Result<&'static str> {
             "Unsupported cache backend '{}'. Supported: duckdb, sqlite, datafusion",
             scheme
         ))),
+    }
+}
+
+/// The in-memory backend a cache uses when none is named: DuckDB when the
+/// `duckdb` feature is compiled in, SQLite otherwise.
+#[cfg(any(feature = "duckdb", feature = "sqlite"))]
+pub(crate) fn default_cache_scheme() -> &'static str {
+    if cfg!(feature = "duckdb") {
+        "duckdb"
+    } else {
+        "sqlite"
     }
 }
 
@@ -592,11 +603,7 @@ fn auto_cache_if_needed(
     {
         use crate::reader::cache::CacheConfig;
 
-        let cache_scheme = if cfg!(feature = "duckdb") {
-            "duckdb"
-        } else {
-            "sqlite"
-        };
+        let cache_scheme = default_cache_scheme();
         let cache = build_reader(cache_uri(cache_scheme)?)?;
         Ok(Box::new(crate::reader::CachingReader::with_config(
             reader,

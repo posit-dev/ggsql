@@ -9,6 +9,7 @@ End-user installation and usage live in [`README.md`](README.md). End-user noteb
 ```
 ggsql-jupyter/
 ├── Cargo.toml          Rust binary + library, depends on ggsql with duckdb + svg/pdf + raster-plots
+├── examples/results_bench.rs  Results API benchmark (DuckDB cache vs. Arrow row indices)
 ├── pyproject.toml      maturin config (bindings = "bin") for the PyPI wheel
 ├── README.md           User-facing install + usage
 ├── src/
@@ -17,7 +18,13 @@ ggsql-jupyter/
 │   ├── kernel.rs       Jupyter messaging loop (ZMQ, message dispatch)
 │   ├── executor.rs     Runs queries via ggsql::Reader, returns rendered output
 │   ├── connection.rs   Reader lifecycle, connection-string parsing
-│   ├── data_explorer.rs Positron data-explorer comm channel
+│   ├── data_explorer.rs  Positron data-explorer comm, for tables opened from the Connections pane
+│   ├── results/        Frontend-neutral results API over recent console results
+│   │   ├── mod.rs      ResultStore: pending results, the results cache, views
+│   │   ├── view.rs     One view: filters, sort, order table, pages, profiles, export
+│   │   ├── filter.rs   Filter and SortKey, and the SQL for them
+│   │   ├── methods.rs  The API as named JSON calls (`result_open`, `result_page`, …)
+│   │   └── export.rs   A selection as CSV / TSV / HTML
 │   ├── display.rs      Output formatting (image bundles, SQL → HTML table)
 │   ├── message.rs      Jupyter message structs (ZMQ frames, HMAC signing)
 │   └── util.rs
@@ -173,8 +180,21 @@ So `RenderHints::canvas` picks a height (golden ratio, close to ggplot2's defaul
 
 ## Positron-specific bits
 
-- `data_explorer.rs` implements Positron's data-explorer comm channel (registered query results become explorable tables).
+- `data_explorer.rs` implements Positron's data-explorer comm for a table opened from the Connections pane, querying the session's own database.
 - The companion VS Code extension (`ggsql-vscode/`) ships a copy of this binary and also discovers installed ones via the `ggsql.kernelPath` setting, the Jupyter kernelspec directories, the native install locations, or `PATH`. It runs each one with `--version` to name the runtime it registers, so **keep `--version` working**: a kernel that does not answer it is still offered, but without a version in the picker. See [Finding the kernel](../ggsql-vscode/AGENTS.md#finding-the-kernel).
+
+### The results API
+
+`results/` keeps recent **console** query results and answers a small, frontend-neutral set of calls on them (`methods.rs` documents each: `result_open`, `result_set_filters`, `result_set_sort`, `result_page`, `result_profile`, `result_export`, `result_sql`, `result_close`). Nothing in it knows about Positron: the ggsql extension translates Positron's Data Explorer protocol into these calls (see [`ggsql-vscode/AGENTS.md`](../ggsql-vscode/AGENTS.md)). The kernel's only Positron-specific part is the route: a `call_method` request on the `positron.ui` comm — what an extension's `session.callMethod(name, params)` sends — whose method starts with `result_` goes to `methods::call`, and its answer or error comes back as the JSON-RPC reply (errors with `plot::comm::RpcError`'s encoding). Any other UI request still gets `result: null`.
+
+- **Which results are kept.** A tabular result of a non-silent execution in a `PositronConsole` session. Its key — unguessable hex, so a stale link from another kernel process names nothing — goes in the `execute_result`'s `metadata` as `{"ggsql": {"result": key}}`; the kernel prints no link itself. Unopened results are held as their Arrow data, the newest `--max-results` (default 16).
+- **Opening copies the result into the results cache.** A `CacheTables` (the caching reader's bookkeeping, `ggsql::reader::cache`) on its own in-memory DuckDB, bounded by `GGSQL_RESULTS_MAX_BYTES` (default 1 GB). The session's reader is never wrapped, so the user's dialect is untouched. The copy adds `__ggsql_row__`, each row's position in the query's output, and drops the Arrow data, so a result is held once. It stays **pinned** while any view of it is open, so eviction never pulls a table from under an open view; once closed, it is evicted when the cache needs the room, and reopening before then reuses it.
+- **Nothing is written to disk.** The cache sets `temp_directory = ''`, so DuckDB cannot spill: a query that needs more memory than the limit fails with an error instead.
+- **Sorting and filtering build an order table** of `(pos, __ggsql_row__)` per view (`view.rs`); a page joins it back to the result by `pos` range, so scrolling never sorts again. Ties break on `__ggsql_row__`, so paging is stable and clearing the sort restores the query's own order. An unfiltered, unsorted view has none and pages by `__ggsql_row__` directly.
+- **Filter values arrive as strings and are checked against the column's kind** before they reach the SQL: a number must parse as a finite number, a boolean as true/false, anything else becomes a quoted literal. A filter that cannot be built, or that the database rejects (tried on its own to find out which), is left out and its message returned in `errors`; the rest still apply. Filters are always ANDed.
+- **`result_sql` writes SQL for the session's database**, not the cache: the result's query as a derived table, with the view's filters and sort, in the session's dialect. A filter it cannot express there is left out with a `--` comment.
+
+`examples/results_bench.rs` measures it. At 10M rows (617 MB of Arrow data) on an Apple Silicon laptop: opening takes about 1.5 s, a sort 0.4–0.6 s, a page 20 ms, and memory levels off near 2 GB across repeated open/close cycles. Sorting the Arrow data directly avoids the copy but takes 2–5 s per stable sort, which is why the cache is DuckDB.
 
 ## Build & install
 

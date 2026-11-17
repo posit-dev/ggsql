@@ -13,6 +13,8 @@ import * as crypto from 'crypto';
 import type * as positron from '@posit-dev/positron';
 import type { JupyterKernelSpec, PositronSupervisorApi } from './types';
 import { log, showLog } from './extension';
+import { withResultLinks } from './resultLinks';
+import type { ResultExplorer } from './dataExplorer/handler';
 
 /** Where a kernel candidate was discovered */
 type KernelSource = 'Bundled' | 'Setting' | 'Jupyter' | 'System' | 'Path';
@@ -535,6 +537,19 @@ export function generateMetadata(
 }
 
 /**
+ * The kernel environment for the `ggsql.consoleRows` setting.
+ *
+ * An environment variable rather than a flag: a kernel that predates
+ * `--console-rows` ignores the variable, where it would refuse to start on the
+ * flag. A value the kernel would reject is left out, so it uses its default.
+ */
+export function consoleRowsEnv(rows: unknown): Record<string, string> {
+    return Number.isInteger(rows) && (rows as number) >= 1
+        ? { GGSQL_CONSOLE_ROWS: String(rows) }
+        : {};
+}
+
+/**
  * Create a Jupyter kernel spec for ggsql-jupyter
  *
  * `--session-mode` tells the kernel where its output goes, which it cannot work
@@ -566,7 +581,10 @@ function createKernelSpec(
         display_name: 'ggsql',
         language: 'ggsql',
         interrupt_mode: 'signal',
-        env: { RUST_LOG: 'error' },
+        env: {
+            RUST_LOG: 'error',
+            ...consoleRowsEnv(vscode.workspace.getConfiguration('ggsql').get('consoleRows')),
+        },
         kernel_protocol_version: '5.3',
     };
 }
@@ -692,6 +710,12 @@ export async function getSupervisorApi(): Promise<PositronSupervisorApi> {
  */
 export interface RuntimeManagerOptions {
     /**
+     * The Data Explorer backend for console results. Sessions are wrapped to
+     * link their results to it; without one they are returned unwrapped.
+     */
+    resultExplorer?: ResultExplorer;
+
+    /**
      * Directory the discovered kernel is advertised in, as a Jupyter kernel
      * spec. Defaults to the user-level Jupyter kernels directory.
      *
@@ -726,9 +750,11 @@ export class GgsqlRuntimeManager implements positron.LanguageRuntimeManager {
     private _context: vscode.ExtensionContext;
     private _kernelSpecDir: string;
     private _probe: KernelProbe;
+    private _resultExplorer: ResultExplorer | undefined;
 
     constructor(context: vscode.ExtensionContext, options: RuntimeManagerOptions = {}) {
         this._context = context;
+        this._resultExplorer = options.resultExplorer;
         this._kernelSpecDir = options.kernelSpecDir ?? getUserJupyterKernelDir();
         this._probe = options.probe ?? probeKernel;
     }
@@ -829,6 +855,10 @@ export class GgsqlRuntimeManager implements positron.LanguageRuntimeManager {
         return undefined;
     }
 
+    private _withResultLinks(session: positron.LanguageRuntimeSession): positron.LanguageRuntimeSession {
+        return this._resultExplorer ? withResultLinks(session, this._resultExplorer) : session;
+    }
+
     /**
      * Create a new ggsql runtime session.
      */
@@ -858,7 +888,7 @@ export class GgsqlRuntimeManager implements positron.LanguageRuntimeManager {
             dynState
         );
 
-        return session;
+        return this._withResultLinks(session);
     }
 
     /**
@@ -885,7 +915,7 @@ export class GgsqlRuntimeManager implements positron.LanguageRuntimeManager {
             dynState
         );
 
-        return session;
+        return this._withResultLinks(session);
     }
 
     /**

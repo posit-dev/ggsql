@@ -5,11 +5,13 @@
 
 use crate::connection;
 use crate::data_explorer::{DataExplorerState, RpcResponse};
-use crate::display::{format_display_data, Formatted, RenderHints, SessionMode};
+use crate::display::{format_display_data, Formatted, RenderHints, SessionKind, SessionMode};
 use crate::executor::{self, ExecutionResult, QueryExecutor};
 use crate::message::{ConnectionInfo, JupyterMessage, MessageHeader};
 use crate::plot::comm::{PlotMetadata, RenderParams, RpcError};
 use crate::plot::{PlotBackend, RenderOutcome, RenderTicket};
+use crate::results::filter::Capabilities;
+use crate::results::{methods, ResultStore};
 use anyhow::Result;
 use ggsql::reader::ResolvedPlot;
 use hmac::{Hmac, Mac};
@@ -65,6 +67,10 @@ pub struct KernelServer {
     ui_comm_id: Option<String>,
     connection_comm_id: Option<String>,
     data_explorer_comms: HashMap<String, DataExplorerState>,
+    /// Console query results kept for the results API.
+    results: ResultStore,
+    /// `--console-rows`: how many rows of a long result a console shows.
+    console_rows: usize,
 }
 
 impl KernelServer {
@@ -74,6 +80,8 @@ impl KernelServer {
         reader_uri: &str,
         session_mode: Option<SessionMode>,
         max_plots: usize,
+        max_results: usize,
+        console_rows: usize,
     ) -> Result<Self> {
         tracing::info!("Initializing kernel server");
 
@@ -141,6 +149,8 @@ impl KernelServer {
             ui_comm_id: None,
             connection_comm_id: None,
             data_explorer_comms: HashMap::new(),
+            results: ResultStore::new(max_results)?,
+            console_rows,
         };
 
         // Send initial "starting" status on IOPub
@@ -358,7 +368,10 @@ impl KernelServer {
         let content = &parent.content;
         let code = content["code"].as_str().unwrap_or("");
         let silent = content["silent"].as_bool().unwrap_or(false);
-        let hints = RenderHints::from_request(&parent.header, content, self.session_mode);
+        let hints = RenderHints {
+            console_rows: self.console_rows,
+            ..RenderHints::from_request(&parent.header, content, self.session_mode)
+        };
 
         // `kind` decides where a plot goes, so log its two inputs: the declared
         // mode and the session id the heuristic falls back to. A plot in the
@@ -408,6 +421,17 @@ impl KernelServer {
         // the user's. Both stages feed one `Result` and share the error path
         // below; propagating out of the loop would end the process and take
         // the session's database with it.
+        // A console result is kept for the results API, and its key goes in
+        // the `execute_result`'s metadata so a frontend can offer to explore
+        // it. A silent cell shows nothing to offer, and DDL has no table.
+        let mut retained = None;
+        if let Ok(ExecutionResult::DataFrame(df)) = &executed {
+            if !silent && hints.kind == SessionKind::PositronConsole && df.width() > 0 {
+                let title = format!("Query [{}]", self.execution_count);
+                retained = Some(self.results.insert(df.clone(), title, query_of(code)));
+            }
+        }
+
         let result = match executed {
             Ok(exec_result) => {
                 // A bare connection change renders nothing.
@@ -433,10 +457,17 @@ impl KernelServer {
                     // No `output_location`: it routes the output to the Plots
                     // pane as well as the cell, so the plot would arrive twice.
                     Formatted::Bundle(display_data) => {
+                        let mut metadata = display_data["metadata"].clone();
+                        if let Some(key) = &retained {
+                            if !metadata.is_object() {
+                                metadata = json!({});
+                            }
+                            metadata["ggsql"] = json!({ "result": key });
+                        }
                         let content = json!({
                             "execution_count": self.execution_count,
                             "data": display_data["data"],
-                            "metadata": display_data["metadata"]
+                            "metadata": metadata
                         });
                         self.send_iopub("execute_result", content, parent).await?;
                     }
@@ -712,16 +743,43 @@ impl KernelServer {
                 if rpc_id.is_null() {
                     self.handle_ui_notification(method, &data["params"]);
                 } else {
+                    let reply = match method {
+                        // A frontend extension's call into the kernel
+                        // (`session.callMethod`). The results API is the only
+                        // thing answered this way.
+                        "call_method" => {
+                            let name = data["params"]["method"].as_str().unwrap_or("");
+                            let args = &data["params"]["params"];
+                            let answer = if methods::handles(name) {
+                                let session = methods::Session {
+                                    reader: self.executor.reader(),
+                                    caps: Capabilities {
+                                        regex: self.executor.reader_uri().starts_with("duckdb://"),
+                                    },
+                                };
+                                methods::call(&mut self.results, &session, name, args)
+                            } else {
+                                Err(format!("Unknown method {name:?}"))
+                            };
+                            match answer {
+                                Ok(result) => {
+                                    json!({"jsonrpc": "2.0", "id": rpc_id, "result": result})
+                                }
+                                Err(message) => {
+                                    tracing::warn!("{} failed: {}", name, message);
+                                    json!({
+                                        "jsonrpc": "2.0",
+                                        "id": rpc_id,
+                                        "error": RpcError::Internal(message).to_json()
+                                    })
+                                }
+                            }
+                        }
+                        _ => json!({"jsonrpc": "2.0", "id": rpc_id, "result": null}),
+                    };
                     self.send_shell_reply(
                         "comm_msg",
-                        json!({
-                            "comm_id": comm_id,
-                            "data": {
-                                "jsonrpc": "2.0",
-                                "id": rpc_id,
-                                "result": null
-                            }
-                        }),
+                        json!({ "comm_id": comm_id, "data": reply }),
                         parent,
                         identities,
                     )
@@ -1618,6 +1676,15 @@ impl KernelServer {
 
         hex::encode(mac.finalize().into_bytes())
     }
+}
+
+/// A cell's SQL without its leading meta-commands, which are not SQL.
+fn query_of(code: &str) -> String {
+    let mut rest = code;
+    while let Some((_, after)) = executor::take_leading_meta(rest) {
+        rest = after;
+    }
+    rest.trim().to_string()
 }
 
 /// Check if ggsql code is complete (balanced brackets, not in a string)

@@ -164,7 +164,7 @@ impl Reader for OdbcReader {
             .fields()
             .iter()
             .map(|field| {
-                let ty = super::register_column_type(&*self.dialect, field.data_type())
+                let ty = super::register_column_type(self.dialect, field.data_type())
                     .unwrap_or_else(|_| "TEXT".to_string());
                 format!("{} {}", self.dialect.quote_ident(field.name()), ty)
             })

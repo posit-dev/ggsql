@@ -33,11 +33,14 @@ arrow = { workspace = true }
 tokio = { workspace = true, features = ["sync"] }
 
 # CLI
-clap = { workspace = true }
+clap = { workspace = true, features = ["env"] }
 
 # Serialization
 serde = { workspace = true }
 serde_json = { workspace = true }
+
+# The data explorer's regular-expression column search
+regex = { workspace = true }
 
 # Error handling
 anyhow = { workspace = true }

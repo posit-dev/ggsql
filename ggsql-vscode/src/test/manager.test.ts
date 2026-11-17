@@ -1,6 +1,6 @@
 import * as assert from 'assert';
 import * as vscode from 'vscode';
-import { GgsqlRuntimeManager, createDynState, getSupervisorApi } from '../manager';
+import { GgsqlRuntimeManager, consoleRowsEnv, createDynState, getSupervisorApi } from '../manager';
 
 suite('manager', () => {
 	// The suites run in stock VS Code, where positron.positron-supervisor is
@@ -11,6 +11,17 @@ suite('manager', () => {
 			() => getSupervisorApi(),
 			/Positron Supervisor extension not found/,
 		);
+	});
+
+	test('consoleRowsEnv passes a row count the kernel accepts', () => {
+		assert.deepStrictEqual(consoleRowsEnv(25), { GGSQL_CONSOLE_ROWS: '25' });
+	});
+
+	test('consoleRowsEnv leaves out a value the kernel would refuse', () => {
+		// The kernel exits on a bad value, so the session would fail to start.
+		for (const rows of [0, -1, 2.5, '10', undefined, null]) {
+			assert.deepStrictEqual(consoleRowsEnv(rows), {}, String(rows));
+		}
 	});
 
 	test('createDynState falls back to the default session name', () => {
