@@ -8,14 +8,13 @@
 //! - `{:time %fmt}` - DateTime strftime format (e.g., `{:time %b %Y}` -> "Jan 2024")
 //! - `{:num %fmt}` - Number printf format (e.g., `{:num %.2f}` -> "25.50")
 
-use arrow::array::{Array, ArrayRef};
-use arrow::datatypes::DataType;
+use arrow::array::ArrayRef;
 use chrono::{NaiveDate, NaiveDateTime, NaiveTime};
 use regex::Regex;
 use std::collections::HashMap;
 use std::sync::OnceLock;
 
-use crate::array_util::{as_f64, cast_array};
+use crate::array_util::{map_column, value_to_display};
 use crate::plot::ArrayElement;
 
 /// Placeholder types supported in label templates
@@ -307,8 +306,7 @@ pub fn format_dataframe_column(
         .column(column_name)
         .map_err(|e| format!("Column '{}' not found: {}", column_name, e))?;
 
-    let string_values =
-        column_to_strings(column).map_err(|e| format!("{e} in column '{column_name}'"))?;
+    let string_values: Vec<Option<String>> = map_column(column, |i| value_to_display(column, i));
 
     // Step 2: Apply formatting template to all string values
     let placeholders = parse_placeholders(template);
@@ -324,49 +322,6 @@ pub fn format_dataframe_column(
     // Replace column in DataFrame
     df.with_column(column_name, formatted_col)
         .map_err(|e| format!("Failed to replace column: {}", e))
-}
-
-/// Convert an Arrow column to one `String` per row (`None` for a null).
-/// Floats go through `format_number` (3.0 -> "3"); every other type uses
-/// Arrow's display formatting, which renders temporal values as ISO text,
-/// booleans as true/false, and integers without precision loss.
-fn column_to_strings(column: &ArrayRef) -> Result<Vec<Option<String>>, String> {
-    if matches!(column.data_type(), DataType::Float32 | DataType::Float64) {
-        use crate::plot::format_number;
-
-        let cast = cast_array(column, &DataType::Float64)
-            .map_err(|e| format!("Failed to cast column to f64: {}", e))?;
-        let f64_col = as_f64(&cast).map_err(|e| e.to_string())?;
-
-        return Ok((0..f64_col.len())
-            .map(|i| {
-                if f64_col.is_null(i) {
-                    None
-                } else {
-                    Some(format_number(f64_col.value(i)))
-                }
-            })
-            .collect());
-    }
-
-    let formatter =
-        arrow::util::display::ArrayFormatter::try_new(column.as_ref(), &Default::default())
-            .map_err(|e| {
-                format!(
-                    "Formatting doesn't support type {:?}: {}",
-                    column.data_type(),
-                    e
-                )
-            })?;
-    Ok((0..column.len())
-        .map(|i| {
-            if column.is_null(i) {
-                None
-            } else {
-                Some(formatter.value(i).to_string())
-            }
-        })
-        .collect())
 }
 
 /// Look up `key` in `mapping`. `Some(_)` (possibly empty, for an explicit
@@ -397,7 +352,7 @@ pub fn resolve_column_values(
     template: &str,
     mapping: &Option<HashMap<String, Option<String>>>,
 ) -> Result<Vec<Option<String>>, String> {
-    let string_values = column_to_strings(column)?;
+    let string_values: Vec<Option<String>> = map_column(column, |i| value_to_display(column, i));
     let placeholders = parse_placeholders(template);
 
     Ok(string_values

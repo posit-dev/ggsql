@@ -17,7 +17,7 @@ use hephaestus::plot::geom::Raw;
 use hephaestus::plot::{Plot as HPlot, RibbonGeom};
 
 use super::super::channels::{
-    build_group_keys, column_to_channel, column_to_f64, column_to_strings,
+    build_group_keys, column_to_channel, column_to_f64, column_to_raw_strings,
 };
 use super::super::scales::RangeKind;
 use super::super::wiring::{
@@ -75,7 +75,7 @@ pub fn build(plot: &mut HPlot, ctx: &Ctx) -> Result<()> {
     let offset = require_column(ctx, "offset")?;
 
     let p1 = column_to_channel(df, band_col)?;
-    let cat = column_to_strings(df, band_col)?;
+    let cat = column_to_raw_strings(df, band_col)?;
     let p2 = column_to_f64(df, value_col)?;
     let off = column_to_f64(df, offset)?;
 

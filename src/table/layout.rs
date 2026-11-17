@@ -44,6 +44,9 @@ pub enum TableCellKind {
     /// real cell reaches. Distinct from whatever kind it visually stands in
     /// for, so kind-based filtering can't mistake it for real structure.
     Filler,
+    /// A group label row above a group of body rows (`TABULATE FACET`,
+    /// gt's `gt_group_heading`). Spans all columns; a body row, not a header.
+    GroupHeading,
 }
 
 impl TableCellKind {
@@ -76,6 +79,7 @@ impl std::fmt::Display for TableCellKind {
             TableCellKind::Subtitle => "subtitle",
             TableCellKind::Caption => "caption",
             TableCellKind::Filler => "filler",
+            TableCellKind::GroupHeading => "group heading",
         };
         write!(f, "{text}")
     }
@@ -117,6 +121,12 @@ pub enum TableClass {
     ColHeadingRow,
     /// The `<tr>` wrapping a spanner row (gt's `gt_spanner_row`).
     SpannerRow,
+    /// The `<tr>` wrapping a `GroupHeading` cell (gt's
+    /// `gt_group_heading_row`).
+    GroupHeadingRow,
+    /// The first body row of a facet group (gt's `gt_row_group_first`) —
+    /// carries the thick border separating a group from what precedes it.
+    RowGroupFirst,
 
     // -------------------------- Cell-scoped -------------------------
     // Recorded on `TableCell::classes`, rendered on the `<th>`/`<td>`.
@@ -124,6 +134,9 @@ pub enum TableClass {
     Row,
     /// A row-label cell in the stub (`TableCellKind::StubRowLabel`).
     Stub,
+    /// A group-label cell in a group stub column (`TableCellKind::
+    /// GroupHeading`, gt's `gt_stub_row_group`).
+    StubRowGroup,
     /// The stub's own header cell (`TableCellKind::StubHead`). No gt
     /// equivalent.
     StubHead,
@@ -141,11 +154,46 @@ pub enum TableClass {
     Subtitle,
     /// The caption cell (gt's `gt_caption`).
     Caption,
+    /// A group-label cell (`TableCellKind::GroupHeading`, gt's
+    /// `gt_group_heading`).
+    GroupHeading,
     /// Left/center/right-aligned cell content (gt's
     /// `gt_left`/`gt_center`/`gt_right`).
     AlignLeft,
     AlignCenter,
     AlignRight,
+}
+
+impl TableClass {
+    /// The canonical style-conflict order for every writer: when two classes
+    /// on the same element declare the same property, the one listed later
+    /// wins. This is the CSS cascade's source-order rule made
+    /// writer-neutral: a writer emitting a stylesheet uses this as rule
+    /// order; a writer folding classes into inline styles sorts by this
+    /// before folding. Classes not listed carry no declarations, so their
+    /// position is irrelevant.
+    pub(crate) const PRECEDENCE: &[TableClass] = &[
+        TableClass::Table,
+        TableClass::TableBody,
+        TableClass::Row,
+        TableClass::Stub,
+        TableClass::StubRowGroup,
+        TableClass::ColHeading,
+        TableClass::ColHeadingRow,
+        TableClass::Spanner,
+        TableClass::SpannerLabel,
+        TableClass::SpannerRow,
+        TableClass::Title,
+        TableClass::Subtitle,
+        TableClass::Caption,
+        TableClass::Heading,
+        TableClass::GroupHeading,
+        TableClass::GroupHeadingRow,
+        TableClass::RowGroupFirst,
+        TableClass::AlignLeft,
+        TableClass::AlignCenter,
+        TableClass::AlignRight,
+    ];
 }
 
 impl std::fmt::Display for TableClass {
@@ -157,6 +205,7 @@ impl std::fmt::Display for TableClass {
             TableClass::TableBody => "table_body",
             TableClass::Row => "row",
             TableClass::Stub => "stub",
+            TableClass::StubRowGroup => "stub_row_group",
             TableClass::ColHeading => "col_heading",
             TableClass::ColHeadingRow => "col_heading_row",
             TableClass::SpannerRow => "spanner_row",
@@ -170,6 +219,9 @@ impl std::fmt::Display for TableClass {
             TableClass::Subtitle => "subtitle",
             TableClass::Caption => "caption",
             TableClass::Heading => "heading",
+            TableClass::GroupHeading => "group_heading",
+            TableClass::GroupHeadingRow => "group_heading_row",
+            TableClass::RowGroupFirst => "row_group_first",
         };
         write!(f, "{text}")
     }
@@ -199,8 +251,9 @@ pub struct TableCell {
     /// their column's properties; a `Spanner` cell covers several columns
     /// at once, so it has none of its own.
     pub properties: Parameters,
-    /// Style classes recorded at build time (see `TableClass`). Ordered;
-    /// a writer renders them in order.
+    /// Style classes recorded at build time (see `TableClass`). A set, not
+    /// a sequence: conflicts resolve by `TableClass::PRECEDENCE`,
+    /// never by position in this list.
     pub classes: Vec<TableClass>,
 }
 
@@ -252,6 +305,12 @@ impl TableCell {
             .with_classes(vec![TableClass::Stub])
     }
 
+    /// A group-stub group-label cell (`TableClass::StubRowGroup`).
+    pub(crate) fn new_stub_row_group(row: usize, index: usize, content: String) -> Self {
+        Self::new(TableCellKind::GroupHeading, row, row, index, index, content)
+            .with_classes(vec![TableClass::Row, TableClass::StubRowGroup])
+    }
+
     /// A spanner cell (`TableClass::Spanner`, `SpannerLabel`, centered).
     pub(crate) fn new_spanner(row: usize, left: usize, right: usize, content: String) -> Self {
         Self::new(TableCellKind::Spanner, row, row, left, right, content).with_classes(vec![
@@ -285,6 +344,13 @@ impl TableCell {
     pub(crate) fn new_caption(ncol: usize, content: String) -> Self {
         Self::new(TableCellKind::Caption, 0, 0, 0, ncol.max(1) - 1, content)
             .with_classes(vec![TableClass::Caption])
+    }
+
+    /// A group-label cell (`TableClass::GroupHeading`), spanning all `ncol`
+    /// columns on its `row`.
+    pub(crate) fn new_group_heading(row: usize, ncol: usize, content: String) -> Self {
+        Self::new(TableCellKind::GroupHeading, row, row, 0, ncol - 1, content)
+            .with_classes(vec![TableClass::GroupHeading])
     }
 
     /// Set this cell's display properties, e.g. to a column's resolved
@@ -344,7 +410,11 @@ impl TableCell {
     }
 
     /// Whether this cell belongs in a table's header rather than its body —
-    /// delegates to `TableCellKind::is_header`.
+    /// delegates to `TableCellKind::is_header`. This is a layout distinction
+    /// (which part of the table the cell sits in), not a rendering one: a
+    /// writer may still emit body cells as header elements — e.g. the HTML
+    /// writer renders a body `GroupHeading` as a `<th>`, while a header
+    /// `Filler` gets a `<td>`.
     pub fn is_header(&self) -> bool {
         self.kind.is_header()
     }
@@ -387,6 +457,11 @@ impl TableColumn {
     pub fn is_stub(&self) -> bool {
         self.target.is_stub()
     }
+
+    /// Whether this column is a `TABULATE FACET` group stub column.
+    pub fn is_group_stub(&self) -> bool {
+        self.target.is_group_stub()
+    }
 }
 
 /// One row's resolved properties within a table layout. `classes` carries
@@ -397,7 +472,7 @@ pub struct TableRow {
     /// Resolved properties for this row's cells.
     pub properties: Parameters,
     /// Style classes recorded at build time (see `TableClass`) — row-scoped
-    /// ones, e.g. `Heading`. Ordered, like `TableCell::classes`.
+    /// ones, e.g. `Heading`. A set, like `TableCell::classes`.
     pub classes: Vec<TableClass>,
     /// Whether this row belongs in a table's header rather than its body.
     /// `false` by default; set `true` for a spanner, column-label, title or
@@ -406,6 +481,11 @@ pub struct TableRow {
     /// Whether this row is the caption's — always the layout's last row and
     /// never also a header (`TableLayout::validate` enforces both).
     pub is_caption: bool,
+    /// This body row's group key (from `TABULATE FACET`): one rank per
+    /// facet variable, outermost first; a prefix identifies the row's group
+    /// at that nesting depth. Empty for header rows and tables without a
+    /// facet. Group labels live only in cells, so this is just a key.
+    pub group: Vec<usize>,
 }
 
 impl TableRow {
@@ -428,6 +508,16 @@ impl TableRow {
     /// A body row — the default; named for symmetry with `header()`/`caption()`.
     pub fn body() -> Self {
         Self::default()
+    }
+
+    /// A group-label row (`TableClass::GroupHeadingRow`) keyed by `group` —
+    /// a body row, like the rows it labels.
+    pub fn group_heading(group: Vec<usize>) -> Self {
+        Self {
+            classes: vec![TableClass::GroupHeadingRow],
+            group,
+            ..Self::body()
+        }
     }
 }
 
@@ -480,6 +570,7 @@ mod tests {
         assert_eq!(TableCellKind::Subtitle.to_string(), "subtitle");
         assert_eq!(TableCellKind::Caption.to_string(), "caption");
         assert_eq!(TableCellKind::Filler.to_string(), "filler");
+        assert_eq!(TableCellKind::GroupHeading.to_string(), "group heading");
     }
 
     #[test]
@@ -881,27 +972,34 @@ pub(crate) fn create_column_labels(columns: &[TableColumn]) -> Vec<TableCell> {
         .collect()
 }
 
-/// Pop the reserved `title`/`subtitle`/`caption` keys out of a `TABULATE`
-/// `LABEL` clause's resolved map, leaving only genuine column-name
-/// overrides behind. `.flatten()` treats "key absent" and "key present but
-/// NULL" the same: neither produces a title/subtitle/caption.
-pub(crate) fn extract_heading_labels(
-    labels: &mut Labels,
-) -> (Option<String>, Option<String>, Option<String>) {
-    let title = labels.labels.remove("title").flatten();
-    let subtitle = labels.labels.remove("subtitle").flatten();
-    let caption = labels.labels.remove("caption").flatten();
-    (title, subtitle, caption)
+/// A table's resolved `LABEL title`/`subtitle`/`caption` texts.
+#[derive(Debug, Clone, Default)]
+pub(crate) struct TableTitles {
+    pub title: Option<String>,
+    pub subtitle: Option<String>,
+    pub caption: Option<String>,
 }
 
-/// Move every STUB-targeted column to the front, preserving each group's
+/// Pop the reserved `title`/`subtitle`/`caption` keys out of a `TABULATE`
+/// `LABEL` clause's resolved map into `TableTitles`, leaving only genuine
+/// column-name overrides behind. `.flatten()` treats "key absent" and "key
+/// present but NULL" the same: neither produces a title/subtitle/caption.
+pub(crate) fn extract_table_titles(labels: &mut Labels) -> TableTitles {
+    TableTitles {
+        title: labels.labels.remove("title").flatten(),
+        subtitle: labels.labels.remove("subtitle").flatten(),
+        caption: labels.labels.remove("caption").flatten(),
+    }
+}
+
+/// Move every stub column to the front — group stub columns first, in
+/// nesting-depth order, then STUB columns — preserving each section's
 /// relative order. Runs after `reorder_table_columns`, as the final word on
 /// column position — a SPAN can never cover a stub column
-/// (`Table::validate_span_stub_boundary`).
-pub(crate) fn move_stub_columns(columns: Vec<TableColumn>) -> Vec<TableColumn> {
-    let (mut stub, body): (Vec<_>, Vec<_>) = columns.into_iter().partition(TableColumn::is_stub);
-    stub.extend(body);
-    stub
+/// (`Table::validate_boundaries`).
+pub(crate) fn move_stub_columns(mut columns: Vec<TableColumn>) -> Vec<TableColumn> {
+    columns.sort_by_key(|c| c.target.sort_order());
+    columns
 }
 /// Stack spanner rows above column labels, letting a column with no spanner
 /// covering it stretch its own label upward over the gap, then fill the
@@ -948,7 +1046,7 @@ fn stretch_unspanned_column_labels(
     for label in header
         .cells
         .iter_mut()
-        // A stub column can never be spanned (`Table::validate_span_stub_boundary`),
+        // A stub column can never be spanned (`Table::validate_boundaries`),
         // so its stretch always reaches the full spanner height.
         .filter(|c| matches!(c.kind, TableCellKind::ColumnLabel | TableCellKind::StubHead))
     {
@@ -1057,6 +1155,27 @@ mod assembly_tests {
         assert_eq!(
             result.iter().map(|c| c.name.as_str()).collect::<Vec<_>>(),
             vec!["b", "d", "a", "c"]
+        );
+    }
+
+    #[test]
+    fn move_stub_columns_puts_group_stubs_first_in_depth_order() {
+        let group_stub = |name: &str, depth: usize| TableColumn {
+            target: ColumnSection::GroupStub(depth),
+            ..column(name, name)
+        };
+        let columns = vec![
+            column("a", "a"),
+            stub_column("b"),
+            group_stub("c", 1),
+            group_stub("d", 0),
+        ];
+
+        let result = move_stub_columns(columns);
+
+        assert_eq!(
+            result.iter().map(|c| c.name.as_str()).collect::<Vec<_>>(),
+            vec!["d", "c", "b", "a"]
         );
     }
 

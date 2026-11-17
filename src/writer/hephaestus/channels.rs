@@ -9,7 +9,7 @@ use hephaestus::plot::geom::{BuildableGeom, GeomBuilder};
 use hephaestus::scales::geometry::{Coord, Geometry, Polygon as GeoPolygon};
 
 use super::scales::parse_color;
-use crate::array_util::{as_bool, as_f64, as_str, cast_array, value_to_string};
+use crate::array_util::{as_bool, as_f64, cast_array, value_to_string};
 use crate::{AestheticValue, DataFrame, GgsqlError, Layer, Result};
 
 /// A column extracted in the type hephaestus expects for a channel: numeric
@@ -74,7 +74,7 @@ pub const NULL_CATEGORY: &str = "__ggsql_null__";
 ///
 /// This is the *scaled* path — the values here are looked up in a scale's
 /// domain — so a null becomes [`NULL_CATEGORY`] rather than the empty string
-/// [`column_to_strings`] uses for raw, unscaled text.
+/// [`column_to_raw_strings`] uses for raw, unscaled text.
 ///
 /// A boolean is a category, not a number: ggsql trains a discrete domain over
 /// it (as the Vega-Lite writer's `nominal` type does) and hephaestus matches
@@ -85,13 +85,16 @@ pub const NULL_CATEGORY: &str = "__ggsql_null__";
 pub fn column_to_channel(df: &DataFrame, name: &str) -> Result<ChannelData> {
     let array = df.column(name)?;
     if is_text_column(df, name) || matches!(array.data_type(), DataType::Boolean) {
-        Ok(ChannelData::Strings(read_strings(df, name, NULL_CATEGORY)?))
+        Ok(ChannelData::Strings(crate::array_util::cast_to_strings(
+            array,
+            NULL_CATEGORY,
+        )?))
     } else {
         Ok(ChannelData::Floats(column_to_f64(df, name)?))
     }
 }
 
-/// Whether a column holds text, and so must be read with [`column_to_strings`]
+/// Whether a column holds text, and so must be read with [`column_to_raw_strings`]
 /// rather than cast to `f64`.
 ///
 /// Arrow's cast is a *safe* one: a text column cast to `Float64` comes back as
@@ -120,31 +123,8 @@ pub fn column_to_f64(df: &DataFrame, name: &str) -> Result<Vec<f64>> {
 /// Read a column as strings, casting non-text columns to text. Nulls become
 /// empty strings — this is the raw, unscaled path (text labels, shape and
 /// linetype names), where an empty string is the right "nothing here".
-pub fn column_to_strings(df: &DataFrame, name: &str) -> Result<Vec<String>> {
-    read_strings(df, name, "")
-}
-
-/// Read a column as strings, substituting `null_as` for null cells. Callers
-/// differ only in what a null should become: nothing at all, or the sentinel
-/// category a scale's domain knows about.
-fn read_strings(df: &DataFrame, name: &str, null_as: &str) -> Result<Vec<String>> {
-    let array = df.column(name)?;
-    let casted;
-    let str_array: &StringArray = if matches!(array.data_type(), DataType::Utf8) {
-        as_str(array)?
-    } else {
-        casted = cast_array(array, &DataType::Utf8)?;
-        as_str(&casted)?
-    };
-    Ok((0..str_array.len())
-        .map(|i| {
-            if str_array.is_null(i) {
-                null_as.to_string()
-            } else {
-                str_array.value(i).to_string()
-            }
-        })
-        .collect())
+pub fn column_to_raw_strings(df: &DataFrame, name: &str) -> Result<Vec<String>> {
+    crate::array_util::cast_to_strings(df.column(name)?, "")
 }
 
 /// Build a per-row group key from the layer's partition columns (concatenated
@@ -178,7 +158,7 @@ pub fn column_to_bool(df: &DataFrame, name: &str) -> Result<Vec<bool>> {
         let a = as_bool(array)?;
         Ok((0..a.len()).map(|i| !a.is_null(i) && a.value(i)).collect())
     } else {
-        Ok(column_to_strings(df, name)?
+        Ok(column_to_raw_strings(df, name)?
             .iter()
             .map(|s| matches!(s.to_lowercase().as_str(), "true" | "1"))
             .collect())
@@ -188,7 +168,7 @@ pub fn column_to_bool(df: &DataFrame, name: &str) -> Result<Vec<bool>> {
 /// Read a color column (visual-space literal values) as parsed colors,
 /// defaulting unparseable entries to black.
 pub fn column_to_colors(df: &DataFrame, name: &str) -> Result<Vec<Color>> {
-    Ok(column_to_strings(df, name)?
+    Ok(column_to_raw_strings(df, name)?
         .iter()
         .map(|s| parse_color(s).unwrap_or(Color::BLACK))
         .collect())

@@ -14,7 +14,7 @@ use hephaestus::scales::value::{DataColumn, Value as HValue};
 
 use super::channels::{
     aesthetic_column_name, build_group_keys, column_to_bool, column_to_channel, column_to_colors,
-    column_to_f64, column_to_strings, ChannelData,
+    column_to_f64, column_to_raw_strings, ChannelData,
 };
 use super::scales::{map_linetype, parse_color, parse_font_weight, RangeKind};
 use crate::plot::{ParameterValue, ScaleTypeKind};
@@ -208,7 +208,7 @@ where
     wire_positions(&mut builder, &spec.positions, plot, ctx, &claimed)?;
     for (channel, aesthetic) in spec.raw_strings {
         if let Some(col) = aesthetic_column_name(ctx.layer, aesthetic) {
-            builder.set(*channel, Raw(column_to_strings(ctx.df, col)?));
+            builder.set(*channel, Raw(column_to_raw_strings(ctx.df, col)?));
         }
     }
     for (channel, value) in spec.constants {
@@ -385,7 +385,7 @@ pub fn wire_material<G: BuildableGeom>(
                     builder.set(m.channel, Raw(column_to_colors(ctx.df, col)?));
                 }
                 RangeKind::Shape | RangeKind::Text => {
-                    builder.set(m.channel, Raw(column_to_strings(ctx.df, col)?));
+                    builder.set(m.channel, Raw(column_to_raw_strings(ctx.df, col)?));
                 }
                 // A linetype column holds ggsql names or hex patterns, which the
                 // channel cannot read as strings — it takes dash patterns. Map each
@@ -393,7 +393,7 @@ pub fn wire_material<G: BuildableGeom>(
                 // `DataColumn` because hephaestus has no `Raw(Vec<Arc<[LinetypeStep]>>)`
                 // conversion, only the `Raw(DataColumn)` one.
                 RangeKind::Linetype => {
-                    let patterns: Vec<_> = column_to_strings(ctx.df, col)?
+                    let patterns: Vec<_> = column_to_raw_strings(ctx.df, col)?
                         .iter()
                         .map(|s| map_linetype(s))
                         .collect();
@@ -404,7 +404,7 @@ pub fn wire_material<G: BuildableGeom>(
                 }
                 // A weight column may hold keywords or numbers; both parse.
                 RangeKind::FontWeight => {
-                    let weights: Vec<f64> = column_to_strings(ctx.df, col)?
+                    let weights: Vec<f64> = column_to_raw_strings(ctx.df, col)?
                         .iter()
                         .map(|s| parse_font_weight(s))
                         .collect();
@@ -913,7 +913,7 @@ fn constant_material(ctx: &Ctx, aesthetic: &str, kind: RangeKind) -> Option<HVal
         }
         RangeKind::Linetype => {
             let name = col
-                .and_then(|c| column_to_strings(ctx.df, c).ok())
+                .and_then(|c| column_to_raw_strings(ctx.df, c).ok())
                 .and_then(|v| v.first().cloned())
                 .or_else(|| match literal {
                     Some(ParameterValue::String(s)) => Some(s.clone()),
@@ -923,7 +923,7 @@ fn constant_material(ctx: &Ctx, aesthetic: &str, kind: RangeKind) -> Option<HVal
         }
         RangeKind::Shape | RangeKind::Text => {
             let name = col
-                .and_then(|c| column_to_strings(ctx.df, c).ok())
+                .and_then(|c| column_to_raw_strings(ctx.df, c).ok())
                 .and_then(|v| v.first().cloned())
                 .or_else(|| match literal {
                     Some(ParameterValue::String(s)) => Some(s.clone()),
@@ -946,7 +946,7 @@ fn constant_material(ctx: &Ctx, aesthetic: &str, kind: RangeKind) -> Option<HVal
         }
         RangeKind::FontWeight => {
             let weight = col
-                .and_then(|c| column_to_strings(ctx.df, c).ok())
+                .and_then(|c| column_to_raw_strings(ctx.df, c).ok())
                 .and_then(|v| v.first().cloned())
                 .or_else(|| match literal {
                     Some(ParameterValue::String(s)) => Some(s.clone()),
