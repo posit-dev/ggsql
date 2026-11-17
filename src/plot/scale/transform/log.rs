@@ -200,14 +200,13 @@ mod tests {
             vec![1.0, 2.0, 4.0, 8.0, 16.0]
         );
 
-        // Natural log over more than four e-folds: the powers of e alone.
+        // Natural log: powers of e are never round numbers, so a non-integer
+        // base breaks on the base-10 1-2-5 pattern (zygos's break_label_base).
         let tn = Log::natural();
-        let expected = [0, 1, 2, 3, 4].map(|d| std::f64::consts::E.powi(d));
-        let breaksn = tn.calculate_breaks(1.0, 100.0, 10, true);
-        assert_eq!(breaksn.len(), expected.len(), "{breaksn:?}");
-        for (b, x) in breaksn.iter().zip(expected) {
-            assert!((b - x).abs() < 1e-9, "{breaksn:?}");
-        }
+        assert_eq!(
+            tn.calculate_breaks(1.0, 100.0, 10, true),
+            vec![1.0, 2.0, 5.0, 10.0, 20.0, 50.0, 100.0]
+        );
     }
 
     #[test]

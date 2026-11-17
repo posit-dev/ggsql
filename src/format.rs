@@ -13,9 +13,72 @@
 //! so a break matches a key either by `key_eq` or by comparing the
 //! break's `to_key_string()` against the key's own string form.
 
+use arrow::array::{Array, ArrayRef, BooleanArray, Int64Array, UInt64Array};
+use arrow::datatypes::DataType;
 use zygos::{LabelSpec, Value};
 
+use crate::array_util::{as_f64, as_str, cast_array, new_str_array};
 use crate::plot::{format_number, ArrayElement};
+
+/// Serde mirror for [`zygos::LabelSpec`], which is dependency-free and has no
+/// serde impls of its own. Rename keys round-trip as [`ArrayElement`]s under
+/// the same key-typing rule the parser uses (`'A'` → string, `25` → number,
+/// `NULL` → null); the template round-trips as its source text. Shared by
+/// every spec type that stores a `LabelSpec` (`Scale::label_spec`,
+/// `Format::renaming`).
+pub(crate) mod label_spec_serde {
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+    use zygos::{LabelSpec, Value};
+
+    use crate::plot::ArrayElement;
+
+    #[derive(Serialize, Deserialize, Default)]
+    struct LabelSpecSerde {
+        #[serde(default)]
+        renames: Vec<(ArrayElement, Option<String>)>,
+        #[serde(default)]
+        template: Option<String>,
+    }
+
+    fn value_to_element(value: &Value) -> ArrayElement {
+        match value {
+            Value::String(s) => ArrayElement::String(s.to_string()),
+            Value::Number(n) => ArrayElement::Number(*n),
+            Value::Bool(b) => ArrayElement::Boolean(*b),
+            Value::Null => ArrayElement::Null,
+            // Only RENAMING literals reach a LabelSpec — string, number,
+            // boolean, null. Anything else stringifies.
+            other => ArrayElement::String(zygos::default_label(other, None).unwrap_or_default()),
+        }
+    }
+
+    pub fn serialize<S: Serializer>(spec: &LabelSpec, serializer: S) -> Result<S::Ok, S::Error> {
+        let mirror = LabelSpecSerde {
+            renames: spec
+                .renames()
+                .map(|(k, r)| (value_to_element(k), r.map(str::to_string)))
+                .collect(),
+            template: spec.template().map(|t| t.source().to_string()),
+        };
+        mirror.serialize(serializer)
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> Result<LabelSpec, D::Error> {
+        let mirror = LabelSpecSerde::deserialize(deserializer)?;
+        let mut spec = LabelSpec::new();
+        for (key, rename) in mirror.renames {
+            let value = crate::format::key_value(&key);
+            match rename {
+                Some(label) => spec.rename(value, label),
+                None => spec.suppress(value),
+            };
+        }
+        if let Some(template) = mirror.template {
+            spec.set_template(&template);
+        }
+        Ok(spec)
+    }
+}
 
 /// Convert a break element to the [`Value`] it is labelled as.
 ///
@@ -85,17 +148,53 @@ fn key_string(value: &Value) -> String {
 /// has (zygos suppresses [`Value::Null`] by default).
 pub fn label_elements(spec: &LabelSpec, breaks: &[ArrayElement]) -> Vec<Option<String>> {
     let values: Vec<Value> = breaks.iter().map(break_value).collect();
+    // Scale labels share numeric precision across the break set; a
+    // suppressed label is dropped (`None`); a bare null renders "null".
+    render_labels(spec, &values, true, None, Some("null"))
+}
 
+/// Resolve one display text per row of a column, for `TABULATE FORMAT`'s
+/// `RENAMING` clause: an explicit rename wins outright (a suppression
+/// blanks the cell's text); every other value goes through the spec's
+/// template or default rendering, except a null with no explicit `NULL`
+/// entry, which is left unresolved.
+///
+/// `Ok(None)` at a row means "no resolution, use the caller's own default
+/// content for that row"; `Ok(Some(s))` (possibly empty) is the resolved
+/// display text.
+pub fn resolve_column_values(
+    column: &ArrayRef,
+    spec: &LabelSpec,
+) -> Result<Vec<Option<String>>, String> {
+    let values = column_to_values(column)?;
+    // Table cells render per value without shared precision; a
+    // suppression blanks the cell; a bare null stays unresolved so the
+    // caller falls back to its own default rendering.
+    Ok(render_labels(spec, &values, false, Some(""), None))
+}
+
+/// Shared label rendering behind [`label_elements`] and
+/// [`resolve_column_values`]. `share_precision` derives `{}` decimal
+/// precision across the un-renamed values (scale breaks) or renders each
+/// value on its own (table cells). `suppressed` and `bare_null` give the
+/// caller's rendering of a suppressed entry and of an un-renamed null;
+/// `None` leaves the slot `None`.
+fn render_labels(
+    spec: &LabelSpec,
+    values: &[Value],
+    share_precision: bool,
+    suppressed: Option<&str>,
+    bare_null: Option<&str>,
+) -> Vec<Option<String>> {
     // Resolve renames first: typed match, then the historical text rule.
     let renames: Vec<(&Value, Option<&str>)> = spec.renames().collect();
     let matched: Vec<Option<Option<String>>> = values
         .iter()
-        .zip(breaks)
-        .map(|(value, elem)| {
+        .map(|value| {
             if let Some(entry) = spec.lookup(value) {
                 return Some(entry.map(str::to_string));
             }
-            let key = elem.to_key_string();
+            let key = key_string(value);
             renames
                 .iter()
                 .find(|(k, _)| key_string(k) == key)
@@ -103,9 +202,9 @@ pub fn label_elements(spec: &LabelSpec, breaks: &[ArrayElement]) -> Vec<Option<S
         })
         .collect();
 
-    // Shared precision over the un-renamed breaks, for plain `{}`.
+    // Shared precision over the un-renamed values, for plain `{}`.
     let has_plain = spec.template().is_none_or(zygos::Template::has_plain);
-    let precision = if has_plain {
+    let precision = if share_precision && has_plain {
         let unrenamed: Vec<Value> = values
             .iter()
             .zip(&matched)
@@ -119,24 +218,124 @@ pub fn label_elements(spec: &LabelSpec, breaks: &[ArrayElement]) -> Vec<Option<S
 
     values
         .iter()
-        .zip(breaks)
         .zip(&matched)
-        .map(|((value, elem), m)| match m {
-            Some(entry) => entry.clone(),
+        .map(|(value, m)| match m {
+            Some(entry) => entry.clone().or_else(|| suppressed.map(str::to_string)),
             None => {
                 let rendered = match spec.template() {
                     Some(t) => t.format(value, precision),
                     None => zygos::default_label(value, precision),
                 };
-                match (rendered, elem) {
-                    // zygos suppresses nulls; ggsql's bare null break
-                    // has always rendered the text "null".
-                    (None, ArrayElement::Null) => Some("null".to_string()),
+                match (rendered, value) {
+                    // zygos suppresses nulls; a bare null gets the
+                    // caller's fallback, if any.
+                    (None, Value::Null) => bare_null.map(str::to_string),
                     (rendered, _) => rendered,
                 }
             }
         })
         .collect()
+}
+
+/// Convert an Arrow column to one zygos [`Value`] per row ([`Value::Null`]
+/// for a null). Floats and exactly representable integers stay numeric so
+/// `{:num}` works; larger integers keep their exact text form; temporal
+/// values and strings go as their display text (ISO for temporal, which
+/// `{:time}` parses).
+fn column_to_values(column: &ArrayRef) -> Result<Vec<Value>, String> {
+    // Exactness cut-off: integers beyond 2^53 are not representable as
+    // the f64 inside `Value::Number`, so they stay text.
+    const MAX_EXACT: i64 = 1 << 53;
+
+    match column.data_type() {
+        DataType::Int64 => {
+            let array = column.as_any().downcast_ref::<Int64Array>().unwrap();
+            Ok((0..array.len())
+                .map(|i| {
+                    if array.is_null(i) {
+                        Value::Null
+                    } else {
+                        let v = array.value(i);
+                        if v.unsigned_abs() <= MAX_EXACT as u64 {
+                            Value::Number(v as f64)
+                        } else {
+                            Value::String(v.to_string().into())
+                        }
+                    }
+                })
+                .collect())
+        }
+        DataType::UInt64 => {
+            let array = column.as_any().downcast_ref::<UInt64Array>().unwrap();
+            Ok((0..array.len())
+                .map(|i| {
+                    if array.is_null(i) {
+                        Value::Null
+                    } else {
+                        let v = array.value(i);
+                        if v <= MAX_EXACT as u64 {
+                            Value::Number(v as f64)
+                        } else {
+                            Value::String(v.to_string().into())
+                        }
+                    }
+                })
+                .collect())
+        }
+        dtype if dtype.is_numeric() => {
+            let cast = cast_array(column, &DataType::Float64)
+                .map_err(|e| format!("Failed to cast column to f64: {e}"))?;
+            let f64_col = as_f64(&cast).map_err(|e| e.to_string())?;
+            Ok((0..f64_col.len())
+                .map(|i| {
+                    if f64_col.is_null(i) {
+                        Value::Null
+                    } else {
+                        Value::Number(f64_col.value(i))
+                    }
+                })
+                .collect())
+        }
+        DataType::Boolean => {
+            let array = column.as_any().downcast_ref::<BooleanArray>().unwrap();
+            Ok((0..array.len())
+                .map(|i| {
+                    if array.is_null(i) {
+                        Value::Null
+                    } else {
+                        Value::Bool(array.value(i))
+                    }
+                })
+                .collect())
+        }
+        dtype => {
+            // Strings render as themselves; everything else Arrow can
+            // display (temporal renders ISO text).
+            if let Ok(str_col) = as_str(column) {
+                return Ok((0..str_col.len())
+                    .map(|i| {
+                        if str_col.is_null(i) {
+                            Value::Null
+                        } else {
+                            Value::String(str_col.value(i).into())
+                        }
+                    })
+                    .collect());
+            }
+            let formatter =
+                arrow::util::display::ArrayFormatter::try_new(column.as_ref(), &Default::default())
+                    .map_err(|e| format!("Formatting doesn't support type {dtype:?}: {e}"))?;
+            Ok((0..column.len())
+                .map(|i| {
+                    if column.is_null(i) {
+                        Value::Null
+                    } else {
+                        Value::String(formatter.value(i).to_string().into())
+                    }
+                })
+                .collect())
+        }
+    }
 }
 
 /// Apply label formatting template to a DataFrame column.
@@ -160,10 +359,6 @@ pub fn format_dataframe_column(
     column_name: &str,
     template: &str,
 ) -> Result<crate::DataFrame, String> {
-    use crate::array_util::{as_f64, as_str, cast_array, new_str_array};
-    use arrow::array::Array;
-    use arrow::datatypes::DataType;
-
     // Get the column
     let column = df
         .column(column_name)
@@ -493,5 +688,114 @@ mod tests {
             result,
             vec![Some("A".to_string()), None, Some("C".to_string())]
         );
+    }
+
+    #[test]
+    fn resolve_column_values_null_with_explicit_entry_is_resolved() {
+        use crate::array_util::new_f64_array;
+
+        let column = new_f64_array(vec![None, Some(1.0)]);
+        let mut spec = spec_with_template("{:num %.0f}");
+        spec.suppress(Value::Null); // NULL => NULL suppresses
+
+        let result = resolve_column_values(&column, &spec).unwrap();
+
+        assert_eq!(result[0], Some(String::new())); // suppressed, not templated
+        assert_eq!(result[1], Some("1".to_string()));
+    }
+
+    #[test]
+    fn resolve_column_values_formats_temporal_columns_as_iso_text() {
+        use arrow::array::Date32Array;
+        use std::sync::Arc;
+
+        // 19737 days after the epoch
+        let column: ArrayRef = Arc::new(Date32Array::from(vec![Some(19737)]));
+        let spec = spec_with_template("{:time %b %Y}");
+        let result = resolve_column_values(&column, &spec).unwrap();
+        assert_eq!(result, vec![Some("Jan 2024".to_string())]);
+
+        let result = resolve_column_values(&column, &LabelSpec::new()).unwrap();
+        assert_eq!(result, vec![Some("2024-01-15".to_string())]);
+    }
+
+    #[test]
+    fn resolve_column_values_formats_timestamps_for_time_placeholders() {
+        use arrow::array::TimestampMicrosecondArray;
+        use std::sync::Arc;
+
+        // 2024-01-15 10:30:00 UTC, in microseconds
+        let column: ArrayRef = Arc::new(TimestampMicrosecondArray::from(vec![Some(
+            1_705_315_800_000_000,
+        )]));
+        let spec = spec_with_template("{:time %b %Y}");
+        let result = resolve_column_values(&column, &spec).unwrap();
+        assert_eq!(result, vec![Some("Jan 2024".to_string())]);
+    }
+
+    #[test]
+    fn resolve_column_values_keeps_large_integers_exact() {
+        use arrow::array::Int64Array;
+        use std::sync::Arc;
+
+        // Beyond 2^53: not representable as f64
+        let column: ArrayRef = Arc::new(Int64Array::from(vec![9007199254740993]));
+        let result = resolve_column_values(&column, &LabelSpec::new()).unwrap();
+        assert_eq!(result, vec![Some("9007199254740993".to_string())]);
+    }
+
+    #[test]
+    fn resolve_column_values_renders_booleans_as_true_and_false() {
+        use arrow::array::BooleanArray;
+        use std::sync::Arc;
+
+        let column: ArrayRef = Arc::new(BooleanArray::from(vec![true, false]));
+        let result = resolve_column_values(&column, &LabelSpec::new()).unwrap();
+        assert_eq!(
+            result,
+            vec![Some("true".to_string()), Some("false".to_string())]
+        );
+    }
+
+    #[test]
+    fn resolve_column_values_does_not_align_precision_across_cells() {
+        use crate::array_util::new_f64_array;
+
+        let column = new_f64_array(vec![Some(1.5), Some(3.0), Some(3.0001)]);
+        let result = resolve_column_values(&column, &LabelSpec::new()).unwrap();
+        assert_eq!(
+            result,
+            vec![
+                Some("1.5".to_string()),
+                Some("3".to_string()),
+                Some("3.0001".to_string())
+            ]
+        );
+    }
+
+    #[test]
+    fn resolve_column_values_leaves_numeric_looking_strings_alone() {
+        use crate::array_util::new_str_array;
+
+        let column = new_str_array(vec![Some("007"), Some("3.0001")]);
+        let result = resolve_column_values(&column, &LabelSpec::new()).unwrap();
+        assert_eq!(
+            result,
+            vec![Some("007".to_string()), Some("3.0001".to_string())]
+        );
+    }
+
+    #[test]
+    fn resolve_column_values_null_without_an_explicit_entry_is_left_unresolved() {
+        use crate::array_util::new_f64_array;
+
+        let column = new_f64_array(vec![None, Some(1.0)]);
+        let spec = spec_with_template("{:num %.2f}");
+
+        let result = resolve_column_values(&column, &spec).unwrap();
+
+        // Caller falls back to its own default rendering for this row.
+        assert_eq!(result[0], None);
+        assert_eq!(result[1], Some("1.00".to_string()));
     }
 }

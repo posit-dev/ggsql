@@ -64,7 +64,7 @@ pub fn lookup_palette(aesthetic: &str, name: &str) -> Result<Vec<ArrayElement>, 
     let strings: Vec<String> = match aesthetic {
         "shape" => get_shape_palette(name).map(|p| p.iter().map(|s| s.to_string()).collect()),
         "linetype" => get_linetype_palette(name).map(|p| p.iter().map(|s| s.to_string()).collect()),
-        "color" | "fill" | "stroke" => get_color_palette(name),
+        "color" | "fill" | "stroke" | "background" => get_color_palette(name),
         _ => {
             return Err(
                 "Palettes are only valid for color, fill, stroke, shape, and linetype aesthetics"

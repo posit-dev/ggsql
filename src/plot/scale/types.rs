@@ -9,63 +9,6 @@ use super::super::types::{ArrayElement, ParameterValue, Parameters};
 use super::scale_type::ScaleType;
 use super::transform::Transform;
 
-/// Serde mirror for [`zygos::LabelSpec`], which is dependency-free and has no
-/// serde impls of its own. Rename keys round-trip as [`ArrayElement`]s under
-/// the same key-typing rule the parser uses (`'A'` → string, `25` → number,
-/// `NULL` → null); the template round-trips as its source text.
-mod label_spec_serde {
-    use super::super::super::types::ArrayElement;
-    use serde::{Deserialize, Deserializer, Serialize, Serializer};
-    use zygos::{LabelSpec, Value};
-
-    #[derive(Serialize, Deserialize, Default)]
-    struct LabelSpecSerde {
-        #[serde(default)]
-        renames: Vec<(ArrayElement, Option<String>)>,
-        #[serde(default)]
-        template: Option<String>,
-    }
-
-    fn value_to_element(value: &Value) -> ArrayElement {
-        match value {
-            Value::String(s) => ArrayElement::String(s.to_string()),
-            Value::Number(n) => ArrayElement::Number(*n),
-            Value::Bool(b) => ArrayElement::Boolean(*b),
-            Value::Null => ArrayElement::Null,
-            // Only RENAMING literals reach a LabelSpec — string, number,
-            // boolean, null. Anything else stringifies.
-            other => ArrayElement::String(zygos::default_label(other, None).unwrap_or_default()),
-        }
-    }
-
-    pub fn serialize<S: Serializer>(spec: &LabelSpec, serializer: S) -> Result<S::Ok, S::Error> {
-        let mirror = LabelSpecSerde {
-            renames: spec
-                .renames()
-                .map(|(k, r)| (value_to_element(k), r.map(str::to_string)))
-                .collect(),
-            template: spec.template().map(|t| t.source().to_string()),
-        };
-        mirror.serialize(serializer)
-    }
-
-    pub fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> Result<LabelSpec, D::Error> {
-        let mirror = LabelSpecSerde::deserialize(deserializer)?;
-        let mut spec = LabelSpec::new();
-        for (key, rename) in mirror.renames {
-            let value = crate::format::key_value(&key);
-            match rename {
-                Some(label) => spec.rename(value, label),
-                None => spec.suppress(value),
-            };
-        }
-        if let Some(template) = mirror.template {
-            spec.set_template(&template);
-        }
-        Ok(spec)
-    }
-}
-
 /// One bin of a resolved binned scale: the edges bounding it and the text that
 /// names it. See [`Scale::binned_bins`].
 #[derive(Debug, Clone, PartialEq)]
@@ -125,7 +68,7 @@ pub struct Scale {
     /// suppressions plus the wildcard template, rendered against the
     /// current break set on every read. Example:
     /// `RENAMING 'A' => 'Alpha', 'internal' => NULL, * => '{} units'`
-    #[serde(default, with = "label_spec_serde")]
+    #[serde(default, with = "crate::format::label_spec_serde")]
     pub label_spec: zygos::LabelSpec,
     /// Per-panel resolution for a positional scale whose facet dimension is
     /// `free`, indexed by panel index in the canonical order (see

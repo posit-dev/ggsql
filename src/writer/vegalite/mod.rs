@@ -16,7 +16,7 @@
 //! use ggsql::writer::{Writer, VegaLiteWriter};
 //!
 //! let writer = VegaLiteWriter::new();
-//! let vega_json = writer.write(&spec, &dataframe)?;
+//! let vega_json = writer.write_plot(&spec, &dataframe)?;
 //! // Can be rendered in browser with vega-embed
 //! ```
 
@@ -1076,9 +1076,9 @@ impl Writer for VegaLiteWriter {
         Ok(Self::new())
     }
 
-    fn write(&self, spec: &Plot, data: &HashMap<String, DataFrame>) -> Result<String> {
+    fn write_plot(&self, spec: &Plot, data: &HashMap<String, DataFrame>) -> Result<String> {
         // 1. Validate spec
-        self.validate(spec)?;
+        self.validate_plot(spec)?;
 
         // 2. Determine layer data keys
         let layer_data_keys: Vec<String> = spec
@@ -1189,7 +1189,7 @@ impl Writer for VegaLiteWriter {
         })
     }
 
-    fn validate(&self, spec: &Plot) -> Result<()> {
+    fn validate_plot(&self, spec: &Plot) -> Result<()> {
         // Check that we have at least one layer
         if spec.layers.is_empty() {
             return Err(GgsqlError::ValidationError(
@@ -1493,7 +1493,7 @@ mod tests {
     fn test_validation_requires_layers() {
         let writer = VegaLiteWriter::new();
         let spec = Plot::new();
-        assert!(writer.validate(&spec).is_err());
+        assert!(writer.validate_plot(&spec).is_err());
     }
 
     #[test]
@@ -1522,7 +1522,7 @@ mod tests {
 
         // Generate Vega-Lite JSON
         transform_spec(&mut spec);
-        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
+        let json_str = writer.write_plot(&spec, &wrap_data(df)).unwrap();
         assert_valid_vegalite(&json_str);
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
@@ -1564,7 +1564,7 @@ mod tests {
         .unwrap();
 
         transform_spec(&mut spec);
-        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
+        let json_str = writer.write_plot(&spec, &wrap_data(df)).unwrap();
         assert_valid_vegalite(&json_str);
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
@@ -1603,7 +1603,7 @@ mod tests {
         let spec = &prepared.specs[0];
 
         let writer = VegaLiteWriter::new();
-        let json_str = writer.write(spec, &prepared.data).unwrap();
+        let json_str = writer.write_plot(spec, &prepared.data).unwrap();
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
         // Check title (should be object with text and subtitle)
@@ -1708,7 +1708,7 @@ mod tests {
         .unwrap();
 
         // Generate Vega-Lite JSON
-        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
+        let json_str = writer.write_plot(&spec, &wrap_data(df)).unwrap();
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
         // Verify fontsize maps to size channel
@@ -1766,7 +1766,7 @@ mod tests {
         }
         .unwrap();
 
-        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
+        let json_str = writer.write_plot(&spec, &wrap_data(df)).unwrap();
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
         let layer = &vl_spec["layer"][0];
 
@@ -1840,7 +1840,7 @@ mod tests {
             }
             .unwrap();
 
-            let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
+            let json_str = writer.write_plot(&spec, &wrap_data(df)).unwrap();
             let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
             let layer = &vl_spec["layer"][0];
 
@@ -1904,7 +1904,7 @@ mod tests {
             "y" => vec![1, 2],
         }
         .unwrap();
-        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
+        let json_str = writer.write_plot(&spec, &wrap_data(df)).unwrap();
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
         vl_spec["layer"][0]["encoding"]["size"]["value"]
             .as_f64()
@@ -1938,7 +1938,7 @@ mod tests {
         .unwrap();
 
         transform_spec(&mut spec);
-        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
+        let json_str = writer.write_plot(&spec, &wrap_data(df)).unwrap();
         assert_valid_vegalite(&json_str);
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
@@ -1968,7 +1968,7 @@ mod tests {
         }
         .unwrap();
 
-        let result = writer.write(&spec, &wrap_data(df));
+        let result = writer.write_plot(&spec, &wrap_data(df));
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert!(err.to_string().contains("nonexistent"));
@@ -2069,7 +2069,9 @@ mod tests {
         .unwrap();
 
         transform_spec(&mut spec);
-        let json_str = writer.write(&spec, &wrap_data_for_layers(df, 2)).unwrap();
+        let json_str = writer
+            .write_plot(&spec, &wrap_data_for_layers(df, 2))
+            .unwrap();
         assert_valid_vegalite(&json_str);
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
@@ -2180,7 +2182,7 @@ mod tests {
         .unwrap();
 
         transform_spec(&mut spec);
-        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
+        let json_str = writer.write_plot(&spec, &wrap_data(df)).unwrap();
         assert_valid_vegalite(&json_str);
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
@@ -2279,7 +2281,7 @@ mod tests {
         // Point geom without explicit size/stroke - should use defaults
         let spec = build_spec(Geom::point());
 
-        let result = writer.write(&spec, &wrap_data(simple_df()));
+        let result = writer.write_plot(&spec, &wrap_data(simple_df()));
         assert!(result.is_ok());
         let json_str = result.unwrap();
         assert_valid_vegalite(&json_str);
@@ -2308,7 +2310,7 @@ mod tests {
         layer.resolve_aesthetics();
         spec.layers.push(layer);
 
-        let result = writer.write(&spec, &wrap_data(simple_df()));
+        let result = writer.write_plot(&spec, &wrap_data(simple_df()));
         assert!(result.is_ok());
         let json_str = result.unwrap();
         assert_valid_vegalite(&json_str);
@@ -2352,7 +2354,7 @@ mod tests {
         }
         .unwrap();
 
-        let result = writer.write(&spec, &wrap_data(df));
+        let result = writer.write_plot(&spec, &wrap_data(df));
         assert!(result.is_ok());
         let json_str = result.unwrap();
         assert_valid_vegalite(&json_str);
@@ -2392,7 +2394,7 @@ mod tests {
         }
         .unwrap();
 
-        let result = writer.write(&spec, &wrap_data(df));
+        let result = writer.write_plot(&spec, &wrap_data(df));
         assert!(result.is_ok());
         let json_str = result.unwrap();
         assert_valid_vegalite(&json_str);
@@ -2417,7 +2419,7 @@ mod tests {
         layer.resolve_aesthetics();
         spec.layers.push(layer);
 
-        let result = writer.write(&spec, &wrap_data(simple_df()));
+        let result = writer.write_plot(&spec, &wrap_data(simple_df()));
         assert!(result.is_ok());
         let json_str = result.unwrap();
         assert_valid_vegalite(&json_str);
@@ -2437,7 +2439,7 @@ mod tests {
         // Line geom has linetype default of "solid"
         let spec = build_spec(Geom::line());
 
-        let result = writer.write(&spec, &wrap_data(simple_df()));
+        let result = writer.write_plot(&spec, &wrap_data(simple_df()));
         assert!(result.is_ok());
         let json_str = result.unwrap();
         assert_valid_vegalite(&json_str);
@@ -2855,7 +2857,7 @@ mod tests {
         .unwrap();
 
         transform_spec(&mut spec);
-        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
+        let json_str = writer.write_plot(&spec, &wrap_data(df)).unwrap();
         assert_valid_vegalite(&json_str);
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
@@ -2956,7 +2958,7 @@ mod tests {
         .unwrap();
 
         transform_spec(&mut spec);
-        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
+        let json_str = writer.write_plot(&spec, &wrap_data(df)).unwrap();
         assert_valid_vegalite(&json_str);
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
@@ -3037,7 +3039,7 @@ mod tests {
         .unwrap();
 
         transform_spec(&mut spec);
-        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
+        let json_str = writer.write_plot(&spec, &wrap_data(df)).unwrap();
         assert_valid_vegalite(&json_str);
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
@@ -3118,7 +3120,7 @@ mod tests {
         .unwrap();
 
         transform_spec(&mut spec);
-        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
+        let json_str = writer.write_plot(&spec, &wrap_data(df)).unwrap();
         assert_valid_vegalite(&json_str);
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
@@ -3146,7 +3148,7 @@ mod tests {
         let mut spec = build_spec(Geom::point());
         let df = simple_df();
         transform_spec(&mut spec);
-        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
+        let json_str = writer.write_plot(&spec, &wrap_data(df)).unwrap();
         assert_valid_vegalite(&json_str);
 
         let invalid = r#"{"$schema": "https://vega.github.io/schema/vega-lite/v6.json", "mark": "not_a_mark"}"#;
@@ -3212,7 +3214,7 @@ mod tests {
         .unwrap();
 
         transform_spec(&mut spec);
-        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
+        let json_str = writer.write_plot(&spec, &wrap_data(df)).unwrap();
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
         for channel in ["x2", "y2"] {
@@ -3275,7 +3277,7 @@ mod tests {
 
             transform_spec(&mut spec);
 
-            let msg = match writer.write(&spec, &wrap_data(df)) {
+            let msg = match writer.write_plot(&spec, &wrap_data(df)) {
                 Err(GgsqlError::ValidationError(s)) => s,
                 Err(other) => panic!("expected ValidationError, got: {}", other),
                 Ok(_) => panic!("expected error, got success"),
@@ -3317,7 +3319,7 @@ mod tests {
 
             transform_spec(&mut spec);
 
-            let msg = match writer.write(&spec, &wrap_data(df)) {
+            let msg = match writer.write_plot(&spec, &wrap_data(df)) {
                 Err(GgsqlError::ValidationError(s)) => s,
                 Err(other) => panic!("expected ValidationError, got: {}", other),
                 Ok(_) => panic!("expected error, got success"),
@@ -3356,7 +3358,7 @@ mod tests {
 
             transform_spec(&mut spec);
 
-            let msg = match writer.write(&spec, &wrap_data(df)) {
+            let msg = match writer.write_plot(&spec, &wrap_data(df)) {
                 Err(GgsqlError::ValidationError(s)) => s,
                 Err(other) => panic!("expected ValidationError, got: {}", other),
                 Ok(_) => panic!("expected error, got success"),

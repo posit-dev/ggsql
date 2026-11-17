@@ -103,7 +103,6 @@ mod tests {
     const MICROS_PER_SECOND: f64 = 1_000_000.0;
     const MICROS_PER_MINUTE: f64 = 60.0 * MICROS_PER_SECOND;
     const MICROS_PER_HOUR: f64 = 60.0 * MICROS_PER_MINUTE;
-    const MICROS_PER_DAY: f64 = 24.0 * MICROS_PER_HOUR;
 
     #[test]
     fn test_datetime_transform_kind() {
