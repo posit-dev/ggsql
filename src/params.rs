@@ -630,6 +630,24 @@ impl ParameterValue {
         }
     }
 
+    /// Whether an optional parameter value is the given string.
+    /// Absent, null, or wrong-typed values are false.
+    pub fn is_str(value: Option<&ParameterValue>, s: &str) -> bool {
+        matches!(value, Some(ParameterValue::String(v)) if v == s)
+    }
+
+    /// Whether an optional parameter value is `true`.
+    /// Absent, null, or wrong-typed values are false.
+    pub fn is_true(value: Option<&ParameterValue>) -> bool {
+        matches!(value, Some(ParameterValue::Boolean(true)))
+    }
+
+    /// Whether an optional parameter value is `false`.
+    /// Absent, null, or wrong-typed values are false.
+    pub fn is_false(value: Option<&ParameterValue>) -> bool {
+        matches!(value, Some(ParameterValue::Boolean(false)))
+    }
+
     /// Convert this parameter value to a SQL literal string.
     ///
     /// Only supports scalar values (String, Number, Boolean, Null).

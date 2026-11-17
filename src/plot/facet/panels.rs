@@ -124,10 +124,7 @@ pub fn ordered_levels(spec: &Plot, df: &DataFrame, internal_aes: &str) -> Result
 /// the scale sets `reverse => true`. With no scale, the numeric-aware
 /// ascending fallback applies to all levels — the ordering table groups use.
 pub fn order_levels(mut distinct: Vec<FacetLevel>, scale: Option<&Scale>) -> Vec<FacetLevel> {
-    let reverse = matches!(
-        scale.and_then(|s| s.properties.get("reverse")),
-        Some(ParameterValue::Boolean(true))
-    );
+    let reverse = ParameterValue::is_true(scale.and_then(|s| s.properties.get("reverse")));
 
     let mut ordered = if is_binned(scale) {
         // Bin centres sort naturally; NULL (censored) panels go last.

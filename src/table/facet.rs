@@ -51,11 +51,7 @@ pub(crate) fn setup_facet(facet: &Option<Facet>) -> Result<Option<Facet>, String
 /// 'left'`, the default).
 pub(crate) fn groups_are_woven(facet: &Facet) -> bool {
     // Unresolved facet: 'left' is the default
-    facet
-        .properties
-        .get("place")
-        .and_then(ParameterValue::as_str)
-        == Some("top")
+    ParameterValue::is_str(facet.properties.get("place"), "top")
 }
 
 #[cfg(test)]

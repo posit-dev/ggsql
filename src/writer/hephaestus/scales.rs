@@ -297,10 +297,7 @@ fn continuous_domain(scale: Option<&GScale>) -> (f64, f64) {
 
 /// Whether the scale carries `SETTING reverse => true`.
 pub fn is_reversed(scale: Option<&GScale>) -> bool {
-    matches!(
-        scale.and_then(|s| s.properties.get("reverse")),
-        Some(ParameterValue::Boolean(true))
-    )
+    ParameterValue::is_true(scale.and_then(|s| s.properties.get("reverse")))
 }
 
 /// Category domain for a discrete/ordinal scale, as hephaestus values, in the

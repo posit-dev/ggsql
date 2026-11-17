@@ -544,10 +544,7 @@ fn resolve_facet_ordering(scale: Option<&Scale>) -> Vec<(Value, usize)> {
         return Vec::new();
     };
 
-    let is_reversed = matches!(
-        scale.properties.get("reverse"),
-        Some(ParameterValue::Boolean(true))
-    );
+    let is_reversed = ParameterValue::is_true(scale.properties.get("reverse"));
 
     let is_binned = scale
         .scale_type
@@ -605,10 +602,7 @@ fn apply_binned_facet_reverse(facet_def: &mut Value, scale: Option<&Scale>) {
         return;
     }
 
-    if matches!(
-        scale.properties.get("reverse"),
-        Some(ParameterValue::Boolean(true))
-    ) {
+    if ParameterValue::is_true(scale.properties.get("reverse")) {
         facet_def["sort"] = json!("descending");
     }
 }

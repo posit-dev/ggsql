@@ -648,10 +648,7 @@ impl GeomRenderer for RuleRenderer {
         context: &RenderContext,
     ) -> Result<()> {
         // Check if this is a diagonal rule (slope is non-zero)
-        let diagonal = matches!(
-            layer.parameters.get("diagonal"),
-            Some(ParameterValue::Boolean(true))
-        );
+        let diagonal = ParameterValue::is_true(layer.parameters.get("diagonal"));
 
         if !diagonal {
             // Regular horizontal/vertical rule - no special rendering needed
@@ -706,10 +703,7 @@ impl GeomRenderer for RuleRenderer {
         context: &RenderContext,
     ) -> Result<()> {
         // Densified rule: expanded to a multi-row line under map projection
-        if matches!(
-            layer.parameters.get("densified"),
-            Some(ParameterValue::Boolean(true))
-        ) {
+        if ParameterValue::is_true(layer.parameters.get("densified")) {
             layer_spec["mark"] = json!({
                 "type": "line",
                 "clip": true
@@ -1403,10 +1397,7 @@ impl GeomRenderer for TileRenderer {
         let (pos1, pos1_end, _, pos2, pos2_end, _) = &context.channels;
 
         // Polygonized tile: densified rectangle rendered as closed line
-        if matches!(
-            layer.parameters.get("densified"),
-            Some(ParameterValue::Boolean(true))
-        ) {
+        if ParameterValue::is_true(layer.parameters.get("densified")) {
             layer_spec["mark"] = json!({
                 "type": "line",
                 "interpolate": "linear-closed"
@@ -1543,10 +1534,7 @@ impl GeomRenderer for SegmentRenderer {
         layer: &Layer,
         context: &RenderContext,
     ) -> Result<()> {
-        if matches!(
-            layer.parameters.get("densified"),
-            Some(ParameterValue::Boolean(true))
-        ) {
+        if ParameterValue::is_true(layer.parameters.get("densified")) {
             layer_spec["mark"] = json!({
                 "type": "line",
                 "clip": true
@@ -1585,10 +1573,7 @@ impl GeomRenderer for RibbonRenderer {
         layer: &Layer,
         context: &RenderContext,
     ) -> Result<()> {
-        if matches!(
-            layer.parameters.get("densified"),
-            Some(ParameterValue::Boolean(true))
-        ) {
+        if ParameterValue::is_true(layer.parameters.get("densified")) {
             layer_spec["mark"] = json!({
                 "type": "line",
                 "interpolate": "linear-closed"

@@ -193,10 +193,7 @@ pub fn apply_post_stat_binning(
         }
 
         // Get closed property (default: left)
-        let closed_left = match scale.properties.get("closed") {
-            Some(ParameterValue::String(s)) => s != "right",
-            _ => true,
-        };
+        let closed_left = !ParameterValue::is_str(scale.properties.get("closed"), "right");
 
         // Walk layers directly so we can decide per-layer whether an
         // aesthetic-named column was deferred (needs binning here) or

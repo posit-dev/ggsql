@@ -541,18 +541,16 @@ impl ScaleTypeTrait for Binned {
 
         // 6b. Binned-specific: suppress terminal break labels for oob='squish'
         // since those bins extend to infinity (-∞ to first internal break, last internal break to +∞)
-        if let Some(ParameterValue::String(oob)) = scale.properties.get("oob") {
-            if oob == OOB_SQUISH {
-                if let Some(ParameterValue::Array(breaks)) = scale.properties.get("breaks") {
-                    if breaks.len() > 2 {
-                        // Suppress first and last break labels
-                        let first_key = breaks[0].to_key_string();
-                        let last_key = breaks[breaks.len() - 1].to_key_string();
+        if ParameterValue::is_str(scale.properties.get("oob"), OOB_SQUISH) {
+            if let Some(ParameterValue::Array(breaks)) = scale.properties.get("breaks") {
+                if breaks.len() > 2 {
+                    // Suppress first and last break labels
+                    let first_key = breaks[0].to_key_string();
+                    let last_key = breaks[breaks.len() - 1].to_key_string();
 
-                        let label_mapping = scale.label_mapping.get_or_insert_with(HashMap::new);
-                        label_mapping.insert(first_key, None);
-                        label_mapping.insert(last_key, None);
-                    }
+                    let label_mapping = scale.label_mapping.get_or_insert_with(HashMap::new);
+                    label_mapping.insert(first_key, None);
+                    label_mapping.insert(last_key, None);
                 }
             }
         }
@@ -618,17 +616,11 @@ impl ScaleTypeTrait for Binned {
         }
 
         // Get closed property: "left" (default) or "right"
-        let closed_left = match scale.properties.get("closed") {
-            Some(ParameterValue::String(s)) => s != "right",
-            _ => true, // default to left-closed
-        };
+        let closed_left = !ParameterValue::is_str(scale.properties.get("closed"), "right");
 
         // Get oob property: "censor" (default) or "squish"
         // With "squish", terminal bins extend to infinity
-        let oob_squish = match scale.properties.get("oob") {
-            Some(ParameterValue::String(s)) => s == OOB_SQUISH,
-            _ => false,
-        };
+        let oob_squish = ParameterValue::is_str(scale.properties.get("oob"), OOB_SQUISH);
 
         // Determine if break values need temporal formatting
         // Column is already cast to correct type, but break literals may need formatting

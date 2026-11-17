@@ -249,10 +249,7 @@ impl Scale {
         if breaks.len() < 2 {
             return Vec::new();
         }
-        let closed_right = matches!(
-            self.properties.get("closed"),
-            Some(ParameterValue::String(s)) if s == "right"
-        );
+        let closed_right = ParameterValue::is_str(self.properties.get("closed"), "right");
         let mapping = self.label_mapping.as_ref();
         let last = breaks.len() - 2;
 

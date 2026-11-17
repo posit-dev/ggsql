@@ -95,10 +95,7 @@ impl GeomTrait for Spatial {
         let columns = mappings.column_names();
         let col = dialect.quote_ident(&naming::aesthetic_column("geometry"));
         let is_map = projection.coord.coord_kind() == CoordKind::Map;
-        let clip = matches!(
-            projection.properties.get("clip"),
-            Some(ParameterValue::Boolean(true))
-        );
+        let clip = ParameterValue::is_true(projection.properties.get("clip"));
 
         // WORKAROUND(duckdb-rs#714): normalize column to GEOMETRY since it may
         // be WKB BLOB from the Arrow export workaround.

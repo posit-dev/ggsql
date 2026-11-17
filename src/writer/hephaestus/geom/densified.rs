@@ -25,10 +25,7 @@ use crate::{GgsqlError, Layer, Result};
 
 /// Whether ggsql expanded this layer's rows into projected vertices.
 pub fn applies(layer: &Layer) -> bool {
-    matches!(
-        layer.parameters.get("densified"),
-        Some(ParameterValue::Boolean(true))
-    )
+    ParameterValue::is_true(layer.parameters.get("densified"))
 }
 
 /// Draw the expanded vertices: a polyline per original row for segment/rule, a

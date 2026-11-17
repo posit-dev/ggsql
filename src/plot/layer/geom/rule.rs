@@ -63,12 +63,7 @@ impl GeomTrait for Rule {
 
         let has_pos1 = mappings.contains_key("pos1");
         let bbox_expr = match projection.coord.coord_kind() {
-            CoordKind::Map
-                if matches!(
-                    projection.properties.get("clip"),
-                    Some(ParameterValue::Boolean(true))
-                ) =>
-            {
+            CoordKind::Map if ParameterValue::is_true(projection.properties.get("clip")) => {
                 let boundary_table = clip_boundary_table();
                 dialect.sql_geometry_bbox("geom", &boundary_table)
             }
@@ -137,10 +132,7 @@ impl GeomTrait for Rule {
     ) -> std::result::Result<(), String> {
         // Rule requires exactly one of pos1 or pos2 (XOR logic).
         // After densification both axes are present — skip the check.
-        if matches!(
-            parameters.get("densified"),
-            Some(ParameterValue::Boolean(true))
-        ) {
+        if ParameterValue::is_true(parameters.get("densified")) {
             return Ok(());
         }
 
