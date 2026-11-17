@@ -4,8 +4,9 @@
 //! statements, parallel to how `plot` defines `Plot` for `VISUALISE`
 //! statements: `source` (from `TABULATE FROM`), `selection` (from
 //! `TABULATE`'s own column list), `labels` (from `TABULATE LABEL`), `spans`
-//! (from `TABULATE SPAN`), `formats` (from `TABULATE FORMAT`), and `facet`
-//! (from `TABULATE FACET`) are populated so far.
+//! (from `TABULATE SPAN`), `formats` (from `TABULATE FORMAT`), `facet`
+//! (from `TABULATE FACET`), and `summaries` (from `TABULATE SUMMARISE`) are
+//! populated so far.
 
 mod facet;
 mod layout;
@@ -60,6 +61,9 @@ pub struct Table {
     /// Row grouping (from `TABULATE FACET`). Only the wrap form is
     /// meaningful for tables; the builder rejects `BY`.
     pub facet: Option<Facet>,
+    /// Row summaries (from `TABULATE SUMMARISE`), one per `SUMMARISE` clause
+    /// written — same one-clause-per-row model as `formats`.
+    pub summaries: Vec<Summary>,
 }
 
 /// One item in a TABULATE column selection.
@@ -97,6 +101,7 @@ impl Table {
             spans: Vec::new(),
             formats: Vec::new(),
             facet: None,
+            summaries: Vec::new(),
         }
     }
 }
@@ -262,6 +267,71 @@ impl ColumnSection {
             ColumnSection::Stub => (1, 0),
             ColumnSection::Body => (2, 0),
         }
+    }
+}
+
+/// One `SUMMARISE` clause: an aggregate operation producing one summary row
+/// per group — or a single row over all rows for `GRAND`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Summary {
+    /// The aggregate operation (e.g. `mean`), verbatim as written — it doubles
+    /// as the default row label. Matching against the operation vocabulary is
+    /// case-insensitive at execution time.
+    pub operation: String,
+    /// Which rows the operation aggregates over.
+    pub scope: SummaryScope,
+    /// The columns to summarise, in the order written.
+    pub columns: Vec<String>,
+    /// `SETTING` parameters for this SUMMARISE (e.g. `place => 'top'`,
+    /// `rowlabel => 'Average'`).
+    pub settings: Parameters,
+}
+
+/// Which rows a `SUMMARISE` clause aggregates over.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum SummaryScope {
+    /// One summary row per facet group. Without a `FACET`, all rows form a
+    /// single group.
+    #[default]
+    Group,
+    /// A single summary row over all rows.
+    Grand,
+}
+
+/// `SETTING` parameters `SUMMARISE` accepts.
+const SUMMARY_PARAMS: &[ParamDefinition] = &[
+    ParamDefinition {
+        name: "place",
+        // No default: an unset place resolves at execution time.
+        default: DefaultParamValue::Null,
+        constraint: ParamConstraint::string_option(&["top", "bottom"]),
+    },
+    ParamDefinition {
+        name: "rowlabel",
+        // No default: an unset rowlabel falls back to the operation verbatim.
+        default: DefaultParamValue::Null,
+        constraint: ParamConstraint::string(),
+    },
+];
+
+impl Summary {
+    /// Validate `settings` against `SUMMARY_PARAMS`.
+    pub fn validate_settings(&self) -> Result<(), String> {
+        let valid: Vec<&str> = SUMMARY_PARAMS.iter().map(|p| p.name).collect();
+
+        for (name, value) in &self.settings {
+            let Some(param) = SUMMARY_PARAMS.iter().find(|p| p.name == name.as_str()) else {
+                return Err(format!(
+                    "SUMMARISE setting should be {}, not '{}'",
+                    crate::or_list_quoted(&valid, '\''),
+                    name
+                ));
+            };
+            validate_parameter(name, value, &param.constraint)?;
+        }
+
+        Ok(())
     }
 }
 
@@ -470,6 +540,49 @@ mod tests {
             ParameterValue::String("240px".to_string()),
         );
         assert!(format_with_settings(settings).validate_settings().is_ok());
+    }
+
+    fn summary_with_settings(settings: Parameters) -> Summary {
+        Summary {
+            operation: "mean".to_string(),
+            scope: SummaryScope::Group,
+            columns: vec!["a".to_string()],
+            settings,
+        }
+    }
+
+    #[test]
+    fn summary_validate_settings_accepts_place_and_rowlabel() {
+        let mut settings = Parameters::new();
+        settings.insert(
+            "place".to_string(),
+            ParameterValue::String("top".to_string()),
+        );
+        settings.insert(
+            "rowlabel".to_string(),
+            ParameterValue::String("Average".to_string()),
+        );
+
+        assert!(summary_with_settings(settings).validate_settings().is_ok());
+    }
+
+    #[test]
+    fn summary_validate_settings_rejects_a_non_string_rowlabel() {
+        let mut settings = Parameters::new();
+        settings.insert("rowlabel".to_string(), ParameterValue::Number(1.0));
+
+        assert!(summary_with_settings(settings).validate_settings().is_err());
+    }
+
+    #[test]
+    fn summary_validate_settings_rejects_an_unknown_setting() {
+        let mut settings = Parameters::new();
+        settings.insert(
+            "colour".to_string(),
+            ParameterValue::String("red".to_string()),
+        );
+
+        assert!(summary_with_settings(settings).validate_settings().is_err());
     }
 
     #[test]
