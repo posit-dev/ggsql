@@ -109,6 +109,10 @@
 (project_property_name) @property
 (label_type) @property
 
+; SUMMARISE clause: operation name and GROUP/GRAND scope
+(summarise_clause operation: (identifier) @function.builtin)
+(summarise_scope) @keyword
+
 ; Operators
 "=" @operator
 "!=" @operator
