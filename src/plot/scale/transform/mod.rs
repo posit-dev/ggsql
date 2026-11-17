@@ -118,6 +118,151 @@ impl TransformKind {
             TransformKind::Date | TransformKind::DateTime | TransformKind::Time
         )
     }
+
+    /// The zygos transform that computes this kind's value math, for the numeric
+    /// kinds zygos implements. `None` for the temporal, discrete, integer and
+    /// geographic kinds, whose math stays in ggsql.
+    ///
+    /// The log, exp and pseudo-log families carry a base that the kind alone
+    /// doesn't pin down — `Log` and `Exp` also cover custom bases, and `PseudoLog`
+    /// covers every base — so `Log`, `Exp` and `PseudoLog` map to zygos's
+    /// natural-base member, which [`ZygosMath`] rescales by `ln(base)`.
+    pub(crate) fn zygos_kind(self) -> Option<zygos::transform::TransformKind> {
+        use zygos::transform::TransformKind as Z;
+        Some(match self {
+            TransformKind::Identity => Z::Identity,
+            TransformKind::Log10 => Z::Log10,
+            TransformKind::Log2 => Z::Log2,
+            TransformKind::Log => Z::Log,
+            TransformKind::Sqrt => Z::Sqrt,
+            TransformKind::Square => Z::Square,
+            TransformKind::Exp10 => Z::Exp10,
+            TransformKind::Exp2 => Z::Exp2,
+            TransformKind::Exp => Z::Exp,
+            TransformKind::Asinh => Z::Asinh,
+            TransformKind::PseudoLog => Z::PseudoLog,
+            TransformKind::Date
+            | TransformKind::DateTime
+            | TransformKind::Time
+            | TransformKind::String
+            | TransformKind::Bool
+            | TransformKind::Integer
+            | TransformKind::Geographic => return None,
+        })
+    }
+
+    /// The zygos calendar type a temporal kind's values encode — days for
+    /// `Date`, microseconds for `DateTime`, nanoseconds since midnight for
+    /// `Time` — which is what zygos's calendar break algorithms step through.
+    /// `None` for the non-temporal kinds.
+    pub(crate) fn temporal_unit(self) -> Option<zygos::TemporalUnit> {
+        match self {
+            TransformKind::Date => Some(zygos::TemporalUnit::Date),
+            TransformKind::DateTime => Some(zygos::TemporalUnit::DateTime),
+            TransformKind::Time => Some(zygos::TemporalUnit::Time),
+            _ => None,
+        }
+    }
+}
+
+/// Value math for a numeric transform, delegated to zygos.
+///
+/// `scale` stretches zygos's transform to a base it has no member for: a log of
+/// base `b` is `ln(x) / ln(b)`, so a `Log` transform of a custom base runs
+/// zygos's natural log and divides by `ln(b)`. It is `1` whenever zygos computes
+/// the base directly.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct ZygosMath {
+    transform: zygos::transform::Transform,
+    scale: f64,
+}
+
+impl ZygosMath {
+    /// zygos's math for `kind` at its own base.
+    ///
+    /// # Panics
+    /// If `kind` has no zygos counterpart (see [`TransformKind::zygos_kind`]).
+    pub(crate) fn of(kind: TransformKind) -> Self {
+        Self::with_scale(kind, 1.0)
+    }
+
+    /// zygos's math for `kind`, rescaled by `scale` (see the type docs).
+    pub(crate) fn with_scale(kind: TransformKind, scale: f64) -> Self {
+        let zygos_kind = kind
+            .zygos_kind()
+            .unwrap_or_else(|| panic!("{kind} has no zygos transform"));
+        Self {
+            transform: zygos::transform::Transform::of(zygos_kind),
+            scale,
+        }
+    }
+
+    /// The domain zygos defines the transform on.
+    pub(crate) fn allowed_domain(&self) -> (f64, f64) {
+        self.transform.allowed_domain()
+    }
+
+    /// Forward transform. The base divides the output, as it does for the log
+    /// and pseudo-log families: `f(x) / scale`.
+    pub(crate) fn forward(&self, value: f64) -> f64 {
+        self.transform.forward(value) / self.scale
+    }
+
+    /// Inverse of [`forward`](Self::forward): `f⁻¹(y · scale)`.
+    pub(crate) fn inverse(&self, value: f64) -> f64 {
+        self.transform.inverse(value * self.scale)
+    }
+
+    /// Forward transform for the exponential family, where the base multiplies
+    /// the input instead: `f(x · scale)`.
+    pub(crate) fn forward_exp(&self, value: f64) -> f64 {
+        self.transform.forward(value * self.scale)
+    }
+
+    /// Inverse of [`forward_exp`](Self::forward_exp): `f⁻¹(y) / scale`.
+    pub(crate) fn inverse_exp(&self, value: f64) -> f64 {
+        self.transform.inverse(value) / self.scale
+    }
+
+    /// Expand `[min, max]` in the space of [`forward`](Self::forward), via
+    /// zygos's transformed-space expansion. `mult` and `add` are `(lower, upper)`
+    /// pairs, and `add` is in units of `forward`'s output — which is zygos's
+    /// output divided by `scale`, so it is multiplied back before zygos sees it.
+    pub(crate) fn expand_range(
+        &self,
+        min: f64,
+        max: f64,
+        mult: (f64, f64),
+        add: (f64, f64),
+    ) -> (f64, f64) {
+        zygos::transform::expand_range_transformed_selective(
+            min,
+            max,
+            mult,
+            (add.0 * self.scale, add.1 * self.scale),
+            self.transform.kind(),
+        )
+    }
+
+    /// [`expand_range`](Self::expand_range) in the space of
+    /// [`forward_exp`](Self::forward_exp): zygos expands the scaled input
+    /// `x · scale`, and the result is scaled back.
+    pub(crate) fn expand_range_exp(
+        &self,
+        min: f64,
+        max: f64,
+        mult: (f64, f64),
+        add: (f64, f64),
+    ) -> (f64, f64) {
+        let (lo, hi) = zygos::transform::expand_range_transformed_selective(
+            min * self.scale,
+            max * self.scale,
+            mult,
+            add,
+            self.transform.kind(),
+        );
+        (lo / self.scale, hi / self.scale)
+    }
 }
 
 impl std::fmt::Display for TransformKind {
@@ -217,6 +362,28 @@ pub trait TransformTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
     ///
     /// Maps a value from transformed space back to data space.
     fn inverse(&self, value: f64) -> f64;
+
+    /// Expand a `[min, max]` domain in transformed space and map it back.
+    ///
+    /// `mult` and `add` are `(lower, upper)` pairs: an end is padded by
+    /// `mult × span + add`, where the span and `add` are measured in transformed
+    /// units, so a padded domain never leaves the transform's domain (a log axis
+    /// is padded in decades rather than below zero). A zero-width range pads as
+    /// if it spanned one transformed unit, and a range whose endpoints have no
+    /// finite transform comes back unchanged. See
+    /// [`zygos::transform::expand_range_transformed_selective`].
+    ///
+    /// The default runs zygos's expansion for this kind, or the identity
+    /// expansion for kinds zygos has no transform for (temporal, discrete,
+    /// integer, geographic). Transforms whose math rescales a zygos member to
+    /// another base override it.
+    fn expand_range(&self, min: f64, max: f64, mult: (f64, f64), add: (f64, f64)) -> (f64, f64) {
+        let kind = self
+            .transform_kind()
+            .zygos_kind()
+            .unwrap_or(zygos::transform::TransformKind::Identity);
+        zygos::transform::expand_range_transformed_selective(min, max, mult, add, kind)
+    }
 
     /// Wrap a numeric value in the appropriate ArrayElement type.
     ///
@@ -455,6 +622,21 @@ impl Transform {
         self.0.inverse(value)
     }
 
+    /// Expand a `[min, max]` domain in transformed space, per end (see
+    /// [`TransformTrait::expand_range`]). Ends whose pad would leave the
+    /// transform's image are left unpadded by zygos (a sqrt domain padded
+    /// below 0 keeps its 0 rather than folding back inside the range).
+    pub fn expand_range(
+        &self,
+        min: f64,
+        max: f64,
+        mult: (f64, f64),
+        add: (f64, f64),
+    ) -> (f64, f64) {
+        let (min, max) = if min <= max { (min, max) } else { (max, min) };
+        self.0.expand_range(min, max, mult, add)
+    }
+
     /// Wrap a numeric value in the appropriate ArrayElement type
     pub fn wrap_numeric(&self, value: f64) -> ArrayElement {
         self.0.wrap_numeric(value)
@@ -468,6 +650,12 @@ impl Transform {
     /// Returns true if this is the identity transform
     pub fn is_identity(&self) -> bool {
         self.transform_kind() == TransformKind::Identity
+    }
+
+    /// The zygos calendar type of a temporal transform (see
+    /// [`TransformKind::temporal_unit`]); `None` for non-temporal transforms.
+    pub(crate) fn temporal_unit(&self) -> Option<zygos::TemporalUnit> {
+        self.transform_kind().temporal_unit()
     }
 
     /// Returns true if this is a temporal transform (Date, DateTime, or Time)
@@ -621,6 +809,23 @@ pub const ALL_TRANSFORM_NAMES: &[&str] = &[
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_expand_range_leaves_ends_past_the_image_unpadded() {
+        // exp10 of 0..3 spans 1..1000; a 5% pad below 1 lands at -49, which
+        // has no logarithm, so the lower end stays put rather than padding.
+        let t = Transform::exp10();
+        let (lo, hi) = t.expand_range(0.0, 3.0, (0.05, 0.05), (0.0, 0.0));
+        assert_eq!(lo, 0.0);
+        assert!((t.transform(hi) - (1000.0 + 0.05 * 999.0)).abs() < 1e-9);
+
+        // Square of 0..10 spans 0..100; the lower pad overshoots zero too,
+        // where the inverse would fold back inside the range.
+        let t = Transform::square();
+        let (lo, hi) = t.expand_range(0.0, 10.0, (0.05, 0.05), (0.0, 0.0));
+        assert_eq!(lo, 0.0);
+        assert!((t.transform(hi) - 105.0).abs() < 1e-9);
+    }
 
     #[test]
     fn test_transform_creation() {

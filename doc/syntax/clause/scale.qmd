@@ -65,14 +65,16 @@ Apart from the direct renaming described above it is also possible to provide a 
 * `{:Title}` will title-case the value (make the first letter in each work upper case) before insertion, e.g. `* => '{:Title} species'` will become "Adelie species" for the "adelie" break.
 * `{:UPPER}` will make the value upper-case, e.g. `* => '{:UPPER} species'` will become "ADELIE species" for the "adelie" break.
 * `{:lower}` works much like `{:UPPER}` but changes the value to lower-case instead.
-* `{:time ...}` will format a date/datetime/time value according to the format defined afterwards. The formatting follows strftime format using the Rust chrono library. You can see an overview of the supported syntax at the [chrono docs](https://docs.rs/chrono/latest/chrono/format/strftime/index.html). The basic usage is `* => '{:time %B %Y}` which would format a break at 2025-07-04 as "July 2025".
-* `{:num ...}` will format a numeric according to the format defined afterwards. The format follows the printf format using the Rust sprintf library. The syntax is `%[flags][width][.precision]type` with the following meaning:
+* `{:time ...}` will format a date/datetime/time value according to the format defined afterwards. The formatting follows a strftime subset: `%Y %y %m %d %e %H %I %M %S %p %P %b %B %h %a %A %j %s %t %n %u %w %U %W %V %G %%`, the composites `%F %T %R %D %r`, fractional seconds (`%f`, `%.f`, `%.3f`, `%.6f`, `%.9f`), and the `%-` / `%_` / `%0` padding modifiers (`%V`/`%G` are ISO 8601 week and week-year). Locale composites (`%c %x %X %v`) and timezone tokens (`%z %Z`) are not supported. The basic usage is `* => '{:time %B %Y}` which would format a break at 2025-07-04 as "July 2025".
+* `{:num ...}` will format a numeric according to the format defined afterwards. The format follows a printf subset. The syntax is `%[flags][width][.precision]type` with the following meaning:
   - `flags`: One or more modifiers:
     * `-`: left-justify
     * `+`: Force sign for positive numbers
     * ` `: (space) Space before positive numbers
     * `0`: Zero-pad
     * `#`: Alternate form (`0x` prefix for hex, etc)
+    * `'`: Thousands separator (`,` is accepted as an alias), e.g. `{:num %',.2f}` → `1,234.50`
+    * `!`: Unicode scientific notation on `e`/`E`/`g`/`G`, e.g. `{:num %!.2e}` → `1.23 × 10³`
   - `width`: The minimum width of characters to render. Depending on the `flags` the string will be padded to be at least this width
   - `precision`: The maximum precision of the number. For `%g`/`%G` it is the total number of digits whereas for the rest it is the number of digits to the right of the decimal point
   - `type`: How to present the number. One of:
@@ -83,3 +85,11 @@ Apart from the direct renaming described above it is also possible to provide a 
     * `g`/`G`: Shortest form of `e` and `f`
     * `o`: Unsigned octal
     * `x`/`X`: Unsigned hexadecimal
+    * `s`: Stringifies the number
+    * `S`: SI-prefixed notation with precision as significant digits, e.g. `{:num %.2S}` → `1.2M`
+* `{:abbr N}` will truncate the value to `N` characters with an ellipsis.
+* `{:bytes}` will format a number as a base-1024 size (e.g. `1.5 KiB`), with an optional significant-digit count (`{:bytes 2}`).
+* `{:duration}` will format a number as a composite span (e.g. `1h 30m`), read in seconds unless a unit is given (`{:duration ms}`; one of `ns`, `us`, `ms`, `s`, `m`, `h`, `d`).
+* `{:ordinal}` will format a number with an ordinal suffix (`1st`, `2nd`, `3rd`, …).
+
+Formatter keywords are case-insensitive (`{:NUM}`, `{:upper}`, `{:TITLE}` all work); the `{:time}`/`{:num}` format payloads stay case-sensitive. Negative numbers render with a proper minus sign (−) throughout.
