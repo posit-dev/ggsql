@@ -57,6 +57,13 @@ const SUMMARY_PARAMS: &[ParamDefinition] = &[
         default: DefaultParamValue::Null,
         constraint: ParamConstraint::string(),
     },
+    ParamDefinition {
+        // Whether nulls make the summary null ('propagate') or are ignored
+        // ('drop').
+        name: "missing",
+        default: DefaultParamValue::String("propagate"),
+        constraint: ParamConstraint::string_option(&["propagate", "drop"]),
+    },
 ];
 
 impl Summary {
@@ -122,6 +129,24 @@ mod tests {
         );
 
         assert!(summary_with_settings(settings).validate_settings().is_ok());
+    }
+
+    #[test]
+    fn summary_validate_settings_accepts_missing_options() {
+        for value in ["propagate", "drop"] {
+            let mut settings = Parameters::new();
+            settings.insert(
+                "missing".to_string(),
+                ParameterValue::String(value.to_string()),
+            );
+            assert!(summary_with_settings(settings).validate_settings().is_ok());
+        }
+        let mut settings = Parameters::new();
+        settings.insert(
+            "missing".to_string(),
+            ParameterValue::String("ignore".to_string()),
+        );
+        assert!(summary_with_settings(settings).validate_settings().is_err());
     }
 
     #[test]

@@ -11,6 +11,7 @@ mod facet;
 mod format;
 mod layout;
 mod stub;
+mod summary;
 
 use facet::collapse_group_columns;
 use format::{apply_formats, setup_formats};
