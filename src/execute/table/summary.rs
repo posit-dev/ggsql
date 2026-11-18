@@ -4,17 +4,122 @@
 //! Only `mean` and `median` exist so far; the rest of `SUMMARY_OPERATIONS`
 //! lands once the execution pipeline is wired end-to-end.
 
-use arrow::array::{Array, ArrayRef};
+use std::sync::Arc;
+
+use std::ops::Range;
+
+use arrow::array::{Array, ArrayRef, Float64Array, StringArray};
 use arrow::datatypes::DataType;
 
 use crate::array_util::{as_f64, cast_array};
-use crate::{GgsqlError, Result};
+use crate::naming;
+use crate::params::{ParameterValue, Parameters};
+use crate::table::{Summary, SummaryScope, TableRow};
+use crate::{DataFrame, GgsqlError, Result};
+
+/// Compute every `SUMMARISE` clause against the (unformatted) data, one
+/// DataFrame per clause, parallel to `summaries`. Every frame leads with a
+/// `SUMMARY_GROUP_COLUMN` of ';'-joined group ranks, then one nullable-f64
+/// column per summarised column, raw (before `FORMAT`). A `GROUP` frame
+/// holds one row per group — in display order, since `setup_rows` leaves
+/// rows group-contiguous; a `GRAND` frame a single row keyed by the empty
+/// key (a grand total has no group). The clause itself carries the row's
+/// label and placement, so nothing here duplicates them.
+// Unused until the table pipeline calls it.
+#[allow(dead_code)]
+pub(super) fn setup_summaries(
+    df: &DataFrame,
+    rows: &[TableRow],
+    summaries: &[Summary],
+) -> Result<Vec<DataFrame>> {
+    // Rows are group-contiguous after setup_rows, so each group's membership
+    // is a contiguous range; a GRAND clause's single "group" is all of them.
+    let mut start = 0;
+    let mut ranges: Vec<Range<usize>> = Vec::new();
+    let mut key_strings: Vec<String> = Vec::new();
+    for chunk in rows.chunk_by(|a, b| a.group == b.group) {
+        ranges.push(start..start + chunk.len());
+        start += chunk.len();
+        key_strings.push(naming::summary_group_key(&chunk[0].group));
+    }
+
+    // A grand total has no group; the empty key matches the facet-less one.
+    let grand_key = [String::new()];
+    summaries
+        .iter()
+        .map(|summary| {
+            let (groups, keys) = match summary.scope {
+                SummaryScope::Grand => (None, grand_key.as_slice()),
+                SummaryScope::Group => (Some(ranges.as_slice()), key_strings.as_slice()),
+            };
+            summary_frame(df, summary, groups, keys)
+        })
+        .collect()
+}
+
+/// Compute one clause's frame: the key column followed by one nullable-f64
+/// column per summarised column. `groups` is `None` for a GRAND clause — a
+/// single row over all rows.
+fn summary_frame(
+    df: &DataFrame,
+    summary: &Summary,
+    groups: Option<&[Range<usize>]>,
+    keys: &[String],
+) -> Result<DataFrame> {
+    let drop_nulls = setting_string(&summary.settings, "missing").as_deref() == Some("drop");
+
+    let mut columns: Vec<(String, ArrayRef)> = Vec::new();
+    columns.push((
+        naming::SUMMARY_GROUP_COLUMN.to_string(),
+        Arc::new(StringArray::from(keys.to_vec())),
+    ));
+    for column in &summary.columns {
+        let values = summary_column(df, column, summary, groups, drop_nulls)?;
+        columns.push((column.clone(), Arc::new(Float64Array::from(values))));
+    }
+    DataFrame::new(columns)
+}
+
+/// Compute a clause's operation on one column, one value per group — or a
+/// single value over the whole column when `groups` is `None` (GRAND).
+fn summary_column(
+    df: &DataFrame,
+    column: &str,
+    summary: &Summary,
+    groups: Option<&[Range<usize>]>,
+    drop_nulls: bool,
+) -> Result<Vec<Option<f64>>> {
+    let array = df.column(column).map_err(|_| {
+        GgsqlError::ValidationError(format!(
+            "SUMMARISE {}: no column '{column}' in the query result",
+            summary.operation
+        ))
+    })?;
+    match groups {
+        Some(groups) => groups
+            .iter()
+            .map(|range| {
+                summary_stat(
+                    &summary.operation,
+                    &array.slice(range.start, range.len()),
+                    drop_nulls,
+                )
+            })
+            .collect(),
+        None => summary_stat(&summary.operation, array, drop_nulls).map(|value| vec![value]),
+    }
+}
+
+fn setting_string(settings: &Parameters, name: &str) -> Option<String> {
+    match settings.get(name) {
+        Some(ParameterValue::String(value)) => Some(value.clone()),
+        _ => None,
+    }
+}
 
 /// Compute one `SUMMARISE` operation over a column. With `drop_nulls`, nulls
 /// are ignored; otherwise a single null makes the result `None` (NULL), as
 /// does an empty input. Matching on `operation` is case-insensitive.
-// Unused until summary execution calls it.
-#[allow(dead_code)]
 pub fn summary_stat(operation: &str, array: &ArrayRef, drop_nulls: bool) -> Result<Option<f64>> {
     let values = numeric_values(array, operation, drop_nulls)?;
     let Some(values) = values else {
@@ -112,5 +217,125 @@ mod tests {
     fn unimplemented_operation_is_rejected() {
         let array: ArrayRef = Arc::new(Float64Array::from(vec![1.0]));
         assert!(summary_stat("geomean", &array, false).is_err());
+    }
+
+    fn summary(operation: &str, scope: SummaryScope, columns: &[&str]) -> Summary {
+        Summary {
+            operation: operation.to_string(),
+            scope,
+            columns: columns.iter().map(|c| c.to_string()).collect(),
+            settings: Parameters::new(),
+        }
+    }
+
+    fn body_rows(keys: &[&[usize]]) -> Vec<TableRow> {
+        keys.iter()
+            .map(|key| TableRow {
+                group: key.to_vec(),
+                ..TableRow::body()
+            })
+            .collect()
+    }
+
+    fn column_values(frame: &DataFrame, column: &str) -> Vec<Option<f64>> {
+        as_f64(frame.column(column).unwrap())
+            .unwrap()
+            .iter()
+            .collect()
+    }
+
+    fn group_keys(frame: &DataFrame) -> Vec<String> {
+        crate::array_util::as_str(frame.column(naming::SUMMARY_GROUP_COLUMN).unwrap())
+            .unwrap()
+            .iter()
+            .map(|key| key.unwrap().to_string())
+            .collect()
+    }
+
+    #[test]
+    fn grand_summary_is_a_single_row_keyed_by_the_empty_key() {
+        let df = crate::df! {
+            "x" => vec![1.0, 2.0, 3.0],
+        }
+        .unwrap();
+        let rows = body_rows(&[&[], &[], &[]]);
+
+        let frames =
+            setup_summaries(&df, &rows, &[summary("mean", SummaryScope::Grand, &["x"])]).unwrap();
+
+        assert_eq!(frames.len(), 1);
+        assert_eq!(frames[0].height(), 1);
+        assert_eq!(group_keys(&frames[0]), vec![""]);
+        assert_eq!(column_values(&frames[0], "x"), vec![Some(2.0)]);
+    }
+
+    #[test]
+    fn group_summary_emits_one_row_per_group_in_display_order() {
+        let df = crate::df! {
+            "x" => vec![1.0, 3.0, 10.0, 20.0],
+        }
+        .unwrap();
+        // Two nested-facet groups, contiguous after setup_rows' reorder.
+        let rows = body_rows(&[&[2, 0], &[2, 0], &[2, 1], &[2, 1]]);
+
+        let frames =
+            setup_summaries(&df, &rows, &[summary("mean", SummaryScope::Group, &["x"])]).unwrap();
+
+        assert_eq!(frames[0].height(), 2);
+        assert_eq!(group_keys(&frames[0]), vec!["2;0", "2;1"]);
+        assert_eq!(column_values(&frames[0], "x"), vec![Some(2.0), Some(15.0)]);
+    }
+
+    #[test]
+    fn no_facet_means_one_group_with_an_empty_key() {
+        let df = crate::df! {
+            "x" => vec![2.0, 4.0],
+        }
+        .unwrap();
+        let rows = body_rows(&[&[], &[]]);
+
+        let frames =
+            setup_summaries(&df, &rows, &[summary("mean", SummaryScope::Group, &["x"])]).unwrap();
+
+        assert_eq!(frames[0].height(), 1);
+        assert_eq!(group_keys(&frames[0]), vec![""]);
+        assert_eq!(column_values(&frames[0], "x"), vec![Some(3.0)]);
+    }
+
+    #[test]
+    fn the_missing_setting_drives_null_handling() {
+        let df = crate::df! {
+            "x" => vec![Some(1.0), None, Some(3.0)],
+        }
+        .unwrap();
+        let rows = body_rows(&[&[], &[], &[]]);
+
+        let mut drop = summary("mean", SummaryScope::Grand, &["x"]);
+        drop.settings.insert(
+            "missing".to_string(),
+            ParameterValue::String("drop".to_string()),
+        );
+
+        let frames = setup_summaries(
+            &df,
+            &rows,
+            &[summary("mean", SummaryScope::Grand, &["x"]), drop],
+        )
+        .unwrap();
+
+        assert_eq!(column_values(&frames[0], "x"), vec![None]);
+        assert_eq!(column_values(&frames[1], "x"), vec![Some(2.0)]);
+    }
+
+    #[test]
+    fn summarising_a_missing_column_errors() {
+        let df = crate::df! {
+            "x" => vec![1.0],
+        }
+        .unwrap();
+        let rows = body_rows(&[&[]]);
+
+        let result = setup_summaries(&df, &rows, &[summary("mean", SummaryScope::Grand, &["y"])]);
+        assert!(result.is_err());
     }
 }
