@@ -340,17 +340,12 @@ mod tests {
         let layer = Layer::new(Geom::point())
             .with_aesthetic("x".to_string(), AestheticValue::standard_column("date"))
             .with_aesthetic("y".to_string(), AestheticValue::standard_column("revenue"))
-            .with_aesthetic(
-                "color".to_string(),
-                AestheticValue::Literal(ParameterValue::String("blue".to_string())),
-            );
+            .with_aesthetic("color".to_string(), AestheticValue::Literal("blue".into()));
 
         assert_eq!(layer.geom, Geom::point());
         assert_eq!(layer.get_column("x"), Some("date"));
         assert_eq!(layer.get_column("y"), Some("revenue"));
-        assert!(
-            matches!(layer.get_literal("color"), Some(ParameterValue::String(s)) if s == "blue")
-        );
+        assert!(ParameterValue::is_str(layer.get_literal("color"), "blue"));
         assert!(layer.filter.is_none());
     }
 
@@ -410,9 +405,9 @@ mod tests {
     #[test]
     fn test_aesthetic_value_display() {
         let column = AestheticValue::standard_column("sales");
-        let string_lit = AestheticValue::Literal(ParameterValue::String("blue".to_string()));
-        let number_lit = AestheticValue::Literal(ParameterValue::Number(3.53));
-        let bool_lit = AestheticValue::Literal(ParameterValue::Boolean(true));
+        let string_lit = AestheticValue::Literal("blue".into());
+        let number_lit = AestheticValue::Literal(3.53.into());
+        let bool_lit = AestheticValue::Literal(true.into());
 
         assert_eq!(format!("{}", column), "sales");
         assert_eq!(format!("{}", string_lit), "'blue'");
@@ -475,7 +470,7 @@ mod tests {
 
     #[test]
     fn test_aesthetic_value_literal() {
-        let lit = AestheticValue::Literal(ParameterValue::String("red".to_string()));
+        let lit = AestheticValue::Literal("red".into());
         assert!(!lit.is_dummy());
         assert_eq!(lit.column_name(), None);
     }

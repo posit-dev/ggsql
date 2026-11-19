@@ -25,8 +25,7 @@ use std::collections::HashMap;
 
 use crate::labels::Labels;
 use crate::params::{
-    validate_parameter, DefaultParamValue, NumberConstraint, ParamConstraint, ParamDefinition,
-    Parameters,
+    DefaultParamValue, NumberConstraint, ParamConstraint, ParamDefinition, Parameters,
 };
 use crate::plot::facet::Facet;
 use crate::DataSource;
@@ -193,19 +192,14 @@ impl Table {
     }
 
     /// Fully resolve this table's spanners for execution: settings
-    /// validated, `OVER` ids folded, feature boundaries checked, columns
-    /// checked against the real schema, and each `label` overlaid with any
-    /// `LABEL <id> => ...` entry.
+    /// validated and defaults filled, `OVER` ids folded, feature boundaries
+    /// checked, columns checked against the real schema, and each `label`
+    /// overlaid with any `LABEL <id> => ...` entry.
     pub fn resolve_spanners(
         &self,
         labels: &Labels,
         column_names: Option<&[String]>,
     ) -> Result<Vec<Spanner>, String> {
-        for (idx, spanner) in self.spans.iter().enumerate() {
-            spanner
-                .validate_settings()
-                .map_err(|e| format!("SPAN {}: {}", idx + 1, e))?;
-        }
         let spans = self.resolve_spanner_ids()?;
         self.validate_boundaries(&spans)?;
         // None (validate()'s case) skips this: no real schema to check.
@@ -215,13 +209,17 @@ impl Table {
             }
         }
 
-        Ok(spans
+        spans
             .into_iter()
-            .map(|mut span| {
+            .enumerate()
+            .map(|(idx, mut span)| {
+                span.settings = span
+                    .resolve_settings()
+                    .map_err(|e| format!("SPAN {}: {}", idx + 1, e))?;
                 span.apply_labels(labels);
-                span
+                Ok(span)
             })
-            .collect())
+            .collect()
     }
 }
 
@@ -343,29 +341,17 @@ impl Format {
         }
     }
 
-    /// Validate `settings` against `FORMAT_PARAMS`.
-    pub fn validate_settings(&self) -> Result<(), String> {
-        let valid: Vec<&str> = FORMAT_PARAMS.iter().map(|p| p.name).collect();
-
-        for (name, value) in &self.settings {
-            let Some(param) = FORMAT_PARAMS.iter().find(|p| p.name == name.as_str()) else {
-                return Err(format!(
-                    "FORMAT setting should be {}, not '{}'",
-                    crate::or_list_quoted(&valid, '\''),
-                    name
-                ));
-            };
-            validate_parameter(name, value, &param.constraint)?;
-        }
-
-        Ok(())
+    /// Validate `settings` against `FORMAT_PARAMS` and resolve each to its
+    /// effective value: the user's value if present, otherwise the
+    /// definition's default.
+    pub fn resolve_settings(&self) -> Result<Parameters, String> {
+        crate::params::resolve_parameters(&self.settings, FORMAT_PARAMS, "FORMAT setting")
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::plot::ParameterValue;
 
     fn format_with_settings(settings: Parameters) -> Format {
         Format {
@@ -427,49 +413,32 @@ mod tests {
 
     #[test]
     fn format_validate_settings_accepts_a_string_hjust() {
-        let mut settings = Parameters::new();
-        settings.insert(
-            "hjust".to_string(),
-            ParameterValue::String("right".to_string()),
-        );
+        let settings = crate::params! { "hjust" => "right" };
 
-        assert!(format_with_settings(settings).validate_settings().is_ok());
+        assert!(format_with_settings(settings).resolve_settings().is_ok());
     }
 
     #[test]
     fn format_validate_settings_accepts_a_numeric_hjust() {
-        let mut settings = Parameters::new();
-        settings.insert("hjust".to_string(), ParameterValue::Number(0.25));
+        let settings = crate::params! { "hjust" => 0.25 };
 
-        assert!(format_with_settings(settings).validate_settings().is_ok());
+        assert!(format_with_settings(settings).resolve_settings().is_ok());
     }
 
     #[test]
     fn format_validate_settings_rejects_an_unrecognized_string() {
-        let mut settings = Parameters::new();
-        settings.insert(
-            "hjust".to_string(),
-            ParameterValue::String("up".to_string()),
-        );
+        let settings = crate::params! { "hjust" => "up" };
 
-        assert!(format_with_settings(settings).validate_settings().is_err());
+        assert!(format_with_settings(settings).resolve_settings().is_err());
     }
 
     #[test]
     fn format_validate_settings_accepts_a_percent_or_pixel_width() {
-        let mut settings = Parameters::new();
-        settings.insert(
-            "width".to_string(),
-            ParameterValue::String("20%".to_string()),
-        );
-        assert!(format_with_settings(settings).validate_settings().is_ok());
+        let settings = crate::params! { "width" => "20%" };
+        assert!(format_with_settings(settings).resolve_settings().is_ok());
 
-        let mut settings = Parameters::new();
-        settings.insert(
-            "width".to_string(),
-            ParameterValue::String("240px".to_string()),
-        );
-        assert!(format_with_settings(settings).validate_settings().is_ok());
+        let settings = crate::params! { "width" => "240px" };
+        assert!(format_with_settings(settings).resolve_settings().is_ok());
     }
 
     #[test]

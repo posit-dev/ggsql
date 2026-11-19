@@ -1636,10 +1636,7 @@ mod tests {
                 .unwrap();
         let table = specs[0].as_table().expect("expected a Table spec");
 
-        assert_eq!(
-            table.spans[0].settings.get("width"),
-            Some(&ParameterValue::String("40%".to_string()))
-        );
+        assert_eq!(table.spans[0].settings.get("width"), Some(&"40%".into()));
     }
 
     #[test]
@@ -1765,10 +1762,7 @@ mod tests {
         let table = specs[0].as_table().expect("expected a Table spec");
 
         assert_eq!(table.formats[0].columns, vec!["price"]);
-        assert_eq!(
-            table.formats[0].settings.get("width"),
-            Some(&ParameterValue::String("20%".to_string()))
-        );
+        assert_eq!(table.formats[0].settings.get("width"), Some(&"20%".into()));
         assert_eq!(
             table.formats[0].value_mapping,
             Some(HashMap::from([("null".to_string(), Some("-".to_string()))]))
@@ -1815,10 +1809,7 @@ mod tests {
         let project = specs[0].project.as_ref().unwrap();
         assert_eq!(project.coord.coord_kind(), CoordKind::Polar);
         assert!(project.properties.contains_key("start"));
-        assert_eq!(
-            project.properties.get("start"),
-            Some(&ParameterValue::Number(90.0))
-        );
+        assert_eq!(project.properties.get("start"), Some(&90.0.into()));
     }
 
     #[test]
@@ -3844,10 +3835,7 @@ mod tests {
         let scales = &specs[0].scales;
 
         // Check SETTING was parsed
-        assert_eq!(
-            scales[0].properties.get("reverse"),
-            Some(&ParameterValue::Boolean(true))
-        );
+        assert_eq!(scales[0].properties.get("reverse"), Some(&true.into()));
 
         // Check RENAMING was parsed
         let label_mapping = scales[0].label_mapping.as_ref().unwrap();
@@ -4366,7 +4354,7 @@ mod tests {
         // Color names are converted to hex codes during parsing
         assert_eq!(
             specs[0].layers[0].parameters.get("color"),
-            Some(&ParameterValue::String("#ff0000".to_string()))
+            Some(&"#ff0000".into())
         );
     }
 
@@ -4387,7 +4375,7 @@ mod tests {
         // Color names are converted to hex codes during parsing
         assert_eq!(
             specs[0].layers[0].parameters.get("color"),
-            Some(&ParameterValue::String("#0000ff".to_string()))
+            Some(&"#0000ff".into())
         );
     }
 
@@ -4408,11 +4396,11 @@ mod tests {
         // Color names are converted to hex codes during parsing
         assert_eq!(
             specs[0].layers[0].parameters.get("color"),
-            Some(&ParameterValue::String("#008000".to_string()))
+            Some(&"#008000".into())
         );
         assert_eq!(
             specs[0].layers[0].parameters.get("opacity"),
-            Some(&ParameterValue::Number(0.5))
+            Some(&0.5.into())
         );
     }
 

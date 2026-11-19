@@ -8,6 +8,7 @@ use arrow::array::{ArrayRef, UInt32Array};
 use crate::array_util::value_to_string;
 use crate::dataframe::into_array_ref;
 use crate::plot::facet::{distinct_levels, level_keys, order_levels, Facet, FacetLayout, LevelKey};
+use crate::plot::ParameterValue;
 use crate::table::{TableColumn, TableRow};
 use crate::{ColumnSection, DataFrame};
 
@@ -18,8 +19,7 @@ use crate::{ColumnSection, DataFrame};
 pub(super) fn setup_groups(facet: &Facet, df: &DataFrame) -> Result<Vec<Vec<usize>>, String> {
     let columns = facet_columns(facet, df)?;
 
-    let nulls_first = facet.properties.get("missing")
-        == Some(&crate::plot::ParameterValue::String("first".to_string()));
+    let nulls_first = ParameterValue::is_str(facet.properties.get("missing"), "first");
     let mut keys = vec![Vec::with_capacity(columns.len()); df.height()];
     for column in &columns {
         let ranks = rank_column(column, nulls_first)?;
@@ -34,9 +34,7 @@ pub(super) fn setup_groups(facet: &Facet, df: &DataFrame) -> Result<Vec<Vec<usiz
 /// Remove rows that are null in any of `facet`'s variables. Returns `df`
 /// unchanged unless the facet drops nulls (`missing => 'drop'`).
 pub(super) fn drop_null_rows(facet: &Facet, df: &DataFrame) -> Result<DataFrame, String> {
-    if facet.properties.get("missing")
-        != Some(&crate::plot::ParameterValue::String("drop".to_string()))
-    {
+    if !ParameterValue::is_str(facet.properties.get("missing"), "drop") {
         return Ok(df.clone());
     }
     let columns = facet_columns(facet, df)?;
@@ -78,7 +76,7 @@ pub(super) fn collapse_group_columns(
         return Ok((df, columns, rows, None));
     };
     let separator = match facet.properties.get("separator") {
-        Some(crate::plot::ParameterValue::String(separator)) => separator.clone(),
+        Some(ParameterValue::String(separator)) => separator.clone(),
         _ => return Ok((df, columns, rows, Some(facet.clone()))),
     };
 
