@@ -65,8 +65,8 @@ FACET sex
 |        | Adelie    | Torgersen |     39.1 |     18.7 |         181 |      3750 | 2007 |
 |        | Adelie    | Biscoe    |     37.7 |     18.7 |         180 |      3600 | 2007 |
 | null   | Adelie    | Torgersen |     null |     null |        null |      null | 2007 |
-|        | Gentoo    | Biscoe    |     44.5 |     14.3 |         216 |      4100 | 2007 |
 |        | Adelie    | Dream     |     37.5 |     18.9 |         179 |      2975 | 2007 |
+|        | Gentoo    | Biscoe    |     44.5 |     14.3 |         216 |      4100 | 2007 |
 
 Omit missing group variables from the table.
 
@@ -109,8 +109,8 @@ FORMAT sex RENAMING null => 'unknown'
 |         | Adelie    | Torgersen |     39.1 |     18.7 |         181 |      3750 | 2007 |
 |         | Adelie    | Biscoe    |     37.7 |     18.7 |         180 |      3600 | 2007 |
 | unknown | Adelie    | Torgersen |     null |     null |        null |      null | 2007 |
-|         | Gentoo    | Biscoe    |     44.5 |     14.3 |         216 |      4100 | 2007 |
 |         | Adelie    | Dream     |     37.5 |     18.9 |         179 |      2975 | 2007 |
+|         | Gentoo    | Biscoe    |     44.5 |     14.3 |         216 |      4100 | 2007 |
 
 Place grouping labels in rows above their members.
 
@@ -135,8 +135,8 @@ FACET sex SETTING place => 'top'
 | Adelie    | Biscoe    | 37.7     | 18.7     | 180         | 3600      | 2007 |
 | null      |           |          |          |             |           |      |
 | Adelie    | Torgersen | null     | null     | null        | null      | 2007 |
-| Gentoo    | Biscoe    | 44.5     | 14.3     | 216         | 4100      | 2007 |
 | Adelie    | Dream     | 37.5     | 18.9     | 179         | 2975      | 2007 |
+| Gentoo    | Biscoe    | 44.5     | 14.3     | 216         | 4100      | 2007 |
 
 Using multiple group columns to group gives nested labels.
 
@@ -147,14 +147,14 @@ FACET species, island
 
 |           |           | bill_len | bill_dep | flipper_len | body_mass | sex    | year |
 |:----------|:----------|---------:|---------:|------------:|----------:|:-------|-----:|
-| Adelie    | Biscoe    |     37.7 |     18.7 |         180 |      3600 | male   | 2007 |
-|           |           |     37.8 |     18.3 |         174 |      3400 | female | 2007 |
+| Adelie    | Biscoe    |     37.8 |     18.3 |         174 |      3400 | female | 2007 |
+|           |           |     37.7 |     18.7 |         180 |      3600 | male   | 2007 |
 |           | Dream     |     39.5 |     16.7 |         178 |      3250 | female | 2007 |
 |           |           |     37.2 |     18.1 |         178 |      3900 | male   | 2007 |
 |           |           |     37.5 |     18.9 |         179 |      2975 | null   | 2007 |
 |           | Torgersen |     null |     null |        null |      null | null   | 2007 |
-|           |           |     39.1 |     18.7 |         181 |      3750 | male   | 2007 |
 |           |           |     39.5 |     17.4 |         186 |      3800 | female | 2007 |
+|           |           |     39.1 |     18.7 |         181 |      3750 | male   | 2007 |
 | Chinstrap | Dream     |     46.5 |     17.9 |         192 |      3500 | female | 2007 |
 |           |           |       50 |     19.5 |         196 |      3900 | male   | 2007 |
 | Gentoo    | Biscoe    |       50 |     16.3 |         230 |      5700 | male   | 2007 |
@@ -171,14 +171,14 @@ FACET species, island
 
 |                    | bill_len | bill_dep | flipper_len | body_mass | sex    | year |
 |:-------------------|---------:|---------:|------------:|----------:|:-------|-----:|
-| Adelie - Biscoe    |     37.7 |     18.7 |         180 |      3600 | male   | 2007 |
-|                    |     37.8 |     18.3 |         174 |      3400 | female | 2007 |
+| Adelie - Biscoe    |     37.8 |     18.3 |         174 |      3400 | female | 2007 |
+|                    |     37.7 |     18.7 |         180 |      3600 | male   | 2007 |
 | Adelie - Dream     |     39.5 |     16.7 |         178 |      3250 | female | 2007 |
 |                    |     37.2 |     18.1 |         178 |      3900 | male   | 2007 |
 |                    |     37.5 |     18.9 |         179 |      2975 | null   | 2007 |
 | Adelie - Torgersen |     null |     null |        null |      null | null   | 2007 |
-|                    |     39.1 |     18.7 |         181 |      3750 | male   | 2007 |
 |                    |     39.5 |     17.4 |         186 |      3800 | female | 2007 |
+|                    |     39.1 |     18.7 |         181 |      3750 | male   | 2007 |
 | Chinstrap - Dream  |     46.5 |     17.9 |         192 |      3500 | female | 2007 |
 |                    |       50 |     19.5 |         196 |      3900 | male   | 2007 |
 | Gentoo - Biscoe    |       50 |     16.3 |         230 |      5700 | male   | 2007 |
@@ -195,14 +195,14 @@ LABEL island => 'Place', species => 'Type'
 
 | Type      | Place     | bill_len | bill_dep | flipper_len | body_mass | sex    | year |
 |:----------|:----------|---------:|---------:|------------:|----------:|:-------|-----:|
-| Adelie    | Biscoe    |     37.7 |     18.7 |         180 |      3600 | male   | 2007 |
-|           |           |     37.8 |     18.3 |         174 |      3400 | female | 2007 |
+| Adelie    | Biscoe    |     37.8 |     18.3 |         174 |      3400 | female | 2007 |
+|           |           |     37.7 |     18.7 |         180 |      3600 | male   | 2007 |
 |           | Dream     |     39.5 |     16.7 |         178 |      3250 | female | 2007 |
 |           |           |     37.2 |     18.1 |         178 |      3900 | male   | 2007 |
 |           |           |     37.5 |     18.9 |         179 |      2975 | null   | 2007 |
 |           | Torgersen |     null |     null |        null |      null | null   | 2007 |
-|           |           |     39.1 |     18.7 |         181 |      3750 | male   | 2007 |
 |           |           |     39.5 |     17.4 |         186 |      3800 | female | 2007 |
+|           |           |     39.1 |     18.7 |         181 |      3750 | male   | 2007 |
 | Chinstrap | Dream     |     46.5 |     17.9 |         192 |      3500 | female | 2007 |
 |           |           |       50 |     19.5 |         196 |      3900 | male   | 2007 |
 | Gentoo    | Biscoe    |       50 |     16.3 |         230 |      5700 | male   | 2007 |

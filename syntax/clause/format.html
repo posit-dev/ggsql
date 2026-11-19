@@ -2,7 +2,7 @@
 <html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
 
 <meta charset="utf-8">
-<meta name="generator" content="quarto-1.12.2">
+<meta name="generator" content="quarto-1.12.3">
 
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
@@ -99,9 +99,9 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <script src="../../site_libs/quarto-html/tippy.umd.min.js"></script>
 <script src="../../site_libs/quarto-html/anchor.min.js"></script>
 <link href="../../site_libs/quarto-html/tippy.css" rel="stylesheet">
-<link href="../../site_libs/quarto-html/quarto-syntax-highlighting-391f73e9ed3e3552e24af4a231521fca.css" rel="stylesheet" class="quarto-color-scheme" id="quarto-text-highlighting-styles">
-<link href="../../site_libs/quarto-html/quarto-syntax-highlighting-dark-391f73e9ed3e3552e24af4a231521fca.css" rel="stylesheet" class="quarto-color-scheme quarto-color-alternate" id="quarto-text-highlighting-styles">
-<link href="../../site_libs/quarto-html/quarto-syntax-highlighting-391f73e9ed3e3552e24af4a231521fca.css" rel="stylesheet" class="quarto-color-scheme-extra" id="quarto-text-highlighting-styles">
+<link href="../../site_libs/quarto-html/quarto-syntax-highlighting-c93cfd14599843f859c3cfde2d21ea7b.css" rel="stylesheet" class="quarto-color-scheme" id="quarto-text-highlighting-styles">
+<link href="../../site_libs/quarto-html/quarto-syntax-highlighting-dark-c93cfd14599843f859c3cfde2d21ea7b.css" rel="stylesheet" class="quarto-color-scheme quarto-color-alternate" id="quarto-text-highlighting-styles">
+<link href="../../site_libs/quarto-html/quarto-syntax-highlighting-c93cfd14599843f859c3cfde2d21ea7b.css" rel="stylesheet" class="quarto-color-scheme-extra" id="quarto-text-highlighting-styles">
 <script src="../../site_libs/bootstrap/bootstrap.min.js"></script>
 <link href="../../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
 <link href="../../site_libs/bootstrap/bootstrap-0b0c8915fbd2cb21b8e60ef76089170f.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme" id="quarto-bootstrap" data-mode="light">
@@ -829,7 +829,7 @@ gradient teal.
 <section id="examples" class="level2">
 <h2 class="anchored" data-anchor-id="examples">Examples</h2>
 <p>Declare a stub column.</p>
-<div id="9f97a7b5" class="cell" data-execution_count="1">
+<div id="b7040fd6" class="cell" data-execution_count="1">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb10"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="kw">CREATE</span> <span class="kw">TEMP</span> <span class="kw">TABLE</span> my_data <span class="kw">AS</span> <span class="kw">SELECT</span> <span class="op">*</span> <span class="kw">FROM</span> ggsql:penguins <span class="kw">LIMIT</span> <span class="dv">5</span></span>
 <span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a><span class="kw">TABULATE</span> <span class="op">*</span> <span class="kw">FROM</span> my_data</span>
@@ -850,7 +850,7 @@ gradient teal.
 </div>
 </div>
 <p>Stubheads, the column labels for stub columns, are hidden by default. To display these, you can use the <code>LABEL</code> clause.</p>
-<div id="5c4a33cb" class="cell" data-execution_count="2">
+<div id="e7203efc" class="cell" data-execution_count="2">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb11"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a><span class="kw">TABULATE</span> <span class="op">*</span> <span class="kw">FROM</span> my_data</span>
 <span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a>  <span class="kw">FORMAT</span> <span class="kw">STUB</span> island</span>
 <span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a>  <span class="kw">LABEL</span> island <span class="op">=&gt;</span> <span class="st">'Island'</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
@@ -870,7 +870,7 @@ gradient teal.
 </div>
 </div>
 <p>Stub columns cannot be targetted by spans. The boundary between stub and body is un-spannable.</p>
-<div id="500143b9" class="cell" data-execution_count="3">
+<div id="836b443a" class="cell" data-execution_count="3">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb12"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a><span class="kw">TABULATE</span> <span class="op">*</span> <span class="kw">FROM</span> my_data</span>
 <span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a>  <span class="kw">FORMAT</span> <span class="kw">STUB</span> island</span>
 <span id="cb12-3"><a href="#cb12-3" aria-hidden="true" tabindex="-1"></a>  <span class="kw">SPAN</span> <span class="st">"My label"</span> <span class="kw">OVER</span> island, species</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
@@ -880,7 +880,7 @@ Validation error: SPAN 1: cannot include stub column 'island'.</code></pre>
 </div>
 </div>
 <p>When a column is targeted by multiple <code>FORMAT</code> clauses, the clauses are combined; in case of conflicts the last <code>FORMAT</code> wins. Without target, <code>ANY</code> target is assumed which will not override targets. Note that the <code>island</code> column is not in the stub, because <code>BODY</code> overrides <code>STUB</code>.</p>
-<div id="283c7e80" class="cell" data-execution_count="4">
+<div id="e9dad2ab" class="cell" data-execution_count="4">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb14"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a><span class="kw">TABULATE</span> <span class="op">*</span> <span class="kw">FROM</span> my_data</span>
 <span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a>  <span class="kw">FORMAT</span> <span class="kw">STUB</span> island</span>
 <span id="cb14-3"><a href="#cb14-3" aria-hidden="true" tabindex="-1"></a>  <span class="kw">FORMAT</span> <span class="kw">BODY</span> island</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
@@ -900,7 +900,7 @@ Validation error: SPAN 1: cannot include stub column 'island'.</code></pre>
 </div>
 </div>
 <p>Control content alignment.</p>
-<div id="8bf25d51" class="cell" data-execution_count="5">
+<div id="32259665" class="cell" data-execution_count="5">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb15"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a><span class="kw">TABULATE</span> <span class="op">*</span> <span class="kw">FROM</span> my_data</span>
 <span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a>  <span class="kw">FORMAT</span> sex</span>
 <span id="cb15-3"><a href="#cb15-3" aria-hidden="true" tabindex="-1"></a>    <span class="kw">SETTING</span> <span class="at">hjust</span> <span class="op">=&gt;</span> <span class="st">'right'</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
@@ -920,7 +920,7 @@ Validation error: SPAN 1: cannot include stub column 'island'.</code></pre>
 </div>
 </div>
 <p>Set the width of columns.</p>
-<div id="23a16060" class="cell" data-execution_count="6">
+<div id="8639a75b" class="cell" data-execution_count="6">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb16"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a><span class="kw">TABULATE</span> <span class="op">*</span> <span class="kw">FROM</span> my_data</span>
 <span id="cb16-2"><a href="#cb16-2" aria-hidden="true" tabindex="-1"></a>  <span class="kw">FORMAT</span> species, island</span>
 <span id="cb16-3"><a href="#cb16-3" aria-hidden="true" tabindex="-1"></a>    <span class="kw">SETTING</span> <span class="at">width</span> <span class="op">=&gt;</span> <span class="st">'150px'</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
@@ -950,7 +950,7 @@ Validation error: SPAN 1: cannot include stub column 'island'.</code></pre>
 </div>
 </div>
 <p>Replace null values everywhere by selecting all columns.</p>
-<div id="2071838f" class="cell" data-execution_count="7">
+<div id="ebc3d2cd" class="cell" data-execution_count="7">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb17"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a><span class="kw">TABULATE</span> <span class="op">*</span> <span class="kw">FROM</span> my_data</span>
 <span id="cb17-2"><a href="#cb17-2" aria-hidden="true" tabindex="-1"></a>  <span class="kw">FORMAT</span> <span class="op">*</span> <span class="kw">RENAMING</span> <span class="cn">null</span> <span class="op">=&gt;</span> <span class="st">'---'</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="7">
@@ -969,7 +969,7 @@ Validation error: SPAN 1: cannot include stub column 'island'.</code></pre>
 </div>
 </div>
 <p>Replacing specific pieces of content.</p>
-<div id="09d93505" class="cell" data-execution_count="8">
+<div id="db68be39" class="cell" data-execution_count="8">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb18"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a><span class="kw">TABULATE</span> <span class="op">*</span> <span class="kw">FROM</span> my_data</span>
 <span id="cb18-2"><a href="#cb18-2" aria-hidden="true" tabindex="-1"></a>  <span class="kw">FORMAT</span> body_mass, sex</span>
 <span id="cb18-3"><a href="#cb18-3" aria-hidden="true" tabindex="-1"></a>    <span class="kw">RENAMING</span> </span>
@@ -992,7 +992,7 @@ Validation error: SPAN 1: cannot include stub column 'island'.</code></pre>
 </div>
 </div>
 <p>Using a formatter to target all cells in a column.</p>
-<div id="a07093b6" class="cell" data-execution_count="9">
+<div id="125f18c4" class="cell" data-execution_count="9">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb19"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a><span class="kw">TABULATE</span> <span class="op">*</span> <span class="kw">FROM</span> my_data</span>
 <span id="cb19-2"><a href="#cb19-2" aria-hidden="true" tabindex="-1"></a>  <span class="kw">FORMAT</span> body_mass</span>
 <span id="cb19-3"><a href="#cb19-3" aria-hidden="true" tabindex="-1"></a>    <span class="kw">RENAMING</span> <span class="op">*</span> <span class="op">=&gt;</span> <span class="st">'{:num %.0f}g'</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
