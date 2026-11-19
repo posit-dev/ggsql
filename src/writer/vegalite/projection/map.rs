@@ -25,10 +25,7 @@ impl MapProjection {
         let get_string = |key: &str| -> Option<String> {
             project
                 .and_then(|p| p.computed.get(key))
-                .and_then(|v| match v {
-                    ParameterValue::String(s) => Some(s.clone()),
-                    _ => None,
-                })
+                .and_then(|v| v.as_str().map(str::to_string))
         };
         let panel_boundary_wkt = get_string("panel_boundary");
         let graticule_lon_wkt = get_string("graticule_lon");
@@ -254,7 +251,7 @@ mod tests {
         let mut proj = Projection::map();
         proj.computed.insert(
             "panel_boundary".to_string(),
-            ParameterValue::String("POLYGON ((0 0, 1 0, 1 1, 0 1, 0 0))".to_string()),
+            "POLYGON ((0 0, 1 0, 1 1, 0 1, 0 0))".into(),
         );
         let renderer = MapProjection::new(Some(&proj), None);
         let mut theme = json!({"view": {"fill": "white", "stroke": "gray"}});
@@ -308,7 +305,7 @@ mod tests {
         let mut proj = Projection::map();
         proj.computed.insert(
             "graticule_lon".to_string(),
-            ParameterValue::String("MULTILINESTRING ((0 -90, 0 90), (30 -90, 30 90))".to_string()),
+            "MULTILINESTRING ((0 -90, 0 90), (30 -90, 30 90))".into(),
         );
         proj.computed.insert(
             "graticule_lat".to_string(),
@@ -339,11 +336,11 @@ mod tests {
         let mut proj = Projection::map();
         proj.computed.insert(
             "panel_boundary".to_string(),
-            ParameterValue::String("POLYGON ((0 0, 1 0, 1 1, 0 1, 0 0))".to_string()),
+            "POLYGON ((0 0, 1 0, 1 1, 0 1, 0 0))".into(),
         );
         proj.computed.insert(
             "graticule_lon".to_string(),
-            ParameterValue::String("MULTILINESTRING ((0.5 0, 0.5 1))".to_string()),
+            "MULTILINESTRING ((0.5 0, 0.5 1))".into(),
         );
         let renderer = MapProjection::new(Some(&proj), None);
         let mut theme = json!({"view": {"fill": "white", "stroke": "gray"}});

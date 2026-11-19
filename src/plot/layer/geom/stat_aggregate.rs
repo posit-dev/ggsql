@@ -621,7 +621,7 @@ pub fn targeted_aesthetics(
     aesthetic_ctx: &AestheticContext,
 ) -> HashSet<String> {
     let raw = match parameters.get("aggregate") {
-        Some(v) if !matches!(v, ParameterValue::Null) => v,
+        Some(v) if !v.is_null() => v,
         _ => return HashSet::new(),
     };
     let spec = match parse_aggregate_param(raw).ok().flatten() {
@@ -659,7 +659,7 @@ pub fn aggregated_aesthetics(
     domain_aesthetics: &[&'static str],
 ) -> Option<(HashSet<String>, HashSet<String>)> {
     let raw = parameters.get("aggregate")?;
-    if matches!(raw, ParameterValue::Null) {
+    if raw.is_null() {
         return None;
     }
     let spec = parse_aggregate_param(raw).ok()??;
@@ -1142,8 +1142,7 @@ mod tests {
         dialect: &dyn SqlDialect,
         domain: &[&'static str],
     ) -> Result<StatResult> {
-        let mut p = Parameters::new();
-        p.insert("aggregate".to_string(), params);
+        let p = crate::params! { "aggregate" => params };
         let ctx = cartesian_ctx();
         apply(
             "SELECT * FROM t",
@@ -1176,9 +1175,7 @@ mod tests {
 
     #[test]
     fn parses_single_default() {
-        let s = parse_aggregate_param(&ParameterValue::String("mean".to_string()))
-            .unwrap()
-            .unwrap();
+        let s = parse_aggregate_param(&"mean".into()).unwrap().unwrap();
         assert_eq!(s.default_lower.as_ref().map(|a| a.offset), Some("mean"));
         assert!(s.default_upper.is_none());
         assert!(s.targets.is_empty());
@@ -1275,9 +1272,7 @@ mod tests {
     fn single_row_returns_no_labels() {
         // The aggregate column only makes sense as a row-differentiator, and a
         // single-row aggregation has nothing to differentiate, so no labels.
-        let s = parse_aggregate_param(&ParameterValue::String("mean".to_string()))
-            .unwrap()
-            .unwrap();
+        let s = parse_aggregate_param(&"mean".into()).unwrap().unwrap();
         assert_eq!(s.explosion_labels(), None);
 
         let s = parse_aggregate_param(&arr(&["mean", "color:median"]))
@@ -1311,13 +1306,13 @@ mod tests {
 
     #[test]
     fn empty_prefix_is_error() {
-        let err = parse_aggregate_param(&ParameterValue::String(":mean".to_string())).unwrap_err();
+        let err = parse_aggregate_param(&":mean".into()).unwrap_err();
         assert!(err.contains("could not parse"), "got: {}", err);
     }
 
     #[test]
     fn unknown_function_is_error() {
-        let err = parse_aggregate_param(&ParameterValue::String("nope".to_string())).unwrap_err();
+        let err = parse_aggregate_param(&"nope".into()).unwrap_err();
         assert!(err.contains("unknown aggregate"), "got: {}", err);
     }
 
@@ -1403,14 +1398,7 @@ mod tests {
         aes.insert("pos1", col("__ggsql_aes_pos1__"));
         aes.insert("pos2", col("__ggsql_aes_pos2__"));
         let schema = schema_for(&[("__ggsql_aes_pos1__", false), ("__ggsql_aes_pos2__", false)]);
-        let result = run(
-            ParameterValue::String("mean".to_string()),
-            &aes,
-            &schema,
-            &[],
-            &InlineQuantileDialect,
-        )
-        .unwrap();
+        let result = run("mean".into(), &aes, &schema, &[], &InlineQuantileDialect).unwrap();
         match result {
             StatResult::Transformed {
                 query,
@@ -1444,14 +1432,7 @@ mod tests {
         let schema = schema_for(&[("__ggsql_aes_pos1__", false), ("__ggsql_aes_pos2__", false)]);
 
         // sdev must not emit STDDEV_POP (SQLite has no such function).
-        let result = run(
-            ParameterValue::String("sdev".to_string()),
-            &aes,
-            &schema,
-            &[],
-            &SqliteDialect,
-        )
-        .unwrap();
+        let result = run("sdev".into(), &aes, &schema, &[], &SqliteDialect).unwrap();
         match result {
             StatResult::Transformed { query, .. } => {
                 assert!(
@@ -1465,14 +1446,7 @@ mod tests {
 
         // first now uses the portable ROW_NUMBER + MAX(CASE) form. It must run
         // on SQLite without `FIRST` ever appearing as an aggregate call.
-        let result = run(
-            ParameterValue::String("first".to_string()),
-            &aes,
-            &schema,
-            &[],
-            &SqliteDialect,
-        )
-        .unwrap();
+        let result = run("first".into(), &aes, &schema, &[], &SqliteDialect).unwrap();
         match result {
             StatResult::Transformed { query, .. } => {
                 assert!(
@@ -1581,14 +1555,7 @@ mod tests {
         aes.insert("pos1", col("__ggsql_aes_pos1__"));
         aes.insert("pos2", col("__ggsql_aes_pos2__"));
         let schema = schema_for(&[("__ggsql_aes_pos1__", false), ("__ggsql_aes_pos2__", false)]);
-        let err = run(
-            ParameterValue::String("first".to_string()),
-            &aes,
-            &schema,
-            &[],
-            &OptOutDialect,
-        )
-        .unwrap_err();
+        let err = run("first".into(), &aes, &schema, &[], &OptOutDialect).unwrap_err();
         let msg = format!("{}", err);
         assert!(
             msg.contains("first") && msg.contains("not supported"),
@@ -1602,14 +1569,7 @@ mod tests {
         aes.insert("pos1", col("__ggsql_aes_pos1__"));
         aes.insert("pos2", col("__ggsql_aes_pos2__"));
         let schema = schema_for(&[("__ggsql_aes_pos1__", false), ("__ggsql_aes_pos2__", false)]);
-        let result = run(
-            ParameterValue::String("mid".to_string()),
-            &aes,
-            &schema,
-            &[],
-            &InlineQuantileDialect,
-        )
-        .unwrap();
+        let result = run("mid".into(), &aes, &schema, &[], &InlineQuantileDialect).unwrap();
         match result {
             StatResult::Transformed { query, .. } => {
                 assert!(
@@ -1634,14 +1594,7 @@ mod tests {
         // AnsiDialect path: portable rn-based form for last - first.
         struct AnsiTestDialect;
         impl SqlDialect for AnsiTestDialect {}
-        let result = run(
-            ParameterValue::String("diff".to_string()),
-            &aes,
-            &schema,
-            &[],
-            &AnsiTestDialect,
-        )
-        .unwrap();
+        let result = run("diff".into(), &aes, &schema, &[], &AnsiTestDialect).unwrap();
         match result {
             StatResult::Transformed { query, .. } => {
                 assert!(query.contains("ROW_NUMBER()"), "{query}");
@@ -1656,14 +1609,7 @@ mod tests {
         }
 
         // Native-FIRST/LAST path: no rn CTE.
-        let result = run(
-            ParameterValue::String("diff".to_string()),
-            &aes,
-            &schema,
-            &[],
-            &InlineQuantileDialect,
-        )
-        .unwrap();
+        let result = run("diff".into(), &aes, &schema, &[], &InlineQuantileDialect).unwrap();
         match result {
             StatResult::Transformed { query, .. } => {
                 assert!(
@@ -1688,14 +1634,7 @@ mod tests {
         aes.insert("pos1", col("__ggsql_aes_pos1__"));
         aes.insert("pos2", col("__ggsql_aes_pos2__"));
         let schema = schema_for(&[("__ggsql_aes_pos1__", false), ("__ggsql_aes_pos2__", false)]);
-        let result = run(
-            ParameterValue::String("first".to_string()),
-            &aes,
-            &schema,
-            &[],
-            &DuckDbDialect,
-        )
-        .unwrap();
+        let result = run("first".into(), &aes, &schema, &[], &DuckDbDialect).unwrap();
         match result {
             StatResult::Transformed { query, .. } => {
                 assert!(
@@ -1727,14 +1666,7 @@ mod tests {
         ]);
 
         // Native-FIRST/LAST dialect: no rn CTE, GROUP BY uses the discrete key.
-        let result = run(
-            ParameterValue::String("last".to_string()),
-            &aes,
-            &schema,
-            &[],
-            &InlineQuantileDialect,
-        )
-        .unwrap();
+        let result = run("last".into(), &aes, &schema, &[], &InlineQuantileDialect).unwrap();
         match result {
             StatResult::Transformed { query, .. } => {
                 assert!(
@@ -1750,14 +1682,7 @@ mod tests {
         // Default dialect: rn CTE must partition by the discrete group key.
         struct AnsiTestDialect;
         impl SqlDialect for AnsiTestDialect {}
-        let result = run(
-            ParameterValue::String("last".to_string()),
-            &aes,
-            &schema,
-            &[],
-            &AnsiTestDialect,
-        )
-        .unwrap();
+        let result = run("last".into(), &aes, &schema, &[], &AnsiTestDialect).unwrap();
         match result {
             StatResult::Transformed { query, .. } => {
                 assert!(
@@ -2178,14 +2103,7 @@ mod tests {
             ("__ggsql_aes_pos2__", false),
             ("__ggsql_aes_color__", true), // discrete!
         ]);
-        let result = run(
-            ParameterValue::String("mean".to_string()),
-            &aes,
-            &schema,
-            &[],
-            &InlineQuantileDialect,
-        )
-        .unwrap();
+        let result = run("mean".into(), &aes, &schema, &[], &InlineQuantileDialect).unwrap();
         match result {
             StatResult::Transformed {
                 query,
@@ -2210,19 +2128,9 @@ mod tests {
         let mut aes = Mappings::new();
         aes.insert("pos1", col("__ggsql_aes_pos1__"));
         aes.insert("pos2", col("__ggsql_aes_pos2__"));
-        aes.insert(
-            "fill",
-            AestheticValue::Literal(ParameterValue::String("steelblue".to_string())),
-        );
+        aes.insert("fill", AestheticValue::Literal("steelblue".into()));
         let schema = schema_for(&[("__ggsql_aes_pos1__", false), ("__ggsql_aes_pos2__", false)]);
-        let result = run(
-            ParameterValue::String("mean".to_string()),
-            &aes,
-            &schema,
-            &[],
-            &InlineQuantileDialect,
-        )
-        .unwrap();
+        let result = run("mean".into(), &aes, &schema, &[], &InlineQuantileDialect).unwrap();
         match result {
             StatResult::Transformed { query, .. } => {
                 assert!(!query.contains("AVG(\"__ggsql_aes_fill__\")"));
@@ -2240,14 +2148,7 @@ mod tests {
         aes.insert("pos2", col("__ggsql_aes_pos2__"));
         let schema = schema_for(&[("__ggsql_aes_pos1__", false), ("__ggsql_aes_pos2__", false)]);
         // Only `y` targeted, no default → x is dropped.
-        let result = run(
-            ParameterValue::String("y:mean".to_string()),
-            &aes,
-            &schema,
-            &[],
-            &InlineQuantileDialect,
-        )
-        .unwrap();
+        let result = run("y:mean".into(), &aes, &schema, &[], &InlineQuantileDialect).unwrap();
         match result {
             StatResult::Transformed {
                 query,
@@ -2267,14 +2168,7 @@ mod tests {
         let mut aes = Mappings::new();
         aes.insert("pos2", col("__ggsql_aes_pos2__"));
         let schema = schema_for(&[("__ggsql_aes_pos2__", false)]);
-        let result = run(
-            ParameterValue::String("p25".to_string()),
-            &aes,
-            &schema,
-            &[],
-            &InlineQuantileDialect,
-        )
-        .unwrap();
+        let result = run("p25".into(), &aes, &schema, &[], &InlineQuantileDialect).unwrap();
         match result {
             StatResult::Transformed { query, .. } => {
                 assert!(query.contains("QUANTILE_CONT"));
@@ -2289,14 +2183,7 @@ mod tests {
         let mut aes = Mappings::new();
         aes.insert("pos2", col("__ggsql_aes_pos2__"));
         let schema = schema_for(&[("__ggsql_aes_pos2__", false)]);
-        let result = run(
-            ParameterValue::String("p25".to_string()),
-            &aes,
-            &schema,
-            &[],
-            &NoInlineQuantileDialect,
-        )
-        .unwrap();
+        let result = run("p25".into(), &aes, &schema, &[], &NoInlineQuantileDialect).unwrap();
         match result {
             StatResult::Transformed { query, .. } => {
                 assert!(query.contains("ROW_NUMBER()"));
@@ -2314,8 +2201,7 @@ mod tests {
         group_by: &[String],
         dialect: &dyn SqlDialect,
     ) -> Result<StatResult> {
-        let mut p = Parameters::new();
-        p.insert("aggregate".to_string(), params);
+        let mut p = crate::params! { "aggregate" => params };
         p.insert(
             "orientation".to_string(),
             ParameterValue::String(crate::plot::layer::orientation::TRANSPOSED.to_string()),
@@ -2440,14 +2326,7 @@ mod tests {
         aes.insert("pos2", col("__ggsql_aes_pos2__"));
         let schema = schema_for(&[("__ggsql_aes_pos1__", false), ("__ggsql_aes_pos2__", false)]);
         // Only `y` targeted, no default → x (pos1) is dropped.
-        let result = run(
-            ParameterValue::String("y:mean".to_string()),
-            &aes,
-            &schema,
-            &[],
-            &InlineQuantileDialect,
-        )
-        .unwrap();
+        let result = run("y:mean".into(), &aes, &schema, &[], &InlineQuantileDialect).unwrap();
         match result {
             StatResult::Transformed {
                 consumed_aesthetics,
@@ -2471,7 +2350,7 @@ mod tests {
         aes.insert("pos2", col("__ggsql_aes_pos2__"));
         let schema = schema_for(&[("__ggsql_aes_pos1__", false), ("__ggsql_aes_pos2__", false)]);
         let err = run(
-            ParameterValue::String("size:mean".to_string()),
+            "size:mean".into(),
             &aes,
             &schema,
             &[],

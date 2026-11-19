@@ -3,7 +3,7 @@
 //! resolved. Unlike plot facet resolution, no data context is involved —
 //! group extraction happens during table execution.
 
-use crate::params::{validate_parameter, DefaultParamValue, ParamConstraint, ParamDefinition};
+use crate::params::{DefaultParamValue, ParamConstraint, ParamDefinition};
 use crate::plot::facet::Facet;
 use crate::plot::ParameterValue;
 
@@ -39,32 +39,9 @@ pub(crate) fn setup_facet(facet: &Option<Facet>) -> Result<Option<Facet>, String
         return Ok(None);
     };
 
-    let valid: Vec<&str> = TABLE_FACET_PARAMS.iter().map(|p| p.name).collect();
-
-    for (name, value) in &facet.properties {
-        let Some(param) = TABLE_FACET_PARAMS.iter().find(|p| p.name == name.as_str()) else {
-            return Err(format!(
-                "FACET setting should be {}, not '{}'",
-                crate::or_list_quoted(&valid, '\''),
-                name
-            ));
-        };
-        validate_parameter(name, value, &param.constraint)?;
-    }
-
     let mut resolved = facet.clone();
-    if !resolved.properties.contains_key("place") {
-        resolved.properties.insert(
-            "place".to_string(),
-            ParameterValue::String("left".to_string()),
-        );
-    }
-    if !resolved.properties.contains_key("missing") {
-        resolved.properties.insert(
-            "missing".to_string(),
-            ParameterValue::String("last".to_string()),
-        );
-    }
+    resolved.properties =
+        crate::params::resolve_parameters(&facet.properties, TABLE_FACET_PARAMS, "FACET setting")?;
     resolved.resolved = true;
     Ok(Some(resolved))
 }
@@ -73,10 +50,8 @@ pub(crate) fn setup_facet(facet: &Option<Facet>) -> Result<Option<Facet>, String
 /// rows (`place => 'top'`) rather than group stub columns (`place =>
 /// 'left'`, the default).
 pub(crate) fn groups_are_woven(facet: &Facet) -> bool {
-    match facet.properties.get("place") {
-        Some(ParameterValue::String(place)) => place == "top",
-        _ => false, // unresolved facet: 'left' is the default
-    }
+    // Unresolved facet: 'left' is the default
+    ParameterValue::is_str(facet.properties.get("place"), "top")
 }
 
 #[cfg(test)]
@@ -101,14 +76,8 @@ mod tests {
 
         let resolved = setup_facet(&Some(facet)).unwrap().unwrap();
 
-        assert_eq!(
-            resolved.properties.get("place"),
-            Some(&ParameterValue::String("left".to_string()))
-        );
-        assert_eq!(
-            resolved.properties.get("missing"),
-            Some(&ParameterValue::String("last".to_string()))
-        );
+        assert_eq!(resolved.properties.get("place"), Some(&"left".into()));
+        assert_eq!(resolved.properties.get("missing"), Some(&"last".into()));
         assert!(resolved.resolved);
     }
 
@@ -119,21 +88,13 @@ mod tests {
 
     #[test]
     fn setup_rejects_an_invalid_place_value() {
-        let mut settings = Parameters::new();
-        settings.insert(
-            "place".to_string(),
-            ParameterValue::String("bottom".to_string()),
-        );
+        let settings = crate::params! { "place" => "bottom" };
         assert!(setup_facet(&Some(table_facet(settings))).is_err());
     }
 
     #[test]
     fn groups_are_woven_only_when_place_is_top() {
-        let mut settings = Parameters::new();
-        settings.insert(
-            "place".to_string(),
-            ParameterValue::String("top".to_string()),
-        );
+        let settings = crate::params! { "place" => "top" };
         let woven = setup_facet(&Some(table_facet(settings))).unwrap().unwrap();
         assert!(groups_are_woven(&woven));
 

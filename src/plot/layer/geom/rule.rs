@@ -63,12 +63,7 @@ impl GeomTrait for Rule {
 
         let has_pos1 = mappings.contains_key("pos1");
         let bbox_expr = match projection.coord.coord_kind() {
-            CoordKind::Map
-                if matches!(
-                    projection.properties.get("clip"),
-                    Some(ParameterValue::Boolean(true))
-                ) =>
-            {
+            CoordKind::Map if ParameterValue::is_true(projection.properties.get("clip")) => {
                 let boundary_table = clip_boundary_table();
                 dialect.sql_geometry_bbox("geom", &boundary_table)
             }
@@ -79,7 +74,7 @@ impl GeomTrait for Rule {
             expand_rule_to_segment(query, &columns, has_pos1, &bbox_expr, dialect);
 
         partition_by.push(naming::DENSIFY_ID_COLUMN.to_string());
-        parameters.insert("densified".to_string(), ParameterValue::Boolean(true));
+        parameters.insert("densified".to_string(), true.into());
 
         let expanded_columns = crate::util::set_union(expanded_columns, partition_by);
 
@@ -124,10 +119,7 @@ impl GeomTrait for Rule {
 
         // After densification both axes are explicit — disable the orientation flip
         // that would otherwise swap the DataFrame columns.
-        parameters.insert(
-            "orientation".to_string(),
-            ParameterValue::String("aligned".to_string()),
-        );
+        parameters.insert("orientation".to_string(), "aligned".into());
 
         Ok(projected)
     }
@@ -140,10 +132,7 @@ impl GeomTrait for Rule {
     ) -> std::result::Result<(), String> {
         // Rule requires exactly one of pos1 or pos2 (XOR logic).
         // After densification both axes are present — skip the check.
-        if matches!(
-            parameters.get("densified"),
-            Some(ParameterValue::Boolean(true))
-        ) {
+        if ParameterValue::is_true(parameters.get("densified")) {
             return Ok(());
         }
 
@@ -187,7 +176,7 @@ impl GeomTrait for Rule {
         if !has_diagonal_slope {
             return Ok(());
         }
-        parameters.insert("diagonal".to_string(), ParameterValue::Boolean(true));
+        parameters.insert("diagonal".to_string(), true.into());
 
         // Determine orientation from which intercept is present.
         // We override the bidirectionality algorithm here since it uses
@@ -334,7 +323,7 @@ mod tests {
     use super::{expand_rule_to_segment, Rule};
     use crate::plot::layer::geom::{densify_edges, GeomTrait};
     use crate::plot::projection::Projection;
-    use crate::plot::types::ParameterValue;
+
     use crate::plot::{AestheticContext, AestheticValue, Geom, Layer};
     use crate::{naming, Mappings};
 
@@ -412,17 +401,15 @@ mod tests {
     fn test_apply_projection_without_clip_only_projects() {
         let rule = Rule;
         let mut projection = Projection::map();
-        projection.properties.insert(
-            "source".to_string(),
-            ParameterValue::String("EPSG:4326".to_string()),
-        );
-        projection.properties.insert(
-            "target".to_string(),
-            ParameterValue::String("+proj=merc".to_string()),
-        );
         projection
             .properties
-            .insert("clip".to_string(), ParameterValue::Boolean(false));
+            .insert("source".to_string(), "EPSG:4326".into());
+        projection
+            .properties
+            .insert("target".to_string(), "+proj=merc".into());
+        projection
+            .properties
+            .insert("clip".to_string(), false.into());
 
         let mut mappings = Mappings::new();
         mappings.insert_column("pos1", "pos1");
@@ -448,17 +435,15 @@ mod tests {
     fn test_apply_projection_with_clip_expands_and_densifies() {
         let rule = Rule;
         let mut projection = Projection::map();
-        projection.properties.insert(
-            "source".to_string(),
-            ParameterValue::String("EPSG:4326".to_string()),
-        );
-        projection.properties.insert(
-            "target".to_string(),
-            ParameterValue::String("+proj=merc".to_string()),
-        );
         projection
             .properties
-            .insert("clip".to_string(), ParameterValue::Boolean(true));
+            .insert("source".to_string(), "EPSG:4326".into());
+        projection
+            .properties
+            .insert("target".to_string(), "+proj=merc".into());
+        projection
+            .properties
+            .insert("clip".to_string(), true.into());
 
         let mut mappings = Mappings::new();
         mappings.insert_column("pos1", "pos1");
@@ -512,17 +497,15 @@ mod tests {
 
         let rule = Rule;
         let mut projection = Projection::map();
-        projection.properties.insert(
-            "source".to_string(),
-            ParameterValue::String("EPSG:4326".to_string()),
-        );
-        projection.properties.insert(
-            "target".to_string(),
-            ParameterValue::String("+proj=ortho +lat_0=0 +lon_0=0".to_string()),
-        );
         projection
             .properties
-            .insert("clip".to_string(), ParameterValue::Boolean(true));
+            .insert("source".to_string(), "EPSG:4326".into());
+        projection
+            .properties
+            .insert("target".to_string(), "+proj=ortho +lat_0=0 +lon_0=0".into());
+        projection
+            .properties
+            .insert("clip".to_string(), true.into());
 
         let mut mappings = Mappings::new();
         mappings.insert_column("pos1", "pos1");
@@ -593,17 +576,15 @@ mod tests {
 
         let rule = Rule;
         let mut projection = Projection::map();
-        projection.properties.insert(
-            "source".to_string(),
-            ParameterValue::String("EPSG:4326".to_string()),
-        );
-        projection.properties.insert(
-            "target".to_string(),
-            ParameterValue::String("+proj=ortho +lat_0=0 +lon_0=0".to_string()),
-        );
         projection
             .properties
-            .insert("clip".to_string(), ParameterValue::Boolean(true));
+            .insert("source".to_string(), "EPSG:4326".into());
+        projection
+            .properties
+            .insert("target".to_string(), "+proj=ortho +lat_0=0 +lon_0=0".into());
+        projection
+            .properties
+            .insert("clip".to_string(), true.into());
 
         // Horizontal rule: pos2 is mapped (latitude is the fixed axis)
         let mut mappings = Mappings::new();

@@ -462,17 +462,17 @@ mod tests {
         // (transform_aesthetics_to_internal runs and transforms x→pos1, y→pos2)
         assert_eq!(
             specs[0].layers[1].parameters.get("pos1"),
-            Some(&ParameterValue::Number(5.0)),
+            Some(&5.0.into()),
             "x should be transformed to pos1 but remain in parameters at parse time"
         );
         assert_eq!(
             specs[0].layers[1].parameters.get("pos2"),
-            Some(&ParameterValue::Number(10.0)),
+            Some(&10.0.into()),
             "y should be transformed to pos2 but remain in parameters at parse time"
         );
         assert_eq!(
             specs[0].layers[1].parameters.get("label"),
-            Some(&ParameterValue::String("Hello".to_string())),
+            Some(&"Hello".into()),
             "label (required) also remains in parameters at parse time"
         );
 

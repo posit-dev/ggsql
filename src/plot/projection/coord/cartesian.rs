@@ -40,7 +40,6 @@ impl CoordTrait for Cartesian {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::plot::{ParameterValue, Parameters};
 
     #[test]
     fn test_cartesian_properties() {
@@ -56,29 +55,5 @@ mod tests {
         let names: Vec<&str> = defaults.iter().map(|p| p.name).collect();
         assert!(names.contains(&"ratio"));
         assert!(names.contains(&"clip"));
-    }
-
-    #[test]
-    fn test_cartesian_resolve_valid_properties() {
-        let cartesian = Cartesian;
-        let props = Parameters::new();
-        // Empty properties should resolve successfully
-        let resolved = cartesian.resolve_properties(None, &props);
-        assert!(resolved.is_ok());
-    }
-
-    #[test]
-    fn test_cartesian_rejects_unknown_property() {
-        let cartesian = Cartesian;
-        let mut props = Parameters::new();
-        props.insert(
-            "unknown".to_string(),
-            ParameterValue::String("value".to_string()),
-        );
-
-        let resolved = cartesian.resolve_properties(None, &props);
-        assert!(resolved.is_err());
-        let err = resolved.unwrap_err();
-        assert!(err.contains("not 'unknown'"));
     }
 }

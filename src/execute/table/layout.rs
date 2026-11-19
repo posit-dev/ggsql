@@ -1073,18 +1073,9 @@ mod tests {
                 .get("hjust")
                 .cloned()
         };
-        assert_eq!(
-            hjust(0, TableCellKind::ColumnLabel),
-            Some(ParameterValue::Number(1.0))
-        );
-        assert_eq!(
-            hjust(0, TableCellKind::Body),
-            Some(ParameterValue::Number(1.0))
-        );
-        assert_eq!(
-            hjust(1, TableCellKind::Body),
-            Some(ParameterValue::Number(0.0))
-        );
+        assert_eq!(hjust(0, TableCellKind::ColumnLabel), Some(1.0.into()));
+        assert_eq!(hjust(0, TableCellKind::Body), Some(1.0.into()));
+        assert_eq!(hjust(1, TableCellKind::Body), Some(0.0.into()));
     }
 
     #[test]
@@ -1132,7 +1123,7 @@ mod tests {
         let mut table = Table::new();
         table.spans = vec![
             spanner(&["a", "b"]),
-            spanner_with_setting(&["b", "c"], "level", ParameterValue::Number(1.0)),
+            spanner_with_setting(&["b", "c"], "level", 1.0.into()),
         ];
 
         assert!(resolve_cells(&frame, &table).is_err());

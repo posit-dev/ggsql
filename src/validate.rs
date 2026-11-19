@@ -317,7 +317,7 @@ pub fn validate(query: &str) -> Result<Validated> {
     // above.
     if let Some(table) = first_table {
         for (idx, spanner) in table.spans.iter().enumerate() {
-            if let Err(e) = spanner.validate_settings() {
+            if let Err(e) = spanner.resolve_settings() {
                 errors.push(ValidationError {
                     message: format!("SPAN {}: {}", idx + 1, e),
                     location: None,
@@ -342,7 +342,7 @@ pub fn validate(query: &str) -> Result<Validated> {
 
         // Validate each FORMAT's SETTING parameters the same way.
         for (idx, format) in table.formats.iter().enumerate() {
-            if let Err(e) = format.validate_settings() {
+            if let Err(e) = format.resolve_settings() {
                 errors.push(ValidationError {
                     message: format!("FORMAT {}: {}", idx + 1, e),
                     location: None,

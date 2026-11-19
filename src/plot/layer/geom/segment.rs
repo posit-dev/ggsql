@@ -6,7 +6,7 @@ use super::{
     DefaultParamValue, GeomTrait, GeomType, ParamConstraint, ParamDefinition,
 };
 use crate::plot::projection::Projection;
-use crate::plot::types::{DefaultAestheticValue, ParameterValue};
+use crate::plot::types::DefaultAestheticValue;
 use crate::reader::SqlDialect;
 use crate::{naming, Mappings, Result};
 
@@ -68,7 +68,7 @@ impl GeomTrait for Segment {
         let (expanded, expanded_columns) = expand_segment_to_vertices(query, &columns, dialect);
 
         partition_by.push(naming::DENSIFY_ID_COLUMN.to_string());
-        parameters.insert("densified".to_string(), ParameterValue::Boolean(true));
+        parameters.insert("densified".to_string(), true.into());
 
         let expanded_columns = crate::util::set_union(expanded_columns, partition_by);
 
@@ -172,7 +172,7 @@ mod tests {
     use super::Segment;
     use crate::plot::layer::geom::GeomTrait;
     use crate::plot::projection::Projection;
-    use crate::plot::types::ParameterValue;
+
     use crate::plot::{AestheticContext, AestheticValue, Geom, Layer};
     use crate::{naming, Mappings};
 
@@ -249,14 +249,12 @@ mod tests {
     fn test_apply_projection_expands_and_densifies() {
         let segment = Segment;
         let mut projection = Projection::map();
-        projection.properties.insert(
-            "source".to_string(),
-            ParameterValue::String("EPSG:4326".to_string()),
-        );
-        projection.properties.insert(
-            "target".to_string(),
-            ParameterValue::String("+proj=merc".to_string()),
-        );
+        projection
+            .properties
+            .insert("source".to_string(), "EPSG:4326".into());
+        projection
+            .properties
+            .insert("target".to_string(), "+proj=merc".into());
 
         let mut mappings = create_segment_mappings();
         let mut partition_by = vec![];
@@ -302,13 +300,12 @@ mod tests {
 
         let segment = Segment;
         let mut projection = Projection::map();
-        projection.properties.insert(
-            "source".to_string(),
-            ParameterValue::String("EPSG:4326".to_string()),
-        );
+        projection
+            .properties
+            .insert("source".to_string(), "EPSG:4326".into());
         projection.properties.insert(
             "target".to_string(),
-            ParameterValue::String("+proj=ortho +lat_0=45 +lon_0=-60".to_string()),
+            "+proj=ortho +lat_0=45 +lon_0=-60".into(),
         );
 
         let mut mappings = create_segment_mappings();
