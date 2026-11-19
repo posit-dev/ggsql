@@ -18,6 +18,11 @@
 //! unopened ones; an open view is never pulled from under its frontend, so
 //! when open views alone fill the budget, a new result is not kept and a sort
 //! or filter that needs room fails with an error saying so.
+//!
+//! The budget counts what is kept, not the working memory DuckDB needs to
+//! sort or profile it, so the cache's DuckDB is also given a hard memory limit
+//! of [`memory_limit_for`] the budget. A query that would pass it fails with
+//! DuckDB's out-of-memory error, which reaches the frontend as an error.
 
 mod export;
 pub mod filter;
@@ -41,6 +46,24 @@ pub const ROW: &str = "__ggsql_row__";
 
 /// The default byte budget for everything the results API keeps.
 pub const DEFAULT_MAX_BYTES: u64 = 1024 * 1024 * 1024;
+
+/// The least memory the cache's DuckDB is given, however small the budget.
+const MIN_MEMORY_LIMIT: u64 = 64 * 1024 * 1024;
+
+/// The most memory limit set on the cache's DuckDB; a budget that would pass
+/// it leaves DuckDB's own default, which is most of the machine's memory.
+const MAX_MEMORY_LIMIT: u64 = 1 << 50;
+
+/// The memory the cache's DuckDB may use, kept tables and working memory
+/// together, for a budget of `max_bytes`: twice the budget, since DuckDB holds
+/// a table less compactly than Arrow's estimate of it and needs room on top to
+/// sort and profile. `None` for no limit of ours.
+pub fn memory_limit_for(max_bytes: u64) -> Option<u64> {
+    max_bytes
+        .checked_mul(2)
+        .map(|limit| limit.max(MIN_MEMORY_LIMIT))
+        .filter(|&limit| limit <= MAX_MEMORY_LIMIT)
+}
 
 /// A result's column.
 #[derive(Debug, Clone, Serialize)]
@@ -99,12 +122,16 @@ pub struct ResultStore {
 }
 
 impl ResultStore {
-    /// A store keeping at most `max_bytes`, by Arrow's estimate of the data.
+    /// A store keeping at most `max_bytes`, by Arrow's estimate of the data,
+    /// whose DuckDB uses at most [`memory_limit_for`] it.
     pub fn new(max_bytes: u64) -> Result<Self> {
         let backend = ggsql::reader::connection::reader_from_uri("duckdb://memory")?;
         // An in-memory DuckDB may otherwise spill to temporary files under
         // memory pressure; results must never be written to disk.
         backend.execute_sql("SET temp_directory = ''")?;
+        if let Some(limit) = memory_limit_for(max_bytes) {
+            backend.execute_sql(&format!("SET memory_limit = '{}KiB'", limit / 1024))?;
+        }
         // The store evicts to its own budget, which spans more than the cache.
         let cache = CacheTables::new(backend, u64::MAX);
         Ok(Self {
@@ -853,6 +880,28 @@ mod tests {
     }
 
     #[test]
+    fn test_the_memory_limit_follows_the_budget() {
+        assert_eq!(
+            memory_limit_for(1024 * 1024 * 1024),
+            Some(2048 * 1024 * 1024)
+        );
+        // However small the budget, DuckDB gets room to run.
+        assert_eq!(memory_limit_for(1), Some(MIN_MEMORY_LIMIT));
+        // A budget too large to double, or to set, leaves DuckDB's default.
+        assert_eq!(memory_limit_for(u64::MAX), None);
+        assert_eq!(memory_limit_for(MAX_MEMORY_LIMIT), None);
+
+        let store = ResultStore::new(DEFAULT_MAX_BYTES).unwrap();
+        let set = store
+            .cache
+            .backend()
+            .execute_sql("SELECT current_setting('memory_limit') AS m")
+            .unwrap();
+        let set = ggsql::array_util::value_to_string(set.column("m").unwrap(), 0);
+        assert_eq!(set, "2.0 GiB");
+    }
+
+    #[test]
     fn test_a_failed_filter_leaves_the_view_as_it_was() {
         let mut store = ResultStore::new(DEFAULT_MAX_BYTES).unwrap();
         let key = keep(&mut store, numbers(10), "q".into(), String::new());
@@ -981,6 +1030,9 @@ mod tests {
             )
             .unwrap_err();
         assert!(err.to_lowercase().contains("memory"), "{err}");
+        // The view is as it was, and still pages.
+        assert!(v.sort.is_empty());
+        assert_eq!(page(&mut store, &view, 0, 1, 0), ["0", "1"]);
     }
 
     #[test]

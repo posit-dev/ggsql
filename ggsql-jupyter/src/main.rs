@@ -68,7 +68,9 @@ struct Args {
     /// their sorted or filtered views, by the size of their data. Closed
     /// results go first when room is needed, then the oldest unopened ones;
     /// open ones are never dropped, so a result that does not fit beside them
-    /// is not kept.
+    /// is not kept. Sorting and profiling them takes working memory on top,
+    /// so the results cache as a whole is limited to twice this; a sort that
+    /// would need more fails with an error.
     #[arg(
         long,
         env = "GGSQL_RESULTS_MAX_BYTES",
