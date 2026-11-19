@@ -12,10 +12,10 @@ use std::sync::Arc;
 use arrow::array::{Array, ArrayRef, Float64Array, StringArray};
 use arrow::datatypes::DataType;
 
-use crate::array_util::{as_f64, cast_array};
+use crate::array_util::{as_f64, cast_array, column_to_strings};
 use crate::naming;
 use crate::params::{ParameterValue, Parameters};
-use crate::table::{Format, Summary, SummaryScope, TableRow};
+use crate::table::{Format, Summary, SummaryScope, TableCell, TableColumn, TableRow};
 use crate::{ColumnSection, DataFrame, GgsqlError, Result};
 
 /// Validate `summaries` against the data and prepare the frame for summary
@@ -52,97 +52,176 @@ pub(super) fn setup_summaries(
     Ok(())
 }
 
-/// Compute every `SUMMARISE` clause against the (unformatted) data, one
-/// DataFrame per clause, parallel to `summaries`. Every frame leads with a
-/// `SUMMARY_GROUP_COLUMN` of ';'-joined group ranks, then one nullable-f64
-/// column per summarised column, raw (before `FORMAT`). A `GROUP` frame
-/// holds one row per group — in display order, since `setup_rows` leaves
-/// rows group-contiguous; a `GRAND` frame a single row keyed by the empty
-/// key (a grand total has no group). The clause itself carries the row's
-/// label and placement, so nothing here duplicates them.
+/// One `SUMMARISE` row, ready for weaving into the table's grid: placement,
+/// label and values all resolved. The weavers never see the `Summary`
+/// clause itself.
+#[derive(Debug)]
+pub(super) struct SummaryRow {
+    /// Whether the row sits above (`true`) or below its group's rows.
+    pub top: bool,
+    /// The row's stub label: `rowlabel`, else the operation name.
+    pub label: String,
+    /// One-row frame of the computed values, raw (before `FORMAT`); its
+    /// schema names the summarised columns.
+    pub frame: DataFrame,
+}
+
+impl SummaryRow {
+    /// This row's cells at grid row `row`: the label spanning the stub
+    /// columns, then the computed values in their body columns. No cells in
+    /// group-stub columns: a `GROUP` row's are covered by the merged stub
+    /// cell; a `GRAND` row (`span_group_stubs`) owns them by extending its
+    /// label's colspan leftward.
+    pub(super) fn cells(
+        &self,
+        row: usize,
+        columns: &[TableColumn],
+        span_group_stubs: bool,
+    ) -> Vec<TableCell> {
+        let mut cells = vec![self.label_cell(row, columns, span_group_stubs)];
+        cells.extend(
+            columns
+                .iter()
+                .enumerate()
+                .filter(|(_, column)| column.target == ColumnSection::Body)
+                .map(|(index, column)| {
+                    let content = self
+                        .frame
+                        .column(&column.name)
+                        .map(|array| column_to_strings(array).remove(0))
+                        .unwrap_or_default();
+                    TableCell::new_body(row, index, content)
+                        .with_properties(column.properties.clone())
+                }),
+        );
+        cells
+    }
+
+    /// The row's label cell, spanning every stub column — leftward over the
+    /// group-stub columns too for a `GRAND` row (`span_group_stubs`).
+    /// `setup_summaries` adds a stub column when summaries exist without one;
+    /// `move_stub_columns` puts every stub-section column in one contiguous
+    /// run, so the span covers only stub columns.
+    fn label_cell(&self, row: usize, columns: &[TableColumn], span_group_stubs: bool) -> TableCell {
+        let label_column = columns
+            .iter()
+            .position(|c| c.target == ColumnSection::Stub)
+            .expect("setup_summaries guarantees a stub column");
+        let left = if span_group_stubs && columns.first().is_some_and(|c| c.is_group_stub()) {
+            0
+        } else {
+            label_column
+        };
+        let right = columns
+            .iter()
+            .rposition(|c| c.target == ColumnSection::Stub)
+            .unwrap_or(label_column);
+        debug_assert!(
+            columns[left..=right].iter().all(|c| c.is_stub()),
+            "the label's colspan covers only stub columns"
+        );
+
+        let mut cell = TableCell::new_stub_row_label(row, label_column, self.label.clone());
+        cell.left = left;
+        cell.right = right;
+        cell.with_properties(columns[label_column].properties.clone())
+    }
+}
+
+/// One chunk of summary rows: the chunk's group key (`None` for the `GRAND`
+/// chunk) and the clause rows computed over it, in clause order.
+pub(super) type SummaryChunk = (Option<Vec<usize>>, Vec<SummaryRow>);
+
+/// Compute every `SUMMARISE` clause against the (unformatted) data: one
+/// chunk per group, in display order (`setup_rows` leaves rows
+/// group-contiguous), then one `None`-keyed `GRAND` chunk over all rows.
+/// Chunks with no matching clauses are omitted. Placement within a chunk is
+/// the weavers' concern; they read each row's `top`.
 // Unused until the table pipeline calls it.
 #[allow(dead_code)]
 pub(super) fn compute_summaries(
     df: &DataFrame,
     rows: &[TableRow],
     summaries: &[Summary],
-) -> Result<Vec<DataFrame>> {
-    // Rows are group-contiguous after setup_rows, so each group's membership
-    // is a contiguous range; a GRAND clause's single "group" is all of them.
-    let mut start = 0;
-    let mut ranges: Vec<Range<usize>> = Vec::new();
-    let mut key_strings: Vec<String> = Vec::new();
-    for chunk in rows.chunk_by(|a, b| a.group == b.group) {
-        ranges.push(start..start + chunk.len());
-        start += chunk.len();
-        key_strings.push(naming::summary_group_key(&chunk[0].group));
+) -> Result<Vec<SummaryChunk>> {
+    if summaries.is_empty() {
+        return Ok(Vec::new());
     }
+    // Chunks the clauses emit into: one contiguous range per group, then one
+    // range over all rows for the GRAND clauses.
+    let mut chunks: Vec<(Option<Vec<usize>>, Range<usize>)> = Vec::new();
+    let mut start = 0;
+    for chunk in rows.chunk_by(|a, b| a.group == b.group) {
+        chunks.push((Some(chunk[0].group.clone()), start..start + chunk.len()));
+        start += chunk.len();
+    }
+    chunks.push((None, 0..rows.len()));
 
-    // A grand total has no group; the empty key matches the facet-less one.
-    let grand_key = [String::new()];
-    summaries
-        .iter()
-        .map(|summary| {
-            let (groups, keys) = match summary.scope {
-                SummaryScope::Grand => (None, grand_key.as_slice()),
-                SummaryScope::Group => (Some(ranges.as_slice()), key_strings.as_slice()),
-            };
-            summary_frame(df, summary, groups, keys)
-        })
-        .collect()
+    let mut out = Vec::new();
+    for (key, range) in chunks {
+        let scope = match key {
+            Some(_) => SummaryScope::Group,
+            None => SummaryScope::Grand,
+        };
+        let rows = summaries
+            .iter()
+            .filter(|s| s.scope == scope)
+            .map(|summary| summary.new_row(df, &range))
+            .collect::<Result<Vec<_>>>()?;
+        if !rows.is_empty() {
+            out.push((key, rows));
+        }
+    }
+    Ok(out)
 }
 
-/// Compute one clause's frame: the key column followed by one nullable-f64
-/// column per summarised column. `groups` is `None` for a GRAND clause — a
-/// single row over all rows.
-fn summary_frame(
-    df: &DataFrame,
-    summary: &Summary,
-    groups: Option<&[Range<usize>]>,
-    keys: &[String],
-) -> Result<DataFrame> {
+impl Summary {
+    /// Build this clause's row over `range`: placement, label and computed
+    /// values.
+    pub(super) fn new_row(&self, df: &DataFrame, range: &Range<usize>) -> Result<SummaryRow> {
+        Ok(SummaryRow {
+            top: is_top(self),
+            label: label(self),
+            frame: summary_frame(df, self, range)?,
+        })
+    }
+}
+
+fn is_top(summary: &Summary) -> bool {
+    setting_string(&summary.settings, "place").as_deref() == Some("top")
+}
+
+fn label(summary: &Summary) -> String {
+    setting_string(&summary.settings, "rowlabel").unwrap_or_else(|| summary.operation.clone())
+}
+
+/// Compute one clause's frame over the rows in `range`: one row, one
+/// nullable-f64 column per summarised column.
+fn summary_frame(df: &DataFrame, summary: &Summary, range: &Range<usize>) -> Result<DataFrame> {
     let drop_nulls = setting_string(&summary.settings, "missing").as_deref() == Some("drop");
 
-    let mut columns: Vec<(String, ArrayRef)> = Vec::new();
-    columns.push((
-        naming::SUMMARY_GROUP_COLUMN.to_string(),
-        Arc::new(StringArray::from(keys.to_vec())),
-    ));
-    for column in &summary.columns {
-        let values = summary_column(df, column, summary, groups, drop_nulls)?;
-        columns.push((column.clone(), Arc::new(Float64Array::from(values))));
-    }
+    let columns = summary
+        .columns
+        .iter()
+        .map(|column| {
+            let array = df.column(column).map_err(|_| {
+                GgsqlError::ValidationError(format!(
+                    "SUMMARISE {}: no column '{column}' in the query result",
+                    summary.operation
+                ))
+            })?;
+            let value = summary_stat(
+                &summary.operation,
+                &array.slice(range.start, range.len()),
+                drop_nulls,
+            )?;
+            Ok((
+                column.clone(),
+                Arc::new(Float64Array::from(vec![value])) as ArrayRef,
+            ))
+        })
+        .collect::<Result<Vec<_>>>()?;
     DataFrame::new(columns)
-}
-
-/// Compute a clause's operation on one column, one value per group — or a
-/// single value over the whole column when `groups` is `None` (GRAND).
-fn summary_column(
-    df: &DataFrame,
-    column: &str,
-    summary: &Summary,
-    groups: Option<&[Range<usize>]>,
-    drop_nulls: bool,
-) -> Result<Vec<Option<f64>>> {
-    let array = df.column(column).map_err(|_| {
-        GgsqlError::ValidationError(format!(
-            "SUMMARISE {}: no column '{column}' in the query result",
-            summary.operation
-        ))
-    })?;
-    match groups {
-        Some(groups) => groups
-            .iter()
-            .map(|range| {
-                summary_stat(
-                    &summary.operation,
-                    &array.slice(range.start, range.len()),
-                    drop_nulls,
-                )
-            })
-            .collect(),
-        None => summary_stat(&summary.operation, array, drop_nulls).map(|value| vec![value]),
-    }
 }
 
 fn setting_string(settings: &Parameters, name: &str) -> Option<String> {
@@ -279,29 +358,24 @@ mod tests {
             .collect()
     }
 
-    fn group_keys(frame: &DataFrame) -> Vec<String> {
-        crate::array_util::as_str(frame.column(naming::SUMMARY_GROUP_COLUMN).unwrap())
-            .unwrap()
-            .iter()
-            .map(|key| key.unwrap().to_string())
-            .collect()
-    }
-
     #[test]
-    fn grand_summary_is_a_single_row_keyed_by_the_empty_key() {
+    fn grand_summary_is_a_single_ungrouped_row() {
         let df = crate::df! {
             "x" => vec![1.0, 2.0, 3.0],
         }
         .unwrap();
         let rows = body_rows(&[&[], &[], &[]]);
 
-        let frames =
+        let computed =
             compute_summaries(&df, &rows, &[summary("mean", SummaryScope::Grand, &["x"])]).unwrap();
 
-        assert_eq!(frames.len(), 1);
-        assert_eq!(frames[0].height(), 1);
-        assert_eq!(group_keys(&frames[0]), vec![""]);
-        assert_eq!(column_values(&frames[0], "x"), vec![Some(2.0)]);
+        assert_eq!(computed.len(), 1);
+        let (key, rows) = &computed[0];
+        assert_eq!(*key, None);
+        assert_eq!(rows.len(), 1);
+        assert!(!rows[0].top);
+        assert_eq!(rows[0].label, "mean");
+        assert_eq!(column_values(&rows[0].frame, "x"), vec![Some(2.0)]);
     }
 
     #[test]
@@ -313,12 +387,72 @@ mod tests {
         // Two nested-facet groups, contiguous after setup_rows' reorder.
         let rows = body_rows(&[&[2, 0], &[2, 0], &[2, 1], &[2, 1]]);
 
-        let frames =
+        let computed =
             compute_summaries(&df, &rows, &[summary("mean", SummaryScope::Group, &["x"])]).unwrap();
 
-        assert_eq!(frames[0].height(), 2);
-        assert_eq!(group_keys(&frames[0]), vec!["2;0", "2;1"]);
-        assert_eq!(column_values(&frames[0], "x"), vec![Some(2.0), Some(15.0)]);
+        assert_eq!(computed.len(), 2);
+        assert_eq!(computed[0].0, Some(vec![2, 0]));
+        assert_eq!(computed[1].0, Some(vec![2, 1]));
+        assert_eq!(column_values(&computed[0].1[0].frame, "x"), vec![Some(2.0)]);
+        assert_eq!(
+            column_values(&computed[1].1[0].frame, "x"),
+            vec![Some(15.0)]
+        );
+    }
+
+    #[test]
+    fn rows_come_chunk_major_in_clause_order() {
+        let df = crate::df! {
+            "x" => vec![1.0, 10.0],
+        }
+        .unwrap();
+        let rows = body_rows(&[&[0], &[1]]);
+        let mut above = summary("mean", SummaryScope::Group, &["x"]);
+        above.settings.insert(
+            "place".to_string(),
+            ParameterValue::String("top".to_string()),
+        );
+        let below = summary("median", SummaryScope::Group, &["x"]);
+
+        let computed = compute_summaries(&df, &rows, &[below, above]).unwrap();
+
+        let order: Vec<(Vec<usize>, &str, bool)> = computed
+            .iter()
+            .flat_map(|(key, rows)| {
+                let key = key.clone().expect("GROUP chunks are keyed");
+                rows.iter()
+                    .map(move |row| (key.clone(), row.label.as_str(), row.top))
+            })
+            .collect();
+        // Chunk-major, clause order within a chunk; placement is the
+        // weavers' concern.
+        assert_eq!(
+            order,
+            vec![
+                (vec![0], "median", false),
+                (vec![0], "mean", true),
+                (vec![1], "median", false),
+                (vec![1], "mean", true),
+            ]
+        );
+    }
+
+    #[test]
+    fn rowlabel_overrides_the_operation_as_label() {
+        let df = crate::df! {
+            "x" => vec![1.0],
+        }
+        .unwrap();
+        let rows = body_rows(&[&[]]);
+        let mut labelled = summary("mean", SummaryScope::Grand, &["x"]);
+        labelled.settings.insert(
+            "rowlabel".to_string(),
+            ParameterValue::String("Average".to_string()),
+        );
+
+        let computed = compute_summaries(&df, &rows, &[labelled]).unwrap();
+
+        assert_eq!(computed[0].1[0].label, "Average");
     }
 
     #[test]
@@ -329,12 +463,12 @@ mod tests {
         .unwrap();
         let rows = body_rows(&[&[], &[]]);
 
-        let frames =
+        let computed =
             compute_summaries(&df, &rows, &[summary("mean", SummaryScope::Group, &["x"])]).unwrap();
 
-        assert_eq!(frames[0].height(), 1);
-        assert_eq!(group_keys(&frames[0]), vec![""]);
-        assert_eq!(column_values(&frames[0], "x"), vec![Some(3.0)]);
+        assert_eq!(computed.len(), 1);
+        assert_eq!(computed[0].0, Some(vec![]));
+        assert_eq!(column_values(&computed[0].1[0].frame, "x"), vec![Some(3.0)]);
     }
 
     #[test]
@@ -351,15 +485,17 @@ mod tests {
             ParameterValue::String("drop".to_string()),
         );
 
-        let frames = compute_summaries(
+        let computed = compute_summaries(
             &df,
             &rows,
             &[summary("mean", SummaryScope::Grand, &["x"]), drop],
         )
         .unwrap();
 
-        assert_eq!(column_values(&frames[0], "x"), vec![None]);
-        assert_eq!(column_values(&frames[1], "x"), vec![Some(2.0)]);
+        let (key, rows) = &computed[0];
+        assert_eq!(*key, None);
+        assert_eq!(column_values(&rows[0].frame, "x"), vec![None]);
+        assert_eq!(column_values(&rows[1].frame, "x"), vec![Some(2.0)]);
     }
 
     fn stub_format() -> Format {

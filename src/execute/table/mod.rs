@@ -92,7 +92,8 @@ pub fn resolve_table_with_reader(query: &str, reader: &dyn Reader) -> Result<Res
     // formatted; everything downstream sees a single-level facet.
     let (df, columns, rows, facet) = collapse_group_columns(df, columns, rows, facet.as_ref())
         .map_err(GgsqlError::ValidationError)?;
-    let layout = build_cells(&df, columns, rows, &spans, &titles, facet.as_ref())?;
+    // Summary weaving is not wired into the pipeline yet.
+    let layout = build_cells(&df, columns, rows, &spans, &titles, facet.as_ref(), &[])?;
 
     Ok(ResolvedTable::new(layout, sql, warnings))
 }

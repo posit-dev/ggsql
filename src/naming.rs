@@ -94,10 +94,6 @@ pub const SCHEMA_ALIAS: &str = concatcp!(GGSQL_SUFFIX, "schema", GGSQL_SUFFIX);
 /// Alias for the derived table a TABULATE selection wraps its source in
 pub const TABLE_ALIAS: &str = concatcp!(GGSQL_SUFFIX, "table", GGSQL_SUFFIX);
 
-/// Key column of a `SUMMARISE` result frame: the row's group key as
-/// ';'-joined facet ranks. A `GRAND` frame's single row uses the empty key.
-pub const SUMMARY_GROUP_COLUMN: &str = concatcp!(GGSQL_PREFIX, "group", GGSQL_SUFFIX);
-
 /// Synthetic stub column holding `SUMMARISE` row labels, inserted when a
 /// table has summaries but no `STUB` column to put them in. Never names a
 /// `DataFrame` column.
@@ -322,15 +318,6 @@ pub fn aesthetic_column(aesthetic: &str) -> String {
 /// ```
 pub fn anonymous_span_id(span_idx: usize) -> String {
     format!("{}span_{}{}", GGSQL_PREFIX, span_idx, GGSQL_SUFFIX)
-}
-
-/// Encode a row's group key (one facet rank per level) for
-/// `SUMMARY_GROUP_COLUMN`.
-pub fn summary_group_key(key: &[usize]) -> String {
-    key.iter()
-        .map(usize::to_string)
-        .collect::<Vec<_>>()
-        .join(";")
 }
 
 // ============================================================================

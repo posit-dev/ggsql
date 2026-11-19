@@ -7,6 +7,7 @@ use std::collections::HashMap;
 
 use super::format::resolve_column_properties;
 use super::stub::{create_row_labels, create_stubhead};
+use super::summary::SummaryChunk;
 use crate::array_util::{column_to_strings, value_to_string};
 use crate::naming;
 use crate::plot::facet::Facet;
@@ -77,8 +78,9 @@ pub(super) fn setup_rows(
 }
 
 /// Build the resolved `TableLayout` for a table from its already-resolved
-/// `columns`, already-`FORMAT`-applied `df`, and `setup_rows` body rows —
-/// spanner rows, column labels, and body, composed together and validated.
+/// `columns`, already-`FORMAT`-applied `df`, `setup_rows` body rows and
+/// computed `summaries` — spanner rows, column labels, and body, composed
+/// together and validated.
 pub(super) fn build_cells(
     df: &DataFrame,
     columns: Vec<TableColumn>,
@@ -86,6 +88,7 @@ pub(super) fn build_cells(
     spans: &[Spanner],
     titles: &TableTitles,
     facet: Option<&Facet>,
+    summaries: &[SummaryChunk],
 ) -> Result<TableLayout> {
     let spanners = create_spanners(&columns, spans);
     // Every label empty means `LABEL col => NULL` (or `=> ''`) on every
@@ -114,6 +117,10 @@ pub(super) fn build_cells(
     let header = heading.rowbind(header);
     let mut body_cells = create_row_labels(df, &columns);
     body_cells.extend(create_body(df, &columns));
+    // Group summaries weave in before the facet passes, so group-stub
+    // merging and group-heading offsets cover them for free; grand rows sit
+    // outside every group, so they weave in last.
+    let (rows, body_cells) = weave_group_summaries(rows, body_cells, &columns, summaries);
     let (body_rows, body_cells) = match facet {
         None => (rows, body_cells),
         Some(facet) => {
@@ -125,6 +132,7 @@ pub(super) fn build_cells(
             }
         }
     };
+    let (body_rows, body_cells) = weave_grand_summaries(body_rows, body_cells, &columns, summaries);
     let table_body = TableLayout::new(columns.clone(), body_rows, body_cells);
     let layout = header.rowbind(table_body);
     let caption_layout = create_caption(titles.caption.as_deref(), &columns);
@@ -220,11 +228,102 @@ fn create_body(df: &DataFrame, columns: &[TableColumn]) -> Vec<TableCell> {
     cells
 }
 
+/// Interleave the `GROUP` chunks' rows into the body, in data space: each
+/// chunk's `top` rows, then the chunk itself, then its bottom rows. Runs
+/// before the facet passes — summary rows carry their group's key, so the
+/// row-driven group-stub merge spans them and group-heading offsets cover
+/// them like data rows.
+fn weave_group_summaries(
+    rows: Vec<TableRow>,
+    cells: Vec<TableCell>,
+    columns: &[TableColumn],
+    summaries: &[SummaryChunk],
+) -> (Vec<TableRow>, Vec<TableCell>) {
+    let summaries: Vec<&SummaryChunk> = summaries.iter().filter(|(key, _)| key.is_some()).collect();
+    if summaries.is_empty() {
+        return (rows, cells);
+    }
+    debug_assert_eq!(
+        rows.chunk_by(|a, b| a.group == b.group).count(),
+        summaries.len(),
+        "one summary chunk per group"
+    );
+
+    let inserted: usize = summaries.iter().map(|(_, rows)| rows.len()).sum();
+    let mut new_rows = Vec::with_capacity(rows.len() + inserted);
+    let mut summary_cells = Vec::new();
+    // row_map[old data-row index] = its grid row after the weave.
+    let mut row_map = vec![0usize; rows.len()];
+    let mut old_index = 0usize;
+    for (chunk, (key, chunk_summaries)) in rows
+        .chunk_by(|a, b| a.group == b.group)
+        .zip(summaries.iter())
+    {
+        let key = key.as_ref().expect("filtered to group chunks");
+        debug_assert_eq!(chunk[0].group, *key, "summary chunks in group order");
+        for summary in chunk_summaries.iter().filter(|s| s.top) {
+            summary_cells.extend(summary.cells(new_rows.len(), columns, false));
+            new_rows.push(TableRow::summary(key.clone()));
+        }
+        for row in chunk.iter() {
+            row_map[old_index] = new_rows.len();
+            new_rows.push(row.clone());
+            old_index += 1;
+        }
+        for summary in chunk_summaries.iter().filter(|s| !s.top) {
+            summary_cells.extend(summary.cells(new_rows.len(), columns, false));
+            new_rows.push(TableRow::summary(key.clone()));
+        }
+    }
+
+    let mut cells = cells;
+    for cell in &mut cells {
+        cell.top = row_map[cell.top];
+        cell.bottom = row_map[cell.bottom];
+    }
+    summary_cells.extend(cells);
+    (new_rows, summary_cells)
+}
+
+/// Place the `GRAND` chunk's rows: `top` rows above the whole body, bottom
+/// rows below it. Runs after the facet passes — a grand row belongs to no
+/// group, so nothing about it should merge or shift with group machinery.
+fn weave_grand_summaries(
+    rows: Vec<TableRow>,
+    cells: Vec<TableCell>,
+    columns: &[TableColumn],
+    summaries: &[SummaryChunk],
+) -> (Vec<TableRow>, Vec<TableCell>) {
+    let Some((_, grand)) = summaries.iter().find(|(key, _)| key.is_none()) else {
+        return (rows, cells);
+    };
+    let tops = grand.iter().filter(|s| s.top).count();
+
+    let mut cells = cells;
+    for cell in &mut cells {
+        cell.offset_rows(tops);
+    }
+    let mut new_rows = Vec::with_capacity(rows.len() + grand.len());
+    let mut summary_cells = Vec::new();
+    for summary in grand.iter().filter(|s| s.top) {
+        summary_cells.extend(summary.cells(new_rows.len(), columns, true));
+        new_rows.push(TableRow::summary(Vec::new()));
+    }
+    new_rows.extend(rows);
+    for summary in grand.iter().filter(|s| !s.top) {
+        summary_cells.extend(summary.cells(new_rows.len(), columns, true));
+        new_rows.push(TableRow::summary(Vec::new()));
+    }
+    summary_cells.extend(cells);
+    (new_rows, summary_cells)
+}
+
 /// Interleave group-label rows into the body. At each group boundary, emit
 /// one `GroupHeading` row per facet-variable level that changed, labels read
-/// from the group's first row (so an unchanged outer variable isn't
+/// from the group's first data row (so an unchanged outer variable isn't
 /// restated). Body cells keep their data-row numbering, shifted down by
-/// the label rows before them.
+/// the label rows before them. Summary rows interleave with the data rows
+/// but have no row in `df`, so only data rows advance the label lookup.
 fn weave_group_labels(
     df: &DataFrame,
     columns: &[TableColumn],
@@ -246,17 +345,18 @@ fn weave_group_labels(
 
     let mut out_rows = Vec::new();
     let mut label_cells = Vec::new();
-    // body_offset[data row] = how many label rows precede it in the grid.
-    let mut body_offset = vec![0usize; df.height()];
+    // body_offset[body row] = how many label rows precede it in the grid.
+    let mut body_offset = vec![0usize; rows.len()];
     // None until the first group's key is read: it emits every level.
     let mut previous_key: Option<&[usize]> = None;
+    let mut df_row = 0usize;
     let mut row = 0usize;
 
     for group_rows in rows.chunk_by(|a, b| a.group == b.group) {
         let key = group_rows[0].group.as_slice();
         let labels: Vec<String> = facet_arrays
             .iter()
-            .map(|array| value_to_string(array, row))
+            .map(|array| value_to_string(array, df_row))
             .collect();
         // When multiple labels exist, we have a nesting pattern.
         // We don't need to repeat every level label at every group,
@@ -281,6 +381,9 @@ fn weave_group_labels(
 
         for table_row in group_rows.iter() {
             body_offset[row] = out_rows.len() - row;
+            if !table_row.classes.contains(&TableClass::SummaryRow) {
+                df_row += 1;
+            }
             out_rows.push(table_row.clone());
             row += 1;
         }
@@ -295,10 +398,13 @@ fn weave_group_labels(
     Ok((out_rows, label_cells))
 }
 
-/// Merge each group stub column's row labels into rowspanned cells. A cell
-/// at depth `d` spans rows while the `d + 1` outermost ranks of the rows'
-/// group keys are equal, so a group never merges into a cell opened under
-/// a different outer level even when its label repeats.
+/// Merge each group-stub column's per-row labels into rowspanned cells.
+/// Runs are read off `rows`, not cells: a cell at depth `d` spans rows while
+/// the `d + 1` outermost ranks of the rows' group keys are equal, so a group
+/// never merges into a cell opened under a different outer level even when
+/// its label repeats. A summary row carries its chunk's key but has no stub
+/// cell of its own, so it joins its group's run by construction; the run's
+/// content comes from its first data row's cell.
 fn merge_group_stub_cells(
     cells: Vec<TableCell>,
     columns: &[TableColumn],
@@ -308,23 +414,39 @@ fn merge_group_stub_cells(
         return cells;
     }
 
-    // Column index of a group stub column -> position of its open cell in
-    // `out`, for the column whose cells are currently being walked.
-    let mut open: HashMap<usize, usize> = HashMap::new();
+    // Each group-stub column's per-row cells, by row — replaced by merged
+    // cells below.
+    let mut stub_cells: HashMap<(usize, usize), TableCell> = HashMap::new();
     let mut out: Vec<TableCell> = Vec::with_capacity(cells.len());
     for cell in cells {
-        if let ColumnSection::GroupStub(depth) = columns[cell.left].target {
-            if let Some(&index) = open.get(&cell.left) {
-                let current_key = &rows[cell.top].group[..=depth];
-                let previous_key = &rows[cell.top - 1].group[..=depth];
-                if current_key == previous_key {
-                    out[index].bottom = cell.bottom;
-                    continue;
-                }
-            }
-            open.insert(cell.left, out.len());
+        if columns[cell.left].is_group_stub() {
+            stub_cells.insert((cell.left, cell.top), cell);
+        } else {
+            out.push(cell);
         }
-        out.push(cell);
+    }
+
+    for (left, column) in columns.iter().enumerate() {
+        let ColumnSection::GroupStub(depth) = column.target else {
+            continue;
+        };
+        let mut start = 0;
+        while start < rows.len() {
+            let mut end = start;
+            while end + 1 < rows.len()
+                && rows[end + 1].group[..=depth] == rows[start].group[..=depth]
+            {
+                end += 1;
+            }
+            let source = (start..=end)
+                .find_map(|row| stub_cells.get(&(left, row)))
+                .expect("every group-stub run holds a data row");
+            let mut merged = TableCell::new_stub_row_group(start, left, source.content.clone());
+            merged.bottom = end;
+            merged.properties = source.properties.clone();
+            out.push(merged);
+            start = end + 1;
+        }
     }
     out
 }
@@ -332,10 +454,11 @@ fn merge_group_stub_cells(
 #[cfg(test)]
 mod tests {
     use super::super::format::{apply_formats, setup_formats};
+    use super::super::summary::{compute_summaries, setup_summaries};
     use super::*;
     use crate::df;
     use crate::plot::{ParameterValue, Parameters};
-    use crate::table::{extract_table_titles, TableCellKind};
+    use crate::table::{extract_table_titles, Summary, SummaryScope, TableCellKind};
     use crate::{ColumnSection, GgsqlError, Spanner, Table};
 
     /// Runs the same steps `resolve_table_with_reader` does, minus the
@@ -352,12 +475,251 @@ mod tests {
         let columns = setup_columns(df, &spans, &labels, &formats, None);
         let df = apply_formats(df, &formats)?;
         let rows = vec![TableRow::body(); df.height()];
-        build_cells(&df, columns, rows, &spans, &titles, None)
+        build_cells(&df, columns, rows, &spans, &titles, None, &[])
     }
 
     /// `resolve_layout`, for the (common) tests that only care about cells.
     fn resolve_cells(df: &DataFrame, table: &Table) -> Result<Vec<TableCell>> {
         resolve_layout(df, table).map(|layout| layout.cells)
+    }
+
+    /// `resolve_layout`, plus the `SUMMARISE` steps and a facet.
+    fn resolve_layout_with_summaries(
+        df: &DataFrame,
+        table: &Table,
+        facet: Option<&Facet>,
+    ) -> Result<TableLayout> {
+        let mut labels = table.labels.clone();
+        let titles = extract_table_titles(&mut labels);
+        let (mut df, rows) = setup_rows(df.clone(), facet)?;
+        let column_names = df.get_column_names();
+        let spans = table
+            .resolve_spanners(&labels, Some(&column_names))
+            .map_err(GgsqlError::ValidationError)?;
+        let formats = setup_formats(&df, &table.formats, &spans)?;
+        setup_summaries(&mut df, &formats, &table.summaries)?;
+        let columns = setup_columns(&df, &spans, &labels, &formats, facet);
+        let computed = compute_summaries(&df, &rows, &table.summaries)?;
+        let df = apply_formats(&df, &formats)?;
+        build_cells(&df, columns, rows, &spans, &titles, facet, &computed)
+    }
+
+    fn summary_clause(operation: &str, scope: SummaryScope, columns: &[&str]) -> Summary {
+        Summary {
+            operation: operation.to_string(),
+            scope,
+            columns: columns.iter().map(|c| c.to_string()).collect(),
+            settings: Parameters::new(),
+        }
+    }
+
+    fn top_facet(variables: &[&str]) -> Facet {
+        let mut facet = left_facet(variables);
+        facet.properties.insert(
+            "place".to_string(),
+            ParameterValue::String("top".to_string()),
+        );
+        facet
+    }
+
+    /// Body rows (header excluded) whose classes contain `class`, as grid rows.
+    fn rows_with_class(layout: &TableLayout, class: TableClass) -> Vec<usize> {
+        layout
+            .rows
+            .iter()
+            .enumerate()
+            .filter(|(_, row)| !row.is_header && row.classes.contains(&class))
+            .map(|(index, _)| index)
+            .collect()
+    }
+
+    /// The cell at exactly `row` whose content is `content`.
+    fn find_cell<'a>(layout: &'a TableLayout, row: usize, content: &str) -> &'a TableCell {
+        layout
+            .cells
+            .iter()
+            .find(|cell| cell.top == row && cell.content == content)
+            .unwrap_or_else(|| panic!("no cell at row {row} with content {content:?}"))
+    }
+
+    #[test]
+    fn group_summary_without_a_facet_weaves_below_the_single_group() {
+        let frame = df! {
+            "x" => vec![1.5, 3.5],
+        }
+        .unwrap();
+        let mut table = Table::new();
+        table.summaries = vec![summary_clause("mean", SummaryScope::Group, &["x"])];
+
+        let layout = resolve_layout_with_summaries(&frame, &table, None).unwrap();
+
+        // Column-label row, two data rows, then the summary row.
+        assert_eq!(layout.rows.len(), 4);
+        let summary_row = rows_with_class(&layout, TableClass::SummaryRow);
+        assert_eq!(summary_row, vec![3]);
+        assert_eq!(
+            find_cell(&layout, 3, "mean").kind,
+            TableCellKind::StubRowLabel
+        );
+        assert_eq!(find_cell(&layout, 3, "2.5").kind, TableCellKind::Body);
+    }
+
+    #[test]
+    fn grand_summaries_sit_outside_the_body() {
+        let frame = df! {
+            "x" => vec![1.5, 3.5],
+        }
+        .unwrap();
+        let mut table = Table::new();
+        let mut top = summary_clause("median", SummaryScope::Grand, &["x"]);
+        top.settings.insert(
+            "place".to_string(),
+            ParameterValue::String("top".to_string()),
+        );
+        // Written bottom-clause first: placement, not clause order, decides.
+        table.summaries = vec![summary_clause("mean", SummaryScope::Grand, &["x"]), top];
+
+        let layout = resolve_layout_with_summaries(&frame, &table, None).unwrap();
+
+        assert_eq!(layout.rows.len(), 5);
+        assert_eq!(rows_with_class(&layout, TableClass::SummaryRow), vec![1, 4]);
+        assert_eq!(
+            find_cell(&layout, 1, "median").kind,
+            TableCellKind::StubRowLabel
+        );
+        assert_eq!(
+            find_cell(&layout, 4, "mean").kind,
+            TableCellKind::StubRowLabel
+        );
+    }
+
+    #[test]
+    fn group_summary_weaves_after_its_groups_heading_rows() {
+        let frame = df! {
+            "region" => vec!["n".to_string(), "n".to_string(), "s".to_string()],
+            "x" => vec![1.5, 3.5, 10.5],
+        }
+        .unwrap();
+        let mut table = Table::new();
+        table.summaries = vec![summary_clause("mean", SummaryScope::Group, &["x"])];
+        let facet = top_facet(&["region"]);
+
+        let layout = resolve_layout_with_summaries(&frame, &table, Some(&facet)).unwrap();
+
+        // Col labels; heading n; 2 data; summary; heading s; data; summary.
+        let summary_rows = rows_with_class(&layout, TableClass::SummaryRow);
+        assert_eq!(summary_rows, vec![4, 7]);
+        assert_eq!(layout.rows[summary_rows[0]].group, vec![0]);
+        assert_eq!(layout.rows[summary_rows[1]].group, vec![1]);
+        assert_eq!(find_cell(&layout, 4, "2.5").kind, TableCellKind::Body);
+        assert_eq!(find_cell(&layout, 7, "10.5").kind, TableCellKind::Body);
+    }
+
+    #[test]
+    fn group_stub_cells_grow_over_a_groups_summary_rows() {
+        let frame = df! {
+            "region" => vec!["n".to_string(), "n".to_string(), "s".to_string()],
+            "x" => vec![1.5, 3.5, 10.5],
+        }
+        .unwrap();
+        let mut table = Table::new();
+        table.summaries = vec![
+            summary_clause("mean", SummaryScope::Group, &["x"]),
+            summary_clause("mean", SummaryScope::Grand, &["x"]),
+        ];
+        let facet = left_facet(&["region"]);
+
+        let layout = resolve_layout_with_summaries(&frame, &table, Some(&facet)).unwrap();
+
+        // Body: 2 data + summary (n), data + summary (s), grand summary.
+        let summary_rows = rows_with_class(&layout, TableClass::SummaryRow);
+        assert_eq!(summary_rows, vec![3, 5, 6]);
+        // The group stub cell for "n" spans its data rows and its summary.
+        let north = find_cell(&layout, 1, "n");
+        assert_eq!(north.kind, TableCellKind::GroupHeading);
+        assert_eq!(north.bottom, 3);
+        // A group summary row emits no cell in the group stub column...
+        assert!(layout
+            .cells
+            .iter()
+            .all(|cell| cell.top != 3 || cell.left != north.left));
+        // ...and the grand row's label spans the group stub column instead.
+        let grand_label = layout
+            .cells
+            .iter()
+            .find(|cell| cell.top == 6 && cell.left == north.left)
+            .expect("grand row's label spans the group stub column");
+        assert_eq!(grand_label.kind, TableCellKind::StubRowLabel);
+        assert_eq!(grand_label.content, "mean");
+    }
+
+    #[test]
+    fn a_grand_summary_label_spans_the_group_stub_columns() {
+        let frame = df! {
+            "region" => vec!["n".to_string(), "s".to_string()],
+            "x" => vec![1.5, 10.5],
+        }
+        .unwrap();
+        let mut table = Table::new();
+        table.summaries = vec![summary_clause("mean", SummaryScope::Grand, &["x"])];
+        let facet = left_facet(&["region"]);
+
+        let layout = resolve_layout_with_summaries(&frame, &table, Some(&facet)).unwrap();
+
+        let grand_row = rows_with_class(&layout, TableClass::SummaryRow)[0];
+        let label = find_cell(&layout, grand_row, "mean");
+        assert_eq!(label.kind, TableCellKind::StubRowLabel);
+        assert_eq!(label.left, 0);
+        assert!(
+            label.right > label.left,
+            "the label colspans the group stub column"
+        );
+        // No group-stub filler cell on the grand row, and no grid gaps.
+        assert!(layout
+            .cells
+            .iter()
+            .all(|cell| cell.top != grand_row || cell.kind != TableCellKind::GroupHeading));
+        layout.slots_by_row();
+    }
+
+    #[test]
+    fn a_summary_label_spans_all_stub_columns() {
+        let frame = df! {
+            "a" => vec!["p".to_string(), "q".to_string()],
+            "b" => vec!["u".to_string(), "v".to_string()],
+            "x" => vec![1.5, 3.5],
+        }
+        .unwrap();
+        let stub = |column: &str| crate::Format {
+            columns: vec![column.to_string()],
+            wildcard: false,
+            target: Some(ColumnSection::Stub),
+            settings: Parameters::new(),
+            value_mapping: None,
+            value_template: None,
+        };
+        let mut table = Table::new();
+        table.formats = vec![stub("a"), stub("b")];
+        table.summaries = vec![summary_clause("mean", SummaryScope::Grand, &["x"])];
+
+        let layout = resolve_layout_with_summaries(&frame, &table, None).unwrap();
+
+        let summary_row = rows_with_class(&layout, TableClass::SummaryRow)[0];
+        let label = find_cell(&layout, summary_row, "mean");
+        assert_eq!(label.kind, TableCellKind::StubRowLabel);
+        assert_eq!(label.left, 0);
+        assert_eq!(label.right, 1);
+        // The second stub column emits no cell of its own on the summary row.
+        assert_eq!(
+            layout
+                .cells
+                .iter()
+                .filter(|cell| cell.top == summary_row && cell.kind == TableCellKind::StubRowLabel)
+                .count(),
+            1
+        );
+        assert_eq!(find_cell(&layout, summary_row, "2.5").left, 2);
+        layout.slots_by_row();
     }
 
     fn column(name: &str, label: &str) -> TableColumn {

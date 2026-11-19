@@ -389,6 +389,7 @@ fn class_declarations(class: TableClass) -> &'static [(&'static str, &'static st
             ("border-top-width", "2px"),
             ("border-top-color", "#D3D3D3"),
         ],
+        TableClass::SummaryRow => &[],
         TableClass::AlignLeft => &[("text-align", "left")],
         TableClass::AlignCenter => &[("text-align", "center")],
         TableClass::AlignRight => &[

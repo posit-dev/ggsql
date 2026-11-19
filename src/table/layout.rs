@@ -127,6 +127,8 @@ pub enum TableClass {
     /// The first body row of a facet group (gt's `gt_row_group_first`) —
     /// carries the thick border separating a group from what precedes it.
     RowGroupFirst,
+    /// A `SUMMARISE` row (gt's `gt_summary_row`).
+    SummaryRow,
 
     // -------------------------- Cell-scoped -------------------------
     // Recorded on `TableCell::classes`, rendered on the `<th>`/`<td>`.
@@ -190,6 +192,7 @@ impl TableClass {
         TableClass::GroupHeading,
         TableClass::GroupHeadingRow,
         TableClass::RowGroupFirst,
+        TableClass::SummaryRow,
         TableClass::AlignLeft,
         TableClass::AlignCenter,
         TableClass::AlignRight,
@@ -219,6 +222,7 @@ impl std::fmt::Display for TableClass {
             TableClass::Subtitle => "subtitle",
             TableClass::Caption => "caption",
             TableClass::Heading => "heading",
+            TableClass::SummaryRow => "summary_row",
             TableClass::GroupHeading => "group_heading",
             TableClass::GroupHeadingRow => "group_heading_row",
             TableClass::RowGroupFirst => "row_group_first",
@@ -515,6 +519,18 @@ impl TableRow {
     pub fn group_heading(group: Vec<usize>) -> Self {
         Self {
             classes: vec![TableClass::GroupHeadingRow],
+            group,
+            ..Self::body()
+        }
+    }
+
+    /// A summary row (`TableClass::SummaryRow`) keyed by its chunk's `group`
+    /// — empty for a `GRAND` row. The key marks the row as having no data
+    /// row behind it, so later passes (group-stub merge, group-label weave)
+    /// treat it accordingly.
+    pub fn summary(group: Vec<usize>) -> Self {
+        Self {
+            classes: vec![TableClass::SummaryRow],
             group,
             ..Self::body()
         }
