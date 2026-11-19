@@ -2,9 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::params::{
-    validate_parameter, DefaultParamValue, ParamConstraint, ParamDefinition, Parameters,
-};
+use crate::params::{DefaultParamValue, ParamConstraint, ParamDefinition, Parameters};
 
 /// One `SUMMARISE` clause: an aggregate operation producing one summary row
 /// per group — or a single row over all rows for `GRAND`.
@@ -83,29 +81,17 @@ impl Summary {
         }
     }
 
-    /// Validate `settings` against `SUMMARY_PARAMS`.
-    pub fn validate_settings(&self) -> Result<(), String> {
-        let valid: Vec<&str> = SUMMARY_PARAMS.iter().map(|p| p.name).collect();
-
-        for (name, value) in &self.settings {
-            let Some(param) = SUMMARY_PARAMS.iter().find(|p| p.name == name.as_str()) else {
-                return Err(format!(
-                    "SUMMARISE setting should be {}, not '{}'",
-                    crate::or_list_quoted(&valid, '\''),
-                    name
-                ));
-            };
-            validate_parameter(name, value, &param.constraint)?;
-        }
-
-        Ok(())
+    /// Validate `settings` against `SUMMARY_PARAMS` and resolve each to its
+    /// effective value: the user's value if present, otherwise the
+    /// definition's default.
+    pub fn resolve_settings(&self) -> Result<Parameters, String> {
+        crate::params::resolve_parameters(&self.settings, SUMMARY_PARAMS, "SUMMARISE setting")
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::plot::ParameterValue;
 
     fn summary_with_settings(settings: Parameters) -> Summary {
         Summary {
@@ -117,55 +103,34 @@ mod tests {
     }
 
     #[test]
-    fn summary_validate_settings_accepts_place_and_rowlabel() {
-        let mut settings = Parameters::new();
-        settings.insert(
-            "place".to_string(),
-            ParameterValue::String("top".to_string()),
-        );
-        settings.insert(
-            "rowlabel".to_string(),
-            ParameterValue::String("Average".to_string()),
-        );
+    fn summary_resolve_settings_accepts_place_and_rowlabel() {
+        let settings = crate::params! { "place" => "top", "rowlabel" => "Average" };
 
-        assert!(summary_with_settings(settings).validate_settings().is_ok());
+        assert!(summary_with_settings(settings).resolve_settings().is_ok());
     }
 
     #[test]
-    fn summary_validate_settings_accepts_missing_options() {
+    fn summary_resolve_settings_accepts_missing_options() {
         for value in ["propagate", "drop"] {
-            let mut settings = Parameters::new();
-            settings.insert(
-                "missing".to_string(),
-                ParameterValue::String(value.to_string()),
-            );
-            assert!(summary_with_settings(settings).validate_settings().is_ok());
+            let settings = crate::params! { "missing" => value };
+            assert!(summary_with_settings(settings).resolve_settings().is_ok());
         }
-        let mut settings = Parameters::new();
-        settings.insert(
-            "missing".to_string(),
-            ParameterValue::String("ignore".to_string()),
-        );
-        assert!(summary_with_settings(settings).validate_settings().is_err());
+        let settings = crate::params! { "missing" => "ignore" };
+        assert!(summary_with_settings(settings).resolve_settings().is_err());
     }
 
     #[test]
-    fn summary_validate_settings_rejects_a_non_string_rowlabel() {
-        let mut settings = Parameters::new();
-        settings.insert("rowlabel".to_string(), ParameterValue::Number(1.0));
+    fn summary_resolve_settings_rejects_a_non_string_rowlabel() {
+        let settings = crate::params! { "rowlabel" => 1.0 };
 
-        assert!(summary_with_settings(settings).validate_settings().is_err());
+        assert!(summary_with_settings(settings).resolve_settings().is_err());
     }
 
     #[test]
-    fn summary_validate_settings_rejects_an_unknown_setting() {
-        let mut settings = Parameters::new();
-        settings.insert(
-            "colour".to_string(),
-            ParameterValue::String("red".to_string()),
-        );
+    fn summary_resolve_settings_rejects_an_unknown_setting() {
+        let settings = crate::params! { "colour" => "red" };
 
-        assert!(summary_with_settings(settings).validate_settings().is_err());
+        assert!(summary_with_settings(settings).resolve_settings().is_err());
     }
 
     #[test]

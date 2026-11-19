@@ -515,10 +515,7 @@ mod tests {
 
     fn top_facet(variables: &[&str]) -> Facet {
         let mut facet = left_facet(variables);
-        facet.properties.insert(
-            "place".to_string(),
-            ParameterValue::String("top".to_string()),
-        );
+        facet.properties = crate::params! { "place" => "top" };
         facet
     }
 
@@ -572,10 +569,7 @@ mod tests {
         .unwrap();
         let mut table = Table::new();
         let mut top = summary_clause("median", SummaryScope::Grand, &["x"]);
-        top.settings.insert(
-            "place".to_string(),
-            ParameterValue::String("top".to_string()),
-        );
+        top.settings = crate::params! { "place" => "top" };
         // Written bottom-clause first: placement, not clause order, decides.
         table.summaries = vec![summary_clause("mean", SummaryScope::Grand, &["x"]), top];
 
@@ -815,16 +809,11 @@ mod tests {
     }
 
     fn left_facet(variables: &[&str]) -> Facet {
-        let mut properties = Parameters::new();
-        properties.insert(
-            "place".to_string(),
-            ParameterValue::String("left".to_string()),
-        );
         Facet {
             layout: crate::plot::facet::FacetLayout::Wrap {
                 variables: variables.iter().map(|s| s.to_string()).collect(),
             },
-            properties,
+            properties: crate::params! { "place" => "left" },
             resolved: true,
         }
     }

@@ -14,7 +14,7 @@ use arrow::datatypes::DataType;
 
 use crate::array_util::{as_f64, cast_array, column_to_strings};
 use crate::naming;
-use crate::params::{ParameterValue, Parameters};
+use crate::params::ParameterValue;
 use crate::table::{Format, Summary, SummaryScope, TableCell, TableColumn, TableRow};
 use crate::{ColumnSection, DataFrame, GgsqlError, Result};
 
@@ -179,26 +179,23 @@ impl Summary {
     /// Build this clause's row over `range`: placement, label and computed
     /// values.
     pub(super) fn new_row(&self, df: &DataFrame, range: &Range<usize>) -> Result<SummaryRow> {
+        let label = self
+            .settings
+            .get("rowlabel")
+            .and_then(ParameterValue::as_str)
+            .map_or_else(|| self.operation.clone(), str::to_string);
         Ok(SummaryRow {
-            top: is_top(self),
-            label: label(self),
+            top: ParameterValue::is_str(self.settings.get("place"), "top"),
+            label,
             frame: summary_frame(df, self, range)?,
         })
     }
 }
 
-fn is_top(summary: &Summary) -> bool {
-    setting_string(&summary.settings, "place").as_deref() == Some("top")
-}
-
-fn label(summary: &Summary) -> String {
-    setting_string(&summary.settings, "rowlabel").unwrap_or_else(|| summary.operation.clone())
-}
-
 /// Compute one clause's frame over the rows in `range`: one row, one
 /// nullable-f64 column per summarised column.
 fn summary_frame(df: &DataFrame, summary: &Summary, range: &Range<usize>) -> Result<DataFrame> {
-    let drop_nulls = setting_string(&summary.settings, "missing").as_deref() == Some("drop");
+    let drop_nulls = ParameterValue::is_str(summary.settings.get("missing"), "drop");
 
     let columns = summary
         .columns
@@ -222,13 +219,6 @@ fn summary_frame(df: &DataFrame, summary: &Summary, range: &Range<usize>) -> Res
         })
         .collect::<Result<Vec<_>>>()?;
     DataFrame::new(columns)
-}
-
-fn setting_string(settings: &Parameters, name: &str) -> Option<String> {
-    match settings.get(name) {
-        Some(ParameterValue::String(value)) => Some(value.clone()),
-        _ => None,
-    }
 }
 
 /// Compute one `SUMMARISE` operation over a column. With `drop_nulls`, nulls
@@ -283,6 +273,7 @@ fn quantile(mut values: Vec<f64>, q: f64) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::params::Parameters;
     use arrow::array::{Float64Array, Int64Array, StringArray};
     use std::sync::Arc;
 
@@ -407,11 +398,10 @@ mod tests {
         }
         .unwrap();
         let rows = body_rows(&[&[0], &[1]]);
-        let mut above = summary("mean", SummaryScope::Group, &["x"]);
-        above.settings.insert(
-            "place".to_string(),
-            ParameterValue::String("top".to_string()),
-        );
+        let above = Summary {
+            settings: crate::params! { "place" => "top" },
+            ..summary("mean", SummaryScope::Group, &["x"])
+        };
         let below = summary("median", SummaryScope::Group, &["x"]);
 
         let computed = compute_summaries(&df, &rows, &[below, above]).unwrap();
@@ -444,11 +434,10 @@ mod tests {
         }
         .unwrap();
         let rows = body_rows(&[&[]]);
-        let mut labelled = summary("mean", SummaryScope::Grand, &["x"]);
-        labelled.settings.insert(
-            "rowlabel".to_string(),
-            ParameterValue::String("Average".to_string()),
-        );
+        let labelled = Summary {
+            settings: crate::params! { "rowlabel" => "Average" },
+            ..summary("mean", SummaryScope::Grand, &["x"])
+        };
 
         let computed = compute_summaries(&df, &rows, &[labelled]).unwrap();
 
@@ -479,11 +468,10 @@ mod tests {
         .unwrap();
         let rows = body_rows(&[&[], &[], &[]]);
 
-        let mut drop = summary("mean", SummaryScope::Grand, &["x"]);
-        drop.settings.insert(
-            "missing".to_string(),
-            ParameterValue::String("drop".to_string()),
-        );
+        let drop = Summary {
+            settings: crate::params! { "missing" => "drop" },
+            ..summary("mean", SummaryScope::Grand, &["x"])
+        };
 
         let computed = compute_summaries(
             &df,

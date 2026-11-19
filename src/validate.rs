@@ -358,7 +358,7 @@ pub fn validate(query: &str) -> Result<Validated> {
                     location: None,
                 });
             }
-            if let Err(e) = summary.validate_settings() {
+            if let Err(e) = summary.resolve_settings() {
                 errors.push(ValidationError {
                     message: format!("SUMMARISE {}: {}", idx + 1, e),
                     location: None,
