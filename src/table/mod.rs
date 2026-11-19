@@ -310,13 +310,6 @@ impl Format {
         }
     }
 
-    /// Whether the `RENAMING` clause asked for anything at all — a rename,
-    /// a suppression, or a wildcard template. A FORMAT with only `SETTING`
-    /// parameters needs no per-row formatting pass.
-    pub(crate) fn has_renaming(&self) -> bool {
-        !self.renaming.rename_is_empty() || self.renaming.template().is_some()
-    }
-
     /// Validate `settings` against `FORMAT_PARAMS`.
     pub fn validate_settings(&self) -> Result<(), String> {
         let valid: Vec<&str> = FORMAT_PARAMS.iter().map(|p| p.name).collect();

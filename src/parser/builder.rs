@@ -1074,7 +1074,7 @@ fn parse_renaming_clause(node: &Node, source: &SourceTree) -> Result<zygos::Labe
 
     for assignment_node in assignment_nodes {
         // Extract name and value nodes using field-based queries
-        let (name_node, value_node) = extract_name_value_nodes(&assignment_node, "scale renaming")?;
+        let (name_node, value_node) = extract_name_value_nodes(&assignment_node, "renaming")?;
 
         // Check if 'name' is a wildcard
         let is_wildcard = name_node.kind() == "*";
@@ -1086,14 +1086,14 @@ fn parse_renaming_clause(node: &Node, source: &SourceTree) -> Result<zygos::Labe
             "number" => {
                 let text = source.get_text(&name_node);
                 let number = text.parse::<f64>().map_err(|_| {
-                    GgsqlError::ParseError(format!("Invalid number in scale renaming: {}", text))
+                    GgsqlError::ParseError(format!("Invalid number in renaming: {}", text))
                 })?;
                 zygos::Value::Number(number)
             }
             "null_literal" => zygos::Value::Null, // null key for renaming null values
             _ => {
                 return Err(GgsqlError::ParseError(format!(
-                    "Invalid 'from' type in scale renaming: {}",
+                    "Invalid 'from' type in renaming: {}",
                     name_node.kind()
                 )));
             }
@@ -1105,7 +1105,7 @@ fn parse_renaming_clause(node: &Node, source: &SourceTree) -> Result<zygos::Labe
             "null_literal" => None, // NULL suppresses the label
             _ => {
                 return Err(GgsqlError::ParseError(format!(
-                    "Invalid 'to' type in scale renaming: {}",
+                    "Invalid 'to' type in renaming: {}",
                     value_node.kind()
                 )));
             }
@@ -1633,7 +1633,8 @@ mod tests {
         assert_eq!(table.formats[0].columns, vec!["foo", "bar"]);
         assert_eq!(table.formats[0].target, None);
         assert!(table.formats[0].settings.is_empty());
-        assert!(!table.formats[0].has_renaming());
+        assert!(table.formats[0].renaming.rename_is_empty());
+        assert!(table.formats[0].renaming.template().is_none());
     }
 
     #[test]

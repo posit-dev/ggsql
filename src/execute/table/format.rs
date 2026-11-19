@@ -93,9 +93,11 @@ pub(super) fn apply_formats(
 ) -> Result<DataFrame> {
     let mut df = df.clone();
     for (name, format) in formats {
-        if !format.has_renaming() {
-            // Skip the per-row formatting pass for a column nobody asked to
-            // reformat — the common `FORMAT ... SETTING ...` case.
+        // Skip the per-row formatting pass for a column nobody asked to
+        // reformat — the common `FORMAT ... SETTING ...` case.
+        let has_renaming =
+            !format.renaming.rename_is_empty() || format.renaming.template().is_some();
+        if !has_renaming {
             continue;
         }
 
