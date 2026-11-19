@@ -169,6 +169,7 @@
           "type": "integer",
           "default": 10,
           "minimum": 1,
+          "maximum": 4294967295,
           "markdownDescription": "How many rows of a query result the ggsql console shows. A result with up to twice this many rows is shown in full; a longer one shows this many, then a count of the rest. Every result has a link beneath it that opens the whole result in the Data Explorer. Notebooks are unaffected. Takes effect in consoles started after the change."
         },
         "ggsql.enableSqlFiles": {

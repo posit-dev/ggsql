@@ -39,9 +39,6 @@ clap = { workspace = true, features = ["env"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
 
-# The data explorer's regular-expression column search
-regex = { workspace = true }
-
 # Error handling
 anyhow = { workspace = true }
 thiserror = { workspace = true }

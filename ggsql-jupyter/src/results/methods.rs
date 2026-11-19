@@ -13,8 +13,19 @@
 //!
 //! `num_rows` after filtering counts the rows that pass. A filter that cannot
 //! be applied is left out and its message returned at its index in `errors`.
+//! A sort or set of filters that cannot be applied at all is an error, and
+//! leaves the view as it was.
+//!
+//! A page holds at most [`MAX_PAGE_ROWS`] rows. A range is cut short at the end
+//! of the view; an index outside it is an error.
+//!
+//! `result_sql` is here rather than in a frontend because only the kernel
+//! knows the session's database: it writes the view as SQL for that dialect,
+//! which a frontend could not do from the neutral calls alone.
+//!
+//! [`MAX_PAGE_ROWS`]: super::view::MAX_PAGE_ROWS
 
-use super::filter::{Capabilities, Filter, SortKey};
+use super::filter::{Filter, SortKey};
 use super::view::{ProfileRequest, Rows};
 use super::ResultStore;
 use ggsql::reader::Reader;
@@ -30,11 +41,7 @@ pub fn handles(method: &str) -> bool {
 /// The session's database, which `result_sql` writes SQL for.
 pub struct Session<'a> {
     pub reader: &'a dyn Reader,
-    pub caps: Capabilities,
 }
-
-/// The results cache is DuckDB, which has `regexp_matches`.
-const CACHE_CAPS: Capabilities = Capabilities { regex: true };
 
 #[derive(Deserialize)]
 struct Open {
@@ -106,14 +113,13 @@ pub fn call(
         }
         "result_set_filters" => {
             let p: SetFilters = parse(params)?;
-            let (view, cache) = store.view_mut(&p.view).map_err(err)?;
-            let errors = view.set_filters(p.filters, cache.backend(), CACHE_CAPS)?;
+            let errors = store.set_filters(&p.view, p.filters)?;
+            let (view, _) = store.view_mut(&p.view).map_err(err)?;
             Ok(json!({ "num_rows": view.selected_rows, "errors": errors }))
         }
         "result_set_sort" => {
             let p: SetSort = parse(params)?;
-            let (view, cache) = store.view_mut(&p.view).map_err(err)?;
-            view.set_sort(p.keys, cache.backend())?;
+            store.set_sort(&p.view, p.keys)?;
             Ok(json!({}))
         }
         "result_page" => {
@@ -137,7 +143,7 @@ pub fn call(
             let p: ViewOnly = parse(params)?;
             let query = store.query_of(&p.view).map_err(err)?.to_string();
             let (view, _) = store.view_mut(&p.view).map_err(err)?;
-            let sql = view.to_sql(&query, session.reader.dialect(), session.caps);
+            let sql = view.to_sql(&query, session.reader.dialect());
             Ok(json!({ "sql": sql }))
         }
         "result_close" => {
@@ -159,18 +165,18 @@ mod tests {
         let df = session
             .execute_sql("SELECT i AS n, 'x' || i AS s FROM range(5) t(i)")
             .unwrap();
-        let mut store = ResultStore::new(4).unwrap();
-        let key = store.insert(df, "Query [1]".into(), "SELECT * FROM t;".into());
+        let mut store = ResultStore::new(super::super::DEFAULT_MAX_BYTES).unwrap();
+        let key = store
+            .insert(df, "Query [1]".into(), "SELECT * FROM t;".into())
+            .unwrap()
+            .unwrap();
         (store, session, key)
     }
 
     #[test]
     fn test_a_round_trip_through_the_calls() {
         let (mut store, reader, key) = setup();
-        let session = Session {
-            reader: &*reader,
-            caps: Capabilities { regex: true },
-        };
+        let session = Session { reader: &*reader };
         let mut call = |m: &str, p: Value| call(&mut store, &session, m, &p);
 
         // Positional arguments, as `callMethod` sends them.
@@ -217,6 +223,22 @@ mod tests {
             ]
         );
 
+        let profile = call(
+            "result_profile",
+            json!({"view": view, "column": 0, "profiles": {"null_count": true, "summary": true}}),
+        )
+        .unwrap();
+        assert_eq!(profile["null_count"], 0);
+        assert_eq!(profile["summary"]["min"], "2");
+        assert_eq!(profile["summary"]["max"], "4");
+
+        let export = call(
+            "result_export",
+            json!({"view": view, "rows": {"indices": [1, 0]}, "columns": [0, 1], "format": "tsv"}),
+        )
+        .unwrap();
+        assert_eq!(export["data"], "n\ts\n3\tx3\n4\tx4");
+
         assert_eq!(
             call("result_close", json!({ "view": view })).unwrap(),
             json!({})
@@ -230,12 +252,32 @@ mod tests {
     }
 
     #[test]
+    fn test_the_session_database_is_untouched() {
+        let (mut store, reader, key) = setup();
+        let session = Session { reader: &*reader };
+        let tables = || {
+            reader
+                .execute_sql("SELECT table_name FROM duckdb_tables()")
+                .unwrap()
+                .height()
+        };
+        let before = tables();
+        let opened = call(&mut store, &session, "result_open", &json!({ "key": key })).unwrap();
+        let view = opened["view"].as_str().unwrap();
+        call(
+            &mut store,
+            &session,
+            "result_set_sort",
+            &json!({"view": view, "keys": [{"column": 0, "ascending": false}]}),
+        )
+        .unwrap();
+        assert_eq!(tables(), before);
+    }
+
+    #[test]
     fn test_bad_params_and_unknown_methods_are_errors() {
         let (mut store, reader, _) = setup();
-        let session = Session {
-            reader: &*reader,
-            caps: Capabilities { regex: false },
-        };
+        let session = Session { reader: &*reader };
         assert!(call(&mut store, &session, "result_open", &json!({}))
             .unwrap_err()
             .contains("Invalid parameters"));

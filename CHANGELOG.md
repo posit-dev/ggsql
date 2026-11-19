@@ -25,12 +25,12 @@ determines whether text boxes get drawn and additional settings `padding`,
   automatically discover how to write and run ggsql queries (#536).
 - In a Positron console, a query result can be opened in the Data Explorer
   from an "Open in Data Explorer" link under its table, with sorting,
-  filtering, profiles, export and Convert to Code. Long results show their
-  first 10 rows in the console, configurable with `ggsql.consoleRows`. The
-  kernel serves this through a frontend-neutral results API, reached with
-  `call_method` on the UI comm, which keeps opened results in an in-memory
-  cache of its own and never changes the session's reader or dialect
-  (posit-dev/positron#16137).
+  filtering, profiles, export and Convert to Code. The kernel serves this
+  through a frontend-neutral results API, reached with `call_method` on the
+  UI comm and turned on by the frontend (`--keep-results`), which keeps
+  results in an in-memory cache of its own within one byte budget
+  (`--results-max-bytes`, default 1 GB) and never changes the session's
+  reader or dialect (#595).
 
 ### Changed
 
@@ -48,6 +48,10 @@ determines whether text boxes get drawn and additional settings `padding`,
 - The CLI now always prints query warnings (e.g. extra `VISUALISE`/`TABULATE`
   statements being ignored) to stderr, not only with `-v`.
 - Replaced `CLAUDE.md` files with `AGENTS.md` files.
+- A Positron console now shows a long query result's first 10 rows, followed
+  by a count of the rest, rather than up to 100; a result of up to 20 rows is
+  still shown whole. The number is set by the `ggsql.consoleRows` setting
+  (#595).
 
 ### Fixed
 

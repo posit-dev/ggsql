@@ -50,12 +50,20 @@ function result(id: string, key?: unknown): Message {
 function fakeSession(sessionMode: string) {
 	const messages = new vscode.EventEmitter<positron.LanguageRuntimeMessage>();
 	const ended = new vscode.EventEmitter<positron.LanguageRuntimeExit>();
+	const state = new vscode.EventEmitter<positron.RuntimeState>();
+	const calls: string[] = [];
 	let disposed = false;
 	const session = {
 		metadata: { sessionId: 'ggsql-abc', sessionMode },
 		onDidReceiveRuntimeMessage: messages.event,
 		onDidEndSession: ended.event,
-		callMethod: async () => ({}),
+		onDidChangeRuntimeState: state.event,
+		callMethod: async (method: string) => {
+			calls.push(method);
+			return method === 'result_open'
+				? { view: 'v1', key: '0f9e', title: 'Query [1]', query: '', columns: [], num_rows: 1 }
+				: {};
+		},
 		dispose() {
 			disposed = true;
 		},
@@ -67,9 +75,14 @@ function fakeSession(sessionMode: string) {
 		session: session as unknown as positron.LanguageRuntimeSession,
 		raw: session,
 		fire: (m: positron.LanguageRuntimeMessage) => messages.fire(m),
+		end: () => ended.fire({ reason: 'restart' } as positron.LanguageRuntimeExit),
+		setState: (s: string) => state.fire(s as positron.RuntimeState),
+		calls,
 		disposed: () => disposed,
 	};
 }
+
+const tick = () => new Promise(resolve => setTimeout(resolve, 0));
 
 function received(sessionMode: string, input: Message[]): Message[] {
 	const fake = fakeSession(sessionMode);
@@ -123,6 +136,68 @@ suite('withResultLinks', () => {
 		assert.strictEqual(await wrapped.openResource!('https://ggsql.org'), false);
 		wrapped.dispose();
 		assert.ok(fake.disposed());
+	});
+
+	test('clicking a link opens a view and shows it under the result\'s title', async () => {
+		const fake = fakeSession('console');
+		const shown: object[] = [];
+		const wrapped = withResultLinks(fake.session, new ResultExplorer(() => { }), async options => {
+			shown.push(options);
+		});
+		assert.strictEqual(await wrapped.openResource!('x-ggsql-result:ggsql-abc/0f9e'), true);
+		await tick();
+		assert.deepStrictEqual(fake.calls, ['result_open']);
+		assert.deepStrictEqual(shown, [{ providerId: 'ggsql', datasetId: 'ggsql:ggsql-abc/0f9e', displayName: 'Query [1]' }]);
+		wrapped.dispose();
+	});
+
+	test('a view whose Data Explorer fails to open is closed again', async () => {
+		const fake = fakeSession('console');
+		const wrapped = withResultLinks(fake.session, new ResultExplorer(() => { }), async () => {
+			throw new Error('no editor');
+		});
+		await wrapped.openResource!('x-ggsql-result:ggsql-abc/0f9e');
+		await tick();
+		await tick();
+		assert.deepStrictEqual(fake.calls, ['result_open', 'result_close']);
+		wrapped.dispose();
+	});
+
+	test('a link reopens a result whose Data Explorer was closed', async () => {
+		const fake = fakeSession('console');
+		const explorer = new ResultExplorer(() => { });
+		const wrapped = withResultLinks(fake.session, explorer, async () => { });
+		await wrapped.openResource!('x-ggsql-result:ggsql-abc/0f9e');
+		await tick();
+		explorer.closeDataset('ggsql:ggsql-abc/0f9e');
+		await tick();
+		await wrapped.openResource!('x-ggsql-result:ggsql-abc/0f9e');
+		await tick();
+		assert.deepStrictEqual(fake.calls, ['result_open', 'result_close', 'result_open']);
+		wrapped.dispose();
+	});
+
+	test('a session that ended answers at once, and again once it is ready', async () => {
+		const fake = fakeSession('console');
+		const events: string[] = [];
+		const explorer = new ResultExplorer(e => events.push(e.method));
+		const wrapped = withResultLinks(fake.session, explorer, async () => { });
+		const getState = () => explorer.handleRpc({ method: 'get_state', uri: 'ggsql:ggsql-abc/0f9e', params: {} });
+		await getState();
+
+		fake.end();
+		assert.deepStrictEqual(events, ['schema_update']);
+		const down = (await getState()).result as Record<string, unknown>;
+		assert.strictEqual(down.connected, false);
+		assert.match(String(down.error_message), /not running/);
+		assert.deepStrictEqual(fake.calls, ['result_open']);
+
+		fake.setState('ready');
+		assert.deepStrictEqual(events, ['schema_update', 'schema_update']);
+		const up = (await getState()).result as Record<string, unknown>;
+		assert.notStrictEqual(up.connected, false);
+		assert.deepStrictEqual(fake.calls, ['result_open', 'result_open']);
+		wrapped.dispose();
 	});
 
 	test('resultKey reads only result messages', () => {

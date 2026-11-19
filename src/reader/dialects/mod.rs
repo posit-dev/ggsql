@@ -303,6 +303,26 @@ mod tests {
         );
     }
 
+    #[test]
+    fn regex_match_only_where_the_backend_has_one() {
+        let duckdb = dialect_for_scheme("duckdb").unwrap();
+        assert_eq!(
+            duckdb.sql_regex_match("c", "'^a'", false).as_deref(),
+            Some("regexp_matches(c, '^a', 'i')")
+        );
+        assert_eq!(
+            dialect_for_scheme("postgres")
+                .unwrap()
+                .sql_regex_match("c", "'^a'", true)
+                .as_deref(),
+            Some("c ~ '^a'")
+        );
+        assert!(dialect_for_scheme("mysql")
+            .unwrap()
+            .sql_regex_match("c", "'^a'", true)
+            .is_none());
+    }
+
     /// Contract for the quantile hook: callers pass the raw (unquoted)
     /// column name and the dialect quotes it. A name needing quoting must
     /// appear quoted — interpolating it raw breaks on any real column whose

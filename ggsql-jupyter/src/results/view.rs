@@ -6,8 +6,11 @@
 //! position in the view. A page then joins that small table back to the
 //! result, so scrolling never sorts again. An unfiltered, unsorted view needs
 //! no order table: its positions are the `ROW` values themselves.
+//!
+//! A new sort or set of filters builds its order table under a new name and
+//! only then replaces the old one, so one that fails leaves the view as it was.
 
-use super::filter::{self, Capabilities, Filter, SortKey};
+use super::filter::{self, Filter, SortKey};
 use super::{export, Column, ROW};
 use ggsql::naming::quote_ident;
 use ggsql::reader::Reader;
@@ -15,24 +18,29 @@ use ggsql::sql::FromItem;
 use ggsql::DataFrame;
 use serde::Deserialize;
 use serde_json::{json, Value};
+use std::collections::HashMap;
+
+/// The most rows one page may ask for. The Data Explorer asks for a screenful.
+pub const MAX_PAGE_ROWS: usize = 10_000;
+
+/// Bytes an order table holds per row: two 64-bit integers.
+pub const ORDER_ROW_BYTES: u64 = 16;
 
 /// The rows of a view to read.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(untagged)]
 pub enum Rows {
-    /// `first..=last`.
+    /// `first..=last`. Rows past the end of the view are not returned.
     Range { first: usize, last: usize },
-    /// These positions, in this order.
+    /// These positions, in this order. Each must be in the view.
     Indices { indices: Vec<usize> },
 }
 
-impl Rows {
-    fn positions(&self) -> Vec<usize> {
-        match self {
-            Rows::Range { first, last } => (*first..=*last).collect(),
-            Rows::Indices { indices } => indices.clone(),
-        }
-    }
+/// Which of a view's rows to fetch.
+enum Fetch<'a> {
+    All,
+    Range(usize, usize),
+    Positions(&'a [usize]),
 }
 
 /// Which profiles to compute for a column.
@@ -72,12 +80,14 @@ fn default_limit() -> usize {
 pub struct ResultView {
     /// The result this views.
     pub key: String,
+    /// The view's id, which its order tables are named after.
+    id: String,
     /// The result table, quoted.
     table: String,
-    /// The order table's name, used once the view is filtered or sorted.
-    order_name: String,
-    /// Whether the order table exists.
-    ordered: bool,
+    /// The order table, once the view is filtered or sorted.
+    order: Option<String>,
+    /// How many order tables this view has built, for the next one's name.
+    built: usize,
     pub columns: Vec<Column>,
     /// Rows in the result.
     pub num_rows: usize,
@@ -96,9 +106,10 @@ impl ResultView {
     pub fn new(key: &str, id: &str, table: &str, columns: Vec<Column>, num_rows: usize) -> Self {
         Self {
             key: key.to_string(),
+            id: id.to_string(),
             table: quote_ident(table),
-            order_name: format!("__ggsql_view_{id}__"),
-            ordered: false,
+            order: None,
+            built: 0,
             columns,
             num_rows,
             selected_rows: num_rows,
@@ -107,6 +118,20 @@ impl ResultView {
             predicate: None,
             sort: Vec::new(),
         }
+    }
+
+    /// The bytes the view's order table holds.
+    pub fn order_bytes(&self) -> u64 {
+        if self.order.is_some() {
+            self.selected_rows as u64 * ORDER_ROW_BYTES
+        } else {
+            0
+        }
+    }
+
+    /// The most bytes an order table of this view can hold.
+    pub fn max_order_bytes(&self) -> u64 {
+        self.num_rows as u64 * ORDER_ROW_BYTES
     }
 
     /// The result table filtered, as a `FROM` item, for the queries that
@@ -123,17 +148,17 @@ impl ResultView {
 
     /// Set the row filters, returning an error message per filter (`None` for
     /// a valid one). A filter that cannot be built, or that the database
-    /// rejects, is left out rather than failing the rest.
+    /// rejects, is left out rather than failing the rest. If the view cannot
+    /// be rebuilt with them, it is left as it was and the error returned.
     pub fn set_filters(
         &mut self,
         filters: Vec<Filter>,
         reader: &dyn Reader,
-        caps: Capabilities,
     ) -> Result<Vec<Option<String>>, String> {
         let mut errors: Vec<Option<String>> = vec![None; filters.len()];
         let mut built = Vec::new();
         for (i, f) in filters.iter().enumerate() {
-            match filter::predicate(f, &self.columns, reader.dialect(), caps) {
+            match filter::predicate(f, &self.columns, reader.dialect()) {
                 Ok(p) => built.push((i, p)),
                 Err(e) => errors[i] = Some(e),
             }
@@ -159,35 +184,44 @@ impl ResultView {
             });
         }
 
+        let predicate = combine(&built);
+        self.rebuild(reader, predicate.clone(), &self.sort.clone())?;
         self.filters = filters;
         self.rejected = errors.clone();
-        self.predicate = combine(&built);
-        self.rebuild(reader)?;
+        self.predicate = predicate;
         Ok(errors)
     }
 
-    /// Set the sort keys.
+    /// Set the sort keys. If the view cannot be rebuilt with them, it is left
+    /// as it was and the error returned.
     pub fn set_sort(&mut self, keys: Vec<SortKey>, reader: &dyn Reader) -> Result<(), String> {
-        filter::order_terms(&keys, &self.columns)?;
+        filter::order_terms(&keys, &self.columns, reader.dialect())?;
+        self.rebuild(reader, self.predicate.clone(), &keys)?;
         self.sort = keys;
-        self.rebuild(reader)
+        Ok(())
     }
 
-    /// Rebuild the order table for the current filters and sort, and count
-    /// the rows they select.
-    fn rebuild(&mut self, reader: &dyn Reader) -> Result<(), String> {
-        self.drop_order(reader);
-        if self.predicate.is_none() && self.sort.is_empty() {
+    /// Build the order table for `predicate` and `sort`, then replace the
+    /// view's with it and count the rows it selects. On an error the view is
+    /// unchanged.
+    fn rebuild(
+        &mut self,
+        reader: &dyn Reader,
+        predicate: Option<String>,
+        sort: &[SortKey],
+    ) -> Result<(), String> {
+        if predicate.is_none() && sort.is_empty() {
+            self.drop_order(reader);
             self.selected_rows = self.num_rows;
             return Ok(());
         }
 
         // Ties break on the query's own order, so paging is stable and clearing
         // the sort restores it.
-        let mut terms = filter::order_terms(&self.sort, &self.columns)?;
+        let dialect = reader.dialect();
+        let mut terms = filter::order_terms(sort, &self.columns, dialect)?;
         terms.push(quote_ident(ROW));
-        let filter = self
-            .predicate
+        let filter = predicate
             .as_ref()
             .map(|p| format!(" WHERE {p}"))
             .unwrap_or_default();
@@ -197,22 +231,33 @@ impl ResultView {
             self.table,
             row = quote_ident(ROW),
         );
-        let dialect = reader.dialect();
-        for stmt in dialect.create_or_replace_temp_table_sql(&self.order_name, &[], &body) {
-            reader.execute_sql(&stmt).map_err(|e| e.to_string())?;
-        }
-        self.ordered = true;
-        self.selected_rows = count_rows(reader, &quote_ident(&self.order_name), None)?;
+        let name = format!("__ggsql_view_{}_{}__", self.id, self.built);
+        let built = (|| {
+            for stmt in dialect.create_or_replace_temp_table_sql(&name, &[], &body) {
+                reader.execute_sql(&stmt).map_err(|e| e.to_string())?;
+            }
+            count_rows(reader, &quote_ident(&name), None)
+        })();
+        let selected = match built {
+            Ok(n) => n,
+            Err(e) => {
+                let _ = reader.execute_sql(&dialect.drop_table_sql(&name));
+                return Err(e);
+            }
+        };
+        self.drop_order(reader);
+        self.built += 1;
+        self.order = Some(name);
+        self.selected_rows = selected;
         Ok(())
     }
 
     fn drop_order(&mut self, reader: &dyn Reader) {
-        if self.ordered {
-            let sql = reader.dialect().drop_table_sql(&self.order_name);
+        if let Some(name) = self.order.take() {
+            let sql = reader.dialect().drop_table_sql(&name);
             if let Err(e) = reader.execute_sql(&sql) {
-                tracing::warn!("Failed to drop {}: {}", self.order_name, e);
+                tracing::warn!("Failed to drop {}: {}", name, e);
             }
-            self.ordered = false;
         }
     }
 
@@ -221,12 +266,13 @@ impl ResultView {
         self.drop_order(reader);
     }
 
-    /// Read the view's rows `first..=last`, or every row, for `cols`.
+    /// Read `which` of the view's rows for `cols`, in the view's order, each
+    /// with its position as the frame's first column.
     fn fetch(
         &self,
         reader: &dyn Reader,
         cols: &[usize],
-        span: Option<(usize, usize)>,
+        which: Fetch,
     ) -> Result<DataFrame, String> {
         let names = cols
             .iter()
@@ -237,31 +283,95 @@ impl ResultView {
                     .ok_or_else(|| format!("There is no column {i}"))
             })
             .collect::<Result<Vec<_>, _>>()?;
-        if names.is_empty() {
-            return Ok(DataFrame::empty());
-        }
         let row = quote_ident(ROW);
-        let sql = if self.ordered {
-            let range = span
-                .map(|(a, b)| format!(" WHERE o.\"pos\" BETWEEN {a} AND {b}"))
-                .unwrap_or_default();
-            format!(
-                "SELECT {} FROM {} AS o JOIN {} AS t ON t.{row} = o.{row}{range} ORDER BY o.\"pos\"",
-                names.join(", "),
-                quote_ident(&self.order_name),
-                self.table,
-            )
-        } else {
-            let range = span
-                .map(|(a, b)| format!(" WHERE t.{row} BETWEEN {a} AND {b}"))
-                .unwrap_or_default();
-            format!(
-                "SELECT {} FROM {} AS t{range} ORDER BY t.{row}",
-                names.join(", "),
-                self.table,
-            )
+        let (pos, from) = match &self.order {
+            Some(order) => (
+                "o.\"pos\"".to_string(),
+                format!(
+                    "{} AS o JOIN {} AS t ON t.{row} = o.{row}",
+                    quote_ident(order),
+                    self.table
+                ),
+            ),
+            None => (format!("t.{row}"), format!("{} AS t", self.table)),
         };
+        let filter = match which {
+            Fetch::All => String::new(),
+            Fetch::Range(a, b) => format!(" WHERE {pos} BETWEEN {a} AND {b}"),
+            Fetch::Positions(list) => {
+                let list: Vec<String> = list.iter().map(usize::to_string).collect();
+                format!(" WHERE {pos} IN ({})", list.join(", "))
+            }
+        };
+        let select: Vec<String> = std::iter::once(format!("{pos} AS \"__ggsql_pos__\""))
+            .chain(names)
+            .collect();
+        let sql = format!(
+            "SELECT {} FROM {from}{filter} ORDER BY {pos}",
+            select.join(", ")
+        );
         reader.execute_sql(&sql).map_err(|e| e.to_string())
+    }
+
+    /// The frame rows for `rows`, in order: a range is cut short at the end of
+    /// the view, and a position outside it is an error rather than a row that
+    /// lands in another's place.
+    fn fetch_rows(
+        &self,
+        reader: &dyn Reader,
+        cols: &[usize],
+        rows: &Rows,
+    ) -> Result<(DataFrame, Vec<usize>), String> {
+        let n = self.selected_rows;
+        match rows {
+            Rows::Range { first, last } => {
+                let last = (*last).min(n.saturating_sub(1));
+                if n == 0 || first > &last {
+                    return Ok((DataFrame::empty(), Vec::new()));
+                }
+                if last - first + 1 > MAX_PAGE_ROWS {
+                    return Err(too_many(last - first + 1));
+                }
+                let df = self.fetch(reader, cols, Fetch::Range(*first, last))?;
+                let picked = (0..df.height()).collect();
+                Ok((df, picked))
+            }
+            Rows::Indices { indices } => {
+                if indices.len() > MAX_PAGE_ROWS {
+                    return Err(too_many(indices.len()));
+                }
+                if let Some(bad) = indices.iter().find(|&&i| i >= n) {
+                    return Err(format!(
+                        "Row {bad} is past the end of the view, which has {n}"
+                    ));
+                }
+                if indices.is_empty() {
+                    return Ok((DataFrame::empty(), Vec::new()));
+                }
+                let mut unique = indices.clone();
+                unique.sort_unstable();
+                unique.dedup();
+                let df = self.fetch(reader, cols, Fetch::Positions(&unique))?;
+                let pos = df.column("__ggsql_pos__").map_err(|e| e.to_string())?;
+                let at: HashMap<usize, usize> = (0..df.height())
+                    .filter_map(|r| {
+                        ggsql::array_util::value_to_string(pos, r)
+                            .parse::<usize>()
+                            .ok()
+                            .map(|p| (p, r))
+                    })
+                    .collect();
+                let picked = indices
+                    .iter()
+                    .map(|i| {
+                        at.get(i)
+                            .copied()
+                            .ok_or_else(|| format!("Row {i} was not found"))
+                    })
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok((df, picked))
+            }
+        }
     }
 
     /// The cells at `rows` of each of `cols`, as `columns[col][row]`: a string,
@@ -272,22 +382,14 @@ impl ResultView {
         rows: &Rows,
         cols: &[usize],
     ) -> Result<Vec<Vec<Value>>, String> {
-        let positions = rows.positions();
-        let (Some(&first), Some(&last)) = (positions.iter().min(), positions.iter().max()) else {
+        let (df, picked) = self.fetch_rows(reader, cols, rows)?;
+        if picked.is_empty() {
             return Ok(vec![Vec::new(); cols.len()]);
-        };
-        let df = self.fetch(reader, cols, Some((first, last)))?;
-        Ok(df
-            .get_columns()
+        }
+        // The first column is each row's position.
+        Ok(df.get_columns()[1..]
             .iter()
-            .map(|col| {
-                positions
-                    .iter()
-                    .map(|&r| r - first)
-                    .filter(|&r| r < df.height())
-                    .map(|r| cell_value(col, r))
-                    .collect()
-            })
+            .map(|col| picked.iter().map(|&r| cell_value(col, r)).collect())
             .collect())
     }
 
@@ -300,41 +402,29 @@ impl ResultView {
         cols: &[usize],
         format: &str,
     ) -> Result<String, String> {
-        let (df, picked): (DataFrame, Vec<usize>) = match rows {
+        let (df, picked) = match rows {
             None => {
-                let df = self.fetch(reader, cols, None)?;
+                let df = self.fetch(reader, cols, Fetch::All)?;
                 let n = df.height();
                 (df, (0..n).collect())
             }
-            Some(rows) => {
-                let positions = rows.positions();
-                let first = positions.iter().min().copied().unwrap_or(0);
-                let last = positions.iter().max().copied().unwrap_or(0);
-                let df = self.fetch(reader, cols, Some((first, last)))?;
-                let n = df.height();
-                let picked = positions
-                    .iter()
-                    .map(|r| r - first)
-                    .filter(|&r| r < n)
-                    .collect();
-                (df, picked)
-            }
+            Some(rows) => self.fetch_rows(reader, cols, rows)?,
         };
         let cells: Vec<Vec<String>> = picked
             .iter()
-            .map(|&r| df.get_columns().iter().map(|c| cell_string(c, r)).collect())
+            .map(|&r| {
+                df.get_columns()[1..]
+                    .iter()
+                    .map(|c| cell_string(c, r))
+                    .collect()
+            })
             .collect();
         let header: Vec<String> = cols.iter().map(|&i| self.columns[i].name.clone()).collect();
         export::format(Some(&header), &cells, format)
     }
 
     /// SQL for `dialect` reproducing this view over the result's `query`.
-    pub fn to_sql(
-        &self,
-        query: &str,
-        dialect: &dyn ggsql::reader::SqlDialect,
-        caps: Capabilities,
-    ) -> Vec<String> {
+    pub fn to_sql(&self, query: &str, dialect: &dyn ggsql::reader::SqlDialect) -> Vec<String> {
         // Only the filters the view applies: one the cache rejected would make
         // the SQL fail, or select rows the view does not show.
         let mut applied = Vec::new();
@@ -348,10 +438,9 @@ impl ResultView {
         lines.extend(filter::to_sql(
             &applied,
             &self.sort,
-            &filter::subquery(query),
+            query,
             &self.columns,
             dialect,
-            caps,
         ));
         lines
     }
@@ -626,6 +715,10 @@ impl ResultView {
         let other = total - counts.iter().sum::<i64>();
         Some(json!({ "values": values, "counts": counts, "other_count": other }))
     }
+}
+
+fn too_many(n: usize) -> String {
+    format!("A page can hold at most {MAX_PAGE_ROWS} rows, not {n}")
 }
 
 /// `SELECT COUNT(*)` over `table`, filtered by `predicate` when given.

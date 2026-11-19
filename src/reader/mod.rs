@@ -450,6 +450,14 @@ pub trait SqlDialect {
         }
     }
 
+    /// Whether `expr` matches the regular expression in the SQL string
+    /// literal `pattern`, or `None` when the backend has no regular
+    /// expressions. Default `None`.
+    fn sql_regex_match(&self, expr: &str, pattern: &str, case_sensitive: bool) -> Option<String> {
+        let _ = (expr, pattern, case_sensitive);
+        None
+    }
+
     // =====================================================================
     // Statement generators and DDL
     // =====================================================================

@@ -119,7 +119,7 @@ fn now_ms() -> i64 {
 
 /// Estimate the in-memory size of a DataFrame as the sum of its Arrow columns'
 /// memory footprints.
-fn estimate_bytes(df: &DataFrame) -> i64 {
+pub fn estimate_bytes(df: &DataFrame) -> i64 {
     df.get_columns()
         .iter()
         .map(|col| col.get_array_memory_size())
@@ -138,7 +138,8 @@ pub struct MemoEntry {
 /// `__ggsql_cache_meta__` table, which records its size and when it was last
 /// used. Once the entries' total size passes the budget the least recently
 /// used are dropped, except entries that are **pinned**: those stay until
-/// unpinned, even past the budget.
+/// unpinned, even past the budget. Pins are kept here rather than in the
+/// metadata table, so they never show in it.
 ///
 /// [`CachingReader`] keeps memoized reads here, keyed by a hash of their SQL,
 /// and never pins. Other callers can keep tables in a `CacheTables` of their
@@ -147,28 +148,23 @@ pub struct MemoEntry {
 pub struct CacheTables {
     /// The in-memory backend holding the tables and the metadata table.
     backend: Box<dyn Reader + Send>,
-    /// TTL + byte-budget configuration. Checking the TTL is the caller's job.
-    config: CacheConfig,
+    /// The byte budget `put` and unpinning evict to.
+    max_bytes: u64,
+    /// Keys of the pinned entries.
+    pinned: RefCell<HashSet<String>>,
     /// Whether the metadata table has been created in the backend.
     meta_ready: Cell<bool>,
 }
 
 impl CacheTables {
-    pub fn new(backend: Box<dyn Reader + Send>, config: CacheConfig) -> Self {
+    /// Tables in `backend`, evicted to `max_bytes`.
+    pub fn new(backend: Box<dyn Reader + Send>, max_bytes: u64) -> Self {
         Self {
             backend,
-            config,
+            max_bytes,
+            pinned: RefCell::new(HashSet::new()),
             meta_ready: Cell::new(false),
         }
-    }
-
-    /// A `CacheTables` on a fresh in-memory backend: DuckDB when the `duckdb`
-    /// feature is compiled in, SQLite otherwise.
-    #[cfg(any(feature = "duckdb", feature = "sqlite"))]
-    pub fn in_memory(config: CacheConfig) -> Result<Self> {
-        use crate::reader::connection::{build_reader, cache_uri, default_cache_scheme};
-        let backend = build_reader(cache_uri(default_cache_scheme())?)?;
-        Ok(Self::new(backend, config))
     }
 
     /// The backend holding the tables, for queries over them.
@@ -176,23 +172,16 @@ impl CacheTables {
         &*self.backend
     }
 
-    /// The active configuration.
-    pub fn config(&self) -> &CacheConfig {
-        &self.config
-    }
-
     /// Create the metadata table in the backend if it doesn't exist yet.
-    pub fn ensure_meta_table(&self) -> Result<()> {
+    fn ensure_meta_table(&self) -> Result<()> {
         if self.meta_ready.get() {
             return Ok(());
         }
-        // `pinned` is an integer rather than a BOOLEAN so the same DDL and
-        // comparisons work on every cache backend.
         let sql = format!(
             "CREATE TABLE IF NOT EXISTS {} (\
              cache_key VARCHAR PRIMARY KEY, sql VARCHAR NOT NULL, table_name VARCHAR NOT NULL, \
              fetched_at_epoch_ms BIGINT NOT NULL, last_accessed_epoch_ms BIGINT NOT NULL, \
-             byte_estimate BIGINT NOT NULL, row_count BIGINT NOT NULL, pinned BIGINT NOT NULL)",
+             byte_estimate BIGINT NOT NULL, row_count BIGINT NOT NULL)",
             naming::quote_ident(naming::CACHE_META_TABLE)
         );
         self.backend.execute_sql(&sql)?;
@@ -235,13 +224,18 @@ impl CacheTables {
         let byte_estimate = estimate_bytes(&df);
         let row_count = df.height() as i64;
         self.backend.register(table, df, true)?;
-        if let Err(e) = self.insert_meta(key, sql, table, byte_estimate, row_count, pinned) {
+        if let Err(e) = self.insert_meta(key, sql, table, byte_estimate, row_count) {
             // The table registered but the meta row didn't: drop the orphan so
             // it can't leak, then surface the error.
             let _ = self.backend.unregister(table);
             return Err(e);
         }
-        self.evict_over_budget()
+        if pinned {
+            self.pinned.borrow_mut().insert(key.to_string());
+        } else {
+            self.pinned.borrow_mut().remove(key);
+        }
+        self.evict_to(self.max_bytes)
     }
 
     /// Record an entry in the metadata table.
@@ -252,7 +246,6 @@ impl CacheTables {
         table: &str,
         byte_estimate: i64,
         row_count: i64,
-        pinned: bool,
     ) -> Result<()> {
         let now = now_ms();
         // Upsert as DELETE + INSERT rather than INSERT OR REPLACE: the cache
@@ -268,8 +261,8 @@ impl CacheTables {
         let stmt = format!(
             "INSERT INTO {} \
              (cache_key, sql, table_name, fetched_at_epoch_ms, last_accessed_epoch_ms, \
-              byte_estimate, row_count, pinned) \
-             VALUES ({}, {}, {}, {}, {}, {}, {}, {})",
+              byte_estimate, row_count) \
+             VALUES ({}, {}, {}, {}, {}, {}, {})",
             naming::quote_ident(naming::CACHE_META_TABLE),
             naming::quote_literal(key),
             naming::quote_literal(sql),
@@ -278,14 +271,14 @@ impl CacheTables {
             now,
             byte_estimate,
             row_count,
-            i64::from(pinned),
         );
         self.backend.execute_sql(&stmt)?;
         Ok(())
     }
 
     /// Advance the last-accessed timestamp for `key` (LRU bookkeeping).
-    pub fn touch(&self, key: &str) -> Result<()> {
+    pub(crate) fn touch(&self, key: &str) -> Result<()> {
+        self.ensure_meta_table()?;
         let stmt = format!(
             "UPDATE {} SET last_accessed_epoch_ms = {} WHERE cache_key = {}",
             naming::quote_ident(naming::CACHE_META_TABLE),
@@ -300,23 +293,19 @@ impl CacheTables {
     /// Pinned entries are never evicted. Unpinning evicts over the budget,
     /// since the entry counts towards it again.
     pub fn set_pinned(&self, key: &str, pinned: bool) -> Result<()> {
-        self.ensure_meta_table()?;
-        let stmt = format!(
-            "UPDATE {} SET pinned = {}, last_accessed_epoch_ms = {} WHERE cache_key = {}",
-            naming::quote_ident(naming::CACHE_META_TABLE),
-            i64::from(pinned),
-            now_ms(),
-            naming::quote_literal(key),
-        );
-        self.backend.execute_sql(&stmt)?;
-        if !pinned {
-            self.evict_over_budget()?;
+        self.touch(key)?;
+        if pinned {
+            self.pinned.borrow_mut().insert(key.to_string());
+            Ok(())
+        } else {
+            self.pinned.borrow_mut().remove(key);
+            self.evict_to(self.max_bytes)
         }
-        Ok(())
     }
 
     /// Drop a single entry: unregister the table, then delete its meta row.
-    pub fn drop_entry(&self, key: &str, table: &str) -> Result<()> {
+    pub(crate) fn drop_entry(&self, key: &str, table: &str) -> Result<()> {
+        self.ensure_meta_table()?;
         self.backend.unregister(table)?;
         let del = format!(
             "DELETE FROM {} WHERE cache_key = {}",
@@ -324,33 +313,44 @@ impl CacheTables {
             naming::quote_literal(key),
         );
         self.backend.execute_sql(&del)?;
+        self.pinned.borrow_mut().remove(key);
         Ok(())
     }
 
-    /// Evict unpinned LRU entries until the cumulative byte estimate is within
-    /// `max_bytes`, or nothing unpinned is left.
-    pub fn evict_over_budget(&self) -> Result<()> {
+    /// The entries' total byte estimate, pinned ones included.
+    pub fn total_bytes(&self) -> Result<u64> {
+        self.ensure_meta_table()?;
         // Cast the SUM to BIGINT.
-        let sum_sql = format!(
+        let df = self.backend.execute_sql(&format!(
             "SELECT CAST(COALESCE(SUM(byte_estimate), 0) AS BIGINT) AS n FROM {}",
             naming::quote_ident(naming::CACHE_META_TABLE)
-        );
-        loop {
-            let df = self.backend.execute_sql(&sum_sql)?;
-            let total = if df.height() == 0 {
-                0
+        ))?;
+        let total = if df.height() == 0 {
+            0
+        } else {
+            as_i64(df.column("n")?)?.value(0)
+        };
+        Ok(total.max(0) as u64)
+    }
+
+    /// Evict unpinned entries, least recently used first, until the total
+    /// byte estimate is within `max_bytes` or nothing unpinned is left. A
+    /// caller with a budget wider than this cache's passes what it allows.
+    pub fn evict_to(&self, max_bytes: u64) -> Result<()> {
+        while self.total_bytes()? > max_bytes {
+            let pinned = self.pinned.borrow();
+            let exclude = if pinned.is_empty() {
+                String::new()
             } else {
-                as_i64(df.column("n")?)?.value(0)
+                let keys: Vec<String> = pinned.iter().map(|k| naming::quote_literal(k)).collect();
+                format!(" WHERE cache_key NOT IN ({})", keys.join(", "))
             };
-            if total <= self.config.max_bytes as i64 {
-                return Ok(());
-            }
-            let pick = format!(
-                "SELECT cache_key, table_name FROM {} WHERE pinned = 0 \
+            drop(pinned);
+            let df = self.backend.execute_sql(&format!(
+                "SELECT cache_key, table_name FROM {}{exclude} \
                  ORDER BY last_accessed_epoch_ms ASC LIMIT 1",
                 naming::quote_ident(naming::CACHE_META_TABLE)
-            );
-            let df = self.backend.execute_sql(&pick)?;
+            ))?;
             if df.height() == 0 {
                 return Ok(());
             }
@@ -358,10 +358,11 @@ impl CacheTables {
             let table = as_str(df.column("table_name")?)?.value(0).to_string();
             self.drop_entry(&key, &table)?;
         }
+        Ok(())
     }
 
     /// Drop every entry, one at a time.
-    pub fn clear(&self) -> Result<()> {
+    pub(crate) fn clear(&self) -> Result<()> {
         self.ensure_meta_table()?;
         let df = self.backend.execute_sql(&format!(
             "SELECT cache_key, table_name FROM {}",
@@ -398,6 +399,8 @@ pub struct CachingReader {
     /// In-memory writeable cache: derived tables, registered data, memoized
     /// reads, and the memo's bookkeeping.
     tables: CacheTables,
+    /// TTL and byte-budget configuration of the memo.
+    config: CacheConfig,
     /// Connection URI of the primary.
     primary_uri: String,
     /// Scheme of the cache backend as spelled in the connection URI.
@@ -442,7 +445,8 @@ impl CachingReader {
     ) -> Self {
         Self {
             primary,
-            tables: CacheTables::new(cache, config),
+            tables: CacheTables::new(cache, config.max_bytes),
+            config,
             primary_uri: primary_uri.into(),
             cache_scheme: cache_scheme.into(),
             resident: RefCell::new(HashSet::new()),
@@ -451,7 +455,7 @@ impl CachingReader {
 
     /// The active cache configuration.
     pub fn cache_config(&self) -> &CacheConfig {
-        self.tables.config()
+        &self.config
     }
 
     /// The cache backend.
@@ -514,7 +518,7 @@ impl Reader for CachingReader {
         }
 
         // With caching disabled the memo is never consulted or written.
-        if !self.tables.config().enabled {
+        if !self.config.enabled {
             return self.primary.execute_sql(sql);
         }
 
@@ -524,7 +528,7 @@ impl Reader for CachingReader {
         // it and fall through to a primary re-fetch.
         if let Some(entry) = self.tables.lookup(&key)? {
             let age_ms = (now_ms() - entry.fetched_at_epoch_ms).max(0);
-            let ttl_ms = (self.tables.config().ttl_secs as i64).saturating_mul(1000);
+            let ttl_ms = (self.config.ttl_secs as i64).saturating_mul(1000);
             if age_ms < ttl_ms {
                 let select = format!("SELECT * FROM {}", naming::quote_ident(&entry.table_name));
                 if let Ok(df) = self.cache().execute_sql(&select) {
@@ -1418,14 +1422,7 @@ mod behavior_tests {
     }
 
     fn tiny_budget_tables() -> CacheTables {
-        CacheTables::new(
-            Box::new(DuckDBReader::new_in_memory().unwrap()),
-            CacheConfig {
-                enabled: true,
-                ttl_secs: 300,
-                max_bytes: 1,
-            },
-        )
+        CacheTables::new(Box::new(DuckDBReader::new_in_memory().unwrap()), 1)
     }
 
     #[test]
@@ -1458,6 +1455,55 @@ mod behavior_tests {
             .backend()
             .execute_sql("SELECT x FROM __t_a__")
             .is_err());
+    }
+
+    #[test]
+    fn test_a_fresh_cache_answers_every_call() {
+        // Each call sets up the metadata table itself.
+        let tables = CacheTables::new(Box::new(DuckDBReader::new_in_memory().unwrap()), 1);
+        assert_eq!(tables.total_bytes().unwrap(), 0);
+        tables.touch("nothing").unwrap();
+        tables.set_pinned("nothing", true).unwrap();
+        tables.evict_to(0).unwrap();
+        assert!(tables.lookup("nothing").unwrap().is_none());
+    }
+
+    #[test]
+    fn test_pins_stay_out_of_the_metadata_table() {
+        let tables = CacheTables::new(Box::new(DuckDBReader::new_in_memory().unwrap()), u64::MAX);
+        tables
+            .put(
+                "a",
+                "a",
+                "__t_a__",
+                df! { "x" => vec![1_i64] }.unwrap(),
+                true,
+            )
+            .unwrap();
+        let meta = tables
+            .backend()
+            .execute_sql(&format!(
+                "SELECT * FROM {}",
+                naming::quote_ident(naming::CACHE_META_TABLE)
+            ))
+            .unwrap();
+        assert!(!meta.get_column_names().iter().any(|c| c == "pinned"));
+    }
+
+    #[test]
+    fn test_evict_to_a_caller_budget_counts_pinned_entries_but_keeps_them() {
+        let tables = CacheTables::new(Box::new(DuckDBReader::new_in_memory().unwrap()), u64::MAX);
+        let frame = || df! { "x" => vec![1_i64, 2, 3] }.unwrap();
+        tables.put("a", "a", "__t_a__", frame(), true).unwrap();
+        tables.put("b", "b", "__t_b__", frame(), false).unwrap();
+        let both = tables.total_bytes().unwrap();
+        assert!(both > 0);
+
+        tables.evict_to(0).unwrap();
+        assert!(tables.lookup("a").unwrap().is_some());
+        assert!(tables.lookup("b").unwrap().is_none());
+        // What is left is the pinned entry, still counted.
+        assert!(tables.total_bytes().unwrap() > 0 && tables.total_bytes().unwrap() < both);
     }
 
     #[test]

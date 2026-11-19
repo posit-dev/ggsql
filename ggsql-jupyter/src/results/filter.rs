@@ -1,19 +1,16 @@
 //! Row filters and sort keys over a result's columns, and the SQL for them.
 //!
-//! Everything here builds from the request and the result's schema, with no
-//! database, so it is tested as plain string assembly.
+//! Everything here builds from the request, the result's schema and a
+//! [`SqlDialect`], with no database, so it is tested as plain string assembly.
+//! The same code writes SQL for the results cache, to filter and sort a view,
+//! and for the session's own database, for `result_sql`: identifiers,
+//! booleans and regular expressions all come from the dialect it is given.
 
 use super::Column;
-use ggsql::naming::{quote_ident, quote_literal};
+use ggsql::naming::quote_literal;
+use ggsql::parser::SourceTree;
 use ggsql::reader::SqlDialect;
 use serde::{Deserialize, Serialize};
-
-/// What a database can do beyond the SQL every backend shares.
-#[derive(Debug, Clone, Copy)]
-pub struct Capabilities {
-    /// `regexp_matches`, for regular-expression text filters. DuckDB only.
-    pub regex: bool,
-}
 
 /// A comparison operator.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -130,10 +127,9 @@ pub fn predicate(
     filter: &Filter,
     columns: &[Column],
     dialect: &dyn SqlDialect,
-    caps: Capabilities,
 ) -> Result<String, String> {
     let column = column_of(columns, filter.column())?;
-    let c = quote_ident(&column.name);
+    let c = dialect.quote_ident(&column.name);
     let lit = |v: &str| literal(v, &column.kind, dialect);
 
     match filter {
@@ -169,7 +165,7 @@ pub fn predicate(
             term,
             case_sensitive,
             ..
-        } => text(&c, *how, term, *case_sensitive, caps),
+        } => text(&c, *how, term, *case_sensitive, dialect),
         Filter::In { values, negate, .. } => {
             if values.is_empty() {
                 // Nothing selected: keep nothing, or exclude nothing.
@@ -214,17 +210,12 @@ fn text(
     how: TextMatch,
     term: &str,
     case_sensitive: bool,
-    caps: Capabilities,
+    dialect: &dyn SqlDialect,
 ) -> Result<String, String> {
     if how == TextMatch::Regex {
-        if !caps.regex {
-            return Err("This database does not support regular-expression search".into());
-        }
-        let flags = if case_sensitive { "" } else { ", 'i'" };
-        return Ok(format!(
-            "regexp_matches({c}, {}{flags})",
-            quote_literal(term)
-        ));
+        return dialect
+            .sql_regex_match(c, &quote_literal(term), case_sensitive)
+            .ok_or_else(|| "This database does not support regular-expression search".into());
     }
 
     let escaped = escape_like(term);
@@ -244,55 +235,99 @@ fn text(
         )
     };
     let not = if negate { "NOT " } else { "" };
-    Ok(format!("{lhs} {not}LIKE {rhs} ESCAPE '\\'"))
+    Ok(format!("{lhs} {not}LIKE {rhs} ESCAPE '{LIKE_ESCAPE}'"))
 }
+
+/// `LIKE`'s escape character. Not a backslash, which MySQL and Snowflake
+/// read as an escape inside the string literal itself, so `'\'` would never
+/// end there.
+const LIKE_ESCAPE: char = '!';
 
 /// Escape `LIKE`'s wildcards, so a search term matches literally.
 fn escape_like(term: &str) -> String {
-    term.replace('\\', "\\\\")
-        .replace('%', "\\%")
-        .replace('_', "\\_")
+    let mut out = String::with_capacity(term.len());
+    for ch in term.chars() {
+        if matches!(ch, '%' | '_') || ch == LIKE_ESCAPE {
+            out.push(LIKE_ESCAPE);
+        }
+        out.push(ch);
+    }
+    out
 }
 
 /// The sort keys as `ORDER BY` terms, without the keyword.
-pub fn order_terms(keys: &[SortKey], columns: &[Column]) -> Result<Vec<String>, String> {
+pub fn order_terms(
+    keys: &[SortKey],
+    columns: &[Column],
+    dialect: &dyn SqlDialect,
+) -> Result<Vec<String>, String> {
     keys.iter()
         .map(|key| {
             let column = column_of(columns, key.column)?;
             let direction = if key.ascending { "ASC" } else { "DESC" };
-            Ok(format!("{} {direction}", quote_ident(&column.name)))
+            Ok(format!("{} {direction}", dialect.quote_ident(&column.name)))
         })
         .collect()
 }
 
-/// SQL reproducing a view of a result: `from` filtered and sorted.
+/// Why `column` cannot be named in SQL over the query, if it cannot.
+fn unnameable(columns: &[Column], index: usize) -> Option<String> {
+    let column = columns.get(index)?;
+    column.repeated.then(|| {
+        format!(
+            "column {:?} repeats a name in the query, which SQL cannot refer to",
+            column.name
+        )
+    })
+}
+
+/// SQL for `dialect` reproducing a view of the result of `query`: its last
+/// statement, filtered and sorted, after the statements that come before it.
 ///
-/// A filter that cannot be expressed in `dialect` is left out with a comment
-/// saying so, rather than failing the whole conversion.
+/// A filter or sort key that cannot be expressed in `dialect` is left out with
+/// a comment saying so, rather than failing the whole conversion.
 pub fn to_sql(
     filters: &[Filter],
     sort: &[SortKey],
-    from: &str,
+    query: &str,
     columns: &[Column],
     dialect: &dyn SqlDialect,
-    caps: Capabilities,
 ) -> Vec<String> {
     let mut lines = Vec::new();
     let mut predicates = Vec::new();
     for filter in filters {
-        match predicate(filter, columns, dialect, caps) {
+        let built = match unnameable(columns, filter.column()) {
+            Some(why) => Err(why),
+            None => predicate(filter, columns, dialect),
+        };
+        match built {
             Ok(p) => predicates.push(p),
             Err(e) => lines.push(format!("-- Filter left out: {e}")),
         }
     }
+    let mut keys = Vec::new();
+    for key in sort {
+        match unnameable(columns, key.column) {
+            Some(why) => lines.push(format!("-- Sort key left out: {why}")),
+            None => keys.push(key.clone()),
+        }
+    }
 
+    let (setup, last) = split_statements(query);
+    for stmt in setup {
+        lines.extend(format!("{stmt};").lines().map(str::to_string));
+    }
     lines.push("SELECT *".to_string());
-    lines.extend(format!("FROM {from}").lines().map(str::to_string));
+    lines.extend(
+        format!("FROM {}", subquery(&last, dialect))
+            .lines()
+            .map(str::to_string),
+    );
     for (i, p) in predicates.iter().enumerate() {
         let keyword = if i == 0 { "WHERE" } else { "  AND" };
         lines.push(format!("{keyword} {p}"));
     }
-    match order_terms(sort, columns) {
+    match order_terms(&keys, columns, dialect) {
         Ok(terms) if !terms.is_empty() => lines.push(format!("ORDER BY {}", terms.join(", "))),
         Ok(_) => {}
         Err(e) => lines.push(format!("-- Sort left out: {e}")),
@@ -300,20 +335,55 @@ pub fn to_sql(
     lines
 }
 
+/// A cell's statements: those before the last, and the last, which is the one
+/// whose result was kept. A query that does not parse is one statement.
+fn split_statements(query: &str) -> (Vec<String>, String) {
+    let whole = || (Vec::new(), query.trim().trim_end_matches(';').to_string());
+    let Ok(tree) = SourceTree::new(query) else {
+        return whole();
+    };
+    let root = tree.root();
+    let mut statements: Vec<String> = tree
+        .find_nodes(&root, "(sql_statement) @s")
+        .into_iter()
+        // The outermost statements: a subquery can be a statement of its own.
+        .filter(|node| {
+            let mut up = node.parent();
+            while let Some(p) = up {
+                if p.kind() == "sql_statement" {
+                    return false;
+                }
+                up = p.parent();
+            }
+            true
+        })
+        .map(|node| tree.get_text(&node).trim().to_string())
+        .filter(|text| !text.is_empty())
+        .collect();
+    match statements.pop() {
+        Some(last) => (statements, last),
+        None => whole(),
+    }
+}
+
 /// A query as a derived table, for wrapping in a view's filters.
-pub fn subquery(query: &str) -> String {
+fn subquery(query: &str, dialect: &dyn SqlDialect) -> String {
     let query = query.trim().trim_end_matches(';').trim_end();
     let body: Vec<String> = query.lines().map(|l| format!("    {l}")).collect();
-    format!("(\n{}\n) AS {}", body.join("\n"), quote_ident("result"))
+    format!(
+        "(\n{}\n) {}",
+        body.join("\n"),
+        dialect.sql_table_alias("result")
+    )
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ggsql::reader::dialects::DuckDbDialect;
+    use ggsql::reader::registry::dialect_override as dialect_for_scheme;
     use ggsql::reader::AnsiDialect;
-    use serde_json::json;
-
-    const CAPS: Capabilities = Capabilities { regex: true };
+    use serde_json::{json, Value};
 
     fn columns() -> Vec<Column> {
         [("n", "integer"), ("name", "string"), ("ok", "boolean")]
@@ -322,16 +392,15 @@ mod tests {
                 name: name.to_string(),
                 type_name: String::new(),
                 kind: kind.to_string(),
+                repeated: false,
             })
             .collect()
     }
 
     fn sql(f: Value) -> Result<String, String> {
         let filter: Filter = serde_json::from_value(f).unwrap();
-        predicate(&filter, &columns(), &AnsiDialect, CAPS)
+        predicate(&filter, &columns(), &AnsiDialect)
     }
-
-    use serde_json::Value;
 
     #[test]
     fn test_compare_maps_not_equal_and_checks_numbers() {
@@ -365,8 +434,9 @@ mod tests {
     #[test]
     fn test_text_escapes_wildcards_and_folds_case() {
         assert_eq!(
-            sql(json!({"type": "text", "column": 1, "match": "contains", "term": "50%_"})).unwrap(),
-            "LOWER(\"name\") LIKE LOWER('%50\\%\\_%') ESCAPE '\\'"
+            sql(json!({"type": "text", "column": 1, "match": "contains", "term": "50%_!"}))
+                .unwrap(),
+            "LOWER(\"name\") LIKE LOWER('%50!%!_!!%') ESCAPE '!'"
         );
         assert_eq!(
             sql(
@@ -374,21 +444,37 @@ mod tests {
                        "case_sensitive": true})
             )
             .unwrap(),
-            "\"name\" LIKE 'a%' ESCAPE '\\'"
+            "\"name\" LIKE 'a%' ESCAPE '!'"
         );
     }
 
     #[test]
-    fn test_regex_needs_the_capability() {
+    fn test_the_like_escape_matches_literally_in_duckdb() {
+        let reader = ggsql::reader::connection::reader_from_uri("duckdb://memory").unwrap();
+        let filter: Filter = serde_json::from_value(
+            json!({"type": "text", "column": 1, "match": "contains", "term": "5%!_"}),
+        )
+        .unwrap();
+        let p = predicate(&filter, &columns(), &DuckDbDialect).unwrap();
+        let df = reader
+            .execute_sql(&format!(
+                "SELECT name FROM (VALUES ('a5%!_b'), ('a5x!_b'), ('a5%!xb')) t(name) WHERE {p}"
+            ))
+            .unwrap();
+        assert_eq!(df.height(), 1);
+    }
+
+    #[test]
+    fn test_regex_comes_from_the_dialect() {
         let f: Filter = serde_json::from_value(
             json!({"type": "text", "column": 1, "match": "regex", "term": "^a"}),
         )
         .unwrap();
         assert_eq!(
-            predicate(&f, &columns(), &AnsiDialect, CAPS).unwrap(),
+            predicate(&f, &columns(), &DuckDbDialect).unwrap(),
             "regexp_matches(\"name\", '^a', 'i')"
         );
-        assert!(predicate(&f, &columns(), &AnsiDialect, Capabilities { regex: false }).is_err());
+        assert!(predicate(&f, &columns(), &AnsiDialect).is_err());
     }
 
     #[test]
@@ -420,25 +506,35 @@ mod tests {
                 column: 9,
                 ascending: true
             }],
-            &columns()
+            &columns(),
+            &AnsiDialect
         )
         .is_err());
     }
 
+    fn filters(f: Value) -> Vec<Filter> {
+        serde_json::from_value(f).unwrap()
+    }
+
+    const BY_N: [SortKey; 1] = [SortKey {
+        column: 0,
+        ascending: true,
+    }];
+
     #[test]
     fn test_to_sql_wraps_the_query() {
-        let filters: Vec<Filter> = serde_json::from_value(json!([
+        let filters = filters(json!([
             {"type": "compare", "column": 0, "op": ">", "value": "2"},
             {"type": "is_null", "column": 1}
-        ]))
-        .unwrap();
-        let sort = [SortKey {
-            column: 0,
-            ascending: true,
-        }];
-        let from = subquery("SELECT *\nFROM t;");
+        ]));
         assert_eq!(
-            to_sql(&filters, &sort, &from, &columns(), &AnsiDialect, CAPS),
+            to_sql(
+                &filters,
+                &BY_N,
+                "SELECT *\nFROM t;",
+                &columns(),
+                &AnsiDialect
+            ),
             vec![
                 "SELECT *",
                 "FROM (",
@@ -453,20 +549,77 @@ mod tests {
     }
 
     #[test]
-    fn test_to_sql_leaves_out_what_it_cannot_express() {
-        let filters: Vec<Filter> = serde_json::from_value(json!([
-            {"type": "text", "column": 1, "match": "regex", "term": "x", "case_sensitive": true}
-        ]))
-        .unwrap();
-        let lines = to_sql(
-            &filters,
-            &[],
-            "\"t\"",
-            &columns(),
-            &AnsiDialect,
-            Capabilities { regex: false },
+    fn test_to_sql_quotes_for_the_session_dialect() {
+        let filters = filters(json!([
+            {"type": "text", "column": 1, "match": "contains", "term": "x"}
+        ]));
+        for scheme in ["mysql", "bigquery", "clickhouse", "databricks"] {
+            let dialect = dialect_for_scheme(scheme).unwrap();
+            let sql = to_sql(&filters, &BY_N, "SELECT 1", &columns(), dialect).join("\n");
+            assert!(
+                sql.contains("LOWER(`name`) LIKE LOWER('%x%') ESCAPE '!'"),
+                "{scheme}: {sql}"
+            );
+            assert!(sql.contains("ORDER BY `n` ASC"), "{scheme}: {sql}");
+            assert!(!sql.contains("\"name\""), "{scheme}: {sql}");
+        }
+    }
+
+    #[test]
+    fn test_to_sql_keeps_the_statements_before_the_query() {
+        let query = "CREATE TABLE t AS SELECT 1 AS n;\nINSERT INTO t VALUES (2);\nSELECT * FROM t";
+        assert_eq!(
+            to_sql(&[], &BY_N, query, &columns(), &AnsiDialect),
+            vec![
+                "CREATE TABLE t AS SELECT 1 AS n;",
+                "INSERT INTO t VALUES (2);",
+                "SELECT *",
+                "FROM (",
+                "    SELECT * FROM t",
+                ") AS \"result\"",
+                "ORDER BY \"n\" ASC",
+            ]
         );
+        // And what it writes runs.
+        let reader = ggsql::reader::connection::reader_from_uri("duckdb://memory").unwrap();
+        let lines = to_sql(&[], &BY_N, query, &columns(), &DuckDbDialect).join("\n");
+        let mut last = None;
+        for stmt in lines.split(';') {
+            last = Some(reader.execute_sql(stmt).unwrap());
+        }
+        assert_eq!(last.unwrap().height(), 2);
+    }
+
+    #[test]
+    fn test_to_sql_leaves_out_a_repeated_column() {
+        let mut cols = columns();
+        cols[1].repeated = true;
+        let filters = filters(json!([{"type": "is_null", "column": 1}]));
+        let sort = [SortKey {
+            column: 1,
+            ascending: true,
+        }];
+        let lines = to_sql(&filters, &sort, "SELECT 1", &cols, &AnsiDialect);
+        assert!(
+            lines[0].starts_with("-- Filter left out: column \"name\" repeats"),
+            "{lines:?}"
+        );
+        assert!(lines[1].starts_with("-- Sort key left out"), "{lines:?}");
+        assert!(!lines
+            .iter()
+            .any(|l| l.starts_with("WHERE") || l.starts_with("ORDER")));
+    }
+
+    #[test]
+    fn test_to_sql_leaves_out_what_it_cannot_express() {
+        let filters = filters(json!([
+            {"type": "text", "column": 1, "match": "regex", "term": "x", "case_sensitive": true}
+        ]));
+        let lines = to_sql(&filters, &[], "SELECT 1", &columns(), &AnsiDialect);
         assert!(lines[0].starts_with("-- Filter left out"), "{lines:?}");
-        assert_eq!(&lines[1..], ["SELECT *", "FROM \"t\""]);
+        assert_eq!(
+            &lines[1..],
+            ["SELECT *", "FROM (", "    SELECT 1", ") AS \"result\""]
+        );
     }
 }

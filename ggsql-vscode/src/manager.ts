@@ -544,9 +544,22 @@ export function generateMetadata(
  * flag. A value the kernel would reject is left out, so it uses its default.
  */
 export function consoleRowsEnv(rows: unknown): Record<string, string> {
-    return Number.isInteger(rows) && (rows as number) >= 1
+    return Number.isInteger(rows) && (rows as number) >= 1 && (rows as number) <= MAX_CONSOLE_ROWS
         ? { GGSQL_CONSOLE_ROWS: String(rows) }
         : {};
+}
+
+/** The most rows the kernel accepts for `--console-rows`, a `u32`. */
+export const MAX_CONSOLE_ROWS = 4294967295;
+
+/**
+ * The kernel environment that turns on keeping query results, which the
+ * kernel only does when asked. A console session whose results this
+ * extension can open in the Data Explorer asks; any other session would hold
+ * results nothing explores.
+ */
+export function keepResultsEnv(keep: boolean): Record<string, string> {
+    return keep ? { GGSQL_KEEP_RESULTS: '1' } : {};
 }
 
 /**
@@ -560,11 +573,13 @@ export function consoleRowsEnv(rows: unknown): Record<string, string> {
  * @param kernelPath - Path to the ggsql-jupyter executable
  * @param readerUri - Data source the kernel should open, if not the default
  * @param sessionMode - What kind of session this is, when known
+ * @param keepResults - Whether the kernel should keep results for the Data Explorer
  */
 function createKernelSpec(
     kernelPath: string,
     readerUri?: string,
-    sessionMode?: positron.LanguageRuntimeSessionMode
+    sessionMode?: positron.LanguageRuntimeSessionMode,
+    keepResults = false
 ): JupyterKernelSpec {
     const argv = [kernelPath, '-f', '{connection_file}'];
     if (readerUri) {
@@ -584,6 +599,7 @@ function createKernelSpec(
         env: {
             RUST_LOG: 'error',
             ...consoleRowsEnv(vscode.workspace.getConfiguration('ggsql').get('consoleRows')),
+            ...keepResultsEnv(keepResults),
         },
         kernel_protocol_version: '5.3',
     };
@@ -872,7 +888,9 @@ export class GgsqlRuntimeManager implements positron.LanguageRuntimeManager {
         const kernelSpec = createKernelSpec(
             runtimeMetadata.runtimePath,
             undefined,
-            sessionMetadata.sessionMode
+            sessionMetadata.sessionMode,
+            this._resultExplorer !== undefined &&
+                sessionMetadata.sessionMode === ('console' as positron.LanguageRuntimeSessionMode)
         );
 
         const dynState = createDynState();

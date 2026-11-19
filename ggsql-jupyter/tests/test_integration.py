@@ -109,9 +109,12 @@ def console_kernel_manager(kernel_binary):
     is authoritative over the session-id heuristic — so this is the only way to
     reach the plot-comm path from a test. Everything driven through plain
     `jupyter_client` lands in `SessionKind::Standalone`, because its session id
-    is a bare UUID.
+    is a bare UUID. `GGSQL_KEEP_RESULTS` is what the extension sets for a console
+    whose results it can open in the Data Explorer.
     """
-    yield from _launch(kernel_binary, ["--session-mode", "console"])
+    yield from _launch(
+        kernel_binary, ["--session-mode", "console"], env={"GGSQL_KEEP_RESULTS": "1"}
+    )
 
 
 @pytest.fixture
@@ -620,12 +623,94 @@ class TestResultsApi:
         finally:
             self._close_ui(console_client)
 
-    def test_only_a_console_keeps_results(self, client):
+    def test_results_are_kept_only_when_asked(self, client):
         client.execute(self.QUERY, silent=False, store_history=True)
         messages = drain_iopub(client)
         client.get_shell_msg(timeout=5)
         result = next(m for m in messages if m["msg_type"] == "execute_result")
         assert "ggsql" not in result["content"]["metadata"]
+
+    def _scalar(self, client, sql):
+        """The single value `sql` returns, as text."""
+        client.execute(sql, silent=False, store_history=True)
+        messages = drain_iopub(client)
+        client.get_shell_msg(timeout=5)
+        result = next(m for m in messages if m["msg_type"] == "execute_result")
+        return result["content"]["data"]["text/plain"].splitlines()[-1].strip()
+
+    def test_profile_and_export(self, console_client):
+        key = self._result_key(console_client)
+        self._open_ui(console_client)
+        try:
+            view = self._call(console_client, "result_open", {"key": key})["result"]["view"]
+            profile = self._call(
+                console_client,
+                "result_profile",
+                {
+                    "view": view,
+                    "column": 0,
+                    "profiles": {
+                        "null_count": True,
+                        "summary": True,
+                        "histogram": {"bins": 5, "quantiles": [0.5]},
+                    },
+                },
+            )["result"]
+            assert profile["null_count"] == 0
+            assert profile["summary"]["min"] == "0"
+            assert profile["summary"]["max"] == "4"
+            assert sum(profile["histogram"]["bin_counts"]) == 5
+
+            frequency = self._call(
+                console_client,
+                "result_profile",
+                {"view": view, "column": 1, "profiles": {"frequency": {"limit": 2}}},
+            )["result"]["frequency"]
+            assert len(frequency["values"]) == 2
+            assert frequency["other_count"] == 3
+
+            export = self._call(
+                console_client,
+                "result_export",
+                {"view": view, "rows": {"first": 3, "last": 4}, "columns": [1, 0], "format": "csv"},
+            )["result"]
+            assert export == {"data": "label,n\nr3,3\nr4,4"}
+        finally:
+            self._close_ui(console_client)
+
+    def test_the_session_database_is_untouched(self, console_client):
+        count = (
+            "SELECT count(*) AS n FROM duckdb_tables() "
+            "WHERE table_name LIKE '__ggsql_result%' OR table_name LIKE '__ggsql_view%'"
+        )
+        key = self._result_key(console_client)
+        self._open_ui(console_client)
+        try:
+            view = self._call(console_client, "result_open", {"key": key})["result"]["view"]
+            self._call(
+                console_client,
+                "result_set_sort",
+                {"view": view, "keys": [{"column": 0, "ascending": False}]},
+            )
+            assert self._scalar(console_client, count) == "0"
+        finally:
+            self._close_ui(console_client)
+
+    def test_closing_the_ui_comm_closes_its_views(self, console_client):
+        key = self._result_key(console_client)
+        self._open_ui(console_client)
+        view = self._call(console_client, "result_open", {"key": key})["result"]["view"]
+        self._close_ui(console_client)
+        self._open_ui(console_client)
+        try:
+            data = self._call(
+                console_client,
+                "result_page",
+                {"view": view, "rows": {"first": 0, "last": 0}, "columns": [0]},
+            )
+            assert "no view" in data["error"]["message"], data
+        finally:
+            self._close_ui(console_client)
 
 
 class TestConsoleRows:

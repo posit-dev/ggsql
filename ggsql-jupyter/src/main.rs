@@ -49,14 +49,33 @@ struct Args {
     #[arg(long, default_value_t = 32, value_parser = clap::value_parser!(u32).range(1..))]
     max_plots: u32,
 
-    /// How many query results to keep available for the data explorer.
+    /// Keep query results so a frontend can explore them through the results
+    /// API.
     ///
-    /// In a Positron console each tabular result is kept for the results API,
-    /// so a frontend can open it in a data explorer later. This bounds the
-    /// results not opened yet, dropping the oldest; opened results are bounded
-    /// by `GGSQL_RESULTS_MAX_BYTES` instead (default 1 GB).
-    #[arg(long, default_value_t = 16, value_parser = clap::value_parser!(u32).range(1..))]
-    max_results: u32,
+    /// Off unless the frontend that will explore them turns it on, so a
+    /// session nobody explores holds nothing beyond what it displays. Also
+    /// read from the environment, which is how the ggsql extension sets it.
+    #[arg(
+        long,
+        env = "GGSQL_KEEP_RESULTS",
+        value_parser = clap::builder::FalseyValueParser::new()
+    )]
+    keep_results: bool,
+
+    /// The most memory kept results may use, e.g. `512mb` or `2gb`.
+    ///
+    /// Counts results not opened yet, opened ones and the order tables of
+    /// their sorted or filtered views, by the size of their data. Closed
+    /// results go first when room is needed, then the oldest unopened ones;
+    /// open ones are never dropped, so a result that does not fit beside them
+    /// is not kept.
+    #[arg(
+        long,
+        env = "GGSQL_RESULTS_MAX_BYTES",
+        default_value_t = results::DEFAULT_MAX_BYTES,
+        value_parser = parse_bytes
+    )]
+    results_max_bytes: u64,
 
     /// How many rows of a query result a Positron console shows.
     ///
@@ -83,6 +102,13 @@ struct Args {
     /// Install the kernel spec system-wide (used with --install, may require sudo)
     #[arg(long, requires = "install", conflicts_with = "user")]
     sys_prefix: bool,
+}
+
+/// A byte count, with an optional `kb`/`mb`/`gb` suffix.
+fn parse_bytes(s: &str) -> std::result::Result<u64, String> {
+    ggsql::reader::cache::parse_human_bytes(s)
+        .filter(|&n| n > 0)
+        .ok_or_else(|| format!("{s:?} is not a byte count, such as 1gb"))
 }
 
 #[tokio::main]
@@ -124,7 +150,8 @@ async fn main() -> Result<()> {
         &args.reader,
         args.session_mode,
         args.max_plots as usize,
-        args.max_results as usize,
+        args.results_max_bytes,
+        args.keep_results,
         args.console_rows as usize,
     )
     .await?;

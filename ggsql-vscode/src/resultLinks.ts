@@ -60,23 +60,41 @@ export function linkMessage(
     };
 }
 
-/** Open a result in the Data Explorer. */
-async function openResult(explorer: ResultExplorer, sessionId: string, key: string): Promise<void> {
+/** Show a dataset in a Data Explorer: Positron's `dataExplorer.open`. */
+export type OpenDataExplorer = (options: { providerId: string; datasetId: string; displayName: string }) => Thenable<void>;
+
+function positronOpen(): OpenDataExplorer | undefined {
     const api = getPositronApi();
-    if (!api) {
+    return api ? options => api.dataExplorer.open(options) : undefined;
+}
+
+/** Open a result in the Data Explorer. */
+async function openResult(
+    explorer: ResultExplorer,
+    sessionId: string,
+    key: string,
+    show: OpenDataExplorer | undefined
+): Promise<void> {
+    if (!show) {
         return;
     }
     const id = datasetId(sessionId, key);
+    let opened = false;
     try {
         // Opened here rather than on the Data Explorer's first request, for
         // the title, and so an expired result is reported before a tab opens.
-        const dataset = await explorer.open(id);
-        await api.dataExplorer.open({
+        const dataset = await explorer.reopen(id);
+        opened = true;
+        await show({
             providerId: PROVIDER_ID,
             datasetId: id,
             displayName: dataset.result.title,
         });
     } catch (err) {
+        if (opened) {
+            // No Data Explorer will close the view, so release it here.
+            explorer.closeDataset(id);
+        }
         const message = errorMessage(err);
         log(`Opening result ${key} in session ${sessionId} failed: ${message}`);
         vscode.window.showWarningMessage(
@@ -96,7 +114,8 @@ async function openResult(explorer: ResultExplorer, sessionId: string, key: stri
  */
 export function withResultLinks(
     session: positron.LanguageRuntimeSession,
-    explorer: ResultExplorer
+    explorer: ResultExplorer,
+    show: OpenDataExplorer | undefined = positronOpen()
 ): positron.LanguageRuntimeSession {
     const sessionId = session.metadata.sessionId;
     const isConsole = session.metadata.sessionMode === ('console' as positron.LanguageRuntimeSessionMode);
@@ -112,8 +131,16 @@ export function withResultLinks(
                 messages.fire(linkMessage(message, sessionId, key));
             }
         }),
-        // The kernel's views end with it.
-        session.onDidEndSession(() => explorer.forgetViews(sessionId)),
+        // The kernel's views end with it, and until it is back a call would
+        // never be answered.
+        session.onDidEndSession(() => explorer.setRunning(sessionId, false)),
+        session.onDidChangeRuntimeState(state => {
+            if (state === ('ready' as positron.RuntimeState) || state === ('idle' as positron.RuntimeState)) {
+                explorer.setRunning(sessionId, true);
+            } else if (state === ('exited' as positron.RuntimeState)) {
+                explorer.setRunning(sessionId, false);
+            }
+        }),
     ];
 
     const openResource = async (resource: vscode.Uri | string): Promise<boolean> => {
@@ -124,7 +151,7 @@ export function withResultLinks(
         // Positron offers the link only to the most recently active ggsql
         // console, which need not be the one that printed it; the session id
         // routes it back to the right one.
-        void openResult(explorer, link.sessionId, link.key);
+        void openResult(explorer, link.sessionId, link.key, show);
         return true;
     };
 

@@ -6,23 +6,31 @@
 //! calls. Nothing here knows about any particular frontend.
 //!
 //! A result is held as its Arrow data until it is first opened, and is then
-//! copied into a dedicated in-memory cache ([`CacheTables`], the same
+//! copied into a dedicated in-memory DuckDB ([`CacheTables`], the same
 //! machinery as ggsql's caching reader) where every filter, sort, page and
 //! profile is SQL. The cache is the results API's own: the session's reader is
 //! never wrapped, so nothing changes about the dialect the user's queries run
 //! in.
+//!
+//! **One byte budget covers everything kept here**: unopened results, the
+//! cache's tables (including those pinned by an open view) and every view's
+//! order table. Making room drops closed results first, then the oldest
+//! unopened ones; an open view is never pulled from under its frontend, so
+//! when open views alone fill the budget, a new result is not kept and a sort
+//! or filter that needs room fails with an error saying so.
 
 mod export;
 pub mod filter;
 pub mod methods;
 pub mod view;
 
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, bail, Result};
+use filter::{Filter, SortKey};
 use ggsql::naming::quote_ident;
-use ggsql::reader::cache::{parse_human_bytes, CacheConfig, CacheTables};
+use ggsql::reader::cache::{estimate_bytes, CacheTables};
 use ggsql::DataFrame;
 use serde::Serialize;
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Arc;
 use view::ResultView;
 
@@ -31,8 +39,8 @@ use view::ResultView;
 /// stable and clearing the sort restores the query's own order.
 pub const ROW: &str = "__ggsql_row__";
 
-/// The results cache's default byte budget.
-const DEFAULT_MAX_BYTES: u64 = 1024 * 1024 * 1024;
+/// The default byte budget for everything the results API keeps.
+pub const DEFAULT_MAX_BYTES: u64 = 1024 * 1024 * 1024;
 
 /// A result's column.
 #[derive(Debug, Clone, Serialize)]
@@ -43,6 +51,10 @@ pub struct Column {
     /// A frontend-neutral kind: `integer`, `floating`, `boolean`, `string`,
     /// `date`, `datetime`, `time` or `unknown`.
     pub kind: String,
+    /// Whether the query returned this name more than once, so it was renamed
+    /// here and SQL over the query cannot refer to it.
+    #[serde(skip)]
+    pub repeated: bool,
 }
 
 /// A result not yet opened, held as its Arrow data.
@@ -51,6 +63,7 @@ struct Pending {
     title: String,
     query: String,
     df: DataFrame,
+    bytes: u64,
 }
 
 /// A result copied into the cache.
@@ -77,60 +90,97 @@ pub struct OpenedView {
 pub struct ResultStore {
     /// The results cache: opened results, pinned while a view is open.
     cache: CacheTables,
-    /// Results not opened yet, oldest first, bounded by `max_pending`.
+    /// Results not opened yet, oldest first.
     pending: VecDeque<Pending>,
-    max_pending: usize,
+    /// The budget for everything kept.
+    max_bytes: u64,
     opened: HashMap<String, Opened>,
     views: HashMap<String, ResultView>,
 }
 
 impl ResultStore {
-    /// A store keeping up to `max_pending` unopened results. Opened results
-    /// are bounded by the cache's byte budget, `GGSQL_RESULTS_MAX_BYTES`
-    /// (default 1 GB).
-    pub fn new(max_pending: usize) -> Result<Self> {
-        let max_bytes = std::env::var("GGSQL_RESULTS_MAX_BYTES")
-            .ok()
-            .and_then(|v| parse_human_bytes(&v))
-            .unwrap_or(DEFAULT_MAX_BYTES);
-        Self::with_max_bytes(max_pending, max_bytes)
-    }
-
-    /// A store with an explicit byte budget for opened results.
-    pub fn with_max_bytes(max_pending: usize, max_bytes: u64) -> Result<Self> {
-        let config = CacheConfig {
-            enabled: true,
-            ttl_secs: u64::MAX,
-            max_bytes,
-        };
-        let cache = CacheTables::in_memory(config)?;
+    /// A store keeping at most `max_bytes`, by Arrow's estimate of the data.
+    pub fn new(max_bytes: u64) -> Result<Self> {
+        let backend = ggsql::reader::connection::reader_from_uri("duckdb://memory")?;
         // An in-memory DuckDB may otherwise spill to temporary files under
         // memory pressure; results must never be written to disk.
-        cache.backend().execute_sql("SET temp_directory = ''")?;
+        backend.execute_sql("SET temp_directory = ''")?;
+        // The store evicts to its own budget, which spans more than the cache.
+        let cache = CacheTables::new(backend, u64::MAX);
         Ok(Self {
             cache,
             pending: VecDeque::new(),
-            max_pending: max_pending.max(1),
+            max_bytes,
             opened: HashMap::new(),
             views: HashMap::new(),
         })
     }
 
+    /// Bytes kept now.
+    fn used(&self) -> Result<u64> {
+        let pending: u64 = self.pending.iter().map(|p| p.bytes).sum();
+        let orders: u64 = self.views.values().map(ResultView::order_bytes).sum();
+        Ok(pending + orders + self.cache.total_bytes()?)
+    }
+
+    /// Drop closed results, then the oldest unopened ones, until `extra` more
+    /// bytes fit in the budget. Returns whether they do.
+    fn make_room(&mut self, extra: u64) -> Result<bool> {
+        let limit = self.max_bytes.saturating_sub(extra);
+        let outside_cache: u64 = self.pending.iter().map(|p| p.bytes).sum::<u64>()
+            + self
+                .views
+                .values()
+                .map(ResultView::order_bytes)
+                .sum::<u64>();
+        self.cache.evict_to(limit.saturating_sub(outside_cache))?;
+        self.forget_evicted()?;
+        while self.used()? > limit && self.pending.pop_front().is_some() {}
+        Ok(self.used()? <= limit)
+    }
+
+    /// Forget the results the cache has evicted.
+    fn forget_evicted(&mut self) -> Result<()> {
+        let mut gone = Vec::new();
+        for key in self.opened.keys() {
+            if self.cache.lookup(key)?.is_none() {
+                gone.push(key.clone());
+            }
+        }
+        for key in gone {
+            self.opened.remove(&key);
+        }
+        Ok(())
+    }
+
     /// Keep `df`, produced by `query`, under a fresh key, which is returned.
-    pub fn insert(&mut self, df: DataFrame, title: String, query: String) -> String {
+    /// `None` when it cannot fit in the budget, even once everything that can
+    /// go has gone.
+    pub fn insert(
+        &mut self,
+        df: DataFrame,
+        title: String,
+        query: String,
+    ) -> Result<Option<String>> {
+        let bytes = estimate_bytes(&df).max(0) as u64;
+        if bytes > self.max_bytes {
+            return Ok(None);
+        }
         // Unguessable, so a stale link from a previous kernel process can never
         // name a result of this one.
         let key = uuid::Uuid::new_v4().simple().to_string();
+        let fits = self.make_room(bytes)?;
+        if !fits {
+            return Ok(None);
+        }
         self.pending.push_back(Pending {
             key: key.clone(),
             title,
             query,
             df,
+            bytes,
         });
-        while self.pending.len() > self.max_pending {
-            self.pending.pop_front();
-        }
-        key
+        Ok(Some(key))
     }
 
     fn table_name(key: &str) -> String {
@@ -141,28 +191,15 @@ impl ResultStore {
     /// first time. The result stays pinned while any view of it is open.
     pub fn open(&mut self, key: &str) -> Result<OpenedView> {
         if let Some(i) = self.pending.iter().position(|p| p.key == key) {
-            let Pending {
-                key,
-                title,
-                query,
-                df,
-            } = self.pending.remove(i).expect("position is in range");
-            match self.copy_into_cache(&key, title.clone(), query.clone(), df.clone()) {
+            let pending = self.pending.remove(i).expect("position is in range");
+            match self.copy_into_cache(&pending) {
                 Ok(opened) => {
-                    self.opened.insert(key, opened);
+                    self.opened.insert(pending.key, opened);
                 }
                 Err(e) => {
                     // Kept, so the error says what went wrong each time
                     // rather than that the result is gone.
-                    self.pending.insert(
-                        i,
-                        Pending {
-                            key,
-                            title,
-                            query,
-                            df,
-                        },
-                    );
+                    self.pending.insert(i, pending);
                     return Err(e);
                 }
             }
@@ -196,21 +233,16 @@ impl ResultStore {
         })
     }
 
-    fn copy_into_cache(
-        &self,
-        key: &str,
-        title: String,
-        query: String,
-        df: DataFrame,
-    ) -> Result<Opened> {
-        let num_rows = df.height();
-        let df = unique_names(df)?;
+    fn copy_into_cache(&self, pending: &Pending) -> Result<Opened> {
+        let num_rows = pending.df.height();
+        let (df, repeated) = unique_names(pending.df.clone())?;
         let rows = arrow::array::UInt64Array::from_iter_values(0..num_rows as u64);
         let df = df.with_column(ROW, Arc::new(rows))?;
-        let table = Self::table_name(key);
+        let table = Self::table_name(&pending.key);
         // Pinned from the start, so the eviction its own insertion triggers
-        // can't take it.
-        self.cache.put(key, &query, &table, df, true)?;
+        // can't take it. The budget already counts it, as a pending result.
+        self.cache
+            .put(&pending.key, &pending.query, &table, df, true)?;
 
         let described = self
             .cache
@@ -224,11 +256,12 @@ impl ResultStore {
                 name: names.value(i).to_string(),
                 type_name: types.value(i).to_string(),
                 kind: kind_of(types.value(i)).to_string(),
+                repeated: repeated.contains(names.value(i)),
             })
             .collect();
         Ok(Opened {
-            title,
-            query,
+            title: pending.title.clone(),
+            query: pending.query.clone(),
             table,
             columns,
             num_rows,
@@ -237,7 +270,7 @@ impl ResultStore {
 
     /// Close a view, dropping what it keeps in the cache. Its result is
     /// unpinned once no view of it is open, and is then evicted when the
-    /// cache needs the room.
+    /// budget needs the room.
     pub fn close(&mut self, view: &str) -> Result<()> {
         let mut v = self
             .views
@@ -250,6 +283,22 @@ impl ResultStore {
         Ok(())
     }
 
+    /// Close every view, for when the frontend holding them has gone.
+    pub fn close_all(&mut self) {
+        let ids: Vec<String> = self.views.keys().cloned().collect();
+        for id in ids {
+            if let Err(e) = self.close(&id) {
+                tracing::warn!("Closing view {} failed: {}", id, e);
+            }
+        }
+    }
+
+    fn view(&self, view: &str) -> Result<&ResultView> {
+        self.views
+            .get(view)
+            .ok_or_else(|| anyhow!("There is no view {view:?}"))
+    }
+
     /// A view and the cache it reads from.
     pub fn view_mut(&mut self, view: &str) -> Result<(&mut ResultView, &CacheTables)> {
         let v = self
@@ -259,24 +308,59 @@ impl ResultStore {
         Ok((v, &self.cache))
     }
 
+    /// Make room for a new order table of `view`, which replaces its current
+    /// one once built.
+    fn reserve_order(&mut self, view: &str) -> Result<()> {
+        let v = self.view(view)?;
+        let need = v.max_order_bytes();
+        if !self.make_room(need)? {
+            bail!(
+                "Sorting or filtering this result needs more memory than the data explorer's \
+                 budget has left ({} bytes). Close another Data Explorer tab and try again.",
+                self.max_bytes
+            );
+        }
+        Ok(())
+    }
+
+    /// Set a view's sort keys, within the budget.
+    pub fn set_sort(&mut self, view: &str, keys: Vec<SortKey>) -> Result<(), String> {
+        if !keys.is_empty() {
+            self.reserve_order(view).map_err(|e| e.to_string())?;
+        }
+        let (v, cache) = self.view_mut(view).map_err(|e| e.to_string())?;
+        v.set_sort(keys, cache.backend())
+    }
+
+    /// Set a view's row filters, within the budget.
+    pub fn set_filters(
+        &mut self,
+        view: &str,
+        filters: Vec<Filter>,
+    ) -> Result<Vec<Option<String>>, String> {
+        if !filters.is_empty() {
+            self.reserve_order(view).map_err(|e| e.to_string())?;
+        }
+        let (v, cache) = self.view_mut(view).map_err(|e| e.to_string())?;
+        v.set_filters(filters, cache.backend())
+    }
+
     /// The query a view's result came from.
     pub fn query_of(&self, view: &str) -> Result<&str> {
-        let v = self
-            .views
-            .get(view)
-            .ok_or_else(|| anyhow!("There is no view {view:?}"))?;
+        let v = self.view(view)?;
         Ok(&self.opened[&v.key].query)
     }
 }
 
 /// `df` with each repeated column name made unique, as DuckDB does: the second
 /// `a` becomes `a_1`, the third `a_2`, skipping names already taken. A query
-/// can return repeated names, but a table cannot hold them.
-fn unique_names(df: DataFrame) -> Result<DataFrame> {
+/// can return repeated names, but a table cannot hold them. Also returns the
+/// new names.
+fn unique_names(df: DataFrame) -> Result<(DataFrame, HashSet<String>)> {
     let names = df.get_column_names();
-    let mut taken: std::collections::HashSet<String> = names.iter().cloned().collect();
-    let mut seen = std::collections::HashSet::new();
-    let mut changed = false;
+    let mut taken: HashSet<String> = names.iter().cloned().collect();
+    let mut seen = HashSet::new();
+    let mut renamed = HashSet::new();
     let mut columns = Vec::with_capacity(names.len());
     for (name, array) in names.iter().zip(df.get_columns()) {
         let mut unique = name.clone();
@@ -287,71 +371,77 @@ fn unique_names(df: DataFrame) -> Result<DataFrame> {
             }
             unique = format!("{name}_{n}");
             taken.insert(unique.clone());
-            changed = true;
+            renamed.insert(unique.clone());
         }
         columns.push((unique, array.clone()));
     }
-    if !changed {
-        return Ok(df);
+    if renamed.is_empty() {
+        return Ok((df, renamed));
     }
-    Ok(DataFrame::new(columns)?)
+    // The first of a repeated name can't be named in SQL over the query either.
+    for name in &names {
+        if names.iter().filter(|n| *n == name).count() > 1 {
+            renamed.insert(name.clone());
+        }
+    }
+    Ok((DataFrame::new(columns)?, renamed))
 }
 
 fn gone() -> anyhow::Error {
     anyhow!("This query result is no longer available. Re-run the query to explore it.")
 }
 
-/// A cache type name's neutral kind.
+/// A DuckDB type name's neutral kind.
 pub fn kind_of(type_name: &str) -> &'static str {
-    let upper = type_name.to_uppercase();
-    let upper = upper.as_str();
-    // Nested types first: `INTEGER[]` and `STRUCT(a INTEGER)` name a scalar
-    // type inside them, but are not numbers.
-    let nested = upper.ends_with(']')
-        || ["STRUCT", "MAP", "UNION", "LIST"]
-            .iter()
-            .any(|t| upper.starts_with(t));
-    if nested || upper.contains("INTERVAL") {
-        "unknown"
-    } else if upper.contains("INT") {
-        "integer"
-    } else if ["FLOAT", "DOUBLE", "REAL", "NUMERIC", "DECIMAL"]
-        .iter()
-        .any(|t| upper.contains(t))
-    {
-        "floating"
-    } else if upper.contains("BOOL") {
-        "boolean"
-    } else if upper.contains("TIMESTAMP") || upper.contains("DATETIME") {
-        "datetime"
-    } else if upper.contains("DATE") {
-        "date"
-    } else if upper.contains("TIME") {
-        "time"
-    } else if ["CHAR", "TEXT", "STRING", "UUID"]
-        .iter()
-        .any(|t| upper.contains(t))
-    {
-        "string"
-    } else {
-        "unknown"
+    let upper = type_name.trim().to_uppercase();
+    // Nested types (`INTEGER[]`, `STRUCT(a INTEGER)`) name a scalar type
+    // inside them, but are not one.
+    if upper.ends_with(']') {
+        return "unknown";
+    }
+    // The type itself, without parameters: `DECIMAL(18,3)` is `DECIMAL`,
+    // `ENUM('a', 'b')` is `ENUM`.
+    let base = upper.split('(').next().unwrap_or("").trim();
+    match base {
+        "TINYINT" | "SMALLINT" | "INTEGER" | "BIGINT" | "HUGEINT" | "UTINYINT" | "USMALLINT"
+        | "UINTEGER" | "UBIGINT" | "UHUGEINT" | "INT" | "INT1" | "INT2" | "INT4" | "INT8" => {
+            "integer"
+        }
+        "FLOAT" | "REAL" | "DOUBLE" | "DECIMAL" | "NUMERIC" => "floating",
+        "BOOLEAN" | "BOOL" => "boolean",
+        "DATE" => "date",
+        "TIMESTAMP"
+        | "TIMESTAMP WITH TIME ZONE"
+        | "TIMESTAMPTZ"
+        | "TIMESTAMP_S"
+        | "TIMESTAMP_MS"
+        | "TIMESTAMP_NS"
+        | "DATETIME" => "datetime",
+        "TIME" | "TIME WITH TIME ZONE" | "TIMETZ" => "time",
+        "VARCHAR" | "CHAR" | "BPCHAR" | "TEXT" | "STRING" | "UUID" | "ENUM" => "string",
+        _ => "unknown",
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::results::filter::{Capabilities, Filter, SortKey};
+    use crate::results::filter::{Filter, SortKey};
     use crate::results::view::Rows;
     use serde_json::json;
-
-    const CAPS: Capabilities = Capabilities { regex: true };
 
     fn frame(sql: &str) -> DataFrame {
         ggsql::reader::connection::reader_from_uri("duckdb://memory")
             .unwrap()
             .execute_sql(sql)
             .unwrap()
+    }
+
+    fn keep(store: &mut ResultStore, df: DataFrame, title: String, query: String) -> String {
+        store
+            .insert(df, title, query)
+            .unwrap()
+            .expect("the result fits")
     }
 
     fn numbers(n: usize) -> DataFrame {
@@ -378,8 +468,13 @@ mod tests {
 
     #[test]
     fn test_open_describes_the_result_without_the_row_column() {
-        let mut store = ResultStore::new(4).unwrap();
-        let key = store.insert(numbers(5), "Query [1]".into(), "SELECT 1".into());
+        let mut store = ResultStore::new(DEFAULT_MAX_BYTES).unwrap();
+        let key = keep(
+            &mut store,
+            numbers(5),
+            "Query [1]".into(),
+            "SELECT 1".into(),
+        );
         let opened = store.open(&key).unwrap();
         assert_eq!(opened.num_rows, 5);
         let names: Vec<_> = opened.columns.iter().map(|c| c.name.as_str()).collect();
@@ -391,8 +486,8 @@ mod tests {
 
     #[test]
     fn test_sort_is_stable_and_clearing_it_restores_the_order() {
-        let mut store = ResultStore::new(4).unwrap();
-        let key = store.insert(numbers(9), "q".into(), String::new());
+        let mut store = ResultStore::new(DEFAULT_MAX_BYTES).unwrap();
+        let key = keep(&mut store, numbers(9), "q".into(), String::new());
         let view = store.open(&key).unwrap().view;
         let (v, cache) = store.view_mut(&view).unwrap();
         v.set_sort(
@@ -414,8 +509,8 @@ mod tests {
 
     #[test]
     fn test_filters_select_rows_and_report_bad_ones() {
-        let mut store = ResultStore::new(4).unwrap();
-        let key = store.insert(numbers(10), "q".into(), String::new());
+        let mut store = ResultStore::new(DEFAULT_MAX_BYTES).unwrap();
+        let key = keep(&mut store, numbers(10), "q".into(), String::new());
         let view = store.open(&key).unwrap().view;
         let filters: Vec<Filter> = serde_json::from_value(json!([
             {"type": "compare", "column": 0, "op": ">=", "value": "4"},
@@ -424,7 +519,7 @@ mod tests {
         ]))
         .unwrap();
         let (v, cache) = store.view_mut(&view).unwrap();
-        let errors = v.set_filters(filters, cache.backend(), CAPS).unwrap();
+        let errors = v.set_filters(filters, cache.backend()).unwrap();
         assert!(errors[0].is_none());
         assert!(errors[1].as_deref().unwrap().contains("not a number"));
         assert!(errors[2].is_none());
@@ -434,8 +529,9 @@ mod tests {
 
     #[test]
     fn test_dates_page_and_profile_as_dates() {
-        let mut store = ResultStore::new(4).unwrap();
-        let key = store.insert(
+        let mut store = ResultStore::new(DEFAULT_MAX_BYTES).unwrap();
+        let key = keep(
+            &mut store,
             frame("SELECT DATE '2024-01-01' + i::INTEGER AS d FROM range(3) t(i)"),
             "q".into(),
             String::new(),
@@ -453,8 +549,8 @@ mod tests {
     }
 
     fn summary_of(sql: &str, column: usize) -> serde_json::Value {
-        let mut store = ResultStore::new(4).unwrap();
-        let key = store.insert(frame(sql), "q".into(), String::new());
+        let mut store = ResultStore::new(DEFAULT_MAX_BYTES).unwrap();
+        let key = keep(&mut store, frame(sql), "q".into(), String::new());
         let view = store.open(&key).unwrap().view;
         let (v, cache) = store.view_mut(&view).unwrap();
         let req: view::ProfileRequest =
@@ -492,8 +588,9 @@ mod tests {
 
     #[test]
     fn test_repeated_column_names_are_made_unique() {
-        let mut store = ResultStore::new(4).unwrap();
-        let key = store.insert(
+        let mut store = ResultStore::new(DEFAULT_MAX_BYTES).unwrap();
+        let key = keep(
+            &mut store,
             frame("SELECT 1 AS a, 2 AS a, 3 AS a_1"),
             "q".into(),
             String::new(),
@@ -506,10 +603,15 @@ mod tests {
 
     #[test]
     fn test_a_failed_open_keeps_the_result() {
-        let mut store = ResultStore::new(4).unwrap();
-        let key = store.insert(frame("SELECT 1 AS x"), "q".into(), String::new());
+        let mut store = ResultStore::new(DEFAULT_MAX_BYTES).unwrap();
+        let key = keep(
+            &mut store,
+            frame("SELECT 1 AS x"),
+            "q".into(),
+            String::new(),
+        );
         // Break the cache's bookkeeping, so copying the result in fails.
-        store.cache.ensure_meta_table().unwrap();
+        store.cache.lookup("anything").unwrap();
         store
             .cache
             .backend()
@@ -527,8 +629,9 @@ mod tests {
 
     #[test]
     fn test_sql_leaves_out_a_filter_the_cache_rejected() {
-        let mut store = ResultStore::new(4).unwrap();
-        let key = store.insert(
+        let mut store = ResultStore::new(DEFAULT_MAX_BYTES).unwrap();
+        let key = keep(
+            &mut store,
             frame("SELECT 'a' AS s FROM range(3)"),
             "q".into(),
             "SELECT 1".into(),
@@ -541,9 +644,9 @@ mod tests {
         ]))
         .unwrap();
         let (v, cache) = store.view_mut(&view).unwrap();
-        let errors = v.set_filters(filters, cache.backend(), CAPS).unwrap();
+        let errors = v.set_filters(filters, cache.backend()).unwrap();
         assert!(errors[0].is_some() && errors[1].is_none(), "{errors:?}");
-        let sql = v.to_sql("SELECT 1", &ggsql::reader::AnsiDialect, CAPS);
+        let sql = v.to_sql("SELECT 1", &ggsql::reader::AnsiDialect);
         assert!(sql[0].starts_with("-- Filter left out"), "{sql:?}");
         assert!(!sql.iter().any(|l| l.contains("regexp_matches")), "{sql:?}");
         assert!(sql.iter().any(|l| l.contains("IS NOT NULL")), "{sql:?}");
@@ -551,16 +654,17 @@ mod tests {
 
     #[test]
     fn test_paging_past_the_end_returns_what_there_is() {
-        let mut store = ResultStore::new(4).unwrap();
-        let key = store.insert(numbers(3), "q".into(), String::new());
+        let mut store = ResultStore::new(DEFAULT_MAX_BYTES).unwrap();
+        let key = keep(&mut store, numbers(3), "q".into(), String::new());
         let view = store.open(&key).unwrap().view;
         assert_eq!(page(&mut store, &view, 2, 10, 0), ["2"]);
     }
 
     #[test]
     fn test_profiles() {
-        let mut store = ResultStore::new(4).unwrap();
-        let key = store.insert(
+        let mut store = ResultStore::new(DEFAULT_MAX_BYTES).unwrap();
+        let key = keep(
+            &mut store,
             frame("SELECT * FROM (VALUES (1, 'a'), (2, 'b'), (3, 'a'), (NULL, NULL)) t(n, s)"),
             "q".into(),
             String::new(),
@@ -595,8 +699,8 @@ mod tests {
 
     #[test]
     fn test_export_follows_the_view() {
-        let mut store = ResultStore::new(4).unwrap();
-        let key = store.insert(numbers(4), "q".into(), String::new());
+        let mut store = ResultStore::new(DEFAULT_MAX_BYTES).unwrap();
+        let key = keep(&mut store, numbers(4), "q".into(), String::new());
         let view = store.open(&key).unwrap().view;
         let (v, cache) = store.view_mut(&view).unwrap();
         v.set_sort(
@@ -618,26 +722,215 @@ mod tests {
         assert_eq!(csv, "n,s\n3,item 3\n2,item 2");
     }
 
+    fn bytes_of(df: &DataFrame) -> u64 {
+        estimate_bytes(df) as u64
+    }
+
     #[test]
     fn test_an_open_result_survives_the_budget_and_a_closed_one_does_not() {
-        let mut store = ResultStore::with_max_bytes(4, 1).unwrap();
-        let a = store.insert(numbers(3), "a".into(), String::new());
-        let b = store.insert(numbers(3), "b".into(), String::new());
+        // Room for two results and an order table, not three results.
+        let one = bytes_of(&numbers(100));
+        let mut store = ResultStore::new(2 * one + 100 * 16).unwrap();
+        let a = keep(&mut store, numbers(100), "a".into(), String::new());
+        let b = keep(&mut store, numbers(100), "b".into(), String::new());
         let va = store.open(&a).unwrap().view;
         let vb = store.open(&b).unwrap().view;
-        // Both open: both pinned, whatever the budget.
+
+        // Both open: a third result does not fit, and nothing is dropped.
+        assert!(store
+            .insert(numbers(100), "c".into(), String::new())
+            .unwrap()
+            .is_none());
         assert_eq!(page(&mut store, &va, 0, 0, 0), ["0"]);
         assert_eq!(page(&mut store, &vb, 0, 0, 0), ["0"]);
 
+        // Closed, `a` gives way to a new result.
         store.close(&va).unwrap();
+        let c = store
+            .insert(numbers(100), "c".into(), String::new())
+            .unwrap();
+        assert!(c.is_some());
         let err = store.open(&a).unwrap_err().to_string();
         assert!(err.contains("no longer available"), "{err}");
         assert!(store.open(&b).is_ok());
     }
 
     #[test]
+    fn test_the_oldest_unopened_result_is_dropped_to_make_room() {
+        let one = bytes_of(&numbers(10));
+        let mut store = ResultStore::new(2 * one).unwrap();
+        let first = keep(&mut store, numbers(10), "a".into(), String::new());
+        let second = keep(&mut store, numbers(10), "b".into(), String::new());
+        keep(&mut store, numbers(10), "c".into(), String::new());
+        assert!(store.open(&first).is_err());
+        assert!(store.open(&second).is_ok());
+    }
+
+    #[test]
+    fn test_a_result_bigger_than_the_budget_is_not_kept() {
+        let mut store = ResultStore::new(1).unwrap();
+        assert!(store
+            .insert(numbers(10), "a".into(), String::new())
+            .unwrap()
+            .is_none());
+    }
+
+    #[test]
+    fn test_order_tables_count_against_the_budget() {
+        let one = bytes_of(&numbers(1000));
+        // Room for the result and less than one order table.
+        let mut store = ResultStore::new(one + 1000).unwrap();
+        let key = keep(&mut store, numbers(1000), "a".into(), String::new());
+        let view = store.open(&key).unwrap().view;
+        let err = store
+            .set_sort(
+                &view,
+                vec![SortKey {
+                    column: 0,
+                    ascending: false,
+                }],
+            )
+            .unwrap_err();
+        assert!(err.contains("memory"), "{err}");
+        // The view is untouched.
+        assert_eq!(page(&mut store, &view, 0, 1, 0), ["0", "1"]);
+    }
+
+    #[test]
+    fn test_close_all_unpins_every_result() {
+        let one = bytes_of(&numbers(100));
+        let mut store = ResultStore::new(one).unwrap();
+        let a = keep(&mut store, numbers(100), "a".into(), String::new());
+        store.open(&a).unwrap();
+        store.open(&a).unwrap();
+        store.close_all();
+        assert!(store.views.is_empty());
+        // Unpinned, it gives way to the next result.
+        assert!(store
+            .insert(numbers(100), "b".into(), String::new())
+            .unwrap()
+            .is_some());
+        assert!(store.open(&a).is_err());
+        assert!(store.opened.is_empty() || !store.opened.contains_key(&a));
+    }
+
+    #[test]
+    fn test_a_failed_sort_leaves_the_view_as_it_was() {
+        let mut store = ResultStore::new(DEFAULT_MAX_BYTES).unwrap();
+        let key = keep(&mut store, numbers(9), "q".into(), String::new());
+        let view = store.open(&key).unwrap().view;
+        store
+            .set_sort(
+                &view,
+                vec![SortKey {
+                    column: 1,
+                    ascending: false,
+                }],
+            )
+            .unwrap();
+        let before = page(&mut store, &view, 0, 8, 0);
+        // A key the database cannot sort on.
+        let (v, cache) = store.view_mut(&view).unwrap();
+        v.columns[0].name = "no such column".into();
+        assert!(v
+            .set_sort(
+                vec![SortKey {
+                    column: 0,
+                    ascending: true
+                }],
+                cache.backend()
+            )
+            .is_err());
+        assert_eq!(
+            v.sort,
+            vec![SortKey {
+                column: 1,
+                ascending: false
+            }]
+        );
+        v.columns[0].name = "n".into();
+        assert_eq!(page(&mut store, &view, 0, 8, 0), before);
+    }
+
+    #[test]
+    fn test_a_failed_filter_leaves_the_view_as_it_was() {
+        let mut store = ResultStore::new(DEFAULT_MAX_BYTES).unwrap();
+        let key = keep(&mut store, numbers(10), "q".into(), String::new());
+        let view = store.open(&key).unwrap().view;
+        let gt = |v: &str| -> Vec<Filter> {
+            serde_json::from_value(json!([{"type": "compare", "column": 0, "op": ">", "value": v}]))
+                .unwrap()
+        };
+        store.set_filters(&view, gt("6")).unwrap();
+        // Make the next rebuild fail: its order table's name is taken by a view.
+        store
+            .cache
+            .backend()
+            .execute_sql(&format!(
+                "CREATE TEMP VIEW {} AS SELECT 1 AS x",
+                quote_ident(&format!("__ggsql_view_{view}_1__"))
+            ))
+            .unwrap();
+        assert!(store.set_filters(&view, gt("1")).is_err());
+        let (v, _) = store.view_mut(&view).unwrap();
+        assert_eq!(v.selected_rows, 3);
+        assert_eq!(v.filters, gt("6"));
+        assert_eq!(page(&mut store, &view, 0, 9, 0), ["7", "8", "9"]);
+    }
+
+    #[test]
+    fn test_pages_are_bounded_and_never_shift_rows() {
+        let mut store = ResultStore::new(DEFAULT_MAX_BYTES).unwrap();
+        let key = keep(&mut store, numbers(20), "q".into(), String::new());
+        let view = store.open(&key).unwrap().view;
+        let (v, cache) = store.view_mut(&view).unwrap();
+        let get = |rows: Rows| v.page(cache.backend(), &rows, &[0]);
+
+        // Scattered rows come back in the order asked, without the rows between.
+        let cells = get(Rows::Indices {
+            indices: vec![15, 2, 15],
+        })
+        .unwrap();
+        assert_eq!(cells[0], vec![json!("15"), json!("2"), json!("15")]);
+        // A row outside the view is an error, not a short column.
+        assert!(get(Rows::Indices {
+            indices: vec![3, 20]
+        })
+        .unwrap_err()
+        .contains("past the end"));
+        // A huge range is refused, not materialized.
+        assert!(get(Rows::Range {
+            first: 0,
+            last: usize::MAX
+        })
+        .unwrap()
+        .first()
+        .is_some_and(|c| c.len() == 20));
+        let mut big = ResultStore::new(DEFAULT_MAX_BYTES).unwrap();
+        let key = keep(
+            &mut big,
+            numbers(view::MAX_PAGE_ROWS + 1),
+            "q".into(),
+            String::new(),
+        );
+        let bv = big.open(&key).unwrap().view;
+        let (v, cache) = big.view_mut(&bv).unwrap();
+        assert!(v
+            .page(
+                cache.backend(),
+                &Rows::Range {
+                    first: 0,
+                    last: usize::MAX
+                },
+                &[0]
+            )
+            .unwrap_err()
+            .contains("at most"));
+    }
+
+    #[test]
     fn test_running_out_of_memory_is_an_error_not_a_spill() {
-        let mut store = ResultStore::new(4).unwrap();
+        let mut store = ResultStore::new(DEFAULT_MAX_BYTES).unwrap();
         let setting = store
             .cache
             .backend()
@@ -650,7 +943,8 @@ mod tests {
             ""
         );
 
-        let key = store.insert(
+        let key = keep(
+            &mut store,
             frame("SELECT i AS n, md5(i::VARCHAR) AS s FROM range(200000) t(i)"),
             "q".into(),
             String::new(),
@@ -691,8 +985,8 @@ mod tests {
 
     #[test]
     fn test_reopening_reuses_the_cached_copy() {
-        let mut store = ResultStore::new(4).unwrap();
-        let key = store.insert(numbers(3), "q".into(), String::new());
+        let mut store = ResultStore::new(DEFAULT_MAX_BYTES).unwrap();
+        let key = keep(&mut store, numbers(3), "q".into(), String::new());
         let first = store.open(&key).unwrap().view;
         store.close(&first).unwrap();
         let second = store.open(&key).unwrap();
@@ -701,18 +995,8 @@ mod tests {
     }
 
     #[test]
-    fn test_the_oldest_unopened_result_is_dropped_past_the_limit() {
-        let mut store = ResultStore::new(2).unwrap();
-        let first = store.insert(numbers(1), "a".into(), String::new());
-        let second = store.insert(numbers(1), "b".into(), String::new());
-        store.insert(numbers(1), "c".into(), String::new());
-        assert!(store.open(&first).is_err());
-        assert!(store.open(&second).is_ok());
-    }
-
-    #[test]
     fn test_an_unknown_key_says_the_result_is_gone() {
-        let mut store = ResultStore::new(2).unwrap();
+        let mut store = ResultStore::new(DEFAULT_MAX_BYTES).unwrap();
         let err = store.open("nope").err().unwrap().to_string();
         assert!(err.contains("no longer available"), "{err}");
     }
@@ -725,5 +1009,12 @@ mod tests {
         assert_eq!(kind_of("DATE"), "date");
         assert_eq!(kind_of("VARCHAR"), "string");
         assert_eq!(kind_of("INTERVAL"), "unknown");
+        // Names that merely contain a type's name are not that type.
+        assert_eq!(kind_of("POINT"), "unknown");
+        assert_eq!(kind_of("GEOMETRY"), "unknown");
+        assert_eq!(kind_of("ENUM('PRINT', 'POINT')"), "string");
+        assert_eq!(kind_of("TIMESTAMP_NS"), "datetime");
+        assert_eq!(kind_of("TIME WITH TIME ZONE"), "time");
+        assert_eq!(kind_of("BIGINT[]"), "unknown");
     }
 }

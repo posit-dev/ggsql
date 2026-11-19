@@ -21,6 +21,11 @@ impl SqlDialect for DuckDbDialect {
         format!("isfinite({expr})")
     }
 
+    fn sql_regex_match(&self, expr: &str, pattern: &str, case_sensitive: bool) -> Option<String> {
+        let flags = if case_sensitive { "" } else { ", 'i'" };
+        Some(format!("regexp_matches({expr}, {pattern}{flags})"))
+    }
+
     fn sql_st_transform(&self, column: &str, source_crs: &str, target_crs: &str) -> String {
         format!(
             "ST_Transform({}, '{}', '{}', always_xy := true)",

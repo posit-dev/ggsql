@@ -1791,7 +1791,6 @@ dependencies = [
  "ggsql",
  "hex",
  "hmac",
- "regex",
  "serde",
  "serde_json",
  "sha2",

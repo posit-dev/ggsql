@@ -7,6 +7,11 @@
  * session that ran the query. A dataset id is `<session id>/<result key>`, and
  * each open dataset holds one kernel view, opened on first use and closed
  * with the Data Explorer.
+ *
+ * A call is only made to a session that is running: one made while the
+ * kernel is down would wait for an answer that never comes, leaving the Data
+ * Explorer spinning. The session wrapper (`resultLinks.ts`) reports when a
+ * session ends and when it is ready again.
  */
 
 import type * as positron from '@posit-dev/positron';
@@ -148,9 +153,23 @@ function disconnectedState(id: string, message: string): BackendState {
     };
 }
 
+/** Why a session's results cannot be reached while it is down. */
+const SESSION_DOWN = 'The ggsql session that ran this query is not running.';
+
+/** What a kernel that predates the results API answers its calls with. */
+const KERNEL_TOO_OLD =
+    'The ggsql kernel running this session is too old to open query results in the Data Explorer. ' +
+    'Update ggsql and start a new console.';
+
 export class ResultExplorer {
     private readonly sessions = new Map<string, ResultsSession>();
+    /** Sessions whose kernel is down: exited, or restarting. */
+    private readonly down = new Set<string>();
     private readonly datasets = new Map<string, Promise<Dataset>>();
+    /** Datasets with an open Data Explorer, whether or not their view opened. */
+    private readonly shown = new Set<string>();
+    /** Datasets whose Data Explorer has closed; a late request must not reopen them. */
+    private readonly closed = new Set<string>();
 
     constructor(
         private readonly sendUiEvent: (event: positron.DataExplorerUiEvent) => void,
@@ -165,9 +184,26 @@ export class ResultExplorer {
                 if (this.sessions.get(sessionId) === session) {
                     this.sessions.delete(sessionId);
                 }
+                this.down.delete(sessionId);
                 this.forgetViews(sessionId);
             },
         };
+    }
+
+    /**
+     * Record whether a session's kernel is running. Going down or coming back
+     * both mean its views are gone, so its open Data Explorers ask again: they
+     * show that the session is down, then, once it is back, the kernel's own
+     * account of the result.
+     */
+    setRunning(sessionId: string, running: boolean): void {
+        const changed = running ? this.down.delete(sessionId) : !this.down.has(sessionId);
+        if (!running) {
+            this.down.add(sessionId);
+        }
+        if (changed) {
+            this.forgetViews(sessionId);
+        }
     }
 
     /**
@@ -178,7 +214,7 @@ export class ResultExplorer {
      * of why it is gone, rather than a sort or filter that silently did nothing.
      */
     forgetViews(sessionId: string): void {
-        for (const id of [...this.datasets.keys()]) {
+        for (const id of this.shown) {
             if (parseDatasetId(id)?.sessionId === sessionId) {
                 this.datasets.delete(id);
                 this.sendUiEvent({ uri: id, method: 'schema_update', params: {} });
@@ -186,8 +222,21 @@ export class ResultExplorer {
         }
     }
 
+    /**
+     * The dataset `id` for a Data Explorer being opened now, even one closed
+     * before. Concurrent opens of one dataset share one kernel view.
+     */
+    reopen(id: string): Promise<Dataset> {
+        this.closed.delete(id);
+        return this.open(id);
+    }
+
     /** The dataset `id`, opening a kernel view of it the first time. */
     open(id: string): Promise<Dataset> {
+        if (this.closed.has(id)) {
+            return Promise.reject(new Error('This Data Explorer has been closed.'));
+        }
+        this.shown.add(id);
         let dataset = this.datasets.get(id);
         if (!dataset) {
             dataset = this.openView(id);
@@ -221,6 +270,8 @@ export class ResultExplorer {
     closeDataset(id: string): void {
         const dataset = this.datasets.get(id);
         this.datasets.delete(id);
+        this.shown.delete(id);
+        this.closed.add(id);
         dataset
             ?.then(ds => this.call(ds.sessionId, 'result_close', { view: ds.result.view }))
             .catch(err => this.log(`Closing ${id} failed: ${errorMessage(err)}`));
@@ -228,10 +279,16 @@ export class ResultExplorer {
 
     private async call<T>(sessionId: string, method: string, params: object): Promise<T> {
         const session = this.sessions.get(sessionId);
-        if (!session?.callMethod) {
-            throw new Error('The ggsql session that ran this query is no longer running.');
+        if (!session?.callMethod || this.down.has(sessionId)) {
+            throw new Error(SESSION_DOWN);
         }
-        return await session.callMethod(method, params) as T;
+        const answer = await session.callMethod(method, params);
+        // Every results call answers with an object; a kernel without the
+        // results API answers any call with null.
+        if (answer === null || answer === undefined) {
+            throw new Error(KERNEL_TOO_OLD);
+        }
+        return answer as T;
     }
 
     async handleRpc(request: positron.DataExplorerRpcRequest): Promise<positron.DataExplorerRpcResponse> {

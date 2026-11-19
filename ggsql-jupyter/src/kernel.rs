@@ -5,12 +5,11 @@
 
 use crate::connection;
 use crate::data_explorer::{DataExplorerState, RpcResponse};
-use crate::display::{format_display_data, Formatted, RenderHints, SessionKind, SessionMode};
+use crate::display::{format_display_data, Formatted, RenderHints, SessionMode};
 use crate::executor::{self, ExecutionResult, QueryExecutor};
 use crate::message::{ConnectionInfo, JupyterMessage, MessageHeader};
 use crate::plot::comm::{PlotMetadata, RenderParams, RpcError};
 use crate::plot::{PlotBackend, RenderOutcome, RenderTicket};
-use crate::results::filter::Capabilities;
 use crate::results::{methods, ResultStore};
 use anyhow::Result;
 use ggsql::reader::ResolvedPlot;
@@ -67,8 +66,11 @@ pub struct KernelServer {
     ui_comm_id: Option<String>,
     connection_comm_id: Option<String>,
     data_explorer_comms: HashMap<String, DataExplorerState>,
-    /// Console query results kept for the results API.
+    /// Query results kept for the results API.
     results: ResultStore,
+    /// `--keep-results`: whether to keep results for the results API, which
+    /// the frontend that will explore them turns on.
+    keep_results: bool,
     /// `--console-rows`: how many rows of a long result a console shows.
     console_rows: usize,
 }
@@ -80,7 +82,8 @@ impl KernelServer {
         reader_uri: &str,
         session_mode: Option<SessionMode>,
         max_plots: usize,
-        max_results: usize,
+        results_max_bytes: u64,
+        keep_results: bool,
         console_rows: usize,
     ) -> Result<Self> {
         tracing::info!("Initializing kernel server");
@@ -149,7 +152,8 @@ impl KernelServer {
             ui_comm_id: None,
             connection_comm_id: None,
             data_explorer_comms: HashMap::new(),
-            results: ResultStore::new(max_results)?,
+            results: ResultStore::new(results_max_bytes)?,
+            keep_results,
             console_rows,
         };
 
@@ -417,21 +421,26 @@ impl KernelServer {
             self.open_connection_comm(&uri).await?;
         }
 
+        // A result is kept for the results API when the frontend asked for
+        // that, and its key goes in the `execute_result`'s metadata so the
+        // frontend can offer to explore it. A silent cell shows nothing to
+        // offer, and DDL has no table. A result that does not fit the budget
+        // is shown but not kept.
+        let mut retained = None;
+        if let Ok(ExecutionResult::DataFrame(df)) = &executed {
+            if self.keep_results && !silent && df.width() > 0 {
+                let title = format!("Query [{}]", self.execution_count);
+                match self.results.insert(df.clone(), title, query_of(code)) {
+                    Ok(key) => retained = key,
+                    Err(e) => tracing::warn!("Keeping a result failed: {}", e),
+                }
+            }
+        }
+
         // Formatting renders the plot, so it is fallible and its failures are
         // the user's. Both stages feed one `Result` and share the error path
         // below; propagating out of the loop would end the process and take
         // the session's database with it.
-        // A console result is kept for the results API, and its key goes in
-        // the `execute_result`'s metadata so a frontend can offer to explore
-        // it. A silent cell shows nothing to offer, and DDL has no table.
-        let mut retained = None;
-        if let Ok(ExecutionResult::DataFrame(df)) = &executed {
-            if !silent && hints.kind == SessionKind::PositronConsole && df.width() > 0 {
-                let title = format!("Query [{}]", self.execution_count);
-                retained = Some(self.results.insert(df.clone(), title, query_of(code)));
-            }
-        }
-
         let result = match executed {
             Ok(exec_result) => {
                 // A bare connection change renders nothing.
@@ -753,9 +762,6 @@ impl KernelServer {
                             let answer = if methods::handles(name) {
                                 let session = methods::Session {
                                     reader: self.executor.reader(),
-                                    caps: Capabilities {
-                                        regex: self.executor.reader_uri().starts_with("duckdb://"),
-                                    },
                                 };
                                 methods::call(&mut self.results, &session, name, args)
                             } else {
@@ -920,6 +926,9 @@ impl KernelServer {
         } else if Some(comm_id.to_string()) == self.ui_comm_id {
             tracing::info!("Closing positron.ui comm");
             self.ui_comm_id = None;
+            // The views were opened over this comm, and nothing can close
+            // them once it has gone.
+            self.results.close_all();
         } else if self.plot_comms.remove(comm_id).is_some() {
             tracing::info!("Closing positron.plot comm {}", comm_id);
             self.plot_order.retain(|id| id != comm_id);

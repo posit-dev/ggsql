@@ -20,7 +20,6 @@ use arrow::datatypes::{DataType, Field, Schema};
 use arrow::record_batch::RecordBatch;
 use ggsql::reader::connection::reader_from_uri;
 use ggsql::DataFrame;
-use ggsql_jupyter::results::filter::Capabilities;
 use ggsql_jupyter::results::methods::{self, Session};
 use ggsql_jupyter::results::ResultStore;
 use serde_json::{json, Value};
@@ -169,14 +168,17 @@ fn run_store(batch: RecordBatch, cycles: usize) {
     let session_reader = reader_from_uri("duckdb://memory").unwrap();
     let session = Session {
         reader: &*session_reader,
-        caps: Capabilities { regex: true },
     };
-    let mut store = ResultStore::new(4).unwrap();
-    let key = store.insert(
-        DataFrame::from_record_batch(batch),
-        "bench".into(),
-        "SELECT 1".into(),
-    );
+    // Unbounded, so the benchmark measures the work rather than the budget.
+    let mut store = ResultStore::new(u64::MAX).unwrap();
+    let key = store
+        .insert(
+            DataFrame::from_record_batch(batch),
+            "bench".into(),
+            "SELECT 1".into(),
+        )
+        .unwrap()
+        .expect("an unbounded store keeps every result");
     let mut call = |method: &str, params: Value| {
         methods::call(&mut store, &session, method, &params)
             .unwrap_or_else(|e| panic!("{method}: {e}"))

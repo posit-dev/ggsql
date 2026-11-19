@@ -122,7 +122,28 @@ suite('Data Explorer backend', () => {
 	test('a session that is gone is an error, not a hang', async () => {
 		const explorer = new ResultExplorer(() => { });
 		const r = await explorer.handleRpc({ method: 'get_schema', uri: ID, params: { column_indices: [0] } });
-		assert.match(r.error_message ?? '', /no longer running/);
+		assert.match(r.error_message ?? '', /not running/);
+	});
+
+	test('a session that is down is not called, so nothing waits on it', async () => {
+		const { explorer, calls, rpc } = setup();
+		explorer.setRunning('ggsql-abc', false);
+		const r = await rpc('get_schema', { column_indices: [0] });
+		assert.match(r.error_message ?? '', /not running/);
+		assert.deepStrictEqual(calls, []);
+	});
+
+	test('a kernel without the results API is reported as too old', async () => {
+		const explorer = new ResultExplorer(() => { });
+		explorer.addSession('ggsql-abc', { callMethod: async () => null });
+		const r = await explorer.handleRpc({ method: 'get_state', uri: ID, params: {} });
+		assert.match(String((r.result as Record<string, unknown>).error_message), /too old/);
+	});
+
+	test('concurrent requests share one kernel view', async () => {
+		const { calls, rpc } = setup();
+		await Promise.all([rpc('get_state'), rpc('get_schema', { column_indices: [0] }), rpc('get_state')]);
+		assert.deepStrictEqual(calls, [['result_open', { key: '0f9e' }]]);
 	});
 
 	test('get_data_values batches columns that ask for the same rows', async () => {
@@ -292,13 +313,17 @@ suite('Data Explorer backend', () => {
 		assert.match((await rpc('nope')).error_message ?? '', /Unknown method/);
 	});
 
-	test('closing a dataset closes its view, and the next request reopens', async () => {
+	test('closing a dataset closes its view, and a late request does not reopen it', async () => {
 		const { explorer, calls, rpc } = setup({ result_close: () => ({}) });
 		await rpc('get_state');
 		explorer.closeDataset(ID);
 		await new Promise(resolve => setTimeout(resolve, 0));
 		assert.deepStrictEqual(calls.at(-1), ['result_close', { view: 'v1' }]);
-		await rpc('get_state');
+		const late = await rpc('get_schema', { column_indices: [0] });
+		assert.match(late.error_message ?? '', /closed/);
+		assert.strictEqual(calls.filter(c => c[0] === 'result_open').length, 1);
+		// Opening it again is what reopens it.
+		await explorer.reopen(ID);
 		assert.strictEqual(calls.filter(c => c[0] === 'result_open').length, 2);
 	});
 });

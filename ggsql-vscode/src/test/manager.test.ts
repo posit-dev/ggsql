@@ -1,6 +1,6 @@
 import * as assert from 'assert';
 import * as vscode from 'vscode';
-import { GgsqlRuntimeManager, consoleRowsEnv, createDynState, getSupervisorApi } from '../manager';
+import { GgsqlRuntimeManager, MAX_CONSOLE_ROWS, consoleRowsEnv, createDynState, getSupervisorApi, keepResultsEnv } from '../manager';
 
 suite('manager', () => {
 	// The suites run in stock VS Code, where positron.positron-supervisor is
@@ -19,9 +19,20 @@ suite('manager', () => {
 
 	test('consoleRowsEnv leaves out a value the kernel would refuse', () => {
 		// The kernel exits on a bad value, so the session would fail to start.
-		for (const rows of [0, -1, 2.5, '10', undefined, null]) {
+		for (const rows of [0, -1, 2.5, '10', undefined, null, MAX_CONSOLE_ROWS + 1, 1e21]) {
 			assert.deepStrictEqual(consoleRowsEnv(rows), {}, String(rows));
 		}
+		assert.deepStrictEqual(consoleRowsEnv(MAX_CONSOLE_ROWS), { GGSQL_CONSOLE_ROWS: String(MAX_CONSOLE_ROWS) });
+	});
+
+	test('the setting\'s maximum is the kernel\'s', () => {
+		const pkg = require('../../package.json');
+		assert.strictEqual(pkg.contributes.configuration.properties['ggsql.consoleRows'].maximum, MAX_CONSOLE_ROWS);
+	});
+
+	test('keepResultsEnv turns keeping results on only when asked', () => {
+		assert.deepStrictEqual(keepResultsEnv(true), { GGSQL_KEEP_RESULTS: '1' });
+		assert.deepStrictEqual(keepResultsEnv(false), {});
 	});
 
 	test('createDynState falls back to the default session name', () => {

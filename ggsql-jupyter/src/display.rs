@@ -276,7 +276,12 @@ fn format_static(
 /// Format DataFrame as HTML table
 fn format_dataframe(df: DataFrame, hints: &RenderHints) -> Value {
     let html = dataframe_to_html(&df, html_rows_shown(df.height(), hints));
-    let text = dataframe_to_text(&df);
+    // The plain text is the console's too, where it follows the same rule.
+    let text_rows = match hints.kind {
+        SessionKind::PositronConsole => html_rows_shown(df.height(), hints),
+        _ => df.height().min(10),
+    };
+    let text = dataframe_to_text(&df, text_rows);
 
     json!({
         "data": {
@@ -350,12 +355,11 @@ fn dataframe_to_html(df: &DataFrame, row_limit: usize) -> String {
 }
 
 /// Convert DataFrame to plain-text summary (shape + column names + first rows).
-fn dataframe_to_text(df: &ggsql::DataFrame) -> String {
+fn dataframe_to_text(df: &ggsql::DataFrame, row_limit: usize) -> String {
     let mut s = format!("shape: ({}, {})\n", df.height(), df.width());
     let names = df.get_column_names();
     s.push_str(&names.join("\t"));
     s.push('\n');
-    let row_limit = df.height().min(10);
     for i in 0..row_limit {
         let row: Vec<String> = df.get_columns().iter().map(|c| cell_text(c, i)).collect();
         s.push_str(&row.join("\t"));
@@ -402,7 +406,7 @@ mod tests {
             .unwrap();
         let html = dataframe_to_html(&df, 1);
         assert!(html.contains("<td>2024-01-01</td>"), "{html}");
-        assert!(dataframe_to_text(&df).contains("2024-01-01"));
+        assert!(dataframe_to_text(&df, 1).contains("2024-01-01"));
     }
 
     #[test]
@@ -592,6 +596,22 @@ mod tests {
         let html = bundle["data"]["text/html"].as_str().unwrap();
         assert_eq!(html.matches("<tr>").count(), 1 + 10 + 1, "{html}");
         assert!(html.contains("... 4990 more rows"), "{html}");
+    }
+
+    #[test]
+    fn test_console_text_follows_console_rows() {
+        let df = ggsql::reader::connection::reader_from_uri("duckdb://memory")
+            .unwrap()
+            .execute_sql("SELECT i FROM range(50) t(i)")
+            .unwrap();
+        let console = RenderHints {
+            console_rows: 3,
+            ..positron_console()
+        };
+        let bundle = format_dataframe(df, &console);
+        let text = bundle["data"]["text/plain"].as_str().unwrap();
+        // The shape line, the header, and three rows.
+        assert_eq!(text.lines().count(), 2 + 3, "{text}");
     }
 
     /// A render backend with no GPU, so tests are fast and identical
