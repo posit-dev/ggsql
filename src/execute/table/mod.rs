@@ -16,6 +16,7 @@ mod summary;
 use facet::collapse_group_columns;
 use format::{apply_formats, setup_formats};
 use layout::{build_cells, setup_columns, setup_rows};
+use summary::setup_summaries;
 
 use crate::table::extract_table_titles;
 
@@ -67,7 +68,7 @@ pub fn resolve_table_with_reader(query: &str, reader: &dyn Reader) -> Result<Res
 
     let df = resolve_selection(reader.execute_sql(&sql)?, &table.selection)?;
 
-    let (df, rows) = setup_rows(df, facet.as_ref())?;
+    let (mut df, rows) = setup_rows(df, facet.as_ref())?;
 
     let column_names = df.get_column_names();
     let spans = table
@@ -77,6 +78,7 @@ pub fn resolve_table_with_reader(query: &str, reader: &dyn Reader) -> Result<Res
     // (RENAMING) read from. Resolved after spans so a FORMAT column entry
     // can name a SPAN id in place of the columns it covers.
     let formats = setup_formats(&df, &table.formats, &spans)?;
+    setup_summaries(&mut df, &formats, &table.summaries)?;
     let columns = setup_columns(&df, &spans, &labels, &formats, facet.as_ref());
     // A `place => 'left'` facet keeps its columns as group stubs, so check
     // for body columns rather than emptiness.

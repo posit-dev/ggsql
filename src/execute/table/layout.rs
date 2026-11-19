@@ -8,6 +8,7 @@ use std::collections::HashMap;
 use super::format::resolve_column_properties;
 use super::stub::{create_row_labels, create_stubhead};
 use crate::array_util::{column_to_strings, value_to_string};
+use crate::naming;
 use crate::plot::facet::Facet;
 use crate::plot::Labels;
 use crate::table::{
@@ -160,12 +161,17 @@ fn create_table_columns(
             .data_type();
         let format = formats.get(&name);
         let properties = resolve_column_properties(dtype, format);
-        // Group stubs record nesting order
-        let target = group_stub_variables
-            .iter()
-            .position(|v| *v == name)
-            .map(ColumnSection::GroupStub)
-            .unwrap_or_else(|| format.and_then(|f| f.target).unwrap_or_default());
+        // the synthetic summary-label column is always a stub.
+        let target = if name == naming::SUMMARY_LABEL_COLUMN {
+            ColumnSection::Stub
+        } else {
+            // Group stubs record nesting order
+            group_stub_variables
+                .iter()
+                .position(|v| *v == name)
+                .map(ColumnSection::GroupStub)
+                .unwrap_or_else(|| format.and_then(|f| f.target).unwrap_or_default())
+        };
         let label = match labels.labels.get(&name) {
             // A stub head is a row-label header, not a data column header —
             // default it blank rather than to the column's own name.

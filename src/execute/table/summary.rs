@@ -1,12 +1,13 @@
-//! Statistics kernel for `SUMMARISE` clauses: aggregate operations computed
-//! directly on the materialised table data.
+//! `SUMMARISE` execution: `setup_summaries` validates the clauses against the
+//! data and prepares the frame for summary rows, `compute_summaries` runs
+//! the aggregate operations on it.
 //!
 //! Only `mean` and `median` exist so far; the rest of `SUMMARY_OPERATIONS`
 //! lands once the execution pipeline is wired end-to-end.
 
-use std::sync::Arc;
-
+use std::collections::HashMap;
 use std::ops::Range;
+use std::sync::Arc;
 
 use arrow::array::{Array, ArrayRef, Float64Array, StringArray};
 use arrow::datatypes::DataType;
@@ -14,8 +15,42 @@ use arrow::datatypes::DataType;
 use crate::array_util::{as_f64, cast_array};
 use crate::naming;
 use crate::params::{ParameterValue, Parameters};
-use crate::table::{Summary, SummaryScope, TableRow};
-use crate::{DataFrame, GgsqlError, Result};
+use crate::table::{Format, Summary, SummaryScope, TableRow};
+use crate::{ColumnSection, DataFrame, GgsqlError, Result};
+
+/// Validate `summaries` against the data and prepare the frame for summary
+/// rows. Every summarised column must exist. Summary row labels need a stub
+/// column to live in, so a table with summaries but no `STUB` column gets a
+/// synthetic, empty one ([`naming::SUMMARY_LABEL_COLUMN`]).
+pub(super) fn setup_summaries(
+    df: &mut DataFrame,
+    formats: &HashMap<String, Format>,
+    summaries: &[Summary],
+) -> Result<()> {
+    if summaries.is_empty() {
+        return Ok(());
+    }
+    for summary in summaries {
+        for column in &summary.columns {
+            if df.column(column).is_err() {
+                return Err(GgsqlError::ValidationError(format!(
+                    "SUMMARISE {}: no column '{column}' in the query result",
+                    summary.operation
+                )));
+            }
+        }
+    }
+    if !formats
+        .values()
+        .any(|f| f.target == Some(ColumnSection::Stub))
+    {
+        *df = df.with_column(
+            naming::SUMMARY_LABEL_COLUMN,
+            Arc::new(StringArray::from(vec![""; df.height()])),
+        )?;
+    }
+    Ok(())
+}
 
 /// Compute every `SUMMARISE` clause against the (unformatted) data, one
 /// DataFrame per clause, parallel to `summaries`. Every frame leads with a
@@ -27,7 +62,7 @@ use crate::{DataFrame, GgsqlError, Result};
 /// label and placement, so nothing here duplicates them.
 // Unused until the table pipeline calls it.
 #[allow(dead_code)]
-pub(super) fn setup_summaries(
+pub(super) fn compute_summaries(
     df: &DataFrame,
     rows: &[TableRow],
     summaries: &[Summary],
@@ -261,7 +296,7 @@ mod tests {
         let rows = body_rows(&[&[], &[], &[]]);
 
         let frames =
-            setup_summaries(&df, &rows, &[summary("mean", SummaryScope::Grand, &["x"])]).unwrap();
+            compute_summaries(&df, &rows, &[summary("mean", SummaryScope::Grand, &["x"])]).unwrap();
 
         assert_eq!(frames.len(), 1);
         assert_eq!(frames[0].height(), 1);
@@ -279,7 +314,7 @@ mod tests {
         let rows = body_rows(&[&[2, 0], &[2, 0], &[2, 1], &[2, 1]]);
 
         let frames =
-            setup_summaries(&df, &rows, &[summary("mean", SummaryScope::Group, &["x"])]).unwrap();
+            compute_summaries(&df, &rows, &[summary("mean", SummaryScope::Group, &["x"])]).unwrap();
 
         assert_eq!(frames[0].height(), 2);
         assert_eq!(group_keys(&frames[0]), vec!["2;0", "2;1"]);
@@ -295,7 +330,7 @@ mod tests {
         let rows = body_rows(&[&[], &[]]);
 
         let frames =
-            setup_summaries(&df, &rows, &[summary("mean", SummaryScope::Group, &["x"])]).unwrap();
+            compute_summaries(&df, &rows, &[summary("mean", SummaryScope::Group, &["x"])]).unwrap();
 
         assert_eq!(frames[0].height(), 1);
         assert_eq!(group_keys(&frames[0]), vec![""]);
@@ -316,7 +351,7 @@ mod tests {
             ParameterValue::String("drop".to_string()),
         );
 
-        let frames = setup_summaries(
+        let frames = compute_summaries(
             &df,
             &rows,
             &[summary("mean", SummaryScope::Grand, &["x"]), drop],
@@ -327,6 +362,85 @@ mod tests {
         assert_eq!(column_values(&frames[1], "x"), vec![Some(2.0)]);
     }
 
+    fn stub_format() -> Format {
+        Format {
+            columns: vec!["x".to_string()],
+            wildcard: false,
+            target: Some(ColumnSection::Stub),
+            settings: Parameters::new(),
+            value_mapping: None,
+            value_template: None,
+        }
+    }
+
+    #[test]
+    fn setup_adds_an_empty_label_column_when_no_stub_exists() {
+        let mut df = crate::df! {
+            "x" => vec![1.0, 2.0],
+        }
+        .unwrap();
+
+        setup_summaries(
+            &mut df,
+            &HashMap::new(),
+            &[summary("mean", SummaryScope::Group, &["x"])],
+        )
+        .unwrap();
+
+        let labels =
+            crate::array_util::as_str(df.column(naming::SUMMARY_LABEL_COLUMN).unwrap()).unwrap();
+        assert_eq!(labels.iter().collect::<Vec<_>>(), vec![Some(""), Some("")]);
+    }
+
+    #[test]
+    fn setup_leaves_the_frame_alone_when_a_stub_exists() {
+        let mut df = crate::df! {
+            "x" => vec![1.0, 2.0],
+        }
+        .unwrap();
+        let formats = HashMap::from([("x".to_string(), stub_format())]);
+
+        setup_summaries(
+            &mut df,
+            &formats,
+            &[summary("mean", SummaryScope::Group, &["x"])],
+        )
+        .unwrap();
+
+        assert!(df.column(naming::SUMMARY_LABEL_COLUMN).is_err());
+    }
+
+    #[test]
+    fn setup_without_summaries_is_a_no_op() {
+        let mut df = crate::df! {
+            "x" => vec![1.0],
+        }
+        .unwrap();
+
+        setup_summaries(&mut df, &HashMap::new(), &[]).unwrap();
+
+        assert_eq!(df.width(), 1);
+    }
+
+    #[test]
+    fn setup_rejects_a_summarised_column_the_data_lacks() {
+        let mut df = crate::df! {
+            "x" => vec![1.0],
+        }
+        .unwrap();
+
+        let result = setup_summaries(
+            &mut df,
+            &HashMap::new(),
+            &[summary("mean", SummaryScope::Group, &["y"])],
+        );
+
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "Validation error: SUMMARISE mean: no column 'y' in the query result"
+        );
+    }
+
     #[test]
     fn summarising_a_missing_column_errors() {
         let df = crate::df! {
@@ -335,7 +449,7 @@ mod tests {
         .unwrap();
         let rows = body_rows(&[&[]]);
 
-        let result = setup_summaries(&df, &rows, &[summary("mean", SummaryScope::Grand, &["y"])]);
+        let result = compute_summaries(&df, &rows, &[summary("mean", SummaryScope::Grand, &["y"])]);
         assert!(result.is_err());
     }
 }

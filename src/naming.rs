@@ -98,6 +98,11 @@ pub const TABLE_ALIAS: &str = concatcp!(GGSQL_SUFFIX, "table", GGSQL_SUFFIX);
 /// ';'-joined facet ranks. A `GRAND` frame's single row uses the empty key.
 pub const SUMMARY_GROUP_COLUMN: &str = concatcp!(GGSQL_PREFIX, "group", GGSQL_SUFFIX);
 
+/// Synthetic stub column holding `SUMMARISE` row labels, inserted when a
+/// table has summaries but no `STUB` column to put them in. Never names a
+/// `DataFrame` column.
+pub const SUMMARY_LABEL_COLUMN: &str = concatcp!(GGSQL_PREFIX, "summary_label", GGSQL_SUFFIX);
+
 /// Column name for densification group ID.
 /// Used by geoms that expand geometry (tile, segment, ribbon, rule) to group
 /// densified vertices back into their original feature.
