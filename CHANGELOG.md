@@ -26,6 +26,9 @@ determines whether text boxes get drawn and additional settings `padding`,
 
 ### Changed
 
+- Registering a DataFrame of more than 2,048 rows with the DuckDB reader
+  appends it with DuckDB's Arrow appender rather than one `INSERT` per
+  2,048-row chunk, about twice as fast on large frames (#PR).
 - **Breaking**: `TABULATE` is now a reserved word after `VISUALISE`/`TABULATE`,
   like `VISUALISE`. Reference a column named `tabulate` there quoted
   (`'tabulate'`); the SQL part of a query is unaffected.
