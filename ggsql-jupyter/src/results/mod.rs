@@ -463,9 +463,19 @@ fn gone() -> anyhow::Error {
     anyhow!("This query result is no longer available. Re-run the query to explore it.")
 }
 
-/// A DuckDB type name's neutral kind.
+/// A type name's neutral kind: DuckDB's names, and other backends' as the
+/// Connections pane reports them.
 pub fn kind_of(type_name: &str) -> &'static str {
-    let upper = type_name.trim().to_uppercase();
+    let mut upper = type_name.trim().to_uppercase();
+    // ClickHouse wraps a type to say it may be NULL or is dictionary-encoded;
+    // what it holds is the type inside.
+    while let Some(inner) = ["NULLABLE(", "LOWCARDINALITY("].iter().find_map(|wrapper| {
+        upper
+            .strip_prefix(wrapper)
+            .and_then(|rest| rest.strip_suffix(')'))
+    }) {
+        upper = inner.trim().to_string();
+    }
     // Nested types (`INTEGER[]`, `STRUCT(a INTEGER)`) name a scalar type
     // inside them, but are not one.
     if upper.ends_with(']') {
@@ -482,11 +492,16 @@ pub fn kind_of(type_name: &str) -> &'static str {
     match base {
         "TINYINT" | "SMALLINT" | "MEDIUMINT" | "INTEGER" | "BIGINT" | "HUGEINT" | "UTINYINT"
         | "USMALLINT" | "UINTEGER" | "UBIGINT" | "UHUGEINT" | "INT" | "INT1" | "INT2" | "INT4"
-        | "INT8" | "INT64" | "SERIAL" | "BIGSERIAL" | "SMALLSERIAL" => "integer",
-        "FLOAT" | "FLOAT4" | "FLOAT8" | "FLOAT64" | "REAL" | "DOUBLE" | "DOUBLE PRECISION"
-        | "DECIMAL" | "NUMERIC" | "BIGNUMERIC" | "NUMBER" => "floating",
+        | "INT8" | "INT16" | "INT32" | "INT64" | "INT128" | "INT256" | "UINT8" | "UINT16"
+        | "UINT32" | "UINT64" | "UINT128" | "UINT256" | "BIG INT" | "UNSIGNED BIG INT"
+        | "SERIAL" | "BIGSERIAL" | "SMALLSERIAL" => "integer",
+        "FLOAT" | "FLOAT4" | "FLOAT8" | "FLOAT16" | "FLOAT32" | "FLOAT64" | "REAL" | "DOUBLE"
+        | "DOUBLE PRECISION" | "BINARY_FLOAT" | "BINARY_DOUBLE" | "DECIMAL" | "DECIMAL32"
+        | "DECIMAL64" | "DECIMAL128" | "DECIMAL256" | "NUMERIC" | "BIGNUMERIC" | "NUMBER" => {
+            "floating"
+        }
         "BOOLEAN" | "BOOL" => "boolean",
-        "DATE" => "date",
+        "DATE" | "DATE32" | "DATE64" => "date",
         "TIMESTAMP"
         | "TIMESTAMP WITH TIME ZONE"
         | "TIMESTAMP WITHOUT TIME ZONE"
@@ -498,13 +513,15 @@ pub fn kind_of(type_name: &str) -> &'static str {
         | "TIMESTAMP_LTZ"
         | "TIMESTAMP_TZ"
         | "DATETIME"
+        | "DATETIME64"
         | "DATETIME2"
         | "SMALLDATETIME"
         | "DATETIMEOFFSET" => "datetime",
         "TIME" | "TIME WITH TIME ZONE" | "TIME WITHOUT TIME ZONE" | "TIMETZ" => "time",
         "VARCHAR" | "VARCHAR2" | "NVARCHAR" | "NVARCHAR2" | "CHAR" | "NCHAR" | "BPCHAR"
         | "CHARACTER" | "CHARACTER VARYING" | "TEXT" | "TINYTEXT" | "MEDIUMTEXT" | "LONGTEXT"
-        | "NTEXT" | "CLOB" | "NCLOB" | "STRING" | "UUID" | "ENUM" => "string",
+        | "NTEXT" | "CLOB" | "NCLOB" | "STRING" | "FIXEDSTRING" | "UTF8" | "LARGEUTF8" | "UUID"
+        | "ENUM" | "ENUM8" | "ENUM16" => "string",
         _ => "unknown",
     }
 }
@@ -1293,5 +1310,16 @@ mod tests {
         assert_eq!(kind_of("TIMESTAMP(6) WITH TIME ZONE"), "datetime");
         assert_eq!(kind_of("character varying(255)"), "string");
         assert_eq!(kind_of("DATETIME2"), "datetime");
+        // ClickHouse, wrapped or not.
+        assert_eq!(kind_of("Nullable(Int32)"), "integer");
+        assert_eq!(kind_of("UInt64"), "integer");
+        assert_eq!(kind_of("Float32"), "floating");
+        assert_eq!(kind_of("Nullable(DateTime64(3))"), "datetime");
+        assert_eq!(kind_of("LowCardinality(Nullable(String))"), "string");
+        // Oracle, DataFusion and SQLite.
+        assert_eq!(kind_of("BINARY_DOUBLE"), "floating");
+        assert_eq!(kind_of("Date32"), "date");
+        assert_eq!(kind_of("Utf8"), "string");
+        assert_eq!(kind_of("UNSIGNED BIG INT"), "integer");
     }
 }

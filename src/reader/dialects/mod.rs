@@ -311,9 +311,9 @@ mod tests {
     }
 
     #[test]
-    fn an_empty_string_is_null_on_oracle() {
+    fn not_empty_is_not_null_on_oracle() {
         let oracle = dialect_for_scheme("oracle").unwrap();
-        assert_eq!(oracle.sql_is_empty_string("c", false), "c IS NULL");
+        assert_eq!(oracle.sql_is_empty_string("c", false), "c = ''");
         assert_eq!(oracle.sql_is_empty_string("c", true), "c IS NOT NULL");
         assert_eq!(AnsiDialect.sql_is_empty_string("c", false), "c = ''");
     }

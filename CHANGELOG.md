@@ -56,6 +56,9 @@ determines whether text boxes get drawn and additional settings `padding`,
 
 ### Fixed
 
+- A timestamp with a time zone is now written as a timestamp in UTC
+  (`2024-01-02T03:04:05Z`) wherever ggsql shows a value as text, rather than
+  as the name of its Arrow type (#595).
 - `SCALE DISCRETE` now accepts integer columns, matching the documented ability
   to force numeric data into a discrete scale. Integer columns mapped to
   grouping aesthetics (e.g. `fill` in `DRAW bar`) can now be declared discrete

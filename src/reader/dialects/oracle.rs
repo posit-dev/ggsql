@@ -15,12 +15,14 @@ use crate::reader::SqlDialect;
 pub struct OracleDialect;
 
 impl SqlDialect for OracleDialect {
-    // An empty string is NULL.
+    // An empty string is NULL, so `<> ''` is never true and "not empty" is
+    // `IS NOT NULL`. "Empty" stays `= ''`, which matches nothing here, as no
+    // value read from Oracle is the empty string.
     fn sql_is_empty_string(&self, expr: &str, negate: bool) -> String {
         if negate {
             format!("{expr} IS NOT NULL")
         } else {
-            format!("{expr} IS NULL")
+            format!("{expr} = ''")
         }
     }
 

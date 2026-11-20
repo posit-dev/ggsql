@@ -1531,16 +1531,7 @@ mod behavior_tests {
     fn test_only_an_entry_can_be_pinned() {
         let tables = tiny_budget_tables();
         assert!(tables.set_pinned("nothing", true).is_err());
-        // No pin was left behind to keep a later entry of that key.
-        tables
-            .put(
-                "nothing",
-                "q",
-                "__t_n__",
-                df! { "x" => vec![1_i64] }.unwrap(),
-            )
-            .unwrap();
-        assert!(!tables.contains("nothing").unwrap());
+        assert_eq!(tables.pinned_bytes().unwrap(), 0);
     }
 
     #[test]

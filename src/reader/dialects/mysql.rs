@@ -11,7 +11,9 @@ pub struct MySqlDialect;
 
 impl SqlDialect for MySqlDialect {
     // Comparison follows the column's collation, case-insensitive by
-    // default, so a case-sensitive match compares bytes.
+    // default, so a case-sensitive match compares bytes. `_` then matches one
+    // byte rather than one character, which an escaped search term never
+    // relies on.
     fn sql_like(&self, expr: &str, pattern: &str, case_sensitive: bool) -> String {
         if case_sensitive {
             format!(

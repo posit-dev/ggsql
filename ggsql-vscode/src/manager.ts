@@ -549,6 +549,9 @@ export function consoleRowsEnv(rows: unknown): Record<string, string> {
         : {};
 }
 
+/** The largest `u64`, the most bytes the kernel accepts for a budget. */
+const MAX_U64 = (1n << 64n) - 1n;
+
 /** The most rows the kernel accepts for `--console-rows`, a `u32`. */
 export const MAX_CONSOLE_ROWS = 4294967295;
 
@@ -561,8 +564,15 @@ export function resultsMemoryEnv(value: unknown): Record<string, string> {
     if (typeof value !== 'string') {
         return {};
     }
-    const match = /^\s*([0-9]{1,12})\s*([kmg]b)?\s*$/i.exec(value);
-    return match && Number(match[1]) > 0 ? { GGSQL_RESULTS_MAX_BYTES: value.trim() } : {};
+    const match = /^\s*([0-9]+)\s*([kmg]b)?\s*$/i.exec(value);
+    if (!match) {
+        return {};
+    }
+    const unit = { kb: 1n << 10n, mb: 1n << 20n, gb: 1n << 30n }[match[2]?.toLowerCase() ?? ''] ?? 1n;
+    // The kernel reads the count as a `u64`, and refuses to start on zero or
+    // on more than that holds.
+    const bytes = BigInt(match[1]) * unit;
+    return bytes > 0n && bytes <= MAX_U64 ? { GGSQL_RESULTS_MAX_BYTES: value.trim() } : {};
 }
 
 /**

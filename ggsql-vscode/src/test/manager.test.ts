@@ -17,10 +17,12 @@ suite('manager', () => {
 		assert.deepStrictEqual(resultsMemoryEnv(' 512MB '), { GGSQL_RESULTS_MAX_BYTES: '512MB' });
 		assert.deepStrictEqual(resultsMemoryEnv('2gb'), { GGSQL_RESULTS_MAX_BYTES: '2gb' });
 		assert.deepStrictEqual(resultsMemoryEnv('1048576'), { GGSQL_RESULTS_MAX_BYTES: '1048576' });
+		assert.deepStrictEqual(resultsMemoryEnv('18446744073709551615'), { GGSQL_RESULTS_MAX_BYTES: '18446744073709551615' });
 	});
 
 	test('resultsMemoryEnv leaves out a value the kernel would refuse', () => {
-		for (const value of ['', '0', '0gb', '1.5gb', '2 terabytes', '-1mb', '1234567890123gb', 512, undefined]) {
+		// 99999999999gb and 18446744073709551616 overflow a u64.
+		for (const value of ['', '0', '0gb', '1.5gb', '2 terabytes', '-1mb', '99999999999gb', '18446744073709551616', 512, undefined]) {
 			assert.deepStrictEqual(resultsMemoryEnv(value), {}, String(value));
 		}
 	});
