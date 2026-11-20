@@ -13,6 +13,8 @@ import * as crypto from 'crypto';
 import type * as positron from '@posit-dev/positron';
 import type { JupyterKernelSpec, PositronSupervisorApi } from './types';
 import { log, showLog } from './extension';
+import { withResultLinks } from './resultLinks';
+import type { ResultExplorer } from './dataExplorer/handler';
 
 /** Where a kernel candidate was discovered */
 type KernelSource = 'Bundled' | 'Setting' | 'Jupyter' | 'System' | 'Path';
@@ -535,6 +537,55 @@ export function generateMetadata(
 }
 
 /**
+ * The kernel environment for the `ggsql.consoleRows` setting.
+ *
+ * An environment variable rather than a flag: a kernel that predates
+ * `--console-rows` ignores the variable, where it would refuse to start on the
+ * flag. A value the kernel would reject is left out, so it uses its default.
+ */
+export function consoleRowsEnv(rows: unknown): Record<string, string> {
+    return Number.isInteger(rows) && (rows as number) >= 1 && (rows as number) <= MAX_CONSOLE_ROWS
+        ? { GGSQL_CONSOLE_ROWS: String(rows) }
+        : {};
+}
+
+/** The largest `u64`, the most bytes the kernel accepts for a budget. */
+const MAX_U64 = (1n << 64n) - 1n;
+
+/** The most rows the kernel accepts for `--console-rows`, a `u32`. */
+export const MAX_CONSOLE_ROWS = 4294967295;
+
+/**
+ * The kernel environment for the `ggsql.resultsMemory` setting, a byte count
+ * such as `512mb`. As for `consoleRows`, a value the kernel would reject is
+ * left out, so it uses its default rather than refusing to start.
+ */
+export function resultsMemoryEnv(value: unknown): Record<string, string> {
+    if (typeof value !== 'string') {
+        return {};
+    }
+    const match = /^\s*([0-9]+)\s*([kmg]b)?\s*$/i.exec(value);
+    if (!match) {
+        return {};
+    }
+    const unit = { kb: 1n << 10n, mb: 1n << 20n, gb: 1n << 30n }[match[2]?.toLowerCase() ?? ''] ?? 1n;
+    // The kernel reads the count as a `u64`, and refuses to start on zero or
+    // on more than that holds.
+    const bytes = BigInt(match[1]) * unit;
+    return bytes > 0n && bytes <= MAX_U64 ? { GGSQL_RESULTS_MAX_BYTES: value.trim() } : {};
+}
+
+/**
+ * The kernel environment that turns on keeping query results, which the
+ * kernel only does when asked. A console session whose results this
+ * extension can open in the Data Explorer asks; any other session would hold
+ * results nothing explores.
+ */
+export function keepResultsEnv(keep: boolean): Record<string, string> {
+    return keep ? { GGSQL_KEEP_RESULTS: '1' } : {};
+}
+
+/**
  * Create a Jupyter kernel spec for ggsql-jupyter
  *
  * `--session-mode` tells the kernel where its output goes, which it cannot work
@@ -545,11 +596,13 @@ export function generateMetadata(
  * @param kernelPath - Path to the ggsql-jupyter executable
  * @param readerUri - Data source the kernel should open, if not the default
  * @param sessionMode - What kind of session this is, when known
+ * @param keepResults - Whether the kernel should keep results for the Data Explorer
  */
 function createKernelSpec(
     kernelPath: string,
     readerUri?: string,
-    sessionMode?: positron.LanguageRuntimeSessionMode
+    sessionMode?: positron.LanguageRuntimeSessionMode,
+    keepResults = false
 ): JupyterKernelSpec {
     const argv = [kernelPath, '-f', '{connection_file}'];
     if (readerUri) {
@@ -566,7 +619,12 @@ function createKernelSpec(
         display_name: 'ggsql',
         language: 'ggsql',
         interrupt_mode: 'signal',
-        env: { RUST_LOG: 'error' },
+        env: {
+            RUST_LOG: 'error',
+            ...consoleRowsEnv(vscode.workspace.getConfiguration('ggsql').get('consoleRows')),
+            ...keepResultsEnv(keepResults),
+            ...(keepResults ? resultsMemoryEnv(vscode.workspace.getConfiguration('ggsql').get('resultsMemory')) : {}),
+        },
         kernel_protocol_version: '5.3',
     };
 }
@@ -692,6 +750,12 @@ export async function getSupervisorApi(): Promise<PositronSupervisorApi> {
  */
 export interface RuntimeManagerOptions {
     /**
+     * The Data Explorer backend for console results. Sessions are wrapped to
+     * link their results to it; without one they are returned unwrapped.
+     */
+    resultExplorer?: ResultExplorer;
+
+    /**
      * Directory the discovered kernel is advertised in, as a Jupyter kernel
      * spec. Defaults to the user-level Jupyter kernels directory.
      *
@@ -726,9 +790,11 @@ export class GgsqlRuntimeManager implements positron.LanguageRuntimeManager {
     private _context: vscode.ExtensionContext;
     private _kernelSpecDir: string;
     private _probe: KernelProbe;
+    private _resultExplorer: ResultExplorer | undefined;
 
     constructor(context: vscode.ExtensionContext, options: RuntimeManagerOptions = {}) {
         this._context = context;
+        this._resultExplorer = options.resultExplorer;
         this._kernelSpecDir = options.kernelSpecDir ?? getUserJupyterKernelDir();
         this._probe = options.probe ?? probeKernel;
     }
@@ -829,6 +895,10 @@ export class GgsqlRuntimeManager implements positron.LanguageRuntimeManager {
         return undefined;
     }
 
+    private _withResultLinks(session: positron.LanguageRuntimeSession): positron.LanguageRuntimeSession {
+        return this._resultExplorer ? withResultLinks(session, this._resultExplorer) : session;
+    }
+
     /**
      * Create a new ggsql runtime session.
      */
@@ -842,7 +912,9 @@ export class GgsqlRuntimeManager implements positron.LanguageRuntimeManager {
         const kernelSpec = createKernelSpec(
             runtimeMetadata.runtimePath,
             undefined,
-            sessionMetadata.sessionMode
+            sessionMetadata.sessionMode,
+            this._resultExplorer !== undefined &&
+                sessionMetadata.sessionMode === ('console' as positron.LanguageRuntimeSessionMode)
         );
 
         const dynState = createDynState();
@@ -858,7 +930,7 @@ export class GgsqlRuntimeManager implements positron.LanguageRuntimeManager {
             dynState
         );
 
-        return session;
+        return this._withResultLinks(session);
     }
 
     /**
@@ -885,7 +957,7 @@ export class GgsqlRuntimeManager implements positron.LanguageRuntimeManager {
             dynState
         );
 
-        return session;
+        return this._withResultLinks(session);
     }
 
     /**

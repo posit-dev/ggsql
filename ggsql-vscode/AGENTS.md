@@ -19,6 +19,8 @@ ggsql-vscode/
 │   ├── manager.ts            Kernel discovery + Positron language-runtime registration
 │   ├── positronApi.ts        Acquires the Positron API so Positron can attribute it to this extension
 │   ├── connections.ts        Connection-string handling for the Connections pane
+│   ├── resultLinks.ts        Session wrapper adding "Open in Data Explorer" links to console results
+│   ├── dataExplorer/         Data Explorer backend for console results (Positron protocol → kernel results API)
 │   ├── cellParser.ts         Splits .ggsql files into cells for Run-Cell commands
 │   ├── codelens.ts           "▶ Run cell" lens above each cell
 │   ├── decorations.ts        Cell separator decorations
@@ -99,7 +101,13 @@ The extension declares `contributes.languageRuntimes` for `ggsql` (see `package.
 - **`createKernelSpec` appends `--session-mode <console|notebook|background>`** from `sessionMetadata.sessionMode`. The kernel keys every output decision off that: a console session gets the comm, a notebook session gets a static image in its cell, and background gets the standalone path. Without the flag the kernel falls back to guessing from its session id, which works but is a heuristic. `restoreSession` deliberately does *not* rebuild the spec — the supervisor replays the argv the session was created with, and a session's mode never changes.
 - **`uiSubscriptions: ['did_change_plots_render_settings']`** on the runtime metadata. Without it the frontend never tells the kernel how large the Plots pane is, and the kernel needs that for exactly one thing: rendering a *new* plot at the right size so its `comm_open` can carry it, and the pane shows it immediately instead of blank. Every other render carries its own size on the request.
 
-Both live in `manager.ts`. The kernel side of the contract — why the comm alone creates the pane entry, and why an output bundle alongside it would show the plot twice — is in [`/ggsql-jupyter/AGENTS.md`](../ggsql-jupyter/AGENTS.md).
+Both live in `manager.ts`, as does one piece of user configuration: **`ggsql.consoleRows` reaches the kernel as `GGSQL_CONSOLE_ROWS` in the spec's `env`, not as `--console-rows`.** A kernel found on the machine may predate the option, and it ignores an unknown variable where it would refuse to start on an unknown flag. `consoleRowsEnv` leaves out a value the kernel would reject — below 1, or above `u32::MAX`, which the setting's `maximum` also states — for the same reason. Like the session mode, it is fixed when a session starts.
+
+The same goes for **`GGSQL_KEEP_RESULTS`**, which `keepResultsEnv` sets for a console session when this Positron has extension-hosted Data Explorer backends: the kernel keeps query results only when asked, so a session whose results nothing can open holds none. With it goes **`GGSQL_RESULTS_MAX_BYTES`** from the `ggsql.resultsMemory` setting, through `resultsMemoryEnv`, which leaves out anything the kernel's byte-count parser would refuse.
+
+The kernel side of the contract — why the comm alone creates the pane entry, and why an output bundle alongside it would show the plot twice — is in [`/ggsql-jupyter/AGENTS.md`](../ggsql-jupyter/AGENTS.md).
+
+**Sessions are wrapped to link console results to the Data Explorer** — see [Console results in the Data Explorer](#console-results-in-the-data-explorer) below.
 
 Outside Positron there is no way to execute a query: `activate()` returns early, so every command that runs code stays unregistered. To avoid offering actions that cannot work, everything execution-related gates on Positron's built-in **`isPositron`** context key ([extension development docs](https://positron.posit.co/extension-development.html#option-1-context-keys)):
 
@@ -116,6 +124,28 @@ The Positron Supervisor is a soft dependency, reached through `getSupervisorApi(
 `GgsqlRuntimeManager.alwaysRediscover` is `true` because ggsql runtimes are never marked `cacheable`, so Positron must run discovery on every window open rather than trusting its cross-window cache. The typings declare it as an optional member, so `tsc` checks the value's type but not the name: a misspelling would compile as a harmless extra property and silently disable the flag. `src/test/manager.test.ts` is the guard, because the property access there fails to compile if the name changes.
 
 Anything that does *not* need the runtime (`ggsql.createNewFile`, `ggsql.resetSqlAssociationPrompt`, syntax highlighting) is registered before the early return and works in plain VS Code. Add new commands on the correct side of that line, and gate them if they execute code.
+
+### Console results in the Data Explorer
+
+A console query result opens in Positron's Data Explorer, served by a backend that lives in this extension rather than in the kernel. The kernel exposes a frontend-neutral **results API** — `result_open`, `result_set_filters`, `result_set_sort`, `result_page`, `result_profile`, `result_export`, `result_sql`, `result_close`, reached through `session.callMethod` — and the extension translates Positron's Data Explorer protocol to it. The kernel side, including what each method takes and returns, is in [`/ggsql-jupyter/AGENTS.md`](../ggsql-jupyter/AGENTS.md) and `ggsql-jupyter/src/results/methods.rs`.
+
+**The backend** (`src/dataExplorer/`) registers with `positron.dataExplorer.registerRpcHandler('ggsql', …)` from `extension.ts`, before the runtime manager, which is handed it as `resultExplorer`. `package.json` carries the `onPositronDataExplorerBackend:ggsql` activation event, which Positron fires before routing a request to a provider that has not registered yet — for example a Data Explorer restored by a window reload.
+
+- A dataset id is `ggsql:<session id>/<result key>`. The scheme is required: Positron puts the id in the explorer editor's URI and parses it back out (`PositronDataExplorerUri.parse`), accepting only a UUID or `<scheme>:<rest>`, and an id it cannot parse opens an empty editor. `ResultExplorer` keeps a registry of the sessions the manager wrapped, and each open dataset holds one kernel view: opened with `result_open` on the first request or when a link is clicked — concurrent requests share the one open — and closed with `result_close` from `closeDataset`. A request for a dataset after its `closeDataset` is refused rather than opening a view nobody would close; only a link (`reopen`) opens it again.
+- **A call is never made to a session that is down.** `callMethod` on a session with no UI comm waits forever, so a Data Explorer asking a kernel that has exited would spin. The session wrapper reports `onDidEndSession` and the runtime state to `setRunning`: while a session is down every call fails at once, and on going down or coming back its open explorers are sent `schema_update`, so they ask for their state again — they show that the session is not running, then, once it is ready, the result or the kernel's reason it is gone. A `get_state` for a result that cannot be opened answers a disconnected state carrying the message, which the Data Explorer shows in place of the table.
+- A kernel that predates the results API answers `call_method` with `null`; `call` turns that into a message saying the kernel is too old, rather than a property read on `null`.
+- `handler.ts` dispatches the requests. Row filters and sort keys are remembered as last set, for `get_state`; filters are ANDed by the kernel, so `supports_conditions` is unsupported, and a filter that cannot be translated or that the kernel rejects goes back with `is_valid: false` and its `error_message`. `get_data_values` makes one `result_page` per distinct row spec. `get_column_profiles` replies `{}` at once and answers through the registration's `sendUiEvent` as `return_column_profiles`. `convert_to_code` is the kernel's `result_sql`, written in the user's own dialect. Column filters and row labels are unsupported.
+- `filters.ts` maps Positron's `RowFilter`s and sort keys to the kernel's and runs `search_schema` over the columns `result_open` returned. `profiles.ts` maps profile requests and results; the kernel computes one histogram and one frequency table per call, so a large variant gets a call of its own. `format.ts` turns a kernel cell into Positron's `ColumnValue`: a null and, in a floating column only, `NaN`/`inf`/`-inf` become Positron's special-value codes.
+- `protocol.ts` is a hand-written subset of Positron's protocol types, not a copy of Positron's generated (Elastic-licensed) file, plus the kernel's API types.
+- Kernel errors arrive as rejected plain objects with a `message`, not `Error`s; `errorMessage()` reads both, and every request's error becomes the response's `error_message`.
+
+**The link** is added by the extension, not the kernel. In a Positron console the kernel marks each tabular `execute_result` with `{"ggsql": {"result": "<key>"}}` in its metadata, which the supervisor exposes as the Result message's `outputMetadata`. `createSession` and `restoreSession` return the supervisor's session through `withResultLinks` (`src/resultLinks.ts`), a `Proxy` that:
+
+- **re-fires `onDidReceiveRuntimeMessage`**, in order, and after a marked Result in a *console-mode* session fires a synthesized stdout stream message (same `parent_id` and `when`, an id derived from the result's) holding an OSC 8 hyperlink to `x-ggsql-result:<session id>/<key>`. Notebook and background sessions get no link: a notebook has no console to click in.
+- **adds `openResource`**, which the supervisor's session does not implement. A clicked link opens the kernel view first — for the title, and so an expired result is reported as a warning before a tab opens — then calls `positron.dataExplorer.open`; if that fails, the view is closed again, since no Data Explorer would. Positron offers a clicked console hyperlink only to the *last active* console of each language, so the link carries the session id and is routed by it rather than to the session that was asked. Only a hex key is accepted.
+- binds everything else to the underlying session, and on `dispose` releases its own subscriptions and the registry entry.
+
+When `positron.dataExplorer` is missing (a Positron without extension-hosted Data Explorer backends) nothing is registered and sessions are returned unwrapped, so no link is shown that could not be served.
 
 ## Finding the kernel
 
@@ -151,7 +181,9 @@ The one case that interrupts the user is the dead end: nothing runnable anywhere
 
 ```json
 {
-  "ggsql.kernelPath": "string"   // an extra kernel to offer, listed first
+  "ggsql.kernelPath": "string",  // an extra kernel to offer, listed first
+  "ggsql.consoleRows": 10,       // rows of a long kept result a console shows
+  "ggsql.resultsMemory": "1gb"   // memory a console may keep results in
 }
 ```
 
@@ -195,7 +227,7 @@ Tests live in `src/test/` and compile to `out-test/` via `tsconfig.test.json`, d
 
 Note that `tsc` does not prune output for deleted sources: if you delete or rename a test, remove its `.js` and `.js.map` from `out-test/test/` or the runner keeps executing the stale copy. `npm run test:extension` on its own does not recompile, so run `npm test` (or `npm run compile-tests` first) after editing any `.ts`.
 
-The suites cover the extension as stock VS Code sees it: activation, language resolution, cell parsing, `.sql` gating, CodeLens placement, TextMate scopes, kernel discovery, and the parts of `manager.ts` and `positronApi.ts` that are reachable without a Positron host. `bundle.test.ts` additionally asserts against the built `out/extension.js`. The rest of the Positron surface (session creation, connection drivers, cell execution) is not covered, since it needs a Positron host, and `sqlAssociation.ts` and `connections.ts` are untested.
+The suites cover the extension as stock VS Code sees it: activation, language resolution, cell parsing, `.sql` gating, CodeLens placement, TextMate scopes, kernel discovery, and the parts of `manager.ts` and `positronApi.ts` that are reachable without a Positron host. `bundle.test.ts` additionally asserts against the built `out/extension.js`. `dataExplorer.test.ts` drives the Data Explorer backend against a recorded stand-in for `callMethod`, and `resultLinks.test.ts` runs the session wrapper over a stand-in session's messages; neither needs Positron. The rest of the Positron surface (session creation, connection drivers, cell execution) is not covered, since it needs a Positron host, and `sqlAssociation.ts` and `connections.ts` are untested.
 
 Add new tests as `src/test/<name>.test.ts`; no config change is needed. `.vscode-test.mjs` globs `out-test/test/*.test.js` — one level only, deliberately, so the Positron suite in `test/integration/` does not run under stock VS Code, where it cannot pass.
 

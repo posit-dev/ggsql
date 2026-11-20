@@ -14,6 +14,12 @@ use crate::reader::SqlDialect;
 pub struct DruidDialect;
 
 impl SqlDialect for DruidDialect {
+    // Java regular expressions, unanchored.
+    fn sql_regex_match(&self, expr: &str, pattern: &str, case_sensitive: bool) -> Option<String> {
+        let pattern = super::inline_regex_flag(self, pattern, case_sensitive);
+        Some(format!("REGEXP_LIKE({expr}, {pattern})"))
+    }
+
     fn type_names(&self) -> crate::reader::TypeNames {
         crate::reader::TypeNames {
             number: Some("DOUBLE"),

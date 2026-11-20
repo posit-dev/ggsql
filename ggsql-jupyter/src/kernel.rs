@@ -10,6 +10,7 @@ use crate::executor::{self, ExecutionResult, QueryExecutor};
 use crate::message::{ConnectionInfo, JupyterMessage, MessageHeader};
 use crate::plot::comm::{PlotMetadata, RenderParams, RpcError};
 use crate::plot::{PlotBackend, RenderOutcome, RenderTicket};
+use crate::results::{methods, ResultStore};
 use anyhow::Result;
 use ggsql::reader::ResolvedPlot;
 use hmac::{Hmac, Mac};
@@ -65,6 +66,16 @@ pub struct KernelServer {
     ui_comm_id: Option<String>,
     connection_comm_id: Option<String>,
     data_explorer_comms: HashMap<String, DataExplorerState>,
+    /// Query results kept for the results API, created when first needed so
+    /// a session that keeps none opens no database for them.
+    results: Option<ResultStore>,
+    /// `--results-max-bytes`: the results store's budget.
+    results_max_bytes: u64,
+    /// `--keep-results`: whether to keep results for the results API, which
+    /// the frontend that will explore them turns on.
+    keep_results: bool,
+    /// `--console-rows`: how many rows of a long result a console shows.
+    console_rows: usize,
 }
 
 impl KernelServer {
@@ -74,6 +85,9 @@ impl KernelServer {
         reader_uri: &str,
         session_mode: Option<SessionMode>,
         max_plots: usize,
+        results_max_bytes: u64,
+        keep_results: bool,
+        console_rows: usize,
     ) -> Result<Self> {
         tracing::info!("Initializing kernel server");
 
@@ -141,6 +155,10 @@ impl KernelServer {
             ui_comm_id: None,
             connection_comm_id: None,
             data_explorer_comms: HashMap::new(),
+            results: None,
+            results_max_bytes,
+            keep_results,
+            console_rows,
         };
 
         // Send initial "starting" status on IOPub
@@ -358,7 +376,10 @@ impl KernelServer {
         let content = &parent.content;
         let code = content["code"].as_str().unwrap_or("");
         let silent = content["silent"].as_bool().unwrap_or(false);
-        let hints = RenderHints::from_request(&parent.header, content, self.session_mode);
+        let mut hints = RenderHints {
+            console_rows: self.console_rows,
+            ..RenderHints::from_request(&parent.header, content, self.session_mode)
+        };
 
         // `kind` decides where a plot goes, so log its two inputs: the declared
         // mode and the session id the heuristic falls back to. A plot in the
@@ -404,6 +425,29 @@ impl KernelServer {
             self.open_connection_comm(&uri).await?;
         }
 
+        // A result is kept for the results API when the frontend asked for
+        // that, and its key goes in the `execute_result`'s metadata so the
+        // frontend can offer to explore it. A silent cell shows nothing to
+        // offer, and DDL has no table. A result that does not fit the budget
+        // is shown but not kept.
+        let mut retained = None;
+        if let Ok(ExecutionResult::DataFrame(df)) = &executed {
+            if self.keep_results && !silent && df.width() > 0 {
+                let title = format!("Query [{}]", self.execution_count);
+                let kept = self
+                    .results()
+                    .and_then(|store| store.insert(df.clone(), title, query_of(code)));
+                match kept {
+                    Ok(key) => retained = key,
+                    Err(e) => tracing::warn!("Keeping a result failed: {}", e),
+                }
+            }
+        }
+
+        // Only a kept result gets a link to the rest of it, so only a kept
+        // result is cut short.
+        hints.kept = retained.is_some();
+
         // Formatting renders the plot, so it is fallible and its failures are
         // the user's. Both stages feed one `Result` and share the error path
         // below; propagating out of the loop would end the process and take
@@ -433,10 +477,17 @@ impl KernelServer {
                     // No `output_location`: it routes the output to the Plots
                     // pane as well as the cell, so the plot would arrive twice.
                     Formatted::Bundle(display_data) => {
+                        let mut metadata = display_data["metadata"].clone();
+                        if let Some(key) = &retained {
+                            if !metadata.is_object() {
+                                metadata = json!({});
+                            }
+                            metadata["ggsql"] = json!({ "result": key });
+                        }
                         let content = json!({
                             "execution_count": self.execution_count,
                             "data": display_data["data"],
-                            "metadata": display_data["metadata"]
+                            "metadata": metadata
                         });
                         self.send_iopub("execute_result", content, parent).await?;
                     }
@@ -587,6 +638,12 @@ impl KernelServer {
             }
             "positron.ui" => {
                 tracing::info!("Registering positron.ui comm: {}", comm_id);
+                // A frontend that reloaded or crashed opens a new UI comm
+                // without closing the old one, and the views opened over that
+                // could never be closed.
+                if let Some(store) = self.results.as_mut() {
+                    store.close_all();
+                }
                 self.ui_comm_id = Some(comm_id.to_string());
             }
             _ => {
@@ -712,16 +769,47 @@ impl KernelServer {
                 if rpc_id.is_null() {
                     self.handle_ui_notification(method, &data["params"]);
                 } else {
+                    let reply = match method {
+                        // A frontend extension's call into the kernel
+                        // (`session.callMethod`). The results API is the only
+                        // thing answered this way.
+                        "call_method" => {
+                            let name = data["params"]["method"].as_str().unwrap_or("");
+                            let args = &data["params"]["params"];
+                            let answer = if methods::handles(name) {
+                                match self.results() {
+                                    Ok(_) => {
+                                        let session = methods::Session {
+                                            reader: self.executor.reader(),
+                                        };
+                                        let store =
+                                            self.results.as_mut().expect("created just above");
+                                        methods::call(store, &session, name, args)
+                                    }
+                                    Err(e) => Err(format!("The results store failed: {e}")),
+                                }
+                            } else {
+                                Err(format!("Unknown method {name:?}"))
+                            };
+                            match answer {
+                                Ok(result) => {
+                                    json!({"jsonrpc": "2.0", "id": rpc_id, "result": result})
+                                }
+                                Err(message) => {
+                                    tracing::warn!("{} failed: {}", name, message);
+                                    json!({
+                                        "jsonrpc": "2.0",
+                                        "id": rpc_id,
+                                        "error": RpcError::Internal(message).to_json()
+                                    })
+                                }
+                            }
+                        }
+                        _ => json!({"jsonrpc": "2.0", "id": rpc_id, "result": null}),
+                    };
                     self.send_shell_reply(
                         "comm_msg",
-                        json!({
-                            "comm_id": comm_id,
-                            "data": {
-                                "jsonrpc": "2.0",
-                                "id": rpc_id,
-                                "result": null
-                            }
-                        }),
+                        json!({ "comm_id": comm_id, "data": reply }),
                         parent,
                         identities,
                     )
@@ -862,6 +950,11 @@ impl KernelServer {
         } else if Some(comm_id.to_string()) == self.ui_comm_id {
             tracing::info!("Closing positron.ui comm");
             self.ui_comm_id = None;
+            // The views were opened over this comm, and nothing can close
+            // them once it has gone.
+            if let Some(store) = self.results.as_mut() {
+                store.close_all();
+            }
         } else if self.plot_comms.remove(comm_id).is_some() {
             tracing::info!("Closing positron.plot comm {}", comm_id);
             self.plot_order.retain(|id| id != comm_id);
@@ -1470,6 +1563,14 @@ impl KernelServer {
         Ok(())
     }
 
+    /// The results store, created on first use.
+    fn results(&mut self) -> Result<&mut ResultStore> {
+        if self.results.is_none() {
+            self.results = Some(ResultStore::new(self.results_max_bytes)?);
+        }
+        Ok(self.results.as_mut().expect("created just above"))
+    }
+
     /// Send a status message
     async fn send_status(&mut self, state: &str, parent: &JupyterMessage) -> Result<()> {
         self.send_iopub("status", json!({"execution_state": state}), parent)
@@ -1618,6 +1719,15 @@ impl KernelServer {
 
         hex::encode(mac.finalize().into_bytes())
     }
+}
+
+/// A cell's SQL without its leading meta-commands, which are not SQL.
+fn query_of(code: &str) -> String {
+    let mut rest = code;
+    while let Some((_, after)) = executor::take_leading_meta(rest) {
+        rest = after;
+    }
+    rest.trim().to_string()
 }
 
 /// Check if ggsql code is complete (balanced brackets, not in a string)

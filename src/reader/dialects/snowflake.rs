@@ -11,6 +11,18 @@ use crate::reader::SqlDialect;
 pub struct SnowflakeDialect;
 
 impl SqlDialect for SnowflakeDialect {
+    // `REGEXP_LIKE` matches the whole string here, so search with `REGEXP_INSTR`.
+    fn sql_regex_match(&self, expr: &str, pattern: &str, case_sensitive: bool) -> Option<String> {
+        let flags = if case_sensitive { "c" } else { "i" };
+        Some(format!(
+            "REGEXP_INSTR({expr}, {pattern}, 1, 1, 0, '{flags}') > 0"
+        ))
+    }
+
+    fn sql_string_literal(&self, value: &str) -> String {
+        super::backslash_quote_literal(value)
+    }
+
     fn type_names(&self) -> crate::reader::TypeNames {
         crate::reader::TypeNames {
             number: Some("DOUBLE"),

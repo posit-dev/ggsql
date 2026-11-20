@@ -1,6 +1,6 @@
 import * as assert from 'assert';
 import * as vscode from 'vscode';
-import { GgsqlRuntimeManager, createDynState, getSupervisorApi } from '../manager';
+import { GgsqlRuntimeManager, MAX_CONSOLE_ROWS, consoleRowsEnv, createDynState, getSupervisorApi, keepResultsEnv, resultsMemoryEnv } from '../manager';
 
 suite('manager', () => {
 	// The suites run in stock VS Code, where positron.positron-supervisor is
@@ -11,6 +11,42 @@ suite('manager', () => {
 			() => getSupervisorApi(),
 			/Positron Supervisor extension not found/,
 		);
+	});
+
+	test('resultsMemoryEnv passes a byte count the kernel accepts', () => {
+		assert.deepStrictEqual(resultsMemoryEnv(' 512MB '), { GGSQL_RESULTS_MAX_BYTES: '512MB' });
+		assert.deepStrictEqual(resultsMemoryEnv('2gb'), { GGSQL_RESULTS_MAX_BYTES: '2gb' });
+		assert.deepStrictEqual(resultsMemoryEnv('1048576'), { GGSQL_RESULTS_MAX_BYTES: '1048576' });
+		assert.deepStrictEqual(resultsMemoryEnv('18446744073709551615'), { GGSQL_RESULTS_MAX_BYTES: '18446744073709551615' });
+	});
+
+	test('resultsMemoryEnv leaves out a value the kernel would refuse', () => {
+		// 99999999999gb and 18446744073709551616 overflow a u64.
+		for (const value of ['', '0', '0gb', '1.5gb', '2 terabytes', '-1mb', '99999999999gb', '18446744073709551616', 512, undefined]) {
+			assert.deepStrictEqual(resultsMemoryEnv(value), {}, String(value));
+		}
+	});
+
+	test('consoleRowsEnv passes a row count the kernel accepts', () => {
+		assert.deepStrictEqual(consoleRowsEnv(25), { GGSQL_CONSOLE_ROWS: '25' });
+	});
+
+	test('consoleRowsEnv leaves out a value the kernel would refuse', () => {
+		// The kernel exits on a bad value, so the session would fail to start.
+		for (const rows of [0, -1, 2.5, '10', undefined, null, MAX_CONSOLE_ROWS + 1, 1e21]) {
+			assert.deepStrictEqual(consoleRowsEnv(rows), {}, String(rows));
+		}
+		assert.deepStrictEqual(consoleRowsEnv(MAX_CONSOLE_ROWS), { GGSQL_CONSOLE_ROWS: String(MAX_CONSOLE_ROWS) });
+	});
+
+	test('the setting\'s maximum is the kernel\'s', () => {
+		const pkg = require('../../package.json');
+		assert.strictEqual(pkg.contributes.configuration.properties['ggsql.consoleRows'].maximum, MAX_CONSOLE_ROWS);
+	});
+
+	test('keepResultsEnv turns keeping results on only when asked', () => {
+		assert.deepStrictEqual(keepResultsEnv(true), { GGSQL_KEEP_RESULTS: '1' });
+		assert.deepStrictEqual(keepResultsEnv(false), {});
 	});
 
 	test('createDynState falls back to the default session name', () => {

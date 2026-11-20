@@ -15,6 +15,23 @@ use crate::reader::SqlDialect;
 pub struct OracleDialect;
 
 impl SqlDialect for OracleDialect {
+    // An empty string is NULL, so `<> ''` is never true and "not empty" is
+    // `IS NOT NULL`. "Empty" stays `= ''`, which matches nothing here, as no
+    // value read from Oracle is the empty string.
+    fn sql_is_empty_string(&self, expr: &str, negate: bool) -> String {
+        if negate {
+            format!("{expr} IS NOT NULL")
+        } else {
+            format!("{expr} = ''")
+        }
+    }
+
+    // Unanchored.
+    fn sql_regex_match(&self, expr: &str, pattern: &str, case_sensitive: bool) -> Option<String> {
+        let flags = if case_sensitive { "c" } else { "i" };
+        Some(format!("REGEXP_LIKE({expr}, {pattern}, '{flags}')"))
+    }
+
     fn type_names(&self) -> crate::reader::TypeNames {
         crate::reader::TypeNames {
             number: Some("BINARY_DOUBLE"),

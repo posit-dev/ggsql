@@ -17,7 +17,7 @@ from jupyter_client import KernelManager
 # the kernel is built once rather than once per test file.
 
 
-def _launch(kernel_binary, extra_args=()):
+def _launch(kernel_binary, extra_args=(), env=None):
     """Start a kernel and yield its manager. Shared by the fixtures below."""
     kernel_process = None
     km = None
@@ -37,6 +37,7 @@ def _launch(kernel_binary, extra_args=()):
         # Start our kernel process directly
         kernel_process = subprocess.Popen(
             [kernel_binary, "-f", connection_file, *extra_args],
+            env={**os.environ, **(env or {})},
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
         )
@@ -108,9 +109,12 @@ def console_kernel_manager(kernel_binary):
     is authoritative over the session-id heuristic — so this is the only way to
     reach the plot-comm path from a test. Everything driven through plain
     `jupyter_client` lands in `SessionKind::Standalone`, because its session id
-    is a bare UUID.
+    is a bare UUID. `GGSQL_KEEP_RESULTS` is what the extension sets for a console
+    whose results it can open in the Data Explorer.
     """
-    yield from _launch(kernel_binary, ["--session-mode", "console"])
+    yield from _launch(
+        kernel_binary, ["--session-mode", "console"], env={"GGSQL_KEEP_RESULTS": "1"}
+    )
 
 
 @pytest.fixture
@@ -505,6 +509,258 @@ class TestPlotComm:
         data = reply["content"]["data"]
         assert "error" in data, data
         assert "result" not in data
+
+
+class TestResultsApi:
+    """Console results kept for the results API, called through `call_method`
+    on the UI comm as `session.callMethod` sends it."""
+
+    QUERY = "SELECT i AS n, 'r' || i AS label FROM range(5) t(i)"
+    UI = "test-ui-comm"
+
+    def _result_key(self, client):
+        """Run QUERY and return the result key in its execute_result."""
+        client.execute(self.QUERY, silent=False, store_history=True)
+        messages = drain_iopub(client)
+        reply = client.get_shell_msg(timeout=5)
+        assert reply["content"]["status"] == "ok"
+        results = [m for m in messages if m["msg_type"] == "execute_result"]
+        assert len(results) == 1, [m["msg_type"] for m in messages]
+        # The kernel prints no link of its own: the extension adds it.
+        assert not [m for m in messages if m["msg_type"] == "stream"]
+        return results[0]["content"]["metadata"]["ggsql"]["result"]
+
+    def _open_ui(self, client, comm_id=None):
+        client.session.send(
+            client.shell_channel.socket,
+            "comm_open",
+            {"comm_id": comm_id or self.UI, "target_name": "positron.ui", "data": {}},
+        )
+        drain_iopub(client)
+
+    def _close_ui(self, client, comm_id=None):
+        client.session.send(
+            client.shell_channel.socket,
+            "comm_close",
+            {"comm_id": comm_id or self.UI, "data": {}},
+        )
+        drain_iopub(client)
+
+    def _call(self, client, method, params, comm_id=None):
+        """`callMethod(method, params)`: the reply's JSON-RPC data."""
+        client.session.send(
+            client.shell_channel.socket,
+            "comm_msg",
+            {
+                "comm_id": comm_id or self.UI,
+                "data": {
+                    "jsonrpc": "2.0",
+                    "id": f"{method}-1",
+                    "method": "call_method",
+                    "params": {"method": method, "params": [params]},
+                },
+            },
+        )
+        reply = client.get_shell_msg(timeout=5)
+        drain_iopub(client)
+        return reply["content"]["data"]
+
+    def test_open_filter_sort_page_and_close(self, console_client):
+        key = self._result_key(console_client)
+        self._open_ui(console_client)
+        try:
+            opened = self._call(console_client, "result_open", {"key": key})["result"]
+            assert opened["title"].startswith("Query [")
+            assert opened["num_rows"] == 5
+            assert [c["name"] for c in opened["columns"]] == ["n", "label"]
+            view = opened["view"]
+
+            filtered = self._call(
+                console_client,
+                "result_set_filters",
+                {
+                    "view": view,
+                    "filters": [{"type": "compare", "column": 0, "op": ">=", "value": "2"}],
+                },
+            )["result"]
+            assert filtered == {"num_rows": 3, "errors": [None]}
+
+            self._call(
+                console_client,
+                "result_set_sort",
+                {"view": view, "keys": [{"column": 0, "ascending": False}]},
+            )
+            page = self._call(
+                console_client,
+                "result_page",
+                {"view": view, "rows": {"first": 0, "last": 2}, "columns": [1]},
+            )["result"]
+            assert page == {"columns": [["r4", "r3", "r2"]]}
+
+            sql = self._call(console_client, "result_sql", {"view": view})["result"]["sql"]
+            assert f"    {self.QUERY}" in sql
+            assert 'ORDER BY "n" DESC NULLS LAST' in sql
+
+            assert self._call(console_client, "result_close", {"view": view})["result"] == {}
+            # The cached copy is still there to reopen.
+            again = self._call(console_client, "result_open", {"key": key})["result"]
+            assert again["num_rows"] == 5
+        finally:
+            self._close_ui(console_client)
+
+    def test_an_unknown_key_is_a_json_rpc_error(self, console_client):
+        self._open_ui(console_client)
+        try:
+            data = self._call(console_client, "result_open", {"key": "deadbeef"})
+            assert "error" in data and "result" not in data, data
+            assert "no longer available" in data["error"]["message"]
+        finally:
+            self._close_ui(console_client)
+
+    def test_an_unknown_call_method_is_an_error(self, console_client):
+        self._open_ui(console_client)
+        try:
+            data = self._call(console_client, "not_a_results_method", {})
+            assert "error" in data, data
+        finally:
+            self._close_ui(console_client)
+
+    def test_results_are_kept_only_when_asked(self, client):
+        client.execute(self.QUERY, silent=False, store_history=True)
+        messages = drain_iopub(client)
+        client.get_shell_msg(timeout=5)
+        result = next(m for m in messages if m["msg_type"] == "execute_result")
+        assert "ggsql" not in result["content"]["metadata"]
+
+    def _scalar(self, client, sql):
+        """The single value `sql` returns, as text."""
+        client.execute(sql, silent=False, store_history=True)
+        messages = drain_iopub(client)
+        client.get_shell_msg(timeout=5)
+        result = next(m for m in messages if m["msg_type"] == "execute_result")
+        return result["content"]["data"]["text/plain"].splitlines()[-1].strip()
+
+    def test_profile_and_export(self, console_client):
+        key = self._result_key(console_client)
+        self._open_ui(console_client)
+        try:
+            view = self._call(console_client, "result_open", {"key": key})["result"]["view"]
+            profile = self._call(
+                console_client,
+                "result_profile",
+                {
+                    "view": view,
+                    "column": 0,
+                    "profiles": {
+                        "null_count": True,
+                        "summary": True,
+                        "histogram": {"bins": 5, "quantiles": [0.5]},
+                    },
+                },
+            )["result"]
+            assert profile["null_count"] == 0
+            assert profile["summary"]["min"] == "0"
+            assert profile["summary"]["max"] == "4"
+            assert sum(profile["histogram"]["bin_counts"]) == 5
+
+            frequency = self._call(
+                console_client,
+                "result_profile",
+                {"view": view, "column": 1, "profiles": {"frequency": {"limit": 2}}},
+            )["result"]["frequency"]
+            assert len(frequency["values"]) == 2
+            assert frequency["other_count"] == 3
+
+            export = self._call(
+                console_client,
+                "result_export",
+                {"view": view, "rows": {"first": 3, "last": 4}, "columns": [1, 0], "format": "csv"},
+            )["result"]
+            assert export == {"data": "label,n\nr3,3\nr4,4"}
+        finally:
+            self._close_ui(console_client)
+
+    def test_the_session_database_is_untouched(self, console_client):
+        count = (
+            "SELECT count(*) AS n FROM duckdb_tables() "
+            "WHERE table_name LIKE '__ggsql_result%' OR table_name LIKE '__ggsql_view%'"
+        )
+        key = self._result_key(console_client)
+        self._open_ui(console_client)
+        try:
+            view = self._call(console_client, "result_open", {"key": key})["result"]["view"]
+            self._call(
+                console_client,
+                "result_set_sort",
+                {"view": view, "keys": [{"column": 0, "ascending": False}]},
+            )
+            assert self._scalar(console_client, count) == "0"
+        finally:
+            self._close_ui(console_client)
+
+    def test_closing_the_ui_comm_closes_its_views(self, console_client):
+        key = self._result_key(console_client)
+        self._open_ui(console_client)
+        view = self._call(console_client, "result_open", {"key": key})["result"]["view"]
+        self._close_ui(console_client)
+        self._open_ui(console_client)
+        try:
+            data = self._call(
+                console_client,
+                "result_page",
+                {"view": view, "rows": {"first": 0, "last": 0}, "columns": [0]},
+            )
+            assert "no view" in data["error"]["message"], data
+        finally:
+            self._close_ui(console_client)
+
+    def test_a_new_ui_comm_closes_the_views_of_the_old(self, console_client):
+        # A frontend that reloaded opens a new UI comm without closing its old.
+        key = self._result_key(console_client)
+        self._open_ui(console_client)
+        view = self._call(console_client, "result_open", {"key": key})["result"]["view"]
+        replacement = "test-ui-comm-2"
+        self._open_ui(console_client, replacement)
+        try:
+            data = self._call(
+                console_client,
+                "result_page",
+                {"view": view, "rows": {"first": 0, "last": 0}, "columns": [0]},
+                replacement,
+            )
+            assert "no view" in data["error"]["message"], data
+        finally:
+            self._close_ui(console_client, replacement)
+
+
+class TestConsoleRows:
+    """`GGSQL_CONSOLE_ROWS`, which the extension sets from `ggsql.consoleRows`."""
+
+    def _table(self, client, n):
+        client.execute(f"SELECT i FROM range({n}) t(i)")
+        messages = drain_iopub(client)
+        client.get_shell_msg(timeout=5)
+        result = next(m for m in messages if m["msg_type"] == "execute_result")
+        return result["content"]["data"]["text/html"]
+
+    def test_the_environment_sets_the_rows_a_console_shows(self, kernel_binary):
+        with _launch_kernel(
+            kernel_binary,
+            ["--session-mode", "console"],
+            env={"GGSQL_CONSOLE_ROWS": "3", "GGSQL_KEEP_RESULTS": "1"},
+        ) as km:
+            kc = km.client()
+            kc.start_channels()
+            try:
+                kc.wait_for_ready(timeout=10)
+                # Up to twice the setting, the whole result.
+                assert self._table(kc, 6).count("<tr>") == 1 + 6
+                # Past it, the first 3 and a count of the rest.
+                html = self._table(kc, 7)
+                assert html.count("<tr>") == 1 + 3 + 1, html
+                assert "... 4 more rows" in html
+            finally:
+                kc.stop_channels()
 
 
 class TestStatus:

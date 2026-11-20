@@ -10,6 +10,37 @@ use crate::reader::SqlDialect;
 pub struct MySqlDialect;
 
 impl SqlDialect for MySqlDialect {
+    // Comparison follows the column's collation, case-insensitive by
+    // default, so a case-sensitive match compares bytes. `_` then matches one
+    // byte rather than one character, which an escaped search term never
+    // relies on.
+    fn sql_like(&self, expr: &str, pattern: &str, case_sensitive: bool) -> String {
+        if case_sensitive {
+            format!(
+                "CAST({expr} AS BINARY) LIKE CAST({} AS BINARY) ESCAPE {}",
+                self.sql_string_literal(pattern),
+                self.sql_string_literal("\\")
+            )
+        } else {
+            super::like_with_escape_clause(self, expr, pattern, false)
+        }
+    }
+
+    // `REGEXP` is unanchored on MySQL 8 (ICU) and MariaDB (PCRE), and both read `(?i)` and `(?-i)`; its own case sensitivity follows the collation.
+    fn sql_regex_match(&self, expr: &str, pattern: &str, case_sensitive: bool) -> Option<String> {
+        let pattern = super::inline_regex_flag(self, pattern, case_sensitive);
+        Some(format!("{expr} REGEXP {pattern}"))
+    }
+
+    // No `NULLS FIRST` / `NULLS LAST`.
+    fn sql_order_term(&self, expr: &str, ascending: bool, nulls_last: bool) -> String {
+        super::nulls_order_by_case(expr, ascending, nulls_last)
+    }
+
+    fn sql_string_literal(&self, value: &str) -> String {
+        super::backslash_quote_literal(value)
+    }
+
     fn type_names(&self) -> crate::reader::TypeNames {
         crate::reader::TypeNames {
             number: Some("DOUBLE"),

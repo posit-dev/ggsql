@@ -17,6 +17,16 @@ use crate::reader::SqlDialect;
 pub struct RedshiftDialect;
 
 impl SqlDialect for RedshiftDialect {
+    // Unanchored, with the case flag as a parameter.
+    fn sql_regex_match(&self, expr: &str, pattern: &str, case_sensitive: bool) -> Option<String> {
+        let flags = if case_sensitive { "c" } else { "i" };
+        Some(format!("REGEXP_COUNT({expr}, {pattern}, 1, '{flags}') > 0"))
+    }
+
+    fn sql_string_literal(&self, value: &str) -> String {
+        super::backslash_quote_literal(value)
+    }
+
     fn sql_temporal_as_number(
         &self,
         expr: &str,

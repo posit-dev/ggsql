@@ -10,6 +10,7 @@ mod executor;
 mod kernel;
 mod message;
 mod plot;
+mod results;
 use anyhow::{Context, Result};
 use clap::Parser;
 use display::SessionMode;
@@ -48,6 +49,50 @@ struct Args {
     #[arg(long, default_value_t = 32, value_parser = clap::value_parser!(u32).range(1..))]
     max_plots: u32,
 
+    /// Keep query results so a frontend can explore them through the results
+    /// API.
+    ///
+    /// Off unless the frontend that will explore them turns it on, so a
+    /// session nobody explores holds nothing beyond what it displays. Also
+    /// read from the environment, which is how the ggsql extension sets it.
+    #[arg(
+        long,
+        env = "GGSQL_KEEP_RESULTS",
+        value_parser = clap::builder::FalseyValueParser::new()
+    )]
+    keep_results: bool,
+
+    /// The most memory kept results may use, e.g. `512mb` or `2gb`.
+    ///
+    /// Counts results not opened yet, opened ones and the order tables of
+    /// their sorted or filtered views, by the size of their data. Closed
+    /// results go first when room is needed, then the oldest unopened ones;
+    /// open ones are never dropped, so a result that does not fit beside them
+    /// is not kept. Sorting and profiling them takes working memory on top,
+    /// so the results cache as a whole is limited to twice this; a sort that
+    /// would need more fails with an error.
+    #[arg(
+        long,
+        env = "GGSQL_RESULTS_MAX_BYTES",
+        default_value_t = results::DEFAULT_MAX_BYTES,
+        value_parser = parse_bytes
+    )]
+    results_max_bytes: u64,
+
+    /// How many rows of a query result a Positron console shows.
+    ///
+    /// A result of up to twice this many rows is shown whole; a longer one
+    /// shows this many, then a count of the rest. Also read from the
+    /// environment, which is how the ggsql extension sets it: a kernel that
+    /// predates the option ignores a variable but would refuse a flag.
+    #[arg(
+        long,
+        env = "GGSQL_CONSOLE_ROWS",
+        default_value_t = 10,
+        value_parser = clap::value_parser!(u32).range(1..)
+    )]
+    console_rows: u32,
+
     /// Install the kernel spec
     #[arg(long)]
     install: bool,
@@ -59,6 +104,13 @@ struct Args {
     /// Install the kernel spec system-wide (used with --install, may require sudo)
     #[arg(long, requires = "install", conflicts_with = "user")]
     sys_prefix: bool,
+}
+
+/// A byte count, with an optional `kb`/`mb`/`gb` suffix.
+fn parse_bytes(s: &str) -> std::result::Result<u64, String> {
+    ggsql::reader::cache::parse_human_bytes(s)
+        .filter(|&n| n > 0)
+        .ok_or_else(|| format!("{s:?} is not a byte count, such as 1gb"))
 }
 
 #[tokio::main]
@@ -100,6 +152,9 @@ async fn main() -> Result<()> {
         &args.reader,
         args.session_mode,
         args.max_plots as usize,
+        args.results_max_bytes,
+        args.keep_results,
+        args.console_rows as usize,
     )
     .await?;
 

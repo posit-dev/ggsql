@@ -11,6 +11,7 @@ use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine;
 use clap::ValueEnum;
 use ggsql::reader::ResolvedPlot;
+use ggsql::util::escape_html;
 use ggsql::DataFrame;
 use serde_json::{json, Value};
 
@@ -71,14 +72,34 @@ impl SessionKind {
     }
 }
 
+/// How many rows of a long result a console shows, unless configured.
+pub const DEFAULT_CONSOLE_ROWS: usize = 10;
+
 /// Frontend-supplied hints about the output rendering slot.
-#[derive(Default, Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub struct RenderHints {
     pub kind: SessionKind,
     /// Width of the output slot in CSS pixels, when the frontend says.
     pub output_width_px: Option<u32>,
     /// Device pixel ratio of the display, when the frontend says.
     pub pixel_ratio: Option<f64>,
+    /// How many rows of a long result a console shows (`--console-rows`).
+    pub console_rows: usize,
+    /// Whether the result was kept for the results API, so the frontend can
+    /// follow it with a link to the whole of it.
+    pub kept: bool,
+}
+
+impl Default for RenderHints {
+    fn default() -> Self {
+        Self {
+            kind: SessionKind::default(),
+            output_width_px: None,
+            pixel_ratio: None,
+            console_rows: DEFAULT_CONSOLE_ROWS,
+            kept: false,
+        }
+    }
 }
 
 impl RenderHints {
@@ -102,6 +123,7 @@ impl RenderHints {
             kind: SessionKind::resolve(header.session.as_str(), mode),
             output_width_px,
             pixel_ratio,
+            ..Self::default()
         }
     }
 
@@ -175,7 +197,7 @@ pub fn format_display_data(
             if df.width() == 0 {
                 Ok(Formatted::Nothing)
             } else {
-                Ok(Formatted::Bundle(format_dataframe(df)))
+                Ok(Formatted::Bundle(format_dataframe(df, hints)))
             }
         }
         ExecutionResult::ConnectionChanged { display_name, .. } => {
@@ -256,9 +278,14 @@ fn format_static(
 }
 
 /// Format DataFrame as HTML table
-fn format_dataframe(df: DataFrame) -> Value {
-    let html = dataframe_to_html(&df);
-    let text = dataframe_to_text(&df);
+fn format_dataframe(df: DataFrame, hints: &RenderHints) -> Value {
+    let html = dataframe_to_html(&df, html_rows_shown(df.height(), hints));
+    // The plain text is the console's too, where it follows the same rule.
+    let text_rows = match hints.kind {
+        SessionKind::PositronConsole => html_rows_shown(df.height(), hints),
+        _ => df.height().min(10),
+    };
+    let text = dataframe_to_text(&df, text_rows);
 
     json!({
         "data": {
@@ -270,11 +297,27 @@ fn format_dataframe(df: DataFrame) -> Value {
     })
 }
 
-/// Convert DataFrame to HTML table
-fn dataframe_to_html(df: &DataFrame) -> String {
-    use ggsql::array_util::value_to_string;
-    use ggsql::util::escape_html;
+/// How many of a result's `height` rows its HTML table shows.
+///
+/// A kept console result is followed by a link to the whole of it, so it
+/// shows what R's tibble does: every row up to twice `console_rows`, else the
+/// first `console_rows`, which keeps the link in view. Anywhere else, and for
+/// a result that was not kept, the table is all there is, so it shows up to
+/// 100.
+fn html_rows_shown(height: usize, hints: &RenderHints) -> usize {
+    let n = hints.console_rows;
+    let linked = hints.kind == SessionKind::PositronConsole && hints.kept;
+    if !linked {
+        height.min(100)
+    } else if height > n.saturating_mul(2) {
+        n
+    } else {
+        height
+    }
+}
 
+/// Convert DataFrame to an HTML table of its first `row_limit` rows
+fn dataframe_to_html(df: &DataFrame, row_limit: usize) -> String {
     let mut html = String::from("<table border=\"1\" class=\"dataframe\">\n<thead><tr>");
 
     // Header row
@@ -283,12 +326,10 @@ fn dataframe_to_html(df: &DataFrame) -> String {
     }
     html.push_str("</tr></thead>\n<tbody>\n");
 
-    // Data rows (limit to first 100 for performance)
-    let row_limit = df.height().min(100);
     for i in 0..row_limit {
         html.push_str("<tr>");
         for col in df.get_columns() {
-            let value = value_to_string(col, i);
+            let value = ggsql::array_util::value_to_string(col, i);
             html.push_str(&format!("<td>{}</td>", escape_html(&value)));
         }
         html.push_str("</tr>\n");
@@ -307,19 +348,16 @@ fn dataframe_to_html(df: &DataFrame) -> String {
 }
 
 /// Convert DataFrame to plain-text summary (shape + column names + first rows).
-fn dataframe_to_text(df: &ggsql::DataFrame) -> String {
-    use ggsql::array_util::value_to_string;
-
+fn dataframe_to_text(df: &ggsql::DataFrame, row_limit: usize) -> String {
     let mut s = format!("shape: ({}, {})\n", df.height(), df.width());
     let names = df.get_column_names();
     s.push_str(&names.join("\t"));
     s.push('\n');
-    let row_limit = df.height().min(10);
     for i in 0..row_limit {
         let row: Vec<String> = df
             .get_columns()
             .iter()
-            .map(|c| value_to_string(c, i))
+            .map(|c| ggsql::array_util::value_to_string(c, i))
             .collect();
         s.push_str(&row.join("\t"));
         s.push('\n');
@@ -355,6 +393,33 @@ mod tests {
             Formatted::PlotComm(_) => panic!("expected a bundle, not a comm"),
             Formatted::Nothing => panic!("expected output"),
         }
+    }
+
+    #[test]
+    fn test_dates_are_written_as_dates() {
+        let df = ggsql::reader::connection::reader_from_uri("duckdb://memory")
+            .unwrap()
+            .execute_sql("SELECT DATE '2024-01-01' AS d, NULL::DATE AS missing")
+            .unwrap();
+        let html = dataframe_to_html(&df, 1);
+        assert!(html.contains("<td>2024-01-01</td>"), "{html}");
+        assert!(dataframe_to_text(&df, 1).contains("2024-01-01"));
+    }
+
+    #[test]
+    fn test_timestamps_with_a_time_zone_are_written_as_timestamps() {
+        let df = ggsql::reader::connection::reader_from_uri("duckdb://memory")
+            .unwrap()
+            .execute_sql(
+                "SELECT TIMESTAMPTZ '2024-01-02 03:04:05+00' AS t, NULL::TIMESTAMPTZ AS missing",
+            )
+            .unwrap();
+        let text = ggsql::array_util::value_to_string(df.column("t").unwrap(), 0);
+        assert_eq!(text, "2024-01-02T03:04:05Z");
+        assert_eq!(
+            ggsql::array_util::value_to_string(df.column("missing").unwrap(), 0),
+            "null"
+        );
     }
 
     #[test]
@@ -505,6 +570,65 @@ mod tests {
         );
     }
 
+    #[test]
+    fn test_html_rows_shown() {
+        let console = kept_console();
+        // The console shows a short kept result whole, and a long one's first 10.
+        assert_eq!(html_rows_shown(20, &console), 20);
+        assert_eq!(html_rows_shown(21, &console), 10);
+        assert_eq!(html_rows_shown(5000, &console), 10);
+        // Not kept, it has no link to the rest, so it shows up to 100.
+        assert_eq!(html_rows_shown(5000, &positron_console()), 100);
+        // Anywhere else, up to 100.
+        assert_eq!(html_rows_shown(50, &positron_notebook()), 50);
+        assert_eq!(html_rows_shown(5000, &positron_notebook()), 100);
+        assert_eq!(html_rows_shown(5000, &RenderHints::default()), 100);
+    }
+
+    #[test]
+    fn test_console_rows_is_configurable() {
+        let console = RenderHints {
+            console_rows: 3,
+            ..kept_console()
+        };
+        assert_eq!(html_rows_shown(6, &console), 6);
+        assert_eq!(html_rows_shown(7, &console), 3);
+        // Only the console's table follows it.
+        let notebook = RenderHints {
+            console_rows: 3,
+            ..positron_notebook()
+        };
+        assert_eq!(html_rows_shown(50, &notebook), 50);
+    }
+
+    #[test]
+    fn test_console_table_counts_the_rows_it_leaves_out() {
+        let df = ggsql::reader::connection::reader_from_uri("duckdb://memory")
+            .unwrap()
+            .execute_sql("SELECT i FROM range(5000) t(i)")
+            .unwrap();
+        let bundle = format_dataframe(df, &kept_console());
+        let html = bundle["data"]["text/html"].as_str().unwrap();
+        assert_eq!(html.matches("<tr>").count(), 1 + 10 + 1, "{html}");
+        assert!(html.contains("... 4990 more rows"), "{html}");
+    }
+
+    #[test]
+    fn test_console_text_follows_console_rows() {
+        let df = ggsql::reader::connection::reader_from_uri("duckdb://memory")
+            .unwrap()
+            .execute_sql("SELECT i FROM range(50) t(i)")
+            .unwrap();
+        let console = RenderHints {
+            console_rows: 3,
+            ..kept_console()
+        };
+        let bundle = format_dataframe(df, &console);
+        let text = bundle["data"]["text/plain"].as_str().unwrap();
+        // The shape line, the header, and three rows.
+        assert_eq!(text.lines().count(), 2 + 3, "{text}");
+    }
+
     /// A render backend with no GPU, so tests are fast and identical
     /// everywhere. The SVG path it leaves is the one that always works.
     fn backend() -> PlotBackend {
@@ -514,8 +638,15 @@ mod tests {
     fn positron_console() -> RenderHints {
         RenderHints {
             kind: SessionKind::PositronConsole,
-            output_width_px: None,
-            pixel_ratio: None,
+            ..RenderHints::default()
+        }
+    }
+
+    /// A console whose result was kept, so a link follows it.
+    fn kept_console() -> RenderHints {
+        RenderHints {
+            kept: true,
+            ..positron_console()
         }
     }
 
@@ -523,7 +654,7 @@ mod tests {
         RenderHints {
             kind: SessionKind::PositronNotebook,
             output_width_px: Some(589),
-            pixel_ratio: None,
+            ..RenderHints::default()
         }
     }
 
