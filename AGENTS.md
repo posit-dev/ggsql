@@ -86,9 +86,10 @@ cargo +1.86 check --ignore-rust-version -p ggsql
 
 There is deliberately **no root `rust-toolchain.toml`**: pinning to 1.86 would force local `cargo test` and rust-analyzer onto the oldest supported toolchain. CI's default toolchain is stable — which still guards the MSRV, because clippy reads `rust-version`, not the toolchain — with the 1.86 check as its own step.
 
-One thing is exempt from the 1.86 MSRV:
+Two packages set their own toolchain requirements:
 
 - **The wasm bindings (`ggsql-wasm`).** R doesn't use wasm, and some wasm-only dependencies require a newer rustc, so the crate has no `rust-version` and a nested `ggsql-wasm/rust-toolchain.toml` selects **stable** for builds run from that directory (`./build-wasm.sh`, Cargo, or `pkg/`).
+- **The Jupyter kernel (`ggsql-jupyter`).** The standalone kernel requires Rust 1.93 for `omq-tokio`. CRAN builds the library without the kernel.
 
 ### Rendering plots on Linux
 
