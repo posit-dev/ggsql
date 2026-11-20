@@ -10,6 +10,15 @@ use crate::reader::SqlDialect;
 pub struct MySqlDialect;
 
 impl SqlDialect for MySqlDialect {
+    // No `NULLS FIRST` / `NULLS LAST`.
+    fn sql_order_term(&self, expr: &str, ascending: bool, nulls_last: bool) -> String {
+        super::nulls_order_by_case(expr, ascending, nulls_last)
+    }
+
+    fn sql_string_literal(&self, value: &str) -> String {
+        super::backslash_quote_literal(value)
+    }
+
     fn type_names(&self) -> crate::reader::TypeNames {
         crate::reader::TypeNames {
             number: Some("DOUBLE"),

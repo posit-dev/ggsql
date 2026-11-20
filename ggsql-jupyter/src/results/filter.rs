@@ -4,10 +4,11 @@
 //! [`SqlDialect`], with no database, so it is tested as plain string assembly.
 //! The same code writes SQL for the results cache, to filter and sort a view,
 //! and for the session's own database, for `result_sql`: identifiers,
-//! booleans and regular expressions all come from the dialect it is given.
+//! string and boolean literals, `LIKE` and regular expressions all come from
+//! the dialect it is given.
 
 use super::Column;
-use ggsql::naming::quote_literal;
+use chrono::{NaiveDate, NaiveDateTime, NaiveTime};
 use ggsql::parser::SourceTree;
 use ggsql::reader::SqlDialect;
 use serde::{Deserialize, Serialize};
@@ -156,8 +157,10 @@ pub fn predicate(
         }
         Filter::IsNull { negate: false, .. } => Ok(format!("{c} IS NULL")),
         Filter::IsNull { negate: true, .. } => Ok(format!("{c} IS NOT NULL")),
-        Filter::IsEmpty { negate: false, .. } => Ok(format!("{c} = ''")),
-        Filter::IsEmpty { negate: true, .. } => Ok(format!("{c} <> ''")),
+        Filter::IsEmpty { negate, .. } => {
+            let op = if *negate { "<>" } else { "=" };
+            Ok(format!("{c} {op} {}", dialect.sql_string_literal("")))
+        }
         Filter::IsTrue { .. } => Ok(format!("{c} = {}", dialect.sql_boolean_literal(true))),
         Filter::IsFalse { .. } => Ok(format!("{c} = {}", dialect.sql_boolean_literal(false))),
         Filter::Text {
@@ -198,10 +201,52 @@ fn literal(value: &str, kind: &str, dialect: &dyn SqlDialect) -> Result<String, 
             "false" | "0" => Ok(dialect.sql_boolean_literal(false)),
             _ => Err(format!("{value:?} is not true or false")),
         },
-        // Dates and times too: every backend compares a string literal against
-        // a temporal column by casting it.
-        _ => Ok(quote_literal(value)),
+        // A typed literal: not every backend casts a string to compare it with
+        // a temporal column (Trino refuses, Oracle reads it by a session
+        // setting).
+        "date" => parse_date(value.trim())
+            .map(|d| dialect.sql_date_literal((d - epoch_date()).num_days() as i32))
+            .ok_or_else(|| format!("{value:?} is not a date (YYYY-MM-DD)")),
+        "datetime" => parse_datetime(value.trim())
+            .map(|dt| dialect.sql_datetime_literal(dt.and_utc().timestamp_micros()))
+            .ok_or_else(|| format!("{value:?} is not a date and time (YYYY-MM-DD HH:MM:SS)")),
+        "time" => parse_time(value.trim())
+            .map(|t| {
+                let since_midnight = t - NaiveTime::MIN;
+                dialect.sql_time_literal(since_midnight.num_nanoseconds().unwrap_or(0))
+            })
+            .ok_or_else(|| format!("{value:?} is not a time (HH:MM:SS)")),
+        _ => Ok(dialect.sql_string_literal(value)),
     }
+}
+
+fn epoch_date() -> NaiveDate {
+    NaiveDate::from_ymd_opt(1970, 1, 1).expect("the epoch is a date")
+}
+
+fn parse_date(v: &str) -> Option<NaiveDate> {
+    NaiveDate::parse_from_str(v, "%Y-%m-%d").ok()
+}
+
+/// An ISO date and time, with `T` or a space between them and optional
+/// fractional seconds; a date alone is its midnight. No offset: a literal has
+/// no time zone, so a database reads it in the session's own.
+fn parse_datetime(v: &str) -> Option<NaiveDateTime> {
+    [
+        "%Y-%m-%d %H:%M:%S%.f",
+        "%Y-%m-%dT%H:%M:%S%.f",
+        "%Y-%m-%d %H:%M",
+        "%Y-%m-%dT%H:%M",
+    ]
+    .iter()
+    .find_map(|f| NaiveDateTime::parse_from_str(v, f).ok())
+    .or_else(|| parse_date(v).map(|d| d.and_time(NaiveTime::MIN)))
+}
+
+fn parse_time(v: &str) -> Option<NaiveTime> {
+    ["%H:%M:%S%.f", "%H:%M"]
+        .iter()
+        .find_map(|f| NaiveTime::parse_from_str(v, f).ok())
 }
 
 /// The predicate for a text filter.
@@ -214,7 +259,7 @@ fn text(
 ) -> Result<String, String> {
     if how == TextMatch::Regex {
         return dialect
-            .sql_regex_match(c, &quote_literal(term), case_sensitive)
+            .sql_regex_match(c, &dialect.sql_string_literal(term), case_sensitive)
             .ok_or_else(|| "This database does not support regular-expression search".into());
     }
 
@@ -226,36 +271,29 @@ fn text(
         TextMatch::EndsWith => (format!("%{escaped}"), false),
         TextMatch::Regex => unreachable!("handled above"),
     };
-    let (lhs, rhs) = if case_sensitive {
-        (c.to_string(), quote_literal(&pattern))
+    let like = dialect.sql_like(c, &pattern, case_sensitive);
+    Ok(if negate {
+        format!("NOT ({like})")
     } else {
-        (
-            format!("LOWER({c})"),
-            format!("LOWER({})", quote_literal(&pattern)),
-        )
-    };
-    let not = if negate { "NOT " } else { "" };
-    Ok(format!("{lhs} {not}LIKE {rhs} ESCAPE '{LIKE_ESCAPE}'"))
+        like
+    })
 }
 
-/// `LIKE`'s escape character. Not a backslash, which MySQL and Snowflake
-/// read as an escape inside the string literal itself, so `'\'` would never
-/// end there.
-const LIKE_ESCAPE: char = '!';
-
-/// Escape `LIKE`'s wildcards, so a search term matches literally.
+/// Escape `LIKE`'s wildcards, and the backslash that escapes them, so a
+/// search term matches literally under [`SqlDialect::sql_like`].
 fn escape_like(term: &str) -> String {
     let mut out = String::with_capacity(term.len());
     for ch in term.chars() {
-        if matches!(ch, '%' | '_') || ch == LIKE_ESCAPE {
-            out.push(LIKE_ESCAPE);
+        if matches!(ch, '%' | '_' | '\\') {
+            out.push('\\');
         }
         out.push(ch);
     }
     out
 }
 
-/// The sort keys as `ORDER BY` terms, without the keyword.
+/// The sort keys as `ORDER BY` terms, without the keyword, with NULLs last
+/// in either direction whatever the backend's default.
 pub fn order_terms(
     keys: &[SortKey],
     columns: &[Column],
@@ -264,8 +302,9 @@ pub fn order_terms(
     keys.iter()
         .map(|key| {
             let column = column_of(columns, key.column)?;
-            let direction = if key.ascending { "ASC" } else { "DESC" };
-            Ok(format!("{} {direction}", dialect.quote_ident(&column.name)))
+            // NULLs last either way, which is where Positron's Data
+            // Explorer shows them.
+            Ok(dialect.sql_order_term(&dialect.quote_ident(&column.name), key.ascending, true))
         })
         .collect()
 }
@@ -336,13 +375,20 @@ pub fn to_sql(
 }
 
 /// A cell's statements: those before the last, and the last, which is the one
-/// whose result was kept. A query that does not parse is one statement.
+/// whose result was kept. A query that does not parse cleanly is one
+/// statement.
 fn split_statements(query: &str) -> (Vec<String>, String) {
     let whole = || (Vec::new(), query.trim().trim_end_matches(';').to_string());
     let Ok(tree) = SourceTree::new(query) else {
         return whole();
     };
     let root = tree.root();
+    // Tree-sitter recovers from what it cannot parse with ERROR nodes, and
+    // statement boundaries found around one are guesses, as in
+    // `SELECT $$x;y$$`.
+    if root.has_error() {
+        return whole();
+    }
     let mut statements: Vec<String> = tree
         .find_nodes(&root, "(sql_statement) @s")
         .into_iter()
@@ -434,9 +480,9 @@ mod tests {
     #[test]
     fn test_text_escapes_wildcards_and_folds_case() {
         assert_eq!(
-            sql(json!({"type": "text", "column": 1, "match": "contains", "term": "50%_!"}))
+            sql(json!({"type": "text", "column": 1, "match": "contains", "term": "50%_\\"}))
                 .unwrap(),
-            "LOWER(\"name\") LIKE LOWER('%50!%!_!!%') ESCAPE '!'"
+            r#"LOWER("name") LIKE LOWER('%50\%\_\\%') ESCAPE '\'"#
         );
         assert_eq!(
             sql(
@@ -444,7 +490,12 @@ mod tests {
                        "case_sensitive": true})
             )
             .unwrap(),
-            "\"name\" LIKE 'a%' ESCAPE '!'"
+            r#""name" LIKE 'a%' ESCAPE '\'"#
+        );
+        assert_eq!(
+            sql(json!({"type": "text", "column": 1, "match": "not_contains", "term": "a"}))
+                .unwrap(),
+            r#"NOT (LOWER("name") LIKE LOWER('%a%') ESCAPE '\')"#
         );
     }
 
@@ -452,13 +503,13 @@ mod tests {
     fn test_the_like_escape_matches_literally_in_duckdb() {
         let reader = ggsql::reader::connection::reader_from_uri("duckdb://memory").unwrap();
         let filter: Filter = serde_json::from_value(
-            json!({"type": "text", "column": 1, "match": "contains", "term": "5%!_"}),
+            json!({"type": "text", "column": 1, "match": "contains", "term": "5%\\_"}),
         )
         .unwrap();
         let p = predicate(&filter, &columns(), &DuckDbDialect).unwrap();
         let df = reader
             .execute_sql(&format!(
-                "SELECT name FROM (VALUES ('a5%!_b'), ('a5x!_b'), ('a5%!xb')) t(name) WHERE {p}"
+                r"SELECT name FROM (VALUES ('a5%\_b'), ('a5x\_b'), ('a5%\xb')) t(name) WHERE {p}"
             ))
             .unwrap();
         assert_eq!(df.height(), 1);
@@ -475,6 +526,89 @@ mod tests {
             "regexp_matches(\"name\", '^a', 'i')"
         );
         assert!(predicate(&f, &columns(), &AnsiDialect).is_err());
+    }
+
+    fn temporal_columns() -> Vec<Column> {
+        [("d", "date"), ("ts", "datetime"), ("t", "time")]
+            .iter()
+            .map(|(name, kind)| Column {
+                name: name.to_string(),
+                type_name: String::new(),
+                kind: kind.to_string(),
+                repeated: false,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn test_temporal_values_are_typed_literals_of_the_dialect() {
+        let f = |column: usize, value: &str, dialect: &dyn SqlDialect| {
+            let filter: Filter = serde_json::from_value(
+                json!({"type": "compare", "column": column, "op": ">=", "value": value}),
+            )
+            .unwrap();
+            predicate(&filter, &temporal_columns(), dialect)
+        };
+        assert_eq!(
+            f(0, "2024-03-05", &AnsiDialect).unwrap(),
+            "\"d\" >= DATE '2024-03-05'"
+        );
+        assert_eq!(
+            f(1, "2024-03-05T06:07:08.5", &AnsiDialect).unwrap(),
+            "\"ts\" >= TIMESTAMP '2024-03-05 06:07:08.500000'"
+        );
+        assert_eq!(
+            f(1, "2024-03-05", &AnsiDialect).unwrap(),
+            "\"ts\" >= TIMESTAMP '2024-03-05 00:00:00'"
+        );
+        assert_eq!(
+            f(2, "06:07", &AnsiDialect).unwrap(),
+            "\"t\" >= TIME '06:07:00'"
+        );
+        // An override, not a string the backend may refuse to compare.
+        let trino = dialect_for_scheme("trino").unwrap();
+        let mssql = dialect_for_scheme("mssql").unwrap();
+        assert_eq!(
+            f(0, "2024-03-05", trino).unwrap(),
+            format!("\"d\" >= {}", trino.sql_date_literal(19787))
+        );
+        assert_ne!(
+            f(0, "2024-03-05", mssql).unwrap(),
+            f(0, "2024-03-05", &AnsiDialect).unwrap()
+        );
+        for (column, bad) in [
+            (0, "March 5"),
+            (1, "2024-03-05 06:07:08+02:00"),
+            (2, "noon"),
+        ] {
+            assert!(f(column, bad, &AnsiDialect).is_err(), "{bad}");
+        }
+    }
+
+    #[test]
+    fn test_temporal_filters_run_in_duckdb() {
+        let reader = ggsql::reader::connection::reader_from_uri("duckdb://memory").unwrap();
+        let filters: Vec<Filter> = serde_json::from_value(json!([
+            {"type": "between", "column": 0, "low": "2024-01-01", "high": "2024-01-31"},
+            {"type": "compare", "column": 1, "op": ">", "value": "2024-01-10 12:00"},
+            {"type": "in", "column": 2, "values": ["09:30:00"]}
+        ]))
+        .unwrap();
+        let where_ = filters
+            .iter()
+            .map(|f| predicate(f, &temporal_columns(), &DuckDbDialect).unwrap())
+            .collect::<Vec<_>>()
+            .join(" AND ");
+        let df = reader
+            .execute_sql(&format!(
+                "SELECT * FROM (VALUES \
+                 (DATE '2024-01-15', TIMESTAMP '2024-01-15 00:00:00', TIME '09:30:00'), \
+                 (DATE '2024-01-15', TIMESTAMP '2024-01-10 11:00:00', TIME '09:30:00'), \
+                 (DATE '2024-02-15', TIMESTAMP '2024-02-15 00:00:00', TIME '09:30:00')\
+                 ) t(d, ts, t) WHERE {where_}"
+            ))
+            .unwrap();
+        assert_eq!(df.height(), 1);
     }
 
     #[test]
@@ -496,6 +630,53 @@ mod tests {
             format!("\"ok\" = {}", AnsiDialect.sql_boolean_literal(true))
         );
         assert!(sql(json!({"type": "compare", "column": 2, "op": "=", "value": "maybe"})).is_err());
+    }
+
+    #[test]
+    fn test_sort_puts_nulls_last_in_every_dialect() {
+        let desc = [SortKey {
+            column: 0,
+            ascending: false,
+        }];
+        let mysql = dialect_for_scheme("mysql").unwrap();
+        assert_eq!(
+            order_terms(&desc, &columns(), mysql).unwrap(),
+            ["CASE WHEN `n` IS NULL THEN 1 ELSE 0 END, `n` DESC"]
+        );
+        assert_eq!(
+            order_terms(&desc, &columns(), &AnsiDialect).unwrap(),
+            ["\"n\" DESC NULLS LAST"]
+        );
+        // And both shapes run, with the NULL last either way.
+        for uri in ["duckdb://memory", "sqlite://memory"] {
+            let reader = ggsql::reader::connection::reader_from_uri(uri).unwrap();
+            let dialect = reader.dialect();
+            for ascending in [true, false] {
+                let key = [SortKey {
+                    column: 0,
+                    ascending,
+                }];
+                let terms = order_terms(&key, &columns(), dialect).unwrap().join(", ");
+                let both = [terms, nulls_order_by(dialect, ascending)];
+                for order in both {
+                    let df = reader
+                        .execute_sql(&format!(
+                            "SELECT n FROM (SELECT NULL AS n UNION ALL SELECT 1 UNION ALL SELECT 2) t \
+                             ORDER BY {order}"
+                        ))
+                        .unwrap();
+                    assert!(df.column("n").unwrap().is_null(2), "{uri} {order}");
+                }
+            }
+        }
+    }
+
+    /// The `CASE` form MySQL and SQL Server get, for running elsewhere.
+    fn nulls_order_by(dialect: &dyn SqlDialect, ascending: bool) -> String {
+        let mysql = dialect_for_scheme("mysql").unwrap();
+        mysql
+            .sql_order_term("n", ascending, true)
+            .replace('`', &dialect.quote_ident("")[..1])
     }
 
     #[test]
@@ -543,26 +724,73 @@ mod tests {
                 ") AS \"result\"",
                 "WHERE \"n\" > 2",
                 "  AND \"name\" IS NULL",
-                "ORDER BY \"n\" ASC",
+                "ORDER BY \"n\" ASC NULLS LAST",
             ]
         );
     }
 
     #[test]
-    fn test_to_sql_quotes_for_the_session_dialect() {
-        let filters = filters(json!([
-            {"type": "text", "column": 1, "match": "contains", "term": "x"}
+    fn test_to_sql_writes_the_session_dialect() {
+        let both = filters(json!([
+            {"type": "text", "column": 1, "match": "contains", "term": "it's"},
+            {"type": "compare", "column": 1, "op": "=", "value": "a\\b"}
         ]));
-        for scheme in ["mysql", "bigquery", "clickhouse", "databricks"] {
+        let cases = [
+            (
+                "mysql",
+                r"LOWER(`name`) LIKE LOWER('%it\'s%') ESCAPE '\\'",
+                r"`name` = 'a\\b'",
+            ),
+            (
+                "databricks",
+                r"LOWER(`name`) LIKE LOWER('%it\'s%') ESCAPE '\\'",
+                r"`name` = 'a\\b'",
+            ),
+            (
+                "bigquery",
+                r"LOWER(`name`) LIKE LOWER('%it\'s%')",
+                r"`name` = 'a\\b'",
+            ),
+            (
+                "clickhouse",
+                r"LOWER(`name`) LIKE LOWER('%it\'s%')",
+                r"`name` = 'a\\b'",
+            ),
+            (
+                "snowflake",
+                r#"LOWER("name") LIKE LOWER('%it\'s%') ESCAPE '\\'"#,
+                r#""name" = 'a\\b'"#,
+            ),
+            (
+                "postgres",
+                r#"LOWER("name") LIKE LOWER('%it''s%') ESCAPE '\'"#,
+                r#""name" = 'a\b'"#,
+            ),
+        ];
+        for (scheme, like, compare) in cases {
             let dialect = dialect_for_scheme(scheme).unwrap();
-            let sql = to_sql(&filters, &BY_N, "SELECT 1", &columns(), dialect).join("\n");
-            assert!(
-                sql.contains("LOWER(`name`) LIKE LOWER('%x%') ESCAPE '!'"),
-                "{scheme}: {sql}"
-            );
-            assert!(sql.contains("ORDER BY `n` ASC"), "{scheme}: {sql}");
-            assert!(!sql.contains("\"name\""), "{scheme}: {sql}");
+            let sql = to_sql(&both, &BY_N, "SELECT 1", &columns(), dialect).join("\n");
+            assert!(sql.contains(&format!("WHERE {like}\n")), "{scheme}: {sql}");
+            assert!(sql.contains(&format!("AND {compare}\n")), "{scheme}: {sql}");
         }
+        // The wildcard tail of a backslash-escaping dialect's pattern still
+        // ends the literal: `'%\\%'`, not `'%\%'`.
+        let backslash = filters(json!([
+            {"type": "text", "column": 1, "match": "ends_with", "term": "\\", "case_sensitive": true}
+        ]));
+        let mysql = dialect_for_scheme("mysql").unwrap();
+        let sql = to_sql(&backslash, &[], "SELECT 1", &columns(), mysql).join("\n");
+        assert!(sql.contains(r"`name` LIKE '%\\\\' ESCAPE '\\'"), "{sql}");
+    }
+
+    #[test]
+    fn test_to_sql_escapes_a_tsql_character_class() {
+        let filters = filters(json!([
+            {"type": "text", "column": 1, "match": "starts_with", "term": "[a]", "case_sensitive": true}
+        ]));
+        let mssql = dialect_for_scheme("mssql").unwrap();
+        let sql = to_sql(&filters, &[], "SELECT 1", &columns(), mssql).join("\n");
+        assert!(sql.contains(r#""name" LIKE '\[a]%' ESCAPE '\'"#), "{sql}");
     }
 
     #[test]
@@ -577,7 +805,7 @@ mod tests {
                 "FROM (",
                 "    SELECT * FROM t",
                 ") AS \"result\"",
-                "ORDER BY \"n\" ASC",
+                "ORDER BY \"n\" ASC NULLS LAST",
             ]
         );
         // And what it writes runs.
@@ -588,6 +816,14 @@ mod tests {
             last = Some(reader.execute_sql(stmt).unwrap());
         }
         assert_eq!(last.unwrap().height(), 2);
+    }
+
+    #[test]
+    fn test_a_query_that_does_not_parse_cleanly_is_one_statement() {
+        // Parsed as `SELECT 1`, an ERROR node, then `x;y$$ AS s` as a
+        // statement of its own.
+        let query = "SELECT 1; SELECT $$x;y$$ AS s";
+        assert_eq!(split_statements(query), (Vec::new(), query.to_string()));
     }
 
     #[test]

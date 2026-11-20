@@ -151,15 +151,17 @@ impl ResultStore {
     }
 
     /// Drop closed results, then the oldest unopened ones, until `extra` more
-    /// bytes fit in the budget. Returns whether they do.
+    /// bytes fit in the budget. Returns whether they do. When they cannot fit
+    /// even with everything droppable gone, nothing is dropped.
     fn make_room(&mut self, extra: u64) -> Result<bool> {
-        let limit = self.max_bytes.saturating_sub(extra);
-        let outside_cache: u64 = self.pending.iter().map(|p| p.bytes).sum::<u64>()
-            + self
-                .views
-                .values()
-                .map(ResultView::order_bytes)
-                .sum::<u64>();
+        let orders: u64 = self.views.values().map(ResultView::order_bytes).sum();
+        // Open views' results and order tables stay whatever is dropped.
+        let kept = self.cache.pinned_bytes()? + orders;
+        if kept.saturating_add(extra) > self.max_bytes {
+            return Ok(false);
+        }
+        let limit = self.max_bytes - extra;
+        let outside_cache: u64 = self.pending.iter().map(|p| p.bytes).sum::<u64>() + orders;
         self.cache.evict_to(limit.saturating_sub(outside_cache))?;
         self.forget_evicted()?;
         while self.used()? > limit && self.pending.pop_front().is_some() {}
@@ -780,6 +782,28 @@ mod tests {
         let err = store.open(&a).unwrap_err().to_string();
         assert!(err.contains("no longer available"), "{err}");
         assert!(store.open(&b).is_ok());
+    }
+
+    #[test]
+    fn test_a_result_that_cannot_fit_beside_open_views_drops_nothing() {
+        let one = bytes_of(&numbers(100));
+        let mut store = ResultStore::new(4 * one).unwrap();
+        let open = keep(&mut store, numbers(100), "open".into(), String::new());
+        let closed = keep(&mut store, numbers(100), "closed".into(), String::new());
+        let pending = keep(&mut store, numbers(100), "pending".into(), String::new());
+        store.open(&open).unwrap();
+        let v = store.open(&closed).unwrap().view;
+        store.close(&v).unwrap();
+
+        // Under the budget, but not beside the open result.
+        let big = numbers(350);
+        assert!(bytes_of(&big) <= 4 * one);
+        assert!(store
+            .insert(big, "big".into(), String::new())
+            .unwrap()
+            .is_none());
+        assert!(store.open(&closed).is_ok());
+        assert!(store.open(&pending).is_ok());
     }
 
     #[test]

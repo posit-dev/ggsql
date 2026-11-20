@@ -56,6 +56,55 @@ pub(crate) fn backtick_quote_ident(name: &str) -> String {
     format!("`{}`", name.replace('`', "``"))
 }
 
+/// String literal for backends that read a backslash inside a string literal
+/// as an escape (MySQL/MariaDB, ClickHouse, BigQuery, Databricks, Snowflake,
+/// Redshift): backslashes and single quotes are both backslash-escaped.
+/// BigQuery and Databricks have no `''` escape at all.
+pub(crate) fn backslash_quote_literal(value: &str) -> String {
+    format!("'{}'", value.replace('\\', "\\\\").replace('\'', "\\'"))
+}
+
+/// [`SqlDialect::sql_like`] with `ESCAPE` naming the backslash, as a string
+/// literal of the dialect's own, so the clause is valid wherever its literals
+/// are.
+pub(crate) fn like_with_escape_clause<D: SqlDialect + ?Sized>(
+    dialect: &D,
+    expr: &str,
+    pattern: &str,
+    case_sensitive: bool,
+) -> String {
+    format!(
+        "{} ESCAPE {}",
+        like_without_escape_clause(dialect, expr, pattern, case_sensitive),
+        dialect.sql_string_literal("\\")
+    )
+}
+
+/// [`SqlDialect::sql_like`] for backends whose `LIKE` has no `ESCAPE` clause
+/// and always escapes with a backslash (ClickHouse, BigQuery).
+pub(crate) fn like_without_escape_clause<D: SqlDialect + ?Sized>(
+    dialect: &D,
+    expr: &str,
+    pattern: &str,
+    case_sensitive: bool,
+) -> String {
+    let pattern = dialect.sql_string_literal(pattern);
+    if case_sensitive {
+        format!("{expr} LIKE {pattern}")
+    } else {
+        format!("LOWER({expr}) LIKE LOWER({pattern})")
+    }
+}
+
+/// [`SqlDialect::sql_order_term`] for backends without `NULLS FIRST` /
+/// `NULLS LAST` (MySQL/MariaDB, SQL Server): a leading key that sorts the
+/// NULLs to the chosen end, then the expression itself.
+pub(crate) fn nulls_order_by_case(expr: &str, ascending: bool, nulls_last: bool) -> String {
+    let (null, other) = if nulls_last { (1, 0) } else { (0, 1) };
+    let direction = if ascending { "ASC" } else { "DESC" };
+    format!("CASE WHEN {expr} IS NULL THEN {null} ELSE {other} END, {expr} {direction}")
+}
+
 /// `1`/`0` boolean literal for backends without a real BOOLEAN literal
 /// (SQL Server, Oracle, SQLite).
 pub(crate) fn one_zero_boolean_literal(value: bool) -> String {
@@ -148,6 +197,54 @@ mod tests {
 
     fn assert_type_name(d: &dyn SqlDialect, expected: Option<&str>) {
         assert_eq!(d.type_names().number, expected);
+    }
+
+    #[test]
+    fn string_literals_follow_the_backends_escapes() {
+        let value = r"it's a\b";
+        for scheme in ["mysql", "bigquery", "clickhouse", "databricks", "snowflake"] {
+            let d = dialect_for_scheme(scheme).unwrap();
+            assert_eq!(d.sql_string_literal(value), r"'it\'s a\\b'", "{scheme}");
+        }
+        for scheme in ["duckdb", "postgres", "sqlite", "mssql", "trino"] {
+            let d = dialect_for_scheme(scheme).unwrap();
+            assert_eq!(d.sql_string_literal(value), r"'it''s a\b'", "{scheme}");
+        }
+    }
+
+    #[test]
+    fn like_names_its_escape_where_the_backend_has_the_clause() {
+        let like = |scheme: &str| {
+            dialect_for_scheme(scheme)
+                .unwrap()
+                .sql_like("c", r"a\%", true)
+        };
+        assert_eq!(like("duckdb"), r"c LIKE 'a\%' ESCAPE '\'");
+        assert_eq!(like("mysql"), r"c LIKE 'a\\%' ESCAPE '\\'");
+        assert_eq!(like("bigquery"), r"c LIKE 'a\\%'");
+        assert_eq!(like("clickhouse"), r"c LIKE 'a\\%'");
+        assert_eq!(
+            dialect_for_scheme("mssql")
+                .unwrap()
+                .sql_like("c", "[x]%", false),
+            r"LOWER(c) LIKE LOWER('\[x]%') ESCAPE '\'"
+        );
+    }
+
+    /// The default `LIKE` escape runs, with the backslash as written.
+    #[cfg(feature = "duckdb")]
+    #[test]
+    fn like_escape_runs_in_duckdb() {
+        use crate::reader::Reader;
+        let reader =
+            crate::reader::DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        let p = DuckDbDialect.sql_like("s", r"%a\_b\\%", true);
+        let df = reader
+            .execute_sql(&format!(
+                r"SELECT s FROM (VALUES ('xa_b\y'), ('xaxb\y'), ('xa_by')) t(s) WHERE {p}"
+            ))
+            .unwrap();
+        assert_eq!(df.height(), 1);
     }
 
     /// Evaluate the CASE emulations against DuckDB's native

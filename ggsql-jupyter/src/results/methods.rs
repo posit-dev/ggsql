@@ -219,7 +219,7 @@ mod tests {
                 "    SELECT * FROM t",
                 ") AS \"result\"",
                 "WHERE \"n\" > 1",
-                "ORDER BY \"n\" DESC"
+                "ORDER BY \"n\" DESC NULLS LAST"
             ]
         );
 

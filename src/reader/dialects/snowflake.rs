@@ -11,6 +11,10 @@ use crate::reader::SqlDialect;
 pub struct SnowflakeDialect;
 
 impl SqlDialect for SnowflakeDialect {
+    fn sql_string_literal(&self, value: &str) -> String {
+        super::backslash_quote_literal(value)
+    }
+
     fn type_names(&self) -> crate::reader::TypeNames {
         crate::reader::TypeNames {
             number: Some("DOUBLE"),

@@ -17,6 +17,10 @@ use crate::reader::SqlDialect;
 pub struct RedshiftDialect;
 
 impl SqlDialect for RedshiftDialect {
+    fn sql_string_literal(&self, value: &str) -> String {
+        super::backslash_quote_literal(value)
+    }
+
     fn sql_temporal_as_number(
         &self,
         expr: &str,

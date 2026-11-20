@@ -333,6 +333,29 @@ impl CacheTables {
         Ok(total.max(0) as u64)
     }
 
+    /// The pinned entries' total byte estimate: what no eviction can free.
+    pub fn pinned_bytes(&self) -> Result<u64> {
+        self.ensure_meta_table()?;
+        let pinned = self.pinned.borrow();
+        if pinned.is_empty() {
+            return Ok(0);
+        }
+        let keys: Vec<String> = pinned.iter().map(|k| naming::quote_literal(k)).collect();
+        drop(pinned);
+        let df = self.backend.execute_sql(&format!(
+            "SELECT CAST(COALESCE(SUM(byte_estimate), 0) AS BIGINT) AS n FROM {} \
+             WHERE cache_key IN ({})",
+            naming::quote_ident(naming::CACHE_META_TABLE),
+            keys.join(", ")
+        ))?;
+        let total = if df.height() == 0 {
+            0
+        } else {
+            as_i64(df.column("n")?)?.value(0)
+        };
+        Ok(total.max(0) as u64)
+    }
+
     /// Evict unpinned entries, least recently used first, until the total
     /// byte estimate is within `max_bytes` or nothing unpinned is left. A
     /// caller with a budget wider than this cache's passes what it allows.
@@ -1442,6 +1465,20 @@ mod behavior_tests {
             .execute_sql("SELECT x FROM __t_a__")
             .unwrap();
         assert_eq!(rows.height(), 3);
+    }
+
+    #[test]
+    fn test_pinned_bytes_counts_only_pinned_entries() {
+        let tables = CacheTables::new(Box::new(DuckDBReader::new_in_memory().unwrap()), u64::MAX);
+        assert_eq!(tables.pinned_bytes().unwrap(), 0);
+        let frame = || df! { "x" => vec![1_i64, 2, 3] }.unwrap();
+        tables.put("a", "a", "__t_a__", frame(), true).unwrap();
+        tables.put("b", "b", "__t_b__", frame(), false).unwrap();
+        let total = tables.total_bytes().unwrap();
+        assert!(total > 0);
+        assert_eq!(tables.pinned_bytes().unwrap() * 2, total);
+        tables.set_pinned("a", false).unwrap();
+        assert_eq!(tables.pinned_bytes().unwrap(), 0);
     }
 
     #[test]

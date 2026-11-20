@@ -16,6 +16,15 @@ use crate::reader::SqlDialect;
 pub struct BigQueryDialect;
 
 impl SqlDialect for BigQueryDialect {
+    fn sql_string_literal(&self, value: &str) -> String {
+        super::backslash_quote_literal(value)
+    }
+
+    // No `ESCAPE` clause; a backslash always escapes in `LIKE`.
+    fn sql_like(&self, expr: &str, pattern: &str, case_sensitive: bool) -> String {
+        super::like_without_escape_clause(self, expr, pattern, case_sensitive)
+    }
+
     fn type_names(&self) -> crate::reader::TypeNames {
         crate::reader::TypeNames {
             number: Some("FLOAT64"),
