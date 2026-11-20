@@ -224,18 +224,20 @@ impl ResultStore {
     pub fn open(&mut self, key: &str) -> Result<OpenedView> {
         if let Some(i) = self.pending.iter().position(|p| p.key == key) {
             let pending = self.pending.remove(i).expect("position is in range");
+            // Making room may drop older results from the front, so a result
+            // put back goes where it was or, past the end, last.
             // Out of the queue, so making room cannot drop it; its copy is
             // budgeted afresh, with the row column the copy adds.
             let need = pending.bytes + pending.df.height() as u64 * ROW_BYTES;
             let fits = match self.make_room(need) {
                 Ok(fits) => fits,
                 Err(e) => {
-                    self.pending.insert(i, pending);
+                    self.pending.insert(i.min(self.pending.len()), pending);
                     return Err(e);
                 }
             };
             if !fits {
-                self.pending.insert(i, pending);
+                self.pending.insert(i.min(self.pending.len()), pending);
                 bail!(
                     "Opening this result needs more memory than the data explorer's budget \
                      has left ({} bytes). Close another Data Explorer tab and try again.",
@@ -249,7 +251,7 @@ impl ResultStore {
                 Err(e) => {
                     // Kept, so the error says what went wrong each time
                     // rather than that the result is gone.
-                    self.pending.insert(i, pending);
+                    self.pending.insert(i.min(self.pending.len()), pending);
                     return Err(e);
                 }
             }
@@ -685,6 +687,27 @@ mod tests {
             // The real reason each time, not that the result is gone.
             assert!(!err.contains("no longer available"), "{err}");
         }
+    }
+
+    #[test]
+    fn test_a_failed_open_after_making_room_keeps_the_result() {
+        let n = 200_000;
+        // Room for both results as kept, and for the second's copy, which
+        // adds a row column, only once the first has gone.
+        let mut store = ResultStore::new(2 * bytes_of(&numbers(n)) + 1).unwrap();
+        let first = keep(&mut store, numbers(n), "a".into(), String::new());
+        let second = keep(&mut store, numbers(n), "b".into(), String::new());
+        // Too little memory for DuckDB to take the copy.
+        store
+            .cache
+            .backend()
+            .execute_sql("SET memory_limit = '256KB'")
+            .unwrap();
+        let err = store.open(&second).unwrap_err().to_string();
+        assert!(!err.contains("no longer available"), "{err}");
+        // The first went to make room; the second is still kept.
+        assert!(store.pending.iter().all(|p| p.key != first));
+        assert!(store.pending.iter().any(|p| p.key == second));
     }
 
     #[test]
