@@ -2,7 +2,7 @@
 name = "ggsql-jupyter"
 version.workspace = true
 edition.workspace = true
-rust-version.workspace = true
+rust-version = "1.93"
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
@@ -28,9 +28,8 @@ ggsql = { workspace = true, features = ["duckdb", "svg", "pdf"] }
 # Arrow for DataFrame array types
 arrow = { workspace = true }
 
-# Async runtime. `sync` is named explicitly for the render thread's outcome
-# channel rather than relying on another dependency to enable it.
-tokio = { workspace = true, features = ["sync"] }
+# Async runtime
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "signal", "sync"] }
 
 # CLI
 clap = { workspace = true }
@@ -50,8 +49,8 @@ chrono = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 
-# Jupyter kernel - we'll try zeromq approach first since it's proven
-zeromq = { version = "0.4", features = ["tokio-runtime", "tcp-transport"] }
+# Jupyter transport
+omq-tokio = "0.37.1"
 bytes = "1.0"
 
 # Message authentication
