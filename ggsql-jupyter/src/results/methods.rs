@@ -16,14 +16,16 @@
 //! A sort or set of filters that cannot be applied at all is an error, and
 //! leaves the view as it was.
 //!
-//! A page holds at most [`MAX_PAGE_ROWS`] rows. A range is cut short at the end
-//! of the view; an index outside it is an error.
+//! A page holds at most [`MAX_PAGE_ROWS`] rows, and an export (every row of
+//! the view when `rows` is left out) at most [`MAX_EXPORT_ROWS`]. A range is
+//! cut short at the end of the view; an index outside it is an error.
 //!
 //! `result_sql` is here rather than in a frontend because only the kernel
 //! knows the session's database: it writes the view as SQL for that dialect,
 //! which a frontend could not do from the neutral calls alone.
 //!
 //! [`MAX_PAGE_ROWS`]: super::view::MAX_PAGE_ROWS
+//! [`MAX_EXPORT_ROWS`]: super::view::MAX_EXPORT_ROWS
 
 use super::filter::{Filter, SortKey};
 use super::view::{ProfileRequest, Rows};

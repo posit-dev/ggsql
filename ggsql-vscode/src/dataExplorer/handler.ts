@@ -186,6 +186,11 @@ export class ResultExplorer {
                 }
                 this.down.delete(sessionId);
                 this.forgetViews(sessionId);
+                for (const id of this.closed) {
+                    if (parseDatasetId(id)?.sessionId === sessionId) {
+                        this.closed.delete(id);
+                    }
+                }
             },
         };
     }
@@ -229,6 +234,11 @@ export class ResultExplorer {
     reopen(id: string): Promise<Dataset> {
         this.closed.delete(id);
         return this.open(id);
+    }
+
+    /** Whether a Data Explorer is open on the dataset `id`. */
+    isShown(id: string): boolean {
+        return this.shown.has(id);
     }
 
     /** The dataset `id`, opening a kernel view of it the first time. */

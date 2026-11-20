@@ -11,6 +11,12 @@ use crate::reader::SqlDialect;
 pub struct DatabricksDialect;
 
 impl SqlDialect for DatabricksDialect {
+    // Java regular expressions, unanchored.
+    fn sql_regex_match(&self, expr: &str, pattern: &str, case_sensitive: bool) -> Option<String> {
+        let pattern = super::inline_regex_flag(self, pattern, case_sensitive);
+        Some(format!("{expr} RLIKE {pattern}"))
+    }
+
     fn sql_string_literal(&self, value: &str) -> String {
         super::backslash_quote_literal(value)
     }

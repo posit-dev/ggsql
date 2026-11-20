@@ -15,6 +15,12 @@ use crate::reader::SqlDialect;
 pub struct OracleDialect;
 
 impl SqlDialect for OracleDialect {
+    // Unanchored.
+    fn sql_regex_match(&self, expr: &str, pattern: &str, case_sensitive: bool) -> Option<String> {
+        let flags = if case_sensitive { "c" } else { "i" };
+        Some(format!("REGEXP_LIKE({expr}, {pattern}, '{flags}')"))
+    }
+
     fn type_names(&self) -> crate::reader::TypeNames {
         crate::reader::TypeNames {
             number: Some("BINARY_DOUBLE"),

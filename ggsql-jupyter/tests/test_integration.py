@@ -530,27 +530,29 @@ class TestResultsApi:
         assert not [m for m in messages if m["msg_type"] == "stream"]
         return results[0]["content"]["metadata"]["ggsql"]["result"]
 
-    def _open_ui(self, client):
+    def _open_ui(self, client, comm_id=None):
         client.session.send(
             client.shell_channel.socket,
             "comm_open",
-            {"comm_id": self.UI, "target_name": "positron.ui", "data": {}},
+            {"comm_id": comm_id or self.UI, "target_name": "positron.ui", "data": {}},
         )
         drain_iopub(client)
 
-    def _close_ui(self, client):
+    def _close_ui(self, client, comm_id=None):
         client.session.send(
-            client.shell_channel.socket, "comm_close", {"comm_id": self.UI, "data": {}}
+            client.shell_channel.socket,
+            "comm_close",
+            {"comm_id": comm_id or self.UI, "data": {}},
         )
         drain_iopub(client)
 
-    def _call(self, client, method, params):
+    def _call(self, client, method, params, comm_id=None):
         """`callMethod(method, params)`: the reply's JSON-RPC data."""
         client.session.send(
             client.shell_channel.socket,
             "comm_msg",
             {
-                "comm_id": self.UI,
+                "comm_id": comm_id or self.UI,
                 "data": {
                     "jsonrpc": "2.0",
                     "id": f"{method}-1",
@@ -597,7 +599,7 @@ class TestResultsApi:
 
             sql = self._call(console_client, "result_sql", {"view": view})["result"]["sql"]
             assert f"    {self.QUERY}" in sql
-            assert 'ORDER BY "n" DESC' in sql
+            assert 'ORDER BY "n" DESC NULLS LAST' in sql
 
             assert self._call(console_client, "result_close", {"view": view})["result"] == {}
             # The cached copy is still there to reopen.
@@ -711,6 +713,24 @@ class TestResultsApi:
             assert "no view" in data["error"]["message"], data
         finally:
             self._close_ui(console_client)
+
+    def test_a_new_ui_comm_closes_the_views_of_the_old(self, console_client):
+        # A frontend that reloaded opens a new UI comm without closing its old.
+        key = self._result_key(console_client)
+        self._open_ui(console_client)
+        view = self._call(console_client, "result_open", {"key": key})["result"]["view"]
+        replacement = "test-ui-comm-2"
+        self._open_ui(console_client, replacement)
+        try:
+            data = self._call(
+                console_client,
+                "result_page",
+                {"view": view, "rows": {"first": 0, "last": 0}, "columns": [0]},
+                replacement,
+            )
+            assert "no view" in data["error"]["message"], data
+        finally:
+            self._close_ui(console_client, replacement)
 
 
 class TestConsoleRows:

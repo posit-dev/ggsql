@@ -163,6 +163,24 @@ suite('withResultLinks', () => {
 		wrapped.dispose();
 	});
 
+	test('a failed show leaves an already open Data Explorer\'s view alone', async () => {
+		const fake = fakeSession('console');
+		let fail = false;
+		const wrapped = withResultLinks(fake.session, new ResultExplorer(() => { }), async () => {
+			if (fail) {
+				throw new Error('already open');
+			}
+		});
+		await wrapped.openResource!('x-ggsql-result:ggsql-abc/0f9e');
+		await tick();
+		fail = true;
+		await wrapped.openResource!('x-ggsql-result:ggsql-abc/0f9e');
+		await tick();
+		await tick();
+		assert.deepStrictEqual(fake.calls, ['result_open']);
+		wrapped.dispose();
+	});
+
 	test('a link reopens a result whose Data Explorer was closed', async () => {
 		const fake = fakeSession('console');
 		const explorer = new ResultExplorer(() => { });

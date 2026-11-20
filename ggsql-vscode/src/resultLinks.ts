@@ -79,6 +79,8 @@ async function openResult(
         return;
     }
     const id = datasetId(sessionId, key);
+    // A Data Explorer already showing it owns its view, whatever happens here.
+    const alreadyShown = explorer.isShown(id);
     let opened = false;
     try {
         // Opened here rather than on the Data Explorer's first request, for
@@ -91,7 +93,7 @@ async function openResult(
             displayName: dataset.result.title,
         });
     } catch (err) {
-        if (opened) {
+        if (opened && !alreadyShown) {
             // No Data Explorer will close the view, so release it here.
             explorer.closeDataset(id);
         }

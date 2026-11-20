@@ -105,6 +105,18 @@ pub(crate) fn nulls_order_by_case(expr: &str, ascending: bool, nulls_last: bool)
     format!("CASE WHEN {expr} IS NULL THEN {null} ELSE {other} END, {expr} {direction}")
 }
 
+/// The SQL string literal `pattern` with an inline `(?i)` or `(?-i)` flag in
+/// front, for backends whose regular expressions take case sensitivity only
+/// that way (RE2, Java, ICU, PCRE).
+pub(crate) fn inline_regex_flag<D: SqlDialect + ?Sized>(
+    dialect: &D,
+    pattern: &str,
+    case_sensitive: bool,
+) -> String {
+    let flag = if case_sensitive { "(?-i)" } else { "(?i)" };
+    format!("CONCAT({}, {pattern})", dialect.sql_string_literal(flag))
+}
+
 /// `1`/`0` boolean literal for backends without a real BOOLEAN literal
 /// (SQL Server, Oracle, SQLite).
 pub(crate) fn one_zero_boolean_literal(value: bool) -> String {
@@ -245,6 +257,41 @@ mod tests {
             ))
             .unwrap();
         assert_eq!(df.height(), 1);
+    }
+
+    #[test]
+    fn regex_search_is_unanchored_and_takes_case_where_the_backend_has_it() {
+        let regex = |scheme: &str, cs: bool| {
+            dialect_for_scheme(scheme)
+                .unwrap()
+                .sql_regex_match("c", "'^a'", cs)
+        };
+        assert_eq!(
+            regex("bigquery", false).unwrap(),
+            r"REGEXP_CONTAINS(c, CONCAT('(?i)', '^a'))"
+        );
+        assert_eq!(
+            regex("mysql", true).unwrap(),
+            r"c REGEXP CONCAT('(?-i)', '^a')"
+        );
+        assert_eq!(
+            regex("snowflake", false).unwrap(),
+            r"REGEXP_INSTR(c, '^a', 1, 1, 0, 'i') > 0"
+        );
+        assert_eq!(regex("oracle", true).unwrap(), r"REGEXP_LIKE(c, '^a', 'c')");
+        for scheme in [
+            "clickhouse",
+            "trino",
+            "databricks",
+            "redshift",
+            "postgres",
+            "duckdb",
+        ] {
+            assert!(regex(scheme, false).is_some(), "{scheme}");
+        }
+        for scheme in ["sqlite", "mssql"] {
+            assert!(regex(scheme, false).is_none(), "{scheme}");
+        }
     }
 
     /// Evaluate the CASE emulations against DuckDB's native
@@ -414,7 +461,7 @@ mod tests {
                 .as_deref(),
             Some("c ~ '^a'")
         );
-        assert!(dialect_for_scheme("mysql")
+        assert!(dialect_for_scheme("sqlite")
             .unwrap()
             .sql_regex_match("c", "'^a'", true)
             .is_none());

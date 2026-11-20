@@ -309,18 +309,32 @@ fn html_rows_shown(height: usize, hints: &RenderHints) -> usize {
 }
 
 /// A cell as a person reads it: `value_to_string`, except that dates are
-/// written as dates rather than as the day or millisecond counts Arrow stores.
+/// written as dates rather than as the day or millisecond counts Arrow stores,
+/// and timestamps with a time zone as timestamps in UTC with their offset.
 pub(crate) fn cell_text(col: &arrow::array::ArrayRef, row: usize) -> String {
+    use arrow::array::Array;
     use arrow::datatypes::DataType;
     use arrow::util::display::{ArrayFormatter, FormatOptions};
-    match col.data_type() {
-        DataType::Date32 | DataType::Date64 if !arrow::array::Array::is_null(col, row) => {
-            ArrayFormatter::try_new(col.as_ref(), &FormatOptions::default())
-                .map(|f| f.value(row).to_string())
-                .unwrap_or_else(|_| ggsql::array_util::value_to_string(col, row))
-        }
-        _ => ggsql::array_util::value_to_string(col, row),
-    }
+    let formatted = |cell: &dyn Array| {
+        ArrayFormatter::try_new(cell, &FormatOptions::default())
+            .map(|f| f.value(0).to_string())
+            .ok()
+    };
+    let text = match col.data_type() {
+        _ if col.is_null(row) => None,
+        DataType::Date32 | DataType::Date64 => formatted(&col.slice(row, 1)),
+        // Arrow here reads only fixed offsets as zones, not names such as
+        // the `UTC` DuckDB tags these with. The stored value is an instant,
+        // so retagging it as `+00:00` writes the same moment.
+        DataType::Timestamp(unit, Some(_)) => arrow::compute::cast(
+            &col.slice(row, 1),
+            &DataType::Timestamp(*unit, Some("+00:00".into())),
+        )
+        .ok()
+        .and_then(|cell| formatted(&cell)),
+        _ => None,
+    };
+    text.unwrap_or_else(|| ggsql::array_util::value_to_string(col, row))
 }
 
 /// Convert DataFrame to an HTML table of its first `row_limit` rows
@@ -407,6 +421,19 @@ mod tests {
         let html = dataframe_to_html(&df, 1);
         assert!(html.contains("<td>2024-01-01</td>"), "{html}");
         assert!(dataframe_to_text(&df, 1).contains("2024-01-01"));
+    }
+
+    #[test]
+    fn test_timestamps_with_a_time_zone_are_written_as_timestamps() {
+        let df = ggsql::reader::connection::reader_from_uri("duckdb://memory")
+            .unwrap()
+            .execute_sql(
+                "SELECT TIMESTAMPTZ '2024-01-02 03:04:05+00' AS t, NULL::TIMESTAMPTZ AS missing",
+            )
+            .unwrap();
+        let text = cell_text(df.column("t").unwrap(), 0);
+        assert_eq!(text, "2024-01-02T03:04:05Z");
+        assert_eq!(cell_text(df.column("missing").unwrap(), 0), "null");
     }
 
     #[test]

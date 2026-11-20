@@ -13,6 +13,12 @@ use crate::reader::SqlDialect;
 pub struct DataFusionDialect;
 
 impl SqlDialect for DataFusionDialect {
+    // Postgres-style operators.
+    fn sql_regex_match(&self, expr: &str, pattern: &str, case_sensitive: bool) -> Option<String> {
+        let op = if case_sensitive { "~" } else { "~*" };
+        Some(format!("{expr} {op} {pattern}"))
+    }
+
     fn type_names(&self) -> crate::reader::TypeNames {
         crate::reader::TypeNames {
             number: Some("DOUBLE"),

@@ -30,6 +30,12 @@ fn float_args(exprs: &[&str]) -> String {
 }
 
 impl SqlDialect for ClickHouseDialect {
+    // RE2, unanchored.
+    fn sql_regex_match(&self, expr: &str, pattern: &str, case_sensitive: bool) -> Option<String> {
+        let pattern = super::inline_regex_flag(self, pattern, case_sensitive);
+        Some(format!("match({expr}, {pattern})"))
+    }
+
     fn sql_string_literal(&self, value: &str) -> String {
         super::backslash_quote_literal(value)
     }

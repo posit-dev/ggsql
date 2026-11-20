@@ -260,7 +260,9 @@ fn text(
     if how == TextMatch::Regex {
         return dialect
             .sql_regex_match(c, &dialect.sql_string_literal(term), case_sensitive)
-            .ok_or_else(|| "This database does not support regular-expression search".into());
+            .ok_or_else(|| {
+                "ggsql cannot write a regular-expression search for this database".into()
+            });
     }
 
     let escaped = escape_like(term);
@@ -352,9 +354,25 @@ pub fn to_sql(
         }
     }
 
-    let (setup, last) = split_statements(query);
+    let Statements {
+        setup,
+        last,
+        last_is_query,
+    } = split_statements(query);
     for stmt in setup {
         lines.extend(format!("{stmt};").lines().map(str::to_string));
+    }
+    if !last_is_query {
+        // Only a query can be wrapped, so the rest is said rather than written.
+        if !predicates.is_empty() || !keys.is_empty() {
+            lines.push(
+                "-- Filters and sort left out: the last statement is not a query \
+                 that can be filtered or sorted"
+                    .to_string(),
+            );
+        }
+        lines.extend(format!("{last};").lines().map(str::to_string));
+        return lines;
     }
     lines.push("SELECT *".to_string());
     lines.extend(
@@ -374,11 +392,23 @@ pub fn to_sql(
     lines
 }
 
-/// A cell's statements: those before the last, and the last, which is the one
-/// whose result was kept. A query that does not parse cleanly is one
-/// statement.
-fn split_statements(query: &str) -> (Vec<String>, String) {
-    let whole = || (Vec::new(), query.trim().trim_end_matches(';').to_string());
+/// A cell's last statement, whose result was kept, and those before it.
+struct Statements {
+    setup: Vec<String>,
+    last: String,
+    /// Whether the last statement is a query that can be a derived table.
+    /// `DESCRIBE`, `SHOW`, `PRAGMA` and the like are not.
+    last_is_query: bool,
+}
+
+/// A cell's statements. A query that does not parse cleanly is one statement,
+/// taken to be a query.
+fn split_statements(query: &str) -> Statements {
+    let whole = || Statements {
+        setup: Vec::new(),
+        last: query.trim().trim_end_matches(';').to_string(),
+        last_is_query: true,
+    };
     let Ok(tree) = SourceTree::new(query) else {
         return whole();
     };
@@ -389,7 +419,7 @@ fn split_statements(query: &str) -> (Vec<String>, String) {
     if root.has_error() {
         return whole();
     }
-    let mut statements: Vec<String> = tree
+    let mut statements: Vec<(String, bool)> = tree
         .find_nodes(&root, "(sql_statement) @s")
         .into_iter()
         // The outermost statements: a subquery can be a statement of its own.
@@ -403,11 +433,23 @@ fn split_statements(query: &str) -> (Vec<String>, String) {
             }
             true
         })
-        .map(|node| tree.get_text(&node).trim().to_string())
-        .filter(|text| !text.is_empty())
+        .map(|node| {
+            let is_query = node.child(0).is_some_and(|c| {
+                matches!(
+                    c.kind(),
+                    "select_statement" | "with_statement" | "from_statement"
+                )
+            });
+            (tree.get_text(&node).trim().to_string(), is_query)
+        })
+        .filter(|(text, _)| !text.is_empty())
         .collect();
     match statements.pop() {
-        Some(last) => (statements, last),
+        Some((last, last_is_query)) => Statements {
+            setup: statements.into_iter().map(|(text, _)| text).collect(),
+            last,
+            last_is_query,
+        },
         None => whole(),
     }
 }
@@ -823,7 +865,35 @@ mod tests {
         // Parsed as `SELECT 1`, an ERROR node, then `x;y$$ AS s` as a
         // statement of its own.
         let query = "SELECT 1; SELECT $$x;y$$ AS s";
-        assert_eq!(split_statements(query), (Vec::new(), query.to_string()));
+        let split = split_statements(query);
+        assert!(split.setup.is_empty());
+        assert_eq!(split.last, query);
+        assert!(split.last_is_query);
+    }
+
+    #[test]
+    fn test_to_sql_does_not_wrap_a_statement_that_is_not_a_query() {
+        let lines = to_sql(
+            &[],
+            &BY_N,
+            "CREATE TABLE t AS SELECT 1 AS n;\nDESCRIBE t",
+            &columns(),
+            &AnsiDialect,
+        );
+        assert_eq!(
+            lines,
+            [
+                "CREATE TABLE t AS SELECT 1 AS n;",
+                "-- Filters and sort left out: the last statement is not a query that can be \
+                 filtered or sorted",
+                "DESCRIBE t;",
+            ]
+        );
+        // Queries are wrapped, however they start.
+        for query in ["WITH a AS (SELECT 1 AS n) SELECT * FROM a", "FROM t"] {
+            let lines = to_sql(&[], &BY_N, query, &columns(), &AnsiDialect);
+            assert_eq!(lines[0], "SELECT *", "{query}: {lines:?}");
+        }
     }
 
     #[test]

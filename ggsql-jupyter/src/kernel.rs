@@ -66,8 +66,11 @@ pub struct KernelServer {
     ui_comm_id: Option<String>,
     connection_comm_id: Option<String>,
     data_explorer_comms: HashMap<String, DataExplorerState>,
-    /// Query results kept for the results API.
-    results: ResultStore,
+    /// Query results kept for the results API, created when first needed so
+    /// a session that keeps none opens no database for them.
+    results: Option<ResultStore>,
+    /// `--results-max-bytes`: the results store's budget.
+    results_max_bytes: u64,
     /// `--keep-results`: whether to keep results for the results API, which
     /// the frontend that will explore them turns on.
     keep_results: bool,
@@ -152,7 +155,8 @@ impl KernelServer {
             ui_comm_id: None,
             connection_comm_id: None,
             data_explorer_comms: HashMap::new(),
-            results: ResultStore::new(results_max_bytes)?,
+            results: None,
+            results_max_bytes,
             keep_results,
             console_rows,
         };
@@ -430,7 +434,10 @@ impl KernelServer {
         if let Ok(ExecutionResult::DataFrame(df)) = &executed {
             if self.keep_results && !silent && df.width() > 0 {
                 let title = format!("Query [{}]", self.execution_count);
-                match self.results.insert(df.clone(), title, query_of(code)) {
+                let kept = self
+                    .results()
+                    .and_then(|store| store.insert(df.clone(), title, query_of(code)));
+                match kept {
                     Ok(key) => retained = key,
                     Err(e) => tracing::warn!("Keeping a result failed: {}", e),
                 }
@@ -627,6 +634,12 @@ impl KernelServer {
             }
             "positron.ui" => {
                 tracing::info!("Registering positron.ui comm: {}", comm_id);
+                // A frontend that reloaded or crashed opens a new UI comm
+                // without closing the old one, and the views opened over that
+                // could never be closed.
+                if let Some(store) = self.results.as_mut() {
+                    store.close_all();
+                }
                 self.ui_comm_id = Some(comm_id.to_string());
             }
             _ => {
@@ -760,10 +773,17 @@ impl KernelServer {
                             let name = data["params"]["method"].as_str().unwrap_or("");
                             let args = &data["params"]["params"];
                             let answer = if methods::handles(name) {
-                                let session = methods::Session {
-                                    reader: self.executor.reader(),
-                                };
-                                methods::call(&mut self.results, &session, name, args)
+                                match self.results() {
+                                    Ok(_) => {
+                                        let session = methods::Session {
+                                            reader: self.executor.reader(),
+                                        };
+                                        let store =
+                                            self.results.as_mut().expect("created just above");
+                                        methods::call(store, &session, name, args)
+                                    }
+                                    Err(e) => Err(format!("The results store failed: {e}")),
+                                }
                             } else {
                                 Err(format!("Unknown method {name:?}"))
                             };
@@ -928,7 +948,9 @@ impl KernelServer {
             self.ui_comm_id = None;
             // The views were opened over this comm, and nothing can close
             // them once it has gone.
-            self.results.close_all();
+            if let Some(store) = self.results.as_mut() {
+                store.close_all();
+            }
         } else if self.plot_comms.remove(comm_id).is_some() {
             tracing::info!("Closing positron.plot comm {}", comm_id);
             self.plot_order.retain(|id| id != comm_id);
@@ -1535,6 +1557,14 @@ impl KernelServer {
 
         self.control.send(zmq_msg).await?;
         Ok(())
+    }
+
+    /// The results store, created on first use.
+    fn results(&mut self) -> Result<&mut ResultStore> {
+        if self.results.is_none() {
+            self.results = Some(ResultStore::new(self.results_max_bytes)?);
+        }
+        Ok(self.results.as_mut().expect("created just above"))
     }
 
     /// Send a status message

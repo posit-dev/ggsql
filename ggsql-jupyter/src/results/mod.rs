@@ -80,6 +80,9 @@ pub struct Column {
     pub repeated: bool,
 }
 
+/// Bytes the cached copy of a result adds per row: its `__ggsql_row__`.
+const ROW_BYTES: u64 = 8;
+
 /// A result not yet opened, held as its Arrow data.
 struct Pending {
     key: String,
@@ -221,6 +224,24 @@ impl ResultStore {
     pub fn open(&mut self, key: &str) -> Result<OpenedView> {
         if let Some(i) = self.pending.iter().position(|p| p.key == key) {
             let pending = self.pending.remove(i).expect("position is in range");
+            // Out of the queue, so making room cannot drop it; its copy is
+            // budgeted afresh, with the row column the copy adds.
+            let need = pending.bytes + pending.df.height() as u64 * ROW_BYTES;
+            let fits = match self.make_room(need) {
+                Ok(fits) => fits,
+                Err(e) => {
+                    self.pending.insert(i, pending);
+                    return Err(e);
+                }
+            };
+            if !fits {
+                self.pending.insert(i, pending);
+                bail!(
+                    "Opening this result needs more memory than the data explorer's budget \
+                     has left ({} bytes). Close another Data Explorer tab and try again.",
+                    self.max_bytes
+                );
+            }
             match self.copy_into_cache(&pending) {
                 Ok(opened) => {
                     self.opened.insert(pending.key, opened);
@@ -354,7 +375,14 @@ impl ResultStore {
 
     /// Set a view's sort keys, within the budget.
     pub fn set_sort(&mut self, view: &str, keys: Vec<SortKey>) -> Result<(), String> {
-        if !keys.is_empty() {
+        // An order table is rebuilt whenever the view keeps one: clearing
+        // the sort of a filtered view rebuilds it too.
+        let filtered = !self
+            .view(view)
+            .map_err(|e| e.to_string())?
+            .filters
+            .is_empty();
+        if !keys.is_empty() || filtered {
             self.reserve_order(view).map_err(|e| e.to_string())?;
         }
         let (v, cache) = self.view_mut(view).map_err(|e| e.to_string())?;
@@ -367,7 +395,10 @@ impl ResultStore {
         view: &str,
         filters: Vec<Filter>,
     ) -> Result<Vec<Option<String>>, String> {
-        if !filters.is_empty() {
+        // As for a sort: clearing the filters of a sorted view rebuilds its
+        // order table too.
+        let sorted = !self.view(view).map_err(|e| e.to_string())?.sort.is_empty();
+        if !filters.is_empty() || sorted {
             self.reserve_order(view).map_err(|e| e.to_string())?;
         }
         let (v, cache) = self.view_mut(view).map_err(|e| e.to_string())?;
@@ -755,11 +786,15 @@ mod tests {
         estimate_bytes(df) as u64
     }
 
+    /// What opening `numbers(n)` reserves: the result and its row column.
+    fn opened_bytes(n: usize) -> u64 {
+        bytes_of(&numbers(n)) + n as u64 * ROW_BYTES
+    }
+
     #[test]
     fn test_an_open_result_survives_the_budget_and_a_closed_one_does_not() {
-        // Room for two results and an order table, not three results.
-        let one = bytes_of(&numbers(100));
-        let mut store = ResultStore::new(2 * one + 100 * 16).unwrap();
+        // Room for two opened results and an order table, not three results.
+        let mut store = ResultStore::new(2 * opened_bytes(100) + 100 * 16).unwrap();
         let a = keep(&mut store, numbers(100), "a".into(), String::new());
         let b = keep(&mut store, numbers(100), "b".into(), String::new());
         let va = store.open(&a).unwrap().view;
@@ -828,9 +863,8 @@ mod tests {
 
     #[test]
     fn test_order_tables_count_against_the_budget() {
-        let one = bytes_of(&numbers(1000));
-        // Room for the result and less than one order table.
-        let mut store = ResultStore::new(one + 1000).unwrap();
+        // Room for the opened result and less than one order table.
+        let mut store = ResultStore::new(opened_bytes(1000) + 1000).unwrap();
         let key = keep(&mut store, numbers(1000), "a".into(), String::new());
         let view = store.open(&key).unwrap().view;
         let err = store
@@ -848,9 +882,51 @@ mod tests {
     }
 
     #[test]
+    fn test_clearing_the_filters_of_a_sorted_view_counts_against_the_budget() {
+        let order = 1000 * view::ORDER_ROW_BYTES;
+        // Room for both results, the filtered view's order table of 500 rows,
+        // and not quite a full one beside it.
+        let mut store =
+            ResultStore::new(2 * opened_bytes(1000) + order / 2 + order - 1000).unwrap();
+        let a = keep(&mut store, numbers(1000), "a".into(), String::new());
+        let va = store.open(&a).unwrap().view;
+        store
+            .set_sort(
+                &va,
+                vec![SortKey {
+                    column: 0,
+                    ascending: false,
+                }],
+            )
+            .unwrap();
+        let filters: Vec<Filter> = serde_json::from_value(
+            serde_json::json!([{"type": "compare", "column": 0, "op": "<", "value": "500"}]),
+        )
+        .unwrap();
+        store.set_filters(&va, filters).unwrap();
+        let b = keep(&mut store, numbers(1000), "b".into(), String::new());
+        store.open(&b).unwrap();
+
+        // Unfiltered but still sorted, the view needs a new order table.
+        let err = store.set_filters(&va, Vec::new()).unwrap_err();
+        assert!(err.contains("memory"), "{err}");
+        assert_eq!(store.view(&va).unwrap().selected_rows, 500);
+    }
+
+    #[test]
+    fn test_opening_counts_the_row_column() {
+        // Room for the result as kept, not for its copy with a row column.
+        let mut store = ResultStore::new(bytes_of(&numbers(1000))).unwrap();
+        let key = keep(&mut store, numbers(1000), "a".into(), String::new());
+        let err = store.open(&key).unwrap_err().to_string();
+        assert!(err.contains("memory"), "{err}");
+        // Still kept, so a larger budget's error would say the same again.
+        assert!(store.pending.iter().any(|p| p.key == key));
+    }
+
+    #[test]
     fn test_close_all_unpins_every_result() {
-        let one = bytes_of(&numbers(100));
-        let mut store = ResultStore::new(one).unwrap();
+        let mut store = ResultStore::new(opened_bytes(100)).unwrap();
         let a = keep(&mut store, numbers(100), "a".into(), String::new());
         store.open(&a).unwrap();
         store.open(&a).unwrap();
@@ -999,6 +1075,37 @@ mod tests {
             )
             .unwrap_err()
             .contains("at most"));
+    }
+
+    #[test]
+    fn test_exports_are_bounded_more_loosely_than_pages() {
+        let mut store = ResultStore::new(DEFAULT_MAX_BYTES).unwrap();
+        let key = keep(
+            &mut store,
+            numbers(view::MAX_EXPORT_ROWS + 1),
+            "q".into(),
+            String::new(),
+        );
+        let id = store.open(&key).unwrap().view;
+        let (v, cache) = store.view_mut(&id).unwrap();
+        // More rows than a page, as a selection may be.
+        let rows = Rows::Range {
+            first: 0,
+            last: view::MAX_PAGE_ROWS,
+        };
+        let csv = v.export(cache.backend(), Some(&rows), &[0], "csv").unwrap();
+        assert_eq!(csv.lines().count(), view::MAX_PAGE_ROWS + 2);
+        // A whole column of a longer result is refused, not built.
+        let err = v.export(cache.backend(), None, &[0], "csv").unwrap_err();
+        assert!(err.contains("copied or exported"), "{err}");
+        let all = Rows::Range {
+            first: 0,
+            last: usize::MAX,
+        };
+        let err = v
+            .export(cache.backend(), Some(&all), &[0], "csv")
+            .unwrap_err();
+        assert!(err.contains("copied or exported"), "{err}");
     }
 
     #[test]

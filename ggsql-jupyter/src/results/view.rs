@@ -23,6 +23,38 @@ use std::collections::HashMap;
 /// The most rows one page may ask for. The Data Explorer asks for a screenful.
 pub const MAX_PAGE_ROWS: usize = 10_000;
 
+/// The most rows one export may hold. An export is built as text on the
+/// kernel's message loop, outside the cache's memory limit, so it is bounded
+/// as a page is, only more loosely.
+pub const MAX_EXPORT_ROWS: usize = 100_000;
+
+/// What a fetch is for, which sets its row limit and the wording of the error
+/// when it is passed.
+#[derive(Clone, Copy)]
+enum Purpose {
+    Page,
+    Export,
+}
+
+impl Purpose {
+    fn limit(self) -> usize {
+        match self {
+            Purpose::Page => MAX_PAGE_ROWS,
+            Purpose::Export => MAX_EXPORT_ROWS,
+        }
+    }
+
+    fn too_many(self, n: usize) -> String {
+        match self {
+            Purpose::Page => format!("A page can hold at most {MAX_PAGE_ROWS} rows, not {n}"),
+            Purpose::Export => format!(
+                "At most {MAX_EXPORT_ROWS} rows can be copied or exported at once, not {n}. \
+                 Select fewer rows, or use Convert to Code to run the query yourself."
+            ),
+        }
+    }
+}
+
 /// Bytes an order table holds per row: two 64-bit integers.
 pub const ORDER_ROW_BYTES: u64 = 16;
 
@@ -321,6 +353,7 @@ impl ResultView {
         reader: &dyn Reader,
         cols: &[usize],
         rows: &Rows,
+        purpose: Purpose,
     ) -> Result<(DataFrame, Vec<usize>), String> {
         let n = self.selected_rows;
         match rows {
@@ -329,16 +362,16 @@ impl ResultView {
                 if n == 0 || first > &last {
                     return Ok((DataFrame::empty(), Vec::new()));
                 }
-                if last - first + 1 > MAX_PAGE_ROWS {
-                    return Err(too_many(last - first + 1));
+                if last - first + 1 > purpose.limit() {
+                    return Err(purpose.too_many(last - first + 1));
                 }
                 let df = self.fetch(reader, cols, Fetch::Range(*first, last))?;
                 let picked = (0..df.height()).collect();
                 Ok((df, picked))
             }
             Rows::Indices { indices } => {
-                if indices.len() > MAX_PAGE_ROWS {
-                    return Err(too_many(indices.len()));
+                if indices.len() > purpose.limit() {
+                    return Err(purpose.too_many(indices.len()));
                 }
                 if let Some(bad) = indices.iter().find(|&&i| i >= n) {
                     return Err(format!(
@@ -382,7 +415,7 @@ impl ResultView {
         rows: &Rows,
         cols: &[usize],
     ) -> Result<Vec<Vec<Value>>, String> {
-        let (df, picked) = self.fetch_rows(reader, cols, rows)?;
+        let (df, picked) = self.fetch_rows(reader, cols, rows, Purpose::Page)?;
         if picked.is_empty() {
             return Ok(vec![Vec::new(); cols.len()]);
         }
@@ -394,7 +427,8 @@ impl ResultView {
     }
 
     /// The cells at `rows` (every row when `None`) of `cols` as CSV, TSV or
-    /// HTML, with a header row of column names.
+    /// HTML, with a header row of column names. At most [`MAX_EXPORT_ROWS`]
+    /// rows.
     pub fn export(
         &self,
         reader: &dyn Reader,
@@ -404,11 +438,14 @@ impl ResultView {
     ) -> Result<String, String> {
         let (df, picked) = match rows {
             None => {
+                if self.selected_rows > MAX_EXPORT_ROWS {
+                    return Err(Purpose::Export.too_many(self.selected_rows));
+                }
                 let df = self.fetch(reader, cols, Fetch::All)?;
                 let n = df.height();
                 (df, (0..n).collect())
             }
-            Some(rows) => self.fetch_rows(reader, cols, rows)?,
+            Some(rows) => self.fetch_rows(reader, cols, rows, Purpose::Export)?,
         };
         let cells: Vec<Vec<String>> = picked
             .iter()
@@ -715,10 +752,6 @@ impl ResultView {
         let other = total - counts.iter().sum::<i64>();
         Some(json!({ "values": values, "counts": counts, "other_count": other }))
     }
-}
-
-fn too_many(n: usize) -> String {
-    format!("A page can hold at most {MAX_PAGE_ROWS} rows, not {n}")
 }
 
 /// `SELECT COUNT(*)` over `table`, filtered by `predicate` when given.
