@@ -29,7 +29,7 @@ pub mod filter;
 pub mod methods;
 pub mod view;
 
-use anyhow::{anyhow, bail, Result};
+use anyhow::{anyhow, Result};
 use filter::{Filter, SortKey};
 use ggsql::naming::quote_ident;
 use ggsql::reader::cache::{estimate_bytes, CacheTables};
@@ -42,7 +42,7 @@ use view::ResultView;
 /// The column holding each row's position in the query's output, added when a
 /// result is copied into the cache. Ties in a sort break on it, so paging is
 /// stable and clearing the sort restores the query's own order.
-pub const ROW: &str = "__ggsql_row__";
+pub const ROW: &str = ggsql::naming::RESULT_ROW_COLUMN;
 
 /// The default byte budget for everything the results API keeps.
 pub const DEFAULT_MAX_BYTES: u64 = 1024 * 1024 * 1024;
@@ -78,6 +78,22 @@ pub struct Column {
     /// here and SQL over the query cannot refer to it.
     #[serde(skip)]
     pub repeated: bool,
+}
+
+/// `bytes` as a person reads it, in the largest unit that keeps it at least 1.
+fn human_bytes(bytes: u64) -> String {
+    const UNITS: [&str; 4] = ["bytes", "KB", "MB", "GB"];
+    let mut value = bytes as f64;
+    let mut unit = 0;
+    while value >= 1024.0 && unit < UNITS.len() - 1 {
+        value /= 1024.0;
+        unit += 1;
+    }
+    if unit == 0 {
+        format!("{bytes} bytes")
+    } else {
+        format!("{value:.1} {}", UNITS[unit])
+    }
 }
 
 /// Bytes the cached copy of a result adds per row: its `__ggsql_row__`.
@@ -165,24 +181,11 @@ impl ResultStore {
         }
         let limit = self.max_bytes - extra;
         let outside_cache: u64 = self.pending.iter().map(|p| p.bytes).sum::<u64>() + orders;
-        self.cache.evict_to(limit.saturating_sub(outside_cache))?;
-        self.forget_evicted()?;
-        while self.used()? > limit && self.pending.pop_front().is_some() {}
-        Ok(self.used()? <= limit)
-    }
-
-    /// Forget the results the cache has evicted.
-    fn forget_evicted(&mut self) -> Result<()> {
-        let mut gone = Vec::new();
-        for key in self.opened.keys() {
-            if self.cache.lookup(key)?.is_none() {
-                gone.push(key.clone());
-            }
-        }
-        for key in gone {
+        for key in self.cache.evict_to(limit.saturating_sub(outside_cache))? {
             self.opened.remove(&key);
         }
-        Ok(())
+        while self.used()? > limit && self.pending.pop_front().is_some() {}
+        Ok(self.used()? <= limit)
     }
 
     /// Keep `df`, produced by `query`, under a fresh key, which is returned.
@@ -216,18 +219,18 @@ impl ResultStore {
     }
 
     fn table_name(key: &str) -> String {
-        format!("__ggsql_result_{key}__")
+        ggsql::naming::result_table(key)
     }
 
     /// Open a new view of the result `key`, copying it into the cache the
     /// first time. The result stays pinned while any view of it is open.
     pub fn open(&mut self, key: &str) -> Result<OpenedView> {
         if let Some(i) = self.pending.iter().position(|p| p.key == key) {
+            // Taken out of the queue, so making room cannot drop it, and its
+            // copy is budgeted afresh with the row column the copy adds. If
+            // opening fails it goes back where it was, or last if making room
+            // dropped older results ahead of it.
             let pending = self.pending.remove(i).expect("position is in range");
-            // Making room may drop older results from the front, so a result
-            // put back goes where it was or, past the end, last.
-            // Out of the queue, so making room cannot drop it; its copy is
-            // budgeted afresh, with the row column the copy adds.
             let need = pending.bytes + pending.df.height() as u64 * ROW_BYTES;
             let fits = match self.make_room(need) {
                 Ok(fits) => fits,
@@ -238,11 +241,7 @@ impl ResultStore {
             };
             if !fits {
                 self.pending.insert(i.min(self.pending.len()), pending);
-                bail!(
-                    "Opening this result needs more memory than the data explorer's budget \
-                     has left ({} bytes). Close another Data Explorer tab and try again.",
-                    self.max_bytes
-                );
+                return Err(self.over_budget("Opening this result", need));
             }
             match self.copy_into_cache(&pending) {
                 Ok(opened) => {
@@ -256,7 +255,7 @@ impl ResultStore {
                 }
             }
         } else if self.opened.contains_key(key) {
-            if self.cache.lookup(key)?.is_none() {
+            if !self.cache.contains(key)? {
                 self.opened.remove(key);
                 return Err(gone());
             }
@@ -294,7 +293,7 @@ impl ResultStore {
         // Pinned from the start, so the eviction its own insertion triggers
         // can't take it. The budget already counts it, as a pending result.
         self.cache
-            .put(&pending.key, &pending.query, &table, df, true)?;
+            .put_pinned(&pending.key, &pending.query, &table, df)?;
 
         let described = self
             .cache
@@ -366,13 +365,24 @@ impl ResultStore {
         let v = self.view(view)?;
         let need = v.max_order_bytes();
         if !self.make_room(need)? {
-            bail!(
-                "Sorting or filtering this result needs more memory than the data explorer's \
-                 budget has left ({} bytes). Close another Data Explorer tab and try again.",
-                self.max_bytes
-            );
+            return Err(self.over_budget("Sorting or filtering this result", need));
         }
         Ok(())
+    }
+
+    /// The error for `what` needing `need` bytes that the budget cannot free,
+    /// since open views hold the rest of it.
+    fn over_budget(&self, what: &str, need: u64) -> anyhow::Error {
+        let orders: u64 = self.views.values().map(ResultView::order_bytes).sum();
+        let held = self.cache.pinned_bytes().unwrap_or(0) + orders;
+        let free = self.max_bytes.saturating_sub(held);
+        anyhow!(
+            "{what} needs {} of memory, but open views hold all but {} of the {} kept for \
+             results. Close a view of another result to make room.",
+            human_bytes(need),
+            human_bytes(free),
+            human_bytes(self.max_bytes)
+        )
     }
 
     /// Set a view's sort keys, within the budget.
@@ -461,26 +471,40 @@ pub fn kind_of(type_name: &str) -> &'static str {
     if upper.ends_with(']') {
         return "unknown";
     }
-    // The type itself, without parameters: `DECIMAL(18,3)` is `DECIMAL`,
-    // `ENUM('a', 'b')` is `ENUM`.
+    // The type itself, without parameters or MySQL's signedness:
+    // `DECIMAL(18,3)` is `DECIMAL`, `ENUM('a', 'b')` is `ENUM`, `INT UNSIGNED`
+    // is `INT`, and `TIMESTAMP(6) WITH TIME ZONE` is `TIMESTAMP`.
     let base = upper.split('(').next().unwrap_or("").trim();
+    let base = base
+        .strip_suffix(" UNSIGNED")
+        .or_else(|| base.strip_suffix(" SIGNED"))
+        .unwrap_or(base);
     match base {
-        "TINYINT" | "SMALLINT" | "INTEGER" | "BIGINT" | "HUGEINT" | "UTINYINT" | "USMALLINT"
-        | "UINTEGER" | "UBIGINT" | "UHUGEINT" | "INT" | "INT1" | "INT2" | "INT4" | "INT8" => {
-            "integer"
-        }
-        "FLOAT" | "REAL" | "DOUBLE" | "DECIMAL" | "NUMERIC" => "floating",
+        "TINYINT" | "SMALLINT" | "MEDIUMINT" | "INTEGER" | "BIGINT" | "HUGEINT" | "UTINYINT"
+        | "USMALLINT" | "UINTEGER" | "UBIGINT" | "UHUGEINT" | "INT" | "INT1" | "INT2" | "INT4"
+        | "INT8" | "INT64" | "SERIAL" | "BIGSERIAL" | "SMALLSERIAL" => "integer",
+        "FLOAT" | "FLOAT4" | "FLOAT8" | "FLOAT64" | "REAL" | "DOUBLE" | "DOUBLE PRECISION"
+        | "DECIMAL" | "NUMERIC" | "BIGNUMERIC" | "NUMBER" => "floating",
         "BOOLEAN" | "BOOL" => "boolean",
         "DATE" => "date",
         "TIMESTAMP"
         | "TIMESTAMP WITH TIME ZONE"
+        | "TIMESTAMP WITHOUT TIME ZONE"
         | "TIMESTAMPTZ"
         | "TIMESTAMP_S"
         | "TIMESTAMP_MS"
         | "TIMESTAMP_NS"
-        | "DATETIME" => "datetime",
-        "TIME" | "TIME WITH TIME ZONE" | "TIMETZ" => "time",
-        "VARCHAR" | "CHAR" | "BPCHAR" | "TEXT" | "STRING" | "UUID" | "ENUM" => "string",
+        | "TIMESTAMP_NTZ"
+        | "TIMESTAMP_LTZ"
+        | "TIMESTAMP_TZ"
+        | "DATETIME"
+        | "DATETIME2"
+        | "SMALLDATETIME"
+        | "DATETIMEOFFSET" => "datetime",
+        "TIME" | "TIME WITH TIME ZONE" | "TIME WITHOUT TIME ZONE" | "TIMETZ" => "time",
+        "VARCHAR" | "VARCHAR2" | "NVARCHAR" | "NVARCHAR2" | "CHAR" | "NCHAR" | "BPCHAR"
+        | "CHARACTER" | "CHARACTER VARYING" | "TEXT" | "TINYTEXT" | "MEDIUMTEXT" | "LONGTEXT"
+        | "NTEXT" | "CLOB" | "NCLOB" | "STRING" | "UUID" | "ENUM" => "string",
         _ => "unknown",
     }
 }
@@ -673,7 +697,7 @@ mod tests {
             String::new(),
         );
         // Break the cache's bookkeeping, so copying the result in fails.
-        store.cache.lookup("anything").unwrap();
+        store.cache.contains("anything").unwrap();
         store
             .cache
             .backend()
@@ -1040,7 +1064,7 @@ mod tests {
             .backend()
             .execute_sql(&format!(
                 "CREATE TEMP VIEW {} AS SELECT 1 AS x",
-                quote_ident(&format!("__ggsql_view_{view}_1__"))
+                quote_ident(&ggsql::naming::result_view_table(&view, 1))
             ))
             .unwrap();
         assert!(store.set_filters(&view, gt("1")).is_err());
@@ -1101,6 +1125,47 @@ mod tests {
     }
 
     #[test]
+    fn test_an_export_with_no_rows_still_checks_its_columns() {
+        let mut store = ResultStore::new(DEFAULT_MAX_BYTES).unwrap();
+        let key = keep(&mut store, numbers(3), "q".into(), String::new());
+        let id = store.open(&key).unwrap().view;
+        let (v, cache) = store.view_mut(&id).unwrap();
+        let none = Rows::Indices { indices: vec![] };
+        let err = v
+            .export(cache.backend(), Some(&none), &[999], "csv")
+            .unwrap_err();
+        assert!(err.contains("no column 999"), "{err}");
+    }
+
+    #[test]
+    fn test_profile_requests_are_bounded() {
+        let mut store = ResultStore::new(DEFAULT_MAX_BYTES).unwrap();
+        let key = keep(&mut store, numbers(3), "q".into(), String::new());
+        let id = store.open(&key).unwrap().view;
+        let (v, cache) = store.view_mut(&id).unwrap();
+        let request = |json: serde_json::Value| -> view::ProfileRequest {
+            serde_json::from_value(json).unwrap()
+        };
+        for (json, says) in [
+            (
+                serde_json::json!({"frequency": {"limit": 1_000_000}}),
+                "values",
+            ),
+            (
+                serde_json::json!({"histogram": {"quantiles": vec![0.5; 1000]}}),
+                "quantiles",
+            ),
+            (
+                serde_json::json!({"histogram": {"bins": 1_000_000}}),
+                "bins",
+            ),
+        ] {
+            let err = v.profile(cache.backend(), 0, &request(json)).unwrap_err();
+            assert!(err.contains(says), "{err}");
+        }
+    }
+
+    #[test]
     fn test_exports_are_bounded_more_loosely_than_pages() {
         let mut store = ResultStore::new(DEFAULT_MAX_BYTES).unwrap();
         let key = keep(
@@ -1120,7 +1185,7 @@ mod tests {
         assert_eq!(csv.lines().count(), view::MAX_PAGE_ROWS + 2);
         // A whole column of a longer result is refused, not built.
         let err = v.export(cache.backend(), None, &[0], "csv").unwrap_err();
-        assert!(err.contains("copied or exported"), "{err}");
+        assert!(err.contains("exported at once"), "{err}");
         let all = Rows::Range {
             first: 0,
             last: usize::MAX,
@@ -1128,7 +1193,7 @@ mod tests {
         let err = v
             .export(cache.backend(), Some(&all), &[0], "csv")
             .unwrap_err();
-        assert!(err.contains("copied or exported"), "{err}");
+        assert!(err.contains("exported at once"), "{err}");
     }
 
     #[test]
@@ -1222,5 +1287,11 @@ mod tests {
         assert_eq!(kind_of("TIMESTAMP_NS"), "datetime");
         assert_eq!(kind_of("TIME WITH TIME ZONE"), "time");
         assert_eq!(kind_of("BIGINT[]"), "unknown");
+        // Other backends' names, as the Connections pane reports them.
+        assert_eq!(kind_of("int unsigned"), "integer");
+        assert_eq!(kind_of("DOUBLE PRECISION"), "floating");
+        assert_eq!(kind_of("TIMESTAMP(6) WITH TIME ZONE"), "datetime");
+        assert_eq!(kind_of("character varying(255)"), "string");
+        assert_eq!(kind_of("DATETIME2"), "datetime");
     }
 }

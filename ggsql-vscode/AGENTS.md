@@ -103,7 +103,7 @@ The extension declares `contributes.languageRuntimes` for `ggsql` (see `package.
 
 Both live in `manager.ts`, as does one piece of user configuration: **`ggsql.consoleRows` reaches the kernel as `GGSQL_CONSOLE_ROWS` in the spec's `env`, not as `--console-rows`.** A kernel found on the machine may predate the option, and it ignores an unknown variable where it would refuse to start on an unknown flag. `consoleRowsEnv` leaves out a value the kernel would reject — below 1, or above `u32::MAX`, which the setting's `maximum` also states — for the same reason. Like the session mode, it is fixed when a session starts.
 
-The same goes for **`GGSQL_KEEP_RESULTS`**, which `keepResultsEnv` sets for a console session when this Positron has extension-hosted Data Explorer backends: the kernel keeps query results only when asked, so a session whose results nothing can open holds none.
+The same goes for **`GGSQL_KEEP_RESULTS`**, which `keepResultsEnv` sets for a console session when this Positron has extension-hosted Data Explorer backends: the kernel keeps query results only when asked, so a session whose results nothing can open holds none. With it goes **`GGSQL_RESULTS_MAX_BYTES`** from the `ggsql.resultsMemory` setting, through `resultsMemoryEnv`, which leaves out anything the kernel's byte-count parser would refuse.
 
 The kernel side of the contract — why the comm alone creates the pane entry, and why an output bundle alongside it would show the plot twice — is in [`/ggsql-jupyter/AGENTS.md`](../ggsql-jupyter/AGENTS.md).
 
@@ -182,7 +182,8 @@ The one case that interrupts the user is the dead end: nothing runnable anywhere
 ```json
 {
   "ggsql.kernelPath": "string",  // an extra kernel to offer, listed first
-  "ggsql.consoleRows": 10        // rows of a long result a console shows
+  "ggsql.consoleRows": 10,       // rows of a long kept result a console shows
+  "ggsql.resultsMemory": "1gb"   // memory a console may keep results in
 }
 ```
 

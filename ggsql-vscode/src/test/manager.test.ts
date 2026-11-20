@@ -1,6 +1,6 @@
 import * as assert from 'assert';
 import * as vscode from 'vscode';
-import { GgsqlRuntimeManager, MAX_CONSOLE_ROWS, consoleRowsEnv, createDynState, getSupervisorApi, keepResultsEnv } from '../manager';
+import { GgsqlRuntimeManager, MAX_CONSOLE_ROWS, consoleRowsEnv, createDynState, getSupervisorApi, keepResultsEnv, resultsMemoryEnv } from '../manager';
 
 suite('manager', () => {
 	// The suites run in stock VS Code, where positron.positron-supervisor is
@@ -11,6 +11,18 @@ suite('manager', () => {
 			() => getSupervisorApi(),
 			/Positron Supervisor extension not found/,
 		);
+	});
+
+	test('resultsMemoryEnv passes a byte count the kernel accepts', () => {
+		assert.deepStrictEqual(resultsMemoryEnv(' 512MB '), { GGSQL_RESULTS_MAX_BYTES: '512MB' });
+		assert.deepStrictEqual(resultsMemoryEnv('2gb'), { GGSQL_RESULTS_MAX_BYTES: '2gb' });
+		assert.deepStrictEqual(resultsMemoryEnv('1048576'), { GGSQL_RESULTS_MAX_BYTES: '1048576' });
+	});
+
+	test('resultsMemoryEnv leaves out a value the kernel would refuse', () => {
+		for (const value of ['', '0', '0gb', '1.5gb', '2 terabytes', '-1mb', '1234567890123gb', 512, undefined]) {
+			assert.deepStrictEqual(resultsMemoryEnv(value), {}, String(value));
+		}
 	});
 
 	test('consoleRowsEnv passes a row count the kernel accepts', () => {

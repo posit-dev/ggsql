@@ -917,46 +917,19 @@ fn sql_type_to_display(type_name: &str) -> &'static str {
         }
     }
 
-    // Simple type names (DuckDB, PostgreSQL, SQLite, etc.)
-    let upper = type_name.to_uppercase();
-    let upper = upper.as_str();
-
-    if upper.contains("INT") {
-        return "integer";
+    // Simple type names, matched exactly as the results API matches them.
+    match crate::results::kind_of(type_name) {
+        "unknown" => {
+            // Binary data is shown as text here.
+            let upper = type_name.trim().to_uppercase();
+            let base = upper.split('(').next().unwrap_or("").trim();
+            match base {
+                "BLOB" | "BYTEA" | "BINARY" | "VARBINARY" | "BYTES" | "LONGBLOB" => "string",
+                _ => "unknown",
+            }
+        }
+        kind => kind,
     }
-    if upper.contains("FLOAT")
-        || upper.contains("DOUBLE")
-        || upper.contains("REAL")
-        || upper.contains("NUMERIC")
-        || upper.contains("DECIMAL")
-    {
-        return "floating";
-    }
-    if upper.contains("BOOL") {
-        return "boolean";
-    }
-    if upper.contains("TIMESTAMP") || upper.contains("DATETIME") {
-        return "datetime";
-    }
-    if upper.contains("DATE") {
-        return "date";
-    }
-    if upper.contains("TIME") {
-        return "time";
-    }
-    if upper.contains("CHAR")
-        || upper.contains("TEXT")
-        || upper.contains("STRING")
-        || upper.contains("VARCHAR")
-        || upper.contains("CLOB")
-    {
-        return "string";
-    }
-    if upper.contains("BLOB") || upper.contains("BINARY") || upper.contains("BYTE") {
-        return "string";
-    }
-
-    "unknown"
 }
 
 /// Clean up a raw type name for display in the schema response.
@@ -1014,5 +987,9 @@ mod tests {
         assert_eq!(sql_type_to_display("TIME"), "time");
         assert_eq!(sql_type_to_display("BLOB"), "string");
         assert_eq!(sql_type_to_display("UNKNOWN_TYPE"), "unknown");
+        // Matched exactly, not by substring.
+        assert_eq!(sql_type_to_display("POINT"), "unknown");
+        assert_eq!(sql_type_to_display("INT UNSIGNED"), "integer");
+        assert_eq!(sql_type_to_display("character varying(20)"), "string");
     }
 }

@@ -29,8 +29,8 @@ determines whether text boxes get drawn and additional settings `padding`,
   through a frontend-neutral results API, reached with `call_method` on the
   UI comm and turned on by the frontend (`--keep-results`), which keeps
   results in an in-memory cache of its own within one byte budget
-  (`--results-max-bytes`, default 1 GB) and never changes the session's
-  reader or dialect (#595).
+  (`--results-max-bytes`, default 1 GB, or the `ggsql.resultsMemory`
+  setting) and never changes the session's reader or dialect (#595).
 
 ### Changed
 
@@ -48,10 +48,11 @@ determines whether text boxes get drawn and additional settings `padding`,
 - The CLI now always prints query warnings (e.g. extra `VISUALISE`/`TABULATE`
   statements being ignored) to stderr, not only with `-v`.
 - Replaced `CLAUDE.md` files with `AGENTS.md` files.
-- A Positron console now shows a long query result's first 10 rows, followed
-  by a count of the rest, rather than up to 100; a result of up to 20 rows is
-  still shown whole. The number is set by the `ggsql.consoleRows` setting
-  (#595).
+- A Positron console now shows a long query result that can be opened in the
+  Data Explorer as its first 10 rows, followed by a count of the rest, rather
+  than up to 100; a result of up to 20 rows is still shown whole, and one that
+  could not be kept still shows up to 100. The number is set by the
+  `ggsql.consoleRows` setting (#595).
 
 ### Fixed
 

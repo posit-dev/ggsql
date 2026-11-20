@@ -117,6 +117,40 @@ pub(crate) fn inline_regex_flag<D: SqlDialect + ?Sized>(
     format!("CONCAT({}, {pattern})", dialect.sql_string_literal(flag))
 }
 
+/// A [`SqlDialect::sql_like`] pattern as a `GLOB` pattern: `%` and `_`
+/// become `*` and `?`, a backslash-escaped character is literal, and `GLOB`'s
+/// own `*`, `?` and `[` are bracketed so they match themselves.
+pub(crate) fn like_to_glob(pattern: &str) -> String {
+    let mut out = String::with_capacity(pattern.len());
+    let mut chars = pattern.chars();
+    while let Some(ch) = chars.next() {
+        let literal = match ch {
+            '\\' => match chars.next() {
+                Some(next) => next,
+                None => break,
+            },
+            '%' => {
+                out.push('*');
+                continue;
+            }
+            '_' => {
+                out.push('?');
+                continue;
+            }
+            other => other,
+        };
+        match literal {
+            '*' | '?' | '[' => {
+                out.push('[');
+                out.push(literal);
+                out.push(']');
+            }
+            other => out.push(other),
+        }
+    }
+    out
+}
+
 /// `1`/`0` boolean literal for backends without a real BOOLEAN literal
 /// (SQL Server, Oracle, SQLite).
 pub(crate) fn one_zero_boolean_literal(value: bool) -> String {
@@ -232,7 +266,10 @@ mod tests {
                 .sql_like("c", r"a\%", true)
         };
         assert_eq!(like("duckdb"), r"c LIKE 'a\%' ESCAPE '\'");
-        assert_eq!(like("mysql"), r"c LIKE 'a\\%' ESCAPE '\\'");
+        assert_eq!(
+            like("mysql"),
+            r"CAST(c AS BINARY) LIKE CAST('a\\%' AS BINARY) ESCAPE '\\'"
+        );
         assert_eq!(like("bigquery"), r"c LIKE 'a\\%'");
         assert_eq!(like("clickhouse"), r"c LIKE 'a\\%'");
         assert_eq!(
@@ -241,6 +278,44 @@ mod tests {
                 .sql_like("c", "[x]%", false),
             r"LOWER(c) LIKE LOWER('\[x]%') ESCAPE '\'"
         );
+    }
+
+    #[test]
+    fn case_sensitive_like_does_not_follow_a_case_folding_collation() {
+        let like = |scheme: &str| {
+            dialect_for_scheme(scheme)
+                .unwrap()
+                .sql_like("c", "a%", true)
+        };
+        assert_eq!(like("sqlite"), "c GLOB 'a*'");
+        assert_eq!(
+            like("mssql"),
+            r"c COLLATE Latin1_General_CS_AS LIKE 'a%' ESCAPE '\'"
+        );
+        assert_eq!(like_to_glob(r"%a\%b\_*?[x]_"), "*a%b_[*][?][[]x]?");
+    }
+
+    #[cfg(feature = "sqlite")]
+    #[test]
+    fn case_sensitive_like_runs_in_sqlite() {
+        use crate::reader::Reader;
+        let reader =
+            crate::reader::SqliteReader::from_connection_string("sqlite://memory").unwrap();
+        let p = SqliteDialect.sql_like("s", r"%A\_[%", true);
+        let df = reader
+            .execute_sql(&format!(
+                "SELECT s FROM (SELECT 'xA_[y' AS s UNION ALL SELECT 'xa_[y' UNION ALL SELECT 'xAb[y') WHERE {p}"
+            ))
+            .unwrap();
+        assert_eq!(df.height(), 1);
+    }
+
+    #[test]
+    fn an_empty_string_is_null_on_oracle() {
+        let oracle = dialect_for_scheme("oracle").unwrap();
+        assert_eq!(oracle.sql_is_empty_string("c", false), "c IS NULL");
+        assert_eq!(oracle.sql_is_empty_string("c", true), "c IS NOT NULL");
+        assert_eq!(AnsiDialect.sql_is_empty_string("c", false), "c = ''");
     }
 
     /// The default `LIKE` escape runs, with the backslash as written.
@@ -279,14 +354,12 @@ mod tests {
             r"REGEXP_INSTR(c, '^a', 1, 1, 0, 'i') > 0"
         );
         assert_eq!(regex("oracle", true).unwrap(), r"REGEXP_LIKE(c, '^a', 'c')");
-        for scheme in [
-            "clickhouse",
-            "trino",
-            "databricks",
-            "redshift",
-            "postgres",
-            "duckdb",
-        ] {
+        assert_eq!(
+            regex("duckdb", false).unwrap(),
+            "regexp_matches(c, '^a', 'i')"
+        );
+        assert_eq!(regex("postgres", true).unwrap(), "c ~ '^a'");
+        for scheme in ["clickhouse", "trino", "databricks", "redshift"] {
             assert!(regex(scheme, false).is_some(), "{scheme}");
         }
         for scheme in ["sqlite", "mssql"] {
@@ -445,26 +518,6 @@ mod tests {
             dialect_for_scheme("postgres").unwrap().quote_ident("c"),
             "\"c\""
         );
-    }
-
-    #[test]
-    fn regex_match_only_where_the_backend_has_one() {
-        let duckdb = dialect_for_scheme("duckdb").unwrap();
-        assert_eq!(
-            duckdb.sql_regex_match("c", "'^a'", false).as_deref(),
-            Some("regexp_matches(c, '^a', 'i')")
-        );
-        assert_eq!(
-            dialect_for_scheme("postgres")
-                .unwrap()
-                .sql_regex_match("c", "'^a'", true)
-                .as_deref(),
-            Some("c ~ '^a'")
-        );
-        assert!(dialect_for_scheme("sqlite")
-            .unwrap()
-            .sql_regex_match("c", "'^a'", true)
-            .is_none());
     }
 
     /// Contract for the quantile hook: callers pass the raw (unquoted)

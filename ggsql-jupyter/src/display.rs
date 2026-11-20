@@ -85,6 +85,9 @@ pub struct RenderHints {
     pub pixel_ratio: Option<f64>,
     /// How many rows of a long result a console shows (`--console-rows`).
     pub console_rows: usize,
+    /// Whether the result was kept for the results API, so the frontend can
+    /// follow it with a link to the whole of it.
+    pub kept: bool,
 }
 
 impl Default for RenderHints {
@@ -94,6 +97,7 @@ impl Default for RenderHints {
             output_width_px: None,
             pixel_ratio: None,
             console_rows: DEFAULT_CONSOLE_ROWS,
+            kept: false,
         }
     }
 }
@@ -295,46 +299,21 @@ fn format_dataframe(df: DataFrame, hints: &RenderHints) -> Value {
 
 /// How many of a result's `height` rows its HTML table shows.
 ///
-/// A console result is followed by a link to the whole of it in the data
-/// explorer, so it shows what R's tibble does: every row up to twice
-/// `console_rows`, else the first `console_rows`, which keeps the link in
-/// view. Anywhere else the table is all there is, so it shows up to 100.
+/// A kept console result is followed by a link to the whole of it, so it
+/// shows what R's tibble does: every row up to twice `console_rows`, else the
+/// first `console_rows`, which keeps the link in view. Anywhere else, and for
+/// a result that was not kept, the table is all there is, so it shows up to
+/// 100.
 fn html_rows_shown(height: usize, hints: &RenderHints) -> usize {
     let n = hints.console_rows;
-    match hints.kind {
-        SessionKind::PositronConsole if height > n.saturating_mul(2) => n,
-        SessionKind::PositronConsole => height,
-        _ => height.min(100),
+    let linked = hints.kind == SessionKind::PositronConsole && hints.kept;
+    if !linked {
+        height.min(100)
+    } else if height > n.saturating_mul(2) {
+        n
+    } else {
+        height
     }
-}
-
-/// A cell as a person reads it: `value_to_string`, except that dates are
-/// written as dates rather than as the day or millisecond counts Arrow stores,
-/// and timestamps with a time zone as timestamps in UTC with their offset.
-pub(crate) fn cell_text(col: &arrow::array::ArrayRef, row: usize) -> String {
-    use arrow::array::Array;
-    use arrow::datatypes::DataType;
-    use arrow::util::display::{ArrayFormatter, FormatOptions};
-    let formatted = |cell: &dyn Array| {
-        ArrayFormatter::try_new(cell, &FormatOptions::default())
-            .map(|f| f.value(0).to_string())
-            .ok()
-    };
-    let text = match col.data_type() {
-        _ if col.is_null(row) => None,
-        DataType::Date32 | DataType::Date64 => formatted(&col.slice(row, 1)),
-        // Arrow here reads only fixed offsets as zones, not names such as
-        // the `UTC` DuckDB tags these with. The stored value is an instant,
-        // so retagging it as `+00:00` writes the same moment.
-        DataType::Timestamp(unit, Some(_)) => arrow::compute::cast(
-            &col.slice(row, 1),
-            &DataType::Timestamp(*unit, Some("+00:00".into())),
-        )
-        .ok()
-        .and_then(|cell| formatted(&cell)),
-        _ => None,
-    };
-    text.unwrap_or_else(|| ggsql::array_util::value_to_string(col, row))
 }
 
 /// Convert DataFrame to an HTML table of its first `row_limit` rows
@@ -350,7 +329,7 @@ fn dataframe_to_html(df: &DataFrame, row_limit: usize) -> String {
     for i in 0..row_limit {
         html.push_str("<tr>");
         for col in df.get_columns() {
-            let value = cell_text(col, i);
+            let value = ggsql::array_util::value_to_string(col, i);
             html.push_str(&format!("<td>{}</td>", escape_html(&value)));
         }
         html.push_str("</tr>\n");
@@ -375,7 +354,11 @@ fn dataframe_to_text(df: &ggsql::DataFrame, row_limit: usize) -> String {
     s.push_str(&names.join("\t"));
     s.push('\n');
     for i in 0..row_limit {
-        let row: Vec<String> = df.get_columns().iter().map(|c| cell_text(c, i)).collect();
+        let row: Vec<String> = df
+            .get_columns()
+            .iter()
+            .map(|c| ggsql::array_util::value_to_string(c, i))
+            .collect();
         s.push_str(&row.join("\t"));
         s.push('\n');
     }
@@ -431,9 +414,12 @@ mod tests {
                 "SELECT TIMESTAMPTZ '2024-01-02 03:04:05+00' AS t, NULL::TIMESTAMPTZ AS missing",
             )
             .unwrap();
-        let text = cell_text(df.column("t").unwrap(), 0);
+        let text = ggsql::array_util::value_to_string(df.column("t").unwrap(), 0);
         assert_eq!(text, "2024-01-02T03:04:05Z");
-        assert_eq!(cell_text(df.column("missing").unwrap(), 0), "null");
+        assert_eq!(
+            ggsql::array_util::value_to_string(df.column("missing").unwrap(), 0),
+            "null"
+        );
     }
 
     #[test]
@@ -586,11 +572,13 @@ mod tests {
 
     #[test]
     fn test_html_rows_shown() {
-        let console = positron_console();
-        // The console shows a short result whole, and a long one's first 10.
+        let console = kept_console();
+        // The console shows a short kept result whole, and a long one's first 10.
         assert_eq!(html_rows_shown(20, &console), 20);
         assert_eq!(html_rows_shown(21, &console), 10);
         assert_eq!(html_rows_shown(5000, &console), 10);
+        // Not kept, it has no link to the rest, so it shows up to 100.
+        assert_eq!(html_rows_shown(5000, &positron_console()), 100);
         // Anywhere else, up to 100.
         assert_eq!(html_rows_shown(50, &positron_notebook()), 50);
         assert_eq!(html_rows_shown(5000, &positron_notebook()), 100);
@@ -601,7 +589,7 @@ mod tests {
     fn test_console_rows_is_configurable() {
         let console = RenderHints {
             console_rows: 3,
-            ..positron_console()
+            ..kept_console()
         };
         assert_eq!(html_rows_shown(6, &console), 6);
         assert_eq!(html_rows_shown(7, &console), 3);
@@ -619,7 +607,7 @@ mod tests {
             .unwrap()
             .execute_sql("SELECT i FROM range(5000) t(i)")
             .unwrap();
-        let bundle = format_dataframe(df, &positron_console());
+        let bundle = format_dataframe(df, &kept_console());
         let html = bundle["data"]["text/html"].as_str().unwrap();
         assert_eq!(html.matches("<tr>").count(), 1 + 10 + 1, "{html}");
         assert!(html.contains("... 4990 more rows"), "{html}");
@@ -633,7 +621,7 @@ mod tests {
             .unwrap();
         let console = RenderHints {
             console_rows: 3,
-            ..positron_console()
+            ..kept_console()
         };
         let bundle = format_dataframe(df, &console);
         let text = bundle["data"]["text/plain"].as_str().unwrap();
@@ -651,6 +639,14 @@ mod tests {
         RenderHints {
             kind: SessionKind::PositronConsole,
             ..RenderHints::default()
+        }
+    }
+
+    /// A console whose result was kept, so a link follows it.
+    fn kept_console() -> RenderHints {
+        RenderHints {
+            kept: true,
+            ..positron_console()
         }
     }
 

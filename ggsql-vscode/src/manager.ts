@@ -553,6 +553,19 @@ export function consoleRowsEnv(rows: unknown): Record<string, string> {
 export const MAX_CONSOLE_ROWS = 4294967295;
 
 /**
+ * The kernel environment for the `ggsql.resultsMemory` setting, a byte count
+ * such as `512mb`. As for `consoleRows`, a value the kernel would reject is
+ * left out, so it uses its default rather than refusing to start.
+ */
+export function resultsMemoryEnv(value: unknown): Record<string, string> {
+    if (typeof value !== 'string') {
+        return {};
+    }
+    const match = /^\s*([0-9]{1,12})\s*([kmg]b)?\s*$/i.exec(value);
+    return match && Number(match[1]) > 0 ? { GGSQL_RESULTS_MAX_BYTES: value.trim() } : {};
+}
+
+/**
  * The kernel environment that turns on keeping query results, which the
  * kernel only does when asked. A console session whose results this
  * extension can open in the Data Explorer asks; any other session would hold
@@ -600,6 +613,7 @@ function createKernelSpec(
             RUST_LOG: 'error',
             ...consoleRowsEnv(vscode.workspace.getConfiguration('ggsql').get('consoleRows')),
             ...keepResultsEnv(keepResults),
+            ...(keepResults ? resultsMemoryEnv(vscode.workspace.getConfiguration('ggsql').get('resultsMemory')) : {}),
         },
         kernel_protocol_version: '5.3',
     };

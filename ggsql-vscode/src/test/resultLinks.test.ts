@@ -12,10 +12,9 @@ suite('parseResultLink', () => {
 		);
 	});
 
-	test('ignores other schemes, the old one included', () => {
+	test('ignores other schemes', () => {
 		assert.strictEqual(parseResultLink('x-r-help:topic'), undefined);
 		assert.strictEqual(parseResultLink('https://ggsql.org'), undefined);
-		assert.strictEqual(parseResultLink('x-ggsql-view:s/abc'), undefined);
 	});
 
 	test('rejects a key the kernel could not have produced', () => {

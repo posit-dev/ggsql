@@ -582,6 +582,12 @@ mod tests {
     #[test]
     fn a_stored_plot_keeps_one_namespace_across_renders() {
         let backend = PlotBackend::without_raster();
+        // `render_stored` waits only the pre-render budget, and a process's
+        // first render loads its fonts, which under a loaded parallel test
+        // run can take longer.
+        backend
+            .render_once(a_spec(), an_svg_request())
+            .expect("the SVG path needs no adapter");
         backend.store("comm-1".to_string(), a_spec());
 
         let first = backend.render_stored("comm-1", an_svg_request()).unwrap();

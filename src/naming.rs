@@ -94,6 +94,13 @@ pub const SCHEMA_ALIAS: &str = concatcp!(GGSQL_SUFFIX, "schema", GGSQL_SUFFIX);
 /// Alias for the derived table a TABULATE selection wraps its source in
 pub const TABLE_ALIAS: &str = concatcp!(GGSQL_SUFFIX, "table", GGSQL_SUFFIX);
 
+/// Column holding each row's position in a query's output, in a result kept
+/// for the Jupyter kernel's results API.
+pub const RESULT_ROW_COLUMN: &str = concatcp!(GGSQL_PREFIX, "row", GGSQL_SUFFIX);
+
+/// Column holding each row's position in a view of a kept result.
+pub const VIEW_POSITION_COLUMN: &str = concatcp!(GGSQL_PREFIX, "pos", GGSQL_SUFFIX);
+
 /// Column name for densification group ID.
 /// Used by geoms that expand geometry (tile, segment, ribbon, rule) to group
 /// densified vertices back into their original feature.
@@ -163,6 +170,32 @@ pub fn cache_result_table(key: &str) -> String {
         key,
         GGSQL_SUFFIX
     )
+}
+
+/// Table name for a query result kept by the Jupyter kernel's results API.
+///
+/// Format: `__ggsql_result_<key>__`
+///
+/// # Example
+/// ```
+/// use ggsql::naming;
+/// assert_eq!(naming::result_table("abc"), "__ggsql_result_abc__");
+/// ```
+pub fn result_table(key: &str) -> String {
+    format!("{GGSQL_PREFIX}result_{key}{GGSQL_SUFFIX}")
+}
+
+/// Table name for the `n`th order table built for a view of a kept result.
+///
+/// Format: `__ggsql_view_<view>_<n>__`
+///
+/// # Example
+/// ```
+/// use ggsql::naming;
+/// assert_eq!(naming::result_view_table("v", 2), "__ggsql_view_v_2__");
+/// ```
+pub fn result_view_table(view: &str, n: u64) -> String {
+    format!("{GGSQL_PREFIX}view_{view}_{n}{GGSQL_SUFFIX}")
 }
 
 /// Generate temp table name for a materialized explicit layer source.

@@ -479,6 +479,15 @@ pub trait SqlDialect {
         dialects::like_with_escape_clause(self, expr, pattern, case_sensitive)
     }
 
+    /// Whether `expr` is the empty string, or with `negate`, is not.
+    ///
+    /// Default compares with `''`. Override for backends that store the
+    /// empty string as NULL (Oracle).
+    fn sql_is_empty_string(&self, expr: &str, negate: bool) -> String {
+        let op = if negate { "<>" } else { "=" };
+        format!("{expr} {op} {}", self.sql_string_literal(""))
+    }
+
     /// One `ORDER BY` term sorting `expr` with its NULLs placed explicitly,
     /// since backends disagree on where they go by default.
     ///

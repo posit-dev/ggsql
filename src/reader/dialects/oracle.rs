@@ -15,6 +15,15 @@ use crate::reader::SqlDialect;
 pub struct OracleDialect;
 
 impl SqlDialect for OracleDialect {
+    // An empty string is NULL.
+    fn sql_is_empty_string(&self, expr: &str, negate: bool) -> String {
+        if negate {
+            format!("{expr} IS NOT NULL")
+        } else {
+            format!("{expr} IS NULL")
+        }
+    }
+
     // Unanchored.
     fn sql_regex_match(&self, expr: &str, pattern: &str, case_sensitive: bool) -> Option<String> {
         let flags = if case_sensitive { "c" } else { "i" };

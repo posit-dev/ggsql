@@ -170,7 +170,13 @@
           "default": 10,
           "minimum": 1,
           "maximum": 4294967295,
-          "markdownDescription": "How many rows of a query result the ggsql console shows. A result with up to twice this many rows is shown in full; a longer one shows this many, then a count of the rest. Every result has a link beneath it that opens the whole result in the Data Explorer. Notebooks are unaffected. Takes effect in consoles started after the change."
+          "markdownDescription": "How many rows of a query result the ggsql console shows. A result with up to twice this many rows is shown in full; a longer one shows this many, then a count of the rest. A result kept for the Data Explorer has a link beneath it that opens the whole of it; a result that could not be kept is shown up to 100 rows. Notebooks are unaffected. Takes effect in consoles started after the change."
+        },
+        "ggsql.resultsMemory": {
+          "type": "string",
+          "default": "1gb",
+          "pattern": "^\\s*[0-9]{1,12}\\s*([kKmMgG][bB])?\\s*$",
+          "markdownDescription": "How much memory a ggsql console may use to keep query results for the Data Explorer, such as `512mb` or `2gb`. Results open in a Data Explorer are always kept; older ones make way for new ones. Takes effect in consoles started after the change."
         },
         "ggsql.enableSqlFiles": {
           "type": "boolean",

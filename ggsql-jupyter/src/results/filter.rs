@@ -157,10 +157,7 @@ pub fn predicate(
         }
         Filter::IsNull { negate: false, .. } => Ok(format!("{c} IS NULL")),
         Filter::IsNull { negate: true, .. } => Ok(format!("{c} IS NOT NULL")),
-        Filter::IsEmpty { negate, .. } => {
-            let op = if *negate { "<>" } else { "=" };
-            Ok(format!("{c} {op} {}", dialect.sql_string_literal("")))
-        }
+        Filter::IsEmpty { negate, .. } => Ok(dialect.sql_is_empty_string(&c, *negate)),
         Filter::IsTrue { .. } => Ok(format!("{c} = {}", dialect.sql_boolean_literal(true))),
         Filter::IsFalse { .. } => Ok(format!("{c} = {}", dialect.sql_boolean_literal(false))),
         Filter::Text {
@@ -304,8 +301,9 @@ pub fn order_terms(
     keys.iter()
         .map(|key| {
             let column = column_of(columns, key.column)?;
-            // NULLs last either way, which is where Positron's Data
-            // Explorer shows them.
+            // NULLs last either way, as the results cache's DuckDB sorts
+            // them, so SQL written for another database orders rows as the
+            // view does.
             Ok(dialect.sql_order_term(&dialect.quote_ident(&column.name), key.ascending, true))
         })
         .collect()
@@ -822,7 +820,10 @@ mod tests {
         ]));
         let mysql = dialect_for_scheme("mysql").unwrap();
         let sql = to_sql(&backslash, &[], "SELECT 1", &columns(), mysql).join("\n");
-        assert!(sql.contains(r"`name` LIKE '%\\\\' ESCAPE '\\'"), "{sql}");
+        assert!(
+            sql.contains(r"CAST(`name` AS BINARY) LIKE CAST('%\\\\' AS BINARY) ESCAPE '\\'"),
+            "{sql}"
+        );
     }
 
     #[test]
@@ -832,7 +833,10 @@ mod tests {
         ]));
         let mssql = dialect_for_scheme("mssql").unwrap();
         let sql = to_sql(&filters, &[], "SELECT 1", &columns(), mssql).join("\n");
-        assert!(sql.contains(r#""name" LIKE '\[a]%' ESCAPE '\'"#), "{sql}");
+        assert!(
+            sql.contains(r#""name" COLLATE Latin1_General_CS_AS LIKE '\[a]%' ESCAPE '\'"#),
+            "{sql}"
+        );
     }
 
     #[test]

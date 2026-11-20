@@ -747,7 +747,7 @@ class TestConsoleRows:
         with _launch_kernel(
             kernel_binary,
             ["--session-mode", "console"],
-            env={"GGSQL_CONSOLE_ROWS": "3"},
+            env={"GGSQL_CONSOLE_ROWS": "3", "GGSQL_KEEP_RESULTS": "1"},
         ) as km:
             kc = km.client()
             kc.start_channels()

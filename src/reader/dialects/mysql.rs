@@ -10,6 +10,20 @@ use crate::reader::SqlDialect;
 pub struct MySqlDialect;
 
 impl SqlDialect for MySqlDialect {
+    // Comparison follows the column's collation, case-insensitive by
+    // default, so a case-sensitive match compares bytes.
+    fn sql_like(&self, expr: &str, pattern: &str, case_sensitive: bool) -> String {
+        if case_sensitive {
+            format!(
+                "CAST({expr} AS BINARY) LIKE CAST({} AS BINARY) ESCAPE {}",
+                self.sql_string_literal(pattern),
+                self.sql_string_literal("\\")
+            )
+        } else {
+            super::like_with_escape_clause(self, expr, pattern, false)
+        }
+    }
+
     // `REGEXP` is unanchored on MySQL 8 (ICU) and MariaDB (PCRE), and both read `(?i)` and `(?-i)`; its own case sensitivity follows the collation.
     fn sql_regex_match(&self, expr: &str, pattern: &str, case_sensitive: bool) -> Option<String> {
         let pattern = super::inline_regex_flag(self, pattern, case_sensitive);

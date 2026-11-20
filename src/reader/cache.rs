@@ -104,7 +104,7 @@ pub fn parse_human_bytes(s: &str) -> Option<u64> {
     } else {
         (lower.as_str(), 1)
     };
-    num.trim().parse::<u64>().ok().map(|n| n * mult)
+    num.trim().parse::<u64>().ok()?.checked_mul(mult)
 }
 
 /// Wall-clock milliseconds since the UNIX epoch. On a clock earlier than the
@@ -127,9 +127,9 @@ pub fn estimate_bytes(df: &DataFrame) -> i64 {
 }
 
 /// One memo row, trimmed to the fields consulted at runtime.
-pub struct MemoEntry {
-    pub table_name: String,
-    pub fetched_at_epoch_ms: i64,
+pub(crate) struct MemoEntry {
+    pub(crate) table_name: String,
+    pub(crate) fetched_at_epoch_ms: i64,
 }
 
 /// Tables kept in an in-memory cache backend under a byte budget.
@@ -189,8 +189,13 @@ impl CacheTables {
         Ok(())
     }
 
+    /// Whether there is an entry for `key`.
+    pub fn contains(&self, key: &str) -> Result<bool> {
+        Ok(self.lookup(key)?.is_some())
+    }
+
     /// Look up the entry for `key`.
-    pub fn lookup(&self, key: &str) -> Result<Option<MemoEntry>> {
+    pub(crate) fn lookup(&self, key: &str) -> Result<Option<MemoEntry>> {
         self.ensure_meta_table()?;
         let sql = format!(
             "SELECT table_name, fetched_at_epoch_ms FROM {} WHERE cache_key = {}",
@@ -210,9 +215,18 @@ impl CacheTables {
     }
 
     /// Keep `df` as the table `table` under `key`, labelled with the `sql`
-    /// that produced it, then evict over the budget. A `pinned` entry is never
-    /// evicted, so it survives the eviction its own insertion triggers.
-    pub fn put(
+    /// that produced it, then evict over the budget.
+    pub fn put(&self, key: &str, sql: &str, table: &str, df: DataFrame) -> Result<()> {
+        self.put_entry(key, sql, table, df, false)
+    }
+
+    /// [`put`](Self::put), pinned from the start, so it survives the eviction
+    /// its own insertion triggers.
+    pub fn put_pinned(&self, key: &str, sql: &str, table: &str, df: DataFrame) -> Result<()> {
+        self.put_entry(key, sql, table, df, true)
+    }
+
+    fn put_entry(
         &self,
         key: &str,
         sql: &str,
@@ -235,7 +249,7 @@ impl CacheTables {
         } else {
             self.pinned.borrow_mut().remove(key);
         }
-        self.evict_to(self.max_bytes)
+        self.evict_to(self.max_bytes).map(drop)
     }
 
     /// Record an entry in the metadata table.
@@ -291,15 +305,21 @@ impl CacheTables {
 
     /// Pin or unpin the entry for `key`, which also counts as a use of it.
     /// Pinned entries are never evicted. Unpinning evicts over the budget,
-    /// since the entry counts towards it again.
+    /// since the entry counts towards it again. There must be an entry to pin.
     pub fn set_pinned(&self, key: &str, pinned: bool) -> Result<()> {
-        self.touch(key)?;
         if pinned {
+            if !self.contains(key)? {
+                return Err(crate::GgsqlError::InternalError(format!(
+                    "There is no cache entry {key:?} to pin"
+                )));
+            }
+            self.touch(key)?;
             self.pinned.borrow_mut().insert(key.to_string());
             Ok(())
         } else {
+            self.touch(key)?;
             self.pinned.borrow_mut().remove(key);
-            self.evict_to(self.max_bytes)
+            self.evict_to(self.max_bytes).map(drop)
         }
     }
 
@@ -359,7 +379,8 @@ impl CacheTables {
     /// Evict unpinned entries, least recently used first, until the total
     /// byte estimate is within `max_bytes` or nothing unpinned is left. A
     /// caller with a budget wider than this cache's passes what it allows.
-    pub fn evict_to(&self, max_bytes: u64) -> Result<()> {
+    pub fn evict_to(&self, max_bytes: u64) -> Result<Vec<String>> {
+        let mut evicted = Vec::new();
         while self.total_bytes()? > max_bytes {
             let pinned = self.pinned.borrow();
             let exclude = if pinned.is_empty() {
@@ -375,13 +396,14 @@ impl CacheTables {
                 naming::quote_ident(naming::CACHE_META_TABLE)
             ))?;
             if df.height() == 0 {
-                return Ok(());
+                break;
             }
             let key = as_str(df.column("cache_key")?)?.value(0).to_string();
             let table = as_str(df.column("table_name")?)?.value(0).to_string();
             self.drop_entry(&key, &table)?;
+            evicted.push(key);
         }
-        Ok(())
+        Ok(evicted)
     }
 
     /// Drop every entry, one at a time.
@@ -567,7 +589,7 @@ impl Reader for CachingReader {
         // Cache row-returning reads only.
         if super::returns_rows(sql) && df.width() > 0 {
             let table = naming::cache_result_table(&key);
-            self.tables.put(&key, sql, &table, df.clone(), false)?;
+            self.tables.put(&key, sql, &table, df.clone())?;
         }
 
         Ok(df)
@@ -1452,9 +1474,9 @@ mod behavior_tests {
     fn test_pinned_entries_survive_eviction() {
         let tables = tiny_budget_tables();
         let frame = || df! { "x" => vec![1_i64, 2, 3] }.unwrap();
-        tables.put("a", "a", "__t_a__", frame(), true).unwrap();
-        tables.put("b", "b", "__t_b__", frame(), false).unwrap();
-        tables.put("c", "c", "__t_c__", frame(), true).unwrap();
+        tables.put_pinned("a", "a", "__t_a__", frame()).unwrap();
+        tables.put("b", "b", "__t_b__", frame()).unwrap();
+        tables.put_pinned("c", "c", "__t_c__", frame()).unwrap();
 
         // Over a 1-byte budget, only the unpinned entry goes.
         assert!(tables.lookup("a").unwrap().is_some());
@@ -1472,8 +1494,8 @@ mod behavior_tests {
         let tables = CacheTables::new(Box::new(DuckDBReader::new_in_memory().unwrap()), u64::MAX);
         assert_eq!(tables.pinned_bytes().unwrap(), 0);
         let frame = || df! { "x" => vec![1_i64, 2, 3] }.unwrap();
-        tables.put("a", "a", "__t_a__", frame(), true).unwrap();
-        tables.put("b", "b", "__t_b__", frame(), false).unwrap();
+        tables.put_pinned("a", "a", "__t_a__", frame()).unwrap();
+        tables.put("b", "b", "__t_b__", frame()).unwrap();
         let total = tables.total_bytes().unwrap();
         assert!(total > 0);
         assert_eq!(tables.pinned_bytes().unwrap() * 2, total);
@@ -1485,7 +1507,7 @@ mod behavior_tests {
     fn test_unpinning_makes_an_entry_evictable() {
         let tables = tiny_budget_tables();
         let frame = || df! { "x" => vec![1_i64] }.unwrap();
-        tables.put("a", "a", "__t_a__", frame(), true).unwrap();
+        tables.put_pinned("a", "a", "__t_a__", frame()).unwrap();
         tables.set_pinned("a", false).unwrap();
         assert!(tables.lookup("a").unwrap().is_none());
         assert!(tables
@@ -1500,39 +1522,43 @@ mod behavior_tests {
         let tables = CacheTables::new(Box::new(DuckDBReader::new_in_memory().unwrap()), 1);
         assert_eq!(tables.total_bytes().unwrap(), 0);
         tables.touch("nothing").unwrap();
-        tables.set_pinned("nothing", true).unwrap();
-        tables.evict_to(0).unwrap();
-        assert!(tables.lookup("nothing").unwrap().is_none());
+        tables.set_pinned("nothing", false).unwrap();
+        assert!(tables.evict_to(0).unwrap().is_empty());
+        assert!(!tables.contains("nothing").unwrap());
     }
 
     #[test]
-    fn test_pins_stay_out_of_the_metadata_table() {
-        let tables = CacheTables::new(Box::new(DuckDBReader::new_in_memory().unwrap()), u64::MAX);
+    fn test_only_an_entry_can_be_pinned() {
+        let tables = tiny_budget_tables();
+        assert!(tables.set_pinned("nothing", true).is_err());
+        // No pin was left behind to keep a later entry of that key.
         tables
             .put(
-                "a",
-                "a",
-                "__t_a__",
+                "nothing",
+                "q",
+                "__t_n__",
                 df! { "x" => vec![1_i64] }.unwrap(),
-                true,
             )
             .unwrap();
-        let meta = tables
-            .backend()
-            .execute_sql(&format!(
-                "SELECT * FROM {}",
-                naming::quote_ident(naming::CACHE_META_TABLE)
-            ))
-            .unwrap();
-        assert!(!meta.get_column_names().iter().any(|c| c == "pinned"));
+        assert!(!tables.contains("nothing").unwrap());
+    }
+
+    #[test]
+    fn test_evict_to_reports_what_it_evicted() {
+        let tables = CacheTables::new(Box::new(DuckDBReader::new_in_memory().unwrap()), u64::MAX);
+        let frame = || df! { "x" => vec![1_i64] }.unwrap();
+        tables.put("a", "a", "__t_a__", frame()).unwrap();
+        tables.put_pinned("b", "b", "__t_b__", frame()).unwrap();
+        assert_eq!(tables.evict_to(0).unwrap(), ["a"]);
+        assert!(tables.contains("b").unwrap());
     }
 
     #[test]
     fn test_evict_to_a_caller_budget_counts_pinned_entries_but_keeps_them() {
         let tables = CacheTables::new(Box::new(DuckDBReader::new_in_memory().unwrap()), u64::MAX);
         let frame = || df! { "x" => vec![1_i64, 2, 3] }.unwrap();
-        tables.put("a", "a", "__t_a__", frame(), true).unwrap();
-        tables.put("b", "b", "__t_b__", frame(), false).unwrap();
+        tables.put_pinned("a", "a", "__t_a__", frame()).unwrap();
+        tables.put("b", "b", "__t_b__", frame()).unwrap();
         let both = tables.total_bytes().unwrap();
         assert!(both > 0);
 

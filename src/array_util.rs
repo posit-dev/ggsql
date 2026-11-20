@@ -193,10 +193,25 @@ pub fn value_to_display(array: &ArrayRef, idx: usize) -> Option<String> {
             .value(idx)
             .to_string(),
         DataType::Boolean => as_bool(array).unwrap().value(idx).to_string(),
-        _ => arrow::util::display::ArrayFormatter::try_new(array.as_ref(), &Default::default())
-            .map(|f| f.value(idx).to_string())
-            .unwrap_or_else(|_| format!("{:?}", array.data_type())),
+        // Arrow here reads only fixed offsets as zones, not names such as
+        // `UTC`. The stored value is an instant, so retagging the cell as
+        // `+00:00` writes the same moment, in UTC.
+        DataType::Timestamp(unit, Some(_)) => arrow::compute::cast(
+            &array.slice(idx, 1),
+            &DataType::Timestamp(*unit, Some("+00:00".into())),
+        )
+        .ok()
+        .and_then(|cell| formatted(&cell, 0))
+        .unwrap_or_else(|| format!("{:?}", array.data_type())),
+        _ => formatted(array, idx).unwrap_or_else(|| format!("{:?}", array.data_type())),
     })
+}
+
+/// Arrow's own display text for the value at `idx`.
+fn formatted(array: &ArrayRef, idx: usize) -> Option<String> {
+    arrow::util::display::ArrayFormatter::try_new(array.as_ref(), &Default::default())
+        .ok()
+        .map(|f| f.value(idx).to_string())
 }
 
 /// Get a string representation of a value at an index, for any array type.
@@ -243,6 +258,18 @@ pub fn cast_to_strings(array: &ArrayRef, null_as: &str) -> Result<Vec<String>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_timestamps_with_a_time_zone_are_written_in_utc() {
+        let arr: ArrayRef = Arc::new(
+            arrow::array::TimestampMicrosecondArray::from(vec![Some(1_704_164_645_000_000), None])
+                .with_timezone("UTC"),
+        );
+        assert_eq!(value_to_string(&arr, 0), "2024-01-02T03:04:05Z");
+        assert_eq!(value_to_display(&arr, 1), None);
+        let dates: ArrayRef = Arc::new(arrow::array::Date32Array::from(vec![19723]));
+        assert_eq!(value_to_string(&dates, 0), "2024-01-01");
+    }
 
     #[test]
     fn test_downcast_f64() {

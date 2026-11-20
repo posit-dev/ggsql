@@ -376,7 +376,7 @@ impl KernelServer {
         let content = &parent.content;
         let code = content["code"].as_str().unwrap_or("");
         let silent = content["silent"].as_bool().unwrap_or(false);
-        let hints = RenderHints {
+        let mut hints = RenderHints {
             console_rows: self.console_rows,
             ..RenderHints::from_request(&parent.header, content, self.session_mode)
         };
@@ -443,6 +443,10 @@ impl KernelServer {
                 }
             }
         }
+
+        // Only a kept result gets a link to the rest of it, so only a kept
+        // result is cut short.
+        hints.kept = retained.is_some();
 
         // Formatting renders the plot, so it is fallible and its failures are
         // the user's. Both stages feed one `Result` and share the error path

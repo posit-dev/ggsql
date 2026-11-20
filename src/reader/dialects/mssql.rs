@@ -24,9 +24,16 @@ impl SqlDialect for MssqlDialect {
     }
 
     // `[` opens a character class in T-SQL's `LIKE`, so it is escaped too.
+    // Comparison follows the column's collation, case-insensitive by
+    // default, so a case-sensitive match names a case-sensitive one.
     fn sql_like(&self, expr: &str, pattern: &str, case_sensitive: bool) -> String {
         let pattern = pattern.replace('[', "\\[");
-        super::like_with_escape_clause(self, expr, &pattern, case_sensitive)
+        if case_sensitive {
+            let expr = format!("{expr} COLLATE Latin1_General_CS_AS");
+            super::like_with_escape_clause(self, &expr, &pattern, true)
+        } else {
+            super::like_with_escape_clause(self, expr, &pattern, false)
+        }
     }
 
     fn type_names(&self) -> crate::reader::TypeNames {

@@ -12,7 +12,8 @@
 
 use super::filter::{self, Filter, SortKey};
 use super::{export, Column, ROW};
-use ggsql::naming::quote_ident;
+use arrow::array::Array;
+use ggsql::naming::{self, quote_ident};
 use ggsql::reader::Reader;
 use ggsql::sql::FromItem;
 use ggsql::DataFrame;
@@ -20,7 +21,7 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 use std::collections::HashMap;
 
-/// The most rows one page may ask for. The Data Explorer asks for a screenful.
+/// The most rows one page may ask for: many screenfuls of any grid.
 pub const MAX_PAGE_ROWS: usize = 10_000;
 
 /// The most rows one export may hold. An export is built as text on the
@@ -48,8 +49,8 @@ impl Purpose {
         match self {
             Purpose::Page => format!("A page can hold at most {MAX_PAGE_ROWS} rows, not {n}"),
             Purpose::Export => format!(
-                "At most {MAX_EXPORT_ROWS} rows can be copied or exported at once, not {n}. \
-                 Select fewer rows, or use Convert to Code to run the query yourself."
+                "At most {MAX_EXPORT_ROWS} rows can be exported at once, not {n}. \
+                 Select fewer rows."
             ),
         }
     }
@@ -107,6 +108,15 @@ pub struct FrequencyRequest {
 fn default_limit() -> usize {
     8
 }
+
+/// The most values a frequency table may ask for.
+pub const MAX_FREQUENCY_VALUES: usize = 1_000;
+
+/// The most quantiles a histogram may ask for: each is a query of its own.
+pub const MAX_QUANTILES: usize = 100;
+
+/// The most bins a histogram may ask for.
+pub const MAX_HISTOGRAM_BINS: usize = 10_000;
 
 /// A view of a result table.
 pub struct ResultView {
@@ -172,8 +182,10 @@ impl ResultView {
         match &self.predicate {
             None => self.table.clone(),
             Some(p) => format!(
-                "(SELECT * FROM {} WHERE {}) AS \"__ggsql_filtered__\"",
-                self.table, p
+                "(SELECT * FROM {} WHERE {}) AS {}",
+                self.table,
+                p,
+                quote_ident(naming::TABLE_ALIAS)
             ),
         }
     }
@@ -263,7 +275,7 @@ impl ResultView {
             self.table,
             row = quote_ident(ROW),
         );
-        let name = format!("__ggsql_view_{}_{}__", self.id, self.built);
+        let name = naming::result_view_table(&self.id, self.built as u64);
         let built = (|| {
             for stmt in dialect.create_or_replace_temp_table_sql(&name, &[], &body) {
                 reader.execute_sql(&stmt).map_err(|e| e.to_string())?;
@@ -335,9 +347,12 @@ impl ResultView {
                 format!(" WHERE {pos} IN ({})", list.join(", "))
             }
         };
-        let select: Vec<String> = std::iter::once(format!("{pos} AS \"__ggsql_pos__\""))
-            .chain(names)
-            .collect();
+        let select: Vec<String> = std::iter::once(format!(
+            "{pos} AS {}",
+            quote_ident(naming::VIEW_POSITION_COLUMN)
+        ))
+        .chain(names)
+        .collect();
         let sql = format!(
             "SELECT {} FROM {from}{filter} ORDER BY {pos}",
             select.join(", ")
@@ -385,14 +400,13 @@ impl ResultView {
                 unique.sort_unstable();
                 unique.dedup();
                 let df = self.fetch(reader, cols, Fetch::Positions(&unique))?;
-                let pos = df.column("__ggsql_pos__").map_err(|e| e.to_string())?;
+                let pos = df
+                    .column(naming::VIEW_POSITION_COLUMN)
+                    .map_err(|e| e.to_string())?;
+                let positions = ints(pos).ok_or("The view's positions are not integers")?;
                 let at: HashMap<usize, usize> = (0..df.height())
-                    .filter_map(|r| {
-                        ggsql::array_util::value_to_string(pos, r)
-                            .parse::<usize>()
-                            .ok()
-                            .map(|p| (p, r))
-                    })
+                    .filter(|&r| !positions.is_null(r))
+                    .map(|r| (positions.value(r) as usize, r))
                     .collect();
                 let picked = indices
                     .iter()
@@ -436,6 +450,16 @@ impl ResultView {
         cols: &[usize],
         format: &str,
     ) -> Result<String, String> {
+        // Checked first: the header names every column, even with no rows.
+        let header = cols
+            .iter()
+            .map(|&i| {
+                self.columns
+                    .get(i)
+                    .map(|c| c.name.clone())
+                    .ok_or_else(|| format!("There is no column {i}"))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
         let (df, picked) = match rows {
             None => {
                 if self.selected_rows > MAX_EXPORT_ROWS {
@@ -456,7 +480,6 @@ impl ResultView {
                     .collect()
             })
             .collect();
-        let header: Vec<String> = cols.iter().map(|&i| self.columns[i].name.clone()).collect();
         export::format(Some(&header), &cells, format)
     }
 
@@ -493,6 +516,28 @@ impl ResultView {
             .columns
             .get(index)
             .ok_or_else(|| format!("There is no column {index}"))?;
+        if let Some(f) = &request.frequency {
+            if f.limit > MAX_FREQUENCY_VALUES {
+                return Err(format!(
+                    "A frequency table can hold at most {MAX_FREQUENCY_VALUES} values, not {}",
+                    f.limit
+                ));
+            }
+        }
+        if let Some(h) = &request.histogram {
+            if h.quantiles.len() > MAX_QUANTILES {
+                return Err(format!(
+                    "A histogram can ask for at most {MAX_QUANTILES} quantiles, not {}",
+                    h.quantiles.len()
+                ));
+            }
+            if h.bins > MAX_HISTOGRAM_BINS {
+                return Err(format!(
+                    "A histogram can have at most {MAX_HISTOGRAM_BINS} bins, not {}",
+                    h.bins
+                ));
+            }
+        }
         let mut out = json!({});
         let kind = col.kind.as_str();
 
@@ -565,7 +610,7 @@ impl ResultView {
         let sql = format!("SELECT {} FROM {}", parts.join(", "), self.relation());
         let df = reader.execute_sql(&sql).map_err(|e| e.to_string())?;
         let get = |name: &str| first_string(&df, name);
-        let get_i64 = |name: &str| get(name).and_then(|s| s.parse::<i64>().ok());
+        let get_i64 = |name: &str| df.column(name).ok().and_then(first_int);
 
         let mut out = json!({});
         match col.kind.as_str() {
@@ -620,9 +665,11 @@ impl ResultView {
             self.relation()
         );
         let df = reader.execute_sql(&sql).ok()?;
-        let sd = first_string(&df, "sd")?;
-        sd.parse::<f64>().ok().filter(|v| v.is_finite())?;
-        Some(sd)
+        // Reported as the database writes it, which keeps its precision; the
+        // number is read only to leave out a NaN or infinity.
+        let sd_col = df.column("sd").ok()?;
+        floats(sd_col).filter(|f| !f.is_empty() && !f.is_null(0) && f.value(0).is_finite())?;
+        first_string(&df, "sd")
     }
 
     /// The `q` quantile of a column, through the dialect's quantile hook.
@@ -633,7 +680,10 @@ impl ResultView {
         let expr = reader
             .dialect()
             .sql_quantile(&col.name, q, FromItem::Query(&from), &[]);
-        let sql = format!("SELECT {expr} AS \"q\" FROM ({from}) AS \"__ggsql_qt__\"");
+        let sql = format!(
+            "SELECT {expr} AS \"q\" FROM ({from}) AS {}",
+            quote_ident(naming::TABLE_ALIAS)
+        );
         let df = reader.execute_sql(&sql).ok()?;
         first_string(&df, "q")
     }
@@ -662,11 +712,19 @@ impl ResultView {
                 self.relation()
             ))
             .ok()?;
-        let min: f64 = first_string(&bounds, "min")?.parse().ok()?;
-        let max: f64 = first_string(&bounds, "max")?.parse().ok()?;
-        let count: usize = first_string(&bounds, "cnt")
-            .and_then(|s| s.parse().ok())
-            .unwrap_or(0);
+        let first_float = |name: &str| {
+            floats(bounds.column(name).ok()?)
+                .filter(|f| !f.is_empty() && !f.is_null(0))
+                .map(|f| f.value(0))
+        };
+        let min = first_float("min")?;
+        let max = first_float("max")?;
+        let count = bounds
+            .column("cnt")
+            .ok()
+            .and_then(first_int)
+            .unwrap_or(0)
+            .max(0) as usize;
 
         let quantiles: Vec<Value> = req
             .quantiles
@@ -700,23 +758,22 @@ impl ResultView {
         let sql = format!(
             "SELECT CASE WHEN \"bin\" >= {bins} THEN {last} ELSE \"bin\" END AS \"b\", COUNT(*) AS \"n\" \
              FROM (SELECT FLOOR((CAST({c} AS {float}) - {min}) / {width}) AS \"bin\" \
-                   FROM {} WHERE {c} IS NOT NULL) AS \"__bins__\" \
+                   FROM {} WHERE {c} IS NOT NULL) AS {alias} \
              GROUP BY \"b\" ORDER BY \"b\"",
             self.relation(),
             last = bins - 1,
+            alias = quote_ident(naming::TABLE_ALIAS),
         );
         let df = reader.execute_sql(&sql).ok()?;
         let mut counts = vec![0i64; bins];
-        let (b, n) = (df.column("b").ok()?, df.column("n").ok()?);
+        let (b, n) = (floats(df.column("b").ok()?)?, ints(df.column("n").ok()?)?);
         for i in 0..df.height() {
-            let bin = ggsql::array_util::value_to_string(b, i)
-                .parse::<f64>()
-                .ok()
-                .map(|v| v as usize);
-            if let Some(bin) = bin.filter(|&bin| bin < bins) {
-                counts[bin] = ggsql::array_util::value_to_string(n, i)
-                    .parse()
-                    .unwrap_or(0);
+            if b.is_null(i) || n.is_null(i) {
+                continue;
+            }
+            let bin = b.value(i) as usize;
+            if bin < bins {
+                counts[bin] = n.value(i);
             }
         }
         let edges: Vec<String> = (0..=bins)
@@ -735,15 +792,9 @@ impl ResultView {
                 self.relation()
             ))
             .ok()?;
-        let (v, n) = (df.column("value").ok()?, df.column("count").ok()?);
+        let (v, n) = (df.column("value").ok()?, ints(df.column("count").ok()?)?);
         let values: Vec<String> = (0..df.height()).map(|i| cell_string(v, i)).collect();
-        let counts: Vec<i64> = (0..df.height())
-            .map(|i| {
-                ggsql::array_util::value_to_string(n, i)
-                    .parse()
-                    .unwrap_or(0)
-            })
-            .collect();
+        let counts: Vec<i64> = n.iter().map(|c| c.unwrap_or(0)).collect();
         let total = scalar_i64(
             reader,
             &format!("SELECT COUNT({c}) AS \"n\" FROM {}", self.relation()),
@@ -776,14 +827,30 @@ fn scalar_i64(reader: &dyn Reader, sql: &str) -> Result<i64, String> {
         .into_iter()
         .next()
         .ok_or("The query returned no columns")?;
-    Ok(first_string(&df, &name)
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(0))
+    Ok(df.column(&name).ok().and_then(first_int).unwrap_or(0))
+}
+
+/// A numeric column as 64-bit integers, or `None` when it cannot be one.
+fn ints(col: &arrow::array::ArrayRef) -> Option<arrow::array::Int64Array> {
+    let cast = arrow::compute::cast(col, &arrow::datatypes::DataType::Int64).ok()?;
+    ggsql::array_util::as_i64(&cast).ok().cloned()
+}
+
+/// A numeric column as 64-bit floats, or `None` when it cannot be one.
+fn floats(col: &arrow::array::ArrayRef) -> Option<arrow::array::Float64Array> {
+    let cast = arrow::compute::cast(col, &arrow::datatypes::DataType::Float64).ok()?;
+    ggsql::array_util::as_f64(&cast).ok().cloned()
+}
+
+/// Row 0 of a numeric column as an integer, or `None` when absent or null.
+fn first_int(col: &arrow::array::ArrayRef) -> Option<i64> {
+    ints(col)
+        .filter(|a| !a.is_empty() && !a.is_null(0))
+        .map(|a| a.value(0))
 }
 
 /// Row 0 of `name` as text, or `None` when absent or null.
 fn first_string(df: &DataFrame, name: &str) -> Option<String> {
-    use arrow::array::Array;
     let c = df.column(name).ok()?;
     if c.is_empty() || c.is_null(0) {
         None
@@ -794,16 +861,14 @@ fn first_string(df: &DataFrame, name: &str) -> Option<String> {
 
 /// A cell as text, with a null as empty.
 fn cell_string(col: &arrow::array::ArrayRef, row: usize) -> String {
-    use arrow::array::Array;
     if col.is_null(row) {
         return String::new();
     }
-    crate::display::cell_text(col, row)
+    ggsql::array_util::value_to_string(col, row)
 }
 
 /// A cell for a page: its text, or `null`.
 fn cell_value(col: &arrow::array::ArrayRef, row: usize) -> Value {
-    use arrow::array::Array;
     if col.is_null(row) {
         Value::Null
     } else {

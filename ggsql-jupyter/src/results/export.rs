@@ -1,4 +1,4 @@
-//! A data explorer selection as CSV, TSV or HTML, for the clipboard.
+//! A selection of a view as CSV, TSV or HTML.
 
 use ggsql::util::escape_html;
 
