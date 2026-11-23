@@ -523,10 +523,7 @@ fn build_scale_properties(
     // instead. A user `SETTING reverse => true` composes on top of whichever
     // default applies, which for the free case means the two cancel.
     let bottom_up_default = skip_domain && ctx.aesthetic == "pos2" && is_categorical(scale);
-    let user_reverse = matches!(
-        scale.properties.get("reverse"),
-        Some(ParameterValue::Boolean(true))
-    );
+    let user_reverse = ParameterValue::is_true(scale.properties.get("reverse"));
     if user_reverse != bottom_up_default {
         scale_obj.insert("reverse".to_string(), json!(true));
     }
@@ -623,9 +620,9 @@ fn apply_reverse_legend(encoding: &mut Value, scale: &crate::plot::Scale, aesthe
     use crate::plot::ParameterValue;
 
     // Only process if reverse is true
-    let Some(ParameterValue::Boolean(true)) = scale.properties.get("reverse") else {
+    if !ParameterValue::is_true(scale.properties.get("reverse")) {
         return;
-    };
+    }
 
     // Only for discrete/ordinal scales
     let Some(ref scale_type) = scale.scale_type else {
@@ -1340,7 +1337,7 @@ mod tests {
 
     #[test]
     fn test_literal_shape_converts_to_svg_path() {
-        let lit = ParameterValue::String("square".to_string());
+        let lit = "square".into();
         let result = build_literal_encoding("shape", &lit).unwrap();
         let val = &result["value"];
         assert!(val.is_string(), "expected SVG path string, got: {val}");
@@ -1353,7 +1350,7 @@ mod tests {
 
     #[test]
     fn test_literal_shape_unknown_passes_through() {
-        let lit = ParameterValue::String("nonexistent".to_string());
+        let lit = "nonexistent".into();
         let result = build_literal_encoding("shape", &lit).unwrap();
         assert_eq!(result, json!({"value": "nonexistent"}));
     }

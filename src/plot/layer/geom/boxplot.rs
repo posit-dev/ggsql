@@ -366,7 +366,7 @@ fn boxplot_sql_append_outliers(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::plot::Parameters;
+
     use crate::reader::AnsiDialect;
 
     // ==================== SQL Generation Tests (Compact) ====================
@@ -722,9 +722,7 @@ mod tests {
             "pos2".to_string(),
             AestheticValue::standard_column("value".to_string()),
         );
-        let mut parameters = Parameters::new();
-        parameters.insert("coef".to_string(), ParameterValue::Number(1.5));
-        parameters.insert("outliers".to_string(), ParameterValue::Boolean(true));
+        let parameters = crate::params! { "coef" => 1.5, "outliers" => true };
 
         let ctx = crate::plot::aesthetic::AestheticContext::from_static(&["x", "y"], &[]);
         let result = stat_boxplot(

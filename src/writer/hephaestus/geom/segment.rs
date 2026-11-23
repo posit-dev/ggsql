@@ -141,10 +141,7 @@ pub fn build_hinges(plot: &mut HPlot, ctx: &Ctx) -> Result<()> {
 
 /// Whether this rule is a diagonal (abline): has a non-zero `slope`.
 pub fn is_diagonal(layer: &Layer) -> bool {
-    matches!(
-        layer.parameters.get("diagonal"),
-        Some(ParameterValue::Boolean(true))
-    )
+    ParameterValue::is_true(layer.parameters.get("diagonal"))
 }
 
 /// A diagonal rule (abline): **one line per data row**, each spanning the

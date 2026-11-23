@@ -24,7 +24,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 use crate::plot::scale::Scale;
-use crate::plot::types::{validate_parameter, ParamDefinition, Parameters};
+use crate::plot::types::{ParamDefinition, Parameters};
 use crate::plot::Layer;
 use crate::reader::SqlDialect;
 use crate::DataFrame;
@@ -95,42 +95,11 @@ pub trait CoordTrait: std::fmt::Debug + Send + Sync {
         _coord_type_name: Option<&str>,
         properties: &Parameters,
     ) -> Result<Parameters, String> {
-        let defaults = self.default_properties();
-
-        // Validate values against constraints
-        for (key, value) in properties.iter() {
-            if let Some(param) = defaults.iter().find(|p| p.name == key) {
-                validate_parameter(key, value, &param.constraint)?;
-            } else {
-                let allowed: Vec<&str> = defaults.iter().map(|p| p.name).collect();
-                return Err(if allowed.is_empty() {
-                    format!(
-                        "{} projection does not accept any properties, but got '{}'",
-                        self.name(),
-                        key
-                    )
-                } else {
-                    format!(
-                        "{} projection property should be {}, not '{}'",
-                        self.name(),
-                        crate::or_list_quoted(&allowed, '\''),
-                        key
-                    )
-                });
-            }
-        }
-
-        // Start with user properties, add defaults for missing ones
-        let mut resolved = properties.clone();
-        for param in defaults {
-            if !resolved.contains_key(param.name) {
-                if let Some(default) = param.to_parameter_value() {
-                    resolved.insert(param.name.to_string(), default);
-                }
-            }
-        }
-
-        Ok(resolved)
+        crate::params::resolve_parameters(
+            properties,
+            self.default_properties(),
+            &format!("{} projection property", self.name()),
+        )
     }
 
     /// Downcast to `MapProjectionTrait` if this coord is a map projection.

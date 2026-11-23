@@ -24,7 +24,7 @@ pub(super) fn setup_formats(
 ) -> Result<HashMap<String, Format>> {
     for (idx, format) in formats.iter().enumerate() {
         format
-            .validate_settings()
+            .resolve_settings()
             .map_err(|e| GgsqlError::ValidationError(format!("FORMAT {}: {}", idx + 1, e)))?;
     }
 
@@ -47,7 +47,12 @@ pub(super) fn setup_formats(
     }
 
     // A column no clause claimed a section for resolves to the body.
+    // Settings were validated per clause above; resolving again post-merge
+    // only fills defaults.
     for format in resolved.values_mut() {
+        format.settings = format
+            .resolve_settings()
+            .map_err(GgsqlError::ValidationError)?;
         format.target.get_or_insert(ColumnSection::Body);
     }
     Ok(resolved)
@@ -144,7 +149,7 @@ pub(super) fn resolve_column_properties(dtype: &DataType, format: Option<&Format
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::array_util::value_to_string;
+    use crate::array_util::column_to_strings;
     use crate::df;
 
     fn format_with(template: &str, mapping: Option<HashMap<String, Option<String>>>) -> Format {
@@ -168,10 +173,7 @@ mod tests {
     }
 
     fn column_content(df: &DataFrame, name: &str) -> Vec<String> {
-        let array = df.column(name).unwrap();
-        (0..df.height())
-            .map(|row| value_to_string(array, row))
-            .collect()
+        column_to_strings(df.column(name).unwrap())
     }
 
     #[test]
@@ -191,7 +193,7 @@ mod tests {
             Format {
                 columns: vec!["price".to_string(), "currency".to_string()],
                 wildcard: false,
-                ..format_with_hjust(ParameterValue::String("left".to_string()))
+                ..format_with_hjust("left".into())
             },
         ];
 
@@ -348,8 +350,7 @@ mod tests {
     }
 
     fn format_with_hjust(hjust: ParameterValue) -> Format {
-        let mut settings = Parameters::new();
-        settings.insert("hjust".to_string(), hjust);
+        let settings = crate::params! { "hjust" => hjust };
         Format {
             columns: Vec::new(),
             wildcard: false,
@@ -363,11 +364,11 @@ mod tests {
     fn resolve_column_properties_defaults_hjust_by_dtype_when_absent() {
         assert_eq!(
             resolve_column_properties(&DataType::Float64, None).get("hjust"),
-            Some(&ParameterValue::Number(1.0))
+            Some(&1.0.into())
         );
         assert_eq!(
             resolve_column_properties(&DataType::Utf8, None).get("hjust"),
-            Some(&ParameterValue::Number(0.0))
+            Some(&0.0.into())
         );
     }
 
@@ -383,38 +384,38 @@ mod tests {
 
         assert_eq!(
             resolve_column_properties(&DataType::Utf8, Some(&format)).get("hjust"),
-            Some(&ParameterValue::Number(1.0))
+            Some(&1.0.into())
         );
     }
 
     #[test]
     fn resolve_column_properties_standardises_keywords_to_numbers() {
-        let format = format_with_hjust(ParameterValue::String("left".to_string()));
+        let format = format_with_hjust("left".into());
         assert_eq!(
             resolve_column_properties(&DataType::Utf8, Some(&format)).get("hjust"),
-            Some(&ParameterValue::Number(0.0))
+            Some(&0.0.into())
         );
 
-        let format = format_with_hjust(ParameterValue::String("centre".to_string()));
+        let format = format_with_hjust("centre".into());
         assert_eq!(
             resolve_column_properties(&DataType::Utf8, Some(&format)).get("hjust"),
-            Some(&ParameterValue::Number(0.5))
+            Some(&0.5.into())
         );
 
-        let format = format_with_hjust(ParameterValue::String("right".to_string()));
+        let format = format_with_hjust("right".into());
         assert_eq!(
             resolve_column_properties(&DataType::Utf8, Some(&format)).get("hjust"),
-            Some(&ParameterValue::Number(1.0))
+            Some(&1.0.into())
         );
     }
 
     #[test]
     fn resolve_column_properties_keeps_an_explicit_number_unchanged() {
-        let format = format_with_hjust(ParameterValue::Number(0.25));
+        let format = format_with_hjust(0.25.into());
 
         assert_eq!(
             resolve_column_properties(&DataType::Float64, Some(&format)).get("hjust"),
-            Some(&ParameterValue::Number(0.25))
+            Some(&0.25.into())
         );
     }
 }

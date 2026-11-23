@@ -564,17 +564,11 @@ impl ScaleTypeTrait for Binned {
         }
 
         // Get closed property: "left" (default) or "right"
-        let closed_left = match scale.properties.get("closed") {
-            Some(ParameterValue::String(s)) => s != "right",
-            _ => true, // default to left-closed
-        };
+        let closed_left = !ParameterValue::is_str(scale.properties.get("closed"), "right");
 
         // Get oob property: "censor" (default) or "squish"
         // With "squish", terminal bins extend to infinity
-        let oob_squish = match scale.properties.get("oob") {
-            Some(ParameterValue::String(s)) => s == OOB_SQUISH,
-            _ => false,
-        };
+        let oob_squish = ParameterValue::is_str(scale.properties.get("oob"), OOB_SQUISH);
 
         // Determine if break values need temporal formatting
         // Column is already cast to correct type, but break literals may need formatting
@@ -945,10 +939,9 @@ mod tests {
                 ArrayElement::Number(20.0),
             ]),
         );
-        scale.properties.insert(
-            "closed".to_string(),
-            ParameterValue::String("right".to_string()),
-        );
+        scale
+            .properties
+            .insert("closed".to_string(), "right".into());
 
         let sql = binned
             .pre_stat_transform_sql("col", &DataType::Float64, &scale, &AnsiDialect)
@@ -991,9 +984,7 @@ mod tests {
         let binned = Binned;
         let mut scale = Scale::new("x");
         // breaks is still a Number (count), not resolved to Array yet
-        scale
-            .properties
-            .insert("breaks".to_string(), ParameterValue::Number(5.0));
+        scale.properties = crate::params! { "breaks" => 5.0 };
 
         // Should return None because breaks hasn't been resolved to Array
         assert!(binned
@@ -1559,15 +1550,11 @@ mod tests {
                 "breaks".to_string(),
                 ParameterValue::Array(breaks.iter().map(|&v| ArrayElement::Number(v)).collect()),
             );
-            scale.properties.insert(
-                "oob".to_string(),
-                ParameterValue::String("squish".to_string()),
-            );
+            scale.properties.insert("oob".to_string(), "squish".into());
             if closed == "right" {
-                scale.properties.insert(
-                    "closed".to_string(),
-                    ParameterValue::String("right".to_string()),
-                );
+                scale
+                    .properties
+                    .insert("closed".to_string(), "right".into());
             }
 
             let sql = binned
@@ -1600,10 +1587,7 @@ mod tests {
                     ArrayElement::Number(100.0),
                 ]),
             );
-            scale.properties.insert(
-                "oob".to_string(),
-                ParameterValue::String("squish".to_string()),
-            );
+            scale.properties.insert("oob".to_string(), "squish".into());
             let sql = binned
                 .pre_stat_transform_sql("x", &DataType::Float64, &scale, &AnsiDialect)
                 .unwrap();
@@ -1624,10 +1608,7 @@ mod tests {
                 "breaks".to_string(),
                 ParameterValue::Array(vec![ArrayElement::Number(0.0), ArrayElement::Number(100.0)]),
             );
-            scale.properties.insert(
-                "oob".to_string(),
-                ParameterValue::String("squish".to_string()),
-            );
+            scale.properties.insert("oob".to_string(), "squish".into());
             let sql = binned
                 .pre_stat_transform_sql("x", &DataType::Float64, &scale, &AnsiDialect)
                 .unwrap();

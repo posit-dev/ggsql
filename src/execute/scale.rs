@@ -192,10 +192,7 @@ pub fn apply_post_stat_binning(
         }
 
         // Get closed property (default: left)
-        let closed_left = match scale.properties.get("closed") {
-            Some(ParameterValue::String(s)) => s != "right",
-            _ => true,
-        };
+        let closed_left = !ParameterValue::is_str(scale.properties.get("closed"), "right");
 
         // Walk layers directly so we can decide per-layer whether an
         // aesthetic-named column was deferred (needs binning here) or
@@ -1777,10 +1774,7 @@ mod tests {
 
         // Disable expansion for predictable test values
         let mut scale = crate::plot::Scale::new("pos1");
-        scale.properties.insert(
-            "expand".to_string(),
-            crate::plot::ParameterValue::Number(0.0),
-        );
+        scale.properties = crate::params! { "expand" => -0.0 };
         spec.scales.push(scale);
         // Simulate post-merge state: mapping is in layer
         let layer = Layer::new(Geom::point())
@@ -1825,10 +1819,7 @@ mod tests {
         let mut scale = crate::plot::Scale::new("pos1");
         scale.input_range = Some(vec![ArrayElement::Number(0.0), ArrayElement::Number(100.0)]);
         // Disable expansion for predictable test values
-        scale.properties.insert(
-            "expand".to_string(),
-            crate::plot::ParameterValue::Number(0.0),
-        );
+        scale.properties = crate::params! { "expand" => -0.0 };
         spec.scales.push(scale);
         // Simulate post-merge state: mapping is in layer
         let layer = Layer::new(Geom::point())
@@ -1919,10 +1910,7 @@ mod tests {
         let mut scale = crate::plot::Scale::new("pos1");
         scale.input_range = Some(vec![ArrayElement::Number(0.0), ArrayElement::Null]);
         // Disable expansion for predictable test values
-        scale.properties.insert(
-            "expand".to_string(),
-            crate::plot::ParameterValue::Number(0.0),
-        );
+        scale.properties = crate::params! { "expand" => -0.0 };
         spec.scales.push(scale);
         // Simulate post-merge state: mapping is in layer
         let layer = Layer::new(Geom::point())
@@ -1963,10 +1951,7 @@ mod tests {
         let mut scale = crate::plot::Scale::new("pos1");
         scale.input_range = Some(vec![ArrayElement::Null, ArrayElement::Number(100.0)]);
         // Disable expansion for predictable test values
-        scale.properties.insert(
-            "expand".to_string(),
-            crate::plot::ParameterValue::Number(0.0),
-        );
+        scale.properties = crate::params! { "expand" => -0.0 };
         spec.scales.push(scale);
         // Simulate post-merge state: mapping is in layer
         let layer = Layer::new(Geom::point())

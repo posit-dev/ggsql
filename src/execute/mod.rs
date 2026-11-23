@@ -658,18 +658,11 @@ fn handle_missing_facet_columns(
         None => return Ok(()),
     };
 
-    // Get the missing setting (default to "repeat")
     let missing_setting = facet
         .properties
         .get("missing")
-        .and_then(|v| {
-            if let ParameterValue::String(s) = v {
-                Some(s.as_str())
-            } else {
-                None
-            }
-        })
-        .unwrap_or("repeat");
+        .and_then(ParameterValue::as_str)
+        .expect("missing default filled by facet resolution");
 
     // If null, do nothing (existing behavior handles this)
     if missing_setting == "null" {

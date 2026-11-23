@@ -131,7 +131,7 @@ impl std::fmt::Display for Text {
 
 #[cfg(test)]
 mod tests {
-    use crate::plot::types::ParameterValue;
+
     use crate::plot::{Geom, Layer};
 
     /// `parse` is on unless the user says otherwise, so a label carrying markdown
@@ -140,24 +140,16 @@ mod tests {
     fn test_parse_defaults_to_true() {
         let mut layer = Layer::new(Geom::text());
         layer.apply_default_params();
-        assert_eq!(
-            layer.parameters.get("parse"),
-            Some(&ParameterValue::Boolean(true))
-        );
+        assert_eq!(layer.parameters.get("parse"), Some(&true.into()));
     }
 
     /// An explicit `SETTING parse => false` survives default application.
     #[test]
     fn test_parse_setting_is_kept() {
         let mut layer = Layer::new(Geom::text());
-        layer
-            .parameters
-            .insert("parse".to_string(), ParameterValue::Boolean(false));
+        layer.parameters.insert("parse".to_string(), false.into());
         layer.apply_default_params();
-        assert_eq!(
-            layer.parameters.get("parse"),
-            Some(&ParameterValue::Boolean(false))
-        );
+        assert_eq!(layer.parameters.get("parse"), Some(&false.into()));
     }
 
     /// `parse` is a boolean; anything else is a validation error rather than a
@@ -165,10 +157,7 @@ mod tests {
     #[test]
     fn test_parse_rejects_non_boolean() {
         let mut layer = Layer::new(Geom::text());
-        layer.parameters.insert(
-            "parse".to_string(),
-            ParameterValue::String("yes".to_string()),
-        );
+        layer.parameters.insert("parse".to_string(), "yes".into());
         assert!(layer.validate_settings().is_err());
     }
 }

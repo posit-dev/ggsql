@@ -18,7 +18,7 @@ use arrow::datatypes::DataType;
 use zygos::{LabelSpec, Value};
 
 use crate::array_util::{as_f64, as_str, cast_array, new_str_array};
-use crate::plot::{format_number, ArrayElement};
+use crate::plot::ArrayElement;
 
 /// Serde mirror for [`zygos::LabelSpec`], which is dependency-free and has no
 /// serde impls of its own. Rename keys round-trip as [`ArrayElement`]s under
@@ -121,7 +121,7 @@ pub(crate) fn key_value(elem: &ArrayElement) -> Value {
 fn key_string(value: &Value) -> String {
     match value {
         Value::String(s) => s.to_string(),
-        Value::Number(n) => format_number(*n),
+        Value::Number(n) => n.to_string(),
         Value::Bool(b) => b.to_string(),
         Value::Null => "null".to_string(),
         // Temporal and other keys never arise from RENAMING literals;
