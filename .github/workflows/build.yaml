@@ -106,18 +106,32 @@ jobs:
         run: tree-sitter test
 
       - name: Run Rust tests
-        run: cargo test --lib --bins
+        # ggsql-jupyter is excluded: its default `raster-plots` feature would
+        # unify `ggsql/png` into this invocation, sending the renders_* corpus
+        # onto concurrent wgpu devices — and concurrent device churn against
+        # the Mesa software stack segfaults inside the Vulkan loader (the same
+        # failure hephaestus's CI serialises its GPU tests for). The kernel is
+        # tested separately below.
+        run: cargo test --lib --bins --workspace --exclude ggsql-jupyter
+
+      - name: Run Jupyter kernel tests
+        # Serialised: the plot backend spins up a wgpu device per render, so
+        # these carry the same Mesa segfault hazard as the raster writers.
+        run: cargo test -p ggsql-jupyter --lib --bins -- --test-threads=1
 
       - name: Install dbc CLI and SQLite ADBC driver
         run: |
           curl -LsSf https://dbc.columnar.tech/install.sh | sh
           "$HOME/.local/bin/dbc" install sqlite
 
+      # `-p ggsql` on every remaining test step keeps ggsql-jupyter out of the
+      # build plan, so its raster features cannot unify in and turn GPU-free
+      # steps into GPU ones (see "Run Rust tests" above).
       - name: Run ADBC unit tests
-        run: cargo test --features "adbc sqlite" --lib
+        run: cargo test -p ggsql --features "adbc sqlite" --lib
 
       - name: Run ADBC SQLite equivalence tests
-        run: cargo test --features "adbc sqlite" --lib -- --ignored equivalence
+        run: cargo test -p ggsql --features "adbc sqlite" --lib -- --ignored equivalence
 
       - name: Warm the dialect-live test variant
         # dialect-live.yml's compile job builds exactly this variant
@@ -132,12 +146,15 @@ jobs:
         # svg, pdf and hep are default features and need no adapter, so these
         # are hard assertions on every runner. hep-read adds the document
         # round trip. Fast, and its failure is unambiguous, so it runs first.
-        run: 'cargo test --features hep-read --lib writer::'
+        run: 'cargo test -p ggsql --features hep-read --lib writer::'
 
       - name: Run raster writer tests
         # Non-default features needing a GPU adapter. Skips its render
-        # assertions gracefully if lavapipe did not come up.
-        run: 'cargo test --features "png jpeg tiff webp" --lib writer::'
+        # assertions gracefully if lavapipe did not come up. Serialised:
+        # each test spins up its own wgpu device, and concurrent
+        # device/renderer churn against the Mesa software stack segfaults
+        # inside the Vulkan loader.
+        run: 'cargo test -p ggsql --features "png jpeg tiff webp" --lib writer:: -- --test-threads=1'
 
       - name: Check the plot viewer builds
         # Not a writer and it blocks on a window, so it is compiled, not run.
