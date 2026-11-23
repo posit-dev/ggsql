@@ -112,6 +112,12 @@ determines whether text boxes get drawn and additional settings `padding`,
 
 ### Fixed
 
+- `duckdb://` URIs now apply their `key=value` query parameters as DuckDB
+  config options when opening the database, so
+  `duckdb://file.duckdb?access_mode=read_only` opens the file read-only and
+  can share it with other read-only processes. Previously the file always
+  opened read-write, and in 0.5.2 the query string became part of the file
+  path, creating an empty `file.duckdb?access_mode=read_only` database.
 - A scale whose transform has a restricted domain (e.g. `log`, `sqrt`) now
   infers its data range from in-domain values only, so non-positive data on a
   log scale no longer drags the lower limit to the transform's minimum bound

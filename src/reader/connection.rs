@@ -287,10 +287,11 @@ fn build_backend_reader(
     let wants_native = forced.is_none() || forced.as_deref() == Some("native");
     let wants_adbc = forced.is_none() || forced.as_deref() == Some("adbc");
 
-    // 1. Native in-process reader. These readers' grammar is just
-    // `scheme://path` — anything past the body (ggsql params like
-    // `cache=off`, driver-bound params) would be misread as part of the
-    // file path, so only the body is passed on.
+    // 1. Native in-process reader. ggsql params like `cache=off` would be
+    // misread by these readers, so they never see them. The SQLite reader's
+    // grammar is just `scheme://path`, so it gets only the body; the DuckDB
+    // reader also takes driver-bound params as DuckDB config options
+    // (`access_mode=read_only`), which can only be set when opening.
     if wants_native {
         let native_uri = || format!("{}://{}", conn.scheme, conn.body);
         match entry.and_then(|e| e.native_reader) {
@@ -298,7 +299,7 @@ fn build_backend_reader(
                 #[cfg(feature = "duckdb")]
                 {
                     return Ok(Box::new(
-                        crate::reader::DuckDBReader::from_connection_string(&native_uri())?,
+                        crate::reader::DuckDBReader::from_connection_string(&conn.to_uri())?,
                     ));
                 }
             }
@@ -915,6 +916,33 @@ mod tests {
             !std::path::Path::new(leaked).exists(),
             "query params leaked into the DuckDB file path"
         );
+    }
+
+    #[cfg(feature = "duckdb")]
+    #[test]
+    fn test_native_duckdb_reader_gets_driver_params() {
+        // `access_mode` reaches DuckDB as a config option while ggsql's own
+        // `cache=off` is still stripped, so the file opens read-only.
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("test.duckdb");
+        duckdb::Connection::open(&path)
+            .unwrap()
+            .execute_batch("CREATE TABLE t AS SELECT 1 AS x")
+            .unwrap();
+
+        let reader = build_reader(&format!(
+            "duckdb://{}?cache=off&access_mode=read_only",
+            path.display()
+        ))
+        .unwrap();
+
+        assert_eq!(reader.execute_sql("SELECT x FROM t").unwrap().height(), 1);
+        let err = reader
+            .execute_sql("CREATE TABLE u AS SELECT 2 AS y")
+            .err()
+            .unwrap()
+            .to_string();
+        assert!(err.contains("read-only"), "got: {err}");
     }
 
     #[test]
