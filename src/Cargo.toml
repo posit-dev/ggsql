@@ -42,7 +42,7 @@ geozero = { workspace = true, optional = true, features = ["with-wkb", "with-wkt
 # Backend for the renderer-backed writers (non-default; gated, excluded from the
 # MSRV 1.86 build). The GPU rasteriser is *not* requested here: it arrives with
 # the `raster` feature, so a build wanting only vector output pulls no wgpu.
-hephaestus = { version = "0.4.1", optional = true, default-features = false, features = ["geom-wkb", "geom-wkt"] }
+hephaestus = { version = "0.5.0", optional = true, default-features = false }
 
 # Scale primitives (transforms, breaks, palettes, OOB policies). Unlike
 # hephaestus this is a core dependency: the executor resolves scales through
@@ -104,7 +104,7 @@ html = []
 # rasteriser on top of it. Splitting them is what lets a vector-only build skip
 # wgpu, vello_hybrid and pollster entirely — hephaestus gates only its GPU
 # backends behind that feature, not the plot layer.
-graphics = ["dep:hephaestus", "dep:fontique"]
+graphics = ["dep:hephaestus", "dep:fontique", "zygos/geom-wkb", "zygos/geom-wkt"]
 # The GPU rasteriser. `vello-hybrid` rather than vello classic: it computes
 # coverage on the CPU and hands the GPU a plain render pipeline. Its GPU buffers
 # are sized to the scene's actual content rather than to fixed caps, so there is

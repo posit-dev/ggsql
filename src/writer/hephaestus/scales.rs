@@ -8,13 +8,13 @@
 
 use std::sync::Arc;
 
-use hephaestus::color::{rgba, Color};
 use hephaestus::plot::geom::linetype::{dash, gap, pattern, solid};
 use hephaestus::plot::scale::{self, Scale as HScale, TransformKind as HTransform};
-use hephaestus::scales::value::{
+use zygos::color::{rgba, Color};
+use zygos::value::{
     Date as HDate, DateTime as HDateTime, LinetypeStep, Time as HTime, Value as HValue,
 };
-use hephaestus::scales::Direction;
+use zygos::Direction;
 
 use super::channels::NULL_CATEGORY;
 use crate::plot::scale::{linetype_to_stroke_dash, TransformKind as GTransform};
@@ -721,8 +721,7 @@ mod tests {
     fn temporal_scale_labels_ggsql_breaks_as_dates() {
         let scale = date_scale((1208, 1264), &[1208, 1236, 1264]);
         let hs = build_scale(&scale, RangeKind::Position).expect("scale");
-        let locale = hephaestus::scales::locale::Locale::EN_US;
-        let labels: Vec<String> = hs.breaks(5).iter().map(|b| hs.format(b, &locale)).collect();
+        let labels: Vec<String> = hs.breaks(5).iter().map(|b| hs.format(b)).collect();
         assert_eq!(labels, vec!["1973-04-23", "1973-05-21", "1973-06-18"]);
     }
 
@@ -732,8 +731,7 @@ mod tests {
         // epoch-day numbers the domain is stored in — that is what a panel scale
         // with no in-window ggsql break falls back on.
         let hs = temporal_scale(Some(GTransform::Date), 1208.0, 1400.0).expect("temporal scale");
-        let locale = hephaestus::scales::locale::Locale::EN_US;
-        for label in hs.breaks(5).iter().map(|b| hs.format(b, &locale)) {
+        for label in hs.breaks(5).iter().map(|b| hs.format(b)) {
             assert!(
                 label.starts_with("197"),
                 "expected a date label, got {label}"

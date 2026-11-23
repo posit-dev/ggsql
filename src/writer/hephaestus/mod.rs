@@ -59,7 +59,7 @@ mod webp;
 #[cfg(feature = "window")]
 mod window;
 
-pub use hephaestus::color::{rgba, Color};
+pub use zygos::color::{rgba, Color};
 
 pub use canvas::Canvas;
 #[cfg(feature = "window")]
@@ -110,7 +110,7 @@ mod tests {
     use crate::GgsqlError;
     #[cfg(feature = "png")]
     use crate::Result;
-    use hephaestus::scales::chrome::AxisSide;
+    use zygos::chrome::AxisSide;
 
     /// The canvas every corpus render uses. Small, since none of these tests
     /// look at the picture — only that the whole pipeline ran.

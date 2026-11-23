@@ -4,9 +4,9 @@
 use arrow::array::{Array, ArrayRef, BinaryArray, LargeBinaryArray, LargeStringArray, StringArray};
 use arrow::datatypes::DataType;
 
-use hephaestus::color::Color;
 use hephaestus::plot::geom::{BuildableGeom, GeomBuilder};
-use hephaestus::scales::geometry::{Coord, Geometry, Polygon as GeoPolygon};
+use zygos::color::Color;
+use zygos::geometry::{Coord, Geometry, Polygon as GeoPolygon};
 
 use super::scales::parse_color;
 use crate::array_util::{as_bool, as_f64, as_str, cast_array, value_to_string};

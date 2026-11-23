@@ -60,6 +60,17 @@ determines whether text boxes get drawn and additional settings `padding`,
     `TIME` interval breaks step across minute/hour boundaries; automatic
     temporal minor breaks fall on the calendar sub-interval (quarters under
     years, weeks under months, …) instead of three evenly spaced per interval.
+- The built-in SVG/PDF/HEP and raster writers moved to hephaestus 0.5.0.
+  Consequences:
+  - axis tick labels that would overlap are now culled (the outermost labels
+    always survive), instead of being drawn on top of each other;
+  - dashed linetypes in those writers now measure dash lengths in multiples of
+    the line width, as documented and as the Vega-Lite writer does — dashed
+    lines render with visibly different (correct) proportions, and a dashed
+    line whose width varies within a layer now keeps its pattern instead of
+    falling back to a uniform stroke;
+  - log-scale breaks on exotic bases (e.g. `ln`, base 2) no longer collide,
+    and a base-2 scale gets minor breaks at the geometric midpoint.
 - Break labels are rendered by `zygos`'s label engine: the `RENAMING` clause
   (explicit renames, `NULL` suppressions, and the `* => '...'` template) is
   kept as a value-keyed `zygos::LabelSpec` on `Scale` and re-rendered against

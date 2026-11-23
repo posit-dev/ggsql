@@ -1,6 +1,6 @@
 //! `point` geom: one marker per row.
 
-use hephaestus::color::rgb8;
+use zygos::color::rgb8;
 
 use super::super::scales::RangeKind;
 use super::super::wiring::{

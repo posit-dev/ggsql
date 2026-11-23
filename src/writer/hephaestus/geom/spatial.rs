@@ -5,9 +5,9 @@
 //! (a Custom clip surface built from `projection.rs`) shapes those coordinates;
 //! with no `PROJECT` the geometry draws in raw data space under Cartesian.
 
-use hephaestus::color::rgb8;
 use hephaestus::plot::geom::Raw;
 use hephaestus::plot::{GeometryGeom, Plot as HPlot};
+use zygos::color::rgb8;
 
 use super::super::channels::column_to_geometry;
 use super::super::scales::RangeKind;

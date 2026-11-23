@@ -7,8 +7,8 @@
 use std::collections::HashMap;
 
 use hephaestus::plot::{scale, AspectMode, Plot as HPlot, PlotComposition};
-use hephaestus::scales::chrome::AxisSide;
 use hephaestus::shape::ShapeRegistry;
+use zygos::chrome::AxisSide;
 
 use super::projection::apply_projection;
 use super::scales::build_scale;

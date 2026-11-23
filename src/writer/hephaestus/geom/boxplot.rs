@@ -9,9 +9,9 @@
 //! layer's orientation (`BandAxes`): a transposed boxplot has its categories on
 //! `pos2` and its values in the `pos1` family.
 
-use hephaestus::color::rgb8;
 use hephaestus::plot::geom::{BuildableGeom, GeomBuilder, Raw};
 use hephaestus::plot::{Plot as HPlot, PointGeom, RectGeom, SegmentGeom};
+use zygos::color::rgb8;
 
 use super::super::channels::{column_to_channel, column_to_f64, column_to_strings};
 use super::super::scales::RangeKind;

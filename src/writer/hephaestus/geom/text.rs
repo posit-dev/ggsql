@@ -5,9 +5,9 @@
 //! scaled `fontsize` maps through its resolved scale like any other geom's — and
 //! the font face a layer holds constant reaches its legend key.
 
-use hephaestus::color::rgb8;
 use hephaestus::plot::geom::Raw;
 use hephaestus::plot::{Plot as HPlot, TextGeom};
+use zygos::color::rgb8;
 
 use super::super::channels::{
     aesthetic_column_name, column_to_channel, column_to_f64, column_to_strings, is_text_column,

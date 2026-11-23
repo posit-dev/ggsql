@@ -38,10 +38,10 @@ seven writers, `PlotViewer`, and this list ([`../mod.rs`](../mod.rs)):
 | --- | --- |
 | `Canvas` | ggsql's own |
 | `MAX_RASTER_DIMENSION` | ggsql's own |
-| `Color`, `rgba` | **the renderer's** (`hephaestus::color`) |
+| `Color`, `rgba` | **zygos's** (`zygos::color`) |
 | `PngCompression`, `TiffCompression` | **the renderer's** |
 
-The bottom two rows are why a hephaestus bump is a breaking change to ggsql
+The bottom row is why a hephaestus bump is a breaking change to ggsql
 even when the renderer's own API holds still: those types are in ggsql's public
 API by re-export, so a rename or an added variant upstream lands here. Anything
 new that has to go public should be ggsql's own type unless there is a reason
@@ -705,7 +705,7 @@ so one run inventories every gap at once. Implementation notes:
   not default. **Do not use a 1.87+ std API anywhere in the library** —
   `rust-version = "1.86"` keeps clippy flagging one as a lint, and that guard
   is why the declaration stays at 1.86 rather than following `parley`'s.
-- **The dependency is the published `0.4.1` crate** (`src/Cargo.toml`), pinned
+- **The dependency is the published `0.5.0` crate** (`src/Cargo.toml`), pinned
   with `default-features = false` so the GPU rasteriser arrives only with
   `raster`, and nothing here blocks publishing ggsql. hephaestus's own semver
   contract extends
@@ -722,10 +722,12 @@ Deliberately not done, in rough order of how likely they are to bite:
   doing it at scale. The SVG corpus is the natural fixture surface, being
   deterministic text where a 2 px panel shift reads as a hunk rather than as a
   changed hash; whether to commit it is still open.
-- **No axis label thinning.** ggsql's resolved breaks are drawn as-is, so a
-  narrow facet panel can crowd or overlap long labels — which is why
-  `free_continuous_scale` narrows the *global* breaks to a panel rather than
-  letting hephaestus invent per-panel ones.
+- **Axis label thinning is the renderer's.** hephaestus culls overlapping tick
+  labels itself (terminal labels survive, interior ones by recursive bisection),
+  so ggsql's resolved breaks are passed in as-is and the renderer decides which
+  fit. ggsql still owns which breaks *exist* — `free_continuous_scale` narrows
+  the *global* breaks to a panel rather than letting hephaestus invent
+  per-panel ones.
 - **No switch on rich-text chrome.** [`ggsql_theme`](wiring.rs) turns markdown on
   for the whole chrome cascade, so a title that wants a literal `*` has no way to
   ask for one. The text layer has `parse`; chrome waits for ggsql to grow a theme
