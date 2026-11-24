@@ -62,6 +62,19 @@ pub(super) fn setup_rows(
     let df = super::facet::drop_null_rows(facet, &df).map_err(GgsqlError::ValidationError)?;
     let keys = super::facet::setup_groups(facet, &df).map_err(GgsqlError::ValidationError)?;
     let (df, keys) = super::facet::reorder_rows(&df, keys).map_err(GgsqlError::ValidationError)?;
+    // A separated facet collapses to a single grouping level: renumber the
+    // keys to single ids (rows are group-contiguous after the reorder, so
+    // the id is the chunk index) and nothing downstream sees the multi-rank
+    // keys the sort needed.
+    let keys = if super::facet::collapses(facet) {
+        let mut ids = Vec::with_capacity(keys.len());
+        for (id, chunk) in keys.chunk_by(|a, b| a == b).enumerate() {
+            ids.extend(std::iter::repeat_n(vec![id], chunk.len()));
+        }
+        ids
+    } else {
+        keys
+    };
     let mut rows = Vec::with_capacity(keys.len());
     for key in keys {
         let first_in_group = rows.last().is_none_or(|row: &TableRow| row.group != key);

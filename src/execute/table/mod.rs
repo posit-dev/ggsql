@@ -90,8 +90,8 @@ pub fn resolve_table_with_reader(query: &str, reader: &dyn Reader) -> Result<Res
     let df = apply_formats(&df, &formats)?;
     // A separated facet collapses to one variable once its labels are
     // formatted; everything downstream sees a single-level facet.
-    let (df, columns, rows, facet) = collapse_group_columns(df, columns, rows, facet.as_ref())
-        .map_err(GgsqlError::ValidationError)?;
+    let (df, columns, facet) =
+        collapse_group_columns(df, columns, facet.as_ref()).map_err(GgsqlError::ValidationError)?;
     // Summary weaving is not wired into the pipeline yet.
     let layout = build_cells(&df, columns, rows, &spans, &titles, facet.as_ref(), &[])?;
 

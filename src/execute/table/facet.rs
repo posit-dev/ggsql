@@ -9,7 +9,7 @@ use crate::array_util::value_to_string;
 use crate::dataframe::into_array_ref;
 use crate::plot::facet::{distinct_levels, level_keys, order_levels, Facet, FacetLayout, LevelKey};
 use crate::plot::ParameterValue;
-use crate::table::{TableColumn, TableRow};
+use crate::table::TableColumn;
 use crate::{ColumnSection, DataFrame};
 
 /// Assign each `df` row its group key: one rank per facet variable (see
@@ -56,36 +56,37 @@ fn facet_columns<'a>(facet: &Facet, df: &'a DataFrame) -> Result<Vec<&'a ArrayRe
         .collect()
 }
 
+/// Whether the facet collapses: a separated facet with more than one
+/// variable joins its variables into a single grouping level.
+pub(super) fn collapses(facet: &Facet) -> bool {
+    matches!(
+        facet.properties.get("separator"),
+        Some(ParameterValue::String(_))
+    ) && facet.get_variables().len() > 1
+}
+
 /// Collapse a separated facet into one variable: join the facet variables'
 /// (formatted) values per row into a column named for the first variable,
-/// drop the originals, renumber the rows' group keys to single ids, and
-/// reduce the facet to that variable. Group stub columns in `columns` are
-/// replaced by one, keeping the first's label and properties. Passes
-/// everything through unchanged when the facet sets no `separator` or has a
-/// single variable.
-/// The table pieces `collapse_group_columns` rewrites for a separated facet.
-type Collapsed = (DataFrame, Vec<TableColumn>, Vec<TableRow>, Option<Facet>);
-
+/// drop the originals, and reduce the facet to that variable. Group stub
+/// columns in `columns` are replaced by one, keeping the first's label and
+/// properties. The rows' group keys are already single ids — `setup_rows`
+/// renumbers them at birth. Passes everything through unchanged unless
+/// [`collapses`] applies.
 pub(super) fn collapse_group_columns(
     df: DataFrame,
     mut columns: Vec<TableColumn>,
-    mut rows: Vec<TableRow>,
     facet: Option<&Facet>,
-) -> Result<Collapsed, String> {
-    let Some(facet) = facet else {
-        return Ok((df, columns, rows, None));
+) -> Result<(DataFrame, Vec<TableColumn>, Option<Facet>), String> {
+    let Some(facet) = facet.filter(|f| collapses(f)) else {
+        return Ok((df, columns, facet.cloned()));
     };
     let separator = match facet.properties.get("separator") {
         Some(ParameterValue::String(separator)) => separator.clone(),
-        _ => return Ok((df, columns, rows, Some(facet.clone()))),
+        _ => unreachable!("collapses gates on a separator"),
     };
 
-    // One variable has nothing to join.
-    let variables = facet.get_variables();
-    if variables.len() == 1 {
-        return Ok((df, columns, rows, Some(facet.clone())));
-    }
     // The joined column takes the first variable's name.
+    let variables = facet.get_variables();
     let name = variables[0].clone();
 
     let arrays: Vec<&ArrayRef> = variables
@@ -106,17 +107,6 @@ pub(super) fn collapse_group_columns(
         .and_then(|df| df.with_column(&name, into_array_ref(joined)))
         .map_err(|e| e.to_string())?;
 
-    // Single-id keys: rows are group-sorted, so the id is the chunk index.
-    let mut id = 0;
-    let mut previous: Option<Vec<usize>> = None;
-    for row in &mut rows {
-        if previous.as_ref().is_some_and(|key| *key != row.group) {
-            id += 1;
-        }
-        previous = Some(std::mem::take(&mut row.group));
-        row.group = vec![id];
-    }
-
     // Replace the group stub columns with one, at the first's position.
     if let Some(position) = columns.iter().position(|c| c.is_group_stub()) {
         let mut joined_column = columns[position].clone();
@@ -135,7 +125,7 @@ pub(super) fn collapse_group_columns(
         resolved: facet.resolved,
     };
 
-    Ok((df, columns, rows, Some(facet)))
+    Ok((df, columns, Some(facet)))
 }
 
 /// Rank one facet variable's rows: non-null levels in the scale-free facet
