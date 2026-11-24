@@ -4,13 +4,13 @@
 
 use std::collections::HashSet;
 
-use hephaestus::color::{rgb8, Color};
 use hephaestus::plot::chrome::legend::{Legend, LegendKeySpec};
 use hephaestus::plot::geom::{BuildableGeom, Geom, GeomBuilder, Raw};
 use hephaestus::plot::theme::{Element, Length, RectElement, Theme};
 use hephaestus::plot::Plot as HPlot;
-use hephaestus::scales::chrome::LegendSide;
-use hephaestus::scales::value::{DataColumn, Value as HValue};
+use zygos::chrome::LegendSide;
+use zygos::color::{rgb8, Color};
+use zygos::value::{DataColumn, Value as HValue};
 
 use super::channels::{
     aesthetic_column_name, build_group_keys, column_to_bool, column_to_channel, column_to_colors,

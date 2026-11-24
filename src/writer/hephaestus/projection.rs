@@ -6,7 +6,7 @@ use hephaestus::plot::chrome::axis::{Axis, AxisPlacement, PolarRing};
 use hephaestus::plot::projection::{CustomProjection, PolarProjection, Projection as HProj};
 use hephaestus::plot::AspectMode;
 use hephaestus::plot::Plot as HPlot;
-use hephaestus::scales::chrome::AxisSide;
+use zygos::chrome::AxisSide;
 
 use super::channels::{wkt_to_lines, wkt_to_outline};
 use super::facet::{Panel, PanelScales};

@@ -4,7 +4,7 @@
 //! within a group hephaestus connects rows in source order (ggsql pre-orders
 //! line by pos1, path keeps raw order, smooth emits the fitted curve).
 
-use hephaestus::color::rgb8;
+use zygos::color::rgb8;
 
 use super::super::scales::RangeKind;
 use super::super::wiring::{
