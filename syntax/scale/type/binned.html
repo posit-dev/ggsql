@@ -104,9 +104,9 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <link href="../../../site_libs/quarto-html/quarto-syntax-highlighting-c93cfd14599843f859c3cfde2d21ea7b.css" rel="stylesheet" class="quarto-color-scheme-extra" id="quarto-text-highlighting-styles">
 <script src="../../../site_libs/bootstrap/bootstrap.min.js"></script>
 <link href="../../../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
-<link href="../../../site_libs/bootstrap/bootstrap-0b0c8915fbd2cb21b8e60ef76089170f.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme" id="quarto-bootstrap" data-mode="light">
-<link href="../../../site_libs/bootstrap/bootstrap-dark-8e368a6d26ea46bf6f9c8ce46eabbabc.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme quarto-color-alternate" id="quarto-bootstrap" data-mode="light">
-<link href="../../../site_libs/bootstrap/bootstrap-0b0c8915fbd2cb21b8e60ef76089170f.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme-extra" id="quarto-bootstrap" data-mode="light">
+<link href="../../../site_libs/bootstrap/bootstrap-15dc5cb23607a9ebabff4ff78b67cedf.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme" id="quarto-bootstrap" data-mode="light">
+<link href="../../../site_libs/bootstrap/bootstrap-dark-2a862f6d285e624c28f472cc11ebbec2.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme quarto-color-alternate" id="quarto-bootstrap" data-mode="light">
+<link href="../../../site_libs/bootstrap/bootstrap-15dc5cb23607a9ebabff4ff78b67cedf.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme-extra" id="quarto-bootstrap" data-mode="light">
 <script src="../../../site_libs/quarto-contrib/iconify-3.0.0/iconify-icon.min.js"></script>
 <script src="../../../site_libs/quarto-contrib/glightbox/glightbox.min.js"></script>
 <link href="../../../site_libs/quarto-contrib/glightbox/glightbox.min.css" rel="stylesheet">
@@ -793,7 +793,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <h3 class="anchored" data-anchor-id="examples">Examples</h3>
 <section id="not-providing-input-range-will-ensure-even-bin-size" class="level4">
 <h4 class="anchored" data-anchor-id="not-providing-input-range-will-ensure-even-bin-size">Not providing input range will ensure even bin size</h4>
-<div id="25e5fe08" class="cell" data-execution_count="1">
+<div id="d772f009" class="cell" data-execution_count="1">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb1"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> body_mass <span class="kw">AS</span> <span class="at">x</span> <span class="kw">FROM</span> ggsql:penguins</span>
 <span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">bar</span></span>
 <span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="kw">SCALE</span> <span class="kw">BINNED</span> <span class="at">x</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
@@ -808,7 +808,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </section>
 <section id="setting-input-range-will-force-boundary-of-terminal-bins" class="level4">
 <h4 class="anchored" data-anchor-id="setting-input-range-will-force-boundary-of-terminal-bins">Setting input range will force boundary of terminal bins</h4>
-<div id="5efca9b3" class="cell" data-execution_count="2">
+<div id="722158d0" class="cell" data-execution_count="2">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb2"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> body_mass <span class="kw">AS</span> <span class="at">x</span> <span class="kw">FROM</span> ggsql:penguins</span>
 <span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">bar</span></span>
 <span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a><span class="kw">SCALE</span> <span class="kw">BINNED</span> <span class="at">x</span> <span class="kw">FROM</span> (<span class="dv">2700</span>, <span class="dv">6300</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
@@ -840,7 +840,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <h3 class="anchored" data-anchor-id="examples-1">Examples</h3>
 <section id="select-a-continuous-color-palette" class="level4">
 <h4 class="anchored" data-anchor-id="select-a-continuous-color-palette">Select a continuous color palette</h4>
-<div id="d2cb6d8a" class="cell" data-execution_count="3">
+<div id="dbe71f5f" class="cell" data-execution_count="3">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb3"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> bill_len <span class="kw">AS</span> <span class="at">x</span>, bill_dep <span class="kw">AS</span> <span class="at">y</span>, body_mass <span class="kw">AS</span> <span class="at">color</span> <span class="kw">FROM</span> ggsql:penguins</span>
 <span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">point</span></span>
 <span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a><span class="kw">SCALE</span> <span class="kw">BINNED</span> <span class="at">color</span> <span class="kw">TO</span> <span class="dt">viridis</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
@@ -881,18 +881,15 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <li><code>pretty =&gt; true</code>: Will use Wilkinsons Extended algorithm to attempt to find nice breaks in the given interval close to the number of breaks requested</li>
 <li><code>pretty =&gt; false</code>: Will produce the requested number of evenly spaced breaks within the scale range</li>
 </ul></li>
-<li><code>log</code>/<code>log2</code>/<code>ln</code>:
-<ul>
-<li><code>pretty =&gt; true</code>: Will use the 1-2-5 pattern and thin down to approximately the requested number of breaks</li>
-<li><code>pretty =&gt; false</code>: Breaks will be exclusively at the power of the base (e.g.&nbsp;1, 10, 100, 1000 for log10)</li>
-</ul></li>
-<li><code>exp10</code>/<code>exp2</code>/<code>exp</code>: Same logic as the log breaks but in the inverse direction</li>
-<li><code>sqrt</code>/<code>square</code>: Like <code>linear</code> but the range is first converted to sqrt space and the breaks are then converted back</li>
-<li><code>asinh</code>/<code>pseudo_log</code>/<code>pseudo_log2</code>/<code>pseudo_ln</code>: Like <code>log</code> but includes zero and negates the breaks for the negative part</li>
+<li><code>log</code>/<code>log2</code>/<code>ln</code>: Uses the 1-2-5 pattern on every power of the base (e.g.&nbsp;1, 2, 5, 10, 20, 50 for log10), adding 3 and 7 on narrow ranges when many breaks are requested and keeping only the powers on very wide ranges, where powers are skipped to stay near the requested number of breaks. Multipliers above the base are dropped, so <code>log2</code> breaks are powers of 2. The <code>pretty</code> setting has no effect</li>
+<li><code>exp10</code>/<code>exp2</code>/<code>exp</code>: Like <code>linear</code>, on the exponents</li>
+<li><code>sqrt</code>: Like <code>linear</code> but the range is first converted to sqrt space and the breaks are then converted back</li>
+<li><code>square</code>: Like <code>linear</code></li>
+<li><code>asinh</code>/<code>pseudo_log</code>/<code>pseudo_log2</code>/<code>pseudo_ln</code>: Like <code>log</code> (in base 10 for <code>asinh</code>, in their own base for the others) but includes zero and negates the breaks for the negative part</li>
 <li><code>integer</code>: Like <code>linear</code> except disallowing breaks at fractional parts</li>
 <li><code>date</code>/<code>datetime</code>/<code>time</code>:
 <ul>
-<li><code>breaks =&gt; &lt;interval&gt;</code>: If breaks are given as an interval (e.g.&nbsp;<code>week</code>, <code>30 seconds</code> or <code>5 years</code>) then the breaks will get that spacing aligned at the interval boundary (Jan 1 for years, etc). This ignores the <code>pretty</code> setting</li>
+<li><code>breaks =&gt; &lt;interval&gt;</code>: If breaks are given as an interval (e.g.&nbsp;<code>week</code>, <code>30 seconds</code> or <code>5 years</code>) then the breaks will get that spacing aligned to a calendar grid of that size (Jan 1 for years, Mondays for weeks, and e.g.&nbsp;January/April/July/October for <code>3 months</code> or years divisible by 5 for <code>5 years</code>). This ignores the <code>pretty</code> setting</li>
 <li><code>pretty =&gt; true</code>: An appropriate interval is chosen that approximates the requested number of breaks and then used as above</li>
 <li><code>pretty =&gt; false</code>: Linear spacing in integer space as close to the requested number of breaks</li>
 </ul></li>
@@ -911,7 +908,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <h3 class="anchored" data-anchor-id="examples-2">Examples</h3>
 <section id="turn-off-pretty-to-get-exact-bins-between-range" class="level4">
 <h4 class="anchored" data-anchor-id="turn-off-pretty-to-get-exact-bins-between-range">Turn off pretty to get exact bins between range</h4>
-<div id="0de341b4" class="cell" data-execution_count="4">
+<div id="928e687f" class="cell" data-execution_count="4">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb4"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> body_mass <span class="kw">AS</span> <span class="at">x</span> <span class="kw">FROM</span> ggsql:penguins</span>
 <span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">bar</span></span>
 <span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a><span class="kw">SCALE</span> <span class="kw">BINNED</span> <span class="at">x</span></span>
@@ -927,7 +924,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </section>
 <section id="use-a-date-transform-to-bin-on-months" class="level4">
 <h4 class="anchored" data-anchor-id="use-a-date-transform-to-bin-on-months">Use a date transform to bin on months</h4>
-<div id="96972215" class="cell" data-execution_count="5">
+<div id="7adbc08f" class="cell" data-execution_count="5">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb5"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> Date <span class="kw">AS</span> <span class="at">x</span>, Temp <span class="kw">AS</span> <span class="at">y</span> <span class="kw">FROM</span> ggsql:airquality</span>
 <span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">boxplot</span></span>
 <span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a><span class="kw">SCALE</span> <span class="kw">BINNED</span> <span class="at">x</span> <span class="kw">VIA</span> <span class="dt">date</span></span>
@@ -947,7 +944,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <h2 class="anchored" data-anchor-id="settings">Settings</h2>
 <p>The following settings are recognised by binned scales:</p>
 <ul>
-<li><code>expand</code> (only for <code>x</code>/<code>y</code>): Either a scalar number or 2-element array of numbers (values must be &gt;= 0). Sets the expansion of the scale to either side of the range. If a scalar it gives the multiplicative expansion. If an array the first element is a multiplication factor and the second element is an additive constant. Defaults to <code>0.05</code> (5 %). Expansion is only applied to values that are not explicitly given by the user, i.e.&nbsp;if setting the range as <code>SCALE x FROM (0, null)</code> expansion will only be applied to the upper range.</li>
+<li><code>expand</code> (only for <code>x</code>/<code>y</code>): Either a scalar number or 2-element array of numbers (values must be &gt;= 0). Sets the expansion of the scale to either side of the range. If a scalar it gives the multiplicative expansion. If an array the first element is a multiplication factor and the second element is an additive constant. Defaults to <code>0.05</code> (5 %). Expansion is only applied to values that are not explicitly given by the user, i.e.&nbsp;if setting the range as <code>SCALE x FROM (0, null)</code> expansion will only be applied to the upper range. Expansion is applied in the transformed space of the scale, so on a transformed scale both parts are measured in transformed units: on a <code>log</code> scale a factor of <code>0.05</code> pads by 5 % of the visible decades and an additive <code>1</code> pads by one decade.</li>
 <li><code>oob</code>: How should values outside of the scale input range be treated. One of <code>'censor'</code> (set to <code>null</code>), or <code>'squish'</code> (set to the nearest bin). Default is <code>'censor'</code>. When set to <code>'squish'</code> the terminal bin labels will be removed to reflect that they extend to -Inf and Inf.</li>
 <li><code>breaks</code>: Either a scalar (whole number &gt;= 1) as described in <a href="#breaks">the section on breaks</a>, or an array of values to place breaks at. Defaults to <code>5</code>.</li>
 <li><code>pretty</code>: A boolean indicating which algorithm to use for automatic calculation of breaks as described in <a href="#breaks">the section on breaks</a>. Defaults to <code>true</code>.</li>
@@ -958,7 +955,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <h3 class="anchored" data-anchor-id="examples-3">Examples</h3>
 <section id="use-oob-squish-to-add-data-outside-range-to-terminal-bins" class="level4">
 <h4 class="anchored" data-anchor-id="use-oob-squish-to-add-data-outside-range-to-terminal-bins">Use oob =&gt; ‘squish’ to add data outside range to terminal bins</h4>
-<div id="850688d6" class="cell" data-execution_count="6">
+<div id="ec14ceda" class="cell" data-execution_count="6">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb6"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> body_mass <span class="kw">AS</span> <span class="at">x</span> <span class="kw">FROM</span> ggsql:penguins</span>
 <span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">bar</span></span>
 <span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a><span class="kw">SCALE</span> <span class="kw">BINNED</span> <span class="at">x</span></span>
@@ -997,7 +994,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <h3 class="anchored" data-anchor-id="examples-4">Examples</h3>
 <section id="rename-a-select-break" class="level4">
 <h4 class="anchored" data-anchor-id="rename-a-select-break">Rename a select break</h4>
-<div id="30ac3ded" class="cell" data-execution_count="7">
+<div id="047804d4" class="cell" data-execution_count="7">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb7"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> bill_dep <span class="kw">AS</span> <span class="at">x</span> <span class="kw">FROM</span> ggsql:penguins</span>
 <span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">bar</span></span>
 <span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a><span class="kw">SCALE</span> <span class="kw">BINNED</span> <span class="at">x</span></span>
@@ -1013,7 +1010,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </section>
 <section id="adding-suffix-to-break-labels" class="level4">
 <h4 class="anchored" data-anchor-id="adding-suffix-to-break-labels">Adding suffix to break labels</h4>
-<div id="5e47f3cd" class="cell" data-execution_count="8">
+<div id="8807e582" class="cell" data-execution_count="8">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb8"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> bill_dep <span class="kw">AS</span> <span class="at">x</span> <span class="kw">FROM</span> ggsql:penguins</span>
 <span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">bar</span></span>
 <span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a><span class="kw">SCALE</span> <span class="kw">BINNED</span> <span class="at">x</span></span>
@@ -1029,7 +1026,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </section>
 <section id="using-a-formatter-to-control-number-formats" class="level4">
 <h4 class="anchored" data-anchor-id="using-a-formatter-to-control-number-formats">Using a formatter to control number formats</h4>
-<div id="04142cb7" class="cell" data-execution_count="9">
+<div id="1a5d9915" class="cell" data-execution_count="9">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb9"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="kw">VISUALISE</span> bill_dep <span class="kw">AS</span> <span class="at">x</span> <span class="kw">FROM</span> ggsql:penguins</span>
 <span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a><span class="kw">DRAW</span> <span class="dt">bar</span></span>
 <span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a><span class="kw">SCALE</span> <span class="kw">BINNED</span> <span class="at">x</span></span>

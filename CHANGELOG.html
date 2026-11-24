@@ -69,9 +69,9 @@ ul.task-list li input[type="checkbox"] {
 <link href="site_libs/quarto-html/quarto-syntax-highlighting-c93cfd14599843f859c3cfde2d21ea7b.css" rel="stylesheet" class="quarto-color-scheme-extra" id="quarto-text-highlighting-styles">
 <script src="site_libs/bootstrap/bootstrap.min.js"></script>
 <link href="site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
-<link href="site_libs/bootstrap/bootstrap-0b0c8915fbd2cb21b8e60ef76089170f.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme" id="quarto-bootstrap" data-mode="light">
-<link href="site_libs/bootstrap/bootstrap-dark-8e368a6d26ea46bf6f9c8ce46eabbabc.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme quarto-color-alternate" id="quarto-bootstrap" data-mode="light">
-<link href="site_libs/bootstrap/bootstrap-0b0c8915fbd2cb21b8e60ef76089170f.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme-extra" id="quarto-bootstrap" data-mode="light">
+<link href="site_libs/bootstrap/bootstrap-15dc5cb23607a9ebabff4ff78b67cedf.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme" id="quarto-bootstrap" data-mode="light">
+<link href="site_libs/bootstrap/bootstrap-dark-2a862f6d285e624c28f472cc11ebbec2.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme quarto-color-alternate" id="quarto-bootstrap" data-mode="light">
+<link href="site_libs/bootstrap/bootstrap-15dc5cb23607a9ebabff4ff78b67cedf.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme-extra" id="quarto-bootstrap" data-mode="light">
 <script src="site_libs/quarto-contrib/iconify-3.0.0/iconify-icon.min.js"></script>
 <script id="quarto-search-options" type="application/json">{
   "location": "navbar",
@@ -375,6 +375,31 @@ gradient teal.
 <li>The reader/dialect layer was refactored around a central dialect registry with per-database dialect implementations (#569). As part of this, some previously-public items changed: the <code>CacheBackend</code> trait moved to a test-support module, <code>CachingReader::new</code> is now test-only, and <code>Spec::layer_sql</code>/<code>Spec::stat_sql</code> were removed.</li>
 <li>Scale resolution now detects and converts temporal-unit mismatches and errors on unrepresentable ranges instead of producing silently wrong scales (#569).</li>
 <li><code>Plot.labels</code> field is no longer <code>Option&lt;Labels&gt;</code> but plain <code>Labels</code>.</li>
+<li>Scale internals now build on the <code>zygos</code> crate: numeric transform math, break/tick selection, color ramps, the named palette tables, shape/linetype lookups, and out-of-bounds policies live there and are delegated to. Break and tick selection comes from zygos wholesale, so tick positions and counts may differ from previous releases:
+<ul>
+<li>the default <code>breaks</code> count is 5 (was 7), which also changes the default number of bins on binned scales;</li>
+<li>pretty breaks use zygos’s Wilkinson Extended weights, favouring steps of 2 and ticks that stay within the data (e.g.&nbsp;0–100 gives 0, 20, …, 100); <code>square</code> and <code>exp*</code> scales use them too, in data space;</li>
+<li>log breaks follow the 1-2-5 pattern on every decade rather than being thinned to the requested count (3 and 7 join it over narrow spans when more breaks are asked for; very wide spans keep only powers); <code>pretty =&gt; false</code> no longer switches log scales to powers only;</li>
+<li><code>asinh</code>/<code>pseudo_log*</code> breaks reach closer to zero on each side, and <code>pseudo_log2</code>/<code>pseudo_ln</code> place them at powers of their own base;</li>
+<li>log-family minor breaks are the whole-number multiples between powers (2, 3, …, 9 for base 10) rather than even steps in log space; a <code>minor_breaks</code> count only switches them on or off;</li>
+<li>temporal breaks, automatic or from an interval, start from a calendar grid sized to the interval (e.g.&nbsp;“3 months” from Feb 15 → Jan, Apr, Jul), and <code>TIME</code> interval breaks step across minute/hour boundaries; automatic temporal minor breaks fall on the calendar sub-interval (quarters under years, weeks under months, …) instead of three evenly spaced per interval.</li>
+</ul></li>
+<li>The built-in SVG/PDF/HEP and raster writers moved to hephaestus 0.5.0. Consequences:
+<ul>
+<li>axis tick labels that would overlap are now culled (the outermost labels always survive), instead of being drawn on top of each other;</li>
+<li>dashed linetypes in those writers now measure dash lengths in multiples of the line width, as documented and as the Vega-Lite writer does — dashed lines render with visibly different (correct) proportions, and a dashed line whose width varies within a layer now keeps its pattern instead of falling back to a uniform stroke;</li>
+<li>log-scale breaks on exotic bases (e.g.&nbsp;<code>ln</code>, base 2) no longer collide, and a base-2 scale gets minor breaks at the geometric midpoint.</li>
+</ul></li>
+<li>Break labels are rendered by <code>zygos</code>’s label engine: the <code>RENAMING</code> clause (explicit renames, <code>NULL</code> suppressions, and the <code>* =&gt; '...'</code> template) is kept as a value-keyed <code>zygos::LabelSpec</code> on <code>Scale</code> and re-rendered against the current breaks on every read instead of being folded into a static string map at resolution time. Consequences:
+<ul>
+<li>shared <code>{}</code> decimal precision is derived from the un-renamed breaks only;</li>
+<li>negative numbers render with U+2212 MINUS SIGN everywhere;</li>
+<li><code>{:time}</code> and <code>{:num}</code> use zygos’s hand-rolled strftime/printf subsets (the <code>sprintf</code> dependency is gone); <code>%c %x %X %v</code> and the timezone tokens <code>%z %Z</code> are unsupported, as before;</li>
+<li>new template extensions: <code>{:num %S}</code> for SI-prefixed notation (<code>{:num %.2S}</code> → <code>1.2M</code>), the <code>!</code> flag for Unicode scientific notation (<code>{:num %!.2e}</code> → <code>1.23 × 10³</code>), and further placeholders (<code>{:abbr N}</code>, <code>{:bytes}</code>, <code>{:duration}</code>, <code>{:ordinal}</code>); placeholder keywords are now ASCII-case-insensitive;</li>
+<li>unquoted numeric RENAMING keys are typed (<code>RENAMING 10 =&gt; 'ten'</code> matches the string category <code>"10"</code>); quoted keys keep matching breaks by their text form as before.</li>
+</ul></li>
+<li><strong>Breaking (library API):</strong> <code>Scale::label_mapping</code> and <code>Scale::label_template</code> are replaced by a single <code>label_spec: zygos::LabelSpec</code> field; the folded string map is available on demand via the <code>Scale::label_mapping()</code> method, and <code>format::apply_label_template</code> is gone (<code>format::label_elements</code> takes its place).</li>
+<li><strong>Breaking (library API):</strong> the scale module’s public surface shrank with the move to <code>zygos</code>. Removed: the <code>plot::scale::shape</code> module including <code>shape_to_svg_path</code>; the ~85 named palette table constants in <code>plot::scale::palettes</code> (<code>GGSQL10</code>, <code>VIRIDIS</code>, … — the <code>get_*_palette</code> lookups remain); the hand-rolled break functions <code>wilkinson_extended</code>, <code>pretty_breaks</code>, <code>log_breaks</code>, <code>exp_pretty_breaks</code>, <code>minor_breaks_log</code>, <code>minor_breaks_sqrt</code>, <code>minor_breaks_symlog</code>, <code>trim_breaks</code>, <code>trim_temporal_breaks</code> and <code>derive_minor_interval</code> (their zygos counterparts are re-exported where ggsql still uses them); <code>colour::ColorSpace</code> is now a re-export of zygos’s, whose linear-RGB variant is named <code>Srgb</code> rather than <code>LinearRgb</code>.</li>
 <li>The CLI now always prints query warnings (e.g.&nbsp;extra <code>VISUALISE</code>/<code>TABULATE</code> statements being ignored) to stderr, not only with <code>-v</code>.</li>
 <li>Replaced <code>CLAUDE.md</code> files with <code>AGENTS.md</code> files.</li>
 </ul>
@@ -382,6 +407,7 @@ gradient teal.
 <section id="fixed" class="level3">
 <h3 class="anchored" data-anchor-id="fixed">Fixed</h3>
 <ul>
+<li><p>A scale whose transform has a restricted domain (e.g.&nbsp;<code>log</code>, <code>sqrt</code>) now infers its data range from in-domain values only, so non-positive data on a log scale no longer drags the lower limit to the transform’s minimum bound and produces an unreadable axis.</p></li>
 <li><p><code>SCALE DISCRETE</code> now accepts integer columns, matching the documented ability to force numeric data into a discrete scale. Integer columns mapped to grouping aesthetics (e.g.&nbsp;<code>fill</code> in <code>DRAW bar</code>) can now be declared discrete instead of being rejected with a validation error (#239).</p></li>
 <li><p>Mapped columns dropped by a stat transform (e.g.&nbsp;a non-discrete <code>fill</code> on <code>DRAW bar</code>) now produce a validation error naming the mapping, explaining the drop, and suggesting <code>SCALE DISCRETE</code> — in both the Vega-Lite writer and the renderer-backed writers, which previously failed with a generic “column does not exist” message or an internal error (#239).</p></li>
 <li><p>Free facet dimensions now resolve their domain, breaks, labels, and minor breaks per panel in core (<code>Scale::panels</code>, indexed by the canonical panel order shared by both writers). The Vega-Lite writer no longer pins the globally resolved break set as <code>axis.values</code> on a free dimension — which had left most panels showing a single tick — and the hephaestus writer consumes the core-resolved per-panel scales instead of deriving panel extents itself (#516).</p></li>
@@ -390,6 +416,7 @@ gradient teal.
 <li><p>Fixed a parser bug that interpreted comment characters inside string literals as initializing a comment (#555).</p></li>
 <li><p>Fixed a bug in stat_aggregate prevented transposed layers from properly aggregating in certain situations (#561)</p></li>
 <li><p>Fixed schema-less <code>validate()</code> rejecting spatial layers that omit an explicit <code>geometry</code> mapping, even though execution auto-detects the geometry column (#587)</p></li>
+<li><p>Log axes carry decade ticks again (#512). Position scales now expand their domain in transformed space (via zygos) rather than in data space, so the pad can no longer push a log or sqrt scale’s lower bound below zero and get clipped to the smallest positive float — a 1–100 <code>log</code> axis now spans roughly 0.79–126 instead of 5e-308–105. As a consequence the <code>expand</code> setting is measured in transformed units on transformed scales: the multiplier is a share of the transformed span, and the additive part is in transformed units too (<code>add = 0.1</code> on a <code>log</code> scale is a tenth of a decade). A zero-width range pads as if it spanned one transformed unit (previously its own absolute value). Where a pad would land outside a transform’s image (the lower end of a <code>sqrt</code>, <code>square</code> or <code>exp*</code> scale near zero), that end is left unpadded rather than folding back inside the data range. Identity scales are unaffected.</p></li>
 </ul>
 </section>
 </section>

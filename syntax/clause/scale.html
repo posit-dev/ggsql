@@ -104,9 +104,9 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <link href="../../site_libs/quarto-html/quarto-syntax-highlighting-c93cfd14599843f859c3cfde2d21ea7b.css" rel="stylesheet" class="quarto-color-scheme-extra" id="quarto-text-highlighting-styles">
 <script src="../../site_libs/bootstrap/bootstrap.min.js"></script>
 <link href="../../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
-<link href="../../site_libs/bootstrap/bootstrap-0b0c8915fbd2cb21b8e60ef76089170f.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme" id="quarto-bootstrap" data-mode="light">
-<link href="../../site_libs/bootstrap/bootstrap-dark-8e368a6d26ea46bf6f9c8ce46eabbabc.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme quarto-color-alternate" id="quarto-bootstrap" data-mode="light">
-<link href="../../site_libs/bootstrap/bootstrap-0b0c8915fbd2cb21b8e60ef76089170f.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme-extra" id="quarto-bootstrap" data-mode="light">
+<link href="../../site_libs/bootstrap/bootstrap-15dc5cb23607a9ebabff4ff78b67cedf.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme" id="quarto-bootstrap" data-mode="light">
+<link href="../../site_libs/bootstrap/bootstrap-dark-2a862f6d285e624c28f472cc11ebbec2.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme quarto-color-alternate" id="quarto-bootstrap" data-mode="light">
+<link href="../../site_libs/bootstrap/bootstrap-15dc5cb23607a9ebabff4ff78b67cedf.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme-extra" id="quarto-bootstrap" data-mode="light">
 <script src="../../site_libs/quarto-contrib/iconify-3.0.0/iconify-icon.min.js"></script>
 <script id="quarto-search-options" type="application/json">{
   "location": "navbar",
@@ -814,8 +814,8 @@ gradient teal.
 <li><code>{:Title}</code> will title-case the value (make the first letter in each work upper case) before insertion, e.g.&nbsp;<code>* =&gt; '{:Title} species'</code> will become “Adelie species” for the “adelie” break.</li>
 <li><code>{:UPPER}</code> will make the value upper-case, e.g.&nbsp;<code>* =&gt; '{:UPPER} species'</code> will become “ADELIE species” for the “adelie” break.</li>
 <li><code>{:lower}</code> works much like <code>{:UPPER}</code> but changes the value to lower-case instead.</li>
-<li><code>{:time ...}</code> will format a date/datetime/time value according to the format defined afterwards. The formatting follows strftime format using the Rust chrono library. You can see an overview of the supported syntax at the <a href="https://docs.rs/chrono/latest/chrono/format/strftime/index.html">chrono docs</a>. The basic usage is <code>* =&gt; '{:time %B %Y}</code> which would format a break at 2025-07-04 as “July 2025”.</li>
-<li><code>{:num ...}</code> will format a numeric according to the format defined afterwards. The format follows the printf format using the Rust sprintf library. The syntax is <code>%[flags][width][.precision]type</code> with the following meaning:
+<li><code>{:time ...}</code> will format a date/datetime/time value according to the format defined afterwards. The formatting follows a strftime subset: <code>%Y %y %m %d %e %H %I %M %S %p %P %b %B %h %a %A %j %s %t %n %u %w %U %W %V %G %%</code>, the composites <code>%F %T %R %D %r</code>, fractional seconds (<code>%f</code>, <code>%.f</code>, <code>%.3f</code>, <code>%.6f</code>, <code>%.9f</code>), and the <code>%-</code> / <code>%_</code> / <code>%0</code> padding modifiers (<code>%V</code>/<code>%G</code> are ISO 8601 week and week-year). Locale composites (<code>%c %x %X %v</code>) and timezone tokens (<code>%z %Z</code>) are not supported. The basic usage is <code>* =&gt; '{:time %B %Y}</code> which would format a break at 2025-07-04 as “July 2025”.</li>
+<li><code>{:num ...}</code> will format a numeric according to the format defined afterwards. The format follows a printf subset. The syntax is <code>%[flags][width][.precision]type</code> with the following meaning:
 <ul>
 <li><code>flags</code>: One or more modifiers:
 <ul>
@@ -824,6 +824,8 @@ gradient teal.
 <li><code></code>: (space) Space before positive numbers</li>
 <li><code>0</code>: Zero-pad</li>
 <li><code>#</code>: Alternate form (<code>0x</code> prefix for hex, etc)</li>
+<li><code>'</code>: Thousands separator (<code>,</code> is accepted as an alias), e.g.&nbsp;<code>{:num %',.2f}</code> → <code>1,234.50</code></li>
+<li><code>!</code>: Unicode scientific notation on <code>e</code>/<code>E</code>/<code>g</code>/<code>G</code>, e.g.&nbsp;<code>{:num %!.2e}</code> → <code>1.23 × 10³</code></li>
 </ul></li>
 <li><code>width</code>: The minimum width of characters to render. Depending on the <code>flags</code> the string will be padded to be at least this width</li>
 <li><code>precision</code>: The maximum precision of the number. For <code>%g</code>/<code>%G</code> it is the total number of digits whereas for the rest it is the number of digits to the right of the decimal point</li>
@@ -836,9 +838,16 @@ gradient teal.
 <li><code>g</code>/<code>G</code>: Shortest form of <code>e</code> and <code>f</code></li>
 <li><code>o</code>: Unsigned octal</li>
 <li><code>x</code>/<code>X</code>: Unsigned hexadecimal</li>
+<li><code>s</code>: Stringifies the number</li>
+<li><code>S</code>: SI-prefixed notation with precision as significant digits, e.g.&nbsp;<code>{:num %.2S}</code> → <code>1.2M</code></li>
 </ul></li>
 </ul></li>
+<li><code>{:abbr N}</code> will truncate the value to <code>N</code> characters with an ellipsis.</li>
+<li><code>{:bytes}</code> will format a number as a base-1024 size (e.g.&nbsp;<code>1.5 KiB</code>), with an optional significant-digit count (<code>{:bytes 2}</code>).</li>
+<li><code>{:duration}</code> will format a number as a composite span (e.g.&nbsp;<code>1h 30m</code>), read in seconds unless a unit is given (<code>{:duration ms}</code>; one of <code>ns</code>, <code>us</code>, <code>ms</code>, <code>s</code>, <code>m</code>, <code>h</code>, <code>d</code>).</li>
+<li><code>{:ordinal}</code> will format a number with an ordinal suffix (<code>1st</code>, <code>2nd</code>, <code>3rd</code>, …).</li>
 </ul>
+<p>Formatter keywords are case-insensitive (<code>{:NUM}</code>, <code>{:upper}</code>, <code>{:TITLE}</code> all work); the <code>{:time}</code>/<code>{:num}</code> format payloads stay case-sensitive. Negative numbers render with a proper minus sign (−) throughout.</p>
 
 
 </section>
