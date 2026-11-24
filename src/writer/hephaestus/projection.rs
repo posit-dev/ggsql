@@ -6,7 +6,7 @@ use hephaestus::plot::chrome::axis::{Axis, AxisPlacement, PolarRing};
 use hephaestus::plot::projection::{CustomProjection, PolarProjection, Projection as HProj};
 use hephaestus::plot::AspectMode;
 use hephaestus::plot::Plot as HPlot;
-use hephaestus::scales::chrome::AxisSide;
+use zygos::chrome::AxisSide;
 
 use super::channels::{wkt_to_lines, wkt_to_outline};
 use super::facet::{Panel, PanelScales};
@@ -35,7 +35,7 @@ fn apply_proj_cartesian(
     ps: &PanelScales,
 ) -> HPlot {
     if let Some(proj) = proj {
-        if let Some(ParameterValue::Boolean(false)) = proj.properties.get("clip") {
+        if ParameterValue::is_false(proj.properties.get("clip")) {
             plot = plot.clip(false);
         }
         // The two conventions are inverses: ggsql's `ratio` is ggplot2's
@@ -114,7 +114,7 @@ pub fn composition_axis_titles(spec: &Plot) -> Vec<(AxisSide, String)> {
 
 fn apply_proj_polar(mut plot: HPlot, proj: &Projection, spec: &Plot, ps: &PanelScales) -> HPlot {
     plot.clear_axes();
-    if let Some(ParameterValue::Boolean(false)) = proj.properties.get("clip") {
+    if ParameterValue::is_false(proj.properties.get("clip")) {
         plot = plot.clip(false);
     }
     // Sweep angles in degrees, clockwise from 12 o'clock (ggplot2 / Vega-Lite
@@ -128,13 +128,10 @@ fn apply_proj_polar(mut plot: HPlot, proj: &Projection, spec: &Plot, ps: &PanelS
     // instead of arcing between them, and `theta_break_fracs` at the band
     // centres `(i + 0.5) / N`, which is exactly where `Scale::map` puts a
     // discrete scale's categories, so spokes, grid polygons and data line up.
-    let categories = matches!(
-        proj.properties.get("radar"),
-        Some(ParameterValue::Boolean(true))
-    )
-    .then(|| spec.find_scale("pos2").and_then(|s| s.input_range.as_ref()))
-    .flatten()
-    .map(|range| range.len());
+    let categories = ParameterValue::is_true(proj.properties.get("radar"))
+        .then(|| spec.find_scale("pos2").and_then(|s| s.input_range.as_ref()))
+        .flatten()
+        .map(|range| range.len());
     let base = match categories {
         Some(n) => PolarProjection::radar(n),
         None => PolarProjection::full_circle(),
@@ -209,10 +206,7 @@ fn apply_proj_map(mut plot: HPlot, proj: &Projection) -> HPlot {
         // `clip` applies to every coord kind, as it does in the Vega-Lite writer
         // (`apply_clip_to_layers`): the boundary is still the drawing surface
         // when clipping is off, marks outside it just aren't cut away.
-        let clip = !matches!(
-            proj.properties.get("clip"),
-            Some(ParameterValue::Boolean(false))
-        );
+        let clip = !ParameterValue::is_false(proj.properties.get("clip"));
         plot = plot.projection(HProj::Custom(custom)).clip(clip);
     }
     plot

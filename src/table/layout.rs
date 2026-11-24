@@ -576,8 +576,7 @@ mod tests {
     #[test]
     fn discretise_hjust_folds_hjust_into_a_class() {
         let discretised = |n: f64| {
-            let mut properties = Parameters::new();
-            properties.insert("hjust".to_string(), ParameterValue::Number(n));
+            let properties = crate::params! { "hjust" => ParameterValue::Number(n) };
             TableCell::new(TableCellKind::Body, 0, 0, 0, 0, String::new())
                 .with_properties(properties)
                 .discretise_hjust()
@@ -592,8 +591,7 @@ mod tests {
 
         // The keyword spellings classify identically to their numbers.
         let discretised_str = |s: &str| {
-            let mut properties = Parameters::new();
-            properties.insert("hjust".to_string(), ParameterValue::String(s.to_string()));
+            let properties = crate::params! { "hjust" => ParameterValue::String(s.to_string()) };
             TableCell::new(TableCellKind::Body, 0, 0, 0, 0, String::new())
                 .with_properties(properties)
                 .discretise_hjust()

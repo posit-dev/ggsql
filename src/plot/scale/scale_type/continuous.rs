@@ -165,7 +165,7 @@ impl ScaleTypeTrait for Continuous {
                 Ok(Some(
                     palette
                         .iter()
-                        .map(|col: &&str| ArrayElement::String(col.to_string()))
+                        .map(|col: &String| ArrayElement::String(col.clone()))
                         .collect(),
                 ))
             }
@@ -221,10 +221,7 @@ impl ScaleTypeTrait for Continuous {
         let oob = scale
             .properties
             .get("oob")
-            .and_then(|p| match p {
-                ParameterValue::String(s) => Some(s.as_str()),
-                _ => None,
-            })
+            .and_then(ParameterValue::as_str)
             .unwrap_or(super::default_oob(&scale.aesthetic));
 
         match oob {
@@ -265,10 +262,7 @@ mod tests {
         let mut scale = Scale::new("y");
         scale.input_range = Some(vec![ArrayElement::Number(0.0), ArrayElement::Number(100.0)]);
         scale.explicit_input_range = true;
-        scale.properties.insert(
-            "oob".to_string(),
-            ParameterValue::String("censor".to_string()),
-        );
+        scale.properties = crate::params! { "oob" => "censor" };
 
         let sql =
             continuous.pre_stat_transform_sql("value", &DataType::Float64, &scale, &AnsiDialect);
@@ -288,10 +282,7 @@ mod tests {
         let mut scale = Scale::new("y");
         scale.input_range = Some(vec![ArrayElement::Number(0.0), ArrayElement::Number(100.0)]);
         scale.explicit_input_range = true;
-        scale.properties.insert(
-            "oob".to_string(),
-            ParameterValue::String("squish".to_string()),
-        );
+        scale.properties = crate::params! { "oob" => "squish" };
 
         let sql =
             continuous.pre_stat_transform_sql("value", &DataType::Float64, &scale, &AnsiDialect);
@@ -308,10 +299,7 @@ mod tests {
         let mut scale = Scale::new("x"); // position aesthetic defaults to keep
         scale.input_range = Some(vec![ArrayElement::Number(0.0), ArrayElement::Number(100.0)]);
         scale.explicit_input_range = true;
-        scale.properties.insert(
-            "oob".to_string(),
-            ParameterValue::String("keep".to_string()),
-        );
+        scale.properties = crate::params! { "oob" => "keep" };
 
         let sql =
             continuous.pre_stat_transform_sql("value", &DataType::Float64, &scale, &AnsiDialect);

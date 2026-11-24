@@ -735,8 +735,7 @@ mod render_tests {
         // Declaration content is inline_style's tests' job — this just checks
         // render_cell routes `hjust` through it as a `style="..."` attribute.
         let mut c = cell(TableCellKind::Body, 0, 0, 0, 0);
-        c.properties
-            .insert("hjust".to_string(), ParameterValue::Number(1.0));
+        c.properties = crate::params! { "hjust" => 1.0 };
         let html = render_cell(&c, CssMode::Inline);
         assert!(html.starts_with("<td style=\"text-align: right;"));
         assert!(html.ends_with("\"></td>"));
@@ -745,8 +744,7 @@ mod render_tests {
     #[test]
     fn render_cell_emits_classes_in_class_mode() {
         let mut body = cell(TableCellKind::Body, 0, 0, 0, 0).with_classes(vec![TableClass::Row]);
-        body.properties
-            .insert("hjust".to_string(), ParameterValue::Number(1.0));
+        body.properties = crate::params! { "hjust" => 1.0 };
         assert_eq!(
             render_cell(&body, CssMode::Class),
             "<td class=\"ggsql_row ggsql_right\"></td>"
@@ -829,11 +827,7 @@ mod render_tests {
 
     #[test]
     fn column_style_reads_a_string_width_as_a_css_width() {
-        let mut properties = Parameters::new();
-        properties.insert(
-            "width".to_string(),
-            ParameterValue::String("20%".to_string()),
-        );
+        let properties = crate::params! { "width" => "20%" };
         assert_eq!(column_style(&properties), Some("width: 20%".to_string()));
 
         assert_eq!(column_style(&Parameters::new()), None);
@@ -861,11 +855,7 @@ mod render_tests {
 
     #[test]
     fn render_colgroup_emits_a_bare_col_for_a_column_with_no_width() {
-        let mut widened = Parameters::new();
-        widened.insert(
-            "width".to_string(),
-            ParameterValue::String("20%".to_string()),
-        );
+        let widened = crate::params! { "width" => "20%" };
         let columns = vec![column(widened), column(Parameters::new())];
 
         assert_eq!(

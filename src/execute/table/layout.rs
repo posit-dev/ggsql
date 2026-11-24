@@ -407,8 +407,7 @@ mod tests {
                 wildcard: false,
                 target: Some(ColumnSection::Stub),
                 settings: Parameters::new(),
-                value_mapping: None,
-                value_template: None,
+                renaming: zygos::LabelSpec::new(),
             },
         )]);
 
@@ -662,16 +661,15 @@ mod tests {
         }
         .unwrap();
         let mut table = Table::new();
+        let mut renaming = zygos::LabelSpec::new();
+        renaming.rename(zygos::Value::String("0".into()), "-");
+        renaming.set_template("${:num %.2f}");
         table.formats = vec![crate::Format {
             columns: vec!["price".to_string()],
             wildcard: false,
             target: None,
             settings: Parameters::new(),
-            value_mapping: Some(std::collections::HashMap::from([(
-                "0".to_string(),
-                Some("-".to_string()),
-            )])),
-            value_template: Some("${:num %.2f}".to_string()),
+            renaming,
         }];
 
         let cells = resolve_cells(&frame, &table).unwrap();
@@ -705,18 +703,9 @@ mod tests {
                 .get("hjust")
                 .cloned()
         };
-        assert_eq!(
-            hjust(0, TableCellKind::ColumnLabel),
-            Some(ParameterValue::Number(1.0))
-        );
-        assert_eq!(
-            hjust(0, TableCellKind::Body),
-            Some(ParameterValue::Number(1.0))
-        );
-        assert_eq!(
-            hjust(1, TableCellKind::Body),
-            Some(ParameterValue::Number(0.0))
-        );
+        assert_eq!(hjust(0, TableCellKind::ColumnLabel), Some(1.0.into()));
+        assert_eq!(hjust(0, TableCellKind::Body), Some(1.0.into()));
+        assert_eq!(hjust(1, TableCellKind::Body), Some(0.0.into()));
     }
 
     #[test]
@@ -764,7 +753,7 @@ mod tests {
         let mut table = Table::new();
         table.spans = vec![
             spanner(&["a", "b"]),
-            spanner_with_setting(&["b", "c"], "level", ParameterValue::Number(1.0)),
+            spanner_with_setting(&["b", "c"], "level", 1.0.into()),
         ];
 
         assert!(resolve_cells(&frame, &table).is_err());

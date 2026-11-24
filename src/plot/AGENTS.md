@@ -7,7 +7,7 @@ For ggsql language semantics, see [`/doc/syntax/`](../../doc/syntax/). This file
 ## Top-level types
 
 Defined in `main.rs` (the `Plot` struct) and `types.rs` (input/value types). All are re-exported through `mod.rs`.
-The `SETTING`-parameter machinery (`ParameterValue`, `Parameters`, `ArrayElement`, the constraint types, `validate_parameter`) lives one level up in [`../params.rs`](../params.rs), shared with `table/`; `types.rs` re-exports it, so `plot::` paths keep working.
+The `SETTING`-parameter machinery (`ParameterValue`, `Parameters`, `ArrayElement`, the constraint types, `ParamDefinition::validate`) lives one level up in [`../params.rs`](../params.rs), shared with `table/`; `types.rs` re-exports it, so `plot::` paths keep working.
 `Labels` lives in [`../labels.rs`](../labels.rs), likewise shared with `table/` and re-exported from `main.rs`.
 
 | Type | Where | Role |
@@ -58,10 +58,12 @@ plot/
 
 `Scale` in `types.rs`, the kind enum + traits in `scale_type/`, the transformation logic in `transform/`. Other top-level files in `scale/`:
 
-- `breaks.rs` — break/tick computation for axes.
-- `colour.rs` — colour aesthetic helpers, gradient interpolation.
-- `linetype.rs`, `shape.rs` — categorical aesthetic mappings.
-- `palettes.rs` — built-in colour palettes (large file, mostly data tables).
+- `breaks.rs` — break/tick computation for axes. The algorithms live in the `zygos` crate; ggsql keeps only what zygos lacks: a few minor-break helpers, typed range filtering, and the temporal glue (`parse_temporal_interval`, `calendar_interval_breaks`). Details sit with the functions themselves.
+- `colour.rs` — colour aesthetic helpers; interpolation delegates to `zygos::color`.
+- `linetype.rs` — stroke-dash conversion over `zygos::patterns::linetype`.
+- `palettes.rs` — adapts `zygos::palettes` (the tables live there) to ggsql's string vocabulary (hex colors, hex linetype patterns), plus the `ArrayElement`-typed `lookup_palette`. Shape-name → SVG-path conversion is not in `scale/` at all: it's a Vega-Lite concern and lives in `writer/vegalite/shape.rs` over `zygos::patterns::shape`.
+
+OOB (out-of-bounds) policies use `zygos::OobPolicy`; the `OOB_*` string constants are the user-facing vocabulary in the SCALE clause.
 
 Scale type / transform docs: [`/doc/syntax/scale/type/`](../../doc/syntax/scale/type/) and [`/doc/syntax/scale/aesthetic/`](../../doc/syntax/scale/aesthetic/).
 

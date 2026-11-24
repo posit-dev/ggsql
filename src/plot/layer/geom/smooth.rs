@@ -109,7 +109,7 @@ impl GeomTrait for Smooth {
             "nw" | "nadaraya-watson" => {
                 // Smooth geom: hardcode tails=0.0 (trim exactly to data range, no extrapolation)
                 let mut params = parameters.clone();
-                params.insert("tails".to_string(), ParameterValue::Number(0.0));
+                params.insert("tails".to_string(), 0.0.into());
 
                 super::density::stat_density(
                     query,

@@ -3,9 +3,10 @@
 //! This module handles building Vega-Lite encoding channels from ggsql aesthetic mappings,
 //! including type inference, scale properties, and title handling.
 
+use super::shape::shape_to_svg_path;
 use crate::array_util::as_str;
 use crate::plot::aesthetic::{is_position_aesthetic, AestheticContext};
-use crate::plot::scale::{linetype_to_stroke_dash, shape_to_svg_path, ScaleTypeKind};
+use crate::plot::scale::{linetype_to_stroke_dash, ScaleTypeKind};
 use crate::plot::{ParameterValue, Scale};
 use crate::{AestheticValue, DataFrame, GgsqlError, Plot, Result};
 use arrow::array::Array;
@@ -522,10 +523,7 @@ fn build_scale_properties(
     // instead. A user `SETTING reverse => true` composes on top of whichever
     // default applies, which for the free case means the two cancel.
     let bottom_up_default = skip_domain && ctx.aesthetic == "pos2" && is_categorical(scale);
-    let user_reverse = matches!(
-        scale.properties.get("reverse"),
-        Some(ParameterValue::Boolean(true))
-    );
+    let user_reverse = ParameterValue::is_true(scale.properties.get("reverse"));
     if user_reverse != bottom_up_default {
         scale_obj.insert("reverse".to_string(), json!(true));
     }
@@ -622,9 +620,9 @@ fn apply_reverse_legend(encoding: &mut Value, scale: &crate::plot::Scale, aesthe
     use crate::plot::ParameterValue;
 
     // Only process if reverse is true
-    let Some(ParameterValue::Boolean(true)) = scale.properties.get("reverse") else {
+    if !ParameterValue::is_true(scale.properties.get("reverse")) {
         return;
-    };
+    }
 
     // Only for discrete/ordinal scales
     let Some(ref scale_type) = scale.scale_type else {
@@ -675,18 +673,15 @@ fn apply_breaks_to_encoding(
 
     if is_position_aesthetic(aesthetic) {
         // For position aesthetics (axes), filter out suppressed terminal breaks
-        let axis_values: Vec<Value> = if let Some(ref label_mapping) = scale.label_mapping {
-            breaks
-                .iter()
-                .filter(|e| {
-                    let key = e.to_key_string();
-                    !matches!(label_mapping.get(&key), Some(None))
-                })
-                .map(|e| e.to_json())
-                .collect()
-        } else {
-            all_values
-        };
+        let label_mapping = scale.label_mapping();
+        let axis_values: Vec<Value> = breaks
+            .iter()
+            .filter(|e| {
+                let key = e.to_key_string();
+                !matches!(label_mapping.get(&key), Some(None))
+            })
+            .map(|e| e.to_json())
+            .collect();
 
         insert_axis_property(encoding, "values", json!(axis_values));
     } else {
@@ -719,9 +714,7 @@ fn apply_label_mapping_to_encoding(
     use crate::plot::scale::TransformKind;
     use crate::plot::ParameterValue;
 
-    let Some(ref label_mapping) = scale.label_mapping else {
-        return;
-    };
+    let label_mapping = scale.label_mapping();
     if label_mapping.is_empty() {
         return;
     }
@@ -750,7 +743,7 @@ fn apply_label_mapping_to_encoding(
     let filtered_mapping = if is_symbol {
         build_symbol_legend_label_mapping(scale)
     } else {
-        label_mapping.clone()
+        label_mapping
     };
 
     // Gradient legends use null for the first terminal's label
@@ -1319,7 +1312,14 @@ mod tests {
         scale
             .properties
             .insert("breaks".to_string(), ParameterValue::Array(breaks));
-        scale.label_mapping = Some(label_mapping);
+        let mut spec = zygos::LabelSpec::new();
+        for (k, v) in label_mapping {
+            match v {
+                Some(label) => spec.rename(zygos::Value::String(k.into()), label),
+                None => spec.suppress(zygos::Value::String(k.into())),
+            };
+        }
+        scale.label_spec = spec;
         let symbol_mapping = build_symbol_legend_label_mapping(&scale);
 
         // The resulting mapping uses VL's range-style label strings as keys
@@ -1337,7 +1337,7 @@ mod tests {
 
     #[test]
     fn test_literal_shape_converts_to_svg_path() {
-        let lit = ParameterValue::String("square".to_string());
+        let lit = "square".into();
         let result = build_literal_encoding("shape", &lit).unwrap();
         let val = &result["value"];
         assert!(val.is_string(), "expected SVG path string, got: {val}");
@@ -1350,7 +1350,7 @@ mod tests {
 
     #[test]
     fn test_literal_shape_unknown_passes_through() {
-        let lit = ParameterValue::String("nonexistent".to_string());
+        let lit = "nonexistent".into();
         let result = build_literal_encoding("shape", &lit).unwrap();
         assert_eq!(result, json!({"value": "nonexistent"}));
     }
@@ -1377,8 +1377,7 @@ mod tests {
                 explicit_transform: false,
                 properties: Parameters::new(),
                 resolved: false,
-                label_mapping: None,
-                label_template: "{}".to_string(),
+                label_spec: zygos::LabelSpec::new(),
                 panels: None,
             }
         }

@@ -25,8 +25,7 @@ use std::collections::HashMap;
 
 use crate::labels::Labels;
 use crate::params::{
-    validate_parameter, DefaultParamValue, NumberConstraint, ParamConstraint, ParamDefinition,
-    Parameters,
+    DefaultParamValue, NumberConstraint, ParamConstraint, ParamDefinition, Parameters,
 };
 use crate::plot::facet::Facet;
 use crate::DataSource;
@@ -122,7 +121,7 @@ impl Table {
     /// to catch a duplicate id without depending on `execute`.
     pub fn resolve_spanner_ids(&self) -> Result<Vec<Spanner>, String> {
         let mut resolved: Vec<Spanner> = Vec::with_capacity(self.spans.len());
-        let mut ids: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+        let mut ids: HashMap<String, usize> = HashMap::new();
 
         for span in &self.spans {
             // Dedup after id expansion: a repeated column or an id naming
@@ -193,19 +192,14 @@ impl Table {
     }
 
     /// Fully resolve this table's spanners for execution: settings
-    /// validated, `OVER` ids folded, feature boundaries checked, columns
-    /// checked against the real schema, and each `label` overlaid with any
-    /// `LABEL <id> => ...` entry.
+    /// validated and defaults filled, `OVER` ids folded, feature boundaries
+    /// checked, columns checked against the real schema, and each `label`
+    /// overlaid with any `LABEL <id> => ...` entry.
     pub fn resolve_spanners(
         &self,
         labels: &Labels,
         column_names: Option<&[String]>,
     ) -> Result<Vec<Spanner>, String> {
-        for (idx, spanner) in self.spans.iter().enumerate() {
-            spanner
-                .validate_settings()
-                .map_err(|e| format!("SPAN {}: {}", idx + 1, e))?;
-        }
         let spans = self.resolve_spanner_ids()?;
         self.validate_boundaries(&spans)?;
         // None (validate()'s case) skips this: no real schema to check.
@@ -215,13 +209,17 @@ impl Table {
             }
         }
 
-        Ok(spans
+        spans
             .into_iter()
-            .map(|mut span| {
+            .enumerate()
+            .map(|(idx, mut span)| {
+                span.settings = span
+                    .resolve_settings()
+                    .map_err(|e| format!("SPAN {}: {}", idx + 1, e))?;
                 span.apply_labels(labels);
-                span
+                Ok(span)
             })
-            .collect())
+            .collect()
     }
 }
 
@@ -286,18 +284,14 @@ pub struct Format {
     pub target: Option<ColumnSection>,
     /// `SETTING` parameters for this FORMAT (e.g. `hjust => 'right'`).
     pub settings: Parameters,
-    /// Value mappings for custom cell display (`RENAMING` clause). Maps a raw
-    /// cell value to its display text; `None` suppresses the cell's text.
-    /// Same shape as `Scale::label_mapping` — named `value_mapping` rather
-    /// than `label_mapping` here because `Table::labels` already uses
-    /// "label" for column headers, a different concept from a cell's value.
-    #[serde(default)]
-    pub value_mapping: Option<HashMap<String, Option<String>>>,
-    /// Template for generating display text from cell values (e.g.
-    /// `"{:num %.2f}"`), applied to values with no specific `value_mapping`
-    /// entry. `None` passes values through unchanged (equivalent to `"{}"`).
-    #[serde(default)]
-    pub value_template: Option<String>,
+    /// Cell display text from the `RENAMING` clause: value-keyed renames
+    /// and suppressions plus the wildcard template, rendered per cell by
+    /// [`crate::format::resolve_column_values`]. Same shape as
+    /// `Scale::label_spec` — named `renaming` here because `Table::labels`
+    /// already uses "label" for column headers, a different concept from a
+    /// cell's value.
+    #[serde(default, with = "crate::format::label_spec_serde")]
+    pub renaming: zygos::LabelSpec,
 }
 
 /// `SETTING` parameters `FORMAT` accepts.
@@ -325,47 +319,35 @@ const FORMAT_PARAMS: &[ParamDefinition] = &[
 ];
 
 impl Format {
-    /// Merge `other` into `self`: `other`'s settings and value mappings
-    /// override per-key, and its target and template replace `self`'s when
-    /// set.
+    /// Merge `other` into `self`: `other`'s settings and renames override
+    /// per-key, and its target and template replace `self`'s when set.
     pub fn merge(&mut self, other: &Format) {
         if other.target.is_some() {
             self.target = other.target;
         }
         self.settings.extend(other.settings.clone());
-        match (&mut self.value_mapping, &other.value_mapping) {
-            (Some(mapping), Some(other)) => mapping.extend(other.clone()),
-            (slot @ None, Some(other)) => *slot = Some(other.clone()),
-            _ => {}
+        for (key, rename) in other.renaming.renames() {
+            match rename {
+                Some(label) => self.renaming.rename(key.clone(), label),
+                None => self.renaming.suppress(key.clone()),
+            };
         }
-        if other.value_template.is_some() {
-            self.value_template = other.value_template.clone();
+        if let Some(template) = other.renaming.template() {
+            self.renaming.set_template(template.source());
         }
     }
 
-    /// Validate `settings` against `FORMAT_PARAMS`.
-    pub fn validate_settings(&self) -> Result<(), String> {
-        let valid: Vec<&str> = FORMAT_PARAMS.iter().map(|p| p.name).collect();
-
-        for (name, value) in &self.settings {
-            let Some(param) = FORMAT_PARAMS.iter().find(|p| p.name == name.as_str()) else {
-                return Err(format!(
-                    "FORMAT setting should be {}, not '{}'",
-                    crate::or_list_quoted(&valid, '\''),
-                    name
-                ));
-            };
-            validate_parameter(name, value, &param.constraint)?;
-        }
-
-        Ok(())
+    /// Validate `settings` against `FORMAT_PARAMS` and resolve each to its
+    /// effective value: the user's value if present, otherwise the
+    /// definition's default.
+    pub fn resolve_settings(&self) -> Result<Parameters, String> {
+        crate::params::resolve_parameters(&self.settings, FORMAT_PARAMS, "FORMAT setting")
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::plot::ParameterValue;
 
     fn format_with_settings(settings: Parameters) -> Format {
         Format {
@@ -373,34 +355,42 @@ mod tests {
             wildcard: false,
             target: None,
             settings,
-            value_mapping: None,
-            value_template: None,
+            renaming: zygos::LabelSpec::new(),
         }
+    }
+
+    fn renaming_with_template(template: &str) -> zygos::LabelSpec {
+        let mut spec = zygos::LabelSpec::new();
+        spec.set_template(template);
+        spec
     }
 
     #[test]
     fn format_merge_an_unset_template_leaves_the_existing_one() {
         let mut format = Format {
-            value_template: Some("{:num %.2f}".to_string()),
+            renaming: renaming_with_template("{:num %.2f}"),
             ..format_with_settings(Parameters::new())
         };
         format.merge(&format_with_settings(Parameters::new()));
 
-        assert_eq!(format.value_template.as_deref(), Some("{:num %.2f}"));
+        assert_eq!(
+            format.renaming.template().map(|t| t.source()),
+            Some("{:num %.2f}")
+        );
     }
 
     #[test]
     fn format_merge_an_explicit_default_template_overrides() {
         let mut format = Format {
-            value_template: Some("{:num %.2f}".to_string()),
+            renaming: renaming_with_template("{:num %.2f}"),
             ..format_with_settings(Parameters::new())
         };
         format.merge(&Format {
-            value_template: Some("{}".to_string()),
+            renaming: renaming_with_template("{}"),
             ..format_with_settings(Parameters::new())
         });
 
-        assert_eq!(format.value_template.as_deref(), Some("{}"));
+        assert_eq!(format.renaming.template().map(|t| t.source()), Some("{}"));
     }
 
     #[test]
@@ -427,49 +417,32 @@ mod tests {
 
     #[test]
     fn format_validate_settings_accepts_a_string_hjust() {
-        let mut settings = Parameters::new();
-        settings.insert(
-            "hjust".to_string(),
-            ParameterValue::String("right".to_string()),
-        );
+        let settings = crate::params! { "hjust" => "right" };
 
-        assert!(format_with_settings(settings).validate_settings().is_ok());
+        assert!(format_with_settings(settings).resolve_settings().is_ok());
     }
 
     #[test]
     fn format_validate_settings_accepts_a_numeric_hjust() {
-        let mut settings = Parameters::new();
-        settings.insert("hjust".to_string(), ParameterValue::Number(0.25));
+        let settings = crate::params! { "hjust" => 0.25 };
 
-        assert!(format_with_settings(settings).validate_settings().is_ok());
+        assert!(format_with_settings(settings).resolve_settings().is_ok());
     }
 
     #[test]
     fn format_validate_settings_rejects_an_unrecognized_string() {
-        let mut settings = Parameters::new();
-        settings.insert(
-            "hjust".to_string(),
-            ParameterValue::String("up".to_string()),
-        );
+        let settings = crate::params! { "hjust" => "up" };
 
-        assert!(format_with_settings(settings).validate_settings().is_err());
+        assert!(format_with_settings(settings).resolve_settings().is_err());
     }
 
     #[test]
     fn format_validate_settings_accepts_a_percent_or_pixel_width() {
-        let mut settings = Parameters::new();
-        settings.insert(
-            "width".to_string(),
-            ParameterValue::String("20%".to_string()),
-        );
-        assert!(format_with_settings(settings).validate_settings().is_ok());
+        let settings = crate::params! { "width" => "20%" };
+        assert!(format_with_settings(settings).resolve_settings().is_ok());
 
-        let mut settings = Parameters::new();
-        settings.insert(
-            "width".to_string(),
-            ParameterValue::String("240px".to_string()),
-        );
-        assert!(format_with_settings(settings).validate_settings().is_ok());
+        let settings = crate::params! { "width" => "240px" };
+        assert!(format_with_settings(settings).resolve_settings().is_ok());
     }
 
     #[test]

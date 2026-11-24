@@ -5,7 +5,7 @@
 
 use std::collections::HashMap;
 
-use hephaestus::color::rgb8;
+use zygos::color::rgb8;
 
 use super::super::channels::{aesthetic_column_name, build_group_keys, column_to_f64};
 use super::super::scales::RangeKind;

@@ -1,7 +1,7 @@
 //! `polygon` geom → hephaestus `PolygonGeom`. Rows are grouped into separate
 //! closed polygons by the layer's partition columns.
 
-use hephaestus::color::rgb8;
+use zygos::color::rgb8;
 
 use super::super::scales::RangeKind;
 use super::super::wiring::{

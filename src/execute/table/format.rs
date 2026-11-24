@@ -24,7 +24,7 @@ pub(super) fn setup_formats(
 ) -> Result<HashMap<String, Format>> {
     for (idx, format) in formats.iter().enumerate() {
         format
-            .validate_settings()
+            .resolve_settings()
             .map_err(|e| GgsqlError::ValidationError(format!("FORMAT {}: {}", idx + 1, e)))?;
     }
 
@@ -47,7 +47,12 @@ pub(super) fn setup_formats(
     }
 
     // A column no clause claimed a section for resolves to the body.
+    // Settings were validated per clause above; resolving again post-merge
+    // only fills defaults.
     for format in resolved.values_mut() {
+        format.settings = format
+            .resolve_settings()
+            .map_err(GgsqlError::ValidationError)?;
         format.target.get_or_insert(ColumnSection::Body);
     }
     Ok(resolved)
@@ -86,18 +91,18 @@ fn expand_format_columns(
 
 /// Replace every column in `df` named in `formats` with its resolved
 /// display text. A column whose `Format` has no `RENAMING` at all
-/// (`value_template` unset and `value_mapping` empty) is left untouched.
+/// (`renaming` empty) is left untouched.
 pub(super) fn apply_formats(
     df: &DataFrame,
     formats: &HashMap<String, Format>,
 ) -> Result<DataFrame> {
     let mut df = df.clone();
     for (name, format) in formats {
-        let has_renaming = format.value_template.is_some()
-            || format.value_mapping.as_ref().is_some_and(|m| !m.is_empty());
+        // Skip the per-row formatting pass for a column nobody asked to
+        // reformat — the common `FORMAT ... SETTING ...` case.
+        let has_renaming =
+            !format.renaming.rename_is_empty() || format.renaming.template().is_some();
         if !has_renaming {
-            // Skip the per-row formatting pass for a column nobody asked to
-            // reformat — the common `FORMAT ... SETTING ...` case.
             continue;
         }
 
@@ -105,12 +110,8 @@ pub(super) fn apply_formats(
             .column(name)
             .expect("setup_formats already checked this column exists")
             .clone();
-        let resolved = crate::format::resolve_column_values(
-            &array,
-            format.value_template.as_deref().unwrap_or("{}"),
-            &format.value_mapping,
-        )
-        .map_err(|e| GgsqlError::ValidationError(format!("FORMAT column '{name}': {e}")))?;
+        let resolved = crate::format::resolve_column_values(&array, &format.renaming)
+            .map_err(|e| GgsqlError::ValidationError(format!("FORMAT column '{name}': {e}")))?;
 
         let display: Vec<Option<String>> = resolved
             .into_iter()
@@ -152,13 +153,22 @@ mod tests {
     use crate::df;
 
     fn format_with(template: &str, mapping: Option<HashMap<String, Option<String>>>) -> Format {
+        let mut renaming = zygos::LabelSpec::new();
+        if template != "{}" {
+            renaming.set_template(template);
+        }
+        for (key, value) in mapping.into_iter().flatten() {
+            match value {
+                Some(label) => renaming.rename(zygos::Value::String(key.into()), label),
+                None => renaming.suppress(zygos::Value::String(key.into())),
+            };
+        }
         Format {
             columns: Vec::new(),
             wildcard: false,
             target: None,
             settings: Parameters::new(),
-            value_mapping: mapping,
-            value_template: (template != "{}").then(|| template.to_string()),
+            renaming,
         }
     }
 
@@ -183,7 +193,7 @@ mod tests {
             Format {
                 columns: vec!["price".to_string(), "currency".to_string()],
                 wildcard: false,
-                ..format_with_hjust(ParameterValue::String("left".to_string()))
+                ..format_with_hjust("left".into())
             },
         ];
 
@@ -192,18 +202,24 @@ mod tests {
         // `price` merges both clauses: the later clause has no template, so
         // the earlier template survives; its settings are added.
         let price = resolved.get("price").unwrap();
-        assert_eq!(price.value_template.as_deref(), Some("{:num %.2f}"));
+        assert_eq!(
+            price.renaming.template().map(|t| t.source()),
+            Some("{:num %.2f}")
+        );
         assert_eq!(
             price.settings.get("hjust"),
             Some(&ParameterValue::String("left".to_string()))
         );
 
         let amount = resolved.get("amount").unwrap();
-        assert_eq!(amount.value_template.as_deref(), Some("{:num %.2f}"));
+        assert_eq!(
+            amount.renaming.template().map(|t| t.source()),
+            Some("{:num %.2f}")
+        );
         assert!(!amount.settings.contains_key("hjust"));
 
         let currency = resolved.get("currency").unwrap();
-        assert_eq!(currency.value_template, None);
+        assert!(currency.renaming.template().is_none());
         assert_eq!(
             currency.settings.get("hjust"),
             Some(&ParameterValue::String("left".to_string()))
@@ -228,11 +244,21 @@ mod tests {
         let resolved = setup_formats(&frame, &formats, &spans).unwrap();
 
         assert_eq!(
-            resolved.get("a").unwrap().value_template.as_deref(),
+            resolved
+                .get("a")
+                .unwrap()
+                .renaming
+                .template()
+                .map(|t| t.source()),
             Some("{:num %.2f}")
         );
         assert_eq!(
-            resolved.get("b").unwrap().value_template.as_deref(),
+            resolved
+                .get("b")
+                .unwrap()
+                .renaming
+                .template()
+                .map(|t| t.source()),
             Some("{:num %.2f}")
         );
     }
@@ -249,11 +275,21 @@ mod tests {
 
         assert_eq!(resolved.len(), 2);
         assert_eq!(
-            resolved.get("a").unwrap().value_template.as_deref(),
+            resolved
+                .get("a")
+                .unwrap()
+                .renaming
+                .template()
+                .map(|t| t.source()),
             Some("{:num %.2f}")
         );
         assert_eq!(
-            resolved.get("b").unwrap().value_template.as_deref(),
+            resolved
+                .get("b")
+                .unwrap()
+                .renaming
+                .template()
+                .map(|t| t.source()),
             Some("{:num %.2f}")
         );
     }
@@ -314,15 +350,13 @@ mod tests {
     }
 
     fn format_with_hjust(hjust: ParameterValue) -> Format {
-        let mut settings = Parameters::new();
-        settings.insert("hjust".to_string(), hjust);
+        let settings = crate::params! { "hjust" => hjust };
         Format {
             columns: Vec::new(),
             wildcard: false,
             target: None,
             settings,
-            value_mapping: None,
-            value_template: None,
+            renaming: zygos::LabelSpec::new(),
         }
     }
 
@@ -330,11 +364,11 @@ mod tests {
     fn resolve_column_properties_defaults_hjust_by_dtype_when_absent() {
         assert_eq!(
             resolve_column_properties(&DataType::Float64, None).get("hjust"),
-            Some(&ParameterValue::Number(1.0))
+            Some(&1.0.into())
         );
         assert_eq!(
             resolve_column_properties(&DataType::Utf8, None).get("hjust"),
-            Some(&ParameterValue::Number(0.0))
+            Some(&0.0.into())
         );
     }
 
@@ -345,44 +379,43 @@ mod tests {
             wildcard: false,
             target: Some(crate::ColumnSection::Stub),
             settings: Parameters::new(),
-            value_mapping: None,
-            value_template: None,
+            renaming: zygos::LabelSpec::new(),
         };
 
         assert_eq!(
             resolve_column_properties(&DataType::Utf8, Some(&format)).get("hjust"),
-            Some(&ParameterValue::Number(1.0))
+            Some(&1.0.into())
         );
     }
 
     #[test]
     fn resolve_column_properties_standardises_keywords_to_numbers() {
-        let format = format_with_hjust(ParameterValue::String("left".to_string()));
+        let format = format_with_hjust("left".into());
         assert_eq!(
             resolve_column_properties(&DataType::Utf8, Some(&format)).get("hjust"),
-            Some(&ParameterValue::Number(0.0))
+            Some(&0.0.into())
         );
 
-        let format = format_with_hjust(ParameterValue::String("centre".to_string()));
+        let format = format_with_hjust("centre".into());
         assert_eq!(
             resolve_column_properties(&DataType::Utf8, Some(&format)).get("hjust"),
-            Some(&ParameterValue::Number(0.5))
+            Some(&0.5.into())
         );
 
-        let format = format_with_hjust(ParameterValue::String("right".to_string()));
+        let format = format_with_hjust("right".into());
         assert_eq!(
             resolve_column_properties(&DataType::Utf8, Some(&format)).get("hjust"),
-            Some(&ParameterValue::Number(1.0))
+            Some(&1.0.into())
         );
     }
 
     #[test]
     fn resolve_column_properties_keeps_an_explicit_number_unchanged() {
-        let format = format_with_hjust(ParameterValue::Number(0.25));
+        let format = format_with_hjust(0.25.into());
 
         assert_eq!(
             resolve_column_properties(&DataType::Float64, Some(&format)).get("hjust"),
-            Some(&ParameterValue::Number(0.25))
+            Some(&0.25.into())
         );
     }
 }

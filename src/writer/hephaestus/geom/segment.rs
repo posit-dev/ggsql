@@ -6,9 +6,9 @@
 //! - rule: a panel-spanning reference line at a fixed pos1 (vertical) or pos2
 //!   (horizontal); the free axis uses scale-bypassing 0..1 panel fractions.
 
-use hephaestus::color::rgb8;
 use hephaestus::plot::geom::Raw;
 use hephaestus::plot::{Plot as HPlot, SegmentGeom};
+use zygos::color::rgb8;
 
 use super::super::channels::{aesthetic_column_name, column_to_channel, column_to_f64};
 use super::super::scales::RangeKind;
@@ -141,10 +141,7 @@ pub fn build_hinges(plot: &mut HPlot, ctx: &Ctx) -> Result<()> {
 
 /// Whether this rule is a diagonal (abline): has a non-zero `slope`.
 pub fn is_diagonal(layer: &Layer) -> bool {
-    matches!(
-        layer.parameters.get("diagonal"),
-        Some(ParameterValue::Boolean(true))
-    )
+    ParameterValue::is_true(layer.parameters.get("diagonal"))
 }
 
 /// A diagonal rule (abline): **one line per data row**, each spanning the
