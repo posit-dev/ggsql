@@ -90,7 +90,7 @@ impl SummaryRow {
                         .column(&column.name)
                         .map(|array| column_to_strings(array).remove(0))
                         .unwrap_or_default();
-                    TableCell::new_body(row, index, content)
+                    TableCell::new_summary_value(row, index, content)
                         .with_properties(column.properties.clone())
                 }),
         );
@@ -121,7 +121,7 @@ impl SummaryRow {
             "the label's colspan covers only stub columns"
         );
 
-        let mut cell = TableCell::new_stub_row_label(row, label_column, self.label.clone());
+        let mut cell = TableCell::new_summary_label(row, label_column, self.label.clone());
         cell.left = left;
         cell.right = right;
         cell.with_properties(columns[label_column].properties.clone())

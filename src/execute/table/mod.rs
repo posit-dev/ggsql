@@ -867,20 +867,20 @@ mod integration_tests {
         let label = resolved
             .cells()
             .iter()
-            .find(|c| c.kind == TableCellKind::StubRowLabel && c.top == 4)
+            .find(|c| c.kind == TableCellKind::SummaryLabel && c.top == 4)
             .unwrap();
         assert_eq!(label.content, "mean");
         let value = resolved
             .cells()
             .iter()
-            .find(|c| c.kind == TableCellKind::Body && c.top == 4 && c.left == 1)
+            .find(|c| c.kind == TableCellKind::SummaryValue && c.top == 4 && c.left == 1)
             .unwrap();
         assert_eq!(value.content, "2");
         // The non-summarised column's cell is blank.
         let blank = resolved
             .cells()
             .iter()
-            .find(|c| c.kind == TableCellKind::Body && c.top == 4 && c.left == 2)
+            .find(|c| c.kind == TableCellKind::SummaryValue && c.top == 4 && c.left == 2)
             .unwrap();
         assert_eq!(blank.content, "");
     }
@@ -901,7 +901,9 @@ mod integration_tests {
         let values: Vec<&str> = resolved
             .cells()
             .iter()
-            .filter(|c| c.kind == TableCellKind::Body && c.left == last && [4, 7].contains(&c.top))
+            .filter(|c| {
+                c.kind == TableCellKind::SummaryValue && c.left == last && [4, 7].contains(&c.top)
+            })
             .map(|c| c.content.as_str())
             .collect();
         assert_eq!(values, ["1.5", "3"]);
@@ -938,14 +940,14 @@ mod integration_tests {
         let label = resolved
             .cells()
             .iter()
-            .find(|c| c.kind == TableCellKind::StubRowLabel && c.top == summary_row[0])
+            .find(|c| c.kind == TableCellKind::SummaryLabel && c.top == summary_row[0])
             .unwrap();
         assert_eq!(label.content, "Average");
         let value = resolved
             .cells()
             .iter()
             .find(|c| {
-                c.kind == TableCellKind::Body
+                c.kind == TableCellKind::SummaryValue
                     && c.top == summary_row[0]
                     && resolved.columns()[c.left].name == "sales"
             })
@@ -973,7 +975,9 @@ mod integration_tests {
             .cells()
             .iter()
             .filter(|c| {
-                c.kind == TableCellKind::Body && c.left == last && summary_rows.contains(&c.top)
+                c.kind == TableCellKind::SummaryValue
+                    && c.left == last
+                    && summary_rows.contains(&c.top)
             })
             .map(|c| c.content.as_str())
             .collect();
@@ -1036,7 +1040,7 @@ mod integration_tests {
         let labels: Vec<(usize, &str)> = resolved
             .cells()
             .iter()
-            .filter(|c| c.kind == TableCellKind::StubRowLabel && !c.content.is_empty())
+            .filter(|c| c.kind == TableCellKind::SummaryLabel && !c.content.is_empty())
             .map(|c| (c.top, c.content.as_str()))
             .collect();
         // Anti-alphabetical: clause order, not any other ordering, decides.

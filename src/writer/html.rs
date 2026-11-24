@@ -539,9 +539,10 @@ fn header_scope(kind: TableCellKind) -> Option<&'static str> {
     match kind {
         TableCellKind::ColumnLabel | TableCellKind::StubHead => Some("col"),
         TableCellKind::Spanner => Some("colgroup"),
-        TableCellKind::StubRowLabel => Some("row"),
+        TableCellKind::StubRowLabel | TableCellKind::SummaryLabel => Some("row"),
         TableCellKind::GroupHeading => Some("rowgroup"),
         TableCellKind::Body
+        | TableCellKind::SummaryValue
         | TableCellKind::Title
         | TableCellKind::Subtitle
         | TableCellKind::Caption

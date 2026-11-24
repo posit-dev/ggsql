@@ -27,8 +27,13 @@ pub enum TableCellKind {
     StubHead,
     /// A data value (gt's `body`).
     Body,
+    /// A computed value in a `SUMMARISE` row.
+    SummaryValue,
     /// A row-label value in the stub (`TABULATE FORMAT STUB`, gt's `stub`).
     StubRowLabel,
+    /// A summary row's label cell in the stub (`SUMMARISE`'s `rowlabel` or
+    /// the operation name).
+    SummaryLabel,
     /// A spanner cell, grouping several columns under one label (`TABULATE
     /// SPAN`).
     Spanner,
@@ -63,6 +68,7 @@ impl TableCellKind {
                 | TableCellKind::Subtitle
                 | TableCellKind::Filler // every current case is header-shaped
                 | TableCellKind::StubRowLabel
+                | TableCellKind::SummaryLabel
         )
     }
 }
@@ -73,7 +79,9 @@ impl std::fmt::Display for TableCellKind {
             TableCellKind::ColumnLabel => "column label",
             TableCellKind::StubHead => "stub head",
             TableCellKind::Body => "body",
+            TableCellKind::SummaryValue => "summary value",
             TableCellKind::StubRowLabel => "stub row label",
+            TableCellKind::SummaryLabel => "summary label",
             TableCellKind::Spanner => "spanner",
             TableCellKind::Title => "title",
             TableCellKind::Subtitle => "subtitle",
@@ -306,6 +314,18 @@ impl TableCell {
     /// A stub row-label cell (`TableClass::Stub`).
     pub(crate) fn new_stub_row_label(row: usize, index: usize, content: String) -> Self {
         Self::new(TableCellKind::StubRowLabel, row, row, index, index, content)
+            .with_classes(vec![TableClass::Stub])
+    }
+
+    /// A summary value cell (`TableClass::Row`).
+    pub(crate) fn new_summary_value(row: usize, col: usize, content: String) -> Self {
+        Self::new(TableCellKind::SummaryValue, row, row, col, col, content)
+            .with_classes(vec![TableClass::Row])
+    }
+
+    /// A summary row's stub label cell (`TableClass::Stub`).
+    pub(crate) fn new_summary_label(row: usize, index: usize, content: String) -> Self {
+        Self::new(TableCellKind::SummaryLabel, row, row, index, index, content)
             .with_classes(vec![TableClass::Stub])
     }
 

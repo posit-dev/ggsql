@@ -569,9 +569,12 @@ mod tests {
         assert_eq!(summary_row, vec![3]);
         assert_eq!(
             find_cell(&layout, 3, "mean").kind,
-            TableCellKind::StubRowLabel
+            TableCellKind::SummaryLabel
         );
-        assert_eq!(find_cell(&layout, 3, "2.5").kind, TableCellKind::Body);
+        assert_eq!(
+            find_cell(&layout, 3, "2.5").kind,
+            TableCellKind::SummaryValue
+        );
     }
 
     #[test]
@@ -592,11 +595,11 @@ mod tests {
         assert_eq!(rows_with_class(&layout, TableClass::SummaryRow), vec![1, 4]);
         assert_eq!(
             find_cell(&layout, 1, "median").kind,
-            TableCellKind::StubRowLabel
+            TableCellKind::SummaryLabel
         );
         assert_eq!(
             find_cell(&layout, 4, "mean").kind,
-            TableCellKind::StubRowLabel
+            TableCellKind::SummaryLabel
         );
     }
 
@@ -618,8 +621,14 @@ mod tests {
         assert_eq!(summary_rows, vec![4, 7]);
         assert_eq!(layout.rows[summary_rows[0]].group, vec![0]);
         assert_eq!(layout.rows[summary_rows[1]].group, vec![1]);
-        assert_eq!(find_cell(&layout, 4, "2.5").kind, TableCellKind::Body);
-        assert_eq!(find_cell(&layout, 7, "10.5").kind, TableCellKind::Body);
+        assert_eq!(
+            find_cell(&layout, 4, "2.5").kind,
+            TableCellKind::SummaryValue
+        );
+        assert_eq!(
+            find_cell(&layout, 7, "10.5").kind,
+            TableCellKind::SummaryValue
+        );
     }
 
     #[test]
@@ -656,7 +665,7 @@ mod tests {
             .iter()
             .find(|cell| cell.top == 6 && cell.left == north.left)
             .expect("grand row's label spans the group stub column");
-        assert_eq!(grand_label.kind, TableCellKind::StubRowLabel);
+        assert_eq!(grand_label.kind, TableCellKind::SummaryLabel);
         assert_eq!(grand_label.content, "mean");
     }
 
@@ -675,7 +684,7 @@ mod tests {
 
         let grand_row = rows_with_class(&layout, TableClass::SummaryRow)[0];
         let label = find_cell(&layout, grand_row, "mean");
-        assert_eq!(label.kind, TableCellKind::StubRowLabel);
+        assert_eq!(label.kind, TableCellKind::SummaryLabel);
         assert_eq!(label.left, 0);
         assert!(
             label.right > label.left,
@@ -713,7 +722,7 @@ mod tests {
 
         let summary_row = rows_with_class(&layout, TableClass::SummaryRow)[0];
         let label = find_cell(&layout, summary_row, "mean");
-        assert_eq!(label.kind, TableCellKind::StubRowLabel);
+        assert_eq!(label.kind, TableCellKind::SummaryLabel);
         assert_eq!(label.left, 0);
         assert_eq!(label.right, 1);
         // The second stub column emits no cell of its own on the summary row.
@@ -721,7 +730,7 @@ mod tests {
             layout
                 .cells
                 .iter()
-                .filter(|cell| cell.top == summary_row && cell.kind == TableCellKind::StubRowLabel)
+                .filter(|cell| cell.top == summary_row && cell.kind == TableCellKind::SummaryLabel)
                 .count(),
             1
         );
