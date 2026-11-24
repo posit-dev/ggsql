@@ -123,7 +123,7 @@ impl GeomTrait for Smooth {
                     &params,
                     dialect,
                     aesthetic_ctx,
-                    x_temporal,
+                    schema,
                 )
             }
             "ols" => stat_ols(

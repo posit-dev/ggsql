@@ -972,11 +972,6 @@ pub fn resolve_scales(spec: &mut Plot, data_map: &mut HashMap<String, DataFrame>
 
     let aesthetic_ctx = spec.get_aesthetic_context();
 
-    let is_map = spec
-        .project
-        .as_ref()
-        .is_some_and(|p| p.coord.coord_kind() == CoordKind::Map);
-
     // Determine if polar is a full circle (for zero expansion on theta)
     // A polar coord is "full circle" when end is None or equals start
     let (is_polar, polar_is_full_circle) = spec
@@ -1061,7 +1056,11 @@ pub fn resolve_scales(spec: &mut Plot, data_map: &mut HashMap<String, DataFrame>
                         .collect();
                 if !column_dtypes.is_empty() {
                     if let Ok(common_dtype) = crate::plot::scale::coerce_dtypes(&column_dtypes) {
-                        let kind = infer_transform(&spec.scales[idx], &common_dtype, is_map);
+                        // A temporal transform is mutually exclusive with a
+                        // map projection: projections stamp their position
+                        // scales with TransformKind::Geographic, so a scale
+                        // that reaches this branch is never a map scale.
+                        let kind = infer_transform(&spec.scales[idx], &common_dtype, false);
                         if Some(kind)
                             != spec.scales[idx]
                                 .transform

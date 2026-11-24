@@ -5,7 +5,7 @@ use super::{DefaultAesthetics, GeomTrait, GeomType};
 use crate::{
     naming,
     plot::{
-        geom::types::{get_column_name, temporal_as_epoch_micros},
+        geom::types::{get_column_name, temporal_as_epoch_micros, temporal_kind_of},
         DefaultAestheticValue, DefaultParamValue, ParamConstraint, ParamDefinition, ParameterValue,
         Parameters, StatResult,
     },
@@ -100,7 +100,7 @@ impl GeomTrait for Density {
     fn apply_stat_transform(
         &self,
         query: &str,
-        _schema: &crate::plot::Schema,
+        schema: &crate::plot::Schema,
         aesthetics: &Mappings,
         group_by: &[String],
         parameters: &Parameters,
@@ -118,7 +118,7 @@ impl GeomTrait for Density {
             parameters,
             dialect,
             aesthetic_ctx,
-            None,
+            schema,
         )
     }
 }
@@ -157,7 +157,7 @@ pub(crate) fn stat_density(
     parameters: &Parameters,
     dialect: &dyn SqlDialect,
     aesthetic_ctx: &crate::plot::aesthetic::AestheticContext,
-    value_temporal: Option<crate::plot::types::CastTargetType>,
+    schema: &crate::plot::Schema,
 ) -> Result<StatResult> {
     let value = get_column_name(aesthetics, value_aesthetic).ok_or_else(|| {
         let name = aesthetic_ctx.map_internal_to_user(value_aesthetic);
@@ -165,6 +165,7 @@ pub(crate) fn stat_density(
     })?;
     let smooth = smooth_aesthetic.and_then(|smth| get_column_name(aesthetics, smth));
     let weight = get_column_name(aesthetics, "weight");
+    let value_temporal = temporal_kind_of(schema, &value);
 
     // Get tails parameter (None = unlimited)
     let tails = match parameters.get("tails") {
@@ -179,14 +180,17 @@ pub(crate) fn stat_density(
     let (from, value_col) = match value_temporal {
         Some(kind) => {
             let expr = temporal_as_epoch_micros(dialect, &dialect.quote_ident(&value), kind);
-            (
-                format!(
-                    "SELECT *, {expr} AS {val_alias} FROM ({query}) AS {src_alias}",
-                    val_alias = dialect.quote_ident("__ggsql_value__"),
-                    src_alias = dialect.quote_ident("__ggsql_src__"),
-                ),
-                "__ggsql_value__".to_string(),
-            )
+            let from = crate::sql::Select::new(dialect)
+                .select_star_plus(
+                    &[format!(
+                        "{expr} AS {}",
+                        dialect.quote_ident("__ggsql_value__")
+                    )],
+                    "__ggsql_src__",
+                )
+                .from_aliased(crate::sql::FromItem::Query(query), "__ggsql_src__")
+                .build();
+            (from, "__ggsql_value__".to_string())
         }
         None => (query.to_string(), value.clone()),
     };
@@ -1328,7 +1332,7 @@ mod tests {
     #[cfg(feature = "duckdb")]
     #[test]
     fn test_stat_density_temporal_value_returns_timestamps() {
-        use crate::plot::types::CastTargetType;
+        use crate::plot::types::ColumnInfo;
         use crate::plot::AestheticValue;
         use crate::reader::duckdb::DuckDbDialect;
 
@@ -1362,6 +1366,22 @@ mod tests {
         );
 
         let ctx = crate::plot::aesthetic::AestheticContext::from_static(&["d", "y"], &[]);
+        let schema = vec![
+            ColumnInfo {
+                name: "d".to_string(),
+                dtype: arrow::datatypes::DataType::Date32,
+                is_discrete: false,
+                min: None,
+                max: None,
+            },
+            ColumnInfo {
+                name: "y".to_string(),
+                dtype: arrow::datatypes::DataType::Float64,
+                is_discrete: false,
+                min: None,
+                max: None,
+            },
+        ];
         let result = stat_density(
             query,
             &mapping,
@@ -1371,7 +1391,7 @@ mod tests {
             &parameters,
             &DuckDbDialect,
             &ctx,
-            Some(CastTargetType::Date),
+            &schema,
         )
         .expect("stat_density should succeed");
 
@@ -1413,7 +1433,7 @@ mod tests {
             &parameters,
             &dialect,
             &ctx,
-            None,
+            &Vec::new(),
         )
         .unwrap_err()
         .to_string();
