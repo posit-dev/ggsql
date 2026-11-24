@@ -275,7 +275,7 @@ fn weave_group_summaries(
         let key = key.as_ref().expect("filtered to group chunks");
         debug_assert_eq!(chunk[0].group, *key, "summary chunks in group order");
         for summary in chunk_summaries.iter().filter(|s| s.top) {
-            summary_cells.extend(summary.cells(new_rows.len(), columns, false));
+            summary_cells.extend(summary.cells(new_rows.len(), columns));
             new_rows.push(TableRow::summary(key.clone()));
         }
         for row in chunk.iter() {
@@ -284,7 +284,7 @@ fn weave_group_summaries(
             old_index += 1;
         }
         for summary in chunk_summaries.iter().filter(|s| !s.top) {
-            summary_cells.extend(summary.cells(new_rows.len(), columns, false));
+            summary_cells.extend(summary.cells(new_rows.len(), columns));
             new_rows.push(TableRow::summary(key.clone()));
         }
     }
@@ -319,12 +319,12 @@ fn weave_grand_summaries(
     let mut new_rows = Vec::with_capacity(rows.len() + grand.len());
     let mut summary_cells = Vec::new();
     for summary in grand.iter().filter(|s| s.top) {
-        summary_cells.extend(summary.cells(new_rows.len(), columns, true));
+        summary_cells.extend(summary.cells(new_rows.len(), columns));
         new_rows.push(TableRow::summary(Vec::new()));
     }
     new_rows.extend(rows);
     for summary in grand.iter().filter(|s| !s.top) {
-        summary_cells.extend(summary.cells(new_rows.len(), columns, true));
+        summary_cells.extend(summary.cells(new_rows.len(), columns));
         new_rows.push(TableRow::summary(Vec::new()));
     }
     summary_cells.extend(cells);

@@ -57,6 +57,9 @@ pub(super) fn setup_summaries(
 /// clause itself.
 #[derive(Debug)]
 pub(super) struct SummaryRow {
+    /// Whether the row summarises its group (`GROUP`) or the whole table
+    /// (`GRAND`).
+    pub scope: SummaryScope,
     /// Whether the row sits above (`true`) or below its group's rows.
     pub top: bool,
     /// The row's stub label: `rowlabel`, else the operation name.
@@ -70,15 +73,10 @@ impl SummaryRow {
     /// This row's cells at grid row `row`: the label spanning the stub
     /// columns, then the computed values in their body columns. No cells in
     /// group-stub columns: a `GROUP` row's are covered by the merged stub
-    /// cell; a `GRAND` row (`span_group_stubs`) owns them by extending its
-    /// label's colspan leftward.
-    pub(super) fn cells(
-        &self,
-        row: usize,
-        columns: &[TableColumn],
-        span_group_stubs: bool,
-    ) -> Vec<TableCell> {
-        let mut cells = vec![self.label_cell(row, columns, span_group_stubs)];
+    /// cell; a `GRAND` row owns them by extending its label's colspan
+    /// leftward.
+    pub(super) fn cells(&self, row: usize, columns: &[TableColumn]) -> Vec<TableCell> {
+        let mut cells = vec![self.label_cell(row, columns)];
         cells.extend(
             columns
                 .iter()
@@ -98,15 +96,16 @@ impl SummaryRow {
     }
 
     /// The row's label cell, spanning every stub column — leftward over the
-    /// group-stub columns too for a `GRAND` row (`span_group_stubs`).
-    /// `setup_summaries` adds a stub column when summaries exist without one;
-    /// `move_stub_columns` puts every stub-section column in one contiguous
-    /// run, so the span covers only stub columns.
-    fn label_cell(&self, row: usize, columns: &[TableColumn], span_group_stubs: bool) -> TableCell {
+    /// group-stub columns too for a `GRAND` row. `setup_summaries` adds a
+    /// stub column when summaries exist without one; `move_stub_columns`
+    /// puts every stub-section column in one contiguous run, so the span
+    /// covers only stub columns.
+    fn label_cell(&self, row: usize, columns: &[TableColumn]) -> TableCell {
         let label_column = columns
             .iter()
             .position(|c| c.target == ColumnSection::Stub)
             .expect("setup_summaries guarantees a stub column");
+        let span_group_stubs = self.scope == SummaryScope::Grand;
         let left = if span_group_stubs && columns.first().is_some_and(|c| c.is_group_stub()) {
             0
         } else {
@@ -183,6 +182,7 @@ impl Summary {
             .and_then(ParameterValue::as_str)
             .map_or_else(|| self.operation.clone(), str::to_string);
         Ok(SummaryRow {
+            scope: self.scope,
             top: ParameterValue::is_str(self.settings.get("place"), "top"),
             label,
             frame: summary_frame(df, self, range)?,
