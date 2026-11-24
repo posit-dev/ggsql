@@ -55,7 +55,6 @@ impl CoordTrait for Polar {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::plot::{ParameterValue, Parameters};
 
     #[test]
     fn test_polar_properties() {
@@ -86,90 +85,5 @@ mod tests {
             start_param.default,
             DefaultParamValue::Number(0.0)
         ));
-    }
-
-    #[test]
-    fn test_polar_rejects_unknown_property() {
-        let polar = Polar;
-        let mut props = Parameters::new();
-        props.insert(
-            "unknown".to_string(),
-            ParameterValue::String("value".to_string()),
-        );
-
-        let resolved = polar.resolve_properties(None, &props);
-        assert!(resolved.is_err());
-        let err = resolved.unwrap_err();
-        assert!(err.contains("not 'unknown'"));
-    }
-
-    #[test]
-    fn test_polar_resolve_with_explicit_start() {
-        let polar = Polar;
-        let mut props = Parameters::new();
-        props.insert("start".to_string(), ParameterValue::Number(90.0));
-
-        let resolved = polar.resolve_properties(None, &props);
-        assert!(resolved.is_ok());
-        let resolved = resolved.unwrap();
-        assert_eq!(
-            resolved.get("start").unwrap(),
-            &ParameterValue::Number(90.0)
-        );
-    }
-
-    #[test]
-    fn test_polar_resolve_adds_start_default() {
-        let polar = Polar;
-        let props = Parameters::new();
-
-        let resolved = polar.resolve_properties(None, &props);
-        assert!(resolved.is_ok());
-        let resolved = resolved.unwrap();
-        assert!(resolved.contains_key("start"));
-        assert_eq!(resolved.get("start").unwrap(), &ParameterValue::Number(0.0));
-    }
-
-    #[test]
-    fn test_polar_resolve_with_explicit_end() {
-        let polar = Polar;
-        let mut props = Parameters::new();
-        props.insert("end".to_string(), ParameterValue::Number(180.0));
-
-        let resolved = polar.resolve_properties(None, &props);
-        assert!(resolved.is_ok());
-        let resolved = resolved.unwrap();
-        assert_eq!(resolved.get("end").unwrap(), &ParameterValue::Number(180.0));
-        // start should still get its default
-        assert_eq!(resolved.get("start").unwrap(), &ParameterValue::Number(0.0));
-    }
-
-    #[test]
-    fn test_polar_resolve_with_start_and_end() {
-        let polar = Polar;
-        let mut props = Parameters::new();
-        props.insert("start".to_string(), ParameterValue::Number(-90.0));
-        props.insert("end".to_string(), ParameterValue::Number(90.0));
-
-        let resolved = polar.resolve_properties(None, &props);
-        assert!(resolved.is_ok());
-        let resolved = resolved.unwrap();
-        assert_eq!(
-            resolved.get("start").unwrap(),
-            &ParameterValue::Number(-90.0)
-        );
-        assert_eq!(resolved.get("end").unwrap(), &ParameterValue::Number(90.0));
-    }
-
-    #[test]
-    fn test_polar_resolve_with_inner() {
-        let polar = Polar;
-        let mut props = Parameters::new();
-        props.insert("inner".to_string(), ParameterValue::Number(0.5));
-
-        let resolved = polar.resolve_properties(None, &props);
-        assert!(resolved.is_ok());
-        let resolved = resolved.unwrap();
-        assert_eq!(resolved.get("inner").unwrap(), &ParameterValue::Number(0.5));
     }
 }

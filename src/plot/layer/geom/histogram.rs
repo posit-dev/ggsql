@@ -74,6 +74,8 @@ impl GeomTrait for Histogram {
                 default: DefaultParamValue::String("stack"),
                 constraint: ParamConstraint::string_option(POSITION_VALUES),
             },
+            super::types::LINECAP_PARAM,
+            super::types::LINEJOIN_PARAM,
         ];
         PARAMS
     }
@@ -140,10 +142,9 @@ fn stat_histogram(
     let closed = closed.as_str();
 
     // Get binwidth from parameters (default: None - use bins to calculate)
-    let explicit_binwidth = parameters.get("binwidth").and_then(|p| match p {
-        ParameterValue::Number(n) => Some(*n),
-        _ => None,
-    });
+    let explicit_binwidth = parameters
+        .get("binwidth")
+        .and_then(ParameterValue::as_number);
 
     // Query min/max to compute bin width
     let stats_query = crate::sql::select_from(

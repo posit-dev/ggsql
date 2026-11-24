@@ -5,12 +5,12 @@
 //! scaled `fontsize` maps through its resolved scale like any other geom's — and
 //! the font face a layer holds constant reaches its legend key.
 
-use hephaestus::color::rgb8;
 use hephaestus::plot::geom::Raw;
 use hephaestus::plot::{Plot as HPlot, TextGeom};
+use zygos::color::rgb8;
 
 use super::super::channels::{
-    aesthetic_column_name, column_to_channel, column_to_f64, column_to_strings, is_text_column,
+    aesthetic_column_name, column_to_channel, column_to_f64, column_to_raw_strings, is_text_column,
 };
 use super::super::scales::RangeKind;
 use super::super::wiring::{
@@ -39,7 +39,7 @@ pub fn build(plot: &mut HPlot, ctx: &Ctx) -> Result<()> {
     p2.apply(&mut b, "y");
 
     // Label string.
-    b.set("text", Raw(column_to_strings(df, label)?));
+    b.set("text", Raw(column_to_raw_strings(df, label)?));
 
     // `parse` decides whether each label is read as markdown (hephaestus's
     // `markdown` channel, which routes the row through the rich-text shaper) or
@@ -57,7 +57,31 @@ pub fn build(plot: &mut HPlot, ctx: &Ctx) -> Result<()> {
     // family is not "use the default" but a font lookup that misses. The glyph
     // outline's width is hephaestus's theme default, as ggsql's text geom has no
     // `linewidth` aesthetic.
-    wire_material(&mut b, &material(), plot, ctx, LegendKind::Text)?;
+    let boxed = is_textbox(layer);
+    // `SETTING background => true` declares a box without naming a colour; the
+    // material path cannot read a boolean literal as a colour, so the white
+    // default is bound directly here.
+    if let Some(AestheticValue::Literal(ParameterValue::Boolean(true))) =
+        layer.mappings.get("background")
+    {
+        b.set("bg_fill", Raw(vec![rgb8(255, 255, 255); n]));
+    }
+    wire_material(&mut b, &material(boxed), plot, ctx, LegendKind::Text)?;
+
+    // Box geometry: layer parameters rather than aesthetics, bound as
+    // constants like `offset` — but only in box-mode, where hephaestus draws
+    // the rect they describe. `linetype` has no hephaestus channel yet.
+    if boxed {
+        for (param, channel) in [
+            ("radius", "bg_corner_radius"),
+            ("padding", "bg_padding"),
+            ("linewidth", "bg_linewidth"),
+        ] {
+            if let Some(ParameterValue::Number(v)) = layer.parameters.get(param) {
+                b.set(channel, Raw(vec![*v; n]));
+            }
+        }
+    }
 
     // Justification needs conversion no `RangeKind` covers, so it is resolved per
     // row here: a mapped column, else the layer's literal repeated, else centred.
@@ -89,7 +113,11 @@ pub fn build(plot: &mut HPlot, ctx: &Ctx) -> Result<()> {
 /// aesthetic hephaestus's `Text` key consumes belongs here — the face a layer
 /// sets is as much part of what a `fontsize` swatch describes as its colour is.
 /// Only justification is left out: the key centres its glyph in the cell.
-fn material() -> [MaterialSpec; 8] {
+///
+/// `stroke`'s channel depends on box-mode: bare text outlines glyphs
+/// (`text_stroke`), boxed text outlines the box (`bg_stroke`). `background`
+/// itself defaults to `None` — unset means hephaestus draws no background rect.
+fn material(boxed: bool) -> [MaterialSpec; 9] {
     [
         MaterialSpec::new(
             "fill",
@@ -97,7 +125,13 @@ fn material() -> [MaterialSpec; 8] {
             RangeKind::Color,
             MatDefault::Color(rgb8(0, 0, 0)),
         ),
-        MaterialSpec::new("stroke", "text_stroke", RangeKind::Color, MatDefault::None),
+        MaterialSpec::new(
+            "stroke",
+            if boxed { "bg_stroke" } else { "text_stroke" },
+            RangeKind::Color,
+            MatDefault::None,
+        ),
+        MaterialSpec::new("background", "bg_fill", RangeKind::Color, MatDefault::None),
         MaterialSpec::new(
             "fontsize",
             "size",
@@ -124,6 +158,18 @@ fn material() -> [MaterialSpec; 8] {
         // swatch cell from the rotated glyph, so nothing is clipped.
         MaterialSpec::new("rotation", "angle", RangeKind::Angle, MatDefault::None),
     ]
+}
+
+/// Box-mode: the layer draws boxes when `background` is declared with a
+/// non-null value, mapped or set. An explicit null (`background => null`) is
+/// the opt-out and counts as undeclared, matching the null-sentinel convention.
+fn is_textbox(layer: &crate::Layer) -> bool {
+    match layer.mappings.get("background") {
+        None => false,
+        Some(AestheticValue::Literal(ParameterValue::Null)) => false,
+        Some(AestheticValue::Literal(ParameterValue::Boolean(false))) => false,
+        Some(_) => true,
+    }
 }
 
 /// The layer's `offset` parameter as `(dx, dy)` in points. A bare number offsets
@@ -163,7 +209,7 @@ fn justification(ctx: &Ctx, aesthetic: &str) -> Vec<f64> {
         // without erroring, so a numeric read cannot be tried first (see
         // `is_text_column`).
         if is_text_column(ctx.df, col) {
-            if let Ok(names) = column_to_strings(ctx.df, col) {
+            if let Ok(names) = column_to_raw_strings(ctx.df, col) {
                 return names.iter().map(|s| parse_justification(s)).collect();
             }
         } else if let Ok(values) = column_to_f64(ctx.df, col) {

@@ -89,6 +89,8 @@ impl GeomTrait for Violin {
                 default: DefaultParamValue::Number(3.0),
                 constraint: ParamConstraint::number_min(0.0),
             },
+            super::types::LINECAP_PARAM,
+            super::types::LINEJOIN_PARAM,
         ];
         PARAMS
     }
@@ -143,10 +145,7 @@ impl GeomTrait for Violin {
         // Get width parameter (default 0.9)
         let width = parameters
             .get("width")
-            .and_then(|v| match v {
-                ParameterValue::Number(n) => Some(*n),
-                _ => None,
-            })
+            .and_then(ParameterValue::as_number)
             .unwrap_or(0.9);
         let half_width = 0.5 * width;
 
@@ -344,12 +343,7 @@ mod tests {
         let query = "SELECT species, flipper_length FROM penguins";
         let aesthetics = create_basic_aesthetics();
         let groups: Vec<String> = vec![];
-        let mut parameters = Parameters::new();
-        parameters.insert("bandwidth".to_string(), ParameterValue::Number(5.0));
-        parameters.insert(
-            "kernel".to_string(),
-            ParameterValue::String("gaussian".to_string()),
-        );
+        let parameters = crate::params! { "bandwidth" => 5.0, "kernel" => "gaussian" };
 
         let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
 
@@ -417,12 +411,7 @@ mod tests {
         let query = "SELECT species, flipper_length, island FROM penguins";
         let aesthetics = create_aesthetics_with_color();
         let groups = vec!["island".to_string()]; // Additional grouping via color aesthetic
-        let mut parameters = Parameters::new();
-        parameters.insert("bandwidth".to_string(), ParameterValue::Number(5.0));
-        parameters.insert(
-            "kernel".to_string(),
-            ParameterValue::String("gaussian".to_string()),
-        );
+        let parameters = crate::params! { "bandwidth" => 5.0, "kernel" => "gaussian" };
 
         let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
 
@@ -546,13 +535,8 @@ mod tests {
         let query = "SELECT species, flipper_length FROM penguins";
         let aesthetics = create_basic_aesthetics();
         let groups: Vec<String> = vec![];
-        let mut parameters = Parameters::new();
-        parameters.insert("bandwidth".to_string(), ParameterValue::Number(5.0));
-        parameters.insert(
-            "kernel".to_string(),
-            ParameterValue::String("gaussian".to_string()),
-        );
-        parameters.insert("tails".to_string(), ParameterValue::Number(1.5)); // Custom tails
+        let mut parameters = crate::params! { "bandwidth" => 5.0, "kernel" => "gaussian" };
+        parameters.insert("tails".to_string(), 1.5.into()); // Custom tails
 
         let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
 
@@ -648,8 +632,7 @@ mod tests {
         .unwrap();
 
         // With width 0.6, half_width = 0.3
-        let mut parameters = Parameters::new();
-        parameters.insert("width".to_string(), ParameterValue::Number(0.6));
+        let parameters = crate::params! { "width" => 0.6 };
 
         let result = violin.post_process(df, &parameters).unwrap();
 
@@ -676,12 +659,7 @@ mod tests {
             AestheticValue::standard_column("flipper_length".to_string()),
         );
         let groups: Vec<String> = vec![];
-        let mut parameters = Parameters::new();
-        parameters.insert("bandwidth".to_string(), ParameterValue::Number(5.0));
-        parameters.insert(
-            "kernel".to_string(),
-            ParameterValue::String("gaussian".to_string()),
-        );
+        let parameters = crate::params! { "bandwidth" => 5.0, "kernel" => "gaussian" };
 
         let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
         let setup_sql = "CREATE TABLE penguins AS SELECT * FROM (VALUES

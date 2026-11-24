@@ -10,7 +10,6 @@ use crate::plot::projection::CoordKind;
 use crate::plot::scale::{
     default_oob, gets_default_scale, infer_scale_target_type, infer_scale_type_from_input_range,
     infer_transform_from_input_range, is_facet_aesthetic, transform::Transform, TransformKind,
-    OOB_CENSOR, OOB_KEEP, OOB_SQUISH,
 };
 use crate::plot::{
     AestheticValue, ArrayElement, ArrayElementType, ColumnInfo, Layer, ParameterValue, Plot, Scale,
@@ -193,10 +192,7 @@ pub fn apply_post_stat_binning(
         }
 
         // Get closed property (default: left)
-        let closed_left = match scale.properties.get("closed") {
-            Some(ParameterValue::String(s)) => s != "right",
-            _ => true,
-        };
+        let closed_left = !ParameterValue::is_str(scale.properties.get("closed"), "right");
 
         // Walk layers directly so we can decide per-layer whether an
         // aesthetic-named column was deferred (needs binning here) or
@@ -1113,6 +1109,13 @@ pub fn resolve_scales(spec: &mut Plot, data_map: &mut HashMap<String, DataFrame>
             // Build context from actual data columns
             let mut context = ScaleDataContext::from_columns(&column_refs, use_discrete_range);
 
+            // A user-requested transform with a restricted domain (e.g. log
+            // excludes non-positive values) can't map out-of-domain data, so
+            // infer the range from in-domain values only.
+            if let Some(transform) = &spec.scales[idx].transform {
+                context.restrict_to_domain(&column_refs, transform.allowed_domain());
+            }
+
             // For polar full-circle theta (pos2), use zero expansion
             if is_polar && polar_is_full_circle && aesthetic == "pos2" {
                 context.default_expand = Some((0.0, 0.0));
@@ -1242,6 +1245,10 @@ fn resolve_panel_scales(
                 let column_refs: Vec<&ArrayRef> = owned.iter().collect();
                 let mut context =
                     ScaleDataContext::from_columns(&column_refs, st.uses_discrete_input_range());
+                // Same in-domain restriction as the global resolution above.
+                if let Some(transform) = &spec.scales[idx].transform {
+                    context.restrict_to_domain(&column_refs, transform.allowed_domain());
+                }
                 if polar_zero_expand && aesthetic == "pos2" {
                     context.default_expand = Some((0.0, 0.0));
                 }
@@ -1442,15 +1449,13 @@ pub fn apply_scale_oob(spec: &Plot, data_map: &mut HashMap<String, DataFrame>) -
         // - If not set but has explicit input range, use default for aesthetic
         // - Otherwise skip
         let oob_mode = match scale.properties.get("oob") {
-            Some(ParameterValue::String(s)) if s != OOB_KEEP => s.as_str(),
-            Some(ParameterValue::String(_)) => continue, // explicit "keep"
-            None if scale.explicit_input_range => {
-                let default = default_oob(&scale.aesthetic);
-                if default == OOB_KEEP {
-                    continue;
-                }
-                default
-            }
+            Some(ParameterValue::String(s)) => s.as_str(),
+            None if scale.explicit_input_range => default_oob(&scale.aesthetic),
+            _ => continue,
+        };
+        // Validated upstream against OOB_VALUES_*; "keep" means no OOB pass.
+        let oob_policy = match zygos::OobPolicy::from_name(oob_mode) {
+            Some(p) if p != zygos::OobPolicy::Keep => p,
             _ => continue,
         };
 
@@ -1511,7 +1516,7 @@ pub fn apply_scale_oob(spec: &Plot, data_map: &mut HashMap<String, DataFrame>) -
                         (Some(lo), Some(hi)) => (lo, hi),
                         _ => continue,
                     };
-                    apply_oob_to_column_numeric(df, &col_name, range_min, range_max, oob_mode)?
+                    apply_oob_to_column_numeric(df, &col_name, range_min, range_max, oob_policy)?
                 } else {
                     // Discrete range - collect allowed values as strings using to_key_string
                     let allowed_values: HashSet<String> = input_range
@@ -1519,7 +1524,7 @@ pub fn apply_scale_oob(spec: &Plot, data_map: &mut HashMap<String, DataFrame>) -
                         .filter(|elem| !matches!(elem, ArrayElement::Null))
                         .map(|elem| elem.to_key_string())
                         .collect();
-                    apply_oob_to_column_discrete(df, &col_name, &allowed_values, oob_mode)?
+                    apply_oob_to_column_discrete(df, &col_name, &allowed_values, oob_policy)?
                 };
                 data_map.insert(data_key, transformed);
             }
@@ -1616,7 +1621,7 @@ pub fn apply_oob_to_column_numeric(
     col_name: &str,
     range_min: f64,
     range_max: f64,
-    oob_mode: &str,
+    oob_policy: zygos::OobPolicy,
 ) -> Result<DataFrame> {
     use crate::array_util::*;
     use arrow::array::Array;
@@ -1634,17 +1639,17 @@ pub fn apply_oob_to_column_numeric(
 
     let f64_arr = as_f64(&f64_col)?;
 
-    match oob_mode {
-        OOB_CENSOR => {
-            // Filter out rows where values are outside [range_min, range_max]
-            // Build a boolean mask
+    match oob_policy {
+        zygos::OobPolicy::Censor => {
+            // Filter out rows where values are outside [range_min, range_max].
             let mask_values: Vec<bool> = (0..f64_arr.len())
                 .map(|i| {
                     if f64_arr.is_null(i) {
                         true // Keep nulls
                     } else {
-                        let v = f64_arr.value(i);
-                        v >= range_min && v <= range_max
+                        oob_policy
+                            .apply(f64_arr.value(i), range_min, range_max)
+                            .is_some()
                     }
                 })
                 .collect();
@@ -1661,14 +1666,14 @@ pub fn apply_oob_to_column_numeric(
             }
             DataFrame::new(new_columns)
         }
-        OOB_SQUISH => {
+        zygos::OobPolicy::Squish => {
             // Clamp values to [range_min, range_max]
             let clamped: Vec<Option<f64>> = (0..f64_arr.len())
                 .map(|i| {
                     if f64_arr.is_null(i) {
                         None
                     } else {
-                        Some(f64_arr.value(i).clamp(range_min, range_max))
+                        oob_policy.apply(f64_arr.value(i), range_min, range_max)
                     }
                 })
                 .collect();
@@ -1692,7 +1697,7 @@ pub fn apply_oob_to_column_numeric(
             df.with_column(col_name, restored_array)
                 .map_err(|e| GgsqlError::InternalError(format!("Failed to replace column: {}", e)))
         }
-        _ => Ok(df.clone()),
+        zygos::OobPolicy::Keep => Ok(df.clone()),
     }
 }
 
@@ -1727,13 +1732,13 @@ pub fn apply_oob_to_column_discrete(
     df: &DataFrame,
     col_name: &str,
     allowed_values: &HashSet<String>,
-    oob_mode: &str,
+    oob_policy: zygos::OobPolicy,
 ) -> Result<DataFrame> {
     use crate::array_util::*;
     use arrow::array::Array;
 
     // For discrete columns, only censor makes sense (squish is validated out earlier)
-    if oob_mode != OOB_CENSOR {
+    if oob_policy != zygos::OobPolicy::Censor {
         return Ok(df.clone());
     }
 
@@ -1835,10 +1840,7 @@ mod tests {
 
         // Disable expansion for predictable test values
         let mut scale = crate::plot::Scale::new("pos1");
-        scale.properties.insert(
-            "expand".to_string(),
-            crate::plot::ParameterValue::Number(0.0),
-        );
+        scale.properties = crate::params! { "expand" => -0.0 };
         spec.scales.push(scale);
         // Simulate post-merge state: mapping is in layer
         let layer = Layer::new(Geom::point())
@@ -1883,10 +1885,7 @@ mod tests {
         let mut scale = crate::plot::Scale::new("pos1");
         scale.input_range = Some(vec![ArrayElement::Number(0.0), ArrayElement::Number(100.0)]);
         // Disable expansion for predictable test values
-        scale.properties.insert(
-            "expand".to_string(),
-            crate::plot::ParameterValue::Number(0.0),
-        );
+        scale.properties = crate::params! { "expand" => -0.0 };
         spec.scales.push(scale);
         // Simulate post-merge state: mapping is in layer
         let layer = Layer::new(Geom::point())
@@ -1977,10 +1976,7 @@ mod tests {
         let mut scale = crate::plot::Scale::new("pos1");
         scale.input_range = Some(vec![ArrayElement::Number(0.0), ArrayElement::Null]);
         // Disable expansion for predictable test values
-        scale.properties.insert(
-            "expand".to_string(),
-            crate::plot::ParameterValue::Number(0.0),
-        );
+        scale.properties = crate::params! { "expand" => -0.0 };
         spec.scales.push(scale);
         // Simulate post-merge state: mapping is in layer
         let layer = Layer::new(Geom::point())
@@ -2021,10 +2017,7 @@ mod tests {
         let mut scale = crate::plot::Scale::new("pos1");
         scale.input_range = Some(vec![ArrayElement::Null, ArrayElement::Number(100.0)]);
         // Disable expansion for predictable test values
-        scale.properties.insert(
-            "expand".to_string(),
-            crate::plot::ParameterValue::Number(0.0),
-        );
+        scale.properties = crate::params! { "expand" => -0.0 };
         spec.scales.push(scale);
         // Simulate post-merge state: mapping is in layer
         let layer = Layer::new(Geom::point())
@@ -2133,8 +2126,9 @@ mod tests {
         let df = DataFrame::new(vec![("date", dates)]).unwrap();
 
         // Censor to [2024-03-01, 2024-09-01] ≈ [19783, 19967] → keeps only row 1
-        let result = apply_oob_to_column_numeric(&df, "date", 19783.0, 19967.0, OOB_CENSOR)
-            .expect("oob censor should handle Date32");
+        let result =
+            apply_oob_to_column_numeric(&df, "date", 19783.0, 19967.0, zygos::OobPolicy::Censor)
+                .expect("oob censor should handle Date32");
         assert_eq!(result.height(), 1);
     }
 
@@ -2146,8 +2140,9 @@ mod tests {
         let dates: ArrayRef = Arc::new(Date32Array::from(vec![19000, 19875, 21000]));
         let df = DataFrame::new(vec![("date", dates)]).unwrap();
 
-        let result = apply_oob_to_column_numeric(&df, "date", 19723.0, 20089.0, OOB_SQUISH)
-            .expect("oob squish should handle Date32");
+        let result =
+            apply_oob_to_column_numeric(&df, "date", 19723.0, 20089.0, zygos::OobPolicy::Squish)
+                .expect("oob squish should handle Date32");
         assert_eq!(
             result.column("date").unwrap().data_type(),
             &DataType::Date32
@@ -2284,6 +2279,121 @@ mod tests {
             assert!(
                 !msg.contains("pos1"),
                 "message must not mention internal name 'pos1', got: {}",
+                msg
+            );
+        }
+    }
+
+    // =========================================================================
+    // Discrete scale over integer columns (#239)
+    // =========================================================================
+
+    mod discrete_integer_tests {
+        #[cfg(feature = "duckdb")]
+        use crate::reader::DuckDBReader;
+        #[cfg(feature = "duckdb")]
+        use crate::reader::Reader;
+
+        /// An integer column mapped to fill survives the bar stat transform
+        /// when declared discrete.
+        #[cfg(feature = "duckdb")]
+        #[test]
+        fn discrete_scale_accepts_integer_fill_in_bar() {
+            let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+            let query = r#"
+                SELECT 'a' AS sex, 1 AS survived UNION ALL
+                SELECT 'a' AS sex, 0 AS survived UNION ALL
+                SELECT 'b' AS sex, 1 AS survived
+                VISUALISE sex AS x, survived AS fill
+                DRAW bar
+                SCALE DISCRETE fill
+            "#;
+
+            let spec = reader
+                .execute(query)
+                .expect("integer fill with SCALE DISCRETE should execute")
+                .into_plot()
+                .expect("query should resolve to a plot");
+            let layer_key = spec.plot().layers[0]
+                .data_key
+                .as_ref()
+                .expect("layer should have a data key");
+            let df = spec.data().get(layer_key).expect("layer data should exist");
+            assert!(
+                df.column("__ggsql_aes_fill__").is_ok(),
+                "fill column must survive the stat transform, got: {:?}",
+                df.schema()
+            );
+            // One row per observed x × fill combination
+            assert_eq!(df.height(), 3);
+            let fill = df.column("__ggsql_aes_fill__").unwrap();
+            let fill = arrow::compute::cast(fill, &arrow::datatypes::DataType::Utf8).unwrap();
+            let fill = fill
+                .as_any()
+                .downcast_ref::<arrow::array::StringArray>()
+                .unwrap();
+            let distinct: std::collections::HashSet<&str> = fill.iter().flatten().collect();
+            assert_eq!(distinct.len(), 2);
+        }
+
+        /// Without a discrete declaration, an integer fill dropped by the bar
+        /// stat fails with an actionable message instead of the writer's
+        /// generic "column does not exist" error.
+        #[cfg(feature = "duckdb")]
+        #[test]
+        fn dropped_integer_fill_reports_stat_drop_and_hint() {
+            let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+            let query = r#"
+                SELECT 'a' AS sex, 1 AS survived
+                VISUALISE sex AS x, survived AS fill
+                DRAW bar
+            "#;
+
+            let spec = reader
+                .execute(query)
+                .expect("execution succeeds; the drop is reported at write time");
+            use crate::writer::Writer;
+            let writer = crate::writer::vegalite::VegaLiteWriter::new();
+            let msg = match writer.render(&spec) {
+                Err(crate::GgsqlError::ValidationError(s)) => s,
+                Err(other) => panic!("expected ValidationError, got: {}", other),
+                Ok(_) => panic!("expected error, got success"),
+            };
+            assert!(
+                msg.contains("aesthetic 'fill' mapped to column 'survived' was dropped by the stat transformation"),
+                "expected stat-drop message, got: {}",
+                msg
+            );
+            assert!(
+                msg.contains("SCALE DISCRETE fill"),
+                "expected discrete-scale hint, got: {}",
+                msg
+            );
+        }
+
+        /// Float columns are still rejected with a helpful message.
+        #[cfg(feature = "duckdb")]
+        #[test]
+        fn discrete_scale_rejects_float_fill() {
+            let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+            let query = r#"
+                SELECT 'a' AS sex, 1.5 AS score
+                VISUALISE sex AS x, score AS fill
+                DRAW bar
+                SCALE DISCRETE fill
+            "#;
+
+            let msg = match reader.execute(query) {
+                Err(crate::GgsqlError::ValidationError(s)) => s,
+                Err(other) => panic!("expected ValidationError, got: {}", other),
+                Ok(_) => panic!("expected error, got success"),
+            };
+            assert!(
+                msg.contains("floating-point"),
+                "expected floating-point message, got: {}",
                 msg
             );
         }

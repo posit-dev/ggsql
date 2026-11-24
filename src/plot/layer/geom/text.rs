@@ -28,6 +28,7 @@ impl GeomTrait for Text {
                 ("label", DefaultAestheticValue::Required),
                 ("stroke", DefaultAestheticValue::Null),
                 ("fill", DefaultAestheticValue::String("black")),
+                ("background", DefaultAestheticValue::Null),
                 ("opacity", DefaultAestheticValue::Number(1.0)),
                 ("typeface", DefaultAestheticValue::Null),
                 ("fontsize", DefaultAestheticValue::Number(11.0)),
@@ -65,6 +66,27 @@ impl GeomTrait for Text {
                 default: DefaultParamValue::Boolean(true),
                 constraint: ParamConstraint::boolean(),
             },
+            // Box geometry settings, in points; only relevant in box-mode
+            // (see `background` aesthetic).
+            ParamDefinition {
+                name: "radius",
+                default: DefaultParamValue::Number(0.0),
+                constraint: ParamConstraint::number(NumberConstraint::min(0.0)),
+            },
+            // Hephaestus only supports uniform padding, so this is a single
+            // number rather than an array.
+            ParamDefinition {
+                name: "padding",
+                default: DefaultParamValue::Number(4.0),
+                constraint: ParamConstraint::number(NumberConstraint::min(0.0)),
+            },
+            ParamDefinition {
+                name: "linewidth",
+                default: DefaultParamValue::Number(1.0),
+                constraint: ParamConstraint::number(NumberConstraint::min(0.0)),
+            },
+            // No `linetype` setting yet: hephaestus has no dash channel for
+            // background-rect strokes, so a setting would silently no-op.
             super::types::AGGREGATE_PARAM,
         ];
         PARAMS
@@ -109,7 +131,7 @@ impl std::fmt::Display for Text {
 
 #[cfg(test)]
 mod tests {
-    use crate::plot::types::ParameterValue;
+
     use crate::plot::{Geom, Layer};
 
     /// `parse` is on unless the user says otherwise, so a label carrying markdown
@@ -118,24 +140,16 @@ mod tests {
     fn test_parse_defaults_to_true() {
         let mut layer = Layer::new(Geom::text());
         layer.apply_default_params();
-        assert_eq!(
-            layer.parameters.get("parse"),
-            Some(&ParameterValue::Boolean(true))
-        );
+        assert_eq!(layer.parameters.get("parse"), Some(&true.into()));
     }
 
     /// An explicit `SETTING parse => false` survives default application.
     #[test]
     fn test_parse_setting_is_kept() {
         let mut layer = Layer::new(Geom::text());
-        layer
-            .parameters
-            .insert("parse".to_string(), ParameterValue::Boolean(false));
+        layer.parameters.insert("parse".to_string(), false.into());
         layer.apply_default_params();
-        assert_eq!(
-            layer.parameters.get("parse"),
-            Some(&ParameterValue::Boolean(false))
-        );
+        assert_eq!(layer.parameters.get("parse"), Some(&false.into()));
     }
 
     /// `parse` is a boolean; anything else is a validation error rather than a
@@ -143,10 +157,7 @@ mod tests {
     #[test]
     fn test_parse_rejects_non_boolean() {
         let mut layer = Layer::new(Geom::text());
-        layer.parameters.insert(
-            "parse".to_string(),
-            ParameterValue::String("yes".to_string()),
-        );
+        layer.parameters.insert("parse".to_string(), "yes".into());
         assert!(layer.validate_settings().is_err());
     }
 }

@@ -11,7 +11,7 @@ use hephaestus::plot::PlotComposition;
 use hephaestus::window::{self, Event, EventCtx, Frame, WindowApp, WindowConfig};
 
 use super::canvas::{parse_background, whole_pixels, Dimensions};
-use crate::reader::Spec;
+use crate::reader::ResolvedPlot;
 use crate::writer::WriterOptions;
 use crate::{GgsqlError, Result};
 
@@ -127,7 +127,7 @@ impl PlotViewer {
     ///
     /// Returns `GgsqlError::WriterError` if the plot cannot be composed, if no
     /// GPU adapter can drive a window, or if the event loop fails.
-    pub fn show(&self, spec: &Spec) -> Result<Dimensions> {
+    pub fn show(&self, spec: &ResolvedPlot) -> Result<Dimensions> {
         let view = super::compose::prepare(spec.plot(), spec.data())?;
 
         let config = WindowConfig::new(self.title.clone())

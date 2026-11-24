@@ -72,7 +72,7 @@ impl ScaleTypeTrait for Ordinal {
         super::categorical_numeric_domain(scale)
     }
 
-    fn break_labels(&self, scale: &super::super::Scale) -> Vec<(f64, String)> {
+    fn break_labels(&self, scale: &super::super::Scale) -> Vec<(f64, crate::plot::ArrayElement)> {
         super::categorical_break_labels(scale)
     }
 
@@ -167,7 +167,7 @@ impl ScaleTypeTrait for Ordinal {
         // Colors use "sequential" (like Continuous) since ordinal has inherent ordering
         // Other aesthetics same as Discrete
         match aesthetic {
-            "stroke" | "fill" => {
+            "stroke" | "fill" | "background" => {
                 let palette = palettes::get_color_palette("sequential")
                     .ok_or_else(|| "Default color palette 'sequential' not found".to_string())?;
                 Ok(Some(

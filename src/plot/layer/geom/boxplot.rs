@@ -79,6 +79,8 @@ impl GeomTrait for Boxplot {
                 default: DefaultParamValue::String("both"),
                 constraint: ParamConstraint::string_option(SIDE_VALUES),
             },
+            super::types::LINECAP_PARAM,
+            super::types::LINEJOIN_PARAM,
         ];
         PARAMS
     }
@@ -364,7 +366,7 @@ fn boxplot_sql_append_outliers(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::plot::Parameters;
+
     use crate::reader::AnsiDialect;
 
     // ==================== SQL Generation Tests (Compact) ====================
@@ -655,7 +657,7 @@ mod tests {
         let boxplot = Boxplot;
         let params = boxplot.default_params();
 
-        assert_eq!(params.len(), 6);
+        assert_eq!(params.len(), 8);
 
         // Find and verify outliers param
         let outliers_param = params.iter().find(|p| p.name == "outliers").unwrap();
@@ -720,9 +722,7 @@ mod tests {
             "pos2".to_string(),
             AestheticValue::standard_column("value".to_string()),
         );
-        let mut parameters = Parameters::new();
-        parameters.insert("coef".to_string(), ParameterValue::Number(1.5));
-        parameters.insert("outliers".to_string(), ParameterValue::Boolean(true));
+        let parameters = crate::params! { "coef" => 1.5, "outliers" => true };
 
         let ctx = crate::plot::aesthetic::AestheticContext::from_static(&["x", "y"], &[]);
         let result = stat_boxplot(

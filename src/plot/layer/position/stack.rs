@@ -65,16 +65,13 @@ impl PositionTrait for Stack {
         let center = layer
             .parameters
             .get("center")
-            .and_then(|v| match v {
-                ParameterValue::Boolean(b) => Some(*b),
-                _ => None,
-            })
+            .and_then(ParameterValue::as_bool)
             .unwrap_or(false);
 
-        let total = layer.parameters.get("total").and_then(|v| match v {
-            ParameterValue::Number(n) => Some(*n),
-            _ => None,
-        });
+        let total = layer
+            .parameters
+            .get("total")
+            .and_then(ParameterValue::as_number);
 
         let mode = match (center, total) {
             (true, _) => StackMode::Center,
@@ -419,7 +416,7 @@ mod tests {
         let mut layer_centered = make_test_layer();
         layer_centered
             .parameters
-            .insert("center".to_string(), ParameterValue::Boolean(true));
+            .insert("center".to_string(), true.into());
         let (result_centered, _) = stack.apply_adjustment(df, &layer_centered, &spec).unwrap();
 
         // Normal stacking should have pos2end starting at 0
@@ -544,9 +541,7 @@ mod tests {
 
         // Test with total = 100 (percentage stacking)
         let mut layer = make_test_layer();
-        layer
-            .parameters
-            .insert("total".to_string(), ParameterValue::Number(100.0));
+        layer.parameters.insert("total".to_string(), 100.0.into());
 
         let (result, _) = stack.apply_adjustment(df, &layer, &spec).unwrap();
 
@@ -577,9 +572,7 @@ mod tests {
 
         // Test with total = 1 (normalized to 1, like old stack_fill behavior)
         let mut layer = make_test_layer();
-        layer
-            .parameters
-            .insert("total".to_string(), ParameterValue::Number(1.0));
+        layer.parameters.insert("total".to_string(), 1.0.into());
 
         let (result, _) = stack.apply_adjustment(df, &layer, &spec).unwrap();
 

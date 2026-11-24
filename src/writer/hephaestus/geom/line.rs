@@ -4,11 +4,12 @@
 //! within a group hephaestus connects rows in source order (ggsql pre-orders
 //! line by pos1, path keeps raw order, smooth emits the fitted curve).
 
-use hephaestus::color::rgb8;
+use zygos::color::rgb8;
 
 use super::super::scales::RangeKind;
 use super::super::wiring::{
-    Ctx, GeomSpec, LegendKind, MatDefault, MaterialSpec, PanelAxis, PositionSpec,
+    stroke_style_constants, Ctx, GeomSpec, LegendKind, MatDefault, MaterialSpec, PanelAxis,
+    PositionSpec,
 };
 use crate::plot::layer::geom::GeomType;
 
@@ -51,6 +52,7 @@ pub fn spec(ctx: &Ctx) -> GeomSpec {
             ),
         ],
         raw_strings: &[],
+        constants: stroke_style_constants(ctx.layer),
         raw_numbers: vec![],
         data_channels: vec![],
         legend_key: LegendKind::Line,

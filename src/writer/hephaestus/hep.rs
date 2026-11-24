@@ -130,7 +130,10 @@ impl HepWriter {
     /// # Errors
     ///
     /// As [`Self::write_reporting`].
-    pub fn render_reporting(&self, spec: &crate::reader::Spec) -> Result<(Vec<u8>, Vec<String>)> {
+    pub fn render_reporting(
+        &self,
+        spec: &crate::reader::ResolvedPlot,
+    ) -> Result<(Vec<u8>, Vec<String>)> {
         self.write_reporting(spec.plot(), spec.data())
     }
 
@@ -174,11 +177,11 @@ impl Writer for HepWriter {
         })
     }
 
-    fn validate(&self, spec: &Plot) -> Result<()> {
+    fn validate_plot(&self, spec: &Plot) -> Result<()> {
         compose::validate_plot(spec)
     }
 
-    fn write(&self, spec: &Plot, data: &HashMap<String, DataFrame>) -> Result<Self::Output> {
+    fn write_plot(&self, spec: &Plot, data: &HashMap<String, DataFrame>) -> Result<Self::Output> {
         self.write_reporting(spec, data).map(|(bytes, _)| bytes)
     }
 }
@@ -193,10 +196,6 @@ fn describe(problems: &[UnsupportedItem]) -> Vec<String> {
     problems
         .iter()
         .map(|problem| match problem {
-            UnsupportedItem::CustomFormatter { scale } => format!(
-                "the {scale} scale's tick labels are computed rather than listed, so a \
-                 consumer cannot reproduce them"
-            ),
             UnsupportedItem::UnnameableGeom { patch, index } => format!(
                 "layer {} of panel {patch:?} is a mark the document cannot name, so nothing \
                  records how to draw it again",
@@ -296,8 +295,9 @@ mod option_tests {
     #[test]
     fn a_problem_is_reported_without_naming_the_renderer() {
         let problems = [
-            UnsupportedItem::CustomFormatter {
-                scale: "pos1".into(),
+            UnsupportedItem::UnembeddableImage {
+                patch: "panel".into(),
+                name: "logo".into(),
             },
             UnsupportedItem::UnnameableGeom {
                 patch: "panel".into(),

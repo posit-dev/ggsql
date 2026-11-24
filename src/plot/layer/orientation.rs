@@ -632,7 +632,7 @@ mod tests {
         );
         layer.mappings.insert(
             "pos1min".to_string(),
-            AestheticValue::Literal(crate::plot::ParameterValue::Number(0.0)),
+            AestheticValue::Literal((-0.0).into()),
         );
         layer.mappings.insert(
             "pos1max".to_string(),
@@ -661,7 +661,7 @@ mod tests {
         );
         layer.mappings.insert(
             "pos2min".to_string(),
-            AestheticValue::Literal(crate::plot::ParameterValue::Number(0.0)),
+            AestheticValue::Literal((-0.0).into()),
         );
         layer.mappings.insert(
             "pos2max".to_string(),

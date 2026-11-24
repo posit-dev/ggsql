@@ -6,18 +6,21 @@ For ggsql language semantics, see [`/doc/syntax/`](../../doc/syntax/). This file
 
 ## Top-level types
 
-Defined in `main.rs` (the `Plot` struct + `Labels`) and `types.rs` (input/value types). All are re-exported through `mod.rs`.
+Defined in `main.rs` (the `Plot` struct) and `types.rs` (input/value types). All are re-exported through `mod.rs`.
+The `SETTING`-parameter machinery (`ParameterValue`, `Parameters`, `ArrayElement`, the constraint types, `ParamDefinition::validate`) lives one level up in [`../params.rs`](../params.rs), shared with `table/`; `types.rs` re-exports it, so `plot::` paths keep working.
+`Labels` lives in [`../labels.rs`](../labels.rs), likewise shared with `table/` and re-exported from `main.rs`.
 
 | Type | Where | Role |
 | --- | --- | --- |
 | `Plot` | `main.rs` | Root spec: `global_mappings`, optional `source`, `layers`, `scales`, optional `facet`, `project`, `labels`, plus a derived `aesthetic_context`. |
-| `Labels` | `main.rs` | Title/subtitle/axis/aesthetic labels merged from all `LABEL` clauses. |
+| `Labels` | `../labels.rs` | Title/subtitle/axis/aesthetic labels merged from all `LABEL` clauses. Shared with `table/`. |
 | `Mappings` | `types.rs` | Unified aesthetic mapping (`wildcard: bool` + `aesthetics: HashMap<String, AestheticValue>`); used for both global and per-layer mappings. |
 | `AestheticValue` | `types.rs` | One side of a mapping: column reference, literal, annotation literal, or null. |
-| `ParameterValue` | `types.rs` | Value used in `SETTING` clauses: string / number / boolean / array. |
+| `ParameterValue` | `../params.rs` | Value used in `SETTING` clauses: string / number / boolean / array. |
 | `DataSource` | `types.rs` | `Identifier`, `FilePath`, or `Annotation` (PLACE) — the right-hand side of `FROM`. |
 | `SqlExpression` | `types.rs` | Captured raw SQL fragment (e.g. for `FILTER`). |
-| `Schema` / `ColumnInfo` / `ArrayElement` | `types.rs` | Schema info computed from data; carries dtype, discreteness, min/max. |
+| `Schema` / `ColumnInfo` | `types.rs` | Schema info computed from data; carries dtype, discreteness, min/max. |
+| `ArrayElement` | `../params.rs` | Element of an array-valued parameter or range; date/time-aware. |
 | `AestheticContext` | `aesthetic.rs` | Coord-aware mapping of user aesthetic names (`x`, `y`) to internal names (`pos1`, `pos2`). Computed once and stored on `Plot` so executor and writers agree. |
 
 `aesthetic.rs` also exports the position-aesthetic predicates (`is_position_aesthetic`, `MATERIAL_AESTHETICS`, `POSITION_SUFFIXES`) that the rest of the pipeline reaches for.
@@ -27,8 +30,8 @@ Defined in `main.rs` (the `Plot` struct + `Labels`) and `types.rs` (input/value 
 ```
 plot/
 ├── aesthetic.rs       Aesthetic naming + classification (position/facet/material)
-├── main.rs            Plot, Labels
-├── types.rs           Mappings, AestheticValue, DataSource, Schema, ArrayElement, …
+├── main.rs            Plot
+├── types.rs           Mappings, AestheticValue, DataSource, Schema, …
 ├── facet/             FACET clause
 ├── layer/             DRAW clause (layers)
 │   ├── geom/          one file per layer type (point, line, bar, …)
@@ -55,10 +58,12 @@ plot/
 
 `Scale` in `types.rs`, the kind enum + traits in `scale_type/`, the transformation logic in `transform/`. Other top-level files in `scale/`:
 
-- `breaks.rs` — break/tick computation for axes.
-- `colour.rs` — colour aesthetic helpers, gradient interpolation.
-- `linetype.rs`, `shape.rs` — categorical aesthetic mappings.
-- `palettes.rs` — built-in colour palettes (large file, mostly data tables).
+- `breaks.rs` — break/tick computation for axes. The algorithms live in the `zygos` crate; ggsql keeps only what zygos lacks: a few minor-break helpers, typed range filtering, and the temporal glue (`parse_temporal_interval`, `calendar_interval_breaks`). Details sit with the functions themselves.
+- `colour.rs` — colour aesthetic helpers; interpolation delegates to `zygos::color`.
+- `linetype.rs` — stroke-dash conversion over `zygos::patterns::linetype`.
+- `palettes.rs` — adapts `zygos::palettes` (the tables live there) to ggsql's string vocabulary (hex colors, hex linetype patterns), plus the `ArrayElement`-typed `lookup_palette`. Shape-name → SVG-path conversion is not in `scale/` at all: it's a Vega-Lite concern and lives in `writer/vegalite/shape.rs` over `zygos::patterns::shape`.
+
+OOB (out-of-bounds) policies use `zygos::OobPolicy`; the `OOB_*` string constants are the user-facing vocabulary in the SCALE clause.
 
 Scale type / transform docs: [`/doc/syntax/scale/type/`](../../doc/syntax/scale/type/) and [`/doc/syntax/scale/aesthetic/`](../../doc/syntax/scale/aesthetic/).
 

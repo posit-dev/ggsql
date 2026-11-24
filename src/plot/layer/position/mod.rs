@@ -14,7 +14,7 @@ mod identity;
 mod jitter;
 mod stack;
 
-use crate::plot::types::{DefaultParamValue, ParamDefinition, ParameterValue};
+use crate::plot::types::ParamDefinition;
 use crate::plot::ScaleTypeKind;
 use crate::{DataFrame, Plot, Result};
 use serde::{Deserialize, Serialize};
@@ -233,11 +233,6 @@ pub trait PositionTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
         &[]
     }
 
-    /// Returns valid parameter names for SETTING validation
-    fn valid_settings(&self) -> Vec<&'static str> {
-        self.default_params().iter().map(|p| p.name).collect()
-    }
-
     /// Whether this position creates a pos1offset column
     fn creates_pos1offset(&self) -> bool {
         false
@@ -314,11 +309,6 @@ impl Position {
         self.0.default_params()
     }
 
-    /// Get valid settings for SETTING validation
-    pub fn valid_settings(&self) -> Vec<&'static str> {
-        self.0.valid_settings()
-    }
-
     /// Check if this position creates a pos1offset column
     pub fn creates_pos1offset(&self) -> bool {
         self.0.creates_pos1offset()
@@ -337,24 +327,6 @@ impl Position {
         spec: &Plot,
     ) -> Result<(DataFrame, Option<f64>)> {
         self.0.apply_adjustment(df, layer, spec)
-    }
-
-    /// Apply default position parameter values to a layer
-    ///
-    /// For each parameter defined in default_params(), if the layer doesn't
-    /// already have that parameter set, insert the default value.
-    pub fn apply_defaults_to_layer(&self, layer: &mut Layer) {
-        for param in self.default_params() {
-            if !layer.parameters.contains_key(param.name) {
-                let value = match &param.default {
-                    DefaultParamValue::String(s) => ParameterValue::String(s.to_string()),
-                    DefaultParamValue::Number(n) => ParameterValue::Number(*n),
-                    DefaultParamValue::Boolean(b) => ParameterValue::Boolean(*b),
-                    DefaultParamValue::Null => continue,
-                };
-                layer.parameters.insert(param.name.to_string(), value);
-            }
-        }
     }
 }
 

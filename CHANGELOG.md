@@ -9,6 +9,21 @@
   dates at midnight). Datetime labels at exact midnight now render as plain
   dates everywhere.
 
+- New `TABULATE` clause renders a query result as a table instead of a
+  plot. Tables are rendered via new `html` writer. `TABULATE` supports the
+  following clauses:
+  - `LABEL` sets (sub)titles, captions and overrides the display of column
+    labels.
+  - `SPAN` groups columns under a shared header cell (spanner).
+  - `FORMAT` configures how a column's cells are displayed.
+  - `FACET` sets row groups.
+- `Writer::write_table` renders a resolved table, taking the new public
+  `TableLayout` — the table's cells bundled with their column and row
+  metadata.
+- Text layers now have text boxes. The presence of the `background` aesthetic
+determines whether text boxes get drawn and additional settings `padding`,
+`radius` and `linewidth` style the box.
+- Many layers now support `linecap` and `linejoin` settings for styling lines.
 - The Positron extension now registers a ggsql data importer, so dragging a
   csv/tsv/parquet/json file into Positron offers to generate the ggsql code
   that loads it into a table, including any filters and sorts shown in the
@@ -18,6 +33,9 @@
 
 ### Changed
 
+- **Breaking**: `TABULATE` is now a reserved word after `VISUALISE`/`TABULATE`,
+  like `VISUALISE`. Reference a column named `tabulate` there quoted
+  (`'tabulate'`); the SQL part of a query is unaffected.
 - The reader/dialect layer was refactored around a central dialect registry with
   per-database dialect implementations (#569). As part of this, some
   previously-public items changed: the `CacheBackend` trait moved to a
@@ -26,9 +44,94 @@
 - Scale resolution now detects and converts temporal-unit mismatches and errors
   on unrepresentable ranges instead of producing silently wrong scales (#569).
 - `Plot.labels` field is no longer `Option<Labels>` but plain `Labels`.
+- Scale internals now build on the `zygos` crate: numeric transform math,
+  break/tick selection, color ramps, the named palette tables,
+  shape/linetype lookups, and out-of-bounds policies live there and are
+  delegated to. Break and tick selection comes from zygos wholesale, so tick
+  positions and counts may differ from previous releases:
+  - the default `breaks` count is 5 (was 7), which also changes the default
+    number of bins on binned scales;
+  - pretty breaks use zygos's Wilkinson Extended weights, favouring steps of 2
+    and ticks that stay within the data (e.g. 0–100 gives 0, 20, …, 100);
+    `square` and `exp*` scales use them too, in data space;
+  - log breaks follow the 1-2-5 pattern on every decade rather than being
+    thinned to the requested count (3 and 7 join it over narrow spans when
+    more breaks are asked for; very wide spans keep only powers);
+    `pretty => false` no longer switches log scales to powers only;
+  - `asinh`/`pseudo_log*` breaks reach closer to zero on each side, and
+    `pseudo_log2`/`pseudo_ln` place them at powers of their own base;
+  - log-family minor breaks are the whole-number multiples between powers
+    (2, 3, …, 9 for base 10) rather than even steps in log space; a
+    `minor_breaks` count only switches them on or off;
+  - temporal breaks, automatic or from an interval, start from a calendar grid
+    sized to the interval (e.g. "3 months" from Feb 15 → Jan, Apr, Jul), and
+    `TIME` interval breaks step across minute/hour boundaries; automatic
+    temporal minor breaks fall on the calendar sub-interval (quarters under
+    years, weeks under months, …) instead of three evenly spaced per interval.
+- The built-in SVG/PDF/HEP and raster writers moved to hephaestus 0.5.0.
+  Consequences:
+  - axis tick labels that would overlap are now culled (the outermost labels
+    always survive), instead of being drawn on top of each other;
+  - dashed linetypes in those writers now measure dash lengths in multiples of
+    the line width, as documented and as the Vega-Lite writer does — dashed
+    lines render with visibly different (correct) proportions, and a dashed
+    line whose width varies within a layer now keeps its pattern instead of
+    falling back to a uniform stroke;
+  - log-scale breaks on exotic bases (e.g. `ln`, base 2) no longer collide,
+    and a base-2 scale gets minor breaks at the geometric midpoint.
+- Break labels are rendered by `zygos`'s label engine: the `RENAMING` clause
+  (explicit renames, `NULL` suppressions, and the `* => '...'` template) is
+  kept as a value-keyed `zygos::LabelSpec` on `Scale` and re-rendered against
+  the current breaks on every read instead of being folded into a static
+  string map at resolution time. Consequences:
+  - shared `{}` decimal precision is derived from the un-renamed breaks only;
+  - negative numbers render with U+2212 MINUS SIGN everywhere;
+  - `{:time}` and `{:num}` use zygos's hand-rolled strftime/printf subsets
+    (the `sprintf` dependency is gone); `%c %x %X %v` and the timezone tokens
+    `%z %Z` are unsupported, as before;
+  - new template extensions: `{:num %S}` for SI-prefixed notation
+    (`{:num %.2S}` → `1.2M`), the `!` flag for Unicode scientific notation
+    (`{:num %!.2e}` → `1.23 × 10³`), and further placeholders (`{:abbr N}`,
+    `{:bytes}`, `{:duration}`, `{:ordinal}`); placeholder keywords are now
+    ASCII-case-insensitive;
+  - unquoted numeric RENAMING keys are typed (`RENAMING 10 => 'ten'` matches
+    the string category `"10"`); quoted keys keep matching breaks by their
+    text form as before.
+- **Breaking (library API):** `Scale::label_mapping` and `Scale::label_template`
+  are replaced by a single `label_spec: zygos::LabelSpec` field; the folded
+  string map is available on demand via the `Scale::label_mapping()` method,
+  and `format::apply_label_template` is gone (`format::label_elements` takes
+  its place).
+- **Breaking (library API):** the scale module's public surface shrank with
+  the move to `zygos`. Removed: the `plot::scale::shape` module including
+  `shape_to_svg_path`; the ~85 named palette table constants in
+  `plot::scale::palettes` (`GGSQL10`, `VIRIDIS`, … — the `get_*_palette`
+  lookups remain); the hand-rolled break functions `wilkinson_extended`,
+  `pretty_breaks`, `log_breaks`, `exp_pretty_breaks`, `minor_breaks_log`,
+  `minor_breaks_sqrt`, `minor_breaks_symlog`, `trim_breaks`,
+  `trim_temporal_breaks` and `derive_minor_interval` (their zygos
+  counterparts are re-exported where ggsql still uses them);
+  `colour::ColorSpace` is now a re-export of zygos's, whose linear-RGB
+  variant is named `Srgb` rather than `LinearRgb`.
+- The CLI now always prints query warnings (e.g. extra `VISUALISE`/`TABULATE`
+  statements being ignored) to stderr, not only with `-v`.
 - Replaced `CLAUDE.md` files with `AGENTS.md` files.
 
 ### Fixed
+
+- A scale whose transform has a restricted domain (e.g. `log`, `sqrt`) now
+  infers its data range from in-domain values only, so non-positive data on a
+  log scale no longer drags the lower limit to the transform's minimum bound
+  and produces an unreadable axis.
+- `SCALE DISCRETE` now accepts integer columns, matching the documented ability
+  to force numeric data into a discrete scale. Integer columns mapped to
+  grouping aesthetics (e.g. `fill` in `DRAW bar`) can now be declared discrete
+  instead of being rejected with a validation error (#239).
+- Mapped columns dropped by a stat transform (e.g. a non-discrete `fill` on
+  `DRAW bar`) now produce a validation error naming the mapping, explaining
+  the drop, and suggesting `SCALE DISCRETE` — in both the Vega-Lite writer and
+  the renderer-backed writers, which previously failed with a generic
+  "column does not exist" message or an internal error (#239).
 
 - Free facet dimensions now resolve their domain, breaks, labels, and minor
   breaks per panel in core (`Scale::panels`, indexed by the canonical panel
@@ -48,6 +151,19 @@
 - Fixed schema-less `validate()` rejecting spatial layers that omit an explicit
   `geometry` mapping, even though execution auto-detects the geometry column
   (#587)
+- Log axes carry decade ticks again (#512). Position scales now expand their
+  domain in transformed space (via zygos) rather than in data space, so the
+  pad can no longer push a log or sqrt scale's lower bound below zero and
+  get clipped to the smallest positive float — a 1–100 `log` axis now spans
+  roughly 0.79–126 instead of 5e-308–105. As a consequence the `expand`
+  setting is measured in transformed units on transformed scales: the
+  multiplier is a share of the transformed span, and the additive part is in
+  transformed units too (`add = 0.1` on a `log` scale is a tenth of a decade).
+  A zero-width range pads as if it spanned one transformed unit (previously
+  its own absolute value). Where a pad would land outside a transform's image
+  (the lower end of a `sqrt`, `square` or `exp*` scale near zero), that end is
+  left unpadded rather than folding back inside the data range. Identity
+  scales are unaffected.
 
 ## 0.5.2 - 2026-09-11
 

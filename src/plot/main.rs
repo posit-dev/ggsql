@@ -17,6 +17,8 @@
 //! └─ labels: Labels                 (merged from LABEL clauses)
 //! ```
 
+pub use crate::labels::Labels;
+
 use crate::naming;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -72,29 +74,6 @@ pub struct Plot {
     /// Computed from the coord type and facet, used for transformations
     #[serde(skip)]
     pub aesthetic_context: Option<AestheticContext>,
-}
-
-/// Text labels (from LABELS clause)
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-pub struct Labels {
-    /// Label assignments (label type → text, None = suppress)
-    pub labels: HashMap<String, Option<String>>,
-}
-
-impl Labels {
-    /// Look up a label's text.
-    /// Both "not set" and suppressed (`LABEL <key> => NULL`) return `None`.
-    pub fn get(&self, key: &str) -> Option<&str> {
-        self.labels.get(key)?.as_deref()
-    }
-
-    /// Look up a label entry:
-    /// * `None` means not set,
-    /// * `Some(None)` means explicitly suppressed (`LABEL <key> => NULL`).
-    /// * `Some(Some(String))` means typical label
-    pub fn entry(&self, key: &str) -> Option<&Option<String>> {
-        self.labels.get(key)
-    }
 }
 
 // Manual PartialEq implementation (aesthetic_context is derived, not compared)
@@ -286,7 +265,7 @@ impl Plot {
                     }
 
                     // Skip if label already set (user-specified or from earlier)
-                    if labels.labels.contains_key(primary) {
+                    if labels.contains(primary) {
                         continue;
                     }
 
@@ -361,17 +340,12 @@ mod tests {
         let layer = Layer::new(Geom::point())
             .with_aesthetic("x".to_string(), AestheticValue::standard_column("date"))
             .with_aesthetic("y".to_string(), AestheticValue::standard_column("revenue"))
-            .with_aesthetic(
-                "color".to_string(),
-                AestheticValue::Literal(ParameterValue::String("blue".to_string())),
-            );
+            .with_aesthetic("color".to_string(), AestheticValue::Literal("blue".into()));
 
         assert_eq!(layer.geom, Geom::point());
         assert_eq!(layer.get_column("x"), Some("date"));
         assert_eq!(layer.get_column("y"), Some("revenue"));
-        assert!(
-            matches!(layer.get_literal("color"), Some(ParameterValue::String(s)) if s == "blue")
-        );
+        assert!(ParameterValue::is_str(layer.get_literal("color"), "blue"));
         assert!(layer.filter.is_none());
     }
 
@@ -431,9 +405,9 @@ mod tests {
     #[test]
     fn test_aesthetic_value_display() {
         let column = AestheticValue::standard_column("sales");
-        let string_lit = AestheticValue::Literal(ParameterValue::String("blue".to_string()));
-        let number_lit = AestheticValue::Literal(ParameterValue::Number(3.53));
-        let bool_lit = AestheticValue::Literal(ParameterValue::Boolean(true));
+        let string_lit = AestheticValue::Literal("blue".into());
+        let number_lit = AestheticValue::Literal(3.53.into());
+        let bool_lit = AestheticValue::Literal(true.into());
 
         assert_eq!(format!("{}", column), "sales");
         assert_eq!(format!("{}", string_lit), "'blue'");
@@ -496,7 +470,7 @@ mod tests {
 
     #[test]
     fn test_aesthetic_value_literal() {
-        let lit = AestheticValue::Literal(ParameterValue::String("red".to_string()));
+        let lit = AestheticValue::Literal("red".into());
         assert!(!lit.is_dummy());
         assert_eq!(lit.column_name(), None);
     }

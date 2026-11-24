@@ -12,16 +12,17 @@
 use std::cmp::Ordering;
 use std::collections::HashMap;
 
-use hephaestus::color::rgb8;
+use hephaestus::plot::geom::Raw;
 use hephaestus::plot::{Plot as HPlot, RibbonGeom};
+use zygos::color::rgb8;
 
 use super::super::channels::{
-    build_group_keys, column_to_channel, column_to_f64, column_to_strings,
+    build_group_keys, column_to_channel, column_to_f64, column_to_raw_strings,
 };
 use super::super::scales::RangeKind;
 use super::super::wiring::{
     apply_material, band_edges, dodge_offsets, require_column, resolve_color, resolve_material,
-    side_sign, BandAxes, Ctx, LegendKind, MatDefault, MaterialSpec,
+    side_sign, stroke_style_constants, BandAxes, Ctx, LegendKind, MatDefault, MaterialSpec,
 };
 use crate::Result;
 
@@ -74,7 +75,7 @@ pub fn build(plot: &mut HPlot, ctx: &Ctx) -> Result<()> {
     let offset = require_column(ctx, "offset")?;
 
     let p1 = column_to_channel(df, band_col)?;
-    let cat = column_to_strings(df, band_col)?;
+    let cat = column_to_raw_strings(df, band_col)?;
     let p2 = column_to_f64(df, value_col)?;
     let off = column_to_f64(df, offset)?;
 
@@ -252,6 +253,18 @@ pub fn build(plot: &mut HPlot, ctx: &Ctx) -> Result<()> {
         }
     }
     apply_material(&mut b, alpha.as_ref(), "fill_opacity", &order);
+    // The ribbon's two edges are stroked independently, so each style goes to
+    // both edges' channels.
+    for (channel, value) in
+        stroke_style_constants(ctx.layer)
+            .into_iter()
+            .flat_map(|(channel, value)| {
+                let second = if channel == "cap" { "cap2" } else { "join2" };
+                [(channel, value.clone()), (second, value)]
+            })
+    {
+        b.set(channel, Raw(value));
+    }
     plot.add_geom(b.build());
 
     Ok(())
