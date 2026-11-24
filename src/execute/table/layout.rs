@@ -7,7 +7,7 @@ use std::collections::HashMap;
 
 use super::format::resolve_column_properties;
 use super::stub::{create_row_labels, create_stubhead};
-use super::summary::SummaryChunk;
+use super::summary::{SummaryChunk, SummaryRow};
 use crate::array_util::{column_to_strings, value_to_string};
 use crate::naming;
 use crate::plot::facet::Facet;
@@ -274,19 +274,27 @@ fn weave_group_summaries(
     {
         let key = key.as_ref().expect("filtered to group chunks");
         debug_assert_eq!(chunk[0].group, *key, "summary chunks in group order");
-        for summary in chunk_summaries.iter().filter(|s| s.top) {
-            summary_cells.extend(summary.cells(new_rows.len(), columns));
-            new_rows.push(TableRow::summary(key.clone()));
-        }
+        let tops: Vec<&SummaryRow> = chunk_summaries.iter().filter(|s| s.top).collect();
+        weave_summary_block(
+            &mut new_rows,
+            &mut summary_cells,
+            &tops,
+            key.clone(),
+            columns,
+        );
         for row in chunk.iter() {
             row_map[old_index] = new_rows.len();
             new_rows.push(row.clone());
             old_index += 1;
         }
-        for summary in chunk_summaries.iter().filter(|s| !s.top) {
-            summary_cells.extend(summary.cells(new_rows.len(), columns));
-            new_rows.push(TableRow::summary(key.clone()));
-        }
+        let bottoms: Vec<&SummaryRow> = chunk_summaries.iter().filter(|s| !s.top).collect();
+        weave_summary_block(
+            &mut new_rows,
+            &mut summary_cells,
+            &bottoms,
+            key.clone(),
+            columns,
+        );
     }
 
     let mut cells = cells;
@@ -310,25 +318,53 @@ fn weave_grand_summaries(
     let Some((_, grand)) = summaries.iter().find(|(key, _)| key.is_none()) else {
         return (rows, cells);
     };
-    let tops = grand.iter().filter(|s| s.top).count();
+    let tops: Vec<&SummaryRow> = grand.iter().filter(|s| s.top).collect();
 
     let mut cells = cells;
     for cell in &mut cells {
-        cell.offset_rows(tops);
+        cell.offset_rows(tops.len());
     }
     let mut new_rows = Vec::with_capacity(rows.len() + grand.len());
     let mut summary_cells = Vec::new();
-    for summary in grand.iter().filter(|s| s.top) {
-        summary_cells.extend(summary.cells(new_rows.len(), columns));
-        new_rows.push(TableRow::summary(Vec::new()));
-    }
+    weave_summary_block(
+        &mut new_rows,
+        &mut summary_cells,
+        &tops,
+        Vec::new(),
+        columns,
+    );
     new_rows.extend(rows);
-    for summary in grand.iter().filter(|s| !s.top) {
-        summary_cells.extend(summary.cells(new_rows.len(), columns));
-        new_rows.push(TableRow::summary(Vec::new()));
-    }
+    let bottoms: Vec<&SummaryRow> = grand.iter().filter(|s| !s.top).collect();
+    weave_summary_block(
+        &mut new_rows,
+        &mut summary_cells,
+        &bottoms,
+        Vec::new(),
+        columns,
+    );
     summary_cells.extend(cells);
     (new_rows, summary_cells)
+}
+
+/// Emit one grid row per clause row in `block`, marking the block's first
+/// and last rows (both, when the block is one row) for the positional
+/// classes.
+fn weave_summary_block(
+    new_rows: &mut Vec<TableRow>,
+    summary_cells: &mut Vec<TableCell>,
+    block: &[&SummaryRow],
+    key: Vec<usize>,
+    columns: &[TableColumn],
+) {
+    for (index, summary) in block.iter().enumerate() {
+        summary_cells.extend(summary.cells(
+            new_rows.len(),
+            columns,
+            index == 0,
+            index == block.len() - 1,
+        ));
+        new_rows.push(TableRow::summary(key.clone()));
+    }
 }
 
 /// Interleave group-label rows into the body. At each group boundary, emit
@@ -601,6 +637,56 @@ mod tests {
             find_cell(&layout, 4, "mean").kind,
             TableCellKind::SummaryLabel
         );
+    }
+
+    #[test]
+    fn summary_cells_carry_their_blocks_position_classes() {
+        let frame = df! {
+            "x" => vec![1.5, 3.5],
+        }
+        .unwrap();
+        let mut table = Table::new();
+        table.summaries = vec![
+            summary_clause("mean", SummaryScope::Grand, &["x"]),
+            summary_clause("median", SummaryScope::Grand, &["x"]),
+        ];
+
+        let layout = resolve_layout_with_summaries(&frame, &table, None).unwrap();
+
+        // Header, two data rows, then the two-row grand block.
+        let has = |row: usize, class: TableClass| {
+            layout
+                .cells
+                .iter()
+                .filter(|cell| cell.top == row)
+                .all(|cell| cell.classes.contains(&class))
+        };
+        assert!(has(3, TableClass::GrandSummary));
+        assert!(has(3, TableClass::GrandSummaryFirst));
+        assert!(!has(3, TableClass::GrandSummaryLast));
+        assert!(has(4, TableClass::GrandSummary));
+        assert!(!has(4, TableClass::GrandSummaryFirst));
+        assert!(has(4, TableClass::GrandSummaryLast));
+    }
+
+    #[test]
+    fn a_lone_summary_row_is_both_first_and_last() {
+        let frame = df! {
+            "x" => vec![1.5, 3.5],
+        }
+        .unwrap();
+        let mut table = Table::new();
+        table.summaries = vec![summary_clause("mean", SummaryScope::Grand, &["x"])];
+
+        let layout = resolve_layout_with_summaries(&frame, &table, None).unwrap();
+
+        let row = layout.rows.len() - 1;
+        assert!(layout
+            .cells
+            .iter()
+            .filter(|cell| cell.top == row)
+            .all(|cell| cell.classes.contains(&TableClass::GrandSummaryFirst)
+                && cell.classes.contains(&TableClass::GrandSummaryLast)));
     }
 
     #[test]

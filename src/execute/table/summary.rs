@@ -15,7 +15,7 @@ use arrow::datatypes::DataType;
 use crate::array_util::{as_f64, cast_array, column_to_strings};
 use crate::naming;
 use crate::params::ParameterValue;
-use crate::table::{Format, Summary, SummaryScope, TableCell, TableColumn, TableRow};
+use crate::table::{Format, Summary, SummaryScope, TableCell, TableClass, TableColumn, TableRow};
 use crate::{ColumnSection, DataFrame, GgsqlError, Result};
 
 /// Validate `summaries` against the data and prepare the frame for summary
@@ -74,9 +74,38 @@ impl SummaryRow {
     /// columns, then the computed values in their body columns. No cells in
     /// group-stub columns: a `GROUP` row's are covered by the merged stub
     /// cell; a `GRAND` row owns them by extending its label's colspan
-    /// leftward.
-    pub(super) fn cells(&self, row: usize, columns: &[TableColumn]) -> Vec<TableCell> {
-        let mut cells = vec![self.label_cell(row, columns)];
+    /// leftward. `first`/`last` mark the row's position in its block (both
+    /// when the block is one row) for the positional style classes.
+    pub(super) fn cells(
+        &self,
+        row: usize,
+        columns: &[TableColumn],
+        first: bool,
+        last: bool,
+    ) -> Vec<TableCell> {
+        // Every cell in the row carries the same classes: the scope's base
+        // class plus the block's positional markers.
+        let (base, first_class, last_class) = match self.scope {
+            SummaryScope::Group => (
+                TableClass::GroupSummary,
+                TableClass::GroupSummaryFirst,
+                TableClass::GroupSummaryLast,
+            ),
+            SummaryScope::Grand => (
+                TableClass::GrandSummary,
+                TableClass::GrandSummaryFirst,
+                TableClass::GrandSummaryLast,
+            ),
+        };
+        let mut classes = vec![base];
+        if first {
+            classes.push(first_class);
+        }
+        if last {
+            classes.push(last_class);
+        }
+
+        let mut cells = vec![self.label_cell(row, columns, &classes)];
         cells.extend(
             columns
                 .iter()
@@ -88,8 +117,10 @@ impl SummaryRow {
                         .column(&column.name)
                         .map(|array| column_to_strings(array).remove(0))
                         .unwrap_or_default();
-                    TableCell::new_summary_value(row, index, content)
-                        .with_properties(column.properties.clone())
+                    let mut cell = TableCell::new_summary_value(row, index, content)
+                        .with_properties(column.properties.clone());
+                    cell.classes.extend_from_slice(&classes);
+                    cell
                 }),
         );
         cells
@@ -100,7 +131,7 @@ impl SummaryRow {
     /// stub column when summaries exist without one; `move_stub_columns`
     /// puts every stub-section column in one contiguous run, so the span
     /// covers only stub columns.
-    fn label_cell(&self, row: usize, columns: &[TableColumn]) -> TableCell {
+    fn label_cell(&self, row: usize, columns: &[TableColumn], classes: &[TableClass]) -> TableCell {
         let label_column = columns
             .iter()
             .position(|c| c.target == ColumnSection::Stub)
@@ -123,6 +154,7 @@ impl SummaryRow {
         let mut cell = TableCell::new_summary_label(row, label_column, self.label.clone());
         cell.left = left;
         cell.right = right;
+        cell.classes.extend_from_slice(classes);
         cell.with_properties(columns[label_column].properties.clone())
     }
 }
