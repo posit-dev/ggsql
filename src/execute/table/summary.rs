@@ -75,26 +75,36 @@ impl SummaryRow {
     /// group-stub columns: a `GROUP` row's are covered by the merged stub
     /// cell; a `GRAND` row owns them by extending its label's colspan
     /// leftward. `first`/`last` mark the row's position in its block (both
-    /// when the block is one row) for the positional style classes.
+    /// when the block is one row) and `above` whether the block sits above
+    /// the rows it summarizes; together they pick the positional style
+    /// classes.
     pub(super) fn cells(
         &self,
         row: usize,
         columns: &[TableColumn],
         first: bool,
         last: bool,
+        above: bool,
     ) -> Vec<TableCell> {
         // Every cell in the row carries the same classes: the scope's base
-        // class plus the block's positional markers.
-        let (base, first_class, last_class) = match self.scope {
-            SummaryScope::Group => (
+        // class plus the block's positional markers. A group block gets the
+        // solid border on both outer edges; a grand block gets it on its
+        // far edge and the double border on the edge touching the body.
+        let (base, first_class, last_class) = match (self.scope, above) {
+            (SummaryScope::Group, _) => (
                 TableClass::GroupSummary,
-                TableClass::GroupSummaryFirst,
-                TableClass::GroupSummaryLast,
+                TableClass::SummaryFirst,
+                TableClass::SummaryLast,
             ),
-            SummaryScope::Grand => (
+            (SummaryScope::Grand, true) => (
+                TableClass::GrandSummary,
+                TableClass::SummaryFirst,
+                TableClass::GrandSummaryLast,
+            ),
+            (SummaryScope::Grand, false) => (
                 TableClass::GrandSummary,
                 TableClass::GrandSummaryFirst,
-                TableClass::GrandSummaryLast,
+                TableClass::SummaryLast,
             ),
         };
         let mut classes = vec![base];

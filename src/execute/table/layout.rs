@@ -281,6 +281,7 @@ fn weave_group_summaries(
             &tops,
             key.clone(),
             columns,
+            true,
         );
         for row in chunk.iter() {
             row_map[old_index] = new_rows.len();
@@ -294,6 +295,7 @@ fn weave_group_summaries(
             &bottoms,
             key.clone(),
             columns,
+            false,
         );
     }
 
@@ -332,6 +334,7 @@ fn weave_grand_summaries(
         &tops,
         Vec::new(),
         columns,
+        true,
     );
     new_rows.extend(rows);
     let bottoms: Vec<&SummaryRow> = grand.iter().filter(|s| !s.top).collect();
@@ -341,6 +344,7 @@ fn weave_grand_summaries(
         &bottoms,
         Vec::new(),
         columns,
+        false,
     );
     summary_cells.extend(cells);
     (new_rows, summary_cells)
@@ -348,13 +352,14 @@ fn weave_grand_summaries(
 
 /// Emit one grid row per clause row in `block`, marking the block's first
 /// and last rows (both, when the block is one row) for the positional
-/// classes.
+/// classes. `above` is whether the block sits above the rows it summarizes.
 fn weave_summary_block(
     new_rows: &mut Vec<TableRow>,
     summary_cells: &mut Vec<TableCell>,
     block: &[&SummaryRow],
     key: Vec<usize>,
     columns: &[TableColumn],
+    above: bool,
 ) {
     for (index, summary) in block.iter().enumerate() {
         summary_cells.extend(summary.cells(
@@ -362,6 +367,7 @@ fn weave_summary_block(
             columns,
             index == 0,
             index == block.len() - 1,
+            above,
         ));
         new_rows.push(TableRow::summary(key.clone()));
     }
@@ -653,7 +659,9 @@ mod tests {
 
         let layout = resolve_layout_with_summaries(&frame, &table, None).unwrap();
 
-        // Header, two data rows, then the two-row grand block.
+        // Header, two data rows, then the two-row grand block: the double
+        // border on the edge touching the body, the group's solid one on
+        // the far edge.
         let has = |row: usize, class: TableClass| {
             layout
                 .cells
@@ -663,10 +671,40 @@ mod tests {
         };
         assert!(has(3, TableClass::GrandSummary));
         assert!(has(3, TableClass::GrandSummaryFirst));
-        assert!(!has(3, TableClass::GrandSummaryLast));
+        assert!(!has(3, TableClass::SummaryLast));
         assert!(has(4, TableClass::GrandSummary));
         assert!(!has(4, TableClass::GrandSummaryFirst));
-        assert!(has(4, TableClass::GrandSummaryLast));
+        assert!(has(4, TableClass::SummaryLast));
+    }
+
+    #[test]
+    fn a_top_grand_block_puts_its_double_border_against_the_body() {
+        let frame = df! {
+            "x" => vec![1.5, 3.5],
+        }
+        .unwrap();
+        let mut table = Table::new();
+        let mut first = summary_clause("mean", SummaryScope::Grand, &["x"]);
+        first.settings = crate::params! { "place" => "top" };
+        let mut second = summary_clause("median", SummaryScope::Grand, &["x"]);
+        second.settings = crate::params! { "place" => "top" };
+        table.summaries = vec![first, second];
+
+        let layout = resolve_layout_with_summaries(&frame, &table, None).unwrap();
+
+        // Header, then the two-row grand block above the data rows: the far
+        // edge gets the group's solid border, the body edge the double one.
+        let has = |row: usize, class: TableClass| {
+            layout
+                .cells
+                .iter()
+                .filter(|cell| cell.top == row)
+                .all(|cell| cell.classes.contains(&class))
+        };
+        assert!(has(1, TableClass::SummaryFirst));
+        assert!(!has(1, TableClass::GrandSummaryLast));
+        assert!(!has(2, TableClass::SummaryFirst));
+        assert!(has(2, TableClass::GrandSummaryLast));
     }
 
     #[test]
@@ -686,7 +724,7 @@ mod tests {
             .iter()
             .filter(|cell| cell.top == row)
             .all(|cell| cell.classes.contains(&TableClass::GrandSummaryFirst)
-                && cell.classes.contains(&TableClass::GrandSummaryLast)));
+                && cell.classes.contains(&TableClass::SummaryLast)));
     }
 
     #[test]

@@ -169,21 +169,22 @@ pub enum TableClass {
     GroupHeading,
     /// A cell in a `SUMMARISE GROUP` row (gt's `gt_summary_row`).
     GroupSummary,
-    /// A cell in the first row of a group's summary block — carries the
-    /// border separating the block from what precedes it (gt's
+    /// A cell in the first row of a summary block — carries the border
+    /// separating the block from what precedes it (gt's
     /// `gt_first_summary_row`).
-    GroupSummaryFirst,
-    /// A cell in the last row of a group's summary block (gt's
+    SummaryFirst,
+    /// A cell in the last row of a summary block (gt's
     /// `gt_last_summary_row`).
-    GroupSummaryLast,
+    SummaryLast,
     /// A cell in a `SUMMARISE GRAND` row (gt's `gt_grand_summary_row`).
     GrandSummary,
-    /// A cell in the first row of the grand-summary block — carries the
-    /// double border separating it from the body (gt's
+    /// A cell in the first row of a bottom-placed grand-summary block —
+    /// carries the double border separating the block from the body (gt's
     /// `gt_first_grand_summary_row`).
     GrandSummaryFirst,
-    /// A cell in the last row of the grand-summary block (gt's
-    /// `gt_last_grand_summary_row`).
+    /// A cell in the last row of a top-placed grand-summary block — carries
+    /// the double border separating the block from the body (gt's
+    /// `gt_last_grand_summary_row_top`).
     GrandSummaryLast,
     /// Left/center/right-aligned cell content (gt's
     /// `gt_left`/`gt_center`/`gt_right`).
@@ -220,8 +221,8 @@ impl TableClass {
         TableClass::RowGroupFirst,
         TableClass::SummaryRow,
         TableClass::GroupSummary,
-        TableClass::GroupSummaryFirst,
-        TableClass::GroupSummaryLast,
+        TableClass::SummaryFirst,
+        TableClass::SummaryLast,
         TableClass::GrandSummary,
         TableClass::GrandSummaryFirst,
         TableClass::GrandSummaryLast,
@@ -256,8 +257,8 @@ impl std::fmt::Display for TableClass {
             TableClass::Heading => "heading",
             TableClass::SummaryRow => "summary_row",
             TableClass::GroupSummary => "group_summary",
-            TableClass::GroupSummaryFirst => "group_summary_first",
-            TableClass::GroupSummaryLast => "group_summary_last",
+            TableClass::SummaryFirst => "summary_first",
+            TableClass::SummaryLast => "summary_last",
             TableClass::GrandSummary => "grand_summary",
             TableClass::GrandSummaryFirst => "grand_summary_first",
             TableClass::GrandSummaryLast => "grand_summary_last",

@@ -399,12 +399,12 @@ fn class_declarations(class: TableClass) -> &'static [(&'static str, &'static st
             ("padding-left", "5px"),
             ("padding-right", "5px"),
         ],
-        TableClass::GroupSummaryFirst => &[
+        TableClass::SummaryFirst => &[
             ("border-top-style", "solid"),
             ("border-top-width", "2px"),
             ("border-top-color", "#D3D3D3"),
         ],
-        TableClass::GroupSummaryLast => &[
+        TableClass::SummaryLast => &[
             ("padding-top", "8px"),
             ("padding-bottom", "8px"),
             ("padding-left", "5px"),
@@ -428,12 +428,12 @@ fn class_declarations(class: TableClass) -> &'static [(&'static str, &'static st
             ("padding-left", "5px"),
             ("padding-right", "5px"),
             ("border-top-style", "double"),
-            ("border-top-width", "3px"),
+            ("border-top-width", "6px"),
             ("border-top-color", "#D3D3D3"),
         ],
         TableClass::GrandSummaryLast => &[
             ("border-bottom-style", "double"),
-            ("border-bottom-width", "3px"),
+            ("border-bottom-width", "6px"),
             ("border-bottom-color", "#D3D3D3"),
         ],
         TableClass::AlignLeft => &[("text-align", "left")],
