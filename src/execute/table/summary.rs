@@ -137,8 +137,6 @@ pub(super) type SummaryChunk = (Option<Vec<usize>>, Vec<SummaryRow>);
 /// group-contiguous), then one `None`-keyed `GRAND` chunk over all rows.
 /// Chunks with no matching clauses are omitted. Placement within a chunk is
 /// the weavers' concern; they read each row's `top`.
-// Unused until the table pipeline calls it.
-#[allow(dead_code)]
 pub(super) fn compute_summaries(
     df: &DataFrame,
     rows: &[TableRow],

@@ -16,7 +16,7 @@ mod summary;
 use facet::collapse_group_columns;
 use format::{apply_formats, setup_formats};
 use layout::{build_cells, setup_columns, setup_rows};
-use summary::setup_summaries;
+use summary::{compute_summaries, setup_summaries};
 
 use crate::table::extract_table_titles;
 
@@ -87,13 +87,22 @@ pub fn resolve_table_with_reader(query: &str, reader: &dyn Reader) -> Result<Res
             "TABULATE FACET covers every column: no body columns left to show".to_string(),
         ));
     }
+    // Summaries compute on the raw values, before FORMAT stringifies them.
+    let computed = compute_summaries(&df, &rows, &table.summaries)?;
     let df = apply_formats(&df, &formats)?;
     // A separated facet collapses to one variable once its labels are
     // formatted; everything downstream sees a single-level facet.
     let (df, columns, facet) =
         collapse_group_columns(df, columns, facet.as_ref()).map_err(GgsqlError::ValidationError)?;
-    // Summary weaving is not wired into the pipeline yet.
-    let layout = build_cells(&df, columns, rows, &spans, &titles, facet.as_ref(), &[])?;
+    let layout = build_cells(
+        &df,
+        columns,
+        rows,
+        &spans,
+        &titles,
+        facet.as_ref(),
+        &computed,
+    )?;
 
     Ok(ResolvedTable::new(layout, sql, warnings))
 }
@@ -815,5 +824,222 @@ mod integration_tests {
             }
             Err(e) => panic!("expected a ValidationError, got {e:?}"),
         }
+    }
+
+    fn reader_with_region_sales() -> DuckDBReader {
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        reader
+            .execute_sql(
+                "CREATE TABLE t AS SELECT * FROM (VALUES \
+                 ('north', 'q1', 1), ('north', 'q2', 2), ('south', 'q1', 3)) \
+                 AS t(region, quarter, sales)",
+            )
+            .unwrap();
+        reader
+    }
+
+    fn summary_row_indices(resolved: &ResolvedTable) -> Vec<usize> {
+        resolved
+            .rows()
+            .iter()
+            .enumerate()
+            .filter(|(_, row)| row.classes.contains(&TableClass::SummaryRow))
+            .map(|(index, _)| index)
+            .collect()
+    }
+
+    #[test]
+    fn test_tabulate_summarise_grand_without_facet_appends_one_row() {
+        let reader = reader_with_sales();
+        let resolved =
+            resolve_table_with_reader("TABULATE * FROM sales SUMMARISE mean OF id", &reader)
+                .unwrap();
+
+        // Header row + 3 body rows + 1 summary row.
+        assert_eq!(resolved.rows().len(), 5);
+        // The summary row gets a synthetic stub column for its label.
+        assert_eq!(
+            resolved.columns()[0].name,
+            crate::naming::SUMMARY_LABEL_COLUMN
+        );
+        assert_eq!(resolved.columns()[0].target, crate::ColumnSection::Stub);
+
+        let label = resolved
+            .cells()
+            .iter()
+            .find(|c| c.kind == TableCellKind::StubRowLabel && c.top == 4)
+            .unwrap();
+        assert_eq!(label.content, "mean");
+        let value = resolved
+            .cells()
+            .iter()
+            .find(|c| c.kind == TableCellKind::Body && c.top == 4 && c.left == 1)
+            .unwrap();
+        assert_eq!(value.content, "2");
+        // The non-summarised column's cell is blank.
+        let blank = resolved
+            .cells()
+            .iter()
+            .find(|c| c.kind == TableCellKind::Body && c.top == 4 && c.left == 2)
+            .unwrap();
+        assert_eq!(blank.content, "");
+    }
+
+    #[test]
+    fn test_tabulate_summarise_group_rows_follow_their_group() {
+        let reader = reader_with_region_sales();
+        let resolved = resolve_table_with_reader(
+            "TABULATE * FROM t FACET region SETTING place => 'top' SUMMARISE mean OF sales",
+            &reader,
+        )
+        .unwrap();
+
+        // Header; per group: heading, data rows, summary row.
+        assert_eq!(summary_row_indices(&resolved), [4, 7]);
+
+        let last = resolved.columns().len() - 1;
+        let values: Vec<&str> = resolved
+            .cells()
+            .iter()
+            .filter(|c| c.kind == TableCellKind::Body && c.left == last && [4, 7].contains(&c.top))
+            .map(|c| c.content.as_str())
+            .collect();
+        assert_eq!(values, ["1.5", "3"]);
+    }
+
+    #[test]
+    fn test_tabulate_summarise_place_top_sits_before_the_group_rows() {
+        let reader = reader_with_region_sales();
+        let resolved = resolve_table_with_reader(
+            "TABULATE * FROM t FACET region SETTING place => 'top' \
+             SUMMARISE mean OF sales SETTING place => 'top'",
+            &reader,
+        )
+        .unwrap();
+
+        // Header at 0, north's heading at 1, then north's summary row.
+        assert_eq!(summary_row_indices(&resolved), [2, 6]);
+    }
+
+    #[test]
+    fn test_tabulate_summarise_grand_with_facet_uses_all_rows_and_rowlabel() {
+        let reader = reader_with_region_sales();
+        let resolved = resolve_table_with_reader(
+            "TABULATE * FROM t FACET region SETTING place => 'top' \
+             SUMMARISE GRAND mean OF sales SETTING rowlabel => 'Average'",
+            &reader,
+        )
+        .unwrap();
+
+        let summary_row = summary_row_indices(&resolved);
+        // One grand row, after every body row.
+        assert_eq!(summary_row, [resolved.rows().len() - 1]);
+
+        let label = resolved
+            .cells()
+            .iter()
+            .find(|c| c.kind == TableCellKind::StubRowLabel && c.top == summary_row[0])
+            .unwrap();
+        assert_eq!(label.content, "Average");
+        let value = resolved
+            .cells()
+            .iter()
+            .find(|c| {
+                c.kind == TableCellKind::Body
+                    && c.top == summary_row[0]
+                    && resolved.columns()[c.left].name == "sales"
+            })
+            .unwrap();
+        assert_eq!(value.content, "2");
+    }
+
+    #[test]
+    fn test_tabulate_summarise_separated_facet_rekeys_the_summary_chunks() {
+        let reader = reader_with_region_sales();
+        let resolved = resolve_table_with_reader(
+            "TABULATE * FROM t FACET region, quarter SETTING place => 'top', separator => ' - ' \
+             SUMMARISE mean OF sales",
+            &reader,
+        )
+        .unwrap();
+
+        // Header; per collapsed group (north-q1, north-q2, south-q1):
+        // heading, data row, summary row.
+        let summary_rows = summary_row_indices(&resolved);
+        assert_eq!(summary_rows, [3, 6, 9]);
+
+        let last = resolved.columns().len() - 1;
+        let values: Vec<&str> = resolved
+            .cells()
+            .iter()
+            .filter(|c| {
+                c.kind == TableCellKind::Body && c.left == last && summary_rows.contains(&c.top)
+            })
+            .map(|c| c.content.as_str())
+            .collect();
+        assert_eq!(values, ["1", "2", "3"]);
+    }
+
+    #[test]
+    fn test_tabulate_summarise_rejects_a_non_numeric_column_for_numeric_ops() {
+        let reader = reader_with_sales();
+        match resolve_table_with_reader("TABULATE * FROM sales SUMMARISE mean OF name", &reader) {
+            Ok(_) => panic!("expected mean OF a text column to error"),
+            Err(GgsqlError::ValidationError(msg)) => assert!(msg.contains("numeric")),
+            Err(e) => panic!("expected a ValidationError, got {e:?}"),
+        }
+    }
+
+    #[test]
+    fn test_tabulate_summarise_rejects_a_column_outside_the_selection() {
+        let reader = reader_with_sales();
+        match resolve_table_with_reader("TABULATE id FROM sales SUMMARISE mean OF name", &reader) {
+            Ok(_) => panic!("expected a non-selection column to error"),
+            Err(GgsqlError::ValidationError(msg)) => {
+                assert!(msg.contains("no column 'name'"))
+            }
+            Err(e) => panic!("expected a ValidationError, got {e:?}"),
+        }
+    }
+
+    #[test]
+    fn test_tabulate_summarise_skips_the_null_group_under_missing_drop() {
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        reader
+            .execute_sql(
+                "CREATE TABLE t AS SELECT * FROM (VALUES ('a', 1), (NULL, 2), ('b', 3)) \
+                 AS t(name, sales)",
+            )
+            .unwrap();
+
+        let resolved = resolve_table_with_reader(
+            "TABULATE * FROM t FACET name SETTING place => 'top', missing => 'drop' \
+             SUMMARISE mean OF sales",
+            &reader,
+        )
+        .unwrap();
+
+        // Header + per surviving group (heading, data row, summary row).
+        assert_eq!(resolved.rows().len(), 7);
+        assert_eq!(summary_row_indices(&resolved).len(), 2);
+    }
+
+    #[test]
+    fn test_tabulate_summarise_clauses_stay_in_clause_order() {
+        let reader = reader_with_region_sales();
+        let resolved = resolve_table_with_reader(
+            "TABULATE * FROM t SUMMARISE mean OF sales SUMMARISE median OF sales",
+            &reader,
+        )
+        .unwrap();
+
+        let labels: Vec<(usize, &str)> = resolved
+            .cells()
+            .iter()
+            .filter(|c| c.kind == TableCellKind::StubRowLabel && !c.content.is_empty())
+            .map(|c| (c.top, c.content.as_str()))
+            .collect();
+        // Anti-alphabetical: clause order, not any other ordering, decides.
+        assert_eq!(labels, [(4, "mean"), (5, "median")]);
     }
 }
