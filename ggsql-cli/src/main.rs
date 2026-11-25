@@ -5,7 +5,7 @@ Provides commands for executing ggsql queries with various data sources and outp
 */
 
 use clap::{Args, Parser, Subcommand, ValueEnum};
-use ggsql::reader::{connection, Reader, Spec};
+use ggsql::reader::{connection, Reader, ResolvedSpec};
 use ggsql::validate::validate;
 use ggsql::writer::WriterOptions;
 use ggsql::{parser, VERSION};
@@ -85,12 +85,14 @@ pub struct RenderArgs {
     pub verbose: bool,
 }
 
-/// The flags `view` takes: where the data comes from and how the window looks.
+/// The flags `view` takes: where the data comes from, how the window looks,
+/// and — optionally — where the plot goes once the window closes.
 ///
-/// Deliberately not [`RenderArgs`]: there is no `--writer` to choose and no
-/// `--output` to write, and `-D` carries the viewer's own settings rather than
-/// a writer's. The reader flags are the same ones, so they come from the same
-/// [`ReaderArgs`].
+/// Shares the reader flags with [`RenderArgs`] through [`ReaderArgs`], and its
+/// `--writer`/`--output` mean the same thing they do there, but `-D` is the
+/// viewer's own: the window's settings (`width`, `height`, `background`,
+/// `title`) are taken from it, and any other key is forwarded to the writer
+/// for the after-close render.
 #[derive(Args)]
 pub struct ViewArgs {
     #[command(flatten)]
@@ -104,10 +106,27 @@ pub struct ViewArgs {
         value_name = "KEY=VALUE[;...]",
         long_help = "Settings for the viewer window, as `key=value`. Repeatable, and one flag \
                      may carry several settings separated by `;` (quote it, as most shells read \
-                     `;` themselves): `-D 'width=1280;title=My plot'`.\n\nSettings:\n  \
-                     width, height, background, title"
+                     `;` themselves): `-D 'width=1280;title=My plot'`.\n\nViewer settings:\n  \
+                     width, height, background, title\n\nAny other key (e.g. `compression`) is \
+                     forwarded to the writer when `--output` or `--writer` is given, except `dpi` \
+                     and `units`, which are refused: the render's size and resolution always come \
+                     from the window when it closed, so what you see is what you get."
     )]
     pub viewer_options: Vec<String>,
+
+    /// Output format for a render after the window closes
+    ///
+    /// With `--output` or on its own (writing to stdout), renders the plot
+    /// once the window closes, sized to the window as the user left it.
+    #[arg(short, long, long_help = writers::writer_help())]
+    pub writer: Option<String>,
+
+    /// Render the plot to this file after the window closes
+    ///
+    /// The render uses the window's dimensions at close, so the file matches
+    /// what was last on screen.
+    #[arg(short, long)]
+    pub output: Option<PathBuf>,
 
     /// Show verbose output (execution details, statistics)
     #[arg(short, long)]
@@ -193,7 +212,9 @@ pub enum Commands {
     /// Show a ggsql query's plot in a window
     ///
     /// Blocks until the window is closed. Resizing the window re-lays-out the
-    /// plot rather than stretching it.
+    /// plot rather than stretching it. With `--output` (and optionally
+    /// `--writer`), the plot is rendered to file when the window closes, at
+    /// the window's final dimensions, which are also logged to the terminal.
     ///
     /// Requires the `window` feature and a working GPU adapter.
     View {
@@ -391,7 +412,7 @@ fn exec_with_reader(query: &str, reader: &dyn Reader, args: &RenderArgs, writer:
         }
     };
 
-    if !validated.has_visual() {
+    if !validated.has_spec() {
         if args.verbose {
             eprintln!("Visualisation is empty. Printing table instead.");
         }
@@ -411,18 +432,40 @@ fn exec_with_reader(query: &str, reader: &dyn Reader, args: &RenderArgs, writer:
     render_spec(spec, args, writer);
 }
 
-fn render_spec(spec: Spec, args: &RenderArgs, writer: &WriterSpec) {
-    if args.verbose {
-        let metadata = spec.metadata();
-        eprintln!("\nQuery executed:");
-        eprintln!("  Rows: {}", metadata.rows);
-        eprintln!("  Columns: {}", metadata.columns.join(", "));
-        eprintln!("  Layers: {}", metadata.layer_count);
+fn render_spec(spec: ResolvedSpec, args: &RenderArgs, writer: &WriterSpec) {
+    match &spec {
+        ResolvedSpec::Plot(plot) => {
+            if args.verbose {
+                let metadata = plot.metadata();
+                eprintln!("\nQuery executed:");
+                eprintln!("  Rows: {}", metadata.rows);
+                eprintln!("  Columns: {}", metadata.columns.join(", "));
+                eprintln!("  Layers: {}", metadata.layer_count);
+            }
+
+            if plot.plot().layers.is_empty() {
+                eprintln!("No visualization specifications found");
+                std::process::exit(1);
+            }
+        }
+        ResolvedSpec::Table(table) => {
+            if args.verbose {
+                eprintln!("\nQuery executed:");
+                eprintln!("  Rows: {}", table.nrow());
+                eprintln!("  Columns: {}", table.ncol());
+            }
+        }
     }
 
-    if spec.plot().layers.is_empty() {
-        eprintln!("No visualization specifications found");
-        std::process::exit(1);
+    // Not behind -v: a query that silently dropped a statement (e.g. a mix of
+    // VISUALISE and TABULATE, only the first of which is resolved) is a
+    // correctness-relevant fact, not a verbose-only detail.
+    let query_warnings = match &spec {
+        ResolvedSpec::Plot(plot) => plot.warnings(),
+        ResolvedSpec::Table(table) => table.warnings(),
+    };
+    for warning in query_warnings {
+        eprintln!("warning: {}", warning.message);
     }
 
     let info = writer.info;
@@ -441,17 +484,26 @@ fn render_spec(spec: Spec, args: &RenderArgs, writer: &WriterSpec) {
         (Output::Text(txt), None) => {
             println!("{}", txt);
         }
-        (Output::Text(txt), Some(path)) => match std::fs::write(path, txt) {
-            Ok(_) => {
-                if args.verbose {
-                    eprintln!("\n{} written to: {}", info.label, path.display());
+        (Output::Text(txt), Some(path)) => {
+            // The html writer emits a fragment; a standalone file needs the
+            // document wrapper (charset meta) around it.
+            let txt = if info.name == "html" {
+                writers::html_document(&txt)
+            } else {
+                txt
+            };
+            match std::fs::write(path, txt) {
+                Ok(_) => {
+                    if args.verbose {
+                        eprintln!("\n{} written to: {}", info.label, path.display());
+                    }
+                }
+                Err(e) => {
+                    eprintln!("Failed to write to output file: {}", e);
+                    std::process::exit(1);
                 }
             }
-            Err(e) => {
-                eprintln!("Failed to write to output file: {}", e);
-                std::process::exit(1);
-            }
-        },
+        }
         (Output::Bin(buf), None) => {
             if std::io::stdout().is_terminal() {
                 // Non-zero, since nothing was produced: `… && publish` must
@@ -486,9 +538,42 @@ fn render_spec(spec: Spec, args: &RenderArgs, writer: &WriterSpec) {
 fn cmd_view(query: String, args: &ViewArgs) {
     #[cfg(feature = "window")]
     {
-        use ggsql::writer::PlotViewer;
+        use ggsql::writer::{PlotViewer, VIEWER_OPTIONS};
 
-        let options = WriterOptions::parse(args.viewer_options.clone()).unwrap_or_else(|e| {
+        // `-D` serves two masters: the viewer's own keys configure the window,
+        // everything else is meant for the writer of the after-close render.
+        // `dpi` and `units` belong to neither: the render must match what was
+        // on screen, and both would reinterpret the window's size.
+        let mut viewer_pairs: Vec<String> = Vec::new();
+        let mut writer_pairs: Vec<String> = Vec::new();
+        for raw in &args.viewer_options {
+            for setting in raw.split(';').map(str::trim).filter(|s| !s.is_empty()) {
+                let key = setting.split('=').next().unwrap_or("").trim();
+                if matches!(key, "dpi" | "units") {
+                    eprintln!(
+                        "view takes no '{key}' setting: the render uses the window's own size and \
+                         resolution, so what you see is what you get"
+                    );
+                    std::process::exit(1);
+                }
+                if VIEWER_OPTIONS.contains(&key) {
+                    viewer_pairs.push(setting.to_string());
+                } else {
+                    writer_pairs.push(setting.to_string());
+                }
+            }
+        }
+
+        let render_requested = args.writer.is_some() || args.output.is_some();
+        if !writer_pairs.is_empty() && !render_requested {
+            eprintln!(
+                "Settings like '{}' are writer settings; pass --output or --writer to use them",
+                writer_pairs[0]
+            );
+            std::process::exit(1);
+        }
+
+        let options = WriterOptions::parse(viewer_pairs).unwrap_or_else(|e| {
             eprintln!("{}", e);
             std::process::exit(1);
         });
@@ -514,7 +599,7 @@ fn cmd_view(query: String, args: &ViewArgs) {
             eprintln!("Failed to validate query: {}", e);
             std::process::exit(1);
         });
-        if !validated.has_visual() {
+        if !validated.has_spec() {
             eprintln!("This query has no VISUALISE clause, so there is no plot to show.");
             std::process::exit(1);
         }
@@ -523,18 +608,47 @@ fn cmd_view(query: String, args: &ViewArgs) {
             eprintln!("Failed to execute query: {}", e);
             std::process::exit(1);
         });
+        let plot = spec.as_plot().unwrap_or_else(|| {
+            eprintln!("This is a TABULATE query; there is no plot to show.");
+            std::process::exit(1);
+        });
 
         if args.verbose {
-            let metadata = spec.metadata();
+            let metadata = plot.metadata();
             eprintln!("  Rows: {}", metadata.rows);
             eprintln!("  Layers: {}", metadata.layer_count);
             eprintln!("Close the window to exit.");
         }
 
-        // Blocks on the main thread until the window closes.
-        if let Err(e) = viewer.show(&spec) {
+        // Blocks on the main thread until the window closes, returning the
+        // frame (size and dpi) the user left the window at.
+        let frame = viewer.show(plot).unwrap_or_else(|e| {
             eprintln!("{}", e);
             std::process::exit(1);
+        });
+        eprintln!(
+            "Window closed at {}x{} (dpi: {})",
+            frame.width, frame.height, frame.dpi
+        );
+
+        if render_requested {
+            // The window's closing frame wins over the writer's defaults: the
+            // file should match what was on screen, chrome included.
+            writer_pairs.push(format!("width={}", frame.width));
+            writer_pairs.push(format!("height={}", frame.height));
+            writer_pairs.push(format!("dpi={}", frame.dpi));
+            let render_args = RenderArgs {
+                source: ReaderArgs {
+                    reader: args.source.reader.clone(),
+                    cache: args.source.cache.clone(),
+                },
+                writer: args.writer.clone(),
+                writer_options: writer_pairs,
+                output: args.output.clone(),
+                verbose: args.verbose,
+            };
+            let writer = render_args.writer();
+            render_spec(spec, &render_args, &writer);
         }
     }
     #[cfg(not(feature = "window"))]
@@ -567,12 +681,19 @@ fn cmd_parse(query: String, format: String) {
         "pretty" => {
             println!("ggsql Specifications: {} total", specs.len());
             for (i, spec) in specs.iter().enumerate() {
-                println!("\nVisualization #{}:", i + 1);
-                println!("  Global Mappings: {:?}", spec.global_mappings);
-                println!("  Layers: {}", spec.layers.len());
-                println!("  Scales: {}", spec.scales.len());
-                if spec.facet.is_some() {
-                    println!("  Faceting: Yes");
+                match spec {
+                    ggsql::Spec::Plot(plot) => {
+                        println!("\nVisualization #{}:", i + 1);
+                        println!("  Global Mappings: {:?}", plot.global_mappings);
+                        println!("  Layers: {}", plot.layers.len());
+                        println!("  Scales: {}", plot.scales.len());
+                        if plot.facet.is_some() {
+                            println!("  Faceting: Yes");
+                        }
+                    }
+                    ggsql::Spec::Table(_) => {
+                        println!("\nTable #{}:", i + 1);
+                    }
                 }
             }
         }

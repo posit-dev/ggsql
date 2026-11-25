@@ -2,11 +2,11 @@
 
 The core library. Crate name: `ggsql`. Workspace member, declared in `/Cargo.toml`. The `ggsql` CLI binary lives separately in [`/ggsql-cli/`](../ggsql-cli/) and depends on this crate.
 
-For ggsql language semantics, see [`/doc/syntax/`](../doc/syntax/). For Vega-Lite renderer internals, see [`writer/vegalite/CLAUDE.md`](writer/vegalite/CLAUDE.md). For AST types, see [`plot/CLAUDE.md`](plot/CLAUDE.md).
+For ggsql language semantics, see [`/doc/syntax/`](../doc/syntax/). For Vega-Lite renderer internals, see [`writer/vegalite/AGENTS.md`](writer/vegalite/AGENTS.md). For AST types, see [`plot/AGENTS.md`](plot/AGENTS.md).
 
 ## Entry points
 
-- **`lib.rs`** — library root. Declares modules, re-exports the headline types (`Plot`, `Layer`, `Geom`, `Scale`, `Mappings`, `AestheticValue`, `DataSource`, `Facet`, `FacetLayout`, `SqlExpression`, `DataFrame`), and defines `GgsqlError` + `Result`.
+- **`lib.rs`** — library root. Declares modules, re-exports the headline types (`Plot`, `Layer`, `Geom`, `Scale`, `Mappings`, `AestheticValue`, `DataSource`, `Facet`, `FacetLayout`, `SqlExpression`, `DataFrame`, plus the table types `Table`, `SelectionItem`, `Spanner`, `ColumnSection`, `Format` and the resolved-layout types `TableLayout`, `TableRow`, `TableColumn`, `TableCell`, `TableCellKind`, `TableClass`), and defines `GgsqlError` + `Result`.
 
 ## Module map
 
@@ -16,25 +16,29 @@ src/
 ├── array_util.rs, compute.rs    Arrow array helpers
 ├── dataframe.rs                 DataFrame wrapper around arrow RecordBatch
 ├── format.rs                    Label/number/date formatting
+├── labels.rs                    Labels from LABEL clauses, shared by plot/ and table/
 ├── naming.rs                    Internal column-name conventions (__ggsql_*)
+├── params.rs                    SETTING-parameter machinery: values, constraints, validation
+├── spec.rs                      Spec: parse-time result of one VISUALISE/TABULATE statement (Plot or Table)
 ├── util.rs                      String helpers (and_list, or_list, …)
 ├── validate.rs                  validate(): syntax + semantic checks without SQL execution
 ├── fonts.rs                     Font registration, for hosts with no font database
 │
-├── parser/      Tree-sitter integration → typed AST (Plot)
-├── plot/        AST: Plot, Layer, Geom, Scale, Facet, Projection, Mappings  (see plot/CLAUDE.md)
+├── parser/      Tree-sitter integration → typed AST (Spec: Plot or Table)
+├── plot/        AST: Plot, Layer, Geom, Scale, Facet, Projection, Mappings  (see plot/AGENTS.md)
+├── table/       AST for TABULATE, parallel to plot/ (source, column selection, labels, spans, formats)
 ├── reader/      Reader trait + drivers (DuckDB, SQLite, ODBC, Snowflake, …)
-├── execute/     Pipeline that turns Plot + Reader → executed Spec
-├── writer/      Writer trait + Vega-Lite implementation  (see writer/vegalite/CLAUDE.md)
+├── execute/     Pipeline that turns Plot/Table + Reader → ResolvedPlot/ResolvedTable
+├── writer/      Writer trait + Vega-Lite implementation  (see writer/vegalite/AGENTS.md)
 ├── data/        Bundled sample datasets (penguins, airquality)
 └── doc/         API.md — public Rust API reference
 ```
 
 ### `parser/`
 
-- `mod.rs` exposes `parse_query()` which builds a `Vec<Plot>` from a query string.
-- `source_tree.rs` is the parse-once wrapper: holds the tree-sitter `Tree`, source text, and language; offers a declarative query API (`find_node`, `find_text`, …) plus lazy `extract_sql()` / `extract_visualise()` extractors. It also handles the `VISUALISE FROM <source>` shorthand by injecting `SELECT * FROM <source>`.
-- `builder.rs` walks the CST and produces typed `Plot` values. This is where new grammar nodes become `Plot` fields.
+- `mod.rs` exposes `parse_query()` which builds a `Vec<Spec>` from a query string — one `Spec` per `VISUALISE`/`TABULATE` statement, in source order (`Spec::Table` for `TABULATE`, including its `LABEL`/`SPAN`/`FORMAT` clauses).
+- `source_tree.rs` is the parse-once wrapper: holds the tree-sitter `Tree`, source text, and language; offers a declarative query API (`find_node`, `find_text`, …) plus lazy `extract_sql()` / `extract_spec()` extractors (the latter covers both `VISUALISE` and `TABULATE`). It also handles the `VISUALISE FROM <source>` shorthand by injecting `SELECT * FROM <source>`.
+- `builder.rs` walks the CST and produces typed `Spec` values (`Plot`, boxed for size, or `Table`). This is where new grammar nodes become `Plot`/`Table` fields.
 - `sql.rs` extracts structure from SQL fragments over the parse tree.
 
 Grammar lives in [`/tree-sitter-ggsql/`](../tree-sitter-ggsql/) — when adding syntax, edit `grammar.js`, regenerate, then teach `builder.rs` about the new nodes.
@@ -50,7 +54,7 @@ Grammar lives in [`/tree-sitter-ggsql/`](../tree-sitter-ggsql/) — when adding 
 | `odbc.rs` | ODBC | `odbc` (default) |
 | `cache.rs` | `CachingReader` — wraps any primary `Reader` with an in-memory cache | `duckdb` or `sqlite` |
 | `connection.rs` | Connection-string parsing for all of the above | — |
-| `spec.rs` | `Spec` type returned by `execute()`, plus DataFrame conversion | — |
+| `spec.rs` | `ResolvedSpec` (`ResolvedPlot` | `ResolvedTable`) returned by `execute()`, plus DataFrame conversion | — |
 | `data.rs` | Bundled sample datasets — the `ggsql:` builtins | `builtin-data` |
 
 `SqlDialect` trait in `mod.rs` lets each driver supply its own type names, information-schema queries, and spatial helper methods (`sql_st_transform`, `sql_geometry_to_wkb`, `sql_geometry_bbox`, `sql_ensure_geometry`, `sql_select_replace`, `sql_spatial_setup`).
@@ -59,7 +63,7 @@ Grammar lives in [`/tree-sitter-ggsql/`](../tree-sitter-ggsql/) — when adding 
 
 ### `execute/`
 
-The pipeline that takes a parsed `Plot` plus a `Reader` and produces a fully-resolved `Spec` (typed data per layer, scales resolved, casts applied). Submodules:
+The pipeline that takes a parsed `Plot` (or `Table`) plus a `Reader` and produces a `ResolvedPlot` (or `ResolvedTable`) — typed data per layer, scales resolved, casts applied; for tables, cells laid out with spans, stub and formats. Submodules:
 
 - `mod.rs` — top-level `prepare_data_with_reader()` and validation glue.
 - `cte.rs` — CTE extraction / materialization for shared subqueries.
@@ -68,13 +72,15 @@ The pipeline that takes a parsed `Plot` plus a `Reader` and produces a fully-res
 - `layer.rs` — per-layer SQL building, transforms, stat application.
 - `scale.rs` — scale resolution, type coercion, out-of-bounds handling.
 - `position.rs` — position adjustment (stack/dodge/jitter) at execution time.
+- `table/` — `ResolvedTable` construction: cell layout, spanner resolution, stub handling, formatting.
 
 ### `writer/`
 
 `Writer` trait in `mod.rs` (associated `Output` type so writers can return text or bytes, and `from_options` for configuration a frontend collects as key–value pairs — `options.rs`'s `WriterOptions`, parsed from the CLI's `--writer-option`). Two families:
 
-- **Vega-Lite** (`vegalite` feature, default) — emits Vega-Lite JSON. Deep-dive: [`writer/vegalite/CLAUDE.md`](writer/vegalite/CLAUDE.md).
-- **The renderer-backed writers** (seven of them; `svg`, `pdf` and `hep` default, the four raster ones not) — all live in `writer/hephaestus/`, named after the renderer they wrap; that name is internal, and the module is private so only the writers, `Canvas` and `RasterRenderer` are public. They share their whole pipeline — `Canvas` for configuration, `compose` for the plot composition, then either `raster` for pixels or `vector` for drawing commands — and differ only in what they do with the result. Deep-dive (architecture + known gaps): [`writer/hephaestus/CLAUDE.md`](writer/hephaestus/CLAUDE.md).
+- **Vega-Lite** (`vegalite` feature, default) — emits Vega-Lite JSON. Deep-dive: [`writer/vegalite/AGENTS.md`](writer/vegalite/AGENTS.md).
+- **HTML** (`html` feature, default) — `HtmlWriter` renders a resolved `Table` (a `TABULATE` query) as a bare `<table>`; the only writer that supports tables at all. Plot-only otherwise (`vegalite` and the hephaestus writers below).
+- **The renderer-backed writers** (seven of them; `svg`, `pdf` and `hep` default, the four raster ones not) — all live in `writer/hephaestus/`, named after the renderer they wrap; that name is internal, and the module is private so only the writers, `Canvas` and `RasterRenderer` are public. They share their whole pipeline — `Canvas` for configuration, `compose` for the plot composition, then either `raster` for pixels or `vector` for drawing commands — and differ only in what they do with the result. Deep-dive (architecture + known gaps): [`writer/hephaestus/AGENTS.md`](writer/hephaestus/AGENTS.md).
 
   | Feature | Default | Writer | Output | GPU |
   | --- | --- | --- | --- | --- |
@@ -84,7 +90,7 @@ The pipeline that takes a parsed `Plot` plus a `Reader` and produces a fully-res
 
   Plus `PlotViewer` behind the `window` feature — not a writer, since it returns no output, blocks, and must run on the main thread. It shows the same composition in a native window, re-laying-out on resize.
 
-  The three GPU-free writers go through the same composition and the same `render` call (which takes `&mut dyn SceneBuilder`), so they need no adapter and pull in no wgpu. **That is why they are default**: nothing about them has to be opted into, including on Linux, where `fontconfig-dlopen` removes the build-time `libfontconfig1-dev` requirement (see [`writer/hephaestus/CLAUDE.md`](writer/hephaestus/CLAUDE.md)). They also still compile on the CRAN MSRV — `cargo +1.86 check --ignore-rust-version -p ggsql`, where the flag is needed only because `parley` *declares* 1.88 while compiling fine on 1.86. Only the raster writers need an adapter and are genuinely 1.88+, and a raster dimension is capped at what the GPU grants, up to 16384 px.
+  The three GPU-free writers go through the same composition and the same `render` call (which takes `&mut dyn SceneBuilder`), so they need no adapter and pull in no wgpu. **That is why they are default**: nothing about them has to be opted into, including on Linux, where `fontconfig-dlopen` removes the build-time `libfontconfig1-dev` requirement (see [`writer/hephaestus/AGENTS.md`](writer/hephaestus/AGENTS.md)). They also still compile on the CRAN MSRV — `cargo +1.86 check --ignore-rust-version -p ggsql`, where the flag is needed only because `parley` *declares* 1.88 while compiling fine on 1.86. Only the raster writers need an adapter and are genuinely 1.88+, and a raster dimension is capped at what the GPU grants, up to 16384 px.
 
 Three **internal** features carry the split, enabled by the writer features rather than named directly: `graphics` is the shared composition layer, and `raster = graphics + hephaestus/vello-hybrid` adds the GPU rasteriser. Only `raster` pulls in wgpu, vello_hybrid and pollster, which is what lets a vector-only build skip them — `cargo tree --features graphics` shows none of the three, `--features png` shows 19. `raster-writer` then narrows `raster` once more, to "some writer actually reads pixels back" — the viewer needs the rasteriser without ever doing that. `graphics` is the single module gate for `writer/hephaestus/`, so adding a format needs no change there.
 
@@ -102,17 +108,17 @@ registering nothing is a silent failure.
 
 ### `plot/`
 
-Sufficiently large to have its own [`plot/CLAUDE.md`](plot/CLAUDE.md). It holds the AST types and the registries for geoms, scale types, transforms, positions, and coords.
+Sufficiently large to have its own [`plot/AGENTS.md`](plot/AGENTS.md). It holds the AST types and the registries for geoms, scale types, transforms, positions, and coords.
 
 ### `doc/`
 
-Just `API.md` — the public Rust API reference for `Reader::execute`, `Writer::render`, `validate`, `Spec`, `Validated`, `Metadata`. End-user docs live in `/doc/`, not here.
+Just `API.md` — the public Rust API reference for `Reader::execute`, `Writer::render`, `validate`, `ResolvedSpec`, `Validated`, `Metadata`. End-user docs live in `/doc/`, not here.
 
 ## Public API quick reference
 
 Two-stage pipeline:
 
-1. **`reader.execute(query)`** → `Spec` (parses, runs SQL, resolves mappings, applies stats).
+1. **`reader.execute(query)`** → `ResolvedSpec` — `ResolvedPlot` or `ResolvedTable` (parses, runs SQL, resolves mappings, applies stats).
 2. **`writer.render(&spec)`** → output (Vega-Lite JSON for `VegaLiteWriter`).
 
 `validate(query)` performs syntax + semantic checks without touching a reader.
@@ -131,6 +137,7 @@ Defined in `Cargo.toml`:
 | `parquet` | ✓ | Parquet support in readers/data |
 | `spatial` | ✓ | Spatial/geometry support (geozero for WKT↔GeoJSON) |
 | `vegalite` | ✓ | Vega-Lite writer |
+| `html` | ✓ | `HtmlWriter` — renders a `TABULATE` query as a bare `<table>` |
 | `graphics` | — | *Internal.* The shared plot-composition layer; no GPU |
 | `raster` | — | *Internal.* `graphics` + the GPU rasteriser (wgpu/vello-hybrid) |
 | `png` | — | PNG writer (`raster`; genuinely 1.88+, excluded from the MSRV check) |
@@ -175,10 +182,10 @@ The caching layer has its own equivalence suite, [`reader/cache_equivalence.rs`]
 
 ## See also
 
-- [`/CLAUDE.md`](../CLAUDE.md) — workspace overview, build/test for everything.
-- [`plot/CLAUDE.md`](plot/CLAUDE.md) — AST types.
-- [`writer/vegalite/CLAUDE.md`](writer/vegalite/CLAUDE.md) — Vega-Lite renderer internals.
+- [`/AGENTS.md`](../AGENTS.md) — workspace overview, build/test for everything.
+- [`plot/AGENTS.md`](plot/AGENTS.md) — AST types.
+- [`writer/vegalite/AGENTS.md`](writer/vegalite/AGENTS.md) — Vega-Lite renderer internals.
 - [`/doc/syntax/`](../doc/syntax/) — authoritative ggsql syntax reference.
 - [`doc/API.md`](doc/API.md) — Rust public API reference.
-- [`/ggsql-cli/CLAUDE.md`](../ggsql-cli/CLAUDE.md) — the `ggsql` CLI binary that wraps this library.
+- [`/ggsql-cli/AGENTS.md`](../ggsql-cli/AGENTS.md) — the `ggsql` CLI binary that wraps this library.
 - [`/INSTALLERS.md`](../INSTALLERS.md) — cross-platform installer build (driven from `ggsql-cli`).

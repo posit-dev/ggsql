@@ -109,7 +109,8 @@ impl SvgWriter {
         spec: &Plot,
         data: &HashMap<String, DataFrame>,
     ) -> Result<(String, Vec<String>)> {
-        let mut scene = SvgScene::with_config(self.canvas.size(), self.canvas.dpi, self.config());
+        let mut scene =
+            SvgScene::with_config(self.canvas.size(), self.canvas.dims.dpi, self.config());
         vector::draw(spec, data, &self.canvas, &mut scene)?;
         Ok((encode_svg(&scene), describe(scene.warnings())))
     }
@@ -119,7 +120,10 @@ impl SvgWriter {
     /// # Errors
     ///
     /// As [`Self::write_reporting`].
-    pub fn render_reporting(&self, spec: &crate::reader::Spec) -> Result<(String, Vec<String>)> {
+    pub fn render_reporting(
+        &self,
+        spec: &crate::reader::ResolvedPlot,
+    ) -> Result<(String, Vec<String>)> {
         self.write_reporting(spec.plot(), spec.data())
     }
 
@@ -162,11 +166,11 @@ impl Writer for SvgWriter {
         })
     }
 
-    fn validate(&self, spec: &Plot) -> Result<()> {
+    fn validate_plot(&self, spec: &Plot) -> Result<()> {
         compose::validate_plot(spec)
     }
 
-    fn write(&self, spec: &Plot, data: &HashMap<String, DataFrame>) -> Result<Self::Output> {
+    fn write_plot(&self, spec: &Plot, data: &HashMap<String, DataFrame>) -> Result<Self::Output> {
         self.write_reporting(spec, data).map(|(svg, _)| svg)
     }
 }
@@ -196,8 +200,10 @@ fn describe(warnings: &[SvgWarning]) -> Vec<String> {
                  viewers ignore"
                     .into()
             }
-            SvgWarning::ImageBrushUnsupported => {
-                "an image used as a fill or stroke was dropped; SVG cannot paint with one".into()
+            SvgWarning::UnsupportedExtend => {
+                "an image fill asked to pad or reflect at its edges; an SVG pattern only tiles, \
+                 so it repeats"
+                    .into()
             }
             SvgWarning::NonFiniteCoordinate => {
                 "a coordinate was not a finite number and was written as zero".into()

@@ -1,6 +1,6 @@
 # `writer/hephaestus/` — renderer-backed writer internals
 
-The writers here render a resolved ggsql `Spec` through
+The writers here render a resolved ggsql `ResolvedPlot` through
 [hephaestus](https://github.com/posit-dev/hephaestus), a 2D scene renderer with a
 grammar-of-graphics plot API. Seven of them exist, each behind its own cargo
 feature — the three GPU-free ones on by default, the four raster ones not:
@@ -38,10 +38,10 @@ seven writers, `PlotViewer`, and this list ([`../mod.rs`](../mod.rs)):
 | --- | --- |
 | `Canvas` | ggsql's own |
 | `MAX_RASTER_DIMENSION` | ggsql's own |
-| `Color`, `rgba` | **the renderer's** (`hephaestus::color`) |
+| `Color`, `rgba` | **zygos's** (`zygos::color`) |
 | `PngCompression`, `TiffCompression` | **the renderer's** |
 
-The bottom two rows are why a hephaestus bump is a breaking change to ggsql
+The bottom row is why a hephaestus bump is a breaking change to ggsql
 even when the renderer's own API holds still: those types are in ggsql's public
 API by re-export, so a rename or an added variant upstream lands here. Anything
 new that has to go public should be ggsql's own type unless there is a reason
@@ -61,12 +61,12 @@ extend them. For how the writer's behaviour got here, read
 deliberately not done yet is in [Known gaps](#known-gaps) below.
 
 For ggsql language semantics see [`/doc/syntax/`](../../../doc/syntax/); for the
-sibling writer's internals, [`../vegalite/CLAUDE.md`](../vegalite/CLAUDE.md).
+sibling writer's internals, [`../vegalite/AGENTS.md`](../vegalite/AGENTS.md).
 
 ## The governing principle
 
 **ggsql owns every scale domain; the writer never computes its own extents.**
-The `Spec` arrives with each `Scale` fully resolved — type, domain (already
+The `ResolvedPlot` arrives with each `Scale` fully resolved — type, domain (already
 expanded, transform-aware, trained globally over all layers and the whole
 position family), transform, breaks, formatted labels, and a concrete output
 range for material aesthetics. The writer's job is to *pass those through* to
@@ -78,13 +78,17 @@ missing *pass-through*, not a better computation here. The same shape held
 upstream — every hephaestus gap this writer hit was a missing setter, not a
 missing algorithm.
 
-There are exactly **two scoped exceptions**, both flagged in the code and both
-debt that would disappear if ggsql resolved more:
+There is exactly **one scoped exception**, flagged in the code:
 
 | Exception | Where | Why |
 | --- | --- | --- |
-| Free facet dimensions | `scales::{free_position_scale, free_binned_scale}` | ggsql resolves one global domain; a `free` panel needs its own. Only the *extent* is computed — the padding around it is still ggsql's, via `Scale::expand_range`. |
 | Spatial `pos1`/`pos2` | `compose.rs::map_bbox` | A map's frame is `Projection.computed["bbox"]`, in the target CRS, with `SCALE lon`/`lat` limits already folded in. A resolved `pos1`/`pos2` is *not* the alternative: for a map, ggsql resolves those against the graticule extent in EPSG:4326, so their domain is degrees and their breaks are graticule positions, not the frame. Only a bare `spatial` geom with no `PROJECT` falls back to the geometry extent. |
+
+Free facet dimensions are **not** an exception: ggsql resolves the per-panel
+domain, breaks, labels, and minor breaks in core (`Scale::panels`, indexed by
+the canonical panel order in `plot::facet::panels`), and
+`scales::free_position_scale` only translates that entry into a hephaestus
+scale. The writer never derives a positional extent.
 
 ## Configuration
 
@@ -507,7 +511,7 @@ claiming it writes anything.
 
 It lives in this crate rather than in `ggsql-cli` because the CLI uses only
 public `ggsql::*` API and has no renderer dependency — see
-[`/ggsql-cli/CLAUDE.md`](../../../ggsql-cli/CLAUDE.md). So the *behaviour* goes
+[`/ggsql-cli/AGENTS.md`](../../../ggsql-cli/AGENTS.md). So the *behaviour* goes
 public as a type instead of `build_composition` going public.
 
 Two things follow from what a window is:
@@ -634,7 +638,7 @@ small omission that only shows up across the whole feature surface — use the
 visual-test harness instead of one-off queries. It renders every executable
 ```` ```{ggsql} ```` cell in [`/doc/`](../../../doc/) (≈190 in `doc/syntax/`
 alone) and writes one HTML report pairing each query with its render, optionally
-beside the Vega-Lite render of the same `Spec`:
+beside the Vega-Lite render of the same `ResolvedPlot`:
 
 ```sh
 cargo run -p ggsql-cli --features png --example visual_test -- --compare
@@ -643,7 +647,7 @@ open target/visual-test/index.html
 
 It never stops on a failure — an error or a panic is captured against its cell —
 so one run inventories every gap at once. Implementation notes:
-[`/ggsql-cli/CLAUDE.md`](../../../ggsql-cli/CLAUDE.md).
+[`/ggsql-cli/AGENTS.md`](../../../ggsql-cli/AGENTS.md).
 
 ## Operational constraints
 
@@ -701,7 +705,7 @@ so one run inventories every gap at once. Implementation notes:
   not default. **Do not use a 1.87+ std API anywhere in the library** —
   `rust-version = "1.86"` keeps clippy flagging one as a lint, and that guard
   is why the declaration stays at 1.86 rather than following `parley`'s.
-- **The dependency is the published `0.4.1` crate** (`src/Cargo.toml`), pinned
+- **The dependency is the published `0.5.0` crate** (`src/Cargo.toml`), pinned
   with `default-features = false` so the GPU rasteriser arrives only with
   `raster`, and nothing here blocks publishing ggsql. hephaestus's own semver
   contract extends
@@ -718,15 +722,12 @@ Deliberately not done, in rough order of how likely they are to bite:
   doing it at scale. The SVG corpus is the natural fixture surface, being
   deterministic text where a 2 px panel shift reads as a hunk rather than as a
   changed hash; whether to commit it is still open.
-- **Log-scale tick labels are wrong, and not because of this writer.** ggsql
-  resolves a 1–100 `log10` domain to breaks of
-  `[5e-308, 2e-256, …, 100]`, and both writers faithfully print those. The fix
-  is in scale resolution; nothing changes here. Recorded as an ignored test
-  (`svg_text::log_tick_labels_should_be_decades`).
-- **No axis label thinning.** ggsql's resolved breaks are drawn as-is, so a
-  narrow facet panel can crowd or overlap long labels — which is why
-  `free_continuous_scale` narrows the *global* breaks to a panel rather than
-  letting hephaestus invent per-panel ones.
+- **Axis label thinning is the renderer's.** hephaestus culls overlapping tick
+  labels itself (terminal labels survive, interior ones by recursive bisection),
+  so ggsql's resolved breaks are passed in as-is and the renderer decides which
+  fit. ggsql still owns which breaks *exist* — `free_continuous_scale` narrows
+  the *global* breaks to a panel rather than letting hephaestus invent
+  per-panel ones.
 - **No switch on rich-text chrome.** [`ggsql_theme`](wiring.rs) turns markdown on
   for the whole chrome cascade, so a title that wants a literal `*` has no way to
   ask for one. The text layer has `parse`; chrome waits for ggsql to grow a theme
@@ -734,8 +735,8 @@ Deliberately not done, in rough order of how likely they are to bite:
 
 ## See also
 
-- [`../vegalite/CLAUDE.md`](../vegalite/CLAUDE.md) — the sibling writer to mirror.
-- [`../../CLAUDE.md`](../../CLAUDE.md) — the core crate: feature flags, pipeline.
-- [`../../plot/CLAUDE.md`](../../plot/CLAUDE.md) — the AST and scale types this
+- [`../vegalite/AGENTS.md`](../vegalite/AGENTS.md) — the sibling writer to mirror.
+- [`../../AGENTS.md`](../../AGENTS.md) — the core crate: feature flags, pipeline.
+- [`../../plot/AGENTS.md`](../../plot/AGENTS.md) — the AST and scale types this
   writer consumes.
 - [`/doc/syntax/`](../../../doc/syntax/) — authoritative ggsql syntax reference.

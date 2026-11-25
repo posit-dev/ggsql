@@ -566,13 +566,19 @@ where
         }
     }
 
+    // Geom-required ordering carried by the stat transform (e.g. line
+    // ordering along the domain axis). Applied on the final query below.
+    let mut stat_order_by: Vec<String> = Vec::new();
+
     let final_query = match stat_result {
         StatResult::Transformed {
             query: transformed_query,
             stat_columns,
             dummy_columns,
             consumed_aesthetics,
+            layer_order: stat_order,
         } => {
+            stat_order_by = stat_order;
             // Build stat column -> aesthetic mappings from geom defaults for renaming
             let mut final_remappings: HashMap<String, String> = HashMap::new();
 
@@ -726,11 +732,21 @@ where
         normalize_mapping_column_names(layer);
     }
 
-    // Apply explicit ORDER BY if provided
-    let final_query = if let Some(ref o) = order_by {
-        format!("{} ORDER BY {}", final_query, o.as_str())
-    } else {
+    // Apply ORDER BY. An explicit clause ORDER BY takes precedence, so it
+    // comes first; geom-required ordering carried by the stat transform is
+    // appended as a tiebreaker so e.g. lines stay connected along the domain
+    // axis within each group. Ordering is only ever applied here, on the
+    // final outermost query — nested ORDER BY is rejected by some backends
+    // (T-SQL error 1033).
+    let mut ordering: Vec<String> = Vec::new();
+    if let Some(ref o) = order_by {
+        ordering.push(o.as_str().to_string());
+    }
+    ordering.extend(stat_order_by.iter().cloned());
+    let final_query = if ordering.is_empty() {
         final_query
+    } else {
+        format!("{} ORDER BY {}", final_query, ordering.join(", "))
     };
 
     Ok(final_query)
@@ -803,7 +819,7 @@ fn process_annotation_layer(layer: &mut Layer, dialect: &dyn SqlDialect) -> Resu
     // non-positional scalar parameters (e.g., PLACE rule SETTING stroke => 'red')
     if annotation_params.is_empty() {
         // Add a dummy column so we can generate a valid VALUES clause
-        annotation_params.push(("__ggsql_dummy__".to_string(), ParameterValue::Number(1.0)));
+        annotation_params.push(("__ggsql_dummy__".to_string(), 1.0.into()));
     }
 
     // Step 3: Determine max array length from all annotation parameters
@@ -987,16 +1003,9 @@ mod tests {
         let mut layer = Layer::new(Geom::text());
         layer.source = Some(DataSource::Annotation);
         // Put values in parameters (not mappings) - process_annotation_layer will process them
-        layer
-            .parameters
-            .insert("pos1".to_string(), ParameterValue::Number(5.0));
-        layer
-            .parameters
-            .insert("pos2".to_string(), ParameterValue::Number(10.0));
-        layer.parameters.insert(
-            "label".to_string(),
-            ParameterValue::String("Test".to_string()),
-        );
+        layer.parameters.insert("pos1".to_string(), 5.0.into());
+        layer.parameters.insert("pos2".to_string(), 10.0.into());
+        layer.parameters.insert("label".to_string(), "Test".into());
 
         let result = process_annotation_layer(&mut layer, &AnsiDialect).unwrap();
 
@@ -1029,13 +1038,8 @@ mod tests {
                 ArrayElement::Number(3.0),
             ]),
         );
-        layer
-            .parameters
-            .insert("pos2".to_string(), ParameterValue::Number(10.0));
-        layer.parameters.insert(
-            "label".to_string(),
-            ParameterValue::String("Same".to_string()),
-        );
+        layer.parameters.insert("pos2".to_string(), 10.0.into());
+        layer.parameters.insert("label".to_string(), "Same".into());
 
         let result = process_annotation_layer(&mut layer, &AnsiDialect).unwrap();
 
@@ -1109,16 +1113,9 @@ mod tests {
     fn test_annotation_mixed_types() {
         let mut layer = Layer::new(Geom::text());
         layer.source = Some(DataSource::Annotation);
-        layer
-            .parameters
-            .insert("pos1".to_string(), ParameterValue::Number(5.0));
-        layer
-            .parameters
-            .insert("pos2".to_string(), ParameterValue::Number(10.0));
-        layer.parameters.insert(
-            "label".to_string(),
-            ParameterValue::String("Text".to_string()),
-        );
+        layer.parameters.insert("pos1".to_string(), 5.0.into());
+        layer.parameters.insert("pos2".to_string(), 10.0.into());
+        layer.parameters.insert("label".to_string(), "Text".into());
 
         let result = process_annotation_layer(&mut layer, &AnsiDialect).unwrap();
 
@@ -1135,7 +1132,7 @@ mod tests {
         use arrow::datatypes::DataType;
 
         // Date literal should parse to Date32 type
-        let array = literal_to_array(&ParameterValue::String("1973-06-01".to_string()), 5);
+        let array = literal_to_array(&"1973-06-01".into(), 5);
         assert_eq!(
             array.data_type(),
             &DataType::Date32,
@@ -1150,10 +1147,7 @@ mod tests {
         use arrow::datatypes::{DataType, TimeUnit};
 
         // DateTime literal should parse to Timestamp type
-        let array = literal_to_array(
-            &ParameterValue::String("2024-03-17T14:30:00".to_string()),
-            3,
-        );
+        let array = literal_to_array(&"2024-03-17T14:30:00".into(), 3);
         assert!(
             matches!(
                 array.data_type(),
@@ -1170,7 +1164,7 @@ mod tests {
         use arrow::datatypes::{DataType, TimeUnit};
 
         // Time literal should parse to Time64 type
-        let array = literal_to_array(&ParameterValue::String("14:30:00".to_string()), 4);
+        let array = literal_to_array(&"14:30:00".into(), 4);
         assert_eq!(
             array.data_type(),
             &DataType::Time64(TimeUnit::Nanosecond),
@@ -1185,7 +1179,7 @@ mod tests {
         use arrow::datatypes::DataType;
 
         // Non-temporal string should remain Utf8 type
-        let array = literal_to_array(&ParameterValue::String("not a date".to_string()), 2);
+        let array = literal_to_array(&"not a date".into(), 2);
         assert_eq!(
             array.data_type(),
             &DataType::Utf8,
@@ -1200,13 +1194,8 @@ mod tests {
         let mut layer = Layer::new(Geom::rule());
         layer.source = Some(DataSource::Annotation);
         // Only non-positional, non-required scalar parameters
-        layer.parameters.insert(
-            "stroke".to_string(),
-            ParameterValue::String("red".to_string()),
-        );
-        layer
-            .parameters
-            .insert("linewidth".to_string(), ParameterValue::Number(2.0));
+        layer.parameters.insert("stroke".to_string(), "red".into());
+        layer.parameters.insert("linewidth".to_string(), 2.0.into());
 
         let result = process_annotation_layer(&mut layer, &AnsiDialect);
 

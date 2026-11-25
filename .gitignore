@@ -117,3 +117,6 @@ ggsql.Rcheck/
 
 # Superpowers SDD scratch (ledger, briefs, review packages)
 .superpowers/
+
+# Posit Assistant project config (per-user)
+.posit/

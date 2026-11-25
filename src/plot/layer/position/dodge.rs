@@ -184,10 +184,7 @@ fn apply_dodge_with_width(
     let bar_width = layer
         .parameters
         .get("width")
-        .and_then(|v| match v {
-            ParameterValue::Number(n) => Some(*n),
-            _ => None,
-        })
+        .and_then(ParameterValue::as_number)
         .unwrap_or(0.9);
 
     // Check if layer has an existing offset column (e.g., violin density offset)
@@ -634,9 +631,7 @@ mod tests {
 
         let df = make_test_df();
         let mut layer = make_test_layer();
-        layer
-            .parameters
-            .insert("width".to_string(), ParameterValue::Number(0.6));
+        layer.parameters.insert("width".to_string(), 0.6.into());
 
         // Mark pos1 as discrete and pos2 as continuous so only pos1offset is created
         let mut spec = Plot::new();

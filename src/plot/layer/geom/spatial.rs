@@ -1,4 +1,4 @@
-use super::{DefaultAesthetics, GeomTrait, GeomType, StatResult};
+use super::{DefaultAesthetics, GeomTrait, GeomType, ParamDefinition, StatResult};
 use crate::naming;
 use crate::plot::projection::coord::map::clip_boundary_table;
 use crate::plot::projection::coord::CoordKind;
@@ -39,6 +39,12 @@ impl GeomTrait for Spatial {
         GeomType::Spatial
     }
 
+    fn default_params(&self) -> &'static [ParamDefinition] {
+        const PARAMS: &[ParamDefinition] =
+            &[super::types::LINECAP_PARAM, super::types::LINEJOIN_PARAM];
+        PARAMS
+    }
+
     fn aesthetics(&self) -> DefaultAesthetics {
         DefaultAesthetics {
             defaults: &[
@@ -73,6 +79,7 @@ impl GeomTrait for Spatial {
             stat_columns: vec![],
             dummy_columns: vec![],
             consumed_aesthetics: vec![],
+            layer_order: vec![],
         })
     }
 
@@ -88,10 +95,7 @@ impl GeomTrait for Spatial {
         let columns = mappings.column_names();
         let col = dialect.quote_ident(&naming::aesthetic_column("geometry"));
         let is_map = projection.coord.coord_kind() == CoordKind::Map;
-        let clip = matches!(
-            projection.properties.get("clip"),
-            Some(ParameterValue::Boolean(true))
-        );
+        let clip = ParameterValue::is_true(projection.properties.get("clip"));
 
         // WORKAROUND(duckdb-rs#714): normalize column to GEOMETRY since it may
         // be WKB BLOB from the Arrow export workaround.
@@ -186,10 +190,9 @@ mod tests {
     fn test_apply_projection_map_with_crs_no_clip() {
         let spatial = Spatial;
         let mut projection = Projection::map();
-        projection.properties.insert(
-            "target".to_string(),
-            ParameterValue::String("+proj=merc".to_string()),
-        );
+        projection
+            .properties
+            .insert("target".to_string(), "+proj=merc".into());
         let result = spatial
             .apply_projection(
                 "SELECT * FROM t",
@@ -212,13 +215,12 @@ mod tests {
     fn test_apply_projection_mercator_with_clip() {
         let spatial = Spatial;
         let mut projection = Projection::map();
-        projection.properties.insert(
-            "target".to_string(),
-            ParameterValue::String("+proj=merc".to_string()),
-        );
         projection
             .properties
-            .insert("clip".to_string(), ParameterValue::Boolean(true));
+            .insert("target".to_string(), "+proj=merc".into());
+        projection
+            .properties
+            .insert("clip".to_string(), true.into());
         let result = spatial
             .apply_projection(
                 "SELECT * FROM t",
@@ -241,11 +243,11 @@ mod tests {
         let mut projection = Projection::map();
         projection.properties.insert(
             "target".to_string(),
-            ParameterValue::String("+proj=ortho +lat_0=45 +lon_0=10".to_string()),
+            "+proj=ortho +lat_0=45 +lon_0=10".into(),
         );
         projection
             .properties
-            .insert("clip".to_string(), ParameterValue::Boolean(true));
+            .insert("clip".to_string(), true.into());
         let result = spatial
             .apply_projection(
                 "SELECT * FROM t",
@@ -268,13 +270,12 @@ mod tests {
     fn test_gnomonic_with_clip() {
         let spatial = Spatial;
         let mut projection = Projection::map();
-        projection.properties.insert(
-            "target".to_string(),
-            ParameterValue::String("+proj=gnom +lat_0=90 +lon_0=0".to_string()),
-        );
         projection
             .properties
-            .insert("clip".to_string(), ParameterValue::Boolean(true));
+            .insert("target".to_string(), "+proj=gnom +lat_0=90 +lon_0=0".into());
+        projection
+            .properties
+            .insert("clip".to_string(), true.into());
         let result = spatial
             .apply_projection(
                 "SELECT * FROM t",

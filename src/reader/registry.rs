@@ -173,6 +173,12 @@ pub struct DatabaseEntry {
     /// to SQL_C_SLONG/SBIGINT. Elsewhere integer-scale numerics keep their
     /// Int64 type (and precision past 2^53).
     pub odbc_numeric_as_double: bool,
+    /// Pre-connect hook rewriting the ODBC connection string to supply
+    /// credentials the driver cannot obtain itself (Snowflake: resolve
+    /// `ConnectionName=` from `~/.snowflake/connections.toml`, inject a
+    /// Posit Workbench OAuth token). Dispatched on the `Driver=` value, so
+    /// it fires before the DBMS name is known.
+    pub odbc_credential_provider: Option<fn(&mut String)>,
     /// In-process reader to prefer when its cargo feature is compiled in
     /// (duckdb, sqlite). `None` for backends reached only through external
     /// ADBC/ODBC drivers.
@@ -203,6 +209,7 @@ macro_rules! entry {
             odbc_dbq_style: false,
             odbc_row_array_size: None,
             odbc_numeric_as_double: false,
+            odbc_credential_provider: None,
             native_reader: None,
         }
     };
@@ -232,6 +239,14 @@ macro_rules! adbc {
 
 use DetectPattern::Contains as Has;
 use DriverUri::*;
+
+/// Snowflake's ODBC credential hook, present only when the `odbc` feature
+/// (and with it the `odbc::snowflake` module) is compiled in.
+#[cfg(feature = "odbc")]
+const SNOWFLAKE_CREDENTIAL_PROVIDER: Option<fn(&mut String)> =
+    Some(crate::reader::odbc::snowflake::apply_workbench_credentials);
+#[cfg(not(feature = "odbc"))]
+const SNOWFLAKE_CREDENTIAL_PROVIDER: Option<fn(&mut String)> = None;
 
 /// All supported backends. **Order matters for detection**: entries are
 /// scanned top to bottom, so more specific patterns must precede generic
@@ -281,14 +296,17 @@ pub static REGISTRY: &[DatabaseEntry] = &[
         &MySqlDialect,
         adbc!("adbc_driver_mysql", "mysql", MySqlGoDsn, true)
     ),
-    entry!(
-        "snowflake",
-        &[],
-        "Snowflake",
-        &[Has("snowflake")],
-        &SnowflakeDialect,
-        adbc!("adbc_driver_snowflake", "snowflake", Passthrough, true)
-    ),
+    DatabaseEntry {
+        odbc_credential_provider: SNOWFLAKE_CREDENTIAL_PROVIDER,
+        ..entry!(
+            "snowflake",
+            &[],
+            "Snowflake",
+            &[Has("snowflake")],
+            &SnowflakeDialect,
+            adbc!("adbc_driver_snowflake", "snowflake", Passthrough, true)
+        )
+    },
     entry!(
         "bigquery",
         &[],
@@ -435,21 +453,33 @@ pub fn by_scheme(scheme: &str) -> Option<&'static DatabaseEntry> {
 
 /// Detect the backend from a DBMS name and/or driver hint (ODBC driver
 /// name, ADBC driver name). The DBMS name is checked first; matching is
-/// case-insensitive substring matching in registry order.
+/// case-insensitive substring matching in registry order. Unknown backends
+/// are an error naming what was seen — silently falling back to ANSI
+/// produced broken SQL too often; the escape hatch is a `dialect=ansi`
+/// (or `dialect=<scheme>`) parameter. Callers wanting best-effort
+/// detection can use `.ok()`.
 pub fn detect(
     dbms_name: Option<&str>,
     driver_hint: Option<&str>,
-) -> Option<&'static DatabaseEntry> {
+) -> crate::Result<&'static DatabaseEntry> {
     for text in [dbms_name, driver_hint].into_iter().flatten() {
         let lower = text.to_lowercase();
         if let Some(e) = REGISTRY
             .iter()
             .find(|e| e.detect.iter().any(|p| p.matches(&lower)))
         {
-            return Some(e);
+            return Ok(e);
         }
     }
-    None
+    Err(crate::GgsqlError::ReaderError(format!(
+        "Unrecognized database backend (DBMS name: {}, driver: {}). \
+         ggsql does not know which SQL dialect to use. If the backend \
+         is close to a supported one, pin the dialect explicitly with \
+         a `dialect=<scheme>` parameter (e.g. dialect=postgres), or use \
+         dialect=ansi for generic ANSI SQL.",
+        dbms_name.unwrap_or("<none>"),
+        driver_hint.unwrap_or("<none>"),
+    )))
 }
 
 /// `scheme://` list for error messages: every supported URI scheme
@@ -532,31 +562,7 @@ pub fn resolve_dialect(
     if let Some(entry) = by_scheme(body) {
         return Ok(entry.dialect());
     }
-    detect_or_err(None, Some(body))
-}
-
-/// Detect a dialect from an ODBC DBMS name and/or driver string, or error
-/// naming what was seen. Unknown backends are an **error** — silently
-/// falling back to ANSI produced broken SQL too often. The escape hatch is
-/// a `dialect=ansi` (or `dialect=<scheme>`) parameter; see
-/// [`dialect_override`].
-pub fn detect_or_err(
-    dbms_name: Option<&str>,
-    driver_hint: Option<&str>,
-) -> crate::Result<crate::reader::DialectRef> {
-    detect(dbms_name, driver_hint)
-        .map(|e| e.dialect())
-        .ok_or_else(|| {
-            crate::GgsqlError::ReaderError(format!(
-                "Unrecognized database backend (DBMS name: {}, driver: {}). \
-                 ggsql does not know which SQL dialect to use. If the backend \
-                 is close to a supported one, pin the dialect explicitly with \
-                 a `dialect=<scheme>` parameter (e.g. dialect=postgres), or use \
-                 dialect=ansi for generic ANSI SQL.",
-                dbms_name.unwrap_or("<none>"),
-                driver_hint.unwrap_or("<none>"),
-            ))
-        })
+    detect(None, Some(body)).map(|e| e.dialect())
 }
 
 #[cfg(test)]
@@ -598,7 +604,7 @@ mod tests {
                 .scheme,
             "postgres"
         );
-        assert!(detect(Some("mystery-db"), None).is_none());
+        assert!(detect(Some("mystery-db"), None).is_err());
     }
 
     #[test]

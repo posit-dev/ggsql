@@ -88,7 +88,8 @@ impl PdfWriter {
         spec: &Plot,
         data: &HashMap<String, DataFrame>,
     ) -> Result<(Vec<u8>, Vec<String>)> {
-        let mut scene = PdfScene::with_config(self.canvas.size(), self.canvas.dpi, self.config());
+        let mut scene =
+            PdfScene::with_config(self.canvas.size(), self.canvas.dims.dpi, self.config());
         vector::draw(spec, data, &self.canvas, &mut scene)?;
         Ok((encode_pdf(&scene), describe(scene.warnings())))
     }
@@ -98,7 +99,10 @@ impl PdfWriter {
     /// # Errors
     ///
     /// As [`Self::write_reporting`].
-    pub fn render_reporting(&self, spec: &crate::reader::Spec) -> Result<(Vec<u8>, Vec<String>)> {
+    pub fn render_reporting(
+        &self,
+        spec: &crate::reader::ResolvedPlot,
+    ) -> Result<(Vec<u8>, Vec<String>)> {
         self.write_reporting(spec.plot(), spec.data())
     }
 
@@ -132,11 +136,11 @@ impl Writer for PdfWriter {
         })
     }
 
-    fn validate(&self, spec: &Plot) -> Result<()> {
+    fn validate_plot(&self, spec: &Plot) -> Result<()> {
         compose::validate_plot(spec)
     }
 
-    fn write(&self, spec: &Plot, data: &HashMap<String, DataFrame>) -> Result<Self::Output> {
+    fn write_plot(&self, spec: &Plot, data: &HashMap<String, DataFrame>) -> Result<Self::Output> {
         self.write_reporting(spec, data).map(|(pdf, _)| pdf)
     }
 }
@@ -152,8 +156,8 @@ fn describe(warnings: &[PdfWarning]) -> Vec<String> {
                 "a sweep gradient was flattened to a solid colour; PDF has no conic shading".into()
             }
             PdfWarning::UnsupportedExtend => {
-                "a gradient asked to repeat or reflect; PDF shadings only pad, so the end colours \
-                 were held"
+                "a gradient asked to repeat or reflect, or an image fill to pad or reflect; PDF \
+                 only pads a shading and tiles a pattern, so the paint fell back to that"
                     .into()
             }
             PdfWarning::UnsupportedCompose => {
@@ -163,9 +167,6 @@ fn describe(warnings: &[PdfWarning]) -> Vec<String> {
                 "a stroke asked for different start and end caps; PDF has one, so both took the \
                  start cap"
                     .into()
-            }
-            PdfWarning::ImageBrushUnsupported => {
-                "an image used as a fill or stroke was dropped; PDF cannot paint with one".into()
             }
             PdfWarning::UnembeddableImage => "an image's pixel layout could not be embedded".into(),
             PdfWarning::MissingPngFeature => {

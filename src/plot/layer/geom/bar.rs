@@ -72,6 +72,8 @@ impl GeomTrait for Bar {
                 default: DefaultParamValue::String("stack"),
                 constraint: ParamConstraint::string_option(POSITION_VALUES),
             },
+            super::types::LINECAP_PARAM,
+            super::types::LINEJOIN_PARAM,
             super::types::AGGREGATE_PARAM,
         ];
         PARAMS
@@ -374,5 +376,6 @@ fn stat_bar_count(
         stat_columns,
         dummy_columns,
         consumed_aesthetics,
+        layer_order: vec![],
     })
 }

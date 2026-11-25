@@ -6,7 +6,7 @@
 
 #[allow(dead_code)]
 pub(crate) mod ffi;
-mod snowflake;
+pub(crate) mod snowflake;
 mod wrapper;
 
 use crate::reader::Reader;
@@ -17,15 +17,6 @@ use arrow::datatypes::DataType;
 use ffi::*;
 use std::sync::Arc;
 use wrapper::{Connection, Statement};
-
-/// Detect the backend SQL dialect from the DBMS name and connection string.
-///
-/// Delegates to the shared matcher in [`crate::reader::dialects`]; the
-/// `Driver=` value from the ODBC connection string serves as the driver hint.
-fn detect_dialect(dbms_name: Option<&str>, conn_str: &str) -> Result<super::DialectRef> {
-    let driver = super::connection::extract_odbc_value(conn_str, "driver");
-    super::registry::detect_or_err(dbms_name, driver.as_deref())
-}
 
 /// Pull ggsql-owned keys (`Dialect=<name>`) out of an ODBC connection
 /// string before connecting. `Dialect=` is ggsql's escape hatch for unknown
@@ -82,16 +73,16 @@ impl OdbcReader {
             (None, None) => None,
         };
 
-        if snowflake::is_snowflake(&conn_str) {
-            if let Some(resolved) = snowflake::resolve_connection_name(&conn_str) {
-                conn_str = resolved;
-            }
-        }
-
-        if snowflake::is_snowflake(&conn_str) && !snowflake::has_token(&conn_str) {
-            if let Some(token) = snowflake::detect_workbench_token() {
-                conn_str = snowflake::inject_snowflake_token(&conn_str, &token);
-            }
+        // Backend-specific credential resolution (Snowflake Workbench OAuth
+        // tokens, `ConnectionName=` lookup), dispatched through the registry
+        // on the `Driver=` value — the DBMS name isn't known until after
+        // connecting, which is too late to supply credentials.
+        let driver = super::connection::extract_odbc_value(&conn_str, "driver");
+        if let Some(apply) = super::registry::detect(None, driver.as_deref())
+            .ok()
+            .and_then(|e| e.odbc_credential_provider)
+        {
+            apply(&mut conn_str);
         }
 
         let connection = match Connection::connect(wrapper::odbc_env()?, &conn_str) {
@@ -110,20 +101,27 @@ impl OdbcReader {
         };
 
         let dbms_name = connection.dbms_name();
+        let driver = super::connection::extract_odbc_value(&conn_str, "driver");
 
-        let dialect = match dialect {
-            Some(d) => d,
-            None => detect_dialect(dbms_name.as_deref(), &conn_str)?,
+        // One registry resolution per connection: dialect and fetch behavior
+        // both derive from the same entry. With a pinned dialect the entry
+        // is best-effort (fetch quirks only); without one the entry must
+        // resolve so the dialect can come from it.
+        let (entry, dialect) = match dialect {
+            Some(d) => (
+                super::registry::detect(dbms_name.as_deref(), driver.as_deref()).ok(),
+                d,
+            ),
+            None => {
+                let entry = super::registry::detect(dbms_name.as_deref(), driver.as_deref())?;
+                (Some(entry), entry.dialect())
+            }
         };
 
         // Fetch behavior is a per-backend capability: Oracle ODBC rejects
         // block cursors (`odbc_row_array_size`; HY090 at SQLFetch time, and
         // the failed fetch leaves the cursor unusable) and cannot convert
         // DECIMAL to integer C types (`odbc_numeric_as_double`).
-        let entry = super::registry::detect(
-            dbms_name.as_deref(),
-            super::connection::extract_odbc_value(&conn_str, "driver").as_deref(),
-        );
         let batch_size = entry
             .and_then(|e| e.odbc_row_array_size)
             .unwrap_or(BATCH_SIZE);
@@ -268,7 +266,7 @@ impl Reader for OdbcReader {
         Ok(())
     }
 
-    fn execute(&self, query: &str) -> Result<super::Spec> {
+    fn execute(&self, query: &str) -> Result<super::ResolvedSpec> {
         super::execute_with_reader(self, query)
     }
 
@@ -841,13 +839,17 @@ mod tests {
 
     #[test]
     fn test_detect_dialect_from_dbms_name() {
-        let d = detect_dialect(Some("Snowflake"), "anything").unwrap();
+        let d = crate::reader::registry::detect(Some("Snowflake"), None)
+            .unwrap()
+            .dialect();
         assert!(!d.sql_greatest(&["a", "b"]).is_empty());
 
-        let d = detect_dialect(None, "Driver=Snowflake;Server=foo").unwrap();
+        let d = crate::reader::registry::detect(None, Some("Snowflake ODBC Driver"))
+            .unwrap()
+            .dialect();
         assert!(!d.sql_greatest(&["a", "b"]).is_empty());
 
-        let err = detect_dialect(None, "Driver=SomeOther;Server=localhost")
+        let err = crate::reader::registry::detect(None, Some("SomeOther"))
             .err()
             .unwrap()
             .to_string();
@@ -1530,8 +1532,9 @@ mod tests {
             )
             .unwrap();
 
-        assert_eq!(spec.plot.layers.len(), 1);
-        assert!(spec.layer_data(0).unwrap().height() > 0);
+        let plot = spec.as_plot().unwrap();
+        assert_eq!(plot.plot.layers.len(), 1);
+        assert!(plot.layer_data(0).unwrap().height() > 0);
 
         reader.execute_sql("DROP TABLE __ggsql_countries").unwrap();
     }
@@ -1575,7 +1578,7 @@ mod tests {
             .unwrap();
 
         // Only the visible polygon should survive clipping
-        assert_eq!(spec.layer_data(0).unwrap().height(), 1);
+        assert_eq!(spec.as_plot().unwrap().layer_data(0).unwrap().height(), 1);
 
         reader.execute_sql("DROP TABLE __ggsql_clip_test").unwrap();
     }
@@ -1618,17 +1621,18 @@ mod tests {
             )
             .unwrap();
 
-        assert_eq!(spec.plot.layers.len(), 1);
-        let df = spec.layer_data(0).unwrap();
+        let plot = spec.as_plot().unwrap();
+        assert_eq!(plot.plot.layers.len(), 1);
+        let df = plot.layer_data(0).unwrap();
         assert_eq!(df.height(), 3);
 
         let writer = crate::writer::vegalite::VegaLiteWriter::new();
-        let json_str = writer.write(&spec.plot, &spec.data).unwrap();
+        let json_str = writer.write_plot(&plot.plot, &plot.data).unwrap();
         let vl_spec: serde_json::Value = serde_json::from_str(&json_str).unwrap();
 
         // Coordinates should be projected (not raw lon/lat)
         let data = vl_spec["data"]["values"].as_array().unwrap();
-        let layer_key = spec.plot.layers[0].data_key.as_ref().unwrap();
+        let layer_key = plot.plot.layers[0].data_key.as_ref().unwrap();
         let rows: Vec<_> = data
             .iter()
             .filter(|r| r[crate::naming::SOURCE_COLUMN] == layer_key.as_str())

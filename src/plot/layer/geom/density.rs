@@ -74,6 +74,8 @@ impl GeomTrait for Density {
                 default: DefaultParamValue::String("gaussian"),
                 constraint: ParamConstraint::string_option(KERNEL_VALUES),
             },
+            super::types::LINECAP_PARAM,
+            super::types::LINEJOIN_PARAM,
         ];
         PARAMS
     }
@@ -207,6 +209,7 @@ pub(crate) fn stat_density(
         stat_columns: stats,
         dummy_columns: vec![],
         consumed_aesthetics: consumed,
+        layer_order: vec![],
     })
 }
 
@@ -664,12 +667,7 @@ mod tests {
     fn test_density_sql_no_groups() {
         let query = "SELECT x FROM (VALUES (1.0), (2.0), (3.0)) AS t(x)";
         let groups: Vec<String> = vec![];
-        let mut parameters = Parameters::new();
-        parameters.insert("bandwidth".to_string(), ParameterValue::Number(0.5));
-        parameters.insert(
-            "kernel".to_string(),
-            ParameterValue::String("gaussian".to_string()),
-        );
+        let parameters = crate::params! { "bandwidth" => 0.5, "kernel" => "gaussian" };
 
         let bw_cte = density_sql_bandwidth(query, &groups, "x", &parameters, &AnsiDialect);
         let data_cte = build_data_cte("x", None, None, query, &groups, &AnsiDialect);
@@ -748,12 +746,7 @@ mod tests {
     fn test_density_sql_with_two_groups() {
         let query = "SELECT x, region, category FROM (VALUES (1.0, 'A', 'X'), (2.0, 'B', 'Y')) AS t(x, region, category)";
         let groups = vec!["region".to_string(), "category".to_string()];
-        let mut parameters = Parameters::new();
-        parameters.insert("bandwidth".to_string(), ParameterValue::Number(0.5));
-        parameters.insert(
-            "kernel".to_string(),
-            ParameterValue::String("gaussian".to_string()),
-        );
+        let parameters = crate::params! { "bandwidth" => 0.5, "kernel" => "gaussian" };
 
         let bw_cte = density_sql_bandwidth(query, &groups, "x", &parameters, &AnsiDialect);
         let data_cte = build_data_cte("x", None, None, query, &groups, &AnsiDialect);
@@ -932,8 +925,7 @@ mod tests {
     fn test_kernel_integration(kernel_name: &str, tolerance: f64) {
         let query = "SELECT x FROM (VALUES (1.0), (2.0), (3.0), (4.0), (5.0)) AS t(x)";
         let groups: Vec<String> = vec![];
-        let mut parameters = Parameters::new();
-        parameters.insert("bandwidth".to_string(), ParameterValue::Number(1.0));
+        let mut parameters = crate::params! { "bandwidth" => 1.0 };
         parameters.insert(
             "kernel".to_string(),
             ParameterValue::String(kernel_name.to_string()),
@@ -1036,11 +1028,7 @@ mod tests {
 
     #[test]
     fn test_kernel_invalid() {
-        let mut parameters = Parameters::new();
-        parameters.insert(
-            "kernel".to_string(),
-            ParameterValue::String("invalid_kernel".to_string()),
-        );
+        let parameters = crate::params! { "kernel" => "invalid_kernel" };
 
         let result = choose_kde_kernel(&parameters, None);
 
@@ -1060,12 +1048,7 @@ mod tests {
         // Compare weighted and unweighted results
         let query = "SELECT x FROM (VALUES (1.0), (2.0), (3.0)) AS t(x)";
         let groups: Vec<String> = vec![];
-        let mut parameters = Parameters::new();
-        parameters.insert("bandwidth".to_string(), ParameterValue::Number(0.5));
-        parameters.insert(
-            "kernel".to_string(),
-            ParameterValue::String("gaussian".to_string()),
-        );
+        let parameters = crate::params! { "bandwidth" => 0.5, "kernel" => "gaussian" };
 
         let bw_cte = density_sql_bandwidth(query, &groups, "x", &parameters, &AnsiDialect);
         let grid_cte = build_grid_cte(&groups, 100, None, &AnsiDialect);
@@ -1173,7 +1156,11 @@ mod tests {
         let spec = reader.execute(query).expect("Query should execute");
 
         // Get the stat-transformed data for layer 0
-        let df = spec.stat_data(0).expect("Layer 0 should have stat data");
+        let df = spec
+            .as_plot()
+            .unwrap()
+            .stat_data(0)
+            .expect("Layer 0 should have stat data");
         println!("\nActual columns in stat_data: {:?}", df.get_column_names());
         println!("Number of rows: {}", df.height());
 
@@ -1231,12 +1218,7 @@ mod tests {
 
         let query = "SELECT x FROM bench_data";
         let groups: Vec<String> = vec![];
-        let mut parameters = Parameters::new();
-        parameters.insert("bandwidth".to_string(), ParameterValue::Number(5.0));
-        parameters.insert(
-            "kernel".to_string(),
-            ParameterValue::String("gaussian".to_string()),
-        );
+        let parameters = crate::params! { "bandwidth" => 5.0, "kernel" => "gaussian" };
 
         let bw_cte = density_sql_bandwidth(query, &groups, "x", &parameters, &AnsiDialect);
         let data_cte = build_data_cte("x", None, None, query, &groups, &AnsiDialect);

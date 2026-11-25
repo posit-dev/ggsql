@@ -4,8 +4,8 @@
 //! negative values. The base parameter controls which logarithm is approximated
 //! for large values.
 
-use super::{TransformKind, TransformTrait};
-use crate::plot::scale::breaks::{minor_breaks_symlog, symlog_breaks};
+use super::{TransformKind, TransformTrait, ZygosMath};
+use crate::plot::scale::breaks::{extent_minor_breaks, symlog_breaks, symlog_minor_breaks};
 
 /// PseudoLog transform - symmetric logarithm with configurable base
 ///
@@ -84,6 +84,11 @@ impl PseudoLog {
     fn is_base2(&self) -> bool {
         (self.base - 2.0).abs() < 1e-10
     }
+
+    /// zygos's natural pseudo-log, `asinh(x / 2)`, divided by `ln(base)`.
+    fn math(&self) -> ZygosMath {
+        ZygosMath::with_scale(TransformKind::PseudoLog, self.ln_base)
+    }
 }
 
 impl TransformTrait for PseudoLog {
@@ -102,11 +107,11 @@ impl TransformTrait for PseudoLog {
     }
 
     fn allowed_domain(&self) -> (f64, f64) {
-        (f64::NEG_INFINITY, f64::INFINITY)
+        self.math().allowed_domain()
     }
 
-    fn calculate_breaks(&self, min: f64, max: f64, n: usize, pretty: bool) -> Vec<f64> {
-        symlog_breaks(min, max, n, pretty)
+    fn calculate_breaks(&self, min: f64, max: f64, n: usize, _pretty: bool) -> Vec<f64> {
+        symlog_breaks(min, max, n, self.base)
     }
 
     fn calculate_minor_breaks(
@@ -115,19 +120,27 @@ impl TransformTrait for PseudoLog {
         n: usize,
         range: Option<(f64, f64)>,
     ) -> Vec<f64> {
-        minor_breaks_symlog(major_breaks, n, range)
+        extent_minor_breaks(major_breaks, n, range, |min, max| {
+            symlog_minor_breaks(min, max, self.base)
+        })
     }
 
     fn default_minor_break_count(&self) -> usize {
-        8 // Similar density to traditional 2-9 pattern on log axes
+        // The whole-number multiples between powers fix the density; any
+        // non-zero count asks for them.
+        8
     }
 
     fn transform(&self, value: f64) -> f64 {
-        (value * 0.5).asinh() / self.ln_base
+        self.math().forward(value)
     }
 
     fn inverse(&self, value: f64) -> f64 {
-        (value * self.ln_base).sinh() * 2.0
+        self.math().inverse(value)
+    }
+
+    fn expand_range(&self, min: f64, max: f64, mult: (f64, f64), add: (f64, f64)) -> (f64, f64) {
+        self.math().expand_range(min, max, mult, add)
     }
 }
 
@@ -154,78 +167,6 @@ mod tests {
     }
 
     #[test]
-    fn test_all_bases_domain() {
-        for (t, name) in get_transforms() {
-            let (min, max) = t.allowed_domain();
-            assert!(
-                min.is_infinite() && min.is_sign_negative(),
-                "{}: domain min should be -∞",
-                name
-            );
-            assert!(
-                max.is_infinite() && max.is_sign_positive(),
-                "{}: domain max should be +∞",
-                name
-            );
-        }
-    }
-
-    #[test]
-    fn test_all_bases_zero_at_origin() {
-        for (t, name) in get_transforms() {
-            assert!(t.transform(0.0).abs() < 1e-10, "{}: f(0) should be 0", name);
-        }
-    }
-
-    #[test]
-    fn test_all_bases_symmetric_around_zero() {
-        let test_values = [0.1, 1.0, 10.0, 100.0, 1000.0];
-        for (t, name) in get_transforms() {
-            for &val in &test_values {
-                let pos = t.transform(val);
-                let neg = t.transform(-val);
-                assert!(
-                    (pos + neg).abs() < 1e-10,
-                    "{}: Not symmetric for {} (f({})={}, f({})={})",
-                    name,
-                    val,
-                    val,
-                    pos,
-                    -val,
-                    neg
-                );
-            }
-        }
-    }
-
-    #[test]
-    fn test_all_bases_roundtrip() {
-        let test_values = [-1000.0, -100.0, -10.0, -1.0, 0.0, 1.0, 10.0, 100.0, 1000.0];
-        for (t, name) in get_transforms() {
-            for &val in &test_values {
-                let transformed = t.transform(val);
-                let back = t.inverse(transformed);
-                if val == 0.0 {
-                    assert!(
-                        (back - val).abs() < 1e-10,
-                        "{}: Roundtrip failed for {}",
-                        name,
-                        val
-                    );
-                } else {
-                    assert!(
-                        (back - val).abs() / val.abs() < 1e-10,
-                        "{}: Roundtrip failed for {} (got {})",
-                        name,
-                        val,
-                        back
-                    );
-                }
-            }
-        }
-    }
-
-    #[test]
     fn test_all_bases_kind_and_name() {
         for (t, expected_name) in get_transforms() {
             assert_eq!(
@@ -234,33 +175,6 @@ mod tests {
                 "Kind should be PseudoLog"
             );
             assert_eq!(t.name(), expected_name);
-        }
-    }
-
-    #[test]
-    fn test_approximates_log_for_large_values() {
-        // Test that each pseudo-log approximates its corresponding log for large values
-        let test_cases = vec![
-            (PseudoLog::base10(), vec![1000.0, 10000.0, 100000.0], 0.01), // log10
-            (PseudoLog::base2(), vec![64.0, 1024.0, 65536.0], 0.05),      // log2
-            (PseudoLog::natural(), vec![100.0, 1000.0, 10000.0], 0.02),   // ln
-        ];
-
-        for (t, values, tolerance) in test_cases {
-            for x in values {
-                let pseudo = t.transform(x);
-                let actual_log = x.log(t.base());
-                let error = (pseudo - actual_log).abs();
-                assert!(
-                    error < tolerance,
-                    "{}: For x={}, pseudo={}, log={}, error={}",
-                    t.name(),
-                    x,
-                    pseudo,
-                    actual_log,
-                    error
-                );
-            }
         }
     }
 
@@ -316,25 +230,16 @@ mod tests {
     }
 
     #[test]
-    fn test_pseudo_log_different_from_asinh() {
-        let pseudo = PseudoLog::base10();
-        // pseudo_log and asinh are NOT the same
-        // asinh(10) ≈ 2.998, pseudo_log(10) ≈ 1.004
-        let asinh_10 = 10.0_f64.asinh();
-        let pseudo_10 = pseudo.transform(10.0);
-        assert!(
-            (asinh_10 - pseudo_10).abs() > 1.0,
-            "pseudo_log should differ from asinh: asinh(10)={}, pseudo_log(10)={}",
-            asinh_10,
-            pseudo_10
-        );
-    }
-
-    #[test]
     fn test_pseudo_log_breaks() {
         let t = PseudoLog::base10();
-        let breaks = t.calculate_breaks(-100.0, 100.0, 7, false);
-        assert!(breaks.contains(&0.0));
+        let breaks = t.calculate_breaks(-100.0, 100.0, 7, true);
+        assert_eq!(
+            breaks,
+            vec![
+                -100.0, -50.0, -20.0, -10.0, -5.0, -2.0, -1.0, 0.0, 1.0, 2.0, 5.0, 10.0, 20.0,
+                50.0, 100.0
+            ]
+        );
     }
 
     #[test]

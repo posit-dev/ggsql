@@ -1,7 +1,7 @@
 //! Line geom implementation
 
 use super::stat_aggregate;
-use super::types::wrap_with_order_by;
+
 use super::{
     densify_edges, has_aggregate_param, needs_projection, project_position_columns,
     DefaultAesthetics, DefaultParamValue, GeomTrait, GeomType, ParamConstraint, ParamDefinition,
@@ -42,6 +42,8 @@ impl GeomTrait for Line {
                 default: DefaultParamValue::String(ALIGNED),
                 constraint: ParamConstraint::string_option(ORIENTATION_VALUES),
             },
+            super::types::LINECAP_PARAM,
+            super::types::LINEJOIN_PARAM,
             super::types::AGGREGATE_PARAM,
         ];
         PARAMS
@@ -78,7 +80,7 @@ impl GeomTrait for Line {
         };
         // Line needs ordering by pos1 (domain axis) for proper rendering, in both
         // the Identity and Aggregate paths.
-        Ok(wrap_with_order_by(query, result, "pos1", dialect))
+        Ok(result.with_order(query, "pos1", dialect))
     }
 
     fn apply_projection(
@@ -118,21 +120,19 @@ impl std::fmt::Display for Line {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::plot::types::ParameterValue;
+
     use crate::reader::AnsiDialect;
 
     #[test]
     fn test_apply_projection_densifies_and_transforms() {
         let line = Line;
         let mut projection = Projection::map();
-        projection.properties.insert(
-            "source".to_string(),
-            ParameterValue::String("EPSG:4326".to_string()),
-        );
-        projection.properties.insert(
-            "target".to_string(),
-            ParameterValue::String("+proj=ortho +lat_0=0 +lon_0=0".to_string()),
-        );
+        projection
+            .properties
+            .insert("source".to_string(), "EPSG:4326".into());
+        projection
+            .properties
+            .insert("target".to_string(), "+proj=ortho +lat_0=0 +lon_0=0".into());
 
         let mut mappings = Mappings::new();
         mappings.insert_column("pos1", "pos1");

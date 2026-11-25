@@ -195,6 +195,6 @@ package: a context built on the glue's own `init` has no converters, and
 
 ## See also
 
-- [`/CLAUDE.md`](../CLAUDE.md) — workspace overview.
-- [`/src/CLAUDE.md`](../src/CLAUDE.md) — the underlying `ggsql` library.
-- [`/doc/CLAUDE.md`](../doc/CLAUDE.md) — docs and playground embedding.
+- [`/AGENTS.md`](../AGENTS.md) — workspace overview.
+- [`/src/AGENTS.md`](../src/AGENTS.md) — the underlying `ggsql` library.
+- [`/doc/AGENTS.md`](../doc/AGENTS.md) — docs and playground embedding.

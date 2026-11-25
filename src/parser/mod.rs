@@ -19,7 +19,7 @@ the visualization specification into a typed AST.
 
 ```rust
 # use ggsql::parser::parse_query;
-# use ggsql::Geom;
+# use ggsql::{Geom, Spec};
 # fn main() -> Result<(), Box<dyn std::error::Error>> {
 let query = r#"
     SELECT date, revenue, region FROM sales WHERE year = 2024
@@ -31,14 +31,17 @@ let query = r#"
 
 let specs = parse_query(query)?;
 assert_eq!(specs.len(), 1);
-assert_eq!(specs[0].layers.len(), 1);
-assert_eq!(specs[0].layers[0].geom, Geom::line());
+let Spec::Plot(plot) = &specs[0] else {
+    panic!("expected a Plot");
+};
+assert_eq!(plot.layers.len(), 1);
+assert_eq!(plot.layers[0].geom, Geom::line());
 # Ok(())
 # }
 ```
 */
 
-use crate::{Plot, Result};
+use crate::{Result, Spec};
 
 pub mod builder;
 pub mod source_tree;
@@ -55,7 +58,7 @@ pub use sql::{
 ///
 /// Takes a complete ggsql query (SQL + VISUALISE) and returns a vector of
 /// parsed specifications (one per VISUALISE statement).
-pub fn parse_query(query: &str) -> Result<Vec<Plot>> {
+pub fn parse_query(query: &str) -> Result<Vec<Spec>> {
     // Parse the full query and create SourceTree
     let source_tree = SourceTree::new(query)?;
 
@@ -72,7 +75,17 @@ pub fn parse_query(query: &str) -> Result<Vec<Plot>> {
 mod tests {
     use super::*;
     use crate::plot::ParameterValue;
-    use crate::{AestheticValue, DataSource, Geom};
+    use crate::{AestheticValue, DataSource, Geom, Plot};
+
+    /// Test helper: `parse_query`, then unwrap every result down to its `Plot`.
+    /// These tests predate the `Table` variant and only ever exercise VISUALISE
+    /// queries, so every `Spec` here is a `Spec::Plot`.
+    fn parse_query_plots(query: &str) -> Result<Vec<Plot>> {
+        Ok(parse_query(query)?
+            .into_iter()
+            .filter_map(Spec::into_plot)
+            .collect())
+    }
 
     #[test]
     fn test_simple_query_parsing() {
@@ -82,7 +95,7 @@ mod tests {
             DRAW point
         "#;
 
-        let result = parse_query(query);
+        let result = parse_query_plots(query);
         assert!(result.is_ok(), "Failed to parse simple query: {:?}", result);
 
         let specs = result.unwrap();
@@ -115,7 +128,7 @@ mod tests {
             DRAW point MAPPING z AS y, 'value' AS color
         "#;
 
-        let specs = parse_query(query).unwrap();
+        let specs = parse_query_plots(query).unwrap();
         assert_eq!(specs.len(), 1);
         assert_eq!(specs[0].layers.len(), 2);
         // First layer is line, second layer is point
@@ -140,7 +153,7 @@ mod tests {
             DRAW bar MAPPING x AS x, y AS y
         "#;
 
-        let specs = parse_query(query).unwrap();
+        let specs = parse_query_plots(query).unwrap();
         assert_eq!(specs.len(), 2);
         assert_eq!(specs[0].layers.len(), 1);
         assert_eq!(specs[1].layers.len(), 1);
@@ -154,7 +167,7 @@ mod tests {
             DRAW point
         "#;
 
-        let specs = parse_query(query).unwrap();
+        let specs = parse_query_plots(query).unwrap();
         assert_eq!(specs.len(), 1);
         assert_eq!(specs[0].layers[0].geom, Geom::point());
     }
@@ -171,7 +184,7 @@ mod tests {
             DRAW point
         "#;
 
-        let specs = parse_query(query).unwrap();
+        let specs = parse_query_plots(query).unwrap();
         assert_eq!(specs.len(), 3);
         assert_eq!(specs[0].layers.len(), 1);
         assert_eq!(specs[1].layers.len(), 1);
@@ -186,7 +199,7 @@ mod tests {
             DRAW point MAPPING x AS x, y AS y
         "#;
 
-        let specs = parse_query(query).unwrap();
+        let specs = parse_query_plots(query).unwrap();
         assert_eq!(specs.len(), 1);
         assert!(specs[0].global_mappings.is_empty());
     }
@@ -202,16 +215,16 @@ mod tests {
             DRAW bar MAPPING x AS x, y AS y
         "#;
 
-        let specs = parse_query(query).unwrap();
+        let specs = parse_query_plots(query).unwrap();
         assert_eq!(specs.len(), 2);
 
         // First viz should have layers and labels
         assert_eq!(specs[0].layers.len(), 1);
-        assert!(specs[0].labels.is_some());
+        assert!(!specs[0].labels.labels.is_empty());
 
         // Second viz should have layer but no labels
         assert_eq!(specs[1].layers.len(), 1);
-        assert!(specs[1].labels.is_none());
+        assert!(specs[1].labels.labels.is_empty());
     }
 
     #[test]
@@ -226,7 +239,7 @@ mod tests {
             DRAW bar MAPPING x AS x, y AS y
         "#;
 
-        let specs = parse_query(query).unwrap();
+        let specs = parse_query_plots(query).unwrap();
         assert_eq!(specs.len(), 3);
         assert_eq!(specs[0].layers[0].geom, Geom::line());
         assert_eq!(specs[1].layers[0].geom, Geom::point());
@@ -249,13 +262,13 @@ mod tests {
             DRAW point MAPPING date AS x, revenue AS y
         "#;
 
-        let specs = parse_query(query).unwrap();
+        let specs = parse_query_plots(query).unwrap();
         assert_eq!(specs.len(), 3);
 
         // Plot with 2 layers, scale, labels
         assert_eq!(specs[0].layers.len(), 2);
         assert_eq!(specs[0].scales.len(), 1);
-        assert!(specs[0].labels.is_some());
+        assert!(!specs[0].labels.labels.is_empty());
 
         // Second viz with 1 layer
         assert_eq!(specs[1].layers.len(), 1);
@@ -288,7 +301,7 @@ mod tests {
             source_tree
         );
 
-        let specs = parse_query(query).unwrap();
+        let specs = parse_query_plots(query).unwrap();
         assert_eq!(specs.len(), 1);
     }
 
@@ -300,7 +313,7 @@ mod tests {
             DRAW point
         "#;
 
-        let specs = parse_query(query).unwrap();
+        let specs = parse_query_plots(query).unwrap();
         assert_eq!(specs.len(), 1);
         assert!(specs[0].global_mappings.wildcard);
         assert!(specs[0].global_mappings.aesthetics.is_empty());
@@ -313,7 +326,7 @@ mod tests {
             DRAW line
         "#;
 
-        let specs = parse_query(query).unwrap();
+        let specs = parse_query_plots(query).unwrap();
         assert_eq!(specs.len(), 1);
         let mapping = &specs[0].global_mappings;
         assert!(!mapping.wildcard);
@@ -339,7 +352,7 @@ mod tests {
             DRAW point
         "#;
 
-        let specs = parse_query(query).unwrap();
+        let specs = parse_query_plots(query).unwrap();
         assert_eq!(specs.len(), 1);
         let mapping = &specs[0].global_mappings;
         assert!(!mapping.wildcard);
@@ -363,7 +376,7 @@ mod tests {
             DRAW point
         "#;
 
-        let specs = parse_query(query).unwrap();
+        let specs = parse_query_plots(query).unwrap();
         assert_eq!(specs.len(), 1);
         let mapping = &specs[0].global_mappings;
         assert!(!mapping.wildcard);
@@ -390,7 +403,7 @@ mod tests {
             DRAW bar
         "#;
 
-        let specs = parse_query(query).unwrap();
+        let specs = parse_query_plots(query).unwrap();
         assert_eq!(specs.len(), 1);
         assert_eq!(
             specs[0].source,
@@ -406,7 +419,7 @@ mod tests {
             DRAW point
         "#;
 
-        let specs = parse_query(query).unwrap();
+        let specs = parse_query_plots(query).unwrap();
         assert_eq!(specs.len(), 1);
         assert_eq!(
             specs[0].source,
@@ -423,7 +436,7 @@ mod tests {
             PLACE text SETTING x => 5, y => 10, label => 'Hello'
         "#;
 
-        let result = parse_query(query);
+        let result = parse_query_plots(query);
         assert!(result.is_ok(), "Failed to parse PLACE clause: {:?}", result);
 
         let specs = result.unwrap();
@@ -449,17 +462,17 @@ mod tests {
         // (transform_aesthetics_to_internal runs and transforms x→pos1, y→pos2)
         assert_eq!(
             specs[0].layers[1].parameters.get("pos1"),
-            Some(&ParameterValue::Number(5.0)),
+            Some(&5.0.into()),
             "x should be transformed to pos1 but remain in parameters at parse time"
         );
         assert_eq!(
             specs[0].layers[1].parameters.get("pos2"),
-            Some(&ParameterValue::Number(10.0)),
+            Some(&10.0.into()),
             "y should be transformed to pos2 but remain in parameters at parse time"
         );
         assert_eq!(
             specs[0].layers[1].parameters.get("label"),
-            Some(&ParameterValue::String("Hello".to_string())),
+            Some(&"Hello".into()),
             "label (required) also remains in parameters at parse time"
         );
 

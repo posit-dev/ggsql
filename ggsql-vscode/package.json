@@ -178,7 +178,8 @@
     "watch": "npm-run-all -p watch:*",
     "watch:esbuild": "node esbuild.js --watch",
     "watch:tsc": "tsc --noEmit --watch --project tsconfig.json",
-    "package": "npm run check-types && node esbuild.js --production",
+    "sync-skill": "node scripts/sync-skill.js",
+    "package": "npm run sync-skill && npm run check-types && node esbuild.js --production",
     "check-types": "tsc --noEmit",
     "lint": "eslint src --ext ts",
     "compile-tests": "tsc -p tsconfig.test.json",
@@ -192,7 +193,7 @@
     "toml": "^3.0.0"
   },
   "devDependencies": {
-    "@posit-dev/positron": "^0.2.7",
+    "@posit-dev/positron": "^0.2.9",
     "@posit-dev/positron-test-electron": "^0.0.3",
     "@types/mocha": "^10.0.10",
     "@types/node": "^18.x",

@@ -16,7 +16,7 @@
 //! use ggsql::writer::{Writer, VegaLiteWriter};
 //!
 //! let writer = VegaLiteWriter::new();
-//! let vega_json = writer.write(&spec, &dataframe)?;
+//! let vega_json = writer.write_plot(&spec, &dataframe)?;
 //! // Can be rendered in browser with vega-embed
 //! ```
 
@@ -24,6 +24,7 @@ mod data;
 mod encoding;
 mod layer;
 mod projection;
+mod shape;
 
 use crate::plot::ArrayElement;
 use crate::plot::{ParameterValue, Parameters, Scale, ScaleTypeKind};
@@ -492,8 +493,8 @@ fn apply_facet_aesthetic(
     let index_map = resolve_facet_ordering(scale);
     apply_facet_ordering(vl_spec, &aes_col, &index_map);
 
-    let label_mapping = scale.and_then(|s| s.label_mapping.as_ref());
-    apply_facet_label_renaming(&mut facet_def, label_mapping, scale, &index_map);
+    let label_mapping = scale.map(|s| s.label_mapping());
+    apply_facet_label_renaming(&mut facet_def, label_mapping.as_ref(), scale, &index_map);
 
     apply_binned_facet_reverse(&mut facet_def, scale);
 
@@ -544,10 +545,7 @@ fn resolve_facet_ordering(scale: Option<&Scale>) -> Vec<(Value, usize)> {
         return Vec::new();
     };
 
-    let is_reversed = matches!(
-        scale.properties.get("reverse"),
-        Some(ParameterValue::Boolean(true))
-    );
+    let is_reversed = ParameterValue::is_true(scale.properties.get("reverse"));
 
     let is_binned = scale
         .scale_type
@@ -605,10 +603,7 @@ fn apply_binned_facet_reverse(facet_def: &mut Value, scale: Option<&Scale>) {
         return;
     }
 
-    if matches!(
-        scale.properties.get("reverse"),
-        Some(ParameterValue::Boolean(true))
-    ) {
+    if ParameterValue::is_true(scale.properties.get("reverse")) {
         facet_def["sort"] = json!("descending");
     }
 }
@@ -1075,9 +1070,9 @@ impl Writer for VegaLiteWriter {
         Ok(Self::new())
     }
 
-    fn write(&self, spec: &Plot, data: &HashMap<String, DataFrame>) -> Result<String> {
+    fn write_plot(&self, spec: &Plot, data: &HashMap<String, DataFrame>) -> Result<String> {
         // 1. Validate spec
-        self.validate(spec)?;
+        self.validate_plot(spec)?;
 
         // 2. Determine layer data keys
         let layer_data_keys: Vec<String> = spec
@@ -1119,9 +1114,9 @@ impl Writer for VegaLiteWriter {
             vl_spec["height"] = h;
         }
 
-        if let Some(labels) = &spec.labels {
-            let title = labels.labels.get("title").and_then(|v| v.as_ref());
-            let subtitle = labels.labels.get("subtitle").and_then(|v| v.as_ref());
+        {
+            let title = spec.labels.get("title");
+            let subtitle = spec.labels.get("subtitle");
             match (title, subtitle) {
                 (Some(t), Some(st)) => {
                     // Vega-Lite uses an object for title + subtitle
@@ -1188,7 +1183,7 @@ impl Writer for VegaLiteWriter {
         })
     }
 
-    fn validate(&self, spec: &Plot) -> Result<()> {
+    fn validate_plot(&self, spec: &Plot) -> Result<()> {
         // Check that we have at least one layer
         if spec.layers.is_empty() {
             return Err(GgsqlError::ValidationError(
@@ -1218,7 +1213,7 @@ impl Writer for VegaLiteWriter {
 mod tests {
     use super::*;
     use crate::df;
-    use crate::plot::{Labels, Layer, ParameterValue};
+    use crate::plot::{Layer, ParameterValue};
     use crate::Geom;
     use serde_json::Value;
     use std::collections::HashMap;
@@ -1253,8 +1248,22 @@ mod tests {
             "closed".to_string(),
             ParameterValue::String(closed.to_string()),
         );
-        scale.label_mapping = Some(label_mapping);
+        scale.label_spec = label_spec_from(label_mapping);
         scale
+    }
+
+    /// Build a `LabelSpec` from the map form these tests were written
+    /// against: keys as string literals (they still match numeric breaks by
+    /// the text rule), `Some` renames, `None` suppresses.
+    fn label_spec_from(mapping: HashMap<String, Option<String>>) -> zygos::LabelSpec {
+        let mut spec = zygos::LabelSpec::new();
+        for (k, v) in mapping {
+            match v {
+                Some(label) => spec.rename(zygos::Value::String(k.into()), label),
+                None => spec.suppress(zygos::Value::String(k.into())),
+            };
+        }
+        spec
     }
 
     fn rewrite_refs(val: &mut Value) {
@@ -1478,7 +1487,7 @@ mod tests {
     fn test_validation_requires_layers() {
         let writer = VegaLiteWriter::new();
         let spec = Plot::new();
-        assert!(writer.validate(&spec).is_err());
+        assert!(writer.validate_plot(&spec).is_err());
     }
 
     #[test]
@@ -1507,7 +1516,7 @@ mod tests {
 
         // Generate Vega-Lite JSON
         transform_spec(&mut spec);
-        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
+        let json_str = writer.write_plot(&spec, &wrap_data(df)).unwrap();
         assert_valid_vegalite(&json_str);
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
@@ -1538,13 +1547,9 @@ mod tests {
             );
         spec.layers.push(layer);
 
-        let mut labels = Labels {
-            labels: HashMap::new(),
-        };
-        labels
+        spec.labels
             .labels
             .insert("title".to_string(), Some("My Chart".to_string()));
-        spec.labels = Some(labels);
 
         let df = df! {
             "date" => vec!["2024-01-01", "2024-01-02"],
@@ -1553,7 +1558,7 @@ mod tests {
         .unwrap();
 
         transform_spec(&mut spec);
-        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
+        let json_str = writer.write_plot(&spec, &wrap_data(df)).unwrap();
         assert_valid_vegalite(&json_str);
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
@@ -1592,7 +1597,7 @@ mod tests {
         let spec = &prepared.specs[0];
 
         let writer = VegaLiteWriter::new();
-        let json_str = writer.write(spec, &prepared.data).unwrap();
+        let json_str = writer.write_plot(spec, &prepared.data).unwrap();
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
         // Check title (should be object with text and subtitle)
@@ -1697,7 +1702,7 @@ mod tests {
         .unwrap();
 
         // Generate Vega-Lite JSON
-        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
+        let json_str = writer.write_plot(&spec, &wrap_data(df)).unwrap();
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
         // Verify fontsize maps to size channel
@@ -1755,7 +1760,7 @@ mod tests {
         }
         .unwrap();
 
-        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
+        let json_str = writer.write_plot(&spec, &wrap_data(df)).unwrap();
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
         let layer = &vl_spec["layer"][0];
 
@@ -1786,7 +1791,8 @@ mod tests {
     /// symbol name it cannot parse, and `'dashed'` as a dash array it cannot read.
     #[test]
     fn test_identity_names_convert_like_literals() {
-        use crate::plot::scale::{linetype_to_stroke_dash, shape_to_svg_path};
+        use super::shape::shape_to_svg_path;
+        use crate::plot::scale::linetype_to_stroke_dash;
         use crate::plot::{ArrayElement, Scale, ScaleType};
 
         let writer = VegaLiteWriter::new();
@@ -1828,7 +1834,7 @@ mod tests {
             }
             .unwrap();
 
-            let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
+            let json_str = writer.write_plot(&spec, &wrap_data(df)).unwrap();
             let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
             let layer = &vl_spec["layer"][0];
 
@@ -1881,10 +1887,9 @@ mod tests {
                 "pos2".to_string(),
                 AestheticValue::standard_column("y".to_string()),
             );
-        layer.mappings.insert(
-            "size".to_string(),
-            AestheticValue::Literal(crate::plot::ParameterValue::Number(3.0)),
-        );
+        layer
+            .mappings
+            .insert("size".to_string(), AestheticValue::Literal(3.0.into()));
         spec.layers.push(layer);
 
         let df = df! {
@@ -1892,7 +1897,7 @@ mod tests {
             "y" => vec![1, 2],
         }
         .unwrap();
-        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
+        let json_str = writer.write_plot(&spec, &wrap_data(df)).unwrap();
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
         vl_spec["layer"][0]["encoding"]["size"]["value"]
             .as_f64()
@@ -1913,10 +1918,7 @@ mod tests {
                 "y".to_string(),
                 AestheticValue::standard_column("y".to_string()),
             )
-            .with_aesthetic(
-                "stroke".to_string(),
-                AestheticValue::Literal(ParameterValue::String("red".to_string())),
-            );
+            .with_aesthetic("stroke".to_string(), AestheticValue::Literal("red".into()));
         spec.layers.push(layer);
 
         let df = df! {
@@ -1926,7 +1928,7 @@ mod tests {
         .unwrap();
 
         transform_spec(&mut spec);
-        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
+        let json_str = writer.write_plot(&spec, &wrap_data(df)).unwrap();
         assert_valid_vegalite(&json_str);
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
@@ -1956,7 +1958,7 @@ mod tests {
         }
         .unwrap();
 
-        let result = writer.write(&spec, &wrap_data(df));
+        let result = writer.write_plot(&spec, &wrap_data(df));
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert!(err.to_string().contains("nonexistent"));
@@ -2057,7 +2059,9 @@ mod tests {
         .unwrap();
 
         transform_spec(&mut spec);
-        let json_str = writer.write(&spec, &wrap_data_for_layers(df, 2)).unwrap();
+        let json_str = writer
+            .write_plot(&spec, &wrap_data_for_layers(df, 2))
+            .unwrap();
         assert_valid_vegalite(&json_str);
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
@@ -2157,7 +2161,7 @@ mod tests {
         labels.insert("25".to_string(), Some("Medium".to_string()));
         labels.insert("50".to_string(), Some("High".to_string()));
         labels.insert("75".to_string(), Some("Very High".to_string()));
-        scale.label_mapping = Some(labels);
+        scale.label_spec = label_spec_from(labels);
         spec.scales.push(scale);
 
         let df = df! {
@@ -2168,7 +2172,7 @@ mod tests {
         .unwrap();
 
         transform_spec(&mut spec);
-        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
+        let json_str = writer.write_plot(&spec, &wrap_data(df)).unwrap();
         assert_valid_vegalite(&json_str);
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
@@ -2267,7 +2271,7 @@ mod tests {
         // Point geom without explicit size/stroke - should use defaults
         let spec = build_spec(Geom::point());
 
-        let result = writer.write(&spec, &wrap_data(simple_df()));
+        let result = writer.write_plot(&spec, &wrap_data(simple_df()));
         assert!(result.is_ok());
         let json_str = result.unwrap();
         assert_valid_vegalite(&json_str);
@@ -2289,14 +2293,14 @@ mod tests {
 
         // Point with SETTING opacity => 0.5 should override default (1.0)
         let mut spec = Plot::new();
-        let mut layer = build_layer(Geom::point())
-            .with_parameter("opacity".to_string(), ParameterValue::Number(0.5));
+        let mut layer =
+            build_layer(Geom::point()).with_parameter("opacity".to_string(), 0.5.into());
 
         // Resolve aesthetics (normally done in execution pipeline)
         layer.resolve_aesthetics();
         spec.layers.push(layer);
 
-        let result = writer.write(&spec, &wrap_data(simple_df()));
+        let result = writer.write_plot(&spec, &wrap_data(simple_df()));
         assert!(result.is_ok());
         let json_str = result.unwrap();
         assert_valid_vegalite(&json_str);
@@ -2340,7 +2344,7 @@ mod tests {
         }
         .unwrap();
 
-        let result = writer.write(&spec, &wrap_data(df));
+        let result = writer.write_plot(&spec, &wrap_data(df));
         assert!(result.is_ok());
         let json_str = result.unwrap();
         assert_valid_vegalite(&json_str);
@@ -2380,7 +2384,7 @@ mod tests {
         }
         .unwrap();
 
-        let result = writer.write(&spec, &wrap_data(df));
+        let result = writer.write_plot(&spec, &wrap_data(df));
         assert!(result.is_ok());
         let json_str = result.unwrap();
         assert_valid_vegalite(&json_str);
@@ -2398,14 +2402,14 @@ mod tests {
         let mut spec = Plot::new();
         let mut layer = build_layer(Geom::line()).with_aesthetic(
             "linetype".to_string(),
-            AestheticValue::Literal(ParameterValue::String("dashed".to_string())),
+            AestheticValue::Literal("dashed".into()),
         );
 
         // Resolve aesthetics (normally done in execution pipeline)
         layer.resolve_aesthetics();
         spec.layers.push(layer);
 
-        let result = writer.write(&spec, &wrap_data(simple_df()));
+        let result = writer.write_plot(&spec, &wrap_data(simple_df()));
         assert!(result.is_ok());
         let json_str = result.unwrap();
         assert_valid_vegalite(&json_str);
@@ -2425,7 +2429,7 @@ mod tests {
         // Line geom has linetype default of "solid"
         let spec = build_spec(Geom::line());
 
-        let result = writer.write(&spec, &wrap_data(simple_df()));
+        let result = writer.write_plot(&spec, &wrap_data(simple_df()));
         assert!(result.is_ok());
         let json_str = result.unwrap();
         assert_valid_vegalite(&json_str);
@@ -2507,15 +2511,13 @@ mod tests {
     #[test]
     fn test_binned_facet_reverse_sets_descending_sort() {
         use crate::plot::scale::Scale;
-        use crate::plot::{ParameterValue, ScaleType};
+        use crate::plot::ScaleType;
 
         let mut facet_def = json!({"field": "__ggsql_aes_facet1__", "type": "nominal"});
 
         let mut scale = Scale::new("facet1");
         scale.scale_type = Some(ScaleType::binned());
-        scale
-            .properties
-            .insert("reverse".to_string(), ParameterValue::Boolean(true));
+        scale.properties = crate::params! { "reverse" => true };
 
         apply_binned_facet_reverse(&mut facet_def, Some(&scale));
 
@@ -2544,9 +2546,7 @@ mod tests {
         let mut facet_def = json!({"field": "__ggsql_aes_facet1__", "type": "nominal"});
 
         let mut scale = Scale::new("facet1");
-        scale
-            .properties
-            .insert("reverse".to_string(), ParameterValue::Boolean(true));
+        scale.properties = crate::params! { "reverse" => true };
 
         apply_binned_facet_reverse(&mut facet_def, Some(&scale));
 
@@ -2675,7 +2675,7 @@ mod tests {
         label_mapping.insert("40".to_string(), Some("High".to_string()));
         label_mapping.insert("60".to_string(), Some("Very High".to_string()));
 
-        scale.label_mapping = Some(label_mapping);
+        scale.label_spec = label_spec_from(label_mapping);
         let expr = build_binned_facet_label_expr(Some(&scale));
 
         // Should contain midpoint comparisons:
@@ -2739,7 +2739,7 @@ mod tests {
         label_mapping.insert("50".to_string(), Some("High".to_string()));
         label_mapping.insert("100".to_string(), Some("Max".to_string()));
 
-        scale.label_mapping = Some(label_mapping);
+        scale.label_spec = label_spec_from(label_mapping);
         let expr = build_binned_facet_label_expr(Some(&scale));
 
         // First bin with suppressed lower terminal → open format "< 50" or "< High"
@@ -2843,7 +2843,7 @@ mod tests {
         .unwrap();
 
         transform_spec(&mut spec);
-        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
+        let json_str = writer.write_plot(&spec, &wrap_data(df)).unwrap();
         assert_valid_vegalite(&json_str);
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
@@ -2868,6 +2868,104 @@ mod tests {
             !has_domain,
             "x encoding should NOT have explicit domain when using free scales, got: {}",
             serde_json::to_string_pretty(&x_encoding).unwrap()
+        );
+    }
+
+    #[test]
+    fn test_facet_free_scales_omits_axis_values() {
+        // A free facet dimension delegates its domain to Vega-Lite per panel,
+        // so pinning the globally resolved breaks as axis.values would leave
+        // each panel showing only the global breaks that happen to fall inside
+        // it (issue #516). Ticks must be left to Vega's per-panel computation.
+        use crate::plot::scale::Scale;
+        use crate::plot::{ArrayElement, Facet, FacetLayout, ParameterValue};
+
+        let writer = VegaLiteWriter::new();
+
+        let mut spec = Plot::new();
+        let layer = Layer::new(Geom::point())
+            .with_aesthetic(
+                "x".to_string(),
+                AestheticValue::standard_column("x".to_string()),
+            )
+            .with_aesthetic(
+                "y".to_string(),
+                AestheticValue::standard_column("y".to_string()),
+            );
+        spec.layers.push(layer);
+
+        // free => [true, false]: only x is free
+        let mut facet_properties = Parameters::new();
+        facet_properties.insert(
+            "free".to_string(),
+            ParameterValue::Array(vec![
+                ArrayElement::Boolean(true),
+                ArrayElement::Boolean(false),
+            ]),
+        );
+        spec.facet = Some(Facet {
+            layout: FacetLayout::Wrap {
+                variables: vec!["category".to_string()],
+            },
+            properties: facet_properties,
+            resolved: true,
+        });
+
+        // Resolved breaks on both positional scales.
+        let mut x_scale = Scale::new("x");
+        x_scale.input_range = Some(vec![ArrayElement::Number(0.0), ArrayElement::Number(100.0)]);
+        x_scale.properties.insert(
+            "breaks".to_string(),
+            ParameterValue::Array(vec![
+                ArrayElement::Number(0.0),
+                ArrayElement::Number(50.0),
+                ArrayElement::Number(100.0),
+            ]),
+        );
+        spec.scales.push(x_scale);
+        let mut y_scale = Scale::new("y");
+        y_scale.input_range = Some(vec![ArrayElement::Number(0.0), ArrayElement::Number(10.0)]);
+        y_scale.properties.insert(
+            "breaks".to_string(),
+            ParameterValue::Array(vec![
+                ArrayElement::Number(0.0),
+                ArrayElement::Number(5.0),
+                ArrayElement::Number(10.0),
+            ]),
+        );
+        spec.scales.push(y_scale);
+
+        let df = df! {
+            "x" => vec![1, 2, 3],
+            "y" => vec![4, 5, 6],
+            "category" => vec!["A", "A", "B"],
+            "__ggsql_aes_facet1__" => vec!["A", "A", "B"],
+        }
+        .unwrap();
+
+        transform_spec(&mut spec);
+        let json_str = writer.write_plot(&spec, &wrap_data(df)).unwrap();
+        assert_valid_vegalite(&json_str);
+        let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
+
+        // The free dimension must NOT pin axis.values; the fixed one must.
+        let x_encoding = &vl_spec["spec"]["layer"][0]["encoding"]["x"];
+        assert!(
+            x_encoding
+                .get("axis")
+                .and_then(|a| a.get("values"))
+                .is_none(),
+            "free x should NOT pin axis.values, got: {}",
+            serde_json::to_string_pretty(&x_encoding).unwrap()
+        );
+        let y_encoding = &vl_spec["spec"]["layer"][0]["encoding"]["y"];
+        assert!(
+            y_encoding
+                .get("axis")
+                .and_then(|a| a.get("values"))
+                .is_some(),
+            "fixed y should still pin axis.values, got: {}",
+            serde_json::to_string_pretty(&y_encoding).unwrap()
         );
     }
 
@@ -2927,7 +3025,7 @@ mod tests {
         .unwrap();
 
         transform_spec(&mut spec);
-        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
+        let json_str = writer.write_plot(&spec, &wrap_data(df)).unwrap();
         assert_valid_vegalite(&json_str);
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
@@ -3008,7 +3106,7 @@ mod tests {
         .unwrap();
 
         transform_spec(&mut spec);
-        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
+        let json_str = writer.write_plot(&spec, &wrap_data(df)).unwrap();
         assert_valid_vegalite(&json_str);
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
@@ -3036,7 +3134,7 @@ mod tests {
         let mut spec = build_spec(Geom::point());
         let df = simple_df();
         transform_spec(&mut spec);
-        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
+        let json_str = writer.write_plot(&spec, &wrap_data(df)).unwrap();
         assert_valid_vegalite(&json_str);
 
         let invalid = r#"{"$schema": "https://vega.github.io/schema/vega-lite/v6.json", "mark": "not_a_mark"}"#;
@@ -3102,7 +3200,7 @@ mod tests {
         .unwrap();
 
         transform_spec(&mut spec);
-        let json_str = writer.write(&spec, &wrap_data(df)).unwrap();
+        let json_str = writer.write_plot(&spec, &wrap_data(df)).unwrap();
         let vl_spec: Value = serde_json::from_str(&json_str).unwrap();
 
         for channel in ["x2", "y2"] {
@@ -3165,7 +3263,7 @@ mod tests {
 
             transform_spec(&mut spec);
 
-            let msg = match writer.write(&spec, &wrap_data(df)) {
+            let msg = match writer.write_plot(&spec, &wrap_data(df)) {
                 Err(GgsqlError::ValidationError(s)) => s,
                 Err(other) => panic!("expected ValidationError, got: {}", other),
                 Ok(_) => panic!("expected error, got success"),
@@ -3207,7 +3305,7 @@ mod tests {
 
             transform_spec(&mut spec);
 
-            let msg = match writer.write(&spec, &wrap_data(df)) {
+            let msg = match writer.write_plot(&spec, &wrap_data(df)) {
                 Err(GgsqlError::ValidationError(s)) => s,
                 Err(other) => panic!("expected ValidationError, got: {}", other),
                 Ok(_) => panic!("expected error, got success"),
@@ -3246,7 +3344,7 @@ mod tests {
 
             transform_spec(&mut spec);
 
-            let msg = match writer.write(&spec, &wrap_data(df)) {
+            let msg = match writer.write_plot(&spec, &wrap_data(df)) {
                 Err(GgsqlError::ValidationError(s)) => s,
                 Err(other) => panic!("expected ValidationError, got: {}", other),
                 Ok(_) => panic!("expected error, got success"),

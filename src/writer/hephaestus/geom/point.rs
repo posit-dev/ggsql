@@ -1,6 +1,6 @@
 //! `point` geom: one marker per row.
 
-use hephaestus::color::rgb8;
+use zygos::color::rgb8;
 
 use super::super::scales::RangeKind;
 use super::super::wiring::{
@@ -37,6 +37,7 @@ pub fn spec(_ctx: &Ctx) -> GeomSpec {
             MaterialSpec::new("shape", "shape", RangeKind::Shape, MatDefault::None),
         ],
         raw_strings: &[],
+        constants: Vec::new(),
         raw_numbers: vec![],
         data_channels: vec![],
         legend_key: LegendKind::Point,

@@ -4,3 +4,6 @@ out-test
 .positron-test/
 bundled
 *.vsix
+
+# Generated at package time by scripts/sync-skill.js from doc/vendor/SKILL.md
+skills/ggsql/SKILL.md

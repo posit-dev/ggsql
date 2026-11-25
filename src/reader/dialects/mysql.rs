@@ -69,7 +69,15 @@ impl SqlDialect for MySqlDialect {
     }
 
     fn temp_table_style(&self) -> crate::reader::TempTableStyle {
-        crate::reader::TempTableStyle::DropTemporaryThenCreateTemp
+        // MySQL/MariaDB refuse to open a *temporary* table twice in one
+        // statement (error 1137, "Can't reopen table"), which ggsql's
+        // multi-reference stats queries (boxplot, density, …) require.
+        // Regular tables have no such restriction, so internal
+        // materialization uses plain CREATE TABLE — the same approach as
+        // MSSQL/Oracle — relying on per-session names and drop-before-create
+        // for hygiene. Accounts without CREATE privilege fail the temp-table
+        // probe and fall back to the in-memory cache instead.
+        crate::reader::TempTableStyle::DropThenCreate
     }
 }
 
@@ -98,10 +106,13 @@ mod tests {
     }
 
     #[test]
-    fn temp_table_uses_temporary() {
+    fn internal_tables_use_regular_create_table() {
+        // Regular tables, not TEMPORARY: a temp table cannot be opened twice
+        // in one statement (error 1137), which multi-reference stats queries
+        // need.
         let stmts = MySqlDialect.create_or_replace_temp_table_sql("t", &[], "SELECT 1");
         assert_eq!(stmts.len(), 2);
-        assert_eq!(stmts[0], "DROP TEMPORARY TABLE IF EXISTS `t`");
-        assert_eq!(stmts[1], "CREATE TEMPORARY TABLE `t` AS SELECT 1");
+        assert_eq!(stmts[0], "DROP TABLE IF EXISTS `t`");
+        assert_eq!(stmts[1], "CREATE TABLE `t` AS SELECT 1");
     }
 }

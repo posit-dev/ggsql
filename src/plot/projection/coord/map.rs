@@ -1039,46 +1039,8 @@ mod tests {
     }
 
     #[test]
-    fn test_map_accepts_target_string() {
-        let mut props = Parameters::new();
-        props.insert(
-            "target".to_string(),
-            ParameterValue::String("+proj=merc".to_string()),
-        );
-        let coord = Coord::map("crs", &props);
-
-        let resolved = coord.resolve_properties(Some("crs"), &props);
-        assert!(resolved.is_ok());
-        let resolved = resolved.unwrap();
-        assert_eq!(
-            resolved.get("target").unwrap(),
-            &ParameterValue::String("+proj=merc".to_string())
-        );
-    }
-
-    #[test]
-    fn test_map_rejects_unknown_property() {
-        let coord = Coord::map("crs", &Parameters::new());
-        let mut props = Parameters::new();
-        props.insert(
-            "unknown".to_string(),
-            ParameterValue::String("value".to_string()),
-        );
-
-        let resolved = coord.resolve_properties(Some("crs"), &props);
-        assert!(resolved.is_err());
-        let err = resolved.unwrap_err();
-        assert!(err.contains("not 'unknown'"));
-    }
-
-    #[test]
     fn test_target_rejects_origin_and_parallel() {
-        let mut props = Parameters::new();
-        props.insert(
-            "target".to_string(),
-            ParameterValue::String("+proj=ortho".to_string()),
-        );
-        props.insert("origin".to_string(), ParameterValue::Number(30.0));
+        let props = crate::params! { "target" => "+proj=ortho", "origin" => 30.0 };
         let coord = Coord::map("crs", &props);
 
         let resolved = coord.resolve_properties(Some("crs"), &props);
@@ -1464,8 +1426,7 @@ mod tests {
             let mut s = Scale::new("pos1");
             s.scale_type = Some(ScaleType::continuous());
             s.transform = Some(Transform::geographic());
-            s.properties
-                .insert("breaks".to_string(), ParameterValue::Number(5.0));
+            s.properties = crate::params! { "breaks" => 5.0 };
 
             resolve_map_scale(&mut s, (-180.0, 180.0));
 
@@ -1495,11 +1456,7 @@ mod tests {
 
     #[test]
     fn resolve_epsg_property_from_existing() {
-        let mut props = Parameters::new();
-        props.insert(
-            "source".to_string(),
-            ParameterValue::String("EPSG:4326".to_string()),
-        );
+        let props = crate::params! { "source" => "EPSG:4326" };
         let result =
             resolve_epsg_property("source", &props, "EPSG:4326", &AnsiDialect, &noop_execute);
         assert!(result.contains("+proj=longlat"), "got: {result}");

@@ -133,7 +133,14 @@ pub(crate) fn case_least(exprs: &[&str]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::reader::registry::{by_scheme, detect_or_err as detect_dialect};
+    use crate::reader::registry::{by_scheme, detect};
+
+    fn detect_dialect(
+        dbms_name: Option<&str>,
+        driver_hint: Option<&str>,
+    ) -> crate::Result<crate::reader::DialectRef> {
+        detect(dbms_name, driver_hint).map(|e| e.dialect())
+    }
 
     fn dialect_for_scheme(scheme: &str) -> Option<crate::reader::DialectRef> {
         by_scheme(scheme).map(|e| e.dialect())
@@ -251,6 +258,36 @@ mod tests {
             assert_eq!(d.type_names().number, probe, "scheme {scheme}");
         }
         assert!(dialect_for_scheme("nosuchdb").is_none());
+    }
+
+    /// Persistent internal tables (regular CREATE TABLE materialization)
+    /// need explicit cleanup; genuine temp tables and in-process engines do
+    /// not.
+    #[test]
+    fn internal_tables_need_cleanup_only_for_persistent_dialects() {
+        for scheme in ["mysql", "mariadb", "mssql", "oracle"] {
+            assert!(
+                dialect_for_scheme(scheme)
+                    .unwrap()
+                    .internal_tables_need_cleanup(),
+                "scheme {scheme} should need cleanup"
+            );
+        }
+        for scheme in [
+            "postgres",
+            "duckdb",
+            "sqlite",
+            "datafusion",
+            "clickhouse",
+            "bigquery",
+        ] {
+            assert!(
+                !dialect_for_scheme(scheme)
+                    .unwrap()
+                    .internal_tables_need_cleanup(),
+                "scheme {scheme} should not need cleanup"
+            );
+        }
     }
 
     #[test]

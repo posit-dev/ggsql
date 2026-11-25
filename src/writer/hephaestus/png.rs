@@ -84,8 +84,8 @@ impl PngWriter {
         // `render_to_buffer` hands out straight (un-premultiplied) alpha, which
         // is exactly what PNG stores, so the buffer encodes as-is.
         encode_png(
-            self.canvas.width,
-            self.canvas.height,
+            self.canvas.dims.width,
+            self.canvas.dims.height,
             &pixels,
             self.compression,
             self.canvas.dpi_hint(),
@@ -100,7 +100,7 @@ impl PngWriter {
     /// As [`Self::write_with`].
     pub fn render_with(
         &self,
-        spec: &crate::reader::Spec,
+        spec: &crate::reader::ResolvedPlot,
         renderer: &mut RasterRenderer,
     ) -> Result<Vec<u8>> {
         self.write_with(spec.plot(), spec.data(), renderer)
@@ -133,11 +133,11 @@ impl Writer for PngWriter {
         })
     }
 
-    fn validate(&self, spec: &Plot) -> Result<()> {
+    fn validate_plot(&self, spec: &Plot) -> Result<()> {
         compose::validate_plot(spec)
     }
 
-    fn write(&self, spec: &Plot, data: &HashMap<String, DataFrame>) -> Result<Self::Output> {
+    fn write_plot(&self, spec: &Plot, data: &HashMap<String, DataFrame>) -> Result<Self::Output> {
         let mut renderer = RasterRenderer::new()?;
         self.write_with(spec, data, &mut renderer)
     }

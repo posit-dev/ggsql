@@ -27,9 +27,7 @@ use std::sync::Arc;
 
 use super::transform::{Transform, TransformKind};
 use crate::plot::aesthetic::{is_facet_aesthetic, is_position_aesthetic};
-use crate::plot::types::{
-    format_number, validate_parameter, DefaultParamValue, ParamDefinition, Parameters,
-};
+use crate::plot::types::{DefaultParamValue, ParamDefinition, Parameters};
 use crate::plot::{ArrayElement, ColumnInfo, ParameterValue};
 
 // Scale type implementations
@@ -179,6 +177,21 @@ impl ScaleDataContext {
         }
     }
 
+    /// Recompute a continuous range over in-domain values only.
+    ///
+    /// No-op for discrete ranges or an unrestricted domain. When every value
+    /// is out of domain the range becomes `None`, and resolution proceeds as
+    /// if no data range were available.
+    pub fn restrict_to_domain(&mut self, columns: &[&ArrayRef], domain: (f64, f64)) {
+        if domain == (f64::NEG_INFINITY, f64::INFINITY) {
+            return;
+        }
+        if matches!(self.range, Some(InputRange::Continuous(_))) {
+            self.range =
+                compute_column_range_multi_in_domain(columns, domain).map(InputRange::Continuous);
+        }
+    }
+
     /// Get the discrete range as unique values if available.
     pub fn discrete_range(&self) -> Option<&[ArrayElement]> {
         match &self.range {
@@ -209,6 +222,42 @@ fn compute_column_range_multi(columns: &[&ArrayRef]) -> Option<Vec<ArrayElement>
                 }
                 if let Some(max) = arrow::compute::max(f64_arr) {
                     global_max = Some(global_max.map_or(max, |m| m.max(max)));
+                }
+            }
+        }
+    }
+
+    match (global_min, global_max) {
+        (Some(min), Some(max)) => Some(vec![ArrayElement::Number(min), ArrayElement::Number(max)]),
+        _ => None,
+    }
+}
+
+/// Min/max across all columns over values inside `domain` only.
+///
+/// Used when a scale's transform has a restricted domain (e.g. log excludes
+/// non-positive values): an out-of-domain data extreme would otherwise become
+/// an end of the inferred range that the transform cannot map, which domain
+/// clipping then replaces with a meaningless bound (f64::MIN_POSITIVE for
+/// log). NaN never satisfies the comparisons and is excluded too.
+fn compute_column_range_multi_in_domain(
+    columns: &[&ArrayRef],
+    domain: (f64, f64),
+) -> Option<Vec<ArrayElement>> {
+    use crate::array_util::cast_array;
+
+    let (lo, hi) = domain;
+    let mut global_min: Option<f64> = None;
+    let mut global_max: Option<f64> = None;
+
+    for column in columns {
+        if let Ok(cast) = cast_array(column, &DataType::Float64) {
+            if let Ok(f64_arr) = crate::array_util::as_f64(&cast) {
+                for value in f64_arr.iter().flatten() {
+                    if value >= lo && value <= hi {
+                        global_min = Some(global_min.map_or(value, |m| m.min(value)));
+                        global_max = Some(global_max.map_or(value, |m| m.max(value)));
+                    }
                 }
             }
         }
@@ -644,65 +693,34 @@ pub trait ScaleTypeTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
         aesthetic: &str,
         properties: &Parameters,
     ) -> Result<Parameters, String> {
-        let defaults = self.default_properties();
         let is_position = is_position_aesthetic(aesthetic);
 
-        // Validate values against constraints
-        for (key, value) in properties.iter() {
-            // Check if property is allowed for this aesthetic type
-            let is_expand_on_non_position = key == "expand" && !is_position;
-
-            // Find the parameter definition and validate if allowed
-            let param = defaults.iter().find(|p| p.name == key);
-            if let Some(param) = param {
-                if !is_expand_on_non_position {
-                    validate_parameter(key, value, &param.constraint)?;
-                    continue;
-                }
-            }
-
-            // Property not found or not allowed for this aesthetic type
-            let allowed: Vec<&str> = defaults
-                .iter()
-                .filter(|p| p.name != "expand" || is_position)
-                .map(|p| p.name)
-                .collect();
-            return Err(if allowed.is_empty() {
-                format!(
-                    "{} scale does not accept any properties, but got '{}'",
-                    self.name(),
-                    key
-                )
-            } else {
-                format!(
-                    "{} scale property should be {}, not '{}'",
-                    self.name(),
-                    crate::or_list_quoted(&allowed, '\''),
-                    key
-                )
-            });
-        }
-
-        // Start with user properties, add defaults for missing ones
-        let mut resolved = properties.clone();
-        for param in defaults {
-            // Skip expand for material aesthetics
-            if param.name == "expand" && !is_position {
-                continue;
-            }
-
-            if !resolved.contains_key(param.name) {
-                // Special case: oob default varies by aesthetic when marked as Null
-                if param.name == "oob" && matches!(param.default, DefaultParamValue::Null) {
-                    resolved.insert(
-                        "oob".to_string(),
-                        ParameterValue::String(default_oob(aesthetic).to_string()),
-                    );
-                } else if let Some(default) = param.to_parameter_value() {
-                    resolved.insert(param.name.to_string(), default);
-                }
+        // expand only applies to position aesthetics
+        let mut defaults: Vec<ParamDefinition> = self
+            .default_properties()
+            .iter()
+            .filter(|p| is_position || p.name != "expand")
+            .cloned()
+            .collect();
+        // oob's real default is aesthetic-dependent; its Null definition
+        // default is a marker for that.
+        for p in &mut defaults {
+            if p.name == "oob" && matches!(p.default, DefaultParamValue::Null) {
+                p.default = DefaultParamValue::String(default_oob(aesthetic));
             }
         }
+        if !is_position && properties.contains_key("expand") {
+            return Err(format!(
+                "expand is only valid for position aesthetics, not '{}'",
+                aesthetic
+            ));
+        }
+
+        let resolved = crate::params::resolve_parameters(
+            properties,
+            &defaults,
+            &format!("{} scale property", self.name()),
+        )?;
 
         // Additional semantic validation for oob (scale-specific restrictions beyond the constraint)
         if let Some(ParameterValue::String(oob)) = resolved.get("oob") {
@@ -790,7 +808,7 @@ pub trait ScaleTypeTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
             _ => {
                 // Identity transform or no transform - use default pretty/linear breaks
                 let raw_breaks = if pretty {
-                    super::breaks::pretty_breaks(min, max, count)
+                    super::breaks::extended_breaks(min, max, count)
                 } else {
                     super::breaks::linear_breaks(min, max, count)
                 };
@@ -829,25 +847,25 @@ pub trait ScaleTypeTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
         }
     }
 
-    /// Labelled breaks: `(numeric_position, display_label)` pairs.
+    /// Labelled breaks: `(numeric_position, break_element)` pairs.
     ///
-    /// Default: labels each break from its own typed `ArrayElement`, so a
-    /// temporal break reads as its ISO string rather than as the epoch number
-    /// its position projects to. The label is the element's `to_key_string()`,
-    /// which is also how `label_mapping` is keyed — so the `RENAMING` and
-    /// label-template overrides the caller applies actually match.
-    /// Discrete/ordinal override to pair position indices with input-range
-    /// category names.
-    fn break_labels(&self, scale: &super::Scale) -> Vec<(f64, String)> {
+    /// Default: each break is its own typed `ArrayElement`, so a temporal
+    /// break labels as its ISO string rather than as the epoch number its
+    /// position projects to. Labelling (RENAMING, templates) happens in
+    /// [`Scale::labelled_breaks`](crate::plot::Scale), which matches rename
+    /// keys against the element — so the element must be in the same form
+    /// `RENAMING` keys are written in. Discrete/ordinal override to pair
+    /// position indices with input-range category elements.
+    fn break_labels(&self, scale: &super::Scale) -> Vec<(f64, ArrayElement)> {
         if let Some(ParameterValue::Array(breaks)) = scale.properties.get("breaks") {
             return breaks
                 .iter()
-                .filter_map(|b| b.to_f64().map(|v| (v, b.to_key_string())))
+                .filter_map(|b| b.to_f64().map(|v| (v, b.clone())))
                 .collect();
         }
         self.numeric_breaks(scale)
             .into_iter()
-            .map(|v| (v, format_number(v)))
+            .map(|v| (v, ArrayElement::Number(v)))
             .collect()
     }
 
@@ -876,11 +894,11 @@ pub trait ScaleTypeTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
     /// 3. Resolves input_range from context (or merges with existing partial range)
     /// 4. Converts input_range values using transform (e.g., ISO strings → Date/DateTime/Time)
     /// 5. If breaks is a scalar Number, calculates break positions and stores as Array
-    /// 6. Applies label template
+    /// 6. (Labelling is not a resolution step — see `Scale::labelled_breaks`)
     /// 7. Resolves output range
     ///
     /// Note: Binned scale overrides this method to add Binned-specific logic
-    /// (implicit break handling, break/range alignment, terminal label suppression).
+    /// (implicit break handling, break/range alignment).
     fn resolve(
         &self,
         scale: &mut super::Scale,
@@ -895,7 +913,17 @@ pub trait ScaleTypeTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
         // If breaks is a scalar Number (count), calculate actual break positions and store as Array
         // If breaks is already an Array, user provided explicit breaks - convert using transform
         // Then filter breaks to the input range (break algorithms may produce "nice" values outside range)
+        //
+        // The calendar interval temporal majors step by, kept for step 5b so
+        // the automatic minors subdivide that same interval.
+        let mut major_interval = None;
         if self.supports_breaks() {
+            major_interval = calendar_major_interval(
+                scale.properties.get("breaks"),
+                scale.input_range.as_deref(),
+                &scale.properties,
+                &resolved_transform,
+            );
             match scale.properties.get("breaks") {
                 Some(ParameterValue::Number(_)) => {
                     // Scalar count → calculate actual breaks and store as Array
@@ -956,14 +984,16 @@ pub trait ScaleTypeTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
         // interval string — except that its count is *per major interval* rather than a
         // target for the whole axis, because that is the unit a minor break is defined
         // in. Absent, the transform's own density applies (one midpoint for linear, the
-        // 2-9 ladder for the log family, three per interval for temporal).
+        // whole-number multiples between powers for the log family), and temporal majors
+        // stepping by a calendar interval take minors on that interval's sub-interval
+        // grid (quarters under years, weeks under months, …).
         //
         // `Some(vec![])` and `None` mean different things downstream: the first is
         // "resolved to no minors" (`minor_breaks => 0`, which a writer must honour by
         // drawing none) and the second is "not resolved", which leaves a writer free to
         // fall back on its own. Binned overrides `resolve` and so never reaches this: a
-        // binned axis's ticks are its bin edges, with nothing to subdivide. Runs before
-        // the label template because minor breaks carry no labels.
+        // binned axis's ticks are its bin edges, with nothing to subdivide. Minor breaks carry no
+        // labels, so labelling never looks at them.
         if self.supports_breaks() {
             if let (Some(ParameterValue::Array(majors)), Some(range)) =
                 (scale.properties.get("breaks"), scale.input_range.as_deref())
@@ -997,7 +1027,17 @@ pub trait ScaleTypeTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
                         temporal_interval_breaks(interval, range, &resolved_transform)
                             .unwrap_or_default()
                     }
-                    _ => derive(resolved_transform.default_minor_break_count()),
+                    _ => match (major_interval, resolved_transform.temporal_unit(), extent) {
+                        (Some(interval), Some(unit), Some((min, max))) => {
+                            zygos::breaks::temporal_minor_breaks_from_f64_with_interval(
+                                min, max, unit, interval,
+                            )
+                            .into_iter()
+                            .map(|v| resolved_transform.wrap_numeric(v))
+                            .collect()
+                        }
+                        _ => derive(resolved_transform.default_minor_break_count()),
+                    },
                 };
                 // Drop anything outside the domain, the same way the majors are
                 // filtered.
@@ -1011,28 +1051,9 @@ pub trait ScaleTypeTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
             }
         }
 
-        // 6. Apply label template (RENAMING * => '...')
-        // Default is '{}' to ensure we control formatting instead of Vega-Lite
-        // For continuous scales, apply to breaks array
-        // For discrete scales, apply to input_range (domain values)
-        let template = &scale.label_template;
-
-        let values_to_label = if self.supports_breaks() {
-            // Continuous: use breaks
-            match scale.properties.get("breaks") {
-                Some(ParameterValue::Array(breaks)) => Some(breaks.clone()),
-                _ => None,
-            }
-        } else {
-            // Discrete: use input_range
-            scale.input_range.clone()
-        };
-
-        if let Some(values) = values_to_label {
-            let generated_labels =
-                crate::format::apply_label_template(&values, template, &scale.label_mapping);
-            scale.label_mapping = Some(generated_labels);
-        }
+        // 6. Labelling needs no resolution step: `Scale::labelled_breaks`
+        // renders `label_spec` (RENAMING renames plus the wildcard template)
+        // against the current breaks on every read.
 
         // 7. Resolve output range (TO clause)
         self.resolve_output_range(scale, aesthetic)?;
@@ -1168,19 +1189,20 @@ pub(super) fn categorical_numeric_domain(scale: &super::Scale) -> Option<(f64, f
     }
 }
 
-/// Labelled breaks for categorical scales: pairs position indices with category names.
+/// Break elements for categorical scales: pairs position indices with the
+/// category elements themselves.
 ///
-/// The label doubles as the lookup key into `label_mapping`, so it must be the
-/// element's `to_key_string()` — the same form `RENAMING` writes its keys in.
-/// Formatting a number through `to_json()` instead yields `"6.0"` against a key
-/// of `"6"`, which silently drops every rename on a non-string domain.
-pub(super) fn categorical_break_labels(scale: &super::Scale) -> Vec<(f64, String)> {
+/// The element doubles as the rename-match key, so it must stay the typed
+/// `ArrayElement` — the same form `RENAMING` keys are written in. Formatting
+/// a number through `to_json()` instead would yield `"6.0"` against a key of
+/// `"6"`, silently dropping every rename on a non-string domain.
+pub(super) fn categorical_break_labels(scale: &super::Scale) -> Vec<(f64, ArrayElement)> {
     let Some(range) = scale.input_range.as_ref() else {
         return Vec::new();
     };
     let mut out = Vec::with_capacity(range.len());
     for (i, elem) in range.iter().enumerate() {
-        out.push(((i + 1) as f64, elem.to_key_string()));
+        out.push(((i + 1) as f64, elem.clone()));
     }
     out
 }
@@ -1378,7 +1400,7 @@ impl ScaleType {
     }
 
     /// Labelled breaks: `(numeric_position, display_label)` pairs.
-    pub fn break_labels(&self, scale: &super::Scale) -> Vec<(f64, String)> {
+    pub fn break_labels(&self, scale: &super::Scale) -> Vec<(f64, ArrayElement)> {
         self.0.break_labels(scale)
     }
 
@@ -1620,7 +1642,7 @@ pub(crate) fn size_output_range(
     }
 
     if let Some(OutputRange::Array(ref arr)) = scale.output_range.clone() {
-        if matches!(aesthetic, "fill" | "stroke") && arr.len() >= 2 {
+        if matches!(aesthetic, "fill" | "stroke" | "background") && arr.len() >= 2 {
             // Color interpolation using Oklab
             let hex_strs: Vec<&str> = arr
                 .iter()
@@ -1683,19 +1705,11 @@ pub(super) fn parse_expand_value(expand: &ParameterValue) -> Option<(f64, f64)> 
     }
 }
 
-/// Apply expansion to a numeric [min, max] range.
+/// Apply expansion to a numeric [min, max] range, in the transform's space.
 /// Returns expanded [min, max] as ArrayElements.
 ///
-/// Formula: [min - range*mult - add, max + range*mult + add]
-pub(crate) fn expand_numeric_range(
-    range: &[ArrayElement],
-    mult: f64,
-    add: f64,
-) -> Vec<ArrayElement> {
-    expand_numeric_range_selective(range, mult, add, None)
-}
-
-/// Apply expansion selectively to a numeric [min, max] range.
+/// Each end moves outward by `span × mult + add`, with the span and `add`
+/// measured in transformed units (see [`Transform::expand_range`]).
 ///
 /// If `original_user_range` is provided, only expand values that were originally Null
 /// in the user range. This preserves explicit user limits while expanding inferred values.
@@ -1704,12 +1718,14 @@ pub(crate) fn expand_numeric_range(
 /// - min=0 is explicit, so it's preserved as 0
 /// - max was null (inferred from data), so it gets expanded
 ///
-/// Formula for expanded values: [min - range*mult - add, max + range*mult + add]
-pub(crate) fn expand_numeric_range_selective(
+/// The span is that of the whole range in transformed space, so an inferred
+/// end is padded by the same amount whether or not the other end is explicit.
+pub(crate) fn expand_numeric_range(
     range: &[ArrayElement],
     mult: f64,
     add: f64,
     original_user_range: Option<&[ArrayElement]>,
+    transform: &Transform,
 ) -> Vec<ArrayElement> {
     if range.len() < 2 {
         return range.to_vec();
@@ -1725,44 +1741,29 @@ pub(crate) fn expand_numeric_range_selective(
         None => return range.to_vec(),
     };
 
-    let span = max - min;
-
-    // For singular ranges (min == max), use the absolute value to compute expansion
-    // This prevents zero expansion when all data values are identical
-    // If the value itself is 0, use a small default expansion (1.0)
-    let effective_span = if span.abs() < 1e-10 {
-        if min.abs() < 1e-10 {
-            1.0 // If the value is 0, expand by ±1
+    // An end the user set explicitly (non-null in the original range) stays put.
+    let is_explicit = |i: usize| {
+        original_user_range
+            .and_then(|ur| ur.get(i))
+            .is_some_and(|e| !matches!(e, ArrayElement::Null))
+    };
+    let factors = |i: usize| {
+        if is_explicit(i) {
+            (0.0, 0.0)
         } else {
-            min.abs() // Use the absolute value for expansion
+            (mult, add)
         }
-    } else {
-        span
     };
-    let expansion = effective_span * mult + add;
+    let (min_mult, min_add) = factors(0);
+    let (max_mult, max_add) = factors(1);
 
-    // Check if min was explicitly set by user (non-null in original range)
-    let min_is_explicit = original_user_range
-        .and_then(|ur| ur.first())
-        .map(|e| !matches!(e, ArrayElement::Null))
-        .unwrap_or(false);
-
-    // Check if max was explicitly set by user (non-null in original range)
-    let max_is_explicit = original_user_range
-        .and_then(|ur| ur.get(1))
-        .map(|e| !matches!(e, ArrayElement::Null))
-        .unwrap_or(false);
-
-    // Only expand values that were inferred (originally null)
-    let expanded_min = if min_is_explicit {
-        min
+    // The transform expands an ascending range; a descending one is expanded
+    // with its ends swapped and handed back in its original order.
+    let (expanded_min, expanded_max) = if min <= max {
+        transform.expand_range(min, max, (min_mult, max_mult), (min_add, max_add))
     } else {
-        min - expansion
-    };
-    let expanded_max = if max_is_explicit {
-        max
-    } else {
-        max + expansion
+        let (lo, hi) = transform.expand_range(max, min, (max_mult, min_mult), (max_add, min_add));
+        (hi, lo)
     };
 
     vec![
@@ -1823,46 +1824,69 @@ pub(crate) fn temporal_interval_breaks(
     range: &[ArrayElement],
     transform: &Transform,
 ) -> Option<Vec<ArrayElement>> {
-    use super::breaks::{
-        filter_breaks_to_range, temporal_breaks_date, temporal_breaks_datetime,
-        temporal_breaks_time, TemporalInterval,
-    };
+    use super::breaks::parse_temporal_interval;
 
-    let interval = TemporalInterval::create_from_str(interval_str)?;
+    // Non-temporal transforms have no calendar to step through.
+    let unit = transform.temporal_unit()?;
+    let interval = parse_temporal_interval(interval_str)?;
     let min = range.first()?.to_f64()?;
     let max = range.last()?.to_f64()?;
-    let breaks: Vec<ArrayElement> = match transform.transform_kind() {
-        TransformKind::Date => temporal_breaks_date(min as i32, max as i32, interval)
-            .into_iter()
-            .map(ArrayElement::String)
-            .collect(),
-        TransformKind::DateTime => temporal_breaks_datetime(min as i64, max as i64, interval)
-            .into_iter()
-            .map(ArrayElement::String)
-            .collect(),
-        TransformKind::Time => temporal_breaks_time(min as i64, max as i64, interval)
-            .into_iter()
-            .map(ArrayElement::String)
-            .collect(),
-        // Non-temporal transforms have no calendar to step through.
-        _ => return None,
-    };
+    // zygos steps the interval's calendar grid and keeps only what falls
+    // inside the domain. (Binned scales can't use this — they need the
+    // terminal break past `max`, so they call `calendar_interval_breaks` directly.)
+    let breaks: Vec<ArrayElement> = zygos::temporal_breaks_with_interval(
+        Some(&zygos::InputRange::Continuous { min, max }),
+        unit,
+        interval,
+    )
+    .iter()
+    .filter_map(|v| v.as_number())
+    .map(|v| transform.wrap_numeric(v))
+    .collect();
     if breaks.is_empty() {
         return None;
     }
-    // Convert the ISO strings to the transform's temporal variant, then drop any
-    // that fell outside the domain.
-    let converted: Vec<ArrayElement> = breaks
-        .iter()
-        .map(|elem| transform.parse_value(elem))
-        .collect();
-    Some(filter_breaks_to_range(&converted, range))
+    Some(breaks)
+}
+
+/// The calendar interval a temporal scale's majors step by: the interval a
+/// `breaks` string names, or the one automatic breaks pick for a `breaks`
+/// count (with `pretty`, the default). `None` for non-temporal transforms and
+/// for majors that don't follow a calendar interval (explicit positions,
+/// `pretty => false`).
+fn calendar_major_interval(
+    breaks: Option<&ParameterValue>,
+    input_range: Option<&[ArrayElement]>,
+    properties: &Parameters,
+    transform: &Transform,
+) -> Option<zygos::breaks::TemporalInterval> {
+    let unit = transform.temporal_unit()?;
+    match breaks? {
+        ParameterValue::String(interval) => super::breaks::parse_temporal_interval(interval),
+        ParameterValue::Number(count) => {
+            if let Some(ParameterValue::Boolean(false)) = properties.get("pretty") {
+                return None;
+            }
+            let range = input_range?;
+            let min = range.first()?.to_f64()?;
+            let max = range.last()?.to_f64()?;
+            Some(super::breaks::auto_temporal_interval(
+                min,
+                max,
+                unit,
+                *count as usize,
+            ))
+        }
+        _ => None,
+    }
 }
 
 /// Clip an input range to a transform's valid domain.
 ///
-/// This prevents expansion from producing invalid values for transforms
-/// with restricted domains (e.g., log scales which exclude 0 and negatives).
+/// Expansion happens in transformed space and cannot leave the domain on its
+/// own; this catches the limits it leaves untouched — a user-explicit limit
+/// outside the domain (`FROM (-5, 100)` on a log scale), or data that reaches
+/// a value the transform has no finite image for (a zero on a log scale).
 pub(crate) fn clip_to_transform_domain(
     range: &[ArrayElement],
     transform: &Transform,
@@ -2110,8 +2134,10 @@ pub(crate) fn resolve_common_steps<T: ScaleTypeTrait + ?Sized>(
     // 2. Aesthetic is position (x, y, xmin, xmax, etc.)
     // 3. Input range was at least partially deduced (not fully explicit)
     //
-    // Then clip to the transform's valid domain to prevent invalid values
-    // (e.g., expansion producing negative values for log scales)
+    // Expansion runs in transformed space, so padding never leaves the
+    // transform's domain. Clipping then catches what expansion leaves alone: an
+    // explicit limit, or a data extreme, outside that domain (e.g. a
+    // non-positive limit on a log scale).
     let mut applied_expand = (0.0, 0.0);
     if let Some(range) = base_range {
         let is_position = is_position_aesthetic(aesthetic);
@@ -2120,8 +2146,13 @@ pub(crate) fn resolve_common_steps<T: ScaleTypeTrait + ?Sized>(
 
         if !is_discrete_range && is_position && is_deduced {
             applied_expand = (mult, add);
-            let expanded =
-                expand_numeric_range_selective(&range, mult, add, original_user_range.as_deref());
+            let expanded = expand_numeric_range(
+                &range,
+                mult,
+                add,
+                original_user_range.as_deref(),
+                &resolved_transform,
+            );
             scale.input_range = Some(clip_to_transform_domain(&expanded, &resolved_transform));
         } else {
             // No expansion for discrete scales, material aesthetics, or fully explicit ranges
@@ -2531,7 +2562,7 @@ mod tests {
 
     #[test]
     fn test_parse_expand_value_number() {
-        let val = ParameterValue::Number(0.1);
+        let val = 0.1.into();
         let (mult, add) = parse_expand_value(&val).unwrap();
         assert!((mult - 0.1).abs() < 1e-10);
         assert!((add - 0.0).abs() < 1e-10);
@@ -2548,7 +2579,7 @@ mod tests {
 
     #[test]
     fn test_parse_expand_value_invalid() {
-        let val = ParameterValue::String("invalid".to_string());
+        let val = "invalid".into();
         assert!(parse_expand_value(&val).is_none());
 
         let val = ParameterValue::Array(vec![ArrayElement::Number(0.05)]);
@@ -2558,7 +2589,7 @@ mod tests {
     #[test]
     fn test_expand_numeric_range_mult_only() {
         let range = vec![ArrayElement::Number(0.0), ArrayElement::Number(100.0)];
-        let expanded = expand_numeric_range(&range, 0.05, 0.0);
+        let expanded = expand_numeric_range(&range, 0.05, 0.0, None, &Transform::identity());
         // span = 100, expanded = [-5, 105]
         assert_eq!(expanded[0], ArrayElement::Number(-5.0));
         assert_eq!(expanded[1], ArrayElement::Number(105.0));
@@ -2567,7 +2598,7 @@ mod tests {
     #[test]
     fn test_expand_numeric_range_with_add() {
         let range = vec![ArrayElement::Number(0.0), ArrayElement::Number(100.0)];
-        let expanded = expand_numeric_range(&range, 0.05, 10.0);
+        let expanded = expand_numeric_range(&range, 0.05, 10.0, None, &Transform::identity());
         // span = 100, mult_expansion = 5, add_expansion = 10
         // expanded = [0 - 5 - 10, 100 + 5 + 10] = [-15, 115]
         assert_eq!(expanded[0], ArrayElement::Number(-15.0));
@@ -2577,7 +2608,7 @@ mod tests {
     #[test]
     fn test_expand_numeric_range_zero_disables() {
         let range = vec![ArrayElement::Number(0.0), ArrayElement::Number(100.0)];
-        let expanded = expand_numeric_range(&range, 0.0, 0.0);
+        let expanded = expand_numeric_range(&range, 0.0, 0.0, None, &Transform::identity());
         // No expansion
         assert_eq!(expanded[0], ArrayElement::Number(0.0));
         assert_eq!(expanded[1], ArrayElement::Number(100.0));
@@ -2589,7 +2620,8 @@ mod tests {
         let range = vec![ArrayElement::Number(0.0), ArrayElement::Number(100.0)];
         let user_range = vec![ArrayElement::Number(0.0), ArrayElement::Null];
 
-        let expanded = expand_numeric_range_selective(&range, 0.05, 0.0, Some(&user_range));
+        let expanded =
+            expand_numeric_range(&range, 0.05, 0.0, Some(&user_range), &Transform::identity());
 
         // Min should stay at 0 (explicit), max should be expanded
         // span = 100, expansion = 5
@@ -2603,7 +2635,8 @@ mod tests {
         let range = vec![ArrayElement::Number(0.0), ArrayElement::Number(100.0)];
         let user_range = vec![ArrayElement::Null, ArrayElement::Number(100.0)];
 
-        let expanded = expand_numeric_range_selective(&range, 0.05, 0.0, Some(&user_range));
+        let expanded =
+            expand_numeric_range(&range, 0.05, 0.0, Some(&user_range), &Transform::identity());
 
         // Min should be expanded, max should stay at 100 (explicit)
         // span = 100, expansion = 5
@@ -2617,7 +2650,8 @@ mod tests {
         let range = vec![ArrayElement::Number(0.0), ArrayElement::Number(100.0)];
         let user_range = vec![ArrayElement::Number(0.0), ArrayElement::Number(100.0)];
 
-        let expanded = expand_numeric_range_selective(&range, 0.05, 0.0, Some(&user_range));
+        let expanded =
+            expand_numeric_range(&range, 0.05, 0.0, Some(&user_range), &Transform::identity());
 
         // Both should stay as-is (no expansion)
         assert_eq!(expanded[0], ArrayElement::Number(0.0));
@@ -2629,7 +2663,7 @@ mod tests {
         // No user range (all inferred) → expand both
         let range = vec![ArrayElement::Number(0.0), ArrayElement::Number(100.0)];
 
-        let expanded = expand_numeric_range_selective(&range, 0.05, 0.0, None);
+        let expanded = expand_numeric_range(&range, 0.05, 0.0, None, &Transform::identity());
 
         // Both should be expanded
         assert_eq!(expanded[0], ArrayElement::Number(-5.0));
@@ -2639,27 +2673,80 @@ mod tests {
     #[test]
     fn test_expand_singular_range_nonzero() {
         // Singular range: all values are the same (e.g., count=12 for all bars)
-        // Should expand based on the value itself to create visible range
+        // A zero-width range pads as if it spanned one transformed unit.
         let range = vec![ArrayElement::Number(12.0), ArrayElement::Number(12.0)];
-        let expanded = expand_numeric_range(&range, 0.05, 0.0);
+        let expanded = expand_numeric_range(&range, 0.05, 0.0, None, &Transform::identity());
 
-        // span = 0, effective_span = |12| = 12, expansion = 12 * 0.05 = 0.6
-        // expanded = [12 - 0.6, 12 + 0.6] = [11.4, 12.6]
-        assert_eq!(expanded[0], ArrayElement::Number(11.4));
-        assert_eq!(expanded[1], ArrayElement::Number(12.6));
+        // span = 0 → unit span, expansion = 1 * 0.05 = 0.05
+        assert_eq!(expanded[0], ArrayElement::Number(12.0 - 0.05));
+        assert_eq!(expanded[1], ArrayElement::Number(12.0 + 0.05));
     }
 
     #[test]
     fn test_expand_singular_range_zero() {
         // Singular range at zero (e.g., all counts are 0)
-        // Should use default expansion of 1.0
         let range = vec![ArrayElement::Number(0.0), ArrayElement::Number(0.0)];
-        let expanded = expand_numeric_range(&range, 0.05, 0.0);
+        let expanded = expand_numeric_range(&range, 0.05, 0.0, None, &Transform::identity());
 
-        // span = 0, value = 0, effective_span = 1.0, expansion = 1.0 * 0.05 = 0.05
-        // expanded = [0 - 0.05, 0 + 0.05] = [-0.05, 0.05]
+        // span = 0 → unit span, expansion = 1 * 0.05 = 0.05
         assert_eq!(expanded[0], ArrayElement::Number(-0.05));
         assert_eq!(expanded[1], ArrayElement::Number(0.05));
+    }
+
+    #[test]
+    fn test_expand_descending_range_keeps_its_order() {
+        let range = vec![ArrayElement::Number(100.0), ArrayElement::Number(0.0)];
+        let user_range = vec![ArrayElement::Number(100.0), ArrayElement::Null];
+        let expanded =
+            expand_numeric_range(&range, 0.05, 0.0, Some(&user_range), &Transform::identity());
+        // The explicit first end stays; the inferred second end moves outward.
+        assert_eq!(expanded[0], ArrayElement::Number(100.0));
+        assert_eq!(expanded[1], ArrayElement::Number(-5.0));
+    }
+
+    fn as_f64(elem: &ArrayElement) -> f64 {
+        elem.to_f64().unwrap()
+    }
+
+    #[test]
+    fn test_expand_log10_pads_in_decades() {
+        // 1..100 is two decades; a 5% pad is a tenth of a decade per end, so
+        // the lower bound stays positive rather than collapsing to the domain
+        // minimum.
+        let range = vec![ArrayElement::Number(1.0), ArrayElement::Number(100.0)];
+        let expanded = expand_numeric_range(&range, 0.05, 0.0, None, &Transform::log());
+        assert!((as_f64(&expanded[0]) - 10f64.powf(-0.1)).abs() < 1e-12);
+        assert!((as_f64(&expanded[1]) - 10f64.powf(2.1)).abs() < 1e-9);
+    }
+
+    #[test]
+    fn test_expand_log10_add_is_in_decades() {
+        let range = vec![ArrayElement::Number(1.0), ArrayElement::Number(100.0)];
+        let expanded = expand_numeric_range(&range, 0.0, 1.0, None, &Transform::log());
+        assert!((as_f64(&expanded[0]) - 0.1).abs() < 1e-12);
+        assert!((as_f64(&expanded[1]) - 1000.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn test_expand_selective_log10_keeps_explicit_end() {
+        let range = vec![ArrayElement::Number(1.0), ArrayElement::Number(100.0)];
+        let user_range = vec![ArrayElement::Number(1.0), ArrayElement::Null];
+        let expanded =
+            expand_numeric_range(&range, 0.05, 0.0, Some(&user_range), &Transform::log());
+        assert_eq!(expanded[0], ArrayElement::Number(1.0));
+        assert!((as_f64(&expanded[1]) - 10f64.powf(2.1)).abs() < 1e-9);
+    }
+
+    #[test]
+    fn test_expand_sqrt_from_zero_does_not_fold() {
+        // sqrt of 0..100 spans 0..10; the lower pad would land at -0.5, which
+        // squares back to 0.25 and cuts the data at zero off. That end is left
+        // unpadded; the upper end pads in transformed space as usual.
+        let range = vec![ArrayElement::Number(0.0), ArrayElement::Number(100.0)];
+        let sqrt = Transform::sqrt();
+        let expanded = expand_numeric_range(&range, 0.05, 0.0, None, &sqrt);
+        assert_eq!(expanded[0], ArrayElement::Number(0.0));
+        assert!((as_f64(&expanded[1]) - 110.25).abs() < 1e-9);
     }
 
     // =========================================================================
@@ -2668,30 +2755,18 @@ mod tests {
 
     #[test]
     fn test_resolve_properties_rejection_cases() {
-        // Unknown property rejected
-        let mut props = Parameters::new();
-        props.insert("unknown".to_string(), ParameterValue::Number(1.0));
-        let result = ScaleType::continuous().resolve_properties("x", &props);
-        assert!(result.is_err());
-        assert!(result.unwrap_err().contains("unknown"));
-
-        // Discrete rejects expand
-        let mut expand_props = Parameters::new();
-        expand_props.insert("expand".to_string(), ParameterValue::Number(0.1));
+        // expand on a non-position aesthetic rejected
+        let expand_props = crate::params! { "expand" => 0.1 };
         let result = ScaleType::discrete().resolve_properties("color", &expand_props);
         assert!(result.is_err());
-        assert!(result.unwrap_err().contains("not 'expand'"));
+        assert!(result.unwrap_err().contains("position aesthetics"));
 
-        // Identity rejects any property
+        // Identity on a position aesthetic rejects any other property
         let result = ScaleType::identity().resolve_properties("x", &expand_props);
         assert!(result.is_err());
 
         // Binned rejects oob='keep'
-        let mut keep_props = Parameters::new();
-        keep_props.insert(
-            "oob".to_string(),
-            ParameterValue::String("keep".to_string()),
-        );
+        let keep_props = crate::params! { "oob" => "keep" };
         let result = ScaleType::binned().resolve_properties("x", &keep_props);
         assert!(result.is_err());
         let err = result.unwrap_err();
@@ -2741,18 +2816,8 @@ mod tests {
 
     #[test]
     fn test_resolve_properties_user_values_preserved() {
-        let mut props = Parameters::new();
-        props.insert("expand".to_string(), ParameterValue::Number(0.1));
-        let resolved = ScaleType::continuous()
-            .resolve_properties("pos1", &props)
-            .unwrap();
-        match resolved.get("expand") {
-            Some(ParameterValue::Number(n)) => assert!((n - 0.1).abs() < 1e-10),
-            _ => panic!("Expected Number"),
-        }
-
         // Binned supports expand
-        props.insert("expand".to_string(), ParameterValue::Number(0.2));
+        let props = crate::params! { "expand" => 0.2 };
         let resolved = ScaleType::binned()
             .resolve_properties("pos1", &props)
             .unwrap();
@@ -2762,11 +2827,7 @@ mod tests {
         }
 
         // Binned allows squish oob
-        let mut oob_props = Parameters::new();
-        oob_props.insert(
-            "oob".to_string(),
-            ParameterValue::String("squish".to_string()),
-        );
+        let oob_props = crate::params! { "oob" => "squish" };
         assert!(ScaleType::binned()
             .resolve_properties("x", &oob_props)
             .is_ok());
@@ -2779,8 +2840,7 @@ mod tests {
             "pos1", "pos1min", "pos1max", "pos1end", "pos2", "pos2min", "pos2max", "pos2end",
         ];
 
-        let mut props = Parameters::new();
-        props.insert("expand".to_string(), ParameterValue::Number(0.1));
+        let props = crate::params! { "expand" => 0.1 };
 
         // Position aesthetics should allow expand
         for aes in internal_position.iter() {
@@ -2859,8 +2919,7 @@ mod tests {
         }
 
         // Invalid value rejected with helpful message
-        let mut props = Parameters::new();
-        props.insert("oob".to_string(), ParameterValue::String("invalid".into()));
+        let props = crate::params! { "oob" => "invalid" };
         let result = ScaleType::continuous().resolve_properties("x", &props);
         assert!(result.is_err());
         let err = result.unwrap_err();
@@ -2873,8 +2932,7 @@ mod tests {
 
     #[test]
     fn test_oob_user_value_preserved() {
-        let mut props = Parameters::new();
-        props.insert("oob".to_string(), ParameterValue::String("squish".into()));
+        let props = crate::params! { "oob" => "squish" };
         let resolved = ScaleType::continuous()
             .resolve_properties("x", &props)
             .unwrap();
@@ -2899,8 +2957,7 @@ mod tests {
         }
 
         // Identity and discrete reject oob
-        let mut oob_props = Parameters::new();
-        oob_props.insert("oob".to_string(), ParameterValue::String("censor".into()));
+        let oob_props = crate::params! { "oob" => "censor" };
         assert!(ScaleType::identity()
             .resolve_properties("color", &oob_props)
             .is_err());
@@ -3117,39 +3174,28 @@ mod tests {
         let resolved = ScaleType::continuous()
             .resolve_properties("x", &props)
             .unwrap();
-        assert_eq!(
-            resolved.get("reverse"),
-            Some(&ParameterValue::Boolean(false))
-        );
+        assert_eq!(resolved.get("reverse"), Some(&false.into()));
 
         // Same for material aesthetics
         let resolved = ScaleType::continuous()
             .resolve_properties("color", &props)
             .unwrap();
-        assert_eq!(
-            resolved.get("reverse"),
-            Some(&ParameterValue::Boolean(false))
-        );
+        assert_eq!(resolved.get("reverse"), Some(&false.into()));
     }
 
     #[test]
     fn test_reverse_property_accepts_true() {
-        let mut props = Parameters::new();
-        props.insert("reverse".to_string(), ParameterValue::Boolean(true));
+        let props = crate::params! { "reverse" => true };
 
         let resolved = ScaleType::continuous()
             .resolve_properties("x", &props)
             .unwrap();
-        assert_eq!(
-            resolved.get("reverse"),
-            Some(&ParameterValue::Boolean(true))
-        );
+        assert_eq!(resolved.get("reverse"), Some(&true.into()));
     }
 
     #[test]
     fn test_reverse_property_supported_by_all_scales() {
-        let mut props = Parameters::new();
-        props.insert("reverse".to_string(), ParameterValue::Boolean(true));
+        let props = crate::params! { "reverse" => true };
 
         // All scale types should support reverse property
         for scale_type in &[
@@ -3166,7 +3212,7 @@ mod tests {
             let resolved = result.unwrap();
             assert_eq!(
                 resolved.get("reverse"),
-                Some(&ParameterValue::Boolean(true)),
+                Some(&true.into()),
                 "Scale {:?} should preserve reverse=true",
                 scale_type.scale_type_kind()
             );
@@ -3176,8 +3222,7 @@ mod tests {
     #[test]
     fn test_identity_scale_rejects_reverse_property() {
         // Identity scale should not support reverse (no properties at all)
-        let mut props = Parameters::new();
-        props.insert("reverse".to_string(), ParameterValue::Boolean(true));
+        let props = crate::params! { "reverse" => true };
 
         let result = ScaleType::identity().resolve_properties("x", &props);
         assert!(result.is_err());
@@ -3188,12 +3233,12 @@ mod tests {
     // =========================================================================
 
     #[test]
-    fn test_breaks_property_default_is_7() {
+    fn test_breaks_property_default_is_5() {
         let props = Parameters::new();
         let resolved = ScaleType::continuous()
             .resolve_properties("x", &props)
             .unwrap();
-        assert_eq!(resolved.get("breaks"), Some(&ParameterValue::Number(7.0)));
+        assert_eq!(resolved.get("breaks"), Some(&ParameterValue::Number(5.0)));
     }
 
     #[test]
@@ -3202,18 +3247,17 @@ mod tests {
         let resolved = ScaleType::continuous()
             .resolve_properties("x", &props)
             .unwrap();
-        assert_eq!(resolved.get("pretty"), Some(&ParameterValue::Boolean(true)));
+        assert_eq!(resolved.get("pretty"), Some(&true.into()));
     }
 
     #[test]
     fn test_breaks_property_accepts_number() {
-        let mut props = Parameters::new();
-        props.insert("breaks".to_string(), ParameterValue::Number(10.0));
+        let props = crate::params! { "breaks" => 10.0 };
 
         let result = ScaleType::continuous().resolve_properties("x", &props);
         assert!(result.is_ok());
         let resolved = result.unwrap();
-        assert_eq!(resolved.get("breaks"), Some(&ParameterValue::Number(10.0)));
+        assert_eq!(resolved.get("breaks"), Some(&10.0.into()));
     }
 
     #[test]
@@ -3236,22 +3280,17 @@ mod tests {
 
     #[test]
     fn test_pretty_property_accepts_false() {
-        let mut props = Parameters::new();
-        props.insert("pretty".to_string(), ParameterValue::Boolean(false));
+        let props = crate::params! { "pretty" => false };
 
         let result = ScaleType::continuous().resolve_properties("x", &props);
         assert!(result.is_ok());
         let resolved = result.unwrap();
-        assert_eq!(
-            resolved.get("pretty"),
-            Some(&ParameterValue::Boolean(false))
-        );
+        assert_eq!(resolved.get("pretty"), Some(&false.into()));
     }
 
     #[test]
     fn test_breaks_supported_by_continuous_scales() {
-        let mut props = Parameters::new();
-        props.insert("breaks".to_string(), ParameterValue::Number(5.0));
+        let props = crate::params! { "breaks" => 5.0 };
 
         for scale_type in &[ScaleType::continuous(), ScaleType::binned()] {
             let result = scale_type.resolve_properties("x", &props);
@@ -3265,8 +3304,7 @@ mod tests {
 
     #[test]
     fn test_discrete_does_not_support_breaks() {
-        let mut props = Parameters::new();
-        props.insert("breaks".to_string(), ParameterValue::Number(5.0));
+        let props = crate::params! { "breaks" => 5.0 };
 
         let result = ScaleType::discrete().resolve_properties("x", &props);
         assert!(result.is_err());
@@ -3275,8 +3313,7 @@ mod tests {
 
     #[test]
     fn test_identity_does_not_support_breaks() {
-        let mut props = Parameters::new();
-        props.insert("breaks".to_string(), ParameterValue::Number(5.0));
+        let props = crate::params! { "breaks" => 5.0 };
 
         let result = ScaleType::identity().resolve_properties("x", &props);
         assert!(result.is_err());
@@ -3285,8 +3322,7 @@ mod tests {
     #[test]
     fn test_breaks_available_for_material_aesthetics() {
         // breaks should work for color legends too
-        let mut props = Parameters::new();
-        props.insert("breaks".to_string(), ParameterValue::Number(4.0));
+        let props = crate::params! { "breaks" => 4.0 };
 
         let result = ScaleType::continuous().resolve_properties("color", &props);
         assert!(result.is_ok());
@@ -3299,9 +3335,7 @@ mod tests {
     #[test]
     fn test_resolve_breaks_continuous_identity() {
         let input_range = Some(vec![ArrayElement::Number(0.0), ArrayElement::Number(100.0)]);
-        let mut props = Parameters::new();
-        props.insert("breaks".to_string(), ParameterValue::Number(5.0));
-        props.insert("pretty".to_string(), ParameterValue::Boolean(true));
+        let props = crate::params! { "breaks" => 5.0, "pretty" => true };
 
         let identity = Transform::identity();
         let breaks =
@@ -3318,8 +3352,7 @@ mod tests {
         // Break generators iterate the domain in step-sized increments; a
         // non-finite bound would make that iteration effectively unbounded
         // (observed as an OOM when a map projection produced inf coordinates).
-        let mut props = Parameters::new();
-        props.insert("breaks".to_string(), ParameterValue::Number(7.0));
+        let props = crate::params! { "breaks" => 7.0 };
 
         let geographic = Transform::geographic();
         for (min, max) in [
@@ -3347,9 +3380,7 @@ mod tests {
             ArrayElement::Number(1.0),
             ArrayElement::Number(1000.0),
         ]);
-        let mut props = Parameters::new();
-        props.insert("breaks".to_string(), ParameterValue::Number(10.0));
-        props.insert("pretty".to_string(), ParameterValue::Boolean(false));
+        let props = crate::params! { "breaks" => 10.0, "pretty" => false };
 
         let log10 = Transform::log();
         let breaks =
@@ -3367,9 +3398,7 @@ mod tests {
     #[test]
     fn test_resolve_breaks_continuous_log10_pretty() {
         let input_range = Some(vec![ArrayElement::Number(1.0), ArrayElement::Number(100.0)]);
-        let mut props = Parameters::new();
-        props.insert("breaks".to_string(), ParameterValue::Number(10.0));
-        props.insert("pretty".to_string(), ParameterValue::Boolean(true));
+        let props = crate::params! { "breaks" => 10.0, "pretty" => true };
 
         let log10 = Transform::log();
         let breaks =
@@ -3386,9 +3415,7 @@ mod tests {
     #[test]
     fn test_resolve_breaks_continuous_sqrt() {
         let input_range = Some(vec![ArrayElement::Number(0.0), ArrayElement::Number(100.0)]);
-        let mut props = Parameters::new();
-        props.insert("breaks".to_string(), ParameterValue::Number(5.0));
-        props.insert("pretty".to_string(), ParameterValue::Boolean(false));
+        let props = crate::params! { "breaks" => 5.0, "pretty" => false };
 
         let sqrt = Transform::sqrt();
         let breaks =
@@ -3484,10 +3511,9 @@ mod tests {
             ArrayElement::Date(19738), // 2024-01-15
             ArrayElement::Date(19889), // 2024-06-15
         ]);
-        scale.properties.insert(
-            "breaks".to_string(),
-            ParameterValue::String("2 months".to_string()),
-        );
+        scale
+            .properties
+            .insert("breaks".to_string(), "2 months".into());
 
         let context = ScaleDataContext::new();
         ScaleType::continuous()
@@ -3517,9 +3543,7 @@ mod tests {
         let mut scale = Scale::new("x");
         scale.scale_type = Some(ScaleType::continuous());
         scale.input_range = Some(vec![ArrayElement::Number(0.0), ArrayElement::Number(100.0)]);
-        scale
-            .properties
-            .insert("breaks".to_string(), ParameterValue::Number(5.0));
+        scale.properties = crate::params! { "breaks" => 5.0 };
 
         let context = ScaleDataContext::new();
         ScaleType::continuous()
@@ -3559,10 +3583,9 @@ mod tests {
             ArrayElement::Date(19738), // 2024-01-15
             ArrayElement::Date(19889), // 2024-06-15
         ]);
-        scale.properties.insert(
-            "breaks".to_string(),
-            ParameterValue::String("2 months".to_string()),
-        );
+        scale
+            .properties
+            .insert("breaks".to_string(), "2 months".into());
 
         let context = ScaleDataContext::new();
         ScaleType::continuous()
@@ -3583,6 +3606,45 @@ mod tests {
             }
             other => panic!("minors should be a resolved Array, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn test_resolve_temporal_minor_breaks_follow_the_calendar() {
+        use crate::plot::scale::Scale;
+        use chrono::Datelike;
+
+        let mut scale = Scale::new("x");
+        scale.scale_type = Some(ScaleType::continuous());
+        scale.transform = Some(Transform::date());
+        scale.input_range = Some(vec![
+            ArrayElement::Date(19738), // 2024-01-15
+            ArrayElement::Date(19889), // 2024-06-15
+        ]);
+        scale.properties.insert(
+            "breaks".to_string(),
+            ParameterValue::String("2 months".to_string()),
+        );
+
+        let context = ScaleDataContext::new();
+        ScaleType::continuous()
+            .resolve(&mut scale, &context, "x")
+            .unwrap();
+
+        // Two-month majors divide into single months: every minor is the first
+        // of a month the majors skip, rather than a fixed fraction of a gap.
+        let majors = scale.numeric_breaks();
+        let minors = scale.numeric_minor_breaks().expect("minors resolved");
+        let epoch = chrono::NaiveDate::from_ymd_opt(1970, 1, 1).unwrap();
+        let month_starts: Vec<u32> = minors
+            .iter()
+            .map(|m| {
+                let date = epoch + chrono::Duration::days(*m as i64);
+                assert_eq!(date.day(), 1, "minor {date} is not a month start");
+                date.month()
+            })
+            .collect();
+        assert_eq!(month_starts, vec![2, 4, 6]);
+        assert!(minors.iter().all(|m| !majors.contains(m)));
     }
 
     #[test]
@@ -3613,9 +3675,7 @@ mod tests {
         let mut scale = Scale::new("x");
         scale.scale_type = Some(ScaleType::continuous());
         scale.input_range = Some(vec![ArrayElement::Number(0.0), ArrayElement::Number(100.0)]);
-        scale
-            .properties
-            .insert("breaks".to_string(), ParameterValue::Number(5.0));
+        scale.properties.insert("breaks".to_string(), 5.0.into());
         if let Some(value) = setting {
             scale.properties.insert("minor_breaks".to_string(), value);
         }
@@ -3629,7 +3689,7 @@ mod tests {
     #[test]
     fn test_minor_breaks_setting_count_is_per_major_interval() {
         // Three per interval, unlike `breaks` whose count targets the whole axis.
-        let scale = resolved_with_minor_setting(Some(ParameterValue::Number(3.0)));
+        let scale = resolved_with_minor_setting(Some(3.0.into()));
         let majors = scale.numeric_breaks();
         let minors = scale.numeric_minor_breaks().expect("minors resolved");
         for w in majors.windows(2) {
@@ -3646,7 +3706,7 @@ mod tests {
     #[test]
     fn test_minor_breaks_setting_zero_suppresses() {
         // Resolves to an empty array — "draw none" — not to the default density.
-        let scale = resolved_with_minor_setting(Some(ParameterValue::Number(0.0)));
+        let scale = resolved_with_minor_setting(Some(0.0.into()));
         assert_eq!(scale.numeric_minor_breaks(), Some(Vec::new()));
     }
 
@@ -3672,14 +3732,12 @@ mod tests {
             ArrayElement::Date(19738), // 2024-01-15
             ArrayElement::Date(19889), // 2024-06-15
         ]);
-        scale.properties.insert(
-            "breaks".to_string(),
-            ParameterValue::String("2 months".to_string()),
-        );
-        scale.properties.insert(
-            "minor_breaks".to_string(),
-            ParameterValue::String("week".to_string()),
-        );
+        scale
+            .properties
+            .insert("breaks".to_string(), "2 months".into());
+        scale
+            .properties
+            .insert("minor_breaks".to_string(), "week".into());
 
         let context = ScaleDataContext::new();
         ScaleType::continuous()
@@ -3712,7 +3770,7 @@ mod tests {
         scale.input_range = Some(vec![ArrayElement::Number(0.0), ArrayElement::Number(100.0)]);
         scale
             .properties
-            .insert("minor_breaks".to_string(), ParameterValue::Number(-1.0));
+            .insert("minor_breaks".to_string(), (-1.0).into());
 
         let context = ScaleDataContext::new();
         let err = ScaleType::continuous()
@@ -3737,10 +3795,9 @@ mod tests {
             ArrayElement::DateTime(jan1_2024_us),
             ArrayElement::DateTime(apr1_2024_us),
         ]);
-        scale.properties.insert(
-            "breaks".to_string(),
-            ParameterValue::String("month".to_string()),
-        );
+        scale
+            .properties
+            .insert("breaks".to_string(), "month".into());
 
         let context = ScaleDataContext::new();
         ScaleType::continuous()
@@ -3772,10 +3829,9 @@ mod tests {
         scale.scale_type = Some(ScaleType::continuous());
         scale.transform = Some(Transform::date());
         scale.input_range = Some(vec![ArrayElement::Date(19738), ArrayElement::Date(19889)]);
-        scale.properties.insert(
-            "breaks".to_string(),
-            ParameterValue::String("invalid_interval".to_string()),
-        );
+        scale
+            .properties
+            .insert("breaks".to_string(), "invalid_interval".into());
 
         let context = ScaleDataContext::new();
         // Should not error, just leave breaks as-is
@@ -3801,10 +3857,9 @@ mod tests {
         scale.scale_type = Some(ScaleType::continuous());
         scale.transform = Some(Transform::identity()); // Not temporal
         scale.input_range = Some(vec![ArrayElement::Number(0.0), ArrayElement::Number(100.0)]);
-        scale.properties.insert(
-            "breaks".to_string(),
-            ParameterValue::String("2 months".to_string()),
-        );
+        scale
+            .properties
+            .insert("breaks".to_string(), "2 months".into());
 
         let context = ScaleDataContext::new();
         ScaleType::continuous()
@@ -4010,6 +4065,66 @@ mod tests {
     }
 
     // =========================================================================
+    // Domain-restricted range computation Tests
+    // =========================================================================
+
+    #[test]
+    fn test_restrict_to_domain_log() {
+        use arrow::array::Float64Array;
+        use std::sync::Arc;
+
+        let array: ArrayRef = Arc::new(Float64Array::from(vec![
+            Some(-100.0),
+            Some(0.0),
+            Some(10.0),
+            Some(100.0),
+            None,
+        ]));
+        let columns: Vec<&ArrayRef> = vec![&array];
+
+        let mut context = ScaleDataContext::from_columns(&columns, false);
+        assert_eq!(
+            context.continuous_range().unwrap(),
+            &[ArrayElement::Number(-100.0), ArrayElement::Number(100.0)]
+        );
+
+        context.restrict_to_domain(&columns, Transform::log().allowed_domain());
+        assert_eq!(
+            context.continuous_range().unwrap(),
+            &[ArrayElement::Number(10.0), ArrayElement::Number(100.0)]
+        );
+    }
+
+    #[test]
+    fn test_restrict_to_domain_all_out_of_domain() {
+        use arrow::array::Float64Array;
+        use std::sync::Arc;
+
+        let array: ArrayRef = Arc::new(Float64Array::from(vec![Some(-5.0), Some(-1.0)]));
+        let columns: Vec<&ArrayRef> = vec![&array];
+
+        let mut context = ScaleDataContext::from_columns(&columns, false);
+        context.restrict_to_domain(&columns, Transform::log().allowed_domain());
+        assert!(context.continuous_range().is_none());
+    }
+
+    #[test]
+    fn test_restrict_to_domain_unrestricted_is_noop() {
+        use arrow::array::Float64Array;
+        use std::sync::Arc;
+
+        let array: ArrayRef = Arc::new(Float64Array::from(vec![Some(-5.0), Some(1.0)]));
+        let columns: Vec<&ArrayRef> = vec![&array];
+
+        let mut context = ScaleDataContext::from_columns(&columns, false);
+        context.restrict_to_domain(&columns, Transform::identity().allowed_domain());
+        assert_eq!(
+            context.continuous_range().unwrap(),
+            &[ArrayElement::Number(-5.0), ArrayElement::Number(1.0)]
+        );
+    }
+
+    // =========================================================================
     // clip_to_transform_domain Tests
     // =========================================================================
 
@@ -4070,22 +4185,18 @@ mod tests {
     }
 
     #[test]
-    fn test_expansion_clipped_to_log_domain() {
-        // Simulate what happens when expansion produces invalid values for log scale
-        // Data: [0.001, 0.01], with 50% expansion produces negative min
+    fn test_log_expansion_never_needs_clipping() {
+        // Data [0.001, 0.01] with 50% expansion: in data space this would pad
+        // the lower end below zero. In log10 space the range is one decade, so
+        // each end moves half a decade and stays positive; clipping is a no-op.
         let range = vec![ArrayElement::Number(0.001), ArrayElement::Number(0.01)];
-        // span = 0.009, expansion = 0.0045
-        // expanded_min = 0.001 - 0.0045 = -0.0035
-        // expanded_max = 0.01 + 0.0045 = 0.0145
-        let expanded = expand_numeric_range(&range, 0.5, 0.0);
-        assert!(expanded[0].to_f64().unwrap() < 0.0);
-
-        // Now clip to log domain
         let transform = Transform::from_kind(TransformKind::Log10);
-        let clipped = clip_to_transform_domain(&expanded, &transform);
-        // Min should be clipped to f64::MIN_POSITIVE
-        assert_eq!(clipped[0], ArrayElement::Number(f64::MIN_POSITIVE));
-        assert_eq!(clipped[1].to_f64().unwrap(), 0.0145);
+        let expanded = expand_numeric_range(&range, 0.5, 0.0, None, &transform);
+        let lo = expanded[0].to_f64().unwrap();
+        let hi = expanded[1].to_f64().unwrap();
+        assert!((lo - 10f64.powf(-3.5)).abs() < 1e-15, "lower end: {lo}");
+        assert!((hi - 10f64.powf(-1.5)).abs() < 1e-12, "upper end: {hi}");
+        assert_eq!(clip_to_transform_domain(&expanded, &transform), expanded);
     }
 
     // =========================================================================

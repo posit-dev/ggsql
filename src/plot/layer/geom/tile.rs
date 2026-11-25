@@ -9,7 +9,7 @@ use super::{
 };
 use crate::naming;
 use crate::plot::projection::Projection;
-use crate::plot::types::{ColumnInfo, DefaultAestheticValue, ParameterValue, Parameters};
+use crate::plot::types::{ColumnInfo, DefaultAestheticValue, Parameters};
 use crate::plot::{DefaultParamValue, ParamDefinition};
 use crate::reader::SqlDialect;
 use crate::{DataFrame, GgsqlError, Mappings, Result};
@@ -80,6 +80,8 @@ impl GeomTrait for Tile {
                 default: DefaultParamValue::String("identity"),
                 constraint: ParamConstraint::string_option(POSITION_VALUES),
             },
+            super::types::LINECAP_PARAM,
+            super::types::LINEJOIN_PARAM,
             super::types::AGGREGATE_PARAM,
         ];
         PARAMS
@@ -192,6 +194,7 @@ impl GeomTrait for Tile {
                 mut stat_columns,
                 dummy_columns,
                 consumed_aesthetics,
+                layer_order,
             } = tile_result
             {
                 if !stat_columns.iter().any(|s| s == "aggregate") {
@@ -202,6 +205,7 @@ impl GeomTrait for Tile {
                     stat_columns,
                     dummy_columns,
                     consumed_aesthetics,
+                    layer_order,
                 });
             }
         }
@@ -237,7 +241,7 @@ impl GeomTrait for Tile {
         let (expanded, expanded_columns) = expand_rect_to_polygon(query, &columns, dialect);
 
         partition_by.push(naming::DENSIFY_ID_COLUMN.to_string());
-        parameters.insert("densified".to_string(), ParameterValue::Boolean(true));
+        parameters.insert("densified".to_string(), true.into());
 
         let expanded_columns = crate::util::set_union(expanded_columns, partition_by);
 
@@ -547,6 +551,7 @@ fn stat_tile(
             .iter()
             .map(|s| s.to_string())
             .collect(),
+        layer_order: vec![],
     })
 }
 
@@ -1254,11 +1259,7 @@ mod tests {
             max: None,
         });
         let ctx = AestheticContext::from_static(&["x", "y"], &[]);
-        let mut parameters = Parameters::new();
-        parameters.insert(
-            "aggregate".to_string(),
-            ParameterValue::String("mean".to_string()),
-        );
+        let parameters = crate::params! { "aggregate" => "mean" };
 
         let result = Tile
             .apply_stat_transform(
@@ -1377,9 +1378,7 @@ mod tests {
         let aesthetics = create_aesthetics(&["pos1", "pos2"]);
         let schema = create_schema(&["pos1", "pos2"]);
         let group_by = vec![];
-        let mut parameters = Parameters::new();
-        parameters.insert("width".to_string(), ParameterValue::Number(0.7));
-        parameters.insert("height".to_string(), ParameterValue::Number(0.9));
+        let parameters = crate::params! { "width" => 0.7, "height" => 0.9 };
 
         let ctx = crate::plot::aesthetic::AestheticContext::from_static(&["x", "y"], &[]);
         let result = stat_tile(
@@ -1458,14 +1457,12 @@ mod tests {
     fn test_apply_projection_densifies_continuous_tiles() {
         let tile = Tile;
         let mut projection = Projection::map();
-        projection.properties.insert(
-            "source".to_string(),
-            ParameterValue::String("EPSG:4326".to_string()),
-        );
-        projection.properties.insert(
-            "target".to_string(),
-            ParameterValue::String("+proj=ortho +lat_0=0 +lon_0=0".to_string()),
-        );
+        projection
+            .properties
+            .insert("source".to_string(), "EPSG:4326".into());
+        projection
+            .properties
+            .insert("target".to_string(), "+proj=ortho +lat_0=0 +lon_0=0".into());
 
         let mut mappings =
             create_bound_mappings(&["pos1min", "pos1max", "pos2min", "pos2max", "fill"]);
@@ -1515,13 +1512,12 @@ mod tests {
 
         let tile = Tile;
         let mut projection = Projection::map();
-        projection.properties.insert(
-            "source".to_string(),
-            ParameterValue::String("EPSG:4326".to_string()),
-        );
+        projection
+            .properties
+            .insert("source".to_string(), "EPSG:4326".into());
         projection.properties.insert(
             "target".to_string(),
-            ParameterValue::String("+proj=ortho +lat_0=40 +lon_0=-70".to_string()),
+            "+proj=ortho +lat_0=40 +lon_0=-70".into(),
         );
 
         for stmt in dialect.sql_spatial_setup() {
@@ -1583,14 +1579,12 @@ mod tests {
     fn test_apply_projection_discrete_tiles_only_project() {
         let tile = Tile;
         let mut projection = Projection::map();
-        projection.properties.insert(
-            "source".to_string(),
-            ParameterValue::String("EPSG:4326".to_string()),
-        );
-        projection.properties.insert(
-            "target".to_string(),
-            ParameterValue::String("+proj=merc".to_string()),
-        );
+        projection
+            .properties
+            .insert("source".to_string(), "EPSG:4326".into());
+        projection
+            .properties
+            .insert("target".to_string(), "+proj=merc".into());
 
         // Discrete tiles only have pos1/pos2
         let mut mappings = create_bound_mappings(&["pos1", "pos2"]);
