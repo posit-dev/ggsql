@@ -203,7 +203,7 @@ fn facet_label(scale: Option<&Scale>, level: &FacetLevel) -> String {
     // NULL keys as the literal string "null", matching ggsql's RENAMING key for
     // a null level (`RENAMING null => 'The rest'`).
     if level.key.is_null {
-        return match scale.and_then(|s| s.label_mapping.as_ref()) {
+        return match scale.map(|s| s.label_mapping()) {
             Some(mapping) => match mapping.get("null") {
                 Some(Some(label)) => label.clone(),
                 Some(None) => String::new(),
@@ -229,9 +229,7 @@ fn discrete_label(scale: Option<&Scale>, level: &FacetLevel) -> String {
     let Some(scale) = scale else {
         return level.key.text.clone();
     };
-    let Some(mapping) = scale.label_mapping.as_ref() else {
-        return level.key.text.clone();
-    };
+    let mapping = scale.label_mapping();
     // `label_mapping` is keyed on the domain element's `to_key_string()`, which
     // can differ from the column's arrow-cast text (e.g. "5" vs "5.0"), so find
     // the matching domain element first.

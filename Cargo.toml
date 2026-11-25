@@ -65,9 +65,6 @@ clap = { version = "4.4", features = ["derive"] }
 anyhow = "1.0"
 thiserror = "1.0"
 
-# Color interpolation
-palette = { version = "0.7", default-features = false, features = ["std", "approx"] }
-
 # Spatial
 geozero = { version = "0.14", default-features = false }
 

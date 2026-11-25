@@ -200,8 +200,10 @@ fn describe(warnings: &[SvgWarning]) -> Vec<String> {
                  viewers ignore"
                     .into()
             }
-            SvgWarning::ImageBrushUnsupported => {
-                "an image used as a fill or stroke was dropped; SVG cannot paint with one".into()
+            SvgWarning::UnsupportedExtend => {
+                "an image fill asked to pad or reflect at its edges; an SVG pattern only tiles, \
+                 so it repeats"
+                    .into()
             }
             SvgWarning::NonFiniteCoordinate => {
                 "a coordinate was not a finite number and was written as zero".into()

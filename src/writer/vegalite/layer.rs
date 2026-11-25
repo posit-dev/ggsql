@@ -4239,8 +4239,7 @@ mod tests {
             explicit_transform: false,
             properties: Parameters::new(),
             resolved: false,
-            label_mapping: None,
-            label_template: "{}".to_string(),
+            label_spec: zygos::LabelSpec::new(),
             panels: None,
         }];
         let context = RenderContext::new(
@@ -4273,8 +4272,7 @@ mod tests {
             explicit_transform: false,
             properties: Parameters::new(),
             resolved: false,
-            label_mapping: None,
-            label_template: "{}".to_string(),
+            label_spec: zygos::LabelSpec::new(),
             panels: None,
         }];
         let context = RenderContext::new(
@@ -4303,8 +4301,7 @@ mod tests {
             explicit_transform: false,
             properties: Parameters::new(),
             resolved: false,
-            label_mapping: None,
-            label_template: "{}".to_string(),
+            label_spec: zygos::LabelSpec::new(),
             panels: None,
         }];
         let context = RenderContext::new(

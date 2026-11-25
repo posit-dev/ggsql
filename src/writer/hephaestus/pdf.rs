@@ -156,8 +156,8 @@ fn describe(warnings: &[PdfWarning]) -> Vec<String> {
                 "a sweep gradient was flattened to a solid colour; PDF has no conic shading".into()
             }
             PdfWarning::UnsupportedExtend => {
-                "a gradient asked to repeat or reflect; PDF shadings only pad, so the end colours \
-                 were held"
+                "a gradient asked to repeat or reflect, or an image fill to pad or reflect; PDF \
+                 only pads a shading and tiles a pattern, so the paint fell back to that"
                     .into()
             }
             PdfWarning::UnsupportedCompose => {
@@ -167,9 +167,6 @@ fn describe(warnings: &[PdfWarning]) -> Vec<String> {
                 "a stroke asked for different start and end caps; PDF has one, so both took the \
                  start cap"
                     .into()
-            }
-            PdfWarning::ImageBrushUnsupported => {
-                "an image used as a fill or stroke was dropped; PDF cannot paint with one".into()
             }
             PdfWarning::UnembeddableImage => "an image's pixel layout could not be embedded".into(),
             PdfWarning::MissingPngFeature => {

@@ -19,9 +19,6 @@ tree-sitter.workspace = true
 tree-sitter-ggsql = { workspace = true }
 csscolorparser.workspace = true
 
-# Color interpolation
-palette.workspace = true
-
 # Arrow (core data container)
 arrow = { workspace = true }
 
@@ -45,7 +42,12 @@ geozero = { workspace = true, optional = true, features = ["with-wkb", "with-wkt
 # Backend for the renderer-backed writers (non-default; gated, excluded from the
 # MSRV 1.86 build). The GPU rasteriser is *not* requested here: it arrives with
 # the `raster` feature, so a build wanting only vector output pulls no wgpu.
-hephaestus = { version = "0.4.1", optional = true, default-features = false, features = ["geom-wkb", "geom-wkt"] }
+hephaestus = { version = "0.5.0", optional = true, default-features = false }
+
+# Scale primitives (transforms, breaks, palettes, OOB policies). Unlike
+# hephaestus this is a core dependency: the executor resolves scales through
+# it, so it must build on the MSRV toolchain.
+zygos = { version = "0.5.0", default-features = false, features = ["palettes"] }
 
 # WOFF / WOFF2 decoding for `fonts::register_font`, behind `webfonts`. Pure
 # Rust and no build script; `brotli` here is `brotli-decompressor`, the
@@ -63,7 +65,6 @@ thiserror.workspace = true
 regex.workspace = true
 chrono.workspace = true
 rand.workspace = true
-sprintf = "0.4"
 const_format.workspace = true
 uuid.workspace = true
 
@@ -103,7 +104,7 @@ html = []
 # rasteriser on top of it. Splitting them is what lets a vector-only build skip
 # wgpu, vello_hybrid and pollster entirely — hephaestus gates only its GPU
 # backends behind that feature, not the plot layer.
-graphics = ["dep:hephaestus", "dep:fontique"]
+graphics = ["dep:hephaestus", "dep:fontique", "zygos/geom-wkb", "zygos/geom-wkt"]
 # The GPU rasteriser. `vello-hybrid` rather than vello classic: it computes
 # coverage on the CPU and hands the GPU a plain render pipeline. Its GPU buffers
 # are sized to the scene's actual content rather than to fixed caps, so there is

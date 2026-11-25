@@ -12,9 +12,9 @@
 use std::cmp::Ordering;
 use std::collections::HashMap;
 
-use hephaestus::color::rgb8;
 use hephaestus::plot::geom::Raw;
 use hephaestus::plot::{Plot as HPlot, RibbonGeom};
+use zygos::color::rgb8;
 
 use super::super::channels::{
     build_group_keys, column_to_channel, column_to_f64, column_to_raw_strings,

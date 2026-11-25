@@ -4,8 +4,8 @@
 //! the size, DPI and background live here rather than in each writer. A writer
 //! adds only its own format's keys: a JPEG quality, a TIFF compression.
 
-use hephaestus::color::{rgba, Color};
 use hephaestus::geometry::Size;
+use zygos::color::{rgba, Color};
 
 use super::scales::parse_color;
 use crate::writer::WriterOptions;

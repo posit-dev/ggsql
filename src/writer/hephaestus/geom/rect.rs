@@ -7,7 +7,7 @@
 //! extents (continuous) or fill the band (discrete). Bars/histograms are
 //! orientation-aware.
 
-use hephaestus::color::rgb8;
+use zygos::color::rgb8;
 
 use super::super::channels::{aesthetic_column_name, column_to_f64};
 use super::super::scales::RangeKind;

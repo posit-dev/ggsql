@@ -537,14 +537,9 @@ fn build_format_clause(node: &Node, source: &SourceTree) -> Result<Format> {
         None => Parameters::new(),
     };
 
-    let mut value_mapping = None;
-    let mut value_template = None;
+    let mut renaming = zygos::LabelSpec::new();
     if let Some(renaming_node) = source.find_node(node, "(renaming_clause) @r") {
-        let (mappings, template) = parse_renaming_clause(&renaming_node, source)?;
-        if !mappings.is_empty() {
-            value_mapping = Some(mappings);
-        }
-        value_template = template;
+        renaming = parse_renaming_clause(&renaming_node, source)?;
     }
 
     Ok(Format {
@@ -552,8 +547,7 @@ fn build_format_clause(node: &Node, source: &SourceTree) -> Result<Format> {
         wildcard,
         target,
         settings,
-        value_mapping,
-        value_template,
+        renaming,
     })
 }
 
@@ -951,8 +945,7 @@ fn build_scale(node: &Node, source: &SourceTree) -> Result<Scale> {
     let mut transform: Option<Transform> = None;
     let mut explicit_transform = false;
     let mut properties = Parameters::new();
-    let mut label_mapping: Option<HashMap<String, Option<String>>> = None;
-    let mut label_template = "{}".to_string();
+    let mut label_spec = zygos::LabelSpec::new();
 
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
@@ -988,11 +981,7 @@ fn build_scale(node: &Node, source: &SourceTree) -> Result<Scale> {
             }
             "renaming_clause" => {
                 // Parse RENAMING 'A' => 'Alpha', 'B' => 'Beta', * => '{} units'
-                let (mappings, template) = parse_renaming_clause(&child, source)?;
-                if !mappings.is_empty() {
-                    label_mapping = Some(mappings);
-                }
-                label_template = template.unwrap_or_else(crate::format::default_template);
+                label_spec = parse_renaming_clause(&child, source)?;
             }
             _ => {}
         }
@@ -1041,8 +1030,7 @@ fn build_scale(node: &Node, source: &SourceTree) -> Result<Scale> {
         explicit_transform,
         properties,
         resolved: false,
-        label_mapping,
-        label_template,
+        label_spec,
         panels: None,
     })
 }
@@ -1111,16 +1099,14 @@ fn parse_scale_via_clause(node: &Node, source: &SourceTree) -> Result<Transform>
 
 /// Parse RENAMING clause: RENAMING 'A' => 'Alpha', 'B' => 'Beta', 'internal' => NULL, * => '{} units'
 ///
-/// Returns a tuple of:
-/// - HashMap where: Key = original value, Value = Some(label) or None for suppressed labels
-/// - Template string for wildcard mappings (* => '...'), None if no wildcard
-#[allow(clippy::type_complexity)]
-fn parse_renaming_clause(
-    node: &Node,
-    source: &SourceTree,
-) -> Result<(HashMap<String, Option<String>>, Option<String>)> {
-    let mut mappings = HashMap::new();
-    let mut template = None;
+/// Shared by `SCALE` (into `Scale::label_spec`) and `FORMAT` (into
+/// `Format::renaming`). Builds a [`zygos::LabelSpec`]: explicit entries
+/// become renames (`Some`) or suppressions (`NULL`), the wildcard
+/// `* => '...'` becomes the fallback template. Rename keys keep the
+/// literal's type — `'A'` a string, `25` a number, `NULL` null — see
+/// [`crate::format::key_value`].
+fn parse_renaming_clause(node: &Node, source: &SourceTree) -> Result<zygos::LabelSpec> {
+    let mut spec = zygos::LabelSpec::new();
 
     // Find all renaming_assignment nodes
     let query = "(renaming_assignment) @assign";
@@ -1128,20 +1114,26 @@ fn parse_renaming_clause(
 
     for assignment_node in assignment_nodes {
         // Extract name and value nodes using field-based queries
-        let (name_node, value_node) = extract_name_value_nodes(&assignment_node, "scale renaming")?;
+        let (name_node, value_node) = extract_name_value_nodes(&assignment_node, "renaming")?;
 
         // Check if 'name' is a wildcard
         let is_wildcard = name_node.kind() == "*";
 
         // Parse 'name' (from) value - wildcards, strings need unquoting, numbers are raw
         let from_value = match name_node.kind() {
-            "*" => "*".to_string(),
-            "string" => parse_string_node(&name_node, source),
-            "number" => source.get_text(&name_node),
-            "null_literal" => "null".to_string(), // null key for renaming null values
+            "*" => zygos::Value::Null, // unused; wildcards set the template
+            "string" => zygos::Value::String(parse_string_node(&name_node, source).into()),
+            "number" => {
+                let text = source.get_text(&name_node);
+                let number = text.parse::<f64>().map_err(|_| {
+                    GgsqlError::ParseError(format!("Invalid number in renaming: {}", text))
+                })?;
+                zygos::Value::Number(number)
+            }
+            "null_literal" => zygos::Value::Null, // null key for renaming null values
             _ => {
                 return Err(GgsqlError::ParseError(format!(
-                    "Invalid 'from' type in scale renaming: {}",
+                    "Invalid 'from' type in renaming: {}",
                     name_node.kind()
                 )));
             }
@@ -1153,7 +1145,7 @@ fn parse_renaming_clause(
             "null_literal" => None, // NULL suppresses the label
             _ => {
                 return Err(GgsqlError::ParseError(format!(
-                    "Invalid 'to' type in scale renaming: {}",
+                    "Invalid 'to' type in renaming: {}",
                     value_node.kind()
                 )));
             }
@@ -1162,15 +1154,18 @@ fn parse_renaming_clause(
         if is_wildcard {
             // Wildcard: * => 'template'
             if let Some(tmpl) = to_value {
-                template = Some(tmpl);
+                spec.set_template(&tmpl);
             }
         } else {
-            // Explicit mapping: 'A' => 'Alpha' or '10' => 'Ten'
-            mappings.insert(from_value, to_value);
+            // Explicit mapping: 'A' => 'Alpha' or 'internal' => NULL
+            match to_value {
+                Some(label) => spec.rename(from_value, label),
+                None => spec.suppress(from_value),
+            };
         }
     }
 
-    Ok((mappings, template))
+    Ok(spec)
 }
 
 // ============================================================================
@@ -1707,8 +1702,8 @@ mod tests {
         assert_eq!(table.formats[0].columns, vec!["foo", "bar"]);
         assert_eq!(table.formats[0].target, None);
         assert!(table.formats[0].settings.is_empty());
-        assert_eq!(table.formats[0].value_mapping, None);
-        assert_eq!(table.formats[0].value_template, None);
+        assert!(table.formats[0].renaming.rename_is_empty());
+        assert!(table.formats[0].renaming.template().is_none());
     }
 
     #[test]
@@ -1747,8 +1742,8 @@ mod tests {
         assert!(table.formats[0].wildcard);
         assert!(table.formats[0].columns.is_empty());
         assert_eq!(
-            table.formats[0].value_template,
-            Some("{:num %.2f}".to_string())
+            table.formats[0].renaming.template().map(|t| t.source()),
+            Some("{:num %.2f}")
         );
     }
 
@@ -1764,12 +1759,12 @@ mod tests {
         assert_eq!(table.formats[0].columns, vec!["price"]);
         assert_eq!(table.formats[0].settings.get("width"), Some(&"20%".into()));
         assert_eq!(
-            table.formats[0].value_mapping,
-            Some(HashMap::from([("null".to_string(), Some("-".to_string()))]))
+            table.formats[0].renaming.lookup(&zygos::Value::Null),
+            Some(Some("-"))
         );
         assert_eq!(
-            table.formats[0].value_template,
-            Some("{:num %.2f}".to_string())
+            table.formats[0].renaming.template().map(|t| t.source()),
+            Some("{:num %.2f}")
         );
     }
 
@@ -1784,8 +1779,8 @@ mod tests {
         assert_eq!(table.formats.len(), 2);
         assert_eq!(table.formats[0].columns, vec!["foo"]);
         assert_eq!(
-            table.formats[0].value_template,
-            Some("{:num %.0f}".to_string())
+            table.formats[0].renaming.template().map(|t| t.source()),
+            Some("{:num %.0f}")
         );
         assert_eq!(table.formats[1].columns, vec!["bar"]);
     }
@@ -3752,10 +3747,11 @@ mod tests {
         // Scale aesthetic is transformed to internal name
         assert_eq!(scales[0].aesthetic, "pos1");
 
-        let label_mapping = scales[0].label_mapping.as_ref().unwrap();
-        assert_eq!(label_mapping.len(), 2);
-        assert_eq!(label_mapping.get("A"), Some(&Some("Alpha".to_string())));
-        assert_eq!(label_mapping.get("B"), Some(&Some("Beta".to_string())));
+        let spec = &scales[0].label_spec;
+        assert_eq!(spec.rename_len(), 2);
+        let key = |s: &str| zygos::Value::String(s.into());
+        assert_eq!(spec.lookup(&key("A")), Some(Some("Alpha")));
+        assert_eq!(spec.lookup(&key("B")), Some(Some("Beta")));
     }
 
     #[test]
@@ -3769,13 +3765,10 @@ mod tests {
 
         let specs = parse_test_query(query).unwrap();
         let scales = &specs[0].scales;
-        let label_mapping = scales[0].label_mapping.as_ref().unwrap();
-
-        assert_eq!(label_mapping.get("internal"), Some(&None)); // NULL -> None
-        assert_eq!(
-            label_mapping.get("visible"),
-            Some(&Some("Shown".to_string()))
-        );
+        let spec = &scales[0].label_spec;
+        let key = |s: &str| zygos::Value::String(s.into());
+        assert_eq!(spec.lookup(&key("internal")), Some(None)); // NULL suppresses
+        assert_eq!(spec.lookup(&key("visible")), Some(Some("Shown")));
     }
 
     #[test]
@@ -3789,12 +3782,18 @@ mod tests {
 
         let specs = parse_test_query(query).unwrap();
         let scales = &specs[0].scales;
-        let label_mapping = scales[0].label_mapping.as_ref().unwrap();
-
-        assert_eq!(label_mapping.len(), 3);
-        assert_eq!(label_mapping.get("0"), Some(&Some("0-10".to_string())));
-        assert_eq!(label_mapping.get("10"), Some(&Some("10-20".to_string())));
-        assert_eq!(label_mapping.get("20"), Some(&Some("20-30".to_string())));
+        let spec = &scales[0].label_spec;
+        assert_eq!(spec.rename_len(), 3);
+        // Unquoted numeric literals become typed number keys.
+        assert_eq!(spec.lookup(&zygos::Value::Number(0.0)), Some(Some("0-10")));
+        assert_eq!(
+            spec.lookup(&zygos::Value::Number(10.0)),
+            Some(Some("10-20"))
+        );
+        assert_eq!(
+            spec.lookup(&zygos::Value::Number(20.0)),
+            Some(Some("20-30"))
+        );
     }
 
     #[test]
@@ -3811,15 +3810,10 @@ mod tests {
         assert_eq!(scales.len(), 1);
         assert_eq!(scales[0].aesthetic, "color");
 
-        let label_mapping = scales[0].label_mapping.as_ref().unwrap();
-        assert_eq!(
-            label_mapping.get("cat_a"),
-            Some(&Some("Category A".to_string()))
-        );
-        assert_eq!(
-            label_mapping.get("cat_b"),
-            Some(&Some("Category B".to_string()))
-        );
+        let spec = &scales[0].label_spec;
+        let key = |s: &str| zygos::Value::String(s.into());
+        assert_eq!(spec.lookup(&key("cat_a")), Some(Some("Category A")));
+        assert_eq!(spec.lookup(&key("cat_b")), Some(Some("Category B")));
     }
 
     #[test]
@@ -3838,9 +3832,10 @@ mod tests {
         assert_eq!(scales[0].properties.get("reverse"), Some(&true.into()));
 
         // Check RENAMING was parsed
-        let label_mapping = scales[0].label_mapping.as_ref().unwrap();
-        assert_eq!(label_mapping.get("A"), Some(&Some("First".to_string())));
-        assert_eq!(label_mapping.get("B"), Some(&Some("Second".to_string())));
+        let spec = &scales[0].label_spec;
+        let key = |s: &str| zygos::Value::String(s.into());
+        assert_eq!(spec.lookup(&key("A")), Some(Some("First")));
+        assert_eq!(spec.lookup(&key("B")), Some(Some("Second")));
     }
 
     #[test]
@@ -3864,8 +3859,8 @@ mod tests {
         assert!(scales[0].output_range.is_some());
 
         // Check RENAMING was parsed
-        let label_mapping = scales[0].label_mapping.as_ref().unwrap();
-        assert_eq!(label_mapping.get("A"), Some(&Some("Option A".to_string())));
+        let key = zygos::Value::String("A".into());
+        assert_eq!(scales[0].label_spec.lookup(&key), Some(Some("Option A")));
     }
 
     #[test]
@@ -3880,9 +3875,12 @@ mod tests {
         let specs = parse_test_query(query).unwrap();
         let scales = &specs[0].scales;
 
-        // Check label_template was parsed
-        assert!(scales[0].label_mapping.is_none()); // No explicit mappings
-        assert_eq!(scales[0].label_template, "{} units");
+        // Check the template was parsed, with no explicit renames
+        assert!(scales[0].label_spec.rename_is_empty());
+        assert_eq!(
+            scales[0].label_spec.template().map(|t| t.source()),
+            Some("{} units")
+        );
     }
 
     #[test]
@@ -3898,11 +3896,14 @@ mod tests {
         let scales = &specs[0].scales;
 
         // Check explicit mapping was parsed
-        let label_mapping = scales[0].label_mapping.as_ref().unwrap();
-        assert_eq!(label_mapping.get("A"), Some(&Some("Alpha".to_string())));
+        let key = zygos::Value::String("A".into());
+        assert_eq!(scales[0].label_spec.lookup(&key), Some(Some("Alpha")));
 
         // Check template was also parsed
-        assert_eq!(scales[0].label_template, "Category {}");
+        assert_eq!(
+            scales[0].label_spec.template().map(|t| t.source()),
+            Some("Category {}")
+        );
     }
 
     #[test]
@@ -3917,7 +3918,10 @@ mod tests {
         let specs = parse_test_query(query).unwrap();
         let scales = &specs[0].scales;
 
-        assert_eq!(scales[0].label_template, "{:UPPER}");
+        assert_eq!(
+            scales[0].label_spec.template().map(|t| t.source()),
+            Some("{:UPPER}")
+        );
     }
 
     #[test]
@@ -3932,7 +3936,10 @@ mod tests {
         let specs = parse_test_query(query).unwrap();
         let scales = &specs[0].scales;
 
-        assert_eq!(scales[0].label_template, "{:time %b %Y}");
+        assert_eq!(
+            scales[0].label_spec.template().map(|t| t.source()),
+            Some("{:time %b %Y}")
+        );
     }
 
     // ========================================
