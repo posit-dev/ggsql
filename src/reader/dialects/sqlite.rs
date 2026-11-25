@@ -57,6 +57,22 @@ impl SqlDialect for SqliteDialect {
         }
     }
 
+    fn sql_number_as_temporal(
+        &self,
+        expr: &str,
+        kind: crate::plot::types::CastTargetType,
+    ) -> String {
+        // Temporal values are ISO text here; build them via modifiers.
+        use crate::plot::types::CastTargetType as C;
+        match kind {
+            C::DateTime => format!(
+                "DATETIME('1970-01-01 00:00:00', '+' || ({expr} / 1000000.0) || ' seconds')"
+            ),
+            C::Date => format!("DATE('1970-01-01', '+' || CAST({expr} AS INTEGER) || ' days')"),
+            _ => format!("CAST({expr} AS TEXT)"),
+        }
+    }
+
     fn sql_datetime_literal(&self, microseconds_since_epoch: i64) -> String {
         let seconds = microseconds_since_epoch as f64 / 1_000_000.0;
         format!("datetime('1970-01-01 00:00:00', '+{} seconds')", seconds)
@@ -195,6 +211,19 @@ mod tests {
         assert_eq!(
             SqliteDialect.sql_temporal_as_number("\"d\"", C::DateTime),
             "((JULIANDAY(\"d\") - 2440587.5) * 86400000000.0)"
+        );
+    }
+
+    #[test]
+    fn number_as_temporal_builds_iso_text() {
+        use crate::plot::types::CastTargetType as C;
+        assert_eq!(
+            SqliteDialect.sql_number_as_temporal("x", C::DateTime),
+            "DATETIME('1970-01-01 00:00:00', '+' || (x / 1000000.0) || ' seconds')"
+        );
+        assert_eq!(
+            SqliteDialect.sql_number_as_temporal("x", C::Date),
+            "DATE('1970-01-01', '+' || CAST(x AS INTEGER) || ' days')"
         );
     }
 

@@ -115,7 +115,7 @@ impl GeomTrait for Violin {
     fn apply_stat_transform(
         &self,
         query: &str,
-        _schema: &crate::plot::Schema,
+        schema: &crate::plot::Schema,
         aesthetics: &Mappings,
         group_by: &[String],
         parameters: &Parameters,
@@ -130,6 +130,7 @@ impl GeomTrait for Violin {
             parameters,
             dialect,
             aesthetic_ctx,
+            schema,
         )
     }
 
@@ -210,6 +211,7 @@ fn stat_violin(
     parameters: &Parameters,
     dialect: &dyn crate::reader::SqlDialect,
     aesthetic_ctx: &crate::plot::aesthetic::AestheticContext,
+    schema: &crate::plot::Schema,
 ) -> Result<StatResult> {
     // Verify y exists
     if get_column_name(aesthetics, "pos2").is_none() {
@@ -248,6 +250,7 @@ fn stat_violin(
         parameters,
         dialect,
         aesthetic_ctx,
+        schema,
     )?;
 
     if !use_dummy {
@@ -355,8 +358,16 @@ mod tests {
         let execute = |sql: &str| reader.execute_sql(sql);
 
         let ctx = crate::plot::aesthetic::AestheticContext::from_static(&["x", "y"], &[]);
-        let result = stat_violin(query, &aesthetics, &groups, &parameters, &AnsiDialect, &ctx)
-            .expect("stat_violin should succeed");
+        let result = stat_violin(
+            query,
+            &aesthetics,
+            &groups,
+            &parameters,
+            &AnsiDialect,
+            &ctx,
+            &Vec::new(),
+        )
+        .expect("stat_violin should succeed");
 
         // Verify the result is a transformed stat result
         match result {
@@ -416,8 +427,16 @@ mod tests {
         let execute = |sql: &str| reader.execute_sql(sql);
 
         let ctx = crate::plot::aesthetic::AestheticContext::from_static(&["x", "y"], &[]);
-        let result = stat_violin(query, &aesthetics, &groups, &parameters, &AnsiDialect, &ctx)
-            .expect("stat_violin should succeed");
+        let result = stat_violin(
+            query,
+            &aesthetics,
+            &groups,
+            &parameters,
+            &AnsiDialect,
+            &ctx,
+            &Vec::new(),
+        )
+        .expect("stat_violin should succeed");
 
         // Verify the result is a transformed stat result
         match result {
@@ -531,8 +550,16 @@ mod tests {
         let execute = |sql: &str| reader.execute_sql(sql);
 
         let ctx = crate::plot::aesthetic::AestheticContext::from_static(&["x", "y"], &[]);
-        let result = stat_violin(query, &aesthetics, &groups, &parameters, &AnsiDialect, &ctx)
-            .expect("stat_violin with custom tails should succeed");
+        let result = stat_violin(
+            query,
+            &aesthetics,
+            &groups,
+            &parameters,
+            &AnsiDialect,
+            &ctx,
+            &Vec::new(),
+        )
+        .expect("stat_violin with custom tails should succeed");
 
         // Verify the SQL includes the tails constraint
         match result {
@@ -642,8 +669,16 @@ mod tests {
         let execute = |sql: &str| reader.execute_sql(sql);
 
         let ctx = crate::plot::aesthetic::AestheticContext::from_static(&["x", "y"], &[]);
-        let result = stat_violin(query, &aesthetics, &groups, &parameters, &AnsiDialect, &ctx)
-            .expect("stat_violin should succeed without pos1");
+        let result = stat_violin(
+            query,
+            &aesthetics,
+            &groups,
+            &parameters,
+            &AnsiDialect,
+            &ctx,
+            &Vec::new(),
+        )
+        .expect("stat_violin should succeed without pos1");
 
         match result {
             StatResult::Transformed {

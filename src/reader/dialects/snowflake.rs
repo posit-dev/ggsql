@@ -58,6 +58,24 @@ impl SqlDialect for SnowflakeDialect {
         format!("DATEADD(microsecond, {microseconds_since_epoch}, TIMESTAMP '1970-01-01 00:00:00')")
     }
 
+    fn sql_number_as_temporal(
+        &self,
+        expr: &str,
+        kind: crate::plot::types::CastTargetType,
+    ) -> String {
+        use crate::plot::types::CastTargetType as C;
+        match kind {
+            // TO_TIMESTAMP with a numeric argument reads (fractional)
+            // seconds since epoch.
+            C::DateTime => format!("TO_TIMESTAMP({expr} / 1000000.0)"),
+            C::Date => format!("DATEADD(day, CAST({expr} AS INT), DATE '1970-01-01')"),
+            _ => {
+                let ty = self.type_names().datetime.unwrap_or("TIMESTAMP");
+                self.sql_cast(expr, ty)
+            }
+        }
+    }
+
     fn sql_time_literal(&self, nanoseconds_since_midnight: i64) -> String {
         format!("DATEADD(nanosecond, {nanoseconds_since_midnight}, TIME '00:00:00')")
     }

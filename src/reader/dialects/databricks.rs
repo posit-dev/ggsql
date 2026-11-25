@@ -93,6 +93,24 @@ impl SqlDialect for DatabricksDialect {
         }
     }
 
+    fn sql_number_as_temporal(
+        &self,
+        expr: &str,
+        kind: crate::plot::types::CastTargetType,
+    ) -> String {
+        use crate::plot::types::CastTargetType as C;
+        match kind {
+            C::DateTime => format!(
+                "TIMESTAMP '1970-01-01 00:00:00' + CAST({expr} AS BIGINT) * INTERVAL 1 MICROSECOND"
+            ),
+            C::Date => format!("DATE_ADD(DATE '1970-01-01', CAST({expr} AS INT))"),
+            _ => {
+                let ty = self.type_names().datetime.unwrap_or("TIMESTAMP");
+                self.sql_cast(expr, ty)
+            }
+        }
+    }
+
     fn temp_table_style(&self) -> crate::reader::TempTableStyle {
         crate::reader::TempTableStyle::CreateOrReplaceTempView
     }

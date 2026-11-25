@@ -2,6 +2,13 @@
 
 ### Added
 
+- The smooth, density and violin layers now accept date, datetime and time
+  value axes (#250). The computation runs on epoch-microsecond numbers and
+  the result is converted back to timestamps, so a date axis stays a
+  temporal axis (rendered as datetimes, with labels falling back to plain
+  dates at midnight). Datetime labels at exact midnight now render as plain
+  dates everywhere.
+
 - New `TABULATE` clause renders a query result as a table instead of a
   plot. Tables are rendered via new `html` writer. `TABULATE` supports the
   following clauses:

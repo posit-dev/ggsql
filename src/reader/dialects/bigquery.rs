@@ -81,6 +81,24 @@ impl SqlDialect for BigQueryDialect {
         )
     }
 
+    fn sql_number_as_temporal(
+        &self,
+        expr: &str,
+        kind: crate::plot::types::CastTargetType,
+    ) -> String {
+        use crate::plot::types::CastTargetType as C;
+        match kind {
+            C::DateTime => format!("TIMESTAMP_MICROS(CAST({expr} AS INT64))"),
+            C::Date => {
+                format!("DATE_ADD(DATE '1970-01-01', INTERVAL CAST({expr} AS INT64) DAY)")
+            }
+            _ => {
+                let ty = self.type_names().datetime.unwrap_or("TIMESTAMP");
+                self.sql_cast(expr, ty)
+            }
+        }
+    }
+
     fn sql_time_literal(&self, nanoseconds_since_midnight: i64) -> String {
         let micros = nanoseconds_since_midnight / 1_000;
         format!("TIME_ADD(TIME '00:00:00', INTERVAL {micros} MICROSECOND)")

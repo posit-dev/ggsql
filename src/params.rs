@@ -140,8 +140,17 @@ fn date_to_iso_string(days: i32) -> String {
 
 /// Convert microseconds-since-epoch to ISO datetime string
 fn datetime_to_iso_string(micros: i64) -> String {
+    const MICROS_PER_DAY: i64 = 86_400_000_000;
     DateTime::from_timestamp_micros(micros)
-        .map(|dt| dt.format("%Y-%m-%dT%H:%M:%S").to_string())
+        .map(|dt| {
+            // Exact midnights label as bare dates: a `T00:00:00` suffix
+            // carries no information and clutters date-flavoured axes.
+            if micros.rem_euclid(MICROS_PER_DAY) == 0 {
+                dt.format("%Y-%m-%d").to_string()
+            } else {
+                dt.format("%Y-%m-%dT%H:%M:%S").to_string()
+            }
+        })
         .unwrap_or_else(|| micros.to_string())
 }
 
@@ -152,6 +161,15 @@ fn time_to_iso_string(nanos: i64) -> String {
     NaiveTime::from_num_seconds_from_midnight_opt(secs, nano_part)
         .map(|t| t.format("%H:%M:%S").to_string())
         .unwrap_or_else(|| format!("{}ns", nanos))
+}
+
+/// Format number for display (remove trailing zeros for integers)
+pub fn format_number(n: f64) -> String {
+    if n.fract() == 0.0 {
+        format!("{:.0}", n)
+    } else {
+        n.to_string()
+    }
 }
 
 /// Get type name for error messages
@@ -290,7 +308,7 @@ impl ArrayElement {
             (Self::Number(n), ArrayElementType::Boolean) => Ok(Self::Boolean(*n != 0.0)),
 
             // Number → String
-            (Self::Number(n), ArrayElementType::String) => Ok(Self::String(n.to_string())),
+            (Self::Number(n), ArrayElementType::String) => Ok(Self::String(format_number(*n))),
 
             // Number → Date (days since epoch)
             (Self::Number(n), ArrayElementType::Date) => Ok(Self::Date(*n as i32)),
@@ -540,7 +558,7 @@ impl ArrayElement {
     pub fn to_key_string(&self) -> String {
         match self {
             Self::String(s) => s.clone(),
-            Self::Number(n) => n.to_string(),
+            Self::Number(n) => format_number(*n),
             Self::Boolean(b) => b.to_string(),
             Self::Null => "null".to_string(),
             Self::Date(d) => date_to_iso_string(*d),

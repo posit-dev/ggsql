@@ -260,6 +260,11 @@ pub fn cases() -> Vec<Case> {
             Expect::MinRows(1),
         ),
         shared(
+            "density_date_x",
+            "VISUALISE DRAW density MAPPING day AS x FROM {table}",
+            Expect::MinRows(1),
+        ),
+        shared(
             "line_temporal",
             "SELECT * FROM {table} VISUALISE day AS x, val AS y DRAW line",
             Expect::ExactRows(8),
@@ -287,6 +292,16 @@ pub fn cases() -> Vec<Case> {
             Expect::Runs,
         ),
         shared(
+            "smooth_lm_date_x",
+            "VISUALISE DRAW smooth MAPPING day AS x, val AS y FROM {table} SETTING method => 'ols'",
+            Expect::Runs,
+        ),
+        shared(
+            "smooth_nw_date_x",
+            "VISUALISE DRAW smooth MAPPING day AS x, val AS y FROM {table}",
+            Expect::Runs,
+        ),
+        shared(
             "ribbon",
             "VISUALISE DRAW ribbon MAPPING id AS x, id AS ymin, val AS ymax FROM {table}",
             Expect::Runs,
@@ -309,6 +324,11 @@ pub fn cases() -> Vec<Case> {
         shared(
             "violin",
             "VISUALISE DRAW violin MAPPING grp AS x, val AS y FROM {table}",
+            Expect::MinRows(1),
+        ),
+        shared(
+            "violin_date_y",
+            "VISUALISE DRAW violin MAPPING grp AS x, day AS y FROM {table}",
             Expect::MinRows(1),
         ),
         shared(

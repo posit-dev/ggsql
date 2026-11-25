@@ -52,6 +52,25 @@ impl SqlDialect for ExasolDialect {
         format!("ADD_SECONDS(TIMESTAMP '1970-01-01 00:00:00', {seconds_with_fraction})")
     }
 
+    fn sql_number_as_temporal(
+        &self,
+        expr: &str,
+        kind: crate::plot::types::CastTargetType,
+    ) -> String {
+        use crate::plot::types::CastTargetType as C;
+        match kind {
+            // TIMESTAMP truncates to millisecond precision (see module docs).
+            C::DateTime => {
+                format!("ADD_SECONDS(TIMESTAMP '1970-01-01 00:00:00', {expr} / 1000000.0)")
+            }
+            C::Date => format!("ADD_DAYS(DATE '1970-01-01', CAST({expr} AS INTEGER))"),
+            _ => {
+                let ty = self.type_names().datetime.unwrap_or("TIMESTAMP");
+                self.sql_cast(expr, ty)
+            }
+        }
+    }
+
     fn sql_time_literal(&self, nanoseconds_since_midnight: i64) -> String {
         // ISO-8601 string matching the VARCHAR(32) storage contract.
         let secs = nanoseconds_since_midnight / 1_000_000_000;

@@ -799,6 +799,19 @@ pub fn coerce_column_to_type(
         },
 
         ArrayElementType::DateTime => match dtype {
+            // Date → Datetime upcast (a date is midnight on that day). Stats
+            // like smooth return timestamps even for date axes, so the other
+            // layers' date columns arrive here unconverted.
+            DataType::Date32 => {
+                cast_array(column, &DataType::Timestamp(TimeUnit::Microsecond, None)).map_err(
+                    |e| {
+                        GgsqlError::ValidationError(format!(
+                            "Cannot coerce column '{}' from date to datetime: {}",
+                            column_name, e
+                        ))
+                    },
+                )?
+            }
             DataType::Utf8 => {
                 let str_arr = as_str(column)?;
                 let dt_vec: Vec<Option<i64>> = (0..str_arr.len())
@@ -1002,6 +1015,59 @@ pub fn resolve_scales(spec: &mut Plot, data_map: &mut HashMap<String, DataFrame>
 
         if free_aesthetics.contains(&aesthetic) {
             panel_templates.insert(aesthetic.clone(), spec.scales[idx].clone());
+        }
+
+        // Reconcile a temporal transform with the materialized data. The
+        // transform was inferred from the source schema, but a stat may have
+        // changed a column's temporal flavour since (e.g. smooth computes
+        // over epoch numbers and returns timestamps even for a date axis).
+        // Re-infer from the actual data so coercion and labelling use the
+        // right flavour; user-explicit transforms (VIA ...) are kept.
+        if !spec.scales[idx].explicit_transform {
+            let temporal_transform = spec.scales[idx]
+                .transform
+                .as_ref()
+                .map(|t| t.transform_kind())
+                .is_some_and(|k| {
+                    matches!(
+                        k,
+                        TransformKind::Date | TransformKind::DateTime | TransformKind::Time
+                    )
+                });
+            if temporal_transform {
+                let column_dtypes: Vec<arrow::datatypes::DataType> =
+                    find_columns_for_aesthetic(&spec.layers, &aesthetic, data_map, &aesthetic_ctx)
+                        .iter()
+                        .map(|c| c.data_type().clone())
+                        .filter(|dt| {
+                            matches!(
+                                dt,
+                                arrow::datatypes::DataType::Date32
+                                    | arrow::datatypes::DataType::Date64
+                                    | arrow::datatypes::DataType::Timestamp(_, _)
+                                    | arrow::datatypes::DataType::Time32(_)
+                                    | arrow::datatypes::DataType::Time64(_)
+                            )
+                        })
+                        .collect();
+                if !column_dtypes.is_empty() {
+                    if let Ok(common_dtype) = crate::plot::scale::coerce_dtypes(&column_dtypes) {
+                        // A temporal transform is mutually exclusive with a
+                        // map projection: projections stamp their position
+                        // scales with TransformKind::Geographic, so a scale
+                        // that reaches this branch is never a map scale.
+                        let kind = infer_transform(&spec.scales[idx], &common_dtype, false);
+                        if Some(kind)
+                            != spec.scales[idx]
+                                .transform
+                                .as_ref()
+                                .map(|t| t.transform_kind())
+                        {
+                            spec.scales[idx].transform = Some(Transform::from_kind(kind));
+                        }
+                    }
+                }
+            }
         }
 
         // Infer target type and coerce columns if needed

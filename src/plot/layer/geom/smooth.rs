@@ -4,8 +4,8 @@ use super::types::POSITION_VALUES;
 use super::{
     DefaultAesthetics, DefaultParamValue, GeomTrait, GeomType, ParamConstraint, ParamDefinition,
 };
-use crate::plot::geom::types::get_quoted_column_name;
-use crate::plot::types::{DefaultAestheticValue, Parameters};
+use crate::plot::geom::types::{get_column_name, get_quoted_column_name};
+use crate::plot::types::{CastTargetType, DefaultAestheticValue, Parameters};
 use crate::plot::{ParameterValue, StatResult};
 use crate::reader::SqlDialect;
 use crate::{naming, GgsqlError, Mappings, Result};
@@ -92,7 +92,7 @@ impl GeomTrait for Smooth {
     fn apply_stat_transform(
         &self,
         query: &str,
-        _schema: &crate::plot::Schema,
+        schema: &crate::plot::Schema,
         aesthetics: &Mappings,
         group_by: &[String],
         parameters: &Parameters,
@@ -104,6 +104,11 @@ impl GeomTrait for Smooth {
         let ParameterValue::String(method) = parameters.get("method").unwrap() else {
             unreachable!("method validated by ParamConstraint::string_option")
         };
+
+        // Temporal x columns are computed as epoch-microsecond numbers and
+        // converted back to timestamps on output.
+        let x_temporal = get_column_name(aesthetics, "pos1")
+            .and_then(|col| super::types::temporal_kind_of(schema, &col));
 
         match method.as_str() {
             "nw" | "nadaraya-watson" => {
@@ -120,10 +125,25 @@ impl GeomTrait for Smooth {
                     &params,
                     dialect,
                     aesthetic_ctx,
+                    schema,
                 )
             }
-            "ols" => stat_ols(query, aesthetics, group_by, aesthetic_ctx, dialect),
-            "tls" => stat_tls(query, aesthetics, group_by, aesthetic_ctx, dialect),
+            "ols" => stat_ols(
+                query,
+                aesthetics,
+                group_by,
+                aesthetic_ctx,
+                dialect,
+                x_temporal,
+            ),
+            "tls" => stat_tls(
+                query,
+                aesthetics,
+                group_by,
+                aesthetic_ctx,
+                dialect,
+                x_temporal,
+            ),
             _ => unreachable!("method validated by ParamConstraint::string_option"),
         }
     }
@@ -135,12 +155,32 @@ impl std::fmt::Display for Smooth {
     }
 }
 
+/// Prepare the x expression for regression stats and the conversion of the
+/// endpoint columns back to the axis type. For temporal x, the computation
+/// runs on epoch-microsecond numbers and the endpoints convert back to
+/// timestamps; for numeric x both are identity.
+fn temporal_x_exprs(
+    x_col: &str,
+    x_temporal: Option<CastTargetType>,
+    dialect: &dyn SqlDialect,
+) -> (String, String, String) {
+    match x_temporal {
+        Some(kind) => (
+            super::types::temporal_as_epoch_micros(dialect, x_col, kind),
+            dialect.sql_number_as_temporal("x_min", CastTargetType::DateTime),
+            dialect.sql_number_as_temporal("x_max", CastTargetType::DateTime),
+        ),
+        None => (x_col.to_string(), "x_min".to_string(), "x_max".to_string()),
+    }
+}
+
 fn stat_ols(
     query: &str,
     aesthetics: &Mappings,
     group_by: &[String],
     aesthetic_ctx: &crate::plot::aesthetic::AestheticContext,
     dialect: &dyn SqlDialect,
+    x_temporal: Option<CastTargetType>,
 ) -> Result<StatResult> {
     let x_col = get_quoted_column_name(aesthetics, "pos1", dialect).ok_or_else(|| {
         let name = aesthetic_ctx.map_internal_to_user("pos1");
@@ -150,6 +190,8 @@ fn stat_ols(
         let name = aesthetic_ctx.map_internal_to_user("pos2");
         GgsqlError::ValidationError(format!("Smooth requires '{}' aesthetic mapping", name))
     })?;
+
+    let (x_sql, x_min_out, x_max_out) = temporal_x_exprs(&x_col, x_temporal, dialect);
 
     // Build group-related SQL fragments
     let (groups_str, group_by_clause) = if group_by.is_empty() {
@@ -194,21 +236,23 @@ fn stat_ols(
           {group_by}
         )
         SELECT
-          {groups}x_min AS {x_out},
+          {groups}{x_min_out} AS {x_out},
           (y_mean + ((xy_mean - x_mean * y_mean) / (xx_mean - x_mean * x_mean)) * (x_min - x_mean)) AS {y_out}
         FROM coefficients
         UNION ALL
         SELECT
-          {groups}x_max AS {x_out},
+          {groups}{x_max_out} AS {x_out},
           (y_mean + ((xy_mean - x_mean * y_mean) / (xx_mean - x_mean * x_mean)) * (x_max - x_mean)) AS {y_out}
         FROM coefficients",
         groups = groups_str,
-        x = x_col,
+        x = x_sql,
         y = y_col,
         data = query,
         data_alias = dialect.quote_ident("__ggsql_smooth__"),
         x_out = dialect.quote_ident(&naming::stat_column("pos1")),
         y_out = dialect.quote_ident(&naming::stat_column("intensity")), // We name this 'intensity' to be consistent with the nadaraya-watson kernel
+        x_min_out = x_min_out,
+        x_max_out = x_max_out,
         group_by = group_by_clause
     );
 
@@ -227,6 +271,7 @@ fn stat_tls(
     group_by: &[String],
     aesthetic_ctx: &crate::plot::aesthetic::AestheticContext,
     dialect: &dyn SqlDialect,
+    x_temporal: Option<CastTargetType>,
 ) -> Result<StatResult> {
     let x_col = get_quoted_column_name(aesthetics, "pos1", dialect).ok_or_else(|| {
         let name = aesthetic_ctx.map_internal_to_user("pos1");
@@ -236,6 +281,8 @@ fn stat_tls(
         let name = aesthetic_ctx.map_internal_to_user("pos2");
         GgsqlError::ValidationError(format!("Smooth requires '{}' aesthetic mapping", name))
     })?;
+
+    let (x_sql, x_min_out, x_max_out) = temporal_x_exprs(&x_col, x_temporal, dialect);
 
     // Build group-related SQL fragments
     let (groups_str, group_by_clause) = if group_by.is_empty() {
@@ -291,21 +338,23 @@ fn stat_tls(
           FROM coefficients
         )
         SELECT
-          {groups}x_min AS {x_out},
+          {groups}{x_min_out} AS {x_out},
           (y_mean + ((var_diff + SQRT(var_diff * var_diff + 4 * covariance * covariance)) / (2 * covariance)) * (x_min - x_mean)) AS {y_out}
         FROM tls_coefficients
         UNION ALL
         SELECT
-          {groups}x_max AS {x_out},
+          {groups}{x_max_out} AS {x_out},
           (y_mean + ((var_diff + SQRT(var_diff * var_diff + 4 * covariance * covariance)) / (2 * covariance)) * (x_max - x_mean)) AS {y_out}
         FROM tls_coefficients",
         groups = groups_str,
-        x = x_col,
+        x = x_sql,
         y = y_col,
         data = query,
         data_alias = dialect.quote_ident("__ggsql_smooth__"),
         x_out = dialect.quote_ident(&naming::stat_column("pos1")),
         y_out = dialect.quote_ident(&naming::stat_column("intensity")),
+        x_min_out = x_min_out,
+        x_max_out = x_max_out,
         group_by = group_by_clause
     );
 
@@ -354,8 +403,15 @@ mod tests {
         );
 
         let ctx = crate::plot::aesthetic::AestheticContext::from_static(&["x", "y"], &[]);
-        let result = stat_ols(query, &mapping, &groups, &ctx, &crate::reader::AnsiDialect)
-            .expect("stat_ols should succeed");
+        let result = stat_ols(
+            query,
+            &mapping,
+            &groups,
+            &ctx,
+            &crate::reader::AnsiDialect,
+            None,
+        )
+        .expect("stat_ols should succeed");
 
         if let StatResult::Transformed {
             query: sql,
@@ -408,8 +464,15 @@ mod tests {
         );
 
         let ctx = crate::plot::aesthetic::AestheticContext::from_static(&["x", "y"], &[]);
-        let result = stat_ols(query, &mapping, &groups, &ctx, &crate::reader::AnsiDialect)
-            .expect("stat_ols should succeed");
+        let result = stat_ols(
+            query,
+            &mapping,
+            &groups,
+            &ctx,
+            &crate::reader::AnsiDialect,
+            None,
+        )
+        .expect("stat_ols should succeed");
 
         if let StatResult::Transformed {
             query: sql,
@@ -426,6 +489,65 @@ mod tests {
             assert_eq!(
                 df.get_column_names(),
                 vec!["category", "__ggsql_stat_pos1", "__ggsql_stat_intensity"]
+            );
+        } else {
+            panic!("Expected Transformed result");
+        }
+    }
+
+    #[cfg(feature = "duckdb")]
+    #[test]
+    fn test_stat_ols_date_x_returns_timestamps() {
+        use crate::plot::types::CastTargetType;
+        use crate::reader::duckdb::DuckDbDialect;
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+
+        let query = "SELECT d, y FROM (VALUES
+            (DATE '2024-01-01', 1.0), (DATE '2024-02-01', 2.0), (DATE '2024-03-01', 3.0)
+        ) AS t(d, y)";
+        let groups: Vec<String> = vec![];
+
+        let mut mapping = crate::Mappings::new();
+        mapping.aesthetics.insert(
+            "pos1".to_string(),
+            AestheticValue::Column {
+                name: "d".to_string(),
+                original_name: None,
+                is_dummy: false,
+            },
+        );
+        mapping.aesthetics.insert(
+            "pos2".to_string(),
+            AestheticValue::Column {
+                name: "y".to_string(),
+                original_name: None,
+                is_dummy: false,
+            },
+        );
+
+        let ctx = crate::plot::aesthetic::AestheticContext::from_static(&["d", "y"], &[]);
+        let result = stat_ols(
+            query,
+            &mapping,
+            &groups,
+            &ctx,
+            &DuckDbDialect,
+            Some(CastTargetType::Date),
+        )
+        .expect("stat_ols should succeed");
+
+        if let StatResult::Transformed { query: sql, .. } = result {
+            let df = reader.execute_sql(&sql).expect("SQL should execute");
+
+            // Two rows (min and max x), with x converted back to timestamps
+            // so the axis stays temporal.
+            assert_eq!(df.height(), 2);
+            assert_eq!(
+                df.column_dtype("__ggsql_stat_pos1").unwrap(),
+                arrow::datatypes::DataType::Timestamp(
+                    arrow::datatypes::TimeUnit::Microsecond,
+                    None
+                )
             );
         } else {
             panic!("Expected Transformed result");
@@ -459,8 +581,15 @@ mod tests {
         );
 
         let ctx = crate::plot::aesthetic::AestheticContext::from_static(&["x", "y"], &[]);
-        let result = stat_tls(query, &mapping, &groups, &ctx, &crate::reader::AnsiDialect)
-            .expect("stat_tls should succeed");
+        let result = stat_tls(
+            query,
+            &mapping,
+            &groups,
+            &ctx,
+            &crate::reader::AnsiDialect,
+            None,
+        )
+        .expect("stat_tls should succeed");
 
         if let StatResult::Transformed {
             query: sql,
@@ -513,8 +642,15 @@ mod tests {
         );
 
         let ctx = crate::plot::aesthetic::AestheticContext::from_static(&["x", "y"], &[]);
-        let result = stat_tls(query, &mapping, &groups, &ctx, &crate::reader::AnsiDialect)
-            .expect("stat_tls should succeed");
+        let result = stat_tls(
+            query,
+            &mapping,
+            &groups,
+            &ctx,
+            &crate::reader::AnsiDialect,
+            None,
+        )
+        .expect("stat_tls should succeed");
 
         if let StatResult::Transformed {
             query: sql,
@@ -545,9 +681,16 @@ mod tests {
     fn stat_ols_missing_pos_aesthetics_emits_user_facing_name() {
         let mapping = crate::Mappings::new();
         let ctx = crate::plot::aesthetic::AestheticContext::from_static(&["x", "y"], &[]);
-        let err = stat_ols("SELECT 1", &mapping, &[], &ctx, &crate::reader::AnsiDialect)
-            .unwrap_err()
-            .to_string();
+        let err = stat_ols(
+            "SELECT 1",
+            &mapping,
+            &[],
+            &ctx,
+            &crate::reader::AnsiDialect,
+            None,
+        )
+        .unwrap_err()
+        .to_string();
         assert_eq!(
             err,
             "Validation error: Smooth requires 'x' aesthetic mapping"
@@ -558,9 +701,16 @@ mod tests {
     fn stat_tls_missing_pos_aesthetics_emits_user_facing_name() {
         let mapping = crate::Mappings::new();
         let ctx = crate::plot::aesthetic::AestheticContext::from_static(&["x", "y"], &[]);
-        let err = stat_tls("SELECT 1", &mapping, &[], &ctx, &crate::reader::AnsiDialect)
-            .unwrap_err()
-            .to_string();
+        let err = stat_tls(
+            "SELECT 1",
+            &mapping,
+            &[],
+            &ctx,
+            &crate::reader::AnsiDialect,
+            None,
+        )
+        .unwrap_err()
+        .to_string();
         assert_eq!(
             err,
             "Validation error: Smooth requires 'x' aesthetic mapping"

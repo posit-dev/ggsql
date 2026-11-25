@@ -47,6 +47,23 @@ impl SqlDialect for MySqlDialect {
         }
     }
 
+    fn sql_number_as_temporal(
+        &self,
+        expr: &str,
+        kind: crate::plot::types::CastTargetType,
+    ) -> String {
+        use crate::plot::types::CastTargetType as C;
+        match kind {
+            C::DateTime => format!(
+                "DATE_ADD('1970-01-01 00:00:00', INTERVAL CAST({expr} AS SIGNED) MICROSECOND)"
+            ),
+            C::Date => {
+                format!("DATE_ADD('1970-01-01', INTERVAL CAST({expr} AS SIGNED) DAY)")
+            }
+            _ => format!("CAST({expr} AS DATETIME)"),
+        }
+    }
+
     fn sql_generate_series(&self, n: usize) -> String {
         // MariaDB's CAST has no REAL target; DOUBLE works on both MySQL
         // (8.0.17+) and MariaDB (10.4.5+).
