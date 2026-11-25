@@ -21,7 +21,7 @@ pub(crate) use layout::{
 pub use layout::{TableCell, TableCellKind, TableClass, TableColumn, TableLayout, TableRow};
 pub use spanner::Spanner;
 pub(crate) use spanner::{create_spanners, reorder_table_columns};
-pub use summary::{Summary, SummaryScope, SUMMARY_OPERATIONS};
+pub use summary::{Summary, SummaryOperation, SummaryScope, SUMMARY_OPERATIONS};
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;

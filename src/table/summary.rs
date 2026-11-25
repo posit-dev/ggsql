@@ -8,10 +8,8 @@ use crate::params::{DefaultParamValue, ParamConstraint, ParamDefinition, Paramet
 /// per group — or a single row over all rows for `GRAND`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Summary {
-    /// The aggregate operation (e.g. `mean`), verbatim as written — it doubles
-    /// as the default row label. Matching against the operation vocabulary is
-    /// case-insensitive at execution time.
-    pub operation: String,
+    /// The aggregate operation, verbatim as written.
+    pub operation: SummaryOperation,
     /// Which rows the operation aggregates over.
     pub scope: SummaryScope,
     /// The columns to summarise, in the order written.
@@ -19,6 +17,29 @@ pub struct Summary {
     /// `SETTING` parameters for this SUMMARISE (e.g. `place => 'top'`,
     /// `rowlabel => 'Average'`).
     pub settings: Parameters,
+}
+
+/// What a `SUMMARISE` clause computes per column: either one named stat, or
+/// a template whose `{stat}` placeholders are each evaluated and interpolated
+/// into the cell text.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum SummaryOperation {
+    /// A bare stat name (e.g. `mean`) — it doubles as the default row label.
+    /// Matching against the operation vocabulary is case-insensitive at
+    /// execution time.
+    Stat(String),
+    /// A template literal (e.g. `{mean} +/- {sdev}`), placeholders intact.
+    Template(String),
+}
+
+impl std::fmt::Display for SummaryOperation {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SummaryOperation::Stat(name) => write!(f, "{name}"),
+            SummaryOperation::Template(template) => write!(f, "'{template}'"),
+        }
+    }
 }
 
 /// Which rows a `SUMMARISE` clause aggregates over.
@@ -65,17 +86,22 @@ const SUMMARY_PARAMS: &[ParamDefinition] = &[
 ];
 
 impl Summary {
-    /// Validate `operation` against `SUMMARY_OPERATIONS`, case-insensitively.
+    /// Validate a `Stat` operation against `SUMMARY_OPERATIONS`,
+    /// case-insensitively. A `Template` is not checked against the
+    /// vocabulary here.
     pub fn validate_operation(&self) -> Result<(), String> {
+        let SummaryOperation::Stat(name) = &self.operation else {
+            return Ok(());
+        };
         if SUMMARY_OPERATIONS
             .iter()
-            .any(|op| self.operation.eq_ignore_ascii_case(op))
+            .any(|op| name.eq_ignore_ascii_case(op))
         {
             Ok(())
         } else {
             Err(format!(
                 "Unknown operation '{}'. Valid operations: {}",
-                self.operation,
+                name,
                 crate::or_list_quoted(SUMMARY_OPERATIONS, '\'')
             ))
         }
@@ -95,7 +121,7 @@ mod tests {
 
     fn summary_with_settings(settings: Parameters) -> Summary {
         Summary {
-            operation: "mean".to_string(),
+            operation: SummaryOperation::Stat("mean".to_string()),
             scope: SummaryScope::Group,
             columns: vec!["a".to_string()],
             settings,
@@ -139,16 +165,23 @@ mod tests {
             .validate_operation()
             .is_ok());
         let mut summary = summary_with_settings(Parameters::new());
-        summary.operation = "MEAN".to_string();
+        summary.operation = SummaryOperation::Stat("MEAN".to_string());
         assert!(summary.validate_operation().is_ok());
     }
 
     #[test]
     fn summary_validate_operation_rejects_unknown_and_positional() {
         let mut summary = summary_with_settings(Parameters::new());
-        summary.operation = "meen".to_string();
+        summary.operation = SummaryOperation::Stat("meen".to_string());
         assert!(summary.validate_operation().is_err());
-        summary.operation = "first".to_string();
+        summary.operation = SummaryOperation::Stat("first".to_string());
         assert!(summary.validate_operation().is_err());
+    }
+
+    #[test]
+    fn summary_validate_operation_passes_a_template() {
+        let mut summary = summary_with_settings(Parameters::new());
+        summary.operation = SummaryOperation::Template("{meen}".to_string());
+        assert!(summary.validate_operation().is_ok());
     }
 }

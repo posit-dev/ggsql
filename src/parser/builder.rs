@@ -8,10 +8,8 @@ use crate::plot::layer::geom::Geom;
 use crate::plot::projection::resolve_coord;
 use crate::plot::scale::{color_to_hex, is_color_aesthetic, is_user_facet_aesthetic, Transform};
 use crate::plot::*;
-use crate::{
-    ColumnSection, Format, GgsqlError, Result, SelectionItem, Spanner, Spec, Summary, SummaryScope,
-    Table,
-};
+use crate::table::*;
+use crate::{GgsqlError, Result, Spec};
 use std::collections::HashMap;
 use tree_sitter::Node;
 
@@ -529,7 +527,10 @@ fn build_summarise_clause(node: &Node, source: &SourceTree) -> Result<Summary> {
     let operation_node = node.child_by_field_name("operation").ok_or_else(|| {
         GgsqlError::ParseError("Missing operation in SUMMARISE clause".to_string())
     })?;
-    let operation = naming::unquote_ident(&source.get_text(&operation_node));
+    let operation = match operation_node.kind() {
+        "string" => SummaryOperation::Template(parse_string_node(&operation_node, source)),
+        _ => SummaryOperation::Stat(naming::unquote_ident(&source.get_text(&operation_node))),
+    };
 
     let scope = match node.child_by_field_name("scope") {
         Some(scope_node) => match source.get_text(&scope_node).to_lowercase().as_str() {
@@ -1855,7 +1856,10 @@ mod tests {
         let table = specs[0].as_table().expect("expected a Table spec");
 
         assert_eq!(table.summaries.len(), 1);
-        assert_eq!(table.summaries[0].operation, "mean");
+        assert_eq!(
+            table.summaries[0].operation,
+            SummaryOperation::Stat("mean".to_string())
+        );
         assert_eq!(table.summaries[0].scope, SummaryScope::Group);
         assert_eq!(table.summaries[0].columns, vec!["foo", "bar"]);
         assert!(table.summaries[0].settings.is_empty());
@@ -1881,7 +1885,22 @@ mod tests {
         let specs = parse_test_specs("TABULATE * FROM sales SUMMARIZE MEAN OF foo").unwrap();
         let table = specs[0].as_table().expect("expected a Table spec");
 
-        assert_eq!(table.summaries[0].operation, "MEAN");
+        assert_eq!(
+            table.summaries[0].operation,
+            SummaryOperation::Stat("MEAN".to_string())
+        );
+    }
+
+    #[test]
+    fn test_tabulate_summarise_template_operation() {
+        let specs =
+            parse_test_specs("TABULATE * FROM sales SUMMARISE '{mean} +/- {sdev}' OF foo").unwrap();
+        let table = specs[0].as_table().expect("expected a Table spec");
+
+        assert_eq!(
+            table.summaries[0].operation,
+            SummaryOperation::Template("{mean} +/- {sdev}".to_string())
+        );
     }
 
     #[test]
@@ -1893,9 +1912,15 @@ mod tests {
         let table = specs[0].as_table().expect("expected a Table spec");
 
         assert_eq!(table.summaries.len(), 2);
-        assert_eq!(table.summaries[0].operation, "mean");
+        assert_eq!(
+            table.summaries[0].operation,
+            SummaryOperation::Stat("mean".to_string())
+        );
         assert_eq!(table.summaries[0].scope, SummaryScope::Group);
-        assert_eq!(table.summaries[1].operation, "max");
+        assert_eq!(
+            table.summaries[1].operation,
+            SummaryOperation::Stat("max".to_string())
+        );
         assert_eq!(table.summaries[1].scope, SummaryScope::Grand);
         assert_eq!(table.summaries[1].columns, vec!["foo", "bar"]);
     }

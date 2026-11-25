@@ -513,7 +513,9 @@ mod tests {
     use super::*;
     use crate::df;
     use crate::plot::{ParameterValue, Parameters};
-    use crate::table::{extract_table_titles, Summary, SummaryScope, TableCellKind};
+    use crate::table::{
+        extract_table_titles, Summary, SummaryOperation, SummaryScope, TableCellKind,
+    };
     use crate::{ColumnSection, GgsqlError, Spanner, Table};
 
     /// Runs the same steps `resolve_table_with_reader` does, minus the
@@ -561,7 +563,7 @@ mod tests {
 
     fn summary_clause(operation: &str, scope: SummaryScope, columns: &[&str]) -> Summary {
         Summary {
-            operation: operation.to_string(),
+            operation: SummaryOperation::Stat(operation.to_string()),
             scope,
             columns: columns.iter().map(|c| c.to_string()).collect(),
             settings: Parameters::new(),

@@ -722,11 +722,12 @@ module.exports = grammar({
     // SUMMARISE — adds aggregate rows to the table. One clause per operation;
     // clauses repeat like FORMAT, each contributing its own summary row(s).
     // GROUP (default) summarises within each facet group, GRAND over all rows.
-    // The operation is a plain identifier; validity is checked downstream.
+    // The operation is a plain identifier (a stat name) or a string template
+    // with {stat} placeholders; validity is checked downstream.
     summarise_clause: $ => seq(
       choice(caseInsensitive('SUMMARISE'), caseInsensitive('SUMMARIZE')),
       optional(field('scope', $.summarise_scope)),
-      field('operation', $.identifier),
+      field('operation', choice($.identifier, $.string)),
       caseInsensitive('OF'),
       $.column_list,
       optional($.setting_clause)

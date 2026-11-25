@@ -15,7 +15,9 @@ use arrow::datatypes::DataType;
 use crate::array_util::{as_f64, cast_array, column_to_strings, value_to_string};
 use crate::naming;
 use crate::params::ParameterValue;
-use crate::table::{Format, Summary, SummaryScope, TableCell, TableClass, TableColumn, TableRow};
+use crate::table::{
+    Format, Summary, SummaryOperation, SummaryScope, TableCell, TableClass, TableColumn, TableRow,
+};
 use crate::{ColumnSection, DataFrame, GgsqlError, Result};
 
 /// Validate `summaries` against the data and prepare the frame for summary
@@ -231,7 +233,7 @@ impl Summary {
             .settings
             .get("rowlabel")
             .and_then(ParameterValue::as_str)
-            .map_or_else(|| self.operation.clone(), str::to_string);
+            .map_or_else(|| self.operation.to_string(), str::to_string);
         Ok(SummaryRow {
             scope: self.scope,
             top: ParameterValue::is_str(self.settings.get("place"), "top"),
@@ -256,11 +258,17 @@ fn summary_frame(df: &DataFrame, summary: &Summary, range: &Range<usize>) -> Res
                     summary.operation
                 ))
             })?;
-            let value = summary_stat(
-                &summary.operation,
-                &array.slice(range.start, range.len()),
-                drop_nulls,
-            )?;
+            let value = match &summary.operation {
+                SummaryOperation::Stat(name) => {
+                    summary_stat(name, &array.slice(range.start, range.len()), drop_nulls)?
+                }
+                SummaryOperation::Template(_) => {
+                    return Err(GgsqlError::ValidationError(format!(
+                        "SUMMARISE {}: template summaries are not supported yet",
+                        summary.operation
+                    )))
+                }
+            };
             Ok((
                 column.clone(),
                 Arc::new(Float64Array::from(vec![value])) as ArrayRef,
@@ -488,7 +496,7 @@ mod tests {
 
     fn summary(operation: &str, scope: SummaryScope, columns: &[&str]) -> Summary {
         Summary {
-            operation: operation.to_string(),
+            operation: SummaryOperation::Stat(operation.to_string()),
             scope,
             columns: columns.iter().map(|c| c.to_string()).collect(),
             settings: Parameters::new(),
