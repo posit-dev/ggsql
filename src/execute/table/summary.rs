@@ -12,7 +12,7 @@ use std::sync::Arc;
 use arrow::array::{Array, ArrayRef, Float64Array, StringArray};
 use arrow::datatypes::DataType;
 
-use crate::array_util::{as_f64, cast_array, column_to_strings};
+use crate::array_util::{as_f64, cast_array, column_to_strings, value_to_string};
 use crate::naming;
 use crate::params::ParameterValue;
 use crate::table::{Format, Summary, SummaryScope, TableCell, TableClass, TableColumn, TableRow};
@@ -64,8 +64,9 @@ pub(super) struct SummaryRow {
     pub top: bool,
     /// The row's stub label: `rowlabel`, else the operation name.
     pub label: String,
-    /// One-row frame of the computed values, raw (before `FORMAT`); its
-    /// schema names the summarised columns.
+    /// One-row frame of the computed values; its schema names the
+    /// summarised columns. Numeric unless the column's `FORMAT` renaming
+    /// stringified it.
     pub frame: DataFrame,
 }
 
@@ -178,10 +179,14 @@ pub(super) type SummaryChunk = (Option<Vec<usize>>, Vec<SummaryRow>);
 /// group-contiguous), then one `None`-keyed `GRAND` chunk over all rows.
 /// Chunks with no matching clauses are omitted. Placement within a chunk is
 /// the weavers' concern; they read each row's `top`.
+///
+/// A summarised column's `FORMAT` renaming formats its summary value just
+/// like the body cells.
 pub(super) fn compute_summaries(
     df: &DataFrame,
     rows: &[TableRow],
     summaries: &[Summary],
+    formats: &HashMap<String, Format>,
 ) -> Result<Vec<SummaryChunk>> {
     if summaries.is_empty() {
         return Ok(Vec::new());
@@ -205,7 +210,11 @@ pub(super) fn compute_summaries(
         let rows = summaries
             .iter()
             .filter(|s| s.scope == scope)
-            .map(|summary| summary.new_row(df, &range))
+            .map(|summary| {
+                let mut row = summary.new_row(df, &range)?;
+                format_summary_frame(&mut row.frame, summary, formats)?;
+                Ok(row)
+            })
             .collect::<Result<Vec<_>>>()?;
         if !rows.is_empty() {
             out.push((key, rows));
@@ -259,6 +268,32 @@ fn summary_frame(df: &DataFrame, summary: &Summary, range: &Range<usize>) -> Res
         })
         .collect::<Result<Vec<_>>>()?;
     DataFrame::new(columns)
+}
+
+/// Apply each summarised column's `FORMAT` renaming to a one-row summary
+/// frame, turning the formatted columns into display text — the same
+/// treatment `apply_formats` gives the body cells, per value.
+fn format_summary_frame(
+    frame: &mut DataFrame,
+    summary: &Summary,
+    formats: &HashMap<String, Format>,
+) -> Result<()> {
+    for column in &summary.columns {
+        let Some(format) = formats.get(column) else {
+            continue;
+        };
+        if format.renaming.rename_is_empty() && format.renaming.template().is_none() {
+            continue;
+        }
+        let array = frame.column(column)?.clone();
+        let mut resolved = crate::format::resolve_column_values(&array, &format.renaming)
+            .map_err(GgsqlError::ValidationError)?;
+        let text = resolved
+            .remove(0)
+            .unwrap_or_else(|| value_to_string(&array, 0));
+        *frame = frame.with_column(column, Arc::new(StringArray::from(vec![text])) as ArrayRef)?;
+    }
+    Ok(())
 }
 
 /// Compute one `SUMMARISE` operation over a column. With `drop_nulls`, nulls
@@ -484,8 +519,13 @@ mod tests {
         .unwrap();
         let rows = body_rows(&[&[], &[], &[]]);
 
-        let computed =
-            compute_summaries(&df, &rows, &[summary("mean", SummaryScope::Grand, &["x"])]).unwrap();
+        let computed = compute_summaries(
+            &df,
+            &rows,
+            &[summary("mean", SummaryScope::Grand, &["x"])],
+            &HashMap::new(),
+        )
+        .unwrap();
 
         assert_eq!(computed.len(), 1);
         let (key, rows) = &computed[0];
@@ -505,8 +545,13 @@ mod tests {
         // Two nested-facet groups, contiguous after setup_rows' reorder.
         let rows = body_rows(&[&[2, 0], &[2, 0], &[2, 1], &[2, 1]]);
 
-        let computed =
-            compute_summaries(&df, &rows, &[summary("mean", SummaryScope::Group, &["x"])]).unwrap();
+        let computed = compute_summaries(
+            &df,
+            &rows,
+            &[summary("mean", SummaryScope::Group, &["x"])],
+            &HashMap::new(),
+        )
+        .unwrap();
 
         assert_eq!(computed.len(), 2);
         assert_eq!(computed[0].0, Some(vec![2, 0]));
@@ -531,7 +576,7 @@ mod tests {
         };
         let below = summary("median", SummaryScope::Group, &["x"]);
 
-        let computed = compute_summaries(&df, &rows, &[below, above]).unwrap();
+        let computed = compute_summaries(&df, &rows, &[below, above], &HashMap::new()).unwrap();
 
         let order: Vec<(Vec<usize>, &str, bool)> = computed
             .iter()
@@ -566,7 +611,7 @@ mod tests {
             ..summary("mean", SummaryScope::Grand, &["x"])
         };
 
-        let computed = compute_summaries(&df, &rows, &[labelled]).unwrap();
+        let computed = compute_summaries(&df, &rows, &[labelled], &HashMap::new()).unwrap();
 
         assert_eq!(computed[0].1[0].label, "Average");
     }
@@ -579,8 +624,13 @@ mod tests {
         .unwrap();
         let rows = body_rows(&[&[], &[]]);
 
-        let computed =
-            compute_summaries(&df, &rows, &[summary("mean", SummaryScope::Group, &["x"])]).unwrap();
+        let computed = compute_summaries(
+            &df,
+            &rows,
+            &[summary("mean", SummaryScope::Group, &["x"])],
+            &HashMap::new(),
+        )
+        .unwrap();
 
         assert_eq!(computed.len(), 1);
         assert_eq!(computed[0].0, Some(vec![]));
@@ -604,6 +654,7 @@ mod tests {
             &df,
             &rows,
             &[summary("mean", SummaryScope::Grand, &["x"]), drop],
+            &HashMap::new(),
         )
         .unwrap();
 
@@ -621,6 +672,91 @@ mod tests {
             settings: Parameters::new(),
             renaming: Default::default(),
         }
+    }
+
+    fn renaming_format(renaming: zygos::LabelSpec) -> Format {
+        Format {
+            columns: Vec::new(),
+            wildcard: false,
+            target: None,
+            settings: Parameters::new(),
+            renaming,
+        }
+    }
+
+    #[test]
+    fn a_columns_format_formats_its_summary_value() {
+        let df = crate::df! {
+            "x" => vec![1.0, 2.0],
+        }
+        .unwrap();
+        let rows = body_rows(&[&[], &[]]);
+        let mut renaming = zygos::LabelSpec::new();
+        renaming.set_template("${:num %.2f}");
+        let formats = HashMap::from([("x".to_string(), renaming_format(renaming))]);
+
+        let computed = compute_summaries(
+            &df,
+            &rows,
+            &[summary("mean", SummaryScope::Grand, &["x"])],
+            &formats,
+        )
+        .unwrap();
+
+        assert_eq!(
+            column_to_strings(computed[0].1[0].frame.column("x").unwrap()),
+            vec!["$1.50"]
+        );
+    }
+
+    #[test]
+    fn a_rename_applies_to_a_summary_value() {
+        let df = crate::df! {
+            "x" => vec![0.0, 0.0],
+        }
+        .unwrap();
+        let rows = body_rows(&[&[], &[]]);
+        let mut renaming = zygos::LabelSpec::new();
+        renaming.rename(zygos::Value::String("0".into()), "-");
+        let formats = HashMap::from([("x".to_string(), renaming_format(renaming))]);
+
+        let computed = compute_summaries(
+            &df,
+            &rows,
+            &[summary("mean", SummaryScope::Grand, &["x"])],
+            &formats,
+        )
+        .unwrap();
+
+        assert_eq!(
+            column_to_strings(computed[0].1[0].frame.column("x").unwrap()),
+            vec!["-"]
+        );
+    }
+
+    #[test]
+    fn a_renaming_formats_a_count_of_a_non_numeric_column() {
+        let df = crate::df! {
+            "text" => vec!["a", "b"],
+        }
+        .unwrap();
+        let rows = body_rows(&[&[], &[]]);
+        let mut renaming = zygos::LabelSpec::new();
+        renaming.set_template("[{}]");
+        let formats = HashMap::from([("text".to_string(), renaming_format(renaming))]);
+
+        let computed = compute_summaries(
+            &df,
+            &rows,
+            &[summary("count", SummaryScope::Grand, &["text"])],
+            &formats,
+        )
+        .unwrap();
+
+        assert_eq!(
+            column_to_strings(computed[0].1[0].frame.column("text").unwrap()),
+            vec!["[2]"]
+        );
     }
 
     #[test]
@@ -699,7 +835,12 @@ mod tests {
         .unwrap();
         let rows = body_rows(&[&[]]);
 
-        let result = compute_summaries(&df, &rows, &[summary("mean", SummaryScope::Grand, &["y"])]);
+        let result = compute_summaries(
+            &df,
+            &rows,
+            &[summary("mean", SummaryScope::Grand, &["y"])],
+            &HashMap::new(),
+        );
         assert!(result.is_err());
     }
 }

@@ -88,7 +88,7 @@ pub fn resolve_table_with_reader(query: &str, reader: &dyn Reader) -> Result<Res
         ));
     }
     // Summaries compute on the raw values, before FORMAT stringifies them.
-    let computed = compute_summaries(&df, &rows, &table.summaries)?;
+    let computed = compute_summaries(&df, &rows, &table.summaries, &formats)?;
     let df = apply_formats(&df, &formats)?;
     // A separated facet collapses to one variable once its labels are
     // formatted; everything downstream sees a single-level facet.

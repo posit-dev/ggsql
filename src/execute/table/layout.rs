@@ -554,7 +554,7 @@ mod tests {
         let formats = setup_formats(&df, &table.formats, &spans)?;
         setup_summaries(&mut df, &formats, &table.summaries)?;
         let columns = setup_columns(&df, &spans, &labels, &formats, facet);
-        let computed = compute_summaries(&df, &rows, &table.summaries)?;
+        let computed = compute_summaries(&df, &rows, &table.summaries, &formats)?;
         let df = apply_formats(&df, &formats)?;
         build_cells(&df, columns, rows, &spans, &titles, facet, &computed)
     }
