@@ -619,8 +619,7 @@ mod tests {
             wildcard: false,
             target: Some(ColumnSection::Stub),
             settings: Parameters::new(),
-            value_mapping: None,
-            value_template: None,
+            renaming: Default::default(),
         }
     }
 
