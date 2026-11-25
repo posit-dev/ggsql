@@ -83,15 +83,14 @@ If not provided explicitly by the user the breaks for the scales will be calcula
 * `linear`:
   - `pretty => true`: Will use Wilkinsons Extended algorithm to attempt to find nice breaks in the given interval close to the number of breaks requested
   - `pretty => false`: Will produce the requested number of evenly spaced breaks within the scale range
-* `log`/`log2`/`ln`:
-  - `pretty => true`: Will use the 1-2-5 pattern and thin down to approximately the requested number of breaks
-  - `pretty => false`: Breaks will be exclusively at the power of the base (e.g. 1, 10, 100, 1000 for log10)
-* `exp10`/`exp2`/`exp`: Same logic as the log breaks but in the inverse direction
-* `sqrt`/`square`: Like `linear` but the range is first converted to sqrt space and the breaks are then converted back
-* `asinh`/`pseudo_log`/`pseudo_log2`/`pseudo_ln`: Like `log` but includes zero and negates the breaks for the negative part
+* `log`/`log2`/`ln`: Uses the 1-2-5 pattern on every power of the base (e.g. 1, 2, 5, 10, 20, 50 for log10), adding 3 and 7 on narrow ranges when many breaks are requested and keeping only the powers on very wide ranges, where powers are skipped to stay near the requested number of breaks. Multipliers above the base are dropped, so `log2` breaks are powers of 2. The `pretty` setting has no effect
+* `exp10`/`exp2`/`exp`: Like `linear`, on the exponents
+* `sqrt`: Like `linear` but the range is first converted to sqrt space and the breaks are then converted back
+* `square`: Like `linear`
+* `asinh`/`pseudo_log`/`pseudo_log2`/`pseudo_ln`: Like `log` (in base 10 for `asinh`, in their own base for the others) but includes zero and negates the breaks for the negative part
 * `integer`: Like `linear` except disallowing breaks at fractional parts
 * `date`/`datetime`/`time`:
-  - `breaks => <interval>`: If breaks are given as an interval (e.g. `week`, `30 seconds` or `5 years`) then the breaks will get that spacing aligned at the interval boundary (Jan 1 for years, etc). This ignores the `pretty` setting
+  - `breaks => <interval>`: If breaks are given as an interval (e.g. `week`, `30 seconds` or `5 years`) then the breaks will get that spacing aligned to a calendar grid of that size (Jan 1 for years, Mondays for weeks, and e.g. January/April/July/October for `3 months` or years divisible by 5 for `5 years`). This ignores the `pretty` setting
   - `pretty => true`: An appropriate interval is chosen that approximates the requested number of breaks and then used as above
   - `pretty => false`: Linear spacing in integer space as close to the requested number of breaks
 
@@ -102,13 +101,13 @@ Where `breaks => 5` asks for about five breaks across the whole scale, `minor_br
 
 If not given, the transformation picks the count:
 
-* `linear`/`integer`/`sqrt`/`square`: one minor break per interval, i.e. at the midpoint
-* `log`/`log2`/`ln`/`exp10`/`exp2`/`exp`/`asinh`/`pseudo_log`/`pseudo_log2`/`pseudo_ln`: eight per interval, giving the familiar 2-9 pattern between powers
-* `date`/`datetime`/`time`: three per interval
+* `linear`/`integer`/`sqrt`/`square`/`exp10`/`exp2`/`exp`: one minor break per interval, i.e. at the midpoint
+* `log`/`log2`/`ln`/`asinh`/`pseudo_log`/`pseudo_log2`/`pseudo_ln`: the whole-number multiples between powers of the base, giving the familiar 2-9 pattern for base 10 (and the geometric midpoint for base 2)
+* `date`/`datetime`/`time`: when the breaks step by a calendar interval (chosen automatically or given as an interval), the next calendar unit down — quarters under years, months under quarters, weeks under months, days under weeks, and so on — while a multiple of a unit divides within it (months under `2 months`). Otherwise three per interval
 
 Automatically derived minor breaks are always placed relative to the breaks, so changing `breaks` moves them too. Set them explicitly to break that link:
 
-* `minor_breaks => <number>`: that many evenly spaced minor breaks inside every interval. `0` removes them entirely
+* `minor_breaks => <number>`: that many evenly spaced minor breaks inside every interval. `0` removes them entirely. The log-family transforms keep their whole-number multiples for any other number
 * `minor_breaks => (…)`: an array of exact positions. Values outside the scale range are dropped
 * `minor_breaks => <interval>`: for `date`/`datetime`/`time` only, an interval (e.g. `week` or `6 hours`) aligned at the interval boundary, exactly as `breaks` treats an interval
 
@@ -162,7 +161,7 @@ SCALE x
 ## Settings
 The following settings are recognised by continuous scales:
 
-* `expand` (only for `x`/`y`): Either a scalar number or 2-element array of numbers (values must be >= 0). Sets the expansion of the scale to either side of the range. If a scalar it gives the multiplicative expansion. If an array the first element is a multiplication factor and the second element is an additive constant. Defaults to `0.05` (5 %). Expansion is only applied to values that are not explicitly given by the user, i.e. if setting the range as `SCALE x FROM (0, null)` expansion will only be applied to the upper range.
+* `expand` (only for `x`/`y`): Either a scalar number or 2-element array of numbers (values must be >= 0). Sets the expansion of the scale to either side of the range. If a scalar it gives the multiplicative expansion. If an array the first element is a multiplication factor and the second element is an additive constant. Defaults to `0.05` (5 %). Expansion is only applied to values that are not explicitly given by the user, i.e. if setting the range as `SCALE x FROM (0, null)` expansion will only be applied to the upper range. Expansion is applied in the transformed space of the scale, so on a transformed scale both parts are measured in transformed units: on a `log` scale a factor of `0.05` pads by 5 % of the visible decades and an additive `1` pads by one decade.
 * `oob`: How should values outside of the scale input range be treated. One of `'keep'` (keep the values as-is), `'censor'` (set to `null`), or `'squish'` (set to the nearest values within the range). Default for `x`/`y` is `'keep'`, for the remaining it is `'censor'`.
 * `breaks`: Either a scalar (whole number >= 1) as described in [the section on breaks](#breaks), or an array of values to place breaks at. Defaults to `5`.
 * `minor_breaks`: Placement of the minor breaks that fall between the breaks, as described in [the section on minor breaks](#minor-breaks). Either a scalar (whole number >= 0) giving the number of minor breaks *per interval between two breaks*, an array of values to place them at, or (for temporal transformations) an interval. Use `minor_breaks => 0` to remove them. Defaults to a value chosen by the transformation.

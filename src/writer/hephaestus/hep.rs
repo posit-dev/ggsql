@@ -196,10 +196,6 @@ fn describe(problems: &[UnsupportedItem]) -> Vec<String> {
     problems
         .iter()
         .map(|problem| match problem {
-            UnsupportedItem::CustomFormatter { scale } => format!(
-                "the {scale} scale's tick labels are computed rather than listed, so a \
-                 consumer cannot reproduce them"
-            ),
             UnsupportedItem::UnnameableGeom { patch, index } => format!(
                 "layer {} of panel {patch:?} is a mark the document cannot name, so nothing \
                  records how to draw it again",
@@ -299,8 +295,9 @@ mod option_tests {
     #[test]
     fn a_problem_is_reported_without_naming_the_renderer() {
         let problems = [
-            UnsupportedItem::CustomFormatter {
-                scale: "pos1".into(),
+            UnsupportedItem::UnembeddableImage {
+                patch: "panel".into(),
+                name: "logo".into(),
             },
             UnsupportedItem::UnnameableGeom {
                 patch: "panel".into(),

@@ -915,8 +915,7 @@ mod tests {
                 wildcard: false,
                 target: Some(ColumnSection::Stub),
                 settings: Parameters::new(),
-                value_mapping: None,
-                value_template: None,
+                renaming: zygos::LabelSpec::new(),
             },
         )]);
 
@@ -1165,16 +1164,15 @@ mod tests {
         }
         .unwrap();
         let mut table = Table::new();
+        let mut renaming = zygos::LabelSpec::new();
+        renaming.rename(zygos::Value::String("0".into()), "-");
+        renaming.set_template("${:num %.2f}");
         table.formats = vec![crate::Format {
             columns: vec!["price".to_string()],
             wildcard: false,
             target: None,
             settings: Parameters::new(),
-            value_mapping: Some(std::collections::HashMap::from([(
-                "0".to_string(),
-                Some("-".to_string()),
-            )])),
-            value_template: Some("${:num %.2f}".to_string()),
+            renaming,
         }];
 
         let cells = resolve_cells(&frame, &table).unwrap();
