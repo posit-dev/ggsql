@@ -174,10 +174,34 @@ pub enum SummaryScope {
 
 /// Operations a `SUMMARISE` clause accepts: the plot aggregate vocabulary
 /// (`AGG_NAMES`) minus the order-dependent positional ones (`first`, `last`,
-/// `diff`), which need row-order machinery tables don't have.
+/// `diff`), which need row-order machinery tables don't have, plus `se` and
+/// the type-free tallies `n_distinct` and `n_missing`.
 pub const SUMMARY_OPERATIONS: &[&str] = &[
-    "count", "sum", "prod", "min", "max", "range", "mid", "mean", "geomean", "harmean", "rms",
-    "median", "sdev", "var", "iqr", "p05", "p10", "p25", "p50", "p75", "p90", "p95",
+    "count",
+    "n_distinct",
+    "n_missing",
+    "sum",
+    "prod",
+    "min",
+    "max",
+    "range",
+    "mid",
+    "mean",
+    "geomean",
+    "harmean",
+    "rms",
+    "median",
+    "sdev",
+    "se",
+    "var",
+    "iqr",
+    "p05",
+    "p10",
+    "p25",
+    "p50",
+    "p75",
+    "p90",
+    "p95",
 ];
 
 /// `SETTING` parameters `SUMMARISE` accepts.

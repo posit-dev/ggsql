@@ -2,10 +2,10 @@
 //! data and prepares the frame for summary rows, `compute_summaries` runs
 //! the aggregate operations on it.
 //!
-//! All of `SUMMARY_OPERATIONS` are folds over a column's values except
-//! `count`, which is type-free and counts rows or non-null values.
+//! All of `SUMMARY_OPERATIONS` are folds over a column's numeric values
+//! except the type-free tallies `count`, `n_distinct` and `n_missing`.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::ops::Range;
 use std::sync::Arc;
 
@@ -358,15 +358,21 @@ fn format_summary_frame(
 /// are ignored; otherwise a single null makes the result `None` (NULL), as
 /// does an empty input. Matching on `operation` is case-insensitive.
 pub fn summary_stat(operation: &str, array: &ArrayRef, drop_nulls: bool) -> Result<Option<f64>> {
-    // `count` is type-free: rows when nulls propagate, non-null values when
-    // dropped. Unlike the numeric operations, nulls never make it NULL.
-    if operation.eq_ignore_ascii_case("count") {
-        let count = if drop_nulls {
-            array.len() - array.logical_null_count()
-        } else {
-            array.len()
-        };
-        return Ok(Some(count as f64));
+    // The type-free tallies bypass the numeric fold: `count` counts rows or
+    // non-null values, `n_missing` measures nulls so never goes NULL itself.
+    let op = operation.to_ascii_lowercase();
+    match op.as_str() {
+        "count" => {
+            let count = if drop_nulls {
+                array.len() - array.logical_null_count()
+            } else {
+                array.len()
+            };
+            return Ok(Some(count as f64));
+        }
+        "n_missing" => return Ok(Some(array.logical_null_count() as f64)),
+        "n_distinct" => return n_distinct(array, drop_nulls),
+        _ => {}
     }
     let values = numeric_values(array, operation, drop_nulls)?;
     let Some(values) = values else {
@@ -374,7 +380,7 @@ pub fn summary_stat(operation: &str, array: &ArrayRef, drop_nulls: bool) -> Resu
     };
     let v = &values;
     let n = v.len() as f64;
-    let result = match operation.to_ascii_lowercase().as_str() {
+    let result = match op.as_str() {
         "sum" => v.iter().sum(),
         "prod" => v.iter().product(),
         "min" => min(v),
@@ -386,6 +392,7 @@ pub fn summary_stat(operation: &str, array: &ArrayRef, drop_nulls: bool) -> Resu
         "harmean" => n / v.iter().map(|x| 1.0 / x).sum::<f64>(),
         "rms" => (v.iter().map(|x| x * x).sum::<f64>() / n).sqrt(),
         "sdev" => variance(v).sqrt(),
+        "se" => variance(v).sqrt() / n.sqrt(),
         "var" => variance(v),
         "iqr" => quantile(values.clone(), 0.75) - quantile(values.clone(), 0.25),
         "median" | "p50" => quantile(values.clone(), 0.5),
@@ -402,6 +409,31 @@ pub fn summary_stat(operation: &str, array: &ArrayRef, drop_nulls: bool) -> Resu
         }
     };
     Ok(Some(result))
+}
+
+/// Count a column's distinct non-null values: NULL when nulls propagate.
+/// Numeric arrays compare on f64 bits so display rounding can't merge two
+/// values; other types compare on their string representation.
+fn n_distinct(array: &ArrayRef, drop_nulls: bool) -> Result<Option<f64>> {
+    if array.logical_null_count() > 0 && !drop_nulls {
+        return Ok(None);
+    }
+    let len = if array.data_type().is_numeric() {
+        let f64s = cast_array(array, &DataType::Float64)?;
+        as_f64(&f64s)?
+            .iter()
+            .flatten()
+            .map(f64::to_bits)
+            .collect::<HashSet<_>>()
+            .len()
+    } else {
+        (0..array.len())
+            .filter(|&idx| !array.is_null(idx))
+            .map(|idx| value_to_string(array, idx))
+            .collect::<HashSet<_>>()
+            .len()
+    };
+    Ok(Some(len as f64))
 }
 
 /// Population variance, matching the plot stats' `VAR_POP`.
@@ -517,6 +549,35 @@ mod tests {
         assert_eq!(summary_stat("count", &array, false).unwrap(), Some(0.0));
     }
 
+    #[test]
+    fn n_missing_counts_nulls() {
+        let array: ArrayRef = Arc::new(Float64Array::from(vec![Some(1.0), None, Some(3.0)]));
+        assert_eq!(summary_stat("n_missing", &array, false).unwrap(), Some(1.0));
+        assert_eq!(summary_stat("n_missing", &array, true).unwrap(), Some(1.0));
+    }
+
+    #[test]
+    fn n_distinct_counts_distinct_values() {
+        let numeric: ArrayRef = Arc::new(Int64Array::from(vec![1, 2, 2, 3, 1]));
+        assert_eq!(
+            summary_stat("n_distinct", &numeric, false).unwrap(),
+            Some(3.0)
+        );
+
+        let strings: ArrayRef = Arc::new(StringArray::from(vec!["a", "b", "a"]));
+        assert_eq!(
+            summary_stat("n_distinct", &strings, false).unwrap(),
+            Some(2.0)
+        );
+    }
+
+    #[test]
+    fn n_distinct_propagates_nulls() {
+        let array: ArrayRef = Arc::new(Float64Array::from(vec![Some(1.0), None, Some(2.0)]));
+        assert_eq!(summary_stat("n_distinct", &array, false).unwrap(), None);
+        assert_eq!(summary_stat("n_distinct", &array, true).unwrap(), Some(2.0));
+    }
+
     fn stat(operation: &str, values: &[f64]) -> f64 {
         let array: ArrayRef = Arc::new(Float64Array::from(values.to_vec()));
         summary_stat(operation, &array, false).unwrap().unwrap()
@@ -536,6 +597,7 @@ mod tests {
         assert_eq!(stat("harmean", v), 4.0 / (1.0 + 0.5 + 1.0 / 3.0 + 0.25));
         assert_eq!(stat("rms", v), ((1.0 + 4.0 + 9.0 + 16.0) / 4.0_f64).sqrt());
         assert_eq!(stat("sdev", v), 1.25_f64.sqrt());
+        assert_eq!(stat("se", v), 1.25_f64.sqrt() / 2.0);
         assert_eq!(stat("var", v), 1.25);
         assert_eq!(stat("iqr", v), 1.5);
         assert_eq!(stat("median", v), 2.5);
