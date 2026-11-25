@@ -60,10 +60,10 @@ FACET sex
 |        | Chinstrap | Dream     |     46.5 |     17.9 |         192 |      3500 | 2007 |
 |        | Gentoo    | Biscoe    |     46.1 |     13.2 |         211 |      4500 | 2007 |
 | male   | Gentoo    | Biscoe    |       50 |     16.3 |         230 |      5700 | 2007 |
-|        | Adelie    | Dream     |     37.2 |     18.1 |         178 |      3900 | 2007 |
-|        | Chinstrap | Dream     |       50 |     19.5 |         196 |      3900 | 2007 |
 |        | Adelie    | Torgersen |     39.1 |     18.7 |         181 |      3750 | 2007 |
 |        | Adelie    | Biscoe    |     37.7 |     18.7 |         180 |      3600 | 2007 |
+|        | Adelie    | Dream     |     37.2 |     18.1 |         178 |      3900 | 2007 |
+|        | Chinstrap | Dream     |       50 |     19.5 |         196 |      3900 | 2007 |
 | null   | Adelie    | Dream     |     37.5 |     18.9 |         179 |      2975 | 2007 |
 |        | Adelie    | Torgersen |     null |     null |        null |      null | 2007 |
 |        | Gentoo    | Biscoe    |     44.5 |     14.3 |         216 |      4100 | 2007 |
@@ -83,10 +83,10 @@ FACET sex SETTING missing => 'drop'
 |        | Chinstrap | Dream     |     46.5 |     17.9 |         192 |      3500 | 2007 |
 |        | Gentoo    | Biscoe    |     46.1 |     13.2 |         211 |      4500 | 2007 |
 | male   | Gentoo    | Biscoe    |       50 |     16.3 |         230 |      5700 | 2007 |
-|        | Adelie    | Dream     |     37.2 |     18.1 |         178 |      3900 | 2007 |
-|        | Chinstrap | Dream     |       50 |     19.5 |         196 |      3900 | 2007 |
 |        | Adelie    | Torgersen |     39.1 |     18.7 |         181 |      3750 | 2007 |
 |        | Adelie    | Biscoe    |     37.7 |     18.7 |         180 |      3600 | 2007 |
+|        | Adelie    | Dream     |     37.2 |     18.1 |         178 |      3900 | 2007 |
+|        | Chinstrap | Dream     |       50 |     19.5 |         196 |      3900 | 2007 |
 
 Alternatively, missing group variables can be given a proper label using `FORMAT`. Note that `missing => 'drop'` has priority over any relabeling in `FORMAT`.
 
@@ -104,10 +104,10 @@ FORMAT sex RENAMING null => 'unknown'
 |         | Chinstrap | Dream     |     46.5 |     17.9 |         192 |      3500 | 2007 |
 |         | Gentoo    | Biscoe    |     46.1 |     13.2 |         211 |      4500 | 2007 |
 | male    | Gentoo    | Biscoe    |       50 |     16.3 |         230 |      5700 | 2007 |
-|         | Adelie    | Dream     |     37.2 |     18.1 |         178 |      3900 | 2007 |
-|         | Chinstrap | Dream     |       50 |     19.5 |         196 |      3900 | 2007 |
 |         | Adelie    | Torgersen |     39.1 |     18.7 |         181 |      3750 | 2007 |
 |         | Adelie    | Biscoe    |     37.7 |     18.7 |         180 |      3600 | 2007 |
+|         | Adelie    | Dream     |     37.2 |     18.1 |         178 |      3900 | 2007 |
+|         | Chinstrap | Dream     |       50 |     19.5 |         196 |      3900 | 2007 |
 | unknown | Adelie    | Dream     |     37.5 |     18.9 |         179 |      2975 | 2007 |
 |         | Adelie    | Torgersen |     null |     null |        null |      null | 2007 |
 |         | Gentoo    | Biscoe    |     44.5 |     14.3 |         216 |      4100 | 2007 |
@@ -129,10 +129,10 @@ FACET sex SETTING place => 'top'
 | Gentoo    | Biscoe    | 46.1     | 13.2     | 211         | 4500      | 2007 |
 | male      |           |          |          |             |           |      |
 | Gentoo    | Biscoe    | 50       | 16.3     | 230         | 5700      | 2007 |
-| Adelie    | Dream     | 37.2     | 18.1     | 178         | 3900      | 2007 |
-| Chinstrap | Dream     | 50       | 19.5     | 196         | 3900      | 2007 |
 | Adelie    | Torgersen | 39.1     | 18.7     | 181         | 3750      | 2007 |
 | Adelie    | Biscoe    | 37.7     | 18.7     | 180         | 3600      | 2007 |
+| Adelie    | Dream     | 37.2     | 18.1     | 178         | 3900      | 2007 |
+| Chinstrap | Dream     | 50       | 19.5     | 196         | 3900      | 2007 |
 | null      |           |          |          |             |           |      |
 | Adelie    | Dream     | 37.5     | 18.9     | 179         | 2975      | 2007 |
 | Adelie    | Torgersen | null     | null     | null        | null      | 2007 |
@@ -158,8 +158,8 @@ FACET species, island
 | Chinstrap | Dream     |     46.5 |     17.9 |         192 |      3500 | female | 2007 |
 |           |           |       50 |     19.5 |         196 |      3900 | male   | 2007 |
 | Gentoo    | Biscoe    |       50 |     16.3 |         230 |      5700 | male   | 2007 |
-|           |           |     46.1 |     13.2 |         211 |      4500 | female | 2007 |
 |           |           |     44.5 |     14.3 |         216 |      4100 | null   | 2007 |
+|           |           |     46.1 |     13.2 |         211 |      4500 | female | 2007 |
 
 The labels from multiple groups can be collapsed to a single stub column (or single rows) by using the `separator` setting to join the labels. Labels are joined after `FORMAT RENAMING` is applied.
 
@@ -182,8 +182,8 @@ FACET species, island
 | Chinstrap - Dream  |     46.5 |     17.9 |         192 |      3500 | female | 2007 |
 |                    |       50 |     19.5 |         196 |      3900 | male   | 2007 |
 | Gentoo - Biscoe    |       50 |     16.3 |         230 |      5700 | male   | 2007 |
-|                    |     46.1 |     13.2 |         211 |      4500 | female | 2007 |
 |                    |     44.5 |     14.3 |         216 |      4100 | null   | 2007 |
+|                    |     46.1 |     13.2 |         211 |      4500 | female | 2007 |
 
 When group labels are placed in the stub, the labels can be controlled by `LABEL`. In case of `separator`-joined labels, the first variable (`species` in the example) displays the label.
 
@@ -206,5 +206,5 @@ LABEL island => 'Place', species => 'Type'
 | Chinstrap | Dream     |     46.5 |     17.9 |         192 |      3500 | female | 2007 |
 |           |           |       50 |     19.5 |         196 |      3900 | male   | 2007 |
 | Gentoo    | Biscoe    |       50 |     16.3 |         230 |      5700 | male   | 2007 |
-|           |           |     46.1 |     13.2 |         211 |      4500 | female | 2007 |
 |           |           |     44.5 |     14.3 |         216 |      4100 | null   | 2007 |
+|           |           |     46.1 |     13.2 |         211 |      4500 | female | 2007 |
