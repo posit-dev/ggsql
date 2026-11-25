@@ -79,6 +79,32 @@ fn register_builtin_datasets_duckdb(sql: &str, conn: &Connection) -> Result<()> 
 // working for existing callers.
 pub use super::dialects::DuckDbDialect;
 
+/// Build the DuckDB config for a connection URI's query string.
+///
+/// Each `key=value` pair is a DuckDB configuration option, set when the
+/// database is opened (`access_mode=read_only`, `threads=4`, ...). Some
+/// options, `access_mode` among them, cannot be changed once the database is
+/// running, so they have to come in through the URI. DuckDB rejects unknown
+/// keys and invalid values.
+fn duckdb_config(query: &str) -> Result<duckdb::Config> {
+    let mut config = duckdb::Config::default();
+    for segment in query.split('&').filter(|s| !s.is_empty()) {
+        let (key, value) = segment.split_once('=').ok_or_else(|| {
+            GgsqlError::ReaderError(format!(
+                "DuckDB option '{}' in connection URI needs a value (key=value)",
+                segment
+            ))
+        })?;
+        config = config.with(key, value).map_err(|e| {
+            GgsqlError::ReaderError(format!(
+                "Invalid DuckDB option '{}={}' in connection URI: {}",
+                key, value, e
+            ))
+        })?;
+    }
+    Ok(config)
+}
+
 /// DuckDB database reader
 ///
 /// Executes SQL queries against DuckDB databases (in-memory or file-based)
@@ -96,6 +122,9 @@ pub use super::dialects::DuckDbDialect;
 /// // File-based database
 /// let reader = DuckDBReader::from_connection_string("duckdb://data.db")?;
 /// let df = reader.execute_sql("SELECT * FROM sales")?;
+///
+/// // Read-only, so other read-only processes can open the file at the same time
+/// let reader = DuckDBReader::from_connection_string("duckdb://data.db?access_mode=read_only")?;
 /// ```
 pub struct DuckDBReader {
     conn: Connection,
@@ -107,7 +136,9 @@ impl DuckDBReader {
     ///
     /// # Arguments
     ///
-    /// * `uri` - Connection string (e.g., "duckdb://memory" or "duckdb://file.db")
+    /// * `uri` - Connection string (e.g., "duckdb://memory" or "duckdb://file.db"),
+    ///   optionally followed by DuckDB configuration options
+    ///   (e.g., "duckdb://file.db?access_mode=read_only")
     ///
     /// # Returns
     ///
@@ -117,18 +148,21 @@ impl DuckDBReader {
     ///
     /// Returns an error if:
     /// - The connection string format is invalid
+    /// - A configuration option is unknown or invalid
     /// - The database file cannot be opened
     /// - DuckDB initialization fails
     pub fn from_connection_string(uri: &str) -> Result<Self> {
-        let path = uri.strip_prefix("duckdb://").ok_or_else(|| {
+        let rest = uri.strip_prefix("duckdb://").ok_or_else(|| {
             GgsqlError::ReaderError(format!(
                 "DuckDB URI must start with duckdb://, got '{}'",
                 uri
             ))
         })?;
+        let (path, query) = rest.split_once('?').unwrap_or((rest, ""));
+        let config = duckdb_config(query)?;
 
         let conn = if path == "memory" {
-            Connection::open_in_memory().map_err(|e| {
+            Connection::open_in_memory_with_flags(config).map_err(|e| {
                 GgsqlError::ReaderError(format!("Failed to open in-memory DuckDB: {}", e))
             })?
         } else if path.is_empty() {
@@ -136,7 +170,7 @@ impl DuckDBReader {
                 "DuckDB file path cannot be empty".to_string(),
             ));
         } else {
-            Connection::open(path).map_err(|e| {
+            Connection::open_with_flags(path, config).map_err(|e| {
                 GgsqlError::ReaderError(format!("Failed to open DuckDB file '{}': {}", path, e))
             })?
         };
@@ -348,6 +382,70 @@ mod tests {
     fn test_create_in_memory() {
         let reader = DuckDBReader::from_connection_string("duckdb://memory");
         assert!(reader.is_ok());
+    }
+
+    /// A DuckDB file holding one table, `t`, with one row.
+    fn create_test_db(dir: &std::path::Path) -> String {
+        let path = dir.join("test.duckdb").to_str().unwrap().to_string();
+        let conn = Connection::open(&path).unwrap();
+        conn.execute("CREATE TABLE t AS SELECT 42 AS x", params![])
+            .unwrap();
+        path
+    }
+
+    #[test]
+    fn test_access_mode_read_only_opens_file_read_only() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = create_test_db(dir.path());
+
+        let reader =
+            DuckDBReader::from_connection_string(&format!("duckdb://{path}?access_mode=read_only"))
+                .unwrap();
+
+        // Reads work, and the query string is not part of the file path.
+        let df = reader.execute_sql("SELECT x FROM t").unwrap();
+        assert_eq!(df.height(), 1);
+        assert!(!std::path::Path::new(&format!("{path}?access_mode=read_only")).exists());
+
+        // Writes are refused.
+        let err = reader
+            .connection()
+            .execute("CREATE TABLE u (y INTEGER)", params![])
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("read-only"), "got: {err}");
+    }
+
+    #[test]
+    fn test_read_only_readers_share_a_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = create_test_db(dir.path());
+        let uri = format!("duckdb://{path}?access_mode=read_only");
+
+        let first = DuckDBReader::from_connection_string(&uri).unwrap();
+        let second = DuckDBReader::from_connection_string(&uri).unwrap();
+
+        assert_eq!(first.execute_sql("SELECT x FROM t").unwrap().height(), 1);
+        assert_eq!(second.execute_sql("SELECT x FROM t").unwrap().height(), 1);
+    }
+
+    #[test]
+    fn test_unknown_duckdb_option_is_an_error() {
+        let err = DuckDBReader::from_connection_string("duckdb://memory?no_such_option=1")
+            .err()
+            .unwrap()
+            .to_string();
+        // DuckDB rejects unknown keys when the database opens.
+        assert!(err.contains("no_such_option"), "got: {err}");
+    }
+
+    #[test]
+    fn test_duckdb_option_without_value_is_an_error() {
+        let err = DuckDBReader::from_connection_string("duckdb://memory?access_mode")
+            .err()
+            .unwrap()
+            .to_string();
+        assert!(err.contains("needs a value"), "got: {err}");
     }
 
     #[test]
