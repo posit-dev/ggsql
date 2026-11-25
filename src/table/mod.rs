@@ -21,7 +21,7 @@ pub(crate) use layout::{
 pub use layout::{TableCell, TableCellKind, TableClass, TableColumn, TableLayout, TableRow};
 pub use spanner::Spanner;
 pub(crate) use spanner::{create_spanners, reorder_table_columns};
-pub(crate) use summary::{parse_template, TemplateSegment};
+pub(crate) use summary::{parse_template, BinOp, StatExpr, TemplateSegment};
 pub use summary::{Summary, SummaryOperation, SummaryScope, SUMMARY_OPERATIONS};
 
 use serde::{Deserialize, Serialize};

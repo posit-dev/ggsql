@@ -16,8 +16,8 @@ use crate::array_util::{as_f64, cast_array, column_to_strings, value_to_string};
 use crate::naming;
 use crate::params::ParameterValue;
 use crate::table::{
-    parse_template, Format, Summary, SummaryOperation, SummaryScope, TableCell, TableClass,
-    TableColumn, TableRow, TemplateSegment,
+    parse_template, BinOp, Format, StatExpr, Summary, SummaryOperation, SummaryScope, TableCell,
+    TableClass, TableColumn, TableRow, TemplateSegment,
 };
 use crate::{ColumnSection, DataFrame, GgsqlError, Result};
 
@@ -301,20 +301,22 @@ fn summary_frame(
 }
 
 /// Render a template against one column's slice: literals verbatim, each
-/// placeholder's stat computed over the slice and rendered through its
-/// pre-compiled zygos template. A NULL stat renders as the literal "null",
-/// like the body cells.
+/// placeholder's expression evaluated over the slice and rendered through its
+/// pre-compiled zygos template. A NULL expression renders as the literal
+/// "null", like the body cells. Stats are memoized in `cache` across all of
+/// the template's placeholders, so a repeated stat computes once per cell.
 fn render_template(
     segments: &[TemplateSegment],
     slice: &ArrayRef,
     drop_nulls: bool,
 ) -> Result<String> {
+    let mut cache = HashMap::new();
     let mut text = String::new();
     for segment in segments {
         match segment {
             TemplateSegment::Literal(literal) => text.push_str(literal),
-            TemplateSegment::Stat { name, template } => {
-                match summary_stat(name, slice, drop_nulls)? {
+            TemplateSegment::Stat { expr, template } => {
+                match eval_stat_expr(expr, slice, drop_nulls, &mut cache)? {
                     Some(value) => text.push_str(
                         &template
                             .format(&zygos::Value::Number(value), None)
@@ -326,6 +328,44 @@ fn render_template(
         }
     }
     Ok(text)
+}
+
+/// Evaluate a template placeholder's expression over one column's slice:
+/// stat leaves via `summary_stat`, combined with the operators. A NULL leaf
+/// makes the whole expression NULL.
+fn eval_stat_expr(
+    expr: &StatExpr,
+    slice: &ArrayRef,
+    drop_nulls: bool,
+    cache: &mut HashMap<String, Option<f64>>,
+) -> Result<Option<f64>> {
+    match expr {
+        StatExpr::Stat(name) => {
+            let key = name.to_ascii_lowercase();
+            if let Some(value) = cache.get(&key) {
+                return Ok(*value);
+            }
+            let value = summary_stat(name, slice, drop_nulls)?;
+            cache.insert(key, value);
+            Ok(value)
+        }
+        StatExpr::Number(n) => Ok(Some(*n)),
+        StatExpr::Neg(inner) => Ok(eval_stat_expr(inner, slice, drop_nulls, cache)?.map(|v| -v)),
+        StatExpr::Binary(op, lhs, rhs) => {
+            let (Some(lhs), Some(rhs)) = (
+                eval_stat_expr(lhs, slice, drop_nulls, cache)?,
+                eval_stat_expr(rhs, slice, drop_nulls, cache)?,
+            ) else {
+                return Ok(None);
+            };
+            Ok(Some(match op {
+                BinOp::Add => lhs + rhs,
+                BinOp::Sub => lhs - rhs,
+                BinOp::Mul => lhs * rhs,
+                BinOp::Div => lhs / rhs,
+            }))
+        }
+    }
 }
 
 /// Apply each summarised column's `FORMAT` renaming to a one-row summary
@@ -576,6 +616,28 @@ mod tests {
         let array: ArrayRef = Arc::new(Float64Array::from(vec![Some(1.0), None, Some(2.0)]));
         assert_eq!(summary_stat("n_distinct", &array, false).unwrap(), None);
         assert_eq!(summary_stat("n_distinct", &array, true).unwrap(), Some(2.0));
+    }
+
+    fn eval(template: &str, array: &ArrayRef, drop_nulls: bool) -> String {
+        let segments = parse_template(template).unwrap();
+        render_template(&segments, array, drop_nulls).unwrap()
+    }
+
+    #[test]
+    fn template_arithmetic_combines_stats() {
+        let array: ArrayRef = Arc::new(Float64Array::from(vec![1.0, 2.0, 3.0]));
+        assert_eq!(eval("{mean+10}", &array, false), "12");
+        assert_eq!(eval("{(3-mean)*2}", &array, false), "2");
+        // A repeated stat computes once and combines cleanly.
+        assert_eq!(eval("{mean/mean}", &array, false), "1");
+        assert_eq!(eval("{-mean}", &array, false), "−2");
+    }
+
+    #[test]
+    fn template_arithmetic_propagates_nulls() {
+        let array: ArrayRef = Arc::new(Float64Array::from(vec![Some(1.0), Some(2.0), None]));
+        assert_eq!(eval("{mean-sdev}", &array, false), "null");
+        assert_eq!(eval("{mean-sdev:%.1f}", &array, true), "1.0");
     }
 
     fn stat(operation: &str, values: &[f64]) -> f64 {

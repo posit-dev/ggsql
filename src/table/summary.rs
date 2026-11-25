@@ -44,7 +44,7 @@ impl std::fmt::Display for SummaryOperation {
 
 impl SummaryOperation {
     /// The default row label: a `Stat`'s name; a `Template`'s literal text
-    /// with each placeholder reduced to its bare operation name
+    /// with each placeholder reduced to its bare expression
     /// (`{mean:num %.2f} +/- {sdev}` becomes `mean +/- sdev`).
     pub(crate) fn as_label(&self) -> String {
         match self {
@@ -55,8 +55,8 @@ impl SummaryOperation {
                 Ok(segments) => segments
                     .iter()
                     .map(|segment| match segment {
-                        TemplateSegment::Literal(text) => text.as_str(),
-                        TemplateSegment::Stat { name, .. } => name.as_str(),
+                        TemplateSegment::Literal(text) => text.clone(),
+                        TemplateSegment::Stat { expr, .. } => expr.to_string(),
                     })
                     .collect(),
                 Err(_) => template.clone(),
@@ -84,9 +84,11 @@ impl SummaryOperation {
             SummaryOperation::Stat(_) => Ok(()),
             SummaryOperation::Template(template) => {
                 for segment in parse_template(template)? {
-                    if let TemplateSegment::Stat { name, .. } = segment {
-                        if !known(&name) {
-                            return Err(unknown(&name));
+                    if let TemplateSegment::Stat { expr, .. } = segment {
+                        for name in expr.stat_names() {
+                            if !known(name) {
+                                return Err(unknown(name));
+                            }
                         }
                     }
                 }
@@ -96,19 +98,240 @@ impl SummaryOperation {
     }
 }
 
-/// One piece of a `SUMMARISE` template: literal text, or a `{name:spec}`
-/// placeholder naming a stat to evaluate and interpolate.
+/// One piece of a `SUMMARISE` template: literal text, or a `{expr:spec}`
+/// placeholder whose expression is evaluated and interpolated.
 #[derive(Debug, Clone)]
 pub(crate) enum TemplateSegment {
     /// Text copied to the cell verbatim.
     Literal(String),
-    /// A `{name}` or `{name:spec}` placeholder, its zygos template
+    /// A `{expr}` or `{expr:spec}` placeholder, its zygos template
     /// pre-compiled: `{:spec}`, or `{}` without a spec. The `%`-sugar is
     /// already expanded (`{sd:%.1f}` compiles `{:num %.1f}`).
     Stat {
-        name: String,
+        expr: StatExpr,
         template: zygos::Template,
     },
+}
+
+/// An arithmetic expression over `SUMMARISE` operations, as written inside a
+/// template placeholder: `mean`, `mean-sdev`, `(mean-sdev)*2`.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum StatExpr {
+    /// An operation name, resolved against the column at execution time.
+    Stat(String),
+    /// A numeric literal.
+    Number(f64),
+    /// `lhs op rhs`.
+    Binary(BinOp, Box<StatExpr>, Box<StatExpr>),
+    /// `-expr`.
+    Neg(Box<StatExpr>),
+}
+
+/// The arithmetic operators a [`StatExpr`] combines values with.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) enum BinOp {
+    Add,
+    Sub,
+    Mul,
+    Div,
+}
+
+impl StatExpr {
+    /// Every operation name the expression references.
+    pub(crate) fn stat_names(&self) -> Vec<&str> {
+        fn collect<'a>(expr: &'a StatExpr, names: &mut Vec<&'a str>) {
+            match expr {
+                StatExpr::Stat(name) => names.push(name),
+                StatExpr::Number(_) => {}
+                StatExpr::Binary(_, lhs, rhs) => {
+                    collect(lhs, names);
+                    collect(rhs, names);
+                }
+                StatExpr::Neg(inner) => collect(inner, names),
+            }
+        }
+        let mut names = Vec::new();
+        collect(self, &mut names);
+        names
+    }
+}
+
+impl BinOp {
+    fn precedence(self) -> u8 {
+        match self {
+            BinOp::Add | BinOp::Sub => 0,
+            BinOp::Mul | BinOp::Div => 1,
+        }
+    }
+}
+
+impl StatExpr {
+    /// Write the expression, parenthesizing a child binary only where its
+    /// grouping differs from what operator precedence would imply.
+    fn fmt_with(
+        &self,
+        f: &mut std::fmt::Formatter<'_>,
+        parent: Option<(BinOp, bool)>,
+    ) -> std::fmt::Result {
+        if let (Some((parent_op, is_rhs)), StatExpr::Binary(op, ..)) = (parent, self) {
+            let parenthesized = op.precedence() < parent_op.precedence()
+                || (is_rhs
+                    && op.precedence() == parent_op.precedence()
+                    && matches!(parent_op, BinOp::Sub | BinOp::Div));
+            if parenthesized {
+                write!(f, "(")?;
+            }
+            self.fmt_with(f, None)?;
+            return if parenthesized {
+                write!(f, ")")
+            } else {
+                Ok(())
+            };
+        }
+        match self {
+            StatExpr::Stat(name) => write!(f, "{name}"),
+            StatExpr::Number(n) => write!(f, "{n}"),
+            StatExpr::Binary(op, lhs, rhs) => {
+                let symbol = match op {
+                    BinOp::Add => "+",
+                    BinOp::Sub => "-",
+                    BinOp::Mul => "*",
+                    BinOp::Div => "/",
+                };
+                lhs.fmt_with(f, Some((*op, false)))?;
+                write!(f, " {symbol} ")?;
+                rhs.fmt_with(f, Some((*op, true)))
+            }
+            StatExpr::Neg(inner) => {
+                write!(f, "-")?;
+                match inner.as_ref() {
+                    StatExpr::Binary(..) | StatExpr::Neg(_) => write!(f, "({inner})"),
+                    _ => inner.fmt_with(f, None),
+                }
+            }
+        }
+    }
+}
+
+impl std::fmt::Display for StatExpr {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.fmt_with(f, None)
+    }
+}
+
+/// Parse a template placeholder's arithmetic expression: operation names and
+/// numbers combined with `+ - * /`, parentheses and unary minus.
+pub(crate) fn parse_stat_expr(source: &str) -> Result<StatExpr, String> {
+    struct Parser<'a> {
+        source: &'a [u8],
+        pos: usize,
+    }
+    impl Parser<'_> {
+        fn peek(&self) -> Option<u8> {
+            self.source.get(self.pos).copied()
+        }
+        fn ws(&mut self) {
+            while matches!(self.peek(), Some(c) if c.is_ascii_whitespace()) {
+                self.pos += 1;
+            }
+        }
+        fn expr(&mut self) -> Result<StatExpr, String> {
+            let mut lhs = self.term()?;
+            loop {
+                self.ws();
+                let op = match self.peek() {
+                    Some(b'+') => BinOp::Add,
+                    Some(b'-') => BinOp::Sub,
+                    _ => return Ok(lhs),
+                };
+                self.pos += 1;
+                lhs = StatExpr::Binary(op, Box::new(lhs), Box::new(self.term()?));
+            }
+        }
+        fn term(&mut self) -> Result<StatExpr, String> {
+            let mut lhs = self.factor()?;
+            loop {
+                self.ws();
+                let op = match self.peek() {
+                    Some(b'*') => BinOp::Mul,
+                    Some(b'/') => BinOp::Div,
+                    _ => return Ok(lhs),
+                };
+                self.pos += 1;
+                lhs = StatExpr::Binary(op, Box::new(lhs), Box::new(self.factor()?));
+            }
+        }
+        fn factor(&mut self) -> Result<StatExpr, String> {
+            self.ws();
+            match self.peek() {
+                Some(b'-') => {
+                    self.pos += 1;
+                    Ok(StatExpr::Neg(Box::new(self.factor()?)))
+                }
+                Some(b'+') => {
+                    self.pos += 1;
+                    self.factor()
+                }
+                Some(b'(') => {
+                    self.pos += 1;
+                    let inner = self.expr()?;
+                    self.ws();
+                    if self.peek() == Some(b')') {
+                        self.pos += 1;
+                        Ok(inner)
+                    } else {
+                        Err("Missing ')'".to_string())
+                    }
+                }
+                Some(c) if c.is_ascii_digit() || c == b'.' => self.number(),
+                Some(c) if c.is_ascii_alphabetic() || c == b'_' => Ok(self.ident()),
+                Some(c) => Err(format!("Unexpected '{}'", c as char)),
+                None => Err("Expected an operation name or number".to_string()),
+            }
+        }
+        fn number(&mut self) -> Result<StatExpr, String> {
+            let start = self.pos;
+            while matches!(self.peek(), Some(c) if c.is_ascii_digit() || c == b'.') {
+                self.pos += 1;
+            }
+            // An exponent is taken only when it has at least one digit, so
+            // `1e` leaves the `e` to error as an unexpected character.
+            if matches!(self.peek(), Some(b'e' | b'E')) {
+                let mut pos = self.pos + 1;
+                if matches!(self.source.get(pos), Some(b'+' | b'-')) {
+                    pos += 1;
+                }
+                if matches!(self.source.get(pos), Some(c) if c.is_ascii_digit()) {
+                    self.pos = pos;
+                    while matches!(self.peek(), Some(c) if c.is_ascii_digit()) {
+                        self.pos += 1;
+                    }
+                }
+            }
+            let text = std::str::from_utf8(&self.source[start..self.pos]).unwrap();
+            text.parse::<f64>()
+                .map(StatExpr::Number)
+                .map_err(|_| format!("Invalid number '{text}'"))
+        }
+        fn ident(&mut self) -> StatExpr {
+            let start = self.pos;
+            while matches!(self.peek(), Some(c) if c.is_ascii_alphanumeric() || c == b'_') {
+                self.pos += 1;
+            }
+            let text = std::str::from_utf8(&self.source[start..self.pos]).unwrap();
+            StatExpr::Stat(text.to_string())
+        }
+    }
+    let mut parser = Parser {
+        source: source.as_bytes(),
+        pos: 0,
+    };
+    let expr = parser.expr()?;
+    parser.ws();
+    match parser.peek() {
+        Some(c) => Err(format!("Unexpected '{}'", c as char)),
+        None => Ok(expr),
+    }
 }
 
 /// Split a template literal into text and placeholder segments. `{` opens a
@@ -149,7 +372,8 @@ pub(crate) fn parse_template(template: &str) -> Result<Vec<TemplateSegment>, Str
             None => "{}".to_string(),
         };
         segments.push(TemplateSegment::Stat {
-            name: name.to_string(),
+            expr: parse_stat_expr(name)
+                .map_err(|err| format!("{err} in SUMMARISE template '{{{placeholder}}}'"))?,
             template: zygos::Template::parse(&source),
         });
     }
@@ -308,6 +532,12 @@ mod tests {
         assert!(SummaryOperation::Template("{mean} +/- {meen}".to_string())
             .validate()
             .is_err());
+        assert!(SummaryOperation::Template("{mean+1.96*se}".to_string())
+            .validate()
+            .is_ok());
+        assert!(SummaryOperation::Template("{mean+meen}".to_string())
+            .validate()
+            .is_err());
     }
 
     #[test]
@@ -320,13 +550,17 @@ mod tests {
             SummaryOperation::Stat("MEAN".to_string()).as_label(),
             "MEAN"
         );
+        assert_eq!(
+            SummaryOperation::Template("{mean-sdev:%.1f}".to_string()).as_label(),
+            "mean - sdev"
+        );
     }
 
     #[test]
     fn parse_template_splits_literals_and_stats() {
         let segments = parse_template("{mean} +/- {sdev:num %.3f} (n={count})").unwrap();
         let stat = |index: usize| match &segments[index] {
-            TemplateSegment::Stat { name, template } => (name.as_str(), template.source()),
+            TemplateSegment::Stat { expr, template } => (expr.to_string(), template.source()),
             TemplateSegment::Literal(_) => panic!("segment {index} is a literal"),
         };
         let literal = |index: usize| match &segments[index] {
@@ -335,11 +569,11 @@ mod tests {
         };
 
         assert_eq!(segments.len(), 6);
-        assert_eq!(stat(0), ("mean", "{}"));
+        assert_eq!(stat(0), ("mean".to_string(), "{}"));
         assert_eq!(literal(1), " +/- ");
-        assert_eq!(stat(2), ("sdev", "{:num %.3f}"));
+        assert_eq!(stat(2), ("sdev".to_string(), "{:num %.3f}"));
         assert_eq!(literal(3), " (n=");
-        assert_eq!(stat(4), ("count", "{}"));
+        assert_eq!(stat(4), ("count".to_string(), "{}"));
         assert_eq!(literal(5), ")");
     }
 
@@ -347,8 +581,8 @@ mod tests {
     fn parse_template_expands_the_printf_sugar() {
         let segments = parse_template("{sd:%.1f}").unwrap();
         match &segments[0] {
-            TemplateSegment::Stat { name, template } => {
-                assert_eq!(name, "sd");
+            TemplateSegment::Stat { expr, template } => {
+                assert_eq!(expr.to_string(), "sd");
                 assert_eq!(template.source(), "{:num %.1f}");
             }
             TemplateSegment::Literal(_) => panic!("expected a stat segment"),
@@ -370,5 +604,90 @@ mod tests {
         assert!(parse_template("{mean").is_err());
         assert!(parse_template("{}").is_err());
         assert!(parse_template("{:num}").is_err());
+    }
+
+    #[test]
+    fn parse_stat_expr_applies_precedence_and_parentheses() {
+        // `*` binds tighter than `-`.
+        assert_eq!(
+            parse_stat_expr("mean-sdev*2").unwrap(),
+            StatExpr::Binary(
+                BinOp::Sub,
+                Box::new(StatExpr::Stat("mean".to_string())),
+                Box::new(StatExpr::Binary(
+                    BinOp::Mul,
+                    Box::new(StatExpr::Stat("sdev".to_string())),
+                    Box::new(StatExpr::Number(2.0)),
+                )),
+            )
+        );
+        assert_eq!(
+            parse_stat_expr("(mean - sdev) * 2").unwrap(),
+            StatExpr::Binary(
+                BinOp::Mul,
+                Box::new(StatExpr::Binary(
+                    BinOp::Sub,
+                    Box::new(StatExpr::Stat("mean".to_string())),
+                    Box::new(StatExpr::Stat("sdev".to_string())),
+                )),
+                Box::new(StatExpr::Number(2.0)),
+            )
+        );
+    }
+
+    #[test]
+    fn parse_stat_expr_handles_unary_minus_and_decimals() {
+        assert_eq!(
+            parse_stat_expr("-mean").unwrap(),
+            StatExpr::Neg(Box::new(StatExpr::Stat("mean".to_string())))
+        );
+        assert_eq!(
+            parse_stat_expr("mean+.5").unwrap(),
+            StatExpr::Binary(
+                BinOp::Add,
+                Box::new(StatExpr::Stat("mean".to_string())),
+                Box::new(StatExpr::Number(0.5)),
+            )
+        );
+    }
+
+    #[test]
+    fn parse_stat_expr_handles_unary_plus_and_scientific_notation() {
+        assert_eq!(
+            parse_stat_expr("+mean").unwrap(),
+            StatExpr::Stat("mean".to_string())
+        );
+        assert_eq!(
+            parse_stat_expr("mean*1.5e-2").unwrap(),
+            StatExpr::Binary(
+                BinOp::Mul,
+                Box::new(StatExpr::Stat("mean".to_string())),
+                Box::new(StatExpr::Number(0.015)),
+            )
+        );
+        assert_eq!(parse_stat_expr("2E3").unwrap(), StatExpr::Number(2000.0));
+        // No digit after `e`: the `e` is not part of the number.
+        assert!(parse_stat_expr("1e").is_err());
+    }
+
+    #[test]
+    fn parse_stat_expr_rejects_malformed_input() {
+        assert!(parse_stat_expr("mean-").is_err());
+        assert!(parse_stat_expr("(mean").is_err());
+        assert!(parse_stat_expr("mean sdev").is_err());
+        assert!(parse_stat_expr("mean % sdev").is_err());
+        assert!(parse_stat_expr("1.2.3").is_err());
+    }
+
+    #[test]
+    fn stat_expr_display_keeps_grouping() {
+        assert_eq!(
+            parse_stat_expr("(mean - sdev) * 2").unwrap().to_string(),
+            "(mean - sdev) * 2"
+        );
+        assert_eq!(
+            parse_stat_expr("mean-sdev*2").unwrap().to_string(),
+            "mean - sdev * 2"
+        );
     }
 }

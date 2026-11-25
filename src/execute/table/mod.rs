@@ -979,6 +979,29 @@ mod integration_tests {
     }
 
     #[test]
+    fn test_tabulate_summarise_template_evaluates_placeholder_arithmetic() {
+        let reader = reader_with_sales();
+        let resolved = resolve_table_with_reader(
+            "TABULATE * FROM sales SUMMARISE '{mean-sdev:%.2f} - {mean+sdev:%.2f}' OF id",
+            &reader,
+        )
+        .unwrap();
+
+        let label = resolved
+            .cells()
+            .iter()
+            .find(|c| c.kind == TableCellKind::SummaryLabel)
+            .unwrap();
+        assert_eq!(label.content, "mean - sdev - mean + sdev");
+        let value = resolved
+            .cells()
+            .iter()
+            .find(|c| c.kind == TableCellKind::SummaryValue && c.left == label.right + 1)
+            .unwrap();
+        assert_eq!(value.content, "1.18 - 2.82");
+    }
+
+    #[test]
     fn test_tabulate_summarise_template_expands_the_printf_sugar() {
         let reader = reader_with_sales();
         let resolved = resolve_table_with_reader(
