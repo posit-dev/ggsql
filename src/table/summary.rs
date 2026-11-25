@@ -43,6 +43,27 @@ impl std::fmt::Display for SummaryOperation {
 }
 
 impl SummaryOperation {
+    /// The default row label: a `Stat`'s name; a `Template`'s literal text
+    /// with each placeholder reduced to its bare operation name
+    /// (`{mean:num %.2f} +/- {sdev}` becomes `mean +/- sdev`).
+    pub(crate) fn as_label(&self) -> String {
+        match self {
+            SummaryOperation::Stat(name) => name.clone(),
+            // A template that reaches here unparseable keeps its raw text;
+            // execution parses (and errors) before building any label.
+            SummaryOperation::Template(template) => match parse_template(template) {
+                Ok(segments) => segments
+                    .iter()
+                    .map(|segment| match segment {
+                        TemplateSegment::Literal(text) => text.as_str(),
+                        TemplateSegment::Stat { name, .. } => name.as_str(),
+                    })
+                    .collect(),
+                Err(_) => template.clone(),
+            },
+        }
+    }
+
     /// Validate against `SUMMARY_OPERATIONS`, case-insensitively: a `Stat`
     /// directly, a `Template`'s placeholders one by one.
     pub fn validate(&self) -> Result<(), String> {
@@ -77,14 +98,17 @@ impl SummaryOperation {
 
 /// One piece of a `SUMMARISE` template: literal text, or a `{name:spec}`
 /// placeholder naming a stat to evaluate and interpolate.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub(crate) enum TemplateSegment {
     /// Text copied to the cell verbatim.
     Literal(String),
-    /// A `{name}` or `{name:spec}` placeholder. `spec` is the zygos label
-    /// spec with the `%`-sugar already expanded (`{sd:%.1f}` stores
-    /// `num %.1f`).
-    Stat { name: String, spec: Option<String> },
+    /// A `{name}` or `{name:spec}` placeholder, its zygos template
+    /// pre-compiled: `{:spec}`, or `{}` without a spec. The `%`-sugar is
+    /// already expanded (`{sd:%.1f}` compiles `{:num %.1f}`).
+    Stat {
+        name: String,
+        template: zygos::Template,
+    },
 }
 
 /// Split a template literal into text and placeholder segments. `{` opens a
@@ -118,16 +142,15 @@ pub(crate) fn parse_template(template: &str) -> Result<Vec<TemplateSegment>, Str
                 "Missing operation name before ':' in SUMMARISE template '{template}'"
             ));
         }
+        // `{sd:%.1f}` is sugar for `{sd:num %.1f}`.
+        let source = match spec {
+            Some(spec) if spec.starts_with('%') => format!("{{:num {spec}}}"),
+            Some(spec) => format!("{{:{spec}}}"),
+            None => "{}".to_string(),
+        };
         segments.push(TemplateSegment::Stat {
             name: name.to_string(),
-            spec: spec.map(|spec| {
-                // `{sd:%.1f}` is sugar for `{sd:num %.1f}`.
-                if let Some(printf) = spec.strip_prefix('%') {
-                    format!("num %{printf}")
-                } else {
-                    spec.to_string()
-                }
-            }),
+            template: zygos::Template::parse(&source),
         });
     }
     literal.push_str(rest);
@@ -264,49 +287,58 @@ mod tests {
     }
 
     #[test]
+    fn summary_operation_as_label_strips_a_templates_specs() {
+        assert_eq!(
+            SummaryOperation::Template("{mean:num %.2f} +/- {sdev}".to_string()).as_label(),
+            "mean +/- sdev"
+        );
+        assert_eq!(
+            SummaryOperation::Stat("MEAN".to_string()).as_label(),
+            "MEAN"
+        );
+    }
+
+    #[test]
     fn parse_template_splits_literals_and_stats() {
         let segments = parse_template("{mean} +/- {sdev:num %.3f} (n={count})").unwrap();
-        assert_eq!(
-            segments,
-            vec![
-                TemplateSegment::Stat {
-                    name: "mean".to_string(),
-                    spec: None
-                },
-                TemplateSegment::Literal(" +/- ".to_string()),
-                TemplateSegment::Stat {
-                    name: "sdev".to_string(),
-                    spec: Some("num %.3f".to_string())
-                },
-                TemplateSegment::Literal(" (n=".to_string()),
-                TemplateSegment::Stat {
-                    name: "count".to_string(),
-                    spec: None
-                },
-                TemplateSegment::Literal(")".to_string()),
-            ]
-        );
+        let stat = |index: usize| match &segments[index] {
+            TemplateSegment::Stat { name, template } => (name.as_str(), template.source()),
+            TemplateSegment::Literal(_) => panic!("segment {index} is a literal"),
+        };
+        let literal = |index: usize| match &segments[index] {
+            TemplateSegment::Literal(text) => text.as_str(),
+            TemplateSegment::Stat { .. } => panic!("segment {index} is a stat"),
+        };
+
+        assert_eq!(segments.len(), 6);
+        assert_eq!(stat(0), ("mean", "{}"));
+        assert_eq!(literal(1), " +/- ");
+        assert_eq!(stat(2), ("sdev", "{:num %.3f}"));
+        assert_eq!(literal(3), " (n=");
+        assert_eq!(stat(4), ("count", "{}"));
+        assert_eq!(literal(5), ")");
     }
 
     #[test]
     fn parse_template_expands_the_printf_sugar() {
         let segments = parse_template("{sd:%.1f}").unwrap();
-        assert_eq!(
-            segments,
-            vec![TemplateSegment::Stat {
-                name: "sd".to_string(),
-                spec: Some("num %.1f".to_string())
-            }]
-        );
+        match &segments[0] {
+            TemplateSegment::Stat { name, template } => {
+                assert_eq!(name, "sd");
+                assert_eq!(template.source(), "{:num %.1f}");
+            }
+            TemplateSegment::Literal(_) => panic!("expected a stat segment"),
+        }
     }
 
     #[test]
     fn parse_template_treats_a_stray_close_brace_as_literal() {
         let segments = parse_template("a } b").unwrap();
-        assert_eq!(
-            segments,
-            vec![TemplateSegment::Literal("a } b".to_string())]
-        );
+        assert_eq!(segments.len(), 1);
+        match &segments[0] {
+            TemplateSegment::Literal(text) => assert_eq!(text, "a } b"),
+            TemplateSegment::Stat { .. } => panic!("expected a literal segment"),
+        }
     }
 
     #[test]

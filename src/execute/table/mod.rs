@@ -956,6 +956,85 @@ mod integration_tests {
     }
 
     #[test]
+    fn test_tabulate_summarise_template_renders_stats_and_strips_the_default_label() {
+        let reader = reader_with_sales();
+        let resolved = resolve_table_with_reader(
+            "TABULATE * FROM sales SUMMARISE '{mean} +/- {sdev:num %.2f}' OF id",
+            &reader,
+        )
+        .unwrap();
+
+        let label = resolved
+            .cells()
+            .iter()
+            .find(|c| c.kind == TableCellKind::SummaryLabel)
+            .unwrap();
+        assert_eq!(label.content, "mean +/- sdev");
+        let value = resolved
+            .cells()
+            .iter()
+            .find(|c| c.kind == TableCellKind::SummaryValue && c.left == label.right + 1)
+            .unwrap();
+        assert_eq!(value.content, "2 +/- 0.82");
+    }
+
+    #[test]
+    fn test_tabulate_summarise_template_expands_the_printf_sugar() {
+        let reader = reader_with_sales();
+        let resolved = resolve_table_with_reader(
+            "TABULATE * FROM sales SUMMARISE '{sdev:%.2f}' OF id",
+            &reader,
+        )
+        .unwrap();
+
+        let value = resolved
+            .cells()
+            .iter()
+            .find(|c| c.kind == TableCellKind::SummaryValue)
+            .unwrap();
+        assert_eq!(value.content, "0.82");
+    }
+
+    #[test]
+    fn test_tabulate_summarise_template_ignores_the_column_format() {
+        let reader = reader_with_sales();
+        let resolved = resolve_table_with_reader(
+            "TABULATE * FROM sales FORMAT id RENAMING * => '[{}]' SUMMARISE '{mean}' OF id",
+            &reader,
+        )
+        .unwrap();
+
+        // Templates self-format; a naked operation would take the renaming
+        // and render "[2]".
+        let value = resolved
+            .cells()
+            .iter()
+            .find(|c| c.kind == TableCellKind::SummaryValue)
+            .unwrap();
+        assert_eq!(value.content, "2");
+    }
+
+    #[test]
+    fn test_tabulate_summarise_template_renders_a_null_stat_as_null() {
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        reader
+            .execute_sql("CREATE TABLE t AS SELECT * FROM (VALUES (1.0), (NULL)) AS t(x)")
+            .unwrap();
+        let resolved = resolve_table_with_reader(
+            "TABULATE * FROM t SUMMARISE '{mean} of {count}' OF x",
+            &reader,
+        )
+        .unwrap();
+
+        let value = resolved
+            .cells()
+            .iter()
+            .find(|c| c.kind == TableCellKind::SummaryValue)
+            .unwrap();
+        assert_eq!(value.content, "null of 2");
+    }
+
+    #[test]
     fn test_tabulate_summarise_separated_facet_rekeys_the_summary_chunks() {
         let reader = reader_with_region_sales();
         let resolved = resolve_table_with_reader(

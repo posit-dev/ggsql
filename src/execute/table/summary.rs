@@ -16,7 +16,8 @@ use crate::array_util::{as_f64, cast_array, column_to_strings, value_to_string};
 use crate::naming;
 use crate::params::ParameterValue;
 use crate::table::{
-    Format, Summary, SummaryOperation, SummaryScope, TableCell, TableClass, TableColumn, TableRow,
+    parse_template, Format, Summary, SummaryOperation, SummaryScope, TableCell, TableClass,
+    TableColumn, TableRow, TemplateSegment,
 };
 use crate::{ColumnSection, DataFrame, GgsqlError, Result};
 
@@ -67,8 +68,8 @@ pub(super) struct SummaryRow {
     /// The row's stub label: `rowlabel`, else the operation name.
     pub label: String,
     /// One-row frame of the computed values; its schema names the
-    /// summarised columns. Numeric unless the column's `FORMAT` renaming
-    /// stringified it.
+    /// summarised columns. Numeric for a bare operation (unless the
+    /// column's `FORMAT` renaming stringified it), string for a template.
     pub frame: DataFrame,
 }
 
@@ -182,8 +183,8 @@ pub(super) type SummaryChunk = (Option<Vec<usize>>, Vec<SummaryRow>);
 /// Chunks with no matching clauses are omitted. Placement within a chunk is
 /// the weavers' concern; they read each row's `top`.
 ///
-/// A summarised column's `FORMAT` renaming formats its summary value just
-/// like the body cells.
+/// A bare operation's summary value takes its column's `FORMAT` renaming
+/// just like the body cells; a template self-formats via zygos.
 pub(super) fn compute_summaries(
     df: &DataFrame,
     rows: &[TableRow],
@@ -194,58 +195,79 @@ pub(super) fn compute_summaries(
         return Ok(Vec::new());
     }
     // Chunks the clauses emit into: one contiguous range per group, then one
-    // range over all rows for the GRAND clauses.
-    let mut chunks: Vec<(Option<Vec<usize>>, Range<usize>)> = Vec::new();
+    // range over all rows for the GRAND clauses. Each accumulates its rows.
+    struct Chunk {
+        key: Option<Vec<usize>>,
+        range: Range<usize>,
+        rows: Vec<SummaryRow>,
+    }
+    let mut chunks: Vec<Chunk> = Vec::new();
     let mut start = 0;
     for chunk in rows.chunk_by(|a, b| a.group == b.group) {
-        chunks.push((Some(chunk[0].group.clone()), start..start + chunk.len()));
+        chunks.push(Chunk {
+            key: Some(chunk[0].group.clone()),
+            range: start..start + chunk.len(),
+            rows: Vec::new(),
+        });
         start += chunk.len();
     }
-    chunks.push((None, 0..rows.len()));
+    chunks.push(Chunk {
+        key: None,
+        range: 0..rows.len(),
+        rows: Vec::new(),
+    });
 
-    let mut out = Vec::new();
-    for (key, range) in chunks {
-        let scope = match key {
-            Some(_) => SummaryScope::Group,
-            None => SummaryScope::Grand,
+    // Clause-outer: the label, placement and parsed template are clause-level
+    // facts, computed once and shared by every group's row.
+    for summary in summaries {
+        let template = match &summary.operation {
+            SummaryOperation::Template(template) => {
+                Some(parse_template(template).map_err(GgsqlError::ValidationError)?)
+            }
+            SummaryOperation::Stat(_) => None,
         };
-        let rows = summaries
-            .iter()
-            .filter(|s| s.scope == scope)
-            .map(|summary| {
-                let mut row = summary.new_row(df, &range)?;
-                format_summary_frame(&mut row.frame, summary, formats)?;
-                Ok(row)
-            })
-            .collect::<Result<Vec<_>>>()?;
-        if !rows.is_empty() {
-            out.push((key, rows));
-        }
-    }
-    Ok(out)
-}
-
-impl Summary {
-    /// Build this clause's row over `range`: placement, label and computed
-    /// values.
-    pub(super) fn new_row(&self, df: &DataFrame, range: &Range<usize>) -> Result<SummaryRow> {
-        let label = self
+        let label = summary
             .settings
             .get("rowlabel")
             .and_then(ParameterValue::as_str)
-            .map_or_else(|| self.operation.to_string(), str::to_string);
-        Ok(SummaryRow {
-            scope: self.scope,
-            top: ParameterValue::is_str(self.settings.get("place"), "top"),
-            label,
-            frame: summary_frame(df, self, range)?,
-        })
+            .map_or_else(|| summary.operation.as_label(), str::to_string);
+        let top = ParameterValue::is_str(summary.settings.get("place"), "top");
+        let targets = match summary.scope {
+            SummaryScope::Group => 0..chunks.len() - 1,
+            SummaryScope::Grand => chunks.len() - 1..chunks.len(),
+        };
+        for index in targets {
+            let chunk = &mut chunks[index];
+            let mut frame = summary_frame(df, summary, template.as_deref(), &chunk.range)?;
+            // Templates self-format; a bare operation takes the column's
+            // FORMAT renaming.
+            if template.is_none() {
+                format_summary_frame(&mut frame, &summary.columns, formats)?;
+            }
+            chunk.rows.push(SummaryRow {
+                scope: summary.scope,
+                top,
+                label: label.clone(),
+                frame,
+            });
+        }
     }
+    Ok(chunks
+        .into_iter()
+        .filter_map(|chunk| (!chunk.rows.is_empty()).then_some((chunk.key, chunk.rows)))
+        .collect())
 }
 
-/// Compute one clause's frame over the rows in `range`: one row, one
-/// nullable-f64 column per summarised column.
-fn summary_frame(df: &DataFrame, summary: &Summary, range: &Range<usize>) -> Result<DataFrame> {
+/// Compute one clause's frame over the rows in `range`: one row, one column
+/// per summarised column. A bare operation yields a nullable-f64 column; a
+/// template (`Some` segments, which `compute_summaries` supplies for every
+/// template clause) a string column with the template rendered against it.
+fn summary_frame(
+    df: &DataFrame,
+    summary: &Summary,
+    template: Option<&[TemplateSegment]>,
+    range: &Range<usize>,
+) -> Result<DataFrame> {
     let drop_nulls = ParameterValue::is_str(summary.settings.get("missing"), "drop");
 
     let columns = summary
@@ -258,24 +280,52 @@ fn summary_frame(df: &DataFrame, summary: &Summary, range: &Range<usize>) -> Res
                     summary.operation
                 ))
             })?;
-            let value = match &summary.operation {
-                SummaryOperation::Stat(name) => {
-                    summary_stat(name, &array.slice(range.start, range.len()), drop_nulls)?
-                }
-                SummaryOperation::Template(_) => {
-                    return Err(GgsqlError::ValidationError(format!(
-                        "SUMMARISE {}: template summaries are not supported yet",
-                        summary.operation
-                    )))
+            let slice = array.slice(range.start, range.len());
+            let cell: ArrayRef = match template {
+                Some(segments) => Arc::new(StringArray::from(vec![render_template(
+                    segments, &slice, drop_nulls,
+                )?])),
+                None => {
+                    let SummaryOperation::Stat(name) = &summary.operation else {
+                        unreachable!("compute_summaries parses every template clause")
+                    };
+                    Arc::new(Float64Array::from(vec![summary_stat(
+                        name, &slice, drop_nulls,
+                    )?]))
                 }
             };
-            Ok((
-                column.clone(),
-                Arc::new(Float64Array::from(vec![value])) as ArrayRef,
-            ))
+            Ok((column.clone(), cell))
         })
         .collect::<Result<Vec<_>>>()?;
     DataFrame::new(columns)
+}
+
+/// Render a template against one column's slice: literals verbatim, each
+/// placeholder's stat computed over the slice and rendered through its
+/// pre-compiled zygos template. A NULL stat renders as the literal "null",
+/// like the body cells.
+fn render_template(
+    segments: &[TemplateSegment],
+    slice: &ArrayRef,
+    drop_nulls: bool,
+) -> Result<String> {
+    let mut text = String::new();
+    for segment in segments {
+        match segment {
+            TemplateSegment::Literal(literal) => text.push_str(literal),
+            TemplateSegment::Stat { name, template } => {
+                match summary_stat(name, slice, drop_nulls)? {
+                    Some(value) => text.push_str(
+                        &template
+                            .format(&zygos::Value::Number(value), None)
+                            .unwrap_or_default(),
+                    ),
+                    None => text.push_str("null"),
+                }
+            }
+        }
+    }
+    Ok(text)
 }
 
 /// Apply each summarised column's `FORMAT` renaming to a one-row summary
@@ -283,10 +333,10 @@ fn summary_frame(df: &DataFrame, summary: &Summary, range: &Range<usize>) -> Res
 /// treatment `apply_formats` gives the body cells, per value.
 fn format_summary_frame(
     frame: &mut DataFrame,
-    summary: &Summary,
+    columns: &[String],
     formats: &HashMap<String, Format>,
 ) -> Result<()> {
-    for column in &summary.columns {
+    for column in columns {
         let Some(format) = formats.get(column) else {
             continue;
         };
