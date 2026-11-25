@@ -2,8 +2,8 @@
 //! data and prepares the frame for summary rows, `compute_summaries` runs
 //! the aggregate operations on it.
 //!
-//! Only `mean` and `median` exist so far; the rest of `SUMMARY_OPERATIONS`
-//! lands once the execution pipeline is wired end-to-end.
+//! All of `SUMMARY_OPERATIONS` are folds over a column's values except
+//! `count`, which is type-free and counts rows or non-null values.
 
 use std::collections::HashMap;
 use std::ops::Range;
@@ -265,17 +265,64 @@ fn summary_frame(df: &DataFrame, summary: &Summary, range: &Range<usize>) -> Res
 /// are ignored; otherwise a single null makes the result `None` (NULL), as
 /// does an empty input. Matching on `operation` is case-insensitive.
 pub fn summary_stat(operation: &str, array: &ArrayRef, drop_nulls: bool) -> Result<Option<f64>> {
+    // `count` is type-free: rows when nulls propagate, non-null values when
+    // dropped. Unlike the numeric operations, nulls never make it NULL.
+    if operation.eq_ignore_ascii_case("count") {
+        let count = if drop_nulls {
+            array.len() - array.logical_null_count()
+        } else {
+            array.len()
+        };
+        return Ok(Some(count as f64));
+    }
     let values = numeric_values(array, operation, drop_nulls)?;
     let Some(values) = values else {
         return Ok(None);
     };
-    match operation.to_ascii_lowercase().as_str() {
-        "mean" => Ok(Some(values.iter().sum::<f64>() / values.len() as f64)),
-        "median" => Ok(Some(quantile(values, 0.5))),
-        _ => Err(GgsqlError::InternalError(format!(
-            "SUMMARISE operation '{operation}' is not implemented"
-        ))),
-    }
+    let v = &values;
+    let n = v.len() as f64;
+    let result = match operation.to_ascii_lowercase().as_str() {
+        "sum" => v.iter().sum(),
+        "prod" => v.iter().product(),
+        "min" => min(v),
+        "max" => max(v),
+        "range" => max(v) - min(v),
+        "mid" => (min(v) + max(v)) / 2.0,
+        "mean" => v.iter().sum::<f64>() / n,
+        "geomean" => (v.iter().map(|x| x.ln()).sum::<f64>() / n).exp(),
+        "harmean" => n / v.iter().map(|x| 1.0 / x).sum::<f64>(),
+        "rms" => (v.iter().map(|x| x * x).sum::<f64>() / n).sqrt(),
+        "sdev" => variance(v).sqrt(),
+        "var" => variance(v),
+        "iqr" => quantile(values.clone(), 0.75) - quantile(values.clone(), 0.25),
+        "median" | "p50" => quantile(values.clone(), 0.5),
+        "p05" => quantile(values.clone(), 0.05),
+        "p10" => quantile(values.clone(), 0.10),
+        "p25" => quantile(values.clone(), 0.25),
+        "p75" => quantile(values.clone(), 0.75),
+        "p90" => quantile(values.clone(), 0.90),
+        "p95" => quantile(values.clone(), 0.95),
+        _ => {
+            return Err(GgsqlError::InternalError(format!(
+                "SUMMARISE operation '{operation}' is not implemented"
+            )))
+        }
+    };
+    Ok(Some(result))
+}
+
+/// Population variance, matching the plot stats' `VAR_POP`.
+fn variance(values: &[f64]) -> f64 {
+    let mean = values.iter().sum::<f64>() / values.len() as f64;
+    values.iter().map(|x| (x - mean).powi(2)).sum::<f64>() / values.len() as f64
+}
+
+fn min(values: &[f64]) -> f64 {
+    values.iter().fold(f64::INFINITY, |a, &b| a.min(b))
+}
+
+fn max(values: &[f64]) -> f64 {
+    values.iter().fold(f64::NEG_INFINITY, |a, &b| a.max(b))
 }
 
 /// Extract a column's values as f64. Returns `None` when the result should be
@@ -359,9 +406,49 @@ mod tests {
     }
 
     #[test]
-    fn unimplemented_operation_is_rejected() {
+    fn unknown_operation_is_rejected() {
         let array: ArrayRef = Arc::new(Float64Array::from(vec![1.0]));
-        assert!(summary_stat("geomean", &array, false).is_err());
+        assert!(summary_stat("first", &array, false).is_err());
+    }
+
+    #[test]
+    fn count_is_type_free() {
+        let strings: ArrayRef = Arc::new(StringArray::from(vec![Some("a"), None, Some("b")]));
+        assert_eq!(summary_stat("count", &strings, false).unwrap(), Some(3.0));
+        assert_eq!(summary_stat("count", &strings, true).unwrap(), Some(2.0));
+    }
+
+    #[test]
+    fn count_of_an_empty_slice_is_zero() {
+        let array: ArrayRef = Arc::new(Float64Array::from(Vec::<f64>::new()));
+        assert_eq!(summary_stat("count", &array, false).unwrap(), Some(0.0));
+    }
+
+    fn stat(operation: &str, values: &[f64]) -> f64 {
+        let array: ArrayRef = Arc::new(Float64Array::from(values.to_vec()));
+        summary_stat(operation, &array, false).unwrap().unwrap()
+    }
+
+    #[test]
+    fn numeric_operations() {
+        let v = &[1.0, 2.0, 3.0, 4.0];
+        assert_eq!(stat("sum", v), 10.0);
+        assert_eq!(stat("prod", v), 24.0);
+        assert_eq!(stat("min", v), 1.0);
+        assert_eq!(stat("max", v), 4.0);
+        assert_eq!(stat("range", v), 3.0);
+        assert_eq!(stat("mid", v), 2.5);
+        assert_eq!(stat("mean", v), 2.5);
+        assert_eq!(stat("geomean", v), (24.0_f64).powf(0.25));
+        assert_eq!(stat("harmean", v), 4.0 / (1.0 + 0.5 + 1.0 / 3.0 + 0.25));
+        assert_eq!(stat("rms", v), ((1.0 + 4.0 + 9.0 + 16.0) / 4.0_f64).sqrt());
+        assert_eq!(stat("sdev", v), 1.25_f64.sqrt());
+        assert_eq!(stat("var", v), 1.25);
+        assert_eq!(stat("iqr", v), 1.5);
+        assert_eq!(stat("median", v), 2.5);
+        assert_eq!(stat("p50", v), 2.5);
+        assert!((stat("p05", v) - 1.15).abs() < 1e-12);
+        assert!((stat("p95", v) - 3.85).abs() < 1e-12);
     }
 
     fn summary(operation: &str, scope: SummaryScope, columns: &[&str]) -> Summary {
