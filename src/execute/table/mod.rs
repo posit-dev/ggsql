@@ -1039,7 +1039,47 @@ mod integration_tests {
     }
 
     #[test]
-    fn test_tabulate_summarise_template_renders_a_null_stat_as_null() {
+    fn test_tabulate_summarise_template_null_is_targetable_by_a_direct_renaming() {
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        reader
+            .execute_sql("CREATE TABLE t AS SELECT * FROM (VALUES (1.0), (NULL)) AS t(x)")
+            .unwrap();
+        let resolved = resolve_table_with_reader(
+            "TABULATE * FROM t SUMMARISE '{mean} of {count}' OF x FORMAT x RENAMING null => ''",
+            &reader,
+        )
+        .unwrap();
+
+        let value = resolved
+            .cells()
+            .iter()
+            .find(|c| c.kind == TableCellKind::SummaryValue)
+            .unwrap();
+        assert_eq!(value.content, "");
+    }
+
+    #[test]
+    fn test_tabulate_summarise_template_ignores_a_wildcard_renaming() {
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        reader
+            .execute_sql("CREATE TABLE t AS SELECT * FROM (VALUES (1.0), (2.0)) AS t(x)")
+            .unwrap();
+        let resolved = resolve_table_with_reader(
+            "TABULATE * FROM t SUMMARISE '{mean} of {count}' OF x FORMAT x RENAMING * => '{:num %.2f}'",
+            &reader,
+        )
+        .unwrap();
+
+        let value = resolved
+            .cells()
+            .iter()
+            .find(|c| c.kind == TableCellKind::SummaryValue)
+            .unwrap();
+        assert_eq!(value.content, "1.5 of 2");
+    }
+
+    #[test]
+    fn test_tabulate_summarise_template_nulls_the_whole_cell_on_a_null_stat() {
         let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
         reader
             .execute_sql("CREATE TABLE t AS SELECT * FROM (VALUES (1.0), (NULL)) AS t(x)")
@@ -1055,7 +1095,7 @@ mod integration_tests {
             .iter()
             .find(|c| c.kind == TableCellKind::SummaryValue)
             .unwrap();
-        assert_eq!(value.content, "null of 2");
+        assert_eq!(value.content, "null");
     }
 
     #[test]

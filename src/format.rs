@@ -173,6 +173,24 @@ pub fn resolve_column_values(
     Ok(render_labels(spec, &values, false, Some(""), None))
 }
 
+/// Like [`resolve_column_values`], but consulting only the spec's direct
+/// renames — the wildcard template is ignored. For already-rendered text
+/// (a `SUMMARISE` template cell), where re-rendering a string through a
+/// numeric template is meaningless.
+pub fn resolve_column_values_direct(
+    column: &ArrayRef,
+    spec: &LabelSpec,
+) -> Result<Vec<Option<String>>, String> {
+    let mut direct = LabelSpec::new();
+    for (key, label) in spec.renames() {
+        match label {
+            Some(label) => direct.rename(key.clone(), label),
+            None => direct.suppress(key.clone()),
+        };
+    }
+    resolve_column_values(column, &direct)
+}
+
 /// Shared label rendering behind [`label_elements`] and
 /// [`resolve_column_values`]. `share_precision` derives `{}` decimal
 /// precision across the un-renamed values (scale breaks) or renders each

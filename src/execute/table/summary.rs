@@ -196,7 +196,8 @@ pub(super) type SummaryChunk = (Option<Vec<usize>>, Vec<SummaryRow>);
 /// the weavers' concern; they read each row's `top`.
 ///
 /// A bare operation's summary value takes its column's `FORMAT` renaming
-/// just like the body cells; a template self-formats via zygos.
+/// just like the body cells; a template self-formats via zygos, honouring
+/// only direct renamings from the column's `FORMAT`.
 pub(super) fn compute_summaries(
     df: &DataFrame,
     rows: &[TableRow],
@@ -270,7 +271,8 @@ pub(super) fn compute_summaries(
         for index in targets {
             let chunk = &mut chunks[index];
             let mut frame = summary_frame(df, summary, template.as_deref(), &chunk.range)?;
-            //  A bare operation's frame is made display-ready here (renaming, display decimals).
+            // The frame is made display-ready here (renaming, display
+            // decimals); a template's cells take direct renamings only.
             format_summary_frame(&mut frame, summary, formats, &decimals)?;
             chunk.rows.push(SummaryRow {
                 scope: summary.scope,
@@ -329,30 +331,28 @@ fn summary_frame(
 
 /// Render a template against one column's slice: literals verbatim, each
 /// placeholder's expression evaluated over the slice and rendered through its
-/// pre-compiled zygos template. A NULL expression renders as the literal
-/// "null", like the body cells. Stats are memoized in `cache` across all of
+/// pre-compiled zygos template. A NULL placeholder makes the whole cell
+/// NULL, like a bare operation. Stats are memoized in `cache` across all of
 /// the template's placeholders, so a repeated stat computes once per cell.
 fn render_template(
     segments: &[TemplateSegment],
     slice: &ArrayRef,
     drop_nulls: bool,
-) -> Result<String> {
+) -> Result<Option<String>> {
     let mut cache = HashMap::new();
     let mut text = String::new();
     for segment in segments {
         match segment {
             TemplateSegment::Literal(literal) => text.push_str(literal),
             TemplateSegment::Stat { expr, template } => {
-                match eval_stat_expr(expr, slice, drop_nulls, &mut cache)? {
-                    Some(value) => {
-                        text.push_str(&template.format(&value, None).unwrap_or_default())
-                    }
-                    None => text.push_str("null"),
-                }
+                let Some(value) = eval_stat_expr(expr, slice, drop_nulls, &mut cache)? else {
+                    return Ok(None);
+                };
+                text.push_str(&template.format(&value, None).unwrap_or_default())
             }
         }
     }
-    Ok(text)
+    Ok(Some(text))
 }
 
 /// Evaluate a template placeholder's expression over one column's slice:
@@ -411,42 +411,50 @@ fn leaf_f64(value: &Value) -> Option<f64> {
     }
 }
 
-/// Make a bare-operation summary frame display-ready, per column: an
-/// explicit `FORMAT` renaming (mapping or template) becomes the display
-/// text; an un-renamed float column pads to its body column's display
-/// decimals — the same treatment `apply_formatting` gives the body
-/// cells. Tallies are counts and keep their integer display. `decimals`
-/// covers every summarised column, computed once in `compute_summaries`.
+/// Make a summary frame display-ready, per column: an explicit `FORMAT`
+/// renaming (mapping or template) becomes the display text; an un-renamed
+/// float column pads to its body column's display decimals — the same
+/// treatment `apply_formatting` gives the body cells. A template's cells
+/// are already-rendered strings, so they honour only direct renamings
+/// (including `null`), never the wildcard template, and never pad.
+/// Tallies are counts and keep their integer display. `decimals` covers
+/// every summarised column, computed once in `compute_summaries`.
 fn format_summary_frame(
     frame: &mut DataFrame,
     summary: &Summary,
     formats: &HashMap<String, Format>,
     decimals: &HashMap<&str, usize>,
 ) -> Result<()> {
-    // Templates self-format so these are skipped
-    let SummaryOperation::Stat(operation) = &summary.operation else {
-        return Ok(());
-    };
+    let template = matches!(summary.operation, SummaryOperation::Template(_));
     // Tallies pad to no decimals: they are counts and keep their integer
     // display.
-    let tally = matches!(
-        operation.to_ascii_lowercase().as_str(),
-        "count" | "n_distinct" | "n_missing"
-    );
+    let tally = match &summary.operation {
+        SummaryOperation::Stat(operation) => matches!(
+            operation.to_ascii_lowercase().as_str(),
+            "count" | "n_distinct" | "n_missing"
+        ),
+        SummaryOperation::Template(_) => false,
+    };
     for column in &summary.columns {
         let renaming = formats
             .get(column)
             .map(|format| &format.renaming)
-            .filter(|renaming| !renaming.rename_is_empty() || renaming.template().is_some());
+            .filter(|renaming| {
+                !renaming.rename_is_empty() || (!template && renaming.template().is_some())
+            });
         let array = frame.column(column)?.clone();
         let text = if let Some(renaming) = renaming {
-            let mut resolved = crate::format::resolve_column_values(&array, renaming)
-                .map_err(GgsqlError::ValidationError)?;
+            let mut resolved = if template {
+                crate::format::resolve_column_values_direct(&array, renaming)
+            } else {
+                crate::format::resolve_column_values(&array, renaming)
+            }
+            .map_err(GgsqlError::ValidationError)?;
             resolved
                 .remove(0)
                 .unwrap_or_else(|| value_to_string(&array, 0))
         } else {
-            if tally {
+            if template || tally {
                 continue;
             }
             let Some(&d) = decimals.get(column.as_str()) else {
@@ -841,7 +849,7 @@ mod tests {
         assert_eq!(num(summary_stat("n_distinct", &array, true)), Some(2.0));
     }
 
-    fn eval(template: &str, array: &ArrayRef, drop_nulls: bool) -> String {
+    fn eval(template: &str, array: &ArrayRef, drop_nulls: bool) -> Option<String> {
         let segments = parse_template(template).unwrap();
         render_template(&segments, array, drop_nulls).unwrap()
     }
@@ -849,18 +857,31 @@ mod tests {
     #[test]
     fn template_arithmetic_combines_stats() {
         let array: ArrayRef = Arc::new(Float64Array::from(vec![1.0, 2.0, 3.0]));
-        assert_eq!(eval("{mean+10}", &array, false), "12");
-        assert_eq!(eval("{(3-mean)*2}", &array, false), "2");
+        assert_eq!(eval("{mean+10}", &array, false).as_deref(), Some("12"));
+        assert_eq!(eval("{(3-mean)*2}", &array, false).as_deref(), Some("2"));
         // A repeated stat computes once and combines cleanly.
-        assert_eq!(eval("{mean/mean}", &array, false), "1");
-        assert_eq!(eval("{-mean}", &array, false), "−2");
+        assert_eq!(eval("{mean/mean}", &array, false).as_deref(), Some("1"));
+        assert_eq!(eval("{-mean}", &array, false).as_deref(), Some("−2"));
     }
 
     #[test]
     fn template_arithmetic_propagates_nulls() {
         let array: ArrayRef = Arc::new(Float64Array::from(vec![Some(1.0), Some(2.0), None]));
-        assert_eq!(eval("{mean-sdev}", &array, false), "null");
-        assert_eq!(eval("{mean-sdev:%.1f}", &array, true), "1.0");
+        assert_eq!(eval("{mean-sdev}", &array, false), None);
+        assert_eq!(
+            eval("{mean-sdev:%.1f}", &array, true).as_deref(),
+            Some("1.0")
+        );
+    }
+
+    #[test]
+    fn a_null_placeholder_nulls_the_whole_cell() {
+        let array: ArrayRef = Arc::new(Float64Array::from(vec![Some(1.0), Some(2.0), None]));
+        assert_eq!(eval("{mean} +/- {sdev}", &array, false), None);
+        assert_eq!(
+            eval("{mean} +/- {sdev}", &array, true).as_deref(),
+            Some("1.5 +/- 0.5")
+        );
     }
 
     fn stat(operation: &str, values: &[f64]) -> f64 {
@@ -994,15 +1015,27 @@ mod tests {
 
     #[test]
     fn templates_format_date_leaves_as_dates() {
-        assert_eq!(eval("{min}", &dates(), false), "2024-01-15");
-        assert_eq!(eval("{min:time %d %b %Y}", &dates(), false), "15 Jan 2024");
+        assert_eq!(
+            eval("{min}", &dates(), false).as_deref(),
+            Some("2024-01-15")
+        );
+        assert_eq!(
+            eval("{min:time %d %b %Y}", &dates(), false).as_deref(),
+            Some("15 Jan 2024")
+        );
     }
 
     #[test]
     fn template_arithmetic_on_dates_is_a_number_of_days() {
-        assert_eq!(eval("{max-min}", &dates(), false), "3");
-        assert_eq!(eval("{max-min:duration d}", &dates(), false), "3d");
-        assert_eq!(eval("{(max-min)/7:%.4f}", &dates(), false), "0.4286");
+        assert_eq!(eval("{max-min}", &dates(), false).as_deref(), Some("3"));
+        assert_eq!(
+            eval("{max-min:duration d}", &dates(), false).as_deref(),
+            Some("3d")
+        );
+        assert_eq!(
+            eval("{(max-min)/7:%.4f}", &dates(), false).as_deref(),
+            Some("0.4286")
+        );
     }
 
     #[test]

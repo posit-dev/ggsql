@@ -72,9 +72,11 @@ Inside the brackets, you can use limited arithmetic.
 The operands include the operation identifiers listed above (like `mean`, `sdev`), numeric literals (`2`, `0.5`) and scientific notation (`1e6`).
 The `+`, `-` unary operators and `+`, `-`, `*` and `/` binary operators and `(`/`)` parentheses for grouping.
 For example you can use `'({mean - 1.96 * se}, {mean + 1.96 * se})'` to display a 95% confidence interval (assuming normal distribution) in parentheses separated by a comma.
+If any placeholder in a string expression comes out `null` (see `missing` below), the whole cell comes out `null`.
 
 For the naked, non-string identifiers the formatting of the cell values is applied externally via `FORMAT` clauses.
 The string expressions can be self-formatting via the same syntax as [scale breaks](scale.qmd#break-formatting).
+A string-expression cell ignores a `FORMAT` wildcard renaming, but direct renamings still apply — including `null => …` to replace a null result.
 All summary metrics are assumed to be numeric.
 As such, the `:num` formatter is implied and does not need to be written out in full.
 The expression `'{mean:%.2f}'` will display the mean with two decimal points in printf-style.
