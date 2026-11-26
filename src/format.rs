@@ -17,7 +17,7 @@ use arrow::array::{Array, ArrayRef, BooleanArray, Int64Array, UInt64Array};
 use arrow::datatypes::DataType;
 use zygos::{LabelSpec, Value};
 
-use crate::array_util::{as_f64, as_str, cast_array, new_str_array};
+use crate::array_util::{as_f32, as_f64, as_str, cast_array, new_str_array};
 use crate::plot::ArrayElement;
 
 /// Serde mirror for [`zygos::LabelSpec`], which is dependency-free and has no
@@ -171,6 +171,24 @@ pub fn resolve_column_values(
     // suppression blanks the cell; a bare null stays unresolved so the
     // caller falls back to its own default rendering.
     Ok(render_labels(spec, &values, false, Some(""), None))
+}
+
+/// Like [`resolve_column_values`], but consulting only the spec's direct
+/// renames — the wildcard template is ignored. For already-rendered text
+/// (a `SUMMARISE` template cell), where re-rendering a string through a
+/// numeric template is meaningless.
+pub fn resolve_column_values_direct(
+    column: &ArrayRef,
+    spec: &LabelSpec,
+) -> Result<Vec<Option<String>>, String> {
+    let mut direct = LabelSpec::new();
+    for (key, label) in spec.renames() {
+        match label {
+            Some(label) => direct.rename(key.clone(), label),
+            None => direct.suppress(key.clone()),
+        };
+    }
+    resolve_column_values(column, &direct)
 }
 
 /// Shared label rendering behind [`label_elements`] and
@@ -412,6 +430,55 @@ pub fn format_dataframe_column(
         .map_err(|e| format!("Failed to replace column: {}", e))
 }
 
+/// Decimal places to display a float column consistently: the most any
+/// non-null value needs. Non-float columns need none.
+pub fn display_decimals(column: &ArrayRef) -> usize {
+    let decimals: Box<dyn Iterator<Item = f64> + '_> = match column.data_type() {
+        DataType::Float64 => Box::new(
+            as_f64(column)
+                .unwrap()
+                .iter()
+                .map(|v| v.unwrap_or(f64::NAN)),
+        ),
+        DataType::Float32 => Box::new(
+            as_f32(column)
+                .unwrap()
+                .iter()
+                .map(|v| f64::from(v.unwrap_or(f32::NAN))),
+        ),
+        _ => return 0,
+    };
+    // Search each value only upward from the running maximum: a value
+    // fitting at fewer decimals cannot lower it, and a fit at `d` fits at
+    // every larger `d`, so nothing below the maximum needs checking.
+    let mut max = 0;
+    for v in decimals {
+        max = minimal_decimals(v, max);
+        if max == 15 {
+            break;
+        }
+    }
+    max
+}
+
+/// Fewest decimal places that represent `v` within float noise: the
+/// smallest `d >= from` whose rounded value is within
+/// `f64::EPSILON.sqrt()` (relative) of `v`. Caps at 15. Non-finite values
+/// contribute nothing.
+fn minimal_decimals(v: f64, from: usize) -> usize {
+    if !v.is_finite() {
+        return from;
+    }
+    let tol = f64::EPSILON.sqrt() * v.abs().max(1.0);
+    // Past 15 decimals an f64 carries no real information
+    (from..=15)
+        .find(|&d| {
+            let factor = 10f64.powi(d as i32);
+            ((v * factor).round() / factor - v).abs() <= tol
+        })
+        .unwrap_or(15)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -424,6 +491,29 @@ mod tests {
 
     fn numbers(breaks: &[f64]) -> Vec<ArrayElement> {
         breaks.iter().map(|n| ArrayElement::Number(*n)).collect()
+    }
+
+    fn floats(values: &[f64]) -> ArrayRef {
+        std::sync::Arc::new(arrow::array::Float64Array::from(values.to_vec()))
+    }
+
+    #[test]
+    fn display_decimals_pads_to_the_widest_value() {
+        assert_eq!(display_decimals(&floats(&[39.1, 37.7, 50.0])), 1);
+        assert_eq!(display_decimals(&floats(&[1.25, 3.75])), 2);
+    }
+
+    #[test]
+    fn display_decimals_trims_binary_float_noise() {
+        assert_eq!(display_decimals(&floats(&[0.1 + 0.2, 1.5])), 1);
+        assert_eq!(display_decimals(&floats(&[std::f64::consts::PI])), 7);
+    }
+
+    #[test]
+    fn display_decimals_is_zero_for_whole_and_non_float_columns() {
+        assert_eq!(display_decimals(&floats(&[50.0, 60.0])), 0);
+        let ints: ArrayRef = std::sync::Arc::new(arrow::array::Int64Array::from(vec![1, 2]));
+        assert_eq!(display_decimals(&ints), 0);
     }
 
     fn strings(breaks: &[&str]) -> Vec<ArrayElement> {

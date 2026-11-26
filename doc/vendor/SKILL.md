@@ -184,6 +184,7 @@ Configures cell display and column placement.
 - A SPAN id may stand in for its columns: `FORMAT Q1, price SETTING hjust => 'right'`
 - Settings: `hjust` (`'left'`/`'right'`/`'centre'`/`'center'` or 0–1; default right for numeric/stub, left otherwise), `width` (`'100px'` or `'20%'`)
 - `RENAMING` works like SCALE's: direct replacement (`'adelie' => 'Pygoscelis adeliae'`), `null` on the right suppresses the cell, unquoted `null` on the left matches missing values, and `* => '...'` formats every value with a template (`{:lower}`, `{:num %.0f}`, etc.)
+- Without a RENAMING, float columns display at a shared per-column precision: the most decimals any value needs (each value the fewest that faithfully represents it), so whole values pad (`50.0` beside `39.1`) and SUMMARISE results round to the same precision. Integer columns display bare.
 
 ```ggsql
 SELECT * FROM ggsql:penguins LIMIT 5
@@ -192,6 +193,27 @@ TABULATE *
   SPAN Bill OVER bill_len, bill_dep
   FORMAT STUB species
   FORMAT body_mass SETTING hjust => 'right' RENAMING null => '-', * => '{:num %.0f}g'
+```
+
+### SUMMARISE
+
+Adds summary rows computed over the table's rows: one per `FACET` group (`GROUP`, default) or a single row over all rows (`GRAND`, rendered with a stronger border; its label spans group stub columns). Repeatable — clause order is row order within a boundary. Also spelled `SUMMARIZE`. Columns must be part of the TABULATE selection.
+
+```
+SUMMARISE [GROUP | GRAND] <operation> OF <column>, ...
+  SETTING <param> => <value>, ...
+```
+
+- **Operation** — an identifier: tallies `count n_distinct n_missing` (any column type); sums `sum prod`; extremes `min max range mid`; centrality `mean geomean harmean rms median`; dispersion `sdev se var iqr` (population statistics, ÷ n); percentiles `p05 p10 p25 p50 p75 p90 p95`. All but the tallies require numeric columns, except that date/timestamp columns also accept the order statistics (`min max mid mean median p*`, returning a date/timestamp) and `range sdev se iqr` (returning a duration).
+- **Template** — or a string with `{expr}` placeholders interpolated into the cell: `'{median} ({p25}, {p75})'`. Expressions allow `+ - * /`, parentheses, unary `+`/`-`, numeric literals incl. scientific notation (`'{mean - 1.96 * se}'`). Per-placeholder formatting follows the placeholder after `:`; `num` is implied (`'{mean:%.2f}'` = `'{mean:num %.2f}'`; also `:bytes`, `:duration`, `:time`). A bare date/timestamp leaf renders ISO or via `:time` (`'{min:time %d %b %Y}'`); in arithmetic a date/timestamp operand becomes a plain number — days for dates, seconds for timestamps — so `'{max-min:duration d}'` renders a date range as a duration. A template self-formats: the column's `FORMAT` wildcard renaming does not apply, but direct renamings do (including `null => …` — a null placeholder nulls the whole cell); a bare operation takes the full renaming.
+- **Settings** — `place` (`'bottom'` default / `'top'` — summary rows before or after the group/table body), `rowlabel` (stub label; default the operation, templates without their format specs), `missing` (`'propagate'` default — any null makes a non-tally summary null; `'drop'` — ignore nulls. `count` counts rows under propagate, non-null values under drop), `blank` (display text for cells in columns the clause does not summarise; default `'—'` — a summarised column that computes to null still reports `null`).
+
+```ggsql
+TABULATE * FROM ggsql:penguins
+FACET island
+FORMAT STUB species
+SUMMARISE mean OF bill_len, bill_dep
+SUMMARISE GRAND '{mean:%.1f} ± {se:%.1f}' OF bill_len SETTING rowlabel => 'Mean ± SE'
 ```
 
 ---

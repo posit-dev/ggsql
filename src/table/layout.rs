@@ -27,8 +27,13 @@ pub enum TableCellKind {
     StubHead,
     /// A data value (gt's `body`).
     Body,
+    /// A computed value in a `SUMMARISE` row.
+    SummaryValue,
     /// A row-label value in the stub (`TABULATE FORMAT STUB`, gt's `stub`).
     StubRowLabel,
+    /// A summary row's label cell in the stub (`SUMMARISE`'s `rowlabel` or
+    /// the operation name).
+    SummaryLabel,
     /// A spanner cell, grouping several columns under one label (`TABULATE
     /// SPAN`).
     Spanner,
@@ -63,6 +68,7 @@ impl TableCellKind {
                 | TableCellKind::Subtitle
                 | TableCellKind::Filler // every current case is header-shaped
                 | TableCellKind::StubRowLabel
+                | TableCellKind::SummaryLabel
         )
     }
 }
@@ -73,7 +79,9 @@ impl std::fmt::Display for TableCellKind {
             TableCellKind::ColumnLabel => "column label",
             TableCellKind::StubHead => "stub head",
             TableCellKind::Body => "body",
+            TableCellKind::SummaryValue => "summary value",
             TableCellKind::StubRowLabel => "stub row label",
+            TableCellKind::SummaryLabel => "summary label",
             TableCellKind::Spanner => "spanner",
             TableCellKind::Title => "title",
             TableCellKind::Subtitle => "subtitle",
@@ -127,6 +135,8 @@ pub enum TableClass {
     /// The first body row of a facet group (gt's `gt_row_group_first`) —
     /// carries the thick border separating a group from what precedes it.
     RowGroupFirst,
+    /// A `SUMMARISE` row (gt's `gt_summary_row`).
+    SummaryRow,
 
     // -------------------------- Cell-scoped -------------------------
     // Recorded on `TableCell::classes`, rendered on the `<th>`/`<td>`.
@@ -157,6 +167,25 @@ pub enum TableClass {
     /// A group-label cell (`TableCellKind::GroupHeading`, gt's
     /// `gt_group_heading`).
     GroupHeading,
+    /// A cell in a `SUMMARISE GROUP` row (gt's `gt_summary_row`).
+    GroupSummary,
+    /// A cell in the first row of a summary block — carries the border
+    /// separating the block from what precedes it (gt's
+    /// `gt_first_summary_row`).
+    SummaryFirst,
+    /// A cell in the last row of a summary block (gt's
+    /// `gt_last_summary_row`).
+    SummaryLast,
+    /// A cell in a `SUMMARISE GRAND` row (gt's `gt_grand_summary_row`).
+    GrandSummary,
+    /// A cell in the first row of a bottom-placed grand-summary block —
+    /// carries the double border separating the block from the body (gt's
+    /// `gt_first_grand_summary_row`).
+    GrandSummaryFirst,
+    /// A cell in the last row of a top-placed grand-summary block — carries
+    /// the double border separating the block from the body (gt's
+    /// `gt_last_grand_summary_row_top`).
+    GrandSummaryLast,
     /// Left/center/right-aligned cell content (gt's
     /// `gt_left`/`gt_center`/`gt_right`).
     AlignLeft,
@@ -190,6 +219,13 @@ impl TableClass {
         TableClass::GroupHeading,
         TableClass::GroupHeadingRow,
         TableClass::RowGroupFirst,
+        TableClass::SummaryRow,
+        TableClass::GroupSummary,
+        TableClass::SummaryFirst,
+        TableClass::SummaryLast,
+        TableClass::GrandSummary,
+        TableClass::GrandSummaryFirst,
+        TableClass::GrandSummaryLast,
         TableClass::AlignLeft,
         TableClass::AlignCenter,
         TableClass::AlignRight,
@@ -219,6 +255,13 @@ impl std::fmt::Display for TableClass {
             TableClass::Subtitle => "subtitle",
             TableClass::Caption => "caption",
             TableClass::Heading => "heading",
+            TableClass::SummaryRow => "summary_row",
+            TableClass::GroupSummary => "group_summary",
+            TableClass::SummaryFirst => "summary_first",
+            TableClass::SummaryLast => "summary_last",
+            TableClass::GrandSummary => "grand_summary",
+            TableClass::GrandSummaryFirst => "grand_summary_first",
+            TableClass::GrandSummaryLast => "grand_summary_last",
             TableClass::GroupHeading => "group_heading",
             TableClass::GroupHeadingRow => "group_heading_row",
             TableClass::RowGroupFirst => "row_group_first",
@@ -302,6 +345,18 @@ impl TableCell {
     /// A stub row-label cell (`TableClass::Stub`).
     pub(crate) fn new_stub_row_label(row: usize, index: usize, content: String) -> Self {
         Self::new(TableCellKind::StubRowLabel, row, row, index, index, content)
+            .with_classes(vec![TableClass::Stub])
+    }
+
+    /// A summary value cell (`TableClass::Row`).
+    pub(crate) fn new_summary_value(row: usize, col: usize, content: String) -> Self {
+        Self::new(TableCellKind::SummaryValue, row, row, col, col, content)
+            .with_classes(vec![TableClass::Row])
+    }
+
+    /// A summary row's stub label cell (`TableClass::Stub`).
+    pub(crate) fn new_summary_label(row: usize, index: usize, content: String) -> Self {
+        Self::new(TableCellKind::SummaryLabel, row, row, index, index, content)
             .with_classes(vec![TableClass::Stub])
     }
 
@@ -515,6 +570,18 @@ impl TableRow {
     pub fn group_heading(group: Vec<usize>) -> Self {
         Self {
             classes: vec![TableClass::GroupHeadingRow],
+            group,
+            ..Self::body()
+        }
+    }
+
+    /// A summary row (`TableClass::SummaryRow`) keyed by its chunk's `group`
+    /// — empty for a `GRAND` row. The key marks the row as having no data
+    /// row behind it, so later passes (group-stub merge, group-label weave)
+    /// treat it accordingly.
+    pub fn summary(group: Vec<usize>) -> Self {
+        Self {
+            classes: vec![TableClass::SummaryRow],
             group,
             ..Self::body()
         }

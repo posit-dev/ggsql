@@ -5094,3 +5094,120 @@ TABULATE * FROM sales FORMAT `body`, x
             (quoted_identifier))
           (identifier
             (bare_identifier)))))))
+
+================================================================================
+TABULATE SUMMARISE clause
+================================================================================
+
+TABULATE * FROM sales SUMMARISE mean OF foo, bar
+
+--------------------------------------------------------------------------------
+
+(query
+  (tabulate_statement
+    (tabulate_keyword)
+    (column_selection
+      (mapping_list
+        (mapping_element
+          (wildcard_mapping))))
+    (single_source_from
+      source: (qualified_name
+        (identifier
+          (bare_identifier))))
+    (tab_clause
+      (summarise_clause
+        operation: (identifier
+          (bare_identifier))
+        (column_list
+          (identifier
+            (bare_identifier))
+          (identifier
+            (bare_identifier)))))))
+
+================================================================================
+TABULATE SUMMARISE clause with GRAND scope and SETTING
+================================================================================
+
+TABULATE * FROM sales SUMMARISE GRAND sdev OF foo SETTING place => 'top'
+
+--------------------------------------------------------------------------------
+
+(query
+  (tabulate_statement
+    (tabulate_keyword)
+    (column_selection
+      (mapping_list
+        (mapping_element
+          (wildcard_mapping))))
+    (single_source_from
+      source: (qualified_name
+        (identifier
+          (bare_identifier))))
+    (tab_clause
+      (summarise_clause
+        scope: (summarise_scope)
+        operation: (identifier
+          (bare_identifier))
+        (column_list
+          (identifier
+            (bare_identifier)))
+        (setting_clause
+          (parameter_assignment
+            name: (parameter_name
+              (identifier
+                (bare_identifier)))
+            value: (parameter_value
+              (string))))))))
+
+================================================================================
+TABULATE SUMMARISE template operation
+================================================================================
+
+TABULATE * FROM sales SUMMARISE '{mean} +/- {sdev}' OF foo
+
+--------------------------------------------------------------------------------
+
+(query
+  (tabulate_statement
+    (tabulate_keyword)
+    (column_selection
+      (mapping_list
+        (mapping_element
+          (wildcard_mapping))))
+    (single_source_from
+      source: (qualified_name
+        (identifier
+          (bare_identifier))))
+    (tab_clause
+      (summarise_clause
+        operation: (string)
+        (column_list
+          (identifier
+            (bare_identifier)))))))
+
+================================================================================
+TABULATE SUMMARIZE spelling alias
+================================================================================
+
+TABULATE * FROM sales SUMMARIZE median OF foo
+
+--------------------------------------------------------------------------------
+
+(query
+  (tabulate_statement
+    (tabulate_keyword)
+    (column_selection
+      (mapping_list
+        (mapping_element
+          (wildcard_mapping))))
+    (single_source_from
+      source: (qualified_name
+        (identifier
+          (bare_identifier))))
+    (tab_clause
+      (summarise_clause
+        operation: (identifier
+          (bare_identifier))
+        (column_list
+          (identifier
+            (bare_identifier)))))))

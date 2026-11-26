@@ -389,6 +389,53 @@ fn class_declarations(class: TableClass) -> &'static [(&'static str, &'static st
             ("border-top-width", "2px"),
             ("border-top-color", "#D3D3D3"),
         ],
+        TableClass::SummaryRow => &[],
+        TableClass::GroupSummary => &[
+            ("color", "#333333"),
+            ("background-color", "#FFFFFF"),
+            ("text-transform", "inherit"),
+            ("padding-top", "8px"),
+            ("padding-bottom", "8px"),
+            ("padding-left", "5px"),
+            ("padding-right", "5px"),
+        ],
+        TableClass::SummaryFirst => &[
+            ("border-top-style", "solid"),
+            ("border-top-width", "2px"),
+            ("border-top-color", "#D3D3D3"),
+        ],
+        TableClass::SummaryLast => &[
+            ("padding-top", "8px"),
+            ("padding-bottom", "8px"),
+            ("padding-left", "5px"),
+            ("padding-right", "5px"),
+            ("border-bottom-style", "solid"),
+            ("border-bottom-width", "2px"),
+            ("border-bottom-color", "#D3D3D3"),
+        ],
+        TableClass::GrandSummary => &[
+            ("color", "#333333"),
+            ("background-color", "#FFFFFF"),
+            ("text-transform", "inherit"),
+            ("padding-top", "8px"),
+            ("padding-bottom", "8px"),
+            ("padding-left", "5px"),
+            ("padding-right", "5px"),
+        ],
+        TableClass::GrandSummaryFirst => &[
+            ("padding-top", "8px"),
+            ("padding-bottom", "8px"),
+            ("padding-left", "5px"),
+            ("padding-right", "5px"),
+            ("border-top-style", "double"),
+            ("border-top-width", "6px"),
+            ("border-top-color", "#D3D3D3"),
+        ],
+        TableClass::GrandSummaryLast => &[
+            ("border-bottom-style", "double"),
+            ("border-bottom-width", "6px"),
+            ("border-bottom-color", "#D3D3D3"),
+        ],
         TableClass::AlignLeft => &[("text-align", "left")],
         TableClass::AlignCenter => &[("text-align", "center")],
         TableClass::AlignRight => &[
@@ -538,9 +585,10 @@ fn header_scope(kind: TableCellKind) -> Option<&'static str> {
     match kind {
         TableCellKind::ColumnLabel | TableCellKind::StubHead => Some("col"),
         TableCellKind::Spanner => Some("colgroup"),
-        TableCellKind::StubRowLabel => Some("row"),
+        TableCellKind::StubRowLabel | TableCellKind::SummaryLabel => Some("row"),
         TableCellKind::GroupHeading => Some("rowgroup"),
         TableCellKind::Body
+        | TableCellKind::SummaryValue
         | TableCellKind::Title
         | TableCellKind::Subtitle
         | TableCellKind::Caption

@@ -694,6 +694,7 @@ module.exports = grammar({
       $.span_clause,
       $.format_clause,
       $.facet_clause,
+      $.summarise_clause,
     ),
 
     // FORMAT — configures cell formatting for a group of columns. Multiple
@@ -716,6 +717,25 @@ module.exports = grammar({
       caseInsensitive('ANY'),   // wherever the columns are (default)
       caseInsensitive('BODY'),  // regular table body
       caseInsensitive('STUB')   // row-label column(s)
+    ),
+
+    // SUMMARISE — adds aggregate rows to the table. One clause per operation;
+    // clauses repeat like FORMAT, each contributing its own summary row(s).
+    // GROUP (default) summarises within each facet group, GRAND over all rows.
+    // The operation is a plain identifier (a stat name) or a string template
+    // with {stat} placeholders; validity is checked downstream.
+    summarise_clause: $ => seq(
+      choice(caseInsensitive('SUMMARISE'), caseInsensitive('SUMMARIZE')),
+      optional(field('scope', $.summarise_scope)),
+      field('operation', choice($.identifier, $.string)),
+      caseInsensitive('OF'),
+      $.column_list,
+      optional($.setting_clause)
+    ),
+
+    summarise_scope: $ => choice(
+      caseInsensitive('GROUP'),
+      caseInsensitive('GRAND')
     ),
 
     // SPAN — groups columns under one spanner cell. Multiple spanners repeat

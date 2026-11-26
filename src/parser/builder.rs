@@ -8,7 +8,8 @@ use crate::plot::layer::geom::Geom;
 use crate::plot::projection::resolve_coord;
 use crate::plot::scale::{color_to_hex, is_color_aesthetic, is_user_facet_aesthetic, Transform};
 use crate::plot::*;
-use crate::{ColumnSection, Format, GgsqlError, Result, SelectionItem, Spanner, Spec, Table};
+use crate::table::*;
+use crate::{GgsqlError, Result, Spec};
 use std::collections::HashMap;
 use tree_sitter::Node;
 
@@ -452,6 +453,11 @@ fn process_tab_clause(node: &Node, source: &SourceTree, table: &mut Table) -> Re
             "format_clause" => {
                 table.formats.push(build_format_clause(&child, source)?);
             }
+            "summarise_clause" => {
+                table
+                    .summaries
+                    .push(build_summarise_clause(&child, source)?);
+            }
             "facet_clause" => {
                 let facet = build_facet(&child, source)?;
                 if facet.is_grid() {
@@ -510,6 +516,65 @@ fn build_span_clause(node: &Node, source: &SourceTree, span_idx: usize) -> Resul
     Ok(Spanner {
         id,
         label,
+        columns,
+        settings,
+    })
+}
+
+/// Build a Summary from a summarise_clause node:
+/// SUMMARISE [GROUP|GRAND] <operation> OF col, ... [SETTING ...]
+fn build_summarise_clause(node: &Node, source: &SourceTree) -> Result<Summary> {
+    let operation_node = node.child_by_field_name("operation").ok_or_else(|| {
+        GgsqlError::ParseError("Missing operation in SUMMARISE clause".to_string())
+    })?;
+    let operation = match operation_node.kind() {
+        "string" => SummaryOperation::Template(parse_string_node(&operation_node, source)),
+        _ => SummaryOperation::Stat(naming::unquote_ident(&source.get_text(&operation_node))),
+    };
+
+    let scope = match node.child_by_field_name("scope") {
+        Some(scope_node) => match source.get_text(&scope_node).to_lowercase().as_str() {
+            "group" => SummaryScope::Group,
+            "grand" => SummaryScope::Grand,
+            text => {
+                return Err(GgsqlError::ParseError(format!(
+                    "Unknown SUMMARISE scope: '{}'. Valid scopes: group, grand",
+                    text
+                )))
+            }
+        },
+        None => SummaryScope::Group,
+    };
+
+    let columns_node = source
+        .find_node(node, "(column_list) @cols")
+        .ok_or_else(|| GgsqlError::ParseError("Missing columns in SUMMARISE clause".to_string()))?;
+    let columns = parse_column_list(&columns_node, source)?;
+
+    // A repeated column would aggregate twice into the same cell — meaningless
+    // rather than redundant, so reject it.
+    let mut seen = std::collections::HashSet::new();
+    let mut duplicates: Vec<&str> = Vec::new();
+    for column in &columns {
+        if !seen.insert(column) && !duplicates.contains(&column.as_str()) {
+            duplicates.push(column);
+        }
+    }
+    if !duplicates.is_empty() {
+        return Err(GgsqlError::ParseError(format!(
+            "Duplicate columns in SUMMARISE clause: {}",
+            crate::and_list_quoted(&duplicates, '\'')
+        )));
+    }
+
+    let settings = match source.find_node(node, "(setting_clause) @s") {
+        Some(setting_node) => parse_setting_clause(&setting_node, source)?,
+        None => Parameters::new(),
+    };
+
+    Ok(Summary {
+        operation,
+        scope,
         columns,
         settings,
     })
@@ -1783,6 +1848,93 @@ mod tests {
             Some("{:num %.0f}")
         );
         assert_eq!(table.formats[1].columns, vec!["bar"]);
+    }
+
+    #[test]
+    fn test_tabulate_summarise_basic() {
+        let specs = parse_test_specs("TABULATE * FROM sales SUMMARISE mean OF foo, bar").unwrap();
+        let table = specs[0].as_table().expect("expected a Table spec");
+
+        assert_eq!(table.summaries.len(), 1);
+        assert_eq!(
+            table.summaries[0].operation,
+            SummaryOperation::Stat("mean".to_string())
+        );
+        assert_eq!(table.summaries[0].scope, SummaryScope::Group);
+        assert_eq!(table.summaries[0].columns, vec!["foo", "bar"]);
+        assert!(table.summaries[0].settings.is_empty());
+    }
+
+    #[test]
+    fn test_tabulate_summarise_grand_scope_and_setting() {
+        let specs = parse_test_specs(
+            "TABULATE * FROM sales SUMMARISE GRAND sdev OF foo SETTING place => 'top'",
+        )
+        .unwrap();
+        let table = specs[0].as_table().expect("expected a Table spec");
+
+        assert_eq!(table.summaries[0].scope, SummaryScope::Grand);
+        assert_eq!(
+            table.summaries[0].settings.get("place"),
+            Some(&ParameterValue::String("top".to_string()))
+        );
+    }
+
+    #[test]
+    fn test_tabulate_summarise_operation_is_verbatim() {
+        let specs = parse_test_specs("TABULATE * FROM sales SUMMARIZE MEAN OF foo").unwrap();
+        let table = specs[0].as_table().expect("expected a Table spec");
+
+        assert_eq!(
+            table.summaries[0].operation,
+            SummaryOperation::Stat("MEAN".to_string())
+        );
+    }
+
+    #[test]
+    fn test_tabulate_summarise_template_operation() {
+        let specs =
+            parse_test_specs("TABULATE * FROM sales SUMMARISE '{mean} +/- {sdev}' OF foo").unwrap();
+        let table = specs[0].as_table().expect("expected a Table spec");
+
+        assert_eq!(
+            table.summaries[0].operation,
+            SummaryOperation::Template("{mean} +/- {sdev}".to_string())
+        );
+    }
+
+    #[test]
+    fn test_tabulate_repeated_summarise_clauses_produce_separate_summaries() {
+        let specs = parse_test_specs(
+            "TABULATE * FROM sales FACET region SUMMARISE mean OF foo SUMMARISE GRAND max OF foo, bar",
+        )
+        .unwrap();
+        let table = specs[0].as_table().expect("expected a Table spec");
+
+        assert_eq!(table.summaries.len(), 2);
+        assert_eq!(
+            table.summaries[0].operation,
+            SummaryOperation::Stat("mean".to_string())
+        );
+        assert_eq!(table.summaries[0].scope, SummaryScope::Group);
+        assert_eq!(
+            table.summaries[1].operation,
+            SummaryOperation::Stat("max".to_string())
+        );
+        assert_eq!(table.summaries[1].scope, SummaryScope::Grand);
+        assert_eq!(table.summaries[1].columns, vec!["foo", "bar"]);
+    }
+
+    #[test]
+    fn test_tabulate_summarise_reports_all_duplicate_columns() {
+        let result = parse_test_specs("TABULATE * FROM sales SUMMARISE mean OF foo, bar, foo, bar");
+        let error = result.unwrap_err().to_string();
+
+        assert!(
+            error.contains("Duplicate columns in SUMMARISE clause: 'foo' and 'bar'"),
+            "got: {}",
+            error
+        );
     }
 
     // ========================================

@@ -349,6 +349,22 @@ pub fn validate(query: &str) -> Result<Validated> {
                 });
             }
         }
+
+        // And each SUMMARISE's operation and SETTING parameters.
+        for (idx, summary) in table.summaries.iter().enumerate() {
+            if let Err(e) = summary.operation.validate() {
+                errors.push(ValidationError {
+                    message: format!("SUMMARISE {}: {}", idx + 1, e),
+                    location: None,
+                });
+            }
+            if let Err(e) = summary.resolve_settings() {
+                errors.push(ValidationError {
+                    message: format!("SUMMARISE {}: {}", idx + 1, e),
+                    location: None,
+                });
+            }
+        }
     }
 
     Ok(Validated {
@@ -423,6 +439,61 @@ mod tests {
             validate("SELECT 1 AS x TABULATE * FORMAT x SETTING bogus => 1 VISUALISE x DRAW point")
                 .unwrap();
         assert!(!validated.valid());
+    }
+
+    #[test]
+    fn test_validate_summarise_rejects_an_unknown_operation() {
+        let validated = validate("TABULATE * FROM sales SUMMARISE meen OF foo").unwrap();
+        assert!(!validated.valid());
+        assert!(validated.errors()[0]
+            .message
+            .contains("SUMMARISE 1: Unknown operation 'meen'"));
+    }
+
+    #[test]
+    fn test_validate_summarise_accepts_operations_case_insensitively() {
+        let validated = validate("TABULATE * FROM sales SUMMARISE MEAN OF foo").unwrap();
+        assert!(validated.valid());
+    }
+
+    #[test]
+    fn test_validate_summarise_rejects_positional_operations() {
+        let validated = validate("TABULATE * FROM sales SUMMARISE first OF foo").unwrap();
+        assert!(!validated.valid());
+    }
+
+    #[test]
+    fn test_validate_summarise_accepts_a_template_with_known_stats() {
+        let validated =
+            validate("TABULATE * FROM sales SUMMARISE '{mean:num %.2f} +/- {SDEV}' OF foo")
+                .unwrap();
+        assert!(validated.valid());
+    }
+
+    #[test]
+    fn test_validate_summarise_rejects_a_template_with_an_unknown_stat() {
+        let validated =
+            validate("TABULATE * FROM sales SUMMARISE '{mean} of {meen}' OF foo").unwrap();
+        assert!(!validated.valid());
+        assert!(validated.errors()[0]
+            .message
+            .contains("SUMMARISE 1: Unknown operation 'meen'"));
+    }
+
+    #[test]
+    fn test_validate_summarise_rejects_a_malformed_template() {
+        let validated = validate("TABULATE * FROM sales SUMMARISE '{mean' OF foo").unwrap();
+        assert!(!validated.valid());
+        assert!(validated.errors()[0].message.contains("Missing '}'"));
+    }
+
+    #[test]
+    fn test_validate_summarise_rejects_a_bad_setting() {
+        let validated =
+            validate("TABULATE * FROM sales SUMMARISE mean OF foo SETTING place => 'middle'")
+                .unwrap();
+        assert!(!validated.valid());
+        assert!(validated.errors()[0].message.contains("SUMMARISE 1:"));
     }
 
     #[test]

@@ -94,6 +94,11 @@ pub const SCHEMA_ALIAS: &str = concatcp!(GGSQL_SUFFIX, "schema", GGSQL_SUFFIX);
 /// Alias for the derived table a TABULATE selection wraps its source in
 pub const TABLE_ALIAS: &str = concatcp!(GGSQL_SUFFIX, "table", GGSQL_SUFFIX);
 
+/// Synthetic stub column holding `SUMMARISE` row labels, inserted when a
+/// table has summaries but no `STUB` column to put them in. Never names a
+/// `DataFrame` column.
+pub const SUMMARY_LABEL_COLUMN: &str = concatcp!(GGSQL_PREFIX, "summary_label", GGSQL_SUFFIX);
+
 /// Column name for densification group ID.
 /// Used by geoms that expand geometry (tile, segment, ribbon, rule) to group
 /// densified vertices back into their original feature.

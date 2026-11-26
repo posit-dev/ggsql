@@ -4,12 +4,14 @@
 //! statements, parallel to how `plot` defines `Plot` for `VISUALISE`
 //! statements: `source` (from `TABULATE FROM`), `selection` (from
 //! `TABULATE`'s own column list), `labels` (from `TABULATE LABEL`), `spans`
-//! (from `TABULATE SPAN`), `formats` (from `TABULATE FORMAT`), and `facet`
-//! (from `TABULATE FACET`) are populated so far.
+//! (from `TABULATE SPAN`), `formats` (from `TABULATE FORMAT`), `facet`
+//! (from `TABULATE FACET`), and `summaries` (from `TABULATE SUMMARISE`) are
+//! populated so far.
 
 mod facet;
 mod layout;
 mod spanner;
+mod summary;
 
 pub(crate) use facet::{groups_are_woven, setup_facet};
 pub(crate) use layout::{
@@ -19,6 +21,8 @@ pub(crate) use layout::{
 pub use layout::{TableCell, TableCellKind, TableClass, TableColumn, TableLayout, TableRow};
 pub use spanner::Spanner;
 pub(crate) use spanner::{create_spanners, reorder_table_columns};
+pub(crate) use summary::{parse_template, BinOp, StatExpr, TemplateSegment};
+pub use summary::{Summary, SummaryOperation, SummaryScope, SUMMARY_OPERATIONS};
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -59,6 +63,9 @@ pub struct Table {
     /// Row grouping (from `TABULATE FACET`). Only the wrap form is
     /// meaningful for tables; the builder rejects `BY`.
     pub facet: Option<Facet>,
+    /// Row summaries (from `TABULATE SUMMARISE`), one per `SUMMARISE` clause
+    /// written — same one-clause-per-row model as `formats`.
+    pub summaries: Vec<Summary>,
 }
 
 /// One item in a TABULATE column selection.
@@ -96,6 +103,7 @@ impl Table {
             spans: Vec::new(),
             formats: Vec::new(),
             facet: None,
+            summaries: Vec::new(),
         }
     }
 }
