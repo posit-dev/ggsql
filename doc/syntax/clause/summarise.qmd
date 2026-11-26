@@ -110,6 +110,8 @@ Can be `'top'` to place the summary rows at the top of each group or table, or `
 * `missing`: A string option for how to treat `null` values in the table. 
 The default `'propagate'` will list any non-counting operation as `null`, and counting operations include null-rows. 
 Can be set to `'drop'` to explicitly ignore `null` values in aggregates and ignore these rows in counting operations.
+* `blank`: A string displayed in cells of the summary row whose column are not summarised.
+The default is an em dash (`'—'`); set it to `''` for empty cells.
 
 ## Examples
 
@@ -155,6 +157,16 @@ TABULATE * FROM my_data
 FACET species
 SUMMARISE mean OF bill_len, bill_dep
   SETTING rowlabel => 'Average'
+```
+
+The display of non-summary cells can be changed using the `blank` setting.
+Using an empty string (`''`) leaves these cells empty.
+
+```{ggsql}
+TABULATE * FROM my_data
+FACET species
+SUMMARISE mean OF bill_len, bill_dep
+  SETTING blank => ''
 ```
 
 The summary cells are subject to `FORMAT` when using plain identifiers, along with the body rows.

@@ -74,6 +74,9 @@ pub(super) struct SummaryRow {
     pub top: bool,
     /// The row's stub label: `rowlabel`, else the operation name.
     pub label: String,
+    /// Display text for a body cell in a column the clause did not
+    /// summarise: the `blank` setting, em dash by default.
+    pub blank: String,
     /// One-row frame of the computed values; its schema names the
     /// summarised columns. Numeric for a bare operation — the column's
     /// temporal type for a date-valued statistic on a date/timestamp
@@ -139,7 +142,7 @@ impl SummaryRow {
                         .frame
                         .column(&column.name)
                         .map(|array| column_to_strings(array).remove(0))
-                        .unwrap_or_default();
+                        .unwrap_or_else(|_| self.blank.clone());
                     let mut cell = TableCell::new_summary_value(row, index, content)
                         .with_properties(column.properties.clone());
                     cell.classes.extend_from_slice(&classes);
@@ -241,6 +244,11 @@ pub(super) fn compute_summaries(
             .and_then(ParameterValue::as_str)
             .map_or_else(|| summary.operation.as_label(), str::to_string);
         let top = ParameterValue::is_str(summary.settings.get("place"), "top");
+        let blank = summary
+            .settings
+            .get("blank")
+            .and_then(ParameterValue::as_str)
+            .unwrap_or("—");
         let targets = match summary.scope {
             SummaryScope::Group => 0..chunks.len() - 1,
             SummaryScope::Grand => chunks.len() - 1..chunks.len(),
@@ -257,6 +265,7 @@ pub(super) fn compute_summaries(
                 scope: summary.scope,
                 top,
                 label: label.clone(),
+                blank: blank.to_string(),
                 frame,
             });
         }

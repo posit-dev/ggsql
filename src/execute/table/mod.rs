@@ -876,13 +876,14 @@ mod integration_tests {
             .find(|c| c.kind == TableCellKind::SummaryValue && c.top == 4 && c.left == 1)
             .unwrap();
         assert_eq!(value.content, "2");
-        // The non-summarised column's cell is blank.
+        // The non-summarised column's cell shows the blank fill, an em dash
+        // by default.
         let blank = resolved
             .cells()
             .iter()
             .find(|c| c.kind == TableCellKind::SummaryValue && c.top == 4 && c.left == 2)
             .unwrap();
-        assert_eq!(blank.content, "");
+        assert_eq!(blank.content, "—");
     }
 
     #[test]
@@ -1055,6 +1056,66 @@ mod integration_tests {
             .find(|c| c.kind == TableCellKind::SummaryValue)
             .unwrap();
         assert_eq!(value.content, "null of 2");
+    }
+
+    #[test]
+    fn test_tabulate_summarise_fills_unsummarised_cells_with_the_blank_default() {
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        reader
+            .execute_sql(
+                "CREATE TABLE t AS SELECT * FROM (VALUES (1.0, 'a'), (2.0, 'b')) AS t(x, y)",
+            )
+            .unwrap();
+        let resolved =
+            resolve_table_with_reader("TABULATE * FROM t SUMMARISE mean OF x", &reader).unwrap();
+
+        let contents: Vec<&str> = resolved
+            .cells()
+            .iter()
+            .filter(|c| c.kind == TableCellKind::SummaryValue)
+            .map(|c| c.content.as_str())
+            .collect();
+        assert_eq!(contents, ["1.5", "—"]);
+    }
+
+    #[test]
+    fn test_tabulate_summarise_blank_setting_customises_the_fill() {
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        reader
+            .execute_sql(
+                "CREATE TABLE t AS SELECT * FROM (VALUES (1.0, 'a'), (2.0, 'b')) AS t(x, y)",
+            )
+            .unwrap();
+        let resolved = resolve_table_with_reader(
+            "TABULATE * FROM t SUMMARISE mean OF x SETTING blank => 'N/A'",
+            &reader,
+        )
+        .unwrap();
+
+        let contents: Vec<&str> = resolved
+            .cells()
+            .iter()
+            .filter(|c| c.kind == TableCellKind::SummaryValue)
+            .map(|c| c.content.as_str())
+            .collect();
+        assert_eq!(contents, ["1.5", "N/A"]);
+    }
+
+    #[test]
+    fn test_tabulate_summarise_null_value_reports_null_not_the_blank_fill() {
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        reader
+            .execute_sql("CREATE TABLE t AS SELECT * FROM (VALUES (1.0), (NULL)) AS t(x)")
+            .unwrap();
+        let resolved =
+            resolve_table_with_reader("TABULATE * FROM t SUMMARISE mean OF x", &reader).unwrap();
+
+        let value = resolved
+            .cells()
+            .iter()
+            .find(|c| c.kind == TableCellKind::SummaryValue)
+            .unwrap();
+        assert_eq!(value.content, "null");
     }
 
     #[test]

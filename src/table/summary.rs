@@ -449,6 +449,12 @@ const SUMMARY_PARAMS: &[ParamDefinition] = &[
         default: DefaultParamValue::String("propagate"),
         constraint: ParamConstraint::string_option(&["propagate", "drop"]),
     },
+    ParamDefinition {
+        // Display text for an empty cell in a summary row.
+        name: "blank",
+        default: DefaultParamValue::String("—"),
+        constraint: ParamConstraint::string(),
+    },
 ];
 
 impl Summary {
