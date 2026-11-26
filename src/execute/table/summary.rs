@@ -2,15 +2,22 @@
 //! data and prepares the frame for summary rows, `compute_summaries` runs
 //! the aggregate operations on it.
 //!
-//! All of `SUMMARY_OPERATIONS` are folds over a column's numeric values
-//! except the type-free tallies `count`, `n_distinct` and `n_missing`.
+//! Most of `SUMMARY_OPERATIONS` are folds over a column's numeric values.
+//! The tallies `count`, `n_distinct` and `n_missing` are type-free, and
+//! date/timestamp columns accept the order statistics (returning a temporal
+//! value) and the spread statistics (returning a duration).
 
 use std::collections::{HashMap, HashSet};
 use std::ops::Range;
 use std::sync::Arc;
 
-use arrow::array::{Array, ArrayRef, Float64Array, StringArray};
-use arrow::datatypes::DataType;
+use arrow::array::{
+    Array, ArrayRef, Date32Array, Date64Array, Float64Array, StringArray,
+    TimestampMicrosecondArray, TimestampMillisecondArray, TimestampNanosecondArray,
+    TimestampSecondArray,
+};
+use arrow::datatypes::{DataType, TimeUnit};
+use zygos::Value;
 
 use crate::array_util::{as_f64, cast_array, column_to_strings, value_to_string};
 use crate::naming;
@@ -68,8 +75,10 @@ pub(super) struct SummaryRow {
     /// The row's stub label: `rowlabel`, else the operation name.
     pub label: String,
     /// One-row frame of the computed values; its schema names the
-    /// summarised columns. Numeric for a bare operation (unless the
-    /// column's `FORMAT` renaming stringified it), string for a template.
+    /// summarised columns. Numeric for a bare operation — the column's
+    /// temporal type for a date-valued statistic on a date/timestamp
+    /// column — string for a template. A `FORMAT` renaming may stringify
+    /// any of these.
     pub frame: DataFrame,
 }
 
@@ -289,9 +298,7 @@ fn summary_frame(
                     let SummaryOperation::Stat(name) = &summary.operation else {
                         unreachable!("compute_summaries parses every template clause")
                     };
-                    Arc::new(Float64Array::from(vec![summary_stat(
-                        name, &slice, drop_nulls,
-                    )?]))
+                    value_array(&summary_stat(name, &slice, drop_nulls)?, slice.data_type())
                 }
             };
             Ok((column.clone(), cell))
@@ -317,11 +324,9 @@ fn render_template(
             TemplateSegment::Literal(literal) => text.push_str(literal),
             TemplateSegment::Stat { expr, template } => {
                 match eval_stat_expr(expr, slice, drop_nulls, &mut cache)? {
-                    Some(value) => text.push_str(
-                        &template
-                            .format(&zygos::Value::Number(value), None)
-                            .unwrap_or_default(),
-                    ),
+                    Some(value) => {
+                        text.push_str(&template.format(&value, None).unwrap_or_default())
+                    }
                     None => text.push_str("null"),
                 }
             }
@@ -331,26 +336,30 @@ fn render_template(
 }
 
 /// Evaluate a template placeholder's expression over one column's slice:
-/// stat leaves via `summary_stat`, combined with the operators. A NULL leaf
-/// makes the whole expression NULL.
+/// stat leaves via `summary_stat` keep their type, so a date-valued leaf
+/// renders through zygos's temporal formatting; any arithmetic projects the
+/// operands to plain numbers via [`leaf_f64`]. A NULL leaf makes the whole
+/// expression NULL.
 fn eval_stat_expr(
     expr: &StatExpr,
     slice: &ArrayRef,
     drop_nulls: bool,
-    cache: &mut HashMap<String, Option<f64>>,
-) -> Result<Option<f64>> {
+    cache: &mut HashMap<String, Option<Value>>,
+) -> Result<Option<Value>> {
     match expr {
         StatExpr::Stat(name) => {
             let key = name.to_ascii_lowercase();
             if let Some(value) = cache.get(&key) {
-                return Ok(*value);
+                return Ok(value.clone());
             }
             let value = summary_stat(name, slice, drop_nulls)?;
-            cache.insert(key, value);
+            cache.insert(key, value.clone());
             Ok(value)
         }
-        StatExpr::Number(n) => Ok(Some(*n)),
-        StatExpr::Neg(inner) => Ok(eval_stat_expr(inner, slice, drop_nulls, cache)?.map(|v| -v)),
+        StatExpr::Number(n) => Ok(Some(Value::Number(*n))),
+        StatExpr::Neg(inner) => Ok(eval_stat_expr(inner, slice, drop_nulls, cache)?
+            .and_then(|v| leaf_f64(&v))
+            .map(|v| Value::Number(-v))),
         StatExpr::Binary(op, lhs, rhs) => {
             let (Some(lhs), Some(rhs)) = (
                 eval_stat_expr(lhs, slice, drop_nulls, cache)?,
@@ -358,13 +367,27 @@ fn eval_stat_expr(
             ) else {
                 return Ok(None);
             };
-            Ok(Some(match op {
+            let (Some(lhs), Some(rhs)) = (leaf_f64(&lhs), leaf_f64(&rhs)) else {
+                return Ok(None);
+            };
+            Ok(Some(Value::Number(match op {
                 BinOp::Add => lhs + rhs,
                 BinOp::Sub => lhs - rhs,
                 BinOp::Mul => lhs * rhs,
                 BinOp::Div => lhs / rhs,
-            }))
+            })))
         }
+    }
+}
+
+/// Project a stat leaf to a plain number for arithmetic: days for dates,
+/// seconds for datetimes, itself for numbers.
+fn leaf_f64(value: &Value) -> Option<f64> {
+    match value {
+        Value::Number(n) => Some(*n),
+        Value::Date(days) => Some(*days as f64),
+        Value::DateTime(us) => Some(*us as f64 / 1e6),
+        _ => None,
     }
 }
 
@@ -397,7 +420,12 @@ fn format_summary_frame(
 /// Compute one `SUMMARISE` operation over a column. With `drop_nulls`, nulls
 /// are ignored; otherwise a single null makes the result `None` (NULL), as
 /// does an empty input. Matching on `operation` is case-insensitive.
-pub fn summary_stat(operation: &str, array: &ArrayRef, drop_nulls: bool) -> Result<Option<f64>> {
+///
+/// Numeric columns yield [`Value::Number`]. Date/timestamp columns accept
+/// the order statistics, which yield the column's own kind of temporal
+/// value, and the spread statistics, which yield a duration as a number of
+/// days (dates) or seconds (timestamps); the other folds reject them.
+pub fn summary_stat(operation: &str, array: &ArrayRef, drop_nulls: bool) -> Result<Option<Value>> {
     // The type-free tallies bypass the numeric fold: `count` counts rows or
     // non-null values, `n_missing` measures nulls so never goes NULL itself.
     let op = operation.to_ascii_lowercase();
@@ -408,19 +436,26 @@ pub fn summary_stat(operation: &str, array: &ArrayRef, drop_nulls: bool) -> Resu
             } else {
                 array.len()
             };
-            return Ok(Some(count as f64));
+            return Ok(Some(Value::Number(count as f64)));
         }
-        "n_missing" => return Ok(Some(array.logical_null_count() as f64)),
-        "n_distinct" => return n_distinct(array, drop_nulls),
+        "n_missing" => return Ok(Some(Value::Number(array.logical_null_count() as f64))),
+        "n_distinct" => return Ok(n_distinct(array, drop_nulls)?.map(Value::Number)),
         _ => {}
     }
-    let values = numeric_values(array, operation, drop_nulls)?;
-    let Some(values) = values else {
-        return Ok(None);
+    let Some(kind) = ValueKind::of(array.data_type()) else {
+        return Err(GgsqlError::ValidationError(format!(
+            "SUMMARISE {operation} requires a numeric, date or timestamp column, not {}",
+            array.data_type()
+        )));
     };
+    kind.summary_stat(&op, array, drop_nulls)
+}
+
+/// Fold one statistic over already-extracted values.
+fn fold_stat(operation: &str, values: Vec<f64>) -> Result<f64> {
     let v = &values;
     let n = v.len() as f64;
-    let result = match op.as_str() {
+    let result = match operation {
         "sum" => v.iter().sum(),
         "prod" => v.iter().product(),
         "min" => min(v),
@@ -448,7 +483,170 @@ pub fn summary_stat(operation: &str, array: &ArrayRef, drop_nulls: bool) -> Resu
             )))
         }
     };
-    Ok(Some(result))
+    Ok(result)
+}
+
+/// The flavour of column a fold operates on, fixing the unit its statistics
+/// are computed in and how the result is wrapped.
+enum ValueKind {
+    /// Any numeric type; statistics computed and reported as-is.
+    Numeric,
+    /// Date32/Date64; statistics computed and durations reported in days.
+    Date,
+    /// Any timestamp; statistics computed in µs, durations reported in
+    /// seconds.
+    DateTime,
+}
+
+impl ValueKind {
+    fn of(dtype: &DataType) -> Option<Self> {
+        match dtype {
+            _ if dtype.is_numeric() => Some(Self::Numeric),
+            DataType::Date32 | DataType::Date64 => Some(Self::Date),
+            DataType::Timestamp(_, _) => Some(Self::DateTime),
+            _ => None,
+        }
+    }
+
+    fn summary_stat(
+        &self,
+        operation: &str,
+        array: &ArrayRef,
+        drop_nulls: bool,
+    ) -> Result<Option<Value>> {
+        // Temporal columns accept the order statistics, which return a
+        // value of the column's own kind, and the spread statistics, which
+        // return a duration.
+        let date_valued = matches!(
+            operation,
+            "min"
+                | "max"
+                | "mid"
+                | "mean"
+                | "median"
+                | "p05"
+                | "p10"
+                | "p25"
+                | "p50"
+                | "p75"
+                | "p90"
+                | "p95"
+        );
+        let duration = matches!(operation, "range" | "sdev" | "se" | "iqr");
+        if !matches!(self, Self::Numeric) && !date_valued && !duration {
+            return Err(GgsqlError::ValidationError(format!(
+                "SUMMARISE {operation} does not support {}",
+                array.data_type()
+            )));
+        }
+        let Some(values) = self.values(array, drop_nulls)? else {
+            return Ok(None);
+        };
+        let result = fold_stat(operation, values)?;
+        Ok(Some(match self {
+            Self::Numeric => Value::Number(result),
+            kind if date_valued => kind.typed(result),
+            kind => Value::Number(kind.duration(result)),
+        }))
+    }
+
+    /// Extract the column's values in the kind's compute unit (unchanged
+    /// for numbers, days for dates, µs for timestamps). Returns `None` when
+    /// the result should be NULL: the input is empty, all-null, or holds
+    /// nulls without `drop_nulls`.
+    fn values(&self, array: &ArrayRef, drop_nulls: bool) -> Result<Option<Vec<f64>>> {
+        let scale = match array.data_type() {
+            DataType::Date32 => 1.0,
+            DataType::Date64 => 1.0 / 86_400_000.0,
+            DataType::Timestamp(unit, _) => match unit {
+                TimeUnit::Second => 1e6,
+                TimeUnit::Millisecond => 1e3,
+                TimeUnit::Microsecond => 1.0,
+                TimeUnit::Nanosecond => 1e-3,
+            },
+            _ => 1.0,
+        };
+        // Timestamps don't cast to Float64 directly; going through Int64
+        // first is lossless for every accepted dtype.
+        let f64s: ArrayRef = if array.data_type() == &DataType::Float64 {
+            array.clone()
+        } else if matches!(self, Self::Numeric) {
+            cast_array(array, &DataType::Float64)?
+        } else {
+            cast_array(&cast_array(array, &DataType::Int64)?, &DataType::Float64)?
+        };
+        let array = as_f64(&f64s)?;
+        if array.is_empty() || (array.logical_null_count() > 0 && !drop_nulls) {
+            return Ok(None);
+        }
+        let values: Vec<f64> = array.iter().flatten().map(|v| v * scale).collect();
+        Ok((!values.is_empty()).then_some(values))
+    }
+
+    /// Wrap a date-valued result in its temporal value, rounding to the
+    /// column's precision (whole days / whole µs).
+    fn typed(&self, value: f64) -> Value {
+        match self {
+            Self::Numeric => unreachable!("the numeric arm wraps directly"),
+            Self::Date => Value::Date(value.round() as i32),
+            Self::DateTime => Value::DateTime(value.round() as i64),
+        }
+    }
+
+    /// Convert a duration from the compute unit to the reported unit (days
+    /// for dates, seconds for timestamps).
+    fn duration(&self, value: f64) -> f64 {
+        match self {
+            Self::Numeric => unreachable!("the numeric arm wraps directly"),
+            Self::Date => value,
+            Self::DateTime => value / 1e6,
+        }
+    }
+}
+
+/// Build the one-cell array holding a bare operation's result. A date-valued
+/// result keeps the summarised column's temporal type (and timezone) so it
+/// displays and formats like a body cell; everything else is a Float64.
+fn value_array(value: &Option<Value>, dtype: &DataType) -> ArrayRef {
+    let Some(value) = value else {
+        let dtype = match ValueKind::of(dtype) {
+            Some(ValueKind::Date | ValueKind::DateTime) => dtype.clone(),
+            _ => DataType::Float64,
+        };
+        return arrow::array::new_null_array(&dtype, 1);
+    };
+    match (value, dtype) {
+        (Value::Date(days), DataType::Date32) => Arc::new(Date32Array::from(vec![Some(*days)])),
+        (Value::Date(days), DataType::Date64) => {
+            Arc::new(Date64Array::from(vec![Some(*days as i64 * 86_400_000)]))
+        }
+        (Value::DateTime(us), DataType::Timestamp(unit, tz)) => {
+            let us = *us;
+            match unit {
+                TimeUnit::Second => Arc::new(
+                    TimestampSecondArray::from(vec![Some(us / 1_000_000)])
+                        .with_timezone_opt(tz.clone()),
+                ),
+                TimeUnit::Millisecond => Arc::new(
+                    TimestampMillisecondArray::from(vec![Some(us / 1_000)])
+                        .with_timezone_opt(tz.clone()),
+                ),
+                TimeUnit::Microsecond => Arc::new(
+                    TimestampMicrosecondArray::from(vec![Some(us)]).with_timezone_opt(tz.clone()),
+                ),
+                TimeUnit::Nanosecond => Arc::new(
+                    TimestampNanosecondArray::from(vec![Some(us * 1_000)])
+                        .with_timezone_opt(tz.clone()),
+                ),
+            }
+        }
+        _ => {
+            let Value::Number(n) = value else {
+                unreachable!("summary_stat yields Date/DateTime only on temporal columns")
+            };
+            Arc::new(Float64Array::from(vec![Some(*n)]))
+        }
+    }
 }
 
 /// Count a column's distinct non-null values: NULL when nulls propagate.
@@ -490,28 +688,6 @@ fn max(values: &[f64]) -> f64 {
     values.iter().fold(f64::NEG_INFINITY, |a, &b| a.max(b))
 }
 
-/// Extract a column's values as f64. Returns `None` when the result should be
-/// NULL: the input is empty, all-null, or holds nulls without `drop_nulls`.
-fn numeric_values(array: &ArrayRef, operation: &str, drop_nulls: bool) -> Result<Option<Vec<f64>>> {
-    if !array.data_type().is_numeric() {
-        return Err(GgsqlError::ValidationError(format!(
-            "SUMMARISE {operation} requires a numeric column, not {}",
-            array.data_type()
-        )));
-    }
-    let f64s: ArrayRef = if array.data_type() == &DataType::Float64 {
-        array.clone()
-    } else {
-        cast_array(array, &DataType::Float64)?
-    };
-    let array = as_f64(&f64s)?;
-    if array.is_empty() || (array.logical_null_count() > 0 && !drop_nulls) {
-        return Ok(None);
-    }
-    let values: Vec<f64> = array.iter().flatten().collect();
-    Ok((!values.is_empty()).then_some(values))
-}
-
 /// Linear-interpolated quantile.
 /// Uses the `quantile_cont` convention, R's default `quantile(type = 7)`.
 fn quantile(mut values: Vec<f64>, q: f64) -> f64 {
@@ -529,39 +705,44 @@ mod tests {
     use arrow::array::{Float64Array, Int64Array, StringArray};
     use std::sync::Arc;
 
+    /// Unwrap a `summary_stat` result to its plain number.
+    fn num(result: Result<Option<Value>>) -> Option<f64> {
+        result.unwrap().and_then(|v| v.as_number())
+    }
+
     #[test]
     fn nulls_propagate_by_default() {
         let array: ArrayRef = Arc::new(Float64Array::from(vec![Some(1.0), None, Some(3.0)]));
-        assert_eq!(summary_stat("mean", &array, false).unwrap(), None);
-        assert_eq!(summary_stat("median", &array, false).unwrap(), None);
+        assert_eq!(num(summary_stat("mean", &array, false)), None);
+        assert_eq!(num(summary_stat("median", &array, false)), None);
     }
 
     #[test]
     fn drop_nulls_ignores_them() {
         let array: ArrayRef = Arc::new(Float64Array::from(vec![Some(1.0), None, Some(3.0)]));
-        assert_eq!(summary_stat("mean", &array, true).unwrap(), Some(2.0));
-        assert_eq!(summary_stat("median", &array, true).unwrap(), Some(2.0));
+        assert_eq!(num(summary_stat("mean", &array, true)), Some(2.0));
+        assert_eq!(num(summary_stat("median", &array, true)), Some(2.0));
     }
 
     #[test]
     fn mean_accepts_integer_columns() {
         let array: ArrayRef = Arc::new(Int64Array::from(vec![1, 2, 3]));
-        assert_eq!(summary_stat("MEAN", &array, false).unwrap(), Some(2.0));
+        assert_eq!(num(summary_stat("MEAN", &array, false)), Some(2.0));
     }
 
     #[test]
     fn median_interpolates_even_counts() {
         let odd: ArrayRef = Arc::new(Float64Array::from(vec![3.0, 1.0, 2.0]));
-        assert_eq!(summary_stat("median", &odd, false).unwrap(), Some(2.0));
+        assert_eq!(num(summary_stat("median", &odd, false)), Some(2.0));
 
         let even: ArrayRef = Arc::new(Float64Array::from(vec![1.0, 2.0, 3.0, 4.0]));
-        assert_eq!(summary_stat("median", &even, false).unwrap(), Some(2.5));
+        assert_eq!(num(summary_stat("median", &even, false)), Some(2.5));
     }
 
     #[test]
     fn all_null_input_is_none() {
         let array: ArrayRef = Arc::new(Float64Array::from(vec![None::<f64>, None]));
-        assert_eq!(summary_stat("mean", &array, true).unwrap(), None);
+        assert_eq!(num(summary_stat("mean", &array, true)), None);
     }
 
     #[test]
@@ -579,43 +760,37 @@ mod tests {
     #[test]
     fn count_is_type_free() {
         let strings: ArrayRef = Arc::new(StringArray::from(vec![Some("a"), None, Some("b")]));
-        assert_eq!(summary_stat("count", &strings, false).unwrap(), Some(3.0));
-        assert_eq!(summary_stat("count", &strings, true).unwrap(), Some(2.0));
+        assert_eq!(num(summary_stat("count", &strings, false)), Some(3.0));
+        assert_eq!(num(summary_stat("count", &strings, true)), Some(2.0));
     }
 
     #[test]
     fn count_of_an_empty_slice_is_zero() {
         let array: ArrayRef = Arc::new(Float64Array::from(Vec::<f64>::new()));
-        assert_eq!(summary_stat("count", &array, false).unwrap(), Some(0.0));
+        assert_eq!(num(summary_stat("count", &array, false)), Some(0.0));
     }
 
     #[test]
     fn n_missing_counts_nulls() {
         let array: ArrayRef = Arc::new(Float64Array::from(vec![Some(1.0), None, Some(3.0)]));
-        assert_eq!(summary_stat("n_missing", &array, false).unwrap(), Some(1.0));
-        assert_eq!(summary_stat("n_missing", &array, true).unwrap(), Some(1.0));
+        assert_eq!(num(summary_stat("n_missing", &array, false)), Some(1.0));
+        assert_eq!(num(summary_stat("n_missing", &array, true)), Some(1.0));
     }
 
     #[test]
     fn n_distinct_counts_distinct_values() {
         let numeric: ArrayRef = Arc::new(Int64Array::from(vec![1, 2, 2, 3, 1]));
-        assert_eq!(
-            summary_stat("n_distinct", &numeric, false).unwrap(),
-            Some(3.0)
-        );
+        assert_eq!(num(summary_stat("n_distinct", &numeric, false)), Some(3.0));
 
         let strings: ArrayRef = Arc::new(StringArray::from(vec!["a", "b", "a"]));
-        assert_eq!(
-            summary_stat("n_distinct", &strings, false).unwrap(),
-            Some(2.0)
-        );
+        assert_eq!(num(summary_stat("n_distinct", &strings, false)), Some(2.0));
     }
 
     #[test]
     fn n_distinct_propagates_nulls() {
         let array: ArrayRef = Arc::new(Float64Array::from(vec![Some(1.0), None, Some(2.0)]));
-        assert_eq!(summary_stat("n_distinct", &array, false).unwrap(), None);
-        assert_eq!(summary_stat("n_distinct", &array, true).unwrap(), Some(2.0));
+        assert_eq!(num(summary_stat("n_distinct", &array, false)), None);
+        assert_eq!(num(summary_stat("n_distinct", &array, true)), Some(2.0));
     }
 
     fn eval(template: &str, array: &ArrayRef, drop_nulls: bool) -> String {
@@ -642,7 +817,7 @@ mod tests {
 
     fn stat(operation: &str, values: &[f64]) -> f64 {
         let array: ArrayRef = Arc::new(Float64Array::from(values.to_vec()));
-        summary_stat(operation, &array, false).unwrap().unwrap()
+        num(summary_stat(operation, &array, false)).unwrap()
     }
 
     #[test]
@@ -666,6 +841,161 @@ mod tests {
         assert_eq!(stat("p50", v), 2.5);
         assert!((stat("p05", v) - 1.15).abs() < 1e-12);
         assert!((stat("p95", v) - 3.85).abs() < 1e-12);
+    }
+
+    /// 2024-01-15, 2024-01-16, 2024-01-18 as days since the epoch.
+    fn dates() -> ArrayRef {
+        Arc::new(Date32Array::from(vec![19737, 19738, 19740]))
+    }
+
+    #[test]
+    fn date_valued_ops_on_dates_return_dates() {
+        assert!(matches!(
+            summary_stat("min", &dates(), false).unwrap(),
+            Some(Value::Date(19737))
+        ));
+        assert!(matches!(
+            summary_stat("max", &dates(), false).unwrap(),
+            Some(Value::Date(19740))
+        ));
+        assert!(matches!(
+            summary_stat("median", &dates(), false).unwrap(),
+            Some(Value::Date(19738))
+        ));
+        // (19737 + 19740) / 2 = 19738.5, rounding to 19739.
+        assert!(matches!(
+            summary_stat("mid", &dates(), false).unwrap(),
+            Some(Value::Date(19739))
+        ));
+    }
+
+    #[test]
+    fn a_mean_of_dates_rounds_to_a_whole_day() {
+        // Mean of 19737 and 19738 falls on 19737.5.
+        let array: ArrayRef = Arc::new(Date32Array::from(vec![19737, 19738]));
+        assert!(matches!(
+            summary_stat("mean", &array, false).unwrap(),
+            Some(Value::Date(19738))
+        ));
+    }
+
+    #[test]
+    fn spread_ops_on_dates_return_days() {
+        assert!(matches!(
+            summary_stat("range", &dates(), false).unwrap(),
+            Some(Value::Number(3.0))
+        ));
+        assert!(matches!(
+            summary_stat("iqr", &dates(), false).unwrap(),
+            Some(Value::Number(1.5))
+        ));
+    }
+
+    #[test]
+    fn spread_ops_on_timestamps_return_seconds() {
+        let array: ArrayRef = Arc::new(TimestampSecondArray::from(vec![0, 10, 50]));
+        assert!(matches!(
+            summary_stat("range", &array, false).unwrap(),
+            Some(Value::Number(50.0))
+        ));
+        // Population variance of 0, 10, 50 is 1400/3.
+        assert!(matches!(
+            summary_stat("sdev", &array, false).unwrap(),
+            Some(Value::Number(s)) if (s * s - 1400.0 / 3.0).abs() < 1e-9
+        ));
+    }
+
+    #[test]
+    fn date_valued_ops_on_timestamps_return_datetimes() {
+        let array: ArrayRef = Arc::new(TimestampMillisecondArray::from(vec![1_000, 3_000, 5_000]));
+        assert!(matches!(
+            summary_stat("min", &array, false).unwrap(),
+            Some(Value::DateTime(1_000_000))
+        ));
+        assert!(matches!(
+            summary_stat("median", &array, false).unwrap(),
+            Some(Value::DateTime(3_000_000))
+        ));
+    }
+
+    #[test]
+    fn other_folds_reject_temporal_columns() {
+        for op in ["sum", "prod", "geomean", "harmean", "rms", "var"] {
+            assert!(
+                summary_stat(op, &dates(), false).is_err(),
+                "{op} should reject a date column"
+            );
+        }
+    }
+
+    #[test]
+    fn tallies_still_accept_temporal_columns() {
+        assert_eq!(num(summary_stat("count", &dates(), false)), Some(3.0));
+        assert_eq!(num(summary_stat("n_distinct", &dates(), false)), Some(3.0));
+    }
+
+    #[test]
+    fn temporal_nulls_propagate_by_default() {
+        let array: ArrayRef = Arc::new(Date32Array::from(vec![Some(19737), None]));
+        assert!(summary_stat("min", &array, false).unwrap().is_none());
+        assert!(matches!(
+            summary_stat("min", &array, true).unwrap(),
+            Some(Value::Date(19737))
+        ));
+    }
+
+    #[test]
+    fn templates_format_date_leaves_as_dates() {
+        assert_eq!(eval("{min}", &dates(), false), "2024-01-15");
+        assert_eq!(eval("{min:time %d %b %Y}", &dates(), false), "15 Jan 2024");
+    }
+
+    #[test]
+    fn template_arithmetic_on_dates_is_a_number_of_days() {
+        assert_eq!(eval("{max-min}", &dates(), false), "3");
+        assert_eq!(eval("{max-min:duration d}", &dates(), false), "3d");
+        assert_eq!(eval("{(max-min)/7:%.4f}", &dates(), false), "0.4286");
+    }
+
+    #[test]
+    fn a_date_summary_frame_keeps_the_date_type() {
+        let df = DataFrame::new(vec![("d".to_string(), dates())]).unwrap();
+        let rows = body_rows(&[&[], &[], &[]]);
+
+        let computed = compute_summaries(
+            &df,
+            &rows,
+            &[summary("mean", SummaryScope::Grand, &["d"])],
+            &HashMap::new(),
+        )
+        .unwrap();
+
+        let array = computed[0].1[0].frame.column("d").unwrap();
+        assert_eq!(array.data_type(), &DataType::Date32);
+        // 19737.67 rounds to 19738: 2024-01-16.
+        assert_eq!(column_to_strings(array), vec!["2024-01-16"]);
+    }
+
+    #[test]
+    fn a_timestamp_summary_frame_keeps_the_timestamp_type() {
+        let column: ArrayRef = Arc::new(TimestampSecondArray::from(vec![0, 3600, 7200]));
+        let df = DataFrame::new(vec![("t".to_string(), column)]).unwrap();
+        let rows = body_rows(&[&[], &[], &[]]);
+
+        let computed = compute_summaries(
+            &df,
+            &rows,
+            &[summary("max", SummaryScope::Grand, &["t"])],
+            &HashMap::new(),
+        )
+        .unwrap();
+
+        let array = computed[0].1[0].frame.column("t").unwrap();
+        assert_eq!(
+            array.data_type(),
+            &DataType::Timestamp(TimeUnit::Second, None)
+        );
+        assert_eq!(column_to_strings(array), vec!["1970-01-01T02:00:00"]);
     }
 
     fn summary(operation: &str, scope: SummaryScope, columns: &[&str]) -> Summary {

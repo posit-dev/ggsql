@@ -37,12 +37,33 @@ The difference between a `FACET`-less `GROUP` scope and a `GRAND` scope is large
 This part of the clause can be an identifier or a string representing an expression.
 When using an identifier, one of the following operations are available:
 
-* Counting: `count`, `n_distinct`, `n_missing`.
-* Totals: `sum`, `prod`.
-* Extremes: `min`, `max`, `range` (max - min), `mid` (min + max) / 2.
-* Centrality: `mean`, geometric mean `geomean`, harmonic mean `harmean`, root-mean-square `rms`, `median`.
-* Dispersion: standard deviation `sdev`, standard error `se`, variance `var`, interquartile range `iqr`. Note `sdev`, `se` and `var` are population statistics, not sample statistics.
-* Percentiles: `p05`, `p10`, `p25`, `p50` (median), `p75`, `p90`, `p95`.
+| Name | Description | Numeric | Date(time) | Other |
+|------|-------------|:-------:|:----------:|:-----:|
+| `count` | Number of rows | ✓ | ✓ | ✓ |
+| `n_distinct` | Number of distinct values | ✓ | ✓ | ✓ |
+| `n_missing` | Number of nulls | ✓ | ✓ | ✓ |
+| `sum` | Sum | ✓ | | |
+| `prod` | Product | ✓ | | |
+| `min` | Minimum | ✓ | ✓ | |
+| `max` | Maximum | ✓ | ✓ | |
+| `range` | max − min | ✓ | ✓ | |
+| `mid` | (min + max) / 2 | ✓ | ✓ | |
+| `mean` | Arithmetic mean | ✓ | ✓ | |
+| `geomean` | Geometric mean | ✓ | | |
+| `harmean` | Harmonic mean | ✓ | | |
+| `rms` | Root-mean-square | ✓ | | |
+| `median` | Median | ✓ | ✓ | |
+| `sdev` | Standard deviation (population, ÷ n) | ✓ | ✓ | |
+| `se` | Standard error (population, ÷ n) | ✓ | ✓ | |
+| `var` | Variance (population, ÷ n) | ✓ | | |
+| `iqr` | Interquartile range | ✓ | ✓ | |
+| `p05` | 5th percentile | ✓ | ✓ | |
+| `p10` | 10th percentile | ✓ | ✓ | |
+| `p25` | 25th percentile | ✓ | ✓ | |
+| `p50` | 50th percentile (median) | ✓ | ✓ | |
+| `p75` | 75th percentile | ✓ | ✓ | |
+| `p90` | 90th percentile | ✓ | ✓ | |
+| `p95` | 95th percentile | ✓ | ✓ | |
 
 When using a string as an expression, you can use any of the identifiers in curly braces.
 For example `'{mean}'` will display the mean via expression.
@@ -60,6 +81,10 @@ The expression `'{mean:%.2f}'` will display the mean with two decimal points in 
 Other formatters can be used, e.g. `{max:bytes}` to display base-1024 size.
 When using arithmetic, the formatting is placed at the end and is applied to the result so that `'{mean + sdev:%.2f}'` rounds the expression to two decimals.
 
+Date and timestamp columns accept the order statistics (`min`, `max`, `mid`, `mean`, `median` and the percentiles), returning a date or timestamp, and `range`, `sdev`, `se` and `iqr`, returning a duration.
+A date or timestamp renders as ISO text or via `:time` (`'{min:time %d %b %Y}'`); in arithmetic it becomes a plain number: days for dates, seconds for timestamps — so `'{max-min:duration d}'` renders a date range as a duration.
+A date-valued `mean` or `mid` rounds to the nearest whole day.
+
 ## Column selection
 
 ```ggsql
@@ -68,7 +93,7 @@ OF <columns>, ...
 
 The `SUMMARISE` clause requires a comma-separated list of columns to aggregate.
 The columns must be part of the `TABULATE` selection.
-Only the 'counting' operations listed above can be applied to columns of any type, the other operations require numeric columns.
+The 'counting' operations listed above can be applied to columns of any type, the order and dispersion statistics also accept date and timestamp columns, and the remaining operations require numeric columns.
 
 ## Settings
 
@@ -190,4 +215,22 @@ FROM my_data
 TABULATE *
 SUMMARISE '{mean:%.2f}' OF bill_len, bill_dep
   SETTING missing => 'drop'
+```
+
+Date and timestamp columns can be summarised with the order statistics, formatted with `:time`, and `range` gives their span as a duration.
+
+```{ggsql}
+CREATE TEMP TABLE launches AS
+SELECT * FROM (VALUES
+    ('Alpha', DATE '2024-01-15'),
+    ('Alpha', DATE '2024-02-10'),
+    ('Beta',  DATE '2024-03-01'),
+    ('Beta',  DATE '2024-03-20')) AS t(product, launched)
+
+TABULATE * FROM launches
+FACET product
+SUMMARISE '{min:time %d %b %Y} – {max}' OF launched
+  SETTING rowlabel => 'Dates'
+SUMMARISE '{range:duration d}' OF launched
+  SETTING rowlabel => 'Duration'
 ```
