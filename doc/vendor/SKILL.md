@@ -194,6 +194,27 @@ TABULATE *
   FORMAT body_mass SETTING hjust => 'right' RENAMING null => '-', * => '{:num %.0f}g'
 ```
 
+### SUMMARISE
+
+Adds summary rows computed over the table's rows: one per `FACET` group (`GROUP`, default) or a single row over all rows (`GRAND`, rendered with a stronger border; its label spans group stub columns). Repeatable — clause order is row order within a boundary. Also spelled `SUMMARIZE`. Columns must be part of the TABULATE selection.
+
+```
+SUMMARISE [GROUP | GRAND] <operation> OF <column>, ...
+  SETTING <param> => <value>, ...
+```
+
+- **Operation** — an identifier: tallies `count n_distinct n_missing` (any column type); sums `sum prod`; extremes `min max range mid`; centrality `mean geomean harmean rms median`; dispersion `sdev se var iqr` (population statistics, ÷ n); percentiles `p05 p10 p25 p50 p75 p90 p95`. All but the tallies require numeric columns.
+- **Template** — or a string with `{expr}` placeholders interpolated into the cell: `'{median} ({p25}, {p75})'`. Expressions allow `+ - * /`, parentheses, unary `+`/`-`, numeric literals incl. scientific notation (`'{mean - 1.96 * se}'`). Per-placeholder formatting follows the placeholder after `:`; `num` is implied (`'{mean:%.2f}'` = `'{mean:num %.2f}'`; also `:bytes`, `:duration`). A template self-formats and ignores the column's `FORMAT` renaming; a bare operation takes it.
+- **Settings** — `place` (`'bottom'` default / `'top'` — summary rows before or after the group/table body), `rowlabel` (stub label; default the operation, templates without their format specs), `missing` (`'propagate'` default — any null makes a non-tally summary null; `'drop'` — ignore nulls. `count` counts rows under propagate, non-null values under drop).
+
+```ggsql
+TABULATE * FROM ggsql:penguins
+FACET island
+FORMAT STUB species
+SUMMARISE mean OF bill_len, bill_dep
+SUMMARISE GRAND '{mean:%.1f} ± {se:%.1f}' OF bill_len SETTING rowlabel => 'Mean ± SE'
+```
+
 ---
 
 ## Layer types

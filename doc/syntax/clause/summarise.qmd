@@ -1,0 +1,193 @@
+---
+title: "Summarise values into new rows"
+---
+
+Numerical values can be summarised and displayed in dedicated rows. 
+This is helpful to display observations alongside statistics in the table.
+`SUMMARISE` can be repeated to compute multiple summaries.
+
+## Clause syntax
+
+```ggsql
+SUMMARISE [GROUP | GRAND] <operation> OF <columns>, ...
+  SETTING <parameter> => <value>, ...
+```
+
+Also accepts the spelling `SUMMARIZE`.
+
+## Scope
+
+```ggsql
+[GROUP | GRAND]
+```
+
+The scope directly following the `SUMMARISE` clause determines which rows the operation aggregates over.
+Setting the scope to `GROUP` will compute the summary for each group determined by `FACET` clauses separately.
+The `GRAND` scope will compute the summary for all rows.
+Without spelling out a scope,  the default will be `GROUP`.
+When no groups are declared by `FACET` and the scope is set to `GROUP`, all rows are treated as belonging to the same group.
+The difference between a `FACET`-less `GROUP` scope and a `GRAND` scope is largely a diffrence in style and label spanning.
+
+## Operation
+
+```ggsql
+<operation>
+```
+
+This part of the clause can be an identifier or a string representing an expression.
+When using an identifier, one of the following operations are available:
+
+* Counting: `count`, `n_distinct`, `n_missing`.
+* Totals: `sum`, `prod`.
+* Extremes: `min`, `max`, `range` (max - min), `mid` (min + max) / 2.
+* Centrality: `mean`, geometric mean `geomean`, harmonic mean `harmean`, root-mean-square `rms`, `median`.
+* Dispersion: standard deviation `sdev`, standard error `se`, variance `var`, interquartile range `iqr`. Note `sdev`, `se` and `var` are population statistics, not sample statistics.
+* Percentiles: `p05`, `p10`, `p25`, `p50` (median), `p75`, `p90`, `p95`.
+
+When using a string as an expression, you can use any of the identifiers in curly braces.
+For example `'{mean}'` will display the mean via expression.
+The expressions can be used to display multiple metrics in a single cell, e.g. `'{median} ({p25}, {p75})'` will display the median and interquartile range in one cell.
+Inside the brackets, you can use limited arithmetic.
+The operands include the operation identifiers listed above (like `mean`, `sdev`), numeric literals (`2`, `0.5`) and scientific notation (`1e6`).
+The `+`, `-` unary operators and `+`, `-`, `*` and `/` binary operators and `(`/`)` parentheses for grouping.
+For example you can use `'({mean - 1.96 * se}, {mean + 1.96 * se})'` to display a 95% confidence interval (assuming normal distribution) in parentheses separated by a comma.
+
+For the naked, non-string identifiers the formatting of the cell values is applied externally via `FORMAT` clauses.
+The string expressions can be self-formatting via the same syntax as [scale breaks](scale.qmd#break-formatting).
+All summary metrics are assumed to be numeric.
+As such, the `:num` formatter is implied and does not need to be written out in full.
+The expression `'{mean:%.2f}'` will display the mean with two decimal points in printf-style.
+Other formatters can be used, e.g. `{max:bytes}` to display base-1024 size.
+When using arithmetic, the formatting is placed at the end and is applied to the result so that `'{mean + sdev:%.2f}'` rounds the expression to two decimals.
+
+## Column selection
+
+```ggsql
+OF <columns>, ...
+```
+
+The `SUMMARISE` clause requires a comma-separated list of columns to aggregate.
+The columns must be part of the `TABULATE` selection.
+Only the 'counting' operations listed above can be applied to columns of any type, the other operations require numeric columns.
+
+## Settings
+
+```ggsql
+SETTING <parameter> => <value>
+```
+
+The `SETTING` sub-clause is typical with key-value pairs.
+It currently takes the following parameters:
+
+* `place`: the location of the summary rows relative to the body rows they summarise. 
+Can be `'top'` to place the summary rows at the top of each group or table, or `'bottom'` (default) to place the summary rows after the body rows.
+* `rowlabel`: A string for the label of the summary row. The default `null` falls back to printing the operation, where string expression operations are displayed without formatting details.
+* `missing`: A string option for how to treat `null` values in the table. 
+The default `'propagate'` will list any non-counting operation as `null`, and counting operations include null-rows. 
+Can be set to `'drop'` to explicitly ignore `null` values in aggregates and ignore these rows in counting operations.
+
+## Examples
+
+A summary without groups will summarise all rows.
+
+```{ggsql}
+CREATE TEMP TABLE my_data AS 
+SELECT DISTINCT ON (species, island, sex) * FROM ggsql:penguins
+WHERE bill_len IS NOT NULL AND sex IS NOT NULL
+
+TABULATE * FROM my_data
+SUMMARISE mean OF bill_len, bill_dep
+```
+
+A grand summary will always summarise all rows, and is displayed with a stronger border.
+
+```{ggsql}
+TABULATE * FROM my_data
+SUMMARISE GRAND mean OF bill_len, bill_dep
+```
+
+Groups can be specified using `FACET`.
+
+```{ggsql}
+TABULATE * FROM my_data
+FACET island
+SUMMARISE mean OF bill_len, bill_dep
+```
+
+The labels of summary rows compose with regular body row labels in the stub.
+
+```{ggsql}
+TABULATE * FROM my_data
+FACET island
+FORMAT STUB species
+SUMMARISE mean OF bill_len, bill_dep
+```
+
+The display of the label in the stub can be changed using the `rowlabel` setting.
+
+```{ggsql}
+TABULATE * FROM my_data
+FACET species
+SUMMARISE mean OF bill_len, bill_dep
+  SETTING rowlabel => 'Average'
+```
+
+The summary cells are subject to `FORMAT` when using plain identifiers, along with the body rows.
+
+```{ggsql}
+TABULATE * FROM my_data
+FACET species
+FORMAT bill_len, bill_dep RENAMING * => '{:num %.2f}'
+SUMMARISE mean OF bill_len, bill_dep
+```
+
+To specifically format the summary values, you can use the expression string form.
+
+```{ggsql}
+TABULATE * FROM my_data
+FACET species
+SUMMARISE '📏 {mean:%.2f}' OF bill_len, bill_dep
+```
+
+You can use repeated summaries.
+The order in which the summaries are declared determine the order of the rows.
+
+```{ggsql}
+TABULATE * FROM my_data
+SUMMARISE p25 OF bill_len, bill_dep
+SUMMARISE p50 OF bill_len, bill_dep
+SUMMARISE p75 OF bill_len, bill_dep
+```
+
+Or display related summaries in a single cell.
+
+```{ggsql}
+TABULATE * FROM my_data
+SUMMARISE '{p50:%.2f} ({p25:%.2f}, {p75:%.2f})' OF bill_len, bill_dep
+```
+
+When data contains 'null' values, they propagate to aggregate metrics (but not necessarily count metrics).
+Notice how the summary of `bill_len` comes out as 'null'.
+
+```{ggsql}
+SELECT species, island, sex,
+       CASE WHEN island = 'Biscoe' THEN NULL ELSE bill_len END AS bill_len,
+       bill_dep, flipper_len, body_mass
+FROM my_data
+
+TABULATE *
+SUMMARISE '{mean:%.2f}' OF bill_len, bill_dep
+```
+
+You can ignore 'null' values by using the `missing => 'drop'` setting.
+
+```{ggsql}
+SELECT species, island, sex,
+       CASE WHEN island = 'Biscoe' THEN NULL ELSE bill_len END AS bill_len,
+       bill_dep, flipper_len, body_mass
+FROM my_data
+
+TABULATE *
+SUMMARISE '{mean:%.2f}' OF bill_len, bill_dep
+  SETTING missing => 'drop'
+```
