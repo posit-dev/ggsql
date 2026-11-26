@@ -508,7 +508,7 @@ fn merge_group_stub_cells(
 
 #[cfg(test)]
 mod tests {
-    use super::super::format::{apply_formats, setup_formats};
+    use super::super::format::{apply_formatting, setup_formats};
     use super::super::summary::{compute_summaries, setup_summaries};
     use super::*;
     use crate::df;
@@ -530,7 +530,7 @@ mod tests {
             .map_err(GgsqlError::ValidationError)?;
         let formats = setup_formats(df, &table.formats, &spans)?;
         let columns = setup_columns(df, &spans, &labels, &formats, None);
-        let df = apply_formats(df, &formats)?;
+        let df = apply_formatting(df, &formats)?;
         let rows = vec![TableRow::body(); df.height()];
         build_cells(&df, columns, rows, &spans, &titles, None, &[])
     }
@@ -557,7 +557,7 @@ mod tests {
         setup_summaries(&mut df, &formats, &table.summaries)?;
         let columns = setup_columns(&df, &spans, &labels, &formats, facet);
         let computed = compute_summaries(&df, &rows, &table.summaries, &formats)?;
-        let df = apply_formats(&df, &formats)?;
+        let df = apply_formatting(&df, &formats)?;
         build_cells(&df, columns, rows, &spans, &titles, facet, &computed)
     }
 

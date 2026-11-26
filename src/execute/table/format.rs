@@ -1,11 +1,13 @@
 //! `TABULATE FORMAT` resolution: `setup_formats` validates `SETTING`
 //! parameters and reshapes the per-clause formats into one `Format` per
-//! column, `apply_formats` replaces a column's values with their display
-//! text (`RENAMING`), and `resolve_column_properties` resolves a column's
-//! `SETTING` display properties.
+//! column, `apply_formatting` replaces a column's values with their display
+//! text (`RENAMING`, or the float display precision from `display_decimals`),
+//! and `resolve_column_properties` resolves a column's `SETTING` display
+//! properties.
 
 use std::collections::HashMap;
 
+use arrow::array::Array;
 use arrow::datatypes::DataType;
 
 use crate::array_util::{new_str_array, value_to_string};
@@ -89,38 +91,69 @@ fn expand_format_columns(
     Ok(columns)
 }
 
-/// Replace every column in `df` named in `formats` with its resolved
-/// display text. A column whose `Format` has no `RENAMING` at all
-/// (`renaming` empty) is left untouched.
-pub(super) fn apply_formats(
+/// Replace display-affecting columns in `df` with their display text. A
+/// column named in `formats` with a `RENAMING` (mapping or template) gets
+/// its resolved labels; a float column gets padded to its display decimals
+/// (see `display_decimals`). Everything else is left untouched.
+pub(super) fn apply_formatting(
     df: &DataFrame,
     formats: &HashMap<String, Format>,
 ) -> Result<DataFrame> {
     let mut df = df.clone();
-    for (name, format) in formats {
-        // Skip the per-row formatting pass for a column nobody asked to
-        // reformat — the common `FORMAT ... SETTING ...` case.
-        let has_renaming =
-            !format.renaming.rename_is_empty() || format.renaming.template().is_some();
-        if !has_renaming {
+    for name in df.get_column_names() {
+        let format = formats.get(&name);
+        // A column whose format carries no renaming — the common
+        // `FORMAT ... SETTING ...` case — skips the renaming pass.
+        let has_renaming = format
+            .is_some_and(|f| !f.renaming.rename_is_empty() || f.renaming.template().is_some());
+        let array = df
+            .column(&name)
+            .expect("the names come from this frame")
+            .clone();
+
+        if has_renaming {
+            let format = format.expect("has_renaming implies a format");
+            let resolved = crate::format::resolve_column_values(&array, &format.renaming)
+                .map_err(|e| GgsqlError::ValidationError(format!("FORMAT column '{name}': {e}")))?;
+
+            let display: Vec<Option<String>> = resolved
+                .into_iter()
+                .enumerate()
+                .map(|(row, value)| Some(value.unwrap_or_else(|| value_to_string(&array, row))))
+                .collect();
+            let display_refs: Vec<Option<&str>> = display.iter().map(|s| s.as_deref()).collect();
+
+            df = df.with_column(&name, new_str_array(display_refs))?;
             continue;
         }
 
-        let array = df
-            .column(name)
-            .expect("setup_formats already checked this column exists")
-            .clone();
-        let resolved = crate::format::resolve_column_values(&array, &format.renaming)
-            .map_err(|e| GgsqlError::ValidationError(format!("FORMAT column '{name}': {e}")))?;
-
-        let display: Vec<Option<String>> = resolved
-            .into_iter()
-            .enumerate()
-            .map(|(row, value)| Some(value.unwrap_or_else(|| value_to_string(&array, row))))
+        // A renamed column's labels are its display, so only un-renamed
+        // columns reach the padding pass. Needing no decimals keeps the
+        // bare integer display.
+        let d = crate::format::display_decimals(&array);
+        if d == 0 {
+            continue;
+        }
+        let display: Vec<Option<String>> = (0..array.len())
+            .map(|i| {
+                if array.is_null(i) {
+                    None
+                } else {
+                    Some(match array.data_type() {
+                        DataType::Float64 => {
+                            let v = crate::array_util::as_f64(&array).unwrap().value(i);
+                            format!("{v:.d$}")
+                        }
+                        _ => {
+                            let v = f64::from(crate::array_util::as_f32(&array).unwrap().value(i));
+                            format!("{v:.d$}")
+                        }
+                    })
+                }
+            })
             .collect();
         let display_refs: Vec<Option<&str>> = display.iter().map(|s| s.as_deref()).collect();
-
-        df = df.with_column(name, new_str_array(display_refs))?;
+        df = df.with_column(&name, new_str_array(display_refs))?;
     }
 
     Ok(df)
@@ -313,7 +346,7 @@ mod tests {
         let frame = df! { "price" => vec![1.0f64, 2.0] }.unwrap();
         let formats = HashMap::from([("price".to_string(), format_with("{}", None))]);
 
-        let result = apply_formats(&frame, &formats).unwrap();
+        let result = apply_formatting(&frame, &formats).unwrap();
 
         assert_eq!(column_content(&result, "price"), vec!["1", "2"]);
     }
@@ -323,7 +356,7 @@ mod tests {
         let frame = df! { "price" => vec![1.0f64, 2.0] }.unwrap();
         let formats = HashMap::from([("price".to_string(), format_with("${:num %.2f}", None))]);
 
-        let result = apply_formats(&frame, &formats).unwrap();
+        let result = apply_formatting(&frame, &formats).unwrap();
 
         assert_eq!(column_content(&result, "price"), vec!["$1.00", "$2.00"]);
     }
@@ -334,7 +367,7 @@ mod tests {
         let mapping = Some(HashMap::from([("0".to_string(), Some("-".to_string()))]));
         let formats = HashMap::from([("price".to_string(), format_with("{:num %.2f}", mapping))]);
 
-        let result = apply_formats(&frame, &formats).unwrap();
+        let result = apply_formatting(&frame, &formats).unwrap();
 
         assert_eq!(column_content(&result, "price"), vec!["-", "5.00"]);
     }
@@ -344,7 +377,7 @@ mod tests {
         let frame = df! { "price" => vec![Some(1.0f64), None] }.unwrap();
         let formats = HashMap::from([("price".to_string(), format_with("{:num %.2f}", None))]);
 
-        let result = apply_formats(&frame, &formats).unwrap();
+        let result = apply_formatting(&frame, &formats).unwrap();
 
         assert_eq!(column_content(&result, "price"), vec!["1.00", "null"]);
     }

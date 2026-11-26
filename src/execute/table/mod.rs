@@ -14,7 +14,7 @@ mod stub;
 mod summary;
 
 use facet::collapse_group_columns;
-use format::{apply_formats, setup_formats};
+use format::{apply_formatting, setup_formats};
 use layout::{build_cells, setup_columns, setup_rows};
 use summary::{compute_summaries, setup_summaries};
 
@@ -74,7 +74,7 @@ pub fn resolve_table_with_reader(query: &str, reader: &dyn Reader) -> Result<Res
     let spans = table
         .resolve_spanners(&labels, Some(&column_names))
         .map_err(GgsqlError::ValidationError)?;
-    // The shape both create_table_columns (SETTING) and apply_formats
+    // The shape both create_table_columns (SETTING) and apply_formatting
     // (RENAMING) read from. Resolved after spans so a FORMAT column entry
     // can name a SPAN id in place of the columns it covers.
     let formats = setup_formats(&df, &table.formats, &spans)?;
@@ -89,7 +89,7 @@ pub fn resolve_table_with_reader(query: &str, reader: &dyn Reader) -> Result<Res
     }
     // Summaries compute on the raw values, before FORMAT stringifies them.
     let computed = compute_summaries(&df, &rows, &table.summaries, &formats)?;
-    let df = apply_formats(&df, &formats)?;
+    let df = apply_formatting(&df, &formats)?;
     // A separated facet collapses to one variable once its labels are
     // formatted; everything downstream sees a single-level facet.
     let (df, columns, facet) =
@@ -1116,6 +1116,93 @@ mod integration_tests {
             .find(|c| c.kind == TableCellKind::SummaryValue)
             .unwrap();
         assert_eq!(value.content, "null");
+    }
+
+    fn body_contents(resolved: &ResolvedTable) -> Vec<String> {
+        let mut contents: Vec<String> = resolved
+            .cells()
+            .iter()
+            .filter(|c| c.kind == TableCellKind::Body)
+            .map(|c| c.content.clone())
+            .collect();
+        contents.sort();
+        contents
+    }
+
+    fn resolve_doubles(query: &str, values: &str) -> ResolvedTable {
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        reader
+            .execute_sql(&format!(
+                "CREATE TABLE t AS SELECT CAST(v AS DOUBLE) AS x FROM (VALUES {values}) AS t(v)"
+            ))
+            .unwrap();
+        resolve_table_with_reader(query, &reader).unwrap()
+    }
+
+    #[test]
+    fn test_tabulate_float_column_pads_to_a_shared_precision() {
+        let resolved = resolve_doubles("TABULATE * FROM t", "(39.1), (37.7), (50.0)");
+        assert_eq!(body_contents(&resolved), ["37.7", "39.1", "50.0"]);
+    }
+
+    #[test]
+    fn test_tabulate_float_precision_ignores_binary_noise() {
+        let resolved = resolve_doubles("TABULATE * FROM t", "(0.1 + 0.2), (1.5)");
+        assert_eq!(body_contents(&resolved), ["0.3", "1.5"]);
+    }
+
+    #[test]
+    fn test_tabulate_float_precision_keeps_real_decimals() {
+        let resolved = resolve_doubles("TABULATE * FROM t", "(1.25), (3.75)");
+        assert_eq!(body_contents(&resolved), ["1.25", "3.75"]);
+    }
+
+    #[test]
+    fn test_tabulate_format_renaming_overrides_inferred_precision() {
+        let resolved = resolve_doubles(
+            "TABULATE * FROM t FORMAT x RENAMING * => '{:num %.3f}'",
+            "(1.5), (2.0)",
+        );
+        assert_eq!(body_contents(&resolved), ["1.500", "2.000"]);
+    }
+
+    #[test]
+    fn test_tabulate_summarise_matches_the_column_precision() {
+        let resolved = resolve_doubles(
+            "TABULATE * FROM t SUMMARISE mean OF x",
+            "(39.1), (37.7), (50.0)",
+        );
+        let value = resolved
+            .cells()
+            .iter()
+            .find(|c| c.kind == TableCellKind::SummaryValue)
+            .unwrap();
+        assert_eq!(value.content, "42.3");
+    }
+
+    #[test]
+    fn test_tabulate_summarise_pads_an_exactly_whole_mean() {
+        let resolved = resolve_doubles("TABULATE * FROM t SUMMARISE mean OF x", "(41.5), (42.5)");
+        let value = resolved
+            .cells()
+            .iter()
+            .find(|c| c.kind == TableCellKind::SummaryValue)
+            .unwrap();
+        assert_eq!(value.content, "42.0");
+    }
+
+    #[test]
+    fn test_tabulate_summarise_count_keeps_integer_display() {
+        let resolved = resolve_doubles(
+            "TABULATE * FROM t SUMMARISE count OF x",
+            "(39.1), (37.7), (50.0)",
+        );
+        let value = resolved
+            .cells()
+            .iter()
+            .find(|c| c.kind == TableCellKind::SummaryValue)
+            .unwrap();
+        assert_eq!(value.content, "3");
     }
 
     #[test]

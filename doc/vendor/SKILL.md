@@ -184,6 +184,7 @@ Configures cell display and column placement.
 - A SPAN id may stand in for its columns: `FORMAT Q1, price SETTING hjust => 'right'`
 - Settings: `hjust` (`'left'`/`'right'`/`'centre'`/`'center'` or 0–1; default right for numeric/stub, left otherwise), `width` (`'100px'` or `'20%'`)
 - `RENAMING` works like SCALE's: direct replacement (`'adelie' => 'Pygoscelis adeliae'`), `null` on the right suppresses the cell, unquoted `null` on the left matches missing values, and `* => '...'` formats every value with a template (`{:lower}`, `{:num %.0f}`, etc.)
+- Without a RENAMING, float columns display at a shared per-column precision: the most decimals any value needs (each value the fewest that faithfully represents it), so whole values pad (`50.0` beside `39.1`) and SUMMARISE results round to the same precision. Integer columns display bare.
 
 ```ggsql
 SELECT * FROM ggsql:penguins LIMIT 5

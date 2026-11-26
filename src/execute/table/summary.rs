@@ -229,6 +229,20 @@ pub(super) fn compute_summaries(
         rows: Vec::new(),
     });
 
+    // Display decimals for every summarised column, computed once and
+    // shared by every clause and chunk.
+    let columns: HashSet<&str> = summaries
+        .iter()
+        .flat_map(|summary| summary.columns.iter().map(String::as_str))
+        .collect();
+    let decimals: HashMap<&str, usize> = columns
+        .into_iter()
+        .filter_map(|column| {
+            let d = crate::format::display_decimals(df.column(column).ok()?);
+            (d > 0).then_some((column, d))
+        })
+        .collect();
+
     // Clause-outer: the label, placement and parsed template are clause-level
     // facts, computed once and shared by every group's row.
     for summary in summaries {
@@ -256,11 +270,8 @@ pub(super) fn compute_summaries(
         for index in targets {
             let chunk = &mut chunks[index];
             let mut frame = summary_frame(df, summary, template.as_deref(), &chunk.range)?;
-            // Templates self-format; a bare operation takes the column's
-            // FORMAT renaming.
-            if template.is_none() {
-                format_summary_frame(&mut frame, &summary.columns, formats)?;
-            }
+            //  A bare operation's frame is made display-ready here (renaming, display decimals).
+            format_summary_frame(&mut frame, summary, formats, &decimals)?;
             chunk.rows.push(SummaryRow {
                 scope: summary.scope,
                 top,
@@ -400,27 +411,55 @@ fn leaf_f64(value: &Value) -> Option<f64> {
     }
 }
 
-/// Apply each summarised column's `FORMAT` renaming to a one-row summary
-/// frame, turning the formatted columns into display text — the same
-/// treatment `apply_formats` gives the body cells, per value.
+/// Make a bare-operation summary frame display-ready, per column: an
+/// explicit `FORMAT` renaming (mapping or template) becomes the display
+/// text; an un-renamed float column pads to its body column's display
+/// decimals — the same treatment `apply_formatting` gives the body
+/// cells. Tallies are counts and keep their integer display. `decimals`
+/// covers every summarised column, computed once in `compute_summaries`.
 fn format_summary_frame(
     frame: &mut DataFrame,
-    columns: &[String],
+    summary: &Summary,
     formats: &HashMap<String, Format>,
+    decimals: &HashMap<&str, usize>,
 ) -> Result<()> {
-    for column in columns {
-        let Some(format) = formats.get(column) else {
-            continue;
-        };
-        if format.renaming.rename_is_empty() && format.renaming.template().is_none() {
-            continue;
-        }
+    // Templates self-format so these are skipped
+    let SummaryOperation::Stat(operation) = &summary.operation else {
+        return Ok(());
+    };
+    // Tallies pad to no decimals: they are counts and keep their integer
+    // display.
+    let tally = matches!(
+        operation.to_ascii_lowercase().as_str(),
+        "count" | "n_distinct" | "n_missing"
+    );
+    for column in &summary.columns {
+        let renaming = formats
+            .get(column)
+            .map(|format| &format.renaming)
+            .filter(|renaming| !renaming.rename_is_empty() || renaming.template().is_some());
         let array = frame.column(column)?.clone();
-        let mut resolved = crate::format::resolve_column_values(&array, &format.renaming)
-            .map_err(GgsqlError::ValidationError)?;
-        let text = resolved
-            .remove(0)
-            .unwrap_or_else(|| value_to_string(&array, 0));
+        let text = if let Some(renaming) = renaming {
+            let mut resolved = crate::format::resolve_column_values(&array, renaming)
+                .map_err(GgsqlError::ValidationError)?;
+            resolved
+                .remove(0)
+                .unwrap_or_else(|| value_to_string(&array, 0))
+        } else {
+            if tally {
+                continue;
+            }
+            let Some(&d) = decimals.get(column.as_str()) else {
+                continue;
+            };
+            let Ok(floats) = crate::array_util::as_f64(&array) else {
+                continue;
+            };
+            if array.is_null(0) {
+                continue;
+            }
+            format!("{:.1$}", floats.value(0), d)
+        };
         *frame = frame.with_column(column, Arc::new(StringArray::from(vec![text])) as ArrayRef)?;
     }
     Ok(())
