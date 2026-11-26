@@ -11,23 +11,25 @@ use crate::message::{ConnectionInfo, JupyterMessage, MessageHeader};
 use crate::plot::comm::{PlotMetadata, RenderParams, RpcError};
 use crate::plot::{PlotBackend, RenderOutcome, RenderTicket};
 use anyhow::Result;
+use bytes::Bytes;
 use ggsql::reader::ResolvedPlot;
 use hmac::{Hmac, Mac};
+use omq_tokio::{Message, Options, Socket, SocketType};
 use serde_json::{json, Value};
 use sha2::Sha256;
 use std::collections::{HashMap, VecDeque};
-use zeromq::{PubSocket, RepSocket, RouterSocket, Socket, SocketRecv, SocketSend};
+use std::time::Duration;
 
 type HmacSha256 = Hmac<Sha256>;
 
 /// The ggsql Jupyter kernel server
 pub struct KernelServer {
-    shell: RouterSocket,
-    iopub: PubSocket,
-    control: RouterSocket,
+    shell: Socket,
+    iopub: Socket,
+    control: Socket,
     #[allow(dead_code)]
-    stdin: RouterSocket,
-    heartbeat: RepSocket,
+    stdin: Socket,
+    heartbeat: Socket,
     #[allow(dead_code)]
     connection: ConnectionInfo,
     executor: QueryExecutor,
@@ -78,11 +80,12 @@ impl KernelServer {
         tracing::info!("Initializing kernel server");
 
         // Initialize sockets
-        let mut shell = RouterSocket::new();
-        let mut iopub = PubSocket::new();
-        let mut control = RouterSocket::new();
-        let mut stdin = RouterSocket::new();
-        let mut heartbeat = RepSocket::new();
+        // Jupyter clients can close a channel while a reply is pending.
+        let shell = Socket::new(SocketType::Router, Options::default());
+        let iopub = Socket::new(SocketType::Pub, Options::default());
+        let control = Socket::new(SocketType::Router, Options::default());
+        let stdin = Socket::new(SocketType::Router, Options::default());
+        let heartbeat = Socket::new(SocketType::Rep, Options::default());
 
         // Bind sockets to ports
         let shell_addr = connection.socket_addr(connection.shell_port);
@@ -92,19 +95,19 @@ impl KernelServer {
         let hb_addr = connection.socket_addr(connection.hb_port);
 
         tracing::info!("Binding shell socket to {}", shell_addr);
-        shell.bind(&shell_addr).await?;
+        shell.bind(shell_addr.as_str()).await?;
 
         tracing::info!("Binding iopub socket to {}", iopub_addr);
-        iopub.bind(&iopub_addr).await?;
+        iopub.bind(iopub_addr.as_str()).await?;
 
         tracing::info!("Binding control socket to {}", control_addr);
-        control.bind(&control_addr).await?;
+        control.bind(control_addr.as_str()).await?;
 
         tracing::info!("Binding stdin socket to {}", stdin_addr);
-        stdin.bind(&stdin_addr).await?;
+        stdin.bind(stdin_addr.as_str()).await?;
 
         tracing::info!("Binding heartbeat socket to {}", hb_addr);
-        heartbeat.bind(&hb_addr).await?;
+        heartbeat.bind(hb_addr.as_str()).await?;
 
         // Create executor with the specified reader
         let executor = QueryExecutor::new_with_uri(reader_uri)?;
@@ -197,6 +200,15 @@ impl KernelServer {
                     if let Ok(msg) = msg {
                         if self.handle_control_message(msg).await? {
                             tracing::info!("Shutdown requested, exiting");
+                            // Give the queued shutdown reply and the final idle
+                            // status time to reach the client.
+                            let linger = Some(Duration::from_secs(1));
+                            let (control, iopub) = tokio::join!(
+                                self.control.clone().close_with_linger(linger),
+                                self.iopub.clone().close_with_linger(linger),
+                            );
+                            control?;
+                            iopub?;
                             break;
                         }
                     }
@@ -223,7 +235,7 @@ impl KernelServer {
     }
 
     /// Handle messages on the shell channel
-    async fn handle_shell_message(&mut self, msg: zeromq::ZmqMessage) -> Result<()> {
+    async fn handle_shell_message(&mut self, msg: Message) -> Result<()> {
         let (identities, jupyter_msg) = self.parse_message(msg)?;
         let msg_type = &jupyter_msg.header.msg_type;
 
@@ -250,7 +262,7 @@ impl KernelServer {
     }
 
     /// Handle messages on the control channel
-    async fn handle_control_message(&mut self, msg: zeromq::ZmqMessage) -> Result<bool> {
+    async fn handle_control_message(&mut self, msg: Message) -> Result<bool> {
         let (identities, jupyter_msg) = self.parse_message(msg)?;
         let msg_type = &jupyter_msg.header.msg_type;
 
@@ -1437,14 +1449,9 @@ impl KernelServer {
         identities: &[Vec<u8>],
     ) -> Result<()> {
         let msg = self.create_message(msg_type, content, Some(parent));
-        let mut zmq_msg = self.serialize_message(&msg)?;
-
-        // For router sockets, we need to prepend the identity frames
-        // Prepend identities in REVERSE order (ROUTER sockets expect this)
-        for identity in identities.iter().rev() {
-            zmq_msg.push_front(bytes::Bytes::from(identity.clone()));
-        }
-
+        // ROUTER routes the reply by the identity frames received with the
+        // request, so send them back first, in the same order.
+        let zmq_msg = self.serialize_message(&msg, identities.iter().cloned().map(Bytes::from))?;
         self.shell.send(zmq_msg).await?;
         Ok(())
     }
@@ -1458,14 +1465,9 @@ impl KernelServer {
         identities: &[Vec<u8>],
     ) -> Result<()> {
         let msg = self.create_message(msg_type, content, Some(parent));
-        let mut zmq_msg = self.serialize_message(&msg)?;
-
-        // For router sockets, we need to prepend the identity frames
-        // Prepend identities in REVERSE order (ROUTER sockets expect this)
-        for identity in identities.iter().rev() {
-            zmq_msg.push_front(bytes::Bytes::from(identity.clone()));
-        }
-
+        // ROUTER routes the reply by the identity frames received with the
+        // request, so send them back first, in the same order.
+        let zmq_msg = self.serialize_message(&msg, identities.iter().cloned().map(Bytes::from))?;
         self.control.send(zmq_msg).await?;
         Ok(())
     }
@@ -1511,9 +1513,9 @@ impl KernelServer {
 
     /// Parse a ZeroMQ message into a Jupyter message
     /// Returns (identities, jupyter_message)
-    fn parse_message(&self, msg: zeromq::ZmqMessage) -> Result<(Vec<Vec<u8>>, JupyterMessage)> {
+    fn parse_message(&self, msg: Message) -> Result<(Vec<Vec<u8>>, JupyterMessage)> {
         // Jupyter wire protocol: [identity, ..., delimiter, hmac, header, parent, metadata, content]
-        let frames: Vec<_> = msg.into_vec();
+        let frames: Vec<_> = msg.iter().collect();
 
         if frames.len() < 6 {
             anyhow::bail!("Invalid message: too few frames (got {})", frames.len());
@@ -1524,6 +1526,9 @@ impl KernelServer {
             .iter()
             .position(|f| f.as_ref() == b"<IDS|MSG>")
             .ok_or_else(|| anyhow::anyhow!("Delimiter not found"))?;
+        if frames.len() - delim_pos < 6 {
+            anyhow::bail!("Invalid message: too few frames after delimiter");
+        }
 
         // Extract identity frames (everything before delimiter)
         let identities: Vec<Vec<u8>> = frames[..delim_pos].iter().map(|b| b.to_vec()).collect();
@@ -1557,7 +1562,11 @@ impl KernelServer {
     }
 
     /// Serialize a Jupyter message to ZeroMQ format
-    fn serialize_message(&self, msg: &JupyterMessage) -> Result<zeromq::ZmqMessage> {
+    fn serialize_message(
+        &self,
+        msg: &JupyterMessage,
+        prefix: impl IntoIterator<Item = Bytes>,
+    ) -> Result<Message> {
         let header = serde_json::to_string(&msg.header)?;
         let parent = serde_json::to_string(&msg.parent_header)?;
         let metadata = serde_json::to_string(&msg.metadata)?;
@@ -1566,42 +1575,20 @@ impl KernelServer {
         // Calculate HMAC signature
         let signature = self.sign_message(&header, &parent, &metadata, &content);
 
-        // Build ZeroMQ message: [delimiter, hmac, header, parent, metadata, content]
-        let mut zmq_msg = zeromq::ZmqMessage::from(b"<IDS|MSG>".to_vec());
-        zmq_msg.push_back(signature.into());
-        zmq_msg.push_back(header.into());
-        zmq_msg.push_back(parent.into());
-        zmq_msg.push_back(metadata.into());
-        zmq_msg.push_back(content.into());
-
-        Ok(zmq_msg)
+        Ok(Message::multipart(prefix.into_iter().chain([
+            Bytes::from_static(b"<IDS|MSG>"),
+            Bytes::from(signature),
+            Bytes::from(header),
+            Bytes::from(parent),
+            Bytes::from(metadata),
+            Bytes::from(content),
+        ])))
     }
 
     /// Serialize a Jupyter message to ZeroMQ format with topic (for IOPub)
     /// According to Jupyter protocol: "there should be just one prefix component, which is the topic"
-    fn serialize_message_with_topic(
-        &self,
-        msg: &JupyterMessage,
-        topic: &str,
-    ) -> Result<zeromq::ZmqMessage> {
-        let header = serde_json::to_string(&msg.header)?;
-        let parent = serde_json::to_string(&msg.parent_header)?;
-        let metadata = serde_json::to_string(&msg.metadata)?;
-        let content = serde_json::to_string(&msg.content)?;
-
-        // Calculate HMAC signature
-        let signature = self.sign_message(&header, &parent, &metadata, &content);
-
-        // Build ZeroMQ message with topic: [topic, delimiter, hmac, header, parent, metadata, content]
-        let mut zmq_msg = zeromq::ZmqMessage::from(topic.as_bytes().to_vec());
-        zmq_msg.push_back(b"<IDS|MSG>".to_vec().into());
-        zmq_msg.push_back(signature.into());
-        zmq_msg.push_back(header.into());
-        zmq_msg.push_back(parent.into());
-        zmq_msg.push_back(metadata.into());
-        zmq_msg.push_back(content.into());
-
-        Ok(zmq_msg)
+    fn serialize_message_with_topic(&self, msg: &JupyterMessage, topic: &str) -> Result<Message> {
+        self.serialize_message(msg, [Bytes::copy_from_slice(topic.as_bytes())])
     }
 
     /// Sign a message using HMAC-SHA256
