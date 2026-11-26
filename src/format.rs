@@ -431,9 +431,7 @@ pub fn format_dataframe_column(
 }
 
 /// Decimal places to display a float column consistently: the most any
-/// non-null value needs, each value asking for the fewest decimals that
-/// round-trip within float noise (`f64::EPSILON.sqrt()`, relative).
-/// Non-float columns need none.
+/// non-null value needs. Non-float columns need none.
 pub fn display_decimals(column: &ArrayRef) -> usize {
     let decimals: Box<dyn Iterator<Item = f64> + '_> = match column.data_type() {
         DataType::Float64 => Box::new(
@@ -465,13 +463,14 @@ pub fn display_decimals(column: &ArrayRef) -> usize {
 
 /// Fewest decimal places that represent `v` within float noise: the
 /// smallest `d >= from` whose rounded value is within
-/// `f64::EPSILON.sqrt()` (relative) of `v`. Caps at 15, past which an f64
-/// carries no real information. Non-finite values contribute nothing.
+/// `f64::EPSILON.sqrt()` (relative) of `v`. Caps at 15. Non-finite values
+/// contribute nothing.
 fn minimal_decimals(v: f64, from: usize) -> usize {
     if !v.is_finite() {
         return from;
     }
     let tol = f64::EPSILON.sqrt() * v.abs().max(1.0);
+    // Past 15 decimals an f64 carries no real information
     (from..=15)
         .find(|&d| {
             let factor = 10f64.powi(d as i32);

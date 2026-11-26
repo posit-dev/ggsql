@@ -336,8 +336,7 @@ pub(crate) fn parse_stat_expr(source: &str) -> Result<StatExpr, String> {
 
 /// Split a template literal into text and placeholder segments. `{` opens a
 /// placeholder and must be terminated and non-empty; `}` outside a
-/// placeholder is literal text. Matching against `SUMMARY_OPERATIONS` happens
-/// in [`SummaryOperation::validate`], not here.
+/// placeholder is literal text.
 pub(crate) fn parse_template(template: &str) -> Result<Vec<TemplateSegment>, String> {
     let mut segments = Vec::new();
     let mut literal = String::new();
@@ -398,8 +397,7 @@ pub enum SummaryScope {
 
 /// Operations a `SUMMARISE` clause accepts: the plot aggregate vocabulary
 /// (`AGG_NAMES`) minus the order-dependent positional ones (`first`, `last`,
-/// `diff`), which need row-order machinery tables don't have, plus `se` and
-/// the type-free tallies `n_distinct` and `n_missing`.
+/// `diff`), plus `se` and the type-free tallies `n_distinct` and `n_missing`.
 pub const SUMMARY_OPERATIONS: &[&str] = &[
     "count",
     "n_distinct",

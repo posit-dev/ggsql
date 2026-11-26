@@ -153,10 +153,7 @@ impl SummaryRow {
     }
 
     /// The row's label cell, spanning every stub column — leftward over the
-    /// group-stub columns too for a `GRAND` row. `setup_summaries` adds a
-    /// stub column when summaries exist without one; `move_stub_columns`
-    /// puts every stub-section column in one contiguous run, so the span
-    /// covers only stub columns.
+    /// group-stub columns too for a `GRAND` row.
     fn label_cell(&self, row: usize, columns: &[TableColumn], classes: &[TableClass]) -> TableCell {
         let label_column = columns
             .iter()
@@ -290,9 +287,9 @@ pub(super) fn compute_summaries(
 }
 
 /// Compute one clause's frame over the rows in `range`: one row, one column
-/// per summarised column. A bare operation yields a nullable-f64 column; a
-/// template (`Some` segments, which `compute_summaries` supplies for every
-/// template clause) a string column with the template rendered against it.
+/// per summarised column. A bare operation yields a one-cell column of the
+/// operation's value (see [`value_array`]); a template yields a string
+/// column with the template rendered against the slice.
 fn summary_frame(
     df: &DataFrame,
     summary: &Summary,
@@ -332,8 +329,8 @@ fn summary_frame(
 /// Render a template against one column's slice: literals verbatim, each
 /// placeholder's expression evaluated over the slice and rendered through its
 /// pre-compiled zygos template. A NULL placeholder makes the whole cell
-/// NULL, like a bare operation. Stats are memoized in `cache` across all of
-/// the template's placeholders, so a repeated stat computes once per cell.
+/// NULL. Stats are memoized in `cache` across the template's placeholders,
+/// so a repeated stat computes once per cell.
 fn render_template(
     segments: &[TemplateSegment],
     slice: &ArrayRef,
@@ -413,12 +410,10 @@ fn leaf_f64(value: &Value) -> Option<f64> {
 
 /// Make a summary frame display-ready, per column: an explicit `FORMAT`
 /// renaming (mapping or template) becomes the display text; an un-renamed
-/// float column pads to its body column's display decimals — the same
-/// treatment `apply_formatting` gives the body cells. A template's cells
-/// are already-rendered strings, so they honour only direct renamings
+/// float column pads to its body column's display decimals. A template's
+/// cells are already-rendered strings, so they honour only direct renamings
 /// (including `null`), never the wildcard template, and never pad.
-/// Tallies are counts and keep their integer display. `decimals` covers
-/// every summarised column, computed once in `compute_summaries`.
+/// `decimals` covers every summarised column.
 fn format_summary_frame(
     frame: &mut DataFrame,
     summary: &Summary,
@@ -706,13 +701,13 @@ fn value_array(value: &Option<Value>, dtype: &DataType) -> ArrayRef {
 }
 
 /// Count a column's distinct non-null values: NULL when nulls propagate.
-/// Numeric arrays compare on f64 bits so display rounding can't merge two
-/// values; other types compare on their string representation.
 fn n_distinct(array: &ArrayRef, drop_nulls: bool) -> Result<Option<f64>> {
     if array.logical_null_count() > 0 && !drop_nulls {
         return Ok(None);
     }
     let len = if array.data_type().is_numeric() {
+        // Bits, not display text: two values that round to the same display
+        // string still count as distinct
         let f64s = cast_array(array, &DataType::Float64)?;
         as_f64(&f64s)?
             .iter()

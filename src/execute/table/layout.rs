@@ -242,10 +242,7 @@ fn create_body(df: &DataFrame, columns: &[TableColumn]) -> Vec<TableCell> {
 }
 
 /// Interleave the `GROUP` chunks' rows into the body, in data space: each
-/// chunk's `top` rows, then the chunk itself, then its bottom rows. Runs
-/// before the facet passes — summary rows carry their group's key, so the
-/// row-driven group-stub merge spans them and group-heading offsets cover
-/// them like data rows.
+/// chunk's `top` rows, then the chunk itself, then its bottom rows.
 fn weave_group_summaries(
     rows: Vec<TableRow>,
     cells: Vec<TableCell>,
@@ -309,8 +306,7 @@ fn weave_group_summaries(
 }
 
 /// Place the `GRAND` chunk's rows: `top` rows above the whole body, bottom
-/// rows below it. Runs after the facet passes — a grand row belongs to no
-/// group, so nothing about it should merge or shift with group machinery.
+/// rows below it.
 fn weave_grand_summaries(
     rows: Vec<TableRow>,
     cells: Vec<TableCell>,
