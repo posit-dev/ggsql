@@ -1241,7 +1241,8 @@ mod tests {
         // LABEL given); the row labels render as <th scope="row">, both
         // right-aligned (resolve_column_properties' STUB default).
         assert!(html.contains("<th scope=\"col\" class=\"ggsql_stub_head ggsql_right\"></th>"));
-        assert!(html.contains("<th scope=\"row\" class=\"ggsql_stub ggsql_right\">north</th>"));
+        assert!(html
+            .contains("<th scope=\"row\" class=\"ggsql_row ggsql_stub ggsql_right\">north</th>"));
         assert!(html.contains("<td class=\"ggsql_row ggsql_right\">1</td>")); // "amount" unaffected
         assert!(html.find("ggsql_stub_head").unwrap() < html.find(">amount</th>").unwrap());
     }

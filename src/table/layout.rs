@@ -299,10 +299,10 @@ impl TableCell {
             .with_classes(vec![TableClass::StubHead])
     }
 
-    /// A stub row-label cell (`TableClass::Stub`).
+    /// A stub row-label cell (`TableClass::Row`, `TableClass::Stub`).
     pub(crate) fn new_stub_row_label(row: usize, index: usize, content: String) -> Self {
         Self::new(TableCellKind::StubRowLabel, row, row, index, index, content)
-            .with_classes(vec![TableClass::Stub])
+            .with_classes(vec![TableClass::Row, TableClass::Stub])
     }
 
     /// A group-stub group-label cell (`TableClass::StubRowGroup`).
