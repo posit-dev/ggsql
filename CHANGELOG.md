@@ -2,6 +2,8 @@
 
 ### Added
 
+- Bar and histogram layers now support the `linewidth` and `linetype`
+  aesthetics.
 - New `TABULATE` clause renders a query result as a table instead of a
   plot. Tables are rendered via new `html` writer. `TABULATE` supports the
   following clauses:
