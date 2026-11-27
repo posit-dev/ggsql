@@ -5,22 +5,22 @@
 use serde::{Deserialize, Serialize};
 
 use super::layout::{TableCell, TableClass, TableColumn, TableLayout, TableRow};
-use crate::labels::Labels;
 use crate::params::{
     DefaultParamValue, ParamConstraint, ParamDefinition, ParameterValue, Parameters,
 };
+use crate::titles::Titles;
 
 /// One `SPAN` clause: a named group of columns rendered as one spanner cell
 /// above them.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Spanner {
     /// This spanner's identifier, unparsed (quotes included, if quoted).
-    /// Referenced by a later `SPAN`'s `OVER` list or a `LABEL <id> =>
+    /// Referenced by a later `SPAN`'s `OVER` list or a `TITLE <id> =>
     /// ...` override. `SPAN NULL` still gets a real, internally generated
     /// id here — nothing else can reasonably reference it.
     pub id: String,
     /// Dequoted default display text. `None` for `SPAN NULL` — blank cell,
-    /// columns still group. `LABEL <id> => ...` overrides either way.
+    /// columns still group. `TITLE <id> => ...` overrides either way.
     pub label: Option<String>,
     /// The columns this spanner covers, in the order written.
     pub columns: Vec<String>,
@@ -84,10 +84,10 @@ impl Spanner {
         Ok(())
     }
 
-    /// Overlay a `LABEL <id> => ...` entry onto `label`, if the query has
+    /// Overlay a `TITLE <id> => ...` entry onto `label`, if the query has
     /// one for this spanner's id; otherwise leaves `label` as-is.
-    pub fn apply_labels(&mut self, labels: &Labels) {
-        if let Some(override_label) = labels.entry(&self.id) {
+    pub fn apply_titles(&mut self, titles: &Titles) {
+        if let Some(override_label) = titles.entry(&self.id) {
             self.label = override_label.clone();
         }
     }
@@ -212,7 +212,7 @@ pub(crate) fn create_spanners(columns: &[TableColumn], spans: &[Spanner]) -> Tab
         return TableLayout::new(columns.to_vec(), Vec::new(), Vec::new());
     }
 
-    // Spanners with no display text (`SPAN NULL`, or `LABEL <id> => NULL`)
+    // Spanners with no display text (`SPAN NULL`, or `TITLE <id> => NULL`)
     // contribute no cells, so their level shouldn't affect other levels.
     let spans: Vec<Spanner> = spans
         .iter()

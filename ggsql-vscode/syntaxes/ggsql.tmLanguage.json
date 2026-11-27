@@ -12,7 +12,7 @@
     { "include": "#scale-clause" },
     { "include": "#facet-clause" },
     { "include": "#project-clause" },
-    { "include": "#label-clause" },
+    { "include": "#title-clause" },
     { "include": "#sql-keywords" },
     { "include": "#visualise-clause" },
     { "include": "#operators" }
@@ -221,7 +221,7 @@
       "beginCaptures": {
         "1": { "name": "keyword.other.ggsql" }
       },
-      "end": "(?i)(?=\\b(DRAW|PLACE|SCALE|PROJECT|FACET|LABEL|VISUALISE|VISUALIZE|SELECT|WHERE|WITH)\\b)",
+      "end": "(?i)(?=\\b(DRAW|PLACE|SCALE|PROJECT|FACET|TITLE|VISUALISE|VISUALIZE|SELECT|WHERE|WITH)\\b)",
       "patterns": [
         { "include": "#comments" },
         { "include": "#strings" },
@@ -315,7 +315,7 @@
       "beginCaptures": {
         "1": { "name": "keyword.other.ggsql" }
       },
-      "end": "(?i)(?=\\b(DRAW|PLACE|SCALE|PROJECT|FACET|LABEL|VISUALISE|VISUALIZE|SELECT|WHERE|WITH)\\b)",
+      "end": "(?i)(?=\\b(DRAW|PLACE|SCALE|PROJECT|FACET|TITLE|VISUALISE|VISUALIZE|SELECT|WHERE|WITH)\\b)",
       "patterns": [
         {
           "comment": "Geom types from grammar.js",
@@ -330,7 +330,7 @@
       "beginCaptures": {
         "1": { "name": "keyword.other.ggsql" }
       },
-      "end": "(?i)(?=\\b(DRAW|PLACE|SCALE|PROJECT|FACET|LABEL|VISUALISE|VISUALIZE|SELECT|WHERE|WITH)\\b)",
+      "end": "(?i)(?=\\b(DRAW|PLACE|SCALE|PROJECT|FACET|TITLE|VISUALISE|VISUALIZE|SELECT|WHERE|WITH)\\b)",
       "patterns": [
         {
           "name": "support.type.geom.ggsql",
@@ -344,7 +344,7 @@
       "beginCaptures": {
         "1": { "name": "keyword.other.ggsql" }
       },
-      "end": "(?i)(?=\\b(DRAW|PLACE|SCALE|PROJECT|FACET|LABEL|VISUALISE|VISUALIZE|SELECT|WHERE|WITH)\\b)",
+      "end": "(?i)(?=\\b(DRAW|PLACE|SCALE|PROJECT|FACET|TITLE|VISUALISE|VISUALIZE|SELECT|WHERE|WITH)\\b)",
       "patterns": [
         {
           "comment": "Scale type identifiers from grammar.js",
@@ -373,7 +373,7 @@
       "beginCaptures": {
         "1": { "name": "keyword.other.ggsql" }
       },
-      "end": "(?i)(?=\\b(DRAW|PLACE|SCALE|PROJECT|FACET|LABEL|VISUALISE|VISUALIZE|SELECT|WHERE|WITH)\\b)",
+      "end": "(?i)(?=\\b(DRAW|PLACE|SCALE|PROJECT|FACET|TITLE|VISUALISE|VISUALIZE|SELECT|WHERE|WITH)\\b)",
       "patterns": [
         {
           "name": "support.type.property.ggsql",
@@ -395,7 +395,7 @@
       "beginCaptures": {
         "1": { "name": "keyword.other.ggsql" }
       },
-      "end": "(?i)(?=\\b(DRAW|PLACE|SCALE|PROJECT|FACET|LABEL|VISUALISE|VISUALIZE|SELECT|WHERE|WITH)\\b)",
+      "end": "(?i)(?=\\b(DRAW|PLACE|SCALE|PROJECT|FACET|TITLE|VISUALISE|VISUALIZE|SELECT|WHERE|WITH)\\b)",
       "patterns": [
         {
           "comment": "Coord types (currently implemented: cartesian, polar)",
@@ -410,17 +410,17 @@
         { "include": "#common-clause-patterns" }
       ]
     },
-    "label-clause": {
-      "begin": "(?i)\\b(LABEL)\\b",
+    "title-clause": {
+      "begin": "(?i)\\b(TITLE)\\b",
       "beginCaptures": {
         "1": { "name": "keyword.other.ggsql" }
       },
-      "end": "(?i)(?=\\b(DRAW|PLACE|SCALE|PROJECT|FACET|LABEL|VISUALISE|VISUALIZE|SELECT|WHERE|WITH)\\b)",
+      "end": "(?i)(?=\\b(DRAW|PLACE|SCALE|PROJECT|FACET|TITLE|VISUALISE|VISUALIZE|SELECT|WHERE|WITH)\\b)",
       "patterns": [
         {
           "comment": "Label types",
           "name": "support.type.property.ggsql",
-          "match": "\\b(title|subtitle|x|y|caption|tag|color|colour|fill|size|shape|linetype)\\b"
+          "match": "\\b(main|sub|x|y|caption|tag|color|colour|fill|size|shape|linetype)\\b"
         },
         { "include": "#common-clause-patterns" }
       ]

@@ -14,7 +14,7 @@ Histograms show the distribution of a numeric variable by grouping values into b
 SELECT Temp FROM ggsql:airquality
 VISUALISE Temp AS x
 DRAW histogram
-LABEL
+TITLE
   main => 'Temperature Distribution',
   x => 'Temperature (F)',
   y => 'Count'
@@ -37,7 +37,7 @@ SELECT Temp FROM ggsql:airquality
 VISUALISE Temp AS x
 DRAW histogram
   SETTING bins => 15
-LABEL
+TITLE
   main => 'Temperature Distribution (15 bins)',
   x => 'Temperature (F)',
   y => 'Count'
@@ -52,7 +52,7 @@ SELECT Temp FROM ggsql:airquality
 VISUALISE Temp AS x
 DRAW histogram
   SETTING binwidth => 5
-LABEL
+TITLE
   main => 'Temperature Distribution (5 degree bins)',
   x => 'Temperature (F)',
   y => 'Count'
@@ -67,7 +67,7 @@ SELECT Temp FROM ggsql:airquality
 VISUALISE Temp AS x
 DRAW histogram
   REMAPPING density AS y
-LABEL
+TITLE
   main => 'Temperature Density',
   x => 'Temperature (F)',
   y => 'Density'

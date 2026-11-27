@@ -99,11 +99,11 @@ FACET species, island
   SETTING separator => ' - '
 ```
 
-When group labels are placed in the stub, the labels can be controlled by `LABEL`.
+When group labels are placed in the stub, the labels can be controlled by `TITLE`.
 In case of `separator`-joined labels, the first variable (`species` in the example) displays the label.
 
 ```{ggsql}
 TABULATE * FROM my_data
 FACET species, island
-LABEL island => 'Place', species => 'Type'
+TITLE island => 'Place', species => 'Type'
 ```

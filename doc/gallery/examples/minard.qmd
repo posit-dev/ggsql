@@ -159,7 +159,7 @@ VISUALISE long AS x, lat AS y FROM 'minard_troops.csv'
 ```
 
 An additional obvious way to polish your graphic is to add nicer titles for all your variables.
-We can use the `LABEL` statement to add custom labels for our plot.
+We can use the `TITLE` statement to add custom labels for our plot.
 In the title, we escape the single quote mark by using `\'` so that we know it is not the end of the string yet.
 Moreover, we can use `null` to note that a title should be removed.
 In that way we can hide the `long` and `lat` labels from the position mapping.
@@ -175,7 +175,7 @@ VISUALISE long AS x, lat AS y FROM 'minard_troops.csv'
   SCALE stroke TO ('burlywood', 'black')
     RENAMING 'A' => 'Advance', 'R' => 'Retreat'
   SCALE linewidth FROM (0, null) TO (0, 20)
-  LABEL
+  TITLE
     main => 'Napoleon\'s Russian Campaign',
     sub => 'Inspired by the graphic of C.J. Minard',
     linewidth => 'Troops',

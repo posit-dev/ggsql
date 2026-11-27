@@ -600,7 +600,7 @@ and titles ggsql resolved can be read back out of it.
   only against `build_panels`, never against rendered output.
 - `RENAMING` reaches both an axis rail and a legend key.
 - A binned scale's resolved edges reach the colorbar.
-- Every `LABEL` slot appears, and markdown is **parsed** — no literal `*`, and
+- Every `TITLE` slot appears, and markdown is **parsed** — no literal `*`, and
   the emphasised run carries a style.
 - `text=outline` → zero `<text>` and more `<path>`; `id-prefix` rewrites every
   id *and* every `url(#…)` reference.

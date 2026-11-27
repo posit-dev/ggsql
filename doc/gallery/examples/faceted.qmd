@@ -15,7 +15,7 @@ SELECT bill_len, bill_dep, species FROM ggsql:penguins
 VISUALISE bill_len AS x, bill_dep AS y
 DRAW point
 FACET species
-LABEL
+TITLE
   main => 'Bill Dimensions by Species',
   x => 'Bill Length (mm)',
   y => 'Bill Depth (mm)'
@@ -38,7 +38,7 @@ SELECT bill_len, bill_dep, species, island FROM ggsql:penguins
 VISUALISE bill_len AS x, bill_dep AS y
 DRAW point
 FACET species BY island
-LABEL
+TITLE
   main => 'Bill Dimensions by Species and Island',
   x => 'Bill Length (mm)',
   y => 'Bill Depth (mm)'
@@ -53,7 +53,7 @@ SELECT bill_len, bill_dep, species FROM ggsql:penguins
 VISUALISE bill_len AS x, bill_dep AS y
 DRAW point
 FACET species SETTING free => 'y'
-LABEL
+TITLE
   main => 'Bill Dimensions (Free Y Scale)',
   x => 'Bill Length (mm)',
   y => 'Bill Depth (mm)'

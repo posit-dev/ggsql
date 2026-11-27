@@ -6,14 +6,14 @@ A SQL extension for declarative data visualization based on the Grammar of Graph
 SELECT date, revenue, region FROM sales WHERE year = 2024
 VISUALISE date AS x, revenue AS y, region AS color
 DRAW line
-LABEL main => 'Sales by Region'
+TITLE main => 'Sales by Region'
 ```
 
 The user-facing site is at <https://ggsql.org>. The README at [`README.md`](README.md) is the public introduction.
 
 ## Authoritative docs
 
-**Anything about ggsql syntax or semantics belongs in [`doc/`](doc/), not in any AGENTS.md file.** That includes clause behaviour (`VISUALISE`, `DRAW`, `PLACE`, `SCALE`, `FACET`, `PROJECT`, `LABEL`), layer types, scales, aesthetics, and coordinate systems. AGENTS.md files describe the implementation around those features — they should link to `doc/syntax/` rather than restate.
+**Anything about ggsql syntax or semantics belongs in [`doc/`](doc/), not in any AGENTS.md file.** That includes clause behaviour (`VISUALISE`, `DRAW`, `PLACE`, `SCALE`, `FACET`, `PROJECT`, `TITLE`), layer types, scales, aesthetics, and coordinate systems. AGENTS.md files describe the implementation around those features — they should link to `doc/syntax/` rather than restate.
 
 **Writing ggsql queries:** when you need to author or modify a ggsql query, use the vendored skill at [`doc/vendor/SKILL.md`](doc/vendor/SKILL.md). It is the source of truth for the syntax Claude should produce; do not invent clauses, settings, aesthetics, or layer types beyond what it documents.
 

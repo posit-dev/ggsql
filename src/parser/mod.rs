@@ -25,7 +25,7 @@ let query = r#"
     SELECT date, revenue, region FROM sales WHERE year = 2024
     VISUALISE date AS x, revenue AS y, region AS color
     DRAW line
-    LABEL
+    TITLE
         main => 'Sales by Region'
 "#;
 
@@ -210,7 +210,7 @@ mod tests {
             SELECT x, y FROM data
             VISUALISE x, y
             DRAW point
-            LABEL main => 'Scatter Plot'
+            TITLE main => 'Scatter Plot'
             VISUALIZE
             DRAW bar MAPPING x AS x, y AS y
         "#;
@@ -218,13 +218,13 @@ mod tests {
         let specs = parse_query_plots(query).unwrap();
         assert_eq!(specs.len(), 2);
 
-        // First viz should have layers and labels
+        // First viz should have layers and titles
         assert_eq!(specs[0].layers.len(), 1);
-        assert!(!specs[0].labels.labels.is_empty());
+        assert!(!specs[0].titles.titles.is_empty());
 
-        // Second viz should have layer but no labels
+        // Second viz should have layer but no titles
         assert_eq!(specs[1].layers.len(), 1);
-        assert!(specs[1].labels.labels.is_empty());
+        assert!(specs[1].titles.titles.is_empty());
     }
 
     #[test]
@@ -255,7 +255,7 @@ mod tests {
             DRAW line
             DRAW line MAPPING cost AS y
             SCALE x VIA date
-            LABEL main => 'Revenue and Cost Trends'
+            TITLE main => 'Revenue and Cost Trends'
             VISUALIZE
             DRAW bar MAPPING date AS x, revenue AS y
             VISUALISE
@@ -265,10 +265,10 @@ mod tests {
         let specs = parse_query_plots(query).unwrap();
         assert_eq!(specs.len(), 3);
 
-        // Plot with 2 layers, scale, labels
+        // Plot with 2 layers, scale, titles
         assert_eq!(specs[0].layers.len(), 2);
         assert_eq!(specs[0].scales.len(), 1);
-        assert!(!specs[0].labels.labels.is_empty());
+        assert!(!specs[0].titles.titles.is_empty());
 
         // Second viz with 1 layer
         assert_eq!(specs[1].layers.len(), 1);

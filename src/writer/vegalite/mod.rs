@@ -1115,8 +1115,8 @@ impl Writer for VegaLiteWriter {
         }
 
         {
-            let title = spec.labels.get("main");
-            let subtitle = spec.labels.get("sub");
+            let title = spec.titles.get("main");
+            let subtitle = spec.titles.get("sub");
             match (title, subtitle) {
                 (Some(t), Some(st)) => {
                     // Vega-Lite uses an object for title + subtitle
@@ -1547,8 +1547,8 @@ mod tests {
             );
         spec.layers.push(layer);
 
-        spec.labels
-            .labels
+        spec.titles
+            .titles
             .insert("main".to_string(), Some("My Chart".to_string()));
 
         let df = df! {
@@ -1573,7 +1573,7 @@ mod tests {
         use crate::execute;
         use crate::reader::DuckDBReader;
 
-        // Test that LABEL clause values with newlines are split into arrays
+        // Test that TITLE clause values with newlines are split into arrays
 
         let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
 
@@ -1585,7 +1585,7 @@ mod tests {
             FROM generate_series(0, 2) as t(n)
             VISUALISE x, y, category AS stroke
             DRAW point
-            LABEL
+            TITLE
                 main => 'Multi-line\nChart Title',
                 sub => 'Line 1\nLine 2\nLine 3',
                 x => 'X Axis\nWith Newline',

@@ -596,7 +596,7 @@ Plot with labels
 
 VISUALISE x, y
 DRAW point
-LABEL main => 'My Plot', x => 'X Axis', y => 'Y Axis'
+TITLE main => 'My Plot', x => 'X Axis', y => 'Y Axis'
 
 --------------------------------------------------------------------------------
 
@@ -617,19 +617,19 @@ LABEL main => 'My Plot', x => 'X Axis', y => 'Y Axis'
       (draw_clause
         (geom_type)))
     (viz_clause
-      (label_clause
-        (label_assignment
-          (label_type
+      (title_clause
+        (title_assignment
+          (title_type
             (identifier
               (bare_identifier)))
           (string))
-        (label_assignment
-          (label_type
+        (title_assignment
+          (title_type
             (identifier
               (bare_identifier)))
           (string))
-        (label_assignment
-          (label_type
+        (title_assignment
+          (title_type
             (identifier
               (bare_identifier)))
           (string))))))
@@ -4579,10 +4579,10 @@ TABULATE * FROM sales
           (bare_identifier))))))
 
 ================================================================================
-TABULATE LABEL clause
+TABULATE TITLE clause
 ================================================================================
 
-TABULATE * FROM sales LABEL id => 'ID'
+TABULATE * FROM sales TITLE id => 'ID'
 
 --------------------------------------------------------------------------------
 
@@ -4598,9 +4598,9 @@ TABULATE * FROM sales LABEL id => 'ID'
         (identifier
           (bare_identifier))))
     (tab_clause
-      (label_clause
-        (label_assignment
-          name: (label_type
+      (title_clause
+        (title_assignment
+          name: (title_type
             (identifier
               (bare_identifier)))
           value: (string))))))
@@ -4755,10 +4755,10 @@ TABULATE * FROM sales SPAN foo, bar UNDER baz
           (bare_identifier))))))
 
 ================================================================================
-TABULATE LABEL then SPAN clause, any order
+TABULATE TITLE then SPAN clause, any order
 ================================================================================
 
-TABULATE * FROM sales LABEL id => 'ID' SPAN A OVER foo, bar
+TABULATE * FROM sales TITLE id => 'ID' SPAN A OVER foo, bar
 
 --------------------------------------------------------------------------------
 
@@ -4774,9 +4774,9 @@ TABULATE * FROM sales LABEL id => 'ID' SPAN A OVER foo, bar
         (identifier
           (bare_identifier))))
     (tab_clause
-      (label_clause
-        (label_assignment
-          name: (label_type
+      (title_clause
+        (title_assignment
+          name: (title_type
             (identifier
               (bare_identifier)))
           value: (string))))
@@ -4922,7 +4922,7 @@ Label string containing URL with comment-like sequences
 
 VISUALISE
 DRAW point
-LABEL caption => 'Data source: <https://doi.org/10.1371/journal.pone.0090081> -- see appendix'
+TITLE caption => 'Data source: <https://doi.org/10.1371/journal.pone.0090081> -- see appendix'
 
 --------------------------------------------------------------------------------
 
@@ -4933,9 +4933,9 @@ LABEL caption => 'Data source: <https://doi.org/10.1371/journal.pone.0090081> --
       (draw_clause
         (geom_type)))
     (viz_clause
-      (label_clause
-        (label_assignment
-          (label_type
+      (title_clause
+        (title_assignment
+          (title_type
             (identifier
               (bare_identifier)))
           (string))))))
@@ -4948,7 +4948,7 @@ Line comment (double slash) between clauses
 VISUALISE x, y // trailing comment on the same line
 DRAW point
 // comment before a clause
-LABEL main => 'My Plot' // and one at the end
+TITLE main => 'My Plot' // and one at the end
 
 --------------------------------------------------------------------------------
 
@@ -4972,9 +4972,9 @@ LABEL main => 'My Plot' // and one at the end
         (geom_type)))
     (comment)
     (viz_clause
-      (label_clause
-        (label_assignment
-          (label_type
+      (title_clause
+        (title_assignment
+          (title_type
             (identifier
               (bare_identifier)))
           (string)))))
@@ -5011,7 +5011,7 @@ VISUALISE /* inline block */ x, y
 DRAW point
 /* a multi-line
    block comment */
-LABEL main => 'My Plot'
+TITLE main => 'My Plot'
 
 --------------------------------------------------------------------------------
 
@@ -5034,9 +5034,9 @@ LABEL main => 'My Plot'
         (geom_type)))
     (comment)
     (viz_clause
-      (label_clause
-        (label_assignment
-          (label_type
+      (title_clause
+        (title_assignment
+          (title_type
             (identifier
               (bare_identifier)))
           (string))))))
@@ -5048,7 +5048,7 @@ Comments alongside strings that contain comment-like text
 -- leading comment
 VISUALISE
 DRAW point
-LABEL caption => 'see https://example.com -- details' // trailing comment
+TITLE caption => 'see https://example.com -- details' // trailing comment
 
 --------------------------------------------------------------------------------
 
@@ -5060,9 +5060,9 @@ LABEL caption => 'see https://example.com -- details' // trailing comment
       (draw_clause
         (geom_type)))
     (viz_clause
-      (label_clause
-        (label_assignment
-          (label_type
+      (title_clause
+        (title_assignment
+          (title_type
             (identifier
               (bare_identifier)))
           (string)))))

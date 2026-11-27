@@ -893,14 +893,14 @@ fn test_position_identity_default() {
 }
 
 #[test]
-fn test_label_with_flipped_project() {
+fn test_title_with_flipped_project() {
     let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
     let query = r#"
         SELECT * FROM (VALUES (1, 10), (2, 20)) AS t(x, y)
         VISUALISE
         DRAW bar MAPPING x AS y, y AS x
         PROJECT y, x TO cartesian
-        LABEL x => 'Value', y => 'Category'
+        TITLE x => 'Value', y => 'Category'
     "#;
 
     let spec = reader.execute(query).unwrap();
@@ -917,26 +917,26 @@ fn test_label_with_flipped_project() {
     assert_eq!(
         x_title,
         Some("Category"),
-        "x-axis should have 'Category' title (from LABEL y). Got encoding: {}",
+        "x-axis should have 'Category' title (from TITLE y). Got encoding: {}",
         serde_json::to_string_pretty(encoding).unwrap()
     );
     assert_eq!(
         y_title,
         Some("Value"),
-        "y-axis should have 'Value' title (from LABEL x). Got encoding: {}",
+        "y-axis should have 'Value' title (from TITLE x). Got encoding: {}",
         serde_json::to_string_pretty(encoding).unwrap()
     );
 }
 
 #[test]
-fn test_label_with_polar_project() {
+fn test_title_with_polar_project() {
     let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
     let query = r#"
         SELECT * FROM (VALUES ('A', 10), ('B', 20)) AS t(category, value)
         VISUALISE value AS angle, category AS fill
         DRAW bar
         PROJECT TO polar
-        LABEL angle => 'Angle', radius => 'Distance'
+        TITLE angle => 'Angle', radius => 'Distance'
     "#;
 
     let spec = reader.execute(query).unwrap();

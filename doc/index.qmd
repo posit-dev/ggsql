@@ -47,7 +47,7 @@ DRAW point
 PLACE rule 
   SETTING slope => 0.4, y => -1
 SCALE BINNED fill
-LABEL
+TITLE
   main => 'Relationship between bill dimensions in 3 species of penguins',
   x => 'Bill length (mm)',
   y => 'Bill depth (mm)'

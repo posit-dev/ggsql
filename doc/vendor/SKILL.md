@@ -20,7 +20,7 @@ Optional SQL part + required `VISUALISE`/`VISUALIZE` part.
   ```ggsql
   SELECT name, score_a, score_b FROM 'dataset.csv' WHERE value > 50
   VISUALISE score_a AS x, score_b AS y
-  [DRAW / PLACE / SCALE / FACET / PROJECT / LABEL clauses]
+  [DRAW / PLACE / SCALE / FACET / PROJECT / TITLE clauses]
   ```
 - **VISUALISE FROM**: VISUALISE supplies its own source (table/file/CTE/built-in), no trailing SELECT.
   ```ggsql
@@ -136,11 +136,11 @@ PROJECT <aesthetic>, ... TO <coord-type> SETTING <param> => <value>, ...
 PROJECT TO polar SETTING inner => 0.5   -- donut chart
 ```
 
-## LABEL clause
+## TITLE clause
 
 Overrides axis/legend labels & titles: `main`, `sub`, `caption`, or any aesthetic name; `null` suppresses.
 ```ggsql
-LABEL main => 'Sales by Region', x => 'Date', y => 'Revenue (USD)', fill => null
+TITLE main => 'Sales by Region', x => 'Date', y => 'Revenue (USD)', fill => null
 ```
 
 ---
@@ -150,17 +150,17 @@ LABEL main => 'Sales by Region', x => 'Date', y => 'Revenue (USD)', fill => null
 Renders the query result as a table instead of a plot — the plain-table counterpart to VISUALISE. Only the HTML writer supports tables. Both data patterns from VISUALISE apply (`SELECT ... TABULATE *` or `TABULATE ... FROM <source>`).
 
 
-`LABEL`, `SPAN` and `FORMAT` may each appear multiple times, in any order.
+`TITLE`, `SPAN` and `FORMAT` may each appear multiple times, in any order.
 
 ### Column selection
 
 - `<column>` — keep as-is; `<column> AS <name>` — rename; `*` — all columns in source order
 - Order controls display order; `*` can be mixed with named columns: `TABULATE foo, *, baz`
-- A rename changes the actual column name, so `LABEL`/`SPAN`/`FORMAT` refer to the new name
+- A rename changes the actual column name, so `TITLE`/`SPAN`/`FORMAT` refer to the new name
 
-### LABEL (table)
+### TITLE (table)
 
-Keyed by column name, not aesthetic. Reserved keys: `main`, `sub`, `caption`. `null` blanks a header; if all headers are blank the header row is omitted. Also labels spanners via their SPAN id: `LABEL q1 => 'Q1 Totals'`. No automatic labelling and no markdown — a column without a `LABEL` keeps its name.
+Keyed by column name, not aesthetic. Reserved keys: `main`, `sub`, `caption`. `null` blanks a header; if all headers are blank the header row is omitted. Also labels spanners via their SPAN id: `TITLE q1 => 'Q1 Totals'`. No automatic labelling and no markdown — a column without a `TITLE` keeps its name.
 
 ### SPAN
 
@@ -188,7 +188,7 @@ Configures cell display and column placement.
 ```ggsql
 SELECT * FROM ggsql:penguins LIMIT 5
 TABULATE *
-  LABEL main => 'Penguins!', bill_len => 'Length', bill_dep => 'Depth'
+  TITLE main => 'Penguins!', bill_len => 'Length', bill_dep => 'Depth'
   SPAN Bill OVER bill_len, bill_dep
   FORMAT STUB species
   FORMAT body_mass SETTING hjust => 'right' RENAMING null => '-', * => '{:num %.0f}g'
@@ -273,7 +273,7 @@ https://ggsql.org/syntax/index.llms.md — latest syntax docs.
 ## Instructions for responding
 
 1. Write a complete, valid ggsql query for the request; use SQL/CTEs before VISUALISE for data shaping.
-2. Choose the simplest layer types/settings that work; add SCALE for formatting/palettes/ranges and LABEL for titles when warranted.
+2. Choose the simplest layer types/settings that work; add SCALE for formatting/palettes/ranges and TITLE for titles when warranted.
 3. Briefly explain your choices after the query. Never invent syntax — say so if unsure.
 4. Default to `ggsql:penguins`/`ggsql:airquality` when no data is specified.
 5. Use `ggsql validate "<query>"` to validate, `ggsql exec "<query>" -v` to run and show output.

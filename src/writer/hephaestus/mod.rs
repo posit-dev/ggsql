@@ -429,14 +429,14 @@ mod tests {
         );
     }
 
-    /// Markdown chrome: a `LABEL` string is rich text too, so the title, subtitle,
+    /// Markdown chrome: a `TITLE` string is rich text too, so the title, subtitle,
     /// caption and axis titles all shape through the rich pipeline.
     #[test]
     fn renders_markdown_chrome() {
         assert_renders(
             "SELECT 1 AS x, 2 AS y UNION ALL SELECT 2, 3 \
              VISUALISE x AS x, y AS y DRAW point \
-             LABEL main => 'A **bold** title', sub => '{.red red} subtitle', \
+             TITLE main => 'A **bold** title', sub => '{.red red} subtitle', \
              caption => '*italic* caption', x => 'axis *italic*'",
         );
     }
@@ -844,7 +844,7 @@ mod tests {
         assert_eq!(
             axis_titles(&format!(
                 "{FACET_DATA} VISUALISE v AS x, y AS y DRAW point FACET g \
-                 LABEL x => 'Value', y => 'Count'"
+                 TITLE x => 'Value', y => 'Count'"
             )),
             vec![
                 (AxisSide::Bottom, "Value".to_string()),
@@ -1294,18 +1294,18 @@ mod tests {
         assert_renders(
             "SELECT 1 AS x, 2 AS y UNION ALL SELECT 2, 3 UNION ALL SELECT 3, 1 \
              VISUALISE x AS x, y AS y DRAW point \
-             LABEL main => 'Sales by Region', sub => 'FY 2024', \
+             TITLE main => 'Sales by Region', sub => 'FY 2024', \
              caption => 'Source: internal'",
         );
     }
 
     #[test]
     fn renders_suppressed_title() {
-        // `LABEL main => NULL` suppresses; the subtitle still renders.
+        // `TITLE main => NULL` suppresses; the subtitle still renders.
         assert_renders(
             "SELECT 1 AS x, 2 AS y UNION ALL SELECT 2, 3 \
              VISUALISE x AS x, y AS y DRAW point \
-             LABEL main => NULL, sub => 'no title above me'",
+             TITLE main => NULL, sub => 'no title above me'",
         );
     }
 
@@ -1317,7 +1317,7 @@ mod tests {
             "SELECT x, y, g FROM (VALUES (1,1,'a'),(2,2,'a'),(1,2,'b'),(2,3,'b'),\
              (1,3,'c'),(2,1,'c')) t(x,y,g) \
              VISUALISE x AS x, y AS y DRAW point FACET g \
-             LABEL main => 'One title for all panels'",
+             TITLE main => 'One title for all panels'",
         );
     }
 
@@ -1529,7 +1529,7 @@ mod svg_text {
     fn every_plot_label_reaches_the_output() {
         let labelled = svg("SELECT x, y FROM (VALUES (1,2),(2,3)) t(x,y) \
              VISUALISE x AS x, y AS y DRAW point \
-             LABEL main => 'The title', sub => 'The subtitle', \
+             TITLE main => 'The title', sub => 'The subtitle', \
              caption => 'The caption', x => 'Across', y => 'Up'");
         for label in ["The title", "The subtitle", "The caption", "Across", "Up"] {
             assert!(contains(&labelled, label), "missing label '{label}'");
@@ -1539,7 +1539,7 @@ mod svg_text {
     #[test]
     fn markdown_in_a_label_is_parsed_rather_than_printed() {
         let emphasised = svg("SELECT x, y FROM (VALUES (1,2),(2,3)) t(x,y) \
-             VISUALISE x AS x, y AS y DRAW point LABEL main => 'A *bold* title'");
+             VISUALISE x AS x, y AS y DRAW point TITLE main => 'A *bold* title'");
         // The words survive, the markers do not.
         assert!(contains(&emphasised, "A bold title"));
         assert!(
@@ -1579,7 +1579,7 @@ mod svg_text {
     #[test]
     fn outline_mode_turns_text_into_paths() {
         let query = "SELECT x, y FROM (VALUES (1,2),(2,3)) t(x,y) \
-                     VISUALISE x AS x, y AS y DRAW point LABEL main => 'Outlined'";
+                     VISUALISE x AS x, y AS y DRAW point TITLE main => 'Outlined'";
         let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
         let spec = reader.execute(query).unwrap().into_plot().unwrap();
 
@@ -1671,7 +1671,7 @@ mod pdf_structure {
         reader
             .execute(
                 "SELECT x, y FROM (VALUES (1,2),(2,3),(3,1)) t(x,y) \
-                 VISUALISE x AS x, y AS y DRAW point LABEL main => 'A page'",
+                 VISUALISE x AS x, y AS y DRAW point TITLE main => 'A page'",
             )
             .unwrap()
             .into_plot()
@@ -1751,7 +1751,7 @@ mod hep_roundtrip {
             "faceted scatter with a legend",
             "VISUALISE bill_len AS x, bill_dep AS y, species AS color \
              FROM ggsql:penguins DRAW point FACET island \
-             LABEL main => 'Penguin *bills*', caption => 'From ggsql:penguins'",
+             TITLE main => 'Penguin *bills*', caption => 'From ggsql:penguins'",
         ),
         (
             "multi-layer with a colorbar",

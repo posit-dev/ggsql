@@ -32,9 +32,9 @@ The columns can be selected in (a mixture of) one of three forms:
 
 Without the `*` wildcard, only the listed columns are kept.
 The wildcard can be combined with explicit columns to partially order columns, where the wildcard becomes all implicit columns.
-When a column is renamed using the `AS` keyword, other table clauses --- like `LABEL`, `SPAN` and `FORMAT` --- use the *new* name.
+When a column is renamed using the `AS` keyword, other table clauses --- like `TITLE`, `SPAN` and `FORMAT` --- use the *new* name.
 Please note that renaming a column consumes the original, to avoid unintentional duplication.
-It is discouraged to name column `title`, `subtitle` or `caption` as these are keywords in the [`LABEL`](label-tabulate.qmd) clause.
+It is discouraged to name column `main`, `sub` or `caption` as these are keywords in the [`TITLE`](title-tabulate.qmd) clause.
 
 ```ggsql
 -- Select all columns
@@ -92,7 +92,7 @@ Reordering columns
 TABULATE island, *, species FROM my_data
 ```
 
-Renaming columns on the fly. For order-preserving renames, see [`LABEL`](label-tabulate.qmd) clause.
+Renaming columns on the fly. For order-preserving renames, see [`TITLE`](title-tabulate.qmd) clause.
 
 ```{ggsql}
 TABULATE 

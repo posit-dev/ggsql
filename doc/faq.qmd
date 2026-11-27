@@ -60,13 +60,13 @@ DRAW point
 ::: {.callout-note collapse="true"}
 ## How do I set axis labels and a title?
 
-Use the `LABEL` clause:
+Use the `TITLE` clause:
 
 ```ggsql
 SELECT date, revenue FROM sales
 VISUALISE date AS x, revenue AS y
 DRAW line
-LABEL 
+TITLE 
   main => 'Sales Over Time', 
   x => 'Date', 
   y => 'Revenue (USD)'

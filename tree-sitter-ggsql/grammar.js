@@ -671,7 +671,7 @@ module.exports = grammar({
     // TABULATE — still incomplete, more clauses expected as Table grows.
     // column_selection and single_source_from are fixed in position, mirroring
     // VISUALISE's global_mapping + single_source_from ahead of
-    // repeat($.viz_clause). LABEL/SPAN/FORMAT (tab_clause) repeat, any order,
+    // repeat($.viz_clause). TITLE/SPAN/FORMAT (tab_clause) repeat, any order,
     // after that.
     tabulate_statement: $ => prec.dynamic(1, seq(
       $.tabulate_keyword,
@@ -690,7 +690,7 @@ module.exports = grammar({
 
     // All the TABULATE clauses (mirrors viz_clause's role for VISUALISE).
     tab_clause: $ => choice(
-      $.label_clause,
+      $.title_clause,
       $.span_clause,
       $.format_clause,
       $.facet_clause,
@@ -727,7 +727,7 @@ module.exports = grammar({
     span_clause: $ => seq(
       caseInsensitive('SPAN'),
       // Mandatory: an identifier names this spanner — also its default
-      // display text, and how a later SPAN's OVER list or a LABEL entry
+      // display text, and how a later SPAN's OVER list or a TITLE entry
       // addresses it (quote it to include spaces or other non-identifier
       // characters). NULL leaves it anonymous: nothing can reference it,
       // and its cell renders blank, but its columns still group (e.g. for
@@ -792,7 +792,7 @@ module.exports = grammar({
       $.scale_clause,
       $.facet_clause,
       $.project_clause,
-      $.label_clause,
+      $.title_clause,
     ),
 
     // DRAW clause - syntax: DRAW geom [MAPPING ...] [REMAPPING ...] [SETTING ...] [FILTER ...] [PARTITION BY ...] [ORDER BY ...]
@@ -1144,22 +1144,22 @@ module.exports = grammar({
 
     project_property_name: $ => $.identifier,
 
-    // LABEL clause (repeatable)
-    label_clause: $ => seq(
-      caseInsensitive('LABEL'),
+    // TITLE clause (repeatable)
+    title_clause: $ => seq(
+      caseInsensitive('TITLE'),
       optional(seq(
-        $.label_assignment,
-        repeat(seq(',', $.label_assignment))
+        $.title_assignment,
+        repeat(seq(',', $.title_assignment))
       ))
     ),
 
-    label_assignment: $ => seq(
-      field('name', $.label_type),
+    title_assignment: $ => seq(
+      field('name', $.title_type),
       '=>',
       field('value', choice($.string, $.null_literal))
     ),
 
-    label_type: $ => $.identifier,
+    title_type: $ => $.identifier,
 
     // Basic tokens
     bare_identifier: $ => token(/[a-zA-Z_][a-zA-Z0-9_]*/),

@@ -1,20 +1,20 @@
 ---
-title: "Define different titles with `LABEL`"
+title: "Define different titles with `TITLE`"
 ---
 
 ::: {.callout-note}
-This page is about the `TABULATE` usage of the `LABEL` clause.
-For the `VISUALISE` usage, see [this page](label.qmd).
+This page is about the `TABULATE` usage of the `TITLE` clause.
+For the `VISUALISE` usage, see [this page](title.qmd).
 :::
 
-The `LABEL` clause is a straightforward clause allowing you to override the default naming of column labels, spans, (sub)titles and captions.
+The `TITLE` clause is a straightforward clause allowing you to override the default naming of column labels, spans, (sub)titles and captions.
 Unlike `VISUALISE`'s usage, there is no automatic labelling: a column with no label keeps its name as header.
 
 ## Clause syntax
-The `LABEL` clause requires a comma-separated list of key-value pairs
+The `TITLE` clause requires a comma-separated list of key-value pairs
 
 ```ggsql
-LABEL <column/title> => <string/null>, ...
+TITLE <column/title> => <string/null>, ...
 ```
 
 On the left hand side of the arrow, the following keys can be used:
@@ -33,27 +33,27 @@ The support of rich text in tables is planned but not yet implemented.
 
 ## Examples
 
-Unlike using aliases in `TABULATE`, the `LABEL` clause lets you change column labels without changing column order
+Unlike using aliases in `TABULATE`, the `TITLE` clause lets you change column labels without changing column order
 
 ```{ggsql}
 CREATE TEMP TABLE my_data AS SELECT * FROM ggsql:penguins LIMIT 5
 
 TABULATE * FROM my_data
-  LABEL bill_len => 'Bill length', bill_dep => 'Bill depth'
+  TITLE bill_len => 'Bill length', bill_dep => 'Bill depth'
 ```
 
 Hiding labels.
 
 ```{ggsql}
 TABULATE * FROM my_data
-  LABEL island => null, species => null
+  TITLE island => null, species => null
 ```
 
 Adding titles to a table.
 
 ```{ggsql}
 TABULATE * FROM my_data
-  LABEL
+  TITLE
     main => 'Penguins!',
     sub => 'Structural size measurements',
     caption => 'Source: Palmer station, Antarctica'
@@ -62,20 +62,20 @@ TABULATE * FROM my_data
 When column names and reserved keywords compete for a label, the reserved keyword wins.
 
 ```{ggsql}
--- data has column named 'title'
+-- data has column named 'main'
 CREATE TEMP TABLE title_data AS 
-SELECT * FROM (VALUES (1, 'a'), (2, 'b'), (3, 'c')) AS t(id, title)
+SELECT * FROM (VALUES (1, 'a'), (2, 'b'), (3, 'c')) AS t(id, main)
 
 TABULATE * FROM title_data
-  LABEL
+  TITLE
     main => 'Overrules column'
 ```
 
 You can target an aliased column instead.
 
 ```{ggsql}
-TABULATE *, title AS title_col FROM title_data
-  LABEL
+TABULATE *, main AS main_col FROM title_data
+  TITLE
     main => 'Main title',
-    title_col => 'Column title'
+    main_col => 'Column title'
 ```

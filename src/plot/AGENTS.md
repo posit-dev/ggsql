@@ -8,12 +8,12 @@ For ggsql language semantics, see [`/doc/syntax/`](../../doc/syntax/). This file
 
 Defined in `main.rs` (the `Plot` struct) and `types.rs` (input/value types). All are re-exported through `mod.rs`.
 The `SETTING`-parameter machinery (`ParameterValue`, `Parameters`, `ArrayElement`, the constraint types, `ParamDefinition::validate`) lives one level up in [`../params.rs`](../params.rs), shared with `table/`; `types.rs` re-exports it, so `plot::` paths keep working.
-`Labels` lives in [`../labels.rs`](../labels.rs), likewise shared with `table/` and re-exported from `main.rs`.
+`Titles` lives in [`../titles.rs`](../titles.rs), likewise shared with `table/` and re-exported from `main.rs`.
 
 | Type | Where | Role |
 | --- | --- | --- |
-| `Plot` | `main.rs` | Root spec: `global_mappings`, optional `source`, `layers`, `scales`, optional `facet`, `project`, `labels`, plus a derived `aesthetic_context`. |
-| `Labels` | `../labels.rs` | Title/subtitle/axis/aesthetic labels merged from all `LABEL` clauses. Shared with `table/`. |
+| `Plot` | `main.rs` | Root spec: `global_mappings`, optional `source`, `layers`, `scales`, optional `facet`, `project`, `titles`, plus a derived `aesthetic_context`. |
+| `Titles` | `../titles.rs` | Title/subtitle/axis/aesthetic labels merged from all `TITLE` clauses. Shared with `table/`. |
 | `Mappings` | `types.rs` | Unified aesthetic mapping (`wildcard: bool` + `aesthetics: HashMap<String, AestheticValue>`); used for both global and per-layer mappings. |
 | `AestheticValue` | `types.rs` | One side of a mapping: column reference, literal, annotation literal, or null. |
 | `ParameterValue` | `../params.rs` | Value used in `SETTING` clauses: string / number / boolean / array. |

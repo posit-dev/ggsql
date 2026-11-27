@@ -22,7 +22,7 @@ use super::SourceTree;
 ///
 /// Returns (name_node, value_node) without any interpretation.
 /// Works for both patterns:
-/// - `name => value` (SETTING, PROJECT, LABEL, RENAMING)
+/// - `name => value` (SETTING, PROJECT, TITLE, RENAMING)
 /// - `value AS name` (MAPPING explicit_mapping)
 ///
 /// Caller is responsible for interpreting the nodes based on their context.
@@ -440,9 +440,9 @@ fn process_tab_clause(node: &Node, source: &SourceTree, table: &mut Table) -> Re
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
         match child.kind() {
-            "label_clause" => {
-                let new_labels = build_labels(&child, source)?;
-                table.labels.merge(new_labels);
+            "title_clause" => {
+                let new_titles = build_titles(&child, source)?;
+                table.titles.merge(new_titles);
             }
             "span_clause" => {
                 table
@@ -482,7 +482,7 @@ fn build_span_clause(node: &Node, source: &SourceTree, span_idx: usize) -> Resul
         .child_by_field_name("id")
         .ok_or_else(|| GgsqlError::ParseError("Missing 'id' field in SPAN clause".to_string()))?;
     // `id` is unquoted like every other column reference, so it compares
-    // equal to a later OVER/LABEL reference. `label` is used only for display.
+    // equal to a later OVER/TITLE reference. `label` is used only for display.
     let (id, label) = match id_node.kind() {
         "identifier" => (
             naming::unquote_ident(&source.get_text(&id_node)),
@@ -617,9 +617,9 @@ fn process_viz_clause(node: &Node, source: &SourceTree, spec: &mut Plot) -> Resu
             "project_clause" => {
                 spec.project = Some(build_project(&child, source)?);
             }
-            "label_clause" => {
-                let new_labels = build_labels(&child, source)?;
-                spec.labels.merge(new_labels);
+            "title_clause" => {
+                let new_titles = build_titles(&child, source)?;
+                spec.titles.merge(new_titles);
             }
             _ => {
                 // Unknown clause type
@@ -1409,41 +1409,41 @@ fn parse_coord_system(name: Option<&str>, properties: &Parameters) -> Result<Coo
 }
 
 // ============================================================================
-// Labels Building
+// Titles Building
 // ============================================================================
 
-/// Build Labels from a label_clause node
-fn build_labels(node: &Node, source: &SourceTree) -> Result<Labels> {
-    let mut labels = HashMap::new();
+/// Build Titles from a title_clause node
+fn build_titles(node: &Node, source: &SourceTree) -> Result<Titles> {
+    let mut titles = HashMap::new();
 
-    // Find all label_assignment nodes
-    let query = "(label_assignment) @label";
-    let label_nodes = source.find_nodes(node, query);
+    // Find all title_assignment nodes
+    let query = "(title_assignment) @title";
+    let title_nodes = source.find_nodes(node, query);
 
-    for label_node in label_nodes {
+    for title_node in title_nodes {
         // Extract name and value nodes using field-based queries
-        let (name_node, value_node) = extract_name_value_nodes(&label_node, "label assignment")?;
+        let (name_node, value_node) = extract_name_value_nodes(&title_node, "title assignment")?;
 
-        // Parse label type (name)
-        let label_type = naming::unquote_ident(&source.get_text(&name_node));
+        // Parse title type (name)
+        let title_type = naming::unquote_ident(&source.get_text(&name_node));
 
-        // Parse label value (string or null)
-        let label_value = match value_node.kind() {
+        // Parse title value (string or null)
+        let title_value = match value_node.kind() {
             "string" => Some(parse_string_node(&value_node, source)),
             "null_literal" => None,
             _ => {
                 return Err(GgsqlError::ParseError(format!(
-                    "Label '{}' must have a string or null value, got: {}",
-                    label_type,
+                    "Title '{}' must have a string or null value, got: {}",
+                    title_type,
                     value_node.kind()
                 )));
             }
         };
 
-        labels.insert(label_type, label_value);
+        titles.insert(title_type, title_value);
     }
 
-    Ok(Labels { labels })
+    Ok(Titles { titles })
 }
 
 // ============================================================================
@@ -1665,27 +1665,27 @@ mod tests {
     }
 
     #[test]
-    fn test_tabulate_repeated_label_clauses_merge_rather_than_overwrite() {
-        let specs = parse_test_specs("TABULATE * FROM sales LABEL id => 'ID' LABEL name => 'Name'")
+    fn test_tabulate_repeated_title_clauses_merge_rather_than_overwrite() {
+        let specs = parse_test_specs("TABULATE * FROM sales TITLE id => 'ID' TITLE name => 'Name'")
             .unwrap();
         let table = specs[0].as_table().expect("expected a Table spec");
 
-        assert_eq!(table.labels.labels.get("id"), Some(&Some("ID".to_string())));
+        assert_eq!(table.titles.titles.get("id"), Some(&Some("ID".to_string())));
         assert_eq!(
-            table.labels.labels.get("name"),
+            table.titles.titles.get("name"),
             Some(&Some("Name".to_string()))
         );
     }
 
     #[test]
-    fn test_tabulate_multiple_spans_and_label_in_any_order() {
+    fn test_tabulate_multiple_spans_and_title_in_any_order() {
         let specs = parse_test_specs(
-            "TABULATE * FROM sales LABEL id => 'ID' SPAN A OVER foo, bar SPAN B OVER baz",
+            "TABULATE * FROM sales TITLE id => 'ID' SPAN A OVER foo, bar SPAN B OVER baz",
         )
         .unwrap();
         let table = specs[0].as_table().expect("expected a Table spec");
 
-        assert_eq!(table.labels.labels.get("id"), Some(&Some("ID".to_string())));
+        assert_eq!(table.titles.titles.get("id"), Some(&Some("ID".to_string())));
         assert_eq!(table.spans.len(), 2);
         assert_eq!(table.spans[0].label, Some("A".to_string()));
         assert_eq!(table.spans[0].columns, vec!["foo", "bar"]);
@@ -1998,7 +1998,7 @@ mod tests {
             visualise
             draw point MAPPING x AS x, y AS y
             project to cartesian
-            label main => 'Test Chart'
+            title main => 'Test Chart'
         "#;
 
         let result = parse_test_query(query);
@@ -2011,7 +2011,7 @@ mod tests {
         assert!(specs[0].global_mappings.is_empty());
         assert_eq!(specs[0].layers.len(), 1);
         assert!(specs[0].project.is_some());
-        assert!(!specs[0].labels.labels.is_empty());
+        assert!(!specs[0].titles.titles.is_empty());
     }
 
     #[test]
@@ -4017,7 +4017,7 @@ mod tests {
 
     #[test]
     fn test_parse_string_node() {
-        let source = make_source("VISUALISE DRAW point LABEL main => 'hello world'");
+        let source = make_source("VISUALISE DRAW point TITLE main => 'hello world'");
         let root = source.root();
 
         let string_node = source.find_node(&root, "(string) @s").unwrap();

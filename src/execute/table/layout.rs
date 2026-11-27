@@ -9,7 +9,7 @@ use super::format::resolve_column_properties;
 use super::stub::{create_row_labels, create_stubhead};
 use crate::array_util::{column_to_strings, value_to_string};
 use crate::plot::facet::Facet;
-use crate::plot::Labels;
+use crate::plot::Titles;
 use crate::table::{
     compose_header, create_caption, create_column_labels, create_heading, create_spanners,
     groups_are_woven, move_stub_columns, reorder_table_columns, TableCell, TableClass, TableColumn,
@@ -26,11 +26,11 @@ use crate::{ColumnSection, DataFrame, Format, GgsqlError, Result, Spanner};
 pub(super) fn setup_columns(
     df: &DataFrame,
     spans: &[Spanner],
-    labels: &Labels,
+    titles: &Titles,
     formats: &HashMap<String, Format>,
     facet: Option<&Facet>,
 ) -> Vec<TableColumn> {
-    let columns = create_table_columns(df, labels, formats, facet);
+    let columns = create_table_columns(df, titles, formats, facet);
     let columns = reorder_table_columns(columns, spans);
     let mut columns = move_stub_columns(columns);
     let Some(facet) = facet else {
@@ -87,7 +87,7 @@ pub(super) fn build_cells(
     facet: Option<&Facet>,
 ) -> Result<TableLayout> {
     let spanners = create_spanners(&columns, spans);
-    // Every label empty means `LABEL col => NULL` (or `=> ''`) on every
+    // Every label empty means `TITLE col => NULL` (or `=> ''`) on every
     // column, since an unlabeled column keeps its (non-empty) name — omit
     // the row rather than render blank header cells.
     let column_labels = if columns.iter().all(|c| c.label.is_empty()) {
@@ -136,13 +136,13 @@ pub(super) fn build_cells(
 
 /// Build one `TableColumn` per `DataFrame` column, in the `DataFrame`'s own
 /// order — `reorder_table_columns` is what may reorder this list
-/// afterward, not this function. `labels` is the one authority for an
+/// afterward, not this function. `titles` is the one authority for an
 /// explicit column label; `formats` (already reshaped to one `Format` per
 /// column by `setup_formats`) is the one authority for its properties. A
 /// `place => 'left'` facet marks its variables `GroupStub`.
 fn create_table_columns(
     df: &DataFrame,
-    labels: &Labels,
+    titles: &Titles,
     formats: &HashMap<String, Format>,
     facet: Option<&Facet>,
 ) -> Vec<TableColumn> {
@@ -166,7 +166,7 @@ fn create_table_columns(
             .position(|v| *v == name)
             .map(ColumnSection::GroupStub)
             .unwrap_or_else(|| format.and_then(|f| f.target).unwrap_or_default());
-        let label = match labels.labels.get(&name) {
+        let label = match titles.titles.get(&name) {
             // A stub head is a row-label header, not a data column header —
             // default it blank rather than to the column's own name.
             None if target.is_stub() => String::new(),
@@ -336,14 +336,14 @@ mod tests {
     /// `Reader`/SQL execution — lets a test build a `Table`'s resolved cells
     /// directly against a `df!()`-built `DataFrame`.
     fn resolve_layout(df: &DataFrame, table: &Table) -> Result<TableLayout> {
-        let mut labels = table.labels.clone();
-        let titles = extract_table_titles(&mut labels);
+        let mut titles_map = table.titles.clone();
+        let titles = extract_table_titles(&mut titles_map);
         let column_names = df.get_column_names();
         let spans = table
-            .resolve_spanners(&labels, Some(&column_names))
+            .resolve_spanners(&titles_map, Some(&column_names))
             .map_err(GgsqlError::ValidationError)?;
         let formats = setup_formats(df, &table.formats, &spans)?;
-        let columns = setup_columns(df, &spans, &labels, &formats, None);
+        let columns = setup_columns(df, &spans, &titles_map, &formats, None);
         let df = apply_formats(df, &formats)?;
         let rows = vec![TableRow::body(); df.height()];
         build_cells(&df, columns, rows, &spans, &titles, None)
@@ -379,14 +379,14 @@ mod tests {
         }
         .unwrap();
 
-        let mut labels = Labels::default();
-        labels
-            .labels
+        let mut titles = Titles::default();
+        titles
+            .titles
             .insert("id".to_string(), Some("ID".to_string()));
-        labels.labels.insert("name".to_string(), None);
-        // "extra" has no entry at all: no LABEL clause mentioned it.
+        titles.titles.insert("name".to_string(), None);
+        // "extra" has no entry at all: no TITLE clause mentioned it.
 
-        let columns = create_table_columns(&frame, &labels, &HashMap::new(), None);
+        let columns = create_table_columns(&frame, &titles, &HashMap::new(), None);
 
         assert_eq!(columns[0].name, "id");
         assert_eq!(columns[0].label, "ID"); // overridden
@@ -411,14 +411,14 @@ mod tests {
             },
         )]);
 
-        let columns = create_table_columns(&frame, &Labels::default(), &formats, None);
+        let columns = create_table_columns(&frame, &Titles::default(), &formats, None);
         assert_eq!(columns[0].label, "");
 
-        let mut labels = Labels::default();
-        labels
-            .labels
+        let mut titles = Titles::default();
+        titles
+            .titles
             .insert("region".to_string(), Some("Region".to_string()));
-        let columns = create_table_columns(&frame, &labels, &formats, None);
+        let columns = create_table_columns(&frame, &titles, &formats, None);
         assert_eq!(columns[0].label, "Region");
     }
 
@@ -473,7 +473,7 @@ mod tests {
         let columns = setup_columns(
             &frame,
             &[],
-            &Labels::default(),
+            &Titles::default(),
             &HashMap::new(),
             Some(&facet),
         );
@@ -492,7 +492,7 @@ mod tests {
             "name" => vec!["a".to_string(), "b".to_string()],
         }
         .unwrap();
-        let columns = create_table_columns(&frame, &Labels::default(), &HashMap::new(), None);
+        let columns = create_table_columns(&frame, &Titles::default(), &HashMap::new(), None);
 
         let body = create_body(&frame, &columns);
 
@@ -584,7 +584,7 @@ mod tests {
     }
 
     #[test]
-    fn build_cells_overrides_a_spanners_default_label_via_labels_clause() {
+    fn build_cells_overrides_a_spanners_default_label_via_titles_clause() {
         let frame = df! {
             "a" => vec![1i32],
             "b" => vec![2i32],
@@ -593,8 +593,8 @@ mod tests {
         let mut table = Table::new();
         table.spans = vec![labeled_spanner(&["a", "b"], "g")];
         table
-            .labels
-            .labels
+            .titles
+            .titles
             .insert("g".to_string(), Some("Group".to_string()));
 
         let cells = resolve_cells(&frame, &table).unwrap();
@@ -607,7 +607,7 @@ mod tests {
     }
 
     #[test]
-    fn build_cells_suppresses_a_named_spanners_cell_via_labels_null() {
+    fn build_cells_suppresses_a_named_spanners_cell_via_titles_null() {
         let frame = df! {
             "a" => vec![1i32],
             "b" => vec![2i32],
@@ -615,7 +615,7 @@ mod tests {
         .unwrap();
         let mut table = Table::new();
         table.spans = vec![labeled_spanner(&["a", "b"], "g")];
-        table.labels.labels.insert("g".to_string(), None);
+        table.titles.titles.insert("g".to_string(), None);
 
         let cells = resolve_cells(&frame, &table).unwrap();
 
@@ -767,8 +767,8 @@ mod tests {
         }
         .unwrap();
         let mut table = Table::new();
-        table.labels.labels.insert("id".to_string(), None);
-        table.labels.labels.insert("name".to_string(), None);
+        table.titles.titles.insert("id".to_string(), None);
+        table.titles.titles.insert("name".to_string(), None);
 
         let cells = resolve_cells(&frame, &table).unwrap();
 
@@ -787,12 +787,12 @@ mod tests {
         .unwrap();
         let mut table = Table::new();
         table
-            .labels
-            .labels
+            .titles
+            .titles
             .insert("main".to_string(), Some("Title".to_string()));
         table
-            .labels
-            .labels
+            .titles
+            .titles
             .insert("sub".to_string(), Some("Subtitle".to_string()));
 
         let cells = resolve_cells(&frame, &table).unwrap();
@@ -833,8 +833,8 @@ mod tests {
         .unwrap();
         let mut table = Table::new();
         table
-            .labels
-            .labels
+            .titles
+            .titles
             .insert("sub".to_string(), Some("Subtitle only".to_string()));
 
         let cells = resolve_cells(&frame, &table).unwrap();
@@ -856,8 +856,8 @@ mod tests {
         .unwrap();
         let mut table = Table::new();
         table
-            .labels
-            .labels
+            .titles
+            .titles
             .insert("caption".to_string(), Some("Source: test".to_string()));
 
         let cells = resolve_cells(&frame, &table).unwrap();
@@ -886,12 +886,12 @@ mod tests {
         .unwrap();
         let mut table = Table::new();
         table
-            .labels
-            .labels
+            .titles
+            .titles
             .insert("main".to_string(), Some("Title".to_string()));
         table
-            .labels
-            .labels
+            .titles
+            .titles
             .insert("sub".to_string(), Some("Subtitle".to_string()));
 
         let layout = resolve_layout(&frame, &table).unwrap();
@@ -911,18 +911,18 @@ mod tests {
     }
 
     #[test]
-    fn reserved_label_keys_always_win_over_a_same_named_column() {
+    fn reserved_title_keys_always_win_over_a_same_named_column() {
         // A column literally named "main" can't get a header override via
-        // LABEL — the reserved key always wins, and the column just keeps
-        // its own name, exactly as if no LABEL entry existed for it.
+        // TITLE — the reserved key always wins, and the column just keeps
+        // its own name, exactly as if no TITLE entry existed for it.
         let frame = df! {
             "main" => vec![1i32],
         }
         .unwrap();
         let mut table = Table::new();
         table
-            .labels
-            .labels
+            .titles
+            .titles
             .insert("main".to_string(), Some("The Table's Title".to_string()));
 
         let cells = resolve_cells(&frame, &table).unwrap();

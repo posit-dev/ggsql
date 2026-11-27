@@ -37,11 +37,11 @@ The identifier can be these values:
 * An identifier with double-quotes or backtick-quotes, depending on the backend
 * `null`
 
-A spanner can also be labelled using the [`LABEL`](label-tabulate.qmd) clause, using the span identifier as key.
+A spanner can also be labelled using the [`TITLE`](title-tabulate.qmd) clause, using the span identifier as key.
 This is the preferred method if the label contains exotic symbols that are not allowed in identifiers.
 
 A spanner identifier can **not** be the same as a column name.
-If you want to display the same label as a column name, you can use the [`LABEL`](label-tabulate.qmd) clause too.
+If you want to display the same label as a column name, you can use the [`TITLE`](title-tabulate.qmd) clause too.
 
 Giving `null` as identifier makes an anonymous spanner for the side-effect of ordering columns.
 Anonymous spanners do not render labels.
@@ -107,12 +107,12 @@ TABULATE * FROM my_data
   SPAN Lengths OVER Bill, flipper_len
 ```
 
-The `LABEL` clause can be used for complex labels.
+The `TITLE` clause can be used for complex labels.
 
 ```{ggsql}
 TABULATE * FROM my_data
   SPAN Bill OVER bill_len, bill_dep
-  LABEL Bill => '🐧 bills'
+  TITLE Bill => '🐧 bills'
 ```
 
 Anonymous spanners can be used to reorder columns.

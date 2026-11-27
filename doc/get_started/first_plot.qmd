@@ -9,7 +9,7 @@ VISUALISE bill_len AS x, bill_dep AS y, species AS fill FROM ggsql:penguins
 DRAW point
 SCALE x 
   RENAMING * => '{} mm'
-LABEL
+TITLE
   main => 'Relationship between bill dimensions in 3 species of penguins',
   x => 'Bill length',
   y => 'Bill depth'
