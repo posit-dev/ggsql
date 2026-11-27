@@ -366,6 +366,7 @@ gradient teal.
 <li>Many layers now support <code>linecap</code> and <code>linejoin</code> settings for styling lines.</li>
 <li>The Positron extension now registers a ggsql data importer, so dragging a csv/tsv/parquet/json file into Positron offers to generate the ggsql code that loads it into a table, including any filters and sorts shown in the Data Explorer (#536).</li>
 <li>The Positron extension now registers a bundled agent skill, so agents automatically discover how to write and run ggsql queries (#536).</li>
+<li>In a Positron console, a query result can be opened in the Data Explorer from an “Open in Data Explorer” link under its table, with sorting, filtering, profiles, export and Convert to Code. The kernel serves this through a frontend-neutral results API, reached with <code>call_method</code> on the UI comm and turned on by the frontend (<code>--keep-results</code>), which keeps results in an in-memory cache of its own within one byte budget (<code>--results-max-bytes</code>, default 1 GB, or the <code>ggsql.resultsMemory</code> setting) and never changes the session’s reader or dialect (#595).</li>
 </ul>
 </section>
 <section id="changed" class="level3">
@@ -402,11 +403,13 @@ gradient teal.
 <li><strong>Breaking (library API):</strong> the scale module’s public surface shrank with the move to <code>zygos</code>. Removed: the <code>plot::scale::shape</code> module including <code>shape_to_svg_path</code>; the ~85 named palette table constants in <code>plot::scale::palettes</code> (<code>GGSQL10</code>, <code>VIRIDIS</code>, … — the <code>get_*_palette</code> lookups remain); the hand-rolled break functions <code>wilkinson_extended</code>, <code>pretty_breaks</code>, <code>log_breaks</code>, <code>exp_pretty_breaks</code>, <code>minor_breaks_log</code>, <code>minor_breaks_sqrt</code>, <code>minor_breaks_symlog</code>, <code>trim_breaks</code>, <code>trim_temporal_breaks</code> and <code>derive_minor_interval</code> (their zygos counterparts are re-exported where ggsql still uses them); <code>colour::ColorSpace</code> is now a re-export of zygos’s, whose linear-RGB variant is named <code>Srgb</code> rather than <code>LinearRgb</code>.</li>
 <li>The CLI now always prints query warnings (e.g.&nbsp;extra <code>VISUALISE</code>/<code>TABULATE</code> statements being ignored) to stderr, not only with <code>-v</code>.</li>
 <li>Replaced <code>CLAUDE.md</code> files with <code>AGENTS.md</code> files.</li>
+<li>A Positron console now shows a long query result that can be opened in the Data Explorer as its first 10 rows, followed by a count of the rest, rather than up to 100; a result of up to 20 rows is still shown whole, and one that could not be kept still shows up to 100. The number is set by the <code>ggsql.consoleRows</code> setting (#595).</li>
 </ul>
 </section>
 <section id="fixed" class="level3">
 <h3 class="anchored" data-anchor-id="fixed">Fixed</h3>
 <ul>
+<li><p>A timestamp with a time zone is now written as a timestamp in UTC (<code>2024-01-02T03:04:05Z</code>) wherever ggsql shows a value as text, rather than as the name of its Arrow type (#595).</p></li>
 <li><p><code>duckdb://</code> URIs now apply their <code>key=value</code> query parameters as DuckDB config options when opening the database, so <code>duckdb://file.duckdb?access_mode=read_only</code> opens the file read-only and can share it with other read-only processes. Previously the file always opened read-write, and in 0.5.2 the query string became part of the file path, creating an empty <code>file.duckdb?access_mode=read_only</code> database.</p></li>
 <li><p>A scale whose transform has a restricted domain (e.g.&nbsp;<code>log</code>, <code>sqrt</code>) now infers its data range from in-domain values only, so non-positive data on a log scale no longer drags the lower limit to the transform’s minimum bound and produces an unreadable axis.</p></li>
 <li><p><code>SCALE DISCRETE</code> now accepts integer columns, matching the documented ability to force numeric data into a discrete scale. Integer columns mapped to grouping aesthetics (e.g.&nbsp;<code>fill</code> in <code>DRAW bar</code>) can now be declared discrete instead of being rejected with a validation error (#239).</p></li>

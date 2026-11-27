@@ -28,6 +28,12 @@ Executing ggsql statements containing [`VISUALISE`](../../syntax/clause/visualis
 
 [![](./screenshots/positron-plots-pane.png)](./screenshots/positron-plots-pane.png)
 
+## Data Explorer
+
+A query without `VISUALISE` shows its result as a table in the console, followed by an “Open in Data Explorer” link. A result of more than 20 rows shows only its first 10, with a count of the rest. To show more or fewer, change the `ggsql.consoleRows` setting: a result of up to twice that many rows is shown in full. The change applies to consoles started afterwards. Clicking the link opens the result in Positron’s Data Explorer, where you can sort, filter, and profile it, and use “Convert to Code” to turn your sorts and filters back into SQL.
+
+The Data Explorer works on a snapshot of the result, so it doesn’t change when the underlying tables do. Run the query again to see new data. The console keeps recent results available this way, up to 1 GB in all by default; the `ggsql.resultsMemory` setting changes that, for consoles started afterwards. Results open in a Data Explorer are always kept, and older ones make way for new ones, so the link under an old result may report that it is no longer available. If the results you have open use all of that memory, a new result is shown in the console without a link, and up to 100 of its rows, and sorting or filtering a large one may ask you to close another Data Explorer tab first.
+
 ## Editor and cells
 
 The `ggsql` language type can be used to enable syntax highlighting and autocomplete. Files with extension `.gsql` will automatically be configured to use the `ggsql` language type.

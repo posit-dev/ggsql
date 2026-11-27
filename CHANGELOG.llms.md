@@ -12,6 +12,7 @@
 - Many layers now support `linecap` and `linejoin` settings for styling lines.
 - The Positron extension now registers a ggsql data importer, so dragging a csv/tsv/parquet/json file into Positron offers to generate the ggsql code that loads it into a table, including any filters and sorts shown in the Data Explorer (#536).
 - The Positron extension now registers a bundled agent skill, so agents automatically discover how to write and run ggsql queries (#536).
+- In a Positron console, a query result can be opened in the Data Explorer from an “Open in Data Explorer” link under its table, with sorting, filtering, profiles, export and Convert to Code. The kernel serves this through a frontend-neutral results API, reached with `call_method` on the UI comm and turned on by the frontend (`--keep-results`), which keeps results in an in-memory cache of its own within one byte budget (`--results-max-bytes`, default 1 GB, or the `ggsql.resultsMemory` setting) and never changes the session’s reader or dialect (#595).
 
 ### Changed
 
@@ -40,8 +41,11 @@
 - **Breaking (library API):** the scale module’s public surface shrank with the move to `zygos`. Removed: the `plot::scale::shape` module including `shape_to_svg_path`; the ~85 named palette table constants in `plot::scale::palettes` (`GGSQL10`, `VIRIDIS`, … — the `get_*_palette` lookups remain); the hand-rolled break functions `wilkinson_extended`, `pretty_breaks`, `log_breaks`, `exp_pretty_breaks`, `minor_breaks_log`, `minor_breaks_sqrt`, `minor_breaks_symlog`, `trim_breaks`, `trim_temporal_breaks` and `derive_minor_interval` (their zygos counterparts are re-exported where ggsql still uses them); `colour::ColorSpace` is now a re-export of zygos’s, whose linear-RGB variant is named `Srgb` rather than `LinearRgb`.
 - The CLI now always prints query warnings (e.g. extra `VISUALISE`/`TABULATE` statements being ignored) to stderr, not only with `-v`.
 - Replaced `CLAUDE.md` files with `AGENTS.md` files.
+- A Positron console now shows a long query result that can be opened in the Data Explorer as its first 10 rows, followed by a count of the rest, rather than up to 100; a result of up to 20 rows is still shown whole, and one that could not be kept still shows up to 100. The number is set by the `ggsql.consoleRows` setting (#595).
 
 ### Fixed
+
+- A timestamp with a time zone is now written as a timestamp in UTC (`2024-01-02T03:04:05Z`) wherever ggsql shows a value as text, rather than as the name of its Arrow type (#595).
 
 - `duckdb://` URIs now apply their `key=value` query parameters as DuckDB config options when opening the database, so `duckdb://file.duckdb?access_mode=read_only` opens the file read-only and can share it with other read-only processes. Previously the file always opened read-write, and in 0.5.2 the query string became part of the file path, creating an empty `file.duckdb?access_mode=read_only` database.
 

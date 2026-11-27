@@ -810,7 +810,7 @@ gradient teal.
 <section id="examples" class="level2">
 <h2 class="anchored" data-anchor-id="examples">Examples</h2>
 <p>Simple spanner across two columns.</p>
-<div id="a225c58b" class="cell" data-execution_count="1">
+<div id="0ef2ed61" class="cell" data-execution_count="1">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb6"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="kw">CREATE</span> <span class="kw">TEMP</span> <span class="kw">TABLE</span> my_data <span class="kw">AS</span> <span class="kw">SELECT</span> <span class="op">*</span> <span class="kw">FROM</span> ggsql:penguins <span class="kw">LIMIT</span> <span class="dv">5</span></span>
 <span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a><span class="kw">TABULATE</span> <span class="op">*</span> <span class="kw">FROM</span> my_data</span>
@@ -832,7 +832,7 @@ gradient teal.
 </div>
 </div>
 <p>By default, disjoint spanners are displayed on the same level.</p>
-<div id="c2d4487e" class="cell" data-execution_count="2">
+<div id="5537ba9e" class="cell" data-execution_count="2">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb7"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="kw">TABULATE</span> <span class="op">*</span> <span class="kw">FROM</span> my_data</span>
 <span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>  <span class="kw">SPAN</span> Bill <span class="kw">OVER</span> bill_len, bill_dep</span>
 <span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a>  <span class="kw">SPAN</span> <span class="st">"My label"</span> <span class="kw">OVER</span> sex, year</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
@@ -853,7 +853,7 @@ gradient teal.
 </div>
 </div>
 <p>Setting a custom row level for a span using <code>SETTING</code>.</p>
-<div id="e5118351" class="cell" data-execution_count="3">
+<div id="bb419678" class="cell" data-execution_count="3">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb8"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="kw">TABULATE</span> <span class="op">*</span> <span class="kw">FROM</span> my_data</span>
 <span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a>  <span class="kw">SPAN</span> Bill <span class="kw">OVER</span> bill_len, bill_dep</span>
 <span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a>  <span class="kw">SPAN</span> <span class="st">"My label"</span> <span class="kw">OVER</span> sex, year</span>
@@ -876,7 +876,7 @@ gradient teal.
 </div>
 </div>
 <p>Creating a stacked spanner. Note the use of the <code>Bill</code> span identifier in the second spanner to include <code>bill_len</code> and <code>bill_dep</code>.</p>
-<div id="db259aad" class="cell" data-execution_count="4">
+<div id="e6ba3053" class="cell" data-execution_count="4">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb9"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="kw">TABULATE</span> <span class="op">*</span> <span class="kw">FROM</span> my_data</span>
 <span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a>  <span class="kw">SPAN</span> Bill <span class="kw">OVER</span> bill_len, bill_dep</span>
 <span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a>  <span class="kw">SPAN</span> Lengths <span class="kw">OVER</span> Bill, flipper_len</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
@@ -898,7 +898,7 @@ gradient teal.
 </div>
 </div>
 <p>The <code>LABEL</code> clause can be used for complex labels.</p>
-<div id="560a8c08" class="cell" data-execution_count="5">
+<div id="9acf4c53" class="cell" data-execution_count="5">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb10"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="kw">TABULATE</span> <span class="op">*</span> <span class="kw">FROM</span> my_data</span>
 <span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a>  <span class="kw">SPAN</span> Bill <span class="kw">OVER</span> bill_len, bill_dep</span>
 <span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a>  <span class="kw">LABEL</span> Bill <span class="op">=&gt;</span> <span class="st">'🐧 bills'</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
@@ -919,7 +919,7 @@ gradient teal.
 </div>
 </div>
 <p>Anonymous spanners can be used to reorder columns.</p>
-<div id="e659eeff" class="cell" data-execution_count="6">
+<div id="8fbe9e18" class="cell" data-execution_count="6">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb11"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a><span class="kw">TABULATE</span> <span class="op">*</span> <span class="kw">FROM</span> my_data</span>
 <span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a>  <span class="kw">SPAN</span> <span class="cn">null</span> <span class="kw">OVER</span> species, island, sex, year</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="6">
@@ -938,7 +938,7 @@ gradient teal.
 </div>
 </div>
 <p>Automatic grouping can be turned off using the <code>gather</code> setting. Note that spanners may become fragmented if columns don’t form a contiguous block.</p>
-<div id="d32528e6" class="cell" data-execution_count="7">
+<div id="6964642b" class="cell" data-execution_count="7">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb12"><pre class="sourceCode ggsql code-with-copy"><code class="sourceCode ggsql"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a><span class="kw">TABULATE</span> <span class="op">*</span> <span class="kw">FROM</span> my_data</span>
 <span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a>  <span class="kw">SPAN</span> <span class="st">"My label"</span> <span class="kw">OVER</span> species, sex</span>
 <span id="cb12-3"><a href="#cb12-3" aria-hidden="true" tabindex="-1"></a>    <span class="kw">SETTING</span> <span class="at">gather</span> <span class="op">=&gt;</span> <span class="cn">false</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
