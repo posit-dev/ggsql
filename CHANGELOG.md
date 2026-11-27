@@ -23,6 +23,14 @@ determines whether text boxes get drawn and additional settings `padding`,
   Data Explorer (#536).
 - The Positron extension now registers a bundled agent skill, so agents
   automatically discover how to write and run ggsql queries (#536).
+- In a Positron console, a query result can be opened in the Data Explorer
+  from an "Open in Data Explorer" link under its table, with sorting,
+  filtering, profiles, export and Convert to Code. The kernel serves this
+  through a frontend-neutral results API, reached with `call_method` on the
+  UI comm and turned on by the frontend (`--keep-results`), which keeps
+  results in an in-memory cache of its own within one byte budget
+  (`--results-max-bytes`, default 1 GB, or the `ggsql.resultsMemory`
+  setting) and never changes the session's reader or dialect (#595).
 
 ### Changed
 
@@ -109,9 +117,17 @@ determines whether text boxes get drawn and additional settings `padding`,
 - The CLI now always prints query warnings (e.g. extra `VISUALISE`/`TABULATE`
   statements being ignored) to stderr, not only with `-v`.
 - Replaced `CLAUDE.md` files with `AGENTS.md` files.
+- A Positron console now shows a long query result that can be opened in the
+  Data Explorer as its first 10 rows, followed by a count of the rest, rather
+  than up to 100; a result of up to 20 rows is still shown whole, and one that
+  could not be kept still shows up to 100. The number is set by the
+  `ggsql.consoleRows` setting (#595).
 
 ### Fixed
 
+- A timestamp with a time zone is now written as a timestamp in UTC
+  (`2024-01-02T03:04:05Z`) wherever ggsql shows a value as text, rather than
+  as the name of its Arrow type (#595).
 - `duckdb://` URIs now apply their `key=value` query parameters as DuckDB
   config options when opening the database, so
   `duckdb://file.duckdb?access_mode=read_only` opens the file read-only and

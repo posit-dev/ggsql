@@ -14,6 +14,18 @@ use crate::reader::SqlDialect;
 pub struct SqliteDialect;
 
 impl SqlDialect for SqliteDialect {
+    // `LIKE` ignores ASCII case, so a case-sensitive match is a `GLOB`.
+    fn sql_like(&self, expr: &str, pattern: &str, case_sensitive: bool) -> String {
+        if case_sensitive {
+            format!(
+                "{expr} GLOB {}",
+                self.sql_string_literal(&super::like_to_glob(pattern))
+            )
+        } else {
+            super::like_with_escape_clause(self, expr, pattern, false)
+        }
+    }
+
     fn type_names(&self) -> crate::reader::TypeNames {
         crate::reader::TypeNames {
             number: Some("REAL"),

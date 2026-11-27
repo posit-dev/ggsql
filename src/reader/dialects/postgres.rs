@@ -15,6 +15,11 @@ impl SqlDialect for PostgresDialect {
         true
     }
 
+    fn sql_regex_match(&self, expr: &str, pattern: &str, case_sensitive: bool) -> Option<String> {
+        let op = if case_sensitive { "~" } else { "~*" };
+        Some(format!("{expr} {op} {pattern}"))
+    }
+
     fn sql_generate_series(&self, n: usize) -> String {
         let __ggsql_seq__ = self.quote_ident("__ggsql_seq__");
         format!(

@@ -56,6 +56,101 @@ pub(crate) fn backtick_quote_ident(name: &str) -> String {
     format!("`{}`", name.replace('`', "``"))
 }
 
+/// String literal for backends that read a backslash inside a string literal
+/// as an escape (MySQL/MariaDB, ClickHouse, BigQuery, Databricks, Snowflake,
+/// Redshift): backslashes and single quotes are both backslash-escaped.
+/// BigQuery and Databricks have no `''` escape at all.
+pub(crate) fn backslash_quote_literal(value: &str) -> String {
+    format!("'{}'", value.replace('\\', "\\\\").replace('\'', "\\'"))
+}
+
+/// [`SqlDialect::sql_like`] with `ESCAPE` naming the backslash, as a string
+/// literal of the dialect's own, so the clause is valid wherever its literals
+/// are.
+pub(crate) fn like_with_escape_clause<D: SqlDialect + ?Sized>(
+    dialect: &D,
+    expr: &str,
+    pattern: &str,
+    case_sensitive: bool,
+) -> String {
+    format!(
+        "{} ESCAPE {}",
+        like_without_escape_clause(dialect, expr, pattern, case_sensitive),
+        dialect.sql_string_literal("\\")
+    )
+}
+
+/// [`SqlDialect::sql_like`] for backends whose `LIKE` has no `ESCAPE` clause
+/// and always escapes with a backslash (ClickHouse, BigQuery).
+pub(crate) fn like_without_escape_clause<D: SqlDialect + ?Sized>(
+    dialect: &D,
+    expr: &str,
+    pattern: &str,
+    case_sensitive: bool,
+) -> String {
+    let pattern = dialect.sql_string_literal(pattern);
+    if case_sensitive {
+        format!("{expr} LIKE {pattern}")
+    } else {
+        format!("LOWER({expr}) LIKE LOWER({pattern})")
+    }
+}
+
+/// [`SqlDialect::sql_order_term`] for backends without `NULLS FIRST` /
+/// `NULLS LAST` (MySQL/MariaDB, SQL Server): a leading key that sorts the
+/// NULLs to the chosen end, then the expression itself.
+pub(crate) fn nulls_order_by_case(expr: &str, ascending: bool, nulls_last: bool) -> String {
+    let (null, other) = if nulls_last { (1, 0) } else { (0, 1) };
+    let direction = if ascending { "ASC" } else { "DESC" };
+    format!("CASE WHEN {expr} IS NULL THEN {null} ELSE {other} END, {expr} {direction}")
+}
+
+/// The SQL string literal `pattern` with an inline `(?i)` or `(?-i)` flag in
+/// front, for backends whose regular expressions take case sensitivity only
+/// that way (RE2, Java, ICU, PCRE).
+pub(crate) fn inline_regex_flag<D: SqlDialect + ?Sized>(
+    dialect: &D,
+    pattern: &str,
+    case_sensitive: bool,
+) -> String {
+    let flag = if case_sensitive { "(?-i)" } else { "(?i)" };
+    format!("CONCAT({}, {pattern})", dialect.sql_string_literal(flag))
+}
+
+/// A [`SqlDialect::sql_like`] pattern as a `GLOB` pattern: `%` and `_`
+/// become `*` and `?`, a backslash-escaped character is literal, and `GLOB`'s
+/// own `*`, `?` and `[` are bracketed so they match themselves.
+pub(crate) fn like_to_glob(pattern: &str) -> String {
+    let mut out = String::with_capacity(pattern.len());
+    let mut chars = pattern.chars();
+    while let Some(ch) = chars.next() {
+        let literal = match ch {
+            '\\' => match chars.next() {
+                Some(next) => next,
+                None => break,
+            },
+            '%' => {
+                out.push('*');
+                continue;
+            }
+            '_' => {
+                out.push('?');
+                continue;
+            }
+            other => other,
+        };
+        match literal {
+            '*' | '?' | '[' => {
+                out.push('[');
+                out.push(literal);
+                out.push(']');
+            }
+            other => out.push(other),
+        }
+    }
+    out
+}
+
 /// `1`/`0` boolean literal for backends without a real BOOLEAN literal
 /// (SQL Server, Oracle, SQLite).
 pub(crate) fn one_zero_boolean_literal(value: bool) -> String {
@@ -148,6 +243,128 @@ mod tests {
 
     fn assert_type_name(d: &dyn SqlDialect, expected: Option<&str>) {
         assert_eq!(d.type_names().number, expected);
+    }
+
+    #[test]
+    fn string_literals_follow_the_backends_escapes() {
+        let value = r"it's a\b";
+        for scheme in ["mysql", "bigquery", "clickhouse", "databricks", "snowflake"] {
+            let d = dialect_for_scheme(scheme).unwrap();
+            assert_eq!(d.sql_string_literal(value), r"'it\'s a\\b'", "{scheme}");
+        }
+        for scheme in ["duckdb", "postgres", "sqlite", "mssql", "trino"] {
+            let d = dialect_for_scheme(scheme).unwrap();
+            assert_eq!(d.sql_string_literal(value), r"'it''s a\b'", "{scheme}");
+        }
+    }
+
+    #[test]
+    fn like_names_its_escape_where_the_backend_has_the_clause() {
+        let like = |scheme: &str| {
+            dialect_for_scheme(scheme)
+                .unwrap()
+                .sql_like("c", r"a\%", true)
+        };
+        assert_eq!(like("duckdb"), r"c LIKE 'a\%' ESCAPE '\'");
+        assert_eq!(
+            like("mysql"),
+            r"CAST(c AS BINARY) LIKE CAST('a\\%' AS BINARY) ESCAPE '\\'"
+        );
+        assert_eq!(like("bigquery"), r"c LIKE 'a\\%'");
+        assert_eq!(like("clickhouse"), r"c LIKE 'a\\%'");
+        assert_eq!(
+            dialect_for_scheme("mssql")
+                .unwrap()
+                .sql_like("c", "[x]%", false),
+            r"LOWER(c) LIKE LOWER('\[x]%') ESCAPE '\'"
+        );
+    }
+
+    #[test]
+    fn case_sensitive_like_does_not_follow_a_case_folding_collation() {
+        let like = |scheme: &str| {
+            dialect_for_scheme(scheme)
+                .unwrap()
+                .sql_like("c", "a%", true)
+        };
+        assert_eq!(like("sqlite"), "c GLOB 'a*'");
+        assert_eq!(
+            like("mssql"),
+            r"c COLLATE Latin1_General_CS_AS LIKE 'a%' ESCAPE '\'"
+        );
+        assert_eq!(like_to_glob(r"%a\%b\_*?[x]_"), "*a%b_[*][?][[]x]?");
+    }
+
+    #[cfg(feature = "sqlite")]
+    #[test]
+    fn case_sensitive_like_runs_in_sqlite() {
+        use crate::reader::Reader;
+        let reader =
+            crate::reader::SqliteReader::from_connection_string("sqlite://memory").unwrap();
+        let p = SqliteDialect.sql_like("s", r"%A\_[%", true);
+        let df = reader
+            .execute_sql(&format!(
+                "SELECT s FROM (SELECT 'xA_[y' AS s UNION ALL SELECT 'xa_[y' UNION ALL SELECT 'xAb[y') WHERE {p}"
+            ))
+            .unwrap();
+        assert_eq!(df.height(), 1);
+    }
+
+    #[test]
+    fn not_empty_is_not_null_on_oracle() {
+        let oracle = dialect_for_scheme("oracle").unwrap();
+        assert_eq!(oracle.sql_is_empty_string("c", false), "c = ''");
+        assert_eq!(oracle.sql_is_empty_string("c", true), "c IS NOT NULL");
+        assert_eq!(AnsiDialect.sql_is_empty_string("c", false), "c = ''");
+    }
+
+    /// The default `LIKE` escape runs, with the backslash as written.
+    #[cfg(feature = "duckdb")]
+    #[test]
+    fn like_escape_runs_in_duckdb() {
+        use crate::reader::Reader;
+        let reader =
+            crate::reader::DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        let p = DuckDbDialect.sql_like("s", r"%a\_b\\%", true);
+        let df = reader
+            .execute_sql(&format!(
+                r"SELECT s FROM (VALUES ('xa_b\y'), ('xaxb\y'), ('xa_by')) t(s) WHERE {p}"
+            ))
+            .unwrap();
+        assert_eq!(df.height(), 1);
+    }
+
+    #[test]
+    fn regex_search_is_unanchored_and_takes_case_where_the_backend_has_it() {
+        let regex = |scheme: &str, cs: bool| {
+            dialect_for_scheme(scheme)
+                .unwrap()
+                .sql_regex_match("c", "'^a'", cs)
+        };
+        assert_eq!(
+            regex("bigquery", false).unwrap(),
+            r"REGEXP_CONTAINS(c, CONCAT('(?i)', '^a'))"
+        );
+        assert_eq!(
+            regex("mysql", true).unwrap(),
+            r"c REGEXP CONCAT('(?-i)', '^a')"
+        );
+        assert_eq!(
+            regex("snowflake", false).unwrap(),
+            r"REGEXP_INSTR(c, '^a', 1, 1, 0, 'i') > 0"
+        );
+        assert_eq!(regex("oracle", true).unwrap(), r"REGEXP_LIKE(c, '^a', 'c')");
+        assert_eq!(
+            regex("duckdb", false).unwrap(),
+            "regexp_matches(c, '^a', 'i')"
+        );
+        assert_eq!(regex("postgres", true).unwrap(), "c ~ '^a'");
+        for scheme in ["clickhouse", "trino", "databricks", "redshift"] {
+            assert!(regex(scheme, false).is_some(), "{scheme}");
+        }
+        for scheme in ["sqlite", "mssql"] {
+            assert!(regex(scheme, false).is_none(), "{scheme}");
+        }
     }
 
     /// Evaluate the CASE emulations against DuckDB's native

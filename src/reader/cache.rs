@@ -104,7 +104,7 @@ pub fn parse_human_bytes(s: &str) -> Option<u64> {
     } else {
         (lower.as_str(), 1)
     };
-    num.trim().parse::<u64>().ok().map(|n| n * mult)
+    num.trim().parse::<u64>().ok()?.checked_mul(mult)
 }
 
 /// Wall-clock milliseconds since the UNIX epoch. On a clock earlier than the
@@ -119,7 +119,7 @@ fn now_ms() -> i64 {
 
 /// Estimate the in-memory size of a DataFrame as the sum of its Arrow columns'
 /// memory footprints.
-fn estimate_bytes(df: &DataFrame) -> i64 {
+pub fn estimate_bytes(df: &DataFrame) -> i64 {
     df.get_columns()
         .iter()
         .map(|col| col.get_array_memory_size())
@@ -127,24 +127,329 @@ fn estimate_bytes(df: &DataFrame) -> i64 {
 }
 
 /// One memo row, trimmed to the fields consulted at runtime.
-struct MemoEntry {
-    table_name: String,
-    fetched_at_epoch_ms: i64,
+pub(crate) struct MemoEntry {
+    pub(crate) table_name: String,
+    pub(crate) fetched_at_epoch_ms: i64,
+}
+
+/// Tables kept in an in-memory cache backend under a byte budget.
+///
+/// Every entry is a table in the backend plus a row in the
+/// `__ggsql_cache_meta__` table, which records its size and when it was last
+/// used. Once the entries' total size passes the budget the least recently
+/// used are dropped, except entries that are **pinned**: those stay until
+/// unpinned, even past the budget. Pins are kept here rather than in the
+/// metadata table, so they never show in it.
+///
+/// [`CachingReader`] keeps memoized reads here, keyed by a hash of their SQL,
+/// and never pins. Other callers can keep tables in a `CacheTables` of their
+/// own without wrapping any reader, so nothing changes about the dialect a
+/// user's queries run in.
+pub struct CacheTables {
+    /// The in-memory backend holding the tables and the metadata table.
+    backend: Box<dyn Reader + Send>,
+    /// The byte budget `put` and unpinning evict to.
+    max_bytes: u64,
+    /// Keys of the pinned entries.
+    pinned: RefCell<HashSet<String>>,
+    /// Whether the metadata table has been created in the backend.
+    meta_ready: Cell<bool>,
+}
+
+impl CacheTables {
+    /// Tables in `backend`, evicted to `max_bytes`.
+    pub fn new(backend: Box<dyn Reader + Send>, max_bytes: u64) -> Self {
+        Self {
+            backend,
+            max_bytes,
+            pinned: RefCell::new(HashSet::new()),
+            meta_ready: Cell::new(false),
+        }
+    }
+
+    /// The backend holding the tables, for queries over them.
+    pub fn backend(&self) -> &dyn Reader {
+        &*self.backend
+    }
+
+    /// Create the metadata table in the backend if it doesn't exist yet.
+    fn ensure_meta_table(&self) -> Result<()> {
+        if self.meta_ready.get() {
+            return Ok(());
+        }
+        let sql = format!(
+            "CREATE TABLE IF NOT EXISTS {} (\
+             cache_key VARCHAR PRIMARY KEY, sql VARCHAR NOT NULL, table_name VARCHAR NOT NULL, \
+             fetched_at_epoch_ms BIGINT NOT NULL, last_accessed_epoch_ms BIGINT NOT NULL, \
+             byte_estimate BIGINT NOT NULL, row_count BIGINT NOT NULL)",
+            naming::quote_ident(naming::CACHE_META_TABLE)
+        );
+        self.backend.execute_sql(&sql)?;
+        self.meta_ready.set(true);
+        Ok(())
+    }
+
+    /// Whether there is an entry for `key`.
+    pub fn contains(&self, key: &str) -> Result<bool> {
+        Ok(self.lookup(key)?.is_some())
+    }
+
+    /// Look up the entry for `key`.
+    pub(crate) fn lookup(&self, key: &str) -> Result<Option<MemoEntry>> {
+        self.ensure_meta_table()?;
+        let sql = format!(
+            "SELECT table_name, fetched_at_epoch_ms FROM {} WHERE cache_key = {}",
+            naming::quote_ident(naming::CACHE_META_TABLE),
+            naming::quote_literal(key),
+        );
+        let df = self.backend.execute_sql(&sql)?;
+        if df.height() == 0 {
+            return Ok(None);
+        }
+        let table_name = as_str(df.column("table_name")?)?.value(0).to_string();
+        let fetched_at_epoch_ms = as_i64(df.column("fetched_at_epoch_ms")?)?.value(0);
+        Ok(Some(MemoEntry {
+            table_name,
+            fetched_at_epoch_ms,
+        }))
+    }
+
+    /// Keep `df` as the table `table` under `key`, labelled with the `sql`
+    /// that produced it, then evict over the budget.
+    pub fn put(&self, key: &str, sql: &str, table: &str, df: DataFrame) -> Result<()> {
+        self.put_entry(key, sql, table, df, false)
+    }
+
+    /// [`put`](Self::put), pinned from the start, so it survives the eviction
+    /// its own insertion triggers.
+    pub fn put_pinned(&self, key: &str, sql: &str, table: &str, df: DataFrame) -> Result<()> {
+        self.put_entry(key, sql, table, df, true)
+    }
+
+    fn put_entry(
+        &self,
+        key: &str,
+        sql: &str,
+        table: &str,
+        df: DataFrame,
+        pinned: bool,
+    ) -> Result<()> {
+        self.ensure_meta_table()?;
+        let byte_estimate = estimate_bytes(&df);
+        let row_count = df.height() as i64;
+        self.backend.register(table, df, true)?;
+        if let Err(e) = self.insert_meta(key, sql, table, byte_estimate, row_count) {
+            // The table registered but the meta row didn't: drop the orphan so
+            // it can't leak, then surface the error.
+            let _ = self.backend.unregister(table);
+            return Err(e);
+        }
+        if pinned {
+            self.pinned.borrow_mut().insert(key.to_string());
+        } else {
+            self.pinned.borrow_mut().remove(key);
+        }
+        self.evict_to(self.max_bytes).map(drop)
+    }
+
+    /// Record an entry in the metadata table.
+    fn insert_meta(
+        &self,
+        key: &str,
+        sql: &str,
+        table: &str,
+        byte_estimate: i64,
+        row_count: i64,
+    ) -> Result<()> {
+        let now = now_ms();
+        // Upsert as DELETE + INSERT rather than INSERT OR REPLACE: the cache
+        // is a local single-connection store, so the non-transactional pair
+        // is safe, and the SQLite-specific OR REPLACE form is the one upsert
+        // syntax DataFusion (a supported cache backend) does not implement.
+        let del = format!(
+            "DELETE FROM {} WHERE cache_key = {}",
+            naming::quote_ident(naming::CACHE_META_TABLE),
+            naming::quote_literal(key),
+        );
+        self.backend.execute_sql(&del)?;
+        let stmt = format!(
+            "INSERT INTO {} \
+             (cache_key, sql, table_name, fetched_at_epoch_ms, last_accessed_epoch_ms, \
+              byte_estimate, row_count) \
+             VALUES ({}, {}, {}, {}, {}, {}, {})",
+            naming::quote_ident(naming::CACHE_META_TABLE),
+            naming::quote_literal(key),
+            naming::quote_literal(sql),
+            naming::quote_literal(table),
+            now,
+            now,
+            byte_estimate,
+            row_count,
+        );
+        self.backend.execute_sql(&stmt)?;
+        Ok(())
+    }
+
+    /// Advance the last-accessed timestamp for `key` (LRU bookkeeping).
+    pub(crate) fn touch(&self, key: &str) -> Result<()> {
+        self.ensure_meta_table()?;
+        let stmt = format!(
+            "UPDATE {} SET last_accessed_epoch_ms = {} WHERE cache_key = {}",
+            naming::quote_ident(naming::CACHE_META_TABLE),
+            now_ms(),
+            naming::quote_literal(key),
+        );
+        self.backend.execute_sql(&stmt)?;
+        Ok(())
+    }
+
+    /// Pin or unpin the entry for `key`, which also counts as a use of it.
+    /// Pinned entries are never evicted. Unpinning evicts over the budget,
+    /// since the entry counts towards it again. There must be an entry to pin.
+    pub fn set_pinned(&self, key: &str, pinned: bool) -> Result<()> {
+        if pinned {
+            if !self.contains(key)? {
+                return Err(crate::GgsqlError::InternalError(format!(
+                    "There is no cache entry {key:?} to pin"
+                )));
+            }
+            self.touch(key)?;
+            self.pinned.borrow_mut().insert(key.to_string());
+            Ok(())
+        } else {
+            self.touch(key)?;
+            self.pinned.borrow_mut().remove(key);
+            self.evict_to(self.max_bytes).map(drop)
+        }
+    }
+
+    /// Drop a single entry: unregister the table, then delete its meta row.
+    pub(crate) fn drop_entry(&self, key: &str, table: &str) -> Result<()> {
+        self.ensure_meta_table()?;
+        self.backend.unregister(table)?;
+        let del = format!(
+            "DELETE FROM {} WHERE cache_key = {}",
+            naming::quote_ident(naming::CACHE_META_TABLE),
+            naming::quote_literal(key),
+        );
+        self.backend.execute_sql(&del)?;
+        self.pinned.borrow_mut().remove(key);
+        Ok(())
+    }
+
+    /// The entries' total byte estimate, pinned ones included.
+    pub fn total_bytes(&self) -> Result<u64> {
+        self.ensure_meta_table()?;
+        // Cast the SUM to BIGINT.
+        let df = self.backend.execute_sql(&format!(
+            "SELECT CAST(COALESCE(SUM(byte_estimate), 0) AS BIGINT) AS n FROM {}",
+            naming::quote_ident(naming::CACHE_META_TABLE)
+        ))?;
+        let total = if df.height() == 0 {
+            0
+        } else {
+            as_i64(df.column("n")?)?.value(0)
+        };
+        Ok(total.max(0) as u64)
+    }
+
+    /// The pinned entries' total byte estimate: what no eviction can free.
+    pub fn pinned_bytes(&self) -> Result<u64> {
+        self.ensure_meta_table()?;
+        let pinned = self.pinned.borrow();
+        if pinned.is_empty() {
+            return Ok(0);
+        }
+        let keys: Vec<String> = pinned.iter().map(|k| naming::quote_literal(k)).collect();
+        drop(pinned);
+        let df = self.backend.execute_sql(&format!(
+            "SELECT CAST(COALESCE(SUM(byte_estimate), 0) AS BIGINT) AS n FROM {} \
+             WHERE cache_key IN ({})",
+            naming::quote_ident(naming::CACHE_META_TABLE),
+            keys.join(", ")
+        ))?;
+        let total = if df.height() == 0 {
+            0
+        } else {
+            as_i64(df.column("n")?)?.value(0)
+        };
+        Ok(total.max(0) as u64)
+    }
+
+    /// Evict unpinned entries, least recently used first, until the total
+    /// byte estimate is within `max_bytes` or nothing unpinned is left. A
+    /// caller with a budget wider than this cache's passes what it allows.
+    pub fn evict_to(&self, max_bytes: u64) -> Result<Vec<String>> {
+        let mut evicted = Vec::new();
+        while self.total_bytes()? > max_bytes {
+            let pinned = self.pinned.borrow();
+            let exclude = if pinned.is_empty() {
+                String::new()
+            } else {
+                let keys: Vec<String> = pinned.iter().map(|k| naming::quote_literal(k)).collect();
+                format!(" WHERE cache_key NOT IN ({})", keys.join(", "))
+            };
+            drop(pinned);
+            let df = self.backend.execute_sql(&format!(
+                "SELECT cache_key, table_name FROM {}{exclude} \
+                 ORDER BY last_accessed_epoch_ms ASC LIMIT 1",
+                naming::quote_ident(naming::CACHE_META_TABLE)
+            ))?;
+            if df.height() == 0 {
+                break;
+            }
+            let key = as_str(df.column("cache_key")?)?.value(0).to_string();
+            let table = as_str(df.column("table_name")?)?.value(0).to_string();
+            self.drop_entry(&key, &table)?;
+            evicted.push(key);
+        }
+        Ok(evicted)
+    }
+
+    /// Drop every entry, one at a time.
+    pub(crate) fn clear(&self) -> Result<()> {
+        self.ensure_meta_table()?;
+        let df = self.backend.execute_sql(&format!(
+            "SELECT cache_key, table_name FROM {}",
+            naming::quote_ident(naming::CACHE_META_TABLE)
+        ))?;
+        let n = df.height();
+        if n == 0 {
+            return Ok(());
+        }
+        let keys = as_str(df.column("cache_key")?)?;
+        let tables = as_str(df.column("table_name")?)?;
+        let mut failures: Vec<String> = Vec::new();
+        for i in 0..n {
+            let key = keys.value(i);
+            let table = tables.value(i);
+            if let Err(e) = self.drop_entry(key, table) {
+                failures.push(format!("{key}: {e}"));
+            }
+        }
+        if !failures.is_empty() {
+            return Err(crate::GgsqlError::ReaderError(format!(
+                "clear_cache: {} cache entries failed to drop: {}",
+                failures.len(),
+                failures.join("; ")
+            )));
+        }
+        Ok(())
+    }
 }
 
 pub struct CachingReader {
     /// Primary backend — the real data source.
     primary: Box<dyn Reader + Send>,
-    /// In-memory writeable cache: derived tables, registered data, memoized reads.
-    cache: Box<dyn Reader + Send>,
+    /// In-memory writeable cache: derived tables, registered data, memoized
+    /// reads, and the memo's bookkeeping.
+    tables: CacheTables,
+    /// TTL and byte-budget configuration of the memo.
+    config: CacheConfig,
     /// Connection URI of the primary.
     primary_uri: String,
     /// Scheme of the cache backend as spelled in the connection URI.
     cache_scheme: String,
-    /// TTL + byte-budget configuration for the result memo.
-    config: CacheConfig,
-    /// Whether the metadata table has been created in the cache backend.
-    meta_ready: Cell<bool>,
     /// Names registered into the cache. A source read that references one
     /// is routed to the cache rather than the primary.
     resident: RefCell<HashSet<String>>,
@@ -185,11 +490,10 @@ impl CachingReader {
     ) -> Self {
         Self {
             primary,
-            cache,
+            tables: CacheTables::new(cache, config.max_bytes),
+            config,
             primary_uri: primary_uri.into(),
             cache_scheme: cache_scheme.into(),
-            config,
-            meta_ready: Cell::new(false),
             resident: RefCell::new(HashSet::new()),
         }
     }
@@ -199,6 +503,11 @@ impl CachingReader {
         &self.config
     }
 
+    /// The cache backend.
+    fn cache(&self) -> &dyn Reader {
+        self.tables.backend()
+    }
+
     /// Derive a stable cache key from the primary URI and the SQL text.
     fn cache_key(&self, sql: &str) -> String {
         let mut hasher = DefaultHasher::new();
@@ -206,135 +515,6 @@ impl CachingReader {
         hasher.write(b"\n");
         hasher.write(sql.as_bytes());
         format!("{:016x}", hasher.finish())
-    }
-
-    /// Create the metadata table in the cache backend if it doesn't exist yet.
-    fn ensure_meta_table(&self) -> Result<()> {
-        if self.meta_ready.get() {
-            return Ok(());
-        }
-        let sql = format!(
-            "CREATE TABLE IF NOT EXISTS {} (\
-             cache_key VARCHAR PRIMARY KEY, sql VARCHAR NOT NULL, table_name VARCHAR NOT NULL, \
-             fetched_at_epoch_ms BIGINT NOT NULL, last_accessed_epoch_ms BIGINT NOT NULL, \
-             byte_estimate BIGINT NOT NULL, row_count BIGINT NOT NULL)",
-            naming::quote_ident(naming::CACHE_META_TABLE)
-        );
-        self.cache.execute_sql(&sql)?;
-        self.meta_ready.set(true);
-        Ok(())
-    }
-
-    /// Look up the memo entry for `key`.
-    fn lookup_memo(&self, key: &str) -> Result<Option<MemoEntry>> {
-        let sql = format!(
-            "SELECT table_name, fetched_at_epoch_ms FROM {} WHERE cache_key = {}",
-            naming::quote_ident(naming::CACHE_META_TABLE),
-            naming::quote_literal(key),
-        );
-        let df = self.cache.execute_sql(&sql)?;
-        if df.height() == 0 {
-            return Ok(None);
-        }
-        let table_name = as_str(df.column("table_name")?)?.value(0).to_string();
-        let fetched_at_epoch_ms = as_i64(df.column("fetched_at_epoch_ms")?)?.value(0);
-        Ok(Some(MemoEntry {
-            table_name,
-            fetched_at_epoch_ms,
-        }))
-    }
-
-    /// Record a memoized read in the metadata table.
-    fn insert_memo(
-        &self,
-        key: &str,
-        sql: &str,
-        table: &str,
-        byte_estimate: i64,
-        row_count: i64,
-    ) -> Result<()> {
-        let now = now_ms();
-        // Upsert as DELETE + INSERT rather than INSERT OR REPLACE: the cache
-        // is a local single-connection store, so the non-transactional pair
-        // is safe, and the SQLite-specific OR REPLACE form is the one upsert
-        // syntax DataFusion (a supported cache backend) does not implement.
-        let del = format!(
-            "DELETE FROM {} WHERE cache_key = {}",
-            naming::quote_ident(naming::CACHE_META_TABLE),
-            naming::quote_literal(key),
-        );
-        self.cache.execute_sql(&del)?;
-        let stmt = format!(
-            "INSERT INTO {} \
-             (cache_key, sql, table_name, fetched_at_epoch_ms, last_accessed_epoch_ms, \
-              byte_estimate, row_count) \
-             VALUES ({}, {}, {}, {}, {}, {}, {})",
-            naming::quote_ident(naming::CACHE_META_TABLE),
-            naming::quote_literal(key),
-            naming::quote_literal(sql),
-            naming::quote_literal(table),
-            now,
-            now,
-            byte_estimate,
-            row_count,
-        );
-        self.cache.execute_sql(&stmt)?;
-        Ok(())
-    }
-
-    /// Advance the last-accessed timestamp for `key` (LRU bookkeeping).
-    fn touch(&self, key: &str) -> Result<()> {
-        let stmt = format!(
-            "UPDATE {} SET last_accessed_epoch_ms = {} WHERE cache_key = {}",
-            naming::quote_ident(naming::CACHE_META_TABLE),
-            now_ms(),
-            naming::quote_literal(key),
-        );
-        self.cache.execute_sql(&stmt)?;
-        Ok(())
-    }
-
-    /// Drop a single memo entry: unregister the table, then delete its meta row.
-    fn drop_entry(&self, key: &str, table: &str) -> Result<()> {
-        self.cache.unregister(table)?;
-        let del = format!(
-            "DELETE FROM {} WHERE cache_key = {}",
-            naming::quote_ident(naming::CACHE_META_TABLE),
-            naming::quote_literal(key),
-        );
-        self.cache.execute_sql(&del)?;
-        Ok(())
-    }
-
-    /// Evict LRU entries until the cumulative byte estimate is within `max_bytes`.
-    fn evict_over_budget(&self) -> Result<()> {
-        // Cast the SUM to BIGINT.
-        let sum_sql = format!(
-            "SELECT CAST(COALESCE(SUM(byte_estimate), 0) AS BIGINT) AS n FROM {}",
-            naming::quote_ident(naming::CACHE_META_TABLE)
-        );
-        loop {
-            let df = self.cache.execute_sql(&sum_sql)?;
-            let total = if df.height() == 0 {
-                0
-            } else {
-                as_i64(df.column("n")?)?.value(0)
-            };
-            if total <= self.config.max_bytes as i64 {
-                return Ok(());
-            }
-            let pick = format!(
-                "SELECT cache_key, table_name FROM {} ORDER BY last_accessed_epoch_ms ASC LIMIT 1",
-                naming::quote_ident(naming::CACHE_META_TABLE)
-            );
-            let df = self.cache.execute_sql(&pick)?;
-            if df.height() == 0 {
-                return Ok(());
-            }
-            let key = as_str(df.column("cache_key")?)?.value(0).to_string();
-            let table = as_str(df.column("table_name")?)?.value(0).to_string();
-            self.drop_entry(&key, &table)?;
-        }
     }
 
     /// Whether `sql` reads something the cache backend owns: a cache-resident
@@ -357,37 +537,6 @@ impl CachingReader {
             .any(|t| t == naming::CACHE_META_TABLE || resident.contains(t))
     }
 
-    /// Drop every memoized result, one entry at a time.
-    fn clear_memo(&self) -> Result<()> {
-        self.ensure_meta_table()?;
-        let df = self.cache.execute_sql(&format!(
-            "SELECT cache_key, table_name FROM {}",
-            naming::quote_ident(naming::CACHE_META_TABLE)
-        ))?;
-        let n = df.height();
-        if n == 0 {
-            return Ok(());
-        }
-        let keys = as_str(df.column("cache_key")?)?;
-        let tables = as_str(df.column("table_name")?)?;
-        let mut failures: Vec<String> = Vec::new();
-        for i in 0..n {
-            let key = keys.value(i);
-            let table = tables.value(i);
-            if let Err(e) = self.drop_entry(key, table) {
-                failures.push(format!("{key}: {e}"));
-            }
-        }
-        if !failures.is_empty() {
-            return Err(crate::GgsqlError::ReaderError(format!(
-                "clear_cache: {} cache entries failed to drop: {}",
-                failures.len(),
-                failures.join("; ")
-            )));
-        }
-        Ok(())
-    }
-
     /// Prefix `context` onto a backend error, dropping the driver's own
     /// "Failed to {execute,prepare} SQL" preamble so the attribution reads first.
     fn annotate_error(&self, context: &str, err: crate::GgsqlError) -> crate::GgsqlError {
@@ -405,12 +554,12 @@ impl CachingReader {
 impl Reader for CachingReader {
     /// Source surface: base reads of the user's data (plus user setup/DML).
     fn execute_sql(&self, sql: &str) -> Result<DataFrame> {
-        self.ensure_meta_table()?;
+        self.tables.ensure_meta_table()?;
 
         // Route to the cache when the read targets cache-resident objects, the
         // metadata table, or a builtin dataset.
         if self.references_cache_resident(sql) {
-            return self.cache.execute_sql(sql);
+            return self.cache().execute_sql(sql);
         }
 
         // With caching disabled the memo is never consulted or written.
@@ -422,17 +571,17 @@ impl Reader for CachingReader {
 
         // Serve a fresh, still-present entry; on a stale or vanished entry drop
         // it and fall through to a primary re-fetch.
-        if let Some(entry) = self.lookup_memo(&key)? {
+        if let Some(entry) = self.tables.lookup(&key)? {
             let age_ms = (now_ms() - entry.fetched_at_epoch_ms).max(0);
             let ttl_ms = (self.config.ttl_secs as i64).saturating_mul(1000);
             if age_ms < ttl_ms {
                 let select = format!("SELECT * FROM {}", naming::quote_ident(&entry.table_name));
-                if let Ok(df) = self.cache.execute_sql(&select) {
-                    self.touch(&key)?;
+                if let Ok(df) = self.cache().execute_sql(&select) {
+                    self.tables.touch(&key)?;
                     return Ok(df);
                 }
             }
-            self.drop_entry(&key, &entry.table_name)?;
+            self.tables.drop_entry(&key, &entry.table_name)?;
         }
 
         let df = self.primary.execute_sql(sql)?;
@@ -440,16 +589,7 @@ impl Reader for CachingReader {
         // Cache row-returning reads only.
         if super::returns_rows(sql) && df.width() > 0 {
             let table = naming::cache_result_table(&key);
-            let byte_estimate = estimate_bytes(&df);
-            let row_count = df.height() as i64;
-            self.cache.register(&table, df.clone(), true)?;
-            if let Err(e) = self.insert_memo(&key, sql, &table, byte_estimate, row_count) {
-                // The result table registered but the meta row didn't: drop the
-                // orphan so it can't leak, then surface the error.
-                let _ = self.cache.unregister(&table);
-                return Err(e);
-            }
-            self.evict_over_budget()?;
+            self.tables.put(&key, sql, &table, df.clone())?;
         }
 
         Ok(df)
@@ -457,19 +597,19 @@ impl Reader for CachingReader {
 
     /// Compute surface: derived/dialect-generated SQL runs on the cache.
     fn execute_sql_cached(&self, sql: &str) -> Result<DataFrame> {
-        self.cache.execute_sql(sql).map_err(|e| {
+        self.cache().execute_sql(sql).map_err(|e| {
             self.annotate_error(&format!("on the `{}` cache backend", self.cache_scheme), e)
         })
     }
 
     fn register(&self, name: &str, df: DataFrame, replace: bool) -> Result<()> {
-        self.cache.register(name, df, replace)?;
+        self.cache().register(name, df, replace)?;
         self.resident.borrow_mut().insert(name.to_string());
         Ok(())
     }
 
     fn unregister(&self, name: &str) -> Result<()> {
-        self.cache.unregister(name)?;
+        self.cache().unregister(name)?;
         self.resident.borrow_mut().remove(name);
         Ok(())
     }
@@ -480,7 +620,7 @@ impl Reader for CachingReader {
 
     fn dialect(&self) -> &dyn SqlDialect {
         // All executor-generated SQL targets cache-resident tables.
-        self.cache.dialect()
+        self.cache().dialect()
     }
 
     fn materialize_table(
@@ -507,7 +647,7 @@ impl Reader for CachingReader {
     }
 
     fn clear_cache(&self) -> Result<()> {
-        self.clear_memo()
+        self.tables.clear()
     }
 
     // Schema introspection describes the real data source, so delegate to the
@@ -1310,7 +1450,7 @@ mod behavior_tests {
             .value(0)
             .to_string();
         reader
-            .cache
+            .cache()
             .execute_sql(&format!("DROP TABLE {}", naming::quote_ident(&table_name)))
             .unwrap();
 
@@ -1324,6 +1464,100 @@ mod behavior_tests {
             .filter(|s| s.as_str() == q)
             .count();
         assert_eq!(hits, 2, "the missing table forced a primary re-fetch");
+    }
+
+    fn tiny_budget_tables() -> CacheTables {
+        CacheTables::new(Box::new(DuckDBReader::new_in_memory().unwrap()), 1)
+    }
+
+    #[test]
+    fn test_pinned_entries_survive_eviction() {
+        let tables = tiny_budget_tables();
+        let frame = || df! { "x" => vec![1_i64, 2, 3] }.unwrap();
+        tables.put_pinned("a", "a", "__t_a__", frame()).unwrap();
+        tables.put("b", "b", "__t_b__", frame()).unwrap();
+        tables.put_pinned("c", "c", "__t_c__", frame()).unwrap();
+
+        // Over a 1-byte budget, only the unpinned entry goes.
+        assert!(tables.lookup("a").unwrap().is_some());
+        assert!(tables.lookup("b").unwrap().is_none());
+        assert!(tables.lookup("c").unwrap().is_some());
+        let rows = tables
+            .backend()
+            .execute_sql("SELECT x FROM __t_a__")
+            .unwrap();
+        assert_eq!(rows.height(), 3);
+    }
+
+    #[test]
+    fn test_pinned_bytes_counts_only_pinned_entries() {
+        let tables = CacheTables::new(Box::new(DuckDBReader::new_in_memory().unwrap()), u64::MAX);
+        assert_eq!(tables.pinned_bytes().unwrap(), 0);
+        let frame = || df! { "x" => vec![1_i64, 2, 3] }.unwrap();
+        tables.put_pinned("a", "a", "__t_a__", frame()).unwrap();
+        tables.put("b", "b", "__t_b__", frame()).unwrap();
+        let total = tables.total_bytes().unwrap();
+        assert!(total > 0);
+        assert_eq!(tables.pinned_bytes().unwrap() * 2, total);
+        tables.set_pinned("a", false).unwrap();
+        assert_eq!(tables.pinned_bytes().unwrap(), 0);
+    }
+
+    #[test]
+    fn test_unpinning_makes_an_entry_evictable() {
+        let tables = tiny_budget_tables();
+        let frame = || df! { "x" => vec![1_i64] }.unwrap();
+        tables.put_pinned("a", "a", "__t_a__", frame()).unwrap();
+        tables.set_pinned("a", false).unwrap();
+        assert!(tables.lookup("a").unwrap().is_none());
+        assert!(tables
+            .backend()
+            .execute_sql("SELECT x FROM __t_a__")
+            .is_err());
+    }
+
+    #[test]
+    fn test_a_fresh_cache_answers_every_call() {
+        // Each call sets up the metadata table itself.
+        let tables = CacheTables::new(Box::new(DuckDBReader::new_in_memory().unwrap()), 1);
+        assert_eq!(tables.total_bytes().unwrap(), 0);
+        tables.touch("nothing").unwrap();
+        tables.set_pinned("nothing", false).unwrap();
+        assert!(tables.evict_to(0).unwrap().is_empty());
+        assert!(!tables.contains("nothing").unwrap());
+    }
+
+    #[test]
+    fn test_only_an_entry_can_be_pinned() {
+        let tables = tiny_budget_tables();
+        assert!(tables.set_pinned("nothing", true).is_err());
+        assert_eq!(tables.pinned_bytes().unwrap(), 0);
+    }
+
+    #[test]
+    fn test_evict_to_reports_what_it_evicted() {
+        let tables = CacheTables::new(Box::new(DuckDBReader::new_in_memory().unwrap()), u64::MAX);
+        let frame = || df! { "x" => vec![1_i64] }.unwrap();
+        tables.put("a", "a", "__t_a__", frame()).unwrap();
+        tables.put_pinned("b", "b", "__t_b__", frame()).unwrap();
+        assert_eq!(tables.evict_to(0).unwrap(), ["a"]);
+        assert!(tables.contains("b").unwrap());
+    }
+
+    #[test]
+    fn test_evict_to_a_caller_budget_counts_pinned_entries_but_keeps_them() {
+        let tables = CacheTables::new(Box::new(DuckDBReader::new_in_memory().unwrap()), u64::MAX);
+        let frame = || df! { "x" => vec![1_i64, 2, 3] }.unwrap();
+        tables.put_pinned("a", "a", "__t_a__", frame()).unwrap();
+        tables.put("b", "b", "__t_b__", frame()).unwrap();
+        let both = tables.total_bytes().unwrap();
+        assert!(both > 0);
+
+        tables.evict_to(0).unwrap();
+        assert!(tables.lookup("a").unwrap().is_some());
+        assert!(tables.lookup("b").unwrap().is_none());
+        // What is left is the pinned entry, still counted.
+        assert!(tables.total_bytes().unwrap() > 0 && tables.total_bytes().unwrap() < both);
     }
 
     #[test]

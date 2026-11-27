@@ -15,6 +15,12 @@ use crate::reader::SqlDialect;
 pub struct TrinoDialect;
 
 impl SqlDialect for TrinoDialect {
+    // Unanchored.
+    fn sql_regex_match(&self, expr: &str, pattern: &str, case_sensitive: bool) -> Option<String> {
+        let pattern = super::inline_regex_flag(self, pattern, case_sensitive);
+        Some(format!("regexp_like({expr}, {pattern})"))
+    }
+
     fn supports_spatial(&self) -> bool {
         true
     }

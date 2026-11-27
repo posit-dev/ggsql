@@ -450,6 +450,55 @@ pub trait SqlDialect {
         }
     }
 
+    /// SQL string literal for `value`.
+    ///
+    /// Default is SQL-standard single quotes with embedded quotes doubled.
+    /// Override for backends that read a backslash inside a string literal as
+    /// an escape (`dialects::backslash_quote_literal`).
+    fn sql_string_literal(&self, value: &str) -> String {
+        naming::quote_literal(value)
+    }
+
+    /// Whether `expr` matches the regular expression in the SQL string
+    /// literal `pattern`, or `None` when the backend has no regular
+    /// expressions. Default `None`.
+    fn sql_regex_match(&self, expr: &str, pattern: &str, case_sensitive: bool) -> Option<String> {
+        let _ = (expr, pattern, case_sensitive);
+        None
+    }
+
+    /// Whether `expr` matches the `LIKE` pattern `pattern`, given as raw text
+    /// rather than a SQL literal: `%` and `_` are wildcards, and a backslash
+    /// makes the next character literal. Case-insensitive matching folds both
+    /// sides with `LOWER`.
+    ///
+    /// Default names the backslash with an `ESCAPE` clause. Override for
+    /// backends with no `ESCAPE` clause, or with more wildcards than `%` and
+    /// `_`.
+    fn sql_like(&self, expr: &str, pattern: &str, case_sensitive: bool) -> String {
+        dialects::like_with_escape_clause(self, expr, pattern, case_sensitive)
+    }
+
+    /// Whether `expr` is the empty string, or with `negate`, is not.
+    ///
+    /// Default compares with `''`. Override for backends that store the
+    /// empty string as NULL (Oracle).
+    fn sql_is_empty_string(&self, expr: &str, negate: bool) -> String {
+        let op = if negate { "<>" } else { "=" };
+        format!("{expr} {op} {}", self.sql_string_literal(""))
+    }
+
+    /// One `ORDER BY` term sorting `expr` with its NULLs placed explicitly,
+    /// since backends disagree on where they go by default.
+    ///
+    /// Default uses `NULLS FIRST` / `NULLS LAST`. Override for backends
+    /// without them (`dialects::nulls_order_by_case`).
+    fn sql_order_term(&self, expr: &str, ascending: bool, nulls_last: bool) -> String {
+        let direction = if ascending { "ASC" } else { "DESC" };
+        let nulls = if nulls_last { "LAST" } else { "FIRST" };
+        format!("{expr} {direction} NULLS {nulls}")
+    }
+
     // =====================================================================
     // Statement generators and DDL
     // =====================================================================

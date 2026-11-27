@@ -9,7 +9,8 @@
   },
   "main": "./out/extension.js",
   "activationEvents": [
-    "onStartupFinished"
+    "onStartupFinished",
+    "onPositronDataExplorerBackend:ggsql"
   ],
   "categories": [
     "Programming Languages"
@@ -163,6 +164,19 @@
           "type": "string",
           "default": "",
           "markdownDescription": "Path to a `ggsql-jupyter` executable to offer alongside the kernels found automatically, listed ahead of them. A bare name is looked up on `PATH`. Leave this empty unless you have a kernel in a place the extension does not look: it ships one, and it finds the ones installed on this machine."
+        },
+        "ggsql.consoleRows": {
+          "type": "integer",
+          "default": 10,
+          "minimum": 1,
+          "maximum": 4294967295,
+          "markdownDescription": "How many rows of a query result the ggsql console shows. A result with up to twice this many rows is shown in full; a longer one shows this many, then a count of the rest. A result kept for the Data Explorer has a link beneath it that opens the whole of it; a result that could not be kept is shown up to 100 rows. Notebooks are unaffected. Takes effect in consoles started after the change."
+        },
+        "ggsql.resultsMemory": {
+          "type": "string",
+          "default": "1gb",
+          "pattern": "^\\s*[0-9]+\\s*([kKmMgG][bB])?\\s*$",
+          "markdownDescription": "How much memory a ggsql console may use to keep query results for the Data Explorer, such as `512mb` or `2gb`. Results open in a Data Explorer are always kept; older ones make way for new ones. Takes effect in consoles started after the change."
         },
         "ggsql.enableSqlFiles": {
           "type": "boolean",
