@@ -196,6 +196,24 @@ impl DuckDBReader {
         })
     }
 
+    /// Append `df`'s rows to the temporary table `name` with DuckDB's Arrow
+    /// appender.
+    fn append_rows(&self, name: &str, df: &DataFrame) -> Result<()> {
+        let fail = |e: duckdb::Error| {
+            GgsqlError::ReaderError(format!("Failed to append to table '{}': {}", name, e))
+        };
+        // `register` creates temporary tables, which DuckDB keeps in its
+        // `temp` catalog.
+        let mut appender = self
+            .conn
+            .appender_to_catalog_and_db(name, "temp", "main")
+            .map_err(fail)?;
+        appender
+            .append_record_batch(df.inner().clone())
+            .map_err(fail)?;
+        appender.flush().map_err(fail)
+    }
+
     /// Get a reference to the underlying DuckDB connection
     ///
     /// Useful for executing setup queries (CREATE TABLE, INSERT, etc.)
@@ -283,9 +301,10 @@ impl Reader for DuckDBReader {
         // When a RecordBatch exceeds this, `FlatVector::copy` panics with
         // `assertion failed: data.len() <= self.capacity()`.
         //
-        // We chunk large DataFrames to stay within this limit. The first chunk
-        // creates the table (letting DuckDB infer the schema from Arrow), and
-        // subsequent chunks INSERT into it.
+        // So the first chunk of a large DataFrame creates the table (letting
+        // DuckDB infer the schema from Arrow), and the rest goes through
+        // DuckDB's Arrow appender, which is not subject to the limit. A frame
+        // the appender cannot take is inserted chunk by chunk instead.
         const MAX_ARROW_BATCH_ROWS: usize = 2048;
         let total_rows = df.height();
         let create_or_replace = if replace {
@@ -318,6 +337,34 @@ impl Reader for DuckDBReader {
                 GgsqlError::ReaderError(format!("Failed to register table '{}': {}", name, e))
             })?;
 
+            // The rest goes through DuckDB's Arrow appender, which is several
+            // times faster than one `INSERT` per chunk on large frames (it
+            // chunks to the vector size itself). A type the appender cannot
+            // convert falls back to the `INSERT` loop, starting over so a
+            // partial append never leaves a half-filled table.
+            let appended = self.append_rows(
+                name,
+                &df.slice(MAX_ARROW_BATCH_ROWS, total_rows - MAX_ARROW_BATCH_ROWS),
+            );
+            let Err(append_error) = appended else {
+                self.registered_tables.note_registered(name);
+                return Ok(());
+            };
+            // Should the fallback fail too, its error says why the appender
+            // was not used.
+            let fail = |e: duckdb::Error| {
+                GgsqlError::ReaderError(format!(
+                    "Failed to register table '{}': {} (after {})",
+                    name, e, append_error
+                ))
+            };
+            let params = dataframe_to_arrow_params(&first_chunk)?;
+            let recreate_sql = format!(
+                "CREATE OR REPLACE TEMP TABLE {} AS SELECT * FROM arrow(?, ?)",
+                naming::quote_ident(name)
+            );
+            self.conn.execute(&recreate_sql, params).map_err(fail)?;
+
             let mut offset = MAX_ARROW_BATCH_ROWS;
             while offset < total_rows {
                 let chunk_size = std::cmp::min(MAX_ARROW_BATCH_ROWS, total_rows - offset);
@@ -327,12 +374,7 @@ impl Reader for DuckDBReader {
                     "INSERT INTO {} SELECT * FROM arrow(?, ?)",
                     naming::quote_ident(name)
                 );
-                self.conn.execute(&insert_sql, params).map_err(|e| {
-                    GgsqlError::ReaderError(format!(
-                        "Failed to insert chunk into table '{}': {}",
-                        name, e
-                    ))
-                })?;
+                self.conn.execute(&insert_sql, params).map_err(fail)?;
                 offset += chunk_size;
             }
         }
@@ -548,6 +590,30 @@ mod tests {
             result.get_column_names(),
             vec!["x".to_string(), "y".to_string()]
         );
+    }
+
+    #[test]
+    fn test_register_large_frame_keeps_every_row_in_order() {
+        // Past one Arrow chunk, the rest goes through the appender.
+        let reader = DuckDBReader::from_connection_string("duckdb://memory").unwrap();
+        let n = 5000;
+        let df = df! {
+            "i" => (0..n as i64).collect::<Vec<_>>(),
+            "s" => (0..n).map(|i| format!("row {i}")).collect::<Vec<_>>(),
+            "f" => (0..n).map(|i| (i % 7 == 0).then_some(i as f64 / 2.0)).collect::<Vec<_>>(),
+        }
+        .unwrap();
+        reader.register("big", df, false).unwrap();
+
+        let out = reader
+            .execute_sql("SELECT i, s, f FROM big ORDER BY rowid")
+            .unwrap();
+        assert_eq!(out.height(), n);
+        let i = as_i64(out.column("i").unwrap()).unwrap();
+        let s = as_str(out.column("s").unwrap()).unwrap();
+        assert!((0..n).all(|r| i.value(r) == r as i64));
+        assert_eq!(s.value(4999), "row 4999");
+        assert_eq!(out.column("f").unwrap().null_count(), n - n.div_ceil(7));
     }
 
     #[test]

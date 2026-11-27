@@ -47,7 +47,7 @@ tree-sitter = "0.26"
 arrow = { version = "58", default-features = false }
 
 # Readers
-duckdb = { version = "~1.10502", features = ["bundled", "vtab-arrow"] }
+duckdb = { version = "~1.10502", features = ["bundled", "vtab-arrow", "appender-arrow"] }
 parquet = { version = "58", default-features = false, features = ["arrow", "snap"] }
 bytes = "1"
 rusqlite = { version = "0.38", features = ["bundled", "chrono", "load_extension"] }
