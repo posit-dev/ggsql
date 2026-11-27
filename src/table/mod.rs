@@ -284,14 +284,12 @@ pub struct Format {
     pub target: Option<ColumnSection>,
     /// `SETTING` parameters for this FORMAT (e.g. `hjust => 'right'`).
     pub settings: Parameters,
-    /// Cell display text from the `RENAMING` clause: value-keyed renames
+    /// Cell display text from the `LABEL` subclause: value-keyed renames
     /// and suppressions plus the wildcard template, rendered per cell by
     /// [`crate::format::resolve_column_values`]. Same shape as
-    /// `Scale::label_spec` — named `renaming` here because `Table::titles`
-    /// already uses "label" for column headers, a different concept from a
-    /// cell's value.
+    /// `Scale::label_spec`.
     #[serde(default, with = "crate::format::label_spec_serde")]
-    pub renaming: zygos::LabelSpec,
+    pub label_spec: zygos::LabelSpec,
 }
 
 /// `SETTING` parameters `FORMAT` accepts.
@@ -326,14 +324,14 @@ impl Format {
             self.target = other.target;
         }
         self.settings.extend(other.settings.clone());
-        for (key, rename) in other.renaming.renames() {
+        for (key, rename) in other.label_spec.renames() {
             match rename {
-                Some(label) => self.renaming.rename(key.clone(), label),
-                None => self.renaming.suppress(key.clone()),
+                Some(label) => self.label_spec.rename(key.clone(), label),
+                None => self.label_spec.suppress(key.clone()),
             };
         }
-        if let Some(template) = other.renaming.template() {
-            self.renaming.set_template(template.source());
+        if let Some(template) = other.label_spec.template() {
+            self.label_spec.set_template(template.source());
         }
     }
 
@@ -355,11 +353,11 @@ mod tests {
             wildcard: false,
             target: None,
             settings,
-            renaming: zygos::LabelSpec::new(),
+            label_spec: zygos::LabelSpec::new(),
         }
     }
 
-    fn renaming_with_template(template: &str) -> zygos::LabelSpec {
+    fn labels_with_template(template: &str) -> zygos::LabelSpec {
         let mut spec = zygos::LabelSpec::new();
         spec.set_template(template);
         spec
@@ -368,13 +366,13 @@ mod tests {
     #[test]
     fn format_merge_an_unset_template_leaves_the_existing_one() {
         let mut format = Format {
-            renaming: renaming_with_template("{:num %.2f}"),
+            label_spec: labels_with_template("{:num %.2f}"),
             ..format_with_settings(Parameters::new())
         };
         format.merge(&format_with_settings(Parameters::new()));
 
         assert_eq!(
-            format.renaming.template().map(|t| t.source()),
+            format.label_spec.template().map(|t| t.source()),
             Some("{:num %.2f}")
         );
     }
@@ -382,15 +380,15 @@ mod tests {
     #[test]
     fn format_merge_an_explicit_default_template_overrides() {
         let mut format = Format {
-            renaming: renaming_with_template("{:num %.2f}"),
+            label_spec: labels_with_template("{:num %.2f}"),
             ..format_with_settings(Parameters::new())
         };
         format.merge(&Format {
-            renaming: renaming_with_template("{}"),
+            label_spec: labels_with_template("{}"),
             ..format_with_settings(Parameters::new())
         });
 
-        assert_eq!(format.renaming.template().map(|t| t.source()), Some("{}"));
+        assert_eq!(format.label_spec.template().map(|t| t.source()), Some("{}"));
     }
 
     #[test]

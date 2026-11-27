@@ -290,7 +290,7 @@
         },
         {
           "name": "keyword.other.ggsql",
-          "match": "\\b(?i:MAPPING|REMAPPING|SETTING|FILTER|FROM|ORDER|BY|PARTITION|RENAMING)\\b"
+          "match": "\\b(?i:MAPPING|REMAPPING|SETTING|FILTER|FROM|ORDER|BY|PARTITION|LABEL)\\b"
         },
         {
           "name": "constant.language.null.ggsql",
@@ -353,7 +353,7 @@
         },
         {
           "name": "keyword.other.ggsql",
-          "match": "\\b(?i:TO|VIA|RENAMING)\\b"
+          "match": "\\b(?i:TO|VIA|LABEL)\\b"
         },
         {
           "comment": "Transform/palette names",
@@ -385,7 +385,7 @@
         },
         {
           "name": "keyword.other.ggsql",
-          "match": "\\b(?i:RENAMING)\\b"
+          "match": "\\b(?i:LABEL)\\b"
         },
         { "include": "#common-clause-patterns" }
       ]

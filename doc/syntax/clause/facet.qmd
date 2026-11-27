@@ -47,12 +47,12 @@ This clause behaves much like the `SETTINGS` clause in `DRAW`, in that it allows
 When you apply faceting to a plot you are creating new aesthetics you can control. For 1-dimensional faceting (no `BY` clause) the aesthetic is called `panel` and for 2-dimensional faceting the aesthetics are called `row` and `column`. You can read more about these aesthetics in [their documentation](../scale/aesthetic/Z_faceting.qmd)
 
 ### Customizing facet strip labels
-To customize facet strip labels (e.g., renaming categories), use the `RENAMING` clause on the facet scale:
+To customize facet strip labels (e.g., renaming categories), use the `LABEL` subclause on the facet scale:
 
 ```ggsql
 FACET region
 SCALE panel 
-  RENAMING 'N' => 'North', 'S' => 'South'
+  LABEL 'N' => 'North', 'S' => 'South'
 ```
 
 See the [facet scale documentation](../scale/aesthetic/Z_faceting.qmd) for more details on label customization.

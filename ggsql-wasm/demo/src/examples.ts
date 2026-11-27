@@ -142,7 +142,7 @@ SCALE IDENTITY fill`,
 DRAW point
     MAPPING Month AS color
 SCALE ORDINAL color
-    RENAMING * => '{}th month'`,
+    LABEL * => '{}th month'`,
   },
   {
     section: "Scales",
@@ -151,7 +151,7 @@ SCALE ORDINAL color
 DRAW bar
 FACET species
 SCALE panel FROM ['Adelie', null]
-    RENAMING null => 'The rest'`,
+    LABEL null => 'The rest'`,
   },
 
   // === Aesthetics ===

@@ -484,7 +484,7 @@ fn test_binned_color_legend_with_label_mapping() {
         VISUALISE
         DRAW point MAPPING x AS x, y AS y, score AS color
         SCALE BINNED color FROM [0, 100] TO ['blue', 'yellow', 'red'] SETTING breaks => [0, 50, 100]
-            RENAMING 0 => 'Low', 50 => 'High'
+            LABEL 0 => 'Low', 50 => 'High'
     "#;
 
     let spec = reader.execute(query).unwrap();

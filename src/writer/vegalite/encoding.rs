@@ -702,7 +702,7 @@ fn apply_breaks_to_encoding(
     }
 }
 
-/// Apply label mapping (RENAMING clause) via labelExpr
+/// Apply label mapping (LABEL subclause) via labelExpr
 fn apply_label_mapping_to_encoding(
     encoding: &mut Value,
     scale: &crate::plot::Scale,

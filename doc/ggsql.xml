@@ -98,7 +98,7 @@
       <item>FILTER</item>
       <item>ORDER</item>
       <item>PARTITION</item>
-      <item>RENAMING</item>
+      <item>LABEL</item>
       <item>TO</item>
       <item>VIA</item>
       <item>OVER</item>
@@ -623,7 +623,7 @@
         <WordDetect attribute="Attribute" context="#stay" String="ncol" insensitive="true"/>
         <WordDetect attribute="Attribute" context="#stay" String="missing" insensitive="true"/>
 
-        <!-- Wildcard for RENAMING -->
+        <!-- Wildcard for LABEL -->
         <DetectChar char="*" attribute="Operator" context="#stay"/>
 
         <!-- Sub-keywords -->
@@ -777,9 +777,9 @@
         <WordDetect attribute="Keyword" context="Normal" String="WHERE" insensitive="true"/>
         <WordDetect attribute="Keyword" context="Normal" String="WITH" insensitive="true"/>
 
-        <!-- SETTING and RENAMING (only these two supported here) -->
+        <!-- SETTING and LABEL (only these two supported here) -->
         <WordDetect attribute="Keyword" context="#stay" String="SETTING" insensitive="true"/>
-        <WordDetect attribute="Keyword" context="#stay" String="RENAMING" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="#stay" String="LABEL" insensitive="true"/>
 
         <!-- FORMAT target identifiers (default BODY) -->
         <WordDetect attribute="Keyword" context="#stay" String="BODY" insensitive="true"/>
@@ -792,7 +792,7 @@
         <WordDetect attribute="Attribute" context="#stay" String="hjust" insensitive="true"/>
         <WordDetect attribute="Attribute" context="#stay" String="width" insensitive="true"/>
 
-        <!-- Wildcard for RENAMING -->
+        <!-- Wildcard for LABEL -->
         <DetectChar char="*" attribute="Operator" context="#stay"/>
 
         <StringDetect attribute="Operator" context="#stay" String="=&gt;"/>

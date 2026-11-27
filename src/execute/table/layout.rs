@@ -46,7 +46,7 @@ pub(super) fn setup_columns(
 
 /// Resolve a table's body rows: one `TableRow` per `df` row, stamped with
 /// its facet group key. A facet groups on the raw query values (before
-/// `FORMAT`'s RENAMING rewrites them) and reorders `df` so groups are
+/// `FORMAT`'s LABEL rewrites them) and reorders `df` so groups are
 /// contiguous. Group-label rows are not part of the result — `build_cells`
 /// interleaves those once labels can be read from the formatted frame.
 pub(super) fn setup_rows(
@@ -407,7 +407,7 @@ mod tests {
                 wildcard: false,
                 target: Some(ColumnSection::Stub),
                 settings: Parameters::new(),
-                renaming: zygos::LabelSpec::new(),
+                label_spec: zygos::LabelSpec::new(),
             },
         )]);
 
@@ -655,21 +655,21 @@ mod tests {
     }
 
     #[test]
-    fn build_cells_applies_a_formats_renaming_to_body_cells() {
+    fn build_cells_applies_a_formats_labels_to_body_cells() {
         let frame = df! {
             "price" => vec![0.0f64, 5.0],
         }
         .unwrap();
         let mut table = Table::new();
-        let mut renaming = zygos::LabelSpec::new();
-        renaming.rename(zygos::Value::String("0".into()), "-");
-        renaming.set_template("${:num %.2f}");
+        let mut label_spec = zygos::LabelSpec::new();
+        label_spec.rename(zygos::Value::String("0".into()), "-");
+        label_spec.set_template("${:num %.2f}");
         table.formats = vec![crate::Format {
             columns: vec!["price".to_string()],
             wildcard: false,
             target: None,
             settings: Parameters::new(),
-            renaming,
+            label_spec,
         }];
 
         let cells = resolve_cells(&frame, &table).unwrap();

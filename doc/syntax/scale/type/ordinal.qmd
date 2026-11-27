@@ -93,13 +93,13 @@ SCALE ORDINAL color
 ```
 
 ## Renaming
-Breaks are generally named by their value. However, you may wish to rename one, several, or all of these. The `RENAMING` clause allows you to do that both by directly renaming a specific break or by providing a formatting function.
+Breaks are generally named by their value. However, you may wish to rename one, several, or all of these. The `LABEL` subclause allows you to do that both by directly renaming a specific break or by providing a formatting function.
 
 ### Direct renaming
-When you provide a break value on the left and a break exists at that value then it will take on the label specified on the right. For example adding RENAMING 6 => 'June' will ensure that a month given as an integer gets the right name.
+When you provide a break value on the left and a break exists at that value then it will take on the label specified on the right. For example adding LABEL 6 => 'June' will ensure that a month given as an integer gets the right name.
 
 ### Label formatting
-Besides direct renaming you can also provide a formatting string if you want the same to happen to all labels, e.g. add a prefix or suffix. The syntax for this is `RENAMING * => '... {} ...'`. The current label will be inserted into the `{}` to produce the new label. Besides simply inserting the break value into the string, we can also provide a formatter. Of special interest to ordinal scales are the `:Title`, `:lower`, and `:UPPER` formatters which lets you control the casing of strings. You can read more about these formatters in [the break formatting section of the `SCALE` documentation](../../clause/scale.qmd#break-formatting)
+Besides direct renaming you can also provide a formatting string if you want the same to happen to all labels, e.g. add a prefix or suffix. The syntax for this is `LABEL * => '... {} ...'`. The current label will be inserted into the `{}` to produce the new label. Besides simply inserting the break value into the string, we can also provide a formatter. Of special interest to ordinal scales are the `:Title`, `:lower`, and `:UPPER` formatters which lets you control the casing of strings. You can read more about these formatters in [the break formatting section of the `SCALE` documentation](../../clause/scale.qmd#break-formatting)
 
 You can combine formatting with direct renaming in which case the direct renaming has priority over the formatting.
 
@@ -112,7 +112,7 @@ VISUALISE Ozone AS x, Temp AS y FROM ggsql:airquality
 DRAW point
   MAPPING Month AS color
 SCALE ORDINAL color
-  RENAMING 6 => 'June'
+  LABEL 6 => 'June'
 ```
 
 #### Use string interpolation to add a suffix
@@ -122,7 +122,7 @@ VISUALISE Ozone AS x, Temp AS y FROM ggsql:airquality
 DRAW point
   MAPPING Month AS color
 SCALE ORDINAL color
-  RENAMING * => '{}th month'
+  LABEL * => '{}th month'
 ```
 
 #### Use a formatter to make labels shouty
@@ -149,5 +149,5 @@ SCALE ORDINAL color
     'Moderate Breeze',
     'Fresh Breeze'
   )
-  RENAMING * => '{:UPPER}'
+  LABEL * => '{:UPPER}'
 ```

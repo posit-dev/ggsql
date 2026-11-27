@@ -872,7 +872,7 @@ mod tests {
         assert_eq!(
             top_strips(&format!(
                 "{FACET_DATA} VISUALISE v AS x, y AS y DRAW point FACET g \
-                 SCALE panel RENAMING 'a' => 'Alpha'"
+                 SCALE panel LABEL 'a' => 'Alpha'"
             )),
             vec!["Alpha", "b", "c"]
         );
@@ -884,7 +884,7 @@ mod tests {
         assert_eq!(
             top_strips(&format!(
                 "{FACET_DATA} VISUALISE v AS x, y AS y DRAW point FACET g \
-                 SCALE panel RENAMING 'b' => NULL"
+                 SCALE panel LABEL 'b' => NULL"
             )),
             vec!["a", "", "c"]
         );
@@ -904,7 +904,7 @@ mod tests {
         assert_eq!(
             top_strips(&format!(
                 "{data} VISUALISE v AS x, v AS y DRAW point FACET g \
-                 SCALE panel FROM ('a', null) RENAMING null => 'The rest'"
+                 SCALE panel FROM ('a', null) LABEL null => 'The rest'"
             )),
             vec!["a", "The rest"]
         );
@@ -948,12 +948,12 @@ mod tests {
     }
 
     #[test]
-    fn facet_strips_binned_edge_renaming() {
-        // RENAMING applies per break edge, before the range label is built.
+    fn facet_strips_binned_edge_labels() {
+        // LABEL applies per break edge, before the range label is built.
         assert_eq!(
             top_strips(&format!(
                 "{FACET_DATA} VISUALISE v AS x, y AS y DRAW point FACET v \
-                 SCALE panel SETTING breaks => (0, 10, 20, 30) RENAMING 20 => 'twenty'"
+                 SCALE panel SETTING breaks => (0, 10, 20, 30) LABEL 20 => 'twenty'"
             )),
             vec!["0 – 10", "10 – twenty", "twenty – 30"]
         );
@@ -1020,8 +1020,8 @@ mod tests {
         assert_eq!(
             strips(&format!(
                 "{data} VISUALISE v AS x, v AS y DRAW point FACET r BY c \
-                 SCALE row RENAMING 'r1' => 'Row one' \
-                 SCALE column RENAMING 'c2' => 'Col two'"
+                 SCALE row LABEL 'r1' => 'Row one' \
+                 SCALE column LABEL 'c2' => 'Col two'"
             )),
             vec![
                 (Some("c1".into()), None),
@@ -1451,10 +1451,10 @@ mod svg_text {
             assert!(contains(&linear, label), "missing tick '{label}'");
         }
 
-        // A `RENAMING` on a discrete axis reaches the rail, and the axis does
+        // A `LABEL` on a discrete axis reaches the rail, and the axis does
         // not shift: the break is kept and only its label replaced.
         let renamed = svg("SELECT c, v FROM (VALUES ('a',3),('b',5)) t(c,v) \
-             VISUALISE c AS x, v AS y DRAW bar SCALE x RENAMING 'a' => 'Alpha'");
+             VISUALISE c AS x, v AS y DRAW bar SCALE x LABEL 'a' => 'Alpha'");
         assert!(contains(&renamed, "Alpha"));
         assert!(contains(&renamed, "b"));
     }
@@ -1505,10 +1505,10 @@ mod svg_text {
             .collect();
         assert_eq!(order, vec!["a", "b", "c"]);
 
-        // And `RENAMING` reaches the strip, since the label is ggsql's.
+        // And `LABEL` reaches the strip, since the label is ggsql's.
         let renamed = svg(&format!(
             "{FACET_DATA} VISUALISE v AS x, y AS y DRAW point FACET g \
-             SCALE panel RENAMING 'a' => 'Alpha'"
+             SCALE panel LABEL 'a' => 'Alpha'"
         ));
         assert!(contains(&renamed, "Alpha"));
         assert!(!contains(&renamed, "a"));
@@ -1565,11 +1565,11 @@ mod svg_text {
             assert!(contains(&keyed, label), "missing legend text '{label}'");
         }
 
-        // `RENAMING` relabels a key without dropping the others.
+        // `LABEL` relabels a key without dropping the others.
         let renamed = svg(
             "SELECT x, y, g FROM (VALUES (1,2,'alpha'),(2,3,'beta'),(3,1,'alpha')) t(x,y,g) \
              VISUALISE x AS x, y AS y, g AS color DRAW point \
-             SCALE color RENAMING 'alpha' => 'First'",
+             SCALE color LABEL 'alpha' => 'First'",
         );
         assert!(contains(&renamed, "First"));
         assert!(contains(&renamed, "beta"));

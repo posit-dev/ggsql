@@ -107,7 +107,7 @@ Now that we have all the data included in the ways we want, we can start detaili
 The first thing we might do is to pick some better colours.
 Because we have two levels for the `direction` variable —**A**dvance and **R**etreat— we can create a new colour scale for the `stroke` aesthetic.
 We'll choose the colours to more closely resemble the original graphic by Minard.
-We set the palette using the `TO` keyword, and format the labels using `RENAMING`.
+We set the palette using the `TO` keyword, and format the labels using `LABEL`.
 
 ```{ggsql}
 VISUALISE long AS x, lat AS y FROM 'minard_troops.csv'
@@ -115,7 +115,7 @@ VISUALISE long AS x, lat AS y FROM 'minard_troops.csv'
     MAPPING direction AS stroke, survivors AS linewidth
     PARTITION BY direction, group
   SCALE stroke TO ('burlywood', 'black')
-    RENAMING 'A' => 'Advance', 'R' => 'Retreat'
+    LABEL 'A' => 'Advance', 'R' => 'Retreat'
 ```
 
 Now for a slightly more complicated scale, we're going to set one for the `linewidth` variable that represent the number of troops.
@@ -130,7 +130,7 @@ VISUALISE long AS x, lat AS y FROM 'minard_troops.csv'
     MAPPING direction AS stroke, survivors AS linewidth
     PARTITION BY direction, group
   SCALE stroke TO ('burlywood', 'black')
-    RENAMING 'A' => 'Advance', 'R' => 'Retreat'
+    LABEL 'A' => 'Advance', 'R' => 'Retreat'
   SCALE linewidth FROM (0, null) TO (0, 20)
 ```
 
@@ -154,7 +154,7 @@ VISUALISE long AS x, lat AS y FROM 'minard_troops.csv'
     MAPPING city AS label FROM 'minard_cities.csv'
     SETTING fontsize => 6
   SCALE stroke TO ('burlywood', 'black')
-    RENAMING 'A' => 'Advance', 'R' => 'Retreat'
+    LABEL 'A' => 'Advance', 'R' => 'Retreat'
   SCALE linewidth FROM (0, null) TO (0, 30)
 ```
 
@@ -173,7 +173,7 @@ VISUALISE long AS x, lat AS y FROM 'minard_troops.csv'
     MAPPING city AS label FROM 'minard_cities.csv'
     SETTING fontsize => 6
   SCALE stroke TO ('burlywood', 'black')
-    RENAMING 'A' => 'Advance', 'R' => 'Retreat'
+    LABEL 'A' => 'Advance', 'R' => 'Retreat'
   SCALE linewidth FROM (0, null) TO (0, 20)
   TITLE
     main => 'Napoleon\'s Russian Campaign',

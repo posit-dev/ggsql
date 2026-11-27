@@ -708,7 +708,7 @@ module.exports = grammar({
         $.column_list
       ),
       optional($.setting_clause),
-      optional($.renaming_clause)
+      optional($.label_clause)
     ),
 
     // FORMAT targets - which section of the table the columns belong to
@@ -1023,14 +1023,14 @@ module.exports = grammar({
       $.null_literal
     ),
 
-    // SCALE clause - SCALE [TYPE] aesthetic [FROM ...] [TO ...] [VIA ...] [SETTING ...] [RENAMING ...]
+    // SCALE clause - SCALE [TYPE] aesthetic [FROM ...] [TO ...] [VIA ...] [SETTING ...] [LABEL ...]
     // Examples:
     //   SCALE DATE x
     //   SCALE CONTINUOUS y FROM [0, 100]
     //   SCALE DISCRETE color FROM ['A', 'B'] TO ['red', 'blue']
     //   SCALE color TO viridis
     //   SCALE x FROM [0, 100] SETTING breaks => '1 month'
-    //   SCALE DISCRETE x RENAMING 'A' => 'Alpha', 'B' => 'Beta'
+    //   SCALE DISCRETE x LABEL 'A' => 'Alpha', 'B' => 'Beta'
     scale_clause: $ => seq(
       caseInsensitive('SCALE'),
       optional($.scale_type_identifier),  // optional type before aesthetic
@@ -1039,23 +1039,23 @@ module.exports = grammar({
       optional($.scale_to_clause),
       optional($.scale_via_clause),
       optional($.setting_clause),  // reuse existing setting_clause from DRAW
-      optional($.renaming_clause)  // custom label mappings
+      optional($.label_clause)  // custom label mappings
     ),
 
-    // RENAMING clause: SCALE uses it for custom axis/legend labels, FORMAT
-    // for custom cell labels. Syntax: RENAMING 'A' => 'Alpha', 'B' => 'Beta', 'C' => NULL
-    renaming_clause: $ => seq(
-      caseInsensitive('RENAMING'),
-      $.renaming_assignment,
-      repeat(seq(',', $.renaming_assignment))
+    // LABEL subclause: SCALE uses it for custom axis/legend labels, FORMAT
+    // for custom cell labels. Syntax: LABEL 'A' => 'Alpha', 'B' => 'Beta', 'C' => NULL
+    label_clause: $ => seq(
+      caseInsensitive('LABEL'),
+      $.label_assignment,
+      repeat(seq(',', $.label_assignment))
     ),
 
-    renaming_assignment: $ => seq(
+    label_assignment: $ => seq(
       field('name', choice(
         '*',                              // Wildcard for template
         $.string,
         $.number,
-        $.null_literal                    // NULL for renaming null values
+        $.null_literal                    // NULL for labelling null values
       )),
       '=>',
       field('value', choice($.string, $.null_literal))  // String label or NULL to suppress

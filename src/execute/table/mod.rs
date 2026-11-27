@@ -73,7 +73,7 @@ pub fn resolve_table_with_reader(query: &str, reader: &dyn Reader) -> Result<Res
         .resolve_spanners(&titles_map, Some(&column_names))
         .map_err(GgsqlError::ValidationError)?;
     // The shape both create_table_columns (SETTING) and apply_formats
-    // (RENAMING) read from. Resolved after spans so a FORMAT column entry
+    // (LABEL) read from. Resolved after spans so a FORMAT column entry
     // can name a SPAN id in place of the columns it covers.
     let formats = setup_formats(&df, &table.formats, &spans)?;
     let columns = setup_columns(&df, &spans, &titles_map, &formats, facet.as_ref());
@@ -435,11 +435,9 @@ mod integration_tests {
     #[test]
     fn test_tabulate_format_wildcard_formats_every_column() {
         let reader = reader_with_sales();
-        let resolved = resolve_table_with_reader(
-            "TABULATE * FROM sales FORMAT * RENAMING * => '[{}]'",
-            &reader,
-        )
-        .unwrap();
+        let resolved =
+            resolve_table_with_reader("TABULATE * FROM sales FORMAT * LABEL * => '[{}]'", &reader)
+                .unwrap();
 
         let mut body: Vec<_> = resolved
             .cells()

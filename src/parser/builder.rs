@@ -22,7 +22,7 @@ use super::SourceTree;
 ///
 /// Returns (name_node, value_node) without any interpretation.
 /// Works for both patterns:
-/// - `name => value` (SETTING, PROJECT, TITLE, RENAMING)
+/// - `name => value` (SETTING, PROJECT, TITLE, LABEL)
 /// - `value AS name` (MAPPING explicit_mapping)
 ///
 /// Caller is responsible for interpreting the nodes based on their context.
@@ -515,7 +515,7 @@ fn build_span_clause(node: &Node, source: &SourceTree, span_idx: usize) -> Resul
     })
 }
 
-/// Build a Format from a format_clause node: FORMAT [ANY|BODY|STUB] (*|col, ...) [SETTING ...] [RENAMING ...]
+/// Build a Format from a format_clause node: FORMAT [ANY|BODY|STUB] (*|col, ...) [SETTING ...] [LABEL ...]
 fn build_format_clause(node: &Node, source: &SourceTree) -> Result<Format> {
     let target = parse_format_target_identifier(node, source)?;
 
@@ -537,9 +537,9 @@ fn build_format_clause(node: &Node, source: &SourceTree) -> Result<Format> {
         None => Parameters::new(),
     };
 
-    let mut renaming = zygos::LabelSpec::new();
-    if let Some(renaming_node) = source.find_node(node, "(renaming_clause) @r") {
-        renaming = parse_renaming_clause(&renaming_node, source)?;
+    let mut label_spec = zygos::LabelSpec::new();
+    if let Some(label_node) = source.find_node(node, "(label_clause) @l") {
+        label_spec = parse_label_clause(&label_node, source)?;
     }
 
     Ok(Format {
@@ -547,7 +547,7 @@ fn build_format_clause(node: &Node, source: &SourceTree) -> Result<Format> {
         wildcard,
         target,
         settings,
-        renaming,
+        label_spec,
     })
 }
 
@@ -935,7 +935,7 @@ fn parse_geom_type(text: &str) -> Result<Geom> {
 // ============================================================================
 
 /// Build a Scale from a scale_clause node
-/// SCALE [TYPE] aesthetic [FROM ...] [TO ...] [VIA ...] [SETTING ...] [RENAMING ...]
+/// SCALE [TYPE] aesthetic [FROM ...] [TO ...] [VIA ...] [SETTING ...] [LABEL ...]
 fn build_scale(node: &Node, source: &SourceTree) -> Result<Scale> {
     let mut aesthetic = String::new();
     let mut scale_type: Option<ScaleType> = None;
@@ -950,7 +950,7 @@ fn build_scale(node: &Node, source: &SourceTree) -> Result<Scale> {
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
         match child.kind() {
-            "SCALE" | "SETTING" | "=>" | "," | "FROM" | "TO" | "VIA" | "RENAMING" => continue, // Skip keywords
+            "SCALE" | "SETTING" | "=>" | "," | "FROM" | "TO" | "VIA" | "LABEL" => continue, // Skip keywords
             "scale_type_identifier" => {
                 // Parse scale type: CONTINUOUS, DISCRETE, BINNED, DATE, DATETIME
                 let type_text = source.get_text(&child);
@@ -979,9 +979,9 @@ fn build_scale(node: &Node, source: &SourceTree) -> Result<Scale> {
                 // Reuse existing setting_clause parser
                 properties = parse_setting_clause(&child, source)?;
             }
-            "renaming_clause" => {
-                // Parse RENAMING 'A' => 'Alpha', 'B' => 'Beta', * => '{} units'
-                label_spec = parse_renaming_clause(&child, source)?;
+            "label_clause" => {
+                // Parse LABEL 'A' => 'Alpha', 'B' => 'Beta', * => '{} units'
+                label_spec = parse_label_clause(&child, source)?;
             }
             _ => {}
         }
@@ -1097,24 +1097,24 @@ fn parse_scale_via_clause(node: &Node, source: &SourceTree) -> Result<Transform>
     })
 }
 
-/// Parse RENAMING clause: RENAMING 'A' => 'Alpha', 'B' => 'Beta', 'internal' => NULL, * => '{} units'
+/// Parse LABEL clause: LABEL 'A' => 'Alpha', 'B' => 'Beta', 'internal' => NULL, * => '{} units'
 ///
 /// Shared by `SCALE` (into `Scale::label_spec`) and `FORMAT` (into
-/// `Format::renaming`). Builds a [`zygos::LabelSpec`]: explicit entries
+/// `Format::label_spec`). Builds a [`zygos::LabelSpec`]: explicit entries
 /// become renames (`Some`) or suppressions (`NULL`), the wildcard
 /// `* => '...'` becomes the fallback template. Rename keys keep the
 /// literal's type — `'A'` a string, `25` a number, `NULL` null — see
 /// [`crate::format::key_value`].
-fn parse_renaming_clause(node: &Node, source: &SourceTree) -> Result<zygos::LabelSpec> {
+fn parse_label_clause(node: &Node, source: &SourceTree) -> Result<zygos::LabelSpec> {
     let mut spec = zygos::LabelSpec::new();
 
-    // Find all renaming_assignment nodes
-    let query = "(renaming_assignment) @assign";
+    // Find all label_assignment nodes
+    let query = "(label_assignment) @assign";
     let assignment_nodes = source.find_nodes(node, query);
 
     for assignment_node in assignment_nodes {
         // Extract name and value nodes using field-based queries
-        let (name_node, value_node) = extract_name_value_nodes(&assignment_node, "renaming")?;
+        let (name_node, value_node) = extract_name_value_nodes(&assignment_node, "label")?;
 
         // Check if 'name' is a wildcard
         let is_wildcard = name_node.kind() == "*";
@@ -1126,14 +1126,14 @@ fn parse_renaming_clause(node: &Node, source: &SourceTree) -> Result<zygos::Labe
             "number" => {
                 let text = source.get_text(&name_node);
                 let number = text.parse::<f64>().map_err(|_| {
-                    GgsqlError::ParseError(format!("Invalid number in renaming: {}", text))
+                    GgsqlError::ParseError(format!("Invalid number in LABEL: {}", text))
                 })?;
                 zygos::Value::Number(number)
             }
-            "null_literal" => zygos::Value::Null, // null key for renaming null values
+            "null_literal" => zygos::Value::Null, // null key for labelling null values
             _ => {
                 return Err(GgsqlError::ParseError(format!(
-                    "Invalid 'from' type in renaming: {}",
+                    "Invalid 'from' type in LABEL: {}",
                     name_node.kind()
                 )));
             }
@@ -1145,7 +1145,7 @@ fn parse_renaming_clause(node: &Node, source: &SourceTree) -> Result<zygos::Labe
             "null_literal" => None, // NULL suppresses the label
             _ => {
                 return Err(GgsqlError::ParseError(format!(
-                    "Invalid 'to' type in renaming: {}",
+                    "Invalid 'to' type in LABEL: {}",
                     value_node.kind()
                 )));
             }
@@ -1694,7 +1694,7 @@ mod tests {
     }
 
     #[test]
-    fn test_tabulate_format_basic_has_no_settings_or_renaming() {
+    fn test_tabulate_format_basic_has_no_settings_or_labels() {
         let specs = parse_test_specs("TABULATE * FROM sales FORMAT foo, bar").unwrap();
         let table = specs[0].as_table().expect("expected a Table spec");
 
@@ -1702,8 +1702,8 @@ mod tests {
         assert_eq!(table.formats[0].columns, vec!["foo", "bar"]);
         assert_eq!(table.formats[0].target, None);
         assert!(table.formats[0].settings.is_empty());
-        assert!(table.formats[0].renaming.rename_is_empty());
-        assert!(table.formats[0].renaming.template().is_none());
+        assert!(table.formats[0].label_spec.rename_is_empty());
+        assert!(table.formats[0].label_spec.template().is_none());
     }
 
     #[test]
@@ -1736,22 +1736,22 @@ mod tests {
     #[test]
     fn test_tabulate_format_wildcard_columns() {
         let specs =
-            parse_test_specs("TABULATE * FROM sales FORMAT * RENAMING * => '{:num %.2f}'").unwrap();
+            parse_test_specs("TABULATE * FROM sales FORMAT * LABEL * => '{:num %.2f}'").unwrap();
         let table = specs[0].as_table().expect("expected a Table spec");
 
         assert!(table.formats[0].wildcard);
         assert!(table.formats[0].columns.is_empty());
         assert_eq!(
-            table.formats[0].renaming.template().map(|t| t.source()),
+            table.formats[0].label_spec.template().map(|t| t.source()),
             Some("{:num %.2f}")
         );
     }
 
     #[test]
-    fn test_tabulate_format_with_setting_and_renaming() {
+    fn test_tabulate_format_with_setting_and_label() {
         let specs = parse_test_specs(
             "TABULATE * FROM sales FORMAT price SETTING width => '20%' \
-             RENAMING null => '-', * => '{:num %.2f}'",
+             LABEL null => '-', * => '{:num %.2f}'",
         )
         .unwrap();
         let table = specs[0].as_table().expect("expected a Table spec");
@@ -1759,11 +1759,11 @@ mod tests {
         assert_eq!(table.formats[0].columns, vec!["price"]);
         assert_eq!(table.formats[0].settings.get("width"), Some(&"20%".into()));
         assert_eq!(
-            table.formats[0].renaming.lookup(&zygos::Value::Null),
+            table.formats[0].label_spec.lookup(&zygos::Value::Null),
             Some(Some("-"))
         );
         assert_eq!(
-            table.formats[0].renaming.template().map(|t| t.source()),
+            table.formats[0].label_spec.template().map(|t| t.source()),
             Some("{:num %.2f}")
         );
     }
@@ -1771,7 +1771,7 @@ mod tests {
     #[test]
     fn test_tabulate_multiple_format_clauses_produce_separate_formats() {
         let specs = parse_test_specs(
-            "TABULATE * FROM sales FORMAT foo RENAMING * => '{:num %.0f}' FORMAT bar",
+            "TABULATE * FROM sales FORMAT foo LABEL * => '{:num %.0f}' FORMAT bar",
         )
         .unwrap();
         let table = specs[0].as_table().expect("expected a Table spec");
@@ -1779,7 +1779,7 @@ mod tests {
         assert_eq!(table.formats.len(), 2);
         assert_eq!(table.formats[0].columns, vec!["foo"]);
         assert_eq!(
-            table.formats[0].renaming.template().map(|t| t.source()),
+            table.formats[0].label_spec.template().map(|t| t.source()),
             Some("{:num %.0f}")
         );
         assert_eq!(table.formats[1].columns, vec!["bar"]);
@@ -3729,16 +3729,16 @@ mod tests {
     }
 
     // ========================================
-    // RENAMING clause tests
+    // LABEL clause tests
     // ========================================
 
     #[test]
-    fn test_scale_renaming_basic() {
-        // Basic RENAMING clause with string keys
+    fn test_scale_label_basic() {
+        // Basic LABEL clause with string keys
         let query = r#"
             VISUALISE x AS x, y AS y
             DRAW bar
-            SCALE DISCRETE x RENAMING 'A' => 'Alpha', 'B' => 'Beta'
+            SCALE DISCRETE x LABEL 'A' => 'Alpha', 'B' => 'Beta'
         "#;
 
         let specs = parse_test_query(query).unwrap();
@@ -3755,12 +3755,12 @@ mod tests {
     }
 
     #[test]
-    fn test_scale_renaming_with_null() {
-        // RENAMING with NULL to suppress labels
+    fn test_scale_label_with_null() {
+        // LABEL with NULL to suppress labels
         let query = r#"
             VISUALISE x AS x, y AS y
             DRAW bar
-            SCALE DISCRETE x RENAMING 'internal' => NULL, 'visible' => 'Shown'
+            SCALE DISCRETE x LABEL 'internal' => NULL, 'visible' => 'Shown'
         "#;
 
         let specs = parse_test_query(query).unwrap();
@@ -3772,12 +3772,12 @@ mod tests {
     }
 
     #[test]
-    fn test_scale_renaming_with_numeric_keys() {
-        // RENAMING with numeric keys (for binned scales)
+    fn test_scale_label_with_numeric_keys() {
+        // LABEL with numeric keys (for binned scales)
         let query = r#"
             VISUALISE temp AS x, count AS y
             DRAW bar
-            SCALE BINNED x RENAMING 0 => '0-10', 10 => '10-20', 20 => '20-30'
+            SCALE BINNED x LABEL 0 => '0-10', 10 => '10-20', 20 => '20-30'
         "#;
 
         let specs = parse_test_query(query).unwrap();
@@ -3797,12 +3797,12 @@ mod tests {
     }
 
     #[test]
-    fn test_scale_renaming_for_color_legend() {
-        // RENAMING for color legend labels
+    fn test_scale_label_for_color_legend() {
+        // LABEL for color legend labels
         let query = r#"
             VISUALISE x, y, category AS color
             DRAW point
-            SCALE DISCRETE color RENAMING 'cat_a' => 'Category A', 'cat_b' => 'Category B'
+            SCALE DISCRETE color LABEL 'cat_a' => 'Category A', 'cat_b' => 'Category B'
         "#;
 
         let specs = parse_test_query(query).unwrap();
@@ -3817,12 +3817,12 @@ mod tests {
     }
 
     #[test]
-    fn test_scale_renaming_with_setting() {
-        // RENAMING combined with SETTING
+    fn test_scale_label_with_setting() {
+        // LABEL combined with SETTING
         let query = r#"
             VISUALISE x, y
             DRAW bar
-            SCALE DISCRETE x SETTING reverse => true RENAMING 'A' => 'First', 'B' => 'Second'
+            SCALE DISCRETE x SETTING reverse => true LABEL 'A' => 'First', 'B' => 'Second'
         "#;
 
         let specs = parse_test_query(query).unwrap();
@@ -3831,7 +3831,7 @@ mod tests {
         // Check SETTING was parsed
         assert_eq!(scales[0].properties.get("reverse"), Some(&true.into()));
 
-        // Check RENAMING was parsed
+        // Check LABEL was parsed
         let spec = &scales[0].label_spec;
         let key = |s: &str| zygos::Value::String(s.into());
         assert_eq!(spec.lookup(&key("A")), Some(Some("First")));
@@ -3839,13 +3839,13 @@ mod tests {
     }
 
     #[test]
-    fn test_scale_renaming_with_from_to() {
-        // RENAMING combined with FROM and TO clauses
+    fn test_scale_label_with_from_to() {
+        // LABEL combined with FROM and TO clauses
         let query = r#"
             VISUALISE x, y, cat AS color
             DRAW point
             SCALE DISCRETE color FROM ['A', 'B'] TO ['red', 'blue']
-                RENAMING 'A' => 'Option A', 'B' => 'Option B'
+                LABEL 'A' => 'Option A', 'B' => 'Option B'
         "#;
 
         let specs = parse_test_query(query).unwrap();
@@ -3858,18 +3858,18 @@ mod tests {
         // Check TO was parsed
         assert!(scales[0].output_range.is_some());
 
-        // Check RENAMING was parsed
+        // Check LABEL was parsed
         let key = zygos::Value::String("A".into());
         assert_eq!(scales[0].label_spec.lookup(&key), Some(Some("Option A")));
     }
 
     #[test]
-    fn test_scale_renaming_wildcard_template() {
+    fn test_scale_label_wildcard_template() {
         // Wildcard template for label generation
         let query = r#"
             VISUALISE x AS x, y AS y
             DRAW point
-            SCALE CONTINUOUS x RENAMING * => '{} units'
+            SCALE CONTINUOUS x LABEL * => '{} units'
         "#;
 
         let specs = parse_test_query(query).unwrap();
@@ -3884,12 +3884,12 @@ mod tests {
     }
 
     #[test]
-    fn test_scale_renaming_wildcard_with_explicit() {
+    fn test_scale_label_wildcard_with_explicit() {
         // Mixed explicit mappings and wildcard template
         let query = r#"
             VISUALISE x AS x, y AS y
             DRAW point
-            SCALE DISCRETE x RENAMING 'A' => 'Alpha', * => 'Category {}'
+            SCALE DISCRETE x LABEL 'A' => 'Alpha', * => 'Category {}'
         "#;
 
         let specs = parse_test_query(query).unwrap();
@@ -3907,12 +3907,12 @@ mod tests {
     }
 
     #[test]
-    fn test_scale_renaming_wildcard_uppercase() {
+    fn test_scale_label_wildcard_uppercase() {
         // Wildcard template with uppercase transformation
         let query = r#"
             VISUALISE x AS x, y AS y
             DRAW bar
-            SCALE DISCRETE x RENAMING * => '{:UPPER}'
+            SCALE DISCRETE x LABEL * => '{:UPPER}'
         "#;
 
         let specs = parse_test_query(query).unwrap();
@@ -3925,12 +3925,12 @@ mod tests {
     }
 
     #[test]
-    fn test_scale_renaming_wildcard_datetime() {
+    fn test_scale_label_wildcard_datetime() {
         // Wildcard template with datetime formatting
         let query = r#"
             VISUALISE date AS x, value AS y
             DRAW line
-            SCALE CONTINUOUS x RENAMING * => '{:time %b %Y}'
+            SCALE CONTINUOUS x LABEL * => '{:time %b %Y}'
         "#;
 
         let specs = parse_test_query(query).unwrap();

@@ -20,14 +20,14 @@ pub struct BinLabel {
 
 /// Scale configuration (from SCALE clause)
 ///
-/// Syntax: `SCALE [TYPE] aesthetic [FROM ...] [TO ...] [VIA ...] [SETTING ...] [RENAMING ...]`
+/// Syntax: `SCALE [TYPE] aesthetic [FROM ...] [TO ...] [VIA ...] [SETTING ...] [LABEL ...]`
 ///
 /// Examples:
 /// - `SCALE x VIA date`
 /// - `SCALE CONTINUOUS y FROM (0, 100)`
 /// - `SCALE DISCRETE color FROM ('A', 'B') TO ('red', 'blue')`
 /// - `SCALE color TO viridis`
-/// - `SCALE DISCRETE x RENAMING 'A' => 'Alpha', 'B' => 'Beta'`
+/// - `SCALE DISCRETE x LABEL 'A' => 'Alpha', 'B' => 'Beta'`
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Scale {
     /// The aesthetic this scale applies to
@@ -64,10 +64,10 @@ pub struct Scale {
     /// Used to skip re-resolution of pre-resolved scales (e.g., Binned scales)
     #[serde(default)]
     pub resolved: bool,
-    /// Break labelling (RENAMING clause): value-keyed renames and
+    /// Break labelling (LABEL clause): value-keyed renames and
     /// suppressions plus the wildcard template, rendered against the
     /// current break set on every read. Example:
-    /// `RENAMING 'A' => 'Alpha', 'internal' => NULL, * => '{} units'`
+    /// `LABEL 'A' => 'Alpha', 'internal' => NULL, * => '{} units'`
     #[serde(default, with = "crate::format::label_spec_serde")]
     pub label_spec: zygos::LabelSpec,
     /// Per-panel resolution for a positional scale whose facet dimension is
@@ -91,7 +91,7 @@ pub struct PanelScale {
     /// category list for discrete/ordinal, in the global domain's order.
     pub input_range: Vec<ArrayElement>,
     /// Per-panel major breaks as `(position, label)` pairs. A `None` label was
-    /// explicitly suppressed (`RENAMING ... => NULL`): keep the break on
+    /// explicitly suppressed (`LABEL ... => NULL`): keep the break on
     /// categorical scales (blank text), drop it on numeric ones.
     pub breaks: Vec<(f64, Option<String>)>,
     /// Per-panel minor break positions. Mirrors
@@ -266,7 +266,7 @@ impl Scale {
     /// The bins of a binned scale, each with its edges and display label.
     ///
     /// One definition of the bin-labelling contract, for every consumer that has
-    /// to name a bin: `"lower – upper"` (en dash) with per-edge `RENAMING`
+    /// to name a bin: `"lower – upper"` (en dash) with per-edge `LABEL`
     /// applied to each side, and an open form (`≤`/`<` at the bottom, `>`/`≥` at
     /// the top, per the scale's `closed` side) where a *terminal* edge's label is
     /// suppressed — which is what `oob => 'squish'` does, because the outermost
@@ -298,7 +298,7 @@ impl Scale {
             .map(|i| {
                 let (lower, upper) = (breaks[i].clone(), breaks[i + 1].clone());
                 let suppressed = |i: usize| edge_labels[i].is_none();
-                // A suppressed non-terminal edge (RENAMING => NULL) falls
+                // A suppressed non-terminal edge (LABEL => NULL) falls
                 // back to its key text, as it always has in bin ranges.
                 let label_of = |i: usize| {
                     edge_labels[i]
@@ -598,7 +598,7 @@ mod tests {
 
     #[test]
     fn test_temporal_break_labels_honour_mapping() {
-        // A RENAMING override on a temporal break is found under the ISO
+        // A LABEL override on a temporal break is found under the ISO
         // string key, matching how the literal would be written in a query.
         let mut s = continuous_scale((1208.0, 1236.0), vec![]);
         s.properties.insert(

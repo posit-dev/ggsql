@@ -414,7 +414,7 @@ fn build_layer_encoding(
 /// - Uses aesthetic column names (e.g., __ggsql_aes_facet1__)
 /// - Respects scale types (Binned facets use bin: "binned")
 /// - Scale resolution (scales property)
-/// - Label renaming (RENAMING clause)
+/// - Label renaming (LABEL subclause)
 /// - Additional properties (ncol, etc.)
 fn apply_faceting(
     vl_spec: &mut Value,
@@ -698,7 +698,7 @@ fn apply_facet_scale_resolution(
 /// - For discrete facets (non-empty `index_map`): the facet column has been
 ///   converted to integer sort indices by `apply_facet_ordering`. The labelExpr
 ///   maps those integers back to display labels, applying user renaming
-///   (RENAMING clause) when present.
+///   (LABEL subclause) when present.
 /// - For binned facets: uses build_symbol_legend_label_mapping for range-style labels
 /// - NULL values suppress labels (maps to empty string)
 ///
@@ -2569,7 +2569,7 @@ mod tests {
 
     #[test]
     fn test_indexed_facet_label_expr_with_renaming() {
-        // Test that user label_mapping (RENAMING clause) overrides the original values
+        // Test that user label_mapping (LABEL subclause) overrides the original values
         let index_map = vec![(json!("A"), 0), (json!("B"), 1), (json!("C"), 2)];
 
         let mut label_mapping = HashMap::new();

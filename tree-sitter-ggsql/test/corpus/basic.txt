@@ -2564,12 +2564,12 @@ SELECT * FROM "data.csv"
                   (quoted_identifier))))))))))
 
 ================================================================================
-SCALE RENAMING with explicit mappings
+SCALE LABEL with explicit mappings
 ================================================================================
 
 VISUALISE x, y
 DRAW point
-SCALE DISCRETE x RENAMING 'A' => 'Alpha', 'B' => 'Beta'
+SCALE DISCRETE x LABEL 'A' => 'Alpha', 'B' => 'Beta'
 
 --------------------------------------------------------------------------------
 
@@ -2593,21 +2593,21 @@ SCALE DISCRETE x RENAMING 'A' => 'Alpha', 'B' => 'Beta'
       (scale_clause
         (scale_type_identifier)
         (aesthetic_name)
-        (renaming_clause
-          (renaming_assignment
+        (label_clause
+          (label_assignment
             name: (string)
             value: (string))
-          (renaming_assignment
+          (label_assignment
             name: (string)
             value: (string)))))))
 
 ================================================================================
-SCALE RENAMING with NULL suppression
+SCALE LABEL with NULL suppression
 ================================================================================
 
 VISUALISE x, y
 DRAW bar
-SCALE DISCRETE x RENAMING 'internal' => NULL
+SCALE DISCRETE x LABEL 'internal' => NULL
 
 --------------------------------------------------------------------------------
 
@@ -2631,18 +2631,18 @@ SCALE DISCRETE x RENAMING 'internal' => NULL
       (scale_clause
         (scale_type_identifier)
         (aesthetic_name)
-        (renaming_clause
-          (renaming_assignment
+        (label_clause
+          (label_assignment
             name: (string)
             value: (null_literal)))))))
 
 ================================================================================
-SCALE RENAMING with wildcard template
+SCALE LABEL with wildcard template
 ================================================================================
 
 VISUALISE x, y
 DRAW point
-SCALE CONTINUOUS x RENAMING * => '{} units'
+SCALE CONTINUOUS x LABEL * => '{} units'
 
 --------------------------------------------------------------------------------
 
@@ -2666,17 +2666,17 @@ SCALE CONTINUOUS x RENAMING * => '{} units'
       (scale_clause
         (scale_type_identifier)
         (aesthetic_name)
-        (renaming_clause
-          (renaming_assignment
+        (label_clause
+          (label_assignment
             value: (string)))))))
 
 ================================================================================
-SCALE RENAMING with mixed explicit and wildcard
+SCALE LABEL with mixed explicit and wildcard
 ================================================================================
 
 VISUALISE x, y
 DRAW bar
-SCALE DISCRETE x RENAMING 'A' => 'Alpha', * => 'Category {}'
+SCALE DISCRETE x LABEL 'A' => 'Alpha', * => 'Category {}'
 
 --------------------------------------------------------------------------------
 
@@ -2700,11 +2700,11 @@ SCALE DISCRETE x RENAMING 'A' => 'Alpha', * => 'Category {}'
       (scale_clause
         (scale_type_identifier)
         (aesthetic_name)
-        (renaming_clause
-          (renaming_assignment
+        (label_clause
+          (label_assignment
             name: (string)
             value: (string))
-          (renaming_assignment
+          (label_assignment
             value: (string)))))))
 
 ================================================================================
@@ -4794,7 +4794,7 @@ TABULATE * FROM sales TITLE id => 'ID' SPAN A OVER foo, bar
 TABULATE FORMAT clause
 ================================================================================
 
-TABULATE * FROM sales FORMAT foo, bar SETTING width => '20%' RENAMING null => '-' FORMAT STUB baz
+TABULATE * FROM sales FORMAT foo, bar SETTING width => '20%' LABEL null => '-' FORMAT STUB baz
 
 --------------------------------------------------------------------------------
 
@@ -4823,8 +4823,8 @@ TABULATE * FROM sales FORMAT foo, bar SETTING width => '20%' RENAMING null => '-
                 (bare_identifier)))
             value: (parameter_value
               (string))))
-        (renaming_clause
-          (renaming_assignment
+        (label_clause
+          (label_assignment
             name: (null_literal)
             value: (string)))))
     (tab_clause

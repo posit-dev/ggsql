@@ -407,7 +407,7 @@ pub fn parse_font_weight(value: &str) -> f64 {
 }
 
 /// Feed ggsql's resolved breaks + formatted labels into the hephaestus scale so
-/// axis/legend ticks match ggsql exactly (including RENAMING overrides).
+/// axis/legend ticks match ggsql exactly (including LABEL overrides).
 ///
 /// Minor breaks travel the same way, via [`apply_minor_breaks`]: break positions are
 /// ggsql's to own, majors and minors alike, so nothing here invents either.
@@ -415,7 +415,7 @@ fn apply_breaks(hs: HScale, scale: &GScale, type_kind: ScaleTypeKind) -> HScale 
     let hs = apply_minor_breaks(hs, scale, type_kind);
     let categorical = matches!(type_kind, ScaleTypeKind::Discrete | ScaleTypeKind::Ordinal);
     // A suppressed label means different things either side of this line. On a
-    // categorical scale it is `RENAMING <level> => null`, i.e. hide the text but
+    // categorical scale it is `LABEL <level> => null`, i.e. hide the text but
     // keep the category — dropping it would misalign the axis. On a numeric one
     // it is a binned `oob => 'squish'` terminal, where the edge is not a real
     // boundary and its tick and gridline must go too, exactly as the Vega-Lite
@@ -665,7 +665,7 @@ mod tests {
     }
 
     #[test]
-    fn binned_bins_honors_edge_renaming() {
+    fn binned_bins_honors_edge_labels() {
         let mut scale = binned_scale(&[0.0, 10.0, 20.0], &[]);
         scale
             .label_spec
