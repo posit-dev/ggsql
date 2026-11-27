@@ -46,8 +46,8 @@ pub fn resolve_table_with_reader(query: &str, reader: &dyn Reader) -> Result<Res
         .ok_or_else(|| GgsqlError::ValidationError("No table specification found".to_string()))?;
 
     let facet = crate::table::setup_facet(&table.facet).map_err(GgsqlError::ValidationError)?;
-    let mut labels = table.labels.clone();
-    let titles = extract_table_titles(&mut labels);
+    let mut titles_map = table.titles.clone();
+    let titles = extract_table_titles(&mut titles_map);
 
     super::execute_setup_statements(&source_tree, reader)?;
 
@@ -70,13 +70,13 @@ pub fn resolve_table_with_reader(query: &str, reader: &dyn Reader) -> Result<Res
 
     let column_names = df.get_column_names();
     let spans = table
-        .resolve_spanners(&labels, Some(&column_names))
+        .resolve_spanners(&titles_map, Some(&column_names))
         .map_err(GgsqlError::ValidationError)?;
     // The shape both create_table_columns (SETTING) and apply_formats
-    // (RENAMING) read from. Resolved after spans so a FORMAT column entry
+    // (LABEL) read from. Resolved after spans so a FORMAT column entry
     // can name a SPAN id in place of the columns it covers.
     let formats = setup_formats(&df, &table.formats, &spans)?;
-    let columns = setup_columns(&df, &spans, &labels, &formats, facet.as_ref());
+    let columns = setup_columns(&df, &spans, &titles_map, &formats, facet.as_ref());
     // A `place => 'left'` facet keeps its columns as group stubs, so check
     // for body columns rather than emptiness.
     if columns.iter().all(|c| c.is_group_stub()) {
@@ -416,13 +416,13 @@ mod integration_tests {
     }
 
     #[test]
-    fn test_tabulate_label_applies_under_the_tab_clause_wrapper() {
-        // label_clause is nested under tab_clause in the grammar (so LABEL
+    fn test_tabulate_title_applies_under_the_tab_clause_wrapper() {
+        // title_clause is nested under tab_clause in the grammar (so TITLE
         // and SPAN can appear in any order) — build_tabulate_statement must
-        // unwrap it, not match "label_clause" as a direct child.
+        // unwrap it, not match "title_clause" as a direct child.
         let reader = reader_with_sales();
         let resolved =
-            resolve_table_with_reader("TABULATE * FROM sales LABEL id => 'ID'", &reader).unwrap();
+            resolve_table_with_reader("TABULATE * FROM sales TITLE id => 'ID'", &reader).unwrap();
 
         let label_cell = resolved
             .cells()
@@ -435,11 +435,9 @@ mod integration_tests {
     #[test]
     fn test_tabulate_format_wildcard_formats_every_column() {
         let reader = reader_with_sales();
-        let resolved = resolve_table_with_reader(
-            "TABULATE * FROM sales FORMAT * RENAMING * => '[{}]'",
-            &reader,
-        )
-        .unwrap();
+        let resolved =
+            resolve_table_with_reader("TABULATE * FROM sales FORMAT * LABEL * => '[{}]'", &reader)
+                .unwrap();
 
         let mut body: Vec<_> = resolved
             .cells()
@@ -490,7 +488,7 @@ mod integration_tests {
         assert_eq!(stub_head.content, "");
 
         let resolved = resolve_table_with_reader(
-            "TABULATE * FROM sales FORMAT STUB name LABEL name => 'Name'",
+            "TABULATE * FROM sales FORMAT STUB name TITLE name => 'Name'",
             &reader,
         )
         .unwrap();

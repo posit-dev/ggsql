@@ -16,7 +16,7 @@ src/
 ├── array_util.rs, compute.rs    Arrow array helpers
 ├── dataframe.rs                 DataFrame wrapper around arrow RecordBatch
 ├── format.rs                    Label/number/date formatting
-├── labels.rs                    Labels from LABEL clauses, shared by plot/ and table/
+├── titles.rs                    Titles from TITLE clauses, shared by plot/ and table/
 ├── naming.rs                    Internal column-name conventions (__ggsql_*)
 ├── params.rs                    SETTING-parameter machinery: values, constraints, validation
 ├── spec.rs                      Spec: parse-time result of one VISUALISE/TABULATE statement (Plot or Table)
@@ -36,7 +36,7 @@ src/
 
 ### `parser/`
 
-- `mod.rs` exposes `parse_query()` which builds a `Vec<Spec>` from a query string — one `Spec` per `VISUALISE`/`TABULATE` statement, in source order (`Spec::Table` for `TABULATE`, including its `LABEL`/`SPAN`/`FORMAT` clauses).
+- `mod.rs` exposes `parse_query()` which builds a `Vec<Spec>` from a query string — one `Spec` per `VISUALISE`/`TABULATE` statement, in source order (`Spec::Table` for `TABULATE`, including its `TITLE`/`SPAN`/`FORMAT` clauses).
 - `source_tree.rs` is the parse-once wrapper: holds the tree-sitter `Tree`, source text, and language; offers a declarative query API (`find_node`, `find_text`, …) plus lazy `extract_sql()` / `extract_spec()` extractors (the latter covers both `VISUALISE` and `TABULATE`). It also handles the `VISUALISE FROM <source>` shorthand by injecting `SELECT * FROM <source>`.
 - `builder.rs` walks the CST and produces typed `Spec` values (`Plot`, boxed for size, or `Table`). This is where new grammar nodes become `Plot`/`Table` fields.
 - `sql.rs` extracts structure from SQL fragments over the parse tree.

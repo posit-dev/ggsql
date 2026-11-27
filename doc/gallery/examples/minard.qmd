@@ -107,7 +107,7 @@ Now that we have all the data included in the ways we want, we can start detaili
 The first thing we might do is to pick some better colours.
 Because we have two levels for the `direction` variable —**A**dvance and **R**etreat— we can create a new colour scale for the `stroke` aesthetic.
 We'll choose the colours to more closely resemble the original graphic by Minard.
-We set the palette using the `TO` keyword, and format the labels using `RENAMING`.
+We set the palette using the `TO` keyword, and format the labels using `LABEL`.
 
 ```{ggsql}
 VISUALISE long AS x, lat AS y FROM 'minard_troops.csv'
@@ -115,7 +115,7 @@ VISUALISE long AS x, lat AS y FROM 'minard_troops.csv'
     MAPPING direction AS stroke, survivors AS linewidth
     PARTITION BY direction, group
   SCALE stroke TO ('burlywood', 'black')
-    RENAMING 'A' => 'Advance', 'R' => 'Retreat'
+    LABEL 'A' => 'Advance', 'R' => 'Retreat'
 ```
 
 Now for a slightly more complicated scale, we're going to set one for the `linewidth` variable that represent the number of troops.
@@ -130,7 +130,7 @@ VISUALISE long AS x, lat AS y FROM 'minard_troops.csv'
     MAPPING direction AS stroke, survivors AS linewidth
     PARTITION BY direction, group
   SCALE stroke TO ('burlywood', 'black')
-    RENAMING 'A' => 'Advance', 'R' => 'Retreat'
+    LABEL 'A' => 'Advance', 'R' => 'Retreat'
   SCALE linewidth FROM (0, null) TO (0, 20)
 ```
 
@@ -154,12 +154,12 @@ VISUALISE long AS x, lat AS y FROM 'minard_troops.csv'
     MAPPING city AS label FROM 'minard_cities.csv'
     SETTING fontsize => 6
   SCALE stroke TO ('burlywood', 'black')
-    RENAMING 'A' => 'Advance', 'R' => 'Retreat'
+    LABEL 'A' => 'Advance', 'R' => 'Retreat'
   SCALE linewidth FROM (0, null) TO (0, 30)
 ```
 
 An additional obvious way to polish your graphic is to add nicer titles for all your variables.
-We can use the `LABEL` statement to add custom labels for our plot.
+We can use the `TITLE` statement to add custom labels for our plot.
 In the title, we escape the single quote mark by using `\'` so that we know it is not the end of the string yet.
 Moreover, we can use `null` to note that a title should be removed.
 In that way we can hide the `long` and `lat` labels from the position mapping.
@@ -173,11 +173,11 @@ VISUALISE long AS x, lat AS y FROM 'minard_troops.csv'
     MAPPING city AS label FROM 'minard_cities.csv'
     SETTING fontsize => 6
   SCALE stroke TO ('burlywood', 'black')
-    RENAMING 'A' => 'Advance', 'R' => 'Retreat'
+    LABEL 'A' => 'Advance', 'R' => 'Retreat'
   SCALE linewidth FROM (0, null) TO (0, 20)
-  LABEL
-    title => 'Napoleon\'s Russian Campaign',
-    subtitle => 'Inspired by the graphic of C.J. Minard',
+  TITLE
+    main => 'Napoleon\'s Russian Campaign',
+    sub => 'Inspired by the graphic of C.J. Minard',
     linewidth => 'Troops',
     stroke => 'Direction',
     x => null,

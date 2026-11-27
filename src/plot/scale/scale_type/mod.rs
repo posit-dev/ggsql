@@ -851,10 +851,10 @@ pub trait ScaleTypeTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
     ///
     /// Default: each break is its own typed `ArrayElement`, so a temporal
     /// break labels as its ISO string rather than as the epoch number its
-    /// position projects to. Labelling (RENAMING, templates) happens in
+    /// position projects to. Labelling (LABEL, templates) happens in
     /// [`Scale::labelled_breaks`](crate::plot::Scale), which matches rename
     /// keys against the element — so the element must be in the same form
-    /// `RENAMING` keys are written in. Discrete/ordinal override to pair
+    /// `LABEL` keys are written in. Discrete/ordinal override to pair
     /// position indices with input-range category elements.
     fn break_labels(&self, scale: &super::Scale) -> Vec<(f64, ArrayElement)> {
         if let Some(ParameterValue::Array(breaks)) = scale.properties.get("breaks") {
@@ -1052,7 +1052,7 @@ pub trait ScaleTypeTrait: std::fmt::Debug + std::fmt::Display + Send + Sync {
         }
 
         // 6. Labelling needs no resolution step: `Scale::labelled_breaks`
-        // renders `label_spec` (RENAMING renames plus the wildcard template)
+        // renders `label_spec` (LABEL renames plus the wildcard template)
         // against the current breaks on every read.
 
         // 7. Resolve output range (TO clause)
@@ -1193,7 +1193,7 @@ pub(super) fn categorical_numeric_domain(scale: &super::Scale) -> Option<(f64, f
 /// category elements themselves.
 ///
 /// The element doubles as the rename-match key, so it must stay the typed
-/// `ArrayElement` — the same form `RENAMING` keys are written in. Formatting
+/// `ArrayElement` — the same form `LABEL` keys are written in. Formatting
 /// a number through `to_json()` instead would yield `"6.0"` against a key of
 /// `"6"`, silently dropping every rename on a non-string domain.
 pub(super) fn categorical_break_labels(scale: &super::Scale) -> Vec<(f64, ArrayElement)> {

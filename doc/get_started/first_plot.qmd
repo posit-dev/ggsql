@@ -8,9 +8,9 @@ The code below shows a simple ggsql example. But it is not just a static piece o
 VISUALISE bill_len AS x, bill_dep AS y, species AS fill FROM ggsql:penguins
 DRAW point
 SCALE x 
-  RENAMING * => '{} mm'
-LABEL
-  title => 'Relationship between bill dimensions in 3 species of penguins',
+  LABEL * => '{} mm'
+TITLE
+  main => 'Relationship between bill dimensions in 3 species of penguins',
   x => 'Bill length',
   y => 'Bill depth'
 ```

@@ -195,13 +195,13 @@ fn ordered_labelled_levels(
 }
 
 /// Strip text for one facet level, mirroring the Vega-Lite writer's
-/// `build_indexed_facet_label_expr` (discrete + `RENAMING`) and
+/// `build_indexed_facet_label_expr` (discrete + `LABEL`) and
 /// `build_binned_facet_label_expr` (bin ranges). Computed here from typed values
 /// rather than as a Vega expression over serialized data, so a temporal binned
 /// facet — which Vega-Lite silently fails to match — labels correctly.
 fn facet_label(scale: Option<&Scale>, level: &FacetLevel) -> String {
-    // NULL keys as the literal string "null", matching ggsql's RENAMING key for
-    // a null level (`RENAMING null => 'The rest'`).
+    // NULL keys as the literal string "null", matching ggsql's LABEL key for
+    // a null level (`LABEL null => 'The rest'`).
     if level.key.is_null {
         return match scale.map(|s| s.label_mapping()) {
             Some(mapping) => match mapping.get("null") {
@@ -223,7 +223,7 @@ fn facet_label(scale: Option<&Scale>, level: &FacetLevel) -> String {
     discrete_label(scale, level)
 }
 
-/// A discrete/ordinal level's label: the `RENAMING` override for its domain
+/// A discrete/ordinal level's label: the `LABEL` override for its domain
 /// value, an empty strip when suppressed, else the raw value.
 fn discrete_label(scale: Option<&Scale>, level: &FacetLevel) -> String {
     let Some(scale) = scale else {

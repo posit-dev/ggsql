@@ -671,7 +671,7 @@ module.exports = grammar({
     // TABULATE — still incomplete, more clauses expected as Table grows.
     // column_selection and single_source_from are fixed in position, mirroring
     // VISUALISE's global_mapping + single_source_from ahead of
-    // repeat($.viz_clause). LABEL/SPAN/FORMAT (tab_clause) repeat, any order,
+    // repeat($.viz_clause). TITLE/SPAN/FORMAT (tab_clause) repeat, any order,
     // after that.
     tabulate_statement: $ => prec.dynamic(1, seq(
       $.tabulate_keyword,
@@ -690,7 +690,7 @@ module.exports = grammar({
 
     // All the TABULATE clauses (mirrors viz_clause's role for VISUALISE).
     tab_clause: $ => choice(
-      $.label_clause,
+      $.title_clause,
       $.span_clause,
       $.format_clause,
       $.facet_clause,
@@ -708,7 +708,7 @@ module.exports = grammar({
         $.column_list
       ),
       optional($.setting_clause),
-      optional($.renaming_clause)
+      optional($.label_clause)
     ),
 
     // FORMAT targets - which section of the table the columns belong to
@@ -727,7 +727,7 @@ module.exports = grammar({
     span_clause: $ => seq(
       caseInsensitive('SPAN'),
       // Mandatory: an identifier names this spanner — also its default
-      // display text, and how a later SPAN's OVER list or a LABEL entry
+      // display text, and how a later SPAN's OVER list or a TITLE entry
       // addresses it (quote it to include spaces or other non-identifier
       // characters). NULL leaves it anonymous: nothing can reference it,
       // and its cell renders blank, but its columns still group (e.g. for
@@ -792,7 +792,7 @@ module.exports = grammar({
       $.scale_clause,
       $.facet_clause,
       $.project_clause,
-      $.label_clause,
+      $.title_clause,
     ),
 
     // DRAW clause - syntax: DRAW geom [MAPPING ...] [REMAPPING ...] [SETTING ...] [FILTER ...] [PARTITION BY ...] [ORDER BY ...]
@@ -1023,14 +1023,14 @@ module.exports = grammar({
       $.null_literal
     ),
 
-    // SCALE clause - SCALE [TYPE] aesthetic [FROM ...] [TO ...] [VIA ...] [SETTING ...] [RENAMING ...]
+    // SCALE clause - SCALE [TYPE] aesthetic [FROM ...] [TO ...] [VIA ...] [SETTING ...] [LABEL ...]
     // Examples:
     //   SCALE DATE x
     //   SCALE CONTINUOUS y FROM [0, 100]
     //   SCALE DISCRETE color FROM ['A', 'B'] TO ['red', 'blue']
     //   SCALE color TO viridis
     //   SCALE x FROM [0, 100] SETTING breaks => '1 month'
-    //   SCALE DISCRETE x RENAMING 'A' => 'Alpha', 'B' => 'Beta'
+    //   SCALE DISCRETE x LABEL 'A' => 'Alpha', 'B' => 'Beta'
     scale_clause: $ => seq(
       caseInsensitive('SCALE'),
       optional($.scale_type_identifier),  // optional type before aesthetic
@@ -1039,23 +1039,23 @@ module.exports = grammar({
       optional($.scale_to_clause),
       optional($.scale_via_clause),
       optional($.setting_clause),  // reuse existing setting_clause from DRAW
-      optional($.renaming_clause)  // custom label mappings
+      optional($.label_clause)  // custom label mappings
     ),
 
-    // RENAMING clause: SCALE uses it for custom axis/legend labels, FORMAT
-    // for custom cell labels. Syntax: RENAMING 'A' => 'Alpha', 'B' => 'Beta', 'C' => NULL
-    renaming_clause: $ => seq(
-      caseInsensitive('RENAMING'),
-      $.renaming_assignment,
-      repeat(seq(',', $.renaming_assignment))
+    // LABEL subclause: SCALE uses it for custom axis/legend labels, FORMAT
+    // for custom cell labels. Syntax: LABEL 'A' => 'Alpha', 'B' => 'Beta', 'C' => NULL
+    label_clause: $ => seq(
+      caseInsensitive('LABEL'),
+      $.label_assignment,
+      repeat(seq(',', $.label_assignment))
     ),
 
-    renaming_assignment: $ => seq(
+    label_assignment: $ => seq(
       field('name', choice(
         '*',                              // Wildcard for template
         $.string,
         $.number,
-        $.null_literal                    // NULL for renaming null values
+        $.null_literal                    // NULL for labelling null values
       )),
       '=>',
       field('value', choice($.string, $.null_literal))  // String label or NULL to suppress
@@ -1144,22 +1144,22 @@ module.exports = grammar({
 
     project_property_name: $ => $.identifier,
 
-    // LABEL clause (repeatable)
-    label_clause: $ => seq(
-      caseInsensitive('LABEL'),
+    // TITLE clause (repeatable)
+    title_clause: $ => seq(
+      caseInsensitive('TITLE'),
       optional(seq(
-        $.label_assignment,
-        repeat(seq(',', $.label_assignment))
+        $.title_assignment,
+        repeat(seq(',', $.title_assignment))
       ))
     ),
 
-    label_assignment: $ => seq(
-      field('name', $.label_type),
+    title_assignment: $ => seq(
+      field('name', $.title_type),
       '=>',
       field('value', choice($.string, $.null_literal))
     ),
 
-    label_type: $ => $.identifier,
+    title_type: $ => $.identifier,
 
     // Basic tokens
     bare_identifier: $ => token(/[a-zA-Z_][a-zA-Z0-9_]*/),

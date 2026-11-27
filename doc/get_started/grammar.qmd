@@ -33,7 +33,7 @@ Then you'll use `VISUALIZE` (or `VISUALISE` 🇬🇧) to switch from creating a 
 Then you'll `DRAW` a layer that maps columns in your data to aesthetics (visual properties), like position, colour, and shape.
 Then you tweak the `SCALE`s, the mappings between the data and the visual properties, to make the plot easier to read.
 Then you `FACET` the plot to show how the relationships differ across subsets of the data.
-Finally you finish up by adding `LABEL`s to explain your plot to others.
+Finally you finish up by adding `TITLE`s to explain your plot to others.
 This allows you to produce graphics using the same structured thinking that you already use to design a SQL query.
 
 In the end of this tutorial we will revisit the duality of the syntax and the grammar and also provide a [handy table](wrap_up.qmd#from-grammar-to-syntax) that shows how they relate to each other.

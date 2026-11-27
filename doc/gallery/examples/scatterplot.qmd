@@ -14,8 +14,8 @@ This is one of the most fundamental visualization types for exploring correlatio
 ```{ggsql}
 VISUALISE bill_len AS x, bill_dep AS y FROM ggsql:penguins
 DRAW point
-LABEL
-  title => 'Penguin Bill Dimensions',
+TITLE
+  main => 'Penguin Bill Dimensions',
   x => 'Bill Length (mm)',
   y => 'Bill Depth (mm)'
 ```
@@ -25,7 +25,7 @@ LABEL
 - `VISUALISE ... FROM ggsql:penguins` loads the built-in penguins dataset
 - `bill_len AS x, bill_dep AS y` maps bill length to the x-axis and bill depth to the y-axis
 - `DRAW point` creates a scatter plot using points
-- `LABEL` adds descriptive axis labels and a title
+- `TITLE` adds descriptive axis labels and a title
 
 ## Variations
 
@@ -36,8 +36,8 @@ We're adding `species AS color` to the mapping to colour the points by species.
 ```{ggsql}
 VISUALISE bill_len AS x, bill_dep AS y, species AS color FROM ggsql:penguins
 DRAW point
-LABEL
-  title => 'Penguin Bill Dimensions by Species',
+TITLE
+  main => 'Penguin Bill Dimensions by Species',
   x => 'Bill Length (mm)',
   y => 'Bill Depth (mm)'
 ```
@@ -48,8 +48,8 @@ The color palette can be changed by detailing the `SCALE color` clause.
 VISUALISE bill_len AS x, bill_dep AS y, species AS color FROM ggsql:penguins
 DRAW point
 SCALE color TO ('DeepSkyBlue', 'Fuchsia', 'Lime')
-LABEL
-    title => 'Penguin Bill Dimensions by Species',
+TITLE
+    main => 'Penguin Bill Dimensions by Species',
     x => 'Bill Length (mm)',
     y => 'Bill Depth (mm)'
 ```
@@ -66,8 +66,8 @@ VISUALISE
   island AS shape
 FROM ggsql:penguins
 DRAW point
-LABEL
-    title => 'Penguin Bill Dimensions by Species',
+TITLE
+    main => 'Penguin Bill Dimensions by Species',
     x => 'Bill Length (mm)',
     y => 'Bill Depth (mm)'
 ```

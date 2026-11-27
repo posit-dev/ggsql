@@ -95,7 +95,7 @@ If not provided explicitly by the user the breaks for the scales will be calcula
   - `pretty => false`: Linear spacing in integer space as close to the requested number of breaks
 
 ### Minor breaks
-Minor breaks are the unlabelled sub-divisions between two breaks — drawn as shorter ticks and fainter gridlines. They carry no labels, so unlike `breaks` they are never affected by `RENAMING` or a label template.
+Minor breaks are the unlabelled sub-divisions between two breaks — drawn as shorter ticks and fainter gridlines. They carry no labels, so unlike `breaks` they are never affected by `LABEL` or a label template.
 
 Where `breaks => 5` asks for about five breaks across the whole scale, `minor_breaks => 3` asks for three minor breaks *inside each interval between two breaks*.
 
@@ -207,13 +207,13 @@ SCALE x
 ```
 
 ## Renaming
-Breaks are generally named by their value. However, you may wish to rename one, several, or all of these. The `RENAMING` clause allows you to do that both by directly renaming a specific break or by providing a formatting function.
+Breaks are generally named by their value. However, you may wish to rename one, several, or all of these. The `LABEL` subclause allows you to do that both by directly renaming a specific break or by providing a formatting function.
 
 ### Direct renaming
-When you provide a break value on the left and a break exists at that value then it will take on the label specified on the right. For example adding `RENAMING 0 => 'Nil'` will ensure that if there is a break at 0 it will appear as "Nil" on the legend/axis
+When you provide a break value on the left and a break exists at that value then it will take on the label specified on the right. For example adding `LABEL 0 => 'Nil'` will ensure that if there is a break at 0 it will appear as "Nil" on the legend/axis
 
 ### Label formatting
-Besides direct renaming you can also provide a formatting string if you want the same to happen to all labels, e.g. add a prefix or suffix. The syntax for this is `RENAMING * => '... {} ...'`. The current label will be inserted into the `{}` to produce the new label. Besides simply inserting the break value into the string, we can also provide a formatter. Of special interest to continuous scales are the `:time` and `:num` formatters which lets you control how temporal and numeric values are presented. You can read more about these formatters in [the break formatting section of the `SCALE` documentation](../../clause/scale.qmd#break-formatting)
+Besides direct renaming you can also provide a formatting string if you want the same to happen to all labels, e.g. add a prefix or suffix. The syntax for this is `LABEL * => '... {} ...'`. The current label will be inserted into the `{}` to produce the new label. Besides simply inserting the break value into the string, we can also provide a formatter. Of special interest to continuous scales are the `:time` and `:num` formatters which lets you control how temporal and numeric values are presented. You can read more about these formatters in [the break formatting section of the `SCALE` documentation](../../clause/scale.qmd#break-formatting)
 
 You can combine formatting with direct renaming in which case the direct renaming has priority over the formatting.
 
@@ -225,7 +225,7 @@ You can combine formatting with direct renaming in which case the direct renamin
 VISUALISE bill_len AS x, bill_dep AS y FROM ggsql:penguins
 DRAW point
 SCALE x
-  RENAMING 50 => 'Fifty'
+  LABEL 50 => 'Fifty'
 ```
 
 #### Adding suffix to break labels
@@ -234,7 +234,7 @@ SCALE x
 VISUALISE bill_len AS x, bill_dep AS y FROM ggsql:penguins
 DRAW point
 SCALE x
-  RENAMING * => '{} mm'
+  LABEL * => '{} mm'
 ```
 
 #### Using a formatter to control temporal formats
@@ -243,7 +243,7 @@ SCALE x
 VISUALISE Date AS x, Temp AS y FROM ggsql:airquality
 DRAW line
 SCALE x
-  RENAMING * => '{:time %B}'
+  LABEL * => '{:time %B}'
 ```
 
 #### Using a formatter to control number formats
@@ -252,5 +252,5 @@ SCALE x
 VISUALISE bill_len AS x, bill_dep AS y FROM ggsql:penguins
 DRAW point
 SCALE x
-  RENAMING * => '{:num %.3e}'
+  LABEL * => '{:num %.3e}'
 ```

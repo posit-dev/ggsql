@@ -51,13 +51,13 @@ website:
             href: syntax/clause/facet.qmd
           - text: "`PROJECT`"
             href: syntax/clause/project.qmd
-          - text: "`LABEL`"
-            href: syntax/clause/label.qmd
+          - text: "`TITLE`"
+            href: syntax/clause/title.qmd
           - text: "---"
           - text: "`TABULATE`"
             href: syntax/clause/tabulate.qmd
-          - text: "`LABEL`"
-            href: syntax/clause/label-tabulate.qmd
+          - text: "`TITLE`"
+            href: syntax/clause/title-tabulate.qmd
           - text: "`SPAN`"
             href: syntax/clause/span.qmd
           - text: "`FORMAT`"
@@ -117,14 +117,14 @@ website:
               href: syntax/clause/facet.qmd
             - text: "`PROJECT`"
               href: syntax/clause/project.qmd
-            - text: "`LABEL`"
-              href: syntax/clause/label.qmd
+            - text: "`TITLE`"
+              href: syntax/clause/title.qmd
         - section: "Tabulate clauses"
           contents:
             - text: "`TABULATE`"
               href: syntax/clause/tabulate.qmd
-            - text: "`LABEL`"
-              href: syntax/clause/label-tabulate.qmd
+            - text: "`TITLE`"
+              href: syntax/clause/title-tabulate.qmd
             - text: "`SPAN`"
               href: syntax/clause/span.qmd
             - text: "`FORMAT`"

@@ -7,9 +7,9 @@ use std::collections::BTreeMap;
 use std::collections::HashSet;
 
 use super::ColumnSection;
-use crate::labels::Labels;
 use crate::params::Parameters;
 use crate::plot::ParameterValue;
+use crate::titles::Titles;
 use crate::{GgsqlError, Result};
 
 /// What role a `TableCell` plays in the table's layout.
@@ -32,11 +32,11 @@ pub enum TableCellKind {
     /// A spanner cell, grouping several columns under one label (`TABULATE
     /// SPAN`).
     Spanner,
-    /// The table's title (`LABEL title => ...`, gt's `gt_title`).
+    /// The table's title (`TITLE main => ...`, gt's `gt_title`).
     Title,
-    /// The table's subtitle (`LABEL subtitle => ...`, gt's `gt_subtitle`).
+    /// The table's subtitle (`TITLE sub => ...`, gt's `gt_subtitle`).
     Subtitle,
-    /// The table's caption (`LABEL caption => ...`, gt's `tab_caption()`).
+    /// The table's caption (`TITLE caption => ...`, gt's `tab_caption()`).
     /// Full-width like `Title`/`Subtitle`, but rendered outside the normal
     /// row grid entirely — see `HtmlWriter`'s module doc.
     Caption,
@@ -970,7 +970,7 @@ pub(crate) fn create_column_labels(columns: &[TableColumn]) -> Vec<TableCell> {
         .collect()
 }
 
-/// A table's resolved `LABEL title`/`subtitle`/`caption` texts.
+/// A table's resolved `TITLE main`/`sub`/`caption` texts.
 #[derive(Debug, Clone, Default)]
 pub(crate) struct TableTitles {
     pub title: Option<String>,
@@ -978,15 +978,15 @@ pub(crate) struct TableTitles {
     pub caption: Option<String>,
 }
 
-/// Pop the reserved `title`/`subtitle`/`caption` keys out of a `TABULATE`
-/// `LABEL` clause's resolved map into `TableTitles`, leaving only genuine
+/// Pop the reserved `main`/`sub`/`caption` keys out of a `TABULATE`
+/// `TITLE` clause's resolved map into `TableTitles`, leaving only genuine
 /// column-name overrides behind. `.flatten()` treats "key absent" and "key
 /// present but NULL" the same: neither produces a title/subtitle/caption.
-pub(crate) fn extract_table_titles(labels: &mut Labels) -> TableTitles {
+pub(crate) fn extract_table_titles(titles: &mut Titles) -> TableTitles {
     TableTitles {
-        title: labels.labels.remove("title").flatten(),
-        subtitle: labels.labels.remove("subtitle").flatten(),
-        caption: labels.labels.remove("caption").flatten(),
+        title: titles.titles.remove("main").flatten(),
+        subtitle: titles.titles.remove("sub").flatten(),
+        caption: titles.titles.remove("caption").flatten(),
     }
 }
 

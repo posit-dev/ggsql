@@ -73,7 +73,7 @@ Note that `missing => 'drop'` has priority over any relabeling in `FORMAT`.
 ```{ggsql}
 TABULATE * FROM my_data
 FACET sex
-FORMAT sex RENAMING null => 'unknown'
+FORMAT sex LABEL null => 'unknown'
 ```
 
 Place grouping labels in rows above their members.
@@ -91,7 +91,7 @@ FACET species, island
 ```
 
 The labels from multiple groups can be collapsed to a single stub column (or single rows) by using the `separator` setting to join the labels.
-Labels are joined after `FORMAT RENAMING` is applied.
+Labels are joined after `FORMAT LABEL` is applied.
 
 ```{ggsql}
 TABULATE * FROM my_data
@@ -99,11 +99,11 @@ FACET species, island
   SETTING separator => ' - '
 ```
 
-When group labels are placed in the stub, the labels can be controlled by `LABEL`.
+When group labels are placed in the stub, the labels can be controlled by `TITLE`.
 In case of `separator`-joined labels, the first variable (`species` in the example) displays the label.
 
 ```{ggsql}
 TABULATE * FROM my_data
 FACET species, island
-LABEL island => 'Place', species => 'Type'
+TITLE island => 'Place', species => 'Type'
 ```

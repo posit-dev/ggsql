@@ -8,7 +8,7 @@ Scales are an important concept in ggsql. While DRAW clauses define what to draw
 The `SCALE` clause takes a number of subclauses, all of them optional:
 
 ```ggsql SCALE <type> <aesthetic> FROM <input-range> TO <output-range> VIA
-<transform> SETTING <parameter> => <value>, ... RENAMING <break-value> =>
+<transform> SETTING <parameter> => <value>, ... LABEL <break-value> =>
 <string>, ... ```
 
 The `type` defines the class of scale to use. It can be one of five different types:
@@ -52,12 +52,12 @@ SETTING <parameter> => <value>, ...
 
 This clause behaves much like the `SETTINGS` clause in `DRAW`, in that it allows you to fine-tune specific behavior of the scale. Permissible settings depends on the scale type and are documented there.
 
-### `RENAMING`
+### `LABEL`
 ```ggsql
-RENAMING <break-value> => <string>, ...
+LABEL <break-value> => <string>, ...
 ```
 
-This clause works much like the `LABEL` clause but works on the break names of the scale. The general syntax is that you provide the name of the break on the left and what it should appear as on the right, e.g `'adelie' => 'Pygoscelis adeliae'`. The clause is understood as a look-up table in the sense that if you provide a renaming for a break that doesn't appear in the scale then nothing will happen and if a break exists but doesn't have a renaming defined it will go through unaltered. To suppress the label of a specific break you can rename it to `null`, e.g. `'adelie' => null`. This will not remove the break, only the label.
+This clause works much like the `TITLE` clause but works on the break names of the scale. The general syntax is that you provide the name of the break on the left and what it should appear as on the right, e.g `'adelie' => 'Pygoscelis adeliae'`. The subclause is understood as a look-up table in the sense that if you provide a renaming for a break that doesn't appear in the scale then nothing will happen and if a break exists but doesn't have a renaming defined it will go through unaltered. To suppress the label of a specific break you can rename it to `null`, e.g. `'adelie' => null`. This will not remove the break, only the label.
 
 #### Break formatting
 Apart from the direct renaming described above it is also possible to provide a formatting function to be applied to all breaks. The syntax for this is `* => '...'` with the content of the string on the right being a string interpolation format. The basic syntax for this is that the break value will be inserted into any place where `{}` appears. This means that e.g. `* => '{} species'` will result in the label "adelie species" for the break "adelie". Besides simply inserting the value as-is, it is also possible to apply a formatter to the label before insertion by naming a formatter inside the curly braces prefixed with `:`. Known formatters are:

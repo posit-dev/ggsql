@@ -107,7 +107,7 @@
 
 ; Property names
 (project_property_name) @property
-(label_type) @property
+(title_type) @property
 
 ; Operators
 "=" @operator

@@ -343,14 +343,14 @@ registers nothing rather than fabricating a scale.
   rather than as per-row code in the geom: a channel converted inside a geom
   cannot be pinned onto a key. A new unit-converted aesthetic belongs here.
 - **Breaks are ggsql's, majors and minors alike.** `apply_breaks` feeds
-  `break_labels()` in as `with_breaks_labeled`, so ticks (and `RENAMING`
+  `break_labels()` in as `with_breaks_labeled`, so ticks (and `LABEL`
   overrides) match ggsql — and therefore the Vega-Lite writer — exactly.
   `apply_minor_breaks` does the same for `numeric_minor_breaks()`, where
   `Some(vec![])` ("resolved to none") must stay distinct from `None` ("not
   resolved, fall back to hephaestus's automatic minors"). A *suppressed* label
   means different things on either side of the categorical divide, so the two
   take different accessors: a categorical scale keeps the break and blanks it
-  (`break_labels`, since `RENAMING <level> => null` must not shift the axis),
+  (`break_labels`, since `LABEL <level> => null` must not shift the axis),
   a numeric one drops it whole (`visible_break_labels`, since a binned
   `oob => 'squish'` terminal is not a real boundary).
 - **`reverse` is the writer's to apply**, like VL's `scale.reverse`: ggsql
@@ -394,7 +394,7 @@ Unfaceted is the same path with one panel, so there is no branch.
   dimension has no extent to compute there either, so `PanelScales::use_shared`
   points that dimension back at the global scale.
 - **Strip labels** come from `Level { key, value, is_null, label }` — `key`
-  selects rows, `label` is the text. Discrete levels honour `RENAMING`
+  selects rows, `label` is the text. Discrete levels honour `LABEL`
   (suppressed → `Some("")`, *not* `None`, so hephaestus still reserves the strip
   slot and panels stay aligned); binned levels join the column's bin **centre**
   back to its bin via `scales::bin_at_centre` and label it with the bin's range.
@@ -598,9 +598,9 @@ and titles ggsql resolved can be read back out of it.
 - Tick labels appear verbatim, in ggsql's own number formatting.
 - Facet strip labels appear **once each, in panel order** — previously asserted
   only against `build_panels`, never against rendered output.
-- `RENAMING` reaches both an axis rail and a legend key.
+- `LABEL` reaches both an axis rail and a legend key.
 - A binned scale's resolved edges reach the colorbar.
-- Every `LABEL` slot appears, and markdown is **parsed** — no literal `*`, and
+- Every `TITLE` slot appears, and markdown is **parsed** — no literal `*`, and
   the emphasised run carries a style.
 - `text=outline` → zero `<text>` and more `<path>`; `id-prefix` rewrites every
   id *and* every `url(#…)` reference.

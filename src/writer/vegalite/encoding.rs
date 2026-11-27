@@ -387,7 +387,7 @@ fn apply_title_to_encoding(
 
     if is_primary && !titled_families.contains(primary) {
         // Primary aesthetic: set title from explicit label or original_name
-        let explicit_label = spec.labels.entry(primary);
+        let explicit_label = spec.titles.entry(primary);
 
         if let Some(label_opt) = explicit_label {
             match label_opt {
@@ -409,7 +409,7 @@ fn apply_title_to_encoding(
         encoding["title"] = Value::Null;
     } else if !is_primary && !primary_exists && !titled_families.contains(primary) {
         // Variant without primary: allow first variant to claim title (for explicit labels)
-        if let Some(label_opt) = spec.labels.entry(primary) {
+        if let Some(label_opt) = spec.titles.entry(primary) {
             match label_opt {
                 Some(label) => {
                     encoding["title"] = super::split_label_on_newlines(label);
@@ -702,7 +702,7 @@ fn apply_breaks_to_encoding(
     }
 }
 
-/// Apply label mapping (RENAMING clause) via labelExpr
+/// Apply label mapping (LABEL subclause) via labelExpr
 fn apply_label_mapping_to_encoding(
     encoding: &mut Value,
     scale: &crate::plot::Scale,

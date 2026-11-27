@@ -596,7 +596,7 @@ Plot with labels
 
 VISUALISE x, y
 DRAW point
-LABEL title => 'My Plot', x => 'X Axis', y => 'Y Axis'
+TITLE main => 'My Plot', x => 'X Axis', y => 'Y Axis'
 
 --------------------------------------------------------------------------------
 
@@ -617,19 +617,19 @@ LABEL title => 'My Plot', x => 'X Axis', y => 'Y Axis'
       (draw_clause
         (geom_type)))
     (viz_clause
-      (label_clause
-        (label_assignment
-          (label_type
+      (title_clause
+        (title_assignment
+          (title_type
             (identifier
               (bare_identifier)))
           (string))
-        (label_assignment
-          (label_type
+        (title_assignment
+          (title_type
             (identifier
               (bare_identifier)))
           (string))
-        (label_assignment
-          (label_type
+        (title_assignment
+          (title_type
             (identifier
               (bare_identifier)))
           (string))))))
@@ -2564,12 +2564,12 @@ SELECT * FROM "data.csv"
                   (quoted_identifier))))))))))
 
 ================================================================================
-SCALE RENAMING with explicit mappings
+SCALE LABEL with explicit mappings
 ================================================================================
 
 VISUALISE x, y
 DRAW point
-SCALE DISCRETE x RENAMING 'A' => 'Alpha', 'B' => 'Beta'
+SCALE DISCRETE x LABEL 'A' => 'Alpha', 'B' => 'Beta'
 
 --------------------------------------------------------------------------------
 
@@ -2593,21 +2593,21 @@ SCALE DISCRETE x RENAMING 'A' => 'Alpha', 'B' => 'Beta'
       (scale_clause
         (scale_type_identifier)
         (aesthetic_name)
-        (renaming_clause
-          (renaming_assignment
+        (label_clause
+          (label_assignment
             name: (string)
             value: (string))
-          (renaming_assignment
+          (label_assignment
             name: (string)
             value: (string)))))))
 
 ================================================================================
-SCALE RENAMING with NULL suppression
+SCALE LABEL with NULL suppression
 ================================================================================
 
 VISUALISE x, y
 DRAW bar
-SCALE DISCRETE x RENAMING 'internal' => NULL
+SCALE DISCRETE x LABEL 'internal' => NULL
 
 --------------------------------------------------------------------------------
 
@@ -2631,18 +2631,18 @@ SCALE DISCRETE x RENAMING 'internal' => NULL
       (scale_clause
         (scale_type_identifier)
         (aesthetic_name)
-        (renaming_clause
-          (renaming_assignment
+        (label_clause
+          (label_assignment
             name: (string)
             value: (null_literal)))))))
 
 ================================================================================
-SCALE RENAMING with wildcard template
+SCALE LABEL with wildcard template
 ================================================================================
 
 VISUALISE x, y
 DRAW point
-SCALE CONTINUOUS x RENAMING * => '{} units'
+SCALE CONTINUOUS x LABEL * => '{} units'
 
 --------------------------------------------------------------------------------
 
@@ -2666,17 +2666,17 @@ SCALE CONTINUOUS x RENAMING * => '{} units'
       (scale_clause
         (scale_type_identifier)
         (aesthetic_name)
-        (renaming_clause
-          (renaming_assignment
+        (label_clause
+          (label_assignment
             value: (string)))))))
 
 ================================================================================
-SCALE RENAMING with mixed explicit and wildcard
+SCALE LABEL with mixed explicit and wildcard
 ================================================================================
 
 VISUALISE x, y
 DRAW bar
-SCALE DISCRETE x RENAMING 'A' => 'Alpha', * => 'Category {}'
+SCALE DISCRETE x LABEL 'A' => 'Alpha', * => 'Category {}'
 
 --------------------------------------------------------------------------------
 
@@ -2700,11 +2700,11 @@ SCALE DISCRETE x RENAMING 'A' => 'Alpha', * => 'Category {}'
       (scale_clause
         (scale_type_identifier)
         (aesthetic_name)
-        (renaming_clause
-          (renaming_assignment
+        (label_clause
+          (label_assignment
             name: (string)
             value: (string))
-          (renaming_assignment
+          (label_assignment
             value: (string)))))))
 
 ================================================================================
@@ -4579,10 +4579,10 @@ TABULATE * FROM sales
           (bare_identifier))))))
 
 ================================================================================
-TABULATE LABEL clause
+TABULATE TITLE clause
 ================================================================================
 
-TABULATE * FROM sales LABEL id => 'ID'
+TABULATE * FROM sales TITLE id => 'ID'
 
 --------------------------------------------------------------------------------
 
@@ -4598,9 +4598,9 @@ TABULATE * FROM sales LABEL id => 'ID'
         (identifier
           (bare_identifier))))
     (tab_clause
-      (label_clause
-        (label_assignment
-          name: (label_type
+      (title_clause
+        (title_assignment
+          name: (title_type
             (identifier
               (bare_identifier)))
           value: (string))))))
@@ -4755,10 +4755,10 @@ TABULATE * FROM sales SPAN foo, bar UNDER baz
           (bare_identifier))))))
 
 ================================================================================
-TABULATE LABEL then SPAN clause, any order
+TABULATE TITLE then SPAN clause, any order
 ================================================================================
 
-TABULATE * FROM sales LABEL id => 'ID' SPAN A OVER foo, bar
+TABULATE * FROM sales TITLE id => 'ID' SPAN A OVER foo, bar
 
 --------------------------------------------------------------------------------
 
@@ -4774,9 +4774,9 @@ TABULATE * FROM sales LABEL id => 'ID' SPAN A OVER foo, bar
         (identifier
           (bare_identifier))))
     (tab_clause
-      (label_clause
-        (label_assignment
-          name: (label_type
+      (title_clause
+        (title_assignment
+          name: (title_type
             (identifier
               (bare_identifier)))
           value: (string))))
@@ -4794,7 +4794,7 @@ TABULATE * FROM sales LABEL id => 'ID' SPAN A OVER foo, bar
 TABULATE FORMAT clause
 ================================================================================
 
-TABULATE * FROM sales FORMAT foo, bar SETTING width => '20%' RENAMING null => '-' FORMAT STUB baz
+TABULATE * FROM sales FORMAT foo, bar SETTING width => '20%' LABEL null => '-' FORMAT STUB baz
 
 --------------------------------------------------------------------------------
 
@@ -4823,8 +4823,8 @@ TABULATE * FROM sales FORMAT foo, bar SETTING width => '20%' RENAMING null => '-
                 (bare_identifier)))
             value: (parameter_value
               (string))))
-        (renaming_clause
-          (renaming_assignment
+        (label_clause
+          (label_assignment
             name: (null_literal)
             value: (string)))))
     (tab_clause
@@ -4922,7 +4922,7 @@ Label string containing URL with comment-like sequences
 
 VISUALISE
 DRAW point
-LABEL caption => 'Data source: <https://doi.org/10.1371/journal.pone.0090081> -- see appendix'
+TITLE caption => 'Data source: <https://doi.org/10.1371/journal.pone.0090081> -- see appendix'
 
 --------------------------------------------------------------------------------
 
@@ -4933,9 +4933,9 @@ LABEL caption => 'Data source: <https://doi.org/10.1371/journal.pone.0090081> --
       (draw_clause
         (geom_type)))
     (viz_clause
-      (label_clause
-        (label_assignment
-          (label_type
+      (title_clause
+        (title_assignment
+          (title_type
             (identifier
               (bare_identifier)))
           (string))))))
@@ -4948,7 +4948,7 @@ Line comment (double slash) between clauses
 VISUALISE x, y // trailing comment on the same line
 DRAW point
 // comment before a clause
-LABEL title => 'My Plot' // and one at the end
+TITLE main => 'My Plot' // and one at the end
 
 --------------------------------------------------------------------------------
 
@@ -4972,9 +4972,9 @@ LABEL title => 'My Plot' // and one at the end
         (geom_type)))
     (comment)
     (viz_clause
-      (label_clause
-        (label_assignment
-          (label_type
+      (title_clause
+        (title_assignment
+          (title_type
             (identifier
               (bare_identifier)))
           (string)))))
@@ -5011,7 +5011,7 @@ VISUALISE /* inline block */ x, y
 DRAW point
 /* a multi-line
    block comment */
-LABEL title => 'My Plot'
+TITLE main => 'My Plot'
 
 --------------------------------------------------------------------------------
 
@@ -5034,9 +5034,9 @@ LABEL title => 'My Plot'
         (geom_type)))
     (comment)
     (viz_clause
-      (label_clause
-        (label_assignment
-          (label_type
+      (title_clause
+        (title_assignment
+          (title_type
             (identifier
               (bare_identifier)))
           (string))))))
@@ -5048,7 +5048,7 @@ Comments alongside strings that contain comment-like text
 -- leading comment
 VISUALISE
 DRAW point
-LABEL caption => 'see https://example.com -- details' // trailing comment
+TITLE caption => 'see https://example.com -- details' // trailing comment
 
 --------------------------------------------------------------------------------
 
@@ -5060,9 +5060,9 @@ LABEL caption => 'see https://example.com -- details' // trailing comment
       (draw_clause
         (geom_type)))
     (viz_clause
-      (label_clause
-        (label_assignment
-          (label_type
+      (title_clause
+        (title_assignment
+          (title_type
             (identifier
               (bare_identifier)))
           (string)))))

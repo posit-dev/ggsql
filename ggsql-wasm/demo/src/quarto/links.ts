@@ -27,7 +27,7 @@ const CLAUSE_LINKS: Record<string, DocLink> = {
   scale: { url: "syntax/clause/scale", label: "SCALE clause" },
   facet: { url: "syntax/clause/facet", label: "FACET clause" },
   project: { url: "syntax/clause/project", label: "PROJECT clause" },
-  label: { url: "syntax/clause/label", label: "LABEL clause" },
+  title: { url: "syntax/clause/title", label: "TITLE clause" },
 };
 
 const GEOM_LINKS: Record<string, DocLink> = {
@@ -141,7 +141,7 @@ const POSITION_LINKS: Record<string, DocLink> = {
 // ---------------------------------------------------------------------------
 
 const CLAUSE_RE =
-  /\b(VISUALISE|VISUALIZE|DRAW|PLACE|SCALE|FACET|PROJECT|LABEL)\b/gi;
+  /\b(VISUALISE|VISUALIZE|DRAW|PLACE|SCALE|FACET|PROJECT|TITLE)\b/gi;
 
 const GEOM_RE =
   /\b(?:DRAW|PLACE)\s+(point|line|path|bar|area|tile|polygon|ribbon|histogram|density|smooth|boxplot|violin|text|segment|rule|linear|range)\b/gi;

@@ -1,6 +1,6 @@
 //! Break-label generation, delegated to [`zygos::LabelSpec`]
 //!
-//! ggsql's RENAMING clause maps to zygos's label spec: explicit
+//! ggsql's LABEL subclause maps to zygos's label spec: explicit
 //! `'value' => 'label'` entries become renames/suppressions and the
 //! wildcard `* => '...'` becomes the fallback template. Labels are
 //! rendered against the *current* break set on every call, so
@@ -25,7 +25,7 @@ use crate::plot::ArrayElement;
 /// the same key-typing rule the parser uses (`'A'` → string, `25` → number,
 /// `NULL` → null); the template round-trips as its source text. Shared by
 /// every spec type that stores a `LabelSpec` (`Scale::label_spec`,
-/// `Format::renaming`).
+/// `Format::label_spec`).
 pub(crate) mod label_spec_serde {
     use serde::{Deserialize, Deserializer, Serialize, Serializer};
     use zygos::{LabelSpec, Value};
@@ -46,7 +46,7 @@ pub(crate) mod label_spec_serde {
             Value::Number(n) => ArrayElement::Number(*n),
             Value::Bool(b) => ArrayElement::Boolean(*b),
             Value::Null => ArrayElement::Null,
-            // Only RENAMING literals reach a LabelSpec — string, number,
+            // Only LABEL literals reach a LabelSpec — string, number,
             // boolean, null. Anything else stringifies.
             other => ArrayElement::String(zygos::default_label(other, None).unwrap_or_default()),
         }
@@ -124,7 +124,7 @@ fn key_string(value: &Value) -> String {
         Value::Number(n) => n.to_string(),
         Value::Bool(b) => b.to_string(),
         Value::Null => "null".to_string(),
-        // Temporal and other keys never arise from RENAMING literals;
+        // Temporal and other keys never arise from LABEL literals;
         // give them their default rendering so the rule stays total.
         other => zygos::default_label(other, None).unwrap_or_default(),
     }
@@ -154,7 +154,7 @@ pub fn label_elements(spec: &LabelSpec, breaks: &[ArrayElement]) -> Vec<Option<S
 }
 
 /// Resolve one display text per row of a column, for `TABULATE FORMAT`'s
-/// `RENAMING` clause: an explicit rename wins outright (a suppression
+/// `LABEL` subclause: an explicit rename wins outright (a suppression
 /// blanks the cell's text); every other value goes through the spec's
 /// template or default rendering, except a null with no explicit `NULL`
 /// entry, which is left unresolved.

@@ -1,7 +1,7 @@
 //! `TABULATE FORMAT` resolution: `setup_formats` validates `SETTING`
 //! parameters and reshapes the per-clause formats into one `Format` per
 //! column, `apply_formats` replaces a column's values with their display
-//! text (`RENAMING`), and `resolve_column_properties` resolves a column's
+//! text (`LABEL`), and `resolve_column_properties` resolves a column's
 //! `SETTING` display properties.
 
 use std::collections::HashMap;
@@ -90,8 +90,8 @@ fn expand_format_columns(
 }
 
 /// Replace every column in `df` named in `formats` with its resolved
-/// display text. A column whose `Format` has no `RENAMING` at all
-/// (`renaming` empty) is left untouched.
+/// display text. A column whose `Format` has no `LABEL` at all
+/// (`label_spec` empty) is left untouched.
 pub(super) fn apply_formats(
     df: &DataFrame,
     formats: &HashMap<String, Format>,
@@ -100,9 +100,9 @@ pub(super) fn apply_formats(
     for (name, format) in formats {
         // Skip the per-row formatting pass for a column nobody asked to
         // reformat — the common `FORMAT ... SETTING ...` case.
-        let has_renaming =
-            !format.renaming.rename_is_empty() || format.renaming.template().is_some();
-        if !has_renaming {
+        let has_labels =
+            !format.label_spec.rename_is_empty() || format.label_spec.template().is_some();
+        if !has_labels {
             continue;
         }
 
@@ -110,7 +110,7 @@ pub(super) fn apply_formats(
             .column(name)
             .expect("setup_formats already checked this column exists")
             .clone();
-        let resolved = crate::format::resolve_column_values(&array, &format.renaming)
+        let resolved = crate::format::resolve_column_values(&array, &format.label_spec)
             .map_err(|e| GgsqlError::ValidationError(format!("FORMAT column '{name}': {e}")))?;
 
         let display: Vec<Option<String>> = resolved
@@ -153,14 +153,14 @@ mod tests {
     use crate::df;
 
     fn format_with(template: &str, mapping: Option<HashMap<String, Option<String>>>) -> Format {
-        let mut renaming = zygos::LabelSpec::new();
+        let mut label_spec = zygos::LabelSpec::new();
         if template != "{}" {
-            renaming.set_template(template);
+            label_spec.set_template(template);
         }
         for (key, value) in mapping.into_iter().flatten() {
             match value {
-                Some(label) => renaming.rename(zygos::Value::String(key.into()), label),
-                None => renaming.suppress(zygos::Value::String(key.into())),
+                Some(label) => label_spec.rename(zygos::Value::String(key.into()), label),
+                None => label_spec.suppress(zygos::Value::String(key.into())),
             };
         }
         Format {
@@ -168,7 +168,7 @@ mod tests {
             wildcard: false,
             target: None,
             settings: Parameters::new(),
-            renaming,
+            label_spec,
         }
     }
 
@@ -203,7 +203,7 @@ mod tests {
         // the earlier template survives; its settings are added.
         let price = resolved.get("price").unwrap();
         assert_eq!(
-            price.renaming.template().map(|t| t.source()),
+            price.label_spec.template().map(|t| t.source()),
             Some("{:num %.2f}")
         );
         assert_eq!(
@@ -213,13 +213,13 @@ mod tests {
 
         let amount = resolved.get("amount").unwrap();
         assert_eq!(
-            amount.renaming.template().map(|t| t.source()),
+            amount.label_spec.template().map(|t| t.source()),
             Some("{:num %.2f}")
         );
         assert!(!amount.settings.contains_key("hjust"));
 
         let currency = resolved.get("currency").unwrap();
-        assert!(currency.renaming.template().is_none());
+        assert!(currency.label_spec.template().is_none());
         assert_eq!(
             currency.settings.get("hjust"),
             Some(&ParameterValue::String("left".to_string()))
@@ -247,7 +247,7 @@ mod tests {
             resolved
                 .get("a")
                 .unwrap()
-                .renaming
+                .label_spec
                 .template()
                 .map(|t| t.source()),
             Some("{:num %.2f}")
@@ -256,7 +256,7 @@ mod tests {
             resolved
                 .get("b")
                 .unwrap()
-                .renaming
+                .label_spec
                 .template()
                 .map(|t| t.source()),
             Some("{:num %.2f}")
@@ -278,7 +278,7 @@ mod tests {
             resolved
                 .get("a")
                 .unwrap()
-                .renaming
+                .label_spec
                 .template()
                 .map(|t| t.source()),
             Some("{:num %.2f}")
@@ -287,7 +287,7 @@ mod tests {
             resolved
                 .get("b")
                 .unwrap()
-                .renaming
+                .label_spec
                 .template()
                 .map(|t| t.source()),
             Some("{:num %.2f}")
@@ -309,7 +309,7 @@ mod tests {
     }
 
     #[test]
-    fn leaves_a_column_untouched_when_its_format_has_no_renaming() {
+    fn leaves_a_column_untouched_when_its_format_has_no_labels() {
         let frame = df! { "price" => vec![1.0f64, 2.0] }.unwrap();
         let formats = HashMap::from([("price".to_string(), format_with("{}", None))]);
 
@@ -356,7 +356,7 @@ mod tests {
             wildcard: false,
             target: None,
             settings,
-            renaming: zygos::LabelSpec::new(),
+            label_spec: zygos::LabelSpec::new(),
         }
     }
 
@@ -379,7 +379,7 @@ mod tests {
             wildcard: false,
             target: Some(crate::ColumnSection::Stub),
             settings: Parameters::new(),
-            renaming: zygos::LabelSpec::new(),
+            label_spec: zygos::LabelSpec::new(),
         };
 
         assert_eq!(

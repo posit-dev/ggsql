@@ -69,7 +69,7 @@ DRAW line
     query: `SELECT * FROM ggsql:penguins
 VISUALISE
 DRAW point MAPPING bill_len AS x, bill_dep AS y, body_mass AS size, species AS color
-LABEL title => 'Penguin Measurements', x => 'Bill Length (mm)', y => 'Bill Depth (mm)'`,
+TITLE main => 'Penguin Measurements', x => 'Bill Length (mm)', y => 'Bill Depth (mm)'`,
   },
   {
     section: "Layers",
@@ -142,7 +142,7 @@ SCALE IDENTITY fill`,
 DRAW point
     MAPPING Month AS color
 SCALE ORDINAL color
-    RENAMING * => '{}th month'`,
+    LABEL * => '{}th month'`,
   },
   {
     section: "Scales",
@@ -151,7 +151,7 @@ SCALE ORDINAL color
 DRAW bar
 FACET species
 SCALE panel FROM ['Adelie', null]
-    RENAMING null => 'The rest'`,
+    LABEL null => 'The rest'`,
   },
 
   // === Aesthetics ===
@@ -210,7 +210,7 @@ SCALE shape TO ['star', 'bowtie', 'square-plus']`,
     query: `SELECT * FROM ggsql:penguins
 VISUALISE
 DRAW point MAPPING bill_len AS x, bill_dep AS y, body_mass AS size
-LABEL title => 'Penguin Measurements', x => 'Bill Length (mm)', y => 'Bill Depth (mm)'`,
+TITLE main => 'Penguin Measurements', x => 'Bill Length (mm)', y => 'Bill Depth (mm)'`,
   },
 
   // === Spatial ===
@@ -234,7 +234,7 @@ DRAW spatial
   MAPPING population AS fill
   SETTING opacity => 1
 SCALE fill TO viridis VIA log
-LABEL title => 'Population by country', fill => 'Population'`,
+TITLE main => 'Population by country', fill => 'Population'`,
   },
   {
     section: "Spatial",

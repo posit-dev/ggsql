@@ -145,18 +145,18 @@ SCALE BINNED x
 ```
 
 ## Renaming
-Breaks are generally named by their value. However, you may wish to rename one, several, or all of these. The `RENAMING` clause allows you to do that both by directly renaming a specific break or by providing a formatting function.
+Breaks are generally named by their value. However, you may wish to rename one, several, or all of these. The `LABEL` subclause allows you to do that both by directly renaming a specific break or by providing a formatting function.
 
 ### Direct renaming
-When you provide a break value on the left and a break exists at that value then it will take on the label specified on the right. For example adding `RENAMING 0 => 'Nil'` will ensure that if there is a break at 0 it will appear as "Nil" on the legend/axis
+When you provide a break value on the left and a break exists at that value then it will take on the label specified on the right. For example adding `LABEL 0 => 'Nil'` will ensure that if there is a break at 0 it will appear as "Nil" on the legend/axis
 
 ### Label formatting
-Besides direct renaming you can also provide a formatting string if you want the same to happen to all labels, e.g. add a prefix or suffix. The syntax for this is `RENAMING * => '... {} ...'`. The current label will be inserted into the `{}` to produce the new label. Besides simply inserting the break value into the string, we can also provide a formatter. Of special interest to binned scales are the `:time` and `:num` formatters which lets you control how temporal and numeric values are presented. You can read more about these formatters in [the break formatting section of the `SCALE` documentation](../../clause/scale.qmd#break-formatting)
+Besides direct renaming you can also provide a formatting string if you want the same to happen to all labels, e.g. add a prefix or suffix. The syntax for this is `LABEL * => '... {} ...'`. The current label will be inserted into the `{}` to produce the new label. Besides simply inserting the break value into the string, we can also provide a formatter. Of special interest to binned scales are the `:time` and `:num` formatters which lets you control how temporal and numeric values are presented. You can read more about these formatters in [the break formatting section of the `SCALE` documentation](../../clause/scale.qmd#break-formatting)
 
 You can combine formatting with direct renaming in which case the direct renaming has priority over the formatting.
 
 ### Labels in binned legends
-With some writers the legend for binned scales looks like the standard legend but with the label showing the range of the bin. In these situations the renaming is applied before the range label is being created. For example, if you have a `RENAMING 0 => 'zero'`, then the final label will become "zero – 10" (assuming the upper end of the bin is 10). There is currently no way to take control over the format of the range label.
+With some writers the legend for binned scales looks like the standard legend but with the label showing the range of the bin. In these situations the renaming is applied before the range label is being created. For example, if you have a `LABEL 0 => 'zero'`, then the final label will become "zero – 10" (assuming the upper end of the bin is 10). There is currently no way to take control over the format of the range label.
 
 If `oob => 'squish'` then the terminal labels are formatted as e.g. "≥ 10" to reflect the terminal bins are open-ended. It still applies that the renaming is applied before constructing the final label
 
@@ -168,7 +168,7 @@ If `oob => 'squish'` then the terminal labels are formatted as e.g. "≥ 10" to 
 VISUALISE bill_dep AS x FROM ggsql:penguins
 DRAW bar
 SCALE BINNED x
-  RENAMING 20 => 'Twenty'
+  LABEL 20 => 'Twenty'
 ```
 
 #### Adding suffix to break labels
@@ -177,7 +177,7 @@ SCALE BINNED x
 VISUALISE bill_dep AS x FROM ggsql:penguins
 DRAW bar
 SCALE BINNED x
-  RENAMING * => '{} mm'
+  LABEL * => '{} mm'
 ```
 
 #### Using a formatter to control number formats
@@ -186,5 +186,5 @@ SCALE BINNED x
 VISUALISE bill_dep AS x FROM ggsql:penguins
 DRAW bar
 SCALE BINNED x
-  RENAMING * => '{:num %.1f}'
+  LABEL * => '{:num %.1f}'
 ```

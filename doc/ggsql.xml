@@ -98,7 +98,7 @@
       <item>FILTER</item>
       <item>ORDER</item>
       <item>PARTITION</item>
-      <item>RENAMING</item>
+      <item>LABEL</item>
       <item>TO</item>
       <item>VIA</item>
       <item>OVER</item>
@@ -249,8 +249,8 @@
 
     <!-- Label Properties -->
     <list name="label_properties">
-      <item>title</item>
-      <item>subtitle</item>
+      <item>main</item>
+      <item>sub</item>
       <item>caption</item>
       <item>tag</item>
     </list>
@@ -389,7 +389,7 @@
         <WordDetect attribute="Keyword" context="ScaleClause" String="SCALE" insensitive="true"/>
         <WordDetect attribute="Keyword" context="ProjectClause" String="PROJECT" insensitive="true"/>
         <WordDetect attribute="Keyword" context="FacetClause" String="FACET" insensitive="true"/>
-        <WordDetect attribute="Keyword" context="LabelClause" String="LABEL" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="TitleClause" String="TITLE" insensitive="true"/>
         <WordDetect attribute="Keyword" context="TabulateClause" String="TABULATE" insensitive="true"/>
 
         <!-- Fat arrow operator -->
@@ -437,7 +437,7 @@
         <WordDetect attribute="Keyword" context="ScaleClause" String="SCALE" insensitive="true"/>
         <WordDetect attribute="Keyword" context="ProjectClause" String="PROJECT" insensitive="true"/>
         <WordDetect attribute="Keyword" context="FacetClause" String="FACET" insensitive="true"/>
-        <WordDetect attribute="Keyword" context="LabelClause" String="LABEL" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="TitleClause" String="TITLE" insensitive="true"/>
         <WordDetect attribute="Keyword" context="TabulateClause" String="TABULATE" insensitive="true"/>
         <WordDetect attribute="Keyword" context="Normal" String="VISUALISE" insensitive="true"/>
         <WordDetect attribute="Keyword" context="Normal" String="VISUALIZE" insensitive="true"/>
@@ -478,7 +478,7 @@
         <WordDetect attribute="Keyword" context="ScaleClause" String="SCALE" insensitive="true"/>
         <WordDetect attribute="Keyword" context="ProjectClause" String="PROJECT" insensitive="true"/>
         <WordDetect attribute="Keyword" context="FacetClause" String="FACET" insensitive="true"/>
-        <WordDetect attribute="Keyword" context="LabelClause" String="LABEL" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="TitleClause" String="TITLE" insensitive="true"/>
         <WordDetect attribute="Keyword" context="TabulateClause" String="TABULATE" insensitive="true"/>
         <WordDetect attribute="Keyword" context="Normal" String="VISUALISE" insensitive="true"/>
         <WordDetect attribute="Keyword" context="Normal" String="VISUALIZE" insensitive="true"/>
@@ -518,7 +518,7 @@
         <WordDetect attribute="Keyword" context="ScaleClause" String="SCALE" insensitive="true"/>
         <WordDetect attribute="Keyword" context="ProjectClause" String="PROJECT" insensitive="true"/>
         <WordDetect attribute="Keyword" context="FacetClause" String="FACET" insensitive="true"/>
-        <WordDetect attribute="Keyword" context="LabelClause" String="LABEL" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="TitleClause" String="TITLE" insensitive="true"/>
         <WordDetect attribute="Keyword" context="TabulateClause" String="TABULATE" insensitive="true"/>
         <WordDetect attribute="Keyword" context="Normal" String="VISUALISE" insensitive="true"/>
         <WordDetect attribute="Keyword" context="Normal" String="VISUALIZE" insensitive="true"/>
@@ -565,7 +565,7 @@
         <WordDetect attribute="Keyword" context="ScaleClause" String="SCALE" insensitive="true"/>
         <WordDetect attribute="Keyword" context="ProjectClause" String="PROJECT" insensitive="true"/>
         <WordDetect attribute="Keyword" context="FacetClause" String="FACET" insensitive="true"/>
-        <WordDetect attribute="Keyword" context="LabelClause" String="LABEL" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="TitleClause" String="TITLE" insensitive="true"/>
         <WordDetect attribute="Keyword" context="TabulateClause" String="TABULATE" insensitive="true"/>
         <WordDetect attribute="Keyword" context="Normal" String="VISUALISE" insensitive="true"/>
         <WordDetect attribute="Keyword" context="Normal" String="VISUALIZE" insensitive="true"/>
@@ -609,7 +609,7 @@
         <WordDetect attribute="Keyword" context="ScaleClause" String="SCALE" insensitive="true"/>
         <WordDetect attribute="Keyword" context="ProjectClause" String="PROJECT" insensitive="true"/>
         <WordDetect attribute="Keyword" context="FacetClause" String="FACET" insensitive="true"/>
-        <WordDetect attribute="Keyword" context="LabelClause" String="LABEL" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="TitleClause" String="TITLE" insensitive="true"/>
         <WordDetect attribute="Keyword" context="TabulateClause" String="TABULATE" insensitive="true"/>
         <WordDetect attribute="Keyword" context="Normal" String="VISUALISE" insensitive="true"/>
         <WordDetect attribute="Keyword" context="Normal" String="VISUALIZE" insensitive="true"/>
@@ -623,7 +623,7 @@
         <WordDetect attribute="Attribute" context="#stay" String="ncol" insensitive="true"/>
         <WordDetect attribute="Attribute" context="#stay" String="missing" insensitive="true"/>
 
-        <!-- Wildcard for RENAMING -->
+        <!-- Wildcard for LABEL -->
         <DetectChar char="*" attribute="Operator" context="#stay"/>
 
         <!-- Sub-keywords -->
@@ -638,8 +638,8 @@
         <DetectChar char="," attribute="Symbol" context="#stay"/>
       </context>
 
-      <!-- LABEL clause context -->
-      <context name="LabelClause" attribute="Normal Text" lineEndContext="#stay">
+      <!-- TITLE clause context -->
+      <context name="TitleClause" attribute="Normal Text" lineEndContext="#stay">
         <Detect2Chars char="-" char1="-" attribute="Comment" context="Comment"/>
         <Detect2Chars char="/" char1="*" attribute="Comment" context="CommentMulti" beginRegion="comment"/>
         <DetectChar char="'" attribute="String" context="StringSingle"/>
@@ -652,7 +652,7 @@
         <WordDetect attribute="Keyword" context="ScaleClause" String="SCALE" insensitive="true"/>
         <WordDetect attribute="Keyword" context="ProjectClause" String="PROJECT" insensitive="true"/>
         <WordDetect attribute="Keyword" context="FacetClause" String="FACET" insensitive="true"/>
-        <WordDetect attribute="Keyword" context="LabelClause" String="LABEL" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="TitleClause" String="TITLE" insensitive="true"/>
         <WordDetect attribute="Keyword" context="TabulateClause" String="TABULATE" insensitive="true"/>
         <WordDetect attribute="Keyword" context="SpanClause" String="SPAN" insensitive="true"/>
         <WordDetect attribute="Keyword" context="FormatClause" String="FORMAT" insensitive="true"/>
@@ -687,7 +687,7 @@
         <RegExpr attribute="Number" context="#stay" String="-?[0-9]+\.?[0-9]*([eE][+-]?[0-9]+)?"/>
 
         <!-- Exit to other clause contexts -->
-        <WordDetect attribute="Keyword" context="LabelClause" String="LABEL" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="TitleClause" String="TITLE" insensitive="true"/>
         <WordDetect attribute="Keyword" context="TabulateClause" String="TABULATE" insensitive="true"/>
         <WordDetect attribute="Keyword" context="SpanClause" String="SPAN" insensitive="true"/>
         <WordDetect attribute="Keyword" context="FormatClause" String="FORMAT" insensitive="true"/>
@@ -725,7 +725,7 @@
         <RegExpr attribute="Number" context="#stay" String="-?[0-9]+\.?[0-9]*([eE][+-]?[0-9]+)?"/>
 
         <!-- Exit to other clause contexts -->
-        <WordDetect attribute="Keyword" context="LabelClause" String="LABEL" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="TitleClause" String="TITLE" insensitive="true"/>
         <WordDetect attribute="Keyword" context="TabulateClause" String="TABULATE" insensitive="true"/>
         <WordDetect attribute="Keyword" context="SpanClause" String="SPAN" insensitive="true"/>
         <WordDetect attribute="Keyword" context="FormatClause" String="FORMAT" insensitive="true"/>
@@ -766,7 +766,7 @@
         <RegExpr attribute="Number" context="#stay" String="-?[0-9]+\.?[0-9]*([eE][+-]?[0-9]+)?"/>
 
         <!-- Exit to other clause contexts -->
-        <WordDetect attribute="Keyword" context="LabelClause" String="LABEL" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="TitleClause" String="TITLE" insensitive="true"/>
         <WordDetect attribute="Keyword" context="TabulateClause" String="TABULATE" insensitive="true"/>
         <WordDetect attribute="Keyword" context="SpanClause" String="SPAN" insensitive="true"/>
         <WordDetect attribute="Keyword" context="FormatClause" String="FORMAT" insensitive="true"/>
@@ -777,9 +777,9 @@
         <WordDetect attribute="Keyword" context="Normal" String="WHERE" insensitive="true"/>
         <WordDetect attribute="Keyword" context="Normal" String="WITH" insensitive="true"/>
 
-        <!-- SETTING and RENAMING (only these two supported here) -->
+        <!-- SETTING and LABEL (only these two supported here) -->
         <WordDetect attribute="Keyword" context="#stay" String="SETTING" insensitive="true"/>
-        <WordDetect attribute="Keyword" context="#stay" String="RENAMING" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="#stay" String="LABEL" insensitive="true"/>
 
         <!-- FORMAT target identifiers (default BODY) -->
         <WordDetect attribute="Keyword" context="#stay" String="BODY" insensitive="true"/>
@@ -792,7 +792,7 @@
         <WordDetect attribute="Attribute" context="#stay" String="hjust" insensitive="true"/>
         <WordDetect attribute="Attribute" context="#stay" String="width" insensitive="true"/>
 
-        <!-- Wildcard for RENAMING -->
+        <!-- Wildcard for LABEL -->
         <DetectChar char="*" attribute="Operator" context="#stay"/>
 
         <StringDetect attribute="Operator" context="#stay" String="=&gt;"/>
@@ -818,7 +818,7 @@
         <WordDetect attribute="Keyword" context="ScaleClause" String="SCALE" insensitive="true"/>
         <WordDetect attribute="Keyword" context="ProjectClause" String="PROJECT" insensitive="true"/>
         <WordDetect attribute="Keyword" context="FacetClause" String="FACET" insensitive="true"/>
-        <WordDetect attribute="Keyword" context="LabelClause" String="LABEL" insensitive="true"/>
+        <WordDetect attribute="Keyword" context="TitleClause" String="TITLE" insensitive="true"/>
         <WordDetect attribute="Keyword" context="TabulateClause" String="TABULATE" insensitive="true"/>
         <WordDetect attribute="Keyword" context="VisualiseClause" String="VISUALISE" insensitive="true"/>
         <WordDetect attribute="Keyword" context="VisualiseClause" String="VISUALIZE" insensitive="true"/>

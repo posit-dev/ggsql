@@ -196,7 +196,7 @@ impl PlotMetadata {
 
 /// A plot's name for the pane's history list.
 ///
-/// The `LABEL title` if the query set one, else a running count, matching how
+/// The `TITLE main` if the query set one, else a running count, matching how
 /// the other language backends name an untitled figure.
 pub fn plot_name(title: Option<&str>, sequence: u32) -> String {
     match title.map(str::trim).filter(|t| !t.is_empty()) {

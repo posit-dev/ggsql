@@ -14,7 +14,7 @@ FROM sales
 WHERE year = 2024
 VISUALISE date AS x, revenue AS y, region AS color
 DRAW line
-LABEL title => 'Sales by Region'
+TITLE main => 'Sales by Region'
 ```
 
 ## Architecture
@@ -39,7 +39,6 @@ pub mod array_util;
 pub mod compute;
 pub mod dataframe;
 pub mod format;
-pub mod labels;
 pub mod naming;
 pub mod params;
 pub mod parser;
@@ -47,6 +46,7 @@ pub mod plot;
 pub mod spec;
 pub mod sql;
 pub mod table;
+pub mod titles;
 pub mod util;
 
 pub mod reader;

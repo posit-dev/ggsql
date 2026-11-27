@@ -29,4 +29,4 @@ The recognized suffixes are:
 
 Which version of an aesthetic to use depends on the layer. 
 All aesthetics within a family use the same scale, which is named after its primary aesthetic. 
-This means that even when rendering a layer that only uses `xmin` and `xmax`, you will still scale it by writing `SCALE x ...` and label it by writing `LABEL x => ...`
+This means that even when rendering a layer that only uses `xmin` and `xmax`, you will still scale it by writing `SCALE x ...` and label it by writing `TITLE x => ...`

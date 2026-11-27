@@ -6,7 +6,7 @@
 -- ============================================================================
 VISUALISE hp AS x, mpg AS y, cyl AS color FROM 'mtcars.csv'
 DRAW point
-LABEL title => 'Horsepower vs Fuel Efficiency',
+TITLE main => 'Horsepower vs Fuel Efficiency',
       x => 'Horsepower',
       y => 'Miles per Gallon'
 
@@ -29,7 +29,7 @@ DRAW point SETTING size => 3
 SCALE x SETTING type => 'date'
 SCALE color TO viridis
 FACET region SETTING scales => 'free_y'
-LABEL title => 'Sales Trends by Region',
+TITLE main => 'Sales Trends by Region',
       x => 'Month',
       y => 'Total Quantity',
       caption => 'Data from 2024'
@@ -46,7 +46,7 @@ LIMIT 10
 VISUALISE category AS x, total AS y, category AS fill
 DRAW bar
 PROJECT y, x TO cartesian
-LABEL title => 'Top 10 Product Categories',
+TITLE main => 'Top 10 Product Categories',
       x => 'Category',
       y => 'Total Sales'
 
@@ -59,7 +59,7 @@ GROUP BY region
 VISUALISE region AS x, count AS y, region AS fill
 DRAW bar
 PROJECT TO polar
-LABEL title => 'Customer Distribution by Region'
+TITLE main => 'Customer Distribution by Region'
 
 -- ============================================================================
 -- Example 5: Faceted Histogram
@@ -71,7 +71,7 @@ VISUALISE age AS x, gender AS fill
 DRAW histogram
 SCALE x SETTING type => 'linear', limits => (18, 80)
 FACET gender SETTING scales => 'fixed'
-LABEL title => 'Age Distribution by Gender',
+TITLE main => 'Age Distribution by Gender',
       x => 'Age',
       y => 'Count'
 
@@ -100,7 +100,7 @@ DRAW line
 SCALE x SETTING type => 'date'
 SCALE x FROM ('2024-01-01', '2024-12-31')
 SCALE y SETTING type => 'linear', limits => (0, 100)
-LABEL title => 'Temperature Range (Last 30 Days)',
+TITLE main => 'Temperature Range (Last 30 Days)',
       x => 'Date',
       y => 'Temperature (°C)',
       caption => 'Source: Weather Station Alpha'
@@ -125,7 +125,7 @@ SCALE x SETTING type => 'date'
 SCALE y SETTING type => 'log10'
 SCALE DISCRETE color FROM ('Electronics', 'Clothing', 'Food', 'Books')
 FACET category BY employee_name SETTING scales => 'free_y'
-LABEL title => 'Sales Performance Analysis',
+TITLE main => 'Sales Performance Analysis',
       x => 'Sale Date',
       y => 'Revenue (log scale)',
       color => 'Product Category',
@@ -147,10 +147,10 @@ VISUALISE quarter AS x, revenue AS y, category AS fill FROM quarterly_breakdown
 DRAW area SETTING opacity => 0.7
 SCALE x SETTING type => 'date'
 SCALE DISCRETE fill FROM ('A', 'B', 'C', 'D') TO plasma
-LABEL title => 'Quarterly Revenue by Category',
+TITLE main => 'Quarterly Revenue by Category',
       x => 'Quarter',
       y => 'Revenue ($)',
-      subtitle => 'Stacked Area Chart'
+      sub => 'Stacked Area Chart'
 
 -- ============================================================================
 -- Example 9: Boxplot with Violin Overlay
@@ -162,7 +162,7 @@ VISUALISE category AS x, price AS y
 DRAW boxplot
 DRAW violin SETTING opacity => 0.3
 SCALE y FROM (0, 500)
-LABEL title => 'Price Distribution by Category',
+TITLE main => 'Price Distribution by Category',
       x => 'Product Category',
       y => 'Price ($)'
 
@@ -186,7 +186,7 @@ SCALE color TO viridis
 SCALE size SETTING limits => (0, 10000)
 SCALE x FROM (0, 1000)
 SCALE y FROM (0, 5)
-LABEL title => 'Featured Products: Price vs Rating',
+TITLE main => 'Featured Products: Price vs Rating',
       x => 'Price ($)',
       y => 'Customer Rating',
       size => 'Total Sales'
@@ -202,12 +202,12 @@ WITH sales_summary AS (
 -- First visualization: by region
 VISUALISE region AS x, total AS y, region AS fill FROM sales_summary
 DRAW bar
-LABEL title => 'Sales by Region'
+TITLE main => 'Sales by Region'
 -- Second visualization: by category
 VISUALISE category AS x, total AS y, category AS fill FROM sales_summary
 DRAW bar
 PROJECT y, x TO cartesian
-LABEL title => 'Sales by Category'
+TITLE main => 'Sales by Category'
 
 -- ============================================================================
 -- Example 12: FILTER clause for layer-specific filtering
@@ -218,7 +218,7 @@ VISUALISE date AS x, value AS y, category AS color
 DRAW line
 DRAW point FILTER value > 50
 SCALE x SETTING type => 'date'
-LABEL title => 'Metrics with Highlighted Points Above 50'
+TITLE main => 'Metrics with Highlighted Points Above 50'
 
 -- ============================================================================
 -- Comments and String Handling

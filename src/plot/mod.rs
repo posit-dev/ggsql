@@ -8,7 +8,7 @@
 //!
 //! The module is organized into submodules:
 //!
-//! - `main` - Main Plot struct and Labels/Theme types
+//! - `main` - Main Plot struct and Titles/Theme types
 //! - `types` - Value types: Mappings, AestheticValue, ParameterValue, etc.
 //! - `layer` - Layer struct and Geom subsystem
 //! - `scale` - Scale and Guide types

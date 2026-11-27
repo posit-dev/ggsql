@@ -88,13 +88,13 @@ SCALE color FROM ('Adelie', 'Chinstrap', 'Gentoo')
 ```
 
 ## Renaming
-Breaks are generally named by their value. However, you may wish to rename one, several, or all of these. The `RENAMING` clause allows you to do that both by directly renaming a specific break or by providing a formatting function.
+Breaks are generally named by their value. However, you may wish to rename one, several, or all of these. The `LABEL` subclause allows you to do that both by directly renaming a specific break or by providing a formatting function.
 
 ### Direct renaming
-When you provide a break value on the left and a break exists at that value then it will take on the label specified on the right. For example adding RENAMING 'Adelie' => 'Adélie' will ensure that the species name will get the correct diacrit in the label.
+When you provide a break value on the left and a break exists at that value then it will take on the label specified on the right. For example adding LABEL 'Adelie' => 'Adélie' will ensure that the species name will get the correct diacrit in the label.
 
 ### Label formatting
-Besides direct renaming you can also provide a formatting string if you want the same to happen to all labels, e.g. add a prefix or suffix. The syntax for this is `RENAMING * => '... {} ...'`. The current label will be inserted into the `{}` to produce the new label. Besides simply inserting the break value into the string, we can also provide a formatter. Of special interest to discrete scales are the `:Title`, `:lower`, and `:UPPER` formatters which lets you control the casing of strings. You can read more about these formatters in [the break formatting section of the `SCALE` documentation](../../clause/scale.qmd#break-formatting)
+Besides direct renaming you can also provide a formatting string if you want the same to happen to all labels, e.g. add a prefix or suffix. The syntax for this is `LABEL * => '... {} ...'`. The current label will be inserted into the `{}` to produce the new label. Besides simply inserting the break value into the string, we can also provide a formatter. Of special interest to discrete scales are the `:Title`, `:lower`, and `:UPPER` formatters which lets you control the casing of strings. You can read more about these formatters in [the break formatting section of the `SCALE` documentation](../../clause/scale.qmd#break-formatting)
 
 You can combine formatting with direct renaming in which case the direct renaming has priority over the formatting.
 
@@ -106,7 +106,7 @@ You can combine formatting with direct renaming in which case the direct renamin
 VISUALISE sex AS x FROM ggsql:penguins
 DRAW bar
 SCALE x
-  RENAMING 'null' => 'missing'
+  LABEL 'null' => 'missing'
 SCALE y FROM (0, null)
 ```
 
@@ -116,7 +116,7 @@ SCALE y FROM (0, null)
 VISUALISE species AS x FROM ggsql:penguins
 DRAW bar
 SCALE x
-  RENAMING * => 'Species: {}'
+  LABEL * => 'Species: {}'
 SCALE y FROM (0, null)
 ```
 
@@ -126,5 +126,5 @@ SCALE y FROM (0, null)
 VISUALISE bill_len AS x, bill_dep AS y, sex AS color FROM ggsql:penguins
 DRAW point
 SCALE color
-  RENAMING * => '{:Title}'
+  LABEL * => '{:Title}'
 ```

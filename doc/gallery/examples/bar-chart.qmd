@@ -15,8 +15,8 @@ SELECT species, COUNT(*) as count FROM ggsql:penguins
 GROUP BY species
 VISUALISE species AS x, count AS y, species AS fill
 DRAW bar
-LABEL
-  title => 'Penguin Count by Species',
+TITLE
+  main => 'Penguin Count by Species',
   x => 'Species',
   y => 'Count'
 ```
@@ -41,8 +41,8 @@ GROUP BY species
 VISUALISE species AS x, count AS y, species AS fill
 DRAW bar
 PROJECT y, x TO cartesian
-LABEL
-  title => 'Penguin Count by Species',
+TITLE
+  main => 'Penguin Count by Species',
   x => 'Species',
   y => 'Count'
 ```
@@ -55,8 +55,8 @@ When you don't specify a y aesthetic, ggsql automatically counts occurrences:
 SELECT species FROM ggsql:penguins
 VISUALISE species AS x
 DRAW bar
-LABEL
-  title => 'Penguin Distribution',
+TITLE
+  main => 'Penguin Distribution',
   x => 'Species',
   y => 'Count'
 ```

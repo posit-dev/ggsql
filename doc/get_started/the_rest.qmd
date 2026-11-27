@@ -43,13 +43,13 @@ Faceting is applied with the [`FACET`](../syntax/clause/facet.qmd) clause. It al
 
 There is an alternative to using the `FACET` variable, which is to map the variables directly to the facet aesthetics. There are three of these: `panel` is used when faceting by a single variable and `row` and `column` is used when faceting by two variables. `FACET var` is thus equivalent to `VISUALISE var AS panel`. Whichever you choose to use is thus a matter of personal preference, as well as whether you also need to modify faceting behavior (in which case you'd need a `FACET` clause anyway).
 
-### `LABEL`
-ggsql automatically labels the axes and legends in your plot by the column name of the data mapped to it. However, you often want to provide more descriptive names as well as a title to give context to the plot. All of this is accomplished with the [`LABEL`](../syntax/clause/label.qmd) clause by setting the label text for both titles, subtitles, etc. as well as any 
-aesthetic you have mapped. A `LABEL` clause may end up looking like this:
+### `TITLE`
+ggsql automatically labels the axes and legends in your plot by the column name of the data mapped to it. However, you often want to provide more descriptive names as well as a title to give context to the plot. All of this is accomplished with the [`TITLE`](../syntax/clause/title.qmd) clause by setting the label text for both titles, subtitles, etc. as well as any 
+aesthetic you have mapped. A `TITLE` clause may end up looking like this:
 
 ```ggsql
-LABEL
-  title => "Average wingspan of a cartoon owl"
+TITLE
+  main => "Average wingspan of a cartoon owl"
   x => "Radius of first circle (cm)"
   y => "Wingspan (cm)"
 ```
@@ -105,7 +105,7 @@ SCALE panel FROM ('Biscoe', 'Dream')
 
 Above, we use the `free` parameter of facet to allow each facet to have their own angle scale. Further, we use `SCALE` on the panel aesthetic to only show panels for the Biscoe and Dream islands.
 
-We can use `LABEL` to add a bit more context to our final plot:
+We can use `TITLE` to add a bit more context to our final plot:
 
 ```{ggsql}
 VISUALISE species AS fill FROM ggsql:penguins
@@ -114,9 +114,9 @@ PROJECT TO polar
 FACET island
   SETTING free => 'angle'
 SCALE panel FROM ('Biscoe', 'Dream')
-LABEL
-  title => 'Distribution of penguin species between islands',
-  subtitle => 'Compared across 344 penguins',
+TITLE
+  main => 'Distribution of penguin species between islands',
+  sub => 'Compared across 344 penguins',
   fill => 'Species'
 ```
 

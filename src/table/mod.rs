@@ -3,7 +3,7 @@
 //! Defines the typed `Table` structure that represents parsed `TABULATE`
 //! statements, parallel to how `plot` defines `Plot` for `VISUALISE`
 //! statements: `source` (from `TABULATE FROM`), `selection` (from
-//! `TABULATE`'s own column list), `labels` (from `TABULATE LABEL`), `spans`
+//! `TABULATE`'s own column list), `titles` (from `TABULATE TITLE`), `spans`
 //! (from `TABULATE SPAN`), `formats` (from `TABULATE FORMAT`), and `facet`
 //! (from `TABULATE FACET`) are populated so far.
 
@@ -23,11 +23,11 @@ pub(crate) use spanner::{create_spanners, reorder_table_columns};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-use crate::labels::Labels;
 use crate::params::{
     DefaultParamValue, NumberConstraint, ParamConstraint, ParamDefinition, Parameters,
 };
 use crate::plot::facet::Facet;
+use crate::titles::Titles;
 use crate::DataSource;
 
 /// Complete ggsql table specification.
@@ -43,11 +43,11 @@ pub struct Table {
     /// keyword (e.g. `TABULATE bill_len, bill_dep AS Depth`) — mandatory in
     /// the grammar. Defaults to `*` for a `Table` built without the parser.
     pub selection: Vec<SelectionItem>,
-    /// Column display labels (from `TABULATE LABEL`). Reuses `labels::Labels`
+    /// Column display labels (from `TABULATE TITLE`). Reuses `titles::Titles`
     /// as-is — the same "name → text, None = suppress" shape applies
     /// unchanged, just keyed by column name instead of aesthetic name. An
-    /// empty `Labels` means no overrides at all.
-    pub labels: Labels,
+    /// empty `Titles` means no overrides at all.
+    pub titles: Titles,
     /// Column spanners (from `TABULATE SPAN`), one per `SPAN` clause written
     /// — a query with several `SPAN` clauses produces one `Spanner` each,
     /// not one `Spanner` with several groups (`SPAN` itself never bundles
@@ -92,7 +92,7 @@ impl Table {
         Self {
             source: None,
             selection: vec![SelectionItem::Wildcard],
-            labels: Labels::default(),
+            titles: Titles::default(),
             spans: Vec::new(),
             formats: Vec::new(),
             facet: None,
@@ -194,10 +194,10 @@ impl Table {
     /// Fully resolve this table's spanners for execution: settings
     /// validated and defaults filled, `OVER` ids folded, feature boundaries
     /// checked, columns checked against the real schema, and each `label`
-    /// overlaid with any `LABEL <id> => ...` entry.
+    /// overlaid with any `TITLE <id> => ...` entry.
     pub fn resolve_spanners(
         &self,
-        labels: &Labels,
+        titles: &Titles,
         column_names: Option<&[String]>,
     ) -> Result<Vec<Spanner>, String> {
         let spans = self.resolve_spanner_ids()?;
@@ -216,7 +216,7 @@ impl Table {
                 span.settings = span
                     .resolve_settings()
                     .map_err(|e| format!("SPAN {}: {}", idx + 1, e))?;
-                span.apply_labels(labels);
+                span.apply_titles(titles);
                 Ok(span)
             })
             .collect()
@@ -284,14 +284,12 @@ pub struct Format {
     pub target: Option<ColumnSection>,
     /// `SETTING` parameters for this FORMAT (e.g. `hjust => 'right'`).
     pub settings: Parameters,
-    /// Cell display text from the `RENAMING` clause: value-keyed renames
+    /// Cell display text from the `LABEL` subclause: value-keyed renames
     /// and suppressions plus the wildcard template, rendered per cell by
     /// [`crate::format::resolve_column_values`]. Same shape as
-    /// `Scale::label_spec` — named `renaming` here because `Table::labels`
-    /// already uses "label" for column headers, a different concept from a
-    /// cell's value.
+    /// `Scale::label_spec`.
     #[serde(default, with = "crate::format::label_spec_serde")]
-    pub renaming: zygos::LabelSpec,
+    pub label_spec: zygos::LabelSpec,
 }
 
 /// `SETTING` parameters `FORMAT` accepts.
@@ -326,14 +324,14 @@ impl Format {
             self.target = other.target;
         }
         self.settings.extend(other.settings.clone());
-        for (key, rename) in other.renaming.renames() {
+        for (key, rename) in other.label_spec.renames() {
             match rename {
-                Some(label) => self.renaming.rename(key.clone(), label),
-                None => self.renaming.suppress(key.clone()),
+                Some(label) => self.label_spec.rename(key.clone(), label),
+                None => self.label_spec.suppress(key.clone()),
             };
         }
-        if let Some(template) = other.renaming.template() {
-            self.renaming.set_template(template.source());
+        if let Some(template) = other.label_spec.template() {
+            self.label_spec.set_template(template.source());
         }
     }
 
@@ -355,11 +353,11 @@ mod tests {
             wildcard: false,
             target: None,
             settings,
-            renaming: zygos::LabelSpec::new(),
+            label_spec: zygos::LabelSpec::new(),
         }
     }
 
-    fn renaming_with_template(template: &str) -> zygos::LabelSpec {
+    fn labels_with_template(template: &str) -> zygos::LabelSpec {
         let mut spec = zygos::LabelSpec::new();
         spec.set_template(template);
         spec
@@ -368,13 +366,13 @@ mod tests {
     #[test]
     fn format_merge_an_unset_template_leaves_the_existing_one() {
         let mut format = Format {
-            renaming: renaming_with_template("{:num %.2f}"),
+            label_spec: labels_with_template("{:num %.2f}"),
             ..format_with_settings(Parameters::new())
         };
         format.merge(&format_with_settings(Parameters::new()));
 
         assert_eq!(
-            format.renaming.template().map(|t| t.source()),
+            format.label_spec.template().map(|t| t.source()),
             Some("{:num %.2f}")
         );
     }
@@ -382,15 +380,15 @@ mod tests {
     #[test]
     fn format_merge_an_explicit_default_template_overrides() {
         let mut format = Format {
-            renaming: renaming_with_template("{:num %.2f}"),
+            label_spec: labels_with_template("{:num %.2f}"),
             ..format_with_settings(Parameters::new())
         };
         format.merge(&Format {
-            renaming: renaming_with_template("{}"),
+            label_spec: labels_with_template("{}"),
             ..format_with_settings(Parameters::new())
         });
 
-        assert_eq!(format.renaming.template().map(|t| t.source()), Some("{}"));
+        assert_eq!(format.label_spec.template().map(|t| t.source()), Some("{}"));
     }
 
     #[test]

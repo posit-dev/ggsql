@@ -1238,7 +1238,7 @@ mod tests {
         let html = writer.render(&spec).unwrap();
 
         // The stub head renders as a <th scope="col">, blank by default (no
-        // LABEL given); the row labels render as <th scope="row">, both
+        // TITLE given); the row labels render as <th scope="row">, both
         // right-aligned (resolve_column_properties' STUB default).
         assert!(html.contains("<th scope=\"col\" class=\"ggsql_stub_head ggsql_right\"></th>"));
         assert!(html.contains("<th scope=\"row\" class=\"ggsql_stub ggsql_right\">north</th>"));
