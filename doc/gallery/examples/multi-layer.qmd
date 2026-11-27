@@ -19,7 +19,7 @@ DRAW point
   SETTING size => 4, color => 'darkblue'
 SCALE x VIA date
 LABEL
-  title => 'Temperature with Line and Points',
+  main => 'Temperature with Line and Points',
   x => 'Date',
   y => 'Temperature (F)'
 ```
@@ -46,7 +46,7 @@ DRAW line
   MAPPING Ozone AS y, 'Ozone' AS color
 SCALE x VIA date
 LABEL
-  title => 'Temperature and Ozone Over Time',
+  main => 'Temperature and Ozone Over Time',
   x => 'Date',
   y => 'Value'
 ```
@@ -70,7 +70,7 @@ DRAW point
   SETTING size => 3
 SCALE x VIA date
 LABEL
-  title => 'Temperature vs Ozone',
+  main => 'Temperature vs Ozone',
   x => 'Date',
   y => 'Value'
 ```

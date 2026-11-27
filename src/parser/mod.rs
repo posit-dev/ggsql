@@ -26,7 +26,7 @@ let query = r#"
     VISUALISE date AS x, revenue AS y, region AS color
     DRAW line
     LABEL
-        title => 'Sales by Region'
+        main => 'Sales by Region'
 "#;
 
 let specs = parse_query(query)?;
@@ -210,7 +210,7 @@ mod tests {
             SELECT x, y FROM data
             VISUALISE x, y
             DRAW point
-            LABEL title => 'Scatter Plot'
+            LABEL main => 'Scatter Plot'
             VISUALIZE
             DRAW bar MAPPING x AS x, y AS y
         "#;
@@ -255,7 +255,7 @@ mod tests {
             DRAW line
             DRAW line MAPPING cost AS y
             SCALE x VIA date
-            LABEL title => 'Revenue and Cost Trends'
+            LABEL main => 'Revenue and Cost Trends'
             VISUALIZE
             DRAW bar MAPPING date AS x, revenue AS y
             VISUALISE

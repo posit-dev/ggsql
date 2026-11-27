@@ -36,7 +36,7 @@ try {
   DRAW line
   DRAW point SETTING size => 3
   SCALE x SETTING type => 'date'
-  LABEL title => 'Revenue Analysis'
+  LABEL main => 'Revenue Analysis'
   THEME minimal
   `;
 

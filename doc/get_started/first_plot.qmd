@@ -10,7 +10,7 @@ DRAW point
 SCALE x 
   RENAMING * => '{} mm'
 LABEL
-  title => 'Relationship between bill dimensions in 3 species of penguins',
+  main => 'Relationship between bill dimensions in 3 species of penguins',
   x => 'Bill length',
   y => 'Bill depth'
 ```

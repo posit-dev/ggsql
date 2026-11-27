@@ -789,11 +789,11 @@ mod tests {
         table
             .labels
             .labels
-            .insert("title".to_string(), Some("Title".to_string()));
+            .insert("main".to_string(), Some("Title".to_string()));
         table
             .labels
             .labels
-            .insert("subtitle".to_string(), Some("Subtitle".to_string()));
+            .insert("sub".to_string(), Some("Subtitle".to_string()));
 
         let cells = resolve_cells(&frame, &table).unwrap();
 
@@ -835,7 +835,7 @@ mod tests {
         table
             .labels
             .labels
-            .insert("subtitle".to_string(), Some("Subtitle only".to_string()));
+            .insert("sub".to_string(), Some("Subtitle only".to_string()));
 
         let cells = resolve_cells(&frame, &table).unwrap();
 
@@ -888,11 +888,11 @@ mod tests {
         table
             .labels
             .labels
-            .insert("title".to_string(), Some("Title".to_string()));
+            .insert("main".to_string(), Some("Title".to_string()));
         table
             .labels
             .labels
-            .insert("subtitle".to_string(), Some("Subtitle".to_string()));
+            .insert("sub".to_string(), Some("Subtitle".to_string()));
 
         let layout = resolve_layout(&frame, &table).unwrap();
 
@@ -912,18 +912,18 @@ mod tests {
 
     #[test]
     fn reserved_label_keys_always_win_over_a_same_named_column() {
-        // A column literally named "title" can't get a header override via
+        // A column literally named "main" can't get a header override via
         // LABEL — the reserved key always wins, and the column just keeps
         // its own name, exactly as if no LABEL entry existed for it.
         let frame = df! {
-            "title" => vec![1i32],
+            "main" => vec![1i32],
         }
         .unwrap();
         let mut table = Table::new();
         table
             .labels
             .labels
-            .insert("title".to_string(), Some("The Table's Title".to_string()));
+            .insert("main".to_string(), Some("The Table's Title".to_string()));
 
         let cells = resolve_cells(&frame, &table).unwrap();
 
@@ -936,6 +936,6 @@ mod tests {
             .iter()
             .find(|c| c.kind == TableCellKind::ColumnLabel)
             .unwrap();
-        assert_eq!(column_label.content, "title");
+        assert_eq!(column_label.content, "main");
     }
 }

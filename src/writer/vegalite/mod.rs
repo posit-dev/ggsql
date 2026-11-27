@@ -1115,8 +1115,8 @@ impl Writer for VegaLiteWriter {
         }
 
         {
-            let title = spec.labels.get("title");
-            let subtitle = spec.labels.get("subtitle");
+            let title = spec.labels.get("main");
+            let subtitle = spec.labels.get("sub");
             match (title, subtitle) {
                 (Some(t), Some(st)) => {
                     // Vega-Lite uses an object for title + subtitle
@@ -1549,7 +1549,7 @@ mod tests {
 
         spec.labels
             .labels
-            .insert("title".to_string(), Some("My Chart".to_string()));
+            .insert("main".to_string(), Some("My Chart".to_string()));
 
         let df = df! {
             "date" => vec!["2024-01-01", "2024-01-02"],
@@ -1586,8 +1586,8 @@ mod tests {
             VISUALISE x, y, category AS stroke
             DRAW point
             LABEL
-                title => 'Multi-line\nChart Title',
-                subtitle => 'Line 1\nLine 2\nLine 3',
+                main => 'Multi-line\nChart Title',
+                sub => 'Line 1\nLine 2\nLine 3',
                 x => 'X Axis\nWith Newline',
                 y => 'Single Line',
                 stroke => 'Category\nMulti-line Legend'

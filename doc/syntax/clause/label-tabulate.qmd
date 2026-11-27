@@ -21,8 +21,8 @@ On the left hand side of the arrow, the following keys can be used:
 
 * Column names as they occur in the data
 * Reserved keywords for special labels:
-    * `title` as the main title
-    * `subtitle` as the subtitle
+    * `main` as the main title
+    * `sub` as the subtitle
     * `caption` as the table caption
 * Spanner IDs declared by `SPAN` clauses.
 
@@ -54,8 +54,8 @@ Adding titles to a table.
 ```{ggsql}
 TABULATE * FROM my_data
   LABEL
-    title => 'Penguins!',
-    subtitle => 'Structural size measurements',
+    main => 'Penguins!',
+    sub => 'Structural size measurements',
     caption => 'Source: Palmer station, Antarctica'
 ```
 
@@ -68,7 +68,7 @@ SELECT * FROM (VALUES (1, 'a'), (2, 'b'), (3, 'c')) AS t(id, title)
 
 TABULATE * FROM title_data
   LABEL
-    title => 'Overrules column'
+    main => 'Overrules column'
 ```
 
 You can target an aliased column instead.
@@ -76,6 +76,6 @@ You can target an aliased column instead.
 ```{ggsql}
 TABULATE *, title AS title_col FROM title_data
   LABEL
-    title => 'Main title',
+    main => 'Main title',
     title_col => 'Column title'
 ```

@@ -67,7 +67,7 @@ SELECT date, revenue FROM sales
 VISUALISE date AS x, revenue AS y
 DRAW line
 LABEL 
-  title => 'Sales Over Time', 
+  main => 'Sales Over Time', 
   x => 'Date', 
   y => 'Revenue (USD)'
 ```

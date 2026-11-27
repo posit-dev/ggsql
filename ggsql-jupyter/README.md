@@ -139,7 +139,7 @@ VISUALISE date AS x, revenue AS y
 DRAW line
 SCALE x
   SETTING type => 'date'
-LABEL title => 'Revenue Growth', x => 'Date', y => 'Revenue ($)'
+LABEL main => 'Revenue Growth', x => 'Date', y => 'Revenue ($)'
 ```
 
 #### Multi-Layer Plot with Global Mapping
@@ -153,7 +153,7 @@ DRAW line
   MAPPING y AS y
 DRAW line
   MAPPING z AS y
-LABEL title => 'Polynomial Functions'
+LABEL main => 'Polynomial Functions'
 ```
 
 #### Pure SQL (Data Tables)
@@ -183,5 +183,5 @@ Cell 2:
 SELECT * FROM products
 VISUALISE name AS x, price AS y
 DRAW bar
-LABEL title => 'Product Prices', y => 'Price ($)'
+LABEL main => 'Product Prices', y => 'Price ($)'
 ```

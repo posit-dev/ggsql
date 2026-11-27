@@ -138,9 +138,9 @@ PROJECT TO polar SETTING inner => 0.5   -- donut chart
 
 ## LABEL clause
 
-Overrides axis/legend labels & titles: `title`, `subtitle`, `caption`, or any aesthetic name; `null` suppresses.
+Overrides axis/legend labels & titles: `main`, `sub`, `caption`, or any aesthetic name; `null` suppresses.
 ```ggsql
-LABEL title => 'Sales by Region', x => 'Date', y => 'Revenue (USD)', fill => null
+LABEL main => 'Sales by Region', x => 'Date', y => 'Revenue (USD)', fill => null
 ```
 
 ---
@@ -160,7 +160,7 @@ Renders the query result as a table instead of a plot — the plain-table counte
 
 ### LABEL (table)
 
-Keyed by column name, not aesthetic. Reserved keys: `title`, `subtitle`, `caption`. `null` blanks a header; if all headers are blank the header row is omitted. Also labels spanners via their SPAN id: `LABEL q1 => 'Q1 Totals'`. No automatic labelling and no markdown — a column without a `LABEL` keeps its name.
+Keyed by column name, not aesthetic. Reserved keys: `main`, `sub`, `caption`. `null` blanks a header; if all headers are blank the header row is omitted. Also labels spanners via their SPAN id: `LABEL q1 => 'Q1 Totals'`. No automatic labelling and no markdown — a column without a `LABEL` keeps its name.
 
 ### SPAN
 
@@ -188,7 +188,7 @@ Configures cell display and column placement.
 ```ggsql
 SELECT * FROM ggsql:penguins LIMIT 5
 TABULATE *
-  LABEL title => 'Penguins!', bill_len => 'Length', bill_dep => 'Depth'
+  LABEL main => 'Penguins!', bill_len => 'Length', bill_dep => 'Depth'
   SPAN Bill OVER bill_len, bill_dep
   FORMAT STUB species
   FORMAT body_mass SETTING hjust => 'right' RENAMING null => '-', * => '{:num %.0f}g'

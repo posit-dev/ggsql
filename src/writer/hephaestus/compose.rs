@@ -94,13 +94,13 @@ pub fn build_composition(
         .shape_registry(ShapeRegistry::with_builtins())
         .theme(wiring::ggsql_theme());
 
-    // LABEL title/subtitle/caption live on the composition rather than the
+    // LABEL main/sub/caption live on the composition rather than the
     // panels, so one label spans the whole figure — also correct unfaceted,
     // where a panel-level title would resolve to the same layout row.
-    if let Some(text) = wiring::plot_label(spec, "title") {
+    if let Some(text) = wiring::plot_label(spec, "main") {
         view = view.title(text);
     }
-    if let Some(text) = wiring::plot_label(spec, "subtitle") {
+    if let Some(text) = wiring::plot_label(spec, "sub") {
         view = view.subtitle(text);
     }
     if let Some(text) = wiring::plot_label(spec, "caption") {

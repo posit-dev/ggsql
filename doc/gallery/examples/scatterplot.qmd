@@ -15,7 +15,7 @@ This is one of the most fundamental visualization types for exploring correlatio
 VISUALISE bill_len AS x, bill_dep AS y FROM ggsql:penguins
 DRAW point
 LABEL
-  title => 'Penguin Bill Dimensions',
+  main => 'Penguin Bill Dimensions',
   x => 'Bill Length (mm)',
   y => 'Bill Depth (mm)'
 ```
@@ -37,7 +37,7 @@ We're adding `species AS color` to the mapping to colour the points by species.
 VISUALISE bill_len AS x, bill_dep AS y, species AS color FROM ggsql:penguins
 DRAW point
 LABEL
-  title => 'Penguin Bill Dimensions by Species',
+  main => 'Penguin Bill Dimensions by Species',
   x => 'Bill Length (mm)',
   y => 'Bill Depth (mm)'
 ```
@@ -49,7 +49,7 @@ VISUALISE bill_len AS x, bill_dep AS y, species AS color FROM ggsql:penguins
 DRAW point
 SCALE color TO ('DeepSkyBlue', 'Fuchsia', 'Lime')
 LABEL
-    title => 'Penguin Bill Dimensions by Species',
+    main => 'Penguin Bill Dimensions by Species',
     x => 'Bill Length (mm)',
     y => 'Bill Depth (mm)'
 ```
@@ -67,7 +67,7 @@ VISUALISE
 FROM ggsql:penguins
 DRAW point
 LABEL
-    title => 'Penguin Bill Dimensions by Species',
+    main => 'Penguin Bill Dimensions by Species',
     x => 'Bill Length (mm)',
     y => 'Bill Depth (mm)'
 ```

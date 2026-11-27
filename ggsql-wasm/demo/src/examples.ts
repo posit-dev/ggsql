@@ -69,7 +69,7 @@ DRAW line
     query: `SELECT * FROM ggsql:penguins
 VISUALISE
 DRAW point MAPPING bill_len AS x, bill_dep AS y, body_mass AS size, species AS color
-LABEL title => 'Penguin Measurements', x => 'Bill Length (mm)', y => 'Bill Depth (mm)'`,
+LABEL main => 'Penguin Measurements', x => 'Bill Length (mm)', y => 'Bill Depth (mm)'`,
   },
   {
     section: "Layers",
@@ -210,7 +210,7 @@ SCALE shape TO ['star', 'bowtie', 'square-plus']`,
     query: `SELECT * FROM ggsql:penguins
 VISUALISE
 DRAW point MAPPING bill_len AS x, bill_dep AS y, body_mass AS size
-LABEL title => 'Penguin Measurements', x => 'Bill Length (mm)', y => 'Bill Depth (mm)'`,
+LABEL main => 'Penguin Measurements', x => 'Bill Length (mm)', y => 'Bill Depth (mm)'`,
   },
 
   // === Spatial ===
@@ -234,7 +234,7 @@ DRAW spatial
   MAPPING population AS fill
   SETTING opacity => 1
 SCALE fill TO viridis VIA log
-LABEL title => 'Population by country', fill => 'Population'`,
+LABEL main => 'Population by country', fill => 'Population'`,
   },
   {
     section: "Spatial",

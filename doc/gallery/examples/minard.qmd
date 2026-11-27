@@ -176,8 +176,8 @@ VISUALISE long AS x, lat AS y FROM 'minard_troops.csv'
     RENAMING 'A' => 'Advance', 'R' => 'Retreat'
   SCALE linewidth FROM (0, null) TO (0, 20)
   LABEL
-    title => 'Napoleon\'s Russian Campaign',
-    subtitle => 'Inspired by the graphic of C.J. Minard',
+    main => 'Napoleon\'s Russian Campaign',
+    sub => 'Inspired by the graphic of C.J. Minard',
     linewidth => 'Troops',
     stroke => 'Direction',
     x => null,

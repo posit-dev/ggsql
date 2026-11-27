@@ -1998,7 +1998,7 @@ mod tests {
             visualise
             draw point MAPPING x AS x, y AS y
             project to cartesian
-            label title => 'Test Chart'
+            label main => 'Test Chart'
         "#;
 
         let result = parse_test_query(query);
@@ -4017,7 +4017,7 @@ mod tests {
 
     #[test]
     fn test_parse_string_node() {
-        let source = make_source("VISUALISE DRAW point LABEL title => 'hello world'");
+        let source = make_source("VISUALISE DRAW point LABEL main => 'hello world'");
         let root = source.root();
 
         let string_node = source.find_node(&root, "(string) @s").unwrap();

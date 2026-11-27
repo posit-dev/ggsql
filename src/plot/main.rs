@@ -830,7 +830,7 @@ mod tests {
         spec.project = Some(Projection::cartesian());
         spec.labels = Labels {
             labels: HashMap::from([
-                ("title".to_string(), Some("My Chart".to_string())),
+                ("main".to_string(), Some("My Chart".to_string())),
                 ("color".to_string(), Some("Category".to_string())),
                 ("x".to_string(), Some("X Axis".to_string())),
             ]),
@@ -842,7 +842,7 @@ mod tests {
         let labels = &spec.labels;
         // Material labels should remain unchanged
         assert_eq!(
-            labels.labels.get("title"),
+            labels.labels.get("main"),
             Some(&Some("My Chart".to_string()))
         );
         assert_eq!(

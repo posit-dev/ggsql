@@ -16,7 +16,7 @@ VISUALISE Date AS x, Temp AS y
 DRAW line
 SCALE x VIA date
 LABEL
-  title => 'Daily Temperature',
+  main => 'Daily Temperature',
   x => 'Date',
   y => 'Temperature (F)'
 ```
@@ -41,7 +41,7 @@ VISUALISE Day AS x, Temp AS y, Month AS color
 DRAW line
 SCALE ORDINAL color
 LABEL
-  title => 'Daily Temperature by Month',
+  main => 'Daily Temperature by Month',
   x => 'Date',
   y => 'Temperature (F)'
 ```

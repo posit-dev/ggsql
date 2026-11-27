@@ -15,7 +15,7 @@ VISUALISE date AS x, revenue AS y, region AS color
 DRAW line
 SCALE x
   SETTING breaks => 'month'
-LABEL title => 'Sales by Region'
+LABEL main => 'Sales by Region'
 ```
 
 ## Why?

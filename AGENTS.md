@@ -6,7 +6,7 @@ A SQL extension for declarative data visualization based on the Grammar of Graph
 SELECT date, revenue, region FROM sales WHERE year = 2024
 VISUALISE date AS x, revenue AS y, region AS color
 DRAW line
-LABEL title => 'Sales by Region'
+LABEL main => 'Sales by Region'
 ```
 
 The user-facing site is at <https://ggsql.org>. The README at [`README.md`](README.md) is the public introduction.

@@ -596,7 +596,7 @@ Plot with labels
 
 VISUALISE x, y
 DRAW point
-LABEL title => 'My Plot', x => 'X Axis', y => 'Y Axis'
+LABEL main => 'My Plot', x => 'X Axis', y => 'Y Axis'
 
 --------------------------------------------------------------------------------
 
@@ -4948,7 +4948,7 @@ Line comment (double slash) between clauses
 VISUALISE x, y // trailing comment on the same line
 DRAW point
 // comment before a clause
-LABEL title => 'My Plot' // and one at the end
+LABEL main => 'My Plot' // and one at the end
 
 --------------------------------------------------------------------------------
 
@@ -5011,7 +5011,7 @@ VISUALISE /* inline block */ x, y
 DRAW point
 /* a multi-line
    block comment */
-LABEL title => 'My Plot'
+LABEL main => 'My Plot'
 
 --------------------------------------------------------------------------------
 

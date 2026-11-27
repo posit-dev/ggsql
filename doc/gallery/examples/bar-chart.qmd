@@ -16,7 +16,7 @@ GROUP BY species
 VISUALISE species AS x, count AS y, species AS fill
 DRAW bar
 LABEL
-  title => 'Penguin Count by Species',
+  main => 'Penguin Count by Species',
   x => 'Species',
   y => 'Count'
 ```
@@ -42,7 +42,7 @@ VISUALISE species AS x, count AS y, species AS fill
 DRAW bar
 PROJECT y, x TO cartesian
 LABEL
-  title => 'Penguin Count by Species',
+  main => 'Penguin Count by Species',
   x => 'Species',
   y => 'Count'
 ```
@@ -56,7 +56,7 @@ SELECT species FROM ggsql:penguins
 VISUALISE species AS x
 DRAW bar
 LABEL
-  title => 'Penguin Distribution',
+  main => 'Penguin Distribution',
   x => 'Species',
   y => 'Count'
 ```

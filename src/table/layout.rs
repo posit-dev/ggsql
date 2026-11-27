@@ -32,9 +32,9 @@ pub enum TableCellKind {
     /// A spanner cell, grouping several columns under one label (`TABULATE
     /// SPAN`).
     Spanner,
-    /// The table's title (`LABEL title => ...`, gt's `gt_title`).
+    /// The table's title (`LABEL main => ...`, gt's `gt_title`).
     Title,
-    /// The table's subtitle (`LABEL subtitle => ...`, gt's `gt_subtitle`).
+    /// The table's subtitle (`LABEL sub => ...`, gt's `gt_subtitle`).
     Subtitle,
     /// The table's caption (`LABEL caption => ...`, gt's `tab_caption()`).
     /// Full-width like `Title`/`Subtitle`, but rendered outside the normal
@@ -978,14 +978,14 @@ pub(crate) struct TableTitles {
     pub caption: Option<String>,
 }
 
-/// Pop the reserved `title`/`subtitle`/`caption` keys out of a `TABULATE`
+/// Pop the reserved `main`/`sub`/`caption` keys out of a `TABULATE`
 /// `LABEL` clause's resolved map into `TableTitles`, leaving only genuine
 /// column-name overrides behind. `.flatten()` treats "key absent" and "key
 /// present but NULL" the same: neither produces a title/subtitle/caption.
 pub(crate) fn extract_table_titles(labels: &mut Labels) -> TableTitles {
     TableTitles {
-        title: labels.labels.remove("title").flatten(),
-        subtitle: labels.labels.remove("subtitle").flatten(),
+        title: labels.labels.remove("main").flatten(),
+        subtitle: labels.labels.remove("sub").flatten(),
         caption: labels.labels.remove("caption").flatten(),
     }
 }

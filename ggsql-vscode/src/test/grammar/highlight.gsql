@@ -34,7 +34,7 @@ SCALE DISCRETE color TO viridis
 SCALE y VIA log10
 --          ^^^^^ constant.language.scale-type.ggsql
 
-LABEL title => 'Sales by Region', x => 'Date', y => 'Revenue'
+LABEL main => 'Sales by Region', x => 'Date', y => 'Revenue'
 -- <---- keyword.other.ggsql
 --    ^^^^^ support.type.property.ggsql
 --          ^^ keyword.operator.fatarrow.ggsql

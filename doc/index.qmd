@@ -48,7 +48,7 @@ PLACE rule
   SETTING slope => 0.4, y => -1
 SCALE BINNED fill
 LABEL
-  title => 'Relationship between bill dimensions in 3 species of penguins',
+  main => 'Relationship between bill dimensions in 3 species of penguins',
   x => 'Bill length (mm)',
   y => 'Bill depth (mm)'
 ```
